@@ -12,7 +12,7 @@ import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { VectorGeometryFilter, VectorGeometrySettings, ArrowPlacements } from './vectors'
 import {
   vector_reader,
-  VECTOR_PALETTE,
+  vector_palette_color,
   create_arrow_placements,
   write_arrow_placement,
   prepare_vector_geometry,
@@ -20,7 +20,7 @@ import {
 } from './vectors'
 import type { AnyStructure } from './index'
 
-export type VectorArrow = {
+type VectorArrow = {
   position: Vec3
   vector: Vec3
   magnitude: number
@@ -108,9 +108,10 @@ export function build_vector_layers(
     0,
     max_magnitude > 1e-10 ? max_magnitude : 1,
   ]).color_fn
-  return geometry.layers.map(({ key, site_indices, placements }, layer_idx) => {
+  const layer_keys = geometry.layers.map((layer) => layer.key)
+  return geometry.layers.map(({ key, site_indices, placements }) => {
     const configured_color = vector_configs[key]?.color
-    const layer_color = configured_color ?? VECTOR_PALETTE[layer_idx % VECTOR_PALETTE.length]
+    const layer_color = configured_color ?? vector_palette_color(layer_keys, key)
     const mode =
       vector_color_mode === `auto`
         ? key.startsWith(`magmom`) || key.startsWith(`spin`)

@@ -491,15 +491,13 @@
     const width_dir = { ArrowRight: 1, ArrowLeft: -1 }[event.key] ?? 0
     if (height_dir === 0 && width_dir === 0) return
     event.preventDefault()
-    if (height_dir !== 0) {
+    if (height_dir !== 0)
       set_resized_height(effective_height + height_dir * keyboard_resize_step_px)
-    }
     // A fitted layout steps its stored minimum, not the width columns stretched
     // it to: stepping the rendered width compounds, so two presses could walk a
     // three-column grid down to one. A drag anchors on its start, so it can't.
-    if (width_dir !== 0) {
+    if (width_dir !== 0)
       set_resized_width(width_gesture_value + width_dir * keyboard_resize_step_px)
-    }
   }
 
   const start_resize = (event: PointerEvent): void => {

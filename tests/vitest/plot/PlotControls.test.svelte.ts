@@ -1,15 +1,36 @@
 import type { Vec2 } from '#lib/math.js'
+import BarPlotControls from '#lib/plot/bar/BarPlotControls.svelte'
+import BoxPlotControls from '#lib/plot/box/BoxPlotControls.svelte'
 import PlotControls from '#lib/plot/core/components/PlotControls.svelte'
+import HistogramControls from '#lib/plot/histogram/HistogramControls.svelte'
+import type { HistogramNormalize } from '#lib/plot/histogram/histogram.js'
 import SankeyControls from '#lib/plot/sankey/SankeyControls.svelte'
+import ScatterPlotControls from '#lib/plot/scatter/ScatterPlotControls.svelte'
 import SunburstControls from '#lib/plot/core/components/HierarchyControls.svelte'
 import TernaryControls from '#lib/plot/ternary/TernaryControls.svelte'
-import type { AxisConfig } from '#lib/plot/index.js'
+import type {
+  AxisConfig,
+  BarMode,
+  DataSeries,
+  Orientation,
+  StyleOverrides,
+  ViolinKind,
+  ViolinSide,
+  WhiskerMode,
+} from '#lib/plot/index.js'
 import type { TicksOption } from '#lib/plot/core/scales.js'
 import { resolve_axis_range } from '#lib/plot/core/interactions.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { bind_props, doc_query, set_input } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  form_controls,
+  mount_in_test,
+  query,
+  set_input,
+} from '../setup'
 
 const type_into = (input: HTMLInputElement, value: string) => {
   set_input(input, value)
@@ -396,5 +417,130 @@ test.each([
     doc_query<HTMLButtonElement>(selector).click()
     await tick()
     expect(document.querySelector(selector)).toBeNull()
+  },
+)
+
+// Each chart's pane adds its own section to PlotControls: its inputs write the bound props
+// back, options that don't apply stay hidden, and the section's reset returns to baseline
+type ChartControlsCase = {
+  name: string
+  setup: () => [HTMLElement, object]
+  absent: string[] // labels hidden before the edits and again after the reset
+  edits: [string, string | boolean][] // booleans click a checkbox showing the opposite
+  expected: object
+  reset: string
+}
+const open = { show_controls: true, controls_open: true }
+test.each<ChartControlsCase>([
+  {
+    name: `BarPlotControls`,
+    setup: () => {
+      const state = $state<{ orientation: Orientation; mode: BarMode }>({
+        orientation: `vertical`,
+        mode: `overlay`,
+      })
+      return [mount_in_test(BarPlotControls, bind_props({ ...open }, state)), state]
+    },
+    absent: [],
+    edits: [
+      [`Orientation`, `horizontal`],
+      [`Mode`, `grouped`],
+    ],
+    expected: { orientation: `horizontal`, mode: `grouped` },
+    reset: `Restore layout to initial values`,
+  },
+  {
+    name: `BoxPlotControls`,
+    setup: () => {
+      const state = $state<{
+        orientation: Orientation
+        kind: ViolinKind
+        side: ViolinSide
+        whisker_mode: WhiskerMode
+        show_mean: boolean
+      }>({
+        orientation: `vertical`,
+        kind: `box`,
+        side: `both`,
+        whisker_mode: `tukey`,
+        show_mean: false,
+      })
+      return [mount_in_test(BoxPlotControls, bind_props({ ...open }, state)), state]
+    },
+    absent: [`Side`], // only violins have halves
+    edits: [
+      [`Glyph`, `violin`],
+      [`Side`, `negative`],
+      [`Whiskers`, `minmax`],
+      [`Show mean`, true],
+    ],
+    expected: { kind: `violin`, side: `negative`, whisker_mode: `minmax`, show_mean: true },
+    reset: `Reset box / violin to defaults`,
+  },
+  {
+    name: `HistogramControls`,
+    setup: () => {
+      const state = $state<{
+        bins: number
+        normalize: HistogramNormalize
+        show_legend?: boolean
+      }>({ bins: 100, normalize: `count`, show_legend: undefined })
+      const props = { ...open, series: [{ values: [1, 2] }], resolved_show_legend: true }
+      return [mount_in_test(HistogramControls, bind_props(props, state)), state]
+    },
+    absent: [`Mode`, `Series`], // pointless with one series
+    // the legend checkbox shows the resolved auto state, a click pins it explicitly
+    edits: [
+      [`Bins`, `20`],
+      [`Normalize`, `density`],
+      [`Show legend`, false],
+    ],
+    expected: { bins: 20, normalize: `density`, show_legend: false },
+    reset: `Reset histogram to defaults`,
+  },
+  {
+    name: `ScatterPlotControls`,
+    setup: () => {
+      const state = $state<{ styles: StyleOverrides }>({ styles: {} })
+      const series: DataSeries[] = [{ x: [0, 1], y: [0, 1], markers: `line` }]
+      const props = { ...open, series }
+      return [mount_in_test(ScatterPlotControls, bind_props(props, state)), state]
+    },
+    absent: [`Series`, `Size`], // one series to target, no markers to size
+    edits: [[`Style`, `4,4`]],
+    expected: { styles: { line: { dash: `4,4` } } },
+    reset: `Clear line style overrides`,
+  },
+])(
+  `$name writes edits back and resets them`,
+  async ({ setup, absent, edits, expected, reset }) => {
+    const [target, state] = setup()
+    const initial = $state.snapshot(state)
+    const { control, set_value } = form_controls(target)
+    const reset_button = () =>
+      target.querySelector<HTMLButtonElement>(`[aria-label="${reset}"]`)
+    const expect_absent = () => {
+      for (const label of absent)
+        expect(() => control(label)).toThrow(`Missing control ${label}`)
+    }
+    await vi.waitFor(() => control(edits[0][0]))
+    expect_absent()
+    expect(reset_button()).toBeNull()
+    for (const [label, value] of edits) {
+      if (typeof value === `string`) await set_value(label, value)
+      else {
+        const checkbox = control(label)
+        if (!(checkbox instanceof HTMLInputElement)) throw new Error(`${label} is no checkbox`)
+        expect(checkbox.checked).toBe(!value)
+        checkbox.click()
+        await tick()
+      }
+    }
+    expect(state).toEqual({ ...initial, ...expected })
+    query<HTMLButtonElement>(target, `[aria-label="${reset}"]`).click()
+    await tick()
+    expect(state).toEqual(initial)
+    expect(reset_button()).toBeNull()
+    expect_absent()
   },
 )

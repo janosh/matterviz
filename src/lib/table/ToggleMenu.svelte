@@ -7,7 +7,7 @@
   import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Column } from '#lib/table/index.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text, toggle_item } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { slide } from 'svelte/transition'
@@ -106,12 +106,6 @@
 
   let has_sections = $derived(columns.some((col) => col.group))
 
-  function toggle_section(name: string) {
-    collapsed_sections = collapsed_sections.includes(name)
-      ? collapsed_sections.filter((section) => section !== name)
-      : [...collapsed_sections, name]
-  }
-
   // Prefer two tall columns, adding a third only when the item count would make them unwieldy
   const grid_template = (item_count: number): string => {
     const preferred = item_count <= 1 ? 1 : Math.max(2, Math.ceil(item_count / MAX_MENU_ROWS))
@@ -133,7 +127,7 @@
   </button>
 {/snippet}
 
-{#snippet toggle_item(col: MenuColumn)}
+{#snippet column_toggle(col: MenuColumn)}
   {#snippet label(trigger_props: HTMLAttributes<HTMLLabelElement> = {})}
     <label {...trigger_props} class={['toggle-label', { disabled: col.disabled }]}>
       <input
@@ -215,7 +209,8 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
                 <button
                   class="section-header"
                   aria-expanded={!is_collapsed}
-                  onclick={() => toggle_section(section.name)}
+                  onclick={() =>
+                    (collapsed_sections = toggle_item(collapsed_sections, section.name))}
                   type="button"
                 >
                   <span class="collapse-icon">{is_collapsed ? `▶` : `▼`}</span>
@@ -233,7 +228,7 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
                 transition:slide={{ duration: motion_duration(200) }}
               >
                 {#each section.items as col (col.id)}
-                  {@render toggle_item(col)}
+                  {@render column_toggle(col)}
                 {/each}
               </div>
             {/if}
@@ -245,7 +240,7 @@ overflow and stacking contexts, and the browser owns light dismiss and Escape --
           style:grid-template-columns={grid_template(filtered_columns.length)}
         >
           {#each filtered_columns as col (col.id)}
-            {@render toggle_item(col)}
+            {@render column_toggle(col)}
           {/each}
         </div>
       {/if}

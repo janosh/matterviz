@@ -70,7 +70,7 @@ export function surface_frame({ lattice }: Crystal): SurfaceFrame {
 export function match_strain(film: Matrix2x2, substrate: Matrix2x2): MatchStrain {
   const [[fa0, fa1], [fb0, fb1]] = film
   const [[sa0, sa1], [sb0, sb1]] = substrate
-  const det_f = fa0 * fb1 - fa1 * fb0
+  const det_f = det2(film)
   // F = (B_f⁻¹·B_s)ᵀ with B_f⁻¹ = adj(B_f) / det
   const f00 = (fb1 * sa0 - fa1 * sb0) / det_f
   const f01 = (fa0 * sb0 - fb0 * sa0) / det_f
@@ -268,7 +268,7 @@ function assert_in_range(value: number, name: string, upper = Infinity): void {
 // An operation belongs to the group iff it maps the basis rows to integer lattice coordinates.
 function lattice_symmetries(basis: Matrix2x2): Matrix2x2[] {
   const [[a0, a1], [b0, b1]] = basis
-  const det = a0 * b1 - a1 * b0
+  const det = det2(basis)
   const in_group = ([[g00, g01], [g10, g11]]: Matrix2x2): boolean =>
     basis.every(([x, y]) => {
       const [gx, gy] = [g00 * x + g01 * y, g10 * x + g11 * y]

@@ -917,13 +917,14 @@ const calculate_raman = (
   options: SpectrumOptions &
     Required<Pick<TrajectorySpectroscopyOptions, `preprocessing` | `raman_channel`>>,
 ): RamanSpectrumResult => {
-  validate_trajectory_signal(polarizability, [3, 3], `Raman polarizability`)
+  const label = `Raman polarizability`
+  validate_trajectory_signal(polarizability, [3, 3], label)
   const rotations = signal_rotations(
     options.preprocessing,
     input.positions.steps,
     prepared.rotations,
     polarizability.steps,
-    `Raman polarizability`,
+    label,
   )
   const rotated = rotate_tensor_signal(polarizability.values, rotations)
   const n_samples = polarizability.steps.length
@@ -957,7 +958,7 @@ const calculate_raman = (
       polarizability.steps,
       input,
       options,
-      `Raman polarizability`,
+      label,
       max_abs(polarizability.values),
       component_weights,
     )
@@ -1411,28 +1412,28 @@ export const calc_trajectory_spectroscopy = (
 
   let infrared: TrajectorySpectrumCurve | null = null
   if (input.infrared_signal) {
-    const { series } = input.infrared_signal
-    validate_trajectory_signal(series, [3], `IR ${input.infrared_signal.kind}`)
+    const { series, kind } = input.infrared_signal
+    const label = `IR ${kind}`
+    validate_trajectory_signal(series, [3], label)
     const rotations = signal_rotations(
       preprocessing,
       stream.steps,
       prepared.rotations,
       series.steps,
-      `IR ${input.infrared_signal.kind}`,
+      label,
     )
-    const ir_values = rotate_vector_signal(series, rotations)
     // dipole/polarization spectra get the ω² of the classical absorption coefficient; a
     // current signal is already the time derivative and must not be weighted again
     infrared = build_curve(
-      ir_values,
+      rotate_vector_signal(series, rotations),
       3,
       series.steps,
       input,
       calculation_options,
-      `IR ${input.infrared_signal.kind}`,
+      label,
       max_abs(series.values),
       undefined,
-      input.infrared_signal.kind !== `current`,
+      kind !== `current`,
     )
   }
 

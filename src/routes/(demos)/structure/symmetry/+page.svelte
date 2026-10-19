@@ -168,6 +168,7 @@
   <Structure
     source="/structures/{source_filename}"
     bind:this={top_viewer}
+    analyze_symmetry
     bind:symmetry_settings={wide_example_symmetry_settings}
     bind:cell_type={top_ex_cell_type}
     bind:structure={top_ex_structure}
@@ -182,7 +183,7 @@
     }}
     style="height: 100%; min-height: 500px"
   >
-    <h2 class="demo-overlay-label" style="font-family: monospace">
+    <h2 class="demo-overlay-label">
       {display_filename}
     </h2>
   </Structure>
@@ -209,6 +210,7 @@
             source="/structures/{source_filename}"
             show_controls
             bind:this={layout_viewers[idx]}
+            analyze_symmetry
             bind:symmetry_settings={layout_sym_settings[idx]}
             {style}
           />

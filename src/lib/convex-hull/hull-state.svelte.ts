@@ -149,7 +149,6 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   const model = $derived(
     build_hull_model(effective_entries, elements, dim, energy_info.energy_mode),
   )
-  const all_enriched_entries = $derived(model.entries)
   const hull = $derived({
     entries: model.entries.filter((entry) => !entry.exclude_from_hull),
     facet_entries: model.facets.map((facet) =>
@@ -158,12 +157,10 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   })
 
   // Auto threshold: show all for few entries, use default for many, interpolate between
-  const max_hull_dist_in_data = $derived(
-    helpers.calc_max_hull_dist_in_data(all_enriched_entries),
-  )
+  const max_hull_dist_in_data = $derived(helpers.calc_max_hull_dist_in_data(model.entries))
   const auto_default_threshold = $derived(
     helpers.compute_auto_hull_dist_threshold(
-      all_enriched_entries.length,
+      model.entries.length,
       max_hull_dist_in_data,
       default_threshold,
     ),
@@ -175,7 +172,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     // Keyed on enriched entries so the auto threshold re-derives when temperature, gas or
     // energy mode change the hull (auto_threshold_reset preserves manual adjustments)
     inputs.set_max_hull_dist_show_phases(
-      next_auto_threshold(all_enriched_entries, current, auto_default_threshold) ?? current,
+      next_auto_threshold(model.entries, current, auto_default_threshold) ?? current,
     )
   })
 
@@ -191,7 +188,7 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
   // Filter by threshold; visibility is a view predicate, not entry state.
   const plot_entries = $derived(
     helpers.apply_category_markers(
-      all_enriched_entries.filter((entry) =>
+      model.entries.filter((entry) =>
         helpers.entry_within_hull_dist(entry, inputs.max_hull_dist_show_phases()),
       ),
       inputs.entry_category(),
@@ -244,9 +241,6 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     get available_temperatures() {
       return temp_analysis.available_temperatures
     },
-    get interpolate_temperature() {
-      return inputs.interpolate_temperature()
-    },
     get gas_analysis() {
       return gas_result.analysis
     },
@@ -264,9 +258,6 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     },
     get hull() {
       return hull
-    },
-    get all_enriched_entries() {
-      return all_enriched_entries
     },
     get max_hull_dist_in_data() {
       return max_hull_dist_in_data

@@ -1,4 +1,3 @@
-// Tests for IsosurfaceControls component rendering and interactions
 import IsosurfaceControls from '#lib/isosurface/IsosurfaceControls.svelte'
 import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
 import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'

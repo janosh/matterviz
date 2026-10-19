@@ -118,19 +118,57 @@
             {#if card.subtitle}<span class="subtitle">{card.subtitle}</span>{/if}
           </svelte:element>
         {/if}
-        {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
-          {#snippet row_tooltip()}{@html sanitize_html(row.tooltip ?? ``)}{/snippet}
-          <div class="info-row" data-testid={row.key}>
-            <span>{@html sanitize_html(row.label)}</span>
-            <span
-              aria-label={row.tooltip
-                ? html_to_text(`${row.value}: ${row.tooltip}`)
-                : undefined}
-              {@attach row.tooltip ? hover_tooltip(row_tooltip) : undefined}
-              >{@html sanitize_html(row.value)}</span
-            >
-          </div>
-        {/each}
+        {#if card.columns}
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                {#each card.columns as { label, tooltip } (label)}
+                  {#snippet column_tooltip()}{tooltip}{/snippet}
+                  <th
+                    aria-label={tooltip ? `${label}: ${tooltip}` : undefined}
+                    {@attach tooltip ? hover_tooltip(column_tooltip) : undefined}
+                  >
+                    {label}
+                  </th>
+                {/each}
+              </tr>
+            </thead>
+            <tbody>
+              {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
+                {#snippet row_tooltip()}{@html sanitize_html(row.tooltip ?? ``)}{/snippet}
+                <tr data-testid={row.key}>
+                  <th
+                    scope="row"
+                    aria-label={row.tooltip
+                      ? html_to_text(`${row.label}: ${row.tooltip}`)
+                      : undefined}
+                    {@attach row.tooltip ? hover_tooltip(row_tooltip) : undefined}
+                  >
+                    {@html sanitize_html(row.label)}
+                  </th>
+                  {#each [row.value].flat() as cell, cell_idx (cell_idx)}
+                    <td>{@html sanitize_html(cell)}</td>
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else}
+          {#each card.rows as row, row_idx (row_key(card, row, row_idx))}
+            {#snippet row_tooltip()}{@html sanitize_html(row.tooltip ?? ``)}{/snippet}
+            <div class="info-row" data-testid={row.key}>
+              <span>{@html sanitize_html(row.label)}</span>
+              <span
+                aria-label={row.tooltip
+                  ? html_to_text(`${row.value}: ${row.tooltip}`)
+                  : undefined}
+                {@attach row.tooltip ? hover_tooltip(row_tooltip) : undefined}
+                >{@html sanitize_html(row.value)}</span
+              >
+            </div>
+          {/each}
+        {/if}
       </section>
     {/each}
   </div>
@@ -208,6 +246,32 @@
     :is(h4, h5) {
       margin: 0 0 var(--info-card-heading-gap, 3pt);
       font-size: 1.15em;
+    }
+  }
+  .info-card:has(table) {
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+    :is(th, td) {
+      padding: 1pt 0 1pt 5pt;
+      font-weight: normal;
+      text-align: right;
+      white-space: nowrap;
+    }
+    tr > :first-child {
+      padding-left: 0;
+      text-align: left;
+      white-space: normal; /* labels wrap so each number keeps one line */
+    }
+    thead th {
+      color: var(--text-color-muted, currentColor);
+    }
+    :global(small) {
+      opacity: 0.7;
     }
   }
   .info-row {

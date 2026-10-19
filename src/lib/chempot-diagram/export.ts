@@ -1,7 +1,9 @@
-// Export helpers for the 3D chemical potential diagram: composited PNG/SVG snapshots and GLB.
+// HTML overlay label helpers for the 3D chemical potential diagram: tick label occlusion and
+// composited PNG/SVG snapshots (plus GLB export)
 import { canvas_to_png_blob, dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
 import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
+import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { export_scene_as } from '#lib/scene/index.js'
 import { escape_html as xml_escape } from '#lib/utils.js'
@@ -15,11 +17,6 @@ interface XYZ {
 
 const xyz_tuple = (point?: XYZ | null): number[] | null =>
   point ? [point.x, point.y, point.z] : null
-
-const get_gl_canvas = (wrapper: HTMLElement | undefined): HTMLCanvasElement | null => {
-  const canvas = wrapper?.querySelector(`canvas`)
-  return canvas instanceof HTMLCanvasElement ? canvas : null
-}
 
 // Serializable snapshot of the current 3D view (embedded in SVG/JSON exports)
 export function get_view_settings(opts: {
@@ -52,21 +49,52 @@ interface OverlayTextItem {
   color: string
 }
 
+const is_shown = ({ display, visibility }: CSSStyleDeclaration): boolean =>
+  display !== `none` && visibility !== `hidden`
+
+// Hide the axis tick labels a shown domain label overlaps and return whether any are hidden.
+// Runs every frame while the camera moves, so it reads every label's style and rect before
+// writing any (no layout thrash) and writes only labels whose state flips (our own inline
+// `hidden` is not mistaken for CSS hiding the label). Without a shown domain label it only
+// restores the tick labels it hid earlier, measuring nothing.
+export function occlude_tick_labels(wrapper: HTMLElement): boolean {
+  const domain_rects = [...wrapper.querySelectorAll<HTMLElement>(`.domain-label`)]
+    .filter((label) => is_shown(getComputedStyle(label)))
+    .map((label) => pad_rect(label.getBoundingClientRect(), 1))
+  const tick_labels = [...wrapper.querySelectorAll<HTMLElement>(`.axis-tick-label`)]
+  const was_occluded = tick_labels.map(({ style }) => style.visibility === `hidden`)
+  const occluded =
+    domain_rects.length === 0
+      ? tick_labels.map(() => false)
+      : tick_labels.map((tick_label, idx) => {
+          if (!was_occluded[idx] && !is_shown(getComputedStyle(tick_label))) return false
+          const tick_rect = tick_label.getBoundingClientRect()
+          return domain_rects.some((domain_rect) => rects_overlap(tick_rect, domain_rect))
+        })
+  for (const [idx, tick_label] of tick_labels.entries()) {
+    if (occluded[idx] !== was_occluded[idx])
+      tick_label.style.visibility = occluded[idx] ? `hidden` : ``
+  }
+  return occluded.includes(true)
+}
+
 // Collect HTML overlay text (tick/axis/domain labels) positioned relative to the canvas
 function get_overlay_text_items(
   wrapper: HTMLElement,
   canvas_rect: DOMRect,
 ): OverlayTextItem[] {
   const text_items: OverlayTextItem[] = []
-  for (const element of wrapper.querySelectorAll(`.tick-label, .axis-label, .domain-label`)) {
-    const html_element = element as HTMLElement
-    const style = getComputedStyle(html_element)
-    if (style.display === `none` || style.visibility === `hidden`) continue
-    const element_rect = html_element.getBoundingClientRect()
+  const labels = wrapper.querySelectorAll<HTMLElement>(
+    `.tick-label, .axis-label, .domain-label`,
+  )
+  for (const element of labels) {
+    const style = getComputedStyle(element)
+    if (!is_shown(style)) continue
+    const element_rect = element.getBoundingClientRect()
     text_items.push({
       x: element_rect.left + element_rect.width / 2 - canvas_rect.left,
       y: element_rect.top + element_rect.height / 2 - canvas_rect.top,
-      text: html_element.textContent ?? ``,
+      text: element.textContent ?? ``,
       font: style.font || `${style.fontSize} ${style.fontFamily}`,
       font_size: style.fontSize || `11px`,
       font_family: style.fontFamily || `sans-serif`,
@@ -83,7 +111,7 @@ function require_canvas(wrapper: HTMLElement | undefined): {
   rect: DOMRect
   wrapper: HTMLElement
 } {
-  const canvas = get_gl_canvas(wrapper)
+  const canvas = wrapper?.querySelector(`canvas`)
   const rect = canvas?.getBoundingClientRect()
   if (!canvas || !wrapper || !rect || !(rect.width > 0) || !(rect.height > 0))
     throw new Error(`Chemical potential diagram has no rendered canvas to export`)

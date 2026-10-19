@@ -2,11 +2,7 @@ import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import type { ColorSchemeName } from '#lib/constants.js'
 import { evict_oldest } from '#lib/labels.js'
 import { clamp } from '#lib/math.js'
-import {
-  get_system_mode,
-  nearest_declared,
-  observe_theme_attributes,
-} from '#lib/theme/index.js'
+import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index.js'
 import { clamp01 } from '#lib/utils.js'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
 import dark_mode_colors from './dark-mode-colors.json' with { type: 'json' }
@@ -343,20 +339,17 @@ export function is_dark_mode(
   return element !== undefined && (nearest_declared(element) ?? get_system_mode()) === `dark`
 }
 
-// Call `on_change` whenever the scheme `element` renders in may have changed: the root's
-// theme attributes/inline style (apply_theme_to_dom), a shadow host's (embedded widgets), or
-// the OS preference. Not on subscribe — callers subscribe inside effects whose callback writes
-// state, and a synchronous first call would re-trigger that effect. Read is_dark_mode(element)
-// for the initial value. Returns the cleanup function.
+// Call `on_change` whenever the scheme `element` renders in may have changed: a theme class,
+// data-theme or inline color-scheme on it or any ancestor (apply_theme_to_dom on the root, a
+// shadow host's for embedded widgets), or the OS preference. Not on subscribe — callers
+// subscribe inside effects whose callback writes state, and a synchronous first call would
+// re-trigger that effect. Read is_dark_mode(element) for the initial value. Returns the cleanup.
 export function watch_dark_mode(
   on_change: (dark: boolean) => void,
   element: Element | undefined = globalThis.document?.documentElement,
 ): () => void {
   if (!element) return () => {} // No-op in SSR
-  const root = element.getRootNode()
-  const nodes: Node[] = [document.documentElement]
-  if (root instanceof ShadowRoot) nodes.push(root.host)
-  return observe_theme_attributes(nodes, () => on_change(is_dark_mode(element)))
+  return watch_theme_changes(element, () => on_change(is_dark_mode(element)))
 }
 
 // Convert a CSS color string to hex format for use with <input type="color">.

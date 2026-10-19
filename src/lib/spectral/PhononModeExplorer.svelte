@@ -115,6 +115,7 @@
   const report_error = (error: unknown): void => {
     error_msg = to_error(error).message
   }
+  const no_result = { value: null, error: null }
   const try_generate = <Value>(generator: () => Value) => {
     try {
       return { value: generator(), error: null }
@@ -136,7 +137,7 @@
   let band_result = $derived.by(() =>
     mode_data.path_segments.length
       ? try_generate(() => phonon_band_structure_from_modes(mode_data))
-      : { value: null, error: null },
+      : no_result,
   )
   let band_structure = $derived(band_result.value)
   let band_structs = $derived<Record<string, BaseBandStructure>>(
@@ -157,12 +158,12 @@
   })
   let pattern_result = $derived.by(() => {
     const [cell, selected] = [supercell_result.value, selection]
-    if (!cell || !selected) return { value: null, error: null }
+    if (!cell || !selected) return no_result
     return try_generate(() => phonon_mode_pattern(cell, mode_data, selected))
   })
   let trajectory_result = $derived.by(() => {
     const pattern = pattern_result.value
-    if (!pattern) return { value: null, error: null }
+    if (!pattern) return no_result
     return try_generate(() => phonon_mode_run(pattern, { amplitude, n_frames }))
   })
   let generation_error = $derived(
@@ -185,7 +186,7 @@
   // === Brillouin zone inset ===
   let bz_inset = $derived.by(() => {
     const { lattice, qpoints } = mode_data
-    if (!show_bz_inset || !lattice || qpoints.length < 2) return { value: null, error: null }
+    if (!show_bz_inset || !lattice || qpoints.length < 2) return no_result
     return try_generate(() => {
       const k_lattice = reciprocal_lattice(lattice, { two_pi: true })
       return { k_lattice, bz_data: compute_brillouin_zone(k_lattice) }
@@ -803,7 +804,6 @@ under its open panes -->
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
   }
-
   .toolbar {
     display: grid;
     gap: 0.5em;
@@ -897,9 +897,9 @@ under its open panes -->
   @media (max-width: 560px) {
     .tabs {
       width: 100%;
-    }
-    .tabs button {
-      flex: 1;
+      button {
+        flex: 1;
+      }
     }
   }
 </style>

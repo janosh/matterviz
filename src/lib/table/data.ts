@@ -5,6 +5,7 @@ import {
   HTML_TAG_SRC,
   html_to_text,
   normalize_unicode_minus,
+  toggle_item,
 } from '#lib/utils.js'
 import { graphemes } from '#lib/plot/core/text-metrics.js'
 import { fuzzy_match } from 'svelte-widgets/utils'
@@ -211,9 +212,7 @@ export function with_category_toggled(
   options: string[],
 ): ColumnFilter | undefined {
   const selected = current?.kind === `category` ? current.values : options
-  const next = selected.includes(value)
-    ? selected.filter((entry) => entry !== value)
-    : [...selected, value]
+  const next = toggle_item(selected, value)
   return next.length === options.length ? undefined : { kind: `category`, values: next }
 }
 

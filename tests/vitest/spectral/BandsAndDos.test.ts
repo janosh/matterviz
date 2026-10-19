@@ -1,5 +1,6 @@
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
+import { mock_band_structure as band_structs } from '#site/spectral-mocks.js'
 import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
@@ -13,24 +14,6 @@ import {
   translate_of,
 } from '../setup'
 import { make_crystal } from '../test-fixtures'
-
-const band_structs: BaseBandStructure = {
-  type: `phonon`,
-  qpoints: [
-    { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
-    { label: null, frac_coords: [0.25, 0, 0], distance: 0.5 },
-    { label: `X`, frac_coords: [0.5, 0, 0], distance: 1 },
-  ],
-  branches: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
-  labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
-  distance: [0, 0.5, 1],
-  nb_bands: 3,
-  bands: [
-    [0, 1, 2],
-    [1, 2, 3],
-    [2, 3, 4],
-  ],
-}
 
 const phonon_dos: PhononDos = {
   type: `phonon`,
@@ -46,6 +29,8 @@ const mount_pair = (props: object, width = 1200, height = 600) =>
     Object.defineProperties({ ...pair_props }, Object.getOwnPropertyDescriptors(props)),
     { selector: `.bands-and-dos`, width, height },
   )
+const y_tick_text = (plot: Element) =>
+  [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) => element.textContent)
 // side by side at 1200px, stacked at 400px, without and with a Brillouin zone
 const layouts = [
   [`no BZ`, 1200, {}],
@@ -209,11 +194,9 @@ describe(`bands/DOS wrappers`, () => {
       400,
     )
     expect(() => flushSync()).not.toThrow()
-    const tick_text = (plot: Element) =>
-      [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) => element.textContent)
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
-    expect(tick_text(bands_plot)).toEqual(tick_text(dos_plot))
-    expect(tick_text(bands_plot).length).toBeGreaterThan(2)
+    expect(y_tick_text(bands_plot)).toEqual(y_tick_text(dos_plot))
+    expect(y_tick_text(bands_plot).length).toBeGreaterThan(2)
   })
 
   // The panels link their live y views: a rect zoom in the bands panel shows the same y range
@@ -221,10 +204,7 @@ describe(`bands/DOS wrappers`, () => {
   // either panel's axis pin having been touched
   it(`links a zoom in one panel to the other and resets both`, async () => {
     const root = await mount_pair({}, 800, 400)
-    const y_ticks = (plot: Element) =>
-      [...plot.querySelectorAll(`.y-axis .tick text`)].map((element) =>
-        Number(element.textContent),
-      )
+    const y_ticks = (plot: Element) => y_tick_text(plot).map(Number)
     const [bands_plot, dos_plot] = [...root.querySelectorAll(`.scatter`)]
     const initial = y_ticks(bands_plot)
     expect(initial.length).toBeGreaterThan(2)

@@ -11,5 +11,14 @@ export { default as SpacegroupBarPlot } from './SpacegroupBarPlot.svelte'
 // shell accepts minus what the wrapper derives from `structures` itself.
 export type StructurePlotProps = Omit<
   ComponentProps<typeof StructureBarPlot>,
-  `series` | `primary_axis` | `value_axis` | `subject` | `empty_subject` | `dropped_entries`
+  | `series`
+  | `primary_axis`
+  | `value_axis`
+  | `subject`
+  | `empty_subject`
+  | `dropped_entries`
+  | `bar_sites`
 > & { structures: StructureInput; strategy?: BondingStrategy }
+
+// Maps a hovered bar to the sites it counts, per structure it draws from
+export type BarSites = NonNullable<ComponentProps<typeof StructureBarPlot>[`bar_sites`]>

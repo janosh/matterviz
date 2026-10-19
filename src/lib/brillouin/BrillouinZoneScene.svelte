@@ -1,32 +1,21 @@
 <script lang="ts">
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Point2D, Vec2, Vec3 } from '#lib/math.js'
-  import {
-    bind_renderer,
-    create_scene_camera,
-    resolve_scene_controls,
-    scene_interactivity,
-    scene_key_walk,
-    scene_pointer,
-    SceneCamera,
-    SceneLights,
-  } from '#lib/scene/index.js'
+  import { scene_interactivity, scene_key_walk, scene_pointer } from '#lib/scene/index.js'
   import type { SceneControlProps, TapEvent, ThreltePointerEvent } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { mark_pin, type TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
   import { T } from '@threlte/core'
   import {
     bz_fit_extent,
     bz_hover_data,
-    default_camera_position,
     face_anchors,
     k_lattice_inverse,
     bz_mark_sizes,
     k_space_size,
-    polyhedron_centroid,
   } from './geometry'
   import KPath from './KPath.svelte'
+  import KSpaceCamera from './KSpaceCamera.svelte'
   import PolyhedronMesh from './PolyhedronMesh.svelte'
   import ReciprocalVectors from './ReciprocalVectors.svelte'
   import type {
@@ -62,8 +51,7 @@
     on_kpath_hover,
     width = 0,
     height = 0,
-    // camera/lighting/interaction props, resolved against the shared defaults below
-    ...scene_controls
+    ...scene_controls // camera/lighting/interaction props, handed to KSpaceCamera
   }: SceneControlProps &
     Partial<Omit<BrillouinZoneSettings, `bz_order`>> & {
       bz_data?: BrillouinZoneData
@@ -81,13 +69,6 @@
       on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
     } = $props()
 
-  const controls = $derived(resolve_scene_controls(scene_controls))
-
-  bind_renderer((threlte_scene, threlte_camera) => {
-    scene = threlte_scene
-    camera = threlte_camera
-  })
-
   // One target per pointer event: the k-path wins over the IBZ wedge inside the zone, which
   // wins over the zone (their pick_rank), else the front-most. A click on a mark pins its
   // tooltip, one on empty space unpins.
@@ -96,40 +77,17 @@
     on_empty_click: () => pin.unpin(),
   })
 
-  // BZ centroid as rotation center; mean k-vector magnitude for camera positioning
-  const rotation_target = $derived(polyhedron_centroid(bz_data?.vertices))
-  const bz_size = $derived(k_space_size(bz_data?.k_lattice))
+  const bz_size = $derived(k_space_size(bz_data?.k_lattice)) // mean k-vector magnitude
   const mark_sizes = $derived(bz_mark_sizes(bz_size, edge_width))
-  const computed_camera_position = $derived(default_camera_position(bz_size))
-  // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
-  // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
-  // renders the zone several times too small.
-  const measured = $derived(width > 0 && height > 0)
-  const scene_camera = create_scene_camera({
-    controls: () => ({ ...controls, camera_projection }),
-    target: () => rotation_target,
-    fit_zoom: () =>
-      measured
-        ? ortho_zoom_for_extent(
-            bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice),
-            width,
-            height,
-            controls.initial_zoom,
-          )
-        : controls.initial_zoom,
-    measured: () => measured,
-    camera: () => camera,
-    // No hover while orbiting: a drag would raycast the zone, wedge and every k-path proxy on
-    // each pointermove, and the tooltip popping in and out under the cursor reads as flicker
-    set_camera_is_moving: (moving) => {
-      set_hover_enabled(!moving)
-      if (!moving) return
-      hovered = null
-      on_kpath_hover?.(null)
-    },
-  })
+  // No hover while orbiting: a drag would raycast the zone, wedge and every k-path proxy on
+  // each pointermove, and the tooltip popping in and out under the cursor reads as flicker
+  const set_camera_is_moving = (moving: boolean) => {
+    set_hover_enabled(!moving)
+    if (!moving) return
+    hovered = null
+    on_kpath_hover?.(null)
+  }
 
-  // Inverse of k_lattice for Cartesian->fractional conversion
   const k_lattice_inv = $derived(k_lattice_inverse(bz_data?.k_lattice))
 
   // The pinned mark, else the hovered one, keeps its face lit (see TooltipPin)
@@ -222,17 +180,18 @@
     )
 </script>
 
-<SceneCamera
+<KSpaceCamera
+  {...scene_controls}
   {camera_projection}
-  position={computed_camera_position}
-  fov={controls.fov}
-  zoom={scene_camera.zoom}
-  reset_zoom={scene_camera.reset_to_fit}
-  orbit_props={scene_camera.orbit_props}
-  gizmo={controls.gizmo}
+  bind:scene
+  bind:camera
+  zone_vertices={bz_data?.vertices}
+  size={bz_size}
+  fit_extent={bz_fit_extent(bz_data?.vertices, bz_data?.k_lattice)}
+  {width}
+  {height}
+  {set_camera_is_moving}
 />
-
-<SceneLights ambient={controls.ambient_light} directional={controls.directional_light} />
 
 <T.Group>
   {#if bz_data}
@@ -259,7 +218,6 @@
       />
     {/if}
 
-    <!-- Reciprocal lattice vectors -->
     {#if show_vectors && bz_data.k_lattice}
       <ReciprocalVectors k_lattice={bz_data.k_lattice} {vector_scale} size={bz_size} />
     {/if}

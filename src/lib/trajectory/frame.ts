@@ -12,6 +12,8 @@ import {
   snapshot_topologies,
   NumericSites,
   numeric_sites,
+  site_stride,
+  vector_offset,
   write_site_properties,
 } from '#lib/structure/site.js'
 import type { TrajectoryFrame } from './index'
@@ -49,7 +51,7 @@ export type NumericFrame = {
 export function wrap_frame_coordinates(data: NumericFrame): NumericFrame {
   if (data.wrapped) return data
   let coordinates = data.coordinates
-  const width = 6 + data.vector_keys.length * 3
+  const width = site_stride(data.vector_keys)
   const { lattice } = data.structure
   const pbc = lattice?.pbc
   if (lattice && pbc?.some(Boolean)) {
@@ -106,9 +108,9 @@ export function select_frame_channels(
       throw new Error(`Unknown trajectory vector channel: ${key}`)
   const selected = frame.vector_keys.filter((key) => channels.vectors?.includes(key))
   if (selected.length === frame.vector_keys.length) return frame
-  const source_width = 6 + frame.vector_keys.length * 3
-  const target_width = 6 + selected.length * 3
-  const source_offsets = selected.map((key) => 6 + frame.vector_keys.indexOf(key) * 3)
+  const source_width = site_stride(frame.vector_keys)
+  const target_width = site_stride(selected)
+  const source_offsets = selected.map((key) => vector_offset(frame.vector_keys.indexOf(key)))
   const coordinates = new Float64Array(frame.sites.length * target_width)
   for (let idx = 0; idx < frame.sites.length; idx++) {
     const source = idx * source_width
@@ -117,7 +119,7 @@ export function select_frame_channels(
       coordinates[target + axis] = frame.coordinates[source + axis]
     for (let column = 0; column < source_offsets.length; column++) {
       for (let axis = 0; axis < 3; axis++)
-        coordinates[target + 6 + column * 3 + axis] =
+        coordinates[target + vector_offset(column) + axis] =
           frame.coordinates[source + source_offsets[column] + axis]
     }
   }
@@ -162,7 +164,7 @@ export const encode_frame = ({ structure, ...header }: TrajectoryFrame): Numeric
     ]),
   )
   const columnar_keys = new Set([...vector_keys, ...scalar_keys])
-  const width = 6 + vector_keys.length * 3
+  const width = site_stride(vector_keys)
   const coordinates = new Float64Array(sites.length * width)
   const elements = new Uint8Array(sites.length)
   let standard_sites = true
@@ -174,7 +176,7 @@ export const encode_frame = ({ structure, ...header }: TrajectoryFrame): Numeric
     for (let vector_idx = 0; vector_idx < vector_keys.length; vector_idx++) {
       coordinates.set(
         properties[vector_keys[vector_idx]] as number[],
-        offset + 6 + vector_idx * 3,
+        offset + vector_offset(vector_idx),
       )
     }
     if (!standard_sites) continue
@@ -218,7 +220,7 @@ export const materialize_frame = (frame: NumericFrame): TrajectoryFrame => {
     structure: {
       ...structuredClone(structure),
       sites: Array.from({ length: sites.length }, (_unused, idx) => {
-        const offset = idx * (6 + vector_keys.length * 3)
+        const offset = idx * site_stride(vector_keys)
         const xyz: Site[`xyz`] = [
           coordinates[offset],
           coordinates[offset + 1],
@@ -249,10 +251,10 @@ export function write_frame_vector(
   column: number,
   values: ArrayLike<number>,
 ): void {
-  const width = 6 + frame.vector_keys.length * 3
+  const width = site_stride(frame.vector_keys)
   for (let idx = 0; idx < frame.sites.length; idx++) {
     const source = idx * 3
-    const target = idx * width + 6 + column * 3
+    const target = idx * width + vector_offset(column)
     frame.coordinates[target] = values[source]
     frame.coordinates[target + 1] = values[source + 1]
     frame.coordinates[target + 2] = values[source + 2]
@@ -301,7 +303,7 @@ export function create_numeric_md_frame(
         context: `lattice ${JSON.stringify(lattice_matrix)}`,
       }).convert
     : undefined
-  const width = 6 + vector_keys.length * 3
+  const width = site_stride(vector_keys)
   const coordinates = new Float64Array(numbers.length * width)
   const xyz: Vec3 = [0, 0, 0]
   const fractional: Vec3 = [0, 0, 0]

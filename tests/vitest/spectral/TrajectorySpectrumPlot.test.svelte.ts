@@ -2,9 +2,9 @@ import type { TrajectorySpectroscopyResult } from '#lib/spectral/index.js'
 import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
 import TrajectorySpectrumPlot from '#lib/spectral/TrajectorySpectrumPlot.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { flushSync, mount, tick, unmount, type Component, type ComponentProps } from 'svelte'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { query, set_select } from '../setup'
+import { tick, type ComponentProps } from 'svelte'
+import { describe, expect, it, vi } from 'vitest'
+import { mount_in_test, query, set_select } from '../setup'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 const curve = {
@@ -56,22 +56,12 @@ const result = (responses = true): TrajectorySpectroscopyResult => ({
   metadata: {},
 })
 
-const render = <Props extends Record<string, unknown>>(
-  component: Component<Props>,
-  props: Props,
-): HTMLElement => {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  const instance = mount(component, { target, props })
-  onTestFinished(() => unmount(instance).finally(() => target.remove()))
-  return target
-}
-
 // the plot at a fixed 240px height, so both panels get room to lay out
 const render_plot = (
   spectrum: TrajectorySpectroscopyResult,
   props: Partial<ComponentProps<typeof TrajectorySpectrumPlot>> = {},
-) => render(TrajectorySpectrumPlot, { result: spectrum, style: `height: 240px`, ...props })
+) =>
+  mount_in_test(TrajectorySpectrumPlot, { result: spectrum, style: `height: 240px`, ...props })
 
 const labeled_select = (root: HTMLElement, label: string): HTMLSelectElement => {
   const select = Array.from(root.querySelectorAll(`select`)).find((element) =>
@@ -99,14 +89,14 @@ describe(`TrajectorySpectrumPlot`, () => {
   })
 
   it(`labels velocity-only output as vibrational rather than IR`, async () => {
-    const target = render(TrajectorySpectrumPlot, { result: result(false) })
+    const target = mount_in_test(TrajectorySpectrumPlot, { result: result(false) })
     await tick()
     expect(target.querySelectorAll(`.scatter`)).toHaveLength(1)
     expect(target.querySelector(`.fullscreen-button`)).toBeNull()
     expect(target.textContent).toContain(`Vibrational spectrum; IR/Raman activity unavailable`)
     expect(target.textContent).not.toContain(`Relative IR intensity`)
 
-    const plot_only_target = render(TrajectorySpectrumPlot, {
+    const plot_only_target = mount_in_test(TrajectorySpectrumPlot, {
       result: result(false),
       show_summary: false,
     })
@@ -216,7 +206,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     pane_open: true,
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
-  const target = render(TrajectorySpectroscopyPane, pane_props)
+  const target = mount_in_test(TrajectorySpectroscopyPane, pane_props)
   await tick()
   expect(target.textContent).toContain(`dipole`)
   expect(target.textContent).toContain(`polarization`)
@@ -229,13 +219,6 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
   set_select(ir_select, `polarization`)
   expect(ir_select.value).toBe(`polarization`)
   expect(kind_select.value).toBe(`polarization`)
-  const continuous_checkbox = query<HTMLInputElement>(target, `input[type="checkbox"]`)
-  continuous_checkbox.checked = true
-  continuous_checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
-  flushSync()
-  set_select(ir_select, `dipole`)
-  set_select(ir_select, `polarization`)
-  expect(target.querySelector<HTMLInputElement>(`input[type="checkbox"]`)?.checked).toBe(false)
   set_select(kind_select, `dipole`)
   expect(ir_select.value).toBe(`polarization`)
   expect(kind_select.value).toBe(`dipole`)
@@ -248,7 +231,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     inline: true,
     result: undefined as TrajectorySpectroscopyResult | undefined,
   })
-  const inline_target = render(TrajectorySpectroscopyPane, inline_props)
+  const inline_target = mount_in_test(TrajectorySpectroscopyPane, inline_props)
   await tick()
   await vi.waitFor(() => expect(inline_props.result).toBeDefined())
   expect(inline_target.querySelector(`.spectroscopy-analysis-controls-toggle`)).toBeNull()

@@ -665,7 +665,6 @@
 
   const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
 
-  // Value label helper
   const value_label_for = (stats: Box[`stats`]): string =>
     format_value_or_num(
       value_label_stat === `mean` ? stats.mean : stats.median,

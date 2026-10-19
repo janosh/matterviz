@@ -8,6 +8,7 @@
     resolve_legend_layout_tracks,
   } from '#lib/plot/core/decorations/index.js'
   import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
+  import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import type { ComponentProps } from 'svelte'
 
   // Auto-placed legend of a CartesianFrame: solved position with tweened follow-up, drag to
@@ -92,18 +93,9 @@
     {layout}
     {series_data}
     {active_series_idx}
-    on_toggle={(idx) => {
-      on_toggle?.(idx)
-      legend.on_toggle?.(idx)
-    }}
-    on_group_toggle={(name, indices) => {
-      on_group_toggle?.(name, indices)
-      legend.on_group_toggle?.(name, indices)
-    }}
-    on_double_click={(idx) => {
-      on_double_click?.(idx)
-      legend.on_double_click?.(idx)
-    }}
+    on_toggle={chain_callbacks(on_toggle, legend.on_toggle)}
+    on_group_toggle={chain_callbacks(on_group_toggle, legend.on_group_toggle)}
+    on_double_click={chain_callbacks(on_double_click, legend.on_double_click)}
     on_drag_start={frame.legend_drag_start}
     on_drag={frame.legend_drag}
     on_drag_end={frame.legend_drag_end}

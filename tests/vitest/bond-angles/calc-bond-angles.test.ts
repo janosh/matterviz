@@ -18,6 +18,7 @@ import { tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props, expect_plot_controls, mount_sized } from '../setup'
 import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
+import { octahedron_points } from '../structure/geometry-fixtures'
 
 // Exact tetrahedral angle: acos(-1/3) in degrees
 const TETRAHEDRAL_ANGLE = 109.47122063449069
@@ -55,15 +56,6 @@ const label_tally = (
 ): Record<string, number> =>
   tally(calc_bond_angles(structure, options).map((triplet) => triplet.triplet))
 
-const axis_dirs: Vec3[] = [
-  [1, 0, 0],
-  [-1, 0, 0],
-  [0, 1, 0],
-  [0, -1, 0],
-  [0, 0, 1],
-  [0, 0, -1],
-]
-
 // C-H 1.087 Å along the four alternating cube diagonals
 const methane = ligand_shell(
   `C`,
@@ -77,9 +69,9 @@ const methane = ligand_shell(
   1.087,
 )
 // S-F 1.56 Å along all six Cartesian axes
-const octahedron = ligand_shell(`S`, `F`, axis_dirs, 1.56)
+const octahedron = ligand_shell(`S`, `F`, octahedron_points, 1.56)
 // Pt-Cl 2.31 Å, four ligands in the xy plane
-const square_planar = ligand_shell(`Pt`, `Cl`, axis_dirs.slice(0, 4), 2.31)
+const square_planar = ligand_shell(`Pt`, `Cl`, octahedron_points.slice(0, 4), 2.31)
 // O=C=O, 1.16 Å
 const linear_triatomic = make_molecule([
   [`C`, [0, 0, 0]],

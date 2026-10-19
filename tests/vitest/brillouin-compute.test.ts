@@ -779,7 +779,7 @@ describe(`scene sizing helpers`, () => {
     const [si, supercell] = [2, 0.0628].map((size) =>
       Object.values(bz_mark_sizes(size, 0.002)),
     )
-    expect(si).toHaveLength(4)
+    expect(si).toHaveLength(5)
     for (const [idx, size] of si.entries())
       expect(size / supercell[idx]).toBeCloseTo(2 / 0.0628, 9)
   })

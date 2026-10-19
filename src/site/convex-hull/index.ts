@@ -3,6 +3,7 @@
 // at build time and each glob entry becomes its own chunk. Do NOT use query:'?url' here:
 // Rolldown doesn't emit .json.gz as assets for globs.
 import type { PhaseData } from '#lib/convex-hull/types.js'
+import { glob_basename } from '#site/imports.js'
 
 export const quaternary_files = import.meta.glob<{ default: PhaseData[] }>(
   `#site/convex-hull/quaternaries/*.json.gz`,
@@ -26,7 +27,7 @@ export const quaternary_loader = (
 
 // `/src/site/convex-hull/quaternaries/Li-Co-Ni-O.json.gz` -> `Li-Co-Ni-O`
 export const hull_system_name = (path: string): string =>
-  path.split(`/`).pop()?.replace(`.json.gz`, ``) ?? path
+  glob_basename(path).replace(`.json.gz`, ``)
 
 // Sub-system of a hull: the entries whose composition only spans `elements` (a ternary or
 // binary cut of a quaternary dataset)

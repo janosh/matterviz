@@ -2,7 +2,6 @@
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
-// Import MatterViz parsing functions and components
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '#lib/app.css'
 import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
@@ -13,14 +12,13 @@ import {
 import type { DefaultSettings } from '#lib/settings.js'
 import { blob_to_data_url } from '#lib/io/fetch.js'
 import type { DownloadData } from '#lib/io/fetch.js'
-import { ensure_moyo_wasm_ready } from '#lib/symmetry/index.js'
+import { set_moyo_wasm_source } from '#lib/symmetry/index.js'
 import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
 import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
 import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import type { VSCodeAPI } from './host-bridge'
 import { get_vscode_api } from './host-bridge'
 import type {
   FileChangeMessage,
@@ -59,7 +57,7 @@ declare global {
 
 // host-bridge.ts owns the single acquireVsCodeApi() call; VS Code throws on a
 // second one.
-const vscode_api: VSCodeAPI | null = get_vscode_api()
+const vscode_api = get_vscode_api()
 
 // VS Code serves the bundle from a resource origin (https://*.vscode-cdn.net) that differs
 // from the webview document's origin. Webview resources are served by a service worker that
@@ -211,7 +209,7 @@ export const setup_vscode_download = (): void => {
       return
     }
     const send_message = (content: string, is_binary: boolean) =>
-      vscode_api?.postMessage({ command: `saveAs`, content, filename, is_binary })
+      vscode_api.postMessage({ command: `saveAs`, content, filename, is_binary })
     try {
       if (typeof data === `string`) {
         send_message(data, false)
@@ -424,7 +422,6 @@ const create_error_display = (
     </div>`
 }
 
-// Mount Svelte component and create display
 export const create_display = (
   container: HTMLElement,
   result: ParseResult | OpenedMaterial,
@@ -528,7 +525,6 @@ const trajectory_props = (defaults: DefaultSettings) => {
   const {
     index_above_bytes: _index_above_bytes,
     atom_type_mapping: _atom_type_mapping,
-    allow_file_drop: _allow_file_drop,
     ...trajectory_component_props
   } = trajectory
   // Every key below is a declared ScatterPlot/Histogram prop; anything else would be spread
@@ -583,7 +579,6 @@ const listen_to_host = (): void => {
   )
 }
 
-// Initialize the MatterViz application from data passed by the extension
 async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
   const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
@@ -591,9 +586,9 @@ async function initialize(gen: number): Promise<MatterVizApp | null> {
     throw new Error(`No data provided to MatterViz app`)
   }
 
-  // Initialize WASM early with URL from extension (for symmetry analysis)
-  if (moyo_wasm_url) await ensure_moyo_wasm_ready(moyo_wasm_url)
-  if (!is_current(gen)) return null
+  // Where the extension serves the symmetry WASM; fetched only once an analysis needs it, so
+  // the first render doesn't wait for it
+  if (moyo_wasm_url) set_moyo_wasm_source(moyo_wasm_url)
 
   setup_vscode_download()
   if (theme) apply_theme_to_dom(theme)
@@ -612,7 +607,6 @@ async function initialize(gen: number): Promise<MatterVizApp | null> {
   return is_current(gen) ? current_app : null
 }
 
-// Cleanup function to properly dispose of components
 async function cleanup_matterviz(): Promise<void> {
   generation++
   message_listener?.abort()

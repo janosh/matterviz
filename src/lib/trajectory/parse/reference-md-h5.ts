@@ -20,6 +20,7 @@ import {
   HDF5_MAX_LOGICAL_SLICE_BYTES,
   read_numeric_samples,
   require_shape,
+  required_dataset as required_h5_dataset,
   resolve_stream_channels,
   sampled_property_rows,
   signal_descriptors as describe_signals,
@@ -29,6 +30,8 @@ import {
   trajectory_signal,
 } from './h5-utils'
 import type { LazyTrajectorySource, ParsedTrajectory } from './shared'
+
+const FORMAT = `Reference MD HDF5`
 
 type ReplicaSelection = {
   path: string
@@ -40,26 +43,23 @@ type ReplicaSelection = {
 const required_group = (h5_file: h5wasm.File, path: string): Group => {
   const entity = h5_file.get(path)
   if (is_hdf5_group(entity)) return entity
-  throw new Error(`Reference MD HDF5 is missing group ${path}`)
+  throw new Error(`${FORMAT} is missing group ${path}`)
 }
 
-const required_dataset = (h5_file: h5wasm.File, path: string): Dataset => {
-  const entity = h5_file.get(path)
-  if (is_hdf5_dataset(entity)) return entity
-  throw new Error(`Reference MD HDF5 is missing dataset ${path}`)
-}
+const required_dataset = (h5_file: h5wasm.File, path: string): Dataset =>
+  required_h5_dataset(h5_file, path, FORMAT)
 
 const shape_of = (dataset: Dataset, path: string): number[] =>
-  dataset_shape(dataset, path, `Reference MD HDF5`)
+  dataset_shape(dataset, path, FORMAT)
 
 const values_of = (dataset: Dataset, path: string): number[] => {
   const values = to_number_array(dataset.to_array())
-  if (!values) throw new Error(`Reference MD HDF5 dataset ${path} must contain finite numbers`)
+  if (!values) throw new Error(`${FORMAT} dataset ${path} must contain finite numbers`)
   return values
 }
 
 const ensure_shape = (shape: number[], expected: number[], path: string): void =>
-  require_shape(shape, expected, path, `Reference MD HDF5`)
+  require_shape(shape, expected, path, FORMAT)
 
 const is_pbc_value = (value: unknown): boolean =>
   value === true || value === false || value === 0 || value === 1
@@ -71,7 +71,7 @@ const as_pbc = (dataset: Dataset, path: string): Pbc => {
       ? Array.from(raw_values as ArrayLike<unknown>)
       : []
   if (values.length !== 3 || values.some((value) => !is_pbc_value(value))) {
-    throw new Error(`Reference MD HDF5 PBC dataset ${path} must contain three boolean values`)
+    throw new Error(`${FORMAT} PBC dataset ${path} must contain three boolean values`)
   }
   return [Boolean(values[0]), Boolean(values[1]), Boolean(values[2])]
 }
@@ -89,7 +89,7 @@ const molecule_selections = (
   const shape = shape_of(required_dataset(h5_file, positions_path), positions_path)
   if (shape.length !== 3 || shape[2] !== 3) {
     throw new Error(
-      `Reference MD HDF5 dataset ${positions_path} has shape [${shape.join(`, `)}], expected [replicas, atoms, 3]`,
+      `${FORMAT} dataset ${positions_path} has shape [${shape.join(`, `)}], expected [replicas, atoms, 3]`,
     )
   }
   return Array.from({ length: shape[0] }, (_unused, replica_idx) => ({
@@ -108,13 +108,13 @@ const selection_from_path = (
   if (!hdf5_group_path && selections.length !== 1) {
     throw new Hdf5GroupSelectionRequiredError(
       paths,
-      `Reference MD HDF5 contains multiple molecule replicas; choose one to reconstruct`,
+      `${FORMAT} contains multiple molecule replicas; choose one to reconstruct`,
     )
   }
   const selection = selections.find(({ path }) => path === (hdf5_group_path ?? paths[0]))
   if (!selection) {
     throw new Error(
-      `Unknown Reference MD HDF5 selection ${hdf5_group_path}; available selections: ${paths.join(`, `)}`,
+      `Unknown ${FORMAT} selection ${hdf5_group_path}; available selections: ${paths.join(`, `)}`,
     )
   }
   return selection
@@ -208,7 +208,7 @@ export const parse_reference_md_h5_file = (
       : []
   })
   if (selections.length === 0) {
-    throw new Error(`Reference MD HDF5 contains no molecule replicas`)
+    throw new Error(`${FORMAT} contains no molecule replicas`)
   }
   const { molecule_name, replica_idx, replica_count } = selection_from_path(
     hdf5_group_path,
@@ -234,9 +234,7 @@ export const parse_reference_md_h5_file = (
   const n_atoms = elements.length
   const atom_masses = values_of(required_dataset(h5_file, masses_path), masses_path)
   if (atom_masses.length !== n_atoms || atom_masses.some((mass) => mass <= 0)) {
-    throw new Error(
-      `Reference MD HDF5 dataset ${masses_path} must contain ${n_atoms} positive masses`,
-    )
+    throw new Error(`${FORMAT} dataset ${masses_path} must contain ${n_atoms} positive masses`)
   }
   const pbc = as_pbc(required_dataset(h5_file, pbc_path), pbc_path)
   const production_steps = values_of(
@@ -246,7 +244,7 @@ export const parse_reference_md_h5_file = (
   const times_ps = values_of(required_dataset(h5_file, times_path), times_path)
   if (production_steps.length === 0 || times_ps.length !== production_steps.length) {
     throw new Error(
-      `Reference MD HDF5 frames require matching non-empty ${production_steps_path} and ${times_path}`,
+      `${FORMAT} frames require matching non-empty ${production_steps_path} and ${times_path}`,
     )
   }
   for (const [axis, path] of [
@@ -254,7 +252,7 @@ export const parse_reference_md_h5_file = (
     [times_ps, times_path],
   ] as const) {
     if (first_non_increasing_index(axis) !== null) {
-      throw new Error(`Reference MD HDF5 ${path} must increase strictly`)
+      throw new Error(`${FORMAT} ${path} must increase strictly`)
     }
   }
   const n_frames = production_steps.length
@@ -305,9 +303,7 @@ export const parse_reference_md_h5_file = (
     attribute_value(simulation_group, [`integration_timestep_ps`]),
   )
   if (integration_timestep_ps == null || integration_timestep_ps <= 0) {
-    throw new Error(
-      `Reference MD HDF5 simulation attribute integration_timestep_ps must be positive`,
-    )
+    throw new Error(`${FORMAT} simulation attribute integration_timestep_ps must be positive`)
   }
   const sample_stride_steps = to_scalar_number(
     attribute_value(simulation_group, [`sample_stride_steps`]),
@@ -318,7 +314,7 @@ export const parse_reference_md_h5_file = (
   const ensemble = string_value(attribute_value(simulation_group, [`ensemble`]))
   const volume = calc_lattice_params(lattice_matrix).volume
   if (!(volume > 0)) {
-    throw new Error(`Reference MD HDF5 cell volume must be positive, got ${volume}`)
+    throw new Error(`${FORMAT} cell volume must be positive, got ${volume}`)
   }
   const signal_manifest: Record<string, ObservableManifest> = {
     velocity: {
@@ -521,7 +517,7 @@ export const parse_reference_md_h5_file = (
   }
   const collect_positions = (options: PositionStreamOptions): TrajectoryPositionStream => {
     const { frame_stride, vector_keys, signal_keys, frame_indices } = resolve_stream_channels(
-      `Reference MD HDF5`,
+      FORMAT,
       options,
       n_frames,
       {

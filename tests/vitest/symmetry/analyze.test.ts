@@ -47,7 +47,7 @@ const to_structure = (std_cell: MoyoCell, structure = original) =>
   transform_cell(structure, `conventional`, make_mock_sym_data(std_cell, std_cell))
 
 describe(`moyo cell → structure`, () => {
-  test(`converts cubic cell correctly`, () => {
+  test(`converts cubic cell and keeps the original's pbc`, () => {
     const moyo_cell = make_moyo_cell(
       [5, 0, 0, 0, 5, 0, 0, 0, 5], // 5Å cubic cell
       [
@@ -56,8 +56,9 @@ describe(`moyo cell → structure`, () => {
       ],
       [14, 8], // Si, O
     )
+    const original_2d = make_crystal(4, [], { pbc: [true, true, false] })
 
-    const result = to_structure(moyo_cell)
+    const result = to_structure(moyo_cell, original_2d)
 
     expect(result.lattice.matrix).toEqual([
       [5, 0, 0],
@@ -68,6 +69,7 @@ describe(`moyo cell → structure`, () => {
     expect(result.lattice).toMatchObject({ a: length, b: length, c: length })
     expect(result.lattice).toMatchObject({ alpha: angle, beta: angle, gamma: angle })
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Si`, `O`])
+    expect(result.lattice.pbc).toEqual([true, true, false])
   })
 
   test(`handles non-orthogonal lattice`, () => {
@@ -87,13 +89,6 @@ describe(`moyo cell → structure`, () => {
     const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [999])
 
     expect(() => to_structure(moyo_cell)).toThrow(`Unknown atomic number: 999`)
-  })
-
-  test(`preserves pbc from original structure`, () => {
-    const moyo_cell = make_moyo_cell([5, 0, 0, 0, 5, 0, 0, 0, 5], [[0, 0, 0]], [14])
-    const original_2d = make_crystal(5, [], { pbc: [true, true, false] }) // 2D periodic
-
-    expect(to_structure(moyo_cell, original_2d).lattice.pbc).toEqual([true, true, false])
   })
 
   test(`wraps fractional coordinates outside [0, 1) to unit cell`, () => {

@@ -10,7 +10,6 @@
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
-    show_controls = true,
     controls_open = $bindable(false),
     orientation = $bindable(DEFAULTS.sankey.orientation),
     node_width = $bindable(DEFAULTS.sankey.node_width),
@@ -20,9 +19,8 @@
     max_links = $bindable(DEFAULTS.sankey.max_links),
     link_opacity = $bindable(DEFAULTS.sankey.link_opacity),
     show_node_labels = $bindable(DEFAULTS.sankey.show_node_labels),
-    toggle_props = {},
-    pane_props = {},
     children,
+    ...rest
   }: {
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
     controls_open?: boolean
@@ -54,19 +52,13 @@
   )
 </script>
 
-<ControlPane
-  {show_controls}
-  bind:controls_open
-  controls_name="sankey"
-  {toggle_props}
-  {pane_props}
->
+<ControlPane bind:controls_open controls_name="sankey" {...rest}>
   {@render children?.()}
   <SettingsSection
     title="Sankey"
     changed_keys={sankey_settings.changed_keys}
-    on_reset={() => {
-      ;({
+    on_reset={() =>
+      ({
         orientation,
         node_align,
         node_width,
@@ -75,8 +67,7 @@
         show_node_labels,
         min_fraction,
         max_links,
-      } = DEFAULTS.sankey)
-    }}
+      } = DEFAULTS.sankey)}
     layout="grid"
   >
     <label>

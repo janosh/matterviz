@@ -1,4 +1,4 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { mean, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { PdfPattern, RdfPattern, TotalPdfPattern } from '#lib/rdf/index.js'
 import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from '#lib/rdf/calc-rdf.js'
 import {
@@ -13,7 +13,8 @@ import {
 import { neutron_scattering_length } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_rocksalt, type SimpleSite } from '../test-fixtures'
+import { FCC_FACE_CENTRES, make_crystal, make_rocksalt } from '../test-fixtures'
+import type { SimpleSite } from '../test-fixtures'
 
 // Cubic lattice constant shared by the sc/bcc/fcc reference cells. 3.615 Å is chosen so none of
 // the analytic shell distances land on a 0.01 Å bin edge, where round-off could split one
@@ -23,19 +24,17 @@ const CUBIC_A = 3.615
 const [PEAK_CUTOFF, PEAK_N_BINS] = [8, 800]
 const PEAK_BIN_SIZE = PEAK_CUTOFF / PEAK_N_BINS
 
-const FCC_FRAC: Vec3[] = [
-  [0, 0, 0],
-  [0, 0.5, 0.5],
-  [0.5, 0, 0.5],
-  [0.5, 0.5, 0],
-]
 const BCC_FRAC: Vec3[] = [
   [0, 0, 0],
   [0.5, 0.5, 0.5],
 ]
 const SC_FRAC: Vec3[] = [[0, 0, 0]]
 
-const cubic_cell = (element: string, frac_coords: Vec3[], a_len = CUBIC_A): Crystal =>
+const cubic_cell = (
+  element: string,
+  frac_coords: readonly Readonly<Vec3>[],
+  a_len = CUBIC_A,
+): Crystal =>
   make_crystal(
     a_len,
     frac_coords.map((abc) => [element, abc] as SimpleSite),
@@ -49,7 +48,7 @@ const CU3AU_A = 3.75
 const cu3au = (a_len: number): Crystal =>
   make_crystal(a_len, [
     [`Au`, [0, 0, 0]],
-    ...FCC_FRAC.slice(1).map((abc) => [`Cu`, abc] as SimpleSite),
+    ...FCC_FACE_CENTRES.slice(1).map((abc) => [`Cu`, abc] as SimpleSite),
   ])
 
 // Random packing with a hard minimum separation, so g(r) = 0 below `min_dist` exactly and G(r)
@@ -115,9 +114,6 @@ const pair_of = (partial: { element_pair?: [string, string] }): [string, string]
   return partial.element_pair
 }
 
-const mean = (values: number[]): number =>
-  values.reduce((sum, val) => sum + val, 0) / values.length
-
 const rms = (values: number[]): number =>
   Math.sqrt(values.reduce((sum, val) => sum + val * val, 0) / values.length)
 
@@ -140,7 +136,7 @@ describe(`reduced PDF G(r)`, () => {
     },
     {
       name: `fcc`,
-      frac: FCC_FRAC,
+      frac: FCC_FACE_CENTRES,
       nn_dist: CUBIC_A / Math.SQRT2,
       coordination: 12,
       r_window: 3,
@@ -167,7 +163,7 @@ describe(`reduced PDF G(r)`, () => {
   )
 
   test.each([400, 3000])(`fcc first-peak position is stable at n_bins=%s`, (n_bins) => {
-    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FRAC), {
+    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), {
       cutoff: PEAK_CUTOFF,
       n_bins,
     })
@@ -213,7 +209,7 @@ describe(`reduced PDF G(r)`, () => {
 
   test(`fcc crystal: shell-averaged g(r) converges to 1 in the tail`, () => {
     const [cutoff, n_bins] = [15, 750]
-    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FRAC), { cutoff, n_bins })
+    const pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), { cutoff, n_bins })
     // A crystal's g(r) is a comb of delta functions that never converges pointwise; what
     // converges is its average over a window many shells wide. measured: mean g = 0.9779.
     const tail_g = window_values(pattern, pattern.g_r, 12, 15)
@@ -289,7 +285,7 @@ describe(`reduced PDF G(r)`, () => {
   // fail to exist has to say so rather than return NaN or Infinity.
   // oxfmt-ignore
   test.each([
-    [`no lattice`, { sites: cubic_cell(`Cu`, FCC_FRAC).sites } as unknown as Crystal, /must have a lattice/],
+    [`no lattice`, { sites: cubic_cell(`Cu`, FCC_FACE_CENTRES).sites } as unknown as Crystal, /must have a lattice/],
     [`zero cell volume`, make_crystal([[1, 0, 0], [2, 0, 0], [0, 0, 1]], [[`Cu`, [0, 0, 0]]]), /volume is 0 Å³/],
     [`no sites`, make_crystal(4, []), /has 0 atoms/],
   ])(`number_density rejects a crystal with %s`, (_name, structure, pattern) => {
@@ -301,7 +297,7 @@ describe(`reduced PDF G(r)`, () => {
   })
 
   test(`PDF defaults are finer than the RDF defaults and leave them untouched`, () => {
-    const structure = cubic_cell(`Cu`, FCC_FRAC)
+    const structure = cubic_cell(`Cu`, FCC_FACE_CENTRES)
     const pdf = calculate_pdf(structure)
     expect(pdf.r).toHaveLength(PDF_DEFAULT_N_BINS)
     expect(pdf.r[1] - pdf.r[0]).toBeCloseTo(0.02, 12)
@@ -311,7 +307,10 @@ describe(`reduced PDF G(r)`, () => {
     expect(rdf.r[1] - rdf.r[0]).toBeCloseTo(0.2, 12)
   })
 
-  const fcc_pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FRAC), { cutoff: 8, n_bins: 100 })
+  const fcc_pattern = calculate_pdf(cubic_cell(`Cu`, FCC_FACE_CENTRES), {
+    cutoff: 8,
+    n_bins: 100,
+  })
   test.each([
     [`r_max below r_min`, fcc_pattern, { r_min: 3, r_max: 2 }, /Empty integration window/],
     [`an empty window`, fcc_pattern, { r_min: 1, r_max: 1 }, /Empty integration window/],

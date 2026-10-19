@@ -108,7 +108,6 @@ function filter_attrs(attr_str: string, allowed: ReadonlySet<string>, tag: strin
   let out = ``
   let rel = ``
   let has_href = false
-  ATTR_RE.lastIndex = 0
   for (const match of attr_str.matchAll(ATTR_RE)) {
     const name = (match.groups?.name ?? ``).toLowerCase()
     if (name.startsWith(`on`) || !allowed.has(name)) continue
@@ -163,25 +162,6 @@ function sanitize_allowlist_ssr(
         : `<${name}${filtered}>`
   }
   return out + escape_markup(without_blocks.slice(last))
-}
-
-// Wrap in <svg>, sanitize with allowlist, then unwrap. Required because DOMPurify
-// needs the <svg> parent to parse children in the SVG namespace.
-function sanitize_svg_content(
-  html: string,
-  tags: ReadonlySet<string>,
-  attrs: readonly string[],
-): string {
-  const purifier = get_purify()
-  if (!purifier) return sanitize_allowlist_ssr(html, tags, new Set(attrs))
-  const wrapped = purifier.sanitize(`<svg>${html}</svg>`, {
-    ALLOWED_TAGS: [...tags, `svg`],
-    ALLOWED_ATTR: [...attrs],
-  })
-  const open_end = wrapped.indexOf(`>`)
-  const close_start = wrapped.lastIndexOf(`</svg>`)
-  if (open_end === -1 || close_start === -1) return wrapped
-  return wrapped.slice(open_end + 1, close_start)
 }
 
 const stringify_html_input = (html: unknown): string => {
@@ -249,5 +229,17 @@ const SVG_TEXT_TAGS = new Set([`tspan`, `title`])
 // oxfmt-ignore
 const SVG_TEXT_ATTRS = [`dx`, `dy`, `x`, `y`, `fill`, `font-size`, `font-weight`, `baseline-shift`]
 
-export const sanitize_svg = (html: string): string =>
-  sanitize_svg_content(html, SVG_TEXT_TAGS, SVG_TEXT_ATTRS)
+// Wrap in <svg>, sanitize with allowlist, then unwrap. Required because DOMPurify
+// needs the <svg> parent to parse children in the SVG namespace.
+export function sanitize_svg(html: string): string {
+  const purifier = get_purify()
+  if (!purifier) return sanitize_allowlist_ssr(html, SVG_TEXT_TAGS, new Set(SVG_TEXT_ATTRS))
+  const wrapped = purifier.sanitize(`<svg>${html}</svg>`, {
+    ALLOWED_TAGS: [...SVG_TEXT_TAGS, `svg`],
+    ALLOWED_ATTR: [...SVG_TEXT_ATTRS],
+  })
+  const open_end = wrapped.indexOf(`>`)
+  const close_start = wrapped.lastIndexOf(`</svg>`)
+  if (open_end === -1 || close_start === -1) return wrapped
+  return wrapped.slice(open_end + 1, close_start)
+}

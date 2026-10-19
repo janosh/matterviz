@@ -22,6 +22,9 @@ const grouped_tree: SunburstNode[] = [`A`, `B`].map((label) => ({
   children: [1, 2].map((child_idx) => ({ label: `${label}${child_idx}`, value: 1 })),
 }))
 const { arcs: grouped_arcs } = compute_sunburst_layout(grouped_tree)
+const { arcs: user_arcs } = compute_sunburst_layout([
+  { label: `user`, children: grouped_tree },
+])
 
 const sun_geom: ScreenGeometry = {
   shape: `sunburst`,
@@ -40,14 +43,9 @@ const icicle_geom: ScreenGeometry = {
 const full_win: ViewWindow = { x0: 0, x1: 1, y0: 0, n_rings: 2 }
 // view window that zooms onto `arc`
 const zoom_to = (
-  arc: { x0: number; x1: number; y0: number },
+  { x0, x1, y0 }: Omit<ViewWindow, `n_rings`>,
   n_rings: number,
-): ViewWindow => ({
-  x0: arc.x0,
-  x1: arc.x1,
-  y0: arc.y0,
-  n_rings,
-})
+): ViewWindow => ({ x0, x1, y0, n_rings })
 const angular_span = (screen: { a0: number; a1: number }): number => screen.a1 - screen.a0
 const screens_by_label = (screens: ScreenArc[]): Record<string, ScreenArc> =>
   Object.fromEntries(screens.map((screen) => [screen.arc.label, screen]))
@@ -66,21 +64,28 @@ describe(`project_arcs`, () => {
     expect(scr_a1.r1).toBeCloseTo(200, 9) // outer radius
   })
 
-  test(`group gaps align selected subtree boundaries across rings`, () => {
-    const { all } = project_arcs(grouped_arcs, full_win, sun_geom, {
-      group_gap: {
-        select: (arc) => arc.depth === 1,
-        gap_px: 20,
-        max_fraction: 0.5,
-      },
-    })
-    const screen_by_label = screens_by_label(all)
-    expect((screen_by_label.B.a0 - screen_by_label.A.a1) * sun_geom.radius).toBeCloseTo(20, 9)
-    expect(screen_by_label.A1.a0).toBeCloseTo(screen_by_label.A.a0, 9)
-    expect(screen_by_label.A2.a1).toBeCloseTo(screen_by_label.A.a1, 9)
-    expect(screen_by_label.B1.a0).toBeCloseTo(screen_by_label.B.a0, 9)
-    expect(screen_by_label.B2.a1).toBeCloseTo(screen_by_label.B.a1, 9)
-  })
+  test.each([
+    [`in the full view`, grouped_arcs, full_win, 1],
+    [`after zooming their parent`, user_arcs, zoom_to(user_arcs[1], 2), 2],
+  ])(
+    `group gaps align selected subtree boundaries across rings %s`,
+    (_name, group_arcs, win, depth) => {
+      const { all } = project_arcs(group_arcs, win, sun_geom, {
+        group_gap: { select: (arc) => arc.depth === depth, gap_px: 20 },
+      })
+      const by_label = screens_by_label(all)
+      expect((by_label.B.a0 - by_label.A.a1) * sun_geom.radius).toBeCloseTo(20, 9)
+      // children stay flush with their inset group's edges
+      for (const [child, group, edge] of [
+        [`A1`, `A`, `a0`],
+        [`A2`, `A`, `a1`],
+        [`B1`, `B`, `a0`],
+        [`B2`, `B`, `a1`],
+      ] as const) {
+        expect(by_label[child][edge]).toBeCloseTo(by_label[group][edge], 9)
+      }
+    },
+  )
 
   test(`composes nested group gaps while preserving each subtree's boundaries`, () => {
     const { arcs: nested_arcs } = compute_sunburst_layout([
@@ -115,20 +120,6 @@ describe(`project_arcs`, () => {
     expect(screen_by_label.A1a.a0).toBeCloseTo(screen_by_label.A1.a0, 9)
     expect(screen_by_label.A1b.a1).toBeCloseTo(screen_by_label.A1.a1, 9)
     expect(screen_by_label.A2.a1).toBeCloseTo(screen_by_label.A.a1, 9)
-  })
-
-  test(`keeps selected sibling gaps aligned after zooming their parent`, () => {
-    const { arcs: zoom_arcs } = compute_sunburst_layout([
-      { label: `user`, children: grouped_tree },
-    ])
-    const { all } = project_arcs(zoom_arcs, zoom_to(zoom_arcs[1], 2), sun_geom, {
-      group_gap: { select: (arc) => arc.depth === 2, gap_px: 20 },
-    })
-    const screen_by_label = screens_by_label(all)
-
-    expect((screen_by_label.B.a0 - screen_by_label.A.a1) * sun_geom.radius).toBeCloseTo(20, 9)
-    expect(screen_by_label.A1.a0).toBeCloseTo(screen_by_label.A.a0, 9)
-    expect(screen_by_label.B2.a1).toBeCloseTo(screen_by_label.B.a1, 9)
   })
 
   test(`removes a selected group's gap when that group becomes the zoom root`, () => {

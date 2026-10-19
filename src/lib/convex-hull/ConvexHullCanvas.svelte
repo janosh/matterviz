@@ -108,7 +108,7 @@
   const hull_facets = $derived(hull_data.hull.facet_entries)
   // Formation energy range drives the 3D depth scaling (funnel depth), the energy axis and
   // the uniform-mode face opacity
-  const energy_range = $derived(energy_range_of(hull_data.all_enriched_entries))
+  const energy_range = $derived(energy_range_of(hull_data.model.entries))
 
   let canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()

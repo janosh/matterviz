@@ -13,7 +13,8 @@
   } from '#lib/spectral/band-path-link.svelte.js'
   import { band_crossings, band_line_style, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
   import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
-  import { resolve_color_token, watch_css_color } from '#lib/colors/backdrop.svelte.js'
+  import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
+  import { watch_theme_changes } from '#lib/theme/index.js'
   import { in_range } from '#lib/math.js'
   import type { Vec2 } from '#lib/math.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -118,7 +119,10 @@
       }
     }
     read()
-    return watch_css_color(node, read)
+    return watch_theme_changes(node, read, [
+      ...css_var_names(BANDS_CSS_COLORS.fermi),
+      ...css_var_names(BANDS_CSS_COLORS.reference),
+    ])
   })
   // Where the shown sheets' bands (in the shown spin channels) cross E_F and the shown
   // surface's energy (if another), coloured like the bands plot's line at that energy: dots on

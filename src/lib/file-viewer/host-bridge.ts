@@ -110,19 +110,7 @@ export async function request_large_file_content(
       if (run.properties.complete) return stop_property_stream()
       // Detach before notifying final rows: subscribers may throw or dispose the run.
       if (message.complete) stop_property_stream()
-      let errors: unknown[] | undefined
-      try {
-        run.properties.push(message.rows)
-      } catch (error) {
-        errors = [error]
-      }
-      try {
-        if (message.complete) run.properties.finish()
-      } catch (error) {
-        ;(errors ??= []).push(error)
-      }
-      if (errors?.length === 1) throw errors[0]
-      if (errors) throw new AggregateError(errors, `Host property notifications failed`)
+      run.properties.deliver(message.rows, message.complete, `Host`)
     }
     globalThis.addEventListener(`message`, handler)
     stop_property_stream = () => globalThis.removeEventListener(`message`, handler)

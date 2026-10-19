@@ -1,4 +1,5 @@
 import type { Vec2 } from '#lib/math.js'
+import { assert_non_negative } from '#lib/math.js'
 import type { Rect, Sides } from '#lib/plot/core/layout.js'
 import { is_valid_range, max_side_padding, union_ranges } from '#lib/plot/core/shared-axes.js'
 
@@ -119,11 +120,6 @@ const assert_integer = (
   if (Number.isInteger(value) && value >= minimum) return
   const panel_text = key === undefined ? `` : ` for facet "${key}"`
   throw new RangeError(`${name}${panel_text} must be an integer >= ${minimum}, got ${value}`)
-}
-
-const assert_finite_non_negative = (value: number, name: string): void => {
-  if (Number.isFinite(value) && value >= 0) return
-  throw new RangeError(`${name} must be a finite non-negative number, got ${value}`)
 }
 
 // Assign panels in row-major order while honoring explicit row/column placement and spans.
@@ -419,14 +415,14 @@ export function compute_facet_geometry<Datum>(
       gap: shared_band_gap = 0,
     } = {},
   } = geometry
-  assert_finite_non_negative(width, `width`)
-  assert_finite_non_negative(height, `height`)
-  assert_finite_non_negative(row_gap, `row_gap`)
-  assert_finite_non_negative(column_gap, `column_gap`)
-  assert_finite_non_negative(title_height, `shared_bands.title_height`)
-  assert_finite_non_negative(legend_width, `shared_bands.legend_width`)
-  assert_finite_non_negative(color_bar_width, `shared_bands.color_bar_width`)
-  assert_finite_non_negative(shared_band_gap, `shared_bands.gap`)
+  assert_non_negative(width, `width`)
+  assert_non_negative(height, `height`)
+  assert_non_negative(row_gap, `row_gap`)
+  assert_non_negative(column_gap, `column_gap`)
+  assert_non_negative(title_height, `shared_bands.title_height`)
+  assert_non_negative(legend_width, `shared_bands.legend_width`)
+  assert_non_negative(color_bar_width, `shared_bands.color_bar_width`)
+  assert_non_negative(shared_band_gap, `shared_bands.gap`)
 
   const has_title = title_height > 0
   const has_legend = legend_width > 0

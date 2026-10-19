@@ -8,8 +8,9 @@ import {
   is_valid_theme_name,
   save_theme_preference,
   THEME_TYPE,
+  watch_theme_changes,
 } from '#lib/theme/index.js'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const mock_match_media = (matches: boolean) => {
   Object.defineProperty(window, `matchMedia`, {
@@ -138,5 +139,78 @@ describe(`Theme System`, () => {
         `Invalid theme mode: unknown`,
       )
     })
+  })
+})
+
+// One shared observer serves every subscriber, filtered to what can change the colors it reads:
+// a layout write on an ancestor (a toolbar width, left/top) used to re-run every color read below
+describe(`watch_theme_changes`, () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0)) // observers report async
+  const stoppers: (() => void)[] = []
+  afterEach(() => {
+    for (const stop of stoppers.splice(0)) stop()
+    document.body.replaceChildren()
+    document.documentElement.removeAttribute(`data-theme`)
+    document.documentElement.removeAttribute(`style`)
+  })
+  // outer > inner (watched) and a sibling subtree another subscriber watches
+  const make_tree = () => {
+    const [outer, inner, sibling] = [`div`, `div`, `div`].map((tag) =>
+      document.createElement(tag),
+    )
+    outer.className = `host`
+    outer.append(inner)
+    document.body.append(outer, sibling)
+    return { outer, inner, sibling }
+  }
+  const watch = (node: Element, props: string[] = []) => {
+    const on_change = vi.fn()
+    stoppers.push(watch_theme_changes(node, on_change, props))
+    return on_change
+  }
+
+  test.each([
+    [`class on an ancestor`, ({ outer }) => outer.classList.add(`jp-theme-dark`), 1],
+    [`data-theme on the root`, () => (document.documentElement.dataset.theme = `dark`), 1],
+    [`inline color-scheme`, ({ outer }) => (outer.style.colorScheme = `dark`), 1],
+    [
+      `a watched inline variable`,
+      ({ outer }) => outer.style.setProperty(`--page-bg`, `#000`),
+      1,
+    ],
+    [
+      `a layout variable`,
+      ({ outer }) => outer.style.setProperty(`--toolbar-width`, `40px`),
+      0,
+    ],
+    [`left/top`, ({ outer }) => Object.assign(outer.style, { left: `3px`, top: `4px` }), 0],
+    [`an unchanged class`, ({ outer }) => outer.setAttribute(`class`, `host`), 0],
+    [`a sibling subtree`, ({ sibling }) => sibling.classList.add(`dark`), 0],
+  ] satisfies [string, (tree: ReturnType<typeof make_tree>) => unknown, number][])(
+    `%s notifies %i time(s)`,
+    async (_label, mutate, expected) => {
+      const tree = make_tree()
+      const on_change = watch(tree.inner, [`--page-bg`])
+      watch(tree.sibling) // so the sibling subtree is observed too
+      mutate(tree)
+      // a burst of writes on the same nodes still notifies once
+      mutate(tree)
+      await settle()
+      expect(on_change).toHaveBeenCalledTimes(expected)
+    },
+  )
+
+  test(`a subscriber leaving keeps the others notified and the last one stops it all`, async () => {
+    const { outer, inner } = make_tree()
+    const [on_inner, on_outer] = [watch(inner), watch(outer)]
+    stoppers.shift()?.() // inner unsubscribes: the shared observer re-observes the rest
+    await settle()
+    outer.classList.add(`dark`)
+    await settle()
+    expect([on_inner.mock.calls.length, on_outer.mock.calls.length]).toEqual([0, 1])
+    stoppers.shift()?.()
+    outer.classList.add(`light`)
+    await settle()
+    expect(on_outer).toHaveBeenCalledOnce()
   })
 })

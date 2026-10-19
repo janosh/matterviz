@@ -56,7 +56,8 @@
   import {
     get_structure_vector_keys,
     RESET_VIEW_TITLE,
-    VECTOR_PALETTE,
+    group_vector_keys,
+    vector_palette_color,
   } from '#lib/structure/index.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
@@ -264,22 +265,28 @@
     return () => clearTimeout(save_timeout)
   })
 
+  // A restored size reaches the pane. Writes only on change: a resize drag feeds every step
+  // back through controls_pane_size, and each style write on this ancestor makes the color
+  // bars inside re-resolve their theme colors.
+  $effect(() => {
+    const pane = controls_pane
+    if (!pane || !controls_pane_size) return
+    for (const key of [`width`, `height`] as const) {
+      const length = `${controls_pane_size[key]}px`
+      if (pane.style[key] !== length) pane.style[key] = length
+    }
+  })
   $effect(() => {
     const pane = controls_pane
     if (!pane) return
-    if (controls_pane_size) {
-      pane.style.width = `${controls_pane_size.width}px`
-      pane.style.height = `${controls_pane_size.height}px`
-    }
+    // Only a pixel size set on the pane (a resize drag) is the user's to keep
     const observer = new ResizeObserver(() => {
-      if (!pane.style.width || !pane.style.height) return
-      const width = Number(pane.style.width.replace(/px$/, ``))
-      const height = Number(pane.style.height.replace(/px$/, ``))
+      const [width, height] = [pane.style.width, pane.style.height].map((length) =>
+        length.endsWith(`px`) ? Number(length.slice(0, -2)) : NaN,
+      )
       if (!Number.isFinite(width) || !Number.isFinite(height)) return
-      if (controls_pane_size?.width === width && controls_pane_size.height === height) {
-        return
-      }
-      controls_pane_size = { width, height }
+      if (controls_pane_size?.width !== width || controls_pane_size.height !== height)
+        controls_pane_size = { width, height }
     })
     observer.observe(pane)
     return () => observer.disconnect()
@@ -820,13 +827,22 @@
     scene_props.vector_configs?.[key]?.visible !== false
 
   let any_vectors_visible = $derived(available_vector_keys.some(is_key_visible))
+  // One toggle, swatch and scale per category, not per component: spin output alone carries
+  // a key per (s, l, m) multipole
+  let vector_groups = $derived(
+    [...group_vector_keys(available_vector_keys)].map(([category, keys]) => ({
+      category,
+      keys,
+      label: capitalize(category.replaceAll(`_`, ` `)),
+    })),
+  )
 
-  function update_vector_config(key: string, patch: VectorLayerConfig) {
+  function update_vector_configs(keys: readonly string[], patch: VectorLayerConfig) {
     const configs = scene_props.vector_configs
     update_scene({
       vector_configs: {
         ...configs,
-        [key]: { ...configs?.[key], ...patch },
+        ...Object.fromEntries(keys.map((key) => [key, { ...configs?.[key], ...patch }])),
       },
     })
   }
@@ -837,22 +853,25 @@
     fields: (keyof VectorLayerConfig)[],
   ): Record<string, Accessor> =>
     Object.fromEntries(
-      available_vector_keys.map((key) => {
+      vector_groups.map(({ category, keys }) => {
         const initial = scene_props.vector_configs
         const initial_present = Object.hasOwn(scene_props, `vector_configs`)
-        const entry_present = Object.hasOwn(initial ?? {}, key)
-        const initial_config = initial?.[key]
         return [
-          `${prefix}:${key}`,
+          `${prefix}:${category}`,
           local(
-            () => own_fields(scene_props.vector_configs?.[key] ?? {}, fields),
-            (reference) => {
+            () =>
+              keys.map((key) => own_fields(scene_props.vector_configs?.[key] ?? {}, fields)),
+            (references) => {
               const configs = { ...scene_props.vector_configs }
-              const config = { ...configs[key] }
-              restore_fields(config, fields, reference)
-              if (Object.keys(config).length || initial_config) configs[key] = config
-              else if (entry_present) Reflect.set(configs, key, initial_config)
-              else Reflect.deleteProperty(configs, key)
+              for (const [key_idx, key] of keys.entries()) {
+                const initial_config = initial?.[key]
+                const config = { ...configs[key] }
+                restore_fields(config, fields, references[key_idx])
+                if (Object.keys(config).length || initial_config) configs[key] = config
+                else if (Object.hasOwn(initial ?? {}, key))
+                  Reflect.set(configs, key, initial_config)
+                else Reflect.deleteProperty(configs, key)
+              }
               if (Object.keys(configs).length || initial)
                 update_scene({ vector_configs: configs })
               else if (initial_present) update_scene({ vector_configs: initial })
@@ -1138,32 +1157,31 @@
         <SettingsSection title="Visibility" layout="grid" {...sections.visibility}>
           <div class="toggle-grid">
             {@render setting_rows(visibility_rows)}
-            {#each available_vector_keys as key, idx (key)}
-              {@const key_visible = is_key_visible(key)}
-              {@const vector_label = capitalize(key.replaceAll(`_`, ` `))}
-              {@const description = `Visibility and color of ${vector_label} vectors`}
-              <label data-key={`vector_config:${key}`} data-description={description}>
+            {#each vector_groups as { category, keys, label } (category)}
+              {@const group_visible = keys.some(is_key_visible)}
+              {@const color = scene_props.vector_configs?.[keys[0]]?.color}
+              {@const description = `Visibility and color of ${label} vectors${keys.length > 1 ? ` (${keys.length} components)` : ``}`}
+              <label data-key={`vector_config:${category}`} data-description={description}>
                 <input
                   type="checkbox"
-                  checked={key_visible}
-                  onchange={() => update_vector_config(key, { visible: !key_visible })}
+                  checked={group_visible}
+                  onchange={() => update_vector_configs(keys, { visible: !group_visible })}
                 />
                 <input
                   class="swatch"
                   type="color"
-                  aria-label={`${vector_label} color`}
-                  value={scene_props.vector_configs?.[key]?.color ??
-                    VECTOR_PALETTE[idx % VECTOR_PALETTE.length]}
+                  aria-label={`${label} color`}
+                  value={color ?? vector_palette_color(available_vector_keys, keys[0])}
                   onchange={(evt) =>
-                    update_vector_config(key, { color: evt.currentTarget.value })}
+                    update_vector_configs(keys, { color: evt.currentTarget.value })}
                 />
-                <span {@attach tooltip({ content: description })}>{vector_label}</span>
-                {#if scene_props.vector_configs?.[key]?.color != null}
+                <span {@attach tooltip({ content: description })}>{label}</span>
+                {#if color != null}
                   <button
                     type="button"
                     class="clear-color"
-                    aria-label={`Reset ${vector_label} color to default`}
-                    onclick={() => update_vector_config(key, { color: null })}
+                    aria-label={`Reset ${label} color to default`}
+                    onclick={() => update_vector_configs(keys, { color: null })}
                   >
                     ×
                   </button>
@@ -1342,22 +1360,22 @@
                 />
               </label>
             {/if}
-            {#if available_vector_keys.length > 1}
-              {#each available_vector_keys.filter(is_key_visible) as key (key)}
-                {@const description = `Scale multiplier for ${key} arrows (applied on top of global scale)`}
+            {#if vector_groups.length > 1}
+              {#each vector_groups.filter( ({ keys }) => keys.some(is_key_visible) ) as { category, keys, label } (category)}
+                {@const description = `Scale multiplier for ${label} arrows (applied on top of global scale)`}
                 <NumberRangeInput
-                  data-key={`vector_scale:${key}`}
+                  data-key={`vector_scale:${category}`}
                   data-description={description}
                   min={0.1}
                   max={5}
                   step={0.1}
                   title={description}
                   bind:value={
-                    () => scene_props.vector_configs?.[key]?.scale ?? 1.0,
-                    (scale) => update_vector_config(key, { scale: scale ?? 1.0 })
+                    () => scene_props.vector_configs?.[keys[0]]?.scale ?? 1.0,
+                    (scale) => update_vector_configs(keys, { scale: scale ?? 1.0 })
                   }
                 >
-                  <span>{key} scale</span>
+                  <span>{label} scale</span>
                 </NumberRangeInput>
               {/each}
             {/if}

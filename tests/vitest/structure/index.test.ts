@@ -14,6 +14,7 @@ import {
   perspective_distance_for_extent,
   structure_fit_frame,
   try_parse_vec3,
+  vector_category,
   vector_display_defaults,
   VECTOR_PALETTE,
 } from '#lib/structure/index.js'
@@ -413,6 +414,25 @@ describe(`is_vector_key`, () => {
     [`charge`, false], [`forceful`, false], [`my_force`, false], [``, false],
   ])(`is_vector_key(%s) = %s`, (key, expected) => {
     expect(is_vector_key(key)).toBe(expected)
+  })
+})
+
+// Index tokens (l0, s1, m-1) name a component, the rest its category: one toggle each
+describe(`vector_category`, () => {
+  // oxfmt-ignore
+  test.each([
+    [`force`, `force`], [`force_DFT`, `force_DFT`], [`dipole_charge`, `dipole_charge`],
+    [`spin_l0_norm`, `spin_norm`], [`spin_s0_l1_m-1`, `spin`], [`spin_s1_l2_m2`, `spin`],
+    [`force_2`, `force_2`], // a bare number names a source, not a component
+  ])(`vector_category(%s) = %s`, (key, expected) => {
+    expect(vector_category(key)).toBe(expected)
+  })
+
+  test(`a category's components share one palette color`, () => {
+    const keys = [`force`, `spin_s0_l0_m0`, `spin_s0_l1_m1`, `spin_l0_norm`]
+    expect(Object.values(default_vector_configs(keys)).map(({ color }) => color)).toEqual(
+      [0, 1, 1, 2].map((idx) => VECTOR_PALETTE[idx]),
+    )
   })
 })
 

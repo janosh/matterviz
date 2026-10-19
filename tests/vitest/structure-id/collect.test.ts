@@ -9,7 +9,7 @@ import {
 } from '#lib/structure-id/collect.js'
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { sweep_frame_plan, sweep_frames } from '#lib/trajectory/analysis.js'
+import { sweep_frame_plan, sweep_frames, window_sweep_size } from '#lib/trajectory/analysis.js'
 import { describe, expect, it, vi } from 'vitest'
 import { make_fcc, with_vacancy } from './lattices'
 
@@ -62,6 +62,36 @@ describe(`sweep_frame_plan`, () => {
     [10, 1.5, /max_frames must be a positive integer, got 1.5/],
   ])(`rejects total=%s max=%s`, (total, max_frames, pattern) => {
     expect(() => sweep_frame_plan(total, max_frames)).toThrow(pattern)
+  })
+
+  // the panes' frame-count hints render before a trajectory or a non-empty window is loaded,
+  // where sweep_frame_plan would throw; loaded windows count what sweep_frame_plan would visit
+  it.each([
+    [0, 5, { n_frames: 0, frame_stride: 1, label: `0 of 0 frames` }],
+    [-1, 5, { n_frames: 0, frame_stride: 1, label: `0 of -1 frames` }],
+    [10, 3, { n_frames: 3, frame_stride: 4, label: `3 of 10 frames (every 4)` }],
+    [20, 20, { n_frames: 20, frame_stride: 1, label: `20 of 20 frames` }],
+    [20, 50, { n_frames: 20, frame_stride: 1, label: `20 of 20 frames` }],
+    [16, 3, { n_frames: 3, frame_stride: 6, label: `3 of 16 frames (every 6)` }],
+    [1, 1, { n_frames: 1, frame_stride: 1, label: `1 of 1 frames` }],
+  ])(`window_sweep_size(%i, %i) → %o`, (window_frames, max_frames, expected) => {
+    expect(window_sweep_size(window_frames, max_frames)).toEqual(expected)
+    if (window_frames < 1) return
+    const { frame_numbers, frame_stride } = sweep_frame_plan(window_frames, max_frames)
+    expect([frame_numbers.length, frame_stride]).toEqual([
+      expected.n_frames,
+      expected.frame_stride,
+    ])
+  })
+
+  it.each([
+    [10, 0, `max_frames must be a positive integer, got 0`],
+    [10, 1.5, `max_frames must be a positive integer, got 1.5`],
+    [2.5, 5, `window_frames must be a positive integer, got 2.5`],
+  ])(`window_sweep_size rejects window=%s max=%s`, (window_frames, max_frames, message) => {
+    expect(() => window_sweep_size(window_frames, max_frames)).toThrow(
+      `window_sweep_size: ${message}`,
+    )
   })
 })
 

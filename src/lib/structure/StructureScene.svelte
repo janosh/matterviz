@@ -89,7 +89,7 @@
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error, toggle_item } from '#lib/utils.js'
   import {
     compute_slice_geometry,
     merge_species_by_element,
@@ -943,9 +943,6 @@
     })
   }
 
-  const toggle_site = (sites: number[], site_idx: number): number[] =>
-    sites.includes(site_idx) ? sites.filter((idx) => idx !== site_idx) : [...sites, site_idx]
-
   function toggle_selection(site_index: number, evt?: Event | TapEvent) {
     const native_event = (evt as { nativeEvent?: unknown } | undefined)?.nativeEvent ?? evt
 
@@ -960,7 +957,7 @@
       }
       if (!can_select_bond_site(site_index)) return
       // In Add mode, select atom pairs without making existing bonds destructive.
-      const new_sites = toggle_site(measured_sites, site_index)
+      const new_sites = toggle_item(measured_sites, site_index)
       measured_sites = new_sites
       selected_sites = new_sites
 
@@ -985,7 +982,7 @@
       // In edit-atoms mode, selected_sites and measured_sites always stay in sync. Shift
       // multi-selects; a plain click replaces the selection (or deselects a selected site).
       const new_sites = is_shift
-        ? toggle_site(selected_sites, site_index)
+        ? toggle_item(selected_sites, site_index)
         : selected_sites.includes(site_index)
           ? []
           : [site_index]
@@ -1008,8 +1005,8 @@
       return
     }
 
-    measured_sites = toggle_site(measured_sites, site_index)
-    selected_sites = toggle_site(selected_sites, site_index)
+    measured_sites = toggle_item(measured_sites, site_index)
+    selected_sites = toggle_item(selected_sites, site_index)
   }
 
   $effect(() => {
@@ -1086,8 +1083,10 @@
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
 
   // Near/far / skybox — not framing. Lattice avg edge stays stable when images toggle.
+  // Edge lengths come from the matrix: raw JSON may omit a/b/c, and a NaN far plane clips
+  // every vertex, blanking the canvas.
   let structure_size = $derived.by(() => {
-    if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
+    if (lattice) return lattice.matrix.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 2
     const count = site_count(structure)
     if (!structure || !count) return 10
     // One pass, no spread: Math.max(...coords) overflows the argument limit past ~1e5 sites

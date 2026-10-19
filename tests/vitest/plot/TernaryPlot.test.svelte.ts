@@ -319,10 +319,13 @@ describe(`TernaryPlot`, () => {
     })
     const on_toggle = vi.fn(() => expect(bound.hidden_series).toEqual([0]))
     const on_double_click = vi.fn(() => expect(bound.hidden_series).toEqual([1]))
+    const on_item_hover = vi.fn()
     const plot = await mount_ternary(
-      bind_props({ legend: { on_toggle, on_double_click } }, bound),
+      bind_props({ legend: { on_toggle, on_double_click, on_item_hover } }, bound),
     )
     expect(plot.querySelectorAll(`.legend-item`)).toHaveLength(2)
+    await fire(plot.querySelector(`.legend-item`), mouse(`mouseenter`))
+    expect(on_item_hover).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0 }))
     await fire(plot.querySelector(`.legend-item`)) // hide Oxides
     expect(bound.series[0].visible).toBeUndefined()
     expect(bound.hidden_series).toEqual([0])

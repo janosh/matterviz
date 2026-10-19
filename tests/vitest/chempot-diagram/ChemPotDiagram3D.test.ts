@@ -2,7 +2,11 @@ import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotDiagram3D from '#lib/chempot-diagram/ChemPotDiagram3D.svelte'
 import type ChemPotScene3D from '#lib/chempot-diagram/ChemPotScene3D.svelte'
 import ChemPotTooltip from '#lib/chempot-diagram/ChemPotTooltip.svelte'
-import { chempot_png_blob, chempot_svg_string } from '#lib/chempot-diagram/export.js'
+import {
+  chempot_png_blob,
+  chempot_svg_string,
+  occlude_tick_labels,
+} from '#lib/chempot-diagram/export.js'
 import type { ChemPotHoverInfo } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type * as scene_module from '#lib/scene/index.js'
@@ -137,6 +141,55 @@ const mount_diagram = async <T>(
     return node.props as T
   }
 }
+
+test(`occlude_tick_labels hides overlapped tick labels, writing only labels that flip`, () => {
+  const wrapper = document.createElement(`div`)
+  document.body.append(wrapper)
+  // tick label visibilities seen at each rect read: reads must all precede the writes
+  const seen_at_reads: string[][] = []
+  const label = (class_name: string, left: number, top: number, css = ``) => {
+    const span = document.createElement(`span`)
+    span.className = class_name
+    if (css) span.style.cssText = css
+    span.getBoundingClientRect = () => {
+      seen_at_reads.push(visibilities())
+      return new DOMRect(left, top, 20, 10)
+    }
+    wrapper.append(span)
+    return span
+  }
+  const domain = label(`domain-label`, 0, 0)
+  // overlapped, clear of the domain label, overlapped but hidden by CSS, and overlapped
+  const ticks = [
+    label(`axis-tick-label`, 10, 5),
+    label(`axis-tick-label`, 100, 100),
+    label(`axis-tick-label`, 5, 0, `display: none`),
+    label(`axis-tick-label`, 0, 5),
+  ]
+  const visibilities = () => ticks.map(({ style }) => style.visibility)
+  expect(occlude_tick_labels(wrapper)).toBe(true)
+  expect(visibilities()).toEqual([`hidden`, ``, ``, `hidden`])
+  // the domain label and the three shown ticks are measured, all before the first write
+  expect(seen_at_reads).toEqual(Array.from({ length: 4 }, () => [``, ``, ``, ``]))
+  // a camera frame that changes nothing rewrites nothing (the old reset-then-hide pass
+  // touched every tick label's style each frame)
+  const observer = new MutationObserver(() => {})
+  observer.observe(wrapper, { attributes: true, subtree: true })
+  expect(occlude_tick_labels(wrapper)).toBe(true)
+  expect(observer.takeRecords()).toEqual([])
+  observer.disconnect()
+  domain.getBoundingClientRect = () => new DOMRect(500, 500, 20, 10)
+  expect(occlude_tick_labels(wrapper)).toBe(false)
+  expect(visibilities()).toEqual([``, ``, ``, ``])
+  // with no shown domain label, ticks hidden earlier are restored without measuring any
+  domain.getBoundingClientRect = () => new DOMRect(0, 0, 20, 10)
+  expect(occlude_tick_labels(wrapper)).toBe(true)
+  domain.style.display = `none`
+  seen_at_reads.length = 0
+  expect(occlude_tick_labels(wrapper)).toBe(false)
+  expect(visibilities()).toEqual([``, ``, ``, ``])
+  expect(seen_at_reads).toEqual([])
+})
 
 // Overlay hulls are cached per formula: a toggle used to rebuild all k + 1 overlay hulls plus
 // the occlusion hull, now only the new overlay's hull and the occlusion hull
@@ -345,8 +398,7 @@ test(`camera start clears an unpinned domain tooltip, a pinned one survives and 
   expect(bound.hover_info?.axis_ranges).toEqual(fresh?.info.axis_ranges)
   // a press on the pinned domain or Escape unpins, closing the tooltip
   const wrapper = doc_query(`.chempot-diagram-3d`)
-  const escape = () =>
-    wrapper.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true }))
+  const escape = () => wrapper.dispatchEvent(keydown(`Escape`))
   escape() // closes the controls pane still open from above first
   flushSync()
   expect(bound.hover_info?.formula).toBe(domain.formula)

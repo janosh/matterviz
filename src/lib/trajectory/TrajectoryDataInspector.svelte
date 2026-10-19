@@ -1,12 +1,20 @@
 <script lang="ts">
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
-  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
+  import { untrack } from 'svelte'
+  import { display_idx, format_num } from '#lib/labels.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index.js'
   import { numeric_sites, site_count } from '#lib/structure/site.js'
   import { vector_reader } from '#lib/structure/vectors.js'
-  import { type CellVal, HeatmapTable, type Column, type RowData } from '#lib/table/index.js'
+  import {
+    type CellSnippetArgs,
+    type CellVal,
+    HeatmapTable,
+    is_invalid,
+    type Column,
+    type RowData,
+  } from '#lib/table/index.js'
   import SiteTable from '#lib/structure/SiteTable.svelte'
   import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
@@ -76,7 +84,7 @@
   let frame_table = $derived.by(() => {
     const property_keys = new Set<string>()
     const rows = frame_source.entries.map(({ frame_number, step, properties }) => {
-      const row: RowData = { frame: display_idx(frame_number), step }
+      const row: RowData = { frame_idx: frame_number, step }
       for (const [key, value] of Object.entries(properties)) {
         // `Step` duplicates the step column
         if (key === `Step`) continue
@@ -86,12 +94,25 @@
       return row
     })
     const columns: Column[] = [
-      { id: `frame`, label: `Frame`, format: `d`, color_scale: null, sticky: true },
-      { id: `step`, label: `Step`, format: `d`, color_scale: null },
+      { id: `step`, label: `Step`, format: `d`, color_scale: null, sticky: true },
       ...[...property_keys].map((key) => property_column(key)),
     ]
     return { rows, columns }
   })
+
+  // Columns with one value in every row (α, β, γ of a cubic cell) start hidden, judged once all
+  // rows are in. Writable: the column toggle overrides it.
+  let constant_columns = $derived.by(() => {
+    const { rows, columns } = frame_table
+    const [first] = rows
+    if (rows.length < 2 || !frame_source.complete) return []
+    return columns
+      .filter(
+        ({ id, sticky }) => !sticky && rows.every((row) => Object.is(row[id], first[id])),
+      )
+      .map(({ id }) => id)
+  })
+  let frame_hidden_columns = $derived(constant_columns)
 
   // Never present a sample as the full run: say how many rows stand for how many frames.
   let frame_notice = $derived.by(() => {
@@ -103,9 +124,31 @@
       : `Loading frame properties: ${shown} of ${total} available so far.`
   })
 
-  let active_frame = $derived(
-    current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
-  )
+  // The frame on show, refreshed at most once per animation frame, since each switch re-renders
+  // every cell of the open table. In the app, session.scrub already writes at most one index per
+  // animation frame and the player advances once per rAF tick, so this coalesces what else can
+  // land between paints: programmatic set_step bursts, key repeat, and a step change racing an
+  // async frame arrival, into one table render per paint. The pending refresh reads the latest
+  // frame when it fires, so playback still shows each painted frame. Never cancelled and
+  // re-requested per switch: the player advances inside its own animation frame callback, so
+  // that would starve the refresh.
+  const read_shown = () => ({
+    step_idx: current_step_idx,
+    frame: current_frame ?? (current_step_idx === 0 ? run?.preview : null) ?? null,
+  })
+  let shown = $state.raw(untrack(read_shown))
+  let refresh_id: number | undefined
+  $effect(() => {
+    read_shown()
+    refresh_id ??= requestAnimationFrame(() => {
+      refresh_id = undefined
+      shown = read_shown()
+    })
+  })
+  $effect(() => () => {
+    if (refresh_id !== undefined) cancelAnimationFrame(refresh_id)
+  })
+  let { step_idx: shown_step_idx, frame: active_frame } = $derived(shown)
   // Read lazily: a numeric snapshot builds its Site records on first access
   let active_sites = $derived(active_frame?.structure.sites ?? [])
   let n_sites = $derived(site_count(active_frame?.structure))
@@ -143,8 +186,8 @@
     const { kind, entries } = frame_source
     const entry =
       kind === `full`
-        ? entries[current_step_idx]
-        : entries.find(({ frame_number }) => frame_number === current_step_idx)
+        ? entries[shown_step_idx]
+        : entries.find(({ frame_number }) => frame_number === shown_step_idx)
     const recorded =
       entry?.properties ??
       Object.fromEntries(
@@ -160,7 +203,7 @@
       const config = property_config(key)
       rows.push({ key, attribute: config?.label ?? label, value, unit: config?.unit ?? unit })
     }
-    add(`frame`, display_idx(current_step_idx), `Frame`)
+    add(`frame`, display_idx(shown_step_idx), `Frame`)
     add(`step`, active_frame?.step ?? entry?.step, `Step`)
     for (const [key, value] of Object.entries(recorded)) if (key !== `Step`) add(key, value)
     const structure = active_frame?.structure
@@ -195,8 +238,7 @@
   })
   const global_columns: Column[] = [
     { id: `attribute`, label: `Attribute`, color_scale: null, sticky: true },
-    { id: `value`, label: `Value`, color_scale: null, format: `.6~g` },
-    { id: `unit`, label: `Unit`, color_scale: null },
+    { id: `value`, label: `Value`, color_scale: null, format: `.6~g`, cell: value_cell },
   ]
 
   // Counts that cost nothing to read: labels must not build a hidden tab's rows every frame
@@ -220,7 +262,7 @@
           run,
           rows: frame_source.entries,
           rows_complete: frame_source.complete,
-          current_step_idx,
+          current_step_idx: shown_step_idx,
           current_frame: active_frame,
           summary: info_summary,
         })
@@ -235,6 +277,9 @@
     if (!list) throw new Error(`Data inspector tabs have no .tabs-list`)
     let toolbar: HTMLElement | null = null
     const sizes = new ResizeObserver(() => fit())
+    const set_mode = (mode: `inline` | `row`): void => {
+      if (tabs.dataset.toolbar !== mode) tabs.dataset.toolbar = mode
+    }
     const fit = (): void => {
       // Only a table that starts its panel can lift its toolbar: a notice above it keeps its own
       const next = tabs.querySelector<HTMLElement>(
@@ -249,12 +294,16 @@
       // Tried inline first: the room the tabs then reserve lets a content-fit sidebar widen for
       // the toolbar, which a sidebar measured with the toolbar in its own row never would. It
       // stays there unless that cuts a tab label short.
-      tabs.style.setProperty(`--toolbar-width`, `${toolbar?.offsetWidth ?? 0}px`)
-      tabs.dataset.toolbar = `inline`
+      // Writes only on change: every style write on this ancestor makes the tables below
+      // re-resolve their theme colors, and fit runs several times per frame switch.
+      const width = `${toolbar?.offsetWidth ?? 0}px`
+      if (tabs.style.getPropertyValue(`--toolbar-width`) !== width)
+        tabs.style.setProperty(`--toolbar-width`, width)
+      set_mode(`inline`)
       const inline =
         toolbar !== null &&
         [...list.children].every((tab) => tab.scrollWidth <= tab.clientWidth)
-      if (!inline) tabs.dataset.toolbar = `row`
+      if (!inline) set_mode(`row`)
     }
     sizes.observe(tabs)
     // relabelled tabs (growing counts) and the table a tab switch mounts
@@ -270,10 +319,15 @@
   }
 </script>
 
+<!-- as HeatmapTable's default cells, with the unit as a small suffix -->
+{#snippet value_cell({ row, col, val }: CellSnippetArgs)}
+  {is_invalid(val) ? `n/a` : typeof val === `number` ? format_num(val, col.format) : val}
+  {#if row.unit}<small class="unit">{row.unit}</small>{/if}
+{/snippet}
+
 <!-- The host puts the sidebar last in a `docked-sidebar-row` and mounts it only while open,
 so a closed inspector builds no tables -->
 <DockedSidebar label="data inspector" class="trajectory-data-inspector-sidebar">
-  {#snippet header()}Data Inspector{/snippet}
   {#if !run}
     <StatusMessage message="No trajectory loaded" style="border: none" />
   {:else}
@@ -289,9 +343,10 @@ so a closed inspector builds no tables -->
           <HeatmapTable
             data={global_rows}
             columns={global_columns}
+            row_key="key"
             search={{ placeholder: `Filter attributes`, fuzzy: true }}
             export_formats={[`csv`, `json`]}
-            export_filename={`frame-${display_idx(current_step_idx)}-attributes`}
+            export_filename={`frame-${display_idx(shown_step_idx)}-attributes`}
             {...DATA_TABLE_PROPS}
             scroll_style={DOCKED_SCROLL_STYLE}
             virtual={false}
@@ -310,11 +365,12 @@ so a closed inspector builds no tables -->
             search={{ placeholder: `Filter frames`, fuzzy: true }}
             export_formats={[`csv`, `json`]}
             export_filename="trajectory-frames"
-            initial_sort={{ column: `frame` }}
+            initial_sort={{ column: `step` }}
+            bind:hidden_columns={frame_hidden_columns}
+            default_hidden_columns={constant_columns}
             on_row_click={on_step_change &&
               ((_event: MouseEvent | KeyboardEvent, row: RowData) => {
-                // Frame numbers are 1-based, on_step_change takes the 0-based index
-                if (typeof row.frame === `number`) on_step_change(from_display_idx(row.frame))
+                if (typeof row.frame_idx === `number`) on_step_change(row.frame_idx)
               })}
             {...DATA_TABLE_PROPS}
             scroll_style={DOCKED_SCROLL_STYLE}
@@ -352,6 +408,21 @@ so a closed inspector builds no tables -->
 </DockedSidebar>
 
 <style>
+  /* Clearer zebra stripes, layered over the opaque sticky column's background too */
+  :global(.trajectory-data-inspector-sidebar) {
+    --inspector-stripe: color-mix(in srgb, var(--text-color, CanvasText) 7%, transparent);
+    --heatmap-sticky-cell-odd-bg:
+      linear-gradient(var(--inspector-stripe), var(--inspector-stripe)),
+      var(--heatmap-sticky-cell-bg);
+  }
+  :global(.trajectory-data-inspector-sidebar tbody tr:nth-child(odd)) {
+    background: var(--inspector-stripe);
+  }
+  .unit {
+    font-size: 0.8em;
+    font-weight: 300;
+    opacity: 0.7;
+  }
   /* The tabs and the open panel pass the sidebar's height down to the table */
   :global(.trajectory-data-inspector-sidebar :is(.inspector-tabs, .tabs-panel:not([hidden]))) {
     display: flex;

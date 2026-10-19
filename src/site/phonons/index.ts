@@ -1,45 +1,9 @@
-// Extract phonon band structures and DOS from full phonon objects
+// Extract phonon band structures and DOS from full phonon objects, eagerly for every fixture.
+// Demos showing one material at a time load per file from fixtures.ts instead.
 
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { PhononBandStructure, PhononDos } from '#lib/spectral/index.js'
-import { normalize_band_structure, normalize_dos } from '#lib/spectral/index.js'
-import type { Crystal } from '#lib/structure/index.js'
-
-// pymatgen `PhononBandStructureSymmLine.as_dict()` as dumped by the fixture workflow (the
-// reciprocal lattice is spelled `recip_lattice`); `normalize_band_structure` does the conversion
-interface RawPhononBandStructure {
-  recip_lattice: { matrix: Matrix3x3 }
-  structure?: Crystal
-  qpoints: Vec3[]
-  bands: number[][]
-  labels_dict: Record<string, Vec3>
-  has_nac?: boolean
-  has_imaginary_modes?: boolean
-}
-
-type PhononData = {
-  phonon_bandstructure?: RawPhononBandStructure
-  phonon_dos?: Omit<PhononDos, 'type'>
-  primitive?: Crystal
-  structure?: Crystal
-}
-
-const METHOD_SUFFIX = /-(?:pbe|m3gnet|chgnet-v[\d.]+|mace-[\w-]+)$/
-
-type PhononFixtureGroup = {
-  material: string
-  label: string
-  keys: string[]
-}
-
-export const phonon_method_label = (material: string, key: string): string => {
-  const method = key.slice(material.length + 1)
-  if (method === `pbe`) return `DFT (PBE)`
-  if (method === `m3gnet`) return `M3GNet`
-  if (method.startsWith(`chgnet`)) return `CHGNet`
-  if (method.startsWith(`mace`)) return `MACE`
-  return method
-}
+import type { PhononData } from '#site/phonons/fixtures.js'
+import { normalize_phonon_fixture, phonon_fixture_key } from '#site/phonons/fixtures.js'
 
 // Import all phonon data files (uncompressed for dev, gzipped in git)
 const raw_imports = import.meta.glob<PhononData>([`./*.json`, `./*.json.gz`], {
@@ -53,42 +17,9 @@ export const phonon_bands: Record<string, PhononBandStructure> = {}
 export const phonon_dos: Record<string, PhononDos> = {}
 
 for (const [path, data] of Object.entries(raw_imports)) {
-  const identifier = /\/(?<id>[^/]+)\.json(?:\.gz)?$/.exec(path)?.[1] ?? path
+  const identifier = phonon_fixture_key(path)
+  const { bands, dos } = normalize_phonon_fixture(identifier, data)
   phonon_data[identifier] = data
-  if (data.phonon_bandstructure) {
-    const band_struct = normalize_band_structure(data.phonon_bandstructure)
-    if (!band_struct || band_struct.type !== `phonon`)
-      throw new Error(`${identifier}: phonon_bandstructure is not a phonon band structure`)
-    phonon_bands[identifier] = { ...band_struct, type: `phonon` }
-  }
-  if (data.phonon_dos) {
-    const dos = normalize_dos(data.phonon_dos)
-    if (!dos || dos.type !== `phonon`)
-      throw new Error(`${identifier}: phonon_dos is not a phonon density of states`)
-    phonon_dos[identifier] = dos
-  }
+  if (bands) phonon_bands[identifier] = bands
+  if (dos) phonon_dos[identifier] = dos
 }
-
-// Group fixtures by material while preserving each calculation method as a selectable key.
-export const phonon_fixture_groups: PhononFixtureGroup[] = (() => {
-  const by_material = new Map<string, string[]>()
-  for (const key of Object.keys(phonon_bands)) {
-    const material = key.replace(METHOD_SUFFIX, ``)
-    by_material.set(material, [...(by_material.get(material) ?? []), key])
-  }
-  return [...by_material.entries()]
-    .map(([material, keys]) => {
-      const [, mp_id = ``, formula = material] =
-        /^(?<mp_id>mp-\d+)-(?<formula>.+)$/.exec(material) ?? []
-      return {
-        material,
-        keys: keys.toSorted((key_a, key_b) =>
-          phonon_method_label(material, key_a).localeCompare(
-            phonon_method_label(material, key_b),
-          ),
-        ),
-        label: mp_id ? `${formula} (${mp_id})` : material,
-      }
-    })
-    .toSorted((group_a, group_b) => group_a.label.localeCompare(group_b.label))
-})()

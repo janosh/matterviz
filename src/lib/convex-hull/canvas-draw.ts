@@ -2,6 +2,7 @@
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
 import { add_alpha, HIGHLIGHT, plot_color } from '#lib/colors/index.js'
 import { get_formula_label_segments } from '#lib/composition/format.js'
+import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import type { FormulaLabelSegment } from '#lib/composition/format.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
@@ -536,7 +537,7 @@ function dominant_element(
 ): ElementSymbol {
   const totals = elements.map(() => 0)
   for (const { composition } of vertices) {
-    const atoms = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
+    const atoms = count_atoms_in_composition(composition)
     for (const [idx, element] of elements.entries())
       totals[idx] += (composition[element] ?? 0) / atoms
   }

@@ -34,7 +34,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { parse_warnings_notice } from '#lib/labels.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { chain_handlers, is_editable_event_target } from 'svelte-widgets/utils'
   import { key_walk_root, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
@@ -200,7 +200,7 @@
     defer_expensive_geometry = false,
 
     enable_info_pane = true,
-    analyze_symmetry = true,
+    analyze_symmetry = `on-demand`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     performance_mode = `quality`,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
@@ -299,8 +299,11 @@
     trajectory_line_end_frame?: number
     defer_expensive_geometry?: boolean
     enable_info_pane?: boolean
-    // Off for rapidly changing structures whose consumers do not read symmetry data
-    analyze_symmetry?: boolean
+    // `on-demand` (default) loads the ~0.75 MB symmetry WASM only once the viewer is touched
+    // (press, focus, an open pane) or the display needs it (a conventional/primitive cell,
+    // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
+    // `analysis.wyckoff_positions`; `false` never, for rapidly changing structures.
+    analyze_symmetry?: boolean | `on-demand`
     png_dpi?: number
     // 'speed' caps sphere tessellation for large structures
     performance_mode?: `quality` | `speed`
@@ -792,12 +795,27 @@
     warned_structure === structure ? parse_warnings_notice(parse_warnings) : undefined,
   )
   let last_symmetry_structure: AnyStructure | null = null
+  // Sticky once set (by a press or focus, or the effect below latching any other need), so the
+  // analysis outlives the pane or cell switch that asked for it. Not on hover: content scrolling
+  // under a resting cursor fires pointerenter, and every consumer starts with a press or key.
+  let symmetry_demanded = $state(false)
+  let symmetry_wanted = $derived(
+    analyze_symmetry === true ||
+      (analyze_symmetry === `on-demand` &&
+        (symmetry_demanded ||
+          active_pane !== null ||
+          cell_type !== `original` ||
+          atom_color_config.mode === `wyckoff`)),
+  )
+  // Read only by CellSelect, which shows for crystals alone
+  let symmetry_analyzing = $derived(symmetry_wanted && !sym_data && !symmetry_error)
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
     const run_id = ++symmetry_run_id
     if (session.dragging_atoms) return
-    if (!analyze_symmetry || !structure || !(`lattice` in structure)) {
+    if (symmetry_wanted) symmetry_demanded = true
+    if (!symmetry_wanted || !structure || !(`lattice` in structure)) {
       untrack(() => {
         sym_data = null
         symmetry_error = undefined
@@ -1009,7 +1027,8 @@
   })
 
   // Live read-only results: consumers bind:this and read analysis without copying outputs
-  // through effects or exposing setters that the next render would overwrite.
+  // through effects or exposing setters that the next render would overwrite. sym_data and
+  // wyckoff_positions stay empty until the viewer is touched unless analyze_symmetry is true.
   export const analysis = {
     get displayed_structure() {
       return session.displayed_structure
@@ -1212,15 +1231,16 @@
     bind:this={wrapper}
     bind:clientWidth={width}
     bind:clientHeight={height}
-    onpointerenter={() => (hovered = true)}
-    onpointerleave={() => (hovered = false)}
-    onfocusin={() => (focused = true)}
-    onfocusout={(event) => {
+    {...rest}
+    onpointerdown={chain_handlers(() => (symmetry_demanded = true), rest.onpointerdown)}
+    onpointerenter={chain_handlers(() => (hovered = true), rest.onpointerenter)}
+    onpointerleave={chain_handlers(() => (hovered = false), rest.onpointerleave)}
+    onfocusin={chain_handlers(() => (focused = symmetry_demanded = true), rest.onfocusin)}
+    onfocusout={chain_handlers((event: FocusEvent) => {
       if (!(event.relatedTarget instanceof Node) || !wrapper?.contains(event.relatedTarget)) {
         focused = false
       }
-    }}
-    {...rest}
+    }, rest.onfocusout)}
     style={site_sidebar_shown ? `height: 100%; width: 100%; min-width: 0` : outer_style}
     class={[`structure`, rest.class]}
     {@attach drop_zone}
@@ -1238,7 +1258,7 @@
         dismissible
         class="parse-warnings"
       />
-      {#if scene_shown && analyze_symmetry && symmetry_error}
+      {#if scene_shown && symmetry_wanted && symmetry_error}
         <StatusMessage
           bind:message={symmetry_error}
           type="warning"
@@ -1484,6 +1504,7 @@
                   bind:cell_type
                   {sym_data}
                   loading={session.supercell_loading}
+                  analyzing={symmetry_analyzing}
                 />
               {/if}
             {/snippet}

@@ -11,8 +11,7 @@
 
   $effect(() => {
     // Sync and save to local storage when theme changes
-    const prev = theme_state.mode
-    if (prev === theme_mode) return
+    if (theme_state.mode === theme_mode) return
     theme_state.mode = theme_mode
     save_theme_preference(theme_mode)
     apply_theme_to_dom(theme_mode)
@@ -49,7 +48,6 @@
   }
   .theme-control:hover {
     background: var(--btn-bg-hover);
-    border: var(--pane-border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
   .theme-control:focus {

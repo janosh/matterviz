@@ -8,7 +8,6 @@ export type PathMode = `union` | `intersection` | `strict`
 export type { FrequencyUnit } from './frequency-units'
 export type NormalizationMode = `max` | `sum` | `integral` | null
 
-// Q-point representation
 export interface QPoint {
   label: string | null
   frac_coords: Vec3
@@ -52,14 +51,12 @@ export interface RibbonConfig {
   scale?: number // multiplier for width values (default 1)
 }
 
-// Phonon-specific band structure
 export interface PhononBandStructure extends BaseBandStructure {
   type: `phonon`
   has_imaginary_modes?: boolean
   has_nac?: boolean
 }
 
-// Electronic band structure
 export interface ElectronicBandStructure extends BaseBandStructure {
   type: `electronic`
   is_spin_polarized: boolean
@@ -98,7 +95,6 @@ export interface StackedAreaData {
   color: string
 }
 
-// Discriminated union for type-safe DOS handling
 export type DosData = PhononDos | ElectronicDos
 
 // Band line styling: one style for every band, one per acoustic/optical mode, or one per band

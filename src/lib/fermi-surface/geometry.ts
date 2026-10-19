@@ -8,13 +8,25 @@ import type { Vec2 } from '#lib/math.js'
 import { indexed_mesh_geometry } from '#lib/scene/geometry.svelte.js'
 import type { HitFace } from '#lib/scene/props.svelte.js'
 import type { BufferGeometry } from 'three/webgpu'
-import type { BandGridData, FermiIsosurface, FermiSurfaceData } from './types'
+import type { BandGridData, FermiIsosurface, FermiSurfaceData, SpinChannel } from './types'
 import { vertex_count } from './types'
 
 // Wrap a surface's typed arrays in an indexed BufferGeometry (buffers shared, not copied:
 // the surface already stores exactly the layout the GPU wants). Null when nothing is drawable.
 export const build_isosurface_geometry = (surface: FermiIsosurface): BufferGeometry | null =>
   indexed_mesh_geometry(surface.positions, surface.indices, surface.normals)
+
+// Sheets of the selected bands and spin channels (all of them where a selection is unset)
+export const visible_isosurfaces = (
+  surfaces: readonly FermiIsosurface[] = [],
+  selected_bands?: number[],
+  selected_spins?: SpinChannel[],
+): FermiIsosurface[] =>
+  surfaces.filter(
+    ({ band_index, spin }) =>
+      (selected_bands?.includes(band_index) ?? true) &&
+      (selected_spins?.includes(spin) ?? true),
+  )
 
 // Values of the named property on a surface when it holds one per vertex, i.e. when the
 // surface can be vertex-coloured by it

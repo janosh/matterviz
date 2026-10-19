@@ -143,6 +143,11 @@ describe(`load_from_url`, () => {
     const [received_content, received_filename, received_metadata] = callback.mock.calls[0]
     return { received_content, received_filename, received_metadata }
   }
+  // The compressed fixtures wrap `inner bytes`: text loads get it decoded, binary loads as bytes
+  const expect_inner_bytes = async (content: unknown, kind: `string` | `binary`) => {
+    if (kind === `string`) expect(content).toBe(`inner bytes`)
+    else expect(new TextDecoder().decode(await as_bytes(content))).toBe(`inner bytes`)
+  }
 
   // A .bin URL without a known magic, a blob: URL (UUID basename) and extensionless VASP
   // names all decode to text
@@ -257,9 +262,7 @@ describe(`load_from_url`, () => {
           : gzip(`inner bytes`),
         { 'content-type': `application/octet-stream`, ...headers },
       )
-      if (kind === `string`) expect(received_content).toBe(`inner bytes`)
-      else
-        expect(new TextDecoder().decode(await as_bytes(received_content))).toBe(`inner bytes`)
+      await expect_inner_bytes(received_content, kind)
       expect(received_filename).toBe(expected_name)
       expect(received_metadata?.source_filename).toBe(name)
     },
@@ -331,8 +334,7 @@ describe(`load_from_url`, () => {
       headers,
     )
 
-    if (kind === `string`) expect(received_content).toBe(`inner bytes`)
-    else expect(new TextDecoder().decode(await as_bytes(received_content))).toBe(`inner bytes`)
+    await expect_inner_bytes(received_content, kind)
     expect(received_filename).toBe(expected_name)
     expect(globalThis.fetch).toHaveBeenCalledOnce()
   })

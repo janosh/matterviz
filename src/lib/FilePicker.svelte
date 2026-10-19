@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { contrast_text_color, resolve_backdrop, watch_css_color } from '#lib/colors/index.js'
+  import { contrast_text_color, css_var_names, resolve_backdrop } from '#lib/colors/index.js'
+  import { watch_theme_changes } from '#lib/theme/index.js'
   import type { FileInfo, FileTypePaint } from '#lib/io/index.js'
   import {
     DEFAULT_FILE_TYPE_PAINTS,
@@ -37,9 +38,13 @@
   // One theme/ancestor observer for the whole picker rather than one per badge: it bumps a
   // counter every badge attachment reads, so all badges re-read their computed color at once
   let style_epoch = $state(0)
+  // badge fills may read inline custom properties (`var(--file-badge)` set on the picker)
+  const badge_vars = $derived(
+    Object.values(file_type_paints).flatMap(({ badge }) => css_var_names(badge)),
+  )
   $effect(() => {
     if (!root) return
-    return watch_css_color(root, () => style_epoch++)
+    return watch_theme_changes(root, () => style_epoch++, badge_vars)
   })
   const badge_contrast = (bg_color: string) => (node: HTMLElement) => {
     void style_epoch
@@ -217,12 +222,10 @@
     transition: all 0.2s ease;
     border: 1px solid transparent;
     &:hover {
-      opacity: 1;
       background: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
       border-color: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.3));
     }
     &.active {
-      opacity: 1;
       background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.2));
       border-color: light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.5));
       font-weight: bold;

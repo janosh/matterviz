@@ -568,8 +568,7 @@
   const path_settings = track_settings(
     () => ({
       path_mode,
-      ...(band_type === `phonon` ? { units: unit } : {}),
-      ...(band_type === `electronic` ? { band_spin_mode, show_gap_annotation } : {}),
+      ...(band_type === `phonon` ? { units: unit } : { band_spin_mode, show_gap_annotation }),
     }),
     {
       path_mode: `strict`,
@@ -681,7 +680,7 @@
         on_reset={() => {
           path_mode = `strict`
           if (band_type === `phonon`) units = `THz`
-          if (band_type === `electronic`) {
+          else {
             band_spin_mode = `overlay`
             show_gap_annotation = true
           }
@@ -698,8 +697,7 @@
         </label>
         {#if band_type === `phonon`}
           <FrequencyUnitSelect id="bands-units" bind:units />
-        {/if}
-        {#if band_type === `electronic`}
+        {:else}
           <label>
             <span>Spin</span>
             <select id="bands-spin-mode" bind:value={band_spin_mode}>

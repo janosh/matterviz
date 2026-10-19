@@ -2,6 +2,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { autocorrelation_sums, group_atoms_by_element } from '#lib/trajectory/positions.js'
 import { calc_vacf, central_difference_velocities } from '#lib/vacf/calc-vacf.js'
 import { describe, expect, it } from 'vitest'
+import { direct_origin_sum } from '../msd/helpers'
 import { cubic_matrix } from '../test-fixtures'
 import {
   build_vacf_input,
@@ -18,20 +19,17 @@ const direct_autocorrelation_sum = (
   n_atoms: number,
   lag: number,
   atoms: number[],
-): number => {
-  let total = 0
-  for (let origin = 0; origin + lag < n_frames; origin++) {
-    for (const atom_idx of atoms) {
-      const from = (origin * n_atoms + atom_idx) * 3
-      const target = ((origin + lag) * n_atoms + atom_idx) * 3
-      total +=
-        velocities[target] * velocities[from] +
-        velocities[target + 1] * velocities[from + 1] +
-        velocities[target + 2] * velocities[from + 2]
-    }
-  }
-  return total
-}
+): number =>
+  direct_origin_sum(
+    n_frames,
+    n_atoms,
+    lag,
+    atoms,
+    (from, to) =>
+      velocities[to] * velocities[from] +
+      velocities[to + 1] * velocities[from + 1] +
+      velocities[to + 2] * velocities[from + 2],
+  )
 
 describe(`autocorrelation_sums (Wiener-Khinchin) against the direct origin loop`, () => {
   // Lag windows shorter than the run pad the FFT only to n_frames + max_lag

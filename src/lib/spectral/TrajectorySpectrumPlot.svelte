@@ -4,7 +4,6 @@
     DataSeries,
     FacetPanel,
     FacetPanelContext,
-    ScatterHandlerEvent,
   } from '#lib/plot/index.js'
   import { PLOT_COLORS } from '#lib/colors/index.js'
   import { clamp } from '#lib/math.js'
@@ -106,10 +105,6 @@
       })),
     }
   }
-  const handle_point_click = (event: ScatterHandlerEvent): void => {
-    const peak_idx = event.metadata?.peak_idx
-    if (typeof peak_idx === `number`) selected_peak_idx = peak_idx
-  }
 
   let selected_raman_curve = $derived(result.raman?.[raman_channel] ?? null)
   let response_panels = $derived.by(() => {
@@ -171,7 +166,8 @@
     {show_controls}
     {series}
     on_point_click={(event) => {
-      handle_point_click(event)
+      const peak_idx = event.metadata?.peak_idx
+      if (typeof peak_idx === `number`) selected_peak_idx = peak_idx
       rest.on_point_click?.(event)
     }}
     header_controls={facet_layout.index === 0 ? header_controls : undefined}

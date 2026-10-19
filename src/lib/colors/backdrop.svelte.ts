@@ -1,5 +1,5 @@
 import { is_concrete_color, is_opaque_color } from '#lib/colors/index.js'
-import { observe_theme_attributes } from '#lib/theme/index.js'
+import { watch_theme_changes } from '#lib/theme/index.js'
 
 const DEFAULT_BACKDROP_VAR = `--page-bg`
 
@@ -9,31 +9,27 @@ interface ColorOptions {
   // A usable caller-supplied color skips token lookup and observation (an ancestor walk and
   // observer for every repeated child)
   override?: () => string | undefined
+  // Inline custom properties the color depends on through the stylesheet (e.g. a canvas whose
+  // CSS color is var(--x)), so an ancestor setting --x inline re-reads it (see watch_theme_changes)
+  watch?: readonly string[]
 }
 
 type CssColorOptions = ColorOptions & { css_var?: string | readonly string[] }
 
-// Re-run a computed-color read when the theme or an ancestor selector may have changed. The
-// walk reaches <html> itself, so watch_dark_mode would only re-register the same media query.
-export const watch_css_color = (node: Element, read: () => void): (() => void) => {
-  const ancestors: Element[] = []
-  let ancestor: Element | null = node
-  while (ancestor) {
-    ancestors.push(ancestor)
-    const root = ancestor.getRootNode()
-    ancestor =
-      ancestor.parentElement ??
-      (typeof ShadowRoot !== `undefined` && root instanceof ShadowRoot ? root.host : null)
-  }
-  return observe_theme_attributes(ancestors, read)
-}
+// Custom property names a CSS value reads (`var(--a, var(--b, red))` -> --a, --b), so a color
+// read can watch exactly the inline variables it depends on (see watch_theme_changes)
+export const css_var_names = (value: string): string[] =>
+  [...value.matchAll(/var\(\s*(?<name>--[\w-]+)/g)].flatMap(({ groups }) =>
+    groups?.name ? [groups.name] : [],
+  )
 
 const resolve_live_color = (
   get_node: () => Element | null | undefined,
   read_colors: (node: Element) => readonly string[],
+  watched_props: readonly string[],
   options: ColorOptions,
 ): { readonly current: string } => {
-  const { fallback = `white`, require_opaque = false, override } = options
+  const { fallback = `white`, require_opaque = false, override, watch = [] } = options
   const resolve_fallback = () => (typeof fallback === `function` ? fallback() : fallback)
   const is_usable = require_opaque ? is_opaque_color : is_concrete_color
   let color = $state(resolve_fallback())
@@ -48,7 +44,9 @@ const resolve_live_color = (
   }
   // Observers live as long as the node does. The read runs in its own effect so a reactive
   // `fallback` (e.g. a per-point tooltip color) re-reads without rebuilding the observers.
-  $effect(() => (node ? watch_css_color(node, read) : undefined))
+  $effect(() =>
+    node ? watch_theme_changes(node, read, [...watched_props, ...watch]) : undefined,
+  )
   $effect(read)
 
   return {
@@ -88,6 +86,7 @@ export function resolve_css_color(
         resolve_color_token(node, style.getPropertyValue(name).trim()),
       )
     },
+    css_vars,
     color_options,
   )
 }
@@ -101,6 +100,7 @@ export const resolve_computed_color = (
   resolve_live_color(
     get_node,
     (node) => [getComputedStyle(node).getPropertyValue(css_property).trim()],
+    [css_property],
     options,
   )
 

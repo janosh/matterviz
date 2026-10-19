@@ -57,7 +57,7 @@
     set_file_param(source_filename)
   }}
 >
-  <h3 class="demo-overlay-label" style="font-family: monospace">{display_filename}</h3>
+  <h3 class="demo-overlay-label">{display_filename}</h3>
 </Structure>
 
 <FilePicker files={all_files} show_category_filters style="margin-block: 2em" />
@@ -204,7 +204,7 @@ rather than one spanning the whole box. Sites pair up by index, so a mismatched 
 or a reordered species list fails loudly instead of reporting a confident RMSD for atoms
 that were never the same atom.
 
-Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows.
+Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows (pass `analyze_symmetry` to get the last two without user interaction).
 
 ```svelte example
 <script lang="ts">

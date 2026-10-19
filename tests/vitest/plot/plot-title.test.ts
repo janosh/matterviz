@@ -138,11 +138,14 @@ describe(`resolve_plot_title`, () => {
   })
 
   it.each([
-    [`max_lines`, { max_lines: 0 }],
-    [`gap`, { gap: -1 }],
-  ] as const)(`rejects invalid %s`, (message, config) => {
-    expect(() => resolve_plot_title(config, { width: 100 }, fixed_width_measure(5))).toThrow(
-      message,
-    )
+    [`max_lines`, { max_lines: 0 }, { width: 100 }],
+    [`gap`, { gap: -1 }, { width: 100 }],
+    [`width`, {}, { width: NaN }],
+    [`x must be finite`, {}, { width: 100, x: Infinity }],
+    [`y must be finite`, {}, { width: 100, y: NaN }],
+  ] as const)(`rejects invalid %s with a RangeError`, (message, config, input) => {
+    const resolve = () => resolve_plot_title(config, input, fixed_width_measure(5))
+    expect(resolve).toThrow(RangeError)
+    expect(resolve).toThrow(message)
   })
 })

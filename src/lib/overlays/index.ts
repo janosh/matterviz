@@ -22,7 +22,7 @@ export { InformationOutline as info_pane_icon } from 'svelte-widgets/icons'
 // Label/value rows grouped into titled cards, as rendered by InfoPaneCards
 export type InfoPaneRow = {
   label: string
-  value: string | number
+  value: string | number | readonly (string | number)[] // one cell per column of a table card
   key?: string
   tooltip?: string
 }
@@ -31,6 +31,8 @@ export type InfoPaneCard = {
   subtitle?: string
   key?: string // defaults to title; required when titles repeat
   rows: InfoPaneRow[]
+  // Set, the rows form a table: their labels, then one cell per column
+  columns?: readonly { label: string; tooltip?: string }[]
 }
 
 // Info panes stay usable when clipboard access is denied, so log rather than reject.

@@ -7,7 +7,7 @@
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
-  import { resolve_axis_range } from '#lib/plot/core/interactions.js'
+  import { chain_callbacks, resolve_axis_range } from '#lib/plot/core/interactions.js'
   import type {
     AxisConfig3D,
     BasePlotProps,
@@ -352,18 +352,9 @@
         active_series_idx={tooltip_point?.series_idx ?? null}
         draggable={legend?.draggable ?? true}
         {...legend}
-        on_toggle={(idx) => {
-          legend_vis.on_toggle(idx)
-          legend?.on_toggle?.(idx)
-        }}
-        on_double_click={(idx) => {
-          legend_vis.on_double_click(idx)
-          legend?.on_double_click?.(idx)
-        }}
-        on_group_toggle={(name, indices) => {
-          legend_vis.on_group_toggle(name, indices)
-          legend?.on_group_toggle?.(name, indices)
-        }}
+        on_toggle={chain_callbacks(legend_vis.on_toggle, legend?.on_toggle)}
+        on_double_click={chain_callbacks(legend_vis.on_double_click, legend?.on_double_click)}
+        on_group_toggle={chain_callbacks(legend_vis.on_group_toggle, legend?.on_group_toggle)}
         style={`position: absolute; top: 2.5em; right: 1em; ${legend?.style ?? ``}`}
       />
     {/if}

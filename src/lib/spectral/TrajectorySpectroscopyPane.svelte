@@ -286,15 +286,6 @@
   {/if}
 {/snippet}
 
-{#snippet details_content()}
-  <h4 style="margin-top: 0">Spectroscopy details</h4>
-  <p>
-    VDOS is derived from atomic velocities; IR spectra use the selected dipole, polarization,
-    or current signal.
-  </p>
-  <p>Choose preprocessing and response channels in the plot controls, then recompute.</p>
-{/snippet}
-
 {#snippet header_controls()}
   <ViewerPane
     bind:open={details_open}
@@ -305,7 +296,12 @@
     toggle_props={{ 'aria-label': `Spectroscopy details` }}
     pane_props={{ style: `--pane-z-index: 21` }}
   >
-    {@render details_content()}
+    <h4 style="margin-top: 0">Spectroscopy details</h4>
+    <p>
+      VDOS is derived from atomic velocities; IR spectra use the selected dipole, polarization,
+      or current signal.
+    </p>
+    <p>Choose preprocessing and response channels in the plot controls, then recompute.</p>
   </ViewerPane>
 {/snippet}
 

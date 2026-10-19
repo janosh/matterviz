@@ -25,6 +25,14 @@ const frame: TrajectoryFrame = {
 }
 
 const pane_text = () => document.body.textContent ?? ``
+// [mean, σ, drift] per property key of the statistics table
+const stat_cells = () =>
+  Object.fromEntries(
+    [...document.querySelectorAll<HTMLElement>(`tbody tr`)].map((row) => [
+      row.dataset.testid,
+      [...row.querySelectorAll(`td`)].map((cell) => cell.textContent),
+    ]),
+  )
 const make_run = (frames: TrajectoryFrame[], time_step?: TrajectoryRun[`time_step`]) =>
   trajectory_from_frames(frames, { time_step })
 const make_metadata = (
@@ -83,7 +91,7 @@ test(`uses a compact filter trigger and omits copy buttons`, async () => {
   set_input(filter_input, `energy`)
   await tick()
   expect(document.querySelectorAll(`.info-card`)).toHaveLength(1)
-  expect(pane_text()).toContain(`Energy Range`)
+  expect(Object.keys(stat_cells())).toEqual([`energy`])
 
   props.run = make_run([{ ...frame, metadata: {} }])
   await tick()
@@ -96,7 +104,9 @@ test(`uses a compact filter trigger and omits copy buttons`, async () => {
 test(`range ends at floating noise read 0`, async () => {
   const rows = make_metadata(2, (frame_number) => ({ force_max: frame_number ? 0.5 : 1e-17 }))
   await mount_pane(sampled_run(2, rows), 0)
-  expect(pane_text()).toContain(`Fmax Range 0 - 500m eV/Å`)
+  expect(doc_query(`[data-testid="force_max"] th`).getAttribute(`aria-label`)).toBe(
+    `Fmax eV/Å: Range 0 to 500m eV/Å`,
+  )
 })
 
 test(`labels ranges from sampled property rows honestly`, async () => {
@@ -110,21 +120,20 @@ test(`labels ranges from sampled property rows honestly`, async () => {
     },
   ]
   await mount_pane(sampled_run(1000, rows), 500)
-  const text = pane_text()
-  expect(text).toContain(`Energy Range −12 - −10 eV (3 sampled)`)
-  expect(text).toContain(`Mean ± σ −11 ± 1 eV`)
-  expect(text).toContain(`Fmax Range 50m - 500m eV/Å (3 sampled)`)
-  expect(text).toContain(`Volume Range 100 - 130 Å³ (3 sampled)`)
-  // least-squares slope over frames 0..999 times the span: +20 Å³ on a 116.7 Å³ mean
-  expect(text).toContain(`Drift +20 Å³ (+17.15%)`)
-  // energy leads, then volume; force comes last
-  expect(text.indexOf(`Energy Range`)).toBeLessThan(text.indexOf(`Volume Range`))
-  expect(text.indexOf(`Volume Range`)).toBeLessThan(text.indexOf(`Fmax Range`))
-  const range = doc_query(`[data-testid="energy-range"] [aria-label]`)
-  range.dispatchEvent(new MouseEvent(`pointerenter`))
+  expect(pane_text()).toContain(`Statistics 3 of 1k frames sampled`)
+  // energy leads, then volume; force comes last. Units sit on the labels, not the values,
+  // and a drift is the least-squares slope over steps 0..999 times the span
+  expect(stat_cells()).toEqual({
+    energy: [`−11`, `1`, `−1`],
+    volume: [`116.7`, `15`, `+20`],
+    force_max: [`216.7m`, `250m`, `−450m`],
+  })
+  expect(doc_query(`tbody th`).innerHTML.trim()).toBe(`Energy <small>eV</small>`)
+  const energy_label = doc_query(`[data-testid="energy"] th`)
+  energy_label.dispatchEvent(new MouseEvent(`pointerenter`))
   await tick()
   expect(doc_query(`[role="tooltip"]`).textContent).toBe(
-    `Min/max over 3 sampled frames of 1k total, so the true extremum may lie outside this range`,
+    `Range −12 to −10 eV over the 3 of 1k frames sampled`,
   )
 })
 
@@ -141,18 +150,13 @@ test(`omits sampled and fixed-volume notes from complete property rows`, async (
     volume: 100,
   }))
   await mount_pane(sampled_run(40, rows), 5)
-  const text = pane_text()
-  expect(text).toContain(`Energy Range`)
-  expect(text).toContain(`Drift −3.9 eV (−32.64%)`)
-  expect(text).not.toContain(`sampled`)
-  // constant volume and force carry no statistics worth a card
-  expect(text).not.toContain(`Volume Range`)
-  expect(text).not.toContain(`Fmax Range`)
+  expect(pane_text()).not.toContain(`sampled`)
+  // constant volume and force carry no statistics worth a row
+  expect(Object.keys(stat_cells())).toEqual([`energy`])
+  expect(stat_cells().energy?.[2]).toBe(`−3.9`)
 })
 
 test(`shows no ranges when a run has no property rows`, async () => {
   await mount_pane(sampled_run(1000), 500)
-  for (const label of [`Energy Range`, `Fmax Range`, `Volume Range`]) {
-    expect(pane_text()).not.toContain(label)
-  }
+  expect(document.querySelector(`table`)).toBeNull()
 })

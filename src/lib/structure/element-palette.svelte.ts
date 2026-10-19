@@ -8,9 +8,9 @@ import { colors } from '#lib/state.svelte.js'
 import { getContext, setContext } from 'svelte'
 
 // Keyed by symbol string: sites and legends index it with plain element strings
-export type ElementColors = Record<string, string>
+type ElementColors = Record<string, string>
 
-export interface ElementPalette {
+interface ElementPalette {
   readonly colors: ElementColors
   set: (element: ElementSymbol, color: string) => void
   reset: (element: ElementSymbol) => void // back to the scheme's color

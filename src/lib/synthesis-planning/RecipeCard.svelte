@@ -4,10 +4,11 @@
   import { sanitize_formula } from '#lib/sanitize.js'
   import { format_equation_html } from './format'
   import {
-    build_route_recipe,
+    format_model_conditions,
     format_recipe_text,
     RECIPE_ASSUMPTION_LABELS,
     RECIPE_ROLE_LABELS,
+    rescale_route,
   } from './recipe'
   import { describe_downhill_windows } from './thermo'
   import type { RecipeAssumptions, SynthesisRoute } from './types'
@@ -27,11 +28,7 @@
     [key: string]: unknown
   } = $props()
 
-  const scaled_route = $derived(
-    target_mass_g === route.recipe.target_mass_g
-      ? route
-      : { ...route, ...build_route_recipe(route, target_mass_g) },
-  )
+  const scaled_route = $derived(rescale_route(route, target_mass_g))
   const steps = $derived(
     scaled_route.intermediate_step
       ? [scaled_route.intermediate_step, scaled_route]
@@ -114,13 +111,7 @@
           </tbody>
         </table>
       </div>
-      <p>
-        Model conditions: {step.thermodynamics.temperature} K; {Object.entries(
-          step.thermodynamics.partial_pressures,
-        )
-          .map(([gas, pressure]) => `${gas}: ${pressure} bar`)
-          .join(`, `) || `closed system`}.
-      </p>
+      <p>Model conditions: {format_model_conditions(step.thermodynamics)}.</p>
       <p>
         Modeled ΔG: <strong>{format_num(step.reaction.energy_per_atom, `.3~f`)} eV/atom</strong
         >. Gas exchange: {step.thermodynamics.atmosphere}.

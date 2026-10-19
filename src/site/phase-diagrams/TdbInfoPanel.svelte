@@ -174,10 +174,8 @@ binplot(db, ['{el_a}', '{el_b}', 'VA'], list(db.phases.keys()), {`{`}
   .load-btn {
     background: var(--success-color);
     color: white;
-    border: none;
     padding: 4pt 10pt;
     border-radius: 4px;
-    cursor: pointer;
     font-weight: 500;
     margin-left: 8pt;
   }

@@ -18,7 +18,10 @@ class FakeMutationObserver {
   constructor(public callback_fn: MutationCallback) {
     observers.push(this)
   }
+  // a real observer resumes on observe() after disconnect(), as the shared one does when a
+  // subscriber leaves
   observe(target: Node): void {
+    this.disconnected = false
     observed_targets.push(target)
   }
   disconnect(): void {
@@ -61,8 +64,14 @@ const make_shadow_element = (): { host: HTMLElement; inner: HTMLElement } => {
   return { host, inner }
 }
 
+// a class change on <body>, which every widget's ancestor chain passes through
 const trigger_dom_mutation = (): void => {
-  const record = { type: `attributes`, attributeName: `class` } as unknown as MutationRecord
+  const record = {
+    type: `attributes`,
+    attributeName: `class`,
+    target: document.body,
+    oldValue: `stale-theme-class`,
+  } as unknown as MutationRecord
   for (const observer of observers) {
     if (!observer.disconnected) observer.callback_fn([record], observer)
   }
@@ -161,19 +170,19 @@ describe(`detect_parent_theme`, () => {
 })
 
 describe(`watch_theme lifecycle`, () => {
-  test(`every widget observes the roots and its own Shadow DOM host, and disposes only its own`, () => {
+  test(`widgets share one observer over the roots and their own Shadow DOM hosts`, () => {
     const { host: host_a, inner: inner_a } = make_shadow_element()
     const { host: host_b, inner: inner_b } = make_shadow_element()
 
     const dispose_a = watch_theme(inner_a, () => {})
     const dispose_b = watch_theme(inner_b, () => {})
 
-    expect(observed_targets).toEqual(
-      [host_a, host_b].flatMap((host) => [document.documentElement, document.body, host]),
-    )
-    expect(live_observers()).toBe(2)
-    dispose_a()
+    for (const node of [document.documentElement, document.body, host_a, host_b, inner_a])
+      expect(observed_targets).toContain(node)
+    expect(new Set(observed_targets).size).toBe(observed_targets.length) // each node once
     expect(live_observers()).toBe(1)
+    dispose_a()
+    expect(live_observers()).toBe(1) // still serving widget b
     dispose_b()
     expect(live_observers()).toBe(0)
   })

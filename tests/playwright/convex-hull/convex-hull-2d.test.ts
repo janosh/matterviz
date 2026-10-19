@@ -1,21 +1,12 @@
 import { expect, type Locator, test } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
-import { IS_CI } from '../helpers'
-import { dom_click, open_info_and_controls } from './utils'
+import { dom_click, goto_perf_page, visible_count } from './utils'
 
 // Synthetic client-side data (no fixture download), a single hull and no rAF pulse loops:
 // the heavy demo page starves protocol calls under load
 test.describe(`ConvexHull2D on the performance page`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `ConvexHull2D tests timeout in CI`)
-  })
-
   test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    await page.goto(`/test/convex-hull-performance?dim=2d&count=100&click_selection=false`, {
-      waitUntil: `networkidle`,
-      timeout: 15000,
-    })
-    const diagram = page.locator(`.scatter.convex-hull-2d`)
+    const diagram = await goto_perf_page(page, `2d`, `count=100&click_selection=false`)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
     const marker = diagram.locator(`path.marker`).first()
     await expect(marker).toBeVisible()
@@ -26,11 +17,7 @@ test.describe(`ConvexHull2D on the performance page`, () => {
   test(`magnetic ordering filter toggle hides and restores shaped markers`, async ({
     page,
   }) => {
-    await page.goto(`/test/convex-hull-performance?dim=2d&count=40&magnetic=true`, {
-      waitUntil: `networkidle`,
-      timeout: 15000,
-    })
-    const pd2d = page.locator(`.scatter.convex-hull-2d`)
+    const pd2d = await goto_perf_page(page, `2d`, `count=40&magnetic=true`)
     await expect(pd2d).toBeVisible()
 
     const markers = pd2d.locator(`path.marker`)
@@ -61,7 +48,6 @@ test.describe(`ConvexHull2D on the performance page`, () => {
 
 test.describe(`ConvexHull2D (Binary)`, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ConvexHull2D tests timeout in CI`)
     // Extend the default 30s test timeout: it would kill the 50s data-load wait below
     // before it can succeed when parallel workers load this heavy page simultaneously
     test.setTimeout(90_000)
@@ -70,15 +56,10 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(page.locator(`.binary-grid`).first()).toBeVisible({ timeout: 50000 })
   })
 
-  const visible_unstable_counts = async (info: Locator) => {
-    // Format: Visible unstable: X / Y
-    const text = await info.getByTestId(`hull-visible-unstable`).textContent()
-    const match = text?.match(/(?<visible>\d+)\s*\/\s*(?<total>\d+)/)
-    if (!match) throw new Error(`unparsable visible-unstable text: ${text}`)
-    return { visible: Number(match[1]), total: Number(match[2]) }
-  }
+  const visible_unstable = (info: Locator) => visible_count(info, `hull-visible-unstable`)
 
-  test(`renders hull and colorbar; color modes switch controls and 'Above hull' hides unstable points`, async ({
+  // One test so the ~20MB binary data only loads once
+  test(`renders hull and colorbar; color modes switch controls, 'Above hull' and threshold filter unstable points`, async ({
     page,
   }) => {
     await expect(page.getByRole(`heading`, { name: `Convex Hulls` })).toBeVisible()
@@ -97,6 +78,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     expect(widths).toHaveLength(2)
     const [label_width, value_width] = widths
     expect(value_width).toBeGreaterThan(label_width)
+    const unstable_initial = await visible_unstable(info)
 
     const controls_btn = pd2d.locator(`.legend-controls-btn`)
     await dom_click(controls_btn)
@@ -110,17 +92,18 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(controls.getByText(`Points`, { exact: true })).toBeVisible()
     await expect(controls.getByText(`Color scale`)).toHaveCount(0)
 
-    await dom_click(controls.getByText(`Above hull`, { exact: false }))
-    await expect.poll(async () => (await visible_unstable_counts(info)).visible).toBe(0)
-  })
+    const above_hull = controls.getByText(`Above hull`, { exact: false })
+    await dom_click(above_hull)
+    await expect.poll(() => visible_unstable(info), { message: `Above hull off` }).toBe(0)
+    // re-show unstable points so the threshold below has something to filter
+    await dom_click(above_hull)
+    await expect
+      .poll(() => visible_unstable(info), { message: `Above hull back on` })
+      .toBe(unstable_initial)
 
-  test(`threshold slider filters entries and info pane reflects changes`, async ({ page }) => {
-    const pd2d = page.locator(`.binary-grid .scatter.convex-hull-2d`).first()
-    const { info, controls } = await open_info_and_controls(pd2d)
-    const before = await visible_unstable_counts(info)
+    // threshold slider filters entries and the info pane reflects it
     const markers = pd2d.locator(`path.marker`)
     const count_before = await markers.count()
-
     const number_input = controls.getByRole(`spinbutton`, {
       name: `Points threshold (eV/atom)`,
     })
@@ -128,8 +111,8 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await number_input.blur() // fires the change handlers
 
     await expect
-      .poll(async () => (await visible_unstable_counts(info)).visible)
-      .toBeLessThanOrEqual(before.visible)
+      .poll(() => visible_unstable(info), { message: `threshold 0` })
+      .toBeLessThanOrEqual(unstable_initial)
     // lowering the threshold to 0 never adds markers
     const count_after = await markers.count()
     expect(count_after).toBeGreaterThan(0)

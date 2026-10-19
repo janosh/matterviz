@@ -316,7 +316,11 @@ describe(`Histogram`, () => {
     const second_series = { values: [2, 4, 4, 6, 9], label: `B`, color: `blue` }
     const hidden_series: (string | number)[] = []
     const state = { series: [first_series, second_series], hidden_series }
-    await mount_histogram(bind_props({ bins: 4, mode: `overlay`, show_legend: true }, state))
+    // on_series_toggle observes the toggle after the chart's own hidden-ID update
+    const on_series_toggle = vi.fn(() => expect(state.hidden_series).toEqual([1]))
+    await mount_histogram(
+      bind_props({ bins: 4, mode: `overlay`, show_legend: true, on_series_toggle }, state),
+    )
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
     expect(legend_items).toHaveLength(2)
     const fills = [...document.querySelectorAll(`g.histogram-series path`)].map((bar) =>
@@ -328,6 +332,8 @@ describe(`Histogram`, () => {
     expect(state.series[0]).toBe(first_series)
     expect(state.series[1]).toBe(second_series)
     expect(state.hidden_series).toEqual([1])
+    expect(on_series_toggle).toHaveBeenCalledExactlyOnceWith(1)
+    expect(on_series_toggle).toHaveReturned()
   })
 
   // One flip at a time against an ascending reference: bin edges stay ascending, so on a

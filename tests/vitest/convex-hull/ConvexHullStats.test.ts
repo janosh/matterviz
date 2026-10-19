@@ -393,6 +393,20 @@ describe(`ConvexHullStats`, () => {
       expect(export_toggle).toBeInstanceOf(HTMLElement)
     })
 
+    test(`filtering rebuilds row objects but keeps the rendered rows mounted`, () => {
+      const ternary = mock_entry({ composition: { Li: 1, Fe: 1, O: 2 } })
+      const unary = mock_entry({ composition: { Fe: 1 }, is_element: true })
+      mount_stats_table({ stable_entries: [ternary, binary, unary] })
+      const rows_before = new Set(document.querySelectorAll(`tbody tr`))
+      expect(rows_before.size).toBe(3)
+      const min_n_select = get_table_filter_select(`Min N`)
+      if (!min_n_select) throw new Error(`Min N_el select not rendered`)
+      set_select(min_n_select, `2`)
+      const rows_after = [...document.querySelectorAll(`tbody tr`)]
+      expect(rows_after).toHaveLength(2)
+      for (const row of rows_after) expect(rows_before.has(row)).toBe(true)
+    })
+
     // Math.max(1, ...arities) threw RangeError past ~125k entries
     test(`dropdown options span the max arity of 200k entries without a spread overflow`, () => {
       const binaries = Array.from({ length: 200_000 }, () => binary)

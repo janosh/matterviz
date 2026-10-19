@@ -16,15 +16,11 @@ import {
   rects_overlap,
 } from '#lib/plot/core/layout.js'
 import { describe, expect, test } from 'vitest'
+import { dense_unit_grid } from '../../setup'
 
 const base_pad = { t: 20, b: 40, l: 50, r: 20 }
 const width = 550
 const height = 400
-
-const grid_steps = Array.from({ length: 21 }, (_, idx) => idx / 20)
-const dense_obstacles = grid_steps.flatMap((x_pos) =>
-  grid_steps.map((y_pos) => ({ x: x_pos, y: y_pos })),
-)
 
 const placement_rect = ({ x: coord_x, y: coord_y, footprint }: DecorationPlacement): Rect => ({
   x: coord_x,
@@ -96,7 +92,7 @@ describe(`decoration solver`, () => {
     const reserved_pad = { t: 86, b: 66, l: 46, r: 106 }
     const scene = scene_for(
       [{ id: `legend`, kind: `legend`, footprint: { width: 100, height: 60 } }],
-      dense ? dense_obstacles : [{ x: 0.9, y: 0.9 }],
+      dense ? dense_unit_grid : [{ x: 0.9, y: 0.9 }],
     )
     const solution = solve_decorations({ ...scene, reserved_pad })
     const legend = solution.placements[0]
@@ -204,7 +200,7 @@ describe(`decoration solver`, () => {
     { id: `colorbar`, kind: `colorbar`, footprint: { width: 56, height: 150 } },
   ]
   test(`resolves the existing right-side colorbar and legend conflict`, () => {
-    const solution = solve_decorations(scene_for(right_side_items, dense_obstacles))
+    const solution = solve_decorations(scene_for(right_side_items, dense_unit_grid))
     expect(solution.placements).toMatchObject([
       { id: `legend`, location: `outside`, side: `bottom` },
       { id: `colorbar`, location: `outside`, side: `right` },
@@ -226,7 +222,7 @@ describe(`decoration solver`, () => {
       kind: `legend`,
       footprint: { width: 250, height: 106 },
     } as const
-    const scene = { ...scene_for([legend], dense_obstacles), height: frame_height }
+    const scene = { ...scene_for([legend], dense_unit_grid), height: frame_height }
     const [placement] = solve_decorations(scene).placements
     expect(placement.location).toBe(location)
   })
@@ -241,7 +237,7 @@ describe(`decoration solver`, () => {
         kind: `legend`,
         footprint: { width: 300, height: legend_height },
       } as const
-      const scene = { ...scene_for([legend], dense_obstacles), width: 360, height: 600 }
+      const scene = { ...scene_for([legend], dense_unit_grid), width: 360, height: 600 }
       const {
         placements: [placement],
         pad,
@@ -298,7 +294,7 @@ describe(`decoration solver`, () => {
   })
 
   test(`keeps crowding decisions independent of other decorations`, () => {
-    const standard = solve_decorations(scene_for(right_side_items, dense_obstacles))
+    const standard = solve_decorations(scene_for(right_side_items, dense_unit_grid))
     const note: DecorationItem = {
       id: `note`,
       kind: `free-annotation`,
@@ -306,7 +302,7 @@ describe(`decoration solver`, () => {
     }
     const reference = reference_item(`reference`, [reference_candidate(200, 100)])
     const with_annotation = solve_decorations(
-      scene_for([...right_side_items, note, reference], dense_obstacles),
+      scene_for([...right_side_items, note, reference], dense_unit_grid),
     )
     expect(with_annotation.pad).toEqual(standard.pad)
     expect(with_annotation.placements.slice(0, 2)).toEqual(standard.placements)

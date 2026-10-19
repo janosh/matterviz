@@ -18,9 +18,9 @@ type KMarker = { position: Vec3; color: string }
 vi.mock(`@threlte/core`, async (original) =>
   (await import(`../isosurface/threlte-stub`)).mock_threlte_core(original),
 )
-vi.mock(`@threlte/extras`, async () => ({
-  HTML: (await import(`../isosurface/ThrelteStub.svelte`)).default,
-}))
+vi.mock(`@threlte/extras`, async () =>
+  (await import(`../isosurface/threlte-stub`)).mock_threlte_extras(),
+)
 
 // A segment hover reports its nearer endpoint's q-point, and the proxy's pick_rank lets it win
 // over the zone or IBZ wedge it is drawn through (front_hit). Segments touching the hovered q-point
@@ -60,6 +60,10 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
   const on_move = meshes()[1].onpointermove as (event: unknown) => void
   const nativeEvent = new PointerEvent(`pointermove`, { clientX: 40, clientY: 30 })
   expect(proxy.userData.pick_rank).toBe(2)
+  // the invisible hover tube is far wider than the drawn line, so the cursor snaps to the path
+  const radius = ({ instanceMatrix: { array } }: InstancedMesh) =>
+    Math.hypot(...array.slice(0, 3))
+  expect(radius(proxy) / radius(line)).toBeCloseTo(0.05 / 0.006, 6) // Float32 instance matrices
   on_move({ point: new Vector3(0.9, 0.9, 0), instanceId: 2, nativeEvent }) // nearer to q-point 2
   on_move({ point: new Vector3(...k_path_points[3]), instanceId: 2, nativeEvent })
   expect(on_kpath_hover.mock.calls).toEqual([

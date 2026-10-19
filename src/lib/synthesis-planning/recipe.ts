@@ -111,6 +111,23 @@ export function build_route_recipe(
   }
 }
 
+// `route` with both firings' recipes scaled to `target_mass_g`, itself when they already are
+export const rescale_route = (route: SynthesisRoute, target_mass_g: number): SynthesisRoute =>
+  target_mass_g === route.recipe.target_mass_g
+    ? route
+    : { ...route, ...build_route_recipe(route, target_mass_g) }
+
+// A step's modeled conditions, e.g. `1000 K; CO2: 0.01 bar` or `300 K; closed system`
+export const format_model_conditions = ({
+  temperature,
+  partial_pressures,
+}: Pick<RouteThermodynamics, `temperature` | `partial_pressures`>): string =>
+  `${temperature} K; ${
+    Object.entries(partial_pressures)
+      .map(([gas, pressure]) => `${gas}: ${pressure} bar`)
+      .join(`, `) || `closed system`
+  }`
+
 export const RECIPE_ASSUMPTION_LABELS = {
   temperature_K: `Temperature (K)`,
   ramp_K_min: `Ramp (K/min)`,
@@ -139,11 +156,7 @@ export function format_recipe_text(route: SynthesisRoute): string {
         (item) =>
           `${RECIPE_ROLE_LABELS[item.role]}: ${format_num(item.mass_g, `.4~f`)} g ${item.phase.formula} (${format_num(item.moles * 1000, `.3~f`)} mmol)`,
       ),
-      `Model conditions: ${step.thermodynamics.temperature} K; ${
-        Object.entries(step.thermodynamics.partial_pressures)
-          .map(([gas, pressure]) => `${gas}: ${pressure} bar`)
-          .join(`, `) || `closed system`
-      }`,
+      `Model conditions: ${format_model_conditions(step.thermodynamics)}`,
       `Modeled reaction energy: ${format_num(step.reaction.energy_per_atom, `.4~f`)} eV/atom; gas exchange: ${step.thermodynamics.atmosphere}`,
       `Downhill window: ${describe_downhill_windows(step.thermodynamics.downhill_windows)}; this does not determine a firing schedule.`,
       `Library guidance (unreferenced; verify before use):`,

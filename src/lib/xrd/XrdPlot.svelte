@@ -99,6 +99,12 @@
 
   const is_profile = (pattern: XrdPattern): boolean => pattern.kind === `profile`
 
+  // Representative hkl of each family merged into peak `idx` (empty for measured patterns)
+  const peak_hkls = (pattern: XrdPattern, idx: number): Hkl[] =>
+    pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? []
+  // Intensity on the plot's 0..100 scale, shared by every pattern
+  const scaled_intensity = (val: number): number => ((val || 0) / global_max_intensity) * 100
+
   // Miller indices of one peak, joined for a bar label or a tooltip line
   const join_hkls = (hkls: Hkl[] | undefined): string =>
     hkl_format && hkls ? hkls.map((hkl_val) => format_hkl(hkl_val, hkl_format)).join(`, `) : ``
@@ -153,13 +159,13 @@
   // Scaled intensities are normalized to 0..100, add 10% top padding for peak labels
   const intensity_range: Vec2 = [0, 110]
 
-  // Build BarPlot series from entries (for Discrete/Stick view)
+  // Stick view series
   const bar_series = $derived.by<BarSeries[]>(() => {
-    if (broadening_enabled) return [] // Optimization: skip if not used
+    if (broadening_enabled) return []
 
     return pattern_entries.map((entry, entry_idx) => {
       const x_values = entry.pattern.x
-      const y_values = entry.pattern.y.map((val) => ((val || 0) / global_max_intensity) * 100)
+      const y_values = entry.pattern.y.map(scaled_intensity)
 
       // Determine which peaks to annotate
       const selected_indices: number[] = []
@@ -189,7 +195,7 @@
       // Angles are shown by default only while the plot holds at most two patterns
       const with_angle = show_angles ?? pattern_entries.length <= 2
       const metadata = x_values.map((_, idx) => ({
-        hkls: entry.pattern.hkls?.[idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
+        hkls: peak_hkls(entry.pattern, idx),
         d: entry.pattern.d_hkls?.[idx],
         label: entry.label,
       }))
@@ -224,8 +230,8 @@
       peak_idx,
       label,
       two_theta: pattern.x[peak_idx],
-      intensity: ((pattern.y[peak_idx] || 0) / global_max_intensity) * 100,
-      hkls: pattern.hkls?.[peak_idx]?.map((hkl_obj) => hkl_obj.hkl) ?? [],
+      intensity: scaled_intensity(pattern.y[peak_idx]),
+      hkls: peak_hkls(pattern, peak_idx),
       d_spacing: pattern.d_hkls?.[peak_idx],
     }
   }
@@ -269,7 +275,7 @@
   })
   const broadening_error = $derived(typeof broadened === `string` ? broadened : undefined)
 
-  // Build ScatterPlot series (for Broadened Profile view)
+  // Broadened profile view series
   const scatter_series = $derived.by<DataSeries[]>(() => {
     if (typeof broadened === `string` || broadened.length === 0) return []
 
@@ -291,7 +297,7 @@
         x: is_horizontal ? y_values : profile.x,
         y: is_horizontal ? profile.x : y_values,
         ...series_style(pattern_entries[entry_idx], entry_idx),
-        markers: `line`, // Only line for profile
+        markers: `line`,
         line_style: { stroke_width: 2 },
         visible: true,
       } as DataSeries
@@ -449,7 +455,6 @@
       <StatusMessage bind:message={parse_warning_msg} type="warning" dismissible />
     </ViewerNotices>
     {#if broadening_enabled}
-      <!-- Broadened Profile View -->
       {#snippet profile_tooltip(info: ScatterHandlerProps)}
         {@render readout(
           info.label ?? ``,
@@ -471,7 +476,6 @@
         bind:controls_open
       />
     {:else}
-      <!-- Discrete Stick View -->
       {#snippet peak_tooltip(info: BarHandlerProps<PeakMeta>)}
         {@const d_spacing = info.metadata?.d}
         {@const hkl_text = join_hkls(info.metadata?.hkls)}

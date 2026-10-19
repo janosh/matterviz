@@ -6,7 +6,6 @@
     trajectory_property_config,
     zero_if_negligible,
   } from '#lib/labels.js'
-  import { strip_html } from '#lib/utils.js'
   import { format_bytes } from 'svelte-widgets/format'
   import { array_extent } from '#lib/math.js'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
@@ -35,6 +34,7 @@
     key?: string,
     tooltip?: string,
   ): InfoPaneRow | null => (value ? { label, value, key, tooltip } : null)
+  const fmt = (value: number): string => format_num(value, `.3~s`)
 
   // oxlint-disable-next-line eslint-plugin-unicorn/prefer-native-coercion-functions -- type predicate needed for narrowing
   const is_info_item = (item: unknown): item is InfoPaneRow => Boolean(item)
@@ -49,7 +49,7 @@
   // anything else follows alphabetically, capped so a 30-column LAMMPS log stays readable here
   // and the data inspector carries the rest
   const STAT_PRIORITY = [`energy`, `temperature`, `pressure`, `volume`, `density`, `force`]
-  const MAX_STAT_SECTIONS = 8
+  const MAX_STAT_ROWS = 12
   const stat_rank = (key: string): number => {
     const rank = STAT_PRIORITY.findIndex((token) => key.toLowerCase().includes(token))
     return rank === -1 ? STAT_PRIORITY.length : rank
@@ -83,63 +83,38 @@
         ? `${format_num(frame_time_step * (total_frames - 1), `.3~s`)} ${simulation_time_unit}`
         : null
 
-    const covered_frames = rows.length
-    const is_sample = covered_frames < total_frames
-    const sampled_note = is_sample
-      ? `Min/max over ${format_num(covered_frames, `.3~s`)} sampled frames of ${format_num(
-          total_frames,
-          `.3~s`,
-        )} total, so the true extremum may lie outside this range`
-      : undefined
-    const suffix = is_sample ? ` (${format_num(covered_frames, `.3~s`)} sampled)` : ``
     // Drift against the run's own step axis, so a dump written every 500 steps and one written
     // every step agree; fluctuation and drift are what tell equilibration from relaxation
     const statistics = total_frames > 1 ? summarize_properties(rows, (row) => row.step) : []
-    const stat_sections = statistics
+    const stat_rows = statistics
       .filter((stat) => stat.n_samples > 1)
       .toSorted(
         (left, right) =>
           stat_rank(left.key) - stat_rank(right.key) || left.key.localeCompare(right.key),
       )
-      .slice(0, MAX_STAT_SECTIONS)
-      .map((stat) => {
-        const { clean_label, unit } = extract_label_and_unit(
-          stat.key,
-          trajectory_property_config,
-        )
-        const label = strip_html(clean_label)
-        const relative_drift =
-          Math.abs(stat.mean) > 1e-12
-            ? ` (${format_num(stat.drift / Math.abs(stat.mean), `+.2~%`)})`
-            : ``
+      .slice(0, MAX_STAT_ROWS)
+      .map(({ key, min, max, mean, std, drift }) => {
+        const { clean_label, unit } = extract_label_and_unit(key, trajectory_property_config)
+        const magnitude = Math.max(Math.abs(min), Math.abs(max))
+        const [low, high] = [min, max].map((val) => zero_if_negligible(val, magnitude))
         return {
-          key: stat.key,
-          title: label,
-          unit,
-          items: [
-            safe_item(
-              `${label} Range`,
-              `${format_range([stat.min, stat.max], unit)}${suffix}`,
-              `${stat.key}-range`,
-              sampled_note,
-            ),
-            safe_item(
-              `Mean ± σ`,
-              `${format_num(stat.mean, `.3~s`)} ± ${format_num(stat.std, `.3~s`)} ${unit}`.trim(),
-              `${stat.key}-mean`,
-              `Mean and sample standard deviation over ${format_num(stat.n_samples, `.3~s`)} frames`,
-            ),
-            stat.std > 0 &&
-              safe_item(
-                `Drift`,
-                `${format_num(stat.drift, `+.3~s`)} ${unit}${relative_drift}`.trim(),
-                `${stat.key}-drift`,
-                `Least-squares slope × run length: the systematic change over the run, as opposed to the fluctuation σ`,
-              ),
+          key,
+          // the unit rides on the label once rather than on every value
+          label: unit ? `${clean_label} <small>${unit}</small>` : clean_label,
+          cells: [
+            format_num(mean, `.4~s`),
+            format_num(std, `.2~s`),
+            std > 0 ? format_num(drift, `+.2~s`) : ``,
           ],
+          // 6 digits keep a narrow range apart (−789.391 to −789.389)
+          range: `${format_num(low, `.6~s`)} to ${format_num(high, `.6~s`)} ${unit}`.trim(),
         }
       })
-    return { step_span, duration, stat_sections }
+    // A sample's min/max may miss the run's extremes
+    const sampled =
+      rows.length < total_frames &&
+      `${fmt(rows.length)} of ${fmt(total_frames)} frames sampled`
+    return { step_span, duration, stat_rows, sampled }
   }
 
   // The info cards of the displayed frame: file, run timing, then per-property statistics
@@ -170,7 +145,7 @@
       displayed_frame && simulation_time_step
         ? displayed_frame.step * simulation_time_step
         : null
-    const { step_span, duration, stat_sections } = summary
+    const { step_span, duration, stat_rows, sampled } = summary
     const { filename, source_bytes, format } = run.provenance
 
     return [
@@ -217,20 +192,27 @@
             `Frame properties available for plotting and export`,
           ),
       ]),
-      // Per-property cards: the displayed frame's value first, then the run statistics
-      ...stat_sections.map(({ key, title, unit, items }) => {
-        const current = displayed_frame?.metadata?.[key]
-        return section(title, [
-          is_valid_number(current) &&
-            safe_item(
-              `Current ${title}`,
-              `${format_num(current, `.3~s`)} ${unit}`.trim(),
-              `${key}-current`,
-            ),
-          ...items,
-        ])
-      }),
-    ].filter((entry) => entry !== null)
+      // One row per property (the Global tab has the displayed frame's values)
+      stat_rows.length > 0 && {
+        title: `Statistics`,
+        subtitle: sampled || undefined,
+        columns: [
+          { label: `Mean`, tooltip: `Mean over the run` },
+          { label: `σ`, tooltip: `Sample standard deviation: the fluctuation about the mean` },
+          {
+            label: `Drift`,
+            tooltip: `Least-squares slope × run length: the systematic change over the run, as opposed to the fluctuation σ`,
+          },
+        ],
+        rows: stat_rows.map(({ key, label, cells, range }) => ({
+          key,
+          label,
+          value: cells,
+          // the true extremes may lie outside a sample's
+          tooltip: `Range ${range}${sampled ? ` over the ${sampled}` : ``}`,
+        })),
+      },
+    ].filter((entry) => entry !== null && entry !== false)
   }
 </script>
 

@@ -1,11 +1,14 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
-import { IS_CI, require_bbox } from '../helpers'
+import { require_bbox, webgl_on_ci_for_tagged } from '../helpers'
 import {
   ensure_pane_visible,
+  expect_face_color_modes,
   get_canvas_hash,
   goto_perf_page,
-  open_info_and_controls,
+  visible_count,
 } from './utils'
+
+webgl_on_ci_for_tagged()
 
 const quaternary_diagram = (page: Page) =>
   page.locator(`.quaternary-grid .convex-hull-4d`).first()
@@ -36,9 +39,8 @@ const semi_transparent_pixels = (canvas: Locator) =>
     return { count, avg_alpha: count > 0 ? total / count : 0 }
   })
 
-test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
+test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
     await page.goto(`/convex-hull#quaternary-chemical-systems`, { waitUntil: `networkidle` })
     // the grid appears once data loads; a diagram canvas means it has also rendered
     await expect(page.locator(`.quaternary-grid`).first()).toBeVisible({ timeout: 50000 })
@@ -47,7 +49,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     })
   })
 
-  test(`renders quaternary diagram, opens panes, initial data attributes, camera inputs`, async ({
+  test(`renders quaternary diagram, opens panes, initial data attributes, camera inputs, energy colorbar and threshold`, async ({
     page,
   }) => {
     const ownership_warnings: string[] = []
@@ -60,7 +62,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await expect(diagram).toHaveAttribute(`data-is-dragging`, `false`)
     expect(await diagram.locator(`.plot-tooltip`).count()).toBe(0)
 
-    await open_pane(diagram, `info`)
+    const info = await open_pane(diagram, `info`)
     const controls = await open_pane(diagram, `controls`)
     for (const [label, value] of [
       [`φ`, `0.2`],
@@ -74,15 +76,8 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
         .fill(value)
     }
     await expect(hull_canvas(diagram)).toBeVisible()
-    expect(ownership_warnings).toEqual([])
-  })
 
-  test(`energy color mode shows the e_above_hull colorbar and threshold keeps stats visible`, async ({
-    page,
-  }) => {
-    const diagram = quaternary_diagram(page)
-    const { info, controls } = await open_info_and_controls(diagram)
-
+    // energy color mode shows the e_above_hull colorbar
     const color_modes = controls.locator(`.setting`).filter({ hasText: `Color mode` })
     const color_bar = diagram.locator(`.colorbar`).first()
     await color_modes.getByRole(`button`, { name: `Stability`, exact: true }).click()
@@ -91,13 +86,9 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await expect(color_bar).toBeVisible()
     await expect(color_bar.getByText(/Energy above hull/i)).toBeVisible()
 
+    // the points threshold filters unstable entries and keeps the stats visible
     const threshold = controls.getByRole(`spinbutton`, { name: `Points threshold (eV/atom)` })
-    const unstable_count = async () => {
-      const text = await info.getByTestId(`hull-visible-unstable`).textContent()
-      const match = text?.match(/(?<visible>\d+)\s*\//)
-      if (!match) throw new Error(`Missing visible unstable count: ${text}`)
-      return Number(match.groups?.visible)
-    }
+    const unstable_count = () => visible_count(info, `hull-visible-unstable`)
     await threshold.fill(`0`)
     await expect.poll(unstable_count).toBe(0)
     await threshold.fill(`0.5`)
@@ -105,6 +96,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await ensure_pane_visible(info, diagram.locator(`.info-btn`))
     await expect(info.getByTestId(`hull-visible-unstable`)).toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
+    expect(ownership_warnings).toEqual([])
   })
 
   test(`drag state resets on mouseup outside and suppresses immediate clicks`, async ({
@@ -139,7 +131,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
     await expect(diagram.locator(`.structure-popup`)).toBeHidden({ timeout: 5000 })
   })
 
-  test(`hull renders centered in bounds; opacity slider and face toggle redraw it`, async ({
+  test(`hull renders centered in bounds; face color modes, opacity slider and face toggle redraw it`, async ({
     page,
   }) => {
     const diagram = quaternary_diagram(page)
@@ -176,7 +168,21 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
 
     const initial = await semi_transparent_pixels(canvas)
     expect(initial.count).toBeGreaterThan(100)
+    const initial_hash = await get_canvas_hash(canvas)
     const controls = await open_pane(diagram, `controls`)
+
+    // Element is active by default (no color picker)
+    const mode_buttons = await expect_face_color_modes(controls, `Element`)
+    const color_picker = controls.locator(`input[type="color"]`).first()
+    await mode_buttons.getByText(`Uniform`).click()
+    await expect(color_picker).toBeVisible()
+    await mode_buttons.getByText(`Index`).click()
+    await expect(color_picker).toBeHidden()
+    // facet_index mode draws different face colors
+    await expect.poll(() => get_canvas_hash(canvas), { timeout: 5000 }).not.toBe(initial_hash)
+
+    // Index faces use the same flat opacity as the default Element mode, so the alpha
+    // baseline above still applies
     await controls.locator(`input[type="range"][aria-label*="opacity"]`).fill(`0.2`)
     // generous polls: canvas updates can be slow on CI
     await expect
@@ -192,96 +198,71 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, () => {
       .poll(async () => (await semi_transparent_pixels(canvas)).count, { timeout: 5000 })
       .toBeLessThan(initial.count / 2)
   })
-
-  test(`face color mode buttons toggle the color picker and re-render the canvas`, async ({
-    page,
-  }) => {
-    const diagram = quaternary_diagram(page)
-    const canvas = hull_canvas(diagram)
-    await expect(canvas).toBeVisible()
-    const initial_hash = await get_canvas_hash(canvas)
-    const controls = await open_pane(diagram, `controls`)
-
-    // All 4 mode buttons present, Element active by default (no color picker)
-    const mode_buttons = controls.locator(`.face-color-mode-buttons`)
-    await expect(mode_buttons).toBeVisible()
-    for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
-      await expect(mode_buttons.getByText(label)).toBeVisible()
-    }
-    await expect(mode_buttons.getByText(`Element`)).toHaveClass(/active/)
-    const color_picker = controls.locator(`input[type="color"]`).first()
-    await expect(color_picker).toBeHidden()
-
-    await mode_buttons.getByText(`Uniform`).click()
-    await expect(color_picker).toBeVisible()
-    await mode_buttons.getByText(`Index`).click()
-    await expect(color_picker).toBeHidden()
-    // facet_index mode draws different face colors
-    await expect.poll(() => get_canvas_hash(canvas), { timeout: 5000 }).not.toBe(initial_hash)
-  })
 })
 
 // Standalone: the performance page avoids the slow quaternary-grid data loading above
 test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
-  test(`enable_click_selection=false prevents entry selection`, async ({ page }) => {
-    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
-    const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
-    await expect(diagram).toBeVisible({ timeout: 15000 })
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    const canvas = hull_canvas(diagram)
-    await expect(canvas).toBeVisible({ timeout: 10000 })
-    const box = await require_bbox(canvas, `canvas`)
-    // click a grid of positions to be sure one lands on an entry
-    for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-      for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-        await canvas.click({
-          position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
-        })
-      }
-    }
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-  })
-
-  test(`computes hull distances on-the-fly when data is incomplete`, async ({ page }) => {
-    test.skip(IS_CI, `Quaternary hull tests timeout in CI`)
-    const diagram = await goto_perf_page(page, `4d`, `count=20`)
-    const info = await open_pane(diagram, `info`)
-    const visible_count = async (testid: string) => {
-      const text = await info.getByTestId(testid).textContent()
-      const match = text?.match(/(?<visible>[0-9]+)\s*\/\s*(?:[0-9]+)/)
-      if (!match) throw new Error(`unparsable ${testid} text: ${text}`)
-      return Number(match[1])
-    }
-    expect(Number.isFinite(await visible_count(`hull-visible-unstable`))).toBe(true)
-    expect(await visible_count(`hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
-  })
-
-  for (const [direction, axis, [delta_x, delta_y], expect_increase] of [
-    [`right`, `y`, [80, 0], true],
-    [`down`, `x`, [0, 80], false],
-  ] as const) {
-    test(`drag-${direction} ${expect_increase ? `increases` : `decreases`} rotation_${axis} (natural direction)`, async ({
-      page,
-    }) => {
-      const diagram = await goto_perf_page(page, `4d`, `count=20`)
-      // the hull stacks a second, non-interactive canvas on top for the pulse rings
-      const canvas = diagram.locator(`canvas:not(.pulse-overlay)`)
-      await expect(canvas).toBeVisible({ timeout: 15000 })
-
-      const rot_before = Number(await diagram.getAttribute(`data-rotation-${axis}`))
-      expect(Number.isFinite(rot_before)).toBe(true)
+  test(
+    `enable_click_selection=false prevents entry selection`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
+      await expect(diagram).toBeVisible({ timeout: 15000 })
+      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+      const canvas = hull_canvas(diagram)
+      await expect(canvas).toBeVisible({ timeout: 10000 })
       const box = await require_bbox(canvas, `canvas`)
-      const center_x = box.x + box.width / 2
-      const center_y = box.y + box.height / 2
+      // click a grid of positions to be sure one lands on an entry
+      for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+        for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
+          await canvas.click({
+            position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
+          })
+        }
+      }
+      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    },
+  )
+
+  test(
+    `computes hull distances on-the-fly when data is incomplete`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const diagram = await goto_perf_page(page, `4d`, `count=20`)
+      const info = await open_pane(diagram, `info`)
+      expect(Number.isFinite(await visible_count(info, `hull-visible-unstable`))).toBe(true)
+      expect(await visible_count(info, `hull-visible-stable`)).toBeGreaterThanOrEqual(4) // elemental refs
+    },
+  )
+
+  test(`drags rotate in their natural direction`, async ({ page }) => {
+    const diagram = await goto_perf_page(page, `4d`, `count=20`)
+    // the hull stacks a second, non-interactive canvas on top for the pulse rings
+    const canvas = diagram.locator(`canvas:not(.pulse-overlay)`)
+    await expect(canvas).toBeVisible({ timeout: 15000 })
+    const box = await require_bbox(canvas, `canvas`)
+    const center_x = box.x + box.width / 2
+    const center_y = box.y + box.height / 2
+
+    for (const [direction, axis, [delta_x, delta_y], expect_increase] of [
+      [`right`, `y`, [80, 0], true],
+      [`down`, `x`, [0, 80], false],
+    ] as const) {
+      const rotation = async () => Number(await diagram.getAttribute(`data-rotation-${axis}`))
+      const rot_before = await rotation()
+      expect(Number.isFinite(rot_before), `rotation_${axis} before drag-${direction}`).toBe(
+        true,
+      )
       await page.mouse.move(center_x, center_y)
       await page.mouse.down()
       await page.mouse.move(center_x + delta_x, center_y + delta_y, { steps: 5 })
       await page.mouse.up()
       await page.waitForTimeout(50)
 
-      const rot_after = Number(await diagram.getAttribute(`data-rotation-${axis}`))
-      if (expect_increase) expect(rot_after).toBeGreaterThan(rot_before)
-      else expect(rot_after).toBeLessThan(rot_before)
-    })
-  }
+      const rot_after = await rotation()
+      const msg = `drag-${direction} ${expect_increase ? `increases` : `decreases`} rotation_${axis}`
+      if (expect_increase) expect(rot_after, msg).toBeGreaterThan(rot_before)
+      else expect(rot_after, msg).toBeLessThan(rot_before)
+    }
+  })
 })

@@ -182,11 +182,9 @@
     padding: 2pt 8pt;
     border-radius: 4pt;
     background: var(--surface-bg);
-    border: none;
     color: inherit;
     font: inherit;
     font-weight: 500;
-    cursor: pointer;
     user-select: none;
   }
 </style>

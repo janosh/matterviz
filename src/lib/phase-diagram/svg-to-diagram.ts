@@ -1,7 +1,13 @@
 // Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
 // for rendering by IsobaricBinaryPhaseDiagram
 
-import { array_extent, point_in_polygon, type Vec2, type Vec4 } from '#lib/math.js'
+import {
+  array_extent,
+  leading_number,
+  point_in_polygon,
+  type Vec2,
+  type Vec4,
+} from '#lib/math.js'
 import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
 
 // Round to 6 decimal places for clean floating-point output
@@ -12,7 +18,7 @@ const round = (val: number): number => Math.round(val * 1e6) / 1e6
 type SvgFormat = `matplotlib` | `simple`
 
 interface LinearScale {
-  to_data: (pixel_x: number) => number
+  to_data: (pixel: number) => number
   to_px: (value: number) => number
   domain: Vec2 // [min_data, max_data] of the plot area
   // Data units spanned by 1 px: the snapping tolerance for coordinates drawn at pixel precision
@@ -51,7 +57,7 @@ interface FilledShape {
 const detect_format = (doc: Document): SvgFormat =>
   doc.querySelector(`[id^="xtick_"], [id^="ytick_"]`) ? `matplotlib` : `simple`
 
-// Non-null results of `fn` over every element matching `selector`
+// Non-null results of `callback` over every element matching `selector`
 const query_map = <T>(
   doc: Document,
   selector: string,
@@ -69,8 +75,8 @@ function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
     query_map(doc, `[id^="${axis}tick_"]`, (group) => {
       const value = extract_comment_number(group)
       const use_el = group.querySelector(`use`)
-      const pixel_x = use_el && parse_float_attr(use_el, axis)
-      return value !== null && pixel_x !== null ? { px: pixel_x, value } : null
+      const pixel = use_el && parse_float_attr(use_el, axis)
+      return value !== null && pixel !== null ? { px: pixel, value } : null
     })
   return [ticks_of(`x`), ticks_of(`y`)]
 }
@@ -79,10 +85,10 @@ function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
 // (px from its y1), x values <text class="tick-text-x"> (px from its x attribute); both are
 // offset by the parent group's translate
 function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
-  const tick_of = (text_el: Element, pixel_x: number | null, axis: 0 | 1): Tick | null => {
+  const tick_of = (text_el: Element, pixel: number | null, axis: 0 | 1): Tick | null => {
     const value = leading_number(text_el.textContent)
-    if (isNaN(value) || pixel_x === null) return null
-    return { px: pixel_x + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
+    if (isNaN(value) || pixel === null) return null
+    return { px: pixel + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
   }
   return [
     query_map(doc, `.tick-text-x`, (element) =>
@@ -116,7 +122,7 @@ function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): Linear
     )
   }
   const px_per_unit = px_range / range
-  const to_data = (pixel_x: number) => first.value + (pixel_x - first.px) / px_per_unit
+  const to_data = (pixel: number) => first.value + (pixel - first.px) / px_per_unit
   const [data_a, data_b] = [to_data(px_a), to_data(px_b)]
 
   return {
@@ -180,10 +186,9 @@ function extract_boundary_lines(doc: Document, format: SvgFormat): Vec4[] {
       // Multi-segment paths are not straight boundaries
       const segments = parse_path_segments(d_attr)
       if (segments.length !== 1) return null
-      const [coord_x_1, coord_y_1, coord_x, coord_y_2] = segments[0]
+      const [x_1, y_1, x_2, y_2] = segments[0]
       // Skip tick mark lines (short lines, typically < 10px)
-      if (Math.abs(coord_x - coord_x_1) < 15 && Math.abs(coord_y_2 - coord_y_1) < 15)
-        return null
+      if (Math.abs(x_2 - x_1) < 15 && Math.abs(y_2 - y_1) < 15) return null
       // Hairlines are axis furniture (matplotlib draws ticks and spines at 0.8 px); an
       // unparsable/absent stroke-width (0) is kept as a boundary
       const stroke_width = parse_stroke_width(path_el)
@@ -440,17 +445,15 @@ function infer_regions(
       .flatMap((cell_min, idx) =>
         lower <= cell_min + tol && upper >= coords[idx + 1] - tol ? [idx] : [],
       )
-  for (const horizontal_bond of horizontals) {
-    const row = find_coord_index(y_coords, horizontal_bond.y1, y_tol)
+  for (const { x1, x2, y1 } of horizontals) {
+    const row = find_coord_index(y_coords, y1, y_tol)
     if (row === -1) continue
-    for (const col of spanned_cells(horizontal_bond.x1, horizontal_bond.x2, x_coords, x_tol))
-      h_walls[col][row] = true
+    for (const col of spanned_cells(x1, x2, x_coords, x_tol)) h_walls[col][row] = true
   }
-  for (const vertex_b of verticals) {
-    const col = find_coord_index(x_coords, vertex_b.x1, x_tol)
+  for (const { x1, y1, y2 } of verticals) {
+    const col = find_coord_index(x_coords, x1, x_tol)
     if (col === -1) continue
-    for (const row of spanned_cells(vertex_b.y1, vertex_b.y2, y_coords, y_tol))
-      v_walls[col][row] = true
+    for (const row of spanned_cells(y1, y2, y_coords, y_tol)) v_walls[col][row] = true
   }
 
   let next_region_id = 0
@@ -678,12 +681,6 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
 
 // === Utility Functions ===
 
-// Leading numeric prefix like parseFloat (`2px` -> 2, `600 K` -> 600, else NaN)
-function leading_number(text: string | null | undefined): number {
-  const match = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(text?.trim() ?? ``)
-  return match ? Number(match[0]) : NaN
-}
-
 // Parse stroke-width from style or direct attribute (0 if missing, `2px` units ok)
 function parse_stroke_width(element: Element): number {
   const width = /stroke-width:\s*(?<width>[\d.]+)/.exec(element.getAttribute(`style`) ?? ``)
@@ -693,11 +690,9 @@ function parse_stroke_width(element: Element): number {
   return isNaN(parsed) ? 0 : parsed
 }
 
-// Parse a float attribute from an SVG element
+// Leading number of an SVG element's attribute, null if absent or non-numeric
 function parse_float_attr(element: Element, attr: string): number | null {
-  const val = element.getAttribute(attr)
-  if (val === null) return null
-  const parsed = leading_number(val)
+  const parsed = leading_number(element.getAttribute(attr))
   return isNaN(parsed) ? null : parsed
 }
 
@@ -753,10 +748,10 @@ function parse_path_segments(path_str: string): Vec4[] {
   let [cursor_x, cursor_y] = [0, 0]
   let [start_x, start_y] = [0, 0]
   let last_cmd = ``
-  const line_to = (coord_x: number, coord_y_2: number) => {
-    segments.push([cursor_x, cursor_y, coord_x, coord_y_2])
-    cursor_x = coord_x
-    cursor_y = coord_y_2
+  const line_to = (x_end: number, y_end: number) => {
+    segments.push([cursor_x, cursor_y, x_end, y_end])
+    cursor_x = x_end
+    cursor_y = y_end
   }
 
   // Numbers to skip before the endpoint x,y for each lineto-like command

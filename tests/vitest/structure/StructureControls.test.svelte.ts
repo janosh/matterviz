@@ -695,11 +695,8 @@ describe(`StructureControls reactive props`, () => {
     },
   )
 
-  test(`persists changed settings and pane size after debounce`, async () => {
-    const { state } = await mount_persisted_controls()
-    state.scene_props = { ...state.scene_props, atom_radius: 1.6 }
-    const pane = doc_query(`.controls-pane`)
-    // A real resize takes ownership from the pane's automatic anchoring.
+  // Press and release the controls pane's right resize handle
+  const start_pane_resize = () =>
     doc_query(`[data-resize-edge="right"]`).dispatchEvent(
       new PointerEvent(`pointerdown`, {
         bubbles: true,
@@ -708,17 +705,59 @@ describe(`StructureControls reactive props`, () => {
         pointerId: 1,
       }),
     )
+  const end_pane_resize = () =>
+    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
+
+  test(`persists changed settings and pane size after debounce`, async () => {
+    const { state } = await mount_persisted_controls()
+    state.scene_props = { ...state.scene_props, atom_radius: 1.6 }
+    const pane = doc_query(`.controls-pane`)
+    // A real resize takes ownership from the pane's automatic anchoring.
+    start_pane_resize()
     flushSync()
     pane.style.width = `520px`
     pane.style.height = `610px`
+    // The size the drag wrote flows back through state without a second style write: each
+    // one on this ancestor makes the color bars inside re-resolve their theme colors
+    const style_writes = new MutationObserver(() => {})
+    style_writes.observe(pane, { attributeFilter: [`style`] })
     trigger_resize_observer(pane)
-    document.dispatchEvent(new PointerEvent(`pointerup`, { pointerId: 1 }))
+    flushSync()
+    expect(style_writes.takeRecords()).toEqual([])
+    style_writes.disconnect()
+    end_pane_resize()
     await vi.waitFor(() =>
       expect(load_structure_view_state()).toMatchObject({
         settings: { structure: { atom_radius: 1.6 } },
         viewer: { controls_pane_size: { width: 520, height: 610 } },
       }),
     )
+  })
+
+  // Once a resize owns the pane's size, an imported size reaches the pane and importing a state
+  // without one hands the pane back its automatic size. (Before any drag or resize, the pane's
+  // anchoring clears inline sizes whenever it re-anchors, so a size restored on mount does not
+  // survive opening the pane: a svelte-widgets DraggablePane limitation.)
+  test(`applies imported pane sizes and clears them on a sizeless import`, async () => {
+    const { target } = await mount_persisted_controls()
+    const pane = doc_query(`.controls-pane`)
+    start_pane_resize()
+    end_pane_resize()
+    flushSync()
+    const pane_size = () => [pane.style.width, pane.style.height]
+    for (const [controls_pane_size, expected] of [
+      [{ width: 600, height: 700 }, [`600px`, `700px`]],
+      [undefined, [``, ``]],
+    ] as const) {
+      const shared = create_structure_view_state({ scene_props: {}, controls_pane_size })
+      await import_settings_file(
+        target,
+        serialize_structure_view_state(shared),
+        /Imported shared-view\.json/,
+      )
+      flushSync()
+      expect(pane_size()).toEqual(expected)
+    }
   })
 
   // Nothing else may change alongside it: comparing against the mount baseline rather than the
@@ -1162,6 +1201,47 @@ describe(`StructureControls reactive props`, () => {
     await reset_row(`vector_config:force`)
     expect(state.scene_props).toStrictEqual(expected)
     expect(target.querySelector(`.setting-reset-button`)).toBeNull()
+  })
+
+  // Spin output carries a key per (s, l, m) multipole: its components share one toggle,
+  // swatch, scale and reset per category instead of flooding the visibility grid
+  test(`groups vector components into one row per category`, async () => {
+    const spin_keys = [`spin_l0_norm`, `spin_l1_norm`, `spin_s0_l0_m0`, `spin_s0_l1_m-1`]
+    const structure = {
+      ...simple_structure,
+      sites: simple_structure.sites.map((site) => ({
+        ...site,
+        properties: {
+          ...site.properties,
+          force: [0.1, 0, 0],
+          ...Object.fromEntries(spin_keys.map((key) => [key, [0, 0.1, 0]])),
+        },
+      })),
+    }
+    const state = scene_state({})
+    const target = await mount_bound_controls(state, { structure })
+    const row_keys = (prefix: string) =>
+      [...target.querySelectorAll(`[data-key^="${prefix}:"]`)].map((row) =>
+        row.getAttribute(`data-key`),
+      )
+    expect(row_keys(`vector_config`)).toEqual(
+      [`force`, `spin_norm`, `spin`].map((category) => `vector_config:${category}`),
+    )
+    doc_query<HTMLInputElement>(
+      `[data-key="vector_config:spin"] input[type="checkbox"]`,
+    ).click()
+    await tick()
+    const { vector_configs } = state.scene_props
+    expect(spin_keys.map((key) => vector_configs?.[key]?.visible)).toEqual([
+      undefined,
+      undefined,
+      false,
+      false,
+    ])
+    // a hidden category drops its scale row
+    expect(row_keys(`vector_scale`)).toEqual([`vector_scale:force`, `vector_scale:spin_norm`])
+    await reset_row(`vector_config:spin`)
+    expect(state.scene_props).toStrictEqual({})
   })
 
   // Section resets include site-vector scales stored in vector_configs.

@@ -73,13 +73,19 @@ const is_main_group = (symbol: string): boolean => symbol in ATOMIC_VALENCE
 // combination: S8 (3^8) fits, an S20 chain (3^20) or 12 N in 3000 atoms (2^12 x 6000) does not
 const MAX_PERCEPTION_WORK = 20_000_000
 
-// Edges are bounds-checked by perceive_bond_orders before reaching here.
-function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
+// Neighbor list per atom of an undirected bond graph
+function adjacency_lists(n_atoms: number, edges: Vec2[]): number[][] {
   const adjacency = Array.from({ length: n_atoms }, () => [] as number[])
   for (const [atom_idx_1, atom_idx_2] of edges) {
     adjacency[atom_idx_1].push(atom_idx_2)
     adjacency[atom_idx_2].push(atom_idx_1)
   }
+  return adjacency
+}
+
+// Edges are bounds-checked by perceive_bond_orders before reaching here.
+function split_fragments(n_atoms: number, edges: Vec2[]): number[][] {
+  const adjacency = adjacency_lists(n_atoms, edges)
   const seen = new Set<number>()
   const fragments: number[][] = []
   for (let start = 0; start < n_atoms; start++) {
@@ -285,11 +291,7 @@ function assign_bond_orders(edges: Edge[], target_valence: number[]): number[] |
 // every small ring of a fused system is found. Edges must not be self-bonds.
 const MAX_RING_SIZE = 8
 function find_rings(n_atoms: number, edges: Vec2[]): number[][] {
-  const adjacency = Array.from({ length: n_atoms }, () => [] as number[])
-  for (const [atom_idx_1, atom_idx_2] of edges) {
-    adjacency[atom_idx_1].push(atom_idx_2)
-    adjacency[atom_idx_2].push(atom_idx_1)
-  }
+  const adjacency = adjacency_lists(n_atoms, edges)
   const parent = new Int32Array(n_atoms)
   const depth = new Int32Array(n_atoms)
   const visit_stamp = new Int32Array(n_atoms)

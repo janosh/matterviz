@@ -4,7 +4,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
 // the fast route to a hull of a given size; resolves to the rendered diagram
 export const goto_perf_page = async (
   page: Page,
-  dim: `3d` | `4d`,
+  dim: `2d` | `3d` | `4d`,
   query: string,
 ): Promise<Locator> => {
   await page.goto(`/test/convex-hull-performance?dim=${dim}&${query}`, {
@@ -53,25 +53,15 @@ export const open_controls_pane = (page: Page, diagram: Locator): Promise<Locato
 export const open_info_pane = (page: Page, diagram: Locator): Promise<Locator> =>
   open_pane(page, diagram, `convex-hull-info-pane`, `.info-btn`)
 
-export async function open_info_and_controls(
-  diagram: Locator,
-): Promise<{ info: Locator; controls: Locator }> {
-  const info_btn = diagram.locator(`.info-btn`)
-  await dom_click(info_btn)
-  const info = diagram.locator(`.draggable-pane.convex-hull-info-pane`)
-  await expect(info).toBeVisible()
-
-  const controls_btn = diagram.locator(`.legend-controls-btn`)
-  await dom_click(controls_btn)
-  const controls = diagram.locator(`.draggable-pane.convex-hull-controls-pane`)
-  await expect(controls).toBeVisible()
-
-  return { info, controls }
+// Visible count X of an info-pane "Visible ... X / Y" row
+export const visible_count = async (info: Locator, testid: string): Promise<number> => {
+  const text = await info.getByTestId(testid).textContent()
+  const match = text?.match(/(?<visible>\d+)\s*\//)
+  if (!match?.groups) throw new Error(`unparsable ${testid} text: ${text}`)
+  return Number(match.groups.visible)
 }
 
-// Position-sensitive rolling hash over every 4th canvas pixel. The previous
-// sum-of-every-100th-pixel hash only sampled 8 fixed columns (stride 100 pixels in
-// row-major order), so small marker changes between those columns went undetected.
+// Position-sensitive rolling hash over every 4th canvas pixel, so small marker changes register
 export const get_canvas_hash = (canvas: Locator): Promise<string> =>
   canvas.evaluate((element) => {
     const ctx = (element as HTMLCanvasElement).getContext(`2d`)
@@ -87,3 +77,20 @@ export const get_canvas_hash = (canvas: Locator): Promise<string> =>
 
 // Dispatch directly through Playwright so canvas overlays cannot intercept control clicks.
 export const dom_click = (target: Locator): Promise<void> => target.dispatchEvent(`click`)
+
+// The hull-face color mode buttons all render, `active` is selected and the uniform color
+// picker shows only in Uniform mode; resolves to the button group
+export const expect_face_color_modes = async (
+  controls: Locator,
+  active: `Uniform` | `Energy` | `Element` | `Index`,
+): Promise<Locator> => {
+  const mode_buttons = controls.locator(`.face-color-mode-buttons`)
+  await expect(mode_buttons).toBeVisible()
+  for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
+    await expect(mode_buttons.getByText(label)).toBeVisible()
+  }
+  await expect(mode_buttons.getByText(active)).toHaveClass(/active/)
+  const color_picker = controls.locator(`input[type="color"]`).first()
+  await expect(color_picker).toBeVisible({ visible: active === `Uniform` })
+  return mode_buttons
+}

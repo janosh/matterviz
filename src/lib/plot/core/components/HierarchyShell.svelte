@@ -9,9 +9,8 @@
   import { format_value } from '#lib/labels.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
-  import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
+  import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
-  import { compute_element_placement } from '#lib/plot/core/layout.js'
   import { observe_size } from '#lib/plot/core/utils.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
   import type { HierarchyChartState } from '#lib/plot/core/utils/hierarchy-state.svelte.js'
@@ -41,23 +40,6 @@
     marks: Snippet
     tooltip?: TooltipProp<SunburstNodeHandlerProps<Metadata>>
   } = $props()
-
-  let legend_element = $state<HTMLDivElement | undefined>()
-  let legend_placement = $derived.by(() => {
-    if (!chart_state.legend_visible || !chart_state.width || !chart_state.height) return null
-    return compute_element_placement({
-      plot_bounds: {
-        x: chart_state.plot_left,
-        y: chart_state.pad.t,
-        width: chart_state.inner_width,
-        height: chart_state.inner_height,
-      },
-      element: legend_element,
-      element_size: { width: 120, height: 60 },
-      axis_clearance: chart_state.legend?.axis_clearance,
-      points: chart_state.legend_points(),
-    })
-  })
 
   // Color bar anchored beside (vertical) or below (horizontal) the chart; `--<chart>-colorbar-*`
   // CSS variables override each placement value
@@ -147,22 +129,15 @@
 {/if}
 
 {#if chart_state.legend_visible}
-  <!-- plot_left equals pad.l whenever the placement fallback applies (a color
-  bar can only reserve space once the chart has a non-zero size) -->
-  {@const legend_left = legend_placement?.x ?? chart_state.plot_left + 10}
-  {@const legend_top = legend_placement?.y ?? chart_state.pad.t + 10}
-  <PlotLegend
-    bind:root_element={legend_element}
-    {...chart_state.legend}
+  {@const { plot_left, pad, inner_width, inner_height } = chart_state}
+  <InsetLegend
+    legend={chart_state.legend}
+    measured={chart_state.width > 0 && chart_state.height > 0}
+    plot_bounds={{ x: plot_left, y: pad.t, width: inner_width, height: inner_height }}
+    points={chart_state.legend_points()}
     series_data={chart_state.legend_items}
-    on_toggle={chart_state.legend?.on_toggle ?? chart_state.toggle_category}
-    on_item_hover={(item) => {
-      chart_state.legend_hover(item)
-      chart_state.legend?.on_item_hover?.(item)
-    }}
-    style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
-      chart_state.legend?.style ?? ``
-    }`}
+    on_toggle={chart_state.toggle_category}
+    on_item_hover={chart_state.legend_hover}
   />
 {/if}
 

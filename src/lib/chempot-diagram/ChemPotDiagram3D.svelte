@@ -2,10 +2,8 @@
   import { viewer_keys } from '#lib/shortcuts.js'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/format.js'
-  import type { FormulaLabelSegment } from '#lib/composition/format.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
-  import type { PhaseData } from '#lib/convex-hull/types.js'
   import EmptyState from '#lib/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import type { ExportSection } from '#lib/io/index.js'
@@ -27,7 +25,6 @@
     positions_geometry,
     webgpu_available,
   } from '#lib/scene/index.js'
-  import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -58,6 +55,7 @@
     chempot_svg_string,
     export_glb_file,
     get_view_settings,
+    occlude_tick_labels,
   } from './export'
   import type { VisibleDomainLabel } from './compute'
   import {
@@ -77,12 +75,7 @@
     swizzle_to_render,
     vertex_mean,
   } from './compute'
-  import type {
-    ChemPotDiagramConfig,
-    ChemPotHoverInfo,
-    ChemPotHoverInfo3D,
-    ChemPotTooltipProp,
-  } from './types'
+  import type { ChemPotDiagramProps, ChemPotHoverInfo3D } from './types'
   import { CHEMPOT_DEFAULTS } from './types'
 
   type SceneProps = ComponentProps<typeof ChemPotScene3D>
@@ -108,23 +101,14 @@
     config = {},
     width = 800,
     height = 600,
-    // Auto-corrected to a valid available temperature when needed.
-    temperature = $bindable<number | undefined>(undefined),
-    hover_info = $bindable<ChemPotHoverInfo | null>(null),
-    highlighted_formula = null, // shown while none is hovered here, any formula spelling
+    temperature = $bindable(),
+    hover_info = $bindable(null),
+    highlighted_formula = null,
     tooltip,
-  }: {
-    entries: PhaseData[]
+  }: ChemPotDiagramProps & {
     show_controls?: ShowControlsProp<
       `controls` | `fullscreen` | `export` | `formulas` | `slice`
     >
-    config?: ChemPotDiagramConfig
-    width?: number
-    height?: number
-    temperature?: number
-    hover_info?: ChemPotHoverInfo | null
-    highlighted_formula?: string | null
-    tooltip?: ChemPotTooltipProp
   } = $props()
   let wrapper = $state<HTMLDivElement>()
   let fullscreen = $state(false)
@@ -175,9 +159,6 @@
   const formula_colors = $derived(
     config.formula_colors?.length ? config.formula_colors : CHEMPOT_DEFAULTS.formula_colors,
   )
-
-  const formula_label_segments = (formula: string): FormulaLabelSegment[] =>
-    get_formula_label_segments(domain_formula_text(formula))
 
   function normalize_projection_triplet(
     maybe_triplet: string[] | undefined,
@@ -321,18 +302,12 @@
     chempot.frame_data &&
       padded_floors(chempot.frame_data.domains, [0, 1, 2], element_padding, default_min_limit),
   )
+  const pad = (domains: Record<string, number[][]>) =>
+    pad_domains(domains, [0, 1, 2], element_padding, default_min_limit, frame_floors)
   const render_domains = $derived.by((): RenderDomain[] => {
     if (!diagram_data || plot_elements.length < 2) return []
-
-    const padded_domains = pad_domains(
-      diagram_data.domains,
-      diagram_data.elements.map((_, idx) => idx),
-      element_padding,
-      default_min_limit,
-      frame_floors,
-    )
     const result: RenderDomain[] = []
-    for (const [formula, padded] of Object.entries(padded_domains)) {
+    for (const [formula, padded] of Object.entries(pad(diagram_data.domains))) {
       if (padded.length < 2) continue
       const { edges, ann_loc } = get_domain_outline(padded)
       result.push({
@@ -361,18 +336,9 @@
   )
 
   // Points the axes and camera frame (see frame_floors)
-  const frame_points = $derived.by(() => {
-    const frame = chempot.frame_data
-    if (!frame) return domain_points
-    const padded = pad_domains(
-      frame.domains,
-      [0, 1, 2],
-      element_padding,
-      default_min_limit,
-      frame_floors,
-    )
-    return Object.values(padded).flat()
-  })
+  const frame_points = $derived(
+    chempot.frame_data ? Object.values(pad(chempot.frame_data.domains)).flat() : domain_points,
+  )
 
   // Stretch short axes (up to 4x) for anisotropic systems. Rendered order: X=data[1],
   // Y=data[2], Z=data[0].
@@ -570,7 +536,7 @@
     label_stable
       ? visible_domain_labels.map((label) => ({
           ...label,
-          segments: formula_label_segments(label.formula),
+          segments: get_formula_label_segments(domain_formula_text(label.formula)),
         }))
       : [],
   )
@@ -593,8 +559,7 @@
     return [...new Set(owners)].filter(Boolean)
   }
 
-  // Deduplicate 3D points within tolerance (reuses compute.ts dedup_points)
-  const dedup_3d = (pts: number[][]): number[][] => dedup_points(pts, 1e-4).unique
+  const dedup_3d = (pts: number[][]): number[][] => dedup_points(pts).unique
 
   const controls_auto_ranges = $derived(
     get_3d_auto_ranges(
@@ -805,38 +770,12 @@
       container_height > 0,
   )
 
-  function update_label_occlusion(): void {
-    if (!wrapper) return
-    const tick_labels = Array.from(wrapper.querySelectorAll<HTMLElement>(`.axis-tick-label`))
-    tick_labels_occluded = false
-    for (const tick_label of tick_labels) {
-      tick_label.style.visibility = ``
-    }
-    const domain_rects = Array.from(wrapper.querySelectorAll<HTMLElement>(`.domain-label`))
-      .filter((label_el) => {
-        const style = getComputedStyle(label_el)
-        return style.display !== `none` && style.visibility !== `hidden`
-      })
-      .map((label_el) => pad_rect(label_el.getBoundingClientRect(), 1))
-    if (domain_rects.length === 0) return
-
-    for (const tick_label of tick_labels) {
-      const style = getComputedStyle(tick_label)
-      if (style.display === `none` || style.visibility === `hidden`) continue
-      const tick_rect = tick_label.getBoundingClientRect()
-      if (domain_rects.some((domain_rect) => rects_overlap(tick_rect, domain_rect))) {
-        tick_label.style.visibility = `hidden`
-        tick_labels_occluded = true
-      }
-    }
-  }
-
   function schedule_label_occlusion_update(): void {
     if (typeof requestAnimationFrame === `undefined`) return
     if (label_occlusion_frame !== null) cancelAnimationFrame(label_occlusion_frame)
     label_occlusion_frame = requestAnimationFrame(() => {
       label_occlusion_frame = null
-      update_label_occlusion()
+      if (wrapper) tick_labels_occluded = occlude_tick_labels(wrapper)
     })
   }
 
@@ -969,8 +908,7 @@
       next_projection[current_owner_idx] = next_projection[axis_idx]
     }
     next_projection[axis_idx] = element
-    const normalized = normalize_projection_triplet(next_projection, all_entry_elements)
-    if (normalized) projection_elements_override = normalized
+    apply_projection_preset(next_projection)
   }
 
   function apply_projection_preset(preset_elements: string[]): void {
@@ -993,8 +931,7 @@
   function select_neighbor_formulas(): void {
     if (hover_info?.view !== `3d`) return
     // the hoverable ones, as the tooltip lists them
-    const neighbors = hover_info.neighbors
-    chempot.set(`formulas_to_draw`, [hover_info.formula, ...neighbors])
+    chempot.set(`formulas_to_draw`, [hover_info.formula, ...hover_info.neighbors])
   }
 
   const export_basename = $derived(`chempot-${plot_elements.join(`-`)}`)

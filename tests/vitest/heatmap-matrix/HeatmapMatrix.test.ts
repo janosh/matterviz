@@ -1,5 +1,3 @@
-// Tests for HeatmapMatrix Svelte component rendering, interaction, and color computation.
-
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
 import type { AxisItem, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'

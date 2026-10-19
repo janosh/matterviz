@@ -6,6 +6,7 @@
   import { create_settling_tween } from '#lib/plot/core/settling-tween.svelte.js'
   import {
     estimate_label_size,
+    LABEL_PLACEMENT_DEFAULTS,
     label_leader_segment,
   } from '#lib/plot/core/utils/label-placement.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -26,7 +27,7 @@
     is_hovered = false,
     is_selected = false,
     is_dimmed = false,
-    leader_line_threshold = 15,
+    leader_line_threshold = LABEL_PLACEMENT_DEFAULTS.leader_line_threshold,
     hit_padding = 0,
     ...rest
   }: Omit<SVGAttributes<SVGGElement>, `style` | `offset` | `transform`> & {

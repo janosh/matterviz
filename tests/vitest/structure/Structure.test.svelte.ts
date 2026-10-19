@@ -338,7 +338,7 @@ test.each([`edit`, `bake`, `load`] as const)(
       cell_type: `original`,
     })
     const analysis = mount_structure(
-      bind_props({ measure_mode: `edit-atoms` as const }, state),
+      bind_props({ measure_mode: `edit-atoms` as const, analyze_symmetry: true }, state),
     )
     if (change === `bake`) await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
     await tick()
@@ -1072,6 +1072,7 @@ test.each([`a supercell`, `a conventional cell`, `a trajectory stream`] as const
     const own_stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`Cu`])
     const props = $state<ComponentProps<typeof Structure>>({
       structure: prim_fcc_cu,
+      analyze_symmetry: true,
       cell_type: `original`,
       supercell_scaling: `1x1x1`,
       ...(shown === `a trajectory stream` ? { trajectory_position_stream: own_stream } : {}),
@@ -1366,10 +1367,7 @@ test.each([false, true])(
       isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
       active_volume_id: `0`,
     })
-    const tool_props = await mount_host_structure(
-      bind_props({ structure: source }, state),
-      mount_structure,
-    )
+    const tool_props = await mount_host_structure(bind_props({ structure: source }, state))
     const overlay = { volumes: [{ ...volumetric_data[0], label: `Prediction` }] }
     flushSync(() => tool_props.on_overlay(overlay))
     flushSync(() => (state.isosurface_settings.layers[0].isovalue = 0.321))
@@ -1584,7 +1582,7 @@ describe(`Structure`, () => {
       new Error(`WASM unavailable`),
     )
     vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    mount_structure({ structure })
+    mount_structure({ structure, analyze_symmetry: true })
     await vi.waitFor(() =>
       expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
     )
@@ -1607,7 +1605,10 @@ describe(`Structure`, () => {
         .spyOn(symmetry, `analyze_structure_symmetry`)
         .mockReturnValue(pending.promise)
       const error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const props = $state<ComponentProps<typeof Structure>>({ structure })
+      const props = $state<ComponentProps<typeof Structure>>({
+        structure,
+        analyze_symmetry: true,
+      })
       const analysis = mount_structure(props)
       await vi.waitFor(() => expect(analyze).toHaveBeenCalled())
       if (transition === `disabled`) props.analyze_symmetry = false
@@ -1624,15 +1625,62 @@ describe(`Structure`, () => {
     },
   )
 
-  test(`skips symmetry analysis when disabled`, async () => {
+  // The ~0.75 MB WASM loads only once the viewer is pressed or focused or the display needs
+  // symmetry (never on hover), and a demand sticks: closing the pane or going back to the
+  // original cell keeps the data
+  const wyckoff_colors: AtomColorConfig = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `wyckoff` }
+  test.each<[string, Partial<ComponentProps<typeof Structure>>, string | null, boolean]>([
+    [`disabled, even when pressed`, { analyze_symmetry: false }, `pointerdown`, false],
+    [`on demand, untouched`, {}, null, false],
+    [`on demand, not on mere hover`, {}, `pointerenter`, false],
+    [`on demand, on press`, {}, `pointerdown`, true],
+    [
+      `on demand, on press with a host handler`,
+      { onpointerdown: vi.fn() },
+      `pointerdown`,
+      true,
+    ],
+    [`on demand, on focus`, {}, `focusin`, true],
+    [`on demand, on focus with a host handler`, { onfocusin: vi.fn() }, `focusin`, true],
+    [`on demand, for a conventional cell`, { cell_type: `conventional` }, null, true],
+    [`on demand, for Wyckoff coloring`, { atom_color_config: wyckoff_colors }, null, true],
+    [`on demand, for an open pane`, { active_pane: `info` }, null, true],
+  ])(`symmetry analysis %s`, async (_label, props, event, expected) => {
     vi.stubEnv(`VITEST`, ``)
-    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`)
-    const analyze_spy = vi.spyOn(symmetry, `analyze_structure_symmetry`)
-    mount_structure({ structure, analyze_symmetry: false })
+    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
+    // never lands: only whether (and how often) analysis starts matters here
+    const analyze_spy = vi
+      .spyOn(symmetry, `analyze_structure_symmetry`)
+      .mockReturnValue(Promise.withResolvers<never>().promise)
+    const state = $state<ComponentProps<typeof Structure>>({ structure, ...props })
+    mount_structure(state)
     flushSync()
-    await tick()
-    expect(ready_spy).not.toHaveBeenCalled()
-    expect(analyze_spy).not.toHaveBeenCalled()
+    const fire_on_viewer = async (type?: string | null) =>
+      type ? fire(doc_query(`.structure`), new Event(type, { bubbles: true })) : tick()
+    await fire_on_viewer(event)
+    expect(ready_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+    expect(analyze_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+    // the viewer's own handlers compose with the host's instead of being replaced
+    const host_handler = props.onpointerdown ?? props.onfocusin
+    if (host_handler) expect(host_handler).toHaveBeenCalledOnce()
+    // while the analysis runs, the cell menu says Prim/Conv are coming rather than unavailable
+    await fire(doc_query(`.cell-select .toggle-btn`))
+    expect(doc_query(`.cell-type-btn:nth-child(2)`).getAttribute(`aria-label`)).toContain(
+      expected ? `analyzing symmetry…` : `requires symmetry data`,
+    )
+    if (!expected) return
+    // the demand outlives what raised it: dropping and re-raising the need neither clears the
+    // data (which would re-analyze on the way back) nor analyzes again
+    await fire_on_viewer({ focusin: `focusout` }[event ?? ``])
+    Object.assign(state, {
+      active_pane: null,
+      cell_type: `original`,
+      atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
+    })
+    flushSync()
+    Object.assign(state, props)
+    await fire_on_viewer(event)
+    expect(analyze_spy).toHaveBeenCalledTimes(1)
     expect(document.querySelector(`.symmetry-error`)).toBeNull()
   })
 
@@ -2088,7 +2136,10 @@ describe(`Structure`, () => {
     const state = $state<{ cell_type: symmetry.CellType }>({ cell_type: `original` })
     // no image atoms so site_indices are exactly the cell's own sites
     const analysis = mount_structure(
-      bind_props({ structure: prim_fcc_cu, show_image_atoms: false }, state),
+      bind_props(
+        { structure: prim_fcc_cu, show_image_atoms: false, analyze_symmetry: true },
+        state,
+      ),
     )
     flushSync()
     expect(analysis.wyckoff_positions).toEqual([])
@@ -2126,6 +2177,7 @@ describe(`Structure`, () => {
       const thermal = overlay === `thermal`
       const props = $state<ComponentProps<typeof Structure>>({
         structure: prim_fcc_cu,
+        analyze_symmetry: true,
         ...(thermal && {
           atom_color_field: field,
           volume_color_field: field,
@@ -3387,17 +3439,11 @@ describe(`site sidebar`, () => {
 
   // Below 900 px auto leaves the table undocked behind a reopen button, unless the host hides
   // that button because it shows the sites itself (Trajectory's data inspector)
+  // oxfmt-ignore
   test.each([
     [`forces, forced on`, with_forces, true, undefined, true, false],
     [`forces, auto, narrow`, with_forces, `auto`, undefined, false, true],
-    [
-      `forces, auto, button hidden`,
-      with_forces,
-      `auto`,
-      { hidden: [`site-table`] },
-      false,
-      false,
-    ],
+    [`forces, auto, button hidden`, with_forces, `auto`, { hidden: [`site-table`] }, false, false],
     [`no site numbers, auto`, structure, `auto`, undefined, false, false],
     [`no site numbers, forced on`, structure, true, undefined, false, false],
   ] as const)(
@@ -3446,6 +3492,9 @@ describe(`site sidebar`, () => {
     await tick()
     const divider = doc_query(`.structure-site-layout > .pane-divider`)
     await resize(`.structure-site-sidebar`, 300)
+    // the share follows the row while the divider has focus (see DockedSidebar)
+    divider.dispatchEvent(new FocusEvent(`focus`))
+    await tick()
     for (const [row_width, viewer_pct] of [
       [1000, `70`],
       [1200, `75`],
@@ -3485,19 +3534,17 @@ describe(`site sidebar`, () => {
       selected_sites: [],
       hovered_site_idx: null,
     })
-    mounted.push(mount(Structure, { target: document.body, props }))
+    mount_structure(props)
     await tick()
     const rows = () => [
       ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),
     ]
     expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
     // as wide as its content until the divider moves, which then hands the width to the ratio
-    const layout = doc_query(`.structure-site-layout`)
+    const divider = doc_query(`.structure-site-layout > .pane-divider`)
     expect(sidebar()?.classList.contains(`fit-content`)).toBe(true)
-    expect(layout.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
-    doc_query(`.structure-site-layout > .pane-divider`).dispatchEvent(
-      new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }),
-    )
+    expect(divider.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
+    divider.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }))
     await tick()
     expect(sidebar()?.classList.contains(`fit-content`)).toBe(false)
     rows()[1].click()

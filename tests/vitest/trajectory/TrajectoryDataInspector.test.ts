@@ -7,7 +7,7 @@ import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { doc_query, query } from '../setup'
+import { doc_query, query, trigger_resize_observer } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 
 let mounted_inspector: ReturnType<typeof mount> | undefined
@@ -48,6 +48,11 @@ const mount_inspector = async (props: Record<string, unknown>) => {
   })
   await tick()
 }
+// The inspector follows the displayed frame once per animation frame
+const next_paint = async () => {
+  await new Promise((resolve) => requestAnimationFrame(resolve))
+  await tick()
+}
 const header_texts = () =>
   [...document.querySelectorAll(`thead th`)].map((header) => header.textContent?.trim() ?? ``)
 const body_rows = () => [
@@ -76,11 +81,14 @@ const expect_virtualized = (max_rendered: number) => {
   return rows
 }
 
+// [value, unit] per attribute: the unit is the value cell's small suffix, not its own column
 const attributes = () =>
   Object.fromEntries(
-    body_rows()
-      .map((row) => cell_texts(row))
-      .map(([name, ...rest]) => [name, rest]),
+    body_rows().map((row) => {
+      const [name, value_text] = cell_texts(row)
+      const unit = row.querySelector(`td .unit`)?.textContent?.trim() ?? ``
+      return [name, [value_text.slice(0, value_text.length - unit.length).trim(), unit]]
+    }),
   )
 
 // OVITO's global attributes: the displayed frame's recorded scalars, then what its structure
@@ -92,6 +100,7 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
   expect(
     doc_query(`button[role="tab"][data-value="global"]`).getAttribute(`aria-selected`),
   ).toBe(`true`)
+  expect(header_texts()).toEqual([`Attribute`, `Value`])
   let rows = attributes()
   expect(rows.Frame).toEqual([`1`, ``])
   expect(rows.Energy).toEqual([`-100`, `eV`])
@@ -109,6 +118,43 @@ test(`global tab lists the displayed frame's recorded and derived attributes`, a
   rows = attributes()
   expect(rows.Frame).toEqual([`3`, ``])
   expect(rows.Energy).toEqual([`-102`, `eV`])
+})
+
+// A slider drag or fast playback switches frames faster than the screen repaints: the open
+// table catches up once per animation frame, to the latest frame, rather than re-rendering every
+// cell per switch. Nor may a switch rewrite the tab row's inline style: each write there made the
+// tables below re-resolve their theme colors. fit_toolbar re-runs on every resize report, so each step
+// triggers one (the mock observer only reports on observe or when triggered) to give an
+// unguarded --toolbar-width write the chance to show up.
+test(`frame switches between repaints reach the global tab once, as the latest frame`, async () => {
+  const run = make_run(4)
+  const step = fromStore(writable(0))
+  await mount_inspector({
+    run,
+    get current_step_idx() {
+      return step.current
+    },
+  })
+  await next_paint()
+  expect(attributes().Frame).toEqual([`1`, ``])
+  const style_writes: MutationRecord[] = []
+  const observer = new MutationObserver((records) => style_writes.push(...records))
+  const tabs = doc_query(`.inspector-tabs`)
+  observer.observe(tabs, { attributeFilter: [`style`] })
+  for (const step_idx of [1, 2, 3]) {
+    step.current = step_idx
+    await tick()
+    trigger_resize_observer(tabs)
+  }
+  expect(attributes().Frame).toEqual([`1`, ``])
+  await next_paint()
+  trigger_resize_observer(tabs)
+  expect(attributes().Frame).toEqual([`4`, ``])
+  expect(attributes().Energy).toEqual([`-103`, `eV`])
+  // takeRecords: disconnect drops records not yet delivered to the callback
+  style_writes.push(...observer.takeRecords())
+  observer.disconnect()
+  expect(style_writes).toEqual([])
 })
 
 // Math.max(...norms) overflowed the call stack past ~125k atoms and took every tab down
@@ -161,11 +207,13 @@ test(`global tab skips bookkeeping keys of the frame metadata`, async () => {
   const run = make_run(2)
   const current_frame = {
     ...run.preview,
-    metadata: { total_atoms: 3, frame_number: 7, energy: -5 },
+    metadata: { total_atoms: 3, frame_number: 7, energy: -5, pressure: NaN },
   }
   await mount_inspector({ run, current_frame, current_step_idx: 7, property_rows: [] })
   const rows = attributes()
   expect(rows.Energy).toEqual([`-5`, `eV`])
+  // a missing value reads n/a as in HeatmapTable's default cells, its unit still attached
+  expect(rows.Pressure).toEqual([`n/a`, `GPa`])
   expect(Object.keys(rows)).not.toContain(`total_atoms`)
   expect(Object.keys(rows)).not.toContain(`frame_number`)
 })
@@ -183,18 +231,28 @@ test.each([
   ).toThrow(missing)
 })
 
-test(`frames tab renders every property row with units`, async () => {
+test(`frames tab lists every frame by step and hides constant columns`, async () => {
   const run = make_run(4)
   await mount_inspector({ run })
   await open_tab(`frames`)
   expect(body_rows()).toHaveLength(4)
-  expect_headers(`Energy (eV)`, `Fmax (eV/Å)`, `Volume (Å³)`, `Density (g/cm³)`)
-  // the recorded `Step` property duplicates the Step column
-  expect(header_texts().filter((text) => text.startsWith(`Step`))).toEqual([`Step`])
-  // Frame column numbers from 1 like the step input; Step is the recorded MD step
-  expect(cell_texts(body_rows()[0]).slice(0, 2)).toEqual([`1`, `0`])
-  expect(cell_texts(body_rows()[3]).slice(0, 2)).toEqual([`4`, `30`])
+  expect_headers(`Energy (eV)`, `Fmax (eV/Å)`)
+  // The MD step names each row, repeated by neither a frame column nor the `Step` property
+  expect(header_texts()[0]).toMatch(/^Step/)
+  expect(header_texts().filter((text) => /^(?:Step|Frame)/.test(text))).toHaveLength(1)
+  expect(body_rows().map((row) => cell_texts(row)[0])).toEqual([`0`, `10`, `20`, `30`])
   expect(document.body.textContent).not.toContain(`Sampled frames`)
+  // The cubic cell repeats in every frame: its constant columns start hidden, and one the user
+  // shows again stays
+  expect(header_texts().some((text) => /^(?:Volume|Density)/.test(text))).toBe(false)
+  doc_query<HTMLButtonElement>(`button[aria-label="Columns"]`).click()
+  await tick()
+  const volume_toggle = [...document.querySelectorAll(`label`)].find((label) =>
+    label.textContent?.includes(`Volume`),
+  )
+  volume_toggle?.querySelector(`input`)?.click()
+  await tick()
+  expect_headers(`Energy (eV)`, `Volume (Å³)`)
 })
 
 test(`sampled atom rows retain source indices and identify exported samples`, async () => {
@@ -226,21 +284,17 @@ test(`atom rows refresh coordinates and scalar values during fixed-topology play
   const view = new FrameView()
   const frames = writable(make_frame(1))
   const display = fromStore(derived(frames, (frame) => view.update(frame)))
-  mounted_inspector = mount(TrajectoryDataInspector, {
-    target: document.body,
-    props: {
-      run: make_run(),
-      get current_frame() {
-        return display.current
-      },
+  await mount_inspector({
+    run: make_run(),
+    get current_frame() {
+      return display.current
     },
   })
-  await tick()
   await open_atoms()
   const before = cell_texts(body_rows()[0])
   expect(before).toContain(`10`)
   frames.set(make_frame(9))
-  await tick()
+  await next_paint()
   const after = cell_texts(body_rows()[0])
   expect(after).toContain(`90`)
   expect(after).not.toEqual(before)
@@ -261,8 +315,8 @@ test(`sampled property rows keep their real frame numbers and disclose sampling`
   const rendered = expect_virtualized(100)
   expect_headers(`Temperature (K)`)
   expect(header_texts().some((text) => text.includes(`Volume`))).toBe(false)
-  expect(cell_texts(rendered[0])[0]).toBe(`1`)
-  expect(cell_texts(rendered[1])[0]).toBe(`201`)
+  expect(cell_texts(rendered[0])[0]).toBe(`0`)
+  expect(cell_texts(rendered[1])[0]).toBe(`200`)
 })
 
 test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => {
@@ -400,8 +454,13 @@ test(`info tab carries the info pane's file, timing and property statistics`, as
     'Total Frames': `4 (current: 2)`,
     'Time Step': `2 fs`,
     Duration: `60 fs`,
-    'Energy Range': `−103 - −100 eV`,
   })
+  // property statistics, one table row each: mean, σ, drift
+  expect(
+    [...document.querySelectorAll(`[data-testid="energy"] td`)].map(
+      (cell) => cell.textContent,
+    ),
+  ).toEqual([`−101.5`, `1.3`, `−3`])
   // neither a table toolbar nor a card filter: the cards start right under the tabs
   const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
   for (const selector of [`.control-buttons`, `.filter-toggle`, `.info-filter`])
@@ -414,8 +473,7 @@ test(`info tab carries the info pane's file, timing and property statistics`, as
 test(`the inspector is a sidebar whose table fills its height, with no dock button`, async () => {
   await mount_inspector({ run: make_run(3) })
   const sidebar = doc_query(`.trajectory-data-inspector-sidebar`)
-  expect(sidebar.querySelector(`h4`)?.textContent?.trim()).toBe(`Data Inspector`)
-  expect(sidebar.querySelector(`h4 button`)).toBeNull()
+  expect(sidebar.querySelector(`h4`)).toBeNull() // the tab row names the contents
   // jsdom lays nothing out, so no label is cut and the toolbar joins the tab row
   expect(query(sidebar, `.inspector-tabs`).dataset.toolbar).toBe(`inline`)
   // the table fills the sidebar instead of a viewport-tied height

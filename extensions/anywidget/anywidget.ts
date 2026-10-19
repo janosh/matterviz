@@ -18,6 +18,8 @@ import {
   Histogram,
   is_plain_object,
   IsobaricBinaryPhaseDiagram,
+  normalize_band_structure,
+  normalize_dos,
   PeriodicTable,
   RdfPlot,
   ScatterPlot,
@@ -208,6 +210,33 @@ const get_structure_props = (model: AnyModel) => ({
   fullscreen_toggle: false,
 })
 
+// Spectral traits carry pymatgen as_dict() documents (or matterviz-shaped ones), alone or
+// as {label: document}; Bands/Dos take {label: normalized} records, with an empty label
+// for an unnamed dataset. A trait that is neither throws, failing the mount.
+const spectral_record = <T>(
+  value: unknown,
+  normalize: (doc: unknown) => T | null,
+  kind: string,
+): Record<string, T> | undefined => {
+  if (value == null) return undefined
+  const single = normalize(value)
+  if (single) return { '': single }
+  if (!is_plain_object(value)) throw new Error(`${kind} must be a document or a map of them`)
+  return Object.fromEntries(
+    Object.entries(value).map(([label, doc]) => {
+      const normalized = normalize(doc)
+      if (!normalized) throw new Error(`${kind} "${label}" is not a ${kind} document`)
+      return [label, normalized]
+    }),
+  )
+}
+const band_structs_prop = derived_prop(`band_structs`, [`band_structs`], (model) =>
+  spectral_record(get_prop(model, `band_structs`), normalize_band_structure, `band structure`),
+)
+const doses_prop = derived_prop(`doses`, [`doses`], (model) =>
+  spectral_record(get_prop(model, `doses`), normalize_dos, `DOS`),
+)
+
 // Shape pushed back to Python for scatter point click/hover interactions.
 type ScatterPointEvent = {
   point?: { series_idx?: number; point_idx?: number; x?: number; y?: number }
@@ -390,6 +419,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       writeback_prop(`distribution_property`),
       // Open floating pane (TrajectoryPane), e.g. 'hotspots' or 'flight'
       writeback_prop(`active_pane`),
+      // Docked data inspector sidebar (open by default, as in the component)
+      writeback_prop(`data_inspector_open`, true),
       derived_prop(
         `structure_props`,
         [...scene_prop_keys, ...traj_structure_prop_keys],
@@ -408,8 +439,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `show_legend`,
         `marker_renderer`,
         `color_scale`,
-        `color_bar`,
         `size_scale`,
+        `density_contours`,
         `fill_regions`,
         `error_bands`,
         `hover_config`,
@@ -418,6 +449,9 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `line_tween`,
       ]),
       drive_prop(`selected_point`),
+      // None hides these, {} keeps the defaults
+      nullable_prop(`color_bar`),
+      nullable_prop(`size_legend`),
     ],
     interactions: scatter_interactions,
     interaction_model_keys: [`active_point`, `hovered_point`],
@@ -494,25 +528,25 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   band_structure: {
     component: Bands,
     base_drive: style_base_drive,
-    drive: with_plot_controls([
-      `band_structs`,
-      `show_legend`,
-      `fermi_level`,
-      `reference_frequency`,
-    ]),
+    drive: [
+      band_structs_prop,
+      ...with_plot_controls([`show_legend`, `fermi_level`, `reference_frequency`]),
+    ],
   },
   dos: {
     component: Dos,
     base_drive: style_base_drive,
-    drive: with_plot_controls([
-      `doses`,
-      `stack`,
-      `sigma`,
-      `normalize`,
-      `orientation`,
-      `show_legend`,
-      `spin_mode`,
-    ]),
+    drive: [
+      doses_prop,
+      ...with_plot_controls([
+        `stack`,
+        `sigma`,
+        `normalize`,
+        `orientation`,
+        `show_legend`,
+        `spin_mode`,
+      ]),
+    ],
   },
   bands_and_dos: {
     // BandsAndDos forwards config to its child Bands/Dos via bands_props/dos_props.
@@ -521,7 +555,10 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: BandsAndDos,
     base_drive: style_base_drive,
     drive: [
-      ...drive_props([`band_structs`, `doses`, `fermi_level`]),
+      // structure adds its Brillouin zone beside the bands, configured by bz_props
+      band_structs_prop,
+      doses_prop,
+      ...drive_props([`fermi_level`, `structure`, `bz_props`]),
       picked_prop(`bands_props`, [`show_legend`, ...plot_control_keys]),
       picked_prop(`dos_props`, [
         `stack`,
@@ -645,10 +682,10 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   chem_pot_diagram: {
     // ChemPotDiagram sizes itself through width/height and spreads no rest props, so the
-    // notebook wrapper `style` has nowhere to go
+    // notebook wrapper `style` has nowhere to go: size it with the width/height traits
     component: ChemPotDiagram,
     base_drive: [],
-    drive: drive_props([`entries`, `config`, `temperature`]),
+    drive: drive_props([`entries`, `config`, `temperature`, `width`, `height`]),
   },
   treemap: {
     // Function/snippet props cannot cross the JSON bridge; continuous color props

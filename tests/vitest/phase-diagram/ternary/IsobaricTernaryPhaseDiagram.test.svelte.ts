@@ -146,9 +146,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     // activation, so the observable is an unprevented event), not taken by the heating ramp
     const prism_btn = doc_query<HTMLButtonElement>(`.view-toggle button:last-child`)
     prism_btn.focus()
-    const space = new KeyboardEvent(`keydown`, { key: ` `, bubbles: true, cancelable: true })
-    prism_btn.dispatchEvent(space)
-    flushSync()
+    const space = keydown(prism_btn, ` `)
     expect([space.defaultPrevented, document.activeElement]).toEqual([false, prism_btn])
     expect(doc_query(`.play-btn`).getAttribute(`aria-label`)).toBe(`Play heating ramp`)
     prism_btn.click()
@@ -590,19 +588,13 @@ describe(`PhaseStabilityMap`, () => {
   // Centred on their ticks, the 300 K label ran into `T (K)` and the 1500 K one off the canvas
   test(`temperature tick labels stay between the label gutter and the canvas edge`, async () => {
     const labels: { label: string; x: number }[] = []
-    const get_context = vi
-      .spyOn(HTMLCanvasElement.prototype, `getContext`)
-      .mockImplementation(function (this: HTMLCanvasElement) {
-        return new Proxy({} as CanvasRenderingContext2D, {
-          get: (_target, prop) => {
-            if (prop === `canvas`) return this
-            if (prop === `measureText`) return (label: string) => ({ width: 8 * label.length })
-            if (prop === `fillText`)
-              return (label: string, x: number) => labels.push({ label, x })
-            return vi.fn()
-          },
-        })
-      })
+    mock_canvas_context(
+      {
+        setLineDash: vi.fn(),
+        fillText: (label: string, x: number) => labels.push({ label, x }),
+      },
+      8, // px per character
+    )
     const props = { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }
     try {
       mount_it(PhaseStabilityMap, props)
@@ -616,7 +608,7 @@ describe(`PhaseStabilityMap`, () => {
         )
       }
     } finally {
-      get_context.mockRestore()
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore()
     }
   })
 })
@@ -697,10 +689,7 @@ test(`TernaryPhaseDiagramControls writes display patches, T range and gas pressu
     change(p_number, value)
     expect([state.gas_pressures.O2, p_number.value]).toEqual([5, `5`])
   }
-  p_slider.dispatchEvent(
-    new KeyboardEvent(`keydown`, { key: `Home`, bubbles: true, cancelable: true }),
-  )
-  flushSync()
+  keydown(p_slider, `Home`)
   expect(state.gas_pressures.O2).toBe(1e-12)
 })
 

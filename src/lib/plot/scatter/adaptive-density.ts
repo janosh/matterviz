@@ -5,6 +5,7 @@ import {
   range_bounds,
   validate_log_range,
 } from '#lib/plot/core/interactions.js'
+import type { Rect } from '#lib/plot/core/layout.js'
 import type { ColorScale, ScaleType } from '#lib/plot/core/types.js'
 import { assert_series_lengths, get_scale_type_name } from '#lib/plot/core/types.js'
 
@@ -80,13 +81,6 @@ export interface DensityBin {
   count: number
   x_range: Vec2
   y_range: Vec2
-}
-
-export interface PlotRect {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 // Monotonic transform pair: density bins are uniform in transformed (scale) space so
@@ -294,7 +288,7 @@ export const density_screen_cell = (
 export function density_bin_at_point(
   density: DensityBinResult,
   pointer: Point2D,
-  plot_rect: PlotRect,
+  plot_rect: Rect,
   x_range: Vec2,
   y_range: Vec2,
   transforms?: BinTransforms,

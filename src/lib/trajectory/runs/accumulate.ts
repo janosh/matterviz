@@ -6,6 +6,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { is_finite_vec3, type Matrix3x3, reciprocal_lattice } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
+import { site_stride, vector_offset } from '#lib/structure/site.js'
 import { values_per_sample } from '../helpers'
 import type { NumericFrame } from '../frame'
 import type {
@@ -149,7 +150,7 @@ class PositionAccumulator {
     const sites = `header` in frame ? frame.sites : frame.structure.sites
     const header = `header` in frame ? frame.header : frame
     const lattice = `lattice` in frame.structure ? frame.structure.lattice : undefined
-    const width = 6 + (numeric?.vector_keys.length ?? 0) * 3
+    const width = site_stride(numeric?.vector_keys ?? [])
     const scalar_columns = numeric?.scalar_columns ?? {}
     const id_column = Object.hasOwn(scalar_columns, `id`) ? scalar_columns.id : undefined
     const vector_id = numeric?.vector_keys.includes(`id`)
@@ -160,7 +161,7 @@ class PositionAccumulator {
         key,
         scalar,
         target: this.vectors[key],
-        offset: 6 + column * 3,
+        offset: vector_offset(column),
         source: column >= 0 && !scalar ? numeric?.coordinates : undefined,
       }
     })
@@ -357,7 +358,7 @@ export const parse_frame_signal = (
   if (typeof value === `number` && Number.isFinite(value)) {
     return { values: [value], sample_shape: [] }
   }
-  const flat_values = ArrayBuffer.isView(value)
+  const values = ArrayBuffer.isView(value)
     ? Array.from(value as unknown as ArrayLike<number>)
     : Array.isArray(value) && value.every((entry) => typeof entry === `number`)
       ? value
@@ -365,8 +366,7 @@ export const parse_frame_signal = (
   const tensor_key = /polarizability|tensor/i.test(key)
   const response_key = /dipole|polarization|current/i.test(key)
   const per_atom_key = /mass|charge|atom|site/i.test(key)
-  if (flat_values) {
-    const values = flat_values
+  if (values) {
     if (!values.every(Number.isFinite)) return null
     if (values.length === 9 && (n_atoms !== 3 || tensor_key)) {
       return { values, sample_shape: [3, 3] }

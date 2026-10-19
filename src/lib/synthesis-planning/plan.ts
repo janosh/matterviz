@@ -73,6 +73,22 @@ const empty_rejections = (): Record<RejectReason, number> => ({
   uphill: 0,
 })
 
+// Whether `phases` and the open gases together supply every element of `product`
+const covers = (
+  product: PlannerPhase,
+  phases: PlannerPhase[],
+  open_elements: boolean[],
+): boolean =>
+  product.fractions.every(
+    (fraction, el_idx) =>
+      fraction === 0 ||
+      open_elements[el_idx] ||
+      phases.some((phase) => phase.fractions[el_idx] > 0),
+  )
+
+const best_first = (route_a: SynthesisRoute, route_b: SynthesisRoute): number =>
+  route_b.score - route_a.score
+
 // Phases allowed to act as precursors for the target
 function build_precursor_pool(
   ctx: PlannerContext,
@@ -114,12 +130,7 @@ function build_precursor_pool(
     return true
   })
   const common = candidates.filter((phase) => lookup_precursor_info(phase.formula))
-  const common_covers_target = target.fractions.every(
-    (fraction, el_idx) =>
-      fraction === 0 ||
-      open_elements[el_idx] ||
-      common.some((phase) => phase.fractions[el_idx] > 0),
-  )
+  const common_covers_target = covers(target, common, open_elements)
   if (!common_covers_target && options.only_common !== false) {
     ctx.warnings.push(
       `Library precursors cannot supply every element of ${target.formula}; ${
@@ -246,13 +257,7 @@ function direct_routes(
         })
       }
       // Every target element must come from a precursor or an open gas
-      const covered = product.fractions.every(
-        (fraction, el_idx) =>
-          fraction === 0 ||
-          ctx.open_elements[el_idx] ||
-          subset.some((phase) => phase.fractions[el_idx] > 0),
-      )
-      if (!covered) {
+      if (!covers(product, subset, ctx.open_elements)) {
         ctx.rejected.unbalanced++
         continue
       }
@@ -260,10 +265,7 @@ function direct_routes(
       if (route) routes.push(route)
     }
   }
-  return {
-    routes: routes.toSorted((route_a, route_b) => route_b.score - route_a.score),
-    n_candidates,
-  }
+  return { routes: routes.toSorted(best_first), n_candidates }
 }
 
 const binomial = (n_items: number, k_items: number): number => {
@@ -300,7 +302,7 @@ function two_step_routes(
     const step2 = [[intermediate], ...pool.map((phase) => [intermediate, phase])]
       .map((precursors) => evaluate_route(sub_ctx, precursors, target, `two_step`))
       .filter((route): route is SynthesisRoute => route !== null)
-      .toSorted((route_a, route_b) => route_b.score - route_a.score)[0]
+      .toSorted(best_first)[0]
     const step1 =
       step2 &&
       direct_routes(sub_ctx, pool, intermediate, Math.min(max_precursors, 2)).routes[0]
@@ -428,7 +430,7 @@ export function plan_synthesis(
   )
   if (request.two_step) routes.push(...two_step_routes(ctx, pool, max_precursors, on_progress))
   on_progress?.({ stage: `ranking`, current: 0, total: 1 })
-  if (request.two_step) routes.sort((route_a, route_b) => route_b.score - route_a.score)
+  if (request.two_step) routes.sort(best_first)
   on_progress?.({ stage: `ranking`, current: 1, total: 1 })
 
   const kept_route_ids = new Set(request.keep_route_ids)

@@ -567,9 +567,7 @@
     const len = all_examples.length
     if (!len) return
     // Enter/Space on a focused example button is that button's click, not menu navigation
-    const is_button_activation =
-      (event.key === `Enter` || event.key === ` `) && event.target instanceof HTMLButtonElement
-    if (is_button_activation) return
+    if ([`Enter`, ` `].includes(event.key) && event.target instanceof HTMLButtonElement) return
 
     const key_actions: Record<string, () => void> = {
       ArrowDown: () => (focused_item_idx = (focused_item_idx + 1) % len),
@@ -899,19 +897,21 @@
       color: var(--highlight, #4db6ff);
     }
   }
-  .history-dropdown {
+  :is(.history-dropdown, .examples-dropdown) {
     position: absolute;
-    top: calc(100% + 2pt);
-    left: 0;
-    right: 0;
-    z-index: 101;
     background: var(--dropdown-bg, var(--surface-bg, #fff));
     border: 1px solid var(--dropdown-border, rgba(128, 128, 128, 0.2));
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    padding: 4pt 0;
     display: flex;
     flex-direction: column;
+  }
+  .history-dropdown {
+    top: calc(100% + 2pt);
+    left: 0;
+    right: 0;
+    z-index: 101;
+    padding: 4pt 0;
   }
   .history-header {
     font-size: 0.7em;
@@ -970,19 +970,12 @@
     min-height: 24px;
   }
   .examples-dropdown {
-    position: absolute;
     top: calc(100% + 4pt);
     right: 0;
     z-index: 100;
     width: max-content;
-    background: var(--dropdown-bg, var(--surface-bg, #fff));
-    border: 1px solid var(--dropdown-border, rgba(128, 128, 128, 0.2));
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     padding: 8pt;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
     gap: 6pt;
     &.anchor-left {
       right: auto;

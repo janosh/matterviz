@@ -3,13 +3,13 @@
 
 // === physical constants ===
 
-// CODATA 2022. One definition each so the Gaussian .cube reader (isosurface/parse.ts), the
-// FRMSF reader (fermi-surface/parse.ts) and the phonon unit table cannot drift apart.
+// CODATA 2022. One definition each so the Gaussian .cube reader (isosurface/parse.ts) and
+// the phonon unit table (spectral/frequency-units.ts) cannot drift apart.
 export const BOHR_TO_ANGSTROM = 0.529177210544
 export const HARTREE_TO_EV = 27.211386245981
 
-// Exact by SI definition; shared by the phonon unit table (spectral/helpers.ts) and the X-ray
-// wavelength math (xrd/calc-xrd.ts)
+// Exact by SI definition; shared by the phonon unit table (spectral/frequency-units.ts) and
+// the X-ray wavelength math (xrd/calc-xrd.ts)
 export const PLANCK_J_S = 6.62607015e-34 // J*s
 export const ELEMENTARY_CHARGE_C = 1.602176634e-19 // C (numerically also 1 eV in J)
 export const SPEED_OF_LIGHT_M_S = 299792458 // m/s

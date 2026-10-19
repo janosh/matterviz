@@ -1,7 +1,7 @@
 import PhononThermalPlot from '#lib/spectral/PhononThermalPlot.svelte'
 import type { PhononDos } from '#lib/spectral/index.js'
-import { flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
+import { flush_render, mount_in_test } from '../setup'
 
 // Einstein solid with 3 modes at 5 THz (see thermal.test.ts)
 const dos: PhononDos = {
@@ -11,19 +11,9 @@ const dos: PhononDos = {
 }
 
 describe(`PhononThermalPlot`, () => {
-  let component: ReturnType<typeof mount> | undefined
-  afterEach(async () => {
-    if (component) await unmount(component)
-    document.body.replaceChildren()
-  })
-
   const render = async (props: Record<string, unknown>) => {
-    component = mount(PhononThermalPlot, {
-      target: document.body,
-      props: { dos, temperatures: [0, 100, 300], ...props },
-    })
-    flushSync()
-    await tick()
+    mount_in_test(PhononThermalPlot, { dos, temperatures: [0, 100, 300], ...props })
+    await flush_render()
     const text = (selector: string) =>
       document.querySelector(selector)?.textContent?.replaceAll(/\s+/g, ` `).trim()
     return { legend: text(`.legend`), error: text(`.status-message`) }

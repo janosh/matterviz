@@ -11,127 +11,70 @@
 import type { BoundElement, DiagramInput, DiagramPoint } from './diagram-input'
 import type { BoundaryType, PhaseBoundary, PhaseDiagramData, PhaseRegion } from './types'
 
-// Parse curve reference syntax: 'curve_name', '~curve_name', 'curve_name[1:]', etc.
 interface CurveRef {
   name: string
   reverse: boolean
-  start: number | null // null means from beginning
-  end: number | null // null means to end
+  start?: number // Array.slice bounds: Python-style, negative counts from the end
+  end?: number
 }
 
+// Parse curve reference syntax: 'curve_name', '~curve_name', 'curve_name[1:]', etc.
 export function parse_curve_ref(ref: string): CurveRef {
-  let name = ref
-  let reverse = false
-  let start: number | null = null
-  let end: number | null = null
-
-  if (name.startsWith(`~`)) {
-    reverse = true
-    name = name.slice(1)
-  }
-
-  const slice_match = /^(?<base>.+)\[(?<start>-?\d*):(?<end>-?\d*)\]$/.exec(name)
-  if (slice_match) {
-    name = slice_match[1]
-    start = slice_match[2] ? Number(slice_match[2]) : null
-    end = slice_match[3] ? Number(slice_match[3]) : null
-  }
-
-  return { name, reverse, start, end }
-}
-
-// Apply slicing to array (Python-style negative indices supported)
-export function apply_slice<T>(arr: T[], start: number | null, end: number | null): T[] {
-  const len = arr.length
-  let start_idx = start ?? 0
-  let end_idx = end ?? len
-
-  // Handle negative indices
-  if (start_idx < 0) start_idx = Math.max(0, len + start_idx)
-  if (end_idx < 0) end_idx = Math.max(0, len + end_idx)
-
-  return arr.slice(start_idx, end_idx)
+  const reverse = ref.startsWith(`~`)
+  const name = reverse ? ref.slice(1) : ref
+  const slice = /^(?<base>.+)\[(?<start>-?\d*):(?<end>-?\d*)\]$/.exec(name)?.groups
+  const index = (digits?: string) => (digits ? Number(digits) : undefined)
+  return slice
+    ? { name: slice.base, reverse, start: index(slice.start), end: index(slice.end) }
+    : { name, reverse }
 }
 
 // Expand bounds to vertex list
-function expand_bounds(
+const expand_bounds = (
   bounds: BoundElement[],
   curves: Record<string, DiagramPoint[]>,
-): DiagramPoint[] {
-  const vertices: DiagramPoint[] = []
-
-  for (const bound of bounds) {
-    if (Array.isArray(bound)) {
-      vertices.push(bound)
-    } else {
-      const ref = parse_curve_ref(bound)
-      let points = curves[ref.name]
-
-      if (!points) {
-        throw new Error(
-          `Unknown curve "${ref.name}" in region bounds; known curves: ${Object.keys(curves).join(`, `) || `none`}`,
-        )
-      }
-
-      // Apply reverse first (to match Python's `reversed(curve)[1:]` pattern)
-      if (ref.reverse) {
-        points = points.toReversed()
-      }
-
-      // Then apply slice
-      points = apply_slice(points, ref.start, ref.end)
-
-      vertices.push(...points)
+): DiagramPoint[] =>
+  bounds.flatMap((bound) => {
+    if (Array.isArray(bound)) return [bound]
+    const ref = parse_curve_ref(bound)
+    const points = curves[ref.name]
+    if (!points) {
+      throw new Error(
+        `Unknown curve "${ref.name}" in region bounds; known curves: ${Object.keys(curves).join(`, `) || `none`}`,
+      )
     }
-  }
+    // Reverse before slicing, to match Python's `reversed(curve)[1:]` pattern
+    return (ref.reverse ? points.toReversed() : points).slice(ref.start, ref.end)
+  })
 
-  return vertices
-}
-
-// Remove consecutive duplicate vertices
+// Remove consecutive duplicate vertices and a closing vertex that repeats the first
 function dedupe_consecutive_vertices(vertices: DiagramPoint[]): DiagramPoint[] {
-  if (vertices.length <= 1) return vertices
-
-  const result: DiagramPoint[] = [vertices[0]]
-  for (let idx = 1; idx < vertices.length; idx++) {
-    const prev = result[result.length - 1]
-    const curr = vertices[idx]
-    if (curr[0] !== prev[0] || curr[1] !== prev[1]) {
-      result.push(curr)
-    }
-  }
-
-  // Remove redundant closing vertex if polygon is explicitly closed
-  if (result.length > 1) {
-    const first = result[0]
-    const last = result[result.length - 1]
-    if (first[0] === last[0] && first[1] === last[1]) {
-      result.pop()
-    }
-  }
-
+  const result = vertices.filter(
+    (vertex, idx) =>
+      idx === 0 || vertex[0] !== vertices[idx - 1][0] || vertex[1] !== vertices[idx - 1][1],
+  )
+  const [first, last] = [result[0], result.at(-1)]
+  if (result.length > 1 && first[0] === last?.[0] && first[1] === last[1]) result.pop()
   return result
 }
 
-// Infer boundary type from curve name
-function infer_boundary_type(curve_name: string): BoundaryType {
-  const lower = curve_name.toLowerCase()
-  if (lower.startsWith(`liquidus`)) return `liquidus`
-  if (lower.startsWith(`solidus`)) return `solidus`
-  if (lower.startsWith(`solvus`)) return `solvus`
-  if (lower.startsWith(`eutectic`)) return `eutectic`
-  if (lower.startsWith(`peritectic`)) return `peritectic`
-  return `custom`
-}
+// Default style of each boundary type a curve name can start with (liquidus_left → liquidus)
+const NAMED_BOUNDARY_STYLES = {
+  liquidus: { color: `#1565c0`, width: 2.5 },
+  solidus: { color: `#2e7d32`, width: 2, dash: `4,2` },
+  solvus: { color: `#7b1fa2`, width: 1.5, dash: `2,2` },
+  eutectic: { color: `#d32f2f`, width: 2 },
+  peritectic: { color: `#d32f2f`, width: 2 },
+} as const satisfies Partial<Record<BoundaryType, PhaseBoundary[`style`]>>
+const NAMED_BOUNDARY_TYPES = Object.keys(
+  NAMED_BOUNDARY_STYLES,
+) as (keyof typeof NAMED_BOUNDARY_STYLES)[]
 
-function get_boundary_style(btype: BoundaryType): PhaseBoundary[`style`] {
-  if (btype === `liquidus`) return { color: `#1565c0`, width: 2.5 }
-  if (btype === `solidus`) return { color: `#2e7d32`, width: 2, dash: `4,2` }
-  if (btype === `solvus`) return { color: `#7b1fa2`, width: 1.5, dash: `2,2` }
-  if (btype === `eutectic` || btype === `peritectic`) {
-    return { color: `#d32f2f`, width: 2 }
-  }
-  return { color: `#333`, width: 1.5 }
+const curve_boundary = (id: string, points: DiagramPoint[]): PhaseBoundary => {
+  const type = NAMED_BOUNDARY_TYPES.find((name) => id.toLowerCase().startsWith(name))
+  return type
+    ? { id, type, points, style: { ...NAMED_BOUNDARY_STYLES[type] } }
+    : { id, type: `custom`, points, style: { color: `#333`, width: 1.5 } }
 }
 
 // Region, boundary and special-point ids key the rendered SVG elements (and gradient ids), so
@@ -164,11 +107,7 @@ export function build_diagram(input: DiagramInput): PhaseDiagramData {
     }
   })
 
-  const boundaries: PhaseBoundary[] = Object.entries(curves).map(([name, points]) => {
-    const btype = infer_boundary_type(name)
-    const style = get_boundary_style(btype)
-    return { id: name, type: btype, points, style }
-  })
+  const boundaries = Object.entries(curves).map(([id, points]) => curve_boundary(id, points))
 
   const data: PhaseDiagramData = {
     components: meta.components,

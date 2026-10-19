@@ -25,7 +25,6 @@ export function box_muller(mean = 0, std_dev = 1, rng: Rng = Math.random): numbe
   return mean + coord_z_0 * std_dev
 }
 
-// Generate normal distribution data
 export function generate_normal(
   count: number,
   mean = 0,
@@ -46,7 +45,6 @@ export const generate_signed_data = (count: number, rng: Rng = Math.random): num
     return -rng() * 1000
   })
 
-// Generate exponential distribution data
 export function generate_exponential(
   count: number,
   lambda: number,
@@ -58,7 +56,6 @@ export function generate_exponential(
   return Array.from({ length: count }, () => -Math.log(positive_uniform(rng)) / lambda)
 }
 
-// Generate uniform distribution data
 export function generate_uniform(
   count: number,
   min_val: number,
@@ -71,7 +68,6 @@ export function generate_uniform(
   return Array.from({ length: count }, () => min_val + rng() * (max_val - min_val))
 }
 
-// Generate log-normal distribution data
 export const generate_log_normal = (
   count: number,
   mean: number,
@@ -79,7 +75,6 @@ export const generate_log_normal = (
   rng: Rng = Math.random,
 ) => Array.from({ length: count }, () => Math.exp(box_muller(mean, sigma, rng)))
 
-// Generate power law distribution data
 export const generate_power_law = (
   count: number,
   alpha: number,
@@ -87,7 +82,6 @@ export const generate_power_law = (
   rng: Rng = Math.random,
 ) => Array.from({ length: count }, () => x_min * (1 - rng()) ** (-1 / (alpha - 1)))
 
-// Generate Pareto distribution data
 export const generate_pareto = (
   count: number,
   x_min: number,
@@ -170,7 +164,6 @@ export const generate_scientific_data = (count: number, rng: Rng = Math.random) 
     return Math.max(0, base + noise)
   })
 
-// Weighted choice function for discrete distributions
 const weighted_choice = (weights: number[], rng: Rng): number => {
   const total_weight = weights.reduce((sum, weight) => {
     if (!Number.isFinite(weight) || weight < 0) throw new RangeError(`invalid weights`)
@@ -187,7 +180,6 @@ const weighted_choice = (weights: number[], rng: Rng): number => {
   return weights.length - 1
 }
 
-// Generate bimodal distribution data
 export const generate_bimodal = (count: number, rng: Rng = Math.random) =>
   Array.from({ length: count }, () => {
     const use_first_mode = rng() < 0.6

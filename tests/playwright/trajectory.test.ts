@@ -8,24 +8,18 @@ import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { readFile } from 'node:fs/promises'
 import {
+  collect_console_errors,
+  load_all_demos,
   drag_canvas,
   drop_file,
-  collect_console_errors,
+  require_bbox,
   expect_centered,
   expect_inline_spinner,
-  IS_CI,
-  require_bbox,
 } from './helpers'
 
 // Extended timeout for elements that load after trajectory data (plots, controls)
 const LOAD_TIMEOUT = 15_000
 const HYDRATION_TIMEOUT = 30_000
-
-// Helper to conditionally skip entire describe blocks on CI
-const describe_local_only = (title: string, callback: () => void): void => {
-  if (IS_CI) test.describe.skip(title, callback)
-  else test.describe(title, callback)
-}
 
 test(`homepage keeps the compressed trajectory source URL after loading`, async ({ page }) => {
   const compressed_path = `/trajectories/Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
@@ -49,6 +43,51 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
   expect(trajectory_requests).toEqual([compressed_path])
 })
 
+// A tall inspector table grew the row past the viewer's clipped bottom (Ag run: +149px); the
+// sticky column showed the page's background instead of the sidebar's; the undragged inspector
+// is capped at a third of the row
+test(`demo viewers keep a data inspector within its box, a third wide, evenly shaded`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 1200 })
+  await page.goto(`/trajectory`, { waitUntil: `domcontentloaded` })
+  const viewers = page.locator(`.trajectory:has(.trajectory-data-inspector-sidebar)`)
+  await load_all_demos(page)
+  await expect(viewers).toHaveCount(4, { timeout: HYDRATION_TIMEOUT })
+  for (const viewer of await viewers.all()) {
+    await viewer.scrollIntoViewIfNeeded()
+    const { overflow, width_share, sidebar_bg, sticky_bgs } = await viewer.evaluate(
+      (element) => {
+        const row = element.querySelector(`:scope > .viewer-row`)
+        const sidebar = element.querySelector(`.trajectory-data-inspector-sidebar`)
+        const sticky_cells = sidebar?.querySelectorAll(
+          `tbody tr:nth-child(-n + 2) td:first-child`,
+        )
+        if (!row || !sidebar || sticky_cells?.length !== 2)
+          throw new Error(`no viewer row or inspector cells`)
+        return {
+          overflow:
+            row.getBoundingClientRect().bottom - element.getBoundingClientRect().bottom,
+          width_share:
+            sidebar.getBoundingClientRect().width / row.getBoundingClientRect().width,
+          sidebar_bg: getComputedStyle(sidebar).backgroundColor,
+          // [color, image] of the sticky cells in an odd (striped) and an even row
+          sticky_bgs: [...sticky_cells].map((cell) => {
+            const { backgroundColor, backgroundImage } = getComputedStyle(cell)
+            return [backgroundColor, backgroundImage.split(`(`)[0]]
+          }),
+        }
+      },
+    )
+    expect(overflow).toBeLessThanOrEqual(1)
+    expect(width_share).toBeLessThanOrEqual(1 / 3 + 0.002)
+    expect(sticky_bgs).toEqual([
+      [sidebar_bg, `linear-gradient`],
+      [sidebar_bg, `none`],
+    ])
+  }
+})
+
 async function select_display_mode(trajectory: Locator, mode_name: string) {
   const display_button = trajectory.locator(`.view-mode-dropdown-wrapper .view-mode-button`)
   await expect(display_button).toBeVisible()
@@ -65,6 +104,10 @@ async function select_display_mode(trajectory: Locator, mode_name: string) {
 test.describe(`Trajectory Component`, () => {
   let trajectory_viewer: Locator
   let controls: Locator
+  const open_analysis = async (label: string): Promise<void> => {
+    await controls.locator(`.analysis-button`).click()
+    await trajectory_viewer.getByRole(`button`, { name: label, exact: true }).click()
+  }
 
   test.beforeEach(async ({ page }, test_info) => {
     test_info.setTimeout(test_info.timeout + HYDRATION_TIMEOUT)
@@ -89,19 +132,6 @@ test.describe(`Trajectory Component`, () => {
       timeout: HYDRATION_TIMEOUT,
     })
     if (query) await expect(page.locator(`.trajectory`)).toHaveCount(1)
-  })
-
-  test(`empty state displays correctly`, async ({ page }) => {
-    const empty_trajectory = page.locator(`#empty-state`)
-
-    await expect(empty_trajectory.locator(`.empty-state h3`)).toHaveText(`Load Trajectory`)
-    await expect(empty_trajectory.locator(`.empty-state > p`)).toContainText(
-      `multi-frame (ext)XYZ`,
-    )
-    await expect(empty_trajectory).toHaveAttribute(
-      `aria-label`,
-      `Drop trajectory file here to load`,
-    )
   })
 
   test(
@@ -153,24 +183,19 @@ test.describe(`Trajectory Component`, () => {
     },
   )
 
-  test(`narrow viewer hides the filename and keeps the step slider off the FPS input`, async () => {
-    await trajectory_viewer.evaluate((element) => {
-      element.style.width = `1200px`
-    })
-    await expect(trajectory_viewer.locator(`button.filename`)).toBeVisible()
-    await trajectory_viewer.evaluate((element) => {
-      element.style.width = `800px`
-    })
-    await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
-    const slider_box = await require_bbox(trajectory_viewer.locator(`.slider-container`))
-    const fps_box = await require_bbox(trajectory_viewer.locator(`.fps-section`))
-    expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(fps_box.x + 1)
-  })
-
-  test(`loads and scrubs a local HDF5 File through the lazy worker loader`, async ({
+  test(`empty state loads and scrubs a local HDF5 File through the lazy worker loader`, async ({
     page,
   }) => {
     const empty_trajectory = page.locator(`#empty-state`)
+    await expect(empty_trajectory.locator(`.empty-state h3`)).toHaveText(`Load Trajectory`)
+    await expect(empty_trajectory.locator(`.empty-state > p`)).toContainText(
+      `multi-frame (ext)XYZ`,
+    )
+    await expect(empty_trajectory).toHaveAttribute(
+      `aria-label`,
+      `Drop trajectory file here to load`,
+    )
+
     await empty_trajectory.evaluate(async (target) => {
       const response = await fetch(`/trajectories/flame-gold-cluster-55-atoms.h5`)
       const source = await response.blob()
@@ -482,7 +507,7 @@ test.describe(`Trajectory Component`, () => {
     })
   })
 
-  test(`step navigation and play/pause controls work`, async () => {
+  test(`step navigation, play/pause and FPS input controls work`, async () => {
     const step_input = controls.locator(`.step-input`)
     await expect(step_input).toHaveValue(`1`)
     await expect(controls.locator(`span`).filter({ hasText: `/ 3` })).toBeVisible()
@@ -501,6 +526,26 @@ test.describe(`Trajectory Component`, () => {
     await expect(play_button).toHaveText(`⏸`)
     await play_button.click()
     await expect(play_button).toHaveText(`▶`)
+
+    // FPS input uses 0.1 increments and shared bounds
+    await play_button.click() // Start playing to show FPS controls
+    const fps_section = trajectory_viewer.locator(`.fps-section`)
+    await expect(fps_section).toBeVisible()
+    const fps_input = fps_section.locator(`input[type="number"]`)
+    for (const [input, expected] of [
+      [`12.34`, `12.3`],
+      [`300`, `300`],
+      [`0`, `0`],
+    ]) {
+      await fps_input.fill(input)
+      await fps_input.press(`Enter`)
+      await expect(fps_input, `FPS input ${input}`).toHaveValue(expected)
+    }
+    await expect(fps_input).toHaveAttribute(`min`, `0`)
+    await expect(fps_input).toHaveAttribute(`max`, `300`)
+    await expect(fps_input).toHaveAttribute(`step`, `0.1`)
+    await expect(fps_section.locator(`input[type="range"]`)).toHaveCount(0)
+    await expect(play_button, `0 FPS pauses playback`).toHaveText(`▶`)
   })
 
   test(
@@ -519,10 +564,7 @@ test.describe(`Trajectory Component`, () => {
         .join(``)
       await drop_file(page, trajectory_viewer, trajectory_xyz, `hotspot-settings.xyz`)
       await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `2`)
-      await controls.locator(`.analysis-button`).click()
-      await trajectory_viewer
-        .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
-        .click()
+      await open_analysis(`Thermal hotspots`)
       const pane = trajectory_viewer.locator(`.hotspots-pane`)
       const calculate = pane.getByRole(`button`, { name: `Calculate hotspots`, exact: true })
       await expect(pane.getByText(`Inferred from recorded masses`)).toBeVisible()
@@ -589,15 +631,19 @@ test.describe(`Trajectory Component`, () => {
     },
   )
 
-  for (const [mode, fullscreen] of [
-    [`Structure-only`, false],
-    [`Structure + Plot`, true],
-  ] as const) {
-    test(
-      `floating panes cover embedded controls in ${mode}`,
-      { tag: `@single-viewer` },
-      async ({ page }) => {
-        await page.setViewportSize({ width: 1000, height: 900 })
+  test(
+    `floating panes cover embedded controls in Structure-only and fullscreen Structure + Plot`,
+    { tag: `@single-viewer` },
+    async ({ page }, test_info) => {
+      test_info.setTimeout(test_info.timeout + 30_000) // two display modes, four panes
+      await page.setViewportSize({ width: 1000, height: 900 })
+      const structure = trajectory_viewer.locator(`.structure`)
+      const toolbar = structure.locator(`.control-buttons`)
+      const pane = controls.locator(`.viewer-pane-open`)
+      for (const [mode, fullscreen] of [
+        [`Structure-only`, false],
+        [`Structure + Plot`, true],
+      ] as const) {
         await select_display_mode(trajectory_viewer, mode)
         if (fullscreen) {
           await controls.locator(`.fullscreen-button`).click()
@@ -606,17 +652,13 @@ test.describe(`Trajectory Component`, () => {
             `true`,
           )
         }
-        const structure = trajectory_viewer.locator(`.structure`)
-        const toolbar = structure.locator(`.control-buttons`)
         // the data inspector is a sidebar, not a floating pane
         for (const label of [`Thermal hotspots`, `Mean squared displacement`]) {
-          await controls.locator(`.analysis-button`).click()
-          await controls.getByRole(`button`, { name: label, exact: true }).click()
-          const pane = controls.locator(`.viewer-pane-open`)
-          await expect(pane).toBeVisible()
+          await open_analysis(label)
+          await expect(pane, `${mode}: ${label}`).toBeVisible()
           // Focus keeps the underlying hover toolbar visible even though the pane covers it.
           await structure.focus()
-          await expect(toolbar).toHaveCSS(`opacity`, `1`)
+          await expect(toolbar, `${mode}: ${label}`).toHaveCSS(`opacity`, `1`)
           await expect(async () => {
             const covered = await pane.evaluate((element) => {
               const rect = element.getBoundingClientRect()
@@ -642,11 +684,14 @@ test.describe(`Trajectory Component`, () => {
             })
             expect(covered.length).toBeGreaterThan(0)
             expect(covered.every(Boolean)).toBe(true)
-          }).toPass({ timeout: 5000 })
+          }, `${mode}: ${label} covers the structure toolbar`).toPass({ timeout: 5000 })
         }
-      },
-    )
-  }
+        // Close the pane so the next mode starts with only the analysis menu, as on a fresh load
+        await page.keyboard.press(`Escape`)
+        await expect(pane).toBeHidden()
+      }
+    },
+  )
 
   test(
     `hotspot coverage preserves sampled gaps and leaves the slider usable`,
@@ -663,10 +708,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `4`)
       await controls.locator(`.step-input`).fill(`2`) // frame index 1
       await controls.locator(`.step-input`).press(`Enter`)
-      await controls.locator(`.analysis-button`).click()
-      await trajectory_viewer
-        .getByRole(`button`, { name: `Thermal hotspots`, exact: true })
-        .click()
+      await open_analysis(`Thermal hotspots`)
       const pane = trajectory_viewer.locator(`.hotspots-pane`)
       await pane.getByLabel(/^Velocity units/).selectOption(`A/ps`)
       await pane.getByLabel(/^Masses/).selectOption(`standard`)
@@ -791,13 +833,7 @@ test.describe(`Trajectory Component`, () => {
     ).join(``)
     await drop_file(page, trajectory_viewer, content, `spectroscopy.xyz`)
     await expect(controls.locator(`.step-input`)).toHaveAttribute(`max`, `8`)
-    await controls.locator(`.analysis-button`).click()
-    await trajectory_viewer
-      .getByRole(`button`, {
-        name: `Trajectory IR/Raman & VDOS`,
-        exact: true,
-      })
-      .click()
+    await open_analysis(`Trajectory IR/Raman & VDOS`)
     const analysis = trajectory_viewer.locator(`.trajectory-spectroscopy-inline`)
     await expect(analysis.locator(`.scatter`)).toBeVisible({ timeout: LOAD_TIMEOUT })
     await analysis.locator(`.plot-controls-toggle`).click()
@@ -1020,15 +1056,15 @@ test.describe(`Trajectory Component`, () => {
       },
     )
 
-    test(`step labels clear ticks and stay within the control bar`, async ({ page }) => {
-      const loaded_trajectory = page.locator(`#loaded-trajectory`)
-      const step_labels = loaded_trajectory.locator(`.step-labels .step-label`)
+    test(`step labels clear ticks within the control bar and a narrow viewer hides the filename`, async ({
+      page,
+    }) => {
+      const step_labels = trajectory_viewer.locator(`.step-labels .step-label`)
       // numbered 1..N like the step input
       await expect(step_labels).toHaveText([`1`, `2`, `3`])
 
-      const { controls_bottom, label_bottoms, tick_label_gaps } = await loaded_trajectory
-        .locator(`.trajectory-controls`)
-        .evaluate((control_bar) => {
+      const { controls_bottom, label_bottoms, tick_label_gaps } = await controls.evaluate(
+        (control_bar) => {
           const labels = Array.from(control_bar.querySelectorAll(`.step-label`))
           return {
             controls_bottom: control_bar.getBoundingClientRect().bottom,
@@ -1039,7 +1075,8 @@ test.describe(`Trajectory Component`, () => {
               return label.getBoundingClientRect().top - tick.getBoundingClientRect().bottom
             }),
           }
-        })
+        },
+      )
       expect(Math.max(...label_bottoms)).toBeLessThanOrEqual(controls_bottom)
       expect(Math.min(...tick_label_gaps)).toBeGreaterThanOrEqual(1)
 
@@ -1050,6 +1087,19 @@ test.describe(`Trajectory Component`, () => {
       ])
       // explicit step_labels are 0-based indices
       await expect(page.locator(`#array-step-labels .step-label`)).toHaveText([`1`, `3`])
+
+      // A narrow viewer hides the filename and keeps the step slider off the FPS input
+      await trajectory_viewer.evaluate((element) => {
+        element.style.width = `1200px`
+      })
+      await expect(trajectory_viewer.locator(`button.filename`)).toBeVisible()
+      await trajectory_viewer.evaluate((element) => {
+        element.style.width = `800px`
+      })
+      await expect(trajectory_viewer.locator(`button.filename`)).toBeHidden()
+      const slider_box = await require_bbox(trajectory_viewer.locator(`.slider-container`))
+      const fps_box = await require_bbox(trajectory_viewer.locator(`.fps-section`))
+      expect(slider_box.x + slider_box.width).toBeLessThanOrEqual(fps_box.x + 1)
     })
 
     test(`viewer surface contrasts the page and hover controls overlay it`, async ({
@@ -1087,9 +1137,7 @@ test.describe(`Trajectory Component`, () => {
     })
   })
 
-  describe_local_only(`plot and data visualization`, () => {
-    // Skipped on CI because scatter plot rendering times out
-
+  test.describe(`plot and data visualization`, () => {
     test(`legend toggle keeps a series hidden`, async () => {
       const scatter_plot = trajectory_viewer.locator(`.scatter`)
       await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
@@ -1111,43 +1159,45 @@ test.describe(`Trajectory Component`, () => {
       await expect(first_item).toHaveClass(/hidden/)
     })
 
-    for (const [selector, navigation_enabled] of [
-      [`#no-plot-skimming`, false],
-      [`#loaded-trajectory`, true],
-    ] as const) {
-      test(`plot navigation enabled=${navigation_enabled} requires a click`, async ({
-        page,
-      }) => {
+    test(`plot hover never navigates and a click navigates only when enabled`, async ({
+      page,
+    }) => {
+      for (const [selector, navigation_enabled] of [
+        [`#no-plot-skimming`, false],
+        [`#loaded-trajectory`, true],
+      ] as const) {
         const trajectory = page.locator(selector)
         const scatter_plot = trajectory.locator(`.scatter`)
         const step_input = trajectory.locator(`.step-input`)
-        await expect(scatter_plot).toBeVisible({ timeout: LOAD_TIMEOUT })
+        await expect(scatter_plot, selector).toBeVisible({ timeout: LOAD_TIMEOUT })
         const plot_points = scatter_plot.locator(`.marker`)
-        expect(await plot_points.count()).toBeGreaterThan(1)
+        expect(await plot_points.count(), selector).toBeGreaterThan(1)
         const initial_step = await step_input.inputValue()
         await plot_points.nth(1).hover()
-        await expect(step_input).toHaveValue(initial_step)
+        await expect(step_input, `${selector} hover`).toHaveValue(initial_step)
         await plot_points.nth(1).click()
-        if (navigation_enabled) await expect(step_input).not.toHaveValue(initial_step)
-        else await expect(step_input).toHaveValue(initial_step)
-      })
-    }
+        const click_step = expect(step_input, `${selector} click`)
+        if (navigation_enabled) await click_step.not.toHaveValue(initial_step)
+        else await click_step.toHaveValue(initial_step)
+      }
+    })
 
-    for (const [kind, frame_count] of [
-      [`constant-values`, 2],
-      [`single-frame`, 1],
-    ] as const) {
-      test(`plot hides for ${kind} trajectories`, async ({ page }) => {
+    test(`plot hides for constant-values and single-frame trajectories`, async ({ page }) => {
+      for (const [kind, frame_count] of [
+        [`constant-values`, 2],
+        [`single-frame`, 1],
+      ] as const) {
         const viewer = page.locator(`#${kind}`)
         const content_area = viewer.locator(`.content-area`)
-        await expect(content_area).toHaveClass(/hide-plot/)
-        await expect(content_area.locator(`.structure`)).toBeVisible()
-        await expect(viewer.locator(`.step-input`)).toHaveValue(`1`)
+        await expect(content_area, kind).toHaveClass(/hide-plot/)
+        await expect(content_area.locator(`.structure`), kind).toBeVisible()
+        await expect(viewer.locator(`.step-input`), kind).toHaveValue(`1`)
         await expect(
           viewer.locator(`.trajectory-controls span`).filter({ hasText: `/ ${frame_count}` }),
+          kind,
         ).toBeVisible()
-      })
-    }
+      }
+    })
   })
 
   test.describe(`advanced features`, () => {
@@ -1200,7 +1250,9 @@ test.describe(`Trajectory Component`, () => {
       )
     })
 
-    test(`keyboard shortcuts are disabled when typing in inputs`, async ({ page }) => {
+    test(`keyboard shortcuts skip inputs and V cycles only the focused viewer, keeping its focus`, async ({
+      page,
+    }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       await select_display_mode(trajectory, `Structure-only`)
       const step_input = trajectory.locator(`.step-input`)
@@ -1209,15 +1261,14 @@ test.describe(`Trajectory Component`, () => {
       await expect(step_input).toHaveValue(`2`)
       await page.keyboard.press(`Space`)
       const play_button = trajectory.locator(`.play-button`)
-      await expect(play_button).toHaveText(`▶`)
+      await expect(play_button, `Space in the step input must not play`).toHaveText(`▶`)
       await page.keyboard.press(`v`)
-      await expect(trajectory.locator(`.content-area`)).toHaveClass(/show-structure-only/)
-    })
+      await expect(
+        trajectory.locator(`.content-area`),
+        `v in the step input must not cycle the display mode`,
+      ).toHaveClass(/show-structure-only/)
 
-    test(`V cycles only the focused viewer and keeps focus when its structure disappears`, async ({
-      page,
-    }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
+      // V cycles only the focused viewer
       const sibling = page.locator(`#vertical-layout`)
       const content = await select_display_mode(trajectory, `Structure + Plot`)
       const view_button = trajectory.locator(`.trajectory-controls .view-mode-button`)
@@ -1279,31 +1330,6 @@ test.describe(`Trajectory Component`, () => {
         }
       },
     )
-
-    test(`FPS input uses 0.1 increments and shared bounds`, async ({ page }) => {
-      const trajectory = page.locator(`#loaded-trajectory`)
-      const play_button = trajectory.locator(`.play-button`)
-
-      await play_button.click() // Start playing to show FPS controls
-
-      const fps_section = trajectory.locator(`.fps-section`)
-      await expect(fps_section).toBeVisible()
-      const fps_input = fps_section.locator(`input[type="number"]`)
-      for (const [input, expected] of [
-        [`12.34`, `12.3`],
-        [`300`, `300`],
-        [`0`, `0`],
-      ]) {
-        await fps_input.fill(input)
-        await fps_input.press(`Enter`)
-        await expect(fps_input).toHaveValue(expected)
-      }
-      await expect(fps_input).toHaveAttribute(`min`, `0`)
-      await expect(fps_input).toHaveAttribute(`max`, `300`)
-      await expect(fps_input).toHaveAttribute(`step`, `0.1`)
-      await expect(fps_section.locator(`input[type="range"]`)).toHaveCount(0)
-      await expect(play_button).toHaveText(`▶`)
-    })
   })
 
   test.describe(`responsive design and viewport-based layout`, () => {
@@ -1524,43 +1550,44 @@ const orbit = async (
   return JSON.parse((await output.textContent()) ?? `null`)
 }
 
-// A dataset of unrelated structures read as one trajectory: stepping to a frame with another
-// cell must orbit that cell's center (the first frame's sat at its corner), and a cell three times
-// the size gets a camera backed off to fit it rather than the first frame's close-up.
-test(`stepping to a frame with another cell orbits and frames that cell`, async ({ page }) => {
+test(`a trajectory frame or plain Structure with another cell orbits and frames that cell`, async ({
+  page,
+}, test_info) => {
+  // two viewers' orbit sequences, each given the default budget
+  test_info.setTimeout(2 * test_info.timeout)
   await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
   await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
     timeout: HYDRATION_TIMEOUT,
   })
-  const viewer = page.locator(`#dataset-trajectory`)
-  const camera = page.locator(`#dataset-camera`)
-  const distance = ({ target, position }: { target: number[]; position: number[] }) =>
-    Math.hypot(...position.map((coord, axis) => coord - target[axis]))
-  const first = await orbit(viewer, camera)
-  const step_input = viewer.locator(`.step-input`)
-  await step_input.fill(`2`) // second frame
-  await step_input.press(`Enter`)
-  await expect(step_input).toHaveValue(`2`)
-  const second = await orbit(viewer, camera)
-  // The 6 Å cell's center, where the 2 Å first frame's center [1, 1, 1] would sit at its corner.
-  expect(second.target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))
-  expect(distance(second) / distance(first)).toBeGreaterThan(2)
-})
-
-// A new structure (a new file) is framed afresh on its own center; the frame follow must not
-// shift that fresh framing again by the offset between the old and new cell centers.
-test(`a plain Structure given a new cell orbits that cell's center`, async ({ page }) => {
-  await page.goto(`/test/trajectory`, { waitUntil: `domcontentloaded` })
-  await expect(page.locator(`h1`)).toHaveAttribute(`data-hydrated`, `true`, {
-    timeout: HYDRATION_TIMEOUT,
+  // A dataset of unrelated structures read as one trajectory: stepping to a frame with another
+  // cell must orbit that cell's center (the first frame's sat at its corner), and a cell three
+  // times the size gets a camera backed off to fit it rather than the first frame's close-up.
+  await test.step(`stepping to a frame with another cell`, async () => {
+    const viewer = page.locator(`#dataset-trajectory`)
+    const camera = page.locator(`#dataset-camera`)
+    const distance = ({ target, position }: { target: number[]; position: number[] }) =>
+      Math.hypot(...position.map((coord, axis) => coord - target[axis]))
+    const first = await orbit(viewer, camera)
+    const step_input = viewer.locator(`.step-input`)
+    await step_input.fill(`2`) // second frame
+    await step_input.press(`Enter`)
+    await expect(step_input).toHaveValue(`2`)
+    const second = await orbit(viewer, camera)
+    // The 6 Å cell's center, where the 2 Å first frame's center [1, 1, 1] would sit at its corner.
+    expect(second.target).toEqual([3, 3, 3].map((coord) => expect.closeTo(coord, 1)))
+    expect(distance(second) / distance(first)).toBeGreaterThan(2)
   })
-  const viewer = page.locator(`#swapped-structure`)
-  const camera = page.locator(`#swap-camera`)
-  expect((await orbit(viewer, camera)).target).toEqual(
-    [2, 2, 2].map((coord) => expect.closeTo(coord, 1)),
-  )
-  await page.locator(`#swap-structure`).click()
-  expect((await orbit(viewer, camera)).target).toEqual(
-    [3, 3, 3].map((coord) => expect.closeTo(coord, 1)),
-  )
+  // A new structure (a new file) is framed afresh on its own center; the frame follow must not
+  // shift that fresh framing again by the offset between the old and new cell centers.
+  await test.step(`a plain Structure given a new cell`, async () => {
+    const viewer = page.locator(`#swapped-structure`)
+    const camera = page.locator(`#swap-camera`)
+    expect((await orbit(viewer, camera)).target).toEqual(
+      [2, 2, 2].map((coord) => expect.closeTo(coord, 1)),
+    )
+    await page.locator(`#swap-structure`).click()
+    expect((await orbit(viewer, camera)).target).toEqual(
+      [3, 3, 3].map((coord) => expect.closeTo(coord, 1)),
+    )
+  })
 })

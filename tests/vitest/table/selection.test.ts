@@ -22,6 +22,10 @@ describe(`CellSelection`, () => {
     expect(sorted_keys(selection)).toEqual([`9:9`])
     selection.clear()
     expect(selection.size).toBe(0)
+    // clearing an empty selection changes nothing, so no cell's has() re-runs
+    const { keys } = selection
+    selection.clear()
+    expect(selection.keys).toBe(keys)
     expect(selection.end_drag()).toBe(false)
   })
 

@@ -4,6 +4,12 @@ import { css_to_linear_rgb } from '#lib/scene/colors.js'
 const scratch = new Color()
 const gray = new Color(0x999999)
 
+// `css` as linear RGB in `target`, faded toward gray for ghosted (image) instances
+export const set_instance_color = (target: Color, css: string, ghost = false): Color => {
+  target.setRGB(...css_to_linear_rgb(css))
+  return ghost ? target.lerp(gray, 0.4) : target
+}
+
 // Keep CSS history with the attribute it describes. Geometry cloning copies the GPU data
 // once and starts fresh history; pending upload ranges survive multiple edits before render.
 export class InstanceColors extends InstancedBufferAttribute {
@@ -14,9 +20,7 @@ export class InstanceColors extends InstancedBufferAttribute {
 
   write_color(idx: number, color: string, ghost = false, force = false): void {
     if (!force && color === this.css[idx]) return
-    scratch.setRGB(...css_to_linear_rgb(color))
-    if (ghost) scratch.lerp(gray, 0.4)
-    scratch.toArray(this.array, idx * 3)
+    set_instance_color(scratch, color, ghost).toArray(this.array, idx * 3)
     this.css[idx] = color
     this.uniform_color = undefined
     this.first_changed = Math.min(this.first_changed, idx)

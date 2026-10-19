@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { interpolateBlues, interpolateReds } from 'd3-scale-chromatic'
 import type { FillGradient, LegendItem } from '#lib/plot/index.js'
+import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
 import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
 import {
   symbol as d3_symbol,
@@ -323,6 +324,37 @@ describe(`PlotLegend`, () => {
     expect([backgroundColor, padding]).toEqual([`black`, `15px`])
     const { color, margin } = doc_query(`.legend-item`).style
     expect([color, margin]).toEqual([`white`, `2px`])
+  })
+
+  // The inset legend of Sankey/ternary/hierarchy charts follows PlotLegendLayer's precedence:
+  // the user's legend config overrides props the chart passes, but series_data and handlers
+  // stay the chart's (a config built elsewhere may carry keys the LegendConfig type omits)
+  test(`InsetLegend config overrides chart props, not the chart's data or handlers`, () => {
+    const [on_toggle, user_toggle] = [vi.fn(), vi.fn()]
+    const legend = {
+      draggable: true,
+      on_toggle: user_toggle,
+      series_data: [legend_item(`stray`, 9)],
+    }
+    mount(InsetLegend, {
+      target: document.body,
+      props: {
+        legend,
+        measured: false,
+        plot_bounds: { x: 0, y: 0, width: 200, height: 100 },
+        points: [],
+        series_data: default_series_data,
+        draggable: false,
+        on_toggle,
+      },
+    })
+    expect(doc_query(`.legend`).classList.contains(`draggable`)).toBe(true)
+    const labels = [...document.querySelectorAll(`.legend-label`)].map(
+      (span) => span.textContent,
+    )
+    expect(labels).toEqual(default_series_data.map(({ label }) => label))
+    document.querySelectorAll<HTMLElement>(`.legend-item`)[1].click()
+    expect([on_toggle.mock.calls, user_toggle.mock.calls]).toEqual([[[1]], [[1]]])
   })
 
   test.each([1, `auto`] as const)(

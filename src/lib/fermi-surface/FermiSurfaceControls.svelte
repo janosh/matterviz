@@ -5,6 +5,7 @@
   import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
+  import CameraSection from '#lib/scene/CameraSection.svelte'
   import { DEFAULTS } from '#lib/settings.js'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { make_change_detector, parse_num_token } from '#lib/utils.js'
@@ -140,10 +141,7 @@
     if (Number.isFinite(parsed)) chemical_potential = parsed
   }
 
-  const chemical_potential_settings = track_settings(
-    () => ({ mu: chemical_potential }),
-    defaults,
-  )
+  const mu_settings = track_settings(() => ({ mu: chemical_potential }), defaults)
   const bands_settings = $derived(
     track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
   )
@@ -151,16 +149,15 @@
     () => ({ color_property, color_scale, representation, surface_opacity }),
     defaults,
   )
-  const brillouin_zone_settings = track_settings(
+  const bz_settings = track_settings(
     () => ({ show_bz, bz_opacity, show_vectors, tile_bz }),
     defaults,
   )
-  const clipping_plane_settings = track_settings(
+  const clip_settings = track_settings(
     () => ({ clip_enabled, clip_axis, clip_position, clip_flip }),
     defaults,
   )
   const interpolation_settings = track_settings(() => ({ interpolation_factor }), defaults)
-  const camera_settings = track_settings(() => ({ camera_projection }), defaults)
 </script>
 
 <ControlPane
@@ -179,7 +176,7 @@
     {#if band_data}
       <SettingsSection
         title="Chemical potential"
-        changed_keys={chemical_potential_settings.changed_keys}
+        changed_keys={mu_settings.changed_keys}
         on_reset={() => (chemical_potential = defaults.mu)}
         layout="grid"
       >
@@ -311,7 +308,7 @@
 
     <SettingsSection
       title="Brillouin zone"
-      changed_keys={brillouin_zone_settings.changed_keys}
+      changed_keys={bz_settings.changed_keys}
       on_reset={() => ({ show_bz, bz_opacity, show_vectors, tile_bz } = defaults)}
       layout="grid"
     >
@@ -340,7 +337,7 @@
 
     <SettingsSection
       title="Clipping plane"
-      changed_keys={clipping_plane_settings.changed_keys}
+      changed_keys={clip_settings.changed_keys}
       on_reset={() => ({ clip_enabled, clip_axis, clip_position, clip_flip } = defaults)}
       layout="grid"
     >
@@ -394,20 +391,7 @@
     {/if}
   </SettingsGroup>
 
-  <SettingsSection
-    title="Camera"
-    changed_keys={camera_settings.changed_keys}
-    on_reset={() => ({ camera_projection } = defaults)}
-    layout="grid"
-  >
-    <label>
-      <span>Projection</span>
-      <select bind:value={camera_projection}>
-        <option value="perspective">Perspective</option>
-        <option value="orthographic">Orthographic</option>
-      </select>
-    </label>
-  </SettingsSection>
+  <CameraSection bind:camera_projection default_projection={defaults.camera_projection} />
 
   {@render children?.({ fermi_data, band_data })}
 </ControlPane>

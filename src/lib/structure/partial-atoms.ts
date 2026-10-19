@@ -1,8 +1,8 @@
 import { grow_capacity } from '#lib/math.js'
-import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import type { InstancedAtom } from './atom-instances'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
+import { set_instance_color } from './instance-colors'
 import type { SliceGeometry } from './partial-occupancy'
 import {
   CircleGeometry,
@@ -32,7 +32,6 @@ const mesh_key = (phi_length: number | null, ghost: boolean): number =>
 
 type Bucket = { phi_length: number | null; ghost: boolean; atoms: number[]; phis: number[] }
 
-const gray = new Color(0x999999)
 const color = new Color()
 const matrix = new Matrix4()
 const scale = new Vector3()
@@ -104,8 +103,7 @@ export class PartialAtoms extends Group {
           .scale(scale)
           .setPosition(...position)
         mesh.setMatrixAt(slot, matrix)
-        color.setRGB(...css_to_linear_rgb(css ?? `#999999`))
-        if (bucket.ghost) color.lerp(gray, 0.4)
+        set_instance_color(color, css ?? `#999999`, bucket.ghost)
         if (color_field) atom_field_color(color_field, position, color)
         mesh.setColorAt(slot, color) // allocates instanceColor before the first render
       }

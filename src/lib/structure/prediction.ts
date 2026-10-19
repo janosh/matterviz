@@ -13,6 +13,7 @@ import {
   type Vec3,
 } from '#lib/math.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
+import { is_plain_object } from '#lib/utils.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import type { AnyStructure } from './index'
 import { structure_json_data } from './site'
@@ -63,15 +64,12 @@ const invalid = (path: string, reason: string): never => {
 const record = (value: unknown, path: string): Record<string, unknown> => {
   if (!value || typeof value !== `object` || Array.isArray(value))
     return invalid(path, `expected an object`)
-  if (
-    Object.getPrototypeOf(value) !== Object.prototype &&
-    Object.getPrototypeOf(value) !== null
-  )
+  if (!is_plain_object(value))
     return invalid(
       path,
       `expected plain JSON metadata; copy shared buffers and convert special objects first`,
     )
-  return value as Record<string, unknown>
+  return value
 }
 const nonempty = (value: unknown, path: string): void => {
   if (typeof value !== `string` || !value.trim()) invalid(path, `must be a nonempty string`)

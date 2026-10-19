@@ -67,7 +67,7 @@
   const k_path_segs = $derived(k_path_segments(stable_path))
   const kpath_geometry = new CylinderGeometry(1, 1, 1, 8)
   const kpath_material = new MeshStandardMaterial() // white, tinted per instance
-  // never drawn but still raycast: lets the cursor snap to the path within ~2× its radius
+  // never drawn but still raycast: lets the cursor snap to the path from a few px away
   const kpath_proxy_material = new MeshStandardMaterial({ visible: false })
   // k_markers: unlit dots drawn over everything (sheets they sit on included), one instance
   // each, so markers that change per hover never compile a material
@@ -83,7 +83,7 @@
     marker_material.dispose()
   })
   const kpath_meshes = $derived.by(() => {
-    const [count, radius] = [k_path_segs.length, mark_sizes.kpath]
+    const [count, { kpath: radius, kpath_hover }] = [k_path_segs.length, mark_sizes]
     const line = new InstancedMesh(kpath_geometry, kpath_material, count)
     const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, count)
     line.raycast = () => undefined
@@ -92,7 +92,7 @@
     for (const mesh of [line, proxy]) mesh.frustumCulled = false
     for (const [instance_idx, { from, to }] of k_path_segs.entries()) {
       write_bond_transform(line.instanceMatrix.array, instance_idx, from, to, radius)
-      write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, radius * 2)
+      write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, kpath_hover)
     }
     return { line, proxy }
   })
@@ -173,7 +173,7 @@
   tints its chip, and hovering one reports its q-point like hovering the path there. Otherwise
   light, so as not to blot out the surface behind, with a text shadow for legibility. -->
   {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
-  <T.Mesh position={[position[0], position[1], position[2]]}>
+  <T.Mesh {position}>
     <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
     <T.MeshStandardMaterial color={KPATH_COLORS.base} metalness={0.3} roughness={0.7} />
   </T.Mesh>

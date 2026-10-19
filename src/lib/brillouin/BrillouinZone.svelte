@@ -9,6 +9,7 @@
   import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
+  import { derived_error_notice } from '#lib/layout/error-notice.svelte.js'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -34,7 +35,6 @@
   import { canvas_sources, json_source } from '#lib/io/export.js'
   import BrillouinZoneControls from './BrillouinZoneControls.svelte'
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
-
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { clamp, reciprocal_lattice } from '#lib/math.js'
@@ -238,20 +238,12 @@
   })
   const zone = $derived(bz_data ?? derived_bz.zone)
   // A derivation failure is reported only while the derived zone is what would render (a
-  // caller's zone makes it irrelevant). A structure that derives again clears the notice its
-  // predecessor raised — only that one: a file-load error is not this effect's to clear.
-  let reported_compute_error: string | undefined
-  $effect(() => {
-    const error = bz_data ? undefined : derived_bz.error
-    if (!error && reported_compute_error && error_msg === reported_compute_error) {
-      error_msg = undefined
-    }
-    reported_compute_error = error
-    if (error) {
-      error_msg = error
-      untrack(() => on_error?.({ error_msg: error, structure, bz_order }))
-    }
-  })
+  // caller's zone makes it irrelevant); a structure that derives again clears its notice
+  derived_error_notice(
+    () => (bz_data ? undefined : derived_bz.error),
+    { get: () => error_msg, set: (message) => (error_msg = message) },
+    (error) => on_error?.({ error_msg: error, structure, bz_order }),
+  )
 
   // One symmetry analysis serves the IBZ wedge and the info pane's space group, run while
   // either is shown; a result for a replaced structure never lands, and the previous one's
@@ -486,7 +478,6 @@
         />
       </Canvas>
 
-      <!-- Hover tooltip -->
       {#if hover_data && tooltip !== false}
         <PlotTooltip
           x={hover_data.screen_position.x}

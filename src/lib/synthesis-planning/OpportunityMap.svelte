@@ -8,6 +8,7 @@
   import { to_error } from '#lib/utils.js'
   import { compute_opportunity_map_async } from './opportunity-map-async.svelte'
   import type { OpportunityCell, OpportunityRequest } from './opportunity-map'
+  import { solid_reactants } from './thermo'
   import type { SynthesisConditions, SynthesisRoute } from './types'
 
   interface Props {
@@ -60,9 +61,7 @@
       target,
       routes: routes.map(({ id: identifier, reaction }) => ({
         id: identifier,
-        precursor_ids: reaction.reactants
-          .filter(({ phase }) => !phase.is_gas)
-          .map(({ phase }) => phase.id),
+        precursor_ids: solid_reactants(reaction).map(({ phase }) => phase.id),
       })),
       conditions: {
         open_species: conditions.open_species,

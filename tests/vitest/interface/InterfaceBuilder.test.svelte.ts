@@ -4,22 +4,13 @@ import type { Heterostructure, LatticeMatchOptions } from '#lib/interface/types.
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { flushSync, mount, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
-import { bind_props, doc_query, mouse } from '../setup'
-import { make_crystal } from '../test-fixtures'
+import { flushSync } from 'svelte'
+import { describe, expect, test } from 'vitest'
+import { bind_props, doc_query, mount_in_test, mouse } from '../setup'
+import { make_crystal, fcc_cell } from '../test-fixtures'
 
-// oxfmt-ignore
-const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
 const fcc_slab = (lattice_const: number, element: string, hkl: Vec3 = [1, 0, 0]) =>
-  make_slab(
-    make_crystal(
-      lattice_const,
-      FACE_CENTRES.map((abc) => ({ element, abc })),
-    ),
-    hkl,
-    { min_slab_thickness: 4 },
-  )
+  make_slab(fcc_cell(lattice_const, element), hkl, { min_slab_thickness: 4 })
 const CU_100 = fcc_slab(3.615, `Cu`)
 const AG_100 = fcc_slab(4.086, `Ag`)
 const PD_111 = fcc_slab(3.89, `Pd`, [1, 1, 1])
@@ -40,13 +31,6 @@ type BuilderState = {
 }
 
 describe(`InterfaceBuilder`, () => {
-  let mounted: ReturnType<typeof mount> | null = null
-  afterEach(async () => {
-    if (mounted) await unmount(mounted)
-    mounted = null
-    document.body.innerHTML = ``
-  })
-
   const mount_builder = (
     substrate: Crystal,
     film: Crystal,
@@ -64,10 +48,7 @@ describe(`InterfaceBuilder`, () => {
       shift: [0, 0],
       ...overrides,
     })
-    mounted = mount(InterfaceBuilder, {
-      target: document.body,
-      props: bind_props({ substrate, film }, state),
-    })
+    mount_in_test(InterfaceBuilder, bind_props({ substrate, film }, state))
     flushSync()
     return state
   }
@@ -148,10 +129,10 @@ describe(`InterfaceBuilder`, () => {
   test(`shift slider replaces an unbound shift tuple`, () => {
     const shift: Vec2 = [0, 0]
     const state = $state<{ interface: Heterostructure | null }>({ interface: null })
-    mounted = mount(InterfaceBuilder, {
-      target: document.body,
-      props: bind_props({ substrate: CU_100, film: AG_100, shift }, state),
-    })
+    mount_in_test(
+      InterfaceBuilder,
+      bind_props({ substrate: CU_100, film: AG_100, shift }, state),
+    )
     flushSync()
     set_input(inputs(`range`)[2], 0.5, `input`)
     expect(shift).toEqual([0, 0])

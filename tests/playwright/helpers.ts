@@ -7,14 +7,25 @@ import {
 } from '@playwright/test'
 import { Buffer } from 'node:buffer'
 import process from 'node:process'
-
-// Timeout constants for different environments
-// CI environments are slower due to shared resources, virtualization, and WebGL software rendering
-const LOCAL_CANVAS_TIMEOUT = 5000
-const CI_CANVAS_TIMEOUT = 15_000
+import playwright_config from '../../playwright.config'
 
 // Centralized CI detection - use this instead of inline process.env.CI checks
 export const IS_CI = [`true`, `1`].includes(process.env.CI ?? ``)
+
+// CI's software WebGPU adapter presents frames too late and too unreliably under Xvfb for pixel
+// and hit-test assertions, so tests and describes that read canvas pixels or hit-test the 3D
+// scene are tagged @webgl, and this hook (call once at the top of the spec) gives them three's
+// WebGL2 backend on CI: with no adapter, WebGPURenderer falls back to WebGL2 by itself (over
+// ANGLE's SwiftShader). A file-level hook runs before every describe's own beforeEach, so the
+// init script lands before any navigation.
+export const webgl_on_ci_for_tagged = (): void =>
+  base.beforeEach(async ({ page }, test_info) => {
+    if (!IS_CI || !test_info.tags.includes(`@webgl`)) return
+    await page.addInitScript(() => {
+      if (`gpu` in navigator)
+        Object.defineProperty(navigator.gpu, `requestAdapter`, { value: async () => null })
+    })
+  })
 
 const is_mac = process.platform === `darwin`
 // KeyboardEvent init flag and Playwright key name for the platform's primary modifier
@@ -163,11 +174,9 @@ export const set_structure = (
   )
 
 // Bounding box of a canvas scrolled into view (boundingBox() is only meaningful once laid out)
-export async function canvas_box(canvas: Locator) {
+export async function canvas_box(canvas: Locator): Promise<Box> {
   await canvas.scrollIntoViewIfNeeded()
-  const box = await canvas.boundingBox()
-  if (!box) throw new Error(`canvas has no bounding box`)
-  return box
+  return require_bbox(canvas, `canvas`)
 }
 export const canvas_center = async (
   canvas: Locator,
@@ -280,39 +289,41 @@ export const expect_synced_y_ticks = (
     expect(await numeric_y_ticks(target_plot)).toEqual(source_ticks)
   }).toPass({ timeout: 10_000 })
 
-// Get appropriate canvas initialization timeout based on environment
-// Use this for WebGL/Three.js canvas waits where CI needs more time
-export const get_canvas_timeout = (): number =>
-  IS_CI ? CI_CANVAS_TIMEOUT : LOCAL_CANVAS_TIMEOUT
+// Equal outer panel heights are not enough for side-by-side plots: their clipped drawable
+// regions must share a top offset and height so equal values sit at equal y. Not polling:
+// call it inside a toPass while the plots settle.
+export const expect_same_clip_rows = async (first: Locator, second: Locator) => {
+  const [first_clip, second_clip] = [first, second].map((plot) =>
+    plot.locator(`clipPath rect`),
+  )
+  for (const attribute of [`y`, `height`]) {
+    expect(await first_clip.getAttribute(attribute)).toBe(
+      await second_clip.getAttribute(attribute),
+    )
+  }
+}
+
+// The config's expect timeout, for canvas waits that don't default to it (toPass is unbounded,
+// screenshots use the test timeout) or need a multiple of it
+export const EXPECT_TIMEOUT = playwright_config.expect.timeout
 
 export async function select_view_layout(root: Page | Locator, label: string): Promise<void> {
   await root.getByRole(`button`, { name: /^View layout:/ }).click()
   await root.getByRole(`button`, { name: label, exact: true }).click()
 }
 
-// Wait for a 3D canvas (WebGL) to be ready with non-zero dimensions
+// Wait for a 3D scene canvas to be laid out (toBeVisible requires a non-empty bounding box).
+// Neither 2D scatter marker canvases (marker-canvas) nor a Brillouin-zone inset over the
+// viewer (e.g. PhononModeExplorer's) are the 3D scene.
 export async function wait_for_3d_canvas(
   page: Page,
   container_selector: string,
   timeout?: number,
 ): Promise<Locator> {
-  const effective_timeout = timeout ?? get_canvas_timeout()
-  // Neither 2D scatter marker canvases (marker-canvas) nor a Brillouin-zone inset over the
-  // viewer (e.g. PhononModeExplorer's) are the 3D scene
-  const scene_canvas = `canvas:not(.marker-canvas):not(.bz-inset canvas)`
-  const canvas = page.locator(`${container_selector} ${scene_canvas}`)
-  await expect(canvas).toBeVisible({ timeout: effective_timeout })
-  // Wait for WebGL context to be ready (canvas has non-zero dimensions)
-  await page.waitForFunction(
-    (selector) => {
-      const canvas_el = document.querySelector<HTMLCanvasElement>(selector)
-      if (!canvas_el) return false
-      const rect = canvas_el.getBoundingClientRect()
-      return rect.width > 0 && rect.height > 0
-    },
-    `${container_selector} ${scene_canvas}`,
-    { timeout: effective_timeout },
+  const canvas = page.locator(
+    `${container_selector} canvas:not(.marker-canvas):not(.bz-inset canvas)`,
   )
+  await expect(canvas).toBeVisible({ timeout })
   return canvas
 }
 
@@ -359,7 +370,7 @@ export const set_input_value = async (input: Locator, value: string): Promise<vo
 }
 
 // Simulate dropping a file with the given text content onto a target element
-// via synthetic DataTransfer drag events (unreliable in headless CI - skip there)
+// via synthetic DataTransfer drag events
 export async function drop_file(
   page: Page,
   target: Locator,
@@ -611,10 +622,7 @@ export async function expect_shift_drag_pans(page: Page, plot: Locator): Promise
 }
 
 // Poll until an element's bounding box stops moving (placement animations, layout solves)
-export async function wait_for_stable_bbox(
-  locator: Locator,
-  timeout = 3000,
-): Promise<{ x: number; y: number; width: number; height: number }> {
+export async function wait_for_stable_bbox(locator: Locator, timeout = 3000): Promise<Box> {
   let previous = await locator.boundingBox()
   await expect(async () => {
     const current = await locator.boundingBox()
@@ -628,21 +636,34 @@ export async function wait_for_stable_bbox(
 }
 
 export async function expect_bottom_within(outer: Locator, inner: Locator): Promise<void> {
-  const [outer_box, inner_box] = await Promise.all([outer.boundingBox(), inner.boundingBox()])
-  if (!outer_box || !inner_box) throw new Error(`Missing bounding box`)
+  const [outer_box, inner_box] = await Promise.all([require_bbox(outer), require_bbox(inner)])
   expect(inner_box.y + inner_box.height).toBeLessThanOrEqual(outer_box.y + outer_box.height)
 }
 
 // Capture canvas pixels without hanging on busy pages.
 // - 2D canvases: read via toDataURL (Playwright screenshots hang under CI load on the
-//   isosurface page while fonts/paint wait on a saturated main thread).
-// - WebGL canvases: blit is blank without preserveDrawingBuffer, so fall back to a clipped
-//   page screenshot of the compositor's presented frame.
+//   isosurface page while fonts/paint wait on a saturated main thread). Only canvases the app
+//   marks as 2D take this path: probing getContext(`2d`) would claim a canvas the 3D renderer
+//   has yet to acquire, turning it into a 2D canvas for good.
+// - 3D canvases: blit is blank without preserveDrawingBuffer, so take a clipped page screenshot
+//   of the compositor's presented frame, snapped outward to whole device pixels so that captures
+//   of an unchanged canvas at a fractional offset compare equal.
+const canvas_2d_selector = `.marker-canvas, .volume-slice > canvas`
 export async function canvas_screenshot(canvas: Locator): Promise<Buffer> {
-  const is_2d = await canvas.evaluate((element) => {
-    const source = element as HTMLCanvasElement
-    return Boolean(source.getContext(`2d`))
-  })
+  await canvas.scrollIntoViewIfNeeded()
+  const { is_2d, rect, dpr, view_width, view_height } = await canvas.evaluate(
+    (element, selector_2d) => {
+      const { left, top, right, bottom } = element.getBoundingClientRect()
+      return {
+        is_2d: element.matches(selector_2d),
+        rect: { left, top, right, bottom },
+        dpr: devicePixelRatio,
+        view_width: innerWidth,
+        view_height: innerHeight,
+      }
+    },
+    canvas_2d_selector,
+  )
 
   if (is_2d) {
     const data_url = await canvas.evaluate((element) => {
@@ -653,19 +674,19 @@ export async function canvas_screenshot(canvas: Locator): Promise<Buffer> {
     return Buffer.from(data_url.replace(/^data:image\/png;base64,/, ``), `base64`)
   }
 
-  await canvas.scrollIntoViewIfNeeded()
-  const box = await canvas.boundingBox()
-  if (!box) throw new Error(`Canvas has no bounding box`)
-  const page = canvas.page()
-  const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
-  const coord_x = Math.min(Math.max(0, box.x), viewport.width - 1)
-  const coord_y = Math.min(Math.max(0, box.y), viewport.height - 1)
-  const width = Math.max(1, Math.min(Math.ceil(box.width), viewport.width - coord_x))
-  const height = Math.max(1, Math.min(Math.ceil(box.height), viewport.height - coord_y))
-  return page.screenshot({
-    clip: { x: coord_x, y: coord_y, width, height },
+  const left = Math.max(0, Math.floor(rect.left * dpr) / dpr)
+  const top = Math.max(0, Math.floor(rect.top * dpr) / dpr)
+  const right = Math.min(view_width, Math.ceil(rect.right * dpr) / dpr)
+  const bottom = Math.min(view_height, Math.ceil(rect.bottom * dpr) / dpr)
+  if (right <= left || bottom <= top) {
+    throw new Error(
+      `Canvas ${JSON.stringify(rect)} lies outside the ${view_width}x${view_height} viewport`,
+    )
+  }
+  return canvas.page().screenshot({
+    clip: { x: left, y: top, width: right - left, height: bottom - top },
     animations: `disabled`,
-    timeout: get_canvas_timeout(),
+    timeout: EXPECT_TIMEOUT,
   })
 }
 
@@ -673,26 +694,25 @@ export async function canvas_screenshot(canvas: Locator): Promise<Buffer> {
 // Use this to wait for WebGL/Three.js / 2D canvas initialization before interacting.
 export async function wait_for_canvas_rendered(
   canvas: Locator,
-  options?: { min_size?: number; timeout?: number },
+  options: { min_size?: number; timeout?: number } = {},
 ): Promise<void> {
-  const min_size = options?.min_size ?? 1000
-  const timeout = options?.timeout ?? get_canvas_timeout()
+  const { min_size = 1000, timeout } = options
   await expect
     .poll(async () => (await canvas_screenshot(canvas)).length, { timeout })
     .toBeGreaterThan(min_size)
 }
 
 // Poll until canvas screenshot differs from initial (handles GPU/driver timing variations).
+// `initial` must come from canvas_screenshot: other captures differ from it on an idle canvas.
 export async function expect_canvas_changed(
   canvas: Locator,
   initial: Buffer,
-  timeout?: number,
+  timeout = EXPECT_TIMEOUT,
 ): Promise<void> {
-  const effective_timeout = timeout ?? get_canvas_timeout()
   await expect(async () => {
     const current = await canvas_screenshot(canvas)
     expect(initial.equals(current)).toBe(false)
-  }).toPass({ timeout: effective_timeout })
+  }).toPass({ timeout })
 }
 
 // Run `act` and assert it repaints the canvas; resolves to the repainted screenshot so
@@ -702,13 +722,13 @@ export async function expect_canvas_changed_by(
   act: () => Promise<unknown>,
   timeout?: number,
 ): Promise<Buffer> {
-  const before = await canvas.screenshot()
+  const before = await canvas_screenshot(canvas)
   await act()
   await expect_canvas_changed(canvas, before, timeout)
-  return canvas.screenshot()
+  return canvas_screenshot(canvas)
 }
 
-export type GizmoHandleHit = { key: string; x: number; y: number }
+type GizmoHandleHit = { key: string; x: number; y: number }
 
 // Find the gizmo's axis handles in a canvas. It has no DOM element, so hover a grid of cells
 // over the corner it's anchored in and keep those that flip the cursor to `pointer`, returning
@@ -757,17 +777,15 @@ export async function expect_gizmo_click_flies_camera(
   options: Parameters<typeof sweep_gizmo_handles>[1] = {},
 ): Promise<void> {
   const before = await sweep_gizmo_handles(canvas, options)
-  // Nothing to click where the scene never composites: CI's software WebGPU hands out an
-  // adapter but paints no pixels, so the sweep comes up empty however healthy the gizmo is.
-  if (before.length === 0 && IS_CI) return
   expect(before.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+  const before_keys = before.map((hit) => hit.key)
 
   await canvas.page().mouse.click(before[0].x, before[0].y)
-  await canvas.page().waitForTimeout(800) // the fly-to animates over 400ms; let it land
-
-  const after = await sweep_gizmo_handles(canvas, options)
-  expect(after.length, `gizmo handles after the fly-to`).toBeGreaterThan(0)
-  expect(after.map((hit) => hit.key)).not.toEqual(before.map((hit) => hit.key))
+  await expect(async () => {
+    const after = await sweep_gizmo_handles(canvas, options)
+    expect(after.length, `gizmo handles after the fly-to`).toBeGreaterThan(0)
+    expect(after.map((hit) => hit.key)).not.toEqual(before_keys)
+  }).toPass() // unbounded: one sweep can outlast the expect timeout on CI
 }
 
 // Switch to edit-atoms mode via the Structure component's dropdown UI.
@@ -781,20 +799,17 @@ export async function enter_edit_atoms_mode(page: Page): Promise<void> {
     style.textContent = `section[class*="control-buttons"] { opacity: 1 !important; pointer-events: auto !important; }`
     document.head.append(style)
   })
-  const timeout = get_canvas_timeout()
   const structure_div = page.locator(`#test-structure`)
   const measure_button = structure_div.getByRole(`button`, { name: `Measure / Edit` })
-  await expect(measure_button).toBeVisible({ timeout })
+  await expect(measure_button).toBeVisible()
   await measure_button.click()
   const edit_option = structure_div.locator(`.view-mode-option`).filter({
     hasText: `Edit Atoms`,
   })
-  await expect(edit_option).toBeVisible({ timeout })
+  await expect(edit_option).toBeVisible()
   await edit_option.click()
   // Wait for mode to be applied (undo/redo buttons appear)
-  await expect(structure_div.locator(`.undo-redo-container`)).toBeVisible({
-    timeout,
-  })
+  await expect(structure_div.locator(`.undo-redo-container`)).toBeVisible()
 }
 
 // A multi-panel component (Fermi surface + bands, bands + DOS, BZ + bands + DOS) has one
@@ -859,3 +874,23 @@ export async function expect_combined_fullscreen(
   }
   page.off(`console`, on_console)
 }
+
+// Bring each still-unloaded LazyDemo into view in turn, then end at the bottom for any other
+// lazy content. A fixed-step scroll can pass a demo while a busy main thread delays its
+// IntersectionObserver callback, leaving that demo unloaded for good once the scroll moves on.
+export const load_all_demos = (page: Page) =>
+  expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const pending = document.querySelector(`.lazy-demo > .placeholder`)
+          if (pending) {
+            pending.scrollIntoView({ block: `center` })
+            return false
+          }
+          globalThis.scrollTo(0, document.documentElement.scrollHeight)
+          return true
+        }),
+      { intervals: [250], timeout: 60_000 },
+    )
+    .toBe(true)

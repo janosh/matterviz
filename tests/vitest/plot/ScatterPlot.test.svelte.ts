@@ -5,6 +5,7 @@ import type {
   AxisConfig,
   AxisRanges,
   DataSeries,
+  DisplayConfig,
   FillRegion,
   StyleOverrides,
 } from '#lib/plot/core/types.js'
@@ -2008,15 +2009,36 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(0)
   })
 
-  test.each([
-    { y: [-10, -5, 0, 5, 10], y_range: [-15, 15] as Vec2 },
-    { y: [5, 10, 15, 20, 25], y_range: [0, 30] as Vec2 },
-  ])(`zero lines`, async ({ y: coord_y, y_range }) => {
+  // One line per enabled axis whose range spans zero (ending at zero counts), at the zero
+  // pixel: x=0 halfway across [-10, 10], y=0 halfway up [-15, 15] or at the bottom of [0, 30].
+  // A log axis has no zero.
+  test.each<[string, AxisConfig, DisplayConfig, string[], Vec2 | null]>([
+    [`both ranges span zero`, {}, {}, [`x`, `y`], [0.5, 0.5]],
+    [`y range ends at zero`, { range: [0, 30] }, {}, [`x`, `y`], [0.5, 1]],
+    [`y range above zero`, { range: [5, 30] }, {}, [`x`], null],
+    [`log y axis`, { range: [1, 100], scale_type: `log` }, {}, [`x`], null],
+    [`x zero line off`, {}, { x_zero_line: false }, [`y`], null],
+  ])(`zero lines: %s`, async (_name, y_axis, display, axes, fractions) => {
     const plot = await mount_sized_scatter_plot({
-      series: [{ x: [1, 2, 3, 4, 5], y: coord_y }],
-      y_axis: { range: y_range },
+      series: [{ x: [-5, 0, 5], y: [2, 5, 20] }],
+      x_axis: { range: [-10, 10] },
+      y_axis: { range: [-15, 15], ...y_axis },
+      display,
     })
-    expect(plot.querySelectorAll(`.zero-line`)).toHaveLength(1)
+    const lines = [...plot.querySelectorAll(`.zero-line`)].map((line) => {
+      const [x1, x2, y1, y2] = [`x1`, `x2`, `y1`, `y2`].map((key) =>
+        Number(line.getAttribute(key)),
+      )
+      return { x1, x2, y1, y2 }
+    })
+    // a vertical line marks x=0, a horizontal one y=0
+    expect(lines.map(({ x1, x2 }) => (x1 === x2 ? `x` : `y`))).toEqual(axes)
+    if (!fractions) return
+    const [x_line, y_line] = lines
+    const x_frac = (x_line.x1 - y_line.x1) / (y_line.x2 - y_line.x1)
+    const y_frac = (y_line.y1 - x_line.y1) / (x_line.y2 - x_line.y1)
+    expect(x_frac).toBeCloseTo(fractions[0], 9)
+    expect(y_frac).toBeCloseTo(fractions[1], 9)
   })
 
   // styles.point.symbol_type (the VS Code scatter.symbol_type setting) replaces the per-series

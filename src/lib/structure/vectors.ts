@@ -1,5 +1,11 @@
 import type { DisplayMetrics } from './site'
-import { available_site_vector_keys, get_site, numeric_sites, site_count } from './site'
+import {
+  available_site_vector_keys,
+  get_site,
+  numeric_sites,
+  site_count,
+  vector_offset,
+} from './site'
 import { characteristic_atom_spacing } from './density'
 import type { Vec3 } from '#lib/math.js'
 import { EPS, is_finite_vec3, normalize_vec, compute_in_plane_basis } from '#lib/math.js'
@@ -54,6 +60,31 @@ export const VECTOR_PALETTE = [
   `#1abc9c`,
 ] as const
 
+// Index tokens (`l0`, `s1`, `m-1`) tell a property's components apart, the rest of the key
+// names its category: spin_s0_l1_m-1 is a `spin` component, spin_l0_norm a `spin_norm` one
+const INDEX_TOKEN_RE = /^[a-z]-?\d+$/i
+export const vector_category = (key: string): string =>
+  key
+    .split(`_`)
+    .filter((token) => !INDEX_TOKEN_RE.test(token))
+    .join(`_`) || key
+
+// Vector keys by category, both in first-seen order
+export const group_vector_keys = (keys: readonly string[]): Map<string, string[]> => {
+  const groups = new Map<string, string[]>()
+  for (const key of keys) {
+    const category = vector_category(key)
+    groups.set(category, [...(groups.get(category) ?? []), key])
+  }
+  return groups
+}
+
+// A category's components share one palette color, so its swatch shows what they draw in
+export const vector_palette_color = (keys: readonly string[], key: string): string => {
+  const category_idx = [...group_vector_keys(keys).keys()].indexOf(vector_category(key))
+  return VECTOR_PALETTE[category_idx % VECTOR_PALETTE.length]
+}
+
 // MD velocities are much larger than typical force-vector values in supported file units.
 // Shorter, thinner defaults keep velocity arrows from overwhelming the structure or cell.
 export const vector_display_defaults = (key: string) =>
@@ -64,11 +95,11 @@ export const vector_display_defaults = (key: string) =>
 // Single key → null color (semantic coloring); multiple keys → palette colors.
 export const default_vector_configs = (keys: string[]) =>
   Object.fromEntries(
-    keys.map((key, idx) => [
+    keys.map((key) => [
       key,
       {
         visible: true,
-        color: keys.length > 1 ? VECTOR_PALETTE[idx % VECTOR_PALETTE.length] : null,
+        color: keys.length > 1 ? vector_palette_color(keys, key) : null,
         scale: vector_display_defaults(key).scale,
       },
     ]),
@@ -106,7 +137,7 @@ export function vector_reader(
     }
   return (idx) => {
     if (magnitudes && Number.isNaN(magnitudes[idx])) return null
-    const offset = idx * stride + 6 + column * 3
+    const offset = idx * stride + vector_offset(column)
     vector[0] = coordinates[offset]
     vector[1] = coordinates[offset + 1]
     vector[2] = coordinates[offset + 2]

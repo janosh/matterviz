@@ -1,9 +1,12 @@
-import { fire, bind_props, mock_fullscreen, mount_sized } from '../setup'
+import { fire, bind_props, mock_fullscreen, mount_in_test, mount_sized } from '../setup'
+import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
 import FullscreenButton from '#lib/layout/FullscreenButton.svelte'
+import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
+import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import Sankey from '#lib/plot/sankey/Sankey.svelte'
-import { flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
+import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest'
 
 // Buttons keep a window keydown listener for the `f` shortcut, so one left mounted would
 // answer a later test's keypress and fullscreen its own stale wrapper
@@ -193,3 +196,72 @@ describe(`FullscreenButton`, () => {
     expect([host.state.fullscreen, nested.state.fullscreen]).toEqual([true, false])
   })
 })
+
+// The two wrappers every viewer and multi-panel component use around FullscreenButton. Each
+// mounts with a bound `fullscreen` and returns its on-change spy, if it takes one.
+type MountChrome = (
+  toggle: boolean,
+  show_controls: ShowControlsProp,
+  state: { fullscreen: boolean },
+) => Mock<(fullscreen: boolean) => void> | null
+describe.each([
+  [
+    `ViewerChrome`,
+    (toggle, show_controls, state) => {
+      const on_fullscreen_change = vi.fn<(fullscreen: boolean) => void>()
+      const controls_config = normalize_show_controls(show_controls)
+      const props = { controls_config, fullscreen_toggle: toggle, on_fullscreen_change }
+      mount_in_test(ViewerChrome, bind_props(props, state))
+      return on_fullscreen_change
+    },
+  ],
+  [
+    `PanelsFullscreenButton`,
+    (toggle, controls, state) => {
+      mount_in_test(PanelsFullscreenButton, bind_props({ toggle, controls }, state))
+      return null
+    },
+  ],
+] satisfies [string, MountChrome][])(`%s fullscreen toggle`, (_name, mount_chrome) => {
+  test.each([
+    [true, `hover`, false, `shown`],
+    [true, { hidden: [`fullscreen`] }, false, `absent`],
+    [false, `always`, false, `absent`],
+    // hidden chrome keeps the active controller mounted so Esc still syncs the flag
+    [false, `always`, true, `hidden`],
+    [true, `never`, true, `hidden`],
+  ] satisfies [boolean, ShowControlsProp, boolean, `shown` | `hidden` | `absent`][])(
+    `toggle=%s show_controls=%j fullscreen=%s: button %s`,
+    async (toggle, show_controls, fullscreen, expected) => {
+      const state = $state({ fullscreen })
+      const on_change = mount_chrome(toggle, show_controls, state)
+      flushSync()
+      const button = document.querySelector<HTMLButtonElement>(`button.fullscreen-btn`)
+      expect(!button ? `absent` : button.hidden ? `hidden` : `shown`).toBe(expected)
+      if (expected !== `shown`) return
+      await fire(button)
+      expect(state.fullscreen).toBe(true)
+      if (on_change) expect(on_change.mock.calls).toEqual([[true]])
+    },
+  )
+})
+
+test.each([
+  [`hover`, true, true],
+  [{ hidden: [`filename`] }, false, true],
+  [`never`, false, false],
+] satisfies [ShowControlsProp, boolean, boolean][])(
+  `ViewerChrome with show_controls=%j: filename %s, viewer controls %s`,
+  (show_controls, filename_shown, children_shown) => {
+    const target = mount_in_test(ViewerChrome, {
+      controls_config: normalize_show_controls(show_controls),
+      filename: `cell.cif`,
+      children: createRawSnippet(() => ({ render: () => `<button class="extra">x</button>` })),
+    })
+    flushSync()
+    expect(target.querySelector(`.filename`)?.textContent ?? null).toBe(
+      filename_shown ? `cell.cif` : null,
+    )
+    expect(target.querySelector(`.extra`) !== null).toBe(children_shown)
+  },
+)

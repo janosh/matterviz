@@ -13,6 +13,13 @@ import type {
   LabelPlacementWeights,
 } from '#lib/plot/core/types.js'
 
+// Defaults the scatter plots merge under a user's label_placement_config
+export const LABEL_PLACEMENT_DEFAULTS = {
+  sa_iterations: 2000,
+  max_labels: 300,
+  leader_line_threshold: 15,
+} satisfies Partial<LabelPlacementConfig>
+
 // Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
 // below the cold defaults (2000, 1): the layout is good, so the pass only nudges what moved.
 const WARM_SA_ITERATIONS = 12
@@ -642,7 +649,7 @@ export function compute_label_positions(
   // again. Only when most labels carried over, though — one restored label must not put all
   // the new ones on a polish budget and leave the frame after a data change badly laid out.
   const is_warm = cold_labels.length * 4 <= num_labels
-  const cold_iterations = config.sa_iterations ?? 2000
+  const cold_iterations = config.sa_iterations ?? LABEL_PLACEMENT_DEFAULTS.sa_iterations
   const warm_iterations = config.warm_sa_iterations ?? WARM_SA_ITERATIONS
   // `> 0` so a caller that disabled annealing with sa_iterations: 0 keeps it off when warm
   const sa_iterations = is_warm && cold_iterations > 0 ? warm_iterations : cold_iterations

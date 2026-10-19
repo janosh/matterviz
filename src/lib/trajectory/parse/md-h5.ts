@@ -3,10 +3,14 @@
 import { display_idx } from '#lib/labels.js'
 import { create_numeric_md_frame, write_frame_vector, type FrameChannels } from '../frame'
 import { FS_IN_ASE_TIME } from '#lib/constants.js'
-import { element_by_symbol } from '#lib/element/data.js'
 import { calc_lattice_params, det_3x3, is_pbc, is_valid_index } from '#lib/math.js'
 import { matrix3x3_from_rows } from '#lib/structure/parsers/shared.js'
-import { ATOM_BATCH_SIZE, atom_range, type ReadAtoms } from '../atom-batches'
+import {
+  ATOM_BATCH_SIZE,
+  atom_batch_masses,
+  atom_range,
+  type ReadAtoms,
+} from '../atom-batches'
 import {
   convert_atomic_numbers,
   create_sampled_frame,
@@ -17,10 +21,10 @@ import type { PositionStreamOptions, TrajectoryPositionStream } from '../index'
 import type { Dataset, File as H5File } from 'h5wasm'
 import {
   attribute_value,
-  dataset_at,
   read_numeric_buffer,
   read_numeric_samples,
   require_shape,
+  required_dataset,
   resolve_stream_channels,
   sampled_property_rows,
   string_value,
@@ -54,11 +58,7 @@ const FIELDS: Record<string, [number, string, string?]> = {
 }
 const SCALARS = Object.keys(FIELDS).filter((name) => !FIELDS[name][0] && FIELDS[name][2])
 
-const required = (file: H5File, path: string): Dataset => {
-  const dataset = dataset_at(file, path)
-  if (!dataset) throw new Error(`${FORMAT} is missing ${path}`)
-  return dataset
-}
+const required = (file: H5File, path: string): Dataset => required_dataset(file, path, FORMAT)
 const ensure_shape = (dataset: Dataset, path: string, expected: number[]): void =>
   require_shape(dataset.shape ?? [], expected, path, FORMAT)
 const scalar = (file: H5File, path: string): number => {
@@ -69,6 +69,12 @@ const scalar = (file: H5File, path: string): number => {
   return value
 }
 const attr = (file: H5File, key: string): unknown => attribute_value(file, [key])
+// Stored velocities are sqrt(eV/amu); every one this parser hands out is in A/fs
+const to_a_per_fs = (name: string, values: Float64Array): Float64Array => {
+  if (name === `velocities`)
+    for (let idx = 0; idx < values.length; idx++) values[idx] *= FS_IN_ASE_TIME
+  return values
+}
 
 export const is_md_h5_file = (file: H5File): boolean =>
   string_value(attr(file, `schema`))?.startsWith(`md-trajectory-`) ?? false
@@ -191,27 +197,20 @@ export const parse_md_h5_file = (
       throw new Error(`${FORMAT} ${path} has incorrect dtype or units`)
     datasets[name] = dataset
   }
-  const read_samples = (
-    name: string,
-    start: number,
-    end: number,
-    stride = 1,
-  ): Float64Array => {
-    const width = FIELDS[name][0]
-    const values = read_numeric_samples(
-      datasets[name],
-      `/frames/${name}`,
-      frame_count,
-      width ? n_atoms * width : 1,
-      stride,
-      undefined,
-      start,
-      end,
+  const read_samples = (name: string, start: number, end: number, stride = 1): Float64Array =>
+    to_a_per_fs(
+      name,
+      read_numeric_samples(
+        datasets[name],
+        `/frames/${name}`,
+        frame_count,
+        FIELDS[name][0] ? n_atoms * FIELDS[name][0] : 1,
+        stride,
+        undefined,
+        start,
+        end,
+      ),
     )
-    if (name === `velocities`)
-      for (let idx = 0; idx < values.length; idx++) values[idx] *= FS_IN_ASE_TIME
-    return values
-  }
   // The primary validates all axes and plot samples once. Replicas open the same immutable
   // File, so repeating thousands of compressed scalar reads only delays frame preparation.
   if (
@@ -272,35 +271,17 @@ export const parse_md_h5_file = (
       throw new Error(
         `${FORMAT} atom batches support the velocity channel and recorded/standard masses`,
       )
-    const read_atomic = (name: string): Float64Array => {
-      const values = read_numeric_buffer(datasets[name], `/frames/${name}`, [
-        [frame_idx, frame_idx + 1],
-        [start, start + count],
-      ])
-      if (name === `velocities`)
-        for (let idx = 0; idx < values.length; idx++) values[idx] *= FS_IN_ASE_TIME
-      return values
-    }
-    const batch_numbers = new Uint8Array(count)
-    const batch_masses = mass_source ? new Float64Array(count) : undefined
-    for (let idx = 0; idx < count; idx++) {
-      const atom_idx = start + idx
-      batch_numbers[idx] = numeric_elements[atom_idx]
-      if (batch_masses) {
-        const mass =
-          mass_source === `recorded`
-            ? atom_masses[atom_idx]
-            : element_by_symbol.get(elements[atom_idx])?.atomic_mass
-        if (mass === undefined || mass <= 0)
-          throw new Error(
-            `${FORMAT} missing ${mass_source} mass for atom ${display_idx(atom_idx)}`,
-          )
-        batch_masses[idx] = mass
-      }
-    }
+    const read_atomic = (name: string): Float64Array =>
+      to_a_per_fs(
+        name,
+        read_numeric_buffer(datasets[name], `/frames/${name}`, [
+          [frame_idx, frame_idx + 1],
+          [start, start + count],
+        ]),
+      )
     return {
       positions: read_atomic(`positions`),
-      atomic_numbers: batch_numbers,
+      atomic_numbers: numeric_elements.slice(start, start + count),
       total_atoms: n_atoms,
       start,
       step: steps[frame_idx],
@@ -309,7 +290,9 @@ export const parse_md_h5_file = (
       origin: [0, 0, 0],
       pbc,
       ...(velocity_key && { velocities: read_atomic(`velocities`) }),
-      ...(batch_masses && { masses: batch_masses }),
+      ...(mass_source && {
+        masses: atom_batch_masses(FORMAT, mass_source, start, count, elements, atom_masses),
+      }),
     }
   }
   const load_frame = (frame_idx: number, requested?: FrameChannels) => {

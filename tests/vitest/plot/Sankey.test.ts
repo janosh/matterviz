@@ -267,7 +267,23 @@ describe(`Sankey`, () => {
 
   test(`legend toggle dims a node and its links, re-click restores`, async () => {
     // fixture nodes omit `id`; the layout backfills id = index, so muting keys consistently
-    const plot = await mount_sized_sankey({ data, show_legend: true })
+    const [on_item_hover, on_toggle] = [vi.fn(), vi.fn()]
+    const plot = await mount_sized_sankey({
+      data,
+      show_legend: true,
+      legend: { on_item_hover, on_toggle },
+    })
+    // the caller's callbacks observe alongside the chart's own highlight and muting
+    const faded = () =>
+      [...plot.querySelectorAll<SVGGElement>(`.node`)]
+        .filter((node_g) => node_g.style.opacity === `0.3`)
+        .map((node_g) => node_g.querySelector(`.node-label`)?.textContent?.trim())
+    await fire(query(plot, `.legend-item`), mouse(`mouseenter`))
+    expect(on_item_hover).toHaveBeenCalledWith(expect.objectContaining({ series_idx: 0 }))
+    // hovering A keeps it and its linked C lit, fading the unlinked B and D
+    expect(faded()).toEqual([`B`, `D`])
+    await fire(query(plot, `.legend-item`), mouse(`mouseleave`))
+    expect(faded()).toEqual([])
     const dimmed = () => [
       [...plot.querySelectorAll<SVGGElement>(`.node`)]
         .filter((node_g) => node_g.style.opacity === `0.12`)
@@ -279,6 +295,7 @@ describe(`Sankey`, () => {
     expect(dimmed()).toEqual([[], 0])
     await fire(plot.querySelector(`.legend-item`)) // mute A and its single link A->C
     expect(dimmed()).toEqual([[`A`], 1])
+    expect(on_toggle).toHaveBeenCalledExactlyOnceWith(0)
     await fire(plot.querySelector(`.legend-item`))
     expect(dimmed()).toEqual([[], 0])
   })
@@ -458,17 +475,14 @@ test.each([
     `JSON`,
     JSON.stringify(
       {
-        nodes: [
-          { id: 0, label: `A`, value: 8, color: `#e15759` },
-          { id: 1, label: `B`, value: 4, color: `#4e79a7` },
-          { id: 2, label: `C`, value: 12, color: `#59a14f` },
-          { id: 3, label: `D`, value: 12, color: plot_color(3) },
-        ],
-        links: [
-          { source: 0, target: 2, value: 8 },
-          { source: 1, target: 2, value: 4 },
-          { source: 2, target: 3, value: 12 },
-        ],
+        // node values are their throughput, the 4th node gets the palette color
+        nodes: data.nodes.map(({ label, color }, id) => ({
+          id,
+          label,
+          value: [8, 4, 12, 12][id],
+          color: color ?? plot_color(id),
+        })),
+        links: data.links,
       },
       null,
       2,

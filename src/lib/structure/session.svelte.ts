@@ -762,13 +762,26 @@ export class StructureSession {
     }
   }
 
-  delete_selected = (): boolean => {
-    const { inputs } = this
-    const structure = inputs.structure()
-    const selected = inputs.selected_sites()
-    if (selected.length === 0 || !structure?.sites) return false
+  // The structure and the selection's base-site indices once an undo point is pushed; null
+  // (and no undo point) when there is no structure or no base site to edit, e.g. a deletion
+  // whose selection holds only image atoms
+  private edit_selection(
+    skip_image_atoms = false,
+  ): { structure: AnyStructure; indices: Set<number> } | null {
+    const structure = this.inputs.structure()
+    const selected = this.inputs.selected_sites()
+    if (selected.length === 0 || !structure?.sites) return null
+    const indices = this.scene_to_structure_indices(selected, skip_image_atoms)
+    if (indices.size === 0) return null
     this.push_undo()
-    const to_delete = this.scene_to_structure_indices(selected, true)
+    return { structure, indices }
+  }
+
+  delete_selected = (): boolean => {
+    const edit = this.edit_selection(true)
+    if (!edit) return false
+    const { structure, indices: to_delete } = edit
+    const { inputs } = this
     this.clear_selection()
     // Explicit bonds (the binding and the structure's own) follow the shifted indices
     const bound_bonds = inputs.bonds()
@@ -794,12 +807,10 @@ export class StructureSession {
 
   // Copies of the selected atoms at a half-Angstrom offset; the copies become the selection
   duplicate_selected = (): boolean => {
+    const edit = this.edit_selection()
+    if (!edit) return false
+    const { structure, indices: to_copy } = edit
     const { inputs } = this
-    const structure = inputs.structure()
-    const selected = inputs.selected_sites()
-    if (selected.length === 0 || !structure?.sites) return false
-    this.push_undo()
-    const to_copy = this.scene_to_structure_indices(selected)
     const to_frac = this.cart_to_frac()
     const has_lattice = `lattice` in structure
     const copies = structure.sites
@@ -820,12 +831,10 @@ export class StructureSession {
   }
 
   change_element = (symbol: string): boolean => {
-    const { inputs } = this
-    const structure = inputs.structure()
     const element = normalize_element(symbol)
-    if (!structure?.sites || inputs.selected_sites().length === 0 || !element) return false
-    this.push_undo()
-    const targets = this.scene_to_structure_indices(inputs.selected_sites())
+    const edit = element ? this.edit_selection() : null
+    if (!element || !edit) return false
+    const { structure, indices: targets } = edit
     this.write_structure({
       ...structure,
       sites: structure.sites.map((site, idx) =>

@@ -18,9 +18,7 @@ const request: OpportunityRequest = {
   log_pressures: [-8, 0],
   routes: plan.routes.slice(0, 2).map(({ id: identifier, reaction }) => ({
     id: identifier,
-    precursor_ids: reaction.reactants
-      .filter(({ phase }) => !phase.is_gas)
-      .map(({ phase }) => phase.id),
+    precursor_ids: thermo.solid_reactants(reaction).map(({ phase }) => phase.id),
   })),
 }
 

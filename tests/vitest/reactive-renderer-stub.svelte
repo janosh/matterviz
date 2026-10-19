@@ -20,6 +20,7 @@
     controls_open = $bindable(),
     selected_series_idx = $bindable(),
     active_pane = $bindable(),
+    data_inspector_open = $bindable(),
     ...rest
   }: Record<string, unknown> = $props()
 
@@ -36,6 +37,7 @@
     else if (key === `controls_open`) controls_open = value
     else if (key === `selected_series_idx`) selected_series_idx = value
     else if (key === `active_pane`) active_pane = value
+    else if (key === `data_inspector_open`) data_inspector_open = value
     else throw new Error(`reactive-renderer-stub has no $bindable for '${key}'`)
   }
   const read = (): Record<string, unknown> => ({
@@ -52,6 +54,7 @@
     controls_open,
     selected_series_idx,
     active_pane,
+    data_inspector_open,
   })
   register_stub({ read, write })
 </script>

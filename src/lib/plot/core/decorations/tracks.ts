@@ -1,3 +1,4 @@
+import { assert_non_negative } from '#lib/math.js'
 import type { DecorationSize, LegendDecorationItem } from './types'
 
 type LegendOrientation = `horizontal` | `vertical`
@@ -121,12 +122,6 @@ export const resolve_legend_layout_tracks = (
     : layout_tracks
 
 const DEFAULT_ITEM_EXTENT = { width: 96, height: 20 } as const
-
-const assert_non_negative = (value: number, name: string, allow_infinity = false): void => {
-  if (value < 0 || Number.isNaN(value) || (!allow_infinity && !Number.isFinite(value))) {
-    throw new Error(`${name} must be a non-negative number, got ${value}`)
-  }
-}
 
 // Return the largest number of columns (horizontal) or rows (vertical) whose measured or
 // estimated grid-cell extents fit the available plot edge.

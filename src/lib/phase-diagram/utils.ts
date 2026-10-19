@@ -25,7 +25,7 @@ export function convert_temp(value: number, from: TempUnit, target: TempUnit): n
       : (kelvin - 273.15) * (9 / 5) + 32
 }
 
-// Centralized defaults for phase diagram configuration (single source of truth)
+// Defaults for phase diagram configuration
 export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   // Visibility
   show_boundaries: true,
@@ -58,7 +58,7 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   margin: Object.freeze({ t: 25, r: 25, b: 50, l: 60 } as Required<Sides>),
 })
 
-// Merge partial config with defaults - single helper for consistent merging
+// Merge partial config with defaults
 export const merge_phase_diagram_config = (config: Partial<PhaseDiagramConfig>) => ({
   margin: { ...PHASE_DIAGRAM_DEFAULTS.margin, ...config.margin },
   font_size: config.font_size ?? PHASE_DIAGRAM_DEFAULTS.font_size,
@@ -68,8 +68,7 @@ export const merge_phase_diagram_config = (config: Partial<PhaseDiagramConfig>) 
   colors: { ...PHASE_DIAGRAM_DEFAULTS.colors, ...config.colors },
 })
 
-// Phase colors as hex - single source of truth
-// Extended palette supports 3+ phase regions (Greek letters α through λ)
+// Phase colors as hex: liquid, Greek-letter phases α through λ, multi-phase and fallback
 const PHASE_COLOR_HEX = {
   liquid: `#87cefc`, // light sky blue
   alpha: `#90ee90`, // light green
@@ -139,8 +138,6 @@ export function get_multi_phase_gradient(
     .map((phase) => phase.trim())
     .filter(Boolean)
   if (phases.length < 2) return null
-
-  // Create evenly spaced gradient stops (phases.length >= 2 guaranteed by early return)
   return phases.map((phase, idx) => ({
     offset: idx / (phases.length - 1),
     color: PHASE_COLOR_HEX[get_phase_color_key(phase)],

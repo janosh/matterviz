@@ -12,7 +12,7 @@ import type { Slab } from '#lib/slab/index.js'
 import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
 import { structure_map } from '#site/structures.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_rocksalt } from '../test-fixtures'
+import { FCC_FACE_CENTRES, make_crystal, fcc_cell, make_rocksalt } from '../test-fixtures'
 
 // Conventional cubic cells: exact fractional coordinates, so every expectation below can
 // be compared against a hand-derived analytic value rather than a stored number.
@@ -26,21 +26,18 @@ const HCP_CELL = math.cell_to_lattice_matrix(HCP_A, HCP_A, HCP_C, 90, 90, 120)
 // highly oblique triclinic cell, to check nothing silently assumes orthogonal axes
 const TRICLINIC_CELL = math.cell_to_lattice_matrix(4.1, 5.3, 6.7, 71, 83, 115)
 
-const site = (element: string, abc: Vec3) => ({ element, abc })
-const on_sites = (element: string, positions: Vec3[]) =>
+const site = (element: string, abc: Readonly<Vec3>) => ({ element, abc })
+const on_sites = (element: string, positions: readonly Readonly<Vec3>[]) =>
   positions.map((abc) => site(element, abc))
 
-// oxfmt-ignore
-const FACE_CENTRES: Vec3[] = [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]]
-
-const fcc = (): Crystal => make_crystal(FCC_A, on_sites(`Cu`, FACE_CENTRES))
+const fcc = (): Crystal => fcc_cell(FCC_A)
 const rocksalt = (): Crystal => make_rocksalt(ROCKSALT_A)
 // the three perovskite O sit on the cube faces, i.e. the fcc face centres bar the origin
 const perovskite = (): Crystal =>
   make_crystal(PEROVSKITE_A, [
     site(`Sr`, [0, 0, 0]),
     site(`Ti`, [0.5, 0.5, 0.5]),
-    ...on_sites(`O`, FACE_CENTRES.slice(1)),
+    ...on_sites(`O`, FCC_FACE_CENTRES.slice(1)),
   ])
 const hcp = (): Crystal =>
   make_crystal(HCP_CELL, [site(`Mg`, [1 / 3, 2 / 3, 0.25]), site(`Mg`, [2 / 3, 1 / 3, 0.75])])
@@ -446,7 +443,7 @@ describe(`slab geometry`, () => {
     // A unimodular re-cell holds the same atoms, so it keeps the charge; the in-plane
     // primitive cell holds 1/index of them, so it keeps 1/index of it. A cleaved slab is
     // not charge-neutral by construction, so no bulk-derived number describes it.
-    const charged = make_crystal(FCC_A, on_sites(`Cu`, FACE_CENTRES), { charge: -2 })
+    const charged: Crystal = { ...fcc(), charge: -2 }
     const whole = make_oriented_bulk(charged, [1, 1, 1], { primitive_in_plane: false })
     expect(whole.crystal.charge).toBe(-2)
     const primitive = make_oriented_bulk(charged, [1, 1, 1])

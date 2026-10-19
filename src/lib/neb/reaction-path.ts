@@ -204,13 +204,12 @@ export function projected_force_slopes(
   options: PathMetricOptions = {},
 ): number[] | null {
   const images = assert_path(path, `projected_force_slopes`)
-  if (!images.every((image) => image.forces)) return null
+  const all_forces = images.map((image) => image.forces)
+  if (!all_forces.every((forces): forces is Vec3[] => forces !== undefined)) return null
 
   const tangents = path_tangents(images, path_geometry(images[0].structure, options))
   return images.map((image, image_idx) => {
-    const forces = image.forces
-    if (!forces)
-      throw new Error(`Image ${display_idx(image_idx)} unexpectedly lost its forces`)
+    const forces = all_forces[image_idx]
     if (forces.length !== image.structure.sites.length) {
       throw new Error(
         `Image ${display_idx(image_idx)} has ${forces.length} force vectors for ${image.structure.sites.length} sites`,
@@ -404,7 +403,7 @@ export function fit_path_spline(
     const [tan_0, tan_1] = tangents(seg)
     const criticals = segment_critical_points(energies[seg], energies[seg + 1], tan_0, tan_1)
     for (const t_val of criticals) {
-      const energy = hermite(energies[seg], energies[seg + 1], tan_0, tan_1, t_val)
+      const energy = seg_energy(seg, t_val)
       if (energy > best.energy) {
         best = { coord: coords[seg] + t_val * width, energy, between_images: [seg, seg + 1] }
       }

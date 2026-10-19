@@ -7,6 +7,7 @@ import {
   vertex_property,
   build_isosurface_geometry,
   nearest_face_vertex,
+  visible_isosurfaces,
 } from '#lib/fermi-surface/geometry.js'
 import type { BandEnergyGrid, FermiIsosurface } from '#lib/fermi-surface/types.js'
 import type { VertexColorOptions } from '#lib/isosurface/coloring.js'
@@ -151,6 +152,24 @@ describe(`named vertex properties`, () => {
     expect(low).toBeCloseTo(expected[0], 6)
     expect(high).toBeCloseTo(expected[1], 6)
   })
+})
+
+// an unset selection keeps every band or spin channel, an empty one none
+test.each([
+  [undefined, undefined, [0, 1, 2]],
+  [[1], undefined, [1, 2]],
+  [undefined, [`down`], [2]],
+  [[0, 1], [`up`], [0, 1]],
+  [[], undefined, []],
+] as const)(`visible_isosurfaces bands %j spins %j`, (bands, spins, expected) => {
+  const sheets = [
+    make_surface({ band_index: 0, spin: `up` }),
+    make_surface({ band_index: 1, spin: `up` }),
+    make_surface({ band_index: 1, spin: `down` }),
+  ]
+  const visible = visible_isosurfaces(sheets, bands && [...bands], spins && [...spins])
+  expect(visible.map((sheet) => sheets.indexOf(sheet))).toEqual(expected)
+  expect(visible_isosurfaces(undefined, bands && [...bands])).toEqual([])
 })
 
 describe(`nearest_face_vertex`, () => {

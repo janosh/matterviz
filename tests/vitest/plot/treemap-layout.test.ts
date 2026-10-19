@@ -15,6 +15,7 @@ import {
   place_treemap_label,
 } from '#lib/plot/treemap/labels.js'
 import { describe, expect, test } from 'vitest'
+import { tree } from './hierarchy-fixtures'
 
 const size = { width: 400, height: 300 }
 
@@ -42,18 +43,6 @@ const compute_treemap_layout = (
   return { arcs, rects, root, max_depth }
 }
 const no_pad = { padding_inner: 0, padding_top: 0, padding_outer: 0 }
-
-// Two-branch tree: A -> {A1: 4, A2: 6}, B: 10. Root total = 20.
-const tree: TreemapNode[] = [
-  {
-    label: `A`,
-    children: [
-      { label: `A1`, value: 4 },
-      { label: `A2`, value: 6 },
-    ],
-  },
-  { label: `B`, value: 10 },
-]
 
 const area = (rect: { width: number; height: number }) => rect.width * rect.height
 const all_coords_finite = (

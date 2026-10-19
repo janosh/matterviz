@@ -2,16 +2,17 @@ import type { Vec3 } from '#lib/math.js'
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   canvas_screenshot,
-  drag_canvas,
-  expect_canvas_changed,
-  expect_canvas_changed_by,
-  expect_gizmo_click_flies_camera,
-  get_canvas_timeout,
-  IS_CI,
   require_bbox,
   wait_for_3d_canvas,
   wait_for_canvas_rendered,
+  expect_canvas_changed,
+  expect_canvas_changed_by,
+  expect_gizmo_click_flies_camera,
+  open_plot_controls,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 // One typed browser-test probe keeps the page and Playwright assertions in sync.
 export interface ScatterProbe {
@@ -36,38 +37,8 @@ declare global {
 const TEST_URL = `/test/scatter-plot-3d`
 const CONTAINER_SELECTOR = `#test-scatter-3d`
 
-// Opens the controls pane and asserts it got there, so callers that only need the pane don't
-// repeat the toggle dance — and the one test that is *about* opening it can just call this.
-async function open_controls_pane(page: Page): Promise<Locator> {
-  const container = page.locator(CONTAINER_SELECTOR)
-  await container.hover()
-  const toggle = container.locator(`button.control-pane-toggle`)
-  await expect(toggle).toBeVisible({ timeout: 5000 })
-  await toggle.click()
-  const pane = container.locator(`.control-pane`)
-  await expect(pane).toBeVisible({ timeout: 5000 })
-  return pane
-}
-
-test(`portalled tooltip can escape while the canvas stays clipped`, async ({ page }) => {
-  await page.goto(TEST_URL, { waitUntil: `networkidle` })
-  const container = page.locator(CONTAINER_SELECTOR)
-  expect(
-    await container.evaluate((element) => {
-      const canvas_host = element.querySelector(`canvas`)?.parentElement
-      if (!(canvas_host instanceof HTMLElement)) throw new Error(`Missing canvas host`)
-      const probe = document.createElement(`span`)
-      probe.style.cssText = `position:absolute;right:-40px;top:100px;width:80px;height:40px;z-index:1000`
-      element.append(probe)
-      const rect = probe.getBoundingClientRect()
-      return {
-        canvas_clipped: getComputedStyle(canvas_host).overflow === `hidden`,
-        tooltip_visible:
-          document.elementFromPoint(rect.right - 10, rect.top + rect.height / 2) === probe,
-      }
-    }),
-  ).toEqual({ canvas_clipped: true, tooltip_visible: true })
-})
+const open_controls_pane = async (page: Page): Promise<Locator> =>
+  (await open_plot_controls(page.locator(CONTAINER_SELECTOR))).pane
 
 test(`touch controls keep every axis row visible`, async ({ browser }) => {
   const page = await browser.newPage({
@@ -91,135 +62,153 @@ test(`touch controls keep every axis row visible`, async ({ browser }) => {
   }
 })
 
-test(`sized points and projections share meshes and resize their instance buffers`, async ({
-  page,
-}) => {
-  test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
-  await page.goto(`${TEST_URL}?points=64&varying_sizes&projections`)
-  await page.waitForFunction(() => Boolean(window.scatter_probe))
-  const read = () => page.evaluate(() => window.scatter_probe.instances())
-  for (const count of [64, 256, 0, 11]) {
-    if (count !== 64)
-      await page.evaluate((next_count) => window.scatter_probe.set_count(next_count), count)
-    if (count === 0) {
-      await expect.poll(read).toEqual([])
-      continue
-    }
-    await expect
-      .poll(async () => (await read()).map((mesh) => mesh.count))
-      .toEqual([count, count, count, count])
-    // Matrices/colors are uploaded on the next render task after count changes, and markers
-    // then glide to their new sizes, so retry until the buffers land on the final radii.
-    await expect(async () => {
-      const meshes = await read()
-      expect(meshes.map((mesh) => mesh.projection)).toEqual([false, true, true, true])
-      for (const mesh of meshes) {
-        expect(mesh.matrices).toHaveLength(count * 16)
-        expect(mesh.colors).toHaveLength(count * 3)
-        for (let idx = 0; idx < count; idx++) {
-          const expected_radius =
-            (0.05 + (0.15 * idx) / (count - 1)) * (mesh.projection ? 0.5 : 1)
-          // Instance matrices are f32: allow one f32 epsilon relative to radius.
-          for (const diagonal of [0, 5, 10])
-            expect(
-              Math.abs(mesh.matrices[idx * 16 + diagonal] - expected_radius),
-            ).toBeLessThanOrEqual(expected_radius * 2 ** -23)
-          expect(mesh.matrices[idx * 16 + 15]).toBe(1)
-        }
-        if (mesh.projection) expect(mesh.colors).toEqual(meshes[0].colors)
+test(
+  `sized points and projections share meshes and resize their instance buffers`,
+  { tag: `@webgl` },
+  async ({ page }) => {
+    await page.goto(`${TEST_URL}?points=64&varying_sizes&projections`)
+    await page.waitForFunction(() => Boolean(window.scatter_probe))
+    const read = () => page.evaluate(() => window.scatter_probe.instances())
+    for (const count of [64, 256, 0, 11]) {
+      if (count !== 64)
+        await page.evaluate((next_count) => window.scatter_probe.set_count(next_count), count)
+      if (count === 0) {
+        await expect.poll(read).toEqual([])
+        continue
       }
-    }).toPass()
-  }
-})
+      await expect
+        .poll(async () => (await read()).map((mesh) => mesh.count))
+        .toEqual([count, count, count, count])
+      // Matrices/colors are uploaded on the next render task after count changes, and markers
+      // then glide to their new sizes, so retry until the buffers land on the final radii.
+      await expect(async () => {
+        const meshes = await read()
+        expect(meshes.map((mesh) => mesh.projection)).toEqual([false, true, true, true])
+        for (const mesh of meshes) {
+          expect(mesh.matrices).toHaveLength(count * 16)
+          expect(mesh.colors).toHaveLength(count * 3)
+          for (let idx = 0; idx < count; idx++) {
+            const expected_radius =
+              (0.05 + (0.15 * idx) / (count - 1)) * (mesh.projection ? 0.5 : 1)
+            // Instance matrices are f32: allow one f32 epsilon relative to radius.
+            for (const diagonal of [0, 5, 10])
+              expect(
+                Math.abs(mesh.matrices[idx * 16 + diagonal] - expected_radius),
+              ).toBeLessThanOrEqual(expected_radius * 2 ** -23)
+            expect(mesh.matrices[idx * 16 + 15]).toBe(1)
+          }
+          if (mesh.projection) expect(mesh.colors).toEqual(meshes[0].colors)
+        }
+      }).toPass()
+    }
+  },
+)
 
-test(`hover follows rotated markers and its tooltip never intercepts the pointer`, async ({
-  page,
-}) => {
-  test.skip(IS_CI, `Requires a hardware WebGPU adapter`)
-  await page.goto(`${TEST_URL}?points=16&varying_sizes`)
-  const container = page.locator(CONTAINER_SELECTOR)
-  await wait_for_canvas_rendered(await wait_for_3d_canvas(page, CONTAINER_SELECTOR))
-  for (const position of [
-    [12, 0, 0],
-    [8, 8, 8],
-    [0.01, 12, 0.01],
-  ] satisfies Vec3[]) {
-    await page.evaluate(
-      (next_position) => window.scatter_probe.set_view(next_position),
-      position,
-    )
-    // Camera binding, orbit controls, and instance matrices settle over render frames.
-    let marker_x = 0
+test(
+  `hover follows rotated markers and its tooltip never intercepts the pointer`,
+  { tag: `@webgl` },
+  async ({ page }) => {
+    await page.goto(`${TEST_URL}?points=16&varying_sizes`)
+    const container = page.locator(CONTAINER_SELECTOR)
+    await wait_for_canvas_rendered(await wait_for_3d_canvas(page, CONTAINER_SELECTOR))
+    for (const position of [
+      [12, 0, 0],
+      [8, 8, 8],
+      [0.01, 12, 0.01],
+    ] satisfies Vec3[]) {
+      await page.evaluate(
+        (next_position) => window.scatter_probe.set_view(next_position),
+        position,
+      )
+      // Camera binding, orbit controls, and instance matrices settle over render frames.
+      let marker_x = 0
+      await expect
+        .poll(async () => {
+          const targets = await page.evaluate(() => window.scatter_probe.targets())
+          const bounds = await container.boundingBox()
+          if (!bounds) return false
+          const target = targets.find(
+            ({ x, y }) =>
+              x > bounds.x + 100 &&
+              x < bounds.x + bounds.width - 100 &&
+              y > bounds.y + 120 &&
+              y < bounds.y + bounds.height - 30,
+          )
+          if (!target) return false
+          await page.mouse.move(target.x - 2, target.y)
+          await page.mouse.move(target.x, target.y)
+          const hovered = await page.evaluate(() => window.scatter_probe.hover())
+          marker_x = target.x
+          return hovered === target.point_idx
+        })
+        .toBe(true)
+      const tooltip = container.locator(`.plot-tooltip`)
+      await expect(tooltip).toBeVisible()
+      const { x, width } = await require_bbox(tooltip, `tooltip at camera ${position}`)
+      // beside the marker, past the projected halo radius plus a 4px gap, on whichever side fits
+      const gap = Math.max(x - marker_x, marker_x - x - width)
+      expect(gap).toBeGreaterThan(3)
+      expect(gap).toBeLessThan(32) // small test markers must not leave a large detached gap
+      expect(
+        await tooltip.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          return document.elementFromPoint(
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2,
+          )?.tagName
+        }),
+      ).toBe(`CANVAS`)
+      await expect(tooltip).toHaveCSS(`pointer-events`, `none`)
+    }
+
+    // With two samples, normalization places them on opposite ends of this diagonal.
+    // Looking straight down it overlaps both spheres: index 1 is the nearer surface.
+    await page.evaluate(async () => {
+      window.scatter_probe.set_count(2)
+      await window.scatter_probe.set_view([-10, 5, 10])
+    })
     await expect
       .poll(async () => {
-        const targets = await page.evaluate(() => window.scatter_probe.targets())
         const bounds = await container.boundingBox()
-        if (!bounds) return false
-        const target = targets.find(
-          ({ x, y }) =>
-            x > bounds.x + 100 &&
-            x < bounds.x + bounds.width - 100 &&
-            y > bounds.y + 120 &&
-            y < bounds.y + bounds.height - 30,
-        )
-        if (!target) return false
-        await page.mouse.move(target.x - 2, target.y)
-        await page.mouse.move(target.x, target.y)
-        const hovered = await page.evaluate(() => window.scatter_probe.hover())
-        marker_x = target.x
-        return hovered === target.point_idx
+        if (!bounds) return null
+        await page.mouse.move(bounds.x + bounds.width / 2 - 2, bounds.y + bounds.height / 2)
+        await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+        return page.evaluate(() => window.scatter_probe.hover())
       })
-      .toBe(true)
-    const tooltip = container.locator(`.plot-tooltip`)
-    await expect(tooltip).toBeVisible()
-    const { x, width } = await require_bbox(tooltip, `tooltip at camera ${position}`)
-    // beside the marker, past the projected halo radius plus a 4px gap, on whichever side fits
-    const gap = Math.max(x - marker_x, marker_x - x - width)
-    expect(gap).toBeGreaterThan(3)
-    expect(gap).toBeLessThan(32) // small test markers must not leave a large detached gap
-    expect(
-      await tooltip.evaluate((element) => {
-        const bounds = element.getBoundingClientRect()
-        return document.elementFromPoint(
-          bounds.x + bounds.width / 2,
-          bounds.y + bounds.height / 2,
-        )?.tagName
-      }),
-    ).toBe(`CANVAS`)
-    await expect(tooltip).toHaveCSS(`pointer-events`, `none`)
-  }
+      .toBe(1)
+  },
+)
 
-  // With two samples, normalization places them on opposite ends of this diagonal.
-  // Looking straight down it overlaps both spheres: index 1 is the nearer surface.
-  await page.evaluate(async () => {
-    window.scatter_probe.set_count(2)
-    await window.scatter_probe.set_view([-10, 5, 10])
-  })
-  await expect
-    .poll(async () => {
-      const bounds = await container.boundingBox()
-      if (!bounds) return null
-      await page.mouse.move(bounds.x + bounds.width / 2 - 2, bounds.y + bounds.height / 2)
-      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-      return page.evaluate(() => window.scatter_probe.hover())
-    })
-    .toBe(1)
-})
-
-test.describe(`ScatterPlot3D`, () => {
+test.describe(`ScatterPlot3D`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
-  // Text overlays must not swallow pointer events meant for the canvas below them
-  test(`axis and tick labels do not intercept pointer events`, async ({ page }) => {
+  test(`overlays: labels pass pointer events through, portalled tooltips escape the clipped canvas`, async ({
+    page,
+  }) => {
     await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+    // Text overlays must not swallow pointer events meant for the canvas below them
     for (const selector of [`.axis-label`, `.tick-label`]) {
       const label = page.locator(`${CONTAINER_SELECTOR} ${selector}`).first()
-      await expect(label).toBeVisible({ timeout: get_canvas_timeout() })
+      await expect(label).toBeVisible()
       await expect(label).toHaveCSS(`pointer-events`, `none`)
     }
+    expect(
+      await page.locator(CONTAINER_SELECTOR).evaluate((element) => {
+        const canvas_host = element.querySelector(`canvas`)?.parentElement
+        if (!(canvas_host instanceof HTMLElement)) throw new Error(`Missing canvas host`)
+        const probe = document.createElement(`span`)
+        probe.style.cssText = `position:absolute;right:-40px;top:100px;width:80px;height:40px;z-index:1000`
+        element.append(probe)
+        const rect = probe.getBoundingClientRect()
+        return {
+          canvas_clipped: getComputedStyle(canvas_host).overflow === `hidden`,
+          tooltip_visible:
+            document.elementFromPoint(rect.right - 10, rect.top + rect.height / 2) === probe,
+        }
+      }),
+    ).toEqual({ canvas_clipped: true, tooltip_visible: true })
   })
 
   test(`gizmo handles stay reachable beside the color bar and fly the camera`, async ({
@@ -240,20 +229,14 @@ test.describe(`ScatterPlot3D`, () => {
     })
   })
 
-  test(`drag to rotate changes view`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-    await expect_canvas_changed_by(canvas, () =>
-      drag_canvas(canvas, { dx: 100, dy: 50, steps: 10 }),
-    )
-  })
-
   test(`scroll wheel zoom changes view`, async ({ page }) => {
-    const controls_pane = await open_controls_pane(page)
+    const { toggle, pane: controls_pane } = await open_plot_controls(
+      page.locator(CONTAINER_SELECTOR),
+    )
     await controls_pane
       .getByRole(`combobox`, { name: /Projection/ })
       .selectOption(`orthographic`)
-    await page.locator(`${CONTAINER_SELECTOR} button.control-pane-toggle`).click()
+    await toggle.click()
     await expect(controls_pane).toBeHidden()
     const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
     await wait_for_canvas_rendered(canvas)
@@ -266,7 +249,7 @@ test.describe(`ScatterPlot3D`, () => {
     const initial = await canvas_screenshot(canvas)
     await page.mouse.wheel(0, -200)
 
-    await expect_canvas_changed(canvas, initial, get_canvas_timeout())
+    await expect_canvas_changed(canvas, initial)
     const read_zoom = (): Promise<number> => page.evaluate(() => window.scatter_probe.zoom())
     const zoom_before_resize = await read_zoom()
 
@@ -339,10 +322,10 @@ test.describe(`ScatterPlot3D`, () => {
     await reset_axes.click()
     await expect(axis_label).toHaveValue(initial_label)
     await expect(reset_axes).toHaveCount(0)
-    const before = await canvas.screenshot()
+    const before = await canvas_screenshot(canvas)
     const projection = pane.getByRole(`combobox`, { name: `Projection`, exact: true })
     await projection.selectOption(`orthographic`)
-    await expect_canvas_changed(canvas, before, get_canvas_timeout())
+    await expect_canvas_changed(canvas, before)
     await pane.getByRole(`button`, { name: `Reset camera to defaults`, exact: true }).click()
     await expect(projection).toHaveValue(`perspective`)
     await expect(
@@ -402,8 +385,7 @@ test.describe(`ScatterPlot3D`, () => {
   })
 })
 
-test.describe(`ScatterPlot3D Projections`, () => {
-  // Helper to get projection checkbox
+test.describe(`ScatterPlot3D Projections`, { tag: `@webgl` }, () => {
   const get_projection_checkbox = (pane: Locator, plane: string) =>
     pane.locator(`label`).filter({ hasText: plane }).locator(`input[type="checkbox"]`)
 
@@ -412,87 +394,87 @@ test.describe(`ScatterPlot3D Projections`, () => {
     pane.locator(`label`).filter({ hasText: label })
 
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ScatterPlot3D tests timeout in CI due to WebGL software rendering`)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
   })
 
-  for (const plane of [`XY`, `XZ`, `YZ`] as const) {
-    test(`toggling ${plane} projection on and off changes canvas`, async ({ page }) => {
-      const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-      await wait_for_canvas_rendered(canvas)
-      const pane = await open_controls_pane(page)
+  test(`toggling each projection plane on and off changes canvas`, async ({ page }) => {
+    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+    await wait_for_canvas_rendered(canvas)
+    const pane = await open_controls_pane(page)
+    for (const plane of [`XY`, `XZ`, `YZ`]) {
       const checkbox = get_projection_checkbox(pane, plane)
-      await expect(checkbox).not.toBeChecked() // default off
+      await expect(checkbox, plane).not.toBeChecked() // default off
       for (const checked of [true, false]) {
-        await expect_canvas_changed_by(
-          canvas,
-          async () => {
+        await test.step(`${plane} ${checked ? `on` : `off`}`, () =>
+          expect_canvas_changed_by(canvas, async () => {
             await checkbox.click()
             await expect(checkbox).toBeChecked({ checked })
-          },
-          get_canvas_timeout(),
-        )
+          }))
       }
-    })
-  }
+    }
+  })
 
-  for (const [label, default_val, min, test_val] of [
-    [`Opacity`, `0.3`, `0`, `0.7`],
-    [`Size`, `0.5`, `0.1`, `0.8`],
-  ]) {
-    test(`${label}: defaults, projection appearance, and number input sync`, async ({
-      page,
-    }) => {
-      const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-      await wait_for_canvas_rendered(canvas)
-      const pane = await open_controls_pane(page)
-      const row = get_slider_row(pane, label)
-      const slider = row.locator(`input[type="range"]`)
-      const number_input = row.locator(`input[type="number"]`)
-      await expect(slider).toHaveValue(default_val)
-      await expect(slider).toHaveAttribute(`min`, min)
-      await expect(slider).toHaveAttribute(`max`, `1`)
-      await expect(slider).toHaveAttribute(`step`, `0.05`)
-      await expect(number_input).toHaveValue(default_val)
-
-      // Enable XY, then change the slider to its maximum and verify a visible change.
-      await get_projection_checkbox(pane, `XY`).click()
-      await page.waitForTimeout(200)
-      const before = await canvas.screenshot()
-      await slider.fill(`1`)
-      await expect_canvas_changed(canvas, before, get_canvas_timeout())
-
-      await number_input.fill(test_val)
-      await number_input.press(`Enter`)
-      await expect(slider).toHaveValue(test_val)
-    })
-  }
-
-  test(`reset button resets projections to defaults`, async ({ page }) => {
-    await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+  test(`projection sliders: defaults, appearance, number input sync and reset`, async ({
+    page,
+  }) => {
+    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
+    await wait_for_canvas_rendered(canvas)
     const pane = await open_controls_pane(page)
+    const reset_button = pane.locator(`button[title="Reset projections to defaults"]`)
 
-    // Enable all projections and change sliders. Asserting each stays checked as we go also
-    // covers that the three planes are independent and can be on simultaneously.
-    for (const plane of [`XY`, `XZ`, `YZ`]) {
-      const checkbox = get_projection_checkbox(pane, plane)
-      await checkbox.click()
-      await expect(checkbox).toBeChecked()
+    for (const [label, default_val, min, test_val] of [
+      [`Opacity`, `0.3`, `0`, `0.7`],
+      [`Size`, `0.5`, `0.1`, `0.8`],
+    ]) {
+      await test.step(`${label}: defaults, projection appearance, and number input sync`, async () => {
+        const row = get_slider_row(pane, label)
+        const slider = row.locator(`input[type="range"]`)
+        const number_input = row.locator(`input[type="number"]`)
+        await expect(slider).toHaveValue(default_val)
+        await expect(slider).toHaveAttribute(`min`, min)
+        await expect(slider).toHaveAttribute(`max`, `1`)
+        await expect(slider).toHaveAttribute(`step`, `0.05`)
+        await expect(number_input).toHaveValue(default_val)
+
+        // Enable XY, then change the slider to its maximum and verify a visible change.
+        await get_projection_checkbox(pane, `XY`).click()
+        await page.waitForTimeout(200)
+        const before = await canvas_screenshot(canvas)
+        await slider.fill(`1`)
+        await expect_canvas_changed(canvas, before)
+
+        await number_input.fill(test_val)
+        await number_input.press(`Enter`)
+        await expect(slider).toHaveValue(test_val)
+
+        // back to defaults (XY off) for the next slider
+        await reset_button.click()
+        await expect(get_projection_checkbox(pane, `XY`)).not.toBeChecked()
+        await expect(slider).toHaveValue(default_val)
+      })
     }
-    const opacity_row = get_slider_row(pane, `Opacity`)
-    const size_row = get_slider_row(pane, `Size`)
-    await opacity_row.locator(`input[type="range"]`).fill(`0.8`)
-    await size_row.locator(`input[type="range"]`).fill(`0.9`)
 
-    // Click reset button in Projections section specifically
-    await pane.locator(`button[title="Reset projections to defaults"]`).click()
+    await test.step(`reset button resets every projection to defaults`, async () => {
+      // Enable all projections and change sliders. Asserting each stays checked as we go also
+      // covers that the three planes are independent and can be on simultaneously.
+      for (const plane of [`XY`, `XZ`, `YZ`]) {
+        const checkbox = get_projection_checkbox(pane, plane)
+        await checkbox.click()
+        await expect(checkbox).toBeChecked()
+      }
+      const opacity_row = get_slider_row(pane, `Opacity`)
+      const size_row = get_slider_row(pane, `Size`)
+      await opacity_row.locator(`input[type="range"]`).fill(`0.8`)
+      await size_row.locator(`input[type="range"]`).fill(`0.9`)
 
-    // Verify reset to defaults
-    for (const plane of [`XY`, `XZ`, `YZ`]) {
-      await expect(get_projection_checkbox(pane, plane)).not.toBeChecked()
-    }
-    await expect(opacity_row.locator(`input[type="range"]`)).toHaveValue(`0.3`)
-    await expect(size_row.locator(`input[type="range"]`)).toHaveValue(`0.5`)
+      await reset_button.click()
+
+      for (const plane of [`XY`, `XZ`, `YZ`]) {
+        await expect(get_projection_checkbox(pane, plane)).not.toBeChecked()
+      }
+      await expect(opacity_row.locator(`input[type="range"]`)).toHaveValue(`0.3`)
+      await expect(size_row.locator(`input[type="range"]`)).toHaveValue(`0.5`)
+    })
   })
 
   test(`projections update when camera rotates`, async ({ page }) => {
@@ -500,7 +482,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
     await wait_for_canvas_rendered(canvas)
     const pane = await open_controls_pane(page)
 
-    // Enable all projections
     for (const plane of [`XY`, `XZ`, `YZ`]) {
       await get_projection_checkbox(pane, plane).click()
     }
@@ -519,6 +500,6 @@ test.describe(`ScatterPlot3D Projections`, () => {
     })
     await page.mouse.up()
 
-    await expect_canvas_changed(canvas, initial, get_canvas_timeout())
+    await expect_canvas_changed(canvas, initial)
   })
 })

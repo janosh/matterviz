@@ -83,7 +83,10 @@
     is_time_scale,
     SCALE_DEFAULTS,
   } from '#lib/plot/core/types.js'
-  import { compute_label_positions } from '#lib/plot/core/utils/label-placement.js'
+  import {
+    compute_label_positions,
+    LABEL_PLACEMENT_DEFAULTS,
+  } from '#lib/plot/core/utils/label-placement.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import {
@@ -1308,9 +1311,7 @@
 
   // Merge user config with defaults before the effect that uses it
   let actual_label_config = $derived({
-    sa_iterations: 2000,
-    max_labels: 300,
-    leader_line_threshold: 15,
+    ...LABEL_PLACEMENT_DEFAULTS,
     ...label_placement_config,
   })
   // The merged object (and an inline `label_placement_config={{...}}` prop) is a fresh

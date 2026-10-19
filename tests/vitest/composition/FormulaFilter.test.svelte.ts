@@ -307,6 +307,7 @@ describe(`FormulaFilter`, () => {
     const history_dropdown = () => document.querySelector(`.history-dropdown`)
     const history_items = () => document.querySelectorAll(`.history-item`)
     const history_values = () => document.querySelectorAll(`.history-value`)
+    const history_texts = () => [...history_values()].map((item) => item.textContent?.trim())
     const remove_btns = () => document.querySelectorAll<HTMLButtonElement>(`.history-remove`)
     const get_stored = () => JSON.parse(localStorage.getItem(HISTORY_KEY) ?? `[]`) as string[]
 
@@ -341,12 +342,8 @@ describe(`FormulaFilter`, () => {
       expect(history_dropdown()?.getAttribute(`role`)).toBe(`listbox`)
       expect(history_dropdown()?.getAttribute(`aria-label`)).toBe(`Recent searches`)
       // Items rendered in order with correct roles
-      const items = history_values()
-      expect(items).toHaveLength(3)
-      expect(items[0].textContent?.trim()).toBe(`Fe,O`)
-      expect(items[1].textContent?.trim()).toBe(`Li-Fe-O`)
-      expect(items[2].textContent?.trim()).toBe(`LiFePO4`)
-      expect(items[0].getAttribute(`role`)).toBe(`option`)
+      expect(history_texts()).toEqual([`Fe,O`, `Li-Fe-O`, `LiFePO4`])
+      expect(history_values()[0].getAttribute(`role`)).toBe(`option`)
     })
 
     // Without a reload the old key's entries get written back under the new one, and lowering
@@ -359,14 +356,13 @@ describe(`FormulaFilter`, () => {
       const state = $state({ history_key: HISTORY_KEY, max_history: 5 })
       mount_filter(bind_props({ value: `` }, state))
       focus_input()
-      const texts = () => [...history_values()].map((item) => item.textContent?.trim())
-      expect(texts()).toHaveLength(3)
+      expect(history_texts()).toEqual([`Fe,O`, `Li,Na`, `O,Si`])
       state.max_history = 2
       flushSync()
-      expect(texts()).toEqual([`Fe,O`, `Li,Na`])
+      expect(history_texts()).toEqual([`Fe,O`, `Li,Na`])
       state.history_key = other_key
       flushSync()
-      expect(texts()).toEqual([`Na,Cl`])
+      expect(history_texts()).toEqual([`Na,Cl`])
       // the old key is untouched: its entries were never rewritten under the new one
       expect(get_stored()).toEqual([`Fe,O`, `Li,Na`, `O,Si`])
     })
@@ -402,8 +398,7 @@ describe(`FormulaFilter`, () => {
 
     test(`excludes current value from visible history`, () => {
       seed_mount_focus([`Fe,O`, `Li,Na`], { value: `Fe,O` })
-      expect(history_values()).toHaveLength(1)
-      expect(history_values()[0].textContent?.trim()).toBe(`Li,Na`)
+      expect(history_texts()).toEqual([`Li,Na`])
     })
 
     test(`clicking a history item sets value and closes dropdown`, () => {
@@ -423,10 +418,7 @@ describe(`FormulaFilter`, () => {
         flushSync()
       }
       remove_at(1)
-      expect([...history_values()].map((item) => item.textContent?.trim())).toEqual([
-        `Fe,O`,
-        `Si,O`,
-      ])
+      expect(history_texts()).toEqual([`Fe,O`, `Si,O`])
       expect(get_stored()).toEqual([`Fe,O`, `Si,O`])
       remove_at(0)
       remove_at(0)
@@ -549,12 +541,11 @@ describe(`FormulaFilter`, () => {
         pin_btns[idx].dispatchEvent(mouse(`mousedown`))
         flushSync()
       }
-      const values = () => [...history_values()].map((item) => item.textContent?.trim())
       toggle_pin(1)
-      expect(values()).toEqual([`Li,Na`, `Fe,O`, `Si,O`])
+      expect(history_texts()).toEqual([`Li,Na`, `Fe,O`, `Si,O`])
       expect(localStorage.getItem(`${HISTORY_KEY}-pins`)).toBe(JSON.stringify([`Li,Na`]))
       toggle_pin(0)
-      expect(values()).toEqual([`Fe,O`, `Li,Na`, `Si,O`])
+      expect(history_texts()).toEqual([`Fe,O`, `Li,Na`, `Si,O`])
     })
 
     test(`clear-all button clears dropdown and persisted history`, () => {
@@ -568,7 +559,7 @@ describe(`FormulaFilter`, () => {
   })
 
   describe(`extended features`, () => {
-    test(`mode lock prevents mode inference and ignores mode hint clicks`, async () => {
+    test(`mode lock prevents mode inference, ignores mode hint clicks and the lock button toggles it`, async () => {
       const on_change = vi.fn()
       const state: { search_mode: FormulaSearchMode; mode_locked: boolean } = $state({
         search_mode: `elements`,
@@ -581,6 +572,12 @@ describe(`FormulaFilter`, () => {
       flushSync()
       expect(on_change).not.toHaveBeenCalled()
       expect(get_mode_btn().classList.contains(`locked`)).toBe(true)
+      const lock_btn = doc_query<HTMLButtonElement>(`.lock-btn`)
+      for (const locked of [false, true]) {
+        lock_btn.click()
+        flushSync()
+        expect(state.mode_locked).toBe(locked)
+      }
     })
 
     test(`on_parse emits structured token data`, () => {
@@ -681,18 +678,6 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: ``, on_change, ...props })
       submit_input(input)
       expect(on_change).toHaveBeenLastCalledWith(expected, `exact`)
-    })
-
-    test(`lock button toggles mode_locked binding`, () => {
-      const state = $state({ mode_locked: false })
-      mount_filter(bind_props({ value: `Li,Fe` }, state))
-      const lock_btn = doc_query<HTMLButtonElement>(`.lock-btn`)
-      lock_btn.click()
-      flushSync()
-      expect(state.mode_locked).toBe(true)
-      lock_btn.click()
-      flushSync()
-      expect(state.mode_locked).toBe(false)
     })
 
     // a duplicate token chip removes only one instance

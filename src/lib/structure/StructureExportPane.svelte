@@ -66,11 +66,7 @@
   let wrapper_canvas = $state.raw<HTMLCanvasElement | null>(null)
   let flight_running = $state(false)
 
-  $effect(() =>
-    observe_canvas_presence(wrapper, () => {
-      wrapper_canvas = wrapper?.querySelector(`canvas`) ?? null
-    }),
-  )
+  $effect(() => observe_canvas_presence(wrapper, (found) => (wrapper_canvas = found)))
   let has_canvas = $derived(Boolean(image_canvas || wrapper_canvas))
 
   let prediction_error = $state(``)

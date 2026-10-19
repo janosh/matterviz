@@ -12,11 +12,10 @@ const temp_entries_fixture = [
 ]
 const static_entries_fixture = [make_phase({ Li: 1 }, -1), make_phase({ O: 1 }, -2)]
 
-const has_formula = (entries: PhaseData[], formula: string): boolean =>
-  entries.some((entry) => formula_key_from_composition(entry.composition) === formula)
-
 const get_formula_entry = (entries: PhaseData[], formula: string): PhaseData | undefined =>
   entries.find((entry) => formula_key_from_composition(entry.composition) === formula)
+const has_formula = (entries: PhaseData[], formula: string): boolean =>
+  get_formula_entry(entries, formula) !== undefined
 
 const get_payload_at_700 = (config: Parameters<typeof get_temp_filter_payload>[2] = {}) =>
   get_temp_filter_payload(temp_entries_fixture, 700, config)

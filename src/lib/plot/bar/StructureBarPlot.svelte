@@ -14,7 +14,10 @@
   } from '#lib/plot/core/types.js'
   import { on_change } from '#lib/plot/core/interactions.js'
   import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
-  import type { StructureEntry } from '#lib/plot/core/structure-input.js'
+  import type {
+    StructureEntry,
+    StructureSiteHighlight,
+  } from '#lib/plot/core/structure-input.js'
   import type { Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import BarPlot from './BarPlot.svelte'
@@ -39,6 +42,8 @@
     show_controls,
     controls_open = $bindable(false),
     on_bar_change,
+    bar_sites,
+    on_sites_hover,
     ...rest
   }: Omit<BarPlotOptions, `tooltip`> & {
     // Not generic over the metadata type: BarPlot's snippet prop is invariant in it, so a
@@ -71,7 +76,12 @@
     error_msg?: string
     // on_bar_hover, but only when the hovered bar changes (BarPlot reports every pointer move)
     on_bar_change?: BarPlotOptions[`on_bar_hover`]
+    // The sites a bar counts, per structure it draws from. Wrappers supply it to back
+    // on_sites_hover, which fires alongside on_bar_change with null once the pointer leaves
+    bar_sites?: (bar: BarHover) => StructureSiteHighlight[]
+    on_sites_hover?: (highlights: StructureSiteHighlight[] | null) => void
   } = $props()
+  type BarHover = NonNullable<Parameters<NonNullable<BarPlotOptions[`on_bar_hover`]>>[0]>
 
   let dragover = $state(false)
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -92,9 +102,11 @@
     on_dragover: (over) => (dragover = over),
   })
   const report_bar_change = on_change(
-    (bar: Parameters<NonNullable<BarPlotOptions[`on_bar_hover`]>>[0]) =>
-      bar && `${bar.series_idx}:${bar.bar_idx}`,
-    (bar) => on_bar_change?.(bar),
+    (bar: BarHover | null) => bar && `${bar.series_idx}:${bar.bar_idx}`,
+    (bar) => {
+      on_bar_change?.(bar)
+      if (bar_sites) on_sites_hover?.(bar && bar_sites(bar))
+    },
   )
 </script>
 
@@ -137,7 +149,7 @@
       }}
       bind:display
       tooltip={tooltip === false ? false : labelled_tooltip}
-      on_bar_hover={on_bar_change
+      on_bar_hover={on_bar_change || (bar_sites && on_sites_hover)
         ? (bar) => {
             rest.on_bar_hover?.(bar)
             report_bar_change(bar)

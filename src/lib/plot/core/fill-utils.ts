@@ -553,7 +553,6 @@ export function generate_fill_path(
   return `${upper_path}L${lower_path.slice(1)}Z`
 }
 
-// Helper to expand error definition to array
 const expand_error = (err: number | readonly number[], length: number): readonly number[] =>
   typeof err === `number` ? Array(length).fill(err) : err
 

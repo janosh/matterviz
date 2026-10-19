@@ -7,8 +7,9 @@
   import { format_value } from '#lib/labels.js'
   import type { BasePlotProps, LegendConfig, Orientation } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
-  import { PlotLegend, PlotTooltip, SankeyControls } from '#lib/plot/index.js'
+  import { PlotTooltip, SankeyControls } from '#lib/plot/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
+  import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import { json_source, svg_sources } from '#lib/io/export.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import {
@@ -16,7 +17,7 @@
     is_activation_key,
     pointer_pos,
   } from '#lib/plot/core/interactions.js'
-  import { compute_element_placement, filter_padding } from '#lib/plot/core/layout.js'
+  import { filter_padding } from '#lib/plot/core/layout.js'
   import type { Sides } from '#lib/plot/core/layout.js'
   import { toggle_muted } from '#lib/plot/core/utils/hierarchy-chart.js'
   import { resolve_legend_visibility } from '#lib/plot/core/utils/series-visibility.js'
@@ -386,7 +387,6 @@
 
   // Legend: one item per node that survives the layout (orphans are dropped), toggling mutes
   // (dims) rather than removes. Node box centers are obstacles for its auto-placement.
-  let legend_element = $state<HTMLDivElement | undefined>()
   let legend_data = $derived(
     layout.nodes.map(({ node_idx: idx, id: identifier, label }) => ({
       series_idx: idx,
@@ -400,16 +400,6 @@
   let legend_visible = $derived(
     resolve_legend_visibility(show_legend, legend, legend_data.length, false),
   )
-  let legend_placement = $derived.by(() => {
-    if (!legend_visible || !width || !height) return null
-    return compute_element_placement({
-      plot_bounds: { x: pad.l, y: pad.t, width: inner_width, height: inner_height },
-      element: legend_element,
-      element_size: { width: 120, height: 60 },
-      axis_clearance: legend?.axis_clearance,
-      points: layout.nodes.map(node_center),
-    })
-  })
 
   const toggle_node = (series_idx: number) =>
     toggle_muted(muted_nodes, node_by_idx.get(series_idx)?.id)
@@ -607,18 +597,14 @@
     {/if}
 
     {#if legend_visible}
-      {@const legend_left = legend_placement?.x ?? pad.l + 10}
-      {@const legend_top = legend_placement?.y ?? pad.t + 10}
-      <PlotLegend
-        bind:root_element={legend_element}
-        {...legend}
+      <InsetLegend
+        {legend}
+        measured={width > 0 && height > 0}
+        plot_bounds={{ x: pad.l, y: pad.t, width: inner_width, height: inner_height }}
+        points={layout.nodes.map(node_center)}
+        bind:hover_idx={legend_hover_idx}
         series_data={legend_data}
-        on_toggle={legend?.on_toggle ?? toggle_node}
-        on_item_hover={(item) =>
-          (legend_hover_idx = item != null && item.series_idx >= 0 ? item.series_idx : null)}
-        style={`position: absolute; left: ${legend_left}px; top: ${legend_top}px; pointer-events: auto; ${
-          legend?.style ?? ``
-        }`}
+        on_toggle={toggle_node}
       />
     {/if}
   {/snippet}

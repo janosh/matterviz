@@ -62,6 +62,8 @@ test.describe(`ThemeControl`, () => {
     await expect(dialog).toBeVisible()
     await dialog.getByRole(`combobox`, { name: menu_label }).fill(`dark colour appearance`)
     await dialog.getByRole(`option`, { name: /dark color theme/i }).click()
+    // picking a command closes the menu; Ctrl+K during its fade-out would be lost
+    await expect(dialog).toBeHidden()
     await expect(page.locator(`html`)).toHaveAttribute(`data-theme`, `dark`)
     await expect(theme_control).toHaveValue(`dark`)
     await expect

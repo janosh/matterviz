@@ -13,31 +13,24 @@
 
   let {
     controls_open = $bindable(false),
-    // Visibility toggles
     show_boundaries = $bindable(PHASE_DIAGRAM_DEFAULTS.show_boundaries),
     show_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_labels),
     show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
     show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
-    // Configuration
     config = $bindable({}),
-    // Axis configuration
     x_axis = $bindable({}),
     y_axis = $bindable({}),
-    // Data
     data,
     children,
     ...rest
   }: Omit<ComponentProps<typeof ControlPane>, `children`> & {
-    // Visibility toggles
     show_boundaries?: boolean
     show_labels?: boolean
     show_special_points?: boolean
     show_grid?: boolean
     show_component_labels?: boolean
-    // Configuration
     config?: Partial<PhaseDiagramConfig>
-    // Axis configuration
     x_axis?: AxisConfig
     y_axis?: AxisConfig
     // Data for context (components, units, etc.)
@@ -64,7 +57,6 @@
     config = { ...config, [key]: { ...config[key], [prop]: value } }
   }
 
-  // Derive component info from data
   const title = $derived(
     data?.components?.[0] && data.components[1]
       ? `${data.components[0]}-${data.components[1]} phase diagram`

@@ -6,12 +6,14 @@ import {
   rdf_bin_sites,
   shell_volume,
 } from '#lib/rdf/calc-rdf.js'
+import { coordination_number } from '#lib/rdf/calc-pdf.js'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
 import { neighbor_query } from '#lib/structure/bonding.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { structure_map } from '#site/structures.js'
 import { describe, expect, test } from 'vitest'
+import { max_abs_error } from '../numeric-helpers'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
 
 const fixture = (identifier: string): Crystal => {
@@ -32,24 +34,13 @@ const sorted_pairs = (...elements: string[]): [string, string][] =>
     .flatMap((el_a, idx, sorted) =>
       sorted.slice(idx).map((el_b): [string, string] => [el_a, el_b]),
     )
-const max_abs_diff = (left: number[], right: number[]) =>
-  Math.max(...left.map((val, idx) => Math.abs(val - right[idx])))
-
-// n = ∫ 4πr² ρ g(r) dr over bins whose centre lies in (r_lo, r_hi): the number of `density`
-// atoms around one centre in that shell
+// Number of `density` atoms around one centre in the shell [r_min, r_max)
 const shell_coordination = (
   pattern: RdfPattern,
   density: number,
-  r_lo = 0,
-  r_hi = Infinity,
-): number =>
-  pattern.r.reduce(
-    (sum, rad, idx) =>
-      rad > r_lo && rad < r_hi
-        ? sum + shell_volume(rad, bin_width(pattern)) * pattern.g_r[idx] * density
-        : sum,
-    0,
-  )
+  r_min: number,
+  r_max: number,
+): number => coordination_number(pattern, density, { r_min, r_max })
 
 // Every shell of a simple cubic lattice with parameter `a_len` inside `cutoff`: shell radius
 // and the number of lattice points on it
@@ -88,7 +79,7 @@ describe(`calculate_rdf`, () => {
       const bin = Math.floor(dist / delta_r + 1e-9)
       expected[bin] += count / (density * shell_volume(pattern.r[bin], delta_r))
     }
-    expect(max_abs_diff(pattern.g_r, expected)).toBeLessThan(1e-9)
+    expect(max_abs_error(pattern.g_r, expected)).toBeLessThan(1e-9)
     expect(shell_coordination(pattern, density, 0, 1.2 * a_len)).toBeCloseTo(6, 9)
     expect(shell_coordination(pattern, density, 1.2 * a_len, 1.6 * a_len)).toBeCloseTo(12, 9)
     expect(shell_coordination(pattern, density, 1.6 * a_len, 1.9 * a_len)).toBeCloseTo(8, 9)
@@ -113,7 +104,7 @@ describe(`calculate_rdf`, () => {
     expect(na_cl.r[first_bin]).toBeCloseTo(ROCKSALT_A / 2 + bin_width(na_cl) / 2, 12)
     expect(shell_coordination(na_cl, species_density, 0, 3.5)).toBeCloseTo(6, 9)
     expect(shell_coordination(na_na, species_density, 0, 4.5)).toBeCloseTo(12, 9)
-    expect(max_abs_diff(na_cl.g_r, cl_na.g_r)).toBeLessThan(1e-12)
+    expect(max_abs_error(na_cl.g_r, cl_na.g_r)).toBeLessThan(1e-12)
   })
 
   // The full g(r) is the concentration-weighted sum Σ_ab c_a c_b g_ab(r) over ORDERED pairs;
@@ -152,11 +143,11 @@ describe(`calculate_rdf`, () => {
         return sum + (multiplicity * counts[el_a] * counts[el_b] * g_r[idx]) / n_atoms ** 2
       }, 0),
     )
-    expect(max_abs_diff(full.g_r, weighted)).toBeLessThan(1e-12)
+    expect(max_abs_error(full.g_r, weighted)).toBeLessThan(1e-12)
     const naive_mean = full.r.map(
       (_rad, idx) => partials.reduce((sum, { g_r }) => sum + g_r[idx], 0) / partials.length,
     )
-    expect(max_abs_diff(full.g_r, naive_mean)).toBeGreaterThan(0.1)
+    expect(max_abs_error(full.g_r, naive_mean)).toBeGreaterThan(0.1)
   })
 
   test(`mixed-occupancy sites weight pairs by the occupancy product`, () => {
@@ -193,7 +184,7 @@ describe(`calculate_rdf`, () => {
     const by_pair = Object.fromEntries(
       partials.map((partial) => [partial.element_pair?.join(`-`), partial]),
     )
-    expect(max_abs_diff(by_pair[`Cl-K`].g_r, by_pair[`Cl-Na`].g_r)).toBeLessThan(1e-12)
+    expect(max_abs_error(by_pair[`Cl-K`].g_r, by_pair[`Cl-Na`].g_r)).toBeLessThan(1e-12)
     // N_Cl / V is the density of the neighbour species around each (half-occupied) K
     expect(shell_coordination(by_pair[`Cl-K`], 4 / ROCKSALT_A ** 3, 0, 3.5)).toBeCloseTo(6, 9)
     // K-Na: 12 cation neighbours at a/√2, half of them Na, seen from a half-K site

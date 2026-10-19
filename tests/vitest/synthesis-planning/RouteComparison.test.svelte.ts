@@ -1,11 +1,18 @@
 import type { PhaseData } from '#lib/convex-hull/index.js'
+import ReactionSlicePlot from '#lib/synthesis-planning/ReactionSlicePlot.svelte'
 import RouteComparison from '#lib/synthesis-planning/RouteComparison.svelte'
 import RouteTable from '#lib/synthesis-planning/RouteTable.svelte'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisRoute } from '#lib/synthesis-planning/types.js'
-import { type ComponentProps, mount, tick, unmount } from 'svelte'
+import { tick } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, set_select, trigger_resize_observer } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  mount_in_test,
+  set_select,
+  trigger_resize_observer,
+} from '../setup'
 import { load_json } from '../test-fixtures'
 
 const base = plan_synthesis({
@@ -19,11 +26,6 @@ const routes: SynthesisRoute[] = Array.from({ length: 5 }, (_, idx) => ({
   reaction: { ...base.reaction, equation: `Route ${idx}` },
 }))
 
-const mount_comparison = (props: ComponentProps<typeof RouteComparison>) => {
-  const component = mount(RouteComparison, { target: document.body, props })
-  onTestFinished(() => unmount(component))
-}
-
 test(`shortlisting is limited to four, independent of the viewed route, and survives stale ids`, async () => {
   const state = $state({
     routes,
@@ -31,7 +33,7 @@ test(`shortlisting is limited to four, independent of the viewed route, and surv
     selected_route_id: routes[4].id,
     comparison_options: {},
   })
-  mount_comparison(bind_props({}, state))
+  mount_in_test(RouteComparison, bind_props({}, state))
   await tick()
   const comparison = doc_query(`.cell-preview`)
   expect(comparison.style.getPropertyValue(`--max-cell-lines`)).toBe(`8`)
@@ -108,7 +110,7 @@ test(`comparison explains weighted tradeoffs, two-step adjustments, downhill win
       downhill_windows: [],
     },
   }
-  mount_comparison({
+  mount_in_test(RouteComparison, {
     routes: [better, alternative],
     shortlist_ids: [better.id, alternative.id],
   })
@@ -174,7 +176,7 @@ test.each([0, -2])(
         simplicity: 0,
       },
     }))
-    mount_comparison({
+    mount_in_test(RouteComparison, {
       routes: tied,
       shortlist_ids: tied.map(({ id: identifier }) => identifier),
     })
@@ -187,16 +189,12 @@ test.each([0, -2])(
 
 test(`route table sorts downhill windows by their lowest temperature, never-downhill last`, async () => {
   const windows: [number, number][][] = [[[1105, 2000]], [], [[300, 2000]], [[0, 1480]]]
-  const component = mount(RouteTable, {
-    target: document.body,
-    props: {
-      routes: windows.map((downhill_windows, idx) => ({
-        ...routes[idx],
-        thermodynamics: { ...base.thermodynamics, downhill_windows },
-      })),
-    },
+  mount_in_test(RouteTable, {
+    routes: windows.map((downhill_windows, idx) => ({
+      ...routes[idx],
+      thermodynamics: { ...base.thermodynamics, downhill_windows },
+    })),
   })
-  onTestFinished(() => unmount(component))
   const header = doc_query(`th[data-col-id="downhill"]`)
   const cell_texts = () =>
     [...document.querySelectorAll(`td[data-col="Downhill window"]`)].map((cell) =>
@@ -210,4 +208,32 @@ test(`route table sorts downhill windows by their lowest temperature, never-down
     await tick()
     expect(cell_texts()).toEqual([...order, `never downhill between 0 and 2000 K`])
   }
+})
+
+test(`route table selects a clicked row without remounting the others`, async () => {
+  mount_in_test(RouteTable, { routes })
+  const rows_before = [...document.querySelectorAll<HTMLElement>(`tbody tr`)]
+  expect(rows_before).toHaveLength(routes.length)
+  rows_before[2].click()
+  await tick()
+  for (const [idx, row] of [...document.querySelectorAll(`tbody tr`)].entries()) {
+    expect(row).toBe(rows_before[idx])
+    expect(row.classList.contains(`selected`)).toBe(idx === 2)
+  }
+})
+
+// The slice is a pseudo-binary to -quaternary hull over 2 to 4 solid precursors (gases are no
+// corners); with fewer there's no hull to draw
+const solids = base.reaction.reactants.filter(({ phase }) => !phase.is_gas)
+test.each([
+  [`all precursors`, base.reaction.reactants, 1],
+  [`one solid precursor`, solids.slice(0, 1), 0],
+])(`reaction slice plot with %s draws %i hulls`, async (_name, reactants, n_hulls) => {
+  mount_in_test(ReactionSlicePlot, {
+    route: { ...base, reaction: { ...base.reaction, reactants } },
+  })
+  await tick()
+  const hulls = `.convex-hull-2d, .convex-hull-3d, .convex-hull-4d`
+  if (n_hulls) await vi.waitFor(() => doc_query(hulls))
+  expect(document.querySelectorAll(hulls)).toHaveLength(n_hulls)
 })

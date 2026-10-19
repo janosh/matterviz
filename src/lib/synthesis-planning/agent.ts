@@ -122,11 +122,11 @@ export const SYNTHESIS_PLANNER_TOOL = {
 
 function format_route_text(route: SynthesisRoute, rank?: number): string {
   const { reaction, selectivity, thermodynamics, practicality } = route
-  const lines: string[] = []
-  const header = `${rank === undefined ? `` : `${rank}. `}${reaction.equation}  (score ${format_num(route.score, `.2~f`)}${
-    route.kind === `two_step` ? `, two-step` : ``
-  })`
-  lines.push(header)
+  const lines = [
+    `${rank === undefined ? `` : `${rank}. `}${reaction.equation}  (score ${format_num(route.score, `.2~f`)}${
+      route.kind === `two_step` ? `, two-step` : ``
+    })`,
+  ]
   if (route.intermediate_step)
     lines.push(`   step 1: ${route.intermediate_step.reaction.equation}`)
   lines.push(

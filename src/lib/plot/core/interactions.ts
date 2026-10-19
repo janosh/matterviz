@@ -13,6 +13,18 @@ import {
   is_y2_sync_mode,
 } from '#lib/plot/core/types.js'
 
+// Combine two optional handlers into one that runs the component's own handler first, then
+// the caller's observer, with the same arguments (either may be undefined)
+export const chain_callbacks =
+  <Args extends unknown[]>(
+    own: ((...args: Args) => void) | undefined,
+    observer: ((...args: Args) => void) | undefined,
+  ) =>
+  (...args: Args): void => {
+    own?.(...args)
+    observer?.(...args)
+  }
+
 // Mouse event coordinates relative to `element` (default: the event's currentTarget)
 export function get_relative_coords(
   evt: MouseEvent,
@@ -86,7 +98,6 @@ export function normalize_y2_sync(sync: Y2SyncConfig | Y2SyncMode | undefined): 
   return config
 }
 
-// Helper to check if all values in ranges are finite
 const all_finite = (...ranges: Vec2[]) =>
   ranges.every(([value_a, value_b]) => Number.isFinite(value_a) && Number.isFinite(value_b))
 

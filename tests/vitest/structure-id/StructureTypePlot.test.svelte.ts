@@ -4,7 +4,7 @@ import StructureTypePlot from '#lib/structure-id/StructureTypePlot.svelte'
 import * as async_compute from '#lib/structure-id/async-compute.svelte.js'
 import type { StructureInput } from '#lib/plot/core/structure-input.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { bind_props, mount_sized } from '../setup'
 import { make_bcc, make_fcc, make_hcp } from './lattices'
 
@@ -143,6 +143,10 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     hcp_item?.dispatchEvent(new MouseEvent(`mouseenter`))
     hcp_item?.dispatchEvent(new MouseEvent(`mouseleave`))
     expect(on_type_hover.mock.calls).toEqual([[`hcp`], [null]])
+    // the hovered type is all it reports: bars map to no sites, so on_sites_hover is no prop
+    expectTypeOf<
+      Extract<keyof ComponentProps<typeof StructureTypePlot>, `on_sites_hover`>
+    >().toBeNever()
   })
 
   // Results-only mode (no `structures`): the parent drives `loading` one-way while it collects

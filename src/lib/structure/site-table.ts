@@ -61,7 +61,7 @@ const to_cell_value = (value: unknown): CellVal =>
     : JSON.stringify(value)
 
 // scalar: one column; vec3: three; numeric_vec3 (force, velocity) also gets its magnitude
-export type SitePropertyShape = `scalar` | `vec3` | `numeric_vec3`
+type SitePropertyShape = `scalar` | `vec3` | `numeric_vec3`
 
 const shape_of = (value: unknown): SitePropertyShape =>
   !is_vec3_like(value)

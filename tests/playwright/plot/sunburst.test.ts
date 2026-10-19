@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import type { Locator, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
+import { expect, type Locator, test } from '@playwright/test'
 import { require_bbox } from '../helpers'
 
 // Click the center circle inside its rim but above the (selectable, click-through)
@@ -11,123 +10,162 @@ async function click_center(plot: Locator) {
   await circle.click({ position: { x: box.width / 2, y: box.height * 0.18 } })
 }
 
-// The click-to-zoom demo section with its hover/click/zoom handler readouts
-const zoom_section = (page: Page) => {
-  const section = page.locator(`#zoom-sunburst`)
-  return { section, plot: section.locator(`.sunburst`) }
-}
-
 test.describe(`Sunburst Component Tests`, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`/test/sunburst`) // locator auto-waiting handles readiness
   })
 
-  test(`flat plotly-trace input renders with legend`, async ({ page }) => {
-    const plot = page.locator(`#flat-sunburst .sunburst`)
-    await expect(plot).toBeVisible()
-    // 2 crystal systems + 4 spacegroups
-    await expect(plot.locator(`.arcs path`)).toHaveCount(6)
-    await expect(plot.locator(`.legend`)).toBeVisible()
-  })
-
-  for (const variant of [`basic`, `icicle`, `large`]) {
-    test(`${variant} focus border follows the slice instead of its bounding box`, async ({
-      page,
-    }) => {
-      const plot = page.locator(`#${variant}-sunburst .sunburst`)
-      const slice = plot.locator(`.arcs path`).last()
-      await slice.focus()
-      await expect(slice).toBeFocused()
-      await expect(slice).toHaveCSS(`outline-style`, `none`)
-      await expect(slice).toHaveCSS(`stroke-width`, `2px`)
-      await expect(slice).not.toHaveCSS(`stroke`, `none`)
-      await expect(slice).toHaveCSS(`vector-effect`, `non-scaling-stroke`)
-      await page.keyboard.press(`ArrowLeft`)
-      await expect(slice).not.toBeFocused()
-      await expect(plot.locator(`.arcs path:focus`)).toHaveCSS(`stroke-width`, `2px`)
+  // static demos with no shared state, checked on one page load
+  test(`flat traces, spacegroups, min_fraction buckets and metric colorbars render`, async ({
+    page,
+  }) => {
+    await test.step(`flat plotly-trace input renders with legend`, async () => {
+      const plot = page.locator(`#flat-sunburst .sunburst`)
+      await expect(plot).toBeVisible()
+      // 2 crystal systems + 4 spacegroups
+      await expect(plot.locator(`.arcs path`)).toHaveCount(6)
+      await expect(plot.locator(`.legend`)).toBeVisible()
     })
-  }
 
-  test(`shows tooltip and updates handler info on arc hover`, async ({ page }) => {
-    const { section, plot } = zoom_section(page)
-    // hover the CSP leaf's label (pre-order idx 4): it sits on top of its arc and
-    // forwards hover to it via the shared data-sunburst-node-idx + event delegation
-    await plot.locator(`.arc-labels [data-sunburst-node-idx="4"]`).hover()
-    await expect(plot.locator(`.plot-tooltip`)).toBeVisible()
-    await expect(section.locator(`.handler-info`)).toContainText(
-      `Node: Renewable > Solar > CSP = 2`,
-    )
+    await test.step(`spacegroup sunburst renders all 7 crystal systems`, async () => {
+      const plot = page.locator(`#spacegroup-sunburst .sunburst`)
+      await expect(plot).toBeVisible()
+      // 7 crystal systems + 9 spacegroup leaves
+      await expect(plot.locator(`.arcs path`)).toHaveCount(16)
+      // every arc carries a "<label>: <value>" aria-label, branches included
+      for (const system of [
+        `triclinic`,
+        `monoclinic`,
+        `orthorhombic`,
+        `tetragonal`,
+        `trigonal`,
+        `hexagonal`,
+        `cubic`,
+      ]) {
+        await expect(plot.locator(`.arcs path[aria-label^="${system}:"]`)).toHaveCount(1)
+      }
+    })
+
+    await test.step(`min_fraction buckets small slices and percent labels render`, async () => {
+      const plot = page.locator(`#other-sunburst .sunburst`)
+      // big + mid + Other (t1+t2+t3 bucketed)
+      await expect(plot.locator(`.arcs path`)).toHaveCount(3)
+      await expect(plot.locator(`.arc-label`).first()).toContainText(`%`)
+      await plot.locator(`.arcs [data-sunburst-node-idx="3"]`).hover() // the Other arc
+      await expect(plot.locator(`.plot-tooltip`)).toContainText(`Other`)
+    })
+
+    await test.step(`metric colorbar reserves space and never overlaps the arcs`, async () => {
+      const plot = page.locator(`#metric-sunburst .sunburst`)
+      await expect(plot.locator(`.colorbar`)).toBeVisible()
+      const arcs_box = await require_bbox(plot.locator(`.arcs`))
+      const cbar_box = await require_bbox(plot.locator(`.colorbar`))
+      // arcs must end above where the colorbar starts (no vertical overlap)
+      expect(arcs_box.y + arcs_box.height).toBeLessThanOrEqual(cbar_box.y)
+    })
   })
 
-  test(`click-to-zoom drills down and the center circle zooms back out`, async ({ page }) => {
-    const { section, plot } = zoom_section(page)
-    await expect(plot.locator(`.arcs path`)).toHaveCount(9)
-
-    // a leaf click (Wind, pre-order idx 5) fires the handler without zooming
-    await plot.locator(`.arcs [data-sunburst-node-idx="5"]`).click()
-    await expect(section.locator(`.handler-info`)).toContainText(`Clicked: Wind`)
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: (root)`)
-    await expect(plot.locator(`.arcs path`)).toHaveCount(9)
-
-    // click the Solar branch arc (pre-order: root=0, Renewable=1, Solar=2)
-    await plot.locator(`.arcs [data-sunburst-node-idx="2"]`).click()
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: Solar`)
-    // zoomed view: Solar's subtree only (PV + CSP)
-    await expect(plot.locator(`.arcs path`)).toHaveCount(2)
-    await expect(plot.locator(`.center-label`)).toContainText(`Solar`)
-
-    // center circle zooms out one level at a time: Solar -> Renewable -> root
-    await click_center(plot)
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: Renewable`)
-    await expect(plot.locator(`.arcs path`)).toHaveCount(5)
-
-    await click_center(plot)
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: (root)`)
-    await expect(plot.locator(`.arcs path`)).toHaveCount(9)
-  })
-
-  test(`spacegroup sunburst renders all 7 crystal systems`, async ({ page }) => {
-    const plot = page.locator(`#spacegroup-sunburst .sunburst`)
-    await expect(plot).toBeVisible()
-    // 7 crystal systems + 9 spacegroup leaves
-    await expect(plot.locator(`.arcs path`)).toHaveCount(16)
-    // every arc carries a "<label>: <value>" aria-label, branches included
-    for (const system of [
-      `triclinic`,
-      `monoclinic`,
-      `orthorhombic`,
-      `tetragonal`,
-      `trigonal`,
-      `hexagonal`,
-      `cubic`,
-    ]) {
-      await expect(plot.locator(`.arcs path[aria-label^="${system}:"]`)).toHaveCount(1)
+  test(`focus border follows the slice instead of its bounding box`, async ({ page }) => {
+    for (const variant of [`basic`, `icicle`, `large`]) {
+      await test.step(variant, async () => {
+        const plot = page.locator(`#${variant}-sunburst .sunburst`)
+        const slice = plot.locator(`.arcs path`).last()
+        await slice.focus()
+        await expect(slice).toBeFocused()
+        await expect(slice).toHaveCSS(`outline-style`, `none`)
+        await expect(slice).toHaveCSS(`stroke-width`, `2px`)
+        await expect(slice).not.toHaveCSS(`stroke`, `none`)
+        await expect(slice).toHaveCSS(`vector-effect`, `non-scaling-stroke`)
+        await page.keyboard.press(`ArrowLeft`)
+        await expect(slice).not.toBeFocused()
+        await expect(plot.locator(`.arcs path:focus`)).toHaveCSS(`stroke-width`, `2px`)
+      })
     }
   })
 
-  test(`arc labels are selectable text that forwards clicks to their arc`, async ({
+  // Every step but the last starts and ends at the root zoom level
+  test(`zoom demo: hover info, click-to-zoom, breadcrumbs and Escape, label forwarding`, async ({
     page,
   }) => {
-    const { section, plot } = zoom_section(page)
-    const label = plot.locator(`.arc-label[data-sunburst-node-idx="2"]`) // Solar
-    await expect(label).toHaveText(`Solar`)
-    // selectable (not pointer-events: none like before)
-    const styles = await label.evaluate((element) => {
-      const computed = getComputedStyle(element)
-      return { user_select: computed.userSelect, pointer_events: computed.pointerEvents }
+    // the click-to-zoom demo section with its hover/click/zoom handler readouts
+    const section = page.locator(`#zoom-sunburst`)
+    const plot = section.locator(`.sunburst`)
+    const handler_info = section.locator(`.handler-info`)
+    const arcs = plot.locator(`.arcs path`)
+
+    await test.step(`arc hover shows tooltip and updates handler info`, async () => {
+      // hover the CSP leaf's label (pre-order idx 4): it sits on top of its arc and
+      // forwards hover to it via the shared data-sunburst-node-idx + event delegation
+      await plot.locator(`.arc-labels [data-sunburst-node-idx="4"]`).hover()
+      await expect(plot.locator(`.plot-tooltip`)).toBeVisible()
+      await expect(handler_info).toContainText(`Node: Renewable > Solar > CSP = 2`)
+      // leave the chart so the tooltip can't cover the next step's click targets
+      await page.mouse.move(0, 0)
     })
-    expect(styles.user_select).toBe(`text`)
-    expect(styles.pointer_events).not.toBe(`none`)
-    // clicking the label zooms into its (branch) arc
-    await label.click()
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: Solar`)
-    // double-clicking the center label zooms out one level (it's the zoom-out button;
-    // the selection guard only suppresses the click that ends a selection drag) while
-    // also selecting the word
-    await plot.locator(`.center-label`).dblclick()
-    await expect(section.locator(`.handler-info`)).toContainText(`Zoom root: Renewable`)
-    const selected = await page.evaluate(() => getSelection()?.toString())
-    expect(selected?.length).toBeGreaterThan(0)
+
+    await test.step(`click-to-zoom drills down and the center circle zooms back out`, async () => {
+      await expect(arcs).toHaveCount(9)
+
+      // a leaf click (Wind, pre-order idx 5) fires the handler without zooming
+      await plot.locator(`.arcs [data-sunburst-node-idx="5"]`).click()
+      await expect(handler_info).toContainText(`Clicked: Wind`)
+      await expect(handler_info).toContainText(`Zoom root: (root)`)
+      await expect(arcs).toHaveCount(9)
+
+      // click the Solar branch arc (pre-order: root=0, Renewable=1, Solar=2)
+      await plot.locator(`.arcs [data-sunburst-node-idx="2"]`).click()
+      await expect(handler_info).toContainText(`Zoom root: Solar`)
+      // zoomed view: Solar's subtree only (PV + CSP)
+      await expect(arcs).toHaveCount(2)
+      await expect(plot.locator(`.center-label`)).toContainText(`Solar`)
+
+      // center circle zooms out one level at a time: Solar -> Renewable -> root
+      await click_center(plot)
+      await expect(handler_info).toContainText(`Zoom root: Renewable`)
+      await expect(arcs).toHaveCount(5)
+
+      await click_center(plot)
+      await expect(handler_info).toContainText(`Zoom root: (root)`)
+      await expect(arcs).toHaveCount(9)
+    })
+
+    await test.step(`breadcrumbs appear when zoomed, Escape zooms out a level, all jumps to root`, async () => {
+      const crumbs = plot.locator(`.breadcrumbs button`)
+      await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached() // hidden at root
+      await plot.locator(`.arcs [data-sunburst-node-idx="2"]`).click() // zoom to Solar
+      await expect(arcs).toHaveCount(2)
+      await expect(crumbs).toHaveText([`all`, `Renewable`, `Solar`])
+      // Escape only acts while the chart is hovered
+      await plot.hover()
+      await page.keyboard.press(`Escape`)
+      await expect(handler_info).toContainText(`Zoom root: Renewable`)
+      await expect(crumbs).toHaveText([`all`, `Renewable`])
+      await crumbs.filter({ hasText: `all` }).click()
+      await expect(handler_info).toContainText(`Zoom root: (root)`)
+      await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached()
+    })
+
+    await test.step(`arc labels are selectable text that forwards clicks to their arc`, async () => {
+      const label = plot.locator(`.arc-label[data-sunburst-node-idx="2"]`) // Solar
+      await expect(label).toHaveText(`Solar`)
+      // selectable, and not pointer-events: none
+      const styles = await label.evaluate((element) => {
+        const computed = getComputedStyle(element)
+        return { user_select: computed.userSelect, pointer_events: computed.pointerEvents }
+      })
+      expect(styles.user_select).toBe(`text`)
+      expect(styles.pointer_events).not.toBe(`none`)
+      // clicking the label zooms into its (branch) arc
+      await label.click()
+      await expect(handler_info).toContainText(`Zoom root: Solar`)
+      // double-clicking the center label zooms out one level (it's the zoom-out button;
+      // the selection guard only suppresses the click that ends a selection drag) while
+      // also selecting the word
+      await plot.locator(`.center-label`).dblclick()
+      await expect(handler_info).toContainText(`Zoom root: Renewable`)
+      const selected = await page.evaluate(() => getSelection()?.toString())
+      expect(selected?.length).toBeGreaterThan(0)
+    })
   })
 
   test(`large hierarchy renders all arcs and prunes collapsed ones when zoomed`, async ({
@@ -146,26 +184,6 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot.locator(`.arcs path`)).toHaveCount(2920)
   })
 
-  test(`breadcrumbs appear when zoomed, Escape zooms out a level, all jumps to root`, async ({
-    page,
-  }) => {
-    const { section, plot } = zoom_section(page)
-    const handler_info = section.locator(`.handler-info`)
-    const crumbs = plot.locator(`.breadcrumbs button`)
-    await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached() // hidden at root
-    await plot.locator(`.arcs [data-sunburst-node-idx="2"]`).click() // zoom to Solar
-    await expect(plot.locator(`.arcs path`)).toHaveCount(2)
-    await expect(crumbs).toHaveText([`all`, `Renewable`, `Solar`])
-    // Escape only acts while the chart is hovered
-    await plot.hover()
-    await page.keyboard.press(`Escape`)
-    await expect(handler_info).toContainText(`Zoom root: Renewable`)
-    await expect(crumbs).toHaveText([`all`, `Renewable`])
-    await crumbs.filter({ hasText: `all` }).click()
-    await expect(handler_info).toContainText(`Zoom root: (root)`)
-    await expect(plot.locator(`.breadcrumbs`)).not.toBeAttached()
-  })
-
   test(`icicle renders rect rows and zooms with breadcrumb navigation`, async ({ page }) => {
     const plot = page.locator(`#icicle-sunburst .sunburst`)
     await expect(plot).toHaveClass(/icicle/)
@@ -176,15 +194,6 @@ test.describe(`Sunburst Component Tests`, () => {
     await expect(plot.locator(`.arcs path`)).toHaveCount(5)
     await plot.locator(`.breadcrumbs button`, { hasText: `all` }).click()
     await expect(plot.locator(`.arcs path`)).toHaveCount(9)
-  })
-
-  test(`min_fraction buckets small slices and percent labels render`, async ({ page }) => {
-    const plot = page.locator(`#other-sunburst .sunburst`)
-    // big + mid + Other (t1+t2+t3 bucketed)
-    await expect(plot.locator(`.arcs path`)).toHaveCount(3)
-    await expect(plot.locator(`.arc-label`).first()).toContainText(`%`)
-    await plot.locator(`.arcs [data-sunburst-node-idx="3"]`).hover() // the Other arc
-    await expect(plot.locator(`.plot-tooltip`)).toContainText(`Other`)
   })
 
   test(`header export pane downloads a styled SVG, a 2x PNG and a node CSV`, async ({
@@ -215,14 +224,5 @@ test.describe(`Sunburst Component Tests`, () => {
         expect(contents.readUInt32BE(16)).toBeGreaterThanOrEqual(Math.round(box.width * 2))
       } else expect(contents.toString().split(`\n`)[0]).toBe(`path,depth,value,fraction`)
     }
-  })
-
-  test(`metric colorbar reserves space and never overlaps the arcs`, async ({ page }) => {
-    const plot = page.locator(`#metric-sunburst .sunburst`)
-    await expect(plot.locator(`.colorbar`)).toBeVisible()
-    const arcs_box = await require_bbox(plot.locator(`.arcs`))
-    const cbar_box = await require_bbox(plot.locator(`.colorbar`))
-    // arcs must end above where the colorbar starts (no vertical overlap)
-    expect(arcs_box.y + arcs_box.height).toBeLessThanOrEqual(cbar_box.y)
   })
 })

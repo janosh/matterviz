@@ -217,10 +217,9 @@ describe(`FilePicker`, () => {
       void unmount(component)
       return n_observers
     }
-    // One ancestor-attribute observer each for the backdrop token and the shared
-    // badge-contrast epoch; the count must not scale with the badge count
-    expect(count_observers(5)).toBe(2)
-    expect(count_observers(20)).toBe(2)
+    // every theme watcher shares one observer, so the count must not scale with badges
+    expect(count_observers(5)).toBe(1)
+    expect(count_observers(20)).toBe(1)
   })
 
   const formats = [`CIF`, `XYZ`, `JSON`, `TRAJ`, `DAT`, `POSCAR_FILE`]

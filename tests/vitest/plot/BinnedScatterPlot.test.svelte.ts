@@ -1277,17 +1277,24 @@ describe(`BinnedScatterPlot`, () => {
     expect(label_distance()).toBeGreaterThan(no_gap_distance + 15)
   })
 
-  test(`respects leader threshold separately from visible line length`, async () => {
-    mock_label_measurement(30, 10)
-    const leader_count = (): number =>
-      document.querySelectorAll(`.point-label-leaders line`).length
-
-    await mount_labelled_point({ gap_px: 20, placement: { leader_line_threshold: 1000 } })
-    expect(leader_count()).toBe(0)
-
-    // Same short gap, threshold 0: the line is drawn however little of it shows.
-    await mount_labelled_point({ gap_px: 20, placement: { leader_line_threshold: 0 } })
-    expect(leader_count()).toBeGreaterThan(0)
+  // The threshold, not the visible line length, decides: at a 20px gap threshold 0 draws
+  // the line however little of it shows. A tiny label 2px off the point sits under the
+  // default 15px threshold; an explicit undefined threshold spreads over the default, and
+  // must not draw a leader for every label.
+  const wide = [30, 10] as const
+  const tiny = [2, 2] as const
+  const near = { gap_px: 2, leaders: { min_length_px: 0 } }
+  // oxfmt-ignore
+  test.each([
+    [`1000 at a 20px gap`, 0, wide, { gap_px: 20, placement: { leader_line_threshold: 1000 } }],
+    [`zero at a 20px gap`, 1, wide, { gap_px: 20, placement: { leader_line_threshold: 0 } }],
+    [`default`, 0, tiny, near],
+    [`explicit undefined`, 0, tiny, { ...near, placement: { leader_line_threshold: undefined } }],
+    [`zero`, 1, tiny, { ...near, placement: { leader_line_threshold: 0 } }],
+  ] as const)(`%s leader threshold draws %i leaders`, async (_, want, [width, height], point_labels) => {
+    mock_label_measurement(width, height)
+    await mount_labelled_point(point_labels)
+    expect(document.querySelectorAll(`.point-label-leaders line`)).toHaveLength(want)
   })
 
   test(`applies point label font size to rendered and measured labels`, async () => {

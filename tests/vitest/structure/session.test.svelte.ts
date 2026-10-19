@@ -500,6 +500,12 @@ describe(`edit-atoms`, () => {
       show_image_atoms: true,
     })
     const image_idx = (session.displayed_structure?.sites.length ?? 0) - 1
+    // image atoms alone leave no base site to delete: no undo point, nothing rewritten
+    host.selected_sites = [image_idx]
+    flushSync()
+    expect(session.delete_selected()).toBe(false)
+    expect(session.history.undo_stack).toHaveLength(0)
+    expect(host.selected_sites).toEqual([image_idx])
     host.selected_sites = [0, image_idx]
     flushSync()
     expect(session.delete_selected()).toBe(true)
@@ -644,17 +650,24 @@ describe(`edit-atoms`, () => {
 })
 
 describe(`edit-bonds`, () => {
+  const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+  const bound_session = () =>
+    make_session({ measure_mode: `edit-bonds`, bonds: structuredClone(source) })
+  // Deletes the source bond as one undoable edit
+  const remove_source_bond = (session: StructureSession): void => {
+    session.push_bond_undo()
+    session.removed_bonds = structuredClone(source)
+    flushSync()
+  }
+
   it(`deletes a source bond when the bonds prop is unbound: the structure's own bonds are the base`, () => {
     // The binding stays undefined until the first edit (source bonds live on the structure);
     // a delete must merge against structure.properties.bonds, publish [], and undo to the source
-    const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
     const structure = { ...crystal(), properties: { bonds: structuredClone(source) } }
     const { host, session } = make_session({ measure_mode: `edit-bonds`, structure })
     flushSync()
     expect(host.bonds).toBeUndefined()
-    session.push_bond_undo()
-    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    flushSync()
+    remove_source_bond(session)
     expect(host.bonds).toEqual([])
     expect(session.undo_bond_edit()).toBe(true)
     flushSync()
@@ -701,14 +714,8 @@ describe(`edit-bonds`, () => {
   it(`a caller swapping the source bonds after an undo clears the redo history too`, () => {
     // undo leaves has_bond_edits false and the undo stack empty, with the undone edit on the
     // redo stack; redoing it onto a different source set would corrupt the new bonds
-    const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    const { host, session } = make_session({
-      measure_mode: `edit-bonds`,
-      bonds: structuredClone(source),
-    })
-    session.push_bond_undo()
-    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    flushSync()
+    const { host, session } = bound_session()
+    remove_source_bond(session)
     expect(host.bonds).toEqual([])
     expect(session.undo_bond_edit()).toBe(true)
     flushSync()
@@ -721,18 +728,12 @@ describe(`edit-bonds`, () => {
   })
 
   it(`publishes merged bonds, undoes through snapshots and restores the source when edits end`, () => {
-    const source: StructureBond[] = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    const { host, session } = make_session({
-      measure_mode: `edit-bonds`,
-      bonds: structuredClone(source),
-    })
+    const { host, session } = bound_session()
     session.push_bond_undo()
     session.added_bonds = [{ site_idx_1: 1, site_idx_2: 2, order: 2 }]
     flushSync()
     expect(host.bonds).toHaveLength(2)
-    session.push_bond_undo()
-    session.removed_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    flushSync()
+    remove_source_bond(session)
     expect(host.bonds).toEqual([{ site_idx_1: 1, site_idx_2: 2, order: 2 }])
     expect(session.undo_bond_edit()).toBe(true)
     flushSync()

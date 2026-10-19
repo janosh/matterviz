@@ -1,6 +1,8 @@
 import { type Download, expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { expect_centered, IS_CI, require_bbox } from './helpers'
+import { require_bbox, expect_centered, webgl_on_ci_for_tagged } from './helpers'
+
+webgl_on_ci_for_tagged()
 
 const TEST_URL = `/convex-hull/chempot-diagram`
 
@@ -26,6 +28,11 @@ const find_tooltip_hit_point = async (
   tooltip: Locator,
 ): Promise<{ x: number; y: number }> => {
   await target_surface.scrollIntoViewIfNeeded()
+  const shows_tooltip = async (x: number, y: number): Promise<boolean> => {
+    await page.mouse.move(x, y)
+    await page.waitForTimeout(80)
+    return tooltip.isVisible()
+  }
   const candidates = target_surface.locator(`path.marker, path[fill="transparent"]`)
   const candidate_count = await candidates.count()
   for (let candidate_idx = 0; candidate_idx < Math.min(candidate_count, 16); candidate_idx++) {
@@ -33,9 +40,7 @@ const find_tooltip_hit_point = async (
     if (!candidate_box) continue
     const click_x = candidate_box.x + candidate_box.width / 2
     const click_y = candidate_box.y + candidate_box.height / 2
-    await page.mouse.move(click_x, click_y)
-    await page.waitForTimeout(80)
-    if (await tooltip.isVisible()) return { x: click_x, y: click_y }
+    if (await shows_tooltip(click_x, click_y)) return { x: click_x, y: click_y }
   }
 
   const box = await require_bbox(target_surface, `target surface`)
@@ -43,12 +48,30 @@ const find_tooltip_hit_point = async (
     for (let y_frac = 0.15; y_frac <= 0.85; y_frac += 0.1) {
       const click_x = box.x + box.width * x_frac
       const click_y = box.y + box.height * y_frac
-      await page.mouse.move(click_x, click_y)
-      await page.waitForTimeout(80)
-      if (await tooltip.isVisible()) return { x: click_x, y: click_y }
+      if (await shows_tooltip(click_x, click_y)) return { x: click_x, y: click_y }
     }
   }
   throw new Error(`Failed to find clickable phase region`)
+}
+
+// First point on a coarse grid (centre outwards along rows) where `surface` itself is the hit
+// target, i.e. no pane, legend or label sits over it.
+const find_uncovered_point = async (
+  page: Page,
+  surface: Locator,
+): Promise<{ x: number; y: number }> => {
+  const box = await require_bbox(surface, `uncovered-point surface`)
+  for (const y_frac of [0.5, 0.65, 0.35, 0.8, 0.2]) {
+    for (const x_frac of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+      const point = { x: box.x + box.width * x_frac, y: box.y + box.height * y_frac }
+      const is_hit = await surface.evaluate(
+        (element, { x, y }) => document.elementFromPoint(x, y) === element,
+        point,
+      )
+      if (is_hit) return point
+    }
+  }
+  throw new Error(`No uncovered point on surface ${JSON.stringify(box)}`)
 }
 
 const expect_download_suffix = async (
@@ -105,16 +128,16 @@ const assert_pin_toggle_and_escape = async (
 ): Promise<void> => {
   const hit_point = await find_tooltip_hit_point(page, surface, tooltip)
   await page.mouse.click(hit_point.x, hit_point.y)
-  await expect(tooltip).toContainText(`Pinned · Esc to unlock`)
+  // PlotTooltip owns the pin hint; it retracts after a few seconds but stays in the DOM while pinned
+  const pin_hint = tooltip.locator(`.pin-hint`)
+  await expect(tooltip).toHaveClass(/\bpinned\b/)
+  await expect(pin_hint).toHaveText(`Pinned · Esc to unpin`)
   await focus_target.focus()
   await page.keyboard.press(`Escape`)
-  await expect
-    .poll(async () => ((await tooltip.count()) ? ((await tooltip.textContent()) ?? ``) : ``))
-    .not.toContain(`Pinned · Esc to unlock`)
+  await expect(pin_hint).toHaveCount(0)
 }
-test.describe(`ChemPot Diagram interactions`, () => {
+test.describe(`ChemPot Diagram interactions`, { tag: `@webgl` }, () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(IS_CI, `ChemPot interactions rely on WebGL-heavy rendering`)
     await page.goto(TEST_URL, { waitUntil: `networkidle` })
     await expect(
       page.getByRole(`heading`, { name: `Chemical Potential Diagram` }),
@@ -206,7 +229,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
     await alternate_preset.click()
     await expect.poll(read_projection).toEqual(expected_projection)
 
-    const formula_toggle = diagram.locator(`button.chempot-formula-toggle`).first()
+    const { toggle: formula_toggle, pane: formula_pane } = get_pane(diagram, `formula`)
     await expect(controls_toggle).toHaveCSS(`position`, `static`)
     // The gear must not cover the adjacent formula button in the chrome row.
     await expect
@@ -219,12 +242,6 @@ test.describe(`ChemPot Diagram interactions`, () => {
         }),
       )
       .toBe(true)
-    const formula_pane = diagram
-      .locator(`.draggable-pane`)
-      .filter({
-        hasText: `Formula Overlays`,
-      })
-      .first()
     await open_pane(diagram, formula_toggle, formula_pane)
 
     const checkboxes = formula_pane.locator(`input[type="checkbox"]`)
@@ -294,11 +311,9 @@ test.describe(`ChemPot Diagram interactions`, () => {
 
     await expect_download_suffix(page, get_export_button(export_pane, `SVG`), `.svg`)
     const initial_zoom = await read_view_zoom(page, export_pane)
-    const canvas_box = await require_bbox(canvas, `ChemPot canvas`)
-    await page.mouse.move(
-      canvas_box.x + canvas_box.width / 2,
-      canvas_box.y + canvas_box.height / 2,
-    )
+    // the open export pane covers the canvas centre of a side-by-side demo, so aim past it
+    const free_point = await find_uncovered_point(page, canvas)
+    await page.mouse.move(free_point.x, free_point.y)
     await page.mouse.wheel(0, -200)
     expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)
 
@@ -314,10 +329,7 @@ test.describe(`ChemPot Diagram interactions`, () => {
 
     // double click hands framing back to the auto-fit the wheel just pinned. The click also
     // dismisses the export pane (DraggablePane closes on any outside press), so reopen it.
-    await page.mouse.dblclick(
-      canvas_box.x + canvas_box.width / 2,
-      canvas_box.y + canvas_box.height / 2,
-    )
+    await page.mouse.dblclick(free_point.x, free_point.y)
     const reopened_pane = await open_export_pane(diagram)
     expect(await read_view_zoom(page, reopened_pane)).toBeCloseTo(initial_zoom, 5)
     await expect_download_suffix(page, get_export_button(reopened_pane, `GLB`), `.glb`)

@@ -7,11 +7,12 @@ import PhononModeExplorer from '#lib/spectral/PhononModeExplorer.svelte'
 import { spectrum_from_phonon_data } from '#lib/spectral/ir-raman.js'
 import born_file from '#site/phonons/ir-raman/NaCl.BORN?raw'
 import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
-import { flushSync, mount, tick, type ComponentProps, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { flushSync, tick, type ComponentProps } from 'svelte'
+import { expect, test, vi } from 'vitest'
 import {
   click_when_ready,
   fire,
+  mount_in_test,
   mouse,
   plot_svg,
   query,
@@ -46,13 +47,8 @@ const explorer_defaults = {
   supercell: [1, 1, 1],
 } satisfies ExplorerProps
 
-const mount_explorer = (props: ExplorerProps): HTMLElement => {
-  const target = document.createElement(`div`)
-  document.body.append(target)
-  const component = mount(PhononModeExplorer, { target, props })
-  onTestFinished(() => unmount(component).finally(() => target.remove()))
-  return target
-}
+const mount_explorer = (props: ExplorerProps): HTMLElement =>
+  mount_in_test(PhononModeExplorer, props)
 const render = (props: Partial<ExplorerProps> = {}): HTMLElement =>
   mount_explorer({ ...explorer_defaults, ...props })
 
@@ -63,6 +59,9 @@ const open_menu = async (target: HTMLElement, label: string): Promise<void> => {
   target.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.click()
   await tick()
 }
+
+const summary_text = (target: HTMLElement) =>
+  target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
 
 // structure settings mount on first open of the viewer's controls pane
 const open_structure_controls = (target: HTMLElement) =>
@@ -79,7 +78,7 @@ test(`renders a typed phonon dataset`, async () => {
   await open_menu(target, `Modes`)
   await open_menu(target, `Phonon settings`)
   await vi.waitFor(() => {
-    const summary = target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
+    const summary = summary_text(target)
     expect(summary).toContain(`Mode 4`)
     expect(summary).toContain(`cm−1`)
     expect(target.querySelector(`[data-testid="phonon-mode-summary"] sup`)?.textContent).toBe(
@@ -139,9 +138,7 @@ test(`renders a typed phonon dataset`, async () => {
   )
   target.querySelector<HTMLButtonElement>(`.phonon-modes-pane .mode-list button`)?.click()
   await vi.waitFor(() => {
-    expect(target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent).toContain(
-      `Mode 1`,
-    )
+    expect(summary_text(target)).toContain(`Mode 1`)
     expect(target.querySelector(`.plot-pane`)).not.toBeNull()
   })
   target.querySelector<HTMLButtonElement>(`[aria-label="Phonon settings"]`)?.click()
@@ -259,9 +256,7 @@ test(`offers the spectrum type only with Raman data and follows the dataset`, as
     expect(target.querySelector(`.phonon-modes-toggle`)?.getAttribute(`aria-expanded`)).toBe(
       `true`,
     )
-    expect(target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent).toContain(
-      `modes-only.yaml`,
-    )
+    expect(summary_text(target)).toContain(`modes-only.yaml`)
     expect(target.querySelector(`[aria-label="q-point"]`)).toBeNull()
   })
 })
@@ -297,16 +292,14 @@ test(`steps through animatable modes and disables eigenvector-less q-points`, as
   })
   const target = mount_explorer(props)
   await open_menu(target, `Phonon settings`)
-  const summary = () =>
-    target.querySelector(`[data-testid="phonon-mode-summary"]`)?.textContent
   const prev_button = () =>
     target.querySelector<HTMLButtonElement>(`[aria-label="Previous mode"]`)
   const next_button = () => target.querySelector<HTMLButtonElement>(`[aria-label="Next mode"]`)
   await vi.waitFor(() => {
     expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 3 })
-    expect(summary()).toContain(`eigenvectors at 3/5 q-points`)
+    expect(summary_text(target)).toContain(`eigenvectors at 3/5 q-points`)
     // path endpoint labels are shown next to the q-point coordinates
-    expect(summary()).toMatch(/Γ\s*q = \[0, 0, 0\]/)
+    expect(summary_text(target)).toMatch(/Γ\s*q = \[0, 0, 0\]/)
   })
   const qpoint_options = [
     ...target.querySelectorAll<HTMLOptionElement>(`[aria-label="q-point"] option`),

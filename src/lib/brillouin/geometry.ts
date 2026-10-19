@@ -170,6 +170,8 @@ export const KPATH_COLORS = { base: `#ffcc00`, hover: `#ff6b35`, range: `#ff9a3c
 export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({
   edge: edge_width * 0.5 * bz_size,
   kpath: 0.006 * bz_size,
+  // invisible tube the cursor snaps to the k-path within (~6 px in a 300 px canvas)
+  kpath_hover: 0.05 * bz_size,
   sym_point: 0.0075 * bz_size,
   hovered_point: 0.015 * bz_size,
 })

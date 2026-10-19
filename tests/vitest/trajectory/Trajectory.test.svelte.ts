@@ -335,12 +335,12 @@ describe(`display modes`, () => {
         }),
       }),
     ],
-  ])(`defaults to structure-only for a %s run`, async (_kind, trajectory) => {
+  ])(`defaults to structure-only for a %s run`, async (kind, trajectory) => {
     const target = mount_trajectory(default_props({ trajectory, display_mode: undefined }))
     await tick()
     expect(target.querySelector(`.scatter`)).toBeNull()
     expect(target.querySelector(`.structure`)).not.toBeNull()
-    if (_kind === `constant-value` || _kind === `visually-flat`)
+    if (kind === `constant-value` || kind === `visually-flat`)
       expect(
         target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
       ).toBe(`Automatic: Structure-only (V / Shift+V)`)

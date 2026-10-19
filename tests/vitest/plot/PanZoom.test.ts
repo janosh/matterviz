@@ -3,11 +3,12 @@ import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
+import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
 import type { Vec2 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
 import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_sized, plot_svg, translate_of } from '../setup'
+import { mount_in_test, mount_sized, plot_svg, svg_rect, translate_of } from '../setup'
 
 type LocalPoint = { x: number; y: number; button?: number }
 
@@ -298,4 +299,17 @@ describe(`shared plot drag zoom bounds`, () => {
       vi.useRealTimers()
     }
   })
+})
+
+// The rubber band spans its two corners whichever way the drag went, tinted for Alt+drag
+// selection; a missing or non-finite corner draws nothing
+test.each([
+  [{ x: 50, y: 10 }, { x: 20, y: 40 }, `zoom`, { x: 20, y: 10, width: 30, height: 30 }],
+  [{ x: 5, y: 60 }, { x: 45, y: 20 }, `select`, { x: 5, y: 20, width: 40, height: 40 }],
+  [{ x: 5, y: 5 }, null, `zoom`, null],
+  [{ x: Number.NaN, y: 5 }, { x: 10, y: 10 }, `zoom`, null],
+] as const)(`ZoomRect from %o to %o in %s mode`, (start, current, mode, expected) => {
+  const rect = mount_in_test(ZoomRect, { start, current, mode }).querySelector(`.zoom-rect`)
+  expect(rect && svg_rect(rect)).toEqual(expected)
+  if (rect) expect(rect.classList.contains(`select`)).toBe(mode === `select`)
 })

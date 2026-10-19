@@ -7,6 +7,7 @@ import {
   parse_num_token,
   strip_html,
   to_error,
+  toggle_item,
 } from '#lib/utils.js'
 import { describe, expect, test } from 'vitest'
 
@@ -96,6 +97,20 @@ describe(`parse_num_token / parse_leading_num`, () => {
     expect(parse_num_token(input)).toBe(whole)
     expect(parse_leading_num(input)).toBe(leading)
   })
+})
+
+// Adds missing items at the end, drops present ones (every copy) and never mutates the input
+test.each([
+  [[], 2, [2]],
+  [[3, 1], 2, [3, 1, 2]],
+  [[3, 2, 1], 2, [3, 1]],
+  [[2, 1, 2], 2, [1]],
+  [[`a`, `b`], `a`, [`b`]],
+  [[`b`], `a`, [`b`, `a`]],
+])(`toggle_item(%j, %j) → %j`, (items: (number | string)[], item, expected) => {
+  const before = [...items]
+  expect(toggle_item(items, item)).toEqual(expected)
+  expect(items).toEqual(before)
 })
 
 describe(`decode_url_safe_base64`, () => {

@@ -1,4 +1,5 @@
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
+import { element_by_symbol } from '#lib/element/data.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -16,12 +17,17 @@ import {
   infer_mass_unit,
 } from '#lib/trajectory/hotspots.js'
 import type { ReadAtoms, AtomBatch, AtomReadOptions } from '#lib/trajectory/atom-batches.js'
-import { atom_range, frame_atom_batch } from '#lib/trajectory/atom-batches.js'
+import {
+  atom_batch_masses,
+  atom_range,
+  frame_atom_batch,
+} from '#lib/trajectory/atom-batches.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { create_trajectory_frame } from '#lib/trajectory/helpers.js'
 import { h5_bytes } from './fixtures'
+import { write_torchsim_si_frames } from '../../fixtures/torchsim-h5'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
@@ -72,6 +78,24 @@ function source(n_atoms = 8, steps = [0, 1, 2], drift = 0) {
     }
   }
 }
+
+// Each reader's mass errors name its file format; atoms count from 1 as in the UI
+it.each([
+  [`MD HDF5`, `recorded`, [28, Number.NaN], `MD HDF5 missing recorded mass for atom 2`],
+  [`TorchSim HDF5`, `recorded`, [28, 0], `TorchSim HDF5 missing recorded mass for atom 2`],
+  [`TorchSim HDF5`, `recorded`, undefined, `TorchSim HDF5 missing recorded mass for atom 1`],
+  // no symbol for the second atom
+  [`MD HDF5`, `standard`, undefined, `MD HDF5 missing standard mass for atom 2`],
+] as const)(`%s %s masses %j throw: %s`, (format, mass_source, masses, message) => {
+  expect(() => atom_batch_masses(format, mass_source, 0, 2, [`Si`], masses)).toThrow(message)
+})
+
+it(`atom_batch_masses reads recorded and standard masses from start`, () => {
+  expect([...atom_batch_masses(`MD HDF5`, `recorded`, 1, 2, [], [1, 2, 3])]).toEqual([2, 3])
+  expect([...atom_batch_masses(`MD HDF5`, `standard`, 0, 1, [`Si`])]).toEqual([
+    element_by_symbol.get(`Si`)?.atomic_mass,
+  ])
+})
 
 describe(`spatial kinetic hotspots`, () => {
   it.each([
@@ -618,41 +642,12 @@ describe(`spatial kinetic hotspots`, () => {
     // Cross the old 8 MiB whole-species/mass ceiling as well as one million positions.
     const n_atoms = 1_050_000
     const bytes = await h5_bytes(`million-atom-hotspots`, (file) => {
-      const data = file.create_group(`data`)
-      const steps = file.create_group(`steps`)
-      const positions = new Float32Array(n_atoms * 2 * 3)
-      const velocities = new Float32Array(positions.length)
-      for (let idx = 0; idx < n_atoms * 2; idx++) {
-        positions.set(
-          [idx % n_atoms < n_atoms / 2 ? 0.5 : 1 + (idx % 8) / 8, 0.5, 0.5],
-          idx * 3,
-        )
-        velocities[idx * 3] = idx % 2 ? 1 : -1
-      }
-      for (const [name, values] of [
-        [`positions`, positions],
-        [`velocities`, velocities],
-      ] as const) {
-        data.create_dataset({
-          name,
-          data: values,
-          shape: [2, n_atoms, 3],
-          chunks: [1, 10_000, 3],
-        })
-        steps.create_dataset({ name, data: [0, 1], shape: [2] })
-      }
-      data.create_dataset({
-        name: `atomic_numbers`,
-        data: new Uint8Array(n_atoms).fill(14),
-        shape: [n_atoms],
-      })
-      data.create_dataset({
-        name: `masses`,
-        data: new Float64Array(n_atoms).fill(28),
-        shape: [n_atoms],
-      })
-      data.create_dataset({ name: `cell`, data: grid.cell.flat(), shape: [3, 3] })
-      data.create_dataset({ name: `pbc`, data: [0, 0, 0], shape: [3] })
+      write_torchsim_si_frames(file, n_atoms, grid.cell.flat(), (row_idx) => [
+        row_idx % n_atoms < n_atoms / 2 ? 0.5 : 1 + (row_idx % 8) / 8,
+        0.5,
+        0.5,
+        row_idx % 2 ? 1 : -1,
+      ])
     })
     const started = performance.now()
     const opened = await open_hdf5_trajectory(bytes, create_warning_collector(), `million.h5`)

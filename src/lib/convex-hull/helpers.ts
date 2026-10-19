@@ -216,7 +216,7 @@ export function same_entry<Entry extends { entry_id?: string }>(
 function get_fractional_composition(
   composition: Record<string, number>,
 ): Record<string, number> {
-  const total = Object.values(composition).reduce((sum, amt) => sum + amt, 0)
+  const total = count_atoms_in_composition(composition)
   if (total <= 0) return {}
   const fractional: Record<string, number> = {}
   for (const [elem, amt] of Object.entries(composition)) {
@@ -306,7 +306,7 @@ type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | nul
 // Compute energy_per_atom from total energy and composition
 function compute_energy_per_atom(entry: PhaseData): number | null {
   if (!is_finite(entry.energy)) return null
-  const total_atoms = Object.values(entry.composition).reduce((sum, amt) => sum + amt, 0)
+  const total_atoms = count_atoms_in_composition(entry.composition)
   return total_atoms > 0 ? entry.energy / total_atoms : null
 }
 
@@ -411,6 +411,16 @@ export interface TemperatureAnalysis {
 
 // Snap an unset temperature to the lowest available one, an out-of-range or (without
 // interpolation) untabulated one to the nearest (lower on ties)
+export function get_valid_temperature(
+  temperature: number,
+  temps: readonly number[],
+  interpolate: boolean,
+): number
+export function get_valid_temperature(
+  temperature: number | undefined,
+  temps: readonly number[],
+  interpolate: boolean,
+): number | undefined
 export function get_valid_temperature(
   temperature: number | undefined,
   temps: readonly number[],

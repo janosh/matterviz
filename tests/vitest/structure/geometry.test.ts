@@ -18,7 +18,6 @@ import {
   rotation_from_direction,
 } from '#lib/structure/geometry.js'
 import { Euler, Matrix4, Vector3 } from 'three/webgpu'
-import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
@@ -103,14 +102,7 @@ function write_reference_bonds(
   matrix_buffer: Float32Array,
   bonds: readonly BondPair[],
   bond_thickness: number,
-  required_count: number,
 ): void {
-  if (matrix_buffer.length < required_count * 16) {
-    throw new RangeError(
-      `Bond matrix buffer has ${matrix_buffer.length} floats, needs ${required_count * 16}`,
-    )
-  }
-
   let instance_idx = 0
   const gap = bond_thickness * 1.8
   for (const { pos_1, pos_2, bond_order } of bonds) {
@@ -137,6 +129,21 @@ function write_reference_bonds(
       scale_and_offset_matrix(matrix_buffer, instance_idx + 1, gap / 2, 0.4)
     }
     instance_idx += instance_count
+  }
+}
+
+// Eight f32 eps cover stored center/delta/unit sizes, uniform scaling and the reconstructed
+// basis; absolute tolerance handles zero/near-zero components.
+const expect_mesh_matches = (mesh: BondMesh, expected: Float32Array, count: number) => {
+  const matrix = new Matrix4()
+  for (let idx = 0; idx < count; idx++) {
+    mesh.getMatrixAt(idx, matrix)
+    for (let component = 0; component < 16; component++) {
+      const reference = expected[idx * 16 + component]
+      expect(Math.abs(matrix.elements[component] - reference)).toBeLessThanOrEqual(
+        8 * 2 ** -23 * Math.max(1, Math.abs(reference)),
+      )
+    }
   }
 }
 
@@ -260,7 +267,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       const matrix_buffer = new Float32Array(3 * 16).fill(Number.NaN)
 
       expect(count_bond_instances([bond])).toBe(expected_count)
-      write_reference_bonds(matrix_buffer, [bond], 0.1, expected_count)
+      write_reference_bonds(matrix_buffer, [bond], 0.1)
       const structure = new FrameView().update(
         create_numeric_md_frame(
           new Float64Array([...bond.pos_1, ...bond.pos_2]),
@@ -278,7 +285,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
         const materialize = vi.spyOn(packed, `materialize`)
         const expected = new Float32Array(expected_count * 16)
         expect(count_bond_instances(packed)).toBe(expected_count)
-        write_reference_bonds(expected, [source], 0.1, expected_count)
+        write_reference_bonds(expected, [source], 0.1)
         const mesh = new BondMesh(undefined, undefined, expected_count)
         const placements = prepare_bond_placements(packed)
         const prepared = new BondFrame(structure, packed.columns, placements)
@@ -286,17 +293,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
         expect(placements.max_site_idx).toBe(1)
         mesh.update(placements)
         mesh.thickness = 0.1
-        const matrix = new Matrix4()
-        for (let idx = 0; idx < expected_count; idx++) {
-          mesh.getMatrixAt(idx, matrix)
-          for (let component = 0; component < 16; component++) {
-            const reference = expected[idx * 16 + component]
-            // f32 center, displacement and radius are rounded before the basis is rebuilt.
-            expect(Math.abs(matrix.elements[component] - reference)).toBeLessThanOrEqual(
-              8 * 2 ** -23 * Math.max(1, Math.abs(reference)),
-            )
-          }
-        }
+        expect_mesh_matches(mesh, expected, expected_count)
         const captured = mesh.clone()
         mesh.centers.setXYZ(0, 99, 99, 99)
         expect(captured.centers.array).not.toEqual(mesh.centers.array)
@@ -314,7 +311,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
           { length: expected_count },
           (_, instance_idx) => matrix_buffer[instance_idx * 16 + 14],
         )
-        expect(new SvelteSet(offsets).size).toBe(expected_count)
+        expect(new Set(offsets).size).toBe(expected_count)
       }
     },
   )
@@ -325,6 +322,7 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       new BondMesh(undefined, undefined, 2).update(prepare_bond_placements([bond])),
     ).toThrow(`Bond capacity 2 cannot hold 3 instances`)
   })
+
   test.each([
     [0, 0, 0],
     [0, -2, 0],
@@ -347,21 +345,10 @@ describe(`write_bond_transform vs quaternion_from_direction`, () => {
       mesh.update(placements)
       const captured_sizes = mesh.sizes.array.slice()
       const expected = new Float32Array(placements.instance_count * 16)
-      const matrix = new Matrix4()
       for (const thickness of [-0.1, 0, 0.1]) {
         mesh.thickness = thickness
-        write_reference_bonds(expected, [source], thickness, placements.instance_count)
-        for (let idx = 0; idx < placements.instance_count; idx++) {
-          mesh.getMatrixAt(idx, matrix)
-          for (let component = 0; component < 16; component++) {
-            const reference = expected[idx * 16 + component]
-            // Eight f32 eps cover stored center/delta/unit sizes, uniform scaling and the
-            // reconstructed basis; absolute tolerance handles zero/near-zero components.
-            expect(Math.abs(matrix.elements[component] - reference)).toBeLessThanOrEqual(
-              8 * 2 ** -23 * Math.max(1, Math.abs(reference)),
-            )
-          }
-        }
+        write_reference_bonds(expected, [source], thickness)
+        expect_mesh_matches(mesh, expected, placements.instance_count)
         expect(mesh.sizes.array).toEqual(captured_sizes)
         const captured = mesh.clone()
         mesh.thickness = 9

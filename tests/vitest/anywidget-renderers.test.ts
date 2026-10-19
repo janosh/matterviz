@@ -6,7 +6,14 @@ import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
-const { disable_workers } = vi.hoisted(() => ({ disable_workers: vi.fn() }))
+const { disable_workers, spectral_doc } = vi.hoisted(() => ({
+  disable_workers: vi.fn(),
+  // the generic wiring test's string seeds count as documents
+  spectral_doc: (doc: unknown) =>
+    typeof doc === `string` || (doc as { kind?: string } | null)?.kind === `doc`
+      ? { normalized: doc }
+      : null,
+}))
 // Swap matterviz components for a recording stub to exercise the real widget wiring
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
@@ -41,6 +48,9 @@ vi.mock(`matterviz`, async () => {
     disable_workers,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
     trajectory_from_json: (value: unknown) => ({ run_of: value }),
+    // like the real ones: a lone document normalizes, a {label: document} map returns null
+    normalize_band_structure: spectral_doc,
+    normalize_dos: spectral_doc,
   }
 })
 vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
@@ -266,8 +276,6 @@ describe(`widget config wiring`, () => {
 
   test.each([
     [`trajectory`, `property_labels`, { energy: `Energy (eV)` }],
-    [`band_structure`, `band_structs`, { sample: { type: `phonon`, branches: [] } }],
-    [`dos`, `doses`, { sample: { type: `electronic`, energies: [], densities: [] } }],
     [`bands_and_dos`, `fermi_level`, 0],
     [`periodic_table`, `color_scale`, { type: `log`, value_range: [1, null] }],
     [`periodic_table`, `color_bar`, null],
@@ -279,6 +287,13 @@ describe(`widget config wiring`, () => {
     [`structure`, `cutaway`, { mode: `slab`, axis: 2, position: 0.5, thickness: 0.2 }],
     [`structure`, `highlighted_sites`, [1, 4]],
     [`scatter_plot`, `selected_point`, { series_idx: 0, point_idx: 3 }],
+    // None must reach the component (hides it), not fall back to its default
+    [`scatter_plot`, `color_bar`, null],
+    [`scatter_plot`, `size_legend`, null],
+    [`scatter_plot`, `density_contours`, { levels: 3, filled: true }],
+    [`chem_pot_diagram`, `width`, 480],
+    [`chem_pot_diagram`, `height`, 360],
+    [`bands_and_dos`, `bz_props`, { show_ibz: true }],
   ] as const)(`%s forwards %s directly`, (widget_type, prop, value) => {
     const stub = run_widget(widget_type, new MockModel({ widget_type, [prop]: value }))
     expect(stub.read()[prop]).toEqual(value)
@@ -331,6 +346,26 @@ describe(`widget config wiring`, () => {
     },
   )
 
+  // pymatgen as_dict() documents reach Bands/Dos normalized, as {label: document} records
+  test.each([
+    [`band_structure`, [`band_structs`]],
+    [`dos`, [`doses`]],
+    [`bands_and_dos`, [`band_structs`, `doses`]],
+  ] as const)(`%s normalizes lone and labeled spectral documents`, (widget_type, keys) => {
+    const doc = { kind: `doc` }
+    // mount with every spectral trait of the widget set to value
+    const read_with = (value: unknown) => {
+      const traits = Object.fromEntries(keys.map((key) => [key, value]))
+      return run_widget(widget_type, new MockModel({ widget_type, ...traits })).read()
+    }
+    const lone = read_with(doc)
+    for (const key of keys) expect(lone[key]).toEqual({ '': { normalized: doc } })
+    const labeled = read_with({ DFT: doc, MACE: doc })
+    for (const key of keys)
+      expect(labeled[key]).toEqual({ DFT: { normalized: doc }, MACE: { normalized: doc } })
+    expect(() => read_with({ DFT: 1 })).toThrow(`"DFT"`)
+  })
+
   test(`bands_and_dos forwards controls into both child prop bags`, () => {
     const model = new MockModel({
       widget_type: `bands_and_dos`,
@@ -358,6 +393,7 @@ describe(`writeback wiring`, () => {
     [`trajectory`, `plot_type`, `time-series`, `distribution`, `time-series`],
     [`trajectory`, `distribution_property`, null, `energy`, `force_max`],
     [`trajectory`, `active_pane`, null, `hotspots`, `flight`],
+    [`trajectory`, `data_inspector_open`, true, false, true],
     [`scatter_plot`, `controls_open`, false, true, false],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],

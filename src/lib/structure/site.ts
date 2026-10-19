@@ -58,7 +58,7 @@ export class NumericSites {
     return this.numbers.length
   }
   get stride(): number {
-    return 6 + this.vector_keys.length * 3
+    return site_stride(this.vector_keys)
   }
   property_keys(): readonly string[] {
     if (this.keys) return this.keys
@@ -68,7 +68,7 @@ export class NumericSites {
     for (const [column, key] of this.vector_keys.entries()) {
       if (Object.hasOwn(this.scalar_columns ?? {}, key)) continue
       for (let idx = 0; idx < this.length; idx++) {
-        const offset = idx * this.stride + 6 + column * 3
+        const offset = idx * this.stride + vector_offset(column)
         if (
           Number.isFinite(this.coordinates[offset]) &&
           Number.isFinite(this.coordinates[offset + 1]) &&
@@ -128,6 +128,12 @@ export class NumericSites {
   }
 }
 
+// Packed coordinate columns hold xyz and abc per site, then 3 floats per vector property:
+// vector_offset is where a vector column starts within a site, site_stride the floats per site
+export const vector_offset = (column: number): number => 6 + 3 * column
+export const site_stride = (vector_keys: readonly string[]): number =>
+  vector_offset(vector_keys.length)
+
 // Display snapshots and editable exports decode the same columns. Scalar values override
 // dense vectors of the same name; unrelated record properties remain untouched.
 export function write_site_properties(
@@ -136,9 +142,9 @@ export function write_site_properties(
   properties: Record<string, unknown>,
 ): void {
   const { coordinates, vector_keys, scalar_columns } = columns
-  const offset = idx * (6 + vector_keys.length * 3)
+  const offset = idx * site_stride(vector_keys)
   for (let column = 0; column < vector_keys.length; column++) {
-    const start = offset + 6 + column * 3
+    const start = offset + vector_offset(column)
     properties[vector_keys[column]] = [
       coordinates[start],
       coordinates[start + 1],

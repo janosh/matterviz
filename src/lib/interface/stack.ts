@@ -129,11 +129,6 @@ function stack_slab(
   return { cell, coords, heights, thickness: top - bottom }
 }
 
-function assert_non_negative(value: number, name: string): void {
-  if (Number.isFinite(value) && value >= 0) return
-  throw new Error(`${name} must be a non-negative finite number, got ${value}`)
-}
-
 const describe_mesh = ({ lattice: { a, b, gamma } }: Crystal): string =>
   `a=${a.toFixed(4)} Å, b=${b.toFixed(4)} Å, γ=${gamma.toFixed(2)}°`
 
@@ -157,8 +152,8 @@ export function make_interface(
     vacuum = INTERFACE_DEFAULTS.vacuum,
     shift = [0, 0],
   } = options
-  assert_non_negative(gap, `gap`)
-  assert_non_negative(vacuum, `vacuum`)
+  math.assert_non_negative(gap, `gap`)
+  math.assert_non_negative(vacuum, `vacuum`)
   if (!shift.every(Number.isFinite)) {
     throw new Error(`shift must be finite, got ${JSON.stringify(shift)}`)
   }

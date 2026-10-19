@@ -24,6 +24,8 @@ import cspbi3_band_yaml from '#site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?ra
 import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
+const nacl_data = parse_phonon_modes(nacl_band_yaml)
+
 const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_run>) => {
   const run = create_phonon_mode_run(...args)
   const frames = Array.from({ length: run.frame_count }, (_unused, frame_idx) => {
@@ -174,7 +176,7 @@ describe(`phonon_mode_trajectory`, () => {
   })
 
   it.each([
-    [`NaCl`, parse_phonon_modes(nacl_band_yaml), 3, 6],
+    [`NaCl`, nacl_data, 3, 6],
     // TECE mp-22913: the Br partners of the low-face Cu atoms lie outside the cell.
     ...[-0.25, 0.75, 1.75].map(
       (coordinate) =>
@@ -292,16 +294,14 @@ describe(`phonon_mode_trajectory`, () => {
 })
 
 describe(`staged phonon runs`, () => {
-  const data = parse_phonon_modes(nacl_band_yaml)
-
   it(`shares one supercell across modes and synthesises frames on read`, () => {
-    const cell = phonon_supercell(data, [2, 2, 2])
+    const cell = phonon_supercell(nacl_data, [2, 2, 2])
     const [pattern_a, pattern_b] = [3, 4].map((mode_idx) =>
-      phonon_mode_pattern(cell, data, { qpoint_idx: 0, mode_idx }),
+      phonon_mode_pattern(cell, nacl_data, { qpoint_idx: 0, mode_idx }),
     )
     expect(pattern_a.supercell).toBe(cell)
     expect(pattern_b.supercell).toBe(cell)
-    const other_data = { ...data, n_atoms: data.n_atoms + 1 }
+    const other_data = { ...nacl_data, n_atoms: nacl_data.n_atoms + 1 }
     expect(() =>
       phonon_mode_pattern(cell, other_data, { qpoint_idx: 0, mode_idx: 3 }),
     ).toThrow(/supercell was built for/)
@@ -348,9 +348,9 @@ describe(`staged phonon runs`, () => {
   })
 
   it(`reports mass-weighted mode character per element`, () => {
-    const optical = data.qpoints[0].modes[3].eigenvector
+    const optical = nacl_data.qpoints[0].modes[3].eigenvector
     if (!optical) throw new Error(`fixture mode has no eigenvector`)
-    const { element_weights, participation_ratio } = phonon_mode_character(data, optical)
+    const { element_weights, participation_ratio } = phonon_mode_character(nacl_data, optical)
     expect(element_weights.map(([symbol]) => symbol).toSorted()).toEqual([`Cl`, `Na`])
     expect(element_weights.reduce((sum, [, weight]) => sum + weight, 0)).toBeCloseTo(1, 12)
     expect(element_weights[0][1]).toBeGreaterThanOrEqual(element_weights[1][1])
@@ -363,19 +363,17 @@ describe(`staged phonon runs`, () => {
 
 describe(`phonon band helpers`, () => {
   it(`parses the real NaCl Gamma-X demo with complex eigenvectors`, () => {
-    const data = parse_phonon_modes(nacl_band_yaml)
-    expect(data.qpoints).toHaveLength(5)
-    expect(data.path_segments).toEqual([
+    expect(nacl_data.qpoints).toHaveLength(5)
+    expect(nacl_data.path_segments).toEqual([
       { start_index: 0, end_index: 4, start_label: `GAMMA`, end_label: `X` },
     ])
-    expect(data.qpoints[1].modes[0].eigenvector?.[0][2][1]).not.toBe(0)
-    expect(phonon_band_structure_from_modes(data).bands).toHaveLength(6)
+    expect(nacl_data.qpoints[1].modes[0].eigenvector?.[0][2][1]).not.toBe(0)
+    expect(phonon_band_structure_from_modes(nacl_data).bands).toHaveLength(6)
   })
 
   it(`matches Phonopy 4.4 modulation displacements for a nondegenerate NaCl X mode`, () => {
-    const data = parse_phonon_modes(nacl_band_yaml)
     const trajectory = phonon_mode_trajectory(
-      data,
+      nacl_data,
       { qpoint_idx: 4, mode_idx: 2 },
       { amplitude: 1, supercell: [2, 1, 2], n_frames: 4 },
     )

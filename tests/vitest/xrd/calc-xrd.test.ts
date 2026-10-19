@@ -23,7 +23,13 @@ import process from 'node:process'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { fixture_id, xrd_patterns } from '../fixtures/xrd'
 import { symmetry_families } from '../fixtures/xrd/symmetry-families'
-import { init_moyo_for_tests, make_crystal, read_maybe_gz } from '../test-fixtures'
+import {
+  fcc_cell,
+  init_moyo_for_tests,
+  make_crystal,
+  make_rocksalt,
+  read_maybe_gz,
+} from '../test-fixtures'
 
 beforeAll(init_moyo_for_tests)
 
@@ -31,21 +37,6 @@ const structures_dir = path.resolve(process.cwd(), `src/site/structures`)
 
 const make_simple_cubic_structure = (a_len: number, element: ElementSymbol = `H`): Crystal =>
   make_crystal(a_len, [{ element, abc: [0, 0, 0], label: `${element}1` }])
-
-// Rock-salt MX: cation FCC at (0,0,0), anion on the octahedral sites. All-odd reflections
-// scatter as (f_M − f_X) and all-even ones as (f_M + f_X), which makes it the cleanest
-// structure for showing a neutron/X-ray intensity reversal driven by a negative b_coh.
-const make_rocksalt = (a_len: number, cation: ElementSymbol, anion: ElementSymbol): Crystal =>
-  make_crystal(a_len, [
-    { element: cation, abc: [0, 0, 0], label: `M1` },
-    { element: cation, abc: [0, 0.5, 0.5], label: `M2` },
-    { element: cation, abc: [0.5, 0, 0.5], label: `M3` },
-    { element: cation, abc: [0.5, 0.5, 0], label: `M4` },
-    { element: anion, abc: [0.5, 0.5, 0.5], label: `X1` },
-    { element: anion, abc: [0.5, 0, 0], label: `X2` },
-    { element: anion, abc: [0, 0.5, 0], label: `X3` },
-    { element: anion, abc: [0, 0, 0.5], label: `X4` },
-  ])
 
 // One peak's families in output order (sorted by representative) as `h,k,l×multiplicity; ...`
 const families_text = (families: HklObj[] | undefined): string =>
@@ -750,12 +741,7 @@ describe(`compute_xrd_pattern options`, () => {
   // fcc Al over [20, 33]° at Cu Kα has 18 reflections, none allowed, largest raw |F|²·L
   // 2.14e-27 — relative scaling emitted that as a forbidden (100) at 21.9465°, y = 100
   test(`an all-extinct 2θ window returns nothing instead of scaling round-off to 100`, () => {
-    const fcc_al = make_crystal(4.05, [
-      { element: `Al`, abc: [0, 0, 0], label: `Al1` },
-      { element: `Al`, abc: [0, 0.5, 0.5], label: `Al2` },
-      { element: `Al`, abc: [0.5, 0, 0.5], label: `Al3` },
-      { element: `Al`, abc: [0.5, 0.5, 0], label: `Al4` },
-    ])
+    const fcc_al = fcc_cell(4.05, `Al`)
     expect(
       compute_xrd_pattern(fcc_al, { wavelength: `CuKa`, two_theta_range: [20, 33] }),
     ).toEqual({ x: [], y: [] })

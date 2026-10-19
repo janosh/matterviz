@@ -16,6 +16,7 @@
   import { Structure } from '#lib/structure/index.js'
   import type { AnyStructure } from '#lib/structure/index.js'
   import { optimade_to_structure } from '#lib/structure/parse.js'
+  import { latest_load } from '#site/state.svelte.js'
   import { onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -65,7 +66,7 @@
   })
   $effect(() => {
     if (!structure_id) {
-      structure_request_id++
+      structure_loads.cancel()
       structure = null
       struct_error = null
       loading_struct = false
@@ -83,9 +84,9 @@
 
   // Every keystroke/provider switch starts a fetch; only the latest may write back, else a
   // slow older response lands on top of a newer one. A failed load clears the old structure.
-  let structure_request_id = 0
+  const structure_loads = latest_load()
   async function load_structure_data() {
-    const request_id = ++structure_request_id
+    const is_current = structure_loads.start()
     loading_struct = true
     struct_error = null
     try {
@@ -94,31 +95,29 @@
         selected_db,
         available_providers,
       )
-      if (request_id !== structure_request_id) return
-      structure = optimade_to_structure(data)
+      if (is_current()) structure = optimade_to_structure(data)
     } catch (error) {
-      if (request_id !== structure_request_id) return
+      if (!is_current()) return
       structure = null
       struct_error = `Failed to load structure: ${error}`
     } finally {
-      if (request_id === structure_request_id) loading_struct = false
+      if (is_current()) loading_struct = false
     }
   }
 
-  let suggestions_request_id = 0
+  const suggestion_loads = latest_load()
   async function load_suggested_structures() {
-    const request_id = ++suggestions_request_id
+    const is_current = suggestion_loads.start()
     loading_suggestions = true
     suggestions_error = null
     suggested_structures = []
     try {
       const structures = await fetch_suggested_structures(selected_db, available_providers, 12)
-      if (request_id === suggestions_request_id) suggested_structures = structures
+      if (is_current()) suggested_structures = structures
     } catch (error) {
-      if (request_id === suggestions_request_id)
-        suggestions_error = `Failed to load suggestions: ${error}`
+      if (is_current()) suggestions_error = `Failed to load suggestions: ${error}`
     } finally {
-      if (request_id === suggestions_request_id) loading_suggestions = false
+      if (is_current()) loading_suggestions = false
     }
   }
 

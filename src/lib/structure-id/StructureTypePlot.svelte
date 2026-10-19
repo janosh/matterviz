@@ -37,7 +37,9 @@
     // Includes the shared `x_axis`/`y_axis` overrides, which StructureBarPlot merges over the
     // layout's primary/value axis defaults below (so callers can set label, range or format)
     ...rest
-  }: Omit<StructurePlotProps, `structures` | `strategy`> & {
+    // No on_sites_hover: id_results may come without structures and over_frames draws lines,
+    // so bars do not map to sites; on_type_hover reports the hovered type instead
+  }: Omit<StructurePlotProps, `structures` | `strategy` | `on_sites_hover`> & {
     // Precomputed per-frame results. Bindable so a parent can read back what `structures` produced.
     id_results?: StructureIdResult[]
     // Supply structures instead of `id_results` to have this component compute (in a worker).

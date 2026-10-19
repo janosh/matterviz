@@ -1,12 +1,14 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
-  expect_canvas_changed_by,
   goto_structure_test,
-  IS_CI,
   open_structure_control_pane,
   set_structure,
   structure_canvas,
+  expect_canvas_changed_by,
+  webgl_on_ci_for_tagged,
 } from '../helpers'
+
+webgl_on_ci_for_tagged()
 
 const SITE_PROPS = {
   multi: [
@@ -23,7 +25,6 @@ const SITE_PROPS = {
   ],
   single: [{ force: [0.3, -0.1, 0.2] }, { force: [0.6, -0.2, 0.4] }],
 } as const
-const VECTOR_KEYS = { multi: [`force_DFT`, `force_MLFF`, `magmom`], single: [`force`] }
 
 // Inject a test structure with vector site properties; the component auto-populates one
 // vector layer per key (union over all sites) and surfaces them in its pane
@@ -57,53 +58,48 @@ const inject_vectors = (page: Page, mode: `multi` | `single`) =>
 const labels_with = (pane: Locator, text: string) =>
   pane.locator(`label`).filter({ hasText: text })
 
-test.describe(`Site Vectors`, () => {
-  test.beforeEach(() => {
-    test.skip(IS_CI, `3D vector tests require WebGL, skip in CI`)
-  })
-
-  test(`multi-vector structure gets per-key layer toggles and scale sliders`, async ({
-    page,
-  }) => {
+test.describe(`Site Vectors`, { tag: `@webgl` }, () => {
+  test(`single- and multi-vector structures get matching layer controls`, async ({ page }) => {
     await goto_structure_test(page)
-    await inject_vectors(page, `multi`)
-    const { pane_div } = await open_structure_control_pane(page)
-    const section = pane_div.getByRole(`region`, { name: `Site Vectors`, exact: true })
-    await expect(labels_with(pane_div, `Global Scale`)).toBeVisible()
-    await expect(labels_with(pane_div, `Origin Gap`)).toBeVisible()
-    // per-key rows replace the single-key Color picker
-    await expect(section.locator(`label`).filter({ hasText: /^Color$/ })).toHaveCount(0)
+    const canvas = structure_canvas(page)
 
-    for (const key of VECTOR_KEYS.multi) {
-      const toggle = pane_div.locator(`[data-key="vector_config:${key}"]`)
-      await expect(toggle.locator(`input[type="checkbox"]`)).toBeVisible()
-      await expect(toggle.locator(`input[type="color"]`)).toBeVisible()
-      await expect(labels_with(pane_div, `${key} scale`)).toBeVisible()
-    }
+    await test.step(`single vector key: arrows, no origin gap or per-key scale`, async () => {
+      await expect_canvas_changed_by(canvas, () => inject_vectors(page, `single`))
 
-    // Recoloring and hiding a layer each repaint its arrows.
-    const magmom_toggle = pane_div.locator(`[data-key="vector_config:magmom"]`)
-    await expect_canvas_changed_by(structure_canvas(page), () =>
-      magmom_toggle.locator(`input[type="color"]`).fill(`#00ff00`),
-    )
-    await expect_canvas_changed_by(structure_canvas(page), async () => {
-      await magmom_toggle.locator(`input[type="checkbox"]`).click()
-      await expect(labels_with(pane_div, `magmom scale`)).toBeHidden()
+      const { pane_div } = await open_structure_control_pane(page)
+      await expect(pane_div.getByRole(`region`, { name: /site vectors/i })).toBeVisible()
+      await expect(pane_div.locator(`[data-key="vector_config:force"]`)).toBeVisible()
+      await expect(pane_div.locator(`[data-key="vector_origin_gap"]`)).toHaveCount(0)
+      await expect(labels_with(pane_div, `force scale`)).toHaveCount(0)
     })
-  })
 
-  test(`single-vector structure draws arrows and has no origin gap or per-key scale`, async ({
-    page,
-  }) => {
-    await goto_structure_test(page)
-    await expect_canvas_changed_by(structure_canvas(page), () =>
-      inject_vectors(page, `single`),
-    )
+    await test.step(`multi vector keys: per-key layer toggles and scale sliders`, async () => {
+      // the pane derives its vector rows from the structure, so the single-key rows go away
+      await inject_vectors(page, `multi`)
+      const { pane_div } = await open_structure_control_pane(page)
+      const section = pane_div.getByRole(`region`, { name: `Site Vectors`, exact: true })
+      await expect(labels_with(pane_div, `Global Scale`)).toBeVisible()
+      await expect(labels_with(pane_div, `Origin Gap`)).toBeVisible()
+      // per-key rows replace the single-key Color picker
+      await expect(section.locator(`label`).filter({ hasText: /^Color$/ })).toHaveCount(0)
 
-    const { pane_div } = await open_structure_control_pane(page)
-    await expect(pane_div.getByRole(`region`, { name: /site vectors/i })).toBeVisible()
-    await expect(pane_div.locator(`[data-key="vector_config:force"]`)).toBeVisible()
-    await expect(pane_div.locator(`[data-key="vector_origin_gap"]`)).toHaveCount(0)
-    await expect(labels_with(pane_div, `force scale`)).toHaveCount(0)
+      for (const key of [`force_DFT`, `force_MLFF`, `magmom`]) {
+        const toggle = pane_div.locator(`[data-key="vector_config:${key}"]`)
+        await expect(toggle.locator(`input[type="checkbox"]`)).toBeVisible()
+        await expect(toggle.locator(`input[type="color"]`)).toBeVisible()
+        // labelled like the toggles (hasText ignores case)
+        await expect(labels_with(pane_div, `${key.replaceAll(`_`, ` `)} scale`)).toBeVisible()
+      }
+
+      // Recoloring and hiding a layer each repaint its arrows.
+      const magmom_toggle = pane_div.locator(`[data-key="vector_config:magmom"]`)
+      await expect_canvas_changed_by(canvas, () =>
+        magmom_toggle.locator(`input[type="color"]`).fill(`#00ff00`),
+      )
+      await expect_canvas_changed_by(canvas, async () => {
+        await magmom_toggle.locator(`input[type="checkbox"]`).click()
+        await expect(labels_with(pane_div, `magmom scale`)).toBeHidden()
+      })
+    })
   })
 })

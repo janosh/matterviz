@@ -9,6 +9,7 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
   import { structure_files } from '#site/structures.js'
+  import { toggle_item } from '#lib/utils.js'
   import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
   import al2lu from '#site/structures/mp-1234.json'
   import palladium from '#site/structures/mp-2.json'
@@ -193,10 +194,7 @@
     {#each Object.keys(structures) as key, idx (key)}
       <button
         class:active={selected.includes(key)}
-        onclick={() =>
-          (selected = selected.includes(key)
-            ? selected.filter((selected_key) => selected_key !== key)
-            : [...selected, key])}
+        onclick={() => (selected = toggle_item(selected, key))}
         style:background={selected.includes(key) ? `${PLOT_COLORS[idx]}20` : null}
       >
         {key}

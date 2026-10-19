@@ -5,6 +5,7 @@
   import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import { format_num } from '#lib/labels.js'
   import { ControlPane } from '#lib/overlays/index.js'
+  import CameraSection from '#lib/scene/CameraSection.svelte'
   import { DEFAULTS } from '#lib/settings.js'
   import type { BrillouinZoneSettings } from './types'
 
@@ -27,17 +28,10 @@
     controls_open?: boolean
   } = $props()
 
-  const brillouin_zone_controls_settings = track_settings(
-    () => ({ bz_order, show_vectors }),
-    defaults,
-  )
+  const zone_settings = track_settings(() => ({ bz_order, show_vectors }), defaults)
   const surface_settings = track_settings(() => ({ surface_color, surface_opacity }), defaults)
   const edges_settings = track_settings(() => ({ edge_color, edge_width }), defaults)
-  const irreducible_bz_settings = track_settings(
-    () => ({ show_ibz, ibz_color, ibz_opacity }),
-    defaults,
-  )
-  const camera_settings = track_settings(() => ({ camera_projection }), defaults)
+  const ibz_settings = track_settings(() => ({ show_ibz, ibz_color, ibz_opacity }), defaults)
 </script>
 
 <ControlPane
@@ -51,7 +45,7 @@
   <SettingsGroup title="Geometry" open>
     <SettingsSection
       title="Brillouin zone controls"
-      changed_keys={brillouin_zone_controls_settings.changed_keys}
+      changed_keys={zone_settings.changed_keys}
       on_reset={() => ({ bz_order, show_vectors } = defaults)}
       layout="grid"
     >
@@ -109,7 +103,7 @@
 
     <SettingsSection
       title="Irreducible BZ"
-      changed_keys={irreducible_bz_settings.changed_keys}
+      changed_keys={ibz_settings.changed_keys}
       on_reset={() => ({ show_ibz, ibz_color, ibz_opacity } = defaults)}
       layout="grid"
     >
@@ -133,18 +127,5 @@
     </SettingsSection>
   </SettingsGroup>
 
-  <SettingsSection
-    title="Camera"
-    changed_keys={camera_settings.changed_keys}
-    on_reset={() => ({ camera_projection } = defaults)}
-    layout="grid"
-  >
-    <label>
-      <span>Projection</span>
-      <select bind:value={camera_projection}>
-        <option value="perspective">Perspective</option>
-        <option value="orthographic">Orthographic</option>
-      </select>
-    </label>
-  </SettingsSection>
+  <CameraSection bind:camera_projection default_projection={defaults.camera_projection} />
 </ControlPane>

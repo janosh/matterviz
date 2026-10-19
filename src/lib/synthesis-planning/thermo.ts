@@ -53,6 +53,17 @@ const driving_force_of = (balanced: BalancedReaction): number =>
 
 export type BalanceFailure = `unbalanced` | `redundant_precursor`
 
+// Energy change per formula unit of product of a balanced reaction at the phases' current energies
+export const reaction_energy_per_fu = (
+  precursors: PlannerPhase[],
+  product: PlannerPhase,
+  gases: PlannerPhase[],
+  { coefficients, gas_exchange }: Pick<BalancedReaction, `coefficients` | `gas_exchange`>,
+): number =>
+  fu_energy(product) +
+  gases.reduce((sum, gas, idx) => sum + gas_exchange[idx] * fu_energy(gas), 0) -
+  precursors.reduce((sum, phase, idx) => sum + coefficients[idx] * fu_energy(phase), 0)
+
 // Balance `precursors → product + gases` with non-negative precursor coefficients and free-signed
 // gas exchange, choosing the solution with the least total gas exchange when several exist.
 // `require_all` rejects solutions where a precursor has zero coefficient.
@@ -83,10 +94,10 @@ export function balance_reaction(
   const released = result.solution.slice(precursors.length, precursors.length + gases.length)
   const consumed = result.solution.slice(precursors.length + gases.length)
   const gas_exchange = released.map((amount, idx) => amount - consumed[idx])
-  const energy_per_fu =
-    fu_energy(product) +
-    gases.reduce((sum, gas, idx) => sum + gas_exchange[idx] * fu_energy(gas), 0) -
-    precursors.reduce((sum, phase, idx) => sum + coefficients[idx] * fu_energy(phase), 0)
+  const energy_per_fu = reaction_energy_per_fu(precursors, product, gases, {
+    coefficients,
+    gas_exchange,
+  })
   const reactant_atoms = precursors.reduce(
     (sum, phase, idx) => sum + coefficients[idx] * phase.n_atoms_per_fu,
     gases.reduce((sum, gas, idx) => sum + consumed[idx] * gas.n_atoms_per_fu, 0),
@@ -443,8 +454,9 @@ export function describe_downhill_windows(windows: [number, number][]): string {
 
 // === Reaction slice on the full hull ===
 
-const solid_reactants = (route: SynthesisRoute): PhaseRef[] =>
-  route.reaction.reactants.flatMap(({ phase }) => (phase.is_gas ? [] : [phase]))
+// The solid (non-gas) reactants of a reaction: its precursors
+export const solid_reactants = ({ reactants }: SynthesisReaction): ReactionSpecies[] =>
+  reactants.filter(({ phase }) => !phase.is_gas)
 
 const as_mark = (phase: PhaseRef): HullMark => ({
   composition: phase.composition,
@@ -454,8 +466,8 @@ const as_mark = (phase: PhaseRef): HullMark => ({
 
 // Where a route's reaction slice cuts the full hull: tie-lines between each solid precursor pair
 export const reaction_slice_lines = (route: SynthesisRoute) =>
-  solid_reactants(route).flatMap((from, idx, solids) =>
-    solids.slice(idx + 1).map((to) => ({ from: as_mark(from), to: as_mark(to) })),
+  solid_reactants(route.reaction).flatMap(({ phase: from }, idx, solids) =>
+    solids.slice(idx + 1).map(({ phase: to }) => ({ from: as_mark(from), to: as_mark(to) })),
   )
 
 // A phase on a route's reaction slice at its precursor mixture, with the gas that mixture consumes
@@ -467,7 +479,7 @@ export function reaction_slice_points({
   selectivity,
 }: Pick<SynthesisRoute, `reaction` | `selectivity`>): SlicePoint[] {
   const { reactants, products, driving_force } = reaction
-  const solids = reactants.filter(({ phase }) => !phase.is_gas)
+  const solids = solid_reactants(reaction)
   const solid_atoms = solids.reduce(
     (sum, { phase, coefficient }) => sum + coefficient * phase.n_atoms_per_fu,
     0,
@@ -504,7 +516,7 @@ export function slice_point_on_hull(
 ): HullMark {
   // precursors absent from the mixture (e.g. at a corner) contribute no elements
   const parts = [
-    ...solid_reactants(route).flatMap((solid) => {
+    ...solid_reactants(route.reaction).flatMap(({ phase: solid }) => {
       const atoms = mixture[solid.formula]
       return atoms ? [{ phase: solid, atoms }] : []
     }),

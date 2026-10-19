@@ -115,19 +115,14 @@ test(`element pages use local photos and keep the miniature table within a phone
 })
 
 test(`galleries reserve space and defer lower examples`, async ({ page }) => {
-  // /composition renders its cheap SVG charts directly, so no gallery there defers anything
-  for (const [path, selector, from_end] of [
-    // The final Brillouin example is an empty drop target.
-    [`/reciprocal/brillouin-zone`, `canvas`, 2],
-  ] as const) {
-    await page.goto(path)
-    const examples = page.locator(`.lazy-demo`)
-    const last = examples.nth((await examples.count()) - from_end)
-    await expect(examples.first().locator(selector).first()).toBeVisible()
-    await expect(last.locator(`.placeholder`)).toHaveCount(1)
-    await last.scrollIntoViewIfNeeded()
-    await expect(last.locator(selector).first()).toBeVisible()
-  }
+  await page.goto(`/reciprocal/brillouin-zone`)
+  const examples = page.locator(`.lazy-demo`)
+  // the final Brillouin example is an empty drop target, so check the one before it
+  const last = examples.nth((await examples.count()) - 2)
+  await expect(examples.first().locator(`canvas`).first()).toBeVisible()
+  await expect(last.locator(`.placeholder`)).toHaveCount(1)
+  await last.scrollIntoViewIfNeeded()
+  await expect(last.locator(`canvas`).first()).toBeVisible()
   await page.goto(`/periodic-table`)
   const quadrant = page.getByRole(`region`, { name: `4-fold Split`, exact: true })
   await expect(quadrant.locator(`.placeholder`)).toHaveCount(1)

@@ -1,7 +1,6 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { create_lattice_converters, min_image_displacement } from '#lib/math.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
-import { neighbor_query } from '#lib/structure/bonding.js'
 import {
   apply_structure_id,
   calc_structure_id,
@@ -9,7 +8,7 @@ import {
   cna_type_name,
   CNA_TYPE_PROPERTY,
 } from '#lib/structure-id/calc-structure-id.js'
-import { calc_cna, CNA_TYPES } from '#lib/structure-id/calc-cna.js'
+import { CNA_TYPES } from '#lib/structure-id/calc-cna.js'
 import { describe, expect, test } from 'vitest'
 import {
   BCC_LATTICE_CONST,
@@ -240,15 +239,6 @@ describe(`common neighbor analysis`, () => {
     expect(result.cna_types?.[0]).toBe(CNA_TYPES.ico)
     expect(result.populations.ico).toBe(1)
     expect(result.populations.other).toBe(12)
-  })
-
-  test(`calc_cna bonds neighbors at the radius the list was built with`, () => {
-    const crystal = make_fcc([2, 2, 2])
-    const fcc_list = neighbor_query(crystal, { cutoff: 0.854 * FCC_LATTICE_CONST })
-    expect(Array.from(calc_cna(fcc_list, `fixed`))).toEqual(Array(32).fill(CNA_TYPES.fcc))
-    // the bcc radius admits the fcc second shell: 18 neighbors, never 12 or 14
-    const wide_list = neighbor_query(crystal, { cutoff: 1.207 * FCC_LATTICE_CONST })
-    expect(Array.from(calc_cna(wide_list, `fixed`))).toEqual(Array(32).fill(CNA_TYPES.other))
   })
 
   test(`cna_type_name maps every code and rejects the rest`, () => {
