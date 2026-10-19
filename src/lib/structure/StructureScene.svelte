@@ -1083,8 +1083,10 @@
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
 
   // Near/far / skybox — not framing. Lattice avg edge stays stable when images toggle.
+  // Edge lengths come from the matrix: raw JSON may omit a/b/c, and a NaN far plane clips
+  // every vertex, blanking the canvas.
   let structure_size = $derived.by(() => {
-    if (lattice) return (lattice.a + lattice.b + lattice.c) / 2
+    if (lattice) return lattice.matrix.reduce((sum, vec) => sum + Math.hypot(...vec), 0) / 2
     const count = site_count(structure)
     if (!structure || !count) return 10
     // One pass, no spread: Math.max(...coords) overflows the argument limit past ~1e5 sites

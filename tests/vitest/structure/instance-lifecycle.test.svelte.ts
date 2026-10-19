@@ -50,6 +50,7 @@ import {
   Matrix4,
   Mesh,
   type Object3D,
+  OrthographicCamera,
   Raycaster,
   Vector3,
 } from 'three/webgpu'
@@ -1626,3 +1627,19 @@ test.each([
     expect(Math.max(0, ...arrow_counts)).toBe(n_arrows)
   },
 )
+
+// The far plane is sized from the cell edges (15 A for a 10 A cube -> far 1500). A lattice
+// passed without a/b/c made it NaN, clipping every vertex to a blank canvas.
+test.each([`full lattice params`, `matrix only`])(`camera far plane from a %s`, (label) => {
+  const { lattice, ...crystal } = make_crystal(10, [[`C`, [0, 0, 0]]])
+  const { matrix, pbc } = lattice
+  const structure = {
+    ...crystal,
+    lattice: label === `matrix only` ? { matrix, pbc } : lattice,
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the malformed input under test
+  const { camera } = mount_structure({ structure: structure as AnyStructure })
+  if (!(camera.current instanceof OrthographicCamera))
+    throw new Error(`expected the default orthographic camera`)
+  expect(camera.current.far).toBe(1500)
+})

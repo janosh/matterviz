@@ -108,7 +108,6 @@ const make_site = (
   label,
   properties: {},
 })
-// Full LatticeType: StructureScene sizes the camera far plane from a/b/c, and NaN there blanks the canvas
 const cubic_10 = {
   matrix: [
     [10, 0, 0],
