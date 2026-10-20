@@ -602,6 +602,50 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   expect(state.added_bonds).toEqual([])
 })
 
+// A delete-mode bond is hit anywhere in its 5x wide invisible cylinder, also under a cutaway,
+// where picking raycasts the bond's own geometry to skip clipped-away parts
+test.each<[string, StructureCutaway | undefined]>([
+  [`no cutaway`, undefined],
+  [
+    `a surface cutaway`,
+    {
+      mode: `slab`,
+      axis: 0,
+      position: 1.5,
+      thickness: 1,
+      whole_atoms: false,
+      cartesian_to_fractional: new Matrix4(),
+    },
+  ],
+])(`delete mode removes a bond clicked off its axis with %s`, (_label, cutaway) => {
+  const interactivity = spy_interactivity()
+  const state = $state<{ added_bonds: StructureBond[] }>({
+    added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+  })
+  mount_structure(
+    {
+      structure: {
+        sites: [0, 3].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `never`,
+      bond_thickness: 0.1,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode: `delete`,
+      cutaway,
+    },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  // 0.3 Å beside the bond axis: outside its 0.1 Å radius, inside the 0.5 Å hit radius
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(1.5, 0.3, 10), new Vector3(0, 0, -1))
+  const target = scene_interactivity.target.current
+  target?.dispatchEvent(new PointerEvent(`pointerdown`))
+  target?.dispatchEvent(new MouseEvent(`click`))
+  flushSync()
+  expect(state.added_bonds).toEqual([])
+})
+
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
 // show: hidden, translucent or tiny atoms. A polyhedron center hidden by
 // polyhedra_hide_center_atoms drops its sphere but keeps its (thin, so otherwise covered)

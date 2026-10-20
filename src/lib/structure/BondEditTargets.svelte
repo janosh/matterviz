@@ -109,7 +109,7 @@
     oncreate={(ref) => {
       apply_bond_transform(ref, bond, bond_hit_radius)
       enable_cutaway_picking(ref, (raycaster, hits) =>
-        raycast_bond(ref, bond, bond_thickness, raycaster, hits),
+        raycast_bond(ref, bond, bond_hit_radius, raycaster, hits),
       )
     }}
     onpointerdown={(event: ThrelteEvent<PointerEvent>) => on_bond_press(bond, event)}
