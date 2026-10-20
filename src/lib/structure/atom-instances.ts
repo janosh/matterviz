@@ -84,16 +84,21 @@ const hit_point = new Vector3()
 const PACKED_ATOM = { stride: 4, position_at: 0, scale_at: 3 }
 
 // Invisible full-sphere targets need no triangle test (which can miss exactly at a pole).
+// `visible_scale` is the drawn atom's share of an enlarged edit target: under a cutaway the target
+// keeps its size but can't resurrect an atom the cutaway removes entirely.
+const atom_center = new Vector3()
 export function enable_atom_sphere_picking(mesh: Mesh, visible_scale = 1): void {
   mesh.raycast = (raycaster, hits) => {
     // Invisible objects may not have been visited by the renderer since their transform changed.
     mesh.updateWorldMatrix(true, false)
-    local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(mesh.matrixWorld).invert())
-    const planes = cutaway_planes(mesh)
-    // Enlarged edit targets shrink to the visible atom when clipping is active.
-    hit_sphere.radius = 0.5 * (planes.length ? visible_scale : 1)
+    const { matrixWorld } = mesh
+    local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(matrixWorld).invert())
     if (!local_ray.intersectSphere(hit_sphere, hit_point)) return
-    hit_point.applyMatrix4(mesh.matrixWorld)
+    const planes = cutaway_planes(mesh)
+    atom_center.setFromMatrixPosition(matrixWorld)
+    const drawn_radius = 0.5 * visible_scale * matrixWorld.getMaxScaleOnAxis()
+    if (cutaway_excludes(planes, atom_center, drawn_radius)) return
+    hit_point.applyMatrix4(matrixWorld)
     if (cutaway_excludes(planes, hit_point)) return
     const distance = raycaster.ray.origin.distanceTo(hit_point)
     if (distance < raycaster.near || distance > raycaster.far) return

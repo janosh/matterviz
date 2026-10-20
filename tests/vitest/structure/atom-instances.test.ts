@@ -43,6 +43,30 @@ const cell_point = (axis: StructureCutaway[`axis`], depth: number) =>
 // Hit records without the object, which differs between the compared meshes
 const strip_object = (hits: Intersection[]) => hits.map(({ object: _object, ...hit }) => hit)
 
+// ...but keep their enlarged size for an atom the cutaway keeps (plane mode keeps z <= 0.5)
+test.each([
+  [`no cutaway`, undefined],
+  [`a cutaway keeping the atom`, `plane`],
+] as const)(`enlarged atom target is hit beside the drawn atom with %s`, (_label, mode) => {
+  const group = new StructureCutawayGroup()
+  const atom = new Mesh(new SphereGeometry(0.5), new MeshBasicMaterial())
+  atom.position.set(0, 0, 0.3)
+  atom.scale.setScalar(0.02 * 1.15) // drawn radius 0.01, target 0.0115
+  enable_atom_sphere_picking(atom, 1 / 1.15)
+  group.add(atom)
+  group.set_cutaway(
+    mode && {
+      mode,
+      axis: 2,
+      position: 0.5,
+      thickness: 0.25,
+      cartesian_to_fractional: new Matrix4(),
+    },
+  )
+  const raycaster = new Raycaster(new Vector3(0.0108, 0, 0), new Vector3(0, 0, 1))
+  expect(raycaster.intersectObject(atom)).toHaveLength(1)
+})
+
 test.each([1, 2, 3] as const)(
   `enlarged edit targets cannot pick fully clipped atoms or order-%i bonds`,
   (bond_order) => {

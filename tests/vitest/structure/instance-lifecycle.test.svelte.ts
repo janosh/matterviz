@@ -603,21 +603,21 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
 })
 
 // A delete-mode bond is hit anywhere in its 5x wide invisible cylinder, also under a cutaway,
-// where picking raycasts the bond's own geometry to skip clipped-away parts
-test.each<[string, StructureCutaway | undefined]>([
-  [`no cutaway`, undefined],
-  [
-    `a surface cutaway`,
-    {
-      mode: `slab`,
-      axis: 0,
-      position: 1.5,
-      thickness: 1,
-      whole_atoms: false,
-      cartesian_to_fractional: new Matrix4(),
-    },
-  ],
-])(`delete mode removes a bond clicked off its axis with %s`, (_label, cutaway) => {
+// where picking raycasts the bond's own strands to skip clipped-away parts. A bond the cutaway
+// removes entirely stays unpickable, even where its wide cylinder reaches the kept slab.
+const surface_slab = (axis: 0 | 1, position: number, thickness: number): StructureCutaway => ({
+  mode: `slab`,
+  axis,
+  position,
+  thickness,
+  whole_atoms: false,
+  cartesian_to_fractional: new Matrix4(),
+})
+test.each<[string, number, StructureCutaway | undefined]>([
+  [`no cutaway`, 0, undefined],
+  [`a cutaway keeping its middle`, 0, surface_slab(0, 1.5, 1)],
+  [`a cutaway clipping it entirely`, 1, surface_slab(1, 0.3, 0.1)],
+])(`delete-mode click beside a bond with %s leaves %i bonds`, (_label, n_bonds, cutaway) => {
   const interactivity = spy_interactivity()
   const state = $state<{ added_bonds: StructureBond[] }>({
     added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
@@ -643,7 +643,7 @@ test.each<[string, StructureCutaway | undefined]>([
   target?.dispatchEvent(new PointerEvent(`pointerdown`))
   target?.dispatchEvent(new MouseEvent(`click`))
   flushSync()
-  expect(state.added_bonds).toEqual([])
+  expect(state.added_bonds).toHaveLength(n_bonds)
 })
 
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
