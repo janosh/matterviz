@@ -330,8 +330,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (!is_dragging) return
     const [delta_x, delta_y] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
     if (delta_x !== 0 || delta_y !== 0) drag_started = true
-    if (event.metaKey || event.ctrlKey) {
-      // Cmd/Ctrl: pan instead of rotate
+    if (event.shiftKey) {
+      // shift pans like the 3D scenes; ⌘/Ctrl, the wheel's zoom chord, still rotates
       camera.center_x += delta_x
       camera.center_y += delta_y
     } else strategy.rotate(camera, delta_x, delta_y)

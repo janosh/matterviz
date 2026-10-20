@@ -21,6 +21,7 @@
   import {
     create_renderer,
     key_walk_root,
+    wheel_zoom_gate,
     export_scene_as,
     webgpu_available,
   } from '#lib/scene/index.js'
@@ -371,6 +372,7 @@
     Escape: pin.unpin,
   }))
   const key_walk = key_walk_root() // the sheets, by keyboard (see KeyWalk)
+  const wheel_gate = wheel_zoom_gate()
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -388,6 +390,7 @@
   {@attach drop_zone}
   {@attach keys}
   {@attach key_walk.attach}
+  {@attach wheel_gate}
 >
   <LiveMessage message={key_walk.message} />
   {@render children?.({ fermi_data: surface_data, bz_data })}

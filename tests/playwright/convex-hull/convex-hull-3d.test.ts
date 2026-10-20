@@ -189,6 +189,65 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
   })
 
+  test(`plain wheel over the idle hull scrolls the page; modifier wheel or a click first zooms`, async ({
+    page,
+  }) => {
+    // a page taller than the viewport, so a wheel the hull leaves alone scrolls it, and the
+    // last wheel's defaultPrevented: a ctrl+wheel nobody prevents zooms the page
+    await page.evaluate(() => {
+      document.body.style.minHeight = `300vh`
+      addEventListener(`wheel`, ({ defaultPrevented }) => {
+        document.body.dataset.wheelPrevented = String(defaultPrevented)
+      })
+    })
+    const diagram = ternary_diagram(page)
+    const canvas = diagram.locator(`:scope > canvas`).first()
+    const read_zoom = () => diagram.getAttribute(`data-zoom`)
+    const read_scroll = () => page.evaluate(() => window.scrollY)
+    // re-aim at the canvas each time, since page scrolls move it under the pointer
+    const wheel_over_canvas = async (delta_y: number, modifier?: string) => {
+      const box = await require_bbox(canvas, `canvas`)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      if (modifier) await page.keyboard.down(modifier)
+      await page.mouse.wheel(0, delta_y)
+      if (modifier) await page.keyboard.up(modifier)
+    }
+
+    const zoom_idle = await read_zoom()
+    const scroll_before = await read_scroll()
+    await wheel_over_canvas(150)
+    // before the scroll poll, which can outlast the hint's 1.5 s on a cold run
+    await expect(diagram.locator(`.wheel-zoom-hint`)).toContainText(
+      /(?:⌘|Ctrl) \+ scroll to zoom · click to interact/,
+    )
+    await expect.poll(read_scroll).toBeGreaterThan(scroll_before)
+    expect(await read_zoom()).toBe(zoom_idle)
+
+    // ⌘/Ctrl + wheel zooms without activating and without scrolling (or page-zooming)
+    for (const modifier of [`Meta`, `Control`]) {
+      const [zoom, scroll] = [await read_zoom(), await read_scroll()]
+      await wheel_over_canvas(-150, modifier)
+      await expect.poll(read_zoom).not.toBe(zoom)
+      expect(await read_scroll()).toBe(scroll)
+      await expect(page.locator(`body`)).toHaveAttribute(`data-wheel-prevented`, `true`)
+    }
+
+    // a click (on an empty corner, selecting nothing) activates: plain wheels zoom
+    const box = await require_bbox(canvas, `canvas`)
+    await page.mouse.click(box.x + 5, box.y + 5)
+    const [zoom_active, scroll_active] = [await read_zoom(), await read_scroll()]
+    await wheel_over_canvas(-150)
+    await expect.poll(read_zoom).not.toBe(zoom_active)
+    expect(await read_scroll()).toBe(scroll_active)
+
+    // the pointer leaving deactivates it again
+    await page.mouse.move(0, 0)
+    const zoom_left = await read_zoom()
+    await wheel_over_canvas(150)
+    await expect.poll(read_scroll).toBeGreaterThan(scroll_active)
+    expect(await read_zoom()).toBe(zoom_left)
+  })
+
   test(`hover tooltip shows compact fractional compositions; Escape closes a clicked entry's structure popup`, async ({
     page,
   }) => {

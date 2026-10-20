@@ -10,6 +10,7 @@ import {
   expect_gizmo_click_flies_camera,
   open_plot_controls,
   webgl_on_ci_for_tagged,
+  zoom_wheel,
 } from '../helpers'
 
 webgl_on_ci_for_tagged()
@@ -247,7 +248,7 @@ test.describe(`ScatterPlot3D`, { tag: `@webgl` }, () => {
       initial_box.y + initial_box.height / 2,
     )
     const initial = await canvas_screenshot(canvas)
-    await page.mouse.wheel(0, -200)
+    await zoom_wheel(page, -200)
 
     await expect_canvas_changed(canvas, initial)
     const read_zoom = (): Promise<number> => page.evaluate(() => window.scatter_probe.zoom())

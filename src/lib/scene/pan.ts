@@ -7,7 +7,7 @@
 // label placement follow the shift for free. The offset lives on the camera (`camera.view`) as its
 // only source of truth; hosts read it with `read_pan_offset` and drop it with `clearViewOffset()`.
 import type { Vec2 } from '#lib/math.js'
-import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
+import { type Camera, MOUSE, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
 type PannableCamera = PerspectiveCamera | OrthographicCamera
 
@@ -64,13 +64,14 @@ export function restore_camera_view(
 export type PanControls = {
   enabled: boolean
   object: Camera
+  mouseButtons: { LEFT?: MOUSE | null }
   dispatchEvent: (event: { type: `start` | `change` | `end` }) => void
 }
 
-// OrbitControls' pan bindings, minus the target translation: right-button drag, left-button drag
-// with shift/ctrl/meta, or a two-finger touch drag (its pinch still dollies through OrbitControls,
-// whose own pan is disabled by SceneCamera). One pointer's motion moves a two-finger centroid by
-// half of it. `speed` is OrbitControls' panSpeed (px moved per px dragged); 0 disables the gesture.
+// OrbitControls' pan bindings, minus the target translation: right-button drag, shift + left drag
+// or a two-finger touch drag (its pinch still dollies through OrbitControls, whose own pan is
+// disabled by SceneCamera). One pointer's motion moves a two-finger centroid by half of it.
+// `speed` is OrbitControls' panSpeed (px moved per px dragged); 0 disables the gesture.
 // `start` is dispatched on the first motion, not the press: hosts disable hover raycasts for the
 // duration of a gesture, and a right click that never moves must still reach a mesh's contextmenu.
 export function attach_pan_gesture(
@@ -112,15 +113,21 @@ export function attach_pan_gesture(
   }
 
   const on_pointer_down = (event: PointerEvent) => {
-    if (!(opts.controls()?.enabled ?? false) || opts.speed() <= 0) return
+    const controls = opts.controls()
+    if (!controls?.enabled) return
+    // ⌘/Ctrl + left drag rotates like a plain drag: ⌘/Ctrl is the wheel's zoom chord, often still
+    // held when a drag starts. OrbitControls rotates a modified press only while its left button
+    // is bound to pan, so the binding is set per press, before its own pointerdown listener.
+    if (event.button === 0) {
+      const modified = (event.ctrlKey || event.metaKey) && !event.shiftKey
+      controls.mouseButtons.LEFT = modified ? MOUSE.PAN : MOUSE.ROTATE
+    }
+    if (opts.speed() <= 0) return
     if (event.pointerType === `touch`) {
       touch_pointers.set(event.pointerId, [event.clientX, event.clientY])
       return
     }
-    const is_pan =
-      event.button === 2 ||
-      (event.button === 0 && (event.ctrlKey || event.metaKey || event.shiftKey))
-    if (!is_pan) return
+    if (event.button !== 2 && !(event.button === 0 && event.shiftKey)) return
     mouse_pointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
   }
   const on_pointer_move = (event: PointerEvent) => {
@@ -143,7 +150,7 @@ export function attach_pan_gesture(
     }
   }
 
-  element.addEventListener(`pointerdown`, on_pointer_down)
+  element.addEventListener(`pointerdown`, on_pointer_down, { capture: true })
   // Moves and releases on window, not the element: OrbitControls captures the pointer on its own
   // element, a release over another element must still end the gesture, and a lifted first finger
   // has to leave the touch map before a second one arrives.
@@ -151,7 +158,7 @@ export function attach_pan_gesture(
   window.addEventListener(`pointerup`, on_pointer_end)
   window.addEventListener(`pointercancel`, on_pointer_end)
   return () => {
-    element.removeEventListener(`pointerdown`, on_pointer_down)
+    element.removeEventListener(`pointerdown`, on_pointer_down, { capture: true })
     window.removeEventListener(`pointermove`, on_pointer_move)
     window.removeEventListener(`pointerup`, on_pointer_end)
     window.removeEventListener(`pointercancel`, on_pointer_end)

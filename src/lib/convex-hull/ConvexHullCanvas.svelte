@@ -6,7 +6,13 @@
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { ColorScaleConfig } from '#lib/plot/core/types.js'
-  import { create_renderer, Gizmo, webgpu_available } from '#lib/scene/index.js'
+  import {
+    create_renderer,
+    Gizmo,
+    webgpu_available,
+    wheel_zoom_gate,
+    wheel_zoom_surface,
+  } from '#lib/scene/index.js'
   import { Canvas, T } from '@threlte/core'
   import { dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
   import * as extras from '@threlte/extras'
@@ -112,6 +118,10 @@
 
   let canvas = $state<HTMLCanvasElement>()
   let overlay_canvas = $state<HTMLCanvasElement>()
+
+  // canvas_handlers' wheel zoom only sees the wheels this gate lets through
+  const wheel_gate = wheel_zoom_gate()
+  wheel_zoom_surface(() => canvas)
 
   const centroid = simplex_centroid(strategy.corners)
   const project_point = (coord_x: number, coord_y: number, coord_z: number): Projected =>
@@ -268,6 +278,7 @@
   role="application"
   tabindex="-1"
   {...selection.root_attachments}
+  {@attach wheel_gate}
   aria-label="{dim === 3 ? `Ternary` : `Quaternary`} convex hull visualization"
 >
   {@render children?.({

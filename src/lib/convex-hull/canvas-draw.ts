@@ -713,7 +713,7 @@ export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
   // per face for the many thin 4D faces
   face_gradient: boolean
   face_stroke_alpha(fill_alpha: number): number
-  // Plain drag rotates the view (Cmd/Ctrl-drag pans)
+  // Plain or ⌘/Ctrl drag rotates the view (shift-drag pans)
   rotate(camera: Camera, delta_x: number, delta_y: number): void
   // Data coords → view coords [x, y, depth] about the simplex centroid, before to_screen
   rotate_point(camera: Camera, point: Vec3, energy_range: EnergyRange): Vec3

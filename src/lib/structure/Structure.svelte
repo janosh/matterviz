@@ -35,7 +35,7 @@
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { parse_warnings_notice } from '#lib/labels.js'
   import { chain_handlers, is_editable_event_target } from 'svelte-widgets/utils'
-  import { key_walk_root, webgpu_available } from '#lib/scene/index.js'
+  import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
   import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
@@ -1176,6 +1176,7 @@
     (event) => !measure_mode.startsWith(`edit-`) && handle_keydown(event),
   )
   const key_walk = key_walk_root() // the active pane's atoms, by keyboard (see KeyWalk)
+  const wheel_gate = wheel_zoom_gate()
 
   // Only override the themed --struct-bg when a color is given; opacity becomes the alpha byte
   let background_override = $derived(
@@ -1246,6 +1247,7 @@
     {@attach drop_zone}
     {@attach keys}
     {@attach key_walk.attach}
+    {@attach wheel_gate}
   >
     <LiveMessage message={key_walk.message} />
     {@render children?.({ structure, fullscreen })}

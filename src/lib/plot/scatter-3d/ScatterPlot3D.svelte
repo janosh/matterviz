@@ -33,7 +33,12 @@
     create_legend_visibility,
     resolve_legend_visibility,
   } from '#lib/plot/core/utils/series-visibility.js'
-  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
+  import {
+    create_renderer,
+    key_walk_root,
+    wheel_zoom_gate,
+    webgpu_available,
+  } from '#lib/scene/index.js'
   import ScatterPlot3DControls, {
     DISPLAY_DEFAULTS_3D,
   } from '#lib/plot/scatter-3d/ScatterPlot3DControls.svelte'
@@ -204,6 +209,7 @@
 
   // The scene's marker cursor walks from the plot root's one tab stop (see KeyWalk)
   const key_walk = key_walk_root()
+  const wheel_gate = wheel_zoom_gate()
 
   function handle_point_hover(data: Scatter3DHandlerEvent<Metadata> | null) {
     hovered = data !== null
@@ -265,6 +271,7 @@
   {...rest}
   {@attach viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))}
   {@attach key_walk.attach}
+  {@attach wheel_gate}
 >
   {#snippet controls(toggle_props, show_controls)}
     <ScatterPlot3DControls

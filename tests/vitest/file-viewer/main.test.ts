@@ -1,5 +1,6 @@
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
 import { create_display } from '#lib/file-viewer/main.js'
+import { host } from '#lib/host.js'
 import { parse_file_content } from '#lib/file-viewer/parse.js'
 import { base64_to_array_buffer } from '#lib/utils.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
@@ -427,6 +428,7 @@ test.each([
   expect(mount_props.allow_file_drop).toBe(allow_file_drop)
   // the viewer's own toggle stays, gated by host.fullscreen
   expect(mount_props).not.toHaveProperty(`fullscreen_toggle`)
+  expect(host.wheel_zoom).toBe(`always`) // a viewer filling the tab has no page to scroll
 })
 
 describe(`create_display trajectory display options`, () => {

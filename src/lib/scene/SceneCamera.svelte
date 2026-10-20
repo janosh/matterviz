@@ -14,6 +14,7 @@
   import { camera_flight_registry, create_camera_flight_controller } from './camera-flight'
   import { camera_resets } from './camera-reset'
   import { lock_fly_to } from './fly-to'
+  import { wheel_zoom_surface } from './wheel-zoom.svelte'
   import { OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
   let {
@@ -64,6 +65,12 @@
     document.addEventListener(`fullscreenchange`, apply_touch_policy)
     return () => document.removeEventListener(`fullscreenchange`, apply_touch_policy)
   })
+
+  // The enclosing viewer's WheelZoomGate decides which wheels reach OrbitControls' listener
+  wheel_zoom_surface(
+    () => orbit_controls?.domElement,
+    () => orbit_props.enableZoom,
+  )
 
   // Pan as a view offset on the camera (see pan.ts) so the orbit target stays the pivot;
   // OrbitControls' own pan is disabled below and its enablePan/panSpeed drive this gesture.

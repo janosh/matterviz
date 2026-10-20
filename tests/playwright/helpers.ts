@@ -32,6 +32,14 @@ const is_mac = process.platform === `darwin`
 export const primary_modifier = is_mac ? `metaKey` : `ctrlKey`
 export const primary_modifier_key = is_mac ? `Meta` : `Control`
 
+// Zoom an idle embedded 3D viewer, where a plain wheel scrolls the page (WheelZoomGate): Meta
+// is a zoom modifier on every platform and never the browser's page-zoom chord.
+export async function zoom_wheel(page: Page, delta_y: number): Promise<void> {
+  await page.keyboard.down(`Meta`)
+  await page.mouse.wheel(0, delta_y)
+  await page.keyboard.up(`Meta`)
+}
+
 const is_present = <Value>(value: Value | null | undefined): value is Value => value != null
 
 type Box = { x: number; y: number; width: number; height: number }
