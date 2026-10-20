@@ -3,7 +3,7 @@ import * as math from '#lib/math.js'
 import type { Camera } from 'three/webgpu'
 import { Matrix4 } from 'three/webgpu'
 
-export const LABEL_OFFSET_EPS = 1e-9
+const LABEL_OFFSET_EPS = 1e-9
 
 const LABEL_OFFSET_DIRECTIONS: Vec3[] = [
   [0, -1, 0],
@@ -63,6 +63,32 @@ export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: V
     best_direction = direction
   }
   return math.scale(best_direction, offset_length)
+}
+
+// Per-site label offsets turned away from each site's bonds (both ends of every bond). Sites
+// without bonds are absent and keep base_offset. Plain Map: built and consumed inside
+// deriveds, so per-entry reactivity would only add signal overhead for thousands of sites.
+export function site_label_offsets(
+  bonds: Iterable<{ site_idx_1: number; site_idx_2: number; pos_1: Vec3; pos_2: Vec3 }>,
+  base_offset: Vec3,
+): Map<number, Vec3> {
+  const bond_directions_by_site = new Map<number, Vec3[]>()
+  const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
+    const direction = math.normalize_vec(math.subtract(pos_2, pos_1), [0, 0, 0])
+    if (Math.hypot(...direction) < LABEL_OFFSET_EPS) return
+    const directions = bond_directions_by_site.get(site_idx)
+    if (directions) directions.push(direction)
+    else bond_directions_by_site.set(site_idx, [direction])
+  }
+  for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds) {
+    add_bond_direction(site_idx_1, pos_1, pos_2)
+    add_bond_direction(site_idx_2, pos_2, pos_1)
+  }
+  const offsets = new Map<number, Vec3>()
+  for (const [site_idx, bond_directions] of bond_directions_by_site) {
+    offsets.set(site_idx, choose_site_label_offset(bond_directions, base_offset))
+  }
+  return offsets
 }
 
 export type LabelPlacement = {

@@ -1,36 +1,23 @@
 <script lang="ts">
-  import { numeric_sites, get_site, site_count, snapshot_topologies } from './site'
-  import { element_from_atomic_number } from '#lib/element/helpers.js'
-  import {
-    enable_atom_sphere_picking,
-    update_atom_coordinates,
-    update_ordered_atom_positions,
-  } from './atom-instances'
+  import { numeric_sites, get_site, site_count } from './site'
   import type { ColorScale } from '#lib/plot/core/types.js'
   import { resolve_color_token } from '#lib/colors/backdrop.svelte.js'
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { ElementSymbol } from '#lib/element/index.js'
-  import { element_by_symbol } from '#lib/element/index.js'
   import Isosurface from '#lib/isosurface/Isosurface.svelte'
   import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
   import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
-  import { format_num } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import type { AtomColorField } from './atom-color-field'
+  import { AtomGroupBuilder, site_anchor, tooltip_fill } from './atom-groups'
   import ColorFieldVolume from './ColorFieldVolume.svelte'
   import type { CutawayInput } from './cutaway'
-  import {
-    cutaway_contains,
-    enable_cutaway_picking,
-    resolve_cutaway,
-    StructureCutawayGroup,
-  } from './cutaway'
+  import { cutaway_contains, resolve_cutaway, StructureCutawayGroup } from './cutaway'
   import {
     bind_renderer,
     brighten_hex,
-    CanvasTooltip,
     clear_pan_offset,
     create_fit_zoom,
     create_fly_to,
@@ -41,7 +28,6 @@
     scene_interactivity,
     scene_key_walk,
     SceneCamera,
-    SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
   import type { SceneControlProps, TapEvent } from '#lib/scene/index.js'
@@ -64,7 +50,6 @@
     camera_needs_fit,
     camera_position_for_target,
     characteristic_atom_spacing,
-    Cylinder,
     get_center_of_mass,
     get_orig_site_idx,
     is_image_site,
@@ -79,66 +64,54 @@
   import { build_vector_layers, pack_arrows, type VectorLayer } from './arrow-instances'
   import { resolve_arrow_size } from './vectors'
   import ArrowInstances from './ArrowInstances.svelte'
-  import InstancedAtoms from './InstancedAtoms.svelte'
+  import BondContextMenu from './BondContextMenu.svelte'
+  import BondEditTargets from './BondEditTargets.svelte'
+  import InstancedStructure from './InstancedStructure.svelte'
   import type { LatticePlane } from './lattice-planes'
   import LatticePlanes from './LatticePlanes.svelte'
+  import MeasurementOverlays from './MeasurementOverlays.svelte'
+  import SiteHighlights, { type HighlightTarget } from './SiteHighlights.svelte'
   import SiteLabels from './SiteLabels.svelte'
+  import SiteTooltip from './SiteTooltip.svelte'
   import type { AtomPropertyColors } from '#lib/structure/atom-properties.js'
   import type { SymmetryElement } from '#lib/symmetry/index.js'
   import { has_visible_symmetry_overlay } from '#lib/symmetry/symmetry-elements.js'
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
-  import { to_error, toggle_item } from '#lib/utils.js'
+  import { to_error } from '#lib/utils.js'
+  import { merge_split_partial_sites } from './partial-occupancy'
   import {
-    compute_slice_geometry,
-    merge_species_by_element,
-    merge_split_partial_sites,
-  } from './partial-occupancy'
-  import { PartialAtoms, type PartialAtom } from './partial-atoms'
+    bond_menu_position,
+    instance_handlers,
+    is_shift_click,
+    next_site_selection,
+    scene_cursor,
+    ScenePointer,
+    type PickState,
+  } from './scene-picking.svelte'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import {
-    BufferGeometry,
-    CylinderGeometry,
-    DoubleSide,
-    Euler,
-    MeshBasicMaterial,
-    SphereGeometry,
-    Vector3,
-  } from 'three/webgpu'
-  import type { Mesh, Object3D, WebGPURenderer } from 'three/webgpu'
-  import Bond from './Bond.svelte'
-  import { raycast_bond } from './bond-mesh'
-  import type { BondData } from './bond-rendering'
-  import { write_bond_transform, bond_neighbors, bond_records } from './bond-rendering'
+  import { Euler, Vector3 } from 'three/webgpu'
+  import type { Mesh, WebGPURenderer } from 'three/webgpu'
+  import { bond_neighbor_summary, bond_records, type BondData } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
-    BOND_ORDER_OPTIONS,
     canonicalize_bond_target,
     get_bond_data,
     delete_bond as apply_delete_bond,
-    get_bond_key,
     get_explicit_bond_metadata,
-    get_majority_element,
     rendered_bond_key_for,
     set_bond_order as apply_set_bond_order,
     structure_bond_to_bond_pair,
   } from './bonding'
   import { compose_perceived_bonds, perceive_bond_orders } from './index'
-  import { choose_site_label_offset, LABEL_OFFSET_EPS } from './atom-label-placement'
   import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
-  import {
-    compute_polyhedra,
-    create_fat_segments,
-    update_fat_segments,
-    update_polyhedra_faces,
-    merge_polyhedra_buffers,
-  } from './polyhedra'
+  import { compute_polyhedra } from './polyhedra'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
     TrajectoryLineColorMode,
@@ -148,21 +121,7 @@
   import { trajectory_trail_anchors } from './trajectory-lines'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 
-  type BondContextMenu = {
-    site_idx_1: number
-    site_idx_2: number
-    cell_shift?: Vec3
-    position: Vec3
-  }
-
-  // Threlte wraps the DOM event and adds the intersection (hit object and world point)
-  type ThrelteEvent<DomEvent extends Event> = DomEvent & {
-    nativeEvent?: DomEvent
-    object?: Object3D
-    point?: Vector3
-  }
-  type BondPointerEvent = ThrelteEvent<PointerEvent>
-  type BondContextMenuEvent = ThrelteEvent<MouseEvent>
+  type BondMenuTarget = BondKeyTarget & { position: Vec3 }
 
   let {
     structure = undefined,
@@ -490,8 +449,6 @@
     { after: autoRenderTask, autoInvalidate: false },
   )
 
-  // Tooltip / measurement readout precision (coordinates in Å, angles in degrees)
-  const FLOAT_FMT = `.3~f`
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
@@ -501,7 +458,7 @@
   // off-screen viewport every frame — once per pane in the 2x2 multi-side view.
   const pulse = create_pulse_animation(
     () => selected_sites.length > 0 || active_sites.length > 0,
-    { step: 0.015, element: () => threlte.renderer?.domElement },
+    { step: 0.012, element: () => threlte.renderer?.domElement },
   )
   let pulse_opacity = $derived(pulsing_highlight_opacity(pulse.unit))
 
@@ -553,63 +510,12 @@
     } else get_reset_target = () => fit_frame.center
   })
 
-  let atom_tooltip_active = $state(false)
-  let hovered_bond_key = $state<string | null>(null)
-  const ATOM_HOVER_CLEAR_DELAY_MS = 200
-  let clear_atom_hover_timeout: ReturnType<typeof setTimeout> | null = null
-
-  function cancel_atom_hover_clear(): void {
-    if (clear_atom_hover_timeout == null) return
-    clearTimeout(clear_atom_hover_timeout)
-    clear_atom_hover_timeout = null
-  }
-  $effect(() => cancel_atom_hover_clear)
-
-  function set_atom_hover(site_idx: number): void {
-    cancel_atom_hover_clear()
-    if (hovered_idx !== site_idx) hovered_idx = site_idx
-    if (!atom_tooltip_active) atom_tooltip_active = true
-  }
-
-  function clear_atom_hover(site_idx: number): void {
-    cancel_atom_hover_clear()
-    if (hovered_idx !== site_idx) return
-    hovered_idx = null
-    atom_tooltip_active = false
-  }
-
-  function schedule_atom_hover_clear(site_idx: number): void {
-    cancel_atom_hover_clear()
-    clear_atom_hover_timeout = setTimeout(() => {
-      clear_atom_hover_timeout = null
-      clear_atom_hover(site_idx)
-    }, ATOM_HOVER_CLEAR_DELAY_MS)
-  }
-
-  const atom_hover_props = (site_idx: number) => ({
-    onpointerenter: () => set_atom_hover(site_idx),
-    onpointermove: () => set_atom_hover(site_idx),
-    onpointerleave: () => schedule_atom_hover_clear(site_idx),
+  // Hover and edit-bonds press state; hovered_idx stays the bindable prop the parent reads
+  const pointer = new ScenePointer({
+    get: () => hovered_idx,
+    set: (site_idx) => (hovered_idx = site_idx),
   })
-
-  // Cursor style for the canvas, derived from mode and hover state
-  let canvas_cursor = $derived.by(() => {
-    if (!interactive) return `default`
-    if (measure_mode === `edit-atoms` && add_atom_mode) return `crosshair`
-    if (measure_mode === `edit-bonds` && hovered_bond_key != null) {
-      return bond_edits_enabled ? `pointer` : `not-allowed`
-    }
-    if (hovered_idx != null) {
-      if (measure_mode === `edit-bonds`) {
-        return bond_edit_mode === `add` && can_select_bond_site(hovered_idx)
-          ? `pointer`
-          : `not-allowed`
-      }
-      if (measure_mode === `edit-atoms` && is_image_site_idx(hovered_idx)) return `not-allowed`
-      return `pointer`
-    }
-    return `default`
-  })
+  $effect(() => pointer.dispose)
 
   // === Edit-atoms mode state ===
   let transform_object = $state<Mesh | undefined>(undefined)
@@ -621,30 +527,14 @@
   // snaps to the new wrapped centroid.
   let frozen_centroid = $state<Vec3 | null>(null)
 
-  let bond_context_menu = $state<BondContextMenu | null>(null)
+  let bond_context_menu = $state<BondMenuTarget | null>(null)
   // Threlte/HTML pointer events can close the visible menu before a button
   // handler runs, so keep the target bond separately for menu actions.
-  let bond_context_target: BondContextMenu | null = null
+  let bond_context_target: BondMenuTarget | null = null
 
   function close_bond_context_menu() {
     bond_context_menu = null
     bond_context_target = null
-  }
-
-  // Shared handlers for bond context-menu buttons: act on pointerdown (a click would
-  // arrive after orbit-controls' start handler already closed the menu) or Enter/Space
-  const menu_action_props = (action: () => void) => {
-    const run = (event: Event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      action()
-    }
-    return {
-      onpointerdown: run,
-      onkeydown: (event: KeyboardEvent) => {
-        if (event.key === `Enter` || event.key === ` `) run(event)
-      },
-    }
   }
 
   const canonical_bond_target = (bond: BondKeyTarget): BondKeyTarget =>
@@ -652,9 +542,6 @@
 
   const bond_key_for = (bond: BondKeyTarget): string =>
     rendered_bond_key_for(canonical_bond_target(bond))
-
-  const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
-    bond_key_for(bond) === key
 
   const find_added_bond_by_rendered_key = (key: string): StructureBond | undefined =>
     added_bonds.find((bond) => rendered_bond_key_for(bond) === key)
@@ -688,117 +575,39 @@
     )
   }
 
-  function get_current_bond_order(
-    site_idx_1: number,
-    site_idx_2: number,
-    cell_shift?: Vec3,
-  ): BondOrder | undefined {
-    const key = get_bond_key(site_idx_1, site_idx_2, cell_shift)
+  function get_current_bond_order(bond: BondKeyTarget): BondOrder | undefined {
+    const key = rendered_bond_key_for(bond)
+    const matches = (other: BondKeyTarget) => bond_key_for(other) === key
     return (
       find_added_bond_by_rendered_key(key)?.order ??
-      bond_order_overrides.find((bond) => matches_bond_key(bond, key))?.order ??
-      added_bonds.find((bond) => matches_bond_key(bond, key))?.order ??
-      bond_records(filtered_bond_pairs).find((bond) => matches_bond_key(bond, key))?.bond_order
+      bond_order_overrides.find(matches)?.order ??
+      added_bonds.find(matches)?.order ??
+      bond_records(filtered_bond_pairs).find(matches)?.bond_order
     )
   }
 
-  const BOND_ENDPOINT_HIT_FRACTION = 0.3
-  const BOND_ENDPOINT_SITE_MATCH_TOLERANCE = 1e-6
-  const EDITABLE_ATOM_HIT_RADIUS_SCALE = 1.15
-  const editable_bond_matrix = new Float32Array(16)
-
-  // Analytic atom hit targets need no vertices; share resources across targets and highlights.
-  const atom_hit_geometry = new BufferGeometry()
-  const highlight_sphere_geometry = new SphereGeometry(0.5, 22, 22)
-  const bond_hit_geometry = new CylinderGeometry(1, 1, 1, 6)
-  const hit_material = new MeshBasicMaterial()
-  $effect(() => () => {
-    atom_hit_geometry.dispose()
-    highlight_sphere_geometry.dispose()
-    bond_hit_geometry.dispose()
-    hit_material.dispose()
+  const pick_state = (): PickState => ({
+    measure_mode,
+    bond_edit_mode,
+    bond_edits_enabled,
+    add_atom_mode,
+    interactive,
+    measured_sites,
+    selected_sites,
+    hovered_idx,
+    hovered_bond_key: pointer.hovered_bond_key,
+    can_select_bond_site,
+    is_image_site: is_image_site_idx,
+  })
+  $effect(() => {
+    cursor = scene_cursor(pick_state())
   })
 
-  function apply_bond_transform(mesh: Mesh, bond: BondPair, radius: number): void {
-    write_bond_transform(editable_bond_matrix, 0, bond.pos_1, bond.pos_2, radius)
-    mesh.matrix.fromArray(editable_bond_matrix)
-    mesh.matrixWorldNeedsUpdate = true
-  }
-
-  function disable_raycast(mesh: Mesh): void {
-    mesh.raycast = () => undefined
-  }
-
-  // scratch: the endpoint search below runs per pointer event over every site
-  const site_world_pos = new Vector3()
-
-  function get_bond_endpoint_site_idx(
-    site_idx: number,
-    world_position: Vector3,
-    parent: Object3D,
-  ): number {
-    if (!structure) return site_idx
-    const site = structure.sites[site_idx]
-    if (!site) return site_idx
-
-    const matches_world_position = (candidate_site: Site): boolean =>
-      parent
-        .localToWorld(site_world_pos.set(...candidate_site.xyz))
-        .distanceTo(world_position) <= BOND_ENDPOINT_SITE_MATCH_TOLERANCE
-
-    if (matches_world_position(site)) return site_idx
-
-    const image_site_idx = structure.sites.findIndex(
-      (candidate_site) =>
-        candidate_site.provenance?.image_of === site_idx &&
-        matches_world_position(candidate_site),
-    )
-    return image_site_idx === -1 ? site_idx : image_site_idx
-  }
-
-  function get_bond_endpoint_hit_site_idx(
-    bond: BondPair,
-    event: BondPointerEvent,
-  ): number | null {
-    if (!event.point) return null
-    const parent = event.object?.parent
-    if (!parent) return null
-
-    const world_pos_1 = parent.localToWorld(new Vector3(...bond.pos_1))
-    const world_pos_2 = parent.localToWorld(new Vector3(...bond.pos_2))
-
-    const bond_vec = world_pos_2.clone().sub(world_pos_1)
-    const length_sq = bond_vec.lengthSq()
-    if (length_sq <= math.EPS) return null
-
-    const hit_vec = event.point.clone().sub(world_pos_1)
-    const bond_fraction = hit_vec.dot(bond_vec) / length_sq
-    if (bond_fraction <= BOND_ENDPOINT_HIT_FRACTION)
-      return get_bond_endpoint_site_idx(bond.site_idx_1, world_pos_1, parent)
-    if (bond_fraction >= 1 - BOND_ENDPOINT_HIT_FRACTION)
-      return get_bond_endpoint_site_idx(bond.site_idx_2, world_pos_2, parent)
-    return null
-  }
-
-  let label_screen_margin = $derived(site_label_size * 10 + site_label_padding)
-
-  function get_bond_context_menu_position(bond: BondPair, event?: BondContextMenuEvent): Vec3 {
-    const parent = event?.object?.parent
-    if (!event?.point || !parent) return math.lerp_vec3(bond.pos_1, bond.pos_2, 0.5)
-
-    const local_point = event.point.clone()
-    parent.worldToLocal(local_point)
-    return [local_point.x, local_point.y, local_point.z]
-  }
-
-  function open_bond_context_menu(bond: BondPair, event?: BondContextMenuEvent) {
+  // `position` defaults to the bond midpoint (a menu opened from a completed pair pick)
+  function open_bond_context_menu(bond: BondPair, position = bond_menu_position(bond)) {
     if (!can_edit_bond(bond)) return
-    bond_context_target = {
-      site_idx_1: bond.site_idx_1,
-      site_idx_2: bond.site_idx_2,
-      cell_shift: bond.cell_shift,
-      position: get_bond_context_menu_position(bond, event),
-    }
+    const { site_idx_1, site_idx_2, cell_shift } = bond
+    bond_context_target = { site_idx_1, site_idx_2, cell_shift, position }
     bond_context_menu = bond_context_target
   }
 
@@ -878,30 +687,9 @@
       apply_delete_bond(current_bond_edit_state(), target, editable_perceived_bond_pairs),
     )
 
-  // Instanced-atom raycasts do not always emit pointerdown, so edit-bonds also
-  // falls back to click. When pointerdown did fire, skip the matching click once.
-  let last_edit_bonds_pointerdown_site_idx: number | null = null
-  let clear_edit_bonds_pointerdown_site_timeout: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(clear_edit_bonds_pointerdown_site_timeout))
-
-  function remember_edit_bonds_pointerdown_site(site_idx: number) {
-    last_edit_bonds_pointerdown_site_idx = site_idx
-    clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
-    clear_edit_bonds_pointerdown_site_timeout = setTimeout(() => {
-      last_edit_bonds_pointerdown_site_idx = null
-    }, 250)
-  }
-
   function select_edit_bonds_site(site_idx: number, event: Event | TapEvent): void {
     toggle_selection(site_idx, event)
-    remember_edit_bonds_pointerdown_site(site_idx)
-  }
-
-  function skip_duplicate_edit_bonds_click(site_idx: number) {
-    if (last_edit_bonds_pointerdown_site_idx !== site_idx) return false
-    last_edit_bonds_pointerdown_site_idx = null
-    clearTimeout(clear_edit_bonds_pointerdown_site_timeout)
-    return true
+    pointer.remember_press(site_idx)
   }
 
   // Selection handlers shared by instanced atom meshes and per-site hit targets
@@ -913,100 +701,37 @@
   const handle_atom_click = (site_idx: number, event: TapEvent) => {
     if (measure_mode === `edit-bonds`) {
       if (bond_edit_mode !== `add`) return
-      if (skip_duplicate_edit_bonds_click(site_idx)) return
+      if (pointer.skip_pressed_click(site_idx)) return
     }
     toggle_selection(site_idx, event)
   }
 
-  // Pointer handlers for an instanced atom mesh: intersection events carry the
-  // hit `instanceId`, which indexes into the mesh's `atoms` array. One handler
-  // set per mesh instead of one per atom. Inactive grid panes render without
-  // raycast handlers; ghosted edit-mode image atoms are non-interactive. A touch
+  // Pointer handlers for an instanced atom mesh. Inactive grid panes render without
+  // raycast handlers (InstancedStructure also skips ghosted edit-mode image atoms). A touch
   // tap shows the atom tooltip besides selecting it (touch_hover).
-  const atom_instance_events = (
-    instance_atoms: { site_idx: number }[],
-    is_edit_image: boolean,
-  ) => {
-    if (!interactive || is_edit_image) return {}
-    const wrap =
-      (handler: (site_idx: number, event: TapEvent) => void) => (event: TapEvent) => {
-        const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
-        if (site_idx != null) handler(site_idx, event)
-      }
-    const hover = wrap(set_atom_hover)
-    return touch_hover({
-      onpointerenter: hover,
-      onpointermove: hover,
-      onpointerleave: wrap(schedule_atom_hover_clear),
-      onpointerdown: wrap(handle_atom_pointerdown),
-      onclick: wrap(handle_atom_click),
-    })
-  }
+  const atom_instance_events = (instance_atoms: { site_idx: number }[]) =>
+    !interactive
+      ? {}
+      : touch_hover(
+          instance_handlers(instance_atoms, {
+            onpointerenter: pointer.set_hover,
+            onpointermove: pointer.set_hover,
+            onpointerleave: pointer.schedule_hover_clear,
+            onpointerdown: handle_atom_pointerdown,
+            onclick: handle_atom_click,
+          }),
+        )
 
   function toggle_selection(site_index: number, evt?: Event | TapEvent) {
-    const native_event = (evt as { nativeEvent?: unknown } | undefined)?.nativeEvent ?? evt
-
-    if (measure_mode === `edit-bonds`) {
-      // Only the active pane edits: inactive panes keep selection/hover overlays visible
-      // but must not change selection or add/restore bonds in shared state.
-      if (!interactive) return
-      if (bond_edit_mode === `delete`) {
-        measured_sites = []
-        selected_sites = []
-        return
-      }
-      if (!can_select_bond_site(site_index)) return
-      // In Add mode, select atom pairs without making existing bonds destructive.
-      const new_sites = toggle_item(measured_sites, site_index)
-      measured_sites = new_sites
-      selected_sites = new_sites
-
-      // When two atoms are selected, add/restore or open order editing.
-      if (new_sites.length === 2) {
-        add_or_restore_pair(new_sites[0], new_sites[1])
-        measured_sites = []
-        selected_sites = []
-      }
-      return
-    }
-
-    if (measure_mode === `edit-atoms`) {
-      // Inactive panes don't drive edit-atoms selection (gizmo/add-plane are interactive-gated)
-      if (!interactive) return
-      // Block viewer-generated image atoms.
-      if (is_image_site_idx(site_index)) return
-
-      // threlte dispatches plain objects wrapping the DOM event, so read shift
-      // from the extracted native event (evt itself is never a MouseEvent for 3D hits)
-      const is_shift = native_event instanceof MouseEvent && native_event.shiftKey
-      // In edit-atoms mode, selected_sites and measured_sites always stay in sync. Shift
-      // multi-selects; a plain click replaces the selection (or deselects a selected site).
-      const new_sites = is_shift
-        ? toggle_item(selected_sites, site_index)
-        : selected_sites.includes(site_index)
-          ? []
-          : [site_index]
-      selected_sites = new_sites
-      measured_sites = new_sites
-      return
-    }
-
-    const site_cap = measure.max_measured_sites(measure_mode)
-    if (!measured_sites.includes(site_index) && measured_sites.length >= site_cap) {
-      if (!measure.rolls_measured_sites(measure_mode)) {
-        console.warn(
-          `Selection size limit reached (${measure.MAX_SELECTED_SITES}). Deselect some sites first.`,
-        )
-        return
-      }
-      const dropped = measured_sites[0]
-      measured_sites = [...measured_sites.slice(1), site_index]
-      selected_sites = [...selected_sites.filter((idx) => idx !== dropped), site_index]
-      return
-    }
-
-    measured_sites = toggle_item(measured_sites, site_index)
-    selected_sites = toggle_item(selected_sites, site_index)
+    const next = next_site_selection(site_index, pick_state(), is_shift_click(evt))
+    if (!next) return
+    measured_sites = next.measured_sites
+    selected_sites = next.selected_sites
+    if (!next.bond_pair) return
+    // When two atoms are selected, add/restore or open order editing.
+    add_or_restore_pair(...next.bond_pair)
+    measured_sites = []
+    selected_sites = []
   }
 
   $effect(() => {
@@ -1016,7 +741,7 @@
     void bond_edits_enabled
     untrack(() => {
       close_bond_context_menu()
-      hovered_bond_key = null
+      pointer.hovered_bond_key = null
     })
   })
 
@@ -1037,10 +762,6 @@
     })
   })
 
-  $effect(() => {
-    cursor = canvas_cursor
-  })
-
   // One target per pointer event (the front-most atom, bond or hit target), so handlers need no
   // stopPropagation() to keep the ones behind from taking over the hover or selection
   const { set_hover_enabled, touch_hover } = scene_interactivity()
@@ -1057,8 +778,8 @@
             .filter((site_idx) => !is_image_site_idx(site_idx))
             .toSorted((idx_a, idx_b) => idx_a - idx_b)
         : [],
-    hover: set_atom_hover,
-    leave: clear_atom_hover,
+    hover: pointer.set_hover,
+    leave: pointer.clear_hover,
     click: (site_idx) => toggle_selection(site_idx),
     hovered: (site_idx) => site_idx === hovered_idx,
     label: (site_idx) => {
@@ -1191,9 +912,8 @@
     // orbit-controls start handler before the button's own handler runs, which still
     // needs the target bond to apply the edit (see bond_context_target comment).
     on_start_extra: () => {
-      cancel_atom_hover_clear()
-      hovered_idx = null
-      hovered_bond_key = null
+      pointer.drop_hover()
+      pointer.hovered_bond_key = null
       bond_context_menu = null
     },
   })
@@ -1313,11 +1033,6 @@
     structure?.sites ? merge_split_partial_sites(structure.sites, hidden_elements) : [],
   )
 
-  // A shell neighbor reached by a periodic bond lands at its bond endpoint and at the
-  // polyhedron vertex center + (pos_2 - pos_1), which can differ by an ulp
-  const same_position = (left: Vec3, right: Vec3): boolean =>
-    left.every((value, axis) => Math.abs(value - right[axis]) < 1e-6)
-
   // Whole-atom cutaways select centers, then retain their complete coordination shells.
   // Selecting spheres separately from clipped cylinders leaves dangling bond fragments.
   let cutaway_centers = $derived.by(() => {
@@ -1334,7 +1049,7 @@
     const add_position = (site_idx: number, position: Vec3) => {
       const positions = visible.get(site_idx)
       if (!positions) visible.set(site_idx, [position])
-      else if (!positions.some((other) => same_position(other, position)))
+      else if (!positions.some((other) => math.same_position(other, position)))
         positions.push(position)
     }
     for (const site_idx of cutaway_centers) {
@@ -1356,14 +1071,6 @@
   // One reactive read per palette entry instead of one proxy access per atom/bond.
   const element_palette = get_element_palette()
   const palette = $derived({ ...element_palette.colors })
-  // One record per wedge; an ordered atom is a single full-turn wedge
-  type RenderAtom = PartialAtom & { species: Site[`species`] }
-  type AtomGroups = {
-    first_by_site: Map<number, RenderAtom>
-    base: RenderAtom[]
-    image: RenderAtom[]
-    partial: RenderAtom[]
-  }
   // Function bindings can invalidate equal override objects on every trajectory frame.
   // Compare their values so coordinate updates keep the existing atom records.
   const atom_appearance = $derived(
@@ -1375,123 +1082,27 @@
       effective_atom_radius,
     ]),
   )
-  let previous_atoms:
-    | { appearance: string; groups: AtomGroups; colored: boolean; topology?: object }
-    | undefined
-
-  // Build render groups and site anchors together. Frames with the same ordered atoms
-  // reuse records and lookup; fresh base arrays still invalidate child instance buffers.
-  let atom_groups = $derived.by(() => {
-    if (!show_atoms) {
-      previous_atoms = undefined
-      return { first_by_site: new Map<number, RenderAtom>(), base: [], image: [], partial: [] }
-    }
-    // Hoist everything constant across sites: this loop runs >10k times for a 3x3x3
-    // supercell, and the collections below live on a $state object or are SvelteMap/
-    // SvelteSet, whose get/has allocate a signal per key.
-    const element_colors = palette
-    const { values: prop_values, colors: prop_colors } = property_colors ?? {}
-    const filter_prop_vals = hidden_prop_vals.size > 0
-    const filter_elements = hidden_elements.size > 0
-    const hide_completion_images =
-      !applies_to_structure(effective_show_bonds, Boolean(lattice)) &&
-      !applies_to_structure(effective_show_polyhedra, Boolean(lattice))
-    // Props arrive through two spread layers (Structure → Viewport → here), so every read
-    // inside the loop would walk that proxy chain per site: read them once
-    const radius_scale = effective_atom_radius
-    const radius_opts = radius_options
-    const hidden_centers = polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null
-    const visible_cutaway_sites = cutaway_visible_sites
-    const reusable =
-      !filter_prop_vals && !filter_elements && !hidden_centers?.size && !visible_cutaway_sites
-    const appearance = atom_appearance
-    if (reusable && previous_atoms?.appearance === appearance && structure) {
-      const columns = numeric_sites.get(structure)
-      const topology = snapshot_topologies.get(structure)
-      let updated: RenderAtom[] | null
-      // Row identity permits coordinate reuse only for complete, original-atom groups.
-      // Generated copies carry provenance and use record-backed frames.
-      if (
-        columns &&
-        topology &&
-        topology === previous_atoms.topology &&
-        previous_atoms.groups.base.length === columns.length
-      ) {
-        updated = update_atom_coordinates(
-          previous_atoms.groups.base,
-          columns.coordinates,
-          columns.stride,
-        )
-      } else
-        updated = update_ordered_atom_positions(previous_atoms.groups.base, structure.sites)
-      if (updated) {
-        previous_atoms.topology = topology
-        if (prop_colors || previous_atoms.colored) {
-          for (const atom of updated) {
-            atom.color = prop_colors?.[atom.site_idx] ?? element_colors?.[atom.element]
-          }
-          previous_atoms.colored = Boolean(prop_colors)
-        }
-        return (previous_atoms.groups = { ...previous_atoms.groups, base: updated })
-      }
-    }
-
-    const groups: AtomGroups = { first_by_site: new Map(), base: [], image: [], partial: [] }
-    for (const { site_idx, site, is_image_atom } of render_sites) {
-      if (visible_cutaway_sites && !visible_cutaway_sites.has(site_idx)) continue
-      // Skip sites with hidden property values
-      if (filter_prop_vals) {
-        const prop_val = prop_values?.[site_idx]
-        if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) continue
-      }
-
-      // Optionally hide atoms at the center of a rendered polyhedron
-      if (hidden_centers?.has(site_idx)) continue
-
-      // Phase-2 PBC images exist only to complete bonds/coordination polyhedra at
-      // cell faces. When neither renders (polyhedra toggled off, symmetry declutter,
-      // …) they'd float disconnected outside the cell — hide them.
-      if (site.provenance?.completion && hide_completion_images) continue
-
-      // All radii scale uniformly with atom_radius for consistent slider behavior
-      const radius = site_base_radius(site, site_idx, radius_opts) * radius_scale
-
-      // Use property color if available (e.g. coordination number, Wyckoff position)
-      // Otherwise, each species gets its own element color (important for disordered sites)
-      const site_property_color = prop_colors?.[site_idx]
-
-      const visible_species = filter_elements
-        ? site.species.filter(({ element }) => !hidden_elements.has(element))
-        : site.species
-      for (const position of visible_cutaway_sites?.get(site_idx) ?? [site.xyz]) {
-        for (const slice_data of compute_slice_geometry(visible_species)) {
-          const atom = {
-            ...slice_data,
-            site_idx,
-            species: site.species,
-            position: [...position] as Vec3,
-            radius,
-            color: site_property_color ?? element_colors?.[slice_data.element],
-            is_image_atom: is_image_atom || !same_position(position, site.xyz),
-          }
-          // Wedges share one anchor per site; image atoms need a separate ghosted mesh.
-          if (!groups.first_by_site.has(site_idx)) groups.first_by_site.set(site_idx, atom)
-          if (atom.occupancy < 1) groups.partial.push(atom)
-          else (atom.is_image_atom ? groups.image : groups.base).push(atom)
-        }
-      }
-    }
-    previous_atoms =
-      reusable && groups.image.length === 0 && groups.partial.length === 0
-        ? {
-            appearance,
-            groups,
-            colored: Boolean(prop_colors),
-            topology: structure && snapshot_topologies.get(structure),
-          }
-        : undefined
-    return groups
-  })
+  const atom_group_builder = new AtomGroupBuilder()
+  let atom_groups = $derived.by(() =>
+    show_atoms
+      ? atom_group_builder.build({
+          structure,
+          render_sites: () => render_sites,
+          palette,
+          property_colors,
+          hidden_prop_vals,
+          hidden_elements,
+          hide_completion_images:
+            !applies_to_structure(effective_show_bonds, Boolean(lattice)) &&
+            !applies_to_structure(effective_show_polyhedra, Boolean(lattice)),
+          radius_scale: effective_atom_radius,
+          radius_options,
+          hidden_centers: polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null,
+          cutaway_sites: cutaway_visible_sites,
+          appearance: atom_appearance,
+        })
+      : atom_group_builder.reset(),
+  )
 
   // Shared visibility check: site has at least one non-hidden element and
   // its property value (if any) isn't hidden. Used by both bond and vector filtering.
@@ -1648,7 +1259,7 @@
 
   // Coordination polyhedra around cation-like centers, derived from the same
   // (edited, filtered) bond graph as rendered bonds so the two never disagree.
-  // Colors are resolved in polyhedra_buffers below, so color-scheme/mode changes
+  // Colors are resolved in InstancedStructure, so color-scheme/mode changes
   // never recompute the hull geometry.
   let last_polyhedra: Polyhedron[] = []
   let polyhedra: Polyhedron[] = $derived.by(() => {
@@ -1676,26 +1287,6 @@
       : last_polyhedra
   })
 
-  // Face opacity and edge visibility don't rebuild buffers; recoloring doesn't rebuild hulls.
-  let polyhedra_buffers = $derived.by(() => {
-    if (polyhedra.length === 0) return null
-    const source = structure
-    const columns = source && numeric_sites.get(source)
-    const prop_colors = property_colors?.colors
-    const element_colors = palette
-    const mode = polyhedra_color_mode
-    const site_color = (site_idx: number) => {
-      const element = columns
-        ? element_from_atomic_number(columns.numbers[site_idx])
-        : get_majority_element(get_site(source, site_idx))
-      return prop_colors?.[site_idx] ?? (element && element_colors?.[element]) ?? `#808080`
-    }
-    return merge_polyhedra_buffers(
-      polyhedra,
-      mode === `uniform` ? { mode, color: polyhedra_color } : { mode, site_color },
-    )
-  })
-
   let polyhedra_center_site_idxs = $derived(
     new Set(polyhedra.map((poly) => poly.center_site_idx)),
   )
@@ -1710,109 +1301,6 @@
     }
   })
 
-  // One face geometry rewritten in place across frames, replaced only when a frame outgrows it
-  let polyhedra_faces: BufferGeometry | null = $state.raw(null)
-  $effect(() => {
-    if (!polyhedra_buffers?.triangle_count) return
-    polyhedra_faces = update_polyhedra_faces(
-      untrack(() => polyhedra_faces),
-      polyhedra_buffers,
-    )
-    threlte.invalidate()
-  })
-  $effect(() => () => polyhedra_faces?.dispose())
-
-  let polyhedra_edges: ReturnType<typeof create_fat_segments> | null = $state.raw(null)
-  $effect(() => {
-    if (!polyhedra_show_edges || !polyhedra_buffers?.edge_count) return
-    const current = untrack(() => polyhedra_edges)
-    const { edge_positions, edge_colors } = polyhedra_buffers
-    if (current) update_fat_segments(current, edge_positions, edge_colors)
-    else polyhedra_edges = create_fat_segments(edge_positions, edge_colors)
-    threlte.invalidate()
-  })
-  $effect(() => () => {
-    polyhedra_edges?.geometry.dispose()
-    polyhedra_edges?.material.dispose()
-  })
-
-  let smart_site_label_offsets = $derived.by(() => {
-    // Plain Maps: built and consumed inside deriveds, so per-entry reactivity
-    // (SvelteMap) would only add signal overhead for potentially thousands of sites
-    const offsets = new Map<number, Vec3>()
-    // Only SiteLabels reads these, so skip the bond walk while no labels are shown
-    if (bonds_to_render.length === 0 || (!show_site_labels && !show_site_indices))
-      return offsets
-
-    const bond_directions_by_site = new Map<number, Vec3[]>()
-    const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
-      const direction = math.normalize_vec(math.subtract(pos_2, pos_1), [0, 0, 0])
-      if (Math.hypot(...direction) < LABEL_OFFSET_EPS) return
-      const directions = bond_directions_by_site.get(site_idx)
-      if (directions) directions.push(direction)
-      else bond_directions_by_site.set(site_idx, [direction])
-    }
-
-    for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bond_records(bonds_to_render)) {
-      add_bond_direction(site_idx_1, pos_1, pos_2)
-      add_bond_direction(site_idx_2, pos_2, pos_1)
-    }
-    for (const [site_idx, bond_directions] of bond_directions_by_site) {
-      offsets.set(site_idx, choose_site_label_offset(bond_directions, site_label_offset))
-    }
-    return offsets
-  })
-
-  let previous_bond_colors:
-    | { topology: object; appearance: string; colors: string[] }
-    | undefined
-  const bond_appearance = $derived(JSON.stringify([palette, bond_color]))
-  let bond_site_colors = $derived.by(() => {
-    if (!structure || bonds_to_render.length === 0) return []
-
-    const topology = snapshot_topologies.get(structure)
-    const appearance = bond_appearance
-    if (
-      topology &&
-      previous_bond_colors?.topology === topology &&
-      previous_bond_colors.appearance === appearance
-    )
-      return previous_bond_colors.colors
-
-    // Resolve once per site, not once per bond endpoint. Bond writes these values directly
-    // into its persistent instance-color buffers without allocating per-cylinder objects.
-    const [element_colors, fallback_color] = [palette, bond_color]
-    const color_of = (element: ElementSymbol | null | undefined) =>
-      (element && element_colors[element]) || fallback_color
-    const columns = numeric_sites.get(structure)
-    const resolved_colors = columns
-      ? Array.from(columns.numbers, (number) => color_of(element_from_atomic_number(number)))
-      : structure.sites.map((site) => color_of(get_majority_element(site)))
-    previous_bond_colors = topology
-      ? { topology, appearance, colors: resolved_colors }
-      : undefined
-    return resolved_colors
-  })
-
-  const site_anchor = ({ site_idx, position, radius }: RenderAtom) => ({
-    site_idx,
-    position,
-    radius,
-  })
-
-  // Partial-occupancy wedges: a few instanced meshes regardless of site count, picked per site
-  const partial_atoms = new PartialAtoms()
-  $effect(() => {
-    const ghost_images = measure_mode === `edit-atoms`
-    partial_atoms.update(atom_groups.partial, ghost_images, sphere_segments, atom_color_field)
-    threlte.invalidate()
-  })
-  $effect(() => {
-    partial_atoms.set_opacity(atom_opacity)
-    threlte.invalidate()
-  })
-  $effect(() => () => partial_atoms.dispose())
-
   let editable_atom_hit_targets = $derived(
     editing_bonds && bond_edit_mode === `add`
       ? [...atom_groups.first_by_site.values()]
@@ -1825,17 +1313,6 @@
   const get_site_radius = (site: Site, site_idx: number): number =>
     site_base_radius(site, site_idx, radius_options) * effective_atom_radius
 
-  // Sites to outline with a translucent sphere: hovered + all selected/active sites. Kept
-  // independent of the pulse animation so this list (with its per-site radius lookups) only
-  // rebuilds when highlighted sites change; pulsing opacity is applied per-frame in the
-  // template instead, avoiding a rebuild every frame in every multi-view pane.
-  type HighlightTarget = {
-    kind: `hover` | `selected` | `active`
-    site: Site
-    site_idx: number
-    color: string
-    radius: number
-  }
   // The default active color is a CSS custom property, which THREE.Color cannot parse (it
   // warns and keeps its previous color), so let the browser resolve it where the canvas sits
   const active_color = $derived(
@@ -1843,18 +1320,11 @@
       ? resolve_color_token(renderer.domElement.parentElement, active_highlight_color)
       : active_highlight_color,
   )
-  // The hovered atom's tooltip wears its fill when the drawn atom shows one color: a property
-  // color, or one visible element (merged across oxidation states and split partial sites,
-  // full or partial occupancy). Element wedges and color fields keep the neutral chip.
-  const hovered_tooltip_bg = $derived.by(() => {
-    const atom = atom_groups.first_by_site.get(hovered_idx ?? -1)
-    if (!atom || atom_color_field) return null
-    if (property_colors?.colors[atom.site_idx]) return atom.color
-    const visible = merge_species_by_element(atom.species).filter(
-      ({ element }) => !hidden_elements.has(element),
-    )
-    return visible.length === 1 ? atom.color : null
-  })
+  // The drawn hovered atom (its first wedge)
+  const hovered_atom = $derived(atom_groups.first_by_site.get(hovered_idx ?? -1))
+
+  // Shells around the hovered, selected and active sites. Pulse-independent: SiteHighlights
+  // applies the per-frame opacity, so this list only rebuilds when highlighted sites change.
   let highlight_targets: HighlightTarget[] = $derived.by(() => {
     const targets: HighlightTarget[] = []
     const add = (kind: HighlightTarget[`kind`], site_idx: number, color: string) => {
@@ -1866,7 +1336,7 @@
     }
     if (hovered_idx !== null) {
       const hover_color =
-        atom_groups.first_by_site.get(hovered_idx)?.color ??
+        hovered_atom?.color ??
         (hovered_site?.species[0] && palette[hovered_site.species[0].element])
       add(`hover`, hovered_idx, brighten_hex(hover_color))
     }
@@ -1993,74 +1463,12 @@
     cutaway_group.set_cutaway(cutaway)
     atom_cutaway_group.set_cutaway(cutaway?.whole_atoms ? undefined : cutaway)
     // Pointer position has not moved when a slider hides the currently hovered atom.
-    if (cutaway && cutaway.mode !== `off`) hovered_idx = null
+    if (cutaway && cutaway.mode !== `off`) pointer.drop_hover()
     threlte.invalidate()
-  })
-
-  // Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
-  let hovered_bond_summary = $derived.by((): string | null => {
-    if (hovered_idx === null || !structure) return null
-    const counts: Record<string, number> = {}
-    let total = 0
-    for (const neighbor_idx of bond_neighbors(filtered_bond_pairs, hovered_idx)) {
-      const element = get_site(structure, neighbor_idx)?.species[0]?.element ?? `?`
-      counts[element] = (counts[element] ?? 0) + 1
-      total += 1
-    }
-    if (total === 0) return null
-    const parts = Object.entries(counts)
-      .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
-      .map(([elem, count]) => `${elem}: ${count}`)
-    return `${total} (${parts.join(`, `)})`
   })
 
   let measure_line_color = $derived(resolve_theme_text_color() ?? `#808080`)
 </script>
-
-{#snippet site_label_snippet(site_idx: number)}
-  {@const site = get_site(structure, site_idx)}
-  {#if site}
-    {#if atom_label}
-      {@render atom_label({ site, site_idx })}
-    {:else}
-      <button
-        type="button"
-        class="atom-label"
-        style="font-size: {site_label_size *
-          0.85}em; background: {site_label_bg_color}; padding: {site_label_padding}px; color: {site_label_color ||
-          `var(--text-color)`}"
-        onpointerdown={(event) => {
-          event.preventDefault()
-          event.stopImmediatePropagation()
-          toggle_selection(site_idx, event)
-        }}
-        onclick={(event) => {
-          event.preventDefault()
-          event.stopImmediatePropagation()
-        }}
-        onkeydown={(event) => {
-          if (event.key !== `Enter` && event.key !== ` `) return
-          event.preventDefault()
-          event.stopPropagation()
-          toggle_selection(site_idx, event)
-        }}
-      >
-        {#if show_site_labels}
-          {#if site.species.length === 1}
-            {site.species[0].element}{#if show_site_indices}-{site_idx + 1}{/if}
-          {:else}
-            {#each site.species as { element, occu, oxidation_state } (`${element}-${occu}-${oxidation_state}`)}
-              {element}<sub>{format_num(occu, `.3~`).replace(`0.`, `.`)}</sub>
-            {/each}
-            {#if show_site_indices}-{site_idx + 1}{/if}
-          {/if}
-        {:else if show_site_indices}
-          {site_idx + 1}
-        {/if}
-      </button>
-    {/if}
-  {/if}
-{/snippet}
 
 <SceneCamera
   {camera_projection}
@@ -2081,85 +1489,65 @@
 <T.Group position={rotation_target}>
   <T.Group {rotation}>
     <T is={atom_cutaway_group} position={neg_rotation_target}>
-      {#if show_atoms}
-        <!-- Instanced rendering for full-occupancy atoms: one InstancedMesh for
-          base atoms and one for PBC image atoms (which ghost + lose interaction
-          in edit-atoms mode). Pointer events are resolved via raycast instanceId. -->
-        {#each [`base`, `image`] as const as group (group)}
-          {@const atoms = atom_groups[group]}
-          {@const ghost = group === `image` && measure_mode === `edit-atoms`}
-          {#if atoms.length > 0}
-            <InstancedAtoms
-              {atoms}
-              opacity={atom_opacity}
-              color_field={atom_color_field}
-              {sphere_segments}
-              {ghost}
-              {...atom_instance_events(atoms, ghost)}
-            />
-          {/if}
-        {/each}
-
-        <!-- Partial-occupancy wedges and vacancy caps; instanceId is a site's first wedge -->
-        {#if atom_groups.partial.length > 0}
-          <T
-            is={partial_atoms}
-            {...atom_instance_events(atom_groups.partial, false)}
-            dispose={false}
-          />
-        {/if}
-
-        <!-- Site labels/indices: single overlay for all labels (one DOM container
-          + one per-frame position pass instead of one threlte <HTML> per label) -->
-        {#if label_entries.length > 0}
-          <SiteLabels
-            entries={label_entries}
-            get_offset={(site_idx) =>
-              smart_site_label_offsets.get(site_idx) ?? site_label_offset}
-            screen_margin={label_screen_margin}
-          >
-            {#snippet label({ site_idx })}
-              {@render site_label_snippet(site_idx)}
-            {/snippet}
-          </SiteLabels>
-        {/if}
-      {/if}
-
       <!-- Bonds and polyhedra complete the atoms' shells, so they share the atoms' cutaway:
         surface clipping, or none when whole-atom mode selects sites instead -->
-      {#if bonds_to_render.length > 0}
-        <Bond
+      <InstancedStructure
+        {structure}
+        {palette}
+        {property_colors}
+        {atom_groups}
+        {atom_opacity}
+        {atom_color_field}
+        {sphere_segments}
+        ghost_images={measure_mode === `edit-atoms`}
+        atom_events={atom_instance_events}
+        bonds={bonds_to_render}
+        {bond_color}
+        {bond_thickness}
+        {bonds_capped}
+        {ambient_light}
+        {directional_light}
+        {polyhedra}
+        {polyhedra_color_mode}
+        {polyhedra_color}
+        {polyhedra_opacity}
+        {polyhedra_show_edges}
+      />
+
+      <!-- Site labels/indices: single overlay for all labels (one DOM container
+        + one per-frame position pass instead of one threlte <HTML> per label) -->
+      {#if label_entries.length > 0}
+        <SiteLabels
+          entries={label_entries}
+          {structure}
           bonds={bonds_to_render}
-          site_colors={bond_site_colors}
-          thickness={bond_thickness}
-          capped={bonds_capped}
-          {ambient_light}
-          {directional_light}
+          show_labels={show_site_labels}
+          show_indices={show_site_indices}
+          size={site_label_size}
+          offset={site_label_offset}
+          bg_color={site_label_bg_color}
+          color={site_label_color}
+          padding={site_label_padding}
+          {atom_label}
+          on_select={toggle_selection}
         />
       {/if}
-
-      <!-- Coordination polyhedra: all faces in one merged mesh, edges in one
-        LineSegments2 (1-2 draw calls regardless of supercell size) -->
-      {#if polyhedra_faces && polyhedra_buffers?.triangle_count}
-        <T.Mesh geometry={polyhedra_faces} frustumCulled={false} raycast={() => null}>
-          <!-- depthWrite when mostly opaque: VESTA-like occlusion between polyhedra;
-            fully translucent settings fall back to see-through blending -->
-          <T.MeshStandardMaterial
-            vertexColors
-            transparent={polyhedra_opacity < 1}
-            opacity={polyhedra_opacity}
-            side={DoubleSide}
-            depthWrite={polyhedra_opacity >= 0.65}
-            flatShading
-          />
-        </T.Mesh>
-        {#if polyhedra_edges}
-          <T
-            is={polyhedra_edges}
-            visible={polyhedra_show_edges && Boolean(polyhedra_buffers?.edge_count)}
-            dispose={false}
-          />
-        {/if}
+      <!-- selection order labels and measurement lines/readouts for the picked sites, clipped
+        like the bonds a measured pair tints -->
+      {#if structure && measured_sites.length > 0}
+        <MeasurementOverlays
+          sites={structure.sites}
+          {measured_sites}
+          {measure_mode}
+          {lattice}
+          label_offset={site_label_offset}
+          line_color={measure_line_color}
+          bonds={bonds_to_render}
+          {bond_thickness}
+          {pulse_opacity}
+          site_radius={(site_idx) =>
+            0.5 * (atom_groups.first_by_site.get(site_idx)?.radius ?? 0)}
+        />
       {/if}
     </T>
 
@@ -2194,190 +1582,60 @@
         />
       {/if}
 
-      <!-- Clickable bond hit-test cylinders in edit-bonds mode -->
-      {#each editable_bond_pairs as bond (`bond-hit-${bond_edit_mode}-${rendered_bond_key_for(bond)}`)}
-        {@const bond_key = rendered_bond_key_for(bond)}
-        {@const is_hovered = hovered_bond_key === bond_key}
-        {@const is_delete_mode = bond_edit_mode === `delete`}
-        {@const bond_hit_radius = bond_thickness * (is_delete_mode ? 5 : 1.25)}
-        {@const bond_hover_radius = bond_thickness * 1.1}
-        <!-- delete mode: a bond under the cursor wins over atoms in front of it (pick_rank),
-        which ignore clicks there, so it is the one highlighted and removed -->
-        <T.Mesh
-          geometry={bond_hit_geometry}
-          material={hit_material}
-          visible={false}
-          matrixAutoUpdate={false}
-          oncreate={(ref) => {
-            apply_bond_transform(ref, bond, bond_hit_radius)
-            enable_cutaway_picking(ref, (raycaster, hits) =>
-              raycast_bond(ref, bond, bond_thickness, raycaster, hits),
-            )
-          }}
-          onpointerdown={(event: BondPointerEvent) => {
-            if (event.nativeEvent?.button === 2) return
-            if (is_delete_mode) {
-              remove_bond(bond)
-              measured_sites = []
-              selected_sites = []
-              hovered_bond_key = null
-            } else {
-              const endpoint_site_idx = get_bond_endpoint_hit_site_idx(bond, event)
-              if (endpoint_site_idx != null) select_edit_bonds_site(endpoint_site_idx, event)
-            }
-          }}
-          oncontextmenu={(event: BondContextMenuEvent) => {
-            event.nativeEvent?.preventDefault()
-            open_bond_context_menu(bond, event)
-          }}
-          onpointerenter={() => (hovered_bond_key = bond_key)}
-          onpointermove={() => (hovered_bond_key = bond_key)}
-          onpointerleave={() => (hovered_bond_key = null)}
-          userData={{ pick_rank: is_delete_mode ? 1 : 0 }}
-        />
-        {#if is_hovered}
-          <T.Mesh
-            geometry={bond_hit_geometry}
-            matrixAutoUpdate={false}
-            oncreate={(ref) => {
-              apply_bond_transform(ref, bond, bond_hover_radius)
-              disable_raycast(ref)
-            }}
-          >
-            <T.MeshBasicMaterial
-              transparent
-              opacity={0.25}
-              color={is_delete_mode ? HIGHLIGHT.emphasis : HIGHLIGHT.select}
-              depthWrite={false}
-            />
-          </T.Mesh>
-        {/if}
-      {/each}
-
-      {#each editable_atom_hit_targets as atom_hit (atom_hit.site_idx)}
-        <T.Mesh
-          geometry={atom_hit_geometry}
-          oncreate={(ref) =>
-            enable_atom_sphere_picking(ref, 1 / EDITABLE_ATOM_HIT_RADIUS_SCALE)}
-          material={hit_material}
-          visible={false}
-          position={atom_hit.position}
-          scale={atom_hit.radius * EDITABLE_ATOM_HIT_RADIUS_SCALE}
-          {...touch_hover({
-            ...atom_hover_props(atom_hit.site_idx),
-            onpointerdown: (event) => select_edit_bonds_site(atom_hit.site_idx, event),
+      <!-- Clickable bond and atom hit targets in edit-bonds mode -->
+      <BondEditTargets
+        bonds={editable_bond_pairs}
+        atom_targets={editable_atom_hit_targets}
+        sites={structure?.sites}
+        mode={bond_edit_mode}
+        {bond_thickness}
+        bind:hovered_bond_key={pointer.hovered_bond_key}
+        atom_events={(site_idx) =>
+          touch_hover({
+            ...pointer.hover_props(site_idx),
+            onpointerdown: (event) => select_edit_bonds_site(site_idx, event),
           })}
-        />
-      {/each}
+        on_select_site={select_edit_bonds_site}
+        on_delete_bond={(bond) => {
+          remove_bond(bond)
+          measured_sites = []
+          selected_sites = []
+        }}
+        on_bond_menu={open_bond_context_menu}
+      />
 
       {#if interactive && measure_mode === `edit-bonds` && bond_context_menu}
-        {@const current_order = get_current_bond_order(
-          bond_context_menu.site_idx_1,
-          bond_context_menu.site_idx_2,
-          bond_context_menu.cell_shift,
-        )}
-        <SceneLabel interactive autoRender={false} position={bond_context_menu.position}>
-          <div class="bond-context-menu">
-            <strong>Bond Order ({current_order ?? 1})</strong>
-            {#each BOND_ORDER_OPTIONS as { order, label } (label)}
-              <button
-                type="button"
-                {...menu_action_props(() => set_context_bond_order(order))}
-              >
-                {label}
-              </button>
-            {/each}
-            <button
-              type="button"
-              class="remove"
-              {...menu_action_props(() => remove_bond(bond_context_target))}
-            >
-              Remove
-            </button>
-            <button type="button" {...menu_action_props(close_bond_context_menu)}>
-              Close
-            </button>
-          </div>
-        </SceneLabel>
+        <BondContextMenu
+          position={bond_context_menu.position}
+          current_order={get_current_bond_order(bond_context_menu)}
+          on_set_order={set_context_bond_order}
+          on_remove={() => remove_bond(bond_context_target)}
+          on_close={close_bond_context_menu}
+        />
       {/if}
 
-      <!-- highlight hovered, active and selected sites. The target list is a pulse-
-        independent $derived; only the opacity reads the per-frame pulse value so the
-        array isn't rebuilt every animation frame. -->
-      {#each highlight_targets as entry (`${entry.kind}-${entry.site_idx}`)}
-        {@const is_pulsing = entry.kind !== `hover`}
-        <T.Mesh
-          geometry={highlight_sphere_geometry}
-          position={entry.site.xyz}
-          scale={HOVER_SHELL_SCALE * entry.radius}
-          oncreate={disable_raycast}
-        >
-          <T.MeshStandardMaterial
-            color={entry.color}
-            transparent
-            opacity={is_pulsing ? pulse_opacity : 0.42}
-            emissive={entry.color}
-            emissiveIntensity={is_pulsing ? 0.7 : 0.55}
-            depthTest={false}
-            depthWrite={false}
-          />
-        </T.Mesh>
-      {/each}
-
-      <!-- selection order labels (1, 2, 3, ...) for measurements and bond editing -->
-      {#if structure && measured_sites.length > 0 && measure_mode !== `edit-atoms`}
-        {#each measured_sites as site_index, loop_idx (site_index)}
-          {@const site = structure.sites[site_index]}
-          {#if site}
-            <!-- shift selected site labels down to avoid overlapping regular site labels-->
-            {@const selection_offset = math.add<Vec3>(site_label_offset, [0, -0.5, 0])}
-            {@const pos = math.add(site.xyz, selection_offset)}
-            <SceneLabel center position={pos}>
-              <span class="selection-label">{loop_idx + 1}</span>
-            </SceneLabel>
-          {/if}
-        {/each}
-      {/if}
+      <!-- highlight hovered, active and selected sites -->
+      <SiteHighlights targets={highlight_targets} {pulse_opacity} />
 
       <!-- hovered site tooltip -->
-      {#if hovered_site && tooltip !== false && !camera_is_moving && (atom_tooltip_active || active_sites.includes(hovered_idx ?? -1))}
-        {@const abc = hovered_site.abc.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
-        {@const xyz = hovered_site.xyz.map((val) => format_num(val, FLOAT_FMT)).join(`, `)}
-        {@const tooltip_species =
-          atom_groups.first_by_site.get(hovered_idx ?? -1)?.species ?? hovered_site.species}
+      {#if hovered_site && tooltip !== false && !camera_is_moving && (pointer.tooltip_active || active_sites.includes(hovered_idx ?? -1))}
+        {@const site_idx = hovered_idx ?? -1}
         {@const hover_shell = highlight_targets.find(({ kind }) => kind === `hover`)}
-        <!-- keeps clear of the hover shell (radius 0.5 scaled, see highlight_sphere_geometry) -->
-        <CanvasTooltip
-          position={hovered_site.xyz}
+        <!-- keeps clear of the hover shell (radius 0.5 scaled, see SiteHighlights) -->
+        <SiteTooltip
+          site={hovered_site}
+          {site_idx}
+          species={hovered_atom?.species ?? hovered_site.species}
+          bg_color={tooltip_fill(
+            hovered_atom,
+            atom_color_field,
+            property_colors,
+            hidden_elements,
+          )}
+          bond_summary={bond_neighbor_summary(filtered_bond_pairs, site_idx, structure)}
           anchor_radius={0.5 * HOVER_SHELL_SCALE * (hover_shell?.radius ?? 0)}
-          bg_color={hovered_tooltip_bg}
-        >
-          <!-- Element symbols with occupancies for disordered sites -->
-          <div class="elements" style="margin-bottom: var(--canvas-tooltip-elements-margin)">
-            {#each tooltip_species as { element, occu, oxidation_state: oxi_state }, idx (`${element ?? ``}-${occu ?? ``}-${oxi_state ?? ``}-${idx}`)}
-              {@const element_name =
-                element_by_symbol.get(element as ElementSymbol)?.name ?? ``}
-              <span class="species">
-                {#if occu !== 1}<span class="occupancy">{format_num(occu, `.3~f`)}</span>{/if}
-                <strong>
-                  {element}{#if oxi_state != null && oxi_state !== 0}<sup
-                      >{Math.abs(oxi_state)}{oxi_state > 0 ? `+` : `−`}</sup
-                    >{/if}
-                </strong>
-                {#if element_name}<span class="elem-name">{element_name}</span>{/if}
-              </span>
-            {/each}
-          </div>
-          <div class="coordinates">abc: ({abc})</div>
-          <div class="coordinates">xyz: ({xyz}) <small>Å</small></div>
-          {#if hovered_bond_summary}
-            <div class="coordinates">Bonds: {hovered_bond_summary}</div>
-          {/if}
-          {#if tooltip}{@render tooltip({
-              site: hovered_site,
-              site_idx: hovered_idx ?? -1,
-            })}{/if}
-        </CanvasTooltip>
+          extra_rows={tooltip}
+        />
       {/if}
 
       {#if visual_lattice}
@@ -2441,8 +1699,7 @@
             }}
             onmouseDown={() => {
               dragging_atoms = true
-              cancel_atom_hover_clear()
-              hovered_idx = null
+              pointer.drop_hover()
               drag_start_centroid = frozen_centroid = [...centroid] as Vec3
               on_operation_start?.()
             }}
@@ -2484,125 +1741,6 @@
         />
       {/if}
       <SlicePlane polygon={slice_polygon} />
-
-      <!-- Measurement overlays for measured sites -->
-      {#if structure && measured_sites.length > 0}
-        {#if measure_mode === `distance`}
-          {#each measured_sites as idx_i, loop_idx (idx_i)}
-            {#each measured_sites.slice(loop_idx + 1) as idx_j (idx_i + `-` + idx_j)}
-              {@const site_i = structure.sites[idx_i]}
-              {@const site_j = structure.sites[idx_j]}
-              <!-- indices can outlive their sites (image atoms toggled off, supercell
-                shrunk); skip rather than throw mid-render like the angle/dihedral branches -->
-              {#if site_i && site_j}
-                {@const pos_i = site_i.xyz}
-                {@const pos_j = site_j.xyz}
-                <Cylinder
-                  from={pos_i}
-                  to={pos_j}
-                  thickness={0.12}
-                  color={measure_line_color}
-                />
-                {@const mid_pos = math.lerp_vec3(pos_i, pos_j, 0.5)}
-                {@const direct = math.euclidean_dist(pos_i, pos_j)}
-                {@const pbc = lattice
-                  ? math.pbc_dist(pos_i, pos_j, lattice.matrix, undefined, lattice.pbc)
-                  : direct}
-                {@const differ = lattice ? Math.abs(pbc - direct) > 1e-6 : false}
-                <SceneLabel center position={mid_pos}>
-                  <span class="measure-label">
-                    {#if differ}
-                      PBC: {format_num(pbc, FLOAT_FMT)} Å<br /><small>
-                        Direct: {format_num(direct, FLOAT_FMT)} Å</small
-                      >
-                    {:else}
-                      {format_num(pbc, FLOAT_FMT)} Å
-                    {/if}
-                  </span>
-                </SceneLabel>
-              {/if}
-            {/each}
-          {/each}
-        {:else if measure_mode === `angle` && measured_sites.length === 3}
-          <!-- ordered triple A-B-C: the second pick is the vertex, same selection-order
-            convention as the torsion below -->
-          {@const [idx_a, idx_center, idx_b] = measured_sites}
-          {@const center = structure.sites[idx_center]}
-          {@const site_a = structure.sites[idx_a]}
-          {@const site_b = structure.sites[idx_b]}
-          {#if center && site_a && site_b}
-            {@const disp = (target: Vec3) =>
-              measure.displacement_pbc(
-                center.xyz,
-                target,
-                lattice?.matrix,
-                undefined,
-                lattice?.pbc,
-              )}
-            {@const vector_1 = disp(site_a.xyz)}
-            {@const vector_2 = disp(site_b.xyz)}
-            {@const count_1 = Math.hypot(vector_1[0], vector_1[1], vector_1[2])}
-            {@const count = Math.hypot(vector_2[0], vector_2[1], vector_2[2])}
-            {@const angle_deg = measure.angle_between_vectors(vector_1, vector_2)}
-            {#if count_1 > math.EPS && count > math.EPS}
-              <!-- rays end on the minimum-image positions the angle was measured from, not
-                the raw in-cell ones, so the drawn wedge matches the reported number -->
-              {@const ray_ends = [
-                math.add(center.xyz, vector_1),
-                math.add(center.xyz, vector_2),
-              ]}
-              {#each ray_ends as ray_end, ray_idx (ray_idx)}
-                <Cylinder
-                  from={center.xyz}
-                  to={ray_end}
-                  thickness={0.05}
-                  color={measure_line_color}
-                />
-              {/each}
-              {@const bisector = math.add(
-                math.scale(vector_1, 1 / count_1),
-                math.scale(vector_2, 1 / count),
-              )}
-              {@const bis_norm = Math.hypot(...bisector) || 1}
-              {@const offset_dir = math.scale(bisector, 1 / bis_norm)}
-              {@const label_pos = math.add(center.xyz, math.scale(offset_dir, 0.6))}
-              <SceneLabel center position={label_pos}>
-                <span class="measure-label">{format_num(angle_deg, FLOAT_FMT)}°</span>
-              </SceneLabel>
-            {/if}
-          {/if}
-        {:else if measure_mode === `dihedral` && measured_sites.length === 4}
-          <!-- a torsion is defined by exactly four atoms in sequence, so unlike distance
-            and angle this renders nothing until the fourth site is picked -->
-          {@const [pos_1, pos_2, pos_3, pos_4] = measured_sites.map(
-            (idx) => structure.sites[idx]?.xyz,
-          )}
-          {#if pos_1 && pos_2 && pos_3 && pos_4}
-            <!-- draw the same unwrapped chain dihedral_angle measures, so a torsion whose
-              atoms straddle a cell face isn't drawn through the box -->
-            {@const [draw_1, draw_2, draw_3, draw_4] = measure.pbc_chain_positions(
-              [pos_1, pos_2, pos_3, pos_4],
-              lattice?.matrix,
-              lattice?.pbc,
-            )}
-            {#each [[draw_1, draw_2], [draw_2, draw_3], [draw_3, draw_4]] as [from, target], seg_idx (seg_idx)}
-              <Cylinder {from} to={target} thickness={0.05} color={measure_line_color} />
-            {/each}
-            {@const torsion_deg = measure.dihedral_angle(
-              pos_1,
-              pos_2,
-              pos_3,
-              pos_4,
-              lattice?.matrix,
-              lattice?.pbc,
-            )}
-            <!-- label sits on the central bond, the axis the torsion is measured about -->
-            <SceneLabel center position={math.lerp_vec3(draw_2, draw_3, 0.5)}>
-              <span class="measure-label">{format_num(torsion_deg, FLOAT_FMT)}°</span>
-            </SceneLabel>
-          {/if}
-        {/if}
-      {/if}
     </T>
     {#if volume_color_field}
       <T.Group position={neg_rotation_target}>
@@ -2616,95 +1754,3 @@
     {/if}
   </T.Group>
 </T.Group>
-
-<style>
-  /* background, color and padding come from the inline style (site_label_* settings) */
-  .atom-label {
-    border: 0;
-    border-radius: var(--struct-atom-label-border-radius, var(--border-radius, 3pt));
-    cursor: pointer;
-    font: inherit;
-    white-space: nowrap;
-  }
-  .species {
-    display: inline-block;
-    white-space: nowrap;
-    &:not(:first-child) {
-      margin-left: var(--canvas-tooltip-species-gap, 0.5em);
-    }
-  }
-  .occupancy {
-    font-size: var(--canvas-tooltip-occu-font-size);
-    opacity: var(--canvas-tooltip-occu-opacity);
-    margin-right: var(--canvas-tooltip-occu-margin);
-  }
-  .elem-name {
-    font-size: var(--canvas-tooltip-elem-name-font-size, 0.85em);
-    opacity: var(--canvas-tooltip-elem-name-opacity, 0.7);
-    margin: var(--canvas-tooltip-elem-name-margin, 0 0 0 0.3em);
-    font-weight: var(--canvas-tooltip-elem-name-font-weight, normal);
-  }
-  .coordinates {
-    font-size: var(--canvas-tooltip-coords-font-size);
-    margin: var(--canvas-tooltip-coords-margin);
-  }
-  .measure-label {
-    background: var(--measure-label-bg, var(--surface-bg));
-    color: var(--measure-label-color, var(--text-color));
-    border-radius: var(--border-radius, 3pt);
-    padding: 0 5px;
-    user-select: none;
-    white-space: pre;
-    display: grid;
-    place-items: center;
-    line-height: 1.2;
-    font-size: var(--measure-label-font-size, clamp(8pt, 2cqmin, 14px));
-    box-shadow: var(--measure-label-shadow, 0 1px 6px rgba(0, 0, 0, 0.2));
-  }
-  .bond-context-menu {
-    display: grid;
-    min-width: 8rem;
-    gap: 2pt;
-    padding: 3pt 5pt;
-    border-radius: var(--border-radius, 3pt);
-    /* Pair with light-dark so a dark host's --text-color can't bleach a light menu. */
-    background: var(--surface-bg, var(--menu-bg));
-    color: var(--struct-context-menu-color, var(--menu-color));
-    border: 1px solid var(--struct-context-menu-border, var(--menu-border));
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    strong {
-      font-size: 0.85em;
-      padding: 0 2pt 2pt;
-      white-space: nowrap;
-    }
-    button {
-      border: none;
-      border-radius: var(--border-radius, 3pt);
-      background: transparent;
-      color: inherit;
-      cursor: pointer;
-      padding: 2pt 5pt;
-      text-align: left;
-    }
-    button:hover {
-      background: color-mix(in srgb, currentColor 10%, transparent);
-    }
-    button.remove {
-      color: var(--error-color, #f44336);
-    }
-  }
-  .selection-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.2em;
-    height: 1.2em;
-    padding: 0 0.25em;
-    border-radius: 999px;
-    background: var(--btn-bg-hover);
-    color: var(--text-color);
-    font-size: 0.85em;
-    line-height: 1;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  }
-</style>

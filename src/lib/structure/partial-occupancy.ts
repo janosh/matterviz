@@ -23,7 +23,7 @@ const neighbor_offsets = (coord: number, bucket: number): readonly number[] => {
   if (from_center - MERGE_BUCKET_REACH < -0.5) return [-1, 0]
   return [0]
 }
-type RenderSite = {
+export type RenderSite = {
   site_idx: number
   site: Site
   is_image_atom: boolean

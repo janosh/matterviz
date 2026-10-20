@@ -10,6 +10,7 @@ import {
   dot,
   EPS,
   min_image_displacement,
+  same_position,
   scale,
   subtract,
   to_degrees,
@@ -43,6 +44,24 @@ export function displacement_pbc(
   return min_image_displacement(from, target, lattice_matrix, converters, pbc)
 }
 
+// Displacement between two picked (so drawn) sites: the drawn one when it already is a shortest
+// image, e.g. an image atom picked beside its neighbor or one of several equidistant images,
+// else the minimum image, for a pick of the in-cell copy across a cell face. A pick of a site's
+// own image keeps its lattice vector, which the minimum image would collapse to zero.
+export function pick_displacement(
+  from: Vec3,
+  target: Vec3,
+  lattice_matrix: Matrix3x3 | null | undefined,
+  converters?: LatticeConverters,
+  pbc?: Pbc,
+): Vec3 {
+  const drawn = subtract(target, from)
+  if (!lattice_matrix) return drawn
+  const min_image = min_image_displacement(from, target, lattice_matrix, converters, pbc)
+  const min_len = Math.hypot(...min_image)
+  return min_len < EPS || Math.hypot(...drawn) <= min_len + 1e-6 ? drawn : min_image
+}
+
 // Angle between two vectors in degrees (0 for a zero-length vector)
 export function angle_between_vectors(vector_1: Vec3, vector_2: Vec3): number {
   const norm_1 = Math.hypot(...vector_1)
@@ -53,25 +72,83 @@ export function angle_between_vectors(vector_1: Vec3, vector_2: Vec3): number {
   return to_degrees(ang)
 }
 
-// Unwrap a chain of positions so consecutive points are minimum-image neighbors, anchored on
-// the first. Angles and torsions are reported from minimum-image displacements, so an overlay
-// drawn between raw in-cell coordinates depicts a different geometry than the one measured;
-// this returns the positions to draw instead. Torsions chain three such displacements (see
-// `dihedral_angle`). The angle overlay needs no helper: it already holds both displacements.
+// Arc marking the angle at `center` between two edges: points slerped from the first edge's
+// direction to the second's, the label spot on its bisector between the vertex atom's surface
+// and the arc, and the angle in degrees. The radius is `radius_fraction` of the shorter edge, but
+// at least 0.2 Å past `atom_radius` (the drawn vertex atom, which would hide a depth-tested arc)
+// and at most 0.9 of the shorter edge (no arc if that leaves it inside the atom). Null for a zero-length edge. A straight (or zero) angle
+// spans no plane to bend in: no arc, label on the first edge.
+export function angle_arc(
+  center: Vec3,
+  vector_1: Vec3,
+  vector_2: Vec3,
+  { radius_fraction = 0.31, atom_radius = 0, segments = 24 } = {},
+): { points: Vec3[]; label_position: Vec3; degrees: number } | null {
+  const [len_1, len_2] = [Math.hypot(...vector_1), Math.hypot(...vector_2)]
+  if (len_1 < EPS || len_2 < EPS) return null
+  const [unit_1, unit_2] = [scale(vector_1, 1 / len_1), scale(vector_2, 1 / len_2)]
+  const angle = Math.acos(clamp(dot(unit_1, unit_2), -1, 1))
+  const sin_angle = Math.sin(angle)
+  const flat = sin_angle < 1e-6
+  const direction = (fraction: number): Vec3 =>
+    flat
+      ? unit_1
+      : add(
+          scale(unit_1, Math.sin((1 - fraction) * angle) / sin_angle),
+          scale(unit_2, Math.sin(fraction * angle) / sin_angle),
+        )
+  const min_len = Math.min(len_1, len_2)
+  const radius = Math.min(
+    0.9 * min_len,
+    Math.max(radius_fraction * min_len, atom_radius + 0.2),
+  )
+  // an arc inside its atom (huge atoms on short edges) is hidden by depth testing: skip it
+  const points =
+    flat || radius <= atom_radius
+      ? []
+      : Array.from({ length: segments + 1 }, (_unused, idx) =>
+          add(center, scale(direction(idx / segments), radius)),
+        )
+  // midway from the atom's surface (or 60% of the radius, for small atoms) to the arc
+  const label_dist = (Math.min(Math.max(atom_radius, 0.6 * radius), radius) + radius) / 2
+  const label_position = add(center, scale(direction(0.5), label_dist))
+  return { points, label_position, degrees: to_degrees(angle) }
+}
+
+// Unwrap a chain of picked positions so consecutive points are nearest images (see
+// `pick_displacement`), then shift it by the lattice vector that puts the most points on their
+// drawn atoms (no shift on a tie). Angles and torsions are reported from these displacements,
+// so an overlay drawn between raw in-cell coordinates depicts a different geometry than the one
+// measured; this returns the positions to draw instead: the picked angle triangle, or the
+// torsion chain of three such displacements (see `dihedral_angle`).
 export function pbc_chain_positions(
   positions: Vec3[],
   lattice_matrix: Matrix3x3 | null | undefined,
   pbc?: Pbc,
 ): Vec3[] {
   const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
+  // each step from its own two picks, not from the previous (maybe shifted) chain point, which
+  // nobody drew: else the drawn-image test runs against the wrong pair and the result depends
+  // on pick order
   const chain = positions.slice(0, 1)
-  for (const position of positions.slice(1)) {
-    const previous = chain[chain.length - 1]
-    chain.push(
-      add(previous, displacement_pbc(previous, position, lattice_matrix, converters, pbc)),
+  for (let idx = 1; idx < positions.length; idx++) {
+    const step = pick_displacement(
+      positions[idx - 1],
+      positions[idx],
+      lattice_matrix,
+      converters,
+      pbc,
     )
+    chain.push(add(chain[idx - 1], step))
   }
-  return chain
+  const offsets = positions.map((position, idx) => subtract(position, chain[idx]))
+  const matches = (offset: Vec3) =>
+    offsets.filter((other) => same_position(other, offset)).length
+  const shift = offsets.reduce<Vec3>(
+    (best, offset) => (matches(offset) > matches(best) ? offset : best),
+    [0, 0, 0],
+  )
+  return chain.map((position) => add(position, shift))
 }
 
 type DisplacementField = {
@@ -152,9 +229,9 @@ export function dihedral_angle(
 ): number {
   // One converter set for all three bonds instead of three (this runs per label render)
   const converters = lattice_matrix ? create_lattice_converters(lattice_matrix) : undefined
-  const bond_12 = displacement_pbc(point_1, point_2, lattice_matrix, converters, pbc)
-  const bond_23 = displacement_pbc(point_2, point_3, lattice_matrix, converters, pbc)
-  const bond_34 = displacement_pbc(point_3, point_4, lattice_matrix, converters, pbc)
+  const bond_12 = pick_displacement(point_1, point_2, lattice_matrix, converters, pbc)
+  const bond_23 = pick_displacement(point_2, point_3, lattice_matrix, converters, pbc)
+  const bond_34 = pick_displacement(point_3, point_4, lattice_matrix, converters, pbc)
 
   // Plane normals of the p1-p2-p3 and p2-p3-p4 triangles
   const normal_123 = cross_3d(bond_12, bond_23)

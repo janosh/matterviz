@@ -1,4 +1,6 @@
+import { format_num } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
+import { dihedral_angle } from '#lib/structure/measure.js'
 import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
@@ -7,6 +9,7 @@ import { DEFAULTS } from '#lib/settings.js'
 import type {
   AnyStructure,
   BondEditMode,
+  BondOrder,
   BondPair,
   MeasureMode,
   Site,
@@ -47,11 +50,13 @@ import { createRawSnippet, flushSync, untrack } from 'svelte'
 import {
   type Color,
   InstancedBufferAttribute,
+  InstancedMesh,
   Matrix4,
   Mesh,
   type Object3D,
   OrthographicCamera,
   Raycaster,
+  TubeGeometry,
   Vector3,
 } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
@@ -67,6 +72,17 @@ const spy_interactivity = () => {
     return captured.value
   }
 }
+
+// Measurement lines and bond tints: the plain cylinder meshes (lattice edges are instanced)
+const measure_cylinders = (scene: Object3D): Mesh[] =>
+  scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .filter(
+      (mesh): mesh is Mesh =>
+        mesh instanceof Mesh &&
+        !(mesh instanceof InstancedMesh) &&
+        mesh.geometry.type === `CylinderGeometry`,
+    )
 
 // Whole-atom slab through z = 0 of an identity cell
 const whole_atom_cutaway = (): StructureCutaway => ({
@@ -620,6 +636,237 @@ test.each<[string, number, SceneProps]>([
   const [mesh] = meshes_of(scene, BondMesh)
   expect(mesh?.count).toBe(props.structure ? 4 : 1)
   expect(mesh?.geometry.index?.count).toBe(triangles * 3)
+})
+
+// Two C 1.4 Å apart through the x face of a 10 Å cell, bonded only via site 1's image
+const periodic_pair = () => {
+  const structure = make_crystal(10, [
+    [`C`, [0.07, 0.5, 0.5]],
+    [`C`, [0.93, 0.5, 0.5]],
+  ])
+  const bond: BondPair = {
+    site_idx_1: 0,
+    site_idx_2: 1,
+    pos_1: [0.7, 5, 5],
+    pos_2: [-0.7, 5, 5],
+    bond_length: 1.4,
+    cell_shift: [-1, 0, 0],
+  }
+  cache_prepared_bonds(structure, `electroneg_ratio`, {}, [bond])
+  return structure
+}
+
+// A distance line as thick as the bond hid a bonded pair's double or triple bond: a measured
+// drawn bond is tinted strand by strand instead (side by side, at its own thickness); an unbonded
+// pair, or one whose bond is computed (for polyhedra) but not drawn, gets a single thin line, as
+// does a pair whose only bond runs through a cell face to the other's image
+test.each<[string, number[], BondOrder, SceneProps, number]>([
+  [`single bond`, [0, 1], 1, {}, 1],
+  [`double bond`, [0, 1], 2, {}, 2],
+  [`triple bond`, [0, 1], 3, {}, 3],
+  [`unbonded pair`, [0, 2], 1, {}, 0],
+  [`hidden bond`, [0, 1], 2, { show_bonds: `never`, show_polyhedra: `always` }, 0],
+  [
+    `pair bonded via an image`,
+    [0, 1],
+    1,
+    {
+      structure: periodic_pair(),
+      show_cell_vectors: false,
+    },
+    0,
+  ],
+])(
+  `distance measurement of a %s tints %i bond strands (0: one line)`,
+  (_label, measured_sites, order, props, strands) => {
+    const { scene } = mount_structure({
+      structure: {
+        sites: [0, 1.3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+        properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order }] },
+      },
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      measure_mode: `distance`,
+      measured_sites,
+      ...props,
+    })
+    scene.updateMatrixWorld()
+    const measure_lines = measure_cylinders(scene)
+    const bonded = strands > 0
+    expect(measure_lines).toHaveLength(bonded ? strands : 1)
+    // strands sit side by side across the bond axis (x), not stacked on one line
+    const strand_offsets = new Set(measure_lines.map(({ position }) => position.z.toFixed(3)))
+    expect(strand_offsets.size).toBe(measure_lines.length)
+    // a bond's tint pulses with the selected atoms (twice their 10-20% opacity), a line is solid
+    for (const material of measure_lines.flatMap((mesh) => [mesh.material].flat())) {
+      expect(material.transparent).toBe(bonded)
+      expect(material.opacity).toBeGreaterThanOrEqual(bonded ? 0.2 : 1)
+      expect(material.opacity).toBeLessThanOrEqual(bonded ? 0.4 : 1)
+    }
+    // an unbonded pair's line is thinner than any bond
+    if (!bonded) expect(measure_lines[0]?.scale.x).toBe(0.035)
+    expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toMatch(/\d.*Å$/)
+  },
+)
+
+// Angle mode labels every angle of the picked triangle, not just the second pick's, and marks
+// each with an arc between its two edges so the number can't be read against the wrong pair. A
+// triangle straddling a cell face is unwrapped once, so its edges and arcs meet at its corners.
+test.each<[string, SceneProps, number[], number]>([
+  [
+    `molecule`,
+    {
+      structure: {
+        sites: [
+          [0, 0, 0],
+          [1.3, 0, 0],
+          [0, 2, 0],
+        ].map((xyz) => make_site(`C`, [0, 0, 0], xyz as Vec3, `C`)),
+        properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }] },
+      },
+    },
+    [90, 57, 33], // at the right-angle corner, site 0, then the others (one decimal)
+    4, // edges: the double bond's two tinted strands plus two thin lines to the third pick
+  ],
+  [
+    `triangle across a cell face`,
+    {
+      structure: make_crystal(10, [
+        [`C`, [0.1, 0.5, 0.5]],
+        [`C`, [0.9, 0.5, 0.5]],
+        [`C`, [0.95, 0.7, 0.5]],
+      ]),
+      show_bonds: `never`,
+      show_cell_vectors: false,
+    },
+    [53.1, 76, 50.9],
+    3,
+  ],
+  // the two 0° end corners of a collinear triangle get no label, and the 180° one no arc
+  [
+    `collinear triangle`,
+    {
+      structure: {
+        sites: [0, 1.3, 2.6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `never`,
+    },
+    [180],
+    3,
+  ],
+])(
+  `angle measurement of a %s labels its angles, arcing every bent one`,
+  (_label, props, expected, n_edges) => {
+    const { scene } = mount_structure({
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      measure_mode: `angle`,
+      measured_sites: [0, 1, 2],
+      ...props,
+    })
+    const angles = [...document.querySelectorAll(`.measure-label`)].map((label) =>
+      Number(label.textContent?.replace(`°`, ``)),
+    )
+    expect(angles).toEqual(expected)
+    const meshes = scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]
+    const arcs = meshes.filter(({ geometry }) => geometry instanceof TubeGeometry)
+    expect(arcs).toHaveLength(expected.filter((angle) => angle !== 180).length)
+    const edges = measure_cylinders(scene)
+    expect(edges).toHaveLength(n_edges)
+    // one closed triangle: no edge drawn at a corner's in-cell copy on the far side of the box
+    const edge_xs = edges.map(({ position }) => position.x)
+    expect(Math.max(...edge_xs) - Math.min(...edge_xs)).toBeLessThan(3)
+  },
+)
+
+// A torsion straddling a cell face draws its three bonds as short nearest-image hops, labelled
+// with the torsion measured from those same hops
+test(`dihedral measurement across a cell face`, () => {
+  const structure = make_crystal(10, [
+    [`C`, [0.95, 0.6, 0.5]],
+    [`C`, [0.95, 0.5, 0.5]],
+    [`C`, [0.05, 0.5, 0.5]],
+    [`C`, [0.05, 0.5, 0.6]],
+  ])
+  const { scene } = mount_structure({
+    structure,
+    show_bonds: `never`,
+    show_cell_vectors: false,
+    measure_mode: `dihedral`,
+    measured_sites: [0, 1, 2, 3],
+  })
+  const edges = measure_cylinders(scene)
+  expect(edges.map(({ scale }) => scale.y)).toEqual(
+    [1, 1, 1].map((len) => expect.closeTo(len, 9)),
+  )
+  // signed like the raw picks measure under PBC (here a clockwise quarter turn)
+  const [pos_1, pos_2, pos_3, pos_4] = structure.sites.map(({ xyz }) => xyz)
+  const torsion = dihedral_angle(pos_1, pos_2, pos_3, pos_4, structure.lattice.matrix)
+  expect(Math.abs(torsion)).toBeCloseTo(90, 9)
+  expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toBe(
+    `${format_num(torsion, `.1~f`)}°`,
+  )
+})
+
+// A site and its own image are a lattice vector apart, not 0 Å (the minimum image of a lattice
+// translation); a pair across a cell face reports its nearest image beside the drawn distance
+test.each([
+  [
+    `a site and its own image`,
+    make_crystal(3, [
+      [`C`, [0, 0, 0]],
+      [`C`, [1, 0, 0]],
+    ]),
+    /^3 Å$/,
+  ],
+  [
+    `a pair across a cell face`,
+    make_crystal(10, [
+      [`C`, [0.05, 0.5, 0.5]],
+      [`C`, [0.95, 0.5, 0.5]],
+    ]),
+    /^PBC: 1 Å\s*Direct: 9 Å$/,
+  ],
+])(`distance label of %s`, (_label, structure, expected) => {
+  mount_structure({
+    structure,
+    show_bonds: `never`,
+    measure_mode: `distance`,
+    measured_sites: [0, 1],
+  })
+  expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toMatch(expected)
+})
+
+// Depth-tested arcs inside a big vertex atom would be hidden: each clears its own atom's surface
+test(`angle arcs clear their vertex atoms`, () => {
+  const { scene } = mount_structure({
+    structure: {
+      sites: [
+        [`Si`, [1.6, 0, 0]],
+        [`O`, [0, 0, 0]],
+        [`Si`, [0, 1.6, 0]],
+      ].map(([elem, xyz]) =>
+        make_site(elem as ElementSymbol, [0, 0, 0], xyz as Vec3, `${elem}`),
+      ),
+    },
+    show_bonds: `never`,
+    atom_radius: 2,
+    measure_mode: `angle`,
+    measured_sites: [0, 1, 2],
+  })
+  const arc_starts = (scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]).flatMap(
+    ({ geometry }) =>
+      geometry instanceof TubeGeometry ? [geometry.parameters.path.getPoint(0)] : [],
+  )
+  // drawn radius (half the atomic radius x atom_radius) plus 0.2 Å, past 31% of the 1.6 Å edge
+  const corners: [Vec3, number][] = [
+    [[1.6, 0, 0], 1.1],
+    [[0, 0, 0], 0.6],
+    [[0, 1.6, 0], 1.1],
+  ]
+  expect(
+    arc_starts.map((start, idx) => start.distanceTo(new Vector3(...corners[idx][0]))),
+  ).toEqual(corners.map(([, atomic_radius]) => expect.closeTo(atomic_radius + 0.2, 6)))
 })
 
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at partial occupancy: drawn as

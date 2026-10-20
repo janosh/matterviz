@@ -20,8 +20,7 @@ type Flash<T> = { readonly value: T; show: (value: T) => void; reset: () => void
 // `unit` swings through one full cycle every 2π/PULSE_FREQUENCY units of `time`
 const PULSE_FREQUENCY = 4
 
-export const pulsing_highlight_opacity = (pulse_unit: number): number =>
-  0.2 + 0.15 * pulse_unit
+export const pulsing_highlight_opacity = (pulse_unit: number): number => 0.1 + 0.1 * pulse_unit
 
 export function create_pulse_animation(
   active: () => boolean,

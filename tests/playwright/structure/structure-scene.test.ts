@@ -15,6 +15,7 @@ import {
   expect_canvas_changed,
   expect_canvas_changed_by,
   webgl_on_ci_for_tagged,
+  zoom_wheel,
 } from '../helpers'
 
 webgl_on_ci_for_tagged()
@@ -133,7 +134,7 @@ test(
       })
     await expect.poll(vertex_counts).toEqual([81]) // (8 + 1)^2 vertices per sphere
     await hover_canvas_center(canvas)
-    await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -2200))
+    await expect_canvas_changed_by(canvas, () => zoom_wheel(page, -2200))
     await expect
       .poll(async () => {
         const levels = await vertex_counts()
@@ -143,8 +144,8 @@ test(
     // Camera changes after the first detail switch must still produce pixels. A live rAF
     // loop alone misses WebGPU refusing draws against a destroyed instance buffer. Tagged
     // @webgl, CI checks the pixels on WebGL2, so that WebGPU failure is caught by local runs.
-    await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, -500))
-    await expect_canvas_changed_by(canvas, () => page.mouse.wheel(0, 2700))
+    await expect_canvas_changed_by(canvas, () => zoom_wheel(page, -500))
+    await expect_canvas_changed_by(canvas, () => zoom_wheel(page, 2700))
     await expect.poll(vertex_counts).toEqual([81])
     // Do not apply the general software-GPU noise filter to resource-lifetime errors.
     expect(console_errors).toEqual([])

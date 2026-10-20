@@ -3,6 +3,7 @@ import * as math from '#lib/math.js'
 import {
   choose_site_label_offset,
   LabelProjector,
+  site_label_offsets,
 } from '#lib/structure/atom-label-placement.js'
 import type { LabelPlacement } from '#lib/structure/atom-label-placement.js'
 import type { Camera } from 'three/webgpu'
@@ -40,6 +41,37 @@ describe(`label placement`, () => {
 
     expect(Math.hypot(...offset)).toBeCloseTo(Math.hypot(...base_offset))
     expect(math.dot(math.normalize_vec(offset), [0, 1, 0])).toBeLessThan(0.5)
+  })
+
+  test(`site_label_offsets turns each site's label away from all bonds at both ends`, () => {
+    const base_offset: Vec3 = [0, 0.5, 0]
+    const bond = (site_idx_1: number, site_idx_2: number, pos_1: Vec3, pos_2: Vec3) => ({
+      site_idx_1,
+      site_idx_2,
+      pos_1,
+      pos_2,
+    })
+    // site 0 bonds up to site 1 and down to site 2 (listed second, so 0 is its far end);
+    // the zero-length bond 3-4 adds no direction, so neither site gets an offset
+    const offsets = site_label_offsets(
+      [
+        bond(0, 1, [0, 0, 0], [0, 2, 0]),
+        bond(2, 0, [0, -2, 0], [0, 0, 0]),
+        bond(3, 4, [5, 0, 0], [5, 0, 0]),
+      ],
+      base_offset,
+    )
+    expect([...offsets.keys()]).toEqual([0, 1, 2])
+    // site 0 must weigh both bonds (up and down blocked → sideways); 1 and 2 face away from 0
+    const expected: Vec3[] = [
+      [0.5, 0, 0],
+      [0, 0.5, 0],
+      [0, -0.5, 0],
+    ]
+    for (const [idx, offset] of [...offsets.values()].entries()) {
+      expectVecClose(offset, expected[idx])
+    }
+    expect(site_label_offsets([], base_offset).size).toBe(0)
   })
 
   const make_ortho_camera = (): OrthographicCamera => {
