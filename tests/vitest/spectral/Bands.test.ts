@@ -19,6 +19,7 @@ import {
   plot_svg,
   svg_rect,
   translate_of,
+  expect_axis_titles_placed,
 } from '../setup'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 
@@ -162,6 +163,7 @@ describe(`Bands component`, () => {
   ])(`renders expected line count for $name`, async ({ props, expected_line_count }) => {
     await mount_bands(props)
     expect(line_count()).toBe(expected_line_count)
+    expect_axis_titles_placed(document.body) // the y title sat 15 px below center
   })
 
   it(`honors legend, display, and hover options, reports the hover in THz`, async () => {

@@ -132,7 +132,7 @@
   const axis_label = (element: string): string =>
     `${formal_chempots ? `Δ` : ``}μ<sub>${element}</sub> (eV)`
 
-  let x_axis = $state<AxisConfig>({ label: ``, label_shift: { y: -45 } })
+  let x_axis = $state<AxisConfig>({ label: `` })
   let y_axis = $state<AxisConfig>({ label: `` })
 
   $effect(() => {

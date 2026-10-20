@@ -447,7 +447,6 @@
     label:
       band_type === `phonon` ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
     format: `.2f`,
-    label_shift: { y: 15 },
     range: y_range,
     ...y_axis,
   })
