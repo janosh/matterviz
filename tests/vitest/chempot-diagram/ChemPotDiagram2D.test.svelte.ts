@@ -23,6 +23,7 @@ import {
   mouse,
   plot_svg,
   resize_element,
+  expect_axis_titles_placed,
 } from '../setup'
 import { load_json } from '../test-fixtures'
 
@@ -380,6 +381,7 @@ test(`a 2D slice sweep keeps the axes of the unsliced projection and labels the 
   }
   const [first_ticks, first_paths, first_floor] = [ticks(), paths(), floor_px()]
   expect(first_ticks.length).toBeGreaterThan(4)
+  expect_axis_titles_placed(document.body) // the x title sat over the tick labels
   expect(doc_query(`.slice-label`).textContent).toMatch(/ΔμFe\s*=\s*−1 eV/)
   props.config = { elements: [`Li`, `O`], slice_chempots: { Fe: -3 } }
   flushSync()

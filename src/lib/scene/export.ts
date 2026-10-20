@@ -131,9 +131,18 @@ const is_instanced_mesh = (obj: Object3D): obj is ExportInstances =>
 export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T): T {
   const cloned_scene = scene.clone()
   const cloned_meshes: ExportInstances[] = []
+  // Depth-only meshes (translucent surfaces' depth pre-passes, see depth_prepass_props) draw
+  // nothing, so exporting them would duplicate their visible twin's geometry
+  const depth_only: Mesh[] = []
   cloned_scene.traverse((object) => {
     if (is_instanced_mesh(object)) cloned_meshes.push(object)
+    else if (
+      object instanceof Mesh &&
+      [object.material].flat().every((mat) => !mat.colorWrite)
+    )
+      depth_only.push(object)
   })
+  for (const mesh of depth_only) mesh.removeFromParent()
 
   for (const [mesh_idx, instanced_mesh] of cloned_meshes.entries()) {
     const parent = instanced_mesh.parent

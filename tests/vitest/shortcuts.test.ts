@@ -17,6 +17,8 @@ import { type Component, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { fire, keydown } from './setup'
 
+const { fullscreen: full, close, reset_camera, wheel_zoom, hover_walk, info_pane } = SHORTCUTS
+
 vi.mock(`#lib/scene/camera-reset.js`, async (original) => ({
   ...(await original<typeof camera_reset>()),
   reset_scene_cameras: vi.fn(() => true),
@@ -47,6 +49,7 @@ describe(`shortcut registry`, () => {
     [SHORTCUTS.redo, `Ctrl+Y / ⌘+Y / Ctrl+Shift+Z / ⌘+Shift+Z`],
     [SHORTCUTS.jump, `0-9`],
     [SHORTCUTS.close, `Esc`],
+    [SHORTCUTS.wheel_zoom, `⌘/Ctrl + scroll`],
   ])(`formats %j as %s`, (shortcut, expected) => {
     expect(format_shortcut_keys(shortcut)).toBe(expected)
   })
@@ -61,7 +64,7 @@ describe(`shortcut registry`, () => {
 
   test(`shortcuts_for lists each matching entry once, in registry order`, () => {
     const listed = shortcuts_for([`camera`, `brillouin`, `brillouin`])
-    expect(listed).toEqual([SHORTCUTS.reset_camera, SHORTCUTS.hover_walk, SHORTCUTS.info_pane])
+    expect(listed).toEqual([reset_camera, wheel_zoom, hover_walk, info_pane])
     expect(shortcuts_for([])).toEqual([])
   })
 })
@@ -113,10 +116,13 @@ describe(`ShortcutsList`, () => {
 
   // Lists exactly the given scopes' entries, collapsed until opened; `F` only where the host
   // can fullscreen
-  const { fullscreen: full, close, reset_camera, hover_walk, info_pane } = SHORTCUTS
   test.each([
-    [[`viewer`, `camera`], true, [full, close, reset_camera, hover_walk]],
-    [[`viewer`, `camera`, `brillouin`], false, [close, reset_camera, hover_walk, info_pane]],
+    [[`viewer`, `camera`], true, [full, close, reset_camera, wheel_zoom, hover_walk]],
+    [
+      [`viewer`, `camera`, `brillouin`],
+      false,
+      [close, reset_camera, wheel_zoom, hover_walk, info_pane],
+    ],
     [[`viewer`], false, [close]],
   ] as [ShortcutScope[], boolean, Shortcut[]][])(
     `scopes %j (fullscreen %s)`,

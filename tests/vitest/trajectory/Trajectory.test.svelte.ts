@@ -37,6 +37,7 @@ import {
   fire,
   keydown,
   set_input,
+  expect_axis_titles_placed,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import type { Component, ComponentProps } from 'svelte'
@@ -1216,6 +1217,7 @@ describe(`plot`, () => {
         if (plot_type === `time-series`) {
           expect(Object.keys(legend_state(target))).toEqual([label, `Max |F|`, `Volume`])
           expect(axis_labels(target)).toEqual([`Time (fs)`, `${label} (eV)`, `Max |F| (eV/Å)`])
+          expect_axis_titles_placed(target) // the y2 title sat 80 px below center
           expect(
             prepare_scatter.mock.lastCall?.[0].find((srs) => srs.id === `energy`)?.y,
           ).toEqual(relative ? [0, 1, 2] : [-3, -2, -1])

@@ -27,6 +27,8 @@ import {
   expect_centered,
   expect_centered_card,
   expect_inline_spinner,
+  zoom_wheel,
+  canvas_center,
 } from '../helpers'
 
 webgl_on_ci_for_tagged()
@@ -405,12 +407,39 @@ test.describe(`Structure Component Tests`, () => {
     await expect(structure_div.locator(`canvas`).first()).toBeVisible()
   })
 
-  test(`dragging the canvas orbits the camera`, { tag: `@webgl` }, async ({ page }) => {
-    const canvas = structure_canvas(page)
-    // Reset lives in the controls pane and is hidden at the default camera
-    await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
-    await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 200 }))
-  })
+  // ⌘/Ctrl, the wheel's zoom chord, is often still held when a drag starts, so it orbits like a
+  // plain drag; shift pans, moving the image while the camera stays put
+  test(
+    `dragging the canvas orbits the camera, shift-drag pans`,
+    { tag: `@webgl` },
+    async ({ page }) => {
+      const canvas = structure_canvas(page)
+      // Reset lives in the controls pane and is hidden at the default camera
+      await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
+      const camera_positions = async () =>
+        (await events_named(page, `on_camera_move`)).map(({ data }) =>
+          JSON.stringify((data as { camera_position?: number[] }).camera_position),
+        )
+      let previous: string | undefined
+      for (const [modifier, orbits] of [
+        [`Shift`, false],
+        [`Meta`, true],
+        [`Control`, true],
+        [undefined, true],
+      ] as const) {
+        await clear_events(page)
+        if (modifier) await page.keyboard.down(modifier)
+        await expect_canvas_changed_by(canvas, () => drag_canvas(canvas, { dx: 200 }))
+        if (modifier) await page.keyboard.up(modifier)
+        await expect.poll(async () => (await camera_positions()).length).toBeGreaterThan(0)
+        const positions = await camera_positions()
+        const label = `${modifier ?? `plain`} drag`
+        if (orbits) expect(positions.at(-1), `${label} orbits`).not.toBe(previous)
+        else expect(new Set(positions).size, `${label} keeps the camera put`).toBe(1)
+        previous = positions.at(-1)
+      }
+    },
+  )
 
   test(`an explicit origin camera pose is not auto-fitted`, async ({ page }) => {
     await set_scene_props(page, {
@@ -707,8 +736,8 @@ test.describe(`Structure Component Tests`, () => {
         await canvas.hover({ position: { x: 60, y: 60 } })
         screenshots[projection] = await canvas_screenshot(canvas)
         // Dispatch multiple wheel events to reduce CI flakiness from dropped inputs.
-        await page.mouse.wheel(0, -250)
-        await page.mouse.wheel(0, -250)
+        await zoom_wheel(page, -250)
+        await zoom_wheel(page, -250)
         await expect_canvas_changed(canvas, screenshots[projection])
       }
 
@@ -1014,7 +1043,7 @@ test.describe(`Structure Event Handler Tests`, () => {
         resized_box.x + resized_box.width * 0.15,
         resized_box.y + resized_box.height / 2,
       )
-      await page.mouse.wheel(0, -120)
+      await zoom_wheel(page, -120)
       await wait_for_camera_move(page)
       await clear_events(page)
       await reset_btn.click()
@@ -1062,6 +1091,7 @@ test.describe(`Structure Event Handler Tests`, () => {
           clientX: box.x + box.width * x_ratio,
           clientY: box.y + box.height * y_ratio,
           deltaY: delta_y,
+          metaKey: true, // passes the viewer's WheelZoomGate without activating it
         })
       await set_scene_props(page, { auto_rotate: 1 })
 
@@ -1084,6 +1114,39 @@ test.describe(`Structure Event Handler Tests`, () => {
       await open_structure_control_pane(page)
       await expect(reset_camera_button(page)).toBeVisible()
     })
+  })
+
+  // WheelZoomGate through SceneCamera's OrbitControls: a plain wheel over an idle embedded
+  // viewer scrolls the page and moves no camera, one after a click zooms instead
+  test(`plain wheel over an idle viewer scrolls the page; after a click it zooms`, async ({
+    page,
+  }) => {
+    const canvas = structure_canvas(page)
+    await page.evaluate(() => (document.body.style.minHeight = `300vh`))
+    const read_scroll = () => page.evaluate(() => window.scrollY)
+    // re-aim at the canvas each time, since page scrolls move it under the pointer
+    const aim = async () => {
+      const { x: coord_x, y: coord_y } = await canvas_center(canvas)
+      await page.mouse.move(coord_x, coord_y)
+    }
+    await aim()
+    await clear_events(page)
+    const scroll_idle = await read_scroll()
+    await page.mouse.wheel(0, 150)
+    await expect(page.locator(`#test-structure .wheel-zoom-hint`)).toContainText(
+      /(?:⌘|Ctrl) \+ scroll to zoom · click to interact/,
+    )
+    await expect.poll(read_scroll).toBeGreaterThan(scroll_idle)
+    await page.waitForTimeout(100) // a zoom would report its camera move by now
+    expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
+
+    await canvas.click({ position: { x: 5, y: 5 }, force: true })
+    await aim()
+    const scroll_active = await read_scroll()
+    await clear_events(page)
+    await page.mouse.wheel(0, -150)
+    await wait_for_camera_move(page)
+    expect(await read_scroll()).toBe(scroll_active)
   })
 })
 

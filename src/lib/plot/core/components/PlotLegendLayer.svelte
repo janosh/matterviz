@@ -30,6 +30,7 @@
     | `root_element`
     | `filter_query`
     | `layout_tracks`
+    | `wrap`
     | `on_drag_start`
     | `on_drag`
     | `on_drag_end`
@@ -52,12 +53,17 @@
   // capped legend never shrinks enough to flip back inside and re-expand.
   // Inside the plot (where the solver keeps it once a strip would leave too little plot) it
   // may not outgrow the plot area either: it scrolls instead of spilling over the axes
+  // A wrapped legend takes the width its cells wrap into (frame.legend_strip), so the browser
+  // breaks the lines the solver sized and centred, also once dragged off the strip
   const strip_style = $derived(
-    is_strip
-      ? `max-height: min(var(--plot-legend-max-height, 80%), ${LEGEND_STRIP_MAX_FRACTION * 100}%); `
-      : outside_side
-        ? ``
-        : `max-height: min(var(--plot-legend-max-height, 80%), ${frame.chart_height}px); `,
+    (frame.legend_wraps && frame.legend_strip
+      ? `width: ${frame.legend_strip.width}px; `
+      : ``) +
+      (is_strip
+        ? `max-height: min(var(--plot-legend-max-height, 80%), ${LEGEND_STRIP_MAX_FRACTION * 100}%); `
+        : outside_side
+          ? ``
+          : `max-height: min(var(--plot-legend-max-height, 80%), ${frame.chart_height}px); `),
   )
   // The solver counts auto tracks as columns for a strip and rows beside the plot (solve.ts),
   // so the legend must render in that orientation or the count lands on the wrong axis
@@ -91,6 +97,7 @@
     collapsed_groups={frame.legend_collapsed_groups}
     layout_tracks={resolve_legend_layout_tracks(legend.layout_tracks, frame.legend_placement)}
     {layout}
+    wrap={frame.legend_wraps}
     {series_data}
     {active_series_idx}
     on_toggle={chain_callbacks(on_toggle, legend.on_toggle)}

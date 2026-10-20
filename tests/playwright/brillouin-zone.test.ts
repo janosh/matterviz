@@ -6,6 +6,7 @@ import {
   expect_centered_card,
   expect_inline_spinner,
   webgl_on_ci_for_tagged,
+  zoom_wheel,
 } from './helpers'
 
 webgl_on_ci_for_tagged()
@@ -158,7 +159,7 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
       }).toPass({ timeout: 5000 })
 
       await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } })
-      await page.mouse.wheel(0, -200)
+      await zoom_wheel(page, -200)
 
       // Poll until canvas screenshot differs from rotated (zoom applied)
       await expect(async () => {

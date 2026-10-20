@@ -24,6 +24,7 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   Scene,
   ShaderMaterial,
@@ -152,8 +153,12 @@ describe(`export_scene_as`, () => {
     expect(downloads).toHaveLength(0)
   })
 
-  it(`expands instanced meshes so the exporters see plain meshes`, async () => {
+  it(`expands instanced meshes so the exporters see plain meshes and drops depth-only ones`, async () => {
     const instanced_scene = new Scene()
+    // a translucent Fermi sheet's depth pre-pass draws no colour, so it is not exported
+    const depth_pass = new Mesh(new SphereGeometry(1, 4, 4), new MeshBasicMaterial())
+    depth_pass.material.colorWrite = false
+    instanced_scene.add(depth_pass)
     const atoms = new InstancedMesh(
       new SphereGeometry(0.5, 4, 4),
       new MeshStandardMaterial(),
@@ -181,8 +186,10 @@ describe(`export_scene_as`, () => {
       [1, 0, 0],
       [0, 0, 1],
     ])
-    // the live scene keeps its InstancedMesh
-    expect(instanced_scene.children[0]).toBe(atoms)
+    // the live scene keeps its InstancedMesh and depth pass
+    const [kept_depth_pass, kept_atoms] = instanced_scene.children
+    expect(kept_depth_pass).toBe(depth_pass)
+    expect(kept_atoms).toBe(atoms)
   })
 
   // with all-white instance colors (as Three creates for material-colored instancing like

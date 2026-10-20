@@ -9,7 +9,7 @@ import {
   type ShowControlsProp,
 } from '#lib/controls.js'
 import { clamp, type Vec2 } from '#lib/math.js'
-import type { DecorationItem } from '#lib/plot/core/decorations/index.js'
+import type { DecorationItem, LegendCellSizes } from '#lib/plot/core/decorations/index.js'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
@@ -18,6 +18,8 @@ import {
   has_explicit_position,
   measured_footprint,
   solve_decorations,
+  legend_cell_sizes,
+  legend_wrap_size,
 } from '#lib/plot/core/decorations/index.js'
 import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte.js'
 import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets.js'
@@ -351,11 +353,13 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     height: 60,
   }
   let legend_footprint = $state(legend_footprint_fallback)
+  let legend_cells = $state.raw<LegendCellSizes | null>(null)
   let legend_offset = $state({ x: 0, y: 0 })
   $effect(() => {
     void [legend_size_revision, width, height, opts.legend()?.style]
     const element = legend_element
     const size = measured_footprint(element, legend_footprint_fallback)
+    const cells = element ? legend_cell_sizes(element) : null
     const offset =
       element && legend_has_explicit_pos
         ? { x: element.offsetLeft, y: element.offsetTop }
@@ -364,8 +368,24 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       if (size.width !== legend_footprint.width || size.height !== legend_footprint.height) {
         legend_footprint = size
       }
+      if (JSON.stringify(cells) !== JSON.stringify(legend_cells)) legend_cells = cells
       if (offset.x !== legend_offset.x || offset.y !== legend_offset.y) legend_offset = offset
     })
+  })
+  // A legend left to the frame's layout (no layout or layout_tracks) is placed by the column
+  // it takes inside or beside the plot and wraps into a row below it (legend_wraps), both sized
+  // from its cells, never from the layout it renders in now (see legend_cell_sizes)
+  const legend_managed = $derived(
+    opts.legend()?.layout == null && opts.legend()?.layout_tracks == null,
+  )
+  const legend_sizes = $derived.by(() => {
+    if (!legend_managed || !legend_cells) return undefined
+    const { l, r } = effective_base_pad // the base plot width the solver centres the strip on
+    const strip_width = width - l - r - marginal_pad.l - marginal_pad.r
+    return {
+      column: legend_wrap_size(legend_cells, 0),
+      strip: legend_wrap_size(legend_cells, strip_width),
+    }
   })
 
   // Legend drag: a legend the user grabbed or dropped owns its position; the solver only
@@ -435,6 +455,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         !legend_is_dragging &&
         !legend_manual_position,
       footprint: legend_footprint,
+      column_footprint: legend_sizes?.column,
+      strip_footprint: legend_sizes?.strip,
       items: opts.legend_items(),
       config: {
         ...opts.legend(),
@@ -498,6 +520,16 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     }),
   )
   const legend_placement = $derived(get_decoration_placement(decoration_solution, `legend`))
+  // A managed legend below the plot wraps into a row; a dragged or dropped one keeps the wrap
+  // it had (last_below: non-reactive memory of the solver's side)
+  let last_below = false
+  const legend_wraps = $derived.by(() => {
+    if (!legend_is_dragging && !legend_manual_position) {
+      last_below =
+        legend_placement?.location === `outside` && legend_placement.side === `bottom`
+    }
+    return legend_managed && last_below
+  })
   // Everything a tooltip must dodge: solver placements plus the pinned/dragged decorations
   const exclusion_rects = $derived([
     ...pinned_rects,
@@ -686,6 +718,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get legend_placement() {
       return legend_placement
+    },
+    get legend_wraps() {
+      return legend_wraps
+    },
+    get legend_strip() {
+      return legend_sizes?.strip
     },
     get exclusion_rects() {
       return exclusion_rects

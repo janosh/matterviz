@@ -6,7 +6,7 @@
     surface_vertices,
   } from '#lib/plot/scatter-3d/scene-coords.js'
   import type { Surface3DConfig } from '#lib/plot/core/types.js'
-  import { dispose_on_change } from '#lib/scene/index.js'
+  import { depth_prepass_props, dispose_on_change } from '#lib/scene/index.js'
   import { T } from '@threlte/core'
   import * as THREE from 'three/webgpu'
 
@@ -119,6 +119,15 @@
 </script>
 
 {#if geometry}
+  <!-- Depth-only pre-pass (see depth_prepass_props): where a translucent surface folds over
+    itself, its far layer would otherwise show through the near one in stripes along the grid.
+    Same position and renderOrder as the surface and created before it, so three's stable
+    (renderOrder, depth, id) sort draws it right before, still depth-sorted against other
+    objects. Same side, or it would hide front faces behind back faces the surface culls -->
+  <T.Mesh visible={is_transparent}>
+    <T is={geometry} dispose={false} />
+    <T.MeshBasicMaterial side={material_props.side} {...depth_prepass_props(4)} />
+  </T.Mesh>
   <T.Mesh>
     <T is={geometry} dispose={false} />
     <T.MeshStandardMaterial {...material_props} />

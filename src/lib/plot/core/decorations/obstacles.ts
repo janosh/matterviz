@@ -21,6 +21,88 @@ export const measured_footprint = (
     ? { width: element.offsetWidth, height: element.offsetHeight }
     : fallback
 
+// A legend's cells at their natural size, margins included, the same whether it renders as a
+// column or wrapped into a row (PlotLegend's `wrap`): a cell spans its children, a growing
+// one (a group label) by its text; the filter its min-width. Its column and its wrapped row
+// derive from these alone, so the solver's side decision cannot flip with the layout it
+// picks. Null while no cell has a layout box (before render, or without a layout engine).
+export type LegendCellSizes = {
+  cells: (DecorationSize & { own_line: boolean })[] // own_line: a group header
+  chrome: DecorationSize // padding + border
+  gap: { row: number; column: number }
+}
+export function legend_cell_sizes(element: HTMLElement): LegendCellSizes | null {
+  const px = (value: string) => Number.parseFloat(value) || 0 // oxlint-disable-line unicorn/prefer-number-coercion -- CSS lengths carry units
+  const edges = (style: CSSStyleDeclaration, axis: `x` | `y`, kinds = [`padding`, `border`]) =>
+    kinds
+      .flatMap((kind) =>
+        (axis === `x` ? [`left`, `right`] : [`top`, `bottom`]).map((side) =>
+          kind === `border` ? `border-${side}-width` : `${kind}-${side}`,
+        ),
+      )
+      .reduce((sum, prop) => sum + px(style.getPropertyValue(prop)), 0)
+  const range = element.ownerDocument.createRange()
+  const width_of = (child: Element) => {
+    const style = getComputedStyle(child)
+    range.selectNodeContents(child)
+    const box = px(style.flexGrow) > 0 ? range : child
+    return box.getBoundingClientRect().width + edges(style, `x`, [`margin`])
+  }
+  const laid_out = [...element.children].some((cell) => cell.getBoundingClientRect().width > 0)
+  if (!laid_out) return null // margins alone would read as a size
+  const cells = [...element.children].map((cell) => {
+    const style = getComputedStyle(cell)
+    const children = [...cell.children]
+    const content = cell.classList.contains(`legend-filter`)
+      ? px(style.minWidth)
+      : children.reduce((sum, child) => sum + width_of(child), 0) +
+        px(style.columnGap) * Math.max(0, children.length - 1) +
+        edges(style, `x`)
+    return {
+      width: content + edges(style, `x`, [`margin`]),
+      height: cell.getBoundingClientRect().height + edges(style, `y`, [`margin`]),
+      own_line: cell.classList.contains(`legend-group-header`),
+    }
+  })
+  const style = getComputedStyle(element)
+  return {
+    cells,
+    chrome: { width: edges(style, `x`), height: edges(style, `y`) },
+    gap: { row: px(style.rowGap), column: px(style.columnGap) },
+  }
+}
+
+// The legend wrapped into `available_width` like flex-wrap, lines filled greedily (headers on
+// their own line); width 0 stacks every cell, i.e. the column it takes inside or beside the
+// plot. Its width rounds up, so the browser given it breaks the same lines; its height rounds
+// like offsetHeight.
+export function legend_wrap_size(
+  { cells, chrome, gap }: LegendCellSizes,
+  available_width: number,
+): DecorationSize {
+  const lines: DecorationSize[] = []
+  let line: DecorationSize | undefined
+  for (const { width, height, own_line } of cells) {
+    if (
+      line &&
+      !own_line &&
+      line.width + gap.column + width <= available_width - chrome.width
+    ) {
+      line.width += gap.column + width
+      line.height = Math.max(line.height, height)
+    } else lines.push((line = { width, height }))
+    if (own_line) line = undefined
+  }
+  return {
+    width: Math.ceil(Math.max(0, ...lines.map((row) => row.width)) + chrome.width),
+    height: Math.round(
+      lines.reduce((total, row) => total + row.height, 0) +
+        gap.row * Math.max(0, lines.length - 1) +
+        chrome.height,
+    ),
+  }
+}
+
 // One mark's contribution: projected points, plus whether a line through them is drawn (which
 // makes the segments between them obstacles too)
 export type ObstacleSeries = { points: DecorationPoint[]; draws_line?: boolean }

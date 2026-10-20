@@ -21,6 +21,7 @@ import {
   webgl_on_ci_for_tagged,
   expect_canvas_changed,
   expect_canvas_changed_by,
+  zoom_wheel,
 } from '../helpers'
 
 webgl_on_ci_for_tagged()
@@ -419,7 +420,7 @@ test.describe(`Bond component`, () => {
       const after_camera = await expect_canvas_changed_by(canvas, async () => {
         const { x: coord_x, y: coord_y } = await canvas_center(canvas)
         await page.mouse.move(coord_x, coord_y)
-        await page.mouse.wheel(0, -200)
+        await zoom_wheel(page, -200)
       })
       expect(await count_canvas_content_pixels(page, after_camera)).toBeGreaterThan(100)
     })
@@ -793,7 +794,7 @@ test.describe(`Bond component`, () => {
       // Zoom in strongly enough that world-space label offsets would balloon;
       // this keeps the regression sensitive to screen-space placement.
       for (let wheel_idx = 0; wheel_idx < 8; wheel_idx++) {
-        await page.mouse.wheel(0, -700)
+        await zoom_wheel(page, -700)
       }
       await expect
         .poll(async () => (await label_geometry()).horizontal_span)

@@ -22,6 +22,7 @@
     create_renderer,
     dispose_on_change,
     key_walk_root,
+    wheel_zoom_gate,
     positions_geometry,
     webgpu_available,
   } from '#lib/scene/index.js'
@@ -1003,6 +1004,7 @@
   const pin = new TooltipPin<string>({ on_unpin: () => (hover_info = null) })
   const tooltip_pointer = pin.anchored(() => hover_info?.pointer)
   const key_walk = key_walk_root() // the domains, by keyboard (see KeyWalk)
+  const wheel_gate = wheel_zoom_gate()
 
   function set_hover_info(domain_data: HoverMesh, event: ThreltePointerEvent): void {
     hover_info = {
@@ -1076,6 +1078,7 @@
     Escape: pin.unpin,
   }))}
   {@attach key_walk.attach}
+  {@attach wheel_gate}
   onpointerdown={({ target }) => {
     if (target === wrapper || target instanceof HTMLCanvasElement) pin.unpin()
   }}

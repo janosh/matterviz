@@ -1,12 +1,15 @@
+import { format_num } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
+import { dihedral_angle } from '#lib/structure/measure.js'
 import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { camera_flight_registry } from '#lib/scene/camera-flight.js'
 import { HOVER_SHELL_SCALE } from '#lib/scene/geometry.svelte.js'
-import { DEFAULTS } from '#lib/settings.js'
+import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
 import type {
   AnyStructure,
   BondEditMode,
+  BondOrder,
   BondPair,
   MeasureMode,
   Site,
@@ -47,11 +50,13 @@ import { createRawSnippet, flushSync, untrack } from 'svelte'
 import {
   type Color,
   InstancedBufferAttribute,
+  InstancedMesh,
   Matrix4,
   Mesh,
   type Object3D,
   OrthographicCamera,
   Raycaster,
+  TubeGeometry,
   Vector3,
 } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
@@ -67,6 +72,17 @@ const spy_interactivity = () => {
     return captured.value
   }
 }
+
+// Measurement lines and bond tints: the plain cylinder meshes (lattice edges are instanced)
+const measure_cylinders = (scene: Object3D): Mesh[] =>
+  scene
+    .getObjectsByProperty(`type`, `Mesh`)
+    .filter(
+      (mesh): mesh is Mesh =>
+        mesh instanceof Mesh &&
+        !(mesh instanceof InstancedMesh) &&
+        mesh.geometry.type === `CylinderGeometry`,
+    )
 
 // Whole-atom slab through z = 0 of an identity cell
 const whole_atom_cutaway = (): StructureCutaway => ({
@@ -586,6 +602,50 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   expect(state.added_bonds).toEqual([])
 })
 
+// A delete-mode bond is hit anywhere in its 5x wide invisible cylinder, also under a cutaway,
+// where picking raycasts the bond's own strands to skip clipped-away parts. A bond the cutaway
+// removes entirely stays unpickable, even where its wide cylinder reaches the kept slab.
+const surface_slab = (axis: 0 | 1, position: number, thickness: number): StructureCutaway => ({
+  mode: `slab`,
+  axis,
+  position,
+  thickness,
+  whole_atoms: false,
+  cartesian_to_fractional: new Matrix4(),
+})
+test.each<[string, number, StructureCutaway | undefined]>([
+  [`no cutaway`, 0, undefined],
+  [`a cutaway keeping its middle`, 0, surface_slab(0, 1.5, 1)],
+  [`a cutaway clipping it entirely`, 1, surface_slab(1, 0.3, 0.1)],
+])(`delete-mode click beside a bond with %s leaves %i bonds`, (_label, n_bonds, cutaway) => {
+  const interactivity = spy_interactivity()
+  const state = $state<{ added_bonds: StructureBond[] }>({
+    added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+  })
+  mount_structure(
+    {
+      structure: {
+        sites: [0, 3].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `never`,
+      bond_thickness: 0.1,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode: `delete`,
+      cutaway,
+    },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  // 0.3 Å beside the bond axis: outside its 0.1 Å radius, inside the 0.5 Å hit radius
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(1.5, 0.3, 10), new Vector3(0, 0, -1))
+  const target = scene_interactivity.target.current
+  target?.dispatchEvent(new PointerEvent(`pointerdown`))
+  target?.dispatchEvent(new MouseEvent(`click`))
+  flushSync()
+  expect(state.added_bonds).toHaveLength(n_bonds)
+})
+
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
 // show: hidden, translucent or tiny atoms. A polyhedron center hidden by
 // polyhedra_hide_center_atoms drops its sphere but keeps its (thin, so otherwise covered)
@@ -620,6 +680,237 @@ test.each<[string, number, SceneProps]>([
   const [mesh] = meshes_of(scene, BondMesh)
   expect(mesh?.count).toBe(props.structure ? 4 : 1)
   expect(mesh?.geometry.index?.count).toBe(triangles * 3)
+})
+
+// Two C 1.4 Å apart through the x face of a 10 Å cell, bonded only via site 1's image
+const periodic_pair = () => {
+  const structure = make_crystal(10, [
+    [`C`, [0.07, 0.5, 0.5]],
+    [`C`, [0.93, 0.5, 0.5]],
+  ])
+  const bond: BondPair = {
+    site_idx_1: 0,
+    site_idx_2: 1,
+    pos_1: [0.7, 5, 5],
+    pos_2: [-0.7, 5, 5],
+    bond_length: 1.4,
+    cell_shift: [-1, 0, 0],
+  }
+  cache_prepared_bonds(structure, `electroneg_ratio`, {}, [bond])
+  return structure
+}
+
+// A distance line as thick as the bond hid a bonded pair's double or triple bond: a measured
+// drawn bond is tinted strand by strand instead (side by side, at its own thickness); an unbonded
+// pair, or one whose bond is computed (for polyhedra) but not drawn, gets a single thin line, as
+// does a pair whose only bond runs through a cell face to the other's image
+test.each<[string, number[], BondOrder, SceneProps, number]>([
+  [`single bond`, [0, 1], 1, {}, 1],
+  [`double bond`, [0, 1], 2, {}, 2],
+  [`triple bond`, [0, 1], 3, {}, 3],
+  [`unbonded pair`, [0, 2], 1, {}, 0],
+  [`hidden bond`, [0, 1], 2, { show_bonds: `never`, show_polyhedra: `always` }, 0],
+  [
+    `pair bonded via an image`,
+    [0, 1],
+    1,
+    {
+      structure: periodic_pair(),
+      show_cell_vectors: false,
+    },
+    0,
+  ],
+])(
+  `distance measurement of a %s tints %i bond strands (0: one line)`,
+  (_label, measured_sites, order, props, strands) => {
+    const { scene } = mount_structure({
+      structure: {
+        sites: [0, 1.3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+        properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order }] },
+      },
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      measure_mode: `distance`,
+      measured_sites,
+      ...props,
+    })
+    scene.updateMatrixWorld()
+    const measure_lines = measure_cylinders(scene)
+    const bonded = strands > 0
+    expect(measure_lines).toHaveLength(bonded ? strands : 1)
+    // strands sit side by side across the bond axis (x), not stacked on one line
+    const strand_offsets = new Set(measure_lines.map(({ position }) => position.z.toFixed(3)))
+    expect(strand_offsets.size).toBe(measure_lines.length)
+    // a bond's tint pulses with the selected atoms (twice their 10-20% opacity), a line is solid
+    for (const material of measure_lines.flatMap((mesh) => [mesh.material].flat())) {
+      expect(material.transparent).toBe(bonded)
+      expect(material.opacity).toBeGreaterThanOrEqual(bonded ? 0.2 : 1)
+      expect(material.opacity).toBeLessThanOrEqual(bonded ? 0.4 : 1)
+    }
+    // an unbonded pair's line is thinner than any bond
+    if (!bonded) expect(measure_lines[0]?.scale.x).toBe(0.035)
+    expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toMatch(/\d.*Å$/)
+  },
+)
+
+// Angle mode labels every angle of the picked triangle, not just the second pick's, and marks
+// each with an arc between its two edges so the number can't be read against the wrong pair. A
+// triangle straddling a cell face is unwrapped once, so its edges and arcs meet at its corners.
+test.each<[string, SceneProps, number[], number]>([
+  [
+    `molecule`,
+    {
+      structure: {
+        sites: [
+          [0, 0, 0],
+          [1.3, 0, 0],
+          [0, 2, 0],
+        ].map((xyz) => make_site(`C`, [0, 0, 0], xyz as Vec3, `C`)),
+        properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }] },
+      },
+    },
+    [90, 57, 33], // at the right-angle corner, site 0, then the others (one decimal)
+    4, // edges: the double bond's two tinted strands plus two thin lines to the third pick
+  ],
+  [
+    `triangle across a cell face`,
+    {
+      structure: make_crystal(10, [
+        [`C`, [0.1, 0.5, 0.5]],
+        [`C`, [0.9, 0.5, 0.5]],
+        [`C`, [0.95, 0.7, 0.5]],
+      ]),
+      show_bonds: `never`,
+      show_cell_vectors: false,
+    },
+    [53.1, 76, 50.9],
+    3,
+  ],
+  // the two 0° end corners of a collinear triangle get no label, and the 180° one no arc
+  [
+    `collinear triangle`,
+    {
+      structure: {
+        sites: [0, 1.3, 2.6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `never`,
+    },
+    [180],
+    3,
+  ],
+])(
+  `angle measurement of a %s labels its angles, arcing every bent one`,
+  (_label, props, expected, n_edges) => {
+    const { scene } = mount_structure({
+      show_bonds: `always`,
+      show_polyhedra: `never`,
+      measure_mode: `angle`,
+      measured_sites: [0, 1, 2],
+      ...props,
+    })
+    const angles = [...document.querySelectorAll(`.measure-label`)].map((label) =>
+      Number(label.textContent?.replace(`°`, ``)),
+    )
+    expect(angles).toEqual(expected)
+    const meshes = scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]
+    const arcs = meshes.filter(({ geometry }) => geometry instanceof TubeGeometry)
+    expect(arcs).toHaveLength(expected.filter((angle) => angle !== 180).length)
+    const edges = measure_cylinders(scene)
+    expect(edges).toHaveLength(n_edges)
+    // one closed triangle: no edge drawn at a corner's in-cell copy on the far side of the box
+    const edge_xs = edges.map(({ position }) => position.x)
+    expect(Math.max(...edge_xs) - Math.min(...edge_xs)).toBeLessThan(3)
+  },
+)
+
+// A torsion straddling a cell face draws its three bonds as short nearest-image hops, labelled
+// with the torsion measured from those same hops
+test(`dihedral measurement across a cell face`, () => {
+  const structure = make_crystal(10, [
+    [`C`, [0.95, 0.6, 0.5]],
+    [`C`, [0.95, 0.5, 0.5]],
+    [`C`, [0.05, 0.5, 0.5]],
+    [`C`, [0.05, 0.5, 0.6]],
+  ])
+  const { scene } = mount_structure({
+    structure,
+    show_bonds: `never`,
+    show_cell_vectors: false,
+    measure_mode: `dihedral`,
+    measured_sites: [0, 1, 2, 3],
+  })
+  const edges = measure_cylinders(scene)
+  expect(edges.map(({ scale }) => scale.y)).toEqual(
+    [1, 1, 1].map((len) => expect.closeTo(len, 9)),
+  )
+  // signed like the raw picks measure under PBC (here a clockwise quarter turn)
+  const [pos_1, pos_2, pos_3, pos_4] = structure.sites.map(({ xyz }) => xyz)
+  const torsion = dihedral_angle(pos_1, pos_2, pos_3, pos_4, structure.lattice.matrix)
+  expect(Math.abs(torsion)).toBeCloseTo(90, 9)
+  expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toBe(
+    `${format_num(torsion, `.1~f`)}°`,
+  )
+})
+
+// A site and its own image are a lattice vector apart, not 0 Å (the minimum image of a lattice
+// translation); a pair across a cell face reports its nearest image beside the drawn distance
+test.each([
+  [
+    `a site and its own image`,
+    make_crystal(3, [
+      [`C`, [0, 0, 0]],
+      [`C`, [1, 0, 0]],
+    ]),
+    /^3 Å$/,
+  ],
+  [
+    `a pair across a cell face`,
+    make_crystal(10, [
+      [`C`, [0.05, 0.5, 0.5]],
+      [`C`, [0.95, 0.5, 0.5]],
+    ]),
+    /^PBC: 1 Å\s*Direct: 9 Å$/,
+  ],
+])(`distance label of %s`, (_label, structure, expected) => {
+  mount_structure({
+    structure,
+    show_bonds: `never`,
+    measure_mode: `distance`,
+    measured_sites: [0, 1],
+  })
+  expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toMatch(expected)
+})
+
+// Depth-tested arcs inside a big vertex atom would be hidden: each clears its own atom's surface
+test(`angle arcs clear their vertex atoms`, () => {
+  const { scene } = mount_structure({
+    structure: {
+      sites: [
+        [`Si`, [1.6, 0, 0]],
+        [`O`, [0, 0, 0]],
+        [`Si`, [0, 1.6, 0]],
+      ].map(([elem, xyz]) =>
+        make_site(elem as ElementSymbol, [0, 0, 0], xyz as Vec3, `${elem}`),
+      ),
+    },
+    show_bonds: `never`,
+    atom_radius: 2,
+    measure_mode: `angle`,
+    measured_sites: [0, 1, 2],
+  })
+  const arc_starts = (scene.getObjectsByProperty(`type`, `Mesh`) as Mesh[]).flatMap(
+    ({ geometry }) =>
+      geometry instanceof TubeGeometry ? [geometry.parameters.path.getPoint(0)] : [],
+  )
+  // drawn radius (half the atomic radius x atom_radius) plus 0.2 Å, past 31% of the 1.6 Å edge
+  const corners: [Vec3, number][] = [
+    [[1.6, 0, 0], 1.1],
+    [[0, 0, 0], 0.6],
+    [[0, 1.6, 0], 1.1],
+  ]
+  expect(
+    arc_starts.map((start, idx) => start.distanceTo(new Vector3(...corners[idx][0]))),
+  ).toEqual(corners.map(([, atomic_radius]) => expect.closeTo(atomic_radius + 0.2, 6)))
 })
 
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at partial occupancy: drawn as
@@ -1497,8 +1788,9 @@ test(`active-site highlights resolve the CSS color token where the canvas sits`,
 // moves the cell center +0.5 Å on each axis, H2 → O2 moves the center of mass +5 Å along x.
 // A new series, a fixed-cell MD frame, the user's own edits and a camera flight leave the
 // camera; an active orbit holds the follow until it ends. It follows from the live camera,
-// which auto-rotate moves without syncing the props. A cell more than twice the fitted size
-// is framed afresh on its own center, seen along the live view direction.
+// which auto-rotate moves without syncing the props. A cell that grew out of the view (a
+// supercell) is framed afresh on its own center, seen along the live view direction; a few
+// percent (an NPT step) keeps the zoom, also the user's own, and a hidden viewer only follows.
 type FollowStep = {
   from?: AnyStructure
   to: AnyStructure
@@ -1508,34 +1800,75 @@ type FollowStep = {
   live?: Vec3
   clear_target?: boolean
   flight?: boolean
+  zoom?: number // scales the live orthographic zoom first (< 1: the user zoomed out)
+  projection?: CameraProjection
+  hidden?: boolean // the viewer shrinks to 0x0 before the step
+  direction?: Vec3 // the camera_direction prop, the view the initial zoom was fitted along
 }
 const follow_crystal = (edge: number, moved = false): AnyStructure =>
   make_crystal(edge, [[`Fe`, [moved ? 0.3 : 0, 0, 0]]])
-const dimer = (element: ElementSymbol, x_coord: number): AnyStructure => ({
-  sites: [
-    make_site(element, [0, 0, 0], [x_coord, 0, 0], element),
-    make_site(element, [0, 0, 0], [x_coord + 1, 0, 0], element),
-  ],
+// the 4 Å cell doubled along one axis
+const doubled_along = (axis: number): AnyStructure =>
+  make_crystal(
+    [0, 1, 2].map((row) =>
+      [0, 1, 2].map((col) => (row !== col ? 0 : row === axis ? 8 : 4)),
+    ) as [Vec3, Vec3, Vec3],
+    [[`Fe`, [0, 0, 0]]],
+  )
+const oxygen_dimer = (x_coord: number): AnyStructure => ({
+  sites: [x_coord, x_coord + 1].map((x_pos) => make_site(`O`, [0, 0, 0], [x_pos, 0, 0], `O`)),
 })
 test.each<[string, FollowStep, Vec3 | `reframe`]>([
-  [`a new cell in the series`, { to: follow_crystal(5) }, [0.5, 0.5, 0.5]],
+  [`a new cell in the series`, { to: follow_crystal(4.2) }, [0.1, 0.1, 0.1]],
   [`a fixed-cell MD frame`, { to: follow_crystal(4, true) }, [0, 0, 0]],
-  [`a new series`, { to: follow_crystal(5), series: `other` }, [0, 0, 0]],
-  [`an atom edit`, { to: follow_crystal(5), measure_mode: `edit-atoms` }, [0, 0, 0]],
-  [`a new cell mid-orbit`, { to: follow_crystal(5), orbiting: true }, [0.5, 0.5, 0.5]],
+  [`a new series`, { to: follow_crystal(4.2), series: `other` }, [0, 0, 0]],
+  [`an atom edit`, { to: follow_crystal(4.2), measure_mode: `edit-atoms` }, [0, 0, 0]],
+  [`a new cell mid-orbit`, { to: follow_crystal(4.2), orbiting: true }, [0.1, 0.1, 0.1]],
   [
     `a new cell while auto-rotating`,
-    { to: follow_crystal(5), live: [2, 2, 14] },
-    [0.5, 0.5, 0.5],
+    { to: follow_crystal(4.2), live: [2, 2, 14] },
+    [0.1, 0.1, 0.1],
   ],
   [
     `a new cell after the target was cleared`,
-    { to: follow_crystal(5), clear_target: true },
-    [0.5, 0.5, 0.5],
+    { to: follow_crystal(4.2), clear_target: true },
+    [0.1, 0.1, 0.1],
   ],
-  [`a new cell during a camera flight`, { to: follow_crystal(5), flight: true }, [0, 0, 0]],
-  [`a molecule of the same size`, { from: dimer(`H`, 0), to: dimer(`O`, 5) }, [5, 0, 0]],
+  [`a new cell during a camera flight`, { to: follow_crystal(4.2), flight: true }, [0, 0, 0]],
+  [`a molecule of the same size`, { from: oxygen_dimer(0), to: oxygen_dimer(5) }, [5, 0, 0]],
   [`a cell far larger than the fit`, { to: follow_crystal(12), live: [2, 14, 2] }, `reframe`],
+  // a 2x2x2 supercell overflows the fitted view, unless the user had zoomed out to fit it; an
+  // NPT-sized step keeps a zoomed-in view, and a hidden (0x0) viewer only follows
+  [`a doubled cell`, { to: follow_crystal(8), live: [2, 14, 2] }, `reframe`],
+  [
+    `a doubled cell in perspective`,
+    { to: follow_crystal(8), live: [2, 14, 2], projection: `perspective` },
+    `reframe`,
+  ],
+  [`a doubled cell in a zoomed-out view`, { to: follow_crystal(8), zoom: 0.3 }, [2, 2, 2]],
+  [
+    `a 5% larger cell in a zoomed-in view`,
+    { to: follow_crystal(4.2), zoom: 2 },
+    [0.1, 0.1, 0.1],
+  ],
+  [`a doubled cell in a hidden viewer`, { to: follow_crystal(8), hidden: true }, [2, 2, 2]],
+  // measured along the live view: doubling the axis looked down (c, or the up axis b) grows
+  // nothing on screen; doubling c seen from the side, after a fit looking down c, overflows
+  [
+    `a cell doubled along the line of sight`,
+    { to: doubled_along(2), live: [2, 2, 14] },
+    [0, 0, 2],
+  ],
+  [
+    `a cell doubled along the up axis seen down it`,
+    { to: doubled_along(1), live: [2, 14, 2] },
+    [0, 2, 0],
+  ],
+  [
+    `a cell doubled across an orbited view`,
+    { to: doubled_along(2), live: [14, 2, 2], direction: [0, 0, 1] },
+    `reframe`,
+  ],
 ])(`camera follow on %s`, (_label, step, offset) => {
   const pose: { target: Vec3; position: Vec3 } = { target: [2, 2, 2], position: [12, 7, 9] }
   const state = $state<{
@@ -1546,6 +1879,8 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
     camera_target?: Vec3
     camera_position: Vec3
     camera?: SceneProps[`camera`]
+    width: number
+    height: number
   }>({
     structure: step.from ?? follow_crystal(4),
     series_key: `series`,
@@ -1554,10 +1889,29 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
     camera_target: pose.target,
     camera_position: pose.position,
     camera: undefined,
+    width: 800,
+    height: 600,
   })
-  const { canvas } = mount_structure({ width: 800, height: 600, show_bonds: `never` }, state)
+  const { canvas } = mount_structure(
+    {
+      show_bonds: `never`,
+      camera_projection: step.projection ?? `orthographic`,
+      camera_direction: step.direction,
+    },
+    state,
+  )
   expect(state.camera_target).toEqual(pose.target)
   if (step.live) state.camera?.position.set(...step.live)
+  if (step.zoom && state.camera instanceof OrthographicCamera) state.camera.zoom *= step.zoom
+  // Å per pixel at the target: an orthographic zoom's inverse, a perspective camera's distance
+  const view_scale = () =>
+    state.camera instanceof OrthographicCamera
+      ? 1 / state.camera.zoom
+      : (state.camera?.position.distanceTo(
+          new Vector3(...(state.camera_target ?? pose.target)),
+        ) ?? Number.NaN)
+  const scale_before = view_scale()
+  if (step.hidden) Object.assign(state, { width: 0, height: 0 })
   if (step.clear_target) {
     state.camera_target = undefined
     flushSync()
@@ -1586,9 +1940,12 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
     })
     const view = camera_position.map((coord, axis) => coord - camera_target[axis])
     expect(camera_target).toEqual(center.map((coord) => expect.closeTo(coord, 9)))
-    // along the live view (+y), not the prop one, backed off past the 12 Å cell
-    expect([view[0], view[2]]).toEqual([expect.closeTo(0, 9), expect.closeTo(0, 9)])
-    expect(view[1]).toBeGreaterThan(12)
+    // along the live view, not the prop one, backed off past the new cell
+    const live = (step.live ?? pose.position).map((coord, axis) => coord - pose.target[axis])
+    const unit = (vec: number[]) => vec.map((coord) => coord / Math.hypot(...vec))
+    expect(unit(view)).toEqual(unit(live).map((coord) => expect.closeTo(coord, 9)))
+    expect(Math.hypot(...view)).toBeGreaterThan(8)
+    expect(view_scale()).toBeGreaterThan(scale_before) // zoomed out to fit
     return
   }
   const shifted = (vec: Vec3) => vec.map((coord, axis) => coord + offset[axis])

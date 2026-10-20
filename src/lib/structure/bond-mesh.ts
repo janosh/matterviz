@@ -9,7 +9,6 @@ import {
 import type {
   Intersection,
   Material,
-  Matrix4,
   MeshBasicNodeMaterial,
   Node,
   Raycaster,
@@ -19,7 +18,10 @@ import {
   CylinderGeometry,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
+  Line3,
+  Matrix4,
   Mesh,
+  Vector3,
 } from 'three/webgpu'
 import type { BondData, BondPlacements } from './bond-rendering'
 import {
@@ -31,6 +33,7 @@ import {
   prepare_bond_placements,
 } from './bond-rendering'
 import { same_values } from '#lib/math.js'
+import { cutaway_excludes, cutaway_planes } from './cutaway'
 import { InstanceColors } from './instance-colors'
 import type { BondPair } from './index'
 
@@ -200,36 +203,71 @@ export class BondMesh extends Mesh<InstancedBufferGeometry> {
   }
 }
 
-let bond_picker: { instances: BondMesh; candidate: Mesh } | undefined
+// Unit-cylinder transforms of one bond's strands as drawn (1-3 by order, offset sideways), in
+// the bonds' parent space: for highlighting or hit-testing a single bond strand by strand
+let strand_layout: BondMesh | undefined
+export function bond_strand_matrices(bond: BondPair, thickness: number): Matrix4[] {
+  strand_layout ??= new BondMesh(new BufferGeometry(), undefined, 3)
+  const layout = strand_layout
+  layout.update(prepare_bond_placements([bond]))
+  layout.thickness = thickness
+  return Array.from({ length: layout.count }, (_unused, idx) => {
+    const matrix = new Matrix4()
+    layout.getMatrixAt(idx, matrix)
+    return matrix
+  })
+}
 
-// Enlarged edit targets must not resurrect a clipped bond. Raycast the actual rendered
-// cylinders, including multiple-bond offsets/radii, whenever cutaways are active.
+// The drawn bonds' cylinder: picking and a measured bond's tint reuse it so their faces coincide
+export const UNIT_CYLINDER = new CylinderGeometry(1, 1, 1, 8)
+let bond_candidate: Mesh | undefined
+const bond_axis = new Line3()
+const strand_center = new Vector3()
+const axis_point = new Vector3()
+// Raycast a bond's strands at `hit_thickness` (an edit target's enlarged radius) for cutaway-aware
+// picking, keeping only hits beside a stretch of the drawn bond (strands at `thickness`) the
+// cutaway keeps: an enlarged target must not resurrect a clipped bond, but stays easy to hit
+// where the bond shows.
 export function raycast_bond(
   target: Mesh,
   bond: BondPair,
   thickness: number,
   raycaster: Raycaster,
   hits: Intersection[],
+  hit_thickness = thickness,
 ): void {
   if (!target.parent) return
-  if (!bond_picker) {
-    const geometry = new CylinderGeometry(1, 1, 1, 8)
-    bond_picker = {
-      instances: new BondMesh(geometry, undefined, 3),
-      candidate: new Mesh(geometry),
-    }
-  }
-  const { instances, candidate } = bond_picker
-  instances.update(prepare_bond_placements([bond]))
-  instances.thickness = thickness
+  bond_candidate ??= new Mesh(UNIT_CYLINDER)
+  const candidate = bond_candidate
   candidate.material = target.material
-  for (let idx = 0; idx < instances.count; idx++) {
-    instances.getMatrixAt(idx, candidate.matrixWorld)
-    candidate.matrixWorld.premultiply(target.parent.matrixWorld)
+  const { matrixWorld } = target.parent
+  // how far the drawn strands reach from the bond axis (double/triple bonds sit beside it)
+  bond_axis.start.fromArray(bond.pos_1)
+  bond_axis.end.fromArray(bond.pos_2)
+  const local_reach = Math.max(
+    ...bond_strand_matrices(bond, thickness).map(({ elements }) => {
+      strand_center.set(elements[12], elements[13], elements[14])
+      bond_axis.closestPointToPoint(strand_center, false, axis_point)
+      // column 0 is the strand's radial axis scaled by its radius
+      return (
+        strand_center.distanceTo(axis_point) +
+        Math.hypot(elements[0], elements[1], elements[2])
+      )
+    }),
+  )
+  const reach = local_reach * matrixWorld.getMaxScaleOnAxis()
+  bond_axis.applyMatrix4(matrixWorld)
+  const planes = cutaway_planes(target)
+  for (const matrix of bond_strand_matrices(bond, hit_thickness)) {
+    candidate.matrixWorld.multiplyMatrices(matrixWorld, matrix)
     const first_hit = hits.length
     candidate.raycast(raycaster, hits)
-    for (let hit_idx = first_hit; hit_idx < hits.length; hit_idx++)
-      hits[hit_idx].object = target
+    const strand_hits = hits.splice(first_hit)
+    for (const hit of strand_hits) {
+      bond_axis.closestPointToPoint(hit.point, true, axis_point)
+      if (cutaway_excludes(planes, axis_point, reach)) continue
+      hits.push({ ...hit, object: target })
+    }
   }
 }
 

@@ -259,7 +259,7 @@ const with_fit_zoom = (
   const cleanup = $effect.root(() => {
     const inputs: FitInputs = $state({ extent: 10, width: 600, measured })
     const fit = create_fit_zoom({
-      extent: () => inputs.extent,
+      initial_extent: () => inputs.extent,
       zoom_for: (extent) => inputs.width / extent,
       measured: () => inputs.measured,
       initial_zoom: () => initial_zoom,
@@ -286,7 +286,7 @@ test(`the fit is pinned to its extent: only refit() adopts new content`, () => {
     expect(fit.zoom).toBe(60)
 
     // an explicit re-frame (new series, camera reset, projection change) adopts the extent
-    fit.refit()
+    fit.refit(30)
     expect(fit.zoom).toBe(20)
     set({ width: 900 })
     expect(fit.zoom).toBe(30)

@@ -1,7 +1,8 @@
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { subtract, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type { MeasureMode, Site } from '#lib/structure/index.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import {
+  angle_arc,
   angle_between_vectors,
   compute_displacements,
   dihedral_angle,
@@ -9,6 +10,7 @@ import {
   MAX_SELECTED_SITES,
   max_measured_sites,
   pbc_chain_positions,
+  pick_displacement,
   rolls_measured_sites,
 } from '#lib/structure/measure.js'
 import { describe, expect, test } from 'vitest'
@@ -124,6 +126,57 @@ describe(`measure: angles`, () => {
     expect(angle_between_vectors(vector_1, vector_2)).toBeCloseTo(deg, 10)
     // symmetric in its arguments
     expect(angle_between_vectors(vector_2, vector_1)).toBeCloseTo(deg, 10)
+    // the angle overlay's arc reports the same value
+    expect(angle_arc([0, 0, 0], vector_1, vector_2)?.degrees).toBeCloseTo(deg, 10)
+  })
+
+  // The arc that marks an angle runs from one edge to the other at a fixed radius (31% of the
+  // shorter edge), and its label sits inside it on the bisector, at 80% of that radius
+  test(`angle_arc spans the two edges at a fixed radius, label inside its midpoint`, () => {
+    const center: Vec3 = [1, 2, 3]
+    const arc = angle_arc(center, [2, 0, 0], [0, 4, 0], { segments: 8 })
+    if (!arc) throw new Error(`expected an arc`)
+    const radius = 0.31 * 2
+    expect(arc.points).toHaveLength(9)
+    const offsets = arc.points.map((point) => point.map((val, axis) => val - center[axis]))
+    for (const offset of offsets) expect(Math.hypot(...offset)).toBeCloseTo(radius, 12)
+    expect(offsets[0]).toEqual([radius, 0, 0].map((val) => expect.closeTo(val, 12)))
+    expect(offsets.at(-1)).toEqual([0, radius, 0].map((val) => expect.closeTo(val, 12)))
+    const label_dist = (0.8 * radius) / Math.SQRT2
+    expect(arc.label_position).toEqual(
+      [1 + label_dist, 2 + label_dist, 3].map((val) => expect.closeTo(val, 12)),
+    )
+  })
+
+  // A big vertex atom (Fe, Si) would hide a depth-tested arc: the arc clears its surface by
+  // 0.2 Å, at most to 0.9 of the shorter edge, with the label midway between surface and arc
+  test.each([
+    [`a small atom keeps the edge-scaled radius`, 0.3, 0.62, 0.496],
+    [`a big atom pushes the arc out`, 1, 1.2, 1.1],
+    [`a huge atom gets no arc, hidden inside it at 0.9 of the edge`, 2, null, 1.8],
+  ])(`angle_arc: %s`, (_desc, atom_radius, radius, label_dist) => {
+    const arc = angle_arc([0, 0, 0], [2, 0, 0], [0, 4, 0], { atom_radius })
+    expect(arc?.points).toHaveLength(radius === null ? 0 : 25)
+    for (const point of arc?.points ?? [])
+      expect(Math.hypot(...point)).toBeCloseTo(radius ?? 0, 12)
+    expect(Math.hypot(...(arc?.label_position ?? []))).toBeCloseTo(label_dist, 12)
+  })
+
+  test.each([
+    [`straight angle`, [1, 0, 0], [-1, 0, 0], 180],
+    [`zero angle`, [1, 0, 0], [3, 0, 0], 0],
+  ] as [string, Vec3, Vec3, number][])(
+    `angle_arc of a %s has no arc to draw`,
+    (_desc, vector_1, vector_2, deg) => {
+      expect(angle_arc([0, 0, 0], vector_1, vector_2)).toMatchObject({
+        points: [],
+        degrees: deg,
+      })
+    },
+  )
+
+  test(`angle_arc of a zero-length edge is null`, () => {
+    expect(angle_arc([0, 0, 0], [0, 0, 0], [1, 0, 0])).toBeNull()
   })
 
   // interior angle at `vertex` between the two `others` corners of a triangle
@@ -309,6 +362,89 @@ describe(`measure: overlay endpoints`, () => {
       dihedral_angle(point_1, point_2, point_3, point_4, lattice, PBC_ALL),
       10,
     )
+  })
+
+  // Picks are drawn atoms: keep the drawn displacement when it already is a shortest image (an
+  // image beside its neighbor, one of equidistant images, or a site's own image, which the
+  // minimum image collapses to zero), else take the minimum image across the cell face
+  // oxfmt-ignore
+  test.each([
+    [`a pick across a cell face`, [9.5, 5, 5], [0.5, 5, 5], PBC_ALL, [1, 0, 0]],
+    [`an image atom beside its neighbor`, [9.5, 5, 5], [10.5, 5, 5], PBC_ALL, [1, 0, 0]],
+    [`a site's own image`, [0, 0, 0], [10, 0, 0], PBC_ALL, [10, 0, 0]],
+    [`one of two equidistant images`, [5, 0, 0], [10, 0, 0], PBC_ALL, [5, 0, 0]],
+    [`a vacuum axis`, [5, 5, 1], [5, 5, 9], SLAB_PBC, [0, 0, 8]],
+  ] as [string, Vec3, Vec3, Pbc, Vec3][])(
+    `pick_displacement for %s`,
+    (_desc, from, target, pbc, expected) => {
+      const displacement = pick_displacement(from, target, cubic(10), undefined, pbc)
+      expect(displacement).toEqual(expected.map((val) => expect.closeTo(val, 12)))
+    },
+  )
+
+  // A triangle whose first pick sits across the cell face from the other two is drawn on the
+  // two atoms there, not floated a cell over from them
+  test(`chain positions shift onto the most picked atoms`, () => {
+    const picks: Vec3[] = [
+      [9.5, 5, 5],
+      [0.5, 5, 5],
+      [1.5, 6, 5],
+    ]
+    const drawn = pbc_chain_positions(picks, cubic(10), PBC_ALL)
+    const expected: Vec3[] = [
+      [-0.5, 5, 5],
+      [0.5, 5, 5],
+      [1.5, 6, 5],
+    ]
+    expect(drawn).toEqual(expected.map((point) => point.map((val) => expect.closeTo(val, 12))))
+  })
+
+  // Each step comes from its own two picks, so after a wrap across a cell face the next pick's
+  // own-image or tie test still sees the drawn pair: the same atoms measure the same in either
+  // pick order, and the chain agrees with dihedral_angle on the raw picks
+  // oxfmt-ignore
+  test.each([
+    [`own image after a wrap`, 3, [[2.9, 1.5, 1.5], [0.2, 1.5, 1.5], [0.2, 4.5, 1.5]], 90],
+    [`half-lattice tie after a wrap`, 4, [[3.9, 1, 1], [0.1, 1, 1], [2.1, 1, 1]], 180],
+  ] as [string, number, Vec3[], number][])(
+    `chain angle at the vertex is pick-order independent: %s`,
+    (_desc, cell, picks, vertex_deg) => {
+      const vertex_angle = (points: Vec3[]) => {
+        const [first, vertex, last] = pbc_chain_positions(points, cubic(cell), PBC_ALL)
+        return angle_between_vectors(subtract(first, vertex), subtract(last, vertex))
+      }
+      expect(vertex_angle(picks)).toBeCloseTo(vertex_deg, 9)
+      expect(vertex_angle(picks.toReversed())).toBeCloseTo(vertex_deg, 9)
+    },
+  )
+
+  test(`chain torsion matches dihedral_angle on the raw picks after a wrap`, () => {
+    const picks: Vec3[] = [
+      [2.9, 1.5, 1.5],
+      [0.2, 1.5, 1.5],
+      [0.2, 4.5, 1.5],
+      [1.2, 4.5, 2.5],
+    ]
+    const [pos_1, pos_2, pos_3, pos_4] = pbc_chain_positions(picks, cubic(3), PBC_ALL)
+    const [raw_1, raw_2, raw_3, raw_4] = picks
+    const expected = dihedral_angle(raw_1, raw_2, raw_3, raw_4, cubic(3), PBC_ALL)
+    expect(Math.abs(expected)).toBeCloseTo(135, 9)
+    expect(dihedral_angle(pos_1, pos_2, pos_3, pos_4, null)).toBeCloseTo(expected, 9)
+  })
+
+  // In a one-atom cell every neighbor is the site's own image: a torsion through images
+  // measures their drawn geometry instead of collapsing to zero-length bonds
+  test(`dihedral through a site's own images`, () => {
+    const chain: Vec3[] = [
+      [0, 0, 0],
+      [2.5, 0, 0],
+      [2.5, 2.5, 0],
+      [2.5, 2.5, 2.5],
+    ]
+    const [point_1, point_2, point_3, point_4] = chain
+    const torsion = dihedral_angle(point_1, point_2, point_3, point_4, cubic(2.5), PBC_ALL)
+    expect(Math.abs(torsion)).toBeCloseTo(90, 10)
+    expect(torsion).toBe(dihedral_angle(point_1, point_2, point_3, point_4, null))
   })
 
   test(`empty and single-point chains are returned as-is`, () => {

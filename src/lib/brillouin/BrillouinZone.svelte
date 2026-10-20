@@ -20,7 +20,12 @@
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
-  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
+  import {
+    create_renderer,
+    key_walk_root,
+    wheel_zoom_gate,
+    webgpu_available,
+  } from '#lib/scene/index.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { join_hover_link } from '#lib/tooltip/index.js'
   import { mark_pin } from '#lib/tooltip/pin.svelte.js'
@@ -364,6 +369,7 @@
     Escape: pin.unpin,
   }))
   const key_walk = key_walk_root() // the zone's faces, by keyboard (see KeyWalk)
+  const wheel_gate = wheel_zoom_gate()
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -382,6 +388,7 @@
   {@attach drop_zone}
   {@attach keys}
   {@attach key_walk.attach}
+  {@attach wheel_gate}
 >
   <LiveMessage message={key_walk.message} />
   {@render children?.({ structure, bz_data: zone })}

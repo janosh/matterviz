@@ -444,7 +444,7 @@ export type SizeLegendConfig = PlacementConfig & {
 // Legend callbacks observe chart-owned visibility updates; they do not replace them.
 export type LegendConfig = Omit<
   ComponentProps<typeof PlotLegend>,
-  `series_data` | `on_drag_start` | `on_drag` | `on_drag_end`
+  `series_data` | `on_drag_start` | `on_drag` | `on_drag_end` | `wrap` // wrap: frame-managed
 > & {
   tween?: TweenOptions<Point2D>
   responsive?: boolean // Allow legend to move if density changes (default: false)

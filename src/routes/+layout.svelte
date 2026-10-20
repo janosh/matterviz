@@ -122,18 +122,11 @@
 
 <ThemeControl bind:theme_mode />
 
-<!-- menu_props: inline until svelte-widgets ships the same defaults. Its mobile menu hugs its
-     content and anchors to the start edge, so page text shows beside the open menu; spanning
-     the viewport fixes that. `max-width` clears its 90vw cap, which would re-narrow the panel.
-     --text: svelte-widgets paints the mobile burger bars with var(--text), which matterviz
-     does not define (it uses --text-color); without it the bars fall back to currentColor. -->
 <Nav
   routes={[{ href: `/`, label: `Home` }, ...nav_routes]}
-  menu_props={{ style: `inset-inline: 0.5rem; max-width: none` }}
   aria-label="Main navigation"
   pathname={page.url.pathname}
   --nav-dropdown-z-index="var(--z-index-overlay-nav)"
-  --text="var(--text-color)"
 >
   <!-- Nav dropdown uses --z-index-overlay-nav to sit above overlay controls. -->
   <button

@@ -26,9 +26,9 @@ export type StructureFitOpts = {
   view_up?: Vec3 | null
 }
 
-// `extent` (bounding-sphere diameter) is orientation-free: perspective distance and the
-// outgrown-fit check use it. `spans` is the screen-aligned [width, height] from the initial
-// view, so a slab seen edge-on or a long supercell fills the viewer instead of a sphere around it.
+// `extent` (bounding-sphere diameter) is orientation-free, for the perspective distance. `spans`
+// is the screen-aligned [width, height] seen from `view_dir`, so a slab seen edge-on or a long
+// supercell fills the viewer instead of a sphere around it.
 type StructureFitFrame = { center: Vec3; extent: number; spans: Vec2 }
 
 const empty_frame = (): StructureFitFrame => ({
@@ -37,15 +37,25 @@ const empty_frame = (): StructureFitFrame => ({
   spans: [10, 10],
 })
 
-// Screen right and up for a camera at `view_dir` from its target with world `view_up`; null
-// when the view looks along the up vector and leaves no screen orientation to measure
-const view_basis = (view_dir?: Vec3 | null, view_up?: Vec3 | null): [Vec3, Vec3] | null => {
-  const offset = view_dir?.some((val) => val !== 0) ? view_dir : DEFAULT_CAMERA_VIEW
-  const forward = math.normalize_vec(math.scale(offset, -1))
-  const right = math.cross_3d(forward, view_up ?? [0, 1, 0])
-  if (Math.hypot(...right) < 1e-6) return null
+// Screen right and up for a camera at `view_dir` from its target with world `view_up`, picked
+// as three's Matrix4.lookAt orients the camera, so spans match the screen even looking straight
+// along `view_up` (lookAt then tips the view 1e-4 off the up axis)
+const view_basis = (view_dir?: Vec3 | null, view_up: Vec3 = [0, 1, 0]): [Vec3, Vec3] => {
+  let back = math.normalize_vec(
+    view_dir?.some((val) => val !== 0) ? view_dir : DEFAULT_CAMERA_VIEW,
+  )
+  let right = math.cross_3d(view_up, back)
+  if (right.every((val) => val === 0)) {
+    const [back_x, back_y, back_z] = back
+    back = math.normalize_vec<Vec3>(
+      Math.abs(view_up[2]) === 1
+        ? [back_x + 1e-4, back_y, back_z]
+        : [back_x, back_y, back_z + 1e-4],
+    )
+    right = math.cross_3d(view_up, back)
+  }
   const unit_right = math.normalize_vec(right)
-  return [unit_right, math.cross_3d(unit_right, forward)]
+  return [unit_right, math.cross_3d(back, unit_right)]
 }
 
 export const camera_needs_fit = (
@@ -71,14 +81,15 @@ export const follow_center = (
   return { target: math.add(pose.target, offset), position: math.add(pose.position, offset) }
 }
 
-// Whether content of `extent` has outgrown a zoom fitted to `fitted_extent`: more than twice as
-// large or small. A frame within that keeps the zoom, so a volume scan or an NPT cell still shows
-// its change in size; a dataset's 86 Å slab after a 4 Å cell is re-framed instead. Extents
-// floor at 1 Å like the framing distance, so a point-like fit (one hidden atom) is no zero.
-export const outgrows_fit = (extent: number, fitted_extent: number): boolean => {
-  const [size, fitted] = [Math.max(1, extent), Math.max(1, fitted_extent)]
-  return size > 2 * fitted || size < fitted / 2
-}
+// Whether new view-plane `spans` (Å, padded like every fit) need a fresh framing, against both
+// the `fitted` spans of the content the zoom was fitted to and what the camera shows now
+// (`visible`, Å across the viewport), all seen along one view. Content past the fit padding of
+// both (a bigger supercell) or under half of both is re-framed; anything in between keeps the
+// zoom, so an NPT cell still shows its change in size and the user's own zoom stays.
+export const outgrows_view = (spans: Vec2, fitted: Vec2, visible: Vec2): boolean =>
+  spans.some(
+    (span, axis) => span > DEFAULT_FIT_PADDING * Math.max(fitted[axis], visible[axis]),
+  ) || spans.every((span, axis) => span < Math.min(fitted[axis], visible[axis]) / 2)
 
 // Display radius of a site in Å before the global atom_radius scale: the per-element
 // override or atomic radius, occupancy-weighted over a disordered site's species. Normalized
@@ -158,11 +169,7 @@ export function structure_fit_frame(
   if (!Number.isFinite(min[0])) return empty_frame()
 
   const center = math.add(min, math.scale(math.subtract(max, min), 0.5))
-  const basis = view_basis(opts.view_dir, opts.view_up)
-  const [right, up] = basis ?? [
-    [0, 0, 0],
-    [0, 0, 0],
-  ]
+  const [right, up] = view_basis(opts.view_dir, opts.view_up ?? undefined)
   let radius_sq = 0
   // half-widths about the center, which stays the look-at point
   let [half_right, half_up] = [0, 0]
@@ -188,7 +195,7 @@ export function structure_fit_frame(
   return {
     center,
     extent,
-    spans: basis ? [span(half_right), span(half_up)] : [extent, extent],
+    spans: [span(half_right), span(half_up)],
   }
 }
 

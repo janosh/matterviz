@@ -3,7 +3,7 @@ import type { AnyStructure, Crystal, StructureBond } from '#lib/structure/index.
 import type { BondEditState } from '#lib/structure/bonding.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import * as bonding from '#lib/structure/bonding.js'
-import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
+import { BondFrame, bond_neighbor_summary, pack_bonds } from '#lib/structure/bond-rendering.js'
 import { numeric_sites } from '#lib/structure/site.js'
 import {
   create_numeric_md_frame,
@@ -1916,4 +1916,28 @@ describe(`neighbor_query`, () => {
       ).toBe(1)
     },
   )
+})
+
+describe(`bond_neighbor_summary`, () => {
+  const molecule = make_molecule(
+    [`C`, `O`, `N`, `N`, `H`].map((elem): [string, Vec3] => [elem, [0, 0, 0]]),
+  )
+  const bond = (site_idx_1: number, site_idx_2: number): BondPair => ({
+    pos_1: [0, 0, 0],
+    pos_2: [1, 0, 0],
+    site_idx_1,
+    site_idx_2,
+    bond_length: 1,
+  })
+  // site 0 is the second end of bond 3-0, so neighbours are found from either end
+  const bonds = [bond(0, 1), bond(0, 2), bond(3, 0)]
+
+  test.each([
+    [`counts by element, alphabetical`, 0, molecule, `3 (N: 2, O: 1)`],
+    [`second-end site`, 3, molecule, `1 (C: 1)`],
+    [`missing structure marks elements unknown`, 1, undefined, `1 (?: 1)`],
+    [`unbonded site`, 4, molecule, null],
+  ])(`%s`, (_label, site_idx, structure, expected) => {
+    expect(bond_neighbor_summary(bonds, site_idx, structure)).toBe(expected)
+  })
 })

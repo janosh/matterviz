@@ -128,11 +128,11 @@ export const resize_orthographic_zoom = (
 
 // The auto-fit zoom, pinned to the extent of the last refit(). A trajectory's apparent size
 // is data (a volume scan), so only viewport resizes and explicit refits (new series, camera
-// reset, projection change) move the framing. The effect below never reads `extent`: any
-// re-run reading the live extent (a resize, a prop changing identity) landed the accumulated
-// change as a zoom jump (#459).
+// reset, projection change) move the framing. The effect below only reads the extent of the
+// last refit: any re-run reading the live extent (a resize, a prop changing identity) landed the
+// accumulated change as a zoom jump (#459).
 export function create_fit_zoom<Extent>(opts: {
-  extent: () => Extent
+  initial_extent: () => Extent // fitted until the first refit()
   // Maps an extent to a zoom. Must read the viewport size so resizes re-run the effect below.
   zoom_for: (extent: Extent) => number
   // False while the container has no size, as in create_orthographic_zoom.
@@ -141,7 +141,7 @@ export function create_fit_zoom<Extent>(opts: {
   // though it is read once: a prop passed by value trips svelte's state_referenced_locally.
   initial_zoom: () => number
 }) {
-  let fitted_extent = untrack(opts.extent)
+  let fitted_extent = untrack(opts.initial_extent)
   let zoom = $state(untrack(opts.initial_zoom))
   $effect(() => {
     if (!opts.measured()) return
@@ -151,13 +151,10 @@ export function create_fit_zoom<Extent>(opts: {
     get zoom() {
       return zoom
     },
-    // The extent the zoom was last fitted to
-    get fitted_extent() {
-      return fitted_extent
-    },
-    // Re-frame on the current content: a new series, a camera reset, a projection/direction change
-    refit() {
-      fitted_extent = untrack(opts.extent)
+    // Re-frame on `extent`, the current content: a new series, a camera reset, a
+    // projection/direction change
+    refit(extent: Extent) {
+      fitted_extent = extent
       zoom = untrack(() => opts.zoom_for(fitted_extent))
     },
   }

@@ -15,6 +15,7 @@
   import { resolve_value_range } from '#lib/plot/core/scales.js'
   import {
     corner_vertex,
+    depth_prepass_props,
     faces_centroid,
     HoverHighlight,
     scene_interactivity,
@@ -274,6 +275,7 @@
   // bias to an integer, hence whole-number steps wide enough to cover the numeric mismatch. The
   // slope term stays shared: a per-surface slope would reorder distinct sheets at grazing angles
   const SURFACE_DEPTH_BIAS_STEP = 8
+  const bias_units = (surface_idx: number) => SURFACE_DEPTH_BIAS_STEP * (surface_idx + 1)
   const make_material = (surface_idx: number, color: string | true) => {
     const material =
       representation === `wireframe`
@@ -283,12 +285,7 @@
             roughness: 0.6,
             polygonOffset: true,
             polygonOffsetFactor: 1,
-            polygonOffsetUnits: SURFACE_DEPTH_BIAS_STEP * (surface_idx + 1),
-            // three's WebGPU backend (r174–r185, mrdoob/three.js#34405) omits the polygon
-            // offset from its pipeline cache key, so materials differing only in bias would share
-            // one pipeline. The stencil mask is in the key and inert with the stencil buffer off
-            // (three's default), so a distinct mask forces one pipeline per surface. Drop once fixed
-            stencilFuncMask: surface_idx + 1,
+            polygonOffsetUnits: bias_units(surface_idx),
           })
     material.vertexColors = color === true
     if (color !== true) material.color.set(color)
@@ -302,7 +299,13 @@
   // material rather than 48 — hence built here instead of via <T.Mesh*Material>, which
   // would instantiate one per <T.Mesh>. Cached by all make_material reads, so re-extracted sheets
   // (every frame of a mu drag) skip three's ~2 ms node-builder pass for each new material
-  const material_cache = new Map<string, MeshBasicMaterial | MeshStandardMaterial>()
+  type SheetMaterial = MeshBasicMaterial | MeshStandardMaterial
+  const material_cache = new Map<string, SheetMaterial>()
+  const cached_material = (key: string, make: () => SheetMaterial): SheetMaterial => {
+    const material = material_cache.get(key) ?? make()
+    material_cache.set(key, material)
+    return material
+  }
   const materials = $derived(
     visible_surfaces.map((surface, surface_idx) => {
       // A surface without per-vertex properties keeps its flat colour even in property mode,
@@ -311,13 +314,31 @@
         (use_vertex_colors && vertex_property(surface, property_name) !== undefined) ||
         get_surface_color(surface)
       const key = `${representation}|${surface_idx}|${color}|${is_transparent}`
-      const material = material_cache.get(key) ?? make_material(surface_idx, color)
-      material_cache.set(key, material)
-      return material
+      return cached_material(key, () => make_material(surface_idx, color))
     }),
   )
+  // A translucent sheet's triangles draw in marching-cubes scan order, so without a depth-only
+  // pre-pass (see depth_prepass_props) its far layer shows through the near one in stripes along
+  // the grid slabs. Half a bias step behind the colour pass keeps it in front of the next
+  // surface's bias. Ordered just before its colour passes by renderOrder rather than by sitting
+  // next to it, so every symmetry copy's depth lands before any copy's colour: the tiled zone
+  // reads as one sheet instead of far copies showing through near ones.
+  const depth_materials = $derived(
+    is_transparent && representation !== `wireframe`
+      ? visible_surfaces.map((_, surface_idx) =>
+          cached_material(
+            `depth|${surface_idx}`,
+            () =>
+              new MeshBasicMaterial({
+                side: DoubleSide,
+                ...depth_prepass_props(bias_units(surface_idx) + SURFACE_DEPTH_BIAS_STEP / 2),
+              }),
+          ),
+        )
+      : [],
+  )
   $effect(() => {
-    const used = new Set(materials)
+    const used = new Set([...materials, ...depth_materials])
     for (const [key, material] of material_cache) {
       if (used.has(material)) continue
       material.dispose()
@@ -524,16 +545,25 @@
   {#each visible_surfaces as surface, surface_idx (`surface-${surface.band_index}-${surface.spin}-${surface_idx}`)}
     {@const geometry = geometries[surface_idx]}
     {@const surface_color = get_surface_color(surface)}
-    {@const renderOrder = surface_render_orders.get(surface) ?? surface_idx}
+    {@const rank = surface_render_orders.get(surface) ?? surface_idx}
 
     {#if geometry}
       {#each symmetry_ops as sym_matrix, sym_idx (`sym-${sym_idx}`)}
+        {#if depth_materials[surface_idx]}
+          <T.Mesh
+            {geometry}
+            material={depth_materials[surface_idx]}
+            matrix={sym_matrix}
+            matrixAutoUpdate={false}
+            renderOrder={rank - 0.5}
+          />
+        {/if}
         <T.Mesh
           {geometry}
           material={materials[surface_idx]}
           matrix={sym_matrix}
           matrixAutoUpdate={false}
-          {renderOrder}
+          renderOrder={rank}
           {...touch_hover({
             onpointermove: (event: ThreltePointerEvent) =>
               (hovered = sheet_hover(event, surface, geometry, surface_color, sym_idx)),

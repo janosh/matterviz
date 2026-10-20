@@ -615,6 +615,36 @@ describe(`cartesian frame`, () => {
     15_000,
   )
 
+  // A default legend too wide to sit beside the plot (300px cells) wraps into a row below it,
+  // at the width its cells wrap into; an explicit layout keeps its grid and rendered box
+  test.each(frame_charts)(
+    `$name wraps a default legend below the plot into a row`,
+    async (chart) => {
+      vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(180)
+      vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(44)
+      vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
+        this: Element,
+      ) {
+        return DOMRect.fromRect({ width: 300, height: this.matches(`.legend-item`) ? 20 : 0 })
+      })
+      const mount_legend = async (legend: object) => {
+        const props = { ...chart.dense_props(), show_legend: true, legend }
+        // tall enough for BoxPlot's 24 one-per-line items to leave 80px of plot (outside.ts)
+        return query(await mount_chart(chart, props, { width: 400, height: 700 }), `.legend`)
+      }
+      const wrapped = await mount_legend({})
+      expect([wrapped.className.includes(`wrap`), wrapped.dataset.decorationSide]).toEqual([
+        true,
+        `bottom`,
+      ])
+      expect(wrapped.style.width).toBe(`${wrapped.dataset.decorationWidth}px`)
+      const gridded = await mount_legend({ layout: `vertical` })
+      expect(gridded.className).not.toContain(`wrap`)
+      expect(gridded.dataset.decorationWidth).toBe(`180`)
+    },
+    15_000,
+  )
+
   test.each(frame_charts)(
     `$name auto legend tracks follow the plot width and a styled legend keeps its place`,
     async (chart) => {

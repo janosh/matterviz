@@ -233,13 +233,13 @@ describe(`structure_fit_frame`, () => {
   })
 
   // spans are the [width, height] seen from the view: a 20 Å rod of bare atom centers
-  // seen side-on, end-on (each span floors at 1 Å), and looking down the up vector, which
-  // has no screen orientation and falls back to the sphere
+  // seen side-on, end-on (each span floors at 1 Å), and looking down the up vector, where
+  // three's lookAt tips the view off-axis and puts screen right along +x
   const rod = { sites: [site(`H`, [-10, 0, 0]), site(`H`, [10, 0, 0])] }
   test.each([
     [`side-on`, [0, 0, 1], [20, 1]],
     [`end-on`, [1, 0, 0], [1, 1]],
-    [`along up`, [0, 1, 0], [20, 20]],
+    [`along up`, [0, 1, 0], [20, 1]],
   ] satisfies [string, Vec3, Vec2][])(`rod spans seen %s`, (_desc, view_dir, expected) => {
     const { spans, extent: fit } = structure_fit_frame(rod, { atom_radius_scale: 0, view_dir })
     expect(fit).toBeCloseTo(20 * DEFAULT_FIT_PADDING, 10)
@@ -319,17 +319,28 @@ describe(`structure_fit_frame`, () => {
     },
   )
 
+  // Spans past the fit padding of both the fitted spans and the live view (a supercell), or under
+  // half of both, refit; a few % (an NPT cell) or the user's own zoom in or out keeps the zoom.
+  // The 1x1x1 -> 2x1x1 / 1x1x2 spans are a real cubic cell's from the default oblique view.
+  const fit: Vec2 = [8.43, 6.32]
+  // oxfmt-ignore
   test.each([
-    [10, 10, false],
-    [19.9, 10, false],
-    [5.1, 10, false],
-    [21, 10, true],
-    [4.9, 10, true],
-    [1.5, 0, false],
-    [2.5, 0, true],
-  ])(`outgrows_fit(%s, fitted %s) is %s`, (content_extent, fitted, expected) => {
-    expect(struct_utils.outgrows_fit(content_extent, fitted)).toBe(expected)
-  })
+    [`unchanged content`, fit, fit, fit, false],
+    [`a 5% NPT step`, [8.85, 6.64], fit, fit, false],
+    [`2x1x1 supercell`, [8.99, 7.1], fit, fit, true],
+    [`1x1x2 supercell`, [9.67, 6.94], fit, fit, true],
+    [`2x2x2 supercell in a view zoomed out 3x`, [16.9, 12.6], fit, [25.3, 19], false],
+    [`a 5% NPT step in a view zoomed in 2x`, [8.85, 6.64], fit, [4.2, 3.2], false],
+    [`2x2x2 supercell in a view zoomed in 2x`, [16.9, 12.6], fit, [4.2, 3.2], true],
+    [`half the fit on one axis`, [4, 3.2], fit, fit, false],
+    [`under half the fit on both axes`, [4.2, 3.1], fit, fit, true],
+    [`under half the fit, but filling a zoomed-in view`, [4.2, 3.1], fit, [4.2, 3.2], false],
+  ] satisfies [string, Vec2, Vec2, Vec2, boolean][])(
+    `outgrows_view: %s`,
+    (_label, spans, fitted, visible, expected) => {
+      expect(struct_utils.outgrows_view(spans, fitted, visible)).toBe(expected)
+    },
+  )
 
   test(`follow_center moves target and position alike, keeping direction and distance`, () => {
     const pose = { target: [1.5, 1.5, 1.5] as Vec3, position: [11.5, 4.5, 9.5] as Vec3 }

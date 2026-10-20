@@ -46,12 +46,16 @@ export function css_to_linear_rgb(css_color: string): LinearRgb {
 const brighten_scratch = new Color()
 const brighten_white = new Color(0xffffff)
 
-// Parse CSS sRGB into three's Linear-sRGB working space, mix toward white there, then encode
-// the result as sRGB hex (55% of the way). Used for hover shells that should glow in the
-// atom's own hue. Parsed by d3 (see parse_linear_rgb) so an unparsable
-// color glows grey rather than in whatever hue the previous call left in the scratch.
+// The hover colour of a mark filled with `css_color`: a quarter of the way to white in sRGB,
+// where steps look even, so a blue stays a lighter blue (55% in Linear-sRGB turned a blue sheet
+// near white). Parsed by d3 (see parse_linear_rgb) so an unparsable color glows grey rather
+// than in whatever hue the previous call left in the scratch.
 export function brighten_hex(css_color = `#cccccc`): string {
-  brighten_scratch.setRGB(...parse_linear_rgb(css_color)).lerp(brighten_white, 0.55)
+  brighten_scratch
+    .setRGB(...parse_linear_rgb(css_color))
+    .convertLinearToSRGB()
+    .lerp(brighten_white, 0.25)
+    .convertSRGBToLinear()
   return `#${brighten_scratch.getHexString()}`
 }
 

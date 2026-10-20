@@ -1100,16 +1100,8 @@
   })
   let y_axis_labels = $derived(generate_axis_labels(plot_series))
   let y_axis_scale_types = $derived(generate_axis_scale_types(plot_series))
-  let y_axis = $derived({
-    label: y_axis_labels.y,
-    label_shift: { y: 10 },
-    scale_type: y_axis_scale_types.y,
-  })
-  let y2_axis = $derived({
-    label: y_axis_labels.y2,
-    label_shift: { y: 80 },
-    scale_type: y_axis_scale_types.y2,
-  })
+  let y_axis = $derived({ label: y_axis_labels.y, scale_type: y_axis_scale_types.y })
+  let y2_axis = $derived({ label: y_axis_labels.y2, scale_type: y_axis_scale_types.y2 })
   let plot_loading = $derived(
     !session.properties_complete &&
       (plot_type === `time-series` ? plot_series.length === 0 : !distribution_series),

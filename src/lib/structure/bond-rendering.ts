@@ -1,4 +1,4 @@
-import { numeric_sites } from './site'
+import { get_site, numeric_sites } from './site'
 import type { Vec3 } from '#lib/math.js'
 import type { AnyStructure, BondOrder, BondPair } from '#lib/structure/index.js'
 import type { TypedArray } from 'three/webgpu'
@@ -98,20 +98,23 @@ export class BondFrame {
             : this.structure.sites[second].xyz[axis]
     }
   }
+  record(idx: number): BondPair {
+    const order = this.order(idx)
+    const shift = this.cell_shift(idx)
+    return {
+      site_idx_1: this.columns.indices[idx * 2],
+      site_idx_2: this.columns.indices[idx * 2 + 1],
+      pos_1: this.position_1(idx),
+      pos_2: this.position_2(idx),
+      bond_length: this.columns.lengths[idx],
+      ...(order === undefined ? {} : { bond_order: order }),
+      ...(shift ? { cell_shift: shift } : {}),
+    }
+  }
   materialize(): BondPair[] {
-    return (this.records ??= Array.from({ length: this.length }, (_unused, idx) => {
-      const order = this.order(idx)
-      const shift = this.cell_shift(idx)
-      return {
-        site_idx_1: this.columns.indices[idx * 2],
-        site_idx_2: this.columns.indices[idx * 2 + 1],
-        pos_1: this.position_1(idx),
-        pos_2: this.position_2(idx),
-        bond_length: this.columns.lengths[idx],
-        ...(order === undefined ? {} : { bond_order: order }),
-        ...(shift ? { cell_shift: shift } : {}),
-      }
-    }))
+    return (this.records ??= Array.from({ length: this.length }, (_unused, idx) =>
+      this.record(idx),
+    ))
   }
 }
 export type BondData = readonly BondPair[] | BondFrame
@@ -122,6 +125,9 @@ export const bond_site_2 = (bonds: BondData, idx: number): number =>
   bonds instanceof BondFrame ? bonds.columns.indices[idx * 2 + 1] : bonds[idx].site_idx_2
 export const bond_order_at = (bonds: BondData, idx: number): BondOrder | undefined =>
   bonds instanceof BondFrame ? bonds.order(idx) : bonds[idx].bond_order
+// Bond `idx` as a record, without expanding every bond of a BondFrame
+export const bond_at = (bonds: BondData, idx: number): BondPair =>
+  bonds instanceof BondFrame ? bonds.record(idx) : bonds[idx]
 export const bond_records = (bonds: BondData): readonly BondPair[] =>
   bonds instanceof BondFrame ? bonds.materialize() : bonds
 
@@ -136,6 +142,25 @@ export function bond_neighbors(bonds: BondData, site_idx: number): number[] {
     else if (second === site_idx) neighbors.push(first)
   }
   return neighbors
+}
+
+// Hovered site's bonded neighbours for the tooltip, e.g. `3 (N: 2, O: 1)`; null when none
+export function bond_neighbor_summary(
+  bonds: BondData,
+  site_idx: number,
+  structure: AnyStructure | undefined,
+): string | null {
+  const neighbors = bond_neighbors(bonds, site_idx)
+  if (neighbors.length === 0) return null
+  const counts: Record<string, number> = {}
+  for (const neighbor_idx of neighbors) {
+    const element = get_site(structure, neighbor_idx)?.species[0]?.element ?? `?`
+    counts[element] = (counts[element] ?? 0) + 1
+  }
+  const parts = Object.entries(counts)
+    .toSorted(([elem_a], [elem_b]) => elem_a.localeCompare(elem_b))
+    .map(([elem, count]) => `${elem}: ${count}`)
+  return `${neighbors.length} (${parts.join(`, `)})`
 }
 
 export const instance_count_for_order = (order: BondOrder | undefined): number =>

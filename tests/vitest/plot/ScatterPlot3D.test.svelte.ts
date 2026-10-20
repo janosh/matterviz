@@ -28,6 +28,7 @@ import type { BufferGeometry, Object3D, SphereGeometry } from 'three/webgpu'
 import {
   ClippingGroup,
   EdgesGeometry,
+  FrontSide,
   InstancedMesh,
   Color,
   Line,
@@ -188,6 +189,58 @@ test.each([`surface`, `axes`, `reference plane`] as const)(
     for (const dispose of geometries.values()) expect(dispose).toHaveBeenCalledTimes(1)
   },
 )
+
+// A translucent surface folding over itself (a torus) draws in grid order, so without a depth
+// pre-pass its far layer shows through the near one only in the rows drawn first. The
+// depth-only twin shares the geometry and sorts right before the surface: same renderOrder and
+// position, lower id. Opaque surfaces skip it.
+test(`translucent surfaces get a depth-only pre-pass drawn right before them`, async () => {
+  const inputs = $state<{ opacity: number; double_sided?: boolean }>({ opacity: 0.6 })
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    Surface3D(anchor, {
+      get config(): Surface3DConfig {
+        return { ...grid_surface, ...inputs }
+      },
+    }),
+  )
+  try {
+    flushSync()
+    const meshes = () => {
+      const found: Mesh[] = []
+      scene.traverse((object) => {
+        if (object instanceof Mesh) found.push(object)
+      })
+      return found
+    }
+    const [depth_pass, surface] = meshes()
+    expect(meshes()).toHaveLength(2)
+    const depth_material = depth_pass.material as MeshBasicMaterial
+    const surface_material = surface.material as MeshBasicMaterial
+    // one depth draw, a few units behind the surface so its front layer passes the depth test
+    expect(depth_material).toMatchObject({
+      colorWrite: false,
+      transparent: true,
+      forceSinglePass: true,
+      side: surface_material.side,
+    })
+    expect(depth_material.polygonOffsetUnits).toBeGreaterThan(0)
+    expect(surface_material).toMatchObject({ colorWrite: true, transparent: true })
+    expect(depth_pass.geometry).toBe(surface.geometry)
+    expect(depth_pass.id).toBeLessThan(surface.id)
+    expect(depth_pass.renderOrder).toBe(surface.renderOrder)
+    expect(depth_pass.matrixWorld.equals(surface.matrixWorld)).toBe(true)
+    expect(depth_pass.visible).toBe(true)
+    // a single-sided surface's pre-pass must not write depth for the back faces it culls
+    inputs.double_sided = false
+    flushSync()
+    expect((depth_pass.material as MeshBasicMaterial).side).toBe(FrontSide)
+    inputs.opacity = 1
+    flushSync()
+    expect(depth_pass.visible).toBe(false)
+  } finally {
+    await unmount_scene()
+  }
+})
 
 // A descending axis range must not drop an extended line or shrink a normal-defined plane
 test(`reference line and plane span a reversed axis range`, async () => {

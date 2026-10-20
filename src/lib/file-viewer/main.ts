@@ -4,6 +4,7 @@
 
 // oxlint-disable-next-line eslint-plugin-import/no-unassigned-import -- side-effect only
 import '#lib/app.css'
+import { host } from '#lib/host.js'
 import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
 import {
   merge,
@@ -58,6 +59,10 @@ declare global {
 // host-bridge.ts owns the single acquireVsCodeApi() call; VS Code throws on a
 // second one.
 const vscode_api = get_vscode_api()
+
+// This entry's viewer fills a VS Code tab or JupyterLab document: no page to scroll, so every
+// wheel zooms instead of waiting for a click (see WheelZoomGate)
+host.wheel_zoom = `always`
 
 // VS Code serves the bundle from a resource origin (https://*.vscode-cdn.net) that differs
 // from the webview document's origin. Webview resources are served by a service worker that

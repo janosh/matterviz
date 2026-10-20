@@ -88,7 +88,11 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
   const reserved = scene.reserved_pad ?? { t: 0, b: 0, l: 0, r: 0 }
   const base_w = width - base_pad.l - base_pad.r - reserved.l - reserved.r
   const base_h = height - base_pad.t - base_pad.b - reserved.t - reserved.b
-  const { width: legend_width = 0, height: legend_height = 0 } = legend?.footprint ?? {}
+  // The side is decided on the column the legend takes inside or beside the plot, which
+  // does not change with the layout that decision gives it (LegendDecorationItem)
+  const column = legend?.column_footprint ?? legend?.footprint ?? { width: 0, height: 0 }
+  const { width: legend_width, height: legend_height } = column
+  const box = legend?.footprint ?? column
   // Too wide unless the caller's right padding already has room for it (costs no plot width)
   const too_wide =
     legend_width > LEGEND_MAX_INTERIOR_FRACTION * base_w && legend_width + 2 * gap > base_pad.r
@@ -106,7 +110,7 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     legend != null &&
     (too_wide ||
       too_tall ||
-      is_crowded(obstacles_norm, legend.footprint, base_w, base_h, legend.clearance ?? 12))
+      is_crowded(obstacles_norm, column, base_w, base_h, legend.clearance ?? 12))
   // Put a narrow/tall legend on the right (wastes less reserved margin than a wide bottom strip);
   // a wide/short legend goes below. Skip the right side if a vertical colorbar already took it
   // or the frame is too narrow to give any width away.
@@ -119,7 +123,8 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
   // padding absorbs them rather than growing further (see DecorationScene.axis_pad)
   const past_axis = (side: keyof Sides, size: number) =>
     Math.max(base_pad[side], axis_pad[side] + size + gap)
-  const strip_height = Math.min(legend_height, LEGEND_STRIP_MAX_FRACTION * height)
+  const strip = legend?.strip_footprint ?? box
+  const strip_height = Math.min(strip.height, LEGEND_STRIP_MAX_FRACTION * height)
   const strip_pad = past_axis(`b`, strip_height)
   const legend_bottom =
     legend_outside &&
@@ -130,18 +135,18 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
     l: base_pad.l,
     b: legend_bottom ? strip_pad : base_pad.b,
     r: legend_right
-      ? Math.max(base_pad.r, legend_width + 2 * gap)
+      ? Math.max(base_pad.r, box.width + 2 * gap)
       : colorbar_takes_right
         ? past_axis(`r`, colorbar_width)
         : base_pad.r,
   }
   const legend_pos: DecorationPoint = legend_right
     ? {
-        x: width - legend_width - gap,
-        y: base_pad.t + reserved.t + (base_h - legend_height) / 2,
+        x: width - box.width - gap,
+        y: base_pad.t + reserved.t + (base_h - box.height) / 2,
       }
     : {
-        x: base_pad.l + reserved.l + (base_w - legend_width) / 2,
+        x: base_pad.l + reserved.l + (base_w - strip.width) / 2,
         y: height - strip_height - gap,
       }
 
@@ -175,7 +180,9 @@ export const get_outside_placement = (
     location: `outside` as const,
   }
   if (item.kind === `legend` && layout.legend_outside) {
-    return { ...placement, ...layout.legend_pos, side: layout.legend_side }
+    const { legend_side: side } = layout
+    const footprint = (side === `bottom` ? item.strip_footprint : undefined) ?? item.footprint
+    return { ...placement, footprint, ...layout.legend_pos, side }
   }
   if (item.kind === `colorbar` && layout.colorbar_outside) {
     return { ...placement, ...layout.colorbar_pos, side: layout.colorbar_side }

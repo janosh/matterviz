@@ -47,9 +47,9 @@ const pulse_time = () =>
 
 describe(`create_pulse_animation`, () => {
   test.each([
-    [0, 0.2],
-    [0.5, 0.275],
-    [1, 0.35],
+    [0, 0.1],
+    [0.5, 0.15],
+    [1, 0.2],
   ])(`keeps highlight opacity subtle at unit=%s`, (pulse_unit, expected) => {
     expect(pulsing_highlight_opacity(pulse_unit)).toBeCloseTo(expected)
   })

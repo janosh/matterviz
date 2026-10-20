@@ -23,10 +23,12 @@ test.each([parse_linear_rgb, css_to_linear_rgb])(
   },
 )
 
+// A quarter of the way to white in sRGB: lighter, in the same hue. 55% in Linear-sRGB turned
+// band 2's blue Fermi sheet near white (#c6d2e4) under the hover highlight.
 test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   const source = `#57178f` // deep purple (Cs-like)
   const bright = brighten_hex(source)
-  expect(bright).toBe(`#cac4d6`)
+  expect(bright).toBe(`#8151ab`)
   const src = new Color(source)
   const out = new Color(bright)
   // Strictly brighter than the atom color (dirty gray hover used to lose the hue entirely).
@@ -34,11 +36,13 @@ test(`brighten_hex lifts luminance while keeping the source hue family`, () => {
   // Still purple-ish: blue and red dominate green (not a neutral wash).
   expect(out.b).toBeGreaterThan(out.g)
   expect(out.r).toBeGreaterThan(out.g)
-  expect(brighten_hex(undefined)).toBe(`#eaeaea`) // #cccccc lifted 55% toward white
-  // an unparsable color glows grey (linear 0.5 mixed 55% toward white), not in the hue the
-  // previous call left behind — three's Color.set would have kept the red
+  // each sRGB channel a quarter of the way to 255: 0x37 -> 0x69, 0x7e -> 0x9e, 0xb8 -> 0xca
+  expect(brighten_hex(`#377eb8`)).toBe(`#699eca`)
+  expect(brighten_hex(undefined)).toBe(`#d9d9d9`) // #cccccc lifted a quarter toward white
+  // an unparsable color glows grey (linear 0.5, i.e. sRGB #bcbcbc, lifted a quarter toward
+  // white), not in the hue the previous call left behind: three's Color.set would keep the red
   brighten_hex(`#ff0000`)
-  expect(brighten_hex(`not-a-color`)).toBe(`#${new Color(0.775, 0.775, 0.775).getHexString()}`)
+  expect(brighten_hex(`not-a-color`)).toBe(`#cccccc`)
 })
 
 // Bit-identical to the chempot domain outline it replaced: three's Color scaled by 0.6 in

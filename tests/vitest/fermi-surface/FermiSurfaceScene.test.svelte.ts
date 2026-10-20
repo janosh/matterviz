@@ -79,11 +79,13 @@ const mount_scene = (props: ComponentProps<typeof FermiSurfaceScene>) => {
   return keys
 }
 
-// Materials of the sheet meshes in mount order (surface-major)
-const mesh_materials = () =>
+// Materials of the sheet meshes in mount order (surface-major), colour passes only unless
+// `depth` asks for the depth-only pre-pass meshes of translucent sheets
+const mesh_materials = (depth = false) =>
   threlte_stub.nodes
     .filter(({ tag }) => tag === `Mesh`)
     .map(({ props }) => props.material as MeshStandardMaterial)
+    .filter((material) => material.colorWrite !== depth)
 
 test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque rebuilds them`, () => {
   const props = $state<ComponentProps<typeof FermiSurfaceScene>>({
@@ -103,7 +105,6 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
     expect(material).toMatchObject({ transparent: true, opacity: 0.6, depthWrite: true })
     expect(material.polygonOffset).toBe(true)
     expect(Number.isInteger(material.polygonOffsetUnits)).toBe(true) // WebGPU truncates the bias
-    expect(material.stencilWrite).toBe(false)
   }
   // Coincident sheets (spin-up/-down copies of one band) must not z-fight: each surface sits at
   // its own depth bias with a shared slope factor so genuinely different sheets keep their
@@ -111,10 +112,28 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
   const [sheet_0, sheet_1] = transparent
   expect(sheet_1.polygonOffsetUnits - sheet_0.polygonOffsetUnits).toBeGreaterThanOrEqual(4)
   expect(sheet_0.polygonOffsetFactor).toBe(sheet_1.polygonOffsetFactor)
-  // three's WebGPU pipeline cache key ignores the polygon offset (mrdoob/three.js#34405); a
-  // per-surface stencil read mask (keyed but inert) keeps the surfaces from sharing one pipeline
-  expect(sheet_0.stencilFuncMask).not.toBe(sheet_1.stencilFuncMask)
+  // Triangles draw in marching-cubes order, so without a depth pre-pass a sheet's far layer
+  // shows through its near one in stripes along the grid slabs. Each translucent sheet gets a
+  // depth-only twin drawn just before it, biased between its own colour pass and the next sheet's
+  const depth_passes = mesh_materials(true)
+  expect(depth_passes).toHaveLength(2)
+  for (const depth_pass of depth_passes) {
+    // one depth draw, not three's back-then-front split of a translucent DoubleSide material
+    expect(depth_pass).toMatchObject({
+      colorWrite: false,
+      transparent: true,
+      depthWrite: true,
+      side: DoubleSide,
+      forceSinglePass: true,
+    })
+  }
+  const units = [sheet_0, depth_passes[0], sheet_1, depth_passes[1]].map(
+    ({ polygonOffsetUnits }) => polygonOffsetUnits,
+  )
+  expect(units).toEqual(units.toSorted((unit_a, unit_b) => unit_a - unit_b))
+  expect(new Set(units).size).toBe(4)
   const dispose_spies = transparent.map((material) => vi.spyOn(material, `dispose`))
+  const depth_dispose_spies = depth_passes.map((material) => vi.spyOn(material, `dispose`))
 
   invalidate.mockClear()
   props.surface_opacity = 0.7
@@ -137,6 +156,8 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
   expect(kept).toBe(transparent[0])
   expect(replaced).not.toBe(transparent[1])
   expect(dispose_spies.map((spy) => spy.mock.calls.length)).toEqual([0, 1])
+  // depth passes are per slot, not per colour, so a recoloured slot keeps its own
+  expect(mesh_materials(true)).toEqual(depth_passes)
 
   // Fully opaque rebuilds fresh (non-transparent) materials
   props.surface_opacity = 1
@@ -147,6 +168,8 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
     expect([...transparent, replaced]).not.toContain(material)
     expect(material).toMatchObject({ transparent: false, opacity: 1, depthWrite: true })
   }
+  expect(mesh_materials(true)).toEqual([]) // opaque sheets need no depth pre-pass
+  for (const spy of depth_dispose_spies) expect(spy).toHaveBeenCalledOnce()
   for (const spy of dispose_spies) expect(spy).toHaveBeenCalledTimes(1)
   // a wireframe swap rebuilds them too, and unmounting disposes the materials still in use
   props.representation = `wireframe`
@@ -239,6 +262,24 @@ test(`hover picks the front-most sheet that survives the clip plane`, () => {
   expect(filter([inner, outer])).toStrictEqual([outer])
 })
 
+// Inner sheets draw first whatever their index (here the outer one comes first), each depth
+// pre-pass half a step before its own colour pass so it lands before every symmetry copy's colour
+test(`depth pre-passes draw right before their sheet, inner sheets first`, () => {
+  mount_scene({ fermi_data: make_fermi_surface([sheet(2), sheet(0)]), surface_opacity: 0.5 })
+  const orders = threlte_stub.nodes
+    .filter(({ tag }) => tag === `Mesh`)
+    .map(({ props: mesh_props }) => [
+      (mesh_props.material as MeshStandardMaterial).colorWrite,
+      mesh_props.renderOrder,
+    ])
+  expect(orders).toEqual([
+    [false, 0.5],
+    [true, 1],
+    [false, -0.5],
+    [true, 0],
+  ])
+})
+
 // Property mode colours each sheet by the selected named property (the first when none is
 // named); a sheet without it keeps its flat colour, and the tooltip carries every property at
 // the hit vertex. The hovered sheet's highlight shows in flat colour modes only.
@@ -258,10 +299,10 @@ test(`colours by the selected property and reports all properties on hover`, () 
   const keys = mount_scene(props)
   const vertex_colors = () => mesh_materials().map((material) => material.vertexColors)
   expect(vertex_colors()).toEqual([true, true]) // first property λ: both sheets have it
-  // equal colouring still needs a material per sheet: depth bias and stencil mask differ
+  // equal colouring still needs a material per sheet: the depth bias differs
   const [mat_0, mat_1] = mesh_materials()
   expect(mat_0).not.toBe(mat_1)
-  expect(mat_0.stencilFuncMask).not.toBe(mat_1.stencilFuncMask)
+  expect(mat_0.polygonOffsetUnits).not.toBe(mat_1.polygonOffsetUnits)
   props.property_name = `Δ`
   flushSync()
   expect(vertex_colors()).toEqual([true, false]) // band 2 has no Δ
@@ -269,7 +310,9 @@ test(`colours by the selected property and reports all properties on hover`, () 
   flushSync()
   expect(vertex_colors()).toEqual([true, true])
 
-  const mesh = threlte_stub.nodes.find(({ tag }) => tag === `Mesh`)
+  const mesh = threlte_stub.nodes.find(
+    ({ tag, props: mesh_props }) => tag === `Mesh` && mesh_props.onpointermove,
+  )
   // a set color_scale.value_range end recolors the sheets; null ends fit the data again
   const colors = () =>
     Array.from(

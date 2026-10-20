@@ -1,7 +1,8 @@
 <script lang="ts">
   // The one hover highlight for 3D scene surfaces: the hovered triangles (all of `geometry`, or
   // its `faces` subset) redrawn just in front of the source, unlit, in its colour brightened
-  // (brighten_hex), outlined along their boundary in a darker shade of it (highlight_edge_color).
+  // (brighten_hex) at half opacity so the source's shading still shows (the outline marks the
+  // hovered region), outlined along their boundary in a darker shade of it (highlight_edge_color).
   // The polygon offset pulls the fill in front of its coplanar source and it writes no depth,
   // so it never hides what lies behind; render order 100 draws it after ordinary transparent
   // layers and before always-on-top markers. The source geometries stay the caller's; the face
@@ -46,7 +47,7 @@
     <T.MeshBasicMaterial
       color={brighten_hex(color)}
       transparent
-      opacity={0.75}
+      opacity={0.5}
       side={DoubleSide}
       depthWrite={false}
       polygonOffset

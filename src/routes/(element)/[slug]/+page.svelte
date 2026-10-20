@@ -137,8 +137,7 @@
   <!-- onmouseleave makes ElementScatter always show current element unless user actively hovers another element -->
   <ElementScatter
     y={scatter_plot_values}
-    x_axis={{ label_shift: { y: -50 } }}
-    y_axis={{ label: y_label, range: [0, null], format: `.2~f`, label_shift: { y: 20 } }}
+    y_axis={{ label: y_label, range: [0, null], format: `.2~f` }}
     {y_unit}
     {color_scale}
     onmouseleave={() => (selected.element = element)}

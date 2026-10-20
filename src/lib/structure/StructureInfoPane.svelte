@@ -34,7 +34,7 @@
     [`File Drop`, `Drop POSCAR, XYZ, CIF or JSON files to load structures`],
     [
       `Atom Selection`,
-      `Click atoms to select them, then pick a measure mode: distance measures all selected pairs, angle and dihedral the last 3 or 4 picks`,
+      `Click atoms to select them, then pick a measure mode: distance measures all selected pairs, angle all three angles of the last 3 picks, dihedral the torsion of the last 4`,
     ],
     [
       `Camera Reset`,

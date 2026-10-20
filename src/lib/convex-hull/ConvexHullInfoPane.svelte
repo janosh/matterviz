@@ -14,7 +14,7 @@
     { label: `Single click`, value: `Select point`, key: `tip-click` },
     { label: `Double click`, value: `Copy info`, key: `tip-double-click` },
     { label: `Drag`, value: `Rotate view`, key: `tip-drag` },
-    { label: `Scroll`, value: `Zoom in/out`, key: `tip-scroll` },
+    { label: `Shift drag`, value: `Pan view`, key: `tip-pan` },
     { label: `Key r`, value: `Reset camera`, key: `tip-reset` },
     { label: `Key b`, value: `Toggle color mode`, key: `tip-color-mode` },
     { label: `Key s`, value: `Toggle stable points`, key: `tip-stable` },

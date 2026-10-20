@@ -13,7 +13,7 @@ import { get_element_counts } from './density'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { Vec3 } from '#lib/math.js'
-import { array_extent, array_max, grow_capacity } from '#lib/math.js'
+import { array_extent, array_max, grow_capacity, same_position } from '#lib/math.js'
 import { DEFAULTS } from '#lib/settings.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { css_to_linear_rgb } from '#lib/scene/colors.js'
@@ -710,15 +710,7 @@ export function compute_polyhedra(
       // vertex itself, so only the count is wrong). 1e-6 Å because the two paths build
       // the position differently - frac_to_cart(frac + shift) vs xyz + shift * lattice -
       // and disagree at ~1e-15, six orders below any real neighbor separation.
-      if (
-        has_shifted_bonds &&
-        vertex_positions.some(
-          (prev) =>
-            Math.abs(prev[0] - pos[0]) < 1e-6 &&
-            Math.abs(prev[1] - pos[1]) < 1e-6 &&
-            Math.abs(prev[2] - pos[2]) < 1e-6,
-        )
-      )
+      if (has_shifted_bonds && vertex_positions.some((prev) => same_position(prev, pos)))
         continue
       vertex_site_idxs.push(idx)
       vertex_positions.push(pos)

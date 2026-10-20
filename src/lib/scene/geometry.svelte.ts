@@ -149,3 +149,20 @@ export function dispose_on_change(
 // Radius of a hovered or selected sphere's translucent shell, as a multiple of the sphere's:
 // just outside it, so the shell outlines the sphere rather than a bulkier one around it
 export const HOVER_SHELL_SCALE = 1.04
+
+// Material props of a translucent mesh's depth-only pre-pass. One translucent mesh draws its
+// triangles in index order, not back to front, so with depth writes on, a far layer of it shows
+// through a near one only where it happens to draw first (stripes along a marching-cubes or
+// surface grid). Drawing its depth first leaves just the front-most layer to blend. transparent
+// keeps it in the colour pass's sort list; one pass suffices for depth (three otherwise splits a
+// translucent DoubleSide material into back and front draws). Its polygon offset should sit a
+// few units behind its colour pass's, so that pass's front layer passes the depth test whatever
+// the rounding between the two materials' vertex shaders.
+export const depth_prepass_props = (polygon_offset_units: number) => ({
+  colorWrite: false,
+  transparent: true,
+  forceSinglePass: true,
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: polygon_offset_units,
+})

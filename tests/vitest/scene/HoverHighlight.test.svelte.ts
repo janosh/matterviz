@@ -83,8 +83,10 @@ test.each([
     expect(triangles(fill.geometry)).toEqual(fill_tris.map((tri) => tri.map(key)))
     const [mesh, material] = threlte_stub.nodes
     expect(mesh.props.renderOrder).toBe(100)
+    // half opacity: the hovered surface's own shading still shows through the tint
     expect(material.props).toMatchObject({
       transparent: true,
+      opacity: 0.5,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,

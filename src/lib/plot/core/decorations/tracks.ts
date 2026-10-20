@@ -1,4 +1,5 @@
 import { assert_non_negative } from '#lib/math.js'
+import { html_to_text } from '#lib/utils.js'
 import type { DecorationSize, LegendDecorationItem } from './types'
 
 type LegendOrientation = `horizontal` | `vertical`
@@ -31,7 +32,6 @@ type LegendDecorationConfig = {
   layout_tracks?: number | `auto`
   layout?: LegendOrientation
   item_extents?: readonly (LegendItemExtent | undefined)[]
-  estimated_item_extent?: LegendItemExtent
   collapsed_groups?: ReadonlySet<string>
   filterable?: boolean
   filter_threshold?: number
@@ -77,37 +77,67 @@ export function get_legend_grid_cells({
   return cells
 }
 
+// Each grid cell's size: the caller-measured `measured[cell_idx]` where given, else a rough
+// estimate (labels at ~7 px per character plus marker and padding). PlotLegend and the solver
+// both count auto tracks from these, so they agree on the grid they lay out.
+export const legend_cell_extents = (
+  cells: readonly LegendGridCell[],
+  items: readonly LegendGridItem[],
+  measured: readonly (LegendItemExtent | undefined)[] = [],
+): Required<LegendItemExtent>[] =>
+  cells.map((cell, cell_idx) => {
+    const item = cell.kind === `item` ? items[cell.item_idx] : undefined
+    const [label, chrome_width] =
+      cell.kind === `empty`
+        ? [`No legend items`, 11]
+        : cell.kind === `group`
+          ? [cell.group, 27]
+          : [item?.label ?? ``, item?.legend_group == null ? 39 : 52]
+    const estimate =
+      cell.kind === `filter`
+        ? { width: 160, height: 25 }
+        : { width: Array.from(html_to_text(label)).length * 7 + chrome_width, height: 20 }
+    const { width = estimate.width, height = estimate.height } = measured[cell_idx] ?? {}
+    return { width, height }
+  })
+
 export const create_legend_decoration_item = ({
   enabled,
   footprint,
+  column_footprint,
+  strip_footprint,
   items,
   config,
 }: {
   enabled: boolean
   footprint: DecorationSize
+  column_footprint?: DecorationSize
+  strip_footprint?: DecorationSize
   items: readonly LegendGridItem[]
   config?: LegendDecorationConfig
 }): LegendDecorationItem | null => {
   if (!enabled) return null
+  const cells = get_legend_grid_cells({
+    items,
+    collapsed_groups: config?.collapsed_groups,
+    filter_query: config?.filter_query,
+    show_filter:
+      (config?.filterable ?? true) &&
+      items.length >= (config?.filter_threshold ?? LEGEND_FILTER_THRESHOLD),
+  })
   return {
     id: `legend`,
     kind: `legend`,
     footprint,
+    column_footprint,
+    strip_footprint,
     clearance: config?.axis_clearance,
     auto_tracks:
       config?.layout_tracks === `auto`
         ? {
-            item_count: get_legend_grid_cells({
-              items,
-              collapsed_groups: config.collapsed_groups,
-              filter_query: config.filter_query,
-              show_filter:
-                (config.filterable ?? true) &&
-                items.length >= (config.filter_threshold ?? LEGEND_FILTER_THRESHOLD),
-            }).length,
+            item_count: cells.length,
             orientation: config.layout ?? `vertical`,
-            item_extents: config.item_extents,
-            estimated_item_extent: config.estimated_item_extent,
+            item_extents: legend_cell_extents(cells, items, config.item_extents),
           }
         : undefined,
   }

@@ -1,6 +1,6 @@
 import { tooltip_paint } from '#lib/colors/index.js'
 import { host } from '#lib/host.js'
-import type { Rect } from '#lib/plot/core/layout.js'
+import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout.js'
 import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
 import type { ShortcutScope } from '#lib/shortcuts.js'
 import { to_error } from '#lib/utils.js'
@@ -15,6 +15,25 @@ export {
   trigger_intersection,
   trigger_resize_observer,
 } from './environment'
+
+// Axis titles where PlotAxes puts them, not moved by a stale label_shift: y and y2 at the plot
+// area's vertical middle, x one title offset below it
+export function expect_axis_titles_placed(root: ParentNode): void {
+  const labels = `text.x-label, text.y-label, text.y2-label`
+  const plots = [...root.querySelectorAll(`svg`)].filter(
+    (svg) => svg.querySelector(`defs clipPath rect`) && svg.querySelector(labels),
+  )
+  expect(plots.length).toBeGreaterThan(0)
+  for (const svg of plots) {
+    const rect = svg.querySelector(`defs clipPath rect`)
+    const [top, height] = [`y`, `height`].map((attr) => Number(rect?.getAttribute(attr)))
+    for (const label of svg.querySelectorAll(labels)) {
+      const is_x = label.classList.contains(`x-label`)
+      const expected = is_x ? top + height + AXIS_TITLE_OFFSET : top + height / 2
+      expect(Number(label.getAttribute(`y`)), label.textContent ?? ``).toBeCloseTo(expected, 6)
+    }
+  }
+}
 
 // Exercise real parsers in happy-dom; worker transport has its own tests.
 export async function mock_parse_worker(): Promise<void> {

@@ -295,7 +295,6 @@
     label: `E<sub>form</sub> (eV/atom)`,
     range: y_domain,
     ticks: 4,
-    label_shift: { y: 15 },
     ...y_axis,
   }}
   legend={null}

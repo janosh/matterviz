@@ -9,6 +9,7 @@
   import {
     get_legend_grid_cells,
     LEGEND_FILTER_THRESHOLD,
+    legend_cell_extents,
     suggest_legend_tracks,
   } from '#lib/plot/core/decorations/tracks.js'
   import type { FillPattern } from '#lib/plot/core/patterns.js'
@@ -40,6 +41,7 @@
     series_data = [],
     layout = `vertical`,
     layout_tracks = 1,
+    wrap = false,
     available_edge_length = Number.POSITIVE_INFINITY,
     item_extents,
     style = ``,
@@ -69,6 +71,9 @@
     series_data: LegendItem[]
     layout?: Orientation
     layout_tracks?: number | `auto` // Number of columns for horizontal, rows for vertical
+    // A centred row that wraps at the legend's max-width, each cell at its own width (overrides
+    // layout and layout_tracks). Set by the frame for a strip below the plot.
+    wrap?: boolean
     // Length available along the layout edge. Infinity keeps all auto tracks on one edge.
     available_edge_length?: number
     // Optional measured grid-cell extents in rendered child order (including group/filter cells).
@@ -111,16 +116,6 @@
   let has_groups = $derived(series_data.some(({ legend_group }) => legend_group != null))
   let show_filter = $derived(filterable && series_data.length >= filter_threshold)
 
-  const estimate_item_extent = (
-    label: string,
-    kind: `item` | `indented-item` | `group` | `filter` | `empty`,
-  ): Required<LegendItemExtent> => {
-    if (kind === `filter`) return { width: 160, height: 25 }
-    const chrome_width =
-      kind === `group` ? 27 : kind === `indented-item` ? 52 : kind === `item` ? 39 : 11
-    return { width: Array.from(html_to_text(label)).length * 7 + chrome_width, height: 20 }
-  }
-
   let legend_grid_cells = $derived(
     get_legend_grid_cells({
       items: series_data.map((item) => ({
@@ -134,25 +129,11 @@
   )
 
   // Model direct grid children in render order without feeding layout through a DOM observer.
-  let auto_item_extents = $derived.by<LegendItemExtent[]>(() => {
-    if (layout_tracks !== `auto`) return []
-    return legend_grid_cells.map((cell, cell_idx) => {
-      const item = cell.kind === `item` ? series_data[cell.item_idx] : undefined
-      const estimate = estimate_item_extent(
-        cell.kind === `empty`
-          ? `No legend items`
-          : cell.kind === `group`
-            ? cell.group
-            : (item?.label ?? ``),
-        cell.kind === `item` ? (item?.legend_group ? `indented-item` : `item`) : cell.kind,
-      )
-      const measured = item_extents?.[cell_idx]
-      return {
-        width: measured?.width ?? estimate.width,
-        height: measured?.height ?? estimate.height,
-      }
-    })
-  })
+  let auto_item_extents = $derived(
+    layout_tracks === `auto`
+      ? legend_cell_extents(legend_grid_cells, series_data, item_extents)
+      : [],
+  )
 
   let resolved_layout_tracks = $derived(
     layout_tracks === `auto`
@@ -229,12 +210,14 @@
   }
 
   let div_style = $derived(
-    {
-      horizontal: `grid-template-columns: repeat(${resolved_layout_tracks}, auto);`,
-      vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto;${
-        resolved_layout_tracks > 1 ? ` grid-auto-flow: column;` : ``
-      }`,
-    }[layout] + style,
+    (wrap
+      ? `display: flex; flex-wrap: wrap; justify-content: center;`
+      : {
+          horizontal: `grid-template-columns: repeat(${resolved_layout_tracks}, auto);`,
+          vertical: `grid-template-rows: repeat(${resolved_layout_tracks}, auto); grid-template-columns: auto;${
+            resolved_layout_tracks > 1 ? ` grid-auto-flow: column;` : ``
+          }`,
+        }[layout]) + style,
   )
 
   const run_item_action = (
@@ -421,13 +404,16 @@
   style={div_style}
   class={[`legend`, rest.class]}
   class:draggable
+  class:wrap
   class:is-dragging={is_dragging}
   class:grouped={has_groups}
 >
   {#each legend_grid_cells as cell}
     {#if cell.kind === `filter`}
+      <!-- size=1: its min-width is its natural width, as a column and wrapped alike -->
       <input
         class="legend-filter"
+        size="1"
         type="search"
         bind:value={filter_query}
         placeholder="Filter legend"
@@ -536,6 +522,21 @@
     background: color-mix(in srgb, var(--plot-legend-bg-color, Canvas) 88%, currentColor);
     color: inherit;
     font: inherit;
+  }
+  /* cells keep their own height in a row (legend_cell_sizes reads them in either layout) */
+  .legend.wrap {
+    align-items: flex-start;
+  }
+  .legend.wrap > .legend-filter {
+    width: 10em;
+  }
+  /* each group starts a line; the column measure reads the header's content, not this row */
+  .legend.wrap > .legend-group-header {
+    flex-basis: 100%;
+    justify-content: center;
+    .group-label {
+      flex: none;
+    }
   }
   .legend-item.indented {
     padding: var(--plot-legend-item-padding, 0 8px 1px 3px);

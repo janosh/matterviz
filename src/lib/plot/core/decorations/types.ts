@@ -40,6 +40,11 @@ export type LegendAutoTrackConfig = Omit<
 export type LegendDecorationItem = DecorationItemBase & {
   kind: `legend`
   auto_tracks?: LegendAutoTrackConfig
+  // A legend whose layout follows its placement (PlotLegend's `wrap` below the plot) is sized
+  // for the inside/right/below decision by the column it takes inside or beside the plot, and
+  // below by the row it wraps into; `footprint` (its rendered box) places it inside or right
+  column_footprint?: DecorationSize
+  strip_footprint?: DecorationSize
 }
 
 export type ColorbarDecorationItem = DecorationItemBase & {

@@ -178,6 +178,11 @@ export const first_non_increasing_index = (values: ArrayLike<number>): number | 
   return null
 }
 
+// Same point up to float noise (1e-6 Å): e.g. a periodic image reached via a + (b - a), or a
+// shell neighbor at its bond endpoint vs its polyhedron vertex, which can differ by an ulp
+export const same_position = (left: Vec3, right: Vec3): boolean =>
+  left.every((value, axis) => Math.abs(value - right[axis]) < 1e-6)
+
 // Element-wise === of two array-likes; cheaper than hashing for hot "column changed?" checks
 export const same_values = <Value>(
   left: ArrayLike<Value>,

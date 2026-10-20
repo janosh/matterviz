@@ -7,6 +7,8 @@ import {
   build_obstacles_norm,
   bar_obstacles,
   clip_segment_to_unit_square,
+  legend_cell_sizes,
+  legend_wrap_size,
 } from '#lib/plot/core/decorations/obstacles.js'
 import {
   get_outside_placement,
@@ -14,7 +16,7 @@ import {
 } from '#lib/plot/core/decorations/outside.js'
 import type { Vec2 } from '#lib/math.js'
 import { dense_unit_grid } from '../../setup'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
 const width = 400
@@ -27,7 +29,11 @@ const place = ({
   colorbar,
   ...overrides
 }: Partial<Omit<DecorationScene, `items`>> & {
-  legend?: { footprint: DecorationSize }
+  legend?: {
+    footprint: DecorationSize
+    column_footprint?: DecorationSize
+    strip_footprint?: DecorationSize
+  }
   colorbar?: { footprint: DecorationSize; horizontal?: boolean }
 } = {}) => {
   const items: DecorationItem[] = []
@@ -53,6 +59,105 @@ test(`a legend too wide for its frame always goes below the plot`, () => {
   const narrow = place({ legend, obstacles_norm: [], width: 360 }) // 140 / 290 = 48%
   expect(narrow.pad.b).toBeGreaterThan(base_pad.b)
   expect(narrow.pad.r).toBe(base_pad.r)
+})
+
+// A legend whose layout follows its placement: the column decides the side (140px is too wide
+// for this frame, the 100px row alone would stay inside), the row it wraps into sizes and
+// centres the band below, and the rendered (capped) box places it on the right
+test(`a wrapped legend is placed by its column, strip and box footprints`, () => {
+  const [column, row] = [
+    { width: 140, height: 40 },
+    { width: 100, height: 20 },
+  ]
+  const empty_plot = { obstacles_norm: [], width: 360 }
+  const legend = { footprint: row, column_footprint: column, strip_footprint: row }
+  const below = place({ legend, ...empty_plot })
+  expect(below.pad.b).toBe(base_pad.b + row.height + 8)
+  expect(below.legend_pos).toEqual({ x: base_pad.l + (290 - row.width) / 2, y: height - 28 })
+  const item: DecorationItem = { id: `legend`, kind: `legend`, ...legend }
+  expect(get_outside_placement(item, below)).toMatchObject({ side: `bottom`, footprint: row })
+  expect(place({ legend: { footprint: row }, ...empty_plot }).legend_outside).toBe(false)
+  const box = { width: 80, height: 150 }
+  const right = place({
+    legend: { footprint: box, column_footprint: { width: 80, height: 260 } },
+  })
+  expect([right.pad.r, right.legend_pos.y]).toEqual([96, base_pad.t + (245 - 150) / 2])
+})
+
+// Each cell at its natural size, whatever the legend's layout: an item by its children (not
+// its stretched 300px box), a header's growing label by its text (Range: 60px), the filter by
+// its min-width, margins included. Null while no cell has a layout box.
+test(`legend_cell_sizes reads each cell's natural size`, () => {
+  // jsdom computes no box edges; the inline declarations stand in for the cascade
+  vi.spyOn(window, `getComputedStyle`).mockImplementation((element) =>
+    element instanceof HTMLElement ? element.style : new CSSStyleDeclaration(),
+  )
+  const original = Range.prototype.getBoundingClientRect
+  Range.prototype.getBoundingClientRect = () => DOMRect.fromRect({ width: 60, height: 14 })
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+    Range.prototype.getBoundingClientRect = original
+  })
+  const node = (tag: string, css: string, [rect_w, rect_h]: number[], ...kids: Node[]) => {
+    const element = document.createElement(tag)
+    element.style.cssText = css
+    element.getBoundingClientRect = () => DOMRect.fromRect({ width: rect_w, height: rect_h })
+    element.append(...kids)
+    return element
+  }
+  const legend = node(
+    `div`,
+    `padding: 2px 4px; border: 1px solid; row-gap: 1px; column-gap: 6px`,
+    [0, 0],
+  )
+  const filter = node(`input`, `margin: 3px; min-width: 136px`, [400, 25])
+  filter.className = `legend-filter`
+  legend.append(node(`input`, `margin: 3px`, [0, 0]))
+  expect(legend_cell_sizes(legend)).toBeNull()
+  const header = node(
+    `div`,
+    `padding: 2px 8px 0 3px`,
+    [999, 22],
+    node(`span`, `margin-right: 4px`, [12, 12]),
+    node(`span`, `flex-grow: 1`, [999, 14]),
+  )
+  header.className = `legend-group-header`
+  const item = node(
+    `div`,
+    `padding: 1px 8px 1px 3px; column-gap: 4px`,
+    [300, 20],
+    node(`span`, ``, [20, 12]),
+    node(`span`, ``, [80, 14]),
+  )
+  legend.replaceChildren(filter, header, item)
+  expect(legend_cell_sizes(legend)).toEqual({
+    cells: [
+      { width: 136 + 6, height: 25 + 6, own_line: false },
+      { width: 12 + 4 + 60 + 11, height: 22, own_line: true },
+      { width: 20 + 4 + 80 + 11, height: 20, own_line: false },
+    ],
+    chrome: { width: 10, height: 6 },
+    gap: { row: 1, column: 6 },
+  })
+})
+
+// Lines filled greedily like flex-wrap; width 0 stacks the column; a header takes its own line
+const cell = (cell_width: number, own_line = false) => ({
+  width: cell_width,
+  height: 20,
+  own_line,
+})
+test.each([
+  [`one line`, 1000, [cell(50), cell(70), cell(40)], [10 + 50 + 6 + 70 + 6 + 40, 26]],
+  [`wraps the third cell`, 150, [cell(50), cell(70), cell(40)], [136, 26 + 21]],
+  [`the column`, 0, [cell(50), cell(70), cell(40)], [80, 6 + 60 + 2]],
+  [`a header line`, 1000, [cell(50), cell(30, true), cell(70)], [80, 6 + 60 + 2]],
+])(`legend_wrap_size: %s`, (_label, available_width, cells, [wrap_width, wrap_height]) => {
+  const sizes = { cells, chrome: { width: 10, height: 6 }, gap: { row: 1, column: 6 } }
+  expect(legend_wrap_size(sizes, available_width)).toEqual({
+    width: wrap_width,
+    height: wrap_height,
+  })
 })
 
 describe(`place_outside_decorations`, () => {

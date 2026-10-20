@@ -6,7 +6,7 @@ import {
   restore_camera_view,
   set_pan_offset,
 } from '#lib/scene/pan.js'
-import { Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
+import { Camera, MOUSE, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 const make_cameras = () =>
@@ -80,6 +80,7 @@ describe(`attach_pan_gesture`, () => {
     const controls: PanControls & { events: string[] } = {
       enabled: opts.enabled ?? true,
       object: new PerspectiveCamera(),
+      mouseButtons: { LEFT: MOUSE.ROTATE },
       events: [],
       dispatchEvent(event) {
         this.events.push(event.type)
@@ -108,8 +109,7 @@ describe(`attach_pan_gesture`, () => {
 
   test.each([
     [`shift+left`, { button: 0, shiftKey: true }],
-    [`ctrl+left`, { button: 0, ctrlKey: true }],
-    [`meta+left`, { button: 0, metaKey: true }],
+    [`ctrl+shift+left`, { button: 0, ctrlKey: true, shiftKey: true }],
     [`right button`, { button: 2 }],
   ])(`%s drag pans by the pointer delta times speed`, (_name, init) => {
     const { element, controls } = setup({ speed: 2 })
@@ -121,13 +121,29 @@ describe(`attach_pan_gesture`, () => {
     expect(controls.events).toEqual([`start`, `change`, `change`, `end`])
   })
 
+  // ⌘/Ctrl + left drag rotates: OrbitControls rotates a modified press while LEFT is bound to
+  // pan, so each left press sets the binding before OrbitControls reads it
   test.each([
-    [`plain left drag (OrbitControls' rotate)`, {}, 0],
-    [`speed 0 (enablePan false)`, { speed: 0 }, 2],
-    [`disabled controls`, { enabled: false }, 2],
-  ])(`%s does not pan`, (_name, opts, button) => {
+    [`plain left`, {}, MOUSE.ROTATE],
+    [`ctrl+left`, { ctrlKey: true }, MOUSE.PAN],
+    [`meta+left`, { metaKey: true }, MOUSE.PAN],
+    [`ctrl+shift+left (pans here)`, { ctrlKey: true, shiftKey: true }, MOUSE.ROTATE],
+  ])(`%s binds OrbitControls' left button to %s`, (_name, init, left) => {
+    const { element, controls } = setup({ speed: 0 }) // set even with pan disabled
+    controls.mouseButtons.LEFT = left === MOUSE.PAN ? MOUSE.ROTATE : MOUSE.PAN
+    element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button: 0, ...init }))
+    expect(controls.mouseButtons.LEFT).toBe(left)
+  })
+
+  test.each<[string, { speed?: number; enabled?: boolean }, number, MouseEventInit]>([
+    [`plain left drag (OrbitControls' rotate)`, {}, 0, {}],
+    [`ctrl+left drag (OrbitControls' rotate)`, {}, 0, { ctrlKey: true }],
+    [`meta+left drag (OrbitControls' rotate)`, {}, 0, { metaKey: true }],
+    [`speed 0 (enablePan false)`, { speed: 0 }, 2, {}],
+    [`disabled controls`, { enabled: false }, 2, {}],
+  ])(`%s does not pan`, (_name, opts, button, init) => {
     const { element, controls } = setup(opts)
-    element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button }))
+    element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button, ...init }))
     window.dispatchEvent(pointer(`pointermove`, { x: 50, y: 50 }))
     window.dispatchEvent(pointer(`pointerup`, { x: 50, y: 50 }))
     expect(read_pan_offset(controls.object)).toEqual([0, 0])

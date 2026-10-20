@@ -1,6 +1,6 @@
 import { type Download, expect, type Locator, type Page, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { require_bbox, expect_centered, webgl_on_ci_for_tagged } from './helpers'
+import { require_bbox, expect_centered, webgl_on_ci_for_tagged, zoom_wheel } from './helpers'
 
 webgl_on_ci_for_tagged()
 
@@ -314,7 +314,7 @@ test.describe(`ChemPot Diagram interactions`, { tag: `@webgl` }, () => {
     // the open export pane covers the canvas centre of a side-by-side demo, so aim past it
     const free_point = await find_uncovered_point(page, canvas)
     await page.mouse.move(free_point.x, free_point.y)
-    await page.mouse.wheel(0, -200)
+    await zoom_wheel(page, -200)
     expect(await read_view_zoom(page, export_pane)).not.toBe(initial_zoom)
 
     // A pinned camera stops the diagram re-fitting itself, so Reset has to offer to undo it

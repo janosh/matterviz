@@ -26,7 +26,12 @@
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { viewer_keydown } from '#lib/shortcuts.js'
-  import { create_renderer, key_walk_root, webgpu_available } from '#lib/scene/index.js'
+  import {
+    create_renderer,
+    key_walk_root,
+    wheel_zoom_gate,
+    webgpu_available,
+  } from '#lib/scene/index.js'
   import { to_error } from '#lib/utils.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
@@ -333,6 +338,7 @@
   })
   // The prism's rods by keyboard (see KeyWalk), with the keys the above leaves free
   const key_walk = key_walk_root()
+  const wheel_gate = wheel_zoom_gate()
 
   // === Hover ===
 
@@ -389,6 +395,7 @@
   {@attach keys}
   {@attach drop_zone}
   {@attach key_walk.attach}
+  {@attach wheel_gate}
 >
   <LiveMessage message={key_walk.message} />
   <ViewerChrome
