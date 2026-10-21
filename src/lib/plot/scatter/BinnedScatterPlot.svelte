@@ -64,6 +64,7 @@
     ScatterHandlerProps,
   } from '#lib/plot/core/types.js'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import type { Obstacle } from '#lib/plot/core/decorations/index.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
@@ -98,7 +99,6 @@
   }
   type OverlayContext = { height: number; width: number; fullscreen: boolean }
   const default_density_auto_point_mode = { max_points: 25_000, max_points_per_px: 0.12 }
-  const max_placement_bins = 500
   const unit_range: Vec2 = [0, 1]
   const empty_axis: AxisConfig = {}
 
@@ -257,8 +257,10 @@
   const { facet, pan_zoom } = frame
   const x_scale_fn = $derived(frame.scales.x)
   const y_scale_fn = $derived(frame.scales.y)
-  const x_range = $derived(frame.ranges.current.x)
-  const y_range = $derived(frame.ranges.current.y)
+  // Plain copies: the frame's ranges are deep $state proxies, and the density paths read
+  // these bounds per bin (screen_cell), which would be a reactive read each time
+  const x_range = $derived<Vec2>([...frame.ranges.current.x])
+  const y_range = $derived<Vec2>([...frame.ranges.current.y])
   const has_plot_size = $derived(width > 0 && height > 0)
   const plot_rect = $derived({
     x: pad.l,
@@ -302,8 +304,9 @@
   // The pooled grid still drives occupancy and zoom; colored strips retain each series'
   // counts so overlapping models never hide each other or mix into a misleading color.
   const density_grids = $derived(density_result.series_bins ?? [density_result])
-  const occupied_series = (bin_idx: number): number[] =>
-    density_grids.flatMap((result, idx) => (result.counts[bin_idx] ? [idx] : []))
+  // `grids` lets hot loops pass a snapshot instead of reading density_grids per bin
+  const occupied_series = (bin_idx: number, grids = density_grids): number[] =>
+    grids.flatMap((result, idx) => (result.counts[bin_idx] ? [idx] : []))
   const screen_cell = (x_bin: number, y_bin: number) =>
     density_screen_cell(
       x_bin,
@@ -376,24 +379,35 @@
         `width: ${COLOR_BAR_DEFAULTS.width}px; height: ${COLOR_BAR_DEFAULTS.binned_bar_height}px; ${color_bar.style ?? ``}`,
     }
   })
-  // Occupied bin centres in normalized plot coordinates (y down), thinned to a fixed budget
+  // Occupied bins in normalized plot coordinates (y down), each row's runs of adjacent occupied
+  // bins merged into one rect: exact coverage at a fraction of the obstacle count
   const bin_obstacles_norm = $derived.by(() => {
     const { counts, x_bins, y_bins } = density_result
-    let occupied_count = 0
-    for (const count of counts) if (count) occupied_count++
-    const stride = Math.max(1, Math.ceil(occupied_count / max_placement_bins))
-    const points: Point2D[] = []
-    let occupied_idx = 0
-    for (let idx = 0; idx < counts.length; idx++) {
-      if (!counts[idx]) continue
-      if (occupied_idx++ % stride) continue
-      // canonical bin -> screen cell, same as draw_density: without it the obstacle field is
-      // mirrored on a reversed range and the solver drops decorations onto the dense cloud
-      const [col, row] = screen_cell(idx % x_bins, Math.floor(idx / x_bins))
-      points.push({ x: (col + 0.5) / x_bins, y: (row + 0.5) / y_bins })
+    // read once: reactive reads per run would dominate on a million-point cloud
+    const [ranges_x, ranges_y] = [x_range, y_range]
+    const to_screen = (x_bin: number, y_bin: number) =>
+      density_screen_cell(x_bin, y_bin, x_bins, y_bins, ranges_x, ranges_y)
+    const runs: Obstacle[] = []
+    for (let y_bin = 0; y_bin < y_bins; y_bin++) {
+      for (let x_bin = 0; x_bin < x_bins; x_bin++) {
+        if (!counts[y_bin * x_bins + x_bin]) continue
+        const start = x_bin
+        while (x_bin + 1 < x_bins && counts[y_bin * x_bins + x_bin + 1]) x_bin++
+        // canonical bins -> screen cells, same as draw_density: without it the obstacle field is
+        // mirrored on a reversed range and the solver drops decorations onto the dense cloud
+        const [[col_a, row], [col_b]] = [to_screen(start, y_bin), to_screen(x_bin, y_bin)]
+        const [col, n_cols] = [Math.min(col_a, col_b), Math.abs(col_b - col_a) + 1]
+        runs.push({
+          x: col / x_bins,
+          y: row / y_bins,
+          width: n_cols / x_bins,
+          height: 1 / y_bins,
+        })
+      }
     }
-    return points
+    return runs
   })
+
   const show_colorbar = $derived(
     has_plot_size &&
       color_bar_props !== null &&
@@ -521,27 +535,45 @@
 
   function draw_density(ctx: CanvasRenderingContext2D) {
     const { counts, x_bins, y_bins, max_count } = density_result
+    // Read reactive state once: per-bin reads dominate the paint on a dense grid
+    const [grids, scales, per_series, ranges_x, ranges_y] = [
+      density_grids,
+      color_scales,
+      per_series_density,
+      x_range,
+      y_range,
+    ]
+    const { l: pad_l, t: pad_t } = pad
     const bin_w = plot_rect.width / x_bins
     const bin_h = plot_rect.height / y_bins
-    const style_cache = color_scales.map(() => new Map<number, string>())
+    const pooled = [0] // the pooled grid is the only one when series share bins
+    const style_cache = scales.map(() => new Map<number, string>())
     for (let bin_idx = 0; bin_idx < counts.length; bin_idx++) {
       if (!counts[bin_idx]) continue
-      const [col, row] = screen_cell(bin_idx % x_bins, Math.floor(bin_idx / x_bins))
-      const occupied = occupied_series(bin_idx)
-      for (const [strip_idx, series_idx] of occupied.entries()) {
-        const count = density_grids[series_idx].counts[bin_idx]
+      const [col, row] = density_screen_cell(
+        bin_idx % x_bins,
+        Math.floor(bin_idx / x_bins),
+        x_bins,
+        y_bins,
+        ranges_x,
+        ranges_y,
+      )
+      const occupied = per_series ? occupied_series(bin_idx, grids) : pooled
+      for (let strip_idx = 0; strip_idx < occupied.length; strip_idx++) {
+        const series_idx = occupied[strip_idx]
+        const count = grids[series_idx].counts[bin_idx]
         const cache = style_cache[series_idx]
         let fill = cache.get(count)
-        if (!fill) cache.set(count, (fill = color_scales[series_idx].color_fn(count)))
+        if (!fill) cache.set(count, (fill = scales[series_idx].color_fn(count)))
         ctx.fillStyle = fill
-        ctx.globalAlpha = per_series_density
+        ctx.globalAlpha = per_series
           ? 1
           : Math.min(0.95, 0.2 + Math.log1p(count) / Math.log1p(max_count))
         ctx.fillRect(
-          pad.l + (col + strip_idx / occupied.length) * bin_w,
-          pad.t + row * bin_h,
-          per_series_density ? bin_w / occupied.length : Math.ceil(bin_w) + 0.5,
-          per_series_density ? bin_h : Math.ceil(bin_h) + 0.5,
+          pad_l + (col + strip_idx / occupied.length) * bin_w,
+          pad_t + row * bin_h,
+          per_series ? bin_w / occupied.length : Math.ceil(bin_w) + 0.5,
+          per_series ? bin_h : Math.ceil(bin_h) + 0.5,
         )
       }
     }

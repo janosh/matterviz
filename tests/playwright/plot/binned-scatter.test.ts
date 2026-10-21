@@ -140,3 +140,31 @@ test(`opens singleton density bins without a slow data scan`, async ({ page }) =
   expect(result.click_ms).toBeLessThan(HOVER_BUDGET_MS)
   expect(result.point_click_count).toBe(1)
 })
+
+// The demo imports its 3D structure popup on the first click, keeping three.js off the page
+// load (see payload-budget.test.ts), so the click must still open it
+test(`demo opens the lazily loaded structure popup on a density bin click`, async ({
+  page,
+}) => {
+  await page.goto(`/plot/binned-scatter`, { waitUntil: `domcontentloaded` })
+  const area = page.locator(`.binned-scatter svg[role="application"]`).first()
+  await expect(area).toBeVisible()
+  const box = await svg_rect(page.locator(`.binned-scatter clipPath rect`).first())
+  const frame = await area.boundingBox()
+  if (!frame) throw new Error(`binned scatter frame has no bounding box`)
+  const tooltip = page.locator(`.binned-scatter .plot-tooltip`)
+  let hit: { x: number; y: number } | null = null
+  for (let frac = 0.1; frac <= 0.9 && !hit; frac += 0.05) {
+    const [coord_x, coord_y] = [
+      frame.x + box.x + box.width * frac,
+      frame.y + box.y + box.height * (1 - frac),
+    ]
+    await page.mouse.move(coord_x, coord_y)
+    if (await tooltip.isVisible()) hit = { x: coord_x, y: coord_y }
+  }
+  if (!hit) throw new Error(`no occupied density bin along the plot diagonal`)
+  await page.mouse.click(hit.x, hit.y)
+  const popup = page.locator(`.structure-popup`)
+  await expect(popup).toBeVisible({ timeout: 15_000 })
+  await expect(popup.locator(`canvas`).first()).toBeVisible()
+})

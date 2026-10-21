@@ -5,6 +5,7 @@
 // without loosening it into a band no real regression would ever hit. Sub-2x slowdowns pass.
 // Opt in locally with MATTERVIZ_PERF=1. The file is excluded from the default run in
 // vite.config.ts, so it never pays its import cost there.
+import { generate_bz_vertices } from '#lib/brillouin/compute.js'
 import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
 import {
   calculate_e_above_hull,
@@ -39,6 +40,8 @@ import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/fra
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
 import { compute_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+import { reciprocal_lattice } from '#lib/math.js'
+import { sanitize_html } from '#lib/sanitize.js'
 import process from 'node:process'
 import { type Component, flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
@@ -90,6 +93,10 @@ const BASELINES = {
   // 2026-10-15: M5 Max/Node 24.22/Vitest 5; 21.4 ms median in suite order (18.5 ms isolated;
   // median of 3 runs' reference ratios), normalized from its 29.6 ms reference.
   'Fermi Cu 25^3 d-band hover sweep': (21.4 * REFERENCE_MS) / 29.6,
+  // 2026-10-21: M5 Max/Node 24.22/Vitest 5; medians of 3 runs (reference 30.7 ms). BZ took 68 ms
+  // before the flat beyond-plane rows; the formulas took two DOMPurify passes each.
+  'BZ order 3 fcc vertices': (12.5 * REFERENCE_MS) / 30.7,
+  'sanitize_html 20k distinct formulas': (33.2 * REFERENCE_MS) / 30.7,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -547,6 +554,31 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     const points = make_hull_points(775)
     await measure(`quickhull 4D 775 entries`, () => {
       expect(compute_lower_hull_nd(points).length).toBeGreaterThan(20)
+    })
+  })
+
+  test(`BZ order 3 fcc vertices`, async () => {
+    const k_lattice = reciprocal_lattice([
+      [0, 2, 2],
+      [2, 0, 2],
+      [2, 2, 0],
+    ])
+    await measure(`BZ order 3 fcc vertices`, () => {
+      expect(generate_bz_vertices(k_lattice, 3)).toHaveLength(86)
+    })
+  })
+
+  // Formula markup is a DOMPurify fixed point, so a table of distinct formulas must not pay
+  // two sanitizer passes per cell. A fresh batch per rep keeps the result cache cold.
+  let formula_batch = 0
+  test(`sanitize_html 20k distinct formulas`, async () => {
+    await measure(`sanitize_html 20k distinct formulas`, () => {
+      formula_batch += 1
+      const formulas = Array.from(
+        { length: 20_000 },
+        (_, idx) => `Li<sub>${idx}</sub>Fe<sub>${formula_batch}</sub>O<sub>4</sub>`,
+      )
+      expect(formulas.map(sanitize_html)).toEqual(formulas)
     })
   })
 

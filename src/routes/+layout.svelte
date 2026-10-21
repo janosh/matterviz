@@ -9,7 +9,6 @@
   // from OS preference to the app's data-theme. See that plugin for details.
   // oxlint-disable-next-line import/no-unassigned-import -- global syntax-highlight styles
   import '@wooorm/starry-night/style/both'
-  import element_data from '#lib/element/data.js'
   import { theme_state } from '#lib/state.svelte.js'
   import {
     apply_theme_to_dom,
@@ -48,19 +47,33 @@
 
   // Matched locally by the palette, so page navigation works in dev where the Pagefind index
   // (generated after production builds) is absent.
+  const route_action = (url: string): CmdAction => ({
+    id: `route:${url}`,
+    label: url,
+    description: `Open page`,
+    action: () => void goto(url),
+  })
   const route_actions: CmdAction[] = routes
     .filter(
       ({ filename, route }) =>
         !filename.includes(`/test/`) && route !== `/404` && route !== `/[slug]`,
     )
-    .map(({ route }) => route)
-    .concat(element_data.map(({ name }) => `/${name.toLowerCase()}`))
-    .map((url) => ({
-      id: `route:${url}`,
-      label: url,
-      description: `Open page`,
-      action: () => void goto(url),
-    }))
+    .map(({ route }) => route_action(route))
+  // The element pages' slugs need the full element dataset, which most demo pages never
+  // load, so it is fetched when the palette first opens rather than in front of every route
+  // (a failed fetch is retried on the next open)
+  let element_actions = $state<CmdAction[]>([])
+  $effect(() => {
+    if (!cmd_palette_open || element_actions.length) return
+    import(`#lib/element/data.js`).then(
+      ({ default: element_data }) => {
+        element_actions = element_data.map(({ name }) =>
+          route_action(`/${name.toLowerCase()}`),
+        )
+      },
+      (exc: unknown) => console.error(`Search palette: element pages failed to load`, exc),
+    )
+  })
   const theme_actions: CmdAction[] = THEME_OPTIONS.map(({ icon, label, value }) => ({
     id: `theme:${value}`,
     label: `${icon} ${label} color theme`,
@@ -101,7 +114,7 @@
 <!-- z-index: above nav dropdown and Structure control toggles -->
 <PageSearch
   bind:open={cmd_palette_open}
-  fallback_actions={[...route_actions, ...theme_actions]}
+  fallback_actions={[...route_actions, ...element_actions, ...theme_actions]}
   {load_pagefind}
   navigate={(url) => goto(url)}
   strip_html_suffix

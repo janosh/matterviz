@@ -133,11 +133,11 @@ describe(`sanitize_html`, () => {
     assertNoXss(sanitize_html(input))
   })
 
-  // Strings with no `<` bypass DOMPurify entirely. These pin that shortcut to what the
-  // sanitizer it skips would have returned, including the characters an HTML serializer
-  // would escape (`>`, `&`, nbsp) if the input ever reached the parser. It never does:
-  // DOMPurify returns `dirty` itself on the same indexOf('<') check, so equality here holds
-  // in any host, not just happy-dom.
+  // Strings with no `<`, or only inert markup, bypass DOMPurify entirely. These pin that
+  // shortcut to what the sanitizer it skips would have returned, including the characters an
+  // HTML serializer would escape (`>`, `&`, nbsp) if the input ever reached the parser. For
+  // markup-free input it never does: DOMPurify returns `dirty` itself on the same
+  // indexOf('<') check, so equality here holds in any host, not just happy-dom.
   const inert_inputs = [
     `Density (g/cm³)`,
     `He said "hi" — it's fine`,
@@ -146,14 +146,55 @@ describe(`sanitize_html`, () => {
     `&lt;script&gt;alert(1)&lt;/script&gt;`, // entities decode to text, never re-parse as tags
     `nbsp\u00A0separated`,
     `   `,
+    // balanced attribute-free allowlisted tags are a fixed point of DOMPurify too
+    `Li<sub>2</sub>O`,
+    `x<sup>2</sup> <b><i>bold</i></b><br>next <span>a</span><code>b</code>`,
   ]
+  // ...but these must take the DOMPurify path, as its round trip would rewrite them
+  const rewritten_markup = [
+    `<b>unclosed`,
+    `<b><i>misnested</b></i>`,
+    `<SUB>2</SUB>`,
+    `<sub>a & b</sub>`,
+    `<sub>a\u00A0b</sub>`,
+    `<br/>`,
+    `</br>`,
+    `<div>block</div>`,
+    // the parser drops a leading run of whitespace holding \f; Blink re-parents deep nesting
+    `\f<b>x</b>`,
+    ` \fx<b>y</b>`,
+    `${`<b>`.repeat(33)}x${`</b>`.repeat(33)}`,
+    // links DOMPurify would edit: rel gains noopener, unsafe hrefs and URI-like targets
+    // go, style is filtered, values are trimmed, a nested link closes the outer one
+    `<a href="#mp-1">mp-1</a>`,
+    `<a href="#a" rel="noreferrer">a</a>`,
+    `<a href="javascript:alert(1)" rel="noopener">x</a>`,
+    `<a href="//evil.com" rel="noopener">x</a>`,
+    `<a href="#a" target="a: b" rel="noopener">x</a>`,
+    `<a href="#a" rel="noopener" style="color: red">x</a>`,
+    `<a href="#a" rel="noopener" onclick="alert(1)">x</a>`,
+    `<a href="#a" rel="noopener"><a href="#b" rel="noopener">b</a></a>`,
+    `<a title=" docs">x</a>`,
+    `<a class="link\v">x</a>`,
+    `<a title="a\u3000">x</a>`,
+    `<a title="a" title="b">x</a>`,
+  ]
+  // entry links as tables render them pass through as written (fuzzed against DOMPurify in
+  // real browsers; happy-dom's default config would drop `target`, so identity is asserted)
+  const inert_links = [
+    `<a href="#mp-1-GGA+U" target="_blank" rel="noopener">mp-1-GGA+U</a>`,
+    `<a href="https://materialsproject.org/materials/mp-1" rel="noopener noreferrer">mp-1</a>`,
+    `see <a href="/docs" title="docs" class="link" rel="noopener">docs</a>`,
+    `<a>anchor</a>`,
+  ]
+
   test.each(inert_inputs)(`matches DOMPurify output for %s`, (input) => {
     expect(sanitize_html(input)).toBe(DOMPurify().sanitize(input))
   })
 
   // Equality alone would still pass if the shortcut were deleted, so assert the bypass:
-  // markup-free input must never reach the sanitizer, markup must always reach it.
-  test(`skips DOMPurify for markup-free input and uses it otherwise`, async () => {
+  // inert input must never reach the sanitizer, other markup must always reach it.
+  test(`skips DOMPurify for inert input and uses it otherwise`, async () => {
     vi.resetModules()
     const sanitize_spy = vi.fn((html: string) => html)
     vi.doMock(`dompurify`, () => ({
@@ -161,11 +202,16 @@ describe(`sanitize_html`, () => {
     }))
     try {
       const { sanitize_html: fresh_sanitize } = await import(`#lib/sanitize.js`)
-      for (const input of inert_inputs) fresh_sanitize(input)
+      for (const input of [...inert_inputs, ...inert_links]) {
+        expect(fresh_sanitize(input)).toBe(input)
+      }
       expect(sanitize_spy).not.toHaveBeenCalled()
 
-      fresh_sanitize(`<b>bold</b>`)
-      expect(sanitize_spy).toHaveBeenCalled()
+      for (const input of rewritten_markup) {
+        sanitize_spy.mockClear()
+        fresh_sanitize(input)
+        expect(sanitize_spy, input).toHaveBeenCalled()
+      }
     } finally {
       vi.doUnmock(`dompurify`)
       vi.resetModules()

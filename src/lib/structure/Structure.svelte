@@ -988,6 +988,10 @@
     reset_token: session.reset_token,
     report_moved: (moved: boolean) => session.report_pane_moved(pane_idx, moved),
   })
+  // Every viewport prop reads this bundle, so nothing in it may change per trajectory frame:
+  // Svelte re-walks a derived's whole reaction subtree once per dependency path that marks
+  // it, and the frame-varying inputs below reached it through a dozen paths, walking ~40k
+  // reaction edges per played frame.
   let shared_viewport_props = $derived({
     session,
     series_key,
@@ -1000,21 +1004,6 @@
       volume_color_field,
       volume_opacity,
       cutaway,
-      render_token,
-      on_rendered,
-      show_cell_vectors: resolve_cell_vectors(scene_props.show_cell_vectors, structure),
-      trajectory_position_stream: trail_stream,
-      show_trajectory_lines: show_trails,
-      // A run's paths are mostly shorter than an atom's radius, so they draw emphasized (see
-      // TrajectoryLines), whole and ending at the shown geometry, at every step.
-      ...(tool_trail_positions
-        ? {
-            trajectory_lines_emphasis: true,
-            trajectory_line_frame_stride: 1,
-            trajectory_line_trail_frames: 0,
-            trajectory_line_end_frame: undefined,
-          }
-        : { trajectory_line_end_frame }),
       defer_expensive_geometry,
       sphere_segments: effective_sphere_segments,
       slice_polygon,
@@ -1022,8 +1011,25 @@
     gizmo: scene_gizmo_props,
     volumetric_data,
     isosurface_settings: display_isosurface_settings,
-    property_colors: session.property_colors,
-    active_sites: active_scene_sites,
+  })
+  // Scene inputs that follow the displayed frame (tool_trail_positions too, as it reads the
+  // frame's tool_input), passed beside the bundle above like active_sites and property_colors
+  let frame_scene_props = $derived({
+    render_token,
+    on_rendered,
+    show_cell_vectors: resolve_cell_vectors(scene_props.show_cell_vectors, structure),
+    trajectory_position_stream: trail_stream,
+    show_trajectory_lines: show_trails,
+    // A run's paths are mostly shorter than an atom's radius, so they draw emphasized (see
+    // TrajectoryLines), whole and ending at the shown geometry, at every step.
+    ...(tool_trail_positions
+      ? {
+          trajectory_lines_emphasis: true,
+          trajectory_line_frame_stride: 1,
+          trajectory_line_trail_frames: 0,
+          trajectory_line_end_frame: undefined,
+        }
+      : { trajectory_line_end_frame }),
   })
 
   // Live read-only results: consumers bind:this and read analysis without copying outputs
@@ -1521,6 +1527,9 @@
             {on_camera_move}
             {on_camera_reset}
             {...shared_viewport_props}
+            {frame_scene_props}
+            active_sites={active_scene_sites}
+            property_colors={session.property_colors}
             camera_direction={view.direction ?? scene_props.camera_direction}
             camera_up={view.direction ? undefined : scene_props.camera_up}
             camera_projection={view.projection ?? scene_props.camera_projection}
@@ -1541,6 +1550,9 @@
             {...pane_props(pane_idx)}
             label={view.label}
             {...shared_viewport_props}
+            {frame_scene_props}
+            active_sites={active_scene_sites}
+            property_colors={session.property_colors}
             camera_direction={view.direction}
             camera_projection={view.projection ?? scene_props.camera_projection}
             {hidden_elements}
