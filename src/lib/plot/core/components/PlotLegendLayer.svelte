@@ -49,8 +49,8 @@
   )
   const is_strip = $derived(outside_side === `bottom` || outside_side === `top`)
   // A strip below/above the plot scrolls past half the frame height rather than leaving a
-  // sliver of plot. 50% stays above the solver's too-tall fraction of the plot area, so a
-  // capped legend never shrinks enough to flip back inside and re-expand.
+  // sliver of plot. The solver sizes it by its cells, never by this capped box, so the cap
+  // cannot flip it back inside.
   // Inside the plot (where the solver keeps it once a strip would leave too little plot) it
   // may not outgrow the plot area either: it scrolls instead of spilling over the axes
   // A wrapped legend takes the width its cells wrap into (frame.legend_strip), so the browser

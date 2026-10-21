@@ -1,6 +1,6 @@
 import { pad_rect, point_in_rect, rects_overlap, type Rect } from '#lib/plot/core/layout.js'
 import type {
-  DecorationPoint,
+  Obstacle,
   ReferenceAnnotationCandidate,
   ReferenceAnnotationDecorationItem,
 } from './types'
@@ -10,7 +10,7 @@ const PREFERENCE_PENALTY = 0.001
 
 type ReferenceAnnotationPlacementConfig = {
   item: ReferenceAnnotationDecorationItem
-  obstacles?: readonly DecorationPoint[]
+  obstacles?: readonly Obstacle[]
   exclusion_rects?: readonly Rect[]
 }
 
@@ -55,15 +55,18 @@ const score_reference_annotation_candidate = ({
   candidate: ReferenceAnnotationCandidate
   candidate_idx: number
   clearance?: number
-  obstacles?: readonly DecorationPoint[]
+  obstacles?: readonly Obstacle[]
   exclusion_rects?: readonly Rect[]
 }): number => {
   const collision_rect = clearance > 0 ? pad_rect(candidate.rect, clearance) : candidate.rect
   const exclusion_count = exclusion_rects.filter((rect) =>
     rects_overlap(collision_rect, rect),
   ).length
-  const obstacle_count = obstacles.filter((point) =>
-    point_in_rect(point, collision_rect),
+  // a point on the border counts; a bar merely touching the label does not
+  const obstacle_count = obstacles.filter(({ x, y, width = 0, height = 0 }) =>
+    width || height
+      ? rects_overlap({ x, y, width, height }, collision_rect)
+      : point_in_rect({ x, y }, collision_rect),
   ).length
   return (
     -exclusion_count * ((obstacles.length + 1) * OBSTACLE_PENALTY) -

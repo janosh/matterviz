@@ -3,8 +3,8 @@
 
 import type { Vec2 } from '#lib/math.js'
 import type { Rect, Sides } from '#lib/plot/core/layout.js'
-import { sample_series_obstacle_points } from '#lib/plot/core/layout.js'
-import type { DecorationPoint, DecorationSize } from './types'
+import { PLACEMENT_CELL, sample_series_obstacle_points } from '#lib/plot/core/layout.js'
+import type { DecorationPoint, DecorationSize, Obstacle } from './types'
 
 // True when the user pinned a decoration via its style (an edge property or position:absolute),
 // in which case auto-placement must leave it alone.
@@ -104,7 +104,7 @@ export function legend_wrap_size(
 }
 
 // One mark's contribution: projected points, plus whether a line through them is drawn (which
-// makes the segments between them obstacles too)
+// makes the segments between them obstacles too). Filled marks (bars, bins) are Obstacle rects.
 export type ObstacleSeries = { points: DecorationPoint[]; draws_line?: boolean }
 
 // Samples what `build` projects into the base plot box (frame minus decoration-independent
@@ -112,8 +112,8 @@ export type ObstacleSeries = { points: DecorationPoint[]; draws_line?: boolean }
 export function with_obstacle_frame(
   frame: { width: number; height: number; effective_base_pad: Required<Sides> },
   has_marks: boolean,
-  build: (base: { base_w: number; base_h: number }) => ObstacleSeries[],
-): DecorationPoint[] {
+  build: (base: { base_w: number; base_h: number }) => (ObstacleSeries | Obstacle)[],
+): Obstacle[] {
   const { width, height, effective_base_pad: pad } = frame
   if (!has_marks || !width || !height) return []
   const [base_w, base_h] = [width - pad.l - pad.r, height - pad.t - pad.b]
@@ -164,13 +164,19 @@ export const clip_segment_to_unit_square = (
 // Build normalized obstacles from data so decoration reservations cannot change the result and
 // cause a reserve -> data-shift -> re-decide loop.
 export function build_obstacles_norm(
-  series: ObstacleSeries[],
+  marks: (ObstacleSeries | Obstacle)[],
   base_w: number,
   base_h: number,
-): DecorationPoint[] {
-  const step = 12 / Math.max(base_w, base_h, 1)
-  const obstacles: DecorationPoint[] = []
-  for (const { points, draws_line = false } of series) {
+): Obstacle[] {
+  // A drawn line sampled at the placement grid's resolution, so no decoration slips across it
+  const step = PLACEMENT_CELL / Math.max(base_w, base_h, 1)
+  const obstacles: Obstacle[] = []
+  for (const mark of marks) {
+    if (!(`points` in mark)) {
+      obstacles.push(mark)
+      continue
+    }
+    const { points, draws_line = false } = mark
     if (!draws_line) {
       sample_series_obstacle_points(points.filter(inside_unit_square), false, step, obstacles)
       continue
@@ -206,16 +212,23 @@ export function build_obstacles_norm(
       obstacles.push(previous)
     }
   }
-  return obstacles
+  // Points snap to placement-cell rects, one per occupied cell: the count stays bounded by the
+  // plot area, so no mark needs thinning upstream, and coverage stays conservative
+  const [cell_w, cell_h] = [PLACEMENT_CELL / base_w, PLACEMENT_CELL / base_h]
+  const cols = Math.ceil(1 / cell_w) + 1
+  const occupied = new Set<number>()
+  return obstacles.flatMap((obstacle) => {
+    if (obstacle.width || obstacle.height) return [obstacle]
+    const [col, row] = [Math.floor(obstacle.x / cell_w), Math.floor(obstacle.y / cell_h)]
+    if (occupied.has(row * cols + col)) return []
+    occupied.add(row * cols + col)
+    return [{ x: col * cell_w, y: row * cell_h, width: cell_w, height: cell_h }]
+  })
 }
 
-// Widest gap (plot fraction) between a bar's obstacle lines, so no legend fits in a wide bar
-const MAX_BAR_LINE_GAP = 0.25
-
-// A bar's visible part as lines along both edges, its center and as many interior lines as the
-// gap limit needs (one line for a zero-width bar like a whisker). Clipped to the unit square
-// before sampling so zoomed, off-screen spans cannot emit millions of points.
-export function bar_obstacles(vertical: boolean, cross: Vec2, span: Vec2): ObstacleSeries[] {
+// A bar's visible part as one filled rect (none when it lies off the plot); a zero-width bar
+// such as a whisker is a line rect
+export function bar_obstacles(vertical: boolean, cross: Vec2, span: Vec2): Obstacle[] {
   const clamp_to_plot = ([start, end]: Vec2): Vec2 => [
     Math.max(0, Math.min(start, end)),
     Math.min(1, Math.max(start, end)),
@@ -223,21 +236,33 @@ export function bar_obstacles(vertical: boolean, cross: Vec2, span: Vec2): Obsta
   const [lower, upper] = clamp_to_plot(span)
   const [left, right] = clamp_to_plot(cross)
   if (!(upper >= lower && right >= left)) return []
-  const n_gaps = right > left ? Math.max(2, Math.ceil((right - left) / MAX_BAR_LINE_GAP)) : 0
-  return Array.from({ length: n_gaps + 1 }, (_, idx) => {
-    const line_at = left + ((right - left) * idx) / (n_gaps || 1)
-    const point = (along: number) =>
-      vertical ? { x: line_at, y: along } : { x: along, y: line_at }
-    return { points: [point(lower), point(upper)], draws_line: true }
-  })
+  const [x_span, y_span] = vertical
+    ? [
+        [left, right],
+        [lower, upper],
+      ]
+    : [
+        [lower, upper],
+        [left, right],
+      ]
+  return [
+    {
+      x: x_span[0],
+      y: y_span[0],
+      width: x_span[1] - x_span[0],
+      height: y_span[1] - y_span[0],
+    },
+  ]
 }
 
 // Project a decoration-independent normalized obstacle field into the final plot rectangle.
 export const project_obstacles = (
-  obstacles_norm: readonly DecorationPoint[],
+  obstacles_norm: readonly Obstacle[],
   plot_bounds: Rect,
-): DecorationPoint[] =>
-  obstacles_norm.map(({ x: coord_x, y: coord_y }) => ({
+): Obstacle[] =>
+  obstacles_norm.map(({ x: coord_x, y: coord_y, width = 0, height = 0 }) => ({
     x: plot_bounds.x + coord_x * plot_bounds.width,
     y: plot_bounds.y + coord_y * plot_bounds.height,
+    width: width * plot_bounds.width,
+    height: height * plot_bounds.height,
   }))

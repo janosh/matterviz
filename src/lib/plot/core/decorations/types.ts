@@ -5,6 +5,8 @@ export type DecorationKind = `legend` | `colorbar` | `free-annotation` | `refere
 export type DecorationSide = `top` | `right` | `bottom` | `left`
 export type DecorationPoint = { x: number; y: number }
 export type DecorationSize = { width: number; height: number }
+// What a decoration must not cover: a point, or a rect (a bar, a bin) when it has a size
+export type Obstacle = DecorationPoint & Partial<DecorationSize>
 export type ReferenceAnnotationPosition = `start` | `center` | `end`
 export type ReferenceAnnotationSide = `above` | `below` | `left` | `right`
 export type ReferenceAnnotationTextAnchor = `start` | `middle` | `end`
@@ -40,9 +42,10 @@ export type LegendAutoTrackConfig = Omit<
 export type LegendDecorationItem = DecorationItemBase & {
   kind: `legend`
   auto_tracks?: LegendAutoTrackConfig
-  // A legend whose layout follows its placement (PlotLegend's `wrap` below the plot) is sized
-  // for the inside/right/below decision by the column it takes inside or beside the plot, and
-  // below by the row it wraps into; `footprint` (its rendered box) places it inside or right
+  // A legend whose layout follows its placement (PlotLegend's `wrap` below the plot) is placed
+  // inside as the column it takes there (capped at the plot height), sized for the right/below
+  // choice by that column, and below by the row it wraps into; `footprint` (its rendered box)
+  // places it on the right
   column_footprint?: DecorationSize
   strip_footprint?: DecorationSize
 }
@@ -70,8 +73,7 @@ export type DecorationItem =
   | ReferenceAnnotationDecorationItem
 
 // Obstacles use normalized plot coordinates: x/y=0 is the plot's top-left and x/y=1 its
-// bottom-right. Keeping them independent of padding prevents outside reservations from changing
-// the crowding decision that created those reservations.
+// bottom-right, so they follow the plot box as outside reservations shrink it.
 export type DecorationScene = {
   width: number
   height: number
@@ -83,8 +85,8 @@ export type DecorationScene = {
   // already leaves room beyond the axis (a sibling panel's legend band) gets the decoration
   // in that room instead of on top of it. Defaults to base_pad.
   axis_pad?: Required<Sides>
-  obstacles_norm: readonly DecorationPoint[]
-  // Host-owned exclusions such as in-plot controls or previously reserved labels.
+  obstacles_norm: readonly Obstacle[]
+  // Host-owned exclusions: pinned decorations (a dragged or styled legend, colorbar).
   exclusion_rects?: readonly Rect[]
   items: readonly DecorationItem[]
   gap?: number
@@ -96,7 +98,6 @@ export type DecorationPlacement = {
   footprint: DecorationSize
   x: number
   y: number
-  score: number | null
   location: `interior` | `outside`
   side: DecorationSide | null
   layout_tracks?: number

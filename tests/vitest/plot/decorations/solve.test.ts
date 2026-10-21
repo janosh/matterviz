@@ -75,9 +75,65 @@ describe(`decoration solver`, () => {
     const direct = compute_element_placement({
       plot_bounds,
       element_size: sparse_scene.items[0].footprint,
-      points: project_obstacles(sparse_scene.obstacles_norm, plot_bounds),
+      obstacles: project_obstacles(sparse_scene.obstacles_norm, plot_bounds),
     })
-    expect(solve_decorations(sparse_scene).placements[0]).toMatchObject(direct)
+    expect(direct.overlaps).toBe(0)
+    expect(solve_decorations(sparse_scene).placements[0]).toMatchObject({
+      x: direct.x,
+      y: direct.y,
+    })
+  })
+
+  // Data everywhere but a top-right box the legend fits alone. Each decoration is judged where
+  // it would actually go, past the data, exclusions and whatever was placed before it.
+  const corner_free = Array.from({ length: 41 * 41 }, (_, idx) => ({
+    x: (idx % 41) / 40,
+    y: Math.floor(idx / 41) / 40,
+  })).filter(({ x, y }) => !(x > 0.75 && y < 0.25))
+  const corner_legend: DecorationItem = {
+    id: `legend`,
+    kind: `legend`,
+    footprint: { width: 90, height: 50 },
+  }
+
+  test(`the legend keeps the only free corner and the colorbar moves out`, () => {
+    const colorbar: DecorationItem = {
+      id: `colorbar`,
+      kind: `colorbar`,
+      footprint: { width: 20, height: 60 },
+    }
+    const [placed_legend, placed_colorbar] = solve_decorations(
+      scene_for([corner_legend, colorbar], corner_free),
+    ).placements
+    expect(placed_legend).toMatchObject({ location: `interior` })
+    expect(placed_colorbar).toMatchObject({ location: `outside`, side: `right` })
+  })
+
+  // The right-margin colorbar narrows the plot until the 104px legend no longer fits its corner;
+  // once the legend leaves for the bottom, the corner is free again and the colorbar returns
+  test(`evicting the legend gives the colorbar its corner back`, () => {
+    const wide_legend = { ...corner_legend, footprint: { width: 104, height: 50 } }
+    const colorbar: DecorationItem = {
+      id: `colorbar`,
+      kind: `colorbar`,
+      footprint: { width: 20, height: 40 },
+    }
+    const [placed_legend, placed_colorbar] = solve_decorations(
+      scene_for([wide_legend, colorbar], corner_free),
+    ).placements
+    expect(placed_legend).toMatchObject({ location: `outside`, side: `bottom` })
+    expect(placed_colorbar).toMatchObject({ location: `interior` })
+  })
+
+  test(`a host control over the only free corner sends the legend out`, () => {
+    const control = { x: 400, y: 20, width: 130, height: 100 }
+    const scene = { ...scene_for([corner_legend], corner_free), exclusion_rects: [control] }
+    expect(solve_decorations(scene).placements[0]).toMatchObject({ location: `outside` })
+    expect(
+      solve_decorations(scene_for([corner_legend], corner_free)).placements[0],
+    ).toMatchObject({
+      location: `interior`,
+    })
   })
 
   const expect_no_overlaps = (rects: readonly Rect[]): void => {
@@ -225,6 +281,26 @@ describe(`decoration solver`, () => {
     const scene = { ...scene_for([legend], dense_unit_grid), height: frame_height }
     const [placement] = solve_decorations(scene).placements
     expect(placement.location).toBe(location)
+  })
+
+  // A long list in a short panel stays inside (no room below or right) capped at the plot
+  // height like PlotLegendLayer renders it, not as its full column spilling over the axes
+  test(`a legend kept inside is placed at its capped height`, () => {
+    const column = { width: 250, height: 400 }
+    const legend_item = {
+      id: `legend`,
+      kind: `legend`,
+      footprint: column,
+      column_footprint: column,
+    } as const
+    const solution = solve_decorations({
+      ...scene_for([legend_item], dense_unit_grid),
+      height: 212,
+    })
+    const [placement] = solution.placements
+    expect(placement.location).toBe(`interior`)
+    expect(placement.footprint.height).toBe(solution.plot_bounds.height)
+    expect(placement.y).toBeCloseTo(solution.plot_bounds.y, 9)
   })
 
   // Measured inside, a legend is capped at the plot height; as a bottom strip at half the

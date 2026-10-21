@@ -37,7 +37,7 @@
           element: root_element,
           element_size: { width: 120, height: 60 },
           axis_clearance: legend?.axis_clearance,
-          points,
+          obstacles: points,
         })
       : { x: plot_bounds.x + 10, y: plot_bounds.y + 10 },
   )
