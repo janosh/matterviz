@@ -130,15 +130,21 @@
       // re-observing is a no-op, and a stale clipper only costs an idempotent re-check
       for (const clipper of clippers) resize_observer.observe(clipper)
       // The pane ends above whatever clips it, else a host card with overflow: hidden cuts its
-      // bottom off out of reach. Phone widths also end it inside the viewer so the whole pane is
-      // on screen whenever the viewer is. Measured in JS, not 100cqh: a viewer whose height comes
-      // from min-height (Trajectory in portrait) reports 100cqh as 0px, which collapsed the pane.
-      const bounds = globalThis.innerWidth <= 640 ? [container, ...clippers] : clippers
-      if (bounds.length) {
-        const bottom = Math.min(...bounds.map(clip_bottom))
-        const below_pane_top = bottom - pane_rect.top - container_gap_px
-        const cap = Math.min(below_pane_top, globalThis.innerHeight - 64)
-        const height = `${Math.max(cap, 150)}px`
+      // bottom off out of reach: a hard limit, however little room it leaves. Phone widths also
+      // end it inside the viewer so the whole pane is on screen whenever the viewer is, a soft
+      // limit floored at 150px since the pane may overflow the viewer. Measured in JS, not
+      // 100cqh: a viewer whose height comes from min-height (Trajectory in portrait) reports
+      // 100cqh as 0px, which collapsed the pane.
+      const room_above = (bound: HTMLElement) =>
+        clip_bottom(bound) - pane_rect.top - container_gap_px
+      const phone = globalThis.innerWidth <= 640
+      if (phone || clippers.length) {
+        const cap = Math.min(
+          globalThis.innerHeight - 64,
+          phone ? Math.max(room_above(container), 150) : Infinity,
+          ...clippers.map(room_above),
+        )
+        const height = `${Math.max(cap, 0)}px`
         if (pane_element.style.getPropertyValue(`--pane-viewport-clamp`) !== height)
           pane_element.style.setProperty(`--pane-viewport-clamp`, height)
       } else if (pane_element.style.getPropertyValue(`--pane-viewport-clamp`))

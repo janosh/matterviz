@@ -337,15 +337,40 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
     })
   })
   if (!session) throw new Error(`StructureSession was not created`)
+  const view_state = { get_pose_key: () => `` }
+  const stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`H`])
   const viewport = mount(StructureViewport, {
     target: document.body,
-    props: { session, view_state: { get_pose_key: () => `` }, scene_props },
+    props: {
+      session,
+      view_state,
+      scene_props: { ...scene_props, trajectory_position_stream: stream },
+    },
   })
   try {
     await tick()
-    expect(scene_stub.props).toMatchObject(scene_props)
+    expect(scene_stub.props).toMatchObject({
+      ...scene_props,
+      trajectory_position_stream: stream,
+    })
   } finally {
     void unmount(viewport)
+  }
+  // an explicit null in frame_scene_props still wins over scene_props' stream (?? would not)
+  const frame_viewport = mount(StructureViewport, {
+    target: document.body,
+    props: {
+      session,
+      view_state,
+      scene_props: { ...scene_props, trajectory_position_stream: stream },
+      frame_scene_props: { trajectory_position_stream: null },
+    },
+  })
+  try {
+    await tick()
+    expect(scene_stub.props?.trajectory_position_stream).toBeNull()
+  } finally {
+    void unmount(frame_viewport)
     cleanup()
   }
 })

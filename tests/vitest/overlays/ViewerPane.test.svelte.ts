@@ -165,18 +165,27 @@ test.each([
 // Clipping hosts would cut the pane's bottom off out of reach, so it ends above the tightest
 // one that contains it: not one an absolute viewer escapes, nor any above a fixed viewer or a
 // scroller (the user can reach the rest). The body clips like an app shell, at the viewport.
-// Fullscreen on the outer host drops its cap and all above it.
+// A clipping edge stays a hard limit however little room it leaves. Fullscreen on the outer
+// host drops its cap and all above it.
 test.each([
-  [`visible`, `hidden`, `relative`, `426px`, `376px`, `426px`],
-  [`visible`, `clip`, `relative`, `426px`, `376px`, `426px`],
-  [`hidden`, `hidden`, `relative`, `326px`, `276px`, `426px`],
-  [`hidden`, `auto`, `relative`, ``, ``, ``],
-  [`visible`, `visible`, `relative`, `526px`, `526px`, ``],
-  [`visible`, `hidden`, `absolute`, `526px`, `526px`, ``],
-  [`hidden`, `hidden`, `fixed`, ``, ``, ``],
+  [`visible`, `hidden`, `relative`, `426px`, `376px`, `26px`, `426px`],
+  [`visible`, `clip`, `relative`, `426px`, `376px`, `26px`, `426px`],
+  [`hidden`, `hidden`, `relative`, `326px`, `276px`, `0px`, `426px`],
+  [`hidden`, `auto`, `relative`, ``, ``, ``, ``],
+  [`visible`, `visible`, `relative`, `526px`, `526px`, `526px`, ``],
+  [`visible`, `hidden`, `absolute`, `526px`, `526px`, `526px`, ``],
+  [`hidden`, `hidden`, `fixed`, ``, ``, ``, ``],
 ])(
   `pane cap with outer overflow-y: %s, card overflow-y: %s, viewer %s`,
-  async (outer_y, card_y, viewer_position, clamp, shrunk_clamp, fullscreen_clamp) => {
+  async (
+    outer_y,
+    card_y,
+    viewer_position,
+    clamp,
+    shrunk_clamp,
+    tight_clamp,
+    fullscreen_clamp,
+  ) => {
     mock_fullscreen()
     vi.stubGlobal(`innerWidth`, 1000)
     vi.stubGlobal(`innerHeight`, 700)
@@ -219,6 +228,10 @@ test.each([
     shrink = 50
     trigger_resize_observer(card)
     expect(pane_clamp()).toBe(shrunk_clamp)
+    // a clipping edge just below the pane top is a hard limit: no 150px floor past it
+    shrink = 400
+    trigger_resize_observer(card)
+    expect(pane_clamp()).toBe(tight_clamp)
 
     shrink = 0
     await outer.requestFullscreen()

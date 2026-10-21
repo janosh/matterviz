@@ -15,7 +15,6 @@ import {
   point_in_rect,
   rect_within_rect,
   resolve_axis_title_layout,
-  sample_series_obstacle_points,
   y_axis_label_x,
   y2_axis_label_x,
 } from '#lib/plot/core/layout.js'
@@ -216,50 +215,6 @@ describe(`layout utility functions`, () => {
       expect(result.overlaps).toBe(0)
       // the gap is x in [130, 370]: a 100px element centered in it starts at 200
       expect(Math.abs(result.x - 200)).toBeLessThanOrEqual(4)
-    })
-  })
-
-  describe(`sample_series_obstacle_points`, () => {
-    const sparse_line = [
-      { x: 0, y: 0 },
-      { x: 100, y: 100 },
-    ]
-
-    it.each([
-      { name: `points-only series`, points: sparse_line, draws_line: false, step: 12 },
-      {
-        name: `zero-length segment`,
-        points: [
-          { x: 5, y: 5 },
-          { x: 5, y: 5 },
-        ],
-        draws_line: true,
-        step: 12,
-      },
-      { name: `non-positive step`, points: sparse_line, draws_line: true, step: 0 },
-    ])(`adds no interior samples for $name`, ({ points, draws_line, step }) => {
-      expect(sample_series_obstacle_points(points, draws_line, step)).toEqual(points)
-    })
-
-    it(`samples interior points along the segment when the series draws a line`, () => {
-      const result = sample_series_obstacle_points(sparse_line, true, 12)
-      expect(result).toHaveLength(12)
-      for (const point of result) expect(point.x).toBeCloseTo(point.y)
-      const interior = result.filter((point) => point.x > 0 && point.x < 100)
-      expect(interior).toHaveLength(10)
-    })
-
-    it(`breaks the line at non-finite vertices (no sampling across gaps)`, () => {
-      const with_gap = [
-        { x: 0, y: 0 },
-        { x: NaN, y: NaN },
-        { x: 100, y: 100 },
-      ]
-      const result = sample_series_obstacle_points(with_gap, true, 12)
-      expect(result).toEqual([
-        { x: 0, y: 0 },
-        { x: 100, y: 100 },
-      ])
     })
   })
 

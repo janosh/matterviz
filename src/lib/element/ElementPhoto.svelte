@@ -15,16 +15,21 @@
       missing_msg?: string
     } = $props()
 
+  // null: the caller knows there is no photo, so skip the request (and its 404)
   const src = $derived(
-    source ??
-      `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`,
+    source === null
+      ? null
+      : (source ??
+          `https://github.com/janosh/matterviz/raw/main/static/elements/${element.number}-${element.name.toLowerCase()}.avif`),
   )
   // URL whose load failed; a new element (new URL) is shown again until it fails too
   let failed_src = $state<string | null>(null)
-  const hidden = $derived(failed_src === src)
+  const hidden = $derived(src === null || failed_src === src)
 </script>
 
-<img {src} alt={element.name} onerror={() => (failed_src = src)} {hidden} {...rest} />
+{#if src !== null}
+  <img {src} alt={element.name} onerror={() => (failed_src = src)} {hidden} {...rest} />
+{/if}
 {#if hidden && missing_msg}
   <div {...rest}>
     <span>

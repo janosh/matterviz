@@ -585,38 +585,6 @@ export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
     right_rect.y + right_rect.height <= left_rect.y
   )
 
-// Include finite vertices and, for connected series, sample long segments so auto-placed
-// decorations avoid sparse lines. Callers can accumulate series in one obstacle array.
-export function sample_series_obstacle_points(
-  pixel_points: { x: number; y: number }[],
-  draws_line: boolean,
-  step: number,
-  obstacles: { x: number; y: number }[] = [],
-): { x: number; y: number }[] {
-  let previous: { x: number; y: number } | null = null
-  for (const point of pixel_points) {
-    if (!isFinite(point.x) || !isFinite(point.y)) {
-      previous = null // non-finite breaks the line; don't sample across the gap
-      continue
-    }
-    obstacles.push(point)
-    if (draws_line && previous && step > 0) {
-      const n_samples = Math.floor(
-        Math.hypot(point.x - previous.x, point.y - previous.y) / step,
-      )
-      for (let idx = 1; idx < n_samples; idx++) {
-        const frac = idx / n_samples
-        obstacles.push({
-          x: previous.x + (point.x - previous.x) * frac,
-          y: previous.y + (point.y - previous.y) * frac,
-        })
-      }
-    }
-    previous = point
-  }
-  return obstacles
-}
-
 // Place a legend/colorbar: in a free plot corner if there is one, else in the free spot with
 // the most room around it, else where it covers the least data. Obstacles and exclusion rects
 // fill an occupancy grid whose summed-area table counts any candidate in O(1), so every cell

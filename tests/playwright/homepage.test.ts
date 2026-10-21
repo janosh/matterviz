@@ -78,6 +78,13 @@ test(`periodic table inset neutralises the plot panel tint and shrinks its label
 // The element pages' palette entries load with the element dataset when the palette first
 // opens, keeping that dataset off the many demo pages that never need it
 test(`search palette lists element pages after opening`, async ({ page }) => {
+  // the Pagefind index comes from `build:site`, not the build the tests run against
+  await page.route(`**/pagefind/pagefind.js`, (route) =>
+    route.fulfill({
+      contentType: `text/javascript`,
+      body: `export const search = async () => ({ results: [] })`,
+    }),
+  )
   await page.goto(`/plot`, { waitUntil: `domcontentloaded` })
   await expect
     .poll(async () => {

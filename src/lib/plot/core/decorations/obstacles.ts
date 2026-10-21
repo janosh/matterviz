@@ -3,7 +3,7 @@
 
 import type { Vec2 } from '#lib/math.js'
 import type { Rect, Sides } from '#lib/plot/core/layout.js'
-import { PLACEMENT_CELL, sample_series_obstacle_points } from '#lib/plot/core/layout.js'
+import { PLACEMENT_CELL } from '#lib/plot/core/layout.js'
 import type { DecorationPoint, DecorationSize, Obstacle } from './types'
 
 // True when the user pinned a decoration via its style (an edge property or position:absolute),
@@ -168,9 +168,31 @@ export function build_obstacles_norm(
   base_w: number,
   base_h: number,
 ): Obstacle[] {
-  // A drawn line sampled at the placement grid's resolution, so no decoration slips across it
-  const step = PLACEMENT_CELL / Math.max(base_w, base_h, 1)
+  // Points snap to placement-cell rects, one per occupied cell, added as they are sampled: the
+  // count stays bounded by the plot area however dense or noisy a mark is (nothing upstream
+  // thins it), and coverage stays conservative
+  const [cell_w, cell_h] = [PLACEMENT_CELL / base_w, PLACEMENT_CELL / base_h]
+  const cols = Math.ceil(1 / cell_w) + 1
+  const occupied = new Set<number>()
   const obstacles: Obstacle[] = []
+  const add_point = (coord_x: number, coord_y: number): void => {
+    const [col, row] = [Math.floor(coord_x / cell_w), Math.floor(coord_y / cell_h)]
+    if (occupied.has(row * cols + col)) return
+    occupied.add(row * cols + col)
+    obstacles.push({ x: col * cell_w, y: row * cell_h, width: cell_w, height: cell_h })
+  }
+  // A drawn line is walked a cell at a time, so no decoration slips across it
+  const step = PLACEMENT_CELL / Math.max(base_w, base_h, 1)
+  const add_segment = (start: DecorationPoint, end: DecorationPoint): void => {
+    const n_steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / step))
+    for (let idx = 0; idx <= n_steps; idx++) {
+      const frac = idx / n_steps
+      add_point(start.x + (end.x - start.x) * frac, start.y + (end.y - start.y) * frac)
+    }
+  }
+  const add_if_inside = (point: DecorationPoint): void => {
+    if (inside_unit_square(point)) add_point(point.x, point.y)
+  }
   for (const mark of marks) {
     if (!(`points` in mark)) {
       obstacles.push(mark)
@@ -178,52 +200,28 @@ export function build_obstacles_norm(
     }
     const { points, draws_line = false } = mark
     if (!draws_line) {
-      sample_series_obstacle_points(points.filter(inside_unit_square), false, step, obstacles)
+      for (const point of points) add_if_inside(point)
       continue
     }
+    // A vertex joined to no neighbour (non-finite ones break the line) is a lone point
     let previous: DecorationPoint | null = null
-    let previous_belongs_to_segment = false
-    let last_appended: DecorationPoint | null = null
+    let previous_joined = false
     for (const point of points) {
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-        if (previous && !previous_belongs_to_segment && inside_unit_square(previous)) {
-          obstacles.push(previous)
-        }
+        if (previous && !previous_joined) add_if_inside(previous)
         previous = null
-        previous_belongs_to_segment = false
-        last_appended = null
         continue
       }
       if (previous) {
         const clipped = clip_segment_to_unit_square(previous, point)
-        if (clipped) {
-          for (const obstacle of sample_series_obstacle_points(clipped, true, step)) {
-            if (last_appended?.x !== obstacle.x || last_appended.y !== obstacle.y) {
-              obstacles.push(obstacle)
-              last_appended = obstacle
-            }
-          }
-        } else last_appended = null
-        previous_belongs_to_segment = true
-      } else previous_belongs_to_segment = false
+        if (clipped) add_segment(...clipped)
+      }
+      previous_joined = previous !== null
       previous = point
     }
-    if (previous && !previous_belongs_to_segment && inside_unit_square(previous)) {
-      obstacles.push(previous)
-    }
+    if (previous && !previous_joined) add_if_inside(previous)
   }
-  // Points snap to placement-cell rects, one per occupied cell: the count stays bounded by the
-  // plot area, so no mark needs thinning upstream, and coverage stays conservative
-  const [cell_w, cell_h] = [PLACEMENT_CELL / base_w, PLACEMENT_CELL / base_h]
-  const cols = Math.ceil(1 / cell_w) + 1
-  const occupied = new Set<number>()
-  return obstacles.flatMap((obstacle) => {
-    if (obstacle.width || obstacle.height) return [obstacle]
-    const [col, row] = [Math.floor(obstacle.x / cell_w), Math.floor(obstacle.y / cell_h)]
-    if (occupied.has(row * cols + col)) return []
-    occupied.add(row * cols + col)
-    return [{ x: col * cell_w, y: row * cell_h, width: cell_w, height: cell_h }]
-  })
+  return obstacles
 }
 
 // A bar's visible part as one filled rect (none when it lies off the plot); a zero-width bar

@@ -512,8 +512,9 @@
         on_rendered={frame_scene_props.on_rendered ?? scene_props.on_rendered}
         show_cell_vectors={frame_scene_props.show_cell_vectors ??
           scene_props.show_cell_vectors}
-        trajectory_position_stream={frame_scene_props.trajectory_position_stream ??
-          scene_props.trajectory_position_stream}
+        trajectory_position_stream={`trajectory_position_stream` in frame_scene_props
+          ? frame_scene_props.trajectory_position_stream
+          : scene_props.trajectory_position_stream}
         show_trajectory_lines={frame_scene_props.show_trajectory_lines ??
           scene_props.show_trajectory_lines}
         trajectory_lines_emphasis={frame_scene_props.trajectory_lines_emphasis ??

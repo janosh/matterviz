@@ -368,6 +368,25 @@ describe(`build_obstacles_norm`, () => {
     ])
   })
 
+  // a noisy 10k-point trace sweeping the plot height yields at most one rect per 4px cell,
+  // never one per sample: the 300x200 grid has 75 x 50 cells
+  test(`a noisy line yields at most one rect per cell`, () => {
+    const points = Array.from({ length: 10_000 }, (_, idx) => ({
+      x: idx / 10_000,
+      y: idx % 2,
+    }))
+    const cells = build_obstacles_norm([{ points, draws_line: true }], 300, 200)
+    expect(cells.length).toBeLessThanOrEqual(76 * 51)
+    expect(new Set(cells.map(({ x, y }) => `${x},${y}`)).size).toBe(cells.length)
+  })
+
+  // a non-finite vertex breaks the line: its two neighbours stay lone points, not a segment
+  test(`breaks a line at non-finite vertices`, () => {
+    // oxfmt-ignore
+    const points = [{ x: 0.1, y: 0.1 }, { x: NaN, y: NaN }, { x: 0.9, y: 0.9 }]
+    expect(build_obstacles_norm([{ points, draws_line: true }], 300, 200)).toHaveLength(2)
+  })
+
   test(`samples the visible portion of extreme offscreen line segments`, () => {
     // oxfmt-ignore
     const points = [{ x: -1000, y: 0.5 }, { x: 1000, y: 0.5 }]
