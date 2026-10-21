@@ -170,6 +170,25 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // Must have at least 4 checkboxes (boundaries, grid, labels, special points)
     expect(await pane.locator(`input[type="checkbox"]`).count()).toBeGreaterThanOrEqual(4)
+    // Lone checkboxes pack side by side, and a color's label sits beside its swatch, not above
+    const centers = await pane.evaluate((element) => {
+      const center_y = (node: Element | null | undefined) => {
+        const rect = node?.getBoundingClientRect()
+        return rect ? Math.round(rect.top + rect.height / 2) : NaN
+      }
+      const [first, second] = element.querySelectorAll(
+        `.visibility-grid input[type="checkbox"]`,
+      )
+      const swatch = element.querySelector(`input[type="color"][aria-label="Boundaries"]`)
+      return [
+        center_y(first),
+        center_y(second),
+        center_y(swatch?.closest(`fieldset`)?.querySelector(`legend`)),
+        center_y(swatch),
+      ]
+    })
+    expect(centers[1]).toBe(centers[0])
+    expect(Math.abs(centers[2] - centers[3])).toBeLessThanOrEqual(2)
 
     // Toggle first checkbox off - boundaries should hide
     const boundaries = svg.locator(`.boundaries`)

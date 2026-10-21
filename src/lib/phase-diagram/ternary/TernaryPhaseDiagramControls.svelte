@@ -241,27 +241,28 @@
       <span class="control-label">G(T)</span>
       {@render toggle_group(MODES, free_energy_mode, (mode) => (free_energy_mode = mode))}
     </div>
-    {#each t_range ? [0, 1] : [] as end (end)}
-      <label
-        {@attach tooltip({
-          content: `${end ? `Highest` : `Lowest`} temperature of the sweep (K)`,
-        })}
-      >
-        <span>T {end ? `max` : `min`}</span>
-        <input
-          type="number"
-          step="50"
-          value={t_range?.[end]}
-          onchange={(evt) => {
-            const value = evt.currentTarget.valueAsNumber
-            const next: Vec2 = end ? [t_range?.[0] ?? 0, value] : [value, t_range?.[1] ?? 0]
-            if (Number.isFinite(value) && next[0] < next[1]) t_range = next
-            // Rejected input: the bound value is unchanged, so restore the field by hand
-            else evt.currentTarget.value = String(t_range?.[end] ?? ``)
-          }}
-        />
-      </label>
-    {/each}
+    {#if t_range}
+      <!-- Both bounds share a row: as separate rows they spent two lines on two short numbers -->
+      <div class="setting" {@attach tooltip({ content: `Temperature range of the sweep` })}>
+        <span class="control-label">T range (K)</span>
+        {#each [0, 1] as end (end)}
+          {#if end}<span>–</span>{/if}
+          <input
+            type="number"
+            step="50"
+            aria-label={`${end ? `Highest` : `Lowest`} temperature of the sweep (K)`}
+            value={t_range[end]}
+            onchange={(evt) => {
+              const value = evt.currentTarget.valueAsNumber
+              const next: Vec2 = end ? [t_range?.[0] ?? 0, value] : [value, t_range?.[1] ?? 0]
+              if (Number.isFinite(value) && next[0] < next[1]) t_range = next
+              // Rejected input: the bound value is unchanged, so restore the field by hand
+              else evt.currentTarget.value = String(t_range?.[end] ?? ``)
+            }}
+          />
+        {/each}
+      </div>
+    {/if}
     <NumberRangeInput
       min={8}
       max={400}

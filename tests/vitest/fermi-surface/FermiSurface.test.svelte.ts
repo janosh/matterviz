@@ -300,7 +300,7 @@ test.each([
   await tick()
   expect(on_error).not.toHaveBeenCalled()
   expect(props.error_msg).toBeUndefined()
-  expect(document.body.textContent).toContain(`E_F`)
+  expect(document.body.textContent).toContain(`EF =`) // E<sub>F</sub>
   // All vertices sit in the positive octant → detect_irreducible_bz walked typed positions
   expect(props.tile_bz).toBe(true)
   // Children receive the normalised surface: identical geometry to the typed-array form

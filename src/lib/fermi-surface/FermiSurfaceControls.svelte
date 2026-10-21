@@ -171,7 +171,7 @@
 >
   <SettingsGroup title="Surface" open>
     {#if fermi_data}
-      <small>E_F = {format_num(fermi_data.fermi_energy, `.3f`)} eV</small>
+      <small>E<sub>F</sub> = {format_num(fermi_data.fermi_energy, `.3f`)} eV</small>
     {/if}
     {#if band_data}
       <SettingsSection
@@ -202,29 +202,31 @@
     {/if}
 
     {#if available_bands.length > 0}
-      <SettingsSection
-        title="Bands"
-        changed_keys={bands_settings.changed_keys}
-        on_reset={show_all_bands}
-        layout="grid"
-      >
-        <div class="band-checkboxes">
-          {#each available_bands as band_idx (band_idx)}
-            <label class="band-checkbox">
-              <input
-                type="checkbox"
-                checked={selected_bands?.includes(band_idx)}
-                onchange={() => toggle_band(band_idx)}
-              />
-              <span>Band {band_idx + 1}</span>
-            </label>
-          {/each}
-        </div>
+      <div class="bands">
+        <SettingsSection
+          title="Bands"
+          changed_keys={bands_settings.changed_keys}
+          on_reset={show_all_bands}
+          layout="grid"
+        >
+          <div class="band-checkboxes">
+            {#each available_bands as band_idx (band_idx)}
+              <label class="band-checkbox">
+                <input
+                  type="checkbox"
+                  checked={selected_bands?.includes(band_idx)}
+                  onchange={() => toggle_band(band_idx)}
+                />
+                <span>Band {band_idx + 1}</span>
+              </label>
+            {/each}
+          </div>
+        </SettingsSection>
         <div class="band-actions">
           <button type="button" onclick={show_all_bands}>All</button>
           <button type="button" onclick={() => (selected_bands = [])}>None</button>
         </div>
-      </SettingsSection>
+      </div>
     {/if}
 
     <SettingsSection
@@ -411,10 +413,27 @@
     gap: 0.3em;
     font-size: 0.9em;
   }
+  /* All/None on the Bands heading row, between its title and Reset: the heading's children
+     join this grid, the section body spans the row below */
+  .bands {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    column-gap: 0.5em;
+    > :global(.settings-section-heading) {
+      display: contents;
+    }
+    > :global(.settings-section) {
+      grid-area: 2 / 1 / 3 / -1;
+    }
+    :global(.heading-actions) {
+      grid-area: 1 / 3;
+    }
+  }
   .band-actions {
+    grid-area: 1 / 2;
     display: flex;
     gap: 0.5em;
-    margin-top: 0.5em;
   }
   .band-actions button {
     padding: 0.2em 0.6em;

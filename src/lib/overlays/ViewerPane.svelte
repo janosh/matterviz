@@ -84,6 +84,27 @@
     }
   })
 
+  // Boxes that cut the pane off with no way to scroll to the rest, walking its containing blocks:
+  // an absolute box escapes the clipping between it and its offset parent, a fixed one all of it.
+  // The walk ends at the first scroller (the user can reach the rest) or a fullscreen viewer.
+  const clipping_ancestors = (pane_node: HTMLElement): HTMLElement[] => {
+    const clippers: HTMLElement[] = []
+    let element: Element | null = pane_node
+    while (element instanceof HTMLElement && element !== document.fullscreenElement) {
+      const { overflowY, position: css_position } = getComputedStyle(element)
+      if (overflowY === `auto` || overflowY === `scroll`) break
+      if (overflowY === `hidden` || overflowY === `clip`) clippers.push(element)
+      if (css_position === `fixed`) break
+      element = css_position === `absolute` ? element.offsetParent : element.parentElement
+    }
+    return clippers
+  }
+  // A root or body that clips does so at the viewport (overflow propagates there), not its box.
+  const clip_bottom = (clipper: HTMLElement): number =>
+    clipper === document.documentElement || clipper === document.body
+      ? globalThis.innerHeight
+      : clipper.getBoundingClientRect().bottom
+
   $effect(() => {
     // Constrain automatic placement only; manual placement belongs to the user until Reset.
     if (!open || !pane || position === `fixed` || has_been_dragged) return
@@ -105,11 +126,17 @@
           .querySelector<HTMLElement>(`:scope > .control-tab`)
           ?.getBoundingClientRect().right ?? pane_rect.right
       const container_rect = container.getBoundingClientRect()
-      // Phone widths also cap the pane to the viewer so the whole pane is on screen whenever
-      // the viewer is. Measured in JS, not 100cqh: a viewer whose height comes from min-height
-      // (Trajectory in portrait) reports 100cqh as 0px, which collapsed the pane entirely.
-      if (globalThis.innerWidth <= 640) {
-        const below_pane_top = container_rect.bottom - pane_rect.top - container_gap_px
+      const clippers = clipping_ancestors(pane_element)
+      // re-observing is a no-op, and a stale clipper only costs an idempotent re-check
+      for (const clipper of clippers) resize_observer.observe(clipper)
+      // The pane ends above whatever clips it, else a host card with overflow: hidden cuts its
+      // bottom off out of reach. Phone widths also end it inside the viewer so the whole pane is
+      // on screen whenever the viewer is. Measured in JS, not 100cqh: a viewer whose height comes
+      // from min-height (Trajectory in portrait) reports 100cqh as 0px, which collapsed the pane.
+      const bounds = globalThis.innerWidth <= 640 ? [container, ...clippers] : clippers
+      if (bounds.length) {
+        const bottom = Math.min(...bounds.map(clip_bottom))
+        const below_pane_top = bottom - pane_rect.top - container_gap_px
         const cap = Math.min(below_pane_top, globalThis.innerHeight - 64)
         const height = `${Math.max(cap, 150)}px`
         if (pane_element.style.getPropertyValue(`--pane-viewport-clamp`) !== height)
