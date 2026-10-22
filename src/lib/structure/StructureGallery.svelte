@@ -5,7 +5,7 @@
   import { clamp } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import type { StructureGalleryItem } from '#lib/structure/index.js'
-  import GlassChip from '#lib/overlays/GlassChip.svelte'
+  import GlassChip from 'svelte-widgets/GlassChip.svelte'
   import { portal } from 'svelte-widgets/attachments'
   import { untrack, type ComponentProps, type Snippet } from 'svelte'
   import Structure from './Structure.svelte'

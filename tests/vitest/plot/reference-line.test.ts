@@ -104,31 +104,26 @@ test(`reference annotations dodge obstacles projected onto the marginal-padded c
       base_solution,
       base_pad: pad,
       obstacles_norm: obstacles_norm.map(([coord_x, coord_y]) => ({ x: coord_x, y: coord_y })),
-      // pinned, so the same candidate is chosen and only its collision score can change
-      lines: [
-        {
-          idx: 0,
-          type: `horizontal`,
-          y: 5,
-          annotation: { text: `Threshold`, position: `center`, side: `above` },
-        },
-      ],
+      // unpinned, so a collision moves the label off its preferred candidate
+      lines: [{ idx: 0, type: `horizontal`, y: 5, annotation: { text: `Threshold` } }],
       ...axes,
     }).placements.at(-1)
     if (!placement?.reference_annotation) throw new Error(`annotation not placed`)
-    return { rect: placement.reference_annotation.rect, score: placement.score }
+    return placement.reference_annotation.rect
   }
-  const { rect, score } = solve([], base_pad)
-  expect(score).toBeCloseTo(0)
+  const preferred = solve([], base_pad)
   // an obstacle at the label's centre, normalized against the unpadded chart area
-  const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  const center = {
+    x: preferred.x + preferred.width / 2,
+    y: preferred.y + preferred.height / 2,
+  }
   const plot_w = scene.width - base_pad.l - base_pad.r
   const plot_h = scene.height - base_pad.t - base_pad.b
   const obstacle: Vec2 = [(center.x - base_pad.l) / plot_w, (center.y - base_pad.t) / plot_h]
-  expect(solve([obstacle], base_pad).score).toBeLessThan(0)
+  expect(solve([obstacle], base_pad)).not.toEqual(preferred)
   // with marginals reserving the top and right, that same normalized point lands elsewhere
   const marginal_pad = { ...base_pad, t: base_pad.t + 100, r: base_pad.r + 100 }
-  expect(solve([obstacle], marginal_pad).score).toBeCloseTo(0)
+  expect(solve([obstacle], marginal_pad)).toEqual(preferred)
 })
 
 // Every reader of a line's x_axis/y_axis (the layer and the annotation solver) goes through

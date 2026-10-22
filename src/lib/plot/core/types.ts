@@ -392,7 +392,7 @@ export interface LabelPlacementWeights {
 
 // Configuration for the label auto-placement algorithm (simulated annealing)
 export interface LabelPlacementConfig {
-  sa_iterations?: number // SA iterations per label (default: 2000)
+  sa_iterations?: number // SA iterations per label (default: 1000)
   // SA iterations per label when a solve inherits the previous layout, as happens on every
   // pan/zoom frame (default: WARM_SA_ITERATIONS)
   warm_sa_iterations?: number

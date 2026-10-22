@@ -641,6 +641,14 @@ describe(`Bands component`, () => {
     },
   )
 
+  // the popup's 3D zone loads on the first click (a dynamic import), so it lands a tick later
+  const bz_popup = () =>
+    vi.waitFor(() => {
+      const popup = document.querySelector<HTMLElement>(`.bz-popup`)
+      if (!popup) throw new Error(`no .bz-popup yet`)
+      return popup
+    })
+
   it(`opens a Brillouin zone popup marking the clicked symmetry point`, async () => {
     // the band data's own reciprocal lattice is enough, no structure needed. The path is
     // stored one reciprocal lattice vector out (Γ+b₁ → X+b₁), so the drawn branch folds back
@@ -659,31 +667,30 @@ describe(`Bands component`, () => {
     expect(document.querySelector(`.bz-popup`)).toBeNull()
 
     await fire(labels[1], mouse(`click`))
-    const popup = document.querySelector(`.bz-popup`)
-    expect(popup).not.toBeNull()
-    expect(popup?.classList.contains(`manual`)).toBe(true)
+    const popup = await bz_popup()
+    expect(popup.classList.contains(`manual`)).toBe(true)
     // the popup sits inside the plot wrapper so it scrolls/clips with the plot
-    expect(popup?.closest(`.scatter`)).not.toBeNull()
-    const stats = popup?.querySelector(`.bz-popup-stats`)
+    expect(popup.closest(`.scatter`)).not.toBeNull()
+    const stats = popup.querySelector(`.bz-popup-stats`)
     expect(stats?.querySelector(`strong`)?.textContent).toBe(`X`)
     // fractional coords of X in the fixture; its Cartesian position is the drawn path's X
     // (folded with its branch), k_x = +0.5 * 2π/3 ≈ 1.05, not the opposite face X folds to alone
     expect(stats?.textContent).toContain(`(1.5, 0, 0)`)
     expect(stats?.textContent).toContain(`k: (1.05, 0, 0)`)
     // the BZ viewer is embedded without its own chrome, sized by the popup
-    expect(popup?.querySelector(`.brillouin-zone`)).not.toBeNull()
-    expect(popup?.querySelector(`.brillouin-zone .control-buttons`)?.children).toHaveLength(0)
-    expect(popup?.querySelector(`.bz-popup-close .close-btn`)).not.toBeNull()
+    expect(popup.querySelector(`.brillouin-zone`)).not.toBeNull()
+    expect(popup.querySelector(`.brillouin-zone .control-buttons`)?.children).toHaveLength(0)
+    expect(popup.querySelector(`.bz-popup-close .close-btn`)).not.toBeNull()
     // anchored on the x axis at the tick's scaled x (clamped to half the default popup width
     // from the right edge), not at a rect captured on click
     const { x: tick_x, y: axis_y } = translate_of(labels[1].closest(`.tick`))
     expect(tick_x).toBeGreaterThan(400 - 160)
-    expect((popup as HTMLElement).style.left).toBe(`${400 - 160}px`)
-    expect((popup as HTMLElement).style.top).toBe(`${axis_y}px`)
+    expect(popup.style.left).toBe(`${400 - 160}px`)
+    expect(popup.style.top).toBe(`${axis_y}px`)
     // the bottom arrow still points at the tick after the clamp shifted the popup left of it
     // (tick offset within the popup, capped 12px inside the rounded corners)
     const arrow_left = () =>
-      Number(popup?.querySelector<HTMLElement>(`.popup-arrow`)?.style.left.replace(`px`, ``))
+      Number(popup.querySelector<HTMLElement>(`.popup-arrow`)?.style.left.replace(`px`, ``))
     expect(arrow_left()).toBeCloseTo(Math.min(tick_x - (400 - 160) + 160, 320 - 12), 6)
     // the clicked label reads as pressed and is styled active; the other does not
     expect(labels[1].classList.contains(`active`)).toBe(true)
@@ -716,7 +723,7 @@ describe(`Bands component`, () => {
     await pan(mid, mid - clip_width / 2)
     expect(document.querySelector(`.bz-popup`)).toBeNull()
     await pan(mid, mid + clip_width / 2)
-    expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`160px`)
+    expect((await bz_popup()).style.left).toBe(`160px`)
 
     await fire(globalThis, new KeyboardEvent(`keydown`, { key: `Escape` }))
     expect(document.querySelector(`.bz-popup`)).toBeNull()
@@ -731,21 +738,44 @@ describe(`Bands component`, () => {
       bz_popup_props: { width: 200, on_close, style: `border: 1px solid red` },
     })
     await fire(tick_labels()[0], keydown(`Enter`))
-    const popup = document.querySelector<HTMLElement>(`.bz-popup`)
-    expect(popup?.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
+    const popup = await bz_popup()
+    expect(popup.querySelector(`.bz-popup-stats strong`)?.textContent).toBe(`Γ`)
     // Γ sits at the plot's left padding, so the caller's width sets the clamp; the caller's
     // style is appended to the anchor
-    expect(popup?.style.left).toBe(`100px`)
-    expect(popup?.style.border).toBe(`1px solid red`)
-    expect(popup?.querySelector(`.brillouin-zone`)?.getAttribute(`style`)).toContain(
+    expect(popup.style.left).toBe(`100px`)
+    expect(popup.style.border).toBe(`1px solid red`)
+    expect(popup.querySelector(`.brillouin-zone`)?.getAttribute(`style`)).toContain(
       `--bz-width: 200px`,
     )
 
     // Bands still owns closing; the caller's on_close is notified
-    popup?.querySelector<HTMLButtonElement>(`.bz-popup-close .close-btn`)?.click()
+    popup.querySelector<HTMLButtonElement>(`.bz-popup-close .close-btn`)?.click()
     await tick()
     expect(document.querySelector(`.bz-popup`)).toBeNull()
     expect(on_close).toHaveBeenCalledOnce()
+  })
+
+  // offline, or a stale chunk after a redeploy: the tick deselects and a notice says why
+  it(`closes the popup with a notice when its 3D zone fails to load`, async () => {
+    vi.doMock(`#lib/brillouin/BrillouinZonePopup.svelte`, () => {
+      throw new Error(`chunk offline`)
+    })
+    try {
+      await mount_plot({
+        band_structs: { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } },
+      })
+      const label = tick_labels()[1]
+      await fire(label, mouse(`click`))
+      await vi.waitFor(() =>
+        expect(document.querySelector(`.bz-popup-error`)?.textContent).toContain(
+          `failed to load`,
+        ),
+      )
+      expect(document.querySelector(`.bz-popup`)).toBeNull()
+      expect(label.getAttribute(`aria-pressed`)).toBe(`false`)
+    } finally {
+      vi.doUnmock(`#lib/brillouin/BrillouinZonePopup.svelte`)
+    }
   })
 
   it(`centers the popup on a plot narrower than the popup instead of clamping past the edges`, async () => {
@@ -753,6 +783,6 @@ describe(`Bands component`, () => {
     const band_structs = { '': { ...base_band_structure, recip_lattice: recip_lattice_a3 } }
     await mount_plot({ band_structs }, 240)
     await fire(tick_labels()[1], mouse(`click`))
-    expect(document.querySelector<HTMLElement>(`.bz-popup`)?.style.left).toBe(`120px`)
+    expect((await bz_popup()).style.left).toBe(`120px`)
   })
 })

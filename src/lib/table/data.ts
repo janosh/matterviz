@@ -2,13 +2,12 @@
 // sorting, search/filter predicates and date-time parsing/formatting.
 import {
   HTML_ENTITY_SRC,
-  HTML_TAG_SRC,
   html_to_text,
   normalize_unicode_minus,
   toggle_item,
 } from '#lib/utils.js'
 import { graphemes } from '#lib/plot/core/text-metrics.js'
-import { fuzzy_match } from 'svelte-widgets/utils'
+import { fuzzy_match, HTML_TAG_SRC } from 'svelte-widgets/utils'
 import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
 
 // Columns discovered from the first rows when the caller passes none

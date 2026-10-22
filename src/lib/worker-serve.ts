@@ -7,7 +7,7 @@
 // Dedicated workers' postMessage takes no targetOrigin (that is Window.postMessage), so
 // unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 
 type WorkerRequest<Input, Options> = { id: number; input: Input; options: Options }
 

@@ -42,6 +42,10 @@ export interface SunburstNode<Metadata = Record<string, unknown>> {
   // Hatch/texture over this node's fill (not inherited): a shape name (`diagonal`, `dots`,
   // …), a plotly-style shorthand (`/`, `x`, `.`, …) or full PatternOptions
   pattern?: FillPattern
+  // Exempt from its parent's 'Other' bucketing: takes no `max_children` slot and ignores
+  // `min_fraction` (e.g. a small idle-capacity branch next to many big users). It still
+  // moves into a bucket along with its parent if that folds (kept there too).
+  keep?: boolean
   children?: SunburstNode<Metadata>[]
   metadata?: Metadata
 }
@@ -107,7 +111,8 @@ export interface SunburstLayoutOptions {
   min_fraction?: number
   // Keep this many children per parent, largest first, bucketing the rest (0 = unlimited).
   // A child must clear both this and `min_fraction`. Not a hard cap: the >= 2 rule wins, so
-  // `max_children: 3` shows all four children of a four-child parent.
+  // `max_children: 3` shows all four children of a four-child parent. Nodes flagged
+  // `keep` are exempt from both and don't count toward this cap.
   max_children?: number
   // Id of the current view root (null = data root). Only picks what `min_fraction`
   // measures against; the layout always covers the whole tree.
@@ -265,6 +270,8 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         children,
         color: shared_field(group, `color`),
         pattern: shared_field(group, `pattern`),
+        // One kept member is enough: it marks a branch the caller always wants shown
+        keep: group.some((kid) => kid.data.keep) || undefined,
       }
     })
   }
@@ -285,18 +292,20 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
       // so a non-finite `min_fraction` can't fold every child and drop `max_children` ranking.
       const basis = (in_zoom_subtree.has(node) ? zoom_node?.value : root.value) ?? 0
       const threshold = min_fraction > 0 ? min_fraction * basis : 0
-      const eligible = kids.filter((kid) => (kid.value ?? 0) >= threshold)
+      // `keep`-flagged children bypass both rules and leave the ranking to the rest
+      const eligible = kids.filter((kid) => !kid.data.keep && (kid.value ?? 0) >= threshold)
       // Only a cap that bites pays for the sort; `toSorted` is stable so ties keep input order
-      const keep = new Set(
+      const ranked = new Set(
         max_children > 0 && eligible.length > max_children
           ? eligible
               .toSorted((left, right) => (right.value ?? 0) - (left.value ?? 0))
               .slice(0, max_children)
           : eligible,
       )
+      const is_small = (kid: Node) => !kid.data.keep && !ranked.has(kid)
+      const smalls = kids.filter(is_small)
       // A bucket of one is just that child under a worse name.
-      if (kids.length - keep.size < 2) return
-      const smalls = kids.filter((kid) => !keep.has(kid))
+      if (smalls.length < 2) return
       const bucket = hierarchy<SunburstNode<Metadata>>(
         {
           value: smalls.reduce((sum, kid) => sum + (kid.value ?? 0), 0),
@@ -326,7 +335,7 @@ export function compute_sunburst_layout<Metadata = Record<string, unknown>>(
         )
       }
       // Kept children stay in caller order; only the folded run moves to the end
-      node.children = [...kids.filter((kid) => keep.has(kid)), bucket]
+      node.children = [...kids.filter((kid) => !is_small(kid)), bucket]
       buckets.set(bucket, smalls.length)
     })
   }

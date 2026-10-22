@@ -23,7 +23,7 @@
   } from '#lib/xrd/index.js'
   import { SvelteMap } from 'svelte/reactivity'
   import { structure_map, structures } from '#site/structures.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { fixture_ext, site_file_info } from '#site/imports.js'
   import StructurePicker, { formula_for } from '../../StructurePicker.svelte'
   import StructureTiles from '../../StructureTiles.svelte'

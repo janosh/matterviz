@@ -16,7 +16,7 @@ import {
   partition_point,
 } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/pbc.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { Dataset, Group } from 'h5wasm'
 import type * as h5wasm from 'h5wasm'
 import {

@@ -36,7 +36,8 @@ import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shar
 import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz.js'
 import type { NebImage, ReactionPath } from './index'
 import { assert_path } from './reaction-path'
-import { is_plain_object, to_error } from '#lib/utils.js'
+import { is_plain_object } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 
 export const REACTION_PATH_FORMAT = `matterviz-reaction-path`
 

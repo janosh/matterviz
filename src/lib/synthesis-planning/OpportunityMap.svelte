@@ -5,7 +5,7 @@
   import { getAbortSignal } from 'svelte'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { compute_opportunity_map_async } from './opportunity-map-async.svelte'
   import type { OpportunityCell, OpportunityRequest } from './opportunity-map'
   import { solid_reactants } from './thermo'

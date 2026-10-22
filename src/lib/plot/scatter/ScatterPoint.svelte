@@ -1,5 +1,6 @@
 <script lang="ts">
   import { HIGHLIGHT } from '#lib/colors/index.js'
+  import { create_on_screen } from '#lib/effects.svelte.js'
   import { type D3SymbolName, symbol_map } from '#lib/labels.js'
   import { lerp, type Point2D } from '#lib/math.js'
   import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types.js'
@@ -108,6 +109,11 @@
   )
   const { radius, fill } = $derived(tweened.current)
 
+  // The ring's CSS pulse animates an SVG transform, which costs a style recalc and layout per
+  // frame even off screen (8 rings scrolled away kept a page at ~100 ms/s CPU), so it pauses
+  // there
+  const ring_visibility = create_on_screen()
+
   // SVG path data for the marker's `d` attribute
   let marker_path = $derived.by(() => {
     const symbol_key: D3SymbolName = style.symbol_type ?? DEFAULTS.scatter.symbol_type
@@ -141,6 +147,8 @@
     <circle
       r={(radius ?? 4) * 2.5}
       class="effect-ring selected"
+      class:paused={!ring_visibility.current}
+      {@attach ring_visibility.attach}
       fill="var(--point-fill-color, {fill ?? `cornflowerblue`})"
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
@@ -148,7 +156,8 @@
   {:else if style.is_highlighted && style.highlight_effect}
     <circle
       r={(radius ?? 4) * 2}
-      class={[`effect-ring`, style.highlight_effect]}
+      class={[`effect-ring`, style.highlight_effect, { paused: !ring_visibility.current }]}
+      {@attach ring_visibility.attach}
       fill={style.highlight_color ?? HIGHLIGHT.emphasis}
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
@@ -238,6 +247,9 @@
     @media (prefers-reduced-motion: reduce) {
       animation: none;
     }
+  }
+  .effect-ring.paused {
+    animation-play-state: paused;
   }
   .effect-ring.pulse {
     --effect-ring-duration: 1.2s;

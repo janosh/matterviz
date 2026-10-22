@@ -1,7 +1,7 @@
 <script lang="ts">
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import {
     html_to_svg,
     json_source,

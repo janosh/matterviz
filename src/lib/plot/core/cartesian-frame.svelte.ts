@@ -9,7 +9,11 @@ import {
   type ShowControlsProp,
 } from '#lib/controls.js'
 import { clamp, type Vec2 } from '#lib/math.js'
-import type { DecorationItem, LegendCellSizes } from '#lib/plot/core/decorations/index.js'
+import type {
+  DecorationItem,
+  DecorationSolution,
+  LegendCellSizes,
+} from '#lib/plot/core/decorations/index.js'
 import {
   create_legend_decoration_item,
   decoration_placement_revision,
@@ -467,8 +471,12 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   )
   const pinned_rects = $derived([...legend_pinned_rects, ...(opts.exclusion_rects?.() ?? [])])
   const marginal_pad = $derived(reserve_marginal_pad(opts.marginals()))
-  const base_decoration_solution = $derived(
-    solve_decorations({
+  // A legend drag holds the layout: re-solving per mousemove would evict and re-admit the
+  // decorations it passes over, resizing the plot under the cursor. The drop re-solves once.
+  let held_solution: DecorationSolution | undefined
+  const base_decoration_solution = $derived.by(() => {
+    if (legend_is_dragging && held_solution) return held_solution
+    return (held_solution = solve_decorations({
       base_pad: effective_base_pad,
       reserved_pad: marginal_pad,
       axis_pad: facet.padding(axis_pad),
@@ -477,8 +485,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       obstacles_norm: opts.obstacles(),
       exclusion_rects: pinned_rects,
       items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
-    }),
-  )
+    }))
+  })
   const pad = $derived(base_decoration_solution.pad)
   const outside_pad = $derived.by(() => {
     const bands = { t: 0, b: 0, l: 0, r: 0 }

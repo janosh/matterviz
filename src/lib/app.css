@@ -158,6 +158,7 @@
      non-composited overlays regardless of z-index. */
   --z-index-viewer-label: 1;
   --z-index-viewer-chip: 2;
+  --glass-chip-z: var(--z-index-viewer-chip);
   --z-index-viewer-pane: 10;
   --pane-z-index: var(--z-index-viewer-pane);
   /* a viewer or chart header holding an open pane: panes can be dragged past their viewer,
@@ -273,7 +274,9 @@
     var(--btn-bg, light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.1)))
   );
 }
-.draggable-pane .pane-content :where(button) {
+/* (0,1,0): above a host's bare `button` rule, below component styles such as svelte-widgets'
+   0.65em reset button (0,2,0), whatever order the stylesheets load in */
+.draggable-pane :where(.pane-content) :where(button) {
   font-size: 1em;
   padding: var(--pane-btn-padding, 3px 6px);
 }
@@ -317,10 +320,59 @@
   background: var(--surface-bg, light-dark(white, #333));
   color: inherit;
   font: inherit;
+  /* the size of the pane's buttons and number inputs, not its labels */
+  font-size: var(--pane-input-font-size, 0.85em);
 }
 .draggable-pane
   :where(.settings-section.grid > :is(label, .setting) > input[type='checkbox']) {
   margin: 0;
+}
+/* A label and a lone checkbox don't need a full row: runs of them pack into columns, box first,
+   while every other row still spans the section. A reset button keeps a row packed (no jump on
+   toggle); shown descriptions need the width, so those rows span again. */
+.draggable-pane :where(.settings-section.grid) {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10em), 1fr));
+  column-gap: 8pt;
+  > * {
+    grid-column: 1 / -1;
+  }
+}
+.draggable-pane
+  .settings-section.grid
+  > :is(label, .setting):has(
+    > input[type='checkbox']:nth-child(2),
+    > .ctrl-pair:nth-child(2) > input[type='checkbox']:only-child
+  ):not(:has(> :nth-child(3):not(.setting-reset-button))) {
+  grid-column: auto;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 5pt;
+}
+/* ColorInput's legend renders above its swatch, costing a row. Floated, it is an ordinary
+   first cell: beside the color, or in the label track in grid sections. Compact style rows
+   keep it on top, where it stacks beside a slider instead of wrapping under it. */
+.draggable-pane :not(.style-row) > fieldset:has(> legend + .controls) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4pt var(--ctrl-gap, 7pt);
+  > legend {
+    float: left;
+    margin: 0;
+    padding: 0;
+  }
+}
+.draggable-pane .settings-section.grid > fieldset:has(> legend + .controls) {
+  display: grid;
+  grid-template-columns: var(
+    --ctrl-cols,
+    var(--ctrl-label-w, 8.5em) var(--ctrl-value-w, 4em) minmax(0, 1fr)
+  );
+  column-gap: var(--ctrl-gap, 7pt);
+  > :not(legend) {
+    grid-column: 2 / -1;
+  }
 }
 .draggable-pane .pane-row {
   display: flex;

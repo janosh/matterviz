@@ -30,7 +30,7 @@ import {
   with_category_toggled,
   with_numeric_bound,
 } from '#lib/table/index.js'
-import { html_to_text, strip_html } from '#lib/utils.js'
+import { html_to_text } from '#lib/utils.js'
 import { describe, expect, it } from 'vitest'
 
 // one-shot wrapper around the memoized factory, for the single-cell assertions below
@@ -253,9 +253,8 @@ it.each([
 })
 
 // Entity cells render decoded via {@html}, so search, sort and export must read them decoded
-// too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`. strip_html leaves
-// entities alone, so it is checked on entity-free inputs only.
-describe(`strip_html, html_to_text and cell_text`, () => {
+// too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`.
+describe(`html_to_text and cell_text`, () => {
   it.each([
     [`<div><span>nested</span></div>`, `nested`],
     [`<a href="https://example.com" class="link">link text</a>`, `link text`],
@@ -277,7 +276,6 @@ describe(`strip_html, html_to_text and cell_text`, () => {
     [`&bogus; &constructor; a & b`, `&bogus; &constructor; a & b`],
     [`&#0;&#xD800;&#x110000;`, `\uFFFD\uFFFD\uFFFD`], // NUL, surrogate, out-of-range: U+FFFD
   ])(`%j -> %j`, (input, expected) => {
-    if (!input.includes(`&`)) expect(strip_html(input)).toBe(expected)
     expect(html_to_text(input)).toBe(expected)
     expect(cell_text(input)).toBe(expected)
   })

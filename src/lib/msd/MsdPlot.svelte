@@ -5,7 +5,7 @@
   import { format_num } from '#lib/labels.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import { series_hover_props } from '#lib/plot/core/interactions.js'

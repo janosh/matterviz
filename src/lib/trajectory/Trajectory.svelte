@@ -21,7 +21,7 @@
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import {
     Atom,
     Check,
@@ -30,7 +30,8 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { html_to_text, to_error } from '#lib/utils.js'
+  import { html_to_text } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import {
     display_idx,
     from_display_idx,
@@ -118,7 +119,7 @@
   } from './plotting'
   import type { TrajectoryRun } from './run'
   import { create_trajectory_session } from './session.svelte'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type {
     MaterialPayload,
     MaterialSource,
@@ -1378,12 +1379,11 @@
     </EmptyState>
   {:else if loading}
     <div class="trajectory-loading">
-      <LoadingStatus
-        label={progress
-          ? `${progress.stage} (${Math.round(progress.current)}%)`
-          : `Loading trajectory...`}
-        progress={progress?.current ?? null}
-        {...spinner_props}
+      <TaskStatus
+        spinner
+        {spinner_props}
+        label={progress?.stage ?? `Loading trajectory...`}
+        value={progress?.current}
         on_cancel={() => {
           const controller = load_controller
           if (!controller) return
@@ -2036,6 +2036,8 @@
     width: min(24em, calc(100% - 2em));
     margin: auto;
     padding-block: 1em;
+    text-align: center;
+    --task-status-button-justify: center;
   }
   .trajectory {
     display: flex;

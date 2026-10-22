@@ -1,12 +1,12 @@
 // HTML overlay label helpers for the 3D chemical potential diagram: tick label occlusion and
 // composited PNG/SVG snapshots (plus GLB export)
 import { canvas_to_png_blob, dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
-import { blob_to_data_url } from '#lib/io/fetch.js'
+import { blob_to_data_url } from 'svelte-widgets/download'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
 import { pad_rect, rects_overlap } from '#lib/plot/core/layout.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { export_scene_as } from '#lib/scene/index.js'
-import { escape_html as xml_escape } from '#lib/utils.js'
+import { escape_html as xml_escape } from 'svelte-widgets/utils'
 import * as THREE from 'three/webgpu'
 
 interface XYZ {

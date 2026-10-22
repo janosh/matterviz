@@ -1,6 +1,7 @@
 <script lang="ts" generics="Props extends Record<string, unknown>">
   import type { Component, Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { in_view } from 'svelte-widgets/attachments'
 
   let {
     load,
@@ -26,18 +27,7 @@
 
   // Start just before the demo enters view, and retain it after scrolling away so user
   // selections and loaded files survive. No imports, data fetching or GPU work during SSR.
-  const observe = (element: HTMLElement) => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return
-        visible = true
-        observer.disconnect()
-      },
-      { rootMargin: `200px` },
-    )
-    observer.observe(element)
-    return () => observer.disconnect()
-  }
+  const observe = in_view(() => (visible = true), { once: true, root_margin: `200px` })
 
   // The wrapper holds `height` until the demo itself has laid out with some height. Dropping it
   // as soon as any child exists let a demo that renders nothing while its own chunk loads

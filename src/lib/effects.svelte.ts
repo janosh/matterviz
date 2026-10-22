@@ -1,3 +1,5 @@
+import { in_view } from 'svelte-widgets/attachments'
+import type { Attachment } from 'svelte/attachments'
 import { prefersReducedMotion } from 'svelte/motion'
 
 // Animation length honoring the OS "reduce motion" setting: 0 (snap) while it is on. Reactive
@@ -22,6 +24,27 @@ const PULSE_FREQUENCY = 4
 
 export const pulsing_highlight_opacity = (pulse_unit: number): number => 0.1 + 0.1 * pulse_unit
 
+// Whether a node is on screen, with `attach` as its attachment. Optimistic until an observer
+// says otherwise: waiting for the first callback would delay whatever this gates, and stall
+// forever under test DOMs whose stub IntersectionObserver never fires (happy-dom). A gated
+// animation wastes at most a frame off screen.
+export function create_on_screen(): { readonly current: boolean; attach: Attachment } {
+  let on_screen = $state(true)
+  return {
+    get current() {
+      return on_screen
+    },
+    attach: (node) => {
+      if (typeof IntersectionObserver === `undefined`) return undefined
+      const stop_observing = in_view((visible) => (on_screen = visible))(node)
+      return () => {
+        stop_observing()
+        on_screen = true // nothing gates it until a new observer reports
+      }
+    },
+  }
+}
+
 export function create_pulse_animation(
   active: () => boolean,
   { step = 0.02, on_tick, element }: PulseAnimationOptions = {},
@@ -39,21 +62,10 @@ export function create_pulse_animation(
     time = 0
   }
 
-  // Optimistic until an observer says otherwise: waiting for the first callback would delay
-  // every pulse, and stall forever under test DOMs whose stub IntersectionObserver never fires
-  // (happy-dom). A gated pulse wastes at most a frame off screen.
-  let on_screen = $state(true)
+  const visibility = create_on_screen()
   $effect(() => {
     const node = element?.()
-    if (!node || typeof IntersectionObserver === `undefined`) return undefined
-    const observer = new IntersectionObserver((entries) => {
-      on_screen = entries.some((entry) => entry.isIntersecting)
-    })
-    observer.observe(node)
-    return () => {
-      observer.disconnect()
-      on_screen = true // nothing gates the pulse until a new observer reports
-    }
+    return node ? visibility.attach(node) : undefined
   })
 
   // Reduced motion holds the pulse at its resting phase: highlights stay visible, just still
@@ -61,7 +73,7 @@ export function create_pulse_animation(
     if (!active() || prefersReducedMotion.current) return stop()
     // Pause, don't stop: `time` survives so the pulse resumes mid-phase, and resetting it
     // would republish `unit` to every consumer — the repaints this gate exists to avoid.
-    if (!on_screen) return cancel_frame()
+    if (!visibility.current) return cancel_frame()
 
     const animate = () => {
       time += step

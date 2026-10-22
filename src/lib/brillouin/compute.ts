@@ -60,21 +60,27 @@ function bragg_planes(
   return planes.toSorted((plane_a, plane_b) => plane_a.len_sq - plane_b.len_sq)
 }
 
+// Spatial-hash cell edge; insert()'s neighbor probe relies on it being well over 4·TOL
+const DEDUP_CELL = TOL * 10
+
 // O(1) duplicate vertex detection using spatial hashing
 class VertexDeduplicator {
   private readonly grid = new Map<string, Vec3[]>()
-  private readonly cell_size: number
-  constructor(cell_size: number) {
-    this.cell_size = cell_size
-  }
 
   // Adds `vertex` unless a stored one lies within TOL per axis; returns whether it was new
   insert(vertex: Vec3): boolean {
-    const [base_x, base_y, base_z] = vertex.map((val) => Math.floor(val / this.cell_size))
+    // A match within TOL can only sit in a neighbor cell when the vertex lies near that
+    // boundary, so probe neighbors within 2·TOL of it, not all 27 cells
+    const cells = vertex.map((val) => {
+      const base = Math.floor(val / DEDUP_CELL)
+      const offset = val - base * DEDUP_CELL
+      return [base, offset < 2 * TOL ? -1 : 0, offset > DEDUP_CELL - 2 * TOL ? 1 : 0]
+    })
+    const [[base_x, lo_x, hi_x], [base_y, lo_y, hi_y], [base_z, lo_z, hi_z]] = cells
 
-    for (let delta_x = -1; delta_x <= 1; delta_x++) {
-      for (let delta_y = -1; delta_y <= 1; delta_y++) {
-        for (let delta_z = -1; delta_z <= 1; delta_z++) {
+    for (let delta_x = lo_x; delta_x <= hi_x; delta_x++) {
+      for (let delta_y = lo_y; delta_y <= hi_y; delta_y++) {
+        for (let delta_z = lo_z; delta_z <= hi_z; delta_z++) {
           const neighbors = this.grid.get(
             `${base_x + delta_x},${base_y + delta_y},${base_z + delta_z}`,
           )
@@ -109,6 +115,13 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
   const n_planes = planes.length
   const normals = planes.map((plane) => plane.normal)
   const distances = planes.map((plane) => plane.dist)
+  // Flat [n_x, n_y, n_z, dist + TOL] rows for the beyond-count scan, the O(n⁴) hot loop:
+  // indexing a typed array there runs ~2x faster than destructuring Vec3 tuples
+  const beyond_rows = new Float64Array(n_planes * 4)
+  for (let idx = 0; idx < n_planes; idx++) {
+    beyond_rows.set(normals[idx], idx * 4)
+    beyond_rows[idx * 4 + 3] = distances[idx] + TOL
+  }
 
   // cross[(j·n + k)·3 + axis] = (nⱼ × nₖ)[axis] for j < k
   const cross = new Float64Array(n_planes * n_planes * 3)
@@ -122,7 +135,7 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
     }
   }
 
-  const dedup = new VertexDeduplicator(TOL * 10)
+  const dedup = new VertexDeduplicator()
   const vertices: Vec3[] = []
 
   for (let idx_i = 0; idx_i < n_planes; idx_i++) {
@@ -156,11 +169,12 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
 
         // Count how many planes this vertex is beyond (with early termination)
         let beyond_count = 0
-        for (let p_idx = 0; p_idx < n_planes; p_idx++) {
-          const [pixel_x, pixel_y, pixel_z] = normals[p_idx]
+        for (let row = 0; row < beyond_rows.length; row += 4) {
           if (
-            vector_x * pixel_x + vector_y * pixel_y + vector_z * pixel_z >
-            distances[p_idx] + TOL
+            vector_x * beyond_rows[row] +
+              vector_y * beyond_rows[row + 1] +
+              vector_z * beyond_rows[row + 2] >
+            beyond_rows[row + 3]
           ) {
             beyond_count++
             if (beyond_count >= order) break
@@ -287,7 +301,7 @@ export function compute_convex_hull(
   }
 
   // Merge near-coincident inputs (IBZ clipping can produce them) before quickhull sees them
-  const dedup = new VertexDeduplicator(TOL * 10)
+  const dedup = new VertexDeduplicator()
   const distinct = vertices.filter((vertex) => dedup.insert(vertex))
 
   // Rank checks belong after dedup: counting raw vertices let 4 coincident points through as a

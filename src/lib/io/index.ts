@@ -1,7 +1,6 @@
 export { default as ExportPane } from './ExportPane.svelte'
 export * from './decompress'
 export * from './export'
-export * from './fetch'
 export * from './file-drop'
 export * from './file-type-paint'
 export * from './is-binary'

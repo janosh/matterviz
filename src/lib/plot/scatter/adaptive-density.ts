@@ -159,11 +159,14 @@ export function series_extents(
   const log_x = get_scale_type_name(x_scale_type) === `log`
   const log_y = get_scale_type_name(y_scale_type) === `log`
 
-  for (const srs of series) {
-    const n_points = srs.x.length
+  // Hoist the coordinate arrays: on a $state series `srs.x` is a reactive read, which per
+  // point dominated a 1M-point mount. Typed arrays (as dense series use) aren't proxied, so
+  // indexing them is then plain; a deep-$state number[] still reads reactively per element.
+  for (const { x: xs, y: ys } of series) {
+    const n_points = xs.length
     for (let idx = 0; idx < n_points; idx++) {
-      const coord_x = srs.x[idx]
-      const coord_y = srs.y[idx]
+      const coord_x = xs[idx]
+      const coord_y = ys[idx]
       if (!Number.isFinite(coord_x) || !Number.isFinite(coord_y)) continue
       if ((log_x && coord_x <= 0) || (log_y && coord_y <= 0)) continue
       if (coord_x < x_min) x_min = coord_x
@@ -228,12 +231,12 @@ export function bin_points(
   let max_count = 0
 
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
-    const srs = series[series_idx]
+    const { x: xs, y: ys } = series[series_idx] // hoisted, see series_extents
     const series_bin = series_bins?.[series_idx]
-    const [start, end] = x_window(srs.x, x_min, x_max, x_order[series_idx] ?? 0)
+    const [start, end] = x_window(xs, x_min, x_max, x_order[series_idx] ?? 0)
     for (let point_idx = start; point_idx < end; point_idx++) {
-      const coord_x = srs.x[point_idx]
-      const coord_y = srs.y[point_idx]
+      const coord_x = xs[point_idx]
+      const coord_y = ys[point_idx]
       if (!in_bounds(coord_x, x_min, x_max) || !in_bounds(coord_y, y_min, y_max)) continue
 
       const raw_x_bin = Math.floor((x_fwd(coord_x) - t_x_min) * x_bin_scale)
@@ -364,10 +367,11 @@ export function* visible_points<Metadata>(
   const [y_min, y_max] = range_bounds(y_range)
   for (let series_idx = 0; series_idx < series.length; series_idx++) {
     const srs = series[series_idx]
-    const [start, end] = x_window(srs.x, x_min, x_max, x_order[series_idx] ?? 0)
+    const { x: xs, y: ys } = srs // hoisted, see series_extents
+    const [start, end] = x_window(xs, x_min, x_max, x_order[series_idx] ?? 0)
     for (let point_idx = start; point_idx < end; point_idx++) {
-      const coord_x = srs.x[point_idx]
-      const coord_y = srs.y[point_idx]
+      const coord_x = xs[point_idx]
+      const coord_y = ys[point_idx]
       if (!in_bounds(coord_x, x_min, x_max) || !in_bounds(coord_y, y_min, y_max)) continue
       yield internal_point(srs, series_idx, point_idx, x_scale, y_scale)
     }

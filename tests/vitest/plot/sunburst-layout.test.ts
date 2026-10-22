@@ -602,6 +602,9 @@ describe(`min_fraction 'Other' bucketing`, () => {
   })
 
   const four = leaves([4, 3, 2, 1])
+  // flag the named nodes `keep`
+  const pin = (nodes: SunburstNode[], ...labels: string[]) =>
+    nodes.map((node) => (labels.includes(node.label ?? ``) ? { ...node, keep: true } : node))
   // oxfmt-ignore
   test.each<[string, SunburstNode[], SunburstLayoutOptions, string[]]>([
     // Not a hard cap: the >= 2 rule wins, because one child under a bucket's name
@@ -612,8 +615,40 @@ describe(`min_fraction 'Other' bucketing`, () => {
     // max_children alone would keep `c` (8 of 100); min_fraction 0.1 rules it out
     [`a child has to clear both max_children and min_fraction`, leaves([50, 40, 8, 2]), { max_children: 3, min_fraction: 0.1 }, [`a`, `b`, `Other`]],
     [`bucketing composes with sort descending (smalls still trail)`, long_tail, { min_fraction: 0.05, sort: `descending` }, [`big`, `s3`, `Other`]],
+    // keep: never folded, takes no max_children slot, ignores min_fraction
+    [`a keep child takes no max_children slot`, pin(leaves([5, 4, 3, 2, 1]), `a`), { max_children: 2 }, [`a`, `b`, `c`, `Other`]],
+    [`a keep child below min_fraction stays named`, pin(leaves([80, 2, 3, 3, 12]), `b`), { min_fraction: 0.05 }, [`a`, `b`, `e`, `Other`]],
+    [`the >= 2 rule counts only the non-keep children`, pin(four, `d`), { max_children: 2 }, [`a`, `b`, `c`, `d`]],
+    [`keep children never fold even if all are tiny`, pin(leaves([90, 1, 1, 1]), `b`, `c`, `d`), { min_fraction: 0.05, max_children: 1 }, [`a`, `b`, `c`, `d`]],
   ])(`%s`, (_name, data, opts, expected) => {
     expect(ring_labels(data, opts)).toEqual(expected)
+  })
+
+  // A cluster with more users than max_children plus one small idle-capacity branch
+  test(`a keep child survives a crowded parent and merging into a bucket`, () => {
+    const users = Array.from({ length: 14 }, (_item, idx) => ({
+      label: `u${idx}`,
+      value: 10 + idx,
+    }))
+    const cluster = [
+      { label: `cluster`, children: [...users, { label: `idle`, value: 1, keep: true }] },
+    ]
+    const opts = { max_children: 12, min_fraction: 0.002 }
+    const ring = ring_labels(cluster, opts, 2)
+    expect(ring).toEqual([...users.slice(2).map((user) => user.label), `idle`, `Other`])
+    const bucket = compute_sunburst_layout(cluster, opts).arcs.find((arc) => arc.is_other)
+    expect(bucket).toMatchObject({ other_count: 2, value: 10 + 11 })
+    // Folded clusters merge their idle children by label; the merged node stays kept
+    const small = (label: string) => ({
+      label,
+      children: [
+        { label: `x`, value: 10 },
+        { label: `y`, value: 9 },
+        { label: `idle`, value: 1, keep: true },
+      ],
+    })
+    const clusters = [{ label: `big`, value: 100 }, small(`p1`), small(`p2`)]
+    expect(ring_labels(clusters, { max_children: 1 }, 2)).toEqual([`x`, `y`, `idle`])
   })
 
   // The pass reorders `node.children` while d3's `each` is still walking the tree.

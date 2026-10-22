@@ -34,8 +34,13 @@
     Weight,
   } from 'svelte-widgets/icons'
 
+  // static/elements has photos for elements 1-111 only; null shows the no-image note without
+  // a request that 404s (hydrogen's previous-element tile is oganesson)
+  const LAST_PHOTOGRAPHED_ELEMENT = 111
   const photo_src = (elem: ChemicalElement) =>
-    `/elements/${elem.number}-${elem.name.toLowerCase()}.avif`
+    elem.number <= LAST_PHOTOGRAPHED_ELEMENT
+      ? `/elements/${elem.number}-${elem.name.toLowerCase()}.avif`
+      : null
 
   let element = $derived.by(() => {
     const data = element_data.find((elem) => elem.name.toLowerCase() === page.params.slug)

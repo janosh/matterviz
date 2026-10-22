@@ -15,8 +15,6 @@ import {
   point_in_rect,
   rect_within_rect,
   resolve_axis_title_layout,
-  sample_series_obstacle_points,
-  stride_sample,
   y_axis_label_x,
   y2_axis_label_x,
 } from '#lib/plot/core/layout.js'
@@ -109,7 +107,7 @@ describe(`layout utility functions`, () => {
       element_size: { width: 100, height: 60 },
       axis_clearance: 40,
       exclude_rects: [],
-      points: [] as { x: number; y: number }[],
+      obstacles: [] as { x: number; y: number }[],
     }
 
     it(`keeps no-data placement inside the configured axis clearance`, () => {
@@ -123,12 +121,12 @@ describe(`layout utility functions`, () => {
       expect(result.y + element_size.height).toBeLessThanOrEqual(
         plot_bounds.y + plot_bounds.height - axis_clearance,
       )
-      expect(Number.isFinite(result.score)).toBe(true)
+      expect(result.overlaps).toBe(0)
       const non_finite = compute_element_placement({
         ...base_config,
-        points: [{ x: NaN, y: NaN }],
+        obstacles: [{ x: NaN, y: NaN }],
       })
-      expect(Number.isFinite(non_finite.score)).toBe(true)
+      expect(non_finite.overlaps).toBe(0)
     })
 
     it(`keeps descendants overflowing left and top inside the valid region`, () => {
@@ -155,7 +153,7 @@ describe(`layout utility functions`, () => {
         element,
         element_size: { width: 1, height: 1 },
         axis_clearance: 10,
-        points: [],
+        obstacles: [],
       })
 
       expect(result).toMatchObject({ x: 30, y: 25 })
@@ -177,95 +175,46 @@ describe(`layout utility functions`, () => {
       expect(y_margin).toBe(12)
     })
 
-    it(`penalizes overlap with exclusion rectangles`, () => {
+    it(`weighs an exclusion rectangle above every point`, () => {
       const exclusion_rect = { x: 50, y: 20, width: 500, height: 400 }
       const points = [{ x: 250, y: 150 }]
 
       const result = compute_element_placement({
         ...base_config,
         exclude_rects: [exclusion_rect],
-        points,
+        obstacles: points,
       })
 
-      expect(result.score).toBeLessThan(-500)
+      // the exclusion covers the whole plot, so every spot overlaps it: more than all points
+      expect(result.overlaps).toBeGreaterThan(points.length)
     })
 
+    // corners of the 100x60 footprint's range in this plot: x in [90, 310], y in [60, 220]
     test.each([
-      [`top-left cluster`, { x: 100, y: 60 }, [200, 100], 1],
-      [`bottom-right cluster`, { x: 400, y: 280 }, [200, 150], -1],
-    ] as const)(`places away from %s`, (_, point, [x_split, y_split], direction) => {
-      const { x: coord_x, y: coord_y } = compute_element_placement({
-        ...base_config,
-        points: Array.from({ length: 15 }, () => point),
-      })
-      expect(Math.sign(coord_x - x_split)).toBe(direction)
-      expect(Math.sign(coord_y - y_split)).toBe(direction)
-    })
-  })
-
-  describe(`sample_series_obstacle_points`, () => {
-    const sparse_line = [
-      { x: 0, y: 0 },
-      { x: 100, y: 100 },
-    ]
-
-    it.each([
-      { name: `points-only series`, points: sparse_line, draws_line: false, step: 12 },
-      {
-        name: `zero-length segment`,
-        points: [
-          { x: 5, y: 5 },
-          { x: 5, y: 5 },
-        ],
-        draws_line: true,
-        step: 12,
+      [`top-left cluster`, { x: 100, y: 60 }, { x: 90, y: 60 }],
+      [`bottom-right cluster`, { x: 400, y: 280 }, { x: 310, y: 220 }],
+    ] as const)(
+      `places in another free corner, away from a %s`,
+      (_, point, cluster_corner) => {
+        const result = compute_element_placement({
+          ...base_config,
+          obstacles: Array.from({ length: 15 }, () => point),
+        })
+        expect(result.overlaps).toBe(0)
+        expect([90, 310]).toContain(result.x)
+        expect([60, 220]).toContain(result.y)
+        expect({ x: result.x, y: result.y }).not.toEqual(cluster_corner)
       },
-      { name: `non-positive step`, points: sparse_line, draws_line: true, step: 0 },
-    ])(`adds no interior samples for $name`, ({ points, draws_line, step }) => {
-      expect(sample_series_obstacle_points(points, draws_line, step)).toEqual(points)
-    })
+    )
 
-    it(`samples interior points along the segment when the series draws a line`, () => {
-      const result = sample_series_obstacle_points(sparse_line, true, 12)
-      expect(result).toHaveLength(12)
-      for (const point of result) expect(point.x).toBeCloseTo(point.y)
-      const interior = result.filter((point) => point.x > 0 && point.x < 100)
-      expect(interior).toHaveLength(10)
-    })
-
-    it(`breaks the line at non-finite vertices (no sampling across gaps)`, () => {
-      const with_gap = [
-        { x: 0, y: 0 },
-        { x: NaN, y: NaN },
-        { x: 100, y: 100 },
-      ]
-      const result = sample_series_obstacle_points(with_gap, true, 12)
-      expect(result).toEqual([
-        { x: 0, y: 0 },
-        { x: 100, y: 100 },
-      ])
-    })
-
-    // Callers thin dense series before projecting them, which lengthens each segment. Without
-    // a cap, the interpolation would emit more filler points than the thinning saved.
-    it(`caps interior samples on a very long segment`, () => {
-      const long_segment = [
-        { x: 0, y: 0 },
-        { x: 100_000, y: 0 },
-      ]
-      const result = sample_series_obstacle_points(long_segment, true, 1)
-      expect(result.length).toBeLessThanOrEqual(66) // 2 vertices + at most 64 interior
-    })
-  })
-
-  describe(`stride_sample`, () => {
-    it(`preserves short inputs, thins evenly, keeps endpoints`, () => {
-      const range = (length: number) => Array.from({ length }, (_, idx) => idx)
-      const short = [0, 1, 2]
-      expect(stride_sample(short, 10)).toBe(short)
-      expect(stride_sample(range(10), 10)).toHaveLength(10)
-      expect(stride_sample(range(1000), 10)).toHaveLength(10)
-      expect(stride_sample(range(100), 5)).toEqual([0, 25, 50, 74, 99])
+    // A spot in a gap sits mid-gap, so a plot resize moves it smoothly instead of flipping it
+    // between the gap's ends; no corner is free here (bars fill the left and right fifths)
+    test(`centers an element in the only free gap`, () => {
+      const bars = [50, 370].map((bar_x) => ({ x: bar_x, y: 20, width: 80, height: 300 }))
+      const result = compute_element_placement({ ...base_config, obstacles: bars })
+      expect(result.overlaps).toBe(0)
+      // the gap is x in [130, 370]: a 100px element centered in it starts at 200
+      expect(Math.abs(result.x - 200)).toBeLessThanOrEqual(4)
     })
   })
 

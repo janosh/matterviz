@@ -78,7 +78,7 @@
     is_periodic,
   } from '#lib/structure/validation.js'
   import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { Reset } from 'svelte-widgets/icons'

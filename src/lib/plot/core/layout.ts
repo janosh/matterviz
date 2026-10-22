@@ -555,24 +555,21 @@ interface ElementPlacementConfig {
   axis_clearance?: number
   // Rectangles to avoid (e.g., already-placed legend when placing colorbar)
   exclude_rects?: Rect[]
-  // Data points to avoid overlapping
-  points: { x: number; y: number }[]
+  // Data to avoid covering: points, or rects (bars, bins) where a size is given
+  obstacles: readonly { x: number; y: number; width?: number; height?: number }[]
 }
 
 interface ElementPlacementResult {
   x: number
   y: number
-  score: number // Higher is better (fewer overlaps, farther from points)
+  // Obstacle cells the element covers there, an overlapped exclusion rect outweighing all
+  // obstacles together; 0 is a free spot
+  overlaps: number
 }
 
-// Scoring constants
-const EXCLUSION_PENALTY = 1000
-const DISTANCE_WEIGHT = 0.001
-// Strong corner preference: corners can have 3-4 more overlapping points and still win
-const CORNER_WEIGHT = 5.0
-const MAX_SAMPLE_POINTS = 500
-// Candidate positions sampled per axis (GRID_RESOLUTION² candidates per placement)
-const GRID_RESOLUTION = 10
+// Occupancy grid cell (px). Candidates step by it, and a cell an obstacle touches counts as
+// covered wherever the element touches it, so a 0-overlap spot never covers an obstacle.
+export const PLACEMENT_CELL = 4
 
 export const point_in_rect = (point: { x: number; y: number }, rect: Rect): boolean =>
   point.x >= rect.x &&
@@ -588,56 +585,10 @@ export const rects_overlap = (left_rect: Rect, right_rect: Rect): boolean =>
     right_rect.y + right_rect.height <= left_rect.y
   )
 
-// Evenly thin items while preserving order and both endpoints so placement cost stays
-// bounded without dropping an abrupt series tail the decoration solver should avoid.
-export const stride_sample = <T>(items: readonly T[], limit: number): readonly T[] => {
-  if (items.length <= limit) return items
-  if (limit <= 1) return items.slice(0, Math.max(0, limit))
-  const last_idx = items.length - 1
-  return Array.from(
-    { length: limit },
-    (_, idx) => items[Math.round((idx * last_idx) / (limit - 1))],
-  )
-}
-
-// Keep long thinned segments from recreating more filler points than sampling removed.
-const MAX_SEGMENT_SAMPLES = 64
-
-// Include finite vertices and, for connected series, sample long segments so auto-placed
-// decorations avoid sparse lines. Callers can accumulate series in one obstacle array.
-export function sample_series_obstacle_points(
-  pixel_points: { x: number; y: number }[],
-  draws_line: boolean,
-  step: number,
-  obstacles: { x: number; y: number }[] = [],
-): { x: number; y: number }[] {
-  let previous: { x: number; y: number } | null = null
-  for (const point of pixel_points) {
-    if (!isFinite(point.x) || !isFinite(point.y)) {
-      previous = null // non-finite breaks the line; don't sample across the gap
-      continue
-    }
-    obstacles.push(point)
-    if (draws_line && previous && step > 0) {
-      const n_samples = Math.min(
-        MAX_SEGMENT_SAMPLES,
-        Math.floor(Math.hypot(point.x - previous.x, point.y - previous.y) / step),
-      )
-      for (let idx = 1; idx < n_samples; idx++) {
-        const frac = idx / n_samples
-        obstacles.push({
-          x: previous.x + (point.x - previous.x) * frac,
-          y: previous.y + (point.y - previous.y) * frac,
-        })
-      }
-    }
-    previous = point
-  }
-  return obstacles
-}
-
-// Place a legend/colorbar by scoring a grid of candidate positions by point overlap,
-// exclusion rectangles, nearest-point distance and corner proximity.
+// Place a legend/colorbar: in a free plot corner if there is one, else in the free spot with
+// the most room around it, else where it covers the least data. Obstacles and exclusion rects
+// fill an occupancy grid whose summed-area table counts any candidate in O(1), so every cell
+// position is tried and every obstacle counts.
 export function compute_element_placement(
   config: ElementPlacementConfig,
 ): ElementPlacementResult {
@@ -647,109 +598,125 @@ export function compute_element_placement(
     element,
     axis_clearance = 12,
     exclude_rects = [],
-    points,
+    obstacles,
   } = config
-
   // Include overflowing descendants such as colorbar tick labels after first render.
-  const {
-    width: elem_width,
-    height: elem_height,
-    offset_x,
-    offset_y,
-  } = full_footprint_or(element, element_size)
-
+  const { width, height, offset_x, offset_y } = full_footprint_or(element, element_size)
   const plot_left = plot_bounds.x + axis_clearance
   const plot_right = plot_bounds.x + plot_bounds.width - axis_clearance
   const plot_top = plot_bounds.y + axis_clearance
   const plot_bottom = plot_bounds.y + plot_bounds.height - axis_clearance
-  const valid_x_min = plot_left - offset_x
-  const valid_y_min = plot_top - offset_y
-  const valid_x_max = plot_right - offset_x - elem_width
-  const valid_y_max = plot_bottom - offset_y - elem_height
+  // Range of the footprint's top-left corner; an element larger than the area is centered on it
+  const span = (lo: number, hi: number, size: number): [number, number] =>
+    hi - size >= lo ? [lo, hi - size] : [(lo + hi - size) / 2, (lo + hi - size) / 2]
+  const [x_min, x_max] = span(plot_left, plot_right, width)
+  const [y_min, y_max] = span(plot_top, plot_bottom, height)
 
-  const effective_x_min = Math.min(valid_x_min, valid_x_max)
-  const effective_x_max = Math.max(valid_x_min, valid_x_max)
-  const effective_y_min = Math.min(valid_y_min, valid_y_max)
-  const effective_y_max = Math.max(valid_y_min, valid_y_max)
-
-  const sampled_points = stride_sample(points, MAX_SAMPLE_POINTS)
-
-  let best_result: ElementPlacementResult = {
-    x: effective_x_min,
-    y: effective_y_min,
-    score: -Infinity,
-  }
-
-  const x_step = (effective_x_max - effective_x_min) / (GRID_RESOLUTION - 1)
-  const y_step = (effective_y_max - effective_y_min) / (GRID_RESOLUTION - 1)
-
-  const max_corner_dist = Math.hypot(plot_right - plot_left, plot_bottom - plot_top)
-
-  for (let grid_x = 0; grid_x < GRID_RESOLUTION; grid_x++) {
-    for (let grid_y = 0; grid_y < GRID_RESOLUTION; grid_y++) {
-      const cand_x = effective_x_min + grid_x * x_step
-      const cand_y = effective_y_min + grid_y * y_step
-      const rect_left = cand_x + offset_x
-      const rect_top = cand_y + offset_y
-      const rect_right = rect_left + elem_width
-      const rect_bottom = rect_top + elem_height
-      const cand_rect: Rect = {
-        x: rect_left,
-        y: rect_top,
-        width: elem_width,
-        height: elem_height,
-      }
-
-      // Check for overlap with exclusion rectangles first (early rejection)
-      let exclusion_penalty = 0
-      for (const excl_rect of exclude_rects) {
-        if (rects_overlap(cand_rect, excl_rect)) exclusion_penalty += EXCLUSION_PENALTY
-      }
-
-      let overlap_count = 0
-      let min_distance_sq = Infinity
-      const center_x = rect_left + elem_width / 2
-      const center_y = rect_top + elem_height / 2
-      // Containment inlined rather than via point_in_rect: this loop runs GRID_RESOLUTION²
-      // times over the sampled field, so per-point call overhead dominates.
-      for (const point of sampled_points) {
-        const { x: point_x, y: point_y } = point
-        if (
-          point_x >= rect_left &&
-          point_x <= rect_right &&
-          point_y >= rect_top &&
-          point_y <= rect_bottom
-        ) {
-          overlap_count++
-        }
-        const delta_x = point_x - center_x
-        const delta_y = point_y - center_y
-        const distance_sq = delta_x * delta_x + delta_y * delta_y
-        if (distance_sq < min_distance_sq) min_distance_sq = distance_sq
-      }
-
-      // No points means no nearest-point bonus.
-      const min_distance = min_distance_sq === Infinity ? 0 : Math.sqrt(min_distance_sq)
-
-      // Corner proximity from the measured footprint, not its center. Math.hypot avoids
-      // euclidean_dist's per-call array allocations.
-      const min_corner_dist = Math.min(
-        Math.hypot(rect_left - plot_left, rect_top - plot_top), // top-left
-        Math.hypot(rect_right - plot_right, rect_top - plot_top), // top-right
-        Math.hypot(rect_left - plot_left, rect_bottom - plot_bottom), // bottom-left
-        Math.hypot(rect_right - plot_right, rect_bottom - plot_bottom), // bottom-right
+  const cols = Math.max(1, Math.ceil((x_max + width - x_min) / PLACEMENT_CELL))
+  const rows = Math.max(1, Math.ceil((y_max + height - y_min) / PLACEMENT_CELL))
+  // Summed-area table with a zero row and column: sums[(row + 1) * (cols + 1) + col + 1]
+  const sums = new Float64Array((rows + 1) * (cols + 1))
+  const cell = (value: number, origin: number, count: number, round = Math.floor) =>
+    Math.max(0, Math.min(count, round((value - origin) / PLACEMENT_CELL)))
+  const [grid_right, grid_bottom] = [x_max + width, y_max + height]
+  // Adds `weight` to every grid cell the rect touches (a zero-size one, a point, marks its
+  // cell) and returns the total added; one off the grid, which no candidate can cover, adds none
+  const fill = (
+    rect: { x: number; y: number; width?: number; height?: number },
+    weight: number,
+  ) => {
+    const { x: left, y: top, width: rect_w = 0, height: rect_h = 0 } = rect
+    // negated so NaN coordinates fail too
+    if (
+      !(
+        left <= grid_right &&
+        left + rect_w >= x_min &&
+        top <= grid_bottom &&
+        top + rect_h >= y_min
       )
-      const corner_bonus =
-        max_corner_dist > 0 ? (1 - min_corner_dist / max_corner_dist) * CORNER_WEIGHT : 0
-
-      const score =
-        -overlap_count + min_distance * DISTANCE_WEIGHT + corner_bonus - exclusion_penalty
-
-      if (score > best_result.score) {
-        best_result = { x: cand_x, y: cand_y, score }
-      }
+    )
+      return 0
+    const [col_lo, row_lo] = [cell(left, x_min, cols - 1), cell(top, y_min, rows - 1)]
+    const col_hi = Math.max(col_lo + 1, cell(left + rect_w, x_min, cols, Math.ceil))
+    const row_hi = Math.max(row_lo + 1, cell(top + rect_h, y_min, rows, Math.ceil))
+    for (let row = row_lo; row < row_hi; row++) {
+      for (let col = col_lo; col < col_hi; col++)
+        sums[(row + 1) * (cols + 1) + col + 1] += weight
+    }
+    return weight * (row_hi - row_lo) * (col_hi - col_lo)
+  }
+  let obstacle_weight = 0
+  for (const obstacle of obstacles) obstacle_weight += fill(obstacle, 1)
+  for (const rect of exclude_rects) fill(rect, obstacle_weight + 1)
+  for (let row = 1; row <= rows; row++) {
+    for (let col = 1; col <= cols; col++) {
+      const idx = row * (cols + 1) + col
+      sums[idx] += sums[idx - 1] + sums[idx - cols - 1] - sums[idx - cols - 2]
     }
   }
+  const sum_at = (row: number, col: number) => sums[row * (cols + 1) + col]
+  // Obstacle weight under the footprint at (left, top), grown by `margin` cells on every side
+  const covered = (left: number, top: number, margin = 0): number => {
+    const [col_lo, row_lo] = [
+      cell(left, x_min, cols) - margin,
+      cell(top, y_min, rows) - margin,
+    ]
+    const col_hi = cell(left + width, x_min, cols, Math.ceil) + margin
+    const row_hi = cell(top + height, y_min, rows, Math.ceil) + margin
+    const [c_lo, c_hi] = [Math.max(0, col_lo), Math.min(cols, col_hi)]
+    const [r_lo, r_hi] = [Math.max(0, row_lo), Math.min(rows, row_hi)]
+    return sum_at(r_hi, c_hi) - sum_at(r_lo, c_hi) - sum_at(r_hi, c_lo) + sum_at(r_lo, c_lo)
+  }
+  // Free margin (cells) around a free spot: the most it can grow and still cover nothing
+  const room = (left: number, top: number): number => {
+    let [lo, hi] = [0, Math.max(cols, rows)]
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2)
+      if (covered(left, top, mid) === 0) lo = mid
+      else hi = mid - 1
+    }
+    return lo
+  }
+  const at = ({ left, top }: { left: number; top: number }, overlaps: number) => ({
+    x: left - offset_x,
+    y: top - offset_y,
+    overlaps,
+  })
 
-  return best_result
+  // 1. A free corner, the one with the most room (farthest from the data); ties top-left first.
+  // A one-cell lead is a tie: right/bottom corners sit off the grid and round out by a cell, so
+  // symmetric data would otherwise flip corners on a 1px resize.
+  let corner: { left: number; top: number; room: number } | null = null
+  for (const top of [y_min, y_max]) {
+    for (const left of [x_min, x_max]) {
+      if (covered(left, top) > 0) continue
+      const corner_room = room(left, top)
+      if (!corner || corner_room > corner.room + 1) corner = { left, top, room: corner_room }
+    }
+  }
+  if (corner) return at(corner, 0)
+
+  // 2. Else every cell position: the least data covered, then the most room around a free spot,
+  // which centers the element in a gap instead of flipping between its ends as the plot resizes
+  const steps = (lo: number, hi: number): number[] => [
+    ...Array.from(
+      { length: Math.ceil((hi - lo) / PLACEMENT_CELL) },
+      (_, idx) => lo + idx * PLACEMENT_CELL,
+    ),
+    hi,
+  ]
+  let best = { left: x_min, top: y_min, overlaps: Infinity, room: -1 }
+  for (const left of steps(x_min, x_max)) {
+    for (const top of steps(y_min, y_max)) {
+      const overlaps = covered(left, top)
+      if (overlaps > best.overlaps) continue
+      // a free spot that can't grow past the best one's room is no better: skip its search
+      if (overlaps === 0 && best.overlaps === 0 && covered(left, top, best.room + 1) > 0)
+        continue
+      const spot_room = overlaps === 0 ? room(left, top) : -1
+      if (overlaps < best.overlaps || spot_room > best.room)
+        best = { left, top, overlaps, room: spot_room }
+    }
+  }
+  return at(best, best.overlaps)
 }

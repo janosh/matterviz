@@ -1,7 +1,11 @@
 import { compute_element_placement, type Rect } from '#lib/plot/core/layout.js'
 import { first_duplicate } from '#lib/utils.js'
 import { project_obstacles } from './obstacles'
-import { get_outside_placement, place_outside_decorations } from './outside'
+import {
+  type EvictableKind,
+  get_outside_placement,
+  place_outside_decorations,
+} from './outside'
 import { place_reference_annotation } from './reference-annotations'
 import { suggest_legend_tracks } from './tracks'
 import type {
@@ -103,9 +107,28 @@ const with_auto_legend_tracks = (
   }
 }
 
+// A legend or colorbar leaves the plot when it cannot sit inside without covering data (to
+// the placement grid's 4px cells), an exclusion (a pinned decoration) or the other one. Judged
+// by placing them in the plot box the evictions so far leave, so the decision and the
+// placement are one search. Evicting the legend frees its spot, so the colorbar gets another
+// try; the legend never returns, which bounds the loop at four rounds.
 export const solve_decorations = (scene: DecorationScene): DecorationSolution => {
   validate_unique_ids(scene.items)
-  const outside_layout = place_outside_decorations(scene)
+  const evicted = new Set<EvictableKind>()
+  for (;;) {
+    const result = place_decorations(scene, evicted)
+    if (typeof result !== `string`) return result
+    evicted.add(result)
+    if (result === `legend`) evicted.delete(`colorbar`)
+  }
+}
+
+// One round: the solution, or the kind of the first legend/colorbar found crowded inside
+const place_decorations = (
+  scene: DecorationScene,
+  evicted: ReadonlySet<EvictableKind>,
+): DecorationSolution | EvictableKind => {
+  const outside_layout = place_outside_decorations(scene, evicted)
   const pad = { ...outside_layout.pad }
   if (scene.reserved_pad)
     for (const side of [`t`, `b`, `l`, `r`] as const) pad[side] += scene.reserved_pad[side]
@@ -128,7 +151,7 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
     }
 
     if (item.kind === `reference-annotation`) {
-      const { candidate, score } = place_reference_annotation({
+      const { candidate } = place_reference_annotation({
         item,
         obstacles,
         exclusion_rects: decoration_rects,
@@ -140,7 +163,6 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
         footprint: { width, height },
         x: candidate.rect.x,
         y: candidate.rect.y,
-        score,
         location: `interior`,
         side: null,
         reference_annotation: candidate,
@@ -149,33 +171,40 @@ export const solve_decorations = (scene: DecorationScene): DecorationSolution =>
       continue
     }
 
-    // Earlier decoration footprints act as exclusion rectangles, so interior decorations are
-    // mutually exclusive while the scorer keeps its data-overlap behavior.
+    // A managed legend inside is its column, whatever layout it renders in now (a strip below),
+    // capped like PlotLegendLayer caps it there: no taller than the plot, scrolling past that
+    const column = item.kind === `legend` ? item.column_footprint : undefined
+    const footprint = column
+      ? { width: column.width, height: Math.min(column.height, plot_bounds.height) }
+      : item.footprint
+    const clearance = item.clearance ?? 12
+    // Earlier decorations' footprints are exclusions, which outweigh any data overlap, so
+    // interior decorations only stack when nothing else fits.
     const result = compute_element_placement({
       plot_bounds,
-      element_size: item.footprint,
-      axis_clearance: item.clearance,
+      element_size: footprint,
+      axis_clearance: clearance,
       exclude_rects: decoration_rects,
-      points: obstacles,
+      obstacles,
     })
+    const evictable =
+      (item.kind === `legend` || item.kind === `colorbar`) && !evicted.has(item.kind)
+    const fits =
+      footprint.width + 2 * clearance <= plot_bounds.width &&
+      footprint.height + 2 * clearance <= plot_bounds.height
+    if (evictable && (result.overlaps > 0 || !fits)) return item.kind
     const placement: DecorationPlacement = {
       id: item.id,
       kind: item.kind,
-      footprint: item.footprint,
+      footprint,
       x: result.x,
       y: result.y,
-      score: result.score,
       location: `interior`,
       side: null,
     }
     placements.push(with_auto_legend_tracks(placement, item, scene))
-    decoration_rects.push({ x: result.x, y: result.y, ...item.footprint })
+    decoration_rects.push({ x: result.x, y: result.y, ...footprint })
   }
 
-  return {
-    base_pad: { ...scene.base_pad },
-    pad,
-    plot_bounds,
-    placements,
-  }
+  return { base_pad: { ...scene.base_pad }, pad, plot_bounds, placements }
 }

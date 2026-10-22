@@ -2,7 +2,7 @@
   // Compact controlled single-select (interactive axis labels, colorbar property pickers): an
   // inline trigger showing the selected option (sanitized HTML like E<sub>form</sub>) opening
   // a native popover list. Reports picks via `on_select`, shows the caller's `selected_key`.
-  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from 'svelte-widgets/attachments'
   import type { AxisOption as Option } from '#lib/plot/core/types.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'

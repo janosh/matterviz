@@ -20,7 +20,8 @@ import {
   is_indexable_trajectory_filename,
   KNOWN_FORMAT_EXT_REGEX,
 } from '#lib/trajectory/format-detect.js'
-import { base64_to_array_buffer, is_plain_object, to_error } from '#lib/utils.js'
+import { base64_to_array_buffer, is_plain_object } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type {
   OpenTrajectoryOptions,
   ParseProgress,

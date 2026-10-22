@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { StructurePopup } from '#lib/convex-hull/index.js'
+  import type StructurePopupComponent from '#lib/convex-hull/StructurePopup.svelte'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { format_num } from '#lib/labels.js'
   import type { Point2D, Vec3 } from '#lib/math.js'
   import { BinnedScatterPlot } from '#lib/plot/index.js'
   import type { BinnedPointPayload, DensePointSeries } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
+  import { to_error } from 'svelte-widgets/utils'
+  import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
 
   type MaterialPoint = Record<string, unknown> & {
     material_id: string
@@ -58,6 +60,10 @@
   let clicked_point = $state<MaterialPoint | null>(null)
   let popup_pos = $state<Point2D>({ x: 0, y: 0 })
   let selected_point_id = $state<string | number | null>(null)
+  // The 3D popup (three.js) would double the page's JS, so it is imported on the first click.
+  // A failed import (offline, a stale chunk after a deploy) clears the click with a notice.
+  let StructurePopup = $state.raw<typeof StructurePopupComponent>()
+  let popup_error = $state<string>()
 
   const x_axis = { label: `Formation energy (eV/atom)` }
   const y_axis = { label: `Band gap (eV)` }
@@ -194,6 +200,15 @@
       x: payload.event.clientX - rect.left,
       y: payload.event.clientY - rect.top,
     }
+    popup_error = undefined
+    if (StructurePopup) return
+    import(`#lib/convex-hull/StructurePopup.svelte`).then(
+      (module) => (StructurePopup = module.default),
+      (exc: unknown) => {
+        clear_selection()
+        popup_error = `Structure viewer failed to load: ${to_error(exc).message}`
+      },
+    )
   }
 </script>
 
@@ -256,7 +271,7 @@
       {family_configs.length} families
     </div>
   {/snippet}
-  {#if clicked_point}
+  {#if StructurePopup && clicked_point}
     <StructurePopup
       structure={make_structure(clicked_point.elements, clicked_point.lattice_a)}
       place_right={popup_place_right}
@@ -275,6 +290,7 @@
     />
   {/if}
 </BinnedScatterPlot>
+<StatusMessage message={popup_error} type="warning" />
 
 <p>
   The stats badge and density color bar share the decoration placer, avoiding occupied bins and

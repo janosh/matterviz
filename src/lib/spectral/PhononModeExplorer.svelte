@@ -14,7 +14,7 @@
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
   import { parse_supercell_scaling } from '#lib/structure/index.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { band_point_meta, create_band_path_link } from './band-path-link.svelte'

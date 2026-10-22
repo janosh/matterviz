@@ -19,9 +19,8 @@
     optimade_to_structure,
     structure_from_json,
   } from '#lib/structure/parse.js'
-  import { to_error } from '#lib/utils.js'
   import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { is_editable_event_target, to_error } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'
   import {
     detect_view_type,

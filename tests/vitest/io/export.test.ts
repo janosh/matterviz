@@ -15,14 +15,14 @@ import {
   type ExportSources,
 } from '#lib/io/export.js'
 import { canvas_painters } from '#lib/plot/core/utils.js'
-import { download } from '#lib/io/fetch.js'
+import { download } from 'svelte-widgets/download'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera } from 'three/webgpu'
 import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { mock_object_url } from '../setup'
 
-vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
+vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
 
 beforeEach(() => vi.clearAllMocks())
 // Restores every vi.spyOn (console, document.createElement, URL) so stubs never leak

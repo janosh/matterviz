@@ -231,7 +231,41 @@ describe(`generate_candidates`, () => {
 test(`neighbor index handles collinear anchors spanning a huge extent`, () => {
   const anchors = [0, Number.MAX_VALUE].map((anchor_x) => ({ x: anchor_x, y: 0, radius: 1 }))
   const neighbors = create_neighbor_index(anchors)
-  expect(neighbors.collect(0, Number.MAX_VALUE, 0, 0)).toBe(anchors.length)
+  expect(neighbors.collect_anchors(0, Number.MAX_VALUE, 0, 0)).toBe(anchors.length)
+})
+
+// Labels are bucketed by their own rect-plus-anchor box, so a query near a label that strayed
+// far from its anchor (or off the anchors' grid entirely) still finds it, and stops finding it
+// at its old spot once a move re-buckets it
+test(`neighbor index follows labels that move away from their anchors`, () => {
+  const anchors = Array.from({ length: 16 }, (_, idx) => ({
+    x: (idx % 4) * 100,
+    y: Math.floor(idx / 4) * 100,
+    radius: 3,
+  }))
+  const labels = anchors.map(({ x, y }, idx) => ({
+    x: x + 5,
+    y,
+    w: 20,
+    h: 10,
+    anchor_idx: idx,
+  }))
+  const neighbors = create_neighbor_index(anchors)
+  neighbors.place_all(labels)
+  const found = (min_x: number, max_x: number, min_y: number, max_y: number) =>
+    neighbors.label_candidates.slice(0, neighbors.collect_labels(min_x, max_x, min_y, max_y))
+  expect([...found(150, 160, 150, 160)]).not.toContain(0)
+
+  labels[0] = { ...labels[0], x: 150, y: 150 } // far from its anchor at the origin
+  neighbors.place(labels[0])
+  expect([...found(150, 160, 150, 160)]).toContain(0)
+  labels[0] = { ...labels[0], x: 900, y: -400 } // beyond the anchors' grid
+  neighbors.place(labels[0])
+  expect([...found(890, 930, -410, -380)]).toContain(0)
+  expect([...found(150, 160, 150, 160)]).not.toContain(0)
+  // candidates stay ascending, which keeps the energy sums float-identical
+  const all = found(-1000, 1000, -1000, 1000)
+  expect([...all]).toEqual([...all].toSorted((left, right) => left - right))
 })
 
 // === compute_delta_energy ===
@@ -244,8 +278,7 @@ describe(`compute_delta_energy`, () => {
   // oxfmt-ignore
   const all_weights = { overlap: 30, marker: 100, leader_cross: 10, leader_text: 8, distance: 0.5, bounds: 100 }
 
-  // The solver always supplies a neighbour index, widened to cover every label's reach from
-  // its anchor plus the move being scored. Queries would drop real neighbours otherwise.
+  // The solver always supplies a neighbour index with every label bucketed at its current spot
   const delta_energy = (
     labels: LabelState[],
     anchors: AnchorInfo[],
@@ -255,7 +288,7 @@ describe(`compute_delta_energy`, () => {
     weights: typeof all_weights,
   ): number => {
     const neighbors = create_neighbor_index(anchors)
-    neighbors.reset([...labels, new_state])
+    neighbors.place_all(labels)
     const args = [labels, anchors, changed_idx, old_state, new_state] as const
     return compute_delta_energy(...args, weights, bounds, neighbors)
   }
@@ -409,6 +442,47 @@ describe(`compute_delta_energy`, () => {
       expect(delta_energy(...args, all_weights)).toBe(full_delta(...args))
     }
   })
+
+  // The solver keeps one index across the whole anneal and re-buckets each accepted move, so
+  // score a long chain of moves through a single index: a move left un-bucketed, or a stale
+  // bucket, drops neighbours that the full evaluation still counts
+  test.each([40, 300])(`stays exact across accepted moves (spread %i)`, (spread) => {
+    let seed = 777
+    const random = () => {
+      seed = (seed * 1_664_525 + 1_013_904_223) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+    const anchors = Array.from({ length: 30 }, () => ({
+      x: 200 + (random() - 0.5) * spread,
+      y: 150 + (random() - 0.5) * spread,
+      radius: 2 + random() * 6,
+    }))
+    const labels = anchors.map((anchor, idx) => ({
+      x: anchor.x + 5,
+      y: anchor.y - 6,
+      w: 20 + random() * 60,
+      h: 12,
+      anchor_idx: idx,
+    }))
+    const neighbors = create_neighbor_index(anchors)
+    neighbors.place_all(labels)
+    for (let move = 0; move < 300; move++) {
+      const changed_idx = Math.floor(random() * labels.length)
+      const old_state = { ...labels[changed_idx] }
+      const new_state = {
+        ...old_state,
+        x: old_state.x + (random() - 0.5) * 160,
+        y: old_state.y + (random() - 0.5) * 160,
+      }
+      const args = [labels, anchors, changed_idx, old_state, new_state] as const
+      const delta = compute_delta_energy(...args, all_weights, bounds, neighbors)
+      expect(delta).toBe(full_delta(...args))
+      if (random() < 0.6) {
+        Object.assign(labels[changed_idx], { x: new_state.x, y: new_state.y })
+        neighbors.place(labels[changed_idx])
+      }
+    }
+  })
 })
 
 // === compute_label_positions (integration) ===
@@ -517,6 +591,38 @@ const estimate_label_width = (text: string, font_size = 10): number =>
   estimate_label_size(text, `${font_size}px`).width
 
 describe(`compute_label_positions`, () => {
+  // The anneal is seeded, so a crowded scene lands on exactly one layout. Pinning it catches
+  // changes the energy tests can't see, like an accepted move the neighbour index never
+  // re-buckets: scoring later moves against stale buckets walks the anneal elsewhere.
+  test(`places a seeded crowded scene exactly as before`, () => {
+    const points = Array.from({ length: 12 }, (_, idx) => ({
+      x: 40 + (idx % 4) * 6,
+      y: 50 + Math.floor(idx / 4) * 5,
+      text: `label-${idx}`,
+    }))
+    const positions = place(points, { ...default_config, sa_iterations: 200 })
+    const rounded = Object.fromEntries(
+      Object.entries(positions).map(([key, { x, y }]) => [
+        key,
+        [x, y].map((val) => Number(val.toFixed(3))),
+      ]),
+    )
+    expect(rounded).toEqual({
+      '0-0': [40, 36],
+      '0-1': [157.885, 36.703],
+      '0-2': [40.597, 109.005],
+      '0-3': [116.694, 22.548],
+      '0-4': [98.435, 58.9],
+      '0-5': [102.75, 70.999],
+      '0-6': [53.202, 22.849],
+      '0-7': [92, 45],
+      '0-8': [40.637, 127.448],
+      '0-9': [45.124, 70.198],
+      '0-10': [46.835, 93.893],
+      '0-11': [97.891, 106.403],
+    })
+  })
+
   test(`returns empty for empty series or disabled auto_placement`, () => {
     expect(place_series([])).toEqual({})
 

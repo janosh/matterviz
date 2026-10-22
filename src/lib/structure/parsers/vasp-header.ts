@@ -14,7 +14,8 @@ import {
   vec3_from_values,
 } from '#lib/structure/parsers/shared.js'
 import { parse_warn } from '#lib/trajectory/parse/shared.js'
-import { parse_leading_num, to_error } from '#lib/utils.js'
+import { parse_leading_num } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 
 // A VASP 4 header has no symbol line (species come from the POTCAR), so outside strict mode
 // its species are drawn as placeholders (H to Ne), with a warning naming them

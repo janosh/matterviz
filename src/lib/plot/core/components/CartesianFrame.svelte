@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ShowControlsProp } from '#lib/controls.js'
-  import EmptyState from '#lib/EmptyState.svelte'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import type { CartesianFrame } from '#lib/plot/core/cartesian-frame.svelte.js'
   import type {

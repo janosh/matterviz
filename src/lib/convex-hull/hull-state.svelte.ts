@@ -2,7 +2,7 @@
 // temperature → gas corrections → formation energies → plot coordinates → lower hull →
 // energy above hull → thresholds/visibility. Components only render.
 import { get_convex_hull_defaults } from '#lib/settings.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { analyze_gas_data, apply_gas_corrections } from './gas-thermodynamics'
 import * as helpers from './helpers'
 import * as thermo from './thermodynamics'

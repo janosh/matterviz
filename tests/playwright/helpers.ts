@@ -77,11 +77,15 @@ export const expect_centered_card = async (card: Locator, viewer: Locator): Prom
   return viewer_box
 }
 
+// The status row of a <Spinner text> or a spinning <TaskStatus>: spinner, then its label
 export const expect_inline_spinner = async (container: Locator) => {
+  const status_row = container.getByRole(`status`)
   const [status, spinner, label] = await Promise.all(
-    [`.spinner`, `.circle-spinner`, `.spinner > span`].map((selector) =>
-      require_bbox(container.locator(selector)),
-    ),
+    [
+      status_row,
+      status_row.locator(`.circle-spinner`),
+      status_row.locator(`:scope > span`),
+    ].map((locator) => require_bbox(locator)),
   )
   expect(spinner.x + spinner.width).toBeLessThan(label.x)
   expect_centered(spinner, label, `y`)

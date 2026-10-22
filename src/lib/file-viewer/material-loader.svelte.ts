@@ -2,7 +2,7 @@
 // open_material; viewers only validate and commit the typed result they understand.
 import type { FileLoadCallback } from '#lib/io/index.js'
 import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
 import type { Attachment } from 'svelte/attachments'
 import type { MaterialSource, OpenedMaterial } from './open'

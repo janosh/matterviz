@@ -92,6 +92,7 @@
     series_key = undefined,
     reference_structure = undefined,
     scene_props = {},
+    frame_scene_props = {},
     gizmo = false,
     volumetric_data = undefined,
     isosurface_settings = undefined,
@@ -138,6 +139,21 @@
     series_key?: unknown
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
+    // inputs that change per trajectory frame, kept out of `scene_props` so a played frame
+    // leaves every other scene prop unmarked (see Structure's shared_viewport_props). Unset
+    // keys fall back to `scene_props`; an explicit undefined end frame means a tool trail.
+    frame_scene_props?: Pick<
+      ComponentProps<typeof StructureScene>,
+      | `render_token`
+      | `on_rendered`
+      | `show_cell_vectors`
+      | `trajectory_position_stream`
+      | `show_trajectory_lines`
+      | `trajectory_lines_emphasis`
+      | `trajectory_line_frame_stride`
+      | `trajectory_line_trail_frames`
+      | `trajectory_line_end_frame`
+    >
     gizmo?: boolean | ComponentProps<typeof StructureScene>[`gizmo`]
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
@@ -492,6 +508,24 @@
         auto_rotate={in_grid ? 0 : scene_props.auto_rotate}
         symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
         lattice_planes={session.shows_input_frame ? scene_props.lattice_planes : []}
+        render_token={frame_scene_props.render_token ?? scene_props.render_token}
+        on_rendered={frame_scene_props.on_rendered ?? scene_props.on_rendered}
+        show_cell_vectors={frame_scene_props.show_cell_vectors ??
+          scene_props.show_cell_vectors}
+        trajectory_position_stream={`trajectory_position_stream` in frame_scene_props
+          ? frame_scene_props.trajectory_position_stream
+          : scene_props.trajectory_position_stream}
+        show_trajectory_lines={frame_scene_props.show_trajectory_lines ??
+          scene_props.show_trajectory_lines}
+        trajectory_lines_emphasis={frame_scene_props.trajectory_lines_emphasis ??
+          scene_props.trajectory_lines_emphasis}
+        trajectory_line_frame_stride={frame_scene_props.trajectory_line_frame_stride ??
+          scene_props.trajectory_line_frame_stride}
+        trajectory_line_trail_frames={frame_scene_props.trajectory_line_trail_frames ??
+          scene_props.trajectory_line_trail_frames}
+        trajectory_line_end_frame={`trajectory_line_end_frame` in frame_scene_props
+          ? frame_scene_props.trajectory_line_end_frame
+          : scene_props.trajectory_line_end_frame}
         bind:camera_position
         bind:camera_target
         bind:fly_to_request

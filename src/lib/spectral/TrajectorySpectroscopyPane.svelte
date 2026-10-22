@@ -9,7 +9,7 @@
     DEFAULT_POSITION_STREAM_MAX_BYTES,
     suggest_frame_stride,
   } from '#lib/trajectory/runs/accumulate.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { Graph } from 'svelte-widgets/icons'
   import {
     collect_trajectory_spectroscopy_input,

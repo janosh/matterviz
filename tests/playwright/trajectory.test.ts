@@ -238,26 +238,24 @@ test.describe(`Trajectory Component`, () => {
     try {
       for (const width of [1200, 420]) {
         await page.setViewportSize({ width, height: 900 })
-        const [viewer, panel, bar, cancel] = await Promise.all(
-          [
-            empty_trajectory,
-            loading,
-            loading.getByRole(`progressbar`),
-            loading.getByRole(`button`, { name: `Cancel` }),
-          ].map((locator) => require_bbox(locator)),
+        const [viewer, panel, cancel] = await Promise.all(
+          [empty_trajectory, loading, loading.getByRole(`button`, { name: `Cancel` })].map(
+            (locator) => require_bbox(locator),
+          ),
         )
+        // no progress reported yet: the spinner stands in for the bar
+        await expect(loading.getByRole(`progressbar`)).toHaveCount(0)
         const { label } = await expect_inline_spinner(loading)
-        for (const box of [panel, bar, cancel]) {
+        for (const box of [panel, cancel]) {
           expect_centered(box, viewer, `x`)
         }
         expect_centered(panel, viewer, `y`)
-        expect(bar.y).toBeGreaterThan(label.y + label.height)
-        expect(cancel.y).toBeGreaterThan(bar.y + bar.height)
-        expect(bar.width).toBeLessThan(viewer.width - 24)
+        expect(cancel.y).toBeGreaterThan(label.y + label.height)
+        expect(panel.width).toBeLessThan(viewer.width - 24)
         const font_size = await loading.evaluate((element) =>
           Number(getComputedStyle(element).fontSize.replace(`px`, ``)),
         )
-        expect(bar.width).toBeLessThanOrEqual(24 * font_size)
+        expect(panel.width).toBeLessThanOrEqual(24 * font_size)
       }
     } finally {
       load_gate.resolve(undefined)

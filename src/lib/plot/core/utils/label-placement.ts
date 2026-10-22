@@ -13,15 +13,17 @@ import type {
   LabelPlacementWeights,
 } from '#lib/plot/core/types.js'
 
-// Defaults the scatter plots merge under a user's label_placement_config
+// Defaults the scatter plots merge under a user's label_placement_config. 1000 anneal sweeps per
+// label halve the solve of 2000 for a slightly looser fit (labels a little further from their
+// markers); callers wanting the tightest layout pass sa_iterations: 2000.
 export const LABEL_PLACEMENT_DEFAULTS = {
-  sa_iterations: 2000,
+  sa_iterations: 1000,
   max_labels: 300,
   leader_line_threshold: 15,
 } satisfies Partial<LabelPlacementConfig>
 
 // Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
-// below the cold defaults (2000, 1): the layout is good, so the pass only nudges what moved.
+// below the cold defaults (1000, 1): the layout is good, so the pass only nudges what moved.
 const WARM_SA_ITERATIONS = 12
 const WARM_START_TEMP = 0.05
 
@@ -175,6 +177,16 @@ export function segment_rect_intersects(
     rect_y = rect.y,
     rx2 = rect_x + rect.w,
     ry2 = rect_y + rect.h
+  // A crossing lies strictly inside both, so a segment whose bounding box clears the rect
+  // cannot cross an edge. At pixel-scale coordinates the 1e-6 px margin dwarfs the float
+  // error of the exact test below, so the result never changes.
+  if (
+    Math.max(sx1, sx2) < rect_x - 1e-6 ||
+    Math.min(sx1, sx2) > rx2 + 1e-6 ||
+    Math.max(sy1, sy2) < rect_y - 1e-6 ||
+    Math.min(sy1, sy2) > ry2 + 1e-6
+  )
+    return false
   return (
     segments_intersect(sx1, sy1, sx2, sy2, rect_x, rect_y, rx2, rect_y) ||
     segments_intersect(sx1, sy1, sx2, sy2, rx2, rect_y, rx2, ry2) ||
@@ -247,17 +259,19 @@ export function generate_candidates(
   ]
 }
 
-// Anchors never move, so bucketing them once serves a whole SA run. Labels do move, but each
-// one is bucketed by its own anchor and queries grow by `reach`, the furthest any rect now
-// sits from its anchor, so a bucket that could contribute is never skipped. Hits go into a
-// bitset rather than a list purely to keep candidates in ascending index order: the sums in
-// compute_delta_energy must stay float-identical to the unpruned scan. Requires
+// Two grids over the anchors' extent: anchors never move, so they are bucketed once and queried
+// grown by the widest marker radius; each label is bucketed by every cell its rect-plus-anchor
+// box covers and re-bucketed when an accepted move changes those cells. A query box therefore
+// reaches only what can overlap it, where growing every query by the furthest any label had
+// strayed from its anchor scanned ~38 candidates per step to find ~4 (300 labels). Hits go
+// into a bitset rather than a list purely to keep candidates in ascending index order: the sums
+// in compute_delta_energy must stay float-identical to the unpruned scan. Requires
 // labels[idx].anchor_idx === idx, which the SA loop below guarantees.
 // Exported only so the equivalence test can score a move the same way the solver does.
 type NeighborIndex = ReturnType<typeof create_neighbor_index>
 
 export function create_neighbor_index(anchors: AnchorInfo[]) {
-  // `far_*` rather than max_x/max_y so `collect`'s query box below doesn't shadow them
+  // `far_*` rather than max_x/max_y so the query boxes below don't shadow them
   const [origin_x, far_x] = array_extent(anchors.map((anchor) => anchor.x))
   const [origin_y, far_y] = array_extent(anchors.map((anchor) => anchor.y))
   // ~1 anchor per cell measured fastest; the dominant-extent floor caps collinear grids.
@@ -270,63 +284,118 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
   )
   const cols = Math.floor(extent_x / size) + 1
   const rows = Math.floor(extent_y / size) + 1
-  const lists: number[][] = Array.from({ length: cols * rows }, () => [])
+  // Clamped into the grid, so whatever lies beyond its edge shares the edge cells. Monotonic,
+  // so boxes that overlap always share a cell.
+  const col_of = (coord_x: number) =>
+    Math.min(cols - 1, Math.max(0, Math.floor((coord_x - origin_x) / size)))
+  const row_of = (coord_y: number) =>
+    Math.min(rows - 1, Math.max(0, Math.floor((coord_y - origin_y) / size)))
+  const anchor_lists: number[][] = Array.from({ length: cols * rows }, () => [])
   anchors.forEach(({ x: coord_x, y: coord_y }, idx) =>
-    lists[
-      Math.floor((coord_y - origin_y) / size) * cols + Math.floor((coord_x - origin_x) / size)
-    ].push(idx),
+    anchor_lists[row_of(coord_y) * cols + col_of(coord_x)].push(idx),
   )
-  const buckets = lists.map((bucket) => Int32Array.from(bucket))
+  const anchor_cells = anchor_lists.map((bucket) => Int32Array.from(bucket))
+  // Marker circles reach `radius` past their anchor
+  const max_radius = anchors.reduce((widest, { radius }) => Math.max(widest, radius), 0)
+  const label_cells: number[][] = Array.from({ length: cols * rows }, () => [])
+  // col_lo, col_hi, row_lo, row_hi of the cells each label is bucketed in; -1 before placed
+  const spans = new Int32Array(anchors.length * 4).fill(-1)
   const bits = new Uint32Array((anchors.length + 31) >>> 5)
-  const candidates = new Int32Array(anchors.length)
-  let reach = 0
+  const anchor_candidates = new Int32Array(anchors.length)
+  const label_candidates = new Int32Array(anchors.length)
 
-  // Grows `reach` to cover `label`, which every moved label needs before the next query
-  const widen = (label: LabelState) => {
-    const { x: coord_x, y: coord_y } = anchors[label.anchor_idx]
-    reach = Math.max(
-      reach,
-      Math.abs(label.x - coord_x),
-      Math.abs(label.x + label.w - coord_x),
-      Math.abs(label.y - coord_y),
-      Math.abs(label.y + label.h - coord_y),
+  // Marks every index bucketed in the cells spanning the box, then drains them ascending
+  const gather = (
+    cells: readonly ArrayLike<number>[],
+    out: Int32Array,
+    min_x: number,
+    max_x: number,
+    min_y: number,
+    max_y: number,
+  ): number => {
+    const col_lo = col_of(min_x)
+    const col_hi = col_of(max_x)
+    const row_hi = row_of(max_y)
+    for (let row = row_of(min_y); row <= row_hi; row++) {
+      for (let col = col_lo; col <= col_hi; col++) {
+        const cell = cells[row * cols + col]
+        // oxlint-disable-next-line typescript/prefer-for-of -- an iterator cost ~20% of the anneal
+        for (let pos = 0; pos < cell.length; pos++) {
+          const idx = cell[pos]
+          bits[idx >>> 5] |= 1 << (idx & 31)
+        }
+      }
+    }
+    let count = 0
+    for (let word = 0; word < bits.length; word++) {
+      let mask = bits[word]
+      bits[word] = 0
+      while (mask !== 0) {
+        out[count++] = (word << 5) | (31 - Math.clz32(mask & -mask))
+        mask &= mask - 1
+      }
+    }
+    return count
+  }
+
+  // (Re)buckets `label` by the box spanning its rect and anchor; every moved label needs this
+  // before the next query
+  const place = (label: LabelState) => {
+    const idx = label.anchor_idx
+    const { x: coord_x, y: coord_y } = anchors[idx]
+    const col_lo = col_of(Math.min(label.x, coord_x))
+    const col_hi = col_of(Math.max(label.x + label.w, coord_x))
+    const row_lo = row_of(Math.min(label.y, coord_y))
+    const row_hi = row_of(Math.max(label.y + label.h, coord_y))
+    const at = idx * 4
+    if (
+      spans[at] === col_lo &&
+      spans[at + 1] === col_hi &&
+      spans[at + 2] === row_lo &&
+      spans[at + 3] === row_hi
     )
+      return
+    if (spans[at] !== -1) {
+      for (let row = spans[at + 2]; row <= spans[at + 3]; row++) {
+        for (let col = spans[at]; col <= spans[at + 1]; col++) {
+          const cell = label_cells[row * cols + col]
+          const pos = cell.indexOf(idx)
+          // splice(-1) would drop another label's entry instead
+          if (pos === -1) throw new Error(`label ${idx} missing from cell ${col},${row}`)
+          cell.splice(pos, 1)
+        }
+      }
+    }
+    for (let row = row_lo; row <= row_hi; row++) {
+      for (let col = col_lo; col <= col_hi; col++) label_cells[row * cols + col].push(idx)
+    }
+    spans[at] = col_lo
+    spans[at + 1] = col_hi
+    spans[at + 2] = row_lo
+    spans[at + 3] = row_hi
   }
 
   return {
-    candidates,
-    widen,
-    // Re-derives `reach` from scratch, which callers must do once before their first query.
-    // Widening alone never shrinks, so one label that wandered and came back would inflate
-    // every later query; call this periodically to undo that. In between an over-estimate
-    // only costs extra candidates, it can never drop a neighbour.
-    reset(labels: LabelState[]) {
-      // Marker circles reach `radius` past their anchor, so that is the floor
-      reach = anchors.reduce((widest, { radius }) => Math.max(widest, radius), 0)
-      for (const label of labels) widen(label)
+    anchor_candidates,
+    label_candidates,
+    place,
+    // Buckets every label, which callers must do once before their first query
+    place_all(labels: LabelState[]) {
+      for (const label of labels) place(label)
     },
-    // Fills `candidates` with the anchors whose bucket the box can reach, ascending
-    collect(min_x: number, max_x: number, min_y: number, max_y: number): number {
-      const col_lo = Math.max(0, Math.floor((min_x - reach - origin_x) / size))
-      const col_hi = Math.min(cols - 1, Math.floor((max_x + reach - origin_x) / size))
-      const row_lo = Math.max(0, Math.floor((min_y - reach - origin_y) / size))
-      const row_hi = Math.min(rows - 1, Math.floor((max_y + reach - origin_y) / size))
-      for (let row = row_lo; row <= row_hi; row++) {
-        for (let col = col_lo; col <= col_hi; col++) {
-          for (const idx of buckets[row * cols + col]) bits[idx >>> 5] |= 1 << (idx & 31)
-        }
-      }
-      let count = 0
-      for (let word = 0; word < bits.length; word++) {
-        let mask = bits[word]
-        bits[word] = 0
-        while (mask !== 0) {
-          candidates[count++] = (word << 5) | (31 - Math.clz32(mask & -mask))
-          mask &= mask - 1
-        }
-      }
-      return count
-    },
+    // Fills `anchor_candidates` with the anchors whose marker can reach the box, ascending
+    collect_anchors: (min_x: number, max_x: number, min_y: number, max_y: number): number =>
+      gather(
+        anchor_cells,
+        anchor_candidates,
+        min_x - max_radius,
+        max_x + max_radius,
+        min_y - max_radius,
+        max_y + max_radius,
+      ),
+    // Fills `label_candidates` with the labels whose rect-plus-anchor box can reach the box
+    collect_labels: (min_x: number, max_x: number, min_y: number, max_y: number): number =>
+      gather(label_cells, label_candidates, min_x, max_x, min_y, max_y),
   }
 }
 
@@ -371,11 +440,11 @@ export function compute_delta_energy(
 
   // Everything outside the box contributes zero, so the index skips most of it up front and
   // the box test only has to reject what survives its buckets.
-  const { candidates } = neighbors
-  const count = neighbors.collect(box_min_x, box_max_x, box_min_y, box_max_y)
+  const { anchor_candidates, label_candidates } = neighbors
+  const anchor_count = neighbors.collect_anchors(box_min_x, box_max_x, box_min_y, box_max_y)
 
-  for (let pos = 0; pos < count; pos++) {
-    const { x: coord_x, y: coord_y, radius } = anchors[candidates[pos]]
+  for (let pos = 0; pos < anchor_count; pos++) {
+    const { x: coord_x, y: coord_y, radius } = anchors[anchor_candidates[pos]]
     if (misses_box(coord_x - radius, coord_x + radius, coord_y - radius, coord_y + radius))
       continue
     delta +=
@@ -385,8 +454,9 @@ export function compute_delta_energy(
   }
 
   // Pairwise interactions with all other labels, each reaching over its rect and its anchor
-  for (let pos = 0; pos < count; pos++) {
-    const jdx = candidates[pos]
+  const label_count = neighbors.collect_labels(box_min_x, box_max_x, box_min_y, box_max_y)
+  for (let pos = 0; pos < label_count; pos++) {
+    const jdx = label_candidates[pos]
     if (jdx === changed_idx) continue
     const other = labels[jdx]
     const peer = anchors[other.anchor_idx] // the other label's anchor
@@ -407,10 +477,27 @@ export function compute_delta_energy(
       (rect_overlap_area(new_state, other) - rect_overlap_area(old_state, other))
 
     // Leader line crossing delta (changed label's leader vs other's leader)
-    // shared tail of both crossing tests, so each call still fits on one line
-    const peer_leader = [peer.x, peer.y, other_cx, other_cy] as const
-    const old_cross = segments_intersect(anchor.x, anchor.y, old_cx, old_cy, ...peer_leader)
-    const new_cross = segments_intersect(anchor.x, anchor.y, new_cx, new_cy, ...peer_leader)
+    // spelled out rather than spread from a shared tuple, which allocated once per pair
+    const old_cross = segments_intersect(
+      anchor.x,
+      anchor.y,
+      old_cx,
+      old_cy,
+      peer.x,
+      peer.y,
+      other_cx,
+      other_cy,
+    )
+    const new_cross = segments_intersect(
+      anchor.x,
+      anchor.y,
+      new_cx,
+      new_cy,
+      peer.x,
+      peer.y,
+      other_cx,
+      other_cy,
+    )
     if (new_cross !== old_cross) delta += (new_cross ? 1 : -1) * weights.leader_cross
 
     // Changed label's leader crossing other label's rect
@@ -669,10 +756,9 @@ export function compute_label_positions(
   const new_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
 
   const neighbors = create_neighbor_index(anchors)
+  neighbors.place_all(labels)
 
   for (let step = 0; step < total_steps; step++) {
-    // once per sweep, which also seeds the reach on step 0
-    if (step % num_labels === 0) neighbors.reset(labels)
     const temperature = Math.max(0.001, start_temp * (1.0 - step * cooling_rate))
     const label_idx = Math.floor(next_random() * num_labels)
     const current = labels[label_idx]
@@ -707,7 +793,7 @@ export function compute_label_positions(
     if (delta < 0 || next_random() < Math.exp(-delta / (temperature * 10 + 0.1))) {
       current.x = new_scratch.x
       current.y = new_scratch.y
-      neighbors.widen(current)
+      neighbors.place(current)
     }
   }
 

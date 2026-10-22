@@ -1805,7 +1805,7 @@ Adjust SA iterations and the leader-line threshold to see how placement changes:
     { x: 65, y: 18, text: 'Gd' },
   ]
 
-  let sa_iterations = $state(2000)
+  let sa_iterations = $state(1000)
   let leader_threshold = $state(15)
 
   const series = $derived([

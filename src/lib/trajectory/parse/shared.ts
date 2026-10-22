@@ -2,7 +2,7 @@ import type { NumericFrame, FrameChannels } from '../frame'
 import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import type { ReadAtoms } from '../atom-batches'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type {
   PositionStreamOptions,
   TrajectoryFrame,

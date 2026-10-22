@@ -1280,17 +1280,22 @@ describe(`BinnedScatterPlot`, () => {
   // The threshold, not the visible line length, decides: at a 20px gap threshold 0 draws
   // the line however little of it shows. A tiny label 2px off the point sits under the
   // default 15px threshold; an explicit undefined threshold spreads over the default, and
-  // must not draw a leader for every label.
+  // must not draw a leader for every label. Greedy placement only (no anneal), so the label
+  // stays on its nearest candidate instead of wherever the random walk ends.
   const wide = [30, 10] as const
   const tiny = [2, 2] as const
-  const near = { gap_px: 2, leaders: { min_length_px: 0 } }
+  const near = { gap_px: 2, leaders: { min_length_px: 0 }, placement: { sa_iterations: 0 } }
+  const near_with = (leader_line_threshold?: number) => ({
+    ...near,
+    placement: { ...near.placement, leader_line_threshold },
+  })
   // oxfmt-ignore
   test.each([
     [`1000 at a 20px gap`, 0, wide, { gap_px: 20, placement: { leader_line_threshold: 1000 } }],
     [`zero at a 20px gap`, 1, wide, { gap_px: 20, placement: { leader_line_threshold: 0 } }],
     [`default`, 0, tiny, near],
-    [`explicit undefined`, 0, tiny, { ...near, placement: { leader_line_threshold: undefined } }],
-    [`zero`, 1, tiny, { ...near, placement: { leader_line_threshold: 0 } }],
+    [`explicit undefined`, 0, tiny, near_with(undefined)],
+    [`zero`, 1, tiny, near_with(0)],
   ] as const)(`%s leader threshold draws %i leaders`, async (_, want, [width, height], point_labels) => {
     mock_label_measurement(width, height)
     await mount_labelled_point(point_labels)

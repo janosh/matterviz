@@ -47,7 +47,14 @@ async function wheel_over(page: Page, root: Locator, zoom = false) {
     return globalThis.scrollY
   })
   await (zoom ? zoom_wheel(page, 200) : page.mouse.wheel(0, 200))
-  await page.waitForTimeout(300) // let the page scroll settle
+  // A plain wheel scrolls with an animation that a software-rendered (CI WebGL) viewer can
+  // stall past any fixed wait, so wait for the page to move; a zoom must leave it put
+  if (zoom) await page.waitForTimeout(300)
+  else
+    await page
+      .waitForFunction((start) => globalThis.scrollY !== start, start_y, { timeout: 5000 })
+      .catch(() => {}) // the assertion below reports a page that never scrolled
+  await page.waitForTimeout(100) // let the scroll settle
   return page.evaluate((start) => {
     const { last_wheel } = globalThis as unknown as { last_wheel?: WheelEvent }
     return { scrolled: globalThis.scrollY - start, prevented: last_wheel?.defaultPrevented }

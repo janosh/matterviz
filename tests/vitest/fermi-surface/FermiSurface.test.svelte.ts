@@ -105,7 +105,7 @@ test(`custom drops receive raw content while loading remains visible`, async () 
     file,
   })
   expect(props.loading).toBe(true)
-  expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+  expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
     `Loading Fermi surface...`,
   )
   pending.resolve(undefined)
@@ -209,7 +209,7 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   expect(can_create_worker()).toBe(false)
   props.interpolation_factor = 2
   flushSync()
-  expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+  expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
     `Extracting Fermi surface...`,
   )
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)
@@ -300,7 +300,7 @@ test.each([
   await tick()
   expect(on_error).not.toHaveBeenCalled()
   expect(props.error_msg).toBeUndefined()
-  expect(document.body.textContent).toContain(`E_F`)
+  expect(document.body.textContent).toContain(`EF =`) // E<sub>F</sub>
   // All vertices sit in the positive octant → detect_irreducible_bz walked typed positions
   expect(props.tile_bz).toBe(true)
   // Children receive the normalised surface: identical geometry to the typed-array form

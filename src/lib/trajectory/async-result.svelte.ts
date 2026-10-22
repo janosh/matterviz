@@ -4,7 +4,7 @@
 // worker once nothing else is in flight), its settlement is ignored, and a failure clears the stale
 // curves so the plot's empty-state message can show the error.
 import { getAbortSignal } from 'svelte'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { TrajectoryPositionStream } from './index'
 
 // One pane owns one request across collection and computation. Aborting a settled request

@@ -121,7 +121,6 @@
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
   import type { Sides } from '#lib/plot/core/layout.js'
-  import { stride_sample } from '#lib/plot/core/layout.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     CANVAS_MARKER_THRESHOLD,
@@ -147,9 +146,8 @@
     scatter_line_style,
   } from './scatter-data'
 
-  // Marker-density thresholds and decoration sampling cap
+  // Marker-density threshold
   const DENSE_MARKER_COUNT = 100
-  const OBSTACLE_SAMPLE_LIMIT = 500
   const ZERO_OFFSET = { x: 0, y: 0 }
 
   let {
@@ -577,9 +575,8 @@
         const y_range = uses_y2 ? ([y2_min, y2_max] as Vec2) : ([y_min, y_max] as Vec2)
         const norm_x = create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
         const norm_y = create_scale(y_config.scale_type ?? `linear`, y_range, [0, 1])
-        // Thin before projecting because the placement solver also caps its obstacle field.
         return {
-          points: stride_sample(srs.filtered_data, OBSTACLE_SAMPLE_LIMIT).map((point) => ({
+          points: srs.filtered_data.map((point) => ({
             x: norm_x(point.x) + (point.point_offset?.x ?? 0) / base_w,
             y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
           })),

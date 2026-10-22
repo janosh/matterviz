@@ -10,7 +10,7 @@
     get_effective_pressures,
   } from './gas-thermodynamics'
   import VerticalSlider from './VerticalSlider.svelte'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
 
   let {
     config,

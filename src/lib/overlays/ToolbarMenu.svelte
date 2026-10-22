@@ -5,8 +5,7 @@
   // app.css's --menu-* tokens, then literal light-dark values.
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { tooltip } from 'svelte-widgets/attachments'
-  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal, tooltip } from 'svelte-widgets/attachments'
 
   let {
     open = $bindable(false),

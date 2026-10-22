@@ -74,3 +74,27 @@ test(`periodic table inset neutralises the plot panel tint and shrinks its label
     page.getByRole(`heading`, { name: `2-fold Split (Diagonal)`, exact: true }),
   ).toHaveCount(1)
 })
+
+// The element pages' palette entries load with the element dataset when the palette first
+// opens, keeping that dataset off the many demo pages that never need it
+test(`search palette lists element pages after opening`, async ({ page }) => {
+  // the Pagefind index comes from `build:site`, not the build the tests run against
+  await page.route(`**/pagefind/pagefind.js`, (route) =>
+    route.fulfill({
+      contentType: `text/javascript`,
+      body: `export const search = async () => ({ results: [] })`,
+    }),
+  )
+  await page.goto(`/plot`, { waitUntil: `domcontentloaded` })
+  await expect
+    .poll(async () => {
+      await page.getByRole(`button`, { name: `Open search`, exact: true }).click()
+      return page.getByRole(`dialog`, { name: `Search the MatterViz site` }).isVisible()
+    })
+    .toBe(true)
+  await page.keyboard.type(`/hydrogen`)
+  const option = page.getByRole(`option`, { name: `/hydrogen Open page`, exact: true })
+  await expect(option).toBeVisible()
+  await option.click()
+  await expect(page).toHaveURL(/\/hydrogen$/, { timeout: 15_000 }) // first dev compile
+})

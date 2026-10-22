@@ -10,7 +10,7 @@
   import type { TdbParseResult } from '#site/phase-diagrams/tdb-parse.js'
   import { get_system_name, parse_tdb } from '#site/phase-diagrams/tdb-parse.js'
   import TdbInfoPanel from '#site/phase-diagrams/TdbInfoPanel.svelte'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { all_phase_diagram_files, find_precomputed_diagram } from '#site/phase-diagrams.js'
   import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'

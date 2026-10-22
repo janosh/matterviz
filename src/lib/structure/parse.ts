@@ -54,7 +54,8 @@ import { is_xyz_atom_line, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 // One extXYZ implementation for both the single-structure and trajectory readers
 import { build_xyz_frame, index_xyz_frames } from '#lib/trajectory/parse/xyz.js'
-import { is_plain_object, parse_leading_num, to_error } from '#lib/utils.js'
+import { is_plain_object, parse_leading_num } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { load as yaml_load } from 'js-yaml'
 
 export { is_structure_file } from '#lib/structure/format-detect.js'

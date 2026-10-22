@@ -1,6 +1,6 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import FilePicker from '#lib/FilePicker.svelte'
   import type { AnyStructure, StructureSettings } from '#lib/structure/index.js'
   import { is_crystal, parse_supercell_scaling, Structure } from '#lib/structure/index.js'

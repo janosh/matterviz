@@ -23,3 +23,17 @@ test(`uses the requested image URL and retries when it changes`, async () => {
   expect(image.getAttribute(`src`)).toBe(props.src)
   await unmount(component)
 })
+
+// null means "no photo exists": no request (whose 404 would log a console error), just the note
+test(`a null src renders the no-image note without an img`, async () => {
+  const element = element_data[117]
+  const component = mount(ElementPhoto, {
+    target: document.body,
+    props: { element, src: null },
+  })
+  expect(document.querySelector(`img`)).toBeNull()
+  expect(document.body.textContent?.replaceAll(/\s+/gu, ` `)).toContain(
+    `No image for ${element.name}`,
+  )
+  await unmount(component)
+})

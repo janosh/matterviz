@@ -37,6 +37,8 @@ import { structure_host_tool } from '#lib/structure/host-tool.svelte.js'
 import { prediction_from_json, prediction_to_json } from '#lib/structure/prediction.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import StructureOwnerHarness from './StructureOwnerHarness.svelte'
+import { StructureSession } from '#lib/structure/session.svelte.js'
+import StructureViewport from '#lib/structure/StructureViewport.svelte'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
 import { structures } from '#site/structures.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -232,6 +234,145 @@ test(`loads strings, URLs and dropped files; caller-owned structures skip fetchi
   })
   expect(drop_state.structure?.sites).toHaveLength(5)
   expect(fetch_spy.mock.calls.map(([url]) => url)).toEqual([`/loaded.poscar`])
+})
+
+// A played trajectory frame swaps the structure prop. The bundle every viewport prop reads
+// must not depend on it (see shared_viewport_props), while the frame-varying inputs, which
+// travel as props of their own, still arrive, and unset trail styling falls back to scene_props.
+// Coordination colors follow the frame too, so they must not reach the bundle either.
+test(`a new frame leaves the shared viewport bundle alone`, async () => {
+  mock_gpu()
+  let bundle_reads = 0
+  const scene_props = {
+    trajectory_line_frame_stride: 3,
+    get bond_thickness() {
+      bundle_reads += 1 // only the bundle's spread reads this key
+      return 0.3
+    },
+  }
+  const base = structures[0]
+  const state = $state<{
+    structure: AnyStructure
+    render_token: number
+    trajectory_line_end_frame: number
+    highlighted_sites: number[]
+  }>({ structure: base, render_token: 0, trajectory_line_end_frame: 0, highlighted_sites: [] })
+  // a fixed series, as Trajectory passes per run (unset, every structure is a new series)
+  const atom_color_config: AtomColorConfig = {
+    ...DEFAULT_ATOM_COLOR_CONFIG,
+    mode: `coordination`,
+  }
+  mount_structure(
+    bind_props({ scene_props, structure_series_key: `run`, atom_color_config }, state),
+  )
+  await tick()
+  const reads_at_mount = bundle_reads
+  expect(reads_at_mount).toBeGreaterThan(0)
+  for (const step of [1, 2, 3]) {
+    state.structure = {
+      ...base,
+      sites: base.sites.map((site) => ({
+        ...site,
+        xyz: site.xyz.map((coord) => coord + 0.01 * step) as Vec3,
+      })),
+    }
+    state.render_token = step
+    state.trajectory_line_end_frame = step
+    flushSync()
+    // as hovering a site table row sets it (a new structure clears highlights)
+    state.highlighted_sites = [step]
+    flushSync()
+    await tick()
+    expect(scene_stub.props?.render_token).toBe(step)
+    expect(scene_stub.props?.trajectory_line_end_frame).toBe(step)
+    expect(scene_stub.props?.active_sites).toEqual([step])
+  }
+  expect(bundle_reads).toBe(reads_at_mount)
+  expect(scene_stub.props?.property_colors?.colors.length).toBeGreaterThan(0)
+  expect(scene_stub.props?.show_cell_vectors).toBe(base.sites.length <= 100)
+  expect(scene_stub.props?.bond_thickness).toBe(0.3)
+  expect(scene_stub.props?.trajectory_line_frame_stride).toBe(3)
+})
+
+// StructureViewport is exported on its own: without Structure's frame_scene_props, a direct
+// caller's frame inputs in scene_props must reach the scene
+test(`a directly mounted StructureViewport keeps frame inputs from scene_props`, async () => {
+  const on_rendered = vi.fn()
+  const scene_props = {
+    show_trajectory_lines: true,
+    on_rendered,
+    render_token: 7,
+    trajectory_line_end_frame: 4,
+  }
+  let session: StructureSession | undefined
+  const cleanup = $effect.root(() => {
+    session = new StructureSession({
+      structure: () => structure,
+      set_structure: () => {},
+      bonds: () => undefined,
+      set_bonds: () => {},
+      series_key: () => undefined,
+      selected_sites: () => [],
+      set_selected_sites: () => {},
+      measured_sites: () => [],
+      set_measured_sites: () => {},
+      highlighted_sites: () => [],
+      set_highlighted_sites: () => {},
+      hovered_site_idx: () => null,
+      set_hovered_site_idx: () => {},
+      measure_mode: () => `distance`,
+      set_measure_mode: () => {},
+      bond_edit_mode: () => `add`,
+      set_bond_edit_mode: () => {},
+      bond_edit_order: () => 1,
+      set_bond_edit_order: () => {},
+      supercell_scaling: () => `1x1x1`,
+      apply_supercell_scaling: () => false,
+      show_image_atoms: () => false,
+      cell_type: () => `original`,
+      set_cell_type: () => {},
+      sym_data: () => null,
+      atom_color_config: () => DEFAULT_ATOM_COLOR_CONFIG,
+      bonding_strategy: () => DEFAULTS.structure.bonding_strategy,
+    })
+  })
+  if (!session) throw new Error(`StructureSession was not created`)
+  const view_state = { get_pose_key: () => `` }
+  const stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`H`])
+  const viewport = mount(StructureViewport, {
+    target: document.body,
+    props: {
+      session,
+      view_state,
+      scene_props: { ...scene_props, trajectory_position_stream: stream },
+    },
+  })
+  try {
+    await tick()
+    expect(scene_stub.props).toMatchObject({
+      ...scene_props,
+      trajectory_position_stream: stream,
+    })
+  } finally {
+    void unmount(viewport)
+  }
+  // an explicit null in frame_scene_props still wins over scene_props' stream (?? would not)
+  const frame_viewport = mount(StructureViewport, {
+    target: document.body,
+    props: {
+      session,
+      view_state,
+      scene_props: { ...scene_props, trajectory_position_stream: stream },
+      frame_scene_props: { trajectory_position_stream: null },
+    },
+  })
+  try {
+    await tick()
+    expect(scene_stub.props?.trajectory_position_stream).toBeNull()
+  } finally {
+    void unmount(frame_viewport)
+    cleanup()
+  }
 })
 
 // Parser warnings (host-supplied or from a dropped file) show as one dismissible notice tied
@@ -3021,7 +3162,7 @@ describe(`source acquisition`, () => {
 
       await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
       expect(state.loading).toBe(true)
-      expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+      expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
         `Loading structure...`,
       )
       // the empty-state text would be drawn right under the spinner's label

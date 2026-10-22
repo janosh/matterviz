@@ -5,6 +5,7 @@
 // without loosening it into a band no real regression would ever hit. Sub-2x slowdowns pass.
 // Opt in locally with MATTERVIZ_PERF=1. The file is excluded from the default run in
 // vite.config.ts, so it never pays its import cost there.
+import { generate_bz_vertices } from '#lib/brillouin/compute.js'
 import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
 import {
   calculate_e_above_hull,
@@ -24,6 +25,7 @@ import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Vec3 } from '#lib/math.js'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import { bin_points } from '#lib/plot/scatter/adaptive-density.js'
+import { compute_label_positions } from '#lib/plot/core/utils/label-placement.js'
 import { get_coordination_colors } from '#lib/structure/atom-properties.js'
 import { electroneg_ratio, neighbor_query } from '#lib/structure/bonding.js'
 import { compute_polyhedra, merge_polyhedra_buffers } from '#lib/structure/polyhedra.js'
@@ -39,6 +41,9 @@ import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/fra
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
 import { compute_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+import { reciprocal_lattice } from '#lib/math.js'
+import { sanitize_html } from '#lib/sanitize.js'
+import { scaleLinear } from 'd3-scale'
 import process from 'node:process'
 import { type Component, flushSync, mount, tick, unmount } from 'svelte'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
@@ -90,6 +95,14 @@ const BASELINES = {
   // 2026-10-15: M5 Max/Node 24.22/Vitest 5; 21.4 ms median in suite order (18.5 ms isolated;
   // median of 3 runs' reference ratios), normalized from its 29.6 ms reference.
   'Fermi Cu 25^3 d-band hover sweep': (21.4 * REFERENCE_MS) / 29.6,
+  // 2026-10-21: M5 Max/Node 24.22/Vitest 5; medians of 3 runs (reference 30.7 ms). BZ took 68 ms
+  // before the flat beyond-plane rows; the formulas took two DOMPurify passes each.
+  'BZ order 3 fcc vertices': (12.5 * REFERENCE_MS) / 30.7,
+  'sanitize_html 20k distinct formulas': (33.2 * REFERENCE_MS) / 30.7,
+  // 2026-10-22: M5 Max/Node 24.22/Vitest 5; median of 3 runs (reference 41.1 ms) at the default
+  // 1000 sweeps per label. 2000 sweeps took 411 ms (reference 30.1), and 960 ms before the
+  // anneal queried labels and markers through their own grids.
+  'label placement 300 labels': (265 * REFERENCE_MS) / 41.1,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -547,6 +560,56 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     const points = make_hull_points(775)
     await measure(`quickhull 4D 775 entries`, () => {
       expect(compute_lower_hull_nd(points).length).toBeGreaterThan(20)
+    })
+  })
+
+  test(`BZ order 3 fcc vertices`, async () => {
+    const k_lattice = reciprocal_lattice([
+      [0, 2, 2],
+      [2, 0, 2],
+      [2, 2, 0],
+    ])
+    await measure(`BZ order 3 fcc vertices`, () => {
+      expect(generate_bz_vertices(k_lattice, 3)).toHaveLength(86)
+    })
+  })
+
+  // Formula markup is a DOMPurify fixed point, so a table of distinct formulas must not pay
+  // two sanitizer passes per cell. A fresh batch per rep keeps the result cache cold.
+  let formula_batch = 0
+  test(`sanitize_html 20k distinct formulas`, async () => {
+    await measure(`sanitize_html 20k distinct formulas`, () => {
+      formula_batch += 1
+      const formulas = Array.from(
+        { length: 20_000 },
+        (_, idx) => `Li<sub>${idx}</sub>Fe<sub>${formula_batch}</sub>O<sub>4</sub>`,
+      )
+      expect(formulas.map(sanitize_html)).toEqual(formulas)
+    })
+  })
+
+  // The anneal scores each move against nearby markers and labels only; growing every query by
+  // the furthest any label strayed from its anchor scanned ~10x the candidates (2.4x slower here)
+  test(`label placement 300 labels`, async () => {
+    const rng = make_rng(9)
+    const filtered_data = Array.from({ length: 300 }, (_, point_idx) => ({
+      x: rng() * 100,
+      y: rng() * 100,
+      series_idx: 0,
+      point_idx,
+      point_label: {
+        text: `label ${point_idx}`,
+        auto_placement: true,
+        size: { width: 20 + rng() * 40, height: 12 },
+      },
+      point_style: { radius: 2 + rng() * 4 },
+    }))
+    const scale = scaleLinear().domain([0, 100]).range([50, 750])
+    const scales = { x: scale, y: scale, x2: scale, y2: scale }
+    const bounds = { width: 800, height: 800, pad: { t: 40, b: 40, l: 40, r: 40 } }
+    await measure(`label placement 300 labels`, () => {
+      const positions = compute_label_positions([{ filtered_data }], {}, scales, bounds)
+      expect(Object.keys(positions)).toHaveLength(300)
     })
   })
 

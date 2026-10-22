@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { open_material, type FileInfo } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'

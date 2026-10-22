@@ -12,7 +12,7 @@ import {
   analysis_step_interval,
   suggest_analysis_frame_stride,
 } from '#lib/trajectory/analysis.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, settle, set_input } from '../setup'

@@ -15,7 +15,7 @@ import {
 import type { AnyStructure, Crystal } from '#lib/structure/index.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
 // XRD wavelengths in Angstrom (Å)

@@ -14,7 +14,7 @@
   import type { ExportItem, ExportSection } from '#lib/io/types.js'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
-  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { clamp } from '#lib/math.js'
   import {
@@ -32,7 +32,8 @@
     trajectory_export_basename,
   } from '#lib/trajectory/file-export.js'
   import { tooltip } from 'svelte-widgets/attachments'
-  import { abortable, to_error } from '#lib/utils.js'
+  import { abortable } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -409,8 +410,10 @@
 
   {#if running}
     <div class="export-info export-progress">
-      <LoadingStatus
-        label={`Exporting ${running.label}… ${format_num(running.progress, `.0f`)}%`}
+      <TaskStatus
+        spinner
+        label={`Exporting ${running.label}…`}
+        value={running.progress}
         cancel_label="Cancel export"
         on_cancel={() => running?.controller.abort()}
       />
@@ -543,6 +546,10 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 1ex;
+  }
+  .export-progress {
+    text-align: center;
+    --task-status-button-justify: center;
   }
   .export-info {
     margin-top: 1ex;

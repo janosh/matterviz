@@ -51,7 +51,7 @@
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
   import { assign_axes } from '#lib/plot/core/axis-assignment.js'
-  import type { ObstacleSeries } from '#lib/plot/core/decorations/index.js'
+  import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
@@ -410,7 +410,7 @@
       // Base-box pixel scales (not unit ones) keep compute_bar_rect's 1px floors
       const pad = { l: 0, r: 0, t: 0, b: 0 }
       const scales = create_axis_scales(plot_axes, frame.ranges.current, pad, base_w, base_h)
-      const obstacle_series: ObstacleSeries[] = []
+      const obstacle_series: (ObstacleSeries | Obstacle)[] = []
       internal_series.forEach((srs, series_idx) => {
         if (!(srs.visible ?? true)) return
         const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`

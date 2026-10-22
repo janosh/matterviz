@@ -1,6 +1,6 @@
 import type { ElementAxisOrderingKey } from '#lib/heatmap-matrix/index.js'
 import * as heatmap from '#lib/heatmap-matrix/index.js'
-import * as file_io from '#lib/io/fetch.js'
+import * as file_io from 'svelte-widgets/download'
 import { ELEMENT_ORDERINGS, ORDERING_LABELS } from '#lib/heatmap-matrix/index.js'
 import HeatmapMatrixControls from '#lib/heatmap-matrix/HeatmapMatrixControls.svelte'
 import { mount, tick, type ComponentProps } from 'svelte'

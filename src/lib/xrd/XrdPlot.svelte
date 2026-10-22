@@ -9,7 +9,7 @@
     ScatterHandlerProps,
   } from '#lib/plot/index.js'
   import { add_alpha, plot_color } from '#lib/colors/index.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { untrack } from 'svelte'
@@ -17,7 +17,7 @@
   import * as file_io from '../io'
   import { format_value } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import { BarPlot, ScatterPlot } from '#lib/plot/index.js'

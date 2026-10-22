@@ -33,7 +33,7 @@ test(`loading overlay stays centered and compact in wide and narrow viewers`, as
     waitUntil: `domcontentloaded`,
   })
   const viewer = page.locator(BZ_SELECTOR)
-  const loading = viewer.locator(`.loading-overlay`)
+  const loading = viewer.locator(`.task-status.overlay`)
   await expect(loading.getByRole(`status`)).toHaveText(`Loading structure...`)
   try {
     for (const width of [800, 160]) {
@@ -194,7 +194,9 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
     // Collapsible groups indent their labels, but control heights and right edges align.
     expect(fields[0]).toEqual(fields[1])
     expect(fields[0].margin).toBe(`0px`)
-    expect(fields[0].font).toBe(fields[0].row_font)
+    // fields take the pane's control size (--pane-input-font-size, 0.85em), not the label's
+    const px = (size: string | null) => Number(size?.replace(`px`, ``))
+    expect(px(fields[0].font)).toBeCloseTo(0.85 * px(fields[0].row_font), 1)
     const pane = page.locator(`${BZ_SELECTOR} .bz-controls`)
     const reset_edges = pane.getByRole(`button`, { name: `Reset edges to defaults` })
     await expect(reset_edges).toBeVisible()

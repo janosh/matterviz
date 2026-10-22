@@ -3,13 +3,13 @@
   import { band_hover_qpoint } from './band-path-link.svelte'
   import { track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
-  import { BZ_POPUP_DEFAULT_WIDTH, BrillouinZonePopup } from '#lib/brillouin/index.js'
-  import type { BZPopupPoint } from '#lib/brillouin/index.js'
+  import type BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
+  import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types.js'
   import { HIGHLIGHT, plot_color } from '#lib/colors/index.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
@@ -396,6 +396,22 @@
   // x of the clicked symmetry-point tick; the popup is anchored to it through the live x
   // scale, so it follows zoom, resize and fullscreen
   let bz_popup_x = $state<number | null>(null)
+  // The popup's 3D zone (three.js) is imported on the first tick click, not with every band
+  // plot. A failed import (offline, a stale chunk after a deploy) closes it with a notice.
+  let ZonePopup = $state.raw<typeof BrillouinZonePopup>()
+  let bz_popup_error = $state<string>()
+  const open_bz_popup = (tick: number): void => {
+    bz_popup_x = tick
+    bz_popup_error = undefined
+    if (ZonePopup) return
+    import(`../brillouin/BrillouinZonePopup.svelte`).then(
+      (module) => (ZonePopup = module.default),
+      (exc: unknown) => {
+        bz_popup_x = null
+        bz_popup_error = `Brillouin zone view failed to load: ${to_error(exc).message}`
+      },
+    )
+  }
   // Marked at the drawn path's own point (folded with its branch, so it sits on the drawn label);
   // a union-mode point only another structure has is not on that path and is folded alone
   let bz_popup_points = $derived.by((): BZPopupPoint[] => {
@@ -424,7 +440,7 @@
     ticks: Object.keys(x_axis_ticks).length > 0 ? x_axis_ticks : undefined,
     format: ``,
     range: x_range,
-    on_tick_click: k_lattice ? (tick) => (bz_popup_x = tick) : undefined,
+    on_tick_click: k_lattice ? open_bz_popup : undefined,
     active_tick: bz_popup_x,
     ...x_axis,
   })
@@ -891,9 +907,10 @@
     {@render user_children?.(ctx)}
     <ViewerNotices>
       <StatusMessage message={gap_result.error} type="warning" class="gap-error" />
+      <StatusMessage message={bz_popup_error} type="warning" class="bz-popup-error" />
     </ViewerNotices>
     <!-- hidden while zoomed away from its tick -->
-    {#if k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
+    {#if ZonePopup && k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}
       <!-- centered above the tick on the x axis, kept inside the plot (centered on a plot
       narrower than itself). The bottom arrow tracks the tick even when clamping shifts the popup
       off-center -->
@@ -903,15 +920,15 @@
         ctx.width < 2 * half_width
           ? ctx.width / 2
           : clamp(tick_x, half_width, ctx.width - half_width)}
-      <BrillouinZonePopup
+      {@const top = ctx.height - ctx.pad.b}
+      <ZonePopup
         {...bz_popup_props}
         {k_lattice}
         points={bz_popup_points}
         {k_path}
         place="manual"
         arrow_x={clamp(tick_x - left + half_width, 12, 2 * half_width - 12)}
-        style="left: {left}px; top: {ctx.height -
-          ctx.pad.b}px; transform: translate(-50%, calc(-100% - 8px)); {bz_popup_props.style ??
+        style="left: {left}px; top: {top}px; transform: translate(-50%, calc(-100% - 8px)); {bz_popup_props.style ??
           ``}"
         on_close={() => {
           bz_popup_x = null

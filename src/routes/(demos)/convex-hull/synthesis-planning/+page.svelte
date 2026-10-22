@@ -3,7 +3,7 @@
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { SynthesisPlanner } from '#lib/synthesis-planning/index.js'
   import type { SynthesisConditions } from '#lib/synthesis-planning/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
   import { latest_load } from '#site/state.svelte.js'
 

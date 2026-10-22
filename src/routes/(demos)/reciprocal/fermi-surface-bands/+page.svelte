@@ -3,7 +3,7 @@
   import type { BandGridData } from '#lib/fermi-surface/index.js'
   import { FermiSurfaceBands, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
   import { normalize_band_structure } from '#lib/spectral/helpers.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import raw_bands from '#site/electronic/cu-fcc-bands.json.gz'
   import { fermi_surface_files } from '#site/fermi-surfaces.js'
   import { onMount } from 'svelte'

@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './composition/format'
 import { evict_oldest } from './labels'
-import { escape_html } from './utils'
+import { escape_html } from 'svelte-widgets/utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
 const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]
@@ -177,6 +177,54 @@ const stringify_html_input = (html: unknown): string => {
   }
 }
 
+// Text plus balanced, attribute-free allowlisted tags (formulas like `Li<sub>2</sub>O`) and
+// entry links is a fixed point of DOMPurify: the parse-serialize round trip of well-nested
+// phrasing elements changes nothing, provided the text holds none of the characters
+// serialization escapes (`&`, `<`, `>`, U+00A0) or parsing rewrites (`\r`, `\0`, and `\f`,
+// which a leading run of whitespace loses). Skipping its two passes is most of the cost of a
+// table of thousands of distinct formulas or links. Fuzzed against DOMPurify in Chromium,
+// Firefox and WebKit.
+const INERT_MARKUP_RE =
+  /<\/(?<close>[a-z]+)>|<(?<tag>[a-z]+)(?<attrs>(?: [a-z]+="[^"<>&\u00A0\r\0\f]*")*)>|[<>&\u00A0\r\0\f]/g
+const PAIRED_TAG_SET = new Set(SAFE_TAGS.filter((tag) => tag !== `br`))
+const INERT_ATTR_RE = / (?<name>[a-z]+)="(?<value>[^"]*)"/g
+const TRIMMED_RE = /^(?:\S(?:[^]*\S)?)?$/ // DOMPurify trims every attribute value
+// The link attributes DOMPurify keeps as written, and the values it keeps them for. It vets
+// target and rel like URIs (`a: b` reads as a scheme), so keywords only.
+const INERT_LINK_ATTRS = new Map([
+  [`href`, /^(?:#|\/(?!\/)|https?:\/\/)[\w#/.:?=+~%@!$*,;()[\]-]*$/],
+  [`target`, /^_[a-z]+$/],
+  [`rel`, /^[a-z]+(?: [a-z]+)*$/],
+  [`title`, TRIMMED_RE],
+  [`class`, TRIMMED_RE],
+])
+const is_inert_link = (attrs: string): boolean => {
+  const values = new Map<string, string>()
+  for (const { groups: { name = ``, value = `` } = {} } of attrs.matchAll(INERT_ATTR_RE)) {
+    if (values.has(name) || !INERT_LINK_ATTRS.get(name)?.test(value)) return false
+    values.set(name, value)
+  }
+  // an href gains rel=noopener, so it passes only beside a rel already holding that token
+  const rel = values.get(`rel`)
+  return rel === undefined ? !values.has(`href`) : rel === ensure_token(rel, `noopener`)
+}
+const is_inert_markup = (html: string): boolean => {
+  const open: string[] = []
+  for (const { groups: { close, tag, attrs } = {} } of html.matchAll(INERT_MARKUP_RE)) {
+    if (close) {
+      if (open.pop() !== close) return false // the parser would re-nest misnested tags
+      continue
+    }
+    if (!tag) return false // a character DOMPurify's round trip would rewrite
+    if (tag === `br` && !attrs) continue
+    if (!PAIRED_TAG_SET.has(tag) || (attrs && (tag !== `a` || !is_inert_link(attrs))))
+      return false
+    if (tag === `a` && open.includes(`a`)) return false // a nested link closes the outer one
+    if (open.push(tag) > 32) return false // engines re-parent past a DOM depth of 512
+  }
+  return open.length === 0
+}
+
 const sanitize_cache = new Map<string, string>()
 const cache_sanitize = (key: string, result: string): string => {
   evict_oldest(sanitize_cache)
@@ -202,8 +250,9 @@ export function sanitize_html(html: unknown): string {
   // DOMPurify makes the same `indexOf('<') === -1` check and returns `dirty` untouched, so
   // this is byte-identical by construction. Don't delete it on those grounds though: it bails
   // only after setConfig() rebuilds the allow-lists below, and that dominates — 0.036 us here
-  // vs 319 us for the two sanitize() calls on the same five axis labels.
-  if (!str.includes(`<`)) return cache_sanitize(str, str)
+  // vs 319 us for the two sanitize() calls on the same five axis labels. Inert markup is a
+  // fixed point too (see is_inert_markup).
+  if (!str.includes(`<`) || is_inert_markup(str)) return cache_sanitize(str, str)
   const purifier = get_purify()
   if (!purifier) return cache_sanitize(str, sanitize_html_ssr(str))
   // oxfmt-ignore

@@ -9,7 +9,7 @@ import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.
 import { basename_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
 import { parse_in_worker } from './parse-in-worker'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 
 export interface MaterialPayload extends Partial<FileLoadMeta> {
   data: TrajectorySource

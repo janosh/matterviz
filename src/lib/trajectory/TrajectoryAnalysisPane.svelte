@@ -27,7 +27,7 @@
   } from '#lib/trajectory/analysis.js'
   import { resolve_frame_range } from './runs/accumulate'
   import { create_request_owner } from './async-result.svelte'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { format_bytes } from 'svelte-widgets/format'
   import { getAbortSignal, type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'

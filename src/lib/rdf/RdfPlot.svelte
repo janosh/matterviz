@@ -13,7 +13,7 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
   import {

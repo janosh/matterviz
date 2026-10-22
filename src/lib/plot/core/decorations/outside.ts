@@ -1,16 +1,13 @@
-// Decide which decorations leave the plot area for its margins. Crowding is judged on the
-// fixed base padding and the normalized obstacle field, so the reservations made here cannot
-// feed back into the decision that produced them.
+// Lay out the margins for the decorations that leave the plot: those too big to sit inside,
+// plus those solve_decorations evicted for finding no free spot inside.
 
-import { compute_element_placement, point_in_rect, type Sides } from '#lib/plot/core/layout.js'
-import { project_obstacles } from './obstacles'
+import type { Sides } from '#lib/plot/core/layout.js'
 import type {
   ColorbarDecorationItem,
   DecorationItem,
   DecorationPlacement,
   DecorationPoint,
   DecorationScene,
-  DecorationSize,
   LegendDecorationItem,
 } from './types'
 
@@ -24,28 +21,6 @@ type OutsideLayout = {
   colorbar_outside: boolean
   colorbar_side: `top` | `right` // valid when colorbar_outside
   colorbar_pos: DecorationPoint // outside position (valid when colorbar_outside)
-}
-
-// True when the interior spot the solver would pick for `footprint` (px), searched in the base
-// plot box's pixels like the interior placement, covers any obstacle sample
-function is_crowded(
-  obstacles: readonly DecorationPoint[],
-  footprint: DecorationSize,
-  base_w: number,
-  base_h: number,
-  clearance: number,
-): boolean {
-  if (obstacles.length === 0 || base_w <= 0 || base_h <= 0) return false
-  if (footprint.width >= base_w || footprint.height >= base_h) return true
-  const plot_bounds = { x: 0, y: 0, width: base_w, height: base_h }
-  const points = project_obstacles(obstacles, plot_bounds)
-  const { x, y } = compute_element_placement({
-    plot_bounds,
-    element_size: footprint,
-    axis_clearance: clearance,
-    points,
-  })
-  return points.some((point) => point_in_rect(point, { x, y, ...footprint }))
 }
 
 const standard_items = (
@@ -64,11 +39,13 @@ const standard_items = (
 }
 
 // Horizontal colorbar -> top; vertical colorbar -> right; legend -> right or bottom.
-// A legend spanning more than this fraction of the plot's width or height (a phone-width
-// frame, a long series list) covers too much data to sit inside whatever the obstacle test
-// says. A too-wide one also cannot take the right margin without leaving no plot width, so
-// it goes below; a too-tall one is placed by the usual right/bottom economy.
-const LEGEND_MAX_INTERIOR_FRACTION = 0.45
+// A legend covering more than this fraction of the plot area (a long series list in a
+// phone-width frame) hides too much of it to sit inside, however empty its spot. Width alone
+// is no measure of that: a wide, short legend over empty space hides nothing.
+const LEGEND_MAX_INTERIOR_AREA_FRACTION = 0.25
+// An outside legend wider than this fraction of the plot cannot take the right margin
+// without leaving no plot width, so it goes below
+const LEGEND_MAX_RIGHT_WIDTH_FRACTION = 0.45
 // A horizontal colorbar is a short strip that only costs the top margin its height, so it may
 // span more of the width (~80% of a phone-width plot, ~30% of a desktop one) before moving out.
 const COLORBAR_MAX_INTERIOR_FRACTION = 0.7
@@ -81,8 +58,14 @@ const MIN_PLOT_HEIGHT_PAST_LEGEND = 80
 // (inside, it is capped at the plot height), so the choice does not depend on history.
 export const LEGEND_STRIP_MAX_FRACTION = 0.5
 
-export function place_outside_decorations(scene: DecorationScene): OutsideLayout {
-  const { base_pad, width, height, obstacles_norm, gap = DEFAULT_DECORATION_GAP } = scene
+// Decorations solve_decorations moves out when they find no free spot inside
+export type EvictableKind = `legend` | `colorbar`
+
+export function place_outside_decorations(
+  scene: DecorationScene,
+  evicted: ReadonlySet<EvictableKind> = new Set(),
+): OutsideLayout {
+  const { base_pad, width, height, gap = DEFAULT_DECORATION_GAP } = scene
   const axis_pad = scene.axis_pad ?? base_pad
   const { legend, colorbar } = standard_items(scene.items)
   const reserved = scene.reserved_pad ?? { t: 0, b: 0, l: 0, r: 0 }
@@ -95,22 +78,20 @@ export function place_outside_decorations(scene: DecorationScene): OutsideLayout
   const box = legend?.footprint ?? column
   // Too wide unless the caller's right padding already has room for it (costs no plot width)
   const too_wide =
-    legend_width > LEGEND_MAX_INTERIOR_FRACTION * base_w && legend_width + 2 * gap > base_pad.r
-  const too_tall = legend_height > LEGEND_MAX_INTERIOR_FRACTION * base_h
+    legend_width > LEGEND_MAX_RIGHT_WIDTH_FRACTION * base_w &&
+    legend_width + 2 * gap > base_pad.r
+  const too_big =
+    legend_width * legend_height > LEGEND_MAX_INTERIOR_AREA_FRACTION * base_w * base_h
 
   const colorbar_horizontal = colorbar?.horizontal ?? false
   const { width: colorbar_width = 0, height: colorbar_height = 0 } = colorbar?.footprint ?? {}
   const colorbar_outside =
     colorbar != null &&
     ((colorbar_horizontal && colorbar_width > COLORBAR_MAX_INTERIOR_FRACTION * base_w) ||
-      is_crowded(obstacles_norm, colorbar.footprint, base_w, base_h, colorbar.clearance ?? 15))
+      evicted.has(`colorbar`))
   const colorbar_takes_right = colorbar_outside && !colorbar_horizontal
 
-  const legend_outside =
-    legend != null &&
-    (too_wide ||
-      too_tall ||
-      is_crowded(obstacles_norm, column, base_w, base_h, legend.clearance ?? 12))
+  const legend_outside = legend != null && (too_big || evicted.has(`legend`))
   // Put a narrow/tall legend on the right (wastes less reserved margin than a wide bottom strip);
   // a wide/short legend goes below. Skip the right side if a vertical colorbar already took it
   // or the frame is too narrow to give any width away.
@@ -176,7 +157,6 @@ export const get_outside_placement = (
     id: item.id,
     kind: item.kind,
     footprint: item.footprint,
-    score: null,
     location: `outside` as const,
   }
   if (item.kind === `legend` && layout.legend_outside) {

@@ -2,7 +2,7 @@ import { calc_lattice_params } from '#lib/math.js'
 import type { PdfWeighting } from '#lib/scattering/index.js'
 import { pdf_scattering_weights } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { calculate_all_pair_rdfs, calculate_rdf, shell_volume } from './calc-rdf'
 import type {
   PdfPattern,

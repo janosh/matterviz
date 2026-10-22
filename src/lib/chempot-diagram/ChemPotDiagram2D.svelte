@@ -3,7 +3,7 @@
   import { untrack } from 'svelte'
   import { is_editable_event_target } from 'svelte-widgets/utils'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { json_source } from '#lib/io/export.js'
   import { SettingsSection } from '#lib/layout/index.js'

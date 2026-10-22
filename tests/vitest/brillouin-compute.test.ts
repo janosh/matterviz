@@ -354,6 +354,21 @@ describe(`compute_convex_hull`, () => {
   ] as [string, Vec3[], RegExp][])(`throws a descriptive error for %s vertices`, (_, verts, msg) =>
     expect(() => compute_convex_hull(verts)).toThrow(msg))
 
+  // Dedup cells are 1e-7 wide and a vertex probes only the neighbor cells it lies near, so
+  // points within TOL (1e-8) of each other across a cell boundary must still merge into one
+  // oxfmt-ignore
+  test.each([
+    [`x`, [5e-7, 0.3, 0.3], [1, 0, 0]],
+    [`y`, [0.3, 5e-7, 0.3], [0, 1, 0]],
+    [`z`, [0.3, 0.3, -5e-7], [0, 0, 1]],
+    [`a cell corner`, [-5e-7, 5e-7, -1], [1, 1, 1]],
+  ] as [string, Vec3, Vec3][])(`merges points straddling a dedup cell boundary along %s`, (_, corner, mask) => {
+    const verts = [-4e-9, 4e-9, -2e-9, 2e-9].map(
+      (shift) => corner.map((val, axis) => val + mask[axis] * shift) as Vec3,
+    )
+    expect(() => compute_convex_hull(verts)).toThrow(`got 1 of 4`)
+  })
+
   // a flat but genuinely 2D set still builds, as the IBZ code relies on
   test(`still accepts a coplanar quad`, () =>
     expect(compute_convex_hull(UNIT_SQUARE).vertices).toHaveLength(4))

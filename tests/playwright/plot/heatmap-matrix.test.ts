@@ -17,15 +17,22 @@ test(`settings align fields and rows at different pane widths, exports download 
       if (!section) throw new Error(`Missing heatmap settings grid`)
       const fields = [...node.querySelectorAll(`select, input:not([type])`)]
       const rows = [...section.children]
-      const row_bounds = rows.map((row) => row.getBoundingClientRect())
+      // packed checkbox rows share a grid line, so the rhythm is between lines, not rows
+      const line_bounds = new Map<number, [number, number]>()
+      for (const { top, bottom } of rows.map((row) => row.getBoundingClientRect())) {
+        const [line_top, line_bottom] = line_bounds.get(Math.round(top)) ?? [top, bottom]
+        line_bounds.set(Math.round(top), [
+          Math.min(line_top, top),
+          Math.max(line_bottom, bottom),
+        ])
+      }
+      const lines = [...line_bounds.values()].toSorted(([top_a], [top_b]) => top_a - top_b)
       return {
         fields: fields.map((field) => {
           const { left, width, height } = field.getBoundingClientRect()
           return { left, width, height, font: getComputedStyle(field).fontSize }
         }),
-        row_gaps: row_bounds
-          .slice(1)
-          .map((bounds, idx) => bounds.top - row_bounds[idx].bottom),
+        row_gaps: lines.slice(1).map(([top], idx) => top - lines[idx][1]),
         expected_gap: Number(getComputedStyle(section).rowGap.replace(`px`, ``)),
         custom_rows: rows.slice(-2).map((row) => row.querySelector(`span`)?.textContent),
       }

@@ -57,7 +57,7 @@ describe(`FermiSurfaceControls`, () => {
       const offset = [
         ...document.querySelectorAll<HTMLInputElement>(`input[type="number"]`),
       ].find((input) => input.closest(`label`)?.textContent?.includes(`μ offset`))
-      expect(document.body.textContent).toContain(`E_F =`)
+      expect(document.querySelector(`small`)?.innerHTML).toMatch(/^E<sub[^>]*>F<\/sub> = /)
       expect(Boolean(offset)).toBe(has_grid)
       if (offset) {
         set_input(offset, `0.25`)

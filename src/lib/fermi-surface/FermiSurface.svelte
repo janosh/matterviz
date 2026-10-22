@@ -7,12 +7,12 @@
   import { compute_brillouin_zone, KPATH_COLORS } from '#lib/brillouin/index.js'
   import { reciprocal_lattice } from '#lib/math.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { derived_error_notice } from '#lib/layout/error-notice.svelte.js'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
-  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
+  import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback } from '#lib/io/index.js'
   import type { FileSaver } from '#lib/io/file-export.svelte.js'
@@ -47,7 +47,7 @@
   } from './geometry'
   import { normalize_band_grid, normalize_fermi_surface } from './parse'
   import type { BandGridJson, FermiSurfaceJson } from './parse'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { can_create_worker } from '#lib/worker-client.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { mark_pin } from '#lib/tooltip/pin.svelte.js'
@@ -395,12 +395,12 @@
   <LiveMessage message={key_walk.message} />
   {@render children?.({ fermi_data: surface_data, bz_data })}
   {#if loading}
-    <LoadingStatus overlay label="Loading Fermi surface..." {...spinner_props} />
+    <TaskStatus overlay spinner label="Loading Fermi surface..." {spinner_props} />
   {:else if error_msg}
     <ViewerError bind:message={error_msg} dismissible />
   {:else if surface_data || grid_data}
     {#if extracting}
-      <LoadingStatus overlay label="Extracting Fermi surface..." {...spinner_props} />
+      <TaskStatus overlay spinner label="Extracting Fermi surface..." {spinner_props} />
     {/if}
     <ViewerChrome
       {controls_config}

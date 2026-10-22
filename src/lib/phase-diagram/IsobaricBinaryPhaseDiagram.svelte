@@ -1,7 +1,7 @@
 <script lang="ts">
   import { create_flash } from '#lib/effects.svelte.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
@@ -14,7 +14,7 @@
   import { array_extent, compute_bounding_box_2d, polygon_centroid } from '#lib/math.js'
   import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
   import { unique_id } from '#lib/plot/core/utils.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { scaleLinear } from 'd3-scale'

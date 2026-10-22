@@ -4,9 +4,10 @@
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
-import { download } from '#lib/io/fetch.js'
+import { download } from 'svelte-widgets/download'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
-import { clamp01, to_error } from '#lib/utils.js'
+import { clamp01 } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { InstancedMesh, Material, Object3D } from 'three/webgpu'
 import {
   BufferGeometry,

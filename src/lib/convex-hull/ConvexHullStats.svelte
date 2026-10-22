@@ -13,7 +13,7 @@
   import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { join_hover_link } from '#lib/tooltip/index.js'
-  import { escape_html } from '#lib/utils.js'
+  import { escape_html } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { get_arity, is_on_hull, visible_entries as filter_visible } from './helpers'
