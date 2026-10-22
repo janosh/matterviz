@@ -11,8 +11,7 @@ import {
   build_structure_props_from_settings as structure_props,
 } from '#lib/settings.js'
 import type { DefaultSettings } from '#lib/settings.js'
-import { blob_to_data_url } from '#lib/io/fetch.js'
-import type { DownloadData } from '#lib/io/fetch.js'
+import { blob_to_data_url, type DownloadData } from 'svelte-widgets/download'
 import { set_moyo_wasm_source } from '#lib/symmetry/index.js'
 import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
 import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
@@ -32,7 +31,8 @@ import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { open_material, type OpenedMaterial } from './open'
-import { escape_html, is_plain_object, to_error } from '#lib/utils.js'
+import { is_plain_object } from '#lib/utils.js'
+import { escape_html, to_error } from 'svelte-widgets/utils'
 
 export type MatterVizApp = ReturnType<typeof mount>
 
@@ -205,7 +205,7 @@ const post_to_host = (command: `info` | `error`, text: string): void => {
   vscode_api?.postMessage({ command, text })
 }
 
-// Route `download` (#lib/io/fetch checks for this global override) through the host's save dialog
+// Route `download` (svelte-widgets/download checks for this global override) through the host's save dialog
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
   const download = (data: DownloadData, filename: string, type: string): void => {

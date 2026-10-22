@@ -4,7 +4,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 import { fire, form_controls, mount_in_test, set_input, settle } from '../setup'
 
 test(`downloads build data only on click and follow the edited export name`, async () => {
-  const download = vi.fn() // io/fetch's download() defers to a global one when present
+  const download = vi.fn() // svelte-widgets' download() defers to a global one when present
   vi.stubGlobal(`download`, download)
   onTestFinished(() => {
     vi.unstubAllGlobals()

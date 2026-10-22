@@ -2,11 +2,11 @@
   import type { MaterialSource } from '#lib/file-viewer/open.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import type { Spinner } from 'svelte-widgets'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
-  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
+  import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { derived_error_notice } from '#lib/layout/error-notice.svelte.js'
@@ -43,7 +43,7 @@
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
   import { clamp, reciprocal_lattice } from '#lib/math.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type {
@@ -393,7 +393,7 @@
   <LiveMessage message={key_walk.message} />
   {@render children?.({ structure, bz_data: zone })}
   {#if loading}
-    <LoadingStatus overlay label="Loading structure..." {...spinner_props} />
+    <TaskStatus overlay spinner label="Loading structure..." {spinner_props} />
   {:else if error_msg}
     <ViewerError bind:message={error_msg} dismissible />
   {:else if zone || structure?.lattice}

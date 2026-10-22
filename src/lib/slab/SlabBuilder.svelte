@@ -7,7 +7,7 @@
   import type { Vec3 } from '#lib/math.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { Crystal } from '#lib/structure/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { make_slab } from './make-slab'

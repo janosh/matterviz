@@ -54,8 +54,7 @@
     ternary_to_xy,
   } from '#lib/plot/ternary/ternary.js'
   import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
-  import { to_error } from '#lib/utils.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { is_modifier_chord, to_error } from 'svelte-widgets/utils'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ComponentProps, Snippet } from 'svelte'

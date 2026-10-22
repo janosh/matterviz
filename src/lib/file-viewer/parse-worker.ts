@@ -8,7 +8,7 @@ import { open_hdf5_trajectory } from '#lib/trajectory/parse/hdf5.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { hdf5_run } from '#lib/trajectory/runs/hdf5.js'
 import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { ParseWorkerRequest, ParseWorkerResponse } from './parse-worker-protocol'
 import { parse_file_content, type ParseResult } from './parse'
 

@@ -33,7 +33,7 @@ test(`loading overlay stays centered and compact in wide and narrow viewers`, as
     waitUntil: `domcontentloaded`,
   })
   const viewer = page.locator(BZ_SELECTOR)
-  const loading = viewer.locator(`.loading-overlay`)
+  const loading = viewer.locator(`.task-status.overlay`)
   await expect(loading.getByRole(`status`)).toHaveText(`Loading structure...`)
   try {
     for (const width of [800, 160]) {

@@ -1,31 +1,12 @@
 import {
   decode_url_safe_base64,
-  escape_html,
   html_to_text,
   is_plain_object,
   parse_leading_num,
   parse_num_token,
-  strip_html,
-  to_error,
   toggle_item,
 } from '#lib/utils.js'
 import { describe, expect, test } from 'vitest'
-
-test.each([
-  `failure`,
-  42,
-  null,
-  undefined,
-  Symbol(`failure`),
-  Object.create(null),
-  { toString: null },
-])(`normalizes arbitrary thrown values without throwing: %j`, (value) => {
-  const error = to_error(value)
-  expect(error).toBeInstanceOf(Error)
-  expect(error.cause).toBe(value)
-  expect(error.message).not.toBe(``)
-  expect(to_error(error)).toBe(error)
-})
 
 test.each([
   [{}, true],
@@ -50,15 +31,6 @@ test.each([
   expect(is_plain_object(value)).toBe(expected)
 })
 
-test.each([
-  [`<script>alert('xss')</script>`, `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;`],
-  [`&<>"'`, `&amp;&lt;&gt;&quot;&#39;`],
-  [`Hello World`, `Hello World`],
-  [``, ``],
-])(`escape_html(%s) = %s`, (input, expected) => {
-  expect(escape_html(input)).toBe(expected)
-})
-
 // Quoted attribute values may hold `>` or `<`; an unterminated `<` is text, not a tag that
 // swallows everything up to the next `>`
 test.each([
@@ -67,19 +39,17 @@ test.each([
   [`<b>bold</b`, `bold</b`],
   [`a <b c <i>d</i>`, `a <b c d`], // a browser reads `<i` as an attribute, here it is text
   [`<a "unclosed`, `<a "unclosed`],
-])(`strip_html / html_to_text(%j) = %j`, (input, expected) => {
+])(`html_to_text(%j) = %j`, (input, expected) => {
   expect(html_to_text(input)).toBe(expected)
-  expect(strip_html(input).replaceAll(`&amp;`, `&`)).toBe(expected)
 })
 
 // `[^>"']` in the attribute run let every unclosed `<` rescan to the end of input, so
 // 48 KB of `<a ` took 631 ms and grew quadratically. Linear, these finish in well under 1 ms.
 test.each([`<a `, `<a "`, `<a '`, `<a "'`, `</b`, `<!`, `<a "<a" `])(
-  `strip_html and html_to_text stay linear on 200 KB of %j`,
+  `html_to_text stays linear on 200 KB of %j`,
   (unit) => {
     const input = unit.repeat(Math.ceil(200_000 / unit.length))
     const start = performance.now()
-    strip_html(input)
     html_to_text(input)
     expect(performance.now() - start).toBeLessThan(200)
   },

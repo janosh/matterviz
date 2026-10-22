@@ -10,7 +10,7 @@ import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.
 import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { can_create_worker } from '#lib/worker-client.svelte.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'

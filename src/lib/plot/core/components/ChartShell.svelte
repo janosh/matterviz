@@ -16,8 +16,8 @@
 
 <script lang="ts">
   import type { ShowControlsProp } from '#lib/controls.js'
-  import EmptyState from '#lib/EmptyState.svelte'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   // Outer shell of the non-Cartesian charts: the measured wrapper div, fullscreen mode and the
   // hover-revealed header row. Exposes the same public CSS knobs as CartesianFrame
   // (`--<prefix>-width`, `--<prefix>-bg`, …) so every chart is themed the same way.

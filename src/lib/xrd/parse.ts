@@ -4,7 +4,7 @@
 import { ext_of } from '#lib/io/is-binary.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { array_max } from '#lib/math.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { XrdPattern } from './index'
 
 const NUMBER_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/

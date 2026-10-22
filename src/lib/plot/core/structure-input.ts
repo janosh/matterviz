@@ -9,7 +9,7 @@ import type { FileLoadCallback } from '#lib/io/index.js'
 import { parse_warnings_notice } from '#lib/labels.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { Attachment } from 'svelte/attachments'
 
 export interface StructureEntry {

@@ -9,7 +9,8 @@
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
-  import { html_to_text, to_error } from '#lib/utils.js'
+  import { html_to_text } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import {
     calculate_all_pair_rdfs,
     label_structures,

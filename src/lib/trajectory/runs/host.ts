@@ -3,7 +3,7 @@
 // rows arrive through `properties.push()` from whoever owns the host channel.
 import { encode_frame, select_frame_channels } from '../frame'
 import type { TrajectoryFrame } from '../index'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 

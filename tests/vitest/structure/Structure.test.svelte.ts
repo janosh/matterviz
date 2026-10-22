@@ -3162,7 +3162,7 @@ describe(`source acquisition`, () => {
 
       await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
       expect(state.loading).toBe(true)
-      expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+      expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
         `Loading structure...`,
       )
       // the empty-state text would be drawn right under the spinner's label

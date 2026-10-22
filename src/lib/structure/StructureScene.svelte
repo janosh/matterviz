@@ -80,7 +80,7 @@
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { merge_split_partial_sites } from './partial-occupancy'
   import {
     bond_menu_position,

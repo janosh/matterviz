@@ -1,3 +1,4 @@
+import { in_view } from 'svelte-widgets/attachments'
 import { prefersReducedMotion } from 'svelte/motion'
 
 // Animation length honoring the OS "reduce motion" setting: 0 (snap) while it is on. Reactive
@@ -46,12 +47,9 @@ export function create_pulse_animation(
   $effect(() => {
     const node = element?.()
     if (!node || typeof IntersectionObserver === `undefined`) return undefined
-    const observer = new IntersectionObserver((entries) => {
-      on_screen = entries.some((entry) => entry.isIntersecting)
-    })
-    observer.observe(node)
+    const stop_observing = in_view((visible) => (on_screen = visible))(node)
     return () => {
-      observer.disconnect()
+      stop_observing()
       on_screen = true // nothing gates the pulse until a new observer reports
     }
   })

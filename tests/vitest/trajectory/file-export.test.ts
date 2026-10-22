@@ -3,7 +3,7 @@ import type { Crystal } from '#lib/structure/index.js'
 import app_css from '#lib/app.css?inline'
 import type { Vec3 } from '#lib/math.js'
 import { parse_poscar, parse_xyz } from '#lib/structure/parse.js'
-import { download } from '#lib/io/fetch.js'
+import { download } from 'svelte-widgets/download'
 import * as io_export from '#lib/io/export.js'
 import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
@@ -28,7 +28,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { doc_query, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
-vi.mock(`#lib/io/fetch.js`, async (import_original) => ({
+vi.mock(`svelte-widgets/download`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   download: vi.fn(),
 }))
@@ -437,12 +437,13 @@ describe(`TrajectoryExportPane property export`, () => {
       ),
     })
 
-  const click = async (aria_label: string) => {
+  // finds a button by its accessible name: aria-label, else its text
+  const click = async (name: string) => {
     const button = await vi.waitFor(() => {
-      const found = document.querySelector<HTMLButtonElement>(
-        `button[aria-label="${aria_label}"]`,
+      const found = [...document.querySelectorAll(`button`)].find(
+        (btn) => (btn.getAttribute(`aria-label`) ?? btn.textContent?.trim()) === name,
       )
-      if (!found || found.disabled) throw new Error(`${aria_label} button not ready`)
+      if (!found || found.disabled) throw new Error(`${name} button not ready`)
       return found
     })
     button.dispatchEvent(new Event(`click`, { bubbles: true }))
@@ -734,7 +735,7 @@ describe(`TrajectoryExportPane property export`, () => {
       await click(`Download WebM`)
       await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledWith(0, export_signal))
       expect(
-        document.querySelector(`.export-progress .spinner[role="status"]`)?.textContent,
+        document.querySelector(`.export-progress [role="status"]`)?.textContent,
       ).toContain(`Exporting WEBM`)
       const export_settled = vi.fn()
       const export_result = vi.mocked(io_export.export_trajectory_video).mock.results[0]
@@ -777,9 +778,7 @@ describe(`TrajectoryExportPane property export`, () => {
       }
       if (outcome === `cancel-read`) expect(on_step_change).not.toHaveBeenCalledWith(0)
       if (!outcome.startsWith(`unmount`)) {
-        await vi.waitFor(() =>
-          expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
-        )
+        await vi.waitFor(() => expect(document.querySelector(`.export-progress`)).toBeNull())
         expect(document.querySelector(`.error-message`)?.textContent?.trim() ?? ``).toBe(
           error_message,
         )
@@ -788,9 +787,7 @@ describe(`TrajectoryExportPane property export`, () => {
         await vi.waitFor(() =>
           expect(io_export.export_trajectory_video).toHaveBeenCalledTimes(2),
         )
-        await vi.waitFor(() =>
-          expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
-        )
+        await vi.waitFor(() => expect(document.querySelector(`.export-progress`)).toBeNull())
       }
       error_spy.mockRestore()
     },
@@ -806,9 +803,7 @@ describe(`TrajectoryExportPane property export`, () => {
       await vi.waitFor(() => expect(resolve_frame).toHaveBeenCalledOnce())
       await click(`Cancel export`)
       read.resolve(undefined)
-      await vi.waitFor(() =>
-        expect(document.querySelector(`[aria-label="Cancel export"]`)).toBeNull(),
-      )
+      await vi.waitFor(() => expect(document.querySelector(`.export-progress`)).toBeNull())
       expect(resolve_frame).toHaveBeenCalledOnce()
       expect(download).not.toHaveBeenCalled()
       expect(document.querySelector(`.error-message`)).toBeNull()

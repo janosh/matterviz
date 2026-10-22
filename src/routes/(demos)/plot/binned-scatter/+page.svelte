@@ -6,7 +6,7 @@
   import { BinnedScatterPlot } from '#lib/plot/index.js'
   import type { BinnedPointPayload, DensePointSeries } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
 
   type MaterialPoint = Record<string, unknown> & {

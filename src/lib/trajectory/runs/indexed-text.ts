@@ -5,7 +5,8 @@
 // scalars for the plot are extracted progressively in chunks so a 100k-frame open stays
 // responsive.
 import { display_idx } from '#lib/labels.js'
-import { to_error, yield_turn } from '#lib/utils.js'
+import { yield_turn } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { encode_frame } from '../frame'
 import { TextLines } from '../helpers'
 import type { AtomTypeMapping, TrajectoryFrame, TrajectoryMetadata } from '../index'

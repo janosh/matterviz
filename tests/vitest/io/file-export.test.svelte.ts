@@ -1,11 +1,11 @@
-import { download } from '#lib/io/fetch.js'
+import { download } from 'svelte-widgets/download'
 import ExportDestination from '#lib/io/ExportDestination.svelte'
 import { FileExportState } from '#lib/io/file-export.svelte.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { set_input } from '../setup'
 
-vi.mock(`#lib/io/fetch.js`, () => ({ download: vi.fn() }))
+vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
 
 afterEach(() => {
   vi.clearAllMocks()

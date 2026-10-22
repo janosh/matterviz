@@ -4,7 +4,8 @@
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
 // messages before that for callers that passed `on_progress`.
-import { is_plain_object, to_error } from '#lib/utils.js'
+import { is_plain_object } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 
 interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Names the module in error messages, e.g. `MSD`

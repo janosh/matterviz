@@ -32,7 +32,7 @@
     SankeyNodeHandlerProps,
   } from '#lib/plot/sankey/sankey-types.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { type Snippet, untrack } from 'svelte'

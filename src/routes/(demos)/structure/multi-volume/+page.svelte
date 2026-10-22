@@ -23,7 +23,7 @@
   import type { AnyStructure } from 'matterviz'
   import { Structure } from 'matterviz'
   import { untrack } from 'svelte'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state.raw<VolumetricData[] | undefined>()

@@ -8,7 +8,7 @@
   } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps } from '#lib/plot/core/types.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import {
     bin_bond_angles,
     bond_angle_bin_sites,

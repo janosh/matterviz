@@ -11,6 +11,7 @@
   } from '#lib/plot/core/utils/label-placement.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { rgb } from 'd3-color'
+  import { in_view } from 'svelte-widgets/attachments'
   import { symbol, symbolCircle } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
@@ -108,6 +109,19 @@
   )
   const { radius, fill } = $derived(tweened.current)
 
+  // The ring's CSS pulse animates an SVG transform, which costs a style recalc and layout per
+  // frame even off screen (8 rings scrolled away kept a page at ~100 ms/s CPU), so it pauses
+  // there. Optimistic: test DOMs whose stub observer never fires keep it running.
+  let ring_on_screen = $state(true)
+  const track_ring = (node: Element) => {
+    if (typeof IntersectionObserver === `undefined`) return undefined
+    const stop = in_view((visible) => (ring_on_screen = visible))(node)
+    return () => {
+      stop()
+      ring_on_screen = true
+    }
+  }
+
   // SVG path data for the marker's `d` attribute
   let marker_path = $derived.by(() => {
     const symbol_key: D3SymbolName = style.symbol_type ?? DEFAULTS.scatter.symbol_type
@@ -141,6 +155,8 @@
     <circle
       r={(radius ?? 4) * 2.5}
       class="effect-ring selected"
+      class:paused={!ring_on_screen}
+      {@attach track_ring}
       fill="var(--point-fill-color, {fill ?? `cornflowerblue`})"
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
@@ -148,7 +164,8 @@
   {:else if style.is_highlighted && style.highlight_effect}
     <circle
       r={(radius ?? 4) * 2}
-      class={[`effect-ring`, style.highlight_effect]}
+      class={[`effect-ring`, style.highlight_effect, { paused: !ring_on_screen }]}
+      {@attach track_ring}
       fill={style.highlight_color ?? HIGHLIGHT.emphasis}
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
@@ -238,6 +255,9 @@
     @media (prefers-reduced-motion: reduce) {
       animation: none;
     }
+  }
+  .effect-ring.paused {
+    animation-play-state: paused;
   }
   .effect-ring.pulse {
     --effect-ring-duration: 1.2s;

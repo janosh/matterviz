@@ -25,8 +25,12 @@
   } from '#lib/structure/atom-properties.js'
   import type { SymmetryDataset } from '#lib/symmetry/index.js'
   import { type Snippet, untrack } from 'svelte'
-  import { click_outside, tooltip } from 'svelte-widgets/attachments'
-  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
+  import {
+    anchored_popover,
+    click_outside,
+    close_before_removal,
+    tooltip,
+  } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 

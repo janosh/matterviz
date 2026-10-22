@@ -12,7 +12,7 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import {
     HeatmapTable as HeatmapTableIcon,
@@ -28,8 +28,8 @@
   import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
-  import LoadingStatus from '#lib/layout/LoadingStatus.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
+  import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
@@ -1257,7 +1257,9 @@
   >
     <LiveMessage message={key_walk.message} />
     {@render children?.({ structure, fullscreen })}
-    {#if loading}<LoadingStatus overlay label="Loading structure..." />{/if}
+    {#if loading}
+      <TaskStatus overlay spinner label="Loading structure..." />
+    {/if}
     <!-- top-center, so warnings neither cover the atom legend (bottom-right) nor each other -->
     <ViewerNotices>
       <StatusMessage

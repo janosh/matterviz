@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import type { HTMLAttributes } from 'svelte/elements'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { SETTINGS_CONFIG } from '#lib/settings.js'
   import type { SymmetryDataset, SymmetrySettings } from './analyze'
   import {

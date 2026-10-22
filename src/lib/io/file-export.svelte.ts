@@ -1,5 +1,5 @@
-import { download, type DownloadData } from './fetch'
-import { to_error } from '#lib/utils.js'
+import { download, type DownloadData } from 'svelte-widgets/download'
+import { to_error } from 'svelte-widgets/utils'
 
 export type FileSaver = (
   data: DownloadData,

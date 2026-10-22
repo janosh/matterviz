@@ -1,3 +1,5 @@
+import { HTML_TAG_SRC, to_error } from 'svelte-widgets/utils'
+
 // Object literals, JSON mappings and null-prototype records; class instances are leaves.
 export const is_plain_object = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== `object` || value === null) return false
@@ -7,16 +9,6 @@ export const is_plain_object = (value: unknown): value is Record<string, unknown
 
 // Clamp a number to the [0, 1] range.
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
-
-// A tag opens with a letter, `/` or `!`: a bare `<[^>]*>` ate the prose between a comparison
-// pair, so `T < 300 K and P > 1 bar` read back as `T  1 bar`. Quoted attribute values may
-// hold `>` (`title="x>0"`), so they are skipped whole. Outside quotes the run stops at `<`:
-// with `[^>"']` every unclosed `<` rescanned to the end of input (quadratic, 48 KB of `<a `
-// took 631 ms), at the cost of reading a malformed `<b c <i>` as text up to the `<i>` tag.
-export const HTML_TAG_SRC = String.raw`<(?:/?[a-z]|!)(?:[^<>"']|"[^"]*"|'[^']*')*>`
-const HTML_TAG_RE = new RegExp(HTML_TAG_SRC, `gi`)
-// Tags only, entities kept: still HTML, fit for {@html}. Plain-text sinks want html_to_text.
-export const strip_html = (str: string): string => str.replaceAll(HTML_TAG_RE, ``)
 
 export const HTML_ENTITY_SRC = String.raw`&(?:#(?<dec>\d+)|#x(?<hex>[\da-f]+)|(?<name>[a-z][\da-z]+));`
 // Named entities common in science; a Map, so `&constructor;` can't hit Object.prototype
@@ -49,15 +41,6 @@ export const html_to_text = (str: string): string =>
     return invalid ? `\uFFFD` : String.fromCodePoint(code)
   })
 
-// Escape HTML special characters to prevent XSS attacks
-export const escape_html = (unsafe_string: string): string =>
-  unsafe_string
-    .replaceAll(`&`, `&amp;`)
-    .replaceAll(`<`, `&lt;`)
-    .replaceAll(`>`, `&gt;`)
-    .replaceAll(`"`, `&quot;`)
-    .replaceAll(`'`, `&#39;`)
-
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
 export const normalize_unicode_minus = (value: string): string => value.replaceAll(`−`, `-`)
 
@@ -73,16 +56,6 @@ export const parse_num_token = (token: string): number =>
 // tokens/comments (`1.0 ! scale` -> 1.0) like parseFloat, blank lines are NaN
 export const parse_leading_num = (line: string): number =>
   parse_num_token(line.trim().split(/\s+/)[0])
-
-// Coerce an unknown thrown value into an Error (for typed Promise rejections / error callbacks).
-export function to_error(value: unknown): Error {
-  try {
-    if (value instanceof Error) return value
-    return new Error(String(value), { cause: value })
-  } catch {
-    return new Error(`Thrown value cannot be converted to a string`, { cause: value })
-  }
-}
 
 // Release the caller even when a frame reader or consumer ignores cancellation.
 export async function abortable<Value>(

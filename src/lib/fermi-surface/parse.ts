@@ -5,7 +5,8 @@ import { compute_vertex_normals } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { read_text_line } from '#lib/structure/parsers/vasp-header.js'
-import { is_plain_object, normalize_scientific_notation, to_error } from '#lib/utils.js'
+import { is_plain_object, normalize_scientific_notation } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { DEFAULT_PROPERTY_NAME } from './constants'
 import type {
   BandEnergyGrid,

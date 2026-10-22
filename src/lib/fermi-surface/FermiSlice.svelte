@@ -17,7 +17,7 @@
   import { BAND_COLORS } from './constants'
   import type { CarrierType, SliceShading } from './compute'
   import type { BandGridData, FermiSliceData, FermiSurfaceData } from './types'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { format_num } from '#lib/labels.js'
 
   let {

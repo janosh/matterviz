@@ -2,9 +2,9 @@ import { symbol_map, symbol_names } from '#lib/labels.js'
 import type { PointStyle } from '#lib/plot/core/types.js'
 import ScatterPoint from '#lib/plot/scatter/ScatterPoint.svelte'
 import { symbol, symbolCircle } from 'd3-shape'
-import { mount, type ComponentProps } from 'svelte'
+import { flushSync, mount, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, expect_transition_properties } from '../setup'
+import { doc_query, expect_transition_properties, trigger_intersection } from '../setup'
 
 const mount_point = (props: Partial<ComponentProps<typeof ScatterPoint>> = {}) => {
   const target = document.createElement(`div`)
@@ -162,6 +162,24 @@ describe(`ScatterPoint`, () => {
       }
     },
   )
+
+  // The pulse animates an SVG transform, which restyles and relayouts every frame even off
+  // screen, so a ring scrolled out of view pauses and resumes when it comes back
+  test.each([
+    [`selected`, { is_selected: true }],
+    [`highlighted`, { style: { is_highlighted: true, highlight_effect: `pulse` as const } }],
+  ])(`%s effect ring pauses its pulse while off screen`, async (_desc, props) => {
+    mount_point(props)
+    const ring = doc_query(`circle.effect-ring`)
+    await tick() // the observer's initial (visible) report
+    expect(ring.classList.contains(`paused`)).toBe(false)
+    trigger_intersection(ring, false)
+    flushSync()
+    expect(ring.classList.contains(`paused`)).toBe(true)
+    trigger_intersection(ring, true)
+    flushSync()
+    expect(ring.classList.contains(`paused`)).toBe(false)
+  })
 
   describe(`auto-placed labels`, () => {
     test.each([

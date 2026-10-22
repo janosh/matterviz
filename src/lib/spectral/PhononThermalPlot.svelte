@@ -8,7 +8,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import type { DataSeries, ScatterPlotOptions } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import type { FrequencyUnit } from './frequency-units'
   import { thermal_properties } from './thermal'
   import type { PhononDos } from './types'

@@ -15,7 +15,7 @@ import {
   values_per_sample,
 } from '#lib/trajectory/helpers.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'

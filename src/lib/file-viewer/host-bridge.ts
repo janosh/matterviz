@@ -13,7 +13,7 @@
 import { display_idx } from '#lib/labels.js'
 import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
 
 export interface VSCodeAPI {

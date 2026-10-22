@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './composition/format'
 import { evict_oldest } from './labels'
-import { escape_html } from './utils'
+import { escape_html } from 'svelte-widgets/utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
 const SAFE_ATTRS = [`style`, `class`, `title`, `href`, `target`, `rel`]

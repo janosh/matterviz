@@ -5,7 +5,7 @@
   import { display_idx, format_num } from '#lib/labels.js'
   import { clamp } from '#lib/math.js'
   import { ViewerPane, type PaneProps } from '#lib/overlays/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { tick, type Snippet } from 'svelte'
   import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
   import { Camera } from 'svelte-widgets/icons'

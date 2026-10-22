@@ -27,7 +27,7 @@
   import { parse_supercell_scaling } from '#lib/structure/index.js'
   import type { QueryParams, UrlParamEntry } from 'svelte-widgets/url-params'
   import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/url-params'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { glob_basename, glob_default } from '#site/imports.js'
   import { latest_load } from '#site/state.svelte.js'
   import { untrack } from 'svelte'

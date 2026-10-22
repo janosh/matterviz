@@ -21,7 +21,7 @@
     Structure,
   } from 'matterviz'
   import { onMount } from 'svelte'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
 
   let structure = $state<AnyStructure | undefined>()
   let volumetric_data = $state.raw<VolumetricData[] | undefined>()

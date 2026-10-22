@@ -14,7 +14,7 @@ import {
   wyckoff_positions_from_moyo,
 } from '#lib/symmetry/wyckoff.js'
 import { transform_cell } from '#lib/symmetry/analyze.js'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { untrack } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { AtomColorConfig, AtomPropertyColors } from './atom-properties'

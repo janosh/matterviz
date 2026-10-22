@@ -115,7 +115,8 @@ describe(`source`, () => {
     await vi.waitFor(() => expect(pending).toHaveLength(1))
     const loading_status = query(target, `.trajectory-loading [role="status"]`)
     expect(loading_status.textContent?.trim()).toBe(`Loading trajectory...`)
-    expect(query(target, `.trajectory-loading progress`).hasAttribute(`value`)).toBe(false)
+    // the spinner alone signals unknown progress; a bar waits for a value
+    expect(target.querySelector(`.trajectory-loading progress`)).toBeNull()
     query<HTMLButtonElement>(target, `.trajectory-loading button`).click()
     await vi.waitFor(() => expect(pending[0].signal?.aborted).toBe(true))
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
@@ -227,8 +228,9 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
   })
 
   test.each([
-    { current: 0, label: `Indexing frames (0%)` },
-    { current: 42.4, label: `Indexing frames (42%)` },
+    // the label names the stage; the bar carries the percentage, so it isn't re-announced
+    { current: 0, label: `Indexing frames` },
+    { current: 42.4, label: `Indexing frames` },
   ])(
     `replacement loading pauses playback and shows $current% progress until the run arrives`,
     async ({ current, label }) => {
@@ -255,11 +257,11 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
       const controller = on_controller.mock.calls.at(-1)?.[0]
       expect(controller?.state().total_frames).toBe(0)
       expect(doc_query<HTMLProgressElement>(`progress`).value).toBe(current)
-      expect(doc_query(`.trajectory-loading [role="status"] .circle-spinner`)).not.toBeNull()
-      expect(doc_query(`.spinner`).getAttribute(`title`)).toBe(`Parsing in a worker`)
+      // known progress replaces the spinner with the bar
+      expect(document.querySelector(`.trajectory-loading .spinner`)).toBeNull()
       if (!release) throw new Error(`worker stub never ran`)
       release(make_run(`big.xyz`))
-      await vi.waitFor(() => expect(target.querySelector(`.spinner`)).toBeNull())
+      await vi.waitFor(() => expect(target.querySelector(`.trajectory-loading`)).toBeNull())
       expect(controller?.state().total_frames).toBe(3)
     },
   )

@@ -13,7 +13,7 @@
   import { array_extent } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import type { EosFit, EosKind } from './fit'
   import { EOS_KIND_LABELS, eos_energy, fit_eos } from './fit'
 

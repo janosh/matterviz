@@ -231,7 +231,41 @@ describe(`generate_candidates`, () => {
 test(`neighbor index handles collinear anchors spanning a huge extent`, () => {
   const anchors = [0, Number.MAX_VALUE].map((anchor_x) => ({ x: anchor_x, y: 0, radius: 1 }))
   const neighbors = create_neighbor_index(anchors)
-  expect(neighbors.collect(0, Number.MAX_VALUE, 0, 0)).toBe(anchors.length)
+  expect(neighbors.collect_anchors(0, Number.MAX_VALUE, 0, 0)).toBe(anchors.length)
+})
+
+// Labels are bucketed by their own rect-plus-anchor box, so a query near a label that strayed
+// far from its anchor (or off the anchors' grid entirely) still finds it, and stops finding it
+// at its old spot once a move re-buckets it
+test(`neighbor index follows labels that move away from their anchors`, () => {
+  const anchors = Array.from({ length: 16 }, (_, idx) => ({
+    x: (idx % 4) * 100,
+    y: Math.floor(idx / 4) * 100,
+    radius: 3,
+  }))
+  const labels = anchors.map(({ x, y }, idx) => ({
+    x: x + 5,
+    y,
+    w: 20,
+    h: 10,
+    anchor_idx: idx,
+  }))
+  const neighbors = create_neighbor_index(anchors)
+  neighbors.reset(labels)
+  const found = (min_x: number, max_x: number, min_y: number, max_y: number) =>
+    neighbors.label_candidates.slice(0, neighbors.collect_labels(min_x, max_x, min_y, max_y))
+  expect([...found(150, 160, 150, 160)]).not.toContain(0)
+
+  labels[0] = { ...labels[0], x: 150, y: 150 } // far from its anchor at the origin
+  neighbors.place(labels[0])
+  expect([...found(150, 160, 150, 160)]).toContain(0)
+  labels[0] = { ...labels[0], x: 900, y: -400 } // beyond the anchors' grid
+  neighbors.place(labels[0])
+  expect([...found(890, 930, -410, -380)]).toContain(0)
+  expect([...found(150, 160, 150, 160)]).not.toContain(0)
+  // candidates stay ascending, which keeps the energy sums float-identical
+  const all = found(-1000, 1000, -1000, 1000)
+  expect([...all]).toEqual([...all].toSorted((left, right) => left - right))
 })
 
 // === compute_delta_energy ===

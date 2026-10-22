@@ -9,7 +9,7 @@
   import { ControlGroup, KeyValueList } from '#lib/layout/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import type { HTMLAttributes } from 'svelte/elements'
   import { match_lattices, surface_frame } from './lattice-match'
   import { make_interface } from './stack'

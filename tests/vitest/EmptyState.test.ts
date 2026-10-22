@@ -1,4 +1,3 @@
-import EmptyState from '#lib/EmptyState.svelte'
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import BarPlot from '#lib/plot/bar/BarPlot.svelte'
 import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
@@ -10,46 +9,9 @@ import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
 import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import Treemap from '#lib/plot/treemap/Treemap.svelte'
-import { type Component, createRawSnippet, mount } from 'svelte'
+import { type Component, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, mount_sized } from './setup'
-
-describe(`EmptyState`, () => {
-  test(`renders message in a span (valid inside <p>) and forwards class, attributes and style`, () => {
-    mount(EmptyState, {
-      target: document.body,
-      props: {
-        message: `No data available`,
-        class: `custom-class`,
-        id: `my-empty-state`,
-        role: `alert`,
-        style: `min-height: 200px; background: red`,
-      },
-    })
-    const container = doc_query<HTMLDivElement>(`.empty-state.custom-class`)
-    expect(container.querySelector(`span.message`)?.textContent).toBe(`No data available`)
-    expect([container.id, container.getAttribute(`role`)]).toEqual([`my-empty-state`, `alert`])
-    expect(container.style.minHeight).toBe(`200px`)
-    expect(container.style.background).toBe(`red`)
-  })
-
-  const children = createRawSnippet(() => ({
-    render: () => `<p class="custom-content">Custom snippet content</p>`,
-  }))
-  // children take precedence over the message prop, and `` leaves a bare container
-  test.each([
-    [{}, `No data to display`, null],
-    [{ message: `` }, null, null],
-    [{ message: `This should not render`, children }, null, `Custom snippet content`],
-  ])(`props %j render message %s`, (props, message, custom) => {
-    mount(EmptyState, { target: document.body, props })
-    const container = doc_query(`.empty-state`)
-    expect(container.querySelector(`span.message`)?.textContent ?? null).toBe(message)
-    expect(container.querySelector(`.custom-content`)?.textContent ?? null).toBe(custom)
-    expect(container.classList.contains(`overlay`)).toBe(false)
-    expect(container.getAttribute(`role`)).toBe(`status`) // announced politely by default
-  })
-})
+import { mount_sized } from './setup'
 
 describe(`charts overlay the shared empty state exactly while they have no data`, () => {
   const xy = { x: [1, 2], y: [3, 4] }

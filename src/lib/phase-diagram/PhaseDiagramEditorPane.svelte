@@ -7,7 +7,7 @@
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
   import { create_flash } from '#lib/effects.svelte.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
 
   let {
     editor_open = $bindable(false),

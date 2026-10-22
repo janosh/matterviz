@@ -12,7 +12,7 @@ import { MOCK_PROVIDERS, MOCK_STRUCTURES } from '../../fixtures/optimade-mocks'
 import { set_input } from '../setup'
 
 vi.mock(`#lib/structure/Structure.svelte`, async () => ({
-  default: (await import(`#lib/EmptyState.svelte`)).default,
+  default: (await import(`svelte-widgets/EmptyState.svelte`)).default,
 }))
 
 describe(`OPTIMADE API utilities`, () => {

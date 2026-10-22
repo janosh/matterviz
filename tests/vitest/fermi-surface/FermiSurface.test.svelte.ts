@@ -105,7 +105,7 @@ test(`custom drops receive raw content while loading remains visible`, async () 
     file,
   })
   expect(props.loading).toBe(true)
-  expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+  expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
     `Loading Fermi surface...`,
   )
   pending.resolve(undefined)
@@ -209,7 +209,7 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
   expect(can_create_worker()).toBe(false)
   props.interpolation_factor = 2
   flushSync()
-  expect(doc_query(`.loading-overlay [role="status"]`).textContent?.trim()).toBe(
+  expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
     `Extracting Fermi surface...`,
   )
   expect(document.querySelector(`.fermi-surface .control-buttons`)).toBe(chrome)

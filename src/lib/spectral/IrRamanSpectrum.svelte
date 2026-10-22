@@ -2,7 +2,7 @@
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { track_settings } from '#lib/controls.js'
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'

@@ -4,10 +4,9 @@
   // popover may be open at a time) and persists the chosen mode itself through `on_change`.
   import type { DateTimeFormatMode } from '#lib/table/index.js'
   import { DATETIME_MODE_LABELS } from './data'
-  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
   import { html_to_text } from '#lib/utils.js'
   import Icon from 'svelte-widgets/Icon.svelte'
-  import { tooltip } from 'svelte-widgets/attachments'
+  import { anchored_popover, close_before_removal, tooltip } from 'svelte-widgets/attachments'
   import { Calendar } from 'svelte-widgets/icons'
 
   let {

@@ -6,7 +6,7 @@
   import { format_num } from '#lib/labels.js'
   import type { ColumnFilter, Column, RowData } from '#lib/table/index.js'
   import { column_filter_panel, with_category_toggled, with_numeric_bound } from './data'
-  import { anchored_popover, close_before_removal } from '#lib/overlays/anchored-popover.js'
+  import { anchored_popover, close_before_removal } from 'svelte-widgets/attachments'
   import { html_to_text } from '#lib/utils.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Filter } from 'svelte-widgets/icons'

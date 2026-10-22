@@ -1,7 +1,7 @@
 <script lang="ts">
   // Zone-axis electron diffraction spots. Not built on ScatterPlot, which cannot couple its two
   // axis scales: the pattern needs one shared px-per-(1/Å) factor to not shear.
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { is_activation_key } from '#lib/plot/core/interactions.js'
   import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'

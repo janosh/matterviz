@@ -7,7 +7,7 @@
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import EmptyState from '#lib/EmptyState.svelte'
+  import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
   import {
     DEFAULT_ELEMENT_TO_GAS,
@@ -21,7 +21,7 @@
   import type { FileLoadCallback } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
-  import LiveMessage from '#lib/layout/LiveMessage.svelte'
+  import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
   import { clamp, type Vec2 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
@@ -32,8 +32,7 @@
     wheel_zoom_gate,
     webgpu_available,
   } from '#lib/scene/index.js'
-  import { to_error } from '#lib/utils.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { is_modifier_chord, to_error } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'

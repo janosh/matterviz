@@ -8,7 +8,7 @@
 import { frame_transfers, type NumericFrame, type FrameChannels } from '../frame'
 import type { DisplayFrame, FramePreparation } from '../prepare'
 import { FramePreparer, display_frame_transfers } from '../prepare'
-import { to_error } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { position_stream_transferables } from '../helpers'
 import type {
   ParseProgress,

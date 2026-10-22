@@ -158,6 +158,7 @@
      non-composited overlays regardless of z-index. */
   --z-index-viewer-label: 1;
   --z-index-viewer-chip: 2;
+  --glass-chip-z: var(--z-index-viewer-chip);
   --z-index-viewer-pane: 10;
   --pane-z-index: var(--z-index-viewer-pane);
   /* a viewer or chart header holding an open pane: panes can be dragged past their viewer,

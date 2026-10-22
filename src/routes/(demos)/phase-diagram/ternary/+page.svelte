@@ -4,7 +4,7 @@
   import { format_num } from '#lib/labels.js'
   import type { TernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
   import { format_reaction, IsobaricTernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
-  import { to_error } from '#lib/utils.js'
+  import { to_error } from 'svelte-widgets/utils'
   import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
   import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'

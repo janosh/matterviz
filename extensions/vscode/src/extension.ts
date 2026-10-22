@@ -14,8 +14,9 @@ import type {
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '#lib/file-viewer/host-protocol.js'
-import { is_plain_object, to_error } from '#lib/utils.js'
+import { is_plain_object } from '#lib/utils.js'
 import { format_bytes } from 'svelte-widgets/format'
+import { to_error } from 'svelte-widgets/utils'
 import type { DefaultSettings, SettingType } from '#lib/settings.js'
 import { is_valid_setting_value, merge, SETTINGS_CONFIG } from '#lib/settings.js'
 import type { ThemeName } from '#lib/theme/index.js'
