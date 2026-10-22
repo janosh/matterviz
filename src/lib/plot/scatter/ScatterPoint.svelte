@@ -1,5 +1,6 @@
 <script lang="ts">
   import { HIGHLIGHT } from '#lib/colors/index.js'
+  import { create_on_screen } from '#lib/effects.svelte.js'
   import { type D3SymbolName, symbol_map } from '#lib/labels.js'
   import { lerp, type Point2D } from '#lib/math.js'
   import type { HoverStyle, LabelStyle, PointStyle } from '#lib/plot/core/types.js'
@@ -11,7 +12,6 @@
   } from '#lib/plot/core/utils/label-placement.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { rgb } from 'd3-color'
-  import { in_view } from 'svelte-widgets/attachments'
   import { symbol, symbolCircle } from 'd3-shape'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
@@ -111,16 +111,8 @@
 
   // The ring's CSS pulse animates an SVG transform, which costs a style recalc and layout per
   // frame even off screen (8 rings scrolled away kept a page at ~100 ms/s CPU), so it pauses
-  // there. Optimistic: test DOMs whose stub observer never fires keep it running.
-  let ring_on_screen = $state(true)
-  const track_ring = (node: Element) => {
-    if (typeof IntersectionObserver === `undefined`) return undefined
-    const stop = in_view((visible) => (ring_on_screen = visible))(node)
-    return () => {
-      stop()
-      ring_on_screen = true
-    }
-  }
+  // there
+  const ring_visibility = create_on_screen()
 
   // SVG path data for the marker's `d` attribute
   let marker_path = $derived.by(() => {
@@ -155,8 +147,8 @@
     <circle
       r={(radius ?? 4) * 2.5}
       class="effect-ring selected"
-      class:paused={!ring_on_screen}
-      {@attach track_ring}
+      class:paused={!ring_visibility.current}
+      {@attach ring_visibility.attach}
       fill="var(--point-fill-color, {fill ?? `cornflowerblue`})"
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"
@@ -164,8 +156,8 @@
   {:else if style.is_highlighted && style.highlight_effect}
     <circle
       r={(radius ?? 4) * 2}
-      class={[`effect-ring`, style.highlight_effect, { paused: !ring_on_screen }]}
-      {@attach track_ring}
+      class={[`effect-ring`, style.highlight_effect, { paused: !ring_visibility.current }]}
+      {@attach ring_visibility.attach}
       fill={style.highlight_color ?? HIGHLIGHT.emphasis}
       stroke="var(--effect-ring-stroke, white)"
       stroke-width="var(--effect-ring-stroke-width, 1)"

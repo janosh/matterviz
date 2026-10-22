@@ -178,7 +178,8 @@ export function segment_rect_intersects(
     rx2 = rect_x + rect.w,
     ry2 = rect_y + rect.h
   // A crossing lies strictly inside both, so a segment whose bounding box clears the rect
-  // cannot cross an edge. The 1e-6 px margin dwarfs the float error of the exact test below.
+  // cannot cross an edge. At pixel-scale coordinates the 1e-6 px margin dwarfs the float
+  // error of the exact test below, so the result never changes.
   if (
     Math.max(sx1, sx2) < rect_x - 1e-6 ||
     Math.min(sx1, sx2) > rx2 + 1e-6 ||
@@ -312,8 +313,10 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
     min_y: number,
     max_y: number,
   ): number => {
-    const [col_lo, col_hi] = [col_of(min_x), col_of(max_x)]
-    for (let row = row_of(min_y); row <= row_of(max_y); row++) {
+    const col_lo = col_of(min_x)
+    const col_hi = col_of(max_x)
+    const row_hi = row_of(max_y)
+    for (let row = row_of(min_y); row <= row_hi; row++) {
       for (let col = col_lo; col <= col_hi; col++) {
         const cell = cells[row * cols + col]
         // oxlint-disable-next-line typescript/prefer-for-of -- an iterator cost ~20% of the anneal
@@ -356,14 +359,20 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
       for (let row = spans[at + 2]; row <= spans[at + 3]; row++) {
         for (let col = spans[at]; col <= spans[at + 1]; col++) {
           const cell = label_cells[row * cols + col]
-          cell.splice(cell.indexOf(idx), 1)
+          const pos = cell.indexOf(idx)
+          // splice(-1) would drop another label's entry instead
+          if (pos === -1) throw new Error(`label ${idx} missing from cell ${col},${row}`)
+          cell.splice(pos, 1)
         }
       }
     }
     for (let row = row_lo; row <= row_hi; row++) {
       for (let col = col_lo; col <= col_hi; col++) label_cells[row * cols + col].push(idx)
     }
-    spans.set([col_lo, col_hi, row_lo, row_hi], at)
+    spans[at] = col_lo
+    spans[at + 1] = col_hi
+    spans[at + 2] = row_lo
+    spans[at + 3] = row_hi
   }
 
   return {
@@ -371,7 +380,7 @@ export function create_neighbor_index(anchors: AnchorInfo[]) {
     label_candidates,
     place,
     // Buckets every label, which callers must do once before their first query
-    reset(labels: LabelState[]) {
+    place_all(labels: LabelState[]) {
       for (const label of labels) place(label)
     },
     // Fills `anchor_candidates` with the anchors whose marker can reach the box, ascending
@@ -747,7 +756,7 @@ export function compute_label_positions(
   const new_scratch: LabelState = { x: 0, y: 0, w: 0, h: 0, anchor_idx: 0 }
 
   const neighbors = create_neighbor_index(anchors)
-  neighbors.reset(labels)
+  neighbors.place_all(labels)
 
   for (let step = 0; step < total_steps; step++) {
     const temperature = Math.max(0.001, start_temp * (1.0 - step * cooling_rate))
