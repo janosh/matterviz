@@ -198,3 +198,6 @@ export interface VibrationalSpectrum {
 export type SpectrumKind = `ir` | `raman`
 // IR spectra are conventionally drawn as transmittance (peaks pointing down).
 export type SpectrumPresentation = `absorbance` | `transmittance`
+
+// ElectronicStructure's panes: the crystal, its Fermi surface, band structure and DOS
+export type ElectronicPane = `structure` | `fermi` | `bands` | `dos`

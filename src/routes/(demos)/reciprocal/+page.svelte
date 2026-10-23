@@ -54,6 +54,12 @@
       icon: FermiSurface,
     },
     {
+      label: `Electronic Structure`,
+      href: `/reciprocal/electronic-structure`,
+      description: `Crystal structure, Fermi surface, band structure and DOS of one calculation fused in one linked viewer.`,
+      icon: ThreePanels,
+    },
+    {
       label: `IR + Raman`,
       href: `/reciprocal/ir-raman`,
       description: `IR and Raman spectra from phonon eigenvectors, Born effective charges and Raman tensors.`,

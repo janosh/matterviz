@@ -24,6 +24,7 @@
     read_pan_offset,
     restore_camera_view,
     responsive_gizmo_size,
+    scope_orbit_link,
   } from '#lib/scene/index.js'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
@@ -186,6 +187,9 @@
     const size = responsive_gizmo_size(width, height)
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
+
+  // Multi-view panes look along fixed axes, so they stay out of a host's orbit link
+  scope_orbit_link(() => !in_grid)
 
   // Internal orbit controls are bound from StructureScene for pose tracking and recovery.
   let orbit_controls =

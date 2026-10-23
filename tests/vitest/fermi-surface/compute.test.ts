@@ -381,8 +381,8 @@ describe(`slice energy shading`, () => {
 })
 
 describe(`pocket classification`, () => {
-  // a C-shape's centroid (1.25, 1.5) falls in its notch: the midpoint of the first inside
-  // stretch of its horizontal line is inside
+  // a C-shape's centroid (≈1.36, 1.5) falls in its notch: the midpoint of the inside span of
+  // its horizontal line is inside
   test(`polygon_interior_point of a concave polygon`, () => {
     // oxfmt-ignore
     const c_shape: Vec2[] = [[0, 0], [3, 0], [3, 1], [1, 1], [1, 2], [3, 2], [3, 3], [0, 3]]

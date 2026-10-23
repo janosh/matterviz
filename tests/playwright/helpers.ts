@@ -869,7 +869,12 @@ export async function expect_combined_fullscreen(
   }
   page.on(`console`, on_console)
   for (const fullscreen of [true, false]) {
-    await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover() // hover-revealed
+    // hover-revealed by the panel (or viewer) whose plot header or control row holds it
+    await button
+      .locator(
+        `xpath=ancestor::*[contains(@class, "header-controls") or contains(@class, "control-buttons")][1]/..`,
+      )
+      .hover()
     await expect(button).toHaveAttribute(`aria-pressed`, String(!fullscreen))
     await button.click()
     try {
