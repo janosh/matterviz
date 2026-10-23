@@ -4,11 +4,19 @@
 import type { Sides } from '#lib/plot/core/layout.js'
 import type { Vec2 } from '#lib/math.js'
 import { vec2_equal } from '#lib/plot/core/interactions.js'
-import { axis_with_range, max_side_padding } from '#lib/plot/core/shared-axes.js'
+import {
+  axis_with_range,
+  is_valid_range,
+  max_side_padding,
+} from '#lib/plot/core/shared-axes.js'
 import type { AxisConfig, AxisRanges } from '#lib/plot/core/types.js'
 import { compute_frequency_range, extract_efermi, spectral_type } from './helpers'
 import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
 import type { BaseBandStructure, DosData, FrequencyUnit } from './types'
+
+// Narrowest row (px) a DOS sits beside its bands in (BandsAndDos, ElectronicStructure); below
+// it stacks under them
+export const MIN_SIDE_BY_SIDE_WIDTH = 520
 
 // Floor for the vertical padding two side-by-side panels share. A panel that moves its
 // legend/colorbar outside widens its own bottom margin, and the other panel must follow or the
@@ -62,8 +70,13 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     const unit = inputs.units()
     return frequency_unit_per_thz(parse_frequency_unit(unit) ?? unit)
   })
+  // A caller's valid frequency range (the bands', else the DOS's frequency axis, both in
+  // display units) is the shared one, else the data's padded extent
   const shared_range = $derived.by(() => {
     if (!shared()) return undefined
+    const dos_axis = inputs.side_by_side() ? dos_props().y_axis : dos_props().x_axis
+    const caller = [bands_props().y_axis?.range, dos_axis?.range].find(is_valid_range)
+    if (caller) return caller
     const range = compute_frequency_range(inputs.band_structs(), doses())
     return range ? ([range[0] * unit_factor, range[1] * unit_factor] as Vec2) : undefined
   })
@@ -88,30 +101,52 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   // reset in one panel shows up as a move back to the shared range and resets the other too.
   // Until the panels agree on a zoom (mount, link re-enabled) the shared range is the
   // baseline, so a panel left zoomed while the link was off leads once it is back on.
-  const views = $state<(Partial<AxisRanges> | undefined)[]>([undefined, undefined])
+  // The DOS's view belongs to the orientation it was taken in: turning the DOS swaps its axes,
+  // so in the other one it reads as unset and the plot starts over from its new ranges (else
+  // the stacked density range would lead the bands' energy axis once side by side).
+  const panel_views = $state<{
+    bands?: Partial<AxisRanges>
+    dos?: { side: boolean; view?: Partial<AxisRanges> }
+  }>({})
+  const views: Record<0 | 1, Partial<AxisRanges> | undefined> = {
+    get 0() {
+      return panel_views.bands
+    },
+    set 0(view) {
+      panel_views.bands = view
+    },
+    get 1() {
+      const { dos } = panel_views
+      return dos?.side === inputs.side_by_side() ? dos.view : undefined
+    },
+    set 1(view) {
+      panel_views.dos = { side: inputs.side_by_side(), view }
+    },
+  }
   let synced_y: Vec2 | undefined
   let previous_unit_factor: number | undefined
   $effect(() => {
+    const side = inputs.side_by_side()
     if (previous_unit_factor !== undefined && previous_unit_factor !== unit_factor) {
       // A unit change resets frequency zoom; child plots may already have updated their
       // bound view, so scaling that view here could convert it twice.
-      for (const [idx, view] of views.entries()) {
-        const axis = idx === 1 && !inputs.side_by_side() ? `x` : `y`
-        views[idx] = { ...view, [axis]: shared_range ? [...shared_range] : undefined }
-      }
+      const reset = (): Vec2 | undefined => shared_range && [shared_range[0], shared_range[1]]
+      views[0] = { ...views[0], y: reset() }
+      views[1] = { ...views[1], [side ? `y` : `x`]: reset() }
       synced_y = shared_range
     }
     previous_unit_factor = unit_factor
-    if (!(inputs.sync_zoom?.() ?? true) || !inputs.side_by_side() || !shared_range) {
+    if (!(inputs.sync_zoom?.() ?? true) || !side || !shared_range) {
       synced_y = undefined
       return
     }
     const baseline = synced_y ?? shared_range
-    const panel_y = views.map((view) => view?.y)
+    const panel_y = [views[0]?.y, views[1]?.y]
     const lead = panel_y.find((range) => range && !vec2_equal(range, baseline))
     if (!lead) return
     synced_y = [...lead]
-    for (const [idx, range] of panel_y.entries()) {
+    for (const idx of [0, 1] as const) {
+      const range = panel_y[idx]
       if (!range || !vec2_equal(range, lead)) views[idx] = { ...views[idx], y: [...lead] }
     }
   })

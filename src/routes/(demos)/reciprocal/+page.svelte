@@ -56,7 +56,7 @@
     {
       label: `Electronic Structure`,
       href: `/reciprocal/electronic-structure`,
-      description: `Crystal structure, Fermi surface, band structure and DOS of one calculation fused in one linked viewer.`,
+      description: `Crystal structure, Fermi surface, band structure and DOS of one calculation in one linked viewer, also stepped along a pressure sweep.`,
       icon: ThreePanels,
     },
     {

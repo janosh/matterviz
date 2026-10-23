@@ -5,15 +5,26 @@
   // below on one shared energy axis, every split at a draggable divider, and the pane menu
   // shows any subset (default: the panes with data). The views are linked:
   // - Real and reciprocal lattice share one Cartesian frame (b_i · a_j = 2π δ_ij), so orbiting
-  //   either scene turns the other alike (sync_rotation), each keeping its own zoom.
+  //   either scene turns the other alike (sync_rotation), each keeping its own zoom. Data in
+  //   different frames is reported and keeps the rotations apart.
   // - Bands ↔ Fermi surface: hover previews, click pins and isolates a sheet (FermiBandsLink).
   // - Bands ↔ DOS share zoom and hover lines on the energy axis; hovering the DOS previews the
   //   Fermi surface at that energy too.
-  // A dropped file replaces the data of the panes it fills (structure, band grid or Fermi
-  // surface, band structure or DOS JSON, vaspout.h5 bands/DOS).
-  import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
-  import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
-  import type { OpenedMaterial } from '#lib/file-viewer/open.js'
+  // A sweep (`sweep`) runs the viewer along one axis, e.g. pressure: a control bar steps through
+  // a series' frames, every pane shows the selected frame, `load_frame` fetches frames' heavy
+  // data on demand (the neighbours prefetched), and the trends pane plots descriptors against
+  // the axis, a click selecting that frame (see sweep.ts).
+  // A dropped file replaces the data of the panes it fills: a structure file the structure, a
+  // trajectory its final frame's structure (plus a vaspout.h5's DOS, never bands), a band grid
+  // or meshed surface the Fermi surface, a band structure and/or DOS JSON (also BandsAndDos'
+  // { band_structure, dos }) or an electronic-only vaspout.h5 the spectra; a sweep JSON the
+  // sweep, which while shown takes no other files.
+  import {
+    normalize_show_controls,
+    shows_fullscreen_toggle,
+    type ShowControlsProp,
+  } from '#lib/controls.js'
+  import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import BandCrossings from '#lib/fermi-surface/BandCrossings.svelte'
   import {
     FermiBandsLink,
@@ -25,16 +36,25 @@
   import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
   import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
+  import {
+    create_sequence_player,
+    is_sequence_key_target,
+  } from '#lib/layout/sequence-player.svelte.js'
+  import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
+  import SequenceControls from '#lib/layout/SequenceControls.svelte'
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
-  import { reciprocal_lattice } from '#lib/math.js'
-  import { SHORTCUTS } from '#lib/shortcuts.js'
+  import { raw_file_drop_zone } from '#lib/io/file-drop.js'
+  import { clamp, dot, matrix_inverse_3x3, type Matrix3x3 } from '#lib/math.js'
+  import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
   import type { Crystal } from '#lib/structure/index.js'
   import Structure from '#lib/structure/Structure.svelte'
   import { is_crystal } from '#lib/structure/validation.js'
-  import type { ComponentProps } from 'svelte'
+  import { materialize_frame_result } from '#lib/trajectory/frame.js'
+  import { is_plain_object } from '#lib/utils.js'
+  import { type ComponentProps, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Icon from 'svelte-widgets/Icon.svelte'
   import {
@@ -43,6 +63,7 @@
     DensityOfStates,
     FermiSurface as FermiSurfaceIcon,
     Grid2x2,
+    LinePlot,
     LinkOff,
     LinkVariant,
   } from 'svelte-widgets/icons'
@@ -51,7 +72,11 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import { normalize_band_structure, normalize_dos } from './helpers'
-  import { create_bands_dos_sync } from './synced-axes.svelte'
+  import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
+  import { format_axis_value, is_sweep_like, normalize_sweep, validate_sweep } from './sweep'
+  import type { Sweep, SweepFrameLoader } from './sweep'
+  import { create_sweep_frames } from './sweep-frames.svelte'
+  import SweepTrends from './SweepTrends.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
   import type { BaseBandStructure, DosData, ElectronicPane, FrequencyUnit } from './types'
 
@@ -60,12 +85,17 @@
     { pane: `fermi`, icon: FermiSurfaceIcon, label: `Fermi surface` },
     { pane: `bands`, icon: BandStructure, label: `Band structure` },
     { pane: `dos`, icon: DensityOfStates, label: `Density of states` },
+    { pane: `trends`, icon: LinePlot, label: `Sweep descriptors` },
   ] as const
   const PANE_IDS = PANES.map(({ pane }) => pane)
-  // Below this row width the DOS stacks under the bands, as in BandsAndDos; beside them, the
-  // divider keeps each plot this wide (px), room for its axes
-  const MIN_SPECTRA_SIDE_WIDTH = 520
+  // Beside each other, the divider keeps bands and DOS this wide (px), room for their axes
   const [MIN_BANDS_WIDTH, MIN_DOS_WIDTH] = [300, 120]
+  const SWEEP_FPS_RANGE = [0.25, 5] as const // frames per second while playing a sweep
+  // The structure is in the Fermi data's frame when a_i · b_j / 2π is an integer matrix (its
+  // cell a supercell of the zone's) or the inverse of one (the zone's cell a supercell of its).
+  // Simulation outputs print ~6 significant digits, putting entries within ~1e-5 of integers,
+  // while a 0.1° rotation already moves them by ~2e-3.
+  const FRAME_TOL = 1e-3
 
   let {
     structure = $bindable(),
@@ -73,15 +103,21 @@
     band_data = $bindable(),
     band_structs = $bindable({}),
     doses = $bindable({}),
+    sweep = $bindable(),
+    series_id = $bindable(),
+    frame_idx = $bindable(0),
+    load_frame,
+    descriptor = $bindable(),
+    fps = $bindable(1),
     panes = $bindable(),
     units = $bindable(`THz`),
-    fermi_level,
     mu = $bindable(0),
     selected_bands = $bindable(),
     layout = `auto`,
     pane_ratio = $bindable(0.5),
     row_ratio = $bindable(0.5),
     spectra_ratio = $bindable(0.78),
+    trends_ratio = $bindable(0.4),
     sync_rotation = $bindable(true),
     show_controls,
     fullscreen = $bindable(false),
@@ -95,6 +131,7 @@
     fermi_props = {},
     bands_props = {},
     dos_props = {},
+    trends_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure?: Crystal // must share the Fermi data's Cartesian frame (same calculation)
@@ -103,18 +140,27 @@
     // the first band structure's k-path is drawn through the Fermi surface's zone
     band_structs?: Record<string, BaseBandStructure>
     doses?: Record<string, DosData>
+    // a sweep along one axis: while set, the panes show its selected frame, not the props above
+    sweep?: Sweep
+    series_id?: string // the shown series (default: the first)
+    frame_idx?: number // the shown frame of that series
+    load_frame?: SweepFrameLoader // fetches a frame's heavy data when it is first shown
+    descriptor?: string // the descriptor key the trends pane plots (default: the first)
+    fps?: number // frames per second when playing the sweep
     panes?: ElectronicPane[] // shown panes, default: those with data
     units?: FrequencyUnit // phonon frequency unit of bands and DOS
-    fermi_level?: number // bands' and DOS' E_F, default: the band grid's, else the data's
     mu?: number // Fermi surface energy relative to E_F
     selected_bands?: number[] // bands whose Fermi sheets are shown (all when unset)
     layout?: `auto` | `horizontal` | `vertical` // the 3D scenes' split, auto by their row's shape
     pane_ratio?: number // the structure's share of the scenes' row
     row_ratio?: number // the scenes' share of the viewer height above the spectra
     spectra_ratio?: number // the bands' share of the spectra's row beside the DOS
+    trends_ratio?: number // the trends pane's share of the lower row beside the spectra
     sync_rotation?: boolean // orbiting one scene turns the other alike
     // the viewer's row; `never` also hides the panes' own controls
-    show_controls?: ShowControlsProp<`panes` | `sync-rotation` | `fullscreen`>
+    show_controls?: ShowControlsProp<
+      `panes` | `sync-rotation` | `fullscreen` | `series` | `nav` | `step` | `fps`
+    >
     fullscreen?: boolean
     fullscreen_toggle?: boolean
     allow_file_drop?: boolean // one drop zone for all panes: theirs are off
@@ -127,9 +173,10 @@
     fermi_props?: Partial<ComponentProps<typeof FermiSurface>>
     bands_props?: Partial<ComponentProps<typeof Bands>>
     dos_props?: Partial<ComponentProps<typeof Dos>>
+    trends_props?: Partial<ComponentProps<typeof SweepTrends>>
   } = $props()
 
-  link_orbits(() => sync_rotation)
+  link_orbits(() => sync_rotation && !frames_differ)
 
   let wrapper = $state<HTMLDivElement>()
   let dragover = $state(false)
@@ -144,16 +191,118 @@
   const pane_controls = <Prop>(prop: Prop): Prop | false =>
     controls_config.mode === `never` ? false : prop
 
-  // === panes and layout ===
-  const has_data = $derived<Record<ElectronicPane, boolean>>({
-    structure: Boolean(structure),
-    fermi: Boolean(fermi_data || band_data),
-    bands: Object.keys(band_structs).length > 0,
-    dos: Object.keys(doses).length > 0,
+  // === sweep ===
+  // The shown series and frame. While a sweep is set its frame's data feeds every pane.
+  const series = $derived.by(() => {
+    if (!sweep) return undefined
+    validate_sweep(sweep)
+    if (series_id === undefined) return sweep.series[0]
+    const match = sweep.series.find(({ id }) => id === series_id)
+    if (match) return match
+    const ids = sweep.series.map(({ id }) => id).join(`, `)
+    throw new Error(`series_id "${series_id}" is not a series of the sweep (${ids})`)
   })
+  const frame_index = $derived.by(() => {
+    if (!series) return 0
+    if (!Number.isFinite(frame_idx))
+      throw new RangeError(`frame_idx must be finite, got ${frame_idx}`)
+    return clamp(Math.round(frame_idx), 0, series.frames.length - 1)
+  })
+  // the bound index follows the clamped one shown (e.g. after switching to a shorter series)
+  $effect(() => {
+    if (series && frame_idx !== frame_index) frame_idx = frame_index
+  })
+  // a dropped sweep carries its frames' data, so the caller's loader (for its sweep) is off
+  let active_load_frame = $derived(load_frame)
+  const frames = create_sweep_frames({
+    sweep: () => sweep,
+    load_frame: () => active_load_frame,
+    on_error: (message) => report_error(message),
+  })
+  const frame = $derived(series && frames.frame(series, frame_index))
+  const frame_label = $derived(sweep && frame ? format_axis_value(sweep.axis, frame) : ``)
+  // the frame after the shown one, wrapping as playback does
+  const next_index = $derived(series ? (frame_index + 1) % series.frames.length : 0)
+  // the shown frame first, then its neighbours, so a step lands on loaded data
+  $effect(() => {
+    if (!series) return
+    for (const idx of [frame_index, next_index, frame_index - 1]) frames.request(series, idx)
+  })
+  // the frame's own surface, else what FermiSurface extracts from its band grid
+  let frame_surface = $derived(frame?.fermi_data)
+  const shown_structure = $derived(sweep ? frame?.structure : structure)
+  const shown_band_data = $derived(sweep ? frame?.band_data : band_data)
+  const shown_fermi_data = $derived(sweep ? frame_surface : fermi_data)
+  const shown_band_structs = $derived((sweep ? frame?.band_structs : band_structs) ?? {})
+  const shown_doses = $derived((sweep ? frame?.doses : doses) ?? {})
+  const playback = create_sequence_player({
+    count: () => series?.frames.length ?? 0,
+    index: () => frame_index,
+    set_index: (idx) => (frame_idx = idx),
+    fps: () => fps,
+    set_fps: (value) => (fps = value),
+    fps_range: () => SWEEP_FPS_RANGE,
+    should_auto_play: () => false,
+    // playback waits for the next frame's data
+    can_advance: () => !series || frames.is_ready(series, next_index),
+  })
+  // Playback keys work while the viewer is focused or hovered, as in Trajectory
+  const keys = viewer_keydown(
+    (event) =>
+      Boolean(series) && is_sequence_key_target(event) && playback.handle_keydown(event),
+  )
+  let bar_height = $state(0)
+  // the hover-revealed control bar overlays the top row, whose controls sit below it
+  const bar_offset = $derived(series && controls_config.mode === `hover` ? bar_height : 0)
+  const select_frame = (id: string, idx: number): void => {
+    series_id = id
+    frame_idx = idx
+  }
+  // another series opens at its frame nearest the shown frame's axis value
+  const select_series = (id: string): void => {
+    const target = sweep?.series.find((entry) => entry.id === id)
+    const value = frame?.value
+    if (!target || value === undefined) return select_frame(id, 0)
+    const distances = target.frames.map((entry) => Math.abs(entry.value - value))
+    select_frame(id, distances.indexOf(Math.min(...distances)))
+  }
+
+  // === panes and layout ===
+  // In a sweep, a pane has data when any frame of the series has (loaded) it, so the default
+  // layout neither waits on the shown frame's load nor collapses on a frame without it
+  const shown_frames = $derived(
+    series ? series.frames.map((_frame, idx) => frames.frame(series, idx)) : [],
+  )
+  // the panes any of the entries (frames, or the props) has data for
+  type PaneData = {
+    structure?: unknown
+    fermi_data?: unknown
+    band_data?: unknown
+    band_structs?: Record<string, unknown>
+    doses?: Record<string, unknown>
+  }
+  const panes_with_data = (entries: PaneData[], with_trends: boolean): ElectronicPane[] => {
+    const some = (has: (entry: PaneData) => unknown) => entries.some(has)
+    const filled: Record<ElectronicPane, boolean> = {
+      structure: some((entry) => entry.structure),
+      fermi: some((entry) => entry.fermi_data || entry.band_data),
+      bands: some((entry) => Object.keys(entry.band_structs ?? {}).length > 0),
+      dos: some((entry) => Object.keys(entry.doses ?? {}).length > 0),
+      trends: with_trends,
+    }
+    return PANE_IDS.filter((pane) => filled[pane])
+  }
+  const with_data = $derived(
+    sweep
+      ? panes_with_data(shown_frames, Boolean(sweep.descriptors?.length))
+      : panes_with_data([{ structure, fermi_data, band_data, band_structs, doses }], false),
+  )
   const shown = $derived.by((): Set<ElectronicPane> => {
+    if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
+    if (panes?.includes(`trends`) && !sweep) {
+      throw new Error(`ElectronicStructure's trends pane needs a sweep`)
+    }
     if (panes) return new Set(panes)
-    const with_data = PANE_IDS.filter((pane) => has_data[pane])
     // nothing loaded yet: the two scenes' empty states invite a drop
     return new Set(with_data.length ? with_data : [`structure`, `fermi`])
   })
@@ -163,15 +312,18 @@
   }
   const show_scenes = $derived(shown.has(`structure`) || shown.has(`fermi`))
   const show_spectra = $derived(shown.has(`bands`) || shown.has(`dos`))
+  const show_trends = $derived(Boolean(sweep) && shown.has(`trends`))
+  const show_lower = $derived(show_trends || show_spectra)
+  const lower_split = $derived(show_trends && show_spectra)
   const scenes_split = $derived(shown.has(`structure`) && shown.has(`fermi`))
   const spectra_split = $derived(shown.has(`bands`) && shown.has(`dos`))
-  const scene_orientation = $derived.by(() => {
-    if (layout !== `auto`) return layout
-    return pick_pane_orientation(scenes_size.width, scenes_size.height)
-  })
-  const spectra_side = $derived(spectra_split && spectra_width >= MIN_SPECTRA_SIDE_WIDTH)
+  const scene_orientation = $derived(
+    layout === `auto` ? pick_pane_orientation(scenes_size.width, scenes_size.height) : layout,
+  )
+  const spectra_side = $derived(spectra_split && spectra_width >= MIN_SIDE_BY_SIDE_WIDTH)
   // The pane in the viewer's top-right corner puts its own controls below the viewer's
   const corner_pane = $derived.by((): ElectronicPane => {
+    if (!show_scenes && !show_spectra) return `trends`
     const [first, second] = show_scenes
       ? ([`structure`, `fermi`] as const)
       : ([`bands`, `dos`] as const)
@@ -180,34 +332,50 @@
   })
   const pane_style = (pane: ElectronicPane): string | undefined => {
     if (pane !== corner_pane || chrome_height === 0) return undefined
-    const top = `calc(2ex + ${chrome_height}px)`
+    const top = `calc(2ex + ${chrome_height + bar_offset}px)`
     return `--viewer-buttons-top: ${top}; --ctrl-btn-top: ${top}`
   }
+  // the top row's controls clear the overlaid control bar
+  const top_row_style = $derived(
+    bar_offset > 0 ? `--viewer-buttons-top: calc(1ex + ${bar_offset}px)` : undefined,
+  )
 
   // === links ===
-  const first_band_struct = $derived(Object.values(band_structs)[0])
-  // the zone the k-path runs through: the Fermi data's, else the structure's
-  const k_lattice = $derived(
-    band_data?.k_lattice ??
-      fermi_data?.k_lattice ??
-      (structure && reciprocal_lattice(structure.lattice.matrix, { two_pi: true })),
-  )
+  const first_band_struct = $derived(Object.values(shown_band_structs)[0])
+  // the Fermi surface's zone
+  const k_lattice = $derived((shown_band_data ?? shown_fermi_data)?.k_lattice)
+  const frames_differ = $derived.by(() => {
+    if (!shown_structure || !k_lattice) return false
+    const overlap = shown_structure.lattice.matrix.map((a_vec) =>
+      k_lattice.map((b_vec) => dot(a_vec, b_vec) / (2 * Math.PI)),
+    ) as Matrix3x3
+    const integral = (matrix: Matrix3x3) =>
+      matrix.flat().every((val) => Math.abs(val - Math.round(val)) < FRAME_TOL)
+    return !integral(overlap) && !integral(matrix_inverse_3x3(overlap))
+  })
+  // reported anew for each structure or zone (e.g. a dropped file) while the frames differ,
+  // in a sweep once per series (its frames share one calculation's frame)
+  $effect(() => {
+    if (!frames_differ) return
+    void (sweep ? series : [shown_structure, k_lattice])
+    const message = `The structure's lattice and the Fermi data's k_lattice are in different Cartesian frames (a_i · b_j / 2π is no integer matrix), so the scenes rotate apart`
+    untrack(() => report_error(message))
+  })
   const link = new FermiBandsLink({
-    band_data: () => band_data,
-    surface: () => fermi_data,
+    band_data: () => shown_band_data,
+    surface: () => shown_fermi_data,
     band_struct: () => first_band_struct,
     k_lattice: () => k_lattice,
     mu: { get: () => mu, set: (value) => (mu = value) },
     selected_bands: { get: () => selected_bands, set: (bands) => (selected_bands = bands) },
-    band_spin_mode: () => bands_props.band_spin_mode,
-    color_property: () => fermi_props.color_property,
-    line_kwargs: () => bands_props.line_kwargs,
+    bands_props: () => bands_props,
+    fermi_props: () => fermi_props,
   })
   const sync = create_bands_dos_sync({
-    band_structs: () => band_structs,
-    doses: () => doses,
+    band_structs: () => shown_band_structs,
+    doses: () => shown_doses,
     units: () => units,
-    fermi_level: () => fermi_level ?? link.fermi_energy,
+    fermi_level: () => link.fermi_energy, // the grid's E_F, else the spectra's own
     bands_props: () => bands_props,
     dos_props: () => dos_props,
     side_by_side: () => spectra_side,
@@ -221,14 +389,17 @@
     error_msg = message
     on_error?.({ error_msg: message, filename })
   }
-  // Fill the panes a parsed file has data for, else say why it fills none
-  const fill = (opened: OpenedMaterial): ElectronicPane[] | string => {
+  // Fill the panes a parsed file has data for (see the header), else say why it fills none
+  const fill = async (opened: OpenedMaterial): Promise<ElectronicPane[] | string> => {
     const { filename } = opened
-    if (opened.type === `structure`) {
-      if (!is_crystal(opened.data))
-        return `${filename} holds no periodic structure: its Fermi surface needs a lattice`
-      structure = opened.data
-      return [`structure`]
+    if (opened.type === `json_browser` && is_sweep_like(opened.data)) {
+      const dropped = normalize_sweep(opened.data)
+      ;[sweep, series_id, frame_idx, active_load_frame] = [dropped, undefined, 0, undefined]
+      const dropped_frames = dropped.series.flatMap((entry) => entry.frames)
+      return panes_with_data(dropped_frames, Boolean(dropped.descriptors?.length))
+    }
+    if (sweep) {
+      return `${filename} is no sweep JSON: while a sweep is shown the viewer takes only sweeps`
     }
     if (opened.type === `fermi_surface`) {
       if (is_fermi_surface_data(opened.data))
@@ -236,31 +407,49 @@
       else [band_data, fermi_data] = [opened.data, undefined]
       return [`fermi`]
     }
+    if (opened.type === `structure` || opened.type === `trajectory`) {
+      const run = opened.type === `trajectory` ? opened.data : undefined
+      const crystal = run
+        ? (await materialize_frame_result(run.read_frame(run.frame_count - 1))).structure
+        : opened.data
+      if (!is_crystal(crystal))
+        return `${filename} holds no periodic structure: its Fermi surface needs a lattice`
+      structure = crystal
+      const electronic = run?.metadata.electronic
+      const dos = is_plain_object(electronic) ? normalize_dos(electronic.dos) : null
+      if (dos) doses = { [filename]: dos }
+      return dos ? [`structure`, `dos`] : [`structure`]
+    }
     const vasp = opened.type === `vaspout_electronic` ? opened.data : null
     const json = opened.type === `json_browser` ? opened.data : null
-    const bands = vasp ? vasp.bands : normalize_band_structure(json)
-    const dos = vasp ? vasp.dos : bands ? null : normalize_dos(json)
+    const unwrap = (key: string): unknown =>
+      is_plain_object(json) && key in json ? json[key] : json
+    const bands = vasp ? vasp.bands : normalize_band_structure(unwrap(`band_structure`))
+    const dos = vasp ? vasp.dos : normalize_dos(unwrap(`dos`))
     if (bands) band_structs = { [filename]: bands }
     if (dos) doses = { [filename]: dos }
     if (bands || dos) return bands && dos ? [`bands`, `dos`] : [bands ? `bands` : `dos`]
     const kind = opened.type.replaceAll(`_`, ` `)
     return `${filename} is ${kind} data, not a structure, Fermi surface, band structure or DOS`
   }
-  const drop_zone = create_material_loader<unknown>({
-    source: () => undefined,
-    current_value: () => undefined,
-    allow_file_drop: () => allow_file_drop,
+  const drop_zone = raw_file_drop_zone({
+    allow: () => allow_file_drop,
     set_loading: (value) => (loading = value),
-    set_error: (message) => (error_msg = message),
-    set_dragover: (over) => (dragover = over),
-    report_error: (message, metadata) => report_error(message, metadata?.filename),
-    commit: (opened) => {
-      const filled = fill(opened)
-      if (typeof filled === `string`) return report_error(filled, opened.filename)
-      // a pane the file filled shows even when the caller's pane list left it out
-      if (panes && filled.some((pane) => !panes?.includes(pane)))
-        panes = PANE_IDS.filter((pane) => panes?.includes(pane) || filled.includes(pane))
-      on_file_load?.({ filename: opened.filename, panes: filled })
+    on_dragover: (over) => (dragover = over),
+    on_error: (message) => report_error(message),
+    on_drop: async (source) => {
+      error_msg = undefined
+      const opened = await open_material(source)
+      try {
+        const filled = await fill(opened)
+        if (typeof filled === `string`) return report_error(filled, opened.filename)
+        // a pane the file filled shows even when the caller's pane list left it out
+        if (panes)
+          panes = PANE_IDS.filter((pane) => panes?.includes(pane) || filled.includes(pane))
+        on_file_load?.({ filename: opened.filename, panes: filled })
+      } finally {
+        opened.dispose()
+      }
     },
   })
   const measure_chrome = (node: HTMLElement) => {
@@ -274,195 +463,303 @@
   bind:this={wrapper}
   role="group"
   aria-label="Electronic structure viewer"
-  aria-keyshortcuts={SHORTCUTS.fullscreen.keys}
+  aria-keyshortcuts={shows_fullscreen_toggle(fullscreen_toggle, controls_config)
+    ? SHORTCUTS.fullscreen.keys
+    : undefined}
   {...rest}
   class={[
     `electronic-structure`,
-    show_scenes && show_spectra ? `two-rows` : `one-row`,
+    show_scenes && show_lower ? `two-rows` : `one-row`,
     { dragover },
     rest.class,
   ]}
   {@attach drop_zone}
+  {@attach keys}
 >
-  <ViewerChrome
-    {controls_config}
-    bind:fullscreen
-    {fullscreen_toggle}
-    {wrapper}
-    fullscreen_bg_css_var="--electronic-bg-fullscreen"
-    {@attach measure_chrome}
-  >
-    {#if scenes_split && controls_config.visible(`sync-rotation`)}
-      <button
-        type="button"
-        class="sync-rotation-toggle"
-        aria-pressed={sync_rotation}
-        title={sync_rotation ? `Unlink the scenes' rotations` : `Link the scenes' rotations`}
-        onclick={() => (sync_rotation = !sync_rotation)}
+  {#if sweep && series}
+    <SequenceControlBar
+      class="sweep-controls"
+      {controls_config}
+      {fullscreen}
+      bind:height={bar_height}
+    >
+      {#if sweep.series.length > 1 && controls_config.visible(`series`)}
+        <label class="series-control">
+          Series
+          <select
+            value={series.id}
+            onchange={(event) => select_series(event.currentTarget.value)}
+          >
+            {#each sweep.series as { id, label } (id)}
+              <option value={id}>{label ?? id}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <SequenceControls
+        {controls_config}
+        index={frame_index}
+        count={series.frames.length}
+        {playback}
+        item_name="frame"
+        aria_label="{sweep.axis.label} frame"
+        aria_valuetext={frame_label}
+        disable_step_while_playing={false}
+      />
+      <span class="frame-status" aria-live="polite">
+        {frame_label}
+        {#if frames.is_loading(series, frame_index)}<small>loading…</small>{/if}
+        {#if frame?.status?.unstable}<small class="unstable">unstable</small>{/if}
+        {#if frame?.status?.note}<small>{frame.status.note}</small>{/if}
+      </span>
+    </SequenceControlBar>
+  {/if}
+
+  <div class="panes">
+    <ViewerChrome
+      {controls_config}
+      bind:fullscreen
+      {fullscreen_toggle}
+      {wrapper}
+      fullscreen_bg_css_var="--electronic-bg-fullscreen"
+      style={top_row_style}
+      {@attach measure_chrome}
+    >
+      {#if scenes_split && controls_config.visible(`sync-rotation`)}
+        {@const linked = sync_rotation && !frames_differ}
+        <button
+          type="button"
+          class="sync-rotation-toggle"
+          aria-pressed={linked}
+          disabled={frames_differ}
+          title={frames_differ
+            ? `Structure and Fermi data are in different frames: their rotations can't be linked`
+            : linked
+              ? `Unlink the scenes' rotations`
+              : `Link the scenes' rotations`}
+          onclick={() => (sync_rotation = !sync_rotation)}
+        >
+          <Icon icon={linked ? LinkVariant : LinkOff} />
+        </button>
+      {/if}
+      {#if controls_config.visible(`panes`)}
+        <ToolbarMenu label="Shown panes" class="panes-menu">
+          {#snippet button()}
+            <Icon icon={Grid2x2} />
+          {/snippet}
+          {#each PANES as { pane, icon, label } (pane)}
+            {#if pane !== `trends` || sweep}
+              <button
+                class={[`view-mode-option`, { selected: shown.has(pane) }]}
+                aria-pressed={shown.has(pane)}
+                disabled={shown.size === 1 && shown.has(pane)}
+                title={with_data.includes(pane)
+                  ? undefined
+                  : `No ${label.toLowerCase()} data loaded`}
+                onclick={() => toggle_pane(pane)}
+              >
+                <Icon {icon} />
+                <span>{label}</span>
+              </button>
+            {/if}
+          {/each}
+        </ToolbarMenu>
+      {/if}
+    </ViewerChrome>
+
+    {#if show_scenes}
+      <div
+        class={[`row scenes`, scenes_split ? scene_orientation : `single`]}
+        style={top_row_style}
+        bind:clientWidth={scenes_size.width}
+        bind:clientHeight={scenes_size.height}
       >
-        <Icon icon={sync_rotation ? LinkVariant : LinkOff} />
-      </button>
-    {/if}
-    {#if controls_config.visible(`panes`)}
-      <ToolbarMenu label="Shown panes" class="panes-menu">
-        {#snippet button()}
-          <Icon icon={Grid2x2} />
-        {/snippet}
-        {#each PANES as { pane, icon, label } (pane)}
-          <button
-            class={[`view-mode-option`, { selected: shown.has(pane) }]}
-            aria-pressed={shown.has(pane)}
-            disabled={shown.size === 1 && shown.has(pane)}
-            title={has_data[pane] ? undefined : `No ${label.toLowerCase()} data loaded`}
-            onclick={() => toggle_pane(pane)}
-          >
-            <Icon {icon} />
-            <span>{label}</span>
-          </button>
-        {/each}
-      </ToolbarMenu>
-    {/if}
-  </ViewerChrome>
-
-  {#if show_scenes}
-    <div
-      class={[`row scenes`, scenes_split ? scene_orientation : `single`]}
-      bind:clientWidth={scenes_size.width}
-      bind:clientHeight={scenes_size.height}
-    >
-      {#if shown.has(`structure`)}
-        <div class="pane" data-pane="structure" style={pane_style(`structure`)}>
-          <Structure
-            {...structure_props}
-            bind:structure
-            show_controls={pane_controls(structure_props.show_controls)}
-            allow_file_drop={false}
-            fullscreen_toggle={false}
-          />
-        </div>
-      {/if}
-      {#if scenes_split}
-        <SplitPane
-          orientation={scene_orientation}
-          bind:ratio={pane_ratio}
-          aria-label="Resize structure and Fermi surface panes"
-        />
-      {/if}
-      {#if shown.has(`fermi`)}
-        <div class="pane" data-pane="fermi" style={pane_style(`fermi`)}>
-          <FermiSurface
-            {...fermi_props}
-            bind:fermi_data
-            bind:band_data
-            show_controls={pane_controls(fermi_props.show_controls)}
-            allow_file_drop={false}
-            fullscreen_toggle={false}
-            wigner_seitz={fermi_props.wigner_seitz ?? Boolean(first_band_struct)}
-            selected_spins={link.selected_spins}
-            previewing={link.hovered_energy !== null}
-            bind:color_property={link.color_property}
-            bind:mu={link.mu}
-            bind:selected_bands={link.selected_bands}
-            k_marker={link.path.hovered_k_point}
-            k_path={link.k_path}
-            on_point_hover={chain_callbacks(link.fermi_hover, fermi_props.on_point_hover)}
-          />
-        </div>
-      {/if}
-    </div>
-  {/if}
-
-  {#if show_scenes && show_spectra}
-    <SplitPane
-      orientation="vertical"
-      bind:ratio={row_ratio}
-      aria-label="Resize 3D scenes and spectra"
-    />
-  {/if}
-
-  {#if show_spectra}
-    <div
-      class={[`row spectra`, spectra_split ? (spectra_side ? `side` : `stacked`) : `single`]}
-      bind:clientWidth={spectra_width}
-    >
-      {#if shown.has(`bands`)}
-        <div class="pane" data-pane="bands" style={pane_style(`bands`)}>
-          <Bands
-            {...bands_props}
-            {band_structs}
-            bind:units
-            fermi_level={sync.fermi_level}
-            show_controls={pane_controls(bands_props.show_controls)}
-            fullscreen_toggle={false}
-            padding={{
-              r: spectra_side ? (dos_left_padding ?? 20) : 5,
-              ...bands_props.padding,
-              ...sync.shared_padding,
-            }}
-            y_axis={sync.y_axes[0]}
-            bind:view={sync.views[0]}
-            bind:resolved_padding={() => undefined, sync.raise_padding}
-            bind:hovered_frequency={sync.hovered.bands}
-            reference_frequency={reference_energy}
-            line_kwargs={link.line_kwargs}
-            bind:band_spin_mode={link.band_spin_mode}
-            bind:x_positions={link.x_positions}
-            highlighted_band_index={link.highlighted_band}
-            highlighted_qpoint_index={link.path.active_qpoint}
-            highlighted_qpoint_range={link.path.highlighted_qpoint_range}
-            hover_config={{ ...LINK_HOVER_CONFIG, ...bands_props.hover_config }}
-            on_point_hover={chain_callbacks(link.band_hover, bands_props.on_point_hover)}
-            on_plot_click={chain_callbacks(link.band_click, bands_props.on_plot_click)}
-          >
-            {#snippet children(ctx)}
-              {@render bands_props.children?.(ctx)}
-              <BandCrossings {ctx} crossings={link.crossings} bind:node={link.crossings_svg} />
-            {/snippet}
-          </Bands>
-        </div>
-      {/if}
-      {#if shown.has(`dos`)}
-        {#if spectra_side}
+        {#if shown.has(`structure`)}
+          <div class="pane" data-pane="structure" style={pane_style(`structure`)}>
+            <Structure
+              structure_series_key={series?.id}
+              {...structure_props}
+              bind:structure={
+                () => shown_structure,
+                (value) => {
+                  if (!sweep && is_crystal(value)) structure = value
+                }
+              }
+              show_controls={pane_controls(structure_props.show_controls)}
+              allow_file_drop={false}
+              fullscreen_toggle={false}
+            />
+          </div>
+        {/if}
+        {#if scenes_split}
           <SplitPane
-            bind:ratio={spectra_ratio}
-            min_px={MIN_BANDS_WIDTH}
-            second_min_px={MIN_DOS_WIDTH}
-            aria-label="Resize band structure and DOS"
+            orientation={scene_orientation}
+            bind:ratio={pane_ratio}
+            aria-label="Resize structure and Fermi surface panes"
           />
         {/if}
-        <div class="pane" data-pane="dos" style={pane_style(`dos`)}>
-          <Dos
-            {...dos_props}
-            {doses}
-            bind:units
-            fermi_level={sync.fermi_level}
-            show_controls={pane_controls(dos_props.show_controls)}
-            fullscreen_toggle={false}
-            orientation={spectra_side ? `horizontal` : `vertical`}
-            x_axis={sync.dos_x_axis}
-            y_axis={sync.y_axes[1]}
-            bind:view={sync.views[1]}
-            bind:resolved_padding={
-              () => undefined,
-              (padding: Required<Sides> | undefined) => {
-                sync.raise_padding(padding)
-                dos_left_padding = padding?.l
+        {#if shown.has(`fermi`)}
+          <div class="pane" data-pane="fermi" style={pane_style(`fermi`)}>
+            <FermiSurface
+              {...fermi_props}
+              bind:fermi_data={
+                () => shown_fermi_data,
+                (value) => {
+                  if (sweep) frame_surface = value
+                  else fermi_data = value
+                }
               }
-            }
-            bind:hovered_frequency={
-              () => sync.hovered.dos,
-              (energy) => {
-                sync.hovered.dos = energy
-                link.hovered_energy = energy
+              bind:band_data={
+                () => shown_band_data,
+                (value) => {
+                  if (!sweep) band_data = value
+                }
               }
-            }
-            reference_frequency={reference_energy}
-            padding={{ ...dos_props.padding, ...sync.shared_padding }}
+              show_controls={pane_controls(fermi_props.show_controls)}
+              allow_file_drop={false}
+              fullscreen_toggle={false}
+              wigner_seitz={fermi_props.wigner_seitz ?? Boolean(first_band_struct)}
+              selected_spins={link.selected_spins}
+              previewing={link.previewing}
+              bind:color_property={link.color_property}
+              bind:mu={link.mu}
+              bind:selected_bands={link.selected_bands}
+              k_marker={link.path.hovered_k_point}
+              k_path={link.k_path}
+              on_point_hover={chain_callbacks(link.fermi_hover, fermi_props.on_point_hover)}
+            />
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if show_scenes && show_lower}
+      <SplitPane
+        orientation="vertical"
+        bind:ratio={row_ratio}
+        aria-label="Resize 3D scenes and the plots below"
+      />
+    {/if}
+
+    {#if show_lower}
+      <div
+        class={[`row lower`, lower_split ? `horizontal` : `single`]}
+        style={show_scenes ? undefined : top_row_style}
+      >
+        {#if show_trends && sweep && series}
+          <div class="pane" data-pane="trends" style={pane_style(`trends`)}>
+            <SweepTrends
+              {...trends_props}
+              {sweep}
+              frame_of={frames.frame}
+              series_id={series.id}
+              frame_idx={frame_index}
+              bind:descriptor
+              on_frame_select={select_frame}
+              show_controls={pane_controls(trends_props.show_controls)}
+              fullscreen_toggle={false}
+            />
+          </div>
+        {/if}
+        {#if lower_split}
+          <SplitPane
+            bind:ratio={trends_ratio}
+            aria-label="Resize sweep descriptors and spectra"
           />
-        </div>
-      {/if}
-    </div>
-  {/if}
+        {/if}
+        {#if show_spectra}
+          <div
+            class={[
+              `row spectra`,
+              spectra_split ? (spectra_side ? `side` : `stacked`) : `single`,
+            ]}
+            bind:clientWidth={spectra_width}
+          >
+            {#if shown.has(`bands`)}
+              <div class="pane" data-pane="bands" style={pane_style(`bands`)}>
+                <Bands
+                  {...bands_props}
+                  band_structs={shown_band_structs}
+                  bind:units
+                  fermi_level={sync.fermi_level}
+                  show_controls={pane_controls(bands_props.show_controls)}
+                  fullscreen_toggle={false}
+                  padding={{
+                    r: spectra_side ? (dos_left_padding ?? 20) : 5,
+                    ...bands_props.padding,
+                    ...sync.shared_padding,
+                  }}
+                  y_axis={sync.y_axes[0]}
+                  bind:view={sync.views[0]}
+                  bind:resolved_padding={() => undefined, sync.raise_padding}
+                  bind:hovered_frequency={sync.hovered.bands}
+                  reference_frequency={reference_energy}
+                  line_kwargs={link.line_kwargs}
+                  bind:band_spin_mode={link.band_spin_mode}
+                  bind:x_positions={link.x_positions}
+                  highlighted_band_index={link.highlighted_band}
+                  highlighted_qpoint_index={link.path.active_qpoint}
+                  highlighted_qpoint_range={link.path.highlighted_qpoint_range}
+                  hover_config={{ ...LINK_HOVER_CONFIG, ...bands_props.hover_config }}
+                  on_point_hover={chain_callbacks(link.band_hover, bands_props.on_point_hover)}
+                  on_plot_click={chain_callbacks(link.band_click, bands_props.on_plot_click)}
+                >
+                  {#snippet children(ctx)}
+                    {@render bands_props.children?.(ctx)}
+                    <BandCrossings
+                      {ctx}
+                      crossings={link.crossings}
+                      bind:node={link.crossings_svg}
+                    />
+                  {/snippet}
+                </Bands>
+              </div>
+            {/if}
+            {#if shown.has(`dos`)}
+              {#if spectra_side}
+                <SplitPane
+                  bind:ratio={spectra_ratio}
+                  min_px={MIN_BANDS_WIDTH}
+                  second_min_px={MIN_DOS_WIDTH}
+                  aria-label="Resize band structure and DOS"
+                />
+              {/if}
+              <div class="pane" data-pane="dos" style={pane_style(`dos`)}>
+                <Dos
+                  {...dos_props}
+                  doses={shown_doses}
+                  bind:units
+                  fermi_level={sync.fermi_level}
+                  show_controls={pane_controls(dos_props.show_controls)}
+                  fullscreen_toggle={false}
+                  orientation={spectra_side ? `horizontal` : `vertical`}
+                  x_axis={sync.dos_x_axis}
+                  y_axis={sync.y_axes[1]}
+                  bind:view={sync.views[1]}
+                  bind:resolved_padding={
+                    () => undefined,
+                    (padding: Required<Sides> | undefined) => {
+                      sync.raise_padding(padding)
+                      dos_left_padding = padding?.l
+                    }
+                  }
+                  bind:hovered_frequency={
+                    () => sync.hovered.dos,
+                    (energy) => {
+                      sync.hovered.dos = energy
+                      link.hovered_energy = energy
+                    }
+                  }
+                  reference_frequency={reference_energy}
+                  padding={{ ...dos_props.padding, ...sync.shared_padding }}
+                />
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
 
   {#if loading}
     <TaskStatus overlay spinner label="Loading file..." />
@@ -476,8 +773,9 @@
      rows and panes split at --split-pane-size, which each SplitPane sets on its parent. */
   .electronic-structure {
     position: relative;
-    display: grid;
-    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    container-type: inline-size;
     width: var(--electronic-width, 100%);
     height: var(--electronic-height, 500px);
     border-radius: var(--electronic-border-radius, 0);
@@ -490,7 +788,9 @@
     --scatter-min-height: 0;
     &.two-rows {
       height: var(--electronic-height, 860px);
-      grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
+      > .panes {
+        grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
+      }
     }
     &.dragover {
       background: var(--electronic-dragover-bg, var(--dragover-bg));
@@ -503,6 +803,13 @@
       background: var(--electronic-bg-fullscreen, var(--electronic-bg, var(--struct-bg)));
     }
   }
+  .panes {
+    position: relative;
+    display: grid;
+    flex: 1;
+    min-height: 0;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  }
   .row {
     position: relative;
     display: grid;
@@ -514,6 +821,9 @@
     }
     &.vertical {
       grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
+    }
+    &.lower.horizontal {
+      grid-template-columns: minmax(0, var(--split-pane-size, 40%)) minmax(0, 1fr);
     }
     &.side {
       grid-template-columns: minmax(0, var(--split-pane-size, 78%)) minmax(0, 1fr);
@@ -529,6 +839,23 @@
     min-height: 0;
     > :global(:not(.structure-fullscreen-root)) {
       height: 100%;
+    }
+  }
+  .series-control {
+    display: flex;
+    gap: 0.4em;
+    align-items: center;
+  }
+  .frame-status {
+    display: flex;
+    gap: 0.5em;
+    align-items: baseline;
+    white-space: nowrap;
+    small {
+      color: var(--text-muted, currentColor);
+    }
+    .unstable {
+      color: var(--warning-color, darkorange);
     }
   }
 </style>

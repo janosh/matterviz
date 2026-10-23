@@ -7,6 +7,7 @@
   import { is_crystal } from '#lib/structure/validation.js'
   import { to_error } from 'svelte-widgets/utils'
   import raw_bands from '#site/electronic/cu-fcc-bands.json.gz'
+  import { cu_pressure_sweep } from '#site/electronic/cu-pressure-sweep.js'
   import { fermi_surface_files } from '#site/fermi-surfaces.js'
   import { onMount } from 'svelte'
 
@@ -46,6 +47,11 @@
     }
   })
   const doses = $derived(band_data && { 'bands 3–6': band_grid_dos(band_data) })
+  // the same calculation compressed to six volumes, each frame's spectra built when first shown
+  const cu_sweep = $derived(
+    band_data && cu_pressure_sweep({ structure, band_data, band_struct }),
+  )
+  const sweep_panes = [`structure`, `fermi`, `trends`, `bands`, `dos`] as const
 </script>
 
 <svelte:head>
@@ -78,10 +84,37 @@
     bands_props={{
       y_axis: { label: `Energy (eV)`, range: [fermi_energy - 4, fermi_energy + 4] },
     }}
-    dos_props={{ y_axis: { range: [fermi_energy - 4, fermi_energy + 4] } }}
     class="bleed-1400"
     style="--electronic-border-radius: 8px"
   />
 {:else}
   <p>Loading Cu band grid…</p>
+{/if}
+
+<h2>Pressure sweep</h2>
+
+<p class="demo-intro">
+  The same viewer along a sweep: the control bar steps or plays through the frames, every pane
+  follows, and the descriptors pane plots a per-frame value against pressure (pick the
+  descriptor in its header, click a point to jump there). Frames bring their structures up
+  front and their band grid, bands and DOS through a loader when first shown, as a remote
+  source would. This sweep is approximate, for demonstrating the viewer: the Cu calculation
+  above with its cell scaled to each volume, band energies rescaled about E<sub>F</sub> as free electrons
+  (∝ 1/a²) and pressures from a Birch–Murnaghan equation of state (B₀ = 140 GPa, B₀′ = 5). No frame
+  is a calculation at its pressure.
+</p>
+
+{#if cu_sweep && band_data}
+  {@const fermi_energy = band_data.fermi_energy}
+  <ElectronicStructure
+    sweep={cu_sweep.sweep}
+    load_frame={cu_sweep.load_frame}
+    panes={[...sweep_panes]}
+    fermi_props={{ show_controls: `hover` }}
+    bands_props={{
+      y_axis: { label: `Energy (eV)`, range: [fermi_energy - 6, fermi_energy + 6] },
+    }}
+    class="bleed-1400 sweep-demo"
+    style="--electronic-border-radius: 8px; --electronic-height: 900px"
+  />
 {/if}

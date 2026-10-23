@@ -200,4 +200,5 @@ export type SpectrumKind = `ir` | `raman`
 export type SpectrumPresentation = `absorbance` | `transmittance`
 
 // ElectronicStructure's panes: the crystal, its Fermi surface, band structure and DOS
-export type ElectronicPane = `structure` | `fermi` | `bands` | `dos`
+// `trends`: a sweep's descriptors against its axis
+export type ElectronicPane = `structure` | `fermi` | `bands` | `dos` | `trends`

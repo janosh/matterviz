@@ -15,7 +15,7 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import { create_band_path_link } from './band-path-link.svelte'
-  import { create_bands_dos_sync } from './synced-axes.svelte'
+  import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
   import type { BaseBandStructure, DosData, FrequencyUnit, HoveredData } from './types'
 
   let {
@@ -61,9 +61,9 @@
   })
 
   // Layout by container width (not the viewport: embedded at arbitrary sizes in notebooks and
-  // IDEs). Without a zone the 200px DOS column stacks below the bands under 520px; with one,
-  // the three panels sit side by side from 1200px, else the bands span the BZ and DOS (tablet)
-  // or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
+  // IDEs). Without a zone the 200px DOS column stacks below the bands in narrow rows; with
+  // one, the three panels sit side by side from 1200px, else the bands span the BZ and DOS
+  // (tablet) or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
   let clientWidth = $state(1200)
   const layout = $derived(
     structure
@@ -72,7 +72,7 @@
         : clientWidth >= 600
           ? `tablet`
           : `phone`
-      : clientWidth >= 520
+      : clientWidth >= MIN_SIDE_BY_SIDE_WIDTH
         ? `side`
         : `stacked`,
   )

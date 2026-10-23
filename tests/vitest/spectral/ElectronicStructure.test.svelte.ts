@@ -3,7 +3,11 @@ import type FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type Bands from '#lib/spectral/Bands.svelte'
 import type Dos from '#lib/spectral/Dos.svelte'
+import type { Matrix3x3 } from '#lib/math.js'
+import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
+import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
+import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
 import type { BaseBandStructure, ElectronicDos, ElectronicPane } from '#lib/spectral/types.js'
 import type { Site } from '#lib/structure/index.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
@@ -11,7 +15,12 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 import { Vector3 } from 'three/webgpu'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { create_drop_event, mock_parse_worker } from '../setup'
-import { IDENTITY_MATRIX3, make_bxsf, make_crystal } from '../test-fixtures'
+import {
+  IDENTITY_MATRIX3,
+  make_bxsf,
+  make_crystal,
+  read_binary_test_file,
+} from '../test-fixtures'
 
 // The 3D scenes' props and orbit controls (no renderer in happy-dom): each stub joins the
 // host's orbit link with real controls, as its SceneCamera would
@@ -52,6 +61,7 @@ const viewers = vi.hoisted(() => ({
   fermi: null as Partial<ComponentProps<typeof FermiSurface>> | null,
   bands: null as Partial<ComponentProps<typeof Bands>> | null,
   dos: null as Partial<ComponentProps<typeof Dos>> | null,
+  trends: null as Partial<ComponentProps<typeof SweepTrends>> | null,
 }))
 vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, async (original) => {
   const { default: Component } = await original<{ default: typeof FermiSurface }>()
@@ -71,6 +81,15 @@ vi.mock(`#lib/spectral/Bands.svelte`, async (original) => {
     },
   }
 })
+vi.mock(`#lib/spectral/SweepTrends.svelte`, async (original) => {
+  const { default: Component } = await original<{ default: typeof SweepTrends }>()
+  return {
+    default: (...[anchor, props]: Parameters<typeof SweepTrends>) => {
+      viewers.trends = props
+      return Component(anchor, props)
+    },
+  }
+})
 vi.mock(`#lib/spectral/Dos.svelte`, async (original) => {
   const { default: Component } = await original<{ default: typeof Dos }>()
   return {
@@ -81,7 +100,8 @@ vi.mock(`#lib/spectral/Dos.svelte`, async (original) => {
   }
 })
 
-const structure = make_crystal(3.6, [[`Cu`, [0, 0, 0]]])
+// a_i · b_j = 2π δ_ij with the band grid's identity k_lattice: one Cartesian frame
+const structure = make_crystal(2 * Math.PI, [[`Cu`, [0, 0, 0]]])
 // one band on a 3³ grid peaking at its centre, above E_F = 7
 const band_data: BandGridData = {
   energies: [
@@ -129,7 +149,7 @@ beforeEach(async () => {
 afterEach(() => {
   for (const component of mounted.splice(0)) void unmount(component)
   for (const controls of Object.values(scenes.controls)) controls?.dispose()
-  Object.assign(viewers, { fermi: null, bands: null, dos: null })
+  Object.assign(viewers, { fermi: null, bands: null, dos: null, trends: null })
   scenes.props = {}
   scenes.controls = {}
   Reflect.deleteProperty(navigator, `gpu`)
@@ -162,29 +182,43 @@ const all_data = {
   band_structs: { Cu: band_struct },
   doses: { Cu: dos },
 }
+// the viewer's measured width: the DOS sits beside the bands from 520px, else below
+const set_width = (width: number) =>
+  vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
+const WIDTHS = [
+  [800, true],
+  [400, false],
+] as const
 
-test(`one viewer: one control row and fullscreen button over 3D scenes above spectra`, () => {
-  const root = mount_host({ ...all_data, class: `caller`, layout: `vertical` })
-  expect(root.getAttribute(`role`)).toBe(`group`)
-  expect([...root.classList]).toEqual(expect.arrayContaining([`caller`, `two-rows`]))
-  // the panes' own fullscreen toggles are off: the viewer's row holds the only one
-  expect(count(root, `.fullscreen-btn`)).toBe(1)
-  expect(root.querySelector(`:scope > .control-buttons .fullscreen-btn`)).not.toBeNull()
-  expect(root.querySelector(`:scope > .row.scenes`)?.classList).toContain(`vertical`)
-  // the DOS sits beside the bands from 520px of row width, else below
-  const spectra = root.querySelector<HTMLElement>(`:scope > .row.spectra`)
-  const side = (spectra?.clientWidth ?? 0) >= 520
-  expect(spectra?.classList).toContain(side ? `side` : `stacked`)
-  // beside the bands, the DOS resizes at a divider of its own
-  expect(count(root, `.spectra > .pane-divider`)).toBe(side ? 1 : 0)
-  // a divider between the rows and one between the scenes
-  expect(count(root, `:scope > .pane-divider`)).toBe(1)
-  expect(count(root, `.scenes > .pane-divider`)).toBe(1)
-  expect(count(root, `.pane`)).toBe(4)
-  // the band structure's k-path runs through the Wigner-Seitz zone of the Fermi surface
-  expect(viewers.fermi?.wigner_seitz).toBe(true)
-  expect(viewers.fermi?.k_path).toMatchObject({ path: { points: expect.any(Array) } })
-})
+test.each(WIDTHS)(
+  `one viewer %dpx wide: one control row over scenes above spectra`,
+  (width, side) => {
+    set_width(width)
+    const root = mount_host({ ...all_data, class: `caller`, layout: `vertical` })
+    expect(root.getAttribute(`role`)).toBe(`group`)
+    expect([...root.classList]).toEqual(expect.arrayContaining([`caller`, `two-rows`]))
+    // the panes' own fullscreen toggles are off: the viewer's row holds the only one
+    expect(count(root, `.fullscreen-btn`)).toBe(1)
+    expect(
+      root.querySelector(`:scope > .panes > .control-buttons .fullscreen-btn`),
+    ).not.toBeNull()
+    expect(root.querySelector(`:scope > .panes > .row.scenes`)?.classList).toContain(
+      `vertical`,
+    )
+    expect(
+      root.querySelector(`:scope > .panes > .row.lower > .row.spectra`)?.classList,
+    ).toContain(side ? `side` : `stacked`)
+    // beside the bands, the DOS resizes at a divider of its own
+    expect(count(root, `.spectra > .pane-divider`)).toBe(side ? 1 : 0)
+    // a divider between the rows and one between the scenes
+    expect(count(root, `:scope > .panes > .pane-divider`)).toBe(1)
+    expect(count(root, `.scenes > .pane-divider`)).toBe(1)
+    expect(count(root, `.pane`)).toBe(4)
+    // the band structure's k-path runs through the Wigner-Seitz zone of the Fermi surface
+    expect(viewers.fermi?.wigner_seitz).toBe(true)
+    expect(viewers.fermi?.k_path).toMatchObject({ path: { points: expect.any(Array) } })
+  },
+)
 
 // oxfmt-ignore
 test.each<[string, Partial<typeof all_data>, ElectronicPane[]]>([
@@ -250,30 +284,42 @@ test(`orbiting either scene turns the other until the link button unlinks them`,
   expect(view_dir(scenes.controls.fermi).distanceTo(direction)).toBeLessThan(1e-12)
 })
 
-test(`hovering the DOS previews the Fermi surface at that energy`, () => {
-  mount_host(all_data)
+// without a band grid (none, or a meshed surface) there is no other energy's surface to show
+test.each([true, false])(`hovering the DOS previews the Fermi surface (grid: %s)`, (grid) => {
+  mount_host({ ...all_data, band_data: grid ? band_data : undefined, panes: [`fermi`, `dos`] })
   expect(viewers.fermi?.mu).toBe(0)
   if (!viewers.dos) throw new Error(`no DOS`)
   viewers.dos.hovered_frequency = 7.5 // the DOS writes its hovered energy through the binding
   flushSync()
-  expect(viewers.fermi?.mu).toBe(0.5)
-  expect(viewers.fermi?.previewing).toBe(true)
+  expect(viewers.fermi?.mu).toBe(grid ? 0.5 : 0)
+  expect(viewers.fermi?.previewing).toBe(grid)
   viewers.dos.hovered_frequency = null
   flushSync()
   expect(viewers.fermi?.mu).toBe(0)
+  expect(viewers.fermi?.previewing).toBe(false)
 })
 
-test(`beside the DOS, the bands mirror its left padding, centring the divider in the gap`, () => {
-  const root = mount_host(all_data)
-  // side by side needs a 520px row; happy-dom's measured width decides which layout this is
-  const side = root.querySelector(`.spectra`)?.classList.contains(`side`)
-  if (!viewers.dos || !viewers.bands) throw new Error(`no spectra`)
-  viewers.dos.resolved_padding = { t: 20, r: 5, b: 50, l: 37 } // the DOS's settled padding
-  flushSync()
-  expect(viewers.bands.padding?.r).toBe(side ? 37 : 5)
-})
+test.each(WIDTHS)(
+  `%dpx wide, the bands mirror the DOS's left padding beside it`,
+  (width, side) => {
+    set_width(width)
+    mount_host(all_data)
+    if (!viewers.dos || !viewers.bands) throw new Error(`no spectra`)
+    viewers.dos.resolved_padding = { t: 20, r: 5, b: 50, l: 37 } // the DOS's settled padding
+    flushSync()
+    expect(viewers.bands.padding?.r).toBe(side ? 37 : 5)
+  },
+)
 
-const POSCAR = `Si\n1.0\n5.43 0 0\n0 5.43 0\n0 0 5.43\nSi\n1\nDirect\n0 0 0\n`
+// a POSCAR of lattice `rows` (Å), one Si atom
+const poscar = (rows: number[][]) =>
+  `Si\n1.0\n${rows.map((row) => row.join(` `)).join(`\n`)}\nSi\n1\nDirect\n0 0 0\n`
+// a 2x2x2 supercell of the grid's cell: still its frame
+const POSCAR = poscar([
+  [4 * Math.PI, 0, 0],
+  [0, 4 * Math.PI, 0],
+  [0, 0, 4 * Math.PI],
+])
 test(`one drop zone fills the panes each file has data for and rejects the rest`, async () => {
   const on_file_load = vi.fn()
   const on_error = vi.fn()
@@ -328,4 +374,347 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
   expect(props.error_msg).toBe(
     `other.json is json browser data, not a structure, Fermi surface, band structure or DOS`,
   )
+})
+
+// drops onto an empty viewer, resolving with what on_file_load or on_error received
+const drop_into_empty = async (file: File) => {
+  const [on_file_load, on_error] = [vi.fn(), vi.fn()]
+  // every key the drop may fill is present, so the viewer's writes reach these props
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    structure: undefined,
+    band_structs: {},
+    doses: {},
+    on_file_load,
+    on_error,
+  })
+  mount_host(props).dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() =>
+    expect(on_file_load.mock.calls.length + on_error.mock.calls.length).toBe(1),
+  )
+  expect(on_error).not.toHaveBeenCalled()
+  return { props, loaded: on_file_load.mock.calls[0][0] }
+}
+
+test(`a { band_structure, dos } JSON (BandsAndDos' format) fills both spectra`, async () => {
+  const json = JSON.stringify({ band_structure: band_struct, dos })
+  const { props, loaded } = await drop_into_empty(new File([json], `bands_dos.json`))
+  expect(loaded).toEqual({ filename: `bands_dos.json`, panes: [`bands`, `dos`] })
+  expect(props.band_structs?.[`bands_dos.json`]?.bands).toEqual(band_struct.bands)
+  expect(props.doses?.[`bands_dos.json`]?.densities).toEqual(dos.densities)
+})
+
+test(`a vaspout.h5 trajectory fills the structure from its final frame and its DOS`, async () => {
+  const bytes = read_binary_test_file(
+    `vaspout-si-static-scf.h5`,
+    `tests/vitest/fixtures/vasp-hdf5`,
+  )
+  const { props, loaded } = await drop_into_empty(new File([bytes], `vaspout.h5`))
+  expect(loaded).toEqual({ filename: `vaspout.h5`, panes: [`structure`, `dos`] })
+  expect(
+    new Set(props.structure?.sites.map(({ species }: Site) => species[0].element)),
+  ).toEqual(new Set([`Si`]))
+  expect(props.doses?.[`vaspout.h5`]?.densities).toHaveLength(25)
+  expect(props.band_structs).toEqual({}) // trajectories carry no bands
+})
+
+// the grid's cell turned by `angle` about z
+const turned = (angle: number): Matrix3x3 => {
+  const [cos, sin] = [Math.cos(angle), Math.sin(angle)].map((val) => 2 * Math.PI * val)
+  return [
+    [cos, sin, 0],
+    [-sin, cos, 0],
+    [0, 0, 2 * Math.PI],
+  ]
+}
+// oxfmt-ignore
+test.each([
+  [`the grid's cell`, true, make_crystal(2 * Math.PI, [[`Cu`, [0, 0, 0]]])],
+  [`a supercell of it`, true, make_crystal(6 * Math.PI, [[`Cu`, [0, 0, 0]]])],
+  [`a cell it is a supercell of`, true, make_crystal(Math.PI, [[`Cu`, [0, 0, 0]]])],
+  [`its cell turned 30° about z`, false, make_crystal(turned(Math.PI / 6), [[`Cu`, [0, 0, 0]]])],
+  [`its cell turned 0.1° about z`, false, make_crystal(turned(Math.PI / 1800), [[`Cu`, [0, 0, 0]]])],
+])(`a structure of %s shares the band grid's frame: %s`, (_desc, shared, crystal) => {
+  const on_error = vi.fn()
+  const root = mount_host({ structure: crystal, band_data, on_error })
+  expect(on_error).toHaveBeenCalledTimes(shared ? 0 : 1)
+  if (!shared) expect(on_error.mock.calls[0][0].error_msg).toContain(`different Cartesian frames`)
+  const toggle = root.querySelector<HTMLButtonElement>(`.sync-rotation-toggle`)
+  expect([toggle?.disabled, toggle?.getAttribute(`aria-pressed`)]).toEqual([!shared, String(shared)])
+  const before = view_dir(scenes.controls.fermi)
+  const direction = new Vector3(-2, 1, 3).normalize()
+  orbit(scenes.controls.structure, direction)
+  const follower = view_dir(scenes.controls.fermi)
+  if (shared) expect(follower.distanceTo(direction)).toBeLessThan(1e-12)
+  else expect(follower.toArray()).toEqual(before.toArray())
+})
+
+test(`a dropped POSCAR turned out of the band grid's frame is reported`, async () => {
+  const on_error = vi.fn()
+  const root = mount_host({ structure, band_data, on_error })
+  const file = new File([poscar(turned(Math.PI / 6))], `POSCAR`)
+  root.dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
+  expect(on_error.mock.calls[0][0].error_msg).toContain(`different Cartesian frames`)
+  expect(root.querySelector<HTMLButtonElement>(`.sync-rotation-toggle`)?.disabled).toBe(true)
+})
+
+// The structure's viewport scopes it out of the link: its rotation sliders turn the atoms out
+// of the shared frame, multi-view panes look along fixed axes
+test.each<[string, Partial<ComponentProps<typeof Structure>>]>([
+  [`turned by the rotation sliders`, { scene_props: { rotation: [0.5, 0, 0] } }],
+  [`in multi-view panes`, { multi_view: true }],
+])(`a structure %s stays out of the rotation link`, (_desc, structure_props) => {
+  mount_host({ structure, band_data, structure_props })
+  const before = view_dir(scenes.controls.structure)
+  orbit(scenes.controls.fermi, new Vector3(1, 2, -1).normalize())
+  expect(view_dir(scenes.controls.structure).toArray()).toEqual(before.toArray())
+})
+
+test.each<[ElectronicPane[], string]>([
+  [[], `at least one pane`],
+  [[`structure`, `trends`], `trends pane needs a sweep`],
+])(`the pane list %j throws without its data`, (panes, message) => {
+  expect(() => mount_host({ ...all_data, panes })).toThrow(message)
+})
+
+// === sweeps ===
+// Two series along pressure: each frame's own DOS (density 1 or 2 at E_F) tells them apart
+const sweep_frame = (value: number, density: number): SweepFrame => ({
+  value,
+  structure,
+  band_data,
+  band_structs: { Cu: band_struct },
+  doses: { total: { ...dos, densities: [0, density, density, 0] } },
+  scalars: { tc: value / 10 },
+})
+const make_sweep = (): Sweep => ({
+  axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
+  series: [
+    { id: `fcc`, frames: [sweep_frame(0, 1), sweep_frame(50, 2), sweep_frame(100, 3)] },
+    { id: `bcc`, label: `bcc`, frames: [sweep_frame(100, 4), sweep_frame(150, 5)] },
+  ],
+  descriptors: [
+    { key: `tc`, label: `Tc`, unit: `K` },
+    { key: `n_ef`, label: `N(E_F)`, compute: `fermi_dos` },
+  ],
+})
+const ALL_PANES: ElectronicPane[] = [`structure`, `fermi`, `trends`, `bands`, `dos`]
+const shown_density = () => viewers.dos?.doses?.total?.densities[1]
+const status = (root: Element) => root.querySelector(`.frame-status`)?.textContent?.trim()
+
+test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, () => {
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep: make_sweep(),
+    frame_idx: 0,
+    series_id: undefined,
+    panes: ALL_PANES,
+    // the props a sweep replaces: never shown while it is set
+    doses: { total: { ...dos, densities: [9, 9, 9, 9] } },
+  })
+  const root = mount_host(props)
+  expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`])
+  expect(status(root)).toBe(`0 GPa`)
+  expect(shown_density()).toBe(1)
+  expect(viewers.bands?.band_structs).toEqual({ Cu: band_struct })
+  expect(viewers.fermi?.band_data).toEqual(band_data)
+  expect(viewers.trends).toMatchObject({ series_id: `fcc`, frame_idx: 0 })
+
+  root.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowRight`, bubbles: true }))
+  flushSync()
+  expect(props.frame_idx).toBe(1)
+  expect(status(root)).toBe(`50 GPa`)
+  expect(shown_density()).toBe(2)
+  expect(viewers.trends?.frame_idx).toBe(1)
+
+  // the series select opens the new series at the frame nearest the shown value (100 GPa)
+  props.frame_idx = 2
+  flushSync()
+  const select = root.querySelector<HTMLSelectElement>(`.series-control select`)
+  if (!select) throw new Error(`no series select`)
+  select.value = `bcc`
+  select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  flushSync()
+  expect([props.series_id, props.frame_idx]).toEqual([`bcc`, 0])
+  expect(status(root)).toBe(`100 GPa`)
+  expect(shown_density()).toBe(4)
+  props.frame_idx = 9
+  flushSync()
+  expect(props.frame_idx).toBe(1) // clamped to the 2-frame series, back through the binding
+  expect(status(root)).toBe(`150 GPa`)
+})
+
+test(`clicking a trends point selects its series and frame`, () => {
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep: make_sweep(),
+    frame_idx: 0,
+    series_id: undefined,
+    panes: ALL_PANES,
+  })
+  const root = mount_host(props)
+  viewers.trends?.on_frame_select?.(`bcc`, 0)
+  flushSync()
+  expect([props.series_id, props.frame_idx]).toEqual([`bcc`, 0])
+  expect(status(root)).toBe(`100 GPa`)
+})
+
+test(`load_frame fetches the shown frame and its neighbours, merged into the panes`, async () => {
+  const sweep = make_sweep()
+  // only structures and values up front, the spectra come from the loader
+  for (const series of sweep.series) {
+    series.frames = series.frames.map(({ value, structure: crystal }) => ({
+      value,
+      structure: crystal,
+    }))
+  }
+  const load_frame = vi.fn(async (series_id: string, frame_idx: number) => ({
+    doses: { total: { ...dos, densities: [0, 10 + frame_idx, 10 + frame_idx, 0] } },
+    label: `${series_id} ${frame_idx}`,
+  }))
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    load_frame,
+    series_id: undefined,
+    frame_idx: 2,
+    panes: ALL_PANES,
+  })
+  const root = mount_host(props)
+  // the last frame's next is the first, where playback wraps
+  expect(load_frame.mock.calls).toEqual([
+    [`fcc`, 2],
+    [`fcc`, 0],
+    [`fcc`, 1],
+  ])
+  await vi.waitFor(() => expect(shown_density()).toBe(12))
+  expect(status(root)).toBe(`fcc 2`)
+  props.frame_idx = 1
+  flushSync()
+  expect(load_frame).toHaveBeenCalledTimes(3) // all cached
+  await vi.waitFor(() => expect(shown_density()).toBe(11))
+  props.series_id = `bcc`
+  props.frame_idx = 0
+  flushSync()
+  expect(load_frame.mock.calls.slice(3)).toEqual([
+    [`bcc`, 0],
+    [`bcc`, 1],
+  ])
+})
+
+test(`frames out of the band grid's frame are reported once per series`, () => {
+  const on_error = vi.fn()
+  // each frame its own (equally turned) structure, as a sweep's scaled cells are
+  const off_frame = () => make_crystal(turned(Math.PI / 6), [[`Cu`, [0, 0, 0]]])
+  const sweep = make_sweep()
+  for (const series of sweep.series) {
+    series.frames = series.frames.map((frame) => ({ ...frame, structure: off_frame() }))
+  }
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    series_id: undefined,
+    frame_idx: 0,
+    on_error,
+  })
+  mount_host(props)
+  props.frame_idx = 1
+  flushSync()
+  props.frame_idx = 2
+  flushSync()
+  expect(on_error).toHaveBeenCalledOnce()
+  props.series_id = `bcc`
+  flushSync()
+  expect(on_error).toHaveBeenCalledTimes(2)
+})
+
+test(`a lazy sweep's default panes are those any frame has, so loads only add panes`, async () => {
+  const sweep = make_sweep()
+  sweep.series[0].frames = sweep.series[0].frames.map(({ value }) => ({ value, structure }))
+  // only frame 0 brings a DOS
+  const load_frame = vi.fn(async (_series_id: string, frame_idx: number) =>
+    frame_idx === 0 ? { doses: { total: dos } } : {},
+  )
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    load_frame,
+    frame_idx: 0,
+  })
+  const root = mount_host(props)
+  expect(shown_panes(root)).toEqual([`structure`, `trends`])
+  await vi.waitFor(() => expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`]))
+  props.frame_idx = 1 // a frame without DOS keeps the pane (empty) instead of collapsing it
+  flushSync()
+  await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 2))
+  expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`])
+})
+
+test(`a dropped sweep JSON replaces the viewer's data, which then takes only sweeps`, async () => {
+  const on_error = vi.fn()
+  const on_file_load = vi.fn()
+  // the caller's loader belongs to the caller's sweep, never to a dropped one
+  const load_frame = vi.fn(async () => ({}))
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    structure,
+    sweep: undefined,
+    load_frame,
+    frame_idx: 0,
+    error_msg: undefined,
+    on_error,
+    on_file_load,
+  })
+  const root = mount_host(props)
+  const sweep_json = {
+    axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
+    series: [{ id: `fcc`, frames: [{ value: 0 }, { value: 20, doses: { total: dos } }] }],
+    descriptors: [{ key: `n_ef`, label: `N(E_F)`, compute: `fermi_dos` }],
+  }
+  const sweep_file = new File([JSON.stringify(sweep_json)], `sweep.json`)
+  root.dispatchEvent(create_drop_event(sweep_file))
+  await vi.waitFor(() => expect(props.sweep?.series[0].frames).toHaveLength(2))
+  flushSync()
+  expect(status(root)).toBe(`0 GPa`)
+  expect(shown_panes(root)).toContain(`trends`)
+  // the panes its frames fill, plus trends as it has descriptors
+  expect(on_file_load).toHaveBeenLastCalledWith({
+    filename: `sweep.json`,
+    panes: [`dos`, `trends`],
+  })
+  expect(load_frame).not.toHaveBeenCalled()
+  // without descriptors no trends: the panes are only those its frames fill
+  const plain_sweep = {
+    axis: sweep_json.axis,
+    series: [{ id: `fcc`, frames: [{ value: 0, structure }] }],
+  }
+  const plain_file = new File([JSON.stringify(plain_sweep)], `plain.json`)
+  root.dispatchEvent(create_drop_event(plain_file))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+  expect(on_file_load).toHaveBeenLastCalledWith({
+    filename: `plain.json`,
+    panes: [`structure`],
+  })
+
+  root.dispatchEvent(create_drop_event(new File([POSCAR], `POSCAR`)))
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
+  expect(props.error_msg).toBe(
+    `POSCAR is no sweep JSON: while a sweep is shown the viewer takes only sweeps`,
+  )
+})
+
+test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, string]>([
+  [
+    `descending frames`,
+    {
+      sweep: { ...make_sweep(), series: [{ id: `a`, frames: [{ value: 2 }, { value: 1 }] }] },
+    },
+    `strictly ascending`,
+  ],
+  [
+    `an unknown series_id`,
+    { sweep: make_sweep(), series_id: `hcp` },
+    `"hcp" is not a series of the sweep (fcc, bcc)`,
+  ],
+  [
+    `a NaN frame_idx`,
+    { sweep: make_sweep(), frame_idx: Number.NaN },
+    `frame_idx must be finite, got NaN`,
+  ],
+])(`a sweep with %s throws, naming what is wrong`, (_desc, props, message) => {
+  expect(() => mount_host(props)).toThrow(message)
 })

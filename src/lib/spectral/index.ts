@@ -20,6 +20,8 @@ export { default as TrajectorySpectrumPlot } from './TrajectorySpectrumPlot.svel
 export * from './parse-phonon-modes'
 export * from './phonon-modes'
 export * from './spectroscopy-collect'
+export * from './sweep'
+export { default as SweepTrends } from './SweepTrends.svelte'
 export * from './thermal'
 export * from './trajectory-spectroscopy'
 export { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
