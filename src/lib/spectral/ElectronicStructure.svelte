@@ -74,7 +74,7 @@
   import { normalize_band_structure, normalize_dos } from './helpers'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
   import { format_axis_value, is_sweep_like, normalize_sweep, validate_sweep } from './sweep'
-  import type { Sweep, SweepFrameLoader } from './sweep'
+  import type { Sweep, SweepFrameLoader, SweepSeries } from './sweep'
   import { create_sweep_frames } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
@@ -354,10 +354,15 @@
     return !integral(overlap) && !integral(matrix_inverse_3x3(overlap))
   })
   // reported anew for each structure or zone (e.g. a dropped file) while the frames differ,
-  // in a sweep once per series (its frames share one calculation's frame)
+  // in a sweep once per series (its frames share one calculation's frame), also when a lazily
+  // loaded frame turns frames_differ off and on again
+  let reported_series: SweepSeries | undefined
   $effect(() => {
     if (!frames_differ) return
-    void (sweep ? series : [shown_structure, k_lattice])
+    if (sweep) {
+      if (series === reported_series) return
+      reported_series = series
+    } else void [shown_structure, k_lattice]
     const message = `The structure's lattice and the Fermi data's k_lattice are in different Cartesian frames (a_i · b_j / 2π is no integer matrix), so the scenes rotate apart`
     untrack(() => report_error(message))
   })

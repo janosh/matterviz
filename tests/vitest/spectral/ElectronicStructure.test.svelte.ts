@@ -599,30 +599,46 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
   ])
 })
 
-test(`frames out of the band grid's frame are reported once per series`, () => {
-  const on_error = vi.fn()
-  // each frame its own (equally turned) structure, as a sweep's scaled cells are
-  const off_frame = () => make_crystal(turned(Math.PI / 6), [[`Cu`, [0, 0, 0]]])
-  const sweep = make_sweep()
-  for (const series of sweep.series) {
-    series.frames = series.frames.map((frame) => ({ ...frame, structure: off_frame() }))
-  }
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep,
-    series_id: undefined,
-    frame_idx: 0,
-    on_error,
-  })
-  mount_host(props)
-  props.frame_idx = 1
-  flushSync()
-  props.frame_idx = 2
-  flushSync()
-  expect(on_error).toHaveBeenCalledOnce()
-  props.series_id = `bcc`
-  flushSync()
-  expect(on_error).toHaveBeenCalledTimes(2)
-})
+// Lazily, a frame whose band grid is still loading has no zone to compare, which must not
+// count as a new mismatch once it arrives
+test.each([false, true])(
+  `frames out of the band grid's frame are reported once per series (lazy: %s)`,
+  async (lazy) => {
+    const on_error = vi.fn()
+    // each frame its own (equally turned) structure, as a sweep's scaled cells are
+    const off_frame = () => make_crystal(turned(Math.PI / 6), [[`Cu`, [0, 0, 0]]])
+    const sweep = make_sweep()
+    for (const series of sweep.series) {
+      series.frames = series.frames.map((frame) =>
+        lazy
+          ? { value: frame.value, structure: off_frame() }
+          : { ...frame, structure: off_frame() },
+      )
+    }
+    const load_frame = lazy ? vi.fn(async () => ({ band_data })) : undefined
+    const props = $state<ComponentProps<typeof ElectronicStructure>>({
+      sweep,
+      load_frame,
+      series_id: undefined,
+      frame_idx: 0,
+      on_error,
+    })
+    mount_host(props)
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
+    // frame 2 is not prefetched from frame 0: its grid loads after the jump
+    props.frame_idx = 2
+    flushSync()
+    if (load_frame) await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 2))
+    props.frame_idx = 1
+    flushSync()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    flushSync()
+    expect(on_error).toHaveBeenCalledOnce()
+    props.series_id = `bcc`
+    flushSync()
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(2))
+  },
+)
 
 test(`a lazy sweep's default panes are those any frame has, so loads only add panes`, async () => {
   const sweep = make_sweep()
