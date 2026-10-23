@@ -563,7 +563,9 @@ describe(`PhaseStabilityMap`, () => {
   test(`swapping a function color scheme repaints the cached rows`, async () => {
     const fills = new Set<string>()
     Object.defineProperty(mock_canvas_context({ setLineDash: vi.fn() }), `fillStyle`, {
-      set: (fill: string) => fills.add(fill),
+      set: (fill: string) => {
+        fills.add(fill)
+      },
     })
     const props = $state({
       diagram: map_diagram,

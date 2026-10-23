@@ -36,7 +36,9 @@ const fake_ctx = () => {
   }
   for (const prop of [`fillStyle`, `strokeStyle`, `lineWidth`, `globalAlpha`]) {
     Object.defineProperty(ctx, prop, {
-      set: (value: unknown) => void calls.push({ op: `set:${prop}`, args: [value] }),
+      set: (value: unknown) => {
+        calls.push({ op: `set:${prop}`, args: [value] })
+      },
     })
   }
   return ctx as unknown as CanvasRenderingContext2D & { calls: Call[] }

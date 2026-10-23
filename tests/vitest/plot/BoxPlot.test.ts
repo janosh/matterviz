@@ -761,7 +761,7 @@ describe(`BoxPlot`, () => {
     const { control } = form_controls(plot)
     const [mean, outliers] = [control(`Show mean`), control(`Show outliers`)]
     if (!(mean instanceof HTMLInputElement && outliers instanceof HTMLInputElement)) {
-      throw new Error(`Show mean/outliers are not checkboxes`)
+      throw new TypeError(`Show mean/outliers are not checkboxes`)
     }
     expect([mean.checked, outliers.checked]).toEqual([false, true])
     const [kde_calls, summary_calls] = [kde_spy, summary_spy].map(

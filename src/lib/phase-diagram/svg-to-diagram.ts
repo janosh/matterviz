@@ -739,7 +739,7 @@ function parse_path_segments(path_str: string): Vec4[] {
   const malformed = (reason: string) =>
     new Error(`Malformed SVG path data "${snippet}": ${reason}`)
 
-  const leftover = path_str.replace(PATH_TOKEN_REGEX, ``).replaceAll(/[\s,]/g, ``)
+  const leftover = path_str.replaceAll(PATH_TOKEN_REGEX, ``).replaceAll(/[\s,]/g, ``)
   if (leftover) throw malformed(`unexpected characters "${leftover.slice(0, 20)}"`)
   const tokens = path_str.match(PATH_TOKEN_REGEX)
   if (!tokens) throw malformed(`no path commands`)

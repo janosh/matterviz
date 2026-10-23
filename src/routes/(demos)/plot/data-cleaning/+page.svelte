@@ -339,7 +339,7 @@
 
   const highlight = (code: string) =>
     sanitize_html(
-      code.replace(SYNTAX_RE, (token, ...groups) => {
+      code.replaceAll(SYNTAX_RE, (token, ...groups) => {
         const [cls] = SYNTAX_RULES[groups.findIndex((group) => group !== undefined)]
         return `<span class="pl-${cls}">${token}</span>`
       }),
