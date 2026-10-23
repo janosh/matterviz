@@ -207,6 +207,18 @@ const same_cell = (transformed: AnyStructure, raw: AnyStructure): boolean => {
   )
 }
 
+// Which periodic copies a displayed structure appends, as base site and lattice shift each:
+// what image site indices mean, so a change renumbers them
+const image_set_key = (structure: AnyStructure | undefined): string =>
+  (structure?.sites ?? [])
+    .flatMap(({ abc, provenance }) => {
+      const base_idx = provenance?.image_of
+      if (base_idx === undefined || !structure) return []
+      const base_abc = structure.sites[base_idx].abc
+      return [`${base_idx}:${abc.map((coord, axis) => Math.round(coord - base_abc[axis]))}`]
+    })
+    .join(` `)
+
 // Per-key change detection for the invalidation effect: true when `value` differs from the
 // value last seen under `key` (never on the first sight). A plain Map on purpose: it is read
 // and written inside the effect it serves.
@@ -506,21 +518,30 @@ export class StructureSession {
     // there aborts the whole flush, dropping the pending clear with it.
     const changed = create_change_tracker()
     let previous_supercell_error: string | undefined
+    let images_before: AnyStructure | undefined
     $effect.pre(() => {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
       const topology_changed = changed(`topology`, this.topology)
-      // Completion settings renumber image sites only while images show and get completed,
-      // so polyhedra sliders otherwise keep the selection and bond edits
+      // Completion and polyhedra settings renumber image sites only while images show and get
+      // completed, and only when they change the set of copies: equal sets (hiding a
+      // non-center element) keep the selection and bond edits. Drags skip images, so the
+      // structure from before the drag stands in meanwhile.
       const completion = inputs.image_atom_completion()
       const completion_key =
         !inputs.show_image_atoms() || completion === `none`
           ? null
           : `${completion} ${this.polyhedra_key}`
+      const [dragging, shown] = [this.dragging_atoms, this.displayed_structure]
+      const displayed = dragging ? images_before : shown
+      const images_renumbered =
+        changed(`image_completion`, completion_key) &&
+        image_set_key(displayed) !== image_set_key(images_before)
+      images_before = displayed
       const transform_changed = [
         changed(`supercell_scaling`, inputs.supercell_scaling()),
         changed(`show_image_atoms`, inputs.show_image_atoms()),
-        changed(`image_completion`, completion_key),
+        images_renumbered,
         changed(`series_key`, inputs.series_key()),
         changed(`cell_type`, inputs.cell_type()),
       ].includes(true)

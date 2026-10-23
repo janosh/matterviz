@@ -65,6 +65,8 @@ describe(`validate_pt_data`, () => {
     [`null phase entry`, { ...base, phases: [null, ...base.phases] }, [`phases[0] must be an object`]],
     [`phase without id`, { ...base, phases: [{ name: `x` }, ...base.phases] }, [`phases[0] needs a non-empty string id`]],
     [`sigma_t string`, with_boundary({ sigma_t: `ab` }), [`boundary 'melting' sigma_t must be an array`]],
+    [`numeric phase name`, { ...base, phases: [{ id: `solid`, name: 7 }, { id: `liquid` }] }, [`phase 'solid' name must be a string`]],
+    [`special point phases string`, with_special({ id: `tp`, type: `triple`, position: [1, 1], phases: `liquid` }), [`special point 'tp' phases must be an array`]],
     [`empty phases`, { ...base, phases: [] }, [`phases must be non-empty`]],
     [`duplicate phase id`, { ...base, phases: [...base.phases, { id: `solid` }] }, [`duplicate phase id 'solid'`]],
     [`duplicate boundary id`, { ...base, boundaries: [melting, melting] }, [`duplicate boundary id 'melting'`]],

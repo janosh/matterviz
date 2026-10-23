@@ -408,6 +408,12 @@ it(`changing the polyhedra options rebuilds the completion copies`, () => {
   expect(session.displayed_structure).toBe(displayed)
   host.selected_sites = [0]
   flushSync()
+  // O is no polyhedron center, so excluding it (as hiding it in the legend does) draws the
+  // same copies and keeps the selection
+  host.polyhedra_options = { excluded_center_elements: [`O`] }
+  flushSync()
+  expect(completion_count()).toBe(24)
+  expect(host.selected_sites).toEqual([0])
   host.polyhedra_options = { excluded_center_elements: [`Ti`] }
   flushSync()
   expect(completion_count()).toBe(0)

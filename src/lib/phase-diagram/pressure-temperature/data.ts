@@ -74,8 +74,26 @@ const drop_nulls = (value: unknown): unknown => {
   )
 }
 
-// Shape problems (wrong container types, non-object entries, missing ids) that would make the
-// detailed checks throw instead of report
+// Optional entry fields the detailed checks and the palette call methods on (name.toLowerCase,
+// sigma.length, phases.forEach), by list: a wrong type would throw instead of report
+const OPTIONAL_FIELDS = {
+  phases: {
+    owner: `phase`,
+    fields: { name: `string`, color: `string`, description: `string` },
+  },
+  boundaries: {
+    owner: `boundary`,
+    fields: { sigma_t: `array`, sigma_p: `array`, label: `string` },
+  },
+  regions: { owner: `region`, fields: {} },
+  special_points: { owner: `special point`, fields: { phases: `array`, label: `string` } },
+} as const satisfies Record<
+  string,
+  { owner: string; fields: Record<string, `string` | `array`> }
+>
+
+// Shape problems (wrong container types, non-object entries, missing ids, mistyped optional
+// fields) that would make the detailed checks throw instead of report
 function shape_errors(data: unknown): string[] {
   if (!is_object(data)) return [`data must be an object`]
   const errors: string[] = []
@@ -90,10 +108,15 @@ function shape_errors(data: unknown): string[] {
       if (!is_object(entry)) errors.push(`${key}[${idx}] must be an object`)
       else if (key !== `regions` && !(typeof entry.id === `string` && entry.id)) {
         errors.push(`${key}[${idx}] needs a non-empty string id`)
-      } else if (key === `boundaries`) {
-        for (const sigma_key of [`sigma_t`, `sigma_p`]) {
-          if (entry[sigma_key] !== undefined && !Array.isArray(entry[sigma_key])) {
-            errors.push(`boundary '${entry.id}' ${sigma_key} must be an array`)
+      } else {
+        const { owner, fields } = OPTIONAL_FIELDS[key]
+        for (const [field, kind] of Object.entries(fields)) {
+          const value = entry[field]
+          if (value === undefined) continue
+          if (kind === `array` ? !Array.isArray(value) : typeof value !== `string`) {
+            errors.push(
+              `${owner} '${entry.id}' ${field} must be ${kind === `array` ? `an array` : `a string`}`,
+            )
           }
         }
       }
