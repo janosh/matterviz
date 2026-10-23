@@ -444,10 +444,15 @@ test.describe(`Structure Component Tests`, () => {
       // Reset lives in the controls pane and is hidden at the default camera
       await expect(page.locator(`#test-structure button.reset-camera`)).toBeHidden()
       const camera_positions = async () =>
-        (await events_named(page, `on_camera_move`)).map(({ data }) =>
-          JSON.stringify((data as { camera_position?: number[] }).camera_position),
+        (await events_named(page, `on_camera_move`)).map(
+          ({ data }) => (data as { camera_position?: number[] }).camera_position ?? [],
         )
-      let previous: string | undefined
+      // A pan re-derives the position from its target, which can land 1 ulp off (seen on CI:
+      // y 12.570196065070439 vs 12.57019606507044); an orbit moves it by whole Å
+      const same_position = (pos_a: number[] = [], pos_b: number[] = []) =>
+        pos_a.length === pos_b.length &&
+        pos_a.every((coord, idx) => Math.abs(coord - pos_b[idx]) <= 1e-9 * Math.abs(coord))
+      let previous: number[] | undefined
       for (const [modifier, orbits] of [
         [`Shift`, false],
         [`Meta`, true],
@@ -461,8 +466,12 @@ test.describe(`Structure Component Tests`, () => {
         await expect.poll(async () => (await camera_positions()).length).toBeGreaterThan(0)
         const positions = await camera_positions()
         const label = `${modifier ?? `plain`} drag`
-        if (orbits) expect(positions.at(-1), `${label} orbits`).not.toBe(previous)
-        else expect(new Set(positions).size, `${label} keeps the camera put`).toBe(1)
+        if (orbits)
+          expect(same_position(positions.at(-1), previous), `${label} orbits`).toBe(false)
+        else {
+          const moved = positions.filter((pos) => !same_position(pos, positions[0]))
+          expect(moved, `${label} keeps the camera put`).toEqual([])
+        }
         previous = positions.at(-1)
       }
     },
