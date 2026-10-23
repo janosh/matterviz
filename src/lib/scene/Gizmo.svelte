@@ -11,11 +11,12 @@
   import * as THREE from 'three/webgpu'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { create_fly_to, DEFAULT_FLY_TO_DURATION_MS } from './fly-to'
+  import { viewer_engaged } from './wheel-zoom.svelte'
   import type { GizmoAxisKey, GizmoAxisStyle, GizmoOptions } from './gizmo'
   import { GIZMO_AXES, GIZMO_DEFAULT_STYLES, GIZMO_LAYOUT, gizmo_rect } from './gizmo'
 
   let {
-    visible = true,
+    visible: visible_prop,
     placement,
     size,
     offset,
@@ -30,6 +31,10 @@
     on_change?: () => void
     on_end?: () => void
   } = $props()
+
+  // Shown while the enclosing viewer is hovered or focused, unless `visible` says otherwise
+  const engaged = viewer_engaged()
+  const visible = $derived(visible_prop ?? engaged())
 
   const { autoRenderTask, camera, dom, invalidate, renderer } =
     useThrelte<THREE.WebGPURenderer>()

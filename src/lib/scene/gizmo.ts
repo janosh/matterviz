@@ -21,8 +21,8 @@ export type GizmoAxisStyle = {
 type GizmoAnchor = `top-left` | `top-right` | `bottom-left` | `bottom-right` | `fill`
 
 export type GizmoOptions = {
-  // Hide without unmounting. Callers that reveal the gizmo on hover (Structure) must keep it
-  // mounted, since remounting the surrounding OrbitControls resets the camera rotation.
+  // Hide without unmounting (remounting the surrounding OrbitControls resets the camera
+  // rotation). Defaults to showing only while the enclosing viewer is hovered or focused.
   visible?: boolean
   placement?: GizmoAnchor
   size?: number // edge length in CSS px of the square the gizmo renders into

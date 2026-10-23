@@ -336,8 +336,10 @@
             enableZoom={false}
             enablePan={false}
           >
+            <!-- the wrapper's hover-visible class already hides it off hover -->
             <Gizmo
               {...gizmo_props}
+              visible={gizmo_props.visible !== false}
               placement="fill"
               on_start={() => (gizmo_active = true)}
               on_change={sync_gizmo_to_camera}
