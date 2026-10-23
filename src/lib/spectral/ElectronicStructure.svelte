@@ -210,12 +210,16 @@
 
   // === sweep ===
   // The shown series and frame. While a sweep is set its frame's data feeds every pane.
+  // `picked` is the series the viewer itself selected (series menu, trends click): a new sweep
+  // without it opens at its first series, while a caller's series_id must name one.
+  let picked: { sweep: Sweep; id: string } | undefined
   const series = $derived.by(() => {
     if (!sweep) return undefined
     validate_sweep(sweep)
     if (series_id === undefined) return sweep.series[0]
     const match = sweep.series.find(({ id }) => id === series_id)
     if (match) return match
+    if (picked && picked.sweep !== sweep && picked.id === series_id) return sweep.series[0]
     const ids = sweep.series.map(({ id }) => id).join(`, `)
     throw new Error(`series_id "${series_id}" is not a series of the sweep (${ids})`)
   })
@@ -225,12 +229,14 @@
       throw new RangeError(`frame_idx must be finite, got ${frame_idx}`)
     return clamp(Math.round(frame_idx), 0, series.frames.length - 1)
   })
-  // the bound index follows the clamped one shown (e.g. after switching to a shorter series)
+  // the bound series and index follow those shown (a shorter series clamps the index)
   $effect(() => {
+    if (series && series_id !== undefined && series_id !== series.id) series_id = series.id
     if (series && frame_idx !== frame_index) frame_idx = frame_index
   })
-  // a dropped sweep carries its frames' data, so the caller's loader (for its sweep) is off
-  let active_load_frame = $derived(load_frame)
+  // a dropped sweep carries its frames' data, so the caller's loader (for its sweeps) is off
+  let dropped_sweep = $state.raw<Sweep>()
+  const active_load_frame = $derived(sweep && sweep === dropped_sweep ? undefined : load_frame)
   const frames = create_sweep_frames({
     sweep: () => sweep,
     load_frame: () => active_load_frame,
@@ -273,6 +279,7 @@
   // the hover-revealed control bar overlays the top row, whose controls sit below it
   const bar_offset = $derived(series && controls_config.mode === `hover` ? bar_height : 0)
   const select_frame = (id: string, idx: number): void => {
+    picked = sweep && { sweep, id }
     series_id = id
     frame_idx = idx
   }
@@ -325,8 +332,8 @@
   )
   const shown = $derived.by((): Set<ElectronicPane> => {
     if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
-    if (panes?.includes(`trends`) && !sweep) {
-      throw new Error(`ElectronicStructure's trends pane needs a sweep`)
+    if (panes?.includes(`trends`) && !sweep?.descriptors?.length) {
+      throw new Error(`ElectronicStructure's trends pane needs a sweep with descriptors`)
     }
     if (panes) return new Set(panes)
     // nothing loaded yet: the two scenes' empty states invite a drop
@@ -386,12 +393,12 @@
   // reported anew for each structure or zone (e.g. a dropped file) while the frames differ,
   // in a sweep once per series (its frames share one calculation's frame), also when a lazily
   // loaded frame turns frames_differ off and on again
-  let reported_series: SweepSeries | undefined
+  const reported_series = new WeakSet<SweepSeries>()
   $effect(() => {
     if (!frames_differ) return
-    if (sweep) {
-      if (series === reported_series) return
-      reported_series = series
+    if (series) {
+      if (reported_series.has(series)) return
+      reported_series.add(series)
     } else void [shown_structure, k_lattice]
     const message = `The structure's lattice and the Fermi data's k_lattice are in different Cartesian frames (a_i · b_j / 2π is no integer matrix), so the scenes rotate apart`
     untrack(() => report_error(message))
@@ -428,8 +435,14 @@
   const fill = async (opened: OpenedMaterial): Promise<ElectronicPane[] | string> => {
     const { filename } = opened
     if (opened.type === `json_browser` && is_sweep_like(opened.data)) {
-      const dropped = normalize_sweep(opened.data)
-      ;[sweep, series_id, frame_idx, active_load_frame] = [dropped, undefined, 0, undefined]
+      let dropped: Sweep
+      try {
+        dropped = normalize_sweep(opened.data)
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error)
+      }
+      ;[sweep, series_id, frame_idx] = [dropped, undefined, 0]
+      dropped_sweep = sweep // as read back: a bound caller's state hands out its own proxy
       const dropped_frames = dropped.series.flatMap((entry) => entry.frames)
       return panes_with_data(dropped_frames, Boolean(dropped.descriptors?.length))
     }
@@ -498,9 +511,15 @@
       try {
         const filled = await fill(opened)
         if (typeof filled === `string`) return report_error(filled, opened.filename)
-        // a pane the file filled shows even when the caller's pane list left it out
+        // a pane the file filled shows even when the caller's pane list left it out, trends
+        // only while the (dropped) sweep has descriptors
+        const has_trends = Boolean(sweep?.descriptors?.length)
         if (panes)
-          panes = PANE_IDS.filter((pane) => panes?.includes(pane) || filled.includes(pane))
+          panes = PANE_IDS.filter(
+            (pane) =>
+              filled.includes(pane) ||
+              (panes?.includes(pane) && (pane !== `trends` || has_trends)),
+          )
         on_file_load?.({ filename: opened.filename, panes: filled })
       } finally {
         opened.dispose()
@@ -603,7 +622,7 @@
             <Icon icon={Grid2x2} />
           {/snippet}
           {#each PANES as { pane, icon, label } (pane)}
-            {#if pane !== `trends` || sweep}
+            {#if pane !== `trends` || sweep?.descriptors?.length}
               <button
                 class={[`view-mode-option`, { selected: shown.has(pane) }]}
                 aria-pressed={shown.has(pane)}
@@ -831,6 +850,14 @@
               <div class="pane" data-pane="phonon" style={pane_style(`phonon`)}>
                 <BandsAndDos
                   {...phonon_props}
+                  bands_props={{
+                    ...phonon_props.bands_props,
+                    show_controls: pane_controls(phonon_props.bands_props?.show_controls),
+                  }}
+                  dos_props={{
+                    ...phonon_props.dos_props,
+                    show_controls: pane_controls(phonon_props.dos_props?.show_controls),
+                  }}
                   band_structs={shown_phonon.band_structs ?? {}}
                   doses={shown_phonon.doses ?? {}}
                   bind:units

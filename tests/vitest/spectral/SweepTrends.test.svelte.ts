@@ -136,8 +136,8 @@ test(`overlaid descriptors add a dashed line per series, clicks still selecting 
   expect(lines.map(({ id, label, y }) => [id, label, y])).toEqual([
     [`fcc`, `fcc Cu · Tc (AD)`, [1]],
     [`bcc`, `bcc · Tc (AD)`, [4]],
-    [`fcc:tc_me`, `fcc Cu · Tc (ME)`, [2]],
-    [`bcc:tc_me`, `bcc · Tc (ME)`, []], // known missing
+    [`fcc\u0000tc_me`, `fcc Cu · Tc (ME)`, [2]],
+    [`bcc\u0000tc_me`, `bcc · Tc (ME)`, []], // known missing
   ])
   expect(lines.map(({ line_style }) => line_style?.line_dash)).toEqual([
     undefined,
@@ -152,4 +152,40 @@ test(`overlaid descriptors add a dashed line per series, clicks still selecting 
   const single = render({ sweep: { ...overlaid, series: [overlaid.series[0]] } })
   const single_lines: readonly DataSeries[] = single.props.series ?? []
   expect(single_lines.map(({ label }) => label)).toEqual([`Tc (AD)`, `Tc (ME)`])
+})
+
+test(`a rerun computes values only for frames it has not seen`, () => {
+  // each value computed reads its frame's scalars once (a class: $state leaves it unproxied)
+  let reads = 0
+  class CountedFrame implements SweepFrame {
+    constructor(
+      readonly value: number,
+      readonly tc: number,
+    ) {}
+    get scalars() {
+      reads++
+      return { tc: this.tc }
+    }
+  }
+  const counted = (value: number, tc: number): SweepFrame => new CountedFrame(value, tc)
+  const frames = [counted(0, 1), counted(50, 2)]
+  const counted_sweep: Sweep = { ...sweep, series: [{ id: `fcc`, frames }] }
+  const { state } = render({ sweep: counted_sweep })
+  // props are lazy getters: reading series is what computes the values
+  const plotted = () => plot.props?.series?.[0].y
+  plotted()
+  const first_reads = reads
+  expect(first_reads).toBeGreaterThan(0)
+  // a new frame_of (as after a load) returning the same frames recomputes nothing
+  state.frame_of = (series: SweepSeries, idx: number): SweepFrame => series.frames[idx]
+  flushSync()
+  plotted()
+  expect(reads).toBe(first_reads)
+  // a new (loaded) frame object is computed, the other frame stays cached
+  const loaded = counted(50, 5)
+  state.frame_of = (series: SweepSeries, idx: number): SweepFrame =>
+    idx === 1 ? loaded : series.frames[idx]
+  flushSync()
+  expect(plotted()).toEqual([1, 5])
+  expect(reads - first_reads).toBe(first_reads / 2)
 })

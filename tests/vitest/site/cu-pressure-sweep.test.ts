@@ -164,7 +164,28 @@ test(`the phonon model: acoustic at Γ, scaled to Cu's maximum, three modes per 
   const modes = dos.densities.reduce((sum, density) => sum + density * bin, 0)
   // 4σ Gaussian windows drop ~6e-5 of each mode's weight, bins below 0 the low tail
   expect(Math.abs(modes - 3)).toBeLessThan(1e-2)
+  // no weight at ω → 0, where it would make ω_log depend on the bin width: Γ's zero modes are
+  // off the grid (with them the first bin holds ~3/20³ · φ(0)/σ ≈ 1.5e-3 states/THz)
+  expect(dos.densities[0]).toBeLessThan(1e-5)
   expect(() => cu_phonons(structure, band_struct)).toThrow(`needs an fcc primitive cell`)
+})
+
+// Nearest-neighbour central forces at X = (2π/a)(1, 0, 0) give D = diag(8, 4, 4) (8 springs
+// along x at q·r = π, 4 each across): ω_T / ω_L = 1/√2, the transverse pair degenerate. The
+// closed-form eigensolver resolves that pair to ~√eps, so 1e-7 relative.
+test(`the phonon model's X point: degenerate transverse modes at 1/√2 of the longitudinal`, () => {
+  // the path's fractions in the fcc cell's own reciprocal lattice (the fixture's is identity)
+  const to_x: BaseBandStructure = {
+    ...band_struct,
+    recip_lattice: undefined,
+    qpoints: [
+      { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
+      { label: `X`, frac_coords: [0, 0.5, 0.5], distance: 1 },
+    ],
+  }
+  const [lower, middle, upper] = cu_phonons(fcc, to_x).bands.bands.map((branch) => branch[1])
+  expect(Math.abs(middle - lower) / upper).toBeLessThan(1e-7)
+  expect(Math.abs(lower / upper - Math.SQRT1_2)).toBeLessThan(1e-7)
 })
 
 test(`α²F moments: λ round-trips, a narrow peak at ω₀ gives ω_log = ω₂ = ω₀`, () => {

@@ -90,7 +90,7 @@ test(`a requested frame loads once, merged over its own fields (scalars, status,
     label: `loaded`,
     scalars: { tc: 12 },
     status: { unstable: true },
-    phonon: { band_structs: { Cu: phonon_bands } },
+    phonon: { band_structs: { Cu: phonon_bands }, doses: { 'phonon DOS': phonon_dos } },
   })
   await settle()
   flushSync()
@@ -102,7 +102,11 @@ test(`a requested frame loads once, merged over its own fields (scalars, status,
     label: `loaded`,
     scalars: { volume: 9, tc: 12 },
     status: { note: `relaxed`, unstable: true },
-    phonon: { doses: { 'α²F': phonon_dos }, band_structs: { Cu: phonon_bands } },
+    // per curve: the frame's own α²F stays beside the loaded phonon DOS
+    phonon: {
+      doses: { 'α²F': phonon_dos, 'phonon DOS': phonon_dos },
+      band_structs: { Cu: phonon_bands },
+    },
   })
   expect(frames.frame(series, 1)).toBe(loaded) // merged once: one identity across reads
   frames.request(series, 1) // loaded
@@ -132,6 +136,8 @@ test(`a new sweep starts a fresh cache, ignoring loads still running for the old
   const old_series = inputs.sweep.series[0]
   frames.request(old_series, 0)
   frames.request(old_series, 1)
+  frames.request(old_series, 2)
+  const [, old_1, old_2] = calls
   calls[0].resolve({ label: `old 0` })
   await settle()
   flushSync()
@@ -141,13 +147,37 @@ test(`a new sweep starts a fresh cache, ignoring loads still running for the old
   flushSync()
   const series = inputs.sweep.series[0]
   expect(frames.frame(series, 0).label).toBeUndefined() // dropped with the old cache
-  calls[1].resolve({ label: `old 1` }) // lands in the old cache
+  old_1.resolve({ label: `old 1` }) // lands in the old cache
+  old_2.reject(new Error(`old sweep's server gone`)) // no longer the caller's concern
   calls.length = 0
   await settle()
   flushSync()
   expect(frames.frame(series, 1).label).toBeUndefined()
   frames.request(series, 0) // loads again for the new sweep
-  expect(load).toHaveBeenCalledTimes(3)
+  expect(load).toHaveBeenCalledTimes(4)
   expect(calls[0].args).toEqual([`fcc`, 0])
   expect(on_error).not.toHaveBeenCalled()
+})
+
+test(`requests from an effect do not rerun it as loads start and settle`, async () => {
+  const { load, calls } = deferred_loader()
+  const inputs = $state({ sweep: make_sweep(), loader: load })
+  let runs = 0
+  const cleanup = $effect.root(() => {
+    const frames = create_sweep_frames({
+      sweep: () => inputs.sweep,
+      load_frame: () => inputs.loader,
+      on_error: vi.fn(),
+    })
+    $effect(() => {
+      runs++
+      frames.request(inputs.sweep.series[0], 0)
+    })
+  })
+  onTestFinished(cleanup)
+  flushSync()
+  calls[0].resolve({ label: `loaded` })
+  await settle()
+  flushSync()
+  expect([runs, calls.length]).toEqual([1, 1])
 })

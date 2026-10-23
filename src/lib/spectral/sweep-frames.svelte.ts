@@ -1,22 +1,35 @@
 // A sweep's frames with their heavy data loaded on demand: each requested frame is fetched once
 // through the caller's loader and cached, merged over the frame's own fields (scalars, status
-// and phonon spectra key by key) once, so a loaded frame keeps its identity across reads. Each
+// and phonon curves key by key) once, so a loaded frame keeps its identity across reads. Each
 // sweep and loader pair gets its own cache, so loads still running for a previous pair land in
 // a cache nothing reads anymore.
+import { untrack } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { Sweep, SweepFrame, SweepFrameLoader, SweepSeries } from './sweep'
 
 type FrameData = Awaited<ReturnType<SweepFrameLoader>>
 
+// Two records key by key (undefined when neither is set)
+const merge = <Value extends object>(base?: Value, data?: Value): Value | undefined =>
+  base && data ? { ...base, ...data } : (base ?? data)
+
 // The loaded fields over the frame's own, nested records key by key; its value always wins
-const merge_frame = (base: SweepFrame, data: FrameData): SweepFrame => ({
-  ...base,
-  ...data,
-  ...((base.scalars ?? data.scalars) && { scalars: { ...base.scalars, ...data.scalars } }),
-  ...((base.status ?? data.status) && { status: { ...base.status, ...data.status } }),
-  ...((base.phonon ?? data.phonon) && { phonon: { ...base.phonon, ...data.phonon } }),
-  value: base.value,
-})
+const merge_frame = (base: SweepFrame, data: FrameData): SweepFrame => {
+  const scalars = merge(base.scalars, data.scalars)
+  const status = merge(base.status, data.status)
+  const band_structs = merge(base.phonon?.band_structs, data.phonon?.band_structs)
+  const doses = merge(base.phonon?.doses, data.phonon?.doses)
+  return {
+    ...base,
+    ...data,
+    ...(scalars && { scalars }),
+    ...(status && { status }),
+    ...((base.phonon ?? data.phonon) && {
+      phonon: { ...(band_structs && { band_structs }), ...(doses && { doses }) },
+    }),
+    value: base.value,
+  }
+}
 
 export function create_sweep_frames(inputs: {
   sweep: () => Sweep | undefined
@@ -36,6 +49,28 @@ export function create_sweep_frames(inputs: {
   const in_range = (series: SweepSeries, idx: number) =>
     Number.isInteger(idx) && idx >= 0 && idx < series.frames.length
 
+  const start = (series: SweepSeries, idx: number): void => {
+    const { loader, loaded, pending, failed } = cache
+    if (!loader || !in_range(series, idx)) return
+    const frame_key = key(series, idx)
+    if (loaded.has(frame_key) || pending.has(frame_key) || failed.has(frame_key)) return
+    pending.add(frame_key)
+    loader(series.id, idx).then(
+      (data) => {
+        pending.delete(frame_key)
+        loaded.set(frame_key, merge_frame(series.frames[idx], data))
+      },
+      (error: unknown) => {
+        pending.delete(frame_key)
+        failed.add(frame_key)
+        // a previous sweep's failure is no longer the caller's concern
+        if (loaded !== cache.loaded) return
+        const reason = error instanceof Error ? error.message : String(error)
+        inputs.on_error(`Loading frame ${idx + 1} of series "${series.id}" failed: ${reason}`)
+      },
+    )
+  }
+
   return {
     // The frame with whatever its loader returned merged in
     frame: (series: SweepSeries, idx: number): SweepFrame =>
@@ -46,33 +81,11 @@ export function create_sweep_frames(inputs: {
       const frame_key = key(series, idx)
       return cache.loaded.has(frame_key) || cache.failed.has(frame_key)
     },
-    is_loading(series: SweepSeries, idx: number): boolean {
-      return cache.pending.has(key(series, idx))
-    },
+    is_loading: (series: SweepSeries, idx: number): boolean =>
+      cache.pending.has(key(series, idx)),
     // Start loading the frame unless it is loaded, loading or failed (no-op without a loader).
-    // Call from an effect or event handler, never while deriving.
-    request(series: SweepSeries, idx: number): void {
-      const { loader, loaded, pending, failed } = cache
-      if (!loader || !in_range(series, idx)) return
-      const frame_key = key(series, idx)
-      if (loaded.has(frame_key) || pending.has(frame_key) || failed.has(frame_key)) return
-      pending.add(frame_key)
-      loader(series.id, idx).then(
-        (data) => {
-          pending.delete(frame_key)
-          loaded.set(frame_key, merge_frame(series.frames[idx], data))
-        },
-        (error: unknown) => {
-          pending.delete(frame_key)
-          failed.add(frame_key)
-          // a previous sweep's failure is no longer the caller's concern
-          if (loaded !== cache.loaded) return
-          const reason = error instanceof Error ? error.message : String(error)
-          inputs.on_error(
-            `Loading frame ${idx + 1} of series "${series.id}" failed: ${reason}`,
-          )
-        },
-      )
-    },
+    // Call from an effect or event handler, never while deriving; untracked, so the calling
+    // effect reruns on its own inputs only, not on each load it starts or settles.
+    request: (series: SweepSeries, idx: number): void => untrack(() => start(series, idx)),
   }
 }

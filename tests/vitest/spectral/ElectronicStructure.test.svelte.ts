@@ -284,6 +284,11 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
   props.units = `meV`
   flushSync()
   expect(viewers.phonon?.units).toBe(`meV`)
+  // `never` hides the phonon plots' own controls too, as every pane's
+  props.show_controls = `never`
+  flushSync()
+  expect(viewers.phonon?.bands_props?.show_controls).toBe(false)
+  expect(viewers.phonon?.dos_props?.show_controls).toBe(false)
 })
 
 test(`a dropped phonon DOS fills the phonon pane, keeping the electronic spectra`, async () => {
@@ -545,9 +550,12 @@ test.each<[string, Partial<ComponentProps<typeof Structure>>]>([
 
 test.each<[ElectronicPane[], string]>([
   [[], `at least one pane`],
-  [[`structure`, `trends`], `trends pane needs a sweep`],
+  [[`structure`, `trends`], `trends pane needs a sweep with descriptors`],
 ])(`the pane list %j throws without its data`, (panes, message) => {
   expect(() => mount_host({ ...all_data, panes })).toThrow(message)
+  const plain_sweep = { ...make_sweep(), descriptors: undefined }
+  if (panes.includes(`trends`))
+    expect(() => mount_host({ sweep: plain_sweep, panes })).toThrow(message)
 })
 
 // === sweeps ===
@@ -628,6 +636,12 @@ test(`clicking a trends point selects its series and frame`, () => {
   flushSync()
   expect([props.series_id, props.frame_idx]).toEqual([`bcc`, 0])
   expect(status(root)).toBe(`100 GPa`)
+  // a new sweep without the series the viewer picked opens at its first series
+  const other = make_sweep()
+  other.series = [other.series[0]]
+  props.sweep = other
+  flushSync()
+  expect([props.series_id, status(root)]).toEqual([`fcc`, `0 GPa`])
 })
 
 test(`load_frame fetches the shown frame and its neighbours, merged into the panes`, async () => {
@@ -724,6 +738,12 @@ test.each([false, true])(
     props.series_id = `bcc`
     flushSync()
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(2))
+    // back to a series already reported: not again
+    props.series_id = `fcc`
+    flushSync()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    flushSync()
+    expect(on_error).toHaveBeenCalledTimes(2)
   },
 )
 
@@ -798,6 +818,18 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
   expect(props.error_msg).toBe(
     `POSCAR is no sweep JSON: while a sweep is shown the viewer takes only sweeps`,
   )
+  // an invalid sweep JSON is reported with its filename
+  const bad_file = new File([JSON.stringify({ ...plain_sweep, extra: 1 })], `bad.json`)
+  root.dispatchEvent(create_drop_event(bad_file))
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(2))
+  expect(on_error).toHaveBeenLastCalledWith({
+    error_msg: `Invalid sweep at root.extra: unknown field`,
+    filename: `bad.json`,
+  })
+  // a caller's sweep after the dropped one loads through the caller's loader again
+  props.sweep = make_sweep()
+  flushSync()
+  await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 0))
 })
 
 test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, string]>([

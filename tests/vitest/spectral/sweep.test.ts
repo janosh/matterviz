@@ -14,8 +14,8 @@ import {
   validate_sweep,
   volume_per_atom,
 } from '#lib/spectral/sweep.js'
-import type { DescriptorSpec, Sweep, SweepFrame } from '#lib/spectral/sweep.js'
-import type { ElectronicDos } from '#lib/spectral/types.js'
+import type { DescriptorSpec, Sweep } from '#lib/spectral/sweep.js'
+import type { DosData, ElectronicDos } from '#lib/spectral/types.js'
 import { describe, expect, test } from 'vitest'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
@@ -80,76 +80,31 @@ describe(`validate_sweep`, () => {
   test(`accepts ascending frames in uniquely named series`, () => {
     expect(() => validate_sweep(sweep_of([0, 50, 100]))).not.toThrow()
   })
+  const with_descriptors = (...descriptors: DescriptorSpec[]): Sweep =>
+    sweep_of([0], { descriptors })
+  const duplicate_ids: Sweep = {
+    ...sweep_of([0]),
+    series: [
+      { id: `a`, frames: [{ value: 0 }] },
+      { id: `a`, frames: [{ value: 1 }] },
+    ],
+  }
+  // oxfmt-ignore
   test.each<[string, Sweep, string]>([
     [`no series`, { ...sweep_of([0]), series: [] }, `at least one series`],
-    [
-      `an empty series`,
-      { ...sweep_of([0]), series: [{ id: `a`, frames: [] }] },
-      `has no frames`,
-    ],
+    [`an empty series`, { ...sweep_of([0]), series: [{ id: `a`, frames: [] }] }, `has no frames`],
     [`descending values`, sweep_of([50, 0]), `strictly ascending: frame 1 has 0 after 50`],
     [`repeated values`, sweep_of([50, 50]), `strictly ascending`],
     [`a non-finite value`, sweep_of([0, Number.NaN]), `frame 1 has a non-finite value NaN`],
-    [
-      `duplicate series ids`,
-      {
-        ...sweep_of([0]),
-        series: [
-          { id: `a`, frames: [{ value: 0 }] },
-          { id: `a`, frames: [{ value: 1 }] },
-        ],
-      },
-      `series id "a" is not unique`,
-    ],
-    [
-      `duplicate descriptor keys`,
-      sweep_of([0], {
-        descriptors: [
-          { key: `tc`, label: `Tc` },
-          { key: `tc`, label: `T_c` },
-        ],
-      }),
-      `descriptor key "tc" is not unique`,
-    ],
-    [
-      `an element share without element`,
-      sweep_of([0], { descriptors: [{ key: `h`, label: `H`, compute: `fermi_dos_share` }] }),
-      `element goes with (and only with) fermi_dos_share`,
-    ],
-    [
-      `an element on another descriptor`,
-      sweep_of([0], {
-        descriptors: [{ key: `n`, label: `N`, compute: `fermi_dos`, element: `H` }],
-      }),
-      `element goes with (and only with) fermi_dos_share`,
-    ],
-    [
-      `a pair on another descriptor`,
-      sweep_of([0], {
-        descriptors: [{ key: `v`, label: `V`, compute: `volume_per_atom`, pair: [`H`, `H`] }],
-      }),
-      `pair goes only with min_pair_distance`,
-    ],
-    [
-      `an overlay of an unknown descriptor`,
-      sweep_of([0], { descriptors: [{ key: `tc`, label: `Tc`, overlay: [`tc_me`] }] }),
-      `"tc" overlays "tc_me", no other descriptor`,
-    ],
-    [
-      `an overlay of itself`,
-      sweep_of([0], { descriptors: [{ key: `tc`, label: `Tc`, overlay: [`tc`] }] }),
-      `"tc" overlays "tc", no other descriptor`,
-    ],
-    [
-      `an overlay in another unit`,
-      sweep_of([0], {
-        descriptors: [
-          { key: `tc`, label: `Tc`, unit: `K`, overlay: [`lambda`] },
-          { key: `lambda`, label: `λ` },
-        ],
-      }),
-      `"tc" (K) overlays "lambda" in no unit: overlays share their unit`,
-    ],
+    [`duplicate series ids`, duplicate_ids, `series id "a" is not unique`],
+    [`duplicate descriptor keys`, with_descriptors({ key: `tc`, label: `Tc` }, { key: `tc`, label: `T_c` }), `descriptor key "tc" is not unique`],
+    [`an element share without element`, with_descriptors({ key: `h`, label: `H`, compute: `fermi_dos_share` }), `element goes with (and only with) fermi_dos_share`],
+    [`an element on another descriptor`, with_descriptors({ key: `n`, label: `N`, compute: `fermi_dos`, element: `H` }), `element goes with (and only with) fermi_dos_share`],
+    [`a pair on another descriptor`, with_descriptors({ key: `v`, label: `V`, compute: `volume_per_atom`, pair: [`H`, `H`] }), `pair goes only with min_pair_distance`],
+    [`an overlay of an unknown descriptor`, with_descriptors({ key: `tc`, label: `Tc`, overlay: [`tc_me`] }), `"tc" overlays "tc_me", no other descriptor`],
+    [`an overlay listed twice`, with_descriptors({ key: `tc`, label: `Tc`, overlay: [`tc_me`, `tc_me`] }, { key: `tc_me`, label: `Tc (ME)` }), `"tc" overlays a descriptor twice`],
+    [`an overlay of itself`, with_descriptors({ key: `tc`, label: `Tc`, overlay: [`tc`] }), `"tc" overlays "tc", no other descriptor`],
+    [`an overlay in another unit`, with_descriptors({ key: `tc`, label: `Tc`, unit: `K`, overlay: [`lambda`] }, { key: `lambda`, label: `λ` }), `"tc" (K) overlays "lambda" in no unit: overlays share their unit`],
   ])(`rejects %s`, (_desc, sweep, message) => {
     expect(() => validate_sweep(sweep)).toThrow(message)
   })
@@ -262,37 +217,28 @@ describe(`computed descriptors`, () => {
     expect(fermi_band_count({})).toBeUndefined()
   })
 
-  test(`fermi_dos and an element's share of it read the total and projected DOS at E_F`, () => {
-    const frame: Partial<SweepFrame> = {
-      band_data: grid, // E_F = 1
-      doses: { total: dos([0, 2], [2, 4]), H: dos([0, 2], [1, 1]) },
-    }
-    const fermi_dos: DescriptorSpec = { key: `n_ef`, label: `N(E_F)`, compute: `fermi_dos` }
-    const share: DescriptorSpec = {
-      key: `h_share`,
-      label: `H share`,
-      compute: `fermi_dos_share`,
-      element: `H`,
-    }
-    expect(compute_descriptor(frame, fermi_dos)).toBe(3)
-    expect(compute_descriptor(frame, share)).toBeCloseTo(1 / 3, 15)
-    // the total DOS's own E_F wins over the grid's (a denser-k DOS sits at its own level)
-    const own_level = { ...frame, doses: { total: dos([0, 2], [2, 4], { efermi: 0.5 }) } }
-    expect(compute_descriptor(own_level, fermi_dos)).toBe(2.5)
-    // a lone DOS is the total unless it is an element projection; phonon DOS give none
-    expect(
-      compute_descriptor({ ...frame, doses: { cu: dos([0, 2], [1, 3]) } }, fermi_dos),
-    ).toBe(2)
-    expect(
-      compute_descriptor({ ...frame, doses: { Cu: dos([0, 2], [1, 3]) } }, fermi_dos),
-    ).toBeUndefined()
-    const phonon_total = { type: `phonon` as const, frequencies: [0, 2], densities: [1, 1] }
-    expect(
-      compute_descriptor({ ...frame, doses: { total: phonon_total } }, fermi_dos),
-    ).toBeUndefined()
-    expect(
-      compute_descriptor({ ...frame, doses: { total: dos([0, 2], [2, 4]) } }, share),
-    ).toBeUndefined()
+  // the frame's grid puts E_F at 1; the dos() helper's DOS default to efermi 1 too
+  const fermi_dos: DescriptorSpec = { key: `n_ef`, label: `N(E_F)`, compute: `fermi_dos` }
+  const h_share: DescriptorSpec = {
+    key: `h`,
+    label: `H`,
+    compute: `fermi_dos_share`,
+    element: `H`,
+  }
+  const phonon_total = { type: `phonon` as const, frequencies: [0, 2], densities: [1, 1] }
+  const total = dos([0, 2], [2, 4])
+  // oxfmt-ignore
+  test.each<[string, Record<string, DosData>, DescriptorSpec, number | undefined]>([
+    [`the total DOS at E_F`, { total, H: dos([0, 2], [1, 1]) }, fermi_dos, 3],
+    [`an element's share of it`, { total, H: dos([0, 2], [1, 1]) }, h_share, 1 / 3],
+    // a denser-k DOS sits at its own level, not the grid's
+    [`the total DOS at its own E_F`, { total: dos([0, 2], [2, 4], { efermi: 0.5 }) }, fermi_dos, 2.5],
+    [`a lone DOS as the total`, { cu: dos([0, 2], [1, 3]) }, fermi_dos, 2],
+    [`no total from a lone element projection`, { Cu: dos([0, 2], [1, 3]) }, fermi_dos, undefined],
+    [`no total from a phonon DOS`, { total: phonon_total }, fermi_dos, undefined],
+    [`no share without its projection`, { total }, h_share, undefined],
+  ])(`%s`, (_desc, doses, spec, expected) => {
+    expect(compute_descriptor({ band_data: grid, doses }, spec)).toBe(expected)
   })
 
   test(`a supplied value wins, null means known missing, else the computed one`, () => {
@@ -333,7 +279,7 @@ describe(`normalize_sweep`, () => {
               value: 50,
               label: `50 GPa`,
               doses: { total: { energies: [0, 1], densities: [1, 2], efermi: 0.5 } },
-              status: { unstable: true, note: `imaginary modes`, ignored: 1 },
+              status: { unstable: true, note: `imaginary modes` },
               phonon: {
                 doses: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } },
               },
@@ -360,140 +306,41 @@ describe(`normalize_sweep`, () => {
     ])
   })
 
-  const frame = { value: 0 }
+  // a one-frame JSON sweep with the frame's extra fields and the sweep's
+  const raw_sweep = (frame: object = {}, sweep: object = {}): object => ({
+    axis: { key: `p`, label: `P` },
+    series: [{ id: `a`, frames: [{ value: 0, ...frame }] }],
+    ...sweep,
+  })
+  const descriptor = (spec: object) =>
+    raw_sweep({}, { descriptors: [{ key: `x`, label: `X`, ...spec }] })
+  // oxfmt-ignore
   test.each<[string, unknown, string]>([
     [`no object`, [], `at root: must be an object`],
     [`no axis key`, { axis: { label: `P` }, series: [] }, `at axis: needs a key and a label`],
-    [
-      `no series array`,
-      { axis: { key: `p`, label: `P` }, series: {} },
-      `at series: must be an array`,
-    ],
-    [
-      `a frame without value`,
-      { axis: { key: `p`, label: `P` }, series: [{ id: `a`, frames: [{}] }] },
-      `series[0].frames[0]: value must be a number`,
-    ],
-    [
-      `a molecule structure`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [
-          { id: `a`, frames: [{ value: 0, structure: { sites: json_structure.sites } }] },
-        ],
-      },
-      `frames[0].structure: needs a periodic structure`,
-    ],
-    [
-      `an unparsable DOS`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 0, doses: { x: 1 } }] }],
-      },
-      `frames[0].doses.x: unrecognized data`,
-    ],
-    [
-      `a non-numeric scalar`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 0, scalars: { tc: `hot` } }] }],
-      },
-      `frames[0].scalars.tc: must be a number or null`,
-    ],
-    [
-      `an unknown computed descriptor`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [frame] }],
-        descriptors: [{ key: `x`, label: `X`, compute: `magic` }],
-      },
-      `descriptors[0].compute: unknown "magic"`,
-    ],
-    [
-      `a descriptor pair that is no element symbols`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [frame] }],
-        descriptors: [
-          { key: `x`, label: `X`, compute: `min_pair_distance`, pair: [`Hx`, `H`] },
-        ],
-      },
-      `descriptors[0].pair: must be two element symbols, got ["Hx","H"]`,
-    ],
-    [
-      `a numeric series id`,
-      { axis: { key: `p`, label: `P` }, series: [{ id: 1, frames: [frame] }] },
-      `series[0]: needs a string id`,
-    ],
-    [
-      `an unknown frame field (e.g. a typo)`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 0, dos: {} }] }],
-      },
-      `frames[0].dos: unknown frame field`,
-    ],
-    [
-      `a non-boolean unstable flag`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 0, status: { unstable: `yes` } }] }],
-      },
-      `frames[0].status.unstable: must be a boolean`,
-    ],
-    [
-      `a non-string frame label`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 0, label: 5 }] }],
-      },
-      `frames[0].label: must be a string, got 5`,
-    ],
-    [
-      `a non-string axis unit`,
-      { axis: { key: `p`, label: `P`, unit: 1 }, series: [{ id: `a`, frames: [frame] }] },
-      `axis.unit: must be a string, got 1`,
-    ],
-    [
-      `an electronic DOS among the phonons`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [
-          {
-            id: `a`,
-            frames: [
-              { value: 0, phonon: { doses: { x: { energies: [0], densities: [1] } } } },
-            ],
-          },
-        ],
-      },
-      `frames[0].phonon.doses.x: must be phonon data, got electronic`,
-    ],
-    [
-      `an unknown phonon field`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 0, phonon: { dispersion: {} } }] }],
-      },
-      `frames[0].phonon.dispersion: unknown phonon field`,
-    ],
-    [
-      `a non-list overlay`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [frame] }],
-        descriptors: [{ key: `x`, label: `X`, overlay: `y` }],
-      },
-      `descriptors[0].overlay: must be descriptor keys`,
-    ],
-    [
-      `an invalid series order`,
-      {
-        axis: { key: `p`, label: `P` },
-        series: [{ id: `a`, frames: [{ value: 2 }, { value: 1 }] }],
-      },
-      `strictly ascending`,
-    ],
+    [`no series array`, raw_sweep({}, { series: {} }), `at series: must be an array`],
+    [`a frame without value`, raw_sweep({ value: undefined }), `series[0].frames[0]: value must be a number`],
+    [`a molecule structure`, raw_sweep({ structure: { sites: json_structure.sites } }), `frames[0].structure: needs a periodic structure`],
+    [`an unparsable DOS`, raw_sweep({ doses: { x: 1 } }), `frames[0].doses.x: unrecognized data`],
+    [`a non-numeric scalar`, raw_sweep({ scalars: { tc: `hot` } }), `frames[0].scalars.tc: must be a number or null`],
+    [`a non-boolean unstable flag`, raw_sweep({ status: { unstable: `yes` } }), `frames[0].status.unstable: must be a boolean`],
+    [`a non-string frame label`, raw_sweep({ label: 5 }), `frames[0].label: must be a string, got 5`],
+    [`a non-string axis unit`, raw_sweep({}, { axis: { key: `p`, label: `P`, unit: 1 } }), `axis.unit: must be a string, got 1`],
+    [`a numeric series id`, raw_sweep({}, { series: [{ id: 1, frames: [{ value: 0 }] }] }), `series[0]: needs a string id`],
+    [`an electronic DOS among the phonons`, raw_sweep({ phonon: { doses: { x: { energies: [0], densities: [1] } } } }), `frames[0].phonon.doses.x: must be phonon data, got electronic`],
+    [`a phonon DOS among the electronic ones`, raw_sweep({ doses: { x: { frequencies: [0], densities: [1] } } }), `frames[0].doses.x: must be electronic data, got phonon`],
+    [`an unknown frame field (e.g. a typo)`, raw_sweep({ dos: {} }), `frames[0].dos: unknown field`],
+    [`an unknown phonon field`, raw_sweep({ phonon: { dispersion: {} } }), `frames[0].phonon.dispersion: unknown field`],
+    [`an unknown status field`, raw_sweep({ status: { why: `x` } }), `frames[0].status.why: unknown field`],
+    [`an unknown series field`, raw_sweep({}, { series: [{ id: `a`, frames: [], frames_: [] }] }), `series[0].frames_: unknown field`],
+    [`an unknown axis field`, raw_sweep({}, { axis: { key: `p`, label: `P`, units: `GPa` } }), `axis.units: unknown field`],
+    [`an unknown root field`, raw_sweep({}, { extra: 1 }), `root.extra: unknown field`],
+    [`an unknown descriptor field`, descriptor({ units: `K` }), `descriptors[0].units: unknown field`],
+    [`an unknown computed descriptor`, descriptor({ compute: `magic` }), `descriptors[0].compute: unknown "magic"`],
+    [`a descriptor pair that is no element symbols`, descriptor({ compute: `min_pair_distance`, pair: [`Hx`, `H`] }), `descriptors[0].pair: must be two element symbols, got ["Hx","H"]`],
+    [`a non-list overlay`, descriptor({ overlay: `y` }), `descriptors[0].overlay: must be descriptor keys`],
+    // normalize_sweep validates what it parsed
+    [`an invalid series order`, raw_sweep({}, { series: [{ id: `a`, frames: [{ value: 2 }, { value: 1 }] }] }), `strictly ascending`],
   ])(`rejects %s, naming where`, (_desc, raw, message) => {
     expect(() => normalize_sweep(raw)).toThrow(message)
   })

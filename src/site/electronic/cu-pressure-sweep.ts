@@ -9,7 +9,14 @@
 // the result of a calculation at its pressure.
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
-import { det_3x3, reciprocal_lattice } from '#lib/math.js'
+import {
+  create_frac_to_cart,
+  det_3x3,
+  dot,
+  reciprocal_lattice,
+  scale,
+  subtract,
+} from '#lib/math.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { trapezoid_weights } from '#lib/spectral/helpers.js'
 import type { BaseBandStructure, PhononDos, PhononSpectra } from '#lib/spectral/types.js'
@@ -74,11 +81,11 @@ export function scale_band_structure(
   lattice_scale: number,
   map_value: (value: number) => number,
 ): BaseBandStructure {
-  const scale = (rows: number[][]) => rows.map((row) => row.map(map_value))
+  const map_rows = (rows: number[][]) => rows.map((row) => row.map(map_value))
   return {
     ...bands,
-    bands: scale(bands.bands),
-    ...(bands.spin_down_bands && { spin_down_bands: scale(bands.spin_down_bands) }),
+    bands: map_rows(bands.bands),
+    ...(bands.spin_down_bands && { spin_down_bands: map_rows(bands.spin_down_bands) }),
     distance: bands.distance.map((dist) => dist / lattice_scale),
     qpoints: bands.qpoints.map((qpoint) =>
       qpoint.distance === undefined
@@ -135,19 +142,14 @@ export function symmetric_eigenvalues(matrix: Matrix3x3): Vec3 {
 // The 12 nearest neighbours of an fcc primitive cell: ±a_i and ±(a_i − a_j)
 function fcc_neighbors(lattice: Matrix3x3): Vec3[] {
   const [a_1, a_2, a_3] = lattice
-  const diff = (lhs: Vec3, rhs: Vec3): Vec3 => [
-    lhs[0] - rhs[0],
-    lhs[1] - rhs[1],
-    lhs[2] - rhs[2],
-  ]
-  const half = [a_1, a_2, a_3, diff(a_1, a_2), diff(a_2, a_3), diff(a_1, a_3)]
+  const half = [a_1, a_2, a_3, subtract(a_1, a_2), subtract(a_2, a_3), subtract(a_1, a_3)]
   const lengths = half.map((vec) => Math.hypot(...vec))
   if (lengths.some((len) => Math.abs(len - lengths[0]) > 1e-6 * lengths[0])) {
     throw new Error(
       `The phonon model needs an fcc primitive cell, got neighbour lengths ${lengths}`,
     )
   }
-  return half.flatMap((vec) => [vec, vec.map((coord) => -coord) as Vec3])
+  return half.flatMap((vec) => [vec, scale(vec, -1)])
 }
 
 // Phonon frequencies (arbitrary units, ascending) of a monatomic lattice at Cartesian q, one
@@ -159,9 +161,7 @@ const model_frequencies = (neighbors: Vec3[], q_vec: Vec3): Vec3 => {
     [0, 0, 0],
   ]
   for (const vec of neighbors) {
-    const len_sq = vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
-    const phase = q_vec[0] * vec[0] + q_vec[1] * vec[1] + q_vec[2] * vec[2]
-    const weight = (1 - Math.cos(phase)) / len_sq
+    const weight = (1 - Math.cos(dot(q_vec, vec))) / dot(vec, vec)
     for (const row of [0, 1, 2]) {
       for (const col of [0, 1, 2]) matrix[row][col] += weight * vec[row] * vec[col]
     }
@@ -176,34 +176,35 @@ export function cu_phonons(
   band_struct: BaseBandStructure,
 ): { bands: BaseBandStructure; dos: PhononDos } {
   const neighbors = fcc_neighbors(structure.lattice.matrix)
-  const recip =
-    band_struct.recip_lattice ?? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
-  const at = (frac: Vec3) =>
-    model_frequencies(
-      neighbors,
-      [0, 1, 2].map(
-        (axis) =>
-          frac[0] * recip[0][axis] + frac[1] * recip[1][axis] + frac[2] * recip[2][axis],
-      ) as Vec3,
-    )
+  // the DOS grid spans the cell's own zone, the path's fractions refer to the band structure's
+  const cell_recip = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+  const frequencies_in = (recip: Matrix3x3) => {
+    const to_cart = create_frac_to_cart(recip) // q = Σ f_i b_i
+    return (frac: Vec3) => model_frequencies(neighbors, to_cart(frac))
+  }
+  const at = frequencies_in(cell_recip)
   const n_grid = 20
   const grid: number[] = []
+  // Γ left out: its three zero modes, smeared to ω ≈ 0, would make ∫ α²F ln ω / ω dω (ω_log)
+  // grow with the bin count instead of converging
   for (let idx_a = 0; idx_a < n_grid; idx_a++) {
     for (let idx_b = 0; idx_b < n_grid; idx_b++) {
       for (let idx_c = 0; idx_c < n_grid; idx_c++) {
+        if (idx_a + idx_b + idx_c === 0) continue
         grid.push(...at([idx_a / n_grid, idx_b / n_grid, idx_c / n_grid]))
       }
     }
   }
-  const path = band_struct.qpoints.map(({ frac_coords }) => at(frac_coords))
+  const along_path = frequencies_in(band_struct.recip_lattice ?? cell_recip)
+  const path = band_struct.qpoints.map(({ frac_coords }) => along_path(frac_coords))
   const raw_max = [...grid, ...path.flat()].reduce((max, val) => Math.max(max, val), 0)
   const to_thz = CU_MAX_PHONON_THZ / raw_max
-  // bin centres from half a bin up, so α²F/ω stays finite
+  // bin centres start half a bin up: no bin sits at ω = 0, where α²F/ω diverges
   const [n_bins, sigma] = [200, 0.1]
   const bin_width = (CU_MAX_PHONON_THZ * 1.1) / n_bins
   const frequencies = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_width)
   const densities = Array(n_bins).fill(0)
-  const norm = 1 / (n_grid ** 3 * sigma * Math.sqrt(2 * Math.PI))
+  const norm = 1 / ((n_grid ** 3 - 1) * sigma * Math.sqrt(2 * Math.PI))
   for (const raw of grid) {
     const freq = raw * to_thz
     const [lo, hi] = [freq - 4 * sigma, freq + 4 * sigma].map((edge) =>
@@ -229,33 +230,32 @@ export function cu_phonons(
   }
 }
 
-// α²F(ω) of shape F(ω) scaled to coupling `lambda` = 2 ∫ α²F(ω)/ω dω
-export function eliashberg_function(dos: PhononDos, lambda: number): PhononDos {
+// ∫ F(ω) kernel(ω) dω by trapezoids, and the coupling λ = 2 ∫ α²F(ω)/ω dω of an α²F
+const integrate = (dos: PhononDos, kernel: (freq: number) => number): number => {
   const weights = trapezoid_weights(dos.frequencies)
-  const moment = dos.densities.reduce(
-    (sum, density, idx) => sum + (weights[idx] * density) / dos.frequencies[idx],
+  return dos.densities.reduce(
+    (sum, density, idx) => sum + weights[idx] * density * kernel(dos.frequencies[idx]),
     0,
   )
-  const factor = lambda / (2 * moment)
+}
+const coupling = (a2f: PhononDos): number => 2 * integrate(a2f, (freq) => 1 / freq)
+
+// α²F(ω) of shape F(ω) scaled to coupling `lambda`
+export function eliashberg_function(dos: PhononDos, lambda: number): PhononDos {
+  const factor = lambda / coupling(dos)
   return { ...dos, densities: dos.densities.map((density) => density * factor) }
 }
 
-// λ = 2 ∫ α²F/ω dω and the Allen–Dynes frequency moments ω_log = exp((2/λ) ∫ α²F ln ω / ω dω)
-// and ω₂ = ((2/λ) ∫ α²F ω dω)^½, in K
+// λ and the Allen–Dynes frequency moments ω_log = exp((2/λ) ∫ α²F ln ω / ω dω) and
+// ω₂ = ((2/λ) ∫ α²F ω dω)^½, in K
 export function eliashberg_moments(a2f: PhononDos): {
   lambda: number
   omega_log: number
   omega_2: number
 } {
-  const weights = trapezoid_weights(a2f.frequencies)
-  const integral = (kernel: (freq: number) => number) =>
-    a2f.densities.reduce(
-      (sum, density, idx) => sum + weights[idx] * density * kernel(a2f.frequencies[idx]),
-      0,
-    )
-  const lambda = 2 * integral((freq) => 1 / freq)
-  const omega_log = Math.exp((2 / lambda) * integral((freq) => Math.log(freq) / freq))
-  const omega_2 = Math.sqrt((2 / lambda) * integral((freq) => freq))
+  const lambda = coupling(a2f)
+  const omega_log = Math.exp((2 / lambda) * integrate(a2f, (freq) => Math.log(freq) / freq))
+  const omega_2 = Math.sqrt((2 / lambda) * integrate(a2f, (freq) => freq))
   return { lambda, omega_log: omega_log * KELVIN_PER_THZ, omega_2: omega_2 * KELVIN_PER_THZ }
 }
 

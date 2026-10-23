@@ -45,6 +45,22 @@
         ]
       : [],
   )
+  // A frame's point on a descriptor's line (null: no finite value), cached per frame object: a
+  // load reruns `points` over every frame, but frames keep their identity, so only the
+  // arriving one computes anew
+  type Point = { value: number; lower?: number | null; upper?: number | null }
+  const point_cache = new WeakMap<SweepFrame, Map<DescriptorSpec, Point | null>>()
+  const point_of = (frame: SweepFrame, line: DescriptorSpec): Point | null => {
+    let cached = point_cache.get(frame)
+    if (!cached) point_cache.set(frame, (cached = new Map()))
+    if (!cached.has(line)) {
+      const value = descriptor_value(frame, line)
+      const [lower, upper] = (line.range ?? []).map((key) => frame.scalars?.[key])
+      const finite = typeof value === `number` && Number.isFinite(value)
+      cached.set(line, finite ? { value, lower, upper } : null)
+    }
+    return cached.get(line) ?? null
+  }
   // each line's points per series, apart from the selection so selecting recomputes no values
   const points = $derived(
     lines.flatMap((line, line_idx) =>
@@ -54,12 +70,8 @@
         line_idx,
         points: entry.frames.flatMap((_frame, idx) => {
           const frame = frame_of(entry, idx)
-          const value = descriptor_value(frame, line)
-          if (typeof value !== `number` || !Number.isFinite(value)) return []
-          const [lower, upper] = (line.range ?? []).map(
-            (range_key) => frame.scalars?.[range_key],
-          )
-          return [{ frame, idx, value, lower, upper }]
+          const point = point_of(frame, line)
+          return point ? [{ frame, idx, ...point }] : []
         }),
       })),
     ),
@@ -68,23 +80,20 @@
     points.map(({ entry, line, line_idx, points: line_points }): DataSeries<PointMeta> => {
       const { id, label = id } = entry
       const selected = id === series_id
-      const point_style = line_points.map(({ frame, idx }): PointStyle => {
-        const unstable = frame.status?.unstable
-        const radius = selected && idx === frame_idx ? 7 : 4.5
-        return unstable
-          ? {
-              radius,
-              fill: `transparent`,
-              stroke: `gray`,
-              stroke_width: 1.5,
-              cursor: `pointer`,
-            }
-          : { radius, cursor: `pointer` }
-      })
+      const point_style = line_points.map(({ frame, idx }): PointStyle => ({
+        radius: selected && idx === frame_idx ? 7 : 4.5,
+        cursor: `pointer`,
+        ...(frame.status?.unstable && {
+          fill: `transparent`,
+          stroke: `gray`,
+          stroke_width: 1.5,
+        }),
+      }))
       const ranged = line_points.some(({ lower, upper }) => lower != null || upper != null)
       const overlaid = lines.length > 1
       return {
-        id: line_idx === 0 ? id : `${id}:${line.key}`,
+        // NUL keeps overlay ids apart from any series id
+        id: line_idx === 0 ? id : `${id}\u0000${line.key}`,
         // overlays name their descriptor, several series also their series
         label: !overlaid
           ? label

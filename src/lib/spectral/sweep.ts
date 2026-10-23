@@ -107,12 +107,14 @@ export function validate_sweep(sweep: Sweep): void {
       }
     }
   }
-  const keys = new Set<string>()
-  for (const spec of sweep.descriptors ?? []) {
-    if (keys.has(spec.key)) throw new Error(`Sweep descriptor key "${spec.key}" is not unique`)
-    keys.add(spec.key)
-    const is_share = spec.compute === `fermi_dos_share`
-    if (is_share !== Boolean(spec.element)) {
+  const descriptors = sweep.descriptors ?? []
+  // the map keeps a key's last spec, so an earlier one with the same key finds another
+  const by_key = new Map(descriptors.map((spec) => [spec.key, spec]))
+  for (const spec of descriptors) {
+    if (by_key.get(spec.key) !== spec) {
+      throw new Error(`Sweep descriptor key "${spec.key}" is not unique`)
+    }
+    if ((spec.compute === `fermi_dos_share`) !== Boolean(spec.element)) {
       throw new Error(
         `Descriptor "${spec.key}": element goes with (and only with) fermi_dos_share`,
       )
@@ -120,10 +122,11 @@ export function validate_sweep(sweep: Sweep): void {
     if (spec.pair && spec.compute !== `min_pair_distance`) {
       throw new Error(`Descriptor "${spec.key}": pair goes only with min_pair_distance`)
     }
-  }
-  for (const spec of sweep.descriptors ?? []) {
+    if (spec.overlay && new Set(spec.overlay).size !== spec.overlay.length) {
+      throw new Error(`Descriptor "${spec.key}" overlays a descriptor twice: ${spec.overlay}`)
+    }
     for (const key of spec.overlay ?? []) {
-      const other = sweep.descriptors?.find((entry) => entry.key === key)
+      const other = by_key.get(key)
       if (!other || key === spec.key) {
         throw new Error(`Descriptor "${spec.key}" overlays "${key}", no other descriptor`)
       }
@@ -302,7 +305,22 @@ const fail = (path: string, problem: string): never => {
   throw new Error(`Invalid sweep at ${path}: ${problem}`)
 }
 
-const FRAME_KEYS = new Set([
+// Fails on a field the sweep format has no use for, e.g. a typo like `units` for `unit`
+const reject_unknown = (
+  raw: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+): void => {
+  const unknown_key = Object.keys(raw).find((key) => !allowed.includes(key))
+  if (unknown_key !== undefined) fail(`${path}.${unknown_key}`, `unknown field`)
+}
+// an optional string field: absent, or a string
+const optional_string = (value: unknown, path: string): string | undefined =>
+  value === undefined || typeof value === `string`
+    ? value
+    : fail(path, `must be a string, got ${JSON.stringify(value)}`)
+
+const FRAME_KEYS = [
   `value`,
   `label`,
   `structure`,
@@ -313,17 +331,11 @@ const FRAME_KEYS = new Set([
   `phonon`,
   `scalars`,
   `status`,
-])
-// an optional string field: absent, or a string
-const optional_string = (value: unknown, path: string): string | undefined =>
-  value === undefined || typeof value === `string`
-    ? value
-    : fail(path, `must be a string, got ${JSON.stringify(value)}`)
+] as const satisfies (keyof SweepFrame)[]
 
 function normalize_frame(raw: unknown, path: string): SweepFrame {
   if (!is_plain_object(raw)) return fail(path, `frame must be an object`)
-  const unknown_key = Object.keys(raw).find((key) => !FRAME_KEYS.has(key))
-  if (unknown_key) return fail(`${path}.${unknown_key}`, `unknown frame field`)
+  reject_unknown(raw, FRAME_KEYS, path)
   const { value, structure, band_data, fermi_data, band_structs, doses } = raw
   if (typeof value !== `number`) return fail(path, `value must be a number`)
   const frame: SweepFrame = { value }
@@ -350,52 +362,54 @@ function normalize_frame(raw: unknown, path: string): SweepFrame {
     if (!is_plain_object(fermi_data)) return fail(`${path}.fermi_data`, `must be an object`)
     frame.fermi_data = parse(`fermi_data`, () => normalize_fermi_surface(fermi_data))
   }
-  const normalize_record = <Value>(
+  // `type` keeps electronic and phonon data in their own fields: plotted in the other's, energies
+  // would read as frequencies or the reverse
+  const normalize_record = <Value extends { type: string }>(
     record: unknown,
     key: string,
     normalize: (item: unknown) => Value | null,
+    type: `electronic` | `phonon`,
   ): Record<string, Value> | undefined => {
     if (record === undefined) return undefined
     if (!is_plain_object(record)) return fail(`${path}.${key}`, `must be an object`)
     return Object.fromEntries(
-      Object.entries(record).map(([name, item]) => [
-        name,
-        normalize(item) ?? fail(`${path}.${key}.${name}`, `unrecognized data`),
-      ]),
+      Object.entries(record).map(([name, item]) => {
+        const parsed = normalize(item) ?? fail(`${path}.${key}.${name}`, `unrecognized data`)
+        if (parsed.type !== type) {
+          return fail(`${path}.${key}.${name}`, `must be ${type} data, got ${parsed.type}`)
+        }
+        return [name, parsed]
+      }),
     )
   }
-  const bands = normalize_record(band_structs, `band_structs`, normalize_band_structure)
+  const bands = normalize_record(
+    band_structs,
+    `band_structs`,
+    normalize_band_structure,
+    `electronic`,
+  )
   if (bands) frame.band_structs = bands
-  const dos = normalize_record(doses, `doses`, normalize_dos)
+  const dos = normalize_record(doses, `doses`, normalize_dos, `electronic`)
   if (dos) frame.doses = dos
   if (raw.phonon !== undefined) {
     const { phonon } = raw
     if (!is_plain_object(phonon)) return fail(`${path}.phonon`, `must be an object`)
-    const extra = Object.keys(phonon).find((key) => key !== `band_structs` && key !== `doses`)
-    if (extra) return fail(`${path}.phonon.${extra}`, `unknown phonon field`)
+    reject_unknown(phonon, [`band_structs`, `doses`], `${path}.phonon`)
     const spectra: PhononSpectra = {}
     const phonon_bands = normalize_record(
       phonon.band_structs,
       `phonon.band_structs`,
       normalize_band_structure,
+      `phonon`,
     )
     if (phonon_bands) spectra.band_structs = phonon_bands
-    const phonon_doses = normalize_record(phonon.doses, `phonon.doses`, normalize_dos)
+    const phonon_doses = normalize_record(
+      phonon.doses,
+      `phonon.doses`,
+      normalize_dos,
+      `phonon`,
+    )
     if (phonon_doses) spectra.doses = phonon_doses
-    // electronic data has its own fields: mixed into one plot its energies read as frequencies
-    const entries = [
-      ...Object.entries(phonon_bands ?? {}).map(([name, item]) => [
-        `band_structs`,
-        name,
-        item.type,
-      ]),
-      ...Object.entries(phonon_doses ?? {}).map(([name, item]) => [`doses`, name, item.type]),
-    ]
-    for (const [key, name, type] of entries) {
-      if (type !== `phonon`) {
-        return fail(`${path}.phonon.${key}.${name}`, `must be phonon data, got ${type}`)
-      }
-    }
     frame.phonon = spectra
   }
   if (raw.scalars !== undefined) {
@@ -411,6 +425,7 @@ function normalize_frame(raw: unknown, path: string): SweepFrame {
   }
   if (raw.status !== undefined) {
     if (!is_plain_object(raw.status)) return fail(`${path}.status`, `must be an object`)
+    reject_unknown(raw.status, [`unstable`, `note`], `${path}.status`)
     const { unstable, note } = raw.status
     if (unstable !== undefined && typeof unstable !== `boolean`) {
       return fail(`${path}.status.unstable`, `must be a boolean`)
@@ -424,12 +439,24 @@ function normalize_frame(raw: unknown, path: string): SweepFrame {
   return frame
 }
 
+const DESCRIPTOR_KEYS = [
+  `key`,
+  `label`,
+  `unit`,
+  `compute`,
+  `pair`,
+  `element`,
+  `range`,
+  `threshold`,
+  `overlay`,
+] as const satisfies (keyof DescriptorSpec)[]
 const is_computed = (name: unknown): name is ComputedDescriptor =>
   COMPUTED_DESCRIPTORS.some((computed) => computed === name)
 
 function normalize_descriptor(raw: unknown, idx: number): DescriptorSpec {
   const path = `descriptors[${idx}]`
   if (!is_plain_object(raw)) return fail(path, `must be an object`)
+  reject_unknown(raw, DESCRIPTOR_KEYS, path)
   const { key, label, compute, pair, element, range, threshold, overlay } = raw
   if (typeof key !== `string` || typeof label !== `string`) {
     return fail(path, `needs a key and a label`)
@@ -481,8 +508,10 @@ export const is_sweep_like = (raw: unknown): boolean =>
 // in their JSON forms are normalized like single files. Throws naming the offending path.
 export function normalize_sweep(raw: unknown): Sweep {
   if (!is_plain_object(raw)) return fail(`root`, `must be an object`)
+  reject_unknown(raw, [`axis`, `series`, `descriptors`], `root`)
   const { axis, series, descriptors } = raw
   if (!is_plain_object(axis)) return fail(`axis`, `must be an object`)
+  reject_unknown(axis, [`key`, `label`, `unit`], `axis`)
   if (!Array.isArray(series)) return fail(`series`, `must be an array`)
   if (typeof axis.key !== `string` || typeof axis.label !== `string`) {
     return fail(`axis`, `needs a key and a label`)
@@ -499,6 +528,7 @@ export function normalize_sweep(raw: unknown): Sweep {
       if (!is_plain_object(entry) || !Array.isArray(entry.frames)) {
         return fail(path, `needs an id and a frames array`)
       }
+      reject_unknown(entry, [`id`, `label`, `frames`], path)
       return {
         id: typeof entry.id === `string` ? entry.id : fail(path, `needs a string id`),
         ...(entry.label !== undefined && {
