@@ -7,7 +7,6 @@ import {
   detect_irreducible_bz,
   extract_fermi_surface,
   fold_to_wigner_seitz,
-  polygon_interior_point,
   preview_interpolation_factor,
   reciprocal_cell_section,
   sample_slice_energies,
@@ -26,7 +25,7 @@ import type {
 } from '#lib/fermi-surface/types.js'
 import { vertex_count } from '#lib/fermi-surface/types.js'
 import * as math from '#lib/math.js'
-import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Matrix4Tuple, Vec3 } from '#lib/math.js'
 import { SphereGeometry } from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { describe, expect, test } from 'vitest'
@@ -381,16 +380,6 @@ describe(`slice energy shading`, () => {
 })
 
 describe(`pocket classification`, () => {
-  // a C-shape's centroid (≈1.36, 1.5) falls in its notch: the midpoint of the inside span of
-  // its horizontal line is inside
-  test(`polygon_interior_point of a concave polygon`, () => {
-    // oxfmt-ignore
-    const c_shape: Vec2[] = [[0, 0], [3, 0], [3, 1], [1, 1], [1, 2], [3, 2], [3, 3], [0, 3]]
-    const [coord_x, coord_y] = polygon_interior_point(c_shape)
-    expect(coord_x).toBeCloseTo(0.5, 12)
-    expect(coord_y).toBeCloseTo(1.5, 12)
-  })
-
   // ε = ±|k| with E_F = ±0.3: the (001) slice through Γ is one closed circle, enclosing
   // occupied states (electron pocket) for +|k| and empty ones (hole pocket) for −|k|
   test.each([

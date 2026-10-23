@@ -61,7 +61,6 @@
     pressure_log_floor,
     pt_data_extent,
     pt_phase_colors,
-    temp_delta_factor,
   } from './data'
   import type { PixelSigma } from './geometry'
   import {
@@ -69,7 +68,6 @@
     derive_regions,
     interpolate_at,
     nearest_on_polylines,
-    SNAP_TOL,
     uncertainty_band,
   } from './geometry'
   import type {
@@ -99,7 +97,6 @@
     display = $bindable({ ...DISPLAY_DEFAULTS }),
     hidden_phases = $bindable([]),
     hidden_special_types = $bindable([]),
-    snap_tol = SNAP_TOL,
     legend = {},
     title, // defaults to data.title
     padding = {},
@@ -146,8 +143,6 @@
       // Phase ids and special-point types hidden from the plot (toggled from the legend)
       hidden_phases?: string[]
       hidden_special_types?: PtSpecialPointType[]
-      // Endpoint snapping tolerance (fraction of the window) when tracing regions from lines
-      snap_tol?: number
       legend?: LegendConfig | null
       pan?: PanConfig
       // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
@@ -268,10 +263,9 @@
     const unit_range: Vec2 = [0, 1]
     if (!pt_data) return { x: unit_range, x2: unit_range, y: unit_range, y2: unit_range }
     const [[p_lo, p_hi], t_range] = pt_data_extent(pt_data)
+    // a log axis starts at its floor, which is positive so p_to_display leaves it be
     const disp_p: Vec2 = [
-      log_floor !== null
-        ? convert_pressure(Math.max(p_lo, log_floor), data_p_unit, p_unit)
-        : p_to_display(p_lo),
+      p_to_display(Math.max(p_lo, log_floor ?? -Infinity)),
       p_to_display(p_hi),
     ]
     const [x_range, y_range] = orient<Vec2>([disp_p, t_range.map(t_to_display) as Vec2])
@@ -308,7 +302,7 @@
   // Traced in the space the pressure axis draws (log10 P on a log axis), so snapping matches
   // what the eye sees; explicit regions are used as given
   const traced = $derived(
-    pt_data && !pt_data.regions ? derive_regions(pt_data, { snap_tol, log_pressure }) : null,
+    pt_data && !pt_data.regions ? derive_regions(pt_data, { log_pressure }) : null,
   )
   const regions = $derived(pt_data?.regions ?? traced?.regions ?? [])
   const notices = $derived(
@@ -325,7 +319,7 @@
         pt_data &&
         log_floor === null && {
           type: `warning` as const,
-          message: `A log pressure axis needs a positive pressure in the data or pressure_range`,
+          message: `A log pressure axis needs positive pressures spanning a range in the data or pressure_range`,
         },
     ].flatMap((notice) => (notice ? [notice] : [])),
   )
@@ -513,8 +507,8 @@
   const mark_key = (info: PtHoverInfo): string =>
     info.special_point
       ? `special:${info.special_point.id}`
-      : info.boundary
-        ? `boundary:${info.boundary.boundary.id}`
+      : info.boundary_hit
+        ? `boundary:${info.boundary_hit.boundary.id}`
         : `phase:${info.phase?.id}`
   const pin = new TooltipPin<PtHoverInfo>({
     key: mark_key,
@@ -537,15 +531,15 @@
           boundary_shapes.map(({ pixels }) => pixels),
         )
       : null
-    let boundary: PtHoverInfo[`boundary`] = null
+    let boundary_hit: PtHoverInfo[`boundary_hit`] = null
     if (nearest && nearest.dist <= BOUNDARY_HIT_PX) {
       const { line_idx, seg_idx, param, foot } = nearest
-      const hit = boundary_shapes[line_idx].boundary
-      boundary = {
-        boundary: hit,
+      const { boundary } = boundary_shapes[line_idx]
+      boundary_hit = {
+        boundary,
         point: px_to_data(foot),
-        sigma_t: interpolate_at(hit.sigma_t, seg_idx, param),
-        sigma_p: interpolate_at(hit.sigma_p, seg_idx, param),
+        sigma_t: interpolate_at(boundary.sigma_t, seg_idx, param),
+        sigma_p: interpolate_at(boundary.sigma_p, seg_idx, param),
       }
     }
     // Hit-test the drawn (pixel) polygons: on a log axis their edges are straight in pixels,
@@ -556,12 +550,11 @@
     return {
       phase: region?.phase ?? null,
       point: px_to_data(px),
-      boundary,
+      boundary_hit,
       special_point:
         special && special.dist <= SPECIAL_HIT_PX
           ? special_shapes[special.line_idx].point
           : null,
-      position: { x: px[0], y: px[1] },
     }
   }
 
@@ -576,7 +569,7 @@
   // A click on empty space (no phase, line or marker) unpins rather than pinning nothing
   const handle_click = () => {
     const info = hover_info
-    pin.toggle(info && (info.phase || info.boundary || info.special_point) ? info : null)
+    pin.toggle(info && (info.phase || info.boundary_hit || info.special_point) ? info : null)
     if (pin.value) on_pin?.(pin.value)
   }
 
@@ -590,20 +583,18 @@
   })
 
   const tooltip_color = $derived(
-    shown_info?.phase && !shown_info.boundary && !shown_info.special_point
+    shown_info?.phase && !shown_info.boundary_hit && !shown_info.special_point
       ? phase_colors.get(shown_info.phase.id)
       : undefined,
   )
-  // A pinned point follows pan and zoom, so its marker and tooltip are placed from data
+  // Placed from data, so a pinned marker and tooltip follow pan and zoom
   const pinned_px = $derived(pin.value ? data_to_px(pin.value.point) : null)
-  const tooltip_px = $derived(
-    pinned_px ?? (shown_info ? [shown_info.position.x, shown_info.position.y] : null),
-  )
+  const tooltip_px = $derived(shown_info ? data_to_px(shown_info.point) : null)
   // Hovered and pinned marks are both lit
   const lit = $derived(
     new Set(
       [hover_info, pin.value].flatMap((info) => [
-        ...(info?.boundary ? [info.boundary.boundary.id] : []),
+        ...(info?.boundary_hit ? [`boundary:${info.boundary_hit.boundary.id}`] : []),
         ...(info?.phase ? [`phase:${info.phase.id}`] : []),
       ]),
     ),
@@ -627,8 +618,6 @@
       ? SIGMA_LEVELS
       : [...SIGMA_LEVELS, [n_sigma, `${n_sigma}σ`] as [number, string]],
   )
-  const unit_options = (units: readonly string[]) =>
-    units.map((unit): [string, string] => [unit, unit])
   // Shared X/Y axis sections edit whichever quantity sits on that side
   const set_side = (on_x: boolean) => (axis: AxisConfig) => {
     if (on_x !== swap_axes) pressure_axis = axis
@@ -662,7 +651,7 @@
   // (temperature errors scale without the zero offset)
   const sigma_scale = $derived([
     convert_pressure(n_sigma, data_p_unit, p_unit),
-    n_sigma * temp_delta_factor(data_t_unit, t_unit),
+    convert_temp(n_sigma, data_t_unit, t_unit) - convert_temp(0, data_t_unit, t_unit),
   ])
 
   const export_sources = $derived(pt_data ? { json: json_source(() => pt_data) } : {})
@@ -683,8 +672,8 @@
     <dt>{name}</dt>
     <dd>
       <TooltipValue value={fmt(display_point[axis])} unit={[p_unit, t_unit][axis]} />
-      {#if sigma}<small>± {fmt(Number((sigma * sigma_scale[axis]).toPrecision(2)))}</small
-        >{/if}
+      <!-- .2~r: 2 significant digits in plain decimals (.2~g would print 140 as 1.4e2) -->
+      {#if sigma}<small>± {format_num(sigma * sigma_scale[axis], `.2~r`)}</small>{/if}
     </dd>
   {/each}
 {/snippet}
@@ -744,7 +733,7 @@
             {/each}
           {/if}
           {#each boundary_shapes as { boundary, path, color, width } (boundary.id)}
-            {@const is_lit = lit.has(boundary.id)}
+            {@const is_lit = lit.has(`boundary:${boundary.id}`)}
             <path
               class="boundary"
               class:lit={is_lit}
@@ -874,13 +863,15 @@
           <label>
             <span>Pressure</span>
             <select bind:value={() => p_unit, (unit) => (display_pressure_unit = unit)}>
-              {@render options(unit_options(Object.keys(PRESSURE_UNITS)))}
+              {@render options(
+                Object.keys(PRESSURE_UNITS).map((unit) => [unit, unit] as const),
+              )}
             </select>
           </label>
           <label>
             <span>Temperature</span>
             <select bind:value={() => t_unit, (unit) => (display_temp_unit = unit)}>
-              {@render options(unit_options(TEMP_UNITS))}
+              {@render options(TEMP_UNITS.map((unit) => [unit, unit] as const))}
             </select>
           </label>
           <label {@attach hint({ content: `Temperature on x, pressure on y` })}>
@@ -932,8 +923,8 @@
                 ])}
               {:else}{@render coords(info.point)}{/if}
             </dl>
-            {#if info.boundary && !special}
-              {@const { boundary, point, sigma_p, sigma_t } = info.boundary}
+            {#if info.boundary_hit && !special}
+              {@const { boundary, point, sigma_p, sigma_t } = info.boundary_hit}
               <section>
                 <strong>
                   {#if boundary.label}{boundary.label}{:else}

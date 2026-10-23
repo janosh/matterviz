@@ -2,7 +2,7 @@
 // cross a widget boundary unchanged. All coordinates are [pressure, temperature] pairs in the
 // data's own units (pressure_unit, temperature_unit). A null-valued key counts as omitted.
 
-import type { Point2D, Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math.js'
 import type { LineStyle } from '#lib/plot/index.js'
 import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 import type { TempUnit } from '../types'
@@ -23,7 +23,9 @@ export interface PtBoundary {
   points: Vec2[] // [pressure, temperature] polyline
   // Per-point standard errors (one entry per point, same units as the data): sigma_t is the
   // temperature uncertainty at fixed pressure, sigma_p the pressure uncertainty at fixed
-  // temperature. Either, both or neither may be given.
+  // temperature. Either, both or neither may be given. Both are taken as views of one error
+  // in the line's position (from a free-energy error, sigma_t / sigma_p = |dT/dP|): the band
+  // spans the larger of their normal projections rather than adding them.
   sigma_t?: number[]
   sigma_p?: number[]
   label?: string
@@ -79,9 +81,8 @@ export interface PtBoundaryHit {
 export interface PtHoverInfo {
   phase: PtPhase | null // stable phase at the cursor, null outside every region
   point: Vec2 // [pressure, temperature] at the cursor, data units
-  boundary: PtBoundaryHit | null // set within a few pixels of a coexistence line
+  boundary_hit: PtBoundaryHit | null // set within a few pixels of a coexistence line
   special_point: PtSpecialPoint | null
-  position: Point2D // tooltip anchor in plot-SVG pixels
 }
 
 export type PtPhaseDiagramTooltipProp = TooltipProp<PtHoverInfo, TooltipConfig<PtHoverInfo>>

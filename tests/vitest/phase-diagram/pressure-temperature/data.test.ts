@@ -5,8 +5,6 @@ import {
   pressure_log_floor,
   pt_data_extent,
   pt_phase_colors,
-  temp_delta_factor,
-  validate_pt_data,
 } from '#lib/phase-diagram/pressure-temperature/data.js'
 import type {
   PtBoundary,
@@ -45,13 +43,13 @@ const with_special = (...special_points: Record<string, unknown>[]) => ({
 })
 const critical = { id: `cp`, type: `critical`, position: [1, 1] }
 
-describe(`validate_pt_data`, () => {
+describe(`parse_pt_data`, () => {
   test.each([
     [`iron demo`, iron_pt_diagram],
     [`water demo`, water_pt_diagram],
     [`minimal`, base],
   ])(`%s validates clean`, (_label, data) => {
-    expect(validate_pt_data(data)).toEqual([])
+    expect(parse_pt_data(data)).toEqual({ data, errors: [] })
   })
 
   // Every problem is reported, never thrown (a throw would crash the component's $derived),
@@ -91,6 +89,12 @@ describe(`validate_pt_data`, () => {
     [`unknown pressure unit`, { ...base, pressure_unit: `psi` }, [`unknown pressure_unit 'psi'`]],
     [`prototype key as unit`, { ...base, pressure_unit: `toString` }, [`unknown pressure_unit 'toString'`]],
     [`unknown temperature unit`, { ...base, temperature_unit: `R` }, [`unknown temperature_unit 'R'`]],
+    // kinds that would render as nonsense: a truthy string, "31.5" px strokes, [object Object]
+    [`string metastable`, with_boundary({ metastable: `no` }), [`boundary 'melting' metastable must be a boolean`]],
+    [`string style`, with_boundary({ style: `red` }), [`boundary 'melting' style must be an object`]],
+    [`string style.width`, with_boundary({ style: { width: `3` } }), [`boundary 'melting' style.width must be a finite number`]],
+    [`object system`, { ...base, system: {} }, [`system must be a string`]],
+    [`numeric title`, { ...base, title: 5 }, [`title must be a string`]],
     [`several problems at once`, { ...with_boundary({ phases: [`solid`, `gas`], sigma_t: [1] }), pressure_unit: `psi` }, [`boundary 'melting' references unknown phase 'gas'`, `boundary 'melting' sigma_t has 1 entries for 2 points`, `unknown pressure_unit 'psi'`]],
   ] satisfies [string, unknown, string[]][])(`%s is reported`, (_label, data, errors) => {
     expect(parse_pt_data(data)).toEqual({ data: null, errors })
@@ -133,19 +137,6 @@ describe(`units`, () => {
     expect(convert_pressure(value, from, to) / expected).toBeCloseTo(1, 12)
     expect(convert_pressure(expected, to, from) / value).toBeCloseTo(1, 12)
   })
-
-  // Differences scale without the zero offset: 1 K = 1 °C = 1.8 °F
-  test.each([
-    [`K`, `°C`, 1],
-    [`°C`, `K`, 1],
-    [`K`, `°F`, 9 / 5],
-    [`°C`, `°F`, 9 / 5],
-    [`°F`, `K`, 5 / 9],
-    [`°F`, `°F`, 1],
-  ] as const)(`temp_delta_factor %s -> %s = %d`, (from, to, expected) => {
-    // the °F -> °F path multiplies 5/9 by 9/5, exact only to an ulp
-    expect(temp_delta_factor(from, to)).toBeCloseTo(expected, 14)
-  })
 })
 
 // Explicit color, then the named phase palette, then the plot palette by index. Substring
@@ -186,7 +177,9 @@ test.each([
 test.each([
   [`positive declared lower bound`, { ...base, pressure_range: [0.5, 10] }, 0.5],
   // a 0 lower bound can't sit on a log axis: fall back to the smallest positive data pressure
-  [`zero declared bound`, { ...base, pressure_range: [0, 10] }, 10],
+  [`zero declared bound`, { ...base, pressure_range: [0, 50] }, 10],
+  // the only positive pressure is the window's top, so a log axis would span nothing
+  [`zero log span`, { ...base, pressure_range: [0, 10] }, null],
   [`special point below boundaries`, with_special({ ...critical, position: [0.01, 300] }), 0.01],
   [`no positive pressure`, with_boundary({ points: [[0, 1], [-1, 2]] }), null],
   [`iron demo (0 GPa endpoints)`, iron_pt_diagram, 0.7],

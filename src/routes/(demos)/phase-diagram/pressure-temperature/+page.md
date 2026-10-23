@@ -6,11 +6,11 @@ Hover anywhere for the phase, P and T. Within a few pixels of a coexistence line
 
 ## Single-Component System with Uncertainty
 
-An iron-like system with four solids, the liquid and three triple points. No regions are passed: the component traces them from the coexistence lines. Every boundary carries propagated standard errors, as a free-energy pipeline produces them: `sigma_t` (temperature at fixed pressure) on the shallow lines and `sigma_p` (pressure at fixed temperature) on the near-vertical α–ε line. The band reaches each point's error ellipse along the line's normal, so both kinds widen the band where they matter.
+An iron-like system with four solids, the liquid and three triple points. No regions are passed: the component traces them from the coexistence lines. Every boundary carries propagated standard errors, as a free-energy pipeline produces them: `sigma_t` (temperature at fixed pressure) on the shallow lines and `sigma_p` (pressure at fixed temperature) on the near-vertical α–ε line. Along the line's normal the band spans the larger of the two errors' projections, so each kind widens the band where it matters. Where a line has both, they are two views of one free-energy error (σ_T / σ_P = |dT/dP|), so they aren't added.
 
 ```svelte example
 <script lang="ts">
-  import { PressureTemperaturePhaseDiagram } from 'matterviz'
+  import { format_num, PressureTemperaturePhaseDiagram } from 'matterviz'
   import type { PtUncertaintyMode } from 'matterviz'
   import { iron_pt_diagram } from '#site/phase-diagrams/pressure-temperature.js'
 
@@ -46,7 +46,7 @@ An iron-like system with four solids, the liquid and three triple points. No reg
   bind:n_sigma
   on_pin={(info) =>
     (pinned = info
-      ? `Pinned ${info.phase?.name ?? `point`} at ${info.point[0].toFixed(1)} GPa, ${Math.round(info.point[1])} K`
+      ? `Pinned ${info.phase?.name ?? `point`} at ${format_num(info.point[0], `.1f`)} GPa, ${Math.round(info.point[1])} K`
       : ``)}
   style="height: 500px"
 />
@@ -116,7 +116,7 @@ interface PtPhaseDiagramData {
 }
 ```
 
-`validate_pt_data(data)` lists every problem (unknown phase ids, duplicate ids, sigma arrays that don't match their points, non-finite coordinates, inverted ranges). The component shows the first one and draws nothing rather than a half-valid diagram.
+`parse_pt_data(data).errors` lists every problem (unknown phase ids, duplicate ids, sigma arrays that don't match their points, non-finite coordinates, inverted ranges, mistyped fields). The component shows the first one and draws nothing rather than a half-valid diagram.
 
 A minimal two-phase diagram. A single line doesn't say which side is which phase, so it passes `regions` (the polygons share the boundary's points):
 
@@ -156,9 +156,9 @@ A minimal two-phase diagram. A single line doesn't say which side is which phase
 
 ## How Regions Are Traced
 
-Without `regions`, `derive_regions(data)` joins the coexistence lines and the plotted window into a planar map. Endpoints within 1 % of the window from another line, endpoint or edge snap together, since separately computed boundaries rarely meet at exactly the same triple point. Shorter overshoots past a junction are dropped. Each face takes the phase shared by every boundary around it, or failing that the phase across a boundary from an already named neighbor. On a log pressure axis the tracing runs in log P, so snapping matches what is drawn. Naming needs at least one face whose boundaries share a single phase, as around a triple point: a lone two-phase line leaves both sides unnamed.
+Without `regions`, `derive_regions(data)` joins the coexistence lines and the plotted window into a planar map. Separately computed boundaries rarely meet at exactly the same triple point or reach exactly the window edge, so their ends are joined without any distance tolerance: an end on the window edge stays, as does a line's end at a `critical` special point. Any other end is cut back to the line's last crossing with another line (an overshoot), else joins the ends of the two other lines of its phase triangle (a|b, a|c and b|c meet at the one a-b-c triple point, all three moving to their mean), else runs on along its last segment to the first line or window edge it hits, so a window wider than the data still splits into fields. None of this depends on the order of the boundaries. Each face takes the phase shared by every boundary around it, or failing that the phase across a boundary from an already named neighbor. On a log pressure axis the tracing runs in log P, so lines run on straight as drawn. Naming needs at least one face whose boundaries share a single phase, as around a triple point: a lone two-phase line leaves both sides unnamed.
 
-Every boundary must then separate exactly its two phases, so a face named against that (when a missing or `metastable` line merges two fields) loses its name. A face that a coexistence line ends inside, or that holds a line or closed loop touching nothing (liquid and vapor joined around a critical point, an island phase), contains two phases and stays unfilled too. The component then shows a notice. Pass explicit regions for diagrams like that, as in the water example, or tune the snapping with the `snap_tol` prop.
+Every boundary must then separate exactly its two phases, so a face named against that (when a missing or `metastable` line merges two fields) loses its name. A face that a coexistence line ends inside, or that holds a line or closed loop touching nothing (liquid and vapor joined around a critical point, an island phase), contains two phases and stays unfilled too. The component then shows a notice. Pass explicit regions for diagrams like that, as in the water example.
 
 Axis settings are by quantity: `pressure_axis` and `temperature_axis` (label, ticks, format, `scale_type`, `range` in display units) follow their quantity when `swap_axes` flips the sides, and a pinned range converts along when the display unit changes. `null` values in `data` (Python's `None`) count as omitted.
 

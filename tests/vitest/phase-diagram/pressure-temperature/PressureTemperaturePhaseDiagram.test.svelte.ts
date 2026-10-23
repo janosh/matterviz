@@ -4,6 +4,7 @@ import type {
   PtHoverInfo,
   PtPhaseDiagramData,
 } from '#lib/phase-diagram/pressure-temperature/types.js'
+import type { TempUnit } from '#lib/phase-diagram/types.js'
 import type { AxisConfig } from '#lib/plot/core/types.js'
 import type { Vec2 } from '#lib/math.js'
 import {
@@ -90,14 +91,14 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
         [...wrapper.querySelectorAll(selector)]
           .map((node) => node.getAttribute(attr) ?? ``)
           .toSorted((left, right) => left.localeCompare(right))
+      const { x_label, ...counts } = expected
       expect({
         phases: attrs(`.regions path`, `data-phase`),
         boundaries: count(wrapper, `.boundary`),
         bands: count(wrapper, `.uncertainty-band`),
         specials: attrs(`.special-point`, `data-type`),
-        x_label: expected.x_label,
-      }).toEqual(expected)
-      expect(axis_text(wrapper, `x`)).toContain(expected.x_label)
+      }).toEqual(counts)
+      expect(axis_text(wrapper, `x`)).toContain(x_label)
       expect(count(wrapper, `.error-bars`)).toBe(0) // default uncertainty is `band`
       expect(wrapper.querySelector(`.status-message`)).toBeNull()
     },
@@ -188,7 +189,7 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     await hover(wrapper, 50, 1000)
     const info = on_phase_hover.mock.lastCall?.[0]
     expect(info?.phase?.id).toBe(`epsilon`)
-    expect(info?.boundary).toBeNull()
+    expect(info?.boundary_hit).toBeNull()
     expect(info?.special_point).toBeNull()
     // px -> data inverts a linear scale: round-off ~1e-13 at these magnitudes, 9 digits is safe
     expect(info?.point[0]).toBeCloseTo(50, 9)
@@ -199,6 +200,15 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     expect(wrapper.querySelector(`.regions path.lit`)?.getAttribute(`data-phase`)).toBe(
       `epsilon`,
     )
+    // the tooltip is anchored from the hovered data point, so it moves with the cursor
+    const tooltip_left = () =>
+      Number(
+        wrapper.querySelector<HTMLElement>(`.plot-tooltip`)?.style.left.replace(/px$/, ``),
+      )
+    const left_at_50 = tooltip_left()
+    await hover(wrapper, 60, 1000)
+    // px -> data -> px round trip through linear scales: sub-1e-9 px, 6 digits is safe
+    expect(tooltip_left() - left_at_50).toBeCloseTo((10 / 150) * clip_rect(wrapper).width, 6)
 
     plot_svg(wrapper).dispatchEvent(mouse(`mousemove`, { clientX: 5, clientY: 5 }))
     await tick()
@@ -217,7 +227,7 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
       const on_phase_hover = vi.fn<(info: PtHoverInfo | null) => void>()
       const wrapper = await mount_diagram({ on_phase_hover, n_sigma })
       await hover(wrapper, 12.4, 420)
-      const hit = on_phase_hover.mock.lastCall?.[0]?.boundary
+      const hit = on_phase_hover.mock.lastCall?.[0]?.boundary_hit
       expect(hit?.boundary.id).toBe(`alpha-epsilon`)
       // sigmas are linearly interpolated at the nearest point, here a vertex up to round-off
       expect(hit?.sigma_p).toBeCloseTo(0.8, 6)
@@ -232,14 +242,78 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     },
   )
 
-  test(`hover on a triple point names it with its phases and sigmas`, async () => {
-    const wrapper = await mount_diagram()
-    await hover(wrapper, 90, 2950)
-    const text = tooltip_text(wrapper) ?? ``
-    expect(text).toContain(`γ–ε–L`)
-    expect(text).toContain(`Triple point`)
-    expect(text).toContain(`± 140`)
-    expect(text).toContain(`± 4`)
+  // γ–ε–L carries sigma_t 140 K and sigma_p 4 GPa: a temperature error converts without the
+  // zero offset (140 K = 140 °C = 252 °F), shown to 2 significant digits in plain decimals
+  test.each([
+    [`K`, `± 140`],
+    [`°C`, `± 140`],
+    [`°F`, `± 250`],
+  ] as const)(
+    `hover on a triple point names it with its phases and sigmas (%s)`,
+    async (display_temp_unit, sigma_t_text) => {
+      const wrapper = await mount_diagram({ display_temp_unit })
+      await hover(wrapper, 90, 2950)
+      const text = tooltip_text(wrapper) ?? ``
+      expect(text).toContain(`γ–ε–L`)
+      expect(text).toContain(`Triple point`)
+      expect(text).toContain(sigma_t_text)
+      expect(text).toContain(`± 4`)
+    },
+  )
+
+  // On a log axis region edges are straight in pixels, not in data units: between the last two
+  // melting points (factor ~4 in P) the drawn ice|liquid line sags below the data-space chord,
+  // and a cursor between the two must read liquid, the field drawn under it
+  test(`log-axis hover hit-tests the drawn regions`, async () => {
+    const on_phase_hover = vi.fn<(info: PtHoverInfo | null) => void>()
+    const wrapper = await mount_diagram({
+      data: water_pt_diagram,
+      pressure_axis: { scale_type: `log` },
+      on_phase_hover,
+    })
+    const melting = water_pt_diagram.boundaries.find((line) => line.id === `melting`)
+    const [[p_1, t_1], [p_2, t_2]] = melting?.points.slice(-2) ?? []
+    const pressure = Math.sqrt(p_1 * p_2) // pixel midpoint of the segment
+    const drawn_t = (t_1 + t_2) / 2
+    const chord_t = t_1 + ((t_2 - t_1) * (pressure - p_1)) / (p_2 - p_1)
+    expect(chord_t - drawn_t).toBeGreaterThan(2) // the two tests disagree by > 2 K here
+    const { x: left, y: top, width, height } = clip_rect(wrapper)
+    const temp = (drawn_t + chord_t) / 2
+    const [p_min, p_max] = water_pt_diagram.pressure_range ?? [1, 1]
+    const [t_min, t_max] = water_pt_diagram.temperature_range ?? [0, 1]
+    const clientX = left + (Math.log10(pressure / p_min) / Math.log10(p_max / p_min)) * width
+    const clientY = top + height - ((temp - t_min) / (t_max - t_min)) * height
+    plot_svg(wrapper).dispatchEvent(mouse(`mousemove`, { clientX, clientY }))
+    await tick()
+    expect(on_phase_hover.mock.lastCall?.[0]?.phase?.id).toBe(`liquid`)
+  })
+
+  // Hover and pin describe the data and view they were taken in, so changing either drops them
+  // oxfmt-ignore
+  test.each([
+    [`data`, (state: { data: PtPhaseDiagramData }) => (state.data = { ...iron_pt_diagram })],
+    [`temperature unit`, (state: { display_temp_unit: TempUnit }) => (state.display_temp_unit = `°C`)],
+    [`pressure unit`, (state: { display_pressure_unit: PressureUnit }) => (state.display_pressure_unit = `kbar`)],
+    [`swapped axes`, (state: { swap_axes: boolean }) => (state.swap_axes = true)],
+  ] as const)(`changing the %s clears hover and pin`, async (_label, change) => {
+    const state = $state<{
+      data: PtPhaseDiagramData
+      display_temp_unit: TempUnit
+      display_pressure_unit: PressureUnit
+      swap_axes: boolean
+    }>({ data: iron_pt_diagram, display_temp_unit: `K`, display_pressure_unit: `GPa`, swap_axes: false })
+    const on_pin = vi.fn<(info: PtHoverInfo | null) => void>()
+    const on_phase_hover = vi.fn<(info: PtHoverInfo | null) => void>()
+    const wrapper = await mount_diagram(bind_props({ on_pin, on_phase_hover }, state))
+    await hover(wrapper, 50, 1000)
+    await fire(plot_svg(wrapper), mouse(`click`))
+    expect(wrapper.querySelector(`.pin-marker`)).not.toBeNull()
+    change(state)
+    await tick()
+    expect(wrapper.querySelector(`.pin-marker`)).toBeNull()
+    expect(tooltip_text(wrapper)).toBeNull()
+    expect(on_pin).toHaveBeenLastCalledWith(null)
+    expect(on_phase_hover).toHaveBeenLastCalledWith(null)
   })
 
   // Marks are the ε and liquid regions, empty space the margin left of the plot

@@ -1,20 +1,16 @@
 // Geometry of pressure-temperature phase diagrams: phase regions traced from the coexistence
 // lines, nearest-boundary lookup for hover, uncertainty bands and label anchors
 
-import { clamp, point_in_polygon, polygon_signed_area, type Vec2 } from '#lib/math.js'
+import {
+  array_extent,
+  clamp,
+  point_in_polygon,
+  polygon_signed_area,
+  type Vec2,
+} from '#lib/math.js'
 import { clip_segment_to_unit_square } from '#lib/plot/core/decorations/index.js'
 import { pressure_log_floor, pt_data_extent } from './data'
 import type { PtPhaseDiagramData, PtRegion } from './types'
-
-// Endpoints closer than this (fraction of the plotted window) to another line, another
-// endpoint or the window edge are joined to it, and dangling stubs shorter than it dropped:
-// separately computed boundaries rarely meet at exactly the same triple point
-export const SNAP_TOL = 0.01
-// Normalized distance below which two noded vertices are one
-const MERGE_EPS = 1e-7
-// Faces with a smaller normalized area are slivers left by snapping
-const AREA_EPS = 1e-9
-const FRAME_TAG = -1
 
 const sub = (pt_a: Vec2, pt_b: Vec2): Vec2 => [pt_a[0] - pt_b[0], pt_a[1] - pt_b[1]]
 const cross = (vec_a: Vec2, vec_b: Vec2): number => vec_a[0] * vec_b[1] - vec_a[1] * vec_b[0]
@@ -42,9 +38,7 @@ export function nearest_on_polylines(
   point: Vec2,
   lines: readonly (readonly Vec2[])[],
 ): (ReturnType<typeof closest_on_segment> & { line_idx: number; seg_idx: number }) | null {
-  let best:
-    | (ReturnType<typeof closest_on_segment> & { line_idx: number; seg_idx: number })
-    | null = null
+  let best: ReturnType<typeof nearest_on_polylines> = null
   for (const [line_idx, line] of lines.entries()) {
     for (let seg_idx = 0; seg_idx < line.length - 1; seg_idx++) {
       const hit = closest_on_segment(point, line[seg_idx], line[seg_idx + 1])
@@ -64,73 +58,262 @@ export const interpolate_at = (
 
 // === Region derivation ===
 
-// Nearest point on the unit square's edges when within `tol` (and not past a corner by more)
-function snap_to_frame(point: Vec2, tol: number): Vec2 | null {
-  const [coord_u, coord_v] = point
-  if (coord_u < -tol || coord_u > 1 + tol || coord_v < -tol || coord_v > 1 + tol) return null
-  const options: [number, Vec2][] = [
-    [Math.abs(coord_u), [0, clamp(coord_v, 0, 1)]],
-    [Math.abs(1 - coord_u), [1, clamp(coord_v, 0, 1)]],
-    [Math.abs(coord_v), [clamp(coord_u, 0, 1), 0]],
-    [Math.abs(1 - coord_v), [clamp(coord_u, 0, 1), 1]],
-  ]
-  const [gap, foot] = options.reduce((best, opt) => (opt[0] < best[0] ? opt : best))
-  return gap <= tol ? foot : null
+// Normalized distance below which two points are one: numerical coincidence, not snapping
+const MERGE_EPS = 1e-7
+// Faces with a smaller normalized area are numerical slivers, neither regions nor unnamed
+const AREA_EPS = 1e-9
+const FRAME_TAG = -1
+
+const lerp = (from: Vec2, to: Vec2, frac: number): Vec2 => [
+  from[0] + frac * (to[0] - from[0]),
+  from[1] + frac * (to[1] - from[1]),
+]
+// Segments of the polylines, tagged with their line and segment index
+const line_segments = (lines: readonly Vec2[][]) =>
+  lines.flatMap((line, line_idx) =>
+    line.slice(1).map((end, seg_idx) => ({
+      line_idx,
+      seg_idx,
+      ends: [line[seg_idx], end] as const,
+    })),
+  )
+
+// Calls `visit` for each pair of segments whose (padded) bounding boxes overlap. Sorted by left
+// edge, the inner loop stops at the first box starting right of the current one, so lines
+// spread along x don't pay for all S² pairs.
+function overlapping_pairs(
+  segments: readonly (readonly [Vec2, Vec2])[],
+  visit: (idx_a: number, idx_b: number) => void,
+): void {
+  // [x_min, x_max, y_min, y_max]
+  const boxes = segments.map(([start, end]) => [
+    Math.min(start[0], end[0]) - 1e-6,
+    Math.max(start[0], end[0]) + 1e-6,
+    Math.min(start[1], end[1]) - 1e-6,
+    Math.max(start[1], end[1]) + 1e-6,
+  ])
+  const order = boxes
+    .map((_, idx) => idx)
+    .toSorted((idx_a, idx_b) => boxes[idx_a][0] - boxes[idx_b][0])
+  for (let pos_a = 0; pos_a < order.length; pos_a++) {
+    const box_a = boxes[order[pos_a]]
+    for (let pos_b = pos_a + 1; pos_b < order.length; pos_b++) {
+      const box_b = boxes[order[pos_b]]
+      if (box_b[0] > box_a[1]) break
+      if (box_b[3] >= box_a[2] && box_a[3] >= box_b[2]) visit(order[pos_a], order[pos_b])
+    }
+  }
 }
 
-// Join loose ends: endpoints of different lines chained within `tol` of each other merge to
-// their mean (triple points; transitive, so the result doesn't depend on line order), then
-// each remaining end snaps onto a nearby line or the window edge
-function snap_endpoints(lines: Vec2[][], tol: number): Vec2[][] {
-  const snapped = lines.map((line) => line.map((point): Vec2 => [...point]))
-  const ends = snapped.flatMap((line, line_idx) => [
-    { line_idx, point_idx: 0 },
-    { line_idx, point_idx: line.length - 1 },
-  ])
-  const end_point = (idx: number) => snapped[ends[idx].line_idx][ends[idx].point_idx]
-  const parent = ends.map((_, idx) => idx)
-  const root = (idx: number): number =>
-    parent[idx] === idx ? idx : (parent[idx] = root(parent[idx]))
-  for (let idx_a = 0; idx_a < ends.length; idx_a++) {
-    for (let idx_b = idx_a + 1; idx_b < ends.length; idx_b++) {
-      if (ends[idx_a].line_idx === ends[idx_b].line_idx) continue
-      if (dist(end_point(idx_a), end_point(idx_b)) <= tol) parent[root(idx_a)] = root(idx_b)
+// [param_a, param_b] pairs where segment a meets segment b: their crossing, and each endpoint
+// of one lying on the other (T-junctions, shared ends, collinear overlaps)
+function segment_hits(
+  [a_0, a_1]: readonly [Vec2, Vec2],
+  [b_0, b_1]: readonly [Vec2, Vec2],
+): Vec2[] {
+  const [dir_a, dir_b] = [sub(a_1, a_0), sub(b_1, b_0)]
+  const denom = cross(dir_a, dir_b)
+  const hits: Vec2[] = []
+  if (Math.abs(denom) > 1e-14) {
+    const offset = sub(b_0, a_0)
+    const params: Vec2 = [cross(offset, dir_b) / denom, cross(offset, dir_a) / denom]
+    if (params.every((param) => param >= 0 && param <= 1)) hits.push(params)
+  }
+  const touch_eps = MERGE_EPS / 10
+  for (const [end, param_b] of [
+    [b_0, 0],
+    [b_1, 1],
+  ] as const) {
+    const hit = closest_on_segment(end, a_0, a_1)
+    if (hit.dist < touch_eps) hits.push([hit.param, param_b])
+  }
+  for (const [end, param_a] of [
+    [a_0, 0],
+    [a_1, 1],
+  ] as const) {
+    const hit = closest_on_segment(end, b_0, b_1)
+    if (hit.dist < touch_eps) hits.push([param_a, hit.param])
+  }
+  return hits
+}
+
+// On or outside the window edge, where clipping ends a line anyway
+const on_frame = (point: Vec2): boolean =>
+  point.some((coord) => coord <= MERGE_EPS || coord >= 1 - MERGE_EPS)
+
+interface LineEnd {
+  line_idx: number
+  at_start: boolean
+}
+
+// Where separately computed coexistence lines stop is noise: they overshoot or stop short of
+// the triple point they share and of the window edge. With no distance tolerance, an end on
+// the window edge stays, as does the end nearest each critical point (where a line really
+// ends). Every other end
+// 1. trims back to its line's nearest crossing with another line (an overshoot, any length),
+// 2. joins the ends of the other two lines of a phase triangle (a|b, a|c, b|c meet at the
+//    a-b-c triple point, of which there is one): all three move to their mean, the tightest
+//    triangles first,
+// 3. stays if it was trimmed or lies on another end (a closed loop), else runs on along its
+//    last segment to the first line or window edge it hits (any length).
+// The result doesn't depend on the order of the lines.
+function join_line_ends(
+  unit_lines: readonly Vec2[][],
+  pairs: readonly (readonly [string, string])[],
+  critical_points: readonly Vec2[],
+): Vec2[][] {
+  let lines = unit_lines.map((line) => [...line])
+  const ends: LineEnd[] = lines.flatMap((_, line_idx) =>
+    [true, false].map((at_start) => ({ line_idx, at_start })),
+  )
+  const point_of = ({ line_idx, at_start }: LineEnd): Vec2 =>
+    lines[line_idx][at_start ? 0 : lines[line_idx].length - 1]
+  const set_point = ({ line_idx, at_start }: LineEnd, point: Vec2) => {
+    lines[line_idx][at_start ? 0 : lines[line_idx].length - 1] = point
+  }
+  const inner = ends.filter((end) => !on_frame(point_of(end)))
+  const critical = new Set(
+    critical_points.flatMap((point) =>
+      inner.length
+        ? [
+            inner.reduce((best, end) =>
+              dist(point_of(end), point) < dist(point_of(best), point) ? end : best,
+            ),
+          ]
+        : [],
+    ),
+  )
+  const free = inner.filter((end) => !critical.has(end))
+  const free_end = (line_idx: number, at_start: boolean) =>
+    free.find((end) => end.line_idx === line_idx && end.at_start === at_start)
+
+  // 1. Trim: crossing positions (segment index + param) along each line with any other line
+  const crossings: number[][] = lines.map(() => [])
+  const segments = line_segments(lines)
+  overlapping_pairs(
+    segments.map(({ ends: seg_ends }) => seg_ends),
+    (idx_a, idx_b) => {
+      const [seg_a, seg_b] = [segments[idx_a], segments[idx_b]]
+      if (seg_a.line_idx === seg_b.line_idx) return
+      for (const [param_a, param_b] of segment_hits(seg_a.ends, seg_b.ends)) {
+        crossings[seg_a.line_idx].push(seg_a.seg_idx + param_a)
+        crossings[seg_b.line_idx].push(seg_b.seg_idx + param_b)
+      }
+    },
+  )
+  const trimmed = new Set<LineEnd>()
+  lines = lines.map((line, line_idx) => {
+    const [start, end] = [free_end(line_idx, true), free_end(line_idx, false)]
+    if (!crossings[line_idx].length || !(start || end)) return line
+    const [first, last] = array_extent(crossings[line_idx])
+    const last_pos = line.length - 1
+    const point_at = (pos: number) => {
+      const seg_idx = Math.min(Math.floor(pos), last_pos - 1)
+      return lerp(line[seg_idx], line[seg_idx + 1], pos - seg_idx)
+    }
+    // crossings at one spot between two free ends: only the nearer end overshoots them
+    const single = dist(point_at(first), point_at(last)) <= MERGE_EPS
+    const trim_start = start && !(single && end && first >= last_pos - last) ? start : null
+    const trim_end = end && !(single && trim_start) ? end : null
+    if (trim_start) trimmed.add(trim_start)
+    if (trim_end) trimmed.add(trim_end)
+    const [from, to] = [trim_start ? first : 0, trim_end ? last : last_pos]
+    return [point_at(from), ...line.slice(Math.floor(from) + 1, Math.ceil(to)), point_at(to)]
+  })
+
+  // 2. Join triple points
+  const pair_key = (line_idx: number) => pairs[line_idx].toSorted().join(`|`)
+  const trios: { trio: LineEnd[]; phases: string; spread: number }[] = []
+  for (let idx_a = 0; idx_a < lines.length; idx_a++) {
+    for (let idx_b = idx_a + 1; idx_b < lines.length; idx_b++) {
+      for (let idx_c = idx_b + 1; idx_c < lines.length; idx_c++) {
+        const trio_lines = [idx_a, idx_b, idx_c]
+        const phases = new Set(trio_lines.flatMap((line_idx) => pairs[line_idx]))
+        if (phases.size !== 3 || new Set(trio_lines.map(pair_key)).size !== 3) continue
+        const [ends_a, ends_b, ends_c] = trio_lines.map((line_idx) =>
+          free.filter((end) => end.line_idx === line_idx),
+        )
+        for (const trio of ends_a.flatMap((end_a) =>
+          ends_b.flatMap((end_b) => ends_c.map((end_c) => [end_a, end_b, end_c])),
+        )) {
+          const [pt_a, pt_b, pt_c] = trio.map(point_of)
+          trios.push({
+            trio,
+            phases: [...phases].toSorted().join(`|`),
+            spread: dist(pt_a, pt_b) + dist(pt_b, pt_c) + dist(pt_a, pt_c),
+          })
+        }
+      }
     }
   }
-  const clusters = new Map<number, number[]>()
-  ends.forEach((_, idx) => clusters.set(root(idx), [...(clusters.get(root(idx)) ?? []), idx]))
-  const loose: number[] = []
-  for (const members of clusters.values()) {
-    if (members.length < 2) {
-      loose.push(...members)
-      continue
-    }
-    const points = members.map(end_point)
+  const [joined, joined_phases] = [new Set<LineEnd>(), new Set<string>()]
+  for (const { trio, phases } of trios.toSorted(
+    (trio_a, trio_b) => trio_a.spread - trio_b.spread,
+  )) {
+    if (joined_phases.has(phases) || trio.some((end) => joined.has(end))) continue
+    joined_phases.add(phases)
+    const points = trio.map(point_of)
     const mean = [0, 1].map(
-      (axis) => points.reduce((sum, point) => sum + point[axis], 0) / points.length,
+      (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / 3,
     ) as Vec2
-    const target = snap_to_frame(mean, tol) ?? mean
-    for (const member of members) {
-      const { line_idx, point_idx } = ends[member]
-      snapped[line_idx][point_idx] = [...target]
+    for (const end of trio) {
+      joined.add(end)
+      set_point(end, mean)
     }
   }
-  for (const idx of loose) {
-    const { line_idx: own_line, point_idx } = ends[idx]
-    const point = end_point(idx)
-    const hit = nearest_on_polylines(
-      point,
-      snapped.map((line, line_idx) => (line_idx === own_line ? [] : line)),
+
+  // 3. Extend loose ends, all against the lines as they are now
+  const targets = line_segments(lines).map(({ ends: seg_ends }) => seg_ends)
+  const extensions = free.flatMap((end) => {
+    const point = point_of(end)
+    const on_end = ends.some(
+      (other) => other !== end && dist(point_of(other), point) <= MERGE_EPS,
     )
-    const on_line = hit && hit.dist <= tol ? hit : null
-    const on_frame = snap_to_frame(point, tol)
-    const target =
-      on_frame && (!on_line || dist(point, on_frame) <= on_line.dist)
-        ? on_frame
-        : on_line?.foot
-    if (target) snapped[own_line][point_idx] = [...target]
-  }
-  return snapped
+    if (trimmed.has(end) || joined.has(end) || on_end) return []
+    const line = lines[end.line_idx]
+    const prev = (end.at_start ? line.toReversed() : line).findLast(
+      (pt) => dist(pt, point) > MERGE_EPS,
+    )
+    if (!prev) return []
+    const dir = sub(point, prev)
+    // distance (in units of dir) to the window edge, then to the first segment ahead
+    let reach = Math.min(
+      ...[0, 1].map((axis) =>
+        dir[axis] > 0
+          ? (1 - point[axis]) / dir[axis]
+          : dir[axis] < 0
+            ? -point[axis] / dir[axis]
+            : Infinity,
+      ),
+    )
+    const min_reach = MERGE_EPS / Math.hypot(...dir)
+    for (const [seg_start, seg_end] of targets) {
+      const edge = sub(seg_end, seg_start)
+      const denom = cross(dir, edge)
+      if (Math.abs(denom) < 1e-14) continue
+      const offset = sub(seg_start, point)
+      const [ahead, along] = [cross(offset, edge) / denom, cross(offset, dir) / denom]
+      if (ahead > min_reach && along >= 0 && along <= 1) reach = Math.min(reach, ahead)
+    }
+    return [{ end, to: lerp(prev, point, 1 + reach) }]
+  })
+  // extensions that cross each other (lines converging outside the data) stop where they
+  // first meet, all measured on the full extensions
+  const ext_segs = extensions.map(({ end, to }) => [point_of(end), to] as const)
+  ext_segs.forEach((seg_a, idx_a) => {
+    const stop = Math.min(
+      1,
+      ...ext_segs.flatMap((seg_b, idx_b) =>
+        idx_b === idx_a
+          ? []
+          : segment_hits(seg_a, seg_b).flatMap(([param]) => (param > 0 ? [param] : [])),
+      ),
+    )
+    const { line_idx, at_start } = extensions[idx_a].end
+    const to = lerp(...seg_a, stop)
+    lines[line_idx] = at_start ? [to, ...lines[line_idx]] : [...lines[line_idx], to]
+  })
+  return lines
 }
 
 interface Segment {
@@ -146,52 +329,14 @@ function node_segments(segments: Segment[]): {
   edges: Vec2[]
   tags: number[]
 } {
-  const touch_eps = MERGE_EPS / 10
   const params = segments.map(() => [0, 1])
-  // [axis][min, max] per segment, padded so touching segments still overlap
-  const boxes = segments.map(({ start, end }) =>
-    [0, 1].map((axis) => [
-      Math.min(start[axis], end[axis]) - 1e-6,
-      Math.max(start[axis], end[axis]) + 1e-6,
-    ]),
-  )
-  const apart = (idx_a: number, idx_b: number) =>
-    [0, 1].some(
-      (axis) =>
-        boxes[idx_a][axis][1] < boxes[idx_b][axis][0] ||
-        boxes[idx_b][axis][1] < boxes[idx_a][axis][0],
-    )
-  for (let idx_a = 0; idx_a < segments.length; idx_a++) {
-    const seg_a = segments[idx_a]
-    for (let idx_b = idx_a + 1; idx_b < segments.length; idx_b++) {
-      const seg_b = segments[idx_b]
-      if (apart(idx_a, idx_b)) continue
-      const dir_a = sub(seg_a.end, seg_a.start)
-      const dir_b = sub(seg_b.end, seg_b.start)
-      const denom = cross(dir_a, dir_b)
-      if (Math.abs(denom) > 1e-14) {
-        const offset = sub(seg_b.start, seg_a.start)
-        const param_a = cross(offset, dir_b) / denom
-        const param_b = cross(offset, dir_a) / denom
-        if (param_a > 0 && param_a < 1 && param_b > 0 && param_b < 1) {
-          params[idx_a].push(param_a)
-          params[idx_b].push(param_b)
-        }
-      }
-      // Endpoints lying on the other segment: T-junctions and collinear overlaps
-      for (const [from, onto] of [
-        [idx_b, idx_a],
-        [idx_a, idx_b],
-      ]) {
-        for (const point of [segments[from].start, segments[from].end]) {
-          const hit = closest_on_segment(point, segments[onto].start, segments[onto].end)
-          if (hit.dist < touch_eps && hit.param > 0 && hit.param < 1) {
-            params[onto].push(hit.param)
-          }
-        }
-      }
+  const seg_ends = segments.map(({ start, end }) => [start, end] as const)
+  overlapping_pairs(seg_ends, (idx_a, idx_b) => {
+    for (const [param_a, param_b] of segment_hits(seg_ends[idx_a], seg_ends[idx_b])) {
+      if (param_a > 0 && param_a < 1) params[idx_a].push(param_a)
+      if (param_b > 0 && param_b < 1) params[idx_b].push(param_b)
     }
-  }
+  })
 
   const vertices: Vec2[] = []
   const grid = new Map<string, number[]>()
@@ -241,75 +386,30 @@ function node_segments(segments: Segment[]): {
   }
 }
 
-// Drop dangling chains shorter than `min_len`: overshoots past a triple point. Longer ones
-// (a coexistence line ending at a critical point) stay.
-function prune_stubs(
-  { vertices, edges, tags }: ReturnType<typeof node_segments>,
-  min_len: number,
-): { edges: Vec2[]; tags: number[] } {
-  const alive = edges.map(() => true)
-  const incident: number[][] = vertices.map(() => [])
-  edges.forEach(([from, to], edge_idx) => {
-    incident[from].push(edge_idx)
-    incident[to].push(edge_idx)
-  })
-  const live_edges = (vertex: number) => incident[vertex].filter((edge) => alive[edge])
-  let changed = true
-  while (changed) {
-    changed = false
-    for (let leaf = 0; leaf < vertices.length; leaf++) {
-      if (live_edges(leaf).length !== 1) continue
-      const chain: number[] = []
-      let [current, prev_edge, length] = [leaf, -1, 0]
-      while (length < min_len) {
-        const next = live_edges(current).filter((edge) => edge !== prev_edge)
-        if ((current !== leaf && next.length !== 1) || next.length === 0) break
-        const [edge] = next
-        chain.push(edge)
-        const [from, to] = edges[edge]
-        length += dist(vertices[from], vertices[to])
-        current = from === current ? to : from
-        prev_edge = edge
-      }
-      if (length < min_len && chain.length) {
-        for (const edge of chain) alive[edge] = false
-        changed = true
-      }
-    }
-  }
-  return {
-    edges: edges.filter((_, idx) => alive[idx]),
-    tags: tags.filter((_, idx) => alive[idx]),
-  }
-}
-
 // Phase stability fields traced from the coexistence lines: the boundaries (minus metastable
-// ones) and the plotted window split the plane into faces, and each face takes the phase
-// shared by all the boundaries around it, or failing that the phase across a boundary from
-// an already named neighbor. Every boundary must then separate exactly its two phases; a face
-// named against that (a missing or metastable line merged two fields) loses its name, as does
-// a face holding a dangling or free-floating line (liquid and gas joined around a critical
-// point) or an island loop. `unlabeled` counts the unnamed faces so callers can say when to
-// pass explicit regions. Regions are sorted largest first, the paint order.
-// With log_pressure, lines are joined in log10(P) so snapping matches a log axis; P <= 0 maps
-// far below the window and is clipped away with everything else outside it.
+// ones, their ends joined by join_line_ends) and the plotted window split the plane into
+// faces, and each face takes the phase shared by all the boundaries around it, or failing that
+// the phase across a boundary from an already named neighbor. Every boundary must then
+// separate exactly its two phases; a face named against that (a missing or metastable line
+// merged two fields) loses its name, as does a face holding a dangling line (liquid and gas
+// joined around a critical point) or an island loop. `unlabeled` counts the unnamed faces so
+// callers can say when to pass explicit regions. Regions are sorted largest first, the paint
+// order. With log_pressure, lines are joined in log10(P) to match a log axis; P <= 0 maps far
+// below the window and is clipped away with everything else outside it.
 export function derive_regions(
   data: PtPhaseDiagramData,
-  {
-    snap_tol = SNAP_TOL,
-    log_pressure = false,
-  }: { snap_tol?: number; log_pressure?: boolean } = {},
+  { log_pressure = false }: { log_pressure?: boolean } = {},
 ): { regions: PtRegion[]; unlabeled: number } {
   const [p_range, [t_min, t_max]] = pt_data_extent(data)
   const p_floor = log_pressure ? pressure_log_floor(data) : null
   if (log_pressure && p_floor === null) {
-    throw new Error(`log pressure needs a positive pressure in the data or pressure_range`)
+    throw new Error(`log pressure needs positive pressures spanning a range`)
   }
   const log_floor = Math.log10(p_floor ?? 1)
   const p_fwd = (pressure: number): number =>
     !log_pressure ? pressure : pressure > 0 ? Math.log10(pressure) : log_floor - 6
   const p_inv = (value: number) => (log_pressure ? 10 ** value : value)
-  const p_min = log_pressure ? Math.max(p_fwd(p_range[0]), log_floor) : p_range[0]
+  const p_min = log_pressure ? log_floor : p_range[0]
   const p_max = p_fwd(p_range[1])
   const [p_span, t_span] = [p_max - p_min, t_max - t_min]
   const to_unit = ([pressure, temp]: Vec2): Vec2 => [
@@ -324,9 +424,12 @@ export function derive_regions(
     boundary.metastable ? [] : [tag],
   )
   const phases_of = (tag: number) => (tag === FRAME_TAG ? null : data.boundaries[tag].phases)
-  const lines = snap_endpoints(
+  const lines = join_line_ends(
     stable_tags.map((tag) => data.boundaries[tag].points.map(to_unit)),
-    snap_tol,
+    stable_tags.map((tag) => data.boundaries[tag].phases),
+    (data.special_points ?? []).flatMap((point) =>
+      point.type === `critical` ? [to_unit(point.position)] : [],
+    ),
   )
   const corners: Vec2[] = [
     [0, 0],
@@ -352,9 +455,7 @@ export function derive_regions(
     }
   })
 
-  const noded = node_segments(segments)
-  const { vertices } = noded
-  const { edges, tags } = prune_stubs(noded, snap_tol)
+  const { vertices, edges, tags } = node_segments(segments)
 
   // Half-edge 2e runs edges[e][0] → edges[e][1], 2e + 1 back; twin = h ^ 1
   const origin = (half: number) => edges[half >> 1][half & 1]
@@ -470,9 +571,8 @@ export function derive_regions(
     })
     .toSorted((hit_a, hit_b) => hit_b.face.area - hit_a.face.area)
     .map(({ phase, face }) => ({ phase, vertices: face.vertices.map(from_unit) }))
-  // Snapping slivers (under 0.01% of the window) don't count as missing fields
   const unlabeled = faces.filter(
-    (face, face_idx) => face.area > 1e-4 && typeof labels[face_idx] !== `string`,
+    (_, face_idx) => bounded(face_idx) && typeof labels[face_idx] !== `string`,
   ).length
   return { regions, unlabeled }
 }
@@ -487,8 +587,10 @@ export interface PixelSigma {
 }
 
 // Closed band around a pixel-space polyline: each point moves along its normal on both sides
-// by the reach of its error ellipse in that direction, sqrt((σx nx)² + (σy ny)²), so a
-// temperature error widens a shallow boundary and a pressure error a steep one
+// by max(σx |nx|, σy |ny|), so a temperature error widens a shallow boundary and a pressure
+// error a steep one. The max, not a quadrature sum: on a free-energy crossing both errors
+// project one uncertainty (σT = σΔG / |ΔS|, σP = σΔG / |ΔV|, so σT / σP = |dT/dP|), which
+// shifts the line by the same normal distance either way.
 export function uncertainty_band(
   pixels: readonly Vec2[],
   deltas: readonly PixelSigma[],
@@ -519,7 +621,7 @@ export function uncertainty_band(
       const [reach_x, reach_y] = [0, 1].map((axis) =>
         Math.abs(Math.sign(dir[axis]) === Math.sign(plus[axis]) ? plus[axis] : minus[axis]),
       )
-      const reach = Math.hypot(reach_x * dir[0], reach_y * dir[1])
+      const reach = Math.max(reach_x * Math.abs(dir[0]), reach_y * Math.abs(dir[1]))
       ;(side === 1 ? upper : lower).push([
         point[0] + dir[0] * reach,
         point[1] + dir[1] * reach,

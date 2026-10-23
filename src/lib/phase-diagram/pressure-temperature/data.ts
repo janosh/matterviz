@@ -24,10 +24,6 @@ export const convert_pressure = (
   to: PressureUnit,
 ): number => (from === to ? value : (value * PRESSURE_UNITS[from]) / PRESSURE_UNITS[to])
 
-// Temperature differences (standard errors) scale without the zero offset
-export const temp_delta_factor = (from: TempUnit, to: TempUnit): number =>
-  (from === `°F` ? 5 / 9 : 1) * (to === `°F` ? 9 / 5 : 1)
-
 export const phase_label = (phase: PtPhase): string => phase.name ?? phase.id
 
 // Explicit color, else the shared phase palette when the name matches one of its patterns
@@ -74,30 +70,52 @@ const drop_nulls = (value: unknown): unknown => {
   )
 }
 
-// Optional entry fields the detailed checks and the palette call methods on (name.toLowerCase,
-// sigma.length, phases.forEach), by list: a wrong type would throw instead of report
-const OPTIONAL_FIELDS = {
-  phases: {
-    owner: `phase`,
-    fields: { name: `string`, color: `string`, description: `string` },
-  },
-  boundaries: {
-    owner: `boundary`,
-    fields: { sigma_t: `array`, sigma_p: `array`, label: `string` },
-  },
-  regions: { owner: `region`, fields: {} },
-  special_points: { owner: `special point`, fields: { phases: `array`, label: `string` } },
-} as const satisfies Record<
-  string,
-  { owner: string; fields: Record<string, `string` | `array`> }
->
+// Field kinds the shape check knows, with the name its errors use
+const KINDS = {
+  string: [(value: unknown) => typeof value === `string`, `a string`],
+  array: [Array.isArray, `an array`],
+  boolean: [(value: unknown) => typeof value === `boolean`, `a boolean`],
+  object: [is_object, `an object`],
+  number: [Number.isFinite, `a finite number`],
+} as const satisfies Record<string, readonly [(value: unknown) => boolean, string]>
+type Kind = keyof typeof KINDS
+// One error per optional field of `obj` set to the wrong kind, named `${owner}${field}`
+const kind_errors = (
+  obj: Record<string, unknown>,
+  fields: Readonly<Record<string, Kind>>,
+  owner: string,
+): string[] =>
+  Object.entries(fields).flatMap(([field, kind]) => {
+    const [is_kind, name] = KINDS[kind]
+    return obj[field] === undefined || is_kind(obj[field])
+      ? []
+      : [`${owner}${field} must be ${name}`]
+  })
+
+// Entry owner name and optional field kinds by list: a wrong kind would throw in the detailed
+// checks (sigma.length, phases.forEach) or render as nonsense (a truthy `metastable: "no"`)
+const LISTS = {
+  phases: [`phase`, { name: `string`, color: `string`, description: `string` }],
+  boundaries: [
+    `boundary`,
+    {
+      sigma_t: `array`,
+      sigma_p: `array`,
+      label: `string`,
+      metastable: `boolean`,
+      style: `object`,
+    },
+  ],
+  regions: [`region`, {}],
+  special_points: [`special point`, { phases: `array`, label: `string` }],
+} as const satisfies Record<string, readonly [string, Record<string, Kind>]>
 
 // Shape problems (wrong container types, non-object entries, missing ids, mistyped optional
-// fields) that would make the detailed checks throw instead of report
+// fields) that would make the detailed checks throw or the diagram render garbage
 function shape_errors(data: unknown): string[] {
   if (!is_object(data)) return [`data must be an object`]
-  const errors: string[] = []
-  for (const key of [`phases`, `boundaries`, `regions`, `special_points`] as const) {
+  const errors = kind_errors(data, { system: `string`, title: `string` }, ``)
+  for (const [key, [owner, fields]] of Object.entries(LISTS)) {
     const list = data[key]
     if (list === undefined && (key === `regions` || key === `special_points`)) continue
     if (!Array.isArray(list)) {
@@ -109,15 +127,11 @@ function shape_errors(data: unknown): string[] {
       else if (key !== `regions` && !(typeof entry.id === `string` && entry.id)) {
         errors.push(`${key}[${idx}] needs a non-empty string id`)
       } else {
-        const { owner, fields } = OPTIONAL_FIELDS[key]
-        for (const [field, kind] of Object.entries(fields)) {
-          const value = entry[field]
-          if (value === undefined) continue
-          if (kind === `array` ? !Array.isArray(value) : typeof value !== `string`) {
-            errors.push(
-              `${owner} '${entry.id}' ${field} must be ${kind === `array` ? `an array` : `a string`}`,
-            )
-          }
+        const name = `${owner} '${entry.id}' `
+        errors.push(...kind_errors(entry, fields, name))
+        if (is_object(entry.style)) {
+          const style_fields = { color: `string`, width: `number`, dash: `string` } as const
+          errors.push(...kind_errors(entry.style, style_fields, `${name}style.`))
         }
       }
     })
@@ -138,7 +152,6 @@ export function parse_pt_data(input: unknown): {
   const errors = shape.length ? shape : detail_errors(normalized as PtPhaseDiagramData)
   return { data: errors.length ? null : (normalized as PtPhaseDiagramData), errors }
 }
-export const validate_pt_data = (input: unknown): string[] => parse_pt_data(input).errors
 
 function detail_errors(data: PtPhaseDiagramData): string[] {
   const { phases, boundaries, regions = [], special_points = [] } = data
@@ -243,12 +256,15 @@ export function pt_data_extent(data: PtPhaseDiagramData): [Vec2, Vec2] {
 }
 
 // Lowest pressure a log axis shows: a positive declared lower bound, else the smallest
-// positive pressure in the data, null when there is none (a log axis can't show the data)
+// positive pressure in the data. null when there is none below the window's upper pressure
+// (a log axis can't show the data).
 export function pressure_log_floor(data: PtPhaseDiagramData): number | null {
   const declared = data.pressure_range?.[0]
-  if (declared !== undefined && declared > 0) return declared
-  const [floor] = array_extent(
-    all_points(data).flatMap(([pressure]) => (pressure > 0 ? [pressure] : [])),
-  )
-  return Number.isFinite(floor) ? floor : null
+  const [floor] =
+    declared !== undefined && declared > 0
+      ? [declared]
+      : array_extent(
+          all_points(data).flatMap(([pressure]) => (pressure > 0 ? [pressure] : [])),
+        )
+  return floor < pt_data_extent(data)[0][1] ? floor : null
 }

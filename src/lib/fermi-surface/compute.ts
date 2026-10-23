@@ -840,11 +840,6 @@ export function slice_shading_rgba(
   return pixels
 }
 
-// A point strictly inside a simple polygon (see polygon_label_point); a degenerate one keeps
-// its centroid
-export const polygon_interior_point = (points: readonly Vec2[]): Vec2 =>
-  math.polygon_label_point(points)?.at ?? math.polygon_centroid(points)
-
 // Electron or hole carrier per band from its slice contours: the band's energy at a point inside
 // each contour is below E_F + mu for an electron pocket, above for a hole pocket, and the band
 // takes its contours' majority (ties go to electron). A contour cut open by the cell boundary is
@@ -859,7 +854,10 @@ export function band_carriers(
     const band_idx = band_data.band_indices?.indexOf(band_index) ?? band_index
     const grid = band_data.energies[spin === `down` ? 1 : 0]?.[band_idx]
     if (points_2d.length < 3 || !grid) continue
-    const k_point = slice_point_to_k(slice_data, ...polygon_interior_point(points_2d))
+    // a point strictly inside the contour (its centroid can fall outside a concave one); a
+    // degenerate contour keeps its centroid
+    const inside = math.polygon_label_point(points_2d)?.at ?? math.polygon_centroid(points_2d)
+    const k_point = slice_point_to_k(slice_data, ...inside)
     const [energy] = sample_band_energies(band_data, grid, interpolation_factor, k_point)
     const vote = energy < band_data.fermi_energy + mu ? -1 : 1
     hole_votes.set(band_index, (hole_votes.get(band_index) ?? 0) + vote)

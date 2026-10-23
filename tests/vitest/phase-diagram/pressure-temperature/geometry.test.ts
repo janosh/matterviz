@@ -6,7 +6,6 @@ import {
   derive_regions,
   interpolate_at,
   nearest_on_polylines,
-  SNAP_TOL,
   uncertainty_band,
 } from '#lib/phase-diagram/pressure-temperature/geometry.js'
 import type {
@@ -33,9 +32,9 @@ const phase_at = (regions: PtRegion[], [pressure, temp]: Vec2): string | null =>
   regions.findLast((region) => point_in_polygon(pressure, temp, region.vertices))?.phase ??
   null
 
-// 10 x 10 window (SNAP_TOL = 0.01 of it is 0.1 data units) with phases a (lower left),
-// b (lower right) and c (top) meeting at a triple point near (5, 5). Each arg is the rest of
-// a line after its start on the window edge; `extra` lines are appended.
+// 10 x 10 window with phases a (lower left), b (lower right) and c (top) meeting at a triple
+// point near (5, 5). Each arg is the rest of a line after its start on the window edge; `extra`
+// lines are appended.
 const window_10 = { pressure_range: [0, 10] as Vec2, temperature_range: [0, 10] as Vec2 }
 const triple = (
   ab_tail: Vec2[],
@@ -70,6 +69,23 @@ const triple_probes: [Vec2, string | null][] = [
 ]
 const { regions: _water_regions, ...water_lines } = water_pt_diagram
 const iron_phases = [`alpha`, `delta`, `epsilon`, `gamma`, `liquid`]
+const iron_probes: [Vec2, string][] = [
+  [[2, 500], `alpha`],
+  [[2, 1400], `gamma`],
+  [[1, 1790], `delta`],
+  [[2, 2500], `liquid`],
+  [[50, 1000], `epsilon`],
+  [[50, 3500], `liquid`],
+  [[140, 2000], `epsilon`],
+]
+// Liquid and vapor meeting at a critical point inside the window, where their line just ends
+// oxfmt-ignore
+const critical_end = (special_points: PtPhaseDiagramData[`special_points`]): PtPhaseDiagramData => ({
+  ...window_10,
+  phases: [{ id: `s` }, { id: `l` }, { id: `g` }],
+  boundaries: [boundary(`sl`, [`s`, `l`], [[3, 3], [3, 10]]), boundary(`sg`, [`s`, `g`], [[0, 0], [3, 3]]), boundary(`lg`, [`l`, `g`], [[3, 3], [8, 7]])],
+  special_points,
+})
 
 describe(`derive_regions`, () => {
   // [data, options, named phases, unnamed faces, probe points → phase, area the regions tile]
@@ -77,36 +93,50 @@ describe(`derive_regions`, () => {
   // shoelace sums (|sum - 555000| measured 0), so 6 digits still catches any missing face
   // oxfmt-ignore
   test.each([
-    [`iron demo`, iron_pt_diagram, {}, iron_phases, 0, [[[2, 500], `alpha`], [[2, 1400], `gamma`], [[1, 1790], `delta`], [[2, 2500], `liquid`], [[50, 1000], `epsilon`], [[50, 3500], `liquid`], [[140, 2000], `epsilon`], [[200, 1000], null]], 150 * 3700],
+    [`iron demo`, iron_pt_diagram, {}, iron_phases, 0, [...iron_probes, [[200, 1000], null]], 150 * 3700],
     // traced in log10(P): 0 GPa endpoints are clipped, not clamped onto the window edge
     [`iron demo on a log axis`, iron_pt_diagram, { log_pressure: true }, iron_phases, 0, [[[1, 500], `alpha`], [[2, 1835], `delta`], [[50, 1000], `epsilon`]], null],
-    // ends within SNAP_TOL join at one triple point, whether they stop short or overshoot
+    // a window wider than the lines: ends short of its edge run on to it, on every side
+    [`iron, window below the data`, { ...iron_pt_diagram, temperature_range: [250, 4000] }, {}, iron_phases, 0, [...iron_probes, [[12, 260], `alpha`], [[14, 260], `epsilon`]], 150 * 3750],
+    [`iron, window right of the data`, { ...iron_pt_diagram, pressure_range: [0, 200] }, {}, iron_phases, 0, [...iron_probes, [[190, 3000], `epsilon`], [[170, 3900], `liquid`]], 200 * 3700],
+    [`iron, custom point widening the window`, { ...iron_pt_diagram, temperature_range: undefined, special_points: [...(iron_pt_diagram.special_points ?? []), { id: `x`, type: `custom`, position: [50, 200] }] }, {}, iron_phases, 0, [...iron_probes, [[12, 210], `alpha`]], null],
+    // α-γ and γ-δ run on left of 0 GPa and cross: both stop where they meet, so γ stays one
+    // field, and α and δ, with no α|δ line between them out there, merge into an unnamed one
+    [`iron, window left of the data`, { ...iron_pt_diagram, pressure_range: [-5, 150] }, {}, [`epsilon`, `gamma`, `liquid`], 1, [[[2, 1400], `gamma`], [[-4.9, 1300], null], [[-4.9, 1500], null]], null],
+    [`triple point, window wider on every side`, { ...exact_triple, pressure_range: [-2, 12], temperature_range: [-3, 12] }, {}, [`a`, `b`, `c`], 0, [...triple_probes, [[-1, -2], `a`], [[11, -2], `b`], [[-1, 11], `c`]], 14 * 15],
+    // without a tolerance, ends join at one triple point however far they stop short or overshoot
     [`exact triple point`, exact_triple, {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`ends up to 0.05 apart`, triple([[5, 5.03]], [[4.97, 5]], [[5.04, 4.98]]), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`one line 0.09 past the other two`, triple([[5, 5.09]], at_center, at_center), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
+    [`one line 0.15 short of the other two`, triple([[5, 4.85]], at_center, at_center), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`all three 0.05 past`, overshoot_triple(0.05), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
+    [`all three 0.07 past`, overshoot_triple(0.07), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
+    [`all three 1 past`, overshoot_triple(1), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
+    [`all three 0.5 short`, overshoot_triple(-0.5), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`straight 3-point tail 0.09 past`, triple([[5, 5], [5, 5.03], [5.01, 5.06], [5, 5.09]], at_center, at_center), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
-    // without snapping, overshoot stubs dangle inside every face, which then holds two phases
-    [`overshoot with snapping off`, overshoot_triple(0.05), { snap_tol: 1e-6 }, [], 3, [], null],
+    [`curved 2-point tail`, triple([[5, 5], [5.02, 5.04], [5.03, 5.08]], at_center, at_center), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`metastable lines don't split regions`, triple(at_center, at_center, at_center, boundary(`ab-meta`, [`a`, `b`], [[5, 5], [5, 10]], true)), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     // b|c metastable merges b and c into one face touching only a|b and a|c: their shared
     // phase a names it after the phase across both lines, so every boundary must separate its
     // own two phases and neither side of a|b keeps a contradicting name
     [`face named against its boundaries`, { ...exact_triple, boundaries: exact_triple.boundaries.map((line) => ({ ...line, metastable: line.id === `bc` })) }, {}, [], 2, [], null],
-    // a b|c line touching nothing traces a zero-area face; the face around it holds two phases
-    [`free-floating line`, triple(at_center, at_center, at_center, boundary(`float`, [`b`, `c`], [[7, 8], [8, 9]])), {}, [`a`, `b`], 1, [[[5, 8], null]], null],
+    // a b|c line touching nothing runs on both ways, to a|c and the window edge: the c field
+    // then lies on both sides of it, so neither side keeps a name
+    [`free-floating line`, triple(at_center, at_center, at_center, boundary(`float`, [`b`, `c`], [[7, 8], [8, 9]])), {}, [`a`, `b`], 2, [[[5, 8], null]], null],
     // a closed c|d loop is a clockwise hole cycle the c face doesn't exclude: c would paint
     // over the island and hover report c inside it, so both stay unnamed
     [`island loop`, triple(at_center, at_center, at_center, boundary(`island`, [`c`, `d`], [[4, 7], [6, 7], [6, 9], [4, 9], [4, 7]])), {}, [`a`, `b`], 2, [[[5, 8], null], [[8, 8], null]], null],
     // a lone a|b line: no labeled neighbor says which side is which
     [`lone two-phase line`, { ...window_10, phases: [{ id: `a` }, { id: `b` }], boundaries: [boundary(`ab`, [`a`, `b`], [[0, 5], [10, 5]])] }, {}, [], 2, [], null],
     [`single phase, no boundaries`, { ...window_10, phases: [{ id: `a` }], boundaries: [] }, {}, [`a`], 0, [], 100],
-    // liquid and vapor join around the critical point: the fluid face holds two phases
+    // an end at a critical point stays: liquid and gas share the face around it, which holds
+    // two phases; without the critical point the l|g end runs on to the window edge
+    [`line ending at a critical point`, critical_end([{ id: `cp`, type: `critical`, position: [8, 7] }]), {}, [`s`], 1, [[[1, 8], `s`], [[5, 8], null], [[8, 2], null]], null],
+    [`same line, no critical point`, critical_end([]), {}, [`g`, `l`, `s`], 0, [[[1, 8], `s`], [[5, 8], `l`], [[8, 2], `g`]], 100],
     [`water without regions`, water_lines, { log_pressure: true }, [`ice-ih`], 1, [[[1e5, 250], `ice-ih`], [[1e5, 500], null]], null],
   ] satisfies [string, PtPhaseDiagramData, Parameters<typeof derive_regions>[1], string[], number, [Vec2, string | null][], number | null][])(
     `%s`,
     (_label, data, options, phases, unlabeled, probes, area) => {
-      expect(SNAP_TOL).toBe(0.01) // the offsets above are chosen relative to it
       const { regions, unlabeled: n_unlabeled } = derive_regions(data, options)
       expect(n_unlabeled).toBe(unlabeled)
       expect(regions.map((region) => region.phase).toSorted()).toEqual(phases)
@@ -120,33 +150,50 @@ describe(`derive_regions`, () => {
     },
   )
 
-  // Ends chained within SNAP_TOL (u = 0.500, 0.508, 0.516: neighbors close, outer pair not)
-  // join at one point whatever the boundary order; grouping around the first end found used
-  // to split the chain and drop one or two phases depending on order
+  // Joining, trimming and extending never depend on the boundary order. Chained ends
+  // (u = 0.500, 0.508, 0.516: neighbors close, outer pair not) used to split by order when
+  // grouped around the first end found.
+  const permutations = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ]
   // oxfmt-ignore
-  test.each([[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]])(`chained ends in order %i%i%i`, (...order) => {
-    const chained = triple(at_center, [[5.08, 5]], [[5.16, 5]])
-    const boundaries = order.map((idx) => chained.boundaries[idx])
-    const { regions, unlabeled } = derive_regions({ ...chained, boundaries })
-    expect(unlabeled).toBe(0)
-    for (const [point, phase] of triple_probes) expect(phase_at(regions, point)).toBe(phase)
+  test.each([
+    [`chained ends`, triple(at_center, [[5.08, 5]], [[5.16, 5]])],
+    [`all three 0.3 past`, overshoot_triple(0.3)],
+    [`one line short, window below`, { ...triple([[5, 4.8]], at_center, at_center), temperature_range: [-1, 10] as Vec2 }],
+  ])(`%s in every boundary order`, (_label, data) => {
+    // faces trace from a different start vertex per order, so compare phases and areas: the
+    // same few flops on O(10) values, 12 digits sit far above f64 eps
+    const summary = (boundaries: PtBoundary[]) => {
+      const { regions, unlabeled } = derive_regions({ ...data, boundaries })
+      expect(unlabeled).toBe(0)
+      return regions.map((region): [string, number] => [
+        region.phase,
+        Math.abs(polygon_signed_area(region.vertices)),
+      ])
+    }
+    const reference = summary(data.boundaries)
+    const phases = reference.map(([phase]) => phase)
+    expect(phases.toSorted((left, right) => left.localeCompare(right))).toEqual([`a`, `b`, `c`])
+    for (const order of permutations) {
+      const regions = summary(order.map((idx) => data.boundaries[idx]))
+      expect(regions.map(([phase]) => phase)).toEqual(phases)
+      regions.forEach(([, area], idx) => expect(area).toBeCloseTo(reference[idx][1], 12))
+    }
   })
 
-  test(`log pressure without any positive pressure throws`, () => {
-    const data = { ...window_10, pressure_range: [-1, 0] as Vec2, phases: [], boundaries: [] }
-    expect(() => derive_regions(data, { log_pressure: true })).toThrow(/positive pressure/)
-  })
-
-  // Known limitation, kept as expected failures so they flip once fixed: overshoots just past
-  // SNAP_TOL don't cluster into one triple point (all three 0.07 past are 0.0108 of the window
-  // apart), and in a 2-point tail only the last point moves to the cluster mean
   // oxfmt-ignore
-  test.fails.each([
-    [`all three 0.07 past`, overshoot_triple(0.07)],
-    [`curved 2-point tail`, triple([[5, 5], [5.02, 5.04], [5.03, 5.08]], at_center, at_center)],
-  ])(`overshooting triple point (%s) gives three labeled regions`, (_label, data) => {
-    const phases = derive_regions(data).regions.map((region) => region.phase)
-    expect(phases.toSorted()).toEqual([`a`, `b`, `c`])
+  test.each([
+    [`no positive pressure`, { ...window_10, pressure_range: [-1, 0] as Vec2, phases: [], boundaries: [] }],
+    // the one positive pressure is also the window's top: a log axis would span nothing
+    [`zero log span`, { phases: [{ id: `a` }, { id: `b` }], boundaries: [boundary(`ab`, [`a`, `b`], [[0, 100], [5, 200]])] }],
+  ] satisfies [string, PtPhaseDiagramData][])(`log pressure with %s throws`, (_label, data) => {
+    expect(() => derive_regions(data, { log_pressure: true })).toThrow(/positive pressures spanning a range/)
   })
 })
 
@@ -155,7 +202,6 @@ const sigma = (x_px: number, y_px: number): PixelSigma => ({
   plus: [x_px, -y_px],
   minus: [-x_px, y_px],
 })
-const diag = 4 / Math.SQRT2
 // [line, per-point delta, expected band (upper side, then lower reversed)]: a handful of
 // flops on O(10) inputs, so 12 digits sits far above f64 eps
 // oxfmt-ignore
@@ -164,8 +210,9 @@ test.each([
   [`horizontal`, [[0, 0], [10, 0], [20, 0]], sigma(0, 3), [[0, 3], [10, 3], [20, 3], [20, -3], [10, -3], [0, -3]]],
   // ...and leaves a vertical one at zero width
   [`vertical`, [[0, 0], [0, 10], [0, 20]], sigma(0, 3), [[0, 0], [0, 10], [0, 20], [0, 20], [0, 10], [0, 0]]],
-  // equal x and y sigma is a circle: half-width sigma along the normal (-1, 1)/√2
-  [`45 degree, equal sigmas`, [[0, 0], [10, 10]], sigma(4, 4), [[-diag, diag], [10 - diag, 10 + diag], [10 + diag, 10 - diag], [diag, -diag]]],
+  // on a slope-1 line consistent sigmas (σx / σy = slope) both shift it 4/√2 along the normal
+  // (-1, 1)/√2: one error seen twice, so the max, not √2 times that from adding them
+  [`slope 1, consistent sigmas`, [[0, 0], [10, 10]], sigma(4, 4), [[-2, 2], [8, 12], [12, 8], [2, -2]]],
   // on a log axis +sigma and -sigma move different distances; the normal points to +y here
   [`asymmetric`, [[0, 0], [10, 0]], { plus: [0, -2], minus: [0, 5] }, [[0, 5], [10, 5], [10, -2], [0, -2]]],
   // repeated points borrow a neighbor's normal (a repeated first point used to collapse it)
