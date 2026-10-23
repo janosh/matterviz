@@ -233,13 +233,24 @@ jobs:
         uses: ./.github/actions/setup
       - name: Install Chromium
         run: pnpm exec playwright install chromium --no-shell
+      # FFmpeg's .deb files come from a cache: the runner's apt mirror stalls mid-download often
+      # enough to time out whole shards, and the first shard that fetches them saves them
+      - name: Cache FFmpeg packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-v1
       # Bounded: an unresponsive apt mirror once hung shards 3 and 6 until the 6 h job limit
       - name: Install FFmpeg for movie export tests
         timeout-minutes: 5
         run: |
+          mkdir -p ~/apt-archives/partial
           APT_OPTS=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${APT_OPTS[@]}" update
-          sudo apt-get "${APT_OPTS[@]}" install --yes --no-install-recommends ffmpeg
+          sudo apt-get "${APT_OPTS[@]}" -o Dir::Cache::Archives="$HOME/apt-archives" \
+            install --yes --no-install-recommends ffmpeg
+          # apt downloads as root; the cache step saves the archives as the runner user
+          sudo chown -R "$USER" ~/apt-archives
       - uses: actions/download-artifact@v8
         with:
           name: browser-test-site
