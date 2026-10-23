@@ -1,6 +1,7 @@
 // Sweep frame cache (spectral/sweep-frames): loads on request, once per frame and sweep
 import type { Sweep, SweepFrameLoader } from '#lib/spectral/sweep.js'
 import { create_sweep_frames } from '#lib/spectral/sweep-frames.svelte.js'
+import type { BaseBandStructure } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -42,6 +43,15 @@ function setup(loader?: SweepFrameLoader) {
   return { frames, inputs, on_error }
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+const band_struct_stub: BaseBandStructure = {
+  type: `electronic`,
+  qpoints: [{ label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 }],
+  branches: [],
+  labels_dict: {},
+  distance: [0],
+  nb_bands: 1,
+  bands: [[0]],
+}
 
 test(`without a loader every frame is ready as given and requests do nothing`, () => {
   const { frames, inputs } = setup()
@@ -52,7 +62,7 @@ test(`without a loader every frame is ready as given and requests do nothing`, (
   expect(frames.frame(series, 1)).toBe(series.frames[1])
 })
 
-test(`a requested frame loads once, merged over its own fields (scalars and status per key)`, async () => {
+test(`a requested frame loads once, merged over its own fields (scalars, status, phonons per key)`, async () => {
   const { load, calls } = deferred_loader()
   const { frames, inputs } = setup(load)
   const series = inputs.sweep.series[0]
@@ -68,12 +78,20 @@ test(`a requested frame loads once, merged over its own fields (scalars and stat
   expect(load).toHaveBeenCalledOnce()
 
   // the frame's own scalars and status survive, merged key by key under the loaded ones
+  const phonon_dos = { type: `phonon` as const, frequencies: [0, 1], densities: [0, 1] }
   series.frames[1] = {
     value: 50,
     scalars: { volume: 9, tc: 1 },
     status: { note: `relaxed` },
+    phonon: { doses: { 'α²F': phonon_dos } },
   }
-  calls[0].resolve({ label: `loaded`, scalars: { tc: 12 }, status: { unstable: true } })
+  const phonon_bands = { ...band_struct_stub, type: `phonon` as const }
+  calls[0].resolve({
+    label: `loaded`,
+    scalars: { tc: 12 },
+    status: { unstable: true },
+    phonon: { band_structs: { Cu: phonon_bands } },
+  })
   await settle()
   flushSync()
   expect(frames.is_ready(series, 1)).toBe(true)
@@ -84,6 +102,7 @@ test(`a requested frame loads once, merged over its own fields (scalars and stat
     label: `loaded`,
     scalars: { volume: 9, tc: 12 },
     status: { note: `relaxed`, unstable: true },
+    phonon: { doses: { 'α²F': phonon_dos }, band_structs: { Cu: phonon_bands } },
   })
   expect(frames.frame(series, 1)).toBe(loaded) // merged once: one identity across reads
   frames.request(series, 1) // loaded

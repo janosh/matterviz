@@ -2,12 +2,17 @@
 // frame's cell is the calculation's scaled to the frame's volume, band energies are rescaled
 // about E_F as for free electrons (ε − E_F ∝ 1/a²) and the pressure is the third-order
 // Birch–Murnaghan equation of state at that volume with B₀ = 140 GPa and B₀′ = 5 (near Cu's
-// measured values). Each frame's DOS is computed from its scaled band grid. Illustrative only:
-// no frame is the result of a calculation at its pressure.
+// measured values). Each frame's DOS is computed from its scaled band grid. The phonons are a
+// nearest-neighbour central-force model of fcc (maximum 7.25 THz at ambient, near Cu's) whose
+// frequencies stiffen as (V/V₀)^−γ with Grüneisen γ = 2, and α²F(ω) is the phonon DOS scaled
+// to λ = 0.13 at ambient, falling as 1/ω² under compression. Illustrative only: no frame is
+// the result of a calculation at its pressure.
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
-import type { Matrix3x3 } from '#lib/math.js'
-import type { BaseBandStructure } from '#lib/spectral/types.js'
+import { det_3x3, reciprocal_lattice } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import { trapezoid_weights } from '#lib/spectral/helpers.js'
+import type { BaseBandStructure, PhononDos, PhononSpectra } from '#lib/spectral/types.js'
 import type { DescriptorSpec, Sweep, SweepFrameLoader } from '#lib/spectral/sweep.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
@@ -62,13 +67,14 @@ export const scale_band_grid = (grid: BandGridData, lattice_scale: number): Band
   ),
 })
 
+// The band structure of a cell scaled by `lattice_scale`, each band value mapped by `map_value`
+// (electrons: scale_energy about E_F, phonons: their stiffening)
 export function scale_band_structure(
   bands: BaseBandStructure,
   lattice_scale: number,
-  fermi_energy: number,
+  map_value: (value: number) => number,
 ): BaseBandStructure {
-  const scale = (rows: number[][]) =>
-    rows.map((row) => row.map((energy) => scale_energy(energy, fermi_energy, lattice_scale)))
+  const scale = (rows: number[][]) => rows.map((row) => row.map(map_value))
   return {
     ...bands,
     bands: scale(bands.bands),
@@ -96,10 +102,191 @@ export const CU_SWEEP_DESCRIPTORS: DescriptorSpec[] = [
     compute: `min_pair_distance`,
     pair: [`Cu`, `Cu`],
   },
+  { key: `lambda`, label: `λ (electron–phonon)` },
+  { key: `omega_log`, label: `ω_log`, unit: `K`, overlay: [`omega_2`] },
+  { key: `omega_2`, label: `ω₂`, unit: `K` },
 ]
 
+// === phonons ===
+export const CU_MAX_PHONON_THZ = 7.25
+export const CU_GRUNEISEN = 2
+export const CU_LAMBDA = 0.13 // electron–phonon coupling at ambient
+const KELVIN_PER_THZ = 47.9924 // h · 1 THz / k_B
+
+// Eigenvalues of a real symmetric 3×3 matrix in ascending order, in closed form (Smith 1961)
+export function symmetric_eigenvalues(matrix: Matrix3x3): Vec3 {
+  const [[a_00, a_01, a_02], [, a_11, a_12], [, , a_22]] = matrix
+  const off_diagonal = a_01 ** 2 + a_02 ** 2 + a_12 ** 2
+  if (off_diagonal === 0) return [a_00, a_11, a_22].toSorted((lhs, rhs) => lhs - rhs) as Vec3
+  const mean = (a_00 + a_11 + a_22) / 3
+  const spread = Math.sqrt(
+    ((a_00 - mean) ** 2 + (a_11 - mean) ** 2 + (a_22 - mean) ** 2 + 2 * off_diagonal) / 6,
+  )
+  const shifted = matrix.map((row, row_idx) =>
+    row.map((val, col_idx) => (val - (row_idx === col_idx ? mean : 0)) / spread),
+  ) as Matrix3x3
+  const half_det = Math.min(1, Math.max(-1, det_3x3(shifted) / 2))
+  const angle = Math.acos(half_det) / 3
+  const largest = mean + 2 * spread * Math.cos(angle)
+  const smallest = mean + 2 * spread * Math.cos(angle + (2 * Math.PI) / 3)
+  return [smallest, 3 * mean - largest - smallest, largest]
+}
+
+// The 12 nearest neighbours of an fcc primitive cell: ±a_i and ±(a_i − a_j)
+function fcc_neighbors(lattice: Matrix3x3): Vec3[] {
+  const [a_1, a_2, a_3] = lattice
+  const diff = (lhs: Vec3, rhs: Vec3): Vec3 => [
+    lhs[0] - rhs[0],
+    lhs[1] - rhs[1],
+    lhs[2] - rhs[2],
+  ]
+  const half = [a_1, a_2, a_3, diff(a_1, a_2), diff(a_2, a_3), diff(a_1, a_3)]
+  const lengths = half.map((vec) => Math.hypot(...vec))
+  if (lengths.some((len) => Math.abs(len - lengths[0]) > 1e-6 * lengths[0])) {
+    throw new Error(
+      `The phonon model needs an fcc primitive cell, got neighbour lengths ${lengths}`,
+    )
+  }
+  return half.flatMap((vec) => [vec, vec.map((coord) => -coord) as Vec3])
+}
+
+// Phonon frequencies (arbitrary units, ascending) of a monatomic lattice at Cartesian q, one
+// central spring to each neighbour: D(q) = Σ_r r̂ r̂ᵀ (1 − cos q·r)
+const model_frequencies = (neighbors: Vec3[], q_vec: Vec3): Vec3 => {
+  const matrix: Matrix3x3 = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  for (const vec of neighbors) {
+    const len_sq = vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
+    const phase = q_vec[0] * vec[0] + q_vec[1] * vec[1] + q_vec[2] * vec[2]
+    const weight = (1 - Math.cos(phase)) / len_sq
+    for (const row of [0, 1, 2]) {
+      for (const col of [0, 1, 2]) matrix[row][col] += weight * vec[row] * vec[col]
+    }
+  }
+  return symmetric_eigenvalues(matrix).map((val) => Math.sqrt(Math.max(val, 0))) as Vec3
+}
+
+// The model's ambient dispersion along the band structure's path and its DOS (THz, ∫F = 3
+// modes per cell) from a 20³ q grid, Gaussian-smeared by 0.1 THz
+export function cu_phonons(
+  structure: Crystal,
+  band_struct: BaseBandStructure,
+): { bands: BaseBandStructure; dos: PhononDos } {
+  const neighbors = fcc_neighbors(structure.lattice.matrix)
+  const recip =
+    band_struct.recip_lattice ?? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
+  const at = (frac: Vec3) =>
+    model_frequencies(
+      neighbors,
+      [0, 1, 2].map(
+        (axis) =>
+          frac[0] * recip[0][axis] + frac[1] * recip[1][axis] + frac[2] * recip[2][axis],
+      ) as Vec3,
+    )
+  const n_grid = 20
+  const grid: number[] = []
+  for (let idx_a = 0; idx_a < n_grid; idx_a++) {
+    for (let idx_b = 0; idx_b < n_grid; idx_b++) {
+      for (let idx_c = 0; idx_c < n_grid; idx_c++) {
+        grid.push(...at([idx_a / n_grid, idx_b / n_grid, idx_c / n_grid]))
+      }
+    }
+  }
+  const path = band_struct.qpoints.map(({ frac_coords }) => at(frac_coords))
+  const raw_max = [...grid, ...path.flat()].reduce((max, val) => Math.max(max, val), 0)
+  const to_thz = CU_MAX_PHONON_THZ / raw_max
+  // bin centres from half a bin up, so α²F/ω stays finite
+  const [n_bins, sigma] = [200, 0.1]
+  const bin_width = (CU_MAX_PHONON_THZ * 1.1) / n_bins
+  const frequencies = Array.from({ length: n_bins }, (_, idx) => (idx + 0.5) * bin_width)
+  const densities = Array(n_bins).fill(0)
+  const norm = 1 / (n_grid ** 3 * sigma * Math.sqrt(2 * Math.PI))
+  for (const raw of grid) {
+    const freq = raw * to_thz
+    const [lo, hi] = [freq - 4 * sigma, freq + 4 * sigma].map((edge) =>
+      Math.min(n_bins - 1, Math.max(0, Math.floor(edge / bin_width))),
+    )
+    for (let idx = lo; idx <= hi; idx++) {
+      densities[idx] += norm * Math.exp(-(((frequencies[idx] - freq) / sigma) ** 2) / 2)
+    }
+  }
+  const { qpoints, branches, labels_dict, distance } = band_struct
+  return {
+    bands: {
+      type: `phonon`,
+      qpoints,
+      branches,
+      labels_dict,
+      distance,
+      ...(band_struct.recip_lattice && { recip_lattice: band_struct.recip_lattice }),
+      nb_bands: 3,
+      bands: [0, 1, 2].map((branch) => path.map((freqs) => freqs[branch] * to_thz)),
+    },
+    dos: { type: `phonon`, frequencies, densities },
+  }
+}
+
+// α²F(ω) of shape F(ω) scaled to coupling `lambda` = 2 ∫ α²F(ω)/ω dω
+export function eliashberg_function(dos: PhononDos, lambda: number): PhononDos {
+  const weights = trapezoid_weights(dos.frequencies)
+  const moment = dos.densities.reduce(
+    (sum, density, idx) => sum + (weights[idx] * density) / dos.frequencies[idx],
+    0,
+  )
+  const factor = lambda / (2 * moment)
+  return { ...dos, densities: dos.densities.map((density) => density * factor) }
+}
+
+// λ = 2 ∫ α²F/ω dω and the Allen–Dynes frequency moments ω_log = exp((2/λ) ∫ α²F ln ω / ω dω)
+// and ω₂ = ((2/λ) ∫ α²F ω dω)^½, in K
+export function eliashberg_moments(a2f: PhononDos): {
+  lambda: number
+  omega_log: number
+  omega_2: number
+} {
+  const weights = trapezoid_weights(a2f.frequencies)
+  const integral = (kernel: (freq: number) => number) =>
+    a2f.densities.reduce(
+      (sum, density, idx) => sum + weights[idx] * density * kernel(a2f.frequencies[idx]),
+      0,
+    )
+  const lambda = 2 * integral((freq) => 1 / freq)
+  const omega_log = Math.exp((2 / lambda) * integral((freq) => Math.log(freq) / freq))
+  const omega_2 = Math.sqrt((2 / lambda) * integral((freq) => freq))
+  return { lambda, omega_log: omega_log * KELVIN_PER_THZ, omega_2: omega_2 * KELVIN_PER_THZ }
+}
+
+// The phonon spectra and electron–phonon scalars of the frame at volume ratio V/V₀ (cell
+// scaled by lattice_scale): frequencies × (V/V₀)^−γ, λ ∝ 1/ω²
+export function cu_frame_phonons(
+  ambient: { bands: BaseBandStructure; dos: PhononDos },
+  volume_ratio: number,
+  lattice_scale: number,
+): { phonon: PhononSpectra; scalars: Record<string, number> } {
+  const stiffening = volume_ratio ** -CU_GRUNEISEN
+  const dos: PhononDos = {
+    type: `phonon`,
+    frequencies: ambient.dos.frequencies.map((freq) => freq * stiffening),
+    densities: ambient.dos.densities.map((density) => density / stiffening),
+  }
+  const a2f = eliashberg_function(dos, CU_LAMBDA / stiffening ** 2)
+  return {
+    phonon: {
+      band_structs: {
+        Cu: scale_band_structure(ambient.bands, lattice_scale, (freq) => freq * stiffening),
+      },
+      doses: { 'phonon DOS': dos, 'α²F': a2f },
+    },
+    scalars: eliashberg_moments(a2f),
+  }
+}
+
 // The sweep (structures up front) and a loader computing each frame's band grid, band
-// structure and DOS when the viewer first shows it, as a remote loader would fetch them
+// structure, DOS and phonon spectra when the viewer first shows it, as a remote loader would
+// fetch them
 export function cu_pressure_sweep(input: {
   structure: Crystal
   band_data: BandGridData
@@ -129,16 +316,17 @@ export function cu_pressure_sweep(input: {
     ],
     descriptors: CU_SWEEP_DESCRIPTORS,
   }
+  let ambient: ReturnType<typeof cu_phonons> | undefined
   const load_frame: SweepFrameLoader = async (_series_id, frame_idx) => {
     await new Promise((resolve) => setTimeout(resolve, 0)) // yield before the heavy work
     const band_data = scale_band_grid(input.band_data, scales[frame_idx])
+    ambient ??= cu_phonons(input.structure, input.band_struct)
     return {
+      ...cu_frame_phonons(ambient, CU_VOLUME_RATIOS[frame_idx], scales[frame_idx]),
       band_data,
       band_structs: {
-        Cu: scale_band_structure(
-          input.band_struct,
-          scales[frame_idx],
-          input.band_data.fermi_energy,
+        Cu: scale_band_structure(input.band_struct, scales[frame_idx], (energy) =>
+          scale_energy(energy, input.band_data.fermi_energy, scales[frame_idx]),
         ),
       },
       doses: { 'bands 3–6': band_grid_dos(band_data) },

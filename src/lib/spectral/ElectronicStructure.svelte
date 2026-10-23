@@ -10,6 +10,8 @@
   // - Bands ↔ Fermi surface: hover previews, click pins and isolates a sheet (FermiBandsLink).
   // - Bands ↔ DOS share zoom and hover lines on the energy axis; hovering the DOS previews the
   //   Fermi surface at that energy too.
+  // Phonon bands and DOS (α²F as one more DOS curve) sit below the electronic spectra on their
+  // own frequency axis (`phonon`).
   // A sweep (`sweep`) runs the viewer along one axis, e.g. pressure: a control bar steps through
   // a series' frames, every pane shows the selected frame, `load_frame` fetches frames' heavy
   // data on demand (the neighbours prefetched), and the trends pane plots descriptors against
@@ -17,8 +19,8 @@
   // A dropped file replaces the data of the panes it fills: a structure file the structure, a
   // trajectory its final frame's structure (plus a vaspout.h5's DOS, never bands), a band grid
   // or meshed surface the Fermi surface, a band structure and/or DOS JSON (also BandsAndDos'
-  // { band_structure, dos }) or an electronic-only vaspout.h5 the spectra; a sweep JSON the
-  // sweep, which while shown takes no other files.
+  // { band_structure, dos }) or an electronic-only vaspout.h5 the spectra (phonon ones the
+  // phonon pane); a sweep JSON the sweep, which while shown takes no other files.
   import {
     normalize_show_controls,
     shows_fullscreen_toggle,
@@ -66,10 +68,12 @@
     LinePlot,
     LinkOff,
     LinkVariant,
+    Phonons,
   } from 'svelte-widgets/icons'
   import SplitPane from 'svelte-widgets/SplitPane.svelte'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import Bands from './Bands.svelte'
+  import BandsAndDos from './BandsAndDos.svelte'
   import Dos from './Dos.svelte'
   import { normalize_band_structure, normalize_dos } from './helpers'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
@@ -78,13 +82,20 @@
   import { create_sweep_frames } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
-  import type { BaseBandStructure, DosData, ElectronicPane, FrequencyUnit } from './types'
+  import type {
+    BaseBandStructure,
+    DosData,
+    ElectronicPane,
+    FrequencyUnit,
+    PhononSpectra,
+  } from './types'
 
   const PANES = [
     { pane: `structure`, icon: Atom, label: `Structure` },
     { pane: `fermi`, icon: FermiSurfaceIcon, label: `Fermi surface` },
     { pane: `bands`, icon: BandStructure, label: `Band structure` },
     { pane: `dos`, icon: DensityOfStates, label: `Density of states` },
+    { pane: `phonon`, icon: Phonons, label: `Phonon spectra` },
     { pane: `trends`, icon: LinePlot, label: `Sweep descriptors` },
   ] as const
   const PANE_IDS = PANES.map(({ pane }) => pane)
@@ -103,6 +114,7 @@
     band_data = $bindable(),
     band_structs = $bindable({}),
     doses = $bindable({}),
+    phonon = $bindable(),
     sweep = $bindable(),
     series_id = $bindable(),
     frame_idx = $bindable(0),
@@ -118,6 +130,7 @@
     row_ratio = $bindable(0.5),
     spectra_ratio = $bindable(0.78),
     trends_ratio = $bindable(0.4),
+    phonon_ratio = $bindable(0.5),
     sync_rotation = $bindable(true),
     show_controls,
     fullscreen = $bindable(false),
@@ -131,6 +144,7 @@
     fermi_props = {},
     bands_props = {},
     dos_props = {},
+    phonon_props = {},
     trends_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -140,6 +154,7 @@
     // the first band structure's k-path is drawn through the Fermi surface's zone
     band_structs?: Record<string, BaseBandStructure>
     doses?: Record<string, DosData>
+    phonon?: PhononSpectra // phonon bands and DOS, on their own frequency axis
     // a sweep along one axis: while set, the panes show its selected frame, not the props above
     sweep?: Sweep
     series_id?: string // the shown series (default: the first)
@@ -148,7 +163,7 @@
     descriptor?: string // the descriptor key the trends pane plots (default: the first)
     fps?: number // frames per second when playing the sweep
     panes?: ElectronicPane[] // shown panes, default: those with data
-    units?: FrequencyUnit // phonon frequency unit of bands and DOS
+    units?: FrequencyUnit // phonon frequency unit of the spectra
     mu?: number // Fermi surface energy relative to E_F
     selected_bands?: number[] // bands whose Fermi sheets are shown (all when unset)
     layout?: `auto` | `horizontal` | `vertical` // the 3D scenes' split, auto by their row's shape
@@ -156,6 +171,7 @@
     row_ratio?: number // the scenes' share of the viewer height above the spectra
     spectra_ratio?: number // the bands' share of the spectra's row beside the DOS
     trends_ratio?: number // the trends pane's share of the lower row beside the spectra
+    phonon_ratio?: number // the electronic spectra's share of their column above the phonons
     sync_rotation?: boolean // orbiting one scene turns the other alike
     // the viewer's row; `never` also hides the panes' own controls
     show_controls?: ShowControlsProp<
@@ -173,6 +189,7 @@
     fermi_props?: Partial<ComponentProps<typeof FermiSurface>>
     bands_props?: Partial<ComponentProps<typeof Bands>>
     dos_props?: Partial<ComponentProps<typeof Dos>>
+    phonon_props?: Partial<ComponentProps<typeof BandsAndDos>>
     trends_props?: Partial<ComponentProps<typeof SweepTrends>>
   } = $props()
 
@@ -235,6 +252,7 @@
   const shown_fermi_data = $derived(sweep ? frame_surface : fermi_data)
   const shown_band_structs = $derived((sweep ? frame?.band_structs : band_structs) ?? {})
   const shown_doses = $derived((sweep ? frame?.doses : doses) ?? {})
+  const shown_phonon = $derived((sweep ? frame?.phonon : phonon) ?? {})
   const playback = create_sequence_player({
     count: () => series?.frames.length ?? 0,
     index: () => frame_index,
@@ -280,14 +298,19 @@
     band_data?: unknown
     band_structs?: Record<string, unknown>
     doses?: Record<string, unknown>
+    phonon?: { band_structs?: Record<string, unknown>; doses?: Record<string, unknown> }
   }
   const panes_with_data = (entries: PaneData[], with_trends: boolean): ElectronicPane[] => {
     const some = (has: (entry: PaneData) => unknown) => entries.some(has)
+    const count = (record?: Record<string, unknown>) => Object.keys(record ?? {}).length
     const filled: Record<ElectronicPane, boolean> = {
       structure: some((entry) => entry.structure),
       fermi: some((entry) => entry.fermi_data || entry.band_data),
-      bands: some((entry) => Object.keys(entry.band_structs ?? {}).length > 0),
-      dos: some((entry) => Object.keys(entry.doses ?? {}).length > 0),
+      bands: some((entry) => count(entry.band_structs) > 0),
+      dos: some((entry) => count(entry.doses) > 0),
+      phonon: some(
+        ({ phonon: spectra }) => count(spectra?.band_structs) + count(spectra?.doses),
+      ),
       trends: with_trends,
     }
     return PANE_IDS.filter((pane) => filled[pane])
@@ -295,7 +318,10 @@
   const with_data = $derived(
     sweep
       ? panes_with_data(shown_frames, Boolean(sweep.descriptors?.length))
-      : panes_with_data([{ structure, fermi_data, band_data, band_structs, doses }], false),
+      : panes_with_data(
+          [{ structure, fermi_data, band_data, band_structs, doses, phonon }],
+          false,
+        ),
   )
   const shown = $derived.by((): Set<ElectronicPane> => {
     if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
@@ -312,9 +338,13 @@
   }
   const show_scenes = $derived(shown.has(`structure`) || shown.has(`fermi`))
   const show_spectra = $derived(shown.has(`bands`) || shown.has(`dos`))
+  const show_phonon = $derived(shown.has(`phonon`))
   const show_trends = $derived(Boolean(sweep) && shown.has(`trends`))
-  const show_lower = $derived(show_trends || show_spectra)
-  const lower_split = $derived(show_trends && show_spectra)
+  // the electronic spectra above the phonons, beside the trends
+  const show_column = $derived(show_spectra || show_phonon)
+  const column_split = $derived(show_spectra && show_phonon)
+  const show_lower = $derived(show_trends || show_column)
+  const lower_split = $derived(show_trends && show_column)
   const scenes_split = $derived(shown.has(`structure`) && shown.has(`fermi`))
   const spectra_split = $derived(shown.has(`bands`) && shown.has(`dos`))
   const scene_orientation = $derived(
@@ -323,7 +353,7 @@
   const spectra_side = $derived(spectra_split && spectra_width >= MIN_SIDE_BY_SIDE_WIDTH)
   // The pane in the viewer's top-right corner puts its own controls below the viewer's
   const corner_pane = $derived.by((): ElectronicPane => {
-    if (!show_scenes && !show_spectra) return `trends`
+    if (!show_scenes && !show_spectra) return show_phonon ? `phonon` : `trends`
     const [first, second] = show_scenes
       ? ([`structure`, `fermi`] as const)
       : ([`bands`, `dos`] as const)
@@ -431,11 +461,31 @@
       is_plain_object(json) && key in json ? json[key] : json
     const bands = vasp ? vasp.bands : normalize_band_structure(unwrap(`band_structure`))
     const dos = vasp ? vasp.dos : normalize_dos(unwrap(`dos`))
-    if (bands) band_structs = { [filename]: bands }
-    if (dos) doses = { [filename]: dos }
-    if (bands || dos) return bands && dos ? [`bands`, `dos`] : [bands ? `bands` : `dos`]
-    const kind = opened.type.replaceAll(`_`, ` `)
-    return `${filename} is ${kind} data, not a structure, Fermi surface, band structure or DOS`
+    if (!bands && !dos) {
+      const kind = opened.type.replaceAll(`_`, ` `)
+      return `${filename} is ${kind} data, not a structure, Fermi surface, band structure or DOS`
+    }
+    // phonon spectra go to the phonon pane, beside (not into) the electronic ones
+    const phonon_bands = bands?.type === `phonon` ? bands : null
+    const phonon_dos = dos?.type === `phonon` ? dos : null
+    const filled: ElectronicPane[] = []
+    if (bands && !phonon_bands) {
+      band_structs = { [filename]: bands }
+      filled.push(`bands`)
+    }
+    if (dos && !phonon_dos) {
+      doses = { [filename]: dos }
+      filled.push(`dos`)
+    }
+    if (phonon_bands || phonon_dos) {
+      phonon = {
+        ...phonon,
+        ...(phonon_bands && { band_structs: { [filename]: phonon_bands } }),
+        ...(phonon_dos && { doses: { [filename]: phonon_dos } }),
+      }
+      filled.push(`phonon`)
+    }
+    return filled
   }
   const drop_zone = raw_file_drop_zone({
     allow: () => allow_file_drop,
@@ -672,91 +722,119 @@
             aria-label="Resize sweep descriptors and spectra"
           />
         {/if}
-        {#if show_spectra}
-          <div
-            class={[
-              `row spectra`,
-              spectra_split ? (spectra_side ? `side` : `stacked`) : `single`,
-            ]}
-            bind:clientWidth={spectra_width}
-          >
-            {#if shown.has(`bands`)}
-              <div class="pane" data-pane="bands" style={pane_style(`bands`)}>
-                <Bands
-                  {...bands_props}
-                  band_structs={shown_band_structs}
-                  bind:units
-                  fermi_level={sync.fermi_level}
-                  show_controls={pane_controls(bands_props.show_controls)}
-                  fullscreen_toggle={false}
-                  padding={{
-                    r: spectra_side ? (dos_left_padding ?? 20) : 5,
-                    ...bands_props.padding,
-                    ...sync.shared_padding,
-                  }}
-                  y_axis={sync.y_axes[0]}
-                  bind:view={sync.views[0]}
-                  bind:resolved_padding={() => undefined, sync.raise_padding}
-                  bind:hovered_frequency={sync.hovered.bands}
-                  reference_frequency={reference_energy}
-                  line_kwargs={link.line_kwargs}
-                  bind:band_spin_mode={link.band_spin_mode}
-                  bind:x_positions={link.x_positions}
-                  highlighted_band_index={link.highlighted_band}
-                  highlighted_qpoint_index={link.path.active_qpoint}
-                  highlighted_qpoint_range={link.path.highlighted_qpoint_range}
-                  hover_config={{ ...LINK_HOVER_CONFIG, ...bands_props.hover_config }}
-                  on_point_hover={chain_callbacks(link.band_hover, bands_props.on_point_hover)}
-                  on_plot_click={chain_callbacks(link.band_click, bands_props.on_plot_click)}
-                >
-                  {#snippet children(ctx)}
-                    {@render bands_props.children?.(ctx)}
-                    <BandCrossings
-                      {ctx}
-                      crossings={link.crossings}
-                      bind:node={link.crossings_svg}
+        {#if show_column}
+          <div class={[`row column`, column_split ? `vertical` : `single`]}>
+            {#if show_spectra}
+              <div
+                class={[
+                  `row spectra`,
+                  spectra_split ? (spectra_side ? `side` : `stacked`) : `single`,
+                ]}
+                bind:clientWidth={spectra_width}
+              >
+                {#if shown.has(`bands`)}
+                  <div class="pane" data-pane="bands" style={pane_style(`bands`)}>
+                    <Bands
+                      {...bands_props}
+                      band_structs={shown_band_structs}
+                      bind:units
+                      fermi_level={sync.fermi_level}
+                      show_controls={pane_controls(bands_props.show_controls)}
+                      fullscreen_toggle={false}
+                      padding={{
+                        r: spectra_side ? (dos_left_padding ?? 20) : 5,
+                        ...bands_props.padding,
+                        ...sync.shared_padding,
+                      }}
+                      y_axis={sync.y_axes[0]}
+                      bind:view={sync.views[0]}
+                      bind:resolved_padding={() => undefined, sync.raise_padding}
+                      bind:hovered_frequency={sync.hovered.bands}
+                      reference_frequency={reference_energy}
+                      line_kwargs={link.line_kwargs}
+                      bind:band_spin_mode={link.band_spin_mode}
+                      bind:x_positions={link.x_positions}
+                      highlighted_band_index={link.highlighted_band}
+                      highlighted_qpoint_index={link.path.active_qpoint}
+                      highlighted_qpoint_range={link.path.highlighted_qpoint_range}
+                      hover_config={{ ...LINK_HOVER_CONFIG, ...bands_props.hover_config }}
+                      on_point_hover={chain_callbacks(
+                        link.band_hover,
+                        bands_props.on_point_hover,
+                      )}
+                      on_plot_click={chain_callbacks(
+                        link.band_click,
+                        bands_props.on_plot_click,
+                      )}
+                    >
+                      {#snippet children(ctx)}
+                        {@render bands_props.children?.(ctx)}
+                        <BandCrossings
+                          {ctx}
+                          crossings={link.crossings}
+                          bind:node={link.crossings_svg}
+                        />
+                      {/snippet}
+                    </Bands>
+                  </div>
+                {/if}
+                {#if shown.has(`dos`)}
+                  {#if spectra_side}
+                    <SplitPane
+                      bind:ratio={spectra_ratio}
+                      min_px={MIN_BANDS_WIDTH}
+                      second_min_px={MIN_DOS_WIDTH}
+                      aria-label="Resize band structure and DOS"
                     />
-                  {/snippet}
-                </Bands>
+                  {/if}
+                  <div class="pane" data-pane="dos" style={pane_style(`dos`)}>
+                    <Dos
+                      {...dos_props}
+                      doses={shown_doses}
+                      bind:units
+                      fermi_level={sync.fermi_level}
+                      show_controls={pane_controls(dos_props.show_controls)}
+                      fullscreen_toggle={false}
+                      orientation={spectra_side ? `horizontal` : `vertical`}
+                      x_axis={sync.dos_x_axis}
+                      y_axis={sync.y_axes[1]}
+                      bind:view={sync.views[1]}
+                      bind:resolved_padding={
+                        () => undefined,
+                        (padding: Required<Sides> | undefined) => {
+                          sync.raise_padding(padding)
+                          dos_left_padding = padding?.l
+                        }
+                      }
+                      bind:hovered_frequency={
+                        () => sync.hovered.dos,
+                        (energy) => {
+                          sync.hovered.dos = energy
+                          link.hovered_energy = energy
+                        }
+                      }
+                      reference_frequency={reference_energy}
+                      padding={{ ...dos_props.padding, ...sync.shared_padding }}
+                    />
+                  </div>
+                {/if}
               </div>
             {/if}
-            {#if shown.has(`dos`)}
-              {#if spectra_side}
-                <SplitPane
-                  bind:ratio={spectra_ratio}
-                  min_px={MIN_BANDS_WIDTH}
-                  second_min_px={MIN_DOS_WIDTH}
-                  aria-label="Resize band structure and DOS"
-                />
-              {/if}
-              <div class="pane" data-pane="dos" style={pane_style(`dos`)}>
-                <Dos
-                  {...dos_props}
-                  doses={shown_doses}
+            {#if column_split}
+              <SplitPane
+                orientation="vertical"
+                bind:ratio={phonon_ratio}
+                aria-label="Resize electronic and phonon spectra"
+              />
+            {/if}
+            {#if show_phonon}
+              <div class="pane" data-pane="phonon" style={pane_style(`phonon`)}>
+                <BandsAndDos
+                  {...phonon_props}
+                  band_structs={shown_phonon.band_structs ?? {}}
+                  doses={shown_phonon.doses ?? {}}
                   bind:units
-                  fermi_level={sync.fermi_level}
-                  show_controls={pane_controls(dos_props.show_controls)}
                   fullscreen_toggle={false}
-                  orientation={spectra_side ? `horizontal` : `vertical`}
-                  x_axis={sync.dos_x_axis}
-                  y_axis={sync.y_axes[1]}
-                  bind:view={sync.views[1]}
-                  bind:resolved_padding={
-                    () => undefined,
-                    (padding: Required<Sides> | undefined) => {
-                      sync.raise_padding(padding)
-                      dos_left_padding = padding?.l
-                    }
-                  }
-                  bind:hovered_frequency={
-                    () => sync.hovered.dos,
-                    (energy) => {
-                      sync.hovered.dos = energy
-                      link.hovered_energy = energy
-                    }
-                  }
-                  reference_frequency={reference_energy}
-                  padding={{ ...dos_props.padding, ...sync.shared_padding }}
                 />
               </div>
             {/if}

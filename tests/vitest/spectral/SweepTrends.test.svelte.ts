@@ -1,5 +1,6 @@
 // SweepTrends: one descriptor of a sweep against its axis, a click selecting a frame
 import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
+import type { DataSeries } from '#lib/plot/index.js'
 import type ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import type { Sweep, SweepFrame, SweepSeries } from '#lib/spectral/sweep.js'
 import SweepTrends from '#lib/spectral/SweepTrends.svelte'
@@ -116,4 +117,39 @@ test(`clicking a point selects its series and frame, then calls the caller's han
   click({ other: 1 }) // not a sweep point
   expect(on_frame_select).toHaveBeenCalledOnce()
   expect(on_point_click).toHaveBeenCalledTimes(2)
+})
+
+test(`overlaid descriptors add a dashed line per series, clicks still selecting frames`, () => {
+  const overlaid: Sweep = {
+    ...sweep,
+    series: [
+      { id: `fcc`, label: `fcc Cu`, frames: [{ value: 0, scalars: { tc: 1, tc_me: 2 } }] },
+      { id: `bcc`, frames: [{ value: 100, scalars: { tc: 4, tc_me: null } }] },
+    ],
+    descriptors: [
+      { key: `tc`, label: `Tc (AD)`, unit: `K`, overlay: [`tc_me`] },
+      { key: `tc_me`, label: `Tc (ME)`, unit: `K` },
+    ],
+  }
+  const { props } = render({ sweep: overlaid })
+  const lines: readonly DataSeries[] = props.series ?? []
+  expect(lines.map(({ id, label, y }) => [id, label, y])).toEqual([
+    [`fcc`, `fcc Cu · Tc (AD)`, [1]],
+    [`bcc`, `bcc · Tc (AD)`, [4]],
+    [`fcc:tc_me`, `fcc Cu · Tc (ME)`, [2]],
+    [`bcc:tc_me`, `bcc · Tc (ME)`, []], // known missing
+  ])
+  expect(lines.map(({ line_style }) => line_style?.line_dash)).toEqual([
+    undefined,
+    undefined,
+    `6 4`,
+    `6 4`,
+  ])
+  expect(lines[2].metadata).toEqual([{ series_id: `fcc`, frame_idx: 0 }])
+  expect(props.show_legend).toBe(true)
+  expect(props.y_axis?.label).toBe(`Tc (AD) (K)`)
+  // one series: overlays are named by their descriptor alone
+  const single = render({ sweep: { ...overlaid, series: [overlaid.series[0]] } })
+  const single_lines: readonly DataSeries[] = single.props.series ?? []
+  expect(single_lines.map(({ label }) => label)).toEqual([`Tc (AD)`, `Tc (ME)`])
 })

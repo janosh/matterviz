@@ -1,8 +1,9 @@
 <script lang="ts">
   // One descriptor of a sweep against its axis, a line per series: clicking a point selects
   // that frame (marked by the vertical line), unstable frames are hollow and grey, a
-  // descriptor's range draws as error bars and its threshold as a dashed line. Frames whose
-  // value is unknown yet (data not loaded) are left out until it is.
+  // descriptor's range draws as error bars and its threshold as a dashed line, the descriptors
+  // it overlays as dashed lines on the same axes. Frames whose value is unknown yet (data not
+  // loaded) are left out until it is.
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
@@ -35,27 +36,39 @@
   )
   const with_unit = (label: string, unit?: string) => (unit ? `${label} (${unit})` : label)
 
-  // each series' plotted points, apart from the selection so selecting recomputes no values
-  const points = $derived.by(() => {
-    const current = spec
-    if (!current) return []
-    return sweep.series.map((entry) =>
-      entry.frames.flatMap((_frame, idx) => {
-        const frame = frame_of(entry, idx)
-        const value = descriptor_value(frame, current)
-        if (typeof value !== `number` || !Number.isFinite(value)) return []
-        const [lower, upper] = (current.range ?? []).map(
-          (range_key) => frame.scalars?.[range_key],
-        )
-        return [{ frame, idx, value, lower, upper }]
-      }),
-    )
-  })
+  // the plotted descriptor, then those it overlays (same unit, dashed)
+  const lines = $derived(
+    spec
+      ? [
+          spec,
+          ...(spec.overlay ?? []).flatMap((key) => specs.filter((other) => other.key === key)),
+        ]
+      : [],
+  )
+  // each line's points per series, apart from the selection so selecting recomputes no values
+  const points = $derived(
+    lines.flatMap((line, line_idx) =>
+      sweep.series.map((entry) => ({
+        entry,
+        line,
+        line_idx,
+        points: entry.frames.flatMap((_frame, idx) => {
+          const frame = frame_of(entry, idx)
+          const value = descriptor_value(frame, line)
+          if (typeof value !== `number` || !Number.isFinite(value)) return []
+          const [lower, upper] = (line.range ?? []).map(
+            (range_key) => frame.scalars?.[range_key],
+          )
+          return [{ frame, idx, value, lower, upper }]
+        }),
+      })),
+    ),
+  )
   const series = $derived(
-    points.map((series_points, series_idx): DataSeries<PointMeta> => {
-      const { id, label } = sweep.series[series_idx]
+    points.map(({ entry, line, line_idx, points: line_points }): DataSeries<PointMeta> => {
+      const { id, label = id } = entry
       const selected = id === series_id
-      const point_style = series_points.map(({ frame, idx }): PointStyle => {
+      const point_style = line_points.map(({ frame, idx }): PointStyle => {
         const unstable = frame.status?.unstable
         const radius = selected && idx === frame_idx ? 7 : 4.5
         return unstable
@@ -68,29 +81,32 @@
             }
           : { radius, cursor: `pointer` }
       })
-      const ranged = series_points.some(({ lower, upper }) => lower != null || upper != null)
+      const ranged = line_points.some(({ lower, upper }) => lower != null || upper != null)
+      const overlaid = lines.length > 1
       return {
-        id,
-        label: label ?? id,
-        x: series_points.map(({ frame }) => frame.value),
-        y: series_points.map(({ value }) => value),
+        id: line_idx === 0 ? id : `${id}:${line.key}`,
+        // overlays name their descriptor, several series also their series
+        label: !overlaid
+          ? label
+          : sweep.series.length > 1
+            ? `${label} · ${line.label}`
+            : line.label,
+        x: line_points.map(({ frame }) => frame.value),
+        y: line_points.map(({ value }) => value),
         markers: `line+points`,
-        metadata: series_points.map(({ idx }) => ({ series_id: id, frame_idx: idx })),
+        metadata: line_points.map(({ idx }) => ({ series_id: id, frame_idx: idx })),
         point_style,
+        ...(line_idx > 0 && { line_style: { line_dash: `6 4` } }),
         ...(ranged && {
           y_error: {
-            lower: series_points.map(({ value, lower }) =>
-              lower == null ? 0 : value - lower,
-            ),
-            upper: series_points.map(({ value, upper }) =>
-              upper == null ? 0 : upper - value,
-            ),
+            lower: line_points.map(({ value, lower }) => (lower == null ? 0 : value - lower)),
+            upper: line_points.map(({ value, upper }) => (upper == null ? 0 : upper - value)),
           },
         }),
       }
     }),
   )
-  const has_values = $derived(points.some((series_points) => series_points.length > 0))
+  const has_values = $derived(points.some((line) => line.points.length > 0))
   // the axis spans every frame, loaded or not, so it holds still while values arrive
   const x_range = $derived.by((): [number, number] => {
     const values = sweep.series.flatMap(({ frames }) => frames.map(({ value }) => value))
@@ -118,7 +134,7 @@
 
 {#if spec}
   <ScatterPlot
-    show_legend={sweep.series.length > 1}
+    show_legend={series.length > 1}
     {...rest}
     {series}
     {ref_lines}

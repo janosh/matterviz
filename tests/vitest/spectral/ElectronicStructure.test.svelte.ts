@@ -2,13 +2,20 @@
 import type FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type Bands from '#lib/spectral/Bands.svelte'
+import type BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type Dos from '#lib/spectral/Dos.svelte'
 import type { Matrix3x3 } from '#lib/math.js'
 import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
 import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
 import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
-import type { BaseBandStructure, ElectronicDos, ElectronicPane } from '#lib/spectral/types.js'
+import type {
+  BaseBandStructure,
+  ElectronicDos,
+  ElectronicPane,
+  PhononDos,
+  PhononSpectra,
+} from '#lib/spectral/types.js'
 import type { Site } from '#lib/structure/index.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -62,6 +69,14 @@ const viewers = vi.hoisted(() => ({
   bands: null as Partial<ComponentProps<typeof Bands>> | null,
   dos: null as Partial<ComponentProps<typeof Dos>> | null,
   trends: null as Partial<ComponentProps<typeof SweepTrends>> | null,
+  phonon: null as Partial<ComponentProps<typeof BandsAndDos>> | null,
+}))
+// a stub: its own Bands and DOS would overwrite the electronic ones' props above
+vi.mock(`#lib/spectral/BandsAndDos.svelte`, () => ({
+  default: (_anchor: Node, props: Partial<ComponentProps<typeof BandsAndDos>>) => {
+    viewers.phonon = props
+    return {}
+  },
 }))
 vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, async (original) => {
   const { default: Component } = await original<{ default: typeof FermiSurface }>()
@@ -149,7 +164,7 @@ beforeEach(async () => {
 afterEach(() => {
   for (const component of mounted.splice(0)) void unmount(component)
   for (const controls of Object.values(scenes.controls)) controls?.dispose()
-  Object.assign(viewers, { fermi: null, bands: null, dos: null, trends: null })
+  Object.assign(viewers, { fermi: null, bands: null, dos: null, trends: null, phonon: null })
   scenes.props = {}
   scenes.controls = {}
   Reflect.deleteProperty(navigator, `gpu`)
@@ -182,6 +197,14 @@ const all_data = {
   band_structs: { Cu: band_struct },
   doses: { Cu: dos },
 }
+// phonon DOS and an α²F on one frequency axis (THz), and a dispersion along the same path
+const phonon_dos: PhononDos = { type: `phonon`, frequencies: [0, 3, 6], densities: [0, 2, 0] }
+const phonon: PhononSpectra = {
+  band_structs: {
+    Cu: { ...band_struct, type: `phonon`, efermi: undefined, bands: [[0, 2, 4]] },
+  },
+  doses: { 'phonon DOS': phonon_dos, 'α²F': { ...phonon_dos, densities: [0, 0.3, 0] } },
+}
 // the viewer's measured width: the DOS sits beside the bands from 520px, else below
 const set_width = (width: number) =>
   vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
@@ -206,7 +229,8 @@ test.each(WIDTHS)(
       `vertical`,
     )
     expect(
-      root.querySelector(`:scope > .panes > .row.lower > .row.spectra`)?.classList,
+      root.querySelector(`:scope > .panes > .row.lower > .row.column > .row.spectra`)
+        ?.classList,
     ).toContain(side ? `side` : `stacked`)
     // beside the bands, the DOS resizes at a divider of its own
     expect(count(root, `.spectra > .pane-divider`)).toBe(side ? 1 : 0)
@@ -221,8 +245,11 @@ test.each(WIDTHS)(
 )
 
 // oxfmt-ignore
-test.each<[string, Partial<typeof all_data>, ElectronicPane[]]>([
+test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, ElectronicPane[]]>([
   [`all data`, all_data, [`structure`, `fermi`, `bands`, `dos`]],
+  [`all data and phonons`, { ...all_data, phonon }, [`structure`, `fermi`, `bands`, `dos`, `phonon`]],
+  [`phonons only`, { phonon }, [`phonon`]],
+  [`an empty phonon record`, { structure, phonon: { doses: {} } }, [`structure`]],
   [`a structure`, { structure }, [`structure`]],
   [`a band grid`, { band_data }, [`fermi`]],
   [`bands and DOS`, { band_structs: all_data.band_structs, doses: all_data.doses }, [`bands`, `dos`]],
@@ -231,6 +258,52 @@ test.each<[string, Partial<typeof all_data>, ElectronicPane[]]>([
   const root = mount_host(data)
   expect(shown_panes(root)).toEqual(expected)
   expect(count(root, `.sync-rotation-toggle`)).toBe(expected.includes(`fermi`) && expected.includes(`structure`) ? 1 : 0)
+})
+
+test(`phonon spectra sit below the electronic ones, resized at their own divider`, () => {
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    ...all_data,
+    phonon,
+    units: `THz`,
+  })
+  const root = mount_host(props)
+  const column = root.querySelector(`:scope > .panes > .row.lower > .row.column`)
+  expect(column?.classList).toContain(`vertical`)
+  expect(count(root, `.column > .pane-divider`)).toBe(1)
+  expect([...(column?.children ?? [])].map((child) => child.className.split(` `)[0])).toEqual([
+    `row`,
+    `pane-divider`,
+    `pane`,
+  ])
+  expect(viewers.phonon).toMatchObject({
+    band_structs: phonon.band_structs,
+    doses: phonon.doses,
+    fullscreen_toggle: false,
+  })
+  expect(viewers.dos?.doses).toEqual(all_data.doses) // the electronic DOS keeps its own pane
+  props.units = `meV`
+  flushSync()
+  expect(viewers.phonon?.units).toBe(`meV`)
+})
+
+test(`a dropped phonon DOS fills the phonon pane, keeping the electronic spectra`, async () => {
+  const on_file_load = vi.fn()
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    ...all_data,
+    phonon: undefined,
+    on_file_load,
+  })
+  const root = mount_host(props)
+  const file = new File(
+    [JSON.stringify({ frequencies: [0, 4, 8], densities: [0, 1, 0] })],
+    `phonon_dos.json`,
+  )
+  root.dispatchEvent(create_drop_event(file))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+  expect(on_file_load).toHaveBeenCalledWith({ filename: `phonon_dos.json`, panes: [`phonon`] })
+  expect(props.phonon?.doses?.[`phonon_dos.json`]).toMatchObject({ type: `phonon` })
+  expect(props.doses).toEqual(all_data.doses)
+  expect(shown_panes(root)).toContain(`phonon`)
 })
 
 test(`the pane menu shows any subset, never none`, () => {
@@ -597,6 +670,20 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
     [`bcc`, 0],
     [`bcc`, 1],
   ])
+})
+
+test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, async () => {
+  const sweep = make_sweep()
+  const alpha2f = { 'α²F': phonon.doses?.[`α²F`] ?? phonon_dos }
+  sweep.series[0].frames = sweep.series[0].frames.map(({ value }) => ({
+    value,
+    structure,
+    phonon: { doses: alpha2f },
+  }))
+  const load_frame = vi.fn(async () => ({ phonon: { band_structs: phonon.band_structs } }))
+  mount_host({ sweep, load_frame, frame_idx: 0 })
+  await vi.waitFor(() => expect(viewers.phonon?.band_structs).toEqual(phonon.band_structs))
+  expect(viewers.phonon?.doses).toEqual(alpha2f)
 })
 
 // Lazily, a frame whose band grid is still loading has no zone to compare, which must not

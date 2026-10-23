@@ -15,7 +15,7 @@ import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { is_plain_object } from '#lib/utils.js'
 import { normalize_band_structure, normalize_dos } from './helpers'
-import type { BaseBandStructure, DosData } from './types'
+import type { BaseBandStructure, DosData, PhononSpectra } from './types'
 
 export interface SweepAxis {
   key: string // e.g. `pressure`
@@ -32,6 +32,7 @@ export interface SweepFrame {
   band_structs?: Record<string, BaseBandStructure>
   // `total` (or a single entry) is the total DOS; element symbols key element projections
   doses?: Record<string, DosData>
+  phonon?: PhononSpectra // phonon bands and DOS (α²F as one more DOS curve)
   scalars?: Record<string, number | null> // supplied descriptor values, null: known missing
   status?: { unstable?: boolean; note?: string } // unstable frames are greyed in the plot
 }
@@ -65,6 +66,9 @@ export interface DescriptorSpec {
   element?: ElementSymbol // fermi_dos_share only (required there)
   range?: [string, string] // scalar keys of a lower and upper bound, drawn as error bars
   threshold?: number // drawn as a horizontal line, e.g. a stability limit
+  // keys of descriptors in the same unit drawn as extra lines on this one's plot, e.g.
+  // Migdal–Eliashberg Tc over an Allen–Dynes Tc band
+  overlay?: string[]
 }
 
 export interface Sweep {
@@ -115,6 +119,19 @@ export function validate_sweep(sweep: Sweep): void {
     }
     if (spec.pair && spec.compute !== `min_pair_distance`) {
       throw new Error(`Descriptor "${spec.key}": pair goes only with min_pair_distance`)
+    }
+  }
+  for (const spec of sweep.descriptors ?? []) {
+    for (const key of spec.overlay ?? []) {
+      const other = sweep.descriptors?.find((entry) => entry.key === key)
+      if (!other || key === spec.key) {
+        throw new Error(`Descriptor "${spec.key}" overlays "${key}", no other descriptor`)
+      }
+      if (other.unit !== spec.unit) {
+        throw new Error(
+          `Descriptor "${spec.key}" (${spec.unit ?? `no unit`}) overlays "${key}" in ${other.unit ?? `no unit`}: overlays share their unit`,
+        )
+      }
     }
   }
 }
@@ -293,6 +310,7 @@ const FRAME_KEYS = new Set([
   `fermi_data`,
   `band_structs`,
   `doses`,
+  `phonon`,
   `scalars`,
   `status`,
 ])
@@ -350,6 +368,36 @@ function normalize_frame(raw: unknown, path: string): SweepFrame {
   if (bands) frame.band_structs = bands
   const dos = normalize_record(doses, `doses`, normalize_dos)
   if (dos) frame.doses = dos
+  if (raw.phonon !== undefined) {
+    const { phonon } = raw
+    if (!is_plain_object(phonon)) return fail(`${path}.phonon`, `must be an object`)
+    const extra = Object.keys(phonon).find((key) => key !== `band_structs` && key !== `doses`)
+    if (extra) return fail(`${path}.phonon.${extra}`, `unknown phonon field`)
+    const spectra: PhononSpectra = {}
+    const phonon_bands = normalize_record(
+      phonon.band_structs,
+      `phonon.band_structs`,
+      normalize_band_structure,
+    )
+    if (phonon_bands) spectra.band_structs = phonon_bands
+    const phonon_doses = normalize_record(phonon.doses, `phonon.doses`, normalize_dos)
+    if (phonon_doses) spectra.doses = phonon_doses
+    // electronic data has its own fields: mixed into one plot its energies read as frequencies
+    const entries = [
+      ...Object.entries(phonon_bands ?? {}).map(([name, item]) => [
+        `band_structs`,
+        name,
+        item.type,
+      ]),
+      ...Object.entries(phonon_doses ?? {}).map(([name, item]) => [`doses`, name, item.type]),
+    ]
+    for (const [key, name, type] of entries) {
+      if (type !== `phonon`) {
+        return fail(`${path}.phonon.${key}.${name}`, `must be phonon data, got ${type}`)
+      }
+    }
+    frame.phonon = spectra
+  }
   if (raw.scalars !== undefined) {
     if (!is_plain_object(raw.scalars)) return fail(`${path}.scalars`, `must be an object`)
     frame.scalars = Object.fromEntries(
@@ -382,7 +430,7 @@ const is_computed = (name: unknown): name is ComputedDescriptor =>
 function normalize_descriptor(raw: unknown, idx: number): DescriptorSpec {
   const path = `descriptors[${idx}]`
   if (!is_plain_object(raw)) return fail(path, `must be an object`)
-  const { key, label, compute, pair, element, range, threshold } = raw
+  const { key, label, compute, pair, element, range, threshold, overlay } = raw
   if (typeof key !== `string` || typeof label !== `string`) {
     return fail(path, `needs a key and a label`)
   }
@@ -408,6 +456,9 @@ function normalize_descriptor(raw: unknown, idx: number): DescriptorSpec {
   if (threshold !== undefined && typeof threshold !== `number`) {
     return fail(`${path}.threshold`, `must be a number`)
   }
+  if (overlay !== undefined && !strings(overlay)) {
+    return fail(`${path}.overlay`, `must be descriptor keys`)
+  }
   return {
     key,
     label,
@@ -417,6 +468,7 @@ function normalize_descriptor(raw: unknown, idx: number): DescriptorSpec {
     ...(element !== undefined && { element }),
     ...(range && { range: [range[0], range[1]] }),
     ...(threshold !== undefined && { threshold }),
+    ...(overlay && { overlay: [...overlay] }),
   }
 }
 

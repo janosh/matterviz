@@ -51,7 +51,7 @@
   const cu_sweep = $derived(
     band_data && cu_pressure_sweep({ structure, band_data, band_struct }),
   )
-  const sweep_panes = [`structure`, `fermi`, `trends`, `bands`, `dos`] as const
+  const sweep_panes = [`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`] as const
 </script>
 
 <svelte:head>
@@ -99,9 +99,12 @@
   descriptor in its header, click a point to jump there). Frames bring their structures up
   front and their band grid, bands and DOS through a loader when first shown, as a remote
   source would. This sweep is approximate, for demonstrating the viewer: the Cu calculation
-  above with its cell scaled to each volume, band energies rescaled about E<sub>F</sub> as free electrons
-  (∝ 1/a²) and pressures from a Birch–Murnaghan equation of state (B₀ = 140 GPa, B₀′ = 5). No frame
-  is a calculation at its pressure.
+  above with its cell scaled to each volume, band energies rescaled about E<sub>F</sub> as free
+  electrons (∝ 1/a²) and pressures from a Birch–Murnaghan equation of state (B₀ = 140 GPa, B₀′
+  = 5). The phonon pane below the electronic spectra shows a nearest-neighbour force-constant
+  model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) as one more
+  DOS curve; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. No
+  frame is a calculation at its pressure.
 </p>
 
 {#if cu_sweep && band_data}
@@ -115,6 +118,6 @@
       y_axis: { label: `Energy (eV)`, range: [fermi_energy - 6, fermi_energy + 6] },
     }}
     class="bleed-1400 sweep-demo"
-    style="--electronic-border-radius: 8px; --electronic-height: 900px"
+    style="--electronic-border-radius: 8px; --electronic-height: 1100px"
   />
 {/if}

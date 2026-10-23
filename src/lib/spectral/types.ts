@@ -199,6 +199,13 @@ export type SpectrumKind = `ir` | `raman`
 // IR spectra are conventionally drawn as transmittance (peaks pointing down).
 export type SpectrumPresentation = `absorbance` | `transmittance`
 
-// ElectronicStructure's panes: the crystal, its Fermi surface, band structure and DOS
-// `trends`: a sweep's descriptors against its axis
-export type ElectronicPane = `structure` | `fermi` | `bands` | `dos` | `trends`
+// ElectronicStructure's panes: the crystal, its Fermi surface, band structure and DOS,
+// `phonon` its phonon bands and DOS, `trends` a sweep's descriptors against its axis
+export type ElectronicPane = `structure` | `fermi` | `bands` | `dos` | `phonon` | `trends`
+
+// A material's phonon spectra beside its electronic ones: dispersion and DOS on one frequency
+// axis, where an Eliashberg function α²F(ω) is one more DOS curve
+export interface PhononSpectra {
+  band_structs?: Record<string, BaseBandStructure>
+  doses?: Record<string, DosData>
+}

@@ -130,6 +130,26 @@ describe(`validate_sweep`, () => {
       }),
       `pair goes only with min_pair_distance`,
     ],
+    [
+      `an overlay of an unknown descriptor`,
+      sweep_of([0], { descriptors: [{ key: `tc`, label: `Tc`, overlay: [`tc_me`] }] }),
+      `"tc" overlays "tc_me", no other descriptor`,
+    ],
+    [
+      `an overlay of itself`,
+      sweep_of([0], { descriptors: [{ key: `tc`, label: `Tc`, overlay: [`tc`] }] }),
+      `"tc" overlays "tc", no other descriptor`,
+    ],
+    [
+      `an overlay in another unit`,
+      sweep_of([0], {
+        descriptors: [
+          { key: `tc`, label: `Tc`, unit: `K`, overlay: [`lambda`] },
+          { key: `lambda`, label: `λ` },
+        ],
+      }),
+      `"tc" (K) overlays "lambda" in no unit: overlays share their unit`,
+    ],
   ])(`rejects %s`, (_desc, sweep, message) => {
     expect(() => validate_sweep(sweep)).toThrow(message)
   })
@@ -314,12 +334,16 @@ describe(`normalize_sweep`, () => {
               label: `50 GPa`,
               doses: { total: { energies: [0, 1], densities: [1, 2], efermi: 0.5 } },
               status: { unstable: true, note: `imaginary modes`, ignored: 1 },
+              phonon: {
+                doses: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } },
+              },
             },
           ],
         },
       ],
       descriptors: [
         { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 20 },
+        { key: `tc_me`, label: `Tc (ME)`, unit: `K`, overlay: [`tc`] },
       ],
     })
     const [first, second] = sweep.series[0].frames
@@ -327,8 +351,12 @@ describe(`normalize_sweep`, () => {
     expect(first.scalars).toEqual({ tc: 10, lambda: null })
     expect(second.doses?.total).toMatchObject({ type: `electronic`, densities: [1, 2] })
     expect(second.status).toEqual({ unstable: true, note: `imaginary modes` })
+    expect(second.phonon).toEqual({
+      doses: { 'α²F': { type: `phonon`, frequencies: [0, 1], densities: [0, 0.5] } },
+    })
     expect(sweep.descriptors).toEqual([
       { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 20 },
+      { key: `tc_me`, label: `Tc (ME)`, unit: `K`, overlay: [`tc`] },
     ])
   })
 
@@ -425,6 +453,38 @@ describe(`normalize_sweep`, () => {
       `a non-string axis unit`,
       { axis: { key: `p`, label: `P`, unit: 1 }, series: [{ id: `a`, frames: [frame] }] },
       `axis.unit: must be a string, got 1`,
+    ],
+    [
+      `an electronic DOS among the phonons`,
+      {
+        axis: { key: `p`, label: `P` },
+        series: [
+          {
+            id: `a`,
+            frames: [
+              { value: 0, phonon: { doses: { x: { energies: [0], densities: [1] } } } },
+            ],
+          },
+        ],
+      },
+      `frames[0].phonon.doses.x: must be phonon data, got electronic`,
+    ],
+    [
+      `an unknown phonon field`,
+      {
+        axis: { key: `p`, label: `P` },
+        series: [{ id: `a`, frames: [{ value: 0, phonon: { dispersion: {} } }] }],
+      },
+      `frames[0].phonon.dispersion: unknown phonon field`,
+    ],
+    [
+      `a non-list overlay`,
+      {
+        axis: { key: `p`, label: `P` },
+        series: [{ id: `a`, frames: [frame] }],
+        descriptors: [{ key: `x`, label: `X`, overlay: `y` }],
+      },
+      `descriptors[0].overlay: must be descriptor keys`,
     ],
     [
       `an invalid series order`,

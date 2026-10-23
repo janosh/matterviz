@@ -1,19 +1,20 @@
 // A sweep's frames with their heavy data loaded on demand: each requested frame is fetched once
-// through the caller's loader and cached, merged over the frame's own fields (scalars and
-// status key by key) once, so a loaded frame keeps its identity across reads. Each sweep and
-// loader pair gets its own cache, so loads still running for a previous pair land in a cache
-// nothing reads anymore.
+// through the caller's loader and cached, merged over the frame's own fields (scalars, status
+// and phonon spectra key by key) once, so a loaded frame keeps its identity across reads. Each
+// sweep and loader pair gets its own cache, so loads still running for a previous pair land in
+// a cache nothing reads anymore.
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
 import type { Sweep, SweepFrame, SweepFrameLoader, SweepSeries } from './sweep'
 
 type FrameData = Awaited<ReturnType<SweepFrameLoader>>
 
-// The loaded fields over the frame's own; its value always wins
+// The loaded fields over the frame's own, nested records key by key; its value always wins
 const merge_frame = (base: SweepFrame, data: FrameData): SweepFrame => ({
   ...base,
   ...data,
   ...((base.scalars ?? data.scalars) && { scalars: { ...base.scalars, ...data.scalars } }),
   ...((base.status ?? data.status) && { status: { ...base.status, ...data.status } }),
+  ...((base.phonon ?? data.phonon) && { phonon: { ...base.phonon, ...data.phonon } }),
   value: base.value,
 })
 
