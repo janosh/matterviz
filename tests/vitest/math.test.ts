@@ -1291,6 +1291,87 @@ test.each([
   )
 })
 
+describe(`polygon_signed_area and polygon_label_point`, () => {
+  const square = (x_min: number, y_min: number, size: number): Vec2[] => [
+    [x_min, y_min],
+    [x_min + size, y_min],
+    [x_min + size, y_min + size],
+    [x_min, y_min + size],
+  ]
+  // oxfmt-ignore
+  const c_shape: Vec2[] = [[0, 0], [3, 0], [3, 1], [1, 1], [1, 2], [3, 2], [3, 3], [0, 3]]
+
+  test(`signed area is positive counter-clockwise and negative clockwise`, () => {
+    expect(math.polygon_signed_area(square(0, 0, 10))).toBe(100)
+    expect(math.polygon_signed_area(square(0, 0, 10).toReversed())).toBe(-100)
+    expect(math.polygon_signed_area(c_shape)).toBe(7)
+  })
+
+  test(`polygon_label_point uses the centroid of a convex region with its full extent`, () => {
+    expect(math.polygon_label_point(square(0, 0, 10))).toEqual({
+      at: [5, 5],
+      width: 10,
+      height: 10,
+    })
+  })
+
+  // L-shape: area 36, centroid (29/9, 29/9) lies in the notch outside the polygon, so the
+  // anchor moves to the middle of the horizontal span through the centroid's height
+  test(`polygon_label_point moves into a concave L-shaped region`, () => {
+    const l_shape: Vec2[] = [
+      [0, 0],
+      [10, 0],
+      [10, 2],
+      [2, 2],
+      [2, 10],
+      [0, 10],
+    ]
+    const anchor = math.polygon_label_point(l_shape)
+    if (!anchor) throw new Error(`no anchor for the L-shape`)
+    // centroid y is 116/36; a few flops on O(10) values: 12 digits is far above f64 eps
+    expect(anchor.at[0]).toBeCloseTo(1, 12)
+    expect(anchor.at[1]).toBeCloseTo(116 / 36, 12)
+    expect(math.point_in_polygon(anchor.at[0], anchor.at[1], l_shape)).toBe(true)
+    expect(anchor.width).toBeCloseTo(2, 12)
+    expect(anchor.height).toBeCloseTo(10, 12)
+  })
+
+  test.each([
+    [
+      `fewer than 3 vertices`,
+      [
+        [0, 0],
+        [1, 1],
+      ],
+    ],
+    [
+      `collinear`,
+      [
+        [0, 0],
+        [1, 1],
+        [2, 2],
+      ],
+    ],
+  ] satisfies [string, Vec2[]][])(`polygon_label_point is null for %s`, (_label, vertices) => {
+    expect(math.polygon_label_point(vertices)).toBeNull()
+  })
+
+  // The degeneracy check is relative to the bounding box, so the label point of a C-shape
+  // whose centroid falls in its notch stays inside at any scale (an absolute area threshold
+  // returned a point outside at 1e-6)
+  test.each([1, 1e-6, 1e6])(`C-shape label point stays inside at scale %d`, (scale) => {
+    const scaled = c_shape.map(([coord_x, coord_y]): Vec2 => [
+      coord_x * scale,
+      coord_y * scale,
+    ])
+    const anchor = math.polygon_label_point(scaled)
+    if (!anchor) throw new Error(`no label point at scale ${scale}`)
+    expect(math.point_in_polygon(anchor.at[0], anchor.at[1], scaled)).toBe(true)
+    // relative to the scale, a handful of flops: 12 digits sits far above f64 eps
+    expect(anchor.at[0] / scale).toBeCloseTo(0.5, 12)
+  })
+})
+
 describe(`merge_coplanar_triangles`, () => {
   // Nothing to merge: output keeps the input vertex set (order may differ within a fan)
   // oxfmt-ignore

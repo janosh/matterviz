@@ -5,7 +5,7 @@
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
-  import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
+  import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { plot_color, resolve_computed_color } from '#lib/colors/index.js'
   import { format_value, format_value_or_num } from '#lib/labels.js'
@@ -1451,21 +1451,12 @@
       const project = series_projector(series_data)
       const { marker_of } = series_appearance(series_data)
       const segments: string[] = []
-      // A capped bar is the same three strokes on either axis, with the roles of the two
-      // coordinates swapped, so the shape is written once and read along each axis
-      const bar = (along: Vec2, across: number, vertical: boolean) => {
-        const [lo, hi] = along
-        const [near, far] = [across - error_bar_cap, across + error_bar_cap]
-        return vertical
-          ? `M${near},${lo}H${far}M${across},${lo}V${hi}M${near},${hi}H${far}`
-          : `M${lo},${near}V${far}M${lo},${across}H${hi}M${hi},${near}V${far}`
-      }
       for (const point of series_data.filtered_data) {
         const [cx, cy] = project.point(point)
         const x_span = project.error_span(point, `x`)
-        if (x_span) segments.push(bar(x_span, cy, false))
+        if (x_span) segments.push(error_bar_path(x_span, cy, false, error_bar_cap))
         const y_span = project.error_span(point, `y`)
-        if (y_span) segments.push(bar(y_span, cx, true))
+        if (y_span) segments.push(error_bar_path(y_span, cx, true, error_bar_cap))
       }
       if (segments.length === 0) return []
       // segments imply at least one point, so the first one sets the series' bar color

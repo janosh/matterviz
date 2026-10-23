@@ -118,6 +118,13 @@ function get_phase_color_key(name: string): PhaseColorKey {
   return `default`
 }
 
+// Opaque palette color of a phase name matching one of the patterns (liquid, Greek letters),
+// null for names the palette doesn't know
+export const named_phase_color = (name: string): string | null => {
+  const key = get_phase_color_key(name)
+  return key === `default` ? null : PHASE_COLOR_HEX[key]
+}
+
 // Phase fill color: translucent rgba() for region fills (two-phase/unknown regions are
 // a bit more transparent), or the opaque hex for markers.
 export function get_phase_color(name: string, format: `rgba` | `hex` = `rgba`): string {

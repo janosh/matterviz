@@ -19,6 +19,17 @@ export type ErrorValues =
 // Resolved magnitudes below and above the point, both non-negative
 export type PointError = Vec2
 
+// SVG path of one capped error bar spanning `span` (pixels along the bar) at `across` (the
+// pixel coordinate on the other axis): the same three strokes on either axis with the two
+// coordinates' roles swapped. A `cap` of 0 draws a bare line.
+export const error_bar_path = (span: Vec2, across: number, vertical: boolean, cap: number) => {
+  const [lo, hi] = span
+  const [near, far] = [across - cap, across + cap]
+  return vertical
+    ? `M${near},${lo}H${far}M${across},${lo}V${hi}M${near},${hi}H${far}`
+    : `M${lo},${near}V${far}M${lo},${across}H${hi}M${hi},${near}V${far}`
+}
+
 // Narrowing on the object shape, not on Array.isArray: that widens a `readonly number[]`
 // to `any[]` and forces a cast at every use.
 const is_asymmetric = (
