@@ -49,8 +49,8 @@ describe(`tick label AABBs`, () => {
     [`x2 above its origin`, `x2`, `start`, 0, [10, 10, 30, 20, 20, 10]],
     [`y ending at its origin`, `y`, `end`, 0, [0, 5, 20, 15, 20, 10]],
     [`y2 starting at its origin`, `y2`, `start`, 0, [20, 5, 40, 15, 20, 10]],
-    // rotation pivots around the actual label position, not the block center
-    [`x rotated 90° around its origin`, `x`, `start`, 90, [0, 20, 10, 40, 10, 20]],
+    // stood upright, the lines run along the axis and the stack centers on its tick
+    [`x stood upright, centered on its tick`, `x`, `start`, 90, [5, 20, 15, 40, 10, 20]],
   ] as const)(`places multiline blocks on %s`, (_name, side, anchor, rotation, expected) => {
     const aabb = tick_label_aabb({
       position: { axis: 10, cross_axis: 20 },
@@ -280,6 +280,27 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
     expect(layout.labels.map(({ full_text }) => full_text)).toEqual(labels)
     expect(layout.stagger_step).toBe(16 + 4)
     expect(layout.band).toBe(2 * 16 + 4)
+  })
+
+  // wrapped columns stood upright need only their longest line as band (tilted -45°: 110px)
+  it(`stands long category names upright in wrapped columns`, () => {
+    const labels = [
+      `likely artifact (no QE)`,
+      `tetrahedron artifact (Gaussian ≈ QE)`,
+      `physical (QE-confirmed)`,
+      `numerical artifact`,
+      `physical, PACE value fragile`,
+    ]
+    const positions = labels.map((_, idx) => 41 + idx * 82)
+    const strategies = [`upright`, `wrap`, `rotate`, `thin`, `stagger`] as const
+    const layout = resolve(labels, positions, [...strategies], 410)
+    expect([layout.strategy, layout.rotation]).toEqual([`wrap`, -90])
+    expect(layout.band).toBeLessThanOrEqual(80)
+    // every label stays visible and wraps onto several lines without dropping text
+    const squash = (text: string) => text.replaceAll(/\s+/gu, ``)
+    const kept = ({ visible, lines }: (typeof layout.labels)[number]) =>
+      visible && lines.length > 1 && squash(lines.join(``))
+    expect(layout.labels.map(kept)).toEqual(labels.map(squash))
   })
 
   it(`thins to an endpoint-preserving subset and keeps every label's text`, () => {
