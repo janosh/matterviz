@@ -329,6 +329,8 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
       supercell_scaling: () => `1x1x1`,
       apply_supercell_scaling: () => false,
       show_image_atoms: () => false,
+      image_atom_completion: () => DEFAULTS.structure.image_atom_completion,
+      polyhedra_options: () => ({}),
       cell_type: () => `original`,
       set_cell_type: () => {},
       sym_data: () => null,
@@ -1672,20 +1674,21 @@ const mount_volumetric = (
   return props
 }
 
-// Stub the Fullscreen API on the mounted viewer; `set_fullscreen_element` plays the browser
-// entering/leaving fullscreen
+// Stub the Fullscreen API on the mounted viewer's fullscreen root (the row around the viewer
+// and its docked sidebars); `set_fullscreen_element` plays the browser entering/leaving
 const stub_fullscreen_api = () => {
   mock_fullscreen()
   const request_fullscreen = vi.fn().mockResolvedValue(undefined)
   const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
   const wrapper = doc_query(`.structure`)
-  wrapper.requestFullscreen = request_fullscreen
+  const root = doc_query(`.structure-fullscreen-root`)
+  root.requestFullscreen = request_fullscreen
   document.exitFullscreen = exit_fullscreen
   const set_fullscreen_element = async (value: Element | null) => {
     Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
     await fire(document, new Event(`fullscreenchange`))
   }
-  return { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element }
+  return { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element }
 }
 
 describe(`Structure`, () => {
@@ -1984,6 +1987,28 @@ describe(`Structure`, () => {
     await fire(doc_query(`.structure`), keydown(`Escape`))
     expect(state.active_pane).toBeNull()
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
+  })
+
+  // Each layer key flips its layer off then back on, restoring the mode it had (polyhedra's
+  // default `crystals`, not `always`)
+  // oxfmt-ignore
+  test.each([
+    [`a`, `show_atoms`, [true, false, true]],
+    [`A`, `show_image_atoms`, [true, false, true]],
+    [`b`, `show_bonds`, [`always`, `never`, `always`]],
+    [`p`, `show_polyhedra`, [`crystals`, `never`, `crystals`]],
+  ] as const)(`key %s toggles %s`, async (key, layer, expected) => {
+    const state = $state({ scene_props: { ...DEFAULTS.structure }, show_image_atoms: true })
+    mount_structure(bind_props({ structure }, state))
+    await tick()
+    const read = () =>
+      layer === `show_image_atoms` ? state.show_image_atoms : state.scene_props[layer]
+    const values: unknown[] = [read()]
+    for (const _press of [1, 2]) {
+      await fire(doc_query(`.structure`), keydown(key, { shiftKey: key === `A` }))
+      values.push(read())
+    }
+    expect(values).toEqual(expected)
   })
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
@@ -2548,7 +2573,7 @@ describe(`Structure`, () => {
     const props = $state({ fullscreen: false })
     const chrome = { style: `--ctrl-btn-icon-size: 32px`, show_controls: `always` as const }
     mount_structure(bind_props({ structure, ...chrome, on_fullscreen_change }, props))
-    const { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
+    const { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
       stub_fullscreen_api()
     request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
     await tick()
@@ -2571,8 +2596,13 @@ describe(`Structure`, () => {
     fullscreen_button.click()
     await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledTimes(2))
 
-    await set_fullscreen_element(wrapper)
+    await set_fullscreen_element(root)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)
+    // fullscreen, the viewer fills the row and the caller's style moves to the row
+    expect(wrapper.style.height).toBe(`100%`)
+    expect(
+      doc_query(`.structure-site-layout`).style.getPropertyValue(`--ctrl-btn-icon-size`),
+    ).toBe(`32px`)
     expect(props.fullscreen).toBe(true)
     expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
 

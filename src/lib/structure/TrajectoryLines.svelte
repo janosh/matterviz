@@ -29,7 +29,7 @@ times the attributes since every segment becomes an instanced quad.
     trail_color_texels,
     trail_segments,
   } from '#lib/structure/trajectory-lines.js'
-  import { create_fat_segments, update_fat_segments } from './polyhedra'
+  import { create_fat_segments, update_fat_segments } from './polyhedra-render'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'

@@ -228,6 +228,31 @@ test.describe(`Structure Component Tests`, () => {
       .toEqual({ narrow: true, contained: true, reflowed: true })
   })
 
+  // Fullscreen takes the row around the viewer, so a sidebar a host docks into it (a tool
+  // panel) takes width from the scene and the viewer's own controls stay clear of it
+  test(`fullscreen leaves room for a sidebar docked beside the viewer`, async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 })
+    await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
+    await page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`).click()
+    await page.waitForFunction(() =>
+      document.fullscreenElement?.classList.contains(`structure-fullscreen-root`),
+    )
+    await page.evaluate(() => {
+      const sidebar = document.createElement(`aside`)
+      sidebar.style.flex = `0 0 400px`
+      document.fullscreenElement?.append(sidebar)
+    })
+    await expect(page.locator(`#test-structure`)).toHaveCSS(`width`, `1200px`)
+    await expect(page.locator(`#test-structure`)).toHaveCSS(`height`, `900px`)
+    const canvas = await require_bbox(structure_canvas(page))
+    expect([canvas.x, canvas.width, canvas.height]).toEqual([0, 1200, 900])
+    await structure_canvas(page).hover({ position: { x: 4, y: 4 }, force: true })
+    const button = await require_bbox(
+      page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`),
+    )
+    expect(button.x + button.width).toBeLessThanOrEqual(1200)
+  })
+
   test(`measure mode controls visible by default and hide when disabled`, async ({ page }) => {
     const measure_dropdown = page.locator(`#test-structure .measure-mode-dropdown`)
     await expect(measure_dropdown).toBeVisible()
@@ -368,6 +393,8 @@ test.describe(`Structure Component Tests`, () => {
     page,
   }) => {
     const structure_div = page.locator(`#test-structure`)
+    // the shortcut listeners sit on the fullscreen root, the row around the viewer
+    const fullscreen_root = page.locator(`.structure-fullscreen-root:has(#test-structure)`)
     // Enter the server-rendered viewer before its shortcut listeners mount during hydration.
     const scripts_ready = Promise.withResolvers<undefined>()
     await page.route(`**/*`, (route) =>
@@ -377,12 +404,12 @@ test.describe(`Structure Component Tests`, () => {
     )
     try {
       await page.reload({ waitUntil: `commit` })
-      await expect(structure_div).not.toHaveAttribute(`data-mv-fullscreen-root`, ``)
+      await expect(fullscreen_root).not.toHaveAttribute(`data-mv-fullscreen-root`, ``)
       await structure_div.hover()
     } finally {
       scripts_ready.resolve(undefined)
     }
-    await expect(structure_div).toHaveAttribute(`data-mv-fullscreen-root`, ``)
+    await expect(fullscreen_root).toHaveAttribute(`data-mv-fullscreen-root`, ``)
     await structure_div.click()
     // a handled key is the one the viewer preventDefaults
     const handles = (init: Parameters<typeof dispatch_cancelable_keydown>[1]) =>

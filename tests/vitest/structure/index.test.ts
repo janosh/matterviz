@@ -5,6 +5,7 @@ import {
   camera_needs_fit,
   camera_position_for_target,
   DEFAULT_FIT_PADDING,
+  HYDROGEN_RADIUS,
   DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
   FIT_ZOOM_REF_PX,
@@ -270,7 +271,7 @@ describe(`structure_fit_frame`, () => {
     const { center, extent: fit } = structure_fit_frame(diatomic)
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
     expect(extent(diatomic, { atom_radius_scale: 0 })).toBeCloseTo(2 * DEFAULT_FIT_PADDING, 10)
-    expect(fit).toBeCloseTo(2 * (1 + 0.25 * 0.7) * DEFAULT_FIT_PADDING, 10)
+    expect(fit).toBeCloseTo(2 * (1 + HYDROGEN_RADIUS * 0.7) * DEFAULT_FIT_PADDING, 10)
     expect(
       structure_fit_frame(
         { sites: [site(`H`, [0, 0, 0]), site(`H`, [4, 0, 0])] },
@@ -312,6 +313,9 @@ describe(`structure_fit_frame`, () => {
     [`same_size ignores site override`, h_origin, { same_size_atoms: true, site_radius_overrides: new Map([[0, 5]]), atom_radius_scale: 1 }, 2 * DEFAULT_FIT_PADDING],
     [`unequal radii at opposite off-origin corners`, { sites: [site(`H`, [-100, 200, -300]), site(`Mg`, [100, 600, 300])] }, { atom_radius_scale: 1, site_radius_overrides: new Map([[0, 1], [1, 3]]) }, 2 * (Math.hypot(101, 201, 301) + 1) * DEFAULT_FIT_PADDING],
     [`occupancy-weighted disordered site`, { sites: [h_mg_site] }, { atom_radius_scale: 1, element_radius_overrides: { H: 1, Mg: 3 } }, 4 * DEFAULT_FIT_PADDING],
+    // H draws at 0.5 Å instead of its 0.25 Å atomic radius; an override still wins
+    [`hydrogen display radius`, h_origin, { atom_radius_scale: 4 }, 4 * DEFAULT_FIT_PADDING],
+    [`hydrogen override below the display radius`, h_origin, { atom_radius_scale: 10, element_radius_overrides: { H: 0.2 } }, 4 * DEFAULT_FIT_PADDING],
   ] satisfies [string, AnyStructure, StructureFitOpts, number][])(
     `%s`,
     (_label, structure, opts, expected) => {
@@ -495,8 +499,8 @@ describe(`get_structure_vector_keys`, () => {
 })
 
 describe(`default_vector_configs`, () => {
-  const config = (color: string | null, scale: number | null = null) => ({
-    visible: true,
+  const config = (color: string | null, scale: number | null = null, visible = true) => ({
+    visible,
     color,
     scale,
   })
@@ -504,10 +508,26 @@ describe(`default_vector_configs`, () => {
   test.each([
     { desc: `single key gets null color (semantic coloring)`, keys: [`force`], expected: { force: config(null) } },
     { desc: `velocities use a smaller display scale`, keys: [`velocity`], expected: { velocity: config(null, 0.05) } },
-    { desc: `multiple keys get distinct palette colors`, keys: [`force_DFT`, `force_MLFF`, `magmom`], expected: { force_DFT: config(VECTOR_PALETTE[0]), force_MLFF: config(VECTOR_PALETTE[1]), magmom: config(VECTOR_PALETTE[2]) } },
+    { desc: `multiple keys get distinct palette colors, only magmom drawn`, keys: [`force_DFT`, `force_MLFF`, `magmom`], expected: { force_DFT: config(VECTOR_PALETTE[0], null, false), force_MLFF: config(VECTOR_PALETTE[1], null, false), magmom: config(VECTOR_PALETTE[2]) } },
     { desc: `empty keys array returns empty object`, keys: [] as string[], expected: {} },
   ])(`$desc`, ({ keys, expected }) => {
     expect(default_vector_configs(keys)).toEqual(expected)
+  })
+
+  // Only one layer draws by default: magmoms, else spins, else forces, else sort order.
+  // A category draws all its components (spin_s0_l*_m*), not other spin categories.
+  // oxfmt-ignore
+  test.each([
+    [[`force`, `magmom`, `spin`], [`magmom`]],
+    [[`force`, `spins`, `velocity`], [`spins`]],
+    [[`force`, `spin_s0_l0_m0`, `spin_s0_l1_m1`, `spin_l0_norm`], [`spin_s0_l0_m0`, `spin_s0_l1_m1`]],
+    [[`force_MLFF`, `force_DFT`, `velocity`], [`force_DFT`]],
+    [[`magmom_MLFF`, `magmom_DFT`, `force`], [`magmom_DFT`]],
+    [[`magmoms`, `magmom_DFT`, `force`], [`magmoms`]],
+    [[`velocity`, `dipole`], [`velocity`]],
+  ])(`%j draws only %j`, (keys, expected_visible) => {
+    const configs = default_vector_configs(keys)
+    expect(keys.filter((key) => configs[key].visible)).toEqual(expected_visible)
   })
 
   test(`palette wraps around for more keys than palette entries`, () => {

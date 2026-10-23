@@ -59,6 +59,8 @@ function mount_toolbar(measure_mode: MeasureMode, selected_sites: number[]) {
       supercell_scaling: () => `1x1x1`,
       apply_supercell_scaling: () => true,
       show_image_atoms: () => false,
+      image_atom_completion: () => `none`,
+      polyhedra_options: () => ({}),
       cell_type: () => `original`,
       set_cell_type: () => {},
       sym_data: () => null,

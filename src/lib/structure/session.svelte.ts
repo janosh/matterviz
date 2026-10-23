@@ -42,6 +42,8 @@ import {
 } from './prediction'
 import { capitalize_symbol } from './parsers/shared'
 import { get_pbc_image_sites, wrap_to_unit_cell } from './pbc'
+import type { ImageAtomCompletion } from './pbc'
+import { polyhedra_options_key, type PolyhedraOptions } from './polyhedra'
 import {
   get_image_source_idx,
   get_orig_site_idx,
@@ -82,6 +84,9 @@ export interface StructureSessionInputs {
   supercell_scaling: () => string
   apply_supercell_scaling: () => boolean
   show_image_atoms: () => boolean
+  image_atom_completion: () => ImageAtomCompletion
+  // The renderer's polyhedra options (polyhedra_options_from), so completion matches it
+  polyhedra_options: () => PolyhedraOptions
   cell_type: () => CellType
   set_cell_type: (value: CellType) => void
   sym_data: () => SymmetryDataset | null
@@ -333,14 +338,28 @@ export class StructureSession {
       })),
     }
   }
+  // The polyhedra options image completion follows, re-read only when their key changes:
+  // hosts rebuild them on every read, which would rerun the bond search
+  private readonly polyhedra_key = $derived.by(() =>
+    polyhedra_options_key(this.inputs.polyhedra_options()),
+  )
+  private readonly polyhedra_options = $derived.by(
+    () => (this.polyhedra_key, untrack(() => this.inputs.polyhedra_options())),
+  )
   // Element-mapped + PBC image atoms. Images are skipped during drags.
   displayed_structure = $derived.by((): AnyStructure | undefined => {
     const struct = this.map_elements(this.supercell_structure)
+    const completion = this.inputs.image_atom_completion()
     return !this.dragging_atoms &&
       this.inputs.show_image_atoms() &&
       struct &&
       `lattice` in struct
-      ? get_pbc_image_sites(struct)
+      ? get_pbc_image_sites(
+          struct,
+          completion,
+          // only completion reads them: `none` must not rebuild on polyhedra/legend changes
+          completion === `none` ? {} : this.polyhedra_options,
+        )
       : struct
   })
   private readonly displayed_site_count = $derived(site_count(this.displayed_structure))
@@ -491,9 +510,17 @@ export class StructureSession {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
       const topology_changed = changed(`topology`, this.topology)
+      // Completion settings renumber image sites only while images show and get completed,
+      // so polyhedra sliders otherwise keep the selection and bond edits
+      const completion = inputs.image_atom_completion()
+      const completion_key =
+        !inputs.show_image_atoms() || completion === `none`
+          ? null
+          : `${completion} ${this.polyhedra_key}`
       const transform_changed = [
         changed(`supercell_scaling`, inputs.supercell_scaling()),
         changed(`show_image_atoms`, inputs.show_image_atoms()),
+        changed(`image_completion`, completion_key),
         changed(`series_key`, inputs.series_key()),
         changed(`cell_type`, inputs.cell_type()),
       ].includes(true)

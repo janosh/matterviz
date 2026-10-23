@@ -12,12 +12,15 @@ import {
   build_adjacency,
   compute_polyhedra,
   cache_prepared_polyhedra,
+  convex_hull_3d,
+  polyhedra_options_from,
+} from '#lib/structure/polyhedra.js'
+import {
   create_fat_segments,
+  merge_polyhedra_buffers,
   update_fat_segments,
   update_polyhedra_faces,
-  convex_hull_3d,
-  merge_polyhedra_buffers,
-} from '#lib/structure/polyhedra.js'
+} from '#lib/structure/polyhedra-render.js'
 import type { Polyhedron } from '#lib/structure/polyhedra.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
@@ -875,4 +878,32 @@ describe(`merge_polyhedra_buffers`, () => {
     expect(buffers.edge_count).toBe(0)
     expect(buffers.edge_colors).toHaveLength(0)
   })
+})
+
+// Settings map to detection options with schema defaults; crossed CN sliders widen the cap
+// rather than leaving an empty window, and element lists are copies safe to post to a worker
+test(`polyhedra_options_from`, () => {
+  const { polyhedra_neighbor_mode, polyhedra_min_neighbors, polyhedra_max_neighbors } =
+    DEFAULTS.structure
+  expect(polyhedra_options_from({})).toEqual({
+    neighbor_mode: polyhedra_neighbor_mode,
+    min_neighbors: polyhedra_min_neighbors,
+    max_neighbors: polyhedra_max_neighbors,
+    excluded_center_elements: [],
+    included_center_elements: [],
+  })
+  const excluded_elements = [`Ti`]
+  const options = polyhedra_options_from({
+    polyhedra_min_neighbors: 10,
+    polyhedra_max_neighbors: 6,
+    polyhedra_neighbor_mode: `bonded`,
+    polyhedra_excluded_elements: excluded_elements,
+  })
+  expect(options).toMatchObject({
+    neighbor_mode: `bonded`,
+    min_neighbors: 10,
+    max_neighbors: 10,
+  })
+  expect(options.excluded_center_elements).toEqual(excluded_elements)
+  expect(options.excluded_center_elements).not.toBe(excluded_elements)
 })

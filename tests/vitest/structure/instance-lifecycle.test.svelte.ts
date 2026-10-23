@@ -36,7 +36,8 @@ import {
   prepare_bond_placements,
 } from '#lib/structure/bond-rendering.js'
 import type { Polyhedron } from '#lib/structure/polyhedra.js'
-import { cache_prepared_polyhedra, merge_polyhedra_buffers } from '#lib/structure/polyhedra.js'
+import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
+import { merge_polyhedra_buffers } from '#lib/structure/polyhedra-render.js'
 import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import { colors } from '#lib/state.svelte.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'

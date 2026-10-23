@@ -1,6 +1,6 @@
 # Site Vectors (Force, Magmom, Spin)
 
-Structures can carry per-site vector data in their `properties` dict. Recognized keys include `force`, `magmom`, `spin` and prefixed variants like `force_DFT` or `magmom_MLFF`. When multiple vector keys are present, each gets its own color, toggle, and per-key scale slider.
+Structures can carry per-site vector data in their `properties` dict. Recognized keys include `force`, `magmom`, `spin` and prefixed variants like `force_DFT` or `magmom_MLFF`. When multiple vector keys are present, each gets its own color, toggle, and per-key scale slider. Only one layer draws by default, picked in the order magmoms, spins, forces; the others stay one toggle away under Visibility.
 
 ## Color Modes
 
@@ -165,7 +165,11 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
     },
     {
       title: `TiO₂ rutile — force comparison`,
-      desc: `force_DFT vs force_MLFF on a multi-element oxide. Use Origin Gap to separate overlapping arrows`,
+      desc: `force_DFT vs force_MLFF on a multi-element oxide, both drawn via vector_configs. Use Origin Gap to separate overlapping arrows`,
+      vector_configs: {
+        force_DFT: { visible: true, color: `#e74c3c` },
+        force_MLFF: { visible: true, color: `#3498db` },
+      },
       structure: {
         lattice: tio2,
         sites: [
@@ -214,7 +218,7 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
     },
     {
       title: `Fe BCC — forces + magmoms`,
-      desc: `Three vector layers: force_DFT, force_MLFF, and magmom with distinct directions. Per-layer palette coloring`,
+      desc: `Three vector layers: force_DFT, force_MLFF, and magmom. Only magmom draws by default (magmoms, then spins, then forces); toggle the forces under Visibility`,
       structure: {
         lattice: fe_bcc,
         sites: [
@@ -347,11 +351,11 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
 </script>
 
 <ul class="vector-grid">
-  {#each examples as { title, desc, structure } (title)}
+  {#each examples as { title, desc, structure, vector_configs } (title)}
     <li>
       <h3>{title}</h3>
       <p>{desc}</p>
-      <Structure {structure} scene_props={{ show_bonds: `never` }} />
+      <Structure {structure} scene_props={{ show_bonds: `never`, vector_configs }} />
     </li>
   {/each}
 </ul>

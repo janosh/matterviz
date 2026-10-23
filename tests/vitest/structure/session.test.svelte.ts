@@ -17,6 +17,8 @@ import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
+import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
+import type { PolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
@@ -40,6 +42,8 @@ type Host = {
   supercell_scaling: string
   apply_supercell_scaling: boolean
   show_image_atoms: boolean
+  image_atom_completion: ImageAtomCompletion
+  polyhedra_options: PolyhedraOptions
   cell_type: CellType
   sym_data: SymmetryDataset | null
   atom_color_config: AtomColorConfig
@@ -63,6 +67,8 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
     supercell_scaling: `1x1x1`,
     apply_supercell_scaling: true,
     show_image_atoms: false,
+    image_atom_completion: `polyhedra`,
+    polyhedra_options: {},
     cell_type: `original`,
     sym_data: null,
     atom_color_config: DEFAULT_ATOM_COLOR_CONFIG,
@@ -95,6 +101,8 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
       supercell_scaling: () => host.supercell_scaling,
       apply_supercell_scaling: () => host.apply_supercell_scaling,
       show_image_atoms: () => host.show_image_atoms,
+      image_atom_completion: () => host.image_atom_completion,
+      polyhedra_options: () => host.polyhedra_options,
       cell_type: () => host.cell_type,
       set_cell_type: (value) => (host.cell_type = value),
       sym_data: () => host.sym_data,
@@ -347,6 +355,79 @@ describe(`symmetry-aware display`, () => {
     expect(session.history.undo_stack).toHaveLength(0)
     expect(host.selected_sites).toEqual([2])
   })
+})
+
+// SrTiO3 with Ti in the body center: its octahedron sits inside the cell, so the default
+// draws only the face copies, while face-atom completion adds the Ti bonded to the face O
+it(`switching image_atom_completion rebuilds the displayed atoms`, () => {
+  const { host, session } = make_session({
+    show_image_atoms: true,
+    structure: make_crystal(3.905, [
+      [`Sr`, [0, 0, 0]],
+      [`Ti`, [0.5, 0.5, 0.5]],
+      [`O`, [0.5, 0.5, 0]],
+      [`O`, [0.5, 0, 0.5]],
+      [`O`, [0, 0.5, 0.5]],
+    ]),
+  })
+  const completion_elements = () =>
+    (session.displayed_structure?.sites ?? [])
+      .filter((site) => site.provenance?.completion)
+      .map((site) => site.species[0].element)
+  expect(session.displayed_structure?.sites).toHaveLength(15) // 5 sites + 10 face copies
+  expect(completion_elements()).toEqual([])
+  for (const [completion, expected] of [
+    [`boundary`, [`Ti`, `Ti`, `Ti`, `Ti`, `Ti`, `Ti`]],
+    [`none`, []],
+  ] as const) {
+    host.image_atom_completion = completion
+    flushSync()
+    expect(completion_elements(), completion).toEqual(expected)
+  }
+})
+
+// SrTiO3 with Ti on the corners: its 24 O corner copies go once Ti is no polyhedron center
+it(`changing the polyhedra options rebuilds the completion copies`, () => {
+  const { host, session } = make_session({
+    show_image_atoms: true,
+    structure: make_crystal(3.905, [
+      [`Ti`, [0, 0, 0]],
+      [`Sr`, [0.5, 0.5, 0.5]],
+      [`O`, [0.5, 0, 0]],
+      [`O`, [0, 0.5, 0]],
+      [`O`, [0, 0, 0.5]],
+    ]),
+  })
+  const completion_count = () =>
+    session.displayed_structure?.sites.filter((site) => site.provenance?.completion).length
+  expect(completion_count()).toBe(24)
+  // an equal options object keeps the displayed structure (no rerun of the bond search)
+  const displayed = session.displayed_structure
+  host.polyhedra_options = { ...host.polyhedra_options }
+  flushSync()
+  expect(session.displayed_structure).toBe(displayed)
+  host.selected_sites = [0]
+  flushSync()
+  host.polyhedra_options = { excluded_center_elements: [`Ti`] }
+  flushSync()
+  expect(completion_count()).toBe(0)
+  expect(host.selected_sites).toEqual([]) // image sites renumbered
+})
+
+// Polyhedra settings only renumber sites (or rebuild the displayed structure) while images
+// show and get completed
+it.each([
+  [`images hidden`, { show_image_atoms: false }],
+  [`completion off`, { show_image_atoms: true, image_atom_completion: `none` }],
+] as const)(`polyhedra settings keep the selection with %s`, (_label, initial) => {
+  const { host, session } = make_session(initial)
+  host.selected_sites = [0]
+  flushSync()
+  const displayed = session.displayed_structure
+  host.polyhedra_options = { min_neighbors: 5 }
+  flushSync()
+  expect(host.selected_sites).toEqual([0])
+  expect(session.displayed_structure).toBe(displayed)
 })
 
 describe(`selection validity`, () => {

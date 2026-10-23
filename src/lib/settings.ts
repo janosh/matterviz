@@ -9,6 +9,7 @@ import { capitalize, symbol_names } from '#lib/labels.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { GizmoOptions } from '#lib/scene/gizmo.js'
 import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
+import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { is_plain_object } from '#lib/utils.js'
@@ -340,6 +341,15 @@ export const SETTINGS_CONFIG = define_settings({
     show_image_atoms: {
       value: true,
       description: `Show atoms on the edge of the cell that are not part of the primitive basis`,
+    },
+    image_atom_completion: {
+      value: `polyhedra`,
+      description: `Which atoms beyond the cell faces to draw: the corners of polyhedra crossing a face, those plus every bond partner of atoms on the faces, or none`,
+      enum: {
+        polyhedra: `Polyhedron corners`,
+        boundary: `+ bonds of face atoms`,
+        none: `None`,
+      } satisfies Record<ImageAtomCompletion, string>,
     },
     sphere_segments: {
       value: 20,
@@ -1372,6 +1382,7 @@ export const build_structure_props_from_settings = (defaults: DefaultSettings) =
     background_color: defaults.background_color,
     background_opacity: defaults.background_opacity,
     show_image_atoms: structure.show_image_atoms,
+    image_atom_completion: structure.image_atom_completion,
     show_trajectory_lines: structure.show_trajectory_lines,
   }
 }

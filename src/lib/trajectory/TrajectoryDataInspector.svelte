@@ -463,6 +463,8 @@ so a closed inspector builds no tables -->
     white-space: nowrap;
     padding: 2pt 5pt;
     background: transparent;
+    /* clear host button borders first, else they frame three sides around the underline slot */
+    border: 0;
     border-bottom: 2px solid transparent;
     border-radius: 0;
   }

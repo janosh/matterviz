@@ -30,9 +30,8 @@ import { BOND_ORDERS, BondFrame, pack_bonds, type BondColumns } from './bond-ren
 // compounds and undershoot the metals themselves (fcc Al 2.86 A is 1.18x the covalent sum,
 // 1.00x the metallic one), which broke intermetallics. Elements without a tabulated
 // metallic radius (Sn, Pb, Bi, Ac, ...) keep the covalent one. Every other pair uses
-// covalent radii. Shared with find_image_atoms so boundary completion reaches exactly as
-// far as the bond detector does.
-export const expected_bond_length = (
+// covalent radii.
+const expected_bond_length = (
   elem_a: ChemicalElement | undefined,
   elem_b: ChemicalElement | undefined,
 ): number | null => {
@@ -832,6 +831,7 @@ function neighbor_query_cutoff(
     const coord_y = coordinates ? coordinates[idx * stride + 1] : sites[idx].xyz[1]
     const coord_z = coordinates ? coordinates[idx * stride + 2] : sites[idx].xyz[2]
     if (!(Number.isFinite(coord_x) && Number.isFinite(coord_y) && Number.isFinite(coord_z))) {
+      // oxlint-disable-next-line unicorn/prefer-type-error -- a NaN/Infinity coordinate is a bad value, not a bad type
       throw new Error(
         `neighbor_query: site ${display_idx(idx)} has a non-finite position (${coord_x}, ${coord_y}, ${coord_z})`,
       )

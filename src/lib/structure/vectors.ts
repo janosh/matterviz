@@ -92,18 +92,36 @@ export const vector_display_defaults = (key: string) =>
     ? { scale: 0.05, shaft_radius: 0.2, arrow_head_radius: 0.1, arrow_head_length: 0.1 }
     : { scale: null, shaft_radius: 1, arrow_head_radius: 1, arrow_head_length: 1 }
 
-// Single key → null color (semantic coloring); multiple keys → palette colors.
-export const default_vector_configs = (keys: string[]) =>
-  Object.fromEntries(
+// Which layer draws by default: magmoms, else spins, else forces, else the first key in
+// sort order (velocities, phonons, dipoles). Singular and plural prefixes rank alike, and
+// within a prefix the plain vector beats derived categories (spin over spin_norm).
+const DEFAULT_LAYERS = [`magmom`, `magmoms`, `spin`, `spins`, `force`, `forces`]
+const default_layer_rank = (key: string): number => {
+  const idx = DEFAULT_LAYERS.findIndex((prefix) => has_key_prefix(key, prefix))
+  if (idx === -1) return DEFAULT_LAYERS.length
+  return idx - (idx % 2) + Number(!DEFAULT_LAYERS.includes(vector_category(key)))
+}
+
+// Single key → null color (semantic coloring); multiple keys → palette colors. Only the
+// highest-priority category draws: stacking every layer on one site buries all of them,
+// the rest stay one toggle away.
+export const default_vector_configs = (keys: string[]) => {
+  const [first_key = ``] = keys.toSorted(
+    (left, right) =>
+      default_layer_rank(left) - default_layer_rank(right) || compare_vector_keys(left, right),
+  )
+  const shown_category = vector_category(first_key)
+  return Object.fromEntries(
     keys.map((key) => [
       key,
       {
-        visible: true,
+        visible: vector_category(key) === shown_category,
         color: keys.length > 1 ? vector_palette_color(keys, key) : null,
         scale: vector_display_defaults(key).scale,
       },
     ]),
   )
+}
 
 export function try_parse_vec3(val: unknown): Vec3 | null {
   if (is_finite_vec3(val)) return val

@@ -68,6 +68,7 @@ export type StructureOptions = Pick<
     | 'png_dpi'
     | 'performance_mode'
     | 'show_image_atoms'
+    | 'image_atom_completion'
     | 'supercell_scaling'
     | 'cell_type'
     | 'hidden_elements'

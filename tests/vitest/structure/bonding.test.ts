@@ -374,9 +374,10 @@ describe(`Explicit Bond Metadata`, () => {
   })
 
   test(`canonicalizes image-atom bond edit targets to original sites with cell shifts`, () => {
+    // O on the low-x face gets a face copy at x=10.05 beside C
     const structure = make_crystal(10, [
       [`C`, [0.95, 0.5, 0.5]],
-      [`O`, [0.04, 0.5, 0.5]],
+      [`O`, [0.005, 0.5, 0.5]],
     ])
     const structure_with_images = get_pbc_image_sites(structure)
     const image_site_idx = structure_with_images.sites.findIndex(
@@ -435,7 +436,8 @@ describe(`Explicit Bond Metadata`, () => {
     ])
   })
 
-  // With image atoms shown, the perceived bond ends on the O image
+  // With image atoms shown, the perceived bond ends on the O image: O is a corner of Si's
+  // polyhedron, so its copy across the face is drawn (Si's copy beside O is not)
   test(`explicit periodic bonds tag the bonds drawn to PBC image atoms`, () => {
     const structure = make_crystal(10, [
       [`Si`, [0.9, 0.5, 0.5]],
@@ -447,10 +449,9 @@ describe(`Explicit Bond Metadata`, () => {
     const imaged = get_pbc_image_sites(structure)
     const bonds = bonding.electroneg_ratio(imaged)
     const lengths = bonds.map((bond) => math.euclidean_dist(bond.pos_1, bond.pos_2))
-    expect(lengths.map((length) => Number(length.toFixed(6)))).toEqual([1.6, 1.6])
-    expect(bonds.map(({ bond_order }) => bond_order)).toEqual([2, 2])
-    const drawn = bonds.map(({ pos_1, pos_2 }) => [...pos_1, ...pos_2].map(Math.round))
-    expect(new Set(drawn.map(String)).size).toBe(2)
+    expect(lengths.map((length) => Number(length.toFixed(6)))).toEqual([1.6])
+    expect(bonds.map(({ bond_order }) => bond_order)).toEqual([2])
+    expect(bonds[0].pos_2.map(Math.round)).toEqual([11, 5, 5])
   })
 })
 
@@ -548,8 +549,8 @@ describe(`Molecular Bonding Analysis`, () => {
 // === Coordination-number benchmark ===
 // Perceived bonding is a pile of interacting heuristics, so the only meaningful
 // regression net is whether it reproduces textbook coordination numbers on structures
-// whose answer is not in doubt. Every atom of the unit cell is checked (not just
-// interior ones), which also pins the PBC boundary completion in find_image_atoms.
+// whose answer is not in doubt. Every atom of the unit cell is checked on the periodic
+// bond graph, so boundary atoms count the neighbors across the cell faces too.
 
 const wrap_frac = (val: number) => val - Math.floor(val)
 // sites of one element at the given fractional coordinates
@@ -627,12 +628,11 @@ const cn_benchmark: [string, number | Vec3[], SimpleSite[], Record<string, numbe
   // Olivine LiFePO4 (Pnma). P sits 2.64-2.68 A from Li and 2.83-2.86 A from Fe - well
   // inside 2x the covalent radii - so a metal-only cation test bonded P to its cation
   // neighbors (P CN 7). Both ends of Li-P / Fe-P carry anions: the tight stretch rule
-  // rejects them and leaves the PO4 tetrahedra and FeO6 octahedra. Li is unchecked: as a
-  // spectator it gets no boundary images (see find_image_atoms), so corner Li stay at CN 3
+  // rejects them and leaves the PO4 tetrahedra and FeO6 octahedra.
   [`LiFePO4 olivine`, [[10.329, 0, 0], [0, 6.0065, 0], [0, 0, 4.6908]], [
     ...pnma(`Li`, [0, 0, 0]), ...pnma(`Fe`, [0.28222, 0.25, 0.97472]), ...pnma(`P`, [0.09486, 0.25, 0.4182]),
     ...pnma(`O`, [0.09678, 0.25, 0.74279]), ...pnma(`O`, [0.4571, 0.25, 0.20602]), ...pnma(`O`, [0.16558, 0.04646, 0.28478]),
-  ], { Fe: 6, P: 4 }],
+  ], { Li: 6, Fe: 6, P: 4 }],
   [`NaCl rocksalt`, 5.64, [...fcc(`Na`), ...fcc(`Cl`, [[0.5, 0, 0]])], { Na: 6, Cl: 6 }],
   [`MgO rocksalt`, 4.212, [...fcc(`Mg`), ...fcc(`O`, [[0.5, 0, 0]])], { Mg: 6, O: 6 }],
   [`ZnS zincblende`, 5.41, [...fcc(`Zn`), ...fcc(`S`, [[0.25, 0.25, 0.25]])], { Zn: 4, S: 4 }],
@@ -644,10 +644,8 @@ const cn_benchmark: [string, number | Vec3[], SimpleSite[], Record<string, numbe
     [0.615, 0.885, 0.115], [0.115, 0.885, 0.385], [0.885, 0.385, 0.115], [0.385, 0.115, 0.885],
   ])], { Fe: 6, S: 4 }],
   [`CsCl`, 4.119, [[`Cs`, [0, 0, 0]], [`Cl`, [0.5, 0.5, 0.5]]], { Cs: 8, Cl: 8 }],
-  // O is left unchecked: Sr is a spectator A-site cation, so find_image_atoms deliberately
-  // generates no Sr images and the base O atoms see 1 Sr instead of 4. Sr 12 / Ti 6 are the
-  // point here - they only hold if Sr-Ti does NOT bond.
-  [`SrTiO3 perovskite`, 3.905, [[`Sr`, [0.5, 0.5, 0.5]], [`Ti`, [0, 0, 0]], ...sites_at(`O`, [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]])], { Sr: 12, Ti: 6 }],
+  // Sr 12 / Ti 6 only hold if Sr-Ti does NOT bond; O sees 2 Ti and 4 Sr.
+  [`SrTiO3 perovskite`, 3.905, [[`Sr`, [0.5, 0.5, 0.5]], [`Ti`, [0, 0, 0]], ...sites_at(`O`, [[0.5, 0, 0], [0, 0.5, 0], [0, 0, 0.5]])], { Sr: 12, Ti: 6, O: 6 }],
   // TiC and Ti2O are the pair that pins cation_cation_penalty's anion-shell gate. Both are
   // Ti plus a nonmetal, and in both the Ti-Ti contact is SHORTER than Ti-nonmetal once
   // normalized by covalent radii (0.956 vs 0.915, and 0.919 vs 0.923), so no
@@ -675,13 +673,12 @@ describe(`coordination number benchmark`, () => {
         : ([lattice[0], lattice[1], lattice[2]] as [Vec3, Vec3, Vec3]),
       sites,
     )
-    // image atoms complete the shells of atoms sitting on cell faces
-    const imaged = get_pbc_image_sites(base)
-    const counts = bonds_per_site(bonding.electroneg_ratio(imaged), imaged.sites.length)
-    // only the original unit-cell sites are checked; image copies are partial by design
+    // the infinite crystal's bond graph: every site has its full shell across the faces
+    const periodic_bonds = bonding.electroneg_ratio(base, { pbc: base.lattice.pbc })
+    const counts = bonds_per_site(periodic_bonds, base.sites.length)
     const actual: Record<string, number[]> = {}
     for (let idx = 0; idx < base.sites.length; idx++) {
-      const element = bonding.get_majority_element(imaged.sites[idx]) ?? `?`
+      const element = bonding.get_majority_element(base.sites[idx]) ?? `?`
       ;(actual[element] ??= []).push(counts[idx])
     }
     for (const [element, cns] of Object.entries(actual)) {
@@ -789,14 +786,15 @@ test(`electroneg_ratio treats original and image atoms symmetrically`, () => {
 
 test(`bonding logic treats original and image atoms consistently`, () => {
   const structure = make_crystal(10, [
-    [`C`, [0.02, 0.5, 0.5]], // x=0.2, within the 0.5 Å face tolerance => phase-1 image at 10.2
-    [`C`, [0.15, 0.5, 0.5]], // x=1.5, 1.3 Å from C1: its copy at 11.5 bonds C1's image (phase 2)
+    [`C`, [0.005, 0.5, 0.5]], // x=0.05, within the 0.1 Å face tolerance => image at 10.05
+    [`C`, [0.135, 0.5, 0.5]], // x=1.35, 1.3 Å from C1: its copy at 11.35 bonds C1's image
     [`H`, [0.0, 0.5, 0.5]], // H_distractor on the face, x=0.0
   ])
-  const with_images = get_pbc_image_sites(structure)
+  // completing every bond of the face atoms draws C2's copy beside C1's image
+  const with_images = get_pbc_image_sites(structure, `boundary`)
 
   const c1_img_idx = with_images.sites.findIndex(
-    (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 10.2) < 0.1,
+    (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 10.05) < 0.01,
   )
   expect(c1_img_idx).toBeGreaterThan(2)
 

@@ -12,8 +12,9 @@ import type { AnyStructure, Site } from '#lib/structure/index.js'
 export const DEFAULT_FIT_PADDING = 1 / 0.92
 // Paired with DEFAULTS.structure.initial_zoom (50): default zoom = min(w,h) / fit_extent.
 export const FIT_ZOOM_REF_PX = 50
-// Unnormalized — keeps legacy offset [d, 0.3d, 0.8d] (do not unit-normalize).
-const DEFAULT_CAMERA_VIEW: Vec3 = [1, 0.3, 0.8]
+// Unnormalized — keeps legacy offset [d, 0.3d, 0.8d] (do not unit-normalize). Reciprocal-space
+// scenes look along it too, so a crystal and its zone linked by link_orbits start aligned.
+export const DEFAULT_CAMERA_VIEW: Vec3 = [1, 0.3, 0.8]
 
 export type StructureFitOpts = {
   atom_radius_scale?: number // 0 when atoms hidden
@@ -65,10 +66,16 @@ export const camera_needs_fit = (
 ): boolean =>
   position === undefined || (previous_view !== undefined && previous_view !== camera_view)
 
-const element_radius = (
+// Hydrogen's display radius in Å. Its tabulated atomic radius (0.25 Å) is half the next
+// smallest (F 0.5 Å), so radius-scaled H next to metals all but vanished (specks beside Sc).
+export const HYDROGEN_RADIUS = 0.5
+// Display radius in Å: the user's override, else the atomic radius (1 Å when unknown)
+export const element_radius = (
   element: ElementSymbol,
   overrides?: Partial<Record<ElementSymbol, number>>,
-): number => overrides?.[element] ?? element_by_symbol.get(element)?.atomic_radius ?? 1
+): number =>
+  overrides?.[element] ??
+  (element === `H` ? HYDROGEN_RADIUS : (element_by_symbol.get(element)?.atomic_radius ?? 1))
 
 // The camera pose carried from one structure's center to another's: target and position shift
 // by the same offset, so the view direction, distance and any pan stay as the user left them.

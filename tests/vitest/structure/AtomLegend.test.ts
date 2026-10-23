@@ -531,7 +531,9 @@ describe(`AtomLegend Component`, () => {
       expect(site_radius_overrides.size).toBe(0)
 
       await open_remap_menu()
-      set_input(doc_query<HTMLInputElement>(`.radius-control input`), `0.7`)
+      const element_input = doc_query<HTMLInputElement>(`.radius-control input`)
+      expect(element_input.value).toBe(`0.5`) // H's display radius, not its 0.25 Å atomic radius
+      set_input(element_input, `0.7`)
       expect(element_radius_overrides).toEqual({ H: 0.7 })
     })
 

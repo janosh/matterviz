@@ -76,7 +76,12 @@ const scene_state = (initial: Partial<StructureSettings>) => {
 const choose = async (key: string, value: string): Promise<void> => {
   const select = doc_query<HTMLSelectElement>(`[data-key="${key}"] select`)
   select.value = value
+  // Svelte's select binding reads `:checked`, which happy-dom never matches on options, and
+  // falls back to the first enabled option: leave only the chosen one enabled meanwhile
+  const others = [...select.options].filter((option) => option.value !== value)
+  for (const option of others) option.disabled = true
   select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  for (const option of others) option.disabled = false
   await tick()
 }
 const reset_row = async (key: string): Promise<void> => {
@@ -379,6 +384,7 @@ describe(`StructureControls schema rows`, () => {
     const toggles = $state({
       trajectory_position_stream: { ...stream, elements: [`H`, `O`], n_atoms: 2 },
       show_image_atoms: true,
+      image_atom_completion: DEFAULTS.structure.image_atom_completion,
       show_trajectory_lines: true,
       multi_view: false,
     })
@@ -401,7 +407,7 @@ describe(`StructureControls schema rows`, () => {
     // oxfmt-ignore
     expect([...target.querySelectorAll<HTMLElement>(`[data-key]`)].map((row) => row.dataset.key)).toEqual([
       // Visibility
-      `show_atoms`, `show_image_atoms`, `show_site_labels`, `show_site_indices`, `show_cell_vectors`, `vector_config:force`, `vector_config:magmom`, `show_bonds`, `show_polyhedra`,
+      `show_atoms`, `show_image_atoms`, `show_site_labels`, `show_site_indices`, `show_cell_vectors`, `vector_config:force`, `vector_config:magmom`, `show_bonds`, `show_polyhedra`, `image_atom_completion`,
       // Atoms
       `atom_radius`, `same_size_atoms`, `color_scheme`, `atom_color_mode`,
       // Bonds
@@ -496,6 +502,9 @@ describe(`StructureControls schema rows`, () => {
     }
     // the cell rows are plain scene_props rows
     expect(state.scene_props.cell_edge_opacity).toBe(0.5)
+    // the completion picker writes its own top-level bindable, like the image-atom toggle
+    await choose(`image_atom_completion`, `none`)
+    expect(state.image_atom_completion).toBe(`none`)
   })
 
   test(`per-axis inputs replace one component and leave the others`, async () => {
@@ -1291,27 +1300,27 @@ describe(`StructureControls reactive props`, () => {
     expect(state.scene_props.polyhedra_color).toBe(DEFAULTS.structure.polyhedra_color)
     expect(reset_button(`polyhedra`)).toBeNull()
 
-    const force_scale = doc_query<HTMLInputElement>(
-      `[data-key="vector_scale:force"] input[type="number"]`,
+    const magmom_scale = doc_query<HTMLInputElement>(
+      `[data-key="vector_scale:magmom"] input[type="number"]`,
     )
-    set_input(force_scale, `2.5`)
+    set_input(magmom_scale, `2.5`)
 
     state.scene_props.displacement_arrow_color = `#123456`
     state.scene_props.atom_radius = 2.2
     state.scene_props.polyhedra_excluded_elements = [`O`]
     await tick()
-    const force_config = state.scene_props.vector_configs?.force
-    if (!force_config) throw new Error(`force vector config is missing`)
-    expect(force_config.scale).toBe(2.5)
+    const magmom_config = state.scene_props.vector_configs?.magmom
+    if (!magmom_config) throw new Error(`magmom vector config is missing`)
+    expect(magmom_config.scale).toBe(2.5)
     expect(reset_button(`visibility`)).toBeNull()
 
-    force_config.color = `#ff0000`
+    magmom_config.color = `#ff0000`
     await tick()
     expect(reset_button(`visibility`)).not.toBeNull()
     reset_button(`visibility`)?.click()
     await tick()
-    expect(state.scene_props.vector_configs?.force).toMatchObject({
-      color: vector_defaults.force?.color,
+    expect(state.scene_props.vector_configs?.magmom).toMatchObject({
+      color: vector_defaults.magmom?.color,
       scale: 2.5,
     })
 
@@ -1323,7 +1332,7 @@ describe(`StructureControls reactive props`, () => {
     )
     expect(state.scene_props.atom_radius).toBe(1.4)
     expect(state.scene_props.polyhedra_excluded_elements).toEqual([])
-    expect(state.scene_props.vector_configs?.force?.scale).toBeNull()
+    expect(state.scene_props.vector_configs?.magmom?.scale).toBeNull()
   })
 
   test(`refreshes site-vector reset snapshots when vector keys change`, async () => {

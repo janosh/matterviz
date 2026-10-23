@@ -13,7 +13,7 @@
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { AnyStructure } from '#lib/structure/index.js'
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
-  import { atomic_radii, site_base_radius } from '#lib/structure/index.js'
+  import { element_radius, site_base_radius } from '#lib/structure/index.js'
   import type { AtomColorMode } from '#lib/settings.js'
   import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-properties.js'
   import {
@@ -247,9 +247,6 @@
     element_radius_overrides = radii
   }
 
-  const get_element_radius = (elem: ElementSymbol): number =>
-    element_radius_overrides[elem] ?? atomic_radii[elem] ?? 1
-
   function update_site_radius(site_idx: number, value: string) {
     const radius = parse_radius(value)
     if (radius !== null) site_radius_overrides.set(site_idx, radius)
@@ -427,7 +424,7 @@
                   min={MIN_RADIUS}
                   max={MAX_RADIUS}
                   step={0.05}
-                  value={get_element_radius(symbol)}
+                  value={element_radius(symbol, element_radius_overrides)}
                   oninput={(event) => update_element_radius(symbol, event.currentTarget.value)}
                 />
                 <span class="unit">Å</span>

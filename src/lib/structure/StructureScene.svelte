@@ -112,7 +112,7 @@
   } from './bonding'
   import { compose_perceived_bonds, perceive_bond_orders } from './index'
   import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
-  import { compute_polyhedra } from './polyhedra'
+  import { compute_polyhedra, polyhedra_options_from } from './polyhedra'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
     TrajectoryLineColorMode,
@@ -1296,16 +1296,17 @@
         !dragging_atoms &&
         applies_to_structure(effective_show_polyhedra, Boolean(lattice)) &&
         filtered_bond_pairs.length > 0
-          ? compute_polyhedra(structure, filtered_bond_pairs, {
-              neighbor_mode: polyhedra_neighbor_mode,
-              min_neighbors: polyhedra_min_neighbors,
-              // The two sliders have overlapping ranges (min goes to 12, max down to 4), so
-              // they can be dragged past each other. Widening the cap instead of honoring an
-              // empty window keeps polyhedra on screen rather than silently rendering none.
-              max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
-              excluded_center_elements: polyhedra_excluded_elements,
-              included_center_elements: polyhedra_included_elements,
-            })
+          ? compute_polyhedra(
+              structure,
+              filtered_bond_pairs,
+              polyhedra_options_from({
+                polyhedra_neighbor_mode,
+                polyhedra_min_neighbors,
+                polyhedra_max_neighbors,
+                polyhedra_excluded_elements,
+                polyhedra_included_elements,
+              }),
+            )
           : []
     const centers = last_polyhedra.length > 0 ? cutaway_centers : undefined
     return centers

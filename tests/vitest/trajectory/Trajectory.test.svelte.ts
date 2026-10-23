@@ -264,7 +264,11 @@ describe(`display modes`, () => {
       if (!checkbox) throw new Error(`Missing ${key} control`)
       checkbox.click()
     }
+    // only the default arrow layer loads (forces outrank velocities)
+    await vi.waitFor(() => expect(last_channels()).toEqual([`force`]))
     toggle(`force`)
+    await vi.waitFor(() => expect(last_channels()).toEqual([]))
+    toggle(`velocity`)
     await vi.waitFor(() => expect(last_channels()).toEqual([`velocity`]))
     toggle(`velocity`)
     await vi.waitFor(() => expect(last_channels()).toEqual([]))
