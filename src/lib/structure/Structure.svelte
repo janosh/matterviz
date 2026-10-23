@@ -432,12 +432,21 @@
     supercell_scaling: () => supercell_scaling,
     apply_supercell_scaling: () => apply_supercell_scaling,
     show_image_atoms: () => show_image_atoms,
-    image_atom_completion: () => image_atom_completion,
-    // Legend-hidden elements draw no polyhedra, so they complete none either
-    polyhedra_options: () => {
-      const options = polyhedra_options_from(scene_props)
-      const excluded = [...(options.excluded_center_elements ?? []), ...hidden_elements]
-      return { ...options, excluded_center_elements: excluded }
+    // The scene's own polyhedra and bonding. Legend-hidden elements draw no polyhedra, so
+    // they complete none either.
+    image_atom_options: () => {
+      if (image_atom_completion === `none`) return { completion: `none` }
+      const polyhedra = polyhedra_options_from(scene_props)
+      polyhedra.excluded_center_elements = [
+        ...polyhedra.excluded_center_elements,
+        ...hidden_elements,
+      ]
+      return {
+        completion: image_atom_completion,
+        polyhedra,
+        bonding_strategy: scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
+        bonding_options: scene_props.bonding_options ?? {},
+      }
     },
     cell_type: () => cell_type,
     set_cell_type: (value) => (cell_type = value),
@@ -953,15 +962,6 @@
       ? Math.min(scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments, 12)
       : (scene_props.sphere_segments ?? DEFAULTS.structure.sphere_segments),
   )
-  // Keep the gizmo mounted whenever enabled (toggling remounts OrbitControls and resets the
-  // camera); reveal it on hover/focus through its own `visible` flag
-  let scene_gizmo_props = $derived.by(() => {
-    const { gizmo } = scene_props
-    if (!gizmo) return gizmo
-    const overrides = typeof gizmo === `object` ? gizmo : {}
-    // `??` so an explicit `visible: false` is honored
-    return { ...overrides, visible: overrides.visible ?? viewer_active }
-  })
   let active_scene_sites = $derived([...new Set(session.highlighted_sites)])
   // Primary-pane outputs: scene/camera for export, readouts for the controls pane
   let scene = $state<Scene | undefined>(undefined)
@@ -1021,7 +1021,7 @@
       sphere_segments: effective_sphere_segments,
       slice_polygon,
     },
-    gizmo: scene_gizmo_props,
+    gizmo: scene_props.gizmo,
     volumetric_data,
     isosurface_settings: display_isosurface_settings,
   })
@@ -1187,8 +1187,10 @@
       shortcut_flash.show(`layout`)
       return true
     }
-    // Layer toggles. Edit modes claimed a/A above, so these only act while viewing.
-    if (plain_press && has_3d_view && (key === `a` || key === `b` || key === `p`)) {
+    // Layer toggles, only while viewing: in edit modes they would hide what is being edited.
+    // Shift only picks image atoms (Shift+A); Shift+B/P stay free.
+    const layer_key = key === `a` || (!event.shiftKey && (key === `b` || key === `p`))
+    if (plain_press && has_3d_view && !editing_bonds && !editing_atoms && layer_key) {
       const show_atoms = !(scene_props.show_atoms ?? DEFAULTS.structure.show_atoms)
       const [label, on] =
         key === `b`

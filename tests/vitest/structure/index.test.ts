@@ -5,7 +5,6 @@ import {
   camera_needs_fit,
   camera_position_for_target,
   DEFAULT_FIT_PADDING,
-  HYDROGEN_RADIUS,
   DEFAULT_STRUCTURE_VIEWS,
   default_vector_configs,
   FIT_ZOOM_REF_PX,
@@ -271,7 +270,7 @@ describe(`structure_fit_frame`, () => {
     const { center, extent: fit } = structure_fit_frame(diatomic)
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))
     expect(extent(diatomic, { atom_radius_scale: 0 })).toBeCloseTo(2 * DEFAULT_FIT_PADDING, 10)
-    expect(fit).toBeCloseTo(2 * (1 + HYDROGEN_RADIUS * 0.7) * DEFAULT_FIT_PADDING, 10)
+    expect(fit).toBeCloseTo(2 * (1 + 0.5 * 0.7) * DEFAULT_FIT_PADDING, 10) // H display radius 0.5 Å
     expect(
       structure_fit_frame(
         { sites: [site(`H`, [0, 0, 0]), site(`H`, [4, 0, 0])] },

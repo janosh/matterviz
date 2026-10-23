@@ -6,6 +6,9 @@ import type { VolumetricData } from '#lib/isosurface/types.js'
 import { make_volume as make_volume_from_values } from '#lib/isosurface/types.js'
 import * as math from '#lib/math.js'
 import type { Crystal, Molecule, Pbc, Site } from '#lib/structure/index.js'
+import type { ImageAtomCompletion, ImageAtomOptions } from '#lib/structure/pbc.js'
+import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import type {
   TrajectoryFrame,
   TrajectoryMetadata,
@@ -612,3 +615,17 @@ export const complex_structure: AnyStructure = {
     { element: `O`, xyz: [3.75, 3.75, 0], label: `O`, oxidation_state: -2 },
   ]),
 }
+
+// Image-atom options as the viewer builds them from default settings, with polyhedra overrides
+export const image_options = (
+  completion: ImageAtomCompletion = `polyhedra`,
+  polyhedra: Partial<ResolvedPolyhedraOptions> = {},
+): ImageAtomOptions =>
+  completion === `none`
+    ? { completion }
+    : {
+        completion,
+        polyhedra: { ...polyhedra_options_from({}), ...polyhedra },
+        bonding_strategy: `electroneg_ratio`,
+        bonding_options: {},
+      }

@@ -1,16 +1,16 @@
 // Periodic boundary conditions utilities
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { DEFAULTS } from '#lib/settings.js'
 import {
-  BondSearch,
+  get_bond_data,
   has_framework_potential,
   intern_site_elements,
   is_spectator_center,
+  type BondingStrategy,
 } from './bonding'
-import { BondFrame } from './bond-rendering'
+import { BondFrame, bond_site_1, bond_site_2 } from './bond-rendering'
 import { compute_polyhedra } from './polyhedra'
-import type { PolyhedraOptions } from './polyhedra'
+import type { ResolvedPolyhedraOptions } from './polyhedra'
 import type { AnyStructure, Site } from './index'
 
 export type Pbc = readonly [boolean, boolean, boolean]
@@ -57,25 +57,41 @@ const is_scattered_trajectory = (sites: Site[], pbc: Pbc): boolean => {
   return atoms_outside_cell.length > sites.length * 0.1
 }
 
-// Which bonds of the boundary get their far end drawn beyond the cell faces (see phase 2)
-export type ImageAtomCompletion = `polyhedra` | `boundary` | `none`
+// How image atoms complete the boundary beyond the cell faces (see phase 2). Completion reads
+// the renderer's own polyhedra options (polyhedra_options_from) and bonding, so what it
+// completes is what gets drawn.
+export type ImageAtomOptions =
+  | { completion: `none` }
+  | {
+      completion: `polyhedra` | `boundary`
+      polyhedra: ResolvedPolyhedraOptions
+      bonding_strategy: BondingStrategy
+      bonding_options: Record<string, unknown>
+    }
+export type ImageAtomCompletion = ImageAtomOptions[`completion`]
+// [atom_idx, image_xyz, image_abc, is_completion?]: is_completion marks phase-2 images that
+// only complete bonds / coordination polyhedra at cell faces
+export type ImageAtom = [number, Vec3, Vec3, boolean?]
 
-// Image atoms for PBC as [atom_idx, image_xyz, image_abc, is_completion?] tuples; is_completion
-// marks phase-2 images that only complete bonds / coordination polyhedra at cell faces
-// (renderers may hide them). Skips scattered trajectories. `polyhedra_options` must be the
-// renderer's own (polyhedra_options_from) for the completed polyhedra to be the drawn ones.
-export function find_image_atoms(
+// Image atoms for PBC. Skips scattered trajectories.
+export const find_image_atoms = (
   structure: AnyStructure,
-  completion: ImageAtomCompletion = DEFAULTS.structure.image_atom_completion,
-  polyhedra_options: PolyhedraOptions = {},
-): [number, Vec3, Vec3, boolean?][] {
-  if (!(`lattice` in structure) || structure.sites.length === 0) return []
+  options: ImageAtomOptions,
+): ImageAtom[] => image_atoms(structure, options).images
+
+// Image atoms plus, once completion read the periodic bond graph, each site's periodic
+// polyhedron vertex count (0 for none)
+function image_atoms(
+  structure: AnyStructure,
+  options: ImageAtomOptions,
+): { images: ImageAtom[]; polyhedron_cn?: number[] } {
+  if (!(`lattice` in structure) || structure.sites.length === 0) return { images: [] }
   const { matrix, pbc } = structure.lattice // pbc: no images across vacuum
-  if (is_scattered_trajectory(structure.sites, pbc)) return []
+  if (is_scattered_trajectory(structure.sites, pbc)) return { images: [] }
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const heights = math.cell_heights(matrix) // all Infinity for a zero-volume cell
 
-  const image_sites: [number, Vec3, Vec3, boolean?][] = []
+  const images: ImageAtom[] = []
   const seen_images = new Set<number>()
   // Add the copy of a site shifted by whole cells, at most once
   const add_copy = (site_idx: number, shift: Vec3, is_completion: boolean): void => {
@@ -85,7 +101,7 @@ export function find_image_atoms(
     seen_images.add(key)
     const { abc } = structure.sites[site_idx]
     const img_abc: Vec3 = [abc[0] + shift[0], abc[1] + shift[1], abc[2] + shift[2]]
-    image_sites.push(
+    images.push(
       is_completion
         ? [site_idx, frac_to_cart(img_abc), img_abc, true]
         : [site_idx, frac_to_cart(img_abc), img_abc],
@@ -120,9 +136,10 @@ export function find_image_atoms(
   for (const [idx, shifts] of copy_shifts.entries())
     for (const shift of shifts) add_copy(idx, shift, false)
 
-  // Phase 2: copies beyond the faces that complete what the boundary draws, read off the bond
-  // detector's periodic bond graph, so a copy only ever appears as the bonded partner of a
-  // displayed atom (base atom or phase-1 copy). The modes nest, each adding to the last:
+  // Phase 2: copies beyond the faces that complete what the boundary draws, read off the
+  // renderer's bonding on the periodic bond graph, so a copy only ever appears as the bonded
+  // partner of a displayed atom (base atom or phase-1 copy). The modes nest, each adding to
+  // the last:
   // - polyhedra: the corners of every polyhedron the renderer draws (compute_polyhedra's own
   //   center and vertex rules), beside each displayed copy of its center, so polyhedra
   //   crossing a face stay whole while all other bonds stop at it
@@ -132,31 +149,33 @@ export function find_image_atoms(
   // small cells: Sc2H2Ru's interior H drew 4 Sc and 4 H copies around the cell.
   // No periodic axis means nothing to complete, and a zero-volume cell has no periodic bond
   // graph (the neighbor search rejects its infinite cell heights).
-  if (completion === `none` || !pbc.some(Boolean) || heights.includes(Infinity))
-    return image_sites
+  if (options.completion === `none` || !pbc.some(Boolean) || heights.includes(Infinity))
+    return { images }
+  const {
+    completion,
+    polyhedra: polyhedra_options,
+    bonding_strategy,
+    bonding_options,
+  } = options
+  const polyhedron_cn = structure.sites.map(() => 0)
   const { symbols, site_elem_ids, elem_data } = intern_site_elements(structure.sites)
   // Anion polyhedra need a nonmetal corner: metals and alloys skip the bond search
-  const anion_mode =
-    (polyhedra_options.neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode) === `anion`
+  const anion_mode = polyhedra_options.neighbor_mode === `anion`
   if (completion === `polyhedra` && anion_mode && elem_data.every((elem) => elem?.metal))
-    return image_sites
-  const bonds = new BondFrame(structure, new BondSearch().compute_columns(structure, { pbc }))
+    return { images, polyhedron_cn }
+  const bonds = get_bond_data(structure, bonding_strategy, { ...bonding_options, pbc })
   // Copies stay in the cell's neighbor shell (shifts of -1/0/1): completing the shells of
   // copies further out (bonds of a corner image pointing away from the cell) grows a cluster,
   // e.g. 36 instead of 12 completion images for a 1-atom fcc cell
   const in_shell = (shift: Vec3) => shift.every((val) => Math.abs(val) <= 1)
-  const shifted = (shift: Vec3, by: Vec3): Vec3 => [
-    shift[0] + by[0],
-    shift[1] + by[1],
-    shift[2] + by[2],
-  ]
 
-  // Each displayed copy of a polyhedron center gets all its corners or none: the renderer
-  // hides a copy truncated at the shell's edge whenever a whole copy exists, which would
-  // leave the corners added for it floating
+  // Each displayed copy of a polyhedron center gets all its corners or none: a copy truncated
+  // at the shell's edge fails compute_polyhedra's polyhedron_cn check and stays undrawn, which
+  // would leave corners added for it floating
   const cart_to_frac = math.create_cart_to_frac(matrix)
   const polyhedra = compute_polyhedra(structure, bonds, polyhedra_options)
   for (const { center_site_idx, vertex_site_idxs, vertices } of polyhedra) {
+    polyhedron_cn[center_site_idx] = vertex_site_idxs.length
     const corner_shifts = vertex_site_idxs.map((site_idx, vertex_idx): Vec3 => {
       const frac = cart_to_frac(vertices[vertex_idx])
       const { abc } = structure.sites[site_idx]
@@ -166,14 +185,18 @@ export function find_image_atoms(
         Math.round(frac[2] - abc[2]),
       ]
     })
-    for (const center_shift of copy_shifts[center_site_idx]) {
-      const shifts = corner_shifts.map((shift) => shifted(shift, center_shift))
+    for (const [shift_a, shift_b, shift_c] of copy_shifts[center_site_idx]) {
+      const shifts = corner_shifts.map((shift): Vec3 => [
+        shift[0] + shift_a,
+        shift[1] + shift_b,
+        shift[2] + shift_c,
+      ])
       if (!shifts.every(in_shell)) continue
       for (const [vertex_idx, shift] of shifts.entries())
         add_copy(vertex_site_idxs[vertex_idx], shift, true)
     }
   }
-  if (completion === `polyhedra`) return image_sites
+  if (completion === `polyhedra`) return { images, polyhedron_cn }
 
   // Boundary mode: every bond of a face atom (one with phase-1 copies), in both directions.
   // Spectator A-site cations (Li/Na, heavy alkaline earths) stay out when a framework cation
@@ -182,51 +205,61 @@ export function find_image_atoms(
   // keep theirs. Resolved per element: a supercell repeats the same few elements.
   const skip_spectators = has_framework_potential(symbols)
   const elem_skipped = symbols.map((elem) => skip_spectators && is_spectator_center(elem))
-  // The bond's far end beside every displayed copy of a face atom at its near end
-  const complete_bond = (near: number, far: number, bond_shift: Vec3): void => {
+  const shift: Vec3 = [0, 0, 0] // scratch: add_copy copies it
+  // The bond's far end beside every displayed copy of a face atom at its near end; `sign`
+  // flips the bond's cell shift for the reverse direction
+  const complete_bond = (near: number, far: number, bond_shift: Vec3, sign: number): void => {
     if (copy_shifts[near] === BASE_ONLY) return // interior atom
     for (const copy_shift of copy_shifts[near]) {
-      const shift = shifted(copy_shift, bond_shift)
+      for (const axis of AXES) shift[axis] = copy_shift[axis] + sign * bond_shift[axis]
       if (in_shell(shift)) add_copy(far, shift, true)
     }
   }
-  const { indices } = bonds.columns
+  const no_shift: Vec3 = [0, 0, 0]
   for (let bond_idx = 0; bond_idx < bonds.length; bond_idx++) {
-    const [site_1, site_2] = [indices[bond_idx * 2], indices[bond_idx * 2 + 1]]
+    const site_1 = bond_site_1(bonds, bond_idx)
+    const site_2 = bond_site_2(bonds, bond_idx)
+    if (copy_shifts[site_1] === BASE_ONLY && copy_shifts[site_2] === BASE_ONLY) continue
     if (elem_skipped[site_elem_ids[site_1]] || elem_skipped[site_elem_ids[site_2]]) continue
-    const [shift_a, shift_b, shift_c] = bonds.cell_shift(bond_idx) ?? [0, 0, 0]
-    complete_bond(site_1, site_2, [shift_a, shift_b, shift_c])
-    complete_bond(site_2, site_1, [-shift_a, -shift_b, -shift_c])
+    const bond_shift =
+      (bonds instanceof BondFrame ? bonds.cell_shift(bond_idx) : bonds[bond_idx].cell_shift) ??
+      no_shift
+    complete_bond(site_1, site_2, bond_shift, 1)
+    complete_bond(site_2, site_1, bond_shift, -1)
   }
-
-  return image_sites
+  return { images, polyhedron_cn }
 }
 
 // Return structure with image atoms added (unchanged when none are generated,
-// e.g. for scattered trajectory-like data)
+// e.g. for scattered trajectory-like data). Once completion read the periodic bond graph,
+// every site carries its polyhedron_cn, which keeps truncated polyhedra copies undrawn.
 export function get_pbc_image_sites(
   structure: AnyStructure,
-  completion: ImageAtomCompletion = DEFAULTS.structure.image_atom_completion,
-  polyhedra_options: PolyhedraOptions = {},
+  options: ImageAtomOptions,
 ): AnyStructure {
-  const image_sites = find_image_atoms(structure, completion, polyhedra_options)
-  if (image_sites.length === 0) return structure
-  const imaged_struct = { ...structure, sites: [...structure.sites] }
-
-  for (const [site_idx, img_xyz, img_abc, is_completion] of image_sites) {
-    const orig_site = structure.sites[site_idx]
-    imaged_struct.sites.push({
+  const { images, polyhedron_cn } = image_atoms(structure, options)
+  if (images.length === 0 && !polyhedron_cn) return structure
+  const sites = structure.sites.map((site, site_idx): Site => {
+    if (!polyhedron_cn) return site
+    return {
+      ...site,
+      provenance: { ...site.provenance, polyhedron_cn: polyhedron_cn[site_idx] },
+    }
+  })
+  for (const [site_idx, xyz, abc, is_completion] of images) {
+    const orig_site = sites[site_idx]
+    sites.push({
       ...orig_site,
-      abc: img_abc,
-      xyz: img_xyz,
+      abc,
+      xyz,
       properties: { ...orig_site.properties },
       provenance: {
         ...orig_site.provenance,
         image_of: site_idx,
-        // phase-2 images only complete bonds/polyhedra - hidden when neither renders
+        // phase-2 images only complete bonds/polyhedra: drawn only while they end one
         ...(is_completion ? { completion: true } : {}),
       },
     })
   }
-  return imaged_struct
+  return { ...structure, sites }
 }

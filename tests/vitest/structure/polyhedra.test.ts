@@ -34,7 +34,7 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { make_crystal, make_rocksalt } from '../test-fixtures'
+import { image_options, make_crystal, make_rocksalt } from '../test-fixtures'
 import { octahedron_points } from './geometry-fixtures'
 
 const uniform_red = { mode: `uniform`, color: `#ff0000` } as const
@@ -410,7 +410,7 @@ describe(`compute_polyhedra`, () => {
     // Bond-completing image atoms (find_image_atoms phase 2) provide every
     // boundary neighbor as a real displayed atom, so all base Na render complete
     // octahedra and every polyhedron corner coincides with a displayed site.
-    const with_images = get_pbc_image_sites(make_rocksalt())
+    const with_images = get_pbc_image_sites(make_rocksalt(), image_options())
     const polyhedra = compute_polyhedra(with_images, electroneg_ratio(with_images))
 
     // all 4 base Na sites render complete octahedra
@@ -515,7 +515,7 @@ describe(`compute_polyhedra`, () => {
     // a file's bond block can state the same bond as a cell_shift against the BASE Cl.
     // Both land on one position, so the hull dedupes the vertex - but counting it twice
     // inflated the CN that gates max_neighbors and the boundary-completeness check.
-    const structure = get_pbc_image_sites(make_rocksalt())
+    const structure = get_pbc_image_sites(make_rocksalt(), image_options())
     const bonds = electroneg_ratio(structure)
     // site 0 is Na at the origin; site 4 is the Cl at +a/2 along x, restated as its -x image
     const dupe = image_bond(structure, 4, [-1, 0, 0])

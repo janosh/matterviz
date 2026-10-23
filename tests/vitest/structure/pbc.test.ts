@@ -14,9 +14,9 @@ import {
   get_bond_data,
   get_majority_element,
 } from '#lib/structure/bonding.js'
-import { compute_polyhedra } from '#lib/structure/polyhedra.js'
+import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
 import { bond_site_1, bond_site_2 } from '#lib/structure/bond-rendering.js'
-import type { PolyhedraOptions } from '#lib/structure/polyhedra.js'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { get_element_counts } from '#lib/structure/density.js'
 import { is_image_site } from '#lib/structure/site.js'
@@ -27,7 +27,7 @@ import nacl_poscar from '#site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '#site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
 import { describe, expect, test } from 'vitest'
-import { fcc_primitive_matrix, make_crystal } from '../test-fixtures'
+import { fcc_primitive_matrix, image_options, make_crystal } from '../test-fixtures'
 
 const mp_1_struct = structure_map.get(`mp-1`) as Crystal
 const mp_2_struct = structure_map.get(`mp-2`) as Crystal
@@ -41,14 +41,11 @@ const COMPLETIONS: readonly ImageAtomCompletion[] = [`polyhedra`, `boundary`, `n
 const completion_counts = (
   structure: Crystal,
   completion: ImageAtomCompletion,
-  polyhedra_options: PolyhedraOptions = {},
+  polyhedra_options: Partial<ResolvedPolyhedraOptions> = {},
 ): Record<string, number> => {
   const counts: Record<string, number> = {}
-  for (const [idx, , , is_completion] of find_image_atoms(
-    structure,
-    completion,
-    polyhedra_options,
-  )) {
+  const options = image_options(completion, polyhedra_options)
+  for (const [idx, , , is_completion] of find_image_atoms(structure, options)) {
     const element = get_majority_element(structure.sites[idx]) ?? `?`
     if (is_completion) counts[element] = (counts[element] ?? 0) + 1
   }
@@ -57,13 +54,15 @@ const completion_counts = (
 
 // What the renderer draws around every completion copy: a bond to a displayed anchor (base
 // atom or phase-1 copy), else it floats, and in polyhedra mode a polyhedron it is a corner of
-// (with the same options), else it is clutter
-function expect_completions_drawn(
+// (with the same options), else it is clutter. Every drawn polyhedron is whole: its vertex
+// count is its center's on the periodic bond graph (`none` stamps nothing to check against).
+// Returns the stray copies and truncated polyhedra.
+function completion_problems(
   structure: Crystal,
   completion: ImageAtomCompletion = DEFAULTS.structure.image_atom_completion,
-  polyhedra_options: PolyhedraOptions = {},
-): void {
-  const imaged = get_pbc_image_sites(structure, completion, polyhedra_options)
+  polyhedra_options: Partial<ResolvedPolyhedraOptions> = {},
+): { stray: string[]; truncated: string[] } {
+  const imaged = get_pbc_image_sites(structure, image_options(completion, polyhedra_options))
   const bonds = get_bond_data(imaged, `electroneg_ratio`)
   const is_anchor = (idx: number) => !imaged.sites[idx].provenance?.completion
   const bonded = new Set<number>()
@@ -72,15 +71,33 @@ function expect_completions_drawn(
     if (is_anchor(site_1)) bonded.add(site_2)
     if (is_anchor(site_2)) bonded.add(site_1)
   }
-  const polyhedra = compute_polyhedra(imaged, bonds, polyhedra_options)
+  const resolved = { ...polyhedra_options_from({}), ...polyhedra_options }
+  const polyhedra = compute_polyhedra(imaged, bonds, resolved)
   const corners = new Set(polyhedra.flatMap(({ vertex_site_idxs }) => vertex_site_idxs))
   const drawn = (idx: number) =>
     bonded.has(idx) && (completion !== `polyhedra` || corners.has(idx))
   const stray = imaged.sites.flatMap((site, idx) =>
     site.provenance?.completion && !drawn(idx) ? [`${idx}:${site.abc.join(`,`)}`] : [],
   )
-  expect(stray).toEqual([])
+  if (completion === `none`) return { stray, truncated: [] }
+  const periodic_bonds = get_bond_data(structure, `electroneg_ratio`, {
+    pbc: structure.lattice.pbc,
+  })
+  const periodic_cn = new Map(
+    compute_polyhedra(structure, periodic_bonds, resolved).map((poly) => [
+      poly.center_site_idx,
+      poly.vertex_site_idxs.length,
+    ]),
+  )
+  const truncated = polyhedra.flatMap(
+    ({ center_site_idx, center_orig_idx, vertex_site_idxs }) =>
+      periodic_cn.get(center_orig_idx) === vertex_site_idxs.length
+        ? []
+        : [`${center_site_idx}: CN ${vertex_site_idxs.length}`],
+  )
+  return { stray, truncated }
 }
+const NO_PROBLEMS = { stray: [], truncated: [] }
 
 function assert_xyz_matches_lattice(
   lattice_matrix: Matrix3x3,
@@ -157,7 +174,7 @@ test.each([
   const structure = completion_fixtures[name]()
   for (const completion of COMPLETIONS) {
     expect(completion_counts(structure, completion), completion).toEqual(expected[completion])
-    expect_completions_drawn(structure, completion)
+    expect(completion_problems(structure, completion)).toEqual(NO_PROBLEMS)
   }
 })
 
@@ -174,12 +191,25 @@ test.each([
 ] as const)(`polyhedra completion on %s with options %j`, (name, options, expected) => {
   const structure = completion_fixtures[name]()
   expect(completion_counts(structure, `polyhedra`, options)).toEqual(expected)
-  expect_completions_drawn(structure, `polyhedra`, options)
+  expect(completion_problems(structure, `polyhedra`, options)).toEqual(NO_PROBLEMS)
+})
+
+// Regression: in small cells every displayed copy of a center can be truncated. Ac in mp-1183089
+// Ac4Mg2 has 13 periodic neighbors, so bonded mode capped at 12 draws no Ac polyhedron, yet 14
+// truncated CN 5-8 copies drew while the full count was the max over the displayed copies.
+test.each(
+  [...structure_map].filter(
+    ([, structure]) => `lattice` in structure && structure.sites.length < 3000,
+  ),
+)(`completion draws only whole polyhedra on %s`, (_name, structure) => {
+  for (const options of [{}, { neighbor_mode: `bonded`, max_neighbors: 12 }] as const)
+    for (const completion of [`polyhedra`, `boundary`] as const)
+      expect(completion_problems(structure, completion, options)).toEqual(NO_PROBLEMS)
 })
 
 test(`completion images carry provenance, phase-1 face images do not`, () => {
   const structure = srtio3_ti_corner()
-  const image_atoms = find_image_atoms(structure)
+  const image_atoms = find_image_atoms(structure, image_options())
   // the O copy at x=-0.5 completes the octahedron of the base corner Ti
   const completing = image_atoms.find(
     ([site_idx, img_xyz]) =>
@@ -192,7 +222,7 @@ test(`completion images carry provenance, phase-1 face images do not`, () => {
   // Imported names remain ordinary data; only generated provenance identifies images.
   const source_properties = { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }
   for (const site of structure.sites) site.properties = { ...source_properties }
-  const imaged = structuredClone(get_pbc_image_sites(structure))
+  const imaged = structuredClone(get_pbc_image_sites(structure, image_options()))
   const original_sites = imaged.sites.slice(0, structure.sites.length)
   expect(get_element_counts(imaged)).toEqual({ Ti: 1, Sr: 1, O: 3 })
   for (const site of imaged.sites) expect(site.properties).toEqual(source_properties)
@@ -210,7 +240,7 @@ test(`completion images carry provenance, phase-1 face images do not`, () => {
       [`Cs`, [0, 0, 0]],
       [`Cs`, [0.5, 0.5, 0.5]],
     ]),
-    `boundary`,
+    image_options(`boundary`),
   )
   const corner_bonds = electroneg_ratio(stretched_cs).filter(
     ({ site_idx_1, site_idx_2 }) => site_idx_1 === 0 || site_idx_2 === 0,
@@ -258,7 +288,7 @@ test.each(COMPLETIONS)(
         [`Ru`, [0, 0, 0]],
       ],
     )
-    const image_atoms = find_image_atoms(structure, completion)
+    const image_atoms = find_image_atoms(structure, image_options(completion))
     validate_image_tuples(structure, image_atoms)
     expect(image_atoms.every(([idx, , , is_completion]) => idx === 4 && !is_completion)).toBe(
       true,
@@ -282,10 +312,10 @@ test(`find_image_atoms handles a degenerate (zero-volume) lattice without NaN`, 
     [`Cl`, [0.5, 0.5, 0.6]],
   ])
 
-  // zero volume makes every cell height 0, so no face tolerance holds, not even along the
-  // healthy c axis Na sits on, and the periodic bond search is skipped instead of throwing
+  // zero volume makes every cell height Infinity, so every face tolerance is 0 (also along the
+  // healthy c axis Na sits on), and the periodic bond search is skipped instead of throwing
   for (const completion of COMPLETIONS)
-    expect(find_image_atoms(degenerate, completion)).toEqual([])
+    expect(find_image_atoms(degenerate, image_options(completion))).toEqual([])
 })
 
 const normal_cell_extxyz = `8
@@ -332,8 +362,8 @@ test.each([
   run.dispose()
   if (!structure.lattice) throw new Error(`Structure should have lattice`)
 
-  const images = find_image_atoms(structure)
-  const imaged_sites = get_pbc_image_sites(structure).sites
+  const images = find_image_atoms(structure, image_options())
+  const imaged_sites = get_pbc_image_sites(structure, image_options()).sites
   if (expect_images) {
     expect(images.length).toBeGreaterThan(0)
     expect(imaged_sites.length).toBeGreaterThan(structure.sites.length)
@@ -361,11 +391,11 @@ test.each([
     })),
   )
 
-  const images = find_image_atoms(structure)
+  const images = find_image_atoms(structure, image_options())
   expect(images.length === 0).toBe(expect_skip)
-  expect(get_pbc_image_sites(structure).sites.length > structure.sites.length).toBe(
-    !expect_skip,
-  )
+  expect(
+    get_pbc_image_sites(structure, image_options()).sites.length > structure.sites.length,
+  ).toBe(!expect_skip)
 })
 
 // Cubic lattices can't distinguish L*frac from L^T*frac, so the non-orthogonal cells (L != L^T)
@@ -393,7 +423,7 @@ test.each(lattices)(
       [`Na`, [0.5, 0.5, 0.5]],
     ])
     const frac_to_cart = create_frac_to_cart(lattice)
-    const image_atoms = find_image_atoms(structure)
+    const image_atoms = find_image_atoms(structure, image_options())
     validate_image_tuples(structure, image_atoms)
 
     // the corner atom has replicas in every +a/+b/+c combination; the center atom is beyond the
@@ -415,7 +445,9 @@ test.each(lattices)(
     expect(wrapped[2][1]).toBeCloseTo(0.5, 12)
     expect(wrapped[2][2]).toBeCloseTo(0, 12)
 
-    const image_sites = get_pbc_image_sites(structure).sites.slice(structure.sites.length)
+    const image_sites = get_pbc_image_sites(structure, image_options()).sites.slice(
+      structure.sites.length,
+    )
     expect(image_sites).toHaveLength(image_atoms.length)
     for (const [idx, [, expected_xyz, expected_abc]] of image_atoms.entries()) {
       for (let dim = 0; dim < 3; dim++) {
@@ -440,9 +472,10 @@ test.each([
 ] as { abc: Vec3; images: [number, number]; desc: string }[])(
   `face tolerance boundary behavior: $desc`,
   ({ abc, images: [min_images, max_images] }) => {
-    const image_atoms = find_image_atoms(make_crystal(5, [[`Na`, abc]])).filter(
-      ([, , , is_completion]) => !is_completion,
-    )
+    const image_atoms = find_image_atoms(
+      make_crystal(5, [[`Na`, abc]]),
+      image_options(),
+    ).filter(([, , , is_completion]) => !is_completion)
     expect(image_atoms.length).toBeGreaterThanOrEqual(min_images)
     expect(image_atoms.length).toBeLessThanOrEqual(max_images)
   },
@@ -458,7 +491,7 @@ test(`get_pbc_image_sites preserves explicit periodic bond metadata`, () => {
     bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
   }
 
-  const with_images = get_pbc_image_sites(structure)
+  const with_images = get_pbc_image_sites(structure, image_options())
 
   expect(with_images.sites).toHaveLength(4)
   expect(with_images.properties?.bonds).toEqual([
@@ -466,22 +499,21 @@ test(`get_pbc_image_sites preserves explicit periodic bond metadata`, () => {
   ])
 })
 
-// Image counts are bounds, not exact: phase 2 also completes metal shells (fcc Pd would render
-// CN 8 instead of 12 without them) and shells of boundary-image copies, reaching Na-Na contacts
-// against the metallic radii, while every image still carries a drawn bond
+// Default (polyhedra) completion: face copies plus the corners of polyhedra crossing a face.
+// Metals (Cs, Pd) and the quartz files get face copies only, NaCl its 30 octahedron corners.
 // oxfmt-ignore
 test.each([
-  { content: mp_1_struct, filename: `mp-1.json`, expected_min_images: 7, expected_max_images: 40, description: `Two Cs atoms, one at (0,0,0), one at (0.5,0.5,0.5)` },
-  { content: mp_2_struct, filename: `mp-2.json`, expected_min_images: 10, expected_max_images: 70, description: `Four Pd atoms in FCC structure` },
-  { content: nacl_poscar, filename: `NaCl-cubic.poscar`, expected_min_images: 19, expected_max_images: 100, description: `8 atoms (4 Na + 4 Cl) in cubic structure` },
-  { content: quartz_cif, filename: `quartz-alpha.cif`, expected_min_images: 3, expected_max_images: 20, description: `Si and O atoms with some near cell edges` },
-  { content: extended_xyz_quartz, filename: `quartz.extxyz`, expected_min_images: 0, expected_max_images: 20, min_dist: 1e-4, tol: 1e-4, description: `Quartz structure from extended XYZ format` },
+  { content: mp_1_struct, filename: `mp-1.json`, n_images: 7, description: `Two Cs atoms, one at (0,0,0), one at (0.5,0.5,0.5)` },
+  { content: mp_2_struct, filename: `mp-2.json`, n_images: 10, description: `Four Pd atoms in FCC structure` },
+  { content: nacl_poscar, filename: `NaCl-cubic.poscar`, n_images: 49, description: `8 atoms (4 Na + 4 Cl) in cubic structure` },
+  { content: quartz_cif, filename: `quartz-alpha.cif`, n_images: 3, description: `Si and O atoms with some near cell edges` },
+  { content: extended_xyz_quartz, filename: `quartz.extxyz`, n_images: 5, min_dist: 1e-4, tol: 1e-4, description: `Quartz structure from extended XYZ format` },
   // had 8 unbonded completion images (Ac/O copies within reach of an anchor but not bonded);
   // now only its one face atom is copied
-  { content: ac2_br2_o_struct, filename: `mp-1207297.json`, expected_min_images: 1, expected_max_images: 1, description: `Ac2Br2O tetragonal cell` },
+  { content: ac2_br2_o_struct, filename: `mp-1207297.json`, n_images: 1, description: `Ac2Br2O tetragonal cell` },
 ])(
   `find_image_atoms with real structures: $description`,
-  ({ content, filename, expected_min_images, expected_max_images, min_dist, tol }) => {
+  ({ content, filename, n_images, min_dist, tol }) => {
     let structure: Crystal
     if (filename.endsWith(`.json`)) structure = content as Crystal
     else {
@@ -490,18 +522,14 @@ test.each([
       structure = parsed
     }
 
-    const image_atoms = find_image_atoms(structure)
-    expect(image_atoms.length).toBeGreaterThanOrEqual(expected_min_images)
-    expect(image_atoms.length).toBeLessThanOrEqual(expected_max_images)
+    const image_atoms = find_image_atoms(structure, image_options())
+    expect(image_atoms).toHaveLength(n_images)
     validate_image_tuples(structure, image_atoms, { min_dist, tol })
-    expect_completions_drawn(structure)
+    expect(completion_problems(structure)).toEqual(NO_PROBLEMS)
 
-    const symmetrized = get_pbc_image_sites(structure)
-    // When deduplication removes coincident images, symmetrized may contain fewer than tuple count
-    expect(symmetrized.sites.length).toBeGreaterThanOrEqual(structure.sites.length)
-    expect(symmetrized.sites.length).toBeLessThanOrEqual(
-      structure.sites.length + image_atoms.length,
-    )
+    // one site per image tuple: (site, shift) pairs are unique, so none coincide
+    const symmetrized = get_pbc_image_sites(structure, image_options())
+    expect(symmetrized.sites).toHaveLength(structure.sites.length + n_images)
 
     // Verify no duplicate sites (coincident positions within tolerance)
     const duplicate_pairs = symmetrized.sites.flatMap((site_1, idx_1) =>
@@ -518,9 +546,9 @@ test.each([
   [`TlBiSe2 highly oblique cell`, tl_bi_se2_struct],
   [`mp-1204603 large oblique cell`, mp_1204603_struct],
 ])(`image atoms and sites stay valid for %s`, (_name, structure) => {
-  const image_atoms = find_image_atoms(structure)
+  const image_atoms = find_image_atoms(structure, image_options())
   expect(image_atoms.length).toBeGreaterThan(0)
-  expect_completions_drawn(structure)
+  expect(completion_problems(structure)).toEqual(NO_PROBLEMS)
 
   // Fractional coords are finite but deliberately NOT forced inside [0, 1]: for
   // visualization/bonding we want images at their true periodic positions (possibly
@@ -530,12 +558,31 @@ test.each([
     assert_integer_translation(structure.sites[orig_idx].abc, img_abc, 1e-8)
   }
 
-  // Slice out just the image sites appended at the end; deduplication may drop coincident ones
-  const image_sites = get_pbc_image_sites(structure).sites.slice(structure.sites.length)
-  expect(image_sites.length).toBeLessThanOrEqual(image_atoms.length)
+  // the image sites appended at the end, one per image tuple
+  const image_sites = get_pbc_image_sites(structure, image_options()).sites.slice(
+    structure.sites.length,
+  )
+  expect(image_sites).toHaveLength(image_atoms.length)
   for (const site of image_sites) {
     assert_xyz_matches_lattice(structure.lattice.matrix, site.abc, site.xyz, 9)
   }
+})
+
+// Regression (mp-1204603): a 0.5 Å face tolerance imaged 114 of its 444 sites; 0.1 Å images the
+// 24 on its faces. Measured along the cell heights, polyhedra corners reach at most 0.75 Å
+// beyond the faces, face-atom bonds 1.11 Å.
+test.each([
+  [`none`, 24, 0.07],
+  [`polyhedra`, 32, 0.75],
+  [`boundary`, 68, 1.11],
+] as const)(`mp-1204603 %s completion: %i images`, (completion, n_images, max_overhang) => {
+  const images = find_image_atoms(mp_1204603_struct, image_options(completion))
+  expect(images).toHaveLength(n_images)
+  const heights = math.cell_heights(mp_1204603_struct.lattice.matrix)
+  const overhangs = images.flatMap(([, , abc]) =>
+    abc.map((coord, axis) => Math.max(0, -coord, coord - 1) * heights[axis]),
+  )
+  expect(Math.max(...overhangs)).toBeCloseTo(max_overhang, 2)
 })
 
 // Regression: the face tolerance is a physical 0.1 Å, so large cells (e.g. MOFs) don't
@@ -545,7 +592,7 @@ test(`find_image_atoms uses a 0.1 Å physical tolerance along the cell heights`,
     [`C`, [0.002, 0.5, 0.5]], // 0.2 Å from the face: no image
     [`H`, [0.0005, 0.5, 0.5]], // 0.05 Å from the face: imaged
   ])
-  expect(find_image_atoms(structure).map(([idx]) => idx)).toEqual([1])
+  expect(find_image_atoms(structure, image_options()).map(([idx]) => idx)).toEqual([1])
   const hexagonal: Matrix3x3 = [
     [4, 0, 0],
     [-2, 2 * Math.sqrt(3), 0],
@@ -553,7 +600,9 @@ test(`find_image_atoms uses a 0.1 Å physical tolerance along the cell heights`,
   ]
   // 0.027 * cell height 2√3 Å = 0.094 Å from the face (0.108 Å if measured along |a| = 4 Å)
   const skewed = make_crystal(hexagonal, [[`C`, [0.027, 0.5, 0.5]]])
-  expect(find_image_atoms(skewed).map(([, , abc]) => abc)).toEqual([[1.027, 0.5, 0.5]])
+  expect(find_image_atoms(skewed, image_options()).map(([, , abc]) => abc)).toEqual([
+    [1.027, 0.5, 0.5],
+  ])
 })
 
 describe(`wrap_to_unit_cell`, () => {
@@ -606,19 +655,19 @@ test(`find_image_atoms skips image generation along non-periodic axes (slab)`, (
   const is_boundary_image = ([, , , is_completion]: [number, Vec3, Vec3, boolean?]) =>
     !is_completion
   const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
-  const periodic_images = find_image_atoms(periodic).filter(is_boundary_image)
+  const periodic_images = find_image_atoms(periodic, image_options()).filter(is_boundary_image)
   expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images
 
   // Slab with vacuum along z: no image may be shifted along z, also for an atom reaching past
   // the cell along z (a buckled sheet, not a scattered trajectory)
   for (const z_coord of [0, -0.3]) {
     const slab = make_crystal(5, [[`Na`, [0, 0, z_coord]]], { pbc: [true, true, false] })
-    const slab_images = find_image_atoms(slab)
+    const slab_images = find_image_atoms(slab, image_options())
     expect(slab_images.filter(is_boundary_image)).toHaveLength(3) // 2^2 - 1 in-plane images
     for (const [, , img_abc] of slab_images) expect(img_abc[2]).toBe(z_coord)
   }
 
   // Fully non-periodic: no images at all
   const molecule_like = make_crystal(5, [[`Na`, [0, 0, 0]]], { pbc: [false, false, false] })
-  expect(find_image_atoms(molecule_like)).toHaveLength(0)
+  expect(find_image_atoms(molecule_like, image_options())).toHaveLength(0)
 })

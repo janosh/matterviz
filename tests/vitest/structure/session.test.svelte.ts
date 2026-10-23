@@ -18,12 +18,13 @@ import { make_supercell } from '#lib/structure/supercell.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
-import type { PolyhedraOptions } from '#lib/structure/polyhedra.js'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   fcc_primitive_matrix,
   get_dummy_structure,
+  image_options,
   init_moyo_for_tests,
   make_crystal,
 } from '../test-fixtures'
@@ -43,7 +44,7 @@ type Host = {
   apply_supercell_scaling: boolean
   show_image_atoms: boolean
   image_atom_completion: ImageAtomCompletion
-  polyhedra_options: PolyhedraOptions
+  polyhedra_options: Partial<ResolvedPolyhedraOptions>
   cell_type: CellType
   sym_data: SymmetryDataset | null
   atom_color_config: AtomColorConfig
@@ -101,8 +102,8 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
       supercell_scaling: () => host.supercell_scaling,
       apply_supercell_scaling: () => host.apply_supercell_scaling,
       show_image_atoms: () => host.show_image_atoms,
-      image_atom_completion: () => host.image_atom_completion,
-      polyhedra_options: () => host.polyhedra_options,
+      image_atom_options: () =>
+        image_options(host.image_atom_completion, host.polyhedra_options),
       cell_type: () => host.cell_type,
       set_cell_type: (value) => (host.cell_type = value),
       sym_data: () => host.sym_data,
@@ -406,18 +407,18 @@ it(`changing the polyhedra options rebuilds the completion copies`, () => {
   host.polyhedra_options = { ...host.polyhedra_options }
   flushSync()
   expect(session.displayed_structure).toBe(displayed)
-  host.selected_sites = [0]
+  host.selected_sites = [0, 20] // base Ti, an O corner copy
   flushSync()
   // O is no polyhedron center, so excluding it (as hiding it in the legend does) draws the
-  // same copies and keeps the selection
+  // same copies: the displayed structure and the selection stay
   host.polyhedra_options = { excluded_center_elements: [`O`] }
   flushSync()
-  expect(completion_count()).toBe(24)
-  expect(host.selected_sites).toEqual([0])
+  expect(session.displayed_structure).toBe(displayed)
+  expect(host.selected_sites).toEqual([0, 20])
   host.polyhedra_options = { excluded_center_elements: [`Ti`] }
   flushSync()
   expect(completion_count()).toBe(0)
-  expect(host.selected_sites).toEqual([]) // image sites renumbered
+  expect(host.selected_sites).toEqual([0]) // image sites renumbered, base sites kept
 })
 
 // Polyhedra settings only renumber sites (or rebuild the displayed structure) while images

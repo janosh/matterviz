@@ -67,6 +67,7 @@ import {
   BAD_ROW_CIF,
   fcc_primitive_matrix,
   IDENTITY_MATRIX3,
+  image_options,
   init_moyo_for_tests,
   make_crystal,
   make_grid,
@@ -329,8 +330,7 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
       supercell_scaling: () => `1x1x1`,
       apply_supercell_scaling: () => false,
       show_image_atoms: () => false,
-      image_atom_completion: () => DEFAULTS.structure.image_atom_completion,
-      polyhedra_options: () => ({}),
+      image_atom_options: () => image_options(),
       cell_type: () => `original`,
       set_cell_type: () => {},
       sym_data: () => null,
@@ -1990,16 +1990,21 @@ describe(`Structure`, () => {
   })
 
   // Each layer key flips its layer off then back on, restoring the mode it had (polyhedra's
-  // default `crystals`, not `always`)
+  // default `crystals`, a chosen `crystals` for bonds) when it covers the structure, else
+  // `always` (polyhedra on a molecule)
+  const { lattice: _cell, ...lattice_free } = structure
   // oxfmt-ignore
   test.each([
-    [`a`, `show_atoms`, [true, false, true]],
-    [`A`, `show_image_atoms`, [true, false, true]],
-    [`b`, `show_bonds`, [`always`, `never`, `always`]],
-    [`p`, `show_polyhedra`, [`crystals`, `never`, `crystals`]],
-  ] as const)(`key %s toggles %s`, async (key, layer, expected) => {
-    const state = $state({ scene_props: { ...DEFAULTS.structure }, show_image_atoms: true })
-    mount_structure(bind_props({ structure }, state))
+    [`a`, `show_atoms`, structure, {}, [true, false, true]],
+    [`A`, `show_image_atoms`, structure, {}, [true, false, true]],
+    [`b`, `show_bonds`, structure, {}, [`always`, `never`, `always`]],
+    [`b`, `show_bonds`, structure, { show_bonds: `crystals` }, [`crystals`, `never`, `crystals`]],
+    [`p`, `show_polyhedra`, structure, {}, [`crystals`, `never`, `crystals`]],
+    [`p`, `show_polyhedra`, lattice_free, {}, [`crystals`, `always`, `never`]],
+  ] as const)(`key %s toggles %s`, async (key, layer, target, initial, expected) => {
+    const scene_props = { ...DEFAULTS.structure, ...initial }
+    const state = $state({ scene_props, show_image_atoms: true })
+    mount_structure(bind_props({ structure: target }, state))
     await tick()
     const read = () =>
       layer === `show_image_atoms` ? state.show_image_atoms : state.scene_props[layer]
@@ -2010,6 +2015,30 @@ describe(`Structure`, () => {
     }
     expect(values).toEqual(expected)
   })
+
+  // Edit modes keep B/P off (they would hide what is being edited), and Shift+B/P toggle
+  // nothing in any mode
+  test.each([`edit-atoms`, `edit-bonds`, `distance`] as const)(
+    `layer keys in %s mode`,
+    async (measure_mode) => {
+      const state = $state({ scene_props: { ...DEFAULTS.structure }, measure_mode })
+      mount_structure(bind_props({ structure }, state))
+      await tick()
+      for (const [key, shiftKey] of [
+        [`b`, true],
+        [`p`, true],
+        [`b`, false],
+        [`p`, false],
+      ] as const)
+        await fire(doc_query(`.structure`), keydown(key, { shiftKey }))
+      const { show_bonds, show_polyhedra } = state.scene_props
+      expect([state.measure_mode, show_bonds, show_polyhedra]).toEqual(
+        measure_mode === `distance`
+          ? [measure_mode, `never`, `never`]
+          : [measure_mode, `always`, `crystals`],
+      )
+    },
+  )
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
     const state = {
@@ -3689,7 +3718,7 @@ describe(`site sidebar`, () => {
       ],
     }
     // the corner atom has 7 images, so the filter is what keeps the table at one row
-    expect(get_pbc_image_sites(corner_atom).sites).toHaveLength(8)
+    expect(get_pbc_image_sites(corner_atom, image_options()).sites).toHaveLength(8)
     mount_structure({ structure: corner_atom, site_sidebar: true, show_image_atoms: true })
     await tick()
     expect(

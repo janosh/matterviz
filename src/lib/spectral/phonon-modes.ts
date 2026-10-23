@@ -5,6 +5,7 @@ import * as math from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { get_orig_site_idx, make_site } from '#lib/structure/site.js'
 import { get_pbc_image_sites, wrap_to_unit_cell } from '#lib/structure/pbc.js'
+import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
 import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercell.js'
 import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
@@ -303,7 +304,13 @@ export function phonon_supercell(
   const tiled_cell = make_supercell(unit_cell, scaling, false)
   const completed_cell: Crystal = {
     ...tiled_cell,
-    sites: get_pbc_image_sites(tiled_cell).sites,
+    // The viewer's default polyhedra, completed on the same bonds as the frames' explicit ones
+    sites: get_pbc_image_sites(tiled_cell, {
+      completion: `polyhedra`,
+      polyhedra: polyhedra_options_from({}),
+      bonding_strategy: `electroneg_ratio`,
+      bonding_options: {},
+    }).sites,
     // The frames already contain image atoms and explicit bonds; don't wrap or image twice.
     lattice: { ...tiled_cell.lattice, pbc: [false, false, false] },
   }

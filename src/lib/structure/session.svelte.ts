@@ -42,8 +42,7 @@ import {
 } from './prediction'
 import { capitalize_symbol } from './parsers/shared'
 import { get_pbc_image_sites, wrap_to_unit_cell } from './pbc'
-import type { ImageAtomCompletion } from './pbc'
-import { polyhedra_options_key, type PolyhedraOptions } from './polyhedra'
+import type { ImageAtomOptions } from './pbc'
 import {
   get_image_source_idx,
   get_orig_site_idx,
@@ -84,9 +83,8 @@ export interface StructureSessionInputs {
   supercell_scaling: () => string
   apply_supercell_scaling: () => boolean
   show_image_atoms: () => boolean
-  image_atom_completion: () => ImageAtomCompletion
-  // The renderer's polyhedra options (polyhedra_options_from), so completion matches it
-  polyhedra_options: () => PolyhedraOptions
+  // The renderer's own polyhedra and bonding settings, so completion adds what it draws
+  image_atom_options: () => ImageAtomOptions
   cell_type: () => CellType
   set_cell_type: (value: CellType) => void
   sym_data: () => SymmetryDataset | null
@@ -207,15 +205,15 @@ const same_cell = (transformed: AnyStructure, raw: AnyStructure): boolean => {
   )
 }
 
-// Which periodic copies a displayed structure appends, as base site and lattice shift each:
-// what image site indices mean, so a change renumbers them
-const image_set_key = (structure: AnyStructure | undefined): string =>
-  (structure?.sites ?? [])
-    .flatMap(({ abc, provenance }) => {
+// What an imaged structure draws: its periodic copies as base site and lattice shift, and the
+// polyhedron sizes stamped on its sites
+const image_set_key = (structure: AnyStructure): string =>
+  structure.sites
+    .map(({ abc, provenance }) => {
       const base_idx = provenance?.image_of
-      if (base_idx === undefined || !structure) return []
+      if (base_idx === undefined) return provenance?.polyhedron_cn ?? ``
       const base_abc = structure.sites[base_idx].abc
-      return [`${base_idx}:${abc.map((coord, axis) => Math.round(coord - base_abc[axis]))}`]
+      return `${base_idx}:${abc.map((coord, axis) => Math.round(coord - base_abc[axis]))}`
     })
     .join(` `)
 
@@ -350,29 +348,28 @@ export class StructureSession {
       })),
     }
   }
-  // The polyhedra options image completion follows, re-read only when their key changes:
-  // hosts rebuild them on every read, which would rerun the bond search
-  private readonly polyhedra_key = $derived.by(() =>
-    polyhedra_options_key(this.inputs.polyhedra_options()),
+  // Completion settings by value: hosts rebuild them on every read, and a new object must not
+  // rerun the bond search
+  private readonly image_options_key = $derived.by(() =>
+    JSON.stringify(this.inputs.image_atom_options()),
   )
-  private readonly polyhedra_options = $derived.by(
-    () => (this.polyhedra_key, untrack(() => this.inputs.polyhedra_options())),
+  private readonly mapped_supercell = $derived.by(() =>
+    this.map_elements(this.supercell_structure),
   )
+  // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing
+  private last_imaged: { struct: AnyStructure; key: string; imaged: AnyStructure } | undefined
   // Element-mapped + PBC image atoms. Images are skipped during drags.
   displayed_structure = $derived.by((): AnyStructure | undefined => {
-    const struct = this.map_elements(this.supercell_structure)
-    const completion = this.inputs.image_atom_completion()
-    return !this.dragging_atoms &&
-      this.inputs.show_image_atoms() &&
-      struct &&
-      `lattice` in struct
-      ? get_pbc_image_sites(
-          struct,
-          completion,
-          // only completion reads them: `none` must not rebuild on polyhedra/legend changes
-          completion === `none` ? {} : this.polyhedra_options,
-        )
-      : struct
+    const struct = this.mapped_supercell
+    if (this.dragging_atoms || !this.inputs.show_image_atoms() || !struct) return struct
+    if (!(`lattice` in struct)) return struct
+    const options: ImageAtomOptions = JSON.parse(this.image_options_key)
+    const imaged = get_pbc_image_sites(struct, options)
+    const key = image_set_key(imaged)
+    const last = this.last_imaged
+    if (last?.struct === struct && last.key === key) return last.imaged
+    this.last_imaged = { struct, key, imaged }
+    return imaged
   })
   private readonly displayed_site_count = $derived(site_count(this.displayed_structure))
   // True while the rendered cell is the analyzed (moyo input) cell, i.e. no conventional/
@@ -523,25 +520,15 @@ export class StructureSession {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
       const topology_changed = changed(`topology`, this.topology)
-      // Completion and polyhedra settings renumber image sites only while images show and get
-      // completed, and only when they change the set of copies: equal sets (hiding a
-      // non-center element) keep the selection and bond edits. Drags skip images, so the
-      // structure from before the drag stands in meanwhile.
-      const completion = inputs.image_atom_completion()
-      const completion_key =
-        !inputs.show_image_atoms() || completion === `none`
-          ? null
-          : `${completion} ${this.polyhedra_key}`
-      const [dragging, shown] = [this.dragging_atoms, this.displayed_structure]
-      const displayed = dragging ? images_before : shown
+      // Completion settings renumber image sites only when they change the drawn copies (the
+      // displayed structure is kept otherwise: hiding a non-center element, images hidden)
+      const displayed = this.displayed_structure
       const images_renumbered =
-        changed(`image_completion`, completion_key) &&
-        image_set_key(displayed) !== image_set_key(images_before)
+        changed(`image_options`, this.image_options_key) && displayed !== images_before
       images_before = displayed
       const transform_changed = [
         changed(`supercell_scaling`, inputs.supercell_scaling()),
         changed(`show_image_atoms`, inputs.show_image_atoms()),
-        images_renumbered,
         changed(`series_key`, inputs.series_key()),
         changed(`cell_type`, inputs.cell_type()),
       ].includes(true)
@@ -610,7 +597,7 @@ export class StructureSession {
             this.clear_selection()
             this.site_radius_overrides.clear()
           }
-        }
+        } else if (images_renumbered) this.drop_image_sites()
         if (mode_changed) {
           this.clear_selection()
           if (measure_mode === `edit-bonds`) inputs.set_bond_edit_mode(`add`)
@@ -652,6 +639,24 @@ export class StructureSession {
     })
   }
 
+  // Image completion renumbers only the copies appended after the base sites (bond edits name
+  // base sites and cell shifts, so they stay)
+  private drop_image_sites(): void {
+    const { inputs } = this
+    const n_base = site_count(this.supercell_structure)
+    for (const [get, set] of [
+      [inputs.selected_sites, inputs.set_selected_sites],
+      [inputs.measured_sites, inputs.set_measured_sites],
+      [inputs.highlighted_sites, inputs.set_highlighted_sites],
+    ] as const) {
+      const sites = get()
+      if (sites.some((idx) => idx >= n_base)) set(sites.filter((idx) => idx < n_base))
+    }
+    const hovered = inputs.hovered_site_idx()
+    if (hovered !== null && hovered >= n_base) inputs.set_hovered_site_idx(null)
+    for (const idx of this.site_radius_overrides.keys())
+      if (idx >= n_base) this.site_radius_overrides.delete(idx)
+  }
   private notice(message: string): void {
     this.inputs.on_notice?.(message)
   }

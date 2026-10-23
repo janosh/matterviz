@@ -617,6 +617,7 @@ describe(`Structure viewer state serialization`, () => {
         background_color: `#123456`,
         background_opacity: 0.4,
         show_image_atoms: false,
+        image_atom_completion: `boundary`,
         atom_color_config: {
           mode: `coordination`,
           color_scale: { scheme: `interpolatePlasma`, value_range: [0, 12] },
@@ -640,6 +641,7 @@ describe(`Structure viewer state serialization`, () => {
             camera_projection: `perspective`,
             cell_edge_opacity: 0.8,
             show_image_atoms: false,
+            image_atom_completion: `boundary`,
             atom_color_mode: `coordination`,
             // a config object survives the round trip instead of falling back to the default
             atom_color_scale: { scheme: `interpolatePlasma`, value_range: [0, 12] },

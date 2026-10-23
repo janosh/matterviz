@@ -68,7 +68,7 @@ export const camera_needs_fit = (
 
 // Hydrogen's display radius in Å. Its tabulated atomic radius (0.25 Å) is half the next
 // smallest (F 0.5 Å), so radius-scaled H next to metals all but vanished (specks beside Sc).
-export const HYDROGEN_RADIUS = 0.5
+const HYDROGEN_RADIUS = 0.5
 // Display radius in Å: the user's override, else the atomic radius (1 Å when unknown)
 export const element_radius = (
   element: ElementSymbol,

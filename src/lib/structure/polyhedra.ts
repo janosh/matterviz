@@ -46,7 +46,12 @@ export type PolyhedraSettings = Partial<
     | 'polyhedra_included_elements'
   >
 >
-export const polyhedra_options_from = (settings: PolyhedraSettings): PolyhedraOptions => {
+export type ResolvedPolyhedraOptions = Required<
+  Omit<PolyhedraOptions, 'electronegativity_margin'>
+>
+export const polyhedra_options_from = (
+  settings: PolyhedraSettings,
+): ResolvedPolyhedraOptions => {
   const min_neighbors =
     settings.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors
   return {
@@ -489,8 +494,7 @@ function is_anion_vertex(
 // distance trim here. In anion mode, spectator A-site
 // cations (alkali, heavy alkaline-earth) are skipped when framework cations exist,
 // CN > max_neighbors hulls (e.g. CN-12 cuboctahedra) are skipped, and
-// boundary-truncated copies only render when their vertex count matches the max
-// among all copies of the same original site. Corners are displayed atoms for
+// boundary-truncated copies are skipped (pass 3). Corners are displayed atoms for
 // proximity-perceived bonds (boundary shells are completed upstream by
 // bond-completing image atoms - see find_image_atoms in pbc.ts); explicit bonds
 // carrying a cell_shift put the corner at the lattice image the bond points to.
@@ -690,15 +694,19 @@ export function compute_polyhedra(
     return !is_weak_species(element)
   })
 
-  // Pass 3: boundary completeness - copies of the same original site only render
-  // at the max observed vertex count, so any remaining truncated copies (bond
-  // completing image atoms handle most) are skipped
+  // Pass 3: boundary completeness - a copy renders only at its site's full vertex count, so
+  // copies truncated at the cell faces are skipped. Image completion stamps that count from
+  // the periodic bond graph on every site (polyhedron_cn, 0 for no polyhedron); otherwise it
+  // is the max observed among copies of the same original site, which misses sites whose
+  // every displayed copy is truncated.
   const max_cn_by_orig = new Map<number, number>()
   for (const { orig_idx, vertex_site_idxs } of visible) {
     if (vertex_site_idxs.length > (max_cn_by_orig.get(orig_idx) ?? 0)) {
       max_cn_by_orig.set(orig_idx, vertex_site_idxs.length)
     }
   }
+  const full_cn = (site_idx: number, orig_idx: number): number | undefined =>
+    get_site(structure, site_idx)?.provenance?.polyhedron_cn ?? max_cn_by_orig.get(orig_idx)
 
   // Pass 4: CN cap (after completeness so capped interior copies don't let
   // truncated boundary copies of the same site slip through; force-included
@@ -708,7 +716,7 @@ export function compute_polyhedra(
   const polyhedra: Polyhedron[] = []
   const seen_positions = new Set<string>()
   for (const { site_idx, orig_idx, element, vertex_site_idxs, vertex_positions } of visible) {
-    if (vertex_site_idxs.length !== max_cn_by_orig.get(orig_idx)) continue
+    if (vertex_site_idxs.length !== full_cn(site_idx, orig_idx)) continue
     if (vertex_site_idxs.length > max_neighbors && !included.has(element)) continue
 
     const [pixel_x, pixel_y, pixel_z] = position(site_idx)

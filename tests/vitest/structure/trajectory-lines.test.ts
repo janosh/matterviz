@@ -21,7 +21,7 @@ import {
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
 import { describe, expect, test } from 'vitest'
-import { make_crystal, make_position_stream } from '../test-fixtures'
+import { image_options, make_crystal, make_position_stream } from '../test-fixtures'
 
 // One atom drifting +1 Å along x per frame, wrapped into a 10 Å cell: 0,1,…,9,0,1,…
 // The wrap between frames 9 and 10 is the artefact unwrapping must remove.
@@ -373,7 +373,7 @@ describe(`anchoring trails to the displayed atoms`, () => {
   // sites (show_image_atoms defaults to on), so keying on an exact site count left every
   // periodic structure unanchored and drew each trail a lattice vector off its sphere.
   test(`derives anchors from the base sites of a structure carrying PBC image atoms`, () => {
-    const imaged = get_pbc_image_sites(nacl)
+    const imaged = get_pbc_image_sites(nacl, image_options())
     expect(imaged.sites.length).toBeGreaterThan(nacl.sites.length)
 
     const anchors = trajectory_trail_anchors(imaged.sites, nacl.sites.length)

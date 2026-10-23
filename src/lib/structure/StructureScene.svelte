@@ -98,7 +98,13 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Euler, OrthographicCamera, Vector3 } from 'three/webgpu'
   import type { Mesh, WebGPURenderer } from 'three/webgpu'
-  import { bond_neighbor_summary, bond_records, type BondData } from './bond-rendering'
+  import {
+    bond_neighbor_summary,
+    bond_records,
+    bond_site_1,
+    bond_site_2,
+    type BondData,
+  } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
@@ -1109,6 +1115,7 @@
     ]),
   )
   const atom_group_builder = new AtomGroupBuilder()
+  const NO_SITES: ReadonlySet<number> = new Set()
   let atom_groups = $derived.by(() =>
     show_atoms
       ? atom_group_builder.build({
@@ -1118,9 +1125,7 @@
           property_colors,
           hidden_prop_vals,
           hidden_elements,
-          hide_completion_images:
-            !applies_to_structure(effective_show_bonds, Boolean(lattice)) &&
-            !applies_to_structure(effective_show_polyhedra, Boolean(lattice)),
+          drawn_completion_sites,
           radius_scale: effective_atom_radius,
           radius_options,
           hidden_centers: polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null,
@@ -1317,6 +1322,21 @@
   let polyhedra_center_site_idxs = $derived(
     new Set(polyhedra.map((poly) => poly.center_site_idx)),
   )
+  // Sites a drawn bond or polyhedron ends at: the completion images that draw. Numeric
+  // trajectory frames have none (and reading their sites would build them).
+  let drawn_completion_sites = $derived.by((): ReadonlySet<number> => {
+    const has_completion =
+      structure &&
+      !numeric_sites.has(structure) &&
+      structure.sites.some((site) => site.provenance?.completion)
+    if (!has_completion) return NO_SITES
+    const drawn = new Set<number>()
+    for (let idx = 0; idx < bonds_to_render.length; idx++)
+      drawn.add(bond_site_1(bonds_to_render, idx)).add(bond_site_2(bonds_to_render, idx))
+    for (const { vertex_site_idxs } of polyhedra)
+      for (const site_idx of vertex_site_idxs) drawn.add(site_idx)
+    return drawn
+  })
 
   // Publish which elements currently anchor polyhedra (consumed by controls so
   // per-element toggles reflect the actual render state incl. spectator hiding)

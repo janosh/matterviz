@@ -21,6 +21,7 @@ import { make_rng } from '../numeric-helpers'
 import {
   cubic_matrix,
   FCC_FACE_CENTRES,
+  image_options,
   make_crystal,
   make_molecule,
   make_rocksalt,
@@ -379,7 +380,7 @@ describe(`Explicit Bond Metadata`, () => {
       [`C`, [0.95, 0.5, 0.5]],
       [`O`, [0.005, 0.5, 0.5]],
     ])
-    const structure_with_images = get_pbc_image_sites(structure)
+    const structure_with_images = get_pbc_image_sites(structure, image_options())
     const image_site_idx = structure_with_images.sites.findIndex(
       (site) => site.provenance?.image_of === 1 && site.abc[0] > 1,
     )
@@ -446,7 +447,7 @@ describe(`Explicit Bond Metadata`, () => {
     structure.properties = {
       bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
     }
-    const imaged = get_pbc_image_sites(structure)
+    const imaged = get_pbc_image_sites(structure, image_options())
     const bonds = bonding.electroneg_ratio(imaged)
     const lengths = bonds.map((bond) => math.euclidean_dist(bond.pos_1, bond.pos_2))
     expect(lengths.map((length) => Number(length.toFixed(6)))).toEqual([1.6])
@@ -791,7 +792,7 @@ test(`bonding logic treats original and image atoms consistently`, () => {
     [`H`, [0.0, 0.5, 0.5]], // H_distractor on the face, x=0.0
   ])
   // completing every bond of the face atoms draws C2's copy beside C1's image
-  const with_images = get_pbc_image_sites(structure, `boundary`)
+  const with_images = get_pbc_image_sites(structure, image_options(`boundary`))
 
   const c1_img_idx = with_images.sites.findIndex(
     (site, idx) => idx > 2 && Math.abs(site.xyz[0] - 10.05) < 0.01,
