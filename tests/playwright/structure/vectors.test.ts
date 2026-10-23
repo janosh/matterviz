@@ -83,15 +83,27 @@ test.describe(`Site Vectors`, { tag: `@webgl` }, () => {
       // per-key rows replace the single-key Color picker
       await expect(section.locator(`label`).filter({ hasText: /^Color$/ })).toHaveCount(0)
 
-      for (const key of [`force_DFT`, `force_MLFF`, `magmom`]) {
+      // only magmom draws by default (magmoms outrank forces); hidden layers show no scale
+      for (const [key, shown] of [
+        [`force_DFT`, false],
+        [`force_MLFF`, false],
+        [`magmom`, true],
+      ] as const) {
         const toggle = pane_div.locator(`[data-key="vector_config:${key}"]`)
-        await expect(toggle.locator(`input[type="checkbox"]`)).toBeVisible()
+        await expect(toggle.locator(`input[type="checkbox"]`)).toBeChecked({ checked: shown })
         await expect(toggle.locator(`input[type="color"]`)).toBeVisible()
         // labelled like the toggles (hasText ignores case)
-        await expect(labels_with(pane_div, `${key.replaceAll(`_`, ` `)} scale`)).toBeVisible()
+        const scale = labels_with(pane_div, `${key.replaceAll(`_`, ` `)} scale`)
+        await (shown ? expect(scale).toBeVisible() : expect(scale).toHaveCount(0))
       }
 
-      // Recoloring and hiding a layer each repaint its arrows.
+      // Showing, recoloring and hiding a layer each repaint its arrows.
+      await expect_canvas_changed_by(canvas, async () => {
+        await pane_div
+          .locator(`[data-key="vector_config:force_DFT"] input[type="checkbox"]`)
+          .click()
+        await expect(labels_with(pane_div, `force DFT scale`)).toBeVisible()
+      })
       const magmom_toggle = pane_div.locator(`[data-key="vector_config:magmom"]`)
       await expect_canvas_changed_by(canvas, () =>
         magmom_toggle.locator(`input[type="color"]`).fill(`#00ff00`),
