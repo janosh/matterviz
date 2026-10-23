@@ -36,16 +36,16 @@ export interface FermiBandsLinkInputs {
   k_lattice: () => Matrix3x3 | undefined // the zone's reciprocal lattice (incl. 2π)
   mu: { get: () => number; set: (mu: number) => void }
   selected_bands: { get: () => number[] | undefined; set: (bands?: number[]) => void }
-  band_spin_mode: () => BandsSpinMode | undefined // the caller's initial spin mode
-  color_property: () => ColorProperty | undefined // the caller's initial colouring
-  line_kwargs: () => LineKwargs | undefined // the caller's band styles
+  // the caller's initial spin mode and band styles, and initial sheet colouring
+  bands_props: () => { band_spin_mode?: BandsSpinMode; line_kwargs?: LineKwargs }
+  fermi_props: () => { color_property?: ColorProperty }
 }
 
-// Construct during a component's init. Hosts bind the fields (bind:mu={link.mu} etc.) and hand
-// the handlers to FermiSurface's on_point_hover and Bands' on_point_hover / on_plot_click.
 // Bands hover/click radius both hosts use: band lines are thin targets for previewing a surface
 export const LINK_HOVER_CONFIG = { threshold_px: 50, click_threshold_px: 50 }
 
+// Construct during a component's init. Hosts bind the fields (bind:mu={link.mu} etc.) and hand
+// the handlers to FermiSurface's on_point_hover and Bands' on_point_hover / on_plot_click.
 export class FermiBandsLink {
   // Bands' x_positions and the node its crossing dots render in (see BandCrossings)
   x_positions = $state.raw<Record<string, Vec2>>({})
@@ -60,9 +60,12 @@ export class FermiBandsLink {
     return null
   })
   // Bands' spin control writes this; a hidden channel gets no crossings or sheets either
-  band_spin_mode = $derived.by((): BandsSpinMode => this.inputs.band_spin_mode() ?? `overlay`)
+  band_spin_mode = $derived.by(
+    (): BandsSpinMode => this.inputs.bands_props().band_spin_mode ?? `overlay`,
+  )
   color_property = $derived.by(
-    (): ColorProperty => this.inputs.color_property() ?? DEFAULTS.fermi.color_property,
+    (): ColorProperty =>
+      this.inputs.fermi_props().color_property ?? DEFAULTS.fermi.color_property,
   )
   readonly path = create_band_path_link({
     band_struct: () => this.inputs.band_struct(),
@@ -82,6 +85,10 @@ export class FermiBandsLink {
     )
   })
   readonly fermi_energy = $derived.by(() => this.inputs.band_data()?.fermi_energy)
+  // FermiSurface's `previewing`: a hovered energy shown off the grid
+  readonly previewing = $derived(
+    this.hovered_energy !== null && this.fermi_energy !== undefined,
+  )
   private readonly shown_mu = $derived.by(() =>
     this.hovered_energy === null || this.fermi_energy === undefined
       ? this.inputs.mu.get()
@@ -112,7 +119,7 @@ export class FermiBandsLink {
   // does not flip the band colours.
   readonly line_kwargs = $derived.by((): LineKwargs | undefined => {
     const grid = this.inputs.band_data()
-    const kwargs = this.inputs.line_kwargs()
+    const kwargs = this.inputs.bands_props().line_kwargs
     const { color_property, grid_bands } = this
     const vertex_colored =
       color_property === `property` && Object.keys(grid?.properties ?? {}).length > 0

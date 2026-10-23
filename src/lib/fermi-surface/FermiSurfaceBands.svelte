@@ -46,9 +46,8 @@
     k_lattice: () => band_data.k_lattice,
     mu: { get: () => mu, set: (value) => (mu = value) },
     selected_bands: { get: () => selected_bands, set: (bands) => (selected_bands = bands) },
-    band_spin_mode: () => bands_props.band_spin_mode,
-    color_property: () => fermi_props.color_property,
-    line_kwargs: () => bands_props.line_kwargs,
+    bands_props: () => bands_props,
+    fermi_props: () => fermi_props,
   })
   let wrapper = $state<HTMLDivElement>()
 </script>
@@ -63,7 +62,7 @@
     bind:color_property={link.color_property}
     selected_spins={link.selected_spins}
     wigner_seitz
-    previewing={link.hovered_energy !== null}
+    previewing={link.previewing}
     bind:mu={link.mu}
     bind:selected_bands={link.selected_bands}
     k_marker={link.path.hovered_k_point}

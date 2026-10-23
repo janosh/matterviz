@@ -24,8 +24,8 @@
     read_pan_offset,
     restore_camera_view,
     responsive_gizmo_size,
-    scope_orbit_link,
   } from '#lib/scene/index.js'
+  import { scope_orbit_link } from '#lib/scene/orbit-link.svelte.js'
   import { type Camera, OrthographicCamera, type Scene } from 'three/webgpu'
   import type { AtomPropertyColors } from './atom-properties'
   import type { StructureSession } from './session.svelte'
@@ -188,8 +188,10 @@
     return { ...(typeof gizmo === `object` ? gizmo : {}), size }
   })
 
-  // Multi-view panes look along fixed axes, so they stay out of a host's orbit link
-  scope_orbit_link(() => !in_grid)
+  // Multi-view panes look along fixed axes, and the rotation sliders turn the atoms out of the
+  // frame the link shares (e.g. with the crystal's Fermi surface), so either keeps the scene
+  // out of a host's orbit link (back in, taking up the linked view, once the rotation is reset)
+  scope_orbit_link(() => !in_grid && !scene_props.rotation?.some(Boolean))
 
   // Internal orbit controls are bound from StructureScene for pose tracking and recovery.
   let orbit_controls =

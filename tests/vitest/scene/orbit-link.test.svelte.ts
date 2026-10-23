@@ -1,5 +1,6 @@
 // Orbit link (scene/orbit-link): orbiting one member turns the others to its view direction,
 // each keeping its own orbit target and distance, and its gestures read as theirs
+import { camera_flight_registry } from '#lib/scene/camera-flight.js'
 import { lock_fly_to } from '#lib/scene/fly-to.js'
 import {
   create_orbit_link,
@@ -7,10 +8,13 @@ import {
   link_orbits,
   scope_orbit_link,
 } from '#lib/scene/orbit-link.svelte.js'
-import { type Component, flushSync, mount, unmount } from 'svelte'
+import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '#lib/scene/props.svelte.js'
+import SceneCamera from '#lib/scene/SceneCamera.svelte'
+import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { PerspectiveCamera, Vector3 } from 'three/webgpu'
+import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three/webgpu'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { mount_scene, pose } from './mount'
 
 // Real controls on a camera at `position` orbiting `target`
 const make_controls = (position: Vector3, target = new Vector3()): OrbitControls => {
@@ -121,6 +125,56 @@ describe(`create_orbit_link`, () => {
     expect(Math.abs(distance(late) - radius)).toBeLessThan(1e-12 * radius)
   })
 
+  // threlte's task calls update() once per frame on each controls; azimuth about +y from +z.
+  // Each auto-rotating member adds its own steps, a follower's re-aim none
+  test.each([
+    [false, 1],
+    [true, 2],
+  ])(`an auto-rotating leader (follower too: %s) turns both %dx`, (both, rate) => {
+    const azimuth = ({ object }: OrbitControls) =>
+      Math.atan2(object.position.x, object.position.z)
+    const [solo, leader, follower] = [5, 5, 3].map((dist) =>
+      make_controls(new Vector3(0, 0, dist)),
+    )
+    solo.autoRotate = true
+    leader.autoRotate = true
+    follower.autoRotate = both
+    const link = create_orbit_link()
+    link.join(leader)
+    link.join(follower)
+    for (let frame = 0; frame < 10; frame++) {
+      for (const controls of [solo, leader, follower]) controls.update()
+    }
+    expect(Math.abs(azimuth(leader) / azimuth(solo) - rate)).toBeLessThan(1e-12)
+    expect(Math.abs(azimuth(follower) - azimuth(leader))).toBeLessThan(1e-12)
+  })
+
+  test.each([NaN, Infinity])(`a leader at a %s position moves no follower`, (bad) => {
+    const [leader, follower] = setups()
+    const link = create_orbit_link()
+    link.join(leader)
+    link.join(follower)
+    const before = follower.object.position.toArray()
+    leader.object.position.set(bad, 0, 0)
+    leader.dispatchEvent({ type: `change` })
+    expect(follower.object.position.toArray()).toEqual(before)
+  })
+
+  // OrbitControls emits no `change` for an unmoved pose, so a follower already looking along
+  // the view (e.g. after a zoom-only wheel tick) neither moves nor re-renders
+  test(`a leader that only zoomed changes no follower`, () => {
+    const [leader, follower] = setups()
+    const link = create_orbit_link()
+    link.join(leader)
+    link.join(follower)
+    orbit(leader, new Vector3(1, 1, 1))
+    const on_change = vi.fn()
+    follower.addEventListener(`change`, on_change)
+    leader.object.position.lerp(leader.target, 0.5) // dolly in along the view direction
+    leader.update()
+    expect(on_change).not.toHaveBeenCalled()
+  })
+
   test(`a member a camera flight holds stays where the flight puts it`, () => {
     const [leader, flying] = setups()
     const link = create_orbit_link()
@@ -159,6 +213,50 @@ describe(`orbit link context`, () => {
     const direction = new Vector3(3, -1, 1).normalize()
     orbit(linked, direction)
     expect_parallel(view_dir(scoped), direction)
+  })
+
+  // The real SceneCamera joins, and a camera flight, which sets its camera directly, hands
+  // the landed view to the link
+  test(`a SceneCamera joins its host's link and leads it once a camera flight lands`, () => {
+    const [peer] = setups()
+    const props = $state<ComponentProps<typeof SceneCamera>>({
+      camera_projection: `perspective`,
+      position: [0, 0, 10],
+      orbit_props: build_orbit_props({
+        ...SCENE_CONTROL_DEFAULTS,
+        camera_projection: `perspective`,
+        target: [0, 0, 0],
+        min_zoom: undefined,
+        max_zoom: undefined,
+      }),
+      orbit_controls: undefined, // bound back by SceneCamera
+    })
+    const { canvas, unmount_scene } = mount_scene((anchor) => {
+      link_orbits()
+      join_orbit_link(() => peer)
+      return SceneCamera(anchor, props)
+    })
+    onTestFinished(unmount_scene)
+    flushSync()
+    const { orbit_controls: own } = props
+    if (!own) throw new Error(`SceneCamera bound no controls`)
+    const direction = new Vector3(1, 2, 2).normalize()
+    orbit(peer, direction)
+    expect_parallel(view_dir(own), direction)
+
+    const controller = camera_flight_registry.get(canvas)
+    if (!controller) throw new Error(`SceneCamera registered no flight controller`)
+    const landed = new Vector3(10, 0, 0)
+    const look = new Matrix4().lookAt(landed, new Vector3(), new Vector3(0, 1, 0))
+    const lease = controller.begin()
+    lease.apply({
+      ...pose,
+      position: landed.toArray(),
+      quaternion: new Quaternion().setFromRotationMatrix(look).toArray(),
+    })
+    expect_parallel(view_dir(peer), direction) // a flight in progress leads nobody
+    lease.commit()
+    expect(view_dir(peer).distanceTo(new Vector3(1, 0, 0))).toBeLessThan(1e-12)
   })
 
   test(`without a host, joining is a no-op`, () => {

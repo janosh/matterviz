@@ -1,7 +1,9 @@
 // Rotation link between sibling 3D scenes: a host provides a link during init, every
 // SceneCamera below joins it with its OrbitControls, and orbiting (or auto-rotating, resetting,
-// a gizmo fly-to) any member turns the others to the same view direction, as does joining late
-// (a viewer remounting its camera on a projection toggle). Each member keeps its own
+// a gizmo fly-to, a landed camera flight) any member turns the others to the same view
+// direction, as does joining late (a viewer remounting its camera on a projection toggle).
+// Members turn at the leader's rate, so of several auto-rotating members each adds its own
+// steps: let one auto-rotate. Each member keeps its own
 // orbit target, distance, zoom and pan, so scenes of different size and units (a crystal in Å,
 // its Fermi surface in Å⁻¹) stay framed. Meant for scenes sharing one Cartesian frame with the
 // same camera up vector (the scene default +y), else equal directions do not mean equal views.
@@ -31,17 +33,24 @@ export function create_orbit_link(): OrbitLink {
   }
   const direction = new Vector3()
   // Sets `direction` to the member's view direction; false for a camera on its target (not
-  // yet framed), which has none to share
+  // yet framed) or off any finite position (NaN, Infinity), which has none to share
   const read_direction = ({ object, target }: OrbitControls): boolean => {
     direction.subVectors(object.position, target)
-    if (direction.lengthSq() === 0) return false
+    const length_sq = direction.lengthSq()
+    if (!(length_sq > 0 && Number.isFinite(length_sq))) return false
     direction.normalize()
     return true
   }
   const aim = (member: OrbitControls): void => {
     const distance = member.object.position.distanceTo(member.target)
     member.object.position.copy(member.target).addScaledVector(direction, distance)
-    member.update() // re-aims the camera and emits `change`, which re-renders its canvas
+    // re-aims the camera and emits `change` (none for an unmoved pose, e.g. after a
+    // zoom-only wheel tick), which re-renders its canvas; without the member's own
+    // auto-rotate step, else each leader step would add one per auto-rotating follower
+    const { autoRotate } = member
+    member.autoRotate = false
+    member.update()
+    member.autoRotate = autoRotate
   }
   return {
     join: (controls) => {

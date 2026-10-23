@@ -96,6 +96,9 @@
       (active) => {
         lock_fly_to(controls, active) // no gizmo or zone-axis swing fights the flight
         flight_active = active
+        // the landed (or restored) pose, which the flight set on the camera directly, reaches
+        // an orbit link now rather than on the next orbit
+        if (!active) controls.update()
       },
       invalidate,
     )
