@@ -46,7 +46,11 @@
       value={from_slider(value)}
       min={min_temp}
       max={max_temp}
-      onchange={(evt) => set_closest_temp(evt.currentTarget.valueAsNumber)}
+      onchange={(evt) => {
+        set_closest_temp(evt.currentTarget.valueAsNumber)
+        // Svelte skips rewriting an unchanged value: re-sync rejected or clamped-to-same text
+        evt.currentTarget.value = String(from_slider(slider_value))
+      }}
       aria-label="Temperature (Kelvin)"
     />
     <span>K</span>

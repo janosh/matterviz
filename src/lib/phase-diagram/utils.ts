@@ -40,11 +40,7 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   x_ticks: 5,
   y_ticks: 5,
   // Tie-line
-  tie_line: Object.freeze({
-    stroke_width: 1.5,
-    endpoint_radius: 4,
-    cursor_radius: 5,
-  }),
+  tie_line: Object.freeze({ stroke_width: 1.5, endpoint_radius: 4, cursor_radius: 5 }),
   // Colors
   colors: Object.freeze({
     background: `transparent`,

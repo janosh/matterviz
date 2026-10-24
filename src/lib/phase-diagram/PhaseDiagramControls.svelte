@@ -4,7 +4,6 @@
   import { ControlPane } from '#lib/overlays/index.js'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { NumberRangeInput, SettingsGroup, SettingsSection } from '#lib/layout/index.js'
-  import { clamp } from '#lib/math.js'
   import type { AxisConfig } from '#lib/plot/index.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -257,22 +256,27 @@
       layout="grid"
     >
       {#each axis_configs as [axis_cfg, axis_name, unit, desc] (axis_name)}
-        <label {@attach tooltip({ content: `Ticks on ${desc} axis (${unit})` })}>
-          <span>{axis_name.toUpperCase()}-axis ticks</span>
-          <input
-            type="number"
-            min={2}
-            max={15}
-            value={axis_cfg.ticks ?? PHASE_DIAGRAM_DEFAULTS[`${axis_name}_ticks`]}
-            oninput={(event_value) => {
-              const parsed_ticks = event_value.currentTarget.valueAsNumber
-              if (!Number.isFinite(parsed_ticks)) return
-              const new_ticks = clamp(Math.round(parsed_ticks), 2, 15)
-              if (axis_name === `x`) x_axis = { ...x_axis, ticks: new_ticks }
-              else y_axis = { ...y_axis, ticks: new_ticks }
-            }}
-          />
-        </label>
+        <!-- drafts below 2 or above 15 wait for the next keystroke instead of being clamped and
+          rewritten mid-typing (typing 12 used to give 15: the 1 became 2, then 22) -->
+        <NumberRangeInput
+          min={2}
+          max={15}
+          step={1}
+          title="Ticks on {desc} axis ({unit})"
+          bind:value={
+            () =>
+              typeof axis_cfg.ticks === `number`
+                ? axis_cfg.ticks
+                : PHASE_DIAGRAM_DEFAULTS[`${axis_name}_ticks`],
+            (ticks) => {
+              // empty="retain" (the default) never commits a cleared field
+              if (ticks === undefined) throw new Error(`${axis_name}-axis ticks cleared`)
+              const axis = { ticks: Math.round(ticks) }
+              if (axis_name === `x`) x_axis = { ...x_axis, ...axis }
+              else y_axis = { ...y_axis, ...axis }
+            }
+          }>{axis_name.toUpperCase()}-axis ticks</NumberRangeInput
+        >
       {/each}
     </SettingsSection>
   </SettingsGroup>
@@ -290,12 +294,5 @@
   }
   :global(.phase-diagram-controls-pane h4:first-of-type) {
     margin-top: 0 !important;
-  }
-  input {
-    font-size: inherit;
-    font-family: inherit;
-  }
-  input[type='number'] {
-    width: 3.5em;
   }
 </style>

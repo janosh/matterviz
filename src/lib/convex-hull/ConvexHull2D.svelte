@@ -318,11 +318,7 @@
     )}
   padding={{ t: 30 + title_height, b: 60, l: 60, r: 30 }}
 >
-  {@render children?.({
-    model: hull_data.model,
-    highlighted_entries,
-    selected_entry,
-  })}
+  {@render children?.({ model: hull_data.model, highlighted_entries, selected_entry })}
   {@render chrome(null)}
 </ScatterPlot>
 

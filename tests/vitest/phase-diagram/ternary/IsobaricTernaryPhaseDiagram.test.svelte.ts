@@ -27,6 +27,7 @@ import {
   doc_query,
   expect_shortcuts_in_pane,
   expect_tooltip_paint,
+  fire,
   mock_canvas_context,
   set_input,
 } from '../../setup'
@@ -130,6 +131,13 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     await wait_for_events()
     expect([state.temperature, temp_input().value]).toEqual([1500, `1500`])
     expect(state.diagram?.events).toHaveLength(3)
+    // a blank entry keeps T (it used to jump to the sweep start), one past the sweep clamps
+    // to the current top, and either way the field shows the T in effect
+    for (const typed of [``, `9999`]) {
+      temp_input().value = typed
+      await fire(temp_input(), new Event(`change`, { bubbles: true }))
+      expect([state.temperature, temp_input().value]).toEqual([1500, `1500`])
+    }
     press(`ArrowRight`)
     expect(state.temperature).toBe(1500) // clamped at the top of the sweep
     // hovered without focus too, like the other viewers

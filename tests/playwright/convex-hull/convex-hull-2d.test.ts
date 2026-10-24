@@ -72,7 +72,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(info_btn).toHaveAttribute(`aria-expanded`, `true`)
     const info = pd2d.locator(`.draggable-pane.convex-hull-info-pane`)
     const widths = await info
-      .getByTestId(`tip-drag`)
+      .getByTestId(`tip-click`)
       .locator(`span`)
       .evaluateAll((spans) => spans.map((span) => span.getBoundingClientRect().width))
     expect(widths).toHaveLength(2)

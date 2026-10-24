@@ -192,19 +192,22 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     ]
     const swatch = () => document.querySelector(`input[type="color"]`)
     mount_controls({ show_hull_faces: true, hull_face_color_mode: `dominant_element` })
-    expect(
-      buttons().map((btn) => [btn.textContent?.trim(), btn.classList.contains(`active`)]),
-    ).toEqual([
-      [`Uniform`, false],
-      [`Energy`, false],
-      [`Element`, true],
-      [`Index`, false],
+    // the selected mode is highlighted (active) and announced (aria-pressed) alike
+    const selected = () =>
+      [`.active`, `[aria-pressed="true"]`].map((state) =>
+        buttons().flatMap((btn) => (btn.matches(state) ? [btn.textContent?.trim()] : [])),
+      )
+    expect(buttons().map((btn) => btn.textContent?.trim())).toEqual([
+      `Uniform`,
+      `Energy`,
+      `Element`,
+      `Index`,
     ])
+    expect(selected()).toEqual([[`Element`], [`Element`]])
     expect(swatch()).toBeNull()
     buttons()[0].click()
     flushSync()
-    const active = buttons().filter((btn) => btn.classList.contains(`active`))
-    expect(active.map((btn) => btn.textContent?.trim())).toEqual([`Uniform`])
+    expect(selected()).toEqual([[`Uniform`], [`Uniform`]])
     expect(swatch()).not.toBeNull()
   })
 

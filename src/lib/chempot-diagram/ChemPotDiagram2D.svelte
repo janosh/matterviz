@@ -143,18 +143,22 @@
   })
 
   // === Domain label annotations (in data coordinates) ===
+  // A segment is labeled off its midpoint along its normal (pymatgen's placement), a polygon
+  // at its vertex mean, without the repeated closing vertex that dragged it to the first one
   const annotations = $derived.by(() => {
     if (!label_stable) return []
     // coincident vertices can hull to an empty outline; a lone point gets no offset
     return domain_entries
       .filter(([, pts]) => pts.length > 0)
       .map(([formula, pts]) => {
-        const [normal_x, normal_y] = pts.length >= 2 ? orthonormal_2d(pts) : [0, 0]
-        return {
-          formula,
-          data_x: pts.reduce((sum, point) => sum + point[0], 0) / pts.length + normal_x * 0.25,
-          data_y: pts.reduce((sum, point) => sum + point[1], 0) / pts.length + normal_y * 0.25,
-        }
+        const corners = pts.length > 2 ? pts.slice(0, -1) : pts
+        const normal = corners.length === 2 ? orthonormal_2d(corners) : [0, 0]
+        const [data_x, data_y] = [0, 1].map(
+          (axis) =>
+            corners.reduce((sum, point) => sum + point[axis], 0) / corners.length +
+            normal[axis] * 0.25,
+        )
+        return { formula, data_x, data_y }
       })
   })
 

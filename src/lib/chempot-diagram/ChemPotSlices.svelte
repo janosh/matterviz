@@ -103,7 +103,11 @@
           max={upper}
           step="0.01"
           value={Number(value.toFixed(3))}
-          onchange={(event) => commit(element, event.currentTarget.valueAsNumber)}
+          onchange={(event) => {
+            commit(element, event.currentTarget.valueAsNumber)
+            // Svelte skips rewriting an unchanged value: re-sync rejected or clamped-to-same text
+            event.currentTarget.value = String(Number(value.toFixed(3)))
+          }}
           aria-label="Chemical potential of {element} (eV), exact"
         />
         eV

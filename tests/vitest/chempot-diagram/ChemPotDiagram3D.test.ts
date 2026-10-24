@@ -24,6 +24,7 @@ import {
   bind_props,
   doc_query,
   expect_shortcuts_in_pane,
+  fire,
   keydown,
   pin_cycle,
   pin_spot,
@@ -281,13 +282,14 @@ test(`display toggles and partial number input never recompute the diagram`, asy
   }
   const min_limit = by_label(`Min limit`)
   if (!min_limit) throw new Error(`no min-limit input`)
-  // keystrokes don't commit (typing -10 must not compute at -1 first), and an unparsable
-  // committed value is ignored
+  // keystrokes don't commit (typing -10 must not compute at -1 first), and an unparsable or
+  // above-max (> 0 eV floor) committed value is rejected, its text restored
   set_input(min_limit, `-1`)
-  min_limit.value = `-`
-  min_limit.dispatchEvent(new Event(`change`, { bubbles: true }))
-  flushSync()
-  await tick()
+  for (const typed of [`-`, `5`]) {
+    min_limit.value = typed
+    await fire(min_limit, new Event(`change`, { bubbles: true }))
+    expect(min_limit.value).toBe(`-25`)
+  }
   expect(convex_builds.count - before).toBe(0)
   expect(document.querySelector(`.spinner`)).toBeNull()
   expect(document.querySelector(`.empty-state`)).toBeNull()
@@ -306,9 +308,28 @@ test(`keyboard walks the domains and Enter pins`, async () => {
     `#lib/chempot-diagram/ChemPotScene3D.svelte`,
   )
   const scene_props = get_scene()
-  const { keys, unmount_scene } = mount_scene((anchor) => Scene(anchor, scene_props))
+  const { keys, scene, unmount_scene } = mount_scene((anchor) =>
+    Scene(anchor, {
+      ...scene_props,
+      display: { ...scene_props.display, show_bounding_box: true },
+    }),
+  )
   onTestFinished(unmount_scene)
   flushSync()
+  // the bounding box (#666 lines): 12 distinct edges between 8 corners, each along one axis
+  const box = scene
+    .getObjectsByProperty(`type`, `LineSegments`)
+    .map((obj) => obj as THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>)
+    .find(({ material }) => material.color.getHexString() === `666666`)
+  const coords = [...(box?.geometry.getAttribute(`position`).array ?? [])]
+  const edges = Array.from({ length: coords.length / 6 }, (_, idx) =>
+    [0, 3].map((end) => coords.slice(6 * idx + end, 6 * idx + end + 3)),
+  )
+  expect(new Set(edges.map((edge) => edge.map(String).toSorted().join(`|`))).size).toBe(12)
+  expect([edges.length, new Set(edges.flat().map(String)).size]).toEqual([12, 8])
+  for (const [start, end] of edges) {
+    expect(start.filter((coord, axis) => coord === end[axis])).toHaveLength(2)
+  }
   expect(keys.press(`ArrowRight`)).toBe(true)
   const [first] = scene_props.hover_meshes
   expect([bound.hover_info?.formula, keys.message]).toEqual([first.formula, first.formula])
@@ -776,6 +797,13 @@ test(`slicing a quaternary at fixed mu re-sections on the main thread and plots 
   flushSync()
   // toggling on slices at the S-rich end (Δmu_S = 0): S's own facet drops out
   expect(doc_query(`.slice-label`).textContent).toMatch(/Δμ\s*S\s*= 0 eV/)
+  // past the range clamps to the S-rich end it is already at, blank is rejected: both show 0
+  const exact = doc_query<HTMLInputElement>(`.chempot-slice input[type="number"]`)
+  for (const typed of [`5`, ``]) {
+    exact.value = typed
+    await fire(exact, new Event(`change`, { bubbles: true }))
+    expect(exact.value).toBe(`0`)
+  }
   const at_rich = scene().render_domains.map(({ formula }) => formula)
   expect(at_rich).not.toContain(`S`)
   const rich_framing = framing()

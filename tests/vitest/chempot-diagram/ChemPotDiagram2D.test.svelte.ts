@@ -11,6 +11,7 @@ import type {
   ChemPotHoverInfo,
 } from '#lib/chempot-diagram/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
+import { mean } from '#lib/math.js'
 import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
@@ -219,12 +220,25 @@ test(`the previous diagram stays drawn while the worker computes new axes; proje
   await resolve_latest()
   const co_o_paths = line_paths()
   expect(co_o_paths).not.toEqual(li_o_paths)
-  // projected domains are polygons: each closed (ends where it starts), no spline (C) segments
+  // projected domains are polygons: each closed (ends where it starts), no spline (C)
+  // segments, labeled at their vertex mean (the repeated closing vertex used to skew it)
+  const labels = [...document.querySelectorAll(`.domain-label`)].map((label) =>
+    [`x`, `y`].map((key) => Number(label.getAttribute(key))),
+  )
   const polygons = co_o_paths
-    .map((path) => path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [])
-    .filter((coords) => coords.length > 4)
+    .map((path, idx) => ({
+      coords: path.match(/-?[\d.]+(?:e-?\d+)?/g)?.map(Number) ?? [],
+      label: labels[idx],
+    }))
+    .filter(({ coords }) => coords.length > 4)
   expect(polygons.length).toBeGreaterThan(0)
-  for (const coords of polygons) expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
+  for (const { coords, label } of polygons) {
+    expect(coords.slice(-2)).toEqual(coords.slice(0, 2))
+    for (const axis of [0, 1]) {
+      const corner_values = coords.slice(0, -2).filter((_, idx) => idx % 2 === axis)
+      expect(label[axis]).toBeCloseTo(mean(corner_values), 1)
+    }
+  }
   for (const path of co_o_paths) expect(path).not.toContain(`C`)
   props.config = { elements: [`Li`, `O`] }
   flushSync()

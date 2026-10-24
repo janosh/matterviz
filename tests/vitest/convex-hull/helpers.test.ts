@@ -155,6 +155,15 @@ describe(`canvas-draw: markers and hit testing`, () => {
     )
   })
 
+  // a NaN formation energy is skipped instead of turning the whole depth scale NaN
+  test(`energy_range_of spans 0 and the finite formation energies`, () => {
+    const entries = [-1.5, Number.NaN, 0.5, undefined].map(
+      (e_form_per_atom) => ({ e_form_per_atom }) as ConvexHullEntry,
+    )
+    const { min, max, center, z_scale } = draw.energy_range_of(entries)
+    expect([min, max, center, z_scale]).toEqual([-1.5, 0.5, -0.5, 0.375])
+  })
+
   test(`marker_path_data returns d3 symbols for known markers, null otherwise`, () => {
     expect(draw.marker_path_data(5, `circle`)).toMatch(/^M/)
     expect(draw.marker_path_data(5, `triangle`)).not.toBe(draw.marker_path_data(5, `circle`))

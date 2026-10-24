@@ -90,7 +90,8 @@
               const val = Number(evt.currentTarget.value)
               if (Number.isFinite(val) && val > 0)
                 set_pressure(gas, clamp(val, 10 ** LOG_P_MIN, 10 ** LOG_P_MAX))
-              else evt.currentTarget.value = format_pressure(pressure)
+              // Svelte skips rewriting an unchanged value: re-sync rejected or clamped-to-same text
+              evt.currentTarget.value = format_pressure(pressure)
             }}
             aria-label="{gas} pressure (bar)"
           />

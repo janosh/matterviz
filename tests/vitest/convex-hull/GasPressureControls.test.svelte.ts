@@ -72,6 +72,8 @@ describe(`GasPressureControls`, () => {
   ])(`typed pressure %s commits %s bar, shown as %s`, (typed, expected, shown) => {
     const state = mount_controls({ enabled_gases: [`H2`] })
     fire(text_input(`H2`), `change`, typed)
+    // retyped: the committed pressure doesn't change, yet the raw text must still be reformatted
+    fire(text_input(`H2`), `change`, typed)
     expect(state.pressures.H2).toBeCloseTo(expected, 12)
     expect(text_input(`H2`)?.value).toBe(shown)
   })
@@ -125,8 +127,10 @@ describe(`TemperatureSlider`, () => {
     expect(range()?.value).toBe(interpolate ? `640` : `3`)
     fire(readout(), `change`, ``)
     expect(state.temperature).toBe(interpolate ? 640 : 600)
-    fire(readout(), `change`, `2000`) // past the data: clamped / snapped to the top
+    expect(readout()?.value).toBe(interpolate ? `640` : `600`) // rejected text is reverted
+    for (const _ of [1, 2]) fire(readout(), `change`, `2000`) // past the data: clamped to the top
     expect(state.temperature).toBe(900)
+    expect(readout()?.value).toBe(`900`) // even when the clamp lands on the current T
     expect(document.querySelector(`.slider-range`)?.textContent?.trim()).toBe(`300–900 K`)
   })
 })

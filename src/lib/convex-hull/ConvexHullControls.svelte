@@ -216,7 +216,9 @@
 {#snippet toggle_buttons(options: readonly ToggleOption[])}
   {#each options as [text, tip, active, select] (text)}
     <button
+      type="button"
       class={[`toggle-btn`, active && `active`]}
+      aria-pressed={active}
       onclick={select}
       {@attach tooltip({ content: tip })}
     >

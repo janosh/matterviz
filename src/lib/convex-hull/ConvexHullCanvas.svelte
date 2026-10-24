@@ -281,11 +281,7 @@
   {@attach wheel_gate}
   aria-label="{dim === 3 ? `Ternary` : `Quaternary`} convex hull visualization"
 >
-  {@render children?.({
-    model: hull_data.model,
-    highlighted_entries,
-    selected_entry,
-  })}
+  {@render children?.({ model: hull_data.model, highlighted_entries, selected_entry })}
   <canvas
     bind:this={canvas}
     tabindex="0"

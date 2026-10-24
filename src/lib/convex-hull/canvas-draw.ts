@@ -627,9 +627,8 @@ export function draw_hull_faces(
     }
     // Screen-space linear gradient solving a*x + b*y + c = alpha at the three projected vertices
     const [point_1, point_2, point_3] = face.projected
-    const [value_a_1, value_a_2, value_a_3] = face.vertices.map((vertex) =>
-      norm_alpha(vertex.e_form_per_atom ?? 0),
-    )
+    const alphas = face.vertices.map((vertex) => norm_alpha(vertex.e_form_per_atom ?? 0))
+    const [value_a_1, value_a_2, value_a_3] = alphas
     const det =
       point_1.x * (point_2.y - point_3.y) +
       point_2.x * (point_3.y - point_1.y) +
@@ -645,11 +644,8 @@ export function draw_hull_faces(
         value_a_3 * (point_2.x - point_1.x)) /
       det
     const mag = Math.hypot(coef_a, coef_b)
-    const [alpha_min, alpha_max] = [
-      Math.min(value_a_1, value_a_2, value_a_3),
-      Math.max(value_a_1, value_a_2, value_a_3),
-    ]
-    const alpha_mean = (value_a_1 + value_a_2 + value_a_3) / 3
+    const [alpha_min, alpha_max] = array_extent(alphas)
+    const alpha_mean = mean(alphas)
     let fill: string | CanvasGradient = add_alpha(color, alpha_mean)
     if (Math.abs(det) > 1e-9 && mag > 1e-9) {
       const [dir_x, dir_y] = [coef_a / mag, coef_b / mag]
@@ -682,12 +678,8 @@ type QuaternaryCamera = HullCamera & { rotation_x: number; rotation_y: number } 
 export type EnergyRange = { min: number; max: number; center: number; z_scale: number }
 
 export function energy_range_of(entries: readonly ConvexHullEntry[]): EnergyRange {
-  let [min, max] = [0, 0]
-  for (const entry of entries) {
-    const e_form = entry.e_form_per_atom ?? 0
-    min = Math.min(min, e_form)
-    max = Math.max(max, e_form)
-  }
+  // 0 included: the elemental references the funnel descends from
+  const [min, max] = array_extent([0, ...entries.map((entry) => entry.e_form_per_atom ?? 0)])
   return { min, max, center: (min + max) / 2, z_scale: 0.75 / Math.max(max - min, 0.001) }
 }
 
@@ -834,23 +826,17 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
     ]
   },
   // Dashed prism: triangles at E_form = 0 and at the lowest E_form, joined at the corners
-  outline_edges({ min: e_form_min }) {
-    const edges: [Vec3, Vec3][] = []
-    for (const [idx, [vector_x, vector_y]] of TRIANGLE_VERTICES.entries()) {
-      const [size_x, size_y] = TRIANGLE_VERTICES[(idx + 1) % 3]
-      for (const z_plane of [0, e_form_min]) {
-        edges.push([
-          [vector_x, vector_y, z_plane],
-          [size_x, size_y, z_plane],
-        ])
-      }
-      edges.push([
-        [vector_x, vector_y, 0],
-        [vector_x, vector_y, e_form_min],
-      ])
-    }
-    return edges
-  },
+  outline_edges: ({ min: e_form_min }) =>
+    TRIANGLE_VERTICES.flatMap(([corner_x, corner_y], idx): [Vec3, Vec3][] => {
+      const [next_x, next_y] = TRIANGLE_VERTICES[(idx + 1) % 3]
+      const corner = (z_plane: number): Vec3 => [corner_x, corner_y, z_plane]
+      const next = (z_plane: number): Vec3 => [next_x, next_y, z_plane]
+      return [
+        [corner(0), next(0)],
+        [corner(e_form_min), next(e_form_min)],
+        [corner(0), corner(e_form_min)],
+      ]
+    }),
   draw_axes(ctx, camera, view) {
     // Hide the energy axis in near-top-down views where its ticks collapse to a point
     if (Math.abs(camera.elevation) < MIN_ELEV_FOR_ENERGY_AXIS) return
@@ -867,12 +853,8 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
     // elevation/azimuth (degrees) → Three.js camera position + up vector
     to_three({ elevation, azimuth }) {
       const [elev, azim] = [to_radians(elevation), to_radians(azimuth)]
-      const [sin_el, cos_el, sin_az, cos_az] = [
-        Math.sin(elev),
-        Math.cos(elev),
-        Math.sin(azim),
-        Math.cos(azim),
-      ]
+      const [sin_el, cos_el] = [Math.sin(elev), Math.cos(elev)]
+      const [sin_az, cos_az] = [Math.sin(azim), Math.cos(azim)]
       return {
         position: [
           -sin_az * sin_el * GIZMO_CAM_DIST,
@@ -886,12 +868,9 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
       const dist = Math.hypot(cam_x, cam_y, cam_z)
       if (dist < 1e-6) return
       const elev_rad = Math.acos(clamp(cam_z / dist, -1, 1))
-      const sin_elev = Math.sin(elev_rad)
+      // sin(elev) >= 0 on acos' [0, π], so dividing both atan2 arguments by it changes nothing
       camera.azimuth =
-        Math.abs(sin_elev) > 1e-6
-          ? (Math.atan2(-cam_x / (dist * sin_elev), -cam_y / (dist * sin_elev)) * 180) /
-            Math.PI
-          : 0
+        Math.sin(elev_rad) > 1e-6 ? (Math.atan2(-cam_x, -cam_y) * 180) / Math.PI : 0
       camera.elevation = (elev_rad * 180) / Math.PI
       center_ternary_camera(camera, view_scale)
     },

@@ -481,6 +481,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       onclick: handle_click,
       ondblclick: handle_double_click,
       onwheel: handle_wheel,
+      // the pointer leaving (onto the chrome or off the page) ends the hover and its preview
+      onmouseleave: () => selection.set_hover(null),
     },
     // document-level so drags continue outside the canvas; attached individually
     // since <svelte:document> rejects spread attributes
