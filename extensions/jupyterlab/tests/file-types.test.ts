@@ -28,19 +28,8 @@ const match_kind = (filename: string): `text` | `base64` | null => {
 describe(`file type patterns`, () => {
   // VASP's canonical filenames carry no extension, so only the pattern can claim
   // them. Both cases, since tooling around VASP is inconsistent about it.
-  test.each([
-    `POSCAR`,
-    `CONTCAR`,
-    `XDATCAR`,
-    `OUTCAR`,
-    `CHGCAR`,
-    `LOCPOT`,
-    `ELFCAR`,
-    `PARCHG`,
-    `AECCAR0`,
-    `AECCAR1`,
-    `AECCAR2`,
-  ])(`%s, upper and lower case -> text`, (stem) => {
+  const vasp_names = `POSCAR CONTCAR XDATCAR OUTCAR CHGCAR LOCPOT ELFCAR PARCHG AECCAR0 AECCAR1 AECCAR2`
+  test.each(vasp_names.split(` `))(`%s, upper and lower case -> text`, (stem) => {
     expect(match_kind(stem)).toBe(`text`)
     expect(match_kind(stem.toLowerCase())).toBe(`text`)
   })

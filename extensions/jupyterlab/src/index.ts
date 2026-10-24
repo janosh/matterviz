@@ -106,11 +106,10 @@ export class MatterVizViewer extends Widget {
     const filename = PathExt.basename(this.context.path)
     const is_base64 = this.context.contentsModel?.format === `base64`
     const content = this.context.model.toString()
-    // JupyterLab omits `size` from contentsModel. Text counts UTF-8 bytes, while
-    // base64's final padding characters do not encode payload bytes.
-    const padding = content.endsWith(`==`) ? 2 : content.endsWith(`=`) ? 1 : 0
+    // JupyterLab omits `size` from contentsModel. Text counts UTF-8 bytes; base64 counts
+    // only payload characters: the server wraps it in 76-column lines, and `=` pads.
     const byte_size = is_base64
-      ? Math.floor((content.length * 3) / 4) - padding
+      ? Math.floor(((content.length - (content.match(/[\s=]/g)?.length ?? 0)) * 3) / 4)
       : new Blob([content]).size
 
     if (byte_size > MAX_PARSE_BYTES) {

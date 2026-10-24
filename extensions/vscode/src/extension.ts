@@ -63,8 +63,10 @@ type ExtensionContextLike =
 export const active_watchers = new Map<string, vscode.FileSystemWatcher>()
 // Track webviews subscribed to each watched file path
 export const active_watcher_subscribers = new Map<string, Set<WebviewLike>>()
-// Host-indexed trajectory runs by file path, serving request_frame until disposed
-export const active_runs = new Map<string, TrajectoryRun>()
+// Host-indexed trajectory runs by file path, shared by its panels and serving request_frame.
+// Stored as the loading promise, so concurrent requests share one read of the file and a file
+// change (dispose_run) evicts a load still in flight instead of letting its stale run land.
+export const active_runs = new Map<string, Promise<TrajectoryRun>>()
 // Track auto-render timers to clear them on deactivate
 export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
 // Track active panels by URI to prevent duplicate opens
@@ -198,13 +200,11 @@ export const get_file = async (uri?: vscode.Uri): Promise<FileData> => {
 
 // The user's matterviz.theme, with `auto` resolved from VS Code's active color theme. The
 // setting is an enum in package.json, so an invalid value only arrives through a hand-edited
-// settings.json; surface it rather than silently rendering some other theme.
+// settings.json: like read_explicit_overrides, it is reported and VS Code's theme applies.
 export const get_theme = (): ThemeName => {
   const theme_setting = vscode.workspace
     .getConfiguration(`matterviz`)
     .get<string>(`theme`, AUTO_THEME)
-  // Same policy as read_explicit_overrides: a bad settings.json value is reported and the
-  // default (follow VS Code's color theme) applies instead of breaking the viewer
   if (!is_valid_theme_mode(theme_setting)) {
     const allowed = [AUTO_THEME, ...Object.keys(COLOR_THEMES)].join(`, `)
     console.warn(
@@ -295,6 +295,10 @@ export const create_html = (
   const moyo_wasm_url = wasm_filename && dist_uri(`assets`, wasm_filename)
 
   const webview_data = { ...data, moyo_wasm_url }
+  // Every `<` goes in as a JSON unicode escape, which parses back to `<`: escaping only `</`
+  // let file content like `<!--<script>` put the HTML parser in double-escaped script state,
+  // where the closing tag ends nothing and the rest of the page is swallowed
+  const bootstrap_json = JSON.stringify(webview_data).replaceAll(`<`, `\\u003c`)
   // Set color-scheme before main-*.css loads, or its light-dark() tokens flash white/light
   // until JS applies the theme. Must be a style attribute, not a <style> rule: it needs to
   // outrank main-*.css's own same-specificity `:root, :host { color-scheme: light dark }`.
@@ -310,7 +314,7 @@ export const create_html = (
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     ${css_href ? `<link rel="stylesheet" href="${css_href}">` : ``}
     <script nonce="${nonce}">
-      window.matterviz_data=${JSON.stringify(webview_data).replaceAll(`</`, `<\\/`)};
+      window.matterviz_data=${bootstrap_json};
     </script>
   </head>
   <body>
@@ -339,15 +343,8 @@ export const handle_msg = async (
     try {
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
-      const filename = path.basename(file_path)
-      const indexed_file = await read_indexed_trajectory_file(file_path, filename)
-      // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
-      const run = await open_trajectory(indexed_file.data, {
-        filename: indexed_file.filename,
-        index_above_bytes: 0,
-      })
-      active_runs.get(file_path)?.dispose()
-      active_runs.set(file_path, run)
+      // Panels on one file share its load (see active_runs)
+      const run = await (active_runs.get(file_path) ?? load_run(file_path))
       stream_plot_rows(run, file_path, webview)
       webview.postMessage({ command, request_id, run_summary: summarize_run(run) })
     } catch (error) {
@@ -360,7 +357,7 @@ export const handle_msg = async (
       const { request_id, file_path, frame_index } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
-      const run = active_runs.get(file_path)
+      const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
       const frame = await materialize_frame_result(run.read_frame(frame_index))
       webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
@@ -429,10 +426,10 @@ function start_watching_file(file_path: string, webview: WebviewLike): void {
     active_watcher_subscribers.set(file_path, subscribers)
     if (active_watchers.has(file_path)) return // reuse the existing shared watcher
 
-    // Create a new file system watcher for this specific file
-    const file_dir = vscode.Uri.file(path.dirname(file_path))
+    // The file itself as the base with `*` watches exactly it: a basename used as the pattern
+    // is a glob, so names like Si_{111}.cif or run[1].xyz never matched their own file
     const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(file_dir, path.basename(file_path)),
+      new vscode.RelativePattern(vscode.Uri.file(file_path), `*`),
     )
 
     // Read once on change, then fan out to every subscribed panel
@@ -510,8 +507,26 @@ function stop_watching_file(file_path: string, webview?: WebviewLike): void {
 }
 
 const dispose_run = (file_path: string): void => {
-  active_runs.get(file_path)?.dispose()
+  // a failed load already reported its error to the requesting webview
+  active_runs.get(file_path)?.then(
+    (run) => run.dispose(),
+    () => {},
+  )
   active_runs.delete(file_path)
+}
+
+const load_run = (file_path: string): Promise<TrajectoryRun> => {
+  const loading = (async () => {
+    const indexed = await read_indexed_trajectory_file(file_path, path.basename(file_path))
+    // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
+    return open_trajectory(indexed.data, { filename: indexed.filename, index_above_bytes: 0 })
+  })()
+  active_runs.set(file_path, loading)
+  // Forget a failed load so the next request retries, unless a file change replaced it
+  void loading.catch(
+    () => active_runs.get(file_path) === loading && active_runs.delete(file_path),
+  )
+  return loading
 }
 
 // Resolve which ViewColumn to use based on user settings and explicit override
@@ -823,8 +838,7 @@ export const deactivate = (): void => {
   active_watchers.forEach((watcher) => watcher.dispose())
   active_watchers.clear()
   active_watcher_subscribers.clear()
-  for (const run of active_runs.values()) run.dispose()
-  active_runs.clear()
+  for (const file_path of [...active_runs.keys()]) dispose_run(file_path)
   active_auto_render_panels.clear()
   output_channel?.dispose()
   output_channel = undefined
