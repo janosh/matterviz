@@ -936,23 +936,26 @@ describe(`ScatterPlot`, () => {
       expect(arc).not.toHaveBeenCalled()
     })
 
-    // a line-only copy painted first ties every marker: its unmarked points must not win clicks
+    // a line-only copy painted first ties every marker: its unmarked points must not win clicks.
+    // With the tooltip off and no hover/plot-click handler, the pointer still arms the cursor.
     test.each([
-      { desc: `markers only`, series: [dense], series_idx: 0 },
+      { desc: `markers only`, series: [dense], series_idx: 0, tooltip_off: false },
       {
         desc: `under a line-only copy`,
         series: [{ ...dense, markers: `line` as const }, dense],
         series_idx: 1,
+        tooltip_off: false,
       },
+      { desc: `tooltip off`, series: [dense], series_idx: 0, tooltip_off: true },
     ])(
       `keeps canvas markers with click handlers and routes clicks to the nearest marker ($desc)`,
-      async ({ series, series_idx }) => {
+      async ({ series, series_idx, tooltip_off }) => {
         const on_point_click = vi.fn()
         const on_plot_click = vi.fn()
         const plot = await mount_canvas({
           series,
           on_point_click,
-          on_plot_click,
+          ...(tooltip_off ? { tooltip: false } : { on_plot_click }),
           point_tween: { duration: 0 },
           // its overlay tells us where marker 4 sits on screen
           selected_point: { series_idx, point_idx: 4 },
@@ -2007,6 +2010,20 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `x`)).toContain(`100`)
     expect(axis_tick_labels(plot, `y`)).toContain(`50`)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(0)
+  })
+
+  // A point missing one coordinate is not drawn, so neither its other coordinate nor its error
+  // bar may stretch that axis to where nothing is plotted
+  test(`points missing a coordinate widen no axis`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      ...bare,
+      series: [
+        { x: [0, 10, 1000], y: [0, 1, NaN], x_error: [0, 0, 5000] },
+        { x: [5, NaN], y: [0.5, 500], y_error: [0.1, 5000] },
+      ],
+    })
+    const max_tick = (side: `x` | `y`) => Math.max(...axis_tick_labels(plot, side).map(Number))
+    expect([max_tick(`x`), max_tick(`y`)]).toEqual([10, 1])
   })
 
   // One line per enabled axis whose range spans zero (ending at zero counts), at the zero

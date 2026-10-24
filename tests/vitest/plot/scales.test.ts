@@ -227,7 +227,6 @@ describe(`scales`, () => {
     test.each<{
       values: number[]
       error: ErrorValues | undefined
-      count?: number
       expected: ReturnType<typeof empty_extent>
     }>([
       {
@@ -258,10 +257,9 @@ describe(`scales`, () => {
       {
         values: [1, 2, 3],
         error: 1,
-        count: 2,
-        expected: { min: 0, max: 3, min_positive: 1, n_finite: 4 },
+        expected: { min: 0, max: 4, min_positive: 1, n_finite: 6 },
       },
-      { values: [-0], error: 0, count: 3, expected: { min: -0, max: -0, n_finite: 2 } },
+      { values: [-0], error: 0, expected: { min: -0, max: -0, n_finite: 2 } },
       { values: [1, 2], error: undefined, expected: { n_finite: 0 } },
       // a null gap is no point, though null - 1 is a finite -1
       {
@@ -269,9 +267,9 @@ describe(`scales`, () => {
         error: 1,
         expected: { min: 99, max: 103, min_positive: 99, n_finite: 4 },
       },
-    ])(`accumulates error-bar bounds for %j`, ({ values, error, count, expected }) => {
+    ])(`accumulates error-bar bounds for %j`, ({ values, error, expected }) => {
       const extent = empty_extent()
-      accumulate_error_extent(extent, values, error, count)
+      accumulate_error_extent(extent, values, error)
       expect(extent).toEqual(expected)
       accumulate_extent(extent, [-10, 100])
       expect(extent).toEqual({
@@ -280,6 +278,14 @@ describe(`scales`, () => {
         min_positive: Math.min(expected.min_positive ?? Infinity, 100),
         n_finite: expected.n_finite + 2,
       })
+    })
+
+    // untyped hosts can send one side of an asymmetric error, which crashed per point
+    test(`rejects a one-sided asymmetric error`, () => {
+      const error = { upper: 1 } as unknown as ErrorValues
+      expect(() => accumulate_error_extent(empty_extent(), [1], error)).toThrow(
+        `Asymmetric error needs both upper and lower, got {"upper":1}`,
+      )
     })
 
     // Three strokes (cap, bar, cap) with the two coordinates' roles swapped between axes
@@ -317,7 +323,7 @@ describe(`scales`, () => {
           ...(positive_values.length && { min_positive: Math.min(...positive_values) }),
         })
       }
-      const acc = accumulate_extent(empty_extent(), [4, 8], 5)
+      const acc = accumulate_extent(empty_extent(), [4, 8])
       accumulate_extent(acc, [-1, 2])
       expect(acc).toEqual({ min: -1, max: 8, min_positive: 2, n_finite: 4 })
 
@@ -589,6 +595,23 @@ describe(`scales`, () => {
       expect(result.map((tick) => new Date(tick))).toEqual(
         expected.map((parts) => new Date(...parts)),
       )
+    })
+
+    // Stepping overshoots by float dust (3 * 0.1 = 0.30000000000000004), which PlotAxis's
+    // in-domain check would hide, and a whole step past max is no tick
+    test.each<[Vec2, number, number[]]>([
+      [[0, 0.3], -0.1, [0, 0.1, 0.2, 0.3]],
+      // the min bound on a step multiple keeps its tick: -0.3 / 0.1 rounds to -2.9999999999999996
+      [[-0.3, 0], -0.1, [-0.3, -0.2, -0.1, 0]],
+      [[0.7, 1.3], -0.3, [0.9, 1.2]],
+      [[0.7, 1], -0.1, [0.7, 0.8, 0.9, 1]],
+      [[-1000, -997.001], -1, [-1000, -999, -998]],
+      [[-2, -0.001], -1, [-2, -1]],
+    ])(`interval ticks stay inside %j at step %d`, (domain, ticks, expected) => {
+      const scale = scaleLinear().domain(domain).range([0, 500])
+      const result = generate_ticks(domain, `linear`, ticks, scale)
+      expect(result.every((tick) => math.in_range(tick, domain))).toBe(true)
+      expect(result.map((tick) => Number(tick.toFixed(12)))).toEqual(expected)
     })
 
     const fine_steps = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]

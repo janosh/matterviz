@@ -119,6 +119,27 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
   return out
 }
 
+// A layer's coordinates with each point missing either one masked to NaN: such a point is not
+// drawn (materialize_series_points drops it), so neither coordinate nor its error bar may widen
+// an axis. The masked copies are made at the first gap, so gap-free layers come back as given.
+export function drawn_xy(
+  xs: readonly number[],
+  ys: readonly number[],
+): { x: readonly number[]; y: readonly number[]; n_drawn: number } {
+  let masked: { x: number[]; y: number[] } | null = null
+  let n_drawn = 0
+  for (let idx = 0; idx < xs.length; idx++) {
+    if (Number.isFinite(xs[idx]) && Number.isFinite(ys[idx])) {
+      n_drawn++
+      continue
+    }
+    masked ??= { x: xs.slice(), y: ys.slice() }
+    masked.x[idx] = NaN
+    masked.y[idx] = NaN
+  }
+  return { ...(masked ?? { x: xs, y: ys }), n_drawn }
+}
+
 // Filter materialized series to the points within bounds. Full x/y arrays are kept on each
 // returned series (via spread) so connecting lines can continue through off-range points;
 // only filtered_data (rendered markers) is range-limited. Takes the output of

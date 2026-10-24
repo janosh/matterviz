@@ -1058,6 +1058,31 @@ describe(`BinnedScatterPlot`, () => {
     expect(document.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
   })
 
+  // A view change moves other data under the resting cursor: the tooltip must not keep
+  // describing the bin or point it was resolved against
+  test.each([`density`, `points`] as const)(
+    `%s tooltip clears when the view changes without a pointer move`,
+    async (mode) => {
+      const state = $state(structuredClone(unit_axes))
+      mount_plot(
+        bind_props(
+          {
+            series: [{ x: [0.5], y: [0.5] }],
+            ...(mode === `density` ? density_mode({ bin_px: 100 }) : point_mode()),
+          },
+          state,
+        ),
+      )
+      await settle()
+      hover_plot(420, mode === `density` ? 247 : 280)
+      await tick()
+      expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+      state.x_axis = { range: [0, 2] }
+      await settle()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    },
+  )
+
   test(`matches density tooltip background to hovered bin color`, async () => {
     const on_point_click = vi.fn()
     mount_plot({

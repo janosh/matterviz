@@ -13,7 +13,6 @@
     BasePlotProps,
     ColorScale,
     InternalPoint,
-    LayerZIndex,
     LegendConfig,
     LegendItem,
     LineStyle,
@@ -53,14 +52,12 @@
   import { assign_axes } from '#lib/plot/core/axis-assignment.js'
   import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     collect_scale_ranges,
     create_axis_scales,
     resolve_color_scale,
     to_color_scale_config,
     create_size_scale,
-    log_floor_scale,
   } from '#lib/plot/core/scales.js'
   import { has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
@@ -238,7 +235,9 @@
     legend_visible: () => should_show_legend,
     legend_items: () => legend_data,
     marginals: () => resolved_marginals,
-    ref_lines: () => indexed_ref_lines,
+    ref_lines: () => ref_lines,
+    on_ref_line_click: () => on_ref_line_click,
+    on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
     // Categorical axes show one tick per category instead of generated numeric ticks
@@ -262,8 +261,6 @@
     container: () => frame.svg_element,
     items: () => [internal_series, frame.ranges.current],
   })
-
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
 
   // Horizontal bars take their value axis from the x axis they were assigned
   const HORIZONTAL_VALUE_AXIS = { x: `y`, x2: `y2` } as const
@@ -314,10 +311,13 @@
   let series_patterns = $derived(
     internal_series.map((srs) =>
       srs.pattern && srs.render_mode !== `line`
-        ? resolve_pattern(srs.pattern, srs.color ?? bar_state.color, pattern_uid)
+        ? resolve_pattern(srs.pattern, series_color(srs), pattern_uid)
         : null,
     ),
   )
+  // A series' own color, else the line or bar style's
+  const series_color = (srs: Pick<BarSeries, `color` | `render_mode`>): string =>
+    srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color)
   const has_finite_point = ({ x: coord_x, y: coord_y }: BarSeries<Metadata>) =>
     coord_x.some((x_value, idx) => Number.isFinite(x_value) && Number.isFinite(coord_y[idx]))
   // Only show secondary axes for series with at least one drawable bar. Horizontal bars put
@@ -346,26 +346,31 @@
     resolve_legend_visibility(show_legend, legend, series.length),
   )
 
-  // Value-axis pixel scale. Log axes clamp to the axis minimum so bars grow from the plot
-  // edge instead of vanishing with NaN geometry.
-  const value_scale_for = (
-    axis: `x` | `x2` | `y` | `y2`,
-    scales: typeof frame.scales = frame.scales,
-  ): ((val: number) => number) =>
-    log_floor_scale(scales[axis], plot_axes[axis].scale_type, frame.ranges.current[axis])
+  // Value axis a series draws against: y/y2 for vertical bars, x/x2 for horizontal ones
+  const value_axis_key = (
+    srs: Pick<BarSeries, `x_axis` | `y_axis`>,
+  ): `x` | `x2` | `y` | `y2` =>
+    vertical ? (srs.y_axis === `y2` ? `y2` : `y`) : srs.x_axis === `x2` ? `x2` : `x`
+  // A series' category (x/x2 vertical, y horizontal) and value pixel scales. Log value axes
+  // clamp to the axis minimum so bars grow from the plot edge instead of vanishing with NaN
+  // geometry.
+  const series_scales = (
+    srs: Pick<BarSeries, `x_axis` | `y_axis`>,
+    scales: typeof frame.scales,
+  ) => {
+    return {
+      cat_scale: scales[vertical ? (srs.x_axis === `x2` ? `x2` : `x`) : `y`],
+      val_scale: frame.value_scale(value_axis_key(srs), scales),
+    }
+  }
 
   // Rendering, clipping and decoration placement use the same series geometry.
   const bar_geometry = (
     srs: (typeof internal_series)[number],
     series_idx: number,
-    cat_scale: (value: number) => number = vertical
-      ? frame.scales[srs.x_axis === `x2` ? `x2` : `x`]
-      : frame.scales.y,
-    val_scale: (value: number) => number = value_scale_for(
-      vertical ? (srs.y_axis === `y2` ? `y2` : `y`) : srs.x_axis === `x2` ? `x2` : `x`,
-    ),
+    scales: typeof frame.scales = frame.scales,
   ) => {
-    const layout = { series_idx, mode, orientation, group_info, cat_scale, val_scale }
+    const layout = { series_idx, mode, orientation, group_info, ...series_scales(srs, scales) }
     const bases = mode === `stacked` ? stacked_offsets[series_idx] : undefined
     return (bar_idx: number) =>
       compute_bar_rect({
@@ -413,14 +418,10 @@
       const obstacle_series: (ObstacleSeries | Obstacle)[] = []
       internal_series.forEach((srs, series_idx) => {
         if (!(srs.visible ?? true)) return
-        const x_axis_key = srs.x_axis === `x2` ? `x2` : `x`
-        const y_axis_key = srs.y_axis === `y2` ? `y2` : `y`
-        const category_scale = vertical ? scales[x_axis_key] : scales.y
-        const value_scale = value_scale_for(vertical ? y_axis_key : x_axis_key, scales)
-
         if (srs.render_mode === `line`) {
+          const { cat_scale, val_scale } = series_scales(srs, scales)
           const points = srs.x.map((x_val, point_idx) => {
-            const [cat_px, val_px] = [category_scale(x_val), value_scale(srs.y[point_idx])]
+            const [cat_px, val_px] = [cat_scale(x_val), val_scale(srs.y[point_idx])]
             const [px_x, px_y] = vertical ? [cat_px, val_px] : [val_px, cat_px]
             return { x: clamp01(px_x / base_w), y: clamp01(px_y / base_h) }
           })
@@ -428,7 +429,7 @@
           return
         }
 
-        const rect_at = bar_geometry(srs, series_idx, category_scale, value_scale)
+        const rect_at = bar_geometry(srs, series_idx, scales)
         srs.x.forEach((x_val, bar_idx) => {
           if (!Number.isFinite(x_val) || !Number.isFinite(srs.y[bar_idx])) return
           const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
@@ -456,7 +457,7 @@
       y: vertical ? undefined : srs.x,
       // magnitude weights so negative bars still yield a monotonic cumulative (CDF) marginal
       weight: srs.y.map((value) => Math.abs(value)),
-      color: srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color),
+      color: series_color(srs),
       label: srs.label,
       visible: srs.visible ?? true,
       x_axis: srs.x_axis,
@@ -484,16 +485,15 @@
 
   // Legend swatch: bars show a square, line series a line and/or their first point's symbol
   const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
-    const series_color =
-      srs.color ?? (srs.render_mode === `line` ? line_state.color : bar_state.color)
+    const color = series_color(srs)
     if (srs.render_mode !== `line`) {
-      return { symbol_type: `Square`, symbol_color: series_color, pattern: srs.pattern }
+      return { symbol_type: `Square`, symbol_color: color, pattern: srs.pattern }
     }
     const point_style = first_point_style(srs)
     const first_color_value = srs.color_values?.[0]
     return {
       ...(has_marker(srs, `line`)
-        ? { line_color: series_color, line_dash: srs.line_style?.line_dash }
+        ? { line_color: color, line_dash: srs.line_style?.line_dash }
         : {}),
       ...(has_marker(srs, `points`)
         ? {
@@ -501,7 +501,7 @@
             symbol_color:
               first_color_value != null
                 ? color_scale_fn(first_color_value)
-                : (point_style?.fill ?? series_color),
+                : (point_style?.fill ?? color),
           }
         : {}),
     }
@@ -582,10 +582,10 @@
     return pointer && nearest_line_point(points, pointer)
   }
 
-  const line_point_fill = (point: LineSeriesPoint, series_color: string): string =>
+  const line_point_fill = (point: LineSeriesPoint, line_color: string): string =>
     point.color_value != null
       ? color_scale_fn(point.color_value)
-      : (point.point_style?.fill ?? series_color)
+      : (point.point_style?.fill ?? line_color)
 
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
@@ -631,15 +631,6 @@
   }
 </script>
 
-{#snippet ref_lines_layer(coord_z: LayerZIndex)}
-  <ReferenceLinesLayer
-    {frame}
-    z={coord_z}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
-{/snippet}
-
 <CartesianFrame
   empty={!series_in.some((srs) => srs.y.length)}
   {frame}
@@ -674,7 +665,7 @@
   {#snippet layers()}
     {@const pad = frame.pad}
     <!-- Reference lines: below grid (rendered before axes which contain grid lines) -->
-    {@render ref_lines_layer(`below-grid`)}
+    <ReferenceLinesLayer {frame} z="below-grid" />
 
     <PlotAxes
       {frame}
@@ -692,7 +683,7 @@
       <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
-    {@render ref_lines_layer(`below-lines`)}
+    <ReferenceLinesLayer {frame} z="below-lines" />
 
     <!-- Continuous line/bar geometry stays clipped to the plot. Discrete line markers are
          range-filtered by center and may extend into the padding without losing part of the icon. -->
@@ -707,7 +698,7 @@
             opacity={frame.series_opacity(series_idx)}
           >
             {#if is_line}
-              {@const color = srs.color ?? line_state.color}
+              {@const color = series_color(srs)}
               {@const stroke_width = srs.line_style?.stroke_width ?? line_state.width}
               {@const line_dash = srs.line_style?.line_dash ?? `none`}
               {@const y_scale = srs.y_axis === `y2` ? frame.scales.y2 : frame.scales.y}
@@ -723,12 +714,8 @@
                 cat_y_scale: frame.scales.y,
               })}
               <!-- Use exact scale endpoints to avoid fractional-padding ULP gaps. -->
-              {@const points_in_view = points.filter(
-                ({ x: coord_x, y: coord_y }) =>
-                  coord_x >= pad.l &&
-                  coord_x <= frame.width - pad.r &&
-                  coord_y >= pad.t &&
-                  coord_y <= frame.height - pad.b,
+              {@const points_in_view = points.filter((point) =>
+                frame.in_plot(point.x, point.y),
               )}
               {@const polyline_str =
                 show_line && points.length > 1
@@ -862,7 +849,7 @@
             {:else}
               {@const rect_at = bar_geometry(srs, series_idx)}
               {#each rendered_bars[series_idx] as bar_idx (bar_idx)}
-                {@const color = srs.color ?? bar_state.color}
+                {@const color = series_color(srs)}
                 {@const click_bar = (event: MouseEvent | KeyboardEvent) =>
                   on_bar_click?.({ ...get_bar_data(series_idx, bar_idx, color), event })}
                 {@const {
@@ -895,9 +882,10 @@
                     role="button"
                     tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
                     {...{ [ROVING_ATTR]: roving_key(series_idx, bar_idx) }}
-                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `series`}: ${
-                      srs.y[bar_idx]
-                    }`}
+                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `Series ${series_idx + 1}`}: ${format_value_or_num(
+                      srs.y[bar_idx],
+                      plot_axes[value_axis_key(srs)].format,
+                    )}`}
                     onfocusin={(evt) => {
                       roving.focusin(evt)
                       // Focus is the keyboard's hover: without this the tooltip never
@@ -965,8 +953,8 @@
       {/each}
     </g>
 
-    {@render ref_lines_layer(`below-points`)}
-    {@render ref_lines_layer(`above-all`)}
+    <ReferenceLinesLayer {frame} z="below-points" />
+    <ReferenceLinesLayer {frame} z="above-all" />
   {/snippet}
 
   {#snippet controls(toggle_props, show_controls)}

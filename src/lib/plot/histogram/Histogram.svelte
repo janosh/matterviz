@@ -5,7 +5,6 @@
   import type {
     BarStyle,
     HistogramHandlerProps,
-    LayerZIndex,
     PanConfig,
     RefLine,
     RefLineEvent,
@@ -32,7 +31,6 @@
     resolve_legend_visibility,
   } from '#lib/plot/core/utils/series-visibility.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     accumulate_extent,
     create_axis_scales,
@@ -206,8 +204,6 @@
   const resolved_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-
   // === Series selection ===
   const active_series_idx = $derived(
     (series[selected_series_idx]?.visible ?? true) && series[selected_series_idx]
@@ -225,6 +221,7 @@
   })
 
   // Value extents per x axis and whether any sample lands on a secondary axis, in one pass.
+  // Samples with a non-finite weight are dropped by binning, so they widen no axis either.
   let axis_data = $derived.by(() => {
     const x1_extent = empty_extent()
     const x2_extent = empty_extent()
@@ -232,7 +229,11 @@
     for (const { series_data: srs } of selected_series_entries) {
       const extent = srs.x_axis === `x2` ? x2_extent : x1_extent
       const previous_count = extent.n_finite
-      accumulate_extent(extent, srs.values)
+      const { values, weights } = srs
+      const counted = weights
+        ? values.filter((_, idx) => Number.isFinite(weights[idx]))
+        : values
+      accumulate_extent(extent, counted)
       has_y2_points ||= srs.y_axis === `y2` && extent.n_finite > previous_count
     }
     return { x1_extent, x2_extent, has_y2_points }
@@ -333,7 +334,9 @@
     legend_visible: () => should_show_legend,
     legend_items: () => legend_data,
     marginals: () => resolved_marginals,
-    ref_lines: () => indexed_ref_lines,
+    ref_lines: () => ref_lines,
+    on_ref_line_click: () => on_ref_line_click,
+    on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
     clip_id_prefix: `histogram-clip`,
@@ -507,15 +510,6 @@
   }
 </script>
 
-{#snippet ref_lines_layer(coord_z: LayerZIndex)}
-  <ReferenceLinesLayer
-    {frame}
-    z={coord_z}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
-{/snippet}
-
 <CartesianFrame
   empty={!series_in.some((srs) => srs.values.length)}
   {frame}
@@ -544,10 +538,10 @@
   {...rest}
 >
   {#snippet layers()}
-    {@render ref_lines_layer(`below-grid`)}
+    <ReferenceLinesLayer {frame} z="below-grid" />
     <ZeroLines {frame} display={resolved_display} />
-    {@render ref_lines_layer(`below-lines`)}
-    {@render ref_lines_layer(`below-points`)}
+    <ReferenceLinesLayer {frame} z="below-lines" />
+    <ReferenceLinesLayer {frame} z="below-points" />
 
     <PlotAxes {frame} display={resolved_display} {axis_loading} {on_axis_change} />
 
@@ -616,7 +610,7 @@
       </g>
     {/each}
 
-    {@render ref_lines_layer(`above-all`)}
+    <ReferenceLinesLayer {frame} z="above-all" />
   {/snippet}
 
   {#snippet controls(toggle_props, show_controls)}

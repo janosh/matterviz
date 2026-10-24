@@ -11,10 +11,8 @@ import type { RunningExtent } from '#lib/plot/core/scales.js'
 
 // Scalar (same for every point), per-point array, or asymmetric. Deliberately the same
 // shape `ErrorBand.error` accepts, so moving between a ribbon and bars is a prop rename.
-export type ErrorValues =
-  | number
-  | readonly number[]
-  | { upper: number | readonly number[]; lower: number | readonly number[] }
+type AsymmetricError = { upper: number | readonly number[]; lower: number | readonly number[] }
+export type ErrorValues = number | readonly number[] | AsymmetricError
 
 // Resolved magnitudes below and above the point, both non-negative
 export type PointError = Vec2
@@ -32,10 +30,18 @@ export const error_bar_path = (span: Vec2, across: number, vertical: boolean, ca
 
 // Narrowing on the object shape, not on Array.isArray: that widens a `readonly number[]`
 // to `any[]` and forces a cast at every use.
-const is_asymmetric = (
-  error: ErrorValues,
-): error is { upper: number | readonly number[]; lower: number | readonly number[] } =>
+const is_asymmetric = (error: ErrorValues): error is AsymmetricError =>
   typeof error === `object` && !Array.isArray(error)
+
+// [lower, upper]. Untyped (Python/JSON) hosts can send one side only, which would crash per point
+const two_sides = (error: AsymmetricError): AsymmetricError[`lower`][] => {
+  if (error.lower == null || error.upper == null) {
+    throw new TypeError(
+      `Asymmetric error needs both upper and lower, got ${JSON.stringify(error)}`,
+    )
+  }
+  return [error.lower, error.upper]
+}
 
 const side_getter = (side: number | readonly number[]): ((idx: number) => number) => {
   if (typeof side === `number`) {
@@ -56,7 +62,7 @@ export function error_getter(
 ): ((idx: number) => PointError) | null {
   if (error == null) return null
   if (is_asymmetric(error)) {
-    const [get_lower, get_upper] = [side_getter(error.lower), side_getter(error.upper)]
+    const [get_lower, get_upper] = two_sides(error).map(side_getter)
     return (idx) => [get_lower(idx), get_upper(idx)]
   }
   const get = side_getter(error)
@@ -66,15 +72,21 @@ export function error_getter(
   }
 }
 
-// Lengths of the per-point arrays an ErrorValues carries: none for a scalar or absent
-// error, one for a symmetric array, and up to two for an asymmetric pair. Both sides are
-// reported because they are indexed independently - a `lower` one entry short of `upper`
-// would otherwise pass the alignment check and read as zero for the missing point,
-// silently mislabeling that point's uncertainty.
-export function error_lengths(error: ErrorValues | undefined | null): number[] {
+// assert_aligned_lengths entries for the per-point arrays an ErrorValues carries, labelled
+// `name` for a symmetric array and `name.upper`/`name.lower` per asymmetric side: none for a
+// scalar or absent error. Both sides are reported because they are indexed independently - a
+// `lower` one entry short of `upper` would otherwise pass the alignment check and read as zero
+// for the missing point, silently mislabeling that point's uncertainty.
+export function error_lengths(
+  error: ErrorValues | undefined | null,
+  name: string,
+): [string, { length: number }][] {
   if (error == null || typeof error === `number`) return []
-  const sides = is_asymmetric(error) ? [error.upper, error.lower] : [error]
-  return sides.filter((side) => Array.isArray(side)).map((side) => side.length)
+  if (!is_asymmetric(error)) return [[name, { length: error.length }]]
+  return ([`upper`, `lower`] as const).flatMap((side) => {
+    const values = error[side]
+    return Array.isArray(values) ? [[`${name}.${side}`, { length: values.length }]] : []
+  })
 }
 
 // The reach of the bars, so an axis can be ranged to include them: a point at 10 ± 5
@@ -83,16 +95,15 @@ export function accumulate_error_extent(
   extent: RunningExtent,
   values: readonly number[],
   error: ErrorValues | undefined | null,
-  count = values.length,
 ): void {
   if (error == null) return
-  const sides = is_asymmetric(error) ? [error.lower, error.upper] : [error, error]
+  const sides = is_asymmetric(error) ? two_sides(error) : [error, error]
   let min_positive = extent.min_positive ?? Infinity
   // Visit lower bounds before upper bounds, preserving signed-zero ties. Accumulate
   // directly instead of allocating two bound arrays and a pair for every point.
   for (let side_idx = 0; side_idx < 2; side_idx++) {
     const get = side_getter(sides[side_idx])
-    for (let idx = 0; idx < count; idx++) {
+    for (let idx = 0; idx < values.length; idx++) {
       const value = side_idx === 0 ? values[idx] - get(idx) : values[idx] + get(idx)
       // a gap (null/NaN) plus its error is still no point: null - 1 is a finite -1
       if (!Number.isFinite(values[idx]) || !Number.isFinite(value)) continue

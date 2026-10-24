@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PlotTitleBlockLayout, PlotTitleConfig } from '#lib/plot/core/plot-title.js'
   import { resolve_plot_title } from '#lib/plot/core/plot-title.js'
-  import { invalidate_text_metrics_after_fonts_ready } from '#lib/plot/core/text-metrics.js'
+  import { on_fonts_ready } from '#lib/plot/core/text-metrics.js'
   import { onMount } from 'svelte'
 
   let {
@@ -17,19 +17,7 @@
   } = $props()
 
   let font_metrics_revision = $state(0)
-  onMount(() => {
-    let mounted = true
-    // Fonts that never resolve keep the fallback measurements, which is fine
-    void invalidate_text_metrics_after_fonts_ready().then(
-      (revision) => {
-        if (mounted) font_metrics_revision = revision
-      },
-      () => {},
-    )
-    return () => {
-      mounted = false
-    }
-  })
+  onMount(() => on_fonts_ready((revision) => (font_metrics_revision = revision)))
 
   // Re-measured when geometry changes or a metrics revision (fonts ready) invalidates the cache
   const layout = $derived.by(() => {

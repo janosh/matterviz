@@ -8,6 +8,7 @@ import type { LegendFill } from '#lib/plot/scatter/scatter-data.js'
 import {
   build_fill_legend_items,
   build_series_legend_items,
+  drawn_xy,
   filter_series_to_ranges,
   lookalike_legend_label,
   materialize_series_points,
@@ -171,22 +172,22 @@ describe(`filter_series_to_ranges`, () => {
     [
       `short y_error`,
       { id: `energy`, x: [0, 1], y: [2, 3], y_error: [1] },
-      `x=2, y=2, y_error[0]=1`,
+      `x=2, y=2, y_error=1`,
     ],
     [
       `long upper error`,
       { id: `energy`, x: [0, 1], y: [2, 3], y_error: { upper: [1, 2, 3], lower: 1 } },
-      `x=2, y=2, y_error[0]=3`,
+      `x=2, y=2, y_error.upper=3`,
     ],
     [
       `long lower error`,
       { id: `energy`, x: [0, 1], y: [2, 3], y_error: { upper: 1, lower: [1, 2, 3] } },
-      `x=2, y=2, y_error[0]=3`,
+      `x=2, y=2, y_error.lower=3`,
     ],
     [
       `unequal error sides`,
       { id: `energy`, x: [0, 1], y: [2, 3], y_error: { upper: [1, 2], lower: [1, 2, 3] } },
-      `x=2, y=2, y_error[0]=2, y_error[1]=3`,
+      `x=2, y=2, y_error.upper=2, y_error.lower=3`,
     ],
   ])(`rejects %s`, (_name, series, lengths, group = ``) => {
     expect(() => filter_to_ranges([series], ranges)).toThrow(
@@ -234,6 +235,15 @@ describe(`filter_series_to_ranges`, () => {
       { point_style: { fill: `red` }, metadata: { tag: `shared` } },
     ])
   })
+})
+
+// Extents read only drawable points; a complete layer is passed through without copying
+test(`drawn_xy masks points missing a coordinate and passes complete layers through`, () => {
+  const xs = [0, 1, 2]
+  expect(drawn_xy(xs, [3, NaN, 5])).toEqual({ x: [0, NaN, 2], y: [3, NaN, 5], n_drawn: 2 })
+  const complete = drawn_xy(xs, [3, 4, 5])
+  expect([complete.x, complete.n_drawn]).toEqual([xs, 3])
+  expect(complete.x).toBe(xs)
 })
 
 describe(`build_series_legend_items and build_fill_legend_items`, () => {

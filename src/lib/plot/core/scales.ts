@@ -341,17 +341,22 @@ export function generate_ticks(
     return generate_arcsinh_ticks(min_val, max_val, threshold, positive_count ?? default_count)
   }
 
-  // Linear scale with interval (negative number indicates interval). The end is padded by a
-  // tenth of an interval so a max that lands on a tick (modulo float dust) still gets it.
+  // Linear scale with interval (negative number indicates interval): every multiple k of the
+  // step inside the domain. k comes from the bounds in step units, where float error is about
+  // |k| * 2e-16, so a 1e-9 step tolerance (far below anything visible) keeps a bound that
+  // lands on a multiple (-0.3 / 0.1 = -2.9999999999999996) up to |k| ~ 1e6. Ticks divide by
+  // the inverse step when it is an integer, so 0.1 steps read 0.3, not 3 * 0.1 = 0.30000000000000004
+  // (PlotAxis hides labels outside the domain); clamping absorbs dust on other steps.
   if (typeof ticks_option === `number` && ticks_option < 0) {
     const interval = Math.abs(ticks_option)
-    const start = Math.ceil(min_val / interval) * interval
-    assert_tick_count(
-      (max_val - start) / interval + 1,
-      `a tick interval of ${interval}`,
-      max_val - min_val,
-    )
-    return range(start, max_val + interval * 0.1, interval)
+    const first = Math.ceil(min_val / interval - 1e-9)
+    const last = Math.floor(max_val / interval + 1e-9)
+    assert_tick_count(last - first + 1, `a tick interval of ${interval}`, max_val - min_val)
+    const inverse = 1 / interval
+    const tick_at = Number.isInteger(inverse)
+      ? (step: number) => step / inverse
+      : (step: number) => step * interval
+    return range(first, last + 1).map((step) => math.clamp(tick_at(step), min_val, max_val))
   }
 
   return scale_fn.ticks(positive_count ?? default_count).map(Number)
@@ -367,16 +372,15 @@ export type RunningExtent = {
 
 export const empty_extent = (): RunningExtent => ({ n_finite: 0 })
 
-// Fold values into acc without concatenating series or allocating point objects. count may
-// exceed values.length so paired x/y axes retain the same point count.
+// Fold values into acc without concatenating series or allocating point objects
 export function accumulate_extent(
   acc: RunningExtent,
   values: ArrayLike<number | null | undefined>,
-  count = values.length,
 ): RunningExtent {
-  const n_values = Math.max(0, count)
   let min_positive = acc.min_positive ?? Infinity
-  for (let idx = 0; idx < n_values; idx++) {
+  // indexed, not for-of: typed and other array-likes (dense series) carry no iterator type
+  const { length } = values
+  for (let idx = 0; idx < length; idx++) {
     const val = values[idx]
     if (typeof val !== `number` || !Number.isFinite(val)) continue
     acc.n_finite++

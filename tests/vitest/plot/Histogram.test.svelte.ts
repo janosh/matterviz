@@ -311,6 +311,21 @@ describe(`Histogram`, () => {
     expect(Math.max(...get_tick_numbers(`y`))).toBeGreaterThanOrEqual(4)
   })
 
+  // bin_values drops a sample whose weight is non-finite, so it must not widen the value axis,
+  // and a series with no countable sample doesn't open the secondary axes
+  test(`samples with non-finite weights widen no axis`, async () => {
+    await mount_histogram({
+      series: [
+        { values: [0, 1, 2, 1000], weights: [1, 1, 1, NaN] },
+        { values: [50, 60], weights: [NaN, Infinity], x_axis: `x2`, y_axis: `y2` },
+      ],
+      mode: `overlay`,
+    })
+    expect(Math.max(...get_tick_numbers(`x`))).toBeLessThan(10)
+    expect(document.querySelector(`g.x2-axis`)).toBeNull()
+    expect(document.querySelector(`g.y2-axis`)).toBeNull()
+  })
+
   test(`legend writes hidden IDs while preserving input samples and colors`, async () => {
     const first_series = { values: [1, 1, 2, 3, 5], label: `A`, color: `red` }
     const second_series = { values: [2, 4, 4, 6, 9], label: `B`, color: `blue` }

@@ -5,6 +5,7 @@ import { color as d3_color } from 'd3-color'
 import type {
   SankeyData,
   SankeyLinkHandlerProps,
+  SankeyNode,
   SankeyNodeHandlerProps,
 } from '#lib/plot/index.js'
 import type { ComponentProps } from 'svelte'
@@ -222,6 +223,28 @@ describe(`Sankey`, () => {
     expect(
       [...plot.querySelectorAll<SVGGElement>(`.node`)].map((node) => node.style.opacity),
     ).toEqual([`0.3`, `1`, `1`, `0.3`])
+  })
+
+  // aria-labels are read aloud: a node summing 0.1 + 0.2 reads as 0.3, formatted like the tooltip
+  test.each([
+    [undefined, [`C: 0.3`, `flow A to C: 0.1`]],
+    [`.0%`, [`C: 30%`, `flow A to C: 10%`]],
+  ])(`aria-labels format flow values with value_format=%s`, async (value_format, expected) => {
+    const plot = await mount_sized_sankey({
+      data: {
+        nodes: [{ label: `A` }, { label: `B` }, { label: `C` }],
+        links: [
+          { source: 0, target: 2, value: 0.1 },
+          { source: 1, target: 2, value: 0.2 },
+        ],
+      },
+      on_node_click: vi.fn(),
+      on_link_click: vi.fn(),
+      ...(value_format && { value_format }),
+    })
+    const node_c = plot.querySelector(`.nodes rect[aria-label^="C"]`)
+    const link = plot.querySelector(`.links path`)
+    expect([node_c, link].map((mark) => mark?.getAttribute(`aria-label`))).toEqual(expected)
   })
 
   test.each([`Enter`, ` `])(`click and %j activate marks`, async (key) => {
@@ -453,6 +476,44 @@ describe(`bucket_sankey_data`, () => {
     expect(bucketed.links).toHaveLength(2) // t1 + t2 folded
     expect(source_colors(bucketed)).toEqual(source_colors(graph))
     warn.mockRestore()
+  })
+
+  // An id-less node is keyed by its index, so another node's explicit id equal to it is
+  // ambiguous: folding used to turn B -> A into the cycle A -> A. Like series keys, such data
+  // fails early in both steps, and the chart shows the error; with A given an id it folds.
+  test(`an id-less node whose index is another node's id is rejected`, async () => {
+    const nodes: SankeyNode[] = [
+      { id: 1, label: `B` },
+      { label: `A` },
+      { id: `t1` },
+      { id: `t2` },
+      { id: `t3` },
+    ]
+    const links = [
+      { source: 1, target: `A`, value: 5 },
+      { source: `A`, target: `t1`, value: 10 },
+      { source: `A`, target: `t2`, value: 0.1 },
+      { source: `A`, target: `t3`, value: 0.1 },
+    ]
+    const clash = /Sankey node 1 \("A"\) has no id, but another node's id is 1/
+    const dims = { width: 400, height: 300 }
+    expect(() => compute_sankey_layout({ nodes, links }, dims)).toThrow(clash)
+    expect(() => bucket_sankey_data({ nodes, links }, { min_fraction: 0.05 })).toThrow(clash)
+    const plot = await mount_sized_sankey({ data: { nodes, links }, min_fraction: 0.05 })
+    expect(query(plot, `.viewer-error`).textContent).toMatch(clash)
+
+    const valid = { nodes: nodes.with(1, { id: `A`, label: `A` }), links }
+    const folded = compute_sankey_layout(
+      bucket_sankey_data(valid, { min_fraction: 0.05 }),
+      dims,
+    )
+    expect(
+      folded.links.map(({ source, target, value }) => [source.id, target.id, value]),
+    ).toEqual([
+      [1, `A`, 5],
+      [`A`, `t1`, 10],
+      [`A`, `A/Other`, 0.2],
+    ])
   })
 
   // the real `src/Other` folds away here, but the synthetic id must still be unique

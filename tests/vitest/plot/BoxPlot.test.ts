@@ -800,3 +800,26 @@ test(`BoxPlot CSV export lists each box's summary statistics`, async () => {
   expect(header.endsWith(`,outliers`)).toBe(true)
   expect(row.startsWith(`Box A,`)).toBe(true)
 })
+
+// The tick of an unlabeled box used to read its 0-based index while legend and CSV said
+// `Box 1`, and its aria-label read `box 1: , median`
+test(`unlabeled boxes are numbered from 1 in ticks, legend, aria-labels and CSV`, async () => {
+  const on_export = vi.fn()
+  const plot = await mount_sized_box_plot({
+    series: [{ y: [1, 2, 3] }, { y: [4, 5, 6] }],
+    show_legend: true,
+    on_export,
+  })
+  const ticks = [...plot.querySelectorAll(`g.x-axis g.tick text`)]
+  expect(ticks.map((node) => node.textContent?.trim())).toEqual([`Box 1`, `Box 2`])
+  const aria_labels = (selector: string) =>
+    [...plot.querySelectorAll(selector)].map((node) => node.getAttribute(`aria-label`))
+  expect(aria_labels(`.legend-item`)).toEqual([
+    `Toggle visibility for Box 1`,
+    `Toggle visibility for Box 2`,
+  ])
+  expect(aria_labels(`g.box-series`)).toEqual([`Box 1, median 2`, `Box 2, median 5`])
+  const { data } = await export_via_pane(on_export, `CSV`, plot)
+  const rows = String(data).split(`\n`).slice(1)
+  expect(rows.map((row) => row.split(`,`)[0])).toEqual([`Box 1`, `Box 2`])
+})

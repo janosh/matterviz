@@ -193,11 +193,7 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
       const values = series[key]
       return Array.isArray(values) && values.length > 0 ? [[key, values] as const] : []
     }),
-    ...([`x_error`, `y_error`] as const).flatMap((key) =>
-      error_lengths(series[key]).map(
-        (length, side) => [`${key}[${side}]`, { length }] as const,
-      ),
-    ),
+    ...([`x_error`, `y_error`] as const).flatMap((key) => error_lengths(series[key], key)),
   ])
   assert_aligned_lengths(where, {
     x: coord_x,

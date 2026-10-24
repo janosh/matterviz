@@ -50,12 +50,18 @@ import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
 import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
 import type { PlotTitleProp } from '#lib/plot/core/plot-title.js'
 import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-title.js'
-import type { IndexedRefLine } from '#lib/plot/core/reference-line.js'
-import { solve_reference_annotations } from '#lib/plot/core/reference-line.js'
-import { create_axis_scales, generate_ticks } from '#lib/plot/core/scales.js'
+import { index_ref_lines, solve_reference_annotations } from '#lib/plot/core/reference-line.js'
+import { create_axis_scales, generate_ticks, log_floor_scale } from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
 import { measured_axis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
-import type { AxisConfig, AxisRanges, LegendConfig, PanConfig } from '#lib/plot/core/types.js'
+import type {
+  AxisConfig,
+  AxisRanges,
+  LegendConfig,
+  PanConfig,
+  RefLine,
+  RefLineEvent,
+} from '#lib/plot/core/types.js'
 import { unique_id } from '#lib/plot/core/utils.js'
 import { untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
@@ -95,7 +101,10 @@ interface CartesianFrameOptions {
   // Estimated legend size used until the element has been measured
   legend_footprint_fallback?: { width: number; height: number }
   marginals: () => ResolvedMarginals
-  ref_lines: () => readonly IndexedRefLine[]
+  // Raw `ref_lines` prop and its handlers; the frame indexes and filters them itself
+  ref_lines?: () => readonly RefLine[] | undefined
+  on_ref_line_click?: () => ((event: RefLineEvent) => void) | undefined
+  on_ref_line_hover?: () => ((event: RefLineEvent | null) => void) | undefined
   pan: () => PanConfig | undefined
   facet_layout: () => FacetLayoutContext | undefined
   // Ranges the padding pass measures against inside a facet grid. Defaults to
@@ -516,6 +525,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       scales: { x: scales.x, x2: scales[coord_x], y: scales.y, y2: scales[coord_y_2] },
     }
   })
+  const ref_lines = $derived(index_ref_lines(opts.ref_lines?.()))
   const decoration_solution = $derived(
     solve_reference_annotations({
       base_solution: base_decoration_solution,
@@ -523,7 +533,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       width,
       height,
       obstacles_norm: opts.obstacles(),
-      lines: opts.ref_lines(),
+      lines: ref_lines,
       ...ref_line_axes,
     }),
   )
@@ -668,7 +678,13 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       hovered_ref_line_idx = idx
     },
     get ref_lines() {
-      return opts.ref_lines()
+      return ref_lines
+    },
+    get on_ref_line_click() {
+      return opts.on_ref_line_click?.()
+    },
+    get on_ref_line_hover() {
+      return opts.on_ref_line_hover?.()
     },
     // Ranges/scales the reference lines resolve against (x2/y2 alias x/y until they carry data)
     get ref_line_axes() {
@@ -709,6 +725,16 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get scales() {
       return scales
     },
+    // Pixel scale of a value axis whose log floor holds bar bases and whisker lows at the
+    // axis minimum instead of NaN geometry (`scales` for a tweened or facet-local set)
+    value_scale: (axis: FacetAxis, axis_scales = scales) =>
+      log_floor_scale(axis_scales[axis], opts.axes()[axis].scale_type, ranges.current[axis]),
+    // Whether a pixel lies in the plot area, edges included
+    in_plot: (coord_x: number, coord_y: number): boolean =>
+      coord_x >= pad.l &&
+      coord_x <= width - pad.r &&
+      coord_y >= pad.t &&
+      coord_y <= height - pad.b,
     get ticks() {
       return ticks
     },

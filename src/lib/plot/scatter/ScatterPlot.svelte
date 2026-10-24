@@ -121,7 +121,6 @@
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
   import type { Sides } from '#lib/plot/core/layout.js'
-  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     CANVAS_MARKER_THRESHOLD,
     type CanvasMarker,
@@ -134,6 +133,7 @@
   import {
     build_fill_legend_items,
     build_series_legend_items,
+    drawn_xy,
     lookalike_legend_label,
     filter_series_to_ranges,
     legend_row_dedupe,
@@ -409,26 +409,17 @@
       const x_ax = srs.x_axis === `x2` ? `x2` : `x`
       const series_y_axis = srs.y_axis === `y2` ? `y2` : `y`
       const [x_extent, y_extent] = [extents[x_ax], extents[series_y_axis]]
-      for (const { x: layer_x, y: layer_y } of [srs, ...(srs.line_underlays ?? [])]) {
-        // x drives the point count: a y array of a different length is read through x.length
-        const n_points = layer_x.length
-        accumulate_extent(x_extent, layer_x, n_points)
-        accumulate_extent(y_extent, layer_y, n_points)
+      for (const layer of [srs, ...(srs.line_underlays ?? [])]) {
+        const drawn = drawn_xy(layer.x, layer.y)
+        accumulate_extent(x_extent, drawn.x)
+        accumulate_extent(y_extent, drawn.y)
         // Error bars must fit in the axis range or caps get clipped (underlays have none)
-        if (layer_x === srs.x) {
-          accumulate_error_extent(x_extent, srs.x, srs.x_error, n_points)
-          accumulate_error_extent(y_extent, srs.y, srs.y_error, n_points)
+        if (layer === srs) {
+          accumulate_error_extent(x_extent, drawn.x, srs.x_error)
+          accumulate_error_extent(y_extent, drawn.y, srs.y_error)
         }
-        const needs_axis_probe: boolean =
-          (x_ax === `x2` && !has_x2_points) || (series_y_axis === `y2` && !has_y2_points)
-        const has_drawable_point: boolean =
-          needs_axis_probe &&
-          layer_x.some(
-            (x_value, point_idx) =>
-              Number.isFinite(x_value) && Number.isFinite(layer_y[point_idx]),
-          )
-        has_x2_points ||= x_ax === `x2` && has_drawable_point
-        has_y2_points ||= series_y_axis === `y2` && has_drawable_point
+        has_x2_points ||= x_ax === `x2` && drawn.n_drawn > 0
+        has_y2_points ||= series_y_axis === `y2` && drawn.n_drawn > 0
       }
     }
     return { ...extents, has_x2_points, has_y2_points }
@@ -480,7 +471,9 @@
     decorations: () => [...colorbar.items, ...size_legend_deco.items],
     exclusion_rects: () => [...colorbar.pinned_rects, ...size_legend_deco.pinned_rects],
     marginals: () => resolved_marginals,
-    ref_lines: () => indexed_ref_lines,
+    ref_lines: () => ref_lines,
+    on_ref_line_click: () => on_ref_line_click,
+    on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
     // Alt+drag selects instead of zooming. Hit-tested in screen space so it works for any
@@ -1135,8 +1128,6 @@
     return groups
   })
 
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-
   // Snap marks while panning: animating leaves them trailing the axes while hover
   // hit-testing already uses live scales
   const effective_point_tween = $derived(
@@ -1642,15 +1633,6 @@
   {/each}
 {/snippet}
 
-{#snippet ref_lines_layer(coord_z: LayerZIndex)}
-  <ReferenceLinesLayer
-    {frame}
-    z={coord_z}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
-{/snippet}
-
 <CartesianFrame
   empty={!series_in.some((srs) => srs?.x.length) &&
     !fill_regions.length &&
@@ -1671,7 +1653,10 @@
   {marginal_series}
   on_mouse_enter={() => (hovered = true)}
   idle_cursor={plot_click_armed ? `pointer` : `crosshair`}
-  on_mouse_move={tooltip !== false || on_point_hover || on_plot_click
+  on_mouse_move={tooltip !== false ||
+  on_point_hover ||
+  on_plot_click ||
+  canvas_points_clickable
     ? (evt) => {
         // Only find the closest point when not actively dragging
         if (!pan_zoom.drag_start && !pan_zoom.is_panning) queue_mouse_move(evt)
@@ -1697,7 +1682,7 @@
 >
   {#snippet layers()}
     {@render fill_regions_layer(fills_by_z[`below-grid`])}
-    {@render ref_lines_layer(`below-grid`)}
+    <ReferenceLinesLayer {frame} z="below-grid" />
 
     <!-- No axis spines; the unit rides on the first y tick label -->
     <PlotAxes
@@ -1740,7 +1725,7 @@
     <ZeroLines {frame} display={final_display} />
 
     {@render fill_regions_layer(fills_by_z[`below-lines`])}
-    {@render ref_lines_layer(`below-lines`)}
+    <ReferenceLinesLayer {frame} z="below-lines" />
 
     <!-- Density contours sit under lines and markers alike -->
     {#if density_config}
@@ -1825,7 +1810,7 @@
     {/each}
 
     {@render fill_regions_layer(fills_by_z[`below-points`])}
-    {@render ref_lines_layer(`below-points`)}
+    <ReferenceLinesLayer {frame} z="below-points" />
 
     {#if use_canvas_markers}
       <!-- Keep the canvas in SVG paint order: above lines, below SVG marker overlays and
@@ -1913,7 +1898,7 @@
     {/if}
 
     {@render fill_regions_layer(fills_by_z[`above-all`])}
-    {@render ref_lines_layer(`above-all`)}
+    <ReferenceLinesLayer {frame} z="above-all" />
   {/snippet}
 
   {#snippet controls(toggle_props, show_controls)}

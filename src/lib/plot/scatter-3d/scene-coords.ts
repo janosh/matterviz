@@ -4,11 +4,7 @@
 import { HOVER_SHELL_SCALE } from '#lib/scene/index.js'
 import type { DataSeries3D, Surface3DConfig } from '#lib/plot/core/types.js'
 import type { RunningExtent } from '#lib/plot/core/scales.js'
-import {
-  accumulate_extent,
-  empty_extent,
-  nice_range_from_extent,
-} from '#lib/plot/core/scales.js'
+import { empty_extent, nice_range_from_extent } from '#lib/plot/core/scales.js'
 import { Plane, Vector3 } from 'three/webgpu'
 import type { Point3D, Vec2, Vec3 } from '#lib/math.js'
 
@@ -121,20 +117,31 @@ export function get_3d_auto_ranges(
   series: readonly DataSeries3D[],
   surface_samples: readonly { x: number; y: number; z: number }[],
 ) {
+  // Only what the scene draws widens the axes: a legend-hidden series draws nothing, and a
+  // point missing any coordinate is left out of both the markers and the lines. One pass per
+  // series updating the extents in place: no per-point allocation on million-point clouds.
   const extents = { x: empty_extent(), y: empty_extent(), z: empty_extent() }
-  for (const srs of series) {
-    // A legend-hidden series draws nothing, so it must not widen the axes either
-    if (srs.visible === false) continue
-    for (const axis of [`x`, `y`, `z`] as const) accumulate_extent(extents[axis], srs[axis])
+  const widen = (extent: RunningExtent, value: number) => {
+    extent.n_finite++
+    if (extent.min === undefined || value < extent.min) extent.min = value
+    if (extent.max === undefined || value > extent.max) extent.max = value
   }
-  // min_positive also lands in the extents but only matters on log axes, unused here
-  for (const axis of [`x`, `y`, `z`] as const) {
-    accumulate_extent(
-      extents[axis],
-      surface_samples.map((point) => point[axis]),
-    )
+  const add_point = (coord_x: number, coord_y: number, coord_z: number) => {
+    if (!Number.isFinite(coord_x) || !Number.isFinite(coord_y) || !Number.isFinite(coord_z))
+      return
+    widen(extents.x, coord_x)
+    widen(extents.y, coord_y)
+    widen(extents.z, coord_z)
   }
-  const auto_range = (extent: RunningExtent): Vec2 =>
-    nice_range_from_extent(extent, [null, null], `linear`, 0.05)
-  return { x: auto_range(extents.x), y: auto_range(extents.y), z: auto_range(extents.z) }
+  for (const { x: xs, y: ys, z: zs, visible } of series) {
+    if (visible === false) continue
+    for (let idx = 0; idx < xs.length; idx++) add_point(xs[idx], ys[idx], zs[idx])
+  }
+  for (const { x: coord_x, y: coord_y, z: coord_z } of surface_samples) {
+    add_point(coord_x, coord_y, coord_z)
+  }
+  // min_positive is left unset: it only matters on log axes, which the scene never uses
+  const auto_range = (axis: `x` | `y` | `z`): Vec2 =>
+    nice_range_from_extent(extents[axis], [null, null], `linear`, 0.05)
+  return { x: auto_range(`x`), y: auto_range(`y`), z: auto_range(`z`) }
 }

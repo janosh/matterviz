@@ -1169,13 +1169,17 @@ describe(`scene coordinates`, () => {
     expect(sampled[0]).toBe(points[0])
     expect(sampled.at(-1)).toBe(points[count - 1])
     expect(points).toHaveLength(count + 2)
-    // a legend-hidden series draws nothing, so it must not widen the axes either
+    // a legend-hidden series draws nothing, and neither does a point missing a coordinate,
+    // so they must not widen the axes either
     const hidden = { x: [1e9], y: [1e9], z: [1e9], visible: false }
+    const partial = { x: [0, 1e9], y: [0, 1e9], z: [0, NaN] }
     const expected = { x: [0, 220_000], y: [-220_000, 20_000], z: [0, 450_000] }
-    expect(get_3d_auto_ranges([basic_series, hidden], sampled)).toEqual(expected)
+    expect(get_3d_auto_ranges([basic_series, hidden, partial], sampled)).toEqual(expected)
+    // zero-span extents get nice padding; a sample missing a coordinate is skipped whole
     // oxfmt-ignore
-    const degen = [{ x: -0, y: NaN, z: Infinity }, { x: 0, y: 2, z: NaN }]
-    expect(get_3d_auto_ranges([], degen)).toEqual({ x: [-1, 1], y: [1.8, 2.2], z: [0, 1] })
+    const degen = [{ x: -0, y: 2, z: 2 }, { x: 0, y: 2, z: 2 }, { x: 50, y: NaN, z: 9 }]
+    expect(get_3d_auto_ranges([], degen)).toEqual({ x: [-1, 1], y: [1.8, 2.2], z: [1.8, 2.2] })
+    expect(get_3d_auto_ranges([], [])).toEqual({ x: [0, 1], y: [0, 1], z: [0, 1] })
   })
 
   test(`surface bounds sample the drawn vertex grid`, () => {

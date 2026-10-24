@@ -146,17 +146,26 @@
     links: data.links,
   })
 
-  // Long-tail folding runs before layout, so d3-sankey only sees the graph the user looks at
-  let bucketed_data = $derived(bucket_sankey_data(colored_data, { min_fraction, max_links }))
+  // Long-tail folding runs before layout, so d3-sankey only sees the graph the user looks at.
+  // Invalid graphs (cycles, unknown or clashing node refs) from either step render an error
+  // message in place of the diagram instead of crashing the host page.
+  const as_error = (err: unknown) => ({ nodes: [], links: [], error: to_error(err).message })
+  let folded = $derived.by(() => {
+    try {
+      return { error: null, ...bucket_sankey_data(colored_data, { min_fraction, max_links }) }
+    } catch (err) {
+      return as_error(err)
+    }
+  })
+  let bucketed_data: SankeyData<Metadata> = $derived(folded)
   // Indexed by the folded graph's node_idx, which is what the layout reports; reading
   // the pre-fold arrays here attached colors and metadata to the wrong records
   let node_colors = $derived(
     bucketed_data.nodes.map((node, idx) => node.color ?? plot_color(idx)),
   )
 
-  // Invalid graphs (cycles, unknown node refs) render an error message in place of the
-  // diagram instead of crashing the host page
   let layout = $derived.by(() => {
+    if (folded.error) return { nodes: [], links: [], error: folded.error }
     try {
       return {
         error: null,
@@ -171,7 +180,7 @@
         }),
       }
     } catch (err) {
-      return { nodes: [], links: [], error: to_error(err).message }
+      return as_error(err)
     }
   })
 
@@ -279,6 +288,8 @@
   const node_name = (node: { id: string | number; label?: string }): string =>
     node.label ?? `${node.id}`
   const node_text = (node: PositionedNode): string => node_label?.(node) ?? node_name(node)
+  // Tooltips and aria-labels read flows alike: summed values carry float noise (0.1 + 0.2)
+  const fmt_value = (value: number): string => format_value(value, value_format)
 
   // === Export ===
   // Data as laid out (after small-link bucketing): links as a source/target/value table,
@@ -517,7 +528,7 @@
                 role={on_link_click ? `button` : undefined}
                 tabindex={on_link_click ? 0 : undefined}
                 aria-label={on_link_click
-                  ? `flow ${node_name(link.source)} to ${node_name(link.target)}: ${link.value}`
+                  ? `flow ${node_name(link.source)} to ${node_name(link.target)}: ${fmt_value(link.value)}`
                   : undefined}
                 style:cursor={on_link_click ? `pointer` : `default`}
               />
@@ -545,7 +556,9 @@
                   rx="1"
                   role={on_node_click ? `button` : undefined}
                   tabindex={on_node_click ? 0 : undefined}
-                  aria-label={on_node_click ? `${node_name(node)}: ${node.value}` : undefined}
+                  aria-label={on_node_click
+                    ? `${node_name(node)}: ${fmt_value(node.value)}`
+                    : undefined}
                   style:cursor={on_node_click ? `pointer` : `default`}
                 />
               {/if}
@@ -584,13 +597,13 @@
           {@render tooltip(tip_info)}
         {:else if tip_info.type === `node`}
           <strong>{node_name(tip_info)}</strong>: <TooltipValue
-            value={format_value(tip_info.value, value_format)}
+            value={fmt_value(tip_info.value)}
           />
         {:else}
           {@const { source_idx, target_idx, source_label, target_label } = tip_info}
           {source_label ?? node_by_idx.get(source_idx)?.id} &rarr; {target_label ??
             node_by_idx.get(target_idx)?.id}: <TooltipValue
-            value={format_value(tip_info.value, value_format)}
+            value={fmt_value(tip_info.value)}
           />
         {/if}
       </PlotTooltip>

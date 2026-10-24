@@ -13,7 +13,6 @@
     BoxHandlerProps,
     BoxPlotSeries,
     BoxPointMode,
-    LayerZIndex,
     LegendConfig,
     Orientation,
     PanConfig,
@@ -53,7 +52,6 @@
   } from '#lib/plot/core/utils/series-visibility.js'
   import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout.js'
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
-  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     create_focus_exit,
     is_activation_key,
@@ -65,7 +63,6 @@
     accumulate_extent,
     create_axis_scales,
     empty_extent,
-    log_floor_scale,
     nice_range_from_extent,
   } from '#lib/plot/core/scales.js'
   import { get_scale_type_name } from '#lib/plot/core/types.js'
@@ -263,7 +260,9 @@
     legend_visible: () => should_show_legend,
     legend_items: () => legend_data,
     marginals: () => resolved_marginals,
-    ref_lines: () => indexed_ref_lines,
+    ref_lines: () => ref_lines,
+    on_ref_line_click: () => on_ref_line_click,
+    on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
     // Categorical axes plot one tick per slot and label it with the category name
@@ -274,10 +273,10 @@
     clip_id_prefix: `box-clip`,
   })
 
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-
   // === Box stats + slot model ===
   const box_color = (idx: number): string => series[idx]?.color ?? plot_color(idx)
+  // Unlabeled boxes are numbered from 1 alike in slot ticks, legend, aria-labels and export
+  const default_box_label = (idx: number): string => `Box ${idx + 1}`
   // Per-series hatch/texture tiles over the box/violin fill (null: plain); ids scoped to
   // this instance so several box plots on a page never share <pattern>s
   const pattern_uid = unique_id(`box`)
@@ -311,7 +310,7 @@
     const labels: string[] = []
     const category_slots = new Map<string, number>()
     const slots = series.map(({ category, label }, idx) => {
-      if (category == null) return labels.push(label ?? `${idx}`) - 1
+      if (category == null) return labels.push(label ?? default_box_label(idx)) - 1
       const slot = category_slots.get(category) ?? labels.push(category) - 1
       category_slots.set(category, slot)
       return slot
@@ -387,15 +386,11 @@
 
   // === Strip / swarm sample points ===
   // Marker centers are range-bounded; their full circles may reach into the plot padding
-  const in_plot = ([px_x, px_y]: Vec2): boolean => {
-    const { pad, width, height } = frame
-    return px_x >= pad.l && px_x <= width - pad.r && px_y >= pad.t && px_y <= height - pad.b
-  }
+  const in_plot = ([px_x, px_y]: Vec2): boolean => frame.in_plot(px_x, px_y)
   // Screen positions of each visible box's samples, inside the plot area only. Packed in px,
   // so they re-lay out on resize/zoom; a log value axis drops non-positive samples.
   let box_points = $derived.by(() => {
     const map = new Map<number, Vec2[]>()
-    const cat_scale = vertical ? frame.scales.x : frame.scales.y
     for (const { series: srs, idx, slot } of visible_boxes) {
       const mode = point_mode(srs)
       if (mode === `none`) continue
@@ -426,6 +421,9 @@
     }
     return map
   })
+
+  // Category-axis pixel scale (x for vertical boxes, y for horizontal ones)
+  const cat_scale = $derived(vertical ? frame.scales.x : frame.scales.y)
 
   // Drawn box width (slot fraction); a box inside a violin defaults narrower
   const box_width_of = (srs: BoxPlotSeries<Metadata>, idx: number): number =>
@@ -521,14 +519,14 @@
     with_obstacle_frame(frame, visible_boxes.length > 0, () => {
       const { current } = frame.ranges
       const norm = create_axis_scales(plot_axes, current, { l: 0, r: 0, t: 0, b: 0 }, 1, 1)
-      const cat_scale = vertical ? norm.x : norm.y
+      const norm_cat = vertical ? norm.x : norm.y
       return visible_boxes.flatMap(({ series: srs, idx, slot, stats }) => {
         if (!Number.isFinite(stats.median)) return []
         const val_scale = box_val_scale(srs, norm)
         const bar = (width: number, low: number, high: number) =>
           bar_obstacles(
             vertical,
-            [cat_scale(slot - width / 2), cat_scale(slot + width / 2)],
+            [norm_cat(slot - width / 2), norm_cat(slot + width / 2)],
             [val_scale(low), val_scale(high)],
           )
         const kde = violin_kdes.get(idx)
@@ -570,14 +568,8 @@
   )
   // Log-safe value scale for a box (vertical -> y/y2, horizontal -> x/x2): stats <= 0 clamp
   // to the range floor so whiskers/boxes end at the plot edge instead of NaN coords
-  const box_val_scale = (srs: BoxPlotSeries<Metadata>, scales = frame.scales) => {
-    const axis_key = val_axis_key(srs)
-    return log_floor_scale(
-      scales[axis_key],
-      plot_axes[axis_key].scale_type,
-      frame.ranges.current[axis_key],
-    )
-  }
+  const box_val_scale = (srs: BoxPlotSeries<Metadata>, scales = frame.scales) =>
+    frame.value_scale(val_axis_key(srs), scales)
 
   let effective_cat_ticks = $derived(
     category_tick_labels(slot_list, plot_axes[cat_axis].ticks),
@@ -592,7 +584,7 @@
         symbol_color: box_color(idx),
         pattern: srs.pattern,
       }),
-      { default_label: (idx) => `Box ${idx + 1}` },
+      { default_label: default_box_label },
     ),
   )
 
@@ -617,7 +609,6 @@
   // Anchored at the pointer when there is one, else at the whisker tip
   function get_box_data(box_item: Box, pointer: Point2D | null = null): BoxHover {
     const val_scale = box_val_scale(box_item.series)
-    const cat_scale = vertical ? frame.scales.x : frame.scales.y
     const corner_c = cat_scale(box_item.slot)
     const v_hi = val_scale(box_item.stats.whisker_high)
     const v_lo = val_scale(box_item.stats.whisker_low)
@@ -690,7 +681,7 @@
     csv: csv_source(() => ({
       header: [`series`, ...cols, `outliers`],
       rows: visible_boxes.map(({ series: srs, idx, stats }) => [
-        srs.label ?? `box ${idx + 1}`,
+        srs.label ?? default_box_label(idx),
         ...cols.map((col) => stats[col]),
         stats.outliers.join(` `),
       ]),
@@ -708,15 +699,6 @@
     stroke-width={stroke_width}
     stroke-dasharray={dash}
     clip-path="url(#{frame.clip_path_id})"
-  />
-{/snippet}
-
-{#snippet ref_lines_layer(coord_z: LayerZIndex)}
-  <ReferenceLinesLayer
-    {frame}
-    z={coord_z}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
   />
 {/snippet}
 
@@ -749,7 +731,7 @@
   {...rest}
 >
   {#snippet layers()}
-    {@render ref_lines_layer(`below-grid`)}
+    <ReferenceLinesLayer {frame} z="below-grid" />
 
     <PlotAxes
       {frame}
@@ -768,7 +750,7 @@
       <ZeroLines {frame} display={category_display.resolved} />
     </g>
 
-    {@render ref_lines_layer(`below-lines`)}
+    <ReferenceLinesLayer {frame} z="below-lines" />
 
     <!-- Continuous box/violin geometry clips to the chart. Outlier marker centers are
          range-bounded, but their complete circles may extend into the plot padding. -->
@@ -777,8 +759,8 @@
       {#each visible_boxes as box_item (box_item.series.id ?? box_item.idx)}
         {@const stats = box_item.stats}
         {#if Number.isFinite(stats.median)}
-          {@const cat_scale = vertical ? frame.scales.x : frame.scales.y}
           {@const val_scale = box_val_scale(box_item.series)}
+          {@const box_name = box_item.series.label ?? box_item.series.category}
           {@const color = box_color(box_item.idx)}
           {@const fill = series_patterns[box_item.idx]?.url ?? color}
           {@const draw_box = draws_box(box_item.series)}
@@ -834,7 +816,7 @@
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
             {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
-            aria-label={`box ${box_item.idx + 1}: ${box_item.series.label ?? ``}, median ${format_value_or_num(
+            aria-label={`${box_name ? `box ${box_item.idx + 1}: ${box_name}` : default_box_label(box_item.idx)}, median ${format_value_or_num(
               stats.median,
               plot_axes[val_axis_key(box_item.series)].format,
             )}`}
@@ -964,8 +946,8 @@
       {/each}
     </g>
 
-    {@render ref_lines_layer(`below-points`)}
-    {@render ref_lines_layer(`above-all`)}
+    <ReferenceLinesLayer {frame} z="below-points" />
+    <ReferenceLinesLayer {frame} z="above-all" />
   {/snippet}
 
   {#snippet controls(toggle_props, show_controls)}
