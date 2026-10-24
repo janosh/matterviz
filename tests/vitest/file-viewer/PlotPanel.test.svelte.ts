@@ -28,3 +28,14 @@ test(`new data clears a toolbar plot-type override back to initial_type`, async 
   await tick()
   expect(select.value).toBe(`bar`)
 })
+
+test(`column-based table rows come from the equal-length columns only`, () => {
+  // an empty `tags` array listed first used to set the row count to 0 ("No data")
+  const data = { tags: [], energy: [1.5, 2.5, 3.5], label: [`a`, `b`, `c`], extra: [1] }
+  mount(PlotPanel, { target: document.body, props: { data, initial_type: `table` } })
+  flushSync()
+  const body_rows = document.querySelectorAll(`tbody tr:not(.virtual-spacer)`)
+  expect(body_rows).toHaveLength(3)
+  expect(body_rows[0].textContent).toContain(`a`)
+  expect(document.querySelector(`.empty-row`)).toBeNull()
+})

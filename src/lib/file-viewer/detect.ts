@@ -224,6 +224,23 @@ const is_xrd_pattern = record_guard((data) => {
   )
 })
 
+const is_number = (val: unknown): boolean => typeof val === `number`
+// Columns holding a number among the first 10 rows (row-based) or elements (column-based),
+// sampled so a leading null doesn't hide a column and a long one isn't scanned whole
+const count_numeric_columns = (obj: unknown): number => {
+  if (Array.isArray(obj)) {
+    const sample = obj
+      .slice(0, 10)
+      .map(as_record)
+      .filter((row) => row !== null)
+    const keys = new Set(sample.flatMap(Object.keys))
+    return [...keys].filter((key) => sample.some((row) => is_number(row[key]))).length
+  }
+  return Object.values(as_record(obj) ?? {}).filter(
+    (val) => Array.isArray(val) && val.slice(0, 10).some(is_number),
+  ).length
+}
+
 // Tabular data: array of objects with consistent keys (row-based table format)
 // or object with parallel arrays (column-based format)
 function is_tabular_data(obj: unknown): boolean {
@@ -239,8 +256,7 @@ function is_tabular_data(obj: unknown): boolean {
     const overlap = first_keys.filter((key) => second_keys.includes(key))
     if (overlap.length < first_keys.length * 0.5) return false
     // At least some values should be numbers (not just metadata objects)
-    const num_count = first_keys.filter((key) => typeof first[key] === `number`).length
-    return num_count >= 1
+    return count_numeric_columns(obj) >= 1
   }
   // Column-based: object where multiple values are equal-length arrays
   const data = as_record(obj)
@@ -254,30 +270,12 @@ function is_tabular_data(obj: unknown): boolean {
   const first_len = lengths[0]
   if (!lengths.every((len) => len === first_len)) return false
   // At least one column must contain numbers
-  return array_entries.some(([, val]) => typeof (val as unknown[])[0] === `number`)
+  return count_numeric_columns(obj) >= 1
 }
 
-// Plottable data: tabular data with at least 2 numeric columns (enough for a scatter plot).
-// Samples multiple rows/elements to handle leading nulls.
-export function is_plottable_data(obj: unknown): boolean {
-  if (!is_tabular_data(obj)) return false
-  if (Array.isArray(obj)) {
-    const sample = obj.slice(0, 10).map(as_record).filter(Boolean) as Record<string, unknown>[]
-    const all_keys = new Set(sample.flatMap(Object.keys))
-    const num_cols = [...all_keys].filter((key) =>
-      sample.some((row) => typeof row[key] === `number`),
-    ).length
-    return num_cols >= 2
-  }
-  // is_tabular_data guarantees a record here
-  const array_entries = Object.entries(as_record(obj) ?? {}).filter(
-    ([, val]) => Array.isArray(val) && (val as unknown[]).length > 0,
-  )
-  const num_cols = array_entries.filter(([, val]) =>
-    (val as unknown[]).some((elem) => typeof elem === `number`),
-  ).length
-  return num_cols >= 2
-}
+// Plottable data: tabular data with at least 2 numeric columns (enough for a scatter plot)
+export const is_plottable_data = (obj: unknown): boolean =>
+  is_tabular_data(obj) && count_numeric_columns(obj) >= 2
 
 // === Main Detection Function ===
 

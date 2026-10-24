@@ -95,7 +95,10 @@ describe(`create_file_drop_handler`, () => {
 
     await run({}, [file])
 
-    expect(load_from_url).toHaveBeenCalledWith(`https://example.com/f.cif`, on_drop)
+    expect(load_from_url).toHaveBeenCalledWith(
+      `https://example.com/f.cif`,
+      expect.any(Function),
+    )
     expect(decompress_file).toHaveBeenCalledWith(file)
     expect(vi.mocked(on_drop).mock.calls).toEqual([
       [`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`)],
@@ -122,6 +125,22 @@ describe(`create_file_drop_handler`, () => {
         files.length ? [[`data`, `b.cube`, source_meta(`b.cube.gz`)]] : [],
       )
       expect(on_error).toHaveBeenCalledExactlyOnceWith(error)
+    },
+  )
+
+  // URL drops skipped the empty check files get, handing on_drop a 0-byte payload
+  test.each([``, new ArrayBuffer(0)])(
+    `an empty URL payload %j is reported`,
+    async (content) => {
+      vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
+      vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
+        await callback(content, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`))
+      })
+      await run({}, [])
+      expect(on_drop).not.toHaveBeenCalled()
+      expect(on_error).toHaveBeenCalledExactlyOnceWith(
+        `Failed to load from URL: file is empty`,
+      )
     },
   )
 
@@ -154,11 +173,14 @@ describe(`create_file_drop_handler`, () => {
     { rejection: new Error(`parse failed`), expected: `parse failed`, desc: `on_drop` },
     // empty decompressed content is a failure, not a silent skip
     { rejection: null, expected: `file is empty`, desc: `empty file` },
+    // an empty binary payload is a truthy 0-byte ArrayBuffer
+    { rejection: null, expected: `file is empty`, desc: `empty binary file` },
   ])(`formats on_error from a $desc rejection and clears loading`, async (row) => {
     const { rejection, expected, desc } = row
     const throwing_drop = vi.fn().mockRejectedValue(rejection)
-    if (desc === `on_drop` || desc === `empty file`) {
-      const content = desc === `on_drop` ? `x` : ``
+    if (desc === `on_drop` || desc.startsWith(`empty`)) {
+      const content =
+        desc === `on_drop` ? `x` : desc === `empty file` ? `` : new ArrayBuffer(0)
       vi.mocked(decompress_file).mockResolvedValue({ content, filename: `f.txt` })
     } else vi.mocked(decompress_file).mockRejectedValue(rejection)
     await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
@@ -345,7 +367,7 @@ describe(`create_file_drop_handler`, () => {
 
     expect(load_trajectory_from_url).toHaveBeenCalledWith(
       `https://example.com/run.h5`,
-      trajectory_drop,
+      expect.any(Function),
     )
     expect(load_from_url).not.toHaveBeenCalled()
     expect(decompress_file).not.toHaveBeenCalled()

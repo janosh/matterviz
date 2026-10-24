@@ -215,6 +215,15 @@ export const content_byte_size = (content: string | ArrayBuffer | Blob): number 
       ? content.byteLength
       : new Blob([content]).size
 
+// Whether loaded content holds no bytes, without encoding a string the way content_byte_size
+// does (a 300 MB text payload would allocate ~900 MB just to be measured)
+export const is_empty_content = (content: string | ArrayBuffer | Blob): boolean =>
+  (typeof content === `string`
+    ? content.length
+    : content instanceof Blob
+      ? content.size
+      : content.byteLength) === 0
+
 const is_hdf5_filename = (filename: string): boolean => HDF5_EXT_REGEX.test(filename)
 
 export const hdf5_compression_format = (filename: string): CompressionFormat | null => {
@@ -230,9 +239,10 @@ interface ClassifyPayloadOptions {
   // instead of materializing the whole file, and likewise text past one JS string, which the
   // indexed text readers decode in chunks (trajectory viewers)
   hdf5_as_blob?: boolean
-  // Fetch can remove named gzip/deflate wrappers, even when CORS hides Content-Encoding.
-  // Inspect remaining bytes for HTTP payloads; dropped files use their declared wrappers.
-  compression_by_magic?: boolean
+  // Fetch can remove named gzip/deflate wrappers, even when CORS hides Content-Encoding, so
+  // HTTP payloads skip a named layer their bytes no longer carry; dropped files must hold the
+  // wrappers they declare. Either way gzip bytes inflate whatever the name says.
+  wrappers_may_be_decoded?: boolean
   // Names the payload in error messages (defaults to the first of `names`)
   source?: string
   signal?: AbortSignal
@@ -255,13 +265,14 @@ export async function classify_payload(
   names: string[],
   options: ClassifyPayloadOptions = {},
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob>> {
-  const { hdf5_as_blob = false, compression_by_magic = false, source, signal } = options
+  const { hdf5_as_blob = false, wrappers_may_be_decoded = false, source, signal } = options
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
   let payload_names = [...names]
-  let sniff_compression = compression_by_magic
+  let wrappers_optional = wrappers_may_be_decoded
   for (let layer = 0; ; layer++) {
     signal?.throwIfAborted()
-    const gzip_magic = sniff_compression && has_gzip_magic(new Uint8Array(await head(2)))
+    // a gzip payload behind a wrong or missing extension (`POSCAR`, `run.xyz`) still inflates
+    const gzip_magic = has_gzip_magic(new Uint8Array(await head(2)))
     const format = gzip_magic ? `gzip` : compression_wrapper_of(payload_names, source)
     if (!format) break
     // Strip only the layer being consumed. Sniffed gzip can wrap a named ZIP, and ZIP
@@ -272,8 +283,8 @@ export async function classify_payload(
         : name,
     )
     // Fetch may already have removed a named layer via Content-Encoding.
-    if (sniff_compression && format === `gzip` && !gzip_magic) continue
-    if (sniff_compression && format === `deflate`) {
+    if (wrappers_optional && format === `gzip` && !gzip_magic) continue
+    if (wrappers_optional && format === `deflate`) {
       const bytes = new Uint8Array(await head(2))
       // RFC 1950: DEFLATE method, window <= 32 KiB, and the zlib header checksum.
       const has_zlib_header =
@@ -291,7 +302,7 @@ export async function classify_payload(
     blob = await decompress_blob(blob, format, signal, (name) => {
       // An archive's entry is authoritative; URL/header aliases describe its container.
       payload_names = [name]
-      sniff_compression = false
+      wrappers_optional = false
     })
   }
   signal?.throwIfAborted()

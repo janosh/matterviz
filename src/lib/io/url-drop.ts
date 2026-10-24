@@ -90,7 +90,7 @@ async function load_url_content(
   const { content, filename } = await classify_payload(
     await resp.blob(),
     [source_filename, url_basename],
-    { hdf5_as_blob, compression_by_magic: true, source: url, signal },
+    { hdf5_as_blob, wrappers_may_be_decoded: true, source: url, signal },
   )
   return emit(content, filename)
 }

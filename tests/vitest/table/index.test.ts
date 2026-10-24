@@ -298,12 +298,28 @@ describe(`parse_numeric_val`, () => {
     [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
     [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
     [`abc`, null],
+    // only decimal notation: Number() would read these literals as 16, 3 and 7
+    [`0x10`, null],
+    [`0b11`, null],
+    [`0o7`, null],
+    [`1.2.3`, null], // version string
+    [`<span data-sort-value="0x10">x</span>`, null], // a sort value is decimal-only too
+    [` 1e3 `, 1000],
     [``, null],
     [null, null],
     [new Date(0), null],
   ])(`%j -> %j`, (val, expected) => {
     expect(parse_numeric_val(val)).toBe(expected)
   })
+})
+
+// `\d+\.?\d*` overlapped itself: a 30k-digit cell ending in a letter backtracked O(n²),
+// over a second per call (now well under a millisecond)
+it(`parse_numeric_val stays linear on long digit runs`, () => {
+  const long_digits = `${`1`.repeat(30_000)}x`
+  const start = performance.now()
+  expect(parse_numeric_val(long_digits)).toBeNull()
+  expect(performance.now() - start).toBeLessThan(200)
 })
 
 describe(`compare_rows`, () => {
@@ -329,6 +345,16 @@ describe(`compare_rows`, () => {
       blank_key,
       invalid_date,
     ])
+  })
+
+  // as text, a space sorted before `T` and every UTC offset compared as digits
+  it(`orders ISO date/time strings by their instant`, () => {
+    // oxfmt-ignore
+    expect(order([`2024-01-01T06:00Z`, `2024-01-01T10:00+05:00`])) // 06:00Z after 05:00Z
+      .toEqual([`2024-01-01T10:00+05:00`, `2024-01-01T06:00Z`])
+    // oxfmt-ignore
+    expect(order([`2024-01-01 10:00`, `2024-01-01T09:00`, `2023-12-31`]))
+      .toEqual([`2023-12-31`, `2024-01-01T09:00`, `2024-01-01 10:00`])
   })
 
   it(`puts numbers before strings and compares strings in natural order`, () => {
@@ -478,6 +504,9 @@ describe(`search and filters`, () => {
       values: [`c`],
     })
     expect(with_category_toggled(without_b, `b`, options)).toBeUndefined() // all allowed again
+    // a value no row holds any more drops out instead of keeping the filter active
+    const stale = { kind: `category` as const, values: [`a`, `c`, `gone`] }
+    expect(with_category_toggled(stale, `b`, options)).toBeUndefined()
   })
 })
 

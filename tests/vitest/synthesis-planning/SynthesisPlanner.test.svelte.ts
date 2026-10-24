@@ -118,6 +118,15 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
     await vi.waitFor(() => expect(button.textContent?.trim()).toBe(`Copied`))
     expect(write_text).toHaveBeenLastCalledWith(expect.stringContaining(content))
   }
+  // a denied clipboard shows on the button instead of rejecting unhandled
+  write_text.mockRejectedValueOnce(new DOMException(`denied`, `NotAllowedError`))
+  const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+  const json_btn = doc_query<HTMLButtonElement>(
+    `.copy button[title="Copy the full plan as JSON"]`,
+  )
+  json_btn.click()
+  await vi.waitFor(() => expect(json_btn.textContent?.trim()).toBe(`Copy failed`))
+  error_spy.mockRestore()
   const temperature = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
   set_input(temperature, `1100`)
   await tick()
@@ -292,4 +301,11 @@ test(`experiment cards edit and copy each firing without losing quantities or as
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Hold (h): 5`))
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Step 2:`))
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Calculated recipe for 2 g`))
+  // a denied clipboard used to reject unhandled, the button still reading `Copied`
+  write_text.mockRejectedValueOnce(new DOMException(`denied`, `NotAllowedError`))
+  const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+  const copy_btn = doc_query<HTMLButtonElement>(`button[title="Copy experiment card as text"]`)
+  copy_btn.click()
+  await vi.waitFor(() => expect(copy_btn.textContent?.trim()).toBe(`Copy failed`))
+  error_spy.mockRestore()
 })

@@ -3,13 +3,13 @@
   // routes, inspect each route's competing phases, reaction slice and bench recipe. The plan
   // itself comes from `plan_synthesis`, the same pure function agents call.
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { create_flash } from '#lib/effects.svelte.js'
   import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/index.js'
   import type { GasSpecies, HullAnnotations, PhaseData } from '#lib/convex-hull/index.js'
   import { format_num, plural } from '#lib/labels.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { toggle_item } from '#lib/utils.js'
+  import { create_clipboard_feedback } from 'svelte-widgets/clipboard'
   import { to_error } from 'svelte-widgets/utils'
   import { format_plan_text } from './agent'
   import { format_equation_html } from './format'
@@ -359,15 +359,23 @@
     ]
   })
 
-  const copied = create_flash<`text` | `json` | null>(null, 1500)
+  // A denied clipboard (permissions, insecure context) says so instead of rejecting unseen
+  let copy_failed = $state<`text` | `json` | null>(null)
+  const {
+    copied,
+    copy: copy_text,
+    clear,
+  } = create_clipboard_feedback(1500, (copy_error) => {
+    console.error(`Failed to copy the synthesis plan`, copy_error)
+  })
   async function copy(kind: `text` | `json`): Promise<void> {
     if (!computed_plan) return
     const content =
       kind === `text`
         ? format_plan_text(computed_plan, 10)
         : JSON.stringify(computed_plan, null, 2)
-    await navigator.clipboard.writeText(content)
-    copied.show(kind)
+    copy_failed = (await copy_text(content, kind)) ? null : kind
+    if (copy_failed) clear(kind) // drop a lingering `Copied` from the previous copy
   }
 </script>
 
@@ -473,7 +481,7 @@
       <span class="copy">
         {#each [[`text`, `Copy summary`, `Copy the agent-style text summary`], [`json`, `Copy JSON`, `Copy the full plan as JSON`]] as const as [kind, label, title] (kind)}
           <button type="button" onclick={() => copy(kind)} disabled={!computed_plan} {title}>
-            {copied.value === kind ? `Copied` : label}
+            {copied.has(kind) ? `Copied` : copy_failed === kind ? `Copy failed` : label}
           </button>
         {/each}
       </span>

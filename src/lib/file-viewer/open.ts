@@ -2,6 +2,7 @@ import {
   classify_payload,
   content_byte_size,
   decompress_trajectory_file,
+  is_empty_content,
 } from '#lib/io/decompress.js'
 import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
@@ -119,9 +120,8 @@ export const deliver_raw_file = async (
     source,
     signal,
   )
+  if (is_empty_content(data)) throw new Error(`file is empty`)
   const content = data instanceof Blob ? await data.arrayBuffer() : data
-  if ((typeof content === `string` ? content.length : content.byteLength) === 0)
-    throw new Error(`file is empty`)
   if (signal?.aborted) return
   await on_file(content, filename, {
     source_filename: source_filename ?? filename,

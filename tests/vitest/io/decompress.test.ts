@@ -5,6 +5,7 @@ import {
   decompress_trajectory_file,
   detect_compression_format,
   inflation_limiter,
+  is_empty_content,
   MAX_INFLATED_BYTES,
   MAX_STRING_CHARS,
   MAX_WRAPPER_LAYERS,
@@ -172,6 +173,16 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     )
   })
 
+  // gzip bytes behind a wrong or missing extension reached the parsers as raw ArrayBuffers
+  test.each([`POSCAR`, `test.json`])(
+    `inflates gzip bytes dropped as %s by their magic`,
+    async (filename) => {
+      const text = `{"gzipped": "${filename}"}`
+      const file = new File([await compress(encode(text))], filename)
+      expect(await decompress_file(file)).toEqual({ content: text, filename })
+    },
+  )
+
   test.each([`gzip/gzip`, `zip/gzip`, `gzip/zip`, `zip/zip`, `gzip/deflate`] as const)(
     `decodes every layer of %s and retains the payload name`,
     async (layers) => {
@@ -192,7 +203,9 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
         filename: `nested.cif`,
       })
       expect(
-        await classify_payload(new Blob([bytes]), [filename], { compression_by_magic: true }),
+        await classify_payload(new Blob([bytes]), [filename], {
+          wrappers_may_be_decoded: true,
+        }),
       ).toEqual({ content: text, filename: `nested.cif` })
     },
   )
@@ -205,7 +218,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
       for (let layer = 0; layer < n_layers; layer++)
         bytes = new Uint8Array(await compress(bytes))
       const result = classify_payload(new Blob([bytes]), [`deep.cif`], {
-        compression_by_magic: true,
+        wrappers_may_be_decoded: true,
       })
       if (n_layers === MAX_WRAPPER_LAYERS) {
         expect(await result).toEqual({ content: `data_deep`, filename: `deep.cif` })
@@ -267,6 +280,23 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(new Uint8Array(result.content as ArrayBuffer)).toEqual(bytes)
     expect(result.filename).toBe(filename.replace(/\.gz$/, ``))
   })
+})
+
+// Measured by length/size, never by encoding a string into a Blob (300 MB of text cost ~900 MB)
+test.each([
+  [``, true],
+  [` `, false],
+  [new ArrayBuffer(0), true],
+  [new ArrayBuffer(1), false],
+  [new Blob([]), true],
+  [new Blob([`x`]), false],
+])(`is_empty_content(%o) = %s`, (content, expected) => {
+  expect(is_empty_content(content)).toBe(expected)
+  if (typeof content !== `string`) return
+  const blob_ctor = vi.spyOn(globalThis, `Blob`)
+  is_empty_content(content)
+  expect(blob_ctor).not.toHaveBeenCalled()
+  blob_ctor.mockRestore()
 })
 
 // Cuts land just after a newline, so chunks join to one decode's text: multi-byte UTF-8, CRLF,

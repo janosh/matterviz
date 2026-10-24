@@ -61,16 +61,16 @@
     plot_type === `histogram` ? [build_histogram_series(columns, mapping)] : [],
   )
 
-  // Prepare table data (row-based format for HeatmapTable)
+  // Row-based data for HeatmapTable. Column-based data transposes the extracted columns
+  // (equal-length, non-empty), so an empty or ragged array beside them can't zero the rows.
   let table_data = $derived.by<RowData[]>(() => {
-    if (plot_type !== `table` || data == null) return []
+    if (plot_type !== `table`) return []
     if (Array.isArray(data)) return data as RowData[]
-    const rec = data as Record<string, unknown[]>
-    const keys = Object.keys(rec).filter((key) => Array.isArray(rec[key]))
-    if (keys.length === 0) return []
+    const entries = [...columns]
     return Array.from(
-      { length: rec[keys[0]].length },
-      (_, idx) => Object.fromEntries(keys.map((key) => [key, rec[key][idx]])) as RowData,
+      { length: entries[0]?.[1].values.length ?? 0 },
+      (_, idx) =>
+        Object.fromEntries(entries.map(([key, col]) => [key, col.values[idx]])) as RowData,
     )
   })
 

@@ -206,6 +206,9 @@ test.each([
   // any numeric element counts (typeof NaN === number), not just the first one
   [`column-based with null/NaN first elements`, true, { x: [null, 2, 3], y: [NaN, 5, 6] }],
   [`row-based with null first row values`, true, [{ a: null, b: 4 }, { a: 2, b: 5 }, { a: 3, b: 6 }]],
+  // a leading null in EVERY column (or a first row of nulls) used to fail is_tabular_data
+  [`column-based with all-null first elements`, true, { x: [null, 2, 3], y: [null, 5, 6] }],
+  [`row-based with an all-null first row`, true, [{ a: null, b: null }, { a: 2, b: 5 }, { a: 3, b: 6 }]],
   [`column-based with 1 numeric col`, false, { name: [`Si`, `Ge`, `C`], energy: [-5.4, -4.6, -7.4] }],
   [`row-based with 1 numeric col`, false, [{ a: 1, name: `x` }, { a: 2, name: `y` }]],
   [`empty array`, false, []],
