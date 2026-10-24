@@ -289,7 +289,7 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
       `tetrahedron artifact (Gaussian ≈ QE)`,
       `physical (QE-confirmed)`,
       `numerical artifact`,
-      `physical, PACE value fragile`,
+      `physical, DFT value fragile`,
     ]
     const positions = labels.map((_, idx) => 41 + idx * 82)
     const strategies = [`upright`, `wrap`, `rotate`, `thin`, `stagger`] as const
