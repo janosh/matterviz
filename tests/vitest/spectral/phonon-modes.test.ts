@@ -18,7 +18,10 @@ import {
 } from '#lib/spectral/phonon-modes.js'
 import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
 import { get_structure_vector_keys } from '#lib/structure/vectors.js'
-import { compute_bonds, get_bond_key } from '#lib/structure/bonding.js'
+import { compute_bonds, explicit_only, get_bond_key } from '#lib/structure/bonding.js'
+import { get_element_counts } from '#lib/structure/density.js'
+import type { PolyhedraSettings } from '#lib/structure/polyhedra.js'
+import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
 import { describe, expect, it } from 'vitest'
 import cspbi3_band_yaml from '#site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
@@ -291,6 +294,42 @@ describe(`phonon_mode_trajectory`, () => {
       expect(is_commensurate_phonon_supercell(q_position, supercell)).toBe(expected)
     },
   )
+})
+
+// Frames are never imaged again, so they carry no polyhedron stamps of the default settings:
+// a viewer including Sr still finds the whole SrO12 cuboctahedron (the interior Sr copy)
+it(`phonon supercells follow the viewer's polyhedra settings`, () => {
+  const { structure } = phonon_supercell(
+    {
+      n_atoms: 5,
+      lattice: [
+        [3.9, 0, 0],
+        [0, 3.9, 0],
+        [0, 0, 3.9],
+      ],
+      atoms: [
+        { symbol: `Sr`, mass: 87.62, coordinates: [0, 0, 0] },
+        { symbol: `Ti`, mass: 47.87, coordinates: [0.5, 0.5, 0.5] },
+        { symbol: `O`, mass: 16, coordinates: [0.5, 0.5, 0] },
+        { symbol: `O`, mass: 16, coordinates: [0.5, 0, 0.5] },
+        { symbol: `O`, mass: 16, coordinates: [0, 0.5, 0.5] },
+      ],
+    },
+    [2, 2, 2],
+  )
+  expect(
+    structure.sites.some((site) => site.provenance?.polyhedron_center !== undefined),
+  ).toBe(false)
+  const centers = (settings: PolyhedraSettings) =>
+    get_element_counts({
+      sites: compute_polyhedra(
+        structure,
+        explicit_only(structure),
+        polyhedra_options_from(settings),
+      ).map(({ center_site_idx }) => structure.sites[center_site_idx]),
+    })
+  expect(centers({})).toEqual({ Ti: 8 })
+  expect(centers({ polyhedra_included_elements: [`Sr`] })).toEqual({ Ti: 8, Sr: 1 })
 })
 
 describe(`staged phonon runs`, () => {

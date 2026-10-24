@@ -21,6 +21,7 @@ import {
   array_min,
   euclidean_dist,
   partition_point,
+  segment_intersection_params,
   sorted_numbers,
   type Vec2,
   type Vec3,
@@ -464,16 +465,9 @@ const formula_units = (
 
 // Crossing of two tie-lines as parameters along each, or null; crossings within 1e-3 of an
 // endpoint are shared vertices, not flips (their reactions would need ~1000:1 coefficients)
-function crossing([pt_p, pt_q]: [Vec2, Vec2], [pt_r, pt_s]: [Vec2, Vec2]): Vec2 | null {
-  const d_pq = [pt_q[0] - pt_p[0], pt_q[1] - pt_p[1]]
-  const d_rs = [pt_s[0] - pt_r[0], pt_s[1] - pt_r[1]]
-  const d_pr = [pt_r[0] - pt_p[0], pt_r[1] - pt_p[1]]
-  const denom = d_pq[0] * d_rs[1] - d_pq[1] * d_rs[0]
-  if (Math.abs(denom) < 1e-12) return null
-  const t_pq = (d_pr[0] * d_rs[1] - d_pr[1] * d_rs[0]) / denom
-  const t_rs = (d_pr[0] * d_pq[1] - d_pr[1] * d_pq[0]) / denom
-  const inside = (val: number) => val > 1e-3 && val < 1 - 1e-3
-  return inside(t_pq) && inside(t_rs) ? [t_pq, t_rs] : null
+function crossing(seg_pq: [Vec2, Vec2], seg_rs: [Vec2, Vec2]): Vec2 | null {
+  const hit = segment_intersection_params(seg_pq, seg_rs)
+  return hit?.every((val) => val > 1e-3 && val < 1 - 1e-3) ? hit : null
 }
 
 function make_event(

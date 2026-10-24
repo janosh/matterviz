@@ -205,16 +205,20 @@ const same_cell = (transformed: AnyStructure, raw: AnyStructure): boolean => {
   )
 }
 
-// What an imaged structure draws: its periodic copies as base site and lattice shift, and the
-// polyhedron sizes stamped on its sites
+// A displayed site as its base site and lattice shift: stable while image sets renumber
+const site_token = ({ sites }: AnyStructure, site_idx: number): string => {
+  const { abc, provenance } = sites[site_idx]
+  const base_idx = provenance?.image_of
+  if (base_idx === undefined) return `${site_idx}`
+  return `${base_idx}:${abc.map((coord, axis) => Math.round(coord - sites[base_idx].abc[axis]))}`
+}
+// What an imaged structure draws: its sites as tokens and their polyhedron stamps
 const image_set_key = (structure: AnyStructure): string =>
   structure.sites
-    .map(({ abc, provenance }) => {
-      const base_idx = provenance?.image_of
-      if (base_idx === undefined) return provenance?.polyhedron_cn ?? ``
-      const base_abc = structure.sites[base_idx].abc
-      return `${base_idx}:${abc.map((coord, axis) => Math.round(coord - base_abc[axis]))}`
-    })
+    .map(
+      (site, idx) =>
+        `${site_token(structure, idx)}${site.provenance?.polyhedron_center ?? ``}`,
+    )
     .join(` `)
 
 // Per-key change detection for the invalidation effect: true when `value` differs from the
@@ -348,11 +352,15 @@ export class StructureSession {
       })),
     }
   }
-  // Completion settings by value: hosts rebuild them on every read, and a new object must not
-  // rerun the bond search
-  private readonly image_options_key = $derived.by(() =>
-    JSON.stringify(this.inputs.image_atom_options()),
-  )
+  // Completion settings, kept by identity while their value is unchanged: hosts rebuild them
+  // on every read, and a new object must not rerun the bond search
+  private last_image_options: { key: string; options: ImageAtomOptions } | undefined
+  private readonly image_options = $derived.by(() => {
+    const options = this.inputs.image_atom_options()
+    const key = JSON.stringify(options)
+    if (this.last_image_options?.key !== key) this.last_image_options = { key, options }
+    return this.last_image_options.options
+  })
   private readonly mapped_supercell = $derived.by(() =>
     this.map_elements(this.supercell_structure),
   )
@@ -363,8 +371,7 @@ export class StructureSession {
     const struct = this.mapped_supercell
     if (this.dragging_atoms || !this.inputs.show_image_atoms() || !struct) return struct
     if (!(`lattice` in struct)) return struct
-    const options: ImageAtomOptions = JSON.parse(this.image_options_key)
-    const imaged = get_pbc_image_sites(struct, options)
+    const imaged = get_pbc_image_sites(struct, this.image_options)
     const key = image_set_key(imaged)
     const last = this.last_imaged
     if (last?.struct === struct && last.key === key) return last.imaged
@@ -515,7 +522,7 @@ export class StructureSession {
     // there aborts the whole flush, dropping the pending clear with it.
     const changed = create_change_tracker()
     let previous_supercell_error: string | undefined
-    let images_before: AnyStructure | undefined
+    let displayed_before: AnyStructure | undefined
     $effect.pre(() => {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
@@ -523,9 +530,10 @@ export class StructureSession {
       // Completion settings renumber image sites only when they change the drawn copies (the
       // displayed structure is kept otherwise: hiding a non-center element, images hidden)
       const displayed = this.displayed_structure
+      const images_before = displayed_before
       const images_renumbered =
-        changed(`image_options`, this.image_options_key) && displayed !== images_before
-      images_before = displayed
+        changed(`image_options`, this.image_options) && displayed !== images_before
+      displayed_before = displayed
       const transform_changed = [
         changed(`supercell_scaling`, inputs.supercell_scaling()),
         changed(`show_image_atoms`, inputs.show_image_atoms()),
@@ -597,7 +605,7 @@ export class StructureSession {
             this.clear_selection()
             this.site_radius_overrides.clear()
           }
-        } else if (images_renumbered) this.drop_image_sites()
+        } else if (images_renumbered) this.remap_image_sites(images_before, displayed)
         if (mode_changed) {
           this.clear_selection()
           if (measure_mode === `edit-bonds`) inputs.set_bond_edit_mode(`add`)
@@ -640,22 +648,32 @@ export class StructureSession {
   }
 
   // Image completion renumbers only the copies appended after the base sites (bond edits name
-  // base sites and cell shifts, so they stay)
-  private drop_image_sites(): void {
+  // base sites and cell shifts, so they stay): site-indexed state follows each copy through
+  // its (base site, lattice shift) token, dropping copies no longer drawn
+  private remap_image_sites(before?: AnyStructure, after?: AnyStructure): void {
     const { inputs } = this
-    const n_base = site_count(this.supercell_structure)
+    const new_idx = new Map(after?.sites.map((_site, idx) => [site_token(after, idx), idx]))
+    const remap = (idx: number): number | undefined =>
+      before && idx < before.sites.length ? new_idx.get(site_token(before, idx)) : undefined
     for (const [get, set] of [
       [inputs.selected_sites, inputs.set_selected_sites],
       [inputs.measured_sites, inputs.set_measured_sites],
       [inputs.highlighted_sites, inputs.set_highlighted_sites],
     ] as const) {
       const sites = get()
-      if (sites.some((idx) => idx >= n_base)) set(sites.filter((idx) => idx < n_base))
+      if (sites.some((idx) => remap(idx) !== idx))
+        set(sites.flatMap((idx) => remap(idx) ?? []))
     }
     const hovered = inputs.hovered_site_idx()
-    if (hovered !== null && hovered >= n_base) inputs.set_hovered_site_idx(null)
-    for (const idx of this.site_radius_overrides.keys())
-      if (idx >= n_base) this.site_radius_overrides.delete(idx)
+    if (hovered !== null && remap(hovered) !== hovered)
+      inputs.set_hovered_site_idx(remap(hovered) ?? null)
+    const overrides = [...this.site_radius_overrides]
+    if (overrides.every(([idx]) => remap(idx) === idx)) return
+    this.site_radius_overrides.clear()
+    for (const [idx, radius] of overrides) {
+      const mapped = remap(idx)
+      if (mapped !== undefined) this.site_radius_overrides.set(mapped, radius)
+    }
   }
   private notice(message: string): void {
     this.inputs.on_notice?.(message)

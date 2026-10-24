@@ -2163,6 +2163,40 @@ describe(`ScatterPlot`, () => {
     expect(on_point_hover).toHaveBeenCalledOnce()
   })
 
+  // A data change under a resting pointer (e.g. sweep playback) re-reports the hovered point
+  // with its new values, then null once it is gone
+  test(`on_point_hover hears the hovered point's new values after a data change`, async () => {
+    const on_point_hover = vi.fn()
+    const state = $state<{ series: DataSeries[] }>({
+      series: [{ x: [0, 1], y: [0, 1], markers: `points` }],
+    })
+    const plot = await mount_sized_scatter_plot(
+      bind_props(
+        {
+          x_axis: { range: [0, 1] as [number, number] },
+          y_axis: { range: [0, 1] as [number, number] },
+          point_tween: { duration: 0 },
+          on_point_hover,
+          legend: null,
+        },
+        state,
+      ),
+    )
+    const svg = plot_svg(plot)
+    stub_svg_rect(svg)
+    const { x: coord_x, y: coord_y } = marker_position(plot, 1)
+    svg.dispatchEvent(mouse(`mousemove`, { clientX: coord_x, clientY: coord_y }))
+    await next_animation_frame()
+    expect(on_point_hover).toHaveBeenLastCalledWith(expect.objectContaining({ x: 1, y: 1 }))
+    state.series = [{ x: [0, 1], y: [0, 0.5], markers: `points` }]
+    flushSync()
+    expect(on_point_hover).toHaveBeenCalledTimes(2)
+    expect(on_point_hover).toHaveBeenLastCalledWith(expect.objectContaining({ x: 1, y: 0.5 }))
+    state.series = [{ x: [0], y: [0], markers: `points` }]
+    flushSync()
+    expect(on_point_hover).toHaveBeenLastCalledWith(null)
+  })
+
   // x mode ignores vertical distance, except to break ties between duplicate x-values. y mode is
   // the transposed rule (a spectrum with a vertical frequency axis) and scans every series.
   const peak = [0, 1, 0]

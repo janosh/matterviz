@@ -1,4 +1,10 @@
-import { point_in_polygon, polygon_signed_area, type Vec2 } from '#lib/math.js'
+import {
+  lerp_vec2,
+  mulberry32,
+  point_in_polygon,
+  polygon_signed_area,
+  type Vec2,
+} from '#lib/math.js'
 import type { PixelSigma } from '#lib/phase-diagram/pressure-temperature/geometry.js'
 import {
   clip_polygon_to_rect,
@@ -52,6 +58,7 @@ const triple = (
   ],
 })
 const at_center: Vec2[] = [[5, 5]]
+const triple_phases = [{ id: `a` }, { id: `b` }, { id: `c` }]
 const exact_triple = triple(at_center, at_center, at_center)
 // All three lines run on past (5, 5) by `overshoot` data units along their own direction
 const ac_dir: Vec2 = [5 / Math.hypot(5, 1), -1 / Math.hypot(5, 1)]
@@ -78,13 +85,13 @@ const iron_probes: [Vec2, string][] = [
   [[50, 3500], `liquid`],
   [[140, 2000], `epsilon`],
 ]
-// Liquid and vapor meeting at a critical point inside the window, where their line just ends
+// Liquid and gas meeting at a critical point inside the window, where their line just ends
 // oxfmt-ignore
-const critical_end = (special_points: PtPhaseDiagramData[`special_points`]): PtPhaseDiagramData => ({
+const critical_end = (critical?: Vec2): PtPhaseDiagramData => ({
   ...window_10,
   phases: [{ id: `s` }, { id: `l` }, { id: `g` }],
   boundaries: [boundary(`sl`, [`s`, `l`], [[3, 3], [3, 10]]), boundary(`sg`, [`s`, `g`], [[0, 0], [3, 3]]), boundary(`lg`, [`l`, `g`], [[3, 3], [8, 7]])],
-  special_points,
+  special_points: critical ? [{ id: `cp`, type: `critical`, position: critical, phases: [`l`, `g`] }] : [],
 })
 
 describe(`derive_regions`, () => {
@@ -113,6 +120,17 @@ describe(`derive_regions`, () => {
     [`all three 0.07 past`, overshoot_triple(0.07), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`all three 1 past`, overshoot_triple(1), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`all three 0.5 short`, overshoot_triple(-0.5), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
+    // the crossing 0.5 past the triple point lies in a|b's top half by arc length, though in its
+    // first segment by index: dense samples in the overshoot used to hand it to the bottom end
+    [`dense overshoot tail`, { ...window_10, phases: triple_phases, boundaries: [boundary(`ab`, [`a`, `b`], [[5, 0.5], ...Array.from({ length: 10 }, (_, idx): Vec2 => [5, 5.05 + idx * 0.05])]), ...exact_triple.boundaries.slice(1)] }, {}, [`a`, `b`, `c`], 0, [...triple_probes, [[4.9, 0.2], `a`], [[5.1, 0.2], `b`]], 100],
+    // the default window ends at the overshooting a|b end: on the window edge, it still trims
+    [`overshoot defining the window`, { phases: triple_phases, boundaries: [boundary(`ab`, [`a`, `b`], [[5, 0], [5, 6.5]]), ...exact_triple.boundaries.slice(1)] }, {}, [`a`, `b`, `c`], 0, [...triple_probes.slice(0, 2), [[3, 6.2], `c`]], 65],
+    // a|b leaves the a|c start on the window edge and stops short: that shared start is no
+    // overshoot to trim back to, so a|b runs on to the right edge
+    [`two lines from one window-edge point`, { ...window_10, phases: [{ id: `a` }, { id: `b` }, { id: `c` }], boundaries: [boundary(`ab`, [`a`, `b`], [[0, 5], [9.9, 2]]), boundary(`ac`, [`a`, `c`], [[0, 5], [10, 8]])] }, {}, [`a`, `b`, `c`], 0, [[[5, 5], `a`], [[5, 1], `b`], [[5, 9], `c`], [[9.95, 1.9], `b`], [[9.95, 2.1], `a`]], 100],
+    // a|b stops short of the bottom edge and overshoots a|c and b|c at two spots near its top:
+    // both are the top end's, so the bottom end runs on rather than trimming to them
+    [`free line overshooting two lines at one end`, { ...window_10, phases: [{ id: `a` }, { id: `b` }, { id: `c` }], boundaries: [boundary(`ab`, [`a`, `b`], [[5, 0.5], [5, 5.5]]), boundary(`ac`, [`a`, `c`], [[0, 6], [5.2, 4.9]]), boundary(`bc`, [`b`, `c`], [[10, 6], [4.8, 5]])] }, {}, [`a`, `b`, `c`], 0, [...triple_probes, [[4.9, 0.2], `a`], [[5.1, 0.2], `b`]], 100],
     [`straight 3-point tail 0.09 past`, triple([[5, 5], [5, 5.03], [5.01, 5.06], [5, 5.09]], at_center, at_center), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`curved 2-point tail`, triple([[5, 5], [5.02, 5.04], [5.03, 5.08]], at_center, at_center), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`metastable lines don't split regions`, triple(at_center, at_center, at_center, boundary(`ab-meta`, [`a`, `b`], [[5, 5], [5, 10]], true)), {}, [`a`, `b`, `c`], 0, triple_probes, 100],
@@ -131,8 +149,11 @@ describe(`derive_regions`, () => {
     [`single phase, no boundaries`, { ...window_10, phases: [{ id: `a` }], boundaries: [] }, {}, [`a`], 0, [], 100],
     // an end at a critical point stays: liquid and gas share the face around it, which holds
     // two phases; without the critical point the l|g end runs on to the window edge
-    [`line ending at a critical point`, critical_end([{ id: `cp`, type: `critical`, position: [8, 7] }]), {}, [`s`], 1, [[[1, 8], `s`], [[5, 8], null], [[8, 2], null]], null],
-    [`same line, no critical point`, critical_end([]), {}, [`g`, `l`, `s`], 0, [[[1, 8], `s`], [[5, 8], `l`], [[8, 2], `g`]], 100],
+    [`line ending at a critical point`, critical_end([8, 7]), {}, [`s`], 1, [[[1, 8], `s`], [[5, 8], null], [[8, 2], null]], null],
+    [`same line, no critical point`, critical_end(), {}, [`g`, `l`, `s`], 0, [[[1, 8], `s`], [[5, 8], `l`], [[8, 2], `g`]], 100],
+    // a critical point keeps only its own line's end: the a|b end 0.5 short of the triple
+    // point, nearer to it than a|c's, still runs on
+    [`critical point near another line's end`, { ...triple([[5, 4.5]], at_center, at_center), special_points: [{ id: `cp`, type: `critical`, position: [5, 2], phases: [`a`, `c`] }] }, {}, [`a`, `b`, `c`], 0, triple_probes, 100],
     [`water without regions`, water_lines, { log_pressure: true }, [`ice-ih`], 1, [[[1e5, 250], `ice-ih`], [[1e5, 500], null]], null],
   ] satisfies [string, PtPhaseDiagramData, Parameters<typeof derive_regions>[1], string[], number, [Vec2, string | null][], number | null][])(
     `%s`,
@@ -144,9 +165,12 @@ describe(`derive_regions`, () => {
       // null: faces left unnamed, or a log axis that tiles log10(P) rather than data units
       if (area === null) return
       expect(total_area(regions)).toBeCloseTo(area, 6)
-      // sorted largest first (paint order)
+      // sorted largest first (paint order) by unit-window area: mapped back to data units, equal
+      // areas (mirror-image fields) may differ by an ulp either way, so allow 1e-12 relative
       const areas = regions.map((region) => Math.abs(polygon_signed_area(region.vertices)))
-      expect(areas).toEqual(areas.toSorted((area_a, area_b) => area_b - area_a))
+      for (const [idx, area_next] of areas.slice(1).entries()) {
+        expect(area_next).toBeLessThanOrEqual(areas[idx] * (1 + 1e-12))
+      }
     },
   )
 
@@ -185,6 +209,52 @@ describe(`derive_regions`, () => {
       expect(regions.map(([phase]) => phase)).toEqual(phases)
       regions.forEach(([, area], idx) => expect(area).toBeCloseTo(reference[idx][1], 12))
     }
+  })
+
+  // How far joining moved an end, as a fraction of the window (T spans 10 here): runs to the
+  // window edge don't count. A handful of flops on O(1) values: 12 digits clear f64 eps.
+  // oxfmt-ignore
+  test.each([
+    [`exact triple point`, exact_triple, 0],
+    // the short end joins the other two at their mean, 0.1 up
+    [`one line 0.15 short`, triple([[5, 4.85]], at_center, at_center), 0.01],
+    [`ends up to 0.05 apart`, triple([[5, 5.03]], [[4.97, 5]], [[5.04, 4.98]]), Math.hypot(5.04 - 15.01 / 3, 4.98 - 15.01 / 3) / 10],
+    [`window wider on every side`, { ...exact_triple, pressure_range: [-2, 12], temperature_range: [-3, 12] }, 0],
+  ] satisfies [string, PtPhaseDiagramData, number][])(`max_gap: %s`, (_label, data, max_gap) => {
+    expect(derive_regions(data).max_gap).toBeCloseTo(max_gap, 12)
+  })
+
+  // Densely sampled lines with noise cross each other several times near the triple points
+  // they share; each end trims past the whole tangle, so every field keeps its phase
+  const resample = (points: Vec2[], count: number): Vec2[] =>
+    Array.from({ length: count }, (_, idx) => {
+      const pos = (idx * (points.length - 1)) / (count - 1)
+      const seg_idx = Math.min(Math.floor(pos), points.length - 2)
+      return lerp_vec2(points[seg_idx], points[seg_idx + 1], pos - seg_idx)
+    })
+  test.each([
+    [0, 200],
+    [1, 200],
+    [2, 200],
+    [0, 1000],
+    [1, 1000],
+  ])(`noisy iron (seed %d, %d points per line) keeps every field`, (seed, count) => {
+    const rng = mulberry32(seed)
+    const boundaries = iron_pt_diagram.boundaries.map(
+      ({ sigma_t: _t, sigma_p: _p, ...line }): PtBoundary => ({
+        ...line,
+        // ±1.5 K on every point but the ends
+        points: resample(line.points, count).map(([pressure, temp], idx): Vec2 =>
+          idx === 0 || idx === count - 1
+            ? [pressure, temp]
+            : [pressure, temp + 3 * (rng() - 0.5)],
+        ),
+      }),
+    )
+    const { regions, unlabeled } = derive_regions({ ...iron_pt_diagram, boundaries })
+    expect(unlabeled).toBe(0)
+    for (const [point, phase] of iron_probes)
+      expect(phase_at(regions, point), `${point}`).toBe(phase)
   })
 
   // oxfmt-ignore

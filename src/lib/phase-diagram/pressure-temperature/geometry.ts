@@ -2,20 +2,19 @@
 // lines, nearest-boundary lookup for hover, uncertainty bands and label anchors
 
 import {
-  array_extent,
   clamp,
+  euclidean_dist as dist,
+  lerp,
+  lerp_vec2,
   point_in_polygon,
   polygon_signed_area,
+  segment_intersection_params,
+  subtract as sub,
   type Vec2,
 } from '#lib/math.js'
 import { clip_segment_to_unit_square } from '#lib/plot/core/decorations/index.js'
-import { pressure_log_floor, pt_data_extent } from './data'
+import { critical_boundaries, pressure_log_floor, pt_data_extent } from './data'
 import type { PtPhaseDiagramData, PtRegion } from './types'
-
-const sub = (pt_a: Vec2, pt_b: Vec2): Vec2 => [pt_a[0] - pt_b[0], pt_a[1] - pt_b[1]]
-const cross = (vec_a: Vec2, vec_b: Vec2): number => vec_a[0] * vec_b[1] - vec_a[1] * vec_b[0]
-const dist = (pt_a: Vec2, pt_b: Vec2): number =>
-  Math.hypot(pt_a[0] - pt_b[0], pt_a[1] - pt_b[1])
 
 // Foot of the perpendicular from `point` onto segment start-end (param in [0, 1])
 export function closest_on_segment(
@@ -29,7 +28,7 @@ export function closest_on_segment(
     len_sq > 0
       ? clamp(((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / len_sq, 0, 1)
       : 0
-  const foot: Vec2 = [start[0] + param * dx, start[1] + param * dy]
+  const foot = lerp_vec2(start, end, param)
   return { param, dist: dist(point, foot), foot }
 }
 
@@ -64,10 +63,6 @@ const MERGE_EPS = 1e-7
 const AREA_EPS = 1e-9
 const FRAME_TAG = -1
 
-const lerp = (from: Vec2, to: Vec2, frac: number): Vec2 => [
-  from[0] + frac * (to[0] - from[0]),
-  from[1] + frac * (to[1] - from[1]),
-]
 // Segments of the polylines, tagged with their line and segment index
 const line_segments = (lines: readonly Vec2[][]) =>
   lines.flatMap((line, line_idx) =>
@@ -107,31 +102,16 @@ function overlapping_pairs(
 
 // [param_a, param_b] pairs where segment a meets segment b: their crossing, and each endpoint
 // of one lying on the other (T-junctions, shared ends, collinear overlaps)
-function segment_hits(
-  [a_0, a_1]: readonly [Vec2, Vec2],
-  [b_0, b_1]: readonly [Vec2, Vec2],
-): Vec2[] {
-  const [dir_a, dir_b] = [sub(a_1, a_0), sub(b_1, b_0)]
-  const denom = cross(dir_a, dir_b)
-  const hits: Vec2[] = []
-  if (Math.abs(denom) > 1e-14) {
-    const offset = sub(b_0, a_0)
-    const params: Vec2 = [cross(offset, dir_b) / denom, cross(offset, dir_a) / denom]
-    if (params.every((param) => param >= 0 && param <= 1)) hits.push(params)
-  }
+function segment_hits(seg_a: readonly [Vec2, Vec2], seg_b: readonly [Vec2, Vec2]): Vec2[] {
+  const crossing = segment_intersection_params(seg_a, seg_b)
+  const hits: Vec2[] = crossing?.every((param) => param >= 0 && param <= 1) ? [crossing] : []
   const touch_eps = MERGE_EPS / 10
-  for (const [end, param_b] of [
-    [b_0, 0],
-    [b_1, 1],
-  ] as const) {
-    const hit = closest_on_segment(end, a_0, a_1)
+  for (const [param_b, end] of seg_b.entries()) {
+    const hit = closest_on_segment(end, ...seg_a)
     if (hit.dist < touch_eps) hits.push([hit.param, param_b])
   }
-  for (const [end, param_a] of [
-    [a_0, 0],
-    [a_1, 1],
-  ] as const) {
-    const hit = closest_on_segment(end, b_0, b_1)
+  for (const [param_a, end] of seg_a.entries()) {
+    const hit = closest_on_segment(end, ...seg_b)
     if (hit.dist < touch_eps) hits.push([param_a, hit.param])
   }
   return hits
@@ -147,21 +127,23 @@ interface LineEnd {
 }
 
 // Where separately computed coexistence lines stop is noise: they overshoot or stop short of
-// the triple point they share and of the window edge. With no distance tolerance, an end on
-// the window edge stays, as does the end nearest each critical point (where a line really
-// ends). Every other end
-// 1. trims back to its line's nearest crossing with another line (an overshoot, any length),
-// 2. joins the ends of the other two lines of a phase triangle (a|b, a|c, b|c meet at the
-//    a-b-c triple point, of which there is one): all three move to their mean, the tightest
-//    triangles first,
-// 3. stays if it was trimmed or lies on another end (a closed loop), else runs on along its
-//    last segment to the first line or window edge it hits (any length).
-// The result doesn't depend on the order of the lines.
+// the triple point they share and of the window edge, and noisy ones cross each other several
+// times near it. With no distance tolerance, the end of a line nearest its critical point
+// stays (where the line really ends), and every other end
+// 1. trims back to the farthest crossing with another line on its half of the line (by arc
+//    length), cutting the overshoot (any length) and the tangle of noisy crossings with it,
+// 2. joins, unless on the window edge, the ends of the other two lines of a phase triangle
+//    (a|b, a|c, b|c meet at the a-b-c triple point, of which there is one): all three move to
+//    their mean, the tightest triangles first,
+// 3. stays if it was trimmed or lies on the window edge or another end (a closed loop), else
+//    runs on along its last segment to the first line or window edge it hits (any length).
+// The result doesn't depend on the order of the lines. max_gap is the farthest an end moved
+// in a join or a run-on that didn't stop at the window edge (unit coordinates).
 function join_line_ends(
   unit_lines: readonly Vec2[][],
   pairs: readonly (readonly [string, string])[],
-  critical_points: readonly Vec2[],
-): Vec2[][] {
+  critical_points: readonly (Vec2 | undefined)[], // per line
+): { lines: Vec2[][]; max_gap: number } {
   let lines = unit_lines.map((line) => [...line])
   const ends: LineEnd[] = lines.flatMap((_, line_idx) =>
     [true, false].map((at_start) => ({ line_idx, at_start })),
@@ -171,21 +153,14 @@ function join_line_ends(
   const set_point = ({ line_idx, at_start }: LineEnd, point: Vec2) => {
     lines[line_idx][at_start ? 0 : lines[line_idx].length - 1] = point
   }
-  const inner = ends.filter((end) => !on_frame(point_of(end)))
   const critical = new Set(
-    critical_points.flatMap((point) =>
-      inner.length
-        ? [
-            inner.reduce((best, end) =>
-              dist(point_of(end), point) < dist(point_of(best), point) ? end : best,
-            ),
-          ]
-        : [],
-    ),
+    lines.flatMap((line, line_idx) => {
+      const point = critical_points[line_idx]
+      if (!point) return []
+      const nearer_end = dist(line[0], point) <= dist(line[line.length - 1], point) ? 0 : 1
+      return [ends[2 * line_idx + nearer_end]]
+    }),
   )
-  const free = inner.filter((end) => !critical.has(end))
-  const free_end = (line_idx: number, at_start: boolean) =>
-    free.find((end) => end.line_idx === line_idx && end.at_start === at_start)
 
   // 1. Trim: crossing positions (segment index + param) along each line with any other line
   const crossings: number[][] = lines.map(() => [])
@@ -203,23 +178,34 @@ function join_line_ends(
   )
   const trimmed = new Set<LineEnd>()
   lines = lines.map((line, line_idx) => {
-    const [start, end] = [free_end(line_idx, true), free_end(line_idx, false)]
-    if (!crossings[line_idx].length || !(start || end)) return line
-    const [first, last] = array_extent(crossings[line_idx])
+    const [start, end] = [ends[2 * line_idx], ends[2 * line_idx + 1]]
     const last_pos = line.length - 1
-    const point_at = (pos: number) => {
-      const seg_idx = Math.min(Math.floor(pos), last_pos - 1)
-      return lerp(line[seg_idx], line[seg_idx + 1], pos - seg_idx)
+    // value at a position (segment index + param) interpolated from per-point values
+    const at_pos =
+      <T>(values: readonly T[], interp: (from: T, to: T, frac: number) => T) =>
+      (pos: number): T => {
+        const seg_idx = Math.min(Math.floor(pos), last_pos - 1)
+        return interp(values[seg_idx], values[seg_idx + 1], pos - seg_idx)
+      }
+    const point_at = at_pos(line, lerp_vec2)
+    const arc = [0]
+    for (let idx = 1; idx <= last_pos; idx++)
+      arc.push(arc[idx - 1] + dist(line[idx - 1], line[idx]))
+    const arc_at = at_pos(arc, lerp)
+    // each crossing belongs to the nearer end, which a critical point keeps from trimming
+    const [start_cuts, end_cuts]: number[][] = [[], []]
+    for (const pos of crossings[line_idx]) {
+      const at_start = arc_at(pos) < arc[last_pos] / 2
+      if (!critical.has(at_start ? start : end)) (at_start ? start_cuts : end_cuts).push(pos)
     }
-    // crossings at one spot between two free ends: only the nearer end overshoots them
-    const single = dist(point_at(first), point_at(last)) <= MERGE_EPS
-    const trim_start = start && !(single && end && first >= last_pos - last) ? start : null
-    const trim_end = end && !(single && trim_start) ? end : null
-    if (trim_start) trimmed.add(trim_start)
-    if (trim_end) trimmed.add(trim_end)
-    const [from, to] = [trim_start ? first : 0, trim_end ? last : last_pos]
+    if (start_cuts.length) trimmed.add(start)
+    if (end_cuts.length) trimmed.add(end)
+    const from = start_cuts.length ? Math.max(...start_cuts) : 0
+    const to = end_cuts.length ? Math.min(...end_cuts) : last_pos
     return [point_at(from), ...line.slice(Math.floor(from) + 1, Math.ceil(to)), point_at(to)]
   })
+  const free = ends.filter((end) => !critical.has(end) && !on_frame(point_of(end)))
+  let max_gap = 0
 
   // 2. Join triple points
   const pair_key = (line_idx: number) => pairs[line_idx].toSorted().join(`|`)
@@ -256,9 +242,10 @@ function join_line_ends(
     const mean = [0, 1].map(
       (axis) => points.reduce((sum, pt) => sum + pt[axis], 0) / 3,
     ) as Vec2
-    for (const end of trio) {
+    for (const [idx, end] of trio.entries()) {
       joined.add(end)
       set_point(end, mean)
+      max_gap = Math.max(max_gap, dist(points[idx], mean))
     }
   }
 
@@ -276,26 +263,25 @@ function join_line_ends(
     )
     if (!prev) return []
     const dir = sub(point, prev)
-    // distance (in units of dir) to the window edge, then to the first segment ahead
-    let reach = Math.min(
-      ...[0, 1].map((axis) =>
-        dir[axis] > 0
-          ? (1 - point[axis]) / dir[axis]
-          : dir[axis] < 0
-            ? -point[axis] / dir[axis]
-            : Infinity,
-      ),
-    )
-    const min_reach = MERGE_EPS / Math.hypot(...dir)
-    for (const [seg_start, seg_end] of targets) {
-      const edge = sub(seg_end, seg_start)
-      const denom = cross(dir, edge)
-      if (Math.abs(denom) < 1e-14) continue
-      const offset = sub(seg_start, point)
-      const [ahead, along] = [cross(offset, edge) / denom, cross(offset, dir) / denom]
-      if (ahead > min_reach && along >= 0 && along <= 1) reach = Math.min(reach, ahead)
+    // how far along prev → point (1 at point) the window edge, then the first line ahead, lies
+    let reach =
+      1 +
+      Math.min(
+        ...[0, 1].map((axis) =>
+          dir[axis] > 0
+            ? (1 - point[axis]) / dir[axis]
+            : dir[axis] < 0
+              ? -point[axis] / dir[axis]
+              : Infinity,
+        ),
+      )
+    const min_reach = 1 + MERGE_EPS / Math.hypot(...dir)
+    for (const target of targets) {
+      const hit = segment_intersection_params([prev, point], target)
+      if (hit && hit[0] > min_reach && hit[1] >= 0 && hit[1] <= 1)
+        reach = Math.min(reach, hit[0])
     }
-    return [{ end, to: lerp(prev, point, 1 + reach) }]
+    return [{ end, to: lerp_vec2(prev, point, reach) }]
   })
   // extensions that cross each other (lines converging outside the data) stop where they
   // first meet, all measured on the full extensions
@@ -310,10 +296,11 @@ function join_line_ends(
       ),
     )
     const { line_idx, at_start } = extensions[idx_a].end
-    const to = lerp(...seg_a, stop)
+    const to = lerp_vec2(...seg_a, stop)
+    if (!on_frame(to)) max_gap = Math.max(max_gap, dist(seg_a[0], to))
     lines[line_idx] = at_start ? [to, ...lines[line_idx]] : [...lines[line_idx], to]
   })
-  return lines
+  return { lines, max_gap }
 }
 
 interface Segment {
@@ -363,12 +350,7 @@ function node_segments(segments: Segment[]): {
   segments.forEach(({ start, end, tag }, seg_idx) => {
     const ids = params[seg_idx]
       .toSorted((param_a, param_b) => param_a - param_b)
-      .map((param) =>
-        vertex_id([
-          start[0] + param * (end[0] - start[0]),
-          start[1] + param * (end[1] - start[1]),
-        ]),
-      )
+      .map((param) => vertex_id(lerp_vec2(start, end, param)))
     for (let idx = 0; idx < ids.length - 1; idx++) {
       const [from, to] = [ids[idx], ids[idx + 1]]
       if (from === to) continue
@@ -393,13 +375,14 @@ function node_segments(segments: Segment[]): {
 // separate exactly its two phases; a face named against that (a missing or metastable line
 // merged two fields) loses its name, as does a face holding a dangling line (liquid and gas
 // joined around a critical point) or an island loop. `unlabeled` counts the unnamed faces so
-// callers can say when to pass explicit regions. Regions are sorted largest first, the paint
+// callers can say when to pass explicit regions, `max_gap` how far (as a fraction of the window)
+// joining moved a line end. Regions are sorted largest first, the paint
 // order. With log_pressure, lines are joined in log10(P) to match a log axis; P <= 0 maps far
 // below the window and is clipped away with everything else outside it.
 export function derive_regions(
   data: PtPhaseDiagramData,
   { log_pressure = false }: { log_pressure?: boolean } = {},
-): { regions: PtRegion[]; unlabeled: number } {
+): { regions: PtRegion[]; unlabeled: number; max_gap: number } {
   const [p_range, [t_min, t_max]] = pt_data_extent(data)
   const p_floor = log_pressure ? pressure_log_floor(data) : null
   if (log_pressure && p_floor === null) {
@@ -424,12 +407,20 @@ export function derive_regions(
     boundary.metastable ? [] : [tag],
   )
   const phases_of = (tag: number) => (tag === FRAME_TAG ? null : data.boundaries[tag].phases)
-  const lines = join_line_ends(
+  const critical_at = new Map(
+    (data.special_points ?? []).flatMap((point) =>
+      point.type === `critical`
+        ? critical_boundaries(point, data.boundaries).map((line) => [line, point.position])
+        : [],
+    ),
+  )
+  const { lines, max_gap } = join_line_ends(
     stable_tags.map((tag) => data.boundaries[tag].points.map(to_unit)),
     stable_tags.map((tag) => data.boundaries[tag].phases),
-    (data.special_points ?? []).flatMap((point) =>
-      point.type === `critical` ? [to_unit(point.position)] : [],
-    ),
+    stable_tags.map((tag) => {
+      const critical = critical_at.get(data.boundaries[tag])
+      return critical && to_unit(critical)
+    }),
   )
   const corners: Vec2[] = [
     [0, 0],
@@ -574,7 +565,7 @@ export function derive_regions(
   const unlabeled = faces.filter(
     (_, face_idx) => bounded(face_idx) && typeof labels[face_idx] !== `string`,
   ).length
-  return { regions, unlabeled }
+  return { regions, unlabeled, max_gap }
 }
 
 // === Uncertainty ===
@@ -648,10 +639,8 @@ export function clip_polygon_to_rect(
   let output = [...vertices]
   for (const [axis, bound, side] of half_planes) {
     const inside = (point: Vec2) => side * (point[axis] - bound) >= 0
-    const cut = (from: Vec2, to: Vec2): Vec2 => {
-      const frac = (bound - from[axis]) / (to[axis] - from[axis])
-      return [from[0] + frac * (to[0] - from[0]), from[1] + frac * (to[1] - from[1])]
-    }
+    const cut = (from: Vec2, to: Vec2): Vec2 =>
+      lerp_vec2(from, to, (bound - from[axis]) / (to[axis] - from[axis]))
     const input = output
     output = []
     input.forEach((current, idx) => {

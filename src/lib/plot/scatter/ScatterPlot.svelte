@@ -1241,6 +1241,9 @@
   // Whether a click on the plot surface right now would reach on_plot_click, from the same
   // lookup handle_plot_click runs, so the pointer cursor promises exactly the clicks that land
   let plot_click_armed = $state(false)
+  // the pointer event of the point on_point_hover last reported, re-sent with that point once a
+  // data change re-resolves it
+  let hover_event: MouseEvent | null = null
   function update_tooltip_point(x_rel: number, y_rel: number, evt?: MouseEvent) {
     if (!width || !height) return
     const hit = closest_hit_at(x_rel, y_rel)
@@ -1253,12 +1256,14 @@
 
     if (!closest_point) {
       tooltip_point = null
+      hover_event = null
       on_point_hover?.(null)
       return
     }
     // Construct handler props synchronously to avoid stale derived reads
     const props = construct_handler_props(closest_point)
     tooltip_point = tooltip === false ? null : closest_point
+    hover_event = evt && props ? evt : null
     if (evt && props) on_point_hover?.({ ...props, event: evt, point: closest_point })
   }
 
@@ -1519,7 +1524,8 @@
   })
 
   // Data swaps fire no pointer event, so re-resolve the hovered and pinned points on every data
-  // change (closing once gone, which the host hears as on_point_hover(null))
+  // change: the host hears the hovered point's new values (e.g. a sweep frame's energy at that
+  // k-point), or on_point_hover(null) once it is gone
   $effect.pre(() => {
     void materialized_series
     untrack(() => {
@@ -1530,7 +1536,13 @@
       const next = plotted_point(tooltip_point)
       if (next === tooltip_point) return
       tooltip_point = next
-      if (!next) on_point_hover?.(null)
+      const props = next && hover_event && construct_handler_props(next)
+      if (next && hover_event && props) {
+        on_point_hover?.({ ...props, event: hover_event, point: next })
+      } else if (!next) {
+        hover_event = null
+        on_point_hover?.(null)
+      }
     })
   })
 
@@ -1674,6 +1686,7 @@
     hovered = false
     plot_click_armed = false
     tooltip_point = null
+    hover_event = null
     on_point_hover?.(null)
   }}
   {header_controls}

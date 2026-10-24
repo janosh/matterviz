@@ -109,9 +109,10 @@ export type Site = {
     image_of?: number
     unit_cell_idx?: number
     completion?: boolean
-    // Vertex count of the site's coordination polyhedron on the periodic bond graph (0: none),
-    // stamped with image completion so truncated copies at the cell faces don't render
-    polyhedron_cn?: number
+    // Stamped by image completion: true on displayed copies whose periodic coordination
+    // polyhedron it completed, false on the rest (no polyhedron, cut off at the shell's edge,
+    // completion images), so truncated copies at the cell faces don't render
+    polyhedron_center?: boolean
   }
 }
 

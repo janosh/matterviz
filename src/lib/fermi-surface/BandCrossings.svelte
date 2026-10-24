@@ -24,7 +24,7 @@
   height={ctx.height}
   style="position: absolute; inset: 0; pointer-events: none"
 >
-  {#each crossings as { x, energy, level }, idx (idx)}
+  {#each crossings as { x, energy, level }}
     {#if in_range(x, ctx.x_range) && in_range(energy, ctx.y_range)}
       <circle
         cx={ctx.x_scale_fn(x)}

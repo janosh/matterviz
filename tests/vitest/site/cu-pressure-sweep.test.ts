@@ -2,7 +2,12 @@
 // energies scaled consistently, a model phonon dispersion stiffening with them, spectra built
 // per frame on demand
 import type { BandGridData } from '#lib/fermi-surface/types.js'
-import { descriptor_value, validate_sweep, volume_per_atom } from '#lib/spectral/sweep.js'
+import {
+  descriptor_value,
+  normalize_frame_data,
+  validate_sweep,
+  volume_per_atom,
+} from '#lib/spectral/sweep.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
 import {
@@ -99,14 +104,16 @@ test(`band energies scale about E_F by 1/s², k-space lengths by 1/s`, () => {
 })
 
 test(`the sweep ascends in pressure and its loader builds each frame's spectra`, async () => {
-  const { sweep, load_frame } = cu_pressure_sweep({ structure: fcc, band_data, band_struct })
-  expect(() => validate_sweep(sweep)).not.toThrow()
+  const sweep = cu_pressure_sweep({ structure: fcc, band_data, band_struct })
+  validate_sweep(sweep)
   const [series] = sweep.series
   expect(series.frames).toHaveLength(CU_VOLUME_RATIOS.length)
   expect(series.frames[0]).toMatchObject({ value: 0, label: `0 GPa (V/V₀ = 1.00)` })
   // frames bring only their structures up front
   expect(series.frames.every((frame) => frame.structure && !frame.band_data)).toBe(true)
-  const loaded = await load_frame(series.id, 2)
+  if (!sweep.load_frame) throw new Error(`no loader`)
+  // the loader's data parses as frame data, as the viewer parses it
+  const loaded = normalize_frame_data(await sweep.load_frame(series.id, 2), `frame 2`)
   expect(Object.keys(loaded).toSorted()).toEqual([
     `band_data`,
     `band_structs`,
@@ -121,7 +128,8 @@ test(`the sweep ascends in pressure and its loader builds each frame's spectra`,
   expect(values.volume_per_atom).toBeCloseTo(volume_per_atom(fcc) * 0.9, 12)
   expect(values.cu_cu_distance).toBeCloseTo((3.6 / Math.SQRT2) * Math.cbrt(0.9), 12)
   expect(values.fermi_band_count).toBe(1)
-  expect(values.fermi_dos).toBeGreaterThan(0)
+  // regression pin: the frame's grid DOS at E_F, as computed when this test was written
+  expect(values.fermi_dos).toBeCloseTo(1.9921717774309593, 12)
 })
 
 // R·diag·Rᵀ for a rotation R about (1, 1, 1): eigenvalues = diag. Distinct ones come out to

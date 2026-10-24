@@ -4,7 +4,14 @@ import { plot_color } from '#lib/colors/index.js'
 import { array_extent, type Vec2 } from '#lib/math.js'
 import type { TempUnit } from '../types'
 import { named_phase_color } from '../utils'
-import type { PressureUnit, PtPhase, PtPhaseDiagramData, PtSpecialPointType } from './types'
+import type {
+  PressureUnit,
+  PtBoundary,
+  PtPhase,
+  PtPhaseDiagramData,
+  PtSpecialPoint,
+  PtSpecialPointType,
+} from './types'
 
 // Pascal per unit
 export const PRESSURE_UNITS: Readonly<Record<PressureUnit, number>> = Object.freeze({
@@ -79,26 +86,35 @@ const KINDS = {
   number: [Number.isFinite, `a finite number`],
 } as const satisfies Record<string, readonly [(value: unknown) => boolean, string]>
 type Kind = keyof typeof KINDS
-// One error per optional field of `obj` set to the wrong kind, named `${owner}${field}`
-const kind_errors = (
+// One error per key of `obj` not in `fields` and per field set to the wrong kind, named
+// `${owner}${field}`
+const field_errors = (
   obj: Record<string, unknown>,
   fields: Readonly<Record<string, Kind>>,
   owner: string,
-): string[] =>
-  Object.entries(fields).flatMap(([field, kind]) => {
+): string[] => [
+  ...Object.keys(obj).flatMap((key) =>
+    Object.hasOwn(fields, key) ? [] : [`${owner}${key} is not a known field`],
+  ),
+  ...Object.entries(fields).flatMap(([field, kind]) => {
     const [is_kind, name] = KINDS[kind]
     return obj[field] === undefined || is_kind(obj[field])
       ? []
       : [`${owner}${field} must be ${name}`]
-  })
+  }),
+]
 
-// Entry owner name and optional field kinds by list: a wrong kind would throw in the detailed
-// checks (sigma.length, phases.forEach) or render as nonsense (a truthy `metastable: "no"`)
+// Every field by list, with its kind: an unknown key is likely a typo of an optional one, and
+// a wrong kind would throw in the detailed checks (sigma.length, phases.forEach) or render as
+// nonsense (a truthy `metastable: "no"`)
 const LISTS = {
-  phases: [`phase`, { name: `string`, color: `string`, description: `string` }],
+  phases: [`phase`, { id: `string`, name: `string`, color: `string`, description: `string` }],
   boundaries: [
     `boundary`,
     {
+      id: `string`,
+      phases: `array`,
+      points: `array`,
       sigma_t: `array`,
       sigma_p: `array`,
       label: `string`,
@@ -106,20 +122,41 @@ const LISTS = {
       style: `object`,
     },
   ],
-  regions: [`region`, {}],
-  special_points: [`special point`, { phases: `array`, label: `string` }],
+  regions: [`region`, { phase: `string`, vertices: `array`, label_position: `array` }],
+  special_points: [
+    `special point`,
+    {
+      id: `string`,
+      type: `string`,
+      position: `array`,
+      phases: `array`,
+      sigma_t: `number`,
+      sigma_p: `number`,
+      label: `string`,
+    },
+  ],
 } as const satisfies Record<string, readonly [string, Record<string, Kind>]>
+const TOP_FIELDS = {
+  ...Object.fromEntries(Object.keys(LISTS).map((key) => [key, `array`])),
+  pressure_range: `array`,
+  temperature_range: `array`,
+  pressure_unit: `string`,
+  temperature_unit: `string`,
+  system: `string`,
+  title: `string`,
+} as const satisfies Record<string, Kind>
+const STYLE_FIELDS = { color: `string`, width: `number`, dash: `string` } as const
 
-// Shape problems (wrong container types, non-object entries, missing ids, mistyped optional
-// fields) that would make the detailed checks throw or the diagram render garbage
+// Shape problems (unknown keys, wrong container types, non-object entries, missing ids,
+// mistyped fields) that would make the detailed checks throw or the diagram render garbage
 function shape_errors(data: unknown): string[] {
   if (!is_object(data)) return [`data must be an object`]
-  const errors = kind_errors(data, { system: `string`, title: `string` }, ``)
+  const errors = field_errors(data, TOP_FIELDS, ``)
   for (const [key, [owner, fields]] of Object.entries(LISTS)) {
     const list = data[key]
     if (list === undefined && (key === `regions` || key === `special_points`)) continue
     if (!Array.isArray(list)) {
-      errors.push(`${key} must be an array`)
+      if (list === undefined) errors.push(`${key} must be an array`)
       continue
     }
     list.forEach((entry, idx) => {
@@ -127,11 +164,10 @@ function shape_errors(data: unknown): string[] {
       else if (key !== `regions` && !(typeof entry.id === `string` && entry.id)) {
         errors.push(`${key}[${idx}] needs a non-empty string id`)
       } else {
-        const name = `${owner} '${entry.id}' `
-        errors.push(...kind_errors(entry, fields, name))
+        const name = key === `regions` ? `region ${idx} ` : `${owner} '${entry.id}' `
+        errors.push(...field_errors(entry, fields, name))
         if (is_object(entry.style)) {
-          const style_fields = { color: `string`, width: `number`, dash: `string` } as const
-          errors.push(...kind_errors(entry.style, style_fields, `${name}style.`))
+          errors.push(...field_errors(entry.style, STYLE_FIELDS, `${name}style.`))
         }
       }
     })
@@ -213,6 +249,9 @@ function detail_errors(data: PtPhaseDiagramData): string[] {
       )
     }
     if (!is_vec2(point.position)) errors.push(`${owner} position is not a finite [P, T] pair`)
+    if (point.type === `critical` && critical_boundaries(point, boundaries).length !== 1) {
+      errors.push(`${owner} phases must be the two phases of exactly one boundary`)
+    }
     point.phases?.forEach((phase_id) => check_phase(phase_id, owner))
     if (
       ![point.sigma_t, point.sigma_p].every((sigma) => sigma === undefined || is_sigma(sigma))
@@ -235,6 +274,16 @@ function detail_errors(data: PtPhaseDiagramData): string[] {
   }
   return errors
 }
+
+// Boundaries between a critical point's two phases: the line that ends there (a valid diagram
+// has exactly one)
+export const critical_boundaries = (
+  { phases: ids }: PtSpecialPoint,
+  boundaries: readonly PtBoundary[],
+): PtBoundary[] =>
+  ids?.length === 2
+    ? boundaries.filter(({ phases }) => phases.every((id) => ids.includes(id)))
+    : []
 
 // Every [P, T] the diagram draws: boundary points, special points and region vertices
 const all_points = (data: PtPhaseDiagramData): Vec2[] => [

@@ -1361,21 +1361,17 @@ export function polygon_centroid(vertices: readonly Vec2[]): Vec2 {
     vertices.reduce((acc, [, coord_y]) => acc + coord_y, 0) / vertices.length,
   ]
   if (vertices.length < 3) return vertex_average()
+  const signed_area = polygon_signed_area(vertices)
+  if (Math.abs(signed_area) < EPS) return vertex_average()
 
-  let [signed_area, center_x, center_y] = [0, 0, 0]
-
+  let [center_x, center_y] = [0, 0]
   for (let idx = 0; idx < vertices.length; idx++) {
     const [coord_x_0, coord_y_0] = vertices[idx]
     const [coord_x_1, coord_y_1] = vertices[(idx + 1) % vertices.length]
     const cross = coord_x_0 * coord_y_1 - coord_x_1 * coord_y_0
-    signed_area += cross
     center_x += (coord_x_0 + coord_x_1) * cross
     center_y += (coord_y_0 + coord_y_1) * cross
   }
-
-  signed_area *= 0.5
-  if (Math.abs(signed_area) < EPS) return vertex_average()
-
   const factor = 1 / (6 * signed_area)
   return [center_x * factor, center_y * factor]
 }
@@ -1735,4 +1731,24 @@ export function solve_linear_program(
   }
   const objective_value = solution.reduce((sum, value, col) => sum + value * objective[col], 0)
   return { status: `optimal`, solution, objective: objective_value }
+}
+
+// Vec2 linear interpolation
+export const lerp_vec2 = (start: Vec2, end: Vec2, fraction: number): Vec2 => [
+  start[0] + fraction * (end[0] - start[0]),
+  start[1] + fraction * (end[1] - start[1]),
+]
+
+// Parameters [t_a, t_b] where the lines through segments a and b cross,
+// a_0 + t_a (a_1 - a_0) = b_0 + t_b (b_1 - b_0), unbounded; null for (near-)parallel or
+// zero-length segments (|sin| of the angle between them at most 1e-12)
+export function segment_intersection_params(
+  [a_0, a_1]: readonly [Vec2, Vec2],
+  [b_0, b_1]: readonly [Vec2, Vec2],
+): Vec2 | null {
+  const [dir_a, dir_b, offset] = [subtract(a_1, a_0), subtract(b_1, b_0), subtract(b_0, a_0)]
+  const perp_dot = (vec_a: Vec2, vec_b: Vec2) => vec_a[0] * vec_b[1] - vec_a[1] * vec_b[0]
+  const denom = perp_dot(dir_a, dir_b)
+  if (Math.abs(denom) <= 1e-12 * Math.hypot(...dir_a) * Math.hypot(...dir_b)) return null
+  return [perp_dot(offset, dir_b) / denom, perp_dot(offset, dir_a) / denom]
 }

@@ -110,16 +110,15 @@
   above with its cell scaled to each volume, band energies rescaled about E<sub>F</sub> as free
   electrons (∝ 1/a²) and pressures from a Birch–Murnaghan equation of state (B₀ = 140 GPa, B₀′
   = 5). The phonon pane below the electronic spectra shows a nearest-neighbour force-constant
-  model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) as one more
-  DOS curve; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. No
-  frame is a calculation at its pressure.
+  model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) on its own
+  axis; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. No frame
+  is a calculation at its pressure.
 </p>
 
 {#if cu_sweep && band_data}
   {@const fermi_energy = band_data.fermi_energy}
   <ElectronicStructure
-    sweep={cu_sweep.sweep}
-    load_frame={cu_sweep.load_frame}
+    sweep={cu_sweep}
     panes={sweep_panes}
     fermi_props={{ show_controls: `hover` }}
     bands_props={{

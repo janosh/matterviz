@@ -3,10 +3,10 @@
 // a gizmo fly-to, a landed camera flight) any member turns the others to the same view
 // direction, as does joining late (a viewer remounting its camera on a projection toggle).
 // Members turn at the leader's rate, so of several auto-rotating members each adds its own
-// steps: let one auto-rotate. Each member keeps its own
-// orbit target, distance, zoom and pan, so scenes of different size and units (a crystal in Å,
-// its Fermi surface in Å⁻¹) stay framed. Meant for scenes sharing one Cartesian frame with the
-// same camera up vector (the scene default +y), else equal directions do not mean equal views.
+// steps: let one auto-rotate. Each member keeps its own orbit target, distance, zoom and pan,
+// so scenes of different size and units (a crystal in Å, its Fermi surface in Å⁻¹) stay framed.
+// Meant for scenes sharing one Cartesian frame with the same camera up vector (the scene
+// default +y), else equal directions do not mean equal views.
 import { getContext, setContext } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Vector3 } from 'three/webgpu'
@@ -58,8 +58,10 @@ export function create_orbit_link(): OrbitLink {
       // before its own listeners would echo that back
       if ([...members].some(read_direction) && !flight_holds(controls)) aim(controls)
       members.add(controls)
+      // a follower's own change (e.g. its damping gliding on during a re-aim) must not
+      // overwrite the shared direction the remaining followers are still aimed along
       const on_change = () => {
-        if (read_direction(controls)) follow(controls, aim)
+        if (!following && read_direction(controls)) follow(controls, aim)
       }
       // Followers see the leader's gesture as their own, so their hosts track the move as for
       // a drag (hover suppressed meanwhile, pose synced and reported once it ends)

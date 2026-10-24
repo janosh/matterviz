@@ -69,7 +69,7 @@ export const polyhedra_options_from = (
 
 // Worker results belong to one immutable bond snapshot. Filters or bond edits create a
 // different graph; appearance changes leave this geometry reusable.
-export const polyhedra_options_key = (options: PolyhedraOptions): string =>
+const polyhedra_options_key = (options: PolyhedraOptions): string =>
   JSON.stringify([
     options.neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
     options.min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
@@ -694,19 +694,17 @@ export function compute_polyhedra(
     return !is_weak_species(element)
   })
 
-  // Pass 3: boundary completeness - a copy renders only at its site's full vertex count, so
-  // copies truncated at the cell faces are skipped. Image completion stamps that count from
-  // the periodic bond graph on every site (polyhedron_cn, 0 for no polyhedron); otherwise it
-  // is the max observed among copies of the same original site, which misses sites whose
-  // every displayed copy is truncated.
+  // Pass 3: boundary completeness - copies truncated at the cell faces are skipped. Image
+  // completion stamps which copies it completed (polyhedron_center), so only the rest are
+  // skipped and a bond edit or hidden corner shrinks a polyhedron instead of deleting it.
+  // Unstamped copies render only at the max vertex count among copies of the same original
+  // site, which misses sites whose every displayed copy is truncated.
   const max_cn_by_orig = new Map<number, number>()
   for (const { orig_idx, vertex_site_idxs } of visible) {
     if (vertex_site_idxs.length > (max_cn_by_orig.get(orig_idx) ?? 0)) {
       max_cn_by_orig.set(orig_idx, vertex_site_idxs.length)
     }
   }
-  const full_cn = (site_idx: number, orig_idx: number): number | undefined =>
-    get_site(structure, site_idx)?.provenance?.polyhedron_cn ?? max_cn_by_orig.get(orig_idx)
 
   // Pass 4: CN cap (after completeness so capped interior copies don't let
   // truncated boundary copies of the same site slip through; force-included
@@ -716,8 +714,11 @@ export function compute_polyhedra(
   const polyhedra: Polyhedron[] = []
   const seen_positions = new Set<string>()
   for (const { site_idx, orig_idx, element, vertex_site_idxs, vertex_positions } of visible) {
-    if (vertex_site_idxs.length !== full_cn(site_idx, orig_idx)) continue
-    if (vertex_site_idxs.length > max_neighbors && !included.has(element)) continue
+    const stamped = get_site(structure, site_idx)?.provenance?.polyhedron_center
+    const n_vertices = vertex_site_idxs.length
+    if (stamped === false) continue
+    if (stamped === undefined && n_vertices !== max_cn_by_orig.get(orig_idx)) continue
+    if (n_vertices > max_neighbors && !included.has(element)) continue
 
     const [pixel_x, pixel_y, pixel_z] = position(site_idx)
     const pos_key = `${Math.round(pixel_x * 1e3)},${Math.round(pixel_y * 1e3)},${Math.round(pixel_z * 1e3)}`

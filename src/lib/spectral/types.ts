@@ -203,9 +203,14 @@ export type SpectrumPresentation = `absorbance` | `transmittance`
 // `phonon` its phonon bands and DOS, `trends` a sweep's descriptors against its axis
 export type ElectronicPane = `structure` | `fermi` | `bands` | `dos` | `phonon` | `trends`
 
-// A material's phonon spectra beside its electronic ones: dispersion and DOS on one frequency
-// axis, where an Eliashberg function α²F(ω) is one more DOS curve
-export interface PhononSpectra {
+// Named band structures and DOS of one kind (electronic or phonon)
+export interface SpectraRecords {
   band_structs?: Record<string, BaseBandStructure>
   doses?: Record<string, DosData>
+}
+
+// A material's phonon spectra beside its electronic ones: dispersion and DOS on one frequency
+// axis, Eliashberg functions α²F(ω) (dimensionless) on their own axis over the same frequencies
+export interface PhononSpectra extends SpectraRecords {
+  a2f?: Record<string, PhononDos>
 }

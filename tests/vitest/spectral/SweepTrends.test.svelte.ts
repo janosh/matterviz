@@ -154,38 +154,26 @@ test(`overlaid descriptors add a dashed line per series, clicks still selecting 
   expect(single_lines.map(({ label }) => label)).toEqual([`Tc (AD)`, `Tc (ME)`])
 })
 
-test(`a rerun computes values only for frames it has not seen`, () => {
-  // each value computed reads its frame's scalars once (a class: $state leaves it unproxied)
-  let reads = 0
-  class CountedFrame implements SweepFrame {
-    constructor(
-      readonly value: number,
-      readonly tc: number,
-    ) {}
-    get scalars() {
-      reads++
-      return { tc: this.tc }
-    }
-  }
-  const counted = (value: number, tc: number): SweepFrame => new CountedFrame(value, tc)
-  const frames = [counted(0, 1), counted(50, 2)]
-  const counted_sweep: Sweep = { ...sweep, series: [{ id: `fcc`, frames }] }
-  const { state } = render({ sweep: counted_sweep })
-  // props are lazy getters: reading series is what computes the values
-  const plotted = () => plot.props?.series?.[0].y
-  plotted()
-  const first_reads = reads
-  expect(first_reads).toBeGreaterThan(0)
-  // a new frame_of (as after a load) returning the same frames recomputes nothing
-  state.frame_of = (series: SweepSeries, idx: number): SweepFrame => series.frames[idx]
+test(`points follow a $state sweep edited in place: scalar edits and inserted frames`, () => {
+  const { state } = render({ sweep: structuredClone(sweep) })
+  const plotted = () => [plot.props?.series?.[0].x, plot.props?.series?.[0].y]
+  expect(plotted()).toEqual([
+    [0, 100],
+    [1, 3],
+  ])
+  state.sweep.series[0].frames[0].scalars = { tc: 1.5 }
+  state.sweep.series[0].frames.splice(1, 0, { value: 20, scalars: { tc: 2 } })
   flushSync()
-  plotted()
-  expect(reads).toBe(first_reads)
-  // a new (loaded) frame object is computed, the other frame stays cached
-  const loaded = counted(50, 5)
-  state.frame_of = (series: SweepSeries, idx: number): SweepFrame =>
-    idx === 1 ? loaded : series.frames[idx]
-  flushSync()
-  expect(plotted()).toEqual([1, 5])
-  expect(reads - first_reads).toBe(first_reads / 2)
+  expect(plotted()).toEqual([
+    [0, 20, 100],
+    [1.5, 2, 3],
+  ])
+})
+
+// oxfmt-ignore
+test.each<[string, Partial<ComponentProps<typeof SweepTrends>>, string]>([
+  [`an unknown descriptor key`, { descriptor: `tc_typo` }, `descriptor "tc_typo" is not a descriptor of the sweep (tc, vol)`],
+  [`a value outside its range`, { sweep: { ...sweep, series: [{ id: `a`, frames: [{ value: 0, scalars: { tc: 3, tc_lo: 0, tc_hi: 2 } }] }] } }, `Descriptor "tc" at 0: range [0, 2] does not bracket 3`],
+])(`%s throws`, (_desc, props, message) => {
+  expect(() => render(props).props.series).toThrow(message) // the mock reads props lazily
 })

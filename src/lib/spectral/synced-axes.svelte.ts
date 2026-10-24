@@ -50,6 +50,9 @@ interface BandsDosSyncInputs {
   // DOS horizontal beside the bands (frequency on both y axes); false stacks it below with
   // density on y, where only the bands axis takes part in the link
   side_by_side: () => boolean
+  // the frequency extent (data units) to span instead of the shown data's, e.g. a sweep's
+  // frames' so the axis holds still while stepping through them
+  data_range?: () => Vec2 | undefined
   // false keeps the two frequency axes independent (no shared range, no zoom link)
   shared_axis?: () => boolean
   sync_zoom?: () => boolean // default true
@@ -71,13 +74,14 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     return frequency_unit_per_thz(parse_frequency_unit(unit) ?? unit)
   })
   // A caller's valid frequency range (the bands', else the DOS's frequency axis, both in
-  // display units) is the shared one, else the data's padded extent
+  // display units) is the shared one, else data_range, else the data's padded extent
   const shared_range = $derived.by(() => {
     if (!shared()) return undefined
     const dos_axis = inputs.side_by_side() ? dos_props().y_axis : dos_props().x_axis
     const caller = [bands_props().y_axis?.range, dos_axis?.range].find(is_valid_range)
     if (caller) return caller
-    const range = compute_frequency_range(inputs.band_structs(), doses())
+    const range =
+      inputs.data_range?.() ?? compute_frequency_range(inputs.band_structs(), doses())
     return range ? ([range[0] * unit_factor, range[1] * unit_factor] as Vec2) : undefined
   })
   const fermi_level = $derived(

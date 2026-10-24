@@ -16,11 +16,19 @@
   import Dos from './Dos.svelte'
   import { create_band_path_link } from './band-path-link.svelte'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
-  import type { BaseBandStructure, DosData, FrequencyUnit, HoveredData } from './types'
+  import type {
+    BaseBandStructure,
+    DosData,
+    FrequencyUnit,
+    HoveredData,
+    PhononDos,
+  } from './types'
 
   let {
     band_structs,
     doses,
+    a2f,
+    frequency_range,
     structure,
     units = $bindable(`THz`),
     fermi_level,
@@ -36,6 +44,8 @@
   }: HTMLAttributes<HTMLDivElement> & {
     band_structs: Record<string, BaseBandStructure>
     doses: Record<string, DosData>
+    a2f?: Record<string, PhononDos> // Eliashberg functions, on the DOS's own α²F axis
+    frequency_range?: Vec2 // the extent (data units) to span instead of the data's
     structure?: Crystal // adds its Brillouin zone with the bands' k-path
     units?: FrequencyUnit
     fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
@@ -87,6 +97,7 @@
     bands_props: () => bands_props,
     dos_props: () => dos_props,
     side_by_side: () => side_by_side,
+    data_range: () => frequency_range,
     shared_axis: () => shared_y_axis,
     sync_zoom: () => sync_y_zoom,
     base_padding: {
@@ -166,6 +177,7 @@
     {...dos_props}
     style="grid-area: dos; {dos_props.style ?? ``}"
     {doses}
+    {a2f}
     bind:units
     fermi_level={sync.fermi_level}
     orientation={side_by_side ? `horizontal` : `vertical`}

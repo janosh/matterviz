@@ -10,12 +10,13 @@
   // - Bands ↔ Fermi surface: hover previews, click pins and isolates a sheet (FermiBandsLink).
   // - Bands ↔ DOS share zoom and hover lines on the energy axis; hovering the DOS previews the
   //   Fermi surface at that energy too.
-  // Phonon bands and DOS (α²F as one more DOS curve) sit below the electronic spectra on their
-  // own frequency axis (`phonon`).
+  // Phonon bands and DOS (α²F on its own axis) sit below the electronic spectra on their own
+  // frequency axis (`phonon`).
   // A sweep (`sweep`) runs the viewer along one axis, e.g. pressure: a control bar steps through
-  // a series' frames, every pane shows the selected frame, `load_frame` fetches frames' heavy
-  // data on demand (the neighbours prefetched), and the trends pane plots descriptors against
-  // the axis, a click selecting that frame (see sweep.ts).
+  // a series' frames, every pane shows the selected frame, the sweep's `load_frame` fetches
+  // frames' heavy data on demand (the neighbours prefetched), the spectra span every loaded
+  // frame of the series so their axes hold still while stepping, and the trends pane plots
+  // descriptors against the axis, a click selecting that frame (see sweep.ts).
   // A dropped file replaces the data of the panes it fills: a structure file the structure, a
   // trajectory its final frame's structure (plus a vaspout.h5's DOS, never bands), a band grid
   // or meshed surface the Fermi surface, a band structure and/or DOS JSON (also BandsAndDos'
@@ -28,13 +29,15 @@
   } from '#lib/controls.js'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import BandCrossings from '#lib/fermi-surface/BandCrossings.svelte'
-  import {
-    FermiBandsLink,
-    LINK_HOVER_CONFIG,
-  } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
+  import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-  import type { BandGridJson, FermiSurfaceJson } from '#lib/fermi-surface/parse.js'
+  import {
+    type BandGridJson,
+    type FermiSurfaceJson,
+    normalize_band_grid,
+    normalize_fermi_surface,
+  } from '#lib/fermi-surface/parse.js'
   import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
   import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
@@ -47,7 +50,7 @@
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-  import { clamp, dot, matrix_inverse_3x3, type Matrix3x3 } from '#lib/math.js'
+  import { clamp, dot, matrix_inverse_3x3, type Matrix3x3, type Vec2 } from '#lib/math.js'
   import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
@@ -75,10 +78,10 @@
   import Bands from './Bands.svelte'
   import BandsAndDos from './BandsAndDos.svelte'
   import Dos from './Dos.svelte'
-  import { normalize_band_structure, normalize_dos } from './helpers'
+  import { compute_frequency_range, normalize_band_structure, normalize_dos } from './helpers'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
   import { format_axis_value, is_sweep_like, normalize_sweep, validate_sweep } from './sweep'
-  import type { Sweep, SweepFrameLoader, SweepSeries } from './sweep'
+  import type { Sweep, SweepFrame, SweepSeries } from './sweep'
   import { create_sweep_frames } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
@@ -88,6 +91,7 @@
     ElectronicPane,
     FrequencyUnit,
     PhononSpectra,
+    SpectraRecords,
   } from './types'
 
   const PANES = [
@@ -118,7 +122,6 @@
     sweep = $bindable(),
     series_id = $bindable(),
     frame_idx = $bindable(0),
-    load_frame,
     descriptor = $bindable(),
     fps = $bindable(1),
     panes = $bindable(),
@@ -159,8 +162,9 @@
     sweep?: Sweep
     series_id?: string // the shown series (default: the first)
     frame_idx?: number // the shown frame of that series
-    load_frame?: SweepFrameLoader // fetches a frame's heavy data when it is first shown
-    descriptor?: string // the descriptor key the trends pane plots (default: the first)
+    // the descriptor key the trends pane plots (default: the first), reset when a new sweep
+    // has none of that key
+    descriptor?: string
     fps?: number // frames per second when playing the sweep
     panes?: ElectronicPane[] // shown panes, default: those with data
     units?: FrequencyUnit // phonon frequency unit of the spectra
@@ -234,12 +238,16 @@
     if (series && series_id !== undefined && series_id !== series.id) series_id = series.id
     if (series && frame_idx !== frame_index) frame_idx = frame_index
   })
-  // a dropped sweep carries its frames' data, so the caller's loader (for its sweeps) is off
-  let dropped_sweep = $state.raw<Sweep>()
-  const active_load_frame = $derived(sweep && sweep === dropped_sweep ? undefined : load_frame)
+  // a replaced sweep (also a dropped one) keeps the plotted descriptor only if it has its key
+  let descriptor_sweep = untrack(() => sweep)
+  $effect.pre(() => {
+    if (sweep === descriptor_sweep) return
+    descriptor_sweep = sweep
+    const key = untrack(() => descriptor)
+    if (!sweep?.descriptors?.some((spec) => spec.key === key)) descriptor = undefined
+  })
   const frames = create_sweep_frames({
     sweep: () => sweep,
-    load_frame: () => active_load_frame,
     on_error: (message) => report_error(message),
   })
   const frame = $derived(series && frames.frame(series, frame_index))
@@ -253,12 +261,28 @@
   })
   // the frame's own surface, else what FermiSurface extracts from its band grid
   let frame_surface = $derived(frame?.fermi_data)
-  const shown_structure = $derived(sweep ? frame?.structure : structure)
-  const shown_band_data = $derived(sweep ? frame?.band_data : band_data)
-  const shown_fermi_data = $derived(sweep ? frame_surface : fermi_data)
-  const shown_band_structs = $derived((sweep ? frame?.band_structs : band_structs) ?? {})
-  const shown_doses = $derived((sweep ? frame?.doses : doses) ?? {})
-  const shown_phonon = $derived((sweep ? frame?.phonon : phonon) ?? {})
+  // the panes' data: the shown frame's in a sweep, else the props' (JSON grids parsed, as
+  // sweeps parse theirs)
+  const pane_data = $derived<Partial<SweepFrame>>(
+    sweep
+      ? { ...frame, fermi_data: frame_surface }
+      : {
+          structure,
+          fermi_data: fermi_data && normalize_fermi_surface(fermi_data),
+          band_data: band_data && normalize_band_grid(band_data),
+          band_structs,
+          doses,
+          phonon,
+        },
+  )
+  const {
+    structure: shown_structure,
+    band_data: shown_band_data,
+    fermi_data: shown_fermi_data,
+    band_structs: shown_band_structs = {},
+    doses: shown_doses = {},
+    phonon: shown_phonon = {},
+  } = $derived(pane_data)
   const playback = create_sequence_player({
     count: () => series?.frames.length ?? 0,
     index: () => frame_index,
@@ -299,37 +323,46 @@
     series ? series.frames.map((_frame, idx) => frames.frame(series, idx)) : [],
   )
   // the panes any of the entries (frames, or the props) has data for
-  type PaneData = {
-    structure?: unknown
-    fermi_data?: unknown
-    band_data?: unknown
-    band_structs?: Record<string, unknown>
-    doses?: Record<string, unknown>
-    phonon?: { band_structs?: Record<string, unknown>; doses?: Record<string, unknown> }
-  }
-  const panes_with_data = (entries: PaneData[], with_trends: boolean): ElectronicPane[] => {
-    const some = (has: (entry: PaneData) => unknown) => entries.some(has)
-    const count = (record?: Record<string, unknown>) => Object.keys(record ?? {}).length
+  const panes_with_data = (
+    entries: Partial<SweepFrame>[],
+    with_trends: boolean,
+  ): ElectronicPane[] => {
+    const some = (has: (entry: Partial<SweepFrame>) => unknown) => entries.some(has)
+    const count = (record?: object) => Object.keys(record ?? {}).length
     const filled: Record<ElectronicPane, boolean> = {
       structure: some((entry) => entry.structure),
       fermi: some((entry) => entry.fermi_data || entry.band_data),
       bands: some((entry) => count(entry.band_structs) > 0),
       dos: some((entry) => count(entry.doses) > 0),
       phonon: some(
-        ({ phonon: spectra }) => count(spectra?.band_structs) + count(spectra?.doses),
+        ({ phonon: spectra }) =>
+          count(spectra?.band_structs) + count(spectra?.doses) + count(spectra?.a2f),
       ),
       trends: with_trends,
     }
     return PANE_IDS.filter((pane) => filled[pane])
   }
   const with_data = $derived(
-    sweep
-      ? panes_with_data(shown_frames, Boolean(sweep.descriptors?.length))
-      : panes_with_data(
-          [{ structure, fermi_data, band_data, band_structs, doses, phonon }],
-          false,
-        ),
+    panes_with_data(sweep ? shown_frames : [pane_data], Boolean(sweep?.descriptors?.length)),
   )
+  // In a sweep, the frequency extent (data units) of every loaded frame of the series
+  const sweep_span = (
+    pick: (frame: SweepFrame) => SpectraRecords | undefined,
+  ): Vec2 | undefined => {
+    if (!sweep) return undefined
+    const ranges = shown_frames.flatMap((entry) => {
+      const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
+      const range = compute_frequency_range(bands, dos)
+      return range ? [range] : []
+    })
+    if (!ranges.length) return undefined
+    return [
+      Math.min(...ranges.map(([low]) => low)),
+      Math.max(...ranges.map(([, high]) => high)),
+    ]
+  }
+  const electronic_span = $derived(sweep_span((entry) => entry))
+  const phonon_span = $derived(sweep_span((entry) => entry.phonon))
   const shown = $derived.by((): Set<ElectronicPane> => {
     if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
     if (panes?.includes(`trends`) && !sweep?.descriptors?.length) {
@@ -346,7 +379,7 @@
   const show_scenes = $derived(shown.has(`structure`) || shown.has(`fermi`))
   const show_spectra = $derived(shown.has(`bands`) || shown.has(`dos`))
   const show_phonon = $derived(shown.has(`phonon`))
-  const show_trends = $derived(Boolean(sweep) && shown.has(`trends`))
+  const show_trends = $derived(shown.has(`trends`)) // `shown` checks the sweep has descriptors
   // the electronic spectra above the phonons, beside the trends
   const show_column = $derived(show_spectra || show_phonon)
   const column_split = $derived(show_spectra && show_phonon)
@@ -405,11 +438,10 @@
   })
   const link = new FermiBandsLink({
     band_data: () => shown_band_data,
-    surface: () => shown_fermi_data,
     band_struct: () => first_band_struct,
     k_lattice: () => k_lattice,
     mu: { get: () => mu, set: (value) => (mu = value) },
-    selected_bands: { get: () => selected_bands, set: (bands) => (selected_bands = bands) },
+    selected_bands: () => selected_bands,
     bands_props: () => bands_props,
     fermi_props: () => fermi_props,
   })
@@ -421,6 +453,7 @@
     bands_props: () => bands_props,
     dos_props: () => dos_props,
     side_by_side: () => spectra_side,
+    data_range: () => electronic_span,
     base_padding: { t: 20, b: 50 },
   })
   // the energy marked on both spectra: the previewed surface's, else the hovered one
@@ -442,7 +475,6 @@
         return error instanceof Error ? error.message : String(error)
       }
       ;[sweep, series_id, frame_idx] = [dropped, undefined, 0]
-      dropped_sweep = sweep // as read back: a bound caller's state hands out its own proxy
       const dropped_frames = dropped.series.flatMap((entry) => entry.frames)
       return panes_with_data(dropped_frames, Boolean(dropped.descriptors?.length))
     }
@@ -479,22 +511,20 @@
       return `${filename} is ${kind} data, not a structure, Fermi surface, band structure or DOS`
     }
     // phonon spectra go to the phonon pane, beside (not into) the electronic ones
-    const phonon_bands = bands?.type === `phonon` ? bands : null
-    const phonon_dos = dos?.type === `phonon` ? dos : null
     const filled: ElectronicPane[] = []
-    if (bands && !phonon_bands) {
+    if (bands?.type === `electronic`) {
       band_structs = { [filename]: bands }
       filled.push(`bands`)
     }
-    if (dos && !phonon_dos) {
+    if (dos?.type === `electronic`) {
       doses = { [filename]: dos }
       filled.push(`dos`)
     }
-    if (phonon_bands || phonon_dos) {
+    if (bands?.type === `phonon` || dos?.type === `phonon`) {
       phonon = {
         ...phonon,
-        ...(phonon_bands && { band_structs: { [filename]: phonon_bands } }),
-        ...(phonon_dos && { doses: { [filename]: phonon_dos } }),
+        ...(bands?.type === `phonon` && { band_structs: { [filename]: bands } }),
+        ...(dos?.type === `phonon` && { doses: { [filename]: dos } }),
       }
       filled.push(`phonon`)
     }
@@ -697,7 +727,8 @@
               previewing={link.previewing}
               bind:color_property={link.color_property}
               bind:mu={link.mu}
-              bind:selected_bands={link.selected_bands}
+              bind:selected_bands
+              bind:isolated_band={link.isolated_band}
               k_marker={link.path.hovered_k_point}
               k_path={link.k_path}
               on_point_hover={chain_callbacks(link.fermi_hover, fermi_props.on_point_hover)}
@@ -776,7 +807,7 @@
                       highlighted_band_index={link.highlighted_band}
                       highlighted_qpoint_index={link.path.active_qpoint}
                       highlighted_qpoint_range={link.path.highlighted_qpoint_range}
-                      hover_config={{ ...LINK_HOVER_CONFIG, ...bands_props.hover_config }}
+                      hover_config={link.bands_hover_config}
                       on_point_hover={chain_callbacks(
                         link.band_hover,
                         bands_props.on_point_hover,
@@ -860,6 +891,8 @@
                   }}
                   band_structs={shown_phonon.band_structs ?? {}}
                   doses={shown_phonon.doses ?? {}}
+                  a2f={shown_phonon.a2f}
+                  frequency_range={phonon_span}
                   bind:units
                   fullscreen_toggle={false}
                 />

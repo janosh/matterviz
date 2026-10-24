@@ -41,7 +41,7 @@ const with_special = (...special_points: Record<string, unknown>[]) => ({
   ...base,
   special_points,
 })
-const critical = { id: `cp`, type: `critical`, position: [1, 1] }
+const critical = { id: `cp`, type: `critical`, position: [1, 1], phases: [`solid`, `liquid`] }
 
 describe(`parse_pt_data`, () => {
   test.each([
@@ -80,9 +80,12 @@ describe(`parse_pt_data`, () => {
     [`non-finite label_position`, with_region({ label_position: [1, Number.NaN] }), [`region 0 (solid) label_position is not a finite [P, T] pair`]],
     [`duplicate special point id`, with_special(critical, { ...critical, type: `triple` }), [`duplicate special point id 'cp'`]],
     [`special point bad position`, with_special({ ...critical, position: [1, Number.NaN] }), [`special point 'cp' position is not a finite [P, T] pair`]],
-    [`special point unknown phase`, with_special({ ...critical, phases: [`gas`] }), [`special point 'cp' references unknown phase 'gas'`]],
+    [`special point unknown phase`, with_special({ ...critical, type: `triple`, phases: [`gas`] }), [`special point 'cp' references unknown phase 'gas'`]],
+    // a critical point names the one line that ends there
+    ...([[`without phases`, undefined], [`naming no boundary's pair`, [`solid`, `gas`]], [`naming one phase`, [`solid`]]] as [string, string[] | undefined][]).map(([label, phases]): [string, unknown, string[]] => [`critical point ${label}`, { ...with_special({ ...critical, phases }), phases: [...base.phases, { id: `gas` }] }, [`special point 'cp' phases must be the two phases of exactly one boundary`]]),
+    [`critical point naming two boundaries' pair`, { ...with_special(critical), boundaries: [melting, { ...melting, id: `melting-2` }] }, [`special point 'cp' phases must be the two phases of exactly one boundary`]],
     [`special point negative sigma`, with_special({ ...critical, sigma_t: -1 }), [`special point 'cp' sigma must be finite and non-negative`]],
-    [`special point non-finite sigma_p`, with_special({ ...critical, sigma_p: Infinity }), [`special point 'cp' sigma must be finite and non-negative`]],
+    [`special point non-finite sigma_p`, with_special({ ...critical, sigma_p: Infinity }), [`special point 'cp' sigma_p must be a finite number`]],
     [`unknown special point type`, with_special({ ...critical, type: `eutectic` }), [`special point 'cp' has unknown type 'eutectic' (triple, critical, custom)`]],
     [`inverted pressure range`, { ...base, pressure_range: [10, 0] }, [`pressure_range must be [min, max] with min < max, got [10,0]`]],
     [`empty temperature range`, { ...base, temperature_range: [500, 500] }, [`temperature_range must be [min, max] with min < max, got [500,500]`]],
@@ -95,6 +98,11 @@ describe(`parse_pt_data`, () => {
     [`string style.width`, with_boundary({ style: { width: `3` } }), [`boundary 'melting' style.width must be a finite number`]],
     [`object system`, { ...base, system: {} }, [`system must be a string`]],
     [`numeric title`, { ...base, title: 5 }, [`title must be a string`]],
+    // unknown keys are typos of known ones, at every level
+    [`unknown top-level key`, { ...base, pressure_units: `GPa` }, [`pressure_units is not a known field`]],
+    [`unknown boundary key`, with_boundary({ sigma: [1, 1] }), [`boundary 'melting' sigma is not a known field`]],
+    [`unknown style key`, with_boundary({ style: { colour: `red` } }), [`boundary 'melting' style.colour is not a known field`]],
+    [`unknown region key`, with_region({ label: `x` }), [`region 0 label is not a known field`]],
     [`several problems at once`, { ...with_boundary({ phases: [`solid`, `gas`], sigma_t: [1] }), pressure_unit: `psi` }, [`boundary 'melting' references unknown phase 'gas'`, `boundary 'melting' sigma_t has 1 entries for 2 points`, `unknown pressure_unit 'psi'`]],
   ] satisfies [string, unknown, string[]][])(`%s is reported`, (_label, data, errors) => {
     expect(parse_pt_data(data)).toEqual({ data: null, errors })

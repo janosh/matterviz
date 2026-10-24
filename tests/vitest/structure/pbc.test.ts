@@ -178,6 +178,17 @@ test.each([
   }
 })
 
+// Completion stamps every site once it judged polyhedra; metals in anion mode have none to
+// judge (no bond search), so they stay unstamped and keep the max-CN rule
+test.each([
+  [`srtio3_ti_corner`, true],
+  [`cu_fcc`, false],
+] as const)(`%s carries polyhedron stamps: %s`, (name, stamped) => {
+  const { sites } = get_pbc_image_sites(completion_fixtures[name](), image_options())
+  const stamps = sites.map((site) => site.provenance?.polyhedron_center)
+  expect(stamps.every((stamp) => (stamp === undefined) !== stamped)).toBe(true)
+})
+
 // Completion follows the renderer's polyhedra options: no corners for polyhedra it won't draw,
 // corners for spectator centers it is told to draw (the Sr cuboctahedra on the corners) and
 // metal polyhedra once every bonded neighbor counts as a corner. Only Cu corner copies whose
@@ -218,7 +229,7 @@ test(`completion images carry provenance, phase-1 face images do not`, () => {
   expect(completing?.[3]).toBe(true)
   const boundary = image_atoms.filter(([site_idx]) => site_idx === 0)
   expect(boundary).toHaveLength(7)
-  expect(boundary.every((img) => img[3] === undefined)).toBe(true)
+  expect(boundary.map((img) => img[3])).toEqual(Array(7).fill(false))
   // Imported names remain ordinary data; only generated provenance identifies images.
   const source_properties = { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }
   for (const site of structure.sites) site.properties = { ...source_properties }
@@ -511,6 +522,9 @@ test.each([
   // had 8 unbonded completion images (Ac/O copies within reach of an anchor but not bonded);
   // now only its one face atom is copied
   { content: ac2_br2_o_struct, filename: `mp-1207297.json`, n_images: 1, description: `Ac2Br2O tetragonal cell` },
+  // highly oblique cells: images at their true periodic positions, possibly outside the cell
+  { content: tl_bi_se2_struct, filename: `TlBiSe2.json`, n_images: 97, description: `TlBiSe2 highly oblique cell` },
+  { content: mp_1204603_struct, filename: `mp-1204603.json`, n_images: 32, description: `mp-1204603 large oblique cell` },
 ])(
   `find_image_atoms with real structures: $description`,
   ({ content, filename, n_images, min_dist, tol }) => {
@@ -540,33 +554,6 @@ test.each([
     expect(duplicate_pairs).toHaveLength(0)
   },
 )
-
-// Regression test: highly oblique cells must still yield well-defined image atoms and sites
-test.each([
-  [`TlBiSe2 highly oblique cell`, tl_bi_se2_struct],
-  [`mp-1204603 large oblique cell`, mp_1204603_struct],
-])(`image atoms and sites stay valid for %s`, (_name, structure) => {
-  const image_atoms = find_image_atoms(structure, image_options())
-  expect(image_atoms.length).toBeGreaterThan(0)
-  expect(completion_problems(structure)).toEqual(NO_PROBLEMS)
-
-  // Fractional coords are finite but deliberately NOT forced inside [0, 1]: for
-  // visualization/bonding we want images at their true periodic positions (possibly
-  // outside the cell), only reachable from the original by integer translations.
-  for (const [orig_idx, _unused, img_abc] of image_atoms) {
-    expect(img_abc.every((coord) => Number.isFinite(coord))).toBe(true)
-    assert_integer_translation(structure.sites[orig_idx].abc, img_abc, 1e-8)
-  }
-
-  // the image sites appended at the end, one per image tuple
-  const image_sites = get_pbc_image_sites(structure, image_options()).sites.slice(
-    structure.sites.length,
-  )
-  expect(image_sites).toHaveLength(image_atoms.length)
-  for (const site of image_sites) {
-    assert_xyz_matches_lattice(structure.lattice.matrix, site.abc, site.xyz, 9)
-  }
-})
 
 // Regression (mp-1204603): a 0.5 Å face tolerance imaged 114 of its 444 sites; 0.1 Å images the
 // 24 on its faces. Measured along the cell heights, polyhedra corners reach at most 0.75 Å

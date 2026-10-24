@@ -27,6 +27,7 @@ import {
   image_options,
   init_moyo_for_tests,
   make_crystal,
+  make_rocksalt,
 } from '../test-fixtures'
 
 type Host = {
@@ -398,6 +399,8 @@ it(`changing the polyhedra options rebuilds the completion copies`, () => {
       [`O`, [0, 0.5, 0]],
       [`O`, [0, 0, 0.5]],
     ]),
+    // the live options reach completion: a JSON round trip would turn the cap into null
+    polyhedra_options: { max_neighbors: Infinity },
   })
   const completion_count = () =>
     session.displayed_structure?.sites.filter((site) => site.provenance?.completion).length
@@ -407,18 +410,49 @@ it(`changing the polyhedra options rebuilds the completion copies`, () => {
   host.polyhedra_options = { ...host.polyhedra_options }
   flushSync()
   expect(session.displayed_structure).toBe(displayed)
-  host.selected_sites = [0, 20] // base Ti, an O corner copy
+  host.selected_sites = [0, 20, 21] // base Ti, the last face copy, the first O corner copy
   flushSync()
   // O is no polyhedron center, so excluding it (as hiding it in the legend does) draws the
   // same copies: the displayed structure and the selection stay
   host.polyhedra_options = { excluded_center_elements: [`O`] }
   flushSync()
   expect(session.displayed_structure).toBe(displayed)
-  expect(host.selected_sites).toEqual([0, 20])
+  expect(host.selected_sites).toEqual([0, 20, 21])
   host.polyhedra_options = { excluded_center_elements: [`Ti`] }
   flushSync()
   expect(completion_count()).toBe(0)
-  expect(host.selected_sites).toEqual([0]) // image sites renumbered, base sites kept
+  expect(host.selected_sites).toEqual([0, 20]) // the corner copy is gone, the face copy stays
+})
+
+// Rocksalt in bonded mode completes Na and Cl octahedra across the faces. Excluding Na drops
+// the Cl copies cornering Na octahedra and renumbers the Na copies cornering Cl ones: the
+// selection, hover and radius override follow such a copy to its new index
+it(`completion settings remap site state to the same copies`, () => {
+  const { host, session } = make_session({
+    show_image_atoms: true,
+    structure: make_rocksalt(),
+    polyhedra_options: { neighbor_mode: `bonded` },
+  })
+  const sites = () => session.displayed_structure?.sites ?? []
+  const na_copy = sites().findLastIndex(
+    (site) => site.provenance?.completion && site.species[0].element === `Na`,
+  )
+  const { abc, provenance } = sites()[na_copy]
+  host.selected_sites = [0, na_copy]
+  host.measured_sites = [na_copy]
+  host.hovered_site_idx = na_copy
+  session.site_radius_overrides.set(na_copy, 2)
+  flushSync()
+  host.polyhedra_options = { neighbor_mode: `bonded`, excluded_center_elements: [`Na`] }
+  flushSync()
+  const moved = sites().findIndex(
+    (site) =>
+      site.provenance?.image_of === provenance?.image_of && String(site.abc) === String(abc),
+  )
+  expect([moved > 0, moved < na_copy]).toEqual([true, true])
+  expect([host.selected_sites, host.measured_sites]).toEqual([[0, moved], [moved]])
+  expect(host.hovered_site_idx).toBe(moved)
+  expect([...session.site_radius_overrides]).toEqual([[moved, 2]])
 })
 
 // Polyhedra settings only renumber sites (or rebuild the displayed structure) while images

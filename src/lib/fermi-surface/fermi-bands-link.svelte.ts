@@ -8,21 +8,15 @@
 // pre-meshed surface) only the k-path link remains.
 import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
-import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
+import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte.js'
 import { band_crossings, band_line_style, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
 import { watch_theme_changes } from '#lib/theme/index.js'
 import { sheet_color } from './constants'
-import type { BandGridJson, FermiSurfaceJson } from './parse'
-import type {
-  BandGridData,
-  ColorProperty,
-  FermiHoverData,
-  FermiSurfaceData,
-  SpinChannel,
-} from './types'
+import type { BandGridJson } from './parse'
+import type { BandGridData, ColorProperty, FermiHoverData, SpinChannel } from './types'
 
 export type BandCrossing = ReturnType<typeof band_crossings>[number] & {
   energy: number
@@ -31,42 +25,57 @@ export type BandCrossing = ReturnType<typeof band_crossings>[number] & {
 
 export interface FermiBandsLinkInputs {
   band_data: () => BandGridData | BandGridJson | undefined
-  surface: () => FermiSurfaceData | FermiSurfaceJson | undefined // FermiSurface's extracted one
   band_struct: () => BaseBandStructure | undefined // the one whose k-path the zone draws
   k_lattice: () => Matrix3x3 | undefined // the zone's reciprocal lattice (incl. 2π)
   mu: { get: () => number; set: (mu: number) => void }
-  selected_bands: { get: () => number[] | undefined; set: (bands?: number[]) => void }
-  // the caller's initial spin mode and band styles, and initial sheet colouring
-  bands_props: () => { band_spin_mode?: BandsSpinMode; line_kwargs?: LineKwargs }
+  selected_bands: () => number[] | undefined // the host's, bound to FermiSurface directly
+  // the caller's initial spin mode, band styles and hover radius, and initial sheet colouring
+  bands_props: () => {
+    band_spin_mode?: BandsSpinMode
+    line_kwargs?: LineKwargs
+    hover_config?: Partial<HoverConfig>
+  }
   fermi_props: () => { color_property?: ColorProperty }
 }
 
-// Bands hover/click radius both hosts use: band lines are thin targets for previewing a surface
-export const LINK_HOVER_CONFIG = { threshold_px: 50, click_threshold_px: 50 }
-
-// Construct during a component's init. Hosts bind the fields (bind:mu={link.mu} etc.) and hand
-// the handlers to FermiSurface's on_point_hover and Bands' on_point_hover / on_plot_click.
+// Construct during a component's init. Hosts bind the fields (bind:mu={link.mu},
+// bind:isolated_band={link.isolated_band} etc.) and hand the handlers to FermiSurface's
+// on_point_hover and Bands' on_point_hover / on_plot_click.
 export class FermiBandsLink {
   // Bands' x_positions and the node its crossing dots render in (see BandCrossings)
   x_positions = $state.raw<Record<string, Vec2>>({})
   crossings_svg = $state<SVGSVGElement>()
   private hovered_band = $state<number | null>(null)
-  // energy of the band (or DOS) point under the pointer, previewed until the pointer leaves
+  // energy previewed until the pointer leaves: a hovered band point's, or one a host sets
   hovered_energy = $state<number | null>(null)
-  // The isolated band overrides the shown bands while set, so the controls' band syncing (on
-  // every mu change) can neither end it nor write it into selected_bands; new data resets it
-  private clicked_band = $derived.by((): number | null => {
-    void this.inputs.band_data()
+  // the grid's band numbering, so new data with the same bands (a sweep's next frame) keeps
+  // an isolated band
+  private readonly band_layout = $derived.by((): string => {
+    const grid = this.inputs.band_data()
+    return grid ? (grid.band_indices ?? grid.energies[0].map((_, idx) => idx)).join(`,`) : ``
+  })
+  // bands the grid holds: only these have a Fermi surface to preview, pin or isolate
+  private readonly grid_bands = $derived(
+    new Set(this.band_layout ? this.band_layout.split(`,`).map(Number) : []),
+  )
+  // FermiSurface's isolated_band: a clicked band's sheet shown alone over selected_bands until
+  // clicked again or a band edit in the controls ends it; new bands reset it
+  isolated_band = $derived.by((): number | null => {
+    void this.band_layout
     return null
   })
-  // Bands' spin control writes this; a hidden channel gets no crossings or sheets either
-  band_spin_mode = $derived.by(
+  // The caller's values as primitives first, so a new props object (an inline literal whose
+  // other keys changed) re-derives neither, keeping a choice made in the controls
+  private readonly caller_spin_mode = $derived.by(
     (): BandsSpinMode => this.inputs.bands_props().band_spin_mode ?? `overlay`,
   )
-  color_property = $derived.by(
+  private readonly caller_color_property = $derived.by(
     (): ColorProperty =>
       this.inputs.fermi_props().color_property ?? DEFAULTS.fermi.color_property,
   )
+  // Bands' spin control writes this; a hidden channel gets no crossings or sheets either
+  band_spin_mode = $derived.by((): BandsSpinMode => this.caller_spin_mode)
+  color_property = $derived.by((): ColorProperty => this.caller_color_property)
   readonly path = create_band_path_link({
     band_struct: () => this.inputs.band_struct(),
     k_lattice: () => this.inputs.k_lattice(),
@@ -77,13 +86,6 @@ export class FermiBandsLink {
   // caller's bands style applies to both), re-read on theme changes
   private level_rgb = $state({ fermi: `#e74c3c`, reference: `#d48860` })
 
-  // bands the grid holds: only these have a Fermi surface to preview, pin or isolate
-  private readonly grid_bands = $derived.by((): Set<number> => {
-    const grid = this.inputs.band_data()
-    return new Set(
-      grid ? (grid.band_indices ?? grid.energies[0].map((_, band_idx) => band_idx)) : [],
-    )
-  })
   readonly fermi_energy = $derived.by(() => this.inputs.band_data()?.fermi_energy)
   // FermiSurface's `previewing`: a hovered energy shown off the grid
   readonly previewing = $derived(
@@ -95,7 +97,7 @@ export class FermiBandsLink {
       : this.hovered_energy - this.fermi_energy,
   )
   private readonly shown_bands = $derived.by(() =>
-    this.clicked_band === null ? this.inputs.selected_bands.get() : [this.clicked_band],
+    this.isolated_band === null ? this.inputs.selected_bands() : [this.isolated_band],
   )
   private readonly only_spin = $derived.by((): `up` | `down` | null => {
     const mode = this.band_spin_mode
@@ -111,7 +113,13 @@ export class FermiBandsLink {
       : this.fermi_energy + this.shown_mu,
   )
   // the band emphasised on the plot: hovered (in either view), else isolated
-  readonly highlighted_band = $derived(this.hovered_band ?? this.clicked_band)
+  readonly highlighted_band = $derived(this.hovered_band ?? this.isolated_band)
+  // Bands' hover and click radius: band lines are thin targets for previewing a surface
+  readonly bands_hover_config = $derived.by((): Partial<HoverConfig> => ({
+    threshold_px: 50,
+    click_threshold_px: 50,
+    ...this.inputs.bands_props().hover_config,
+  }))
 
   // Property mode colours sheets by vertex where the grid carries properties (every sheet
   // samples all of them), else the scene keeps flat sheet colours (which the band lines then
@@ -191,19 +199,12 @@ export class FermiBandsLink {
     })
   }
 
-  // FermiSurface's mu and selected_bands: the preview and the isolated band override what
-  // the caller set, writes go to the caller (selected_bands unless a band is isolated)
+  // FermiSurface's mu: a previewed energy overrides the caller's, writes go to the caller
   get mu(): number {
     return this.shown_mu
   }
   set mu(value: number) {
     this.inputs.mu.set(value)
-  }
-  get selected_bands(): number[] | undefined {
-    return this.shown_bands
-  }
-  set selected_bands(bands: number[] | undefined) {
-    if (this.clicked_band === null) this.inputs.selected_bands.set(bands)
   }
 
   // Where the shown sheets' bands (in the shown spin channels) cross `energy`
@@ -239,11 +240,28 @@ export class FermiBandsLink {
     const point = band_point_meta(event.point.metadata)
     const { fermi_energy } = this
     if (!point || !this.grid_bands.has(point.band_idx) || fermi_energy === undefined) return
-    const has_sheet = this.inputs
-      .surface()
-      ?.isosurfaces.some((iso) => iso.band_index === point.band_idx)
-    this.clicked_band =
-      this.clicked_band !== point.band_idx && has_sheet ? point.band_idx : null
-    this.inputs.mu.set(event.point.y - fermi_energy)
+    const { y, metadata } = event.point
+    const has_sheet = this.grid_band_spans(point.band_idx, metadata?.spin, y)
+    this.isolated_band =
+      this.isolated_band !== point.band_idx && has_sheet ? point.band_idx : null
+    this.inputs.mu.set(y - fermi_energy)
+  }
+
+  // Whether `energy` lies strictly inside the grid band's finite range (in `spin`'s channel of a
+  // polarized grid), i.e. the band has a sheet there: read off the grid, as the shown surface
+  // may still be extracting
+  private grid_band_spans(band_idx: number, spin: unknown, energy: number): boolean {
+    const grid = this.inputs.band_data()
+    if (!grid) return false
+    const spin_idx = spin === `down` && grid.n_spins === 2 ? 1 : 0
+    const band = grid.energies[spin_idx]?.[grid.band_indices?.indexOf(band_idx) ?? band_idx]
+    if (!band) return false
+    let [below, above] = [false, false]
+    for (const value of Array.isArray(band) ? band.flat(2) : band.values) {
+      below ||= value < energy
+      above ||= value > energy
+      if (below && above) return true
+    }
+    return false
   }
 }

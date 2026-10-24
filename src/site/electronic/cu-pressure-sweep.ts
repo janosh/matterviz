@@ -278,22 +278,39 @@ export function cu_frame_phonons(
       band_structs: {
         Cu: scale_band_structure(ambient.bands, lattice_scale, (freq) => freq * stiffening),
       },
-      doses: { 'phonon DOS': dos, 'α²F': a2f },
+      doses: { 'phonon DOS': dos },
+      a2f: { 'α²F': a2f },
     },
     scalars: eliashberg_moments(a2f),
   }
 }
 
-// The sweep (structures up front) and a loader computing each frame's band grid, band
+// The sweep: structures up front, and a loader computing each frame's band grid, band
 // structure, DOS and phonon spectra when the viewer first shows it, as a remote loader would
 // fetch them
 export function cu_pressure_sweep(input: {
   structure: Crystal
   band_data: BandGridData
   band_struct: BaseBandStructure
-}): { sweep: Sweep; load_frame: SweepFrameLoader } {
+}): Sweep {
   const scales = CU_VOLUME_RATIOS.map((ratio) => Math.cbrt(ratio))
-  const sweep: Sweep = {
+  let ambient: ReturnType<typeof cu_phonons> | undefined
+  const load_frame: SweepFrameLoader = async (_series_id, frame_idx) => {
+    await new Promise((resolve) => setTimeout(resolve, 0)) // yield before the heavy work
+    const band_data = scale_band_grid(input.band_data, scales[frame_idx])
+    ambient ??= cu_phonons(input.structure, input.band_struct)
+    return {
+      ...cu_frame_phonons(ambient, CU_VOLUME_RATIOS[frame_idx], scales[frame_idx]),
+      band_data,
+      band_structs: {
+        Cu: scale_band_structure(input.band_struct, scales[frame_idx], (energy) =>
+          scale_energy(energy, input.band_data.fermi_energy, scales[frame_idx]),
+        ),
+      },
+      doses: { 'bands 3–6': band_grid_dos(band_data) },
+    }
+  }
+  return {
     axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
     series: [
       {
@@ -315,22 +332,6 @@ export function cu_pressure_sweep(input: {
       },
     ],
     descriptors: CU_SWEEP_DESCRIPTORS,
+    load_frame,
   }
-  let ambient: ReturnType<typeof cu_phonons> | undefined
-  const load_frame: SweepFrameLoader = async (_series_id, frame_idx) => {
-    await new Promise((resolve) => setTimeout(resolve, 0)) // yield before the heavy work
-    const band_data = scale_band_grid(input.band_data, scales[frame_idx])
-    ambient ??= cu_phonons(input.structure, input.band_struct)
-    return {
-      ...cu_frame_phonons(ambient, CU_VOLUME_RATIOS[frame_idx], scales[frame_idx]),
-      band_data,
-      band_structs: {
-        Cu: scale_band_structure(input.band_struct, scales[frame_idx], (energy) =>
-          scale_energy(energy, input.band_data.fermi_energy, scales[frame_idx]),
-        ),
-      },
-      doses: { 'bands 3–6': band_grid_dos(band_data) },
-    }
-  }
-  return { sweep, load_frame }
 }

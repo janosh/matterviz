@@ -4,6 +4,7 @@ import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import {
   compute_descriptor,
+  descriptor_point,
   descriptor_value,
   dos_at_energy,
   fermi_band_count,
@@ -241,6 +242,23 @@ describe(`computed descriptors`, () => {
     expect(compute_descriptor({ band_data: grid, doses }, spec)).toBe(expected)
   })
 
+  const tc: DescriptorSpec = { key: `tc`, label: `Tc`, range: [`lo`, `hi`] }
+  // oxfmt-ignore
+  test.each<[string, Record<string, number | null>, string | ReturnType<typeof descriptor_point>]>([
+    [`a value with its range`, { tc: 2, lo: 1, hi: 3 }, { value: 2, lower: 1, upper: 3 }],
+    [`a value without bounds`, { tc: 2, lo: null }, { value: 2, lower: null, upper: null }],
+    [`a value on its lower bound`, { tc: 1, lo: 1 }, { value: 1, lower: 1, upper: null }],
+    [`no value`, { tc: null, lo: 1 }, null],
+    [`a non-finite value`, { tc: Number.POSITIVE_INFINITY }, `Descriptor "tc" at 5 has a non-finite value Infinity`],
+    [`a non-finite bound`, { tc: 1, hi: Number.NaN }, `has a non-finite range bound NaN`],
+    [`a lower bound above the value`, { tc: 1, lo: 2 }, `range [2, null] does not bracket 1`],
+    [`an upper bound below the value`, { tc: 4, hi: 3 }, `range [null, 3] does not bracket 4`],
+  ])(`descriptor_point of %s`, (_desc, scalars, expected) => {
+    const point = () => descriptor_point({ value: 5, scalars }, tc)
+    if (typeof expected === `string`) expect(point).toThrow(expected)
+    else expect(point()).toEqual(expected)
+  })
+
   test(`a supplied value wins, null means known missing, else the computed one`, () => {
     const spec: DescriptorSpec = { key: `vol`, label: `V`, compute: `volume_per_atom` }
     expect(descriptor_value({ structure: cu, scalars: { vol: 99 } }, spec)).toBe(99)
@@ -280,10 +298,9 @@ describe(`normalize_sweep`, () => {
               label: `50 GPa`,
               doses: { total: { energies: [0, 1], densities: [1, 2], efermi: 0.5 } },
               status: { unstable: true, note: `imaginary modes` },
-              phonon: {
-                doses: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } },
-              },
+              phonon: { a2f: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } } },
             },
+            { value: 100, band_data: grid }, // typed grids pass through
           ],
         },
       ],
@@ -292,13 +309,14 @@ describe(`normalize_sweep`, () => {
         { key: `tc_me`, label: `Tc (ME)`, unit: `K`, overlay: [`tc`] },
       ],
     })
-    const [first, second] = sweep.series[0].frames
+    const [first, second, third] = sweep.series[0].frames
     expect(first.structure?.sites).toHaveLength(1)
     expect(first.scalars).toEqual({ tc: 10, lambda: null })
     expect(second.doses?.total).toMatchObject({ type: `electronic`, densities: [1, 2] })
     expect(second.status).toEqual({ unstable: true, note: `imaginary modes` })
+    expect(third.band_data).toBe(grid)
     expect(second.phonon).toEqual({
-      doses: { 'α²F': { type: `phonon`, frequencies: [0, 1], densities: [0, 0.5] } },
+      a2f: { 'α²F': { type: `phonon`, frequencies: [0, 1], densities: [0, 0.5] } },
     })
     expect(sweep.descriptors).toEqual([
       { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 20 },
@@ -323,6 +341,9 @@ describe(`normalize_sweep`, () => {
     [`a molecule structure`, raw_sweep({ structure: { sites: json_structure.sites } }), `frames[0].structure: needs a periodic structure`],
     [`an unparsable DOS`, raw_sweep({ doses: { x: 1 } }), `frames[0].doses.x: unrecognized data`],
     [`a non-numeric scalar`, raw_sweep({ scalars: { tc: `hot` } }), `frames[0].scalars.tc: must be a number or null`],
+    [`non-object scalars`, raw_sweep({ scalars: [1] }), `frames[0].scalars: must be an object`],
+    [`a non-object band grid`, raw_sweep({ band_data: [] }), `frames[0].band_data: must be an object`],
+    [`an invalid meshed surface`, raw_sweep({ fermi_data: { isosurfaces: [1] } }), `frames[0].fermi_data: Invalid FermiSurfaceData JSON`],
     [`a non-boolean unstable flag`, raw_sweep({ status: { unstable: `yes` } }), `frames[0].status.unstable: must be a boolean`],
     [`a non-string frame label`, raw_sweep({ label: 5 }), `frames[0].label: must be a string, got 5`],
     [`a non-string axis unit`, raw_sweep({}, { axis: { key: `p`, label: `P`, unit: 1 } }), `axis.unit: must be a string, got 1`],
@@ -330,6 +351,7 @@ describe(`normalize_sweep`, () => {
     [`an electronic DOS among the phonons`, raw_sweep({ phonon: { doses: { x: { energies: [0], densities: [1] } } } }), `frames[0].phonon.doses.x: must be phonon data, got electronic`],
     [`a phonon DOS among the electronic ones`, raw_sweep({ doses: { x: { frequencies: [0], densities: [1] } } }), `frames[0].doses.x: must be electronic data, got phonon`],
     [`an unknown frame field (e.g. a typo)`, raw_sweep({ dos: {} }), `frames[0].dos: unknown field`],
+    [`an electronic α²F`, raw_sweep({ phonon: { a2f: { x: { energies: [0], densities: [1] } } } }), `frames[0].phonon.a2f.x: must be phonon data, got electronic`],
     [`an unknown phonon field`, raw_sweep({ phonon: { dispersion: {} } }), `frames[0].phonon.dispersion: unknown field`],
     [`an unknown status field`, raw_sweep({ status: { why: `x` } }), `frames[0].status.why: unknown field`],
     [`an unknown series field`, raw_sweep({}, { series: [{ id: `a`, frames: [], frames_: [] }] }), `series[0].frames_: unknown field`],

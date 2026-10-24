@@ -157,6 +157,8 @@
     } = $props()
 
   const BOUNDARY_HIT_PX = 6
+  // Largest end-joining gap (fraction of the plot) traced regions pass without a warning
+  const MAX_GAP = 0.05
   const SPECIAL_HIT_PX = 12
   const ERROR_BAR_SPACING_PX = 18
   // Region-label font at the default --pt-label-font-size, for the fits-in-region check
@@ -178,16 +180,16 @@
   }
 
   // Malformed input renders as an empty frame with the problems listed, never half-drawn
-  const parsed = $derived(data ? parse_pt_data(data) : { data: null, errors: [] })
-  const errors = $derived(parsed.errors)
-  const pt_data = $derived(parsed.data)
+  const { data: pt_data, errors } = $derived(
+    data ? parse_pt_data(data) : { data: null, errors: [] },
+  )
   const phases = $derived(pt_data?.phases ?? [])
   const boundaries = $derived(pt_data?.boundaries ?? [])
   const special_points = $derived(pt_data?.special_points ?? [])
   const phase_by_id = $derived(new Map(phases.map((phase) => [phase.id, phase])))
   const phase_colors = $derived(pt_phase_colors(phases))
-  const hidden = $derived(new Set(hidden_phases))
-  const hidden_special = $derived(new Set(hidden_special_types))
+  // An invalid width draws no uncertainty and shows an error instead
+  const n_sigma_ok = $derived(Number.isFinite(n_sigma) && n_sigma >= 0)
 
   // === Units and axes ===
   const data_p_unit = $derived<PressureUnit>(pt_data?.pressure_unit ?? `GPa`)
@@ -315,6 +317,15 @@
         type: `warning` as const,
         message: `${traced.unlabeled} region(s) couldn't be assigned a phase from the boundaries; pass explicit regions to fill them`,
       },
+      traced &&
+        traced.max_gap > MAX_GAP && {
+          type: `warning` as const,
+          message: `Tracing regions bridged a gap of ${format_num(traced.max_gap, `.0%`)} of the plot between boundary ends; check where the boundaries meet`,
+        },
+      !n_sigma_ok && {
+        type: `error` as const,
+        message: `n_sigma must be finite and non-negative, got ${n_sigma}`,
+      },
       wants_log &&
         pt_data &&
         log_floor === null && {
@@ -333,7 +344,7 @@
   const region_shapes = $derived(
     regions.flatMap((region, idx) => {
       const phase = phase_by_id.get(region.phase)
-      if (!phase || hidden.has(phase.id)) return []
+      if (!phase || hidden_phases.includes(phase.id)) return []
       const pixels = region.vertices.map(data_to_px)
       // Labels sit inside the visible part and are dropped where they'd overflow it
       const anchor = polygon_label_point(clip_polygon_to_rect(pixels, chart_rect))
@@ -419,8 +430,8 @@
     }),
   )
   const resolved_display = $derived(resolve_plot_display(display, DISPLAY_DEFAULTS))
-  const show_band = $derived(uncertainty === `band` || uncertainty === `both`)
-  const show_bars = $derived(uncertainty === `bars` || uncertainty === `both`)
+  const show_band = $derived(n_sigma_ok && (uncertainty === `band` || uncertainty === `both`))
+  const show_bars = $derived(n_sigma_ok && (uncertainty === `bars` || uncertainty === `both`))
   const has_uncertainty = $derived(
     boundaries.some((boundary) => boundary.sigma_p || boundary.sigma_t) ||
       special_points.some((point) => point.sigma_p || point.sigma_t),
@@ -430,7 +441,7 @@
   const special_shapes = $derived(
     show_special_points
       ? special_points.flatMap((point) => {
-          if (hidden_special.has(point.type)) return []
+          if (hidden_special_types.includes(point.type)) return []
           const at = data_to_px(point.position)
           const { symbol: shape, size } = SPECIAL_STYLES[point.type]
           return [
@@ -451,7 +462,7 @@
     ...phases.map((phase, idx) => ({
       series_idx: idx,
       label: phase_label(phase),
-      visible: !hidden.has(phase.id),
+      visible: !hidden_phases.includes(phase.id),
       display_style: {
         symbol_type: `Square` as const,
         symbol_color: phase_colors.get(phase.id),
@@ -461,7 +472,7 @@
       ? special_types.map((type, idx) => ({
           series_idx: phases.length + idx,
           label: SPECIAL_STYLES[type].label,
-          visible: !hidden_special.has(type),
+          visible: !hidden_special_types.includes(type),
           display_style: {
             symbol_type: SPECIAL_STYLES[type].symbol,
             symbol_color: `var(--pt-special-point-color, #d32f2f)`,
@@ -767,7 +778,7 @@
 
       <g class="special-points">
         {#each special_shapes as { point, at, marker, bars } (point.id)}
-          {#if uncertainty !== `none` && bars}
+          {#if n_sigma_ok && uncertainty !== `none` && bars}
             <path class="special-error-bars" d={bars} />
           {/if}
           <path

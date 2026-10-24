@@ -9,8 +9,10 @@ import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
 import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
 import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
+import { compute_frequency_range } from '#lib/spectral/helpers.js'
 import type {
   BaseBandStructure,
+  DosData,
   ElectronicDos,
   ElectronicPane,
   PhononDos,
@@ -197,13 +199,14 @@ const all_data = {
   band_structs: { Cu: band_struct },
   doses: { Cu: dos },
 }
-// phonon DOS and an α²F on one frequency axis (THz), and a dispersion along the same path
+// phonon DOS and an α²F over one frequency axis (THz), and a dispersion along the same path
 const phonon_dos: PhononDos = { type: `phonon`, frequencies: [0, 3, 6], densities: [0, 2, 0] }
 const phonon: PhononSpectra = {
   band_structs: {
     Cu: { ...band_struct, type: `phonon`, efermi: undefined, bands: [[0, 2, 4]] },
   },
-  doses: { 'phonon DOS': phonon_dos, 'α²F': { ...phonon_dos, densities: [0, 0.3, 0] } },
+  doses: { 'phonon DOS': phonon_dos },
+  a2f: { 'α²F': { ...phonon_dos, densities: [0, 0.3, 0] } },
 }
 // the viewer's measured width: the DOS sits beside the bands from 520px, else below
 const set_width = (width: number) =>
@@ -278,6 +281,7 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
   expect(viewers.phonon).toMatchObject({
     band_structs: phonon.band_structs,
     doses: phonon.doses,
+    a2f: phonon.a2f,
     fullscreen_toggle: false,
   })
   expect(viewers.dos?.doses).toEqual(all_data.doses) // the electronic DOS keeps its own pane
@@ -289,26 +293,6 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
   flushSync()
   expect(viewers.phonon?.bands_props?.show_controls).toBe(false)
   expect(viewers.phonon?.dos_props?.show_controls).toBe(false)
-})
-
-test(`a dropped phonon DOS fills the phonon pane, keeping the electronic spectra`, async () => {
-  const on_file_load = vi.fn()
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    ...all_data,
-    phonon: undefined,
-    on_file_load,
-  })
-  const root = mount_host(props)
-  const file = new File(
-    [JSON.stringify({ frequencies: [0, 4, 8], densities: [0, 1, 0] })],
-    `phonon_dos.json`,
-  )
-  root.dispatchEvent(create_drop_event(file))
-  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-  expect(on_file_load).toHaveBeenCalledWith({ filename: `phonon_dos.json`, panes: [`phonon`] })
-  expect(props.phonon?.doses?.[`phonon_dos.json`]).toMatchObject({ type: `phonon` })
-  expect(props.doses).toEqual(all_data.doses)
-  expect(shown_panes(root)).toContain(`phonon`)
 })
 
 test(`the pane menu shows any subset, never none`, () => {
@@ -406,6 +390,7 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
     band_data,
     band_structs: {},
     doses: {},
+    phonon: undefined,
     panes: [`structure`],
     loading: false,
     error_msg: undefined,
@@ -439,6 +424,12 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
   expect(Object.keys(props.doses ?? {})).toEqual([`dos.json`])
   expect(props.panes).toEqual([`structure`, `fermi`, `bands`, `dos`])
   expect(on_file_load).toHaveBeenCalledWith({ filename: `dos.json`, panes: [`dos`] })
+  // a phonon DOS fills the phonon pane, beside (not into) the electronic DOS
+  await drop(JSON.stringify({ frequencies: [0, 4, 8], densities: [0, 1, 0] }), `ph.json`)
+  expect(on_file_load).toHaveBeenCalledWith({ filename: `ph.json`, panes: [`phonon`] })
+  expect(props.phonon?.doses?.[`ph.json`]).toMatchObject({ type: `phonon` })
+  expect(Object.keys(props.doses ?? {})).toEqual([`dos.json`])
+  expect(shown_panes(root)).toEqual([`structure`, `fermi`, `bands`, `dos`, `phonon`])
 
   const si = props.structure
   await drop(`2\nH2\nH 0 0 0\nH 0 0 0.74\n`, `h2.xyz`)
@@ -548,16 +539,6 @@ test.each<[string, Partial<ComponentProps<typeof Structure>>]>([
   expect(view_dir(scenes.controls.structure).toArray()).toEqual(before.toArray())
 })
 
-test.each<[ElectronicPane[], string]>([
-  [[], `at least one pane`],
-  [[`structure`, `trends`], `trends pane needs a sweep with descriptors`],
-])(`the pane list %j throws without its data`, (panes, message) => {
-  expect(() => mount_host({ ...all_data, panes })).toThrow(message)
-  const plain_sweep = { ...make_sweep(), descriptors: undefined }
-  if (panes.includes(`trends`))
-    expect(() => mount_host({ sweep: plain_sweep, panes })).toThrow(message)
-})
-
 // === sweeps ===
 // Two series along pressure: each frame's own DOS (density 1 or 2 at E_F) tells them apart
 const sweep_frame = (value: number, density: number): SweepFrame => ({
@@ -657,9 +638,9 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
     doses: { total: { ...dos, densities: [0, 10 + frame_idx, 10 + frame_idx, 0] } },
     label: `${series_id} ${frame_idx}`,
   }))
+  sweep.load_frame = load_frame
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
     sweep,
-    load_frame,
     series_id: undefined,
     frame_idx: 2,
     panes: ALL_PANES,
@@ -688,16 +669,83 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
 
 test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, async () => {
   const sweep = make_sweep()
-  const alpha2f = { 'α²F': phonon.doses?.[`α²F`] ?? phonon_dos }
   sweep.series[0].frames = sweep.series[0].frames.map(({ value }) => ({
     value,
     structure,
-    phonon: { doses: alpha2f },
+    phonon: { a2f: phonon.a2f },
   }))
-  const load_frame = vi.fn(async () => ({ phonon: { band_structs: phonon.band_structs } }))
-  mount_host({ sweep, load_frame, frame_idx: 0 })
+  sweep.load_frame = async () => ({ phonon: { band_structs: phonon.band_structs } })
+  mount_host({ sweep, frame_idx: 0 })
   await vi.waitFor(() => expect(viewers.phonon?.band_structs).toEqual(phonon.band_structs))
-  expect(viewers.phonon?.doses).toEqual(alpha2f)
+  expect(viewers.phonon?.a2f).toEqual(phonon.a2f)
+})
+
+// Stepping through a sweep, the spectra span every loaded frame of the series: the axes hold
+// still instead of jumping to each frame's own extent
+test(`a sweep's spectra axes span all its frames, unless the caller passes a range`, () => {
+  const sweep = make_sweep()
+  const [fcc] = sweep.series
+  const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
+  const fast_phonons: PhononSpectra = {
+    doses: { ph: { ...phonon_dos, frequencies: [0, 5, 9] } },
+  }
+  fcc.frames[0].phonon = phonon
+  fcc.frames[1] = { ...fcc.frames[1], doses: { total: wide_dos }, phonon: fast_phonons }
+  const span = (entries: [Record<string, BaseBandStructure>, Record<string, DosData>][]) => {
+    const ranges = entries.flatMap(([bands, doses]) => {
+      const range = compute_frequency_range(bands, doses)
+      return range ? [range] : []
+    })
+    return [
+      Math.min(...ranges.map(([low]) => low)),
+      Math.max(...ranges.map(([, high]) => high)),
+    ]
+  }
+  const frame_spectra = fcc.frames.map(
+    (frame): [Record<string, BaseBandStructure>, Record<string, DosData>] => [
+      frame.band_structs ?? {},
+      frame.doses ?? {},
+    ],
+  )
+  const electronic = span(frame_spectra)
+  const phonons = span([
+    [phonon.band_structs ?? {}, phonon.doses ?? {}],
+    [{}, fast_phonons.doses ?? {}],
+  ])
+  expect(electronic[1]).toBeGreaterThan(19) // frame 1's DOS reaches 20 eV
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    frame_idx: 0,
+    panes: [`bands`, `dos`, `phonon`],
+    bands_props: {},
+  })
+  mount_host(props)
+  for (const frame_idx of [0, 1, 2]) {
+    props.frame_idx = frame_idx
+    flushSync()
+    expect(viewers.bands?.y_axis?.range).toEqual(electronic)
+    expect(viewers.phonon?.frequency_range).toEqual(phonons)
+  }
+  props.bands_props = { y_axis: { range: [5, 9] } }
+  flushSync()
+  expect(viewers.bands?.y_axis?.range).toEqual([5, 9])
+})
+
+// A bound descriptor carries over to a new sweep only when it has that key
+test(`replacing the sweep resets a descriptor it does not have`, () => {
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep: make_sweep(),
+    descriptor: `n_ef`,
+    panes: ALL_PANES,
+  })
+  mount_host(props)
+  expect(viewers.trends?.descriptor).toBe(`n_ef`)
+  props.sweep = make_sweep() // has n_ef: kept
+  flushSync()
+  expect(props.descriptor).toBe(`n_ef`)
+  props.sweep = { ...make_sweep(), descriptors: [{ key: `tc`, label: `Tc`, unit: `K` }] }
+  flushSync()
+  expect([props.descriptor, viewers.trends?.descriptor]).toEqual([undefined, undefined])
 })
 
 // Lazily, a frame whose band grid is still loading has no zone to compare, which must not
@@ -717,9 +765,9 @@ test.each([false, true])(
       )
     }
     const load_frame = lazy ? vi.fn(async () => ({ band_data })) : undefined
+    if (load_frame) sweep.load_frame = load_frame
     const props = $state<ComponentProps<typeof ElectronicStructure>>({
       sweep,
-      load_frame,
       series_id: undefined,
       frame_idx: 0,
       on_error,
@@ -754,11 +802,8 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
   const load_frame = vi.fn(async (_series_id: string, frame_idx: number) =>
     frame_idx === 0 ? { doses: { total: dos } } : {},
   )
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep,
-    load_frame,
-    frame_idx: 0,
-  })
+  sweep.load_frame = load_frame
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({ sweep, frame_idx: 0 })
   const root = mount_host(props)
   expect(shown_panes(root)).toEqual([`structure`, `trends`])
   await vi.waitFor(() => expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`]))
@@ -771,12 +816,9 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
 test(`a dropped sweep JSON replaces the viewer's data, which then takes only sweeps`, async () => {
   const on_error = vi.fn()
   const on_file_load = vi.fn()
-  // the caller's loader belongs to the caller's sweep, never to a dropped one
-  const load_frame = vi.fn(async () => ({}))
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
     structure,
     sweep: undefined,
-    load_frame,
     frame_idx: 0,
     error_msg: undefined,
     on_error,
@@ -799,7 +841,6 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
     filename: `sweep.json`,
     panes: [`dos`, `trends`],
   })
-  expect(load_frame).not.toHaveBeenCalled()
   // without descriptors no trends: the panes are only those its frames fill
   const plain_sweep = {
     axis: sweep_json.axis,
@@ -826,30 +867,23 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
     error_msg: `Invalid sweep at root.extra: unknown field`,
     filename: `bad.json`,
   })
-  // a caller's sweep after the dropped one loads through the caller's loader again
-  props.sweep = make_sweep()
+  // a caller's sweep after the dropped one loads through its own loader
+  const load_frame = vi.fn(async () => ({}))
+  props.sweep = { ...make_sweep(), load_frame }
   flushSync()
   await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 0))
 })
 
+const TRENDS_PANES: ElectronicPane[] = [`structure`, `trends`]
+// oxfmt-ignore
 test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, string]>([
-  [
-    `descending frames`,
-    {
-      sweep: { ...make_sweep(), series: [{ id: `a`, frames: [{ value: 2 }, { value: 1 }] }] },
-    },
-    `strictly ascending`,
-  ],
-  [
-    `an unknown series_id`,
-    { sweep: make_sweep(), series_id: `hcp` },
-    `"hcp" is not a series of the sweep (fcc, bcc)`,
-  ],
-  [
-    `a NaN frame_idx`,
-    { sweep: make_sweep(), frame_idx: Number.NaN },
-    `frame_idx must be finite, got NaN`,
-  ],
-])(`a sweep with %s throws, naming what is wrong`, (_desc, props, message) => {
+  [`no panes`, { ...all_data, panes: [] }, `needs at least one pane`],
+  [`a trends pane without sweep`, { ...all_data, panes: TRENDS_PANES }, `trends pane needs a sweep with descriptors`],
+  [`a trends pane for a sweep without descriptors`, { sweep: { ...make_sweep(), descriptors: undefined }, panes: TRENDS_PANES }, `trends pane needs a sweep with descriptors`],
+  [`a sweep with descending frames`, { sweep: { ...make_sweep(), series: [{ id: `a`, frames: [{ value: 2 }, { value: 1 }] }] } }, `strictly ascending`],
+  [`a sweep with an unknown series_id`, { sweep: make_sweep(), series_id: `hcp` }, `"hcp" is not a series of the sweep (fcc, bcc)`],
+  [`a sweep with a NaN frame_idx`, { sweep: make_sweep(), frame_idx: Number.NaN }, `frame_idx must be finite, got NaN`],
+  [`an unknown descriptor`, { sweep: make_sweep(), descriptor: `tc_typo`, panes: TRENDS_PANES }, `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef)`],
+])(`%s throws, naming what is wrong`, (_desc, props, message) => {
   expect(() => mount_host(props)).toThrow(message)
 })

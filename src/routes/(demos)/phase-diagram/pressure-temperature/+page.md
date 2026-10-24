@@ -6,44 +6,20 @@ Hover anywhere for the phase, P and T. Within a few pixels of a coexistence line
 
 ## Single-Component System with Uncertainty
 
-An iron-like system with four solids, the liquid and three triple points. No regions are passed: the component traces them from the coexistence lines. Every boundary carries propagated standard errors, as a free-energy pipeline produces them: `sigma_t` (temperature at fixed pressure) on the shallow lines and `sigma_p` (pressure at fixed temperature) on the near-vertical α–ε line. Along the line's normal the band spans the larger of the two errors' projections, so each kind widens the band where it matters. Where a line has both, they are two views of one free-energy error (σ_T / σ_P = |dT/dP|), so they aren't added.
+An iron-like system with four solids, the liquid and three triple points. No regions are passed: the component traces them from the coexistence lines. Every boundary carries propagated standard errors, as a free-energy pipeline produces them: `sigma_t` (temperature at fixed pressure) on the shallow lines and `sigma_p` (pressure at fixed temperature) on the near-vertical α–ε line. Along the line's normal the band spans the larger of the two errors' projections, so each kind widens the band where it matters. Where a line has both, they are two views of one free-energy error (σ_T / σ_P = |dT/dP|), so they aren't added. Here bands span 2σ; the controls switch to error bars or another width.
 
 ```svelte example
 <script lang="ts">
   import { format_num, PressureTemperaturePhaseDiagram } from 'matterviz'
-  import type { PtUncertaintyMode } from 'matterviz'
   import { iron_pt_diagram } from '#site/phase-diagrams/pressure-temperature.js'
 
-  let uncertainty = $state<PtUncertaintyMode>(`band`)
-  let n_sigma = $state(2)
   let pinned = $state(``)
 </script>
 
-<div style="display: flex; gap: 1em; flex-wrap: wrap; margin-bottom: 1ex">
-  <label>
-    Uncertainty
-    <select bind:value={uncertainty}>
-      <option value="band">Band</option>
-      <option value="bars">Error bars</option>
-      <option value="both">Both</option>
-      <option value="none">Hidden</option>
-    </select>
-  </label>
-  <label>
-    Width
-    <select bind:value={n_sigma}>
-      <option value={1}>1σ</option>
-      <option value={2}>2σ</option>
-      <option value={3}>3σ</option>
-    </select>
-  </label>
-  <span>{pinned}</span>
-</div>
-
+<p>{pinned}</p>
 <PressureTemperaturePhaseDiagram
   data={iron_pt_diagram}
-  bind:uncertainty
-  bind:n_sigma
+  n_sigma={2}
   on_pin={(info) =>
     (pinned = info
       ? `Pinned ${info.phase?.name ?? `point`} at ${format_num(info.point[0], `.1f`)} GPa, ${Math.round(info.point[1])} K`
@@ -102,7 +78,7 @@ interface PtPhaseDiagramData {
     id: string
     type: `triple` | `critical` | `custom`
     position: [number, number]
-    phases?: string[]
+    phases?: string[] // required for `critical`: the pair of the one line ending there
     sigma_t?: number
     sigma_p?: number
     label?: string
@@ -116,7 +92,7 @@ interface PtPhaseDiagramData {
 }
 ```
 
-`parse_pt_data(data).errors` lists every problem (unknown phase ids, duplicate ids, sigma arrays that don't match their points, non-finite coordinates, inverted ranges, mistyped fields). The component shows the first one and draws nothing rather than a half-valid diagram.
+`parse_pt_data(data).errors` lists every problem (unknown keys, unknown phase ids, duplicate ids, sigma arrays that don't match their points, non-finite coordinates, inverted ranges, mistyped fields). The component shows the first one and draws nothing rather than a half-valid diagram.
 
 A minimal two-phase diagram. A single line doesn't say which side is which phase, so it passes `regions` (the polygons share the boundary's points):
 
@@ -156,7 +132,7 @@ A minimal two-phase diagram. A single line doesn't say which side is which phase
 
 ## How Regions Are Traced
 
-Without `regions`, `derive_regions(data)` joins the coexistence lines and the plotted window into a planar map. Separately computed boundaries rarely meet at exactly the same triple point or reach exactly the window edge, so their ends are joined without any distance tolerance: an end on the window edge stays, as does a line's end at a `critical` special point. Any other end is cut back to the line's last crossing with another line (an overshoot), else joins the ends of the two other lines of its phase triangle (a|b, a|c and b|c meet at the one a-b-c triple point, all three moving to their mean), else runs on along its last segment to the first line or window edge it hits, so a window wider than the data still splits into fields. None of this depends on the order of the boundaries. Each face takes the phase shared by every boundary around it, or failing that the phase across a boundary from an already named neighbor. On a log pressure axis the tracing runs in log P, so lines run on straight as drawn. Naming needs at least one face whose boundaries share a single phase, as around a triple point: a lone two-phase line leaves both sides unnamed.
+Without `regions`, `derive_regions(data)` joins the coexistence lines and the plotted window into a planar map. Separately computed boundaries rarely meet at exactly the same triple point or reach exactly the window edge, so their ends are joined without any distance tolerance: a line's end at its `critical` special point stays. Any other end is cut back past every crossing with another line on its half of the line (an overshoot, and the tangle where noisy lines cross repeatedly near a triple point); an end not on the window edge then joins the ends of the two other lines of its phase triangle (a|b, a|c and b|c meet at the one a-b-c triple point, all three moving to their mean), else runs on along its last segment to the first line or window edge it hits, so a window wider than the data still splits into fields. None of this depends on the order of the boundaries. When joining moves an end by more than 5% of the plot, the component warns that the boundaries don't meet. Each face takes the phase shared by every boundary around it, or failing that the phase across a boundary from an already named neighbor. On a log pressure axis the tracing runs in log P, so lines run on straight as drawn. Naming needs at least one face whose boundaries share a single phase, as around a triple point: a lone two-phase line leaves both sides unnamed.
 
 Every boundary must then separate exactly its two phases, so a face named against that (when a missing or `metastable` line merges two fields) loses its name. A face that a coexistence line ends inside, or that holds a line or closed loop touching nothing (liquid and vapor joined around a critical point, an island phase), contains two phases and stays unfilled too. The component then shows a notice. Pass explicit regions for diagrams like that, as in the water example.
 

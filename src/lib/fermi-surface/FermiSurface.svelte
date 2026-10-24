@@ -85,6 +85,7 @@
     representation = $bindable(DEFAULTS.fermi.representation),
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
     selected_bands = $bindable(),
+    isolated_band = $bindable(null),
     selected_spins,
     show_bz = $bindable(DEFAULTS.fermi.show_bz),
     bz_opacity = $bindable(DEFAULTS.fermi.bz_opacity),
@@ -141,6 +142,9 @@
       // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
       custom_property_label?: string
       selected_bands?: number[]
+      // shown alone over selected_bands while set (e.g. a clicked band line); a band edit in
+      // the controls ends it
+      isolated_band?: number | null
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
       show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>
       fullscreen?: boolean
@@ -340,6 +344,7 @@
     },
   ])
 
+  const shown_bands = $derived(isolated_band === null ? selected_bands : [isolated_band])
   // The requested property when present, else the first; the fitted range spans visible sheets
   // and fills the ends color_scale.value_range leaves unset
   const available_properties = $derived(available_property_names(surface_data, grid_data))
@@ -351,7 +356,7 @@
   const fitted_value_range = $derived<Vec2>(
     color_property === `property`
       ? property_value_range(
-          visible_isosurfaces(surface_data?.isosurfaces, selected_bands, selected_spins),
+          visible_isosurfaces(surface_data?.isosurfaces, shown_bands, selected_spins),
           active_property,
         )
       : [0, 1],
@@ -426,6 +431,7 @@
           bind:representation
           bind:surface_opacity
           bind:selected_bands
+          bind:isolated_band
           bind:show_bz
           bind:bz_opacity
           bind:show_vectors
@@ -469,7 +475,7 @@
           {k_path}
           {representation}
           {surface_opacity}
-          {selected_bands}
+          selected_bands={shown_bands}
           {selected_spins}
           {show_bz}
           {bz_opacity}

@@ -31,6 +31,7 @@
     representation = $bindable(defaults.representation),
     surface_opacity = $bindable(defaults.surface_opacity),
     selected_bands = $bindable(),
+    isolated_band = $bindable(null),
     show_bz = $bindable(defaults.show_bz),
     bz_opacity = $bindable(defaults.bz_opacity),
     show_vectors = $bindable(defaults.show_vectors),
@@ -54,6 +55,9 @@
     fitted_value_range?: Vec2 // placeholder for the color_scale.value_range ends left unset
     custom_property_label?: string // label of the unnamed property, e.g. "Fermi velocity"
     selected_bands?: number[]
+    // a host's isolated band (e.g. a clicked band line), shown alone over selected_bands until
+    // a band edit here takes over from it
+    isolated_band?: number | null
     shortcut_scopes?: readonly ShortcutScope[] // listed at the bottom of the pane
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()
@@ -121,17 +125,25 @@
     } else if (value.trim() === ``) set_value_range(undefined)
   }
 
+  // the bands shown: an isolated one alone, which an edit starts from and ends
+  const shown_bands = $derived(isolated_band === null ? selected_bands : [isolated_band])
+  const set_bands = (bands: number[]): void => {
+    isolated_band = null
+    selected_bands = bands
+  }
   // also forgets bands hidden while they did not cross
   function show_all_bands(): void {
     hidden_bands.clear()
-    selected_bands = [...available_bands]
+    set_bands([...available_bands])
   }
 
   function toggle_band(band_idx: number): void {
-    const bands = selected_bands ?? []
-    selected_bands = bands.includes(band_idx)
-      ? bands.filter((band) => band !== band_idx)
-      : [...bands, band_idx].toSorted((left, right) => left - right)
+    const bands = shown_bands ?? []
+    set_bands(
+      bands.includes(band_idx)
+        ? bands.filter((band) => band !== band_idx)
+        : [...bands, band_idx].toSorted((left, right) => left - right),
+    )
   }
 
   function handle_mu_change(event: Event & { currentTarget: HTMLInputElement }) {
@@ -143,7 +155,9 @@
 
   const mu_settings = track_settings(() => ({ mu: chemical_potential }), defaults)
   const bands_settings = $derived(
-    track_settings(() => ({ selected_bands }), { selected_bands: available_bands }),
+    track_settings(() => ({ selected_bands: shown_bands }), {
+      selected_bands: available_bands,
+    }),
   )
   const appearance_settings = track_settings(
     () => ({ color_property, color_scale, representation, surface_opacity }),
@@ -214,7 +228,7 @@
               <label class="band-checkbox">
                 <input
                   type="checkbox"
-                  checked={selected_bands?.includes(band_idx)}
+                  checked={shown_bands?.includes(band_idx)}
                   onchange={() => toggle_band(band_idx)}
                 />
                 <span>Band {band_idx + 1}</span>
@@ -224,7 +238,7 @@
         </SettingsSection>
         <div class="band-actions">
           <button type="button" onclick={show_all_bands}>All</button>
-          <button type="button" onclick={() => (selected_bands = [])}>None</button>
+          <button type="button" onclick={() => set_bands([])}>None</button>
         </div>
       </div>
     {/if}

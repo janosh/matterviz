@@ -1728,6 +1728,21 @@ describe(`bindings`, () => {
     },
   )
 
+  // `auto` splits by the measured content area (pick_pane_orientation), a fixed layout never
+  test.each([
+    [`auto`, 1000, 600, `horizontal`],
+    [`auto`, 490, 500, `vertical`],
+    [`horizontal`, 490, 500, `horizontal`],
+    [`vertical`, 1000, 600, `vertical`],
+  ] as const)(`layout %s at %dx%d splits %s`, async (layout, width, height, expected) => {
+    mount_trajectory(default_props({ layout }))
+    const content = doc_query(`.trajectory > .viewer-row > .content-area`)
+    await resize_element(content, width, height)
+    trigger_resize_observer(content)
+    await tick()
+    expect(doc_query(`.trajectory`).classList.contains(expected)).toBe(true)
+  })
+
   test(`a run swap keeps the step index but clamps it to the new run`, async () => {
     const props = $state(default_props({ current_step_idx: 2 }))
     const target = mount_trajectory(props)

@@ -444,6 +444,19 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     )
   })
 
+  // Ends 1 apart in a 10 x 10 window join at their mean, 1.05 (11%) from the a|c end: past
+  // the 5% the component passes silently. An invalid width draws none of iron's 7 bands
+  // instead of NaN paths.
+  // oxfmt-ignore
+  test.each([
+    [`joined far apart`, { data: { phases: [{ id: `a` }, { id: `b` }, { id: `c` }], boundaries: [{ id: `ab`, phases: [`a`, `b`], points: [[5, 0], [5, 4]] }, { id: `ac`, phases: [`a`, `c`], points: [[0, 6], [4, 5]] }, { id: `bc`, phases: [`b`, `c`], points: [[10, 6], [6, 5]] }], pressure_range: [0, 10], temperature_range: [0, 10] } satisfies PtPhaseDiagramData }, `warning`, `Tracing regions bridged a gap of 11% of the plot between boundary ends; check where the boundaries meet`, 0],
+    [`negative n_sigma`, { n_sigma: -1 }, `error`, `n_sigma must be finite and non-negative, got -1`, 0],
+  ] as const)(`%s shows a notice`, async (_label, props, type, message, bands) => {
+    const wrapper = await mount_diagram(props)
+    expect(wrapper.querySelector(`.status-message.${type}`)?.textContent?.trim()).toBe(message)
+    expect(count(wrapper, `.uncertainty-band`)).toBe(bands)
+  })
+
   // 150 GPa = 1500 kbar: ticks and tooltip follow the display unit, data stays in GPa
   test(`display_pressure_unit converts ticks and tooltip values`, async () => {
     const on_phase_hover = vi.fn<(info: PtHoverInfo | null) => void>()

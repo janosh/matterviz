@@ -102,9 +102,9 @@ export class WheelZoomGate {
     // Tabbing on past the viewer leaves it (a click elsewhere has no relatedTarget here and
     // is handled by pointerdown below)
     const on_focusout = ({ relatedTarget }: FocusEvent) => {
-      const inside = relatedTarget instanceof Node && root.contains(relatedTarget)
-      if (!inside) set_focus_in(false)
-      if (relatedTarget instanceof Node && !inside) this.active = false
+      if (relatedTarget instanceof Node && root.contains(relatedTarget)) return
+      set_focus_in(false)
+      if (relatedTarget instanceof Node) this.active = false
     }
     root.addEventListener(`focusout`, on_focusout, { signal })
     // touch and pen without hover leave right after every tap, before any wheel could follow

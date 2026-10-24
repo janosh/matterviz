@@ -304,13 +304,18 @@ export function phonon_supercell(
   const tiled_cell = make_supercell(unit_cell, scaling, false)
   const completed_cell: Crystal = {
     ...tiled_cell,
-    // The viewer's default polyhedra, completed on the same bonds as the frames' explicit ones
+    // The viewer's default polyhedra, completed on the same bonds as the frames' explicit ones.
+    // The frames are never imaged again, so completion's polyhedron_center stamps would pin
+    // the default polyhedra settings: dropped, the viewer's own settings pick the whole copies.
     sites: get_pbc_image_sites(tiled_cell, {
       completion: `polyhedra`,
       polyhedra: polyhedra_options_from({}),
       bonding_strategy: `electroneg_ratio`,
       bonding_options: {},
-    }).sites,
+    }).sites.map(({ provenance, ...site }) => {
+      const { polyhedron_center: _settings_bound, ...kept } = provenance ?? {}
+      return { ...site, provenance: kept }
+    }),
     // The frames already contain image atoms and explicit bonds; don't wrap or image twice.
     lattice: { ...tiled_cell.lattice, pbc: [false, false, false] },
   }

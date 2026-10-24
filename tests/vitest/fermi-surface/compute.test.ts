@@ -25,7 +25,7 @@ import type {
 } from '#lib/fermi-surface/types.js'
 import { vertex_count } from '#lib/fermi-surface/types.js'
 import * as math from '#lib/math.js'
-import type { Matrix3x3, Matrix4Tuple, Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math.js'
 import { SphereGeometry } from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { describe, expect, test } from 'vitest'
@@ -392,6 +392,11 @@ describe(`pocket classification`, () => {
     })
     const slice = compute_fermi_slice(extract_fermi_surface(band_data))
     expect(band_carriers(band_data, slice)).toEqual(new Map([[0, carrier]]))
+    // a zero-area contour has no inside to sample: it casts no vote
+    const [isoline] = slice.isolines
+    // oxfmt-ignore
+    const collapsed = { ...isoline, points_2d: [[0, 0], [0.1, 0.1], [0.2, 0.2], [0.1, 0.1]] as Vec2[] }
+    expect(band_carriers(band_data, { ...slice, isolines: [collapsed] })).toEqual(new Map())
   })
 })
 

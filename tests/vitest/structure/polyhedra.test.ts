@@ -2,6 +2,7 @@ import type { AnyStructure, Vec3 } from '#lib'
 import type { BondPair } from '#lib/structure/index.js'
 import {
   electroneg_ratio,
+  explicit_only,
   is_spectator_center,
   structure_bond_to_bond_pair,
 } from '#lib/structure/bonding.js'
@@ -34,7 +35,12 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { image_options, make_crystal, make_rocksalt } from '../test-fixtures'
+import {
+  fcc_primitive_matrix,
+  image_options,
+  make_crystal,
+  make_rocksalt,
+} from '../test-fixtures'
 import { octahedron_points } from './geometry-fixtures'
 
 const uniform_red = { mode: `uniform`, color: `#ff0000` } as const
@@ -423,6 +429,88 @@ describe(`compute_polyhedra`, () => {
     }
     // every polyhedron corner is a displayed atom (no phantom vertices)
     for (const poly of polyhedra) expect_vertices_on_sites(poly, with_images)
+  })
+
+  // A bonded anion inside the hull (7 bonds, 6 corners) must not make a completed copy look
+  // truncated
+  test(`a bonded vertex inside the hull keeps the stamped polyhedron drawn`, () => {
+    // oxfmt-ignore
+    const structure = make_crystal(10, [
+      [`Ti`, [0.5, 0.5, 0.5]], [`O`, [0.68, 0.5, 0.5]], [`O`, [0.32, 0.5, 0.5]], [`O`, [0.5, 0.68, 0.5]],
+      [`O`, [0.5, 0.32, 0.5]], [`O`, [0.5, 0.5, 0.68]], [`O`, [0.5, 0.5, 0.32]], [`O`, [0.53, 0.53, 0.53]],
+    ])
+    structure.properties = {
+      bonds: sites_after_0(7).map((site_idx) => ({
+        site_idx_1: 0,
+        site_idx_2: site_idx,
+        order: 1,
+      })),
+    }
+    const options = { ...image_options(), bonding_strategy: `explicit_only` } as const
+    const imaged = get_pbc_image_sites(structure, options)
+    expect(imaged.sites[0].provenance?.polyhedron_center).toBe(true)
+    const [poly, ...rest] = compute_polyhedra(imaged, explicit_only(imaged))
+    expect([poly?.vertex_site_idxs.length, rest]).toEqual([6, []])
+  })
+
+  // Corner-Ti SrTiO3: completion stamps all 8 displayed Ti copies whole. A removed corner bond
+  // or a hidden corner O (whose bonds the scene drops) shrinks the octahedra it touched
+  // instead of deleting them. Returns [base Ti CN, CN of every drawn polyhedron].
+  const a_srtio3 = 3.905
+  const srtio3 = get_pbc_image_sites(
+    make_crystal(a_srtio3, [
+      [`Ti`, [0, 0, 0]],
+      [`Sr`, [0.5, 0.5, 0.5]],
+      [`O`, [0.5, 0, 0]],
+      [`O`, [0, 0.5, 0]],
+      [`O`, [0, 0, 0.5]],
+    ]),
+    image_options(),
+  )
+  // the bond from base Ti to the O at x = sign * a/2
+  const is_ti_x_bond = (sign: number) => (bond: BondPair) =>
+    [bond.site_idx_1, bond.site_idx_2].includes(0) &&
+    [bond.pos_1, bond.pos_2].some(([x, y, z]) =>
+      [x - (sign * a_srtio3) / 2, y, z].every((coord) => Math.abs(coord) < 1e-6),
+    )
+  test.each([
+    [`no edit`, () => false, [6, Array(8).fill(6)]],
+    [`+x corner bond removed`, is_ti_x_bond(1), [5, [5, ...Array(7).fill(6)]]],
+    [`-x corner bond removed`, is_ti_x_bond(-1), [5, [5, ...Array(7).fill(6)]]],
+    // site 2 is the base O at +x: the corner of base Ti and of its +x copy
+    [
+      `a corner hidden`,
+      (bond: BondPair) => bond.site_idx_1 === 2 || bond.site_idx_2 === 2,
+      [5, [5, 5, ...Array(6).fill(6)]],
+    ],
+  ] as const)(`stamped octahedra with %s`, (_label, dropped, [base_cn, cns]) => {
+    const bonds = electroneg_ratio(srtio3).filter((bond) => !dropped(bond))
+    const polyhedra = compute_polyhedra(srtio3, bonds)
+    const base = polyhedra.find((poly) => poly.center_site_idx === 0)
+    expect(base?.vertex_site_idxs.length).toBe(base_cn)
+    const cn_list = polyhedra.map((poly) => poly.vertex_site_idxs.length)
+    expect(cn_list.toSorted((left, right) => left - right)).toEqual(cns)
+  })
+
+  // A center whose periodic polyhedron the cap rejects is stamped false on every copy, so its
+  // truncated copies (CN below the cap) draw nothing, as the whole one draws nothing
+  test(`capped centers draw no truncated copies`, () => {
+    const options = { neighbor_mode: `bonded`, max_neighbors: 11 } as const
+    const cu = make_crystal(fcc_primitive_matrix(3.61), [[`Cu`, [0, 0, 0]]])
+    const imaged = get_pbc_image_sites(cu, image_options(`polyhedra`, options))
+    expect(imaged.sites.map((site) => site.provenance?.polyhedron_center)).toEqual(
+      Array(8).fill(false),
+    )
+    const bonds = electroneg_ratio(imaged)
+    expect(compute_polyhedra(imaged, bonds, options)).toEqual([])
+    // unstamped, the max-CN rule would draw the truncated copies
+    const unstamped = {
+      sites: imaged.sites.map(({ provenance, ...site }) => ({
+        ...site,
+        provenance: { ...provenance, polyhedron_center: undefined },
+      })),
+    }
+    expect(compute_polyhedra(unstamped, bonds, options).length).toBeGreaterThan(0)
   })
 
   test(`explicit bonds with cell_shift close polyhedra across the cell boundary`, () => {

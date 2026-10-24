@@ -853,10 +853,10 @@ export function band_carriers(
   for (const { points_2d, band_index, spin } of slice_data.isolines) {
     const band_idx = band_data.band_indices?.indexOf(band_index) ?? band_index
     const grid = band_data.energies[spin === `down` ? 1 : 0]?.[band_idx]
-    if (points_2d.length < 3 || !grid) continue
     // a point strictly inside the contour (its centroid can fall outside a concave one); a
-    // degenerate contour keeps its centroid
-    const inside = math.polygon_label_point(points_2d)?.at ?? math.polygon_centroid(points_2d)
+    // degenerate contour has no inside to sample, so it casts no vote
+    const inside = math.polygon_label_point(points_2d)?.at
+    if (!grid || !inside) continue
     const k_point = slice_point_to_k(slice_data, ...inside)
     const [energy] = sample_band_energies(band_data, grid, interpolation_factor, k_point)
     const vote = energy < band_data.fermi_energy + mu ? -1 : 1

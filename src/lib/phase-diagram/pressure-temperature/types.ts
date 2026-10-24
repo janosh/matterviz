@@ -40,7 +40,9 @@ export interface PtSpecialPoint {
   id: string
   type: PtSpecialPointType
   position: Vec2 // [pressure, temperature]
-  phases?: string[] // ids of the phases meeting here
+  // ids of the phases meeting here; a critical point's two must be one boundary's pair (the
+  // line that ends there)
+  phases?: string[]
   sigma_t?: number
   sigma_p?: number
   label?: string

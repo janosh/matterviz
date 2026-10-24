@@ -125,6 +125,22 @@ describe(`create_orbit_link`, () => {
     expect(Math.abs(distance(late) - radius)).toBeLessThan(1e-12 * radius)
   })
 
+  // A damped follower still gliding from its own drag moves off the view when re-aimed: the
+  // followers after it must still take the leader's direction, not its
+  test(`a damped follower's glide does not steer the followers after it`, () => {
+    const [leader, damped, last] = setups()
+    const link = create_orbit_link()
+    link.join(leader)
+    damped.enableDamping = true
+    damped.rotateLeft(0.8) // applies 5% of the turn, leaving the rest to glide on
+    link.join(damped)
+    link.join(last)
+    const direction = new Vector3(2, 1, -1).normalize()
+    orbit(leader, direction)
+    expect(view_dir(damped).distanceTo(direction)).toBeGreaterThan(1e-3)
+    expect_parallel(view_dir(last), direction)
+  })
+
   // threlte's task calls update() once per frame on each controls; azimuth about +y from +z.
   // Each auto-rotating member adds its own steps, a follower's re-aim none
   test.each([

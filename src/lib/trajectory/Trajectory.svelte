@@ -853,10 +853,11 @@
   let content_size = $state({ width: 0, height: 0 })
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
   // wrapper's height that no pane ever gets
-  let actual_layout = $derived.by(() => {
-    if (layout === `horizontal` || layout === `vertical`) return layout
-    return pick_pane_orientation(content_size.width, content_size.height)
-  })
+  let actual_layout = $derived(
+    layout === `auto`
+      ? pick_pane_orientation(content_size.width, content_size.height)
+      : layout,
+  )
   const filename_copied = create_flash(false, 1000)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)

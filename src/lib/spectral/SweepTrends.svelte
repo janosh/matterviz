@@ -3,12 +3,12 @@
   // that frame (marked by the vertical line), unstable frames are hollow and grey, a
   // descriptor's range draws as error bars and its threshold as a dashed line, the descriptors
   // it overlays as dashed lines on the same axes. Frames whose value is unknown yet (data not
-  // loaded) are left out until it is.
+  // loaded) are left out until it is; a value outside its range, or not finite, throws.
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
   import type { ComponentProps } from 'svelte'
-  import { descriptor_value } from './sweep'
+  import { descriptor_point } from './sweep'
   import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
 
   type PointMeta = { series_id: string; frame_idx: number }
@@ -26,14 +26,18 @@
     frame_of: (series: SweepSeries, idx: number) => SweepFrame // with loaded data merged
     series_id: string // the selected frame's series and index
     frame_idx: number
-    descriptor?: string // the key of the plotted descriptor (default: the first)
+    descriptor?: string // the key of the plotted descriptor (default: the first), else throws
     on_frame_select: (series_id: string, frame_idx: number) => void
   } = $props()
 
   const specs = $derived(sweep.descriptors ?? [])
-  const spec = $derived<DescriptorSpec | undefined>(
-    specs.find(({ key }) => key === descriptor) ?? specs[0],
-  )
+  const spec = $derived.by((): DescriptorSpec | undefined => {
+    if (descriptor === undefined) return specs[0]
+    const match = specs.find(({ key }) => key === descriptor)
+    if (match) return match
+    const keys = specs.map(({ key }) => key).join(`, `)
+    throw new Error(`descriptor "${descriptor}" is not a descriptor of the sweep (${keys})`)
+  })
   const with_unit = (label: string, unit?: string) => (unit ? `${label} (${unit})` : label)
 
   // the plotted descriptor, then those it overlays (same unit, dashed)
@@ -45,23 +49,8 @@
         ]
       : [],
   )
-  // A frame's point on a descriptor's line (null: no finite value), cached per frame object: a
-  // load reruns `points` over every frame, but frames keep their identity, so only the
-  // arriving one computes anew
-  type Point = { value: number; lower?: number | null; upper?: number | null }
-  const point_cache = new WeakMap<SweepFrame, Map<DescriptorSpec, Point | null>>()
-  const point_of = (frame: SweepFrame, line: DescriptorSpec): Point | null => {
-    let cached = point_cache.get(frame)
-    if (!cached) point_cache.set(frame, (cached = new Map()))
-    if (!cached.has(line)) {
-      const value = descriptor_value(frame, line)
-      const [lower, upper] = (line.range ?? []).map((key) => frame.scalars?.[key])
-      const finite = typeof value === `number` && Number.isFinite(value)
-      cached.set(line, finite ? { value, lower, upper } : null)
-    }
-    return cached.get(line) ?? null
-  }
-  // each line's points per series, apart from the selection so selecting recomputes no values
+  // each line's points per series (sweeps are a few frames: recomputed on every change),
+  // apart from the selection so selecting recomputes no values
   const points = $derived(
     lines.flatMap((line, line_idx) =>
       sweep.series.map((entry) => ({
@@ -70,7 +59,7 @@
         line_idx,
         points: entry.frames.flatMap((_frame, idx) => {
           const frame = frame_of(entry, idx)
-          const point = point_of(frame, line)
+          const point = descriptor_point(frame, line)
           return point ? [{ frame, idx, ...point }] : []
         }),
       })),
@@ -89,7 +78,7 @@
           stroke_width: 1.5,
         }),
       }))
-      const ranged = line_points.some(({ lower, upper }) => lower != null || upper != null)
+      const ranged = line_points.some(({ lower, upper }) => lower !== null || upper !== null)
       const overlaid = lines.length > 1
       return {
         // NUL keeps overlay ids apart from any series id
@@ -108,8 +97,8 @@
         ...(line_idx > 0 && { line_style: { line_dash: `6 4` } }),
         ...(ranged && {
           y_error: {
-            lower: line_points.map(({ value, lower }) => (lower == null ? 0 : value - lower)),
-            upper: line_points.map(({ value, upper }) => (upper == null ? 0 : upper - value)),
+            lower: line_points.map(({ value, lower }) => (lower === null ? 0 : value - lower)),
+            upper: line_points.map(({ value, upper }) => (upper === null ? 0 : upper - value)),
           },
         }),
       }
@@ -123,10 +112,9 @@
     const pad = (max - min) * 0.05 || 1
     return [min - pad, max + pad]
   })
-  const selected_frame = $derived.by(() => {
-    const selected = sweep.series.find(({ id }) => id === series_id)
-    return selected?.frames[frame_idx]
-  })
+  const selected_value = $derived(
+    sweep.series.find(({ id }) => id === series_id)?.frames[frame_idx]?.value ?? null,
+  )
   const ref_lines = $derived<RefLine[]>(
     spec?.threshold === undefined
       ? []
@@ -153,7 +141,7 @@
       ...rest.x_axis,
     }}
     y_axis={{ label: with_unit(spec.label, spec.unit), ...rest.y_axis }}
-    current_x_value={selected_frame?.value ?? null}
+    current_x_value={selected_value}
     on_point_click={chain_callbacks((event) => {
       const meta = event.point.metadata
       if (meta && typeof meta.series_id === `string` && typeof meta.frame_idx === `number`) {

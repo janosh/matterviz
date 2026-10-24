@@ -90,15 +90,53 @@ describe(`band_grid_dos`, () => {
     )
   })
 
+  // the binned-and-convolved DOS against one Gaussian summed per k-point at every output
+  // energy, on a dispersive two-band grid in both spin channels
+  test(`matches the direct Gaussian sum`, () => {
+    const sigma = 0.1
+    const energy = (ix: number, iy: number, iz: number) =>
+      Math.cos(ix) + 0.7 * Math.sin(2 * iy) - 0.3 * iz ** 1.5
+    const bands = [band([7, 6, 5], energy), band([7, 6, 5], (...idx) => 2 + energy(...idx))]
+    const grid = make_grid([bands, bands.toReversed()], true)
+    const dos = band_grid_dos(grid, { sigma })
+    const norm = 1 / (sigma * Math.sqrt(2 * Math.PI))
+    const direct = dos.energies.map((at) =>
+      bands.reduce(
+        (sum, { values }) =>
+          sum +
+          values.reduce(
+            (band_sum, value) =>
+              band_sum + norm * Math.exp(-0.5 * ((at - value) / sigma) ** 2),
+            0,
+          ) /
+            values.length,
+        0,
+      ),
+    )
+    const peak = Math.max(...direct)
+    // linear binning at step h smooths a Gaussian by at most ~(h/σ)²/8 of its peak (2e-3 at
+    // this grid's h ≈ σ/7.7; measured 4.7e-4), the grid-normalized kernel adds far less
+    const step = dos.energies[1] - dos.energies[0]
+    for (const densities of [dos.densities, dos.spin_down_densities ?? []]) {
+      const max_err = Math.max(...densities.map((value, idx) => Math.abs(value - direct[idx])))
+      expect(max_err / peak).toBeLessThan((step / sigma) ** 2 / 8)
+    }
+  })
+
   test.each([
     [{ sigma: 0 }, `sigma > 0, got 0`],
     [{ sigma: Number.NaN }, `sigma > 0, got NaN`],
     [{ n_points: 1 }, `n_points >= 2, got 1`],
     [{ n_points: 2.5 }, `n_points >= 2, got 2.5`],
-    [{}, `a grid without finite energies`, Number.NaN],
-  ])(`rejects %j`, (options, message, energy = 0) => {
+    [{}, `band 0 (spin 0) has 8 of 8 energies missing`, () => Number.NaN],
+    // one missing k-point would otherwise leave the band short of its two electrons
+    [{}, `band 0 (spin 0) has 1 of 8 energies missing`, (ix: number) => (ix ? 1 : Infinity)],
+  ])(`rejects %j: %s`, (options, message, energy = () => 0) => {
     expect(() =>
-      band_grid_dos(make_grid([[band([2, 2, 2], () => energy)]], true), options),
+      band_grid_dos(
+        make_grid([[band([2, 2, 2], (ix, iy, iz) => energy(ix + iy + iz))]], true),
+        options,
+      ),
     ).toThrow(message)
   })
 })

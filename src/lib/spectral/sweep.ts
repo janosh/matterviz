@@ -1,12 +1,11 @@
 // Sweeps for ElectronicStructure: a material's electronic structure along one axis (pressure,
 // strain, doping), in one or more series (phases, lineages), each an ascending list of frames.
 // Frames hold the light data up front and may get their heavy data (band grids, spectra) from
-// a loader on demand. Descriptors are per-frame scalars plotted against the axis: a frame's
+// the sweep's loader on demand. Descriptors are per-frame scalars plotted against the axis: a frame's
 // supplied value wins, built-in ones are computed from its data when it supplies none.
 import { is_elem_symbol } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { normalize_band_grid, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
-import type { BandGridJson, FermiSurfaceJson } from '#lib/fermi-surface/parse.js'
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { create_lattice_converters, det_3x3, pbc_dist } from '#lib/math.js'
 import type { LatticeConverters } from '#lib/math.js'
@@ -15,7 +14,13 @@ import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { is_plain_object } from '#lib/utils.js'
 import { normalize_band_structure, normalize_dos } from './helpers'
-import type { BaseBandStructure, DosData, PhononSpectra } from './types'
+import type {
+  BaseBandStructure,
+  DosData,
+  PhononDos,
+  PhononSpectra,
+  SpectraRecords,
+} from './types'
 
 export interface SweepAxis {
   key: string // e.g. `pressure`
@@ -27,12 +32,12 @@ export interface SweepFrame {
   value: number // position on the axis, strictly ascending within a series
   label?: string // shown instead of value + unit, e.g. `150 GPa (relaxed at 151.3)`
   structure?: Crystal
-  band_data?: BandGridData | BandGridJson
-  fermi_data?: FermiSurfaceData | FermiSurfaceJson
+  band_data?: BandGridData // parsed: normalize_sweep and loads parse the JSON forms
+  fermi_data?: FermiSurfaceData
   band_structs?: Record<string, BaseBandStructure>
   // `total` (or a single entry) is the total DOS; element symbols key element projections
   doses?: Record<string, DosData>
-  phonon?: PhononSpectra // phonon bands and DOS (α²F as one more DOS curve)
+  phonon?: PhononSpectra // phonon bands, DOS and α²F
   scalars?: Record<string, number | null> // supplied descriptor values, null: known missing
   status?: { unstable?: boolean; note?: string } // unstable frames are greyed in the plot
 }
@@ -71,17 +76,20 @@ export interface DescriptorSpec {
   overlay?: string[]
 }
 
+// A frame's fields besides its value: what a loader returns
+export type SweepFrameData = Omit<SweepFrame, `value`>
+
+// Fetches a frame's heavy data (0-based index into its series) when it is first shown. The
+// result is parsed like a JSON frame (failing on a wrong field) and merged over the frame's own
+// fields, records (scalars, status, doses, band_structs, phonon's) key by key.
+export type SweepFrameLoader = (series_id: string, frame_idx: number) => Promise<unknown>
+
 export interface Sweep {
   axis: SweepAxis
   series: SweepSeries[]
   descriptors?: DescriptorSpec[]
+  load_frame?: SweepFrameLoader // never in JSON: a parsed sweep carries all its data
 }
-
-// Heavy frame data fetched on demand (merged over the frame's own fields)
-export type SweepFrameLoader = (
-  series_id: string,
-  frame_idx: number,
-) => Promise<Partial<Omit<SweepFrame, `value`>>>
 
 // Throws on what the viewer cannot show unambiguously, naming the offending entry
 export function validate_sweep(sweep: Sweep): void {
@@ -146,9 +154,6 @@ export const format_axis_value = (axis: SweepAxis, frame: SweepFrame): string =>
 export const volume_per_atom = (structure: Crystal): number =>
   Math.abs(det_3x3(structure.lattice.matrix)) / structure.sites.length
 
-const site_element = (site: Crystal[`sites`][number]): string | undefined =>
-  site.species[0]?.element
-
 // Shortest non-zero periodic translation, the distance of a site to its own image (Infinity
 // without periodic axes). Searched in the Gauss-reduced periodic basis the minimum-image code
 // uses, where the shortest vector has coefficients in [-1, 1] (±2 is margin), however sheared
@@ -180,7 +185,7 @@ export function min_pair_distance(
 ): number | undefined {
   const [elem_a, elem_b] = pair ?? []
   const matches = (site: Crystal[`sites`][number], element?: string) =>
-    element === undefined || site_element(site) === element
+    element === undefined || site.species[0]?.element === element
   const { sites, lattice } = structure
   const converters = create_lattice_converters(lattice.matrix)
   const self_image = shortest_translation(converters, lattice.pbc)
@@ -217,22 +222,21 @@ export function dos_at_energy(dos: DosData, energy: number): number | undefined 
 
 // The frame's E_F: the band grid's, else its DOS's or band structure's
 export function frame_fermi_energy(frame: Partial<SweepFrame>): number | undefined {
-  const { band_data, fermi_data, doses, band_structs } = frame
-  const from_dos = Object.values(doses ?? {}).find(
-    (dos) => dos.type === `electronic` && dos.efermi !== undefined,
+  const { band_data, fermi_data, doses = {}, band_structs = {} } = frame
+  const levels = [...Object.values(doses), ...Object.values(band_structs)].map((spectrum) =>
+    spectrum.type === `electronic` ? spectrum.efermi : undefined,
   )
   return (
     band_data?.fermi_energy ??
     fermi_data?.fermi_energy ??
-    (from_dos?.type === `electronic` ? from_dos.efermi : undefined) ??
-    Object.values(band_structs ?? {}).find((bands) => bands.efermi !== undefined)?.efermi
+    levels.find((level) => level !== undefined)
   )
 }
 
 // `total`, else a lone DOS that is no element projection
 const total_dos = (doses: Record<string, DosData>): DosData | undefined => {
-  const entries = Object.entries(doses)
   if (doses.total) return doses.total
+  const entries = Object.entries(doses)
   const [lone] = entries.length === 1 ? entries : []
   return lone && !is_elem_symbol(lone[0]) ? lone[1] : undefined
 }
@@ -240,8 +244,8 @@ const total_dos = (doses: Record<string, DosData>): DosData | undefined => {
 // Bands of the grid whose energies span E_F, per spin channel; for a meshed surface (always at
 // E_F) its distinct sheets
 export function fermi_band_count(frame: Partial<SweepFrame>): number | undefined {
-  if (frame.band_data) {
-    const grid = normalize_band_grid(frame.band_data)
+  const grid = frame.band_data
+  if (grid) {
     let count = 0
     for (const spin of grid.energies) {
       for (const { values } of spin) {
@@ -300,7 +304,29 @@ export function descriptor_value(
   return spec.compute ? compute_descriptor(frame, spec) : undefined
 }
 
-// === JSON input (dropped files, notebook widgets) ===
+// The frame's point on a descriptor's line: its value and range bounds (null: none), or null
+// without a value. Throws on a non-finite value or bounds that do not bracket it.
+export function descriptor_point(
+  frame: SweepFrame,
+  spec: DescriptorSpec,
+): { value: number; lower: number | null; upper: number | null } | null {
+  const value = descriptor_value(frame, spec)
+  if (value == null) return null
+  const where = `Descriptor "${spec.key}" at ${frame.value}`
+  if (!Number.isFinite(value)) throw new RangeError(`${where} has a non-finite value ${value}`)
+  const [lower = null, upper = null] = (spec.range ?? []).map((key) => frame.scalars?.[key])
+  for (const bound of [lower, upper]) {
+    if (bound !== null && !Number.isFinite(bound)) {
+      throw new RangeError(`${where} has a non-finite range bound ${bound}`)
+    }
+  }
+  if ((lower !== null && lower > value) || (upper !== null && upper < value)) {
+    throw new RangeError(`${where}: range [${lower}, ${upper}] does not bracket ${value}`)
+  }
+  return { value, lower, upper }
+}
+
+// === JSON input (dropped files, notebook widgets) and loaded frame data ===
 const fail = (path: string, problem: string): never => {
   throw new Error(`Invalid sweep at ${path}: ${problem}`)
 }
@@ -320,8 +346,7 @@ const optional_string = (value: unknown, path: string): string | undefined =>
     ? value
     : fail(path, `must be a string, got ${JSON.stringify(value)}`)
 
-const FRAME_KEYS = [
-  `value`,
+const FRAME_DATA_KEYS = [
   `label`,
   `structure`,
   `band_data`,
@@ -331,112 +356,128 @@ const FRAME_KEYS = [
   `phonon`,
   `scalars`,
   `status`,
-] as const satisfies (keyof SweepFrame)[]
+] as const satisfies (keyof SweepFrameData)[]
 
-function normalize_frame(raw: unknown, path: string): SweepFrame {
-  if (!is_plain_object(raw)) return fail(path, `frame must be an object`)
-  reject_unknown(raw, FRAME_KEYS, path)
-  const { value, structure, band_data, fermi_data, band_structs, doses } = raw
-  if (typeof value !== `number`) return fail(path, `value must be a number`)
-  const frame: SweepFrame = { value }
+// an optional object field: absent, or a plain object
+const object_field = (
+  raw: Record<string, unknown>,
+  key: string,
+  path: string,
+): Record<string, unknown> | undefined => {
+  const data = raw[key]
+  return data === undefined || is_plain_object(data)
+    ? data
+    : fail(`${path}.${key}`, `must be an object`)
+}
+
+// A record of band structures and one of DOS, all of `type`: plotted in the other's panes,
+// energies would read as frequencies or the reverse
+function normalize_spectra(
+  raw: Record<string, unknown>,
+  path: string,
+  type: `electronic` | `phonon`,
+): SpectraRecords {
+  const band_structs = typed_record(raw, `band_structs`, path, normalize_band_structure, type)
+  const doses = typed_record(raw, `doses`, path, normalize_dos, type)
+  return { ...(band_structs && { band_structs }), ...(doses && { doses }) }
+}
+
+// A record field whose entries parse to data of `type`
+function typed_record<Value extends { type: string }, Typed extends Value = Value>(
+  raw: Record<string, unknown>,
+  key: string,
+  path: string,
+  normalize: (item: unknown) => Value | null,
+  type: Typed[`type`],
+): Record<string, Typed> | undefined {
+  const data = object_field(raw, key, path)
+  if (!data) return undefined
+  const is_typed = (parsed: Value): parsed is Typed => parsed.type === type
+  return Object.fromEntries(
+    Object.entries(data).map(([name, item]) => {
+      const item_path = `${path}.${key}.${name}`
+      const parsed = normalize(item) ?? fail(item_path, `unrecognized data`)
+      if (is_typed(parsed)) return [name, parsed]
+      return fail(item_path, `must be ${type} data, got ${parsed.type}`)
+    }),
+  )
+}
+
+// A frame's fields besides its value (a loader's result, or a JSON frame's rest), parsed like
+// single files: throws naming the field (under `path`) that is wrong or unknown
+export function normalize_frame_data(raw: unknown, path: string): SweepFrameData {
+  if (!is_plain_object(raw)) return fail(path, `must be an object`)
+  reject_unknown(raw, FRAME_DATA_KEYS, path)
+  const frame: SweepFrameData = normalize_spectra(raw, path, `electronic`)
   const label = optional_string(raw.label, `${path}.label`)
   if (label !== undefined) frame.label = label
+  const { structure } = raw
   if (structure !== undefined) {
     const parsed = is_structure_like(structure) ? structure_from_json(structure) : undefined
     if (!is_crystal(parsed)) return fail(`${path}.structure`, `needs a periodic structure`)
     frame.structure = parsed
   }
   // the grid and surface parsers name the field that is wrong; prefix where in the sweep
-  const parse = <Value>(key: string, parser: () => Value): Value => {
+  const parse = <Value>(
+    key: string,
+    normalize: (data: Record<string, unknown>) => Value,
+  ): Value | undefined => {
+    const data = object_field(raw, key, path)
+    if (!data) return undefined
     try {
-      return parser()
+      return normalize(data)
     } catch (error) {
       return fail(`${path}.${key}`, error instanceof Error ? error.message : String(error))
     }
   }
-  if (band_data !== undefined) {
-    if (!is_plain_object(band_data)) return fail(`${path}.band_data`, `must be an object`)
-    frame.band_data = parse(`band_data`, () => normalize_band_grid(band_data))
-  }
-  if (fermi_data !== undefined) {
-    if (!is_plain_object(fermi_data)) return fail(`${path}.fermi_data`, `must be an object`)
-    frame.fermi_data = parse(`fermi_data`, () => normalize_fermi_surface(fermi_data))
-  }
-  // `type` keeps electronic and phonon data in their own fields: plotted in the other's, energies
-  // would read as frequencies or the reverse
-  const normalize_record = <Value extends { type: string }>(
-    record: unknown,
-    key: string,
-    normalize: (item: unknown) => Value | null,
-    type: `electronic` | `phonon`,
-  ): Record<string, Value> | undefined => {
-    if (record === undefined) return undefined
-    if (!is_plain_object(record)) return fail(`${path}.${key}`, `must be an object`)
-    return Object.fromEntries(
-      Object.entries(record).map(([name, item]) => {
-        const parsed = normalize(item) ?? fail(`${path}.${key}.${name}`, `unrecognized data`)
-        if (parsed.type !== type) {
-          return fail(`${path}.${key}.${name}`, `must be ${type} data, got ${parsed.type}`)
-        }
-        return [name, parsed]
-      }),
-    )
-  }
-  const bands = normalize_record(
-    band_structs,
-    `band_structs`,
-    normalize_band_structure,
-    `electronic`,
-  )
-  if (bands) frame.band_structs = bands
-  const dos = normalize_record(doses, `doses`, normalize_dos, `electronic`)
-  if (dos) frame.doses = dos
-  if (raw.phonon !== undefined) {
-    const { phonon } = raw
-    if (!is_plain_object(phonon)) return fail(`${path}.phonon`, `must be an object`)
-    reject_unknown(phonon, [`band_structs`, `doses`], `${path}.phonon`)
-    const spectra: PhononSpectra = {}
-    const phonon_bands = normalize_record(
-      phonon.band_structs,
-      `phonon.band_structs`,
-      normalize_band_structure,
-      `phonon`,
-    )
-    if (phonon_bands) spectra.band_structs = phonon_bands
-    const phonon_doses = normalize_record(
-      phonon.doses,
-      `phonon.doses`,
+  const band_data = parse(`band_data`, normalize_band_grid)
+  if (band_data) frame.band_data = band_data
+  const fermi_data = parse(`fermi_data`, normalize_fermi_surface)
+  if (fermi_data) frame.fermi_data = fermi_data
+  const phonon = object_field(raw, `phonon`, path)
+  if (phonon) {
+    const phonon_path = `${path}.phonon`
+    reject_unknown(phonon, [`band_structs`, `doses`, `a2f`], phonon_path)
+    const a2f = typed_record<DosData, PhononDos>(
+      phonon,
+      `a2f`,
+      phonon_path,
       normalize_dos,
       `phonon`,
     )
-    if (phonon_doses) spectra.doses = phonon_doses
-    frame.phonon = spectra
+    frame.phonon = { ...normalize_spectra(phonon, phonon_path, `phonon`), ...(a2f && { a2f }) }
   }
-  if (raw.scalars !== undefined) {
-    if (!is_plain_object(raw.scalars)) return fail(`${path}.scalars`, `must be an object`)
+  const scalars = object_field(raw, `scalars`, path)
+  if (scalars) {
     frame.scalars = Object.fromEntries(
-      Object.entries(raw.scalars).map(([key, scalar]) => {
-        if (scalar !== null && typeof scalar !== `number`) {
-          return fail(`${path}.scalars.${key}`, `must be a number or null`)
-        }
-        return [key, scalar]
-      }),
+      Object.entries(scalars).map(([key, scalar]) =>
+        scalar === null || typeof scalar === `number`
+          ? [key, scalar]
+          : fail(`${path}.scalars.${key}`, `must be a number or null`),
+      ),
     )
   }
-  if (raw.status !== undefined) {
-    if (!is_plain_object(raw.status)) return fail(`${path}.status`, `must be an object`)
-    reject_unknown(raw.status, [`unstable`, `note`], `${path}.status`)
-    const { unstable, note } = raw.status
+  const status = object_field(raw, `status`, path)
+  if (status) {
+    reject_unknown(status, [`unstable`, `note`], `${path}.status`)
+    const { unstable } = status
     if (unstable !== undefined && typeof unstable !== `boolean`) {
       return fail(`${path}.status.unstable`, `must be a boolean`)
     }
-    const status_note = optional_string(note, `${path}.status.note`)
+    const note = optional_string(status.note, `${path}.status.note`)
     frame.status = {
       ...(unstable !== undefined && { unstable }),
-      ...(status_note !== undefined && { note: status_note }),
+      ...(note !== undefined && { note }),
     }
   }
   return frame
+}
+
+function normalize_frame(raw: unknown, path: string): SweepFrame {
+  if (!is_plain_object(raw)) return fail(path, `frame must be an object`)
+  const { value, ...data } = raw
+  if (typeof value !== `number`) return fail(path, `value must be a number`)
+  return { value, ...normalize_frame_data(data, path) }
 }
 
 const DESCRIPTOR_KEYS = [
