@@ -24,19 +24,17 @@ const compress = async (
 const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
 const encode = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text)
 
-describe(`detect_compression_format`, () => {
-  test.each([
-    [`test.json.gz`, `gzip`],
-    [`structure.gzip`, `gzip`],
-    [`data.deflate`, `deflate`],
-    [`file.z`, `lzw`],
-    [`archive.zip`, `zip`],
-    [`test.json`, null], // no compression
-    [``, null],
-    [`file.gz.txt`, null], // extension not at end
-  ])(`%s -> %s`, (filename: string, expected: string | null) => {
-    expect(detect_compression_format(filename)).toBe(expected)
-  })
+test.each([
+  [`test.json.gz`, `gzip`],
+  [`structure.gzip`, `gzip`],
+  [`data.deflate`, `deflate`],
+  [`file.z`, `lzw`],
+  [`archive.zip`, `zip`],
+  [`test.json`, null], // no compression
+  [``, null],
+  [`file.gz.txt`, null], // extension not at end
+])(`detect_compression_format(%s) = %s`, (filename: string, expected: string | null) => {
+  expect(detect_compression_format(filename)).toBe(expected)
 })
 
 // one compression layer, named by the file extension
@@ -147,14 +145,15 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   })
 
   test.each([
-    [`POSCAR`, `H 0 0 0\nO 1 1 1`], // extensionless VASP text
-    [`empty.txt`, ``], // 0-byte file resolves to empty content
-    [`payload.dump`, `plain text payload`], // unknown extension without binary magic
-  ])(`decodes text file %s to a string`, async (filename, text) => {
-    expect(await decompress_file(new File([text], filename))).toEqual({
-      content: text,
-      filename,
-    })
+    [`POSCAR`, `H 0 0 0\nO 1 1 1`, false], // extensionless VASP text
+    [`empty.txt`, ``, false], // 0-byte file resolves to empty content
+    [`payload.dump`, `plain text payload`, false], // unknown extension without binary magic
+    // gzip bytes behind a wrong or missing extension reached the parsers as raw ArrayBuffers
+    [`POSCAR`, `{"gzipped": "POSCAR"}`, true],
+    [`test.json`, `{"gzipped": "test.json"}`, true],
+  ])(`decodes text file %s to a string (gzipped=%s)`, async (filename, text, gzipped) => {
+    const file = new File([gzipped ? await compress(encode(text)) : text], filename)
+    expect(await decompress_file(file)).toEqual({ content: text, filename })
   })
 
   // Compressed bytes stream out of the File instead of being buffered
@@ -172,16 +171,6 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
       `Failed to decompress ${format} file`,
     )
   })
-
-  // gzip bytes behind a wrong or missing extension reached the parsers as raw ArrayBuffers
-  test.each([`POSCAR`, `test.json`])(
-    `inflates gzip bytes dropped as %s by their magic`,
-    async (filename) => {
-      const text = `{"gzipped": "${filename}"}`
-      const file = new File([await compress(encode(text))], filename)
-      expect(await decompress_file(file)).toEqual({ content: text, filename })
-    },
-  )
 
   test.each([`gzip/gzip`, `zip/gzip`, `gzip/zip`, `zip/zip`, `gzip/deflate`] as const)(
     `decodes every layer of %s and retains the payload name`,
@@ -301,58 +290,54 @@ test.each([
 
 // Cuts land just after a newline, so chunks join to one decode's text: multi-byte UTF-8, CRLF,
 // a leading BOM (dropped) or later one (kept), lines longer than a chunk (which widen it)
-describe(`decode_text_chunks`, () => {
-  test.each([
-    ``,
-    `a`,
-    `\n`,
-    `x\ny\n`,
-    `\uFEFFH 0 0 0\r\nÅ 1 1 1\n`,
-    `x\n\uFEFFy\n`,
-    `漢字 🎉 é\nlong line ${`z`.repeat(40)}\nend`,
-    `no newline at all ${`q`.repeat(30)}`,
-  ])(`chunks %j at every size and source type`, async (text) => {
-    const bytes = encode(text)
-    const expected = new TextDecoder().decode(bytes)
-    const longest_line = Math.max(...text.split(`\n`).map((line) => encode(line).length + 1))
-    for (const source of [bytes.buffer, new Blob([bytes])]) {
-      // by default, text that fits one string decodes to one
-      expect(await decode_text_chunks(source)).toEqual([expected])
-      for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
-        const chunks = await decode_text_chunks(source, chunk_bytes)
-        expect(chunks.join(``)).toBe(expected)
-        expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(`\n`))).toBe(true)
-        if (longest_line <= chunk_bytes)
-          expect(chunks.every((chunk) => encode(chunk).length <= chunk_bytes)).toBe(true)
-      }
+test.each([
+  ``,
+  `a`,
+  `\n`,
+  `x\ny\n`,
+  `\uFEFFH 0 0 0\r\nÅ 1 1 1\n`,
+  `x\n\uFEFFy\n`,
+  `漢字 🎉 é\nlong line ${`z`.repeat(40)}\nend`,
+  `no newline at all ${`q`.repeat(30)}`,
+])(`decode_text_chunks chunks %j at every size and source type`, async (text) => {
+  const bytes = encode(text)
+  const expected = new TextDecoder().decode(bytes)
+  const longest_line = Math.max(...text.split(`\n`).map((line) => encode(line).length + 1))
+  for (const source of [bytes.buffer, new Blob([bytes])]) {
+    // by default, text that fits one string decodes to one
+    expect(await decode_text_chunks(source)).toEqual([expected])
+    for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
+      const chunks = await decode_text_chunks(source, chunk_bytes)
+      expect(chunks.join(``)).toBe(expected)
+      expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(`\n`))).toBe(true)
+      if (longest_line <= chunk_bytes)
+        expect(chunks.every((chunk) => encode(chunk).length <= chunk_bytes)).toBe(true)
     }
-  })
+  }
 })
 
 // gzip reaches 1029:1 on repetitive input (measured), so the compressed size bounds nothing:
 // a 10 MiB upload expands to 10 GB with no error until the tab dies
-describe(`inflated size limit`, () => {
-  // 4 MiB fed 64 KiB at a time; `emitted` records how much was pulled before an abort
-  let emitted = 0
-  const source = () => {
-    emitted = 0
-    return new ReadableStream<Uint8Array>({
-      pull(controller) {
-        emitted += 64 * 1024
-        controller.enqueue(new Uint8Array(64 * 1024).fill(7))
-        if (emitted >= 4 * 1024 * 1024) controller.close()
-      },
-    })
-  }
-
-  test(`aborts mid-stream once the inflated payload passes the cap`, async () => {
-    const limited = source().pipeThrough(inflation_limiter(`gzip`, 256 * 1024))
-    await expect(new Response(limited).arrayBuffer()).rejects.toThrow(
-      /GZIP payload inflates to at least \d+ bytes, past the 262144-byte limit/,
-    )
-    expect(emitted).toBeLessThan(1024 * 1024) // stopped early, not after the whole 4 MiB
-    // and the real cap does not clip an ordinary payload
-    const passed = source().pipeThrough(inflation_limiter(`gzip`, MAX_INFLATED_BYTES))
-    expect((await new Response(passed).arrayBuffer()).byteLength).toBe(4 * 1024 * 1024)
+// 4 MiB fed 64 KiB at a time; `emitted` records how much was pulled before an abort
+let emitted = 0
+const source = () => {
+  emitted = 0
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      emitted += 64 * 1024
+      controller.enqueue(new Uint8Array(64 * 1024).fill(7))
+      if (emitted >= 4 * 1024 * 1024) controller.close()
+    },
   })
+}
+
+test(`inflation_limiter aborts mid-stream once the inflated payload passes the cap`, async () => {
+  const limited = source().pipeThrough(inflation_limiter(`gzip`, 256 * 1024))
+  await expect(new Response(limited).arrayBuffer()).rejects.toThrow(
+    /GZIP payload inflates to at least \d+ bytes, past the 262144-byte limit/,
+  )
+  expect(emitted).toBeLessThan(1024 * 1024) // stopped early, not after the whole 4 MiB
+  // and the real cap does not clip an ordinary payload
+  const passed = source().pipeThrough(inflation_limiter(`gzip`, MAX_INFLATED_BYTES))
+  expect((await new Response(passed).arrayBuffer()).byteLength).toBe(4 * 1024 * 1024)
 })

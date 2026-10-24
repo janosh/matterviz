@@ -63,9 +63,8 @@ export const source_provenance = (source: MaterialSource): Partial<MaterialProve
     const source_url = String(source)
     return { source_url, source_filename: basename_from_url(source_url) }
   }
-  if (is_file(source)) {
+  if (is_file(source))
     return { source_filename: source.name, file: source, file_size: source.size }
-  }
   return {
     filename: source.filename,
     source_filename: source.source_filename ?? source.filename,
@@ -92,9 +91,8 @@ export const acquire_material = async (
   source: MaterialSource,
   signal?: AbortSignal,
 ): Promise<MaterialPayload> => {
-  if (typeof source === `string` || source instanceof URL) {
+  if (typeof source === `string` || source instanceof URL)
     return load_url(String(source), signal)
-  }
   if (is_file(source)) {
     const { content: data, filename } = await decompress_trajectory_file(source, signal)
     return { data, filename, source_filename: source.name, file: source }

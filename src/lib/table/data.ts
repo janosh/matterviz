@@ -13,9 +13,8 @@ import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = <Row extends object>(rows: Row[]): Column<Row>[] => {
   const seen = new Set<string>()
-  for (const row of rows.slice(0, 50)) {
+  for (const row of rows.slice(0, 50))
     for (const key of Object.keys(row)) if (key !== `style` && key !== `class`) seen.add(key)
-  }
   return [...seen].map((key) => ({ id: key as Extract<keyof Row, string>, label: key }))
 }
 

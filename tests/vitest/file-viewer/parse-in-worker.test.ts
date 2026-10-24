@@ -206,14 +206,12 @@ const preparation_workers = (atom_count: number, format = `hdf5`, defer_startup 
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe(`parse_in_worker`, () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
   it.each([3, 8])(
     `keeps frames moving while replicas open together (%i cores), then shares work`,
     async (cores) => {
@@ -398,7 +396,6 @@ describe(`parse_in_worker`, () => {
     } finally {
       run.dispose()
       for (const request of pending.splice(0)) request.resolve()
-      vi.useRealTimers()
     }
   })
 

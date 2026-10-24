@@ -18,28 +18,26 @@ const HDF5_PREFIX = [0x89, 0x48, 0x44, 0x46]
 const ZIP_LOCAL = [0x50, 0x4b, 0x03, 0x04]
 const ASE_ULM = [0x2d, 0x20, 0x6f, 0x66, 0x20, 0x55, 0x6c, 0x6d]
 
-describe(`is_binary (string heuristic)`, () => {
-  test.each([
-    [`empty string`, ``, false],
-    [`plain ascii text`, `H 0 0 0\nO 1 1 1`, false],
-    [`contains NUL byte`, `abc\0def`, true],
-    // bytes that are not UTF-8 decode to U+FFFD
-    [`undecodable bytes`, new TextDecoder().decode(new Uint8Array(20).fill(0xff)), true],
-    [`20% undecodable bytes`, `\uFFFD\uFFFDabcdefgh`, true],
-    [`C0 controls other than 9-13`, `${`\u000E`.repeat(8)}ab`, true],
-    [`C1 controls`, `\u0085\u009Fabcdefgh`, true],
-    // letters past ASCII are text, not high bytes: Latin-1 accents and Greek/CJK prose
-    [`accented prose`, `Größe für Ångström-Abstände é è ü ÿ`.repeat(3), false],
-    [`Greek and CJK comment`, `αβγ 硅晶体结构 `.repeat(10), false],
-    // tab/CR/LF are text: counting them as neither sank these two to binary
-    [`CRLF single-atom XYZ`, `1\r\nE\r\nH 0 0 0\r\n`.repeat(400), false],
-    [`tab-indented YAML`, `\t\t\t\tvalue: 1\n`.repeat(400), false],
-    // only the leading 8 KiB is sampled
-    [`binary header on a large payload`, `\0${`a`.repeat(20_000)}`, true],
-    [`large text with a stray NUL past the sample window`, `${`a`.repeat(20_000)}\0`, false],
-  ])(`%s -> %s`, (_desc, content, expected) => {
-    expect(is_binary(content)).toBe(expected)
-  })
+test.each([
+  [`empty string`, ``, false],
+  [`plain ascii text`, `H 0 0 0\nO 1 1 1`, false],
+  [`contains NUL byte`, `abc\0def`, true],
+  // bytes that are not UTF-8 decode to U+FFFD
+  [`undecodable bytes`, new TextDecoder().decode(new Uint8Array(20).fill(0xff)), true],
+  [`20% undecodable bytes`, `\uFFFD\uFFFDabcdefgh`, true],
+  [`C0 controls other than 9-13`, `${`\u000E`.repeat(8)}ab`, true],
+  [`C1 controls`, `\u0085\u009Fabcdefgh`, true],
+  // letters past ASCII are text, not high bytes: Latin-1 accents and Greek/CJK prose
+  [`accented prose`, `Größe für Ångström-Abstände é è ü ÿ`.repeat(3), false],
+  [`Greek and CJK comment`, `αβγ 硅晶体结构 `.repeat(10), false],
+  // tab/CR/LF are text: counting them as neither sank these two to binary
+  [`CRLF single-atom XYZ`, `1\r\nE\r\nH 0 0 0\r\n`.repeat(400), false],
+  [`tab-indented YAML`, `\t\t\t\tvalue: 1\n`.repeat(400), false],
+  // only the leading 8 KiB is sampled
+  [`binary header on a large payload`, `\0${`a`.repeat(20_000)}`, true],
+  [`large text with a stray NUL past the sample window`, `${`a`.repeat(20_000)}\0`, false],
+])(`is_binary: %s -> %s`, (_desc, content, expected) => {
+  expect(is_binary(content)).toBe(expected)
 })
 
 describe(`magic-byte detection`, () => {
@@ -108,14 +106,12 @@ describe(`extension / filename classification`, () => {
   )
 })
 
-describe(`is_binary_payload (extension or magic bytes)`, () => {
-  test.each([
-    [`binary extension`, `run.h5`, [0x48, 0x49], true], // ext wins regardless of bytes
-    [`magic bytes, no binary ext`, `payload.dump`, HDF5_PREFIX, true],
-    [`unknown ext, text bytes`, `payload.dump`, [0x48, 0x49], false],
-  ])(`%s -> %s`, (_desc, filename, byte_seq, expected) => {
-    expect(is_binary_payload(filename, bytes(...byte_seq).buffer)).toBe(expected)
-  })
+test.each([
+  [`binary extension`, `run.h5`, [0x48, 0x49], true], // ext wins regardless of bytes
+  [`magic bytes, no binary ext`, `payload.dump`, HDF5_PREFIX, true],
+  [`unknown ext, text bytes`, `payload.dump`, [0x48, 0x49], false],
+])(`is_binary_payload: %s -> %s`, (_desc, filename, byte_seq, expected) => {
+  expect(is_binary_payload(filename, bytes(...byte_seq).buffer)).toBe(expected)
 })
 
 describe(`magic_head`, () => {

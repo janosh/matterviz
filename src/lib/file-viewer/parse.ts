@@ -126,9 +126,8 @@ const trajectory_result = async (
     const data = await open_trajectory(source, { ...load_options, filename, on_progress })
     return { type: `trajectory`, filename, data }
   } catch (error) {
-    if (error instanceof VaspoutElectronicOnlyError) {
+    if (error instanceof VaspoutElectronicOnlyError)
       return { type: `vaspout_electronic`, filename, data: error.electronic }
-    }
     throw error
   }
 }
@@ -202,9 +201,8 @@ export const parse_file_content = async (
 
   // Match on the basename in case filename retains a directory prefix
   const basename = filename.split(/[\\/]/).pop() ?? filename
-  if (FERMI_FILE_RE.test(basename)) {
+  if (FERMI_FILE_RE.test(basename))
     return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
-  }
   // .cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG. A VASP name only decides when no
   // extension does: chgcar_structure.cif is a CIF, LOCPOT_slab.json a structure JSON.
   const own_name = strip_compression_extensions(basename)
@@ -255,9 +253,8 @@ export const parse_file_content = async (
         filename,
       }
     }
-    if (detected === `fermi_surface` || detected === `band_grid`) {
+    if (detected === `fermi_surface` || detected === `band_grid`)
       return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
-    }
     if (detected) {
       // detect_view_type already matched the payload against each type's shape, so this is
       // the one place the mapping from detection to data type is established

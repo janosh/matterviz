@@ -480,9 +480,8 @@ function minify_clone(root: Element): void {
   }
   // Groups emptied by the stripping above render nothing (definition containers may be
   // referenced by id, so they stay)
-  for (const group of [...root.querySelectorAll(`g`)].toReversed()) {
+  for (const group of [...root.querySelectorAll(`g`)].toReversed())
     if (!group.firstElementChild && !group.closest(`defs`)) group.remove()
-  }
 }
 
 type SvgViewbox = [x: number, y: number, width: number, height: number]
@@ -658,9 +657,8 @@ function overlay_to_svg(root: HTMLElement, origin: DOMRect): SVGElement {
       const id = unique_id(`export-overlay-gradient`)
       const [x1, y1, x2, y2] = gradient.vector
       const element_gradient = svg_el(`linearGradient`, { id, x1, y1, x2, y2 })
-      for (const [color, offset] of gradient.stops) {
+      for (const [color, offset] of gradient.stops)
         element_gradient.append(svg_el(`stop`, { offset, 'stop-color': color }))
-      }
       group.append(element_gradient)
       fill = `url(#${id})`
     } else if (!fill || is_no_paint(fill)) return

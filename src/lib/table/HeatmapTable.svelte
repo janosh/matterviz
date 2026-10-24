@@ -430,10 +430,7 @@
   $effect(() => {
     if (columns.length === 0) return
     const new_order = ordered_columns.map((col) => col.id)
-    const unchanged =
-      new_order.length === column_order.length &&
-      new_order.every((identifier, idx) => identifier === column_order[idx])
-    if (!unchanged) column_order = new_order
+    if (!same_parts(new_order, column_order)) column_order = new_order
   })
   let visible_columns = $derived(
     ordered_columns.filter((col) => col.visible !== false && !hidden_columns.includes(col.id)),
@@ -682,9 +679,8 @@
     for (const row of rows) height_sum += row.offsetHeight
     const measured = rows.length ? height_sum / rows.length : 0
     if (measured <= 0) return false
-    if (Math.abs(measured - untrack(() => avg_row_height)) > 0.5) {
+    if (Math.abs(measured - untrack(() => avg_row_height)) > 0.5)
       avg_row_height = clamp(measured, 8, 400)
-    }
     return true
   }
   // Measures once rows exist, and again under a new density preset
@@ -942,9 +938,8 @@
   }
   function handle_drop(event: DragEvent, target_col: Column<Row>) {
     event.preventDefault()
-    if (drag_col_id && drag_col_group() === target_col.group) {
+    if (drag_col_id && drag_col_group() === target_col.group)
       move_column_to(drag_col_id, target_col.id)
-    }
     reset_drag_state()
   }
   // Remove `col_id` from column_order and reinsert it at `target_id`'s position
@@ -961,9 +956,7 @@
   function move_column(col: Column<Row> | undefined, step: number) {
     if (!col) return
     const neighbour = visible_columns[visible_columns.indexOf(col) + step]
-    if (neighbour && neighbour.group === col.group) {
-      move_column_to(col.id, neighbour.id)
-    }
+    if (neighbour && neighbour.group === col.group) move_column_to(col.id, neighbour.id)
   }
 
   // === Cell range selection, keyboard navigation and copy ===
@@ -1121,9 +1114,8 @@
   function handle_body_contextmenu(event: MouseEvent & BodyEvent) {
     const pos = cell_under(event)
     // keep the native context menu for links/buttons/inputs inside cells
-    if (pos && !is_interactive_cell_target(event.target)) {
+    if (pos && !is_interactive_cell_target(event.target))
       open_column_context_menu(event, cols[pos.col].id)
-    }
   }
   function handle_window_pointerdown(event: PointerEvent) {
     const target = event.target instanceof Element ? event.target : null

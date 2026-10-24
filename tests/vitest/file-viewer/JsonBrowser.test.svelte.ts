@@ -48,14 +48,8 @@ const pointer = (
   type: `pointerdown` | `pointermove` | `pointerup`,
   client_x = 5,
 ): void => {
-  element.dispatchEvent(
-    new PointerEvent(type, {
-      bubbles: true,
-      cancelable: true,
-      pointerId: 1,
-      clientX: client_x,
-    }),
-  )
+  const init = { bubbles: true, cancelable: true, pointerId: 1, clientX: client_x }
+  element.dispatchEvent(new PointerEvent(type, init))
   flushSync()
 }
 

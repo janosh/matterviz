@@ -40,9 +40,8 @@ export const is_browser_decompressible_format = (
 
 export function detect_compression_format(filename: string): CompressionFormat | null {
   const lower = filename.toLowerCase()
-  for (const [format, extensions] of Object.entries(COMPRESSION_FORMATS)) {
+  for (const [format, extensions] of Object.entries(COMPRESSION_FORMATS))
     if (extensions.some((ext) => lower.endsWith(ext))) return format as CompressionFormat
-  }
   return null
 }
 
@@ -96,9 +95,8 @@ const unzip_single_entry = async (
   const entries: { name: string; inflated: number }[] = []
   unzipSync(bytes, {
     filter: ({ name, originalSize, size }) => {
-      if (!name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name)) {
+      if (!name.endsWith(`/`) && !name.startsWith(`__MACOSX/`) && !/(?:^|\/)\./.test(name))
         entries.push({ name, inflated: Math.max(originalSize, size) })
-      }
       return false
     },
   })
@@ -112,9 +110,8 @@ const unzip_single_entry = async (
   }
   const { name, inflated } = entries[0]
   // fflate allocates from the declared size and bounds its writes to that buffer.
-  if (inflated > MAX_INFLATED_BYTES) {
+  if (inflated > MAX_INFLATED_BYTES)
     throw new Error(bomb_msg(`zip`, inflated, MAX_INFLATED_BYTES))
-  }
   const entry_bytes = unzipSync(bytes, { filter: (entry) => entry.name === name })[name]
   return { name: name.split(`/`).pop() ?? name, bytes: entry_bytes }
 }

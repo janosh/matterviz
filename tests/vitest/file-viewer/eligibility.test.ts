@@ -11,6 +11,9 @@ import {
 } from '#lib/file-viewer/eligibility.js'
 import { expect, test } from 'vitest'
 
+// Empty and non-string inputs neither predicate accepts
+const non_filenames = [``, null, undefined, 42, true].map((val) => [val, false] as const)
+
 test.each([
   [`structure.cif`, true],
   [`C:\\data\\movie.traj`, true],
@@ -43,11 +46,7 @@ test.each([
   ...[`INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`, `run.xml`].map(
     (filename) => [filename, false] as const,
   ),
-  [``, false],
-  [null, false],
-  [undefined, false],
-  [42, false],
-  [true, false],
+  ...non_filenames,
 ] as const)(`is_matterviz_filename(%s) returns %s`, (filename, expected) => {
   expect(is_matterviz_filename(filename)).toBe(expected)
 })
@@ -87,11 +86,7 @@ test.each([
   [`simulation.trr`, false],
   [`README.md`, false],
   [`package.json`, false],
-  [``, false],
-  [null, false],
-  [undefined, false],
-  [42, false],
-  [true, false],
+  ...non_filenames,
 ] as const)(`is_auto_renderable_filename(%s) returns %s`, (filename, expected) => {
   expect(is_auto_renderable_filename(filename)).toBe(expected)
 })

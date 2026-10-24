@@ -172,9 +172,8 @@ export function prepare_phase_set(
   const best_by_formula = new Map<string, PlannerPhase>()
   for (const phase of by_id.values()) {
     const existing = best_by_formula.get(phase.formula)
-    if (!existing || phase.energy_per_atom < existing.energy_per_atom - ENERGY_TOL) {
+    if (!existing || phase.energy_per_atom < existing.energy_per_atom - ENERGY_TOL)
       best_by_formula.set(phase.formula, { ...phase })
-    }
   }
 
   // Elemental references at 0 eV/atom where the data has no unary entry
@@ -193,9 +192,8 @@ export function prepare_phase_set(
 
   // Gases replace any solid/molecular entry of the same reduced formula (a computed CO2 crystal, the
   // elemental O reference), since at synthesis conditions the gas is the relevant state
-  for (const gas of gas_phases(conditions, elements)) {
+  for (const gas of gas_phases(conditions, elements))
     best_by_formula.set(formula_of(gas.composition), { ...gas, e_above_hull_0K: 0 })
-  }
 
   return { elements, phases: [...best_by_formula.values()], by_id, warnings }
 }

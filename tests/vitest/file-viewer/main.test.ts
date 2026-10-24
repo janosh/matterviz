@@ -46,6 +46,11 @@ declare global {
   var download: (content: DownloadData, filename: string, contentType: string) => void
 }
 
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
 const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
 
 const fixture_base64 = (name: string, gzip = false): string => {
@@ -591,11 +596,6 @@ describe(`LARGE_FILE markers`, () => {
     return (await import(`#lib/file-viewer/parse.js`)).parse_file_content
   }
 
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-  })
-
   test(`asks the host for the file and serves frames and plot rows from it`, async () => {
     const { post_message, message_bus } = with_host((request) =>
       request.command === `request_frame`
@@ -784,11 +784,6 @@ describe(`LARGE_FILE markers`, () => {
 })
 
 describe(`VSCode Download Integration`, () => {
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-  })
-
   // Fresh module graph (drops the cached vscode_api), stubbed API, download override installed
   const init_download = async () => {
     vi.resetModules()

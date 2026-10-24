@@ -224,19 +224,17 @@ test(`observe_canvas_presence hands over canvases coming and going, ignoring oth
   expect(unwrapped.mock.calls).toEqual([[null]])
 })
 
-describe(`dpi_to_scale`, () => {
-  test.each([
-    [72, 1], // baseline
-    [144, 2],
-    [1440, 10], // capped at 10x
-    [0.01, 1 / 72], // tiny positives floored at 1 DPI (no 0x0 canvases)
-    [0, 1 / 72],
-    [-50, 1 / 72],
-    [NaN, 1], // non-finite (incl. Infinity) falls back to the 72 DPI baseline
-    [Infinity, 1],
-  ])(`dpi=%s -> scale=%s`, (png_dpi, expected) => {
-    expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
-  })
+test.each([
+  [72, 1], // baseline
+  [144, 2],
+  [1440, 10], // capped at 10x
+  [0.01, 1 / 72], // tiny positives floored at 1 DPI (no 0x0 canvases)
+  [0, 1 / 72],
+  [-50, 1 / 72],
+  [NaN, 1], // non-finite (incl. Infinity) falls back to the 72 DPI baseline
+  [Infinity, 1],
+])(`dpi_to_scale(%s) = %s`, (png_dpi, expected) => {
+  expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
 })
 
 describe(`canvas_to_png_blob`, () => {
@@ -534,18 +532,16 @@ describe(`svg_to_string`, () => {
   })
 })
 
-describe(`html_to_svg`, () => {
-  test(`redraws an HTML grid's cell backgrounds and text as SVG`, () => {
-    document.body.innerHTML = `<div class="grid"><span style="background-color: rgb(255, 0, 0)">Fe</span></div>`
-    const grid = document.querySelector<HTMLElement>(`.grid`)
-    if (!grid) throw new Error(`grid not mounted`)
-    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
-      new DOMRect(0, 0, 40, 20),
-    )
-    const exported = parse_svg(svg_to_string(html_to_svg(grid)))
-    expect(exported.getAttribute(`viewBox`)).toBe(`0 0 40 20`)
-    expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
-  })
+test(`html_to_svg redraws an HTML grid's cell backgrounds and text as SVG`, () => {
+  document.body.innerHTML = `<div class="grid"><span style="background-color: rgb(255, 0, 0)">Fe</span></div>`
+  const grid = document.querySelector<HTMLElement>(`.grid`)
+  if (!grid) throw new Error(`grid not mounted`)
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+    new DOMRect(0, 0, 40, 20),
+  )
+  const exported = parse_svg(svg_to_string(html_to_svg(grid)))
+  expect(exported.getAttribute(`viewBox`)).toBe(`0 0 40 20`)
+  expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
 })
 
 describe(`export_sections`, () => {
@@ -783,16 +779,14 @@ test.each([
   expect(bitmap_spy).not.toHaveBeenCalled()
 })
 
-describe(`export_canvas_as_png`, () => {
-  test.each([
-    [`structure.png`, `structure-150dpi.png`], // suffix injected before extension
-    [`structure.PNG`, `structure-150dpi.png`],
-    [`structure`, `structure-150dpi.png`], // .png appended when missing
-  ])(`downloads %s as %s`, async (filename, expected_filename) => {
-    mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
-    await export_canvas_as_png(make_mock_canvas(), filename, 150)
-    expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
-  })
+test.each([
+  [`structure.png`, `structure-150dpi.png`], // suffix injected before extension
+  [`structure.PNG`, `structure-150dpi.png`],
+  [`structure`, `structure-150dpi.png`], // .png appended when missing
+])(`export_canvas_as_png downloads %s as %s`, async (filename, expected_filename) => {
+  mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
+  await export_canvas_as_png(make_mock_canvas(), filename, 150)
+  expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
 })
 
 describe(`export_trajectory_video`, () => {

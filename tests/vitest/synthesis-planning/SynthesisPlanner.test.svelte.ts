@@ -23,6 +23,21 @@ const mount_planner = (props: Partial<ComponentProps<typeof SynthesisPlanner>> =
   })
   onTestFinished(() => unmount(component))
 }
+// Stubbed clipboard; `deny` clicks `button` with writeText rejected, which must show on the
+// button instead of rejecting unhandled (it used to keep reading `Copied`)
+const stub_clipboard = () => {
+  const write_text = vi.fn().mockResolvedValue(undefined)
+  vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
+  onTestFinished(() => void vi.unstubAllGlobals())
+  const deny = async (button: HTMLButtonElement): Promise<void> => {
+    write_text.mockRejectedValueOnce(new DOMException(`denied`, `NotAllowedError`))
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    button.click()
+    await vi.waitFor(() => expect(button.textContent?.trim()).toBe(`Copy failed`))
+    error_spy.mockRestore()
+  }
+  return { write_text, deny }
+}
 
 // First mount pays for planning plus the 3D hull's threlte setup: ~1.3 s locally but ~5 s on
 // a loaded CI runner, so the default 5 s test timeout is not enough headroom
@@ -104,11 +119,7 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
     expect(document.querySelector(`.detail`)).not.toBeNull()
   })
   expect(document.body.textContent).toMatch(/Atmosphere: CO2 = \S+ bar, O2 = \S+ bar/)
-  const write_text = vi.fn().mockResolvedValue(undefined)
-  vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
-  onTestFinished(() => {
-    vi.unstubAllGlobals()
-  })
+  const { write_text, deny } = stub_clipboard()
   for (const [title, content] of [
     [`Copy the agent-style text summary`, `BaTiO3`],
     [`Copy the full plan as JSON`, `"routes"`],
@@ -117,16 +128,8 @@ test(`preserves experiment choices and shortlist through rescaling and replannin
     button.click()
     await vi.waitFor(() => expect(button.textContent?.trim()).toBe(`Copied`))
     expect(write_text).toHaveBeenLastCalledWith(expect.stringContaining(content))
+    await deny(button)
   }
-  // a denied clipboard shows on the button instead of rejecting unhandled
-  write_text.mockRejectedValueOnce(new DOMException(`denied`, `NotAllowedError`))
-  const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-  const json_btn = doc_query<HTMLButtonElement>(
-    `.copy button[title="Copy the full plan as JSON"]`,
-  )
-  json_btn.click()
-  await vi.waitFor(() => expect(json_btn.textContent?.trim()).toBe(`Copy failed`))
-  error_spy.mockRestore()
   const temperature = doc_query<HTMLInputElement>(`.recipe-card fieldset input`)
   set_input(temperature, `1100`)
   await tick()
@@ -288,24 +291,13 @@ test(`experiment cards edit and copy each firing without losing quantities or as
   )
   expect(props.route.recipe.target_mass_g).toBe(1)
   expect(document.querySelector(`[role="alert"]`)).toBeNull()
-  const write_text = vi.fn().mockResolvedValue(undefined)
-  vi.stubGlobal(`navigator`, { clipboard: { writeText: write_text } })
-  onTestFinished(() => {
-    vi.unstubAllGlobals()
-  })
-  document
-    .querySelector<HTMLButtonElement>(`button[title="Copy experiment card as text"]`)
-    ?.click()
+  const { write_text, deny } = stub_clipboard()
+  const copy_btn = doc_query<HTMLButtonElement>(`button[title="Copy experiment card as text"]`)
+  copy_btn.click()
   await tick()
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Hold (h): 4`))
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Hold (h): 5`))
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Step 2:`))
   expect(write_text).toHaveBeenCalledWith(expect.stringContaining(`Calculated recipe for 2 g`))
-  // a denied clipboard used to reject unhandled, the button still reading `Copied`
-  write_text.mockRejectedValueOnce(new DOMException(`denied`, `NotAllowedError`))
-  const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-  const copy_btn = doc_query<HTMLButtonElement>(`button[title="Copy experiment card as text"]`)
-  copy_btn.click()
-  await vi.waitFor(() => expect(copy_btn.textContent?.trim()).toBe(`Copy failed`))
-  error_spy.mockRestore()
+  await deny(copy_btn)
 })

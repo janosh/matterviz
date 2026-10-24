@@ -258,19 +258,15 @@ function is_tabular_data(obj: unknown): boolean {
     // At least some values should be numbers (not just metadata objects)
     return count_numeric_columns(obj) >= 1
   }
-  // Column-based: object where multiple values are equal-length arrays
-  const data = as_record(obj)
-  if (!data) return false
-  const entries = Object.entries(data)
-  if (entries.length < 2) return false
-  const array_entries = entries.filter(([, val]) => Array.isArray(val) && val.length > 0)
-  if (array_entries.length < 2) return false
-  // Check that arrays have consistent lengths
-  const lengths = array_entries.map(([, val]) => (val as unknown[]).length)
-  const first_len = lengths[0]
-  if (!lengths.every((len) => len === first_len)) return false
-  // At least one column must contain numbers
-  return count_numeric_columns(obj) >= 1
+  // Column-based: at least two non-empty arrays of equal length, one of them holding numbers
+  const lengths = Object.values(as_record(obj) ?? {})
+    .filter((val) => Array.isArray(val) && val.length > 0)
+    .map((val) => (val as unknown[]).length)
+  return (
+    lengths.length >= 2 &&
+    lengths.every((len) => len === lengths[0]) &&
+    count_numeric_columns(obj) >= 1
+  )
 }
 
 // Plottable data: tabular data with at least 2 numeric columns (enough for a scatter plot)
@@ -336,10 +332,8 @@ export function scan_renderable_paths(
     if (detected_type) {
       results.set(path, detected_type)
       // If tabular data is also plottable, register a plot badge too
-      if (detected_type === `table` && is_plottable_data(value)) {
-        const plot_path = path ? `${path}\u0000plot` : `\u0000plot`
-        results.set(plot_path, `plot`)
-      }
+      if (detected_type === `table` && is_plottable_data(value))
+        results.set(`${path}\u0000plot`, `plot`)
       // A column table is often a document whose other keys hold renderables of their own
       // (pymatgen's phonon doc: thermal columns beside phonon_bandstructure and phonon_dos)
       if (detected_type !== `table` || Array.isArray(value)) return
@@ -350,9 +344,8 @@ export function scan_renderable_paths(
         walk(item, build_path(path, idx), depth + 1)
       }
     } else {
-      for (const [key, child_value] of Object.entries(value as Record<string, unknown>)) {
+      for (const [key, child_value] of Object.entries(value as Record<string, unknown>))
         walk(child_value, build_path(path, key), depth + 1)
-      }
     }
   }
 

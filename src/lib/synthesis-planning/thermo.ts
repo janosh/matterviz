@@ -118,9 +118,8 @@ function integer_multiplier(values: number[]): number {
 }
 
 const format_coefficient = (value: number): string => {
-  if (Math.abs(value - Math.round(value)) < 1e-6) {
+  if (Math.abs(value - Math.round(value)) < 1e-6)
     return Math.round(value) === 1 ? `` : `${Math.round(value)} `
-  }
   return `${Number(value.toPrecision(4))} `
 }
 
@@ -310,9 +309,8 @@ function inverse_hull_energy(
     element_rows(columns, target_counts.length),
     target_counts,
   )
-  if (result.status !== `optimal`) {
+  if (result.status !== `optimal`)
     throw new Error(`Inverse hull LP ${result.status} for ${target.formula}`)
-  }
   return (result.objective - fu_energy(target)) / target.n_atoms_per_fu
 }
 

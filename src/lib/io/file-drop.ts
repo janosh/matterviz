@@ -65,9 +65,8 @@ const create_drop_batch_handler = <Handled = void>(
   opts: DropBatchOptions<Handled>,
 ): ((event: DragEvent) => Promise<void>) => {
   const { max_files } = opts
-  if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0)) {
+  if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0))
     throw new TypeError(`max_files must be a non-negative integer, got ${max_files}`)
-  }
 
   async function process_batch(url: string | undefined, read: Promise<File[]>) {
     opts.set_loading?.(true)
