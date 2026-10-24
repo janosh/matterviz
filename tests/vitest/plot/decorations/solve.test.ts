@@ -96,33 +96,31 @@ describe(`decoration solver`, () => {
     footprint: { width: 90, height: 50 },
   }
 
-  test(`the legend keeps the only free corner and the colorbar moves out`, () => {
+  // A short colorbar moves out of the legend's corner. A wide legend no longer fits its corner
+  // once the right-margin colorbar narrows the plot; with the legend sent to the bottom, the
+  // corner is free again and the colorbar returns.
+  test.each([
+    [
+      `the legend keeps the only free corner and the colorbar moves out`,
+      90,
+      60,
+      [{ location: `interior` }, { location: `outside`, side: `right` }],
+    ],
+    [
+      `evicting the legend gives the colorbar its corner back`,
+      104,
+      40,
+      [{ location: `outside`, side: `bottom` }, { location: `interior` }],
+    ],
+  ] as const)(`%s`, (_desc, legend_width, colorbar_height, expected) => {
+    const legend = { ...corner_legend, footprint: { width: legend_width, height: 50 } }
     const colorbar: DecorationItem = {
       id: `colorbar`,
       kind: `colorbar`,
-      footprint: { width: 20, height: 60 },
+      footprint: { width: 20, height: colorbar_height },
     }
-    const [placed_legend, placed_colorbar] = solve_decorations(
-      scene_for([corner_legend, colorbar], corner_free),
-    ).placements
-    expect(placed_legend).toMatchObject({ location: `interior` })
-    expect(placed_colorbar).toMatchObject({ location: `outside`, side: `right` })
-  })
-
-  // The right-margin colorbar narrows the plot until the 104px legend no longer fits its corner;
-  // once the legend leaves for the bottom, the corner is free again and the colorbar returns
-  test(`evicting the legend gives the colorbar its corner back`, () => {
-    const wide_legend = { ...corner_legend, footprint: { width: 104, height: 50 } }
-    const colorbar: DecorationItem = {
-      id: `colorbar`,
-      kind: `colorbar`,
-      footprint: { width: 20, height: 40 },
-    }
-    const [placed_legend, placed_colorbar] = solve_decorations(
-      scene_for([wide_legend, colorbar], corner_free),
-    ).placements
-    expect(placed_legend).toMatchObject({ location: `outside`, side: `bottom` })
-    expect(placed_colorbar).toMatchObject({ location: `interior` })
+    const { placements } = solve_decorations(scene_for([legend, colorbar], corner_free))
+    expect(placements).toMatchObject(expected)
   })
 
   test(`a host control over the only free corner sends the legend out`, () => {

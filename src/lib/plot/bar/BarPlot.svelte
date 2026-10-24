@@ -11,18 +11,14 @@
     BarSeries,
     BarStyle,
     BasePlotProps,
+    CartesianPlotProps,
     ColorScale,
     InternalPoint,
-    LegendConfig,
     LegendItem,
     LineStyle,
     Orientation,
-    PanConfig,
     PlotConfig,
-    RefLine,
-    RefLineEvent,
     SizeScaleConfig,
-    UserContentProps,
   } from '#lib/plot/index.js'
   import { BarPlotControls, ScatterPoint } from '#lib/plot/index.js'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
@@ -30,14 +26,14 @@
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
   import {
     create_cartesian_frame,
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
+  import type { FacetAxis } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -149,20 +145,14 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
-    PlotConfig & {
-      hidden_series?: readonly (string | number)[]
-      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+    CartesianPlotProps & {
       series?: readonly BarSeries<Metadata>[]
       // Component-specific props
       orientation?: Orientation
       mode?: BarMode
-      legend?: LegendConfig | null
-      show_legend?: boolean
       bar?: BarStyle
       line?: LineStyle
       tooltip?: TooltipProp<BarHandlerProps<Metadata>>
-      user_content?: Snippet<[UserContentProps]>
-      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<
         [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
       >
@@ -187,15 +177,6 @@
             })
           | null,
       ) => void
-      ref_lines?: RefLine[]
-      on_ref_line_click?: (event: RefLineEvent) => void
-      on_ref_line_hover?: (event: RefLineEvent | null) => void
-      // The host owns property selection, loading, and publishing the resulting data.
-      axis_loading?: `x` | `x2` | `y` | `y2` | null
-      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
-      pan?: PanConfig
-      marginals?: MarginalsProp
-      facet_layout?: FacetLayoutContext
     } = $props()
 
   // Legend choices are separate from immutable series data.
@@ -357,12 +338,10 @@
   const series_scales = (
     srs: Pick<BarSeries, `x_axis` | `y_axis`>,
     scales: typeof frame.scales,
-  ) => {
-    return {
-      cat_scale: scales[vertical ? (srs.x_axis === `x2` ? `x2` : `x`) : `y`],
-      val_scale: frame.value_scale(value_axis_key(srs), scales),
-    }
-  }
+  ) => ({
+    cat_scale: scales[vertical ? (srs.x_axis === `x2` ? `x2` : `x`) : `y`],
+    val_scale: frame.value_scale(value_axis_key(srs), scales),
+  })
 
   // Rendering, clipping and decoration placement use the same series geometry.
   const bar_geometry = (

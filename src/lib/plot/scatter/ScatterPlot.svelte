@@ -14,6 +14,7 @@
   import type {
     AxisRanges,
     BasePlotProps,
+    CartesianPlotProps,
     ColorScale,
     DataSeries,
     DensityContourConfig,
@@ -25,11 +26,7 @@
     LabelPlacementConfig,
     LabelStyle,
     LayerZIndex,
-    LegendConfig,
-    PanConfig,
     PlotConfig,
-    RefLine,
-    RefLineEvent,
     ScatterHandlerEvent,
     ScatterHandlerProps,
     SizeLegendConfig,
@@ -62,7 +59,7 @@
     create_placed_decoration,
   } from '#lib/plot/core/placed-decoration.svelte.js'
   import type { ColorBarDecorationProps } from '#lib/plot/core/placed-decoration.svelte.js'
-  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import {
     assign_axes,
@@ -72,7 +69,7 @@
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
   import { extract_series_color, get_series_symbol } from '#lib/plot/core/data-transform.js'
   import { density_contours as compute_density_contours } from '#lib/plot/core/density-contours.js'
-  import type { FacetAxis, FacetLayoutContext } from '#lib/plot/core/facets.js'
+  import type { FacetAxis } from '#lib/plot/core/facets.js'
   import { FACET_AXES } from '#lib/plot/core/facets.js'
   import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
@@ -221,9 +218,7 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     Omit<BasePlotProps, `children`> &
-    PlotConfig & {
-      hidden_series?: readonly (string | number)[]
-      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+    CartesianPlotProps & {
       series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
       children?: Snippet<[UserContentProps]>
@@ -246,8 +241,6 @@
       // false still calls hover handlers but skips all tooltip state and DOM work, e.g. for a
       // time-series scrubber that updates another pane live
       tooltip?: TooltipProp<ScatterHandlerProps<Metadata>>
-      user_content?: Snippet<[UserContentProps]>
-      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       // Serializers added to (or replacing) the built-in PNG/SVG/CSV export, e.g. a JSON of
       // the data a wrapping component plots
       export_sources?: ExportSources
@@ -264,8 +257,6 @@
       color_bar?: ColorBarDecorationProps | null
       label_placement_config?: Partial<LabelPlacementConfig>
       hover_config?: Partial<HoverConfig>
-      legend?: LegendConfig | null
-      show_legend?: boolean
       point_tween?: TweenOptions<Point2D>
       line_tween?: TweenOptions<string>
       point_events?: Record<
@@ -279,9 +270,6 @@
       error_bands?: ErrorBand[]
       on_fill_click?: (event: FillHandlerEvent) => void
       on_fill_hover?: (event: FillHandlerEvent | null) => void
-      ref_lines?: RefLine[]
-      on_ref_line_click?: (event: RefLineEvent) => void
-      on_ref_line_hover?: (event: RefLineEvent | null) => void
       selected_series_idx?: number
       wrapper?: HTMLDivElement
       // Read-only: the padding in effect, so hosts laying out several plots (BandsAndDos)
@@ -290,14 +278,8 @@
       // The range each axis shows after pan/zoom. Hosts writing it move the view without
       // touching axis config, so linked panels share one zoom but keep their own reset target
       view?: Partial<AxisRanges>
-      // The host owns property selection, loading, and publishing the resulting data.
-      axis_loading?: `x` | `x2` | `y` | `y2` | null
-      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
-      pan?: PanConfig
-      marginals?: MarginalsProp
       // Iso-proportion KDE contours under each series' markers (true for the defaults)
       density_contours?: boolean | DensityContourConfig
-      facet_layout?: FacetLayoutContext
       // `auto` switches to canvas past CANVAS_MARKER_THRESHOLD visible markers (labelled,
       // hovered and selected points stay SVG); point_events other than onclick force SVG
       marker_renderer?: `auto` | `svg` | `canvas`

@@ -2,20 +2,14 @@
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'
-  import type {
-    BarStyle,
-    HistogramHandlerProps,
-    PanConfig,
-    RefLine,
-    RefLineEvent,
-  } from '#lib/plot/index.js'
+  import type { BarStyle, HistogramHandlerProps } from '#lib/plot/index.js'
   import { HistogramControls } from '#lib/plot/index.js'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
   import {
@@ -24,7 +18,6 @@
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
-  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
@@ -40,9 +33,8 @@
   import type {
     AxisConfig,
     BasePlotProps,
-    LegendConfig,
+    CartesianPlotProps,
     PlotConfig,
-    UserContentProps,
   } from '#lib/plot/core/types.js'
   import type {
     BinnedSeries,
@@ -127,23 +119,17 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
-    PlotConfig & {
-      hidden_series?: readonly (string | number)[]
-      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+    CartesianPlotProps & {
       series: readonly HistogramSeries[]
       // Component-specific props
       bins?: number
       normalize?: HistogramNormalize
-      show_legend?: boolean
-      legend?: LegendConfig | null
       bar?: BarStyle
       // Index in `series` displayed in single mode; an unavailable index selects the first
       // visible series. Labels are display text and need not be unique or present.
       selected_series_idx?: number
       mode?: `single` | `overlay`
       tooltip?: TooltipProp<HistogramHandlerProps>
-      user_content?: Snippet<[UserContentProps]>
-      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[Required<PlotConfig>]>
       on_bar_click?: (
         data: HistogramHandlerProps & { event: MouseEvent | KeyboardEvent },
@@ -152,16 +138,7 @@
       on_bar_hover?: (
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      ref_lines?: RefLine[]
-      on_ref_line_click?: (event: RefLineEvent) => void
-      on_ref_line_hover?: (event: RefLineEvent | null) => void
       on_series_toggle?: (series_idx: number) => void
-      // The host owns property selection, loading, and publishing the resulting data.
-      axis_loading?: `x` | `x2` | `y` | `y2` | null
-      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
-      pan?: PanConfig
-      marginals?: MarginalsProp
-      facet_layout?: FacetLayoutContext
     } = $props()
 
   const legend_vis = create_legend_visibility<HistogramSeries>(

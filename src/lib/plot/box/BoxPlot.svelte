@@ -10,16 +10,12 @@
     AxisConfig,
     BandwidthOption,
     BasePlotProps,
+    CartesianPlotProps,
     BoxHandlerProps,
     BoxPlotSeries,
     BoxPointMode,
-    LegendConfig,
     Orientation,
-    PanConfig,
     PlotConfig,
-    RefLine,
-    RefLineEvent,
-    UserContentProps,
     ViolinKind,
     ViolinSide,
     WhiskerMode,
@@ -30,7 +26,7 @@
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import { plot_color } from '#lib/colors/index.js'
@@ -45,7 +41,6 @@
     create_cartesian_frame,
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -168,13 +163,9 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
-    PlotConfig & {
-      hidden_series?: readonly (string | number)[]
-      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+    CartesianPlotProps & {
       series?: readonly BoxPlotSeries<Metadata>[]
       orientation?: Orientation
-      legend?: LegendConfig | null
-      show_legend?: boolean
       box?: BoxStyle
       whisker?: WhiskerStyle
       median_style?: BoxLineStyle
@@ -198,8 +189,6 @@
       violin_style?: ViolinStyle
       kde_clip?: [number | null, number | null] // hard KDE bounds for every series (e.g. [0, null])
       tooltip?: TooltipProp<BoxHandlerProps<Metadata>>
-      user_content?: Snippet<[UserContentProps]>
-      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
       on_box_click?: (
         data: BoxHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
@@ -209,15 +198,6 @@
           | (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
           | null,
       ) => void
-      ref_lines?: RefLine[]
-      on_ref_line_click?: (event: RefLineEvent) => void
-      on_ref_line_hover?: (event: RefLineEvent | null) => void
-      pan?: PanConfig
-      marginals?: MarginalsProp
-      facet_layout?: FacetLayoutContext
-      // The host owns property selection, loading, and publishing the resulting data.
-      axis_loading?: `x` | `x2` | `y` | `y2` | null
-      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
     } = $props()
 
   // Legend choices are separate from immutable series data.
