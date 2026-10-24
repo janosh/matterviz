@@ -39,8 +39,6 @@ export const corner_vertex = (
   face: number,
   corner: number,
 ): number => (geometry.index ? geometry.index.getX(3 * face + corner) : 3 * face + corner)
-const n_triangles = (geometry: BufferGeometry): number =>
-  (geometry.index?.count ?? geometry.getAttribute(`position`).count) / 3
 
 // Mean corner of the triangles `faces` (indices into the source's triangles): a point on a
 // surface patch, e.g. where a KeyWalk points the tooltip at it
@@ -86,7 +84,7 @@ export function boundary_edges(
   faces?: readonly number[],
 ): Float32Array {
   const source = geometry.getAttribute(`position`)
-  const face_count = faces?.length ?? n_triangles(geometry)
+  const face_count = faces?.length ?? (geometry.index?.count ?? source.count) / 3
   const welded_of_vertex = new Int32Array(source.count).fill(-1)
   const welded_ids = new Map<string, number>()
   const corners = new Int32Array(3 * face_count) // source vertex per corner

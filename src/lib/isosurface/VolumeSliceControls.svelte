@@ -185,7 +185,7 @@
     {/each}
     <div class="setting">
       <span>Plane presets</span>
-      <div class="plane-presets" aria-label="Cartesian plane presets">
+      <div class="plane-presets" role="group" aria-label="Cartesian plane presets">
         {#each CARTESIAN_PLANE_PRESETS as { label, ...plane } (label)}
           <button type="button" onclick={() => update_settings({ cartesian_point, ...plane })}>
             {label}

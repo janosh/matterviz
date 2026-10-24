@@ -66,18 +66,33 @@ describe(`vaspwave.h5 charge density parsing`, () => {
     await expect(parse_fixture(fixture)).rejects.toThrow(expected_error)
   })
 
-  // used to skip the volume division and return raw rho * V_cell
-  it(`rejects a zero-volume lattice`, async () => {
-    const buffer = await h5_bytes(`flat-vaspwave`, (file) => {
+  // a zero volume skipped the division (raw rho * V_cell), torn/extra/mismatched ion blocks
+  // kept or dropped ions silently; a leading step axis ([1, n, 3], like the lattice's) loads
+  const cell = [4, 0, 0, 0, 5, 0, 0, 0, 6]
+  const flat_cell = [1, 0, 0, 1, 0, 0, 0, 0, 1]
+  it.each([
+    [`a zero-volume lattice`, flat_cell, [], [], [], `has no volume; cannot`],
+    [`torn ion positions`, cell, [`Si`], [2], [1, 3], `holds 1 positions for 2 ions`],
+    [`extra ion positions`, cell, [`Si`], [1], [2, 3], `holds 2 positions for 1 ions`],
+    [`short position rows`, cell, [`Si`], [2], [2, 2], `row 1 is not an xyz position`],
+    [`unmatched ion types`, cell, [`Si`, `O`], [1], [1, 3], `length mismatch`],
+    [`a leading step axis`, cell, [`Si`], [2], [1, 2, 3], 2],
+  ])(`%s`, async (_label, lattice, ion_types, ion_counts, positions_shape, expected) => {
+    const buffer = await h5_bytes(`bad-vaspwave`, (file) => {
       const charge = file.create_group(`charge`)
       create_dataset(charge, `charge`, Array(8).fill(1), [1, 2, 2, 2])
       create_dataset(charge, `grid`, [2, 2, 2], [3])
       const positions = file.create_group(`structure`).create_group(`positions`)
-      create_dataset(positions, `lattice_vectors`, [1, 0, 0, 1, 0, 0, 0, 0, 1], [3, 3])
+      create_dataset(positions, `lattice_vectors`, lattice, [3, 3])
+      if (ion_types.length === 0) return
+      positions.create_dataset({ name: `ion_types`, data: ion_types })
+      create_dataset(positions, `number_ion_types`, ion_counts, [ion_counts.length])
+      const n_values = positions_shape.reduce((product, dim) => product * dim, 1)
+      create_dataset(positions, `position_ions`, Array(n_values).fill(0.25), positions_shape)
     })
-    await expect(parse_vaspwave_charge(buffer, `vaspwave.h5`)).rejects.toThrow(
-      `has no volume; cannot normalize charge/charge`,
-    )
+    const parsed = parse_vaspwave_charge(buffer, `vaspwave.h5`)
+    if (typeof expected === `string`) await expect(parsed).rejects.toThrow(expected)
+    else expect((await parsed).structure.sites).toHaveLength(expected)
   })
 })
 

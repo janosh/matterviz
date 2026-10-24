@@ -258,61 +258,35 @@ function candidate_display_frames(
   return frames
 }
 
-// Spatial hash over wrapped fractional coordinates for tolerance-based, mod-1 position
-// lookups with a per-axis tolerance. Cell size is chosen ≥ the largest tolerance so probing
-// the ±1 neighbor cells (with wraparound) covers every point within tolerance of the query.
-// An optional `transform` is applied to the stored coordinates and to every query alike.
-class WrappedPositionIndex {
-  private readonly buckets = new Map<string, number[]>()
-  private readonly n_cells: number
-  private readonly coords: Vec3[]
-
-  constructor(
-    coords: Vec3[],
-    private readonly tolerance: Vec3,
-    private readonly transform?: (pos: Vec3) => Vec3,
-  ) {
-    this.coords = transform ? coords.map(transform) : coords
-    this.n_cells = math.clamp(Math.floor(1 / Math.max(...tolerance, 1e-9)), 1, 64)
-    this.coords.forEach((pos, idx) => {
-      const key = this.cell_key(pos, 0, 0, 0)
-      const bucket = this.buckets.get(key)
-      if (bucket) bucket.push(idx)
-      else this.buckets.set(key, [idx])
-    })
-  }
-
-  private cell_key(pos: Vec3, delta_x: number, delta_y: number, delta_z: number): string {
-    const n_cells = this.n_cells
-    const cell = (coord: number, offset: number) => {
-      const wrapped = coord - Math.floor(coord)
-      return (((Math.floor(wrapped * n_cells) + offset) % n_cells) + n_cells) % n_cells
-    }
-    return `${cell(pos[0], delta_x)},${cell(pos[1], delta_y)},${cell(pos[2], delta_z)}`
-  }
-
-  // Indices of stored positions within `tolerance` of `query` modulo ℤ³
-  query(raw_query: Vec3, out: Set<number>): void {
-    const query = this.transform ? this.transform(raw_query) : raw_query
-    const [tol_0, tol_1, tol_2] = this.tolerance
-    for (let delta_x = -1; delta_x <= 1; delta_x++) {
-      for (let delta_y = -1; delta_y <= 1; delta_y++) {
-        for (let delta_z = -1; delta_z <= 1; delta_z++) {
-          const bucket = this.buckets.get(this.cell_key(query, delta_x, delta_y, delta_z))
-          if (!bucket) continue
-          for (const idx of bucket) {
-            const pos = this.coords[idx]
-            const distance_0 = pos[0] - query[0]
-            const distance_1 = pos[1] - query[1]
-            const distance_2 = pos[2] - query[2]
-            if (
-              Math.abs(distance_0 - Math.round(distance_0)) < tol_0 &&
-              Math.abs(distance_1 - Math.round(distance_1)) < tol_1 &&
-              Math.abs(distance_2 - Math.round(distance_2)) < tol_2
-            )
-              out.add(idx)
-          }
-        }
+// Spatial hash over wrapped fractional coordinates for mod-1 position lookups: `accepts` decides
+// on the nearest-image difference, which is at most `reach` along every axis. Cell size is
+// chosen ≥ reach so probing the ±1 neighbor cells (with wraparound) covers every match. The
+// returned query adds the indices of matching `coords` to `out`.
+function wrapped_position_index(
+  coords: Vec3[],
+  reach: number,
+  accepts: (diff: Vec3) => boolean,
+): (query: Vec3, out: Set<number>) => void {
+  const n_cells = math.clamp(Math.floor(1 / Math.max(reach, 1e-9)), 1, 64)
+  // coord - floor(coord) rounds to 1 just below an integer, hence the modulo
+  const cell = (coord: number) => Math.floor((coord - Math.floor(coord)) * n_cells) % n_cells
+  const buckets = Map.groupBy(coords.keys(), (idx) => coords[idx].map(cell).join(`,`))
+  const deltas = [-1, 0, 1]
+  const neighbor_offsets = deltas.flatMap((delta_x) =>
+    deltas.flatMap((delta_y) => deltas.map((delta_z) => [delta_x, delta_y, delta_z])),
+  )
+  return (query, out) => {
+    const query_cells = query.map(cell)
+    for (const offset of neighbor_offsets) {
+      const key = query_cells
+        .map((cell_idx, axis) => (cell_idx + offset[axis] + n_cells) % n_cells)
+        .join(`,`)
+      for (const idx of buckets.get(key) ?? []) {
+        const diff = coords[idx].map((coord, axis) => {
+          const delta = coord - query[axis]
+          return delta - Math.round(delta)
+        }) as Vec3
+        if (accepts(diff)) out.add(idx)
       }
     }
   }
@@ -326,8 +300,10 @@ class WrappedPositionIndex {
 // frame via x_F = x_disp·S, and matches allow crystal translations of both the frame
 // lattice (d ∈ ℤ³) and the input lattice (P·d ∈ ℤ³). Matching uses spatial hashing:
 // O(N_disp + N_orig·N_ops) instead of O(N_orig·N_disp·N_ops). Positions match within
-// `tolerance` (fractional) or, if larger, 2·sym_data.symprec (Å): moyo accepts input sites up
+// `tolerance` (fractional, every axis) or 2·sym_data.symprec (Å): moyo accepts input sites up
 // to symprec off their symmetrized positions, which are what standardized cells display.
+// Several frames can fit the displayed lattice (a hexagonal cell and its rotated standard
+// setting share a lattice), so the frame matching the most displayed sites wins.
 export function map_wyckoff_to_all_atoms(
   wyckoff_positions: WyckoffPos[],
   displayed_structure: Crystal,
@@ -337,7 +313,9 @@ export function map_wyckoff_to_all_atoms(
 ): WyckoffPos[] {
   if (!sym_data?.operations) return wyckoff_positions
 
-  const map_in_frame = (frame: DisplayFrame): WyckoffPos[] | null => {
+  const map_in_frame = (
+    frame: DisplayFrame,
+  ): { rows: WyckoffPos[]; n_matched: number } | null => {
     // Supercell factor S = L_disp·L_F⁻¹ must be a near-integer matrix with |det| ≥ 1. A
     // degenerate frame lattice (zero-volume cell) fits nothing.
     if (Math.abs(math.det_3x3(frame.lattice)) < 1e-12) return null
@@ -349,11 +327,6 @@ export function map_wyckoff_to_all_atoms(
       row.every((val) => Math.abs(val - Math.round(val)) < tolerance),
     )
     if (!is_integer_scaling || Math.abs(math.det_3x3(scaling)) < 0.99) return null
-    // A 2·symprec displacement moves fractional coordinate k by 2·symprec / height_k
-    const axis_tolerances = (lattice: Matrix3x3): Vec3 =>
-      math
-        .frac_cutoff_per_axis(lattice, 2 * sym_data.symprec)
-        .map((frac_tol) => Math.max(tolerance, frac_tol)) as Vec3
 
     // Displayed site coords expressed in frame-F fractional coordinates: x_F = x_disp·S
     const scaling_transpose = math.transpose_3x3_matrix(scaling)
@@ -364,23 +337,28 @@ export function map_wyckoff_to_all_atoms(
       (site) => site.species[0]?.element,
     )
 
+    // A 2·symprec displacement moves fractional coordinate k by at most 2·symprec / height_k.
+    // That per-axis box is no distance test: in an oblique cell it reaches Å past 2·symprec
+    // (4.5 Å apart in TlBiSe2-highly-oblique-cell at symprec 0.1 joined two rows).
+    const position_index = (lattice: Matrix3x3, coords: Vec3[]) => {
+      const frac_to_cart = math.create_frac_to_cart(lattice)
+      const box = math.frac_cutoff_per_axis(lattice, 2 * sym_data.symprec)
+      const accepts = (diff: Vec3) =>
+        diff.every((delta) => Math.abs(delta) < tolerance) ||
+        Math.hypot(...frac_to_cart(diff)) <= 2 * sym_data.symprec
+      return wrapped_position_index(coords, Math.max(tolerance, ...box), accepts)
+    }
     // Spatial hashes: one over the frame coords directly (matches d ∈ ℤ³), and one over
     // P·x_F (matches input-lattice translations: d ∈ P⁻¹ℤ³ ⟺ P·d ∈ ℤ³)
-    const direct_index = new WrappedPositionIndex(
-      displayed_frame_coords,
-      axis_tolerances(frame.lattice),
-    )
+    const direct_query = position_index(frame.lattice, displayed_frame_coords)
     const check = frame.input_translation_check
     // P·x_F are input-lattice fractional coordinates
-    const check_index =
+    const to_input = (pos: Vec3) => (check ? math.mat3x3_vec3_multiply(check, pos) : pos)
+    const check_query =
       check &&
-      new WrappedPositionIndex(
-        displayed_frame_coords,
-        axis_tolerances(orig_structure.lattice.matrix),
-        (pos) => math.mat3x3_vec3_multiply(check, pos),
-      )
+      position_index(orig_structure.lattice.matrix, displayed_frame_coords.map(to_input))
 
-    let any_matched = false
+    const all_matched = new Set<number>()
     const rows = wyckoff_positions.map((wyckoff_pos) => {
       // Union the symmetry orbits of all original sites in this row, grouped by element.
       // Sites whose (wrapped) position already appears in the accumulated orbit are
@@ -406,27 +384,29 @@ export function map_wyckoff_to_all_atoms(
       for (const [element, equivalents] of equiv_by_element) {
         const candidates = new Set<number>()
         for (const equiv_pos of equivalents.values()) {
-          direct_index.query(equiv_pos, candidates)
-          check_index?.query(equiv_pos, candidates)
+          direct_query(equiv_pos, candidates)
+          check_query?.(to_input(equiv_pos), candidates)
         }
         for (const display_idx of candidates) {
-          if (displayed_elements[display_idx] === element) matched.add(display_idx)
+          if (displayed_elements[display_idx] !== element) continue
+          matched.add(display_idx)
+          all_matched.add(display_idx)
         }
       }
 
-      if (matched.size > 0) any_matched = true
       return { ...wyckoff_pos, site_indices: math.sorted_numbers(matched) }
     })
-    return any_matched || displayed_structure.sites.length === 0 ? rows : null
+    return { rows, n_matched: all_matched.size }
   }
 
-  // Try frames in order; accept the first whose lattice fits AND that matches any site
-  // (lattices can coincide across frames while origins differ, so a lattice match alone
-  // is not conclusive)
+  // A fitting lattice alone is not conclusive (frames can share a lattice but differ by an
+  // origin shift or a rotation), so stop at the first frame matching every displayed site
+  let best: { rows: WyckoffPos[]; n_matched: number } | null = null
   for (const frame of candidate_display_frames(orig_structure, sym_data)) {
-    const rows = map_in_frame(frame)
-    if (rows) return rows
+    const mapped = map_in_frame(frame)
+    if (mapped?.n_matched === displayed_structure.sites.length) return mapped.rows
+    if (mapped && mapped.n_matched > (best?.n_matched ?? 0)) best = mapped
   }
-  // No frame fits — site indices into the displayed structure cannot be determined
-  return wyckoff_positions.map((pos) => ({ ...pos, site_indices: [] }))
+  // No frame matches any site — site indices into the displayed structure cannot be determined
+  return best?.rows ?? wyckoff_positions.map((pos) => ({ ...pos, site_indices: [] }))
 }

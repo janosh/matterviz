@@ -29,6 +29,11 @@ export function create_camera_flight_editor() {
     cursor = history.length - 1
     selected = Math.min(selected, draft.views.length - 1)
   }
+  // Undo (-1) or redo (+1), a no-op past either end of the history
+  const step_history = (delta: -1 | 1) => {
+    cursor = Math.min(Math.max(cursor + delta, 0), history.length - 1)
+    selected = Math.min(selected, draft.views.length - 1)
+  }
   const space_evenly = (views: FlightDraft[`views`], duration: number) =>
     views.map((view, idx) => ({
       ...view,
@@ -59,14 +64,8 @@ export function create_camera_flight_editor() {
     get can_redo() {
       return cursor < history.length - 1
     },
-    undo() {
-      if (cursor > 0) cursor--
-      selected = Math.min(selected, draft.views.length - 1)
-    },
-    redo() {
-      if (cursor < history.length - 1) cursor++
-      selected = Math.min(selected, draft.views.length - 1)
-    },
+    undo: () => step_history(-1),
+    redo: () => step_history(1),
     add(pose: CameraPose, thumbnail: string, after = draft.views.length - 1) {
       const views = [...draft.views]
       const idx = after + 1

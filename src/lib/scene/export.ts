@@ -40,21 +40,6 @@ const has_bond_gradient_attributes = (geometry: BufferGeometry): boolean =>
     geometry.getAttribute(`instanceColorStart`) && geometry.getAttribute(`instanceColorEnd`),
   )
 
-// Midpoint of a gradient bond's start and end colors for one instance
-function extract_bond_color_for_instance(
-  geometry: BufferGeometry,
-  instance_idx: number,
-): Color | null {
-  const start = geometry.getAttribute(`instanceColorStart`)
-  const end = geometry.getAttribute(`instanceColorEnd`)
-  if (!start || !end || instance_idx >= start.count) return null
-  return new Color(
-    (start.getX(instance_idx) + end.getX(instance_idx)) / 2,
-    (start.getY(instance_idx) + end.getY(instance_idx)) / 2,
-    (start.getZ(instance_idx) + end.getZ(instance_idx)) / 2,
-  )
-}
-
 // Remove per-instance and non-standard color attributes that cause export issues.
 function clean_geometry_for_export(geometry: BufferGeometry): void {
   for (const attr_name of Object.keys(geometry.attributes)) {
@@ -95,20 +80,15 @@ export function generate_mtl_content(scene: Object3D): string {
       if (processed_materials.has(mat_name)) continue
       processed_materials.add(mat_name)
 
-      lines.push(`newmtl ${mat_name}`)
-
       const color = has_color_property(mat) ? mat.color : { r: 1, g: 1, b: 1 }
+      const opacity = `opacity` in mat && typeof mat.opacity === `number` ? mat.opacity : 1.0
       lines.push(
+        `newmtl ${mat_name}`,
         `Kd ${encode_srgb(color, 1)}`,
         `Ka ${encode_srgb(color, 0.2)}`, // Ambient is typically a fraction of diffuse
         `Ks 0.500000 0.500000 0.500000`,
         `Ns 96.078431`, // Specular exponent
-      )
-
-      // Transparency (d = 1.0 is fully opaque)
-      const opacity = `opacity` in mat && typeof mat.opacity === `number` ? mat.opacity : 1.0
-      lines.push(
-        `d ${opacity.toFixed(6)}`,
+        `d ${opacity.toFixed(6)}`, // Transparency (d = 1.0 is fully opaque)
         `illum 2`, // Illumination model (2 = highlight on)
         ``,
       )
@@ -152,7 +132,13 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
     const group = new Group()
     group.name = instanced_mesh.name
 
-    const has_bond_gradient = has_bond_gradient_attributes(instanced_mesh.geometry)
+    const { geometry } = instanced_mesh
+    const bond_ends = has_bond_gradient_attributes(geometry)
+      ? [
+          geometry.getAttribute(`instanceColorStart`),
+          geometry.getAttribute(`instanceColorEnd`),
+        ]
+      : null
     const instance_color_attr =
       instanced_mesh instanceof AtomInstances || instanced_mesh instanceof ArrowMesh
         ? instanced_mesh.colors
@@ -196,8 +182,14 @@ export function convert_instanced_meshes_to_regular<T extends Object3D>(scene: T
     for (let idx = 0; idx < instanced_mesh.count; idx++) {
       instanced_mesh.getMatrixAt(idx, instance_matrix)
 
-      const resolved_color = has_bond_gradient
-        ? extract_bond_color_for_instance(instanced_mesh.geometry, idx)
+      // a gradient bond takes the midpoint of its start and end colors
+      const resolved_color = bond_ends
+        ? idx < bond_ends[0].count
+          ? new Color()
+              .fromBufferAttribute(bond_ends[0], idx)
+              .add(instance_color.fromBufferAttribute(bond_ends[1], idx))
+              .multiplyScalar(0.5)
+          : null
         : instance_color_attr
           ? instance_color
               .fromBufferAttribute(instance_color_attr, idx)
@@ -250,6 +242,18 @@ export async function export_scene_as(
     await save(buffer, `${basename}.stl`, `application/octet-stream`)
   } else if (format === `obj`) {
     const { OBJExporter } = await import(`three/examples/jsm/exporters/OBJExporter.js`)
+    // OBJExporter writes `usemtl` for named materials only, so every Threlte-made (unnamed)
+    // one exported without its color: the clone gets a named copy per distinct material
+    const named_copies = new Map<Material, Material>()
+    export_root.traverse((object) => {
+      if (!(object instanceof Mesh) || Array.isArray(object.material) || object.material.name)
+        return
+      const copy =
+        named_copies.get(object.material) ??
+        Object.assign(object.material.clone(), { name: `material_${named_copies.size}` })
+      named_copies.set(object.material, copy)
+      object.material = copy
+    })
     const mtl_filename = `${basename}.mtl`
     // Material library reference goes at the top of the OBJ file
     const obj_content = `mtllib ${mtl_filename}\n${new OBJExporter().parse(export_root)}`

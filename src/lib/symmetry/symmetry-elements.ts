@@ -133,9 +133,6 @@ export const mat3_from_flat_col_major = (flat: readonly number[]): Matrix3x3 => 
 const mat_round = (mat: Matrix3x3): Matrix3x3 =>
   mat.map((row) => row.map((val) => Math.round(val))) as Matrix3x3
 
-const mat_add = (mat_a: Matrix3x3, mat_b: Matrix3x3): Matrix3x3 =>
-  mat_a.map((row, idx) => row.map((val, jdx) => val + mat_b[idx][jdx])) as Matrix3x3
-
 const mat_scale = (mat: Matrix3x3, factor: number): Matrix3x3 =>
   mat.map((row) => row.map((val) => val * factor)) as Matrix3x3
 
@@ -151,7 +148,7 @@ function invariant_projector(mat: Matrix3x3): { proj: Matrix3x3; order: number }
   let power = mat
   for (let order = 1; order <= 6; order++) {
     if (is_identity(power)) return { proj: mat_scale(sum, 1 / order), order }
-    sum = mat_add(sum, power)
+    sum = sum.map((row, idx) => math.add(row, power[idx])) as Matrix3x3
     power = mat_round(math.dot(power, mat))
   }
   throw new Error(`Matrix is not of finite crystallographic order`)

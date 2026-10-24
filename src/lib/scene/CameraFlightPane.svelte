@@ -370,7 +370,7 @@
       </div>
 
       {#if frames.length}
-        <div class="waypoints" aria-label="Camera waypoints">
+        <div class="waypoints" role="group" aria-label="Camera waypoints">
           {#each frames as frame, idx (idx)}
             <button
               type="button"
@@ -507,7 +507,7 @@
 
     {#if frames.length >= 2}
       <div class="timeline">
-        <div class="markers" aria-label="Waypoint timing">
+        <div class="markers" role="group" aria-label="Waypoint timing">
           {#each frames as frame, idx (idx)}
             <button
               type="button"

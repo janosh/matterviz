@@ -450,36 +450,39 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
   const map_rows = (orig: Crystal, displayed: Crystal, sym_data: SymmetryDataset) =>
     map_wyckoff_to_all_atoms(wyckoff_positions_from_moyo(sym_data), displayed, orig, sym_data)
 
+  // Every displayed site lands in exactly one of the n_rows rows, that of its own element
   test.each([
-    [`conventional`, 4],
-    [`primitive`, 1],
-  ] as const)(
-    `%s display of primitive FCC Cu maps all %i sites to the 4a row`,
-    async (cell_type, n_sites) => {
-      const orig = prim_fcc_cu()
-      const sym_data = await analyze_crystal(orig)
-      const displayed = transform_cell(orig, cell_type, sym_data)
-      expect(displayed.sites).toHaveLength(n_sites)
-      const rows = map_rows(orig, displayed, sym_data)
-      expect(rows.map((row) => row.site_indices)).toEqual([[...Array(n_sites).keys()]])
-    },
-  )
-
-  test(`conventional display of primitive diamond: origin shift forces conv-frame matching`, async () => {
+    [`primitive FCC Cu`, `conventional`, 1e-4, 4, 1, prim_fcc_cu],
+    [`primitive FCC Cu`, `primitive`, 1e-4, 1, 1, prim_fcc_cu],
     // diamond's std_origin_shift is (1/8,1/8,1/8), so the original-frame lattice match
     // is rejected (positions mismatch) and matching must run in the conventional frame,
     // where the F-centering copies are only reachable via the input-lattice translation
     // check (P·d ∈ ℤ³) — all 8 conventional-cell atoms must map to the single 8a row, even with
     // Si 1e-4 off 1/4: the symmetrized cell is within symprec 1e-3 of the input, not within 1e-5
-    const orig = prim_diamond_si(0.2501)
-    const sym_data = await analyze_crystal(orig, 1e-3)
-    const displayed = transform_cell(orig, `conventional`, sym_data)
-    expect(displayed.sites).toHaveLength(8)
-
-    const rows = map_rows(orig, displayed, sym_data)
-    expect(rows).toHaveLength(1)
-    expect(rows[0].site_indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
-  })
+    [`primitive diamond`, `conventional`, 1e-3, 8, 1, () => prim_diamond_si(0.2501)],
+    // R-3: the original hexagonal lattice also fits the rotated std cell, which only matched
+    // the two 3-fold-axis sites
+    [`mp-12712`, `conventional`, 1e-4, 42, 4, () => get_structure(`mp-12712`)],
+    // a per-axis fractional box several Å long in the oblique cell joined Bi/Se sites to a
+    // second row
+    [`TlBiSe2`, `original`, 0.1, 28, 16, () => get_structure(`TlBiSe2-highly-oblique-cell`)],
+  ] as const)(
+    `%s, %s display (symprec %s): %i sites in %i rows`,
+    async (_name, cell_type, symprec, n_sites, n_rows, make_orig) => {
+      const orig = make_orig()
+      const sym_data = await analyze_crystal(orig, symprec)
+      const displayed = transform_cell(orig, cell_type, sym_data)
+      expect(displayed.sites).toHaveLength(n_sites)
+      const rows = map_rows(orig, displayed, sym_data)
+      expect(rows).toHaveLength(n_rows)
+      const placed = rows.flatMap(({ elem, site_indices }) =>
+        site_indices.map((idx) => [idx, elem] as const),
+      )
+      expect(placed.toSorted(([idx_1], [idx_2]) => idx_1 - idx_2)).toEqual(
+        displayed.sites.map((site, idx) => [idx, site.species[0].element]),
+      )
+    },
+  )
 
   test(`supercell display: both copies of the original site are matched`, async () => {
     const orig = make_crystal(PO_A, [{ element: `Po`, abc: [0, 0, 0] }])

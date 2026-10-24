@@ -142,7 +142,9 @@ describe(`IsosurfaceControls`, () => {
       const checkbox = find_label(`Neg. lobe`)?.querySelector<HTMLInputElement>(`input`)
       if (!checkbox) throw new Error(`Neg. lobe checkbox not found`)
       expect(checkbox.checked).toBe(show_negative)
-      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(
+      // every colour input is named: one per surface, plus one per negative lobe
+      const named_colors = `input[aria-label="Surface color"], input[aria-label="Negative lobe color"]`
+      expect(document.querySelectorAll(named_colors)).toHaveLength(
         n_layers * (show_negative ? 2 : 1),
       )
       checkbox.checked = !show_negative
@@ -151,7 +153,7 @@ describe(`IsosurfaceControls`, () => {
       expect(props.settings.layers.map((layer) => layer.show_negative)).toEqual(
         Array(n_layers).fill(!show_negative),
       )
-      expect(document.querySelectorAll(`input[type="color"]`)).toHaveLength(
+      expect(document.querySelectorAll(named_colors)).toHaveLength(
         n_layers * (show_negative ? 1 : 2),
       )
     },
@@ -449,7 +451,9 @@ describe(`IsosurfaceControls multi-volume`, () => {
     const inputs = document.querySelectorAll<HTMLInputElement>(
       `.display-range .range-axis input`,
     )
-    expect(inputs).toHaveLength(6) // min/max for each of a, b, c
+    expect(Array.from(inputs, (input) => input.getAttribute(`aria-label`))).toEqual(
+      [`a`, `b`, `c`].flatMap((axis) => [`${axis} min`, `${axis} max`]),
+    )
 
     change_value(inputs[1], `2.15`) // a max
     expect(props.settings.display_range).toEqual([
@@ -557,7 +561,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
       desc: `visibility checkbox toggles layer.visible`,
       layer: {},
       act: () => {
-        const checkbox = doc_query(`.layer-row input[type="checkbox"]`)
+        const checkbox = doc_query(`.layer-row input[aria-label="Show surface"]`)
         checkbox.dispatchEvent(new Event(`change`, { bubbles: true }))
         flushSync()
       },

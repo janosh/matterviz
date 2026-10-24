@@ -125,7 +125,9 @@ describe(`export_scene_as`, () => {
   })
 
   it(`obj: writes a mtllib-referenced OBJ, then the MTL with the scene's material colors`, async () => {
-    const exporting = export_scene_as(scene, `obj`, `test`)
+    // unnamed (Threlte-made) materials are exported as named copies, the live one untouched
+    const unnamed = new Mesh(undefined, new MeshStandardMaterial({ color: `blue` }))
+    const exporting = export_scene_as(scene.clone().add(unnamed), `obj`, `test`)
     await vi.advanceTimersByTimeAsync(0)
     expect(obj_spy).toHaveBeenCalledOnce()
     expect(downloads.map((item) => item.filename)).toEqual([`test.obj`])
@@ -139,6 +141,11 @@ describe(`export_scene_as`, () => {
     const mtl_text = await downloads[1].blob.text()
     expect(mtl_text).toContain(`newmtl red_sphere`)
     expect(mtl_text).toContain(`Kd 1.000000 0.000000 0.000000`)
+    expect(mtl_text).toContain(`newmtl material_0\nKd 0.000000 0.000000 1.000000`)
+    const names = collect_meshes(exported_scene(obj_spy)).map(
+      ({ material }) => (material as Material).name,
+    )
+    expect([names, unnamed.material.name]).toEqual([[`red_sphere`, `material_0`], ``])
     expect(downloads.every((item) => item.blob.type === `text/plain`)).toBe(true)
   })
 

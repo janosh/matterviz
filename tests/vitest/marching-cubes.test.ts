@@ -59,29 +59,24 @@ const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void
 const indexed_grid = (size_x: number, size_y: number, size_z: number): number[][][] =>
   make_grid(size_x, size_y, size_z, (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx)
 
+// The nested grid flattened in `order` at `precision`
 const as_scalar_grid = (
   grid: number[][][],
   order: ScalarGridOrder,
   precision: `f32` | `f64` = `f64`,
 ): ScalarGrid3D => {
-  const dimensions: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
-  const [size_x, size_y, size_z] = dimensions
-  const data: ScalarGridArray =
-    precision === `f32`
-      ? new Float32Array(size_x * size_y * size_z)
-      : new Float64Array(size_x * size_y * size_z)
-  for (let idx_x = 0; idx_x < size_x; idx_x++) {
-    for (let idx_y = 0; idx_y < size_y; idx_y++) {
-      for (let idx_z = 0; idx_z < size_z; idx_z++) {
-        const offset =
-          order === `x_fastest`
-            ? idx_x + size_x * (idx_y + size_y * idx_z)
-            : idx_z + size_z * (idx_y + size_y * idx_x)
-        data[offset] = grid[idx_x][idx_y][idx_z]
-      }
-    }
+  const { values, dims } = flatten_grid(grid)
+  const [size_x, size_y, size_z] = dims
+  const data: ScalarGridArray = new (precision === `f32` ? Float32Array : Float64Array)(
+    values.length,
+  )
+  for (const [flat_idx, value] of values.entries()) {
+    const idx_x = Math.floor(flat_idx / (size_y * size_z))
+    const idx_y = Math.floor(flat_idx / size_z) % size_y
+    const idx_z = flat_idx % size_z
+    data[order === `x_fastest` ? idx_x + size_x * (idx_y + size_y * idx_z) : flat_idx] = value
   }
-  return { values: data, dims: dimensions, order }
+  return { values: data, dims, order }
 }
 
 const expect_result_parity = (
