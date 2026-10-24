@@ -172,10 +172,8 @@ test(`hexagonal ZnO hkl families and multiplicities match pymatgen`, async () =>
     [`O`, [1 / 3, 2 / 3, u_param]],
     [`O`, [2 / 3, 1 / 3, 0.5 + u_param]],
   ])
-  const pattern = compute_xrd_pattern(zno, {
-    wavelength: `CuKa`,
-    symmetry_rotations: await xrd_symmetry_rotations(zno),
-  })
+  const symmetry_rotations = await xrd_symmetry_rotations(zno)
+  const pattern = compute_xrd_pattern(zno, { wavelength: `CuKa`, symmetry_rotations })
   // pymatgen's (h, k, i, l) with i dropped: [2θ, hkl, multiplicity]
   // oxfmt-ignore
   const expected: [number, number[], number][] = [
@@ -224,10 +222,8 @@ test.each<[string, number, number | Matrix3x3, [ElementSymbol, Vec3][]]>([
 ])(`%s hkl families follow the point group, not index permutations`, async (name, spg_num, lattice, asym_unit) => {
   const structure = from_spacegroup(spg_num, lattice, asym_unit)
   const options: XrdOptions = { wavelength: `CuKa`, two_theta_range: [0, 90] }
-  const pattern = compute_xrd_pattern(structure, {
-    ...options,
-    symmetry_rotations: await xrd_symmetry_rotations(structure),
-  })
+  const symmetry_rotations = await xrd_symmetry_rotations(structure)
+  const pattern = compute_xrd_pattern(structure, { ...options, symmetry_rotations })
   const reference = symmetry_families[name]
   expect(pattern.x).toHaveLength(reference.length)
   for (const [idx, [two_theta, expected_text]] of reference.entries()) {

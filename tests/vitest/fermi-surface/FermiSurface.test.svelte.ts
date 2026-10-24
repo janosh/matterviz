@@ -176,12 +176,7 @@ test(`extracts fermi_data from a band_data prop and re-extracts when mu changes`
     fermi_data?: FermiSurfaceData
     mu: number
     interpolation_factor: number
-  }>({
-    band_data,
-    fermi_data: undefined,
-    mu: 0,
-    interpolation_factor: 1,
-  })
+  }>({ band_data, fermi_data: undefined, mu: 0, interpolation_factor: 1 })
   mounted.push(mount(FermiSurface, { target: document.body, props }))
   await vi.advanceTimersByTimeAsync(200)
   expect(props.fermi_data?.isosurfaces).toHaveLength(1)

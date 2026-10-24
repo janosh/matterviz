@@ -174,27 +174,14 @@ describe(`XrdPlot`, () => {
     x_axis: { label: `Custom 2θ` },
     y_axis: { label: `Custom Intensity` },
   }
+  // oxfmt-ignore
   test.each([
-    [
-      `compact`,
-      { hkl_format: `compact`, annotate_peaks: 3 },
-      all_hkl_labels.slice(1, 4),
-      false,
-    ],
-    [
-      `full`,
-      { hkl_format: `full`, annotate_peaks: 3 },
-      [`(1, 1, 0) @ 20°`, `(1, 1, 1) @ 30°`, `(2, 0, 0) @ 40°`],
-      false,
-    ],
+    [`compact`, { hkl_format: `compact`, annotate_peaks: 3 }, all_hkl_labels.slice(1, 4), false],
+    [`full`, { hkl_format: `full`, annotate_peaks: 3 },
+      [`(1, 1, 0) @ 20°`, `(1, 1, 1) @ 30°`, `(2, 0, 0) @ 40°`], false],
     // x_axis/y_axis name the 2θ/intensity axes, so custom labels follow them across the swap
     [`vertical custom`, { orientation: `vertical`, ...custom_labels }, all_hkl_labels, false],
-    [
-      `horizontal custom`,
-      { orientation: `horizontal`, ...custom_labels },
-      all_hkl_labels,
-      true,
-    ],
+    [`horizontal custom`, { orientation: `horizontal`, ...custom_labels }, all_hkl_labels, true],
   ] as [string, Omit<XrdProps, `patterns`>, string[], boolean][])(
     `format/orientation=%s`,
     async (_param, props, expected_labels, swapped) => {

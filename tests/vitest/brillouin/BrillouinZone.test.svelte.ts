@@ -62,10 +62,7 @@ const external = compute_brillouin_zone(
 
 test(`loads dropped structures and reports their provenance`, async () => {
   const on_file_load = vi.fn()
-  const props = $state({
-    structure: undefined as typeof cubic | undefined,
-    on_file_load,
-  })
+  const props = $state({ structure: undefined as typeof cubic | undefined, on_file_load })
   mounted_component = mount(BrillouinZone, { target: document.body, props })
   await tick()
   const file = new File([poscar], `cubic.poscar`)

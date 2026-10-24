@@ -58,12 +58,7 @@
     reference_frequency = null,
     fermi_level,
     spin_mode = $bindable(`mirror`),
-    display = $bindable({
-      x_grid: true,
-      y_grid: true,
-      x_zero_line: true,
-      y_zero_line: true,
-    }),
+    display = $bindable({ x_grid: true, y_grid: true, x_zero_line: true, y_zero_line: true }),
     show_controls,
     controls_open = $bindable(false),
     show_normalize_control = false,

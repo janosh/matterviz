@@ -97,10 +97,7 @@ export interface FermiSlicePlane {
 // 2D Fermi slice data (cross-section through the BZ)
 export interface FermiSliceData extends FermiSlicePlane {
   isolines: Isoline[]
-  metadata: {
-    n_lines: number
-    has_properties: boolean
-  }
+  metadata: { n_lines: number; has_properties: boolean }
 }
 
 // Single isoline in a Fermi slice

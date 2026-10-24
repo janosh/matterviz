@@ -91,10 +91,7 @@ const make_result = (name: string): TrajectorySpectroscopyResult => ({
   metadata: { name },
 })
 
-const render_pane = (props: {
-  run: TrajectoryRun
-  result?: TrajectorySpectroscopyResult
-}): HTMLElement =>
+const render_pane = (props: { run: TrajectoryRun; result?: TrajectorySpectroscopyResult }) =>
   mount_in_test(
     TrajectorySpectroscopyPane,
     bind_props({ inline: true, pane_open: true }, props),
@@ -262,10 +259,7 @@ test.each([`signal`, `frame_count`] as const)(
   async (field) => {
     mocks.compute.mockResolvedValue(make_result(`computed`))
     const props = $state({
-      run: {
-        ...make_run(),
-        signals: { dipole: { sample_shape: [3], sample_count: 2 } },
-      },
+      run: { ...make_run(), signals: { dipole: { sample_shape: [3], sample_count: 2 } } },
     })
     const target = render_pane(props)
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())

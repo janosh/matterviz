@@ -41,7 +41,6 @@ function line_reader(content: string, start = 0) {
   let pos = start
   return {
     position: () => pos,
-    seek: (next: number) => (pos = next),
     // Next trimmed non-empty line, skipping `#` comments; throws at end of input
     next: (): string => {
       while (pos < content.length) {
@@ -51,6 +50,17 @@ function line_reader(content: string, start = 0) {
         if (trimmed && !trimmed.startsWith(`#`)) return trimmed
       }
       throw new Error(`Unexpected end of file`)
+    },
+    // The next `count` numbers, read straight off the string (parse_float_block stops at the
+    // next line starting with a letter)
+    floats: (count: number, label: string): Float64Array => {
+      const values = new Float64Array(count)
+      const block = parse_float_block(content, pos, count, values)
+      pos = block.end_pos
+      if (block.count < count) {
+        throw new Error(`${label}: expected ${count} values, got ${block.count}`)
+      }
+      return values
     },
   }
 }
@@ -111,8 +121,7 @@ function parse_bxsf(content: string): BandGridData {
   }
 
   // Band data: "BAND: n" followed by energies in z-fastest order, which is exactly the flat
-  // BandEnergyGrid layout. parse_float_block reads the numbers straight off the string and
-  // stops at the next line starting with a letter (the next BAND: or END_BANDGRID_3D).
+  // BandEnergyGrid layout, up to the next BAND: or END_BANDGRID_3D
   const energies: BandEnergyGrid[][] = [[]] // [spin=1][band]
   const total_points = checked_grid_points(
     k_grid,
@@ -131,19 +140,7 @@ function parse_bxsf(content: string): BandGridData {
       throw new Error(`BXSF band ${band_idx}: invalid band number in '${band_line}'`)
     }
     band_numbers.push(band_number)
-
-    const energy_values = new Float64Array(total_points)
-    const { count, end_pos } = parse_float_block(
-      content,
-      reader.position(),
-      total_points,
-      energy_values,
-    )
-    reader.seek(end_pos)
-    if (count < total_points) {
-      throw new Error(`Band ${band_idx}: expected ${total_points} values, got ${count}`)
-    }
-    energies[0].push(make_band_grid(energy_values, k_grid))
+    energies[0].push(make_band_grid(reader.floats(total_points, `Band ${band_idx}`), k_grid))
   }
 
   return {
@@ -209,18 +206,8 @@ function parse_frmsf(content: string): BandGridData {
   )
   const energies: BandEnergyGrid[][] = [[]]
   for (let band_idx = 0; band_idx < n_bands; band_idx++) {
-    const energy_values = new Float64Array(total_points)
-    const { count, end_pos } = parse_float_block(
-      content,
-      reader.position(),
-      total_points,
-      energy_values,
-    )
-    reader.seek(end_pos)
-    if (count < total_points) {
-      throw new Error(`FRMSF band ${band_idx}: expected ${total_points} values, got ${count}`)
-    }
-    energies[0].push(make_band_grid(energy_values, k_grid))
+    const values = reader.floats(total_points, `FRMSF band ${band_idx}`)
+    energies[0].push(make_band_grid(values, k_grid))
   }
 
   return {

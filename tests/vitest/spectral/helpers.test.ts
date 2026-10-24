@@ -948,12 +948,7 @@ describe(`shift_to_fermi`, () => {
     efermi: number,
     energies: number[],
     extra: Partial<PymatgenCompleteDos> = {},
-  ): PymatgenCompleteDos => ({
-    energies,
-    densities: energies.map(() => 1),
-    efermi,
-    ...extra,
-  })
+  ): PymatgenCompleteDos => ({ energies, densities: energies.map(() => 1), efermi, ...extra })
 
   it.each([
     [5, [-10, 0, 10], [-15, -5, 5]],
@@ -1097,15 +1092,12 @@ describe(`compute_frequency_range`, () => {
     expect(compute_frequency_range({}, dos_of([0, 10]), 0.1)).toEqual([0, 11])
   })
 
+  // oxfmt-ignore
   it.each([
     [`efermi`, { efermi: 5 }, true],
     [`kpoints`, { kpoints: [{ frac_coords: [0, 0, 0] }] }, true],
     [`electronic @class`, { '@class': `BandStructureSymmLine`, ...identity_rec }, true],
-    [
-      `electronic @module`,
-      { '@module': `pymatgen.electronic_structure.bandstructure`, ...identity_rec },
-      true,
-    ],
+    [`electronic @module`, { '@module': `pymatgen.electronic_structure.bandstructure`, ...identity_rec }, true],
     [`phonon @class`, { '@class': `PhononBandStructureSymmLine`, ...identity_rec }, false],
   ])(`adapter retains type and range from %s`, (_label, marker, is_electronic) => {
     const { type: _type, ...raw } = bands_of([[-0.01, 5, 10]]).sample

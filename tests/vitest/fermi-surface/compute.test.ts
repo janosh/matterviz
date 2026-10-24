@@ -154,9 +154,7 @@ describe(`extract_fermi_surface`, () => {
     make_band_data(
       grid_size,
       (frac_x, frac_y, frac_z) => (sphere(frac_x, frac_y, frac_z) * (grid_size - 1)) ** 2,
-      {
-        fermi_energy,
-      },
+      { fermi_energy },
     )
 
   test(`extracts Fermi surface from band data`, () => {
@@ -1072,22 +1070,15 @@ describe(`detect_irreducible_bz`, () => {
     idx ? (vert.map((val) => val * 0.1) as Vec3) : [-1e-9, 0, 0.05],
   )
 
+  // oxfmt-ignore
   test.each([
-    {
-      label: `vertices in positive octant only`,
-      data: make_data(positive_verts),
-      expected: true,
-    },
+    { label: `vertices in positive octant only`, data: make_data(positive_verts), expected: true },
     { label: `vertices spanning full BZ`, data: make_data(spanning_verts), expected: false },
     { label: `a tiny full-zone pocket`, data: make_data(pocket), expected: false },
     { label: `a small wedge dipping past zero`, data: make_data(small_wedge), expected: true },
     { label: `empty isosurfaces`, data: make_data(), expected: false },
-    {
-      // needs > 10 vertices to be considered valid irreducible data
-      label: `too few vertices`,
-      data: make_data(positive_verts.slice(0, 2)),
-      expected: false,
-    },
+    // needs > 10 vertices to be considered valid irreducible data
+    { label: `too few vertices`, data: make_data(positive_verts.slice(0, 2)), expected: false },
   ])(`returns $expected for $label`, ({ data, expected }) => {
     expect(detect_irreducible_bz(data)).toBe(expected)
   })

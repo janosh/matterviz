@@ -30,26 +30,17 @@ const create_mock_fermi_data = (
   )
 
 describe(`FermiSlice`, () => {
+  // oxfmt-ignore
   test.each([
     // one band sliced into two isolines: their shared legend_id folds them into one row
     [`omitted defaults to visible for one band`, [0, 0], undefined, [`Band 1`], []],
     [`false hides three bands`, [0, 1, 2], false, [], []],
     // a spin-polarized band slices into one sheet per spin, each its own legend row
-    [
-      `spin sheets of one band get a row each`,
-      [0, 0],
-      true,
-      [`Band 1 ↑`, `Band 1 ↓`],
-      [`up`, `down`],
-    ],
+    [`spin sheets of one band get a row each`, [0, 0], true, [`Band 1 ↑`, `Band 1 ↓`], [`up`, `down`]],
   ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected, spins) => {
     const plot = await mount_sized(
       FermiSlice,
-      {
-        fermi_data: create_mock_fermi_data([...bands], [...spins]),
-        show_legend,
-        distance: 0.05,
-      },
+      { fermi_data: create_mock_fermi_data([...bands], [...spins]), show_legend, distance: 0.05 },
       { selector: `.fermi-slice` },
     )
     await tick()

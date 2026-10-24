@@ -109,15 +109,6 @@ describe(`Bands component`, () => {
       expected_line_count: band_spin_mode === `overlay` ? 8 : 4,
     })),
     {
-      // without a spin-down channel `down_only` drew nothing, unmounting plot and controls
-      name: `unpolarized electronic with down_only`,
-      props: {
-        band_structs: { '': { ...base_band_structure, type: `electronic` } },
-        band_spin_mode: `down_only`,
-      },
-      expected_line_count: 4,
-    },
-    {
       name: `explicit physical two-point branch`,
       props: {
         band_structs: {
@@ -376,7 +367,8 @@ describe(`Bands component`, () => {
   )
 
   // the Spin control and its reset only exist with a spin-down channel to pick: a hidden
-  // `down_only` marked the section changed with nothing visible to reset
+  // `down_only` marked the section changed with nothing visible to reset. Without a spin-down
+  // channel `down_only` also drew nothing, unmounting plot and controls
   it.each([
     [`unpolarized`, false, { ...base_band_structure, type: `electronic` as const }],
     [`spin-polarized`, true, spin_polarized_electronic],
@@ -388,6 +380,7 @@ describe(`Bands component`, () => {
       controls_open: true,
     })
     await vi.waitFor(() => expect(document.querySelector(`#bands-path-mode`)).not.toBeNull())
+    expect(line_count()).toBe(4)
     expect(Boolean(document.querySelector(`#bands-spin-mode`))).toBe(has_spin)
     const reset = document.querySelector(`button[title="Reset path to defaults"]`)
     expect(Boolean(reset)).toBe(has_spin)
@@ -472,7 +465,7 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  // a per-band, per-spin style (FermiSurfaceBands' sheet colours) replaces the structure colour
+  // a per-band, per-spin style (ElectronicStructure's sheet colours) replaces the structure colour
   // and an emphasised band keeps its own
   it.each([null, 2])(
     `line_kwargs callback strokes, highlighted band %s`,
@@ -617,9 +610,7 @@ describe(`Bands component`, () => {
       writable<{
         band_structs: Record<string, BaseBandStructure>
         view?: Partial<AxisRanges>
-      }>({
-        band_structs: { '': base_band_structure },
-      }),
+      }>({ band_structs: { '': base_band_structure } }),
     )
     await mount_plot({
       get band_structs() {

@@ -4,13 +4,7 @@
   import type { BZHoverData, BZTooltipProp } from './types'
   import { ordinal_label } from './types'
 
-  let {
-    hover_data,
-    tooltip,
-  }: {
-    hover_data: BZHoverData
-    tooltip?: BZTooltipProp
-  } = $props()
+  let { hover_data, tooltip }: { hover_data: BZHoverData; tooltip?: BZTooltipProp } = $props()
 </script>
 
 <TooltipContent data={hover_data} snippet_arg={{ hover_data }} {tooltip}>

@@ -215,12 +215,7 @@
       }
       structure = opened.data as Crystal // the zone needs a lattice; AnyStructure is wider
       current_filename = opened.filename
-      on_file_load?.({
-        structure,
-        bz_data: zone,
-        bz_order,
-        ...opened.provenance,
-      })
+      on_file_load?.({ structure, bz_data: zone, bz_order, ...opened.provenance })
     },
     report_error: (message, metadata) => {
       error_msg = message

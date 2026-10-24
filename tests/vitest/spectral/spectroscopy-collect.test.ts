@@ -44,10 +44,7 @@ const make_run = (
 ): TrajectoryRun => {
   const frames = every_step.map(make_frame)
   mutate(frames)
-  return trajectory_from_frames(frames, {
-    time_step: { value: 0.5, unit: `fs` },
-    ...extras,
-  })
+  return trajectory_from_frames(frames, { time_step: { value: 0.5, unit: `fs` }, ...extras })
 }
 
 describe(`collect_trajectory_spectroscopy_input`, () => {
@@ -139,10 +136,7 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
       expect(input.time_step).toBe(time_step?.value)
       expect(input.time_unit).toBe(time_step?.unit)
       const calculate = () =>
-        calc_trajectory_spectroscopy(input, {
-          preprocessing: `raw`,
-          frequency_unit: `1/step`,
-        })
+        calc_trajectory_spectroscopy(input, { preprocessing: `raw`, frequency_unit: `1/step` })
       if (calc_error) expect(calculate).toThrow(calc_error)
       else expect(calculate().frequency_unit).toBe(`1/step`)
     },

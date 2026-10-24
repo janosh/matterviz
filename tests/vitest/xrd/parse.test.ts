@@ -95,24 +95,13 @@ describe(`parse_xy_file`, () => {
     expect(() => parse_xy_file(content)).toThrow(pattern),
   )
 
+  // a 12-point range of unit steps from `start`
+  const range_12 = (start: number) => Array.from({ length: 12 }, (_, idx) => start + idx)
   test.each([
     // two ranges, the second restarting below the end of the first
-    [
-      `a stitched two-range scan`,
-      [
-        ...Array.from({ length: 12 }, (_, idx) => 30 + idx),
-        ...Array.from({ length: 12 }, (_, idx) => 40.5 + idx),
-      ],
-    ],
+    [`a stitched two-range scan`, [...range_12(30), ...range_12(40.5)]],
     // three ranges: 2 restarts in 35 steps are within one per ten
-    [
-      `a stitched three-range scan`,
-      [
-        ...Array.from({ length: 12 }, (_, idx) => 10 + idx),
-        ...Array.from({ length: 12 }, (_, idx) => 21.5 + idx),
-        ...Array.from({ length: 12 }, (_, idx) => 33 + idx),
-      ],
-    ],
+    [`a stitched three-range scan`, [...range_12(10), ...range_12(21.5), ...range_12(33)]],
     // one reversal is a glitch whatever the length: 1 of 8 steps is 12.5%
     [`a 9-point scan with one glitch`, [10, 11, 12, 13, 15, 14, 16, 17, 18]],
     [`a descending scan with one glitch`, [18, 17, 16, 14, 15, 13, 12, 11, 10]],
@@ -171,15 +160,12 @@ describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
     expect(result.y).toEqual([20, 40, 60, 80, 100])
   })
 
+  // oxfmt-ignore
   test.each([
     [`no header line`, `title\n10 -1 5\n7 8`, /no 'start step stop' header/],
     [`too few counts`, `10 0.5 12\n100 200`, /announces 5 points but only 2 follow/],
     // a non-numeric row ends the block; the numbers after it are not counts
-    [
-      `a footer inside the block`,
-      `10 0.5 12\n100 200\nNumor=1\n300 400 500`,
-      /announces 5 points but only 2 follow/,
-    ],
+    [`a footer inside the block`, `10 0.5 12\n100 200\nNumor=1\n300 400 500`, /announces 5 points but only 2 follow/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_block_scan(content)).toThrow(pattern),
   )
@@ -228,21 +214,13 @@ describe(`parse_ras_file`, () => {
 })
 
 describe(`parse_uxd_file`, () => {
+  // oxfmt-ignore
   test.each([
-    [
-      `_2THETACOUNTS two-column section`,
-      `_START=3\n_2THETACOUNTS\n10.0\t100\n20.0\t200\n30.0\t300\n_NEXT=1\n1 2`,
-    ],
-    [
-      `_COUNTS on the _START/_STEPSIZE grid`,
-      `; comment\n_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200\n300`,
-    ],
+    [`_2THETACOUNTS two-column section`, `_START=3\n_2THETACOUNTS\n10.0\t100\n20.0\t200\n30.0\t300\n_NEXT=1\n1 2`],
+    [`_COUNTS on the _START/_STEPSIZE grid`, `; comment\n_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200\n300`],
     [`_2THETA / _STEPWIDTH aliases`, `_2THETA=10.0\n_STEPWIDTH=10.0\n_COUNTS\n100\n200\n300`],
     // _2THETA is the detector position at the start; _START is the scan start even when listed later
-    [
-      `_START over a preceding _2THETA`,
-      `_2THETA=40\n_START=10\n_STEPSIZE=10\n_COUNTS\n100 200 300`,
-    ],
+    [`_START over a preceding _2THETA`, `_2THETA=40\n_START=10\n_STEPSIZE=10\n_COUNTS\n100 200 300`],
   ])(`parses %s`, (_name, content) =>
     expect(rounded(parse_uxd_file(content))).toEqual(THREE_POINTS),
   )
@@ -276,14 +254,11 @@ describe(`parse_gsas_file`, () => {
     expect(result.x[10]).toBeCloseTo(20, 9)
   })
 
+  // oxfmt-ignore
   test.each([
     [`no BANK line`, `100 200 300`, /no BANK header/],
     [`a time-of-flight bank`, `BANK 1 3 1 RALF 1000 2 0 0\n1 2 3`, /BINTYP 'RALF'/],
-    [
-      `too few values`,
-      `BANK 1 3 1 CONST 1000 1000 0 0\n1 2`,
-      /declares 3 channels .* but 2 follow/,
-    ],
+    [`too few values`, `BANK 1 3 1 CONST 1000 1000 0 0\n1 2`, /declares 3 channels .* but 2 follow/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_gsas_file(content)).toThrow(pattern),
   )
@@ -323,6 +298,14 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
   }
   const one_range = (counts: number[], start = 10, step = 0.5, supplementary = 40) =>
     make_raw101([{ counts, start, step, supplementary }])
+  // a 3-count file with the uint32 at byte `offset` overwritten
+  const patched = (offset: number, value: number) => () => {
+    const buffer = one_range([1, 2, 3])
+    new DataView(buffer).setUint32(offset, value, true)
+    return buffer
+  }
+  const after_valid_range = (range: Range) => () =>
+    make_raw101([{ counts: [1], start: 10, step: 1 }, range])
 
   test.each([0, 40])(
     `decodes the range header with %i supplementary bytes`,
@@ -361,29 +344,17 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     ],
     [
       `a second range header cut off by the end of the file`,
-      () => {
-        const buffer = one_range([1, 2, 3])
-        new DataView(buffer).setUint32(12, 2, true)
-        return buffer
-      },
+      patched(12, 2),
       /range 2 of 2 header at byte 1068 runs past the end of the 1068-byte file/,
     ],
     [
       `a second range with a zero step size`,
-      () =>
-        make_raw101([
-          { counts: [1], start: 10, step: 1 },
-          { counts: [1], start: 20, step: 0 },
-        ]),
+      after_valid_range({ counts: [1], start: 20, step: 0 }),
       /range 2 of 2 header has steps=1, start=20, step=0/,
     ],
     [
       `a range with no steps`,
-      () =>
-        make_raw101([
-          { counts: [1], start: 10, step: 1 },
-          { counts: [], start: 20, step: 1 },
-        ]),
+      after_valid_range({ counts: [], start: 20, step: 1 }),
       /range 2 of 2 header has steps=0, start=20, step=1/,
     ],
     [
@@ -394,22 +365,10 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     // a zero header length would place the counts on top of the header fields
     [
       `a range header shorter than its own fields`,
-      () => {
-        const buffer = one_range([1, 2, 3])
-        new DataView(buffer).setUint32(712, 0, true)
-        return buffer
-      },
+      patched(712, 0),
       /range 1 of 1 header has steps=3, start=10, step=0.5, length=0/,
     ],
-    [
-      `a zero range count`,
-      () => {
-        const buffer = one_range([1, 2, 3])
-        new DataView(buffer).setUint32(12, 0, true)
-        return buffer
-      },
-      /announces 0 ranges/,
-    ],
+    [`a zero range count`, patched(12, 0), /announces 0 ranges/],
   ])(`throws on %s`, (_name, make_buffer, pattern) => {
     expect(() => parse_bruker_raw_file(make_buffer())).toThrow(pattern)
   })

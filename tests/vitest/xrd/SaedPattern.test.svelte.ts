@@ -19,15 +19,8 @@ test(`spots expose hover and a toggling pin matched by hkl, by pointer and keybo
     pattern: SaedPatternData
     hovered_spot: SaedSpot | null
     selected_spot: SaedSpot | null
-  }>({
-    pattern,
-    hovered_spot: null,
-    selected_spot: { ...third, hkl: [...third.hkl] },
-  })
-  const component = mount(SaedPattern, {
-    target: document.body,
-    props: bind_props({}, state),
-  })
+  }>({ pattern, hovered_spot: null, selected_spot: { ...third, hkl: [...third.hkl] } })
+  const component = mount(SaedPattern, { target: document.body, props: bind_props({}, state) })
   await resize_element(query(document.body, `.saed-pattern`), 400, 400)
   const circles = [...document.querySelectorAll<SVGCircleElement>(`circle.spot`)]
   expect(circles).toHaveLength(pattern.spots.length)
