@@ -188,7 +188,7 @@
 
   let wrapper = $state<HTMLDivElement>()
   let dragover = $state(false)
-  let chrome_height = $state(0)
+  let chrome_width = $state(0)
   let scenes_size = $state({ width: 0, height: 0 })
   let spectra_width = $state(0)
   // Left padding the DOS settled on beside the bands (its tick labels and their margin), which
@@ -370,7 +370,7 @@
     layout === `auto` ? pick_pane_orientation(scenes_size.width, scenes_size.height) : layout,
   )
   const spectra_side = $derived(spectra_split && spectra_width >= MIN_SIDE_BY_SIDE_WIDTH)
-  // The pane in the viewer's top-right corner puts its own controls below the viewer's
+  // The pane in the viewer's top-right corner lines its own controls up left of the viewer's
   const corner_pane = $derived.by((): ElectronicPane => {
     if (!show_scenes && !show_spectra) return show_phonon ? `phonon` : `trends`
     const [first, second] = show_scenes
@@ -380,9 +380,10 @@
     return (show_scenes ? scene_orientation === `horizontal` : spectra_side) ? second : first
   })
   const pane_style = (pane: ElectronicPane): string | undefined => {
-    if (pane !== corner_pane || chrome_height === 0) return undefined
-    const top = `calc(2ex + ${chrome_height + bar_offset}px)`
-    return `--viewer-buttons-top: ${top}; --ctrl-btn-top: ${top}`
+    if (pane !== corner_pane || chrome_width === 0) return undefined
+    const top = `calc(1ex + ${bar_offset}px)`
+    const right = `calc(1.5ex + ${chrome_width}px)`
+    return `--viewer-buttons-top: ${top}; --ctrl-btn-top: ${top}; --viewer-buttons-right: ${right}; --ctrl-btn-right: ${right}`
   }
   // the top row's controls clear the overlaid control bar
   const top_row_style = $derived(
@@ -597,7 +598,7 @@
       {wrapper}
       fullscreen_bg_css_var="--electronic-bg-fullscreen"
       style={top_row_style}
-      {@attach observe_size(({ height }) => (chrome_height = height))}
+      {@attach observe_size(({ width }) => (chrome_width = width))}
     >
       {#if scenes_split && controls_config.visible(`sync-rotation`)}
         {@const linked = sync_rotation && !frames_differ}
