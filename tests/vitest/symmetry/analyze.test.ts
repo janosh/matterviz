@@ -1,13 +1,13 @@
 import type { Vec3 } from '#lib/math.js'
-import type { CellType } from '#lib/symmetry/index.js'
+import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import {
   spacegroup_settings,
   spacegroup_wyckoff_positions,
   transform_cell,
 } from '#lib/symmetry/analyze.js'
-import type { MoyoCell, MoyoDataset } from '@spglib/moyo-wasm'
+import type { MoyoCell } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../test-fixtures'
+import { cubic_matrix, make_crystal } from '../test-fixtures'
 
 // Helper to create a MoyoCell
 const make_moyo_cell = (
@@ -16,8 +16,14 @@ const make_moyo_cell = (
   numbers: number[],
 ): MoyoCell => ({ lattice: { basis }, positions, numbers })
 
-// Helper to create a mock MoyoDataset
-const make_mock_sym_data = (std_cell: MoyoCell, prim_std_cell: MoyoCell): MoyoDataset => ({
+// Helper to create a mock SymmetryDataset analyzed from a 1-site input cell
+const make_mock_sym_data = (
+  std_cell: MoyoCell,
+  prim_std_cell: MoyoCell,
+  input_cell: SymmetryDataset[`input_cell`] = { positions: [[0, 0, 0]], numbers: [11] },
+): SymmetryDataset => ({
+  input_cell,
+  orig_site_indices_by_input_idx: input_cell.positions.map((_, idx) => [idx]),
   std_cell,
   prim_std_cell,
   // Minimal required fields for MoyoDataset
@@ -60,11 +66,7 @@ describe(`moyo cell → structure`, () => {
 
     const result = to_structure(moyo_cell, original_2d)
 
-    expect(result.lattice.matrix).toEqual([
-      [5, 0, 0],
-      [0, 5, 0],
-      [0, 0, 5],
-    ])
+    expect(result.lattice.matrix).toEqual(cubic_matrix(5))
     const [length, angle] = [expect.closeTo(5, 5), expect.closeTo(90, 5)]
     expect(result.lattice).toMatchObject({ a: length, b: length, c: length })
     expect(result.lattice).toMatchObject({ alpha: angle, beta: angle, gamma: angle })
@@ -129,7 +131,7 @@ describe(`transform_cell`, () => {
   const prim_cell = make_moyo_cell([3, 0, 0, 0, 3, 0, 0, 0, 3], [[0, 0, 0]], [11])
   const sym_data = make_mock_sym_data(std_cell, prim_cell)
 
-  test.each<[string, CellType, MoyoDataset | null]>([
+  test.each<[string, CellType, SymmetryDataset | null]>([
     [`original cell_type`, `original`, sym_data],
     [`null sym_data`, `conventional`, null],
   ])(`returns original structure for %s`, (_label, cell_type, sym_data_arg) => {
@@ -161,6 +163,20 @@ describe(`transform_cell`, () => {
     expect(result.charge).toBe(2 * n_sites)
     expect(result.properties).toEqual({ custom_metadata: `kept` }) // bonds dropped
     expect(transform_cell(original, cell_type, sym_data).charge).toBeUndefined()
+  })
+
+  // moyo sees split partial sites as one merged site, so the charge ratio must count the
+  // analyzed input cell: dividing by the raw site count halved this structure's charge
+  test(`charge of split partial sites scales by the merged input cell`, () => {
+    const structure = {
+      ...make_crystal(4, [
+        { element: `Na`, abc: [0, 0, 0], occu: 0.5 },
+        { element: `K`, abc: [0, 0, 0], occu: 0.5 },
+      ]),
+      charge: 2,
+    }
+    expect(transform_cell(structure, `primitive`, sym_data).charge).toBe(2)
+    expect(transform_cell(structure, `conventional`, sym_data).charge).toBe(4)
   })
 })
 

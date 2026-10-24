@@ -12,7 +12,7 @@ import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import { is_plain_object } from '#lib/utils.js'
+import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
 import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
@@ -76,12 +76,15 @@ const camera_projection_setting = (
   description,
   enum: { perspective: `Perspective`, orthographic: `Orthographic` },
 })
-const opacity_setting = (value: number, description: string): SettingType<number> => ({
-  value,
-  description,
-  minimum: 0,
-  maximum: 1,
-})
+// A number setting confined to [minimum, maximum]
+const bounded_setting = (
+  value: number,
+  description: string,
+  minimum: number,
+  maximum: number,
+): SettingType<number> => ({ value, description, minimum, maximum })
+const opacity_setting = (value: number, description: string): SettingType<number> =>
+  bounded_setting(value, description, 0, 1)
 const fullscreen_toggle_setting = (): SettingType<boolean> => ({
   value: true,
   description: `Show fullscreen toggle button (where the page may fullscreen an element)`,
@@ -258,10 +261,7 @@ const convex_hull_settings = (
     },
     fullscreen: { value: false, description: `Start in fullscreen for ${hull}` },
     info_pane_open: { value: false, description: `Info pane open by default for ${hull}` },
-    legend_pane_open: {
-      value: false,
-      description: `Legend pane open by default for ${hull}`,
-    },
+    legend_pane_open: { value: false, description: `Legend pane open by default for ${hull}` },
   }
 }
 
@@ -299,10 +299,7 @@ export const SETTINGS_CONFIG = define_settings({
     description: `Color scheme for atoms and bonds`,
     enum: self_labeled_enum(ELEMENT_COLOR_SCHEME_NAMES),
   }),
-  background_color: {
-    value: `#000000`,
-    description: `Background color of the 3D viewport`,
-  },
+  background_color: { value: `#000000`, description: `Background color of the 3D viewport` },
   // 0.1, not 0: embedded viewers spread DEFAULTS, and 0 renders their background transparent
   background_opacity: opacity_setting(
     0.1,
@@ -467,12 +464,7 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 0.1,
       maximum: 200,
     },
-    fov: {
-      value: 10,
-      description: `Field of view in degrees for perspective projection`,
-      minimum: 5,
-      maximum: 150,
-    },
+    fov: bounded_setting(10, `Field of view in degrees for perspective projection`, 5, 150),
     rotation_damping: {
       // Larger factors settle sooner, not slower: the queued rotation decays by (1 - factor)
       // per frame, so 0.1 keeps drifting for ~0.7 s after release (a fast flick lands another
@@ -491,12 +483,7 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 0,
       maximum: 2.0,
     },
-    zoom_speed: {
-      value: 0.5,
-      description: `Mouse wheel zoom sensitivity`,
-      minimum: 0.1,
-      maximum: 0.8,
-    },
+    zoom_speed: bounded_setting(0.5, `Mouse wheel zoom sensitivity`, 0.1, 0.8),
     pan_speed: {
       value: 0.5,
       description: `Mouse pan sensitivity (set to 0 to disable panning)`,
@@ -538,12 +525,7 @@ export const SETTINGS_CONFIG = define_settings({
     // Labels & Lighting
     show_site_labels: { value: false, description: `Show element labels on atoms` },
     show_site_indices: { value: false, description: `Show site index numbers on atoms` },
-    site_label_size: {
-      value: 1,
-      description: `Font size for atom labels`,
-      minimum: 0.5,
-      maximum: 2,
-    },
+    site_label_size: bounded_setting(1, `Font size for atom labels`, 0.5, 2),
     site_label_color: {
       value: ``,
       description: `Text color for atom labels (empty follows the theme's text color)`,
@@ -552,12 +534,7 @@ export const SETTINGS_CONFIG = define_settings({
       value: `transparent`,
       description: `Background color for atom labels`,
     },
-    site_label_padding: {
-      value: 2,
-      description: `Padding around atom labels in pixels`,
-      minimum: 0,
-      maximum: 10,
-    },
+    site_label_padding: bounded_setting(2, `Padding around atom labels in pixels`, 0, 10),
     site_label_offset: {
       value: [0, 0.5, 0] satisfies Vec3,
       description: `3D offset for atom labels [x, y, z]`,
@@ -583,12 +560,7 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Per-key configuration for site vector layers. Keys map to site property names (e.g. force, magmom, force_DFT). Auto-populated when a structure with vector data loads.`,
       additionalProperties: { type: `object` },
     }),
-    vector_scale: {
-      value: 0.75,
-      description: `Scale factor for site vector arrows`,
-      minimum: 0.001,
-      maximum: 10.0,
-    },
+    vector_scale: bounded_setting(0.75, `Scale factor for site vector arrows`, 0.001, 10.0),
     vector_color: {
       value: `#ff0000`,
       description: `Color for site vector arrows (used in uniform mode and as fallback)`,
@@ -687,23 +659,13 @@ export const SETTINGS_CONFIG = define_settings({
     cell_surface_opacity: opacity_setting(0.1, `Opacity of cell surfaces`),
     cell_edge_color: { value: `#808080`, description: `Color of cell edges` },
     cell_surface_color: { value: `#e0e0e0`, description: `Color of cell surfaces` },
-    cell_edge_width: {
-      value: 1.5,
-      description: `Width of cell edge lines`,
-      minimum: 0.5,
-      maximum: 5.0,
-    },
+    cell_edge_width: bounded_setting(1.5, `Width of cell edge lines`, 0.5, 5.0),
     fullscreen_toggle: fullscreen_toggle_setting(),
   },
 
   // Brillouin zone viewer settings
   brillouin: {
-    bz_order: {
-      value: 1,
-      description: `Brillouin zone order to render (1 = first BZ)`,
-      minimum: 1,
-      maximum: 5,
-    },
+    bz_order: bounded_setting(1, `Brillouin zone order to render (1 = first BZ)`, 1, 5),
     surface_color: { value: `#4488ff`, description: `Brillouin zone face color` },
     surface_opacity: opacity_setting(0.3, `Opacity of Brillouin zone faces`),
     edge_color: { value: `#000000`, description: `Brillouin zone edge color` },
@@ -733,10 +695,7 @@ export const SETTINGS_CONFIG = define_settings({
 
   // Fermi surface viewer settings
   fermi: {
-    mu: {
-      value: 0,
-      description: `Chemical potential offset from the Fermi level (eV)`,
-    },
+    mu: { value: 0, description: `Chemical potential offset from the Fermi level (eV)` },
     color_property: {
       value: `band`,
       description: `Quantity mapped onto the Fermi surface color scale`,
@@ -828,12 +787,7 @@ export const SETTINGS_CONFIG = define_settings({
     },
     show_controls: { value: true, description: `Show playback controls` },
     fullscreen_toggle: fullscreen_toggle_setting(),
-    step_labels: {
-      value: 5,
-      description: `Number of frame labels to display`,
-      minimum: 0,
-      maximum: 20,
-    },
+    step_labels: bounded_setting(5, `Number of frame labels to display`, 0, 20),
     layout: {
       value: `auto` as const,
       description: `Layout arrangement for trajectory viewer`,
@@ -841,10 +795,7 @@ export const SETTINGS_CONFIG = define_settings({
     },
 
     // File handling and loading
-    allow_file_drop: {
-      value: true,
-      description: `Allow drag-and-drop of trajectory files`,
-    },
+    allow_file_drop: { value: true, description: `Allow drag-and-drop of trajectory files` },
     index_above_bytes: {
       value: 25000000,
       description: `Trajectory files (XYZ, EXTXYZ, LAMMPS dump, XDATCAR) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once (ASE .traj always is)`,
@@ -884,12 +835,7 @@ export const SETTINGS_CONFIG = define_settings({
     bar: {
       color: { value: `#4A9EFF`, description: `Histogram bar fill color` },
       opacity: opacity_setting(0.7, `Histogram bar opacity`),
-      stroke_width: {
-        value: 1,
-        description: `Histogram bar stroke width`,
-        minimum: 0,
-        maximum: 5,
-      },
+      stroke_width: bounded_setting(1, `Histogram bar stroke width`, 0, 5),
       stroke_color: { value: `#000000`, description: `Histogram bar stroke color` },
       stroke_opacity: opacity_setting(0.5, `Histogram bar stroke opacity`),
     },
@@ -900,15 +846,10 @@ export const SETTINGS_CONFIG = define_settings({
     bar: {
       color: { value: `#4A9EFF`, description: `Bar plot fill color` },
       opacity: opacity_setting(0.6, `Bar plot opacity (overlay mode)`),
-      border_radius: {
-        value: 3,
-        description: `Corner radius for bar tops (px)`,
-        minimum: 0,
-        maximum: 10,
-      },
+      border_radius: bounded_setting(3, `Corner radius for bar tops (px)`, 0, 10),
     },
     line: {
-      width: { value: 2, description: `Bar plot line width`, minimum: 0.5, maximum: 10 },
+      width: bounded_setting(2, `Bar plot line width`, 0.5, 10),
       color: { value: `#4A9EFF`, description: `Bar plot line color` },
     },
   },
@@ -925,16 +866,8 @@ export const SETTINGS_CONFIG = define_settings({
         std: `Std Dev`,
       },
     },
-    box_width: {
-      value: 0.8,
-      description: `Box width as a fraction of the category slot`,
-      minimum: 0.1,
-      maximum: 1,
-    },
-    show_outliers: {
-      value: true,
-      description: `Show outlier points beyond the whiskers`,
-    },
+    box_width: bounded_setting(0.8, `Box width as a fraction of the category slot`, 0.1, 1),
+    show_outliers: { value: true, description: `Show outlier points beyond the whiskers` },
     show_mean: { value: false, description: `Show the mean marker inside each box` },
     points: {
       value: `none` as const,
@@ -971,25 +904,15 @@ export const SETTINGS_CONFIG = define_settings({
     box: {
       color: { value: `#4A9EFF`, description: `Box fill color` },
       opacity: opacity_setting(0.6, `Box fill opacity`),
-      stroke_width: {
-        value: 0.5,
-        description: `Box outline width`,
-        minimum: 0,
-        maximum: 5,
-      },
+      stroke_width: bounded_setting(0.5, `Box outline width`, 0, 5),
       stroke_color: {
         value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Box outline color`,
       },
-      border_radius: {
-        value: 0,
-        description: `Corner radius for boxes (px)`,
-        minimum: 0,
-        maximum: 10,
-      },
+      border_radius: bounded_setting(0, `Corner radius for boxes (px)`, 0, 10),
     },
     whisker: {
-      width: { value: 1, description: `Whisker line width`, minimum: 0.5, maximum: 5 },
+      width: bounded_setting(1, `Whisker line width`, 0.5, 5),
       color: {
         value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Whisker line color`,
@@ -1002,7 +925,7 @@ export const SETTINGS_CONFIG = define_settings({
       },
     },
     median: {
-      width: { value: 1.5, description: `Median line width`, minimum: 0.5, maximum: 6 },
+      width: bounded_setting(1.5, `Median line width`, 0.5, 6),
       color: {
         value: `var(--text-color, black)`, // theme-responsive like axis/grid colors
         description: `Median line color`,
@@ -1010,28 +933,13 @@ export const SETTINGS_CONFIG = define_settings({
     },
     // Sample dots: the outliers, or every sample when strip/swarm points are on
     sample: {
-      radius: {
-        value: 2.5,
-        description: `Sample point radius (px)`,
-        minimum: 0.5,
-        maximum: 10,
-      },
+      radius: bounded_setting(2.5, `Sample point radius (px)`, 0.5, 10),
       opacity: opacity_setting(0.6, `Sample point opacity`),
-      stroke_width: {
-        value: 0,
-        description: `Sample point stroke width`,
-        minimum: 0,
-        maximum: 3,
-      },
+      stroke_width: bounded_setting(0, `Sample point stroke width`, 0, 3),
     },
     violin: {
       opacity: opacity_setting(0.5, `Violin fill opacity`),
-      stroke_width: {
-        value: 1,
-        description: `Violin outline width`,
-        minimum: 0,
-        maximum: 5,
-      },
+      stroke_width: bounded_setting(1, `Violin outline width`, 0, 5),
     },
   },
 
@@ -1060,24 +968,14 @@ export const SETTINGS_CONFIG = define_settings({
       description: `How nodes are aligned across columns (maps to d3-sankey alignment)`,
       enum: { justify: `Justify`, left: `Left`, right: `Right`, center: `Center` },
     },
-    node_width: {
-      value: 24,
-      description: `Node thickness in pixels`,
-      minimum: 4,
-      maximum: 60,
-    },
+    node_width: bounded_setting(24, `Node thickness in pixels`, 4, 60),
     node_padding: {
       value: 12,
       description: `Vertical gap in pixels between nodes sharing a column`,
       minimum: 0,
       maximum: 40,
     },
-    link_opacity: {
-      value: 0.5,
-      description: `Opacity of link ribbons`,
-      minimum: 0.05,
-      maximum: 1,
-    },
+    link_opacity: bounded_setting(0.5, `Opacity of link ribbons`, 0.05, 1),
     show_node_labels: { value: true, description: `Show node labels next to each node` },
     iterations: {
       value: 6,
@@ -1105,12 +1003,7 @@ export const SETTINGS_CONFIG = define_settings({
       minimum: 0,
       maximum: 0.8,
     },
-    pad_angle: {
-      value: 0.1,
-      description: `Angular gap in degrees between sibling arcs`,
-      minimum: 0,
-      maximum: 4,
-    },
+    pad_angle: bounded_setting(0.1, `Angular gap in degrees between sibling arcs`, 0, 4),
     label_rotation: {
       value: `auto` as const,
       description: `Arc label orientation (auto picks radial/tangential per arc)`,
@@ -1156,33 +1049,15 @@ export const SETTINGS_CONFIG = define_settings({
     show_points: { value: true, description: `Show points in scatter plots` },
     show_lines: { value: true, description: `Show connecting lines in scatter plots` },
     point: {
-      size: {
-        value: 3,
-        description: `Point size for scatter plots`,
-        minimum: 1,
-        maximum: 20,
-      },
+      size: bounded_setting(3, `Point size for scatter plots`, 1, 20),
       color: { value: `#4A9EFF`, description: `Default color for scatter plot points` },
       opacity: opacity_setting(1, `Opacity of scatter plot points`),
-      stroke_width: {
-        value: 0.5,
-        description: `Stroke width for scatter plot points`,
-        minimum: 0,
-        maximum: 5,
-      },
-      stroke_color: {
-        value: `#000000`,
-        description: `Stroke color for scatter plot points`,
-      },
+      stroke_width: bounded_setting(0.5, `Stroke width for scatter plot points`, 0, 5),
+      stroke_color: { value: `#000000`, description: `Stroke color for scatter plot points` },
       stroke_opacity: opacity_setting(0.45, `Stroke opacity for scatter plot points`),
     },
     line: {
-      width: {
-        value: 2,
-        description: `Line width for scatter plot connections`,
-        minimum: 0.5,
-        maximum: 10,
-      },
+      width: bounded_setting(2, `Line width for scatter plot connections`, 0.5, 10),
       color: { value: `#4A9EFF`, description: `Default color for scatter plot lines` },
       opacity: opacity_setting(1, `Opacity of scatter plot lines`),
       dash: {
@@ -1313,13 +1188,18 @@ const valid_array = (value: unknown, setting: SettingType, reference: readonly u
 // Whether `value` may stand in for the schema default: its kind's shape (a color scale name or
 // config), enum membership, a finite number inside
 // minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems
-// (items inside `items`), a plain object for free-form maps, else the default's primitive type.
+// (items inside `items`), a plain object of `additionalProperties`-typed values for free-form
+// maps, else the default's primitive type.
 export const is_valid_setting_value = (value: unknown, setting: SettingType): boolean => {
   if (setting.kind === `color_scale`) return is_color_scale(value)
   if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
   if (typeof setting.value === `number`) return valid_number(value, setting)
   if (Array.isArray(setting.value)) return valid_array(value, setting, setting.value)
-  if (is_plain_object(setting.value)) return is_plain_object(value)
+  if (is_plain_object(setting.value)) {
+    // settings.json is not schema-checked: { "1": 14 } must not map a LAMMPS type to 14
+    const [is_kind] = JSON_KINDS[setting.additionalProperties?.type ?? `string`]
+    return is_plain_object(value) && Object.values(value).every(is_kind)
+  }
   return same_primitive_type(value, setting.value)
 }
 

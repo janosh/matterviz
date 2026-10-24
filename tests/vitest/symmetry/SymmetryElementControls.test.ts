@@ -183,11 +183,7 @@ describe(`SymmetryElementControls`, () => {
   ])(
     `in_input_frame=$in_input_frame, repeats=$repeats explains unavailable toggles`,
     ({ in_input_frame, repeats, reason }) => {
-      mount_controls({
-        elements: SAMPLE_ELEMENTS,
-        in_input_frame,
-        tiling: [repeats, 1, 1],
-      })
+      mount_controls({ elements: SAMPLE_ELEMENTS, in_input_frame, tiling: [repeats, 1, 1] })
       const inputs = [...document.body.querySelectorAll(`input`)]
       expect(inputs).toHaveLength(6)
       expect(

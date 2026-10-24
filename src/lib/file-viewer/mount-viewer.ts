@@ -129,10 +129,7 @@ export function mount_viewer(
     return mount(BrillouinZone, { target, props: bz_props })
   }
   if (type === `xrd`) {
-    return mount(XrdPlot, {
-      target,
-      props: { patterns: data as XrdPattern, ...no_file_drop },
-    })
+    return mount(XrdPlot, { target, props: { patterns: data as XrdPattern, ...no_file_drop } })
   }
   if (type === `table` || type === `plot`) {
     // PlotPanel declares no rest props, so the shared style prop is not passed

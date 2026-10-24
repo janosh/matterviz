@@ -10,8 +10,11 @@ import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 
 const CELL = 4
+// `forces` (pymatgen's plural) on the site: loose dropped structures read it like `force`
 const cubic_structure = (x_frac: number) =>
-  make_crystal(CELL, [{ element: `Li`, abc: [x_frac, 0, 0] }])
+  make_crystal(CELL, [
+    { element: `Li`, abc: [x_frac, 0, 0], properties: { forces: [0, 0, x_frac] } },
+  ])
 const direct_path = reaction_paths[`direct hop`]
 const curved_path = reaction_paths[`curved hop`]
 
@@ -130,7 +133,9 @@ describe(`extended XYZ reaction paths`, () => {
     [`a single frame`, frame(0, -10), /1 XYZ frame\(s\).*at least 2/],
     [`a frame with no energy in its comment`, `1\njust a comment\nLi 0.0 0.0 0.0\n1\njust a comment\nLi 1.0 0.0 0.0`, /neb\.xyz frame 1\b.*no parsable energy/],
     [`a non-numeric atom count`, `abc\ncomment\nLi 0 0 0`, /0 XYZ frame\(s\).*at least 2/],
-    [`a truncated frame`, `3\ncomment energy=-1\nLi 0 0 0`, /0 XYZ frame\(s\).*at least 2/],
+    [`a truncated frame`, `3\ncomment energy=-1\nLi 0 0 0`, /neb\.xyz frame 1 \(line 1\) declares 3 atoms but the file ends after 1 of them/],
+    // dropping a torn last image made the transition state the final state (reverse barrier 0)
+    [`a truncated last frame`, [frame(0, -10), frame(1, -9), `2\n${LATTICE} energy=-9.8\nLi 2 0 0`].join(`\n`), /neb\.xyz frame 3 \(line 7\) declares 2 atoms/],
   ])(`throws for %s`, (_name, content, pattern) => {
     expect(() => parse_xyz_reaction_path(content, `neb.xyz`)).toThrow(pattern)
   })
@@ -163,6 +168,9 @@ describe(`dropped files`, () => {
       })),
     )
     expect(Object.keys(paths)).toEqual([`dropped images`])
+    expect(paths[`dropped images`].images.map(({ forces }) => forces?.[0][2])).toEqual([
+      0.1, 0.3, 0.5,
+    ])
     expect(analyze_barrier(paths[`dropped images`]).reaction_energy).toBeCloseTo(0.3, 12)
   })
 
@@ -170,15 +178,17 @@ describe(`dropped files`, () => {
   // content first like parse_xyz_reaction_path does — otherwise a leading blank line
   // shifts the comment out from under it and the energy reads as missing
   test.each([``, `  \n\n`])(
-    `a loose single-frame XYZ keeps its comment energy after %j of leading whitespace`,
+    `a loose single-frame XYZ keeps its comment energy and forces after %j of leading whitespace`,
     (lead) => {
       const xyz = (x_val: number, energy: number) =>
-        `${lead}1\nenergy=${energy}\nLi ${x_val} 0.0 0.0`
+        `${lead}1\nProperties=species:S:1:pos:R:3:forces:R:3 energy=${energy}\nLi ${x_val} 0 0 0.5 0 0`
       const paths = parse_dropped_paths([
         { content: xyz(0, -10), filename: `a.xyz` },
         { content: xyz(1, -9.2), filename: `b.xyz` },
       ])
-      expect(paths[`dropped images`].images.map((image) => image.energy)).toEqual([-10, -9.2])
+      const { images } = paths[`dropped images`]
+      expect(images.map((image) => image.energy)).toEqual([-10, -9.2])
+      expect(images.map((image) => image.forces)).toEqual([[[0.5, 0, 0]], [[0.5, 0, 0]]])
     },
   )
 

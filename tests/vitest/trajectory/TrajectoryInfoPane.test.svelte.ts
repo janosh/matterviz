@@ -72,6 +72,16 @@ test(`shows trajectory step and timing from the resolved frame`, async () => {
   expect(text).toContain(`Duration 20 fs`)
 })
 
+// 3 significant figures showed frame 1234 of 12345 as `1.23k` and step 100001 as `100k`
+test(`shows frame numbers and steps exactly`, async () => {
+  const props = await mount_pane(sampled_run(12_345), 1233)
+  props.current_frame = { ...frame, step: 100_001 }
+  await tick()
+  const text = pane_text()
+  expect(text).toContain(`Total Frames 12,345 (current: 1,234)`)
+  expect(text).toContain(`Current Step 100,001`)
+})
+
 test(`uses a compact filter trigger and omits copy buttons`, async () => {
   const frames = [-1, -2].map((energy, frame_idx) => ({
     ...frame,

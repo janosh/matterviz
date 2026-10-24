@@ -127,11 +127,7 @@ function intersect_bragg_planes(planes: BraggPlane[], order: number): Vec3[] {
   const cross = new Float64Array(n_planes * n_planes * 3)
   for (let idx_j = 0; idx_j < n_planes; idx_j++) {
     for (let idx_k = idx_j + 1; idx_k < n_planes; idx_k++) {
-      const [center_x, center_y, center_z] = math.cross_3d(normals[idx_j], normals[idx_k])
-      const offset = (idx_j * n_planes + idx_k) * 3
-      cross[offset] = center_x
-      cross[offset + 1] = center_y
-      cross[offset + 2] = center_z
+      cross.set(math.cross_3d(normals[idx_j], normals[idx_k]), (idx_j * n_planes + idx_k) * 3)
     }
   }
 

@@ -225,25 +225,10 @@ test.each([
 // acos of a ratio that floating point pushed past 1, and division by a zero-length axis,
 // both used to return NaN and propagate silently into every derived quantity. A zero third
 // vector is exactly what 2D/slab/molecule parse paths produce.
+// oxfmt-ignore
 test.each([
-  [
-    `parallel a and b`,
-    [
-      [1, 1, 1],
-      [1, 1, 1],
-      [0, 0, 1],
-    ],
-    { gamma: 0 },
-  ],
-  [
-    `zero-length c`,
-    [
-      [3, 0, 0],
-      [0, 3, 0],
-      [0, 0, 0],
-    ],
-    { alpha: 90, beta: 90, gamma: 90 },
-  ],
+  [`parallel a and b`, [[1, 1, 1], [1, 1, 1], [0, 0, 1]], { gamma: 0 }],
+  [`zero-length c`, [[3, 0, 0], [0, 3, 0], [0, 0, 0]], { alpha: 90, beta: 90, gamma: 90 }],
 ])(`calc_lattice_params stays finite for degenerate cells: %s`, (_label, matrix, expected) => {
   const result = math.calc_lattice_params(matrix as math.Matrix3x3)
   for (const key of [`a`, `b`, `c`, `alpha`, `beta`, `gamma`, `volume`] as const) {
@@ -510,11 +495,8 @@ describe(`pbc_dist`, () => {
   ] as [number, Pbc3, Vec3][])(
     `preserves half-cell ties for x=%s and PBC=%j`,
     (length_x, pbc, expected) => {
-      const lattice: math.Matrix3x3 = [
-        [length_x, 0, 0],
-        [0, 12, 0],
-        [0, 0, 16],
-      ]
+      // oxfmt-ignore
+      const lattice: math.Matrix3x3 = [[length_x, 0, 0], [0, 12, 0], [0, 0, 16]]
       expect(
         math.min_image_displacement([0, 0, 0], [5, 6, 8], lattice, undefined, pbc),
       ).toEqual(expected)
@@ -529,11 +511,8 @@ describe(`pbc_dist`, () => {
   ])(
     `rejects non-finite diagonal displacement %s with cell length %s`,
     (coord_x, length_x) => {
-      const lattice: math.Matrix3x3 = [
-        [length_x, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ]
+      // oxfmt-ignore
+      const lattice: math.Matrix3x3 = [[length_x, 0, 0], [0, 1, 0], [0, 0, 1]]
       expect(() => math.min_image_displacement([0, 0, 0], [coord_x, 1, 1], lattice)).toThrow(
         `Minimum-image`,
       )
@@ -605,6 +584,13 @@ describe(`3x3 matrix and lattice utilities`, () => {
       [`angles violating the triclinic inequality`, [3, 3, 3, 170, 170, 170], /realizable/],
       [`gamma = 0 (collinear a and b)`, [3, 3, 3, 90, 90, 0], /degenerate/],
       [`gamma = 180 (collinear a and b)`, [3, 3, 3, 90, 90, 180], /degenerate/],
+      // NaN failed both checks above silently, a negative length mirrored its axis
+      // and an angle past [0, 180] (210 shares the cosine of 150) flipped sin(gamma)
+      [`a NaN length`, [NaN, 3, 3, 90, 90, 90], /finite non-negative lengths/],
+      [`a NaN angle`, [3, 3, 3, NaN, 90, 90], /finite non-negative lengths/],
+      [`a negative length`, [3, -3, 3, 90, 90, 90], /finite non-negative lengths/],
+      [`gamma past 180`, [3, 3, 3, 90, 90, 210], /angles in \[0°, 180°\]/],
+      [`a negative angle`, [3, 3, 3, -90, 90, 90], /angles in \[0°, 180°\]/],
     ] as [string, [number, number, number, number, number, number], RegExp][])(
       `throws on %s`,
       (_name, cell_params, message) => {
@@ -1214,6 +1200,15 @@ describe(`solve_linear_system`, () => {
     [`singular 5x5 (row 3 = row 1 + row 2)`,
       [[1, 0, 0, 0, 1], [0, 1, 0, 0, 1], [1, 1, 0, 0, 2], [0, 0, 0, 1, 0], [0, 0, 1, 0, 0]],
       [1, 1, 2, 1, 1]],
+    // Cramer and LU returned all-NaN arrays here while the 3x3 inverse returned null
+    [`NaN in 2x2`, [[NaN, 1], [1, 1]], [1, 2]],
+    [`NaN in 3x3`, [[NaN, 1, 0], [1, 1, 0], [0, 0, 1]], [1, 2, 3]],
+    [`NaN in 5x5`, [[NaN, 0, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1]],
+      [1, 1, 1, 1, 1]],
+    [`NaN rhs in 2x2`, [[2, 1], [1, 3]], [NaN, 5]],
+    [`NaN rhs in 3x3`, [[4, -2, 1], [3, 6, -4], [2, 1, 8]], [12, NaN, 32]],
+    [`Infinity rhs in 5x5`, [[2, 1, 0, 0, 1], [1, 3, 1, 0, 0], [0, 1, 4, 1, 0], [0, 0, 1, 5, 1], [1, 0, 0, 1, 6]],
+      [1, 2, Infinity, 4, 5]],
   ])(`returns null for %s`, (_name, coefficients, rhs) => {
     expect(math.solve_linear_system(coefficients, rhs)).toBeNull()
   })
@@ -1237,13 +1232,7 @@ describe(`convex_hull_2d`, () => {
     // oxfmt-ignore
     const hull = math.convex_hull_2d([[0, 0], [1, 0], [1, 1], [0, 1]])
     // Shoelace signed area should be positive for CCW
-    let signed_area = 0
-    for (let idx = 0; idx < hull.length; idx++) {
-      const [coord_x_0, coord_y_0] = hull[idx]
-      const [coord_x_1, coord_y_1] = hull[(idx + 1) % hull.length]
-      signed_area += coord_x_0 * coord_y_1 - coord_x_1 * coord_y_0
-    }
-    expect(signed_area).toBeGreaterThan(0)
+    expect(math.polygon_signed_area(hull)).toBeGreaterThan(0)
   })
 })
 
@@ -1318,14 +1307,8 @@ describe(`polygon_signed_area and polygon_label_point`, () => {
   // L-shape: area 36, centroid (29/9, 29/9) lies in the notch outside the polygon, so the
   // anchor moves to the middle of the horizontal span through the centroid's height
   test(`polygon_label_point moves into a concave L-shaped region`, () => {
-    const l_shape: Vec2[] = [
-      [0, 0],
-      [10, 0],
-      [10, 2],
-      [2, 2],
-      [2, 10],
-      [0, 10],
-    ]
+    // oxfmt-ignore
+    const l_shape: Vec2[] = [[0, 0], [10, 0], [10, 2], [2, 2], [2, 10], [0, 10]]
     const anchor = math.polygon_label_point(l_shape)
     if (!anchor) throw new Error(`no anchor for the L-shape`)
     // centroid y is 116/36; a few flops on O(10) values: 12 digits is far above f64 eps
@@ -1336,22 +1319,10 @@ describe(`polygon_signed_area and polygon_label_point`, () => {
     expect(anchor.height).toBeCloseTo(10, 12)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `fewer than 3 vertices`,
-      [
-        [0, 0],
-        [1, 1],
-      ],
-    ],
-    [
-      `collinear`,
-      [
-        [0, 0],
-        [1, 1],
-        [2, 2],
-      ],
-    ],
+    [`fewer than 3 vertices`, [[0, 0], [1, 1]]],
+    [`collinear`, [[0, 0], [1, 1], [2, 2]]],
   ] satisfies [string, Vec2[]][])(`polygon_label_point is null for %s`, (_label, vertices) => {
     expect(math.polygon_label_point(vertices)).toBeNull()
   })
@@ -1580,17 +1551,43 @@ describe(`gcd and Miller index reduction`, () => {
     expect(() => math.unimodular_completion([2, 4, 0])).toThrow(`primitive integer vector`)
   })
 
+  // |a| = |b| hexagonal cells sit on a ±1/2 Gauss tie that float error split, so the reduction
+  // swung between ±short and threw after 64 steps (make_slab(mp-12712, [0, 0, 1]))
+  it.each([
+    [
+      `mp-12712, γ = 120°`,
+      [
+        [6.279279366746268, -10.876030898123462, 0],
+        [6.279279366746268, 10.876030898123462, 0],
+        [0, 0, 5.560004668537685],
+      ],
+    ],
+    [`a = 2.0411, γ = 60°`, math.cell_to_lattice_matrix(2.0411, 2.0411, 5, 90, 90, 60)],
+    [`a = 2.685, γ = 60°`, math.cell_to_lattice_matrix(2.685, 2.685, 5, 90, 90, 60)],
+  ] as [string, math.Matrix3x3][])(
+    `unimodular_completion reduces (001) of %s`,
+    (_name, cell) => {
+      const to_cart = math.create_frac_to_cart(cell)
+      const unimodular = math.unimodular_completion([0, 0, 1], to_cart)
+      expect(math.mat3x3_vec3_multiply(unimodular, [0, 0, 1])).toEqual([1, 0, 0])
+      expect(Math.abs(math.det_3x3(unimodular))).toBe(1)
+      const [first, second] = unimodular.slice(1).map((row) => to_cart(row))
+      const norm_first = math.dot(first, first)
+      expect(2 * Math.abs(math.dot(first, second))).toBeLessThanOrEqual(
+        norm_first * (1 + 1e-9),
+      )
+      expect(norm_first).toBeLessThanOrEqual(math.dot(second, second) * (1 + 1e-9))
+    },
+  )
+
   it(`validate_miller_indices accepts unreduced indices`, () => {
     expect(() => math.validate_miller_indices([2, 2, 0])).not.toThrow()
   })
 
   // hexagonal a = 3, c = 5: d_100 = a·√3/2, d_001 = c, and the (100) normal is 30° off a
   it(`miller_plane_normal is the reciprocal vector with |G| = 1 / d_hkl`, () => {
-    const hexagonal: math.Matrix3x3 = [
-      [3, 0, 0],
-      [-1.5, (3 * Math.sqrt(3)) / 2, 0],
-      [0, 0, 5],
-    ]
+    // oxfmt-ignore
+    const hexagonal: math.Matrix3x3 = [[3, 0, 0], [-1.5, (3 * Math.sqrt(3)) / 2, 0], [0, 0, 5]]
     const normal_100 = math.miller_plane_normal(hexagonal, [1, 0, 0])
     expect(1 / Math.hypot(...normal_100)).toBeCloseTo((3 * Math.sqrt(3)) / 2, 12)
     const cos_to_a = math.dot(normal_100, [1, 0, 0]) / Math.hypot(...normal_100)
@@ -1752,14 +1749,8 @@ describe(`solve_linear_program`, () => {
     `keeps a constraint row scaled by %s instead of dropping it`,
     (scale) => {
       // min -x0 s.t. x0 + x1 = 2 and s*x0 - s*x1 = 0 → x = [1, 1], objective -1
-      const result = math.solve_linear_program(
-        [-1, 0],
-        [
-          [1, 1],
-          [scale, -scale],
-        ],
-        [2, 0],
-      )
+      // oxfmt-ignore
+      const result = math.solve_linear_program([-1, 0], [[1, 1], [scale, -scale]], [2, 0])
       expect(result.status).toBe(`optimal`)
       // the second row used to be dropped as linearly dependent, giving x = [2, 0], obj -2
       expect(result.objective).toBeCloseTo(-1, 9)
@@ -1770,14 +1761,8 @@ describe(`solve_linear_program`, () => {
 
   test(`finds the optimal vertex of a small LP`, () => {
     // min -x - 2y  s.t. x + y + s1 = 4, x + 3y + s2 = 6, all >= 0  → x = 3, y = 1, obj = -5
-    const result = math.solve_linear_program(
-      [-1, -2, 0, 0],
-      [
-        [1, 1, 1, 0],
-        [1, 3, 0, 1],
-      ],
-      [4, 6],
-    )
+    // oxfmt-ignore
+    const result = math.solve_linear_program([-1, -2, 0, 0], [[1, 1, 1, 0], [1, 3, 0, 1]], [4, 6])
     expect(result.status).toBe(`optimal`)
     expect(result.solution[0]).toBeCloseTo(3, 9)
     expect(result.solution[1]).toBeCloseTo(1, 9)
@@ -1792,14 +1777,8 @@ describe(`solve_linear_program`, () => {
   })
 
   test(`drops linearly dependent but consistent rows`, () => {
-    const result = math.solve_linear_program(
-      [1, 2],
-      [
-        [1, 1],
-        [2, 2],
-      ],
-      [1, 2],
-    )
+    // oxfmt-ignore
+    const result = math.solve_linear_program([1, 2], [[1, 1], [2, 2]], [1, 2])
     expect(result.status).toBe(`optimal`)
     expect(result.solution).toEqual([1, 0])
     expect(result.objective).toBeCloseTo(1, 12)
@@ -1808,13 +1787,8 @@ describe(`solve_linear_program`, () => {
   test(`convex-hull decomposition: lowest-energy mixture reproducing a composition`, () => {
     // Phases as atom-fraction columns (A, B) with energies; query composition A0.5 B0.5
     // AB at -1 eV/atom beats the A + B mixture (0) and the A3B + AB3 mixture (-0.5)
-    const compositions = [
-      [1, 0],
-      [0, 1],
-      [0.5, 0.5],
-      [0.75, 0.25],
-      [0.25, 0.75],
-    ]
+    // oxfmt-ignore
+    const compositions = [[1, 0], [0, 1], [0.5, 0.5], [0.75, 0.25], [0.25, 0.75]]
     const energies = [0, 0, -1, -0.5, -0.5]
     const result = math.solve_linear_program(
       energies,

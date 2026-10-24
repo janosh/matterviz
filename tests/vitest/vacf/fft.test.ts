@@ -69,15 +69,11 @@ describe(`fft_in_place`, () => {
     expect(Math.max(...off_peak)).toBeLessThan(1e-12 * n_points)
   })
 
+  // oxfmt-ignore
   it.each([
     [`non-power-of-two length`, 6, 6, /length must be a power of two, got 6/],
     [`empty signal`, 0, 0, /signal is empty/],
-    [
-      `mismatched real and imaginary lengths`,
-      4,
-      8,
-      /real part has 4 entries but imaginary part has 8/,
-    ],
+    [`mismatched real and imaginary lengths`, 4, 8, /real part has 4 entries but imaginary part has 8/],
   ])(`rejects %s`, (_label, n_re, n_im, pattern) => {
     expect(() => fft_in_place(new Float64Array(n_re), new Float64Array(n_im))).toThrow(pattern)
   })
@@ -212,19 +208,13 @@ describe(`one_sided_periodogram`, () => {
     expect(padded.nyquist).toBe(unpadded.nyquist)
   })
 
+  // oxfmt-ignore
   it.each([
     [`DC signal`, Float64Array.from({ length: 16 }, () => 4), 0],
     [`zero signal`, new Float64Array(16), 0],
-    [
-      `Nyquist signal`,
-      Float64Array.from({ length: 16 }, (_unused, idx) => (idx % 2 === 0 ? 1 : -1)),
-      8,
-    ],
+    [`Nyquist signal`, Float64Array.from({ length: 16 }, (_unused, idx) => (idx % 2 === 0 ? 1 : -1)), 8],
   ] as const)(`handles a %s`, (_label, values, peak_idx) => {
-    const result = one_sided_periodogram(values, 1, 1, {
-      window: `none`,
-      zero_pad_factor: 1,
-    })
+    const result = one_sided_periodogram(values, 1, 1, { window: `none`, zero_pad_factor: 1 })
     const maximum_idx = result.power.indexOf(Math.max(...result.power))
     expect(maximum_idx).toBe(peak_idx)
   })

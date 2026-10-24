@@ -233,16 +233,6 @@ export const position_stream_transferables = (
   return [...buffers]
 }
 
-export const copy_numeric_fields = (
-  target: Record<string, number>,
-  source: Record<string, unknown>,
-  fields: readonly string[],
-): void => {
-  for (const field of fields) {
-    if (typeof source[field] === `number`) target[field] = source[field]
-  }
-}
-
 export function calc_force_stats(
   forces: number[][],
 ): { force_max: number; force_norm: number } | null {
@@ -281,21 +271,20 @@ export const checked_site_forces = (
 }
 
 // Lines of a text payload. A plain `\n` split is several times faster than the `\r?\n`
-// regex on a 100 MB file, so the regex only runs when a `\r` exists at all.
+// regex on a 100 MB file, so the regex only runs when a `\r` exists at all. Only the end is
+// trimmed: leading lines are content (an XDATCAR's title line may be blank).
 export const split_lines = (content: string): string[] => {
-  const trimmed = content.trim()
+  const trimmed = content.trimEnd()
   return trimmed.includes(`\r`) ? trimmed.split(/\r?\n/) : trimmed.split(`\n`)
 }
 
 // === Text lines ===
 
-// Bounds of the text with surrounding whitespace removed, as `content.trim()` would leave it
-const trimmed_bounds = (text: string): [number, number] => {
-  let from = 0
+// End of the text with trailing whitespace removed, as `content.trimEnd()` would leave it
+const trimmed_end = (text: string): number => {
   let target = text.length
-  while (from < target && text.charCodeAt(from) <= 32) from++
-  while (target > from && text.charCodeAt(target - 1) <= 32) target--
-  return [from, target]
+  while (target > 0 && text.charCodeAt(target - 1) <= 32) target--
+  return target
 }
 
 // Lines of a text payload exactly as split_lines returns them, stored as one start offset per
@@ -319,21 +308,21 @@ export class TextLines {
   constructor(text: string | readonly string[]) {
     const chunks = typeof text === `string` ? [text] : text.length > 0 ? text : [``]
     this.chunks = chunks
-    // Trimmed like split_lines: from the first content chunk's first non-whitespace char to the
-    // last content chunk's last one (an all-whitespace text is one empty line)
-    const bounds = chunks.map(trimmed_bounds)
-    const has_content = ([from, target]: [number, number]): boolean => from < target
-    const first = Math.max(0, bounds.findIndex(has_content))
-    const last = Math.max(0, bounds.findLastIndex(has_content))
-    const target = bounds[last][1]
+    // Trimmed like split_lines: up to the last content chunk's last non-whitespace char (an
+    // all-whitespace text is one empty line)
+    const ends = chunks.map(trimmed_end)
+    const last = Math.max(
+      0,
+      ends.findLastIndex((end) => end > 0),
+    )
+    const target = ends[last]
     this.target = target
-    // A chunk's lines start at `from` and after every `\n` before `to`; a chunk before the last
+    // A chunk's lines start at 0 and after every `\n` before `to`; a chunk before the last
     // ends in the `\n` closing its final line, which starts none
-    const from_of = (idx: number): number => (idx === first ? bounds[first][0] : 0)
     const to_of = (idx: number): number => (idx === last ? target : chunks[idx].length - 1)
     // One pass into a buffer sized from the first 64k chars' line density plus 1/8 slack, grown
     // 1.5x should the rest run denser: a count pass first cost as much again as the fill
-    const sample = chunks[first].slice(0, 2 ** 16)
+    const sample = chunks[0].slice(0, 2 ** 16)
     const density = sample.split(`\n`).length / Math.max(sample.length, 1)
     const total_chars = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
     let starts = new Uint32Array(Math.ceil(total_chars * density * 1.125) + 16)
@@ -341,10 +330,10 @@ export class TextLines {
     let count = 0
     for (let idx = 0; idx < chunks.length; idx++) {
       chunk_lines[idx] = count
-      if (idx < first || idx > last) continue
+      if (idx > last) continue
       const chunk = chunks[idx]
       const to = to_of(idx)
-      for (let start = from_of(idx); ;) {
+      for (let start = 0; ;) {
         if (count === starts.length) {
           const grown = new Uint32Array(Math.ceil(count * 1.5))
           grown.set(starts)
@@ -470,8 +459,8 @@ export function parse_extxyz_columns(comment: string): {
   // The whole value, quotes included and empty allowed, so a declared-but-empty `Properties=""`
   // is told apart from no `Properties=` at all. Nothing may sit between `=` and the value: with
   // `\s*` there, `Properties= Lattice="..."` skipped the gap and captured `Lattice=` instead.
-  const spec_match = /(?:^|\s)Properties\s*=(?<properties>"[^"]*"|\S*)/i.exec(comment)
-  const spec = spec_match?.groups?.properties.replaceAll(/^"|"$/gu, ``)
+  const spec_match = /(?:^|\s)Properties\s*=(?<properties>"[^"]*"|'[^']*'|\S*)/i.exec(comment)
+  const spec = spec_match?.groups?.properties.replaceAll(/^["']|["']$/gu, ``)
   const fields = spec?.split(`:`) ?? []
   // Every third field is a name. A repeat silently overwrote the first entry and moved its
   // offset, so `species:S:1:pos:R:3:pos:R:3` read the coordinates from columns 4-6.

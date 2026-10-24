@@ -2,14 +2,19 @@
 // index (band_indices, e.g. BXSF `BAND: n` → n − 1). Hovering a band point previews the surface
 // at its energy and marks its k-point and branch on the 3D k-path (and vice versa); a click pins
 // the energy as mu and isolates the band's sheet (click again for all). Band lines take their
-// sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands
-// (BandCrossings) and the 3D k-path. Without a band grid only the k-path link remains.
+// sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands and the 3D
+// k-path. Without a band grid only the k-path link remains. ElectronicStructure hosts it.
 import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
 import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte.js'
-import { band_crossings, band_line_style, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
+import {
+  band_crossings,
+  band_line_style,
+  BANDS_CSS_COLORS,
+  resolve_spin_mode,
+} from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
 import { watch_theme_changes } from '#lib/theme/index.js'
 import { sheet_color } from './constants'
@@ -36,11 +41,11 @@ export interface FermiBandsLinkInputs {
   fermi_props: () => { color_property?: ColorProperty }
 }
 
-// Construct during a component's init. Hosts bind the fields (bind:mu={link.mu},
-// bind:isolated_band={link.isolated_band} etc.) and hand the handlers to FermiSurface's
+// Construct during the host's init. It binds the fields (bind:mu={link.mu},
+// bind:isolated_band={link.isolated_band} etc.) and hands the handlers to FermiSurface's
 // on_point_hover and Bands' on_point_hover / on_plot_click.
 export class FermiBandsLink {
-  // Bands' x_positions and the node its crossing dots render in (see BandCrossings)
+  // Bands' x_positions and the <svg> its crossing dots render in
   x_positions = $state.raw<Record<string, Vec2>>({})
   crossings_svg = $state<SVGSVGElement>()
   private hovered_band = $state<number | null>(null)
@@ -96,8 +101,14 @@ export class FermiBandsLink {
   private readonly shown_bands = $derived.by(() =>
     this.isolated_band === null ? this.inputs.selected_bands() : [this.isolated_band],
   )
+  // the channel Bands draws alone, by its rule (unpolarized bands always overlay); without
+  // bands the grid's own spin channels decide
   private readonly only_spin = $derived.by((): `up` | `down` | null => {
-    const mode = this.band_spin_mode
+    const band_struct = this.inputs.band_struct()
+    const has_spin_down = band_struct
+      ? Boolean(band_struct.spin_down_bands?.length)
+      : this.inputs.band_data()?.n_spins === 2
+    const mode = resolve_spin_mode(this.band_spin_mode, has_spin_down)
     return mode === `up_only` ? `up` : mode === `down_only` ? `down` : null
   })
   readonly selected_spins = $derived.by((): SpinChannel[] | undefined =>

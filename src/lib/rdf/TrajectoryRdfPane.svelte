@@ -192,7 +192,7 @@
         {/each}
         {#snippet note()}
           {input.frame_numbers.length} frames
-          {#if input.frame_stride > 1}(every {input.frame_stride}th){/if}
+          {#if input.frame_stride > 1}(every {input.frame_stride}){/if}
           × {input.n_atoms} atoms · cutoff {format_num(input.cutoff, `.3~g`)} Å · ⟨V⟩ =
           {format_num(input.mean_volume, `.4~g`)} Å³ · CN(B|A) counts B neighbours of an A atom out
           to r_min

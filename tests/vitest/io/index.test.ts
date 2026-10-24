@@ -95,39 +95,35 @@ describe(`load_trajectory_from_url`, () => {
   })
 })
 
-describe(`basename_from_url`, () => {
-  test.each([
-    [`https://example.com/path/traj.xyz`, `traj.xyz`],
-    [`/bad.xyz`, `bad.xyz`],
-    [`traj.h5?X-Amz-Expires=300`, `traj.h5`],
-    [`https://cdn.example/a/b.cif#frag`, `b.cif`],
-    [`bare-name`, `bare-name`],
-    [`https://example.com/dir/`, `https://example.com/dir/`],
-  ])(`%s → %s`, (url, expected) => {
-    expect(basename_from_url(url)).toBe(expected)
-  })
+test.each([
+  [`https://example.com/path/traj.xyz`, `traj.xyz`],
+  [`/bad.xyz`, `bad.xyz`],
+  [`traj.h5?X-Amz-Expires=300`, `traj.h5`],
+  [`https://cdn.example/a/b.cif#frag`, `b.cif`],
+  [`bare-name`, `bare-name`],
+  [`https://example.com/dir/`, `https://example.com/dir/`],
+])(`basename_from_url(%s) = %s`, (url, expected) => {
+  expect(basename_from_url(url)).toBe(expected)
 })
 
-describe(`dropped_file_url`, () => {
-  const drag_event = (data: string) =>
-    ({ dataTransfer: { getData: () => data } }) as unknown as DragEvent
+const drag_event = (data: string) =>
+  ({ dataTransfer: { getData: () => data } }) as unknown as DragEvent
 
-  test.each([
-    [`no JSON data`, ``, undefined],
-    [`no URL in JSON`, JSON.stringify({ name: `test.json` }), undefined],
-    [`empty string URL`, JSON.stringify({ url: `` }), undefined],
-    // Drop payloads are external input: truthy non-string urls must not reach fetch
-    [`numeric URL`, JSON.stringify({ url: 123 }), undefined],
-    [`object URL`, JSON.stringify({ url: { href: `https://x.com` } }), undefined],
-    [`malformed JSON`, `invalid`, undefined],
-    [
-      `valid URL`,
-      JSON.stringify({ name: `t.json`, url: `https://x.com/t.json` }),
-      `https://x.com/t.json`,
-    ],
-  ])(`%s → %s`, (_, data, expected) => {
-    expect(dropped_file_url(drag_event(data))).toBe(expected)
-  })
+test.each([
+  [`no JSON data`, ``, undefined],
+  [`no URL in JSON`, JSON.stringify({ name: `test.json` }), undefined],
+  [`empty string URL`, JSON.stringify({ url: `` }), undefined],
+  // Drop payloads are external input: truthy non-string urls must not reach fetch
+  [`numeric URL`, JSON.stringify({ url: 123 }), undefined],
+  [`object URL`, JSON.stringify({ url: { href: `https://x.com` } }), undefined],
+  [`malformed JSON`, `invalid`, undefined],
+  [
+    `valid URL`,
+    JSON.stringify({ name: `t.json`, url: `https://x.com/t.json` }),
+    `https://x.com/t.json`,
+  ],
+])(`dropped_file_url: %s → %s`, (_, data, expected) => {
+  expect(dropped_file_url(drag_event(data))).toBe(expected)
 })
 
 describe(`load_from_url`, () => {
@@ -357,54 +353,52 @@ describe(`load_from_url`, () => {
     )
   })
 
-  describe(`Content-Disposition edge cases`, () => {
-    test.each([
-      [`filename="server-name.xyz"`, `server-name.xyz`, `quoted filename`],
-      [
-        `filename*=UTF-8''structure%20data.xyz`,
-        `structure data.xyz`,
-        `RFC 5987 filename* with UTF-8 encoding`,
-      ],
-      [
-        `filename*=structure%20file.cif`,
-        `structure file.cif`,
-        `filename* without explicit encoding`,
-      ],
-      [`filename=simple.xyz`, `simple.xyz`, `filename without quotes`],
-      [
-        `filename="fallback.xyz"; filename*=UTF-8''preferred.xyz`,
-        `preferred.xyz`,
-        `filename* takes precedence`,
-      ],
-      [
-        `filename*=UTF-8''invalid%ZZencoding.xyz`,
-        `invalid%ZZencoding.xyz`,
-        `invalid percent-encoding returns raw value`,
-      ],
-      // RFC 5987 grammar is charset'language'value — strip the full prefix
-      [
-        `filename*=UTF-8'en'na%C3%AFve.cif`,
-        `naïve.cif`,
-        `RFC 5987 filename* with charset and language tag`,
-      ],
-      // Non-UTF-8 charset prefix must still be stripped; %FC is invalid UTF-8
-      // so decodeURIComponent fails and the raw (prefix-stripped) value is kept
-      [
-        `filename*=iso-8859-1''f%FCr.txt`,
-        `f%FCr.txt`,
-        `RFC 5987 filename* with non-UTF-8 charset`,
-      ],
-      [``, `url-name.xyz`, `no filename falls back to URL basename`],
-    ])(`%s -> %s (%s)`, async (disposition, expected, _desc) => {
-      const { received_filename } = await load_test_url(
-        `https://example.com/url-name.xyz`,
-        `content`,
-        {
-          'content-type': `text/plain`,
-          'content-disposition': `attachment${disposition ? `; ${disposition}` : ``}`,
-        },
-      )
-      expect(received_filename).toBe(expected)
-    })
+  test.each([
+    [`filename="server-name.xyz"`, `server-name.xyz`, `quoted filename`],
+    [
+      `filename*=UTF-8''structure%20data.xyz`,
+      `structure data.xyz`,
+      `RFC 5987 filename* with UTF-8 encoding`,
+    ],
+    [
+      `filename*=structure%20file.cif`,
+      `structure file.cif`,
+      `filename* without explicit encoding`,
+    ],
+    [`filename=simple.xyz`, `simple.xyz`, `filename without quotes`],
+    [
+      `filename="fallback.xyz"; filename*=UTF-8''preferred.xyz`,
+      `preferred.xyz`,
+      `filename* takes precedence`,
+    ],
+    [
+      `filename*=UTF-8''invalid%ZZencoding.xyz`,
+      `invalid%ZZencoding.xyz`,
+      `invalid percent-encoding returns raw value`,
+    ],
+    // RFC 5987 grammar is charset'language'value — strip the full prefix
+    [
+      `filename*=UTF-8'en'na%C3%AFve.cif`,
+      `naïve.cif`,
+      `RFC 5987 filename* with charset and language tag`,
+    ],
+    // Non-UTF-8 charset prefix must still be stripped; %FC is invalid UTF-8
+    // so decodeURIComponent fails and the raw (prefix-stripped) value is kept
+    [
+      `filename*=iso-8859-1''f%FCr.txt`,
+      `f%FCr.txt`,
+      `RFC 5987 filename* with non-UTF-8 charset`,
+    ],
+    [``, `url-name.xyz`, `no filename falls back to URL basename`],
+  ])(`Content-Disposition %s -> %s (%s)`, async (disposition, expected, _desc) => {
+    const { received_filename } = await load_test_url(
+      `https://example.com/url-name.xyz`,
+      `content`,
+      {
+        'content-type': `text/plain`,
+        'content-disposition': `attachment${disposition ? `; ${disposition}` : ``}`,
+      },
+    )
+    expect(received_filename).toBe(expected)
   })
 })

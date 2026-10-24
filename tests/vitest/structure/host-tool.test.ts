@@ -463,6 +463,7 @@ const molecule = make_molecule([
   [`H`, [0, 0, 0]],
   [`H`, [0, 0, 0.74]],
 ])
+// oxfmt-ignore
 test.each<[string, unknown, string, AnyStructure?]>([
   [`a non-object`, [], `prediction.geometry`],
   [`too few positions`, { positions: [[0, 0, 0]] }, `prediction.geometry.positions`],
@@ -473,12 +474,7 @@ test.each<[string, unknown, string, AnyStructure?]>([
   [`an overflowing cell`, { ...unit, lattice: overflowing_cell }, invertible],
   [`a non-finite cell`, { ...unit, lattice: [[Infinity, 0, 0]] }, `geometry.lattice[0][0]`],
   [`a two-row cell`, { ...unit, lattice: two_row_cell }, `lattice: expected a finite 3x3`],
-  [
-    `a cell for a molecule`,
-    { ...unit, lattice: relaxed_cell },
-    `lattice: a molecule`,
-    molecule,
-  ],
+  [`a cell for a molecule`, { ...unit, lattice: relaxed_cell }, `lattice: a molecule`, molecule],
 ])(`rejects geometry with %s atomically`, (_label, geometry, message, structure) => {
   const input = structure ?? two_site_crystal()
   const { state, on_prediction, on_replace_input, controller } = controller_fixture(input)

@@ -10,16 +10,14 @@ vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
 afterEach(() => {
   vi.clearAllMocks()
   vi.unstubAllGlobals()
-  document.body.replaceChildren()
 })
+const mount_pane = (state: FileExportState) =>
+  mount(ExportDestination, { target: document.body, props: { state } })
 
 test(`filename follows the source until edited, rejects paths, and resets the destination`, async () => {
   let source = $state(`initial`)
   const export_state = new FileExportState(() => source)
-  const pane = mount(ExportDestination, {
-    target: document.body,
-    props: { state: export_state },
-  })
+  const pane = mount_pane(export_state)
   await tick()
   const input = document.querySelector(`input`)
   if (!input) throw new Error(`Missing filename input`)
@@ -46,10 +44,7 @@ test(`filename follows the source until edited, rejects paths, and resets the de
       throw new DOMException(`Blocked`, `SecurityError`)
     },
   })
-  const framed = mount(ExportDestination, {
-    target: document.body,
-    props: { state: export_state },
-  })
+  const framed = mount_pane(export_state)
   await tick()
   expect(document.querySelector(`[aria-label="Choose export folder"]`)).toBeNull()
   await unmount(framed)
@@ -102,10 +97,7 @@ test.each([
     const picker = vi.fn().mockResolvedValue(directory)
     vi.stubGlobal(`showDirectoryPicker`, picker)
     const export_state = new FileExportState(() => `My movie`)
-    const pane = mount(ExportDestination, {
-      target: document.body,
-      props: { state: export_state },
-    })
+    const pane = mount_pane(export_state)
     await tick()
     const choose = document.querySelector<HTMLButtonElement>(
       `[aria-label="Choose export folder"]`,

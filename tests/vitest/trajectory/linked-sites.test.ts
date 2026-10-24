@@ -27,14 +27,11 @@ test.each<[string, Record<string, unknown> | null, number[], number[]]>([
   expect(scene_site_indices(source_indices, frame)).toEqual(expected)
 })
 
+// oxfmt-ignore
 test.each<[string, Record<string, unknown>, number[]]>([
   [`full frame passes sites through`, {}, [3, 1, 7]],
   // site 7 lies past the 4-site sample
-  [
-    `render sample maps sites to source atoms`,
-    { render_sample: true, source_atom_indices: sampled },
-    [9, 3],
-  ],
+  [`render sample maps sites to source atoms`, { render_sample: true, source_atom_indices: sampled }, [9, 3]],
 ])(`site_source_atoms: %s`, (_name, metadata, expected) => {
   expect(site_source_atoms([3, 1, 7], { metadata })).toEqual(expected)
 })

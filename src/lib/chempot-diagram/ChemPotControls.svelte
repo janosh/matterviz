@@ -21,10 +21,15 @@
     children?: Snippet
   } = $props()
 
-  // Commit on change, not per keystroke (typing -10 would compute at -1 first); ignore `-`
+  // Commit on change, not per keystroke (typing -10 would compute at -1 first). A blank, a
+  // lone `-` or a value past the input's min/max (negative padding, positive floor) is
+  // rejected and its text restored (Svelte skips rewriting an unchanged value)
   const set_number = (key: `element_padding` | `default_min_limit`, event: Event) => {
-    const value = (event.currentTarget as HTMLInputElement).valueAsNumber
-    if (Number.isFinite(value)) set(key, value)
+    const input = event.currentTarget as HTMLInputElement
+    const { rangeUnderflow, rangeOverflow } = input.validity
+    const valid = Number.isFinite(input.valueAsNumber) && !rangeUnderflow && !rangeOverflow
+    if (valid) set(key, input.valueAsNumber)
+    else input.value = String(values[key])
   }
   // Reversal is a descending palette_range
   const [palette_start, palette_end] = $derived(values.color_scale.palette_range ?? [0, 1])

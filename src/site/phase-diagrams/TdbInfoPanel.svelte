@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { extract_tdb_reference, summarize_models, type TdbParseResult } from './tdb-parse'
+  import type { TdbParseResult } from './tdb-parse'
+  import { extract_tdb_reference, is_real_element, summarize_models } from './tdb-parse'
 
   interface Props {
     result: TdbParseResult
@@ -62,9 +63,7 @@
       {/if}
     </p>
   {:else}
-    {@const elems = elements
-      .map((element) => element.symbol)
-      .filter((symbol) => symbol !== `VA` && symbol !== `/-`)}
+    {@const elems = elements.map((element) => element.symbol).filter(is_real_element)}
     {@const [el_a, el_b] = [elems[0] ?? `EL1`, elems[1] ?? `EL2`]}
     {@const tdb = system_name || `your_system`}
     <div class="notice warning">

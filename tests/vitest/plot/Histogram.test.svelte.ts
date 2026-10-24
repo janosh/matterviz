@@ -16,6 +16,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
+  fire,
   pin_cycle,
   expect_tooltip_paint,
   export_via_pane,
@@ -199,6 +200,18 @@ describe(`Histogram`, () => {
     expect(Math.min(...heights)).toBeGreaterThan(2)
   })
 
+  // with 0 off the count range, an empty bin drew a bar down from the floor that took focus
+  // ("count 0") but, like a gone one, showed no tooltip
+  test(`empty bins draw no bar when the count range excludes 0`, async () => {
+    const series = [series_of([1, 1, 1, 3, 3, 3])]
+    await mount_histogram({ series, bins: 3, y_axis: { range: [2, 8] } })
+    const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
+    expect(bars.map((bar) => bar.getAttribute(`aria-label`))).toEqual([
+      `Series 1 bin 1: 1 to 1.67, count 3`,
+      `Series 1 bin 3: 2.33 to 3, count 3`,
+    ])
+  })
+
   test(`shift-wheel pans a log count axis by decades`, async () => {
     await mount_histogram({
       series: [{ values: [1, 2, 3, 4, 5], label: `A` }],
@@ -206,10 +219,8 @@ describe(`Histogram`, () => {
     })
     const plot = plot_svg()
     plot.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-    window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
-    await tick()
-    plot.dispatchEvent(new WheelEvent(`wheel`, { deltaY: 2000, bubbles: true }))
-    await tick()
+    await fire(window, new KeyboardEvent(`keydown`, { key: `Shift` }))
+    await fire(plot, new WheelEvent(`wheel`, { deltaY: 2000, bubbles: true }))
     const pan_ticks = get_tick_numbers(`y`)
     expect(pan_ticks.length).toBeGreaterThan(0)
     expect(Math.min(...pan_ticks)).toBeGreaterThan(100)
@@ -265,8 +276,7 @@ describe(`Histogram`, () => {
     })
     svg.dispatchEvent(mouse(`mousedown`, at(130, 40)))
     window.dispatchEvent(mouse(`mousemove`, at(250, 240)))
-    window.dispatchEvent(mouse(`mouseup`, at(250, 240)))
-    await tick()
+    await fire(window, mouse(`mouseup`, at(250, 240)))
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
     bars[Math.floor(bars.length / 2)].dispatchEvent(mouse(`mousemove`))
     const { count, y } = on_bar_hover.mock.lastCall?.[0] ?? {}
@@ -309,6 +319,21 @@ describe(`Histogram`, () => {
     expect(x_ticks.length).toBeGreaterThan(0)
     expect(Math.max(...x_ticks)).toBeLessThan(100)
     expect(Math.max(...get_tick_numbers(`y`))).toBeGreaterThanOrEqual(4)
+  })
+
+  // bin_values drops a sample whose weight is non-finite, so it must not widen the value axis,
+  // and a series with no countable sample doesn't open the secondary axes
+  test(`samples with non-finite weights widen no axis`, async () => {
+    await mount_histogram({
+      series: [
+        { values: [0, 1, 2, 1000], weights: [1, 1, 1, NaN] },
+        { values: [50, 60], weights: [NaN, Infinity], x_axis: `x2`, y_axis: `y2` },
+      ],
+      mode: `overlay`,
+    })
+    expect(Math.max(...get_tick_numbers(`x`))).toBeLessThan(10)
+    expect(document.querySelector(`g.x2-axis`)).toBeNull()
+    expect(document.querySelector(`g.y2-axis`)).toBeNull()
   })
 
   test(`legend writes hidden IDs while preserving input samples and colors`, async () => {
@@ -489,8 +514,7 @@ describe(`Histogram`, () => {
     const bars = [...document.querySelectorAll(`g.histogram-series path[role="button"]`)]
     const [first, last] = [bars[0], bars.at(-1)].map((bar) => bar?.getAttribute(`fill`))
     expect(first).not.toBe(last)
-    bars.at(-1)?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    await tick()
+    await fire(bars.at(-1), new MouseEvent(`mousemove`, { bubbles: true }))
     expect_tooltip_paint(doc_query(`.plot-tooltip`), last ?? ``)
   })
 
@@ -513,8 +537,7 @@ describe(`Histogram`, () => {
       on_bar_click,
     })
     const [first_bar] = document.querySelectorAll(`g.histogram-series path[role="button"]`)
-    first_bar.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    await tick()
+    await fire(first_bar, new MouseEvent(`mousemove`, { bubbles: true }))
     // Same payload as the tooltip snippet (HistogramHandlerProps) plus the DOM event, matching BarPlot
     const event = expect.any(MouseEvent)
     const hit = { value: 1, count: 2.5, property: `A`, series_idx: 0, event }
@@ -530,18 +553,22 @@ describe(`Histogram`, () => {
     expect(on_bar_click).toHaveBeenCalledTimes(3)
     expect(on_bar_click).toHaveBeenLastCalledWith(expect.objectContaining(hit))
     expect(document.querySelector(`.plot-tooltip.pinned`)).toBeNull() // a claimed click
-    first_bar.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
-    await tick()
+    await fire(first_bar, new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
     expect(document.querySelector(`.plot-tooltip`)).toBeNull()
-    first_bar.dispatchEvent(mouse(`mousemove`))
-    await tick()
+    await fire(first_bar, mouse(`mousemove`))
     const tooltip_after = (next: HistogramSeries[]) => {
       series = next
       flushSync()
       return document.querySelector(`.plot-tooltip`)?.textContent ?? null
     }
-    expect(tooltip_after([series_of([0, 1, 1, 9], { label: `A` })])).toContain(`Count: 3`)
+    const refilled = [series_of([0, 1, 1, 9], { label: `A` })]
+    expect(tooltip_after(refilled)).toContain(`Count: 3`)
+    // an emptied bin draws no bar: its tooltip showed `Count: 0` over nothing
+    expect(tooltip_after([series_of([5, 9], { label: `A` })])).toBeNull()
+    expect(on_bar_hover).toHaveBeenLastCalledWith(null)
+    tooltip_after(refilled)
+    await fire(document.querySelector(`g.histogram-series path`), mouse(`mousemove`))
     expect(tooltip_after([])).toBeNull()
     expect(on_bar_hover).toHaveBeenLastCalledWith(null)
   })
@@ -560,8 +587,7 @@ describe(`Histogram`, () => {
     const middle_bar = [...bars].find((bar) =>
       bar.getAttribute(`aria-label`)?.includes(`bin 8:`),
     )
-    middle_bar?.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    await tick()
+    await fire(middle_bar, new MouseEvent(`mousemove`, { bubbles: true }))
     expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining({ value: 0 }))
     expect(document.querySelector(`.plot-tooltip`)?.textContent).toMatch(/E: 0\s*Count: 1/)
   })
@@ -615,8 +641,7 @@ describe(`Histogram`, () => {
     const x_axis = { scale_type: `log`, range: [1, 1000] }
     const series = [series_of([2, 5, 20, 200])]
     await mount_histogram({ series, bins: 3, x_axis, on_bar_hover })
-    doc_query(`g.histogram-series path[role="button"]`).dispatchEvent(mouse(`mousemove`))
-    await tick()
+    await fire(doc_query(`g.histogram-series path[role="button"]`), mouse(`mousemove`))
     const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
     expect(value).toBeCloseTo(Math.sqrt(10), 12)
     expect(x).toBe(value)

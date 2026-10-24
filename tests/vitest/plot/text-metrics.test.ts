@@ -6,6 +6,7 @@ import {
   get_text_metrics_revision,
   invalidate_text_metrics_after_fonts_ready,
   measure_text_line,
+  on_fonts_ready,
   resolve_font_size_css,
   resolve_font_spec,
   wrap_text_paragraph,
@@ -220,6 +221,25 @@ describe(`text metrics`, () => {
     await expect(
       invalidate_text_metrics_after_fonts_ready({ ready: Promise.resolve() }),
     ).resolves.toBe(revision_before + 1)
+  })
+
+  // Components return the cleanup from onMount/$effect: one unmounted before fonts land must
+  // not write its state, while a mounted one hears the new revision
+  it(`on_fonts_ready reports the revision unless cancelled first`, async () => {
+    mock_canvas()
+    let resolve_ready: (() => void) | undefined
+    const ready = new Promise<void>((resolve) => {
+      resolve_ready = resolve
+    })
+    const [kept, cancelled] = [vi.fn(), vi.fn()]
+    on_fonts_ready(kept, { ready })
+    on_fonts_ready(cancelled, { ready })()
+    const revision = invalidate_text_metrics_after_fonts_ready({ ready })
+    resolve_ready?.()
+    const expected = await revision
+    await Promise.resolve() // let the hooks' own `then` callbacks run
+    expect(kept).toHaveBeenCalledExactlyOnceWith(expected)
+    expect(cancelled).not.toHaveBeenCalled()
   })
 
   it(`returns deterministic SSR metrics without touching browser globals`, async () => {

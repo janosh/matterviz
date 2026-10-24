@@ -156,6 +156,12 @@ describe(`adaptive density utilities`, () => {
     const constant_series = [{ x: [7, 7], y: [3, 3] }]
     const linear = series_extents(constant_series, `linear`, `linear`, 0)
     expect(linear).toEqual({ x: [6.5, 7.5], y: [2.5, 3.5] })
+    // past |10| linear pads grow to 5% of the value: 1e20 ± 0.5 === 1e20 collapsed the domain,
+    // and 5% of MAX_VALUE overflowed to Infinity
+    const huge = (val: number) => series_extents([{ x: [val, val], y: [0, 1] }], `linear`).x
+    expect(huge(20)).toEqual([19, 21])
+    expect(huge(1e20)).toEqual([0.95e20, 1.05e20])
+    expect(huge(Number.MAX_VALUE)[1]).toBe(Number.MAX_VALUE)
     const density = bin_points(constant_series, linear.x, linear.y, 4, 4)
     expect(density.visible_count).toBe(2)
     expect(density.max_count).toBe(2)

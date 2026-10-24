@@ -138,6 +138,11 @@ describe(`NebPlot`, () => {
 
     const hidden = await mount_plot({ paths: reaction_paths, annotate_barrier: false })
     expect(squash(hidden.textContent)).not.toContain(`Eact = `)
+
+    // without its spline the fitted-saddle cross marked a curve that is not drawn
+    const no_spline = await mount_plot({ paths: reaction_paths, show_spline: false })
+    expect(squash(no_spline.textContent)).toContain(`Eact = `)
+    expect(no_spline.textContent).not.toMatch(/fit \+/)
   })
 
   // oxfmt-ignore

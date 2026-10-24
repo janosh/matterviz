@@ -51,6 +51,7 @@
     camera_needs_fit,
     camera_position_for_target,
     characteristic_atom_spacing,
+    DEFAULT_CAMERA_VIEW,
     get_center_of_mass,
     get_orig_site_idx,
     is_image_site,
@@ -96,7 +97,7 @@
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { Euler, OrthographicCamera, Vector3 } from 'three/webgpu'
+  import { Euler, OrthographicCamera, Quaternion, Vector3 } from 'three/webgpu'
   import type { Mesh, WebGPURenderer } from 'three/webgpu'
   import { bond_neighbor_summary, bond_records } from './bond-rendering'
   import type { BondData } from './bond-rendering'
@@ -219,7 +220,7 @@
     removed_bonds = $bindable([]),
     bond_order_overrides = $bindable([]),
     bond_edits_enabled = true,
-    bond_edit_mode = $bindable<BondEditMode>(`add`),
+    bond_edit_mode = `add`,
     bond_edit_order = 1,
     selection_highlight_color = HIGHLIGHT.select,
     // Active highlight group with different color
@@ -232,9 +233,9 @@
     get_reset_target = $bindable(),
     initial_computed_zoom = $bindable(),
     hidden_elements = new SvelteSet(),
-    hidden_prop_vals = $bindable(new SvelteSet<number | string>()),
-    element_radius_overrides = $bindable<Partial<Record<ElementSymbol, number>>>({}),
-    site_radius_overrides = $bindable<SvelteMap<number, number>>(new SvelteMap()),
+    hidden_prop_vals = new SvelteSet<number | string>(),
+    element_radius_overrides = {},
+    site_radius_overrides = new SvelteMap<number, number>(),
     property_colors = null,
     atom_color_field,
     volume_color_field,
@@ -245,8 +246,8 @@
     on_operation_start,
     on_bond_edit_start,
     on_add_atom,
-    add_atom_mode = $bindable(false),
-    add_element = $bindable(`C`),
+    add_atom_mode = false,
+    add_element = `C`,
     cursor = $bindable(`default`),
     dragging_atoms = $bindable(false),
     volumetric_data = undefined,
@@ -491,8 +492,8 @@
     fly_to_request = undefined
     // The atoms sit inside a group carrying the manual `rotation`, so a direction expressed in
     // crystal/structure coordinates has to be rotated into world space before the camera flies.
-    const world_dir = new Vector3(...direction).applyEuler(new Euler(...rotation))
-    untrack(() => fly_to.start([world_dir.x, world_dir.y, world_dir.z]))
+    const world_dir = content_to_world_dir(direction)
+    untrack(() => fly_to.start(world_dir))
   })
   $effect(() => () => fly_to.release())
 
@@ -510,7 +511,7 @@
     if (is_initial_structure && camera_position !== undefined) {
       const initial_target = camera_target ?? rotation_target
       get_reset_target = () => initial_target
-    } else get_reset_target = () => fit_frame.center
+    } else get_reset_target = () => content_to_world(fit_frame.center)
   })
 
   // Hover and edit-bonds press state; hovered_idx stays the bindable prop the parent reads
@@ -546,23 +547,6 @@
   const bond_key_for = (bond: BondKeyTarget): string =>
     rendered_bond_key_for(canonical_bond_target(bond))
 
-  const find_added_bond_by_rendered_key = (key: string): StructureBond | undefined =>
-    added_bonds.find((bond) => rendered_bond_key_for(bond) === key)
-
-  // The bond a rendered (or context-menu) bond edit applies to: a manually added bond keeps
-  // its own key, a calculated one is addressed by its canonical key
-  function resolve_bond_edit_target({
-    site_idx_1,
-    site_idx_2,
-    cell_shift,
-  }: BondKeyTarget): BondKeyTarget {
-    const rendered_target = { site_idx_1, site_idx_2, cell_shift }
-    const rendered_key = rendered_bond_key_for(rendered_target)
-    return (
-      find_added_bond_by_rendered_key(rendered_key) ?? canonical_bond_target(rendered_target)
-    )
-  }
-
   const is_image_site_idx = (site_idx: number): boolean =>
     is_image_site(get_site(structure, site_idx))
 
@@ -578,11 +562,11 @@
     )
   }
 
+  // canonical on both sides: a menu opened on an image atom's copy names the same bond
   function get_current_bond_order(bond: BondKeyTarget): BondOrder | undefined {
-    const key = rendered_bond_key_for(bond)
+    const key = bond_key_for(bond)
     const matches = (other: BondKeyTarget) => bond_key_for(other) === key
     return (
-      find_added_bond_by_rendered_key(key)?.order ??
       bond_order_overrides.find(matches)?.order ??
       added_bonds.find(matches)?.order ??
       bond_records(filtered_bond_pairs).find(matches)?.bond_order
@@ -632,30 +616,19 @@
   function add_or_restore_pair(site_idx_1: number, site_idx_2: number) {
     const rendered_target = { site_idx_1, site_idx_2 }
     if (!can_edit_bond(rendered_target)) return
-    const edit_state = current_bond_edit_state()
-    const canonical_target = canonical_bond_target(rendered_target)
-    const canonical_result = add_or_restore_bond(
-      edit_state,
-      canonical_target,
+    // Stored by base sites and cell shift, as the bonds binding addresses them: an image
+    // atom's display index names a different atom once the image set renumbers
+    const target = canonical_bond_target(rendered_target)
+    const result = add_or_restore_bond(
+      current_bond_edit_state(),
+      target,
       editable_perceived_bond_pairs,
       bond_edit_order,
     )
-    const use_rendered_target =
-      canonical_result.action === `added` &&
-      rendered_bond_key_for(canonical_target) !== rendered_bond_key_for(rendered_target)
-    const target = use_rendered_target ? rendered_target : canonical_target
-    const result = use_rendered_target
-      ? add_or_restore_bond(
-          edit_state,
-          rendered_target,
-          editable_perceived_bond_pairs,
-          bond_edit_order,
-        )
-      : canonical_result
     if (result.action === `already-visible`) {
       const [rendered_key, canonical_key] = [
         rendered_bond_key_for(rendered_target),
-        bond_key_for(target),
+        rendered_bond_key_for(target),
       ]
       const visible_bonds = bond_records(filtered_bond_pairs)
       const bond =
@@ -667,12 +640,13 @@
     apply_bond_edit_result(result, false)
   }
 
-  // Order change or deletion of a rendered bond (a null bond is a no-op)
+  // Order change or deletion of a rendered bond (a null bond is a no-op), addressed by its
+  // canonical key like every edit (added bonds are stored under it too)
   function edit_bond(
     bond: BondKeyTarget | null,
     edit: (target: BondKeyTarget) => BondEditResult,
   ): void {
-    const target = bond && resolve_bond_edit_target(bond)
+    const target = bond && canonical_bond_target(bond)
     if (target && can_edit_bond(target)) apply_bond_edit_result(edit(target))
   }
   const set_context_bond_order = (order: BondOrder) =>
@@ -805,6 +779,24 @@
   )
   // Negated target for the inner un-translate group (recomputed only on target change)
   let neg_rotation_target = $derived(math.scale(rotation_target, -1) as Vec3)
+  // Content is drawn turned by `rotation` about rotation_target, so content-frame points meet
+  // the camera (world) through it, and world view directions measure content through its
+  // inverse. Null while unrotated, which leaves every point and direction exactly as it is.
+  const rotation_quat = $derived(
+    rotation.some(Boolean) ? new Quaternion().setFromEuler(new Euler(...rotation)) : null,
+  )
+  const content_to_world_dir = (dir: Vec3): Vec3 =>
+    rotation_quat ? new Vector3(...dir).applyQuaternion(rotation_quat).toArray() : dir
+  const content_to_world = (point: Vec3): Vec3 =>
+    rotation_quat
+      ? math.add(content_to_world_dir(math.subtract(point, rotation_target)), rotation_target)
+      : point
+  // `fallback`: the world direction a missing one stands for (camera-fit's defaults)
+  const world_to_content_dir = (dir: Vec3 | null | undefined, fallback: Vec3) => {
+    if (!rotation_quat) return dir
+    const world_dir = dir?.some(Boolean) ? dir : fallback
+    return new Vector3(...world_dir).applyQuaternion(rotation_quat.clone().invert()).toArray()
+  }
 
   // Near/far / skybox — not framing. Lattice avg edge stays stable when images toggle.
   // Edge lengths come from the matrix: raw JSON may omit a/b/c, and a NaN far plane clips
@@ -853,7 +845,11 @@
   })
   // Screen-aligned spans of `content` seen from `view_dir` (the camera's offset from its target)
   const spans_along = (content: AnyStructure | undefined, view_dir: Vec3 | null | undefined) =>
-    structure_fit_frame(content, { ...fit_opts, view_dir }).spans
+    structure_fit_frame(content, {
+      ...fit_opts,
+      view_dir: world_to_content_dir(view_dir, DEFAULT_CAMERA_VIEW),
+      view_up: world_to_content_dir(camera_up, [0, 1, 0]),
+    }).spans
   // The structure the zoom was last fitted to (initially the mounted one), re-measured by the
   // follow below along wherever the camera looks
   let framed_structure = untrack(() => structure)
@@ -958,7 +954,9 @@
     camera_fit_cache.previous_view = camera_view
     if (should_fit && structure && measured())
       frame_camera(
-        view_changed ? fit_frame.center : (camera_target ?? fit_frame.center),
+        view_changed
+          ? content_to_world(fit_frame.center)
+          : (camera_target ?? content_to_world(fit_frame.center)),
         camera_direction,
       )
   })
@@ -1011,7 +1009,7 @@
         spans_along(content, view_dir),
       )
       if (measured() && outgrows_view(spans, fitted, visible))
-        return frame_camera(fit_frame.center, view_dir)
+        return frame_camera(content_to_world(fit_frame.center), view_dir)
       const moved = follow_center(pose, previous.center, frame.center)
       camera_target = moved.target
       camera_position = moved.position
@@ -1172,14 +1170,17 @@
   let editing_bonds = $derived(
     interactive && bond_edits_enabled && measure_mode === `edit-bonds`,
   )
-  let editable_perceived_bond_pairs = $derived(
-    editing_bonds
-      ? bond_records(perceived_bond_pairs).map((bond) => ({
-          ...bond,
-          ...canonical_bond_target(bond),
-        }))
-      : [],
-  )
+  // The calculated bonds edits are judged against, minus the added ones: the bonds binding
+  // hands those back on the structure, where perception reports them as explicit bonds. Counted
+  // as calculated, deleting one also recorded a removal (an add + delete left an empty override
+  // instead of cancelling out) and reordering one turned it into an override.
+  let editable_perceived_bond_pairs = $derived.by(() => {
+    if (!editing_bonds) return []
+    const added_keys = new Set(added_bonds.map(rendered_bond_key_for))
+    return bond_records(perceived_bond_pairs)
+      .map((bond) => ({ ...bond, ...canonical_bond_target(bond) }))
+      .filter((bond) => !added_keys.has(rendered_bond_key_for(bond)))
+  })
 
   let filtered_bond_pairs = $derived.by(() => {
     if (!structure) return perceived_bond_pairs
@@ -1217,12 +1218,39 @@
       calculated.push(override === undefined ? bond : { ...bond, bond_order: override })
     }
 
-    // Create BondPair objects for manually added bonds
+    // Added bonds name base sites and a cell shift, as the bonds binding does. Each is drawn
+    // between every visible pair of displayed copies the bond joins (where it was picked, image
+    // atoms included, like calculated bonds), and not at all where no copy of the partner is
+    // on screen: a base-site copy reaching a shifted partner would be a stub into empty space.
     const added: BondPair[] = []
+    const { sites } = structure
+    let image_copies: Map<number, number[]> | undefined // source site -> its image sites
+    const visible_copies = (site_idx: number): number[] => {
+      if (!image_copies) {
+        image_copies = new Map()
+        for (const [idx, { provenance }] of sites.entries()) {
+          if (provenance?.image_of === undefined) continue
+          const images = image_copies.get(provenance.image_of)
+          if (images) images.push(idx)
+          else image_copies.set(provenance.image_of, [idx])
+        }
+      }
+      return [site_idx, ...(image_copies.get(site_idx) ?? [])].filter(is_site_visible)
+    }
     for (const added_bond of added_bonds) {
-      const { site_idx_1: idx_i, site_idx_2: idx_j } = added_bond
-      if (!is_site_visible(idx_i) || !is_site_visible(idx_j)) continue
-      added.push(structure_bond_to_bond_pair(structure, added_bond))
+      // a caller's bond to a site this structure lacks draws nothing (no throw mid-render)
+      if (![added_bond.site_idx_1, added_bond.site_idx_2].every((idx) => sites[idx])) continue
+      const bond = structure_bond_to_bond_pair(structure, added_bond)
+      const offset = math.subtract(bond.pos_2, bond.pos_1)
+      const partners = visible_copies(bond.site_idx_2)
+      for (const site_idx_1 of visible_copies(bond.site_idx_1)) {
+        const pos_1 = sites[site_idx_1].xyz
+        const partner = math.add(pos_1, offset)
+        const site_idx_2 = partners.find((idx) => math.same_position(sites[idx].xyz, partner))
+        if (site_idx_2 === undefined) continue
+        const pos_2 = sites[site_idx_2].xyz
+        added.push({ ...bond, site_idx_1, site_idx_2, pos_1, pos_2, cell_shift: undefined })
+      }
     }
 
     return [...calculated, ...added]
@@ -1579,6 +1607,38 @@
             0.5 * (atom_groups.first_by_site.get(site_idx)?.radius ?? 0)}
         />
       {/if}
+      <!-- Clickable bond and atom hit targets in edit-bonds mode, clipped like the atoms and
+        bonds they pick: a whole-atom cutaway draws (so lets you edit) shells past its slab -->
+      <BondEditTargets
+        bonds={editable_bond_pairs}
+        atom_targets={editable_atom_hit_targets}
+        sites={structure?.sites}
+        mode={bond_edit_mode}
+        {bond_thickness}
+        bind:hovered_bond_key={pointer.hovered_bond_key}
+        atom_events={(site_idx) =>
+          touch_hover({
+            ...pointer.hover_props(site_idx),
+            onpointerdown: (event) => select_edit_bonds_site(site_idx, event),
+          })}
+        on_select_site={select_edit_bonds_site}
+        on_delete_bond={(bond) => {
+          remove_bond(bond)
+          measured_sites = []
+          selected_sites = []
+        }}
+        on_bond_menu={open_bond_context_menu}
+      />
+
+      {#if interactive && measure_mode === `edit-bonds` && bond_context_menu}
+        <BondContextMenu
+          position={bond_context_menu.position}
+          current_order={get_current_bond_order(bond_context_menu)}
+          on_set_order={set_context_bond_order}
+          on_remove={() => remove_bond(bond_context_target)}
+          on_close={close_bond_context_menu}
+        />
+      {/if}
     </T>
 
     <T is={cutaway_group} position={neg_rotation_target}>
@@ -1609,38 +1669,6 @@
           anchor_positions={trajectory_line_anchors}
           emphasis={trajectory_lines_emphasis}
           bind:build_result={trajectory_lines_result}
-        />
-      {/if}
-
-      <!-- Clickable bond and atom hit targets in edit-bonds mode -->
-      <BondEditTargets
-        bonds={editable_bond_pairs}
-        atom_targets={editable_atom_hit_targets}
-        sites={structure?.sites}
-        mode={bond_edit_mode}
-        {bond_thickness}
-        bind:hovered_bond_key={pointer.hovered_bond_key}
-        atom_events={(site_idx) =>
-          touch_hover({
-            ...pointer.hover_props(site_idx),
-            onpointerdown: (event) => select_edit_bonds_site(site_idx, event),
-          })}
-        on_select_site={select_edit_bonds_site}
-        on_delete_bond={(bond) => {
-          remove_bond(bond)
-          measured_sites = []
-          selected_sites = []
-        }}
-        on_bond_menu={open_bond_context_menu}
-      />
-
-      {#if interactive && measure_mode === `edit-bonds` && bond_context_menu}
-        <BondContextMenu
-          position={bond_context_menu.position}
-          current_order={get_current_bond_order(bond_context_menu)}
-          on_set_order={set_context_bond_order}
-          on_remove={() => remove_bond(bond_context_target)}
-          on_close={close_bond_context_menu}
         />
       {/if}
 
@@ -1752,7 +1780,11 @@
             if (camera) mesh.lookAt(camera.position)
           }}
           onclick={(event: { point: Vector3 }) =>
-            on_add_atom?.(event.point.toArray(), add_element)}
+            // the hit is in world space; sites live in this group's (unrotated) frame
+            on_add_atom?.(
+              cutaway_group.worldToLocal(event.point.clone()).toArray(),
+              add_element,
+            )}
           userData={{ pick_rank: -1 }}
         >
           <T.PlaneGeometry

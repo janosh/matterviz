@@ -199,7 +199,7 @@
     // it the second tap would still see another tile active and preview again
     if (tap_is_preview) {
       set_active_element(element)
-      handle_tooltip_enter(element, event)
+      handle_tooltip_enter(element, event.currentTarget)
       pin.value = tooltip_hover
     }
   }
@@ -264,9 +264,9 @@
     }
   }
 
-  function handle_tooltip_enter(element: ChemicalElement, event: MouseEvent): void {
+  // On hover and on keyboard focus alike, so arrow-key navigation shows each tile's tooltip
+  function handle_tooltip_enter(element: ChemicalElement, target: EventTarget | null): void {
     if (tooltip === false || disabled) return
-    const target = event.currentTarget
     if (!(target instanceof HTMLElement) || !table_node) return
     const { left, top, width, height } = target.getBoundingClientRect()
     const origin = table_node.getBoundingClientRect()
@@ -275,6 +275,24 @@
       (label) => getComputedStyle(label).display !== `none`,
     ).length
     tooltip_hover = { element, tile, bounds: clip_bounds(table_node), labeled }
+  }
+
+  // Hover ends: the keyboard-focused tile, if any, takes the active ring and tooltip back
+  const end_hover = (): void => {
+    const node = focused_symbol
+      ? table_node?.querySelector(`[data-element-symbol="${focused_symbol}"]`)
+      : null
+    const element = element_data.find(({ symbol }) => symbol === focused_symbol)
+    set_active_element(element ?? null)
+    tooltip_hover = null
+    if (node && element) handle_tooltip_enter(element, node)
+  }
+  // Escape unpins, else hides a hover or focus tooltip (WCAG 1.4.13); false leaves it to the host
+  const dismiss_tooltip = (): boolean => {
+    if (pin.unpin()) return true
+    if (!tooltip_hover) return false
+    tooltip_hover = null
+    return true
   }
 
   let use_log = $derived(
@@ -359,7 +377,7 @@
   class={[`periodic-table`, rest.class]}
   style:gap
   onkeydown={handle_key}
-  {@attach viewer_keys(() => ({ Escape: pin.unpin }))}
+  {@attach viewer_keys(() => ({ Escape: dismiss_tooltip }))}
   onpointerdown={({ target }) => {
     if (!(target instanceof Element && target.closest(`.element-tile, .plot-tooltip`)))
       pin.unpin()
@@ -402,19 +420,18 @@
       {style}
       onmouseenter={(event: MouseEvent) => {
         set_active_element(element)
-        handle_tooltip_enter(element, event)
+        handle_tooltip_enter(element, event.currentTarget)
       }}
-      onmouseleave={() => {
-        set_active_element(null)
-        tooltip_hover = null
-      }}
-      onfocus={() => {
+      onmouseleave={end_hover}
+      onfocus={(event: FocusEvent) => {
         focused_symbol = symbol
         set_active_element(element)
+        handle_tooltip_enter(element, event.currentTarget)
       }}
       onblur={() => {
         focused_symbol = null
         set_active_element(null)
+        tooltip_hover = null
       }}
       role={tile_activation ? `button` : href ? `link` : tile_props?.role}
       tabindex={interactive ? (roving_symbol === symbol ? 0 : -1) : tile_props?.tabindex}

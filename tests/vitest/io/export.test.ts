@@ -224,19 +224,17 @@ test(`observe_canvas_presence hands over canvases coming and going, ignoring oth
   expect(unwrapped.mock.calls).toEqual([[null]])
 })
 
-describe(`dpi_to_scale`, () => {
-  test.each([
-    [72, 1], // baseline
-    [144, 2],
-    [1440, 10], // capped at 10x
-    [0.01, 1 / 72], // tiny positives floored at 1 DPI (no 0x0 canvases)
-    [0, 1 / 72],
-    [-50, 1 / 72],
-    [NaN, 1], // non-finite (incl. Infinity) falls back to the 72 DPI baseline
-    [Infinity, 1],
-  ])(`dpi=%s -> scale=%s`, (png_dpi, expected) => {
-    expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
-  })
+test.each([
+  [72, 1], // baseline
+  [144, 2],
+  [1440, 10], // capped at 10x
+  [0.01, 1 / 72], // tiny positives floored at 1 DPI (no 0x0 canvases)
+  [0, 1 / 72],
+  [-50, 1 / 72],
+  [NaN, 1], // non-finite (incl. Infinity) falls back to the 72 DPI baseline
+  [Infinity, 1],
+])(`dpi_to_scale(%s) = %s`, (png_dpi, expected) => {
+  expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
 })
 
 describe(`canvas_to_png_blob`, () => {
@@ -480,13 +478,17 @@ describe(`svg_to_string`, () => {
     expect(result).not.toMatch(/<!--|data-|aria-|role=|tabindex=/)
   })
 
-  test(`rounds coordinates to 2 decimals, leaving text, ids and hrefs untouched`, () => {
-    document.body.innerHTML = `<svg viewBox="0 0 100.123456 50"><path id="p0.123456" d="M1.23456,2.5L-3.00499,4.1234e-7" stroke="black"/><text x="10.98765">0.123456</text></svg>`
+  test(`rounds coordinates to 2 decimals, leaving text, ids, classes, hrefs and url() refs`, () => {
+    const clip = `url(#plot-clip-1a2b3c4d-4f3e-4234-9e12-3e4f5a6b7c8d)`
+    const attrs = `clip-path="${clip}" class="x-3e-4" stroke="black"`
+    const path = `<path id="p0.123456" d="M1.23456,2.5L-3.00499,4.1234e-7" ${attrs}/>`
+    document.body.innerHTML = `<svg viewBox="0 0 100.123456 50">${path}<text x="10.98765">0.123456</text></svg>`
     const svg = document.querySelector(`svg`)
     if (!svg) throw new Error(`svg not mounted`)
     const exported = parse_svg(svg_to_string(svg))
-    expect(exported.querySelector(`path`)?.getAttribute(`d`)).toBe(`M1.23,2.5L-3,0`)
-    expect(exported.querySelector(`path`)?.id).toBe(`p0.123456`)
+    const attr = (name: string) => exported.querySelector(`path`)?.getAttribute(name)
+    expect([attr(`d`), attr(`id`)]).toEqual([`M1.23,2.5L-3,0`, `p0.123456`])
+    expect([attr(`clip-path`), attr(`class`)]).toEqual([clip, `x-3e-4`])
     expect(exported.querySelector(`text`)?.getAttribute(`x`)).toBe(`10.99`)
     expect(exported.querySelector(`text`)?.textContent).toBe(`0.123456`)
     expect(exported.getAttribute(`viewBox`)).toBe(`-0.5 -0.5 101.12 51`)
@@ -534,18 +536,16 @@ describe(`svg_to_string`, () => {
   })
 })
 
-describe(`html_to_svg`, () => {
-  test(`redraws an HTML grid's cell backgrounds and text as SVG`, () => {
-    document.body.innerHTML = `<div class="grid"><span style="background-color: rgb(255, 0, 0)">Fe</span></div>`
-    const grid = document.querySelector<HTMLElement>(`.grid`)
-    if (!grid) throw new Error(`grid not mounted`)
-    vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
-      new DOMRect(0, 0, 40, 20),
-    )
-    const exported = parse_svg(svg_to_string(html_to_svg(grid)))
-    expect(exported.getAttribute(`viewBox`)).toBe(`0 0 40 20`)
-    expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
-  })
+test(`html_to_svg redraws an HTML grid's cell backgrounds and text as SVG`, () => {
+  document.body.innerHTML = `<div class="grid"><span style="background-color: rgb(255, 0, 0)">Fe</span></div>`
+  const grid = document.querySelector<HTMLElement>(`.grid`)
+  if (!grid) throw new Error(`grid not mounted`)
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
+    new DOMRect(0, 0, 40, 20),
+  )
+  const exported = parse_svg(svg_to_string(html_to_svg(grid)))
+  expect(exported.getAttribute(`viewBox`)).toBe(`0 0 40 20`)
+  expect(exported.querySelector(`rect`)?.getAttribute(`fill`)).toBe(`rgb(255, 0, 0)`)
 })
 
 describe(`export_sections`, () => {
@@ -783,16 +783,14 @@ test.each([
   expect(bitmap_spy).not.toHaveBeenCalled()
 })
 
-describe(`export_canvas_as_png`, () => {
-  test.each([
-    [`structure.png`, `structure-150dpi.png`], // suffix injected before extension
-    [`structure.PNG`, `structure-150dpi.png`],
-    [`structure`, `structure-150dpi.png`], // .png appended when missing
-  ])(`downloads %s as %s`, async (filename, expected_filename) => {
-    mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
-    await export_canvas_as_png(make_mock_canvas(), filename, 150)
-    expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
-  })
+test.each([
+  [`structure.png`, `structure-150dpi.png`], // suffix injected before extension
+  [`structure.PNG`, `structure-150dpi.png`],
+  [`structure`, `structure-150dpi.png`], // .png appended when missing
+])(`export_canvas_as_png downloads %s as %s`, async (filename, expected_filename) => {
+  mock_offscreen_canvas() // 150 DPI rescales through an offscreen 2D canvas
+  await export_canvas_as_png(make_mock_canvas(), filename, 150)
+  expect(download).toHaveBeenCalledWith(expect.any(Blob), expected_filename, `image/png`)
 })
 
 describe(`export_trajectory_video`, () => {
@@ -942,18 +940,12 @@ describe(`export_trajectory_video`, () => {
     [
       `timeout-override`,
       `Recording timeout - recorder did not stop`,
-      {
-        stop_timeout_ms: 1500,
-        cleanup_delay_ms: 1500,
-      },
+      { stop_timeout_ms: 1500, cleanup_delay_ms: 1500 },
     ],
     [
       `timeout-size-cap`,
       `Recording timeout - recorder did not stop`,
-      {
-        fps: 1 / 6000,
-        cleanup_delay_ms: 300_000,
-      },
+      { fps: 1 / 6000, cleanup_delay_ms: 300_000 },
     ],
     [`step-error`, `step failed`],
     [`start-error`, `MediaRecorder error: encoder failed`],

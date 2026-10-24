@@ -330,6 +330,10 @@ export class StructureSession {
   // Host computations see mapped elements in the borrowed input cell, without display
   // tiling, images or cell standardization. Mapping changes therefore change input identity.
   tool_input = $derived.by(() => this.map_elements(this.inputs.structure()))
+  // The analyzed cell and the wrapped input with mapped elements, for what describes or saves
+  // the atoms the legend shows: the info pane's formula and density, the text exports
+  mapped_base_structure = $derived.by(() => this.map_elements(this.base_structure))
+  mapped_normalized_structure = $derived.by(() => this.map_elements(this.normalized_structure))
   private map_elements(struct: AnyStructure | undefined): AnyStructure | undefined {
     const mapping = this.element_mapping
     if (!struct || !mapping || Object.keys(mapping).length === 0) return struct
@@ -357,17 +361,22 @@ export class StructureSession {
   private readonly mapped_supercell = $derived.by(() =>
     this.map_elements(this.supercell_structure),
   )
-  // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing
-  private last_imaged: { struct: AnyStructure; key: string; imaged: AnyStructure } | undefined
+  // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing.
+  // Only a settings change on the same structure can, so new frames build no image_set_key.
+  private last_imaged: { struct: AnyStructure; key?: string; imaged: AnyStructure } | undefined
   // Element-mapped + PBC image atoms. Images are skipped during drags.
   displayed_structure = $derived.by((): AnyStructure | undefined => {
     const struct = this.mapped_supercell
     if (this.dragging_atoms || !this.inputs.show_image_atoms() || !struct) return struct
     if (!(`lattice` in struct)) return struct
     const imaged = get_pbc_image_sites(struct, this.image_options)
-    const key = image_set_key(imaged)
     const last = this.last_imaged
-    if (last?.struct === struct && last.key === key) return last.imaged
+    let key: string | undefined
+    if (last?.struct === struct) {
+      last.key ??= image_set_key(last.imaged)
+      key = image_set_key(imaged)
+      if (key === last.key) return last.imaged
+    }
     this.last_imaged = { struct, key, imaged }
     return imaged
   })
@@ -526,14 +535,18 @@ export class StructureSession {
       const displayed = this.displayed_structure
       const images_before = displayed_before
       if (!this.dragging_atoms) displayed_before = displayed
+      // A changed site count (own adds, duplicates, undos) already dropped copies on the write
+      const count_changed = changed(`site_count`, site_count(inputs.structure()))
       const images_renumbered =
         images_before !== undefined &&
         displayed !== images_before &&
-        !topology_changed &&
+        !count_changed &&
         !this.dragging_atoms
+      const supercell_changed = changed(`supercell_scaling`, inputs.supercell_scaling())
+      const images_toggled = changed(`show_image_atoms`, inputs.show_image_atoms())
       const transform_changed = [
-        changed(`supercell_scaling`, inputs.supercell_scaling()),
-        changed(`show_image_atoms`, inputs.show_image_atoms()),
+        supercell_changed,
+        images_toggled,
         changed(`series_key`, inputs.series_key()),
         changed(`cell_type`, inputs.cell_type()),
       ].includes(true)
@@ -594,15 +607,23 @@ export class StructureSession {
           this.hidden_prop_vals.clear()
         }
         // Supercell/image/cell changes renumber scene sites. In edit-atoms mode they are the
-        // user's own transforms and the selection stays so TransformControls remains attached.
+        // user's own transforms and the selection stays so TransformControls remains attached:
+        // to the input's own sites under a new tiling, which puts other atoms at the tiles'
+        // indices, and to the tiles when only images toggle. Own edits (series_key defaults to
+        // the structure) remap the image copies like any renumbering.
+        const editing = measure_mode === `edit-atoms`
         if (transform_changed) {
           this.restore_bond_edit_base()
           this.clear_bond_edits()
-          if (measure_mode !== `edit-atoms`) {
+          if (!editing) {
             this.clear_selection()
             this.site_radius_overrides.clear()
-          }
-        } else if (images_renumbered) this.remap_image_sites(images_before, displayed)
+          } else if (supercell_changed)
+            this.keep_base_selection(site_count(inputs.structure()))
+          else if (images_toggled)
+            this.keep_base_selection(site_count(this.supercell_structure))
+          else if (images_renumbered) this.remap_image_sites(images_before, displayed, editing)
+        } else if (images_renumbered) this.remap_image_sites(images_before, displayed, editing)
         if (mode_changed) {
           this.clear_selection()
           if (measure_mode === `edit-bonds`) inputs.set_bond_edit_mode(`add`)
@@ -648,47 +669,68 @@ export class StructureSession {
   // sites and cell shifts, so they stay): site-indexed state follows each copy through its
   // (base site, lattice shift) token, dropping copies no longer drawn. A changed base cell (an
   // async supercell, a conventional cell once symmetry lands) drops it all: its indices name
-  // other atoms. The token index is built only once state points at a copy.
-  private remap_image_sites(before?: AnyStructure, after?: AnyStructure): void {
-    const { inputs } = this
+  // other atoms. In edit-atoms the cell is the input's, whose sites lead any supercell, so those
+  // stay. A copy is looked up among the image sites of its own base site, so frames build no
+  // index over every site.
+  private remap_image_sites(
+    before?: AnyStructure,
+    after?: AnyStructure,
+    editing = false,
+  ): void {
     // images follow the base sites, so the first one's index is the base site count
     const base_count = ({ sites }: AnyStructure) => {
       const first_image = sites.findIndex((site) => site.provenance?.image_of !== undefined)
       return first_image === -1 ? sites.length : first_image
     }
-    let same_base: boolean | undefined
-    let new_idx: Map<string, number> | undefined
-    const remap = (idx: number): number | undefined => {
+    let base_counts: [number, number] | undefined
+    const input_count = editing ? site_count(this.inputs.structure()) : 0
+    this.remap_site_state((idx) => {
       if (!before || !after) return undefined
       const site = before.sites[idx]
       if (!site) return undefined
-      same_base ??= base_count(before) === base_count(after)
-      if (!same_base) return undefined
-      if (site.provenance?.image_of === undefined) return idx
-      new_idx ??= new Map(
-        after.sites.map((_site, after_idx) => [site_token(after, after_idx), after_idx]),
-      )
-      return new_idx.get(site_token(before, idx))
-    }
-    for (const [get, set] of [
-      [inputs.selected_sites, inputs.set_selected_sites],
-      [inputs.measured_sites, inputs.set_measured_sites],
-      [inputs.highlighted_sites, inputs.set_highlighted_sites],
+      base_counts ??= [base_count(before), base_count(after)]
+      const [before_base, after_base] = base_counts
+      if (before_base !== after_base) return idx < input_count ? idx : undefined
+      const base_idx = site.provenance?.image_of
+      if (base_idx === undefined) return idx
+      const token = site_token(before, idx)
+      for (let after_idx = after_base; after_idx < after.sites.length; after_idx++) {
+        if (after.sites[after_idx].provenance?.image_of !== base_idx) continue
+        if (site_token(after, after_idx) === token) return after_idx
+      }
+      return undefined
+    })
+  }
+  // Supercell tiles and image copies come after the first `base_count` sites, which keep their
+  // indices through appends and new tilings: state on a copy would land on another atom
+  private keep_base_selection(base_count: number): void {
+    this.remap_site_state((idx) => (idx < base_count ? idx : undefined))
+  }
+  // Re-point every site-indexed state through `remap` (undefined drops the site). A measurement
+  // losing a member is cleared whole: an angle minus its image would read as another distance.
+  private remap_site_state(remap: (idx: number) => number | undefined): void {
+    const { inputs } = this
+    for (const [get, set, whole] of [
+      [inputs.selected_sites, inputs.set_selected_sites, false],
+      [inputs.measured_sites, inputs.set_measured_sites, true],
+      [inputs.highlighted_sites, inputs.set_highlighted_sites, false],
     ] as const) {
       const sites = get()
-      if (sites.some((idx) => remap(idx) !== idx))
-        set(sites.flatMap((idx) => remap(idx) ?? []))
+      const mapped = sites.map(remap)
+      if (mapped.every((idx, pos) => idx === sites[pos])) continue
+      const kept = mapped.filter((idx) => idx !== undefined)
+      set(whole && kept.length < sites.length ? [] : kept)
     }
     const hovered = inputs.hovered_site_idx()
-    if (hovered !== null && remap(hovered) !== hovered)
-      inputs.set_hovered_site_idx(remap(hovered) ?? null)
-    const overrides = [...this.site_radius_overrides]
-    if (overrides.every(([idx]) => remap(idx) === idx)) return
+    const hovered_mapped = hovered === null ? null : (remap(hovered) ?? null)
+    if (hovered_mapped !== hovered) inputs.set_hovered_site_idx(hovered_mapped)
+    const overrides = [...this.site_radius_overrides].map(
+      ([idx, radius]) => [remap(idx), idx, radius] as const,
+    )
+    if (overrides.every(([mapped, idx]) => mapped === idx)) return
     this.site_radius_overrides.clear()
-    for (const [idx, radius] of overrides) {
-      const mapped = remap(idx)
+    for (const [mapped, , radius] of overrides)
       if (mapped !== undefined) this.site_radius_overrides.set(mapped, radius)
-    }
   }
   private notice(message: string): void {
     this.inputs.on_notice?.(message)
@@ -784,6 +826,9 @@ export class StructureSession {
       prediction: this.inputs.tool_prediction?.() ?? undefined,
     }))
     if (!restored) return false
+    // Unlike an append, undoing a deletion inserts sites anywhere: no per-site radius holds
+    if (site_count(restored.structure) !== site_count(structure))
+      this.site_radius_overrides.clear()
     this.write_structure(restored.structure)
     this.inputs.set_bonds(restored.bonds)
     this.clear_selection()
@@ -797,7 +842,12 @@ export class StructureSession {
     this.push_undo()
     this.write_structure(next)
   }
+  // A write that adds or removes sites shifts every tile and image copy behind the input's own
+  // sites, so only that unchanged prefix keeps its state (an edit then selects what it made)
   private write_structure(next: AnyStructure): void {
+    const count = site_count(this.inputs.structure())
+    if (next.sites.length !== count)
+      this.keep_base_selection(Math.min(count, next.sites.length))
     this.is_internal_edit = true
     this.inputs.set_structure(next)
   }

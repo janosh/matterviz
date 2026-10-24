@@ -18,7 +18,8 @@ test.each([
   [`hydrogen`, `Discovered by Henry Cavendish in 1766`],
   [`carbon`, `Discovered by Ancient Egypt`],
   [`gold`, `Discovered by Middle East`],
-  [`iron`, `Discovered by 5000 BC in ~5000 BC`],
+  [`iron`, `Discovered in ~5000 BC`], // its discoverer field holds a date: `5000 BC`
+  [`silver`, `Discovered in ~3000 BC`],
 ])(`%s page reads %j`, (slug, expected) => {
   page.params.slug = slug
   mount(ElementPage, { target: document.body })

@@ -155,6 +155,15 @@ describe(`canvas-draw: markers and hit testing`, () => {
     )
   })
 
+  // a NaN formation energy is skipped instead of turning the whole depth scale NaN
+  test(`energy_range_of spans 0 and the finite formation energies`, () => {
+    const entries = [-1.5, Number.NaN, 0.5, undefined].map(
+      (e_form_per_atom) => ({ e_form_per_atom }) as ConvexHullEntry,
+    )
+    const { min, max, center, z_scale } = draw.energy_range_of(entries)
+    expect([min, max, center, z_scale]).toEqual([-1.5, 0.5, -0.5, 0.375])
+  })
+
   test(`marker_path_data returns d3 symbols for known markers, null otherwise`, () => {
     expect(draw.marker_path_data(5, `circle`)).toMatch(/^M/)
     expect(draw.marker_path_data(5, `triangle`)).not.toBe(draw.marker_path_data(5, `circle`))
@@ -305,45 +314,28 @@ describe(`helpers: thresholds and tooltips`, () => {
 })
 
 describe(`helpers: composition label entries`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      name: `keeps one lowest-energy label entry per normalized composition`,
-      entries: [
-        phase(`higher-fe-o`, { Fe: 2, O: 3 }, { energy: -1, e_form_per_atom: -0.2 }),
+    { name: `keeps one lowest-energy label entry per normalized composition`,
+      entries: [phase(`higher-fe-o`, { Fe: 2, O: 3 }, { energy: -1, e_form_per_atom: -0.2 }),
         phase(`lower-fe-o`, { Fe: 4, O: 6 }, { energy: -2, e_form_per_atom: -0.4 }),
-        phase(`li-o`, { Li: 1, O: 1 }, { energy: -3, e_form_per_atom: -0.1 }),
-      ],
-      expected: [`lower-fe-o`, `li-o`],
-    },
-    {
-      name: `does not merge distinct stoichiometries with the same elements`,
-      entries: [
-        phase(`fe-o`, { Fe: 1, O: 1 }, { e_form_per_atom: -1 }),
-        phase(`fe2-o3`, { Fe: 2, O: 3 }, { e_form_per_atom: -2 }),
-      ],
-      expected: [`fe-o`, `fe2-o3`],
-    },
-    {
-      name: `falls back to per-atom energy computed from total energy`,
-      entries: [
-        phase(`higher-total`, { A: 2, B: 2 }, { energy: -4 }),
-        phase(`lower-total`, { A: 1, B: 1 }, { energy: -3 }),
-      ],
-      expected: [`lower-total`],
-    },
-    {
-      name: `keeps explicit energy_per_atom ahead of computed total energy`,
-      entries: [
-        phase(`explicit-per-atom`, { A: 1, B: 1 }, { energy: 0, energy_per_atom: -4 }),
-        phase(`computed-per-atom`, { A: 2, B: 2 }, { energy: -12 }),
-      ],
-      expected: [`explicit-per-atom`],
-    },
-    {
-      name: `skips entries with empty compositions`,
-      entries: [phase(`empty`, { Fe: 0 })],
-      expected: [],
-    },
+        phase(`li-o`, { Li: 1, O: 1 }, { energy: -3, e_form_per_atom: -0.1 })],
+      expected: [`lower-fe-o`, `li-o`] },
+    { name: `does not merge distinct stoichiometries with the same elements`,
+      entries: [phase(`fe-o`, { Fe: 1, O: 1 }, { e_form_per_atom: -1 }),
+        phase(`fe2-o3`, { Fe: 2, O: 3 }, { e_form_per_atom: -2 })], expected: [`fe-o`, `fe2-o3`] },
+    { name: `falls back to per-atom energy computed from total energy`,
+      entries: [phase(`higher-total`, { A: 2, B: 2 }, { energy: -4 }),
+        phase(`lower-total`, { A: 1, B: 1 }, { energy: -3 })], expected: [`lower-total`] },
+    { name: `keeps explicit energy_per_atom ahead of computed total energy`,
+      entries: [phase(`explicit-per-atom`, { A: 1, B: 1 }, { energy: 0, energy_per_atom: -4 }),
+        phase(`computed-per-atom`, { A: 2, B: 2 }, { energy: -12 })],
+      expected: [`explicit-per-atom`] },
+    // per-entry metrics compared A's E_form (-0.1) with B's absolute -4 eV/atom
+    { name: `compares polymorphs by their common metric, not each one's first`,
+      entries: [phase(`abs-lower`, { A: 1, B: 1 }, { energy: -10, e_form_per_atom: -0.1 }),
+        phase(`abs-higher`, { A: 1, B: 1 }, { energy: -8 })], expected: [`abs-lower`] },
+    { name: `skips entries with empty compositions`, entries: [phase(`empty`, { Fe: 0 })], expected: [] },
   ])(`$name`, ({ entries, expected }) => {
     const label_entries = helpers.get_composition_label_entries(entries)
     expect(label_entries.map((entry) => entry.entry_id)).toEqual(expected)
@@ -356,98 +348,49 @@ describe(`helpers: polymorph statistics`, () => {
 
   // Stats for entry `1`, as [total, higher, lower, equal]. One row per energy-metric
   // selection branch (e_form > energy_per_atom > energy/atoms > e_above_hull > none).
+  // oxfmt-ignore
   test.each([
-    {
-      name: `different compositions → no polymorphs`,
-      all: [
-        lio(`1`, { e_above_hull: 0.1 }),
-        phase(`2`, { Li: 1, O: 2 }, { e_above_hull: 0.2 }),
-      ],
-      exp: [0, 0, 0, 0],
-    },
-    {
-      name: `same fractional comp (1:1 ≈ 2:2 ≈ 0.5:0.5) → polymorphs, excludes self`,
-      all: [
-        lio(`1`, { e_above_hull: 0.1 }),
-        phase(`2`, { Li: 2, O: 2 }, { e_above_hull: 0.2 }),
-        phase(`3`, { Li: 0.5, O: 0.5 }, { e_above_hull: 0.05 }),
-      ],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      name: `counts higher/lower/equal`,
-      all: [
-        lio(`1`, { e_above_hull: 0.1 }),
-        lio(`2`, { e_above_hull: 0.05 }),
-        lio(`3`, { e_above_hull: 0.1 }),
-        lio(`4`, { e_above_hull: 0.2 }),
-      ],
-      exp: [3, 1, 1, 1],
-    },
-    {
-      name: `duplicate IDs exclude every copy but anonymous entries still count`,
-      all: [
-        lio(`1`, { energy_per_atom: -2 }),
-        lio(``, { energy_per_atom: -2 }),
-        lio(`2`, { energy_per_atom: 0 }),
-        lio(`1`, { energy_per_atom: -1 }),
-        lio(`3`, { energy_per_atom: -1 }),
-      ],
-      exp: [3, 1, 1, 1],
-    },
-    {
-      // e_above_hull alone would report every polymorph as equal
-      name: `REGRESSION: stable polymorphs (e_above_hull=0) ranked by energy_per_atom`,
-      all: [
-        phase(`1`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -9.0 }), // diamond
-        phase(`2`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -8.9 }), // graphite
-        phase(`3`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -9.1 }),
-      ],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      // energy_per_atom would rank 2 lower and 3 higher
-      name: `prefers e_form_per_atom over energy_per_atom`,
-      all: [
-        lio(`1`, { energy_per_atom: -5.0, e_form_per_atom: -3.0 }),
+    { name: `different compositions → no polymorphs`,
+      all: [lio(`1`, { e_above_hull: 0.1 }), phase(`2`, { Li: 1, O: 2 }, { e_above_hull: 0.2 })],
+      exp: [0, 0, 0, 0] },
+    { name: `same fractional comp (1:1 ≈ 2:2 ≈ 0.5:0.5) → polymorphs, excludes self`,
+      all: [lio(`1`, { e_above_hull: 0.1 }), phase(`2`, { Li: 2, O: 2 }, { e_above_hull: 0.2 }),
+        phase(`3`, { Li: 0.5, O: 0.5 }, { e_above_hull: 0.05 })], exp: [2, 1, 1, 0] },
+    { name: `counts higher/lower/equal`,
+      all: [lio(`1`, { e_above_hull: 0.1 }), lio(`2`, { e_above_hull: 0.05 }),
+        lio(`3`, { e_above_hull: 0.1 }), lio(`4`, { e_above_hull: 0.2 })], exp: [3, 1, 1, 1] },
+    { name: `duplicate IDs exclude every copy but anonymous entries still count`,
+      all: [lio(`1`, { energy_per_atom: -2 }), lio(``, { energy_per_atom: -2 }),
+        lio(`2`, { energy_per_atom: 0 }), lio(`1`, { energy_per_atom: -1 }),
+        lio(`3`, { energy_per_atom: -1 })], exp: [3, 1, 1, 1] },
+    // e_above_hull alone would report every polymorph as equal (1 diamond, 2 graphite)
+    { name: `REGRESSION: stable polymorphs (e_above_hull=0) ranked by energy_per_atom`,
+      all: [phase(`1`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -9.0 }),
+        phase(`2`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -8.9 }),
+        phase(`3`, { C: 1 }, { e_above_hull: 0, energy_per_atom: -9.1 })], exp: [2, 1, 1, 0] },
+    // energy_per_atom would rank 2 lower and 3 higher
+    { name: `prefers e_form_per_atom over energy_per_atom`,
+      all: [lio(`1`, { energy_per_atom: -5.0, e_form_per_atom: -3.0 }),
         lio(`2`, { energy_per_atom: -5.1, e_form_per_atom: -2.9 }),
-        lio(`3`, { energy_per_atom: -4.9, e_form_per_atom: -3.1 }),
-      ],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      // energy/atoms would rank 2 lower and 3 higher
-      name: `prefers energy_per_atom over raw energy`,
-      all: [
-        lio(`1`, { energy_per_atom: -5, energy: -10 }),
+        lio(`3`, { energy_per_atom: -4.9, e_form_per_atom: -3.1 })], exp: [2, 1, 1, 0] },
+    // energy/atoms would rank 2 lower and 3 higher
+    { name: `prefers energy_per_atom over raw energy`,
+      all: [lio(`1`, { energy_per_atom: -5, energy: -10 }),
         lio(`2`, { energy_per_atom: -4.9, energy: -12 }),
-        lio(`3`, { energy_per_atom: -5.1, energy: -8 }),
-      ],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      name: `falls back to energy/atoms when per-atom fields are missing`,
+        lio(`3`, { energy_per_atom: -5.1, energy: -8 })], exp: [2, 1, 1, 0] },
+    // -5 - 1/2 = -5.5 eV/atom with its MP correction, below the uncorrected -5.2
+    { name: `applies the MP correction to energy_per_atom`,
+      all: [lio(`1`, { energy_per_atom: -5, correction: -1 }), lio(`2`, { energy_per_atom: -5.2 })],
+      exp: [1, 1, 0, 0] },
+    { name: `falls back to energy/atoms when per-atom fields are missing`,
       all: [lio(`1`, { energy: -10 }), lio(`2`, { energy: -12 }), lio(`3`, { energy: -8 })],
-      exp: [2, 1, 1, 0],
-    },
-    {
-      name: `skips the group when any energy is invalid (NaN/Infinity/missing)`,
-      all: [
-        lio(`1`, { e_above_hull: 0.1 }),
-        lio(`2`, { e_above_hull: NaN }),
-        lio(`3`, { e_above_hull: Infinity }),
-        lio(`4`, {}),
-      ],
-      exp: [0, 0, 0, 0],
-    },
-    {
-      name: `floating-point tolerance in composition`,
-      all: [
-        phase(`1`, { Li: 1, O: 2 }, { e_above_hull: 0.1 }),
-        phase(`2`, { Li: 1 + 1e-10, O: 2 + 2e-10 }, { e_above_hull: 0.15 }),
-      ],
-      exp: [1, 1, 0, 0],
-    },
+      exp: [2, 1, 1, 0] },
+    { name: `skips the group when any energy is invalid (NaN/Infinity/missing)`,
+      all: [lio(`1`, { e_above_hull: 0.1 }), lio(`2`, { e_above_hull: NaN }),
+        lio(`3`, { e_above_hull: Infinity }), lio(`4`, {})], exp: [0, 0, 0, 0] },
+    { name: `floating-point tolerance in composition`,
+      all: [phase(`1`, { Li: 1, O: 2 }, { e_above_hull: 0.1 }),
+        phase(`2`, { Li: 1 + 1e-10, O: 2 + 2e-10 }, { e_above_hull: 0.15 })], exp: [1, 1, 0, 0] },
   ])(`$name`, ({ all, exp: [total, higher, lower, equal] }) => {
     const stats = helpers.compute_all_polymorph_stats(all).get(`1`)
     expect(stats).toEqual({ total, higher, lower, equal })
@@ -497,17 +440,13 @@ describe(`helpers: is_entry_highlighted`, () => {
   const only_eid: E = { entry_id: `mp-2` }
   const only_sid: E = { structure_id: `s-2` }
 
+  // oxfmt-ignore
   test.each([
     // Edge cases
     [`empty list`, both, [], false],
     [`entry has no ids (string)`, {}, [`mp-1`], false],
     [`entry has no ids (object)`, {}, [both], false],
-    [
-      `id-less or null item never matches an entry without entry_id`,
-      only_sid,
-      [{}, null],
-      false,
-    ],
+    [`id-less or null item never matches an entry without entry_id`, only_sid, [{}, null], false],
     // String matching
     [`string matches entry_id`, both, [`mp-1`], true],
     [`string matches structure_id`, both, [`s-1`], true],
@@ -520,12 +459,7 @@ describe(`helpers: is_entry_highlighted`, () => {
     [`object entry_id fallback`, both, [{ entry_id: `mp-1` }], true],
     [`object entry_id no match`, both, [{ entry_id: `x` }], false],
     // REGRESSION: structure_id takes precedence, ignores entry_id match
-    [
-      `REGRESSION: structure_id priority`,
-      both,
-      [{ entry_id: `mp-1`, structure_id: `x` }],
-      false,
-    ],
+    [`REGRESSION: structure_id priority`, both, [{ entry_id: `mp-1`, structure_id: `x` }], false],
     // Mixed list
     [`mixed list finds match`, both, [`no`, { structure_id: `s-1` }], true],
     // Null/undefined handling
@@ -556,24 +490,15 @@ describe(`helpers: temperature interpolation`, () => {
       { composition: { Fe: 1 }, energy: 0 },
       { composition: { Li: 1 }, energy: 0 },
     ]
+    // oxfmt-ignore
     test.each([
       [`empty entries`, [], []],
       [`entries without temp data`, no_temps, []],
-      [
-        `the union of temperatures from multiple entries`,
+      [`the union of temperatures from multiple entries`,
         [make_entry([300, 600], [-1, -2]), make_entry([600, 900, 1200], [-1, -2, -3])],
-        [300, 600, 900, 1200],
-      ],
-      [
-        `entries with mismatched array lengths ignored`,
-        [make_entry([300, 600], [-1]), make_entry([900], [-2])],
-        [900],
-      ],
-      [
-        `entries with empty arrays ignored`,
-        [make_entry([], []), make_entry([300, 600], [-1, -2])],
-        [300, 600],
-      ],
+        [300, 600, 900, 1200]],
+      [`entries with mismatched array lengths ignored`, [make_entry([300, 600], [-1]), make_entry([900], [-2])], [900]],
+      [`entries with empty arrays ignored`, [make_entry([], []), make_entry([300, 600], [-1, -2])], [300, 600]],
     ] as [string, PhaseData[], number[]][])(
       `available_temperatures for %s`,
       (_desc, entries, expected) => {
@@ -611,36 +536,27 @@ describe(`helpers: temperature interpolation`, () => {
   })
 
   describe(`interpolate_energy_at_temperature`, () => {
+    // oxfmt-ignore
     test.each([
       [`midpoint of [300,600]`, make_entry([300, 600], [-1, -2]), 450, 500, -1.5],
       [`quarter of [300,600]`, make_entry([300, 600], [-1, -2]), 375, 500, -1.25],
       // non-uniform spacing: 650 is halfway between knots 400 and 900
       [`non-uniform spacing`, make_entry([300, 400, 900], [-1, -1.2, -2]), 650, 600, -1.6],
       // unsorted temps: tightest bracket 300-600 (gap 300) within max_gap 400
-      [
-        `tightest bracket (unsorted)`,
-        make_entry([900, 300, 600], [-3, -1, -2]),
-        450,
-        400,
-        -1.5,
-      ],
+      [`tightest bracket (unsorted)`, make_entry([900, 300, 600], [-3, -1, -2]), 450, 400, -1.5],
     ])(`interpolates %s`, (_desc, entry, temp, max_gap, expected) => {
       expect(helpers.interpolate_energy_at_temperature(entry, temp, max_gap)).toBeCloseTo(
         expected,
       )
     })
 
+    // oxfmt-ignore
     test.each([
       [`T below range`, make_entry([300, 600], [-1, -2]), 200, 500],
       [`T above range`, make_entry([300, 600], [-1, -2]), 700, 500],
       [`gap exceeds max_gap`, make_entry([300, 900], [-1, -2]), 600, 500],
       // unsorted: tightest bracket 300-600 (gap 300) still exceeds max_gap 200
-      [
-        `tightest bracket exceeds max_gap`,
-        make_entry([900, 300, 600], [-3, -1, -2]),
-        450,
-        200,
-      ],
+      [`tightest bracket exceeds max_gap`, make_entry([900, 300, 600], [-3, -1, -2]), 450, 200],
     ])(`returns null when %s`, (_desc, entry, temp, max_gap) => {
       expect(helpers.interpolate_energy_at_temperature(entry, temp, max_gap)).toBeNull()
     })
@@ -719,18 +635,12 @@ describe(`helpers: temperature interpolation`, () => {
   describe(`get_entry_label`, () => {
     const li_fe_o2 = { Li: 1, Fe: 1, O: 2 }
     const elements: ElementSymbol[] = [`Li`, `Fe`, `La`, `Ni`, `O`]
+    // oxfmt-ignore
     test.each([
       [`reduced_formula`, { reduced_formula: `LiFeO2`, composition: li_fe_o2 }, `LiFeO2`],
-      [
-        `name fallback`,
-        { name: `lithium iron oxide`, composition: li_fe_o2 },
-        `lithium iron oxide`,
-      ],
-      [
-        `reduced_formula over name`,
-        { reduced_formula: `LiFeO2`, name: `lithium iron oxide`, composition: li_fe_o2 },
-        `LiFeO2`,
-      ],
+      [`name fallback`, { name: `lithium iron oxide`, composition: li_fe_o2 }, `lithium iron oxide`],
+      [`reduced_formula over name`,
+        { reduced_formula: `LiFeO2`, name: `lithium iron oxide`, composition: li_fe_o2 }, `LiFeO2`],
       // built from the composition: subscript 1 omitted, zero counts dropped, unreduced cells kept
       [`composition fallback`, { composition: li_fe_o2 }, `LiFeO2`],
       [`zero-count elements`, { composition: { Li: 1, Fe: 0, O: 2 } }, `LiO2`],

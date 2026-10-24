@@ -64,12 +64,17 @@
     }
   }
 
+  // Close once focus moves to an element outside the group. Focus going nowhere is no such
+  // move: Safari and macOS Firefox never focus a clicked button, so pressing a preset or the
+  // submit button blurred the input to null, closed the menu and swallowed the click
+  // (click_outside closes on presses elsewhere). Focus leaving the page (Tab into the browser
+  // chrome, another window) blurs the window instead, which closes it below.
   function handle_focus_out({ currentTarget, relatedTarget }: FocusEvent) {
-    const stays_inside =
+    const leaves_group =
       currentTarget instanceof Node &&
       relatedTarget instanceof Node &&
-      currentTarget.contains(relatedTarget)
-    if (!stays_inside) close_menu()
+      !currentTarget.contains(relatedTarget)
+    if (leaves_group) close_menu()
   }
 
   function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
@@ -77,6 +82,8 @@
     if (submit_on_enter && event.key === `Enter`) handle_input_submit()
   }
 </script>
+
+<svelte:window onblur={() => menu_open && close_menu()} />
 
 <div
   class="cell-select hover-visible"

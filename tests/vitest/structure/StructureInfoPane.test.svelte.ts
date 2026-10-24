@@ -52,12 +52,10 @@ describe(`StructureInfoPane`, () => {
     `symmetry table threshold behavior: %s`,
     async (_scenario_name, atom_count, expanded_by_default) => {
       const structure = get_dummy_structure(`H`, atom_count, true)
-      mount_info_pane({
-        structure,
-        pane_open: true,
-        sym_data: make_sym_data(atom_count),
-        wyckoff_positions: rows_per_site(atom_count),
-      })
+      const rows = $state({ wyckoff_positions: rows_per_site(atom_count) })
+      mount_info_pane(
+        bind_props({ structure, pane_open: true, sym_data: make_sym_data(atom_count) }, rows),
+      )
 
       const content = document.body.textContent || ``
       expect(content).toContain(`(${atom_count} sites)`)
@@ -73,6 +71,10 @@ describe(`StructureInfoPane`, () => {
       wyckoff.querySelector(`summary`)?.click()
       await tick()
       expect(wyckoff_rows()).toHaveLength(atom_count - default_row_count)
+      // the session rebuilds equal rows on every displayed change: the user's toggle stays
+      rows.wyckoff_positions = rows_per_site(atom_count)
+      await tick()
+      expect(wyckoff.open).toBe(!expanded_by_default)
     },
   )
 
@@ -125,8 +127,9 @@ describe(`StructureInfoPane`, () => {
 
   test(`selected cards hover, copy, and keyboard navigate; search selects sites`, async () => {
     const structure = get_dummy_structure(`H`, 3, true)
-    // a numeric-string magmom (as some parsers store it) still shows
+    // a numeric-string magmom (as some parsers store it) still shows, so do non-collinear ones
     structure.sites[0].properties = { selective_dynamics: [true, false, true], magmom: `2.5` }
+    structure.sites[1].properties = { magmoms: [0, 0, 1.5], forces: [0, 3, 4], magmom: [] }
     const state = $state({
       highlighted_sites: [] as number[],
       hovered_site_idx: null as number | null,
@@ -141,6 +144,9 @@ describe(`StructureInfoPane`, () => {
     expect(site_cards()[0].textContent).toContain(`Cart.`)
     expect(site_cards()[0].textContent).toContain(`(true, false, true)`) // not (1, 0, 1)
     expect(site_cards()[0].textContent).toContain(`2.5 μB`)
+    expect(site_cards()[1].textContent).toContain(`(0, 0, 1.5) μB`)
+    expect(site_cards()[1].textContent).toContain(`5 eV/Å`)
+    expect(site_cards()[1].textContent).not.toContain(`()`) // an empty magmom shows nothing
     expect(document.querySelector(`.site-color`)).toBeNull()
 
     const site_row = site_cards()[1]

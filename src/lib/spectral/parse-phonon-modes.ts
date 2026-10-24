@@ -3,11 +3,11 @@
 // These are deliberately separate from `#lib/structure/parse.ts`, which only extracts cells
 // from phonopy YAML and explicitly discards the per-mode blocks we need here.
 //
-// Eigenvector convention (phonopy): the `eigenvector` blocks in band.yaml / qpoints.yaml /
-// mesh.yaml are eigenvectors of the mass-weighted (dynamical) matrix, normalised so that
-// sum over atoms and cartesian directions of |e|^2 == 1. The physical displacement of atom
-// kappa is u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes that weighting; consumers
-// that need displacements must divide by sqrt(mass) themselves.
+// Eigenvector convention (phonopy): the `eigenvector` blocks in band.yaml / mesh.yaml are
+// eigenvectors of the mass-weighted (dynamical) matrix, normalised so that sum over atoms and
+// cartesian directions of |e|^2 == 1. The physical displacement of atom kappa is
+// u_kappa = e_kappa / sqrt(M_kappa). Nothing here undoes that weighting; consumers that need
+// displacements must divide by sqrt(mass) themselves.
 
 import { display_idx } from '#lib/labels.js'
 import { load as yaml_load } from 'js-yaml'
@@ -204,7 +204,8 @@ function parse_atoms(data: Record<string, unknown>): PhononModeAtom[] {
   })
 }
 
-// Parse a phonopy band.yaml / qpoints.yaml / mesh.yaml into per-q-point mode lists.
+// Parse a phonopy band.yaml / mesh.yaml into per-q-point mode lists (qpoints.yaml lacks the
+// atom masses that undo the mass weighting).
 // Frequencies are returned in the file's own unit, which phonopy writes as THz.
 export function parse_phonon_modes(content: string): PhononModeData {
   const parsed: unknown = yaml_load(content)
@@ -221,7 +222,7 @@ export function parse_phonon_modes(content: string): PhononModeData {
     const keys = Object.keys(parsed).join(`, `)
     throw new Error(
       `phonopy YAML has no non-empty 'phonon' list (top-level keys: ${keys}). ` +
-        `Expected band.yaml / qpoints.yaml / mesh.yaml style content.`,
+        `Expected band.yaml / mesh.yaml style content.`,
     )
   }
 
@@ -318,35 +319,55 @@ const to_matrix3x3 = (values: number[], context: string): Matrix3x3 => {
 }
 
 // Parse a phonopy BORN file. Format (after comment stripping):
-//   line 1: NAC unit conversion factor, optionally followed by a q-direction (1-4 numbers)
+//   line 1: NAC unit conversion factor, optionally followed by G_cutoff and Lambda
 //   line 2: high-frequency dielectric tensor, 9 numbers row-major
 //   line 3+: Born effective charge tensor per atom, 9 numbers row-major
-// Symmetry expansion over equivalent sites is NOT performed: the file must list one tensor
-// per atom of the cell the eigenvectors belong to.
+// phonopy reads the file's first line as the factor line whatever it holds, and its own writer
+// (phonopy-vasp-born) puts a `# epsilon and Z* of atoms 1 3 …` comment there: no factor (null),
+// so the calculator's default applies. That writer lists only the symmetry-independent atoms
+// (1-based), which phonopy expands by symmetry. No expansion is done here: a comment naming
+// fewer than the first n atoms throws, and the file must hold one tensor per atom of the cell
+// the eigenvectors belong to.
 export function parse_born(content: string): BornChargeData {
   const lines = tokenize_born(content)
-  if (lines.length < 3) {
-    throw new Error(
-      `BORN file has ${lines.length} data lines; need at least 3 (factor, dielectric, ` +
-        `>=1 Born charge tensor)`,
-    )
+  const n_lines = lines.length
+  const comment_factor = lines[0]?.length === 9 && content.trimStart().startsWith(`#`)
+  const factor_line = comment_factor ? undefined : lines.shift()
+  const [dielectric_line, ...charge_lines] = lines
+  if (!dielectric_line || charge_lines.length === 0) {
+    const expected = comment_factor
+      ? `2 after phonopy's comment line (dielectric, >=1 Born charge tensor)`
+      : `3 (factor, dielectric, >=1 Born charge tensor)`
+    throw new Error(`BORN file has ${n_lines} data lines; need at least ${expected}`)
   }
-
-  const [factor_line, dielectric_line, ...charge_lines] = lines
-  if (factor_line.length > 4) {
+  if (factor_line && factor_line.length > 4) {
     throw new Error(
       `BORN file line 1 has ${factor_line.length} numbers; expected the NAC unit conversion ` +
-        `factor (optionally followed by a q-direction). A leading 9-number dielectric tensor ` +
-        `without a factor line is not the phonopy BORN format.`,
+        `factor (optionally followed by G_cutoff and Lambda) or phonopy's leading comment ` +
+        `line. A leading 9-number dielectric tensor without either is not the BORN format.`,
+    )
+  }
+  const atoms_comment = /^#\s*epsilon and Z\* of atoms\s+(?<atoms>[\d\s]+?)\s*$/i.exec(
+    content.trimStart().split(/\r?\n/)[0],
+  )?.groups?.atoms
+  const atom_indices = atoms_comment?.split(/\s+/).map((atom) => Number(atom) - 1)
+  const n_charges = charge_lines.length
+  if (atom_indices && atom_indices.join(`,`) !== [...Array(n_charges).keys()].join(`,`)) {
+    throw new Error(
+      `BORN file's comment names atoms ${atoms_comment} for its ${n_charges} Z* tensors, not ` +
+        `atoms 1 to ${n_charges}: phonopy writes only the symmetry-independent atoms, and ` +
+        `expanding them to the whole cell needs its symmetry, which is unsupported. Write one ` +
+        `tensor per atom.`,
     )
   }
 
   return {
-    factor: factor_line[0],
+    factor: factor_line?.[0] ?? null,
     dielectric: to_matrix3x3(dielectric_line, `BORN file dielectric tensor`),
     born_charges: charge_lines.map((line, atom_idx) =>
       to_matrix3x3(line, `BORN file Born charge tensor for atom ${display_idx(atom_idx)}`),
     ),
+    ...(atom_indices && { atom_indices }),
   }
 }
 

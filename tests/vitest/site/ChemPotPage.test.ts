@@ -43,6 +43,9 @@ test.each([`empty`, `failed`])(`chemical potential data load: %s`, async (outcom
   try {
     flushSync()
     const regions = [...document.querySelectorAll(`.lazy-demo`)]
+    // every diagram's region was named "Chemical potential diagram"
+    const names = new Set(regions.map((region) => region.getAttribute(`aria-label`)))
+    expect(names.size).toBe(regions.length)
     for (const region of regions) trigger_intersection(region, false)
     await tick()
     expect(load).not.toHaveBeenCalled()

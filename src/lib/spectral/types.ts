@@ -98,7 +98,7 @@ export interface StackedAreaData {
 export type DosData = PhononDos | ElectronicDos
 
 // Band line styling: one style for every band, one per acoustic/optical mode, or one per band
-// and spin channel of a structure (its band_structs key or label, e.g. FermiSurfaceBands' sheet
+// and spin channel of a structure (its band_structs key or label, e.g. ElectronicStructure's sheet
 // colours)
 export interface BandLineStyle {
   stroke?: string
@@ -170,9 +170,10 @@ export interface PhononModeSelection {
 
 // Born effective charges and high-frequency dielectric tensor from a phonopy BORN file.
 export interface BornChargeData {
-  factor: number // NAC unit conversion factor, recorded but not applied here
+  factor: number | null // NAC unit conversion factor (null: calculator default), not applied
   dielectric: Matrix3x3
   born_charges: Matrix3x3[] // one Z* tensor per atom, in units of e
+  atom_indices?: number[] // 0-based atoms of phonopy's `# epsilon and Z* of atoms …` comment
 }
 
 // One mode of a vibrational spectrum with its computed activities.
@@ -209,8 +210,21 @@ export interface SpectraRecords {
   doses?: Record<string, DosData>
 }
 
+// A q- and mode-resolved quantity, e.g. the electron–phonon coupling λ_qν, drawn over a band
+// structure as markers at its modes' frequencies wherever its q-points lie on the band path.
+// q-points are fractional in the band structure's reciprocal basis (its recip_lattice and its
+// qpoints' frame) and may be a full q mesh: points off the path are not drawn.
+export interface ModeValues {
+  label: string // e.g. `λ_qν`, titles the colour bar
+  qpoints: Vec3[]
+  frequencies: number[][] // [q][mode] in the bands' data unit (THz), negative = imaginary
+  values: number[][] // [q][mode], NaN = no value
+}
+
 // A material's phonon spectra beside its electronic ones: dispersion and DOS on one frequency
-// axis, Eliashberg functions α²F(ω) (dimensionless) on their own axis over the same frequencies
+// axis, Eliashberg functions α²F(ω) (dimensionless) on their own axis over the same frequencies,
+// and mode values (e.g. λ_qν) over the dispersion
 export interface PhononSpectra extends SpectraRecords {
   a2f?: Record<string, PhononDos>
+  mode_values?: ModeValues
 }

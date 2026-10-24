@@ -8,7 +8,7 @@
   import { molecule_files } from '#site/molecules.js'
   import FilePicker from '#lib/FilePicker.svelte'
   import { decode_url_safe_base64 } from '#lib'
-  import { file_param, set_file_param } from '#site/state.svelte.js'
+  import { file_param, loaded_fixture, set_file_param } from '#site/state.svelte.js'
 
   const default_filename = `Bi2Zr2O8-Fm3m.json`
   let source_filename = $state(default_filename)
@@ -53,8 +53,9 @@
   on_file_load={(data: StructureHandlerData) => {
     display_filename = data.filename ?? source_filename
     if (hash_structure_string) return
-    source_filename = data.source_filename ?? source_filename
-    set_file_param(source_filename)
+    const fixture = loaded_fixture(data)
+    source_filename = fixture ?? source_filename
+    set_file_param(fixture)
   }}
 >
   <h3 class="demo-overlay-label">{display_filename}</h3>

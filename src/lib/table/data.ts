@@ -13,9 +13,8 @@ import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = <Row extends object>(rows: Row[]): Column<Row>[] => {
   const seen = new Set<string>()
-  for (const row of rows.slice(0, 50)) {
+  for (const row of rows.slice(0, 50))
     for (const key of Object.keys(row)) if (key !== `style` && key !== `class`) seen.add(key)
-  }
   return [...seen].map((key) => ({ id: key as Extract<keyof Row, string>, label: key }))
 }
 
@@ -40,8 +39,12 @@ const HTML_MARKUP_RE = new RegExp(`${HTML_TAG_SRC}|${HTML_ENTITY_SRC}`, `i`)
 export const is_html_str = (val: unknown): val is string =>
   typeof val === `string` && HTML_MARKUP_RE.test(val)
 
+// A decimal number, optionally followed by an uncertainty ("1.23 ± 0.05", "2.890(8)"). Not
+// Number() alone: it reads hex/binary/octal literals, so a "0x1f" ID would sort and color as 31.
+// The mantissa alternatives never overlap: `\d+\.?\d*` split a digit run between its two
+// quantifiers in O(n²) ways, so a 30k-digit cell ending in a letter took over a second.
 const NUMERIC_WITH_ERROR_RE =
-  /^(?<numeric>[-+−]?(?:\d+\.?\d*|\d*\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:±|\+[-−]|\()/
+  /^\s*(?<numeric>[-+−]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:(?:±|\+[-−]|\().*)?$/s
 const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
 
 // Plain text of a cell: markup stripped and decoded, dates as ISO, objects as JSON, invalid ``
@@ -59,10 +62,18 @@ const get_data_sort_value = (val: string): string | null | undefined => {
   return captured?.trim() === `` ? null : captured
 }
 
-const parse_numeric_string = (val: string): number | null => {
-  const numeric_str = NUMERIC_WITH_ERROR_RE.exec(val)?.[1] ?? val
-  if (numeric_str.trim() === ``) return null
-  return Number(normalize_unicode_minus(numeric_str))
+// Finite decimal reading of plain text, else null
+const parse_numeric_string = (text: string): number | null => {
+  const numeric_str = NUMERIC_WITH_ERROR_RE.exec(text)?.groups?.numeric
+  const num = numeric_str === undefined ? NaN : Number(normalize_unicode_minus(numeric_str))
+  return Number.isFinite(num) ? num : null
+}
+
+// A string cell's sort key: its data-sort-value (null when blank, which has no fallback to the
+// text either), else its visible text decoded once
+const sort_text = (val: string): string | null => {
+  const sort_attr = get_data_sort_value(val)
+  return sort_attr === undefined ? html_to_text(val).trim() : sort_attr
 }
 
 // The one numeric reading of a cell, shared by sorting, coloring, filters and summaries: an
@@ -70,23 +81,21 @@ const parse_numeric_string = (val: string): number | null => {
 export function parse_numeric_val(val: CellVal): number | null {
   if (typeof val === `number`) return Number.isFinite(val) ? val : null
   if (typeof val !== `string`) return null
-  const sort_attr = get_data_sort_value(val)
-  if (sort_attr === null) return null // no sort key, and no fallback to the text either
-  const num =
-    sort_attr === undefined ? parse_numeric_string(html_to_text(val)) : Number(sort_attr)
-  return num !== null && Number.isFinite(num) ? num : null
+  const text = sort_text(val)
+  return text === null ? null : parse_numeric_string(text)
 }
 
 // Sorts on the same rendered text search/filters/export use: raw values sorted `<b>Mango</b>`
-// under `<`, and booleans/objects broke the total order. null marks a missing sort key.
+// under `<`, and booleans/objects broke the total order. A data-sort-value that isn't a number
+// still overrides the visible text. ISO date/time text sorts by its instant: as text, `T09:00`
+// and ` 10:00` or two UTC offsets ordered wrongly. null marks a missing sort key.
 const get_sort_val = (val: CellVal): string | number | null => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
-  const num = parse_numeric_val(val)
-  if (num !== null) return num
-  // a data-sort-value that isn't a number still overrides the visible text
-  const sort_attr = typeof val === `string` ? get_data_sort_value(val) : undefined
-  return sort_attr === undefined ? cell_text(val) : sort_attr
+  if (typeof val !== `string`) return parse_numeric_val(val) ?? cell_text(val)
+  const text = sort_text(val)
+  if (text === null) return null
+  return parse_numeric_string(text) ?? parse_datetime_text(text) ?? text
 }
 
 export type SortCriterion = { key: string; ascending: boolean }
@@ -210,7 +219,11 @@ export function with_category_toggled(
   value: string,
   options: string[],
 ): ColumnFilter | undefined {
-  const selected = current?.kind === `category` ? current.values : options
+  // Values no row holds any more drop out, else they'd keep an allow-everything filter active
+  const selected =
+    current?.kind === `category`
+      ? current.values.filter((val) => options.includes(val))
+      : options
   const next = toggle_item(selected, value)
   return next.length === options.length ? undefined : { kind: `category`, values: next }
 }
@@ -244,8 +257,8 @@ const normalize_timestamp = (val: number): number | null => {
   return null
 }
 
-const parse_datetime_string = (val: string): number | null => {
-  const clean = html_to_text(val).trim()
+// Epoch ms of decoded, trimmed ISO date/time text, else null
+const parse_datetime_text = (clean: string): number | null => {
   if (!DATE_TIME_RE.test(clean)) return null
   const [year, month, day] = clean.slice(0, 10).split(`-`).map(Number)
   // Date constructors normalize impossible dates (February 30 becomes March 1) and the
@@ -273,7 +286,7 @@ export const parse_datetime_val = (val: CellVal, col: Omit<Column, `cell`>): num
   if (val instanceof Date) return Number.isNaN(val.getTime()) ? null : val.getTime()
   if (typeof val === `number`) return col.datetime_format ? normalize_timestamp(val) : null
   if (typeof val !== `string`) return null
-  const parsed_text = parse_datetime_string(val)
+  const parsed_text = parse_datetime_text(html_to_text(val).trim())
   if (parsed_text !== null) return parsed_text
   if (!col.datetime_format) return null
   return normalize_timestamp(Number(get_data_sort_value(val) ?? html_to_text(val).trim()))

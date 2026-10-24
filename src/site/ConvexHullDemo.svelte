@@ -33,8 +33,11 @@
     }
   }
 
+  // A file dropped on the quaternary hull shows until the next pick, the cache keeps the system
+  let dropped = $state.raw<{ entries: PhaseData[]; filename: string }>()
   const handle_click = (file: FileInfo) => {
     active_name = file.name
+    dropped = undefined
     void load_system(file.name)
   }
 
@@ -62,7 +65,7 @@
 {#if systems.size}
   <FilePicker
     files={picker_files}
-    active_files={active_name ? [active_name] : []}
+    active_files={active_name && !dropped ? [active_name] : []}
     on_click={handle_click}
     style="margin-block: 1em"
   />
@@ -73,9 +76,9 @@
       style="height: 500px"
     />
     <ConvexHull
-      entries={quaternary_entries}
-      controls={{ title: active_name }}
-      on_file_load={({ entries }) => loaded_data.set(active_name, entries)}
+      entries={dropped?.entries ?? quaternary_entries}
+      controls={{ title: dropped?.filename ?? active_name }}
+      on_file_load={({ entries, filename }) => (dropped = { entries, filename })}
       style="height: 500px"
     />
   </div>

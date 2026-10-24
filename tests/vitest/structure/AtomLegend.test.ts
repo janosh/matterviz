@@ -5,11 +5,12 @@ import { colors } from '#lib/state.svelte.js'
 import AtomLegend from '#lib/structure/AtomLegend.svelte'
 import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import { element_radius } from '#lib/structure/index.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
-import { dismiss_popover, doc_query, set_input } from '../setup'
+import { bind_props, dismiss_popover, doc_query, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 
 let mounted_components: ReturnType<typeof mount>[] = []
@@ -81,22 +82,14 @@ const label_texts = (): (string | undefined)[] =>
   [...document.querySelectorAll(`label`)].map((label) => label.textContent?.trim())
 
 describe(`AtomLegend Component`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      desc: `basic rendering with default amounts and rest props`,
-      props: {
-        elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 },
-        style: `margin: 20px;`,
-        'data-testid': `test-legend`,
-      },
-      expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`],
-      check_styling: true,
-    },
-    {
-      desc: `floating point precision`,
-      props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
-      expected_labels: [`P 1.485`, `S 3`, `Ge 0.515`],
-    },
+    { desc: `basic rendering with default amounts and rest props`,
+      props: { elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }, style: `margin: 20px;`,
+        'data-testid': `test-legend` },
+      expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`], check_styling: true },
+    { desc: `floating point precision`, props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
+      expected_labels: [`P 1.485`, `S 3`, `Ge 0.515`] },
   ])(`$desc`, ({ props, expected_labels, check_styling }) => {
     mount_legend(props)
     expect(label_texts()).toEqual(expected_labels)
@@ -275,6 +268,35 @@ describe(`AtomLegend Component`, () => {
       expect(doc_query(`.mode-option.selected`).textContent?.trim()).toBe(`Element`)
     })
   })
+
+  // Hosts derive a fresh config (and custom color_fn) on every update: a rebuild keeps the hidden
+  // values, a new property clears them (hidden `1` charges must not hide |magmom| = 1 atoms)
+  // oxfmt-ignore
+  test.each([
+    [`property`, (rev: number) => ({ mode: `property`, property_key: rev < 2 ? `charge` : `magmom` }), [[1], [1], []]],
+    [`custom`, () => ({ mode: `custom`, color_fn: () => 1 }), [[1], [1]]],
+  ] as const)(
+    `%s config rebuilds keep hidden values, a property switch clears them`,
+    async (_mode, make_config, expected) => {
+      const hidden_prop_vals = new Set<string | number>([1])
+      const revision = new SvelteMap([[`rev`, 0]])
+      const { color_scale } = DEFAULT_ATOM_COLOR_CONFIG
+      const props = {
+        get atom_color_config() {
+          const config = make_config(revision.get(`rev`) ?? 0)
+          return { ...config, scale_type: `categorical`, color_scale } as AtomColorConfig
+        },
+        property_colors: prop_colors([1, 2]),
+        hidden_prop_vals,
+      }
+      mounted_components.push(mount(AtomLegend, { target: document.body, props }))
+      for (const [rev, hidden] of expected.entries()) {
+        revision.set(`rev`, rev)
+        await tick()
+        expect([...hidden_prop_vals]).toEqual(hidden)
+      }
+    },
+  )
 
   describe(`Property Legend - Continuous`, () => {
     test(`integer values render a titled discrete bar of toggleable labeled segments`, async () => {
@@ -535,6 +557,20 @@ describe(`AtomLegend Component`, () => {
       expect(element_input.value).toBe(`0.5`) // H's display radius, not its 0.25 Å atomic radius
       set_input(element_input, `0.7`)
       expect(element_radius_overrides).toEqual({ H: 0.7 })
+    })
+
+    // The scene draws H mapped to Na with Na's radius, so the override must be keyed by Na
+    test(`radius of a remapped element edits the displayed element`, async () => {
+      const overrides = { element_radius_overrides: {} }
+      mount_legend(
+        bind_props({ elements: { H: 1 }, element_mapping: { H: `Na` as const } }, overrides),
+      )
+      await open_remap_menu()
+      expect(doc_query(`.radius-control span`).textContent).toBe(`Radius (Na)`)
+      const element_input = doc_query<HTMLInputElement>(`.radius-control input`)
+      expect(element_input.value).toBe(String(element_radius(`Na`)))
+      set_input(element_input, `0.7`)
+      expect(overrides.element_radius_overrides).toEqual({ Na: 0.7 })
     })
 
     // oxfmt-ignore

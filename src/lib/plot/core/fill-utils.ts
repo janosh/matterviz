@@ -2,7 +2,7 @@
 // curve so unclipped edges coincide with their lines. Clipped endpoints use a monotone-cubic
 // approximation: sub-pixel for monotoneX/linear/step, coarser for natural/basis/catmullRom.
 
-import { partition_point, sorted_numbers, type Vec2 } from '#lib/math.js'
+import { array_extent, partition_point, sorted_numbers, type Vec2 } from '#lib/math.js'
 import type { CurveFactory } from 'd3-shape'
 import {
   curveBasis,
@@ -26,6 +26,7 @@ import type {
   FillRegion,
   LineCurve,
 } from '#lib/plot/core/types.js'
+import { error_getter, error_lengths } from '#lib/plot/core/error-bars.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
 import { assert_aligned_lengths, assert_series_lengths } from '#lib/plot/core/types.js'
 
@@ -35,10 +36,13 @@ export interface Pt {
   y: number
 }
 
-// A boundary resolved to its native points (sorted by x) plus the curve used to trace it
+// A boundary resolved to its native points (sorted by x) plus the curve used to trace it.
+// `index_x`: a boundary's own x array in input order, gaps included, which data boundaries
+// without x align to by index (its sorted finite points would shift values after a gap).
 interface ResolvedBoundary {
   points: Pt[]
   curve: FillCurveType
+  index_x?: readonly number[]
 }
 
 // One renderable fill slice: the upper and lower edges (data coords) with their curves
@@ -278,25 +282,24 @@ const lookup_curve = <Name extends string, Curve>(
 const line_curve_to_fill = (curve: LineCurve | null | undefined): FillCurveType =>
   curve == null ? `monotoneX` : lookup_curve(`line`, LINE_CURVE_TO_FILL, curve)
 
-// Resolve a boundary to native points + curve in data coordinates. `companion` supplies x
+// Resolve a boundary to native points + curve in data coordinates. `companion_x` supplies x
 // positions for boundaries that don't define their own (constant/axis/function/data-without-x).
 export function resolve_boundary_points(
   boundary: FillBoundary,
   series: readonly DataSeries[],
   domains: DomainContext,
-  companion?: Pt[] | null,
+  companion_x?: readonly number[] | null,
 ): ResolvedBoundary | null {
-  // x positions used for companion-relative boundaries, ascending even on a reversed x axis
-  const span_xs =
-    companion && companion.length > 0
-      ? companion.map((point) => point.x)
-      : range_bounds(domains.x_domain)
+  // x positions data-without-x values align to, else the x domain (ascending even when reversed)
+  const span_xs = companion_x?.length ? companion_x : range_bounds(domains.x_domain)
+  // finite x extent flat and function edges span (companion x may be unsorted or gapped)
+  const [x_start, x_end] = array_extent(span_xs)
 
   // flat horizontal edge at constant y (number / constant / axis boundaries)
   const flat_edge = (coord_y: number): ResolvedBoundary => ({
     points: [
-      { x: span_xs[0], y: coord_y },
-      { x: span_xs[span_xs.length - 1], y: coord_y },
+      { x: x_start, y: coord_y },
+      { x: x_end, y: coord_y },
     ],
     curve: `linear`,
   })
@@ -312,10 +315,11 @@ export function resolve_boundary_points(
     const resolved = resolve_series_ref(boundary, series)
     if (!resolved) return null
     assert_series_lengths(resolved)
-    return curved_edge(
+    const edge = curved_edge(
       finite_points(resolved.x, resolved.y),
       line_curve_to_fill(resolved.line_style?.curve),
     )
+    return edge && { ...edge, index_x: resolved.x }
   }
   if (boundary.type === `constant`) return flat_edge(boundary.value)
   if (boundary.type === `axis`) {
@@ -327,7 +331,7 @@ export function resolve_boundary_points(
   }
   if (boundary.type === `function`) {
     // sample densely so the traced curve hugs the function
-    const [coord_x_0, coord_x_1] = [span_xs[0], span_xs[span_xs.length - 1]]
+    const [coord_x_0, coord_x_1] = [x_start, x_end]
     const steps = 100
     const points: Pt[] = []
     for (let idx = 0; idx <= steps; idx++) {
@@ -342,17 +346,20 @@ export function resolve_boundary_points(
     if (boundary.x) {
       const { x: coord_x, values } = boundary
       assert_aligned_lengths(`Fill boundary`, { x: coord_x, values })
-      return curved_edge(finite_points(coord_x, values))
+      const edge = curved_edge(finite_points(coord_x, values))
+      return edge && { ...edge, index_x: coord_x }
     }
-    // No x: align values to the companion's x by index (or fraction when lengths differ)
-    const num_values = boundary.values.length
-    const points = boundary.values.map((value, idx) => ({
-      x:
-        span_xs.length === num_values
-          ? span_xs[idx]
-          : span_xs[Math.round((idx / Math.max(1, num_values - 1)) * (span_xs.length - 1))],
-      y: value,
-    }))
+    // No x: spread the values evenly along the companion's x positions (or the x domain),
+    // interpolating between them, so equal lengths align by index and no two values share an x
+    const last_value_idx = Math.max(1, boundary.values.length - 1)
+    const points = boundary.values.map((value, idx) => {
+      const frac_idx = (idx * (span_xs.length - 1)) / last_value_idx // exact at equal lengths
+      const lower_idx = Math.floor(frac_idx)
+      const x_lo = span_xs[lower_idx]
+      const frac = frac_idx - lower_idx
+      // on a knot take its x outright: 0 * a gap's NaN neighbour would still be NaN
+      return { x: frac === 0 ? x_lo : x_lo + frac * (span_xs[lower_idx + 1] - x_lo), y: value }
+    })
     return curved_edge(clean_pts(points))
   }
   return null
@@ -455,8 +462,10 @@ export function compute_fill_segments(
   let lower = defines_own_x(region.lower)
     ? resolve_boundary_points(region.lower, series, domains)
     : null
-  upper ??= resolve_boundary_points(region.upper, series, domains, lower?.points)
-  lower ??= resolve_boundary_points(region.lower, series, domains, upper?.points)
+  const own_x = (edge: ResolvedBoundary | null) =>
+    edge?.index_x ?? edge?.points.map((point) => point.x)
+  upper ??= resolve_boundary_points(region.upper, series, domains, own_x(lower))
+  lower ??= resolve_boundary_points(region.lower, series, domains, own_x(upper))
   if (!upper || !lower || upper.points.length === 0 || lower.points.length === 0) return []
 
   // An explicit region.curve overrides the per-boundary curve (advanced: may no longer match the
@@ -553,11 +562,9 @@ export function generate_fill_path(
   return `${upper_path}L${lower_path.slice(1)}Z`
 }
 
-const expand_error = (err: number | readonly number[], length: number): readonly number[] =>
-  typeof err === `number` ? Array(length).fill(err) : err
-
 // Convert an ErrorBand convenience type to a full FillRegion (carrying the series x so the band
-// traces the central series exactly)
+// traces the central series exactly). Errors resolve like error bars: absolute magnitudes,
+// non-finite ones as 0, and per-point arrays must match the series length.
 export function convert_error_band_to_fill_region(
   error_band: ErrorBand,
   series: readonly DataSeries[],
@@ -566,12 +573,19 @@ export function convert_error_band_to_fill_region(
   if (!resolved) return null
 
   const { x: coord_x, y: coord_y } = resolved
-  const { error } = error_band
-
-  const [upper_err, lower_err] =
-    typeof error === `object` && `upper` in error
-      ? [expand_error(error.upper, coord_y.length), expand_error(error.lower, coord_y.length)]
-      : [expand_error(error, coord_y.length), expand_error(error, coord_y.length)]
+  const where = `Error band ${error_band.id ?? error_band.label ?? ``}`.trim()
+  const get_error = error_getter(error_band.error)
+  // untyped (Python/JSON) hosts can omit the required `error`
+  if (!get_error) throw new TypeError(`${where} has no error values`)
+  assert_aligned_lengths(
+    where,
+    Object.fromEntries([[`y`, coord_y], ...error_lengths(error_band.error, `error`)]),
+  )
+  // [lower, upper] magnitudes below and above each finite y; gaps stay gaps
+  const edge = (side: 0 | 1, direction: 1 | -1): number[] =>
+    coord_y.map((val, idx) =>
+      Number.isFinite(val) ? val + direction * get_error(idx)[side] : NaN,
+    )
 
   return {
     id: error_band.id,
@@ -583,16 +597,8 @@ export function convert_error_band_to_fill_region(
     // band edges are data boundaries (default monotoneX); inherit the central series' line
     // curve so the band traces with the same curve as the line it brackets
     curve: line_curve_to_fill(resolved.line_style?.curve),
-    upper: {
-      type: `data`,
-      x: coord_x,
-      values: coord_y.map((val, idx) => (Number.isFinite(val) ? val + upper_err[idx] : NaN)),
-    },
-    lower: {
-      type: `data`,
-      x: coord_x,
-      values: coord_y.map((val, idx) => (Number.isFinite(val) ? val - lower_err[idx] : NaN)),
-    },
+    upper: { type: `data`, x: coord_x, values: edge(1, 1) },
+    lower: { type: `data`, x: coord_x, values: edge(0, -1) },
     fill: error_band.fill ?? `#4e79a7`,
     pattern: error_band.pattern,
     fill_opacity: error_band.fill_opacity ?? 0.3,

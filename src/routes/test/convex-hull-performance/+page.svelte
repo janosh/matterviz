@@ -3,12 +3,18 @@
   import type { Crystal, ElementSymbol } from '#lib'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
-  import { mulberry32 } from '#lib/math.js'
+  import { calc_lattice_params, mulberry32, type Matrix3x3 } from '#lib/math.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { tick } from 'svelte'
 
   type Dimension = `2d` | `3d` | `4d`
 
+  // cell of the dummy structures on the first entries
+  const cube_10: Matrix3x3 = [
+    [10, 0, 0],
+    [0, 10, 0],
+    [0, 0, 10],
+  ]
   let dimension = $state<Dimension>(`3d`)
   let entry_count = $state(500)
   let is_generating = $state(false)
@@ -71,19 +77,9 @@
                 properties: {},
               })),
               lattice: {
-                a: 10,
-                b: 10,
-                c: 10,
-                alpha: 90,
-                beta: 90,
-                gamma: 90,
-                volume: 1000,
+                matrix: cube_10,
                 pbc: [true, true, true],
-                matrix: [
-                  [10, 0, 0],
-                  [0, 10, 0],
-                  [0, 0, 10],
-                ],
+                ...calc_lattice_params(cube_10),
               },
             }
           : undefined

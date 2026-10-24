@@ -89,6 +89,11 @@ describe(`is_color function`, () => {
     [`rgb(255, 0, 0, 0.5)`, true], [`rgba(255, 0, 0)`, true],
     [`hsl(120, 100%, 50%)`, true], [`hsla(120, 100%, 50%, 0.8)`, true], [`var(--my-color)`, true],
     [`color(srgb 1 0 0)`, true], [`color(display-p3 1 0.5 0)`, true],
+    [`var(--my-color, rgb(255 0 0))`, true], // a fallback nests parentheses
+    [`var(--a, var(--b, rgb(0 0 0)))`, true],
+    // the call must span the whole string, with nothing after its closing parenthesis
+    [`var(--a) var(--b)`, false], [`var(--a))`, false], [`var(--a`, false],
+    [`color(srgb 1 0 0) foo(1)`, false], [`var(--a); background: url(x)`, false],
     [`red`, true], [`rebeccapurple`, true], [`transparent`, true], [`currentcolor`, true],
     [`RED`, true], // named colors are case-insensitive
     [`RGB(255, 0, 0)`, true], // function names are case-insensitive
@@ -97,7 +102,11 @@ describe(`is_color function`, () => {
     [`hello world`, false], [``, false], [123, false], [null, false],
     // incomplete or malformed functions and hex
     [`rgb`, false], [`var`, false], [`color`, false], [`#gg0000`, false], [`#12`, false],
-    [`rgb(255, 0)`, false], // incomplete rgb values are rejected
+    // incomplete rgb values are rejected, as are empty and non-decimal channels
+    [`rgb(255, 0)`, false],
+    [`rgb(,,)`, false],
+    [`rgba(255, 0, 0, )`, false],
+    [`rgb(0x10, 0, 0)`, false],
     [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
     [`#1234567`, false], // 7-digit hex is invalid (regression vs old COLOR_FN_REGEX)
   ])(`%s -> %s`, (input, expected) => {

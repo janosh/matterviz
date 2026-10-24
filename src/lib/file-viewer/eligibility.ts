@@ -5,6 +5,7 @@ import {
   ext_regex,
   filename_token_regex,
   HDF5_EXT_REGEX,
+  is_vaspwave_filename,
   STRUCTURE_EXTENSIONS,
   TRAJ_EXTENSIONS,
   TRAJ_KEYWORDS_REGEX,
@@ -55,7 +56,8 @@ const normalize_eligible_filename = (filename: unknown): string | null => {
 const is_fermi_or_volumetric = (normalized: string): boolean =>
   FERMI_FILE_RE.test(normalized) ||
   VOLUMETRIC_EXT_RE.test(normalized) ||
-  VASP_VOLUMETRIC_REGEX.test(normalized)
+  VASP_VOLUMETRIC_REGEX.test(normalized) ||
+  is_vaspwave_filename(normalized)
 
 // Broad: MatterViz can open/view this file (JSON/YAML structures, keyword trajs, …). Hosts
 // that need a literal extension list use the viewer vocabularies in #lib/constants.

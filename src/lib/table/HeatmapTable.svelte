@@ -77,6 +77,7 @@
     table_to_json,
     table_to_latex,
     table_to_markdown,
+    tsv_cell,
   } from './export'
   import { type CellPos, CellSelection } from './selection.svelte'
   import ToggleMenu from './ToggleMenu.svelte'
@@ -310,10 +311,7 @@
     fallback: `#4a9eff`,
   })
   const selection_badge_color = $derived(
-    contrast_text_color({
-      background: accent_color.current,
-      backdrop: page_backdrop.current,
-    }),
+    contrast_text_color({ background: accent_color.current, backdrop: page_backdrop.current }),
   )
 
   // === Config normalisation ===
@@ -430,10 +428,7 @@
   $effect(() => {
     if (columns.length === 0) return
     const new_order = ordered_columns.map((col) => col.id)
-    const unchanged =
-      new_order.length === column_order.length &&
-      new_order.every((identifier, idx) => identifier === column_order[idx])
-    if (!unchanged) column_order = new_order
+    if (!same_parts(new_order, column_order)) column_order = new_order
   })
   let visible_columns = $derived(
     ordered_columns.filter((col) => col.visible !== false && !hidden_columns.includes(col.id)),
@@ -682,9 +677,8 @@
     for (const row of rows) height_sum += row.offsetHeight
     const measured = rows.length ? height_sum / rows.length : 0
     if (measured <= 0) return false
-    if (Math.abs(measured - untrack(() => avg_row_height)) > 0.5) {
+    if (Math.abs(measured - untrack(() => avg_row_height)) > 0.5)
       avg_row_height = clamp(measured, 8, 400)
-    }
     return true
   }
   // Measures once rows exist, and again under a new density preset
@@ -942,9 +936,8 @@
   }
   function handle_drop(event: DragEvent, target_col: Column<Row>) {
     event.preventDefault()
-    if (drag_col_id && drag_col_group() === target_col.group) {
+    if (drag_col_id && drag_col_group() === target_col.group)
       move_column_to(drag_col_id, target_col.id)
-    }
     reset_drag_state()
   }
   // Remove `col_id` from column_order and reinsert it at `target_id`'s position
@@ -961,9 +954,7 @@
   function move_column(col: Column<Row> | undefined, step: number) {
     if (!col) return
     const neighbour = visible_columns[visible_columns.indexOf(col) + step]
-    if (neighbour && neighbour.group === col.group) {
-      move_column_to(col.id, neighbour.id)
-    }
+    if (neighbour && neighbour.group === col.group) move_column_to(col.id, neighbour.id)
   }
 
   // === Cell range selection, keyboard navigation and copy ===
@@ -1121,9 +1112,8 @@
   function handle_body_contextmenu(event: MouseEvent & BodyEvent) {
     const pos = cell_under(event)
     // keep the native context menu for links/buttons/inputs inside cells
-    if (pos && !is_interactive_cell_target(event.target)) {
+    if (pos && !is_interactive_cell_target(event.target))
       open_column_context_menu(event, cols[pos.col].id)
-    }
   }
   function handle_window_pointerdown(event: PointerEvent) {
     const target = event.target instanceof Element ? event.target : null
@@ -1136,13 +1126,13 @@
   const copy_selected_cells = () =>
     void navigator.clipboard?.writeText(
       selection.to_tsv(sorted_data.length, cols.length, (row, col) =>
-        cell_text(sorted_data[row][cols[col].key]),
+        tsv_cell(cell_text(sorted_data[row][cols[col].key])),
       ),
     )
   // Every sorted+filtered value of one column (all pages), one per line
   const copy_column_values = (col_id: string) =>
     void navigator.clipboard?.writeText(
-      sorted_data.map((row) => cell_text(row[key_of_id(col_id)])).join(`\n`),
+      sorted_data.map((row) => tsv_cell(cell_text(row[key_of_id(col_id)]))).join(`\n`),
     )
 
   // Arrow keys walk the active cell, Shift+arrow grows the selection rectangle from it,
@@ -1427,6 +1417,17 @@
     set_pref(resize.col_id, `width`, clamp(width, 50, 500))
   }
   const end_resize = () => (resize = null)
+  // Keyboard counterpart of the drag: arrows step the width 10 px. Enter/Space stop here too,
+  // or the header would sort (and Space scroll); Escape and Cmd+C still reach the window.
+  function key_resize(event: KeyboardEvent & { currentTarget: HTMLElement }, col_id: string) {
+    if (![`ArrowLeft`, `ArrowRight`, `Enter`, ` `].includes(event.key)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const step = event.key === `ArrowRight` ? 10 : event.key === `ArrowLeft` ? -10 : 0
+    if (!step) return
+    const width = prefs_of(col_id).width ?? event.currentTarget.parentElement?.offsetWidth
+    set_pref(col_id, `width`, clamp((width ?? 100) + step, 50, 500))
+  }
   // Fit the header and rendered cells, including clipped text. Measuring all virtualized
   // or paged rows would require laying out the whole dataset off-screen.
   function autofit_column(event: MouseEvent, col_id: string) {
@@ -1458,10 +1459,10 @@
     if (widest > 0) set_pref(col_id, `width`, clamp(widest + 8, 50, 500))
   }
 
-  // Delegation keeps tooltips working as sorting, filtering and pagination replace cells
-  // an ellipsis-split link's aria-label is for screen readers; its tooltip is the cell's own
+  // Delegation keeps tooltips across re-rendered cells. Skipped: ellipsis-split links (the cell
+  // is their tooltip) and data-no-tooltip controls (a resize handle's would pop up mid-drag)
   const table_tooltips = tooltip({
-    delegate: `[title], [aria-label]:not([data-ellipsis-split]), [data-title]`,
+    delegate: `[title], [aria-label]:not([data-ellipsis-split], [data-no-tooltip]), [data-title]`,
   })
   const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
@@ -1700,6 +1701,7 @@
               <div class="col-color-row">
                 <span class="col-color-label">{@html render_html(col.label)}</span>
                 <select
+                  aria-label="{html_to_text(col.label)} color scheme"
                   value={shown_scheme(color_scale_of(col))}
                   onchange={(event) => {
                     const val = event.currentTarget.value as D3InterpolateName
@@ -1712,6 +1714,7 @@
                   {/each}
                 </select>
                 <select
+                  aria-label="{html_to_text(col.label)} better direction"
                   value={better_of(col) ?? ``}
                   onchange={(event) => {
                     const val = event.currentTarget.value as `higher` | `lower` | ``
@@ -1763,12 +1766,11 @@
         {/if}
         <tr>
           {#if show_row_select}
-            <th
-              class="select-col"
-              title={all_page_selected ? `Deselect all` : `Select all on this page`}
-            >
+            <th class="select-col">
               <input
                 type="checkbox"
+                aria-label={all_page_selected ? `Deselect all` : `Select all on this page`}
+                data-no-tooltip
                 checked={all_page_selected}
                 onchange={toggle_select_all}
               />
@@ -1840,7 +1842,8 @@
                   on_change={(mode) => set_pref(col_id, `datetime_format`, mode)}
                 />
               {/if}
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events (column resize handle; its click must not sort the header) -->
+              <!-- focusable column resize handle (drag or arrow keys); its click must not sort -->
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
               <span
                 class="resize-handle"
                 onpointerdown={(event) => start_resize(event, col_id)}
@@ -1848,8 +1851,12 @@
                 onpointerup={end_resize}
                 onlostpointercapture={end_resize}
                 onclick={stop_event}
+                onkeydown={(event) => key_resize(event, col_id)}
                 ondblclick={(event) => autofit_column(event, col_id)}
                 role="separator"
+                tabindex="0"
+                aria-label="Resize {html_to_text(col.label)} column"
+                data-no-tooltip
                 aria-orientation="vertical"
                 aria-valuenow={view.width ?? 100}
                 aria-valuemin={50}
@@ -1882,6 +1889,8 @@
             <td class="select-col">
               <input
                 type="checkbox"
+                aria-label="Select row {abs_idx + 1}"
+                data-no-tooltip
                 checked={is_row_selected(row)}
                 onchange={() => toggle_row_select(row)}
               />
@@ -2009,8 +2018,14 @@
     <div class="row-count-info">{display_rows.length} of {sorted_data.length} rows</div>
   {/if}
 
-  {#snippet page_btn(label: string, title: string, target_page: number, disabled: boolean)}
-    <button class="page-btn" {disabled} onclick={() => (current_page = target_page)} {title}>
+  <!-- named by aria-label (also its tooltip): the arrow glyph alone would be its name -->
+  {#snippet page_btn(label: string, name: string, to_page: number, disabled: boolean)}
+    <button
+      class="page-btn"
+      {disabled}
+      onclick={() => (current_page = to_page)}
+      aria-label={name}
+    >
       {label}
     </button>
   {/snippet}
@@ -2573,7 +2588,7 @@
     width: 4px;
     cursor: col-resize;
   }
-  .resize-handle:hover,
+  .resize-handle:is(:hover, :focus-visible),
   th.resizing .resize-handle {
     background: var(--table-accent);
   }

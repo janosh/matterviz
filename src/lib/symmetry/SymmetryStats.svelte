@@ -119,10 +119,7 @@
       <select
         value={settings.algo}
         onchange={(evt) =>
-          (settings = {
-            ...settings,
-            algo: evt.currentTarget.value as `Moyo` | `Spglib`,
-          })}
+          (settings = { ...settings, algo: evt.currentTarget.value as `Moyo` | `Spglib` })}
       >
         {#each Object.keys(SETTINGS_CONFIG.symmetry.algo.enum ?? {}) as value (value)}
           <option {value}>{value}</option>

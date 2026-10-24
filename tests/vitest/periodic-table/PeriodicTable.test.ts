@@ -232,6 +232,34 @@ describe(`PeriodicTable`, () => {
     expect([source.tabIndex, target.tabIndex]).toEqual([-1, 0])
   })
 
+  test(`keyboard focus shows the tile's tooltip; Escape, hover and blur update it`, async () => {
+    mount_table({ links: { H: `#H`, He: `#He`, Li: `#Li` } })
+    const [hydrogen, helium, lithium] = [`H`, `He`, `Li`].map((symbol) =>
+      doc_query(`[data-element-symbol="${symbol}"]`),
+    )
+    const tooltip_text = () => document.querySelector(`.plot-tooltip`)?.textContent ?? null
+    hydrogen.focus()
+    hydrogen.dispatchEvent(keydown(`ArrowRight`))
+    await tick()
+    expect(tooltip_text()).toContain(`He • 2`)
+    helium.dispatchEvent(keydown(`Escape`, { cancelable: true }))
+    await tick()
+    expect(tooltip_text()).toBeNull() // dismissable without moving focus (WCAG 1.4.13)
+    helium.dispatchEvent(keydown(`ArrowLeft`))
+    await tick()
+    expect(tooltip_text()).toContain(`H • 1`)
+    // hovering another tile shows its tooltip; leaving it returns to the focused tile's
+    lithium.dispatchEvent(mouseenter)
+    await tick()
+    expect(tooltip_text()).toContain(`Li • 3`)
+    lithium.dispatchEvent(mouseleave)
+    await tick()
+    expect(tooltip_text()).toContain(`H • 1`)
+    hydrogen.blur()
+    await tick()
+    expect(tooltip_text()).toBeNull()
+  })
+
   // pointerdown + click without the compat mouseenter; returns whether the click was prevented
   const tap = (tile: HTMLElement, pointerType: string): boolean => {
     tile.dispatchEvent(Object.assign(mouse(`pointerdown`), { pointerType }))

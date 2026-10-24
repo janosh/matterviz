@@ -111,12 +111,7 @@ export function match_of_matrices(
 }
 
 // A super-lattice basis (rows = matrix · primitive rows) with the metric the matcher compares
-type SuperLattice = {
-  matrix: Matrix2x2
-  uu: number
-  vv: number
-  angle: number
-}
+type SuperLattice = { matrix: Matrix2x2; uu: number; vv: number; angle: number }
 
 const super_lattice = (matrix: Matrix2x2, primitive: Matrix2x2): SuperLattice => {
   const [vec_u, vec_v] = mul2(matrix, primitive)

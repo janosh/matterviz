@@ -3,7 +3,7 @@
   import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index.js'
   import { JsonTree } from 'svelte-widgets/json-tree'
   import { set_at_path } from 'svelte-widgets/json-tree/utils'
-  import { build_diagram } from './build-diagram'
+  import { build_diagram, find_duplicate_id } from './build-diagram'
   import type { DiagramInput } from './diagram-input'
   import type { PhaseDiagramData } from './types'
   import { create_flash } from '#lib/effects.svelte.js'
@@ -51,6 +51,9 @@
         build_diagram(updated as DiagramInput)
         diagram_input = updated as DiagramInput
       } else {
+        // ids key the rendered regions/boundaries/points: a repeat would crash the keyed each
+        const duplicate = find_duplicate_id(updated as PhaseDiagramData)
+        if (duplicate) throw new Error(duplicate)
         // Clear diagram_input so the rebuilt diagram doesn't shadow the edited data.
         diagram_input = null
         on_data?.(updated as PhaseDiagramData)

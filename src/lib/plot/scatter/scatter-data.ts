@@ -21,6 +21,13 @@ import type {
 } from '#lib/plot/core/types.js'
 import { assert_series_lengths, has_marker } from '#lib/plot/core/types.js'
 
+// A colour/size value a scale can map: NaN, ±Infinity and null fall back to the series style
+// like a missing value (d3 scales map NaN to undefined: a black marker at the default size)
+export const is_finite_num = (val: number | null | undefined): val is number =>
+  typeof val === `number` && Number.isFinite(val)
+export const finite_or_null = (val: number | null | undefined): number | null =>
+  is_finite_num(val) ? val : null
+
 // Resolve an indexed-or-scalar series prop into a per-point getter. Hoisting the
 // null/Array.isArray branch out of the point loop matters at 100k points, where these
 // five props would otherwise cost 10 redundant checks per point.
@@ -117,6 +124,27 @@ export function materialize_series_points<Metadata = Record<string, unknown>>(
     })
   }
   return out
+}
+
+// A layer's coordinates with each point missing either one masked to NaN: such a point is not
+// drawn (materialize_series_points drops it), so neither coordinate nor its error bar may widen
+// an axis. The masked copies are made at the first gap, so gap-free layers come back as given.
+export function drawn_xy(
+  xs: readonly number[],
+  ys: readonly number[],
+): { x: readonly number[]; y: readonly number[]; n_drawn: number } {
+  let masked: { x: number[]; y: number[] } | null = null
+  let n_drawn = 0
+  for (let idx = 0; idx < xs.length; idx++) {
+    if (Number.isFinite(xs[idx]) && Number.isFinite(ys[idx])) {
+      n_drawn++
+      continue
+    }
+    masked ??= { x: xs.slice(), y: ys.slice() }
+    masked.x[idx] = NaN
+    masked.y[idx] = NaN
+  }
+  return { ...(masked ?? { x: xs, y: ys }), n_drawn }
 }
 
 // Filter materialized series to the points within bounds. Full x/y arrays are kept on each
@@ -257,9 +285,7 @@ export function scatter_line_style<Metadata>(
 ) {
   let color = override?.color ?? series.line_style?.stroke ?? first_point_style(series)?.fill
   if (color == null) {
-    const value = series.color_values?.find(
-      (candidate) => candidate != null && Number.isFinite(candidate),
-    )
+    const value = series.color_values?.find(is_finite_num)
     color = value != null ? color_scale(value) : plot_color(series_idx)
   }
   return {
@@ -297,10 +323,9 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
         display_style.symbol_type = point_style.symbol_type
       }
       const color_value = data_series.color_values?.[0]
-      display_style.symbol_color =
-        color_value != null && Number.isFinite(color_value)
-          ? color_scale_fn(color_value)
-          : (point_override?.color ?? point_style?.fill ?? series_default_color)
+      display_style.symbol_color = is_finite_num(color_value)
+        ? color_scale_fn(color_value)
+        : (point_override?.color ?? point_style?.fill ?? series_default_color)
       display_style.symbol_opacity = point_override?.opacity ?? point_style?.fill_opacity
       // Fall back to stroke when the fill is missing, none or fully transparent (zero alpha)
       const stroke = point_override?.stroke_color ?? point_style?.stroke

@@ -141,7 +141,8 @@ export function compute_ir_raman_spectrum(
   if (born.born_charges.length !== n_atoms) {
     throw new Error(
       `compute_ir_raman_spectrum: ${born.born_charges.length} Born charge tensors for ` +
-        `${n_atoms} atoms. BORN files list only symmetry-independent sites unless expanded.`,
+        `${n_atoms} atoms. phonopy's BORN lists only the symmetry-independent atoms, and ` +
+        `expanding them needs the cell's symmetry, which is unsupported: give one per atom.`,
     )
   }
   if (modes.length !== 3 * n_atoms) {

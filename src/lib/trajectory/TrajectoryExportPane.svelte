@@ -356,12 +356,7 @@
   )
   const video_settings_settings = track_settings(
     () => ({ video_fps, video_width, video_height, bitrate_mbps }),
-    {
-      video_fps: 30,
-      video_width: 1920,
-      video_height: 1080,
-      bitrate_mbps: 20,
-    },
+    { video_fps: 30, video_width: 1920, video_height: 1080, bitrate_mbps: 20 },
   )
 </script>
 

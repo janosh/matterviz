@@ -53,16 +53,12 @@ export function compute_energy_mode_info(
   )
   // Missing hull distances alone don't force recomputing E_form: build_hull_model fills them
   // from the precomputed E_form
-  let energy_mode: EnergySourceMode = energy_source_mode
-  if (!can_compute) energy_mode = `precomputed`
-  else if (corrections_active || !has_precomputed_e_form) energy_mode = `on-the-fly`
-  return {
-    has_precomputed_e_form,
-    can_compute,
-    corrections_active,
-    energy_mode,
-    unary_refs,
-  }
+  const energy_mode: EnergySourceMode = !can_compute
+    ? `precomputed`
+    : corrections_active || !has_precomputed_e_form
+      ? `on-the-fly`
+      : energy_source_mode
+  return { has_precomputed_e_form, can_compute, corrections_active, energy_mode, unary_refs }
 }
 
 export const apply_formation_energies = (

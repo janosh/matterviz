@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { create_flash } from '#lib/effects.svelte.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { format_equation_html } from './format'
@@ -12,6 +11,7 @@
   } from './recipe'
   import { describe_downhill_windows } from './thermo'
   import type { RecipeAssumptions, SynthesisRoute } from './types'
+  import { create_clipboard_feedback } from 'svelte-widgets/clipboard'
 
   let {
     route,
@@ -38,11 +38,15 @@
     keyof RecipeAssumptions,
     string,
   ][]
-  const copied = create_flash(false, 1500)
+  // A denied clipboard (permissions, insecure context) says so instead of rejecting unseen
+  let copy_failed = $state(false)
+  const { copied, copy, clear } = create_clipboard_feedback(1500, (error) => {
+    console.error(`Failed to copy experiment card`, error)
+  })
   let mass_error = $state(false)
   async function copy_recipe(): Promise<void> {
-    await navigator.clipboard.writeText(format_recipe_text(scaled_route))
-    copied.show(true)
+    copy_failed = !(await copy(format_recipe_text(scaled_route), `recipe`))
+    if (copy_failed) clear(`recipe`) // drop a lingering `Copied` from the previous copy
   }
 </script>
 
@@ -66,7 +70,7 @@
       <span>g {@html sanitize_formula(route.reaction.products[0].phase.formula)}</span>
     </label>
     <button type="button" onclick={copy_recipe} title="Copy experiment card as text">
-      {copied.value ? `Copied` : `Copy`}
+      {copied.has(`recipe`) ? `Copied` : copy_failed ? `Copy failed` : `Copy`}
     </button>
   </header>
   {#if mass_error}<p role="alert">Enter a target mass greater than zero.</p>{/if}

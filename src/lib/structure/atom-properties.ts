@@ -74,7 +74,10 @@ const build_prop_colors = (
   colors: string[],
   unique_values?: number[],
 ): AtomPropertyColors => {
-  const uniq = unique_values ?? sorted_numbers(new Set(vals))
+  // NaN (a custom color_fn's "no value") would break the sort's comparator, leaving the
+  // legend's min/max at arbitrary values
+  const uniq =
+    unique_values ?? sorted_numbers(new Set(vals.filter((val) => !Number.isNaN(val))))
   const min_value = uniq[0]
   const max_value = uniq.at(-1)
   return { colors, values: vals, min_value, max_value, unique_values: uniq }
@@ -403,6 +406,11 @@ export function get_site_property_colors(
     ...stats,
     colors: scalars.map((scalar) => (scalar === null ? GRAY : stats.colors[present_idx++])),
     values: scalars.map((scalar) => scalar ?? `unknown`),
+    // a categorical legend lists the gray sites too, so they can be hidden like any value (a
+    // continuous one keeps numbers only, its bar has no slot for them)
+    ...(type === `categorical` && {
+      unique_values: [...(stats.unique_values ?? []), `unknown`],
+    }),
   }
 }
 

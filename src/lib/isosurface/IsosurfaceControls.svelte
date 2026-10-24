@@ -444,12 +444,14 @@
             type="checkbox"
             checked={layer.visible}
             onchange={() => update_layer(layer_idx, { visible: !layer.visible })}
+            aria-label="Show surface"
             {@attach tooltip({ content: `Toggle surface visibility` })}
           />
           <input
             type="color"
             value={layer.color}
             onchange={(event) => update_layer(layer_idx, { color: event.currentTarget.value })}
+            aria-label="Surface color"
             {@attach tooltip({
               content:
                 layer.color_volume_id != null
@@ -463,6 +465,7 @@
               value={layer.negative_color}
               onchange={(event) =>
                 update_layer(layer_idx, { negative_color: event.currentTarget.value })}
+              aria-label="Negative lobe color"
               {@attach tooltip({ content: `Color for the negative-valued lobe` })}
             />
           {/if}
@@ -540,7 +543,7 @@
               aria-label="Colormap for sampled values"
               {@attach tooltip({ content: `Colormap for sampled values` })}
             />
-            <div class="color-range" aria-label="Colormap value range">
+            <div class="color-range" role="group" aria-label="Colormap value range">
               <span>Range</span>
               {@render range_bound_input(layer_idx, 0, explicit_range)}
               <span aria-hidden="true">&ndash;</span>
@@ -616,6 +619,7 @@
                 type="number"
                 step="0.05"
                 placeholder={String(bound)}
+                aria-label="{axis_label} {bound ? `max` : `min`}"
                 value={settings.display_range?.[axis][bound] ?? ``}
                 onchange={(event) =>
                   update_display_range(axis, bound, event.currentTarget.value)}

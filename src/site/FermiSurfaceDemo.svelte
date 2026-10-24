@@ -13,7 +13,12 @@
   import { format_num } from '#lib/labels.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { fermi_file_paints, fermi_surface_files } from '#site/fermi-surfaces.js'
-  import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
+  import {
+    file_param,
+    latest_load,
+    loaded_fixture,
+    set_file_param,
+  } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -127,12 +132,12 @@
     ? { miller_indices: slice_miller, distance: slice_distance }
     : undefined}
   show_controls="hover"
-  on_file_load={({ source_filename }) => {
+  on_file_load={(data) => {
     loads.cancel() // a dropped file supersedes any pick still loading
     error_msg = undefined
-    if (!source_filename) return
-    active_file = source_filename
-    if (sync_url) set_file_param(source_filename)
+    if (!data.source_filename) return
+    active_file = data.source_filename
+    if (sync_url) set_file_param(loaded_fixture(data))
   }}
   tooltip={{
     suffix: (_data) => `File: <code>${active_file ?? `none`}</code>`,

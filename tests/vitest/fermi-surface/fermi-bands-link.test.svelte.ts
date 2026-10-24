@@ -1,9 +1,12 @@
 // FermiBandsLink: the state a Fermi surface and its band structure share, driven directly
+import { sheet_color } from '#lib/fermi-surface/constants.js'
 import type { FermiBandsLinkInputs } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
 import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
 import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
+import type { Vec2 } from '#lib/math.js'
 import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
-import type { BandsSpinMode } from '#lib/spectral/types.js'
+import { band_crossings, band_k_path, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
+import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { expect, onTestFinished, test } from 'vitest'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -36,7 +39,7 @@ const band_event = (band_idx: number, y: number, spin: `up` | `down` = `up`) =>
 type Host = { mu: number; selected_bands?: number[]; band_data: BandGridData } & {
   [key in `bands_props` | `fermi_props`]: ReturnType<FermiBandsLinkInputs[key]>
 }
-const make_link = (band_spin_mode?: BandsSpinMode) => {
+const make_link = (band_spin_mode?: BandsSpinMode, band_struct?: BaseBandStructure) => {
   const host = $state<Host>({
     mu: 0,
     band_data,
@@ -48,7 +51,7 @@ const make_link = (band_spin_mode?: BandsSpinMode) => {
     $effect.root(() => {
       link = new FermiBandsLink({
         band_data: () => host.band_data,
-        band_struct: () => undefined,
+        band_struct: () => band_struct,
         k_lattice: () => IDENTITY_MATRIX3,
         mu: { get: () => host.mu, set: (mu) => (host.mu = mu) },
         selected_bands: () => host.selected_bands,
@@ -67,6 +70,28 @@ test.each<[BandsSpinMode | undefined, string[] | undefined]>([
   [`down_only`, [`down`]],
 ])(`spin mode %s shows spin channels %j of a spin-polarized grid`, (mode, spins) => {
   expect(make_link(mode).link.selected_spins).toEqual(spins)
+})
+
+// with bands beside the grid their spin channels decide, as in Bands: unpolarized bands draw
+// spin up whatever the mode, so `down_only` must not hide the up sheets and crossings
+test.each([
+  [`unpolarized`, undefined, undefined],
+  [`spin-polarized`, [[0, 0]], [`down`]],
+])(`down_only beside %s bands shows spin channels %j`, (_label, spin_down_bands, spins) => {
+  const band_struct: BaseBandStructure = {
+    type: `electronic`,
+    qpoints: [
+      { label: null, frac_coords: [0, 0, 0] },
+      { label: null, frac_coords: [0.5, 0, 0] },
+    ],
+    branches: [{ start_index: 0, end_index: 1, name: `` }],
+    labels_dict: {},
+    distance: [0, 1],
+    nb_bands: 1,
+    bands: [[0, 2]],
+    ...(spin_down_bands && { spin_down_bands }),
+  }
+  expect(make_link(`down_only`, band_struct).link.selected_spins).toEqual(spins)
 })
 
 // a new inline props literal whose other keys changed must not reset a control's choice
@@ -89,6 +114,9 @@ test(`spin mode and colouring chosen in the controls survive unrelated prop chan
 test(`a band click pins its energy and isolates its sheet, a second click ends it`, () => {
   const { link, host } = make_link()
   const shown = () => [host.mu, link.isolated_band, link.highlighted_band]
+  link.band_click(band_event(5, 1.25)) // band 5 lies outside the grid: nothing pinned
+  flushSync()
+  expect(shown()).toEqual([0, null, null])
   link.band_click(band_event(1, 1.25))
   flushSync()
   expect(shown()).toEqual([0.25, 1, 1])
@@ -138,4 +166,101 @@ test(`hovering a grid band previews its energy, another band only highlights`, (
   flushSync()
   expect(shown()).toEqual([0.25, false, 1.25, null])
   expect(link.bands_hover_config).toEqual({ threshold_px: 50, click_threshold_px: 10 })
+})
+
+// Band lines take their sheet's colour over the caller's style (one for all, or per band and
+// spin), bands without a sheet keep the caller's colour or are muted; with vertex properties
+// to colour sheets by, lines keep the caller's style
+test(`band lines take their sheet's colour unless sheets are coloured by vertex`, () => {
+  const { link, host } = make_link()
+  const style = (band_idx: number, spin: `up` | `down` = `up`) =>
+    typeof link.line_kwargs === `function` ? link.line_kwargs(band_idx, spin, `Cu`) : undefined
+  expect([style(1, `down`), style(5)]).toEqual([
+    { stroke: sheet_color(1, `down`, `band`) },
+    { stroke: BANDS_CSS_COLORS.muted },
+  ])
+  for (const line_kwargs of [
+    { stroke: `#123456`, stroke_width: 2.5 },
+    (band: number) => ({ stroke: `#123456`, stroke_width: band === 1 ? 2.5 : 1 }),
+  ] satisfies LineKwargs[]) {
+    host.bands_props = { line_kwargs }
+    flushSync()
+    expect([style(1), style(5)?.stroke]).toEqual([
+      { stroke: sheet_color(1, `up`, `band`), stroke_width: 2.5 },
+      `#123456`,
+    ])
+  }
+  // property colouring without grid properties keeps flat sheets, and so the band lines
+  host.fermi_props = { color_property: `property` }
+  flushSync()
+  expect(style(1)?.stroke).toBe(sheet_color(1, `up`, `property`))
+  const { line_kwargs } = host.bands_props
+  host.band_data = { ...band_data, properties: { v_F: band_data.energies } }
+  flushSync()
+  expect(link.line_kwargs).toBe(line_kwargs)
+})
+
+// Ten electronic bands along Γ → X (each case sets band 8); bands 8 and 9 have a sheet. Band 9
+// runs 0 → 1 eV.
+const ten_bands: BaseBandStructure = {
+  type: `electronic`,
+  qpoints: [
+    { label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 },
+    { label: null, frac_coords: [0.25, 0, 0], distance: 0.5 },
+    { label: `X`, frac_coords: [0.5, 0, 0], distance: 1 },
+  ],
+  branches: [{ start_index: 0, end_index: 2, name: `GAMMA-X` }],
+  labels_dict: { GAMMA: [0, 0, 0], X: [0.5, 0, 0] },
+  distance: [0, 0.5, 1],
+  nb_bands: 10,
+  bands: Array.from({ length: 10 }, (_, band_idx) => [
+    band_idx - 9,
+    band_idx - 8.5,
+    band_idx - 8,
+  ]),
+}
+// Crossings interpolate linearly between q-points in plot x (here Γ→X spans x 2 → 4) and in k
+// (identity lattice: k = frac coords). A band meeting the energy at a q-point is one crossing
+// there whichever side it comes from or turns back to (each q-point of a flat run too), and so
+// is a q-point two branches share (Γ→X split at q-point 1 gives the same crossings).
+// oxfmt-ignore
+test.each<[string, number[], number, [number, number, number][]]>([
+  [`rising through q-point 1`, [0.1, 0.3, 0.5], 0.3, [[8, 3, 0.25], [9, 2.6, 0.15]]],
+  [`rising, between q-points`, [0.1, 0.3, 0.5], 0.45, [[8, 3.75, 0.4375], [9, 2.9, 0.225]]],
+  [`branch start`, [0.1, 0.3, 0.5], 0.1, [[8, 2, 0], [9, 2.2, 0.05]]],
+  [`touching from below`, [0, 0.3, 0], 0.3, [[8, 3, 0.25], [9, 2.6, 0.15]]],
+  [`touching from above`, [0.5, 0.3, 0.5], 0.3, [[8, 3, 0.25], [9, 2.6, 0.15]]],
+  [`flat at the energy`, [0.3, 0.3, 0.3], 0.3, [[8, 2, 0], [8, 3, 0.25], [8, 4, 0.5], [9, 2.6, 0.15]]],
+  [`flat, then leaving`, [0.3, 0.3, 0.5], 0.3, [[8, 2, 0], [8, 3, 0.25], [9, 2.6, 0.15]]],
+  [`band 1 without a sheet`, [0.1, 0.3, 0.5], -7.5, []], // its [-8, -7.5, -7] crosses
+])(`band_crossings: %s`, (_desc, band_8, energy, expected) => {
+  const bands = ten_bands.bands.map((energies, band) => (band === 8 ? band_8 : energies))
+  const { points } = band_k_path(ten_bands, IDENTITY_MATRIX3)
+  const split = {
+    ...ten_bands,
+    bands,
+    branches: [
+      { start_index: 0, end_index: 1, name: `GAMMA-q` },
+      { start_index: 1, end_index: 2, name: `q-X` },
+    ],
+  }
+  for (const [struct, x_positions] of [
+    [{ ...ten_bands, bands }, { GAMMA_X: [2, 4] }],
+    [split, { GAMMA_null: [2, 3], null_X: [3, 4] }],
+  ] satisfies [BaseBandStructure, Record<string, Vec2>][]) {
+    const crossings = band_crossings(struct, energy, points, x_positions, (band) =>
+      [8, 9].includes(band),
+    ).toSorted(
+      (cross_a, cross_b) => cross_a.band_idx - cross_b.band_idx || cross_a.x - cross_b.x,
+    )
+    expect(crossings.map(({ band_idx, spin }) => [band_idx, spin])).toEqual(
+      expected.map(([band]) => [band, `up`]),
+    )
+    for (const [idx, [, x_val, k_x]] of expected.entries()) {
+      expect(crossings[idx].x).toBeCloseTo(x_val, 12)
+      for (const [axis, coord] of [k_x, 0, 0].entries()) {
+        expect(crossings[idx].k[axis]).toBeCloseTo(coord, 12)
+      }
+    }
+  }
 })

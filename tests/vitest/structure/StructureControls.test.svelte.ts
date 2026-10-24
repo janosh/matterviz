@@ -72,6 +72,18 @@ const scene_state = (initial: Partial<StructureSettings>) => {
     },
   }
 }
+// atom_color_config as a raw (unproxied) accessor, so a custom color_fn stays as given
+const color_config_state = (initial: AtomColorConfig) => {
+  let atom_color_config = $state.raw(initial)
+  return {
+    get atom_color_config() {
+      return atom_color_config
+    },
+    set atom_color_config(value) {
+      atom_color_config = value
+    },
+  }
+}
 // pick an option in a row's <select>, or click a row's reset button, and flush the update
 const choose = async (key: string, value: string): Promise<void> => {
   const select = doc_query<HTMLSelectElement>(`[data-key="${key}"] select`)
@@ -324,9 +336,11 @@ describe(`StructureControls schema rows`, () => {
     // uniform polyhedra color mode pairs the mode select with its color swatch in ONE row
     const polyhedra_color_row = row_of(`polyhedra_color`)
     expect(polyhedra_color_row.querySelector(`select`)?.value).toBe(`uniform`)
-    expect(
-      polyhedra_color_row.querySelector<HTMLInputElement>(`input[type="color"]`)?.value,
-    ).toBe(DEFAULTS.structure.polyhedra_color)
+    const polyhedra_swatch =
+      polyhedra_color_row.querySelector<HTMLInputElement>(`input[type="color"]`)
+    expect(polyhedra_swatch?.value).toBe(DEFAULTS.structure.polyhedra_color)
+    // the row's label names its select, so the swatch carries its own name
+    expect(polyhedra_swatch?.getAttribute(`aria-label`)).toBe(`Polyhedra color`)
 
     for (const [key, expected] of [
       [`bond_thickness`, 0.2],
@@ -541,11 +555,8 @@ describe(`StructureControls schema rows`, () => {
   ])(`rotation input %s lands on %i degrees`, async (typed, degrees) => {
     const state = $state({ scene_props: { ...DEFAULTS.structure } })
     const target = await mount_bound_controls(state)
-    const [number_input] = target.querySelectorAll<HTMLInputElement>(
-      `[data-key="rotation"] input[type="number"]`,
-    )
-    const [range_input] = target.querySelectorAll<HTMLInputElement>(
-      `[data-key="rotation"] input[type="range"]`,
+    const [number_input, range_input] = [`number`, `range`].map((type) =>
+      query(target, `[data-key="rotation"] input[type="${type}"]`, HTMLInputElement),
     )
     set_input(number_input, typed)
     await tick()
@@ -653,15 +664,11 @@ const mount_persisted_controls = async (
 }
 
 describe(`StructureControls reactive props`, () => {
+  // oxfmt-ignore
   test.each<AtomColorConfig>([
     DEFAULT_ATOM_COLOR_CONFIG,
     { mode: `coordination`, color_scale: `interpolateTurbo`, scale_type: `categorical` },
-    {
-      mode: `property`,
-      property_key: `velocity`,
-      color_scale: `interpolateTurbo`,
-      scale_type: `categorical`,
-    },
+    { mode: `property`, property_key: `velocity`, color_scale: `interpolateTurbo`, scale_type: `categorical` },
   ])(
     `restores $mode coloring and treats persisted settings as the reset snapshot`,
     async (atom_color_config) => {
@@ -796,13 +803,15 @@ describe(`StructureControls reactive props`, () => {
     await tick()
     // reset edits the caller's settings object in place rather than swapping in a copy
     expect(state.scene_props).toBe(before_reset)
-    expect(state.scene_props.atom_radius).toBe(DEFAULTS.structure.atom_radius)
-    expect(state.scene_props.ambient_light).toBe(DEFAULTS.structure.ambient_light)
+    const { atom_radius, ambient_light, show_trajectory_lines } = DEFAULTS.structure
+    expect(state).toMatchObject({
+      scene_props: { atom_radius, ambient_light },
+      color_scheme: DEFAULTS.color_scheme,
+      background_color: undefined,
+      show_trajectory_lines,
+      supercell_scaling: `1x1x1`,
+    })
     expect(state.scene_props.vector_configs).toEqual({})
-    expect(state.color_scheme).toBe(DEFAULTS.color_scheme)
-    expect(state.background_color).toBeUndefined()
-    expect(state.show_trajectory_lines).toBe(DEFAULTS.structure.show_trajectory_lines)
-    expect(state.supercell_scaling).toBe(`1x1x1`)
     expect(localStorage.getItem(STRUCTURE_VIEW_STATE_STORAGE_KEY)).toBeNull()
   })
 
@@ -854,20 +863,19 @@ describe(`StructureControls reactive props`, () => {
       serialize_structure_view_state(shared),
       /Imported shared-view\.json/,
     )
-    expect(state.scene_props.atom_radius).toBe(1.8)
-    expect(state.scene_props.camera_projection).toBe(`perspective`)
+    expect(state.scene_props).toMatchObject({
+      atom_radius: 1.8,
+      camera_projection: `perspective`,
+    })
     expect(state.atom_color_config).toEqual(atom_color_config)
     expect(state.scene_props).not.toBe(initial_scene)
     expect(initial_scene).toStrictEqual(DEFAULTS.structure)
   })
 
+  // oxfmt-ignore
   test.each([
     [`malformed JSON`, `{"nope":`, /Invalid JSON/],
-    [
-      `unsupported version`,
-      JSON.stringify({ version: 999 }),
-      /Unsupported view-state version 999; expected 1/,
-    ],
+    [`unsupported version`, JSON.stringify({ version: 999 }), /Unsupported view-state version 999; expected 1/],
   ])(`import rejects %s and leaves settings untouched`, async (_label, payload, status) => {
     const state = $state({ scene_props: { ...DEFAULTS.structure, atom_radius: 1.4 } })
     const target = await mount_bound_controls(state, { persist_settings: false })
@@ -877,7 +885,7 @@ describe(`StructureControls reactive props`, () => {
   })
 
   test(`atom color mode row reset restores its derived scale type`, async () => {
-    let atom_color_config = $state.raw(
+    const state = color_config_state(
       next_atom_color_config(
         {
           mode: `element`,
@@ -888,14 +896,6 @@ describe(`StructureControls reactive props`, () => {
         [],
       ),
     )
-    const state = {
-      get atom_color_config() {
-        return atom_color_config
-      },
-      set atom_color_config(value) {
-        atom_color_config = value
-      },
-    }
     const structure = structuredClone(simple_structure)
     const { properties } = structure.sites[0]
     structure.sites[0].properties = { ...properties, selective_dynamics: [true, true, true] }
@@ -924,6 +924,27 @@ describe(`StructureControls reactive props`, () => {
     expect(
       target.querySelector(`[data-key="atom_color_mode"] .setting-reset-button`),
     ).toBeNull()
+  })
+
+  // A viewer started in custom coloring: the mode reset must hand back its color_fn, since a
+  // plain switch to `custom` has none and throws
+  test(`atom color mode reset restores a custom coloring`, async () => {
+    const color_fn = (_site: unknown, idx: number) => idx
+    const state = color_config_state({
+      ...DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `custom`,
+      color_fn,
+      scale_type: `categorical`,
+    })
+    await mount_bound_controls(state)
+    await choose(`atom_color_mode`, `element`)
+    expect(state.atom_color_config.mode).toBe(`element`)
+    await reset_row(`atom_color_mode`)
+    expect(state.atom_color_config).toMatchObject({
+      mode: `custom`,
+      color_fn,
+      scale_type: `categorical`,
+    })
   })
 
   // The label colors are CSS strings the scene owns, read through derived bindings rather than
@@ -1094,20 +1115,13 @@ describe(`StructureControls reactive props`, () => {
     expect(find_label(target, `Si`, true)).toBeDefined()
   })
 
+  // oxfmt-ignore
   test.each<Partial<StructureSettings>>([
     {},
-    {
-      atom_radius: undefined,
-      polyhedra_color: undefined,
-      trajectory_line_elements: undefined,
-    },
-    {
-      atom_radius: DEFAULTS.structure.atom_radius,
-      polyhedra_color: DEFAULTS.structure.polyhedra_color,
-      polyhedra_color_mode: DEFAULTS.structure.polyhedra_color_mode,
-      polyhedra_included_elements: [],
-      trajectory_line_elements: null,
-    },
+    { atom_radius: undefined, polyhedra_color: undefined, trajectory_line_elements: undefined },
+    { atom_radius: DEFAULTS.structure.atom_radius, polyhedra_color: DEFAULTS.structure.polyhedra_color,
+      polyhedra_color_mode: DEFAULTS.structure.polyhedra_color_mode, polyhedra_included_elements: [],
+      trajectory_line_elements: null },
   ])(`row resets preserve caller-owned settings and omitted keys: %j`, async (initial) => {
     const state = scene_state({
       show_polyhedra: `always`,
@@ -1294,10 +1308,8 @@ describe(`StructureControls reactive props`, () => {
     state.scene_props.polyhedra_color = `#123456`
     await tick()
     await reset_row(`polyhedra_color`)
-    expect(state.scene_props.polyhedra_color_mode).toBe(
-      DEFAULTS.structure.polyhedra_color_mode,
-    )
-    expect(state.scene_props.polyhedra_color).toBe(DEFAULTS.structure.polyhedra_color)
+    const { polyhedra_color_mode, polyhedra_color } = DEFAULTS.structure
+    expect(state.scene_props).toMatchObject({ polyhedra_color_mode, polyhedra_color })
     expect(reset_button(`polyhedra`)).toBeNull()
 
     const magmom_scale = doc_query<HTMLInputElement>(

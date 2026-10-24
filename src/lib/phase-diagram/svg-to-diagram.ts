@@ -754,8 +754,9 @@ function parse_path_segments(path_str: string): Vec4[] {
     cursor_y = y_end
   }
 
-  // Numbers to skip before the endpoint x,y for each lineto-like command
-  const endpoint_skip: Record<string, number> = { L: 0, C: 4, S: 2, Q: 2, T: 0, A: 5 }
+  // Numbers to skip before the endpoint x,y for each lineto-like command (arcs skip
+  // rx ry rotation, then their two flags)
+  const endpoint_skip: Record<string, number> = { L: 0, C: 4, S: 2, Q: 2, T: 0, A: 3 }
   const is_command = (token: string | undefined) =>
     token !== undefined && /^[A-Za-z]$/.test(token)
 
@@ -766,7 +767,22 @@ function parse_path_segments(path_str: string): Vec4[] {
       throw malformed(`command "${cmd}" is missing a coordinate at token ${idx}`)
     }
     idx++
-    return Number(token)
+    const value = Number(token)
+    // a flag split off the front can leave a non-number ("11e2" → flags 1, 1 then "e2")
+    if (!Number.isFinite(value))
+      throw malformed(`invalid number "${token}" at token ${idx - 1}`)
+    return value
+  }
+  // Arc flags are single 0/1 characters that minifiers run into what follows ("a1 1 0 011 1"
+  // is flags 0, 1 then x = 1), so split one off the front of the token
+  const next_flag = (cmd: string): number => {
+    const token = tokens[idx]
+    if (token === undefined || !/^[01]/.test(token)) {
+      throw malformed(`command "${cmd}" needs a 0/1 arc flag at token ${idx}`)
+    }
+    if (token.length === 1) idx++
+    else tokens[idx] = token.slice(1)
+    return Number(token[0])
   }
 
   while (idx < tokens.length) {
@@ -777,6 +793,8 @@ function parse_path_segments(path_str: string): Vec4[] {
     } else {
       // Implicit repeat: after M→L, after m→l, others repeat themselves
       if (!last_cmd) throw malformed(`coordinates before any command`)
+      // Z takes no coordinates, so repeating it would consume nothing and loop forever
+      if (last_cmd.toUpperCase() === `Z`) throw malformed(`coordinates after Z`)
       cmd = last_cmd === `M` ? `L` : last_cmd === `m` ? `l` : last_cmd
     }
 
@@ -797,6 +815,10 @@ function parse_path_segments(path_str: string): Vec4[] {
       const skip = endpoint_skip[upper]
       if (skip === undefined) throw malformed(`unknown command "${cmd}"`)
       for (let skip_idx = 0; skip_idx < skip; skip_idx++) next_num(cmd)
+      if (upper === `A`) {
+        next_flag(cmd)
+        next_flag(cmd)
+      }
       line_to(abs_x(next_num(cmd)), abs_y(next_num(cmd)))
     }
   }

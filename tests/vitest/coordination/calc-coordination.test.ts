@@ -37,17 +37,14 @@ const with_nan_site = () => {
   return broken
 }
 
+// oxfmt-ignore
 test.each([
   [`lone crystal`, simple_cubic, [`Structure`]],
   // detected by its `sites` array, not is_crystal(): a lattice-less molecule used to be read
   // as a Record of structures, which then blew up on Object.entries of its sites array
   [`lone lattice-less molecule`, water, [`Structure`]],
   [`record`, { cubic: simple_cubic, water }, [`cubic`, `water`]],
-  [
-    `record with per-entry color`,
-    { cubic: { structure: simple_cubic, color: `#f00` } },
-    [`cubic`],
-  ],
+  [`record with per-entry color`, { cubic: { structure: simple_cubic, color: `#f00` } }, [`cubic`]],
   [`entry array`, [{ label: `cubic`, structure: simple_cubic }], [`cubic`]],
 ])(`to_structure_entries labels a %s`, (_name, input: StructureInput, labels) => {
   const entries: StructureEntry[] = to_structure_entries(input)
@@ -170,12 +167,10 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
 
   // Input shapes are covered by the to_structure_entries table above; the single-crystal
   // default split_mode=by_element is mounted by the tooltip test below
+  // oxfmt-ignore
   test.each([
     [`single lattice-less molecule`, { structures: water }],
-    [
-      `split_mode=by_structure`,
-      { structures: { cubic: simple_cubic }, split_mode: `by_structure` },
-    ],
+    [`split_mode=by_structure`, { structures: { cubic: simple_cubic }, split_mode: `by_structure` }],
     [`split_mode=none`, { structures: { cubic: simple_cubic }, split_mode: `none` }],
   ])(`renders coordination bars for %s`, async (_name, props) => {
     const root = await mount_plot(props)

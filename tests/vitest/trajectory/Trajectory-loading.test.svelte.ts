@@ -83,12 +83,13 @@ const deferred_worker = () => {
   const pending: {
     filename: string
     signal?: AbortSignal
+    options?: Parameters<WorkerParse>[3]
     resolve: (run: TrajectoryRun) => void
   }[] = []
   stub_worker(
     (_data, filename, _is_base64, options) =>
       new Promise<TrajectoryRun>((resolve) => {
-        pending.push({ filename, signal: options?.signal, resolve })
+        pending.push({ filename, signal: options?.signal, options, resolve })
       }),
   )
   return pending
@@ -125,6 +126,31 @@ describe(`source`, () => {
     pending[0].resolve(late)
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
     expect(on_file_load).not.toHaveBeenCalled()
+  })
+
+  // open_source read loading_options inside the source effect, so a parent re-render with a
+  // fresh but equal options object aborted the running load and never restarted it, while a
+  // real option change never reloaded the source
+  test(`reloads the source on changed loading_options values, not on a fresh equal object`, async () => {
+    const pending = deferred_worker()
+    const on_file_load = vi.fn()
+    const props = $state<Props>({
+      source: new File([MULTI_FRAME_XYZ], `slow.xyz`),
+      loading_options: { atom_type_mapping: { 1: `H` } },
+      on_file_load,
+    })
+    mount_viewer(props)
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    props.loading_options = { atom_type_mapping: { 1: `H` } }
+    flushSync()
+    expect(pending[0].signal?.aborted).toBe(false)
+    pending[0].resolve(make_run(`slow.xyz`))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    props.loading_options = { atom_type_mapping: { 1: `Li` } }
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    expect(pending[1].options?.load_options?.atom_type_mapping).toEqual({ 1: `Li` })
+    pending[1].resolve(make_run(`slow.xyz`))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
   })
 
   const XYZ_FILE = new File([MULTI_FRAME_XYZ], `dropped.xyz`)
@@ -227,13 +253,9 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     expect(target.querySelector(`.trajectory-empty-state`)).not.toBeNull()
   })
 
-  test.each([
-    // the label names the stage; the bar carries the percentage, so it isn't re-announced
-    { current: 0, label: `Indexing frames` },
-    { current: 42.4, label: `Indexing frames` },
-  ])(
-    `replacement loading pauses playback and shows $current% progress until the run arrives`,
-    async ({ current, label }) => {
+  test.each([0, 42.4])(
+    `replacement loading pauses playback and shows %s% progress until the run arrives`,
+    async (current) => {
       const on_controller = vi.fn<(controller: TrajectoryController | null) => void>()
       let release: ((run: TrajectoryRun) => void) | undefined
       stub_worker(
@@ -249,9 +271,10 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
         on_controller,
       })
       drop(target, new File([MULTI_FRAME_XYZ], `big.xyz`))
+      // the label names the stage; the bar carries the percentage, so it isn't re-announced
       await vi.waitFor(() =>
         expect(doc_query(`.trajectory-loading [role="status"]`).textContent?.trim()).toBe(
-          label,
+          `Indexing frames`,
         ),
       )
       const controller = on_controller.mock.calls.at(-1)?.[0]
@@ -322,18 +345,9 @@ describe(`run ownership`, () => {
 
   test(`a run opened here stays live while shown and is disposed on unmount`, async () => {
     const on_file_load = vi.fn<(data: TrajHandlerData) => void>()
-    const target = document.createElement(`div`)
-    document.body.append(target)
     // `trajectory` deliberately unbound: the viewer owns the run outright
-    const component = mount(Trajectory, {
-      target,
-      props: {
-        source: new File([MULTI_FRAME_XYZ], `owned.xyz`),
-        display_mode: `structure`,
-        show_controls: `always`,
-        on_file_load,
-      },
-    })
+    const source = new File([MULTI_FRAME_XYZ], `owned.xyz`)
+    const target = mount_viewer({ source, show_controls: `always`, on_file_load })
     await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
     const run = on_file_load.mock.calls[0][0].trajectory
     if (!run) throw new Error(`on_file_load carried no run`)
@@ -344,7 +358,7 @@ describe(`run ownership`, () => {
     await tick()
     expect(target.querySelector(`.status-message.error`)).toBeNull()
     expect(doc_query<HTMLInputElement>(`.step-input`).value).toBe(`2`) // 1-based display
-    await unmount(component)
+    for (const component of mounted.splice(0)) await unmount(component)
     expect(dispose).toHaveBeenCalledOnce()
   })
 

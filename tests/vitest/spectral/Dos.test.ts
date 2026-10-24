@@ -73,34 +73,18 @@ describe(`Dos component`, () => {
   // One line series per DOS per drawn spin channel: spin-polarized inputs default to
   // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
   type RenderCase = [string, ComponentProps<typeof Dos>, number]
+  // oxfmt-ignore
   it.each<RenderCase>([
     [`phonon DOS`, { doses: { '': phonon_dos } }, 1],
-    [
-      `hidden up channel`,
-      { doses: { sample: electronic_dos }, hidden_series: [JSON.stringify([`sample`, `up`])] },
-      0,
-    ],
-    [
-      `hidden up channel with spin splitting`,
-      {
-        doses: { sample: spin_polarized_dos },
-        hidden_series: [JSON.stringify([`sample`, `up`])],
-      },
-      1,
-    ],
+    [`hidden up channel`, { doses: { sample: electronic_dos }, hidden_series: [JSON.stringify([`sample`, `up`])] }, 0],
+    [`hidden up channel with spin splitting`,
+      { doses: { sample: spin_polarized_dos }, hidden_series: [JSON.stringify([`sample`, `up`])] }, 1],
     [`electronic DOS`, { doses: { '': electronic_dos } }, 1],
-    [
-      `DOS labels may match field names`,
-      { doses: { densities: phonon_dos, energies: phonon_dos } },
-      2,
-    ],
+    [`DOS labels may match field names`, { doses: { densities: phonon_dos, energies: phonon_dos } }, 2],
     [`stacked DOS`, { doses: { 'DOS 1': phonon_dos, 'DOS 2': phonon_dos }, stack: true }, 2],
     [`horizontal orientation`, { doses: { '': phonon_dos }, orientation: `horizontal` }, 1],
-    ...([`mirror`, `up_only`, `down_only`] as const).map((spin_mode): RenderCase => [
-      `${spin_mode} spin mode`,
-      { doses: { '': spin_polarized_dos }, spin_mode },
-      spin_mode === `mirror` ? 2 : 1,
-    ]),
+    ...([`mirror`, `up_only`, `down_only`] as const).map((spin_mode): RenderCase =>
+      [`${spin_mode} spin mode`, { doses: { '': spin_polarized_dos }, spin_mode }, spin_mode === `mirror` ? 2 : 1]),
     [`atom pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `atom`) ?? {} }, 4],
     [`orbital pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `orbital`) ?? {} }, 3],
     [`filtered pDOS`, { doses: extract_pdos(pymatgen_complete_dos, `atom`, [`Fe`]) ?? {} }, 2],

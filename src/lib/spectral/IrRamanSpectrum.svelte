@@ -179,13 +179,7 @@
   let active_count = $derived(sticks.y.filter((val) => val > 1e-12).length)
 
   const spectrum_settings = track_settings(
-    () => ({
-      kind,
-      units: unit,
-      presentation,
-      show_sticks,
-      normalize,
-    }),
+    () => ({ kind, units: unit, presentation, show_sticks, normalize }),
     {
       kind: `ir`,
       units: `cm^-1`,

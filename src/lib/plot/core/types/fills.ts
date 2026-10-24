@@ -1,6 +1,7 @@
 // Fill-region and error-band types for 2D plots (shaded areas between boundaries).
 // Re-exported via #lib/plot/core/types.
 
+import type { ErrorValues } from '#lib/plot/core/error-bars.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
 
 // FillBoundary - references to data sources for fill regions
@@ -130,11 +131,9 @@ export interface ErrorBand {
   // Reference to the central series
   series: Extract<FillBoundary, { type: `series` }>
 
-  // Error values - can be symmetric (single value/array) or asymmetric (upper/lower)
-  error:
-    | number // Symmetric constant error
-    | readonly number[] // Symmetric per-point error
-    | { upper: number | readonly number[]; lower: number | readonly number[] } // Asymmetric
+  // Symmetric (scalar or per-point array) or asymmetric {upper, lower} magnitudes, resolved
+  // like a series' x_error/y_error bars
+  error: ErrorValues
 
   // Styling (defaults applied if not specified)
   fill?: string // Defaults to #4e79a7

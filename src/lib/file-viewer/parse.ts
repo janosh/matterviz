@@ -1,6 +1,7 @@
 // Worker-safe file parsing with no Svelte or DOM imports.
 import {
   BINARY_VIEWER_EXT_REGEX,
+  is_vaspwave_filename,
   STRUCTURE_EXTENSIONS_REGEX,
   VASP_VOLUMETRIC_REGEX,
 } from '#lib/constants.js'
@@ -12,7 +13,7 @@ import {
   strip_compression_extensions,
 } from '#lib/io/decompress.js'
 import { parse_volumetric_file } from '#lib/isosurface/parse.js'
-import { is_vaspwave_filename, parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
+import { parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
 import type { StructureToolPrediction } from '#lib/structure/prediction.js'
 import { prediction_from_json } from '#lib/structure/prediction.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
@@ -126,9 +127,8 @@ const trajectory_result = async (
     const data = await open_trajectory(source, { ...load_options, filename, on_progress })
     return { type: `trajectory`, filename, data }
   } catch (error) {
-    if (error instanceof VaspoutElectronicOnlyError) {
+    if (error instanceof VaspoutElectronicOnlyError)
       return { type: `vaspout_electronic`, filename, data: error.electronic }
-    }
     throw error
   }
 }
@@ -184,11 +184,8 @@ export const parse_file_content = async (
   if (typeof source !== `string`) {
     if (is_vaspwave_filename(filename)) {
       const buffer = source instanceof Blob ? await source.arrayBuffer() : source
-      return {
-        type: `isosurface`,
-        data: await parse_vaspwave_charge(buffer, filename),
-        filename,
-      }
+      const data = await parse_vaspwave_charge(buffer, filename)
+      return { type: `isosurface`, data, filename }
     }
     if (
       BINARY_VIEWER_EXT_REGEX.test(filename) ||
@@ -198,13 +195,14 @@ export const parse_file_content = async (
     }
     source = source instanceof Blob ? await source.text() : new TextDecoder().decode(source)
   }
-  const content = source
+  // A host that decodes the file itself (VS Code's Buffer.toString) keeps a UTF-8 BOM, which
+  // JSON.parse rejects; the text parsers already skip it as whitespace
+  const content = source.replace(/^\uFEFF/, ``)
 
   // Match on the basename in case filename retains a directory prefix
   const basename = filename.split(/[\\/]/).pop() ?? filename
-  if (FERMI_FILE_RE.test(basename)) {
+  if (FERMI_FILE_RE.test(basename))
     return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
-  }
   // .cube, CHGCAR, AECCAR*, ELFCAR, LOCPOT, PARCHG. A VASP name only decides when no
   // extension does: chgcar_structure.cif is a CIF, LOCPOT_slab.json a structure JSON.
   const own_name = strip_compression_extensions(basename)
@@ -218,18 +216,20 @@ export const parse_file_content = async (
     if (is_cube) throw new Error(`Failed to parse volumetric file: ${filename}`)
   }
 
-  // JSON files: render typed JSON before filename heuristics. Otherwise names like
-  // convex-hull.json can be mistaken for trajectory keywords such as nve.
-  const is_json = /\.json$/i.test(filename)
+  // JSON first, before filename heuristics mistake convex-hull.json for the nve keyword. Content
+  // that looks like JSON under a name no format claims (hull.txt, an extensionless download) is
+  // JSON too: the structure parser would pull one nested structure out of a hull or a doc.
+  const named_json = /\.json$/i.test(filename)
   let parsed_json: unknown
-  if (is_json) {
-    try {
+  try {
+    if (named_json || (!names_other_format && /^\s*[[{]/.test(content)))
       parsed_json = JSON.parse(content)
-    } catch (error) {
-      throw new Error(`Invalid JSON in ${filename}: ${to_error(error).message}`, {
-        cause: error,
-      })
-    }
+  } catch (cause) {
+    if (named_json)
+      throw new Error(`Invalid JSON in ${filename}: ${to_error(cause).message}`, { cause })
+  }
+  const is_json = parsed_json !== undefined
+  if (is_json) {
     if (
       is_plain_object(parsed_json) &&
       typeof parsed_json.schema === `string` &&
@@ -249,15 +249,11 @@ export const parse_file_content = async (
       }
     }
     if (detected === `volumetric`) {
-      return {
-        type: `isosurface`,
-        data: volume_json_to_isosurface_input(parsed_json),
-        filename,
-      }
+      const data = volume_json_to_isosurface_input(parsed_json)
+      return { type: `isosurface`, data, filename }
     }
-    if (detected === `fermi_surface` || detected === `band_grid`) {
+    if (detected === `fermi_surface` || detected === `band_grid`)
       return { type: `fermi_surface`, data: parse_fermi_file(content, filename), filename }
-    }
     if (detected) {
       // detect_view_type already matched the payload against each type's shape, so this is
       // the one place the mapping from detection to data type is established

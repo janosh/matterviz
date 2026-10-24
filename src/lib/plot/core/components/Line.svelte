@@ -27,7 +27,7 @@
     curve?: LineCurve
   } = $props()
 
-  // falls back to monotone for unknown strings from untyped (Python/JSON) callers
+  // null/undefined curves mean monotone; unknown names from untyped (Python/JSON) callers throw
   const line_generator = $derived(
     line<Vec2>()
       .x((point) => point[0])

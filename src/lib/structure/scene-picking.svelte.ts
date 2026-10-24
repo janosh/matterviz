@@ -56,6 +56,8 @@ export class ScenePointer {
   drop_hover = (): void => {
     clearTimeout(this.#clear_timeout)
     this.hovered.set(null)
+    // else a hover set from outside the canvas (a table row) would show the 3D tooltip
+    this.tooltip_active = false
   }
 
   hover_props = (site_idx: number): HoverHandlers => ({
@@ -158,23 +160,34 @@ export function next_site_selection(
     return { measured_sites: new_sites, selected_sites: new_sites }
   }
 
-  const site_cap = measure.max_measured_sites(measure_mode)
-  if (!measured_sites.includes(site_idx) && measured_sites.length >= site_cap) {
-    if (!measure.rolls_measured_sites(measure_mode)) {
-      console.warn(
-        `Selection size limit reached (${measure.MAX_SELECTED_SITES}). Deselect some sites first.`,
-      )
-      return null
-    }
-    const dropped = measured_sites[0]
+  // The measured picks decide: a measured site is unpicked from both lists, any other one is
+  // appended to both. selected_sites can already hold it (selected from a table, not measured),
+  // so it moves to the end there rather than toggling off or repeating (a repeat duplicates its
+  // highlight key).
+  const without = (sites: number[], ...dropped: number[]) =>
+    sites.filter((idx) => !dropped.includes(idx))
+  if (measured_sites.includes(site_idx)) {
     return {
-      measured_sites: [...measured_sites.slice(1), site_idx],
-      selected_sites: [...selected_sites.filter((idx) => idx !== dropped), site_idx],
+      measured_sites: without(measured_sites, site_idx),
+      selected_sites: without(selected_sites, site_idx),
     }
   }
+  if (measured_sites.length < measure.max_measured_sites(measure_mode)) {
+    return {
+      measured_sites: [...measured_sites, site_idx],
+      selected_sites: [...without(selected_sites, site_idx), site_idx],
+    }
+  }
+  if (!measure.rolls_measured_sites(measure_mode)) {
+    console.warn(
+      `Selection size limit reached (${measure.MAX_SELECTED_SITES}). Deselect some sites first.`,
+    )
+    return null
+  }
+  const dropped = measured_sites[0]
   return {
-    measured_sites: toggle_item(measured_sites, site_idx),
-    selected_sites: toggle_item(selected_sites, site_idx),
+    measured_sites: [...measured_sites.slice(1), site_idx],
+    selected_sites: [...without(selected_sites, dropped, site_idx), site_idx],
   }
 }
 

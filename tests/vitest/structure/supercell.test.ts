@@ -11,6 +11,7 @@ import {
 import { describe, expect, test } from 'vitest'
 import { make_crystal, type SimpleSite } from '../test-fixtures'
 import { thousand_site_crystal } from './geometry-fixtures'
+import { max_abs_error } from '../numeric-helpers'
 
 const sample_structure = make_crystal(
   4,
@@ -167,8 +168,9 @@ describe(`make_supercell`, () => {
   ])(
     `creates supercell with scaling %s`,
     (scaling, expected_sites, expected_volume, expected_lattice) => {
-      const supercell = make_supercell(sample_structure, scaling as string | number | Vec3)
-
+      const input = structuredClone(sample_structure)
+      const supercell = make_supercell(input, scaling as string | number | Vec3)
+      expect(input).toEqual(sample_structure) // the input is left untouched
       expect(supercell.sites).toHaveLength(expected_sites)
       const { a: len_a, b: len_b, c: len_c, volume } = supercell.lattice
       expect([len_a, len_b, len_c, volume]).toEqual([...expected_lattice, expected_volume])
@@ -185,33 +187,20 @@ describe(`make_supercell`, () => {
       expect(site.provenance).toEqual({ unit_cell_idx: idx % source.sites.length })
     }
 
-    const ba_sites = supercell.sites.filter((site) => site.species[0].element === `Ba`)
-    const ti_sites = supercell.sites.filter((site) => site.species[0].element === `Ti`)
-
-    expect(ba_sites).toHaveLength(2)
-    expect(ti_sites).toHaveLength(2)
-    expect(supercell.sites.map((site) => site.label)).toContain(`Ba0_000`)
-    expect(supercell.sites.map((site) => site.label)).toContain(`Ti1_100`)
+    const elements = supercell.sites.map((site) => site.species[0].element)
+    for (const element of [`Ba`, `Ti`])
+      expect(elements.filter((elem) => elem === element)).toHaveLength(2)
+    const labels = supercell.sites.map((site) => site.label)
+    expect(labels).toEqual(expect.arrayContaining([`Ba0_000`, `Ti1_100`]))
   })
 
   // a periodic bond crossing into the next copy reconnects it in-cell and wraps the last one
+  // oxfmt-ignore
   test.each([
-    [
-      `within each generated cell`,
-      [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-      [
-        { site_idx_1: 0, site_idx_2: 1, order: 2 },
-        { site_idx_1: 2, site_idx_2: 3, order: 2 },
-      ],
-    ],
-    [
-      `across supercell boundaries`,
-      [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
-      [
-        { site_idx_1: 0, site_idx_2: 3, order: 2 },
-        { site_idx_1: 1, site_idx_2: 2, order: 2, cell_shift: [-1, 0, 0] },
-      ],
-    ],
+    [`within each generated cell`, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
+      [{ site_idx_1: 0, site_idx_2: 1, order: 2 }, { site_idx_1: 2, site_idx_2: 3, order: 2 }]],
+    [`across supercell boundaries`, [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
+      [{ site_idx_1: 0, site_idx_2: 3, order: 2 }, { site_idx_1: 1, site_idx_2: 2, order: 2, cell_shift: [-1, 0, 0] }]],
   ] as [string, StructureBond[], StructureBond[]][])(
     `replicates explicit bond metadata %s`,
     (_desc, bonds, expected) => {
@@ -265,13 +254,6 @@ describe(`make_supercell`, () => {
       Array.from({ length: 4 }, () => [-0.25, -1]),
     )
   })
-
-  test(`does not modify original structure`, () => {
-    const original = structuredClone(sample_structure)
-    const supercell = make_supercell(original, [2, 2, 2])
-    expect(original).toEqual(sample_structure)
-    expect(supercell.sites).toHaveLength(16)
-  })
 })
 
 // is_valid_supercell_input is parse_supercell_scaling's try/catch, whose rows live above
@@ -282,34 +264,32 @@ test.each([
   expect(is_valid_supercell_input(input)).toBe(expected)
 })
 
-describe(`integration tests`, () => {
-  test(`multiplies charge and keeps per-site properties`, () => {
-    const complex_structure = make_crystal(
-      4,
-      [
-        [`Ba`, [0, 0, 0], 2],
-        [`Ti`, [0.5, 0.5, 0.5], 4],
-        {
-          element: `O`,
-          abc: [0.5, 0, 0],
-          oxidation_state: -2,
-          label: `O1`,
-          properties: { force: [0.1, 0.2, 0.3] },
-        },
-      ],
-      { charge: 2 },
-    )
+test(`multiplies charge and keeps per-site properties`, () => {
+  const complex_structure = make_crystal(
+    4,
+    [
+      [`Ba`, [0, 0, 0], 2],
+      [`Ti`, [0.5, 0.5, 0.5], 4],
+      {
+        element: `O`,
+        abc: [0.5, 0, 0],
+        oxidation_state: -2,
+        label: `O1`,
+        properties: { force: [0.1, 0.2, 0.3] },
+      },
+    ],
+    { charge: 2 },
+  )
 
-    const supercell = make_supercell(complex_structure, [2, 2, 1])
+  const supercell = make_supercell(complex_structure, [2, 2, 1])
 
-    expect(supercell.sites).toHaveLength(12) // 3 original × 4 cells
-    expect(supercell.charge).toBe(8) // 2 × 4
-    // every O copy keeps the per-site force vector
-    const o_forces = supercell.sites
-      .filter((site) => site.species[0].element === `O`)
-      .map((site) => site.properties.force)
-    expect(o_forces).toEqual(Array.from({ length: 4 }, () => [0.1, 0.2, 0.3]))
-  })
+  expect(supercell.sites).toHaveLength(12) // 3 original × 4 cells
+  expect(supercell.charge).toBe(8) // 2 × 4
+  // every O copy keeps the per-site force vector
+  const o_forces = supercell.sites
+    .filter((site) => site.species[0].element === `O`)
+    .map((site) => site.properties.force)
+  expect(o_forces).toEqual(Array.from({ length: 4 }, () => [0.1, 0.2, 0.3]))
 })
 
 describe(`supercell coordinate and label consistency`, () => {
@@ -354,16 +334,12 @@ describe(`supercell coordinate and label consistency`, () => {
 describe(`oblique cell bug tests`, () => {
   const h_site: SimpleSite[] = [{ element: `H`, abc: [0.25, 0.25, 0.25] }]
 
+  // oxfmt-ignore
   test.each([
-    {
-      // MgNiF6.cif structure with oblique lattice (56.455° angles)
-      name: `MgNiF6`,
-      cell: [5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455],
-      sites: [
-        { element: `Mg`, abc: [0.5, 0.5, 0.5], oxidation_state: 2 },
-        { element: `Ni`, abc: [0, 0, 0], oxidation_state: 2 },
-      ] as SimpleSite[],
-    },
+    // MgNiF6.cif structure with oblique lattice (56.455° angles)
+    { name: `MgNiF6`, cell: [5.2219, 5.2219, 5.2219, 56.455, 56.455, 56.455],
+      sites: [{ element: `Mg`, abc: [0.5, 0.5, 0.5], oxidation_state: 2 },
+        { element: `Ni`, abc: [0, 0, 0], oxidation_state: 2 }] as SimpleSite[] },
     { name: `triclinic`, cell: [4.0, 5.0, 6.0, 70, 80, 110], sites: h_site },
     { name: `monoclinic`, cell: [3.5, 4.5, 5.5, 90, 95, 90], sites: h_site },
     { name: `hexagonal-like`, cell: [4.0, 4.0, 6.0, 90, 90, 120], sites: h_site },
@@ -387,30 +363,23 @@ describe(`oblique cell bug tests`, () => {
 
       for (const site of supercell.sites) {
         // folded into [0, 1), with xyz = L^T abc
-        for (const coord of site.abc) {
-          expect(coord).toBeGreaterThanOrEqual(0)
-          expect(coord).toBeLessThan(1)
-        }
+        expect(site.abc.every((coord) => coord >= 0 && coord < 1)).toBe(true)
         const recalc_xyz = math.mat3x3_vec3_multiply(transposed, site.abc)
-        for (let idx = 0; idx < 3; idx++) {
-          expect(Math.abs(site.xyz[idx] - recalc_xyz[idx])).toBeLessThan(1e-10)
-        }
+        expect(max_abs_error(site.xyz, recalc_xyz)).toBeLessThan(1e-10)
       }
     },
   )
 })
 
-describe(`size limit`, () => {
-  test(`refuses a supercell above MAX_SUPERCELL_SITES before allocating it`, () => {
-    const two_sites = make_crystal(1, [
-      [`H`, [0, 0, 0]],
-      [`H`, [0.5, 0.5, 0.5]],
-    ])
-    expect(() => make_supercell(two_sites, `100x100x100`)).toThrow(
-      /2,000,000 sites \(limit 1,000,000\)/,
-    )
-    expect(() => make_supercell(two_sites, `50x100x100`)).not.toThrow()
-  })
+test(`refuses a supercell above MAX_SUPERCELL_SITES before allocating it`, () => {
+  const two_sites = make_crystal(1, [
+    [`H`, [0, 0, 0]],
+    [`H`, [0.5, 0.5, 0.5]],
+  ])
+  expect(() => make_supercell(two_sites, `100x100x100`)).toThrow(
+    /2,000,000 sites \(limit 1,000,000\)/,
+  )
+  expect(() => make_supercell(two_sites, `50x100x100`)).not.toThrow()
 })
 
 // Timing of large supercells lives in perf-baselines.test.ts

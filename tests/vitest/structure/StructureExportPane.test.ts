@@ -468,16 +468,29 @@ describe(`StructureExportPane`, () => {
   })
 })
 
-test(`prediction export reports invalid metadata in the pane`, async () => {
-  mount_pane({
-    prediction: {
-      input: simple_structure,
-      run_id: 1,
-      provenance: { model: `test`, version: `1`, units: {}, settings: { invalid: new Map() } },
+test(`prediction export reports invalid metadata in the pane until the prediction goes`, async () => {
+  const prediction = writable<ComponentProps<typeof StructureExportPane>[`prediction`]>({
+    input: simple_structure,
+    run_id: 1,
+    provenance: { model: `test`, version: `1`, units: {}, settings: { invalid: new Map() } },
+  })
+  const current = fromStore(prediction)
+  // a getter, not mount_pane's spread, so the pane sees the prediction change
+  mount(StructureExportPane, {
+    target: document.body,
+    props: {
+      export_pane_open: true,
+      get prediction() {
+        return current.current
+      },
     },
   })
   doc_query<HTMLButtonElement>(`button[title="Download Export prediction"]`).click()
   await tick()
   expect(doc_query(`[role="alert"]`).textContent).toContain(`provenance.settings.invalid`)
   expect(doc_query(`[role="alert"]`).textContent).toContain(`retry`)
+  // clearing it removes the section whose next export would have reset the alert
+  prediction.set(undefined)
+  await tick()
+  expect(document.querySelector(`[role="alert"]`)).toBeNull()
 })

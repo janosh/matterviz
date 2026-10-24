@@ -5,7 +5,10 @@ import * as math from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { get_orig_site_idx, make_site } from '#lib/structure/site.js'
 import { get_pbc_image_sites, wrap_to_unit_cell } from '#lib/structure/pbc.js'
-import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
+import {
+  polyhedra_options_from,
+  type ResolvedPolyhedraOptions,
+} from '#lib/structure/polyhedra.js'
 import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercell.js'
 import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
@@ -86,7 +89,7 @@ export function default_phonon_mode_selection(
 export function phonon_band_structure_from_modes(data: PhononModeData): PhononBandStructure {
   if (data.path_segments.length === 0) {
     throw new Error(
-      `Phonon mode data has no band path metadata. Use q-point and mode selectors for qpoints.yaml or mesh.yaml data.`,
+      `Phonon mode data has no band path metadata. Use q-point and mode selectors for mesh.yaml data.`,
     )
   }
   const distances = data.qpoints.map(({ distance: qpoint_distance }) => {
@@ -253,12 +256,15 @@ export function phonon_mode_character(
   return { element_weights, participation_ratio }
 }
 
-// Build the displayed supercell once per (data, scaling): tiling, image atoms and bonding
-// are the expensive steps and none of them depends on which mode is animated.
+// Build the displayed supercell once per (data, scaling, polyhedra settings): tiling, image
+// atoms and bonding are the expensive steps and none of them depends on which mode is animated.
 // Only the unit cell, so viewers snapshot it without the q-points' thousands of eigenvectors.
+// `polyhedra` are the viewer's live settings: the frames are never imaged again, so the corner
+// copies completion adds here are the only ones its polyhedra can reach.
 export function phonon_supercell(
   data: Pick<PhononModeData, `n_atoms` | `atoms` | `lattice`>,
   supercell: Vec3 = DEFAULT_PHONON_SUPERCELL,
+  polyhedra: ResolvedPolyhedraOptions = polyhedra_options_from({}),
 ): PhononSupercell {
   if (!data.lattice) throw new Error(`Phonon mode animation needs a real-space lattice`)
   if (data.atoms.length !== data.n_atoms) {
@@ -304,12 +310,12 @@ export function phonon_supercell(
   const tiled_cell = make_supercell(unit_cell, scaling, false)
   const completed_cell: Crystal = {
     ...tiled_cell,
-    // The viewer's default polyhedra, completed on the same bonds as the frames' explicit ones.
-    // The frames are never imaged again, so completion's polyhedron_center stamps would pin
-    // the default polyhedra settings: dropped, the viewer's own settings pick the whole copies.
+    // Completed on the same bonds as the frames' explicit ones. The polyhedron_center stamps
+    // are dropped so a viewer whose bonding or legend differs from these settings still picks
+    // the whole copies itself.
     sites: get_pbc_image_sites(tiled_cell, {
       completion: `polyhedra`,
-      polyhedra: polyhedra_options_from({}),
+      polyhedra,
       bonding_strategy: `electroneg_ratio`,
       bonding_options: {},
     }).sites.map(({ provenance, ...site }) => {

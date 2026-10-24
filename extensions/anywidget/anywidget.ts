@@ -313,6 +313,7 @@ export const mount_spec = (
   model: AnyModel,
   element: HTMLElement,
   spec: WidgetSpec,
+  on_update_error?: (error: unknown) => void,
 ): (() => void) => {
   element.style.boxSizing = `border-box`
   element.style.maxWidth = `100%`
@@ -322,6 +323,7 @@ export const mount_spec = (
     model,
     [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
     { ...spec.static_props, ...interaction?.props },
+    on_update_error,
   )
   let instance: ReturnType<typeof mount> | undefined
   const teardown = (): void => {
@@ -391,16 +393,11 @@ export const WIDGETS: Record<string, WidgetSpec> = {
         `property_labels`,
       ]),
       // The JSON trait (pymatgen Trajectory, { frames }, array of structures) becomes an
-      // in-memory run; data_url is fetched and parsed by the file viewer itself
+      // in-memory run; data_url is fetched and parsed by the file viewer itself. A malformed
+      // trait throws like a malformed spectral one, failing the mount with the parse error
       derived_prop(`trajectory`, [`trajectory`], (model) => {
         const value = get_prop(model, `trajectory`)
-        if (value == null) return undefined
-        try {
-          return trajectory_from_json(value, { format: `json` })
-        } catch (error) {
-          console.error(`TrajectoryWidget: invalid trajectory trait:`, error)
-          return undefined
-        }
+        return value == null ? undefined : trajectory_from_json(value, { format: `json` })
       }),
       derived_prop(`source`, [`data_url`], (model) => get_prop(model, `data_url`)),
       // atom_type_mapping ({ "1": "Si", "2": "O" }) names the atom types of a LAMMPS dump
@@ -746,26 +743,36 @@ export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromE
 const render: Render = (props) => {
   const { model, el: element } = props
   const widget_type = get_prop(model, `widget_type`) as string | undefined
+  // anywidget only logs a throwing render or change handler, which leaves a blank or silently
+  // stale cell, so a bad widget_type or malformed trait shows its error in place of the widget
+  const show_error = (error: unknown): void => {
+    element.textContent = `MatterViz ${widget_type}: ${error instanceof Error ? error.message : error}`
+  }
   // guard with Object.hasOwn so prototype keys (toString, constructor, ...) don't
   // resolve as specs and silently bypass the unknown-widget_type error
   const spec =
     widget_type && Object.hasOwn(WIDGETS, widget_type) ? WIDGETS[widget_type] : undefined
-  if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
 
   cleanup_element(element)
   inject_app_css(element)
   // The widget's theme is its own color-scheme, now and as the host's changes: light-dark()
   // tokens, native form controls and svelte-widgets all resolve against it, and setting it on
   // the element (not the host page's root) leaves the notebook's own scheme alone. Started
-  // before mount so the first paint already has it; a throwing mount stops it and clears the
-  // partial DOM.
+  // before mount so the first paint already has it; a throwing mount stops it and replaces the
+  // partial DOM with the error.
   const stop_theme = watch_theme(element, (theme) => (element.style.colorScheme = theme))
   let unmount_widget: () => void
   try {
-    unmount_widget = mount_spec(model, element, spec)
+    if (!spec) throw new Error(`Unknown or missing widget_type: '${widget_type}'`)
+    // A malformed update tears the widget down: it no longer reflects the Python state
+    unmount_widget = mount_spec(model, element, spec, (error) => {
+      cleanup_element(element)
+      show_error(error)
+      console.error(`MatterViz ${widget_type}: trait update failed`, error)
+    })
   } catch (error) {
     stop_theme()
-    element.replaceChildren()
+    show_error(error)
     throw error
   }
   cleanups.set(element, () => {

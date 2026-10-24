@@ -2,10 +2,12 @@
   import type StructurePopupComponent from '#lib/convex-hull/StructurePopup.svelte'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { format_num } from '#lib/labels.js'
-  import type { Point2D, Vec3 } from '#lib/math.js'
+  import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
+  import { calc_lattice_params, scale } from '#lib/math.js'
   import { BinnedScatterPlot } from '#lib/plot/index.js'
   import type { BinnedPointPayload, DensePointSeries } from '#lib/plot/index.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { Crystal, Pbc } from '#lib/structure/index.js'
+  import { make_site } from '#lib/structure/site.js'
   import { to_error } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
 
@@ -89,35 +91,15 @@
     ]
     const sites = elements.map((element, idx) => {
       const abc = frac_coords[idx % frac_coords.length]
-      return {
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc,
-        xyz: abc.map((coord) => coord * lattice_a) as Vec3,
-        label: `${element}${idx + 1}`,
-        properties: {},
-      }
+      return make_site(element, abc, scale(abc, lattice_a), `${element}${idx + 1}`)
     })
-    return {
-      id: elements.join(``),
-      sites,
-      lattice: {
-        matrix: [
-          [lattice_a, 0, 0],
-          [0, lattice_a, 0],
-          [0, 0, lattice_a],
-        ],
-        pbc: [true, true, true],
-        volume: lattice_a ** 3,
-        a: lattice_a,
-        b: lattice_a,
-        c: lattice_a,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-      },
-      charge: 0,
-      properties: {},
-    }
+    const matrix: Matrix3x3 = [
+      [lattice_a, 0, 0],
+      [0, lattice_a, 0],
+      [0, 0, lattice_a],
+    ]
+    const lattice = { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+    return { id: elements.join(``), sites, lattice, charge: 0, properties: {} }
   }
 
   const point_formula = (elements: ElementSymbol[], idx: number): string =>

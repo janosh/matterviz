@@ -333,3 +333,18 @@ export function invalidate_text_metrics_after_fonts_ready(
   pending.catch(() => invalidation_by_readiness.delete(ready))
   return pending
 }
+
+// Component-side hook: calls `on_ready` with the new metrics revision once web fonts land,
+// unless the returned cleanup ran first (return it from onMount/$effect). Fonts that never
+// resolve keep the fallback measurements, which is fine. `font_readiness` as above.
+export function on_fonts_ready(
+  on_ready: (revision: number) => void,
+  font_readiness?: FontReadiness,
+): () => void {
+  let active = true
+  void invalidate_text_metrics_after_fonts_ready(font_readiness).then(
+    (revision) => active && on_ready(revision),
+    () => {},
+  )
+  return () => (active = false)
+}

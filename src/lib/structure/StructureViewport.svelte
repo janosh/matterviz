@@ -561,17 +561,9 @@
         bind:get_reset_target
         bind:initial_computed_zoom
         {hidden_elements}
-        bind:hidden_prop_vals={
-          () => session.hidden_prop_vals, (value) => (session.hidden_prop_vals = value)
-        }
-        bind:element_radius_overrides={
-          () => session.element_radius_overrides,
-          (value) => (session.element_radius_overrides = value)
-        }
-        bind:site_radius_overrides={
-          () => session.site_radius_overrides,
-          (value) => (session.site_radius_overrides = value)
-        }
+        hidden_prop_vals={session.hidden_prop_vals}
+        element_radius_overrides={session.element_radius_overrides}
+        site_radius_overrides={session.site_radius_overrides}
         bind:added_bonds={() => session.added_bonds, (value) => (session.added_bonds = value)}
         bind:removed_bonds={
           () => session.removed_bonds, (value) => (session.removed_bonds = value)
@@ -580,10 +572,7 @@
           () => session.bond_order_overrides, (value) => (session.bond_order_overrides = value)
         }
         bond_edits_enabled={session.bond_edits_enabled}
-        bind:bond_edit_mode={
-          () => session.inputs.bond_edit_mode(),
-          (value) => session.inputs.set_bond_edit_mode(value)
-        }
+        bond_edit_mode={session.inputs.bond_edit_mode()}
         bond_edit_order={session.inputs.bond_edit_order()}
         measure_mode={session.inputs.measure_mode()}
         {width}
@@ -593,10 +582,8 @@
         on_operation_start={session.push_undo}
         on_bond_edit_start={session.push_bond_undo}
         on_add_atom={session.add_atom}
-        bind:add_atom_mode={
-          () => session.add_atom_mode, (value) => (session.add_atom_mode = value)
-        }
-        bind:add_element={() => session.add_element, (value) => (session.add_element = value)}
+        add_atom_mode={session.add_atom_mode}
+        add_element={session.add_element}
         bind:cursor
         bind:dragging_atoms={
           () => session.dragging_atoms, (value) => (session.dragging_atoms = value)

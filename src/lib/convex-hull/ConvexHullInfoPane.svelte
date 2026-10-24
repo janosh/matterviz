@@ -10,18 +10,6 @@
   import type { ConvexHullEntry, EntryCategoryConfig, PhaseStats } from './types'
   import { MAGNETIC_ORDERING_CATEGORY } from './types'
 
-  const usage_tips = [
-    { label: `Single click`, value: `Select point`, key: `tip-click` },
-    { label: `Double click`, value: `Copy info`, key: `tip-double-click` },
-    { label: `Drag`, value: `Rotate view`, key: `tip-drag` },
-    { label: `Shift drag`, value: `Pan view`, key: `tip-pan` },
-    { label: `Key r`, value: `Reset camera`, key: `tip-reset` },
-    { label: `Key b`, value: `Toggle color mode`, key: `tip-color-mode` },
-    { label: `Key s`, value: `Toggle stable points`, key: `tip-stable` },
-    { label: `Key u`, value: `Toggle unstable points`, key: `tip-unstable` },
-    { label: `Key l`, value: `Toggle labels`, key: `tip-labels` },
-  ]
-
   let {
     phase_stats,
     stable_entries,
@@ -36,6 +24,7 @@
     pane_open = $bindable(false),
     toggle_props = {},
     pane_props = {},
+    shortcut_scopes,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     phase_stats: PhaseStats | null
@@ -86,6 +75,18 @@
     },
   ])
 
+  // Pointer gestures only: the pane's shortcuts list covers the keys of the hull's dimension
+  const usage_tips = $derived([
+    { label: `Single click`, value: `Select point`, key: `tip-click` },
+    { label: `Double click`, value: `Copy info`, key: `tip-double-click` },
+    // the 2D scatter plot has no camera to rotate or pan
+    ...(shortcut_scopes?.includes(`camera`)
+      ? [
+          { label: `Drag`, value: `Rotate view`, key: `tip-drag` },
+          { label: `Shift drag`, value: `Pan view`, key: `tip-pan` },
+        ]
+      : []),
+  ])
   let info_cards = $derived([
     { title: `Visualization Settings`, rows: settings_rows },
     { title: `Usage Tips`, rows: usage_tips },
@@ -108,6 +109,7 @@
   {toggle_props}
   {pane_props}
   closed_icon={info_pane_icon}
+  {shortcut_scopes}
   {...rest}
 >
   <!-- A closed pane stays mounted (hidden), and these stats rebuild their entry table on every

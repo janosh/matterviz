@@ -203,43 +203,34 @@ test(`translucent surfaces get a depth-only pre-pass drawn right before them`, a
       },
     }),
   )
-  try {
-    flushSync()
-    const meshes = () => {
-      const found: Mesh[] = []
-      scene.traverse((object) => {
-        if (object instanceof Mesh) found.push(object)
-      })
-      return found
-    }
-    const [depth_pass, surface] = meshes()
-    expect(meshes()).toHaveLength(2)
-    const depth_material = depth_pass.material as MeshBasicMaterial
-    const surface_material = surface.material as MeshBasicMaterial
-    // one depth draw, a few units behind the surface so its front layer passes the depth test
-    expect(depth_material).toMatchObject({
-      colorWrite: false,
-      transparent: true,
-      forceSinglePass: true,
-      side: surface_material.side,
-    })
-    expect(depth_material.polygonOffsetUnits).toBeGreaterThan(0)
-    expect(surface_material).toMatchObject({ colorWrite: true, transparent: true })
-    expect(depth_pass.geometry).toBe(surface.geometry)
-    expect(depth_pass.id).toBeLessThan(surface.id)
-    expect(depth_pass.renderOrder).toBe(surface.renderOrder)
-    expect(depth_pass.matrixWorld.equals(surface.matrixWorld)).toBe(true)
-    expect(depth_pass.visible).toBe(true)
-    // a single-sided surface's pre-pass must not write depth for the back faces it culls
-    inputs.double_sided = false
-    flushSync()
-    expect((depth_pass.material as MeshBasicMaterial).side).toBe(FrontSide)
-    inputs.opacity = 1
-    flushSync()
-    expect(depth_pass.visible).toBe(false)
-  } finally {
-    await unmount_scene()
-  }
+  onTestFinished(unmount_scene)
+  flushSync()
+  const meshes = () => find_objects(scene, Mesh)
+  const [depth_pass, surface] = meshes()
+  expect(meshes()).toHaveLength(2)
+  const depth_material = depth_pass.material as MeshBasicMaterial
+  const surface_material = surface.material as MeshBasicMaterial
+  // one depth draw, a few units behind the surface so its front layer passes the depth test
+  expect(depth_material).toMatchObject({
+    colorWrite: false,
+    transparent: true,
+    forceSinglePass: true,
+    side: surface_material.side,
+  })
+  expect(depth_material.polygonOffsetUnits).toBeGreaterThan(0)
+  expect(surface_material).toMatchObject({ colorWrite: true, transparent: true })
+  expect(depth_pass.geometry).toBe(surface.geometry)
+  expect(depth_pass.id).toBeLessThan(surface.id)
+  expect(depth_pass.renderOrder).toBe(surface.renderOrder)
+  expect(depth_pass.matrixWorld.equals(surface.matrixWorld)).toBe(true)
+  expect(depth_pass.visible).toBe(true)
+  // a single-sided surface's pre-pass must not write depth for the back faces it culls
+  inputs.double_sided = false
+  flushSync()
+  expect((depth_pass.material as MeshBasicMaterial).side).toBe(FrontSide)
+  inputs.opacity = 1
+  flushSync()
+  expect(depth_pass.visible).toBe(false)
 })
 
 // A descending axis range must not drop an extended line or shrink a normal-defined plane
@@ -256,25 +247,22 @@ test(`reference line and plane span a reversed axis range`, async () => {
     })
   })
   flushSync()
-  try {
-    // Line2 is a Mesh subclass, told apart by `type`
-    const [line, plane] = [`Line2`, `Mesh`].map((type) =>
-      find_objects(scene, Mesh).find((mesh) => mesh.type === type),
-    )
-    // data x=0 to x=100 runs from scene x +5 to -5 on the reversed axis
-    const ends = [`instanceStart`, `instanceEnd`].map((name) =>
-      line?.geometry.getAttribute(name).getX(0),
-    )
-    expect(ends).toEqual([5, -5])
-    // the plane covers the full x extent, not just twice the unit y/z spans
-    const xs = [...(plane?.geometry.getAttribute(`position`).array ?? [])].filter(
-      (_, idx) => idx % 3 === 0,
-    )
-    expect(Math.min(...xs)).toBeLessThanOrEqual(-5)
-    expect(Math.max(...xs)).toBeGreaterThanOrEqual(5)
-  } finally {
-    await unmount_scene()
-  }
+  onTestFinished(unmount_scene)
+  // Line2 is a Mesh subclass, told apart by `type`
+  const [line, plane] = [`Line2`, `Mesh`].map((type) =>
+    find_objects(scene, Mesh).find((mesh) => mesh.type === type),
+  )
+  // data x=0 to x=100 runs from scene x +5 to -5 on the reversed axis
+  const ends = [`instanceStart`, `instanceEnd`].map((name) =>
+    line?.geometry.getAttribute(name).getX(0),
+  )
+  expect(ends).toEqual([5, -5])
+  // the plane covers the full x extent, not just twice the unit y/z spans
+  const xs = [...(plane?.geometry.getAttribute(`position`).array ?? [])].filter(
+    (_, idx) => idx % 3 === 0,
+  )
+  expect(Math.min(...xs)).toBeLessThanOrEqual(-5)
+  expect(Math.max(...xs)).toBeGreaterThanOrEqual(5)
 })
 
 // An unnamed plane's position must not share a key with another plane's numeric id: duplicate
@@ -295,21 +283,18 @@ test(`reference planes key by id or position without collisions across visibilit
       gizmo: false,
     }),
   )
-  try {
-    flushSync()
-    // the background planes use PlaneGeometry, reference planes a plain BufferGeometry quad
-    const planes = () =>
-      find_objects(scene, Mesh).filter((mesh) => mesh.geometry.type === `BufferGeometry`)
-    const before = planes()
-    expect(before).toHaveLength(2)
-    visible.first = true
-    flushSync()
-    const after = planes()
-    expect(after).toHaveLength(3)
-    for (const mesh of before) expect(after).toContain(mesh)
-  } finally {
-    await unmount_scene()
-  }
+  onTestFinished(unmount_scene)
+  flushSync()
+  // the background planes use PlaneGeometry, reference planes a plain BufferGeometry quad
+  const planes = () =>
+    find_objects(scene, Mesh).filter((mesh) => mesh.geometry.type === `BufferGeometry`)
+  const before = planes()
+  expect(before).toHaveLength(2)
+  visible.first = true
+  flushSync()
+  const after = planes()
+  expect(after).toHaveLength(3)
+  for (const mesh of before) expect(after).toContain(mesh)
 })
 
 // Every object under `root` of the given class
@@ -342,19 +327,8 @@ test.each([
   onTestFinished(unmount_scene)
   flushSync()
   const labels = [...document.querySelectorAll(`.tick-label`)].map((node) => node.textContent)
-  expect(labels).toEqual([
-    `−1`,
-    `−0.5`,
-    `0`,
-    `0.5`,
-    `1`,
-    `−1`,
-    `−0.5`,
-    `0`,
-    `0.5`,
-    `1`,
-    ...expected,
-  ])
+  const unit_ticks = [`−1`, `−0.5`, `0`, `0.5`, `1`] // x and y
+  expect(labels).toEqual([...unit_ticks, ...unit_ticks, ...expected])
 })
 
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
@@ -434,88 +408,84 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     return new Vector3().setFromMatrixPosition(matrix).toArray()
   }
   const tip_text = () => portal.querySelector(`.tip`)?.textContent
-  try {
-    // axis labels are HTML like the 2D axes' (a plain-text span showed the markup verbatim)
-    const labels = [...document.querySelectorAll(`.axis-label`)].map((node) => node.innerHTML)
-    expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
-    const tick_labels = [...document.querySelectorAll(`.tick-label`)].map(
-      (node) => node.textContent,
+  onTestFinished(unmount_scene)
+  // axis labels are HTML like the 2D axes' (a plain-text span showed the markup verbatim)
+  const labels = [...document.querySelectorAll(`.axis-label`)].map((node) => node.innerHTML)
+  expect(labels).toEqual([`α<sub>x</sub>`, `Y`, `Z`])
+  const tick_labels = [...document.querySelectorAll(`.tick-label`)].map(
+    (node) => node.textContent,
+  )
+  expect(tick_labels).toEqual([`0`, `1`, `2`, `3`, `4`, `a`, `b`, `0`, `1`, `2`, `3`, `4`])
+  expect(instances().count).toBe(4)
+  expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
+  const [group, ...others] = find_objects(scene, ClippingGroup)
+  expect(others).toHaveLength(0)
+  // the planes keep the 10 x 5 x 10 box (user z is Three.js y) and cut just outside it
+  const inside = (point: number[]) =>
+    group.clippingPlanes.every(
+      (plane) => plane.distanceToPoint(new Vector3().fromArray(point)) >= 0,
     )
-    expect(tick_labels).toEqual([`0`, `1`, `2`, `3`, `4`, `a`, `b`, `0`, `1`, `2`, `3`, `4`])
-    expect(instances().count).toBe(4)
-    expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
-    const [group, ...others] = find_objects(scene, ClippingGroup)
-    expect(others).toHaveLength(0)
-    // the planes keep the 10 x 5 x 10 box (user z is Three.js y) and cut just outside it
-    const inside = (point: number[]) =>
-      group.clippingPlanes.every(
-        (plane) => plane.distanceToPoint(new Vector3().fromArray(point)) >= 0,
-      )
-    // oxfmt-ignore
-    const probes = [[5, 2.5, 5], [0, 0, 0], [5.1, 0, 0], [0, 2.6, 0], [0, 0, -5.1]]
-    expect(probes.map(inside)).toEqual([true, true, false, false, false])
-    // the series line and the surface are clipped, the point mesh is range-filtered
-    expect(group.getObjectsByProperty(`type`, `Line2`)).toHaveLength(1)
-    const surface = find_objects(group, Mesh).find((mesh) => mesh.type === `Mesh`)?.geometry
-    for (const name of [`position`, `normal`])
-      expect([...(surface?.getAttribute(name).array ?? [])].every(Number.isFinite)).toBe(true)
-    // triangles touching a NaN vertex are dropped
-    expect(surface?.index?.count).toBeGreaterThan(0)
-    expect(surface?.index?.count).toBeLessThan(24 * 24 * 6)
-    const edges = find_objects(scene, LineSegments).filter(
-      (line) => line.geometry instanceof EdgesGeometry,
-    )
-    expect(edges).toHaveLength(1)
-    for (let frame = 0; frame < 3; frame++) render_frame()
-    expect(Array.from({ length: 5 }, render_frame)).toEqual(Array(5).fill(false))
+  // oxfmt-ignore
+  const probes = [[5, 2.5, 5], [0, 0, 0], [5.1, 0, 0], [0, 2.6, 0], [0, 0, -5.1]]
+  expect(probes.map(inside)).toEqual([true, true, false, false, false])
+  // the series line and the surface are clipped, the point mesh is range-filtered
+  expect(group.getObjectsByProperty(`type`, `Line2`)).toHaveLength(1)
+  const surface = find_objects(group, Mesh).find((mesh) => mesh.type === `Mesh`)?.geometry
+  for (const name of [`position`, `normal`])
+    expect([...(surface?.getAttribute(name).array ?? [])].every(Number.isFinite)).toBe(true)
+  // triangles touching a NaN vertex are dropped
+  expect(surface?.index?.count).toBeGreaterThan(0)
+  expect(surface?.index?.count).toBeLessThan(24 * 24 * 6)
+  const edges = find_objects(scene, LineSegments).filter(
+    (line) => line.geometry instanceof EdgesGeometry,
+  )
+  expect(edges).toHaveLength(1)
+  for (let frame = 0; frame < 3; frame++) render_frame()
+  expect(Array.from({ length: 5 }, render_frame)).toEqual(Array(5).fill(false))
 
-    state.hovered_point = { x: 2, y: 1, z: 3, series_idx: 0, point_idx: 1 }
-    flushSync()
-    render_frame()
-    expect(tip_text()).toBe(`2,1,3 true`)
-    // the hover halo is the one mesh drawn without depth testing, glowing in the marker's hue
-    const halo = find_objects(scene, Mesh).findLast(
-      (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
-    )
-    expect(halo?.position.toArray()).toEqual(scene_pos(2, 1, 3))
-    const marker = new Color()
-    instances().getColorAt(1, marker)
-    const halo_color = (halo?.material as MeshBasicMaterial | undefined)?.color
-    expect(`#${halo_color?.getHexString()}`).toBe(brighten_hex(`#${marker.getHexString()}`))
-    // a hair outside the marker on the markers' own smooth sphere, so the outlines are concentric
-    const marker_matrix = new Matrix4()
-    instances().getMatrixAt(1, marker_matrix)
-    const marker_radius = new Vector3().setFromMatrixScale(marker_matrix).x
-    expect(halo?.scale.x).toBeCloseTo(1.04 * marker_radius, 12)
-    expect(halo?.geometry).toBe(instances().geometry)
-    const { widthSegments, heightSegments } = (instances().geometry as SphereGeometry)
-      .parameters
-    expect([widthSegments, heightSegments]).toEqual([32, 32])
-    // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
-    // tooltip follows the same logical point to its new values
-    state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]
-    flushSync()
-    expect(render_frame()).toBe(true)
-    expect(instances().count).toBe(5)
-    expect(position_of(4)).toEqual(scene_pos(4, 0, 4))
-    expect(state.hovered_point).toMatchObject({ x: 1, y: 3, z: 1, point_idx: 1 })
-    expect(tip_text()).toBe(`1,3,1 true`)
-    expect(on_point_hover).not.toHaveBeenCalled()
-    // the point is gone: hover clears instead of describing a stale point, and the host
-    // hears so (ScatterPlot3D's `hovered` would otherwise stay true)
-    state.series = [{ x: [1], y: [1], z: [1] }]
-    flushSync()
-    expect(state.hovered_point).toBeNull()
-    expect(tip_text()).toBeUndefined()
-    expect(on_point_hover).toHaveBeenCalledExactlyOnceWith(null)
-  } finally {
-    await unmount_scene()
-  }
+  state.hovered_point = { x: 2, y: 1, z: 3, series_idx: 0, point_idx: 1 }
+  flushSync()
+  render_frame()
+  expect(tip_text()).toBe(`2,1,3 true`)
+  // the hover halo is the one mesh drawn without depth testing, glowing in the marker's hue
+  const halo = find_objects(scene, Mesh).findLast(
+    (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
+  )
+  expect(halo?.position.toArray()).toEqual(scene_pos(2, 1, 3))
+  const marker = new Color()
+  instances().getColorAt(1, marker)
+  const halo_color = (halo?.material as MeshBasicMaterial | undefined)?.color
+  expect(`#${halo_color?.getHexString()}`).toBe(brighten_hex(`#${marker.getHexString()}`))
+  // a hair outside the marker on the markers' own smooth sphere, so the outlines are concentric
+  const marker_matrix = new Matrix4()
+  instances().getMatrixAt(1, marker_matrix)
+  const marker_radius = new Vector3().setFromMatrixScale(marker_matrix).x
+  expect(halo?.scale.x).toBeCloseTo(1.04 * marker_radius, 12)
+  expect(halo?.geometry).toBe(instances().geometry)
+  const { widthSegments, heightSegments } = (instances().geometry as SphereGeometry).parameters
+  expect([widthSegments, heightSegments]).toEqual([32, 32])
+  // outgrowing the mesh's capacity swaps in a larger one and renders again, and the
+  // tooltip follows the same logical point to its new values
+  state.series = [{ x: [0, 1, 2, 3, 4], y: [4, 3, 2, 1, 0], z: [0, 1, 2, 3, 4] }]
+  flushSync()
+  expect(render_frame()).toBe(true)
+  expect(instances().count).toBe(5)
+  expect(position_of(4)).toEqual(scene_pos(4, 0, 4))
+  expect(state.hovered_point).toMatchObject({ x: 1, y: 3, z: 1, point_idx: 1 })
+  expect(tip_text()).toBe(`1,3,1 true`)
+  expect(on_point_hover).not.toHaveBeenCalled()
+  // the point is gone: hover clears instead of describing a stale point, and the host
+  // hears so (ScatterPlot3D's `hovered` would otherwise stay true)
+  state.series = [{ x: [1], y: [1], z: [1] }]
+  flushSync()
+  expect(state.hovered_point).toBeNull()
+  expect(tip_text()).toBeUndefined()
+  expect(on_point_hover).toHaveBeenCalledExactlyOnceWith(null)
 })
 
 // The default tooltip is a PlotTooltip painted per tooltip_paint (an opaque marker fill as is,
 // a translucent one flattened); tooltip=false drops it (the hover halo stays). Its rows stay
-// start-aligned on a page that centers text.
+// start-aligned on a page that centers text, and a NaN color value gets no `value: NaN` row.
 test.each<[string, false | undefined, boolean]>([
   [`#ffffff`, undefined, true],
   [`rgba(255, 255, 255, 0.5)`, undefined, true],
@@ -527,7 +497,7 @@ test.each<[string, false | undefined, boolean]>([
   })
   const { unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
-      series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
+      series: [{ x: [1], y: [1], z: [1], point_style: { fill }, color_values: [NaN] }],
       hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
       gizmo: false,
@@ -541,6 +511,7 @@ test.each<[string, false | undefined, boolean]>([
   if (!tip) return
   expect_tooltip_paint(tip, fill)
   expect(getComputedStyle(tip).textAlign).toBe(`start`)
+  expect(tip.textContent).not.toContain(`value`)
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor
@@ -706,89 +677,86 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
     find_objects(scene, Mesh).findLast(
       (mesh) => !Array.isArray(mesh.material) && !mesh.material.depthTest,
     )
-  try {
-    // inside the settle window a change snaps, as the plot is still appearing
-    set_xs([1, 3], 0, 2)
-    expect(marker(1)).toEqual(drawn(packed(3, 2, 0)))
-    expect([render_frame(), render_frame()]).toEqual([true, false])
-    vi.advanceTimersByTime(SETTLE_MS)
-    state.hovered_point = { x: 3, y: 1, z: 1, series_idx: 0, point_idx: 1 }
-    // x=9 leaves the range, so instance 0 is now the old point 1 and instance 1 is new: the
-    // survivor starts where it was drawn, the newcomer appears at its target
-    set_xs([9, 4, 1], 1, 6)
-    const [start, end, newcomer] = [packed(3, 2, 0), packed(4, 6, 1), packed(1, 6, 1)]
-    expect([marker(0), marker(1)]).toEqual([drawn(start), drawn(newcomer)])
-    // the tooltip paint follows the marker's colour, not its tween frames
-    const paint_calls = vi.mocked(tooltip_paint).mock.calls.length
-    advance(300)
-    // linear easing at half time: geometry halfway in scene units, colour halfway in sRGB
-    const half = lerp(start, end, 0.5)
-    expect(marker(0)).toEqual(drawn(half))
-    expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
-    // the hover halo rides on the moving marker the raycast hits, not on its target
-    expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
-    expect(halo()?.scale.x).toBe(hover_halo_radius(half[3]))
-    // shadows switched on mid-flight join the same clock, flattened onto the floor
-    state.display = { show_axes: false, projections: { xy: true } }
-    flushSync()
-    expect(marker(0, true)).toEqual(shadow_of(half))
-    // reassigning equal data keeps the running tween going instead of restarting it
-    set_xs([9, 4, 1], 1, 6)
-    advance(150)
-    const three_quarters = lerp(start, end, 0.75)
-    expect(marker(0)).toEqual(drawn(three_quarters))
-    expect(vi.mocked(tooltip_paint).mock.calls).toHaveLength(paint_calls)
-    expect(marker(0, true)).toEqual(shadow_of(three_quarters))
-    // retargeting mid-flight starts from the drawn state; growing adds a snapped instance
-    set_xs([9, 0, 1, 2], 0, 2)
-    const [back, recolored] = [packed(0, 2, 0), packed(1, 2, 0)]
-    expect([0, 1, 2].map((idx) => marker(idx))).toEqual(
-      [three_quarters, newcomer, packed(2, 2, 0)].map(drawn),
-    )
-    advance(300)
-    const retargeted = lerp(three_quarters, back, 0.5)
-    expect([marker(0), marker(1)]).toEqual(
-      [retargeted, lerp(newcomer, recolored, 0.5)].map(drawn),
-    )
-    // shrinking mid-flight keeps the survivor where it is drawn
-    set_xs([9, 0], 0, 2)
-    expect(instanced(false)[0].count).toBe(1)
-    expect(marker(0)).toEqual(drawn(retargeted))
-    advance(600)
-    expect(marker(0)).toEqual(drawn(back))
-    expect(halo()?.position.toArray()).toEqual(back.slice(0, 3))
-    expect(Array.from({ length: 3 }, render_frame)).toEqual([true, false, false])
-    // `delay` holds the start state before the tween runs
-    state.point_tween = { duration: 600, delay: 100, easing: linear }
-    set_xs([9, 2], 0, 2)
-    advance(100)
-    expect(marker(0)).toEqual(drawn(back))
-    advance(300)
-    const delayed_half = lerp(back, packed(2, 2, 0), 0.5)
-    expect(marker(0)).toEqual(drawn(delayed_half))
-    // `{ duration: 0 }` opts out
-    state.point_tween = { duration: 0 }
-    set_xs([9, 3], 0, 2)
-    expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
-    expect([render_frame(), render_frame()]).toEqual([true, false])
-    // NaN colour/size values keep the series fill and radius (a NaN radius made the bounding
-    // sphere NaN, so raycasting missed every marker)
-    const [series] = state.series
-    state.series = [{ ...series, color_values: [NaN, NaN], size_values: [NaN, NaN] }]
-    flushSync()
-    expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
-    expect(Number.isFinite(instanced(false)[0].boundingSphere?.radius)).toBe(true)
-    // so do plots past 20k markers, too many to rewrite every frame
-    state.point_tween = { duration: 600 }
-    set_xs([9, 0, ...Array(20_000).fill(1)], 0, 2)
-    expect(marker(0)).toEqual(drawn(packed(0, 2, 0)))
-    // and so does reduce motion, whatever point_tween asks for
-    stub_reduced_motion(() => true)
-    set_xs([9, 1], 0, 2)
-    expect(marker(0)).toEqual(drawn(packed(1, 2, 0)))
-  } finally {
-    await unmount_scene()
-  }
+  onTestFinished(unmount_scene)
+  // inside the settle window a change snaps, as the plot is still appearing
+  set_xs([1, 3], 0, 2)
+  expect(marker(1)).toEqual(drawn(packed(3, 2, 0)))
+  expect([render_frame(), render_frame()]).toEqual([true, false])
+  vi.advanceTimersByTime(SETTLE_MS)
+  state.hovered_point = { x: 3, y: 1, z: 1, series_idx: 0, point_idx: 1 }
+  // x=9 leaves the range, so instance 0 is now the old point 1 and instance 1 is new: the
+  // survivor starts where it was drawn, the newcomer appears at its target
+  set_xs([9, 4, 1], 1, 6)
+  const [start, end, newcomer] = [packed(3, 2, 0), packed(4, 6, 1), packed(1, 6, 1)]
+  expect([marker(0), marker(1)]).toEqual([drawn(start), drawn(newcomer)])
+  // the tooltip paint follows the marker's colour, not its tween frames
+  const paint_calls = vi.mocked(tooltip_paint).mock.calls.length
+  advance(300)
+  // linear easing at half time: geometry halfway in scene units, colour halfway in sRGB
+  const half = lerp(start, end, 0.5)
+  expect(marker(0)).toEqual(drawn(half))
+  expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+  // the hover halo rides on the moving marker the raycast hits, not on its target
+  expect(halo()?.position.toArray()).toEqual(half.slice(0, 3))
+  expect(halo()?.scale.x).toBe(hover_halo_radius(half[3]))
+  // shadows switched on mid-flight join the same clock, flattened onto the floor
+  state.display = { show_axes: false, projections: { xy: true } }
+  flushSync()
+  expect(marker(0, true)).toEqual(shadow_of(half))
+  // reassigning equal data keeps the running tween going instead of restarting it
+  set_xs([9, 4, 1], 1, 6)
+  advance(150)
+  const three_quarters = lerp(start, end, 0.75)
+  expect(marker(0)).toEqual(drawn(three_quarters))
+  expect(vi.mocked(tooltip_paint).mock.calls).toHaveLength(paint_calls)
+  expect(marker(0, true)).toEqual(shadow_of(three_quarters))
+  // retargeting mid-flight starts from the drawn state; growing adds a snapped instance
+  set_xs([9, 0, 1, 2], 0, 2)
+  const [back, recolored] = [packed(0, 2, 0), packed(1, 2, 0)]
+  expect([0, 1, 2].map((idx) => marker(idx))).toEqual(
+    [three_quarters, newcomer, packed(2, 2, 0)].map(drawn),
+  )
+  advance(300)
+  const retargeted = lerp(three_quarters, back, 0.5)
+  expect([marker(0), marker(1)]).toEqual(
+    [retargeted, lerp(newcomer, recolored, 0.5)].map(drawn),
+  )
+  // shrinking mid-flight keeps the survivor where it is drawn
+  set_xs([9, 0], 0, 2)
+  expect(instanced(false)[0].count).toBe(1)
+  expect(marker(0)).toEqual(drawn(retargeted))
+  advance(600)
+  expect(marker(0)).toEqual(drawn(back))
+  expect(halo()?.position.toArray()).toEqual(back.slice(0, 3))
+  expect(Array.from({ length: 3 }, render_frame)).toEqual([true, false, false])
+  // `delay` holds the start state before the tween runs
+  state.point_tween = { duration: 600, delay: 100, easing: linear }
+  set_xs([9, 2], 0, 2)
+  advance(100)
+  expect(marker(0)).toEqual(drawn(back))
+  advance(300)
+  const delayed_half = lerp(back, packed(2, 2, 0), 0.5)
+  expect(marker(0)).toEqual(drawn(delayed_half))
+  // `{ duration: 0 }` opts out
+  state.point_tween = { duration: 0 }
+  set_xs([9, 3], 0, 2)
+  expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
+  expect([render_frame(), render_frame()]).toEqual([true, false])
+  // NaN colour/size values keep the series fill and radius (a NaN radius made the bounding
+  // sphere NaN, so raycasting missed every marker)
+  const [series] = state.series
+  state.series = [{ ...series, color_values: [NaN, NaN], size_values: [NaN, NaN] }]
+  flushSync()
+  expect(marker(0)).toEqual(drawn(packed(3, 2, 0)))
+  expect(Number.isFinite(instanced(false)[0].boundingSphere?.radius)).toBe(true)
+  // so do plots past 20k markers, too many to rewrite every frame
+  state.point_tween = { duration: 600 }
+  set_xs([9, 0, ...Array(20_000).fill(1)], 0, 2)
+  expect(marker(0)).toEqual(drawn(packed(0, 2, 0)))
+  // and so does reduce motion, whatever point_tween asks for
+  stub_reduced_motion(() => true)
+  set_xs([9, 1], 0, 2)
+  expect(marker(0)).toEqual(drawn(packed(1, 2, 0)))
 })
 
 test(`pack_instances draws an unparsable colour white instead of the previous one`, () => {
@@ -1169,13 +1137,17 @@ describe(`scene coordinates`, () => {
     expect(sampled[0]).toBe(points[0])
     expect(sampled.at(-1)).toBe(points[count - 1])
     expect(points).toHaveLength(count + 2)
-    // a legend-hidden series draws nothing, so it must not widen the axes either
+    // a legend-hidden series draws nothing, and neither does a point missing a coordinate,
+    // so they must not widen the axes either
     const hidden = { x: [1e9], y: [1e9], z: [1e9], visible: false }
+    const partial = { x: [0, 1e9], y: [0, 1e9], z: [0, NaN] }
     const expected = { x: [0, 220_000], y: [-220_000, 20_000], z: [0, 450_000] }
-    expect(get_3d_auto_ranges([basic_series, hidden], sampled)).toEqual(expected)
+    expect(get_3d_auto_ranges([basic_series, hidden, partial], sampled)).toEqual(expected)
+    // zero-span extents get nice padding; a sample missing a coordinate is skipped whole
     // oxfmt-ignore
-    const degen = [{ x: -0, y: NaN, z: Infinity }, { x: 0, y: 2, z: NaN }]
-    expect(get_3d_auto_ranges([], degen)).toEqual({ x: [-1, 1], y: [1.8, 2.2], z: [0, 1] })
+    const degen = [{ x: -0, y: 2, z: 2 }, { x: 0, y: 2, z: 2 }, { x: 50, y: NaN, z: 9 }]
+    expect(get_3d_auto_ranges([], degen)).toEqual({ x: [-1, 1], y: [1.8, 2.2], z: [1.8, 2.2] })
+    expect(get_3d_auto_ranges([], [])).toEqual({ x: [0, 1], y: [0, 1], z: [0, 1] })
   })
 
   test(`surface bounds sample the drawn vertex grid`, () => {

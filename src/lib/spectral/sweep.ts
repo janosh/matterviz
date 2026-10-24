@@ -15,6 +15,7 @@ import { is_crystal } from '#lib/structure/validation.js'
 import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import { normalize_band_structure, normalize_dos } from './helpers'
+import { normalize_mode_values } from './mode-values'
 import type {
   BaseBandStructure,
   DosData,
@@ -38,7 +39,7 @@ export interface SweepFrame {
   band_structs?: Record<string, BaseBandStructure>
   // `total` (or a single entry) is the total DOS; element symbols key element projections
   doses?: Record<string, DosData>
-  phonon?: PhononSpectra // phonon bands, DOS and α²F
+  phonon?: PhononSpectra // phonon bands, DOS, α²F and mode values (e.g. λ_qν)
   scalars?: Record<string, number | null> // supplied descriptor values, null: known missing
   status?: { unstable?: boolean; note?: string } // unstable frames are greyed in the plot
 }
@@ -80,10 +81,19 @@ export interface DescriptorSpec {
 // A frame's fields besides its value: what a loader returns
 export type SweepFrameData = Omit<SweepFrame, `value`>
 
-// Fetches a frame's heavy data (0-based index into its series) when it is first shown. The
-// result is parsed like a JSON frame (failing on a wrong field) and merged over the frame's own
-// fields, records (scalars, status, doses, band_structs, phonon's) key by key.
-export type SweepFrameLoader = (series_id: string, frame_idx: number) => Promise<unknown>
+// Fetches a frame's heavy data (0-based index into its series) when it is shown or prefetched.
+// The result is parsed like a JSON frame (failing on a wrong field) and merged over the frame's
+// own fields, records (scalars, status, doses, band_structs, phonon's) key by key and phonon's
+// mode_values as one field. `signal` aborts once the frame leaves the viewer's window, the
+// sweep or loader is replaced or the viewer unmounts: pass it to fetch or check it between
+// steps. An aborted load's result or error is ignored, and the frame may be requested again
+// later. Evicted frames (see sweep-frames) are loaded again, so a loader may be called more
+// than once per frame.
+export type SweepFrameLoader = (
+  series_id: string,
+  frame_idx: number,
+  options: { signal: AbortSignal },
+) => Promise<unknown>
 
 export interface Sweep {
   axis: SweepAxis
@@ -425,11 +435,14 @@ export function normalize_frame_data(raw: unknown, path: string): SweepFrameData
   }
   if (phonon) {
     const phonon_path = `${path}.phonon`
-    const { a2f, ...phonon_spectra } = parse_fields<RawRecords<keyof PhononSpectra>>(
-      phonon,
-      phonon_path,
-      { band_structs: OBJECT, doses: OBJECT, a2f: OBJECT },
-    )
+    const { a2f, mode_values, ...phonon_spectra } = parse_fields<
+      RawRecords<keyof PhononSpectra>
+    >(phonon, phonon_path, {
+      band_structs: OBJECT,
+      doses: OBJECT,
+      a2f: OBJECT,
+      mode_values: OBJECT,
+    })
     const a2f_doses = typed_record<DosData, PhononDos>(
       a2f,
       `${phonon_path}.a2f`,
@@ -439,6 +452,9 @@ export function normalize_frame_data(raw: unknown, path: string): SweepFrameData
     frame.phonon = {
       ...normalize_spectra(phonon_spectra, phonon_path, `phonon`),
       ...(a2f_doses && { a2f: a2f_doses }),
+      ...(mode_values && {
+        mode_values: parse(`phonon.mode_values`, () => normalize_mode_values(mode_values)),
+      }),
     }
   }
   if (scalars) {

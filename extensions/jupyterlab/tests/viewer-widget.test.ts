@@ -29,12 +29,17 @@ vi.mock(`@jupyterlab/ui-components`, () => ({
 vi.mock(`@jupyterlab/apputils`, () => ({ WidgetTracker: class {} }))
 vi.mock(`@jupyterlab/application`, () => ({ ILayoutRestorer: Symbol(`ILayoutRestorer`) }))
 vi.mock(`@jupyterlab/docregistry`, () => ({
-  ABCWidgetFactory: class {},
+  ABCWidgetFactory: class {
+    widgetCreated = { connect: vi.fn() }
+    constructor(public readonly options: FactoryOptions) {}
+  },
   Base64ModelFactory: class {},
   DocumentWidget: class {},
 }))
 
-const { MatterVizViewer, MAX_PARSE_BYTES } = await import(`../src/index`)
+type FactoryOptions = { modelName: string; fileTypes: string[]; defaultFor: string[] }
+const { default: plugin, MatterVizViewer, MAX_PARSE_BYTES } = await import(`../src/index`)
+const { BASE64_FILE_TYPES, TEXT_FILE_TYPES } = await import(`../src/file-types`)
 
 // Handler is an arrow property, so the signal's thisArg can be ignored.
 const make_signal = () => {
@@ -105,24 +110,29 @@ test.each([`x`, `€`, `😀`])(
   },
 )
 
-test(`base64 padding does not push an exactly-at-limit file over the cap`, async () => {
-  // 100 MiB leaves one byte in the final base64 quartet (two padding characters).
-  const content = `A`.repeat(Math.ceil(MAX_PARSE_BYTES / 3) * 4 - 2) + `==`
-  const context = make_context(content, Promise.resolve())
-  context.contentsModel.format = `base64`
-  const viewer = new_viewer(context)
-  try {
-    await vi.waitFor(() => expect(create_display).toHaveBeenCalledOnce())
-    expect(parse_in_worker).toHaveBeenCalledExactlyOnceWith(
-      content,
-      `Li2O.cif`,
-      true,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    )
-  } finally {
-    viewer.dispose()
-  }
-})
+// Jupyter's contents API sends base64 as 76-column lines (Python's base64.encodebytes)
+test.each([false, true])(
+  `base64 padding (76-column wrapped: %s) does not push an exactly-at-limit file over the cap`,
+  async (wrapped) => {
+    // 100 MiB leaves one byte in the final base64 quartet (two padding characters).
+    const payload = `A`.repeat(Math.ceil(MAX_PARSE_BYTES / 3) * 4 - 2) + `==`
+    const content = wrapped ? `${payload.replaceAll(/.{76}/g, `$&\n`)}\n` : payload
+    const context = make_context(content, Promise.resolve())
+    context.contentsModel.format = `base64`
+    const viewer = new_viewer(context)
+    try {
+      await vi.waitFor(() => expect(create_display).toHaveBeenCalledOnce())
+      expect(parse_in_worker).toHaveBeenCalledExactlyOnceWith(
+        content,
+        `Li2O.cif`,
+        true,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      )
+    } finally {
+      viewer.dispose()
+    }
+  },
+)
 
 test(`a context that fails to become ready reports the failure`, async () => {
   const context = make_context(`data`, Promise.reject(new Error(`File not found`)))
@@ -162,3 +172,27 @@ test.each([`superseded`, `disposed`, `mount failure`] as const)(
     finish_unmount()
   },
 )
+
+// JSON and HDF5 stay "Open With" entries: defaultFor would displace Lab's own JSON viewer and
+// claim every Keras/NetCDF4 .h5
+test(`activate registers every file type and one text and one binary factory`, () => {
+  const methods = [`addFileType`, `getModelFactory`, `addModelFactory`, `addWidgetFactory`]
+  const docRegistry = Object.fromEntries(methods.map((method) => [method, vi.fn()]))
+  plugin.activate({ docRegistry } as never, null)
+  const names = (specs: { name: string }[]) => specs.map(({ name }) => name)
+  const registered = docRegistry.addFileType.mock.calls.map(([spec]) => spec)
+  expect(names(registered)).toEqual(names([...TEXT_FILE_TYPES, ...BASE64_FILE_TYPES]))
+  expect(docRegistry.addModelFactory).toHaveBeenCalledOnce()
+  const [text, binary]: FactoryOptions[] = docRegistry.addWidgetFactory.mock.calls.map(
+    ([factory]) => factory.options,
+  )
+  expect([text.modelName, binary.modelName]).toEqual([`text`, `base64`])
+  expect([text.fileTypes, binary.fileTypes]).toEqual([
+    expect.arrayContaining([`json`]),
+    expect.arrayContaining([`matterviz-h5`, `matterviz-hdf5`]),
+  ])
+  const opt_in = /^(?:json|matterviz-h5|matterviz-hdf5)$/
+  expect(
+    [...text.defaultFor, ...binary.defaultFor].filter((name) => opt_in.test(name)),
+  ).toEqual([])
+})

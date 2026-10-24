@@ -53,39 +53,30 @@ const gaussian_grid = (size: number): number[][][] => {
   })
 }
 
-const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void => {
-  expect(actual).toHaveLength(expected.length)
-  for (let idx = 0; idx < actual.length; idx++) {
-    expect(actual[idx]).toBeCloseTo(expected[idx], 6)
-  }
-}
+const expect_array_close = (actual: ArrayLike<number>, expected: number[]): void =>
+  expect(Array.from(actual)).toEqual(expected.map((val) => expect.closeTo(val, 6)))
 
 const indexed_grid = (size_x: number, size_y: number, size_z: number): number[][][] =>
   make_grid(size_x, size_y, size_z, (x_idx, y_idx, z_idx) => 100 * x_idx + 10 * y_idx + z_idx)
 
+// The nested grid flattened in `order` at `precision`
 const as_scalar_grid = (
   grid: number[][][],
   order: ScalarGridOrder,
   precision: `f32` | `f64` = `f64`,
 ): ScalarGrid3D => {
-  const dimensions: Vec3 = [grid.length, grid[0]?.length ?? 0, grid[0]?.[0]?.length ?? 0]
-  const [size_x, size_y, size_z] = dimensions
-  const data: ScalarGridArray =
-    precision === `f32`
-      ? new Float32Array(size_x * size_y * size_z)
-      : new Float64Array(size_x * size_y * size_z)
-  for (let idx_x = 0; idx_x < size_x; idx_x++) {
-    for (let idx_y = 0; idx_y < size_y; idx_y++) {
-      for (let idx_z = 0; idx_z < size_z; idx_z++) {
-        const offset =
-          order === `x_fastest`
-            ? idx_x + size_x * (idx_y + size_y * idx_z)
-            : idx_z + size_z * (idx_y + size_y * idx_x)
-        data[offset] = grid[idx_x][idx_y][idx_z]
-      }
-    }
+  const { values, dims } = flatten_grid(grid)
+  const [size_x, size_y, size_z] = dims
+  const data: ScalarGridArray = new (precision === `f32` ? Float32Array : Float64Array)(
+    values.length,
+  )
+  for (const [flat_idx, value] of values.entries()) {
+    const idx_x = Math.floor(flat_idx / (size_y * size_z))
+    const idx_y = Math.floor(flat_idx / size_z) % size_y
+    const idx_z = flat_idx % size_z
+    data[order === `x_fastest` ? idx_x + size_x * (idx_y + size_y * idx_z) : flat_idx] = value
   }
-  return { values: data, dims: dimensions, order }
+  return { values: data, dims, order }
 }
 
 const expect_result_parity = (
@@ -319,9 +310,7 @@ describe(`marching_cubes`, () => {
         [0.5, Math.sqrt(3) / 2, 0],
         [0, 0, 1],
       ] as Matrix3x3,
-      grid: Array.from({ length: 4 }, (_, idx_x) =>
-        Array.from({ length: 5 }, () => Array.from({ length: 6 }, () => idx_x)),
-      ),
+      grid: make_grid(4, 5, 6, (idx_x) => idx_x),
       iso: 1.5,
       check: (normal: Vec3, lattice: Matrix3x3) => {
         expect(normal[0]).toBeLessThan(0)
@@ -333,11 +322,7 @@ describe(`marching_cubes`, () => {
     {
       label: `unequal grid spacing`,
       lattice: IDENTITY,
-      grid: Array.from({ length: 3 }, (_unused_coord_x, idx_x) =>
-        Array.from({ length: 5 }, (_unused_coord_y, idx_y) =>
-          Array.from({ length: 4 }, () => idx_x / 2 + idx_y / 4),
-        ),
-      ),
+      grid: make_grid(3, 5, 4, (idx_x, idx_y) => idx_x / 2 + idx_y / 4),
       iso: 0.75,
       check: ([coord_x, coord_y, coord_z]: Vec3) => {
         expect(Math.abs(coord_x)).toBeCloseTo(Math.SQRT1_2, 5)
@@ -359,13 +344,8 @@ describe(`marching_cubes`, () => {
         [1, 0, 0],
         [0, 0, 1],
       ]
-      const grid = Array.from({ length: 4 }, (_unused_coord_x, idx_x) =>
-        Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => idx_x)),
-      )
-      const result = marching_cubes(grid, 1.5, singular_lattice, {
-        ...NON_PERIODIC,
-        normals,
-      })
+      const grid = make_grid(4, 4, 4, (idx_x) => idx_x)
+      const result = marching_cubes(grid, 1.5, singular_lattice, { ...NON_PERIODIC, normals })
       expect(result.vertices.length).toBeGreaterThan(0)
       expect(result.faces.length).toBeGreaterThan(0)
       if (!normals) {
@@ -377,10 +357,11 @@ describe(`marching_cubes`, () => {
       // Index-space gradient scaling: mean normal stable across anisotropic resolutions
       const mean_x = (resolution: number) => {
         const { normals: resolution_normals } = marching_cubes(
-          Array.from({ length: resolution }, (_unused_coord_x, idx_x) =>
-            Array.from({ length: 2 * resolution }, () =>
-              Array.from({ length: 2 * resolution }, () => idx_x / (resolution - 1)),
-            ),
+          make_grid(
+            resolution,
+            2 * resolution,
+            2 * resolution,
+            (idx_x) => idx_x / (resolution - 1),
           ),
           0.5,
           singular_lattice,

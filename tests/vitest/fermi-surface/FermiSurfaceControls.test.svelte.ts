@@ -202,7 +202,7 @@ describe(`FermiSurfaceControls`, () => {
     expect(state.selected_bands).toEqual([5, 6])
     await reset_section(`bands`) // reset forgets the hidden bands
     expect(state.selected_bands).toEqual([4, 5, 6])
-    // a parent re-showing band 4 while it does not cross (FermiSurfaceBands ending an
+    // a parent re-showing band 4 while it does not cross (ElectronicStructure ending an
     // isolation) shows it once it crosses again
     // oxfmt-ignore
     for (const bands of [[5, 6], [4, 5, 6]]) {

@@ -182,6 +182,9 @@ const FIXTURES = [
     frame0_metadata: { step: 0, energy: -58.97273254394531, force_max: 0.025402992964072665 }, last_metadata: { energy: -58.59364700317383 } },
   { file: `gold-nanoparticle-md.h5`, format: `hdf5`, frame_count: 100, n_atoms: 55, steps: [1, 991], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
+    // the canonical `force` every reader writes (a TorchSim `forces` stayed plural, and export dropped it)
+    site0_properties: { force: [-1.2743433713912964, 0.6032001972198486, -0.13765788078308105],
+      velocity: [0.003630077699199319, 0.010611849837005138, -0.0009142969502136111] },
     volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105] },
   { file: `flame-gold-cluster-55-atoms.h5`, format: `hdf5`, frame_count: 20, n_atoms: 55, steps: [25, 500], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
@@ -253,6 +256,9 @@ describe(`content sniffing`, () => {
   it.each([
     [`multi-frame XYZ`, `${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz`, 2],
     [`single-frame XYZ`, VALID_XYZ_FRAME, `xyz`, 1],
+    // TextLines keeps a BOM, which hid a lone frame and the first of several
+    [`BOM + single-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}`, `xyz`, 1],
+    [`BOM + multi-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz`, 2],
     [`LAMMPS`, lammps_content, `lammps`, 1],
   ])(`detects %s by content`, async (_label, content, format, frame_count) => {
     for (const filename of [undefined, blob_uuid]) {
@@ -312,13 +318,22 @@ describe(`XDATCAR`, () => {
       `XDATCAR frame 1 line 10 is not a fractional coordinate triple: "0.1 xx 0.1"`],
     [`short coordinate line`, xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 0.1`), config(2, `0.5 0.5 0.5`, `0.1 0.1 0.1`)]),
       `XDATCAR frame 1 line 10 is not a fractional coordinate triple: "0.1 0.1"`],
+    // a corrupt repeated header kept the previous cell for every later frame
+    [`a corrupt repeated header`, `${variable_cell(10, 1)}\n${variable_cell(20, 2).replace(`\n1.0\n`, `\nx\n`)}`,
+      `XDATCAR lines 14-22 before "Direct configuration=" are not a cell header: Invalid scale factor`],
   ])(`rejects an XDATCAR with %s`, async (_label, content, error) => {
     await expect(open(content, `XDATCAR`)).rejects.toThrow(error)
   })
 
-  // the smallest complete XDATCAR (1 ion, 1 frame) is 9 lines, with or without a final newline
-  it.each([``, `\n`])(`opens a minimal XDATCAR ending in %j`, async (tail) => {
-    const content = `${xdatcar(`Si\n1`, [config(1, `0.1 0.2 0.3`)])}${tail}`
+  // the smallest complete XDATCAR (1 ion, 1 frame) is 9 lines, with or without a final
+  // newline; a blank title line is still a line (trimming it shifted the header up by one)
+  it.each([
+    [``, `title`],
+    [`\n`, `title`],
+    [``, ``],
+    [`\n`, `  `],
+  ])(`opens a minimal XDATCAR ending in %j with title %j`, async (tail, title) => {
+    const content = `${title}${xdatcar(`Si\n1`, [config(1, `0.1 0.2 0.3`)]).slice(5)}${tail}`
     expect(FORMAT_PATTERNS.vasp(content)).toBe(true)
     const { frame_count, preview } = await open(content)
     expect([frame_count, elements_of(preview)]).toEqual([1, [`Si`]])
@@ -353,15 +368,25 @@ describe(`XDATCAR`, () => {
     expect(run.warnings).toEqual([warning])
   })
 
-  it(`re-reads variable-cell headers with wrapped species blocks from the frame cursor`, async () => {
-    const run = await open(`${variable_cell(10, 1)}\n${variable_cell(20, 2)}`, `XDATCAR`)
-    const frames = await frames_of(run)
-    expect(frames.map(({ step }) => step)).toEqual([1, 2])
-    expect(frames.map((traj_frame) => lattice_of(traj_frame).a)).toEqual([10, 20])
-    expect(frames[1].structure.sites[2].xyz).toEqual([2, 4, 6])
-    expect(frames[1].metadata?.volume).toBe(8000)
-    expect(elements_of(frames[1])).toEqual([`H`, `He`, `He`])
-  })
+  // blank lines between frames and a blank title line both still re-read the header; a
+  // header without a title was skipped, keeping the previous cell for the frame
+  it.each([
+    [`directly`, `\n`, `frame\n`],
+    [`after blank lines`, `\n\n  \n`, `frame\n`],
+    [`with a blank title`, `\n\n`, `\n`],
+  ])(
+    `re-reads variable-cell headers with wrapped species blocks %s`,
+    async (_label, gap, title) => {
+      const second = variable_cell(20, 2).replace(`frame\n`, title)
+      const run = await open(`${variable_cell(10, 1)}${gap}${second}`, `XDATCAR`)
+      const frames = await frames_of(run)
+      expect(frames.map(({ step }) => step)).toEqual([1, 2])
+      expect(frames.map((traj_frame) => lattice_of(traj_frame).a)).toEqual([10, 20])
+      expect(frames[1].structure.sites[2].xyz).toEqual([2, 4, 6])
+      expect(frames[1].metadata?.volume).toBe(8000)
+      expect(elements_of(frames[1])).toEqual([`H`, `He`, `He`])
+    },
+  )
 
   // Indexed open reads no coordinate line outside the last frame, so a corrupt one fails only
   // that frame's read and plot row, with the error the eager open throws (see above)
@@ -407,38 +432,22 @@ describe(`vasprun.xml`, () => {
         (_, scf_idx) =>
           `<scstep>\n<energy>\n${energies(scf_idx === n_scf - 1 ? energy : energy - 1)}\n</energy>\n</scstep>`,
       ),
-      `<structure>\n<crystal>\n${varray(`basis`, [
-        [lat_a, 0, 0],
-        [0, lat_a, 0],
-        [0, 0, lat_a],
-      ])}\n</crystal>\n${varray(`positions`, frac)}\n</structure>`,
+      // oxfmt-ignore
+      `<structure>\n<crystal>\n${varray(`basis`, [[lat_a, 0, 0], [0, lat_a, 0], [0, 0, lat_a]])}\n</crystal>\n` +
+        `${varray(`positions`, frac)}\n</structure>`,
       varray(`forces`, forces),
-      varray(`stress`, [
-        [-3, 0, 0],
-        [0, -6, 0],
-        [0, 0, -9],
-      ]),
+      // oxfmt-ignore
+      varray(`stress`, [[-3, 0, 0], [0, -6, 0], [0, 0, -9]]),
       `<energy>\n${energies(energy + pv)}${molecular_dynamics ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
       ...(close ? [`</calculation>`] : []),
     ].join(`\n`)
   const atominfo = (rows: [string, number][], types: [number, string, number][]) =>
     `<atominfo>\n<atoms> ${rows.length} </atoms>\n<array name="atoms" >\n<set>\n${rows.map(([symbol, type_idx]) => `<rc><c>${symbol}</c><c> ${type_idx}</c></rc>`).join(`\n`)}\n</set>\n</array>\n<array name="atomtypes" >\n<set>\n${types.map(([count, symbol, mass]) => `<rc><c> ${count}</c><c>${symbol}</c><c> ${mass}</c><c> 4.0</c><c> PAW_PBE ${symbol}</c></rc>`).join(`\n`)}\n</set>\n</array>\n</atominfo>`
+  // oxfmt-ignore
+  const si_o_atoms = atominfo([[`Si`, 1], [`O`, 2]], [[1, `Si`, 28.085], [1, `O`, 15.999]])
   const vasprun = (
     calculations: string[],
-    {
-      ibrion = 2,
-      potim = 0.5,
-      atoms = atominfo(
-        [
-          [`Si`, 1],
-          [`O`, 2],
-        ],
-        [
-          [1, `Si`, 28.085],
-          [1, `O`, 15.999],
-        ],
-      ),
-    } = {},
+    { ibrion = 2, potim = 0.5, atoms = si_o_atoms } = {},
   ): string =>
     [
       `<?xml version="1.0" encoding="ISO-8859-1"?>`,
@@ -494,11 +503,8 @@ describe(`vasprun.xml`, () => {
       force_max: 0.1,
       force_norm: 0.1,
       volume: 125,
-      forces: [
-        [0.1, 0, 0],
-        [-0.1, 0, 0],
-      ],
     })
+    expect(frames[0].metadata).not.toHaveProperty(`forces`)
     // VASP prints kB, the labels declare GPa
     expect(frames[0].metadata?.pressure).toBeCloseTo(-0.6, 12)
     expect(frames[0].metadata?.stress).toEqual(
@@ -702,6 +708,25 @@ describe(`OUTCAR`, () => {
     expect((await open(relaxation)).provenance.format).toBe(`outcar`)
   })
 
+  // VASP prints the stress as 6F12.5, so from -10000 or 100000 kB on adjacent values touch;
+  // splitting on whitespace dropped the whole tensor of such a frame, and splitting on any
+  // decimal run mis-split a positive 6-digit value. Asterisks (past 1e6 kB) drop the stress.
+  // oxfmt-ignore
+  it.each([
+    [`negative 5-digit`, `-12345.67890-23456.78901    -3.00000     0.10000     0.20000     0.30000`, [-12345.6789, -23456.78901, -3, 0.1, 0.2, 0.3]],
+    [`positive 6-digit`, `    -3.00000123456.78901   100.50000     0.10000     0.20000234567.10000`, [-3, 123456.78901, 100.5, 0.1, 0.2, 234567.1]],
+    [`mixed-sign`, `    -3.00000123456.78901   100.50000-12345.67890     0.10000234567.10000`, [-3, 123456.78901, 100.5, -12345.6789, 0.1, 234567.1]],
+    [`overflowed`, `************-23456.78901    -3.00000     0.10000     0.20000     0.30000`, null],
+  ])(`reads a %s stress line whose fixed-width fields run together`, async (_label, kbar, kb) => {
+    const merged = relaxation.replace(/in kB.*/, `in kB  ${kbar}`)
+    const [frame] = await frames_of(await open(merged, `OUTCAR`))
+    if (!kb) return expect(frame.metadata).not.toHaveProperty(`stress`)
+    const [xx, yy, zz, xy, yz, zx] = kb.map((value) => value / 10)
+    expect(frame.metadata?.stress).toEqual(
+      [[xx, xy, zx], [xy, yy, yz], [zx, yz, zz]].map((row) => row.map((val) => expect.closeTo(val, 9))),
+    )
+  })
+
   it(`reads MD thermostat lines, ML-labelled tables and POTIM as the time step`, async () => {
     const content = [
       header({ ibrion: 0, potim: 1.5 }),
@@ -730,8 +755,17 @@ describe(`OUTCAR`, () => {
     expect(run.atom_masses).toBeUndefined()
   })
 
-  it(`drops a truncated final position table with a warning`, async () => {
-    const torn = ionic_step(3, 5.2, rows_2, -20.6, { truncate_rows: 2 })
+  // A running job's OUTCAR ends anywhere: mid-table, mid-row or mid-lattice block
+  const step_3 = ionic_step(3, 5.2, rows_2, -20.6)
+  const [row_2_start, lattice_start] = [
+    step_3.indexOf(`2.6      2.6      2.6`),
+    step_3.indexOf(lattice_block(5.2)),
+  ]
+  it.each([
+    [`position table`, ionic_step(3, 5.2, rows_2, -20.6, { truncate_rows: 2 })],
+    [`position row`, `${step_3.slice(0, row_2_start)}2.6      2.`],
+    [`lattice block`, step_3.slice(0, lattice_start + 120)],
+  ])(`drops a final frame torn inside its %s with a warning`, async (_label, torn) => {
     const run = await open(`${relaxation}\n${torn}`, `OUTCAR`)
     expect(await steps_of(run)).toEqual([1, 2])
     expect(run.warnings).toEqual([
@@ -863,32 +897,16 @@ describe(`LAMMPS`, () => {
   // A dump written by `dump_modify element` names its species, so those names beat guessing
   // an element from the type number; an explicit mapping still beats the file, and an element
   // column holding type labels falls back to the guess instead of rejecting the file
+  // oxfmt-ignore
   it.each([
     [`element column`, undefined, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Si`, `O`], 0],
-    [
-      `mapping over column`,
-      { 1: `Ge`, 2: `O` },
-      [`1 1 Si 0 0 0`, `2 2 O 1 1 1`],
-      [`Ge`, `O`],
-      0,
-    ],
-    [
-      `type labels in column`,
-      undefined,
-      [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`],
-      [`H`, `He`],
-      1,
-    ],
+    [`mapping over column`, { 1: `Ge`, 2: `O` }, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Ge`, `O`], 0],
+    [`type labels in column`, undefined, [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`], [`H`, `He`], 1],
   ] as const)(
     `resolves elements with a type and an element column: %s`,
     async (_name, atom_type_mapping, atom_lines, expected, n_warnings) => {
-      const run = await open(
-        lammps_frame(`id type element x y z`, [...atom_lines]),
-        `t.lammpstrj`,
-        {
-          atom_type_mapping,
-        },
-      )
+      const dump = lammps_frame(`id type element x y z`, [...atom_lines])
+      const run = await open(dump, `t.lammpstrj`, { atom_type_mapping })
       expect(elements_of(run.preview)).toEqual(expected)
       expect(run.metadata).toMatchObject({ atom_types: [1, 2] })
       expect(run.warnings).toHaveLength(n_warnings)
@@ -1216,6 +1234,9 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
   it.each<[string, string, () => string, OpenOptions?]>([
     [`vasp-XDATCAR.MD`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
     [`vasp-XDATCAR-traj`, `XDATCAR`, site_text(`trajectories/vasp-XDATCAR-traj.gz`)],
+    // a leading blank line moved the title onto line 2 (content sniff and parser both failed)
+    [`vasp-XDATCAR.MD after a blank line`, `md_run`, () => `\n${site_text(`trajectories/vasp-XDATCAR.MD.gz`)()}`],
+    [`vasp-XDATCAR-traj after blank lines`, `XDATCAR`, () => `\n \n${site_text(`trajectories/vasp-XDATCAR-traj.gz`)()}`],
     [`a variable-cell XDATCAR with wrapped species`, `XDATCAR`, () => `${variable_cell(10, 1)}\n${variable_cell(20, 2)}\n${variable_cell(20, 3)}`],
     [`an XDATCAR with CRLF endings and a torn last line`, `XDATCAR`, () => xdatcar(`H\n2`, [config(1, `0.5 0.5 0.5`, `0.1 0.1 0.1`), config(2, `0.5 0.5 0.5`, `0.1 0.1`)]).replaceAll(`\n`, `\r\n`)],
     [`lammps-sample`, `sample.lammpstrj`, site_text(`trajectories/lammps-sample.lammpstrj.gz`)],
@@ -1282,10 +1303,13 @@ describe(`XYZ`, () => {
   it.each([
     [`double`, `"`],
     [`single`, `'`],
-  ])(`reads a %s-quoted extXYZ Lattice`, async (_case, quote) => {
-    const comment = `Lattice=${quote}4 0 0 0 4 0 0 0 4${quote} Properties=species:S:1:pos:R:3 pbc="T T T"`
-    const run = await open(xyz_frame([`Si 0 0 0`, `Si 1 1 1`], comment), `cell.xyz`)
+  ])(`reads a %s-quoted extXYZ Lattice and Properties`, async (_case, quote) => {
+    const comment = `Lattice=${quote}4 0 0 0 4 0 0 0 4${quote} Properties=${quote}species:S:1:pos:R:3:charge:R:1${quote} pbc="T T T"`
+    const run = await open(xyz_frame([`Si 0 0 0 0.5`, `Si 1 1 1 -0.5`], comment), `cell.xyz`)
     const [frame] = await frames_of(run)
+    expect(frame.structure.sites.map(({ properties }) => properties?.charge)).toEqual([
+      0.5, -0.5,
+    ])
     const lattice = lattice_of(frame)
     expect([lattice.a, lattice.b, lattice.c]).toEqual([4, 4, 4])
     expect(frame.structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
@@ -1310,8 +1334,11 @@ describe(`XYZ`, () => {
     const content = [
       xyz_frame([`H 0 0 0`], `${cell} stress="0.01 0 0 0 0.02 0 0 0 -0.03"`),
       xyz_frame([`H 0 0 0`], `${cell} stress="0.01 0 0 0 0.02 0 0 0 0.03" pressure=7`),
+      // Voigt order xx yy zz yz xz xy, as ASE writes a 6-component stress: it was ignored
+      xyz_frame([`H 0 0 0`], `${cell} stress="0.01 0.02 -0.03 0 0 0"`),
     ].join(`\n`)
-    const [derived, stated] = await frames_of(await open(content, `stress.xyz`))
+    const [derived, stated, voigt] = await frames_of(await open(content, `stress.xyz`))
+    expect(voigt.metadata?.stress).toEqual(derived.metadata?.stress)
     const gpa = EV_PER_A3_TO_GPA
     expect(derived.metadata?.stress).toEqual([
       [-0.01 * gpa, -0, -0],
@@ -1447,6 +1474,8 @@ describe(`XYZ`, () => {
     [`step=100 dt=0.5`, {}], // 'p' of step / 't' of dt must not match pressure/temperature
     [`E = 2.0`, { energy: 2.0 }],
     [`Temperature: 300`, { temperature: 300 }],
+    // Fortran exponents were dropped from comment scalars though read in every atom column
+    [`energy=-1.5D-3 pressure=2.0d+1`, { energy: -0.0015, pressure: 20 }],
   ])(`anchors comment metadata keys at word boundaries: %s`, async (comment, expected) => {
     const frame = xyz_frame([`H 0.0 0.0 0.0`], comment)
     const { energy, pressure, temperature } =
@@ -1455,11 +1484,11 @@ describe(`XYZ`, () => {
   })
 
   // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
-  // one frame and `free_energy=` in the next are the same plot line
+  // one frame and `free_energy=` in the next are the same plot line; of two, the leftmost wins
   it(`folds extXYZ metadata keys to lower case across frames`, async () => {
     const content = [
       xyz_frame([`H 0 0 0`], `Free_Energy=-1.5 MyFlag=T`),
-      xyz_frame([`H 0 0 0`], `free_energy=-2.5 myflag=F`),
+      xyz_frame([`H 0 0 0`], `free_energy=-2.5 myflag=F FREE_ENERGY=-9 MYFLAG=T`),
     ].join(`\n`)
     const frames = await frames_of(await open(content, `casing.extxyz`))
     expect(frames.map((frame) => frame.metadata?.free_energy)).toEqual([-1.5, -2.5])
@@ -1515,6 +1544,18 @@ describe(`XYZ`, () => {
     expect(run.warnings).toEqual([
       `Skipping XYZ atom with unknown element symbol "X" in frame 1 (line 1) at line 5`,
       `Skipping XYZ atom with unknown element symbol "X" in frame 2 (line 7) at line 11`,
+    ])
+  })
+
+  // An indexed frame decodes for its plot row and again on every read: each warning once
+  it(`warns once per skipped atom in an indexed run however often frames are read`, async () => {
+    const frame = xyz_frame([`X 0 0 0`, `O 3 0 0`])
+    const run = await open(`${frame}\n${frame}`, `ghost.xyz`, { index_above_bytes: 0 })
+    await run.properties.done
+    for (let read = 0; read < 3; read++) await frames_of(run)
+    expect(run.warnings).toEqual([
+      `Skipping XYZ atom with unknown element symbol "X" in indexed frame 1 at line 3`,
+      `Skipping XYZ atom with unknown element symbol "X" in indexed frame 2 at line 7`,
     ])
   })
 
@@ -1671,7 +1712,8 @@ describe(`ASE`, () => {
     const { frames } = parse_ase_trajectory(buffer, no_warnings)
     const run = await open(buffer, `calc.traj`)
     // Row extraction starts after open resolves. It re-reads frame 0's two float64 atomic
-    // numbers and each frame's six force components, never a position
+    // numbers (frame 1 inherits frame 0's decoded ones) and each frame's six force
+    // components, never a position
     const reads = vi.spyOn(DataView.prototype, `getFloat64`)
     onTestFinished(() => reads.mockRestore())
     await run.properties.done
@@ -1720,11 +1762,11 @@ describe(`ASE`, () => {
     }
   })
 
-  // ASE repeats numbers/pbc only where they change: a frame without them inherits the nearest
-  // EARLIER frame's, never the last decoded one's. They may come from different frames
-  // (reading 4 walks back to 3 and 1, and must not cache frame 3's numbers for frames 1-2),
-  // and a frame whose header cannot be read breaks only the frames that inherit through it
-  it(`inherits numbers and pbc from separate earlier frames and isolates a corrupt frame`, () => {
+  // ASE's reader: a frame with its own numbers carries its own pbc too, one without takes frame
+  // 0's numbers and pbc (its writer repeats both in every frame once they change). The display
+  // decode walked back to the nearest earlier header instead, disagreeing with ASE, with its
+  // own frame-0 masses and with read_atoms. A frame whose header cannot be read breaks only itself.
+  it(`takes a frame's topology from its own numbers or frame 0's, like ASE and read_atoms`, async () => {
     const water = [8, 1, 1]
     // each frame's own numbers and pbc, if any
     const own: [number[]?, Pbc?][] = [
@@ -1752,18 +1794,27 @@ describe(`ASE`, () => {
       }
     }
     const source = open_ase_frames(buffer, no_warnings)
-    expect(summary(source, 4)).toEqual({ elements: `FeFeFe`, pbc: [true, false, true] })
-    expect(summary(source, 2)).toEqual({ elements: `OHH`, pbc: [true, false, true] })
-    // own numbers without own pbc still inherit the pbc
-    expect(summary(source, 3)).toEqual({ elements: `FeFeFe`, pbc: [true, false, true] })
-    // a walk stopping at an already decoded frame takes that frame's topology
-    expect(summary(source, 5)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
-    expect(summary(source, 6)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
+    // decoded out of order: no frame's topology depends on which frame was read before it
+    const expected = { elements: `OHH`, pbc: [true, true, true] }
+    expect([5, 4, 1, 6, 2].map((frame_idx) => summary(source, frame_idx))).toEqual([
+      { elements: `OHH`, pbc: [false, false, false] },
+      ...Array.from({ length: 4 }, () => expected),
+    ])
+    // own numbers without own pbc is no ASE header: both readers reject it
+    expect(() => source.decode(3)).toThrow(`missing pbc`)
+    assert(source.read_atoms)
+    expect(() => source.read_atoms?.({ frame_idx: 3 })).toThrow(
+      `ASE PBC must contain three booleans`,
+    )
+    for (const frame_idx of [1, 2, 5])
+      expect((await source.read_atoms({ frame_idx })).pbc).toEqual(
+        summary(source, frame_idx).pbc,
+      )
     // frame 4's header length now claims more bytes than any header may hold
     const view = new DataView(buffer)
     view.setBigInt64(Number(view.getBigInt64(48 + 4 * 8, true)), 2n ** 40n, true)
     const corrupt = open_ase_frames(buffer, no_warnings)
-    expect(summary(corrupt, 6)).toEqual({ elements: `OHH`, pbc: [false, false, false] })
+    expect(summary(corrupt, 6)).toEqual(expected)
     expect(() => corrupt.decode(4)).toThrow(`frame 5 of 7`)
   })
 
@@ -2029,22 +2080,15 @@ describe(`JSON`, () => {
       '@class': cls,
       ...fields,
     })
+    // oxfmt-ignore
+    const coords = [[[0, 0, 0], [0.5, 0.5, 0.5]], [[0.1, 0, 0], [0.5, 0.5, 0.5]]]
     const run = await open(
       pymatgen({
         species: [
           monty(`Species`, { element: `Fe`, oxidation_state: 3, spin: null }),
           monty(`Element`, { element: `O` }),
         ],
-        coords: [
-          [
-            [0, 0, 0],
-            [0.5, 0.5, 0.5],
-          ],
-          [
-            [0.1, 0, 0],
-            [0.5, 0.5, 0.5],
-          ],
-        ],
+        coords,
       }),
       `decorated.json`,
     )
@@ -2053,9 +2097,8 @@ describe(`JSON`, () => {
       [{ element: `Fe`, oxidation_state: 3, occu: 1, spin: null }],
       [{ element: `O`, oxidation_state: 0, occu: 1 }],
     ]
-    for (const { structure } of frames) {
+    for (const { structure } of frames)
       expect(structure.sites.map((site) => site.species)).toEqual(expected)
-    }
     // parsed frames share species; the run hands each read its own copy
     expect(frames[0].structure.sites[0].species).not.toBe(frames[1].structure.sites[0].species)
     const reread = structure_from_json(JSON.parse(structure_to_json_str(frames[1].structure)))
@@ -2316,12 +2359,7 @@ describe(`HDF5 slice budgets`, () => {
       )
     })
     const dataset = fake_dataset([sample_count, sample_size], slice)
-    const values = read_numeric_samples(
-      dataset,
-      `/observables/dipole`,
-      sample_count,
-      sample_size,
-    )
+    const values = read_numeric_samples(dataset, `/dipole`, sample_count, sample_size)
     expect(slice).toHaveBeenCalledTimes(2)
     expect(values).toHaveLength(sample_count * sample_size)
     expect(values.at(-1)).toBe(sample_count - 1)
@@ -2339,6 +2377,10 @@ describe(`HDF5`, () => {
   // oxfmt-ignore
   const cell_21 = [[21, 0, 0], [0, 10, 0], [0, 0, 10]]
   const REPLICA_1 = `/molecules/h2o/replicas/1`
+  const site_like = (xyz: number[], element: ElementSymbol) => ({
+    xyz,
+    species: [{ element }],
+  })
   const open_replica = async (n_frames: number, hdf5_group_path = REPLICA_1) =>
     open(await make_reference_md_h5_buffer([100, 101], n_frames), `reference-md.h5`, {
       hdf5_group_path,
@@ -2394,20 +2436,12 @@ describe(`HDF5`, () => {
   // must not become a lattice (downstream inverts it and hits a singular matrix). A real cell
   // keeps its lattice whether periodic or decorative, per frame when the cell is dynamic.
   const cube = (edge: number) => [edge, 0, 0, 0, edge, 0, 0, 0, edge]
+  // oxfmt-ignore
   it.each([
-    {
-      label: `all-zero dynamic cell, pbc=false`,
-      cells: [cube(0), cube(0)],
-      pbc: [0, 0, 0],
-      edges: [undefined, undefined],
-    },
+    { label: `all-zero dynamic cell, pbc=false`, cells: [cube(0), cube(0)], pbc: [0, 0, 0],
+      edges: [undefined, undefined] },
     { label: `static cubic cell, pbc=true`, cells: [cube(3.4)], pbc: [1, 1, 1], edges: [3.4] },
-    {
-      label: `growing decorative cell, pbc=false`,
-      cells: [cube(3.4), cube(3.6)],
-      pbc: [0, 0, 0],
-      edges: [3.4, 3.6],
-    },
+    { label: `growing decorative cell, pbc=false`, cells: [cube(3.4), cube(3.6)], pbc: [0, 0, 0], edges: [3.4, 3.6] },
   ])(`TorchSim $label → per-frame lattice edges $edges`, async ({ cells, pbc, edges }) => {
     const n_frames = cells.length
     const buffer = await h5_bytes(`torch-sim-cell`, (file) => {
@@ -2878,10 +2912,7 @@ describe(`HDF5`, () => {
     const run = await open(await make_grouped_h5_buffer(two_runs, true), `mixed-groups.h5`, {
       hdf5_group_path: `/run_b`,
     })
-    expect(run.preview.structure.sites[0]).toMatchObject({
-      xyz: [9, 0, 0],
-      species: [{ element: `H` }],
-    })
+    expect(run.preview.structure.sites[0]).toMatchObject(site_like([9, 0, 0], `H`))
     expect(run.time_step).toEqual({ value: 0.5, unit: `fs` })
     expect(run.metadata.temperature).toBe(301)
     expect(run.atom_masses).toBeUndefined()
@@ -2894,10 +2925,7 @@ describe(`HDF5`, () => {
       { name: `model`, atomic_number: 1, x_position: 9 },
     ]
     const run = await open(await make_grouped_h5_buffer(groups), `canonical-data.h5`)
-    expect(run.preview.structure.sites[0]).toMatchObject({
-      xyz: [1, 0, 0],
-      species: [{ element: `Au` }],
-    })
+    expect(run.preview.structure.sites[0]).toMatchObject(site_like([1, 0, 0], `Au`))
   })
 
   it(`scopes nested TorchSim steps, signals, masses, and metadata to the selected run`, async () => {
@@ -2929,10 +2957,7 @@ describe(`HDF5`, () => {
     })
     const run = await open(content, `nested-runs.h5`, { hdf5_group_path: `/run_b/data` })
     expect(await steps_of(run)).toEqual([0, 2])
-    expect(run.preview.structure.sites[0]).toMatchObject({
-      xyz: [9, 0, 0],
-      species: [{ element: `H` }],
-    })
+    expect(run.preview.structure.sites[0]).toMatchObject(site_like([9, 0, 0], `H`))
     expect(run.atom_masses).toEqual([1])
     // the dipole is sampled on the run's own geometry steps [0, 2]
     expect(run.signals?.dipole).toEqual({

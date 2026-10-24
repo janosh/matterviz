@@ -144,9 +144,8 @@ function format_route_text(route: SynthesisRoute, rank?: number): string {
     `   selectivity: target ${format_mev(selectivity.target_driving_force)}, inverse hull ${format_mev(selectivity.inverse_hull_energy)}, ${plural(selectivity.n_more_favorable, `competitor`)} more favorable${competitor_list}`,
   )
   const non_target = selectivity.interfaces.filter((iface) => !iface.forms_target)
-  if (selectivity.interfaces.length > 1 && non_target.length) {
+  if (selectivity.interfaces.length > 1 && non_target.length)
     lines.push(`   interfaces: ${non_target.map(describe_interface).join(`; `)}`)
-  }
   lines.push(format_recipe_text(route))
   if (practicality.notes.length) {
     lines.push(

@@ -696,14 +696,13 @@
               class="special-point-marker"
             />
             {#if point.label}
-              {@const is_near_left = point.position[0] <= 0.05}
-              {@const is_near_right = point.position[0] >= 0.95}
-              {@const anchor = is_near_left ? `start` : is_near_right ? `end` : `middle`}
-              {@const x_offset = is_near_left ? 4 : is_near_right ? -4 : 0}
+              <!-- labels at a composition edge run inwards (-1: left edge, 1: right edge) -->
+              {@const edge =
+                point.position[0] <= 0.05 ? -1 : point.position[0] >= 0.95 ? 1 : 0}
               <text
-                x={point.svg_x + x_offset}
+                x={point.svg_x - 4 * edge}
                 y={point.svg_y - merged_config.special_point_radius * 2}
-                text-anchor={anchor}
+                text-anchor={[`start`, `middle`, `end`][edge + 1]}
                 fill={merged_config.colors.text}
                 font-size={merged_config.font_size}
                 font-weight="bold"

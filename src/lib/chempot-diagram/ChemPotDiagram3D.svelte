@@ -161,16 +161,16 @@
     config.formula_colors?.length ? config.formula_colors : CHEMPOT_DEFAULTS.formula_colors,
   )
 
-  function normalize_projection_triplet(
-    maybe_triplet: string[] | undefined,
+  // A projection triplet of three distinct available elements, else null
+  const normalize_projection_triplet = (
+    triplet: string[] | undefined,
     available_elements: string[],
-  ): string[] | null {
-    if (!maybe_triplet || maybe_triplet.length !== 3) return null
-    const deduped = Array.from(new Set(maybe_triplet))
-    if (deduped.length !== 3) return null
-    if (deduped.some((element) => !available_elements.includes(element))) return null
-    return deduped
-  }
+  ): string[] | null =>
+    triplet?.length === 3 &&
+    new Set(triplet).size === 3 &&
+    triplet.every((element) => available_elements.includes(element))
+      ? triplet
+      : null
 
   let container_width = $state(0)
   let container_height = $state(0)
@@ -226,24 +226,18 @@
   const plot_elements = $derived(diagram_data?.elements ?? projection_elements)
   // Domains are projected polyhedra (not facets of one polytope) while an axis is shadowed
   const is_projection_mode = $derived((diagram_data?.shadow_elements.length ?? 0) > 0)
-  const projection_presets = $derived.by(() => {
-    const presets: string[][] = []
-    const seen = new Set<string>()
-    const add_triplet = (candidate: string[] | null): void => {
-      if (!candidate) return
-      const key = candidate.join(`|`)
-      if (seen.has(key)) return
-      seen.add(key)
-      presets.push(candidate)
-    }
-    add_triplet(config_projection_elements)
-    add_triplet(plot_elements.length === 3 ? plot_elements : null)
-    for (const combo of get_ternary_combinations(all_entry_elements)) {
-      add_triplet(combo)
-      if (presets.length >= 12) break
-    }
-    return presets
-  })
+  // The configured and current triplets first, then every other one, 12 at most
+  const projection_presets = $derived(
+    [
+      ...new Map(
+        [
+          config_projection_elements,
+          plot_elements.length === 3 ? plot_elements : null,
+          ...get_ternary_combinations(all_entry_elements),
+        ].flatMap((triplet) => (triplet ? [[triplet.join(`|`), triplet] as const] : [])),
+      ).values(),
+    ].slice(0, 12),
+  )
   const current_projection_key = $derived(plot_elements.join(`|`))
   let formula_filter_query = $state(``)
   const available_formulas = $derived(Object.keys(diagram_data?.domains ?? {}).toSorted())
@@ -285,16 +279,12 @@
       ),
     )
     if (!creases) return []
-    const coords = creases.getAttribute(`position`).array
+    const coords = Array.from(creases.getAttribute(`position`).array)
     creases.dispose()
-    const edges: [number[], number[]][] = []
-    for (let offset = 0; offset + 5 < coords.length; offset += 6) {
-      edges.push([
-        [coords[offset], coords[offset + 1], coords[offset + 2]],
-        [coords[offset + 3], coords[offset + 4], coords[offset + 5]],
-      ])
-    }
-    return edges
+    return Array.from({ length: Math.floor(coords.length / 6) }, (_, edge) => [
+      coords.slice(6 * edge, 6 * edge + 3),
+      coords.slice(6 * edge + 3, 6 * edge + 6),
+    ])
   }
 
   // While slicing, the unsliced shadow projection bounds every section: axes, camera and the
@@ -481,23 +471,19 @@
     const geom = hull_base_geometry.clone()
     const color_attr = geom.getAttribute(`color`) as THREE.BufferAttribute
 
-    const rgb_cache = new Map<string, Vec3 | undefined>()
-    const rgb_of = (formula: string): Vec3 | undefined => {
-      if (!rgb_cache.has(formula)) {
+    // one THREE.Color parse per owner, not per face
+    const rgb_of = new Map(
+      [...new Set(mapping)].map((formula): [string, Vec3 | undefined] => {
         const hex = drawn_color(formula)
-        rgb_cache.set(formula, hex ? (new THREE.Color(hex).toArray() as Vec3) : undefined)
-      }
-      return rgb_cache.get(formula)
-    }
-
-    for (let face_idx = 0; face_idx < mapping.length; face_idx++) {
-      const rgb = rgb_of(mapping[face_idx])
+        return [formula, hex ? (new THREE.Color(hex).toArray() as Vec3) : undefined]
+      }),
+    )
+    for (const [face_idx, formula] of mapping.entries()) {
+      const rgb = rgb_of.get(formula)
       if (!rgb && domain_colors.size === 0) continue
       const [red, green, blue] = rgb ?? HULL_FALLBACK_RGB
-      const base = face_idx * 3
-      for (let vert_idx = 0; vert_idx < 3; vert_idx++) {
-        color_attr.setXYZ(base + vert_idx, red, green, blue)
-      }
+      for (let vert_idx = 0; vert_idx < 3; vert_idx++)
+        color_attr.setXYZ(3 * face_idx + vert_idx, red, green, blue)
     }
     color_attr.needsUpdate = true
     return geom
@@ -516,19 +502,14 @@
     if (!hull_base_geometry || face_domain_map.length === 0) {
       return render_domains.map(domain_label)
     }
-
-    const pos = hull_base_geometry.getAttribute(`position`)
-    const pinned_labels = render_domains
-      .filter((domain) => overlay_formulas.has(domain.formula))
-      .map(domain_label)
     const font_size_by_formula = new Map(
       render_domains.map((domain) => [domain.formula, domain.label_font_size]),
     )
     return get_visible_domain_labels(
-      pos.array,
+      hull_base_geometry.getAttribute(`position`).array,
       face_domain_map,
       font_size_by_formula,
-      pinned_labels,
+      overlay_domains.map(domain_label), // overlays stay labeled wherever they sit
     )
   })
 
@@ -671,30 +652,22 @@
   // Domain adjacency: two domains are neighbors if they share any vertex (within tolerance)
   const domain_neighbors = $derived.by((): Map<string, string[]> => {
     const tol = 1e-4
-    const vertex_owners = new Map<string, string[]>()
-    for (const domain of render_domains) {
-      for (const point of domain.points_3d) {
+    const owners_at = new Map<string, Set<string>>() // rounded vertex → domains having it
+    for (const { formula, points_3d } of render_domains) {
+      for (const point of points_3d) {
         const key = point.map((val) => (Math.round(val / tol) * tol).toFixed(4)).join(`,`)
-        const owners = vertex_owners.get(key)
-        if (owners) {
-          if (!owners.includes(domain.formula)) owners.push(domain.formula)
-        } else vertex_owners.set(key, [domain.formula])
+        owners_at.set(key, (owners_at.get(key) ?? new Set()).add(formula))
       }
     }
-    const neighbors = new Map<string, Set<string>>()
-    for (const domain of render_domains) neighbors.set(domain.formula, new Set())
-    for (const owners of vertex_owners.values()) {
-      if (owners.length < 2) continue
-      for (let idx = 0; idx < owners.length; idx++) {
-        for (let jdx = idx + 1; jdx < owners.length; jdx++) {
-          neighbors.get(owners[idx])?.add(owners[jdx])
-          neighbors.get(owners[jdx])?.add(owners[idx])
-        }
-      }
-    }
-    return new Map(
-      [...neighbors].map(([formula, set]) => [formula, [...set].toSorted()] as const),
+    const neighbors = new Map(
+      render_domains.map(({ formula }) => [formula, new Set<string>()]),
     )
+    for (const owners of owners_at.values()) {
+      for (const owner of owners) {
+        for (const other of owners) if (other !== owner) neighbors.get(owner)?.add(other)
+      }
+    }
+    return new Map([...neighbors].map(([formula, set]) => [formula, [...set].toSorted()]))
   })
 
   // Hull triangle indices per owning domain: exactly the surface each domain is drawn on
@@ -900,14 +873,12 @@
     if (!on_chrome) reset_camera_view()
   }
 
+  // Put `element` on the axis, swapping it with the axis that held it (the preset check
+  // rejects anything but three distinct available elements)
   function set_projection_axis(axis_idx: number, element: string): void {
-    if (!all_entry_elements.includes(element)) return
     const next_projection = [...plot_elements]
-    if (next_projection.length !== 3) return
-    const current_owner_idx = next_projection.indexOf(element)
-    if (current_owner_idx !== -1 && current_owner_idx !== axis_idx) {
-      next_projection[current_owner_idx] = next_projection[axis_idx]
-    }
+    const owner_idx = next_projection.indexOf(element)
+    if (owner_idx !== -1) next_projection[owner_idx] = next_projection[axis_idx]
     next_projection[axis_idx] = element
     apply_projection_preset(next_projection)
   }

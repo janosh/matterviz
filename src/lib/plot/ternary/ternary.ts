@@ -53,13 +53,18 @@ export function ternary_fractions(triple: TernaryTriple, label = `ternary point`
   if (triple.length !== 3 || triple.some((amt) => !Number.isFinite(amt))) {
     throw new Error(`${label} must be three finite numbers, got [${triple.join(`, `)}]`)
   }
-  const raw_total = triple[0] + triple[1] + triple[2]
-  if (triple.some((amt) => amt < -TOLERANCE * Math.abs(raw_total))) {
+  // Measured against the largest amount, not the sum: that overflows to Infinity for huge
+  // amounts (3 x 1e308), which would then hide negatives and zero every fraction
+  const largest = Math.max(...triple.map(Math.abs))
+  if (triple.some((amt) => amt < -TOLERANCE * largest)) {
     throw new Error(`${label} has a negative amount: [${triple.join(`, `)}]`)
   }
-  const [amt_a, amt_b, amt_c] = triple.map((amt) => Math.max(0, amt))
+  // Amounts past MAX_VALUE / 4 can sum to Infinity: quartering is exact for them (and only
+  // them, as it would drop bits of subnormal ones), so fractions are unchanged
+  const scale = largest > Number.MAX_VALUE / 4 ? 0.25 : 1
+  const [amt_a, amt_b, amt_c] = triple.map((amt) => Math.max(0, amt) * scale)
   const total = amt_a + amt_b + amt_c
-  if (total === 0) throw new Error(`${label} has no amounts: [${triple.join(`, `)}]`)
+  if (!(total > 0)) throw new Error(`${label} has no amounts: [${triple.join(`, `)}]`)
   return [amt_a / total, amt_b / total, amt_c / total]
 }
 

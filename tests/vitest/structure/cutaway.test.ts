@@ -47,14 +47,10 @@ describe(`resolve_cutaway`, () => {
     )
   })
 
+  // oxfmt-ignore
   test.each([
     [`no cutaway`, undefined, cell, undefined],
-    [
-      `an inactive one without a cell`,
-      { ...slab, mode: `off` as const },
-      undefined,
-      undefined,
-    ],
+    [`an inactive one without a cell`, { ...slab, mode: `off` as const }, undefined, undefined],
   ])(`%s resolves to nothing`, (_name, cutaway, lattice_cell, expected) => {
     expect(resolve_cutaway(cutaway, lattice_cell)).toEqual(expected)
   })

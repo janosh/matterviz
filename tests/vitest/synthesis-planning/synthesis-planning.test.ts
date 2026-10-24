@@ -740,82 +740,69 @@ describe(`plan_synthesis`, () => {
   })
 })
 
-describe(`agent surface`, () => {
-  test(`request schema covers the request type and the tool definition is well-formed`, () => {
-    const request_keys: (keyof Omit<SynthesisPlanRequest, `entries`>)[] = [
-      `target`,
-      `precursors`,
-      `conditions`,
-      `max_precursors`,
-      `two_step`,
-      `scoring`,
-      `max_routes`,
-      `keep_route_ids`,
-      `target_mass_g`,
-    ]
-    expect(Object.keys(SYNTHESIS_PLAN_REQUEST_SCHEMA.properties).toSorted()).toEqual(
-      request_keys.toSorted(),
-    )
-    expect(SYNTHESIS_PLANNER_TOOL.name).toBe(`plan_synthesis`)
-    expect(SYNTHESIS_PLANNER_TOOL.input_schema).toBe(SYNTHESIS_PLAN_REQUEST_SCHEMA)
-    expect(structuredClone(SYNTHESIS_PLAN_REQUEST_SCHEMA)).toEqual(
-      SYNTHESIS_PLAN_REQUEST_SCHEMA,
-    )
-  })
+test(`agent request schema covers the request type and the tool definition is well-formed`, () => {
+  const request_keys: (keyof Omit<SynthesisPlanRequest, `entries`>)[] = [
+    `target`,
+    `precursors`,
+    `conditions`,
+    `max_precursors`,
+    `two_step`,
+    `scoring`,
+    `max_routes`,
+    `keep_route_ids`,
+    `target_mass_g`,
+  ]
+  expect(Object.keys(SYNTHESIS_PLAN_REQUEST_SCHEMA.properties).toSorted()).toEqual(
+    request_keys.toSorted(),
+  )
+  expect(SYNTHESIS_PLANNER_TOOL.name).toBe(`plan_synthesis`)
+  expect(SYNTHESIS_PLANNER_TOOL.input_schema).toBe(SYNTHESIS_PLAN_REQUEST_SCHEMA)
+  expect(structuredClone(SYNTHESIS_PLAN_REQUEST_SCHEMA)).toEqual(SYNTHESIS_PLAN_REQUEST_SCHEMA)
 })
 
-describe(`precursor library`, () => {
-  test(`formulas parse, keys are unique and lookups ignore ordering and formula-unit multiples`, () => {
-    const keys = PRECURSOR_LIBRARY.map((info) => precursor_key(info.formula))
-    expect(new Set(keys).size).toBe(keys.length)
-    expect(lookup_precursor_info(`HLiO`)?.formula).toBe(`LiOH`)
-    expect(lookup_precursor_info(`LiO`)?.formula).toBe(`Li2O2`)
-    expect(lookup_precursor_info(`O2Ti`)?.name).toBe(`titanium dioxide`)
-    expect(lookup_precursor_info(`Xx9`)).toBeNull()
-    expect(lookup_precursor_info(`BaTiO3`)).toBeNull()
-  })
+test(`precursor library formulas parse, keys are unique and lookups ignore ordering and formula-unit multiples`, () => {
+  const keys = PRECURSOR_LIBRARY.map((info) => precursor_key(info.formula))
+  expect(new Set(keys).size).toBe(keys.length)
+  expect(lookup_precursor_info(`HLiO`)?.formula).toBe(`LiOH`)
+  expect(lookup_precursor_info(`LiO`)?.formula).toBe(`Li2O2`)
+  expect(lookup_precursor_info(`O2Ti`)?.name).toBe(`titanium dioxide`)
+  expect(lookup_precursor_info(`Xx9`)).toBeNull()
+  expect(lookup_precursor_info(`BaTiO3`)).toBeNull()
 })
 
 // A slice point on the full hull is its reacting mixture (precursors plus consumed gas, the basis
 // of driving_force) at the reactants' mean E_form plus the driving force, so it lands where that
 // mixture reacts to: the products (incl. released gas), else each phase itself
-describe(`reaction slice on the full hull`, () => {
-  // Atom-weighted mean of reaction species as the mark they make on the full hull
-  const mark_of = (species: ReactionSpecies[]) => {
-    const atoms = species.map(({ phase, coefficient }) => coefficient * phase.n_atoms_per_fu)
-    const total = atoms.reduce((sum, count) => sum + count, 0)
-    const composition: Record<string, number> = {}
-    let e_form = 0
-    for (const [idx, { phase }] of species.entries()) {
-      e_form += (atoms[idx] / total) * phase.energy_per_atom
-      for (const [element, frac] of Object.entries(
-        fractional_composition(phase.composition),
-      )) {
-        composition[element] = (composition[element] ?? 0) + (atoms[idx] / total) * frac
-      }
-    }
-    // a few O(1) f64 terms per path: measured max |Δe_form| 8.9e-16, |Δx| 1.1e-16
-    const close = (val: number) => expect.closeTo(val, 12)
-    return {
-      composition: Object.fromEntries(
-        Object.entries(composition).map(([el, val]) => [el, close(val)]),
-      ),
-      e_form: close(e_form),
-      label: species[0].phase.formula,
-    }
+// Atom-weighted mean of reaction species as the mark they make on the full hull
+const mark_of = (species: ReactionSpecies[]) => {
+  const atoms = species.map(({ phase, coefficient }) => coefficient * phase.n_atoms_per_fu)
+  const total = atoms.reduce((sum, count) => sum + count, 0)
+  const composition: Record<string, number> = {}
+  let e_form = 0
+  for (const [idx, { phase }] of species.entries()) {
+    e_form += (atoms[idx] / total) * phase.energy_per_atom
+    for (const [element, frac] of Object.entries(fractional_composition(phase.composition)))
+      composition[element] = (composition[element] ?? 0) + (atoms[idx] / total) * frac
   }
+  // a few O(1) f64 terms per path: measured max |Δe_form| 8.9e-16, |Δx| 1.1e-16
+  const close = (val: number) => expect.closeTo(val, 12)
+  return {
+    composition: Object.fromEntries(
+      Object.entries(composition).map(([el, val]) => [el, close(val)]),
+    ),
+    e_form: close(e_form),
+    label: species[0].phase.formula,
+  }
+}
 
-  test.each([
-    [`closed`, `BaO + TiO2 → BaTiO3`, ba_ti_o, { open_species: [] }],
-    // regression: the consumed O2 was left out, placing BaTiO3 at BaTiO, -4.1291 eV/atom
-    [
-      `O2 uptake`,
-      `BaO + Ti + O2 → BaTiO3`,
-      ba_ti_o,
-      { open_species: [`O2`], temperature: 300 },
-    ],
-    [`CO2 release`, `BaCO3 + TiO2 → BaTiO3 + CO2`, ba_ti_c_o, { open_species: [`CO2`] }],
-  ] as const)(`%s: %s`, (label, equation, entries, conditions) => {
+test.each([
+  [`closed`, `BaO + TiO2 → BaTiO3`, ba_ti_o, { open_species: [] }],
+  // regression: the consumed O2 was left out, placing BaTiO3 at BaTiO, -4.1291 eV/atom
+  [`O2 uptake`, `BaO + Ti + O2 → BaTiO3`, ba_ti_o, { open_species: [`O2`], temperature: 300 }],
+  [`CO2 release`, `BaCO3 + TiO2 → BaTiO3 + CO2`, ba_ti_c_o, { open_species: [`CO2`] }],
+] as const)(
+  `reaction slice on the full hull, %s: %s`,
+  (label, equation, entries, conditions) => {
     const plan = plan_synthesis({
       entries,
       target: `BaTiO3`,
@@ -846,5 +833,5 @@ describe(`reaction slice on the full hull`, () => {
       expect(composition).toEqual({ Ba: close(0.2), O: close(0.6), Ti: close(0.2) })
       expect(e_form).toBeCloseTo(-3.4936, 4)
     }
-  })
-})
+  },
+)

@@ -95,24 +95,13 @@ describe(`parse_xy_file`, () => {
     expect(() => parse_xy_file(content)).toThrow(pattern),
   )
 
+  // a 12-point range of unit steps from `start`
+  const range_12 = (start: number) => Array.from({ length: 12 }, (_, idx) => start + idx)
   test.each([
     // two ranges, the second restarting below the end of the first
-    [
-      `a stitched two-range scan`,
-      [
-        ...Array.from({ length: 12 }, (_, idx) => 30 + idx),
-        ...Array.from({ length: 12 }, (_, idx) => 40.5 + idx),
-      ],
-    ],
+    [`a stitched two-range scan`, [...range_12(30), ...range_12(40.5)]],
     // three ranges: 2 restarts in 35 steps are within one per ten
-    [
-      `a stitched three-range scan`,
-      [
-        ...Array.from({ length: 12 }, (_, idx) => 10 + idx),
-        ...Array.from({ length: 12 }, (_, idx) => 21.5 + idx),
-        ...Array.from({ length: 12 }, (_, idx) => 33 + idx),
-      ],
-    ],
+    [`a stitched three-range scan`, [...range_12(10), ...range_12(21.5), ...range_12(33)]],
     // one reversal is a glitch whatever the length: 1 of 8 steps is 12.5%
     [`a 9-point scan with one glitch`, [10, 11, 12, 13, 15, 14, 16, 17, 18]],
     [`a descending scan with one glitch`, [18, 17, 16, 14, 15, 13, 12, 11, 10]],
@@ -171,15 +160,12 @@ describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
     expect(result.y).toEqual([20, 40, 60, 80, 100])
   })
 
+  // oxfmt-ignore
   test.each([
     [`no header line`, `title\n10 -1 5\n7 8`, /no 'start step stop' header/],
     [`too few counts`, `10 0.5 12\n100 200`, /announces 5 points but only 2 follow/],
     // a non-numeric row ends the block; the numbers after it are not counts
-    [
-      `a footer inside the block`,
-      `10 0.5 12\n100 200\nNumor=1\n300 400 500`,
-      /announces 5 points but only 2 follow/,
-    ],
+    [`a footer inside the block`, `10 0.5 12\n100 200\nNumor=1\n300 400 500`, /announces 5 points but only 2 follow/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_block_scan(content)).toThrow(pattern),
   )
@@ -187,8 +173,9 @@ describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
 
 describe(`parse_rigaku_asc_file`, () => {
   const header = `*TYPE = Raw\n*START = 4\n*STOP = 4.03\n*STEP = 0.01\n*COUNT = 4\n*BEGIN\n`
-  test(`uses *START/*STEP and the counts between *BEGIN and *END`, () => {
-    const result = parse_rigaku_asc_file(`${header}10, 20\n30, 40\n*END`)
+  test(`uses *START/*STEP and the counts between the first *BEGIN and *END`, () => {
+    const second_group = `*BEGIN\n*START = 50\n*STEP = 1\n*COUNT = 1\n5\n*END\n*EOF`
+    const result = parse_rigaku_asc_file(`${header}10, 20\n30, 40\n*END\n${second_group}`)
     expect(result.x.map((val) => Math.round(val * 100) / 100)).toEqual([4, 4.01, 4.02, 4.03])
     expect(result.y).toEqual([25, 50, 75, 100])
   })
@@ -228,27 +215,22 @@ describe(`parse_ras_file`, () => {
 })
 
 describe(`parse_uxd_file`, () => {
+  // oxfmt-ignore
   test.each([
-    [
-      `_2THETACOUNTS two-column section`,
-      `_START=3\n_2THETACOUNTS\n10.0\t100\n20.0\t200\n30.0\t300\n_NEXT=1\n1 2`,
-    ],
-    [
-      `_COUNTS on the _START/_STEPSIZE grid`,
-      `; comment\n_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200\n300`,
-    ],
+    [`_2THETACOUNTS two-column section`, `_START=3\n_2THETACOUNTS\n10.0\t100\n20.0\t200\n30.0\t300\n_NEXT=1\n1 2`],
+    [`_2THETACPS count rates`, `_2THETACPS\n10 100\n20 200\n30 300`],
+    [`_2THETACOUNTSTIME rows`, `_2THETACOUNTSTIME\n10 100 2\n20 200 2\n30 300 2`],
+    [`_COUNTS on the _START/_STEPSIZE grid`, `; comment\n_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200\n300`],
+    [`_CPS on the _START/_STEPSIZE grid`, `_START=10\n_STEPSIZE=10\n_CPS\n100 200 300`],
     [`_2THETA / _STEPWIDTH aliases`, `_2THETA=10.0\n_STEPWIDTH=10.0\n_COUNTS\n100\n200\n300`],
     // _2THETA is the detector position at the start; _START is the scan start even when listed later
-    [
-      `_START over a preceding _2THETA`,
-      `_2THETA=40\n_START=10\n_STEPSIZE=10\n_COUNTS\n100 200 300`,
-    ],
+    [`_START over a preceding _2THETA`, `_2THETA=40\n_START=10\n_STEPSIZE=10\n_COUNTS\n100 200 300`],
   ])(`parses %s`, (_name, content) =>
     expect(rounded(parse_uxd_file(content))).toEqual(THREE_POINTS),
   )
 
   test.each([
-    [`no counts section`, `_START=10\n10 100\n20 200`, /no _COUNTS or _2THETACOUNTS/],
+    [`no counts section`, `_START=10\n10 100\n20 200`, /no _COUNTS, _CPS, _2THETACOUNTS or/],
     [`_COUNTS without a grid`, `_COUNTS\n100 200`, /needs _START/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_uxd_file(content)).toThrow(pattern),
@@ -276,14 +258,11 @@ describe(`parse_gsas_file`, () => {
     expect(result.x[10]).toBeCloseTo(20, 9)
   })
 
+  // oxfmt-ignore
   test.each([
     [`no BANK line`, `100 200 300`, /no BANK header/],
     [`a time-of-flight bank`, `BANK 1 3 1 RALF 1000 2 0 0\n1 2 3`, /BINTYP 'RALF'/],
-    [
-      `too few values`,
-      `BANK 1 3 1 CONST 1000 1000 0 0\n1 2`,
-      /declares 3 channels .* but 2 follow/,
-    ],
+    [`too few values`, `BANK 1 3 1 CONST 1000 1000 0 0\n1 2`, /declares 3 channels .* but 2 follow/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_gsas_file(content)).toThrow(pattern),
   )
@@ -323,6 +302,14 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
   }
   const one_range = (counts: number[], start = 10, step = 0.5, supplementary = 40) =>
     make_raw101([{ counts, start, step, supplementary }])
+  // a 3-count file with the uint32 at byte `offset` overwritten
+  const patched = (offset: number, value: number) => () => {
+    const buffer = one_range([1, 2, 3])
+    new DataView(buffer).setUint32(offset, value, true)
+    return buffer
+  }
+  const after_valid_range = (range: Range) => () =>
+    make_raw101([{ counts: [1], start: 10, step: 1 }, range])
 
   test.each([0, 40])(
     `decodes the range header with %i supplementary bytes`,
@@ -361,29 +348,17 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     ],
     [
       `a second range header cut off by the end of the file`,
-      () => {
-        const buffer = one_range([1, 2, 3])
-        new DataView(buffer).setUint32(12, 2, true)
-        return buffer
-      },
+      patched(12, 2),
       /range 2 of 2 header at byte 1068 runs past the end of the 1068-byte file/,
     ],
     [
       `a second range with a zero step size`,
-      () =>
-        make_raw101([
-          { counts: [1], start: 10, step: 1 },
-          { counts: [1], start: 20, step: 0 },
-        ]),
+      after_valid_range({ counts: [1], start: 20, step: 0 }),
       /range 2 of 2 header has steps=1, start=20, step=0/,
     ],
     [
       `a range with no steps`,
-      () =>
-        make_raw101([
-          { counts: [1], start: 10, step: 1 },
-          { counts: [], start: 20, step: 1 },
-        ]),
+      after_valid_range({ counts: [], start: 20, step: 1 }),
       /range 2 of 2 header has steps=0, start=20, step=1/,
     ],
     [
@@ -394,42 +369,34 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
     // a zero header length would place the counts on top of the header fields
     [
       `a range header shorter than its own fields`,
-      () => {
-        const buffer = one_range([1, 2, 3])
-        new DataView(buffer).setUint32(712, 0, true)
-        return buffer
-      },
+      patched(712, 0),
       /range 1 of 1 header has steps=3, start=10, step=0.5, length=0/,
     ],
-    [
-      `a zero range count`,
-      () => {
-        const buffer = one_range([1, 2, 3])
-        new DataView(buffer).setUint32(12, 0, true)
-        return buffer
-      },
-      /announces 0 ranges/,
-    ],
+    [`a zero range count`, patched(12, 0), /announces 0 ranges/],
   ])(`throws on %s`, (_name, make_buffer, pattern) => {
     expect(() => parse_bruker_raw_file(make_buffer())).toThrow(pattern)
   })
 })
 
 describe(`parse_xrdml_file`, () => {
-  const xrdml = (intensities: string, start = 10, end = 30) =>
+  const start_end = (start: number, end: number) =>
+    `<startPosition>${start}</startPosition><endPosition>${end}</endPosition>`
+  const xrdml = (intensities: string, positions = start_end(10, 30), tag = `intensities`) =>
     `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
-      <positions axis="2Theta" unit="deg"><startPosition>${start}</startPosition><endPosition>${end}</endPosition></positions>
-      <intensities unit="counts">${intensities}</intensities>
+      <positions axis="2Theta" unit="deg">${positions}</positions>
+      <${tag} unit="counts">${intensities}</${tag}>
     </dataPoints></scan></xrdMeasurement></xrdMeasurements>`
 
-  test(`spreads the intensities uniformly between start and end`, () => {
-    const content = xrdml(`100 200 300`)
-    expect(rounded(parse_xrdml_file(content))).toEqual(THREE_POINTS)
-    expect(parse_xrdml_file(xrdml(`500`, 45, 45))).toEqual({
-      x: [45],
-      y: [100],
-      kind: `profile`,
-    })
+  const listed = `<listPositions>10 20 30</listPositions>`
+  // oxfmt-ignore
+  test.each([
+    [`intensities spread between start and end`, xrdml(`100 200 300`), THREE_POINTS],
+    [`newer schemas' <counts>`, xrdml(`100 200 300`, undefined, `counts`), THREE_POINTS],
+    [`listPositions`, xrdml(`100 200 300`, listed), THREE_POINTS],
+    [`a single point at its start`, xrdml(`500`, start_end(45, 45)), { x: [45], y: [100] }],
+  ])(`reads %s`, (_name, content, expected) => {
+    const pattern = parse_xrdml_file(content)
+    expect({ ...rounded(pattern), kind: pattern.kind }).toEqual({ ...expected, kind: `profile` })
   })
 
   test.each([
@@ -441,6 +408,7 @@ describe(`parse_xrdml_file`, () => {
       /needs numeric startPosition and endPosition/,
     ],
     [`empty intensities`, xrdml(``), /empty <intensities>/],
+    [`listPositions of another length`, xrdml(`1 2`, listed), /3 angles but 2/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_xrdml_file(content)).toThrow(pattern),
   )

@@ -8,7 +8,7 @@ import type { ShowSymmetryKinds, SymmetryElement } from '#lib/symmetry/index.js'
 import { SYM_ELEM_COLORS, tile_symmetry_elements } from '#lib/symmetry/symmetry-elements.js'
 import type { LatticePlane } from '#lib/structure/lattice-planes.js'
 import { flushSync, mount, unmount } from 'svelte'
-import type { BufferGeometry } from 'three/webgpu'
+import { type BufferGeometry, Vector3 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
@@ -70,6 +70,31 @@ test(`cell surfaces reuse unchanged geometry and dispose replaced blocks indepen
   teardown = undefined
   expect(dispose_block).toHaveBeenCalledOnce()
   expect(disposed.map((spy) => spy.mock.calls.length)).toEqual([1, 1])
+})
+
+// Front faces must face out of the cell for either handedness: a left-handed matrix mirrored
+// the box, so every triangle wound inward and only the far walls rendered
+// oxfmt-ignore
+test.each([
+  [`right-handed`, cubic],
+  [`left-handed`, [[0, 4, 0], [4, 0, 0], [0, 0, 4]]],
+] as [string, Matrix3x3][])(`%s cell surface winds every face outward`, (_label, matrix) => {
+  const props = $state({ matrix, show_cell_vectors: false })
+  const component = mount(Lattice, { target: document.body, props })
+  teardown = () => void unmount(component)
+  flushSync()
+  const box = threlte_stub.nodes.find((node) => node.tag === `Mesh`)
+  const geometry = box?.props.geometry as BufferGeometry
+  const positions = geometry.getAttribute(`position`)
+  const index = geometry.getIndex()
+  if (!index) throw new Error(`box geometry is indexed`)
+  const vertex = (idx: number) => new Vector3().fromBufferAttribute(positions, index.getX(idx))
+  for (let tri = 0; tri < index.count; tri += 3) {
+    const [v_a, v_b, v_c] = [0, 1, 2].map((offset) => vertex(tri + offset))
+    const normal = v_b.clone().sub(v_a).cross(v_c.clone().sub(v_a))
+    // the geometry is centered on the origin, so a face's centroid points away from the inside
+    expect(normal.dot(v_a.add(v_b).add(v_c))).toBeGreaterThan(0)
+  }
 })
 
 test(`cell arrows keep slender proportions as the lattice changes size`, () => {

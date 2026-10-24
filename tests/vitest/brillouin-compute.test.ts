@@ -455,23 +455,18 @@ const C4_OPS = [IDENTITY_MAT, ROT_Z_90, ROT_Z_180, ROT_Z_270]
 // moyo-wasm serializes nalgebra Matrix3 rotations as flat 9-arrays in COLUMN-major order
 // (number[] substitutes for Float64Array in tests)
 const make_op = (rot: Matrix3x3, translation: Vec3 = [0, 0, 0]) =>
-  ({
-    rotation: col_major(rot),
-    translation,
-  }) as unknown as MoyoDataset[`operations`][number]
+  ({ rotation: col_major(rot), translation }) as unknown as MoyoDataset[`operations`][number]
 
 describe(`point_group_rotations`, () => {
-  test(`deduplicates same rotation with different translations`, () => {
-    const ops = [make_op(IDENTITY_MAT), make_op(IDENTITY_MAT, [0.5, 0, 0])]
-    expect(point_group_rotations(ops)).toHaveLength(1)
-  })
-
+  const ops_of = (rots: Matrix3x3[]) => rots.map((rot) => make_op(rot))
+  // oxfmt-ignore
   test.each([
-    [`C4 group`, C4_OPS, 4],
-    [`with inversion/mirror`, [IDENTITY_MAT, INVERSION_MAT, MIRROR_Z], 3],
+    [`C4 group`, ops_of(C4_OPS), 4],
+    [`with inversion/mirror`, ops_of([IDENTITY_MAT, INVERSION_MAT, MIRROR_Z]), 3],
     [`empty input`, [], 0],
-  ] as [string, Matrix3x3[], number][])(`%s → %d unique rotations`, (_, rots, expected) => {
-    expect(point_group_rotations(rots.map((rot) => make_op(rot)))).toHaveLength(expected)
+    [`same rotation, different translations`, [make_op(IDENTITY_MAT), make_op(IDENTITY_MAT, [0.5, 0, 0])], 1],
+  ])(`%s → %d unique rotations`, (_, ops, expected) => {
+    expect(point_group_rotations(ops)).toHaveLength(expected)
   })
 
   // Regression: moyo flat arrays are column-major, so a row-major read returns Wᵀ instead
@@ -822,6 +817,7 @@ describe(`scene sizing helpers`, () => {
     const coincident = Array.from({ length: 4 }, (): Vec3 => [0.1, 0.1, 0.1])
     const sqrt3 = Math.sqrt(3)
 
+    // oxfmt-ignore
     test.each([
       [`spans the enclosing sphere of the vertices`, cube, 1, 2 * sqrt3],
       [`scales with padding`, cube, 2, 4 * sqrt3],
@@ -834,12 +830,7 @@ describe(`scene sizing helpers`, () => {
       [`falls back to the cell without vertices`, undefined, undefined, (4 * sqrt3) / 0.92],
       [`falls back on empty vertices too`, [], undefined, (4 * sqrt3) / 0.92],
       // so the view does not rescale the moment the vertices land: the same as the fallback
-      [
-        `frames the side-4 cube zone like the fallback`,
-        cube_corners(2),
-        undefined,
-        (4 * sqrt3) / 0.92,
-      ],
+      [`frames the side-4 cube zone like the fallback`, cube_corners(2), undefined, (4 * sqrt3) / 0.92],
       // Framing must stay scale-free: a zone 50x smaller is 50x smaller on screen. A 1 A floor
       // exceeded the true extent below ~0.29 here and drew every such zone against a constant.
       [`scales down to a 0.02 1/A zone`, tiny, 1, 2 * sqrt3 * 0.02],

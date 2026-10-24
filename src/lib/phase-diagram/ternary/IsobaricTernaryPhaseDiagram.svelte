@@ -516,7 +516,12 @@
               max={t_max}
               step="1"
               value={Math.round(current_t)}
-              onchange={(evt) => set_temperature(evt.currentTarget.valueAsNumber)}
+              onchange={(evt) => {
+                const typed = evt.currentTarget.valueAsNumber
+                if (Number.isFinite(typed)) set_temperature(typed) // blank: keep T
+                // Svelte skips rewriting an unchanged value: re-sync rejected or clamped text
+                evt.currentTarget.value = String(Math.round(current_t))
+              }}
               aria-label="Temperature in Kelvin"
             />
             <span>K</span>

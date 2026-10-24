@@ -57,12 +57,7 @@ describe(`create_file_drop_handler`, () => {
     items: unknown[] = [],
   ) => {
     const event = make_event(files, items)
-    const defaults: TextDropOptions = {
-      allow: () => true,
-      on_drop,
-      on_error,
-      set_loading,
-    }
+    const defaults: TextDropOptions = { allow: () => true, on_drop, on_error, set_loading }
     await create_file_drop_handler({ ...defaults, ...opts } as TextDropOptions)(event)
     return event
   }
@@ -95,7 +90,10 @@ describe(`create_file_drop_handler`, () => {
 
     await run({}, [file])
 
-    expect(load_from_url).toHaveBeenCalledWith(`https://example.com/f.cif`, on_drop)
+    expect(load_from_url).toHaveBeenCalledWith(
+      `https://example.com/f.cif`,
+      expect.any(Function),
+    )
     expect(decompress_file).toHaveBeenCalledWith(file)
     expect(vi.mocked(on_drop).mock.calls).toEqual([
       [`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`)],
@@ -122,6 +120,22 @@ describe(`create_file_drop_handler`, () => {
         files.length ? [[`data`, `b.cube`, source_meta(`b.cube.gz`)]] : [],
       )
       expect(on_error).toHaveBeenCalledExactlyOnceWith(error)
+    },
+  )
+
+  // URL drops skipped the empty check files get, handing on_drop a 0-byte payload
+  test.each([``, new ArrayBuffer(0)])(
+    `an empty URL payload %j is reported`,
+    async (content) => {
+      vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
+      vi.mocked(load_from_url).mockImplementation(async (_url, callback) => {
+        await callback(content, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`))
+      })
+      await run({}, [])
+      expect(on_drop).not.toHaveBeenCalled()
+      expect(on_error).toHaveBeenCalledExactlyOnceWith(
+        `Failed to load from URL: file is empty`,
+      )
     },
   )
 
@@ -154,11 +168,14 @@ describe(`create_file_drop_handler`, () => {
     { rejection: new Error(`parse failed`), expected: `parse failed`, desc: `on_drop` },
     // empty decompressed content is a failure, not a silent skip
     { rejection: null, expected: `file is empty`, desc: `empty file` },
+    // an empty binary payload is a truthy 0-byte ArrayBuffer
+    { rejection: null, expected: `file is empty`, desc: `empty binary file` },
   ])(`formats on_error from a $desc rejection and clears loading`, async (row) => {
     const { rejection, expected, desc } = row
     const throwing_drop = vi.fn().mockRejectedValue(rejection)
-    if (desc === `on_drop` || desc === `empty file`) {
-      const content = desc === `on_drop` ? `x` : ``
+    if (desc === `on_drop` || desc.startsWith(`empty`)) {
+      const content =
+        desc === `on_drop` ? `x` : desc === `empty file` ? `` : new ArrayBuffer(0)
       vi.mocked(decompress_file).mockResolvedValue({ content, filename: `f.txt` })
     } else vi.mocked(decompress_file).mockRejectedValue(rejection)
     await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
@@ -298,9 +315,8 @@ describe(`create_file_drop_handler`, () => {
         content: `second`,
         filename: `second.cube`,
       })
-      if (failure_source === `on_error`) {
+      if (failure_source === `on_error`)
         vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`corrupt`))
-      }
       const queue_drop = vi.fn<FileLoadCallback>()
       const handler = create_file_drop_handler({
         allow: () => true,
@@ -345,7 +361,7 @@ describe(`create_file_drop_handler`, () => {
 
     expect(load_trajectory_from_url).toHaveBeenCalledWith(
       `https://example.com/run.h5`,
-      trajectory_drop,
+      expect.any(Function),
     )
     expect(load_from_url).not.toHaveBeenCalled()
     expect(decompress_file).not.toHaveBeenCalled()
@@ -374,88 +390,75 @@ test(`raw_file_drop_zone queues overlapping drops`, async () => {
   })
   const node = document.createElement(`div`)
   const detach = raw_file_drop_zone({ allow: () => true, on_drop })(node) as () => void
-  node.dispatchEvent(
-    Object.assign(new Event(`drop`), {
-      dataTransfer: { files: [new File([`x`], `a.cif`)], items: [], getData: vi.fn() },
-    }),
-  )
-  node.dispatchEvent(
-    Object.assign(new Event(`drop`), {
-      dataTransfer: { files: [new File([`y`], `b.cif`)], items: [], getData: vi.fn() },
-    }),
-  )
+  for (const name of [`a.cif`, `b.cif`]) {
+    const dataTransfer = { files: [new File([name], name)], items: [], getData: vi.fn() }
+    node.dispatchEvent(Object.assign(new Event(`drop`), { dataTransfer }))
+  }
   await vi.waitFor(() => expect(order).toHaveLength(4))
   expect(order).toEqual([`start a.cif`, `end a.cif`, `start b.cif`, `end b.cif`])
   detach()
 })
 
-describe(`drag_over_handlers`, () => {
-  test.each([
-    { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },
-    { desc: `clears dragover when disallowed`, allow: () => false, expected: [false] },
-    { desc: `defaults to allowed when no guard given`, allow: undefined, expected: [true] },
-  ])(`ondragover $desc`, ({ allow, expected }) => {
-    const set_dragover = vi.fn()
-    const handlers = drag_over_handlers({ allow, set_dragover })
-    const event = make_event()
-    handlers.ondragover(event)
-    expect(event.preventDefault).toHaveBeenCalledOnce() // always, even when not allowed
-    expect(set_dragover.mock.calls.map(([over]) => over)).toEqual(expected)
-  })
+test.each([
+  { desc: `sets dragover when allowed`, allow: () => true, expected: [true] },
+  { desc: `clears dragover when disallowed`, allow: () => false, expected: [false] },
+  { desc: `defaults to allowed when no guard given`, allow: undefined, expected: [true] },
+])(`drag_over_handlers ondragover $desc`, ({ allow, expected }) => {
+  const set_dragover = vi.fn()
+  const handlers = drag_over_handlers({ allow, set_dragover })
+  const event = make_event()
+  handlers.ondragover(event)
+  expect(event.preventDefault).toHaveBeenCalledOnce() // always, even when not allowed
+  expect(set_dragover.mock.calls.map(([over]) => over)).toEqual(expected)
 })
 
-describe(`file_drop_zone attachment`, () => {
-  test(`toggles the dragover class, clears it on drop, and detaches cleanly`, async () => {
-    vi.mocked(dropped_file_url).mockReturnValue(undefined)
-    vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
-    const node = document.createElement(`div`)
-    const on_drop = vi.fn()
-    const on_dragover = vi.fn()
-    const set_loading = vi.fn()
-    let allowed = true
-    const detach = file_drop_zone({
-      allow: () => allowed,
-      on_drop,
-      on_dragover,
-      set_loading,
-    })(node)
+test(`file_drop_zone toggles the dragover class, clears it on drop, and detaches cleanly`, async () => {
+  vi.mocked(dropped_file_url).mockReturnValue(undefined)
+  vi.mocked(decompress_file).mockResolvedValue({ content: `ok`, filename: `f.cif` })
+  const node = document.createElement(`div`)
+  const on_drop = vi.fn()
+  const on_dragover = vi.fn()
+  const set_loading = vi.fn()
+  let allowed = true
+  const detach = file_drop_zone({ allow: () => allowed, on_drop, on_dragover, set_loading })(
+    node,
+  )
 
-    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-    expect(node.classList.contains(`dragover`)).toBe(true)
-    node.dispatchEvent(new Event(`dragleave`))
-    expect(node.classList.contains(`dragover`)).toBe(false)
-    allowed = false
-    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-    expect(node.classList.contains(`dragover`)).toBe(false)
-    allowed = true
-    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-    expect(on_dragover.mock.calls.map(([over]) => over)).toEqual([true, false, false, true])
+  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+  expect(node.classList.contains(`dragover`)).toBe(true)
+  node.dispatchEvent(new Event(`dragleave`))
+  expect(node.classList.contains(`dragover`)).toBe(false)
+  allowed = false
+  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+  expect(node.classList.contains(`dragover`)).toBe(false)
+  allowed = true
+  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+  expect(on_dragover.mock.calls.map(([over]) => over)).toEqual([true, false, false, true])
 
-    // a drop clears the hover state immediately (no dragleave follows) and reaches on_drop
-    const drop_event = new Event(`drop`, { cancelable: true }) as DragEvent
-    Object.defineProperty(drop_event, `dataTransfer`, {
-      value: { files: [new File([`ok`], `f.cif`)], items: [], getData: vi.fn() },
-    })
-    node.dispatchEvent(drop_event)
-    expect(drop_event.defaultPrevented).toBe(true)
-    expect(node.classList.contains(`dragover`)).toBe(false)
-    await vi.waitFor(() =>
-      expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`)),
-    )
-    expect(set_loading.mock.calls.map(([loading]) => loading)).toEqual([true, false])
-
-    // an inner drop target that stops propagation (a pane reordering its own items) still
-    // clears the class, which would otherwise stick and keep its border shifting the layout
-    const inner = document.createElement(`span`)
-    node.append(inner)
-    inner.addEventListener(`drop`, (event) => event.stopPropagation())
-    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-    inner.dispatchEvent(new Event(`drop`, { bubbles: true, cancelable: true }))
-    expect(node.classList.contains(`dragover`)).toBe(false)
-    expect(on_drop).toHaveBeenCalledOnce()
-
-    detach?.()
-    node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
-    expect(node.classList.contains(`dragover`)).toBe(false)
+  // a drop clears the hover state immediately (no dragleave follows) and reaches on_drop
+  const drop_event = new Event(`drop`, { cancelable: true }) as DragEvent
+  Object.defineProperty(drop_event, `dataTransfer`, {
+    value: { files: [new File([`ok`], `f.cif`)], items: [], getData: vi.fn() },
   })
+  node.dispatchEvent(drop_event)
+  expect(drop_event.defaultPrevented).toBe(true)
+  expect(node.classList.contains(`dragover`)).toBe(false)
+  await vi.waitFor(() =>
+    expect(on_drop).toHaveBeenCalledWith(`ok`, `f.cif`, source_meta(`f.cif`)),
+  )
+  expect(set_loading.mock.calls.map(([loading]) => loading)).toEqual([true, false])
+
+  // an inner drop target that stops propagation (a pane reordering its own items) still
+  // clears the class, which would otherwise stick and keep its border shifting the layout
+  const inner = document.createElement(`span`)
+  node.append(inner)
+  inner.addEventListener(`drop`, (event) => event.stopPropagation())
+  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+  inner.dispatchEvent(new Event(`drop`, { bubbles: true, cancelable: true }))
+  expect(node.classList.contains(`dragover`)).toBe(false)
+  expect(on_drop).toHaveBeenCalledOnce()
+
+  detach?.()
+  node.dispatchEvent(new Event(`dragover`, { cancelable: true }))
+  expect(node.classList.contains(`dragover`)).toBe(false)
 })

@@ -194,11 +194,7 @@ describe(`VacfPlot`, () => {
         vacf_options: VacfOptions
         result?: VacfResult
         error_msg?: string
-      }>({
-        vacf_options: {},
-        result: undefined,
-        error_msg: undefined,
-      })
+      }>({ vacf_options: {}, result: undefined, error_msg: undefined })
       const component = mount(VacfPlot, {
         target: document.body,
         props: bind_props({ input }, state),

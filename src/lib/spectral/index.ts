@@ -12,6 +12,7 @@ export { default as ElectronicStructure } from './ElectronicStructure.svelte'
 export * from './frequency-units'
 export * from './helpers'
 export * from './ir-raman'
+export * from './mode-values'
 export { default as IrRamanSpectrum } from './IrRamanSpectrum.svelte'
 export { default as PhononModeExplorer } from './PhononModeExplorer.svelte'
 export { default as PhononThermalPlot } from './PhononThermalPlot.svelte'
@@ -43,6 +44,7 @@ export type BandsOptions = SpectralPlotOptions &
     | 'shade_imaginary_modes'
     | 'show_gap_annotation'
     | 'bz_popup_props'
+    | 'mode_values'
   >
 export type DosOptions = SpectralPlotOptions &
   Pick<

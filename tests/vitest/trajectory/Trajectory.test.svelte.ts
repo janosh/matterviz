@@ -101,6 +101,11 @@ const mount_trajectory = (props: Props): HTMLElement => {
   flushSync()
   return target
 }
+const mount_ticked = async (props: Props): Promise<HTMLElement> => {
+  const target = mount_trajectory(props)
+  await tick()
+  return target
+}
 const default_props = (overrides: Partial<Props> = {}): Props => ({
   trajectory: make_run(),
   display_mode: `structure+plot`,
@@ -111,10 +116,7 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
 test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
   // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
   const viewer = vi.fn()
-  vi.doMock(`#lib/trajectory/index.js`, () => ({
-    trajectory_from_frames,
-    Trajectory: viewer,
-  }))
+  vi.doMock(`#lib/trajectory/index.js`, () => ({ trajectory_from_frames, Trajectory: viewer }))
   try {
     const { default: TrajectoryTestPage } =
       await import('../../../src/routes/test/trajectory/+page.svelte')
@@ -209,8 +211,7 @@ describe(`display modes`, () => {
         },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(target.querySelector(`.structure`)).not.toBeNull()
     expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(0)
     props.structure_props = {
@@ -326,23 +327,17 @@ describe(`display modes`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each([
     [`single-frame`, make_run({ steps: [0] })],
     [`constant-value`, make_run({ properties: () => ({ energy: -1 }) })],
     [`no-properties`, make_run({ properties: () => ({}) })],
-    [
-      `visually-flat`,
-      make_run({
-        properties: (idx) => ({
-          energy: -1_750_000 + idx,
-          kinetic_energy: 9500 + idx,
-          total_energy: -1_740_500 + 2 * idx,
-        }),
-      }),
-    ],
+    [`visually-flat`, make_run({
+      properties: (idx) =>
+        ({ energy: -1_750_000 + idx, kinetic_energy: 9500 + idx, total_energy: -1_740_500 + 2 * idx }),
+    })],
   ])(`defaults to structure-only for a %s run`, async (kind, trajectory) => {
-    const target = mount_trajectory(default_props({ trajectory, display_mode: undefined }))
-    await tick()
+    const target = await mount_ticked(default_props({ trajectory, display_mode: undefined }))
     expect(target.querySelector(`.scatter`)).toBeNull()
     expect(target.querySelector(`.structure`)).not.toBeNull()
     if (kind === `constant-value` || kind === `visually-flat`)
@@ -362,8 +357,7 @@ describe(`display modes`, () => {
       properties: new TrajectoryProperties(flat_run.properties.rows.slice(0, 1)),
     }
     const props = $state(default_props({ trajectory, display_mode: `auto` }))
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(target.querySelector(`.content-area`)?.classList.contains(`show-both`)).toBe(true)
     expect(target.textContent).toContain(`Sampling trajectory plot data`)
     trajectory.properties.push(flat_run.properties.rows.slice(1))
@@ -410,8 +404,7 @@ describe(`display modes`, () => {
         trajectory: make_run({ properties: (idx) => ({ energy: -1, force_max: idx }) }),
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     target
       .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for Fmax"]`)
       ?.click()
@@ -424,8 +417,7 @@ describe(`display modes`, () => {
   test(`view-mode menu switches display_mode and reports the change`, async () => {
     const on_display_mode_change = vi.fn<(data: TrajHandlerData) => void>()
     const props = $state(default_props({ on_display_mode_change, plot_type: `distribution` }))
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     const view_mode_button = doc_query<HTMLButtonElement>(`${CONTROLS} .view-mode-button`)
     expect(view_mode_button.querySelectorAll(`svg`)).toHaveLength(1)
     view_mode_button.click()
@@ -522,8 +514,7 @@ describe(`controls`, () => {
   test(`every hideable control renders by default`, async () => {
     // the info button hides while the inspector's Info tab shows the same cards
     const props = $state(default_props({ data_inspector_open: false }))
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     for (const [hidden, selector] of HIDEABLE_CONTROLS) {
       expect(target.querySelector(`${CONTROLS} ${selector}`), hidden).not.toBeNull()
     }
@@ -542,14 +533,10 @@ describe(`controls`, () => {
   // its sites, so selection and hover map between the two in both directions
   // Open by default, except where its menu entry is hidden: there nothing could close it.
   // Its Info tab shows the info pane's cards, so the info button hides while it shows.
+  // oxfmt-ignore
   test.each([
     [`default props`, {}, true, false],
-    [
-      `a hidden menu entry`,
-      { show_controls: { hidden: [`data-inspector-pane` as const] } },
-      false,
-      true,
-    ],
+    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true],
     [`no controls`, { show_controls: `never` as const }, false, false],
     [`data_inspector_open=false`, { data_inspector_open: false }, false, true],
   ])(
@@ -756,8 +743,7 @@ describe(`controls`, () => {
         },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     const structure = target.querySelector(`.structure`)
     expect(structure).not.toBeNull()
     const pane = doc_query(`.hotspots-pane`)
@@ -837,8 +823,7 @@ describe(`controls`, () => {
   })
 
   test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
-    const target = mount_trajectory(default_props({ show_controls: { hidden: [hidden] } }))
-    await tick()
+    const target = await mount_ticked(default_props({ show_controls: { hidden: [hidden] } }))
     expect(target.querySelector(`${CONTROLS} ${selector}`)).toBeNull()
   })
 
@@ -862,21 +847,10 @@ describe(`controls`, () => {
       `Data inspector`,
     ])
 
-    const bare = mount_trajectory(
-      default_props({
-        show_controls: {
-          hidden: [
-            `msd-pane`,
-            `vacf-pane`,
-            `rdf-pane`,
-            `spectroscopy-pane`,
-            `hotspots-pane`,
-            `structure-id-pane`,
-            `data-inspector-pane`,
-          ],
-        },
-      }),
-    )
+    // oxfmt-ignore
+    const hidden = [`msd-pane`, `vacf-pane`, `rdf-pane`, `spectroscopy-pane`, `hotspots-pane`,
+      `structure-id-pane`, `data-inspector-pane`] as const
+    const bare = mount_trajectory(default_props({ show_controls: { hidden: [...hidden] } }))
     expect(bare.querySelector(`button[aria-label="Analysis"]`)).toBeNull()
   })
 
@@ -963,8 +937,7 @@ describe(`plot`, () => {
         histogram_props: { controls_open: true },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     const reads = read_frame.mock.calls.length
     const coverage = () =>
       target.querySelector(`.plot-controls-pane .distribution-coverage`)?.textContent
@@ -1026,8 +999,7 @@ describe(`plot`, () => {
         scatter_props: { legend: { on_toggle } },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     // Unset: the default selection is written back once the series exist
     expect(props.visible_properties?.toSorted()).toEqual([`energy`, `force_max`])
     expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
@@ -1069,14 +1041,12 @@ describe(`plot`, () => {
     props.plot_type = `time-series`
     await tick()
     expect(legend_state(target)).toEqual({ Energy: false, Fmax: false, Volume: true })
+    // oxfmt-ignore
     for (const [properties, expected] of [
       [[], [false, false, false]],
       [[`Energy`], [false, false, false]],
       [[`energy`], [true, false, false]],
-      [
-        [`ENERGY`, `force_max`, `volume`],
-        [false, true, true],
-      ],
+      [[`ENERGY`, `force_max`, `volume`], [false, true, true]],
     ] as const) {
       props.visible_properties = [...properties]
       await tick()
@@ -1089,8 +1059,7 @@ describe(`plot`, () => {
     const props = $state(
       default_props({ visible_properties: undefined, display_mode: `plot` }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
     // defaults written for run A must not stick and hide run B's series
     props.trajectory = make_run({
@@ -1124,8 +1093,7 @@ describe(`plot`, () => {
         }),
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     target
       .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for SCF"]`)
       ?.click()
@@ -1134,21 +1102,16 @@ describe(`plot`, () => {
     expect(legend_state(target)).toEqual({ Energy: false, Fmax: true, SCF: true })
   })
 
+  // oxfmt-ignore
   test.each([
     [`time when steps and a time step exist`, make_run(), `time`, [`Frame`, `Step`, `Time`]],
     [`step without a time step`, make_run({ time_step: null }), `step`, [`Frame`, `Step`]],
-    [
-      `frame when steps equal frame numbers`,
-      make_run({ steps: [0, 1, 2], time_step: null }),
-      `frame`,
-      [],
-    ],
+    [`frame when steps equal frame numbers`, make_run({ steps: [0, 1, 2], time_step: null }), `frame`, []],
   ] as const)(
     `x_quantity auto-picks %s and writes it back`,
     async (_kind, run, expected, options) => {
       const props = $state(default_props({ trajectory: run, x_quantity: undefined }))
-      const target = mount_trajectory(props)
-      await tick()
+      const target = await mount_ticked(props)
       expect(props.x_quantity).toBe(expected)
       const select = target.querySelector<HTMLSelectElement>(`.x-quantity-select`)
       // The select only appears when there is a choice to make
@@ -1161,8 +1124,7 @@ describe(`plot`, () => {
     const props = $state(
       default_props({ x_quantity: `step` as TrajectoryXQuantity | undefined }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(props.x_quantity).toBe(`step`)
     expect(axis_labels(target)[0]).toBe(`Step`)
     expect(doc_query<HTMLSelectElement>(`.x-quantity-select`).value).toBe(`step`)
@@ -1183,11 +1145,8 @@ describe(`plot`, () => {
     expect(doc_query<HTMLSelectElement>(`.x-quantity-select`).value).toBe(`time`)
   })
 
-  test.each([
-    [`time-series`, 3],
-    [`distribution`, 3],
-    [`distribution`, 1],
-  ] as const)(
+  // oxfmt-ignore
+  test.each([[`time-series`, 3], [`distribution`, 3], [`distribution`, 1]] as const)(
     `%s with %s frames switches energy references with custom labels and preserves source data`,
     async (plot_type, frame_count) => {
       const prepare_scatter = vi.spyOn(plotting, `prepare_trajectory_scatter_series`)
@@ -1206,8 +1165,7 @@ describe(`plot`, () => {
           histogram_props: { controls_open: true, controls_extra: extra_controls },
         }),
       )
-      const target = mount_trajectory(props)
-      await tick()
+      const target = await mount_ticked(props)
       const reads = read_frame.mock.calls.length
       const toggle = doc_query<HTMLInputElement>(`input[name=relative_energy]`)
       expect(document.body.textContent).toContain(`Host control`)
@@ -1445,8 +1403,7 @@ describe(`panes`, () => {
         on_pause,
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
     // Trajectory forwards its keys to playback, so the nav buttons name their shortcuts
     const nav_keys = [`Previous step`, `Pause`, `Next step`].map((label) =>
@@ -1510,10 +1467,7 @@ describe(`events`, () => {
         // Descendant focus must survive modes that remove the structure viewer entirely.
         const focused = viewer.querySelector<HTMLElement>(`.structure`) ?? viewer
         focused.focus()
-        const event = keydown(shift_key ? `V` : `v`, {
-          shiftKey: shift_key,
-          cancelable: true,
-        })
+        const event = keydown(shift_key ? `V` : `v`, { shiftKey: shift_key, cancelable: true })
         focused.dispatchEvent(event)
         await tick()
         expect(event.defaultPrevented).toBe(true)
@@ -1645,8 +1599,7 @@ describe(`events`, () => {
     // an fps already on the grid is no change, so mounting with it reports nothing
     const on_grid_change = vi.fn<(data: TrajHandlerData) => void>()
     const on_grid = $state(default_props({ fps: 10, on_frame_rate_change: on_grid_change }))
-    mount_trajectory(on_grid)
-    await tick()
+    await mount_ticked(on_grid)
     expect(on_grid_change).not.toHaveBeenCalled()
   })
 
@@ -1672,8 +1625,7 @@ describe(`events`, () => {
     `Escape closes %s without flashing and leaves parent-owned fullscreen alone`,
     async (button_class) => {
       mock_fullscreen()
-      const target = mount_trajectory(default_props())
-      await tick()
+      const target = await mount_ticked(default_props())
       // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
       await target.requestFullscreen()
       const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
@@ -1693,11 +1645,8 @@ describe(`events`, () => {
 })
 
 describe(`bindings`, () => {
-  test.each([
-    [Number.MAX_SAFE_INTEGER, 2],
-    [-5, 0],
-    [1.7, 1],
-  ])(
+  // oxfmt-ignore
+  test.each([[Number.MAX_SAFE_INTEGER, 2], [-5, 0], [1.7, 1]])(
     `clamps an initial current_step_idx of %s to %s and notifies`,
     async (initial, expected) => {
       const on_step_change = vi.fn<(data: TrajHandlerData) => void>()
@@ -1779,11 +1728,7 @@ describe(`bindings`, () => {
       const props = $state(
         default_props({ current_step_idx: 0, on_step_change, on_controller, show_controls }),
       )
-      const target = document.createElement(`div`)
-      document.body.append(target)
-      const component = mount(Trajectory, { target, props })
-      mounted.push(component)
-      flushSync()
+      const target = mount_trajectory(props)
       expect(on_controller).toHaveBeenCalledOnce()
       const controller = on_controller.mock.calls[0][0]
       expect(controller?.state()).toEqual({ current_step_idx: 0, total_frames: 3 })
@@ -1796,8 +1741,7 @@ describe(`bindings`, () => {
       )
       expect(controller?.state()).toEqual({ current_step_idx: 2, total_frames: 3 })
       expect(controller?.set_step(99)).toBe(2)
-      await unmount(component)
-      mounted.splice(mounted.indexOf(component), 1)
+      for (const component of mounted.splice(0)) await unmount(component)
       expect(on_controller).toHaveBeenLastCalledWith(null)
     },
   )
@@ -1813,19 +1757,11 @@ describe(`panes track progressively loaded property rows`, () => {
       properties: { energy: -1 - idx },
     }))
 
+  // oxfmt-ignore
   test.each([
-    [
-      `info`,
-      { active_pane: `info`, data_inspector_open: false },
-      /Property Rows\s*(?<count>\d+(?: loaded)?)/,
-      [`2 loaded`, `5 loaded`, `5`],
-    ],
-    [
-      `data inspector`,
-      { data_inspector_open: true },
-      /Frames \((?<count>\d+)\)/,
-      [`2`, `5`, `5`],
-    ],
+    [`info`, { active_pane: `info`, data_inspector_open: false }, /Property Rows\s*(?<count>\d+(?: loaded)?)/,
+      [`2 loaded`, `5 loaded`, `5`]],
+    [`data inspector`, { data_inspector_open: true }, /Frames \((?<count>\d+)\)/, [`2`, `5`, `5`]],
   ] as const)(
     `%s follows rows pushed and finished after mount`,
     async (_name, pane_props, pattern, expected) => {
@@ -1835,8 +1771,7 @@ describe(`panes track progressively loaded property rows`, () => {
         frame_count: 5,
         properties,
       }
-      const target = mount_trajectory(default_props({ trajectory, ...pane_props }))
-      await tick()
+      const target = await mount_ticked(default_props({ trajectory, ...pane_props }))
       const row_count = () => pattern.exec(target.textContent ?? ``)?.groups?.count
       expect(row_count()).toBe(expected[0])
       properties.push(rows_for([2, 3, 4]))

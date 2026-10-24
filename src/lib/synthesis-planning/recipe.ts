@@ -37,9 +37,8 @@ export function build_recipe(
   const mass_by_role = (role: RecipeItem[`role`]): number =>
     items.filter((item) => item.role === role).reduce((sum, item) => sum + item.mass_g, 0)
   const precursor_mass = mass_by_role(`precursor`)
-  for (const item of items) {
+  for (const item of items)
     if (item.role === `precursor`) item.mass_fraction = item.mass_g / precursor_mass
-  }
   // Positive = mass lost as gas, negative = mass gained from the atmosphere
   const mass_loss_percent =
     (100 * (mass_by_role(`byproduct`) - mass_by_role(`atmosphere`))) / precursor_mass

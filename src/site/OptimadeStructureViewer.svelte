@@ -131,9 +131,13 @@
   <input
     class="structure-input"
     placeholder="Enter structure ID"
+    aria-label="Structure ID"
     bind:value={input_value}
     onkeydown={(event) => {
-      if (event.key === `Enter`) navigate_to_structure(structure_id)
+      // like the disabled Fetch button: an empty ID would navigate to the /optimade- 404
+      if (event.key === `Enter` && structure_id && !loading_struct) {
+        navigate_to_structure(structure_id)
+      }
     }}
   />
   <button

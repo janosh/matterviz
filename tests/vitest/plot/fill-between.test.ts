@@ -12,6 +12,7 @@ import {
 } from '#lib/plot/core/fill-utils.js'
 import type {
   DataSeries,
+  ErrorBand,
   FillBoundary,
   FillCurveType,
   FillGradient,
@@ -121,7 +122,7 @@ describe(`resolve_series_ref`, () => {
 
 describe(`resolve_boundary_points`, () => {
   const series: DataSeries[] = [{ x: [0, 10, 20], y: [10, 20, 30], id: `test` }]
-  const companion: Pt[] = [make_point(0, 0), make_point(20, 0)]
+  const companion = [0, 20]
 
   it(`resolves a series boundary to its native points with monotoneX`, () => {
     const result = resolve_boundary_points(series_ref(0), series, domains)
@@ -216,17 +217,30 @@ describe(`resolve_boundary_points`, () => {
     expect(result?.points.at(-1)).toEqual(make_point(20, 100))
   })
 
-  // data with explicit x resolves natively; without x it aligns to the companion x positions
-  it.each<[FillBoundary, Pt[] | undefined, number[]]>([
+  // data with explicit x resolves natively; without x it spreads along the companion x
+  // positions (index-aligned at equal length, exactly) or the x domain, never stacking values
+  // on one x. 23 knots at 1.1 spacing: dividing before multiplying put value 15 at 16.4999…
+  const knots_23 = Array.from({ length: 23 }, (_, idx) => idx * 1.1)
+  it.each<[FillBoundary, number[] | undefined, number[]]>([
     [{ type: `data`, x: [0, 10, 20], values: [1, 2, 3] }, undefined, [0, 10, 20]],
-    [
-      { type: `data`, values: [1, 2, 3] },
-      [0, 5, 10].map((coord) => make_point(coord, 0)),
-      [0, 5, 10],
-    ],
-  ])(`resolves data boundary %j`, (boundary, companion_pts, expected_x) => {
-    const result = resolve_boundary_points(boundary, series, domains, companion_pts)
+    [{ type: `data`, values: [1, 2, 3] }, [0, 5, 10], [0, 5, 10]],
+    [{ type: `data`, values: knots_23.map((_, idx) => idx + 1) }, knots_23, knots_23],
+    [{ type: `data`, values: [1, 2, 3, 4, 5] }, undefined, [0, 5, 10, 15, 20]],
+    [{ type: `data`, values: [1, 2, 3] }, [0, 3, 6, 9], [0, 4.5, 9]],
+    [{ type: `data`, values: [1, 2, 3, 4] }, [0, 6, 12], [0, 4, 8, 12]],
+  ])(`resolves data boundary %j`, (boundary, companion_x, expected_x) => {
+    const result = resolve_boundary_points(boundary, series, domains, companion_x)
     expect(result?.points).toEqual(expected_x.map((coord, idx) => make_point(coord, idx + 1)))
+  })
+
+  // index alignment follows the series' raw x: its sorted finite points drop the NaN-y gap,
+  // which spread 4 values over 3 x positions and shifted every value after the gap
+  it(`aligns data without x to a gapped series by index`, () => {
+    const gapped: DataSeries[] = [{ x: [0, 10, 20, 30], y: [10, NaN, 30, 40] }]
+    const values = [1, 2, 3, 4]
+    const region = { upper: series_ref(0), lower: { type: `data`, values } } as const
+    const [segment] = compute_fill_segments(region, gapped, domains)
+    expect(segment.lower).toEqual(zip_points([0, 10, 20, 30], values))
   })
 
   it(`returns null for an unresolvable series reference`, () => {
@@ -427,6 +441,10 @@ describe(`convert_error_band_to_fill_region`, () => {
     [`symmetric per-point`, { error: [1, 2, 3] }, [11, 22, 33], [9, 18, 27]],
     [`asymmetric`, { error: { upper: 10, lower: 5 } }, [20, 30, 40], [5, 15, 25]],
     [`gapped`, { series: series_ref(1), error: 1 }, [11, NaN, 31], [9, NaN, 29]],
+    // magnitudes like error bars: signed deviations don't turn the band inside out, and a
+    // non-finite error draws no width rather than dropping the point from one edge
+    [`signed`, { error: [-1, 2, -3] }, [11, 22, 33], [9, 18, 27]],
+    [`non-finite`, { error: { upper: [1, NaN, 1], lower: 2 } }, [11, 20, 31], [8, 18, 28]],
   ])(`converts %s error carrying the series x`, (_, extra, upper, lower) => {
     const result = convert_error_band_to_fill_region(
       { series: base_ref, ...extra },
@@ -440,6 +458,25 @@ describe(`convert_error_band_to_fill_region`, () => {
     expect(
       convert_error_band_to_fill_region({ series: series_ref(99), error: 5 }, mock_series),
     ).toBeNull()
+  })
+
+  // a short array used to read as NaN and silently drop the trailing points from the band
+  it.each([
+    [[1, 2], `error=2`],
+    [{ upper: [1, 2, 3], lower: [1] }, `error.upper=3, error.lower=1`],
+    [{ upper: 1, lower: [1, 2] }, `error.lower=2`],
+  ])(`rejects per-point errors misaligned with the series: %j`, (error, detail) => {
+    expect(() =>
+      convert_error_band_to_fill_region({ series: base_ref, error, id: `eb` }, mock_series),
+    ).toThrow(`Error band eb: aligned arrays must have equal lengths, got y=3, ${detail}`)
+  })
+
+  // untyped hosts can send one side of an asymmetric error, which crashed per point
+  it.each([{ upper: 1 }, { lower: [1, 2, 3] }])(`rejects a one-sided error %j`, (error) => {
+    const band = { series: base_ref, error: error as unknown as ErrorBand[`error`] }
+    expect(() => convert_error_band_to_fill_region(band, mock_series)).toThrow(
+      `Asymmetric error needs both upper and lower, got ${JSON.stringify(error)}`,
+    )
   })
 
   it(`resolves series by id and includes label/id`, () => {

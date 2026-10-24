@@ -1,12 +1,12 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
-  import { goto } from '$app/navigation'
   import type { ChemicalElement, ElementSymbol } from '#lib'
   import { element_data, PeriodicTable } from '#lib'
   import { array_max, array_min, type Vec2 } from '#lib/math.js'
   import { TableInset } from '#lib/periodic-table/index.js'
   import { ColorBar } from '#lib/plot/index.js'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
+  import { open_element_page } from '#site/state.svelte.js'
 
   // Quadrant heatmap: one color bar per quadrant, ranged over the elements that have a value.
   // Unknown values are NaN, which the table draws as a missing (gray) segment rather than
@@ -32,11 +32,6 @@
       .filter(Number.isFinite)
     return [title, [array_min(values), array_max(values)]]
   })
-
-  const on_activate = (element: ChemicalElement) => {
-    if (!element?.name) return
-    goto(`/${element.name.toLowerCase()}`)
-  }
 
   let window_width: number = $state(0)
 
@@ -103,7 +98,7 @@
     heatmap_values={four_fold_data}
     color_scale="interpolateViridis"
     split_layout="quadrant"
-    {on_activate}
+    on_activate={open_element_page}
   >
     {#snippet inset()}
       <TableInset
@@ -185,7 +180,7 @@
     tile_props={{ show_name: window_width > 800 }}
     {active_elements}
     style={`--elem-tile-active-border: ${active_tile_border.width} ${active_tile_border.style} ${active_tile_border.color}`}
-    {on_activate}
+    on_activate={open_element_page}
   >
     {#snippet inset()}
       <TableInset
@@ -222,7 +217,7 @@
 <!-- the color bar names each table, so no heading above it -->
 <div class="table-grid bleed-1400">
   {#each auto_color_bar_tables as [title, property, color_scale] (title)}
-    <LazyDemo label={title} height="220px">
+    <LazyDemo label="{title} with auto color bar" height="220px">
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false, show_symbol: false }}
         heatmap_values={heatmap(property)}
@@ -239,7 +234,7 @@
 
 <div class="table-grid two-by-two bleed-1400">
   {#each grid_tables as [title, property, color_scale] (title)}
-    <LazyDemo label={title} height="220px">
+    <LazyDemo label="{title} in 2×2 grid" height="220px">
       <PeriodicTable
         tile_props={{ show_name: false, show_number: false }}
         heatmap_values={heatmap(property)}

@@ -11,9 +11,11 @@
   const default_trajectory_file = `Cr0.25Fe0.25Co0.25Ni0.25-mace-omat-qha.xyz.gz`
   // Track the currently loaded trajectory separately from the fixed initial data URL.
   let active_trajectory_file = $state(default_trajectory_file)
-  let structure_filenames = $state([`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`])
-  let vscode_ext_url = `https://marketplace.visualstudio.com/items?itemName=Janosh.matterviz`
-  let open_vsx_ext_url = `https://open-vsx.org/extension/janosh/matterviz`
+  const structure_pair = [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`]
+  // the shown names follow files dropped onto the viewers
+  let structure_filenames = $state([...structure_pair])
+  const vscode_ext_url = `https://marketplace.visualstudio.com/items?itemName=Janosh.matterviz`
+  const open_vsx_ext_url = `https://open-vsx.org/extension/janosh/matterviz`
 
   const load_structure_picker = async () => {
     const [{ default: FilePicker }, { structure_files }, { molecule_files }] =
@@ -38,7 +40,7 @@
 <p>
   <code>matterviz</code> is a toolkit for building interactive web UIs for materials science: 3d
   crystal structures (and molecules), periodic tables, MD/relaxation trajectories, phase diagrams,
-  heatmaps, scatter plots, etc. Check out of the examples in the navigation bar above.
+  heatmaps, scatter plots, etc. Check out the examples in the navigation bar above.
 </p>
 
 <h2 id="installation" style="margin-block: 1em">Installation</h2>
@@ -80,7 +82,7 @@
 <h2 id="structure-viewer"><a href="/structure">Structure Viewer</a></h2>
 
 <div class="full-bleed structure-pair">
-  {#each [`Li4Fe3Mn1(PO4)4.cif`, `mp-756175.json`] as file_name, idx (file_name)}
+  {#each structure_pair as file_name, idx (file_name)}
     <div>
       <h3>
         {structure_filenames[idx]}

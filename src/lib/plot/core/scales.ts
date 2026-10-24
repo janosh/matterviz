@@ -341,17 +341,22 @@ export function generate_ticks(
     return generate_arcsinh_ticks(min_val, max_val, threshold, positive_count ?? default_count)
   }
 
-  // Linear scale with interval (negative number indicates interval). The end is padded by a
-  // tenth of an interval so a max that lands on a tick (modulo float dust) still gets it.
+  // Linear scale with interval (negative number indicates interval): every multiple k of the
+  // step inside the domain. k comes from the bounds in step units, where float error is about
+  // |k| * 2e-16, so a 1e-9 step tolerance (far below anything visible) keeps a bound that
+  // lands on a multiple (-0.3 / 0.1 = -2.9999999999999996) up to |k| ~ 1e6. Ticks divide by
+  // the inverse step when it is an integer, so 0.1 steps read 0.3, not 3 * 0.1 = 0.30000000000000004
+  // (PlotAxis hides labels outside the domain); clamping absorbs dust on other steps.
   if (typeof ticks_option === `number` && ticks_option < 0) {
     const interval = Math.abs(ticks_option)
-    const start = Math.ceil(min_val / interval) * interval
-    assert_tick_count(
-      (max_val - start) / interval + 1,
-      `a tick interval of ${interval}`,
-      max_val - min_val,
-    )
-    return range(start, max_val + interval * 0.1, interval)
+    const first = Math.ceil(min_val / interval - 1e-9)
+    const last = Math.floor(max_val / interval + 1e-9)
+    assert_tick_count(last - first + 1, `a tick interval of ${interval}`, max_val - min_val)
+    const inverse = 1 / interval
+    const tick_at = Number.isInteger(inverse)
+      ? (step: number) => step / inverse
+      : (step: number) => step * interval
+    return range(first, last + 1).map((step) => math.clamp(tick_at(step), min_val, max_val))
   }
 
   return scale_fn.ticks(positive_count ?? default_count).map(Number)
@@ -367,16 +372,15 @@ export type RunningExtent = {
 
 export const empty_extent = (): RunningExtent => ({ n_finite: 0 })
 
-// Fold values into acc without concatenating series or allocating point objects. count may
-// exceed values.length so paired x/y axes retain the same point count.
+// Fold values into acc without concatenating series or allocating point objects
 export function accumulate_extent(
   acc: RunningExtent,
   values: ArrayLike<number | null | undefined>,
-  count = values.length,
 ): RunningExtent {
-  const n_values = Math.max(0, count)
   let min_positive = acc.min_positive ?? Infinity
-  for (let idx = 0; idx < n_values; idx++) {
+  // indexed, not for-of: typed and other array-likes (dense series) carry no iterator type
+  const { length } = values
+  for (let idx = 0; idx < length; idx++) {
     const val = values[idx]
     if (typeof val !== `number` || !Number.isFinite(val)) continue
     acc.n_finite++
@@ -475,6 +479,9 @@ export function nice_range_from_extent(
   padding_factor: number,
   is_time = false,
 ): Vec2 {
+  // An inset would cut the data ends off (no caller passes one), and NaN poisons the range
+  if (!(padding_factor >= 0))
+    throw new RangeError(`range_padding must be >= 0, got ${padding_factor}`)
   const [min, max] = limits
   const type_name = get_scale_type_name(scale_type)
   // Invalid log samples must not hide a smaller positive sample in the same series.
@@ -498,15 +505,18 @@ export function nice_range_from_extent(
       !is_time && type_name === `log`
         ? { forward: Math.log10, inverse: (value: number) => 10 ** value }
         : axis_transform(is_time ? `time` : scale_type)
-    if (data_min !== data_max) {
+    // Compared in the scale's metric: [1e15, 1e15 + 1] is one point on a log axis, where
+    // padding by the zero span left nice() a collapsed [1e15, 1e15]
+    if (forward(data_min) !== forward(data_max)) {
       if (!is_time && type_name === `log`)
         [data_min, data_max] = positive_log_domain(data_min, data_max)
-      // Pad in the scale's metric; linear and time transforms are identity functions.
+      // Pad in the scale's metric; linear and time transforms are identity functions. The
+      // asinh/sinh round trip can land an ulp inside the data, which would cull the end points.
       const lower = forward(data_min)
       const upper = forward(data_max)
       const padding = (upper - lower) * padding_factor
-      data_min = inverse(lower - padding)
-      data_max = inverse(upper + padding)
+      data_min = Math.min(data_min, inverse(lower - padding))
+      data_max = Math.max(data_max, inverse(upper + padding))
       // Handle single data point case with fixed relative padding
     } else if (is_time) {
       data_min -= MS_PER_DAY
@@ -719,24 +729,17 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
       .domain([min_val, max_val])
       .range([min_radius, max_radius])
 
-    type ClampedSizeScale = ((value: number) => number) & {
-      domain: () => Vec2
-      range: () => Vec2
-      ticks: (count?: number) => number[]
-    }
-
     // Order the bounds first: a descending radius_range would otherwise collapse the scale to
     // the constant min_radius (this branch clamps by hand, unlike d3's .clamp(true) below).
-    const [lo_radius, hi_radius] =
-      min_radius <= max_radius ? [min_radius, max_radius] : [max_radius, min_radius]
-    const clamped_scale = ((value: number): number =>
-      math.clamp(arcsinh_scale(value), lo_radius, hi_radius)) as ClampedSizeScale
-
-    clamped_scale.domain = () => arcsinh_scale.domain()
-    clamped_scale.range = () => arcsinh_scale.range()
-    // Size legends pick their values from these
-    clamped_scale.ticks = (count) => arcsinh_scale.ticks(count)
-    return clamped_scale
+    const [lo_radius, hi_radius] = range_bounds([min_radius, max_radius])
+    const clamped = (value: number): number =>
+      math.clamp(arcsinh_scale(value), lo_radius, hi_radius)
+    // Size legends pick their values from domain and ticks
+    return Object.assign(clamped, {
+      domain: () => arcsinh_scale.domain(),
+      range: () => arcsinh_scale.range(),
+      ticks: (count?: number) => arcsinh_scale.ticks(count),
+    })
   }
 
   return scaleLinear().domain([min_val, max_val]).range([min_radius, max_radius]).clamp(true)

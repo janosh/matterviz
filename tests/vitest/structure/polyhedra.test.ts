@@ -26,7 +26,7 @@ import type { Polyhedron } from '#lib/structure/polyhedra.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { numeric_sites } from '#lib/structure/site.js'
+import { make_site, numeric_sites } from '#lib/structure/site.js'
 import {
   BufferAttribute,
   BufferGeometry,
@@ -331,11 +331,9 @@ describe(`compute_polyhedra`, () => {
 
   test(`NaCl cluster: Na center forms octahedron, Cl does not`, () => {
     const structure = make_nacl_cluster()
-    const polyhedra = compute_polyhedra(structure, octahedral_bonds)
-    expect(polyhedra).toHaveLength(1)
-    const [poly] = polyhedra
-    expect(poly.center_element).toBe(`Na`)
-    expect(poly.center_site_idx).toBe(0)
+    const [poly, ...rest] = compute_polyhedra(structure, octahedral_bonds)
+    expect(rest).toHaveLength(0)
+    expect(poly).toMatchObject({ center_element: `Na`, center_site_idx: 0 })
     expect(poly.faces).toHaveLength(8)
     expect(poly.volume).toBeCloseTo((4 / 3) * 2 ** 3, 6)
     expect(sorted_vertex_sites(poly)).toEqual(sites_after_0(6))
@@ -612,6 +610,25 @@ describe(`compute_polyhedra`, () => {
     expect(at_cap([...bonds, dupe])?.volume).toBeCloseTo(at_cap(bonds)?.volume ?? 0, 12)
   })
 
+  // A disordered anion stored as two split sites on one position (O 0.5 + F 0.5, the form
+  // merge_split_partial_sites draws as one atom) is one vertex: counted per site, the TiX6
+  // octahedron had CN 12, past max_neighbors, and vanished
+  test(`split partial-occupancy vertices count once`, () => {
+    const sites = [
+      make_site(`Ti`, [0, 0, 0], [0, 0, 0], `Ti`),
+      ...octahedron_points.flatMap((arm) =>
+        [`O`, `F`].map((element) =>
+          make_site(element as `O` | `F`, [0, 0, 0], scale(arm, 1.95), element, {}, 0.5),
+        ),
+      ),
+    ]
+    const structure = { sites }
+    const shells = compute_polyhedra(structure, electroneg_ratio(structure)).map(
+      ({ center_element, vertices }) => [center_element, vertices.length],
+    )
+    expect(shells).toEqual([[`Ti`, 6]])
+  })
+
   test(`duplicate center positions are deduped`, () => {
     // Two sites at the same position (base + fake image) must yield one polyhedron
     const structure = make_nacl_cluster()
@@ -684,22 +701,17 @@ describe(`VESTA-style detection rules`, () => {
   test(`cation-cation bonds don't contaminate vertices (Ti-Ba in perovskites)`, () => {
     const sites = [
       ...octahedron_sites(`Ti`, `O`, [8, 8, 8], 1.95),
-      // 8 Ba neighbors that a noisy bond graph might connect to Ti
-      ...[-3.4, 3.4].flatMap((coord_x) =>
-        [-3.4, 3.4].flatMap((coord_y) =>
-          [-3.4, 3.4].map((coord_z) => ({
-            element: `Ba`,
-            xyz: add_vec([8, 8, 8], [coord_x, coord_y, coord_z]),
-          })),
-        ),
-      ),
+      // 8 Ba neighbors at the cube corners (8 +- 3.4 A) a noisy bond graph might bond to Ti
+      ...cube_points(6.8).map((corner) => ({
+        element: `Ba`,
+        xyz: add_vec([4.6, 4.6, 4.6], corner),
+      })),
     ]
     const structure = make_crystal(16, sites)
     const polyhedra = compute_polyhedra(structure, bonds_from(0, sites_after_0(14)))
-    expect(polyhedra).toHaveLength(1)
-    expect(polyhedra[0].center_element).toBe(`Ti`)
-    expect(polyhedra[0].vertex_site_idxs).toHaveLength(6) // only the O vertices
-    expect(polyhedra[0].faces).toHaveLength(8)
+    // one TiO6 octahedron: only the O vertices
+    const shapes = polyhedra.map((poly) => [poly.center_element, poly.vertex_site_idxs.length])
+    expect([shapes, polyhedra[0].faces.length]).toEqual([[[`Ti`, 6]], 8])
   })
 
   // A spectator cation (Li) or a weakly bound one (lone-pair Bi: Bi-O at 2.7 A, norm ~1.26,
@@ -755,15 +767,10 @@ describe(`VESTA-style detection rules`, () => {
     const bonds = bonds_from(0, sites_after_0(12))
     expect(compute_polyhedra(structure, bonds)).toHaveLength(0)
     const uncapped = compute_polyhedra(structure, bonds, { max_neighbors: 12 })
-    expect(uncapped).toHaveLength(1)
-    expect(uncapped[0].vertex_site_idxs).toHaveLength(12)
-
+    expect(uncapped.map((poly) => poly.vertex_site_idxs.length)).toEqual([12])
     // force-include bypasses the CN cap (explicit user request beats heuristic)
-    const included = compute_polyhedra(structure, bonds, {
-      included_center_elements: [`Ba`],
-    })
-    expect(included).toHaveLength(1)
-    expect(included[0].center_element).toBe(`Ba`)
+    const included = compute_polyhedra(structure, bonds, { included_center_elements: [`Ba`] })
+    expect(included.map((poly) => poly.center_element)).toEqual([`Ba`])
   })
 
   test(`is_spectator_center classifies alkali + heavy alkaline earths`, () => {

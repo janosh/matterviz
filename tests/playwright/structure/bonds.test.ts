@@ -508,14 +508,19 @@ test.describe(`Bond component`, () => {
       await select_atom_label_with_keyboard(page, `O`)
 
       await expect(menu).toBeHidden()
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 3, order: 1 }])
+      // a bond to an image atom is stored as its base site plus the image's lattice shift
+      await expect_bonds(page, [
+        { site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0], order: 1 },
+      ])
 
       await reset_bond_edits(page)
       await expect_bonds(page, undefined)
 
       await select_atom_label_with_keyboard(page, `C`, `first`)
       await select_atom_label_with_keyboard(page, `C`)
-      await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+      await expect_bonds(page, [
+        { site_idx_1: 0, site_idx_2: 0, cell_shift: [1, 0, 0], order: 1 },
+      ])
 
       await dispatch_periodic_image_structure(page, {
         bonding_options: { strategy: `electroneg_ratio` },
@@ -592,7 +597,9 @@ test.describe(`Bond component`, () => {
         await page.getByTestId(`btn-set-bond-add`).click()
         await select_atom_label_with_keyboard(page, `C`, `first`)
         await select_atom_label_with_keyboard(page, `O`)
-        await expect_bonds(page, [{ site_idx_1: 0, site_idx_2: 2, order: 1 }])
+        await expect_bonds(page, [
+          { site_idx_1: 0, site_idx_2: 1, cell_shift: [1, 0, 0], order: 1 },
+        ])
 
         await page.getByTestId(`btn-set-bond-delete`).click()
         await click_canvas_center(page)

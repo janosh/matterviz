@@ -1,6 +1,5 @@
 // Data extraction functions for trajectory analysis and plotting
 import { get_density } from '#lib/structure/density.js'
-import { copy_numeric_fields } from './helpers'
 import type { TrajectoryDataExtractor, TrajectoryFrame, TrajectoryMetadata } from './index'
 
 const LATTICE_PARAMS = [`a`, `b`, `c`, `alpha`, `beta`, `gamma`] as const
@@ -15,13 +14,13 @@ export const structural_data_extractor: TrajectoryDataExtractor = (
     data.volume = lattice.volume
     for (const param of LATTICE_PARAMS) data[param] = lattice[param]
   }
-  if (metadata) {
-    copy_numeric_fields(data, metadata, [`temperature`])
-    // Finite-number check (not truthiness) so a legitimate density of 0 is kept
-    if (typeof metadata.density === `number` && Number.isFinite(metadata.density)) {
-      data.density = metadata.density
-    }
-    if (!lattice) copy_numeric_fields(data, metadata, [`volume`])
+  // Finite numbers only (not truthiness, so a density of 0 is kept): a NaN/Infinity reached
+  // the plot rows, where its NaN spread dropped the whole series
+  for (const key of lattice
+    ? [`temperature`, `density`]
+    : [`temperature`, `density`, `volume`]) {
+    const value = metadata?.[key]
+    if (typeof value === `number` && Number.isFinite(value)) data[key] = value
   }
   if (data.density === undefined && `lattice` in structure) {
     try {

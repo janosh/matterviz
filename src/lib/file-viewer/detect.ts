@@ -143,20 +143,12 @@ const is_phase_diagram = record_guard((data) => {
 // (qpoints, bands array, labels_dict, reciprocal lattice), which never serialises branches
 const is_band_structure = record_guard((data) => {
   if (!as_record(data.labels_dict)) return false
-  if (
-    has_array(data, `qpoints`) &&
-    has_array(data, `bands`) &&
-    (as_record(data.lattice_rec) || as_record(data.recip_lattice))
-  )
+  const qpoint_bands = has_array(data, `qpoints`) && has_array(data, `bands`)
+  if (qpoint_bands && (as_record(data.lattice_rec) || as_record(data.recip_lattice)))
     return true
   if (!has_array(data, `branches`) || (data.branches as unknown[]).length === 0) return false
   // Normalized format
-  if (
-    has_array(data, `qpoints`) &&
-    has_array(data, `bands`) &&
-    typeof data.nb_bands === `number`
-  )
-    return true
+  if (qpoint_bands && typeof data.nb_bands === `number`) return true
   // Pymatgen format: kpoints + bands object (not array) + efermi
   return (
     has_array(data, `kpoints`) &&
@@ -224,60 +216,52 @@ const is_xrd_pattern = record_guard((data) => {
   )
 })
 
+const is_number = (val: unknown): boolean => typeof val === `number`
+// Columns holding a number among the first 10 rows (row-based) or elements (column-based),
+// sampled so a leading null doesn't hide a column and a long one isn't scanned whole
+const count_numeric_columns = (obj: unknown): number => {
+  if (Array.isArray(obj)) {
+    const sample = obj
+      .slice(0, 10)
+      .map(as_record)
+      .filter((row) => row !== null)
+    const keys = new Set(sample.flatMap(Object.keys))
+    return [...keys].filter((key) => sample.some((row) => is_number(row[key]))).length
+  }
+  return Object.values(as_record(obj) ?? {}).filter(
+    (val) => Array.isArray(val) && val.slice(0, 10).some(is_number),
+  ).length
+}
+
 // Tabular data: array of objects with consistent keys (row-based table format)
 // or object with parallel arrays (column-based format)
 function is_tabular_data(obj: unknown): boolean {
   // Row-based: array of objects with string keys and numeric/string values
   if (Array.isArray(obj) && obj.length >= 3) {
-    const first = as_record(obj[0])
-    const second = as_record(obj[1])
+    const [first, second] = obj.slice(0, 2).map(as_record)
     if (!first || !second) return false
     const first_keys = Object.keys(first)
     if (first_keys.length < 2) return false
     // Check that rows have consistent keys and mostly numeric/string values
-    const second_keys = Object.keys(second)
-    const overlap = first_keys.filter((key) => second_keys.includes(key))
+    const overlap = first_keys.filter((key) => Object.hasOwn(second, key))
     if (overlap.length < first_keys.length * 0.5) return false
     // At least some values should be numbers (not just metadata objects)
-    const num_count = first_keys.filter((key) => typeof first[key] === `number`).length
-    return num_count >= 1
+    return count_numeric_columns(obj) >= 1
   }
-  // Column-based: object where multiple values are equal-length arrays
-  const data = as_record(obj)
-  if (!data) return false
-  const entries = Object.entries(data)
-  if (entries.length < 2) return false
-  const array_entries = entries.filter(([, val]) => Array.isArray(val) && val.length > 0)
-  if (array_entries.length < 2) return false
-  // Check that arrays have consistent lengths
-  const lengths = array_entries.map(([, val]) => (val as unknown[]).length)
-  const first_len = lengths[0]
-  if (!lengths.every((len) => len === first_len)) return false
-  // At least one column must contain numbers
-  return array_entries.some(([, val]) => typeof (val as unknown[])[0] === `number`)
+  // Column-based: at least two non-empty arrays of equal length, one of them holding numbers
+  const lengths = Object.values(as_record(obj) ?? {})
+    .filter((val) => Array.isArray(val) && val.length > 0)
+    .map((val) => (val as unknown[]).length)
+  return (
+    lengths.length >= 2 &&
+    lengths.every((len) => len === lengths[0]) &&
+    count_numeric_columns(obj) >= 1
+  )
 }
 
-// Plottable data: tabular data with at least 2 numeric columns (enough for a scatter plot).
-// Samples multiple rows/elements to handle leading nulls.
-export function is_plottable_data(obj: unknown): boolean {
-  if (!is_tabular_data(obj)) return false
-  if (Array.isArray(obj)) {
-    const sample = obj.slice(0, 10).map(as_record).filter(Boolean) as Record<string, unknown>[]
-    const all_keys = new Set(sample.flatMap(Object.keys))
-    const num_cols = [...all_keys].filter((key) =>
-      sample.some((row) => typeof row[key] === `number`),
-    ).length
-    return num_cols >= 2
-  }
-  // is_tabular_data guarantees a record here
-  const array_entries = Object.entries(as_record(obj) ?? {}).filter(
-    ([, val]) => Array.isArray(val) && (val as unknown[]).length > 0,
-  )
-  const num_cols = array_entries.filter(([, val]) =>
-    (val as unknown[]).some((elem) => typeof elem === `number`),
-  ).length
-  return num_cols >= 2
-}
+// Plottable data: tabular data with at least 2 numeric columns (enough for a scatter plot)
+export const is_plottable_data = (obj: unknown): boolean =>
+  is_tabular_data(obj) && count_numeric_columns(obj) >= 2
 
 // === Main Detection Function ===
 
@@ -338,24 +322,15 @@ export function scan_renderable_paths(
     if (detected_type) {
       results.set(path, detected_type)
       // If tabular data is also plottable, register a plot badge too
-      if (detected_type === `table` && is_plottable_data(value)) {
-        const plot_path = path ? `${path}\u0000plot` : `\u0000plot`
-        results.set(plot_path, `plot`)
-      }
+      if (detected_type === `table` && is_plottable_data(value))
+        results.set(`${path}\u0000plot`, `plot`)
       // A column table is often a document whose other keys hold renderables of their own
       // (pymatgen's phonon doc: thermal columns beside phonon_bandstructure and phonon_dos)
       if (detected_type !== `table` || Array.isArray(value)) return
     }
     // Only the first few elements of an array: renderable items repeat their shape
-    if (Array.isArray(value)) {
-      for (const [idx, item] of value.slice(0, 20).entries()) {
-        walk(item, build_path(path, idx), depth + 1)
-      }
-    } else {
-      for (const [key, child_value] of Object.entries(value as Record<string, unknown>)) {
-        walk(child_value, build_path(path, key), depth + 1)
-      }
-    }
+    const entries = Array.isArray(value) ? value.slice(0, 20).entries() : Object.entries(value)
+    for (const [key, child] of entries) walk(child, build_path(path, key), depth + 1)
   }
 
   walk(obj, ``, 0)

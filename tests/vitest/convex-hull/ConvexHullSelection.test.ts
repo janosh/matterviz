@@ -491,6 +491,12 @@ describe(`convex hull replacement state`, () => {
         `convex-hull`,
         ...dim_scopes,
       ])
+      // the keys live in the shortcuts list; only canvas hulls have a camera to drag
+      const tips = [...document.querySelectorAll<HTMLElement>(`[data-testid^="tip-"]`)]
+      const drag_tips = dim === `2d` ? `` : ` tip-drag tip-pan`
+      expect(tips.map(({ dataset }) => dataset.testid).join(` `)).toBe(
+        `tip-click tip-double-click${drag_tips}`,
+      )
       button(`select-entry`).click()
       await tick()
       expect(selected_text()).not.toBe(`none`)
@@ -650,14 +656,18 @@ describe(`convex hull replacement state`, () => {
   test.each([undefined, false] as const)(`3d hover tooltip=%s`, async (tooltip) => {
     const entries = [`Li`, `O`, `Na`].map((element) => make_phase({ [element]: 1 }))
     const target = await mount_hull({ entries, tooltip })
-    target
-      .querySelector(`canvas`)
-      ?.dispatchEvent(
-        new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
-      )
+    const canvas = target.querySelector(`canvas`)
+    canvas?.dispatchEvent(
+      new MouseEvent(`mousemove`, { bubbles: true, clientX: 100, clientY: 100 }),
+    )
     flushSync()
     expect(target.querySelector(`[data-has-hover="true"]`)).not.toBeNull()
     expect(document.querySelector(`.tooltip-content`) !== null).toBe(tooltip === undefined)
+    // leaving the canvas straight from a point (no empty-space mousemove) drops the tooltip
+    canvas?.dispatchEvent(new MouseEvent(`mouseleave`))
+    flushSync()
+    expect(target.querySelector(`[data-has-hover="false"]`)).not.toBeNull()
+    expect(document.querySelector(`.tooltip-content`)).toBeNull()
   })
 
   // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s

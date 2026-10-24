@@ -24,6 +24,8 @@ import {
   click_export,
   clip_rect,
   doc_query,
+  fire,
+  flush_render,
   pin_cycle,
   form_controls,
   keydown,
@@ -91,14 +93,12 @@ test(`CDF geometry refreshes after domain, scale, style, and data changes`, asyn
     () => (state.series[0].x = [1, 1.5, 3, 4]),
   ]) {
     update()
-    flushSync()
-    await tick()
+    await flush_render()
     expect(path().getAttribute(`d`)).not.toBe(previous)
     previous = path().getAttribute(`d`)
   }
   state.marginals = { top: { type: `cdf`, stroke: `blue`, curve: `step` } }
-  flushSync()
-  await tick()
+  await flush_render()
   expect(path().getAttribute(`stroke`)).toBe(`blue`)
   expect(path().getAttribute(`d`)).not.toBe(previous)
 })
@@ -113,10 +113,7 @@ const marker_radius = (marker: Element): number => {
   }
   return Math.abs(Number(match.groups.radius))
 }
-const hover = async (element: Element): Promise<void> => {
-  element.dispatchEvent(mouse(`mouseenter`))
-  await tick()
-}
+const hover = (element: Element): Promise<void> => fire(element, mouse(`mouseenter`))
 const next_animation_frame = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve()))
 // happy-dom reports a zero rect, so client coords are plot-local
@@ -164,8 +161,7 @@ describe(`ScatterPlot`, () => {
   // gone, so arrow keys drive a cursor through the data instead
   describe(`canvas keyboard cursor`, () => {
     const arrow = async (svg: Element, key: string) => {
-      svg.dispatchEvent(keydown(key))
-      await tick()
+      await fire(svg, keydown(key))
     }
     const announced = (plot: HTMLElement) => query(plot, `[aria-live="polite"]`).textContent
 
@@ -718,8 +714,7 @@ describe(`ScatterPlot`, () => {
       for (const point_idx of [0, 1, 2]) {
         const [x_val, y_val] = [basic.x[point_idx], basic.y[point_idx]]
         state.tooltip_point = { x: x_val, y: y_val, series_idx: 0, point_idx }
-        flushSync()
-        await tick()
+        await flush_render()
       }
       const roving_scans = scan_spy.mock.calls.filter(([selector]) =>
         selector.includes(`data-roving-key`),
@@ -887,8 +882,7 @@ describe(`ScatterPlot`, () => {
       const hover_plot = await mount_sized_scatter_plot(bind_props({ series: [dense] }, state))
       const draws_before_hover = clear_rect.mock.calls.length
       state.tooltip_point = { x: dense.x[4], y: dense.y[4], series_idx: 0, point_idx: 4 }
-      flushSync()
-      await tick()
+      await flush_render()
       expect(clear_rect).toHaveBeenCalledTimes(draws_before_hover)
       expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(1)
       // The hovered overlay is filled so canvas hovers and the keyboard cursor stay visible
@@ -897,20 +891,17 @@ describe(`ScatterPlot`, () => {
       // Empty selection must stay reactive when points enter/leave the SVG overlay.
       for (const selected of [[4, 5], []]) {
         state.selected_points = selected.map((idx) => ({ series_idx: 0, point_idx: idx }))
-        flushSync()
-        await tick()
+        await flush_render()
         expect(arcs_since_clear).toBe(dense.x.length - selected.length)
         expect(hover_plot.querySelectorAll(`path.marker`)).toHaveLength(selected.length || 1)
       }
       const removed_canvas = query(hover_plot, `canvas`)
       state.marker_renderer = `svg`
-      flushSync()
-      await tick()
+      await flush_render()
       expect(removed_canvas.parentNode).toBeNull()
       expect(hover_plot.querySelector(`canvas`)).toBeNull()
       state.marker_renderer = `canvas`
-      flushSync()
-      await tick()
+      await flush_render()
       expect(query(hover_plot, `canvas`)).not.toBe(removed_canvas)
     })
 
@@ -936,23 +927,26 @@ describe(`ScatterPlot`, () => {
       expect(arc).not.toHaveBeenCalled()
     })
 
-    // a line-only copy painted first ties every marker: its unmarked points must not win clicks
+    // a line-only copy painted first ties every marker: its unmarked points must not win clicks.
+    // With the tooltip off and no hover/plot-click handler, the pointer still arms the cursor.
     test.each([
-      { desc: `markers only`, series: [dense], series_idx: 0 },
+      { desc: `markers only`, series: [dense], series_idx: 0, tooltip_off: false },
       {
         desc: `under a line-only copy`,
         series: [{ ...dense, markers: `line` as const }, dense],
         series_idx: 1,
+        tooltip_off: false,
       },
+      { desc: `tooltip off`, series: [dense], series_idx: 0, tooltip_off: true },
     ])(
       `keeps canvas markers with click handlers and routes clicks to the nearest marker ($desc)`,
-      async ({ series, series_idx }) => {
+      async ({ series, series_idx, tooltip_off }) => {
         const on_point_click = vi.fn()
         const on_plot_click = vi.fn()
         const plot = await mount_canvas({
           series,
           on_point_click,
-          on_plot_click,
+          ...(tooltip_off ? { tooltip: false } : { on_plot_click }),
           point_tween: { duration: 0 },
           // its overlay tells us where marker 4 sits on screen
           selected_point: { series_idx, point_idx: 4 },
@@ -1044,8 +1038,7 @@ describe(`ScatterPlot`, () => {
       [[], `xxxx..`],
     ] as const) {
       state.highlighted_ids = highlighted_ids
-      flushSync()
-      await tick()
+      await flush_render()
       const markers = [...plot.querySelectorAll(`g[data-series-id] path.marker`)]
       const dimmed = markers.map((marker) =>
         marker.classList.contains(`is-dimmed`) ? `x` : `.`,
@@ -1261,12 +1254,10 @@ describe(`ScatterPlot`, () => {
       )
       await tick()
       check_vertices()
-      window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
-      await tick()
+      await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
       check_vertices()
       const dragged_paths = paths.map((path) => path.getAttribute(`d`))
-      window.dispatchEvent(new MouseEvent(`mouseup`))
-      await tick()
+      await fire(window, new MouseEvent(`mouseup`))
       check_vertices()
       expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
       expect(color_scan).not.toHaveBeenCalled()
@@ -1738,8 +1729,7 @@ describe(`ScatterPlot`, () => {
     expect(label(`y2`)).toContain(`Pressure (GPa)`)
 
     state.series[0].visible = false
-    flushSync()
-    await tick()
+    await flush_render()
     expect(label(`y`)).toContain(`Pressure (GPa)`)
     expect(plot.querySelector(`g.y2-axis`)).toBeNull()
 
@@ -1756,8 +1746,7 @@ describe(`ScatterPlot`, () => {
       },
       { x: [1, 2], y: [-2, -1], label: `Energy`, unit: `eV` },
     ]
-    flushSync()
-    await tick()
+    await flush_render()
     expect(label(`y`)).toContain(`Energy (eV)`)
     expect(label(`y2`)).toContain(`Residual (eV)`)
   })
@@ -1827,8 +1816,7 @@ describe(`ScatterPlot`, () => {
         ...series,
         [axis]: series.id === `tracked` ? [240, 180] : [100, 300],
       }))
-      flushSync()
-      await tick()
+      await flush_render()
 
       expect(marker()).toBe(original)
       // The same marker starts its tween at the old position instead of snapping.
@@ -1994,19 +1982,31 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y`)).not.toContain(`50`)
 
     state.series[1].visible = true
-    flushSync()
-    await tick()
+    await flush_render()
     expect(axis_tick_labels(plot, `x`)).toContain(`100`)
     expect(axis_tick_labels(plot, `y`)).toContain(`50`)
 
     // Every series hidden: no data backs the auto ranges, so the view stays put
     state.series[0].visible = false
     state.series[1].visible = false
-    flushSync()
-    await tick()
+    await flush_render()
     expect(axis_tick_labels(plot, `x`)).toContain(`100`)
     expect(axis_tick_labels(plot, `y`)).toContain(`50`)
     expect(plot.querySelectorAll(`.marker`)).toHaveLength(0)
+  })
+
+  // A point missing one coordinate is not drawn, so neither its other coordinate nor its error
+  // bar may stretch that axis to where nothing is plotted
+  test(`points missing a coordinate widen no axis`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      ...bare,
+      series: [
+        { x: [0, 10, 1000], y: [0, 1, NaN], x_error: [0, 0, 5000] },
+        { x: [5, NaN], y: [0.5, 500], y_error: [0.1, 5000] },
+      ],
+    })
+    const max_tick = (side: `x` | `y`) => Math.max(...axis_tick_labels(plot, side).map(Number))
+    expect([max_tick(`x`), max_tick(`y`)]).toEqual([10, 1])
   })
 
   // One line per enabled axis whose range spans zero (ending at zero counts), at the zero
@@ -2280,8 +2280,7 @@ describe(`ScatterPlot`, () => {
     expect([hovered(1), hovered(2)]).toEqual([true, false])
     const rerender = async (fills: FillRegion[]) => {
       state.fill_regions = fills
-      flushSync()
-      await tick()
+      await flush_render()
     }
     await rerender(make_fills())
     expect(hovered(1)).toBe(true)
@@ -2329,10 +2328,9 @@ describe(`ScatterPlot`, () => {
       [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((element) =>
         element.textContent?.includes(label),
       )
-    const fire = async (label: string, type: `click` | `dblclick`) => {
+    const fire_fill = async (label: string, type: `click` | `dblclick`) => {
       fill_item(label)?.dispatchEvent(mouse(type))
-      flushSync()
-      await tick()
+      await flush_render()
     }
     const visibility = () => state.fill_regions.map((region) => region.visible)
 
@@ -2340,27 +2338,26 @@ describe(`ScatterPlot`, () => {
 
     // click hides only that fill (writes `visible` into the bound fill_regions); the fill is
     // no longer drawn, but its legend item persists (greyed) so it can be toggled back
-    await fire(`Band`, `click`)
+    await fire_fill(`Band`, `click`)
     expect(visibility()).toEqual([false, undefined])
     expect(document.querySelectorAll(`.fill-region`)).toHaveLength(1)
     expect(fill_item(`Band`)?.classList.contains(`hidden`)).toBe(true)
 
     // hovering the hidden fill's legend item must not mark it active (nothing renders to highlight)
     fill_item(`Band`)?.dispatchEvent(mouse(`mouseenter`))
-    flushSync()
-    await tick()
+    await flush_render()
     expect(fill_item(`Band`)?.classList.contains(`active`)).toBe(false)
 
-    await fire(`Band`, `click`)
+    await fire_fill(`Band`, `click`)
     expect(visibility()).toEqual([true, undefined])
 
     // double-click isolates the fill; a second double-click on the sole visible fill shows all
-    await fire(`Cap`, `dblclick`)
+    await fire_fill(`Cap`, `dblclick`)
     expect(visibility()).toEqual([false, true])
-    await fire(`Cap`, `dblclick`)
+    await fire_fill(`Cap`, `dblclick`)
     expect(visibility()).toEqual([true, true])
     // double-clicking a hidden fill while another is visible isolates the clicked one
-    await fire(`Band`, `dblclick`)
+    await fire_fill(`Band`, `dblclick`)
     expect(visibility()).toEqual([true, false])
   })
 
@@ -2426,8 +2423,7 @@ describe(`ScatterPlot`, () => {
     }
     const { width, height } = await vi.waitFor(disjoint_colorbar)
     await resize_element(plot, 650, 360)
-    flushSync()
-    await tick()
+    await flush_render()
     await vi.waitFor(() => expect(disjoint_colorbar()).toMatchObject({ width, height }))
   })
 
@@ -2472,8 +2468,7 @@ describe(`ScatterPlot`, () => {
     layout_spy.mockClear()
 
     series[0].y = [6, 4, 9, 3, 8]
-    flushSync()
-    await tick()
+    await flush_render()
     expect(layout_spy).not.toHaveBeenCalled()
     expect({ left: legend.style.left, top: legend.style.top }).toEqual(initial_position)
   })
@@ -2602,8 +2597,7 @@ describe(`ScatterPlot`, () => {
 
       // a label switched on after settling lands on its auto-placed spot, no slide from {10, 0}
       series[0] = { ...series[0], point_label: [{}, { text: `B`, auto_placement: true }, {}] }
-      flushSync()
-      await tick()
+      await flush_render()
       const placed_label = () =>
         [`x`, `y`].map((attr) => query(plot, `text.label-text`).getAttribute(attr))
       const first_frame = placed_label()
@@ -2686,10 +2680,8 @@ describe(`ScatterPlot`, () => {
     )
     // Drag left by a quarter of the plot: the view follows the data, so the range moves right
     const end = { clientX: start_x - clip.width / 4, clientY: start_y }
-    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...end }))
-    await tick()
-    window.dispatchEvent(new MouseEvent(`mouseup`, end))
-    await tick()
+    await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...end }))
+    await fire(window, new MouseEvent(`mouseup`, end))
     expect(state.x_axis.range).toEqual([0, 100])
     expect(state.y_axis.range).toEqual([0, 10])
     // The view is now [25, 125]: x=10 scrolled out, x=50 sits a quarter of the way along the

@@ -97,17 +97,12 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
   })
 
   // camera rows are data-driven per dimensionality: ternary tilts in degrees, quaternary in radians
+  // oxfmt-ignore
   test.each([
-    [
-      { elevation: 30.4, azimuth: -15.6, zoom: 1, center_x: 0, center_y: 0 },
-      `Elev°|30|5|false;Azim°|-16|15|false`,
-      `elevation`,
-    ],
-    [
-      { rotation_x: 0.456, rotation_y: -0.123, zoom: 1, center_x: 0, center_y: 0 },
-      `φ|0.46|0.1|true;θ|-0.12|0.1|false`,
-      `rotation_x`,
-    ],
+    [{ elevation: 30.4, azimuth: -15.6, zoom: 1, center_x: 0, center_y: 0 },
+      `Elev°|30|5|false;Azim°|-16|15|false`, `elevation`],
+    [{ rotation_x: 0.456, rotation_y: -0.123, zoom: 1, center_x: 0, center_y: 0 },
+      `φ|0.46|0.1|true;θ|-0.12|0.1|false`, `rotation_x`],
   ] as const)(`camera rows render and write back`, (camera, expected, key) => {
     const state = { ...camera }
     mount_controls({ camera: state })
@@ -197,19 +192,22 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
     ]
     const swatch = () => document.querySelector(`input[type="color"]`)
     mount_controls({ show_hull_faces: true, hull_face_color_mode: `dominant_element` })
-    expect(
-      buttons().map((btn) => [btn.textContent?.trim(), btn.classList.contains(`active`)]),
-    ).toEqual([
-      [`Uniform`, false],
-      [`Energy`, false],
-      [`Element`, true],
-      [`Index`, false],
+    // the selected mode is highlighted (active) and announced (aria-pressed) alike
+    const selected = () =>
+      [`.active`, `[aria-pressed="true"]`].map((state) =>
+        buttons().flatMap((btn) => (btn.matches(state) ? [btn.textContent?.trim()] : [])),
+      )
+    expect(buttons().map((btn) => btn.textContent?.trim())).toEqual([
+      `Uniform`,
+      `Energy`,
+      `Element`,
+      `Index`,
     ])
+    expect(selected()).toEqual([[`Element`], [`Element`]])
     expect(swatch()).toBeNull()
     buttons()[0].click()
     flushSync()
-    const active = buttons().filter((btn) => btn.classList.contains(`active`))
-    expect(active.map((btn) => btn.textContent?.trim())).toEqual([`Uniform`])
+    expect(selected()).toEqual([[`Uniform`], [`Uniform`]])
     expect(swatch()).not.toBeNull()
   })
 

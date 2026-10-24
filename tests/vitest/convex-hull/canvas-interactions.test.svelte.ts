@@ -69,6 +69,18 @@ describe(`create_hull_selection timers: copy feedback and hover preview`, () => 
     destroy()
   })
 
+  it(`a denied clipboard logs instead of rejecting and shows no copied feedback`, async () => {
+    const { selection, destroy } = mount_selection()
+    const denied = new DOMException(`denied`, `NotAllowedError`)
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(denied)
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    await expect(selection.copy_entry_data(entry, { x: 1, y: 2 })).resolves.toBeUndefined()
+    expect(error_spy).toHaveBeenCalledWith(`Failed to copy entry data:`, denied)
+    expect(selection.copy_feedback.visible).toBe(false)
+    error_spy.mockRestore()
+    destroy()
+  })
+
   it.each([`reset`, `destroy`] as const)(
     `%s clears the pending hide timer`,
     async (action) => {

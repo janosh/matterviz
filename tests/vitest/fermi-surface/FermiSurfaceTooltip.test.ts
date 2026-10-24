@@ -96,14 +96,10 @@ describe(`FermiSurfaceTooltip`, () => {
   })
 
   // only tiled copies past the identity (index 0) are labelled
+  // oxfmt-ignore
   test.each([
     { is_tiled: true, symmetry_index: 5, n_symmetry_ops: 48, expected: `Symmetry copy #6/48` },
-    {
-      is_tiled: true,
-      symmetry_index: 5,
-      n_symmetry_ops: undefined,
-      expected: `Symmetry copy #6`,
-    },
+    { is_tiled: true, symmetry_index: 5, n_symmetry_ops: undefined, expected: `Symmetry copy #6` },
     { is_tiled: false, symmetry_index: 5, n_symmetry_ops: 48, expected: null },
     { is_tiled: true, symmetry_index: 0, n_symmetry_ops: 48, expected: null },
     { is_tiled: true, symmetry_index: undefined, n_symmetry_ops: 48, expected: null },

@@ -18,36 +18,20 @@ const { disable_workers, spectral_doc } = vi.hoisted(() => ({
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
   const stub_module = await import(`./reactive-renderer-stub.svelte`)
-  const component_names = [
-    `Bands`,
-    `BandsAndDos`,
-    `BarPlot`,
-    `BrillouinZone`,
-    `ChemPotDiagram`,
-    `Composition`,
-    `ConvexHull`,
-    `Dos`,
-    `FermiSurface`,
-    `HeatmapMatrix`,
-    `Histogram`,
-    `IsobaricBinaryPhaseDiagram`,
-    `PeriodicTable`,
-    `RdfPlot`,
-    `ScatterPlot`,
-    `ScatterPlot3D`,
-    `SpacegroupBarPlot`,
-    `Structure`,
-    `Trajectory`,
-    `Treemap`,
-    `XrdPlot`,
-  ]
+  const components = `Bands BandsAndDos BarPlot BrillouinZone ChemPotDiagram Composition ConvexHull
+    Dos FermiSurface HeatmapMatrix Histogram IsobaricBinaryPhaseDiagram
+    PeriodicTable RdfPlot ScatterPlot ScatterPlot3D SpacegroupBarPlot Structure
+    Trajectory Treemap XrdPlot`
   return {
-    ...Object.fromEntries(component_names.map((name) => [name, stub_module.default])),
+    ...Object.fromEntries(components.split(/\s+/).map((name) => [name, stub_module.default])),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
     disable_workers,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
-    trajectory_from_json: (value: unknown) => ({ run_of: value }),
+    trajectory_from_json: (value: unknown) => {
+      if (value === `malformed`) throw new Error(`malformed trajectory`)
+      return { run_of: value }
+    },
     // like the real ones: a lone document normalizes, a {label: document} map returns null
     normalize_band_structure: spectral_doc,
     normalize_dos: spectral_doc,
@@ -105,16 +89,8 @@ const pick = (props: Record<string, unknown>, expected: object) =>
   Object.fromEntries(Object.keys(expected).map((key) => [key, props[key]]))
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
-const drop_zone_widgets = new Set([
-  `structure`,
-  `trajectory`,
-  `convex_hull`,
-  `fermi_surface`,
-  `brillouin_zone`,
-  `phase_diagram`,
-  `xrd`,
-  `rdf_plot`,
-])
+const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram xrd rdf_plot`
+const drop_zone_widgets = new Set(drop_zones.split(` `))
 
 // Each spec's own compute is the oracle; writeback props are covered by the round-trip tests
 test.each(Object.entries(WIDGETS))(
@@ -204,18 +180,9 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
       ]),
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
-    for (const widget_type of [
-      `scatter_plot`,
-      `scatter_plot_3d`,
-      `bar_plot`,
-      `histogram`,
-      `treemap`,
-      `band_structure`,
-      `dos`,
-      `rdf_plot`,
-      `xrd`,
-      `bands_and_dos`,
-    ]) {
+    const plot_widgets = `scatter_plot scatter_plot_3d bar_plot histogram treemap band_structure
+      dos rdf_plot xrd bands_and_dos`
+    for (const widget_type of plot_widgets.split(/\s+/)) {
       expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
         expect.arrayContaining(Object.keys(controls_traits)),
       )
@@ -250,6 +217,9 @@ describe(`widget config wiring`, () => {
     model.push_from_python(`trajectory`, null)
     flushSync()
     expect(stub.read().trajectory).toBeUndefined()
+    // a malformed trait fails the mount instead of rendering an empty viewer
+    const malformed = new MockModel({ widget_type: `trajectory`, trajectory: `malformed` })
+    expect(() => run_widget(`trajectory`, malformed)).toThrow(`malformed trajectory`)
   })
 
   // LAMMPS atom-type names travel inside loading_options, never as a top-level prop
@@ -457,6 +427,32 @@ describe(`render() lifecycle`, () => {
     expect(() => anywidget_module.default.render(render_props)).toThrow(`bad trait`)
     delete WIDGETS.throwing
     expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
-    expect(element.childNodes).toHaveLength(0)
+    // the partial DOM gives way to the error: anywidget itself only logs it, leaving a blank cell
+    expect(element.querySelector(`span`)).toBeNull()
+    expect(element.textContent).toMatch(/^MatterViz throwing: bad trait/) // + Svelte's dev stack
+    const unknown = {
+      model: as_model(new MockModel({ widget_type: `toString` })),
+      el: element,
+    }
+    expect(() => anywidget_module.default.render(unknown as never)).toThrow(
+      `Unknown or missing`,
+    )
+    expect(element.textContent).toBe(
+      `MatterViz toString: Unknown or missing widget_type: 'toString'`,
+    )
+  })
+
+  // the view no longer reflects Python's state, so it gives way to the error instead of
+  // the change handler's exception reaching only the console
+  test(`a malformed trait update tears the widget down and shows the error`, () => {
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const model = new MockModel({ widget_type: `trajectory` })
+    const element = document.createElement(`div`)
+    stop_theme.mockClear()
+    void anywidget_module.default.render({ model: as_model(model), el: element } as never)
+    model.push_from_python(`trajectory`, `malformed`)
+    expect(element.textContent).toBe(`MatterViz trajectory: malformed trajectory`)
+    expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
+    expect(console_error).toHaveBeenCalledOnce()
   })
 })

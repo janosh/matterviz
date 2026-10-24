@@ -19,13 +19,12 @@ import {
 import { parse_phonon_modes } from '#lib/spectral/parse-phonon-modes.js'
 import { get_structure_vector_keys } from '#lib/structure/vectors.js'
 import { compute_bonds, explicit_only, get_bond_key } from '#lib/structure/bonding.js'
-import { get_element_counts } from '#lib/structure/density.js'
 import type { PolyhedraSettings } from '#lib/structure/polyhedra.js'
 import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
 import { describe, expect, it } from 'vitest'
 import cspbi3_band_yaml from '#site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
-import { IDENTITY_MATRIX3 } from '../test-fixtures'
+import { fcc_primitive_matrix, IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const nacl_data = parse_phonon_modes(nacl_band_yaml)
 
@@ -187,11 +186,7 @@ describe(`phonon_mode_trajectory`, () => {
           `CuBr (Br=${coordinate})`,
           {
             ...make_mode_data([...real_x, ...real_x], [0, 0, 0], [63.546, 79.904]),
-            lattice: [
-              [0, 2.8583, 2.8583],
-              [2.8583, 0, 2.8583],
-              [2.8583, 2.8583, 0],
-            ],
+            lattice: fcc_primitive_matrix(5.7166),
             atoms: [
               { symbol: `Cu`, mass: 63.546, coordinates: [0, 0, 0] },
               {
@@ -296,37 +291,48 @@ describe(`phonon_mode_trajectory`, () => {
   )
 })
 
-// Frames are never imaged again, so they carry no polyhedron stamps of the default settings:
-// a viewer including Sr still finds the whole SrO12 cuboctahedron (the interior Sr copy)
-it(`phonon supercells follow the viewer's polyhedra settings`, () => {
-  const { structure } = phonon_supercell(
-    {
-      n_atoms: 5,
-      // oxfmt-ignore
-      lattice: [[3.9, 0, 0], [0, 3.9, 0], [0, 0, 3.9]],
-      atoms: [
-        { symbol: `Sr`, mass: 87.62, coordinates: [0, 0, 0] },
-        { symbol: `Ti`, mass: 47.87, coordinates: [0.5, 0.5, 0.5] },
-        { symbol: `O`, mass: 16, coordinates: [0.5, 0.5, 0] },
-        { symbol: `O`, mass: 16, coordinates: [0.5, 0, 0.5] },
-        { symbol: `O`, mass: 16, coordinates: [0, 0.5, 0.5] },
-      ],
-    },
-    [2, 2, 2],
-  )
+// Frames are never imaged again, so the supercell completes the viewer's live polyhedra
+// settings itself: each displayed Sr and (bonded mode) O copy gets a whole polyhedron, where
+// the default settings' corner copies left one SrO12 and 12 OTi2Sr4
+const srtio3_cell = {
+  n_atoms: 5,
+  // oxfmt-ignore
+  lattice: [[3.9, 0, 0], [0, 3.9, 0], [0, 0, 3.9]],
+  atoms: [
+    { symbol: `Sr`, mass: 87.62, coordinates: [0, 0, 0] },
+    { symbol: `Ti`, mass: 47.87, coordinates: [0.5, 0.5, 0.5] },
+    { symbol: `O`, mass: 16, coordinates: [0.5, 0.5, 0] },
+    { symbol: `O`, mass: 16, coordinates: [0.5, 0, 0.5] },
+    { symbol: `O`, mass: 16, coordinates: [0, 0.5, 0.5] },
+  ],
+} satisfies Pick<PhononModeData, `n_atoms` | `atoms` | `lattice`>
+it.each<[PolyhedraSettings, number, Record<string, string>]>([
+  [{}, 71, { Ti: `8x6` }],
+  [{ polyhedra_included_elements: [`Sr`] }, 179, { Sr: `27x12`, Ti: `8x6` }],
+  [{ polyhedra_neighbor_mode: `bonded` }, 95, { O: `36x6`, Ti: `8x6` }],
+])(`phonon supercells complete live polyhedra settings %j`, (settings, n_sites, expected) => {
+  const options = polyhedra_options_from(settings)
+  const { structure } = phonon_supercell(srtio3_cell, [2, 2, 2], options)
+  expect(structure.sites).toHaveLength(n_sites)
   expect(
     structure.sites.some((site) => site.provenance?.polyhedron_center !== undefined),
   ).toBe(false)
-  const centers = (settings: PolyhedraSettings) =>
-    get_element_counts({
-      sites: compute_polyhedra(
-        structure,
-        explicit_only(structure),
-        polyhedra_options_from(settings),
-      ).map(({ center_site_idx }) => structure.sites[center_site_idx]),
-    })
-  expect(centers({})).toEqual({ Ti: 8 })
-  expect(centers({ polyhedra_included_elements: [`Sr`] })).toEqual({ Ti: 8, Sr: 1 })
+  // per center element: polyhedron count x vertex counts, as the viewer draws them
+  const drawn: Record<string, number[]> = {}
+  for (const { center_element, vertex_site_idxs } of compute_polyhedra(
+    structure,
+    explicit_only(structure),
+    options,
+  ))
+    (drawn[center_element] ??= []).push(vertex_site_idxs.length)
+  expect(
+    Object.fromEntries(
+      Object.entries(drawn).map(([elem, counts]) => [
+        elem,
+        `${counts.length}x${[...new Set(counts)].join(`,`)}`,
+      ]),
+    ),
+  ).toEqual(expected)
 })
 
 describe(`staged phonon runs`, () => {
@@ -457,11 +463,7 @@ describe(`phonon band helpers`, () => {
     data.lattice = lattice
     data.qpoints = [
       { q_position: [0, 0, 0], distance: 0, modes: [{ frequency: 1, eigenvector: real_x }] },
-      {
-        q_position: [0.5, 0, 0],
-        distance: 1,
-        modes: [{ frequency: 2, eigenvector: real_x }],
-      },
+      { q_position: [0.5, 0, 0], distance: 1, modes: [{ frequency: 2, eigenvector: real_x }] },
     ]
     data.path_segments = [
       { start_index: 0, end_index: 1, start_label: `GAMMA`, end_label: `X` },

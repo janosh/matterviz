@@ -8,7 +8,6 @@ import { HOVER_SHELL_SCALE } from '#lib/scene/geometry.svelte.js'
 import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
 import type {
   AnyStructure,
-  BondEditMode,
   BondOrder,
   BondPair,
   MeasureMode,
@@ -22,6 +21,7 @@ import * as extras from '@threlte/extras'
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import * as camera_fit from '#lib/structure/camera-fit.js'
 import { make_site, numeric_sites } from '#lib/structure/site.js'
+import { get_center_of_mass } from '#lib/structure/index.js'
 import StructureScene from '#lib/structure/StructureScene.svelte'
 import ArrowInstances from '#lib/structure/ArrowInstances.svelte'
 import { pack_arrows } from '#lib/structure/arrow-instances.js'
@@ -62,7 +62,9 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
+import { SvelteSet } from 'svelte/reactivity'
 import { expect, onTestFinished, test, vi } from 'vitest'
+import { flush_set } from './session-harness.svelte'
 
 // Spy on Threlte's interactivity() and return a getter for the scene's interactivity state
 const spy_interactivity = () => {
@@ -74,6 +76,54 @@ const spy_interactivity = () => {
     return captured.value
   }
 }
+// happy-dom has no layout to turn client coordinates into a ray: cast one straight down (-z)
+// through world (x, y), dispatch `events` on the scene's target there and flush
+const pointer_at = (
+  scene_interactivity: ReturnType<typeof extras.interactivity>,
+  x_coord: number,
+  y_coord = 0,
+  events = [`pointerdown`, `click`],
+  init: MouseEventInit = {},
+): void => {
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(x_coord, y_coord, 10), new Vector3(0, 0, -1))
+  for (const type of events)
+    scene_interactivity.target.current?.dispatchEvent(
+      type.startsWith(`pointer`) ? new PointerEvent(type, init) : new MouseEvent(type, init),
+    )
+  flushSync()
+}
+const right_click = [`pointerdown`, `contextmenu`]
+const menu_button = (label: string): HTMLButtonElement | undefined =>
+  [...document.querySelectorAll<HTMLButtonElement>(`.bond-context-menu button`)].find(
+    (button) => button.textContent?.trim() === label,
+  )
+// Carbon atoms along the x axis
+const carbons_at = (...x_coords: number[]): Site[] =>
+  x_coords.map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
+const lone_c = { sites: carbons_at(0) }
+// A cubic cell of carbons at the given fractional coordinates
+const carbon_crystal = (edge: number, ...abcs: Vec3[]) =>
+  make_crystal(
+    edge,
+    abcs.map((abc): [string, Vec3] => [`C`, abc]),
+  )
+// Rock salt Na at the corner and Cl at the center of a 6 Å cube
+const nacl = () =>
+  make_crystal(6, [
+    [`Na`, [0, 0, 0]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+  ])
+const md_frame = (coords: ArrayLike<number>, numbers: number[], frame_idx = 0) =>
+  create_numeric_md_frame(
+    new Float64Array(coords),
+    new Uint8Array(numbers),
+    undefined,
+    undefined,
+    frame_idx,
+    {},
+    [],
+  )
 
 // Measurement lines and bond tints: the plain cylinder meshes (lattice edges are instanced)
 const measure_cylinders = (scene: Object3D): Mesh[] =>
@@ -127,14 +177,7 @@ const mount_structure = (props: SceneProps, state: SceneProps = {}) => {
 }
 // A lone carbon atom with its other props bound to `state`
 const mount_carbon = (state: SceneProps) =>
-  mount_structure(
-    {
-      structure: { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] },
-      show_bonds: `never`,
-      show_polyhedra: `never`,
-    },
-    state,
-  )
+  mount_structure({ structure: lone_c, show_bonds: `never`, show_polyhedra: `never` }, state)
 // Both ends of every instanced bond cylinder
 const bond_endpoints = (bond: BondMesh): number[][][] =>
   Array.from({ length: bond.count }, (_unused, bond_idx) =>
@@ -181,8 +224,7 @@ test.each(
     const ray = new Raycaster(new Vector3(-0.1, 0, 2), new Vector3(0, 0, -1))
     const hits = () => ray.intersectObjects(targets, true)
     expect(hits()[0]?.distance).toBeLessThan(2)
-    state.cutaway = settings
-    flushSync()
+    flush_set(state, { cutaway: settings })
     // Center selection preserves the near sphere surface across the slab boundary.
     // Surface clipping instead exposes the vacancy cap at z=0 for partial occupancy.
     if (whole_atoms) expect(hits()[0]?.distance).toBeLessThan(2)
@@ -191,18 +233,15 @@ test.each(
     if (whole_atoms) {
       // Moving atoms must leave and reenter a fixed slice instead of reusing its old selection.
       for (const z_coord of [0.3, 0]) {
-        state.structure = { sites: [carbon(z_coord)] }
-        flushSync()
+        flush_set(state, { structure: { sites: [carbon(z_coord)] } })
         if (z_coord) expect(hits()).toEqual([])
         else expect(hits()[0]?.distance).toBeLessThan(2)
       }
     }
-    state.cutaway = { ...settings, position: -0.3 }
-    flushSync()
+    flush_set(state, { cutaway: { ...settings, position: -0.3 } })
     expect(hits()).toEqual([])
     // Disabling clipping restores the full-sphere target, including its pole-safe hover.
-    state.cutaway = undefined
-    flushSync()
+    flush_set(state, { cutaway: undefined })
     expect(hits()[0]?.distance).toBeLessThan(2)
   },
 )
@@ -216,12 +255,8 @@ test.each(
 )(
   `whole-atom cutaway completes moving coordination shells (numeric=$numeric, periodic=$periodic, bonds=$show_bonds)`,
   ({ numeric, periodic, show_bonds }) => {
-    const vertices: Vec3[] = [
-      [1, 0, 0.5],
-      [-1, 0, 0.5],
-      [0, 1, -0.5],
-      [0, -1, -0.5],
-    ]
+    // oxfmt-ignore
+    const vertices: Vec3[] = [[1, 0, 0.5], [-1, 0, 0.5], [0, 1, -0.5], [0, -1, -0.5]]
     const make_structure = (center_z: number, vertex_z = 0.5) => {
       const positions: Vec3[] = [
         [0, 0, center_z],
@@ -231,13 +266,10 @@ test.each(
         [10, 0, 2],
         [11, 0, 2],
       ]
-      const numbers = new Uint8Array([32, 14, 14, 14, 14, 14, 14])
       if (periodic) positions[1] = [-3, 0, vertex_z]
-      const flat_positions = new Float64Array(positions.flat())
       const next = numeric
-        ? new FrameView().update(
-            create_numeric_md_frame(flat_positions, numbers, undefined, undefined, 0, {}, []),
-          ).structure
+        ? new FrameView().update(md_frame(positions.flat(), [32, 14, 14, 14, 14, 14, 14]))
+            .structure
         : {
             sites: positions.map((position, idx) => {
               const element = idx ? `Si` : `Ge`
@@ -407,19 +439,11 @@ test(`keyboard walks the atoms in site order and Enter selects`, () => {
 // and one onto A's shaft crosses the atom behind it, either of which used to take over. Coming
 // from B alone, B's pointerleave fires after A took the hover, which must not clear it.
 type Ray = [Vec3, Vec3] // origin, direction
+// oxfmt-ignore
 const [across_a_then_b, onto_a_past_atom, b_only]: Ray[] = [
-  [
-    [6.5, -5, -1],
-    [-1.5, 1, 0],
-  ],
-  [
-    [0, -1, 10],
-    [0, 0, -1],
-  ],
-  [
-    [10, 0, -1],
-    [-1, 0, 0],
-  ],
+  [[6.5, -5, -1], [-1.5, 1, 0]],
+  [[0, -1, 10], [0, 0, -1]],
+  [[10, 0, -1], [-1, 0, 0]],
 ]
 test.each<[string, Ray[]]>([
   [`across A then B`, [across_a_then_b]],
@@ -460,7 +484,6 @@ const c_n_site: Site = {
     oxidation_state: 0,
   })),
 }
-const lone_c = { sites: [make_site(`C`, [0, 0, 0], [0, 0, 0], `C`)] }
 // pymatgen mixed valence: one element listed per oxidation state
 const fe_mixed_site: Site = {
   ...make_site(`Fe`, [0, 0, 0], [0, 0, 0], `Fe`),
@@ -473,7 +496,7 @@ const split_bi_zr = {
   ),
 }
 // oxfmt-ignore
-test.each<[string, SceneProps, string?, string?, Vec3?]>([
+test.each<[string, SceneProps, string?, string?, [number, number]?]>([
   [`ordered site`, { structure: lone_c }, default_element_colors.C, `white`],
   [`disordered site`, { structure: { sites: [c_n_site] } }],
   [`mixed-valence site`, { structure: { sites: [fe_mixed_site] } }, default_element_colors.Fe, `black`],
@@ -487,16 +510,12 @@ test.each<[string, SceneProps, string?, string?, Vec3?]>([
   [`translucent property colour`, { structure: lone_c, property_colors: { colors: [`rgba(18, 52, 86, 0.5)`], values: [1] } }, `rgb(18, 52, 86)`, `white`],
   [`translucent atoms`, { structure: lone_c, atom_opacity: 0.5 }, default_element_colors.C, `white`],
   // the half-length A arrow's shaft spans x in [-1, 0.9] at y = z = -1, clear of the atom at (2, 2, 2)
-  [`lattice vector A`, { structure: make_crystal(4, [[`C`, [0.5, 0.5, 0.5]]]) }, AXIS_COLORS[0][2], `black`, [0, -1, 10]],
-])(`%s tooltip background`, (_label, props, bg = ``, text_color = ``, ray_origin = [0, 0, 10]) => {
+  [`lattice vector A`, { structure: make_crystal(4, [[`C`, [0.5, 0.5, 0.5]]]) }, AXIS_COLORS[0][2], `black`, [0, -1]],
+])(`%s tooltip background`, (_label, props, bg = ``, text_color = ``, ray_xy = [0, 0]) => {
   const interactivity = spy_interactivity()
   // nothing renders in happy-dom, so the arrow meshes' world matrices need a manual update
   mount_structure({ show_bonds: `never`, ...props }).scene.updateMatrixWorld()
-  const scene_interactivity = interactivity()
-  scene_interactivity.compute = (_event, state) =>
-    state.raycaster.set(new Vector3(...ray_origin), new Vector3(0, 0, -1))
-  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
-  flushSync()
+  pointer_at(interactivity(), ...ray_xy, [`pointermove`])
   const { style } = doc_query(`[role="tooltip"]`)
   expect([style.backgroundColor, style.color]).toEqual([bg, text_color])
 })
@@ -506,11 +525,7 @@ test(`hover shell wraps the hovered atom at HOVER_SHELL_SCALE of its radius`, ()
   const interactivity = spy_interactivity()
   const { scene } = mount_structure({ show_bonds: `never`, structure: lone_c })
   scene.updateMatrixWorld()
-  const scene_interactivity = interactivity()
-  scene_interactivity.compute = (_event, state) =>
-    state.raycaster.set(new Vector3(0, 0, 10), new Vector3(0, 0, -1))
-  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
-  flushSync()
+  pointer_at(interactivity(), 0, 0, [`pointermove`])
   const atoms = scene
     .getObjectsByProperty(`type`, `Mesh`)
     .find((mesh) => mesh instanceof AtomInstances)
@@ -534,32 +549,19 @@ test(`hover shell wraps the hovered atom at HOVER_SHELL_SCALE of its radius`, ()
 // Clicks on atoms (and on bonds in edit-bonds delete mode) drive every selection path
 test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   const interactivity = spy_interactivity()
-  const state = $state<{
-    measure_mode: MeasureMode
-    bond_edit_mode: BondEditMode
-    selected_sites: number[]
-    measured_sites: number[]
-    added_bonds: StructureBond[]
-  }>({
+  const state = $state<SceneProps>({
     measure_mode: `distance`,
     bond_edit_mode: `add`,
     selected_sites: [],
     measured_sites: [],
     added_bonds: [],
   })
-  const sites = [0, 3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
+  const sites = carbons_at(0, 3, 6)
   // thin bonds, so an atom's cap rises above a delete-mode bond's (5x) hit cylinder
   mount_structure({ structure: { sites }, show_bonds: `never`, bond_thickness: 0.02 }, state)
   const scene_interactivity = interactivity()
-  // Cast a ray straight down onto x and press there, as a click does
-  const click = (x_coord: number, init: MouseEventInit = {}, type = `click`) => {
-    scene_interactivity.compute = (_event, { raycaster }) =>
-      raycaster.set(new Vector3(x_coord, 0, 10), new Vector3(0, 0, -1))
-    const target = scene_interactivity.target.current
-    target?.dispatchEvent(new PointerEvent(`pointerdown`, init))
-    target?.dispatchEvent(new MouseEvent(type, init))
-    flushSync()
-  }
+  const click = (x_coord: number, init: MouseEventInit = {}) =>
+    pointer_at(scene_interactivity, x_coord, 0, undefined, init)
   const shift = { shiftKey: true }
   for (const [mode, clicks, expected] of [
     [`distance`, [[0], [3], [0]], [[0], [0, 1], [1]]],
@@ -574,34 +576,235 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
     }
   }
   // A picked pair becomes a bond and the picks clear; a delete-mode click removes it again
-  state.measure_mode = `edit-bonds`
-  flushSync()
+  flush_set(state, { measure_mode: `edit-bonds` })
   click(0)
   expect(state.selected_sites).toEqual([0])
   click(3)
   expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
   expect([state.selected_sites, state.measured_sites]).toEqual([[], []])
   // Right-clicking the bond opens its order menu
-  click(1.5, { button: 2 }, `contextmenu`)
-  const menu_buttons = document.querySelectorAll(`.bond-context-menu button`)
-  const double = [...menu_buttons].find((button) => button.textContent?.trim() === `Double`)
-  double?.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+  pointer_at(scene_interactivity, 1.5, 0, right_click, { button: 2 })
+  menu_button(`Double`)?.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
   flushSync()
   expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
   expect(document.querySelector(`.bond-context-menu`)).toBeNull()
-  state.bond_edit_mode = `delete`
+  // keyboard and screen-reader activation is a bare click (detail 0), no pointer press
+  pointer_at(scene_interactivity, 1.5, 0, right_click, { button: 2 })
+  menu_button(`Triple`)?.click()
   flushSync()
+  expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
+  flush_set(state, { bond_edit_mode: `delete` })
   click(1.5)
   expect(state.added_bonds).toEqual([])
   // in delete mode a bond outranks the atom in front of it, which ignores the click
-  state.bond_edit_mode = `add`
-  flushSync()
+  flush_set(state, { bond_edit_mode: `add` })
   click(0)
   click(3)
-  state.bond_edit_mode = `delete`
-  flushSync()
+  flush_set(state, { bond_edit_mode: `delete` })
   click(0.2) // straight down through atom 0's cap before the bond's hit cylinder
   expect(state.added_bonds).toEqual([])
+})
+
+// The add-atom plane sits inside the manual-rotation groups: its hit point is in world space
+// and must be mapped back into the structure frame, or a rotated view places atoms elsewhere
+test(`add-atom click places the atom in the structure frame of a rotated scene`, () => {
+  const interactivity = spy_interactivity()
+  const on_add_atom = vi.fn()
+  // two carbons along x: the rotation pivot (center of mass) is [1, 0, 0]
+  mount_structure({
+    structure: { sites: carbons_at(0, 2) },
+    show_bonds: `never`,
+    measure_mode: `edit-atoms`,
+    add_atom_mode: true,
+    rotation: [0, 0, Math.PI / 2],
+    on_add_atom,
+  })
+  // world [1, 3] is 3 A along +y of the pivot, i.e. 3 A along +x before the 90 deg z rotation
+  pointer_at(interactivity(), 1, 3)
+  expect(on_add_atom.mock.calls).toEqual([
+    [[4, 0, 0].map((coord) => expect.closeTo(coord, 9)), `C`],
+  ])
+})
+
+// Reset aims at the content's center as drawn: the scene turns content by `rotation` about
+// its pivot (the center of mass), so an off-pivot center moves with it. A heavy I at x = 10
+// pulls the pivot to x = 8.49, away from the bounding-box center at x = 5: turned 180 deg about
+// y, the drawn center is 8.49 + (8.49 - 5) = 11.98, where an unrotated target left it at 5.
+test(`reset target follows a manual rotation of an off-pivot molecule`, () => {
+  const bound = $state<SceneProps>({ get_reset_target: undefined, rotation: [0, 0, 0] })
+  const structure = {
+    sites: [...carbons_at(0, 1), make_site(`I`, [0, 0, 0], [10, 0, 0], `I`)],
+  }
+  mount_structure({ structure, show_atoms: false }, bound)
+  const pivot = get_center_of_mass(structure)?.[0] ?? NaN
+  expect(bound.get_reset_target?.()[0]).toBeCloseTo(5, 9)
+  bound.rotation = [0, Math.PI, 0]
+  flushSync()
+  expect(bound.get_reset_target?.()[0]).toBeCloseTo(2 * pivot - 5, 9)
+})
+
+// The fit zoom measures content along the camera's view of it as drawn: a 20 A rod along x,
+// turned 90 deg about z, stands upright on screen, so a 800x200 viewport fits it by its height
+test(`fit zoom measures a rotated rod as drawn`, () => {
+  const fit_zoom = (rotation: Vec3): number => {
+    const bound = $state<SceneProps>({ initial_computed_zoom: undefined })
+    mount_structure(
+      {
+        structure: { sites: carbons_at(0, 20) },
+        rotation,
+        width: 800,
+        height: 200,
+        camera_direction: [0, 0, 1],
+      },
+      bound,
+    )
+    return bound.initial_computed_zoom ?? NaN
+  }
+  const [flat, upright] = [fit_zoom([0, 0, 0]), fit_zoom([0, 0, Math.PI / 2])]
+  // the rod spans 4x the viewport's height-limited share once upright
+  expect(upright).toBeLessThan(flat / 3)
+})
+
+// The bonds binding addresses base sites: a bond picked to an image atom is stored as its base
+// site plus a cell shift, never under the image's display index (out of range for the input,
+// and another atom once the image set renumbers)
+test(`edit-bonds stores a bond to an image atom by base site and cell shift`, () => {
+  const interactivity = spy_interactivity()
+  const state = $state<{ added_bonds: StructureBond[] }>({ added_bonds: [] })
+  // 5.2 A apart: too far for a calculated bond, so the pick adds one
+  const { scene } = mount_structure(
+    {
+      structure: get_pbc_image_sites(nacl(), image_options(`none`)),
+      show_bonds: `never`,
+      measure_mode: `edit-bonds`,
+    },
+    state,
+  )
+  pointer_at(interactivity(), 3, 3) // Cl
+  pointer_at(interactivity(), 6, 0) // topmost Na copy on this column, the image at abc [1, 0, 1]
+  expect(state.added_bonds).toEqual([
+    { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, -1] },
+  ])
+  // ...yet drawn where it was picked: between Cl and that Na image (and every other copy pair
+  // on screen), not from the base Na toward an empty spot outside the cell
+  const [bond_mesh] = meshes_of(scene, BondMesh)
+  const ends = bond_endpoints(bond_mesh).map((pair) =>
+    pair
+      .map((point) => point.map((coord) => Math.round(coord)))
+      .toSorted((point_a, point_b) => point_a[0] - point_b[0]),
+  )
+  expect(ends).toContainEqual([
+    [3, 3, 3],
+    [6, 0, 6],
+  ])
+  expect(ends.flat().every((point) => point.every((coord) => coord >= 0 && coord <= 6))).toBe(
+    true,
+  )
+})
+
+// An added periodic bond is drawn only between copies on screen: with images off there is none
+// (a base-Na copy would end on an empty spot outside the cell), and an image hidden by its
+// property value takes its bond with it
+test.each([
+  [`images shown`, true, false, 1],
+  [`images off`, false, false, 0],
+  [`the image copy hidden`, true, true, 0],
+])(
+  `an added periodic bond with %s draws only on-screen copies`,
+  (_label, images, hide_image, n_drawn) => {
+    const structure = images ? get_pbc_image_sites(nacl(), image_options(`none`)) : nacl()
+    // the one Na copy bonded to Cl: the image at abc [1, 0, 1]
+    const image_idx = structure.sites.findIndex(
+      ({ abc, provenance }) => provenance?.image_of === 0 && abc.join(`,`) === `1,0,1`,
+    )
+    const values = structure.sites.map((_site, idx) => (idx === image_idx ? 1 : 0))
+    const { scene } = mount_structure({
+      structure,
+      show_bonds: `never`,
+      added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, -1] }],
+      property_colors: { colors: values.map(() => `red`), values },
+      hidden_prop_vals: new SvelteSet(hide_image ? [1] : []),
+    })
+    expect(meshes_of(scene, BondMesh)[0]?.count ?? 0).toBe(n_drawn)
+  },
+)
+
+// The bonds binding hands an added bond back on the structure, so perception reports it as an
+// explicit bond. Deleting it must undo the addition alone: read as "also calculated", it was
+// recorded as a removal too, leaving an empty override where add + delete should cancel out
+test(`deleting an added bond echoed back as an explicit bond leaves no edits`, () => {
+  const interactivity = spy_interactivity()
+  const added: StructureBond = {
+    site_idx_1: 0,
+    site_idx_2: 1,
+    order: 1,
+    cell_shift: [-1, 0, -1],
+  }
+  const crystal = nacl()
+  crystal.properties = { bonds: [added] } // as the session emits it
+  const state = $state<SceneProps>({
+    added_bonds: [added],
+    removed_bonds: [],
+    bond_order_overrides: [],
+  })
+  mount_structure(
+    {
+      structure: get_pbc_image_sites(crystal, image_options(`none`)),
+      show_bonds: `always`,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode: `delete`,
+    },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  // mid-bond between Cl at [3, 3, 3] and the Na image at [6, 0, 6]; reordering it edits the
+  // addition too, rather than turning it into an override
+  pointer_at(scene_interactivity, 4.5, 1.5, right_click, { button: 2 })
+  menu_button(`Double`)?.click()
+  flushSync()
+  expect(state.added_bonds).toEqual([{ ...added, order: 2 }])
+  expect(state.bond_order_overrides).toEqual([])
+  pointer_at(scene_interactivity, 4.5, 1.5)
+  expect([state.added_bonds, state.removed_bonds]).toEqual([[], []])
+})
+
+// A site label button selects its atom on a pointer press, and on the bare click (detail 0)
+// keyboard and screen-reader activation send; a pointer's own click must not toggle it back
+test(`site label buttons select on press and on keyboard or assistive activation`, () => {
+  const state = $state<{ selected_sites: number[] }>({ selected_sites: [] })
+  mount_structure(
+    { structure: { sites: carbons_at(0, 3) }, show_bonds: `never`, show_site_labels: true },
+    state,
+  )
+  const [first, second] = document.querySelectorAll<HTMLButtonElement>(`.atom-label`)
+  first.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+  first.dispatchEvent(new MouseEvent(`click`, { bubbles: true, detail: 1 }))
+  flushSync()
+  expect(state.selected_sites).toEqual([0])
+  second.click()
+  flushSync()
+  expect(state.selected_sites).toEqual([0, 1])
+})
+
+// The order menu of a bond drawn to an image atom reads the bond's order by its canonical key
+// (base sites + cell shift, as edits store it): the rendered key (image index, no shift)
+// matched no edit, so a perceived bond set to triple still said order 1
+test(`bond order menu on an image atom's bond shows that bond's edited order`, () => {
+  const interactivity = spy_interactivity()
+  // O on the x = 0 face gets an image at x = 10, 1.6 A from Si: the perceived bond ends there
+  const crystal = make_crystal(10, [
+    [`Si`, [0.84, 0.5, 0.5]],
+    [`O`, [0, 0.5, 0.5]],
+  ])
+  mount_structure({
+    structure: get_pbc_image_sites(crystal, image_options(`none`)),
+    show_bonds: `always`,
+    measure_mode: `edit-bonds`,
+    bond_order_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [1, 0, 0] }],
+  })
+  // mid-bond between Si at x = 8.4 and the O image at x = 10
+  pointer_at(interactivity(), 9.2, 5, right_click, { button: 2 })
+  expect(doc_query(`.bond-context-menu strong`).textContent).toBe(`Bond Order (3)`)
 })
 
 // A delete-mode bond is hit anywhere in its 5x wide invisible cylinder, also under a cutaway,
@@ -615,37 +818,101 @@ const surface_slab = (axis: 0 | 1, position: number, thickness: number): Structu
   whole_atoms: false,
   cartesian_to_fractional: new Matrix4(),
 })
-test.each<[string, number, StructureCutaway | undefined]>([
+// oxfmt-ignore
+test.each<[string, number, StructureCutaway | undefined, Site[]?, number?]>([
   [`no cutaway`, 0, undefined],
   [`a cutaway keeping its middle`, 0, surface_slab(0, 1.5, 1)],
   [`a cutaway clipping it entirely`, 1, surface_slab(1, 0.3, 0.1)],
-])(`delete-mode click beside a bond with %s leaves %i bonds`, (_label, n_bonds, cutaway) => {
+  // A whole-atom cutaway draws a center's complete shell, bonds past the slab included, so
+  // those stay editable: their hit cylinders used to sit under the slab's clipping. Cl inside
+  // the slab (|z| < 0.1) is the center, its Na neighbor 2 A above it, and the click lands
+  // straight down onto the bond's midpoint at z ~ 1, outside the slab.
+  [`a whole-atom slab past its shell bond`, 0, whole_atom_cutaway(),
+    [make_site(`Na`, [0, 0, 0], [3, 0, 2], `Na`), make_site(`Cl`, [0, 0, 0], [0, 0, 0.05], `Cl`)], 0],
+])(
+  `delete-mode click by a bond with %s leaves %i bonds`,
+  (_label, n_bonds, cutaway, sites = carbons_at(0, 3), y_coord = 0.3) => {
+    const interactivity = spy_interactivity()
+    const state = $state<{ added_bonds: StructureBond[] }>({
+      added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+    })
+    mount_structure(
+      {
+        structure: { sites },
+        show_bonds: `never`,
+        bond_thickness: 0.1,
+        measure_mode: `edit-bonds`,
+        bond_edit_mode: `delete`,
+        cutaway,
+      },
+      state,
+    )
+    // 0.3 Å beside the bond axis: outside its 0.1 Å radius, inside the 0.5 Å hit radius
+    pointer_at(interactivity(), 1.5, y_coord)
+    expect(state.added_bonds).toHaveLength(n_bonds)
+  },
+)
+
+// A keyed hit cylinder outlives thickness changes and bond moves, so its transform must follow
+// them: created at 0.02 Å (0.1 Å hit radius) it missed a click 0.3 Å off the axis after the
+// slider went to 0.1 Å, and a moved bond stayed pickable only where it was first drawn
+test(`delete-mode hit cylinders follow bond thickness and bond moves`, () => {
   const interactivity = spy_interactivity()
-  const state = $state<{ added_bonds: StructureBond[] }>({
+  const state = $state<SceneProps>({
     added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+    bond_thickness: 0.02,
+    structure: { sites: carbons_at(0, 3) },
   })
   mount_structure(
-    {
-      structure: {
-        sites: [0, 3].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
-      },
-      show_bonds: `never`,
-      bond_thickness: 0.1,
-      measure_mode: `edit-bonds`,
-      bond_edit_mode: `delete`,
-      cutaway,
-    },
+    { show_bonds: `never`, measure_mode: `edit-bonds`, bond_edit_mode: `delete` },
     state,
   )
-  const scene_interactivity = interactivity()
-  // 0.3 Å beside the bond axis: outside its 0.1 Å radius, inside the 0.5 Å hit radius
-  scene_interactivity.compute = (_event, { raycaster }) =>
-    raycaster.set(new Vector3(1.5, 0.3, 10), new Vector3(0, 0, -1))
-  const target = scene_interactivity.target.current
-  target?.dispatchEvent(new PointerEvent(`pointerdown`))
-  target?.dispatchEvent(new MouseEvent(`click`))
+  const click_at = (x_coord: number) => pointer_at(interactivity(), x_coord, 0.3)
+  click_at(1.5)
+  expect(state.added_bonds).toHaveLength(1) // 0.3 Å is outside the 0.1 Å hit radius
+  // same sites and bond key, new place
+  flush_set(state, { structure: { sites: carbons_at(10, 13) }, bond_thickness: 0.1 })
+  click_at(1.5)
+  expect(state.added_bonds).toHaveLength(1) // nothing is drawn there anymore
+  click_at(11.5)
+  expect(state.added_bonds).toEqual([])
+})
+
+// The hover highlight is a keyed cylinder too: it must follow the bond thickness (a new
+// structure, the other way its bond could move, clears the hover)
+test(`edit-bonds hover highlight follows bond thickness`, () => {
+  const interactivity = spy_interactivity()
+  let bond_thickness = $state(0.1)
+  const { scene } = mount_structure({
+    structure: { sites: carbons_at(0, 3) },
+    get bond_thickness() {
+      return bond_thickness
+    },
+    show_bonds: `never`,
+    measure_mode: `edit-bonds`,
+    bond_edit_mode: `delete`,
+    added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+  })
+  scene.updateMatrixWorld()
+  pointer_at(interactivity(), 1.5, 0, [`pointermove`])
+  // the translucent highlight: the one raycast-disabled cylinder with an opacity-0.25 material
+  const highlight = () => {
+    const found: Mesh[] = []
+    scene.traverse((object) => {
+      const material = object instanceof Mesh ? object.material : undefined
+      if (material && `opacity` in material && material.opacity === 0.25)
+        found.push(object as Mesh)
+    })
+    if (found.length !== 1)
+      throw new Error(`expected one hover highlight, got ${found.length}`)
+    return found[0]
+  }
+  const radius = () => new Vector3().setFromMatrixColumn(highlight().matrix, 0).length()
+  const center_x = () => new Vector3().setFromMatrixPosition(highlight().matrix).x
+  expect([radius(), center_x()]).toEqual([expect.closeTo(0.11, 6), expect.closeTo(1.5, 6)])
+  bond_thickness = 0.2
   flushSync()
-  expect(state.added_bonds).toHaveLength(n_bonds)
+  expect([radius(), center_x()]).toEqual([expect.closeTo(0.22, 6), expect.closeTo(1.5, 6)])
 })
 
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
@@ -673,7 +940,7 @@ test.each<[string, number, SceneProps]>([
 ])(`Scene bonds with %s draw %i triangles per cylinder`, (_label, triangles, props) => {
   const { scene } = mount_structure({
     structure: {
-      sites: [0, 1.4].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      sites: carbons_at(0, 1.4),
     },
     show_bonds: `always`,
     show_polyhedra: `never`,
@@ -686,10 +953,7 @@ test.each<[string, number, SceneProps]>([
 
 // Two C 1.4 Å apart through the x face of a 10 Å cell, bonded only via site 1's image
 const periodic_pair = () => {
-  const structure = make_crystal(10, [
-    [`C`, [0.07, 0.5, 0.5]],
-    [`C`, [0.93, 0.5, 0.5]],
-  ])
+  const structure = carbon_crystal(10, [0.07, 0.5, 0.5], [0.93, 0.5, 0.5])
   const bond: BondPair = {
     site_idx_1: 0,
     site_idx_2: 1,
@@ -716,10 +980,7 @@ test.each<[string, number[], BondOrder, SceneProps, number]>([
     `pair bonded via an image`,
     [0, 1],
     1,
-    {
-      structure: periodic_pair(),
-      show_cell_vectors: false,
-    },
+    { structure: periodic_pair(), show_cell_vectors: false },
     0,
   ],
 ])(
@@ -727,7 +988,7 @@ test.each<[string, number[], BondOrder, SceneProps, number]>([
   (_label, measured_sites, order, props, strands) => {
     const { scene } = mount_structure({
       structure: {
-        sites: [0, 1.3, 6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+        sites: carbons_at(0, 1.3, 6),
         properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order }] },
       },
       show_bonds: `always`,
@@ -763,11 +1024,7 @@ test.each<[string, SceneProps, number[], number]>([
     `molecule`,
     {
       structure: {
-        sites: [
-          [0, 0, 0],
-          [1.3, 0, 0],
-          [0, 2, 0],
-        ].map((xyz) => make_site(`C`, [0, 0, 0], xyz as Vec3, `C`)),
+        sites: [...carbons_at(0, 1.3), make_site(`C`, [0, 0, 0], [0, 2, 0], `C`)],
         properties: { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }] },
       },
     },
@@ -777,11 +1034,7 @@ test.each<[string, SceneProps, number[], number]>([
   [
     `triangle across a cell face`,
     {
-      structure: make_crystal(10, [
-        [`C`, [0.1, 0.5, 0.5]],
-        [`C`, [0.9, 0.5, 0.5]],
-        [`C`, [0.95, 0.7, 0.5]],
-      ]),
+      structure: carbon_crystal(10, [0.1, 0.5, 0.5], [0.9, 0.5, 0.5], [0.95, 0.7, 0.5]),
       show_bonds: `never`,
       show_cell_vectors: false,
     },
@@ -793,7 +1046,7 @@ test.each<[string, SceneProps, number[], number]>([
     `collinear triangle`,
     {
       structure: {
-        sites: [0, 1.3, 2.6].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+        sites: carbons_at(0, 1.3, 2.6),
       },
       show_bonds: `never`,
     },
@@ -828,12 +1081,13 @@ test.each<[string, SceneProps, number[], number]>([
 // A torsion straddling a cell face draws its three bonds as short nearest-image hops, labelled
 // with the torsion measured from those same hops
 test(`dihedral measurement across a cell face`, () => {
-  const structure = make_crystal(10, [
-    [`C`, [0.95, 0.6, 0.5]],
-    [`C`, [0.95, 0.5, 0.5]],
-    [`C`, [0.05, 0.5, 0.5]],
-    [`C`, [0.05, 0.5, 0.6]],
-  ])
+  const structure = carbon_crystal(
+    10,
+    [0.95, 0.6, 0.5],
+    [0.95, 0.5, 0.5],
+    [0.05, 0.5, 0.5],
+    [0.05, 0.5, 0.6],
+  )
   const { scene } = mount_structure({
     structure,
     show_bonds: `never`,
@@ -857,20 +1111,10 @@ test(`dihedral measurement across a cell face`, () => {
 // A site and its own image are a lattice vector apart, not 0 Å (the minimum image of a lattice
 // translation); a pair across a cell face reports its nearest image beside the drawn distance
 test.each([
-  [
-    `a site and its own image`,
-    make_crystal(3, [
-      [`C`, [0, 0, 0]],
-      [`C`, [1, 0, 0]],
-    ]),
-    /^3 Å$/,
-  ],
+  [`a site and its own image`, carbon_crystal(3, [0, 0, 0], [1, 0, 0]), /^3 Å$/],
   [
     `a pair across a cell face`,
-    make_crystal(10, [
-      [`C`, [0.05, 0.5, 0.5]],
-      [`C`, [0.95, 0.5, 0.5]],
-    ]),
+    carbon_crystal(10, [0.05, 0.5, 0.5], [0.95, 0.5, 0.5]),
     /^PBC: 1 Å\s*Direct: 9 Å$/,
   ],
 ])(`distance label of %s`, (_label, structure, expected) => {
@@ -885,16 +1129,13 @@ test.each([
 
 // Depth-tested arcs inside a big vertex atom would be hidden: each clears its own atom's surface
 test(`angle arcs clear their vertex atoms`, () => {
+  // drawn radius (half the atomic radius x atom_radius) plus 0.2 Å, past 31% of the 1.6 Å edge
+  // oxfmt-ignore
+  const corners: [ElementSymbol, Vec3, number][] = [
+    [`Si`, [1.6, 0, 0], 1.1], [`O`, [0, 0, 0], 0.6], [`Si`, [0, 1.6, 0], 1.1],
+  ]
   const { scene } = mount_structure({
-    structure: {
-      sites: [
-        [`Si`, [1.6, 0, 0]],
-        [`O`, [0, 0, 0]],
-        [`Si`, [0, 1.6, 0]],
-      ].map(([elem, xyz]) =>
-        make_site(elem as ElementSymbol, [0, 0, 0], xyz as Vec3, `${elem}`),
-      ),
-    },
+    structure: { sites: corners.map(([elem, xyz]) => make_site(elem, [0, 0, 0], xyz, elem)) },
     show_bonds: `never`,
     atom_radius: 2,
     measure_mode: `angle`,
@@ -904,15 +1145,9 @@ test(`angle arcs clear their vertex atoms`, () => {
     ({ geometry }) =>
       geometry instanceof TubeGeometry ? [geometry.parameters.path.getPoint(0)] : [],
   )
-  // drawn radius (half the atomic radius x atom_radius) plus 0.2 Å, past 31% of the 1.6 Å edge
-  const corners: [Vec3, number][] = [
-    [[1.6, 0, 0], 1.1],
-    [[0, 0, 0], 0.6],
-    [[0, 1.6, 0], 1.1],
-  ]
   expect(
-    arc_starts.map((start, idx) => start.distanceTo(new Vector3(...corners[idx][0]))),
-  ).toEqual(corners.map(([, atomic_radius]) => expect.closeTo(atomic_radius + 0.2, 6)))
+    arc_starts.map((start, idx) => start.distanceTo(new Vector3(...corners[idx][1]))),
+  ).toEqual(corners.map(([, , atomic_radius]) => expect.closeTo(atomic_radius + 0.2, 6)))
 })
 
 // Mixed-valence sites (pymatgen Fe2+/Fe3+) list one element twice at partial occupancy: drawn as
@@ -966,15 +1201,7 @@ test(`Scene reuses bond colors only for an explicit matching topology and appear
   })
   const view = new FrameView()
   const make_structure = (revision = 0) => {
-    const frame = create_numeric_md_frame(
-      new Float64Array([0, 0, 0, 1, 0, 0]),
-      new Uint8Array([6, 8]),
-      undefined,
-      undefined,
-      0,
-      {},
-      [],
-    )
+    const frame = md_frame([0, 0, 0, 1, 0, 0], [6, 8])
     frame.topology = { kind: `fixed-order`, revision }
     const next = view.update(frame).structure
     const columns = pack_bonds([
@@ -1012,8 +1239,7 @@ test(`Scene reuses bond colors only for an explicit matching topology and appear
   flushSync()
   expect(received_colors).toHaveLength(2)
   expect(received_colors[1][1]).toBe(`#123456`)
-  state.bond_color = `white`
-  flushSync()
+  flush_set(state, { bond_color: `white` })
   expect(received_colors).toHaveLength(3)
   structure = make_structure(1)
   flushSync()
@@ -1077,8 +1303,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     [`blue`, `red`],
     [`red`, `red`],
   ]) {
-    state.site_colors = palette
-    flushSync()
+    flush_set(state, { site_colors: palette })
     for (const [buffer, color] of [
       [colors_start, palette[0]],
       [colors_end, palette[1]],
@@ -1098,8 +1323,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     colors_start.clearUpdateRanges()
   }
   bonds = make_frame(1)
-  state.site_colors = [`lime`, `lime`]
-  flushSync()
+  flush_set(state, { site_colors: [`lime`, `lime`] })
   upload_colors()
   bonds = make_frame(3)
   flushSync()
@@ -1107,8 +1331,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   expect(uploaded).toEqual(colors_start.array)
 
   bonds = make_frame(2, true)
-  state.site_colors = [`red`, `red`, `red`, `red`]
-  flushSync()
+  flush_set(state, { site_colors: [`red`, `red`, `red`, `red`] })
   upload_colors()
   flushSync(() => {
     state.site_colors[0] = `lime`
@@ -1129,8 +1352,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   const uploads = update.mock.calls.length
   const centers = mesh.centers.array.slice()
   for (const value of [-0.2, 0, 0.2]) {
-    state.thickness = value
-    flushSync()
+    flush_set(state, { thickness: value })
     expect(mesh.thickness).toBe(value)
     expect(update).toHaveBeenCalledTimes(uploads)
     expect(mesh.centers.array).toEqual(centers)
@@ -1261,14 +1483,10 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     frame_idx,
     { scalar_columns, shown = [0, 1, 2], image = false, generic, provenance },
   ] of cases.entries()) {
-    const frame = create_numeric_md_frame(
-      new Float64Array([0, frame_idx, 0, 2, frame_idx, 0, 3, frame_idx, 0]),
-      new Uint8Array([6, 8, 1]),
-      undefined,
-      undefined,
+    const frame = md_frame(
+      [0, frame_idx, 0, 2, frame_idx, 0, 3, frame_idx, 0],
+      [6, 8, 1],
       frame_idx,
-      {},
-      [],
     )
     frame.scalar_columns = scalar_columns
     const snapshot = frame.coordinates.slice()
@@ -1304,12 +1522,8 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
 })
 
 test(`numeric polyhedra reuse outlines and resolve colors without decoding atom records`, async () => {
-  const vertices: Vec3[] = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0, 0, 1],
-    [-1, -1, -1],
-  ]
+  // oxfmt-ignore
+  const vertices: Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, -1, -1]]
   const poly: Polyhedron = {
     center_site_idx: 0,
     center_orig_idx: 0,
@@ -1317,22 +1531,10 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     volume: 1,
     vertices,
     vertex_site_idxs: [1, 2, 3, 4],
-    faces: [
-      [0, 1, 2],
-      [0, 3, 1],
-      [0, 2, 3],
-      [1, 3, 2],
-    ],
+    // oxfmt-ignore
+    faces: [[0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2]],
   }
-  const frame = create_numeric_md_frame(
-    new Float64Array([0, 0, 0, ...vertices.flat()]),
-    new Uint8Array([12, 8, 1, 8, 1]),
-    undefined,
-    undefined,
-    0,
-    {},
-    [],
-  )
+  const frame = md_frame([0, 0, 0, ...vertices.flat()], [12, 8, 1, 8, 1])
   const structure = new FrameView().update(frame).structure
   const bonds = new BondFrame(
     structure,
@@ -1371,8 +1573,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     flushSync() // Initial camera fitting may inspect sites; subsequent colors must not.
     get_site.mockClear()
     expect(scene.getObjectByProperty(`isLineSegments2`, true)).toBeUndefined()
-    state.polyhedra_show_edges = true
-    flushSync()
+    flush_set(state, { polyhedra_show_edges: true })
     const edges = scene.getObjectByProperty(`isLineSegments2`, true)
     const faces = polyhedra_faces(scene)
     if (!(edges instanceof LineSegments2) || !faces)
@@ -1381,8 +1582,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     const face_geometry = faces.geometry
     face_geometry.addEventListener(`dispose`, face_disposal)
     for (const value of [`vertex`, `center`, `uniform`] as const) {
-      state.polyhedra_color_mode = value
-      flushSync()
+      flush_set(state, { polyhedra_color_mode: value })
       expect(scene.getObjectById(edges.id)).toBe(edges)
       // vertex sites 1-4 alternate O (odd) / H (even), see the atomic numbers above
       const site_color = (site_idx: number) =>
@@ -1401,14 +1601,11 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(get_site).not.toHaveBeenCalled()
     }
     for (const visible of [false, true]) {
-      state.polyhedra_show_edges = visible
-      flushSync()
+      flush_set(state, { polyhedra_show_edges: visible })
       expect(edges.visible).toBe(visible)
-      state.show_polyhedra = `never`
-      flushSync()
+      flush_set(state, { show_polyhedra: `never` })
       expect(scene.getObjectById(edges.id)).toBeUndefined()
-      state.show_polyhedra = `always`
-      flushSync()
+      flush_set(state, { show_polyhedra: `always` })
       expect(scene.getObjectById(edges.id)).toBe(edges)
       expect(edges.visible).toBe(visible)
       expect(disposal).not.toHaveBeenCalled()
@@ -1418,8 +1615,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     Object.assign(state, { defer_expensive_geometry: true, show_polyhedra: `never` })
     flushSync()
     expect(scene.getObjectById(edges.id)).toBe(edges)
-    state.defer_expensive_geometry = false
-    flushSync()
+    flush_set(state, { defer_expensive_geometry: false })
     expect(scene.getObjectById(edges.id)).toBeUndefined()
   } finally {
     await unmount_scene()
@@ -1618,16 +1814,10 @@ test(`whole-atom cutaway unclips shells but keeps overlays clipped and endpoint 
 // A periodic bond is stored once, from site_idx_1's own position to an image of site_idx_2.
 // When only site_idx_2 is a selected center, the shell bond must start at the center itself
 // (drawing the stored copy put a stray atom and a ghost center across the cell instead).
+// oxfmt-ignore
 test.each([
   { case: `center at site_idx_2 only`, z_1: 3, bonds_z: [[0.05, -1]] },
-  {
-    case: `both ends are centers`,
-    z_1: -0.05,
-    bonds_z: [
-      [-0.05, 4.05],
-      [0.05, -4.05],
-    ],
-  },
+  { case: `both ends are centers`, z_1: -0.05, bonds_z: [[-0.05, 4.05], [0.05, -4.05]] },
 ])(`whole-atom shell bonds with a periodic bond: $case`, ({ z_1, bonds_z }) => {
   // Cl image one 4 A cell up from its own position at z = 0.05
   const pos_2: Vec3 = [0, 0, 4.05]
@@ -1651,6 +1841,8 @@ test.each([
     show_bonds: `always`,
     show_polyhedra: `never`,
     cutaway: whole_atom_cutaway(),
+    // both drawn copies of one periodic bond get a hit cylinder (they once shared its key)
+    measure_mode: `edit-bonds`,
   })
   const [bond_mesh] = meshes_of(scene, BondMesh)
   if (!bond_mesh) throw new Error(`no bond mesh rendered`)
@@ -1671,40 +1863,30 @@ test.each([`center first`, `center second`])(
   (order) => {
     const center: Vec3 = [0.2, 0.2, 0]
     // Literal coordinates: built as center + offset they would round-trip exactly
-    const images: Vec3[] = [
-      [0.9, 0.9, 0.7],
-      [0.9, -0.5, -0.7],
-      [-0.5, 0.9, -0.7],
-      [-0.5, -0.5, 0.7],
-    ]
+    // oxfmt-ignore
+    const images: Vec3[] = [[0.9, 0.9, 0.7], [0.9, -0.5, -0.7], [-0.5, 0.9, -0.7], [-0.5, -0.5, 0.7]]
+    const below = ([x_coord, y_coord, z_coord]: Vec3): Vec3 => [x_coord, y_coord, z_coord - 4]
     // Real O positions one 4 A cell down, far outside the slab: reached only via the bonds
     const structure = {
       sites: [
         make_site(`Ti`, [0, 0, 0], center, `Ti0`),
-        ...images.map((image, idx) =>
-          make_site(`O`, [0, 0, 0], [image[0], image[1], image[2] - 4], `O${idx}`),
-        ),
+        ...images.map((image, idx) => make_site(`O`, [0, 0, 0], below(image), `O${idx}`)),
       ],
     }
-    const bonds: BondPair[] = images.map((image, idx) =>
-      order === `center first`
-        ? {
-            site_idx_1: 0,
-            site_idx_2: idx + 1,
-            pos_1: center,
-            pos_2: image,
-            bond_length: 1.21,
-            cell_shift: [0, 0, 1],
-          }
-        : {
-            site_idx_1: idx + 1,
-            site_idx_2: 0,
-            pos_1: [image[0], image[1], image[2] - 4],
-            pos_2: [center[0], center[1], center[2] - 4],
-            bond_length: 1.21,
-            cell_shift: [0, 0, -1],
-          },
-    )
+    const bonds = images.map((image, idx): BondPair => {
+      const [site_idx_1, site_idx_2, pos_1, pos_2, shift] =
+        order === `center first`
+          ? ([0, idx + 1, center, image, 1] as const)
+          : ([idx + 1, 0, below(image), below(center), -1] as const)
+      return {
+        site_idx_1,
+        site_idx_2,
+        pos_1,
+        pos_2,
+        bond_length: 1.21,
+        cell_shift: [0, 0, shift],
+      }
+    })
     cache_prepared_bonds(structure, `electroneg_ratio`, {}, bonds)
     const { scene } = mount_structure({
       structure,
@@ -1760,11 +1942,9 @@ test(`Scene marks a volumetric slice plane with a translucent fan fill and a clo
 
   // a new polygon rebuilds and releases the old buffers; fewer than 3 corners draw nothing
   const dispose = fill && vi.spyOn(fill.geometry, `dispose`)
-  state.slice_polygon = square.slice(0, 3)
-  flushSync()
+  flush_set(state, { slice_polygon: square.slice(0, 3) })
   expect(dispose).toHaveBeenCalledOnce()
-  state.slice_polygon = square.slice(0, 2)
-  flushSync()
+  flush_set(state, { slice_polygon: square.slice(0, 2) })
   expect(plane_meshes()).toEqual({ outlines: [], fill: undefined })
 })
 
@@ -1790,8 +1970,7 @@ test(`active-site highlights resolve the CSS color token where the canvas sits`,
   host.style.setProperty(`--struct-active-highlight-color`, `rgb(255, 0, 0)`)
   host.append(canvas)
   document.body.append(host)
-  state.active_sites = [0]
-  flushSync()
+  flush_set(state, { active_sites: [0] })
   const highlight_colors: string[] = []
   scene.traverse((object) => {
     const { material } = object as { material?: { depthTest?: boolean; color?: Color } }
@@ -1837,57 +2016,31 @@ const doubled_along = (axis: number): AnyStructure =>
 const oxygen_dimer = (x_coord: number): AnyStructure => ({
   sites: [x_coord, x_coord + 1].map((x_pos) => make_site(`O`, [0, 0, 0], [x_pos, 0, 0], `O`)),
 })
+// oxfmt-ignore
 test.each<[string, FollowStep, Vec3 | `reframe`]>([
   [`a new cell in the series`, { to: follow_crystal(4.2) }, [0.1, 0.1, 0.1]],
   [`a fixed-cell MD frame`, { to: follow_crystal(4, true) }, [0, 0, 0]],
   [`a new series`, { to: follow_crystal(4.2), series: `other` }, [0, 0, 0]],
   [`an atom edit`, { to: follow_crystal(4.2), measure_mode: `edit-atoms` }, [0, 0, 0]],
   [`a new cell mid-orbit`, { to: follow_crystal(4.2), orbiting: true }, [0.1, 0.1, 0.1]],
-  [
-    `a new cell while auto-rotating`,
-    { to: follow_crystal(4.2), live: [2, 2, 14] },
-    [0.1, 0.1, 0.1],
-  ],
-  [
-    `a new cell after the target was cleared`,
-    { to: follow_crystal(4.2), clear_target: true },
-    [0.1, 0.1, 0.1],
-  ],
+  [`a new cell while auto-rotating`, { to: follow_crystal(4.2), live: [2, 2, 14] }, [0.1, 0.1, 0.1]],
+  [`a new cell after the target was cleared`, { to: follow_crystal(4.2), clear_target: true }, [0.1, 0.1, 0.1]],
   [`a new cell during a camera flight`, { to: follow_crystal(4.2), flight: true }, [0, 0, 0]],
   [`a molecule of the same size`, { from: oxygen_dimer(0), to: oxygen_dimer(5) }, [5, 0, 0]],
   [`a cell far larger than the fit`, { to: follow_crystal(12), live: [2, 14, 2] }, `reframe`],
   // a 2x2x2 supercell overflows the fitted view, unless the user had zoomed out to fit it; an
   // NPT-sized step keeps a zoomed-in view, and a hidden (0x0) viewer only follows
   [`a doubled cell`, { to: follow_crystal(8), live: [2, 14, 2] }, `reframe`],
-  [
-    `a doubled cell in perspective`,
-    { to: follow_crystal(8), live: [2, 14, 2], projection: `perspective` },
-    `reframe`,
-  ],
+  [`a doubled cell in perspective`, { to: follow_crystal(8), live: [2, 14, 2], projection: `perspective` }, `reframe`],
   [`a doubled cell in a zoomed-out view`, { to: follow_crystal(8), zoom: 0.3 }, [2, 2, 2]],
-  [
-    `a 5% larger cell in a zoomed-in view`,
-    { to: follow_crystal(4.2), zoom: 2 },
-    [0.1, 0.1, 0.1],
-  ],
+  [`a 5% larger cell in a zoomed-in view`, { to: follow_crystal(4.2), zoom: 2 }, [0.1, 0.1, 0.1]],
   [`a doubled cell in a hidden viewer`, { to: follow_crystal(8), hidden: true }, [2, 2, 2]],
   // measured along the live view: doubling the axis looked down (c, or the up axis b) grows
   // nothing on screen; doubling c seen from the side, after a fit looking down c, overflows
-  [
-    `a cell doubled along the line of sight`,
-    { to: doubled_along(2), live: [2, 2, 14] },
-    [0, 0, 2],
-  ],
-  [
-    `a cell doubled along the up axis seen down it`,
-    { to: doubled_along(1), live: [2, 14, 2] },
-    [0, 2, 0],
-  ],
-  [
-    `a cell doubled across an orbited view`,
-    { to: doubled_along(2), live: [14, 2, 2], direction: [0, 0, 1] },
-    `reframe`,
-  ],
+  [`a cell doubled along the line of sight`, { to: doubled_along(2), live: [2, 2, 14] }, [0, 0, 2]],
+  [`a cell doubled along the up axis seen down it`, { to: doubled_along(1), live: [2, 14, 2] }, [0, 2, 0]],
+  [`a cell doubled across an orbited view`,
+    { to: doubled_along(2), live: [14, 2, 2], direction: [0, 0, 1] }, `reframe`],
 ])(`camera follow on %s`, (_label, step, offset) => {
   const pose: { target: Vec3; position: Vec3 } = { target: [2, 2, 2], position: [12, 7, 9] }
   const state = $state<{
@@ -1932,8 +2085,7 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
   const scale_before = view_scale()
   if (step.hidden) Object.assign(state, { width: 0, height: 0 })
   if (step.clear_target) {
-    state.camera_target = undefined
-    flushSync()
+    flush_set(state, { camera_target: undefined })
   }
   if (step.flight) {
     const lease = camera_flight_registry.get(canvas)?.begin()
@@ -1948,8 +2100,7 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
   flushSync()
   if (step.orbiting) {
     expect(state.camera_target).toEqual(pose.target)
-    state.camera_is_moving = false
-    flushSync()
+    flush_set(state, { camera_is_moving: false })
   }
   const { camera_target, camera_position } = state
   if (!camera_target) throw new Error(`Missing camera target`)
@@ -1982,10 +2133,7 @@ test.each([
 ])(
   `displacement arrows of an external supercell with %s`,
   (_name, to_base_site_idx, n_arrows) => {
-    const reference = make_crystal(10, [
-      [`C`, [0, 0, 0]],
-      [`C`, [0.5, 0, 0]],
-    ])
+    const reference = carbon_crystal(10, [0, 0, 0], [0.5, 0, 0])
     const sites = reference.sites.map((site, idx) => ({
       ...site,
       xyz: [site.xyz[0] + idx * 0.3, site.xyz[1], site.xyz[2]] as Vec3,

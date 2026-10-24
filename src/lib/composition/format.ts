@@ -141,10 +141,11 @@ export const is_compound = (name: string): boolean =>
 // preceding text token.
 // `coeff` comes first so it wins over `sub`: the number after a hydrate separator counts whole
 // water molecules, not atoms in the preceding group, so `CuSO4·5H2O` must render its 5 full
-// size. Every digit run classified as a subscript printed it as CuSO4·₅H₂O. `caret` comes
+// size. Every digit run classified as a subscript printed it as CuSO4·₅H₂O. A leading number
+// is the same coefficient (parse_formula reads 2H2O as 2 × H2O), not ₂H₂O. `caret` comes
 // before `sub` so the digits of a charge are not read as a count (SO<sub>4</sub>^<sub>2</sub>).
 const FORMULA_TOKEN_RE =
-  /(?<coeff>(?<=[·⋅•∙*])(?:\d+(?:\.\d+)?|\.\d+))|\^(?<caret>[+-]\d+|\d+[+-]?|[+-])|(?<sub>\d+(?:\.\d+)?|\.\d+)|(?<sup>[+-](?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>[+-]|\.(?!\d)|\^|[^A-Z\d.^+-]+)/g
+  /(?<coeff>(?<=^|[·⋅•∙*])(?:\d+(?:\.\d+)?|\.\d+))|\^(?<caret>[+-]\d+|\d+[+-]?|[+-])|(?<sub>\d+(?:\.\d+)?|\.\d+)|(?<sup>[+-](?:\d+|$))|(?<element>[A-Z][a-z]*)|(?<other>[+-]|\.(?!\d)|\^|[^A-Z\d.^+-]+)/g
 // Multi-phase labels ("La2NiO4 + NiO") split on their " + " separators, which are kept
 const PHASE_SEPARATOR_RE = /(?<separator>\s*\+\s*)/
 
@@ -179,17 +180,17 @@ export interface FormulaLabelSegment {
   subscript: boolean
 }
 
-// Labels are often entry names rather than formulas (`mp-1234`, `2 Fe2O3`): a number or charge
-// run at the start of the label, or right after whitespace, is a prefix/id rather than a
-// stoichiometry and stays plain text. (Only here: tokenize_formula_markup keeps formula
-// semantics for the HTML/SVG renderers.)
+// Labels are often entry names rather than formulas (`mp-1234`, `Fe2O3 2`): a number right
+// after whitespace is an id or count rather than a stoichiometry and stays plain text, as a
+// leading coefficient does in every renderer. (Only here: tokenize_formula_markup keeps
+// formula semantics for the HTML/SVG renderers.)
 export function get_formula_label_segments(label: string): FormulaLabelSegment[] {
   const segments: FormulaLabelSegment[] = []
   // the ` + ` separators tokenize to a single plain text token themselves
   for (const part of label.split(PHASE_SEPARATOR_RE)) {
     const tokens = tokenize_formula_markup(part)
     for (const [idx, token] of tokens.entries()) {
-      const at_word_start = idx === 0 || /\s$/.test(tokens[idx - 1].text ?? ``)
+      const at_word_start = /\s$/.test(tokens[idx - 1]?.text ?? ``)
       const subscript = token.sub !== undefined && !at_word_start
       const text = token.text ?? token.sub ?? token.sup ?? ``
       const prev = segments.at(-1)

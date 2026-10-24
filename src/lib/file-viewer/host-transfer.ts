@@ -62,8 +62,5 @@ export const plan_host_file_transfer = ({
     return { kind: `reject`, reason: `unsupported-compression` }
   if (!is_indexable_trajectory_filename(normalized_filename))
     return { kind: `reject`, reason: `unsupported-large-format` }
-  return {
-    kind: `marker`,
-    content: format_large_file_marker({ file_path, file_size }),
-  }
+  return { kind: `marker`, content: format_large_file_marker({ file_path, file_size }) }
 }

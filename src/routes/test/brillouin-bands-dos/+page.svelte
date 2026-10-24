@@ -1,24 +1,16 @@
 <script lang="ts">
+  import { calc_lattice_params, type Matrix3x3 } from '#lib/math.js'
   import { BandsAndDos } from '#lib/spectral/index.js'
   import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
   import type { Crystal } from '#lib/structure/index.js'
 
+  const matrix: Matrix3x3 = [
+    [4.0, 0.0, 0.0],
+    [0.0, 4.0, 0.0],
+    [0.0, 0.0, 4.0],
+  ]
   const mock_structure: Crystal = {
-    lattice: {
-      matrix: [
-        [4.0, 0.0, 0.0],
-        [0.0, 4.0, 0.0],
-        [0.0, 0.0, 4.0],
-      ],
-      pbc: [true, true, true],
-      a: 4.0,
-      b: 4.0,
-      c: 4.0,
-      alpha: 90.0,
-      beta: 90.0,
-      gamma: 90.0,
-      volume: 64.0,
-    },
+    lattice: { matrix, pbc: [true, true, true], ...calc_lattice_params(matrix) },
     sites: [
       {
         species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],

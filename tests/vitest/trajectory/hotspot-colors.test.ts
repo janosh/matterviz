@@ -235,12 +235,7 @@ it.each([`energy`, `temperature`] as const)(
         field,
         populated_position.toArray(),
       ),
-    ).toEqual({
-      value: 0,
-      ratio: NaN,
-      average_atoms: 1,
-      occupied_frames: 1,
-    })
+    ).toEqual({ value: 0, ratio: NaN, average_atoms: 1, occupied_frames: 1 })
   },
 )
 

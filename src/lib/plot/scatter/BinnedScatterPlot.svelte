@@ -65,7 +65,6 @@
   } from '#lib/plot/core/types.js'
   import { COLOR_BAR_DEFAULTS, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import type { Obstacle } from '#lib/plot/core/decorations/index.js'
-  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import type { ExportProps } from '#lib/io/export.js'
@@ -164,13 +163,6 @@
       facet_layout?: FacetLayoutContext
     } = $props()
 
-  // Clear stale indices before the tooltip reads a replaced or shortened series array.
-  const reset_hover = () => {
-    void series.length
-    return null
-  }
-  let hovered_bin = $derived.by<DensityBin | null>(reset_hover)
-  let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(reset_hover)
   let tooltip_pos = $state<Point2D>({ x: 0, y: 0 })
   let label_measure_root = $state<HTMLDivElement>()
   const label_sizes = new SvelteMap<string, LabelSize>()
@@ -196,7 +188,6 @@
     auto_point_mode: density_config.auto_point_mode ?? default_density_auto_point_mode,
     bin_click: density_config.bin_click ?? `zoom`,
   })
-  const indexed_ref_lines = $derived(index_ref_lines(overlays_config.ref_lines))
   const point_labels_settings = $derived({
     font_size: point_labels.font_size ?? `11px`,
     max_count: point_labels.max_count ?? 50,
@@ -245,7 +236,7 @@
     decorations: () => [...colorbar.items, ...annotation_deco.items],
     exclusion_rects: () => colorbar.pinned_rects,
     marginals: () => resolved_marginals,
-    ref_lines: () => indexed_ref_lines,
+    ref_lines: () => overlays_config.ref_lines,
     pan: () => pan,
     facet_layout: () => facet_layout,
     tick_counts: { x: 7, y: 5 },
@@ -466,6 +457,13 @@
     render_mode === `points`
       ? [...visible_points(series, x_range, y_range, x_scale_fn, y_scale_fn, x_order)]
       : [],
+  )
+  // A hover holds only while the bins or points it was resolved against do: a data swap, zoom,
+  // pan or resize replaces them without a pointer event, so it clears until the next move
+  // instead of showing a bin or point that is no longer under the cursor
+  let hovered_bin = $derived.by<DensityBin | null>(() => (void density_result, null))
+  let hovered_point = $derived.by<DenseInternalPoint<Metadata> | null>(
+    () => (void points_in_view, null),
   )
   const pick_index = $derived(
     render_mode === `points` ? build_spatial_index(points_in_view, pick_radius_px) : null,

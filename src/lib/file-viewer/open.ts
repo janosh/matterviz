@@ -2,6 +2,7 @@ import {
   classify_payload,
   content_byte_size,
   decompress_trajectory_file,
+  is_empty_content,
 } from '#lib/io/decompress.js'
 import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
@@ -62,9 +63,8 @@ export const source_provenance = (source: MaterialSource): Partial<MaterialProve
     const source_url = String(source)
     return { source_url, source_filename: basename_from_url(source_url) }
   }
-  if (is_file(source)) {
+  if (is_file(source))
     return { source_filename: source.name, file: source, file_size: source.size }
-  }
   return {
     filename: source.filename,
     source_filename: source.source_filename ?? source.filename,
@@ -91,9 +91,8 @@ export const acquire_material = async (
   source: MaterialSource,
   signal?: AbortSignal,
 ): Promise<MaterialPayload> => {
-  if (typeof source === `string` || source instanceof URL) {
+  if (typeof source === `string` || source instanceof URL)
     return load_url(String(source), signal)
-  }
   if (is_file(source)) {
     const { content: data, filename } = await decompress_trajectory_file(source, signal)
     return { data, filename, source_filename: source.name, file: source }
@@ -101,10 +100,7 @@ export const acquire_material = async (
   const { data, filename, is_base64, ...metadata } = source
   if (typeof data === `string` || is_base64) return source
   const blob = data instanceof Blob ? data : new Blob([data])
-  const classified = await classify_payload(blob, [filename], {
-    hdf5_as_blob: true,
-    signal,
-  })
+  const classified = await classify_payload(blob, [filename], { hdf5_as_blob: true, signal })
   return { data: classified.content, filename: classified.filename, ...metadata }
 }
 
@@ -119,9 +115,8 @@ export const deliver_raw_file = async (
     source,
     signal,
   )
+  if (is_empty_content(data)) throw new Error(`file is empty`)
   const content = data instanceof Blob ? await data.arrayBuffer() : data
-  if ((typeof content === `string` ? content.length : content.byteLength) === 0)
-    throw new Error(`file is empty`)
   if (signal?.aborted) return
   await on_file(content, filename, {
     source_filename: source_filename ?? filename,

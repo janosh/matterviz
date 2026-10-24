@@ -302,23 +302,12 @@ describe(`bar_obstacles`, () => {
   })
 
   // one rect for the visible part: the cross range is the bar's width, the span its length
+  // oxfmt-ignore
   test.each<[string, boolean, Vec2, Vec2, object]>([
-    [
-      `vertical, clamped`,
-      true,
-      [0.4, 0.6],
-      [-0.4, 1.6],
-      { x: 0.4, y: 0, width: 0.2, height: 1 },
-    ],
+    [`vertical, clamped`, true, [0.4, 0.6], [-0.4, 1.6], { x: 0.4, y: 0, width: 0.2, height: 1 }],
     [`horizontal`, false, [0.4, 0.6], [0.1, 0.5], { x: 0.1, y: 0.4, width: 0.4, height: 0.2 }],
     [`covering the whole view`, true, [-3, 2], [0, 1], { x: 0, y: 0, width: 1, height: 1 }],
-    [
-      `zero width (a whisker)`,
-      false,
-      [0.7, 0.7],
-      [0, 1],
-      { x: 0, y: 0.7, width: 1, height: 0 },
-    ],
+    [`zero width (a whisker)`, false, [0.7, 0.7], [0, 1], { x: 0, y: 0.7, width: 1, height: 0 }],
   ])(`covers the visible part of a %s bar`, (_name, vertical, cross, span, expected) => {
     const [rect] = bar_obstacles(vertical, cross, span)
     for (const [key, value] of Object.entries(expected))

@@ -169,19 +169,15 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     let min_bar_edge = Number.POSITIVE_INFINITY
     let max_bar_edge = Number.NEGATIVE_INFINITY
     const is_log = get_scale_type_name(scale_type) === `log`
+    const usable = (edge: number) => Number.isFinite(edge) && (!is_log || edge > 0)
     for (const series of series_list) {
       if (series.render_mode === `line`) continue
       series.x.forEach((x_val, bar_idx) => {
         if (!Number.isFinite(x_val) || !Number.isFinite(series.y[bar_idx])) return
         const half_width = Math.abs(bar_width_at(series, bar_idx)) / 2
-        const left_edge = x_val - half_width
-        const right_edge = x_val + half_width
-        if (Number.isFinite(left_edge) && (!is_log || left_edge > 0)) {
-          min_bar_edge = Math.min(min_bar_edge, left_edge)
-        }
-        if (Number.isFinite(right_edge) && (!is_log || right_edge > 0)) {
-          max_bar_edge = Math.max(max_bar_edge, right_edge)
-        }
+        const [left_edge, right_edge] = [x_val - half_width, x_val + half_width]
+        if (usable(left_edge)) min_bar_edge = Math.min(min_bar_edge, left_edge)
+        if (usable(right_edge)) max_bar_edge = Math.max(max_bar_edge, right_edge)
       })
     }
     return Number.isFinite(min_bar_edge) && Number.isFinite(max_bar_edge)

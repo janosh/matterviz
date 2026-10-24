@@ -78,9 +78,8 @@ const worker_blob_url = (href: string): Promise<string> => {
   const cached = worker_blob_urls.get(href)
   if (cached) return cached
   const blob_url = fetch(href).then(async (response) => {
-    if (!response.ok) {
+    if (!response.ok)
       throw new Error(`Fetching worker script ${href} failed: HTTP ${response.status}`)
-    }
     const script = new Blob([await response.arrayBuffer()], { type: `text/javascript` })
     return URL.createObjectURL(script)
   })
@@ -345,9 +344,8 @@ const process_settings_change = ({ theme, defaults }: SettingsChangedMessage): v
       const container = get_container()
       if (!container) return
       if (current_result) await remount_current(container, gen)
-      else if (current_file) {
+      else if (current_file)
         await display_file(container, current_file, gen, replace_parse_controller().signal)
-      }
     },
     `Failed to apply settings`,
   )
@@ -393,9 +391,8 @@ const parse_file_data = (
   // An empty map (or a settings.json `null`, which merge() passes through) is "not
   // configured": the LAMMPS reader then guesses and warns as usual
   const load_options: TrajectoryLoadOptions = { index_above_bytes }
-  if (is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0) {
+  if (is_plain_object(atom_type_mapping) && Object.keys(atom_type_mapping).length > 0)
     load_options.atom_type_mapping = atom_type_mapping
-  }
   return open_material(
     { data: content, filename, is_base64, source_filename: filename },
     { ...load_options, signal },
@@ -587,9 +584,8 @@ const listen_to_host = (): void => {
 async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
   const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
-  if (!file_data?.content || !file_data.filename) {
+  if (!file_data?.content || !file_data.filename)
     throw new Error(`No data provided to MatterViz app`)
-  }
 
   // Where the extension serves the symmetry WASM; fetched only once an analysis needs it, so
   // the first render doesn't wait for it

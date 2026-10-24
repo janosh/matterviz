@@ -248,7 +248,16 @@ describe(`normalize_sweep`, () => {
               label: `50 GPa`,
               doses: { total: { energies: [0, 1], densities: [1, 2], efermi: 0.5 } },
               status: { unstable: true, note: `imaginary modes` },
-              phonon: { a2f: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } } },
+              phonon: {
+                a2f: { 'α²F': { frequencies: [0, 1], densities: [0, 0.5] } },
+                // JSON writes NaN (no value) as null
+                mode_values: {
+                  label: `λ_qν`,
+                  qpoints: [[0, 0, 0]],
+                  frequencies: [[0, 3]],
+                  values: [[null, 0.4]],
+                },
+              },
             },
             { value: 100, band_data: grid }, // typed grids pass through
           ],
@@ -267,6 +276,12 @@ describe(`normalize_sweep`, () => {
     expect(third.band_data).toBe(grid)
     expect(second.phonon).toEqual({
       a2f: { 'α²F': { type: `phonon`, frequencies: [0, 1], densities: [0, 0.5] } },
+      mode_values: {
+        label: `λ_qν`,
+        qpoints: [[0, 0, 0]],
+        frequencies: [[0, 3]],
+        values: [[NaN, 0.4]],
+      },
     })
     expect(sweep.descriptors).toEqual([
       { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 20 },
@@ -303,6 +318,9 @@ describe(`normalize_sweep`, () => {
     [`an unknown frame field (e.g. a typo)`, raw_sweep({ dos: {} }), `frames[0].dos: unknown field`],
     [`an electronic α²F`, raw_sweep({ phonon: { a2f: { x: { energies: [0], densities: [1] } } } }), `frames[0].phonon.a2f.x: must be phonon data, got electronic`],
     [`an unknown phonon field`, raw_sweep({ phonon: { dispersion: {} } }), `frames[0].phonon.dispersion: unknown field`],
+    [`non-object mode values`, raw_sweep({ phonon: { mode_values: [] } }), `frames[0].phonon.mode_values: must be an object`],
+    [`mode values unlike their frequencies`, raw_sweep({ phonon: { mode_values: { label: `λ`, qpoints: [[0, 0, 0]], frequencies: [[1, 2]], values: [[0.1]] } } }), `frames[0].phonon.mode_values: values[0] must be 2 numbers`],
+    [`mode values without q-points`, raw_sweep({ phonon: { mode_values: { label: `λ`, frequencies: [[1]], values: [[0.1]] } } }), `frames[0].phonon.mode_values: qpoints must be an array`],
     [`an unknown status field`, raw_sweep({ status: { why: `x` } }), `frames[0].status.why: unknown field`],
     [`an unknown series field`, raw_sweep({}, { series: [{ id: `a`, frames: [], frames_: [] }] }), `series[0].frames_: unknown field`],
     [`an unknown axis field`, raw_sweep({}, { axis: { key: `p`, label: `P`, units: `GPa` } }), `axis.units: unknown field`],

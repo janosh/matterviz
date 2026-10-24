@@ -968,12 +968,7 @@ describe(`HeatmapTable`, () => {
   it(`applies root, density, column, and row styles`, () => {
     mount_table({
       data: [
-        {
-          Col1: `a`,
-          Col2: `b`,
-          style: `background-color: yellow;`,
-          class: `custom-row`,
-        },
+        { Col1: `a`, Col2: `b`, style: `background-color: yellow;`, class: `custom-row` },
         { Col1: `c`, Col2: `d` },
       ],
       columns: [
@@ -1025,9 +1020,7 @@ describe(`HeatmapTable`, () => {
       mount_sample({ search })
 
       expect(document.querySelector(`.control-buttons .icon-btn`)).not.toBeNull()
-      if (open_search) {
-        await click(doc_query<HTMLButtonElement>(`.control-buttons .icon-btn`))
-      }
+      if (open_search) await click(doc_query<HTMLButtonElement>(`.control-buttons .icon-btn`))
 
       const search_input = doc_query<HTMLInputElement>(`input[type="search"]`)
       if (placeholder) expect(search_input.placeholder).toBe(placeholder)
@@ -1060,9 +1053,7 @@ describe(`HeatmapTable`, () => {
 
       const model_cells = col_values(`Model`)
       expect(model_cells).toHaveLength(expected.length)
-      for (const [idx, name] of expected.entries()) {
-        expect(model_cells[idx]).toContain(name)
-      }
+      for (const [idx, name] of expected.entries()) expect(model_cells[idx]).toContain(name)
     })
 
     it(`refreshes indexed searches after row, key, filter, object and Date changes`, async () => {
@@ -1205,9 +1196,7 @@ describe(`HeatmapTable`, () => {
       // The menu sits in the top layer, outside the table's box; moving into it must not
       // dismiss it.
       doc_query(`.table-container`).dispatchEvent(
-        new MouseEvent(`mouseleave`, {
-          relatedTarget: boxes[0],
-        }),
+        new MouseEvent(`mouseleave`, { relatedTarget: boxes[0] }),
       )
       await tick()
       expect(doc_query(`.column-toggles > button`).getAttribute(`aria-expanded`)).toBe(`true`)
@@ -1271,51 +1260,49 @@ describe(`HeatmapTable`, () => {
     )
   })
 
-  describe(`Row Selection`, () => {
-    it(`preserves IDs across row replacement, tracks full selection, then clears it`, async () => {
-      const state = $state({ data: sample_data, selected_ids: [] as string[] })
-      mount_table(
-        bind_props(
-          {
-            columns: sample_columns,
-            show_row_select: true,
-            row_key: `Model`,
-            style: `--accent-color: rgb(255 255 0)`,
-          },
-          state,
-        ),
-      )
-      const checkboxes = [
-        ...document.querySelectorAll<HTMLInputElement>(`td.select-col input[type="checkbox"]`),
-      ]
-      expect(checkboxes).toHaveLength(3)
-      expect(checkboxes.every((checkbox) => !checkbox.checked)).toBe(true)
+  it(`row selection preserves IDs across row replacement, tracks full selection, then clears it`, async () => {
+    const state = $state({ data: sample_data, selected_ids: [] as string[] })
+    mount_table(
+      bind_props(
+        {
+          columns: sample_columns,
+          show_row_select: true,
+          row_key: `Model`,
+          style: `--accent-color: rgb(255 255 0)`,
+        },
+        state,
+      ),
+    )
+    const checkboxes = [
+      ...document.querySelectorAll<HTMLInputElement>(`td.select-col input[type="checkbox"]`),
+    ]
+    // every checkbox is named: a bare one reads as "checkbox" to a screen reader
+    const label = (box: HTMLInputElement) => box.getAttribute(`aria-label`)
+    expect(checkboxes.map(label)).toEqual([1, 2, 3].map((num) => `Select row ${num}`))
+    expect(checkboxes.every((checkbox) => !checkbox.checked)).toBe(true)
 
-      await click(checkboxes[0])
-      const select_all = doc_query<HTMLInputElement>(`th.select-col input[type="checkbox"]`)
-      expect(select_all.checked).toBe(false)
-      state.data = sample_data.map((row) => ({ ...row, Score: row.Score + 1 }))
-      await tick()
-      expect(checkboxes[0].checked).toBe(true)
-      expect(document.querySelectorAll(`tr.selected`)).toHaveLength(1)
-      expect(col_values(`Score`)[0]).toBe(`1.95`)
-      expect(document.querySelector(`.selection-badge .badge`)?.textContent).toBe(`1`)
+    await click(checkboxes[0])
+    const select_all = doc_query<HTMLInputElement>(`th.select-col input[type="checkbox"]`)
+    expect([select_all.checked, label(select_all)]).toEqual([false, `Select all on this page`])
+    state.data = sample_data.map((row) => ({ ...row, Score: row.Score + 1 }))
+    await tick()
+    expect(checkboxes[0].checked).toBe(true)
+    expect(document.querySelectorAll(`tr.selected`)).toHaveLength(1)
+    expect(col_values(`Score`)[0]).toBe(`1.95`)
+    expect(document.querySelector(`.selection-badge .badge`)?.textContent).toBe(`1`)
 
-      for (const checkbox of checkboxes.slice(1)) {
-        await click(checkbox)
-      }
+    for (const checkbox of checkboxes.slice(1)) await click(checkbox)
 
-      expect(checkboxes.every((checkbox) => checkbox.checked)).toBe(true)
-      expect(select_all.checked).toBe(true)
-      expect(state.selected_ids).toEqual([`Model A`, `Model B`, `Model C`])
-      const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
-      expect(badge?.textContent).toBe(`3`)
-      expect(badge?.style.color).toBe(`black`) // contrasts with the yellow --accent-color
+    expect(checkboxes.every((checkbox) => checkbox.checked)).toBe(true)
+    expect([select_all.checked, label(select_all)]).toEqual([true, `Deselect all`])
+    expect(state.selected_ids).toEqual([`Model A`, `Model B`, `Model C`])
+    const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
+    expect(badge?.textContent).toBe(`3`)
+    expect(badge?.style.color).toBe(`black`) // contrasts with the yellow --accent-color
 
-      await click(doc_query<HTMLButtonElement>(`.selection-badge`))
-      expect(state.selected_ids).toEqual([])
-      expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
-    })
+    await click(doc_query<HTMLButtonElement>(`.selection-badge`))
+    expect(state.selected_ids).toEqual([])
+    expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
   })
 
   it(`Shift+click toggles multi-sort columns and regular click clears them`, async () => {
@@ -1390,11 +1377,7 @@ describe(`HeatmapTable`, () => {
 
   describe(`Pagination`, () => {
     it(`renders controls, caps rows at page_size, and disables prev/first on page 1`, () => {
-      mount_table({
-        data: large_data,
-        columns: sample_columns,
-        pagination: { page_size: 10 },
-      })
+      mount_table({ data: large_data, columns: sample_columns, pagination: { page_size: 10 } })
 
       expect(document.querySelector(`.pagination`)).not.toBeNull()
       // Check page input value (not textContent since it's in an input)
@@ -1404,11 +1387,9 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelectorAll(`tbody tr`)).toHaveLength(10)
       expect(document.querySelector(`.page-size-select`)).toBeNull()
 
-      const buttons = document.querySelectorAll<HTMLButtonElement>(`.page-btn`)
-      expect(buttons[0].disabled).toBe(true) // First
-      expect(buttons[1].disabled).toBe(true) // Prev
-      expect(buttons[2].disabled).toBe(false) // Next
-      expect(buttons[3].disabled).toBe(false) // Last
+      // First and Previous are disabled on page 1, Next and Last are not
+      const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.page-btn`)]
+      expect(buttons.map((btn) => btn.disabled)).toEqual([true, true, false, false])
     })
 
     it(`keeps the current page across same-length data refreshes, resets on row count change`, async () => {
@@ -1504,6 +1485,12 @@ describe(`HeatmapTable`, () => {
     // the click that follows the release lands on the handle inside the sortable header
     await fire(handle, mouse(`click`))
     expect(doc_query(`th[data-col-id="Score"]`).getAttribute(`aria-sort`)).toBe(`none`)
+    // keyboard: a named tab stop whose arrows step the width and whose Enter doesn't sort
+    expect(handle.getAttribute(`aria-label`)).toBe(`Resize Score column`)
+    expect(handle.tabIndex).toBe(0)
+    for (const key of [`ArrowRight`, `ArrowLeft`, `Enter`]) handle.dispatchEvent(keydown(key))
+    expect(state.column_prefs.Score?.width).toBe(490) // 500 is the cap: ArrowRight stays there
+    expect(doc_query(`th[data-col-id="Score"]`).getAttribute(`aria-sort`)).toBe(`none`)
   })
 
   describe(`Regression tests for bug fixes`, () => {
@@ -1584,9 +1571,8 @@ describe(`HeatmapTable`, () => {
       expect(document.body.textContent).not.toContain(`n/a`)
       await click(document.querySelectorAll<HTMLElement>(`thead tr:last-child th`)[1])
       expect(col_values(`Name`)).toEqual([`Fe`, `O`])
-      for (const cell of document.querySelectorAll(`td[data-col="Mass"]`)) {
+      for (const cell of document.querySelectorAll(`td[data-col="Mass"]`))
         expect(cell.getAttribute(`style`)).toContain(`--cell-bg:`)
-      }
     })
 
     it(`reads an explicit key present only after the first 50 rows`, () => {
@@ -2536,16 +2522,18 @@ describe(`HeatmapTable`, () => {
       const columns = plain_columns(`Model`, `Score`)
       mount_table(bind_props({ data, columns, show_controls: true, search: true }, state))
       await click(document.querySelector<HTMLButtonElement>(`.pane-toggle`))
+      // each column's selects are named after it (they were unlabeled)
       const color_labels = () =>
-        [...document.querySelectorAll(`.col-color-label`)].map((element) =>
-          element.textContent?.trim(),
+        [...document.querySelectorAll(`.col-color-row select`)].map((sel) =>
+          sel.getAttribute(`aria-label`),
         )
-      expect(color_labels()).toEqual([`Score`])
+      const score_labels = [`Score color scheme`, `Score better direction`]
+      expect(color_labels()).toEqual(score_labels)
       expect(cell_at(0, 1).style.getPropertyValue(`--cell-bg`)).not.toBe(``) // it paints
 
       await settle_search(state, `beta`) // filters away every numeric Score
       expect(col_values(`Model`)).toEqual([`beta`])
-      expect(color_labels()).toEqual([`Score`])
+      expect(color_labels()).toEqual(score_labels)
     })
   })
 
@@ -2561,13 +2549,11 @@ describe(`HeatmapTable`, () => {
       cell_at(...target).dispatchEvent(pointer(`pointermove`))
       globalThis.window.dispatchEvent(pointer(`pointerup`))
     }
-    const copy_shortcut = () =>
-      globalThis.window.dispatchEvent(
-        new KeyboardEvent(`keydown`, { key: `c`, metaKey: true }),
-      )
+    const copy_shortcut = (target: EventTarget = window) =>
+      target.dispatchEvent(keydown(`c`, { metaKey: true }))
     const written_text = (): string =>
       (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
-    const mount_sample_table = async (props: Omit<TableProps, 'data' | 'columns'> = {}) => {
+    const mount_sample_table = async (props: Partial<TableProps> = {}) => {
       mount_sample(props)
       await tick()
     }
@@ -2579,7 +2565,7 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
-      copy_shortcut()
+      copy_shortcut(doc_query(`.resize-handle`)) // a focused resize handle lets Cmd+C through
       expect(written_text()).toBe(`Model A\t0.95\nModel B\t0.85`)
 
       drag_cells([0, 0], [0, 0])
@@ -2610,7 +2596,9 @@ describe(`HeatmapTable`, () => {
         if (action === `hide`) state.hidden_columns = [`Value`]
         else if (action === `reorder`) state.column_order = [`Score`, `Model`, `Value`]
         else if (action === `sort`) doc_query(`th[data-col-id="Model"]`).click()
-        else if (action === `Escape`) window.dispatchEvent(keydown(`Escape`))
+        // from a focused resize handle, which must let it bubble to the window
+        else if (action === `Escape`)
+          doc_query(`.resize-handle`).dispatchEvent(keydown(`Escape`))
         else document.body.dispatchEvent(pointer(`pointerdown`))
         await tick()
         expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(0)
@@ -2632,8 +2620,10 @@ describe(`HeatmapTable`, () => {
       expect(on_row_click).toHaveBeenCalledTimes(1)
     })
 
+    // A cell's own tab and newline would split it into extra TSV cells and rows
     it(`right-click copy column copies all filtered rows across pages`, async () => {
-      await mount_sample_table({ pagination: { page_size: 2 } })
+      const data = sample_data.with(2, { ...sample_data[2], Model: `Model\tC\nx` })
+      await mount_sample_table({ data, pagination: { page_size: 2 } })
 
       await fire(cell_at(0, 0), pointer(`contextmenu`, { button: 2 }))
 
@@ -2644,8 +2634,12 @@ describe(`HeatmapTable`, () => {
       await click(copy_option)
 
       // all rows, not just the 2 on the current page
-      expect(written_text()).toBe(`Model A\nModel B\nModel C`)
+      expect(written_text()).toBe(`Model A\nModel B\nModel C x`)
       expect(document.querySelector(`.action-menu`)).toBeNull()
+      await click(doc_query(`button[aria-label="Next page"]`))
+      drag_cells([2, 0], [2, 1])
+      copy_shortcut()
+      expect(written_text()).toBe(`Model C x\t0.75`)
     })
 
     it(`context menu on headers offers copy for non-heatmap columns`, async () => {
@@ -2792,9 +2786,8 @@ describe(`HeatmapTable`, () => {
         .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
         .mockImplementation(function (this: HTMLElement) {
           if (!(this instanceof HTMLTableRowElement)) return 0
-          if (++measurement_reads > min_window * 5) {
+          if (++measurement_reads > min_window * 5)
             throw new Error(`row-height measurement loop`)
-          }
           if (!rows_have_layout) return 0
           const row_idx = Number(
             this.querySelector<HTMLElement>(`[data-row-idx]`)?.dataset.rowIdx,

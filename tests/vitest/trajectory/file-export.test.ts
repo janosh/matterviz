@@ -295,13 +295,10 @@ describe(`collect_frame_property_rows`, () => {
 
   // An indexed trajectory holds only its first frames in memory; reading `frames` directly
   // would export a 1-row table for a 3-frame range.
+  // oxfmt-ignore
   test.each([
     [`absent properties`, run_without_properties, make_async_resolver],
-    [
-      `sparse properties`,
-      with_property_rows(trajectory, [plot_metadata[0], plot_metadata[2]]),
-      () => vi.fn(resolver),
-    ],
+    [`sparse properties`, with_property_rows(trajectory, [plot_metadata[0], plot_metadata[2]]), () => vi.fn(resolver)],
   ] as const)(
     `resolves every indexed frame with %s`,
     async (_description, run, make_resolver) => {
@@ -459,18 +456,11 @@ describe(`TrajectoryExportPane property export`, () => {
 
   // POSCAR cannot write a frame without a cell, so the button refuses before the click rather
   // than failing partway through a zip the user is already waiting on
+  // oxfmt-ignore
   test.each([
     null,
-    [
-      [NaN, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ],
-    [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 0],
-    ],
+    [[NaN, 0, 0], [0, 1, 0], [0, 0, 1]],
+    [[1, 0, 0], [0, 1, 0], [0, 0, 0]],
   ])(`refuses exports requiring the invalid lattice %s`, async (matrix) => {
     const molecule = {
       ...trajectory,

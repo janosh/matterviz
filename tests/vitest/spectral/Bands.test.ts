@@ -366,6 +366,26 @@ describe(`Bands component`, () => {
     },
   )
 
+  // the Spin control and its reset only exist with a spin-down channel to pick: a hidden
+  // `down_only` marked the section changed with nothing visible to reset. Without a spin-down
+  // channel `down_only` also drew nothing, unmounting plot and controls
+  it.each([
+    [`unpolarized`, false, { ...base_band_structure, type: `electronic` as const }],
+    [`spin-polarized`, true, spin_polarized_electronic],
+  ])(`%s bands show the Spin control: %s`, async (_label, has_spin, band_structure) => {
+    await mount_plot({
+      band_structs: { '': band_structure },
+      band_spin_mode: `down_only`,
+      show_controls: true,
+      controls_open: true,
+    })
+    await vi.waitFor(() => expect(document.querySelector(`#bands-path-mode`)).not.toBeNull())
+    expect(line_count()).toBe(4)
+    expect(Boolean(document.querySelector(`#bands-spin-mode`))).toBe(has_spin)
+    const reset = document.querySelector(`button[title="Reset path to defaults"]`)
+    expect(Boolean(reset)).toBe(has_spin)
+  })
+
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()
     const controls_state = { controls_open: true }
@@ -445,7 +465,7 @@ describe(`Bands component`, () => {
     expect(on_point_click).toHaveBeenCalledOnce()
   })
 
-  // a per-band, per-spin style (FermiSurfaceBands' sheet colours) replaces the structure colour
+  // a per-band, per-spin style (ElectronicStructure's sheet colours) replaces the structure colour
   // and an emphasised band keeps its own
   it.each([null, 2])(
     `line_kwargs callback strokes, highlighted band %s`,
@@ -552,6 +572,49 @@ describe(`Bands component`, () => {
     expect(document.body.textContent).not.toMatch(/Eg:/)
   })
 
+  // λ_qν on Γ (4 modes), between path q-points (one NaN mode), off the path and on X (4 modes)
+  const mode_values = {
+    label: `λ_qν`,
+    qpoints: [
+      [0, 0, 0],
+      [0.125, 0, 0],
+      [0.5, 0.5, 0],
+      [0.75, 0, 0],
+    ] as Vec3[],
+    frequencies: [
+      [0, 0.8, 1.6, 2.4],
+      [0.25, 1, 1.9, 2.6],
+      [1, 2, 3, 4],
+      [1.5, 2.3, 3.1, 3.9],
+    ],
+    values: [
+      [0.1, 0.2, 0.3, 0.4],
+      [0.5, NaN, 0.2, 0.1],
+      [9, 9, 9, 9],
+      [0.3, 0.2, 0.1, 0],
+    ],
+  }
+  const with_lattice = { ...base_band_structure, recip_lattice: cubic_matrix(1) }
+  // oxfmt-ignore
+  it.each<[string, Partial<ComponentProps<typeof Bands>>, number, string | null]>([
+    [`on-path q-points as markers`, { band_structs: { '': with_lattice }, mode_values }, 11, null],
+    [`from the structure's lattice`, { band_structs: { '': base_band_structure }, structure: make_crystal(1, [[`Cu`, [0, 0, 0]]]), mode_values }, 11, null],
+    [`none without a lattice`, { band_structs: { '': base_band_structure }, mode_values }, 0, `λ_qν needs a reciprocal lattice`],
+    [`none off the path`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, qpoints: mode_values.qpoints.map(() => [0.5, 0.5, 0] as Vec3) } }, 0, `None of the 4 q-points of λ_qν lie on the band path`],
+    [`none for ragged values`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, values: [[0.1]] } }, 0, `Invalid λ_qν: values must have one row per q-point (4), got 1`],
+  ])(`mode_values: %s`, async (_desc, props, n_markers, notice) => {
+    const plot = await mount_plot({ ...props, show_controls: false })
+    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(n_markers)
+    const colorbar = plot.querySelector(`.colorbar`)
+    expect(colorbar?.textContent ?? null).toEqual(
+      n_markers ? expect.stringContaining(`λ_qν`) : null,
+    )
+    expect(document.querySelector(`.mode-values-error`)?.textContent?.trim() ?? null).toEqual(
+      notice && expect.stringContaining(notice),
+    )
+    expect(line_count()).toBeGreaterThan(0) // the bands stay
+  })
+
   const tick_labels = () => [
     ...document.querySelectorAll<SVGTextElement>(`.x-axis .tick text`),
   ]
@@ -590,9 +653,7 @@ describe(`Bands component`, () => {
       writable<{
         band_structs: Record<string, BaseBandStructure>
         view?: Partial<AxisRanges>
-      }>({
-        band_structs: { '': base_band_structure },
-      }),
+      }>({ band_structs: { '': base_band_structure } }),
     )
     await mount_plot({
       get band_structs() {

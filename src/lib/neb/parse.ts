@@ -31,7 +31,11 @@ import type { Vec3 } from '#lib/math.js'
 import { finite_vec3_from_values } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
-import { count_xyz_frames, iter_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
+import {
+  has_multiple_xyz_frames,
+  iter_xyz_frames,
+  TextLines,
+} from '#lib/trajectory/helpers.js'
 import { create_warning_collector, parse_warn } from '#lib/trajectory/parse/shared.js'
 import { build_xyz_frame, parse_xyz_comment_metadata } from '#lib/trajectory/parse/xyz.js'
 import type { NebImage, ReactionPath } from './index'
@@ -161,6 +165,14 @@ const xyz_comment_energy = (comment: string, context: string): number => {
   )
 }
 
+// Forces the parsers put on the sites (XYZ frames and loose files), kept only when all finite
+const site_forces = ({ sites }: AnyStructure): Pick<NebImage, `forces`> => {
+  const forces = sites.map(({ properties }) =>
+    finite_vec3_from_values(properties?.force ?? properties?.forces),
+  )
+  return forces.every((force): force is Vec3 => force !== undefined) ? { forces } : {}
+}
+
 // Read a multi-frame extended-XYZ file as one reaction path, one image per frame. Frame
 // walking, `Properties=` column layout, lattice, pbc and comment metadata all come from
 // the trajectory XYZ parser, which is the single source of truth for the format.
@@ -168,7 +180,10 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
   const images: NebImage[] = []
   const collector = create_warning_collector(parse_warn)
   const lines = new TextLines(content)
-  for (const frame of iter_xyz_frames(lines)) {
+  const frames = iter_xyz_frames(lines)
+  let next = frames.next()
+  for (; !next.done; next = frames.next()) {
+    const frame = next.value
     const image_idx = images.length
     const context = `${filename} frame ${display_idx(image_idx)}`
     const { structure } = build_xyz_frame(
@@ -177,16 +192,20 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
       { frame_label: context, default_step: image_idx },
       collector,
     )
-    // Forces as read by the trajectory parser onto the sites, which it keeps only when every
-    // site got a finite one
-    const forces = structure.sites.map(({ properties }) =>
-      finite_vec3_from_values(properties?.force),
-    )
     images.push({
       structure,
       energy: xyz_comment_energy(frame.comment, context),
-      ...(forces.every((force): force is Vec3 => force !== undefined) && { forces }),
+      ...site_forces(structure),
     })
+  }
+  // A frame cut short by the end of the file: dropping it silently made the transition
+  // state the final image, so the reverse barrier read 0
+  const torn = next.value
+  if (torn) {
+    throw new Error(
+      `${filename} frame ${display_idx(images.length)} (line ${torn.start + 1}) declares ` +
+        `${torn.num_atoms} atoms but the file ends after ${Math.max(0, torn.end - torn.start - 2)} of them`,
+    )
   }
   if (images.length < 2) {
     throw new Error(
@@ -250,19 +269,20 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
       for (const [key, path] of Object.entries(json_paths)) add_path(key, path, filename)
       continue
     }
-    if (is_xyz(filename) && count_xyz_frames(content) > 1) {
+    if (is_xyz(filename) && has_multiple_xyz_frames(content)) {
       add_path(filename, parse_xyz_reaction_path(content, filename), filename)
       continue
     }
     const structure = parse_structure_file(content, filename)
     loose.push({
       structure,
-      // content is trimmed like parse_xyz_reaction_path does it, else a leading blank
-      // line pushes the comment out of index 1 and the energy reads as missing
+      // trimmed, else a leading blank line pushes the comment out of index 1 and the energy
+      // reads as missing
       energy: is_xyz(filename)
         ? xyz_comment_energy(content.trim().split(/\r?\n/)[1] ?? ``, filename)
         : structure_energy(structure, filename),
       label: filename,
+      ...site_forces(structure),
     })
   }
 

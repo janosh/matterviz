@@ -1,20 +1,17 @@
 <script lang="ts">
   import LazyDemo from './LazyDemo.svelte'
-  import { goto } from '$app/navigation'
-  import type { ChemicalElement } from '#lib'
   import element_data from '#lib/element/data.js'
   import { array_extent, array_max, array_min, type Vec2 } from '#lib/math.js'
   import TableInset from '#lib/periodic-table/TableInset.svelte'
+  import { open_element_page } from '#site/state.svelte.js'
 
   // Each element shows two values as diagonal triangles (atomic mass + density)
-  const two_fold_data = element_data.map((element) => [
-    element.atomic_mass,
-    element.density || 0,
-  ])
-
-  const atomic_mass_range = array_extent(element_data.map((element) => element.atomic_mass))
-
   const densities = element_data.map((element) => element.density || 0)
+  const two_fold_data = element_data.map((element, idx) => [
+    element.atomic_mass,
+    densities[idx],
+  ])
+  const atomic_mass_range = array_extent(element_data.map((element) => element.atomic_mass))
   const density_range: Vec2 = [
     array_min(densities.filter((dens) => dens > 0)),
     array_max(densities),
@@ -23,11 +20,6 @@
     [`Atomic Mass (u)`, atomic_mass_range],
     [`Density (g/cm³)`, density_range],
   ] as const
-
-  const on_activate = (element: ChemicalElement) => {
-    if (!element?.name) return
-    goto(`/${element.name.toLowerCase()}`)
-  }
 </script>
 
 <h2 id="multi-value-heatmap" style="margin-top: 3em">Multi-value Heatmap</h2>
@@ -47,7 +39,7 @@ The periodic table supports multiple values per element with different visual la
       tile_props={{ show_name: false, show_number: false }}
       heatmap_values={two_fold_data}
       color_scale="interpolateRdYlBu"
-      {on_activate}
+      on_activate={open_element_page}
     >
       {#snippet inset()}
         <TableInset>

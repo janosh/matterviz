@@ -539,18 +539,13 @@ describe(`collected_frame_idx`, () => {
 
 // Emphasized trails (TrajectoryLines' fat lines) draw trail_segments' point pairs: they must be
 // the segments, positions and colors a window's definition (reference_draw) asks for.
+// oxfmt-ignore
 test.each([
   [`whole run, element colors`, {}],
   [`time colors`, { color_mode: `time` }],
   [`off-grid window on a stride`, { frame_stride: 3, end_frame: 7, trail_frames: 5 }],
-  [
-    `time colors, off-grid window on a stride`,
-    { color_mode: `time`, frame_stride: 3, end_frame: 7, trail_frames: 6 },
-  ],
-  [
-    `anchored heads, time colors`,
-    { color_mode: `time`, anchor_positions: Float64Array.from([10, 0, 0, 0, 10, 0]) },
-  ],
+  [`time colors, off-grid window on a stride`, { color_mode: `time`, frame_stride: 3, end_frame: 7, trail_frames: 6 }],
+  [`anchored heads, time colors`, { color_mode: `time`, anchor_positions: Float64Array.from([10, 0, 0, 0, 10, 0]) }],
 ] as const)(`trail_segments draws the window's definition: %s`, (_label, options) => {
   const stream = two_atom_stream(9)
   const { frame_stride, color_mode = `element` } = options as LineOptions

@@ -105,6 +105,17 @@ function node_ref_resolver(
   }
 }
 
+// A node without an id is identified by its index, so no other node's id may equal it: links
+// naming that number (and the folded graph bucket_sankey_data emits) would be ambiguous
+function assert_unique_node_keys(nodes: readonly SankeyNode<unknown>[]): void {
+  const ids = new Set(nodes.map((node) => node.id))
+  const clash = nodes.findIndex((node, idx) => node.id === undefined && ids.has(idx))
+  if (clash === -1) return
+  throw new Error(
+    `Sankey node ${clash} (${JSON.stringify(nodes[clash].label)}) has no id, but another node's id is ${clash}. Supply unique ids for every node when mixing explicit ids with positional ones.`,
+  )
+}
+
 // Build a SankeyData object from parallel flat arrays (e.g. the plotly/matbench
 // `link.source`/`link.target`/`link.value` + `node.label` format).
 export function sankey_from_links(
@@ -223,6 +234,7 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   // Identity is `id ?? index`, matching what compute_sankey_layout emits: labels need not be
   // unique, so keying on one would merge distinct nodes. References resolve as in the layout.
   const keys: (string | number)[] = data.nodes.map((node, idx) => node.id ?? idx)
+  assert_unique_node_keys(data.nodes)
   // -1 for a reference that names no node; such a link is left for the layout to report
   const resolve = node_ref_resolver(data, false)
 
@@ -346,6 +358,7 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
       )
     }
   }
+  assert_unique_node_keys(data.nodes)
   // All-zero link values would make d3-sankey divide by zero (NaN ribbon paths)
   const has_flow = data.links.some((link) => link.value > 0)
   if (!(width > 0) || !(height > 0) || data.nodes.length === 0 || !has_flow)

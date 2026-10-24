@@ -211,6 +211,29 @@ test.describe(`PhononModeExplorer`, () => {
     await explorer.getByRole(`button`, { name: `Pause` }).click()
   })
 
+  test(`frames complete the polyhedra picked in the viewer's controls`, async ({ page }) => {
+    await open_explorer(page)
+    // rock salt completes the same octahedra in every neighbor mode, a perovskite does not
+    const picker = page.getByRole(`region`, { name: `Demo fixtures` })
+    await picker.getByRole(`button`, { name: /BaTiO3 cubic/ }).click()
+    const explorer = page.locator(`#phonon-mode-explorer`)
+    await expect(explorer.getByRole(`button`, { name: `Hide Ba atoms` })).toBeVisible()
+    const viewer = explorer.locator(`.trajectory-pane .trajectory`)
+    // exported frames include the corner copies completion adds; the toolbar is hover-revealed
+    const n_sites = async () => {
+      await viewer.hover()
+      return Number((await download_extxyz(page, explorer)).split(`\n`, 1)[0])
+    }
+    const default_sites = await n_sites()
+    await viewer.hover()
+    await explorer.locator(`button.structure-controls-toggle`).click()
+    await explorer.locator(`[data-key="show_polyhedra"] select`).selectOption(`always`)
+    await explorer
+      .locator(`[data-key="polyhedra_neighbor_mode"] select`)
+      .selectOption(`bonded`)
+    await expect.poll(n_sites).toBeGreaterThan(default_sites)
+  })
+
   test(`picker swaps mode datasets and accepts local phonopy output`, async ({ page }) => {
     await open_explorer(page)
     const picker = page.getByRole(`region`, { name: `Demo fixtures` })

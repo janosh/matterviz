@@ -1,6 +1,7 @@
 import * as density_utils from '#lib/plot/scatter/adaptive-density.js'
 import type { Vec2 } from '#lib/math.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
+import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
 import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
 import type { BinnedDensityConfig } from '#lib/plot/scatter/binned-scatter-types.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
@@ -10,6 +11,7 @@ import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  fire,
   mock_fullscreen,
   bind_props,
   click_export,
@@ -84,11 +86,8 @@ const resize_plot = async (next_width: number, next_height: number) => {
   trigger_resize_observer(binned_plot())
   await settle()
 }
-const plot_rect = (): TestRect => {
-  const clip = svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`)
-  const num = (attr: string) => Number(clip.getAttribute(attr))
-  return { x: num(`x`), y: num(`y`), width: num(`width`), height: num(`height`) }
-}
+const plot_rect = (): Rect =>
+  svg_rect(svg_query(`clipPath[id^="binned-scatter-plot-area-"] rect`))
 // Drawn reference lines, without the transparent hit line each ReferenceLine adds
 const visible_ref_lines = () =>
   [...document.querySelectorAll(`.reference-lines line`)].filter(
@@ -132,19 +131,13 @@ const point_tooltip_snippet = () =>
 const svg_num = (element: Element, attr_name: string): number =>
   Number(element.getAttribute(attr_name))
 const css_px = (value: string): number => Number(value.replace(`px`, ``))
-type TestRect = { x: number; y: number; width: number; height: number }
-const decoration_rect = (selector: string): TestRect => {
+const decoration_rect = (selector: string): Rect => {
   const { dataset } = doc_query(selector)
   const [x, y, width, height] = [`X`, `Y`, `Width`, `Height`].map((dim) =>
     Number(dataset[`decoration${dim}`]),
   )
   return { x, y, width, height }
 }
-const rects_intersect = (first: TestRect, second: TestRect): boolean =>
-  first.x < second.x + second.width &&
-  second.x < first.x + first.width &&
-  first.y < second.y + second.height &&
-  second.y < first.y + first.height
 const uniform_density_series = (columns = 32, rows = 24) => {
   const idxs = Array.from({ length: columns * rows }, (_value, point_idx) => point_idx)
   const x = idxs.map((point_idx) => ((point_idx % columns) + 0.5) / columns)
@@ -168,7 +161,7 @@ describe(`BinnedScatterPlot`, () => {
   test.each([false, true])(
     `separate density scales retain overlapping series and picking (reversed=%s)`,
     async (reversed) => {
-      const rectangles: (TestRect & { color: CanvasRenderingContext2D[`fillStyle`] })[] = []
+      const rectangles: (Rect & { color: CanvasRenderingContext2D[`fillStyle`] })[] = []
       const ctx = mock_canvas_context({
         fillRect: vi.fn((x: number, y: number, width: number, height: number) =>
           rectangles.push({ x, y, width, height, color: ctx.fillStyle }),
@@ -410,7 +403,7 @@ describe(`BinnedScatterPlot`, () => {
     for (const rect of [anno_rect, bar_rect]) {
       expect(Object.values(rect).every(Number.isFinite), JSON.stringify(rect)).toBe(true)
     }
-    expect(rects_intersect(anno_rect, bar_rect), JSON.stringify({ anno_rect, bar_rect })).toBe(
+    expect(rects_overlap(anno_rect, bar_rect), JSON.stringify({ anno_rect, bar_rect })).toBe(
       false,
     )
   })
@@ -844,8 +837,7 @@ describe(`BinnedScatterPlot`, () => {
       window.dispatchEvent(
         new MouseEvent(`mousemove`, { buttons: 1, clientX: end[0], clientY: end[1] }),
       )
-      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: end[0], clientY: end[1] }))
-      await tick()
+      await fire(window, new MouseEvent(`mouseup`, { clientX: end[0], clientY: end[1] }))
     }
 
     // [min, max] of the numeric tick labels: the view the axis currently shows
@@ -1057,6 +1049,31 @@ describe(`BinnedScatterPlot`, () => {
     await tick()
     expect(document.querySelector(`.plot-tooltip`) !== null).toBe(tooltip === undefined)
   })
+
+  // A view change moves other data under the resting cursor: the tooltip must not keep
+  // describing the bin or point it was resolved against
+  test.each([`density`, `points`] as const)(
+    `%s tooltip clears when the view changes without a pointer move`,
+    async (mode) => {
+      const state = $state(structuredClone(unit_axes))
+      mount_plot(
+        bind_props(
+          {
+            series: [{ x: [0.5], y: [0.5] }],
+            ...(mode === `density` ? density_mode({ bin_px: 100 }) : point_mode()),
+          },
+          state,
+        ),
+      )
+      await settle()
+      hover_plot(420, mode === `density` ? 247 : 280)
+      await tick()
+      expect(document.querySelector(`.plot-tooltip`)).not.toBeNull()
+      state.x_axis = { range: [0, 2] }
+      await settle()
+      expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+    },
+  )
 
   test(`matches density tooltip background to hovered bin color`, async () => {
     const on_point_click = vi.fn()

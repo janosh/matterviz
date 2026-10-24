@@ -86,8 +86,8 @@
     // Drift against the run's own step axis, so a dump written every 500 steps and one written
     // every step agree; fluctuation and drift are what tell equilibration from relaxation
     const statistics = total_frames > 1 ? summarize_properties(rows, (row) => row.step) : []
+    // time-series properties only, so every one has more than one sample
     const stat_rows = statistics
-      .filter((stat) => stat.n_samples > 1)
       .toSorted(
         (left, right) =>
           stat_rank(left.key) - stat_rank(right.key) || left.key.localeCompare(right.key),
@@ -159,13 +159,14 @@
       section(`Trajectory`, [
         safe_item(
           `Total Frames`,
-          `${format_num(total_frames, `.3~s`)} (current: ${format_num(frame_num, `.3~s`)})`,
+          // exact: 3 significant figures showed frame 1234 as `1.23k`, too coarse to find it
+          `${format_num(total_frames, `,d`)} (current: ${format_num(frame_num, `,d`)})`,
           `total-frames`,
         ),
         displayed_frame &&
           safe_item(
             `Current Step`,
-            format_num(displayed_frame.step, `.3~s`),
+            format_num(displayed_frame.step, `,d`),
             `current-step`,
             `Simulation or ionic step recorded in the source file`,
           ),

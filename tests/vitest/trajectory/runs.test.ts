@@ -37,7 +37,7 @@ import { frame_atom_batch } from '#lib/trajectory/atom-batches.js'
 import type { ParseProgress, TrajectoryFrame } from '#lib/trajectory/index.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import type { TrajectoryRun } from '#lib/trajectory/run.js'
+import type { SyncRunSource, TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
@@ -54,6 +54,9 @@ const N_ATOMS = 27
 const XYZ_TEXT = synthetic_extxyz(N_FRAMES, N_ATOMS)
 const collector = create_warning_collector()
 const reference_frames = parse_xyz_trajectory(XYZ_TEXT, collector).frames
+// A synchronous run without provenance, metadata or warnings
+const bare_run = (source: Omit<SyncRunSource, `provenance` | `metadata` | `warnings`>) =>
+  sync_run({ provenance: {}, metadata: {}, warnings: [], ...source })
 
 describe(`numeric frames`, () => {
   it(`counts shared backing buffers once, including their unused capacity`, () => {
@@ -481,10 +484,7 @@ type RunCase = {
 }
 
 const RUN_CASES: RunCase[] = [
-  {
-    name: `memory`,
-    make: () => trajectory_from_frames(reference_frames),
-  },
+  { name: `memory`, make: () => trajectory_from_frames(reference_frames) },
   {
     name: `indexed xyz`,
     make: () =>
@@ -516,17 +516,8 @@ const RUN_CASES: RunCase[] = [
     n_frames: 100,
     n_atoms: 55,
   },
-  {
-    name: `worker port`,
-    make: make_worker_run,
-    sync_reads: false,
-  },
-  {
-    name: `host`,
-    make: make_host_run,
-    sync_reads: false,
-    has_collect: false,
-  },
+  { name: `worker port`, make: make_worker_run, sync_reads: false },
+  { name: `host`, make: make_host_run, sync_reads: false, has_collect: false },
 ].map((entry) => ({
   sync_reads: true,
   has_collect: true,
@@ -538,16 +529,13 @@ const RUN_CASES: RunCase[] = [
 it.each([27, 100_000])(
   `uses the full %i atom count to gate frame-backed analysis`,
   (atom_count) => {
-    const run = sync_run({
+    const run = bare_run({
       label: `sampled preview`,
       atom_count,
       frame_count: 1,
       preview: reference_frames[0],
       read: () => encode_frame(reference_frames[0]),
       properties: new TrajectoryProperties(),
-      provenance: {},
-      metadata: {},
-      warnings: [],
     })
     expect(run.atom_count).toBe(atom_count)
     expect(run.compute_hotspots !== undefined).toBe(atom_count === 27)
@@ -674,11 +662,7 @@ describe(`collect_positions parity with the memory run`, () => {
       const outcome = run
         .prepare_frame(
           0,
-          {
-            bonding_strategy: `electroneg_ratio`,
-            bonding_options: {},
-            bonds: false,
-          },
+          { bonding_strategy: `electroneg_ratio`, bonding_options: {}, bonds: false },
           controller.signal,
         )
         .catch((error: unknown) => error)
@@ -768,14 +752,11 @@ describe(`worker-served run lifecycle`, () => {
       )
       frame.available_vector_keys = [`force`]
       frame.scalar_columns = { charge: Float64Array.of(0.5) }
-      const served = sync_run({
+      const served = bare_run({
         label: `numeric metadata`,
         frame_count: 1,
         read: () => frame,
         properties: new TrajectoryProperties([], true),
-        provenance: {},
-        metadata: {},
-        warnings: [],
       })
       const run = make_worker_run(served)
       const channels = { vectors: [`force`] }
@@ -815,24 +796,19 @@ describe(`worker-served run lifecycle`, () => {
         }
         for (let idx = 0; idx < 3; idx++)
           frame.coordinates.set([step, idx, -1, step + 1, idx, 2], idx * 12 + 6)
-        frame.structure.properties = {
-          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-        }
+        frame.structure.properties = { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }] }
         if (!records) return frame
         const materialized = materialize_frame(frame)
         materialized.structure.sites[2].provenance = { image_of: 0, unit_cell_idx: 0 }
         return encode_frame(materialized)
       })
-      const served = sync_run({
+      const served = bare_run({
         label: `prepared MD`,
         frame_count: source.length,
         atom_count: 3,
         preview: materialize_frame(source[0]),
         read: (idx) => source[idx],
         properties: new TrajectoryProperties(),
-        provenance: {},
-        metadata: {},
-        warnings: [],
       })
       const run = make_worker_run(served)
       if (!run.prepare_frame) throw new Error(`Missing worker preparation`)
@@ -884,16 +860,13 @@ describe(`worker-served run lifecycle`, () => {
       expect(first).toEqual(retained)
     },
   )
+  // oxfmt-ignore
   it.each([
     { label: `custom label` },
     { species: [{ element: `H`, occu: 0.5, oxidation_state: 0 }] },
     { species: [{ element: `H`, occu: 1, oxidation_state: -0 }] },
     { species: [{ element: `H`, occu: 1, oxidation_state: 0, isotope: 2 }] },
-    {
-      species: Object.assign([{ element: `H`, occu: 1, oxidation_state: 0 }], {
-        source: `test`,
-      }),
-    },
+    { species: Object.assign([{ element: `H`, occu: 1, oxidation_state: 0 }], { source: `test` }) },
     { properties: { force: Object.assign([1, 2, 3], { unit: `eV/A` }) } },
     { properties: { empty: undefined } },
     { provenance: { image_of: 0, unit_cell_idx: 0, completion: true } },
@@ -1047,9 +1020,7 @@ describe(`worker-served run lifecycle`, () => {
           () =>
             handler.call(
               port,
-              new MessageEvent(`message`, {
-                data: { properties: batch, complete: true },
-              }),
+              new MessageEvent(`message`, { data: { properties: batch, complete: true } }),
             ),
           failures.slice(0, error_count),
         )
@@ -1116,15 +1087,12 @@ describe(`TrajectoryProperties`, () => {
     `releases a %s source even when its completion subscriber throws`,
     async (kind) => {
       const release = vi.fn()
-      const source = sync_run({
+      const source = bare_run({
         label: `test trajectory`,
         frame_count: 1,
         read: () => encode_frame(reference_frames[0]),
         properties: new TrajectoryProperties(),
         release: kind === `synchronous` ? release : undefined,
-        provenance: {},
-        metadata: {},
-        warnings: [],
       })
       const run =
         kind === `host`
@@ -1264,27 +1232,18 @@ describe(`TrajectoryProperties`, () => {
 })
 
 describe(`trajectory_from_frames validation`, () => {
+  const one_frame = reference_frames.slice(0, 1)
+  // oxfmt-ignore
   it.each([
     [`no frames`, [] as TrajectoryFrame[], {}, /at least one frame/],
     [`bad step`, [{ ...reference_frames[0], step: NaN }], {}, /invalid step/],
-    [
-      `wrong mass count`,
-      reference_frames.slice(0, 1),
-      { atom_masses: [1, 2] },
-      /atom_masses has 2/,
-    ],
-    [
-      `signal length`,
-      reference_frames.slice(0, 1),
+    [`wrong mass count`, one_frame, { atom_masses: [1, 2] }, /atom_masses has 2/],
+    [`signal length`, one_frame,
       { signals: { dipole: { values: new Float64Array(2), sample_shape: [3], steps: [0] } } },
-      /signals.dipole needs a Float64Array of 3 values/,
-    ],
-    [
-      `signal sample shape`,
-      reference_frames.slice(0, 1),
+      /signals.dipole needs a Float64Array of 3 values/],
+    [`signal sample shape`, one_frame,
       { signals: { dipole: { values: new Float64Array(), sample_shape: [0], steps: [0] } } },
-      /sample_shape must be scalar/,
-    ],
+      /sample_shape must be scalar/],
   ])(`rejects %s`, (_label, frames, extras, pattern) => {
     expect(() => trajectory_from_frames(frames, extras)).toThrow(pattern)
   })

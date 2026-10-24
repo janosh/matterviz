@@ -112,11 +112,14 @@ it(`requires units, calculates a map, and keeps display changes independent of a
   expect(calculate_button().disabled).toBe(false)
   calculate_button().click()
   await vi.waitFor(() => expect(document.querySelector(`.hotspot-map-status`)).not.toBeNull())
+  // a preview map shows while the scan still runs (button `Calculating hotspots…`); under
+  // load the scan outlived the steps below and the final click found no calculate button
+  await vi.waitFor(() => expect(calculate_button().disabled).toBe(false))
   expect(document.body.textContent).not.toContain(`Missing velocity at frame 0`)
   expect(document.body.textContent).not.toContain(`Settings changed`)
   await set_value(`Minimum average atoms/bin`, `-1`)
   await set_value(`Hotspot threshold`, `2`)
-  const legend = doc_query(`.thermal-legend`)
+  const legend = doc_query(`[role="group"][aria-label="Thermal color legend"]`)
   const atom_range = legend.querySelector(`.endpoints`)?.textContent
   const heatmap_toggle = control(`Heatmap on atoms`)
   await fire(heatmap_toggle)

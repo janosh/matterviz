@@ -42,10 +42,7 @@ const make_sites_frame = (sites: Site[]): TrajectoryFrame => ({
   structure: { sites },
 })
 const mount_inspector = async (props: Record<string, unknown>) => {
-  mounted_inspector = mount(TrajectoryDataInspector, {
-    target: document.body,
-    props,
-  })
+  mounted_inspector = mount(TrajectoryDataInspector, { target: document.body, props })
   await tick()
 }
 // The inspector follows the displayed frame once per animation frame
@@ -328,10 +325,7 @@ test(`atoms tab expands arbitrary scalar and vec3 site properties`, async () => 
       cluster_tag: `surface`,
       velocity: [1, 0, 0],
     }),
-    make_site(1, {
-      force: [0.4, 0.5, -0.6],
-      selective_dynamics: [false, false, false],
-    }),
+    make_site(1, { force: [0.4, 0.5, -0.6], selective_dynamics: [false, false, false] }),
   ])
   await mount_inspector({ run: trajectory_from_frames([frame]), current_frame: frame })
   await open_atoms()

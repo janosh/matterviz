@@ -110,6 +110,12 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
   let pending: Record<string, unknown> = {}
   let current: Record<string, unknown> | null = null
   let n_scf_steps = 0
+  // A running job's OUTCAR ends mid-block: a malformed block touching the last line is a torn
+  // tail and drops the open frame (as a short position table does), anywhere else it is
+  // corrupt. split_lines trims the end, so the last line is the last content line.
+  const last_line = lines.length - 1
+  const drop_torn_tail = (step: number, line_idx: number): void =>
+    warn(`Dropping truncated final OUTCAR frame ${step} (line ${line_idx + 1})`)
 
   for (let line_idx = 0; line_idx < lines.length; line_idx++) {
     const line = lines[line_idx]
@@ -117,6 +123,10 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
       // Skipping a corrupt block silently kept the PREVIOUS cell, wronging every volume and
       // fractional coordinate of the rest of an ISIF=3 run
       const parsed = parse_lattice(lines, line_idx)
+      if (!parsed && line_idx + 3 >= last_line) {
+        drop_torn_tail(frames.length + 1, line_idx)
+        break
+      }
       if (!parsed) {
         throw new Error(
           `OUTCAR line ${line_idx + 1}: "direct lattice vectors" is not followed by three ` +
@@ -135,9 +145,19 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
     }
     const kbar = /^\s*in kB\s(?<values>.*)/.exec(line)
     if (kbar) {
-      // XX YY ZZ XY YZ ZX in kB, VASP's sign convention (positive = compressive)
-      const [xx, yy, zz, xy, yz, zx] = numbers_of(kbar.groups?.values ?? ``)
-      if ([xx, yy, zz, xy, yz, zx].every(Number.isFinite)) {
+      // XX YY ZZ XY YZ ZX in kB, VASP's sign convention (positive = compressive). Fixed
+      // width 6F12.5: from -10000 or 100000 kB a value fills its field and runs into the one
+      // before it (`-3.00000123456.78901`), so a token that is not one number is split after
+      // each value's 5 decimals; past 1e6 kB VASP prints asterisks and the stress is dropped
+      const values = (kbar.groups?.values.trim().split(/\s+/) ?? []).flatMap((token) => {
+        const value = parse_float_token(token)
+        if (Number.isFinite(value)) return [value]
+        const parts = token.match(/[-+]?\d*\.\d{5}/g) ?? []
+        // every character accounted for, else the token is no run of F12.5 fields
+        return parts.join(``) === token ? parts.map(Number) : [NaN]
+      })
+      const [xx, yy, zz, xy, yz, zx] = values
+      if (values.length === 6 && values.every(Number.isFinite)) {
         pending = vasp_stress_metadata([
           [xx, xy, zx],
           [xy, yy, yz],
@@ -162,15 +182,22 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
       }
       const positions: Vec3[] = []
       const forces: Vec3[] = []
+      let torn = false
       for (let row = first_row; row < first_row + n_atoms; row++) {
         const values = numbers_of(lines[row])
         if (values.length !== 6 || values.some((val) => !Number.isFinite(val))) {
+          torn = row >= last_line
+          if (torn) break
           throw new Error(
             `OUTCAR frame ${step} line ${row + 1} is not a position + force sextet: "${lines[row]}"`,
           )
         }
         positions.push([values[0], values[1], values[2]])
         forces.push([values[3], values[4], values[5]])
+      }
+      if (torn) {
+        drop_torn_tail(step, line_idx)
+        break
       }
       line_idx = first_row + n_atoms - 1
       const metadata: Record<string, unknown> = { ...pending, ...calc_force_stats(forces) }

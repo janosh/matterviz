@@ -2,11 +2,20 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-  import { Structure } from '#lib/structure/index.js'
+  import { calc_lattice_params, type Matrix3x3 } from '#lib/math.js'
+  import { Structure, type Pbc } from '#lib/structure/index.js'
   import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
   import { onMount } from 'svelte'
 
-  const lattice_params = { a: 2, b: 2, c: 2, alpha: 90, beta: 90, gamma: 90, volume: 8 }
+  // Cubic cell with derived lengths, angles and volume (exact for the integer edges used here)
+  const cubic_lattice = (edge: number) => {
+    const matrix: Matrix3x3 = [
+      [edge, 0, 0],
+      [0, edge, 0],
+      [0, 0, edge],
+    ]
+    return { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+  }
 
   const test_trajectory = trajectory_from_frames(
     [
@@ -33,15 +42,7 @@
           },
         ],
         charge: 0,
-        lattice: {
-          matrix: [
-            [2, 0, 0],
-            [0, 2, 0],
-            [0, 0, 2],
-          ],
-          ...lattice_params,
-          pbc: [true, true, true],
-        },
+        lattice: cubic_lattice(2),
       },
       metadata,
     })),
@@ -89,21 +90,7 @@
         },
       ],
       charge: 0,
-      lattice: {
-        matrix: [
-          [edge, 0, 0],
-          [0, edge, 0],
-          [0, 0, edge],
-        ],
-        a: edge,
-        b: edge,
-        c: edge,
-        alpha: 90,
-        beta: 90,
-        gamma: 90,
-        volume: edge ** 3,
-        pbc: [true, true, true],
-      },
+      lattice: cubic_lattice(edge),
     },
     metadata: {},
   })

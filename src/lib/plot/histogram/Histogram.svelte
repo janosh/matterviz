@@ -2,21 +2,14 @@
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'
-  import type {
-    BarStyle,
-    HistogramHandlerProps,
-    LayerZIndex,
-    PanConfig,
-    RefLine,
-    RefLineEvent,
-  } from '#lib/plot/index.js'
+  import type { BarStyle, HistogramHandlerProps } from '#lib/plot/index.js'
   import { HistogramControls } from '#lib/plot/index.js'
   import CartesianFrame from '#lib/plot/core/components/CartesianFrame.svelte'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import PlotAxes from '#lib/plot/core/components/PlotAxes.svelte'
   import PlotLegendLayer from '#lib/plot/core/components/PlotLegendLayer.svelte'
   import ReferenceLinesLayer from '#lib/plot/core/components/ReferenceLinesLayer.svelte'
-  import type { MarginalSeriesInput, MarginalsProp } from '#lib/plot/core/marginals.js'
+  import type { MarginalSeriesInput } from '#lib/plot/core/marginals.js'
   import { normalize_marginals } from '#lib/plot/core/marginals.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
   import {
@@ -25,14 +18,12 @@
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
   import { build_legend_items } from '#lib/plot/core/data-transform.js'
-  import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     legend_mode_to_prop,
     resolve_legend_visibility,
   } from '#lib/plot/core/utils/series-visibility.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
-  import { index_ref_lines } from '#lib/plot/core/reference-line.js'
   import {
     accumulate_extent,
     create_axis_scales,
@@ -42,9 +33,8 @@
   import type {
     AxisConfig,
     BasePlotProps,
-    LegendConfig,
+    CartesianPlotProps,
     PlotConfig,
-    UserContentProps,
   } from '#lib/plot/core/types.js'
   import type {
     BinnedSeries,
@@ -129,23 +119,17 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
-    PlotConfig & {
-      hidden_series?: readonly (string | number)[]
-      on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+    CartesianPlotProps & {
       series: readonly HistogramSeries[]
       // Component-specific props
       bins?: number
       normalize?: HistogramNormalize
-      show_legend?: boolean
-      legend?: LegendConfig | null
       bar?: BarStyle
       // Index in `series` displayed in single mode; an unavailable index selects the first
       // visible series. Labels are display text and need not be unique or present.
       selected_series_idx?: number
       mode?: `single` | `overlay`
       tooltip?: TooltipProp<HistogramHandlerProps>
-      user_content?: Snippet<[UserContentProps]>
-      header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       controls_extra?: Snippet<[Required<PlotConfig>]>
       on_bar_click?: (
         data: HistogramHandlerProps & { event: MouseEvent | KeyboardEvent },
@@ -154,16 +138,7 @@
       on_bar_hover?: (
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      ref_lines?: RefLine[]
-      on_ref_line_click?: (event: RefLineEvent) => void
-      on_ref_line_hover?: (event: RefLineEvent | null) => void
       on_series_toggle?: (series_idx: number) => void
-      // The host owns property selection, loading, and publishing the resulting data.
-      axis_loading?: `x` | `x2` | `y` | `y2` | null
-      on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
-      pan?: PanConfig
-      marginals?: MarginalsProp
-      facet_layout?: FacetLayoutContext
     } = $props()
 
   const legend_vis = create_legend_visibility<HistogramSeries>(
@@ -206,8 +181,6 @@
   const resolved_display = $derived(resolve_plot_display(display, DEFAULTS.plot.display))
   const resolved_bar = $derived({ ...DEFAULTS.histogram.bar, ...bar })
 
-  let indexed_ref_lines = $derived(index_ref_lines(ref_lines))
-
   // === Series selection ===
   const active_series_idx = $derived(
     (series[selected_series_idx]?.visible ?? true) && series[selected_series_idx]
@@ -225,6 +198,7 @@
   })
 
   // Value extents per x axis and whether any sample lands on a secondary axis, in one pass.
+  // Samples with a non-finite weight are dropped by binning, so they widen no axis either.
   let axis_data = $derived.by(() => {
     const x1_extent = empty_extent()
     const x2_extent = empty_extent()
@@ -232,7 +206,11 @@
     for (const { series_data: srs } of selected_series_entries) {
       const extent = srs.x_axis === `x2` ? x2_extent : x1_extent
       const previous_count = extent.n_finite
-      accumulate_extent(extent, srs.values)
+      const { values, weights } = srs
+      const counted = weights
+        ? values.filter((_, idx) => Number.isFinite(weights[idx]))
+        : values
+      accumulate_extent(extent, counted)
       has_y2_points ||= srs.y_axis === `y2` && extent.n_finite > previous_count
     }
     return { x1_extent, x2_extent, has_y2_points }
@@ -333,7 +311,9 @@
     legend_visible: () => should_show_legend,
     legend_items: () => legend_data,
     marginals: () => resolved_marginals,
-    ref_lines: () => indexed_ref_lines,
+    ref_lines: () => ref_lines,
+    on_ref_line_click: () => on_ref_line_click,
+    on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
     clip_id_prefix: `histogram-clip`,
@@ -466,7 +446,8 @@
     if (!key) return null
     const hist = histogram_bins.find((binned) => binned.series_idx === key.series_idx)
     const bin = hist?.bins[key.bin_idx]
-    return hist && bin ? bar_data(hist, bin) : null
+    // an empty bin draws no bar, so an emptied one's tooltip closes like a removed series'
+    return hist && bin?.count ? bar_data(hist, bin) : null
   }
   const hover_info = $derived(bin_info(pin.shown(hover_key)))
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
@@ -507,15 +488,6 @@
   }
 </script>
 
-{#snippet ref_lines_layer(coord_z: LayerZIndex)}
-  <ReferenceLinesLayer
-    {frame}
-    z={coord_z}
-    on_click={on_ref_line_click}
-    on_hover={on_ref_line_hover}
-  />
-{/snippet}
-
 <CartesianFrame
   empty={!series_in.some((srs) => srs.values.length)}
   {frame}
@@ -544,10 +516,10 @@
   {...rest}
 >
   {#snippet layers()}
-    {@render ref_lines_layer(`below-grid`)}
+    <ReferenceLinesLayer {frame} z="below-grid" />
     <ZeroLines {frame} display={resolved_display} />
-    {@render ref_lines_layer(`below-lines`)}
-    {@render ref_lines_layer(`below-points`)}
+    <ReferenceLinesLayer {frame} z="below-lines" />
+    <ReferenceLinesLayer {frame} z="below-points" />
 
     <PlotAxes {frame} display={resolved_display} {axis_loading} {on_axis_change} />
 
@@ -574,7 +546,8 @@
           {@const bar_y = Math.min(baseline, value_px)}
           {@const bar_width = Math.max(1, Math.abs(x1_px - x0_px))}
           {@const bar_height = Math.abs(baseline - value_px)}
-          {#if bar_height > 0}
+          <!-- no bar for an empty bin even with 0 off-axis, as bin_info gives it no tooltip -->
+          {#if bin.count !== 0 && bar_height > 0}
             <path
               d={bar_path(
                 bar_x,
@@ -616,7 +589,7 @@
       </g>
     {/each}
 
-    {@render ref_lines_layer(`above-all`)}
+    <ReferenceLinesLayer {frame} z="above-all" />
   {/snippet}
 
   {#snippet controls(toggle_props, show_controls)}

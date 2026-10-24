@@ -96,10 +96,7 @@ describe(`TrajectorySpectrumPlot`, () => {
     expect(target.textContent).toContain(`Vibrational spectrum; IR/Raman activity unavailable`)
     expect(target.textContent).not.toContain(`Relative IR intensity`)
 
-    const plot_only_target = mount_in_test(TrajectorySpectrumPlot, {
-      result: result(false),
-      show_summary: false,
-    })
+    const plot_only_target = render_plot(result(false), { show_summary: false })
     await tick()
     expect(plot_only_target.textContent).not.toContain(
       `Vibrational spectrum; IR/Raman activity unavailable`,
@@ -153,22 +150,16 @@ describe(`TrajectorySpectrumPlot`, () => {
   })
 
   it(`pads a response by its own spectral resolution`, async () => {
-    const divergent_resolution_result = result()
-    divergent_resolution_result.vdos = {
+    const divergent = result()
+    divergent.vdos = {
       ...curve,
       normalized_power: [0, 0, 0, 0, 0],
       rayleigh_resolution: 0.125,
     }
-    divergent_resolution_result.ir = {
-      ...curve,
-      normalized_power: [0, 0, 1, 0, 0],
-      rayleigh_resolution: 1,
-    }
-    divergent_resolution_result.raman = null
-    divergent_resolution_result.peaks = [
-      { ...divergent_resolution_result.peaks[0], frequency: 2 },
-    ]
-    const target = render_plot(divergent_resolution_result)
+    divergent.ir = { ...curve, normalized_power: [0, 0, 1, 0, 0], rayleigh_resolution: 1 }
+    divergent.raman = null
+    divergent.peaks = [{ ...divergent.peaks[0], frequency: 2 }]
+    const target = render_plot(divergent)
     await tick()
     const x_tick_values = [...target.querySelectorAll(`.x-axis .tick text`)].map(
       (tick_element) => tick_element.textContent,
@@ -263,11 +254,7 @@ it(`pane discovers frame-metadata response signals and treats a non-periodic cel
     expect(settings_idx).toBeLessThan(display_idx)
   })
   expect(labeled_select(inline_target, `Preprocessing`).value).toBe(`body_fixed`)
-  const details_toggle = query<HTMLButtonElement>(
-    inline_target,
-    `.spectroscopy-details-toggle`,
-  )
-  details_toggle.click()
+  query<HTMLButtonElement>(inline_target, `.spectroscopy-details-toggle`).click()
   await tick()
   expect(inline_target.querySelector(`.spectroscopy-details-pane`)?.textContent).toContain(
     `VDOS is derived from atomic velocities`,

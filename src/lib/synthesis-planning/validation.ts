@@ -131,9 +131,8 @@ const validate_precursors = (value: unknown): void => {
 
 const validate_scoring = (value: unknown): void => {
   assert_object(value, `scoring`, Object.keys(DEFAULT_SCORE_WEIGHTS))
-  for (const [term, weight] of Object.entries(value)) {
+  for (const [term, weight] of Object.entries(value))
     assert_finite_number(weight, `scoring.${term}`, { minimum: 0 })
-  }
 }
 
 export function validate_synthesis_plan_request(

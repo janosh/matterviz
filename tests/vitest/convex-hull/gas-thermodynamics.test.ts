@@ -195,7 +195,7 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 
   // Shifting the O reference changes every oxide's formation energy, but the oxides come back
   // untouched and their cached e_form_per_atom would make the gas correction a hull no-op.
-  test(`a shifted reference clears formation energies cached against the old one`, () => {
+  test(`a shifted reference moves formation energies cached against the old one`, () => {
     const entries: PhaseData[] = [
       { composition: { Fe: 1 }, energy: -8, energy_per_atom: -8, e_form_per_atom: 0 },
       { composition: { O: 2 }, energy: -10, energy_per_atom: -5, e_form_per_atom: 0 },
@@ -215,14 +215,77 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
 
     const [iron, oxygen, oxide] = apply_gas_corrections(entries, config, 1000)
 
-    expect(oxygen.energy_per_atom).not.toBeCloseTo(-5, 6) // the reference moved
-    // so the oxide's cached hull data went with it, though its energy is untouched
+    const delta_mu_o = (oxygen.energy_per_atom ?? NaN) + 5
+    expect(delta_mu_o).not.toBeCloseTo(0, 6) // the reference moved
+    // so the oxide's cached E_form moves by -x_O Δμ_O and its hull distance goes, though its
+    // energy is untouched
     expect(oxide.energy_per_atom).toBe(-6.8)
-    for (const key of [`e_form_per_atom`, `e_above_hull`, `is_stable`] as const) {
+    expect(oxide.e_form_per_atom).toBeCloseTo(-1.5 - 0.6 * delta_mu_o, 12)
+    for (const key of [`e_above_hull`, `is_stable`] as const) {
       expect(oxide[key], key).toBeUndefined()
     }
-    // Fe contains no shifted element, so its own cache is still good
-    expect(iron.e_form_per_atom).toBe(0)
+    // O is its own shifted reference and Fe contains no shifted element: caches still good
+    expect([oxygen.e_form_per_atom, iron.e_form_per_atom]).toEqual([0, 0])
+  })
+
+  // E_form-only entries (0 eV placeholder energies) lost their cached E_form to the shifted O
+  // reference and were rebuilt from the placeholder (FeO at +0.55 instead of -0.95 eV/atom,
+  // Fe2O3 next to absolute energies at +6.94 instead of -1.04), or dropped out of the hull when
+  // another element had no reference to recompute against (no Si unary)
+  const fe_ref: PhaseData = { composition: { Fe: 1 }, energy: 0, e_form_per_atom: 0 }
+  const o_ref: PhaseData = { composition: { O: 2 }, energy: 0, e_form_per_atom: 0 }
+  const e_form_only = (composition: Record<string, number>, e_form: number): PhaseData => ({
+    composition,
+    energy: 0,
+    e_form_per_atom: e_form,
+    entry_id: JSON.stringify(composition),
+  })
+  // expected: [E_form at 0 K, O atom fraction] per compound
+  test.each<[string, PhaseData[], [number, number][]]>([
+    [`all E_form-only`, [fe_ref, o_ref, e_form_only({ Fe: 1, O: 1 }, -1.5)], [[-1.5, 0.5]]],
+    [
+      `E_form-only next to absolute energies`,
+      [
+        { composition: { Fe: 1 }, energy: -8.3 },
+        { composition: { O: 2 }, energy: -9.86 },
+        e_form_only({ Fe: 2, O: 3 }, -1.7),
+      ],
+      [[-1.7, 0.6]],
+    ],
+    [
+      `E_form-only next to MP-corrected references`,
+      [
+        { composition: { Fe: 1 }, energy: -8.3, correction: -0.1 },
+        { composition: { O: 2 }, energy: -9.86, correction: -1.4 },
+        { ...e_form_only({ Fe: 2, O: 3 }, -1.7), correction: -3.5 },
+      ],
+      [[-1.7, 0.6]],
+    ],
+    [
+      `no Si reference`,
+      [fe_ref, o_ref, e_form_only({ Fe: 1, Si: 1 }, -0.4), e_form_only({ Si: 1, O: 2 }, -3)],
+      [
+        [-0.4, 0],
+        [-3, 2 / 3],
+      ],
+    ],
+  ])(`E_form-only entries shift by the gas term (%s)`, (_desc, entries, expected) => {
+    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`], pressures: { O2: 1 } }
+    const pressures = get_effective_pressures(config)
+    const delta_mu_o = compute_element_mu_shift(`O`, config, 1000, pressures)
+    const model = compute_hull_model(apply_gas_corrections(entries, config, 1000), {
+      energy_source_mode: `on-the-fly`,
+    })
+    const compounds = entries.filter(({ entry_id }) => entry_id)
+    expect(compounds).toHaveLength(expected.length)
+    for (const [idx, [e_form, o_fraction]] of expected.entries()) {
+      const { entry_id } = compounds[idx]
+      const entry = model.entries.find((candidate) => candidate.entry_id === entry_id)
+      expect(entry?.e_form_per_atom, entry_id).toBeCloseTo(
+        e_form - o_fraction * delta_mu_o,
+        12,
+      )
+    }
   })
 
   test(`per-atom correction scales total energy by atom count for O2-style refs`, () => {

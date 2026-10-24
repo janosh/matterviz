@@ -64,7 +64,8 @@ describe(`parse_fermi_file`, () => {
   describe(`BXSF format`, () => {
     const sample_bxsf = make_bxsf(7.0)
     // Single-band n³ grid on the unit lattice with `values_text` as the band body
-    const bxsf_block = (n_pts: number, values_text: string) => `BEGIN_BLOCK_BANDGRID_3D
+    const bxsf_block = (n_pts: number, values_text: string) => `Fermi Energy: 0
+BEGIN_BLOCK_BANDGRID_3D
   band_energies
   BEGIN_BANDGRID_3D
     1
@@ -110,12 +111,15 @@ END_BLOCK_BANDGRID_3D
         19.0343,
       ],
       [`a key=value comment`, `# fermi_energy = -0.5\n`, -0.5],
-      // Only the header before the band grid is scanned; a stray mention after it is not
-      [`nothing in the header`, ``, 0],
+      // Only the header before the band grid is scanned; a stray mention after it is not, and
+      // the format requires one there
+      [`nothing in the header`, ``, /has no 'Fermi Energy: <value>'/],
     ])(`reads the Fermi energy from %s`, (_label, header, expected) => {
       const body = sample_bxsf.slice(sample_bxsf.indexOf(`BEGIN_BLOCK_BANDGRID_3D`))
       const content = `${header}${body}# Fermi energy: 42.0 eV (ignored, after the grid)\n`
-      expect(parse_grid(content, `test.bxsf`).fermi_energy).toBe(expected)
+      if (expected instanceof RegExp)
+        expect(() => parse_grid(content, `t.bxsf`)).toThrow(expected)
+      else expect(parse_grid(content, `test.bxsf`).fermi_energy).toBe(expected)
     })
 
     // a non-zero origin: it was parsed and never read, while extract_fermi_surface re-centres

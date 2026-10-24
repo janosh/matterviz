@@ -12,7 +12,7 @@ import {
 } from '#lib/plot/core/interactions.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import { filter_padding } from '#lib/plot/core/layout.js'
-import { invalidate_text_metrics_after_fonts_ready } from '#lib/plot/core/text-metrics.js'
+import { on_fonts_ready } from '#lib/plot/core/text-metrics.js'
 import type { ColorScale, LegendConfig, LegendItem } from '#lib/plot/core/types.js'
 import type { ColorBarSide } from '#lib/plot/core/utils/hierarchy-chart.js'
 import type { TooltipProp } from '#lib/tooltip/index.js'
@@ -173,19 +173,7 @@ export class HierarchyChartState<
         this.focused_idx = null
       })
     })
-    $effect(() => {
-      let mounted = true
-      // fonts that never resolve keep the fallback measurements, which is fine
-      void invalidate_text_metrics_after_fonts_ready().then(
-        (revision) => {
-          if (mounted) this.#font_metrics_revision = revision
-        },
-        () => {},
-      )
-      return () => {
-        mounted = false
-      }
-    })
+    $effect(() => on_fonts_ready((revision) => (this.#font_metrics_revision = revision)))
   }
 
   // `$derived.by` throughout: `#opts` is assigned in the constructor, so a bare

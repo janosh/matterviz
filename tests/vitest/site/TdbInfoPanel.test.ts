@@ -4,6 +4,15 @@ import { type ComponentProps, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
+// only their counts are shown: 2 functions / 1 parameter by default
+const tdb_function = (name: string) => ({ name, expression: ``, temperature_ranges: [] })
+const tdb_parameter = (type: string) => ({
+  type,
+  phase: `LIQUID`,
+  constituents: [],
+  order: 0,
+  expression: ``,
+})
 const create_tdb_result = (
   overrides: Partial<TdbParseResult[`data`]> = {},
 ): TdbParseResult => ({
@@ -14,34 +23,10 @@ const create_tdb_result = (
     ],
     phases: [
       { name: `LIQUID`, model_hints: ``, sublattice_count: 1, sublattice_sites: [1] },
-      {
-        name: `FCC_A1`,
-        model_hints: `%A`,
-        sublattice_count: 2,
-        sublattice_sites: [1, 1],
-      },
+      { name: `FCC_A1`, model_hints: `%A`, sublattice_count: 2, sublattice_sites: [1, 1] },
     ],
-    functions: [
-      {
-        name: `GHSERAL`,
-        expression: ``,
-        temperature_ranges: [{ min: 298, max: 933, expr: `` }],
-      },
-      {
-        name: `GHSERZN`,
-        expression: ``,
-        temperature_ranges: [{ min: 298, max: 693, expr: `` }],
-      },
-    ],
-    parameters: [
-      {
-        type: `G`,
-        phase: `LIQUID`,
-        constituents: [`AL`],
-        order: 0,
-        expression: ``,
-      },
-    ],
+    functions: [`GHSERAL`, `GHSERZN`].map(tdb_function),
+    parameters: [tdb_parameter(`G`)],
     comments: [],
     ...overrides,
   },
@@ -77,18 +62,8 @@ describe(`TdbInfoPanel`, () => {
     mount_panel(
       {},
       {
-        functions: [`F1`, `F2`, `F3`].map((name) => ({
-          name,
-          expression: ``,
-          temperature_ranges: [],
-        })),
-        parameters: [`G`, `L`].map((type) => ({
-          type,
-          phase: `L`,
-          constituents: [],
-          order: 0,
-          expression: ``,
-        })),
+        functions: [`F1`, `F2`, `F3`].map(tdb_function),
+        parameters: [`G`, `L`].map(tdb_parameter),
         phases: [
           ...create_tdb_result().data.phases,
           { name: `HCP`, model_hints: `%A`, sublattice_count: 2, sublattice_sites: [1, 0.5] },
@@ -126,11 +101,15 @@ describe(`TdbInfoPanel`, () => {
       expect(on_load_precomputed).toHaveBeenCalledOnce()
     })
 
-    test(`not available → shows pycalphad code snippet`, () => {
-      mount_panel({ has_precomputed: false })
+    // a TDB without two real elements gets placeholder components
+    test.each([
+      [{}, `['AL', 'ZN', 'VA']`],
+      [{ elements: [] }, `['EL1', 'EL2', 'VA']`],
+    ])(`not available → pycalphad snippet for %j binplots %s`, (data, components) => {
+      mount_panel({ has_precomputed: false }, data)
       const code = document.querySelector(`code`)
       expect(code?.textContent).toContain(`from pycalphad import Database, binplot`)
-      expect(code?.textContent).toMatch(/\['AL', 'ZN', 'VA'\]/)
+      expect(code?.textContent).toContain(components)
     })
   })
 })

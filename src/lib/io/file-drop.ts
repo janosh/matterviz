@@ -1,5 +1,5 @@
 // Shared file-drop handler composable for drag-and-drop file loading.
-import { decompress_file, decompress_trajectory_file } from './decompress'
+import { decompress_file, decompress_trajectory_file, is_empty_content } from './decompress'
 import { dropped_file_url, load_from_url, load_trajectory_from_url } from './url-drop'
 import { plural } from '#lib/labels.js'
 import { to_error } from 'svelte-widgets/utils'
@@ -65,9 +65,8 @@ const create_drop_batch_handler = <Handled = void>(
   opts: DropBatchOptions<Handled>,
 ): ((event: DragEvent) => Promise<void>) => {
   const { max_files } = opts
-  if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0)) {
+  if (max_files !== undefined && (!Number.isSafeInteger(max_files) || max_files < 0))
     throw new TypeError(`max_files must be a non-negative integer, got ${max_files}`)
-  }
 
   async function process_batch(url: string | undefined, read: Promise<File[]>) {
     opts.set_loading?.(true)
@@ -125,17 +124,22 @@ const create_drop_batch_handler = <Handled = void>(
 }
 
 // Reads each dropped source before handing it on: URL drops fetch, files decompress, and
-// `on_drop` receives content plus its source identity.
+// `on_drop` receives content plus its source identity. Empty content is an error either way
+// (as in deliver_raw_file), not a silent no-op.
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
   const load_url = opts.hdf5_as_blob ? load_trajectory_from_url : load_from_url
   const read_file = opts.hdf5_as_blob ? decompress_trajectory_file : decompress_file
   const read = async (source: DropSource, on_file: TrajectoryFileLoadCallback) => {
-    if (typeof source === `string`) return load_url(source, on_file)
+    // byte size, not truthiness: an empty binary payload is a 0-byte ArrayBuffer or Blob
+    const emit: TrajectoryFileLoadCallback = (content, filename, metadata) => {
+      if (is_empty_content(content)) throw new Error(`file is empty`)
+      return on_file(content, filename, metadata)
+    }
+    if (typeof source === `string`) return load_url(source, emit)
     const { content, filename } = await read_file(source)
-    if (!content) throw new Error(`file is empty`)
-    await on_file(content, filename, { source_filename: source.name, file: source })
+    await emit(content, filename, { source_filename: source.name, file: source })
   }
   if (!(`on_batch` in opts)) {
     const on_drop = opts.on_drop as TrajectoryFileLoadCallback

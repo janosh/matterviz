@@ -34,31 +34,16 @@ import {
   make_crystal,
 } from '../test-fixtures'
 
-const INVERSION: Matrix3x3 = [
-  [-1, 0, 0],
-  [0, -1, 0],
-  [0, 0, -1],
+const diag = (xx: number, yy: number, zz: number): Matrix3x3 => [
+  [xx, 0, 0],
+  [0, yy, 0],
+  [0, 0, zz],
 ]
-const ROT2_Z: Matrix3x3 = [
-  [-1, 0, 0],
-  [0, -1, 0],
-  [0, 0, 1],
-]
-const ROT2_Y: Matrix3x3 = [
-  [-1, 0, 0],
-  [0, 1, 0],
-  [0, 0, -1],
-]
-const MIRROR_Z: Matrix3x3 = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, -1],
-]
-const MIRROR_Y: Matrix3x3 = [
-  [1, 0, 0],
-  [0, -1, 0],
-  [0, 0, 1],
-]
+const INVERSION = diag(-1, -1, -1)
+const ROT2_Z = diag(-1, -1, 1)
+const ROT2_Y = diag(-1, 1, -1)
+const MIRROR_Z = diag(1, 1, -1)
+const MIRROR_Y = diag(1, -1, 1)
 const ROTOINV4_Z: Matrix3x3 = [
   [0, 1, 0],
   [-1, 0, 0],

@@ -573,11 +573,14 @@ export function compute_polyhedra(
     Array.from(columns?.numbers ?? [], (number) => element_from_atomic_number(number) ?? null)
   const position = (idx: number): Vec3 =>
     columns ? columns.position(idx) : structure.sites[idx].xyz
-  // Only shifted bonds can reach the same physical neighbor through different site indices.
-  const has_shifted_bonds =
-    bond_data instanceof BondFrame
+  // Two site indices name one physical neighbor only through a shifted bond, or as split
+  // partial-occupancy sites (O 0.5 and F 0.5 stored as two sites on one position). Numeric
+  // playback columns hold whole atoms, so only record sites can be split.
+  const may_repeat_positions =
+    (bond_data instanceof BondFrame
       ? bond_data.columns.images.some((value, idx) => idx % 7 >= 4 && value !== 0)
-      : bond_data.some((bond) => bond.cell_shift?.some((val) => val !== 0))
+      : bond_data.some((bond) => bond.cell_shift?.some((val) => val !== 0))) ||
+    (!columns && structure.sites.some(({ species }) => species.some(({ occu }) => occu < 1)))
   // Reject ineligible edges before allocating neighbor records, especially in large alloys
   // where only interface atoms can have an anion shell. Numeric playback stays columnar.
   const accepted_elements = site_elements.map((element) =>
@@ -631,7 +634,7 @@ export function compute_polyhedra(
       // vertex itself, so only the count is wrong). 1e-6 Å because the two paths build
       // the position differently - frac_to_cart(frac + shift) vs xyz + shift * lattice -
       // and disagree at ~1e-15, six orders below any real neighbor separation.
-      if (has_shifted_bonds && vertex_positions.some((prev) => same_position(prev, pos)))
+      if (may_repeat_positions && vertex_positions.some((prev) => same_position(prev, pos)))
         continue
       vertex_site_idxs.push(idx)
       vertex_positions.push(pos)

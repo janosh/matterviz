@@ -254,56 +254,68 @@ it.each([
 
 // Entity cells render decoded via {@html}, so search, sort and export must read them decoded
 // too: `AT&amp;T` exported as `AT&amp;T` and missed a search for `at&t`.
-describe(`html_to_text and cell_text`, () => {
-  it.each([
-    [`<div><span>nested</span></div>`, `nested`],
-    [`<a href="https://example.com" class="link">link text</a>`, `link text`],
-    [`plain text`, `plain text`],
-    [``, ``],
-    [`before<br/>after`, `beforeafter`],
-    [`<b>bold</b> and <i>italic</i>`, `bold and italic`],
-    [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`], // a comparison pair is not a tag
-    [`<b>T < 300 K</b>`, `T < 300 K`],
-    [`<B>UPPER</B>`, `UPPER`], // tags are case-insensitive
-    [`<!-- note -->kept`, `kept`],
-    [`<span title="x>0" data-y='a>b'>Si</span>`, `Si`], // `>` inside quoted attributes
-    [`AT&amp;T`, `AT&T`],
-    [`<b>&Delta;H</b> = &minus;5&nbsp;&plusmn;&#160;0.1&#x3bc;m`, `ΔH = −5\u00A0±\u00A00.1μm`],
-    [`&Aring; &angst; &Ouml;l &eacute; &ccedil; &micro; &deg; &times;`, `Å Å Öl é ç µ ° ×`],
-    [`&alpha;&Omega;&sigmaf;&#X3A3;`, `αΩςΣ`],
-    [`&lt;b&gt;shown&lt;/b&gt; &amp;lt;`, `<b>shown</b> &lt;`], // escaped markup is text, decoded once
-    [`&l<i></i>t;`, `&lt;`], // a tag can't splice an entity together
-    [`&bogus; &constructor; a & b`, `&bogus; &constructor; a & b`],
-    [`&#0;&#xD800;&#x110000;`, `\uFFFD\uFFFD\uFFFD`], // NUL, surrogate, out-of-range: U+FFFD
-  ])(`%j -> %j`, (input, expected) => {
-    expect(html_to_text(input)).toBe(expected)
-    expect(cell_text(input)).toBe(expected)
-  })
+it.each([
+  [`<div><span>nested</span></div>`, `nested`],
+  [`<a href="https://example.com" class="link">link text</a>`, `link text`],
+  [`plain text`, `plain text`],
+  [``, ``],
+  [`before<br/>after`, `beforeafter`],
+  [`<b>bold</b> and <i>italic</i>`, `bold and italic`],
+  [`T < 300 K and P > 1 bar`, `T < 300 K and P > 1 bar`], // a comparison pair is not a tag
+  [`<b>T < 300 K</b>`, `T < 300 K`],
+  [`<B>UPPER</B>`, `UPPER`], // tags are case-insensitive
+  [`<!-- note -->kept`, `kept`],
+  [`<span title="x>0" data-y='a>b'>Si</span>`, `Si`], // `>` inside quoted attributes
+  [`AT&amp;T`, `AT&T`],
+  [`<b>&Delta;H</b> = &minus;5&nbsp;&plusmn;&#160;0.1&#x3bc;m`, `ΔH = −5\u00A0±\u00A00.1μm`],
+  [`&Aring; &angst; &Ouml;l &eacute; &ccedil; &micro; &deg; &times;`, `Å Å Öl é ç µ ° ×`],
+  [`&alpha;&Omega;&sigmaf;&#X3A3;`, `αΩςΣ`],
+  [`&lt;b&gt;shown&lt;/b&gt; &amp;lt;`, `<b>shown</b> &lt;`], // escaped markup is text, decoded once
+  [`&l<i></i>t;`, `&lt;`], // a tag can't splice an entity together
+  [`&bogus; &constructor; a & b`, `&bogus; &constructor; a & b`],
+  [`&#0;&#xD800;&#x110000;`, `\uFFFD\uFFFD\uFFFD`], // NUL, surrogate, out-of-range: U+FFFD
+])(`html_to_text and cell_text: %j -> %j`, (input, expected) => {
+  expect(html_to_text(input)).toBe(expected)
+  expect(cell_text(input)).toBe(expected)
 })
 
-describe(`parse_numeric_val`, () => {
-  it.each<[CellVal, number | null]>([
-    [42, 42],
-    [Infinity, null],
-    [NaN, null],
-    [`1.23 ± 0.05`, 1.23],
-    [`-1.5 +- 0.2`, -1.5],
-    [`2.890(8)`, 2.89],
-    [`−3.5`, -3.5], // unicode minus
-    [`<b>10</b>`, 10],
-    [`&minus;5`, -5], // entities decode before parsing
-    [`5 &plusmn; 0.1`, 5],
-    [`<span data-sort-value="1000">1,000</span>`, 1000],
-    [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
-    [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
-    [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
-    [`abc`, null],
-    [``, null],
-    [null, null],
-    [new Date(0), null],
-  ])(`%j -> %j`, (val, expected) => {
-    expect(parse_numeric_val(val)).toBe(expected)
-  })
+it.each<[CellVal, number | null]>([
+  [42, 42],
+  [Infinity, null],
+  [NaN, null],
+  [`1.23 ± 0.05`, 1.23],
+  [`-1.5 +- 0.2`, -1.5],
+  [`2.890(8)`, 2.89],
+  [`−3.5`, -3.5], // unicode minus
+  [`<b>10</b>`, 10],
+  [`&minus;5`, -5], // entities decode before parsing
+  [`5 &plusmn; 0.1`, 5],
+  [`<span data-sort-value="1000">1,000</span>`, 1000],
+  [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
+  [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
+  [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
+  [`abc`, null],
+  // only decimal notation: Number() would read these literals as 16, 3 and 7
+  [`0x10`, null],
+  [`0b11`, null],
+  [`0o7`, null],
+  [`1.2.3`, null], // version string
+  [`<span data-sort-value="0x10">x</span>`, null], // a sort value is decimal-only too
+  [` 1e3 `, 1000],
+  [``, null],
+  [null, null],
+  [new Date(0), null],
+])(`parse_numeric_val(%j) = %j`, (val, expected) => {
+  expect(parse_numeric_val(val)).toBe(expected)
+})
+
+// `\d+\.?\d*` overlapped itself: a 30k-digit cell ending in a letter backtracked O(n²),
+// over a second per call (now well under a millisecond)
+it(`parse_numeric_val stays linear on long digit runs`, () => {
+  const long_digits = `${`1`.repeat(30_000)}x`
+  const start = performance.now()
+  expect(parse_numeric_val(long_digits)).toBeNull()
+  expect(performance.now() - start).toBeLessThan(200)
 })
 
 describe(`compare_rows`, () => {
@@ -329,6 +341,16 @@ describe(`compare_rows`, () => {
       blank_key,
       invalid_date,
     ])
+  })
+
+  // as text, a space sorted before `T` and every UTC offset compared as digits
+  it(`orders ISO date/time strings by their instant`, () => {
+    // oxfmt-ignore
+    expect(order([`2024-01-01T06:00Z`, `2024-01-01T10:00+05:00`])) // 06:00Z after 05:00Z
+      .toEqual([`2024-01-01T10:00+05:00`, `2024-01-01T06:00Z`])
+    // oxfmt-ignore
+    expect(order([`2024-01-01 10:00`, `2024-01-01T09:00`, `2023-12-31`]))
+      .toEqual([`2023-12-31`, `2024-01-01T09:00`, `2024-01-01 10:00`])
   })
 
   it(`puts numbers before strings and compares strings in natural order`, () => {
@@ -478,6 +500,9 @@ describe(`search and filters`, () => {
       values: [`c`],
     })
     expect(with_category_toggled(without_b, `b`, options)).toBeUndefined() // all allowed again
+    // a value no row holds any more drops out instead of keeping the filter active
+    const stale = { kind: `category` as const, values: [`a`, `c`, `gone`] }
+    expect(with_category_toggled(stale, `b`, options)).toBeUndefined()
   })
 })
 
@@ -541,24 +566,22 @@ describe(`date/time columns`, () => {
   })
 })
 
-describe(`virtual_window`, () => {
-  const base = { item_size: 10, count: 100, viewport: 50 }
+const window_base = { item_size: 10, count: 100, viewport: 50 }
 
-  it.each<[Partial<Parameters<typeof virtual_window>[0]>, [number, number]]>([
-    [{ scroll: 0 }, [0, 5]],
-    [{ scroll: 123 }, [12, 18]], // partially visible rows at both edges count
-    [{ scroll: 120, overscan: 2 }, [10, 19]],
-    [{ scroll: 0, overscan: 2 }, [0, 7]], // overscan clamped at the top
-    [{ scroll: 990, overscan: 2 }, [93, 100]], // clamped to the last page, then overscan
-    [{ scroll: 5000 }, [95, 100]],
-    [{ scroll: 0, min_window: 30 }, [0, 30]], // min_window extends the window
-    [{ scroll: 900, min_window: 30 }, [90, 100]], // but never past count
-    [{ scroll: -40 }, [0, 1]], // negative scroll (leading label track): first row peeks in
-    [{ scroll: 0, viewport: 0, min_window: 60 }, [0, 60]], // unmeasured viewport
-    [{ scroll: 0, count: 0 }, [0, 0]], // empty data
-  ])(`%o -> %j`, (opts, [start, end]) => {
-    expect(virtual_window({ ...base, scroll: 0, ...opts })).toEqual({ start, end })
-  })
+it.each<[Partial<Parameters<typeof virtual_window>[0]>, [number, number]]>([
+  [{ scroll: 0 }, [0, 5]],
+  [{ scroll: 123 }, [12, 18]], // partially visible rows at both edges count
+  [{ scroll: 120, overscan: 2 }, [10, 19]],
+  [{ scroll: 0, overscan: 2 }, [0, 7]], // overscan clamped at the top
+  [{ scroll: 990, overscan: 2 }, [93, 100]], // clamped to the last page, then overscan
+  [{ scroll: 5000 }, [95, 100]],
+  [{ scroll: 0, min_window: 30 }, [0, 30]], // min_window extends the window
+  [{ scroll: 900, min_window: 30 }, [90, 100]], // but never past count
+  [{ scroll: -40 }, [0, 1]], // negative scroll (leading label track): first row peeks in
+  [{ scroll: 0, viewport: 0, min_window: 60 }, [0, 60]], // unmeasured viewport
+  [{ scroll: 0, count: 0 }, [0, 0]], // empty data
+])(`virtual_window(%o) = %j`, (opts, [start, end]) => {
+  expect(virtual_window({ ...window_base, scroll: 0, ...opts })).toEqual({ start, end })
 })
 
 describe(`table exporters`, () => {

@@ -4,6 +4,7 @@ import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
   drop_cached_hull_data,
   entry_has_temp_data,
+  get_energy_per_atom,
   get_hull_decomposition,
   system_fractions,
 } from './thermodynamics'
@@ -303,11 +304,13 @@ export interface PolymorphStats {
 // Energy metric types for consistent polymorph comparison
 type EnergyMetric = `e_form_per_atom` | `energy_per_atom` | `e_above_hull` | null
 
-// Compute energy_per_atom from total energy and composition
+// Energy per atom with the MP correction (as the hull uses it), null when the entry has no
+// finite energy or no atoms
 function compute_energy_per_atom(entry: PhaseData): number | null {
-  if (!is_finite(entry.energy)) return null
-  const total_atoms = count_atoms_in_composition(entry.composition)
-  return total_atoms > 0 ? entry.energy / total_atoms : null
+  if (!(count_atoms_in_composition(entry.composition) > 0)) return null
+  if (!is_finite(entry.energy_per_atom) && !is_finite(entry.energy)) return null
+  const energy_per_atom = get_energy_per_atom(entry)
+  return is_finite(energy_per_atom) ? energy_per_atom : null
 }
 
 // Energy per metric (null if unavailable), keys in preference order. Absolute energies come
@@ -318,18 +321,8 @@ const METRIC_ENERGY: Record<
 > = {
   e_form_per_atom: (entry) =>
     is_finite(entry.e_form_per_atom) ? entry.e_form_per_atom : null,
-  energy_per_atom: (entry) =>
-    is_finite(entry.energy_per_atom) ? entry.energy_per_atom : compute_energy_per_atom(entry),
+  energy_per_atom: compute_energy_per_atom,
   e_above_hull: (entry) => (is_finite(entry.e_above_hull) ? entry.e_above_hull : null),
-}
-
-// The first metric an entry can supply, in METRIC_ENERGY's preference order
-function get_label_representative_energy(entry: PhaseData): number {
-  for (const metric_energy of Object.values(METRIC_ENERGY)) {
-    const energy = metric_energy(entry)
-    if (energy !== null) return energy
-  }
-  return Number.POSITIVE_INFINITY
 }
 
 const get_fractional_composition_key = (composition: Record<string, number>): string =>
@@ -338,28 +331,26 @@ const get_fractional_composition_key = (composition: Record<string, number>): st
     .map(([elem, frac]) => `${elem}:${frac.toFixed(6)}`)
     .join(`|`)
 
-// One label target per normalized composition (polymorphs and supercell formulas share a spot)
-export function get_composition_label_entries<T extends PhaseData>(entries: Iterable<T>): T[] {
-  const label_entry_by_composition = new Map<string, T>()
-  for (const entry of entries) {
-    const comp_key = get_fractional_composition_key(entry.composition)
-    if (!comp_key) continue
-    const existing = label_entry_by_composition.get(comp_key)
-    if (
-      !existing ||
-      get_label_representative_energy(entry) < get_label_representative_energy(existing)
-    ) {
-      label_entry_by_composition.set(comp_key, entry)
-    }
-  }
-  return Array.from(label_entry_by_composition.values())
-}
-
 // The first metric EVERY entry in a composition group can provide, else null
 const select_group_energy_metric = (polymorphs: PhaseData[]): EnergyMetric =>
   (Object.keys(METRIC_ENERGY) as Exclude<EnergyMetric, null>[]).find((metric) =>
     polymorphs.every((entry) => METRIC_ENERGY[metric](entry) !== null),
   ) ?? null
+
+// One label target per normalized composition (polymorphs and supercell formulas share a
+// spot): the lowest by the group's common energy metric, else the first entry
+export function get_composition_label_entries<T extends PhaseData>(entries: Iterable<T>): T[] {
+  const groups = Map.groupBy(entries, (entry) =>
+    get_fractional_composition_key(entry.composition),
+  )
+  groups.delete(``) // empty compositions have no position to label
+  return Array.from(groups.values(), (group) => {
+    const metric = select_group_energy_metric(group)
+    if (!metric) return group[0]
+    const energy = (entry: T) => METRIC_ENERGY[metric](entry) ?? Infinity
+    return group.reduce((best, entry) => (energy(entry) < energy(best) ? entry : best))
+  })
+}
 
 // Polymorph stats keyed by entry_id: rank each composition's energies once, then exclude
 // same-ID entries by their ranks

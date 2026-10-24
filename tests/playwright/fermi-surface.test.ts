@@ -154,54 +154,66 @@ test.describe(`FermiSurface smoke`, () => {
   })
 })
 
-// hovering a symmetry label in 3D marks its k on the bands with a dashed vertical line and
-// shows a Brillouin zone tooltip for that k-point; one button takes both views fullscreen
-test(`fermi-surface-bands: k-path label hover, one fullscreen`, async ({ page }) => {
+// The retired Fermi surface + bands route lands on the electronic structure demo, whose first
+// viewer links them: hovering a symmetry label in 3D marks its k on the bands with a dashed
+// vertical line and shows a Brillouin zone tooltip for that k-point, and band lines take their
+// sheet's colour (the hovered sheet's tooltip colour)
+test(`electronic-structure: k-path label hover marks the bands, band colours match sheets`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
-  await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
-  const qpoint_line = page.locator(`.fermi-surface-bands line.hovered-qpoint-line`)
+  await expect(page).toHaveURL(/\/reciprocal\/electronic-structure$/)
+  const viewer = `.electronic-structure:not(.sweep-demo)`
+  const canvas = await wait_for_3d_canvas(page, `${viewer} ${VIEWER}`, LOAD_TIMEOUT)
+  const qpoint_line = page.locator(`${viewer} [data-pane="bands"] line.hovered-qpoint-line`)
   await expect(qpoint_line).toHaveCount(0)
   // label chips follow the 3D view, which software GPUs (CI) may still be settling: re-hover
   // until the pointer lands on the chip where it now sits
-  const k_label = page.locator(`.sym-label`, { hasText: /^K$/ })
+  const k_label = page.locator(`${viewer} .sym-label`, { hasText: /^K$/ })
   await expect(async () => {
     await k_label.hover()
     await expect(qpoint_line).toHaveCount(1, { timeout: 1000 })
   }).toPass()
   await expect(qpoint_line).toHaveCSS(`stroke-dasharray`, `5px, 3px`)
   // K = (3/4, 3/4, 0)·2π/a for fcc Cu, i.e. (3/8, 3/8, 3/4) in the reciprocal basis
-  const tooltip = page.locator(`.plot-tooltip`, { hasText: `BZ Volume` })
-  await expect(tooltip).toContainText(`(0.375, 0.375, 0.75)`)
+  const bz_tooltip = page.locator(`${viewer} .plot-tooltip`, { hasText: `BZ Volume` })
+  await expect(bz_tooltip).toContainText(`(0.375, 0.375, 0.75)`)
   // in the hover tint of the path segments (KPATH_COLORS.hover = #ff6b35)
-  await expect(tooltip).toHaveCSS(`background-color`, `rgb(255, 107, 53)`)
+  await expect(bz_tooltip).toHaveCSS(`background-color`, `rgb(255, 107, 53)`)
   await page.mouse.move(0, 0)
   await expect(qpoint_line).toHaveCount(0)
-  await expect(tooltip).toHaveCount(0)
-  await expect_combined_fullscreen(page.locator(`.fermi-surface-bands`), [VIEWER, `.scatter`])
-})
+  await expect(bz_tooltip).toHaveCount(0)
 
-// band lines take their sheet's colour (the hovered sheet's tooltip colour) and Cu's band 6 is
-// dotted where it crosses E_F (five times along the path)
-test(`fermi-surface-bands: band colours match sheets, E_F crossings dotted`, async ({
-  page,
-}) => {
-  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
-  const canvas = await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
-  await expect(page.locator(`.fermi-surface-bands .band-crossings circle`)).toHaveCount(5)
-  // the sheet below-left of Γ, off the k-path
+  // a sheet off the k-path: the first of a few spots below and above Γ (mid-canvas) to hit one
   const box = await require_bbox(canvas, `Fermi surface canvas`)
-  await page.mouse.move(box.x + 0.35 * box.width, box.y + 0.62 * box.height)
-  const tooltip = page.locator(`${VIEWER} .plot-tooltip`, { hasText: /Band \d+/ })
-  await expect(tooltip).toBeVisible()
+  const tooltip = page.locator(`${viewer} ${VIEWER} .plot-tooltip`, { hasText: /Band \d+/ })
+  const spots = [
+    [0.5, 0.65],
+    [0.45, 0.62],
+    [0.55, 0.62],
+    [0.5, 0.35],
+  ]
+  await expect(async () => {
+    for (const [x_frac, y_frac] of spots) {
+      await page.mouse.move(box.x + x_frac * box.width, box.y + y_frac * box.height)
+      const shown = tooltip.waitFor({ state: `visible`, timeout: 500 })
+      if (await shown.then(() => true).catch(() => false)) return
+    }
+    throw new Error(`no Fermi sheet under any of ${JSON.stringify(spots)}`)
+  }).toPass()
   const band_idx =
     Number(/Band (?<num>\d+)/.exec((await tooltip.textContent()) ?? ``)?.groups?.num) - 1
-  const band_rgb = await page.evaluate((band) => {
-    const series = [...document.querySelectorAll(`.fermi-surface-bands g[data-series-id]`)]
-    const group = series.find(
-      (node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band,
-    )
-    return group && getComputedStyle(group.querySelector(`path`) ?? group).stroke
-  }, band_idx)
+  const band_rgb = await page.evaluate(
+    ([band, scope]) => {
+      const series = [...document.querySelectorAll(`${scope} g[data-series-id]`)]
+      const group = series.find(
+        (node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band,
+      )
+      return group && getComputedStyle(group.querySelector(`path`) ?? group).stroke
+    },
+    [band_idx, `${viewer} [data-pane="bands"]`] as const,
+  )
   await expect(tooltip).toHaveCSS(`background-color`, band_rgb ?? `no band ${band_idx}`)
 })
 
@@ -229,10 +241,8 @@ test(
       ),
     )
     const drag_structure = () => drag_canvas(structure_canvas, { dx: 120, dy: 40, steps: 8 })
-    // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on).
-    // The gizmo shows only while its viewer is hovered, so the pointer rests on an empty corner.
+    // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on)
     const settled_handles = async () => {
-      await fermi_canvas.hover({ position: { x: 20, y: 20 } })
       let previous: string[] | undefined
       let current: string[] = []
       await expect
@@ -257,6 +267,34 @@ test(
 
     await container.hover()
     const link_toggle = container.locator(`.sync-rotation-toggle`)
+    // Every toolbar on the top row (Structure's, the corner Fermi pane's, the viewer's own) has
+    // equal 24px buttons on one line, 1px apart where they adjoin (icons 9px apart). The
+    // pressed link marks itself in the accent color, never with a fill.
+    const row = await container.evaluate((root) => {
+      const panes_top = root.querySelector(`.panes`)?.getBoundingClientRect().top ?? 0
+      return [
+        ...root.querySelectorAll(
+          `.panes .control-buttons > button, .panes .control-buttons > .view-mode-control > button`,
+        ),
+      ]
+        .filter((button) => getComputedStyle(button).visibility === `visible`)
+        .map((button) => button.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.top - panes_top < 60) // the top row only
+        .map(({ left, right, top, width }) => ({ left, right, top, width }))
+        .toSorted((first, second) => first.left - second.left)
+    })
+    expect(row.length).toBeGreaterThanOrEqual(8)
+    for (const [idx, { width, top, left }] of row.entries()) {
+      expect([width, top]).toEqual([expect.closeTo(24, 1), expect.closeTo(row[0].top, 1)])
+      const gap = idx > 0 ? left - row[idx - 1].right : 1
+      if (gap < 50) expect(gap).toBeCloseTo(1, 1) // a larger gap separates two panes' rows
+    }
+    await expect(link_toggle).toHaveAttribute(`aria-pressed`, `true`)
+    await expect(link_toggle).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
+    const fullscreen_color = await container
+      .locator(`.panes > .control-buttons .fullscreen-btn`)
+      .evaluate((button) => getComputedStyle(button).color)
+    await expect(link_toggle).not.toHaveCSS(`color`, fullscreen_color)
     await link_toggle.click()
     await expect(link_toggle).toHaveAttribute(`aria-pressed`, `false`)
     await drag_structure()
@@ -305,7 +343,8 @@ test(
 
 // The demo's pressure sweep: the control bar steps frames (loaded on demand, the neighbour
 // prefetched), the trends pane plots the loaded frames' N(E_F), a click on a point jumps to
-// its frame, and a structure-only descriptor covers every frame at once
+// its frame, a structure-only descriptor covers every frame at once, and the phonon bands carry
+// λ_qν markers where the frame's q grid meets the path: 51 visits × 3 modes less Γ's two (NaN)
 test(`electronic-structure sweep: control bar, lazy frames, trends selection`, async ({
   page,
 }) => {
@@ -314,6 +353,9 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await viewer.scrollIntoViewIfNeeded()
   const status = viewer.locator(`.frame-status`)
   await expect(status).toHaveText(/^0 GPa \(V\/V₀ = 1\.00\)/, { timeout: LOAD_TIMEOUT })
+  const phonon = viewer.locator(`[data-pane="phonon"]`)
+  await expect(phonon.locator(`path.marker`)).toHaveCount(147)
+  await expect(phonon.locator(`.colorbar`)).toContainText(`λ_qν`)
   const trends = viewer.locator(`[data-pane="trends"]`)
   const markers = trends.locator(`path.marker`)
   await expect(markers).toHaveCount(2) // the shown frame and its prefetched neighbour

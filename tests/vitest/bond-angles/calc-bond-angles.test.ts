@@ -541,10 +541,26 @@ describe(`to_angle_bar_series density weighting`, () => {
   const integral_of = (y_values: readonly number[]): number =>
     y_values.reduce((sum, value) => sum + value, 0) * BIN_WIDTH
 
-  test.each([`by_triplet`, `none`] as BondAngleSplitMode[])(
+  // a structure without angles (isolated atoms) has no distribution to average in
+  const { data } = entries[0]
+  const no_angles = {
+    label: `isolated`,
+    data: {
+      ...data,
+      n_angles: 0,
+      total: { ...data.total, counts: data.total.counts.map(() => 0), n_angles: 0 },
+      by_triplet: [],
+    },
+  }
+  test.each([
+    [`by_triplet`, entries],
+    [`none`, entries],
+    [`by_triplet`, [...entries, no_angles]],
+    [`none`, [no_angles, ...entries]],
+  ] as [BondAngleSplitMode, typeof entries][])(
     `split_mode=%s makes the union of the plotted series integrate to 1`,
-    (split_mode) => {
-      const series = to_angle_bar_series(entries, split_mode, `density`)
+    (split_mode, plotted) => {
+      const series = to_angle_bar_series(plotted, split_mode, `density`)
       const total = series.reduce((sum, one) => sum + integral_of(one.y), 0)
       // ~200 float multiply-accumulates over two structures, so ~1e-15 of drift at most
       expect(total).toBeCloseTo(1, 12)

@@ -66,39 +66,21 @@ describe(`legend_mode_to_prop`, () => {
 })
 
 describe(`legend toggles`, () => {
+  // oxfmt-ignore
   test.each<[string, Partial<DataSeries>[], boolean[]]>([
     [`toggles a single series`, [{ visible: true }, { visible: true }], [false, true]],
-    [
-      `keeps matching labels independent`,
-      [{ label: `A` }, { label: `B` }, { label: `A` }],
-      [false, true, true],
-    ],
+    [`keeps matching labels independent`, [{ label: `A` }, { label: `B` }, { label: `A` }], [false, true, true]],
     [
       `does not use legend groups as series identities`,
       [{ label: `A` }, { label: `A`, legend_group: `` }, { label: `A`, legend_group: `B` }],
       [false, true, true],
     ],
     [`shares an axis without units`, [{ visible: false }, {}], [true, true]],
-    [
-      `shares an axis when only one series has units`,
-      [{ visible: false, unit: `eV` }, {}],
-      [true, true],
-    ],
-    [
-      `hides incompatible units`,
-      [
-        { unit: `eV`, visible: false },
-        { unit: `GPa`, visible: true },
-      ],
-      [true, false],
-    ],
+    [`shares an axis when only one series has units`, [{ visible: false, unit: `eV` }, {}], [true, true]],
+    [`hides incompatible units`, [{ unit: `eV`, visible: false }, { unit: `GPa`, visible: true }], [true, false]],
     [
       `keeps compatible units visible`,
-      [
-        { unit: `eV`, visible: false },
-        { unit: `eV`, visible: true },
-        { unit: `GPa`, visible: true },
-      ],
+      [{ unit: `eV`, visible: false }, { unit: `eV`, visible: true }, { unit: `GPa`, visible: true }],
       [true, true, false],
     ],
     [

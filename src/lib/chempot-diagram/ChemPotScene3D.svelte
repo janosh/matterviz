@@ -3,6 +3,7 @@
   import type { FormulaLabelSegment } from '#lib/composition/format.js'
   import { format_num } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
+  import { array_extent } from '#lib/math.js'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -133,21 +134,14 @@
   // x-axis control -> data axis 1, y-axis control -> data axis 2, z-axis control -> data axis 0
   const data_bbox = $derived.by(() => {
     const points = render_domains.flatMap((domain) => domain.points_3d)
-    const mins = points.length === 0 ? [0, 0, 0] : [Infinity, Infinity, Infinity]
-    const maxs = points.length === 0 ? [1, 1, 1] : [-Infinity, -Infinity, -Infinity]
-    for (const point of points) {
-      for (const axis_idx of axis_indices) {
-        if (point[axis_idx] < mins[axis_idx]) mins[axis_idx] = point[axis_idx]
-        if (point[axis_idx] > maxs[axis_idx]) maxs[axis_idx] = point[axis_idx]
-      }
-    }
-    for (const [axis_idx, range] of [z_axis.range, x_axis.range, y_axis.range].entries()) {
-      if (!range) continue
-      const [range_min, range_max] = range
-      if (range_min !== null) mins[axis_idx] = range_min
-      if (range_max !== null) maxs[axis_idx] = range_max
-    }
-    return { mins, maxs }
+    const extents = axis_indices.map((axis_idx): Vec2 => {
+      const [lower, upper] = points.length
+        ? array_extent(points.map((point) => point[axis_idx]))
+        : [0, 1]
+      const [range_min, range_max] = [z_axis, x_axis, y_axis][axis_idx].range ?? []
+      return [range_min ?? lower, range_max ?? upper]
+    })
+    return { mins: extents.map(([lower]) => lower), maxs: extents.map(([, upper]) => upper) }
   })
 
   const gen_ticks = (min_val: number, max_val: number): number[] =>
@@ -217,11 +211,12 @@
       [0, 0, out_y * tick_label_dist],
       [0, out_x * tick_label_dist, 0],
     ]
-    // A point at `value` along `axis`, with the other two axes parked on the backside
-    const point = (axis: number, value: number, offset: Vec3 = [0, 0, 0]): Vec3 => {
-      const coords = [back[0] + offset[0], back[1] + offset[1], back[2] + offset[2]]
-      coords[axis] = value
-      return swiz(coords[0], coords[1], coords[2])
+    // A point at the given values along their axes, the others parked (offset) on the backside
+    const point = (values: Record<number, number>, offset: Vec3 = [0, 0, 0]): Vec3 => {
+      const [coord_0, coord_1, coord_2] = back.map(
+        (coord, idx) => values[idx] ?? coord + offset[idx],
+      )
+      return swiz(coord_0, coord_1, coord_2)
     }
 
     return axis_indices.map((axis) => {
@@ -235,33 +230,31 @@
         color: axis_colors[axis],
         label: axis_labels[axis] || chem_axis_label(axis),
         line_geom: show_axes
-          ? line_geometry(point(axis, range[0]), point(axis, range[1]))
+          ? line_geometry(point({ [axis]: range[0] }), point({ [axis]: range[1] }))
           : null,
         // Axis label past the outer end of the axis (near 0, projects outward)
-        label_pos: point(axis, axis_label_value(range), label_offset),
+        label_pos: point({ [axis]: axis_label_value(range) }, label_offset),
         tick_geoms: show_axes
           ? ticks.map((val) =>
-              line_geometry(point(axis, val), point(axis, val, tick_mark_offsets[axis])),
+              line_geometry(
+                point({ [axis]: val }),
+                point({ [axis]: val }, tick_mark_offsets[axis]),
+              ),
             )
           : [],
         // One grid line per tick per other axis, sweeping that axis across its full range
         grid_geoms: show_grid
           ? ticks.flatMap((val) =>
               others.map((other) => {
-                const [start, end] = [[...back], [...back]]
-                start[axis] = val
-                end[axis] = val
-                start[other] = niced_range[other][0]
-                end[other] = niced_range[other][1]
-                return line_geometry(
-                  swiz(start[0], start[1], start[2]),
-                  swiz(end[0], end[1], end[2]),
+                const [start, end] = niced_range[other].map((bound) =>
+                  point({ [axis]: val, [other]: bound }),
                 )
+                return line_geometry(start, end)
               }),
             )
           : [],
         tick_labels: ticks.map((val) => ({
-          pos: point(axis, val, label_offset),
+          pos: point({ [axis]: val }, label_offset),
           text: format_num(val, `.3~g`),
         })),
       }
@@ -312,35 +305,18 @@
     return planes.filter((plane) => projections[plane.key as keyof typeof projections])
   })
 
+  // The box's 12 edges join the corners differing in one axis (corner bit `axis` picks the
+  // lower or upper end of that axis' range)
   const bounding_box_geometry = $derived.by(() => {
     if (!display.show_bounding_box) return null
-    const [radius_0, radius_1, radius] = niced_range
-    const vertices = [
-      swiz(radius_0[0], radius_1[0], radius[0]),
-      swiz(radius_0[1], radius_1[0], radius[0]),
-      swiz(radius_0[1], radius_1[1], radius[0]),
-      swiz(radius_0[0], radius_1[1], radius[0]),
-      swiz(radius_0[0], radius_1[0], radius[1]),
-      swiz(radius_0[1], radius_1[0], radius[1]),
-      swiz(radius_0[1], radius_1[1], radius[1]),
-      swiz(radius_0[0], radius_1[1], radius[1]),
-    ]
-    const edges = [
-      [0, 1],
-      [1, 2],
-      [2, 3],
-      [3, 0],
-      [4, 5],
-      [5, 6],
-      [6, 7],
-      [7, 4],
-      [0, 4],
-      [1, 5],
-      [2, 6],
-      [3, 7],
-    ]
+    const corner = (bits: number): Vec3 =>
+      swiz(...(niced_range.map((range, axis) => range[(bits >> axis) & 1]) as Vec3))
     return positions_geometry(
-      edges.flatMap(([start_idx, end_idx]) => [...vertices[start_idx], ...vertices[end_idx]]),
+      [0, 1, 2, 3, 4, 5, 6, 7].flatMap((bits) =>
+        axis_indices.flatMap((axis) =>
+          bits & (1 << axis) ? [] : [...corner(bits), ...corner(bits | (1 << axis))],
+        ),
+      ),
     )
   })
 

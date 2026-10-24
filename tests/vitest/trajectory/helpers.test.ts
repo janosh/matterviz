@@ -150,7 +150,7 @@ describe(`trajectory helpers`, () => {
   })
 
   // Line-offset index behind the XYZ/XDATCAR/LAMMPS readers: must split exactly like
-  // split_lines (trim, `\r\n` or `\n`, a lone `\r` kept) and tokenize each line like the
+  // split_lines (trimEnd, `\r\n` or `\n`, a lone `\r` kept) and tokenize each line like the
   // sliced string, whether it holds one string or chunks cut after any of its newlines
   it(`TextLines splits edge cases and random line soup like split_lines, in chunks too`, () => {
     const rng = make_rng(3)

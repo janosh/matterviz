@@ -272,14 +272,12 @@ describe(`RdfPlot`, () => {
   // none may overwrite or clear another, whatever order they arrive in
   const drop_msg = `mol.xyz: no lattice or sites`
   const failure_re = /broken: .*non-finite/
+  // oxfmt-ignore
   test.each<[string, string[], (string | RegExp)[], string?]>([
     [`drop error, then a cutoff change`, [`drop-broken`, `drop`, `change-cutoff`], [drop_msg]],
     [`failure, then a drop error`, [`drop`], [drop_msg, failure_re]],
-    [
-      `drop error, then a failure, then its fix`,
-      [`drop-broken`, `drop`, `restore-structures`, `check-failure`, `drop-broken`],
-      [drop_msg],
-    ],
+    [`drop error, then a failure, then its fix`,
+      [`drop-broken`, `drop`, `restore-structures`, `check-failure`, `drop-broken`], [drop_msg]],
     [`parent message, then a failure fix`, [`drop-broken`], [`parent note`], `parent note`],
   ])(`keeps every error source: %s`, async (_label, steps, expected, rdf_error) => {
     const pattern = create_synthetic_pattern()

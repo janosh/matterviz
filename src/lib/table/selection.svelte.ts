@@ -29,9 +29,8 @@ export class CellSelection {
     const keys = new Set<string>()
     for (const rect of this.rects) {
       const { row_lo, row_hi, col_lo, col_hi } = rect_bounds(rect)
-      for (let row = row_lo; row <= row_hi; row++) {
+      for (let row = row_lo; row <= row_hi; row++)
         for (let col = col_lo; col <= col_hi; col++) keys.add(`${row}:${col}`)
-      }
     }
     return keys
   })

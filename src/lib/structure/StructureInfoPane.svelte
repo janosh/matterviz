@@ -134,35 +134,31 @@
   }
 
   function format_site_property(prop_key: string, prop_value: unknown): InfoPaneRow | null {
-    if (prop_value == null) return null
+    if (prop_value == null || (Array.isArray(prop_value) && prop_value.length === 0))
+      return null
+    const row = { label: prop_key, key: prop_key }
+    const numbers = [prop_value].flat().map(format_numeric)
     if (
-      prop_key === `force` &&
+      /^forces?$/.test(prop_key) &&
       Array.isArray(prop_value) &&
       prop_value.length === 3 &&
       prop_value.every((value) => typeof value === `number`)
     ) {
       const force_values = prop_value as [number, number, number]
       return {
-        label: prop_key,
-        key: prop_key,
+        ...row,
         value: `${format_num(Math.hypot(...force_values), `.3~f`)} eV/Å`,
-        tooltip: `Force vector: ${force_values.map((force) => format_num(force, `.3~f`)).join(`, `)} <small>eV/Å</small>`,
-      }
-    }
-    if (prop_key === `magmom` || prop_key.includes(`magnet`)) {
-      const formatted_value = format_numeric(prop_value)
-      if (!formatted_value) return null
-      return {
-        label: prop_key,
-        key: prop_key,
-        value: `${formatted_value} μB`,
-        tooltip: `Magnetic moment in Bohr magnetons`,
+        tooltip: `Force vector: ${numbers.join(`, `)} <small>eV/Å</small>`,
       }
     }
     const value = Array.isArray(prop_value)
-      ? `(${prop_value.map((item) => format_numeric(item) ?? String(item)).join(`, `)})`
-      : (format_numeric(prop_value) ?? String(prop_value))
-    return { label: prop_key, key: prop_key, value }
+      ? `(${prop_value.map((item, idx) => numbers[idx] ?? String(item)).join(`, `)})`
+      : (numbers[0] ?? String(prop_value))
+    // Collinear (scalar) and non-collinear (vector) moments alike, as the site arrows draw them
+    if (/^magmoms?$|magnet/.test(prop_key) && numbers.every((num) => num !== null)) {
+      return { ...row, value: `${value} μB`, tooltip: `Magnetic moment in Bohr magnetons` }
+    }
+    return { ...row, value }
   }
 
   // Skipped while closed — ViewerPane keeps children mounted (display:none).
@@ -324,7 +320,10 @@
     onkeydown: (event) => handle_site_keydown(event, card),
   })
 
-  let wyckoff_table_expanded = $derived(wyckoff_positions.length < 50)
+  // Through a boolean, like analysis_kind: the rows are rebuilt on every displayed-structure
+  // change (image atoms, supercells, edits), which must not undo the user's collapse/expand
+  const wyckoff_table_short = $derived(wyckoff_positions.length < 50)
+  let wyckoff_table_expanded = $derived(wyckoff_table_short)
 </script>
 
 <ViewerPane

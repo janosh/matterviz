@@ -27,6 +27,7 @@ import {
   doc_query,
   expect_shortcuts_in_pane,
   expect_tooltip_paint,
+  fire,
   mock_canvas_context,
   set_input,
 } from '../../setup'
@@ -130,6 +131,13 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     await wait_for_events()
     expect([state.temperature, temp_input().value]).toEqual([1500, `1500`])
     expect(state.diagram?.events).toHaveLength(3)
+    // a blank entry keeps T (it used to jump to the sweep start), one past the sweep clamps
+    // to the current top, and either way the field shows the T in effect
+    for (const typed of [``, `9999`]) {
+      temp_input().value = typed
+      await fire(temp_input(), new Event(`change`, { bubbles: true }))
+      expect([state.temperature, temp_input().value]).toEqual([1500, `1500`])
+    }
     press(`ArrowRight`)
     expect(state.temperature).toBe(1500) // clamped at the top of the sweep
     // hovered without focus too, like the other viewers
@@ -287,19 +295,15 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
 
 // Hovering the Li corner (xy [1, 0]) must hit the ground state
 // even when another Li entry comes first in entry order
+// oxfmt-ignore
 test.each([
-  {
-    desc: `a metastable polymorph listed first`,
-    extra: make_phase({ Li: 1 }, 0.2, { entry_id: `Li-hi` }),
-    settings: { max_e_above_hull: 0.5 },
-  },
-  {
-    // Negative hull distance but not a hull vertex: with unstable phases hidden it must not be
-    // drawn (nor out-rank the true ground state in the hit test)
-    desc: `an exclude_from_hull phase below the hull`,
+  { desc: `a metastable polymorph listed first`,
+    extra: make_phase({ Li: 1 }, 0.2, { entry_id: `Li-hi` }), settings: { max_e_above_hull: 0.5 } },
+  // Negative hull distance but not a hull vertex: with unstable phases hidden it must not be
+  // drawn (nor out-rank the true ground state in the hit test)
+  { desc: `an exclude_from_hull phase below the hull`,
     extra: make_phase({ Li: 1 }, -0.3, { entry_id: `Li-excluded`, exclude_from_hull: true }),
-    settings: { show_unstable: false },
-  },
+    settings: { show_unstable: false } },
 ])(
   `TernarySectionCanvas: $desc does not take the hit from the stable one`,
   ({ extra, settings }) => {

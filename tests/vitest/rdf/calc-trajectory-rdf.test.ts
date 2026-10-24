@@ -73,24 +73,12 @@ describe(`collect_trajectory_rdf`, () => {
     expect(cl_na.g_r).toHaveLength(120)
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      label: `expanded FCC`,
-      structures: [make_fcc([2, 2, 2]), make_fcc([2, 2, 2], FCC_LATTICE_CONST * 1.01)],
-      coordination: 12,
-      volume: ((2 * FCC_LATTICE_CONST) ** 3 * (1 + 1.01 ** 3)) / 2,
-    },
-    {
-      label: `fixed dimer in changing volume`,
-      structures: [10, 20].map((cell) =>
-        make_crystal(cell, [
-          [`Na`, [0, 0, 0]],
-          [`Na`, [1 / cell, 0, 0]],
-        ]),
-      ),
-      coordination: 1,
-      volume: 4500,
-    },
+    { label: `expanded FCC`, structures: [make_fcc([2, 2, 2]), make_fcc([2, 2, 2], FCC_LATTICE_CONST * 1.01)],
+      coordination: 12, volume: ((2 * FCC_LATTICE_CONST) ** 3 * (1 + 1.01 ** 3)) / 2 },
+    { label: `fixed dimer in changing volume`, coordination: 1, volume: 4500,
+      structures: [10, 20].map((cell) => make_crystal(cell, [[`Na`, [0, 0, 0]], [`Na`, [1 / cell, 0, 0]]])) },
   ])(
     `weights $label by each frame's own density`,
     async ({ structures, coordination, volume }) => {
@@ -232,22 +220,16 @@ describe(`rdf_shell`, () => {
     expect(shell.coordination).toBeCloseTo(analytic, 1)
   })
 
+  // oxfmt-ignore
   test.each<[string, number[], Partial<ReturnType<typeof rdf_shell>>]>([
     [`a flat g(r) = 1`, radius.map(() => 1), { first_peak_r: null, coordination: null }],
     // still falling at the cutoff: the peak is reported, the shell is not closed
-    [
-      `a peak near the cutoff`,
-      gaussian(4.55, 3, 0.3),
-      { first_peak_r: 4.55, first_min_r: null, coordination: null },
-    ],
+    [`a peak near the cutoff`, gaussian(4.55, 3, 0.3), { first_peak_r: 4.55, first_min_r: null, coordination: null }],
     // still rising at the cutoff: no peak, nothing to report
     [`a peak beyond the cutoff`, gaussian(5.5, 3, 0.5), { first_peak_r: null }],
     // a crystal's gap between shells runs to the cutoff: the shell still closes at the gap
-    [
-      `a shell followed by zeros`,
-      radius.map((rad) => (Math.abs(rad - 2.05) < 0.08 ? 5 : 0)),
-      { first_peak_r: expect.closeTo(2.05, 6), first_min_r: expect.closeTo(2.25, 6) },
-    ],
+    [`a shell followed by zeros`, radius.map((rad) => (Math.abs(rad - 2.05) < 0.08 ? 5 : 0)),
+      { first_peak_r: expect.closeTo(2.05, 6), first_min_r: expect.closeTo(2.25, 6) }],
     [`too few bins`, [1, 2], { first_peak_r: null }],
   ])(`handles %s`, (_label, g_r, expected) => {
     expect(rdf_shell(radius.slice(0, g_r.length), g_r, 0.1)).toMatchObject(expected)

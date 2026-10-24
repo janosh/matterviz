@@ -87,8 +87,9 @@
   })
 
   let head_title = $derived(`${element.name} • ${pkg.name}`)
+  // `unknown…` and ancient dates (`5000 BC`, `before 3500 BC`) name no discoverer
   let discoverer = $derived(
-    element.discoverer.startsWith(`unknown`) ? undefined : element.discoverer,
+    /^unknown|\bBCE?$/.test(element.discoverer) ? undefined : element.discoverer,
   )
   // a year (never 0) or a free-text date like `~5000 BC`; C and Au list `unknown`
   let year = $derived(element.year === `unknown` ? undefined : element.year)

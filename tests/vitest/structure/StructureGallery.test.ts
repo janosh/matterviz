@@ -1,4 +1,5 @@
 import { get_d3_interpolator } from '#lib/colors/index.js'
+import type { StructureGalleryItem } from '#lib/structure/index.js'
 import StructureGallery from '#lib/structure/StructureGallery.svelte'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
@@ -206,11 +207,9 @@ describe(`StructureGallery`, () => {
     expect(live_counts.at(-1)).toBe(11)
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `pager`,
-      () => doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`).click(),
-    ],
+    [`pager`, () => doc_query<HTMLButtonElement>(`button[aria-label="Next structures"]`).click()],
     [`End key`, () => press(doc_query(`.structure-gallery-track`), `End`)],
     [`ArrowRight`, () => press(doc_query(`.structure-gallery-track`), `ArrowRight`)],
   ])(`%s jumps mount their new page without waiting to settle`, (_label, jump) => {
@@ -677,6 +676,34 @@ describe(`StructureGallery`, () => {
     expect(prop_cells().find((cell) => cell.key === `spacegroup`)?.style).toBe(``)
   })
 
+  // A missing value written as NaN has no rank: Viridis turned it into an undefined color, whose
+  // contrast pick threw and took the whole gallery down. With one distinct value, painting an
+  // arbitrary end of the scale would imply a ranking that isn't there.
+  test.each<
+    [string, (item: StructureGalleryItem, idx: number) => StructureGalleryItem, string[]]
+  >([
+    [
+      `a NaN value`,
+      (item, idx) =>
+        idx ? item : { ...item, properties: { ...item.properties, energy: Number.NaN } },
+      [``, `tinted`, `tinted`],
+    ],
+    // every pair is an energy here, so no pair at all is tinted
+    [`one distinct value`, (item) => ({ ...item, properties: { energy: 1 } }), [``, ``, ``]],
+  ])(`property tints with %s`, (_label, edit_item, expected) => {
+    mount_gallery({
+      items: prop_items.map(edit_item),
+      layout: `horizontal`,
+      property_color_scheme: `interpolateViridis`,
+    })
+    const energies = prop_cells().filter((cell) => cell.key === `energy`)
+    expect(
+      energies.map(({ style }) =>
+        style.replace(/^--prop-rank-color: [^;]+; --prop-ink: \w+$/, `tinted`),
+      ),
+    ).toEqual(expected)
+  })
+
   // The scale spans the collection, not the render window. Every rendered card
   // here holds the same mid-range value, so a window-scoped scale paints nothing.
   test(`scales against items that are far outside the render window`, () => {
@@ -727,18 +754,6 @@ describe(`StructureGallery`, () => {
     const reversed = energies()
     expect(reversed.filter(Boolean)).not.toHaveLength(0)
     expect([reversed[1], reversed[2]]).toEqual([forward[2], forward[1]])
-  })
-
-  test(`leaves a property with one distinct value uncoloured`, () => {
-    const flat = prop_items.map((item) => ({ ...item, properties: { energy: 1 } }))
-    mount_gallery({
-      items: flat,
-      layout: `horizontal`,
-      property_color_scheme: `interpolateViridis`,
-    })
-
-    // painting an arbitrary end of the scale would imply a ranking that isn't there
-    expect(prop_cells().every((cell) => cell.style === ``)).toBe(true)
   })
 
   // === grid layout ===

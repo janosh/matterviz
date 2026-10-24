@@ -96,11 +96,7 @@
     bind:open={export_pane_open}
     pane_name="export options"
     class_prefix="export"
-    pane_props={{
-      ...rest,
-      ...pane_props,
-      class: [rest.class, pane_props.class],
-    }}
+    pane_props={{ ...rest, ...pane_props, class: [rest.class, pane_props.class] }}
     {toggle_props}
     closed_icon={export_variant}
     {icon_style}

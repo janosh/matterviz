@@ -43,6 +43,7 @@ export const hover_tooltip =
       const component = mount(PlotTooltip, { target: host, props })
       const off_key = on(document, `keydown`, (event) => {
         if (event.key !== `Escape`) return
+        event.preventDefault() // spent on this tooltip, so an enclosing popup stays open
         // stays hidden until the next enter or focus, pinned or not
         hovered = false
         focused = false

@@ -15,12 +15,7 @@ type FlightDraft = {
 // Each view owns its thumbnail; immutable drafts keep the pair together through edits and undo.
 export function create_camera_flight_editor() {
   let history = $state.raw<FlightDraft[]>([
-    {
-      views: [],
-      interpolation: `smooth`,
-      duration: 10,
-      automatic: true,
-    },
+    { views: [], interpolation: `smooth`, duration: 10, automatic: true },
   ])
   let cursor = $state(0)
   let selected = $state(-1)
@@ -32,6 +27,11 @@ export function create_camera_flight_editor() {
   const commit = (changes: Partial<FlightDraft>) => {
     history = [...history.slice(0, cursor + 1), { ...draft, ...changes }].slice(-50)
     cursor = history.length - 1
+    selected = Math.min(selected, draft.views.length - 1)
+  }
+  // Undo (-1) or redo (+1), a no-op past either end of the history
+  const step_history = (delta: -1 | 1) => {
+    cursor = Math.min(Math.max(cursor + delta, 0), history.length - 1)
     selected = Math.min(selected, draft.views.length - 1)
   }
   const space_evenly = (views: FlightDraft[`views`], duration: number) =>
@@ -64,14 +64,8 @@ export function create_camera_flight_editor() {
     get can_redo() {
       return cursor < history.length - 1
     },
-    undo() {
-      if (cursor > 0) cursor--
-      selected = Math.min(selected, draft.views.length - 1)
-    },
-    redo() {
-      if (cursor < history.length - 1) cursor++
-      selected = Math.min(selected, draft.views.length - 1)
-    },
+    undo: () => step_history(-1),
+    redo: () => step_history(1),
     add(pose: CameraPose, thumbnail: string, after = draft.views.length - 1) {
       const views = [...draft.views]
       const idx = after + 1
@@ -100,9 +94,7 @@ export function create_camera_flight_editor() {
       if (from === to || to < 0 || to >= draft.views.length) return
       const views = [...draft.views]
       views.splice(to, 0, ...views.splice(from, 1))
-      commit({
-        views: views.map((view, idx) => ({ ...view, time: draft.views[idx].time })),
-      })
+      commit({ views: views.map((view, idx) => ({ ...view, time: draft.views[idx].time })) })
       selected = to
     },
     set_duration(duration: number) {

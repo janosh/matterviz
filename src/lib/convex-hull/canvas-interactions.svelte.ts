@@ -147,9 +147,16 @@ export function create_hull_selection(inputs: HullSelectionInputs) {
 
   async function copy_entry_data(entry: ConvexHullEntry, position: { x: number; y: number }) {
     const version = selection_version
-    await navigator.clipboard.writeText(
-      build_entry_tooltip_text(entry, inputs.entry_category()),
-    )
+    try {
+      await navigator.clipboard.writeText(
+        build_entry_tooltip_text(entry, inputs.entry_category()),
+      )
+    } catch (error) {
+      // callers fire and forget (void), so a denied clipboard must not become an unhandled
+      // rejection; like the other copy actions it logs and shows no copied feedback
+      console.error(`Failed to copy entry data:`, error)
+      return
+    }
     if (version === selection_version) copy_feedback.show({ visible: true, position })
   }
 
@@ -474,6 +481,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
       onclick: handle_click,
       ondblclick: handle_double_click,
       onwheel: handle_wheel,
+      // the pointer leaving (onto the chrome or off the page) ends the hover and its preview
+      onmouseleave: () => selection.set_hover(null),
     },
     // document-level so drags continue outside the canvas; attached individually
     // since <svelte:document> rejects spread attributes

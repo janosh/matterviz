@@ -78,9 +78,8 @@
       // Auto-render if the root value itself is a single renderable type
       // (avoids forcing the user to click for single-type JSON files)
       const root_type = renderable_paths.get(``)
-      if (root_type) {
+      if (root_type)
         replace_or_add_panel({ data_path: ``, detected_type: root_type, val: current_value })
-      }
     }, 0)
     return () => {
       clearTimeout(scan_handle)
@@ -179,9 +178,8 @@
   // and inject a badge per renderable path, keyed by the node's tree path
   function apply_badges(): void {
     if (!sidebar_element) return
-    for (const existing of sidebar_element.querySelectorAll(`.renderable-badge`)) {
+    for (const existing of sidebar_element.querySelectorAll(`.renderable-badge`))
       existing.remove()
-    }
     const badges_by_tree_path = Map.groupBy(renderable_paths, ([data_path]) =>
       data_to_tree_path(data_path),
     )
@@ -428,9 +426,7 @@
     drop_target_panel_idx = Math.max(hit_idx, 0)
     // Prevent mixed-axis splits until nested layouts are supported
     const cross_axis = layout_direction === `vertical` ? [`left`, `right`] : [`top`, `bottom`]
-    if (panels.length > 1 && cross_axis.includes(drop_zone)) {
-      drop_zone = `center`
-    }
+    if (panels.length > 1 && cross_axis.includes(drop_zone)) drop_zone = `center`
   }
 
   function on_canvas_dragleave(event: DragEvent): void {

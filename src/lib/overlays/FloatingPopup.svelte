@@ -39,7 +39,15 @@
   </button>
 {/snippet}
 
-<svelte:window onkeydown={(event) => event.key === `Escape` && on_close?.()} />
+<!-- an Escape something inside already handled (a nested viewer closing its own pane, a hover
+tooltip hiding) leaves the popup open. With several popups open, the first mounted closes first. -->
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key !== `Escape` || event.defaultPrevented) return
+    event.preventDefault()
+    on_close?.()
+  }}
+/>
 
 <!-- dismiss_on release, not the default press: this floats over a pannable plot, so starting
 a pan behind it must not make it vanish under the cursor -->

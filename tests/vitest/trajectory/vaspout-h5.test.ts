@@ -224,22 +224,13 @@ describe(`line-mode k-path labels`, () => {
 })
 
 describe(`HDF5 ion type expansion`, () => {
+  // oxfmt-ignore
   it.each([
     [`a negative count`, [`Si`], [-1], `Invalid ion count for Si: -1`],
     [`a fractional count`, [`Si`], [1.5], `Invalid ion count for Si: 1.5`],
     [`an infinite count`, [`Si`], [Infinity], `Invalid ion count for Si: Infinity`],
-    [
-      `fewer counts than types`,
-      [`Si`, `O`],
-      [2],
-      `ion_types (2) and ion_counts (1) length mismatch`,
-    ],
-    [
-      `more counts than types`,
-      [`Si`],
-      [2, 1],
-      `ion_types (1) and ion_counts (2) length mismatch`,
-    ],
+    [`fewer counts than types`, [`Si`, `O`], [2], `ion_types (2) and ion_counts (1) length mismatch`],
+    [`more counts than types`, [`Si`], [2, 1], `ion_types (1) and ion_counts (2) length mismatch`],
   ])(`rejects %s`, (_label, ion_types, ion_counts, message) => {
     expect(() => expand_ion_types(ion_types, ion_counts)).toThrow(message)
   })

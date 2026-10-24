@@ -9,6 +9,9 @@ import type { ComponentProps, Snippet } from 'svelte'
 import type { HTMLAttributes } from 'svelte/elements'
 import type { TweenOptions } from 'svelte/motion'
 import type { Sides } from '#lib/plot/core/layout.js'
+import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
+import type { MarginalsProp } from '#lib/plot/core/marginals.js'
+import type { RefLine, RefLineEvent } from '#lib/plot/core/types/reference-lines.js'
 import type PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
 import type { PlacementConfig } from '#lib/plot/core/placed-decoration.svelte.js'
 import type { PlotTitleConfig } from '#lib/plot/core/plot-title.js'
@@ -193,11 +196,7 @@ export function assert_series_lengths(series: AlignedSeries, series_idx?: number
       const values = series[key]
       return Array.isArray(values) && values.length > 0 ? [[key, values] as const] : []
     }),
-    ...([`x_error`, `y_error`] as const).flatMap((key) =>
-      error_lengths(series[key]).map(
-        (length, side) => [`${key}[${side}]`, { length }] as const,
-      ),
-    ),
+    ...([`x_error`, `y_error`] as const).flatMap((key) => error_lengths(series[key], key)),
   ])
   assert_aligned_lengths(where, {
     x: coord_x,
@@ -733,6 +732,25 @@ export interface BasePlotProps extends ExportProps {
   fullscreen_toggle?: boolean // default: true
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
+}
+
+// Props the CartesianFrame charts (ScatterPlot, BarPlot, BoxPlot, Histogram) share
+export interface CartesianPlotProps extends PlotConfig {
+  hidden_series?: readonly (string | number)[]
+  on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+  legend?: LegendConfig | null
+  show_legend?: boolean
+  user_content?: Snippet<[UserContentProps]>
+  header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+  ref_lines?: RefLine[]
+  on_ref_line_click?: (event: RefLineEvent) => void
+  on_ref_line_hover?: (event: RefLineEvent | null) => void
+  // The host owns property selection, loading, and publishing the resulting data.
+  axis_loading?: `x` | `x2` | `y` | `y2` | null
+  on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
+  pan?: PanConfig
+  marginals?: MarginalsProp
+  facet_layout?: FacetLayoutContext
 }
 // Default grid line style (SSOT for all plot components)
 export const DEFAULT_GRID_STYLE = {

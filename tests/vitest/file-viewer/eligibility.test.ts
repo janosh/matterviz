@@ -11,6 +11,9 @@ import {
 } from '#lib/file-viewer/eligibility.js'
 import { expect, test } from 'vitest'
 
+// Empty and non-string inputs neither predicate accepts
+const non_filenames = [``, null, undefined, 42, true].map((val) => [val, false] as const)
+
 test.each([
   [`structure.cif`, true],
   [`C:\\data\\movie.traj`, true],
@@ -18,6 +21,7 @@ test.each([
   [`density.cube.deflate`, true],
   [`CHGCAR.z`, false], // Unix compress (LZW) has no decoder
   [`vaspout.h5`, true],
+  [`vaspwave.h5`, true],
   [`md_run.hdf5`, true],
   [`data.h5`, false],
   [`structure.cif.zip`, true], // fflate inflates single-file ZIPs in the webview
@@ -43,11 +47,7 @@ test.each([
   ...[`INCAR`, `KPOINTS`, `POTCAR`, `calc/INCAR`, `si_incar.txt`, `run.xml`].map(
     (filename) => [filename, false] as const,
   ),
-  [``, false],
-  [null, false],
-  [undefined, false],
-  [42, false],
-  [true, false],
+  ...non_filenames,
 ] as const)(`is_matterviz_filename(%s) returns %s`, (filename, expected) => {
   expect(is_matterviz_filename(filename)).toBe(expected)
 })
@@ -71,6 +71,7 @@ test.each([
   [`density.cube`, true],
   [`band.bxsf.gz`, true],
   [`vaspout.h5`, true],
+  [`Si.vaspwave.h5.gz`, true],
   [`md_npt_300K.h5`, true],
   [`simulation.traj.h5`, true],
   // Not auto-rendered: keyword heuristics, JSON/YAML, generic data
@@ -87,11 +88,7 @@ test.each([
   [`simulation.trr`, false],
   [`README.md`, false],
   [`package.json`, false],
-  [``, false],
-  [null, false],
-  [undefined, false],
-  [42, false],
-  [true, false],
+  ...non_filenames,
 ] as const)(`is_auto_renderable_filename(%s) returns %s`, (filename, expected) => {
   expect(is_auto_renderable_filename(filename)).toBe(expected)
 })

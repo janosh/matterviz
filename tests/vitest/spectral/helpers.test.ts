@@ -1,4 +1,4 @@
-import { THZ_TO_INVERSE_CM } from '#lib/constants.js'
+import { HARTREE_TO_EV, THZ_TO_INVERSE_CM } from '#lib/constants.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import {
   convert_frequencies,
@@ -32,6 +32,7 @@ import {
   normalize_dos,
   pretty_sym_point,
   qpoint_x_position,
+  resolve_spin_mode,
   shift_to_fermi,
 } from '#lib/spectral/helpers.js'
 import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
@@ -576,6 +577,34 @@ describe(`normalize_band_structure`, () => {
     expect(result?.bands[0][1]).toBeCloseTo(expected_thz, 9)
   })
 
+  // electronic energies were scaled to THz too: a declared eV turned 1 eV into 241.8. Energy
+  // units convert to eV, frequency units are a malformed electronic input
+  it.each([
+    [undefined, 1, 1],
+    [`eV`, 1, 1],
+    [`meV`, 1000, 1],
+    [`Ha`, 1 / HARTREE_TO_EV, 1],
+    [`THz`, 1, null],
+    [`cm-1`, 1, null],
+  ])(`keeps electronic bands declared in %s in eV`, (unit, input, expected_ev) => {
+    const kpoints = { '@class': `BandStructureSymmLine`, ...identity_rec, kpoints: line(2) }
+    const result = normalize_band_structure({ ...kpoints, bands: { '1': [[0, input]] }, unit })
+    const energy = result?.bands[0][1] ?? null
+    if (expected_ev === null) expect(energy).toBeNull()
+    else expect(energy).toBeCloseTo(expected_ev, 12)
+  })
+
+  // the matterviz shape read a declared unit as THz; converted once, `unit` is dropped so a
+  // second normalization leaves the THz values alone
+  it(`converts matterviz input declared in cm^-1 to THz once`, () => {
+    const input = one_qpt({ bands: [[2 * THZ_TO_INVERSE_CM]], unit: `cm-1` })
+    const once = normalize_band_structure(input)
+    expect(once?.bands[0][0]).toBeCloseTo(2, 12)
+    expect(once && `unit` in once).toBe(false)
+    expect(normalize_band_structure(once)?.bands).toEqual(once?.bands)
+    expect(normalize_band_structure(one_qpt({ type: `electronic`, unit: `THz` }))).toBeNull()
+  })
+
   it(`transposes the frequencies_cm layout (q-points × branches, in cm^-1)`, () => {
     const to_cm = (row: number[]) => row.map((val) => val * THZ_TO_INVERSE_CM)
     const frequencies_cm = [to_cm([1, 2]), to_cm([3, 4])]
@@ -919,12 +948,7 @@ describe(`shift_to_fermi`, () => {
     efermi: number,
     energies: number[],
     extra: Partial<PymatgenCompleteDos> = {},
-  ): PymatgenCompleteDos => ({
-    energies,
-    densities: energies.map(() => 1),
-    efermi,
-    ...extra,
-  })
+  ): PymatgenCompleteDos => ({ energies, densities: energies.map(() => 1), efermi, ...extra })
 
   it.each([
     [5, [-10, 0, 10], [-15, -5, 5]],
@@ -1068,15 +1092,12 @@ describe(`compute_frequency_range`, () => {
     expect(compute_frequency_range({}, dos_of([0, 10]), 0.1)).toEqual([0, 11])
   })
 
+  // oxfmt-ignore
   it.each([
     [`efermi`, { efermi: 5 }, true],
     [`kpoints`, { kpoints: [{ frac_coords: [0, 0, 0] }] }, true],
     [`electronic @class`, { '@class': `BandStructureSymmLine`, ...identity_rec }, true],
-    [
-      `electronic @module`,
-      { '@module': `pymatgen.electronic_structure.bandstructure`, ...identity_rec },
-      true,
-    ],
+    [`electronic @module`, { '@module': `pymatgen.electronic_structure.bandstructure`, ...identity_rec }, true],
     [`phonon @class`, { '@class': `PhononBandStructureSymmLine`, ...identity_rec }, false],
   ])(`adapter retains type and range from %s`, (_label, marker, is_electronic) => {
     const { type: _type, ...raw } = bands_of([[-0.01, 5, 10]]).sample
@@ -1205,4 +1226,16 @@ describe(`build_point_metadata`, () => {
     expect(without_widths[0]).toMatchObject({ band_width: null, slope: null }) // single point: dx = 0
     expect(build({ x_vals: [], y_vals: [] })).toEqual([])
   })
+})
+
+// unpolarized bands always overlay, so `down_only` never draws nothing
+it.each([
+  [`overlay`, true, `overlay`],
+  [`up_only`, true, `up_only`],
+  [`down_only`, true, `down_only`],
+  [null, true, `overlay`],
+  [`up_only`, false, `overlay`],
+  [`down_only`, false, `overlay`],
+] as const)(`resolve_spin_mode(%s, has_spin_down=%s) → %s`, (mode, has_down, expected) => {
+  expect(resolve_spin_mode(mode, has_down)).toBe(expected)
 })

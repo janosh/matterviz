@@ -40,24 +40,18 @@ describe(`scalars_to_vertex_colors`, () => {
     expect([...colors]).toEqual([0.0578, 0.0003, 0.0888].map((val) => expect.closeTo(val, 3)))
   })
 
-  test(`maps range endpoints to LUT ends and clamps outside values`, () => {
+  // an inverted range flips the colormap, a zero-span one maps everything to one mid color
+  test(`maps range endpoints to LUT ends, clamps outside values, handles odd ranges`, () => {
     const colors = scalars_to_vertex_colors(new Float32Array([0, 10, -5, 25]), viridis_opts)
-    // Below-range clamps to the same color as the range start
-    expect(rgb_at(colors, 2)).toEqual(rgb_at(colors, 0))
-    // Above-range clamps to the same color as the range end
-    expect(rgb_at(colors, 3)).toEqual(rgb_at(colors, 1))
-    // Start and end colors differ
+    expect(rgb_at(colors, 2)).toEqual(rgb_at(colors, 0)) // below range clamps to the start
+    expect(rgb_at(colors, 3)).toEqual(rgb_at(colors, 1)) // above range clamps to the end
     expect(rgb_at(colors, 0)).not.toEqual(rgb_at(colors, 1))
-  })
-
-  test(`inverted color range flips the colormap`, () => {
-    const forward = scalars_to_vertex_colors(new Float32Array([0, 10]), viridis_opts)
-    const flipped = scalars_to_vertex_colors(new Float32Array([0, 10]), {
-      ...viridis_opts,
-      value_range: [10, 0],
-    })
-    expect(rgb_at(flipped, 0)).toEqual(rgb_at(forward, 1))
-    expect(rgb_at(flipped, 1)).toEqual(rgb_at(forward, 0))
+    const remap = (value_range: [number, number]) =>
+      scalars_to_vertex_colors(new Float32Array([0, 10]), { ...viridis_opts, value_range })
+    const [flipped, flat] = [remap([10, 0]), remap([5, 5])]
+    expect(rgb_at(flipped, 0)).toEqual(rgb_at(colors, 1))
+    expect(rgb_at(flipped, 1)).toEqual(rgb_at(colors, 0))
+    expect(rgb_at(flat, 0)).toEqual(rgb_at(flat, 1))
   })
 
   test.each([NaN, Infinity, -Infinity])(
@@ -71,14 +65,6 @@ describe(`scalars_to_vertex_colors`, () => {
       expect([...colors]).toEqual(Array(3).fill(expect.closeTo(0.2158, 3)))
     },
   )
-
-  test(`zero-span range maps everything to one mid color`, () => {
-    const colors = scalars_to_vertex_colors(new Float32Array([5, 7]), {
-      ...viridis_opts,
-      value_range: [5, 5],
-    })
-    expect(rgb_at(colors, 0)).toEqual(rgb_at(colors, 1))
-  })
 
   // color_scale type spaces values and palette_range clips the scheme, like the 2D plots
   test(`log type and palette_range match the linear full-palette colors they reduce to`, () => {

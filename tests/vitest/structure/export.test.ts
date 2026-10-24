@@ -13,6 +13,7 @@ import {
   structure_to_xyz_str,
 } from '#lib/structure/export.js'
 import { parse_cif, parse_poscar, parse_xyz } from '#lib/structure/parse.js'
+import { make_site as make_lib_site } from '#lib/structure/site.js'
 import { assert, describe, expect, it } from 'vitest'
 import { complex_structure, simple_structure } from '../test-fixtures'
 
@@ -23,13 +24,7 @@ const make_site = (
   xyz: Vec3 = [0, 0, 0],
   label = `${element}1`,
   properties: Record<string, unknown> = {},
-): Site => ({
-  species: [{ element, occu: 1, oxidation_state: 0 }],
-  abc,
-  xyz,
-  label,
-  properties,
-})
+): Site => make_lib_site(element, abc, xyz, label, properties)
 
 // oxfmt-ignore
 const diag_lattice = (lattice_a: number, lattice_b = lattice_a, lattice_c = lattice_a): LatticeType => ({
@@ -87,7 +82,7 @@ describe(`Export functionality`, () => {
     ])(`round-trips %s through extended XYZ`, (_name, properties) => {
       const structure = {
         sites: [
-          { ...make_site(`Si`, [0, 0, 0], [0, 0, 0]), properties },
+          { ...make_site(`Si`), properties },
           { ...make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1]), properties },
         ],
         lattice: diag_lattice(2),
@@ -104,7 +99,7 @@ describe(`Export functionality`, () => {
     it(`omits the forces column unless every site has one`, () => {
       const structure = {
         sites: [
-          { ...make_site(`Si`, [0, 0, 0], [0, 0, 0]), properties: { force: [1, 2, 3] } },
+          { ...make_site(`Si`), properties: { force: [1, 2, 3] } },
           make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1]),
         ],
         lattice: diag_lattice(2),
@@ -117,7 +112,7 @@ describe(`Export functionality`, () => {
 
     it(`preserves an aperiodic cell through export`, () => {
       const structure = {
-        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0])],
+        sites: [make_site(`H`)],
         lattice: { ...diag_lattice(10), pbc: [true, false, false] },
       } as AnyStructure
       const exported = structure_to_xyz_str(structure)
@@ -304,13 +299,10 @@ describe(`Export functionality`, () => {
     // An extXYZ `Lattice="... 0 0 0"` parses (axis-length fallback) but has no cart->frac
     // inverse; sites already carry abc, so the inverse must not be built unless one needs it
     // POSCAR checks poscar_export_unavailable_reason up front; CIF fails on inverting
+    // oxfmt-ignore
     it.each([
       [`CIF`, structure_to_cif_str, `singular or ill-conditioned`],
-      [
-        `POSCAR`,
-        structure_to_poscar_str,
-        `POSCAR export: A nonsingular unit cell with finite volume is required`,
-      ],
+      [`POSCAR`, structure_to_poscar_str, `POSCAR export: A nonsingular unit cell with finite volume is required`],
     ] as const)(
       `%s export of a singular lattice uses the sites' abc`,
       (format, serialize, error) => {
@@ -337,12 +329,9 @@ describe(`Export functionality`, () => {
 
     // The data block header is required by pymatgen: the alphabetical formula with
     // occupancies rounded to integers (Fe 0.3 -> 0 is left out), else the sanitized id
-    const fe_o_partial = [`Fe`, `O`].map((element, idx) => ({
-      ...make_site(element as ElementSymbol),
-      species: [
-        { element: element as ElementSymbol, occu: [0.3, 2][idx], oxidation_state: 0 },
-      ],
-    }))
+    const fe_o_partial = ([`Fe`, `O`] as const).map((element, idx) =>
+      make_lib_site(element, [0, 0, 0], [0, 0, 0], `${element}1`, {}, [0.3, 2][idx]),
+    )
     // oxfmt-ignore
     it.each([
       [`a formula`, complex_structure, `data_FeLiO4P`], // Fe1Li1O4P1
@@ -359,18 +348,12 @@ describe(`Export functionality`, () => {
     it(`exports POSCAR format correctly`, () => {
       const lines = structure_to_poscar_str(complex_structure).split(`\n`)
 
-      expect(lines[0]).toBe(complex_structure.id) // title
-      expect(lines[1]).toBe(`1.0`) // scale factor
-
+      expect(lines.slice(0, 2)).toEqual([complex_structure.id, `1.0`]) // title, scale factor
       // Lattice vectors (3 lines)
-      for (const line of lines.slice(2, 5)) {
+      for (const line of lines.slice(2, 5))
         expect(line).toMatch(/^-?\d+\.\d+ -?\d+\.\d+ -?\d+\.\d+$/)
-      }
-
       // Element symbols + atom counts (1 Li, 1 Fe, 1 P, 4 O) + coordinate mode
-      expect(lines[5]).toBe(`Li Fe P O`)
-      expect(lines[6]).toBe(`1 1 1 4`)
-      expect(lines[7]).toBe(`Direct`)
+      expect(lines.slice(5, 8)).toEqual([`Li Fe P O`, `1 1 1 4`, `Direct`])
 
       // One coordinate line per site (8 header lines + 7 sites)
       expect(lines).toHaveLength(8 + complex_structure.sites.length)
@@ -395,9 +378,7 @@ describe(`Export functionality`, () => {
       const coord_lines = lines.filter((line) =>
         /^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/.exec(line),
       )
-      expect(coord_lines).toHaveLength(2)
-      expect(coord_lines[0]).toContain(`T F T`)
-      expect(coord_lines[1]).toContain(`F F F`)
+      expect(coord_lines.map((line) => line.slice(-5))).toEqual([`T F T`, `F F F`])
     })
 
     it(`exports CIF with quoted H-M symbol, IT number, and identity symmetry ops loop`, () => {

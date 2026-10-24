@@ -37,27 +37,13 @@ describe(`spacegroup_to_crystal_sys / spacegroup_to_lattice_system`, () => {
     expect(spg.spacegroup_to_lattice_system(input)).toBe(lattice_sys)
   })
 
+  // oxfmt-ignore
   test.each([
-    0,
-    -1,
-    231,
-    1000,
-    62.5,
-    `invalid`,
-    `P999`,
-    ``,
-    `0`,
-    `231`,
-    `-1`,
-    `231:R`,
+    0, -1, 231, 1000, 62.5, `invalid`, `P999`, ``, `0`, `231`, `-1`, `231:R`,
     // Prototype members: a plain-object lookup inherits Object.prototype, so these passed
     // the `!== undefined` test and came back as a function or object where the signature
     // promises `number | null`, then slipped past `num == null` checks downstream.
-    `constructor`,
-    `toString`,
-    `__proto__`,
-    `valueOf`,
-    `hasOwnProperty`,
+    `constructor`, `toString`, `__proto__`, `valueOf`, `hasOwnProperty`,
   ])(`returns null for invalid input %j`, (invalid) => {
     expect(spg.normalize_spacegroup(invalid)).toBeNull()
     expect(spg.spacegroup_to_crystal_sys(invalid)).toBeNull()

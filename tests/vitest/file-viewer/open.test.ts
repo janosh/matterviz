@@ -1,5 +1,5 @@
 import * as parse_worker from '#lib/file-viewer/parse-in-worker.js'
-import { MaterialOpenError, open_material } from '#lib/file-viewer/open.js'
+import { deliver_raw_file, MaterialOpenError, open_material } from '#lib/file-viewer/open.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import { afterEach, expect, test, vi } from 'vitest'
 import { gzip_bytes, make_run } from '../test-fixtures'
@@ -27,6 +27,20 @@ test(`URL acquisition decompresses once and records source provenance`, async ()
     source_url: `https://example.com/si.cif.gz`,
     file_size: new Blob([text]).size,
   })
+})
+
+// An empty Blob-backed (HDF5) payload is rejected before being read into an ArrayBuffer
+test(`deliver_raw_file rejects empty payloads without reading them`, async () => {
+  const on_file = vi.fn()
+  const empty = new Blob([])
+  const array_buffer = vi.spyOn(empty, `arrayBuffer`)
+  for (const data of [``, empty]) {
+    await expect(deliver_raw_file({ data, filename: `run.h5` }, on_file)).rejects.toThrow(
+      `file is empty`,
+    )
+  }
+  expect(array_buffer).not.toHaveBeenCalled()
+  expect(on_file).not.toHaveBeenCalled()
 })
 
 test(`trajectory progress and disposal stay owned by the opened material`, async () => {
@@ -62,10 +76,6 @@ test(`parse failures retain their stage and source identity`, async () => {
   expect(error).toMatchObject({
     message: `bad atoms`,
     stage: `parse`,
-    provenance: {
-      filename: `bad.xyz`,
-      source_filename: `bad.xyz`,
-      file_size: 6,
-    },
+    provenance: { filename: `bad.xyz`, source_filename: `bad.xyz`, file_size: 6 },
   })
 })

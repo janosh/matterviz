@@ -237,7 +237,8 @@ export function watch_theme_changes(
 export const apply_theme_to_dom = (mode: ThemeMode): void => {
   if (!is_browser) return
   const resolved = mode === AUTO_THEME ? get_system_mode() : mode
-  if (!(resolved in THEME_TYPE)) throw new Error(`Invalid theme mode: ${resolved}`)
+  // own keys only: `in` also accepts inherited names like `constructor`
+  if (!is_valid_theme_name(resolved)) throw new Error(`Invalid theme mode: ${resolved}`)
   const root = document.documentElement
   root.dataset.theme = resolved
   root.style.colorScheme = THEME_TYPE[resolved]

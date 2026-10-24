@@ -36,6 +36,8 @@ describe(`camera flight editing`, () => {
     expect(times(editor)).toEqual([0, 6, 12])
     expect(editor.can_redo).toBe(false)
     expect(editor.selected).toBe(2)
+    editor.select(0)
+    expect(editor.selected).toBe(0)
   })
 
   it(`preserves custom timing proportions and can return to automatic spacing`, () => {

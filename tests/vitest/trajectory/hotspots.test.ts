@@ -224,11 +224,7 @@ describe(`spatial kinetic hotspots`, () => {
     expect(hotspot_mean(result, `energy`)).toBe(2.2)
     expect(Array.from(result.occupied_frames)).toEqual([2, 2])
     await expect(
-      calculate_hotspots(3, read, {
-        ...result.options,
-        start_frame: 1,
-        end_frame: 2,
-      }),
+      calculate_hotspots(3, read, { ...result.options, start_frame: 1, end_frame: 2 }),
     ).rejects.toThrow(`No selected atoms lie inside the hotspot grid`)
   })
 
@@ -270,13 +266,11 @@ describe(`spatial kinetic hotspots`, () => {
     expect(temperature[0]).toBe(Math.fround((28 * conversion) / BOLTZMANN_EV_PER_K))
   })
 
+  // oxfmt-ignore
   it.each([
     [{}, /Select velocity units/],
     [{ velocity_unit: `constructor` }, /Select velocity units/],
-    [
-      { energy_key: `ke`, energy_unit: `constructor`, energy_reference: `device` },
-      /Select energy units/,
-    ],
+    [{ energy_key: `ke`, energy_unit: `constructor`, energy_reference: `device` }, /Select energy units/],
     [{ ...velocity_options, max_bytes: 1 }, /budget/],
     [{ ...velocity_options, retained_bytes: 128 * 1024 ** 2 }, /budget/],
     [{ ...velocity_options, frame_stride: 0 }, /: frames 1–3 \(stride 0\)/],
@@ -581,10 +575,7 @@ describe(`spatial kinetic hotspots`, () => {
         expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
         expect((await run.read_frame(1)).header.metadata?.time).toBeUndefined()
       }
-      const computation = run.compute_hotspots({
-        ...energy_options,
-        selection_key: `mobile`,
-      })
+      const computation = run.compute_hotspots({ ...energy_options, selection_key: `mobile` })
       if (sparse_time) {
         await expect(computation).rejects.toThrow(`HDF5 time has no sample at step 1`)
         return
@@ -663,21 +654,14 @@ describe(`spatial kinetic hotspots`, () => {
     expect(indices).toHaveLength(2000)
     if (!Array.isArray(indices)) throw new Error(`Missing sampled atom indices`)
     expect(indices[1]).toBe(Math.ceil(n_atoms / 2000))
-    const tail = await opened.lazy.read_atoms({
-      frame_idx: 1,
-      start: n_atoms - 5,
-      count: 8,
-    })
+    const tail = await opened.lazy.read_atoms({ frame_idx: 1, start: n_atoms - 5, count: 8 })
     expect(tail.positions).toEqual(
       Float64Array.from(
         [1.375, 1.5, 1.625, 1.75, 1.875].flatMap((value) => [value, 0.5, 0.5]),
       ),
     )
     if (!run.compute_hotspots) throw new Error(`Missing hotspot reader`)
-    const result = await run.compute_hotspots({
-      ...velocity_options,
-      motion: `translation`,
-    })
+    const result = await run.compute_hotspots({ ...velocity_options, motion: `translation` })
     expect(hotspot_mean(result, `energy`)).toBeCloseTo(28 * conversion, 12)
     expect(result.population.reduce((sum, value) => sum + value, 0)).toBe(n_atoms)
     console.info(

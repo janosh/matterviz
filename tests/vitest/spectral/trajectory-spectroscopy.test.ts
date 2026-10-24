@@ -86,12 +86,12 @@ const tumbling_spectra = (spec: TumblingCase) => {
   const { elements, masses, base_positions, body_tensor, amplitude } = spec
   const n_frames = 128
   const n_atoms = base_positions.length
-  const rotating_positions = new Float64Array(n_frames * n_atoms * 3)
-  const stationary_positions = new Float64Array(n_frames * n_atoms * 3)
-  const rotating_velocities = new Float64Array(n_frames * n_atoms * 3)
-  const stationary_velocities = new Float64Array(n_frames * n_atoms * 3)
-  const rotating_tensors = new Float64Array(n_frames * 9)
-  const stationary_tensors = new Float64Array(n_frames * 9)
+  const make_buffers = () => ({
+    positions: new Float64Array(n_frames * n_atoms * 3),
+    velocities: new Float64Array(n_frames * n_atoms * 3),
+    tensors: new Float64Array(n_frames * 9),
+  })
+  const [rotating, stationary] = [make_buffers(), make_buffers()]
   const steps = Array.from({ length: n_frames }, (_unused, frame_idx) => frame_idx)
   const angular_speed = 2 * Math.PI * 0.03
   for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
@@ -100,14 +100,14 @@ const tumbling_spectra = (spec: TumblingCase) => {
     const sine = Math.sin(angle)
     const oscillation = amplitude * Math.sin(2 * Math.PI * 0.125 * frame_idx)
     const tensor = body_tensor(oscillation)
-    stationary_tensors.set(tensor, frame_idx * 9)
+    stationary.tensors.set(tensor, frame_idx * 9)
     for (const [atom_idx, [x_coord, y_coord, z_coord]] of base_positions.entries()) {
       const x_rotated = cosine * x_coord - sine * y_coord
       const y_rotated = sine * x_coord + cosine * y_coord
       const atom_base = frame_idx * n_atoms * 3 + atom_idx * 3
-      stationary_positions.set([x_coord, y_coord, z_coord], atom_base)
-      rotating_positions.set([x_rotated, y_rotated, z_coord], atom_base)
-      rotating_velocities.set(
+      stationary.positions.set([x_coord, y_coord, z_coord], atom_base)
+      rotating.positions.set([x_rotated, y_rotated, z_coord], atom_base)
+      rotating.velocities.set(
         [-angular_speed * y_rotated, angular_speed * x_rotated, 0],
         atom_base,
       )
@@ -115,16 +115,16 @@ const tumbling_spectra = (spec: TumblingCase) => {
     const tensor_xx = cosine * cosine * tensor[0] + sine * sine * tensor[4]
     const tensor_yy = sine * sine * tensor[0] + cosine * cosine * tensor[4]
     const coords_xy = cosine * sine * (tensor[0] - tensor[4])
-    rotating_tensors.set(
+    rotating.tensors.set(
       [tensor_xx, coords_xy, 0, coords_xy, tensor_yy, 0, 0, 0, tensor[8]],
       frame_idx * 9,
     )
   }
-  const as_input = (
-    positions: Float64Array,
-    velocities: Float64Array,
-    tensors: Float64Array,
-  ): TrajectorySpectroscopyInput => ({
+  const as_input = ({
+    positions,
+    velocities,
+    tensors,
+  }: ReturnType<typeof make_buffers>): TrajectorySpectroscopyInput => ({
     positions: position_stream(positions, elements, steps),
     masses: Float64Array.from(masses),
     velocities: { values: velocities, sample_shape: [n_atoms, 3], steps },
@@ -135,14 +135,8 @@ const tumbling_spectra = (spec: TumblingCase) => {
   })
   const options = { ...RAW_SPECTRUM, preprocessing: `body_fixed` } as const
   return {
-    rotating: calc_trajectory_spectroscopy(
-      as_input(rotating_positions, rotating_velocities, rotating_tensors),
-      options,
-    ),
-    stationary: calc_trajectory_spectroscopy(
-      as_input(stationary_positions, stationary_velocities, stationary_tensors),
-      options,
-    ),
+    rotating: calc_trajectory_spectroscopy(as_input(rotating), options),
+    stationary: calc_trajectory_spectroscopy(as_input(stationary), options),
   }
 }
 
@@ -456,10 +450,8 @@ describe(`calc_trajectory_spectroscopy`, () => {
   ])(
     `reports no spectrum for motion below round-off (stretch $stretch_amp)`,
     ({ stretch_amp, peak_freqs, vdos_max }) => {
-      const result = calc_trajectory_spectroscopy(rigid_water(stretch_amp), {
-        preprocessing: `body_fixed`,
-        frequency_unit: `1/step`,
-      })
+      const options = { ...RAW, preprocessing: `body_fixed` } as const
+      const result = calc_trajectory_spectroscopy(rigid_water(stretch_amp), options)
       // any surviving peak is the injected 0.11 1/step stretch, not round-off
       expect(result.peaks.map((peak) => peak.frequency)).toEqual(
         peak_freqs.map((frequency) => expect.closeTo(frequency, 2)),

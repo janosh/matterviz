@@ -1,5 +1,5 @@
 // Theme detection for embedded MatterViz views
-import { perceived_brightness } from '#lib/colors/index.js'
+import { is_concrete_color, perceived_brightness } from '#lib/colors/index.js'
 import type { ThemeType } from '#lib/theme/index.js'
 import {
   declared_color_scheme,
@@ -43,10 +43,12 @@ export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
   // JupyterLab: the shell's theme name, or the layout colour its theme CSS defines
   const jupyter_theme = globalThis.jupyterlab?.application?.shell?.dataset?.theme
   if (jupyter_theme) return /dark/i.test(jupyter_theme) ? `dark` : `light`
-  const jp_bg = getComputedStyle(document.documentElement).getPropertyValue(
-    `--jp-layout-color0`,
-  )
-  if (jp_bg.trim()) return perceived_brightness(jp_bg) < 0.5 ? `dark` : `light`
+  const jp_bg = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--jp-layout-color0`)
+    .trim()
+  // a value no color parser reads (a theme's color function) says nothing, rather than
+  // throwing out of detection and every watch_theme notification after it
+  if (is_concrete_color(jp_bg)) return perceived_brightness(jp_bg) < 0.5 ? `dark` : `light`
 
   // Nothing declared: the OS preference. A page that merely styles its body dark has not
   // stated a theme, so its colours are not sniffed.

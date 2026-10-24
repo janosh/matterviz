@@ -8,7 +8,7 @@ Three inputs are needed:
 
 | Input                      | Source                                                   | Parser                               |
 | -------------------------- | -------------------------------------------------------- | ------------------------------------ |
-| Frequencies + eigenvectors | phonopy `band.yaml` / `qpoints.yaml` / `mesh.yaml`       | `parse_phonon_modes`                 |
+| Frequencies + eigenvectors | phonopy `band.yaml` / `mesh.yaml`                        | `parse_phonon_modes`                 |
 | Born charges + dielectric  | phonopy `BORN`                                           | `parse_born`                         |
 | Polarizability derivatives | LEPSILON finite differences (VASP, phonopy-spectroscopy) | supplied directly as `raman_tensors` |
 

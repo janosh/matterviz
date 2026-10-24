@@ -80,6 +80,30 @@
     mesh.matrixWorldNeedsUpdate = true
   }
 
+  // A whole-atom cutaway draws a periodic bond at both of its center ends: the two copies
+  // share rendered_bond_key_for (the bond they edit) but not their drawn endpoints, which key
+  // the hit cylinders apart
+  const hit_key = ({ site_idx_1, site_idx_2, cell_shift }: BondPair): string =>
+    `${mode}-${site_idx_1}>${site_idx_2}@${cell_shift ?? ``}`
+  // A keyed item keeps its cylinders (hit target and hover highlight) while its bond moves
+  // (trajectory frames) or the thickness changes, so transforms are rewritten here rather than
+  // only on creation
+  const hit_meshes = new Map<string, Mesh>()
+  const highlight_meshes = new Map<string, Mesh>()
+  $effect(() => {
+    for (const bond of bonds) {
+      const key = hit_key(bond)
+      const [hit, highlight] = [hit_meshes.get(key), highlight_meshes.get(key)]
+      if (hit) apply_bond_transform(hit, bond, bond_hit_radius)
+      if (highlight) apply_bond_transform(highlight, bond, bond_thickness * 1.1)
+    }
+  })
+  // Register a mesh under its bond's key for the effect above; the cleanup unregisters it
+  const track = (meshes: Map<string, Mesh>, key: string, mesh: Mesh) => {
+    meshes.set(key, mesh)
+    return () => meshes.delete(key)
+  }
+
   function on_bond_press(bond: BondPair, event: ThrelteEvent<PointerEvent>): void {
     if (event.nativeEvent?.button === 2) return
     if (is_delete_mode) {
@@ -97,7 +121,7 @@
   }
 </script>
 
-{#each bonds as bond (`bond-hit-${mode}-${rendered_bond_key_for(bond)}`)}
+{#each bonds as bond (hit_key(bond))}
   {@const bond_key = rendered_bond_key_for(bond)}
   <!-- delete mode: a bond under the cursor wins over atoms in front of it (pick_rank),
   which ignore clicks there, so it is the one highlighted and removed -->
@@ -111,6 +135,7 @@
       enable_cutaway_picking(ref, (raycaster, hits) =>
         raycast_bond(ref, bond, bond_thickness, raycaster, hits, bond_hit_radius),
       )
+      return track(hit_meshes, hit_key(bond), ref)
     }}
     onpointerdown={(event: ThrelteEvent<PointerEvent>) => on_bond_press(bond, event)}
     oncontextmenu={(event: ThrelteEvent<MouseEvent>) => {
@@ -129,6 +154,7 @@
       oncreate={(ref) => {
         apply_bond_transform(ref, bond, bond_thickness * 1.1)
         disable_raycast(ref)
+        return track(highlight_meshes, hit_key(bond), ref)
       }}
     >
       <T.MeshBasicMaterial

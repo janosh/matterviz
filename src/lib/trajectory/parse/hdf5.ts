@@ -118,7 +118,10 @@ const STRUCTURAL_ALIASES = new Set([
   ...PBC_ALIASES,
 ])
 const MASS_ALIASES = new Set([`masses`, `mass`, `atomic_masses`])
+// Site-property names as every other reader writes them (extXYZ export skips a plural `forces`)
 const SIGNAL_ALIASES: Record<string, string> = {
+  forces: `force`,
+  force: `force`,
   velocities: `velocity`,
   velocity: `velocity`,
   dipoles: `dipole`,
@@ -744,10 +747,7 @@ const parse_torch_sim_datasets = (
       lattice,
       pbc_for_frame(frame_idx),
       steps[frame_idx],
-      {
-        ...(energy === undefined ? {} : { energy }),
-        ...(time === undefined ? {} : { time }),
-      },
+      { ...(energy === undefined ? {} : { energy }), ...(time === undefined ? {} : { time }) },
       vector_signals.map(({ key }) => key),
     )
     frame.available_vector_keys = available_vector_keys

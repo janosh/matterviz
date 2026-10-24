@@ -67,6 +67,11 @@ const mount_pane = (props: Record<string, unknown>, collect = vi.fn(default_coll
   mounted = mount(TrajectoryAnalysisPane, { target: document.body, props: merged })
   return collect
 }
+const mount_settled = async (...args: Parameters<typeof mount_pane>) => {
+  const collect = mount_pane(...args)
+  await settle()
+  return collect
+}
 
 const pane_text = () => doc_query(`.stub-controls`).textContent ?? ``
 const click_collect = async () => {
@@ -86,7 +91,8 @@ const set_labeled = async (label: string, value: number | string) => {
 }
 const timestep_inputs = () => ({
   use_dt: doc_query(`.stub-controls input[type="checkbox"]`, HTMLInputElement),
-  dt: doc_query(`.stub-controls input[type="number"][step="0.001"]`, HTMLInputElement),
+  // by accessible name: the wrapping label names only its first control, the checkbox
+  dt: doc_query(`.stub-controls input[aria-label="Time per source frame"]`, HTMLInputElement),
   unit: doc_query(`input[aria-label="Time unit"]`, HTMLInputElement),
 })
 // [use dt, dt, unit, unit disabled]
@@ -136,15 +142,13 @@ describe(`timestep seeding`, () => {
   ])(
     `rejects a %s default and falls back to the unit the analysis names`,
     async (_label, default_dt, default_time_unit) => {
-      mount_pane({ default_dt, default_time_unit, time_unit_fallback: `ps` })
-      await settle()
+      await mount_settled({ default_dt, default_time_unit, time_unit_fallback: `ps` })
       expect(timestep_state()).toEqual([false, 1, `ps`, true])
     },
   )
 
   test(`folds the frame stride into the time per collected frame and keeps the collected stride after a retype`, async () => {
-    mount_pane({ default_dt: 0.5, default_time_unit: `ps`, time_unit_fallback: `fs` })
-    await settle()
+    await mount_settled({ default_dt: 0.5, default_time_unit: `ps`, time_unit_fallback: `fs` })
     await set_labeled(`Frame stride`, 4)
     expect(pane_text()).toContain(`5 frames × 2 atoms`)
     expect(pane_text()).toContain(`2 ps per collected frame`)
@@ -187,7 +191,7 @@ describe(`frame stride`, () => {
   test(`budgets the selected window of a host run and hides satisfied stride hints`, async () => {
     const { preview, ...fields } = make_run(20)
     const run = Object.assign(new HostRun(preview), fields)
-    mount_pane({
+    await mount_settled({
       run,
       suggest_stride: (source: TrajectoryRun, frame_count: number) =>
         suggest_analysis_frame_stride(
@@ -197,7 +201,6 @@ describe(`frame stride`, () => {
           frame_count,
         ),
     })
-    await settle()
     expect(pane_text()).toContain(`needs ≥ 5`)
     await set_labeled(`Frame stride`, 5)
     expect(pane_text()).not.toContain(`needs ≥`)
@@ -208,8 +211,7 @@ describe(`frame stride`, () => {
 
   // analyses opt in to timestep controls (time_unit_fallback) and stride budgeting separately
   test(`omits timestep controls, stride control, size estimate and hint line unless opted in`, async () => {
-    mount_pane({ default_dt: 2, default_time_unit: `fs`, suggest_stride: undefined })
-    await settle()
+    await mount_settled({ default_dt: 2, default_time_unit: `fs`, suggest_stride: undefined })
     expect(document.querySelector(`input[aria-label="Time unit"]`)).toBeNull()
     expect(pane_text()).not.toContain(`per collected frame`)
     expect(
@@ -222,8 +224,7 @@ describe(`frame stride`, () => {
   // the MSD/VACF panes mount before their run, so position_buffers arrives later
   test(`position_buffers alone opts in to the stride budget, even when set after mount`, async () => {
     const buffers = $state<{ position_buffers?: number }>({ position_buffers: undefined })
-    mount_pane(bind_props({ suggest_stride: undefined }, buffers))
-    await settle()
+    await mount_settled(bind_props({ suggest_stride: undefined }, buffers))
     expect(
       document.querySelector(`.stub-controls input[aria-label="Frame stride"]`),
     ).toBeNull()
@@ -285,7 +286,7 @@ describe(`frame window`, () => {
       })
       const pending = Promise.withResolvers<undefined>()
       let collections = 0
-      mount_pane(
+      await mount_settled(
         bind_props(
           {
             time_unit_fallback: `ps`,
@@ -305,7 +306,6 @@ describe(`frame window`, () => {
           }
         }),
       )
-      await settle()
       const button = doc_query(`.stub-controls button`, HTMLButtonElement)
       if (sparse) expect(read_step).not.toHaveBeenCalled()
       if (!sparse) {
@@ -353,8 +353,7 @@ describe(`frame window`, () => {
   test(`maps recorded times to source frames, rejects empty windows, and snapshots collection options`, async () => {
     const run = timed_run([10, 20, 50, 90])
     const properties = new TrajectoryProperties()
-    const collect = mount_pane({ run: { ...run, properties } })
-    await settle()
+    const collect = await mount_settled({ run: { ...run, properties } })
     expect(document.querySelector(`input[aria-label="Start time"]`)).toBeNull()
     properties.push(run.properties.rows)
     properties.finish()
@@ -410,8 +409,7 @@ test(`selected-frame checks cancel stale reads, explain failures, and stop on un
     if (signal) signals.push(signal)
     return pending[signals.length - 1].promise
   })
-  mount_pane({ run: { ...run, read_frame }, frame_unavailable_reason: () => null })
-  await settle()
+  await mount_settled({ run: { ...run, read_frame }, frame_unavailable_reason: () => null })
   const start = doc_query(`input[aria-label="Start frame"]`, HTMLInputElement)
   const compute = doc_query(`.stub-controls button`, HTMLButtonElement)
   // 1-based frames 2 and 3 are indices 1 and 2, which need reads (index 0 is the preview)
@@ -441,8 +439,7 @@ describe(`trajectory state`, () => {
     [`full-pass run`, make_run(20), false],
     [`frame-only run`, frame_only_run(20), true],
   ])(`warns only for a %s`, async (_label, run, expects_warning) => {
-    mount_pane({ run })
-    await settle()
+    await mount_settled({ run })
     const text = document.body.textContent ?? ``
     expect(text).toContain(`Stub analysis`)
     expect(
@@ -453,8 +450,7 @@ describe(`trajectory state`, () => {
   })
 
   test(`reports no trajectory rather than empty controls`, async () => {
-    mount_pane({ run: undefined })
-    await settle()
+    await mount_settled({ run: undefined })
     expect(document.body.textContent).toContain(`No trajectory loaded`)
     expect(document.querySelector(`.stub-controls`)).toBeNull()
   })
@@ -465,8 +461,7 @@ describe(`trajectory state`, () => {
       run: make_run(20),
       input: { frame_stride: 1, n: 0 },
     })
-    mount_pane(bind_props({ on_clear }, state))
-    await settle()
+    await mount_settled(bind_props({ on_clear }, state))
     // mount is not a swap: a precomputed input passed in with the trajectory survives it
     expect(on_clear).not.toHaveBeenCalled()
     expect(state.input).toEqual({ frame_stride: 1, n: 0 })
@@ -493,7 +488,7 @@ describe(`trajectory state`, () => {
         input: undefined,
         error_msg: undefined,
       })
-      mount_pane(
+      await mount_settled(
         bind_props({}, state),
         vi.fn<Collect>((_run, options) => {
           report = options.on_progress
@@ -501,7 +496,6 @@ describe(`trajectory state`, () => {
           return pending.promise
         }),
       )
-      await settle()
       const button = doc_query(`.stub-controls button`, HTMLButtonElement)
       button.click()
       await settle()
@@ -535,7 +529,7 @@ describe(`trajectory state`, () => {
       input: undefined,
       error_msg: undefined,
     })
-    const collect = mount_pane(
+    const collect = await mount_settled(
       bind_props({}, state),
       vi.fn<Collect>(
         (_run, { signal }) =>
@@ -545,7 +539,6 @@ describe(`trajectory state`, () => {
           }),
       ),
     )
-    await settle()
     const button = doc_query(`.stub-controls button`, HTMLButtonElement)
     button.click()
     await settle()
@@ -572,11 +565,10 @@ describe(`trajectory state`, () => {
       input: { frame_stride: 1, n: 0 },
       error_msg: undefined,
     })
-    mount_pane(
+    await mount_settled(
       bind_props({ on_clear }, state),
       vi.fn<Collect>(() => Promise.reject(new Error(`stream exploded`))),
     )
-    await settle()
     await click_collect()
     expect(state.input).toBeUndefined()
     expect(state.error_msg).toBe(`stream exploded`)
@@ -587,7 +579,7 @@ describe(`trajectory state`, () => {
     const pending = Promise.withResolvers<Collected>()
     let report: ((progress: ParseProgress) => void) | undefined
     const state = $state({ busy: true })
-    mount_pane(
+    await mount_settled(
       bind_props(
         {
           collecting_label: `Sweeping…`,
@@ -608,7 +600,6 @@ describe(`trajectory state`, () => {
         return pending.promise
       }),
     )
-    await settle()
     const button = doc_query(`.stub-controls button`, HTMLButtonElement)
     expect(button.disabled).toBe(true)
     state.busy = false

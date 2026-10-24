@@ -1,10 +1,13 @@
 import FloatingPopup from '#lib/overlays/FloatingPopup.svelte'
-import { type ComponentProps, createRawSnippet, flushSync, mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
+import { type ComponentProps, createRawSnippet, flushSync, mount, unmount } from 'svelte'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
+// Unmounted after each test: a stale popup's window listener would take the next one's Escape
 const mount_popup = (props: Partial<ComponentProps<typeof FloatingPopup>> = {}): void => {
-  mount(FloatingPopup, { target: document.body, props })
+  const popup = mount(FloatingPopup, { target: document.body, props })
+  onTestFinished(() => unmount(popup))
   flushSync()
 }
 
@@ -14,6 +17,39 @@ describe(`FloatingPopup`, () => {
       name: `closes on Escape key`,
       act: () => globalThis.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` })),
       expect_close: true,
+    },
+    {
+      // e.g. a viewer inside the popup unpinning its tooltip: one press, one dismissal
+      name: `keeps open on an Escape handled inside`,
+      act: () => {
+        const popup = doc_query(`.floating-popup`)
+        popup.addEventListener(`keydown`, (event) => event.preventDefault())
+        popup.dispatchEvent(
+          new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true, cancelable: true }),
+        )
+      },
+      expect_close: false,
+    },
+    {
+      name: `keeps open on an Escape that hides a hover tooltip inside`,
+      props: {
+        children: createRawSnippet(() => ({
+          render: () => `<span class="mark">mark</span>`,
+          setup: (mark: Element) =>
+            hover_tooltip(createRawSnippet(() => ({ render: () => `<b>tip</b>` })))(
+              mark as HTMLElement,
+            ),
+        })),
+      },
+      act: () => {
+        doc_query(`.mark`).dispatchEvent(new PointerEvent(`pointerenter`))
+        expect(doc_query(`.plot-tooltip`).textContent).toBe(`tip`)
+        doc_query(`.mark`).dispatchEvent(
+          new KeyboardEvent(`keydown`, { key: `Escape`, bubbles: true, cancelable: true }),
+        )
+        expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+      },
+      expect_close: false,
     },
     {
       name: `closes on click outside`,

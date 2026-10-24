@@ -74,14 +74,17 @@
 
   let tile_edges = $derived(supercell_grid_edges(tile_counts))
 
-  const make_box_geometry = (cell: math.Matrix3x3) =>
-    new BoxGeometry(1, 1, 1).applyMatrix4(
-      new Matrix4().makeBasis(
-        new Vector3(...cell[0]),
-        new Vector3(...cell[1]),
-        new Vector3(...cell[2]),
-      ),
-    )
+  // A left-handed cell would mirror the cube and turn its faces inside out (front-face culling
+  // then hides the near walls). Swapping a and b maps the symmetric unit cube onto the same
+  // parallelepiped with a positive determinant, so the winding stays outward.
+  const make_box_geometry = (cell: math.Matrix3x3) => {
+    const [vec_a, vec_b, vec_c] = cell.map((vec) => new Vector3(...vec))
+    const basis =
+      math.det_3x3(cell) < 0
+        ? new Matrix4().makeBasis(vec_b, vec_a, vec_c)
+        : new Matrix4().makeBasis(vec_a, vec_b, vec_c)
+    return new BoxGeometry(1, 1, 1).applyMatrix4(basis)
+  }
 
   // Gate geometry rebuilds on cell numbers, not matrix identity (trajectory frames hand over
   // a fresh matrix object every step)

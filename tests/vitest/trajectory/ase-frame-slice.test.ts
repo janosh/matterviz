@@ -87,7 +87,8 @@ describe(`ASE frame slicing`, () => {
         base_offset: span.byte_offset,
         ...cached,
       })
-      cached = { fallback_numbers: numbers, fallback_pbc: pbc }
+      // ASE's reader rule: frames without their own topology header take frame 0's
+      if (frame_idx === 0) cached = { fallback_numbers: numbers, fallback_pbc: pbc }
       // Same float64 bytes read through a rebased offset, so the frames must be
       // bit-identical (toEqual on numbers is exact), not merely close.
       expect(frame).toEqual(whole_file.frames[frame_idx])

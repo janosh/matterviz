@@ -2,6 +2,7 @@ import { display_idx } from '#lib/labels.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { is_finite_vec3, type Matrix3x3 } from '#lib/math.js'
+import { parse_leading_num } from '#lib/utils.js'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers.js'
@@ -154,7 +155,8 @@ const METADATA_KEY_ALIASES: Record<string, string> = {
 const comment_scalar = (raw: string): number | boolean | undefined => {
   const token = raw.trim()
   if (!token || /\s/u.test(token)) return undefined // multi-value: a signal, not a scalar
-  const num = Number(token) // number first so `1`/`0` stay numbers, not flags
+  // number first so `1`/`0` stay numbers, not flags; Fortran writers emit `1.0D-3`
+  const num = parse_float_token(token)
   return Number.isFinite(num) ? num : EXTXYZ_BOOL.get(token.toLowerCase())
 }
 
@@ -182,11 +184,13 @@ export function parse_xyz_comment_metadata(comment: string): {
       const values = raw
         .trim()
         .split(/[\s,]+/u)
-        .map(Number)
+        .map(parse_float_token)
       if (!values.every(Number.isFinite)) continue
-      // under `lower` like the scalars below: `Stress=` and `stress=` are one series
-      if (values.length === 3) signals[lower] = values
-      else if (values.length === 9) {
+      // under `lower` like the scalars below: `Stress=` and `stress=` are one series. A
+      // 6-value stress is Voigt order (ASE's own writer), which ase_stress_metadata expands.
+      if (values.length === 3 || (values.length === 6 && lower === `stress`)) {
+        signals[lower] = values
+      } else if (values.length === 9) {
         signals[lower] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
       }
       continue
@@ -415,7 +419,16 @@ export function parse_xyz_trajectory(
   collector: WarningCollector,
 ): ParsedTrajectory {
   const lines = TextLines.of(content)
-  const specs = index_xyz_frames(lines, collector.warn)
+  const dropped: string[] = []
+  const specs = index_xyz_frames(lines, (message) => dropped.push(message))
+  if (specs.length === 0) {
+    // Decode a whole first frame the sampler skipped (title after the count, numeric species)
+    // or dropped (bad last line), as parse_xyz does; only one that ended early fails as dropped
+    const num_atoms = Math.trunc(parse_leading_num(lines.line(0) ?? ``))
+    if (!(num_atoms > 0 && num_atoms + 2 <= lines.count))
+      throw new Error(dropped[0] ?? `No XYZ frames found`)
+    specs.push({ start: 0, num_atoms, comment: lines.line(1) ?? ``, end: num_atoms + 2 })
+  } else for (const message of dropped) collector.warn(message)
   const frames = specs.map((spec, frame_idx) =>
     build_xyz_frame(
       lines,
@@ -427,6 +440,5 @@ export function parse_xyz_trajectory(
       collector,
     ),
   )
-  if (frames.length === 0) throw new Error(`No XYZ frames found`)
   return { format: `xyz`, frames, metadata: extxyz_run_metadata(specs[0]?.comment) }
 }

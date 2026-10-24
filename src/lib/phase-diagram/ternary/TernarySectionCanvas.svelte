@@ -297,36 +297,27 @@
         paint_only: (entry) => vertices.has(entry),
       })
     }
-    // Pinned probe: spokes to its assemblage at this temperature, ringed marker
-    if (pinned_composition) {
-      const point = project(...pinned_composition)
-      ctx.strokeStyle = pin_color
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([5, 3])
-      for (const idx of pinned_decomposition?.phases ?? []) {
-        stroke_path(ctx, [point, project(...model.phases[idx].xy)])
-      }
+    // Composition probes: dashed spokes to the phases of the assemblage, then a dot. The
+    // pinned one (assemblage at this temperature) is bolder and ringed.
+    const probe = (xy: Vec2, phases: readonly number[], color: string, pinned: boolean) => {
+      const point = project(...xy)
+      ctx.strokeStyle = color
+      ctx.lineWidth = pinned ? 1.5 : 1
+      ctx.setLineDash(pinned ? [5, 3] : [2, 3])
+      for (const idx of phases) stroke_path(ctx, [point, project(...model.phases[idx].xy)])
       ctx.setLineDash([])
-      ring(ctx, point, 7 * scale, pin_color)
-      ctx.fillStyle = pin_color
+      if (pinned) ring(ctx, point, 7 * scale, color)
+      ctx.fillStyle = pinned ? color : add_alpha(color, 0.8)
       ctx.beginPath()
-      ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI)
+      ctx.arc(point.x, point.y, pinned ? 3 : 4, 0, 2 * Math.PI)
       ctx.fill()
     }
-    // Composition probe: dashed spokes to the tie-triangle vertices
+    if (pinned_composition) {
+      probe(pinned_composition, pinned_decomposition?.phases ?? [], pin_color, true)
+    }
     if (hover_composition) {
-      const point = project(...hover_composition.xy)
-      ctx.strokeStyle = text_color
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 3])
-      for (const idx of hover_composition.decomposition.phases) {
-        stroke_path(ctx, [point, project(...model.phases[idx].xy)])
-      }
-      ctx.setLineDash([])
-      ctx.fillStyle = add_alpha(text_color, 0.8)
-      ctx.beginPath()
-      ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI)
-      ctx.fill()
+      const { xy, decomposition } = hover_composition
+      probe(xy, decomposition.phases, text_color, false)
     }
     for (const idx of emphasized_phases) {
       if (Number.isFinite(section.e_above_hull[idx])) {

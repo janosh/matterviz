@@ -371,20 +371,6 @@ export const ELEMENT_CATEGORIES = [
   `transition metal`,
 ] as const
 
-const SUPERSCRIPT_MAP = {
-  '0': `⁰`,
-  '1': `¹`,
-  '2': `²`,
-  '3': `³`,
-  '4': `⁴`,
-  '5': `⁵`,
-  '6': `⁶`,
-  '7': `⁷`,
-  '8': `⁸`,
-  '9': `⁹`,
-  '+': `⁺`,
-  '-': `⁻`,
-} as const
 export const SUBSCRIPT_MAP = {
   '0': `₀`,
   '1': `₁`,
@@ -398,15 +384,13 @@ export const SUBSCRIPT_MAP = {
   '9': `₉`,
 } as const
 
-// replaces all signs and digits with their unicode superscript equivalent
+// replaces all signs and digits with their unicode superscript equivalent (the glyph at the
+// index of the ASCII character)
 export const superscript_digits = (input: string): string =>
-  input.replaceAll(
-    /[\d+-]/g,
-    (match) => SUPERSCRIPT_MAP[match as keyof typeof SUPERSCRIPT_MAP],
-  )
+  input.replaceAll(/[\d+-]/g, (char) => `⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻`[`0123456789+-`.indexOf(char)])
 // replaces all digits with their unicode subscript equivalent
 export const subscript_digits = (input: string): string =>
-  input.replaceAll(/\d/g, (match) => SUBSCRIPT_MAP[match as keyof typeof SUBSCRIPT_MAP])
+  input.replaceAll(/\d/g, (digit) => `₀₁₂₃₄₅₆₇₈₉`[Number(digit)])
 
 // Axis-group key for SCF convergence series: shared between the property config
 // below and the log-scale detection in trajectory/plotting.ts so the two can't drift

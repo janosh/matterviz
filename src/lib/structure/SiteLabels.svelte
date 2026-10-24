@@ -145,12 +145,13 @@
             onclick={(event) => {
               event.preventDefault()
               event.stopImmediatePropagation()
+              // keyboard and assistive-tech activation arrive as a click with detail 0; a
+              // pointer's click follows the pointerdown that already selected
+              if (event.detail === 0) on_select(site_idx, event)
             }}
             onkeydown={(event) => {
-              if (event.key !== `Enter` && event.key !== ` `) return
-              event.preventDefault()
-              event.stopPropagation()
-              on_select(site_idx, event)
+              // the key's click selects; the key itself must not reach the viewer's key walk
+              if (event.key === `Enter` || event.key === ` `) event.stopPropagation()
             }}
           >
             {#if show_labels}

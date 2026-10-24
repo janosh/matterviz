@@ -13,16 +13,16 @@ export type TableMatrix = {
   numeric: boolean[] // per column, drives right-alignment in md/tex
 }
 
-// Delimited text. TSV skips quoting (cell newlines and tabs collapse to spaces); CSV goes
-// through the shared RFC 4180 escaper.
+// TSV skips quoting, so the tabs and newlines that would split a cell collapse to spaces
+export const tsv_cell = (text: string): string => text.replaceAll(/[\t\r\n]+/g, ` `)
+
+// Delimited text: TSV through tsv_cell, CSV through the shared RFC 4180 escaper
 export const table_to_delimited = (
   { headers, rows }: TableMatrix,
   delimiter: `,` | `\t`,
 ): string => {
   const to_line = (cells: string[]): string =>
-    delimiter === `,`
-      ? csv_line(cells)
-      : cells.map((str) => str.replaceAll(/[\t\r\n]+/g, ` `)).join(delimiter)
+    delimiter === `,` ? csv_line(cells) : cells.map(tsv_cell).join(delimiter)
   return [headers, ...rows].map(to_line).join(`\n`)
 }
 

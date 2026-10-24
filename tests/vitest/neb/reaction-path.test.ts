@@ -214,13 +214,10 @@ describe(`degenerate paths fail loudly`, () => {
 
 describe(`force projection`, () => {
   // Straight-line path: the tangent is +x everywhere, so dE/ds = -F_x
+  // oxfmt-ignore
   test.each([
     [`along the tangent give minus the force`, [-0.3, 0, 0.4], [0.3, -0, -0.4]],
-    [
-      `perpendicular to the path give zero`,
-      Array.from({ length: 3 }, (): Vec3 => [0, 1.5, 0]),
-      [-0, -0, -0],
-    ],
+    [`perpendicular to the path give zero`, Array.from({ length: 3 }, (): Vec3 => [0, 1.5, 0]), [-0, -0, -0]],
   ])(`projected slopes of forces %s`, (_name, forces, expected) => {
     expect(projected_force_slopes(walk_path([0, 1, 2], [0, 0.1, 0.2], forces))).toEqual(
       expected,
@@ -252,15 +249,12 @@ describe(`force projection`, () => {
 describe(`input normalization`, () => {
   const images = walk_path([0, 1, 2], [0, 1, 0.5])
 
+  // oxfmt-ignore
   test.each([
     [`a bare image array`, () => images, [`path 1`]],
     [`a single path object`, () => ({ images, label: `hop` }), [`hop`]],
     [`an unlabelled single path`, () => ({ images }), [`path 1`]],
-    [
-      `a keyed record of paths`,
-      () => ({ vacancy: images, interstitial: { images } }),
-      [`vacancy`, `interstitial`],
-    ],
+    [`a keyed record of paths`, () => ({ vacancy: images, interstitial: { images } }), [`vacancy`, `interstitial`]],
   ])(`%s normalizes to named paths`, (_name, make_input, expected_keys) => {
     const paths = normalize_paths(make_input())
     expect(paths.map(({ key }) => key)).toEqual(expected_keys)

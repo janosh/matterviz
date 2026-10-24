@@ -167,8 +167,10 @@ export function parse_vasprun_xml(content: string, warn: WarnFn): ParsedTrajecto
       )
       forces = null
     }
+    // Per-atom forces go on the sites, only their statistics into the metadata (as every
+    // other reader does: a metadata copy doubled them in memory and the data inspector)
     const site_properties = forces?.map((force) => ({ force }))
-    if (forces) Object.assign(metadata, { forces }, calc_force_stats(forces))
+    if (forces) Object.assign(metadata, calc_force_stats(forces))
     const stress = parse_varray(after_structure, `stress`)
     if (stress?.length === 3)
       Object.assign(metadata, vasp_stress_metadata(stress as Matrix3x3))

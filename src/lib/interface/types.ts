@@ -38,10 +38,7 @@ export type MatchStrain = {
 
 // film_matrix · [a_f, b_f] and substrate_matrix · [a_s, b_s] are the two right-handed
 // super-lattice bases the film is strained between
-export type MatchMatrices = {
-  film_matrix: Matrix2x2
-  substrate_matrix: Matrix2x2
-}
+export type MatchMatrices = { film_matrix: Matrix2x2; substrate_matrix: Matrix2x2 }
 
 // One coincidence-lattice match, with Gauss-reduced super-lattice bases from match_lattices
 export type LatticeMatch = MatchStrain &

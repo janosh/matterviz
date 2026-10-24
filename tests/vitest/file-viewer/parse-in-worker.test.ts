@@ -95,11 +95,7 @@ const trajectory_response = (request: ParseWorkerRequest): ParseWorkerResponse =
   const run_port = serve_run_over_port(run)
   return {
     id: request.id,
-    result: {
-      type: `trajectory`,
-      filename: request.filename,
-      data: summarize_run(run),
-    },
+    result: { type: `trajectory`, filename: request.filename, data: summarize_run(run) },
     run_port,
   }
 }
@@ -206,14 +202,12 @@ const preparation_workers = (atom_count: number, format = `hdf5`, defer_startup 
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe(`parse_in_worker`, () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
   it.each([3, 8])(
     `keeps frames moving while replicas open together (%i cores), then shares work`,
     async (cores) => {
@@ -235,8 +229,7 @@ describe(`parse_in_worker`, () => {
           expect(workers.map(({ posted }) => posted.length)).toEqual(
             Array(Math.min(cores - 1, 3)).fill(1),
           )
-          expect(pending[0].worker_idx).toBe(0)
-          expect(pending[0].idx).toBe(idx + 1)
+          expect(pending[0]).toMatchObject({ worker_idx: 0, idx: idx + 1 })
           pending.shift()?.resolve()
           expect((await prepared).frame.header.step).toBe(idx + 1)
         }
@@ -398,7 +391,6 @@ describe(`parse_in_worker`, () => {
     } finally {
       run.dispose()
       for (const request of pending.splice(0)) request.resolve()
-      vi.useRealTimers()
     }
   })
 

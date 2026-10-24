@@ -14,18 +14,9 @@ function create_mock_sym_data(overrides: Partial<SymmetryDataset> = {}): Symmetr
     hall_number: 523,
     pearson_symbol: `cF4`,
     operations: [
-      {
-        rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
-        translation: [0.0, 0.0, 0.0] as const,
-      },
-      {
-        rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as const,
-        translation: [0.0, 0.0, 0.5] as const,
-      },
-      {
-        rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const,
-        translation: [0.5, 0.0, 0.0] as const,
-      },
+      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const, translation: [0, 0, 0] as const },
+      { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1] as const, translation: [0, 0, 0.5] as const },
+      { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const, translation: [0.5, 0, 0] as const },
     ],
   }
   return { ...default_data, ...overrides } as SymmetryDataset
@@ -34,6 +25,11 @@ function create_mock_sym_data(overrides: Partial<SymmetryDataset> = {}): Symmetr
 const mount_stats = (
   props: ComponentProps<typeof SymmetryStats> = { sym_data: create_mock_sym_data() },
 ) => mount(SymmetryStats, { target: document.body, props })
+// normalized text of each stats-grid tile
+const stat_tiles = () =>
+  Array.from(document.querySelectorAll(`.stats-grid > div`), (tile) =>
+    tile.textContent?.replaceAll(/\s+/g, ` `).trim(),
+  )
 const get_symprec_input = () => doc_query<HTMLInputElement>(`.controls input[type="number"]`)
 // Type into the symprec field the way a user does: one input event per keystroke
 const type_symprec = (input: HTMLInputElement, value: string) => {
@@ -180,9 +176,7 @@ describe(`SymmetryStats`, () => {
         mount_stats({
           sym_data: create_mock_sym_data(make_wyckoff_dataset(positions, numbers, wyckoffs)),
         })
-        const tiles = Array.from(document.querySelectorAll(`.stats-grid > div`)).map((tile) =>
-          tile.textContent?.replaceAll(/\s+/g, ` `).trim(),
-        )
+        const tiles = stat_tiles()
         expect(tiles).toContain(`Wyckoff Positions ${expected}`)
         if (sequence) expect(tiles).toContain(`Wyckoff Sequence ${sequence}`)
         else expect(tiles.some((tile) => tile?.startsWith(`Wyckoff Sequence`))).toBe(false)
@@ -206,10 +200,7 @@ describe(`SymmetryStats`, () => {
       [143, `Crystal System trigonal (hexagonal lattice)`],
     ] as const)(`space group %d → %s tile`, (space_group, expected) => {
       mount_stats({ sym_data: create_mock_sym_data({ number: space_group }) })
-      const tiles = Array.from(document.querySelectorAll(`.stats-grid > div`)).map((tile) =>
-        tile.textContent?.replaceAll(/\s+/g, ` `).trim(),
-      )
-      expect(tiles).toContain(expected)
+      expect(stat_tiles()).toContain(expected)
     })
   })
 

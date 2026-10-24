@@ -1,7 +1,6 @@
 // Parser for VASP vaspwave.h5 charge (+ magnetization) density: charge/{charge,grid} plus the
 // structure under structure/positions (py4vasp's VASP 6.x schema). Full files run to hundreds
 // of MB, so hosts prune them to these datasets first. Wavefunctions are out of scope.
-import { HDF5_EXT_REGEX } from '#lib/constants.js'
 import { calc_lattice_params, create_frac_to_cart, type Vec3 } from '#lib/math.js'
 import type { Crystal, Site } from '#lib/structure/index.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
@@ -12,6 +11,7 @@ import {
   is_hdf5_dataset,
   read_dataset,
   read_scaled_lattice,
+  squeeze_leading_axis,
   to_number_array,
   to_string_array,
   with_h5_file,
@@ -19,16 +19,11 @@ import {
 import { transpose_x_fastest } from './grid'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
+export { is_vaspwave_filename } from '#lib/constants.js'
+
 const CHARGE_PATH = `charge/charge`
 const CHARGE_GRID_PATH = `charge/grid`
 const STRUCTURE_PREFIX = `structure/positions`
-
-// vaspwave carries charge density/wavefunctions, never a trajectory: file-open routing uses
-// this to divert it from the HDF5 trajectory dispatcher
-export const is_vaspwave_filename = (filename: string): boolean => {
-  const basename = filename.split(/[\\/]/).pop() ?? filename
-  return /vaspwave/i.test(basename) && HDF5_EXT_REGEX.test(basename)
-}
 
 const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
   // read_scaled_lattice squeezes the optional leading singleton step axis ([1, 3, 3]) some
@@ -45,21 +40,30 @@ const read_embedded_structure = (h5_file: h5wasm.File): Crystal => {
     )
   }
 
-  // Sites are optional (the isosurface needs only the lattice): missing ions give an empty cell
+  // Missing ions give an empty cell (the isosurface needs only the lattice), torn ones throw
   const sites: Site[] = []
   const ion_types = to_string_array(read_dataset(h5_file, `${STRUCTURE_PREFIX}/ion_types`))
   const ion_counts = to_number_array(
     read_dataset(h5_file, `${STRUCTURE_PREFIX}/number_ion_types`),
   )
-  const frac_positions = read_dataset(h5_file, `${STRUCTURE_PREFIX}/position_ions`) as
+  // [1, n, 3] carries the leading step axis read_scaled_lattice squeezes off the lattice too
+  const positions_path = `${STRUCTURE_PREFIX}/position_ions`
+  const frac_positions = squeeze_leading_axis(read_dataset(h5_file, positions_path)) as
     | number[][]
     | null
-  if (ion_types && ion_counts && frac_positions && ion_types.length === ion_counts.length) {
+  if (ion_types && ion_counts && frac_positions) {
     const elements = expand_ion_types(ion_types, ion_counts)
+    if (frac_positions.length !== elements.length) {
+      throw new Error(
+        `${positions_path} holds ${frac_positions.length} positions for ${elements.length} ions`,
+      )
+    }
     const frac_to_cart = create_frac_to_cart(lattice)
     for (const [site_idx, element] of elements.entries()) {
       const frac = frac_positions[site_idx]
-      if (!Array.isArray(frac) || frac.length < 3) break // torn positions: keep what parsed
+      if (!Array.isArray(frac) || frac.length < 3) {
+        throw new Error(`${positions_path} row ${site_idx + 1} is not an xyz position`)
+      }
       const abc = wrap_to_unit_cell(frac.slice(0, 3) as Vec3)
       sites.push(make_site(element, abc, frac_to_cart(abc), `${element}${site_idx + 1}`))
     }

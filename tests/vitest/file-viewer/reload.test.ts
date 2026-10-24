@@ -11,9 +11,8 @@ import { afterEach, expect, test, vi } from 'vitest'
 const test_mocks = vi.hoisted(() => {
   const post_message = vi.fn()
   vi.stubGlobal(`acquireVsCodeApi`, () => ({ postMessage: post_message }))
-  for (const key of [`cleanupMatterViz`, `initializeMatterViz`, `matterviz_data`]) {
+  for (const key of [`cleanupMatterViz`, `initializeMatterViz`, `matterviz_data`])
     vi.stubGlobal(key, undefined)
-  }
   // jsdom has neither Worker nor object URLs; record what main.ts hands the native
   // constructor and which scripts it turns into blobs
   const native_workers: {
@@ -109,9 +108,8 @@ const set_file_data = (content: string, filename: string = `${content}.json`): v
 }
 // Cleared spies and an empty mount point for the next webview lifecycle
 const reset = (): void => {
-  for (const mock of [mount, unmount, parse_file_content, parse_in_worker, post_message]) {
+  for (const mock of [mount, unmount, parse_file_content, parse_in_worker, post_message])
     mock.mockClear()
-  }
   document.body.innerHTML = `<div id="matterviz-app"></div>`
 }
 // Bootstrap a fresh webview showing `content`; parse mocks are queued by the caller first

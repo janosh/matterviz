@@ -13,15 +13,9 @@
 
 import type { AnyModel } from 'anywidget/types'
 
-// Read a trait, mapping null/undefined (and read errors for absent traits) to
-// undefined so missing values are simply omitted from the component props.
-export const get_prop = (model: AnyModel, key: string): unknown => {
-  try {
-    return model.get(key) ?? undefined
-  } catch {
-    return undefined
-  }
-}
+// Read a trait, mapping null to undefined so unset values are simply omitted from the
+// component props.
+export const get_prop = (model: AnyModel, key: string): unknown => model.get(key) ?? undefined
 
 // Structural equality good enough for JSON-able trait values. Used to skip no-op
 // reads/writes and thereby break Python<->JS echo loops. null and undefined are
@@ -131,13 +125,7 @@ export const drive_props = (keys: readonly string[]): DrivenProp[] => keys.map(d
 export const nullable_prop = (key: string): DrivenProp => ({
   prop: key,
   deps: [key],
-  compute: (model) => {
-    try {
-      return model.get(key)
-    } catch {
-      return undefined
-    }
-  },
+  compute: (model) => model.get(key),
 })
 
 // Prop composed from several traits; recomputed whenever any dep changes.
@@ -170,6 +158,10 @@ export function reactive_widget(
   model: AnyModel,
   driven: readonly DrivenProp[],
   extra: Record<string, unknown> = {},
+  // Receives a trait change that fails to compute (else it throws into the model's emitter)
+  on_error: (error: unknown) => void = (error) => {
+    throw error
+  },
 ): ReactiveWidget {
   // Compute a prop's value, falling back to its writeback default (else undefined).
   const value_of = (spec: DrivenProp): unknown => {
@@ -212,7 +204,13 @@ export function reactive_widget(
 
   // Python -> JS
   for (const [dep, specs] of specs_by_dep) {
-    const handler = (): void => specs.forEach(apply)
+    const handler = (): void => {
+      try {
+        specs.forEach(apply)
+      } catch (error) {
+        on_error(error)
+      }
+    }
     model.on(`change:${dep}`, handler)
     unsubs.push(() => model.off(`change:${dep}`, handler))
   }

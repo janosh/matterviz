@@ -160,9 +160,12 @@ function parse_ascii_scan(content: string, format = `ASCII`): XrdPattern {
 }
 
 // Rigaku ASCII (.asc): `*KEY = value` header with *START, *STOP, *STEP (degrees) and *COUNT,
-// then the counts between *BEGIN and *END, several per line, comma separated.
+// then the counts between *BEGIN and *END, several per line, comma separated. A file can hold
+// several such groups (scans), each with its own header: only the first is read.
 export function parse_rigaku_asc_file(content: string): XrdPattern {
   const lines = content.split(/\r?\n/)
+  const first_end = lines.findIndex((line) => /^\*END\b/i.test(line.trim()))
+  if (first_end !== -1) lines.length = first_end
   const [start, step, stop, count] = [`START`, `STEP`, `STOP`, `COUNT`].map((name) =>
     header_number(lines, [`\\*${name}\\s*=\\s*`]),
   )
@@ -204,15 +207,16 @@ export function parse_ras_file(content: string): XrdPattern {
   return grid_pattern(data_lines.flatMap(leading_numbers), grid, `Rigaku RAS`, missing)
 }
 
-// Siemens/Bruker UXD: `_KEY=VALUE` header, then either a `_2THETACOUNTS` section of
-// `2theta counts` rows or a `_COUNTS` section of bare counts on the `_START`/`_STEPSIZE` grid.
+// Siemens/Bruker UXD: `_KEY=VALUE` header, then either a `_2THETACOUNTS` (`_2THETACPS`,
+// `_2THETACOUNTSTIME`) section of `2theta counts` rows or a `_COUNTS` (`_CPS`) section of bare
+// counts on the `_START`/`_STEPSIZE` grid. Count rates (CPS) read like counts.
 export function parse_uxd_file(content: string): XrdPattern {
   const lines = content.split(/\r?\n/).filter((line) => !line.trim().startsWith(`;`))
   // the next `_KEY` header block ends the data
-  const section = find_section(lines, /^_(?:2THETA)?COUNTS\b/i, /^_/)
-  if (!section) throw new Error(`UXD: no _COUNTS or _2THETACOUNTS section`)
+  const section = find_section(lines, /^_(?:2THETA)?(?:COUNTS(?:TIME)?|CPS)\b/i, /^_/)
+  if (!section) throw new Error(`UXD: no _COUNTS, _CPS, _2THETACOUNTS or _2THETACPS section`)
   const [header, data_lines] = section
-  if (/^_2THETACOUNTS/i.test(header)) return parse_xy_file(data_lines.join(`\n`), `UXD`)
+  if (/^_2THETA/i.test(header)) return parse_xy_file(data_lines.join(`\n`), `UXD`)
   // _START is the scanned drive's first position; _2THETA is the detector position at the
   // start, which only coincides for coupled scans, so it serves as the fallback
   const start = header_number(lines, [`_START\\s*=\\s*`, `_2THETA\\s*=\\s*`], `i`)
@@ -515,22 +519,27 @@ function parse_brml_xml(xml_content: string): XrdPattern {
   return grid_pattern(values, [start, step], `BRML`, missing)
 }
 
-// PANalytical .xrdml: <dataPoints> with <positions axis="2Theta"> start/end and a
-// space-separated <intensities> list; the grid is uniform between start and end.
+// PANalytical .xrdml: <dataPoints> with <positions axis="2Theta"> holding startPosition and
+// endPosition (a uniform grid) or a <listPositions> list, and the counts as a space-separated
+// <intensities> or (newer schemas) <counts> list.
 export function parse_xrdml_file(content: string): XrdPattern {
   const doc = parse_xml(content, `XRDML`)
   const data_points = doc.querySelector(`dataPoints`)
   if (!data_points) throw new Error(`XRDML: no <dataPoints> element`)
+  const counts =
+    data_points.querySelector(`intensities`) ?? data_points.querySelector(`counts`)
+  const values = leading_numbers(counts?.textContent ?? ``)
+  if (values.length === 0) throw new Error(`XRDML: empty <intensities> or <counts>`)
   const positions = data_points.querySelector(`positions[axis="2Theta"]`)
+  const listed = leading_numbers(positions?.querySelector(`listPositions`)?.textContent ?? ``)
+  if (listed.length > 0) return finalize(listed, values, `XRDML`)
   const start = Number(positions?.querySelector(`startPosition`)?.textContent ?? NaN)
   const end = Number(positions?.querySelector(`endPosition`)?.textContent ?? NaN)
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
     throw new TypeError(
-      `XRDML: <positions axis="2Theta"> needs numeric startPosition and endPosition`,
+      `XRDML: <positions axis="2Theta"> needs numeric startPosition and endPosition or listPositions`,
     )
   }
-  const values = leading_numbers(data_points.querySelector(`intensities`)?.textContent ?? ``)
-  if (values.length === 0) throw new Error(`XRDML: empty <intensities>`)
   const step = values.length > 1 ? (end - start) / (values.length - 1) : 0
   return finalize(uniform_grid(start, step, values.length), values, `XRDML`)
 }

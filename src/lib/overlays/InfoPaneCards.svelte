@@ -96,7 +96,8 @@
 {/if}
 
 {#if filtered_cards.length === 0}
-  <p class="empty-filter">No {empty_label} matches "{filter}".</p>
+  <!-- an empty list with no filter typed has nothing to match against -->
+  <p class="empty-filter">No {empty_label}{filter.trim() ? ` matches "${filter}"` : ``}.</p>
 {:else}
   {#if filtered_cards.length > page_size}
     {#snippet page_button(label: string, direction: -1 | 1, disabled: boolean)}

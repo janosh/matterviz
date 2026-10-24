@@ -319,7 +319,8 @@ test.describe(`Trajectory Component`, () => {
       const result = await parse_in_worker(source, `gold.h5`)
       if (result.type !== `trajectory`) throw new Error(`Expected HDF5 trajectory`)
       const workerfs = result.data
-      const request = { signal_keys: [`velocity`, `forces`] }
+      // TorchSim's /data/forces dataset is exposed as the `force` signal, like every other reader
+      const request = { signal_keys: [`velocity`, `force`] }
       const memfs_stream = await memfs.collect_positions?.(request)
       const workerfs_stream = await workerfs.collect_positions?.(request)
       if (!memfs_stream || !workerfs_stream) throw new Error(`missing HDF5 position stream`)
@@ -352,7 +353,7 @@ test.describe(`Trajectory Component`, () => {
       )
       const stream_values = (stream: typeof memfs_stream) => [
         ...stream.positions,
-        ...[`velocity`, `forces`].flatMap((key) => [...(stream.signals?.[key]?.values ?? [])]),
+        ...[`velocity`, `force`].flatMap((key) => [...(stream.signals?.[key]?.values ?? [])]),
       ]
       const expected = [...raw.positions, ...raw.velocity, ...raw.forces]
       const streams = [memfs_stream, workerfs_stream]
@@ -430,7 +431,7 @@ test.describe(`Trajectory Component`, () => {
             sample_shape: [n_atoms, 3],
             steps: raw.velocity_steps,
           },
-          forces: {
+          force: {
             sample_shape: [n_atoms, 3],
             steps: raw.force_steps,
           },
@@ -492,7 +493,7 @@ test.describe(`Trajectory Component`, () => {
       max_relative_error: 0,
       stream_value_counts_equal: true,
       loaded_signals: false,
-      descriptors: [`forces`, `velocity`],
+      descriptors: [`force`, `velocity`],
       descriptors_equal: true,
       oracle_frames_equal: true,
       oracle_metadata_equal: true,

@@ -1,12 +1,8 @@
 import type { Column } from '#lib/table/index.js'
 import ToggleMenu from '#lib/table/ToggleMenu.svelte'
 import { type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { bind_props, dismiss_popover, doc_query, fire } from '../setup'
-
-afterEach(() => {
-  document.body.innerHTML = ``
-})
 
 describe(`ToggleMenu`, () => {
   const make_columns = (): Column[] => [
@@ -272,12 +268,10 @@ describe(`ToggleMenu`, () => {
       mount_menu(columns)
 
       const checkboxes = document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)
-      const labels = document.querySelectorAll(`.toggle-label`)
+      const labels = [...document.querySelectorAll(`.toggle-label`)]
 
-      expect(checkboxes[0].disabled).toBe(false)
-      expect(checkboxes[1].disabled).toBe(true)
-      expect(labels[0].classList.contains(`disabled`)).toBe(false)
-      expect(labels[1].classList.contains(`disabled`)).toBe(true)
+      expect([...checkboxes].map((box) => box.disabled)).toEqual([false, true])
+      expect(labels.map((node) => node.classList.contains(`disabled`))).toEqual([false, true])
       expect(checkboxes[1].checked).toBe(true)
       checkboxes[1].click()
       await tick()

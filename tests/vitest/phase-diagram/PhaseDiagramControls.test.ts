@@ -41,7 +41,7 @@ describe(`PhaseDiagramControls`, () => {
     expect(target.textContent).not.toContain(`PNG DPI`)
   })
 
-  test(`ignores empty axis tick inputs and clamps finite values`, () => {
+  test(`axis tick drafts commit only within 2-15, without rewriting the field mid-typing`, () => {
     const target = document.createElement(`div`)
     const state = { x_axis: { ticks: 5 } }
     mount(PhaseDiagramControls, {
@@ -53,12 +53,15 @@ describe(`PhaseDiagramControls`, () => {
     ].find((input) => input.closest(`label`)?.textContent?.includes(`X-axis ticks`))
     if (!tick_input) throw new Error(`X-axis tick input not found`)
 
+    // typing 12 passes through 1: it used to commit as 2 and rewrite the field, giving 22 -> 15
     for (const [input, expected] of [
       [``, 5],
-      [`99`, 15],
+      [`99`, 5],
+      [`1`, 5],
+      [`12`, 12],
     ] as const) {
       set_input(tick_input, input)
-      expect(state.x_axis.ticks).toBe(expected)
+      expect([state.x_axis.ticks, tick_input.value]).toEqual([expected, input])
     }
   })
 

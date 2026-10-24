@@ -81,9 +81,7 @@
       active_volume?.data_range.min ?? 0,
       active_volume?.data_range.max ?? 1,
     ]
-    update_color_scale({
-      value_range: bound_idx === 0 ? [value, maximum] : [minimum, value],
-    })
+    update_color_scale({ value_range: bound_idx === 0 ? [value, maximum] : [minimum, value] })
   }
 
   const cross_section_settings = $derived(
@@ -187,7 +185,7 @@
     {/each}
     <div class="setting">
       <span>Plane presets</span>
-      <div class="plane-presets" aria-label="Cartesian plane presets">
+      <div class="plane-presets" role="group" aria-label="Cartesian plane presets">
         {#each CARTESIAN_PLANE_PRESETS as { label, ...plane } (label)}
           <button type="button" onclick={() => update_settings({ cartesian_point, ...plane })}>
             {label}
