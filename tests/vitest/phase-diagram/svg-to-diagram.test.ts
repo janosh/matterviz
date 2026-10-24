@@ -248,6 +248,8 @@ describe(`parse_phase_diagram_svg`, () => {
     { label: `implicit lineto after M`, d_attr: `M 300 500 300 300` },
     { label: `cubic curve endpoint`, d_attr: `M 300 500 C 300 450 300 350 300 300` },
     { label: `relative arc endpoint`, d_attr: `m 300 500 a 1 1 0 0 1 0 -200` },
+    // minified arc flags run into the endpoint: flags 0, 1 then x = 0, y = -200
+    { label: `compact arc flags`, d_attr: `m300 500a1 1 0 010-200` },
   ])(`parses boundary path variant: $label`, ({ d_attr }) => {
     const input = parse_phase_diagram_svg(matplotlib_svg([d_attr, MPL_BOUNDARIES[1]]))
     expect(input.curves.vertical_0).toEqual(pts(0.5, 500, 0.5, 1000))
@@ -255,6 +257,9 @@ describe(`parse_phase_diagram_svg`, () => {
 
   it.each([
     { d_attr: `M 100 100 L 300`, reason: /missing a coordinate/ },
+    { d_attr: `M 100 100 A 1 1 0 2 1 300 300`, reason: /needs a 0\/1 arc flag/ },
+    { d_attr: `M 100 100 a1 1 0 11e2 3`, reason: /invalid number "e2"/ },
+    { d_attr: `M0 0L1 1Z5 5`, reason: /coordinates after Z/ }, // used to loop forever
     { d_attr: `M 100 100 L 300 foo`, reason: /unexpected characters "foo"/ },
     { d_attr: `M 100 100 X 300 300`, reason: /unexpected characters "X"/ },
     { d_attr: `100 100 300 300`, reason: /coordinates before any command/ },

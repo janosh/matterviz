@@ -579,10 +579,14 @@ describe(`analytic ternary A-B-C with AB and ABC`, () => {
     }
   })
 
-  test(`a metastable compound passes the E_form filter but carves out no domain`, () => {
-    // A2B at -0.4 eV/atom lies 0.27 eV above the A-AB tie line (-2/3 at x_B = 1/3), so its
-    // plane 2 mu_A + mu_B <= -1.2 is slack everywhere inside the region the others bound
-    const with_metastable = [...ternary_entries, make_phase({ A: 2, B: 1 }, -0.4 - 4 / 3)]
+  // A2B at -0.4 eV/atom lies 0.27 eV above the A-AB tie line (-2/3 at x_B = 1/3), so its
+  // plane 2 mu_A + mu_B <= -1.2 is slack everywhere inside the region the others bound. On
+  // the tie line its plane touches the region along the A|AB edge: a zero-area domain.
+  test.each([
+    [`0.27 eV above the A-AB tie line`, -0.4],
+    [`exactly on the A-AB tie line`, -2 / 3],
+  ])(`a compound %s passes the E_form filter but carves out no domain`, (_desc, e_form) => {
+    const with_metastable = [...ternary_entries, make_phase({ A: 2, B: 1 }, e_form - 4 / 3)]
     const { domains, elements } = compute_chempot_diagram(with_metastable, {
       formal_chempots: true,
     })

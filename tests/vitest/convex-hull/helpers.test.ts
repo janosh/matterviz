@@ -340,6 +340,15 @@ describe(`helpers: composition label entries`, () => {
       expected: [`explicit-per-atom`],
     },
     {
+      // per-entry metrics compared A's E_form (-0.1) with B's absolute -4 eV/atom
+      name: `compares polymorphs by their common metric, not each one's first`,
+      entries: [
+        phase(`abs-lower`, { A: 1, B: 1 }, { energy: -10, e_form_per_atom: -0.1 }),
+        phase(`abs-higher`, { A: 1, B: 1 }, { energy: -8 }),
+      ],
+      expected: [`abs-lower`],
+    },
+    {
       name: `skips entries with empty compositions`,
       entries: [phase(`empty`, { Fe: 0 })],
       expected: [],
@@ -424,6 +433,15 @@ describe(`helpers: polymorph statistics`, () => {
         lio(`3`, { energy_per_atom: -5.1, energy: -8 }),
       ],
       exp: [2, 1, 1, 0],
+    },
+    {
+      // -5 - 1/2 = -5.5 eV/atom with its MP correction, below the uncorrected -5.2
+      name: `applies the MP correction to energy_per_atom`,
+      all: [
+        lio(`1`, { energy_per_atom: -5, correction: -1 }),
+        lio(`2`, { energy_per_atom: -5.2 }),
+      ],
+      exp: [1, 1, 0, 0],
     },
     {
       name: `falls back to energy/atoms when per-atom fields are missing`,

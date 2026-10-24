@@ -398,7 +398,24 @@ function compute_domains(
     }
   }
 
-  return Object.fromEntries(Object.entries(domains).filter(([, domain]) => domain.length > 0))
+  // A plane that only touches the region (a phase exactly on a tie line) is active at a few
+  // vertices but bounds no (dim-1)-face: drop such zero-measure domains, as pymatgen does
+  return Object.fromEntries(
+    Object.entries(domains).filter(([, domain]) => affine_rank(domain, tol) >= dim - 1),
+  )
+}
+
+// Dimension of the affine hull of `points` (-1 when empty), `tol` the minimum residual
+function affine_rank(points: number[][], tol: number): number {
+  if (points.length === 0) return -1
+  const basis: number[][] = []
+  for (const point of points) {
+    const residual = subtract(point, points[0])
+    project_out(residual, basis)
+    const norm = Math.hypot(...residual)
+    if (norm > tol) basis.push(residual.map((val) => val / norm))
+  }
+  return basis.length
 }
 
 // Whether a coordinate is the artificial default_min_limit bound, not a real vertex near it

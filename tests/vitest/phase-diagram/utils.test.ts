@@ -266,15 +266,31 @@ describe(`calculate_lever_rule`, () => {
     expect(result?.right_phase).toBe(`FCC_A1`)
   })
 
+  // V-notch whose tip (0.5, 450) touches the isotherm: two crossings at one point, which a
+  // dedup merged into one, shifting the pairing to [0.1, 0.5] and leaving 0.7 unbracketed
+  const notched_region: PhaseRegion = {
+    ...two_phase_region,
+    vertices: pts(0.1, 400, 0.9, 400, 0.9, 600, 0.5, 450, 0.1, 600),
+  }
   test.each([
-    { position: 0.35, expected_bounds: [0.1, 0.4] },
-    { position: 0.65, expected_bounds: [0.6, 0.9] },
+    {
+      region: split_region_horizontal,
+      position: 0.35,
+      temp: 500,
+      expected_bounds: [0.1, 0.4],
+    },
+    {
+      region: split_region_horizontal,
+      position: 0.65,
+      temp: 500,
+      expected_bounds: [0.6, 0.9],
+    },
+    { region: notched_region, position: 0.3, temp: 450, expected_bounds: [0.1, 0.5] },
+    { region: notched_region, position: 0.7, temp: 450, expected_bounds: [0.5, 0.9] },
   ])(
     `uses the nearest two-phase bounds at composition=$position when multiple intersections exist`,
-    ({ position, expected_bounds }) => {
-      const result = expect_non_null(
-        calculate_lever_rule(split_region_horizontal, position, 500),
-      )
+    ({ region, position, temp, expected_bounds }) => {
+      const result = expect_non_null(calculate_lever_rule(region, position, temp))
       expect(result.left_composition).toBeCloseTo(expected_bounds[0], 9)
       expect(result.right_composition).toBeCloseTo(expected_bounds[1], 9)
     },

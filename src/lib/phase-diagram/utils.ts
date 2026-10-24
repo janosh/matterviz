@@ -288,31 +288,20 @@ function find_isotherm_intersections(vertices: Vec2[], temperature: number): num
   return intersections.toSorted((val_a, val_b) => val_a - val_b)
 }
 
+// Consecutive crossing pairs bound the region's intervals along the isotherm (half-open edge
+// test above, so a vertex touching T from one side yields a zero-width pair, not a lone
+// crossing that would shift every later pair)
 function pick_bracketing_intersection_pair(
   intersections: number[],
   position: number,
 ): Vec2 | null {
-  if (intersections.length < 2) return null
-
-  const unique_intersections: number[] = []
-  const dedup_tol = 1e-9
-  for (const value of intersections) {
-    const prev_value = unique_intersections.at(-1)
-    if (prev_value === undefined || Math.abs(value - prev_value) > dedup_tol) {
-      unique_intersections.push(value)
-    }
-  }
-  if (unique_intersections.length < 2) return null
-
   const bound_tol = 1e-10
-  for (let pair_idx = 0; pair_idx + 1 < unique_intersections.length; pair_idx += 2) {
-    const low_bound = unique_intersections[pair_idx]
-    const high_bound = unique_intersections[pair_idx + 1]
+  for (let pair_idx = 0; pair_idx + 1 < intersections.length; pair_idx += 2) {
+    const [low_bound, high_bound] = [intersections[pair_idx], intersections[pair_idx + 1]]
     if (position >= low_bound - bound_tol && position <= high_bound + bound_tol) {
       return [low_bound, high_bound]
     }
   }
-
   return null
 }
 

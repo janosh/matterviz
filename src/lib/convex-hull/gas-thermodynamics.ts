@@ -1,7 +1,7 @@
 // Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import { drop_cached_hull_data, entry_has_temp_data } from './thermodynamics'
+import { entry_has_temp_data, find_lowest_energy_unary_refs } from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
@@ -276,39 +276,60 @@ export function apply_gas_corrections(
       : 0
   }
 
-  // Elements whose reference moved: formation energies against them are now stale, including
-  // on untouched compounds, hence the second pass below
-  const shifted_elements = new Set<string>()
-
-  const corrected = entries.map((entry) => {
-    const elements_in_entry = Object.entries(entry.composition).filter(
-      ([, amt]) => typeof amt === `number` && amt > 0,
-    )
-    if (elements_in_entry.length !== 1) return entry // Not unary, skip
-
-    const correction = entry_has_temp_data(entry)
-      ? tabulated_shift(elements_in_entry[0][0] as ElementSymbol)
-      : compute_gas_correction(entry, config, temperature, pressures)
-
-    if (Math.abs(correction) < 1e-12) return entry
-
-    // compute_gas_correction is PER-ATOM: shift energy_per_atom and rescale the total
-    const atoms = count_atoms_in_composition(entry.composition)
-    const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + correction
-    shifted_elements.add(elements_in_entry[0][0])
-    // the MP correction stays: the shifted base above is the RAW per-atom energy
-    return { ...entry, energy: energy_per_atom * atoms, energy_per_atom }
+  // Per-atom energy shift of each entry: only unaries move, each by its element's Δμ
+  const unary_elements = entries.map((entry) => {
+    const present = Object.keys(entry.composition).filter(
+      (element) => (entry.composition[element as ElementSymbol] ?? 0) > 0,
+    ) as ElementSymbol[]
+    return present.length === 1 ? present[0] : null
   })
+  const shifts = entries.map((entry, idx) => {
+    const element = unary_elements[idx]
+    if (!element) return 0
+    const correction = entry_has_temp_data(entry)
+      ? tabulated_shift(element)
+      : compute_gas_correction(entry, config, temperature, pressures)
+    return Math.abs(correction) < 1e-12 ? 0 : correction
+  })
+  if (shifts.every((shift) => shift === 0)) return entries
 
-  if (shifted_elements.size === 0) return entries
-  return corrected.map((entry) =>
-    // amt > 0: a zero-amount element is absent, so its key must not invalidate a live cache
-    Object.entries(entry.composition).some(
-      ([element, amt]) => amt > 0 && shifted_elements.has(element),
-    )
-      ? drop_cached_hull_data(entry)
-      : entry,
-  )
+  // Elements with a moved unary: hull distances against them are stale. Δμ_e is the shift of
+  // the element's formation-energy reference (0 when only a polymorph moved).
+  const shifted_elements = new Set(unary_elements.filter((_, idx) => shifts[idx] !== 0))
+  const ref_shift = new Map<string, number>()
+  for (const [element, ref] of Object.entries(find_lowest_energy_unary_refs(entries))) {
+    ref_shift.set(element, shifts[entries.indexOf(ref)])
+  }
+
+  return entries.map((entry, idx) => {
+    const own_shift = shifts[idx]
+    const atoms = count_atoms_in_composition(entry.composition)
+    // A cached E_form moves by the entry's own shift minus Σ x_e Δμ_e, so E_form-only
+    // entries (no energy to recompute it from) follow the atmosphere too
+    let ref_sum = 0
+    let stale = own_shift !== 0
+    for (const [element, amt] of Object.entries(entry.composition)) {
+      if (!(amt > 0)) continue // a zero-amount key is absent and must not invalidate a cache
+      ref_sum += (amt / atoms) * (ref_shift.get(element) ?? 0)
+      stale ||= shifted_elements.has(element as ElementSymbol)
+    }
+    if (!stale) return entry
+    const { e_form_per_atom: e_form } = entry
+    // hull distances were measured against the old references
+    const moved: PhaseData = {
+      ...entry,
+      e_form_per_atom:
+        typeof e_form === `number` && Number.isFinite(e_form)
+          ? e_form + own_shift - ref_sum
+          : undefined,
+      e_above_hull: undefined,
+      is_stable: undefined,
+    }
+    if (own_shift === 0) return moved
+    // the MP correction stays: the shifted base is the RAW per-atom energy
+    const energy_per_atom = (entry.energy_per_atom ?? entry.energy / atoms) + own_shift
+    return { ...moved, energy: energy_per_atom * atoms, energy_per_atom }
+  })
 }
 
 // Format chemical potential for display (e.g., "-1.23 eV")
