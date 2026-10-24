@@ -446,10 +446,13 @@ function prepare_clone(
 }
 
 // Matches decimals with 3+ fraction digits (optionally in exponent form), rounded to 2 places:
-// 0.01 user units is far below a pixel, and long floats dominate chart file sizes
-const LONG_DECIMAL = /-?\d*\.\d{3,}(?:e[-+]?\d+)?|-?\d+(?:\.\d+)?e-\d+/gi
+// 0.01 user units is far below a pixel, and long floats dominate chart file sizes. url(#…)
+// references match first and stay verbatim: ids are UUIDs, whose `3e-1234` reads as a number.
+const LONG_DECIMAL = /url\([^)]*\)|-?\d*\.\d{3,}(?:e[-+]?\d+)?|-?\d+(?:\.\d+)?e-\d+/gi
 const round_decimals = (text: string): string =>
-  text.replaceAll(LONG_DECIMAL, (match) => String(Math.round(Number(match) * 100) / 100 || 0))
+  text.replaceAll(LONG_DECIMAL, (match) =>
+    match.startsWith(`url(`) ? match : String(Math.round(Number(match) * 100) / 100 || 0),
+  )
 // Markup the standalone file has no use for: interaction and test hooks and event routing.
 // Classes stay as layer names for editing the figure in vector tools, minus Svelte's
 // scoping hashes, which only meant something to the page stylesheet.
@@ -474,7 +477,7 @@ function minify_clone(root: Element): void {
     // a snapshot: the live NamedNodeMap shifts as attributes are removed
     for (const { name, value } of Array.from(element.attributes)) {
       if (DROP_ATTR.test(name)) element.removeAttribute(name)
-      else if (![`href`, `xlink:href`, `id`, `font-family`].includes(name))
+      else if (![`href`, `xlink:href`, `id`, `class`, `font-family`].includes(name))
         element.setAttribute(name, round_decimals(value))
     }
   }

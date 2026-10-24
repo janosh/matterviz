@@ -76,10 +76,6 @@ test(`parse failures retain their stage and source identity`, async () => {
   expect(error).toMatchObject({
     message: `bad atoms`,
     stage: `parse`,
-    provenance: {
-      filename: `bad.xyz`,
-      source_filename: `bad.xyz`,
-      file_size: 6,
-    },
+    provenance: { filename: `bad.xyz`, source_filename: `bad.xyz`, file_size: 6 },
   })
 })

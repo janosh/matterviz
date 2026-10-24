@@ -478,13 +478,17 @@ describe(`svg_to_string`, () => {
     expect(result).not.toMatch(/<!--|data-|aria-|role=|tabindex=/)
   })
 
-  test(`rounds coordinates to 2 decimals, leaving text, ids and hrefs untouched`, () => {
-    document.body.innerHTML = `<svg viewBox="0 0 100.123456 50"><path id="p0.123456" d="M1.23456,2.5L-3.00499,4.1234e-7" stroke="black"/><text x="10.98765">0.123456</text></svg>`
+  test(`rounds coordinates to 2 decimals, leaving text, ids, classes, hrefs and url() refs`, () => {
+    const clip = `url(#plot-clip-1a2b3c4d-4f3e-4234-9e12-3e4f5a6b7c8d)`
+    const attrs = `clip-path="${clip}" class="x-3e-4" stroke="black"`
+    const path = `<path id="p0.123456" d="M1.23456,2.5L-3.00499,4.1234e-7" ${attrs}/>`
+    document.body.innerHTML = `<svg viewBox="0 0 100.123456 50">${path}<text x="10.98765">0.123456</text></svg>`
     const svg = document.querySelector(`svg`)
     if (!svg) throw new Error(`svg not mounted`)
     const exported = parse_svg(svg_to_string(svg))
-    expect(exported.querySelector(`path`)?.getAttribute(`d`)).toBe(`M1.23,2.5L-3,0`)
-    expect(exported.querySelector(`path`)?.id).toBe(`p0.123456`)
+    const attr = (name: string) => exported.querySelector(`path`)?.getAttribute(name)
+    expect([attr(`d`), attr(`id`)]).toEqual([`M1.23,2.5L-3,0`, `p0.123456`])
+    expect([attr(`clip-path`), attr(`class`)]).toEqual([clip, `x-3e-4`])
     expect(exported.querySelector(`text`)?.getAttribute(`x`)).toBe(`10.99`)
     expect(exported.querySelector(`text`)?.textContent).toBe(`0.123456`)
     expect(exported.getAttribute(`viewBox`)).toBe(`-0.5 -0.5 101.12 51`)
@@ -936,18 +940,12 @@ describe(`export_trajectory_video`, () => {
     [
       `timeout-override`,
       `Recording timeout - recorder did not stop`,
-      {
-        stop_timeout_ms: 1500,
-        cleanup_delay_ms: 1500,
-      },
+      { stop_timeout_ms: 1500, cleanup_delay_ms: 1500 },
     ],
     [
       `timeout-size-cap`,
       `Recording timeout - recorder did not stop`,
-      {
-        fps: 1 / 6000,
-        cleanup_delay_ms: 300_000,
-      },
+      { fps: 1 / 6000, cleanup_delay_ms: 300_000 },
     ],
     [`step-error`, `step failed`],
     [`start-error`, `MediaRecorder error: encoder failed`],

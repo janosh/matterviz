@@ -100,10 +100,7 @@ export const acquire_material = async (
   const { data, filename, is_base64, ...metadata } = source
   if (typeof data === `string` || is_base64) return source
   const blob = data instanceof Blob ? data : new Blob([data])
-  const classified = await classify_payload(blob, [filename], {
-    hdf5_as_blob: true,
-    signal,
-  })
+  const classified = await classify_payload(blob, [filename], { hdf5_as_blob: true, signal })
   return { data: classified.content, filename: classified.filename, ...metadata }
 }
 

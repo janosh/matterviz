@@ -47,7 +47,7 @@ test(`table search, pagination, selection and export use the visible data`, asyn
   const table = page.locator(`#table-controls`)
   const rows = table.locator(`tbody tr`)
   await expect(rows).toHaveCount(2)
-  await table.getByTitle(`Next page`, { exact: true }).click()
+  await table.getByRole(`button`, { name: `Next page`, exact: true }).click()
   await expect(rows).toHaveCount(1)
   await expect(rows).toContainText(`Gamma`)
   await table.locator(`.page-size-select`).selectOption(`3`)

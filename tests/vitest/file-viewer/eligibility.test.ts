@@ -21,6 +21,7 @@ test.each([
   [`density.cube.deflate`, true],
   [`CHGCAR.z`, false], // Unix compress (LZW) has no decoder
   [`vaspout.h5`, true],
+  [`vaspwave.h5`, true],
   [`md_run.hdf5`, true],
   [`data.h5`, false],
   [`structure.cif.zip`, true], // fflate inflates single-file ZIPs in the webview
@@ -70,6 +71,7 @@ test.each([
   [`density.cube`, true],
   [`band.bxsf.gz`, true],
   [`vaspout.h5`, true],
+  [`Si.vaspwave.h5.gz`, true],
   [`md_npt_300K.h5`, true],
   [`simulation.traj.h5`, true],
   // Not auto-rendered: keyword heuristics, JSON/YAML, generic data

@@ -143,20 +143,12 @@ const is_phase_diagram = record_guard((data) => {
 // (qpoints, bands array, labels_dict, reciprocal lattice), which never serialises branches
 const is_band_structure = record_guard((data) => {
   if (!as_record(data.labels_dict)) return false
-  if (
-    has_array(data, `qpoints`) &&
-    has_array(data, `bands`) &&
-    (as_record(data.lattice_rec) || as_record(data.recip_lattice))
-  )
+  const qpoint_bands = has_array(data, `qpoints`) && has_array(data, `bands`)
+  if (qpoint_bands && (as_record(data.lattice_rec) || as_record(data.recip_lattice)))
     return true
   if (!has_array(data, `branches`) || (data.branches as unknown[]).length === 0) return false
   // Normalized format
-  if (
-    has_array(data, `qpoints`) &&
-    has_array(data, `bands`) &&
-    typeof data.nb_bands === `number`
-  )
-    return true
+  if (qpoint_bands && typeof data.nb_bands === `number`) return true
   // Pymatgen format: kpoints + bands object (not array) + efermi
   return (
     has_array(data, `kpoints`) &&
@@ -246,14 +238,12 @@ const count_numeric_columns = (obj: unknown): number => {
 function is_tabular_data(obj: unknown): boolean {
   // Row-based: array of objects with string keys and numeric/string values
   if (Array.isArray(obj) && obj.length >= 3) {
-    const first = as_record(obj[0])
-    const second = as_record(obj[1])
+    const [first, second] = obj.slice(0, 2).map(as_record)
     if (!first || !second) return false
     const first_keys = Object.keys(first)
     if (first_keys.length < 2) return false
     // Check that rows have consistent keys and mostly numeric/string values
-    const second_keys = Object.keys(second)
-    const overlap = first_keys.filter((key) => second_keys.includes(key))
+    const overlap = first_keys.filter((key) => Object.hasOwn(second, key))
     if (overlap.length < first_keys.length * 0.5) return false
     // At least some values should be numbers (not just metadata objects)
     return count_numeric_columns(obj) >= 1
@@ -339,14 +329,8 @@ export function scan_renderable_paths(
       if (detected_type !== `table` || Array.isArray(value)) return
     }
     // Only the first few elements of an array: renderable items repeat their shape
-    if (Array.isArray(value)) {
-      for (const [idx, item] of value.slice(0, 20).entries()) {
-        walk(item, build_path(path, idx), depth + 1)
-      }
-    } else {
-      for (const [key, child_value] of Object.entries(value as Record<string, unknown>))
-        walk(child_value, build_path(path, key), depth + 1)
-    }
+    const entries = Array.isArray(value) ? value.slice(0, 20).entries() : Object.entries(value)
+    for (const [key, child] of entries) walk(child, build_path(path, key), depth + 1)
   }
 
   walk(obj, ``, 0)

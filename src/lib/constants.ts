@@ -189,6 +189,12 @@ export const TEXT_VIEWER_EXTENSIONS = Object.freeze(
 // them, so claiming them as an opener only replaces a working handler with an error.
 const HDF5_EXTENSIONS = Object.freeze([`h5`, `hdf5`])
 export const HDF5_EXT_REGEX = ext_regex(HDF5_EXTENSIONS)
+// vaspwave carries charge density/wavefunctions, never a trajectory: file-open routing uses
+// this to divert it from the HDF5 trajectory dispatcher
+export const is_vaspwave_filename = (filename: string): boolean => {
+  const basename = filename.split(/[\\/]/).pop() ?? filename
+  return /vaspwave/i.test(basename) && HDF5_EXT_REGEX.test(basename)
+}
 export const BINARY_VIEWER_EXTENSIONS = Object.freeze([`traj`, ...HDF5_EXTENSIONS])
 export const BINARY_VIEWER_EXT_REGEX = ext_regex(BINARY_VIEWER_EXTENSIONS)
 

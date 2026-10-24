@@ -95,11 +95,7 @@ const trajectory_response = (request: ParseWorkerRequest): ParseWorkerResponse =
   const run_port = serve_run_over_port(run)
   return {
     id: request.id,
-    result: {
-      type: `trajectory`,
-      filename: request.filename,
-      data: summarize_run(run),
-    },
+    result: { type: `trajectory`, filename: request.filename, data: summarize_run(run) },
     run_port,
   }
 }
@@ -233,8 +229,7 @@ describe(`parse_in_worker`, () => {
           expect(workers.map(({ posted }) => posted.length)).toEqual(
             Array(Math.min(cores - 1, 3)).fill(1),
           )
-          expect(pending[0].worker_idx).toBe(0)
-          expect(pending[0].idx).toBe(idx + 1)
+          expect(pending[0]).toMatchObject({ worker_idx: 0, idx: idx + 1 })
           pending.shift()?.resolve()
           expect((await prepared).frame.header.step).toBe(idx + 1)
         }

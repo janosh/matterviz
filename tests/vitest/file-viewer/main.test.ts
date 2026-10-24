@@ -182,23 +182,28 @@ test.each([`POSCAR`, `POSCAR_from_CHGCAR`])(
 )
 
 // Content, not the name, decides the kind: names used to drop frames or grids or misroute files
+// JSON under a name no format claims is still JSON (the structure parser read one nested
+// structure out of a hull), while a non-JSON payload that merely starts with `[` is not
 test.each([
-  [`mdanalysis-chain-dump.lammpstrj`, `md.dump`, `trajectory`],
-  [`vasp-XDATCAR-traj.gz`, `Si_run`, `trajectory`],
-  [`vasp-XDATCAR-traj.gz`, `runs/build/XDATCAR`, `trajectory`],
-  [`pymatgen-LiMnO2-chgnet-relax.json.gz`, `run1.json`, `trajectory`],
-  [`Si-CHGCAR.gz`, `CHG`, `isosurface`],
-  [`Si-CHGCAR.gz`, `Si.vasp`, `isosurface`],
-  [`TiO2.cif`, `chgcar_structure.cif`, `structure`],
-  [`TiO2.cif`, `outcar/Si.cif`, `structure`],
+  [`trajectories/mdanalysis-chain-dump.lammpstrj`, `md.dump`, `trajectory`],
+  [`trajectories/vasp-XDATCAR-traj.gz`, `Si_run`, `trajectory`],
+  [`trajectories/vasp-XDATCAR-traj.gz`, `runs/build/XDATCAR`, `trajectory`],
+  [`trajectories/pymatgen-LiMnO2-chgnet-relax.json.gz`, `run1.json`, `trajectory`],
+  [`trajectories/pymatgen-LiMnO2-chgnet-relax.json.gz`, `run1.txt`, `trajectory`],
+  [`isosurfaces/Si-CHGCAR.gz`, `CHG`, `isosurface`],
+  [`isosurfaces/Si-CHGCAR.gz`, `Si.vasp`, `isosurface`],
+  [`structures/TiO2.cif`, `chgcar_structure.cif`, `structure`],
+  [`structures/TiO2.cif`, `outcar/Si.cif`, `structure`],
+  [`structures/mp-1.json`, `mp-1`, `structure`],
+  [`convex-hull/quaternaries/Li-Co-Ni-O.json.gz`, `hull.txt`, `convex_hull`],
+  [`electronic/cu-fcc-bands.json.gz`, `bands.dat`, `json_browser`],
 ])(`%s named %s opens as %s`, async (fixture, filename, expected) => {
-  const folder = fixture.includes(`CHGCAR`)
-    ? `isosurfaces`
-    : fixture.endsWith(`.cif`)
-      ? `structures`
-      : `trajectories`
-  const content = read_maybe_gz(`src/site/${folder}/${fixture}`)
+  const content = read_maybe_gz(`src/site/${fixture}`)
   expect((await parse_file_content(content, filename)).type).toBe(expected)
+})
+test(`a payload under a non-JSON name that merely starts with [ is not read as JSON`, async () => {
+  const ini = parse_file_content(`[run]\nsteps = 3\n`, `run.txt`)
+  await expect(ini).rejects.toThrow(`Failed to parse structure from 'run.txt'`)
 })
 
 test(`multi-frame XYZ text opens as a trajectory run`, async () => {
@@ -284,20 +289,18 @@ test.each([`plain`, `zip`, `gzip/gzip`, `zip/gzip`] as const)(
   },
 )
 
-test(`parse_file_content renders convex hull JSON whose filename contains convex`, async () => {
-  // oxfmt-ignore
-  const convex_hull_entries = [
-    { composition: { Al: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
-    { composition: { Cu: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
-    { composition: { Al: 1, Cu: 1 }, energy: -0.2, e_form_per_atom: -0.1, e_above_hull: 0, is_stable: true },
-  ]
+// oxfmt-ignore
+const hull_entries = [
+  { composition: { Al: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
+  { composition: { Cu: 1 }, energy: 0, e_form_per_atom: 0, e_above_hull: 0, is_stable: true },
+  { composition: { Al: 1, Cu: 1 }, energy: -0.2, e_form_per_atom: -0.1, e_above_hull: 0, is_stable: true },
+]
+// A UTF-8 BOM survives a host's own decode (VS Code's Buffer.toString) and broke JSON.parse
+test.each([``, `\uFEFF`])(`hull JSON named *convex* renders (prefix %j)`, async (prefix) => {
+  const filename = `Al-Cu-convex-hull.json`
   await expect(
-    parse_file_content(JSON.stringify(convex_hull_entries), `Al-Cu-convex-hull.json`),
-  ).resolves.toMatchObject({
-    type: `convex_hull`,
-    data: convex_hull_entries,
-    filename: `Al-Cu-convex-hull.json`,
-  })
+    parse_file_content(prefix + JSON.stringify(hull_entries), filename),
+  ).resolves.toMatchObject({ type: `convex_hull`, data: hull_entries, filename })
 })
 
 test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, async () => {
