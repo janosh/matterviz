@@ -1388,7 +1388,7 @@
             fullscreen_bg_css_var="--struct-bg-fullscreen"
             on_fullscreen_change={(value) =>
               on_fullscreen_change?.({ structure, fullscreen: value })}
-            style="--viewer-buttons-gap: 4pt; --viewer-buttons-btn-padding: 1px 2px; --viewer-buttons-align: stretch; --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
+            style="--viewer-buttons-gap: var(--struct-buttons-gap, 4pt); --viewer-buttons-btn-padding: var(--struct-buttons-btn-padding, 1px 2px); --viewer-buttons-align: var(--struct-buttons-align, stretch); --viewer-buttons-hover-bg: transparent; --viewer-buttons-hover-color: light-dark(#000, #fff)"
           >
             {#if layout_control_visible}
               <ToolbarMenu

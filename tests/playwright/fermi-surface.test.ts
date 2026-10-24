@@ -267,6 +267,34 @@ test(
 
     await container.hover()
     const link_toggle = container.locator(`.sync-rotation-toggle`)
+    // Every toolbar on the top row (Structure's, the corner Fermi pane's, the viewer's own) has
+    // equal 24px buttons on one line, 1px apart where they adjoin (icons 9px apart). The
+    // pressed link marks itself in the accent color, never with a fill.
+    const row = await container.evaluate((root) => {
+      const panes_top = root.querySelector(`.panes`)?.getBoundingClientRect().top ?? 0
+      return [
+        ...root.querySelectorAll(
+          `.panes .control-buttons > button, .panes .control-buttons > .view-mode-control > button`,
+        ),
+      ]
+        .filter((button) => getComputedStyle(button).visibility === `visible`)
+        .map((button) => button.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.top - panes_top < 60) // the top row only
+        .map(({ left, right, top, width }) => ({ left, right, top, width }))
+        .toSorted((first, second) => first.left - second.left)
+    })
+    expect(row.length).toBeGreaterThanOrEqual(8)
+    for (const [idx, { width, top, left }] of row.entries()) {
+      expect([width, top]).toEqual([expect.closeTo(24, 1), expect.closeTo(row[0].top, 1)])
+      const gap = idx > 0 ? left - row[idx - 1].right : 1
+      if (gap < 50) expect(gap).toBeCloseTo(1, 1) // a larger gap separates two panes' rows
+    }
+    await expect(link_toggle).toHaveAttribute(`aria-pressed`, `true`)
+    await expect(link_toggle).toHaveCSS(`background-color`, `rgba(0, 0, 0, 0)`)
+    const fullscreen_color = await container
+      .locator(`.panes > .control-buttons .fullscreen-btn`)
+      .evaluate((button) => getComputedStyle(button).color)
+    await expect(link_toggle).not.toHaveCSS(`color`, fullscreen_color)
     await link_toggle.click()
     await expect(link_toggle).toHaveAttribute(`aria-pressed`, `false`)
     await drag_structure()

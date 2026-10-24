@@ -413,7 +413,8 @@
   const pane_style = (pane: ElectronicPane): string | undefined => {
     if (pane !== corner_pane || chrome_width === 0) return undefined
     const top = `calc(1ex + ${bar_offset}px)`
-    const right = `calc(1.5ex + ${chrome_width}px)`
+    // beside the top row's buttons (inset 1ex) with the 1px gap they keep between themselves
+    const right = `calc(1ex + ${chrome_width + 1}px)`
     return `--viewer-buttons-top: ${top}; --ctrl-btn-top: ${top}; --viewer-buttons-right: ${right}; --ctrl-btn-right: ${right}`
   }
   // the top row's controls clear the overlaid control bar
@@ -941,6 +942,10 @@
     border-radius: var(--electronic-border-radius, 0);
     background: var(--electronic-bg, var(--struct-bg));
     --struct-bg-override: transparent;
+    /* the Structure pane's buttons match the Fermi pane's and the top row's they share a row with */
+    --struct-buttons-gap: 1px;
+    --struct-buttons-btn-padding: 4px;
+    --struct-buttons-align: center;
     --fermi-bg: transparent;
     --struct-height: 100%;
     --struct-min-width: 0;
@@ -969,6 +974,14 @@
     flex: 1;
     min-height: 0;
     grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  }
+  /* the same blue ToolbarMenu marks selected options with; .panes outranks ViewerChrome's
+     hover color, so the pressed state stays blue under the pointer */
+  .panes .sync-rotation-toggle[aria-pressed='true'] {
+    color: var(
+      --accent-color,
+      var(--menu-option-selected-color, light-dark(#2563eb, #6ea8ff))
+    );
   }
   .row {
     position: relative;
