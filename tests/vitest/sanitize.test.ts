@@ -397,3 +397,19 @@ describe(`sanitize_html_ssr escapes unterminated markup`, () => {
     expect(sanitize_html_ssr(input)).toBe(expected)
   })
 })
+
+describe(`sanitize_html_ssr attribute entities`, () => {
+  // Escaping the raw attribute text doubled every entity (`&amp;amp;`), and the href test
+  // saw `&#x2f;x` rather than the `/x` a browser follows, dropping a safe link
+  test.each([
+    [
+      `<a href="/x?a=1&amp;b=2" title='R&amp;D'>x</a>`,
+      `<a href="/x?a=1&amp;b=2" title="R&amp;D" rel="noopener">x</a>`,
+    ],
+    [`<a href="&#x2f;x">x</a>`, `<a href="/x" rel="noopener">x</a>`],
+    [`<a href="http&#58;//x">x</a>`, `<a href="http://x" rel="noopener">x</a>`],
+    [`<a href="&#106;avascript:alert(1)">x</a>`, `<a>x</a>`],
+  ])(`decodes attribute entities before vetting: %s`, (input, expected) => {
+    expect(sanitize_html_ssr(input)).toBe(expected)
+  })
+})

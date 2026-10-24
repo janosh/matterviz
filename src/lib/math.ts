@@ -700,6 +700,21 @@ export function cell_to_lattice_matrix(
   beta: number,
   gamma: number,
 ): Matrix3x3 {
+  // built only for the error messages: parsers call this once per frame or file
+  const cell_desc = () =>
+    `a=${len_a} b=${len_b} c=${len_c} alpha=${alpha} beta=${beta} gamma=${gamma}`
+  // A NaN parameter slips past both checks below (every comparison with it is false), a
+  // negative length mirrors its axis and an angle past [0°, 180°] (210° has the cosine of
+  // 150°) flips sin(gamma), so each silently corrupted every coordinate. Zero lengths and
+  // 0°/180° angles stay valid: calc_lattice_params reports 2D/slab/molecule cells that way.
+  if (
+    ![len_a, len_b, len_c].every((len) => len >= 0 && Number.isFinite(len)) ||
+    ![alpha, beta, gamma].every((angle) => angle >= 0 && angle <= 180)
+  ) {
+    throw new Error(
+      `Cell parameters need finite non-negative lengths and angles in [0°, 180°] (${cell_desc()})`,
+    )
+  }
   const cos_alpha = Math.cos(alpha * DEG_TO_RAD)
   const cos_beta = Math.cos(beta * DEG_TO_RAD)
   const cos_gamma = Math.cos(gamma * DEG_TO_RAD)
@@ -710,20 +725,19 @@ export function cell_to_lattice_matrix(
   // every Cartesian coordinate NaN.
   const radicand =
     1 - cos_alpha ** 2 - cos_beta ** 2 - cos_gamma ** 2 + 2 * cos_alpha * cos_beta * cos_gamma
-  const cell_desc = `a=${len_a} b=${len_b} c=${len_c} alpha=${alpha} beta=${beta} gamma=${gamma}`
   // sin_gamma first: at gamma = 180° the radicand also lands (just) below zero, and
   // "a and b are collinear" is the more actionable of the two diagnoses
   // Tolerance, not === 0: Math.sin(Math.PI) is 1.22e-16, so gamma = 180° would slip past
   // an exact test and surface as the less useful "not realizable" error below
   if (Math.abs(sin_gamma) < 1e-12) {
     throw new Error(
-      `Cell has gamma=${gamma}° (${cell_desc}), making the a and b axes collinear and the ` +
+      `Cell has gamma=${gamma}° (${cell_desc()}), making the a and b axes collinear and the ` +
         `cell degenerate. Lattice vectors are undefined.`,
     )
   }
   if (radicand < 0) {
     throw new Error(
-      `Cell angles do not describe a realizable lattice (${cell_desc}): the triclinic ` +
+      `Cell angles do not describe a realizable lattice (${cell_desc()}): the triclinic ` +
         `volume factor 1 - cos²α - cos²β - cos²γ + 2cosαcosβcosγ is ${radicand}, which ` +
         `must be >= 0. Check for a mistyped angle.`,
     )
@@ -1025,8 +1039,8 @@ export function normalize_vec<T extends readonly number[]>(
   return unit as Normalized<T>
 }
 
-// Compute orthonormal basis vectors in a plane perpendicular to `normal`.
-// Uses Gram-Schmidt orthogonalization + cross product.
+// Orthonormal basis of the plane perpendicular to a UNIT `normal` (Gram-Schmidt + cross
+// product, so a non-unit normal yields a skewed, non-unit pair).
 export function compute_in_plane_basis(normal: Vec3): [Vec3, Vec3] {
   const ref_vec: Vec3 = Math.abs(normal[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]
   const u_raw = subtract(ref_vec, scale(normal, dot(normal, ref_vec)))
@@ -1429,13 +1443,20 @@ export function polygon_label_point(
 // Solve the linear system `coefficients · x = rhs` via LU decomposition with partial
 // pivoting. Returns null if the system is singular (no unique solution). Singularity is
 // judged relative to the largest coefficient so scaling the system does not change the
-// verdict. Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse).
+// verdict. Fast-paths for 2x2 (Cramer's rule) and 3x3 (matrix inverse). A non-finite
+// coefficient or rhs entry also gives null, on every path: Cramer and LU (whose pivot test
+// every NaN comparison fails) returned all-NaN "solutions" where the 3x3 inverse said null.
 export function solve_linear_system(
   coefficients: number[][], // NxN coefficient matrix
   rhs: number[], // N-element right-hand side
 ): number[] | null {
   const size = coefficients.length
-  if (size === 0 || rhs.length !== size || !coefficients.every((row) => row.length === size)) {
+  if (
+    size === 0 ||
+    rhs.length !== size ||
+    !rhs.every(Number.isFinite) ||
+    !coefficients.every((row) => row.length === size && row.every(Number.isFinite))
+  ) {
     return null
   }
 

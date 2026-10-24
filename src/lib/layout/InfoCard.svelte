@@ -1,6 +1,7 @@
 <script lang="ts">
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
+  import { html_to_text } from '#lib/utils.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -41,7 +42,7 @@
   {/if}
   {#each shown as { title, value, unit, fmt = default_fmt, tooltip }}
     <div>
-      <span class="title" {title}>{@html sanitize_html(title)}</span>
+      <span class="title" title={html_to_text(title)}>{@html sanitize_html(title)}</span>
       <strong title={tooltip ?? null}>
         {@html sanitize_html(format_value(value ?? ``, fmt))}
         {#if unit}<small>{unit}</small>{/if}

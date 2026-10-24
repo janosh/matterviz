@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 import { format_formula_html } from './composition/format'
 import { evict_oldest } from './labels'
+import { html_to_text } from './utils'
 import { escape_html } from 'svelte-widgets/utils'
 
 const SAFE_TAGS = [`a`, `b`, `i`, `em`, `strong`, `sub`, `sup`, `br`, `span`, `code`, `small`]
@@ -111,7 +112,11 @@ function filter_attrs(attr_str: string, allowed: ReadonlySet<string>, tag: strin
   for (const match of attr_str.matchAll(ATTR_RE)) {
     const name = (match.groups?.name ?? ``).toLowerCase()
     if (name.startsWith(`on`) || !allowed.has(name)) continue
-    const raw = match.groups?.dq ?? match.groups?.sq ?? match.groups?.bare ?? ``
+    // Decoded before the href test and the re-escape below: escaping the raw text doubled
+    // every entity (`?a=1&amp;b=2` came out as `?a=1&amp;amp;b=2`). html_to_text knows fewer
+    // named entities than a browser (no `&colon;`, `&Tab;`, `&sol;`) and needs the `;`, which
+    // fails closed: an undecoded `&` ahead of a scheme does not match SAFE_HREF_RE.
+    const raw = html_to_text(match.groups?.dq ?? match.groups?.sq ?? match.groups?.bare ?? ``)
     if (name === `rel`) {
       rel = raw
       continue

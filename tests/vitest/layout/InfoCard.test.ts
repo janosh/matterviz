@@ -15,9 +15,12 @@ describe(`InfoCard`, () => {
     [{ title: `Label`, value: `Fe<sub>2</sub>O<sub>3</sub>` }, `Fe2O3`],
     [{ title: `XSS`, value: `<script>alert(1)</script>safe` }, `safe`],
     [{ title: `Band gap`, value: 1.5, unit: `eV` }, `1.500 eV`],
+    [{ title: `F<sub>max</sub>`, value: 1.5, unit: `eV/Å` }, `1.500 eV/Å`],
   ])(`renders %j as %p`, (item, expected) => {
     mount(InfoCard, { target: document.body, props: { data: [item], fmt: `.3f` } })
     expect(value_text()).toBe(expected)
+    // the native tooltip shows the label's text, not its markup (was `F<sub>max</sub>`)
+    expect(doc_query(`.title`).title).toBe(item.title.replaceAll(/<[^>]+>/g, ``))
     expect(document.querySelector(`script`)).toBeNull()
     if (item.unit) expect(doc_query(`strong small`).textContent).toBe(item.unit)
   })

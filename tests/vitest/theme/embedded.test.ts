@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
+import type * as colors from '#lib/colors/index.js'
 import { detect_parent_theme, watch_theme } from '#lib/theme/embedded.js'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-// Isolate watcher behavior from palette data and theme registration side effects.
-// Black (and transparent black, which is_dark_color must filter out first) read as dark.
-vi.mock(`#lib/colors/index.js`, () => ({
-  perceived_brightness: (color: string) =>
-    [`rgba(0,0,0,0)`, `rgb(0,0,0)`, `#000`].includes(color.replaceAll(` `, ``)) ? 0 : 1,
-}))
+// Isolate watcher behavior from palette data and theme registration side effects, keeping
+// the real color parsers so an unparsable host colour fails as it would in a browser
+vi.mock(`#lib/colors/index.js`, async (import_original) => {
+  const { is_concrete_color, perceived_brightness } = await import_original<typeof colors>()
+  return { is_concrete_color, perceived_brightness }
+})
 
 const observers: FakeMutationObserver[] = []
 const observed_targets: Node[] = []
@@ -144,6 +145,13 @@ describe(`detect_parent_theme`, () => {
   ])(`%s overrides a light system preference`, (_label, apply_host_signal) => {
     prefers_dark = false
     apply_host_signal()
+    expect(detect_parent_theme()).toBe(`dark`)
+  })
+
+  // perceived_brightness threw "Invalid color" on it, so detection itself crashed
+  test(`an unparsable JupyterLab layout colour defers to the system preference`, () => {
+    prefers_dark = true
+    document.documentElement.style.setProperty(`--jp-layout-color0`, `not-a-color`)
     expect(detect_parent_theme()).toBe(`dark`)
   })
 

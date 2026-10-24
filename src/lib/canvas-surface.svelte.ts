@@ -29,13 +29,21 @@ export function create_canvas_surface(
     draw_overlay?: (frame: CanvasFrame) => void
   },
 ) {
-  let dark_mode = $state(is_dark_mode())
+  const initial_dark = is_dark_mode()
+  let dark_mode = $state(initial_dark)
+  let text_color = $state(canvas_text_color(undefined, initial_dark))
+  // Re-read the text colour on every theme change, not only when dark_mode flips: light and
+  // white (dark and black) share a scheme but not a --text-color, so a $derived keyed on
+  // dark_mode kept drawing in the previous theme's ink.
   $effect(() => {
     const canvas = inputs.canvas()
-    dark_mode = is_dark_mode(canvas)
-    return watch_dark_mode((dark) => (dark_mode = dark), canvas)
+    const read = (dark = is_dark_mode(canvas)) => {
+      dark_mode = dark
+      text_color = canvas_text_color(canvas, dark)
+    }
+    read()
+    return watch_dark_mode(read, canvas)
   })
-  const text_color = $derived(canvas_text_color(inputs.canvas(), dark_mode))
   const surface = create_surface({
     ...inputs,
     // Svelte clears bind:this to null when a conditional canvas unmounts.

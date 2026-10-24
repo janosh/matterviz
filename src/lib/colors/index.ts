@@ -73,13 +73,27 @@ export const ELEMENT_COLOR_SCHEMES = {
 } as const satisfies Record<ColorSchemeName, Record<string, string>>
 export const default_element_colors = ELEMENT_COLOR_SCHEMES.Vesta
 
+// One var()/color() call spanning the whole string: its parentheses may nest (a fallback like
+// `var(--a, var(--b, rgb(0 0 0)))`) but the opening one closes only at the very end, so
+// `var(--a) var(--b)` and `var(--a); background: url(x)` are not colors
+const is_single_color_call = (text: string): boolean => {
+  if (!/^(?:var|color)\(/i.test(text) || /[;{}]/.test(text)) return false
+  let depth = 0
+  for (let idx = 0; idx < text.length; idx++) {
+    if (text[idx] === `(`) depth++
+    else if (text[idx] === `)` && --depth === 0) return idx === text.length - 1
+  }
+  return false
+}
+
 // Detect CSS color strings. d3-color parses hex, rgb(), hsl() and named colors (rejecting
 // words like `pending`) but not var()/color()/currentcolor, so match those explicitly.
 export const is_color = (val: unknown): val is string => {
   if (typeof val !== `string`) return false
   const trimmed = val.trim()
   return (
-    /^(?:var|color)\([^)]+\)$|^currentcolor$/i.test(trimmed) ||
+    /^currentcolor$/i.test(trimmed) ||
+    is_single_color_call(trimmed) ||
     to_rendered_rgb(trimmed) !== undefined
   )
 }

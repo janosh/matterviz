@@ -82,4 +82,33 @@ describe(`create_canvas_surface`, () => {
     expect(change_dpr()).toBe(0)
     parent.remove()
   })
+
+  // light -> white keeps the light scheme but darkens --text-color, so a text colour derived
+  // from dark_mode alone kept drawing labels in the previous theme's ink
+  test(`re-reads the text colour on a theme change that keeps the color scheme`, async () => {
+    install_match_media()
+    const canvas = document.createElement(`canvas`)
+    canvas.style.color = `rgb(55, 65, 81)`
+    document.body.append(canvas)
+    let surface: ReturnType<typeof create_canvas_surface> | undefined
+    const cleanup = $effect.root(() => {
+      surface = create_canvas_surface({
+        canvas: () => canvas,
+        draw: () => {},
+        repaint_deps: () => {},
+      })
+    })
+    flushSync()
+    expect(surface?.text_color).toBe(`rgb(55, 65, 81)`)
+
+    canvas.style.color = `rgb(0, 0, 0)`
+    document.documentElement.dataset.theme = `white`
+    await new Promise((resolve) => setTimeout(resolve, 0)) // MutationObserver delivery
+    flushSync()
+    expect(surface?.text_color).toBe(`rgb(0, 0, 0)`)
+
+    cleanup()
+    canvas.remove()
+    delete document.documentElement.dataset.theme
+  })
 })

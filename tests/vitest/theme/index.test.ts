@@ -134,11 +134,15 @@ describe(`Theme System`, () => {
       },
     )
 
-    test(`apply_theme_to_dom throws error for unknown themes`, () => {
-      expect(() => apply_theme_to_dom(`unknown` as ThemeName)).toThrow(
-        `Invalid theme mode: unknown`,
-      )
-    })
+    // `constructor` passed an `in` check against THEME_TYPE's prototype chain
+    test.each([`unknown`, `constructor`, `toString`])(
+      `apply_theme_to_dom throws error for unknown theme %s`,
+      (theme) => {
+        expect(() => apply_theme_to_dom(theme as ThemeName)).toThrow(
+          `Invalid theme mode: ${theme}`,
+        )
+      },
+    )
   })
 })
 

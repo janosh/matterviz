@@ -605,6 +605,13 @@ describe(`3x3 matrix and lattice utilities`, () => {
       [`angles violating the triclinic inequality`, [3, 3, 3, 170, 170, 170], /realizable/],
       [`gamma = 0 (collinear a and b)`, [3, 3, 3, 90, 90, 0], /degenerate/],
       [`gamma = 180 (collinear a and b)`, [3, 3, 3, 90, 90, 180], /degenerate/],
+      // NaN failed both checks above silently, a negative length mirrored its axis
+      // and an angle past [0, 180] (210 shares the cosine of 150) flipped sin(gamma)
+      [`a NaN length`, [NaN, 3, 3, 90, 90, 90], /finite non-negative lengths/],
+      [`a NaN angle`, [3, 3, 3, NaN, 90, 90], /finite non-negative lengths/],
+      [`a negative length`, [3, -3, 3, 90, 90, 90], /finite non-negative lengths/],
+      [`gamma past 180`, [3, 3, 3, 90, 90, 210], /angles in \[0°, 180°\]/],
+      [`a negative angle`, [3, 3, 3, -90, 90, 90], /angles in \[0°, 180°\]/],
     ] as [string, [number, number, number, number, number, number], RegExp][])(
       `throws on %s`,
       (_name, cell_params, message) => {
@@ -1214,6 +1221,15 @@ describe(`solve_linear_system`, () => {
     [`singular 5x5 (row 3 = row 1 + row 2)`,
       [[1, 0, 0, 0, 1], [0, 1, 0, 0, 1], [1, 1, 0, 0, 2], [0, 0, 0, 1, 0], [0, 0, 1, 0, 0]],
       [1, 1, 2, 1, 1]],
+    // Cramer and LU returned all-NaN arrays here while the 3x3 inverse returned null
+    [`NaN in 2x2`, [[NaN, 1], [1, 1]], [1, 2]],
+    [`NaN in 3x3`, [[NaN, 1, 0], [1, 1, 0], [0, 0, 1]], [1, 2, 3]],
+    [`NaN in 5x5`, [[NaN, 0, 0, 0, 0], [0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1]],
+      [1, 1, 1, 1, 1]],
+    [`NaN rhs in 2x2`, [[2, 1], [1, 3]], [NaN, 5]],
+    [`NaN rhs in 3x3`, [[4, -2, 1], [3, 6, -4], [2, 1, 8]], [12, NaN, 32]],
+    [`Infinity rhs in 5x5`, [[2, 1, 0, 0, 1], [1, 3, 1, 0, 0], [0, 1, 4, 1, 0], [0, 0, 1, 5, 1], [1, 0, 0, 1, 6]],
+      [1, 2, Infinity, 4, 5]],
   ])(`returns null for %s`, (_name, coefficients, rhs) => {
     expect(math.solve_linear_system(coefficients, rhs)).toBeNull()
   })
