@@ -48,12 +48,6 @@
       icon: FermiSurface,
     },
     {
-      label: `Fermi Surface + Bands`,
-      href: `/reciprocal/fermi-surface-bands`,
-      description: `Fermi surface beside the band structure of the same calculation: hover or click a band in one to find it in the other.`,
-      icon: FermiSurface,
-    },
-    {
       label: `Electronic Structure`,
       href: `/reciprocal/electronic-structure`,
       description: `Crystal structure, Fermi surface, band structure and DOS of one calculation in one linked viewer, also stepped along a pressure sweep.`,

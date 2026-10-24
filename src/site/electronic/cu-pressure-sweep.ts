@@ -280,8 +280,9 @@ export function cu_pressure_sweep(input: {
 }): Sweep {
   const scales = CU_VOLUME_RATIOS.map((ratio) => Math.cbrt(ratio))
   let ambient: ReturnType<typeof cu_phonons> | undefined
-  const load_frame: SweepFrameLoader = async (_series_id, frame_idx) => {
+  const load_frame: SweepFrameLoader = async (_series_id, frame_idx, { signal }) => {
     await new Promise((resolve) => setTimeout(resolve, 0)) // yield before the heavy work
+    signal.throwIfAborted() // the viewer moved on while this waited
     const band_data = scale_band_grid(input.band_data, scales[frame_idx])
     ambient ??= cu_phonons(input.structure, input.band_struct)
     return {

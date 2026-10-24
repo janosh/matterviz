@@ -1,4 +1,5 @@
 import type * as brillouin_module from '#lib/brillouin/index.js'
+import type * as phonon_modes_module from '#lib/spectral/phonon-modes.js'
 import { reciprocal_lattice, type Vec3 } from '#lib/math.js'
 import { frac_k_to_cartesian } from '#lib/spectral/helpers.js'
 import type { PhononModeDataset } from '#lib/spectral/index.js'
@@ -18,6 +19,7 @@ import {
   query,
   resize_element,
   set_input,
+  set_select,
   translate_of,
   trigger_resize_observer,
 } from '../setup'
@@ -33,6 +35,16 @@ vi.mock(`#lib/brillouin/index.js`, async (import_original) => {
     return original.BrillouinZone(...args)
   }
   return { ...original, BrillouinZone }
+})
+// Pass-through spy on the supercell builds, recording the polyhedra settings each completed
+const supercell_spy = vi.hoisted(() => ({ calls: [] as unknown[][] }))
+vi.mock(`#lib/spectral/phonon-modes.js`, async (import_original) => {
+  const original = await import_original<typeof phonon_modes_module>()
+  const phonon_supercell = (...args: Parameters<typeof original.phonon_supercell>) => {
+    supercell_spy.calls.push(args)
+    return original.phonon_supercell(...args)
+  }
+  return { ...original, phonon_supercell }
 })
 
 type ExplorerProps = ComponentProps<typeof PhononModeExplorer>
@@ -220,6 +232,22 @@ test(`uses the structure viewer selector to regenerate the displayed supercell`,
     expect(normalize_label()).toBe(`2x2x2`)
     expect(displayed_site_count()).toBe(16)
   })
+})
+
+test(`rebuilds the supercell when the viewer's polyhedra settings change`, async () => {
+  const target = render({ supercell: [2, 2, 2] })
+  await open_structure_controls(target)
+  const select = (key: string) =>
+    vi.waitFor(() => query<HTMLSelectElement>(target, `[data-key="${key}"] select`))
+  const last_polyhedra = () => supercell_spy.calls.at(-1)?.[2]
+  const n_builds = supercell_spy.calls.length
+  set_select(await select(`show_polyhedra`), `always`)
+  await tick()
+  // showing polyhedra with unchanged settings completes the same copies: no rebuild
+  expect(supercell_spy.calls).toHaveLength(n_builds)
+  set_select(await select(`polyhedra_neighbor_mode`), `bonded`)
+  await vi.waitFor(() => expect(last_polyhedra()).toMatchObject({ neighbor_mode: `bonded` }))
+  expect(supercell_spy.calls).toHaveLength(n_builds + 1)
 })
 
 test(`offers the spectrum type only with Raman data and follows the dataset`, async () => {

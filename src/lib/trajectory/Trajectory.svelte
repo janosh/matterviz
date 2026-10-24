@@ -57,7 +57,12 @@
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   import { Histogram, ScatterPlot } from '#lib/plot/index.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { Site, StructurePane, StructureOptions } from '#lib/structure/index.js'
+  import type {
+    Site,
+    StructurePane,
+    StructureOptions,
+    StructureSettings,
+  } from '#lib/structure/index.js'
   import { site_stride } from '#lib/structure/site.js'
   import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
@@ -197,6 +202,7 @@
     layout = DEFAULTS.trajectory.layout,
     pane_ratio = $bindable(0.5),
     structure_props = {},
+    live_scene_props = $bindable(),
     supercell_scaling = $bindable(structure_props.supercell_scaling ?? `1x1x1`),
     scatter_props = {},
     histogram_props = {},
@@ -253,6 +259,9 @@
     layout?: `auto` | Orientation
     pane_ratio?: number
     structure_props?: Omit<StructureOptions, `active_pane` | `hidden_elements`>
+    // Bind-only: the structure viewer's live scene settings, structure_props.scene_props plus
+    // the user's edits in its controls (edited in place, so reads of its fields stay reactive)
+    live_scene_props?: StructureSettings
     supercell_scaling?: string
     scatter_props?: Omit<ScatterPlotOptions, `x_axis` | `y_axis` | `y2_axis` | `hidden_series`>
     histogram_props?: Omit<
@@ -1788,7 +1797,10 @@
             }}
             show_controls={structure_controls}
             tooltip={structure_props.tooltip === false ? false : site_tooltip}
-            bind:scene_props={trail_scene_props}
+            bind:scene_props={
+              () => trail_scene_props,
+              (value) => (trail_scene_props = live_scene_props = value)
+            }
             bind:atom_color_config
             {atom_color_field}
             {volume_color_field}

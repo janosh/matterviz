@@ -12,7 +12,11 @@
   import { in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
-  import { parse_supercell_scaling } from '#lib/structure/index.js'
+  import { parse_supercell_scaling, type StructureSettings } from '#lib/structure/index.js'
+  import {
+    polyhedra_options_from,
+    type ResolvedPolyhedraOptions,
+  } from '#lib/structure/polyhedra.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
   import { to_error } from 'svelte-widgets/utils'
   import type { ComponentProps } from 'svelte'
@@ -147,15 +151,22 @@
   let has_plot = $derived(Boolean(band_structure || active_spectrum))
   let modes_open = $derived(!has_plot)
   // Three stages so each control redoes only its own work: the supercell (tiling + bonding)
-  // survives mode and amplitude changes and keys the camera framing, the displacement pattern
-  // survives amplitude changes, and frames are synthesised on read
-  // Snapshot only the unit cell: the whole dataset's eigenvectors take seconds to snapshot
+  // survives mode and amplitude changes, the displacement pattern survives amplitude changes,
+  // and frames are synthesised on read
+  // Snapshot only the unit cell: the whole dataset's eigenvectors take seconds to snapshot.
+  // The viewer's live polyhedra settings pick the corner copies, so editing them in its
+  // controls rebuilds the supercell. Keyed by value: a host prop change hands a new object.
+  let live_scene_props = $state<StructureSettings>()
+  let polyhedra_key = $derived(JSON.stringify(polyhedra_options_from(live_scene_props ?? {})))
   let supercell_result = $derived.by(() => {
     const { n_atoms, atoms, lattice } = mode_data
+    const polyhedra: ResolvedPolyhedraOptions = JSON.parse(polyhedra_key)
     return try_generate(() =>
-      phonon_supercell($state.snapshot({ n_atoms, atoms, lattice }), supercell),
+      phonon_supercell($state.snapshot({ n_atoms, atoms, lattice }), supercell, polyhedra),
     )
   })
+  // Camera framing follows the data and tiling, not the corner copies polyhedra add
+  let series_key = $derived([mode_data, supercell])
   let pattern_result = $derived.by(() => {
     const [cell, selected] = [supercell_result.value, selection]
     if (!cell || !selected) return no_result
@@ -556,7 +567,8 @@ under its open panes -->
             ],
           }}
           extra_controls={phonon_settings}
-          structure_series_key={supercell_result.value?.structure}
+          structure_series_key={series_key}
+          bind:live_scene_props
           structure_props={{
             children: structure_overlays,
             analyze_symmetry: false,

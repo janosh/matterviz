@@ -664,7 +664,7 @@ export const resolve_spin_mode = (
 ): `overlay` | `up_only` | `down_only` =>
   has_spin_down && (mode === `up_only` || mode === `down_only`) ? mode : `overlay`
 
-// Bands' line colours, also FermiSurfaceBands' crossing dots and muted lines
+// Bands' line colours, also ElectronicStructure's crossing dots and muted lines
 export const BANDS_CSS_COLORS = {
   fermi: `var(--bands-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`,
   reference: `var(--bands-reference-line-color, light-dark(#d48860, #c47850))`,

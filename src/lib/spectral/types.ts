@@ -98,7 +98,7 @@ export interface StackedAreaData {
 export type DosData = PhononDos | ElectronicDos
 
 // Band line styling: one style for every band, one per acoustic/optical mode, or one per band
-// and spin channel of a structure (its band_structs key or label, e.g. FermiSurfaceBands' sheet
+// and spin channel of a structure (its band_structs key or label, e.g. ElectronicStructure's sheet
 // colours)
 export interface BandLineStyle {
   stroke?: string

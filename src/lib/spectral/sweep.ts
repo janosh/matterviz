@@ -80,10 +80,18 @@ export interface DescriptorSpec {
 // A frame's fields besides its value: what a loader returns
 export type SweepFrameData = Omit<SweepFrame, `value`>
 
-// Fetches a frame's heavy data (0-based index into its series) when it is first shown. The
-// result is parsed like a JSON frame (failing on a wrong field) and merged over the frame's own
-// fields, records (scalars, status, doses, band_structs, phonon's) key by key.
-export type SweepFrameLoader = (series_id: string, frame_idx: number) => Promise<unknown>
+// Fetches a frame's heavy data (0-based index into its series) when it is shown or prefetched.
+// The result is parsed like a JSON frame (failing on a wrong field) and merged over the frame's
+// own fields, records (scalars, status, doses, band_structs, phonon's) key by key. `signal`
+// aborts once the frame leaves the viewer's window, the sweep or loader is replaced or the
+// viewer unmounts: pass it to fetch or check it between steps. An aborted load's result or
+// error is ignored, and the frame may be requested again later. Evicted frames (see
+// sweep-frames) are loaded again, so a loader may be called more than once per frame.
+export type SweepFrameLoader = (
+  series_id: string,
+  frame_idx: number,
+  options: { signal: AbortSignal },
+) => Promise<unknown>
 
 export interface Sweep {
   axis: SweepAxis

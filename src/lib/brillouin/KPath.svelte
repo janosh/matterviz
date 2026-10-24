@@ -40,7 +40,7 @@
     path: KPathData
     hovered_k_point?: Vec3 | null
     highlighted_k_points?: Vec3[]
-    // small dots on the path, e.g. where it pierces a Fermi surface (FermiSurfaceBands)
+    // small dots on the path, e.g. where it pierces a Fermi surface (ElectronicStructure)
     k_markers?: { position: Vec3; color: string }[]
     hovered_qpoint_index?: number | null
     highlighted_qpoint_range?: Vec2 | null

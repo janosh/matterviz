@@ -89,8 +89,17 @@ test(`the sweep ascends in pressure and its loader builds each frame's spectra`,
   // frames bring only their structures up front
   expect(series.frames.every((frame) => frame.structure && !frame.band_data)).toBe(true)
   if (!sweep.load_frame) throw new Error(`no loader`)
+  // a load the viewer aborted stops before the heavy work
+  const aborted = new AbortController()
+  const abandoned = sweep.load_frame(series.id, 2, aborted)
+  aborted.abort()
+  await expect(abandoned).rejects.toThrow(`aborted`)
   // the loader's data parses as frame data, as the viewer parses it
-  const loaded = normalize_frame_data(await sweep.load_frame(series.id, 2), `frame 2`)
+  const { signal } = new AbortController()
+  const loaded = normalize_frame_data(
+    await sweep.load_frame(series.id, 2, { signal }),
+    `frame 2`,
+  )
   expect(Object.keys(loaded).toSorted()).toEqual([
     `band_data`,
     `band_structs`,

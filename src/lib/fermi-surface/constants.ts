@@ -17,7 +17,7 @@ export const BAND_COLORS = [
 // Flat colours of the spin channels in `spin` colouring mode, also FermiSurfaceTooltip's badge
 export const SPIN_COLORS = { up: BAND_COLORS[0], down: BAND_COLORS[1] } as const
 
-// Flat colour of a band's sheet (material, tooltip background, FermiSurfaceBands' band lines):
+// Flat colour of a band's sheet (material, tooltip background, ElectronicStructure's band lines):
 // its spin channel's in `spin` colouring mode, else its band's
 export const sheet_color = (
   band_index: number,

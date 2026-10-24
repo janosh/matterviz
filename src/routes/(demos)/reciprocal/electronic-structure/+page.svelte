@@ -65,9 +65,10 @@
   lattice share one Cartesian frame, so rotating either 3D scene turns the other with it (the
   link button in the top-right controls unlinks them). Hover a band or the DOS to see the
   constant-energy surface at that energy, and the band's k-point on the path through the zone;
-  click a band to pin its energy and isolate its sheet. The pane menu shows any subset, the
-  dividers resize the panes, and a dropped structure, Fermi surface, band structure or DOS file
-  replaces the pane it belongs to.
+  click a band to pin its energy and isolate its sheet. Band lines take their sheet's colour
+  and dots mark where they cross E<sub>F</sub>, on the bands and the path in 3D. The pane menu
+  shows any subset, the dividers resize the panes, and a dropped structure, Fermi surface, band
+  structure or DOS file replaces the pane it belongs to.
 </p>
 
 {#if error_msg}

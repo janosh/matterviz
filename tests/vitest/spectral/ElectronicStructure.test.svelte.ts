@@ -1,4 +1,6 @@
 // ElectronicStructure: one viewer fusing a crystal, its Fermi surface, bands and DOS, linked
+import type * as backdrop from '#lib/colors/backdrop.svelte.js'
+import { sheet_color } from '#lib/fermi-surface/constants.js'
 import type FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type Bands from '#lib/spectral/Bands.svelte'
@@ -9,7 +11,7 @@ import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
 import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
 import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
-import { compute_frequency_range } from '#lib/spectral/helpers.js'
+import { BANDS_CSS_COLORS, compute_frequency_range } from '#lib/spectral/helpers.js'
 import type {
   BaseBandStructure,
   ElectronicDos,
@@ -22,8 +24,15 @@ import type { Site } from '#lib/structure/index.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Vector3 } from 'three/webgpu'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { create_drop_event, mock_parse_worker } from '../setup'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
+import {
+  create_drop_event,
+  fire,
+  mock_parse_worker,
+  mount_sized,
+  mouse,
+  plot_svg,
+} from '../setup'
 import {
   IDENTITY_MATRIX3,
   make_bxsf,
@@ -104,6 +113,18 @@ vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, (original) =>
 vi.mock(`#lib/spectral/Bands.svelte`, (original) => record_props(`bands`, original))
 vi.mock(`#lib/spectral/SweepTrends.svelte`, (original) => record_props(`trends`, original))
 vi.mock(`#lib/spectral/Dos.svelte`, (original) => record_props(`dos`, original))
+// the nodes CSS colour tokens are resolved on, for three.js (which parses no var())
+const resolved = vi.hoisted(() => [] as { node: Element; value: string }[])
+vi.mock(`#lib/colors/backdrop.svelte.js`, async (original) => {
+  const actual = await original<typeof backdrop>()
+  return {
+    ...actual,
+    resolve_color_token: (node: Element, value: string) => {
+      resolved.push({ node, value })
+      return actual.resolve_color_token(node, value)
+    },
+  }
+})
 
 // a_i · b_j = 2π δ_ij with the band grid's identity k_lattice: one Cartesian frame
 const structure = make_crystal(2 * Math.PI, [[`Cu`, [0, 0, 0]]])
@@ -345,6 +366,277 @@ test.each([true, false])(`hovering the DOS previews the Fermi surface (grid: %s)
   flushSync()
   expect(viewers.fermi?.mu).toBe(0)
   expect(viewers.fermi?.previewing).toBe(false)
+})
+
+// === bands ↔ Fermi surface ===
+// Ten electronic bands of one run; the grid holds bands 8 and 9 (band_indices). Band 8 runs
+// 0.1 → 0.5 eV through E_F = 0.3 like the grid's |k| sphere, the others lie far from it
+const ten_bands: BaseBandStructure = {
+  ...band_struct,
+  efermi: 0.3,
+  nb_bands: 10,
+  bands: Array.from({ length: 10 }, (_, band_idx) =>
+    band_idx === 8 ? [0.1, 0.3, 0.5] : [band_idx - 9, band_idx - 8.5, band_idx - 8],
+  ),
+}
+// ε = |k − centre| on an endpoint-inclusive 5³ grid, crossing E_F = 0.3 in a sphere
+const sphere = Float64Array.from({ length: 125 }, (_, idx) =>
+  Math.hypot(
+    ...[Math.floor(idx / 25), Math.floor(idx / 5) % 5, idx % 5].map((ii) => ii / 4 - 0.5),
+  ),
+)
+const two_sheets: BandGridData = {
+  energies: [
+    [
+      { values: sphere, dims: [5, 5, 5], order: `z_fastest` },
+      { values: sphere.map((energy) => energy + 0.05), dims: [5, 5, 5], order: `z_fastest` },
+    ],
+  ],
+  k_grid: [5, 5, 5],
+  k_lattice: IDENTITY_MATRIX3,
+  fermi_energy: 0.3,
+  n_bands: 2,
+  n_spins: 1,
+  band_indices: [8, 9],
+}
+
+// Hover previews a band point's energy (the dashed E_F + mu line follows it, mu itself stays), a
+// click pins that energy as mu and isolates the band, a second click ends the isolation; band
+// lines take their sheet's colour and E_F crossings are dotted on the bands and the 3D path
+test(`hover previews a band point's energy, a click pins it and isolates the band`, async () => {
+  // extraction runs on animation frames: fake them to step it deterministically
+  vi.useFakeTimers({
+    toFake: [
+      `setTimeout`,
+      `clearTimeout`,
+      `requestAnimationFrame`,
+      `cancelAnimationFrame`,
+      `performance`,
+    ],
+  })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  resolved.length = 0
+  const on_plot_click = vi.fn()
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    band_data: two_sheets,
+    band_structs: { Cu: ten_bands },
+    panes: [`fermi`, `bands`],
+    mu: 0,
+    selected_bands: undefined,
+    fermi_props: { controls_open: true }, // its band checkboxes show the sheets displayed
+    bands_props: {
+      point_tween: { duration: 0 },
+      line_tween: { duration: 0 }, // paths jump to where the (untweened) dots are
+      style: `width: 600px; height: 400px`,
+      on_plot_click,
+    },
+  })
+  const root = await mount_sized(ElectronicStructure, props, {
+    selector: `.electronic-structure`,
+    width: 1200,
+    height: 900,
+    on_mount: (component) => mounted.push(component),
+  })
+  await vi.advanceTimersByTimeAsync(200)
+  const scatter = root.querySelector(`[data-pane="bands"] .scatter`)
+  if (!scatter) throw new Error(`no band plot`)
+  const svg = plot_svg(scatter)
+  svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 600, height: 400 })
+  // Bands draws plain lines (no markers): aim at a vertex (default Γ) of a band's path, whose
+  // series id is JSON [label, segment, band_idx, spin]
+  const band_path = (band: number) =>
+    [...svg.querySelectorAll(`g[data-series-id]`)]
+      .find((node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band)
+      ?.querySelector(`path`)
+  const band_vertex = (band: number, qpoint_idx = 0) => {
+    const coords = (band_path(band)?.getAttribute(`d`) ?? ``).match(/[-\d.e]+/g)?.map(Number)
+    if (!coords) throw new Error(`no path for band ${band}`)
+    // M x,y then one cubic (C c1 c2 end) per step, straight with its controls on the chord
+    const end_idx = 6 * qpoint_idx
+    return { clientX: coords[end_idx], clientY: coords[end_idx + 1] }
+  }
+  const hover = async (band: number) => {
+    svg.dispatchEvent(mouse(`mousemove`, band_vertex(band)))
+    await vi.advanceTimersByTimeAsync(50) // hover frame, then the preview extraction
+    flushSync()
+  }
+  const leave = async () => {
+    await fire(svg, mouse(`mouseleave`))
+    await vi.advanceTimersByTimeAsync(50) // re-extraction at the pinned mu
+    flushSync()
+  }
+  const click = async (band: number) => {
+    await hover(band) // a real click follows the pointer onto the band
+    svg.dispatchEvent(mouse(`click`, band_vertex(band)))
+    flushSync()
+  }
+  const reference_y = () =>
+    root.querySelector(`line[stroke*="bands-reference-line-color"]`)?.getAttribute(`y1`)
+  // the emphasised band keeps its sheet colour, so count it by its widened stroke
+  const selected_strokes = () =>
+    [...root.querySelectorAll(`svg path[fill="none"]`)].filter(
+      (path) => Number(path.getAttribute(`stroke-width`)) >= 3,
+    ).length
+  expect(root.querySelectorAll(`.marker`)).toHaveLength(0) // lines only
+  // the 3D crossing markers resolve the 2D dots' colours where the dots do, inside Bands
+  // (whose bands_props.style may set them)
+  const fermi_nodes = resolved.filter(({ value }) => value === BANDS_CSS_COLORS.fermi)
+  const on_dots_svg = fermi_nodes.map(({ node }) => node.classList.contains(`band-crossings`))
+  expect(new Set(on_dots_svg)).toEqual(new Set([true]))
+  expect(reference_y()).toBeUndefined() // mu = 0: only the E_F line
+  // band lines in their sheet's colour (FermiSurfaceScene's sheet_color), bands without a sheet
+  // in the grid muted
+  expect([8, 9, 3].map((band) => band_path(band)?.getAttribute(`stroke`))).toEqual([
+    sheet_color(8, null, `band`),
+    sheet_color(9, null, `band`),
+    expect.stringContaining(`--bands-muted-color`),
+  ])
+  // E_F crossings dotted at the interpolated x: band 8 meets 0.3 eV at q-point 1, band 9
+  // (0 → 0.5 eV) 60% of the way from Γ to it
+  const fermi_y = Number(root.querySelector(`line.fermi-level-line`)?.getAttribute(`y1`))
+  const lerp_x = (band: number, frac: number) =>
+    band_vertex(band).clientX +
+    frac * (band_vertex(band, 1).clientX - band_vertex(band).clientX)
+  const expect_dots = (expected: [number, number, string][]) => {
+    const dots = [...root.querySelectorAll(`.band-crossings circle`)].map((dot) => [
+      Number(dot.getAttribute(`cx`)),
+      Number(dot.getAttribute(`cy`)),
+      dot.getAttribute(`fill`),
+    ])
+    // path d rounds to 1e-3 px
+    const close = ([x_px, y_px, color]: [number, number, string]) => [
+      expect.closeTo(x_px, 2),
+      expect.closeTo(y_px, 2),
+      color,
+    ]
+    expect(dots).toEqual(expected.map(close))
+  }
+  // dots in the colour of the line they sit on (Bands' E_F and reference line CSS)
+  const { fermi: fermi_css, reference: ref_css } = BANDS_CSS_COLORS
+  const fermi_dots = (): [number, number, string][] => [
+    [band_vertex(8, 1).clientX, fermi_y, fermi_css],
+    [lerp_x(9, 0.6), fermi_y, fermi_css],
+  ]
+  expect_dots(fermi_dots())
+  // One k_path object per path: hovers update its markers and hovered q-point through getters,
+  // so the 3D k-path's path-derived state (sym points, segment meshes) is not rebuilt per hover
+  type ScenePath = ComponentProps<typeof FermiSurface>[`k_path`]
+  const k_path_reads: { k_path: ScenePath; path?: object }[] = []
+  const k_marker_counts: number[] = []
+  const hover_qpoints: (number | null | undefined)[] = []
+  onTestFinished(
+    $effect.root(() => {
+      $effect(() => {
+        const k_path = viewers.fermi?.k_path
+        k_path_reads.push({ k_path, path: k_path?.path })
+      })
+      $effect(() => {
+        const k_path = viewers.fermi?.k_path
+        k_marker_counts.push(k_path?.k_markers?.length ?? -1)
+        hover_qpoints.push(k_path?.hovered_qpoint_index)
+      })
+    }),
+  )
+  flushSync()
+
+  await hover(8) // band 8 at Γ: 0.1 eV, 0.2 below E_F
+  expect(Number(reference_y())).toBeCloseTo(band_vertex(8).clientY, 2) // path d rounds to 1e-3 px
+  expect([props.mu, selected_strokes()]).toEqual([0, 1])
+  // the previewed energy's crossings join E_F's: band 8 meets 0.1 eV at Γ, band 9 20% of the
+  // way to q 1
+  expect_dots([
+    ...fermi_dots(),
+    [band_vertex(8).clientX, Number(reference_y()), ref_css],
+    [lerp_x(9, 0.2), Number(reference_y()), ref_css],
+  ])
+  // the hovered q-point's whole branch (Γ→X, the only one) is shaded on the bands, as beside a BZ
+  expect(root.querySelector(`rect.highlighted-segment`)).toBeInstanceOf(SVGRectElement)
+  await leave()
+  expect([reference_y(), selected_strokes()]).toEqual([undefined, 0])
+  expect(root.querySelector(`rect.highlighted-segment`)).toBeNull()
+  expect(k_path_reads).toHaveLength(1)
+  expect(k_path_reads[0].path).toBe(k_path_reads[0].k_path?.path)
+  expect([k_marker_counts, hover_qpoints]).toEqual([
+    [2, 4, 2],
+    [null, 0, null],
+  ])
+
+  // band 3 is not in the grid: no preview, and a click pins nothing
+  await click(3)
+  expect([viewers.fermi?.previewing, props.mu]).toEqual([false, 0])
+  await leave()
+
+  // the 3D controls list the sheets shown: both, then band 8 alone once isolated
+  const shown_bands = () =>
+    [...root.querySelectorAll<HTMLInputElement>(`.band-checkbox input`)].map(
+      (input) => input.checked,
+    )
+  expect(shown_bands()).toEqual([true, true])
+  await click(8)
+  expect(props.mu).toBeCloseTo(-0.2, 12) // the clicked energy, pinned
+  expect(on_plot_click).toHaveBeenCalledTimes(2)
+  await leave()
+  expect(shown_bands()).toEqual([true, false])
+  expect(selected_strokes()).toBe(1) // isolated, still emphasised without hover
+  // only the isolated band's crossings stay (E_F at q 1, the pinned 0.1 eV at Γ)
+  expect_dots([fermi_dots()[0], [band_vertex(8).clientX, Number(reference_y()), ref_css]])
+  expect(Number(reference_y())).toBeCloseTo(band_vertex(8).clientY, 2) // path d rounds to 1e-3 px
+  // a mu change while isolated that drops band 9 (ε ≥ 0.05 eV) and restores it must not leak
+  // the isolation into the bands the user hid
+  for (const mu of [-0.28, -0.2]) {
+    props.mu = mu
+    await vi.advanceTimersByTimeAsync(50)
+    flushSync()
+  }
+  expect(shown_bands()).toEqual([true, false])
+
+  await click(8) // again: isolation ends, both sheets return
+  await leave()
+  expect(selected_strokes()).toBe(0)
+  expect(shown_bands()).toEqual([true, true])
+  // a band edit in the controls while isolated lands, starting from the band shown (unticking
+  // band 8 leaves none), and ends the isolation: re-ticking band 9 shows it alone
+  await click(8)
+  await leave()
+  expect([props.selected_bands, shown_bands()]).toEqual([
+    [8, 9],
+    [true, false],
+  ])
+  const checkbox = (idx: number) =>
+    root.querySelectorAll<HTMLInputElement>(`.band-checkbox input`)[idx]
+  checkbox(0).click()
+  flushSync()
+  expect([props.selected_bands, shown_bands(), selected_strokes()]).toEqual([
+    [],
+    [false, false],
+    0,
+  ])
+  checkbox(1).click()
+  flushSync()
+  expect([props.selected_bands, shown_bands()]).toEqual([[9], [false, true]])
+  props.selected_bands = [8, 9]
+  props.mu = 0
+  await vi.advanceTimersByTimeAsync(50)
+  flushSync()
+  expect_dots(fermi_dots())
+
+  // these bands are unpolarized, so Bands draws them in every spin mode and so do the E_F
+  // crossings: `down_only` used to drop the dots while the bands stayed drawn
+  for (const band_spin_mode of [`down_only`, `up_only`] as const) {
+    props.bands_props = { ...props.bands_props, band_spin_mode }
+    await vi.advanceTimersByTimeAsync(50)
+    flushSync()
+    expect_dots(fermi_dots())
+  }
+
+  // the E_F line marks the grid's Fermi level (mu = 0), not the band structure's efermi
+  const fermi_line_y = () => root.querySelector(`line.fermi-level-line`)?.getAttribute(`y1`)
+  const grid_fermi_y = fermi_line_y()
+  props.band_structs = { Cu: { ...ten_bands, efermi: 0.25 } }
+  flushSync()
+  expect(fermi_line_y()).toBe(grid_fermi_y)
 })
 
 // a POSCAR of lattice `rows` (Å), one Si atom
@@ -621,7 +913,8 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
   })
   const root = mount_host(props)
   // the last frame's next is the first, where playback wraps
-  expect(load_frame.mock.calls).toEqual([
+  const loads = () => load_frame.mock.calls.map(([series_id, idx]) => [series_id, idx])
+  expect(loads()).toEqual([
     [`fcc`, 2],
     [`fcc`, 0],
     [`fcc`, 1],
@@ -635,7 +928,7 @@ test(`load_frame fetches the shown frame and its neighbours, merged into the pan
   props.series_id = `bcc`
   props.frame_idx = 0
   flushSync()
-  expect(load_frame.mock.calls.slice(3)).toEqual([
+  expect(loads().slice(3)).toEqual([
     [`bcc`, 0],
     [`bcc`, 1],
   ])
@@ -693,6 +986,82 @@ test(`a sweep's spectra axes span all its frames, unless the caller passes a ran
   expect(viewers.bands?.y_axis?.range).toEqual([5, 9])
 })
 
+// Frames the window and recent list have left drop their spectra (sweep-frames' eviction):
+// the axes keep the span of every frame loaded so far, reset only by another series
+test(`evicting a loaded frame does not shrink the spectra's span`, async () => {
+  const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
+  const sweep: Sweep = {
+    axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
+    series: [
+      { id: `fcc`, frames: Array.from({ length: 7 }, (_, idx) => ({ value: 10 * idx })) },
+      { id: `bcc`, frames: [{ value: 0 }] },
+    ],
+    // only fcc's frame 1 reaches 20 eV
+    load_frame: async (series_id: string, frame_idx: number) => ({
+      doses: { total: series_id === `fcc` && frame_idx === 1 ? wide_dos : dos },
+    }),
+  }
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    series_id: `fcc`,
+    frame_idx: 0,
+    panes: [`dos`],
+  })
+  mount_host(props)
+  const range = () => viewers.dos?.x_axis?.range // energy runs along x without bands
+  const [wide, narrow] = [wide_dos, dos].map((entry) => compute_frequency_range({}, { entry }))
+  await vi.waitFor(() => expect(range()).toEqual(wide)) // frame 1 prefetched beside frame 0
+  // frame 6 shows frames 5 to 2 recently and prefetches 0 and 5: frame 1 is evicted
+  for (const frame_idx of [1, 2, 3, 4, 5, 6]) {
+    props.frame_idx = frame_idx
+    flushSync()
+    await vi.waitFor(() => expect(viewers.dos?.doses?.total).toBeDefined())
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  flushSync()
+  expect(range()).toEqual(wide)
+  props.series_id = `bcc`
+  props.frame_idx = 0
+  flushSync()
+  await vi.waitFor(() => expect(range()).toEqual(narrow))
+})
+
+// The default panes are those any loaded frame of the series had data for, so a pane whose
+// only frame got evicted stays (sweep-frames' eviction), reset only by another series
+test(`evicting the only frame with bands keeps the bands pane`, async () => {
+  const sweep: Sweep = {
+    axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
+    series: [
+      { id: `fcc`, frames: Array.from({ length: 7 }, (_, idx) => ({ value: 10 * idx })) },
+      { id: `bcc`, frames: [{ value: 0 }] },
+    ],
+    // only fcc's frame 1 has a band structure
+    load_frame: async (series_id: string, frame_idx: number) => ({
+      doses: { total: dos },
+      ...(series_id === `fcc` && frame_idx === 1 && { band_structs: { cu: band_struct } }),
+    }),
+  }
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    series_id: `fcc`,
+    frame_idx: 0,
+  })
+  const root = mount_host(props)
+  await vi.waitFor(() => expect(shown_panes(root)).toContain(`bands`)) // frame 1 prefetched
+  for (const frame_idx of [1, 2, 3, 4, 5, 6]) {
+    props.frame_idx = frame_idx
+    flushSync()
+    await vi.waitFor(() => expect(viewers.dos?.doses?.total).toBeDefined())
+  }
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  flushSync()
+  expect(shown_panes(root)).toContain(`bands`)
+  props.series_id = `bcc`
+  props.frame_idx = 0
+  flushSync()
+  await vi.waitFor(() => expect(shown_panes(root)).not.toContain(`bands`))
+})
+
 // A bound descriptor carries over to a new sweep only when it has that key
 test(`replacing the sweep resets a descriptor it does not have`, () => {
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
@@ -739,7 +1108,10 @@ test.each([false, true])(
     // frame 2 is not prefetched from frame 0: its grid loads after the jump
     props.frame_idx = 2
     flushSync()
-    if (load_frame) await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 2))
+    if (load_frame)
+      await vi.waitFor(() =>
+        expect(load_frame).toHaveBeenCalledWith(`fcc`, 2, { signal: expect.any(AbortSignal) }),
+      )
     props.frame_idx = 1
     flushSync()
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -771,7 +1143,9 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
   await vi.waitFor(() => expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`]))
   props.frame_idx = 1 // a frame without DOS keeps the pane (empty) instead of collapsing it
   flushSync()
-  await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 2))
+  await vi.waitFor(() =>
+    expect(load_frame).toHaveBeenCalledWith(`fcc`, 2, { signal: expect.any(AbortSignal) }),
+  )
   expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`])
 })
 
@@ -833,7 +1207,9 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
   const load_frame = vi.fn(async () => ({}))
   props.sweep = { ...make_sweep(), load_frame }
   flushSync()
-  await vi.waitFor(() => expect(load_frame).toHaveBeenCalledWith(`fcc`, 0))
+  await vi.waitFor(() =>
+    expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
+  )
 })
 
 const TRENDS_PANES: ElectronicPane[] = [`structure`, `trends`]

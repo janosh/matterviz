@@ -37,7 +37,6 @@ const ROUTE_LABELS: Record<string, string> = {
   '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
   '/reciprocal/ir-raman': `IR + Raman`,
   '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
-  '/reciprocal/fermi-surface-bands': `Fermi Surface + Bands`,
   '/phase-diagram/pressure-temperature': `Pressure–Temperature`,
 }
 

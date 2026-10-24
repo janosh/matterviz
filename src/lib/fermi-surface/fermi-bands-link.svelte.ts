@@ -2,8 +2,8 @@
 // index (band_indices, e.g. BXSF `BAND: n` → n − 1). Hovering a band point previews the surface
 // at its energy and marks its k-point and branch on the 3D k-path (and vice versa); a click pins
 // the energy as mu and isolates the band's sheet (click again for all). Band lines take their
-// sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands
-// (BandCrossings) and the 3D k-path. Without a band grid only the k-path link remains.
+// sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands and the 3D
+// k-path. Without a band grid only the k-path link remains. ElectronicStructure hosts it.
 import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
 import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
@@ -41,11 +41,11 @@ export interface FermiBandsLinkInputs {
   fermi_props: () => { color_property?: ColorProperty }
 }
 
-// Construct during a component's init. Hosts bind the fields (bind:mu={link.mu},
-// bind:isolated_band={link.isolated_band} etc.) and hand the handlers to FermiSurface's
+// Construct during the host's init. It binds the fields (bind:mu={link.mu},
+// bind:isolated_band={link.isolated_band} etc.) and hands the handlers to FermiSurface's
 // on_point_hover and Bands' on_point_hover / on_plot_click.
 export class FermiBandsLink {
-  // Bands' x_positions and the node its crossing dots render in (see BandCrossings)
+  // Bands' x_positions and the <svg> its crossing dots render in
   x_positions = $state.raw<Record<string, Vec2>>({})
   crossings_svg = $state<SVGSVGElement>()
   private hovered_band = $state<number | null>(null)

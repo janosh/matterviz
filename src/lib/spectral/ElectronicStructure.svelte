@@ -6,7 +6,8 @@
   // - Real and reciprocal lattice share one Cartesian frame (b_i · a_j = 2π δ_ij), so orbiting
   //   either scene turns the other alike (sync_rotation). Data in different frames is reported
   //   and keeps the rotations apart.
-  // - Bands ↔ Fermi surface: hover previews, click pins and isolates a sheet (FermiBandsLink).
+  // - Bands ↔ Fermi surface: hover previews, click pins and isolates a sheet, band lines take
+  //   their sheet's colour and E_F crossings are dotted on bands and k-path (FermiBandsLink).
   // - Bands ↔ DOS share zoom and hover lines on the energy axis; hovering the DOS previews the
   //   Fermi surface at that energy too.
   // A `sweep` runs the viewer along one axis, e.g. pressure: a control bar steps through a
@@ -17,7 +18,6 @@
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
-  import BandCrossings from '#lib/fermi-surface/BandCrossings.svelte'
   import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
   import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
   import { normalize_band_grid, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
@@ -37,7 +37,14 @@
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-  import { clamp, dot, matrix_inverse_3x3, type Matrix3x3 } from '#lib/math.js'
+  import {
+    clamp,
+    dot,
+    in_range,
+    matrix_inverse_3x3,
+    type Matrix3x3,
+    type Vec2,
+  } from '#lib/math.js'
   import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
@@ -65,7 +72,12 @@
   import Bands from './Bands.svelte'
   import BandsAndDos from './BandsAndDos.svelte'
   import Dos from './Dos.svelte'
-  import { compute_frequency_range, normalize_band_structure, normalize_dos } from './helpers'
+  import {
+    BANDS_CSS_COLORS,
+    compute_frequency_range,
+    normalize_band_structure,
+    normalize_dos,
+  } from './helpers'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
   import { format_axis_value, is_sweep_like, normalize_sweep, validate_sweep } from './sweep'
   import type { Sweep, SweepFrame, SweepSeries } from './sweep'
@@ -244,7 +256,7 @@
   // the shown frame first, then its neighbours, so a step lands on loaded data
   $effect(() => {
     if (!series) return
-    for (const idx of [frame_index, next_index, frame_index - 1]) frames.request(series, idx)
+    frames.request(series, [frame_index, next_index, frame_index - 1])
   })
   // the frame's own surface, else what FermiSurface extracts from its band grid
   let frame_surface = $derived(frame?.fermi_data)
@@ -329,19 +341,38 @@
     }
     return PANE_IDS.filter((pane) => filled[pane])
   }
-  const with_data = $derived(
-    panes_with_data(sweep ? shown_frames : [pane_data], Boolean(sweep?.descriptors?.length)),
+  // In a sweep, what the series' frames loaded so far add up to: a running value that grows as
+  // frames load and never shrinks when they are evicted, so panes stay and axes hold still,
+  // reset by a new sweep, loader or series
+  function running<T>(next: (prev: T | undefined) => T): () => T {
+    let seen: { key: unknown[]; value?: T } = { key: [] }
+    return () => {
+      const key = [sweep, sweep?.load_frame, series]
+      if (key.some((part, idx) => part !== seen.key[idx])) seen = { key }
+      seen.value = next(seen.value)
+      return seen.value
+    }
+  }
+  const sweep_panes = $derived.by(
+    running((prev: ElectronicPane[] = []) => {
+      const now = panes_with_data(shown_frames, Boolean(sweep?.descriptors?.length))
+      return PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
+    }),
   )
-  // In a sweep, the frequency extent (data units) of every loaded frame of the series
-  const sweep_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
-    union_ranges(
-      shown_frames.map((entry) => {
-        const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
-        return compute_frequency_range(bands, dos)
-      }),
+  const with_data = $derived(sweep ? sweep_panes : panes_with_data([pane_data], false))
+  // the frequency extent (data units) of the series' loaded frames
+  const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
+    running<Vec2 | undefined>((prev) =>
+      union_ranges([
+        prev,
+        ...shown_frames.map((entry) => {
+          const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
+          return compute_frequency_range(bands, dos)
+        }),
+      ]),
     )
-  const electronic_span = $derived(sweep_span((entry) => entry))
-  const phonon_span = $derived(sweep_span((entry) => entry.phonon))
+  const electronic_span = $derived.by(running_span((entry) => entry))
+  const phonon_span = $derived.by(running_span((entry) => entry.phonon))
   const shown = $derived.by((): Set<ElectronicPane> => {
     if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
     if (panes?.includes(`trends`) && !sweep?.descriptors?.length) {
@@ -790,11 +821,26 @@
                     >
                       {#snippet children(ctx)}
                         {@render bands_props.children?.(ctx)}
-                        <BandCrossings
-                          {ctx}
-                          crossings={link.crossings}
-                          bind:node={link.crossings_svg}
-                        />
+                        <!-- E_F (and shown energy) crossings, coloured like the line at that
+                        energy; the 3D markers resolve their colours on this node -->
+                        <svg
+                          bind:this={link.crossings_svg}
+                          class="band-crossings"
+                          width={ctx.width}
+                          height={ctx.height}
+                        >
+                          {#each link.crossings as { x, energy, level }}
+                            {#if in_range(x, ctx.x_range) && in_range(energy, ctx.y_range)}
+                              <circle
+                                cx={ctx.x_scale_fn(x)}
+                                cy={ctx.y_scale_fn(energy)}
+                                r="3"
+                                fill={BANDS_CSS_COLORS[level]}
+                                stroke="var(--page-bg, white)"
+                              />
+                            {/if}
+                          {/each}
+                        </svg>
                       {/snippet}
                     </Bands>
                   </div>
@@ -954,6 +1000,11 @@
     > :global(:not(.structure-fullscreen-root)) {
       height: 100%;
     }
+  }
+  .band-crossings {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
   }
   .series-control {
     display: flex;

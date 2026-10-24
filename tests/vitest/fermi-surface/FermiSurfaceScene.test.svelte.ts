@@ -182,7 +182,7 @@ test(`opacity ticks and re-extracted sheets reuse the materials; crossing opaque
   for (const spy of in_use_spies) expect(spy).toHaveBeenCalledOnce()
 })
 
-// a band plot hiding a spin channel (FermiSurfaceBands) hides that channel's sheets too
+// a band plot hiding a spin channel (ElectronicStructure) hides that channel's sheets too
 test.each([
   [undefined, undefined, 3],
   [undefined, [`down`], 1],
