@@ -490,8 +490,8 @@
     <span>Bring your own calculation</span>
     <h2 id="drop-in-phonopy-output">Drop in phonopy output</h2>
     <p>
-      Drop a single <code>band.yaml</code>, <code>qpoints.yaml</code>, or
-      <code>mesh.yaml</code> file onto the explorer. Gzip-compressed variants work too. Files without
+      Drop a single <code>band.yaml</code> or <code>mesh.yaml</code> file onto the explorer.
+      Gzip-compressed variants work too. Files without
       a band path remain explorable through the q-point and mode controls.
     </p>
   </div>

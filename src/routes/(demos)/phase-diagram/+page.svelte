@@ -12,7 +12,12 @@
   import TdbInfoPanel from '#site/phase-diagrams/TdbInfoPanel.svelte'
   import { to_error } from 'svelte-widgets/utils'
   import { all_phase_diagram_files, find_precomputed_diagram } from '#site/phase-diagrams.js'
-  import { file_param, latest_load, set_file_param } from '#site/state.svelte.js'
+  import {
+    file_param,
+    latest_load,
+    loaded_fixture,
+    set_file_param,
+  } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
 
   // Track currently loaded diagram
@@ -142,10 +147,11 @@
   {@attach file_drop_zone({
     allow: () => true,
     max_files: 1,
-    on_drop: (content, filename) => {
+    on_drop: (content, filename, metadata) => {
       loads.cancel()
       error_message = null
-      apply_content(content, filename)
+      apply_content(content, filename, false)
+      set_file_param(loaded_fixture(metadata)) // a dropped local file has no fixture to name
     },
     on_error: (msg) => (error_message = msg),
     set_loading: (value) => (loading = value),

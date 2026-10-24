@@ -6,7 +6,7 @@
   import FilePicker from '#lib/FilePicker.svelte'
   import { format_num } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
-  import { file_param, latest_load, replace_url } from '#site/state.svelte.js'
+  import { file_param, latest_load, loaded_fixture, replace_url } from '#site/state.svelte.js'
   import type {
     AnyStructure,
     IsosurfaceSettings,
@@ -31,6 +31,8 @@
   let active_volume_id = $state<string>()
   let display_mode = $state<StructureDisplayMode>(`structure`)
   let active_file = $state<string | undefined>()
+  // The fixture `?file=` can reload, null for a dropped local file
+  let active_fixture = $state<string | null>(null)
   let loading = $state(false)
   let error_msg = $state<string | undefined>()
   let parse_time_ms = $state<number | undefined>()
@@ -59,12 +61,12 @@
   function update_url() {
     if (!browser || !active_file) return
     const params = new URLSearchParams()
-    params.set(`file`, active_file)
+    if (active_fixture) params.set(`file`, active_fixture)
     // The first layer's isovalue/negative lobe are the URL-shareable knobs, written only when
     // they differ from what a fresh load of the file would pick anyway
     const [layer] = isosurface_settings.layers
     const first_volume = volumetric_data?.[0]
-    if (layer && first_volume) {
+    if (active_fixture && layer && first_volume) {
       const defaults = auto_volume_layer(first_volume)
       if (layer.isovalue !== defaults.isovalue) {
         params.set(`isovalue`, layer.isovalue.toPrecision(4))
@@ -76,7 +78,7 @@
     if (display_mode !== `structure`) params.set(`view`, display_mode)
     // Use window.location instead of page.url to avoid creating a reactive
     // dependency that would cause an infinite loop with the $effect
-    replace_url(`${globalThis.location.pathname}?${params.toString()}`)
+    replace_url(`${globalThis.location.pathname}${params.size ? `?${params}` : ``}`)
   }
 
   // A large file still parsing must not land on top of the one picked after it. Resolves to
@@ -85,6 +87,7 @@
   async function load_file(name: string, url: string): Promise<boolean> {
     const is_current = loads.start()
     active_file = name
+    active_fixture = name
     loading = true
     error_msg = undefined
     parse_time_ms = undefined
@@ -118,9 +121,9 @@
     const requested = file_param()
     const view = page.url.searchParams.get(`view`)
     display_mode = view === `slice` || view === `split` ? view : `structure`
-    const target = requested
-      ? volumetric_files.find((file) => file.name === requested)
-      : volumetric_files[0]
+    // an unknown ?file= (e.g. a stale link) falls back to the first fixture, not a blank page
+    const target =
+      volumetric_files.find((file) => file.name === requested) ?? volumetric_files[0]
 
     if (target) {
       // Apply URL params for isovalue/show_negative after loading
@@ -129,7 +132,8 @@
 
       void load_file(target.name, target.url).then((is_current) => {
         const [layer] = isosurface_settings.layers
-        if (!is_current || !layer) return
+        // a stale link's isovalue belongs to its missing file, not the fallback fixture
+        if (!is_current || !layer || target.name !== requested) return
         const parsed = Number(isovalue_param)
         if (isovalue_param && !isNaN(parsed)) layer.isovalue = parsed
         if (show_neg_param) layer.show_negative = show_neg_param === `true`
@@ -174,9 +178,10 @@
   bind:error_msg
   bind:dragover={dragover_hint}
   show_controls="always"
-  on_file_load={({ source_filename }) => {
+  on_file_load={(data) => {
     loads.cancel() // a dropped file supersedes any pick still loading
-    active_file = source_filename
+    active_file = data.source_filename
+    active_fixture = loaded_fixture(data)
     parse_time_ms = undefined
   }}
   class="bleed-1400"

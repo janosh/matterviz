@@ -17,7 +17,7 @@
     WyckoffTable,
   } from '#lib/symmetry/index.js'
   import { structure_files } from '#site/structures.js'
-  import { file_param, set_file_param } from '#site/state.svelte.js'
+  import { file_param, loaded_fixture, set_file_param } from '#site/state.svelte.js'
   import { onMount } from 'svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'
 
@@ -176,10 +176,11 @@
     bind:highlighted_sites={active_wyckoff_sites}
     bind:selected_sites={hovered_wyckoff_sites}
     bind:scene_props
-    on_file_load={({ filename = ``, source_filename: loaded_source_filename }) => {
-      display_filename = filename || source_filename
-      source_filename = loaded_source_filename ?? source_filename
-      set_file_param(source_filename)
+    on_file_load={(data) => {
+      display_filename = data.filename || source_filename
+      const fixture = loaded_fixture(data)
+      source_filename = fixture ?? source_filename
+      set_file_param(fixture)
     }}
     style="height: 100%; min-height: 500px"
   >

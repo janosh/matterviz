@@ -35,7 +35,12 @@
     height?: number
   } = {},
 )}
-  <LazyDemo label="Chemical potential diagram" height="{height}px">
+  <!-- one region name per diagram: the elements shown, and whether it is a slice -->
+  {@const shown = config.elements?.join(`-`) ?? dataset}
+  <LazyDemo
+    label="{shown}{config.slice_chempots ? ` slice` : ``} chemical potential diagram"
+    height="{height}px"
+  >
     {#await datasets[dataset]()}
       <Spinner text="Loading {dataset} data…" />
     {:then { default: entries }}

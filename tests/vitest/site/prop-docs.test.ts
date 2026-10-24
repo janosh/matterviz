@@ -115,18 +115,16 @@ describe(`PropsTable page mapping`, () => {
     for (const name of expected) expect(prop_docs).toHaveProperty(name)
   })
 
-  test(`every PAGE_COMPONENTS entry names a demo page and documented components`, () => {
-    const pages = globSync(`src/routes/**/+page.{svelte,md}`, { cwd: repo_root }).map(
-      (file) =>
-        `/${file
-          .split(`/`)
-          .slice(2, -1)
-          .filter((part) => !part.startsWith(`(`))
-          .join(`/`)}`,
-    )
-    for (const [route, names] of Object.entries(PAGE_COMPONENTS)) {
-      expect(pages).toContain(route)
-      for (const name of names) expect(prop_docs).toHaveProperty(name)
+  // pages whose last segment named no component (/plot, /guides) rendered an empty table
+  test(`every demo page documents real components, every PAGE_COMPONENTS key is a page`, () => {
+    const route_ids = globSync(`src/routes/**/+page.{svelte,md}`, { cwd: repo_root })
+      .filter((file) => file.includes(`(demos)`))
+      .map((file) => `/${file.split(`/`).slice(2, -1).join(`/`)}`)
+    const routes = route_ids.map((id) => id.replaceAll(/\/\([^)]*\)/g, ``))
+    expect(routes).toEqual(expect.arrayContaining(Object.keys(PAGE_COMPONENTS)))
+    for (const route_id of route_ids) {
+      for (const name of page_components(route_id))
+        expect(prop_docs, route_id).toHaveProperty(name)
     }
   })
 })

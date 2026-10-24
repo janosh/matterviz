@@ -264,7 +264,7 @@ export const get_system_name = (elements: string[]): string =>
     .join(`-`)
 
 // Predicate to filter out non-real elements (VA = vacancy, /- = electron)
-const is_real_element = (sym: string) => sym !== `VA` && sym !== `/-`
+export const is_real_element = (sym: string): boolean => sym !== `VA` && sym !== `/-`
 
 // Known element symbols for parsing concatenated system names (e.g., "CuMg" -> ["CU", "MG"])
 const KNOWN_ELEMENTS = new Set(ELEM_SYMBOLS.map((sym) => sym.toUpperCase()))

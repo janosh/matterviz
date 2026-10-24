@@ -1,29 +1,41 @@
 // Docs pages and demo components against stubbed viewers: each test pins a bug in page wiring
+import { goto } from '$app/navigation'
+import { page } from '$app/state'
 import * as lib from '#lib'
 import * as open_module from '#lib/file-viewer/open.js'
 import type { OpenedMaterial } from '#lib/file-viewer/open.js'
 import ErrorPage from '#root/src/routes/+error.svelte'
 import DemoHostTool from '#root/src/routes/(demos)/structure/host-tool/DemoHostTool.svelte'
+import GuidesHub from '#root/src/routes/(demos)/guides/+page.svelte'
+import PeriodicTablePage from '#root/src/routes/(demos)/periodic-table/+page.svelte'
+import PlotHub from '#root/src/routes/(demos)/plot/+page.svelte'
+import ReciprocalHub from '#root/src/routes/(demos)/reciprocal/+page.svelte'
 import FacetGridPage from '#root/src/routes/(demos)/plot/facet-grid/+page.svelte'
 import BrillouinZonePage from '#root/src/routes/(demos)/reciprocal/brillouin-zone/+page.svelte'
+import RdfPage from '#root/src/routes/(demos)/structure/rdf/+page.svelte'
 import SymmetryPage from '#root/src/routes/(demos)/structure/symmetry/+page.svelte'
 import SynthesisPage from '#root/src/routes/(demos)/convex-hull/synthesis-planning/+page.svelte'
 import PhaseDiagramPage from '#root/src/routes/(demos)/phase-diagram/+page.svelte'
 import TernaryPage from '#root/src/routes/(demos)/phase-diagram/ternary/+page.svelte'
 import IsosurfacePage from '#root/src/routes/(demos)/structure/isosurface/+page.svelte'
 import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+page.svelte'
+import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
+import { volumetric_files } from '#site/isosurfaces.js'
 import { all_phase_diagram_files } from '#site/phase-diagrams.js'
 import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
 import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
 import CompositionDemo from '#site/CompositionDemo.svelte'
+import ConvexHullDemo from '#site/ConvexHullDemo.svelte'
 import FermiSurfaceDemo from '#site/FermiSurfaceDemo.svelte'
+import OptimadeStructureViewer from '#site/OptimadeStructureViewer.svelte'
+import { routes } from '#site/state.svelte.js'
 import { type Component, flushSync, mount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { trigger_intersection } from '../environment'
 import { latest_stub, reset_stub } from '../reactive-renderer-registry'
-import { doc_query, set_input, set_select, settle } from '../setup'
+import { create_drop_event, doc_query, set_input, set_select, settle } from '../setup'
 import { make_crystal, make_grid, make_molecule, make_volume } from '../test-fixtures'
-import { readFileSync } from 'node:fs'
+import { globSync, readFileSync } from 'node:fs'
 
 const { stub } = vi.hoisted(() => ({
   stub: async () => (await import(`../reactive-renderer-stub.svelte`)).default,
@@ -31,7 +43,7 @@ const { stub } = vi.hoisted(() => ({
 vi.mock(`$app/state`, () => ({
   page: { url: new URL(`http://localhost/`), status: 404, error: { message: `Not found` } },
 }))
-vi.mock(`$app/navigation`, () => ({ goto: async () => {} }))
+vi.mock(`$app/navigation`, () => ({ goto: vi.fn(async () => {}) }))
 vi.mock(`#lib`, async (orig) => ({
   ...(await orig<object>()),
   BrillouinZone: await stub(),
@@ -41,6 +53,10 @@ vi.mock(`#lib/phase-diagram/index.js`, async (orig) => ({
   ...(await orig<object>()),
   IsobaricBinaryPhaseDiagram: await stub(),
   IsobaricTernaryPhaseDiagram: await stub(),
+}))
+vi.mock(`#lib/convex-hull/index.js`, async (orig) => ({
+  ...(await orig<object>()),
+  ConvexHull: await stub(),
 }))
 vi.mock(`#lib/fermi-surface/index.js`, async (orig) => ({
   ...(await orig<object>()),
@@ -56,6 +72,7 @@ vi.mock(`#lib/symmetry/index.js`, async (orig) => ({
 }))
 
 afterEach(() => {
+  Object.assign(page, { url: new URL(`http://localhost/`) })
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   reset_stub()
@@ -268,4 +285,156 @@ test(`the host-tool demo offers no predicted trajectory for a molecule`, () => {
   mount(DemoHostTool, { target: document.body, props: props as never })
   const is_show = (btn: HTMLButtonElement) => btn.textContent === `Show predicted trajectory`
   expect(find_el(`button`, is_show)?.disabled).toBe(true)
+})
+
+// LazyDemo labels name their regions: repeats ("Highlighted Entries" thrice) left screen
+// readers' landmark lists ambiguous. Literal labels are scanned in every route, labels built
+// in loops checked on mounted pages ("brillouin zone" per BZ example, two "Density" tables)
+test(`no route repeats a literal LazyDemo label`, () => {
+  for (const file of globSync(`src/routes/**/*.{svelte,md}`)) {
+    const labels = [
+      ...readFileSync(file, `utf8`).matchAll(/<LazyDemo\b[^<]*?\slabel="(?<label>[^"{]+)"/g),
+    ]
+    expect(
+      labels.length - new Set(labels.map((match) => match.groups?.label)).size,
+      file,
+    ).toBe(0)
+  }
+})
+test.each([BrillouinZonePage, PeriodicTablePage])(`%# region names are unique`, (demo) => {
+  mount(demo, { target: document.body })
+  const regions = [...document.querySelectorAll(`[role="region"]`)]
+  const names = new Set(regions.map((region) => region.getAttribute(`aria-label`)))
+  expect(regions.length).toBeGreaterThan(3)
+  expect(names.size).toBe(regions.length)
+})
+
+// buttons were tinted by their list position while RdfPlot colors series by selection order
+test(`RDF compare buttons share their series' color`, () => {
+  mount(RdfPage, { target: document.body })
+  const button = (label: string) =>
+    find_el<HTMLButtonElement>(
+      `.demo-controls button`,
+      (btn) => btn.textContent.trim() === label,
+    )
+  const first_color = button(`Al₂Lu`)?.style.background
+  expect(first_color).toMatch(/\w/)
+  button(`Al₂Lu`)?.click() // deselect
+  button(`Al₂Lu`)?.click() // reselect: the selection order is now [Pd, Al₂Lu]
+  flushSync()
+  expect(button(`Pd`)?.style.background).toBe(first_color)
+  expect(button(`Al₂Lu`)?.style.background).not.toBe(first_color)
+  button(`Element Pairs`)?.click() // pair curves aren't colored per structure
+  flushSync()
+  expect(button(`Pd`)?.style.background).toBe(``)
+})
+
+// a dropped local file has no fixture to name: ?file= pointed reloads at a missing fixture
+test(`fermi surface loads write ?file= only for site fixtures`, () => {
+  vi.spyOn(lib, `open_material`).mockReturnValue(new Promise(() => {}))
+  mount(FermiSurfaceDemo, { target: document.body, props: { sync_url: true } })
+  flushSync()
+  const { on_file_load } = latest_stub().read()
+  if (typeof on_file_load !== `function`) throw new Error(`FermiSurface got no on_file_load`)
+  on_file_load({ source_filename: `mine.bxsf`, file: new File([`x`], `mine.bxsf`) })
+  expect(goto).toHaveBeenLastCalledWith(`http://localhost/`, expect.any(Object))
+  on_file_load({ source_filename: `pb.bxsf.gz`, source_url: `/fermi-surfaces/pb.bxsf.gz` })
+  expect(goto).toHaveBeenLastCalledWith(
+    `http://localhost/?file=pb.bxsf.gz`,
+    expect.any(Object),
+  )
+})
+
+// a drop onto the quaternary hull overwrote its cached system, so re-picking it showed the drop
+test(`a file dropped on the demo hull leaves the cached system intact`, async () => {
+  mount(ConvexHullDemo, { target: document.body })
+  await vi.waitFor(() => expect(latest_stub().read().entries).not.toEqual([]))
+  const { entries: fixture, on_file_load } = latest_stub().read()
+  if (typeof on_file_load !== `function`) throw new Error(`ConvexHull got no on_file_load`)
+  const dropped = [{ composition: { Li: 1 }, energy: 0 }]
+  on_file_load({ entries: dropped, filename: `mine.json` })
+  flushSync()
+  expect(latest_stub().read()).toMatchObject({
+    entries: dropped,
+    controls: { title: `mine.json` },
+  })
+  expect(document.querySelector(`.file-item[aria-current]`)).toBeNull()
+  click_file((name) => name.includes(`Li-Co-Ni-O`)) // re-pick the system dropped onto
+  await vi.waitFor(() => expect(latest_stub().read().entries).toEqual(fixture))
+})
+
+// the lookup of an unknown ?file= (a stale link) came back empty and left the page blank, and
+// the fallback fixture must not inherit the stale link's isovalue
+test.each([
+  [`missing.cube.gz`, false],
+  [volumetric_files[0].name, true],
+])(
+  `isosurface ?file=%s loads the first fixture, applying ?isovalue: %s`,
+  async (file, applied) => {
+    const open = vi.spyOn(open_module, `open_material`).mockResolvedValue(volume_result(`x`))
+    Object.assign(page, { url: new URL(`http://localhost/?file=${file}&isovalue=0.123`) })
+    mount(IsosurfacePage, { target: document.body })
+    flushSync()
+    expect(open).toHaveBeenCalledWith(volumetric_files[0].url)
+    await settle()
+    const { isosurface_settings } = latest_stub().read() as {
+      isosurface_settings: IsosurfaceSettings
+    }
+    expect(isosurface_settings.layers[0].isovalue === 0.123).toBe(applied)
+  },
+)
+
+// dropped local files wrote ?file=<their name>, so a reload asked for a missing fixture
+test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () => {
+  vi.spyOn(open_module, `open_material`).mockReturnValue(new Promise(() => {}))
+  mount(IsosurfacePage, { target: document.body })
+  flushSync()
+  const last_url = () => String(vi.mocked(goto).mock.lastCall?.[0])
+  expect(last_url()).toContain(`file=`)
+  const { on_file_load } = latest_stub().read()
+  if (typeof on_file_load !== `function`) throw new Error(`Structure got no on_file_load`)
+  on_file_load({ source_filename: `mine.cube`, file: new File([`x`], `mine.cube`) })
+  flushSync()
+  expect(last_url()).not.toContain(`file=`)
+})
+
+test(`a file dropped on the binary phase diagram leaves ?file= out of the URL`, async () => {
+  mount(PhaseDiagramPage, { target: document.body })
+  flushSync()
+  const json = JSON.stringify({ title: `mine` })
+  doc_query(`.diagram-container`).dispatchEvent(
+    create_drop_event(new File([json], `mine.json`)),
+  )
+  await vi.waitFor(() => expect(doc_query(`.diagram-title`).textContent).toBe(`mine`))
+  expect(String(vi.mocked(goto).mock.lastCall?.[0])).not.toContain(`file=`)
+})
+
+// the /plot hub never linked /plot/eos: each hub page links every route under its prefixes
+test.each([
+  [PlotHub, [`/plot/`]],
+  [ReciprocalHub, [`/reciprocal/`]],
+  [GuidesHub, [`/how-to/`, `/acknowledgements`]],
+])(`hub %# links all its pages`, (hub, prefixes) => {
+  mount(hub, { target: document.body })
+  const hrefs = [...document.querySelectorAll(`a`)].map((link) => link.getAttribute(`href`))
+  const pages = routes.filter(({ route }) =>
+    prefixes.some((prefix) => route.startsWith(prefix)),
+  )
+  expect(pages.length).toBeGreaterThan(0)
+  expect(hrefs).toEqual(expect.arrayContaining(pages.map(({ route }) => route)))
+})
+
+// Enter in the empty ID box navigated to /optimade-, a 404, though Fetch was disabled
+test(`Enter in an empty OPTIMADE ID box does not navigate`, () => {
+  vi.stubGlobal(`fetch`, () => new Promise(() => {})) // providers never load
+  mount(OptimadeStructureViewer, { target: document.body })
+  const input = doc_query<HTMLInputElement>(`input.structure-input`)
+  const press_enter = () =>
+    input.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+  vi.mocked(goto).mockClear()
+  press_enter()
+  expect(goto).not.toHaveBeenCalled()
+  set_input(input, `mp-149`)
+  press_enter()
+  expect(goto).toHaveBeenCalledWith(`/optimade-mp-149`, expect.any(Object))
 })

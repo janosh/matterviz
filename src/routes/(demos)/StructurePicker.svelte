@@ -1,7 +1,6 @@
 <script module lang="ts">
   import type { Crystal } from '#lib'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { clamp01 } from '#lib/utils.js'
   import { structure_map } from '#site/structures.js'
 
   // Electronegativity-ordered HTML formula of a demo structure, empty when the id is
@@ -26,18 +25,10 @@
         .filter((struct) => struct !== undefined)
         .map((struct) => [`${struct.id} ${formula_for(struct.id ?? ``)}`, struct]),
     )
-
-  // #rrggbb -> #rrggbbaa, for tinting a swatch with a plot series color
-  export const hex_with_alpha = (hex_color: string, alpha_frac: number): string => {
-    const alpha_hex = Math.round(clamp01(alpha_frac) * 255)
-      .toString(16)
-      .padStart(2, `0`)
-    return hex_color.length === 7 ? `${hex_color}${alpha_hex}` : hex_color
-  }
 </script>
 
 <script lang="ts">
-  import { plot_color } from '#lib/colors/index.js'
+  import { add_alpha, plot_color } from '#lib/colors/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { structures } from '#site/structures.js'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -74,7 +65,7 @@
       aria-pressed={sel_idx >= 0}
       onclick={() => toggle(struct_id)}
       title={struct_id}
-      style:background-color={color ? hex_with_alpha(color, 0.15) : null}
+      style:background-color={color ? add_alpha(color, 0.15) : null}
     >
       <span class="id">{struct_id}</span>
       <span class="formula">{@html sanitize_html(formula_for(struct_id))}</span>

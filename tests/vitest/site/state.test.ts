@@ -4,11 +4,14 @@ import {
   file_param,
   group_nav_routes,
   latest_load,
+  loaded_fixture,
   NAV_GROUPS,
   nav_routes,
   normalize_static_url,
+  open_element_page,
   set_file_param,
 } from '#site/state.svelte.js'
+import element_data from '#lib/element/data.js'
 import { describe, expect, test, vi } from 'vitest'
 
 vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
@@ -41,6 +44,18 @@ test(`file_param reads, set_file_param replaces on a copy of page.url`, () => {
     `https://example.test/structure/?view=slice`,
     expect.any(Object),
   )
+})
+
+// only a URL load names a fixture `?file=` can reload; a dropped local file names none
+test.each([
+  [{ source_filename: `TiO2.cif`, source_url: `/structures/TiO2.cif` }, `TiO2.cif`],
+  [{ source_filename: `mine.cif`, file: new File([``], `mine.cif`) }, null],
+  [{}, null],
+])(`loaded_fixture(%j) = %j`, (meta, expected) => expect(loaded_fixture(meta)).toBe(expected))
+
+test(`open_element_page navigates to the lower-cased element slug`, () => {
+  open_element_page(element_data[25])
+  expect(goto).toHaveBeenLastCalledWith(`/iron`)
 })
 
 describe(`group_nav_routes`, () => {

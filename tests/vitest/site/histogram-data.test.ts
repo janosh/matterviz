@@ -74,6 +74,25 @@ describe(`histogram-data random generators`, () => {
     expect(thunk).toThrow(regex)
   })
 
+  // the fractional shape skipped Jöhnk's rejection step: Gamma(0.3, 0.5) averaged 0.66, not 0.6.
+  // Bounds are 5 standard errors: σ/√n for the mean, σ²·√((κ - 1)/n), κ = 3 + 6/α, for the variance
+  test.each([
+    [0.3, 0.5],
+    [0.5, 1],
+    [2.5, 1],
+    [3, 2],
+    [2 - 1e-11, 1], // no fractional part: summed floor(α) = 1 exponentials, i.e. Gamma(1)
+  ])(`generate_gamma(α=%d, β=%d) has mean α/β and variance α/β²`, (alpha, beta) => {
+    const n_samples = 200_000
+    const values = utils.generate_gamma(n_samples, alpha, beta, utils.seeded_rng(7))
+    const mean = values.reduce((sum, val) => sum + val, 0) / n_samples
+    const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / n_samples
+    const true_var = alpha / beta ** 2
+    expect(Math.abs(mean - alpha / beta)).toBeLessThan(5 * Math.sqrt(true_var / n_samples))
+    const var_se = true_var * Math.sqrt((2 + 6 / alpha) / n_samples)
+    expect(Math.abs(variance - true_var)).toBeLessThan(5 * var_se)
+  })
+
   test(`generate_discrete stays within the weighted support`, () => {
     const values = utils.generate_discrete(50, [0.2, 0.3, 0.5])
     for (const value of values) expect(value).toBeGreaterThanOrEqual(0.6)

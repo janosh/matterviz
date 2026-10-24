@@ -11,6 +11,7 @@
     HeatmapMatrix,
     HeatmapTable,
     Histogram,
+    RegressionPlot,
     Sankey,
     ScatterPlot,
     ScatterPlot3D,
@@ -52,6 +53,12 @@
       href: `/plot/scatter-plot-3d`,
       description: `Three.js-powered 3D scatter with instanced rendering, colored surfaces, and camera controls.`,
       icon: ScatterPlot3D,
+    },
+    {
+      label: `Equation of State`,
+      href: `/plot/eos`,
+      description: `Birch–Murnaghan, Murnaghan and Vinet fits of energy–volume scans, matching pymatgen.`,
+      icon: RegressionPlot,
     },
     {
       label: `Bar Plot`,

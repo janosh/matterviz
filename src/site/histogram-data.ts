@@ -89,8 +89,8 @@ export const generate_pareto = (
   rng: Rng = Math.random,
 ) => Array.from({ length: count }, () => x_min * positive_uniform(rng) ** (-1 / alpha))
 
-// Generate gamma distribution data (approximation)
-// Note: This approximation works best for integer alpha values
+// Gamma(alpha, rate beta) samples: a sum of floor(alpha) exponentials plus, for the fractional
+// shape a, an exponential scaled by a Beta(a, 1 - a) draw from Jöhnk's rejection sampler
 export function generate_gamma(
   count: number,
   alpha: number,
@@ -101,28 +101,26 @@ export function generate_gamma(
   if (alpha <= 0) throw new Error(`Alpha must be positive`)
   if (beta <= 0) throw new Error(`Beta must be positive`)
 
-  // For integer alpha, sum of exponentials is exact
-  const is_integer = Math.abs(alpha - Math.round(alpha)) < 1e-10
   const floor_alpha = Math.floor(alpha)
   const frac_alpha = alpha - floor_alpha
+  const has_frac = Math.abs(alpha - Math.round(alpha)) >= 1e-10 // integer alpha: sum is exact
+  const exponential = () => -Math.log(positive_uniform(rng)) / beta
+  // Jöhnk: X = U^(1/a), Y = V^(1/(1-a)); X / (X + Y) is Beta(a, 1 - a) only given X + Y <= 1
+  const beta_sample = (): number => {
+    for (;;) {
+      const x_val = positive_uniform(rng) ** (1 / frac_alpha)
+      const y_val = positive_uniform(rng) ** (1 / (1 - frac_alpha))
+      if (x_val + y_val <= 1) return x_val / (x_val + y_val)
+    }
+  }
 
   return Array.from({ length: count }, () => {
     let sum = 0
-    // Integer part: sum of exponentials
-    for (let idx = 0; idx < floor_alpha; idx++) {
-      sum += -Math.log(positive_uniform(rng)) / beta
+    // a near-integer shape (2 - 1e-11) has no fractional part: round, don't floor
+    for (let idx = 0; idx < (has_frac ? floor_alpha : Math.round(alpha)); idx++) {
+      sum += exponential()
     }
-
-    // Fractional part: beta distribution approximation
-    if (frac_alpha > 0 && !is_integer) {
-      const uniform_1 = positive_uniform(rng)
-      const uniform_2 = positive_uniform(rng)
-      const beta_sample =
-        uniform_1 ** (1 / frac_alpha) /
-        (uniform_1 ** (1 / frac_alpha) + uniform_2 ** (1 / (1 - frac_alpha)))
-      sum += (-Math.log(positive_uniform(rng)) * beta_sample) / beta
-    }
-
+    if (has_frac) sum += exponential() * beta_sample()
     return sum
   })
 }

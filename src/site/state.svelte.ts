@@ -1,6 +1,8 @@
 import { browser } from '$app/env'
 import { goto } from '$app/navigation'
 import { page } from '$app/state'
+import type { ChemicalElement } from '#lib/element/types.js'
+import type { FileLoadMeta } from '#lib/io/types.js'
 import type { NavGroup as WidgetNavGroup } from 'svelte-widgets'
 
 // Remove adapter-static HTML filenames before SvelteKit client navigation.
@@ -25,6 +27,18 @@ export const set_file_param = (filename: string | null): void => {
   else url.searchParams.delete(`file`)
   void replace_url(url)
 }
+
+// The `?file=` fixture a viewer's load can deep-link: a URL load is a site fixture picked or
+// dragged from a FilePicker, a dropped local file has none (and re-pointing the viewer's
+// `source` at its name would fetch a 404)
+export const loaded_fixture = ({
+  source_filename,
+  source_url,
+}: Partial<FileLoadMeta>): string | null => (source_url ? (source_filename ?? null) : null)
+
+// Activating a periodic-table tile in a demo opens that element's page
+export const open_element_page = ({ name }: ChemicalElement): void =>
+  void goto(`/${name.toLowerCase()}`)
 
 const ROUTE_LABELS: Record<string, string> = {
   '/how-to/hook-up-to-external-api': `Hook up to external API`,
@@ -107,11 +121,9 @@ export function group_nav_routes(
             label:
               ROUTE_LABELS[href] ??
               href
-                .split(`/`)
-                .at(-1)
-                ?.replaceAll(`-`, ` `)
-                .replaceAll(/\b\w/g, (char) => char.toUpperCase()) ??
-              href,
+                .replace(/^.*\//, ``) // last segment
+                .replaceAll(`-`, ` `)
+                .replaceAll(/\b\w/g, (char) => char.toUpperCase()),
           })),
       },
     ]
@@ -137,28 +149,48 @@ export const latest_load = () => {
   }
 }
 
-// Demo pages whose main components their last route segment doesn't name (PascalCased)
+// Demo pages whose main components their last route segment doesn't name (PascalCased); []
+// for index pages and demos of components from other packages, which get no prop tables
 export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/bohr-atoms': [`BohrAtom`],
   '/convex-hull/chempot-diagram': [`ChemPotDiagram`],
   '/convex-hull/synthesis-planning': [`SynthesisPlanner`],
+  '/guides': [],
+  '/how-to/hook-up-to-external-api': [],
+  '/how-to/use-without-svelte': [`Structure`],
+  '/icon': [],
+  '/layout/json-tree': [],
   '/neb': [`NebViewer`, `NebPlot`],
+  '/optimade-[slug]': [],
+  '/periodic-table/element-colors': [`PeriodicTable`],
   '/phase-diagram': [`IsobaricBinaryPhaseDiagram`],
   '/phase-diagram/pressure-temperature': [`PressureTemperaturePhaseDiagram`],
   '/phase-diagram/ternary': [`IsobaricTernaryPhaseDiagram`],
+  '/plot': [],
   '/plot/binned-scatter': [`BinnedScatterPlot`],
   '/plot/color-scales': [`ColorScaleSelect`],
+  '/plot/data-cleaning': [`ScatterPlot`],
   '/plot/eos': [`EosPlot`],
+  '/plot/linked-brushing': [`ScatterPlot`, `PeriodicTable`],
   '/plot/scatter-plot-3d': [`ScatterPlot3D`],
   '/plot/ternary': [`TernaryPlot`],
+  '/plot/violin': [`BoxPlot`],
+  '/reciprocal': [],
+  '/reciprocal/brillouin-bands-dos': [`BandsAndDos`],
   '/reciprocal/ir-raman': [`IrRamanSpectrum`],
   '/structure/bond-angles': [`BondAnglePlot`],
   '/structure/coordination': [`CoordinationBarPlot`],
+  '/structure/gallery': [`StructureGallery`],
+  '/structure/host-tool': [`Structure`],
   '/structure/interface': [`InterfaceBuilder`],
+  '/structure/multi-volume': [`Structure`],
+  '/structure/polyhedra': [`Structure`],
   '/structure/rdf': [`RdfPlot`],
   '/structure/slab': [`SlabBuilder`],
   '/structure/symmetry': [`SymmetryStats`, `WyckoffTable`],
+  '/structure/vectors': [`Structure`],
   '/structure/xrd': [`XrdPlot`, `SaedPattern`],
+  '/trajectory/render': [`Trajectory`],
 }
 
 // Components a demo page's generated prop tables (src/site/PropsTable.svelte) document, from

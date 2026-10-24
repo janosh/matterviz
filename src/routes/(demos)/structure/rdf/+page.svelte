@@ -1,13 +1,15 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import type { ElementSymbol, Matrix3x3, Vec3 } from '#lib'
+  import { calc_lattice_params, scale } from '#lib/math.js'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { PLOT_COLORS } from '#lib/colors/index.js'
+  import { add_alpha, plot_color } from '#lib/colors/index.js'
   import { highlight_site_union } from '#lib/plot/core/structure-input.js'
   import { PdfPlot, RdfPlot } from '#lib/rdf/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
+  import { make_site } from '#lib/structure/site.js'
   import { structure_files } from '#site/structures.js'
   import { toggle_item } from '#lib/utils.js'
   import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
@@ -31,29 +33,17 @@
   let pdf_cutoff = $state(20)
   let pdf_bins = $state(1000)
 
-  const cubic_lattice = (a_len: number) => ({
-    matrix: [
+  const cubic_lattice = (a_len: number) => {
+    const matrix: Matrix3x3 = [
       [a_len, 0, 0],
       [0, a_len, 0],
       [0, 0, a_len],
-    ] as Matrix3x3,
-    pbc: [true, true, true] as Pbc,
-    a: a_len,
-    b: a_len,
-    c: a_len,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: a_len ** 3,
-  })
+    ]
+    return { matrix, pbc: [true, true, true] as Pbc, ...calc_lattice_params(matrix) }
+  }
 
-  const cubic_site = (element: ElementSymbol, abc: Vec3, a_len: number) => ({
-    species: [{ element, occu: 1, oxidation_state: 0 }],
-    abc,
-    xyz: abc.map((frac) => frac * a_len) as Vec3,
-    label: element,
-    properties: {},
-  })
+  const cubic_site = (element: ElementSymbol, abc: Vec3, a_len: number) =>
+    make_site(element, abc, scale(abc, a_len), element)
 
   // Rock salt AB: cation on the fcc sublattice, anion shifted by (1/2, 0, 0). The % 1 wraps the
   // two anions that shift past the cell edge, so <Structure> draws them inside the box.
@@ -191,11 +181,16 @@
 
   <h2 id="compare-structures">Compare Structures</h2>
   <div class="demo-controls">
-    {#each Object.keys(structures) as key, idx (key)}
+    <!-- in Full RDF mode tinted like the key's series, which follow selection order; element
+      pairs get one curve each, colored independently of the structures -->
+    {#each Object.keys(structures) as key (key)}
+      {@const series_idx = selected.indexOf(key)}
       <button
-        class:active={selected.includes(key)}
+        class:active={series_idx >= 0}
         onclick={() => (selected = toggle_item(selected, key))}
-        style:background={selected.includes(key) ? `${PLOT_COLORS[idx]}20` : null}
+        style:background={mode === `full` && series_idx >= 0
+          ? add_alpha(plot_color(series_idx), 0.125)
+          : null}
       >
         {key}
       </button>

@@ -9,52 +9,16 @@
   import { SpacegroupBarPlot } from 'matterviz'
 
   // Sample data: space group numbers from a materials database
-  // oxfmt-ignore
   const diverse_materials = [
-    221,
-    221,
-    221, // Cubic perovskites
-    225,
-    225,
-    225,
-    225,
-    225,
-    229,
-    229,
-    229, // Cubic metals
-    194,
-    194,
-    194,
-    194, // Hexagonal metals
-    167,
-    167,
-    166, // Trigonal
-    139,
-    129,
-    123,
-    123, // Tetragonal
-    62,
-    62,
-    62,
-    62,
-    62,
-    62,
-    59,
-    61,
-    63, // Orthorhombic
-    15,
-    15,
-    15,
-    14,
-    14,
-    14,
-    14,
-    12,
-    11, // Monoclinic
-    2,
-    2,
-    1, // Triclinic
-  ]
+    [221, 221, 221], // Cubic perovskites
+    [225, 225, 225, 225, 225, 229, 229, 229], // Cubic metals
+    [194, 194, 194, 194], // Hexagonal metals
+    [167, 167, 166], // Trigonal
+    [139, 129, 123, 123], // Tetragonal
+    [62, 62, 62, 62, 62, 62, 59, 61, 63], // Orthorhombic
+    [15, 15, 15, 14, 14, 14, 14, 12, 11], // Monoclinic
+    [2, 2, 1], // Triclinic
+  ].flat()
 
   let show_counts = $state(true)
 </script>
@@ -75,40 +39,15 @@ The component also accepts space group symbols (Hermann-Mauguin notation):
 <script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
-  // oxfmt-ignore
   const spacegroups_symbols = [
-    'Fm-3m',
-    'Fm-3m',
-    'Fd-3m',
-    'Im-3m',
-    'Fm-3m', // Cubic
-    'P63/mmc',
-    'P63/mmc',
-    'P63mc',
-    'P6/mmm', // Hexagonal
-    'R-3m',
-    'R-3c',
-    'R-3m',
-    'R-3', // Trigonal
-    'I4/mmm',
-    'P4/mmm',
-    'I4/mmm',
-    'P4/nmm', // Tetragonal
-    'Pnma',
-    'Cmcm',
-    'Pbca',
-    'Pnma',
-    'Pnma',
-    'Cmcm', // Orthorhombic
-    'C2/c',
-    'P21/c',
-    'C2/m',
-    'P21/c',
-    'C2/c', // Monoclinic
-    'P-1',
-    'P1',
-    'P-1', // Triclinic
-  ]
+    ['Fm-3m', 'Fm-3m', 'Fd-3m', 'Im-3m', 'Fm-3m'], // Cubic
+    ['P63/mmc', 'P63/mmc', 'P63mc', 'P6/mmm'], // Hexagonal
+    ['R-3m', 'R-3c', 'R-3m', 'R-3'], // Trigonal
+    ['I4/mmm', 'P4/mmm', 'I4/mmm', 'P4/nmm'], // Tetragonal
+    ['Pnma', 'Cmcm', 'Pbca', 'Pnma', 'Pnma', 'Cmcm'], // Orthorhombic
+    ['C2/c', 'P21/c', 'C2/m', 'P21/c', 'C2/c'], // Monoclinic
+    ['P-1', 'P1', 'P-1'], // Triclinic
+  ].flat()
 </script>
 
 <SpacegroupBarPlot data={spacegroups_symbols} style="height: 450px" />
@@ -122,61 +61,17 @@ Display spacegroup distributions horizontally:
 <script lang="ts">
   import { SpacegroupBarPlot } from 'matterviz'
 
-  // oxfmt-ignore
+  // [space group, count] pairs
   const high_symmetry = [
-    225,
-    225,
-    225,
-    225,
-    225,
-    225,
-    225,
-    225,
-    225,
-    225, // Fm-3m
-    229,
-    229,
-    229,
-    229,
-    229,
-    229, // Im-3m
-    227,
-    227,
-    227,
-    227,
-    227, // Fd-3m
-    221,
-    221,
-    221,
-    221,
-    221,
-    221,
-    221,
-    221, // Pm-3m
-    194,
-    194,
-    194,
-    194,
-    194,
-    194, // P63/mmc
-    166,
-    166,
-    166,
-    166,
-    166, // R-3m
-    139,
-    139,
-    139,
-    139, // I4/mmm
-    62,
-    62,
-    62,
-    62,
-    62,
-    62,
-    62,
-    62, // Pnma
-  ]
+    [225, 10], // Fm-3m
+    [229, 6], // Im-3m
+    [227, 5], // Fd-3m
+    [221, 8], // Pm-3m
+    [194, 6], // P63/mmc
+    [166, 5], // R-3m
+    [139, 4], // I4/mmm
+    [62, 8], // Pnma
+  ].flatMap(([spacegroup, count]) => Array(count).fill(spacegroup))
 
   let orientation = $state('vertical')
   let plot_style = $derived(orientation === 'horizontal' ? `height: 700px` : `height: 450px`)

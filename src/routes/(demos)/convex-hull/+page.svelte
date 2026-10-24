@@ -443,7 +443,7 @@
     <h2 id="highlighted-entries">Highlighted Entries</h2>
     {@render feature_list(highlighted_features)}
     <div class="hull-grid three-col highlight-grid">
-      <LazyDemo label="Highlighted Entries">
+      <LazyDemo label="Fe-O highlighted entries">
         <ConvexHull
           entries={binary_examples[1]?.entries ?? []}
           controls={{ title: `Fe-O (${highlighted_fe_o.length} highlighted)` }}
@@ -456,7 +456,7 @@
           }}
         />
       </LazyDemo>
-      <LazyDemo label="Highlighted Entries">
+      <LazyDemo label="Na-Fe-O highlighted entries">
         <ConvexHull
           entries={na_fe_o_entries}
           controls={{ title: `Na-Fe-O (${highlighted_na_fe_o.length} highlighted)` }}
@@ -469,7 +469,7 @@
           }}
         />
       </LazyDemo>
-      <LazyDemo label="Highlighted Entries">
+      <LazyDemo label="Li-Co-Ni-O highlighted entries">
         <ConvexHull
           entries={li_co_ni_o_quaternary}
           controls={{ title: `Li-Co-Ni-O (${highlighted_li_co_ni_o.length} highlighted)` }}
@@ -517,17 +517,17 @@
     <h2 id="temperature-dependent-free-energies">Temperature-Dependent Free Energies</h2>
     {@render feature_list(temp_features)}
     <div class="hull-grid three-col temp-grid">
-      <LazyDemo label="Temperature-Dependent Free Energies">
+      <LazyDemo label="Li-Fe with G(T)">
         <ConvexHull
           entries={temp_binary_entries}
           controls={{ title: `Li-Fe with G(T)` }}
           style="height: 500px"
         />
       </LazyDemo>
-      <LazyDemo label="Temperature-Dependent Free Energies">
+      <LazyDemo label="Li-Fe-O with G(T)">
         <ConvexHull entries={temp_ternary_entries} controls={{ title: `Li-Fe-O with G(T)` }} />
       </LazyDemo>
-      <LazyDemo label="Temperature-Dependent Free Energies">
+      <LazyDemo label="Li-Fe-Ni-O with G(T)">
         <ConvexHull
           entries={temp_quaternary_entries}
           controls={{ title: `Li-Fe-Ni-O with G(T)` }}
@@ -548,7 +548,7 @@
       </select>
     </div>
     <div class="hull-grid gas-grid">
-      <LazyDemo label="Gas Atmosphere Control">
+      <LazyDemo label="Fe-O gas atmosphere">
         <ConvexHull
           entries={gas_demo_fe_o_entries}
           controls={{ title: `Fe-O with ${selected_demo_gas} Pressure` }}
@@ -557,7 +557,7 @@
           style="height: 500px"
         />
       </LazyDemo>
-      <LazyDemo label="Gas Atmosphere Control">
+      <LazyDemo label="Fe-Ni-O gas atmosphere">
         <ConvexHull
           entries={gas_demo_ternary_entries}
           controls={{ title: `Fe-Ni-O with ${selected_demo_gas} Pressure` }}

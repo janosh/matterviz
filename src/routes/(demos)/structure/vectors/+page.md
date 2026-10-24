@@ -8,53 +8,43 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
 
 ```svelte example
 <script lang="ts">
-  import { Structure } from 'matterviz'
+  import { calc_lattice_params, Structure } from 'matterviz'
+  import type { ElementSymbol, Matrix3x3, Vec3 } from 'matterviz'
 
-  const fe_bcc = {
-    matrix: [
-      [-1.435, 1.435, 1.435],
-      [1.435, -1.435, 1.435],
-      [1.435, 1.435, -1.435],
-    ],
+  // periodic lattice from its matrix, with lengths, angles and volume derived
+  // site of one fully occupied element, labeled by it
+  const site = (
+    element: ElementSymbol,
+    abc: Vec3,
+    xyz: Vec3,
+    properties: Record<string, unknown>,
+  ) => ({
+    species: [{ element, occu: 1 }],
+    abc,
+    xyz,
+    label: element,
+    properties,
+  })
+  const lattice = (matrix: Matrix3x3) => ({
+    matrix,
     pbc: [true, true, true],
-    a: 2.486,
-    b: 2.486,
-    c: 2.486,
-    alpha: 109.47,
-    beta: 109.47,
-    gamma: 109.47,
-    volume: 11.82,
-  }
-  const nacl = {
-    matrix: [
-      [5.64, 0, 0],
-      [0, 5.64, 0],
-      [0, 0, 5.64],
-    ],
-    pbc: [true, true, true],
-    a: 5.64,
-    b: 5.64,
-    c: 5.64,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 179.41,
-  }
-  const tio2 = {
-    matrix: [
-      [4.594, 0, 0],
-      [0, 4.594, 0],
-      [0, 0, 2.959],
-    ],
-    pbc: [true, true, true],
-    a: 4.594,
-    b: 4.594,
-    c: 2.959,
-    alpha: 90,
-    beta: 90,
-    gamma: 90,
-    volume: 62.44,
-  }
+    ...calc_lattice_params(matrix),
+  })
+  const fe_bcc = lattice([
+    [-1.435, 1.435, 1.435],
+    [1.435, -1.435, 1.435],
+    [1.435, 1.435, -1.435],
+  ])
+  const nacl = lattice([
+    [5.64, 0, 0],
+    [0, 5.64, 0],
+    [0, 0, 5.64],
+  ])
+  const tio2 = lattice([
+    [4.594, 0, 0],
+    [0, 4.594, 0],
+    [0, 0, 2.959],
+  ])
 
   const examples = [
     {
@@ -63,20 +53,8 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
       structure: {
         lattice: fe_bcc,
         sites: [
-          {
-            species: [{ element: `Fe`, occu: 1 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `Fe`,
-            properties: { force: [0.8, -0.5, 1.2] },
-          },
-          {
-            species: [{ element: `Fe`, occu: 1 }],
-            abc: [0.5, 0.5, 0.5],
-            xyz: [0.718, 0.718, 0.718],
-            label: `Fe`,
-            properties: { force: [-0.8, 0.5, -1.2] },
-          },
+          site(`Fe`, [0, 0, 0], [0, 0, 0], { force: [0.8, -0.5, 1.2] }),
+          site(`Fe`, [0.5, 0.5, 0.5], [0.718, 0.718, 0.718], { force: [-0.8, 0.5, -1.2] }),
         ],
       },
     },
@@ -86,20 +64,8 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
       structure: {
         lattice: fe_bcc,
         sites: [
-          {
-            species: [{ element: `Fe`, occu: 1 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `Fe`,
-            properties: { magmom: [0, 0, 2.2] },
-          },
-          {
-            species: [{ element: `Fe`, occu: 1 }],
-            abc: [0.5, 0.5, 0.5],
-            xyz: [0.718, 0.718, 0.718],
-            label: `Fe`,
-            properties: { magmom: [0, 0, -2.2] },
-          },
+          site(`Fe`, [0, 0, 0], [0, 0, 0], { magmom: [0, 0, 2.2] }),
+          site(`Fe`, [0.5, 0.5, 0.5], [0.718, 0.718, 0.718], { magmom: [0, 0, -2.2] }),
         ],
       },
     },
@@ -109,20 +75,8 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
       structure: {
         lattice: fe_bcc,
         sites: [
-          {
-            species: [{ element: `Fe`, occu: 1 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `Fe`,
-            properties: { spin: [1.5, 0.8, 1.8] },
-          },
-          {
-            species: [{ element: `Fe`, occu: 1 }],
-            abc: [0.5, 0.5, 0.5],
-            xyz: [0.718, 0.718, 0.718],
-            label: `Fe`,
-            properties: { spin: [-1.2, 1.0, -1.6] },
-          },
+          site(`Fe`, [0, 0, 0], [0, 0, 0], { spin: [1.5, 0.8, 1.8] }),
+          site(`Fe`, [0.5, 0.5, 0.5], [0.718, 0.718, 0.718], { spin: [-1.2, 1.0, -1.6] }),
         ],
       },
     },
@@ -132,34 +86,10 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
       structure: {
         lattice: nacl,
         sites: [
-          {
-            species: [{ element: `Na`, occu: 1 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `Na`,
-            properties: { force: [0.3, 0.1, -0.5] },
-          },
-          {
-            species: [{ element: `Cl`, occu: 1 }],
-            abc: [0.5, 0.5, 0],
-            xyz: [2.82, 2.82, 0],
-            label: `Cl`,
-            properties: { force: [-0.2, 0.4, 0.3] },
-          },
-          {
-            species: [{ element: `Na`, occu: 1 }],
-            abc: [0.5, 0, 0.5],
-            xyz: [2.82, 0, 2.82],
-            label: `Na`,
-            properties: { force: [0.1, -0.6, 0.2] },
-          },
-          {
-            species: [{ element: `Cl`, occu: 1 }],
-            abc: [0, 0.5, 0.5],
-            xyz: [0, 2.82, 2.82],
-            label: `Cl`,
-            properties: { force: [-0.3, 0.2, -0.4] },
-          },
+          site(`Na`, [0, 0, 0], [0, 0, 0], { force: [0.3, 0.1, -0.5] }),
+          site(`Cl`, [0.5, 0.5, 0], [2.82, 2.82, 0], { force: [-0.2, 0.4, 0.3] }),
+          site(`Na`, [0.5, 0, 0.5], [2.82, 0, 2.82], { force: [0.1, -0.6, 0.2] }),
+          site(`Cl`, [0, 0.5, 0.5], [0, 2.82, 2.82], { force: [-0.3, 0.2, -0.4] }),
         ],
       },
     },
@@ -291,21 +221,11 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
           }
         }
         return {
-          lattice: {
-            matrix: [
-              [super_a, 0, 0],
-              [0, super_a, 0],
-              [0, 0, super_a],
-            ],
-            pbc: [true, true, true],
-            a: super_a,
-            b: super_a,
-            c: super_a,
-            alpha: 90,
-            beta: 90,
-            gamma: 90,
-            volume: super_a ** 3,
-          },
+          lattice: lattice([
+            [super_a, 0, 0],
+            [0, super_a, 0],
+            [0, 0, super_a],
+          ]),
           sites,
         }
       })(),
@@ -316,34 +236,16 @@ Structures can carry per-site vector data in their `properties` dict. Recognized
       structure: {
         lattice: tio2,
         sites: [
-          {
-            species: [{ element: `Ti`, occu: 1 }],
-            abc: [0, 0, 0],
-            xyz: [0, 0, 0],
-            label: `Ti`,
-            properties: { force: [0.1, -0.15, 0.3], spin: [0.5, 0.5, 0.8] },
-          },
-          {
-            species: [{ element: `Ti`, occu: 1 }],
-            abc: [0.5, 0.5, 0.5],
-            xyz: [2.297, 2.297, 1.48],
-            label: `Ti`,
-            properties: { force: [-0.1, 0.15, -0.3], spin: [-0.5, -0.5, 0.8] },
-          },
-          {
-            species: [{ element: `O`, occu: 1 }],
-            abc: [0.305, 0.305, 0],
-            xyz: [1.401, 1.401, 0],
-            label: `O`,
-            properties: { force: [0.3, 0.3, -0.05] },
-          },
-          {
-            species: [{ element: `O`, occu: 1 }],
-            abc: [0.695, 0.695, 0],
-            xyz: [3.193, 3.193, 0],
-            label: `O`,
-            properties: { force: [-0.3, -0.3, 0.05] },
-          },
+          site(`Ti`, [0, 0, 0], [0, 0, 0], {
+            force: [0.1, -0.15, 0.3],
+            spin: [0.5, 0.5, 0.8],
+          }),
+          site(`Ti`, [0.5, 0.5, 0.5], [2.297, 2.297, 1.48], {
+            force: [-0.1, 0.15, -0.3],
+            spin: [-0.5, -0.5, 0.8],
+          }),
+          site(`O`, [0.305, 0.305, 0], [1.401, 1.401, 0], { force: [0.3, 0.3, -0.05] }),
+          site(`O`, [0.695, 0.695, 0], [3.193, 3.193, 0], { force: [-0.3, -0.3, 0.05] }),
         ],
       },
     },

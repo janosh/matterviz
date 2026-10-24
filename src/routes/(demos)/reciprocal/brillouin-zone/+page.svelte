@@ -77,7 +77,7 @@
   const higher_order_examples = [
     ...higher_order_ids.map(([id, order]) => ({
       id,
-      label: examples.find((example) => example.id === id)?.label,
+      label: examples.find((example) => example.id === id)?.label ?? id,
       description: `${order === 2 ? `2nd` : `3rd`} order BZ`,
       order,
     })),
@@ -100,7 +100,7 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <LazyDemo label="brillouin zone">
+      <LazyDemo label="{label}: {description}">
         <BrillouinZone {structure} {surface_opacity} show_ibz />
       </LazyDemo>
     </div>
@@ -141,7 +141,7 @@
     <div>
       <h2>{label}</h2>
       <p>{description}</p>
-      <LazyDemo label="brillouin zone">
+      <LazyDemo label="{label}: {description}">
         <BrillouinZone
           {structure}
           {surface_opacity}

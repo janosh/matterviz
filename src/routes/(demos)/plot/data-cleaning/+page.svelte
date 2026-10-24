@@ -659,7 +659,7 @@ const { series: cleaned, quality } = clean_series(series, config)
   <div class="multi-series-grid bleed-1400">
     <div>
       <h3 id="raw-data-nan-positions-marked-1">Raw Data (NaN positions marked)</h3>
-      <LazyDemo label="Raw Data (NaN positions marked)" height="300px">
+      <LazyDemo label="Raw trajectory (NaN positions marked)" height="300px">
         <ScatterPlot
           series={[
             line_series(finite_points(xyz_data.x, xyz_data.y), `Trajectory`, `#e74c3c`),
