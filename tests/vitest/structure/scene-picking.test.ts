@@ -36,92 +36,44 @@ const state = (overrides: Partial<PickState> = {}): PickState => ({
 const picks = (sites: number[]) => ({ measured_sites: sites, selected_sites: sites })
 
 describe(`next_site_selection`, () => {
+  // oxfmt-ignore
   test.each([
     [`distance adds a pick`, 2, state(picks([0])), picks([0, 2])],
     [`distance removes a repeat pick`, 0, state(picks([0, 1])), picks([1])],
-    [
-      `angle rolls the oldest pick out`,
-      3,
-      state({
-        measure_mode: `angle`,
-        measured_sites: [0, 1, 2],
-        selected_sites: [0, 1, 2, 7],
-      }),
-      { measured_sites: [1, 2, 3], selected_sites: [1, 2, 7, 3] },
-    ],
-    [
-      `angle roll of a site already selected (not measured) moves it, not repeats it`,
-      5,
+    [`angle rolls the oldest pick out`, 3,
+      state({ measure_mode: `angle`, measured_sites: [0, 1, 2], selected_sites: [0, 1, 2, 7] }),
+      { measured_sites: [1, 2, 3], selected_sites: [1, 2, 7, 3] }],
+    [`angle roll of a site already selected (not measured) moves it, not repeats it`, 5,
       state({ measure_mode: `angle`, measured_sites: [0, 1, 2], selected_sites: [5] }),
-      { measured_sites: [1, 2, 5], selected_sites: [5] },
-    ],
+      { measured_sites: [1, 2, 5], selected_sites: [5] }],
     // measured picks decide: a selected-only site joins both lists instead of toggling off
-    [
-      `distance pick of a site selected but not measured`,
-      4,
-      state({ measured_sites: [0], selected_sites: [4, 0] }),
-      { measured_sites: [0, 4], selected_sites: [0, 4] },
-    ],
-    [
-      `angle re-pick at the cap toggles off, not rolls`,
-      1,
-      state({ measure_mode: `angle`, ...picks([0, 1, 2]) }),
-      picks([0, 2]),
-    ],
-    [
-      `edit-atoms click replaces the selection`,
-      4,
-      state({ measure_mode: `edit-atoms`, ...picks([1, 2]) }),
-      picks([4]),
-    ],
-    [
-      `edit-atoms click on a selected site clears it`,
-      1,
-      state({ measure_mode: `edit-atoms`, selected_sites: [1] }),
-      picks([]),
-    ],
-    [
-      `edit-atoms shift-click toggles into the selection`,
-      4,
-      state({ measure_mode: `edit-atoms`, selected_sites: [1] }),
-      picks([1, 4]),
-      true,
-    ],
-    [
-      `edit-bonds delete mode clears`,
-      4,
-      state({ measure_mode: `edit-bonds`, bond_edit_mode: `delete`, ...picks([1]) }),
-      picks([]),
-    ],
+    [`distance pick of a site selected but not measured`, 4,
+      state({ measured_sites: [0], selected_sites: [4, 0] }), { measured_sites: [0, 4], selected_sites: [0, 4] }],
+    [`angle re-pick at the cap toggles off, not rolls`, 1,
+      state({ measure_mode: `angle`, ...picks([0, 1, 2]) }), picks([0, 2])],
+    [`edit-atoms click replaces the selection`, 4, state({ measure_mode: `edit-atoms`, ...picks([1, 2]) }), picks([4])],
+    [`edit-atoms click on a selected site clears it`, 1,
+      state({ measure_mode: `edit-atoms`, selected_sites: [1] }), picks([])],
+    [`edit-atoms shift-click toggles into the selection`, 4,
+      state({ measure_mode: `edit-atoms`, selected_sites: [1] }), picks([1, 4]), true],
+    [`edit-bonds delete mode clears`, 4,
+      state({ measure_mode: `edit-bonds`, bond_edit_mode: `delete`, ...picks([1]) }), picks([])],
     [`edit-bonds first pick`, 4, state({ measure_mode: `edit-bonds` }), picks([4])],
-    [
-      `edit-bonds re-pick of the lone pick deselects without a pair`,
-      3,
-      state({ measure_mode: `edit-bonds`, ...picks([3]) }),
-      picks([]),
-    ],
-    [
-      `edit-bonds second pick completes the bond pair`,
-      5,
-      state({ measure_mode: `edit-bonds`, ...picks([3]) }),
-      { ...picks([3, 5]), bond_pair: [3, 5] },
-    ],
+    [`edit-bonds re-pick of the lone pick deselects without a pair`, 3,
+      state({ measure_mode: `edit-bonds`, ...picks([3]) }), picks([])],
+    [`edit-bonds second pick completes the bond pair`, 5,
+      state({ measure_mode: `edit-bonds`, ...picks([3]) }), { ...picks([3, 5]), bond_pair: [3, 5] }],
   ] as const)(`%s`, (_label, site_idx, input, expected, shift: boolean = false) => {
     // toEqual treats an absent bond_pair as undefined, but fails on an unexpected pair
     expect(next_site_selection(site_idx, input, shift)).toEqual(expected)
   })
 
+  // oxfmt-ignore
   test.each([
     [`inactive edit-bonds pane`, state({ measure_mode: `edit-bonds`, interactive: false })],
-    [
-      `unselectable bond site`,
-      state({ measure_mode: `edit-bonds`, can_select_bond_site: () => false }),
-    ],
+    [`unselectable bond site`, state({ measure_mode: `edit-bonds`, can_select_bond_site: () => false })],
     [`inactive edit-atoms pane`, state({ measure_mode: `edit-atoms`, interactive: false })],
-    [
-      `edit-atoms image site`,
-      state({ measure_mode: `edit-atoms`, is_image_site: () => true }),
-    ],
+    [`edit-atoms image site`, state({ measure_mode: `edit-atoms`, is_image_site: () => true })],
   ])(`%s leaves the selection unchanged`, (_label, input) => {
     expect(next_site_selection(1, input, false)).toBeNull()
   })
@@ -139,18 +91,11 @@ describe(`next_site_selection`, () => {
   })
 })
 
+// oxfmt-ignore
 test.each([
-  [
-    `threlte-wrapped shift click`,
-    { nativeEvent: new MouseEvent(`click`, { shiftKey: true }) },
-    true,
-  ],
+  [`threlte-wrapped shift click`, { nativeEvent: new MouseEvent(`click`, { shiftKey: true }) }, true],
   [`plain shift click`, new MouseEvent(`click`, { shiftKey: true }), true],
-  [
-    `shift pointerdown (site labels)`,
-    new PointerEvent(`pointerdown`, { shiftKey: true }),
-    true,
-  ],
+  [`shift pointerdown (site labels)`, new PointerEvent(`pointerdown`, { shiftKey: true }), true],
   [`unshifted click`, { nativeEvent: new MouseEvent(`click`) }, false],
   [`keyboard event`, new KeyboardEvent(`keydown`, { shiftKey: true }), false],
   [`no event`, undefined, false],
@@ -158,42 +103,21 @@ test.each([
   expect(is_shift_click(event as Event | TapEvent | undefined)).toBe(expected)
 })
 
+// oxfmt-ignore
 test.each([
   [`nothing hovered`, {}, `default`],
   [`inactive pane`, { interactive: false, hovered_idx: 0 }, `default`],
-  [
-    `add-atom mode`,
-    { measure_mode: `edit-atoms`, add_atom_mode: true, hovered_idx: 0 },
-    `crosshair`,
-  ],
+  [`add-atom mode`, { measure_mode: `edit-atoms`, add_atom_mode: true, hovered_idx: 0 }, `crosshair`],
   [`hovered bond`, { measure_mode: `edit-bonds`, hovered_bond_key: `0-1` }, `pointer`],
-  [
-    `hovered bond, edits disabled`,
-    // a hovered bond outranks the atom under it, which alone would give `pointer`
-    {
-      measure_mode: `edit-bonds`,
-      hovered_bond_key: `0-1`,
-      bond_edits_enabled: false,
-      hovered_idx: 0,
-    },
-    `not-allowed`,
-  ],
+  // a hovered bond outranks the atom under it, which alone would give `pointer`
+  [`hovered bond, edits disabled`,
+    { measure_mode: `edit-bonds`, hovered_bond_key: `0-1`, bond_edits_enabled: false, hovered_idx: 0 }, `not-allowed`],
   [`edit-bonds selectable atom`, { measure_mode: `edit-bonds`, hovered_idx: 0 }, `pointer`],
-  [
-    `edit-bonds unselectable atom`,
-    { measure_mode: `edit-bonds`, hovered_idx: 0, can_select_bond_site: () => false },
-    `not-allowed`,
-  ],
-  [
-    `edit-bonds delete mode atom`,
-    { measure_mode: `edit-bonds`, bond_edit_mode: `delete`, hovered_idx: 0 },
-    `not-allowed`,
-  ],
-  [
-    `edit-atoms image atom`,
-    { measure_mode: `edit-atoms`, hovered_idx: 0, is_image_site: () => true },
-    `not-allowed`,
-  ],
+  [`edit-bonds unselectable atom`,
+    { measure_mode: `edit-bonds`, hovered_idx: 0, can_select_bond_site: () => false }, `not-allowed`],
+  [`edit-bonds delete mode atom`,
+    { measure_mode: `edit-bonds`, bond_edit_mode: `delete`, hovered_idx: 0 }, `not-allowed`],
+  [`edit-atoms image atom`, { measure_mode: `edit-atoms`, hovered_idx: 0, is_image_site: () => true }, `not-allowed`],
   [`measurement atom`, { hovered_idx: 0 }, `pointer`],
 ] as const)(`scene_cursor: %s`, (_label, overrides, expected) => {
   expect(scene_cursor(state(overrides as Partial<PickState>))).toBe(expected)

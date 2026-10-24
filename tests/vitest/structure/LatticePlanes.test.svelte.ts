@@ -74,16 +74,10 @@ test(`cell surfaces reuse unchanged geometry and dispose replaced blocks indepen
 
 // Front faces must face out of the cell for either handedness: a left-handed matrix mirrored
 // the box, so every triangle wound inward and only the far walls rendered
+// oxfmt-ignore
 test.each([
   [`right-handed`, cubic],
-  [
-    `left-handed`,
-    [
-      [0, 4, 0],
-      [4, 0, 0],
-      [0, 0, 4],
-    ],
-  ],
+  [`left-handed`, [[0, 4, 0], [4, 0, 0], [0, 0, 4]]],
 ] as [string, Matrix3x3][])(`%s cell surface winds every face outward`, (_label, matrix) => {
   const props = $state({ matrix, show_cell_vectors: false })
   const component = mount(Lattice, { target: document.body, props })

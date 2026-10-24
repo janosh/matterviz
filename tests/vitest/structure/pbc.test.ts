@@ -360,6 +360,7 @@ C        -2.0      10.0      12.0`
 
 // Trajectory heuristic through a real parse (the synthetic threshold cases live in the
 // `trajectory detection threshold` test below)
+// oxfmt-ignore
 test.each([
   // Atoms sit within the unit cell, so this is treated as a normal crystal and generates
   // image atoms near cell boundaries. Few/no atoms read as outside the [-0.1, 1.1] margin,
@@ -368,12 +369,7 @@ test.each([
   // Detected as trajectory data → no image atoms, structure returned unchanged. abc coords
   // are wrapped into the cell on parse, so none read as outside the [-0.1, 1.1] margin (the
   // raw cartesian positions extend past the 15 Å box, which is what flags trajectory).
-  {
-    name: `trajectory-like cell`,
-    content: trajectory_like_extxyz,
-    expect_images: false,
-    max_outside: 0,
-  },
+  { name: `trajectory-like cell`, content: trajectory_like_extxyz, expect_images: false, max_outside: 0 },
 ])(`find_image_atoms on a parsed $name`, async ({ content, expect_images, max_outside }) => {
   const run = await open_trajectory(content, { filename: `test.xyz` })
   const structure = run.preview.structure as Crystal

@@ -582,10 +582,13 @@ describe(`selection validity`, () => {
         })),
       }
       flushSync()
-      expect(host.selected_sites).toEqual([0])
-      expect(session.site_radius_overrides.get(0)).toBe(2)
-      expect(session.element_mapping).toEqual({ H: `Fe` })
-      expect([...session.hidden_prop_vals]).toEqual([`H:1a`])
+      const site_state = () => [
+        host.selected_sites,
+        [...session.site_radius_overrides],
+        session.element_mapping,
+        [...session.hidden_prop_vals],
+      ]
+      expect(site_state()).toEqual([[0], [[0, 2]], { H: `Fe` }, [`H:1a`]])
       // Same site count and labels, one element swapped: a different topology
       host.structure = {
         ...base,
@@ -607,12 +610,8 @@ describe(`selection validity`, () => {
       flushSync()
       host.structure = { ...base, sites: base.sites.slice(1) }
       flushSync()
-      expect(host.selected_sites).toEqual([])
-      expect(host.highlighted_sites).toEqual([])
-      expect(host.hovered_site_idx).toBeNull()
-      expect(session.site_radius_overrides.size).toBe(0)
-      expect(session.element_mapping).toBeUndefined()
-      expect(session.hidden_prop_vals.size).toBe(0)
+      expect(site_state()).toEqual([[], [], undefined, []])
+      expect([host.highlighted_sites, host.hovered_site_idx]).toEqual([[], null])
       host.selected_sites = [0]
       flushSync()
       host.series_key = {}
@@ -818,8 +817,7 @@ describe(`edit-atoms`, () => {
     flushSync()
     expect(session.duplicate_selected()).toBe(true)
     flushSync()
-    expect(host.structure?.sites[3].xyz).toEqual([3.5, 4, 0.5])
-    expect(host.structure?.sites[3].abc).toEqual([0.6, 0.7, 0])
+    expect(host.structure?.sites[3]).toMatchObject({ xyz: [3.5, 4, 0.5], abc: [0.6, 0.7, 0] })
     expect(notice_count()).toBe(1)
 
     // an external load of another singular lattice notifies once more

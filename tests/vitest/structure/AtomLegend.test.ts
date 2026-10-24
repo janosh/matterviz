@@ -81,22 +81,14 @@ const label_texts = (): (string | undefined)[] =>
   [...document.querySelectorAll(`label`)].map((label) => label.textContent?.trim())
 
 describe(`AtomLegend Component`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      desc: `basic rendering with default amounts and rest props`,
-      props: {
-        elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 },
-        style: `margin: 20px;`,
-        'data-testid': `test-legend`,
-      },
-      expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`],
-      check_styling: true,
-    },
-    {
-      desc: `floating point precision`,
-      props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
-      expected_labels: [`P 1.485`, `S 3`, `Ge 0.515`],
-    },
+    { desc: `basic rendering with default amounts and rest props`,
+      props: { elements: { Fe: 2, O: 3, H: 1.5, C: 12.123456789 }, style: `margin: 20px;`,
+        'data-testid': `test-legend` },
+      expected_labels: [`H 1.5`, `C 12.123`, `O 3`, `Fe 2`], check_styling: true },
+    { desc: `floating point precision`, props: { elements: { P: 1.4849999999999999, Ge: 0.515, S: 3 } },
+      expected_labels: [`P 1.485`, `S 3`, `Ge 0.515`] },
   ])(`$desc`, ({ props, expected_labels, check_styling }) => {
     mount_legend(props)
     expect(label_texts()).toEqual(expected_labels)
@@ -276,52 +268,34 @@ describe(`AtomLegend Component`, () => {
     })
   })
 
-  // hidden `1` charges must not hide the |magmom| = 1 atoms once the property switches
-  test(`switching the colored property clears hidden property values`, async () => {
-    const hidden_prop_vals = new Set<string | number>([1])
-    const colored = new SvelteMap([[`key`, `charge`]])
-    const { color_scale } = DEFAULT_ATOM_COLOR_CONFIG
-    const props = {
-      get atom_color_config(): AtomColorConfig {
-        void colored.get(`rebuild`)
-        const property_key = colored.get(`key`) ?? ``
-        return { mode: `property`, property_key, scale_type: `categorical`, color_scale }
-      },
-      property_colors: prop_colors([1, 2]),
-      hidden_prop_vals,
-    }
-    mounted_components.push(mount(AtomLegend, { target: document.body, props }))
-    await tick()
-    expect([...hidden_prop_vals]).toEqual([1])
-    // a rebuilt config for the same property (hosts derive a fresh object) keeps them
-    colored.set(`key`, `charge`)
-    colored.set(`rebuild`, `1`)
-    await tick()
-    expect([...hidden_prop_vals]).toEqual([1])
-    colored.set(`key`, `magmom`)
-    await tick()
-    expect(hidden_prop_vals.size).toBe(0)
-  })
-
-  // hosts rebuild a custom color_fn on every derive: a new function is no new quantity
-  test(`a rebuilt custom color_fn keeps hidden property values`, async () => {
-    const hidden_prop_vals = new Set<string | number>([1])
-    const rebuild = new SvelteMap([[`count`, 0]])
-    const { color_scale } = DEFAULT_ATOM_COLOR_CONFIG
-    const props = {
-      get atom_color_config(): AtomColorConfig {
-        void rebuild.get(`count`)
-        return { mode: `custom`, color_fn: () => 1, scale_type: `categorical`, color_scale }
-      },
-      property_colors: prop_colors([1, 2]),
-      hidden_prop_vals,
-    }
-    mounted_components.push(mount(AtomLegend, { target: document.body, props }))
-    await tick()
-    rebuild.set(`count`, 1)
-    await tick()
-    expect([...hidden_prop_vals]).toEqual([1])
-  })
+  // Hosts derive a fresh config (and custom color_fn) on every update: a rebuild keeps the hidden
+  // values, a new property clears them (hidden `1` charges must not hide |magmom| = 1 atoms)
+  // oxfmt-ignore
+  test.each([
+    [`property`, (rev: number) => ({ mode: `property`, property_key: rev < 2 ? `charge` : `magmom` }), [[1], [1], []]],
+    [`custom`, () => ({ mode: `custom`, color_fn: () => 1 }), [[1], [1]]],
+  ] as const)(
+    `%s config rebuilds keep hidden values, a property switch clears them`,
+    async (_mode, make_config, expected) => {
+      const hidden_prop_vals = new Set<string | number>([1])
+      const revision = new SvelteMap([[`rev`, 0]])
+      const { color_scale } = DEFAULT_ATOM_COLOR_CONFIG
+      const props = {
+        get atom_color_config() {
+          const config = make_config(revision.get(`rev`) ?? 0)
+          return { ...config, scale_type: `categorical`, color_scale } as AtomColorConfig
+        },
+        property_colors: prop_colors([1, 2]),
+        hidden_prop_vals,
+      }
+      mounted_components.push(mount(AtomLegend, { target: document.body, props }))
+      for (const [rev, hidden] of expected.entries()) {
+        revision.set(`rev`, rev)
+        await tick()
+        expect([...hidden_prop_vals]).toEqual(hidden)
+      }
+    },
+  )
 
   describe(`Property Legend - Continuous`, () => {
     test(`integer values render a titled discrete bar of toggleable labeled segments`, async () => {

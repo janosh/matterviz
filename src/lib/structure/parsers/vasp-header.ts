@@ -115,21 +115,7 @@ const header_tokens = (line: string): string[] =>
 
 // Element symbols that are also common English words: a title like `No title`, `I made this`
 // or `As relaxed` reads them as the lone species of a one-count header
-const ENGLISH_WORD_SYMBOLS = new Set([
-  `I`,
-  `In`,
-  `As`,
-  `Be`,
-  `No`,
-  `He`,
-  `At`,
-  `Am`,
-  `Is`,
-  `If`,
-  `Or`,
-  `So`,
-  `Do`,
-])
+const ENGLISH_WORD_SYMBOLS = new Set(`I In As Be No He At Am Is If Or So Do`.split(` `))
 
 // A VASP 4 header has no symbol line, but its comment line often names the species in POTCAR
 // order (`SiC`, `GaAs`, `fcc Si`), which ASE reads them from too. Each word that is a formula

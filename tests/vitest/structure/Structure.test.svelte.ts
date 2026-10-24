@@ -43,7 +43,7 @@ import StructureViewport from '#lib/structure/StructureViewport.svelte'
 import type StructureScene from '#lib/structure/StructureScene.svelte'
 import { structures } from '#site/structures.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { Matrix4, OrthographicCamera } from 'three/webgpu'
 import { rgb } from 'd3-color'
 import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
@@ -107,16 +107,23 @@ vi.mock(`#lib/structure/supercell.js`, async (import_original) => {
 })
 
 const structure = structures[0]
+type StructureProps = ComponentProps<typeof Structure>
 
 // Mount Structure into document.body (queries are left to each test via doc_query). Every
 // mount is unmounted after its test so component cleanup runs before happy-dom tears down:
 // the viewer toast's dismiss timer would otherwise fire into a vanished `document`.
 const mounted: Record<string, unknown>[] = []
 const original_host_component = structure_host_tool.component
-const mount_structure = (props: ComponentProps<typeof Structure>) => {
+const mount_structure = (props: StructureProps) => {
   const viewer = mount(Structure, { target: document.body, props })
   mounted.push(viewer)
   return viewer.analysis
+}
+// mount_structure, then let the mount's effects settle
+const mount_settled = async (props: StructureProps) => {
+  const analysis = mount_structure(props)
+  await tick()
+  return analysis
 }
 afterEach(() => {
   scene_stub.props = undefined
@@ -128,13 +135,16 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+// A controls-pane setting's input, by the setting's key
+const setting_input = (key: string, type = `checkbox`) =>
+  doc_query<HTMLInputElement>(`[data-key="${key}"] input[type="${type}"]`)
+
 // edit, import and cell-frame notices all land in the viewer's self-hiding toast
 const TOAST_MESSAGE = `.viewer-toast .toast-message`
 
 // Open the dropdown menu behind `trigger` and click the option labelled `label`
 const pick_menu_option = async (trigger: string, label: string): Promise<void> => {
-  doc_query<HTMLButtonElement>(trigger).click()
-  await tick()
+  await fire(doc_query(trigger))
   const option = [...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].find(
     (button) => button.textContent?.trim() === label,
   )
@@ -176,6 +186,22 @@ const mock_gpu = () =>
     platform: navigator.platform,
   })
 
+const mock_viewer_size = (client_width: number, client_height: number): void => {
+  vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width)
+  vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height)
+}
+
+// Drop `content` as a file named `filename` onto a viewer (the first one by default)
+const drop_file = (
+  content: string,
+  filename: string,
+  zone: Element = doc_query(`.structure`),
+) => zone.dispatchEvent(create_drop_event(new File([content], filename)))
+
+// A primitive fcc Cu cell, whose conventional cell differs (4 sites)
+const fcc_cu = (abc: Vec3 = [0, 0, 0]) =>
+  make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc }])
+
 const SAMPLE_POSCAR_CONTENT = `BaTiO3 tetragonal
 1.0
 4.0 0.0 0.0
@@ -215,22 +241,18 @@ test(`loads strings, URLs and dropped files; caller-owned structures skip fetchi
   mount_structure({ source: `/loaded.poscar`, on_file_load: url_load })
   const drop_state = $state<{ structure?: AnyStructure }>({ structure: undefined })
   mount_structure(bind_props({ on_file_load: drop_load }, drop_state))
-  mount_structure({ source: `/blocked.poscar`, structure })
-  await tick()
-  document
-    .querySelectorAll(`.structure`)
-    .item(2)
-    .dispatchEvent(create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `dropped.poscar`)))
-
+  await mount_settled({ source: `/blocked.poscar`, structure })
+  drop_file(
+    SAMPLE_POSCAR_CONTENT,
+    `dropped.poscar`,
+    document.querySelectorAll(`.structure`)[2],
+  )
   await vi.waitFor(() => {
     expect(string_load).toHaveBeenCalledWith(
       expect.objectContaining({ filename: `string`, total_atoms: 5 }),
     )
     expect(url_load).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filename: `loaded.poscar`,
-        source_url: `/loaded.poscar`,
-      }),
+      expect.objectContaining({ filename: `loaded.poscar`, source_url: `/loaded.poscar` }),
     )
     expect(drop_load).toHaveBeenCalledWith(
       expect.objectContaining({ filename: `dropped.poscar`, total_atoms: 5 }),
@@ -254,28 +276,26 @@ test(`a new frame leaves the shared viewport bundle alone`, async () => {
       return 0.3
     },
   }
-  const base = structures[0]
-  const state = $state<{
-    structure: AnyStructure
-    render_token: number
-    trajectory_line_end_frame: number
-    highlighted_sites: number[]
-  }>({ structure: base, render_token: 0, trajectory_line_end_frame: 0, highlighted_sites: [] })
+  const state = $state<StructureProps>({
+    structure,
+    render_token: 0,
+    trajectory_line_end_frame: 0,
+    highlighted_sites: [],
+  })
   // a fixed series, as Trajectory passes per run (unset, every structure is a new series)
   const atom_color_config: AtomColorConfig = {
     ...DEFAULT_ATOM_COLOR_CONFIG,
     mode: `coordination`,
   }
-  mount_structure(
+  await mount_settled(
     bind_props({ scene_props, structure_series_key: `run`, atom_color_config }, state),
   )
-  await tick()
   const reads_at_mount = bundle_reads
   expect(reads_at_mount).toBeGreaterThan(0)
   for (const step of [1, 2, 3]) {
     state.structure = {
-      ...base,
-      sites: base.sites.map((site) => ({
+      ...structure,
+      sites: structure.sites.map((site) => ({
         ...site,
         xyz: site.xyz.map((coord) => coord + 0.01 * step) as Vec3,
       })),
@@ -293,7 +313,7 @@ test(`a new frame leaves the shared viewport bundle alone`, async () => {
   }
   expect(bundle_reads).toBe(reads_at_mount)
   expect(scene_stub.props?.property_colors?.colors.length).toBeGreaterThan(0)
-  expect(scene_stub.props?.show_cell_vectors).toBe(base.sites.length <= 100)
+  expect(scene_stub.props?.show_cell_vectors).toBe(structure.sites.length <= 100)
   expect(scene_stub.props?.bond_thickness).toBe(0.3)
   expect(scene_stub.props?.trajectory_line_frame_stride).toBe(3)
 })
@@ -342,42 +362,30 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
     })
   })
   if (!session) throw new Error(`StructureSession was not created`)
-  const view_state = { get_pose_key: () => `` }
+  // runs after the shared afterEach has unmounted the viewports
+  onTestFinished(cleanup)
   const stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`H`])
-  const viewport = mount(StructureViewport, {
-    target: document.body,
-    props: {
-      session,
-      view_state,
-      scene_props: { ...scene_props, trajectory_position_stream: stream },
-    },
-  })
-  try {
-    await tick()
-    expect(scene_stub.props).toMatchObject({
-      ...scene_props,
-      trajectory_position_stream: stream,
-    })
-  } finally {
-    void unmount(viewport)
+  const shared_props = {
+    session,
+    view_state: { get_pose_key: () => `` },
+    scene_props: { ...scene_props, trajectory_position_stream: stream },
   }
+  const mount_viewport = (
+    frame_scene_props?: ComponentProps<typeof StructureViewport>[`frame_scene_props`],
+  ) => {
+    const props = { ...shared_props, frame_scene_props }
+    mounted.push(mount(StructureViewport, { target: document.body, props }))
+    return tick()
+  }
+  await mount_viewport()
+  expect(scene_stub.props).toMatchObject({
+    ...scene_props,
+    trajectory_position_stream: stream,
+  })
+  void unmount(mounted.pop() ?? {})
   // an explicit null in frame_scene_props still wins over scene_props' stream (?? would not)
-  const frame_viewport = mount(StructureViewport, {
-    target: document.body,
-    props: {
-      session,
-      view_state,
-      scene_props: { ...scene_props, trajectory_position_stream: stream },
-      frame_scene_props: { trajectory_position_stream: null },
-    },
-  })
-  try {
-    await tick()
-    expect(scene_stub.props?.trajectory_position_stream).toBeNull()
-  } finally {
-    void unmount(frame_viewport)
-    cleanup()
-  }
+  await mount_viewport({ trajectory_position_stream: null })
+  expect(scene_stub.props?.trajectory_position_stream).toBeNull()
 })
 
 // Parser warnings (host-supplied or from a dropped file) show as one dismissible notice tied
@@ -387,8 +395,7 @@ test(`parse warnings render as a dismissible notice and reset on the next load`,
     structure,
     parse_warnings: [`host warning`],
   })
-  mount_structure(bind_props({}, state))
-  await tick()
+  await mount_settled(bind_props({}, state))
   expect(doc_query(`.viewer-notices .parse-warnings`).textContent).toContain(
     `1 parse warning: host warning`,
   )
@@ -396,8 +403,7 @@ test(`parse warnings render as a dismissible notice and reset on the next load`,
   state.structure = structures[1]
   await tick()
   expect(document.querySelector(`.parse-warnings`)).toBeNull()
-  const zone = doc_query(`.structure`)
-  zone.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `bad.cif`)))
+  drop_file(BAD_ROW_CIF, `bad.cif`)
   await vi.waitFor(() =>
     expect(state.parse_warnings).toEqual([
       expect.stringMatching(/^CIF: skipped 1 atom-site row/),
@@ -405,10 +411,9 @@ test(`parse warnings render as a dismissible notice and reset on the next load`,
   )
   await tick()
   expect(doc_query(`.parse-warnings`).textContent).toMatch(/1 parse warning: CIF: skipped/)
-  doc_query<HTMLButtonElement>(`.parse-warnings button`).click()
-  await tick()
+  await fire(doc_query(`.parse-warnings button`))
   expect(document.querySelector(`.parse-warnings`)).toBeNull()
-  zone.dispatchEvent(create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `clean.poscar`)))
+  drop_file(SAMPLE_POSCAR_CONTENT, `clean.poscar`)
   await vi.waitFor(() => expect(state.parse_warnings).toEqual([]))
 })
 
@@ -417,8 +422,7 @@ test(`drag hover state is bindable, respects allow_file_drop, and custom drop ha
   const disabled = $state({ dragover: false })
   const on_file_drop = vi.fn()
   mount_structure(bind_props({ on_file_drop }, enabled))
-  mount_structure(bind_props({ allow_file_drop: false }, disabled))
-  await tick()
+  await mount_settled(bind_props({ allow_file_drop: false }, disabled))
   const [enabled_zone, disabled_zone] = document.querySelectorAll(`.structure`)
   enabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
   disabled_zone?.dispatchEvent(new DragEvent(`dragover`, { bubbles: true, cancelable: true }))
@@ -451,12 +455,11 @@ test.each([false, true])(
   `structure changes retain explicit camera target (new pose=%s)`,
   async (new_pose) => {
     mock_gpu()
-    const props = $state<ComponentProps<typeof Structure>>({
+    const props = $state<StructureProps>({
       structure,
       scene_props: { camera_position: [3, 4, 5], camera_target: [1, 2, 3] },
     })
-    mount_structure(props)
-    await tick()
+    await mount_settled(props)
     expect(scene_stub.props?.camera_target).toEqual([1, 2, 3])
     flushSync(() => {
       props.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
@@ -477,10 +480,7 @@ test.each([`edit`, `bake`, `load`] as const)(
     if (change === `bake`) vi.stubEnv(`VITEST`, ``)
     await init_moyo_for_tests()
     const state = $state<{ structure?: AnyStructure; cell_type: symmetry.CellType }>({
-      structure:
-        change === `bake`
-          ? make_crystal(fcc_primitive_matrix(3.61), [{ element: `Cu`, abc: [0, 0, 0] }])
-          : structure,
+      structure: change === `bake` ? fcc_cu() : structure,
       cell_type: `original`,
     })
     const analysis = mount_structure(
@@ -522,27 +522,22 @@ test(`hands the scene the session's base-index rule for an external supercell`, 
     `2x1x1`,
   )
   expect(supercell.sites.map((site) => site.provenance?.unit_cell_idx)).toEqual([0, 0])
-  mount_structure({
+  await mount_settled({
     structure: supercell,
     reference_structure: supercell,
     show_image_atoms: false,
   })
-  await tick()
   const to_base_site_idx = scene_stub.props?.to_base_site_idx
   expect(supercell.sites.map((site, idx) => to_base_site_idx?.(site, idx))).toEqual([0, 1])
 })
 
+// the cube with its atom dropped: no atoms anchor its geometry
+const ATOMLESS_CUBE = SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 1 0 0`).replace(/^6 .*\n/m, ``)
 test.each([
   [`coordinates`, SAMPLE_CHGCAR_CONTENT, `Direct\n0 0 0`, `Direct\n0.5 0 0`, true],
   [`species`, SAMPLE_CHGCAR_CONTENT, `\nH\n`, `\nHe\n`, true],
   [`cube origin`, SAMPLE_CUBE_CONTENT, `1 1 0 0`, `1 2 0 0`, true],
-  [
-    `unanchored cube`,
-    SAMPLE_CUBE_CONTENT.replace(`1 1 0 0`, `0 1 0 0`).replace(`6 0 1.5 0.5 0.5\n`, ``),
-    `0 1 0 0`,
-    `0 2 0 0`,
-    false,
-  ],
+  [`unanchored cube`, ATOMLESS_CUBE, `0 1 0 0`, `0 2 0 0`, false],
 ] as const)(
   `volume imports merge anchored geometry and replace changed %s`,
   async (label, content, before, after, has_atoms) => {
@@ -551,12 +546,8 @@ test.each([
       volumetric_data: undefined,
       structure: undefined,
     })
-    mount_structure(bind_props({}, state))
-    await tick()
-    const drop = (text: string, name: string) =>
-      doc_query(`.structure`).dispatchEvent(
-        create_drop_event(new File([text], `${name}.${extension}`)),
-      )
+    await mount_settled(bind_props({}, state))
+    const drop = (text: string, name: string) => drop_file(text, `${name}.${extension}`)
     drop(content, `A`)
     await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
     const original = state.structure
@@ -614,18 +605,12 @@ test.each([
     volumetric_data: undefined,
     isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, halo: 0.2 },
   })
-  mount_structure(bind_props({ on_file_load }, state))
-  await tick()
-  const drop_zone = doc_query(`.structure`)
-  const drop = (content: string, filename: string) =>
-    drop_zone.dispatchEvent(create_drop_event(new File([content], filename)))
-
-  drop(original_cell, `a.CHGCAR`)
+  await mount_settled(bind_props({ on_file_load }, state))
+  drop_file(original_cell, `a.CHGCAR`)
   await vi.waitFor(() => expect(state.isosurface_settings.layers).toHaveLength(1))
   const settings_with_a = state.isosurface_settings
   const volumes_with_a = state.volumetric_data
-
-  drop(other_cell.split(`\n\n`)[0], `b.poscar`)
+  drop_file(other_cell.split(`\n\n`)[0], `b.poscar`)
   await vi.waitFor(() =>
     expect(on_file_load).toHaveBeenLastCalledWith(
       expect.objectContaining({ filename: `b.poscar` }),
@@ -637,8 +622,7 @@ test.each([
   expect(state.isosurface_settings).toEqual(
     preserves ? settings_with_a : { ...settings_with_a, layers: [] },
   )
-
-  drop(other_cell, `c.CHGCAR`)
+  drop_file(other_cell, `c.CHGCAR`)
   await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(preserves ? 2 : 1))
   if (preserves) expect(state.isosurface_settings.layers[0]).toEqual(settings_with_a.layers[0])
   else
@@ -651,8 +635,7 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
   mock_gpu()
   const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
   const state = $state<{ error_msg?: string }>({ error_msg: undefined })
-  mount_structure(bind_props({ on_file_load }, state))
-  await tick()
+  await mount_settled(bind_props({ on_file_load }, state))
   doc_query(`.structure`).dispatchEvent(
     create_drop_event([
       new File([`garbage`], `bad.poscar`),
@@ -668,8 +651,7 @@ test(`multi-file drops continue after failures and report one batch error`, asyn
   const viewport = doc_query(`.viewport-stage`)
   const alert = doc_query(`.structure > .viewer-error [role="alert"]`)
   expect(alert.textContent).toContain(state.error_msg)
-  doc_query<HTMLButtonElement>(`.viewer-error button`).click()
-  await tick()
+  await fire(doc_query(`.viewer-error button`))
   expect(state.error_msg).toBeUndefined()
   expect(document.querySelector(`.viewer-error`)).toBeNull()
   expect(doc_query(`.viewport-stage`)).toBe(viewport)
@@ -689,7 +671,7 @@ const volumetric_data = [
 
 // Capture the registered host API while mounting; the shared cleanup restores registration.
 const mount_host_structure = async (
-  props: ComponentProps<typeof Structure>,
+  props: StructureProps,
   mount_view = mount_structure,
 ): Promise<
   StructureToolRun &
@@ -733,11 +715,8 @@ test(`host views fill the main viewer, inherit its camera and cell, and reject s
   const original_input = tool_props.structure
   tool_props.on_view({ content })
   await tick()
-  expect(
-    document.querySelector(`.structure > .host-view > [data-testid="live-host-view"]`),
-  ).not.toBeNull()
-  expect(received?.supercell_scaling).toBe(`2x1x1`)
-  expect(received?.show_image_atoms).toBe(false)
+  doc_query(`.structure > .host-view > [data-testid="live-host-view"]`)
+  expect([received?.supercell_scaling, received?.show_image_atoms]).toEqual([`2x1x1`, false])
   expect(received?.scene_props.camera_position).toEqual([3, 4, 5])
   expect(received?.scene_props.camera_target).toEqual([1, 2, 3])
   expect(tool_props.structure).toBe(original_input)
@@ -772,17 +751,35 @@ type LiveVolumeState = {
   active_volume_id?: string
   active_pane?: StructurePane | null
 }
-
-test(`transient overlays render one live surface, carry its edits into the same-ID result and never export`, async () => {
-  mock_gpu()
-  const state = $state<LiveVolumeState>({
+// Mount a host-tool viewer bound to `structure` with no volumes or layers, overridden by `extra`
+const mount_live = async <Extra extends object = object>(
+  extra: Partial<LiveVolumeState> & Extra,
+) => {
+  const state = $state<LiveVolumeState & Extra>({
     structure,
     volumetric_data: [],
     isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
+    ...extra,
+  })
+  return { state, tool: await mount_host_structure(bind_props({}, state)) }
+}
+// The scene's first `count` sites (the input's, ahead of any image atoms)
+const scene_sites = (count = 2): Site[] =>
+  scene_stub.props?.structure?.sites.slice(0, count) ?? []
+// the one density layer, still carrying the user's isovalue edit
+const EDITED_DENSITY_LAYERS = [
+  expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
+]
+// a moved pair of two_site_crystal positions
+// oxfmt-ignore
+const MOVED_POSITIONS: Vec3[] = [[0.1, 0, 0], [2.2, 2.1, 2.3]]
+
+test(`transient overlays render one live surface, carry its edits into the same-ID result and never export`, async () => {
+  mock_gpu()
+  const { state, tool } = await mount_live({
     active_volume_id: undefined,
     active_pane: `export`,
   })
-  const tool = await mount_host_structure(bind_props({}, state))
   const layers = () => state.isosurface_settings.layers
   const export_prediction = `button[title="Download Export prediction"]`
   flushSync(() =>
@@ -822,9 +819,7 @@ test(`transient overlays render one live surface, carry its edits into the same-
     }),
   )
   expect(volume_labels(state.volumetric_data)).toEqual([`Converged`, `potential`])
-  expect(layers()).toEqual([
-    expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
-  ])
+  expect(layers()).toEqual(EDITED_DENSITY_LAYERS)
   await tick()
   expect(document.querySelector(export_prediction)).not.toBeNull()
   const { prediction } = tool.host_props
@@ -855,16 +850,12 @@ test(`transient overlays render one live surface, carry its edits into the same-
     expect(state.volumetric_data.map(({ label, values }) => [label, values[0]])).toEqual([
       [`Step`, value],
     ])
-    expect(layers()).toEqual([
-      expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
-    ])
+    expect(layers()).toEqual(EDITED_DENSITY_LAYERS)
     expect(tool.host_props.prediction).toBe(result)
     // The result's site properties stay on the atoms while its fields are previewed.
-    const scene_sites: AnyStructure[`sites`] | undefined =
-      scene_stub.props?.structure?.sites.slice(0, site_properties.length)
-    expect(scene_sites?.map(({ properties }) => properties?.charge)).toEqual(
-      site_properties.map(({ charge }) => charge),
-    )
+    expect(
+      scene_sites(site_properties.length).map(({ properties }) => properties?.charge),
+    ).toEqual(site_properties.map(({ charge }) => charge))
   }
   // A preview without fields (e.g. an earlier relaxation step) hides the density; its surface
   // and settings return with the field instead of a fresh default surface.
@@ -874,9 +865,7 @@ test(`transient overlays render one live surface, carry its edits into the same-
   flushSync(() =>
     tool.on_overlay({ transient: true, volumes: [live_volume(`density`, 2.5, `Step`)] }),
   )
-  expect(layers()).toEqual([
-    expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
-  ])
+  expect(layers()).toEqual(EDITED_DENSITY_LAYERS)
   expect(document.querySelector(export_prediction)).not.toBeNull()
   expect(JSON.parse(prediction_to_json(result ?? prediction)).volumes[0].values[0]).toBe(3)
   // Publishing the result again ends the preview.
@@ -898,34 +887,22 @@ test(`transient overlays render one live surface, carry its edits into the same-
 test(`host geometry moves drawn atoms and cell, keeps the input, selection and volume frames, and exports only final geometry`, async () => {
   mock_gpu()
   const input = two_site_crystal()
-  const state = $state<
-    LiveVolumeState & { selected_sites: number[]; prediction?: StructureToolPrediction }
-  >({
-    structure: input,
-    volumetric_data: [],
-    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
-    selected_sites: [],
-    prediction: undefined,
-  })
-  const tool = await mount_host_structure(bind_props({}, state))
+  const { state, tool } = await mount_live<{
+    selected_sites: number[]
+    prediction?: StructureToolPrediction
+  }>({ structure: input, selected_sites: [], prediction: undefined })
   flushSync(() => (state.selected_sites = [1]))
   const [tool_input, bound_input] = [tool.host_props.structure, state.structure]
   // Drawn sites (images excluded) and cell box.
   const drawn = () => ({
-    xyz: scene_stub.props?.structure?.sites
-      .slice(0, 2)
-      .map((site: AnyStructure[`sites`][number]) => site.xyz),
+    xyz: scene_sites().map(({ xyz }) => xyz),
     cell:
       scene_stub.props?.base_structure && `lattice` in scene_stub.props.base_structure
         ? scene_stub.props.base_structure.lattice.matrix
         : undefined,
   })
-  const step = (shift: number) => ({
-    positions: [
-      [shift, 0, 0],
-      [2 + shift, 2, 2],
-    ] as Vec3[],
-  })
+  // oxfmt-ignore
+  const step = (shift: number) => ({ positions: [[shift, 0, 0], [2 + shift, 2, 2]] as Vec3[] })
   // oxfmt-ignore
   const relaxed_cell: Matrix3x3 = [[4.4, 0, 0], [0, 4.4, 0], [0, 0, 4.4]]
   // A density on the relaxed cell keeps its own frame rather than the input's.
@@ -996,25 +973,13 @@ test(`host geometry moves drawn atoms and cell, keeps the input, selection and v
 test(`replace_input adopts a result's geometry as the input, keeps its prediction and surfaces, undo restores the input and redo the result`, async () => {
   mock_gpu()
   const input = two_site_crystal()
-  const state = $state<
-    LiveVolumeState & { measure_mode: MeasureMode; selected_sites: number[] }
-  >({
-    structure: input,
-    volumetric_data: [],
-    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
-    measure_mode: `distance`,
-    selected_sites: [],
-  })
-  const tool = await mount_host_structure(bind_props({}, state))
+  const { state, tool } = await mount_live<{
+    measure_mode: MeasureMode
+    selected_sites: number[]
+  }>({ structure: input, measure_mode: `distance`, selected_sites: [] })
   // oxfmt-ignore
   const relaxed_cell: Matrix3x3 = [[4.2, 0, 0], [0, 4.3, 0], [0.1, 0, 4.4]]
-  const geometry = {
-    positions: [
-      [0.1, 0, 0],
-      [2.2, 2.1, 2.3],
-    ] as Vec3[],
-    lattice: relaxed_cell,
-  }
+  const geometry = { positions: MOVED_POSITIONS, lattice: relaxed_cell }
   const site_properties = [{ charge: 0.4 }, { charge: -0.4 }]
   const publish = (energy: number) =>
     flushSync(() =>
@@ -1053,13 +1018,8 @@ test(`replace_input adopts a result's geometry as the input, keeps its predictio
   expect(prediction?.geometry).toBeUndefined()
   expect(prediction?.site_properties).toEqual(site_properties)
   expect(state.volumetric_data.map(({ id }) => id)).toEqual([`density`])
-  expect(state.isosurface_settings.layers).toEqual([
-    expect.objectContaining({ volume_id: `density`, isovalue: 0.123 }),
-  ])
-  const drawn_sites = scene_stub.props?.structure?.sites.slice(0, 2)
-  expect(drawn_sites?.map(({ xyz }: AnyStructure[`sites`][number]) => xyz)).toEqual(
-    geometry.positions,
-  )
+  expect(state.isosurface_settings.layers).toEqual(EDITED_DENSITY_LAYERS)
+  expect(scene_sites().map(({ xyz }) => xyz)).toEqual(geometry.positions)
   // Later publications of the same run still reach the host, carrying the new input.
   publish(-2)
   await tick()
@@ -1185,8 +1145,7 @@ test(`a host run's trail toggle hides that run's trail without saving it`, async
   const publish = (run: StructureToolRun) =>
     flushSync(() => run.on_overlay({ transient: true, geometry: trail[2], trail }))
   publish(tool)
-  doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click()
-  await tick()
+  await fire(doc_query(`button.structure-controls-toggle`))
   const toggle = doc_query<HTMLInputElement>(`[data-key="show_trajectory_lines"] input`)
   expect(toggle.checked).toBe(true)
   // The options a host trail ignores stay hidden.
@@ -1212,11 +1171,9 @@ test.each([`a supercell`, `a conventional cell`, `a trajectory stream`] as const
     mock_gpu()
     await init_moyo_for_tests()
     vi.stubEnv(`VITEST`, ``)
-    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
-      { element: `Cu`, abc: [0, 0, 0] },
-    ])
+    const prim_fcc_cu = fcc_cu()
     const own_stream = make_position_stream([[[0, 0, 0]], [[1, 0, 0]]], [`Cu`])
-    const props = $state<ComponentProps<typeof Structure>>({
+    const props = $state<StructureProps>({
       structure: prim_fcc_cu,
       analyze_symmetry: true,
       cell_type: `original`,
@@ -1253,15 +1210,13 @@ test.each([`cancel`, `failure`, `replace input`] as const)(
   `a transient overlay clears on %s and leaves the viewer's own fields`,
   async (reset) => {
     const own_volume = live_volume(`own`, 1, `Own file`)
-    const state = $state<LiveVolumeState>({
-      structure,
+    const { state, tool } = await mount_live({
       volumetric_data: [own_volume],
       isosurface_settings: {
         ...DEFAULT_ISOSURFACE_SETTINGS,
         layers: [{ ...auto_volume_layer(own_volume), isovalue: 0.9 }],
       },
     })
-    const tool = await mount_host_structure(bind_props({}, state))
     flushSync(() =>
       tool.on_overlay({
         transient: true,
@@ -1358,9 +1313,7 @@ test.each([
     })
     expect(state.atom_color_config).toEqual(original_color)
     // A later tool cleanup must not restore the saved configuration a second time.
-    flushSync(() => {
-      state.atom_color_config = { ...DEFAULT_ATOM_COLOR_CONFIG }
-    })
+    flushSync(() => (state.atom_color_config = { ...DEFAULT_ATOM_COLOR_CONFIG }))
     flushSync(() => tool_props.on_overlay(null))
     expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
     expect(state.isosurface_settings.layers).toEqual([])
@@ -1377,7 +1330,7 @@ test.each([
 ] as const)(
   `invalidates a mounted host run on %s with immediate restart=%s`,
   async (cause, restart) => {
-    const state = $state<ComponentProps<typeof Structure>>({
+    const state = $state<StructureProps>({
       structure: make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }]),
       volumetric_data: [],
     })
@@ -1401,8 +1354,7 @@ test.each([
         }
       })
     }
-    expect(run.signal.aborted).toBe(true)
-    expect(run.structure.sites[0].xyz[0]).toBe(0)
+    expect([run.signal.aborted, run.structure.sites[0].xyz[0]]).toEqual([true, 0])
     expect(state.volumetric_data).toEqual([])
     flushSync(() => run.on_overlay({ volumes: volumetric_data }))
     expect(state.volumetric_data).toEqual([])
@@ -1415,7 +1367,7 @@ test.each([
 )
 
 test(`reruns preserve surface appearance by field ID and explicit reset restores defaults`, async () => {
-  const state = $state<ComponentProps<typeof Structure>>({
+  const state = $state<StructureProps>({
     structure,
     volumetric_data: [],
     isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
@@ -1486,9 +1438,7 @@ test.each([`Original`, `Prediction`])(
       document.querySelector(`button[aria-label="Remove volume ${removed_label}"]`),
     ).toBeNull()
     const retained_label = removed_label === `Original` ? `Prediction` : `Original`
-    expect(
-      document.querySelector(`button[aria-label="Add surface for ${retained_label}"]`),
-    ).not.toBeNull()
+    doc_query(`button[aria-label="Add surface for ${retained_label}"]`)
     expect(state.volumetric_data.map(({ label }) => label)).toEqual([retained_label])
     if (removed_label === `Original`)
       expect(state.isosurface_settings.layers).toEqual([
@@ -1517,29 +1467,22 @@ test.each([false, true])(
     const overlay = { volumes: [{ ...volumetric_data[0], label: `Prediction` }] }
     flushSync(() => tool_props.on_overlay(overlay))
     flushSync(() => (state.isosurface_settings.layers[0].isovalue = 0.321))
-    doc_query(`.structure`).dispatchEvent(
-      create_drop_event(new File([SAMPLE_CHGCAR_CONTENT], `added.CHGCAR`)),
-    )
+    drop_file(SAMPLE_CHGCAR_CONTENT, `added.CHGCAR`)
     await vi.waitFor(() =>
       expect(state.volumetric_data.map(({ label }) => label)).toContain(`added.CHGCAR`),
     )
+    const label_of = (volume_id?: string) =>
+      state.volumetric_data.find(({ id }) => id === volume_id)?.label
     expect(state.active_volume_id).toBe(`density`)
     state.active_volume_id = state.volumetric_data.find(
       ({ label }) => label === `added.CHGCAR`,
     )?.id
     flushSync(() => tool_props.on_overlay({ ...overlay, site_properties: [{ charge: 1 }] }))
-    expect(
-      state.volumetric_data.find(({ id: identifier }) => identifier === state.active_volume_id)
-        ?.label,
-    ).toBe(`added.CHGCAR`)
+    expect(label_of(state.active_volume_id)).toBe(`added.CHGCAR`)
     const predicted_layer = state.isosurface_settings.layers.find(
       ({ isovalue }) => isovalue === 0.321,
     )
-    expect(
-      state.volumetric_data.find(
-        ({ id: identifier }) => identifier === predicted_layer?.volume_id,
-      )?.label,
-    ).toBe(`Prediction`)
+    expect(label_of(predicted_layer?.volume_id)).toBe(`Prediction`)
     // A selected prediction field should return to the imported volume on clear.
     flushSync(() => {
       tool_props.on_overlay({ ...overlay, volumes: [{ ...overlay.volumes[0] }] })
@@ -1549,10 +1492,7 @@ test.each([false, true])(
     expect(state.volumetric_data.map(({ label }) => label)).toEqual(
       with_base ? [`Original`, `added.CHGCAR`] : [`added.CHGCAR`],
     )
-    expect(
-      state.volumetric_data.find(({ id: identifier }) => identifier === state.active_volume_id)
-        ?.label,
-    ).toBe(`added.CHGCAR`)
+    expect(label_of(state.active_volume_id)).toBe(`added.CHGCAR`)
   },
 )
 
@@ -1560,10 +1500,10 @@ test.each([false, true])(
   `host density respects each field's coordinate frame with finite volume removed=%s`,
   async (remove_finite) => {
     await init_moyo_for_tests()
-    const crystal = make_crystal(fcc_primitive_matrix(3.61), [
-      { element: `Cu`, abc: [0.13, 0.27, 0.41] },
-    ])
-    const state = $state<ComponentProps<typeof Structure>>({
+    const crystal = fcc_cu([0.13, 0.27, 0.41])
+    const body = () => document.body.textContent ?? ``
+    const partial_note = `partially periodic prediction density is shown only in the input cell`
+    const state = $state<StructureProps>({
       structure: crystal,
       cell_type: `original`,
       display_mode: `structure`,
@@ -1585,27 +1525,21 @@ test.each([false, true])(
       state.cell_type = `conventional`
       state.supercell_scaling = `2x1x1`
     })
-    expect(document.body.textContent).toContain(
-      `Prediction density is hidden in standardized cells`,
-    )
-    expect(document.body.textContent).not.toContain(`Reset supercell to 1×1×1`)
+    expect(body()).toContain(`Prediction density is hidden in standardized cells`)
+    expect(body()).not.toContain(`Reset supercell to 1×1×1`)
     // Host geometry follows only the input cell too.
     const geometry = { positions: crystal.sites.map(({ xyz }) => xyz) }
     flushSync(() => tool_props.on_overlay({ ...overlay, geometry }))
-    expect(document.body.textContent).toContain(
-      `Predicted geometry is hidden in standardized cells`,
-    )
+    expect(body()).toContain(`Predicted geometry is hidden in standardized cells`)
     flushSync(() => tool_props.set_overlay_visible(false))
-    expect(document.body.textContent).not.toContain(`hidden in standardized cells`)
+    expect(body()).not.toContain(`hidden in standardized cells`)
     flushSync(() => tool_props.set_overlay_visible(true))
     flushSync(() => tool_props.on_overlay(overlay))
     flushSync(() => (state.display_mode = `slice`))
-    expect(document.body.textContent).toContain(`No volumetric data available`)
+    expect(body()).toContain(`No volumetric data available`)
     click_button(`Use original cell`)
     flushSync(() => (state.display_mode = `structure`))
-    expect(
-      document.querySelector(`button[aria-label="Add surface for Prediction"]`),
-    ).not.toBeNull()
+    doc_query(`button[aria-label="Add surface for Prediction"]`)
     flushSync(() =>
       tool_props.on_overlay({
         ...overlay,
@@ -1616,25 +1550,17 @@ test.each([false, true])(
       state.supercell_scaling = `2x1x1`
       state.cell_type = `conventional`
     })
-    expect(document.body.textContent).toContain(`Reset supercell to 1×1×1`)
+    expect(body()).toContain(`Reset supercell to 1×1×1`)
     click_button(`Use original cell`)
     expect(state.supercell_scaling).toBe(`2x1x1`)
-    expect(document.body.textContent).toContain(
-      `partially periodic prediction density is shown only in the input cell`,
-    )
-    expect(
-      document.querySelector(`button[aria-label="Add surface for Prediction"]`),
-    ).not.toBeNull()
+    expect(body()).toContain(partial_note)
+    doc_query(`button[aria-label="Add surface for Prediction"]`)
     flushSync(() =>
       tool_props.on_overlay({
         ...overlay,
         volumes: [
           { ...overlay.volumes[0], periodic: false },
-          {
-            ...overlay.volumes[0],
-            label: `Periodic prediction`,
-            id: `periodic-density`,
-          },
+          { ...overlay.volumes[0], label: `Periodic prediction`, id: `periodic-density` },
         ],
       }),
     )
@@ -1647,32 +1573,18 @@ test.each([false, true])(
       state.active_volume_id = `periodic-density`
       state.display_mode = `slice`
     })
-    expect(
-      document.body.textContent?.includes(
-        `partially periodic prediction density is shown only in the input cell`,
-      ),
-    ).toBe(!remove_finite)
-    expect(
-      document.querySelector(`input[aria-label="Slice position on canvas"]`),
-    ).not.toBeNull()
+    expect(body().includes(partial_note)).toBe(!remove_finite)
+    doc_query(`input[aria-label="Slice position on canvas"]`)
     if (!remove_finite) {
       click_button(`Reset supercell to 1×1×1`)
       expect(state.supercell_scaling).toBe(`1x1x1`)
-      expect(document.body.textContent).not.toContain(
-        `partially periodic prediction density is shown only`,
-      )
+      expect(body()).not.toContain(`partially periodic prediction density is shown only`)
     }
   },
 )
 
-const mount_volumetric = (
-  overrides: Partial<ComponentProps<typeof Structure>> = {},
-): ComponentProps<typeof Structure> => {
-  const props = $state<ComponentProps<typeof Structure>>({
-    structure,
-    volumetric_data,
-    ...overrides,
-  })
+const mount_volumetric = (overrides: Partial<StructureProps> = {}): StructureProps => {
+  const props = $state<StructureProps>({ structure, volumetric_data, ...overrides })
   mount_structure(props)
   return props
 }
@@ -1694,1256 +1606,1110 @@ const stub_fullscreen_api = () => {
   return { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element }
 }
 
-describe(`Structure`, () => {
-  // A legend remap (VASP 4 placeholder H -> Fe) is what the info pane describes and the text
-  // exports write: both read the unmapped input, so POSCAR still said H at a 56x lower density
-  test(`element remapping reaches the info pane's formula and density and the text exports`, async () => {
-    const poscar_reason = vi.spyOn(
-      export_funcs.STRUCT_TEXT_FORMATS.poscar,
-      `unavailable_reason`,
+// A legend remap (VASP 4 placeholder H -> Fe) is what the info pane describes and the text
+// exports write: both read the unmapped input, so POSCAR still said H at a 56x lower density
+test(`element remapping reaches the info pane's formula and density and the text exports`, async () => {
+  const poscar_reason = vi.spyOn(export_funcs.STRUCT_TEXT_FORMATS.poscar, `unavailable_reason`)
+  const crystal = make_crystal(3, [{ element: `H`, abc: [0, 0, 0] }])
+  const state = $state<StructureProps>({ structure: crystal, active_pane: `info` })
+  await mount_settled(state)
+  const density = () =>
+    Number(
+      /(?<density>[\d.]+) g\/cm³/.exec(
+        document.querySelector(`.structure-info`)?.textContent ?? ``,
+      )?.groups?.density,
     )
-    const crystal = make_crystal(3, [{ element: `H`, abc: [0, 0, 0] }])
-    const state = $state<ComponentProps<typeof Structure>>({
-      structure: crystal,
-      active_pane: `info`,
-    })
-    mount_structure(state)
-    await tick()
-    const density = () =>
-      Number(
-        /(?<density>[\d.]+) g\/cm³/.exec(
-          document.querySelector(`.structure-info`)?.textContent ?? ``,
-        )?.groups?.density,
-      )
-    const h_density = density()
-    doc_query(`.element-legend label`).dispatchEvent(
-      new MouseEvent(`contextmenu`, { bubbles: true }),
-    )
-    await tick()
-    const search = doc_query<HTMLInputElement>(`.remap-search`)
-    set_input(search, `Fe`)
-    search.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
-    await tick()
-    expect(document.querySelector(`.structure-info`)?.textContent).toContain(`Fe`)
-    // the ratio of the atomic masses (Fe 55.845, H 1.008) at 3 significant digits of density
-    expect(density() / h_density).toBeCloseTo(55.845 / 1.008, 0)
-    state.active_pane = `export`
-    await tick()
-    const exported = poscar_reason.mock.lastCall?.[0]
-    expect(exported?.sites.map(({ species }) => species[0].element)).toEqual([`Fe`])
-  })
-
-  // Any CSS color takes the opacity, multiplied into its own alpha: `white` + an alpha byte was
-  // invalid CSS (the viewer went transparent) and add_alpha replaced a color's own alpha
-  test.each([
-    [`#ff0000`, 0.1, 0.1],
-    [`white`, 0.5, 0.5],
-    [`rgba(0, 0, 255, 0.5)`, 0.5, 0.25],
-    [`#0f0`, 1, 1],
-  ])(`background_color %s at opacity %f has alpha %f`, (color, opacity, alpha) => {
-    mount_structure({ background_color: color, background_opacity: opacity })
-    const css = doc_query(`.structure`).style.getPropertyValue(`--struct-bg-override`)
-    const parsed = rgb(css)
-    expect(parsed.displayable()).toBe(true)
-    expect(parsed.opacity).toBeCloseTo(alpha, 12)
-  })
-  // a color only the browser resolves keeps its var() and mixes in the opacity
-  test(`a var() background_color is mixed with transparent by its opacity`, () => {
-    mount_structure({ background_color: `var(--brand)`, background_opacity: 0.4 })
-    expect(doc_query(`.structure`).style.getPropertyValue(`--struct-bg-override`)).toBe(
-      `color-mix(in srgb, var(--brand) 40%, transparent)`,
-    )
-  })
-
-  test(`each viewer keeps its own color_scheme and picked colors, page colors untouched`, async () => {
-    const page_colors = { ...colors.element }
-    const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])
-    for (const color_scheme of [`Jmol`, `Vesta`] as const) {
-      mount_structure({ structure: oxide, color_scheme })
-    }
-    const swatches = () =>
-      [...document.querySelectorAll<HTMLElement>(`.element-legend label`)].map(
-        (label) => label.style.backgroundColor,
-      )
-    await vi.waitFor(() =>
-      expect(swatches()).toEqual([
-        ELEMENT_COLOR_SCHEMES.Jmol.O,
-        ELEMENT_COLOR_SCHEMES.Vesta.O,
-      ]),
-    )
-    const picker = doc_query<HTMLInputElement>(`.element-legend input[type="color"]`)
-    set_input(picker, `#123456`)
-    await vi.waitFor(() =>
-      expect(swatches()).toEqual([`#123456`, ELEMENT_COLOR_SCHEMES.Vesta.O]),
-    )
-    expect(() =>
-      mount_structure({ structure: oxide, color_scheme: `vesta` as ColorSchemeName }),
-    ).toThrow(`Unknown color_scheme 'vesta', expected one of Vesta, Jmol`)
-    expect(colors.element).toEqual(page_colors)
-  })
-
-  test(`shows a dismissible symmetry warning when analysis fails`, async () => {
-    vi.stubEnv(`VITEST`, ``)
-    vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValueOnce(undefined)
-    vi.spyOn(symmetry, `analyze_structure_symmetry`).mockRejectedValueOnce(
-      new Error(`WASM unavailable`),
-    )
-    vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    mount_structure({ structure, analyze_symmetry: true })
-    await vi.waitFor(() =>
-      expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
-    )
-    // stacked top-center with the other notices, clear of the bottom-right atom legend
-    const warning = doc_query(`.viewer-notices .symmetry-error`)
-    expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
-    expect(warning.closest(`[role]`)?.getAttribute(`role`)).toBe(`status`)
-    doc_query<HTMLButtonElement>(`.symmetry-error button`).click()
-    flushSync()
-    expect(document.querySelector(`.symmetry-error`)).toBeNull()
-  })
-
-  test.each([`disabled`, `molecule`, `empty`, `unmounted`] as const)(
-    `ignores a pending symmetry failure after becoming %s`,
-    async (transition) => {
-      vi.stubEnv(`VITEST`, ``)
-      vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
-      const pending = Promise.withResolvers<never>()
-      const analyze = vi
-        .spyOn(symmetry, `analyze_structure_symmetry`)
-        .mockReturnValue(pending.promise)
-      const error = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const props = $state<ComponentProps<typeof Structure>>({
-        structure,
-        analyze_symmetry: true,
-      })
-      const analysis = mount_structure(props)
-      await vi.waitFor(() => expect(analyze).toHaveBeenCalled())
-      if (transition === `disabled`) props.analyze_symmetry = false
-      else if (transition === `molecule`) props.structure = { sites: structure.sites }
-      else if (transition === `empty`) props.structure = undefined
-      else for (const component of mounted.splice(0)) await unmount(component)
-      flushSync()
-      pending.reject(new Error(`stale symmetry result`))
-      await tick()
-      await tick()
-      expect(error).not.toHaveBeenCalled()
-      expect(analysis.sym_data).toBeNull()
-      expect(document.querySelector(`.symmetry-error`)).toBeNull()
-    },
+  const h_density = density()
+  doc_query(`.element-legend label`).dispatchEvent(
+    new MouseEvent(`contextmenu`, { bubbles: true }),
   )
-
-  // The ~0.75 MB WASM loads only once the viewer is pressed or focused or the display needs
-  // symmetry (never on hover), and a demand sticks: closing the pane or going back to the
-  // original cell keeps the data
-  const wyckoff_colors: AtomColorConfig = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `wyckoff` }
-  test.each<[string, Partial<ComponentProps<typeof Structure>>, string | null, boolean]>([
-    [`disabled, even when pressed`, { analyze_symmetry: false }, `pointerdown`, false],
-    [`on demand, untouched`, {}, null, false],
-    [`on demand, not on mere hover`, {}, `pointerenter`, false],
-    [`on demand, on press`, {}, `pointerdown`, true],
-    [
-      `on demand, on press with a host handler`,
-      { onpointerdown: vi.fn() },
-      `pointerdown`,
-      true,
-    ],
-    [`on demand, on focus`, {}, `focusin`, true],
-    [`on demand, on focus with a host handler`, { onfocusin: vi.fn() }, `focusin`, true],
-    [`on demand, for a conventional cell`, { cell_type: `conventional` }, null, true],
-    [`on demand, for Wyckoff coloring`, { atom_color_config: wyckoff_colors }, null, true],
-    [`on demand, for an open pane`, { active_pane: `info` }, null, true],
-  ])(`symmetry analysis %s`, async (_label, props, event, expected) => {
-    vi.stubEnv(`VITEST`, ``)
-    const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
-    // never lands: only whether (and how often) analysis starts matters here
-    const analyze_spy = vi
-      .spyOn(symmetry, `analyze_structure_symmetry`)
-      .mockReturnValue(Promise.withResolvers<never>().promise)
-    const state = $state<ComponentProps<typeof Structure>>({ structure, ...props })
-    mount_structure(state)
-    flushSync()
-    const fire_on_viewer = async (type?: string | null) =>
-      type ? fire(doc_query(`.structure`), new Event(type, { bubbles: true })) : tick()
-    await fire_on_viewer(event)
-    expect(ready_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
-    expect(analyze_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
-    // the viewer's own handlers compose with the host's instead of being replaced
-    const host_handler = props.onpointerdown ?? props.onfocusin
-    if (host_handler) expect(host_handler).toHaveBeenCalledOnce()
-    // while the analysis runs, the cell menu says Prim/Conv are coming rather than unavailable
-    await fire(doc_query(`.cell-select .toggle-btn`))
-    expect(doc_query(`.cell-type-btn:nth-child(2)`).getAttribute(`aria-label`)).toContain(
-      expected ? `analyzing symmetry…` : `requires symmetry data`,
-    )
-    if (!expected) return
-    // the demand outlives what raised it: dropping and re-raising the need neither clears the
-    // data (which would re-analyze on the way back) nor analyzes again
-    await fire_on_viewer({ focusin: `focusout` }[event ?? ``])
-    Object.assign(state, {
-      active_pane: null,
-      cell_type: `original`,
-      atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
-    })
-    flushSync()
-    Object.assign(state, props)
-    await fire_on_viewer(event)
-    expect(analyze_spy).toHaveBeenCalledTimes(1)
-    expect(document.querySelector(`.symmetry-error`)).toBeNull()
-  })
-
-  test(`switches a volumetric structure between shared 3D and slice views`, async () => {
-    const props = mount_volumetric({
-      show_controls: `always`,
-      display_mode: `structure`,
-      slice_settings: { plane_mode: `hkl`, resolution: 2 },
-    })
-    await tick()
-
-    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
-
-    await select_structure_layout(`2D cross-section`)
-
-    expect(props.display_mode).toBe(`slice`)
-    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
-    expect(document.querySelector(`button[title="Measure / Edit"]`)).toBeNull()
-
-    set_aria_input(`Slice position on canvas`, `0.75`)
-    await tick()
-    expect(props.slice_settings?.position).toBe(0.75)
-
-    const controls_toggle = doc_query<HTMLButtonElement>(`button.structure-controls-toggle`)
-    controls_toggle.click()
-    await tick()
-    expect(document.querySelector(`.controls-pane`)).toBeInstanceOf(HTMLElement)
-    const plane_select = doc_query<HTMLSelectElement>(`select[aria-label="Slice plane mode"]`)
-    expect(plane_select.value).toBe(`hkl`)
-    set_aria_input(`Slice resolution`, `3`)
-    await tick()
-    expect(props.slice_settings).toEqual(
-      expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
-    )
-
-    for (const [value, value_range] of [
-      [`1`, [1, 7]],
-      [``, undefined],
-    ] as const) {
-      set_aria_input(`Slice color minimum`, value)
-      await tick()
-      expect(props.slice_settings?.color_scale).toEqual({
-        scheme: `interpolateRdBu`,
-        value_range,
-      })
-    }
-  })
-
-  test(`split layout shows 3D beside the slice and marks the slice plane in 3D`, async () => {
-    mock_gpu()
-    const props = mount_volumetric({
-      show_controls: `always`,
-      display_mode: `structure`,
-      slice_settings: { plane_mode: `hkl`, miller_indices: [0, 0, 1], position: 0.3 },
-    })
-    await tick()
-    expect(scene_stub.props?.slice_polygon).toEqual([])
-
-    await select_structure_layout(`3D + 2D cross-section`)
-    expect(props.display_mode).toBe(`split`)
-    // the cross-section sits in the 3D stage and 3D chrome stays available
-    doc_query(`.viewport-stage.split [data-testid="volume-slice"]`)
-    doc_query(`button[aria-label="Measure / Edit"]`)
-    // (001) at 30% of the unit cell's height: the square z = 0.3
-    const square: Vec3[] = scene_stub.props?.slice_polygon ?? []
-    expect(square.map((corner) => corner[2])).toEqual(Array(4).fill(expect.closeTo(0.3, 12)))
-
-    // both volume panes in the controls, plus the plane toggle that hides it from the scene
-    flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
-    doc_query(`select[aria-label="Slice plane mode"]`)
-    expect(doc_query(`.controls-pane`).textContent).toContain(`isosurface + cross-section`)
-    const plane_toggle = `input[aria-label="Show slice plane in 3D"]`
-    flushSync(() => doc_query<HTMLInputElement>(plane_toggle).click())
-    expect(props.slice_settings?.show_plane).toBe(false)
-    expect(scene_stub.props?.slice_polygon).toEqual([])
-
-    await select_structure_layout(`2D cross-section`)
-    expect(document.querySelector(plane_toggle)).toBeNull()
-  })
-
-  // volume-only data has no sites to show, and a stale volume ID falls back to the first one
-  test.each([
-    [`volume-only data with no atomic sites`, { structure: { ...structure, sites: [] } }],
-    [`a missing selected volume ID with controls closed`, { active_volume_id: `9` }],
-  ])(`renders slice mode for %s`, async (_label, overrides) => {
-    const props = mount_volumetric({
-      display_mode: `slice`,
-      slice_settings: { plane_mode: `hkl`, resolution: 2 },
-      ...overrides,
-    })
-    await tick()
-    if (`active_volume_id` in overrides) expect(props.active_volume_id).toBe(`density`)
-    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
-    expect(document.body.textContent).not.toContain(`No sites found in structure`)
-  })
-
-  test(`keeps a 3D escape when volumes clear with the view control hidden`, async () => {
-    const props = mount_volumetric({
-      display_mode: `slice`,
-      slice_settings: { resolution: 2 },
-      show_controls: { mode: `always`, hidden: [`view-mode`] },
-    })
-    await tick()
-
-    props.volumetric_data = []
-    await tick()
-    await select_structure_layout(`3D single view`)
-
-    expect(props.display_mode).toBe(`structure`)
-    expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
-  })
-
-  test(`reveals atom color mode toggle while viewer is hovered or focused`, async () => {
-    mount_structure({ structure })
-    await tick()
-
-    const viewer = doc_query(`.structure`)
-    const mode_toggle = doc_query<HTMLButtonElement>(`.atom-legend .mode-toggle`)
-    const expect_shown = (shown: boolean) =>
-      expect([getComputedStyle(mode_toggle).opacity, mode_toggle.tabIndex]).toEqual(
-        shown ? [`1`, 0] : [`0`, -1],
-      )
-    expect_shown(false)
-    viewer.focus()
-    await tick()
-    expect_shown(true)
-    mode_toggle.focus()
-    await tick()
-    expect(document.activeElement).toBe(mode_toggle)
-    expect_shown(true)
-    mode_toggle.blur()
-    await tick()
-    expect_shown(false)
-    // second hover cycle: the unbound $bindable hovered prop must keep driving the toggle
-    for (const _cycle of [1, 2]) {
-      await fire(viewer, new PointerEvent(`pointerenter`))
-      expect_shown(true)
-      await fire(viewer, new PointerEvent(`pointerleave`))
-      expect_shown(false)
-    }
-  })
-
-  test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
-    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-    const state = $state({ active_pane: null as StructurePane | null })
-    mount_structure(bind_props({ structure, enable_info_pane: true }, state))
-    await tick()
-
-    await assertHoverScopedShortcut({
-      viewer: doc_query(`.structure`),
-      trigger: () => press_window_key({ key: `i` }),
-      read_state: () => state.active_pane === `info`,
-    })
-    await fire(doc_query(`.structure`), keydown(`i`))
-    expect(state.active_pane).toBe(`info`)
-    expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
-    vi.advanceTimersByTime(400)
-    // the open pane's own Escape layer closes it (Structure has no pane binding of its own)
-    expect(doc_query(`.structure-info-pane`).classList).toContain(`viewer-pane-open`)
-    await fire(doc_query(`.structure`), keydown(`Escape`))
-    expect(state.active_pane).toBeNull()
-    expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
-  })
-
-  // Each layer key flips its layer off then back on, restoring the mode it had (polyhedra's
-  // default `crystals`, a chosen `crystals` for bonds) when it covers the structure, else
-  // `always` (polyhedra on a molecule)
-  const { lattice: _cell, ...lattice_free } = structure
-  // oxfmt-ignore
-  test.each([
-    [`a`, `show_atoms`, structure, {}, [true, false, true]],
-    [`A`, `show_image_atoms`, structure, {}, [true, false, true]],
-    [`b`, `show_bonds`, structure, {}, [`always`, `never`, `always`]],
-    [`b`, `show_bonds`, structure, { show_bonds: `crystals` }, [`crystals`, `never`, `crystals`]],
-    [`p`, `show_polyhedra`, structure, {}, [`crystals`, `never`, `crystals`]],
-    [`p`, `show_polyhedra`, lattice_free, {}, [`crystals`, `always`, `never`]],
-  ] as const)(`key %s toggles %s`, async (key, layer, target, initial, expected) => {
-    const scene_props = { ...DEFAULTS.structure, ...initial }
-    const state = $state({ scene_props, show_image_atoms: true })
-    mount_structure(bind_props({ structure: target }, state))
-    await tick()
-    const read = () =>
-      layer === `show_image_atoms` ? state.show_image_atoms : state.scene_props[layer]
-    const values: unknown[] = [read()]
-    for (const _press of [1, 2]) {
-      await fire(doc_query(`.structure`), keydown(key, { shiftKey: key === `A` }))
-      values.push(read())
-    }
-    expect(values).toEqual(expected)
-  })
-
-  // Edit modes keep B/P off (they would hide what is being edited), and Shift+B/P toggle
-  // nothing in any mode
-  test.each([`edit-atoms`, `edit-bonds`, `distance`] as const)(
-    `layer keys in %s mode`,
-    async (measure_mode) => {
-      const state = $state({ scene_props: { ...DEFAULTS.structure }, measure_mode })
-      mount_structure(bind_props({ structure }, state))
-      await tick()
-      for (const [key, shiftKey] of [
-        [`b`, true],
-        [`p`, true],
-        [`b`, false],
-        [`p`, false],
-      ] as const)
-        await fire(doc_query(`.structure`), keydown(key, { shiftKey }))
-      const { show_bonds, show_polyhedra } = state.scene_props
-      expect([state.measure_mode, show_bonds, show_polyhedra]).toEqual(
-        measure_mode === `distance`
-          ? [measure_mode, `never`, `never`]
-          : [measure_mode, `always`, `crystals`],
-      )
-    },
-  )
-
-  test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
-    const state = {
-      active_pane: null as StructurePane | null,
-      measure_mode: `edit-atoms` as MeasureMode,
-    }
-    mount_structure(bind_props({ structure, enable_info_pane: true }, state))
-    await tick()
-    expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
-      `edit-atoms`,
-    )
-    expect_shortcuts_in_pane(document, `.structure-info-pane`, [
-      `viewer`,
-      `structure`,
-      `camera`,
-      `structure-edit`,
-    ])
-
-    await fire(doc_query(`.structure`), new PointerEvent(`pointerenter`))
-    // hovered (not focused) + edit mode → window forwarder ignores the key
-    press_window_key({ key: `i` })
-    expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
-  })
-
-  test.each([
-    [`a`, true, `Escape`],
-    [`a`, false, `Escape`],
-    [`e`, true, `Escape`],
-    [`e`, false, `Escape`],
-    [`e`, true, `Enter`],
-  ] as const)(
-    `edit-atoms %s opens a field (from input: %s); %s closes quietly`,
-    async (key, from_input, dismiss_key) => {
-      vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-      const state = $state<{
-        structure: AnyStructure
-        measure_mode: MeasureMode
-        selected_sites: number[]
-      }>({ structure, measure_mode: `edit-atoms`, selected_sites: [] })
-      mount_structure(state)
-      await tick()
-      state.selected_sites = [0]
-      const viewer = doc_query(`.structure`)
-      await fire(viewer, keydown(key, { isComposing: true }))
-      expect(document.querySelector(`.add-atom-input`)).toBeNull()
-      await fire(viewer, keydown(key, { cancelable: true }))
-      const toggle = doc_query(`.measure-mode-dropdown > button`)
-      expect(toggle.style.boxShadow).toContain(`1px`)
-      // Let the opening flash expire so it cannot hide a new flash on Escape.
-      vi.advanceTimersByTime(400)
-      const input = doc_query<HTMLInputElement>(`.add-atom-input input`)
-      input.value = `H`
-      await fire(input, new Event(`input`, { bubbles: true }))
-      const dismiss_target = from_input ? input : viewer
-      for (const is_composing of [true, false]) {
-        const ignored = keydown(dismiss_key, { isComposing: is_composing, cancelable: true })
-        if (!is_composing) ignored.preventDefault()
-        await fire(dismiss_target, ignored)
-        expect(document.querySelector(`.add-atom-input input`)).toBe(input)
-        expect(state.selected_sites).toEqual([0])
-        expect(state.structure.sites[0].species).toEqual(structure.sites[0].species)
-      }
-      // Other editable fields own Escape, even while atom placement is active.
-      const other_input = document.createElement(`input`)
-      viewer.append(other_input)
-      other_input.focus()
-      const escape = keydown(`Escape`, { cancelable: true })
-      await fire(other_input, escape)
-      expect(escape.defaultPrevented).toBe(false)
-      expect(document.querySelector(`.add-atom-input input`)).toBe(input)
-      expect(state.selected_sites).toEqual([0])
-      other_input.remove()
-      const dismiss = keydown(dismiss_key, { cancelable: true })
-      await fire(dismiss_target, dismiss)
-      expect(dismiss.defaultPrevented).toBe(key === `a` || !from_input)
-      expect(document.querySelector(`.add-atom-input`)).toBeNull()
-      expect(toggle.style.boxShadow).toBe(``)
-      expect(state.selected_sites).toEqual([0])
-      expect(state.structure.sites[0].species[0].element).toBe(
-        dismiss_key === `Enter` ? `H` : structure.sites[0].species[0].element,
-      )
-      // Selection clears before edit mode exits.
-      for (const mode of [`edit-atoms`, `distance`]) {
-        await fire(viewer, keydown(`Escape`, { cancelable: true }))
-        expect(state.selected_sites).toEqual([])
-        expect(state.measure_mode).toBe(mode)
-        expect(toggle.style.boxShadow).toBe(``)
-      }
-    },
-  )
-
-  test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
-    // Deleting site 0 drops its bond and shifts the 1-2 bond down to 0-1; undo
-    // must restore both structure sites and the remapped bindable bonds prop
-    const orig_bonds: StructureBond[] = [
-      { site_idx_1: 0, site_idx_2: 1, order: 1 },
-      { site_idx_1: 1, site_idx_2: 2, order: 2 },
-    ]
-    const state = {
-      structure: structures[0],
-      bonds: structuredClone(orig_bonds),
-      selected_sites: [] as number[],
-    }
-    const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
-    mount_structure(bind_props(edit_props, state))
-    await tick()
-    state.selected_sites = [0] // select after mount (on-load effect clears selection)
-    const n_before = state.structure.sites.length
-
-    const delete_event = await press(`Delete`, {})
-    expect(delete_event.defaultPrevented, `Delete should be handled`).toBe(true)
-    expect(state.structure.sites).toHaveLength(n_before - 1)
-    expect(state.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
-
-    await press(`z`)
-    expect(state.structure.sites).toHaveLength(n_before)
-    expect(state.bonds).toEqual(orig_bonds)
-    expect(doc_query(`button[aria-label="Undo (Cmd/Ctrl+Z)"]`).style.boxShadow).toContain(
-      `1px`,
-    )
-  })
-
-  test.each([`add`, `delete`] as const)(
-    `bond shortcut highlights the %s toggle`,
-    async (mode) => {
-      vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-      mount_structure({
-        structure,
-        measure_mode: `edit-bonds`,
-        bond_edit_mode: mode === `add` ? `delete` : `add`,
-      })
-      await tick() // the root's key listener attaches in an effect
-      await fire(doc_query(`.structure`), keydown(mode === `add` ? `a` : `d`))
-      const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
-      expect(selected.textContent?.trim().toLowerCase()).toBe(mode)
-      expect(selected.style.boxShadow).toContain(`1px`)
-      vi.advanceTimersByTime(400)
-      await fire(doc_query(`.structure`), keydown(`Escape`))
-      expect(document.querySelector(`.bond-edit-toolbar`)).toBeNull()
-      expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toBe(``)
-    },
-  )
-
-  test.each([
-    [{ supercell_scaling: `2x1x1` }, true],
-    [{ supercell_scaling: `2x1x1`, apply_supercell_scaling: false }, true],
-    [{ supercell_scaling: `invalid` }, false],
-    [{ supercell_scaling: `1×1×1` }, false],
-    [{ cell_type: `conventional` }, true],
-  ] as const)(
-    `sets edit-bonds availability for %o to disabled=%s`,
-    async (props, disabled) => {
-      const state = { measure_mode: `distance` as MeasureMode }
-      mount_structure(bind_props({ structure, show_controls: true, ...props }, state))
-
-      const measure_btn = doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`)
-      // icon-only button needs an accessible name (title alone is unreliable for AT)
-      expect(measure_btn.getAttribute(`aria-label`)).toBe(`Measure / Edit`)
-      measure_btn.click()
-      await tick()
-      const edit_bonds_button = [
-        ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
-      ].find((button) => button.textContent?.includes(`Edit Bonds`))
-
-      expect(edit_bonds_button?.disabled).toBe(disabled)
-      edit_bonds_button?.click()
-      await tick()
-      expect(state.measure_mode).toBe(disabled ? `distance` : `edit-bonds`)
-    },
-  )
-
-  // Aperiodic boxes still support supercell repetition; molecules have no cell to repeat.
-  test.each([
-    [`fully periodic crystal`, [true, true, true], true],
-    [`slab periodic along two axes`, [true, true, false], true],
-    [`cluster in a vacuum box`, [false, false, false], true],
-    [`molecule without a lattice`, null, false],
-  ] satisfies [string, Pbc | null, boolean][])(
-    `cell select shown for a %s: %s`,
-    async (_name, pbc, shown) => {
-      if (!(`lattice` in structure)) throw new Error(`Expected a crystal fixture`)
-      const { lattice: _lattice, ...molecule } = structure
-      mount_structure({
-        structure: pbc ? { ...structure, lattice: { ...structure.lattice, pbc } } : molecule,
-      })
-      await tick()
-      expect(document.querySelector(`.cell-select`) !== null).toBe(shown)
-    },
-  )
-
-  test(`shows an already-materialized supercell without expanding it again`, async () => {
-    vi.mocked(make_supercell).mockClear()
-    const state = mount_structure({
-      structure,
-      supercell_scaling: `3x3x3`,
-      apply_supercell_scaling: false,
-      show_image_atoms: false,
-    })
-
-    await vi.waitFor(() =>
-      expect(state.displayed_structure?.sites).toHaveLength(structure.sites.length),
-    )
-    expect(vi.mocked(make_supercell)).not.toHaveBeenCalled()
-    expect(doc_query(`.cell-select .toggle-btn`).textContent?.replaceAll(/\s/g, ``)).toBe(
-      `3x3x3`,
-    )
-  })
-
-  test(`displayed_structure keeps its identity across unrelated prop changes`, async () => {
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      active_volume_id: `0`,
-      volumetric_data: undefined,
-    })
-    const analysis = mount_structure(props)
-    let runs = 0
-    const destroy = $effect.root(() => {
-      $effect(() => {
-        void analysis.displayed_structure
-        runs += 1
-      })
-    })
-    await tick()
-    const [displayed, runs_before] = [analysis.displayed_structure, runs]
-    expect(displayed?.sites.length).toBeGreaterThan(0)
-    props.active_volume_id = `3`
-    await tick()
-    expect(analysis.displayed_structure).toBe(displayed)
-    expect(runs).toBe(runs_before)
-    destroy()
-  })
-
-  test.each([
-    [`aperiodic`, [false, false, false], [-0.1, 1.2, 2.1]],
-    [`partially periodic`, [true, false, true], [0.9, 1.2, 0.1]],
-  ] satisfies [string, Pbc, Vec3][])(
-    `wraps displayed coordinates only on %s axes`,
-    async (_name, pbc, expected) => {
-      if (!(`lattice` in structure)) throw new Error(`Expected a crystal fixture`)
-      const abc: Vec3 = [-0.1, 1.2, 2.1]
-      const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
-      const out_of_cell = {
-        ...structure,
-        lattice: { ...structure.lattice, pbc },
-        sites: [{ ...structure.sites[0], abc, xyz: frac_to_cart(abc) }],
-      }
-      const state = mount_structure({ structure: out_of_cell, show_image_atoms: false })
-      await vi.waitFor(() => expect(state.displayed_structure).toBeDefined())
-      const displayed_site = state.displayed_structure?.sites[0]
-      expect(displayed_site?.abc).toEqual(expected)
-      expect(displayed_site?.xyz).toEqual(frac_to_cart(expected))
-    },
-  )
-
-  test(`falls back to untransformed structure when make_supercell throws`, async () => {
-    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-    vi.mocked(make_supercell).mockImplementationOnce(() => {
-      throw new Error(`malformed scaling matrix`)
-    })
-    const state = { measure_mode: `edit-bonds` as MeasureMode }
-    mount_structure(bind_props({ structure, supercell_scaling: `2x2x2` }, state))
-
-    await vi.waitFor(() => {
-      expect(error_spy).toHaveBeenCalledWith(`Failed to create supercell:`, expect.any(Error))
-      // legend reflects the untransformed base structure, not 8x supercell counts
-      const legend_total = [
-        ...document.querySelectorAll(`.element-legend .legend-item sub`),
-      ].reduce((total, sub) => total + Number(sub.textContent), 0)
-      const base_total = Object.values(get_element_counts(structure)).reduce(
-        (total, amt) => total + amt,
-        0,
-      )
-      expect(legend_total).toBe(base_total)
-    })
-    expect(state.measure_mode).toBe(`edit-bonds`)
-    // a build that already fails at mount is reported, not only one that starts failing
-    expect(doc_query(TOAST_MESSAGE).textContent).toBe(
-      `Failed to create supercell: malformed scaling matrix`,
-    )
-  })
-
-  // `wyckoff_positions` is the viewer's own mapped Wyckoff table (site indices on the displayed
-  // cell), so consumers such as the symmetry demo need not re-run map_wyckoff_to_all_atoms
-  test(`exposes read-only wyckoff_positions once symmetry analysis lands and remaps them per cell type`, async () => {
-    vi.stubEnv(`VITEST`, ``)
-    await init_moyo_for_tests()
-    const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
-      { element: `Cu`, abc: [0, 0, 0] },
-    ])
-    const state = $state<{ cell_type: symmetry.CellType }>({ cell_type: `original` })
-    // no image atoms so site_indices are exactly the cell's own sites
-    const analysis = mount_structure(
-      bind_props(
-        { structure: prim_fcc_cu, show_image_atoms: false, analyze_symmetry: true },
-        state,
-      ),
-    )
-    flushSync()
-    expect(analysis.wyckoff_positions).toEqual([])
-    await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
-    flushSync()
-    expect(analysis.wyckoff_positions).toEqual([
-      expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
-    ])
-    // the conventional fcc cell holds four copies of the lone 4a site
-    state.cell_type = `conventional`
-    flushSync()
-    expect(analysis.wyckoff_positions).toHaveLength(1)
-    expect(analysis.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
-  })
-
-  // Cell-aligned overlays only exist in the analyzed (input) cell and
-  // are blanked for conventional/primitive views; that must be said (toast), not happen silently
-  test.each([`symmetry`, `lattice planes`, `thermal`])(
-    `toasts why the %s overlay vanishes when the cell leaves the input frame`,
-    async (overlay) => {
-      mock_gpu()
-      await init_moyo_for_tests()
-      const prim_fcc_cu = make_crystal(fcc_primitive_matrix(3.61), [
-        { element: `Cu`, abc: [0, 0, 0] },
-      ])
-      const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
-      const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
-      expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
-      const field: AtomColorField = {
-        dims: [1, 1, 1],
-        colors: new Float32Array([1, 0, 0, 1]),
-        pbc: [true, true, true],
-        cartesian_to_fractional: new Matrix4(),
-      }
-      const thermal = overlay === `thermal`
-      const props = $state<ComponentProps<typeof Structure>>({
-        structure: prim_fcc_cu,
-        analyze_symmetry: true,
-        ...(thermal && {
-          atom_color_field: field,
-          volume_color_field: field,
-          atom_opacity: 0,
-          cutaway: {
-            ...DEFAULT_CUTAWAY,
-            mode: `plane`,
-            cartesian_to_fractional: new Matrix4(),
-          },
-        }),
-        scene_props:
-          overlay === `symmetry`
-            ? { symmetry_elements }
-            : overlay === `lattice planes`
-              ? { lattice_planes: [{ hkl: [1, 1, 1] }] }
-              : {},
-        cell_type: `original`,
-      })
-      vi.stubEnv(`VITEST`, ``)
-      const analysis = mount_structure(props)
-      await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
-      flushSync()
-      expect(document.querySelector(TOAST_MESSAGE)).toBeNull()
-      for (const cell_type of [`original`, `conventional`, `original`] as const) {
-        props.cell_type = cell_type
-        flushSync()
-        const show_thermal = thermal && cell_type === `original`
-        for (const prop of [`atom_color_field`, `volume_color_field`, `cutaway`] as const) {
-          expect(scene_stub.props?.[prop], `${cell_type}: ${prop}`).toBe(
-            show_thermal ? props[prop] : undefined,
-          )
-        }
-        expect(scene_stub.props?.atom_opacity, cell_type).toBe(show_thermal ? 0 : 1)
-        if (cell_type === `conventional`)
-          expect(doc_query(TOAST_MESSAGE).textContent).toBe(OVERLAYS_INPUT_FRAME_NOTE)
-      }
-    },
-  )
-
-  test(`shows safe bond editing controls by default`, async () => {
-    mock_gpu()
-    mount_structure({ structure, measure_mode: `edit-bonds`, show_controls: true })
-    await tick()
-
-    const selector = `.bond-edit-mode-toggle button[aria-pressed="true"]`
-    const active_button = doc_query<HTMLButtonElement>(selector)
-    const order_select = doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`)
-    expect(active_button.textContent).toContain(`Add`)
-    expect(order_select.value).toBe(`1`)
-    doc_query<HTMLButtonElement>(`.bond-edit-mode-toggle button[title^="Delete"]`).click()
-    await tick()
-    expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
-    expect(document.querySelector(`.bond-edit-toolbar select`)).toBeNull()
-    const undo_button = doc_query<HTMLButtonElement>(
-      `button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`,
-    )
-    expect(undo_button.disabled).toBe(true)
-    const scene = scene_stub.props
-    if (!scene?.on_bond_edit_start) throw new Error(`Missing bond-edit callback`)
-    scene.on_bond_edit_start()
-    scene.added_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
-    await tick()
-    for (const label of [`Undo`, `Redo`]) {
-      const button = doc_query<HTMLButtonElement>(`button[aria-label^="${label} bond edit"]`)
-      expect(button.disabled).toBe(false)
-      expect(button.textContent?.trim()).toBe(`1`)
-      button.click()
-      await tick()
-      expect(scene.added_bonds).toHaveLength(label === `Undo` ? 0 : 1)
-      expect(button.disabled).toBe(true)
-    }
-  })
-
-  // Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed
-  // ordered tuple and roll the oldest pick out, so they never hit a wall worth badging.
-  test.each([
-    [`distance`, [], true, true],
-    [`angle`, [], false, true],
-    [`dihedral`, [], false, true],
-    [`edit-bonds`, [0], false, false],
-    [`edit-atoms`, [], false, false],
-  ] satisfies [MeasureMode, number[], boolean, boolean][])(
-    `%s mode with selected=%o: limit badge=%s, reset button=%s`,
-    async (mode, selected_sites, shows_limit, shows_reset) => {
-      const measured_sites = [0, 1, 2, 3, 4, 5, 6, 7]
-      mount_structure({
-        structure,
-        measured_sites,
-        selected_sites,
-        measure_mode: mode,
-        show_controls: true,
-      })
-      await tick()
-      expect(document.querySelector(`.selection-limit-text`) !== null).toBe(shows_limit)
-      expect(
-        document.querySelector(`button[aria-label="Reset selection and bond edits"]`) !== null,
-      ).toBe(shows_reset)
-    },
-  )
-
-  test(`site-indexed state survives coordinate updates, clears on topology or series changes`, async () => {
-    const props = $state<{
-      structure: AnyStructure
-      structure_series_key: unknown
-      selected_sites: number[]
-      measured_sites: number[]
-      highlighted_sites: number[]
-      hovered_site_idx: number | null
-    }>({
-      structure,
-      structure_series_key: {},
-      selected_sites: [],
-      measured_sites: [],
-      highlighted_sites: [],
-      hovered_site_idx: null,
-    })
-    mount_structure(props)
-    await tick()
-    props.selected_sites = [0]
-    props.structure = {
-      ...structure,
-      sites: structure.sites.map((site, site_idx): typeof site =>
-        site_idx === 0
-          ? { ...site, xyz: [site.xyz[0] + 0.1, site.xyz[1], site.xyz[2]] }
-          : site,
-      ),
-    }
-    await tick()
-    expect(props.selected_sites).toEqual([0])
-    props.structure_series_key = {}
-    await tick()
-    expect(props.selected_sites).toEqual([])
-    props.selected_sites = [0]
-    props.measured_sites = [0]
-    props.highlighted_sites = [0]
-    props.hovered_site_idx = 0
-    props.structure = { ...structure, sites: structure.sites.slice(1) }
-    await tick()
-    expect(props.selected_sites).toEqual([])
-    expect(props.measured_sites).toEqual([])
-    expect(props.highlighted_sites).toEqual([])
-    expect(props.hovered_site_idx).toBeNull()
-  })
-
-  // Completion adds what the scene draws: the 24 O copies cornering the corner Ti octahedra go
-  // when the octahedra do, through hidden polyhedra (P key, `never`), bonding options or a
-  // strategy that drop the Ti-O bonds, or Ti hidden in the legend. Each would otherwise leave
-  // O copies ending drawn bonds, floating beyond the faces.
-  test.each([
-    [`hidden polyhedra`, { scene_props: { show_polyhedra: `never` } }],
-    [`polyhedra only for molecules`, { scene_props: { show_polyhedra: `molecules` } }],
-    [
-      `a bond strength threshold`,
-      {
-        scene_props: {
-          show_polyhedra: `always`,
-          bonding_options: { strength_threshold: 100 },
-        },
-      },
-    ],
-    [
-      `explicit_only bonding`,
-      { scene_props: { show_polyhedra: `always`, bonding_strategy: `explicit_only` } },
-    ],
-    [`Ti hidden in the legend`, { hidden_elements: new Set([`Ti`]) }],
-  ] as const)(`image completion follows the scene with %s`, async (_label, change) => {
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure: make_srtio3(`corner`),
-      show_image_atoms: true,
-      scene_props: { show_polyhedra: `always` },
-    })
-    const analysis = mount_structure(props)
-    await tick()
-    const completion_count = () =>
-      analysis.displayed_structure?.sites.filter((site: Site) => site.provenance?.completion)
-        .length
-    expect(completion_count()).toBe(24)
-    Object.assign(props, change)
-    await tick()
-    expect(completion_count()).toBe(0)
-  })
-
-  test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {
-    // What StructureScene's overlays index sites with is the session's validated selection,
-    // so a pick is never visible next to a displayed structure that lacks that site. Here the
-    // bound props are observed after a synchronous flush: both have already moved together.
-    const props = $state<{
-      structure: AnyStructure
-      measured_sites: number[]
-      measure_mode: MeasureMode
-      show_image_atoms: boolean
-      supercell_scaling: string
-    }>({
-      structure,
-      measured_sites: [],
-      measure_mode: `distance`,
-      show_image_atoms: true,
-      supercell_scaling: `1x1x1`,
-    })
-    const analysis = mount_structure(props)
-    await tick()
-    const displayed_count = () => analysis.displayed_structure?.sites.length ?? 0
-    const pick_last_displayed = () => {
-      props.measured_sites = [0, 1, displayed_count() - 1]
-      flushSync()
-      expect(props.measured_sites).toHaveLength(3)
-    }
-
-    // image atoms: the last displayed site is an image that vanishes when they're hidden
-    expect(displayed_count()).toBeGreaterThan(structure.sites.length)
-    pick_last_displayed()
-    props.show_image_atoms = false
-    flushSync()
-    expect(props.measured_sites).toEqual([])
-    expect(displayed_count()).toBe(structure.sites.length)
-
-    // supercell: grow, pick a site that only exists in the 2x2x2 cell, shrink back
-    props.supercell_scaling = `2x2x2`
-    flushSync()
-    expect(displayed_count()).toBe(8 * structure.sites.length)
-    pick_last_displayed()
-    props.supercell_scaling = `1x1x1`
-    flushSync()
-    expect(props.measured_sites).toEqual([])
-    expect(displayed_count()).toBe(structure.sites.length)
-  })
-
-  test(`discovers new vector keys within one structure series`, async () => {
-    const with_vectors = (include_magmom: boolean): AnyStructure => ({
-      ...structure,
-      sites: structure.sites.map((site, site_idx) => ({
-        ...site,
-        properties: {
-          ...site.properties,
-          ...(site_idx === 0 && {
-            force: [1, 0, 0],
-            ...(include_magmom && { magmom: [0, 1, 0] }),
-          }),
-        },
-      })),
-    })
-    const props = $state({
-      structure: with_vectors(false),
-      structure_series_key: {},
-      active_pane: `controls` as const,
-    })
-    mount_structure(props)
-    await tick()
-    const vector_color = (key: string) =>
-      document.querySelector(`[data-key="vector_config:${key}"] input[type="color"]`)
-    expect(vector_color(`force`)).not.toBeNull()
-    expect(vector_color(`magmom`)).toBeNull()
-
-    props.structure = with_vectors(true)
-    await tick()
-    expect(vector_color(`force`)).not.toBeNull()
-    expect(vector_color(`magmom`)).not.toBeNull()
-  })
-
-  // `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
-  // setting it from the parent requests/exits fullscreen like the button does
-  test(`preserves control chrome overrides and toggles bind:fullscreen`, async () => {
-    const on_fullscreen_change = vi.fn()
-    vi.spyOn(console, `error`).mockImplementation(() => undefined)
-    const props = $state({ fullscreen: false })
-    const chrome = { style: `--ctrl-btn-icon-size: 32px`, show_controls: `always` as const }
-    mount_structure(bind_props({ structure, ...chrome, on_fullscreen_change }, props))
-    const { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
-      stub_fullscreen_api()
-    request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
-    await tick()
-
-    expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
-
-    const fullscreen_button = doc_query<HTMLButtonElement>(
-      `.structure > section.control-buttons > .fullscreen-btn`,
-    )
-    expect(fullscreen_button.parentElement?.lastElementChild).toBe(fullscreen_button)
-
-    fullscreen_button.click()
-    // the flag flips on click and reverts once the browser rejects the request
-    await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledOnce())
-    await vi.waitFor(() =>
-      expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`),
-    )
-    expect(on_fullscreen_change).not.toHaveBeenCalled()
-
-    fullscreen_button.click()
-    await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledTimes(2))
-
-    await set_fullscreen_element(root)
-    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)
-    // fullscreen, the viewer fills the row and the caller's style moves to the row
-    expect(wrapper.style.height).toBe(`100%`)
-    expect(
-      doc_query(`.structure-site-layout`).style.getPropertyValue(`--ctrl-btn-icon-size`),
-    ).toBe(`32px`)
-    expect(props.fullscreen).toBe(true)
-    expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
-
-    props.fullscreen = false
-    await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
-    await set_fullscreen_element(null)
-    expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
-    expect(props.fullscreen).toBe(false)
-    expect(wrapper.classList.contains(`fullscreen`)).toBe(false)
-    expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: false })
-    expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
-  })
-
-  // `width`/`height` are bindable read-outs of the wrapper's client size, kept current through
-  // the ResizeObserver behind bind:clientWidth/clientHeight (the 2x2 grid and the panes size
-  // themselves from these)
-  test(`bind:width/height report the wrapper size and follow resizes`, async () => {
-    const width_spy = vi
-      .spyOn(HTMLElement.prototype, `clientWidth`, `get`)
-      .mockReturnValue(640)
-    const height_spy = vi
-      .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
-      .mockReturnValue(480)
-    const props = $state({ width: 0, height: 0 })
-    mount_structure(bind_props({ structure }, props))
-    await tick()
-    expect([props.width, props.height]).toEqual([640, 480])
-
-    width_spy.mockReturnValue(1024)
-    height_spy.mockReturnValue(768)
-    trigger_resize_observer(doc_query(`.structure`))
-    await tick()
-    expect([props.width, props.height]).toEqual([1024, 768])
-  })
-
-  // `persist_settings` reaches the controls pane: a saved browser view state is restored into
-  // the viewer's bound settings only when opted in
-  test.each([true, false])(
-    `persist_settings=%s restores saved view state`,
-    async (persist) => {
-      save_structure_view_state(
-        create_structure_view_state({
-          color_scheme: `Jmol`,
-          show_image_atoms: false,
-          supercell_scaling: `2x2x1`,
-          scene_props: { atom_radius: 1.35 },
-        }),
-      )
-      const defaults = {
-        color_scheme: DEFAULTS.color_scheme,
-        show_image_atoms: true,
-        supercell_scaling: `1x1x1`,
-      }
-      const props = $state({ ...defaults })
-      mount_structure(
-        bind_props(
-          { structure, show_controls: `always` as const, persist_settings: persist },
-          props,
-        ),
-      )
-      await tick()
-      expect(props).toEqual(
-        persist
-          ? { color_scheme: `Jmol`, show_image_atoms: false, supercell_scaling: `2x2x1` }
-          : defaults,
-      )
-      // the scene settings land in the controls pane (atom radius slider)
-      doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click()
-      await tick()
-      const radius_input = doc_query<HTMLInputElement>(
-        `[data-key="atom_radius"] input[type="number"]`,
-      )
-      expect(Number(radius_input.value)).toBe(persist ? 1.35 : DEFAULTS.structure.atom_radius)
-    },
-  )
-
-  test(`export, flight and controls panes exclude each other and preserve edits`, async () => {
-    const props = $state<{ active_pane: StructurePane | null }>({ active_pane: null })
-    mount_structure(bind_props({ structure, show_controls: `always` as const }, props))
-    await tick()
-    const toggle_pane = async (pane: `export` | `controls` | `flight`): Promise<void> => {
-      doc_query<HTMLButtonElement>(`.structure-${pane}-toggle`).click()
-      await tick()
-    }
-    const dpi_selector = `input[type="number"][title*="dots per inch"]`
-
-    await toggle_pane(`export`)
-    expect(props.active_pane).toBe(`export`)
-    const dpi_input = doc_query<HTMLInputElement>(dpi_selector)
-    dpi_input.value = `250`
-    await fire(dpi_input, new Event(`input`, { bubbles: true }))
-
-    await toggle_pane(`controls`)
-    expect(props.active_pane).toBe(`controls`)
-    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
-    expect(doc_query(`.controls-pane`).style.display).toBe(`grid`)
-
-    await toggle_pane(`export`)
-    expect(props.active_pane).toBe(`export`)
-    expect(doc_query(`.controls-pane`).style.display).toBe(`none`)
-    expect(doc_query(`.export-pane`).style.display).toBe(`grid`)
-    expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
-    await toggle_pane(`export`)
-    expect(props.active_pane).toBeNull()
-    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
-    await toggle_pane(`export`)
-    expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
-    await toggle_pane(`flight`)
-    expect(props.active_pane).toBe(`flight`)
-    expect(doc_query(`.export-pane`).style.display).toBe(`none`)
-    // Viewer sizing must not replace the planner's manually written insets.
-    const planner = doc_query(`.structure-flight-pane`)
-    const motion = doc_query<HTMLSelectElement>(`[aria-label="Camera interpolation"]`)
-    expect(motion.closest(`details`)).toBeNull()
-    motion.value = `linear`
-    await fire(motion, new Event(`change`, { bubbles: true }))
-    planner.style.left = `123px`
-    planner.style.top = `234px`
-    const viewer = doc_query(`.structure`)
-    await resize_element(viewer, 1000, 600)
-    trigger_resize_observer(viewer)
-    await tick()
-    expect(viewer.style.getPropertyValue(`--struct-pane-max-height`)).toBe(
-      `calc(600px - 50px)`,
-    )
-    expect([planner.style.left, planner.style.top]).toEqual([`123px`, `234px`])
-    const duration = doc_query<HTMLInputElement>(`[aria-label="Flight duration"]`)
-    duration.value = `12`
-    await fire(duration, new Event(`change`, { bubbles: true }))
-    await toggle_pane(`controls`)
-    expect(doc_query(`.structure-flight-pane`).style.display).toBe(`none`)
-    await toggle_pane(`flight`)
-    expect(duration.value).toBe(`12`)
-    expect(motion.value).toBe(`linear`)
-  })
-
-  // The Measure / Edit menu writes the bound measure_mode; distance is the default and stays
-  // selectable from every other mode
-  test(`Measure / Edit menu switches the bound measure_mode`, async () => {
-    const props = $state<{ measure_mode: MeasureMode }>({ measure_mode: `angle` })
-    mount_structure(bind_props({ structure, show_controls: true }, props))
-    await tick()
-    await select_measure_mode(`Distance`)
-    expect(props.measure_mode).toBe(`distance`)
-    await select_measure_mode(`Dihedral`)
-    expect(props.measure_mode).toBe(`dihedral`)
-    await select_measure_mode(`Edit Atoms`)
-    expect(props.measure_mode).toBe(`edit-atoms`)
-    // the toolbar for the active mode appears, and distance has none
-    expect(document.querySelector(`.edit-mode-toolbar`)).not.toBeNull()
-    await select_measure_mode(`Distance`)
-    expect(props.measure_mode).toBe(`distance`)
-    expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
-  })
-
-  test(`info pane search selects a site and its card updates highlighted sites`, async () => {
-    const state = $state({
-      highlighted_sites: [] as number[],
-      hovered_site_idx: null as number | null,
-      selected_sites: [] as number[],
-    })
-
-    mount_structure(
-      bind_props({ structure, active_pane: `info` as const, show_controls: true }, state),
-    )
-    await tick()
-
-    const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
-    search.value = `${structure.sites[0].species[0].element}1`
-    await fire(search, new Event(`input`, { bubbles: true }))
-    doc_query<HTMLButtonElement>(`.site-matches button`).click()
-    await tick()
-    expect(state.selected_sites).toEqual([0])
-
-    const first_site_row = doc_query(
-      `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
-    )
-
-    first_site_row.dispatchEvent(mouse(`mouseenter`))
-    expect(state.highlighted_sites).toEqual([0])
-    expect(state.hovered_site_idx).toBe(0)
-
-    first_site_row.dispatchEvent(mouse(`mouseleave`))
-    expect(state.highlighted_sites).toEqual([])
-    expect(state.hovered_site_idx).toBeNull()
-
-    first_site_row.click()
-    expect(state.selected_sites).toEqual([])
-  })
+  await tick()
+  const search = doc_query<HTMLInputElement>(`.remap-search`)
+  set_input(search, `Fe`)
+  search.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+  await tick()
+  expect(document.querySelector(`.structure-info`)?.textContent).toContain(`Fe`)
+  // the ratio of the atomic masses (Fe 55.845, H 1.008) at 3 significant digits of density
+  expect(density() / h_density).toBeCloseTo(55.845 / 1.008, 0)
+  state.active_pane = `export`
+  await tick()
+  const exported = poscar_reason.mock.lastCall?.[0]
+  expect(exported?.sites.map(({ species }) => species[0].element)).toEqual([`Fe`])
 })
 
-describe(`Structure empty states`, () => {
-  test.each([
-    [`undefined structure`, undefined, false, `No structure provided`],
-    [`structure without sites`, {}, false, `No sites found in structure`],
-    [`structure with null sites`, { sites: null }, false, `No sites found in structure`],
-    [`structure with empty sites`, { sites: [] }, false, `No sites found in structure`],
-    // the loading overlay replaces both messages, which its label would overlap
-    [`undefined structure while loading`, undefined, true, null],
-    [`empty sites while loading`, { sites: [] }, true, null],
-  ])(`shows the expected message for %s`, (_description, test_structure, loading, message) => {
-    mount_structure({ structure: test_structure as AnyStructure, loading })
-    const text = document.body.textContent ?? ``
-    if (message)
-      expect(document.querySelector(`.empty-state.overlay[role="status"]`)?.textContent).toBe(
-        message,
-      )
-    else
-      for (const empty of [`No structure provided`, `No sites found`])
-        expect(text).not.toContain(empty)
+// Any CSS color takes the opacity, multiplied into its own alpha: `white` + an alpha byte was
+// invalid CSS (the viewer went transparent) and add_alpha replaced a color's own alpha
+test.each([
+  [`#ff0000`, 0.1, 0.1],
+  [`white`, 0.5, 0.5],
+  [`rgba(0, 0, 255, 0.5)`, 0.5, 0.25],
+  [`#0f0`, 1, 1],
+  // a color only the browser resolves keeps its var() and mixes in the opacity
+  [`var(--brand)`, 0.4, `color-mix(in srgb, var(--brand) 40%, transparent)`],
+])(`background_color %s at opacity %f gives %s`, (color, opacity, expected) => {
+  mount_structure({ background_color: color, background_opacity: opacity })
+  const css = doc_query(`.structure`).style.getPropertyValue(`--struct-bg-override`)
+  if (typeof expected === `string`) expect(css).toBe(expected)
+  else {
+    const parsed = rgb(css)
+    expect(parsed.displayable()).toBe(true)
+    expect(parsed.opacity).toBeCloseTo(expected, 12)
+  }
+})
+
+test(`each viewer keeps its own color_scheme and picked colors, page colors untouched`, async () => {
+  const page_colors = { ...colors.element }
+  const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])
+  for (const color_scheme of [`Jmol`, `Vesta`] as const) {
+    mount_structure({ structure: oxide, color_scheme })
+  }
+  const swatches = () =>
+    [...document.querySelectorAll<HTMLElement>(`.element-legend label`)].map(
+      (label) => label.style.backgroundColor,
+    )
+  await vi.waitFor(() =>
+    expect(swatches()).toEqual([ELEMENT_COLOR_SCHEMES.Jmol.O, ELEMENT_COLOR_SCHEMES.Vesta.O]),
+  )
+  const picker = doc_query<HTMLInputElement>(`.element-legend input[type="color"]`)
+  set_input(picker, `#123456`)
+  await vi.waitFor(() =>
+    expect(swatches()).toEqual([`#123456`, ELEMENT_COLOR_SCHEMES.Vesta.O]),
+  )
+  expect(() =>
+    mount_structure({ structure: oxide, color_scheme: `vesta` as ColorSchemeName }),
+  ).toThrow(`Unknown color_scheme 'vesta', expected one of Vesta, Jmol`)
+  expect(colors.element).toEqual(page_colors)
+})
+
+test(`shows a dismissible symmetry warning when analysis fails`, async () => {
+  vi.stubEnv(`VITEST`, ``)
+  vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValueOnce(undefined)
+  vi.spyOn(symmetry, `analyze_structure_symmetry`).mockRejectedValueOnce(
+    new Error(`WASM unavailable`),
+  )
+  vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  mount_structure({ structure, analyze_symmetry: true })
+  await vi.waitFor(() =>
+    expect(document.querySelector(`.symmetry-error`)).toBeInstanceOf(HTMLElement),
+  )
+  // stacked top-center with the other notices, clear of the bottom-right atom legend
+  const warning = doc_query(`.viewer-notices .symmetry-error`)
+  expect(warning.textContent).toContain(`Symmetry analysis failed: WASM unavailable`)
+  expect(warning.closest(`[role]`)?.getAttribute(`role`)).toBe(`status`)
+  await fire(doc_query(`.symmetry-error button`))
+  expect(document.querySelector(`.symmetry-error`)).toBeNull()
+})
+
+test.each([`disabled`, `molecule`, `empty`, `unmounted`] as const)(
+  `ignores a pending symmetry failure after becoming %s`,
+  async (transition) => {
+    vi.stubEnv(`VITEST`, ``)
+    vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
+    const pending = Promise.withResolvers<never>()
+    const analyze = vi
+      .spyOn(symmetry, `analyze_structure_symmetry`)
+      .mockReturnValue(pending.promise)
+    const error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const props = $state<StructureProps>({ structure, analyze_symmetry: true })
+    const analysis = mount_structure(props)
+    await vi.waitFor(() => expect(analyze).toHaveBeenCalled())
+    if (transition === `disabled`) props.analyze_symmetry = false
+    else if (transition === `molecule`) props.structure = { sites: structure.sites }
+    else if (transition === `empty`) props.structure = undefined
+    else for (const component of mounted.splice(0)) await unmount(component)
+    flushSync()
+    pending.reject(new Error(`stale symmetry result`))
+    await tick()
+    await tick()
+    expect(error).not.toHaveBeenCalled()
+    expect(analysis.sym_data).toBeNull()
+    expect(document.querySelector(`.symmetry-error`)).toBeNull()
+  },
+)
+
+// The ~0.75 MB WASM loads only once the viewer is pressed or focused or the display needs
+// symmetry (never on hover), and a demand sticks: closing the pane or going back to the
+// original cell keeps the data
+const wyckoff_colors: AtomColorConfig = { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `wyckoff` }
+test.each<[string, Partial<StructureProps>, string | null, boolean]>([
+  [`disabled, even when pressed`, { analyze_symmetry: false }, `pointerdown`, false],
+  [`on demand, untouched`, {}, null, false],
+  [`on demand, not on mere hover`, {}, `pointerenter`, false],
+  [`on demand, on press`, {}, `pointerdown`, true],
+  [`on demand, on press with a host handler`, { onpointerdown: vi.fn() }, `pointerdown`, true],
+  [`on demand, on focus`, {}, `focusin`, true],
+  [`on demand, on focus with a host handler`, { onfocusin: vi.fn() }, `focusin`, true],
+  [`on demand, for a conventional cell`, { cell_type: `conventional` }, null, true],
+  [`on demand, for Wyckoff coloring`, { atom_color_config: wyckoff_colors }, null, true],
+  [`on demand, for an open pane`, { active_pane: `info` }, null, true],
+])(`symmetry analysis %s`, async (_label, props, event, expected) => {
+  vi.stubEnv(`VITEST`, ``)
+  const ready_spy = vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
+  // never lands: only whether (and how often) analysis starts matters here
+  const analyze_spy = vi
+    .spyOn(symmetry, `analyze_structure_symmetry`)
+    .mockReturnValue(Promise.withResolvers<never>().promise)
+  const state = $state<StructureProps>({ structure, ...props })
+  mount_structure(state)
+  flushSync()
+  const fire_on_viewer = async (type?: string | null) =>
+    type ? fire(doc_query(`.structure`), new Event(type, { bubbles: true })) : tick()
+  await fire_on_viewer(event)
+  expect(ready_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+  expect(analyze_spy).toHaveBeenCalledTimes(expected ? 1 : 0)
+  // the viewer's own handlers compose with the host's instead of being replaced
+  const host_handler = props.onpointerdown ?? props.onfocusin
+  if (host_handler) expect(host_handler).toHaveBeenCalledOnce()
+  // while the analysis runs, the cell menu says Prim/Conv are coming rather than unavailable
+  await fire(doc_query(`.cell-select .toggle-btn`))
+  expect(doc_query(`.cell-type-btn:nth-child(2)`).getAttribute(`aria-label`)).toContain(
+    expected ? `analyzing symmetry…` : `requires symmetry data`,
+  )
+  if (!expected) return
+  // the demand outlives what raised it: dropping and re-raising the need neither clears the
+  // data (which would re-analyze on the way back) nor analyzes again
+  await fire_on_viewer({ focusin: `focusout` }[event ?? ``])
+  Object.assign(state, {
+    active_pane: null,
+    cell_type: `original`,
+    atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG },
   })
+  flushSync()
+  Object.assign(state, props)
+  await fire_on_viewer(event)
+  expect(analyze_spy).toHaveBeenCalledTimes(1)
+  expect(document.querySelector(`.symmetry-error`)).toBeNull()
+})
+
+test(`switches a volumetric structure between shared 3D and slice views`, async () => {
+  const props = mount_volumetric({
+    show_controls: `always`,
+    display_mode: `structure`,
+    slice_settings: { plane_mode: `hkl`, resolution: 2 },
+  })
+  await tick()
+  expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
+  await select_structure_layout(`2D cross-section`)
+  expect(props.display_mode).toBe(`slice`)
+  expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
+  expect(document.querySelector(`button[title="Measure / Edit"]`)).toBeNull()
+  set_aria_input(`Slice position on canvas`, `0.75`)
+  await tick()
+  expect(props.slice_settings?.position).toBe(0.75)
+  await fire(doc_query(`button.structure-controls-toggle`))
+  expect(document.querySelector(`.controls-pane`)).toBeInstanceOf(HTMLElement)
+  const plane_select = doc_query<HTMLSelectElement>(`select[aria-label="Slice plane mode"]`)
+  expect(plane_select.value).toBe(`hkl`)
+  set_aria_input(`Slice resolution`, `3`)
+  await tick()
+  expect(props.slice_settings).toEqual(
+    expect.objectContaining({ plane_mode: `hkl`, resolution: 3 }),
+  )
+  for (const [value, value_range] of [
+    [`1`, [1, 7]],
+    [``, undefined],
+  ] as const) {
+    set_aria_input(`Slice color minimum`, value)
+    await tick()
+    expect(props.slice_settings?.color_scale).toEqual({
+      scheme: `interpolateRdBu`,
+      value_range,
+    })
+  }
+})
+
+test(`split layout shows 3D beside the slice and marks the slice plane in 3D`, async () => {
+  mock_gpu()
+  const props = mount_volumetric({
+    show_controls: `always`,
+    display_mode: `structure`,
+    slice_settings: { plane_mode: `hkl`, miller_indices: [0, 0, 1], position: 0.3 },
+  })
+  await tick()
+  expect(scene_stub.props?.slice_polygon).toEqual([])
+  await select_structure_layout(`3D + 2D cross-section`)
+  expect(props.display_mode).toBe(`split`)
+  // the cross-section sits in the 3D stage and 3D chrome stays available
+  doc_query(`.viewport-stage.split [data-testid="volume-slice"]`)
+  doc_query(`button[aria-label="Measure / Edit"]`)
+  // (001) at 30% of the unit cell's height: the square z = 0.3
+  const square: Vec3[] = scene_stub.props?.slice_polygon ?? []
+  expect(square.map((corner) => corner[2])).toEqual(Array(4).fill(expect.closeTo(0.3, 12)))
+  // both volume panes in the controls, plus the plane toggle that hides it from the scene
+  flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
+  doc_query(`select[aria-label="Slice plane mode"]`)
+  expect(doc_query(`.controls-pane`).textContent).toContain(`isosurface + cross-section`)
+  const plane_toggle = `input[aria-label="Show slice plane in 3D"]`
+  flushSync(() => doc_query<HTMLInputElement>(plane_toggle).click())
+  expect(props.slice_settings?.show_plane).toBe(false)
+  expect(scene_stub.props?.slice_polygon).toEqual([])
+  await select_structure_layout(`2D cross-section`)
+  expect(document.querySelector(plane_toggle)).toBeNull()
+})
+
+// volume-only data has no sites to show, and a stale volume ID falls back to the first one
+test.each([
+  [`volume-only data with no atomic sites`, { structure: { ...structure, sites: [] } }],
+  [`a missing selected volume ID with controls closed`, { active_volume_id: `9` }],
+])(`renders slice mode for %s`, async (_label, overrides) => {
+  const props = mount_volumetric({
+    display_mode: `slice`,
+    slice_settings: { plane_mode: `hkl`, resolution: 2 },
+    ...overrides,
+  })
+  await tick()
+  if (`active_volume_id` in overrides) expect(props.active_volume_id).toBe(`density`)
+  expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeInstanceOf(HTMLElement)
+  expect(document.body.textContent).not.toContain(`No sites found in structure`)
+})
+
+test(`keeps a 3D escape when volumes clear with the view control hidden`, async () => {
+  const props = mount_volumetric({
+    display_mode: `slice`,
+    slice_settings: { resolution: 2 },
+    show_controls: { mode: `always`, hidden: [`view-mode`] },
+  })
+  await tick()
+  props.volumetric_data = []
+  await tick()
+  await select_structure_layout(`3D single view`)
+  expect(props.display_mode).toBe(`structure`)
+  expect(document.querySelector(`[data-testid="volume-slice"]`)).toBeNull()
+})
+
+test(`reveals atom color mode toggle while viewer is hovered or focused`, async () => {
+  await mount_settled({ structure })
+  const viewer = doc_query(`.structure`)
+  const mode_toggle = doc_query<HTMLButtonElement>(`.atom-legend .mode-toggle`)
+  const expect_shown = (shown: boolean) =>
+    expect([getComputedStyle(mode_toggle).opacity, mode_toggle.tabIndex]).toEqual(
+      shown ? [`1`, 0] : [`0`, -1],
+    )
+  expect_shown(false)
+  viewer.focus()
+  await tick()
+  expect_shown(true)
+  mode_toggle.focus()
+  await tick()
+  expect(document.activeElement).toBe(mode_toggle)
+  expect_shown(true)
+  mode_toggle.blur()
+  await tick()
+  expect_shown(false)
+  // second hover cycle: the unbound $bindable hovered prop must keep driving the toggle
+  for (const _cycle of [1, 2]) {
+    await fire(viewer, new PointerEvent(`pointerenter`))
+    expect_shown(true)
+    await fire(viewer, new PointerEvent(`pointerleave`))
+    expect_shown(false)
+  }
+})
+
+test(`window keydown shortcuts are scoped to the hovered viewer`, async () => {
+  vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+  const state = $state({ active_pane: null as StructurePane | null })
+  await mount_settled(bind_props({ structure, enable_info_pane: true }, state))
+  await assertHoverScopedShortcut({
+    viewer: doc_query(`.structure`),
+    trigger: () => press_window_key({ key: `i` }),
+    read_state: () => state.active_pane === `info`,
+  })
+  await fire(doc_query(`.structure`), keydown(`i`))
+  expect(state.active_pane).toBe(`info`)
+  expect(doc_query(`.structure-info-toggle`).style.boxShadow).toContain(`1px`)
+  vi.advanceTimersByTime(400)
+  // the open pane's own Escape layer closes it (Structure has no pane binding of its own)
+  expect(doc_query(`.structure-info-pane`).classList).toContain(`viewer-pane-open`)
+  await fire(doc_query(`.structure`), keydown(`Escape`))
+  expect(state.active_pane).toBeNull()
+  expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
+})
+
+// Each layer key flips its layer off then back on, restoring the mode it had (polyhedra's
+// default `crystals`, a chosen `crystals` for bonds) when it covers the structure, else
+// `always` (polyhedra on a molecule)
+const { lattice: _cell, ...lattice_free } = structure
+// oxfmt-ignore
+test.each([
+  [`a`, `show_atoms`, structure, {}, [true, false, true]],
+  [`A`, `show_image_atoms`, structure, {}, [true, false, true]],
+  [`b`, `show_bonds`, structure, {}, [`always`, `never`, `always`]],
+  [`b`, `show_bonds`, structure, { show_bonds: `crystals` }, [`crystals`, `never`, `crystals`]],
+  [`p`, `show_polyhedra`, structure, {}, [`crystals`, `never`, `crystals`]],
+  [`p`, `show_polyhedra`, lattice_free, {}, [`crystals`, `always`, `never`]],
+] as const)(`key %s toggles %s`, async (key, layer, target, initial, expected) => {
+  const scene_props = { ...DEFAULTS.structure, ...initial }
+  const state = $state({ scene_props, show_image_atoms: true })
+  await mount_settled(bind_props({ structure: target }, state))
+  const read = () =>
+    layer === `show_image_atoms` ? state.show_image_atoms : state.scene_props[layer]
+  const values: unknown[] = [read()]
+  for (const _press of [1, 2]) {
+    await fire(doc_query(`.structure`), keydown(key, { shiftKey: key === `A` }))
+    values.push(read())
+  }
+  expect(values).toEqual(expected)
+})
+
+// Edit modes keep B/P off (they would hide what is being edited), and Shift+B/P toggle
+// nothing in any mode
+test.each([`edit-atoms`, `edit-bonds`, `distance`] as const)(
+  `layer keys in %s mode`,
+  async (measure_mode) => {
+    const state = $state({ scene_props: { ...DEFAULTS.structure }, measure_mode })
+    await mount_settled(bind_props({ structure }, state))
+    for (const [key, shiftKey] of [
+      [`b`, true],
+      [`p`, true],
+      [`b`, false],
+      [`p`, false],
+    ] as const)
+      await fire(doc_query(`.structure`), keydown(key, { shiftKey }))
+    const { show_bonds, show_polyhedra } = state.scene_props
+    expect([state.measure_mode, show_bonds, show_polyhedra]).toEqual(
+      measure_mode === `distance`
+        ? [measure_mode, `never`, `never`]
+        : [measure_mode, `always`, `crystals`],
+    )
+  },
+)
+
+test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
+  const state = {
+    active_pane: null as StructurePane | null,
+    measure_mode: `edit-atoms` as MeasureMode,
+  }
+  await mount_settled(bind_props({ structure, enable_info_pane: true }, state))
+  expect(state.measure_mode, `edit-atoms should stick for a plain structure`).toBe(
+    `edit-atoms`,
+  )
+  expect_shortcuts_in_pane(document, `.structure-info-pane`, [
+    `viewer`,
+    `structure`,
+    `camera`,
+    `structure-edit`,
+  ])
+  await fire(doc_query(`.structure`), new PointerEvent(`pointerenter`))
+  // hovered (not focused) + edit mode → window forwarder ignores the key
+  press_window_key({ key: `i` })
+  expect(state.active_pane, `hover path ignored in edit mode`).toBeNull()
+})
+
+test.each([
+  [`a`, true, `Escape`],
+  [`a`, false, `Escape`],
+  [`e`, true, `Escape`],
+  [`e`, false, `Escape`],
+  [`e`, true, `Enter`],
+] as const)(
+  `edit-atoms %s opens a field (from input: %s); %s closes quietly`,
+  async (key, from_input, dismiss_key) => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    const state = $state<{
+      structure: AnyStructure
+      measure_mode: MeasureMode
+      selected_sites: number[]
+    }>({ structure, measure_mode: `edit-atoms`, selected_sites: [] })
+    await mount_settled(state)
+    state.selected_sites = [0]
+    const viewer = doc_query(`.structure`)
+    await fire(viewer, keydown(key, { isComposing: true }))
+    expect(document.querySelector(`.add-atom-input`)).toBeNull()
+    await fire(viewer, keydown(key, { cancelable: true }))
+    const toggle = doc_query(`.measure-mode-dropdown > button`)
+    expect(toggle.style.boxShadow).toContain(`1px`)
+    // Let the opening flash expire so it cannot hide a new flash on Escape.
+    vi.advanceTimersByTime(400)
+    const input = doc_query<HTMLInputElement>(`.add-atom-input input`)
+    input.value = `H`
+    await fire(input, new Event(`input`, { bubbles: true }))
+    const dismiss_target = from_input ? input : viewer
+    for (const is_composing of [true, false]) {
+      const ignored = keydown(dismiss_key, { isComposing: is_composing, cancelable: true })
+      if (!is_composing) ignored.preventDefault()
+      await fire(dismiss_target, ignored)
+      expect(document.querySelector(`.add-atom-input input`)).toBe(input)
+      expect(state.selected_sites).toEqual([0])
+      expect(state.structure.sites[0].species).toEqual(structure.sites[0].species)
+    }
+    // Other editable fields own Escape, even while atom placement is active.
+    const other_input = document.createElement(`input`)
+    viewer.append(other_input)
+    other_input.focus()
+    const escape = keydown(`Escape`, { cancelable: true })
+    await fire(other_input, escape)
+    expect(escape.defaultPrevented).toBe(false)
+    expect(document.querySelector(`.add-atom-input input`)).toBe(input)
+    expect(state.selected_sites).toEqual([0])
+    other_input.remove()
+    const dismiss = keydown(dismiss_key, { cancelable: true })
+    await fire(dismiss_target, dismiss)
+    expect(dismiss.defaultPrevented).toBe(key === `a` || !from_input)
+    expect(document.querySelector(`.add-atom-input`)).toBeNull()
+    expect(toggle.style.boxShadow).toBe(``)
+    expect(state.selected_sites).toEqual([0])
+    expect(state.structure.sites[0].species[0].element).toBe(
+      dismiss_key === `Enter` ? `H` : structure.sites[0].species[0].element,
+    )
+    // Selection clears before edit mode exits.
+    for (const mode of [`edit-atoms`, `distance`]) {
+      await fire(viewer, keydown(`Escape`, { cancelable: true }))
+      expect(state.selected_sites).toEqual([])
+      expect(state.measure_mode).toBe(mode)
+      expect(toggle.style.boxShadow).toBe(``)
+    }
+  },
+)
+
+test(`edit-atoms Delete removes selected atom + remaps bonds, undo restores both`, async () => {
+  // Deleting site 0 drops its bond and shifts the 1-2 bond down to 0-1; undo
+  // must restore both structure sites and the remapped bindable bonds prop
+  const orig_bonds: StructureBond[] = [
+    { site_idx_1: 0, site_idx_2: 1, order: 1 },
+    { site_idx_1: 1, site_idx_2: 2, order: 2 },
+  ]
+  const state = {
+    structure,
+    bonds: structuredClone(orig_bonds),
+    selected_sites: [] as number[],
+  }
+  const edit_props: { measure_mode: MeasureMode } = { measure_mode: `edit-atoms` }
+  await mount_settled(bind_props(edit_props, state))
+  state.selected_sites = [0] // select after mount (on-load effect clears selection)
+  const n_before = state.structure.sites.length
+  const delete_event = await press(`Delete`, {})
+  expect(delete_event.defaultPrevented, `Delete should be handled`).toBe(true)
+  expect(state.structure.sites).toHaveLength(n_before - 1)
+  expect(state.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
+  await press(`z`)
+  expect(state.structure.sites).toHaveLength(n_before)
+  expect(state.bonds).toEqual(orig_bonds)
+  expect(doc_query(`button[aria-label="Undo (Cmd/Ctrl+Z)"]`).style.boxShadow).toContain(`1px`)
+})
+
+test.each([`add`, `delete`] as const)(
+  `bond shortcut highlights the %s toggle`,
+  async (mode) => {
+    vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+    mount_structure({
+      structure,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode: mode === `add` ? `delete` : `add`,
+    })
+    await tick() // the root's key listener attaches in an effect
+    await fire(doc_query(`.structure`), keydown(mode === `add` ? `a` : `d`))
+    const selected = doc_query(`.bond-edit-mode-toggle [aria-pressed="true"]`)
+    expect(selected.textContent?.trim().toLowerCase()).toBe(mode)
+    expect(selected.style.boxShadow).toContain(`1px`)
+    vi.advanceTimersByTime(400)
+    await fire(doc_query(`.structure`), keydown(`Escape`))
+    expect(document.querySelector(`.bond-edit-toolbar`)).toBeNull()
+    expect(doc_query(`.measure-mode-dropdown > button`).style.boxShadow).toBe(``)
+  },
+)
+
+test.each([
+  [{ supercell_scaling: `2x1x1` }, true],
+  [{ supercell_scaling: `2x1x1`, apply_supercell_scaling: false }, true],
+  [{ supercell_scaling: `invalid` }, false],
+  [{ supercell_scaling: `1×1×1` }, false],
+  [{ cell_type: `conventional` }, true],
+] as const)(`sets edit-bonds availability for %o to disabled=%s`, async (props, disabled) => {
+  const state = { measure_mode: `distance` as MeasureMode }
+  mount_structure(bind_props({ structure, show_controls: true, ...props }, state))
+  const measure_btn = doc_query<HTMLButtonElement>(`button[title="Measure / Edit"]`)
+  // icon-only button needs an accessible name (title alone is unreliable for AT)
+  expect(measure_btn.getAttribute(`aria-label`)).toBe(`Measure / Edit`)
+  await fire(measure_btn)
+  const edit_bonds_button = [
+    ...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`),
+  ].find((button) => button.textContent?.includes(`Edit Bonds`))
+  expect(edit_bonds_button?.disabled).toBe(disabled)
+  edit_bonds_button?.click()
+  await tick()
+  expect(state.measure_mode).toBe(disabled ? `distance` : `edit-bonds`)
+})
+
+// Aperiodic boxes still support supercell repetition; molecules have no cell to repeat.
+test.each([
+  [`fully periodic crystal`, [true, true, true], true],
+  [`slab periodic along two axes`, [true, true, false], true],
+  [`cluster in a vacuum box`, [false, false, false], true],
+  [`molecule without a lattice`, null, false],
+] satisfies [string, Pbc | null, boolean][])(
+  `cell select shown for a %s: %s`,
+  async (_name, pbc, shown) => {
+    if (!(`lattice` in structure)) throw new Error(`Expected a crystal fixture`)
+    const { lattice: _lattice, ...molecule } = structure
+    await mount_settled({
+      structure: pbc ? { ...structure, lattice: { ...structure.lattice, pbc } } : molecule,
+    })
+    expect(document.querySelector(`.cell-select`) !== null).toBe(shown)
+  },
+)
+
+test(`shows an already-materialized supercell without expanding it again`, async () => {
+  vi.mocked(make_supercell).mockClear()
+  const state = mount_structure({
+    structure,
+    supercell_scaling: `3x3x3`,
+    apply_supercell_scaling: false,
+    show_image_atoms: false,
+  })
+  await vi.waitFor(() =>
+    expect(state.displayed_structure?.sites).toHaveLength(structure.sites.length),
+  )
+  expect(vi.mocked(make_supercell)).not.toHaveBeenCalled()
+  expect(doc_query(`.cell-select .toggle-btn`).textContent?.replaceAll(/\s/g, ``)).toBe(
+    `3x3x3`,
+  )
+})
+
+test(`displayed_structure keeps its identity across unrelated prop changes`, async () => {
+  const props = $state<StructureProps>({
+    structure,
+    active_volume_id: `0`,
+    volumetric_data: undefined,
+  })
+  const analysis = mount_structure(props)
+  let runs = 0
+  const destroy = $effect.root(() => {
+    $effect(() => {
+      void analysis.displayed_structure
+      runs += 1
+    })
+  })
+  await tick()
+  const [displayed, runs_before] = [analysis.displayed_structure, runs]
+  expect(displayed?.sites.length).toBeGreaterThan(0)
+  props.active_volume_id = `3`
+  await tick()
+  expect(analysis.displayed_structure).toBe(displayed)
+  expect(runs).toBe(runs_before)
+  destroy()
+})
+
+test.each([
+  [`aperiodic`, [false, false, false], [-0.1, 1.2, 2.1]],
+  [`partially periodic`, [true, false, true], [0.9, 1.2, 0.1]],
+] satisfies [string, Pbc, Vec3][])(
+  `wraps displayed coordinates only on %s axes`,
+  async (_name, pbc, expected) => {
+    if (!(`lattice` in structure)) throw new Error(`Expected a crystal fixture`)
+    const abc: Vec3 = [-0.1, 1.2, 2.1]
+    const frac_to_cart = create_frac_to_cart(structure.lattice.matrix)
+    const out_of_cell = {
+      ...structure,
+      lattice: { ...structure.lattice, pbc },
+      sites: [{ ...structure.sites[0], abc, xyz: frac_to_cart(abc) }],
+    }
+    const state = mount_structure({ structure: out_of_cell, show_image_atoms: false })
+    await vi.waitFor(() => expect(state.displayed_structure).toBeDefined())
+    const displayed_site = state.displayed_structure?.sites[0]
+    expect(displayed_site?.abc).toEqual(expected)
+    expect(displayed_site?.xyz).toEqual(frac_to_cart(expected))
+  },
+)
+
+test(`falls back to untransformed structure when make_supercell throws`, async () => {
+  const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+  vi.mocked(make_supercell).mockImplementationOnce(() => {
+    throw new Error(`malformed scaling matrix`)
+  })
+  const state = { measure_mode: `edit-bonds` as MeasureMode }
+  mount_structure(bind_props({ structure, supercell_scaling: `2x2x2` }, state))
+  await vi.waitFor(() => {
+    expect(error_spy).toHaveBeenCalledWith(`Failed to create supercell:`, expect.any(Error))
+    // legend reflects the untransformed base structure, not 8x supercell counts
+    const legend_total = [
+      ...document.querySelectorAll(`.element-legend .legend-item sub`),
+    ].reduce((total, sub) => total + Number(sub.textContent), 0)
+    const base_total = Object.values(get_element_counts(structure)).reduce(
+      (total, amt) => total + amt,
+      0,
+    )
+    expect(legend_total).toBe(base_total)
+  })
+  expect(state.measure_mode).toBe(`edit-bonds`)
+  // a build that already fails at mount is reported, not only one that starts failing
+  expect(doc_query(TOAST_MESSAGE).textContent).toBe(
+    `Failed to create supercell: malformed scaling matrix`,
+  )
+})
+
+// `wyckoff_positions` is the viewer's own mapped Wyckoff table (site indices on the displayed
+// cell), so consumers such as the symmetry demo need not re-run map_wyckoff_to_all_atoms
+test(`exposes read-only wyckoff_positions once symmetry analysis lands and remaps them per cell type`, async () => {
+  vi.stubEnv(`VITEST`, ``)
+  await init_moyo_for_tests()
+  const state = $state<{ cell_type: symmetry.CellType }>({ cell_type: `original` })
+  // no image atoms so site_indices are exactly the cell's own sites
+  const analysis = mount_structure(
+    bind_props(
+      { structure: fcc_cu(), show_image_atoms: false, analyze_symmetry: true },
+      state,
+    ),
+  )
+  flushSync()
+  expect(analysis.wyckoff_positions).toEqual([])
+  await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
+  flushSync()
+  expect(analysis.wyckoff_positions).toEqual([
+    expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
+  ])
+  // the conventional fcc cell holds four copies of the lone 4a site
+  state.cell_type = `conventional`
+  flushSync()
+  expect(analysis.wyckoff_positions).toHaveLength(1)
+  expect(analysis.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
+})
+
+// Cell-aligned overlays only exist in the analyzed (input) cell and
+// are blanked for conventional/primitive views; that must be said (toast), not happen silently
+test.each([`symmetry`, `lattice planes`, `thermal`])(
+  `toasts why the %s overlay vanishes when the cell leaves the input frame`,
+  async (overlay) => {
+    mock_gpu()
+    await init_moyo_for_tests()
+    const prim_fcc_cu = fcc_cu()
+    const sym_data = await symmetry.analyze_structure_symmetry(prim_fcc_cu)
+    const symmetry_elements = symmetry.symmetry_elements_from_ops(sym_data.operations ?? [])
+    expect(symmetry.has_visible_symmetry_overlay(symmetry_elements)).toBe(true)
+    const field: AtomColorField = {
+      dims: [1, 1, 1],
+      colors: new Float32Array([1, 0, 0, 1]),
+      pbc: [true, true, true],
+      cartesian_to_fractional: new Matrix4(),
+    }
+    const thermal = overlay === `thermal`
+    const props = $state<StructureProps>({
+      structure: prim_fcc_cu,
+      analyze_symmetry: true,
+      ...(thermal && {
+        atom_color_field: field,
+        volume_color_field: field,
+        atom_opacity: 0,
+        cutaway: { ...DEFAULT_CUTAWAY, mode: `plane`, cartesian_to_fractional: new Matrix4() },
+      }),
+      scene_props:
+        overlay === `symmetry`
+          ? { symmetry_elements }
+          : overlay === `lattice planes`
+            ? { lattice_planes: [{ hkl: [1, 1, 1] }] }
+            : {},
+      cell_type: `original`,
+    })
+    vi.stubEnv(`VITEST`, ``)
+    const analysis = mount_structure(props)
+    await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
+    flushSync()
+    expect(document.querySelector(TOAST_MESSAGE)).toBeNull()
+    for (const cell_type of [`original`, `conventional`, `original`] as const) {
+      props.cell_type = cell_type
+      flushSync()
+      const show_thermal = thermal && cell_type === `original`
+      for (const prop of [`atom_color_field`, `volume_color_field`, `cutaway`] as const) {
+        expect(scene_stub.props?.[prop], `${cell_type}: ${prop}`).toBe(
+          show_thermal ? props[prop] : undefined,
+        )
+      }
+      expect(scene_stub.props?.atom_opacity, cell_type).toBe(show_thermal ? 0 : 1)
+      if (cell_type === `conventional`)
+        expect(doc_query(TOAST_MESSAGE).textContent).toBe(OVERLAYS_INPUT_FRAME_NOTE)
+    }
+  },
+)
+
+test(`shows safe bond editing controls by default`, async () => {
+  mock_gpu()
+  await mount_settled({ structure, measure_mode: `edit-bonds`, show_controls: true })
+  const selector = `.bond-edit-mode-toggle button[aria-pressed="true"]`
+  expect(doc_query(selector).textContent).toContain(`Add`)
+  expect(doc_query<HTMLSelectElement>(`.bond-edit-toolbar select`).value).toBe(`1`)
+  await fire(doc_query(`.bond-edit-mode-toggle button[title^="Delete"]`))
+  expect(doc_query<HTMLButtonElement>(selector).textContent).toContain(`Delete`)
+  expect(document.querySelector(`.bond-edit-toolbar select`)).toBeNull()
+  const undo_button = doc_query<HTMLButtonElement>(
+    `button[aria-label="Undo bond edit (Cmd/Ctrl+Z)"]`,
+  )
+  expect(undo_button.disabled).toBe(true)
+  const scene = scene_stub.props
+  if (!scene?.on_bond_edit_start) throw new Error(`Missing bond-edit callback`)
+  scene.on_bond_edit_start()
+  scene.added_bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 1 }]
+  await tick()
+  for (const label of [`Undo`, `Redo`]) {
+    const button = doc_query<HTMLButtonElement>(`button[aria-label^="${label} bond edit"]`)
+    expect([button.disabled, button.textContent?.trim()]).toEqual([false, `1`])
+    await fire(button)
+    expect(scene.added_bonds).toHaveLength(label === `Undo` ? 0 : 1)
+    expect(button.disabled).toBe(true)
+  }
+})
+
+// Only distance refuses picks at MAX_SELECTED_SITES. Angle and dihedral take a fixed
+// ordered tuple and roll the oldest pick out, so they never hit a wall worth badging.
+test.each([
+  [`distance`, [], true, true],
+  [`angle`, [], false, true],
+  [`dihedral`, [], false, true],
+  [`edit-bonds`, [0], false, false],
+  [`edit-atoms`, [], false, false],
+] satisfies [MeasureMode, number[], boolean, boolean][])(
+  `%s mode with selected=%o: limit badge=%s, reset button=%s`,
+  async (mode, selected_sites, shows_limit, shows_reset) => {
+    const measured_sites = [0, 1, 2, 3, 4, 5, 6, 7]
+    await mount_settled({
+      structure,
+      measured_sites,
+      selected_sites,
+      measure_mode: mode,
+      show_controls: true,
+    })
+    expect(document.querySelector(`.selection-limit-text`) !== null).toBe(shows_limit)
+    expect(
+      document.querySelector(`button[aria-label="Reset selection and bond edits"]`) !== null,
+    ).toBe(shows_reset)
+  },
+)
+
+test(`site-indexed state survives coordinate updates, clears on topology or series changes`, async () => {
+  const props = $state<StructureProps>({
+    structure,
+    structure_series_key: {},
+    selected_sites: [],
+    measured_sites: [],
+    highlighted_sites: [],
+    hovered_site_idx: null,
+  })
+  await mount_settled(props)
+  props.selected_sites = [0]
+  props.structure = {
+    ...structure,
+    sites: structure.sites.map((site, site_idx): typeof site =>
+      site_idx === 0 ? { ...site, xyz: [site.xyz[0] + 0.1, site.xyz[1], site.xyz[2]] } : site,
+    ),
+  }
+  await tick()
+  expect(props.selected_sites).toEqual([0])
+  props.structure_series_key = {}
+  await tick()
+  expect(props.selected_sites).toEqual([])
+  props.selected_sites = [0]
+  props.measured_sites = [0]
+  props.highlighted_sites = [0]
+  props.hovered_site_idx = 0
+  props.structure = { ...structure, sites: structure.sites.slice(1) }
+  await tick()
+  expect(props.selected_sites).toEqual([])
+  expect(props.measured_sites).toEqual([])
+  expect(props.highlighted_sites).toEqual([])
+  expect(props.hovered_site_idx).toBeNull()
+})
+
+// Completion adds what the scene draws: the 24 O copies cornering the corner Ti octahedra go
+// when the octahedra do, through hidden polyhedra (P key, `never`), bonding options or a
+// strategy that drop the Ti-O bonds, or Ti hidden in the legend. Each would otherwise leave
+// O copies ending drawn bonds, floating beyond the faces.
+const polyhedra_with = (scene_props: StructureProps[`scene_props`]) => ({
+  scene_props: { show_polyhedra: `always` as const, ...scene_props },
+})
+test.each([
+  [`hidden polyhedra`, { scene_props: { show_polyhedra: `never` } }],
+  [`polyhedra only for molecules`, { scene_props: { show_polyhedra: `molecules` } }],
+  [
+    `a bond strength threshold`,
+    polyhedra_with({ bonding_options: { strength_threshold: 100 } }),
+  ],
+  [`explicit_only bonding`, polyhedra_with({ bonding_strategy: `explicit_only` })],
+  [`Ti hidden in the legend`, { hidden_elements: new Set([`Ti`]) }],
+] as const)(`image completion follows the scene with %s`, async (_label, change) => {
+  const props = $state<StructureProps>({
+    structure: make_srtio3(`corner`),
+    show_image_atoms: true,
+    scene_props: { show_polyhedra: `always` },
+  })
+  const analysis = await mount_settled(props)
+  const completion_count = () =>
+    analysis.displayed_structure?.sites.filter((site: Site) => site.provenance?.completion)
+      .length
+  expect(completion_count()).toBe(24)
+  Object.assign(props, change)
+  await tick()
+  expect(completion_count()).toBe(0)
+})
+
+test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {
+  // What StructureScene's overlays index sites with is the session's validated selection,
+  // so a pick is never visible next to a displayed structure that lacks that site. Here the
+  // bound props are observed after a synchronous flush: both have already moved together.
+  const props = $state<StructureProps>({
+    structure,
+    measured_sites: [],
+    measure_mode: `distance`,
+    show_image_atoms: true,
+    supercell_scaling: `1x1x1`,
+  })
+  const analysis = await mount_settled(props)
+  const displayed_count = () => analysis.displayed_structure?.sites.length ?? 0
+  const pick_last_displayed = () => {
+    props.measured_sites = [0, 1, displayed_count() - 1]
+    flushSync()
+    expect(props.measured_sites).toHaveLength(3)
+  }
+  // image atoms: the last displayed site is an image that vanishes when they're hidden
+  expect(displayed_count()).toBeGreaterThan(structure.sites.length)
+  pick_last_displayed()
+  props.show_image_atoms = false
+  flushSync()
+  expect(props.measured_sites).toEqual([])
+  expect(displayed_count()).toBe(structure.sites.length)
+  // supercell: grow, pick a site that only exists in the 2x2x2 cell, shrink back
+  props.supercell_scaling = `2x2x2`
+  flushSync()
+  expect(displayed_count()).toBe(8 * structure.sites.length)
+  pick_last_displayed()
+  props.supercell_scaling = `1x1x1`
+  flushSync()
+  expect(props.measured_sites).toEqual([])
+  expect(displayed_count()).toBe(structure.sites.length)
+})
+
+test(`discovers new vector keys within one structure series`, async () => {
+  const with_vectors = (include_magmom: boolean): AnyStructure => ({
+    ...structure,
+    sites: structure.sites.map((site, site_idx) => ({
+      ...site,
+      properties: {
+        ...site.properties,
+        ...(site_idx === 0 && {
+          force: [1, 0, 0],
+          ...(include_magmom && { magmom: [0, 1, 0] }),
+        }),
+      },
+    })),
+  })
+  const props = $state({
+    structure: with_vectors(false),
+    structure_series_key: {},
+    active_pane: `controls` as const,
+  })
+  await mount_settled(props)
+  const vector_color = (key: string) =>
+    document.querySelector(`[data-key="vector_config:${key}"] input[type="color"]`)
+  expect(vector_color(`force`)).not.toBeNull()
+  expect(vector_color(`magmom`)).toBeNull()
+  props.structure = with_vectors(true)
+  await tick()
+  expect(vector_color(`force`)).not.toBeNull()
+  expect(vector_color(`magmom`)).not.toBeNull()
+})
+
+// `fullscreen` is bindable: the parent's value follows the browser's fullscreen element, and
+// setting it from the parent requests/exits fullscreen like the button does
+test(`preserves control chrome overrides and toggles bind:fullscreen`, async () => {
+  const on_fullscreen_change = vi.fn()
+  vi.spyOn(console, `error`).mockImplementation(() => undefined)
+  const props = $state({ fullscreen: false })
+  const chrome = { style: `--ctrl-btn-icon-size: 32px`, show_controls: `always` as const }
+  mount_structure(bind_props({ structure, ...chrome, on_fullscreen_change }, props))
+  const { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
+    stub_fullscreen_api()
+  request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
+  await tick()
+  expect(wrapper.style.getPropertyValue(`--ctrl-btn-icon-size`)).toBe(`32px`)
+  const fullscreen_button = doc_query<HTMLButtonElement>(
+    `.structure > section.control-buttons > .fullscreen-btn`,
+  )
+  expect(fullscreen_button.parentElement?.lastElementChild).toBe(fullscreen_button)
+  fullscreen_button.click()
+  // the flag flips on click and reverts once the browser rejects the request
+  await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`))
+  expect(on_fullscreen_change).not.toHaveBeenCalled()
+  fullscreen_button.click()
+  await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledTimes(2))
+  await set_fullscreen_element(root)
+  expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)
+  // fullscreen, the viewer fills the row and the caller's style moves to the row
+  expect(wrapper.style.height).toBe(`100%`)
+  expect(
+    doc_query(`.structure-site-layout`).style.getPropertyValue(`--ctrl-btn-icon-size`),
+  ).toBe(`32px`)
+  expect(props.fullscreen).toBe(true)
+  expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
+  props.fullscreen = false
+  await vi.waitFor(() => expect(exit_fullscreen).toHaveBeenCalledOnce())
+  await set_fullscreen_element(null)
+  expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`false`)
+  expect([props.fullscreen, wrapper.classList.contains(`fullscreen`)]).toEqual([false, false])
+  expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: false })
+  expect(on_fullscreen_change).toHaveBeenCalledTimes(2)
+})
+
+// `width`/`height` are bindable read-outs of the wrapper's client size, kept current through
+// the ResizeObserver behind bind:clientWidth/clientHeight (the 2x2 grid and the panes size
+// themselves from these)
+test(`bind:width/height report the wrapper size and follow resizes`, async () => {
+  mock_viewer_size(640, 480)
+  const props = $state({ width: 0, height: 0 })
+  await mount_settled(bind_props({ structure }, props))
+  expect([props.width, props.height]).toEqual([640, 480])
+  mock_viewer_size(1024, 768)
+  trigger_resize_observer(doc_query(`.structure`))
+  await tick()
+  expect([props.width, props.height]).toEqual([1024, 768])
+})
+
+// `persist_settings` reaches the controls pane: a saved browser view state is restored into
+// the viewer's bound settings only when opted in
+test.each([true, false])(`persist_settings=%s restores saved view state`, async (persist) => {
+  save_structure_view_state(
+    create_structure_view_state({
+      color_scheme: `Jmol`,
+      show_image_atoms: false,
+      supercell_scaling: `2x2x1`,
+      scene_props: { atom_radius: 1.35 },
+    }),
+  )
+  const defaults = {
+    color_scheme: DEFAULTS.color_scheme,
+    show_image_atoms: true,
+    supercell_scaling: `1x1x1`,
+  }
+  const props = $state({ ...defaults })
+  await mount_settled(
+    bind_props(
+      { structure, show_controls: `always` as const, persist_settings: persist },
+      props,
+    ),
+  )
+  expect(props).toEqual(
+    persist
+      ? { color_scheme: `Jmol`, show_image_atoms: false, supercell_scaling: `2x2x1` }
+      : defaults,
+  )
+  // the scene settings land in the controls pane (atom radius slider)
+  await fire(doc_query(`button.structure-controls-toggle`))
+  const radius_input = setting_input(`atom_radius`, `number`)
+  expect(Number(radius_input.value)).toBe(persist ? 1.35 : DEFAULTS.structure.atom_radius)
+})
+
+test(`export, flight and controls panes exclude each other and preserve edits`, async () => {
+  const props = $state<{ active_pane: StructurePane | null }>({ active_pane: null })
+  await mount_settled(bind_props({ structure, show_controls: `always` as const }, props))
+  const toggle_pane = async (pane: `export` | `controls` | `flight`): Promise<void> => {
+    await fire(doc_query(`.structure-${pane}-toggle`))
+  }
+  const dpi_selector = `input[type="number"][title*="dots per inch"]`
+  await toggle_pane(`export`)
+  expect(props.active_pane).toBe(`export`)
+  const dpi_input = doc_query<HTMLInputElement>(dpi_selector)
+  dpi_input.value = `250`
+  await fire(dpi_input, new Event(`input`, { bubbles: true }))
+  await toggle_pane(`controls`)
+  expect(props.active_pane).toBe(`controls`)
+  expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+  expect(doc_query(`.controls-pane`).style.display).toBe(`grid`)
+  await toggle_pane(`export`)
+  expect(props.active_pane).toBe(`export`)
+  expect(doc_query(`.controls-pane`).style.display).toBe(`none`)
+  expect(doc_query(`.export-pane`).style.display).toBe(`grid`)
+  expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+  await toggle_pane(`export`)
+  expect(props.active_pane).toBeNull()
+  expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+  await toggle_pane(`export`)
+  expect(doc_query<HTMLInputElement>(dpi_selector).value).toBe(`250`)
+  await toggle_pane(`flight`)
+  expect(props.active_pane).toBe(`flight`)
+  expect(doc_query(`.export-pane`).style.display).toBe(`none`)
+  // Viewer sizing must not replace the planner's manually written insets.
+  const planner = doc_query(`.structure-flight-pane`)
+  const motion = doc_query<HTMLSelectElement>(`[aria-label="Camera interpolation"]`)
+  expect(motion.closest(`details`)).toBeNull()
+  motion.value = `linear`
+  await fire(motion, new Event(`change`, { bubbles: true }))
+  planner.style.left = `123px`
+  planner.style.top = `234px`
+  const viewer = doc_query(`.structure`)
+  await resize_element(viewer, 1000, 600)
+  trigger_resize_observer(viewer)
+  await tick()
+  expect(viewer.style.getPropertyValue(`--struct-pane-max-height`)).toBe(`calc(600px - 50px)`)
+  expect([planner.style.left, planner.style.top]).toEqual([`123px`, `234px`])
+  const duration = doc_query<HTMLInputElement>(`[aria-label="Flight duration"]`)
+  duration.value = `12`
+  await fire(duration, new Event(`change`, { bubbles: true }))
+  await toggle_pane(`controls`)
+  expect(doc_query(`.structure-flight-pane`).style.display).toBe(`none`)
+  await toggle_pane(`flight`)
+  expect([duration.value, motion.value]).toEqual([`12`, `linear`])
+})
+
+// The Measure / Edit menu writes the bound measure_mode; distance is the default and stays
+// selectable from every other mode
+test(`Measure / Edit menu switches the bound measure_mode`, async () => {
+  const props = $state<{ measure_mode: MeasureMode }>({ measure_mode: `angle` })
+  await mount_settled(bind_props({ structure, show_controls: true }, props))
+  await select_measure_mode(`Distance`)
+  expect(props.measure_mode).toBe(`distance`)
+  await select_measure_mode(`Dihedral`)
+  expect(props.measure_mode).toBe(`dihedral`)
+  await select_measure_mode(`Edit Atoms`)
+  expect(props.measure_mode).toBe(`edit-atoms`)
+  // the toolbar for the active mode appears, and distance has none
+  expect(document.querySelector(`.edit-mode-toolbar`)).not.toBeNull()
+  await select_measure_mode(`Distance`)
+  expect(props.measure_mode).toBe(`distance`)
+  expect(document.querySelector(`.edit-mode-toolbar`)).toBeNull()
+})
+
+test(`info pane search selects a site and its card updates highlighted sites`, async () => {
+  const state = $state({
+    highlighted_sites: [] as number[],
+    hovered_site_idx: null as number | null,
+    selected_sites: [] as number[],
+  })
+  await mount_settled(
+    bind_props({ structure, active_pane: `info` as const, show_controls: true }, state),
+  )
+  const search = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
+  search.value = `${structure.sites[0].species[0].element}1`
+  await fire(search, new Event(`input`, { bubbles: true }))
+  await fire(doc_query(`.site-matches button`))
+  expect(state.selected_sites).toEqual([0])
+  const first_site_row = doc_query(
+    `.site-card[title^="Click to select ${structure.sites[0].species[0].element}1"]`,
+  )
+  first_site_row.dispatchEvent(mouse(`mouseenter`))
+  expect(state.highlighted_sites).toEqual([0])
+  expect(state.hovered_site_idx).toBe(0)
+  first_site_row.dispatchEvent(mouse(`mouseleave`))
+  expect(state.highlighted_sites).toEqual([])
+  expect(state.hovered_site_idx).toBeNull()
+  first_site_row.click()
+  expect(state.selected_sites).toEqual([])
+})
+
+test.each([
+  [`undefined structure`, undefined, false, `No structure provided`],
+  [`structure without sites`, {}, false, `No sites found in structure`],
+  [`structure with null sites`, { sites: null }, false, `No sites found in structure`],
+  [`structure with empty sites`, { sites: [] }, false, `No sites found in structure`],
+  // the loading overlay replaces both messages, which its label would overlap
+  [`undefined structure while loading`, undefined, true, null],
+  [`empty sites while loading`, { sites: [] }, true, null],
+])(`shows the expected message for %s`, (_description, test_structure, loading, message) => {
+  mount_structure({ structure: test_structure as AnyStructure, loading })
+  const text = document.body.textContent ?? ``
+  if (message)
+    expect(document.querySelector(`.empty-state.overlay[role="status"]`)?.textContent).toBe(
+      message,
+    )
+  else
+    for (const empty of [`No structure provided`, `No sites found`])
+      expect(text).not.toContain(empty)
 })
 
 test(`camera projection and auto-rotate controls reflect scene_props`, async () => {
@@ -2954,9 +2720,7 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     auto_rotate: 0.5,
     ...camera,
   }
-  mount_structure({ structure, active_pane: `controls`, show_controls: true, scene_props })
-  await tick()
-
+  await mount_settled({ structure, active_pane: `controls`, show_controls: true, scene_props })
   const projection_label = [...document.querySelectorAll(`label`)].find((label) =>
     label.textContent?.includes(`Projection`),
   )
@@ -2966,7 +2730,6 @@ test(`camera projection and auto-rotate controls reflect scene_props`, async () 
     `perspective`,
     `orthographic`,
   ])
-
   // by label, not by `[max="2"]`: several sliders share that bound, so a positional match
   // silently follows whichever section the pane happens to render first
   const auto_rotate_label = [...document.querySelectorAll(`.controls-pane label`)].find(
@@ -2992,35 +2755,29 @@ test.each([100, 101])(
       `Si`,
       [idx / 101, 0.3, 0.3],
     ])
-    const props = $state<ComponentProps<typeof Structure>>({
+    const props = $state<StructureProps>({
       structure: make_crystal(30, sites.slice(0, atom_count)),
       active_pane: `controls`,
       show_controls: true,
       analyze_symmetry: false,
       scene_props: {},
     })
-    mount_structure(bind_props({}, props))
-    await tick()
-    const toggle = doc_query<HTMLInputElement>(
-      `[data-key="show_cell_vectors"] input[type="checkbox"]`,
-    )
+    await mount_settled(bind_props({}, props))
+    const toggle = setting_input(`show_cell_vectors`)
     const visible = atom_count <= 100
-    expect(toggle.checked).toBe(visible)
-    expect(scene_stub.props?.show_cell_vectors).toBe(visible)
-
+    const expect_arrows = (shown: boolean) =>
+      expect([toggle.checked, scene_stub.props?.show_cell_vectors]).toEqual([shown, shown])
+    expect_arrows(visible)
     toggle.click()
     flushSync()
-    expect(toggle.checked).toBe(!visible)
-    expect(scene_stub.props?.show_cell_vectors).toBe(!visible)
-
+    expect_arrows(!visible)
     // Frame/source updates keep the explicit choice; clearing it restores automatic sizing.
     props.structure = make_crystal(fcc_primitive_matrix(30), sites)
     await tick()
     expect(scene_stub.props?.show_cell_vectors).toBe(!visible)
     props.scene_props = { show_cell_vectors: undefined }
     await tick()
-    expect(toggle.checked).toBe(false)
-    expect(scene_stub.props?.show_cell_vectors).toBe(false)
+    expect_arrows(false)
     toggle.click()
     flushSync()
     expect(scene_stub.props?.show_cell_vectors).toBe(true)
@@ -3028,8 +2785,7 @@ test.each([100, 101])(
       `[aria-label="Reset all viewer settings to defaults"]`,
     ).click()
     flushSync()
-    expect(toggle.checked).toBe(false)
-    expect(scene_stub.props?.show_cell_vectors).toBe(false)
+    expect_arrows(false)
   },
 )
 
@@ -3044,17 +2800,14 @@ test(`scene_props owns the trail toggle in both directions`, async () => {
     },
   )
   const scene_props = $state({ show_trajectory_lines: true })
-  mount_structure({
+  await mount_settled({
     structure,
     active_pane: `controls`,
     show_controls: true,
     scene_props,
     trajectory_position_stream,
   })
-  await tick()
-  const toggle = doc_query<HTMLInputElement>(
-    `[data-key="show_trajectory_lines"] input[type="checkbox"]`,
-  )
+  const toggle = setting_input(`show_trajectory_lines`)
   expect(toggle.checked).toBe(true)
   toggle.click()
   flushSync()
@@ -3079,14 +2832,11 @@ test.each([`literal`, `bound`] as const)(
     mounted.push(harness)
     await tick()
     const settings = state.bound_scene_props
-    const toggle = doc_query<HTMLInputElement>(
-      `[data-key="show_site_labels"] input[type="checkbox"]`,
-    )
+    const toggle = setting_input(`show_site_labels`)
     expect(toggle.checked).toBe(false)
     toggle.click()
     flushSync()
-    expect(toggle.checked).toBe(true)
-    expect(scene_stub.props?.show_site_labels).toBe(true)
+    expect([toggle.checked, scene_stub.props?.show_site_labels]).toEqual([true, true])
     // the parent's bound object is edited, not swapped for a copy on every change
     expect(state.bound_scene_props).toBe(settings)
     expect(settings.show_site_labels).toBe(mode === `bound`)
@@ -3110,17 +2860,13 @@ test(`viewer-local setting changes do not mutate defaults or another viewer`, as
         return input ? [input] : []
       })
   const default_auto_rotate = DEFAULTS.structure.auto_rotate
-  mount_structure({ structure, active_pane: `controls`, show_controls: true })
-  await tick()
-
+  await mount_settled({ structure, active_pane: `controls`, show_controls: true })
   const [first_auto_rotate] = auto_rotate_inputs()
   if (!first_auto_rotate) throw new Error(`First viewer is missing its auto-rotate input`)
   set_input(first_auto_rotate, `1.5`)
   flushSync()
   expect(DEFAULTS.structure.auto_rotate).toBe(default_auto_rotate)
-
-  mount_structure({ structure, active_pane: `controls`, show_controls: true })
-  await tick()
+  await mount_settled({ structure, active_pane: `controls`, show_controls: true })
   const inputs = auto_rotate_inputs()
   expect(inputs).toHaveLength(2)
   expect(Number(inputs[0].value)).toBe(1.5)
@@ -3159,7 +2905,6 @@ test(`atom label controls reflect scene_props per viewer instance`, async () => 
   )
   expect(size_input?.valueAsNumber).toBeCloseTo(1.2, 1)
   expect(padding_input?.valueAsNumber).toBe(4)
-
   const [instance1_z, instance2_z] = [offset_inputs[2], offset_inputs[5]]
   instance1_z.value = `0.9`
   await fire(instance1_z, new Event(`input`, { bubbles: true }))
@@ -3167,322 +2912,299 @@ test(`atom label controls reflect scene_props per viewer instance`, async () => 
   expect(Number(instance2_z.value)).toBeCloseTo(0.7, 1)
 })
 
+// === Multi-side view ===
 // Grid layout and viewport lifecycle; rendered camera interactions are covered by Playwright.
-describe(`Multi-side view`, () => {
-  const mock_viewer_size = (client_width: number, client_height: number): void => {
-    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(client_width)
-    vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(client_height)
-  }
 
-  test(`layout dropdown survives repeated grid toggles and resizing`, async () => {
-    mock_gpu()
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure,
-      show_controls: `always`,
-      multi_view: false,
-    })
-    mount_structure(props)
-    await tick()
-
-    doc_query(`button[aria-label="View layout: 3D single view"]`)
-    expect(document.querySelector(`.view-mode-caret`)).toBeNull()
-    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
-
-    for (const _iteration of [0, 1]) {
-      await select_structure_layout(`3D 2×2 grid`)
-      expect(props.multi_view).toBe(true)
-      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
-      expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
-
-      for (const [width, height, active] of [
-        [599, 399, false],
-        [800, 600, true],
-      ] as const) {
-        mock_viewer_size(width, height)
-        trigger_resize_observer(doc_query(`.structure`))
-        await tick()
-        expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(active)
-      }
-
-      await select_structure_layout(`3D single view`)
-      expect(props.multi_view).toBe(false)
-      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+test(`layout dropdown survives repeated grid toggles and resizing`, async () => {
+  mock_gpu()
+  const props = $state<StructureProps>({
+    structure,
+    show_controls: `always`,
+    multi_view: false,
+  })
+  await mount_settled(props)
+  doc_query(`button[aria-label="View layout: 3D single view"]`)
+  expect(document.querySelector(`.view-mode-caret`)).toBeNull()
+  expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+  for (const _iteration of [0, 1]) {
+    await select_structure_layout(`3D 2×2 grid`)
+    expect(props.multi_view).toBe(true)
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(true)
+    expect(document.querySelector(`.view-mode-dropdown`)).toBeNull()
+    for (const [width, height, active] of [
+      [599, 399, false],
+      [800, 600, true],
+    ] as const) {
+      mock_viewer_size(width, height)
+      trigger_resize_observer(doc_query(`.structure`))
+      await tick()
+      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(active)
     }
-  })
-
-  test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {
-    mount_structure({
-      structure,
-      active_pane: `controls` as const,
-      show_controls: { mode: `always`, hidden: [`multi-view`] },
-    })
-    await tick()
-    expect(document.querySelector(`button[aria-label^="View layout:"]`)).toBeNull()
-  })
-
-  // Panes need 300x200 px each with a 2 px gap: 602x402 for the default 4 views (2 rows),
-  // 602x604 for 6 views (3 rows)
-  test.each([
-    [`below width`, 601, 402, 4, false],
-    [`below height`, 602, 401, 4, false],
-    [`at boundary`, 602, 402, 4, true],
-    [`three rows below`, 602, 603, 6, false],
-    [`three rows at boundary`, 602, 604, 6, true],
-  ] as const)(
-    `responsive multi-view availability: %s`,
-    async (_scenario, client_width, client_height, view_count, expected_active) => {
-      mock_viewer_size(client_width, client_height)
-      const views = Array.from({ length: view_count }, () => ({}))
-      mount_structure({ structure, multi_view: true, show_controls: `always`, views })
-      await tick()
-      await tick()
-
-      expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
-        expected_active,
-      )
-      expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(expected_active)
-    },
-  )
-
-  test(`collapsed multi-view preference can be cleared with its keyboard shortcut`, async () => {
-    mock_viewer_size(599, 399)
-    const state = { multi_view: true }
-    mount_structure(bind_props({ structure, show_controls: `always` as const }, state))
-    await tick()
-    await tick()
+    await select_structure_layout(`3D single view`)
+    expect(props.multi_view).toBe(false)
     expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+  }
+})
 
-    await fire(doc_query(`.structure`), keydown(`g`))
-    expect(state.multi_view).toBe(false)
+test(`toggle button is hidden when 'multi-view' control is in hidden list`, async () => {
+  await mount_settled({
+    structure,
+    active_pane: `controls` as const,
+    show_controls: { mode: `always`, hidden: [`multi-view`] },
   })
+  expect(document.querySelector(`button[aria-label^="View layout:"]`)).toBeNull()
+})
+
+// Panes need 300x200 px each with a 2 px gap: 602x402 for the default 4 views (2 rows),
+// 602x604 for 6 views (3 rows)
+test.each([
+  [`below width`, 601, 402, 4, false],
+  [`below height`, 602, 401, 4, false],
+  [`at boundary`, 602, 402, 4, true],
+  [`three rows below`, 602, 603, 6, false],
+  [`three rows at boundary`, 602, 604, 6, true],
+] as const)(
+  `responsive multi-view availability: %s`,
+  async (_scenario, client_width, client_height, view_count, expected_active) => {
+    mock_viewer_size(client_width, client_height)
+    const views = Array.from({ length: view_count }, () => ({}))
+    await mount_settled({ structure, multi_view: true, show_controls: `always`, views })
+    await tick()
+    expect(document.querySelector(`button[aria-label^="View layout:"]`) !== null).toBe(
+      expected_active,
+    )
+    expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(expected_active)
+  },
+)
+
+test(`collapsed multi-view preference can be cleared with its keyboard shortcut`, async () => {
+  mock_viewer_size(599, 399)
+  const state = { multi_view: true }
+  await mount_settled(bind_props({ structure, show_controls: `always` as const }, state))
+  await tick()
+  expect(doc_query(`.structure`).classList.contains(`multi-view`)).toBe(false)
+  await fire(doc_query(`.structure`), keydown(`g`))
+  expect(state.multi_view).toBe(false)
 })
 
 // Camera target reset on supercell change and structure reload requires WebGL +
 // OrbitControls — tested via Playwright E2E (tests/playwright/structure/).
 
-describe(`source acquisition`, () => {
-  const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
-    vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
-  }
-  const structure_json = (element: string, count = 1) =>
-    JSON.stringify({
-      sites: Array.from({ length: count }, (_, idx) => ({
-        species: [{ element, occu: 1, oxidation_state: 0 }],
-        abc: [0, 0, 0],
-        xyz: [idx, 0, 0],
-        label: `${element}${idx + 1}`,
-        properties: {},
-      })),
-    })
-  const request_url = (url: string | URL | Request) =>
-    typeof url === `string` ? url : url instanceof URL ? url.href : url.url
-
-  test.each([
-    {
-      name: `invalid inline source`,
-      source: { data: `not parseable`, filename: `string` },
-      filename: `string`,
-      error: /^Failed to parse string: /,
-      on_error: vi.fn(),
-    },
-    {
-      name: `HTTP 404 source`,
-      source: `/missing-structure.json`,
-      filename: `missing-structure.json`,
-      error: /Failed to fetch \/missing-structure\.json: HTTP 404/,
-      on_error: undefined,
-    },
-  ])(
-    `reports $name errors with an optional callback`,
-    async ({ source, filename, error, on_error }) => {
-      vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(``, { status: 404 })))
-      mount_structure({ source, on_error })
-      await vi.waitFor(() =>
-        expect(document.querySelector(`.status-message.error`)?.textContent).toMatch(error),
-      )
-      if (on_error)
-        expect(on_error).toHaveBeenCalledWith(
-          expect.objectContaining({ error_msg: expect.stringMatching(error), filename }),
-        )
-      const status_msg = doc_query(`.status-message.error`)
-      expect(status_msg.closest(`[role]`)?.getAttribute(`role`)).toBe(`alert`)
-    },
-  )
-
-  // A host handler's failure is reported in its own words
-  test.each([false, true])(
-    `keeps loading active until an async source handler settles (fails=%s)`,
-    async (fails) => {
-      mock_fetch_response(SAMPLE_POSCAR_CONTENT)
-      const { promise, resolve, reject } = Promise.withResolvers<undefined>()
-      const on_file_drop = vi.fn(() => promise)
-      const on_error = vi.fn()
-      const state = $state({ loading: false })
-      mount_structure(bind_props({ source: `/test.poscar`, on_file_drop, on_error }, state))
-
-      await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
-      expect(state.loading).toBe(true)
-      expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
-        `Loading structure...`,
-      )
-      // the empty-state text would be drawn right under the spinner's label
-      expect(document.body.textContent).not.toContain(`No structure provided`)
-      if (fails) reject(new Error(`handler failed`))
-      else resolve(undefined)
-      await vi.waitFor(() => expect(state.loading).toBe(false))
-      expect(on_error.mock.calls).toEqual(
-        fails ? [[expect.objectContaining({ error_msg: `handler failed` })]] : [],
-      )
-    },
-  )
-
-  test.each([
-    [`test.poscar`, SAMPLE_POSCAR_CONTENT],
-    [`density.CHGCAR`, SAMPLE_CHGCAR_CONTENT],
-  ])(
-    `keeps compressed %s identity separate from filename and volume dedupe key`,
-    async (filename, content) => {
-      mock_fetch_response(content, { 'content-encoding': `gzip` })
-      const on_file_load = vi.fn()
-      const state = { volumetric_data: undefined as VolumetricData[] | undefined }
-      mount_structure(bind_props({ source: `/${filename}.gz`, on_file_load }, state))
-      await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
-      expect(on_file_load.mock.calls[0][0]).toMatchObject({
-        filename,
-        source_filename: `${filename}.gz`,
-        source_url: `/${filename}.gz`,
-      })
-      if (filename.endsWith(`CHGCAR`))
-        expect(state.volumetric_data).toEqual([
-          expect.objectContaining({ source: filename, source_filename: `${filename}.gz` }),
-        ])
-    },
-  )
-
-  // A host that passes isosurface_settings alongside source (pymatviz) wants its layers on
-  // the loaded volume, not the automatic 20 %-of-|max| layer
-  const caller_layer = {
-    volume_id: JSON.stringify([`density.CHGCAR`, `charge density`]),
-    isovalue: 0.05,
-    color: `#3b82f6`,
-    opacity: 0.6,
-    visible: true,
-    show_negative: false,
-    negative_color: `#ef4444`,
-  }
-  test.each<[string, IsosurfaceLayer[], (volumes: VolumetricData[]) => IsosurfaceLayer[]]>([
-    [`caller layers`, [caller_layer], () => [caller_layer]],
-    [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0])]],
-  ])(
-    `a source volume keeps %s supplied before it loaded`,
-    async (_label, layers, expected_layers) => {
-      mock_fetch_response(SAMPLE_CHGCAR_CONTENT)
-      const state = {
-        volumetric_data: undefined as VolumetricData[] | undefined,
-        isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
-      }
-      mount_structure(bind_props({ source: `/density.CHGCAR` }, state))
-
-      await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
-      expect(state.isosurface_settings.layers).toEqual(
-        expected_layers(state.volumetric_data ?? []),
-      )
-    },
-  )
-
-  // Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
-  const mount_pending_url = async (extra: ComponentProps<typeof Structure> = {}) => {
-    const responses = deferred_fetch_responses()
-    const props = $state<ComponentProps<typeof Structure>>({ source: `/a.json`, ...extra })
-    mount_structure(props)
-    await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
-    return { responses, props }
-  }
-
-  // on_file_load/on_error report the requested URL, never a superseded source's completion.
-  // Mounts /a.json, switches to /b.json and waits until both requests are pending.
-  const supersede_source_url = async () => {
-    const [on_file_load, on_error] = [vi.fn(), vi.fn()]
-    const { responses, props } = await mount_pending_url({ on_file_load, on_error })
-    props.source = `/b.json`
-    await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
-    const pending = (url: string) => responses.get(url)?.shift()
-    return { on_file_load, on_error, pending }
-  }
-
-  test(`ignores a superseded source URL's success landing after the new source loaded`, async () => {
-    const { on_file_load, on_error, pending } = await supersede_source_url()
-    pending(`/b.json`)?.resolve(new Response(structure_json(`He`)))
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-    pending(`/a.json`)?.resolve(new Response(structure_json(`H`)))
-    await tick()
-    expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([1, 0])
-    expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+// === Source acquisition ===
+const mock_fetch_response = (content: string, headers?: HeadersInit): void => {
+  vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(content, { headers })))
+}
+const structure_json = (element: string, count = 1) =>
+  JSON.stringify({
+    sites: Array.from({ length: count }, (_, idx) => ({
+      species: [{ element, occu: 1, oxidation_state: 0 }],
+      abc: [0, 0, 0],
+      xyz: [idx, 0, 0],
+      label: `${element}${idx + 1}`,
+      properties: {},
+    })),
   })
+const request_url = (url: string | URL | Request) =>
+  typeof url === `string` ? url : url instanceof URL ? url.href : url.url
 
-  test(`ignores a superseded source URL's failure landing while the new source is pending`, async () => {
-    const { on_file_load, on_error, pending } = await supersede_source_url()
-    pending(`/a.json`)?.reject(new Error(`/a.json failed`))
-    pending(`/b.json`)?.reject(new Error(`/b.json failed`))
-    await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
-    await tick()
-    expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([0, 1])
-    expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
-  })
+test.each([
+  {
+    name: `invalid inline source`,
+    source: { data: `not parseable`, filename: `string` },
+    filename: `string`,
+    error: /^Failed to parse string: /,
+    on_error: vi.fn(),
+  },
+  {
+    name: `HTTP 404 source`,
+    source: `/missing-structure.json`,
+    filename: `missing-structure.json`,
+    error: /Failed to fetch \/missing-structure\.json: HTTP 404/,
+    on_error: undefined,
+  },
+])(
+  `reports $name errors with an optional callback`,
+  async ({ source, filename, error, on_error }) => {
+    vi.stubGlobal(`fetch`, vi.fn().mockResolvedValue(new Response(``, { status: 404 })))
+    mount_structure({ source, on_error })
+    await vi.waitFor(() =>
+      expect(document.querySelector(`.status-message.error`)?.textContent).toMatch(error),
+    )
+    if (on_error)
+      expect(on_error).toHaveBeenCalledWith(
+        expect.objectContaining({ error_msg: expect.stringMatching(error), filename }),
+      )
+    const status_msg = doc_query(`.status-message.error`)
+    expect(status_msg.closest(`[role]`)?.getAttribute(`role`)).toBe(`alert`)
+  },
+)
 
-  test(`an unrelated prop change does not abort and restart an in-flight source fetch`, async () => {
-    const { responses, props } = await mount_pending_url({
-      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
-      active_volume_id: `0`,
+// A host handler's failure is reported in its own words
+test.each([false, true])(
+  `keeps loading active until an async source handler settles (fails=%s)`,
+  async (fails) => {
+    mock_fetch_response(SAMPLE_POSCAR_CONTENT)
+    const { promise, resolve, reject } = Promise.withResolvers<undefined>()
+    const on_file_drop = vi.fn(() => promise)
+    const on_error = vi.fn()
+    const state = $state({ loading: false })
+    mount_structure(bind_props({ source: `/test.poscar`, on_file_drop, on_error }, state))
+    await vi.waitFor(() => expect(on_file_drop).toHaveBeenCalledOnce())
+    expect(state.loading).toBe(true)
+    expect(doc_query(`.task-status.overlay [role="status"]`).textContent?.trim()).toBe(
+      `Loading structure...`,
+    )
+    // the empty-state text would be drawn right under the spinner's label
+    expect(document.body.textContent).not.toContain(`No structure provided`)
+    if (fails) reject(new Error(`handler failed`))
+    else resolve(undefined)
+    await vi.waitFor(() => expect(state.loading).toBe(false))
+    expect(on_error.mock.calls).toEqual(
+      fails ? [[expect.objectContaining({ error_msg: `handler failed` })]] : [],
+    )
+  },
+)
+
+test.each([
+  [`test.poscar`, SAMPLE_POSCAR_CONTENT],
+  [`density.CHGCAR`, SAMPLE_CHGCAR_CONTENT],
+])(
+  `keeps compressed %s identity separate from filename and volume dedupe key`,
+  async (filename, content) => {
+    mock_fetch_response(content, { 'content-encoding': `gzip` })
+    const on_file_load = vi.fn()
+    const state = { volumetric_data: undefined as VolumetricData[] | undefined }
+    mount_structure(bind_props({ source: `/${filename}.gz`, on_file_load }, state))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    expect(on_file_load.mock.calls[0][0]).toMatchObject({
+      filename,
+      source_filename: `${filename}.gz`,
+      source_url: `/${filename}.gz`,
     })
-    props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
-    props.active_volume_id = `2`
-    await tick()
-    await tick()
-    expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
-  })
+    if (filename.endsWith(`CHGCAR`))
+      expect(state.volumetric_data).toEqual([
+        expect.objectContaining({ source: filename, source_filename: `${filename}.gz` }),
+      ])
+  },
+)
 
-  // Deleting an atom writes a new structure object through the binding. Without re-claiming it
-  // for the URL the loader reads it as caller-supplied and never fetches the next source.
-  test(`an edited URL-loaded structure still follows a source change`, async () => {
-    const fetch_mock = vi.fn((url: string | URL | Request) => {
-      const element = request_url(url).includes(`b.json`) ? `He` : `H`
-      return Promise.resolve(new Response(structure_json(element, 3)))
-    })
-    vi.stubGlobal(`fetch`, fetch_mock)
-    const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
-    const props = $state<ComponentProps<typeof Structure>>({
-      source: `/a.json`,
-      structure: undefined,
-      selected_sites: [],
-      measure_mode: `edit-atoms`,
-      on_file_load,
-    })
-    mount_structure(props)
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
-    await tick()
-    props.selected_sites = [0]
-    await fire(doc_query(`.structure`), keydown(`Delete`, { cancelable: true }))
-    expect(props.structure?.sites).toHaveLength(2)
+// A host that passes isosurface_settings alongside source (pymatviz) wants its layers on
+// the loaded volume, not the automatic 20 %-of-|max| layer
+const caller_layer = {
+  volume_id: JSON.stringify([`density.CHGCAR`, `charge density`]),
+  isovalue: 0.05,
+  color: `#3b82f6`,
+  opacity: 0.6,
+  visible: true,
+  show_negative: false,
+  negative_color: `#ef4444`,
+}
+test.each<[string, IsosurfaceLayer[], (volumes: VolumetricData[]) => IsosurfaceLayer[]]>([
+  [`caller layers`, [caller_layer], () => [caller_layer]],
+  [`no layers`, [], (volumes) => [auto_volume_layer(volumes[0])]],
+])(
+  `a source volume keeps %s supplied before it loaded`,
+  async (_label, layers, expected_layers) => {
+    mock_fetch_response(SAMPLE_CHGCAR_CONTENT)
+    const state = {
+      volumetric_data: undefined as VolumetricData[] | undefined,
+      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers },
+    }
+    mount_structure(bind_props({ source: `/density.CHGCAR` }, state))
+    await vi.waitFor(() => expect(state.volumetric_data).toHaveLength(1))
+    expect(state.isosurface_settings.layers).toEqual(
+      expected_layers(state.volumetric_data ?? []),
+    )
+  },
+)
 
-    props.source = `/b.json`
-    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
-    expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
+// Mount with `/a.json` as a pending (deferred) fetch and wait for the request to be issued
+const mount_pending_url = async (extra: StructureProps = {}) => {
+  const responses = deferred_fetch_responses()
+  const props = $state<StructureProps>({ source: `/a.json`, ...extra })
+  mount_structure(props)
+  await vi.waitFor(() => expect(responses.has(`/a.json`)).toBe(true))
+  return { responses, props }
+}
+
+// on_file_load/on_error report the requested URL, never a superseded source's completion.
+// Mounts /a.json, switches to /b.json and waits until both requests are pending.
+const supersede_source_url = async () => {
+  const [on_file_load, on_error] = [vi.fn(), vi.fn()]
+  const { responses, props } = await mount_pending_url({ on_file_load, on_error })
+  props.source = `/b.json`
+  await vi.waitFor(() => expect(responses.has(`/b.json`)).toBe(true))
+  const pending = (url: string) => responses.get(url)?.shift()
+  return { on_file_load, on_error, pending }
+}
+
+test(`ignores a superseded source URL's success landing after the new source loaded`, async () => {
+  const { on_file_load, on_error, pending } = await supersede_source_url()
+  pending(`/b.json`)?.resolve(new Response(structure_json(`He`)))
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+  pending(`/a.json`)?.resolve(new Response(structure_json(`H`)))
+  await tick()
+  expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([1, 0])
+  expect(on_file_load.mock.calls[0][0].structure?.sites[0]?.species[0]?.element).toBe(`He`)
+})
+
+test(`ignores a superseded source URL's failure landing while the new source is pending`, async () => {
+  const { on_file_load, on_error, pending } = await supersede_source_url()
+  pending(`/a.json`)?.reject(new Error(`/a.json failed`))
+  pending(`/b.json`)?.reject(new Error(`/b.json failed`))
+  await vi.waitFor(() => expect(on_error).toHaveBeenCalledTimes(1))
+  await tick()
+  expect([on_file_load.mock.calls.length, on_error.mock.calls.length]).toEqual([0, 1])
+  expect(on_error.mock.calls[0][0].filename).toBe(`b.json`)
+})
+
+test(`an unrelated prop change does not abort and restart an in-flight source fetch`, async () => {
+  const { responses, props } = await mount_pending_url({
+    isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS },
+    active_volume_id: `0`,
   })
+  props.isosurface_settings = { ...DEFAULT_ISOSURFACE_SETTINGS }
+  props.active_volume_id = `2`
+  await tick()
+  await tick()
+  expect(responses.get(`/a.json`), `the first request is still the only one`).toHaveLength(1)
+})
+
+// Deleting an atom writes a new structure object through the binding. Without re-claiming it
+// for the URL the loader reads it as caller-supplied and never fetches the next source.
+test(`an edited URL-loaded structure still follows a source change`, async () => {
+  const fetch_mock = vi.fn((url: string | URL | Request) => {
+    const element = request_url(url).includes(`b.json`) ? `He` : `H`
+    return Promise.resolve(new Response(structure_json(element, 3)))
+  })
+  vi.stubGlobal(`fetch`, fetch_mock)
+  const on_file_load = vi.fn<(data: StructureHandlerData) => void>()
+  const props = $state<StructureProps>({
+    source: `/a.json`,
+    structure: undefined,
+    selected_sites: [],
+    measure_mode: `edit-atoms`,
+    on_file_load,
+  })
+  mount_structure(props)
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(1))
+  await tick()
+  props.selected_sites = [0]
+  await fire(doc_query(`.structure`), keydown(`Delete`, { cancelable: true }))
+  expect(props.structure?.sites).toHaveLength(2)
+  props.source = `/b.json`
+  await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
+  expect(props.structure?.sites[0]?.species[0]?.element).toBe(`He`)
 })
 
 const mock_prediction_export = () => {
   const download = vi.fn<(data: string, filename: string, mime_type: string) => void>()
   vi.stubGlobal(`download`, download)
   // The viewer gives an import a fresh `run_id`, so the export carries that one.
-  return async (
-    prediction: ComponentProps<typeof Structure>[`prediction`],
-    run_id: number,
-  ) => {
+  return async (prediction: StructureProps[`prediction`], run_id: number) => {
     // Export rows are created on opening; exercise the same control as the user.
     expect(document.querySelector(`[title="Download Export prediction"]`)).toBeNull()
-    doc_query<HTMLButtonElement>(`.structure-export-toggle`).click()
-    await tick()
+    await fire(doc_query(`.structure-export-toggle`))
     const filename = doc_query<HTMLInputElement>(`.export-destination input[type="text"]`)
     filename.value = `restored-structure`
     await fire(filename, new Event(`input`, { bubbles: true }))
@@ -3512,7 +3234,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
       }
     const input = make_crystal(1, [{ element: `Cu`, abc: [0.1, 0.2, 0.3] }])
     const saved_volume = { ...make_volume(make_grid(2, 2, 2, () => 1)), id: `density` }
-    const state = $state<ComponentProps<typeof Structure>>({
+    const state = $state<StructureProps>({
       structure: undefined,
       volumetric_data: [],
       cell_type: `primitive`,
@@ -3533,13 +3255,11 @@ test.each([`replace`, `mutate`, `restart`] as const)(
         volumes: [saved_volume],
       },
     })
-    mount_structure(state)
-    await tick()
+    await mount_settled(state)
     expect(state.structure).toEqual(input)
     expect(state.structure).not.toBe(input)
     expect(state.volumetric_data).toHaveLength(1)
-    expect(state.cell_type).toBe(`original`)
-    expect(state.supercell_scaling).toBe(`1x1x1`)
+    expect([state.cell_type, state.supercell_scaling]).toEqual([`original`, `1x1x1`])
     await check_export(state.prediction, 1)
     if (action === `mutate` && state.structure)
       state.structure.sites[0].species[0].element = `H`
@@ -3560,7 +3280,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
 
 test(`import survives a synchronous restart from the previous run's abort listener`, async () => {
   const check_export = mock_prediction_export()
-  const props = $state<ComponentProps<typeof Structure>>({
+  const props = $state<StructureProps>({
     structure: make_crystal(1, [{ element: `Cu`, abc: [0, 0, 0] }]),
     show_controls: `always`,
     volumetric_data: [],
@@ -3605,13 +3325,10 @@ test.each([
   `a run started %s an import with its run_id never adopts the import on %s`,
   async (started, action) => {
     mock_gpu()
-    const state = $state<LiveVolumeState & { prediction?: StructureToolPrediction }>({
+    const { state, tool } = await mount_live<{ prediction?: StructureToolPrediction }>({
       structure: make_crystal(1, [{ element: `Cu`, abc: [0, 0, 0] }]),
-      volumetric_data: [],
-      isosurface_settings: { ...DEFAULT_ISOSURFACE_SETTINGS, layers: [] },
       prediction: undefined,
     })
-    const tool = await mount_host_structure(bind_props({}, state))
     const provenance = { model: `new`, version: `1`, units: {}, settings: {} }
     let restarted: StructureToolRun | undefined
     if (started === `during`)
@@ -3628,9 +3345,7 @@ test.each([
       volumes: [live_volume(`density`, 1, `Saved`)],
     }
     const imported_snapshot = structuredClone(imported)
-    flushSync(() => {
-      state.prediction = imported
-    })
+    flushSync(() => (state.prediction = imported))
     await tick()
     expect(volume_labels(state.volumetric_data)).toEqual([`Saved`])
     const shown_import = tool.host_props.prediction
@@ -3639,12 +3354,7 @@ test.each([
     // Hosts match predictions to runs by id, so an import must never share one with a run.
     expect(shown_import.run_id).not.toBe(run.id)
     expect(run.signal.aborted).toBe(false)
-    const geometry = {
-      positions: [
-        [0.1, 0, 0],
-        [2.2, 2.1, 2.3],
-      ] as Vec3[],
-    }
+    const geometry = { positions: MOVED_POSITIONS }
     if (action === `transient preview`) {
       flushSync(() =>
         run.on_overlay({ transient: true, volumes: [live_volume(`density`, 4, `Live`)] }),
@@ -3653,9 +3363,7 @@ test.each([
       // The preview neither keeps the import as its run's result nor borrows its atom data.
       expect(tool.host_props.prediction).toBeNull()
       expect(volume_labels(state.volumetric_data)).toEqual([`Live`])
-      const scene_sites: AnyStructure[`sites`] | undefined =
-        scene_stub.props?.structure?.sites.slice(0, input.sites.length)
-      expect(scene_sites?.map(({ properties }) => properties?.charge)).toEqual([
+      expect(scene_sites().map(({ properties }) => properties?.charge)).toEqual([
         undefined,
         undefined,
       ])
@@ -3684,17 +3392,14 @@ test(`caller-owned Structure exposes live read-only analysis with file drops dis
   const fetch = vi.fn()
   vi.stubGlobal(`fetch`, fetch)
   const props = $state({ structure, show_image_atoms: false, allow_file_drop: false })
-  const analysis = mount_structure(props)
-  await tick()
+  const analysis = await mount_settled(props)
   expect(analysis.displayed_structure?.sites).toHaveLength(structure.sites.length)
   expect(Reflect.set(analysis, `displayed_structure`, undefined)).toBe(false)
   props.structure = { ...structure, sites: structure.sites.slice(0, 1) }
   flushSync()
   expect(analysis.displayed_structure?.sites).toHaveLength(1)
-  await fire(
-    doc_query(`.structure`),
-    create_drop_event(new File([SAMPLE_POSCAR_CONTENT], `input.poscar`)),
-  )
+  drop_file(SAMPLE_POSCAR_CONTENT, `input.poscar`)
+  await tick()
   expect(fetch).not.toHaveBeenCalled()
   expect(analysis.displayed_structure?.sites).toHaveLength(1)
 })
@@ -3718,161 +3423,155 @@ test.each([`quality`, `speed`] as const)(
   },
 )
 
+// === Site sidebar ===
 // The site table docks beside the 3D view only for sites carrying numbers worth reading, and
 // stays linked to it: a row click selects its site, a row hover highlights it.
-describe(`site sidebar`, () => {
-  const with_forces = {
-    ...structure,
-    sites: structure.sites.map((site, site_idx) => ({
-      ...site,
-      properties: { ...site.properties, force: [0.1 * site_idx, 0, 0] as Vec3 },
-    })),
-  }
-  const sidebar = () => document.querySelector(`.structure-site-sidebar`)
-  const reopen_button = () =>
-    document.querySelector<HTMLButtonElement>(`button[aria-label="Show the site table"]`)
-  const resize = async (selector: string, width: number) => {
-    const element = doc_query(selector)
-    await resize_element(element, width, 500)
-    trigger_resize_observer(element)
-    await tick()
-  }
+const with_forces = {
+  ...structure,
+  sites: structure.sites.map((site, site_idx) => ({
+    ...site,
+    properties: { ...site.properties, force: [0.1 * site_idx, 0, 0] as Vec3 },
+  })),
+}
+const sidebar = () => document.querySelector(`.structure-site-sidebar`)
+const reopen_button = () =>
+  document.querySelector<HTMLButtonElement>(`button[aria-label="Show the site table"]`)
+const resize = async (selector: string, width: number) => {
+  const element = doc_query(selector)
+  await resize_element(element, width, 500)
+  trigger_resize_observer(element)
+  await tick()
+}
 
-  // Below 900 px auto leaves the table undocked behind a reopen button, unless the host hides
-  // that button because it shows the sites itself (Trajectory's data inspector)
-  // oxfmt-ignore
-  test.each([
-    [`forces, forced on`, with_forces, true, undefined, true, false],
-    [`forces, auto, narrow`, with_forces, `auto`, undefined, false, true],
-    [`forces, auto, button hidden`, with_forces, `auto`, { hidden: [`site-table`] }, false, false],
-    [`no site numbers, auto`, structure, `auto`, undefined, false, false],
-    [`no site numbers, forced on`, structure, true, undefined, false, false],
-  ] as const)(
-    `%s: sidebar %s, reopen button %s`,
-    async (_label, input, site_sidebar, show_controls, shown, button) => {
-      mount_structure({ structure: input, site_sidebar, show_controls })
-      await tick()
-      expect(sidebar() !== null).toBe(shown)
-      expect(
-        document
-          .querySelector(`.structure-site-layout`)
-          ?.classList.contains(`docked-sidebar-row`),
-      ).toBe(shown)
-      expect(reopen_button() !== null).toBe(button)
-    },
-  )
-
-  // Auto docks from 900 px of viewer plus sidebar. Once undocked the sidebar's last width
-  // must not count any more, or the viewer re-docks and flip-flops below the threshold.
-  test(`auto docks by the width it would share and stays undocked below it`, async () => {
-    mount_structure({ structure: with_forces, site_sidebar: `auto` })
-    await tick()
-    // the test environment lays every element out 800 px wide
-    expect(sidebar()).toBeNull()
-    await resize(`.structure`, 900)
-    expect(sidebar()).not.toBeNull()
-    // docked: the viewer and the sidebar split 900 px
-    await resize(`.structure-site-sidebar`, 288)
-    await resize(`.structure`, 612)
-    expect(sidebar()).not.toBeNull()
-    // the container narrows to 848 px: undock, and the viewer takes all of it
-    await resize(`.structure`, 560)
-    expect(sidebar()).toBeNull()
-    for (const width of [848, 899]) {
-      await resize(`.structure`, width)
-      expect(sidebar(), `${width} px`).toBeNull()
-    }
-    await resize(`.structure`, 900)
-    expect(sidebar()).not.toBeNull()
-  })
-
-  // A content-fit sidebar keeps its width while the row around it resizes; the divider's share
-  // (what its arrow keys step from and announce) must follow the row anyway
-  test(`content-fit divider follows the row's width`, async () => {
-    mount_structure({ structure: with_forces, site_sidebar: true })
-    await tick()
-    const divider = doc_query(`.structure-site-layout > .pane-divider`)
-    await resize(`.structure-site-sidebar`, 300)
-    // the share follows the row while the divider has focus (see DockedSidebar)
-    divider.dispatchEvent(new FocusEvent(`focus`))
-    await tick()
-    for (const [row_width, viewer_pct] of [
-      [1000, `70`],
-      [1200, `75`],
-    ] as const) {
-      await resize(`.structure-site-layout`, row_width)
-      expect(divider.getAttribute(`aria-valuenow`), `${row_width} px row`).toBe(viewer_pct)
-    }
-  })
-
-  // PBC image atoms repeat the sites they copy: one row per site of the structure
-  test(`lists each site once, not its periodic images`, async () => {
-    const corner_atom = {
-      lattice: structure.lattice,
-      sites: [
-        {
-          ...structure.sites[0],
-          abc: [0, 0, 0] as Vec3,
-          xyz: [0, 0, 0] as Vec3,
-          properties: { force: [0.1, 0, 0] as Vec3 },
-        },
-      ],
-    }
-    // the corner atom has 7 images, so the filter is what keeps the table at one row
-    expect(get_pbc_image_sites(corner_atom, image_options()).sites).toHaveLength(8)
-    mount_structure({ structure: corner_atom, site_sidebar: true, show_image_atoms: true })
-    await tick()
+// Below 900 px auto leaves the table undocked behind a reopen button, unless the host hides
+// that button because it shows the sites itself (Trajectory's data inspector)
+// oxfmt-ignore
+test.each([
+  [`forces, forced on`, with_forces, true, undefined, true, false],
+  [`forces, auto, narrow`, with_forces, `auto`, undefined, false, true],
+  [`forces, auto, button hidden`, with_forces, `auto`, { hidden: [`site-table`] }, false, false],
+  [`no site numbers, auto`, structure, `auto`, undefined, false, false],
+  [`no site numbers, forced on`, structure, true, undefined, false, false],
+] as const)(
+  `%s: sidebar %s, reopen button %s`,
+  async (_label, input, site_sidebar, show_controls, shown, button) => {
+    await mount_settled({ structure: input, site_sidebar, show_controls })
+    expect(sidebar() !== null).toBe(shown)
     expect(
-      document.querySelectorAll(`.structure-site-sidebar tbody tr[data-row-idx]`),
-    ).toHaveLength(1)
-    expect(sidebar()?.textContent).toContain(`Sites (1)`)
-  })
+      document
+        .querySelector(`.structure-site-layout`)
+        ?.classList.contains(`docked-sidebar-row`),
+    ).toBe(shown)
+    expect(reopen_button() !== null).toBe(button)
+  },
+)
 
-  test(`closes from its header, reopens from the controls, and links rows to sites`, async () => {
-    const props = $state<ComponentProps<typeof Structure>>({
-      structure: with_forces,
-      site_sidebar: true,
-      selected_sites: [],
-      hovered_site_idx: null,
-    })
-    mount_structure(props)
-    await tick()
-    const rows = () => [
-      ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),
-    ]
-    expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
-    // as wide as its content until the divider moves, which then hands the width to the ratio
-    const divider = doc_query(`.structure-site-layout > .pane-divider`)
-    expect(sidebar()?.classList.contains(`fit-content`)).toBe(true)
-    expect(divider.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
-    divider.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }))
-    await tick()
-    expect(sidebar()?.classList.contains(`fit-content`)).toBe(false)
-    rows()[1].click()
-    await tick()
-    expect(props.selected_sites).toEqual([1])
-    // a hovered row is the 3D hover, and an atom hovered in 3D shades its row
-    rows()[0].dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
-    await tick()
-    expect(props.hovered_site_idx).toBe(0)
-    doc_query(`.structure-site-sidebar tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
-    await tick()
-    expect(props.hovered_site_idx).toBeNull()
-    props.hovered_site_idx = 1
-    await tick()
-    expect(rows().map((row) => row.classList.contains(`hovered`))).toEqual([false, true])
-    // an image atom (appended after the real sites) shades the row of the site it copies
-    props.hovered_site_idx = with_forces.sites.length
-    await tick()
-    expect(rows().filter((row) => row.classList.contains(`hovered`))).toHaveLength(1)
-    document
-      .querySelector<HTMLButtonElement>(`button[aria-label="Close the site table"]`)
-      ?.click()
-    await tick()
-    expect(sidebar()).toBeNull()
-    expect(props.site_sidebar).toBe(false)
-    reopen_button()?.click()
-    await tick()
-    expect(sidebar()).not.toBeNull()
+// Auto docks from 900 px of viewer plus sidebar. Once undocked the sidebar's last width
+// must not count any more, or the viewer re-docks and flip-flops below the threshold.
+test(`auto docks by the width it would share and stays undocked below it`, async () => {
+  await mount_settled({ structure: with_forces, site_sidebar: `auto` })
+  // the test environment lays every element out 800 px wide
+  expect(sidebar()).toBeNull()
+  await resize(`.structure`, 900)
+  expect(sidebar()).not.toBeNull()
+  // docked: the viewer and the sidebar split 900 px
+  await resize(`.structure-site-sidebar`, 288)
+  await resize(`.structure`, 612)
+  expect(sidebar()).not.toBeNull()
+  // the container narrows to 848 px: undock, and the viewer takes all of it
+  await resize(`.structure`, 560)
+  expect(sidebar()).toBeNull()
+  for (const width of [848, 899]) {
+    await resize(`.structure`, width)
+    expect(sidebar(), `${width} px`).toBeNull()
+  }
+  await resize(`.structure`, 900)
+  expect(sidebar()).not.toBeNull()
+})
+
+// A content-fit sidebar keeps its width while the row around it resizes; the divider's share
+// (what its arrow keys step from and announce) must follow the row anyway
+test(`content-fit divider follows the row's width`, async () => {
+  await mount_settled({ structure: with_forces, site_sidebar: true })
+  const divider = doc_query(`.structure-site-layout > .pane-divider`)
+  await resize(`.structure-site-sidebar`, 300)
+  // the share follows the row while the divider has focus (see DockedSidebar)
+  divider.dispatchEvent(new FocusEvent(`focus`))
+  await tick()
+  for (const [row_width, viewer_pct] of [
+    [1000, `70`],
+    [1200, `75`],
+  ] as const) {
+    await resize(`.structure-site-layout`, row_width)
+    expect(divider.getAttribute(`aria-valuenow`), `${row_width} px row`).toBe(viewer_pct)
+  }
+})
+
+// PBC image atoms repeat the sites they copy: one row per site of the structure
+test(`lists each site once, not its periodic images`, async () => {
+  const corner_atom = {
+    lattice: structure.lattice,
+    sites: [
+      {
+        ...structure.sites[0],
+        abc: [0, 0, 0] as Vec3,
+        xyz: [0, 0, 0] as Vec3,
+        properties: { force: [0.1, 0, 0] as Vec3 },
+      },
+    ],
+  }
+  // the corner atom has 7 images, so the filter is what keeps the table at one row
+  expect(get_pbc_image_sites(corner_atom, image_options()).sites).toHaveLength(8)
+  await mount_settled({ structure: corner_atom, site_sidebar: true, show_image_atoms: true })
+  expect(
+    document.querySelectorAll(`.structure-site-sidebar tbody tr[data-row-idx]`),
+  ).toHaveLength(1)
+  expect(sidebar()?.textContent).toContain(`Sites (1)`)
+})
+
+test(`closes from its header, reopens from the controls, and links rows to sites`, async () => {
+  const props = $state<StructureProps>({
+    structure: with_forces,
+    site_sidebar: true,
+    selected_sites: [],
+    hovered_site_idx: null,
   })
+  await mount_settled(props)
+  const rows = () => [
+    ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),
+  ]
+  expect(sidebar()?.querySelector(`th`)?.closest(`table`)?.textContent).toContain(`|force|`)
+  // as wide as its content until the divider moves, which then hands the width to the ratio
+  const divider = doc_query(`.structure-site-layout > .pane-divider`)
+  expect(sidebar()?.classList.contains(`fit-content`)).toBe(true)
+  expect(divider.style.getPropertyValue(`--docked-sidebar-width`)).toMatch(/^\d+px$/)
+  divider.dispatchEvent(new KeyboardEvent(`keydown`, { key: `ArrowLeft`, bubbles: true }))
+  await tick()
+  expect(sidebar()?.classList.contains(`fit-content`)).toBe(false)
+  rows()[1].click()
+  await tick()
+  expect(props.selected_sites).toEqual([1])
+  // a hovered row is the 3D hover, and an atom hovered in 3D shades its row
+  rows()[0].dispatchEvent(new PointerEvent(`pointerover`, { bubbles: true }))
+  await tick()
+  expect(props.hovered_site_idx).toBe(0)
+  doc_query(`.structure-site-sidebar tbody`).dispatchEvent(new PointerEvent(`pointerleave`))
+  await tick()
+  expect(props.hovered_site_idx).toBeNull()
+  props.hovered_site_idx = 1
+  await tick()
+  expect(rows().map((row) => row.classList.contains(`hovered`))).toEqual([false, true])
+  // an image atom (appended after the real sites) shades the row of the site it copies
+  props.hovered_site_idx = with_forces.sites.length
+  await tick()
+  expect(rows().filter((row) => row.classList.contains(`hovered`))).toHaveLength(1)
+  document
+    .querySelector<HTMLButtonElement>(`button[aria-label="Close the site table"]`)
+    ?.click()
+  await tick()
+  expect(sidebar()).toBeNull()
+  expect(props.site_sidebar).toBe(false)
+  reopen_button()?.click()
+  await tick()
+  expect(sidebar()).not.toBeNull()
 })

@@ -286,10 +286,12 @@ describe(`Coordination`, () => {
       { abc: [0.5, 0.5, 0.5], element: `Fe` },
     ]
     const supercell = make_supercell(make_cubic_structure(sites, 4), [2, 2, 2])
-    expect(supercell.sites).toHaveLength(16) // 2 atoms * 2³
+    // 2 atoms * 2³, 8 copies of each
     const resolved = supercell.sites.map((site, idx) => get_orig_site_idx(site, idx))
-    expect(resolved.filter((idx) => idx === 0)).toHaveLength(8)
-    expect(resolved.filter((idx) => idx === 1)).toHaveLength(8)
+    expect(resolved.toSorted((idx_a, idx_b) => idx_a - idx_b)).toEqual([
+      ...Array(8).fill(0),
+      ...Array(8).fill(1),
+    ])
   })
 
   // Coordination is computed on the base cell (infinite-crystal CN) and followed to every
@@ -348,8 +350,7 @@ describe(`Wyckoff`, () => {
     )
     expect(values).toEqual([`3a|C`, `3a|C`, `1b|C`, `3a|C`])
     expect(unique_values).toEqual([`1b|C`, `3a|C`])
-    expect(colors[0]).toBe(colors[1])
-    expect(colors[0]).toBe(colors[3])
+    expect([colors[1], colors[3]]).toEqual([colors[0], colors[0]])
     expect(colors[0]).not.toBe(colors[2])
   })
 
@@ -456,39 +457,18 @@ describe(`normalize_atom_color_config`, () => {
   })
 
   const default_scale = DEFAULT_ATOM_COLOR_CONFIG.color_scale
+  // oxfmt-ignore
   test.each([
-    [
-      { mode: `coordination` },
-      { mode: `coordination`, color_scale: default_scale, scale_type: `continuous` },
-    ],
-    [
-      { mode: `wyckoff` },
-      { mode: `wyckoff`, color_scale: default_scale, scale_type: `categorical` },
-    ],
-    [
-      { mode: `property`, property_key: `charge` },
-      {
-        mode: `property`,
-        property_key: `charge`,
-        color_scale: default_scale,
-        scale_type: `continuous`,
-      },
-    ],
-    [
-      as_serialized({ mode: `property`, property_key: CNA_TYPE_PROPERTY }),
-      {
-        mode: `property`,
-        property_key: CNA_TYPE_PROPERTY,
-        color_scale: default_scale,
-        scale_type: `categorical`,
-      },
-    ],
+    [{ mode: `coordination` }, { mode: `coordination`, color_scale: default_scale, scale_type: `continuous` }],
+    [{ mode: `wyckoff` }, { mode: `wyckoff`, color_scale: default_scale, scale_type: `categorical` }],
+    [{ mode: `property`, property_key: `charge` },
+      { mode: `property`, property_key: `charge`, color_scale: default_scale, scale_type: `continuous` }],
+    [as_serialized({ mode: `property`, property_key: CNA_TYPE_PROPERTY }),
+      { mode: `property`, property_key: CNA_TYPE_PROPERTY, color_scale: default_scale, scale_type: `categorical` }],
     [{ mode: `property` }, DEFAULT_ATOM_COLOR_CONFIG],
     // the shared ColorScale guard: function schemes pass, unknown scheme names don't
-    [
-      { mode: `element`, color_scale: { scheme: red_ramp } },
-      { mode: `element`, color_scale: { scheme: red_ramp }, scale_type: `continuous` },
-    ],
+    [{ mode: `element`, color_scale: { scheme: red_ramp } },
+      { mode: `element`, color_scale: { scheme: red_ramp }, scale_type: `continuous` }],
     [{ mode: `element`, color_scale: { scheme: `Viridis` } }, DEFAULT_ATOM_COLOR_CONFIG],
     [as_serialized({ mode: `custom` }), DEFAULT_ATOM_COLOR_CONFIG],
     [{}, DEFAULT_ATOM_COLOR_CONFIG],
@@ -518,30 +498,17 @@ describe(`next_atom_color_config`, () => {
     )
   })
 
-  test(`repairs a stale property key before deriving scale type`, () => {
-    const config = atom_properties.next_atom_color_config(
-      {
-        ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
-        mode: `property`,
-        property_key: `gone`,
-      },
-      `property`,
-      [CNA_TYPE_PROPERTY],
-    )
-    expect(config).toMatchObject({
-      property_key: CNA_TYPE_PROPERTY,
-      scale_type: `categorical`,
-    })
-  })
-
-  test(`falls back to element mode when no colorable properties remain`, () => {
-    expect(
-      atom_properties.next_atom_color_config(
-        atom_properties.DEFAULT_ATOM_COLOR_CONFIG,
-        `property`,
-        [],
-      ),
-    ).toMatchObject({ mode: `element` })
+  const { DEFAULT_ATOM_COLOR_CONFIG } = atom_properties
+  // oxfmt-ignore
+  test.each<[string, atom_properties.AtomColorConfig, string[], object]>([
+    [`repairs a stale property key before deriving scale type`,
+      { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `property`, property_key: `gone` }, [CNA_TYPE_PROPERTY],
+      { property_key: CNA_TYPE_PROPERTY, scale_type: `categorical` }],
+    [`falls back to element mode when no colorable properties remain`,
+      DEFAULT_ATOM_COLOR_CONFIG, [], { mode: `element` }],
+  ])(`%s`, (_desc, current, property_keys, expected) => {
+    const config = atom_properties.next_atom_color_config(current, `property`, property_keys)
+    expect(config).toMatchObject(expected)
   })
 
   test(`custom mode requires and preserves its color function`, () => {
@@ -693,17 +660,15 @@ describe(`Site property coloring`, () => {
     expect(result).toEqual({ colors: [], values: [] })
   })
 
+  // oxfmt-ignore
   test.each([
     [`numbers and vec3s`, [{ charge: -1, velocity: [1, 0, 0] }], [`charge`, `velocity`]],
     [`skips non-numeric`, [{ tag: `core`, frozen: true, charge: 1 }], [`charge`]],
     [`skips non-finite`, [{ charge: NaN, c_pe: 2 }], [`c_pe`]],
     [`skips vec3s with a bad component`, [{ velocity: [1, `x`, 0], charge: 0 }], [`charge`]],
     // Source properties with formerly reserved names remain available to the user.
-    [
-      `preserves source provenance properties`,
-      [{ orig_site_idx: 3, orig_unit_cell_idx: 1, charge: 0 }],
-      [`charge`, `orig_site_idx`, `orig_unit_cell_idx`],
-    ],
+    [`preserves source provenance properties`, [{ orig_site_idx: 3, orig_unit_cell_idx: 1, charge: 0 }],
+      [`charge`, `orig_site_idx`, `orig_unit_cell_idx`]],
     [`unions keys across sites`, [{ charge: 1 }, { c_pe: -2 }, undefined], [`c_pe`, `charge`]],
     [`a missing structure`, undefined, []],
   ])(`get_colorable_property_keys: %s`, (_desc, props, expected) => {

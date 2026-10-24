@@ -359,15 +359,10 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   captured.dispose()
 })
 
+// oxfmt-ignore
 test.each([
   { fov: 50, height: 600, x_pos: 0, radius: 0.5, distant_segments: 8 },
-  {
-    fov: 150,
-    height: 2000,
-    x_pos: 90 * Math.tan((75 * Math.PI) / 180),
-    radius: 2,
-    distant_segments: 12,
-  },
+  { fov: 150, height: 2000, x_pos: 90 * Math.tan((75 * Math.PI) / 180), radius: 2, distant_segments: 12 },
 ])(
   `Detail follows zoom, viewport and requests without uploading unchanged atoms at $fov degrees`,
   async ({ fov, height, x_pos, radius, distant_segments }) => {

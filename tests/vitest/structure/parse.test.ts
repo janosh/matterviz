@@ -49,21 +49,15 @@ import scientific_notation_poscar from '#site/structures/scientific-notation.pos
 import selective_dynamics from '#site/structures/selective-dynamics.poscar?raw'
 import tio2_cif from '#site/structures/TiO2.cif?raw'
 import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
-import process from 'node:process'
-import { join } from 'node:path'
 import { assert, describe, expect, it, onTestFinished, test, vi } from 'vitest'
-import { get_dummy_structure, read_maybe_gz } from '../test-fixtures'
+import { cubic_matrix, get_dummy_structure, read_maybe_gz } from '../test-fixtures'
 
 const TOL = 8
-function expect_vec3_close(
+const expect_vec3_close = (
   actual: readonly number[] | undefined,
   expected: readonly number[],
   tol: number = TOL,
-) {
-  expect(actual?.[0]).toBeCloseTo(expected[0], tol)
-  expect(actual?.[1]).toBeCloseTo(expected[1], tol)
-  expect(actual?.[2]).toBeCloseTo(expected[2], tol)
-}
+) => expect(actual).toEqual(expected.map((val) => expect.closeTo(val, tol)))
 // tol admits the ~1e-16 round-off that cos(90°) leaves in a cart→frac conversion; it is
 // many orders below the O(0.1) excursions a missed box-origin shift would produce
 function expect_abc_in_unit_cell(site: { abc: number[] } | undefined, tol = 0) {
@@ -104,30 +98,12 @@ const make_json_site = (
   properties: {},
   ...overrides,
 })
+// oxfmt-ignore
 const cubic_lattice_json = (len: number) => ({
-  matrix: [
-    [len, 0, 0],
-    [0, len, 0],
-    [0, 0, len],
-  ],
-  a: len,
-  b: len,
-  c: len,
-  alpha: 90,
-  beta: 90,
-  gamma: 90,
-  volume: len ** 3,
+  matrix: cubic_matrix(len), a: len, b: len, c: len, alpha: 90, beta: 90, gamma: 90, volume: len ** 3,
 })
-
-// Load compressed phonopy files using Node.js built-in decompression
-const agi_phono3py_params = read_maybe_gz(
-  join(process.cwd(), `src/site/structures/AgI-fq978185p-phono3py.yaml.gz`),
-)
-const hea_hcp_filename = `nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
-
-const beo_phono3py_params = read_maybe_gz(
-  join(process.cwd(), `src/site/structures/BeO-zw12zc18p-phono3py.yaml.gz`),
-)
+// a (possibly gzipped) fixture file from src/site/structures
+const read_fixture = (filename: string) => read_maybe_gz(`./src/site/structures/${filename}`)
 
 describe(`POSCAR Parser`, () => {
   // oxfmt-ignore
@@ -393,10 +369,8 @@ C 1.23 0.7101408311032397 0.0`
     assert(`lattice` in sheet, `extxyz with Lattice should parse as a crystal`)
     expect(sheet.lattice.matrix[2]).toEqual([0, 0, 1])
     const abcs = sheet.sites.map(({ abc }) => abc.map((coord) => Number(coord.toFixed(6))))
-    expect(abcs).toEqual([
-      [0.333333, 0.666667, 0],
-      [0.666667, 0.333333, 0],
-    ])
+    // oxfmt-ignore
+    expect(abcs).toEqual([[0.333333, 0.666667, 0], [0.666667, 0.333333, 0]])
     // A chain keeps its axis and gains an orthonormal right-handed pair (both seed branches)
     // oxfmt-ignore
     for (const [axis, vec] of [[0, [3, 0, 0]], [1, [1, 2, 2]]] as const) {
@@ -433,11 +407,7 @@ C 1.23 0.7101408311032397 0.0`
   // The old parser hardcoded species at column 0 and positions at 1-3, so any file whose
   // Properties declared a different layout was mis-read as coordinates without a word.
   it(`reads species and positions from their declared columns`, () => {
-    const content = `2
-Properties=id:I:1:species:S:1:pos:R:3
-7 Si 1.0 2.0 3.0
-8 O 4.0 5.0 6.0
-`
+    const content = `2\nProperties=id:I:1:species:S:1:pos:R:3\n7 Si 1.0 2.0 3.0\n8 O 4.0 5.0 6.0\n`
     const result = parse_xyz(content)
     expect(result.sites.map((site) => site.species[0].element)).toEqual([`Si`, `O`])
     expect(result.sites[0].xyz).toEqual([1, 2, 3])
@@ -534,17 +504,12 @@ describe(`Auto-detection & Error Handling`, () => {
 
     const poscar_result = parse_poscar(triclinic_poscar)
     const xyz_result = parse_xyz(triclinic_xyz)
-
-    expect(poscar_result.sites).toHaveLength(2)
-    expect(xyz_result.sites).toHaveLength(2)
-
+    expect([poscar_result.sites.length, xyz_result.sites.length]).toEqual([2, 2])
     // Both parsers should give identical fractional coordinates for same input,
     // and each parser's xyz coordinates must reconstruct exactly from abc
-    for (let idx = 0; idx < 2; idx++) {
-      expect_vec3_close(poscar_result.sites[idx].abc, xyz_result.sites[idx].abc, 10)
-    }
-    expect_sites_reconstruct(poscar_result)
-    expect_sites_reconstruct(xyz_result)
+    for (const [idx, site] of poscar_result.sites.entries())
+      expect_vec3_close(site.abc, xyz_result.sites[idx].abc, 10)
+    for (const result of [poscar_result, xyz_result]) expect_sites_reconstruct(result)
   })
 
   // oxfmt-ignore
@@ -781,10 +746,8 @@ O2   O   0.410  0.140  0.880  1.000`
       const atom_sites = [`_atom_site_occupancy`, `Fe1 Fe2+ 0 0 0 0.5`, `Fe2 Fe3+ 0 0 0 0.5`]
       const cif = make_cif(`I m -3 m`, { atom_types: [`Fe2+ 1`, `Fe3+ 1`], atom_sites })
       const { sites } = parse_cif(cif)
-      expect(sorted_coords(sites)).toEqual([
-        [0, 0, 0],
-        [0.5, 0.5, 0.5],
-      ])
+      // oxfmt-ignore
+      expect(sorted_coords(sites)).toEqual([[0, 0, 0], [0.5, 0.5, 0.5]])
       const fe = (oxidation_state: number) => ({ element: `Fe`, occu: 0.5, oxidation_state })
       for (const { species } of sites) expect(species).toEqual([fe(2), fe(3)])
     })
@@ -996,9 +959,9 @@ O2   O   0.410  0.140  0.880  1.000`
     [`rows split mid-line twice`, `Fe1 Fe 0.1 0.2 0.3 O1 O 0.5 0.5\n0.5`],
   ])(`reads atom-site loop rows as a token stream: %s`, (_desc, rows) => {
     const result = parse_cif(`data_t\n${cell5}\n${site_loop}\n${rows}`)
+    // oxfmt-ignore
     expect(result.sites.map((site) => [site.label, site.abc])).toEqual([
-      [`Fe1`, [0.1, 0.2, 0.3]],
-      [`O1`, [0.5, 0.5, 0.5]],
+      [`Fe1`, [0.1, 0.2, 0.3]], [`O1`, [0.5, 0.5, 0.5]],
     ])
   })
 
@@ -1453,12 +1416,9 @@ ${site_loop}
 Mg1 Mg ${third} ${two_thirds} 0.25`
       const result = parse_cif(cif)
       expect(result.sites.map((site) => site.label)).toEqual([`Mg1`, `Mg1_1`])
-      expect(
-        result.sites.map(({ abc }) => abc.map((coord) => Number(coord.toFixed(2)))),
-      ).toEqual([
-        [0.33, 0.67, 0.25],
-        [0.67, 0.33, 0.75],
-      ])
+      const abcs = result.sites.map(({ abc }) => abc.map((coord) => Number(coord.toFixed(2))))
+      // oxfmt-ignore
+      expect(abcs).toEqual([[0.33, 0.67, 0.25], [0.67, 0.33, 0.75]])
     },
   )
 
@@ -1500,10 +1460,8 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     const abcs = result.sites
       .map((site) => site.abc)
       .toSorted((abc_1, abc_2) => abc_1[0] - abc_2[0])
-    expect(abcs).toEqual([
-      [0, 0, 0],
-      [0.5, 0.5, 0.5],
-    ])
+    // oxfmt-ignore
+    expect(abcs).toEqual([[0, 0, 0], [0.5, 0.5, 0.5]])
   })
 
   test(`parses PF-sd-1601634 CIF with correct oxygen count`, () => {
@@ -1512,12 +1470,8 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     // 4 oxygen sites (no symmetry ops, so no expansion): the OH2 (0.655) and OH (0.345)
     // rows share one position and merge into a single fully occupied O site
     const oxygen_sites = result.sites.filter((site) => site.species[0].element === `O`)
-    expect(oxygen_sites.map((site) => site.label).toSorted()).toEqual([
-      `O1`,
-      `O2`,
-      `O3`,
-      `OH2`,
-    ])
+    const oxygen_labels = oxygen_sites.map((site) => site.label)
+    expect(oxygen_labels.toSorted()).toEqual([`O1`, `O2`, `O3`, `OH2`])
     for (const site of oxygen_sites) {
       expect(site.species).toEqual([{ element: `O`, occu: 1, oxidation_state: 0 }])
     }
@@ -1525,10 +1479,9 @@ Mg1 Mg ${third} ${two_thirds} 0.25`
     // 4 O + 1 As + 1 disordered Zn/Fe/Pb + 1 Pb
     expect(result.sites).toHaveLength(7)
     const mixed = result.sites.find((site) => site.species.length === 3)
+    // oxfmt-ignore
     expect(mixed?.species.map(({ element, occu }) => [element, occu])).toEqual([
-      [`Zn`, 0.645],
-      [`Fe`, 0.345],
-      [`Pb`, 0.01],
+      [`Zn`, 0.645], [`Fe`, 0.345], [`Pb`, 0.01],
     ])
 
     expect(result.lattice.a).toBeCloseTo(9.143, 3)
@@ -1627,10 +1580,10 @@ unit_cell:
 
   // oxfmt-ignore
   it.each([
-    [`AgI phonopy file`, agi_phono3py_params, `AgI-fq978185p-phono3py.yaml.gz`, 72],
-    [`BeO phonopy file`, beo_phono3py_params, `BeO-zw12zc18p-phono3py.yaml.gz`, 64],
-    [`simple phonopy YAML`, simple_phonopy_yaml, `phono3py_params.yaml`, 2],
-  ])(`should parse and detect %s`, (_name, content, filename, expected_sites) => {
+    [`AgI phonopy file`, `AgI-fq978185p-phono3py.yaml.gz`, 72],
+    [`BeO phonopy file`, `BeO-zw12zc18p-phono3py.yaml.gz`, 64],
+    [`simple phonopy YAML`, `phono3py_params.yaml`, 2, simple_phonopy_yaml],
+  ])(`should parse and detect %s`, (_name, filename, expected_sites, content = read_fixture(filename)) => {
     const direct_result = parse_phonopy_yaml(content)
     expect(direct_result.sites).toHaveLength(expected_sites)
     expect(direct_result.lattice.volume).toBeGreaterThan(120)
@@ -1651,7 +1604,7 @@ describe(`parse_structure_file`, () => {
     [`extxyz`, `quartz.extxyz`],
     [`phonopy YAML`, `BeO-zw12zc18p-phono3py.yaml.gz`],
   ])(`detects %s content with blob-URL UUID filename`, (_label, fixture) => {
-    const content = read_maybe_gz(`./src/site/structures/${fixture}`)
+    const content = read_fixture(fixture)
     const result = parse_structure_file(content, `8a3bf2c4-d1e2-4f5a-9b8c-7d6e5f4a3b2c`)
     // content sniffing must land on the same parser the real extension selects
     expect(result).toEqual(parse_structure_file(content, fixture))
@@ -1660,7 +1613,7 @@ describe(`parse_structure_file`, () => {
 
   test(`still trusts conflicting extension over content`, () => {
     // CIF content explicitly named .json must not be sniffed as CIF
-    const content = read_maybe_gz(`./src/site/structures/Li10GeP2S12.cif`)
+    const content = read_fixture(`Li10GeP2S12.cif`)
     expect(() => parse_structure_file(content, `data.json`)).toThrow(
       expect.objectContaining({
         message: expect.stringContaining(`Failed to parse structure from 'data.json'`),
@@ -1670,9 +1623,8 @@ describe(`parse_structure_file`, () => {
   })
 
   test(`parses nested JSON structure correctly`, () => {
-    const content = read_maybe_gz(`./src/site/structures/${hea_hcp_filename}`)
-
-    const result = parse_structure_file(content, hea_hcp_filename)
+    const filename = `nested-Hf36Mo36Nb36Ta36W36-hcp-mace-omat.json.gz`
+    const result = parse_structure_file(read_fixture(filename), filename)
     assert(`lattice` in result)
     expect(result.sites).toHaveLength(180)
     expect(result.sites[0].species[0].element).toBe(`Ta`)
@@ -1878,9 +1830,6 @@ const optimade = (
   attributes: OptimadeStructure[`attributes`],
 ): OptimadeStructure => ({ id: identifier, type: `structures`, attributes })
 
-// oxfmt-ignore
-const cubic_vectors = (len: number) => [[len, 0, 0], [0, len, 0], [0, 0, len]]
-
 // Minimal OPTIMADE structure (all-Fe sites) from lattice + positions
 const optimade_structure_from = (lattice_vectors: number[][], positions: number[][]) =>
   optimade(`test`, {
@@ -1984,7 +1933,10 @@ describe(`optimade_to_structure`, () => {
     [`a non-finite position`, { cartesian_site_positions: [[Infinity, 0, 0]], species_at_sites: [`Fe`] }, /position 1: expected 3 finite coordinates/],
     [`a 2-row lattice`, { lattice_vectors: [[1, 0, 0], [0, 1, 0]], cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Fe`] }, /Expected 3x3 matrix for OPTIMADE lattice_vectors, got 2 rows/],
     [`a null lattice row along a periodic direction`, { dimension_types: [1, 1, 1], lattice_vectors: [[1, 0, 0], [0, 1, 0], [null, null, null]], cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Fe`] }, /lattice_vectors row 3: expected 3 finite coordinates/],
-    [`2 dimension_types`, { dimension_types: [1, 1], lattice_vectors: cubic_vectors(1), cartesian_site_positions: [[0, 0, 0]], species_at_sites: [`Fe`] }, /dimension_types must list 3 directions, got \[1,1\]/],
+    [`2 dimension_types`,
+      { dimension_types: [1, 1], lattice_vectors: cubic_matrix(1), cartesian_site_positions: [[0, 0, 0]],
+        species_at_sites: [`Fe`] },
+      /dimension_types must list 3 directions, got \[1,1\]/],
   ])(`throws on %s`, (_name, attributes, expected_error) => {
     const entry = optimade(`x`, attributes as OptimadeStructure[`attributes`])
     expect(() => optimade_to_structure(entry)).toThrow(expected_error)
@@ -2020,26 +1972,24 @@ describe(`optimade_to_structure`, () => {
   )
 
   it(`should extract metadata properties from attributes`, () => {
-    const result = optimade_to_structure(
-      optimade(`mp-7000`, {
-        lattice_vectors: cubic_vectors(4.91),
-        cartesian_site_positions: [[0, 0, 0]],
-        species_at_sites: [`Si`],
-        species: [{ name: `Si`, mass: [28.085], concentration: [1.0] }],
-        // Metadata fields that should be preserved in properties
-        chemical_formula_descriptive: `SiO2`,
-        nelements: 2,
-        last_modified: `2023-03-11`,
-        _mp_stability: { energy_above_hull: 0.0 },
-      }),
-    )
-    expect(result.id).toBe(`mp-7000`)
-    expect(result.properties).toEqual({
+    // Metadata fields that should be preserved in properties
+    const metadata = {
       chemical_formula_descriptive: `SiO2`,
       nelements: 2,
       last_modified: `2023-03-11`,
       _mp_stability: { energy_above_hull: 0.0 },
-    })
+    }
+    const result = optimade_to_structure(
+      optimade(`mp-7000`, {
+        lattice_vectors: cubic_matrix(4.91),
+        cartesian_site_positions: [[0, 0, 0]],
+        species_at_sites: [`Si`],
+        species: [{ name: `Si`, mass: [28.085], concentration: [1.0] }],
+        ...metadata,
+      }),
+    )
+    expect(result.id).toBe(`mp-7000`)
+    expect(result.properties).toEqual(metadata)
   })
 
   // a concentration of 1.0 is the default and not stored; named species resolve through
@@ -2049,7 +1999,7 @@ describe(`optimade_to_structure`, () => {
     // oxfmt-ignore
     const result = optimade_to_structure(
       optimade(`test`, {
-        lattice_vectors: cubic_vectors(5),
+        lattice_vectors: cubic_matrix(5),
         cartesian_site_positions: [[0, 0, 0], [2.5, 2.5, 2.5], [1, 1, 1]],
         species_at_sites: [`Fe`, `O1`, `D`],
         species: [
@@ -2064,11 +2014,8 @@ describe(`optimade_to_structure`, () => {
       properties.mass,
       properties.concentration,
     ])
-    expect(summary).toEqual([
-      [`Fe`, 55.845, undefined],
-      [`O`, 15.999, 0.5],
-      [`Ni`, 58.693, 0.7],
-    ])
+    // oxfmt-ignore
+    expect(summary).toEqual([[`Fe`, 55.845, undefined], [`O`, 15.999, 0.5], [`Ni`, 58.693, 0.7]])
   })
 })
 
@@ -2271,12 +2218,9 @@ describe(`Coordinate Normalization`, () => {
     make_json_site(`B`, [0.5, -0.5, -0.25]),
   ]
 
+  // oxfmt-ignore
   test.each([
-    [
-      `single site`,
-      hex_lattice(2.46, 35.13),
-      [make_json_site(`C`, [-0.333333, -0.666667, 0.5])],
-    ],
+    [`single site`, hex_lattice(2.46, 35.13), [make_json_site(`C`, [-0.333333, -0.666667, 0.5])]],
     [`multiple negative-coord sites`, hex_lattice(6.22, 224), hex_negative_sites],
   ])(`wraps and reconstructs xyz for a hexagonal cell with %s`, (_name, lattice, sites) => {
     const result = parse_structure_file(JSON.stringify({ lattice, sites }), `hex.json`)
@@ -2443,12 +2387,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     // Columns 7-11 empty: filtering a combined serial list would promote serial 2 into the
     // central slot and bond 2-3, an atom pair the file never connects
     const atoms = [1, 2, 3].map((serial) => pdb_atom_line(serial, ` C  `, [serial, 0, 0], `C`))
-    const blank_central = `CONECT         2    3`
-    const result = parse_structure_file(
-      [...atoms, blank_central, `CONECT    1    2`].join(`\n`),
-      `conect.pdb`,
-    )
-    expect(bond_tuples(result)).toEqual([[0, 1, 1]])
+    const content = [...atoms, `CONECT         2    3`, `CONECT    1    2`].join(`\n`)
+    expect(bond_tuples(parse_structure_file(content, `conect.pdb`))).toEqual([[0, 1, 1]])
   })
 
   test(`explicit MOL bonds feed the explicit_only bonding strategy`, () => {
@@ -2615,15 +2555,10 @@ describe(`molecular and LAMMPS structure formats`, () => {
   const occupancy_tags = [`type_symbol`, `Cartn_x`, `Cartn_y`, `Cartn_z`, `occupancy`]
     .map((tag) => `_atom_site.${tag}`)
     .join(`\n`)
+  // oxfmt-ignore
   test.each([
-    [
-      `a wrapped row`,
-      mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `Si 2.0`, `Si 3.0 0.0 0.0`]),
-    ],
-    [
-      `a missing trailing column`,
-      `data_x\nloop_\n${occupancy_tags}\nSi 1.0 0.0 0.0 1.0\nSi 3.0 0.0 0.0`,
-    ],
+    [`a wrapped row`, mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `Si 2.0`, `Si 3.0 0.0 0.0`])],
+    [`a missing trailing column`, `data_x\nloop_\n${occupancy_tags}\nSi 1.0 0.0 0.0 1.0\nSi 3.0 0.0 0.0`],
   ])(`mmCIF keeps only rows reaching the coordinate columns with %s`, (_name, content) => {
     const result = parse_structure_file(content, `rows.mmcif`)
     expect(result.sites.map((site) => site.xyz[0])).toEqual([1, 3])
@@ -2634,10 +2569,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
   test(`dotted small-molecule CIF expands its symops`, () => {
     const content = `${mmcif_cell(5.0, `fract`, [`Fe 0.1 0.2 0.3`])}\nloop_\n_space_group_symop.operation_xyz\n'x,y,z'\n'-x,-y,-z'`
     const result = parse_structure_file(content, `cif2.cif`)
-    expect(rounded_abc(result.sites)).toEqual([
-      [0.1, 0.2, 0.3],
-      [0.9, 0.8, 0.7],
-    ])
+    // oxfmt-ignore
+    expect(rounded_abc(result.sites)).toEqual([[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]])
   })
 
   // A .mmcif name with fractional-only sites is small-molecule CIF2, wrapped like any CIF
@@ -2688,13 +2621,8 @@ describe(`molecular and LAMMPS structure formats`, () => {
     // origin shift is still required — the old literal `xs` test wrongly skipped it
     [`x y z xs`, `-1.0 0.0 1.0 0.25`],
   ])(`LAMMPS dump %s columns land at the same cell position`, (columns, coords) => {
-    const bounds = Array.from({ length: 3 }, () => `-2.0 2.0`)
-    const content = lammps_dump(
-      `pp pp pp`,
-      `id element ${columns}`,
-      [`1 Cu ${coords}`],
-      bounds,
-    )
+    const box = Array.from({ length: 3 }, () => `-2.0 2.0`)
+    const content = lammps_dump(`pp pp pp`, `id element ${columns}`, [`1 Cu ${coords}`], box)
     const result = parse_structure_file(content, `offset.dump`)
     expect(result.sites).toHaveLength(1)
     expect_vec3_close(result.sites[0].xyz, [1, 2, 3], 8)
@@ -2818,15 +2746,10 @@ describe(`multi-model / multi-record structure files`, () => {
   const mmcif_loop = (tags: string[], rows: string[]) =>
     [`data_test`, `loop_`, ...tags.map((tag) => `_atom_site.${tag}`), ...rows].join(`\n`)
   const xyz_tags = [`Cartn_x`, `Cartn_y`, `Cartn_z`]
+  // oxfmt-ignore
   const alt_tags = [
-    `type_symbol`,
-    `label_atom_id`,
-    `label_alt_id`,
-    `auth_asym_id`,
-    `label_asym_id`,
-    `auth_seq_id`,
-    `pdbx_PDB_ins_code`,
-    ...xyz_tags,
+    `type_symbol`, `label_atom_id`, `label_alt_id`, `auth_asym_id`, `label_asym_id`, `auth_seq_id`,
+    `pdbx_PDB_ins_code`, ...xyz_tags,
   ]
   // frames differ in coordinates as well as count so leakage of frame 2 is visible
   const dump_frame = (num_atoms: number, coord: number) =>
@@ -2842,18 +2765,12 @@ describe(`multi-model / multi-record structure files`, () => {
     `ITEM: TIME\n0.5\n${dump_frame(num_atoms, coord)}`
   const mol2_molecule = (element: string) =>
     `@<TRIPOS>MOLECULE\nx\n 1 0 1 0 0\nSMALL\nNO_CHARGES\n@<TRIPOS>ATOM\n      1 ${element}1     1.0000 2.0000 3.0000 ${element}.3    1 RES1  0.0000`
-  const sdf_record = (symbol: string, num_atoms: number) =>
-    [
-      symbol,
-      ``,
-      ``,
-      `  ${num_atoms}  0  0  0  0  0  0  0  0  0999 V2000`,
-      ...Array.from(
-        { length: num_atoms },
-        (_, idx) => `    ${idx}.0000    0.0000    0.0000 ${symbol}   0  0`,
-      ),
-      `M  END`,
-    ].join(`\n`)
+  // oxfmt-ignore
+  const sdf_record = (symbol: string, num_atoms: number) => [
+    symbol, ``, ``, `  ${num_atoms}  0  0  0  0  0  0  0  0  0999 V2000`,
+    ...Array.from({ length: num_atoms }, (_, idx) => `    ${idx}.0000    0.0000    0.0000 ${symbol}   0  0`),
+    `M  END`,
+  ].join(`\n`)
   const sdf_warning = `SDF contains 2 records; parsed the first and skipped 1`
 
   // Only the first model / record / frame / conformer of each atom is read

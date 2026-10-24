@@ -219,6 +219,7 @@ describe(`tooltip_fill`, () => {
   const color_field = {} as AtomColorField
   const property_colors = { colors: [`#abcdef`], values: [1] }
 
+  // oxfmt-ignore
   test.each([
     [`no hovered atom`, undefined, undefined, null, none, null],
     [`mixed-valence single element`, atom([fe, fe3]), undefined, null, none, `#123456`],
@@ -226,14 +227,7 @@ describe(`tooltip_fill`, () => {
     [`two elements, one hidden`, atom([fe, ni]), undefined, null, new Set([`Ni`]), `#123456`],
     [`property color`, atom([fe, ni]), undefined, property_colors, none, `#123456`],
     [`color field keeps the neutral chip`, atom([fe]), color_field, null, none, null],
-    [
-      `color field outranks property colors`,
-      atom([fe]),
-      color_field,
-      property_colors,
-      none,
-      null,
-    ],
+    [`color field outranks property colors`, atom([fe]), color_field, property_colors, none, null],
   ])(`%s`, (_label, hovered, field, prop_colors, hidden, expected) => {
     expect(tooltip_fill(hovered, field, prop_colors, hidden)).toBe(expected)
   })

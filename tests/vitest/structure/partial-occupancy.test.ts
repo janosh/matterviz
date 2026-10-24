@@ -106,13 +106,10 @@ describe(`partial occupancy render-site logic`, () => {
 })
 
 describe(`partial occupancy slice flags`, () => {
+  // oxfmt-ignore
   test.each([
     [`single species with vacancy renders both caps`, species([`O`, 0.5]), true],
-    [
-      `two species filling full sphere renders no caps`,
-      species([`O`, 0.5], [`F`, 0.5]),
-      false,
-    ],
+    [`two species filling full sphere renders no caps`, species([`O`, 0.5], [`F`, 0.5]), false],
   ])(`%s`, (_name, site_species, caps) => {
     const slices = compute_slice_geometry(site_species)
     expect(slices[0].render_start_cap).toBe(caps)

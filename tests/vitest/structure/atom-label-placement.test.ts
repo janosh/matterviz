@@ -200,12 +200,10 @@ describe(`label placement`, () => {
     .multiply(new Matrix4().makeRotationX(-0.3))
     .setPosition(1, 2, 3)
 
+  // oxfmt-ignore
   test.each([
     [`perspective`, () => look_from_corner(new PerspectiveCamera(60, aspect, 0.1, 100))],
-    [
-      `orthographic`,
-      () => look_from_corner(new OrthographicCamera(-6 * aspect, 6 * aspect, 6, -6, 0.1, 100)),
-    ],
+    [`orthographic`, () => look_from_corner(new OrthographicCamera(-6 * aspect, 6 * aspect, 6, -6, 0.1, 100))],
   ] as const)(
     `%s fast path matches Vector3.project reference for rotated camera + anchor`,
     (_kind, make_camera) => {
