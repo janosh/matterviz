@@ -155,10 +155,17 @@ test.describe(
         // Get initial count of dashed lines (fermi level lines may already exist)
         const initial_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
 
-        // Hover over DOS plot area (on a DOS path to trigger hover)
+        // Hover a point on the DOS line: the center of its bounding box can lie further from
+        // the curve than the plot's hover radius (50px). The 1200px container overflows the
+        // viewport, so bring the DOS on screen first.
         const dos_path = dos_svg.locator(line_path_selector).first()
         await expect(dos_path).toBeVisible()
-        await dos_path.hover({ force: true })
+        await dos_path.scrollIntoViewIfNeeded()
+        const on_line = await dos_path.evaluate((path: SVGPathElement) => {
+          const { x, y } = path.getPointAtLength(path.getTotalLength() / 2)
+          return new DOMPoint(x, y).matrixTransform(path.getScreenCTM() ?? new DOMMatrix())
+        })
+        await page.mouse.move(on_line.x, on_line.y)
 
         // Wait for hover state to update - reference lines with stroke-dasharray should appear
         await expect(async () => {

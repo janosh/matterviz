@@ -64,8 +64,9 @@ export type AtomGroupInput = {
   property_colors: AtomPropertyColors | null
   hidden_prop_vals: ReadonlySet<number | string>
   hidden_elements: ReadonlySet<string>
-  // Phase-2 PBC images exist only to complete bonds/coordination polyhedra at cell faces
-  hide_completion_images: boolean
+  // Phase-2 PBC images exist only to complete bonds/coordination polyhedra at cell faces: the
+  // ones ending a drawn bond or cornering a drawn polyhedron, the rest are skipped
+  drawn_completion_sites: ReadonlySet<number>
   radius_scale: number
   radius_options: Parameters<typeof site_base_radius>[2]
   hidden_centers: ReadonlySet<number> | null // polyhedron centers to hide
@@ -90,7 +91,7 @@ export class AtomGroupBuilder {
     // supercell, and the collections below live on a $state object or are SvelteMap/
     // SvelteSet, whose get/has allocate a signal per key.
     const { structure, appearance, property_colors, palette, cutaway_sites } = input
-    const { hidden_prop_vals, hidden_elements, hide_completion_images } = input
+    const { hidden_prop_vals, hidden_elements, drawn_completion_sites } = input
     const { radius_scale, radius_options, hidden_centers } = input
     const { values: prop_values, colors: prop_colors } = property_colors ?? {}
     const filter_prop_vals = hidden_prop_vals.size > 0
@@ -128,9 +129,8 @@ export class AtomGroupBuilder {
         if (prop_val !== undefined && hidden_prop_vals.has(prop_val)) continue
       }
       if (hidden_centers?.has(site_idx)) continue // centers hidden inside their polyhedra
-      // Completion images float disconnected outside the cell when neither bonds nor
-      // polyhedra render (polyhedra toggled off, symmetry declutter, …): hide them.
-      if (site.provenance?.completion && hide_completion_images) continue
+      // A completion image no drawn bond or polyhedron ends at would float outside the cell
+      if (site.provenance?.completion && !drawn_completion_sites.has(site_idx)) continue
 
       // All radii scale uniformly with atom_radius for consistent slider behavior
       const radius = site_base_radius(site, site_idx, radius_options) * radius_scale

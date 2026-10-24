@@ -1,0 +1,106 @@
+// Rotation link between sibling 3D scenes: every SceneCamera below a host's link joins with its
+// OrbitControls, and any member's view direction change (orbit, auto-rotate, reset, gizmo
+// fly-to, landed camera flight) turns the others alike, as does joining late. Each member keeps
+// its own target, distance, zoom and pan, so scenes in different units (a crystal in Å, its
+// Fermi surface in Å⁻¹) stay framed. Assumes one shared Cartesian frame and camera up vector.
+// Several auto-rotating members each add their own steps: let one auto-rotate.
+import { getContext, setContext } from 'svelte'
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { Vector3 } from 'three/webgpu'
+import { flight_holds } from './fly-to'
+
+export type OrbitLink = { join: (controls: OrbitControls) => (() => void) | undefined }
+
+// A link group, independent of Svelte context (for tests and custom hosts)
+export function create_orbit_link(): OrbitLink {
+  const members = new Set<OrbitControls>()
+  // set while followers are moved: their own events must not lead in turn
+  let following = false
+  const follow = (leader: OrbitControls, move: (member: OrbitControls) => void): void => {
+    if (following) return
+    following = true
+    try {
+      for (const member of members) {
+        // a camera flight's poses are absolute, nothing else moves its camera
+        if (member !== leader && !flight_holds(member)) move(member)
+      }
+    } finally {
+      following = false
+    }
+  }
+  const direction = new Vector3()
+  // Sets `direction` to the member's view direction; false when it has none (camera on its
+  // target or at a non-finite position)
+  const read_direction = ({ object, target }: OrbitControls): boolean => {
+    direction.subVectors(object.position, target)
+    const length_sq = direction.lengthSq()
+    if (!(length_sq > 0 && Number.isFinite(length_sq))) return false
+    direction.normalize()
+    return true
+  }
+  const aim = (member: OrbitControls): void => {
+    const distance = member.object.position.distanceTo(member.target)
+    member.object.position.copy(member.target).addScaledVector(direction, distance)
+    // re-aims the camera and emits `change` (none for an unmoved pose) to re-render its
+    // canvas, skipping the member's own auto-rotate step so followers don't add theirs
+    const { autoRotate } = member
+    member.autoRotate = false
+    member.update()
+    member.autoRotate = autoRotate
+  }
+  return {
+    join: (controls) => {
+      // a late joiner takes up the others' view (left in `direction` by read_direction)
+      if ([...members].some(read_direction) && !flight_holds(controls)) aim(controls)
+      members.add(controls)
+      // a follower's own change (e.g. its damping gliding on during a re-aim) must not
+      // overwrite the shared direction the remaining followers are still aimed along
+      const on_change = () => {
+        if (!following && read_direction(controls)) follow(controls, aim)
+      }
+      // Followers see the leader's gesture as their own, so their hosts track it like a drag
+      const on_start = () =>
+        follow(controls, (member) => member.dispatchEvent({ type: `start` }))
+      const on_end = () => follow(controls, (member) => member.dispatchEvent({ type: `end` }))
+      controls.addEventListener(`change`, on_change)
+      controls.addEventListener(`start`, on_start)
+      controls.addEventListener(`end`, on_end)
+      return () => {
+        members.delete(controls)
+        controls.removeEventListener(`change`, on_change)
+        controls.removeEventListener(`start`, on_start)
+        controls.removeEventListener(`end`, on_end)
+      }
+    },
+  }
+}
+
+const ORBIT_LINK = Symbol(`orbit-link`)
+
+// A link that only takes members while `enabled`, read on every join: a member joining inside
+// an effect re-joins when it changes
+const gate = (link: OrbitLink, enabled: () => boolean): OrbitLink => ({
+  join: (controls) => (enabled() ? link.join(controls) : undefined),
+})
+
+// In a host, during init: link the rotations of all scenes rendered below it
+export const link_orbits = (enabled = () => true): void => {
+  setContext(ORBIT_LINK, gate(create_orbit_link(), enabled))
+}
+
+// In a component between host and scenes, during init: keep its scenes out of the enclosing
+// link while `enabled` is false (e.g. a multi-view grid, whose panes look along fixed axes)
+export function scope_orbit_link(enabled: () => boolean): void {
+  const parent = getContext<OrbitLink | undefined>(ORBIT_LINK)
+  if (parent) setContext(ORBIT_LINK, gate(parent, enabled))
+}
+
+// In a scene camera, during init: join the enclosing link (if any) once controls exist
+export function join_orbit_link(controls: () => OrbitControls | undefined): void {
+  const link = getContext<OrbitLink | undefined>(ORBIT_LINK)
+  if (!link) return
+  $effect(() => {
+    const orbit_controls = controls()
+    return orbit_controls ? link.join(orbit_controls) : undefined
+  })
+}

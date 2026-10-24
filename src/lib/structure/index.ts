@@ -40,6 +40,7 @@ export * from './material'
 export { StructureSession, type StructureSessionInputs } from './session.svelte'
 export * from './pbc'
 export * from './polyhedra'
+export * from './polyhedra-render'
 export * from './export'
 export * from './site'
 export { default as Structure } from './Structure.svelte'
@@ -108,6 +109,10 @@ export type Site = {
     image_of?: number
     unit_cell_idx?: number
     completion?: boolean
+    // Stamped by image completion: true on displayed copies whose periodic coordination
+    // polyhedron it completed, false on the rest (no polyhedron, cut off at the shell's edge,
+    // completion images), so truncated copies at the cell faces don't render
+    polyhedron_center?: boolean
   }
 }
 

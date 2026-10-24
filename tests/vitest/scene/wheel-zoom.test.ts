@@ -86,6 +86,8 @@ const ACTIONS: Record<string, (viewer: Viewer) => void> = {
   },
   'mouse focus': ({ root }) =>
     root.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true })),
+  enter: ({ root }) =>
+    root.dispatchEvent(new PointerEvent(`pointerenter`, { pointerType: `mouse` })),
   leave: ({ root }) =>
     root.dispatchEvent(new PointerEvent(`pointerleave`, { pointerType: `mouse` })),
   'touch leave': ({ root }) =>
@@ -249,6 +251,26 @@ describe(`WheelZoomGate`, () => {
     vi.spyOn(navigator, `platform`, `get`).mockReturnValue(platform)
     host.wheel_zoom = mode
     expect(new WheelZoomGate().hint).toBe(hint)
+  })
+
+  // Hover-only chrome (the gizmo) shows while the pointer is over the viewer or focus is in it
+  test.each<[string[], boolean]>([
+    [[], false],
+    [[`enter`], true],
+    [[`enter`, `leave`], false],
+    [[`enter`, `touch leave`], false],
+    [[`mouse focus`], true],
+    [[`mouse focus`, `tab within`], true],
+    [[`mouse focus`, `tab out`], false],
+    [[`enter`, `mouse focus`, `leave`], true],
+    [[`enter`, `mouse focus`, `leave`, `tab out`], false],
+  ])(`after %j the viewer is engaged: %s`, async (actions, engaged) => {
+    const viewer = make_viewer()
+    for (const action of actions) ACTIONS[action](viewer)
+    await Promise.resolve() // focus changes land a microtask later
+    expect(viewer.gate.engaged).toBe(engaged)
+    viewer.detach()
+    expect(viewer.gate.engaged).toBe(false)
   })
 
   test(`attaching renders the hint in the root, detaching removes it`, () => {

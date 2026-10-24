@@ -42,6 +42,7 @@
   import type { ColorScale } from '#lib/plot/core/types.js'
   import type { AtomColorMode, SettingType, VectorLayerConfig } from '#lib/settings.js'
   import { DEFAULTS, SETTINGS_CONFIG } from '#lib/settings.js'
+  import type { ImageAtomCompletion } from './pbc'
   import type { StructurePaneSize, StructureViewState } from '#lib/settings/viewer-state.js'
   import {
     clear_structure_view_state,
@@ -88,6 +89,7 @@
     controls_open = $bindable(false),
     scene_props,
     show_image_atoms = $bindable(DEFAULTS.structure.show_image_atoms),
+    image_atom_completion = $bindable(DEFAULTS.structure.image_atom_completion),
     supercell_scaling = $bindable(`1x1x1`),
     background_color = $bindable(),
     background_opacity = $bindable(DEFAULTS.background_opacity),
@@ -124,6 +126,7 @@
     scene_props: StructureSettings
     trajectory_position_stream?: TrajectoryPositionStream | null
     show_image_atoms?: boolean
+    image_atom_completion?: ImageAtomCompletion
     supercell_scaling?: string
     background_color?: string
     background_opacity?: number
@@ -199,6 +202,8 @@
     update_scene({ show_cell_vectors: undefined, ...structure_settings })
     show_image_atoms =
       structure_settings.show_image_atoms ?? DEFAULTS.structure.show_image_atoms
+    image_atom_completion =
+      structure_settings.image_atom_completion ?? DEFAULTS.structure.image_atom_completion
     show_trajectory_lines =
       structure_settings.show_trajectory_lines ?? DEFAULTS.structure.show_trajectory_lines
     // `custom` needs a runtime color_fn that no saved blob can carry, so a stored value
@@ -244,6 +249,7 @@
       background_color,
       background_opacity,
       show_image_atoms,
+      image_atom_completion,
       atom_color_config,
       supercell_scaling,
       cell_type,
@@ -414,7 +420,17 @@
     },
   ]
   // Enum pickers rendered below the toggle grid, same section
-  const visibility_mode_rows = [row(`show_bonds`, `Bonds`), row(`show_polyhedra`, `Polyhedra`)]
+  const visibility_mode_rows: Row[] = [
+    row(`show_bonds`, `Bonds`),
+    row(`show_polyhedra`, `Polyhedra`),
+    {
+      ...row(`image_atom_completion`, `Beyond faces`),
+      when: () => periodic && show_image_atoms,
+      get: () => image_atom_completion,
+      // the select only offers the schema's enum options
+      set: (value) => (image_atom_completion = value as ImageAtomCompletion),
+    },
+  ]
   const atom_rows = [
     row(`atom_radius`, `Radius (Å)`, 0.05),
     row(`same_size_atoms`, `Same size`),
@@ -1723,6 +1739,9 @@
     border-radius: var(--border-radius, 3pt);
     background: color-mix(in srgb, currentColor 8%, transparent);
     color: inherit;
+    /* host pages often style bare buttons larger than the pane's own text */
+    font: inherit;
+    font-size: 0.9em;
     &:hover {
       background: color-mix(in srgb, currentColor 16%, transparent);
     }
@@ -1765,6 +1784,18 @@
     label {
       gap: 5pt;
       min-height: 1.7em;
+      min-width: 0;
+      /* a long label must not squeeze the checkbox (bare or in a schema row's .ctrl-pair),
+         swatch or clear button: only the text span shrinks, to an ellipsis */
+      > :is(input, button, .ctrl-pair) {
+        flex-shrink: 0;
+      }
+      > span:not(.ctrl-pair) {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
     }
     /* schema rows put the label first; in this block the checkbox leads */
     > label:has(> span:first-child) {
@@ -1835,7 +1866,13 @@
     cursor: pointer;
   }
   .clear-color {
-    padding: 0 3pt;
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 1.3em;
+    height: 1.3em;
+    padding: 0;
+    border-radius: 50%;
     font-size: 0.8em;
     line-height: 1;
     cursor: pointer;

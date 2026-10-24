@@ -32,18 +32,18 @@
     "@jupyterlab/coreutils": "^6.6.4",
     "@jupyterlab/docregistry": "^4.6.4",
     "@jupyterlab/ui-components": "^4.6.4",
-    "@lumino/widgets": "^2.9.0"
+    "@lumino/widgets": "^2.10.0"
   },
   "devDependencies": {
     "@jupyterlab/builder": "^4.5.11",
     "@spglib/moyo-wasm": "^0.21.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "process": "^0.11.10",
     "svelte": "^5.57.2",
     "typescript": "^6.0.3",
-    "vite": "^8.3.2",
-    "vitest": "5.0.3"
+    "vite": "^8.3.5",
+    "vitest": "5.0.5"
   },
   "packageManager": "pnpm@11.5.0",
   "jupyterlab": {

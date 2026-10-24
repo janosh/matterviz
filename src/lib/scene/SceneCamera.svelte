@@ -14,6 +14,7 @@
   import { camera_flight_registry, create_camera_flight_controller } from './camera-flight'
   import { camera_resets } from './camera-reset'
   import { lock_fly_to } from './fly-to'
+  import { join_orbit_link } from './orbit-link.svelte'
   import { wheel_zoom_surface } from './wheel-zoom.svelte'
   import { OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
 
@@ -66,6 +67,9 @@
     return () => document.removeEventListener(`fullscreenchange`, apply_touch_policy)
   })
 
+  // A host's orbit link (e.g. a structure beside its Fermi surface) turns its other scenes along
+  join_orbit_link(() => orbit_controls)
+
   // The enclosing viewer's WheelZoomGate decides which wheels reach OrbitControls' listener
   wheel_zoom_surface(
     () => orbit_controls?.domElement,
@@ -92,6 +96,9 @@
       (active) => {
         lock_fly_to(controls, active) // no gizmo or zone-axis swing fights the flight
         flight_active = active
+        // the landed (or restored) pose, which the flight set on the camera directly, reaches
+        // an orbit link now rather than on the next orbit
+        if (!active) controls.update()
       },
       invalidate,
     )

@@ -41,7 +41,8 @@ import {
   type StructureToolPrediction,
 } from './prediction'
 import { capitalize_symbol } from './parsers/shared'
-import { get_pbc_image_sites, wrap_to_unit_cell } from './pbc'
+import { get_pbc_image_sites, site_token, wrap_to_unit_cell } from './pbc'
+import type { ImageAtomOptions } from './pbc'
 import {
   get_image_source_idx,
   get_orig_site_idx,
@@ -82,6 +83,8 @@ export interface StructureSessionInputs {
   supercell_scaling: () => string
   apply_supercell_scaling: () => boolean
   show_image_atoms: () => boolean
+  // The renderer's own polyhedra and bonding settings, so completion adds what it draws
+  image_atom_options: () => ImageAtomOptions
   cell_type: () => CellType
   set_cell_type: (value: CellType) => void
   sym_data: () => SymmetryDataset | null
@@ -201,6 +204,15 @@ const same_cell = (transformed: AnyStructure, raw: AnyStructure): boolean => {
     row.every((val, col_idx) => Math.abs(val - raw_matrix[row_idx][col_idx]) < 1e-6),
   )
 }
+
+// What an imaged structure draws: its sites as tokens and their polyhedron stamps
+const image_set_key = (structure: AnyStructure): string =>
+  structure.sites
+    .map(
+      (site, idx) =>
+        `${site_token(structure, idx)}${site.provenance?.polyhedron_center ?? ``}`,
+    )
+    .join(` `)
 
 // Per-key change detection for the invalidation effect: true when `value` differs from the
 // value last seen under `key` (never on the first sight). A plain Map on purpose: it is read
@@ -333,15 +345,31 @@ export class StructureSession {
       })),
     }
   }
+  // Completion settings, kept by identity while their value is unchanged: hosts rebuild them
+  // on every read, and a new object must not rerun the bond search
+  private last_image_options: { key: string; options: ImageAtomOptions } | undefined
+  private readonly image_options = $derived.by(() => {
+    const options = this.inputs.image_atom_options()
+    const key = JSON.stringify(options)
+    if (this.last_image_options?.key !== key) this.last_image_options = { key, options }
+    return this.last_image_options.options
+  })
+  private readonly mapped_supercell = $derived.by(() =>
+    this.map_elements(this.supercell_structure),
+  )
+  // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing
+  private last_imaged: { struct: AnyStructure; key: string; imaged: AnyStructure } | undefined
   // Element-mapped + PBC image atoms. Images are skipped during drags.
   displayed_structure = $derived.by((): AnyStructure | undefined => {
-    const struct = this.map_elements(this.supercell_structure)
-    return !this.dragging_atoms &&
-      this.inputs.show_image_atoms() &&
-      struct &&
-      `lattice` in struct
-      ? get_pbc_image_sites(struct)
-      : struct
+    const struct = this.mapped_supercell
+    if (this.dragging_atoms || !this.inputs.show_image_atoms() || !struct) return struct
+    if (!(`lattice` in struct)) return struct
+    const imaged = get_pbc_image_sites(struct, this.image_options)
+    const key = image_set_key(imaged)
+    const last = this.last_imaged
+    if (last?.struct === struct && last.key === key) return last.imaged
+    this.last_imaged = { struct, key, imaged }
+    return imaged
   })
   private readonly displayed_site_count = $derived(site_count(this.displayed_structure))
   // True while the rendered cell is the analyzed (moyo input) cell, i.e. no conventional/
@@ -487,10 +515,22 @@ export class StructureSession {
     // there aborts the whole flush, dropping the pending clear with it.
     const changed = create_change_tracker()
     let previous_supercell_error: string | undefined
+    let displayed_before: AnyStructure | undefined
     $effect.pre(() => {
       // Read every dependency up front; the guards below must not make tracking conditional
       const structure_changed = changed(`structure`, inputs.structure())
       const topology_changed = changed(`topology`, this.topology)
+      // Image sites renumber whenever the drawn copies change: completion settings, an element
+      // mapping, atoms moving across the face band (the displayed structure is kept otherwise).
+      // Drags drop the images until release, which remaps from the image set before the drag.
+      const displayed = this.displayed_structure
+      const images_before = displayed_before
+      if (!this.dragging_atoms) displayed_before = displayed
+      const images_renumbered =
+        images_before !== undefined &&
+        displayed !== images_before &&
+        !topology_changed &&
+        !this.dragging_atoms
       const transform_changed = [
         changed(`supercell_scaling`, inputs.supercell_scaling()),
         changed(`show_image_atoms`, inputs.show_image_atoms()),
@@ -562,7 +602,7 @@ export class StructureSession {
             this.clear_selection()
             this.site_radius_overrides.clear()
           }
-        }
+        } else if (images_renumbered) this.remap_image_sites(images_before, displayed)
         if (mode_changed) {
           this.clear_selection()
           if (measure_mode === `edit-bonds`) inputs.set_bond_edit_mode(`add`)
@@ -604,6 +644,52 @@ export class StructureSession {
     })
   }
 
+  // Image sets renumber only the copies appended after the base sites (bond edits name base
+  // sites and cell shifts, so they stay): site-indexed state follows each copy through its
+  // (base site, lattice shift) token, dropping copies no longer drawn. A changed base cell (an
+  // async supercell, a conventional cell once symmetry lands) drops it all: its indices name
+  // other atoms. The token index is built only once state points at a copy.
+  private remap_image_sites(before?: AnyStructure, after?: AnyStructure): void {
+    const { inputs } = this
+    // images follow the base sites, so the first one's index is the base site count
+    const base_count = ({ sites }: AnyStructure) => {
+      const first_image = sites.findIndex((site) => site.provenance?.image_of !== undefined)
+      return first_image === -1 ? sites.length : first_image
+    }
+    let same_base: boolean | undefined
+    let new_idx: Map<string, number> | undefined
+    const remap = (idx: number): number | undefined => {
+      if (!before || !after) return undefined
+      const site = before.sites[idx]
+      if (!site) return undefined
+      same_base ??= base_count(before) === base_count(after)
+      if (!same_base) return undefined
+      if (site.provenance?.image_of === undefined) return idx
+      new_idx ??= new Map(
+        after.sites.map((_site, after_idx) => [site_token(after, after_idx), after_idx]),
+      )
+      return new_idx.get(site_token(before, idx))
+    }
+    for (const [get, set] of [
+      [inputs.selected_sites, inputs.set_selected_sites],
+      [inputs.measured_sites, inputs.set_measured_sites],
+      [inputs.highlighted_sites, inputs.set_highlighted_sites],
+    ] as const) {
+      const sites = get()
+      if (sites.some((idx) => remap(idx) !== idx))
+        set(sites.flatMap((idx) => remap(idx) ?? []))
+    }
+    const hovered = inputs.hovered_site_idx()
+    if (hovered !== null && remap(hovered) !== hovered)
+      inputs.set_hovered_site_idx(remap(hovered) ?? null)
+    const overrides = [...this.site_radius_overrides]
+    if (overrides.every(([idx]) => remap(idx) === idx)) return
+    this.site_radius_overrides.clear()
+    for (const [idx, radius] of overrides) {
+      const mapped = remap(idx)
+      if (mapped !== undefined) this.site_radius_overrides.set(mapped, radius)
+    }
+  }
   private notice(message: string): void {
     this.inputs.on_notice?.(message)
   }

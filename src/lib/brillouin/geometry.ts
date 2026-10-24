@@ -2,6 +2,7 @@ import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
 import type { BrillouinZoneData, BZHoverData, KPathData } from './types'
 import * as math from '#lib/math.js'
 import { faces_centroid } from '#lib/scene/geometry.svelte.js'
+import { DEFAULT_CAMERA_VIEW } from '#lib/structure/camera-fit.js'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 
 // Build a renderable mesh from polyhedron vertices + polygonal faces via fan triangulation with flat per-face normals. Assumes convex faces (true for BZ/IBZ polyhedra); non-convex faces would triangulate incorrectly. Shared by BrillouinZoneScene (BZ + IBZ meshes) and FermiSurfaceScene (BZ overlay). Caller owns disposal.
@@ -180,7 +181,7 @@ export const bz_mark_sizes = (bz_size: number, edge_width: number) => ({
 // 120 A cell). A 1 1/A floor exceeded the true extent past a = 11.83 A, framing the zone
 // against a constant: 39% of the viewport at 30 A, 10% at 120 A.
 export const default_camera_position = (size: number): Vec3 =>
-  [10, 3, 8].map((coord) => coord * (size > 0 ? size : k_space_size(undefined))) as Vec3
+  math.scale(DEFAULT_CAMERA_VIEW, 10 * (size > 0 ? size : k_space_size(undefined)))
 
 // Occupy at most 92% of the shorter viewport edge, matching structure_fit_frame's
 // DEFAULT_FIT_PADDING (asserted equal in brillouin-compute.test.ts rather than imported, which

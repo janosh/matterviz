@@ -319,6 +319,27 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   await leave()
   expect(selected_strokes()).toBe(0)
   expect(shown_bands()).toEqual([true, true])
+  // a band edit in the controls while isolated lands, starting from the band shown (unticking
+  // band 8 leaves none), and ends the isolation: re-ticking band 9 shows it alone
+  await click(8)
+  await leave()
+  expect([props.selected_bands, shown_bands()]).toEqual([
+    [8, 9],
+    [true, false],
+  ])
+  const checkbox = (idx: number) =>
+    wrapper.querySelectorAll<HTMLInputElement>(`.band-checkbox input`)[idx]
+  checkbox(0).click()
+  flushSync()
+  expect([props.selected_bands, shown_bands(), selected_strokes()]).toEqual([
+    [],
+    [false, false],
+    0,
+  ])
+  checkbox(1).click()
+  flushSync()
+  expect([props.selected_bands, shown_bands()]).toEqual([[9], [false, true]])
+  props.selected_bands = [8, 9]
   props.mu = 0
   flushSync()
   expect_dots(fermi_dots())

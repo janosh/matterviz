@@ -7,7 +7,6 @@ import {
   detect_irreducible_bz,
   extract_fermi_surface,
   fold_to_wigner_seitz,
-  polygon_interior_point,
   preview_interpolation_factor,
   reciprocal_cell_section,
   sample_slice_energies,
@@ -381,16 +380,6 @@ describe(`slice energy shading`, () => {
 })
 
 describe(`pocket classification`, () => {
-  // a C-shape's centroid (1.25, 1.5) falls in its notch: the midpoint of the first inside
-  // stretch of its horizontal line is inside
-  test(`polygon_interior_point of a concave polygon`, () => {
-    // oxfmt-ignore
-    const c_shape: Vec2[] = [[0, 0], [3, 0], [3, 1], [1, 1], [1, 2], [3, 2], [3, 3], [0, 3]]
-    const [coord_x, coord_y] = polygon_interior_point(c_shape)
-    expect(coord_x).toBeCloseTo(0.5, 12)
-    expect(coord_y).toBeCloseTo(1.5, 12)
-  })
-
   // ε = ±|k| with E_F = ±0.3: the (001) slice through Γ is one closed circle, enclosing
   // occupied states (electron pocket) for +|k| and empty ones (hole pocket) for −|k|
   test.each([
@@ -403,6 +392,11 @@ describe(`pocket classification`, () => {
     })
     const slice = compute_fermi_slice(extract_fermi_surface(band_data))
     expect(band_carriers(band_data, slice)).toEqual(new Map([[0, carrier]]))
+    // a zero-area contour has no inside to sample: it casts no vote
+    const [isoline] = slice.isolines
+    // oxfmt-ignore
+    const collapsed = { ...isoline, points_2d: [[0, 0], [0.1, 0.1], [0.2, 0.2], [0.1, 0.1]] as Vec2[] }
+    expect(band_carriers(band_data, { ...slice, isolines: [collapsed] })).toEqual(new Map())
   })
 })
 

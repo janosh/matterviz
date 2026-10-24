@@ -1300,7 +1300,7 @@
       typeof identifier !== `string` &&
       (typeof identifier !== `number` || !Number.isFinite(identifier))
     ) {
-      throw new Error(
+      throw new TypeError(
         `row_key must return a string or finite number; received ${String(identifier)}`,
       )
     }

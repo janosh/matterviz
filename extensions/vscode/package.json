@@ -24,12 +24,12 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@types/vscode": "~1.105.0",
     "svelte": "^5.57.2",
     "typescript": "^6.0.3",
-    "vite": "^8.3.2",
-    "vitest": "5.0.3"
+    "vite": "^8.3.5",
+    "vitest": "5.0.5"
   },
   "contributes": {
     "commands": [
@@ -197,6 +197,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show atoms on the edge of the cell that are not part of the primitive basis"
+        },
+        "matterviz.structure.image_atom_completion": {
+          "type": "string",
+          "default": "polyhedra",
+          "description": "Which atoms beyond the cell faces to draw: the corners of polyhedra crossing a face, those plus every bond partner of atoms on the faces, or none",
+          "enum": [
+            "polyhedra",
+            "boundary",
+            "none"
+          ]
         },
         "matterviz.structure.sphere_segments": {
           "type": "number",

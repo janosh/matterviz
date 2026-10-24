@@ -2,6 +2,8 @@ import {
   create_bands_dos_sync,
   shared_resolved_padding_floor,
 } from '#lib/spectral/synced-axes.svelte.js'
+import type { Vec2 } from '#lib/math.js'
+import type { AxisConfig } from '#lib/plot/core/types.js'
 import type { BaseBandStructure, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vitest'
@@ -92,17 +94,27 @@ test.each([`phonon`, `electronic`] as const)(
     flushSync()
     expect(sync.views[0]).toEqual({ x: [0, 1], y: [1, 2] })
 
-    // stacked, the DOS plots density on y: its view no longer takes part
+    // stacked, the DOS plots density on y: its side-by-side view (axes swapped) reads unset,
+    // so the plot starts over, and its stacked view no longer takes part
     inputs.side_by_side = false
     flushSync()
     expect(sync.y_axes[1]).toEqual({})
     expect(sync.dos_x_axis).toEqual({ range: shared })
+    expect(sync.views[1]).toBeUndefined()
+    sync.views[1] = { x: [...shared], y: [0, 7] } // energy on x, density on y
     sync.views[0] = { x: [0, 1], y: [2, 3] }
     flushSync()
-    expect(sync.views[1]).toEqual({ x: [0, 5], y: [1, 2] })
+    expect(sync.views[1]).toEqual({ x: shared, y: [0, 7] })
+    // side by side again, the stacked density range must not lead: the DOS follows the bands
+    inputs.side_by_side = true
+    flushSync()
+    expect(sync.views[0]).toEqual({ x: [0, 1], y: [2, 3] })
+    expect(sync.views[1]).toEqual({ y: [2, 3] })
 
     // a stacked panel's tall x-axis margin must not stay in the shared padding and shrink both
     // plots once side by side again; side-by-side reports raise it
+    inputs.side_by_side = false
+    flushSync()
     sync.raise_padding({ t: 20, b: 90, l: 40, r: 10 })
     inputs.side_by_side = true
     flushSync()
@@ -110,6 +122,40 @@ test.each([`phonon`, `electronic`] as const)(
     sync.raise_padding({ t: 20, b: 60, l: 40, r: 10 })
     flushSync()
     expect(sync.shared_padding).toEqual({ t: 20, b: 60 })
+  },
+)
+
+// The first valid caller range wins: an invalid bands range defers to the DOS frequency axis
+// (its y side by side, its x stacked); only with no valid one does the data extent apply
+type AxisRange = AxisConfig[`range`]
+test.each<
+  [boolean, AxisRange, { x_axis?: AxisConfig; y_axis?: AxisConfig }, Vec2 | undefined]
+>([
+  [true, [Number.NaN, 2], { y_axis: { range: [-1, 3] } }, [-1, 3]],
+  [false, undefined, { x_axis: { range: [-2, 5] } }, [-2, 5]],
+  [true, [0, 6], { y_axis: { range: [-1, 3] } }, [0, 6]],
+  [true, [null, null], {}, undefined],
+])(
+  `side_by_side=%s bands range %j, DOS props %j: shared range %j`,
+  (side, bands, dos, expected) => {
+    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
+    roots.push(
+      $effect.root(() => {
+        sync = create_bands_dos_sync({
+          band_structs: () => ({ '': band_structs }),
+          doses: () => ({ '': doses }),
+          units: () => `THz`,
+          bands_props: () => ({ y_axis: { range: bands } }),
+          dos_props: () => dos,
+          side_by_side: () => side,
+          base_padding: { t: 20, b: 50 },
+        })
+      }),
+    )
+    flushSync()
+    const shared = sync?.shared_range
+    if (expected) expect(shared).toEqual(expected)
+    else expect(shared?.[1]).toBeGreaterThan(4) // the data's padded extent
   },
 )
 

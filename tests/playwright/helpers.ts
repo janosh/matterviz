@@ -746,11 +746,14 @@ type GizmoHandleHit = { key: string; x: number; y: number }
 // over the corner it's anchored in and keep those that flip the cursor to `pointer`, returning
 // viewport coords ready for page.mouse. `bottom_offset` lifts the swept square (for gizmos
 // parked above a ColorBar). Synthetic moves keep this to one round trip — page.mouse would
-// overrun the test timeout.
-export function sweep_gizmo_handles(
+// overrun the test timeout. The gizmo only shows while its viewer is hovered, which synthetic
+// moves don't make it, so the real pointer first parks in the canvas's opposite corner.
+export async function sweep_gizmo_handles(
   canvas: Locator,
   options: { probe?: number; steps?: number; bottom_offset?: number } = {},
 ): Promise<GizmoHandleHit[]> {
+  const { width } = await require_bbox(canvas, `canvas`)
+  await canvas.hover({ position: { x: width - 2, y: 2 }, force: true })
   return canvas.evaluate(
     async (cvs: HTMLCanvasElement, { probe, steps, lift }) => {
       const bounds = cvs.getBoundingClientRect()
@@ -869,7 +872,12 @@ export async function expect_combined_fullscreen(
   }
   page.on(`console`, on_console)
   for (const fullscreen of [true, false]) {
-    await container.locator(`:has(> .header-controls .fullscreen-btn)`).hover() // hover-revealed
+    // hover-revealed by the panel (or viewer) whose plot header or control row holds it
+    await button
+      .locator(
+        `xpath=ancestor::*[contains(@class, "header-controls") or contains(@class, "control-buttons")][1]/..`,
+      )
+      .hover()
     await expect(button).toHaveAttribute(`aria-pressed`, String(!fullscreen))
     await button.click()
     try {

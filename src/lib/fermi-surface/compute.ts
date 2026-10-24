@@ -840,29 +840,6 @@ export function slice_shading_rgba(
   return pixels
 }
 
-// A point strictly inside a simple polygon: its centroid when inside, else the midpoint of the
-// first inside stretch of the horizontal line through it
-export function polygon_interior_point(points: readonly Vec2[]): Vec2 {
-  const n_points = points.length
-  const centroid: Vec2 = [0, 1].map(
-    (axis) => points.reduce((sum, point) => sum + point[axis], 0) / n_points,
-  ) as Vec2
-  const crossings: number[] = []
-  for (let idx = 0; idx < n_points; idx++) {
-    const [x_1, y_1] = points[idx]
-    const [x_2, y_2] = points[(idx + 1) % n_points]
-    if (y_1 > centroid[1] !== y_2 > centroid[1]) {
-      crossings.push(x_1 + ((centroid[1] - y_1) / (y_2 - y_1)) * (x_2 - x_1))
-    }
-  }
-  crossings.sort((left, right) => left - right)
-  // even-odd: inside when an odd number of crossings lie left of it (fewer than two crossings:
-  // a degenerate polygon keeps its centroid)
-  const n_left = crossings.filter((cross_x) => cross_x < centroid[0]).length
-  if (n_left % 2 === 1 || crossings.length < 2) return centroid
-  return [(crossings[0] + crossings[1]) / 2, centroid[1]]
-}
-
 // Electron or hole carrier per band from its slice contours: the band's energy at a point inside
 // each contour is below E_F + mu for an electron pocket, above for a hole pocket, and the band
 // takes its contours' majority (ties go to electron). A contour cut open by the cell boundary is
@@ -876,8 +853,11 @@ export function band_carriers(
   for (const { points_2d, band_index, spin } of slice_data.isolines) {
     const band_idx = band_data.band_indices?.indexOf(band_index) ?? band_index
     const grid = band_data.energies[spin === `down` ? 1 : 0]?.[band_idx]
-    if (points_2d.length < 3 || !grid) continue
-    const k_point = slice_point_to_k(slice_data, ...polygon_interior_point(points_2d))
+    // a point strictly inside the contour (its centroid can fall outside a concave one); a
+    // degenerate contour has no inside to sample, so it casts no vote
+    const inside = math.polygon_label_point(points_2d)?.at
+    if (!grid || !inside) continue
+    const k_point = slice_point_to_k(slice_data, ...inside)
     const [energy] = sample_band_energies(band_data, grid, interpolation_factor, k_point)
     const vote = energy < band_data.fermi_energy + mu ? -1 : 1
     hole_votes.set(band_index, (hole_votes.get(band_index) ?? 0) + vote)

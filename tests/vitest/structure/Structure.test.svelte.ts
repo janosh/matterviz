@@ -1,5 +1,5 @@
 import Structure from '#lib/structure/Structure.svelte'
-import type { AnyStructure, MeasureMode } from '#lib'
+import type { AnyStructure, MeasureMode, Site } from '#lib'
 import { create_frac_to_cart, type Matrix3x3, type Vec3 } from '#lib/math.js'
 import type {
   IsosurfaceLayer,
@@ -67,10 +67,12 @@ import {
   BAD_ROW_CIF,
   fcc_primitive_matrix,
   IDENTITY_MATRIX3,
+  image_options,
   init_moyo_for_tests,
   make_crystal,
   make_grid,
   make_position_stream,
+  make_srtio3,
   make_volume,
 } from '../test-fixtures'
 
@@ -329,6 +331,7 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
       supercell_scaling: () => `1x1x1`,
       apply_supercell_scaling: () => false,
       show_image_atoms: () => false,
+      image_atom_options: () => image_options(),
       cell_type: () => `original`,
       set_cell_type: () => {},
       sym_data: () => null,
@@ -1672,20 +1675,21 @@ const mount_volumetric = (
   return props
 }
 
-// Stub the Fullscreen API on the mounted viewer; `set_fullscreen_element` plays the browser
-// entering/leaving fullscreen
+// Stub the Fullscreen API on the mounted viewer's fullscreen root (the row around the viewer
+// and its docked sidebars); `set_fullscreen_element` plays the browser entering/leaving
 const stub_fullscreen_api = () => {
   mock_fullscreen()
   const request_fullscreen = vi.fn().mockResolvedValue(undefined)
   const exit_fullscreen = vi.fn().mockResolvedValue(undefined)
   const wrapper = doc_query(`.structure`)
-  wrapper.requestFullscreen = request_fullscreen
+  const root = doc_query(`.structure-fullscreen-root`)
+  root.requestFullscreen = request_fullscreen
   document.exitFullscreen = exit_fullscreen
   const set_fullscreen_element = async (value: Element | null) => {
     Object.defineProperty(document, `fullscreenElement`, { value, configurable: true })
     await fire(document, new Event(`fullscreenchange`))
   }
-  return { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element }
+  return { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element }
 }
 
 describe(`Structure`, () => {
@@ -1985,6 +1989,57 @@ describe(`Structure`, () => {
     expect(state.active_pane).toBeNull()
     expect(doc_query(`.structure-info-toggle`).style.boxShadow).toBe(``)
   })
+
+  // Each layer key flips its layer off then back on, restoring the mode it had (polyhedra's
+  // default `crystals`, a chosen `crystals` for bonds) when it covers the structure, else
+  // `always` (polyhedra on a molecule)
+  const { lattice: _cell, ...lattice_free } = structure
+  // oxfmt-ignore
+  test.each([
+    [`a`, `show_atoms`, structure, {}, [true, false, true]],
+    [`A`, `show_image_atoms`, structure, {}, [true, false, true]],
+    [`b`, `show_bonds`, structure, {}, [`always`, `never`, `always`]],
+    [`b`, `show_bonds`, structure, { show_bonds: `crystals` }, [`crystals`, `never`, `crystals`]],
+    [`p`, `show_polyhedra`, structure, {}, [`crystals`, `never`, `crystals`]],
+    [`p`, `show_polyhedra`, lattice_free, {}, [`crystals`, `always`, `never`]],
+  ] as const)(`key %s toggles %s`, async (key, layer, target, initial, expected) => {
+    const scene_props = { ...DEFAULTS.structure, ...initial }
+    const state = $state({ scene_props, show_image_atoms: true })
+    mount_structure(bind_props({ structure: target }, state))
+    await tick()
+    const read = () =>
+      layer === `show_image_atoms` ? state.show_image_atoms : state.scene_props[layer]
+    const values: unknown[] = [read()]
+    for (const _press of [1, 2]) {
+      await fire(doc_query(`.structure`), keydown(key, { shiftKey: key === `A` }))
+      values.push(read())
+    }
+    expect(values).toEqual(expected)
+  })
+
+  // Edit modes keep B/P off (they would hide what is being edited), and Shift+B/P toggle
+  // nothing in any mode
+  test.each([`edit-atoms`, `edit-bonds`, `distance`] as const)(
+    `layer keys in %s mode`,
+    async (measure_mode) => {
+      const state = $state({ scene_props: { ...DEFAULTS.structure }, measure_mode })
+      mount_structure(bind_props({ structure }, state))
+      await tick()
+      for (const [key, shiftKey] of [
+        [`b`, true],
+        [`p`, true],
+        [`b`, false],
+        [`p`, false],
+      ] as const)
+        await fire(doc_query(`.structure`), keydown(key, { shiftKey }))
+      const { show_bonds, show_polyhedra } = state.scene_props
+      expect([state.measure_mode, show_bonds, show_polyhedra]).toEqual(
+        measure_mode === `distance`
+          ? [measure_mode, `never`, `never`]
+          : [measure_mode, `always`, `crystals`],
+      )
+    },
+  )
 
   test(`hover keydown path bails in edit modes so destructive keys need focus`, async () => {
     const state = {
@@ -2463,6 +2518,44 @@ describe(`Structure`, () => {
     expect(props.hovered_site_idx).toBeNull()
   })
 
+  // Completion adds what the scene draws: the 24 O copies cornering the corner Ti octahedra go
+  // when the octahedra do, through hidden polyhedra (P key, `never`), bonding options or a
+  // strategy that drop the Ti-O bonds, or Ti hidden in the legend. Each would otherwise leave
+  // O copies ending drawn bonds, floating beyond the faces.
+  test.each([
+    [`hidden polyhedra`, { scene_props: { show_polyhedra: `never` } }],
+    [`polyhedra only for molecules`, { scene_props: { show_polyhedra: `molecules` } }],
+    [
+      `a bond strength threshold`,
+      {
+        scene_props: {
+          show_polyhedra: `always`,
+          bonding_options: { strength_threshold: 100 },
+        },
+      },
+    ],
+    [
+      `explicit_only bonding`,
+      { scene_props: { show_polyhedra: `always`, bonding_strategy: `explicit_only` } },
+    ],
+    [`Ti hidden in the legend`, { hidden_elements: new Set([`Ti`]) }],
+  ] as const)(`image completion follows the scene with %s`, async (_label, change) => {
+    const props = $state<ComponentProps<typeof Structure>>({
+      structure: make_srtio3(`corner`),
+      show_image_atoms: true,
+      scene_props: { show_polyhedra: `always` },
+    })
+    const analysis = mount_structure(props)
+    await tick()
+    const completion_count = () =>
+      analysis.displayed_structure?.sites.filter((site: Site) => site.provenance?.completion)
+        .length
+    expect(completion_count()).toBe(24)
+    Object.assign(props, change)
+    await tick()
+    expect(completion_count()).toBe(0)
+  })
+
   test(`clears stale picks in the same flush that shrinks the displayed structure`, async () => {
     // What StructureScene's overlays index sites with is the session's validated selection,
     // so a pick is never visible next to a displayed structure that lacks that site. Here the
@@ -2548,7 +2641,7 @@ describe(`Structure`, () => {
     const props = $state({ fullscreen: false })
     const chrome = { style: `--ctrl-btn-icon-size: 32px`, show_controls: `always` as const }
     mount_structure(bind_props({ structure, ...chrome, on_fullscreen_change }, props))
-    const { wrapper, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
+    const { wrapper, root, request_fullscreen, exit_fullscreen, set_fullscreen_element } =
       stub_fullscreen_api()
     request_fullscreen.mockRejectedValueOnce(new Error(`fullscreen denied`))
     await tick()
@@ -2571,8 +2664,13 @@ describe(`Structure`, () => {
     fullscreen_button.click()
     await vi.waitFor(() => expect(request_fullscreen).toHaveBeenCalledTimes(2))
 
-    await set_fullscreen_element(wrapper)
+    await set_fullscreen_element(root)
     expect(fullscreen_button.getAttribute(`aria-pressed`)).toBe(`true`)
+    // fullscreen, the viewer fills the row and the caller's style moves to the row
+    expect(wrapper.style.height).toBe(`100%`)
+    expect(
+      doc_query(`.structure-site-layout`).style.getPropertyValue(`--ctrl-btn-icon-size`),
+    ).toBe(`32px`)
     expect(props.fullscreen).toBe(true)
     expect(on_fullscreen_change).toHaveBeenLastCalledWith({ structure, fullscreen: true })
 
@@ -3659,7 +3757,7 @@ describe(`site sidebar`, () => {
       ],
     }
     // the corner atom has 7 images, so the filter is what keeps the table at one row
-    expect(get_pbc_image_sites(corner_atom).sites).toHaveLength(8)
+    expect(get_pbc_image_sites(corner_atom, image_options()).sites).toHaveLength(8)
     mount_structure({ structure: corner_atom, site_sidebar: true, show_image_atoms: true })
     await tick()
     expect(

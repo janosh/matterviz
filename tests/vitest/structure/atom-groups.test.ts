@@ -25,7 +25,7 @@ const make_input = (
   property_colors: null,
   hidden_prop_vals: new Set(),
   hidden_elements: new Set(),
-  hide_completion_images: false,
+  drawn_completion_sites: new Set(),
   radius_scale: 1,
   radius_options: { same_size_atoms: true },
   hidden_centers: null,
@@ -185,16 +185,17 @@ describe(`AtomGroupBuilder`, () => {
     expect(groups.base.map(({ site_idx }) => site_idx)).toEqual(expected)
   })
 
-  test(`hides completion images only when asked`, () => {
+  test(`draws completion images only where a drawn bond or polyhedron ends`, () => {
     const completion: Site = {
       ...make_site(`O`, [1, 0, 0], [4, 0, 0], `O`),
       provenance: { image_of: 1, completion: true },
     }
     const structure = { sites: [...co_molecule().sites, completion] }
-    const count = (hide_completion_images: boolean) =>
-      new AtomGroupBuilder().build(make_input(structure, { hide_completion_images })).image
-        .length
-    expect([count(false), count(true)]).toEqual([1, 0])
+    const count = (drawn: number[]) =>
+      new AtomGroupBuilder().build(
+        make_input(structure, { drawn_completion_sites: new Set(drawn) }),
+      ).image.length
+    expect([count([2]), count([0, 1])]).toEqual([1, 0])
   })
 
   test(`whole-atom cutaways keep listed sites at every listed position`, () => {

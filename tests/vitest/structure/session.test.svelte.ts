@@ -17,13 +17,18 @@ import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
+import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
+import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   fcc_primitive_matrix,
   get_dummy_structure,
+  image_options,
   init_moyo_for_tests,
   make_crystal,
+  make_rocksalt,
+  make_srtio3,
 } from '../test-fixtures'
 
 type Host = {
@@ -40,6 +45,8 @@ type Host = {
   supercell_scaling: string
   apply_supercell_scaling: boolean
   show_image_atoms: boolean
+  image_atom_completion: ImageAtomCompletion
+  polyhedra_options: Partial<ResolvedPolyhedraOptions>
   cell_type: CellType
   sym_data: SymmetryDataset | null
   atom_color_config: AtomColorConfig
@@ -63,6 +70,8 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
     supercell_scaling: `1x1x1`,
     apply_supercell_scaling: true,
     show_image_atoms: false,
+    image_atom_completion: `polyhedra`,
+    polyhedra_options: {},
     cell_type: `original`,
     sym_data: null,
     atom_color_config: DEFAULT_ATOM_COLOR_CONFIG,
@@ -95,6 +104,8 @@ function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStr
       supercell_scaling: () => host.supercell_scaling,
       apply_supercell_scaling: () => host.apply_supercell_scaling,
       show_image_atoms: () => host.show_image_atoms,
+      image_atom_options: () =>
+        image_options(host.image_atom_completion, host.polyhedra_options),
       cell_type: () => host.cell_type,
       set_cell_type: (value) => (host.cell_type = value),
       sym_data: () => host.sym_data,
@@ -347,6 +358,146 @@ describe(`symmetry-aware display`, () => {
     expect(session.history.undo_stack).toHaveLength(0)
     expect(host.selected_sites).toEqual([2])
   })
+})
+
+// SrTiO3 with Ti in the body center: its octahedron sits inside the cell, so the default
+// draws only the face copies, while face-atom completion adds the Ti bonded to the face O
+it(`switching image_atom_completion rebuilds the displayed atoms`, () => {
+  const { host, session } = make_session({
+    show_image_atoms: true,
+    structure: make_srtio3(`body`),
+  })
+  const completion_elements = () =>
+    (session.displayed_structure?.sites ?? [])
+      .filter((site) => site.provenance?.completion)
+      .map((site) => site.species[0].element)
+  expect(session.displayed_structure?.sites).toHaveLength(15) // 5 sites + 10 face copies
+  expect(completion_elements()).toEqual([])
+  for (const [completion, expected] of [
+    [`boundary`, [`Ti`, `Ti`, `Ti`, `Ti`, `Ti`, `Ti`]],
+    [`none`, []],
+  ] as const) {
+    host.image_atom_completion = completion
+    flushSync()
+    expect(completion_elements(), completion).toEqual(expected)
+  }
+})
+
+// SrTiO3 with Ti on the corners: its 24 O corner copies go once Ti is no polyhedron center
+it(`changing the polyhedra options rebuilds the completion copies`, () => {
+  const { host, session } = make_session({
+    show_image_atoms: true,
+    structure: make_srtio3(`corner`),
+    // the live options reach completion: a JSON round trip would turn the cap into null
+    polyhedra_options: { max_neighbors: Infinity },
+  })
+  const completion_count = () =>
+    session.displayed_structure?.sites.filter((site) => site.provenance?.completion).length
+  expect(completion_count()).toBe(24)
+  // an equal options object keeps the displayed structure (no rerun of the bond search)
+  const displayed = session.displayed_structure
+  host.polyhedra_options = { ...host.polyhedra_options }
+  flushSync()
+  expect(session.displayed_structure).toBe(displayed)
+  host.selected_sites = [0, 20, 21] // base Ti, the last face copy, the first O corner copy
+  flushSync()
+  // O is no polyhedron center, so excluding it (as hiding it in the legend does) draws the
+  // same copies: the displayed structure and the selection stay
+  host.polyhedra_options = { excluded_center_elements: [`O`] }
+  flushSync()
+  expect(session.displayed_structure).toBe(displayed)
+  expect(host.selected_sites).toEqual([0, 20, 21])
+  host.polyhedra_options = { excluded_center_elements: [`Ti`] }
+  flushSync()
+  expect(completion_count()).toBe(0)
+  expect(host.selected_sites).toEqual([0, 20]) // the corner copy is gone, the face copy stays
+})
+
+// Rocksalt in bonded mode completes Na and Cl octahedra across the faces. Excluding Na drops
+// the Cl copies cornering Na octahedra and renumbers the Na copies cornering Cl ones: the
+// selection, hover and radius override follow such a copy to its new index
+it(`completion settings remap site state to the same copies`, () => {
+  const { host, session } = make_session({
+    show_image_atoms: true,
+    structure: make_rocksalt(),
+    polyhedra_options: { neighbor_mode: `bonded` },
+  })
+  const sites = () => session.displayed_structure?.sites ?? []
+  const na_copy = sites().findLastIndex(
+    (site) => site.provenance?.completion && site.species[0].element === `Na`,
+  )
+  const { abc, provenance } = sites()[na_copy]
+  host.selected_sites = [0, na_copy]
+  host.measured_sites = [na_copy]
+  host.hovered_site_idx = na_copy
+  session.site_radius_overrides.set(na_copy, 2)
+  flushSync()
+  host.polyhedra_options = { neighbor_mode: `bonded`, excluded_center_elements: [`Na`] }
+  flushSync()
+  const moved = sites().findIndex(
+    (site) =>
+      site.provenance?.image_of === provenance?.image_of && String(site.abc) === String(abc),
+  )
+  expect([moved > 0, moved < na_copy]).toEqual([true, true])
+  expect([host.selected_sites, host.measured_sites]).toEqual([[0, moved], [moved]])
+  expect(host.hovered_site_idx).toBe(moved)
+  expect([...session.site_radius_overrides]).toEqual([[moved, 2]])
+  // An element mapping renumbers the copies too, without touching the options: K is no
+  // excluded center, so the Cl copies cornering its octahedra come back ahead of the Na copy
+  const token = (idx: number) => `${sites()[idx]?.provenance?.image_of}:${sites()[idx]?.abc}`
+  const copy_token = token(moved)
+  session.element_mapping = { Na: `K` }
+  flushSync()
+  const renumbered = sites().findIndex((_site, idx) => token(idx) === copy_token)
+  expect(renumbered).toBeGreaterThan(moved)
+  expect([host.selected_sites, host.hovered_site_idx]).toEqual([[0, renumbered], renumbered])
+})
+
+// A same-topology frame or a drag moving a face atom inward drops its copy and renumbers the
+// copies after it: state on another atom's copy follows that copy. A drag remaps on release,
+// from the image set before the drag.
+it.each([`frame`, `drag`] as const)(`image copies keep their state across a %s`, (how) => {
+  const cell = (frac_x: number) =>
+    make_crystal(5, [
+      [`H`, [frac_x, 0.5, 0.5]],
+      [`H`, [0, 0.3, 0.5]],
+    ])
+  const { host, session } = make_session({
+    structure: cell(0),
+    series_key: `frames`,
+    show_image_atoms: true,
+    image_atom_completion: `none`,
+  })
+  const sources = () =>
+    session.displayed_structure?.sites.map((site) => site.provenance?.image_of)
+  expect(sources()).toEqual([undefined, undefined, 0, 1])
+  host.selected_sites = [1, 3]
+  host.hovered_site_idx = 3
+  flushSync()
+  session.dragging_atoms = how === `drag`
+  flushSync()
+  host.structure = cell(0.2)
+  flushSync()
+  session.dragging_atoms = false
+  flushSync()
+  expect(sources()).toEqual([undefined, undefined, 1])
+  expect([host.selected_sites, host.hovered_site_idx]).toEqual([[1, 2], 2])
+})
+
+// Polyhedra settings only renumber sites (or rebuild the displayed structure) while images
+// show and get completed
+it.each([
+  [`images hidden`, { show_image_atoms: false }],
+  [`completion off`, { show_image_atoms: true, image_atom_completion: `none` }],
+] as const)(`polyhedra settings keep the selection with %s`, (_label, initial) => {
+  const { host, session } = make_session(initial)
+  host.selected_sites = [0]
+  flushSync()
+  const displayed = session.displayed_structure
+  host.polyhedra_options = { min_neighbors: 5 }
+  flushSync()
+  expect(host.selected_sites).toEqual([0])
+  expect(session.displayed_structure).toBe(displayed)
 })
 
 describe(`selection validity`, () => {

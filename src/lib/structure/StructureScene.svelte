@@ -98,7 +98,8 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Euler, OrthographicCamera, Vector3 } from 'three/webgpu'
   import type { Mesh, WebGPURenderer } from 'three/webgpu'
-  import { bond_neighbor_summary, bond_records, type BondData } from './bond-rendering'
+  import { bond_neighbor_summary, bond_records } from './bond-rendering'
+  import type { BondData } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,
@@ -112,7 +113,8 @@
   } from './bonding'
   import { compose_perceived_bonds, perceive_bond_orders } from './index'
   import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
-  import { compute_polyhedra } from './polyhedra'
+  import { compute_polyhedra, polyhedra_options_from } from './polyhedra'
+  import { find_drawn_completion_sites } from './pbc'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
     TrajectoryLineColorMode,
@@ -1118,9 +1120,7 @@
           property_colors,
           hidden_prop_vals,
           hidden_elements,
-          hide_completion_images:
-            !applies_to_structure(effective_show_bonds, Boolean(lattice)) &&
-            !applies_to_structure(effective_show_polyhedra, Boolean(lattice)),
+          drawn_completion_sites,
           radius_scale: effective_atom_radius,
           radius_options,
           hidden_centers: polyhedra_hide_center_atoms ? polyhedra_center_site_idxs : null,
@@ -1296,16 +1296,17 @@
         !dragging_atoms &&
         applies_to_structure(effective_show_polyhedra, Boolean(lattice)) &&
         filtered_bond_pairs.length > 0
-          ? compute_polyhedra(structure, filtered_bond_pairs, {
-              neighbor_mode: polyhedra_neighbor_mode,
-              min_neighbors: polyhedra_min_neighbors,
-              // The two sliders have overlapping ranges (min goes to 12, max down to 4), so
-              // they can be dragged past each other. Widening the cap instead of honoring an
-              // empty window keeps polyhedra on screen rather than silently rendering none.
-              max_neighbors: Math.max(polyhedra_min_neighbors, polyhedra_max_neighbors),
-              excluded_center_elements: polyhedra_excluded_elements,
-              included_center_elements: polyhedra_included_elements,
-            })
+          ? compute_polyhedra(
+              structure,
+              filtered_bond_pairs,
+              polyhedra_options_from({
+                polyhedra_neighbor_mode,
+                polyhedra_min_neighbors,
+                polyhedra_max_neighbors,
+                polyhedra_excluded_elements,
+                polyhedra_included_elements,
+              }),
+            )
           : []
     const centers = last_polyhedra.length > 0 ? cutaway_centers : undefined
     return centers
@@ -1315,6 +1316,9 @@
 
   let polyhedra_center_site_idxs = $derived(
     new Set(polyhedra.map((poly) => poly.center_site_idx)),
+  )
+  let drawn_completion_sites = $derived(
+    find_drawn_completion_sites(structure, bonds_to_render, polyhedra),
   )
 
   // Publish which elements currently anchor polyhedra (consumed by controls so

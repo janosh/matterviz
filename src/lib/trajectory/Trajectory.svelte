@@ -46,6 +46,7 @@
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
   import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
+  import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
@@ -58,6 +59,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import type { Site, StructurePane, StructureOptions } from '#lib/structure/index.js'
   import { site_stride } from '#lib/structure/site.js'
+  import { polyhedra_options_from } from '#lib/structure/polyhedra.js'
   import { applies_to_structure } from '#lib/structure/settings.js'
   import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
@@ -95,12 +97,7 @@
     TrajectoryXQuantity,
     TrajHandlerData,
   } from './index'
-  import {
-    pick_pane_orientation,
-    TrajectoryDataInspector,
-    TrajectoryExportPane,
-    TrajectoryInfoPane,
-  } from './index'
+  import { TrajectoryDataInspector, TrajectoryExportPane, TrajectoryInfoPane } from './index'
   import { collect_trajectory_positions } from './analysis'
   import { suggest_frame_stride } from './runs/accumulate'
   import {
@@ -544,20 +541,7 @@
       bonding_strategy: props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
       bonding_options: $state.snapshot(props.bonding_options ?? {}),
       auto_bond_order: props.auto_bond_order ?? DEFAULTS.structure.auto_bond_order,
-      ...(show_polyhedra && {
-        polyhedra: {
-          neighbor_mode:
-            props.polyhedra_neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
-          min_neighbors:
-            props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
-          max_neighbors: Math.max(
-            props.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
-            props.polyhedra_max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
-          ),
-          excluded_center_elements: [...(props.polyhedra_excluded_elements ?? [])],
-          included_center_elements: [...(props.polyhedra_included_elements ?? [])],
-        },
-      }),
+      ...(show_polyhedra && { polyhedra: polyhedra_options_from(props) }),
       ...((props.vector_origin_gap ?? DEFAULTS.structure.vector_origin_gap) === 0 && {
         vector_geometry: {
           vector_configs: Object.fromEntries(
@@ -866,11 +850,11 @@
   let content_size = $state({ width: 0, height: 0 })
   // Measured on .content-area, not the wrapper: a mounted controls bar is ~32px of the
   // wrapper's height that no pane ever gets
-  let actual_layout = $derived.by(() => {
-    if (layout === `horizontal` || layout === `vertical`) return layout
-    const { width, height } = content_size
-    return width > 0 && height > 0 ? pick_pane_orientation(width, height) : `horizontal`
-  })
+  let actual_layout = $derived(
+    layout === `auto`
+      ? pick_pane_orientation(content_size.width, content_size.height)
+      : layout,
+  )
   const filename_copied = create_flash(false, 1000)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)

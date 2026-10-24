@@ -1,6 +1,6 @@
 import type { Vec2 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { accumulate_error_extent } from '#lib/plot/core/error-bars.js'
+import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars.js'
 import type { ErrorValues } from '#lib/plot/core/error-bars.js'
 import {
   accumulate_extent,
@@ -280,6 +280,15 @@ describe(`scales`, () => {
         min_positive: Math.min(expected.min_positive ?? Infinity, 100),
         n_finite: expected.n_finite + 2,
       })
+    })
+
+    // Three strokes (cap, bar, cap) with the two coordinates' roles swapped between axes
+    test.each([
+      [false, 3, `M10,47V53M10,50H30M30,47V53`],
+      [true, 3, `M47,10H53M50,10V30M47,30H53`],
+      [true, 0, `M50,10H50M50,10V30M50,30H50`],
+    ])(`error_bar_path(vertical=%s, cap=%d)`, (vertical, cap, expected) => {
+      expect(error_bar_path([10, 30], 50, vertical, cap)).toBe(expected)
     })
 
     test(`tracks finite extent; multi-pass; every niced range is finite`, () => {

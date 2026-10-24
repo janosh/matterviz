@@ -38,6 +38,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/reciprocal/ir-raman': `IR + Raman`,
   '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
   '/reciprocal/fermi-surface-bands': `Fermi Surface + Bands`,
+  '/phase-diagram/pressure-temperature': `Pressure–Temperature`,
 }
 
 export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svelte,md}`))
@@ -144,6 +145,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/convex-hull/synthesis-planning': [`SynthesisPlanner`],
   '/neb': [`NebViewer`, `NebPlot`],
   '/phase-diagram': [`IsobaricBinaryPhaseDiagram`],
+  '/phase-diagram/pressure-temperature': [`PressureTemperaturePhaseDiagram`],
   '/phase-diagram/ternary': [`IsobaricTernaryPhaseDiagram`],
   '/plot/binned-scatter': [`BinnedScatterPlot`],
   '/plot/color-scales': [`ColorScaleSelect`],

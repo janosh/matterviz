@@ -173,7 +173,8 @@ const dispatch_two_atom_unbonded_structure = (page: Page) =>
     { atom_radius: 2.5, ...unbonded, ...front_camera, show_bonds: `always`, ...labelled },
   )
 
-// C and O straddling the periodic boundary of a 10 Å cube so their bond crosses an image
+// C inside a 10 Å cube and O on its x = 0 face (only face atoms get periodic copies), so
+// their 1.08 Å bond runs to the O copy at x = 10.08
 const dispatch_periodic_image_structure = (
   page: Page,
   {
@@ -186,15 +187,16 @@ const dispatch_periodic_image_structure = (
     {
       lattice: cubic_10,
       sites: [
-        make_site(`C`, [9.5, 5, 5], [0.95, 0.5, 0.5]),
-        make_site(`O`, [0.4, 5, 5], [0.04, 0.5, 0.5]),
+        make_site(`C`, [9, 5, 5], [0.9, 0.5, 0.5]),
+        make_site(`O`, [0.08, 5, 5], [0.008, 0.5, 0.5]),
       ],
     },
     {
       bond_thickness: 0.25,
       bonding_options,
-      camera_position: [9.95, 5, 17],
-      camera_target: [9.95, 5, 5],
+      // the image bond's midpoint
+      camera_position: [9.54, 5, 17],
+      camera_target: [9.54, 5, 5],
       show_bonds: `always`,
       ...(show_site_labels ? labelled : {}),
     },
@@ -206,8 +208,9 @@ const dispatch_two_image_atom_unbonded_structure = (page: Page) =>
     {
       lattice: cubic_10,
       sites: [
-        make_site(`C`, [0.4, 5, 5], [0.04, 0.5, 0.5]),
-        make_site(`O`, [0.45, 5, 5], [0.045, 0.5, 0.5]),
+        // both on the x = 0 face, so each gets a copy at x + 10 (sites 2 and 3)
+        make_site(`C`, [0.03, 5, 5], [0.003, 0.5, 0.5]),
+        make_site(`O`, [0.08, 5, 5], [0.008, 0.5, 0.5]),
       ],
     },
     {

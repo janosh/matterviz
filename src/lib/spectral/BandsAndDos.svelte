@@ -15,12 +15,20 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import { create_band_path_link } from './band-path-link.svelte'
-  import { create_bands_dos_sync } from './synced-axes.svelte'
-  import type { BaseBandStructure, DosData, FrequencyUnit, HoveredData } from './types'
+  import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
+  import type {
+    BaseBandStructure,
+    DosData,
+    FrequencyUnit,
+    HoveredData,
+    PhononDos,
+  } from './types'
 
   let {
     band_structs,
     doses,
+    a2f,
+    frequency_range,
     structure,
     units = $bindable(`THz`),
     fermi_level,
@@ -36,6 +44,8 @@
   }: HTMLAttributes<HTMLDivElement> & {
     band_structs: Record<string, BaseBandStructure>
     doses: Record<string, DosData>
+    a2f?: Record<string, PhononDos> // Eliashberg functions, on the DOS's own α²F axis
+    frequency_range?: Vec2 // the extent (data units) to span instead of the data's
     structure?: Crystal // adds its Brillouin zone with the bands' k-path
     units?: FrequencyUnit
     fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
@@ -61,9 +71,9 @@
   })
 
   // Layout by container width (not the viewport: embedded at arbitrary sizes in notebooks and
-  // IDEs). Without a zone the 200px DOS column stacks below the bands under 520px; with one,
-  // the three panels sit side by side from 1200px, else the bands span the BZ and DOS (tablet)
-  // or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
+  // IDEs). Without a zone the 200px DOS column stacks below the bands in narrow rows; with
+  // one, the three panels sit side by side from 1200px, else the bands span the BZ and DOS
+  // (tablet) or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
   let clientWidth = $state(1200)
   const layout = $derived(
     structure
@@ -72,7 +82,7 @@
         : clientWidth >= 600
           ? `tablet`
           : `phone`
-      : clientWidth >= 520
+      : clientWidth >= MIN_SIDE_BY_SIDE_WIDTH
         ? `side`
         : `stacked`,
   )
@@ -87,6 +97,7 @@
     bands_props: () => bands_props,
     dos_props: () => dos_props,
     side_by_side: () => side_by_side,
+    data_range: () => frequency_range,
     shared_axis: () => shared_y_axis,
     sync_zoom: () => sync_y_zoom,
     base_padding: {
@@ -166,6 +177,7 @@
     {...dos_props}
     style="grid-area: dos; {dos_props.style ?? ``}"
     {doses}
+    {a2f}
     bind:units
     fermi_level={sync.fermi_level}
     orientation={side_by_side ? `horizontal` : `vertical`}

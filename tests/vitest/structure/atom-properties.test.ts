@@ -22,7 +22,7 @@ import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
 import type { WyckoffPos } from '#lib/symmetry/index.js'
 import { describe, expect, test, vi } from 'vitest'
 import { rgb } from 'd3-color'
-import { make_crystal, make_rocksalt, make_struct } from '../test-fixtures'
+import { image_options, make_crystal, make_rocksalt, make_struct } from '../test-fixtures'
 
 // Helper: Create cubic structure with PBC for testing
 const make_cubic_structure = (
@@ -302,7 +302,7 @@ describe(`Coordination`, () => {
       ],
       2.8,
     )
-    const displayed = get_pbc_image_sites(make_supercell(base, [2, 1, 1]))
+    const displayed = get_pbc_image_sites(make_supercell(base, [2, 1, 1]), image_options())
     expect(displayed.sites.length).toBeGreaterThan(4)
     const config = {
       ...atom_properties.DEFAULT_ATOM_COLOR_CONFIG,

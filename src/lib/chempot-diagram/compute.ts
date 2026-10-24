@@ -26,6 +26,7 @@ import {
   normalize_vec,
   point_in_polygon,
   polygon_centroid,
+  polygon_signed_area,
   subtract,
 } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
@@ -1165,12 +1166,7 @@ export function section_measure(points: number[][]): number {
   const hull = convex_hull_2d(
     points.map((point): Vec2 => [dot(basis_u, point), dot(basis_v, point)]),
   )
-  let twice_area = 0
-  for (const [idx, [x_1, y_1]] of hull.entries()) {
-    const [x_2, y_2] = hull[(idx + 1) % hull.length]
-    twice_area += x_1 * y_2 - x_2 * y_1
-  }
-  return Math.abs(twice_area) / 2
+  return Math.abs(polygon_signed_area(hull))
 }
 
 // Each domain's cross-section measure (length on 2 display axes, area on 3) as mu_element

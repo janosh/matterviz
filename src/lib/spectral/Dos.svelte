@@ -38,12 +38,14 @@
     DosData,
     FrequencyUnit,
     NormalizationMode,
+    PhononDos,
     SpinMode,
     StackedAreaData,
   } from './types'
 
   let {
     doses,
+    a2f = {},
     stack = false,
     sigma = $bindable(0),
     units = $bindable(`THz`),
@@ -73,6 +75,10 @@
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
     doses: Record<string, DosData>
+    // Eliashberg functions α²F(ω), dimensionless: dashed on their own density axis (top beside
+    // bands, else right) over the DOS frequencies, never rescaled with units, smeared,
+    // normalized or stacked
+    a2f?: Record<string, PhononDos>
     stack?: boolean
     // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
     // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer
@@ -94,7 +100,8 @@
   // below uses the canonical unit so no $derived throws on an alias
   let unit = $derived(parse_frequency_unit(units) ?? units)
 
-  const is_phonon = $derived(spectral_type(doses) === `phonon`)
+  const is_phonon = $derived(spectral_type(doses, a2f) === `phonon`)
+  const has_a2f = $derived(Object.keys(a2f).length > 0)
   // Display units per data unit; electronic energies are never converted
   const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
   const display_sigma = $derived(sigma * display_factor)
@@ -184,6 +191,19 @@
           draw(down, `down`, down_color, overlay ? `4,2` : undefined)
         }
       }
+      for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {
+        const x_values = convert_frequencies(curve.frequencies, unit)
+        const stroke = plot_color(Object.keys(doses).length + a2f_idx)
+        all_series.push({
+          id: JSON.stringify([label, `a2f`]),
+          x: is_horizontal ? curve.densities : x_values,
+          y: is_horizontal ? x_values : curve.densities,
+          ...(is_horizontal ? { x_axis: `x2` } : { y_axis: `y2` }),
+          markers: `line`,
+          label: label || `α²F ${a2f_idx + 1}`,
+          line_style: { stroke, stroke_width: 1.5, line_dash: `5,3` },
+        })
+      }
       return { series_data: all_series, stacked_areas: areas }
     },
   )
@@ -209,15 +229,29 @@
   // clamps to 0 only when negative phonon frequencies are numerical noise.
   // Folds over each series' own array instead of concatenating them: this re-runs on every
   // sigma-slider tick and legend toggle over grids of up to 1e7 points.
-  const compute_range = (axis: `x` | `y`, is_density_axis: boolean): Vec2 | undefined => {
+  // α²F's own density axis spans [0, its maximum]
+  const compute_range = (
+    axis: `x` | `y`,
+    is_density_axis: boolean,
+    secondary = false,
+  ): Vec2 | undefined => {
     let acc = empty_extent()
-    for (const srs of series_data) acc = accumulate_extent(acc, srs[axis])
+    for (const srs of series_data) {
+      const on_secondary = srs.x_axis === `x2` || srs.y_axis === `y2`
+      if (!is_density_axis || on_secondary === secondary)
+        acc = accumulate_extent(acc, srs[axis])
+    }
     if (acc.min === undefined || acc.max === undefined) return undefined
     const from_zero = is_density_axis ? !has_mirrored_spin : clamp_to_zero
     return [from_zero ? 0 : acc.min, acc.max]
   }
   let x_range = $derived(compute_range(`x`, is_horizontal))
   let y_range = $derived(compute_range(`y`, !is_horizontal))
+  const a2f_axis = $derived<AxisConfig>({
+    label: `α²F(ω)`,
+    format: `.2f`,
+    range: compute_range(is_horizontal ? `x` : `y`, true, true),
+  })
 
   let value_label = $derived(
     is_phonon ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
@@ -235,6 +269,16 @@
     format: `.2f`,
     range: y_range,
     ...y_axis,
+  })
+
+  // α²F's own axis on the density side, writable deriveds since ScatterPlot binds its axes
+  let internal_x2_axis = $derived({
+    ...(has_a2f && is_horizontal && a2f_axis),
+    ...rest.x2_axis,
+  })
+  let internal_y2_axis = $derived({
+    ...(has_a2f && !is_horizontal && a2f_axis),
+    ...rest.y2_axis,
   })
 
   // Auto-detect sigma range based on frequency/energy range
@@ -303,6 +347,8 @@
     series={series_data}
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
+    bind:x2_axis={internal_x2_axis}
+    bind:y2_axis={internal_y2_axis}
     bind:view
     bind:display
     bind:resolved_padding

@@ -240,7 +240,9 @@ describe(`pick_contrast_color`, () => {
     const ctx = mock_canvas_context({ getImageData: get_image_data })
     Object.defineProperty(ctx, `fillStyle`, {
       get: () => fill_style,
-      set: (value: string) => (fill_style = value),
+      set: (value: string) => {
+        fill_style = value
+      },
     })
     try {
       const color = `oklch(0.4 0.1 250 / 1)`

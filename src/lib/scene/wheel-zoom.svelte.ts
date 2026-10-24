@@ -20,6 +20,12 @@ let page_wheel_at = -Infinity
 export class WheelZoomGate {
   active = false
   hint_visible = $state(false)
+  // Pointer over the viewer or focus inside it: reveals hover-only chrome like the gizmo
+  #pointer_in = $state(false)
+  #focus_in = $state(false)
+  get engaged(): boolean {
+    return this.#pointer_in || this.#focus_in
+  }
   // Zoomable elements inside the viewer (OrbitControls' dom element, a hull canvas) and whether
   // each zooms at all right now (zoom_speed = 0 disables it, so a hint would mislead)
   readonly #surfaces = new Map<Element, () => boolean>()
@@ -81,7 +87,14 @@ export class WheelZoomGate {
     root.addEventListener(`wheel`, on_wheel, { capture: true, passive: true, signal })
     // Keyboard focus only: a click already activated, and a window regaining focus re-fires
     // focusin on a viewer clicked long ago, which would then zoom the next page scroll
+    // Focus state is written a microtask later: removing a focused element (a pane closing)
+    // fires focusout synchronously inside Svelte's update, where writing state is an error
+    const set_focus_in = (focus_in: boolean) =>
+      queueMicrotask(() => {
+        if (!signal.aborted) this.#focus_in = focus_in
+      })
     const on_focusin = ({ target }: FocusEvent) => {
+      set_focus_in(true)
       if (this.#escaping || !(target instanceof Element)) return
       if (target.matches(`:focus-visible`)) this.active = true
     }
@@ -89,14 +102,18 @@ export class WheelZoomGate {
     // Tabbing on past the viewer leaves it (a click elsewhere has no relatedTarget here and
     // is handled by pointerdown below)
     const on_focusout = ({ relatedTarget }: FocusEvent) => {
-      if (relatedTarget instanceof Node && !root.contains(relatedTarget)) this.active = false
+      if (relatedTarget instanceof Node && root.contains(relatedTarget)) return
+      set_focus_in(false)
+      if (relatedTarget instanceof Node) this.active = false
     }
     root.addEventListener(`focusout`, on_focusout, { signal })
     // touch and pen without hover leave right after every tap, before any wheel could follow
     const on_pointerleave = ({ pointerType }: PointerEvent) => {
+      this.#pointer_in = false
       if (pointerType === `mouse`) this.active = false
     }
     root.addEventListener(`pointerleave`, on_pointerleave, { signal })
+    root.addEventListener(`pointerenter`, () => (this.#pointer_in = true), { signal })
     // capture: a pane closing on Esc may stop the key before it bubbles up
     const on_keydown = ({ key }: KeyboardEvent): void => {
       if (key !== `Escape`) return
@@ -116,6 +133,8 @@ export class WheelZoomGate {
       clearTimeout(this.#hint_timer)
       this.active = false
       this.hint_visible = false
+      this.#pointer_in = false
+      this.#focus_in = false
       void unmount(hint)
     }
   }
@@ -140,4 +159,11 @@ export function wheel_zoom_surface(
     const node = element()
     return node ? gate.register_surface(node, zoomable) : undefined
   })
+}
+
+// In a scene, during init: whether the enclosing viewer is hovered or focused, for chrome shown
+// only then. Without a gate (a scene composed into a custom Canvas) it always is.
+export function viewer_engaged(): () => boolean {
+  const gate = getContext<WheelZoomGate | undefined>(WHEEL_ZOOM_GATE)
+  return () => gate?.engaged ?? true
 }

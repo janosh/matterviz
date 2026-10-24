@@ -395,13 +395,16 @@ for (const kind of [`structure`, `trajectory`] as const) {
     await expect(fullscreen_button).toHaveAttribute(`aria-pressed`, `true`)
     await expect
       .poll(() =>
-        pane.evaluate((node) => {
+        pane.evaluate((node, viewer_selector) => {
           const rect = node.getBoundingClientRect()
           const tab = node.querySelector(`:scope > .control-tab`)?.getBoundingClientRect()
           const right = Math.max(rect.right, tab?.right ?? 0)
           const bottom = Math.max(rect.bottom, tab?.bottom ?? 0)
           return {
-            fullscreen: document.fullscreenElement?.id,
+            // a Structure fullscreens the row around it, a Trajectory itself
+            fullscreen: Boolean(
+              document.fullscreenElement?.contains(document.querySelector(viewer_selector)),
+            ),
             left: rect.left,
             top: rect.top,
             right,
@@ -414,9 +417,9 @@ for (const kind of [`structure`, `trajectory`] as const) {
               right <= innerWidth - 3.5 &&
               bottom <= innerHeight - 3.5,
           }
-        }),
+        }, selector),
       )
-      .toEqual(expect.objectContaining({ fullscreen: selector.slice(1), inside: true }))
+      .toEqual(expect.objectContaining({ fullscreen: true, inside: true }))
     await expect(pane).toBeVisible()
     // A fitting manual position must survive responsive height updates on re-entry.
     const fitting_insets = await pane.evaluate((node) => {

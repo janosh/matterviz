@@ -10,7 +10,11 @@
     resolve_font_spec,
   } from '#lib/plot/core/text-metrics.js'
   import type { TicksOption } from '#lib/plot/core/scales.js'
-  import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
+  import {
+    centers_tick_lines,
+    resolve_tick_layout,
+    TICK_LABEL_HEIGHT,
+  } from '#lib/plot/core/tick-layout.js'
   import type { AxisConfig } from '#lib/plot/core/types.js'
   import { DEFAULT_GRID_STYLE } from '#lib/plot/core/types.js'
   import { onMount, tick as svelte_tick } from 'svelte'
@@ -138,6 +142,13 @@
   const text_y = $derived((is_x ? (flipped ? -12 : 12) : 0) + shift_y)
   const text_baseline = $derived(is_x ? (flipped ? `auto` : `hanging`) : `central`)
   const stagger_direction = $derived(flipped ? -1 : 1)
+  // First-line dy placing the block where tick_label_aabb puts it: x/x2 stacks grow outward,
+  // y/y2 and upright x stacks center on the tick. +1 line for auto baselines (line bottom), +½
+  // for central ones (line middle), 0 for hanging (line top).
+  const first_line_dy = (n_lines: number): number => {
+    const n_above = centers_tick_lines(side, rotation) ? n_lines / 2 : flipped ? n_lines : 0
+    return ((is_x ? Number(flipped) : 0.5) - n_above) * tick_font.line_height
+  }
 
   // Tick-invariant line geometry within the per-tick group (origin sits on the axis).
   // Keep tick marks' y1="0"/x1="0" explicit: BarPlot's grid test selects `.tick line:not([y1='0'])`.
@@ -239,13 +250,7 @@
               <tspan
                 x={label_x_offset}
                 aria-hidden="true"
-                dy={line_idx === 0
-                  ? is_x
-                    ? flipped
-                      ? -(label_lines.length - 1) * tick_font.line_height
-                      : 0
-                    : -((label_lines.length - 1) * tick_font.line_height) / 2
-                  : tick_font.line_height}
+                dy={line_idx === 0 ? first_line_dy(label_lines.length) : tick_font.line_height}
               >
                 {line}{#if tick_unit && line_idx === label_lines.length - 1}&zwnj;&ensp;{tick_unit}{/if}
               </tspan>

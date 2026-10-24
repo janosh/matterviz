@@ -26,7 +26,7 @@
     merge_polyhedra_buffers,
     update_fat_segments,
     update_polyhedra_faces,
-  } from './polyhedra'
+  } from './polyhedra-render'
   import { numeric_sites, site_count, snapshot_topologies } from './site'
 
   let {

@@ -181,7 +181,13 @@ export default defineConfig({
   // just to print a table. Deployment and package-size validation don't use that table.
   build: { ...config.build, reportCompressedSize: false },
   plugins,
-  optimizeDeps: { rolldownOptions: { plugins: [scan_virtual_relative_imports] } },
+  optimizeDeps: {
+    // Deps the startup scan misses trigger a re-optimize + reload mid page load (two Svelte
+    // runtimes, a 500 from `get_first_child`). It skips dynamic imports inside functions only
+    // markup calls, like +layout.svelte's `{@attach link_sources}` source links.
+    include: [`svelte-widgets/source-links`],
+    rolldownOptions: { plugins: [scan_virtual_relative_imports] },
+  },
   // ES workers keep lazily imported chunks (h5wasm, ~4 MB) separate: the default iife format
   // inlines them, so every file parse loaded HDF5 support
   worker: {

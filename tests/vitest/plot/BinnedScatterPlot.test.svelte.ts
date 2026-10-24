@@ -1090,7 +1090,9 @@ describe(`BinnedScatterPlot`, () => {
     const ctx = mock_canvas_context()
     Object.defineProperty(ctx, `fillStyle`, {
       get: () => fill_styles.at(-1) ?? ``,
-      set: (value: string) => void fill_styles.push(value),
+      set: (value: string) => {
+        fill_styles.push(value)
+      },
     })
     mount_plot({
       series: [

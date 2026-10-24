@@ -36,7 +36,8 @@ import {
   prepare_bond_placements,
 } from '#lib/structure/bond-rendering.js'
 import type { Polyhedron } from '#lib/structure/polyhedra.js'
-import { cache_prepared_polyhedra, merge_polyhedra_buffers } from '#lib/structure/polyhedra.js'
+import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
+import { merge_polyhedra_buffers } from '#lib/structure/polyhedra-render.js'
 import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import { colors } from '#lib/state.svelte.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
@@ -44,7 +45,8 @@ import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { bind_props, doc_query } from '../setup'
-import { make_crystal } from '../test-fixtures'
+import { image_options, make_crystal, make_srtio3 } from '../test-fixtures'
+import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, untrack } from 'svelte'
 import {
@@ -926,6 +928,23 @@ test(`Scene draws a mixed-valence site as one full atom`, () => {
   })
   expect([sphere_count(scene), wedge_groups]).toEqual([1, []])
 })
+
+// A completion copy draws only while it ends a drawn bond or corners a drawn polyhedron: the 6
+// Ti copies completing the face O bonds of body-centered SrTiO3 hide with the bonds, though
+// polyhedra still draw (the Ti octahedron sits inside the cell)
+test.each([
+  [`always`, `crystals`, 21],
+  [`never`, `crystals`, 15],
+  [`never`, `never`, 15],
+] as const)(
+  `Scene with bonds %s, polyhedra %s draws %i atoms`,
+  (show_bonds, show_polyhedra, n_atoms) => {
+    const structure = get_pbc_image_sites(make_srtio3(`body`), image_options(`boundary`))
+    expect(structure.sites.filter((site) => site.provenance?.completion)).toHaveLength(6)
+    const { scene } = mount_structure({ structure, show_bonds, show_polyhedra })
+    expect(sphere_count(scene)).toBe(n_atoms)
+  },
+)
 
 test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {
   // Vitest's TS loader sees the legacy *.svelte declaration; this is a Svelte 5 component.

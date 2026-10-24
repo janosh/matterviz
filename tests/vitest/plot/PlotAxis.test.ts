@@ -488,12 +488,15 @@ describe(`PlotAxis`, () => {
     ).toEqual([`start`, `end`])
   })
 
+  // tilted wrapped stacks grow away from the baseline, upright (±90°) ones center on the tick
   test.each([
-    [`x`, -1, `0`],
-    [`x2`, 1, `${-2 * TICK_LABEL_HEIGHT}`],
+    [`x`, -45, `0`],
+    [`x2`, 45, `${-2 * TICK_LABEL_HEIGHT}`],
+    [`x`, -90, `${-1.5 * TICK_LABEL_HEIGHT}`],
+    [`x2`, 90, `${-0.5 * TICK_LABEL_HEIGHT}`],
   ] as const)(
-    `%s axis stacks rotated wrapped lines away from its baseline`,
-    async (side, rotation_sign, first_dy) => {
+    `%s axis places %s° rotated wrapped lines`,
+    async (side, rotation_deg, first_dy) => {
       const label = `ABCDEFGHIJK\nLMNOPQRSTUV\nWXYZABCDEFG`
       const svg = await mount_measured_axis({
         side,
@@ -502,14 +505,13 @@ describe(`PlotAxis`, () => {
         label_ticks: Object.fromEntries(
           [40, 120, 200, 280].map((tick_value) => [tick_value, label]),
         ),
-        axis: { tick_label: { rotation: rotation_sign * 45 } },
+        axis: { tick_label: { rotation: rotation_deg } },
       })
       const text = query(svg, `g.tick text`)
       const transform = text.getAttribute(`transform`) ?? ``
       expect(transform).toMatch(/^rotate\(/)
       const rotation = Number(/rotate\((?<degrees>[-\d.]+)/.exec(transform)?.groups?.degrees)
-      expect(Math.sign(rotation)).toBe(rotation_sign)
-      expect(Math.abs(rotation)).toBe(45)
+      expect(rotation).toBe(rotation_deg)
       expect(text.querySelector(`tspan`)?.getAttribute(`dy`)).toBe(first_dy)
     },
   )

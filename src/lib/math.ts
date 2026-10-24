@@ -1303,7 +1303,11 @@ export const is_square_matrix = (matrix: unknown, dim: number): matrix is number
 
 // Point-in-polygon test using ray casting algorithm
 // Returns true if point (x, y) is inside the polygon defined by vertices
-export function point_in_polygon(point_x: number, point_y: number, vertices: Vec2[]): boolean {
+export function point_in_polygon(
+  point_x: number,
+  point_y: number,
+  vertices: readonly Vec2[],
+): boolean {
   if (vertices.length < 3) return false
   let [inside, prev_idx] = [false, vertices.length - 1]
 
@@ -1323,7 +1327,7 @@ export function point_in_polygon(point_x: number, point_y: number, vertices: Vec
 }
 
 // Compute axis-aligned bounding box of 2D vertices
-export function compute_bounding_box_2d(vertices: Vec2[]): {
+export function compute_bounding_box_2d(vertices: readonly Vec2[]): {
   min: Vec2
   max: Vec2
   width: number
@@ -1350,30 +1354,76 @@ export function compute_bounding_box_2d(vertices: Vec2[]): {
 
 // Calculate true geometric centroid of a polygon using shoelace formula
 // Falls back to vertex average for degenerate cases (< 3 vertices or zero area)
-export function polygon_centroid(vertices: Vec2[]): Vec2 {
+export function polygon_centroid(vertices: readonly Vec2[]): Vec2 {
   if (vertices.length === 0) return [0, 0]
   const vertex_average = (): Vec2 => [
     vertices.reduce((acc, [coord_x]) => acc + coord_x, 0) / vertices.length,
     vertices.reduce((acc, [, coord_y]) => acc + coord_y, 0) / vertices.length,
   ]
   if (vertices.length < 3) return vertex_average()
+  const signed_area = polygon_signed_area(vertices)
+  if (Math.abs(signed_area) < EPS) return vertex_average()
 
-  let [signed_area, center_x, center_y] = [0, 0, 0]
-
+  let [center_x, center_y] = [0, 0]
   for (let idx = 0; idx < vertices.length; idx++) {
     const [coord_x_0, coord_y_0] = vertices[idx]
     const [coord_x_1, coord_y_1] = vertices[(idx + 1) % vertices.length]
     const cross = coord_x_0 * coord_y_1 - coord_x_1 * coord_y_0
-    signed_area += cross
     center_x += (coord_x_0 + coord_x_1) * cross
     center_y += (coord_y_0 + coord_y_1) * cross
   }
-
-  signed_area *= 0.5
-  if (Math.abs(signed_area) < EPS) return vertex_average()
-
   const factor = 1 / (6 * signed_area)
   return [center_x * factor, center_y * factor]
+}
+
+// Signed polygon area via the shoelace formula, positive for counter-clockwise vertices
+export function polygon_signed_area(vertices: readonly Vec2[]): number {
+  let area = 0
+  for (let idx = 0; idx < vertices.length; idx++) {
+    const [[x_0, y_0], [x_1, y_1]] = [vertices[idx], vertices[(idx + 1) % vertices.length]]
+    area += x_0 * y_1 - x_1 * y_0
+  }
+  return area / 2
+}
+
+// Extent of a polygon along the horizontal (axis 0) or vertical (axis 1) line through
+// `point`: the inside interval holding it, else the widest one. null when the line misses.
+function polygon_span(vertices: readonly Vec2[], point: Vec2, axis: 0 | 1): Vec2 | null {
+  const other = 1 - axis
+  const crossings: number[] = []
+  vertices.forEach((from, idx) => {
+    const to = vertices[(idx + 1) % vertices.length]
+    if (from[other] > point[other] !== to[other] > point[other]) {
+      const frac = (point[other] - from[other]) / (to[other] - from[other])
+      crossings.push(from[axis] + frac * (to[axis] - from[axis]))
+    }
+  })
+  crossings.sort((val_a, val_b) => val_a - val_b)
+  let widest: Vec2 | null = null
+  for (let idx = 0; idx + 1 < crossings.length; idx += 2) {
+    const span: Vec2 = [crossings[idx], crossings[idx + 1]]
+    if (span[0] <= point[axis] && point[axis] <= span[1]) return span
+    if (!widest || span[1] - span[0] > widest[1] - widest[0]) widest = span
+  }
+  return widest
+}
+
+// A point inside a polygon, for labels and probes: the middle of the horizontal span through
+// its centroid (the span holding the centroid, else the widest one, for concave shapes), with
+// the polygon's width and height through that point. null for degenerate (zero-area relative
+// to their bounding box) polygons.
+export function polygon_label_point(
+  vertices: readonly Vec2[],
+): { at: Vec2; width: number; height: number } | null {
+  if (vertices.length < 3) return null
+  const { width: box_w, height: box_h } = compute_bounding_box_2d(vertices)
+  if (Math.abs(polygon_signed_area(vertices)) <= EPS * box_w * box_h) return null
+  const centroid = polygon_centroid(vertices)
+  const row = polygon_span(vertices, centroid, 0)
+  if (!row) return null
+  const at: Vec2 = [(row[0] + row[1]) / 2, centroid[1]]
+  const col = polygon_span(vertices, at, 1)
+  return { at, width: row[1] - row[0], height: col ? col[1] - col[0] : 0 }
 }
 
 // Solve the linear system `coefficients · x = rhs` via LU decomposition with partial
@@ -1681,4 +1731,24 @@ export function solve_linear_program(
   }
   const objective_value = solution.reduce((sum, value, col) => sum + value * objective[col], 0)
   return { status: `optimal`, solution, objective: objective_value }
+}
+
+// Vec2 linear interpolation
+export const lerp_vec2 = (start: Vec2, end: Vec2, fraction: number): Vec2 => [
+  start[0] + fraction * (end[0] - start[0]),
+  start[1] + fraction * (end[1] - start[1]),
+]
+
+// Parameters [t_a, t_b] where the lines through segments a and b cross,
+// a_0 + t_a (a_1 - a_0) = b_0 + t_b (b_1 - b_0), unbounded; null for (near-)parallel or
+// zero-length segments (|sin| of the angle between them at most 1e-12)
+export function segment_intersection_params(
+  [a_0, a_1]: readonly [Vec2, Vec2],
+  [b_0, b_1]: readonly [Vec2, Vec2],
+): Vec2 | null {
+  const [dir_a, dir_b, offset] = [subtract(a_1, a_0), subtract(b_1, b_0), subtract(b_0, a_0)]
+  const perp_dot = (vec_a: Vec2, vec_b: Vec2) => vec_a[0] * vec_b[1] - vec_a[1] * vec_b[0]
+  const denom = perp_dot(dir_a, dir_b)
+  if (Math.abs(denom) <= 1e-12 * Math.hypot(...dir_a) * Math.hypot(...dir_b)) return null
+  return [perp_dot(offset, dir_b) / denom, perp_dot(offset, dir_a) / denom]
 }

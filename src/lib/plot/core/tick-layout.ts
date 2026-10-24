@@ -19,6 +19,8 @@ export const TICK_LABEL_GAP = 1
 const TICK_STAGGER_GAP = 4
 const TICK_ROTATION_LADDER = [30, 45, 60, 90] as const
 const DEFAULT_TICK_LABEL_MAX_LINES = 3
+// Upright (90°) lines sit side by side, so the slot width bounds them more than readability does
+const DEFAULT_VERTICAL_TICK_LABEL_MAX_LINES = 5
 const DEFAULT_AUTO_LABEL_BAND = 80
 // Sub-pixel float dust from AABB corner math; reused for feasibility edge checks.
 const TICK_GEOMETRY_EPSILON = Number.EPSILON * 16
@@ -137,8 +139,20 @@ export const default_tick_label_anchor = (
 const anchor_x_bounds = (width: number, anchor: TickLabelAnchor): [number, number] =>
   anchor === `start` ? [0, width] : anchor === `end` ? [-width, 0] : [-width / 2, width / 2]
 
-const block_y_bounds = (height: number, side: TickLayoutSide): [number, number] =>
-  side === `x` ? [0, height] : side === `x2` ? [-height, 0] : [-height / 2, height / 2]
+// x/x2 lines stack outward from the axis, except upright (±90°) where, like y/y2, the stack
+// centers on its tick (PlotAxis renders it the same way)
+export const centers_tick_lines = (side: TickLayoutSide, rotation: number): boolean =>
+  !is_horizontal_side(side) || Math.abs(normalized_rotation(rotation)) === 90
+const block_y_bounds = (
+  height: number,
+  side: TickLayoutSide,
+  rotation: number,
+): [number, number] =>
+  centers_tick_lines(side, rotation)
+    ? [-height / 2, height / 2]
+    : side === `x`
+      ? [0, height]
+      : [-height, 0]
 
 const snap_near_zero = (value: number): number =>
   Math.abs(value) <= TICK_GEOMETRY_EPSILON ? 0 : value
@@ -166,7 +180,7 @@ export const tick_label_aabb = ({
 }): TickAabb => {
   const block_height = dimensions.line_widths.length * dimensions.line_height
   const [local_min_x, local_max_x] = anchor_x_bounds(block_width(dimensions), anchor)
-  const [local_min_y, local_max_y] = block_y_bounds(block_height, side)
+  const [local_min_y, local_max_y] = block_y_bounds(block_height, side, rotation)
   const radians = (normalized_rotation(rotation) * Math.PI) / 180
   const cosine = snap_near_zero(Math.cos(radians))
   const sine = snap_near_zero(Math.sin(radians))
@@ -278,7 +292,7 @@ const labels_collide = (
   const local_bounds = (label: TickLabelGeometry) =>
     [
       anchor_x_bounds(block_width(label.dimensions), label.anchor),
-      block_y_bounds(label.lines.length * label.dimensions.line_height, label.side),
+      block_y_bounds(label.lines.length * label.dimensions.line_height, label.side, rotation),
     ] as const
   const [first_x, first_y] = local_bounds(first)
   const [second_x, second_y] = local_bounds(second)
@@ -627,7 +641,7 @@ const score_candidate = ({ candidate, band_fraction }: MeasuredCandidate): numbe
   return (
     (candidate.labels.length - visible_labels.length) * 100 +
     visible_labels.reduce((total, { information_loss }) => total + information_loss, 0) * 80 +
-    band_fraction * 12 +
+    band_fraction * 20 +
     (Math.abs(candidate.rotation_deg) / 90) * 5 +
     (max_line_count - 1) * 4 +
     Number(visible_labels.some(({ stagger_row }) => stagger_row === 1)) * 6
@@ -999,24 +1013,27 @@ const compute_tick_layout = (
     Math.max(1, Math.floor(label_config?.max_lines ?? DEFAULT_TICK_LABEL_MAX_LINES)),
     `tick_label.max_lines`,
   )
-  let wrapped: Candidate | undefined
-  if (strategies.includes(`wrap`) && max_lines > 1) {
-    // The band cap is the shared wrap target for every label on the side (not the narrowest
-    // measured label, which would over-wrap every longer neighbour)
-    const vertical_wrap_width = max_band ?? DEFAULT_AUTO_LABEL_BAND
-    wrapped = create_candidate(
-      `wrap`,
+  // The band cap is the shared wrap target for every label running across the band (y/y2, or
+  // x stood upright), not the narrowest measured label, which would over-wrap its neighbours
+  const band_target = max_band ?? DEFAULT_AUTO_LABEL_BAND
+  const wrap_candidate = (
+    name: string,
+    wrap_args: (tick_idx: number) => [max_width: number, max_lines: number],
+  ): Candidate =>
+    create_candidate(
+      name,
       `wrap`,
       explicit_labels.map((label, tick_idx) => ({
         ...label,
-        display_lines: wrap_tick_label(
-          label.full_text,
-          is_horizontal ? slot_widths[tick_idx] : vertical_wrap_width,
-          max_lines,
-          font,
-        ),
+        display_lines: wrap_tick_label(label.full_text, ...wrap_args(tick_idx), font),
       })),
     )
+  let wrapped: Candidate | undefined
+  if (strategies.includes(`wrap`) && max_lines > 1) {
+    wrapped = wrap_candidate(`wrap`, (tick_idx) => [
+      is_horizontal ? slot_widths[tick_idx] : band_target,
+      max_lines,
+    ])
     candidates.push(wrapped)
   }
   // Vertical sides stagger only under an explicit band cap: a second y column grows into room
@@ -1033,19 +1050,31 @@ const compute_tick_layout = (
   }
   // Horizontal only: rotated y labels scored as fewer collisions and turned short numeric
   // ticks sideways; vertical crowding is for thin/wrap. Wrapped blocks can tilt as a unit.
+  // At exactly ±90° a block's lines sit side by side across its slot and its band is its
+  // longest line, so it wraps to the band target in as many lines as fit the slot: long
+  // category names become short upright columns, not a tall tilted strip.
   const rotation_sign = (side === `x2` || side === `y2`) !== inside ? 1 : -1
+  const vertical_max_lines =
+    label_config?.max_lines == null ? DEFAULT_VERTICAL_TICK_LABEL_MAX_LINES : max_lines
   const rotated: Candidate[] =
     strategies.includes(`rotate`) && is_horizontal && renderable_indices.length > 1
-      ? rotation_angles(max_angle).flatMap((angle) =>
-          [upright, ...(wrapped ? [wrapped] : [])].map((source) =>
+      ? rotation_angles(max_angle).flatMap((angle) => {
+          const wrapped_source =
+            angle === 90 && wrapped
+              ? wrap_candidate(`wrap-vertical`, (tick_idx) => {
+                  const fitting = Math.floor(slot_widths[tick_idx] / font.line_height)
+                  return [band_target, Math.max(1, Math.min(vertical_max_lines, fitting))]
+                })
+              : wrapped
+          return [upright, ...(wrapped_source ? [wrapped_source] : [])].map((source) =>
             create_candidate(
               `${source === upright ? `rotate` : `wrap-rotate`}-${angle}`,
               source === upright ? `rotate` : `wrap`,
               source.labels,
               rotation_sign * angle,
             ),
-          ),
-        )
+          )
+        })
       : []
   candidates.push(...rotated)
   if (strategies.includes(`ellipsis`)) {
@@ -1053,7 +1082,7 @@ const compute_tick_layout = (
       ellipsis_candidate(
         upright,
         `ellipsis`,
-        is_horizontal ? slot_widths : (max_band ?? DEFAULT_AUTO_LABEL_BAND),
+        is_horizontal ? slot_widths : band_target,
         (text) => measure_text_width(text, font),
       ),
     )

@@ -1,5 +1,6 @@
 import type { Component, Snippet } from 'svelte'
 import type { StructureSettings } from './settings'
+import type { ImageAtomCompletion } from './pbc'
 import type { AnyStructure } from './index'
 import {
   copy_prediction_input,
@@ -27,6 +28,7 @@ export interface StructureToolViewProps {
   scene_props: StructureSettings
   supercell_scaling: string
   show_image_atoms: boolean
+  image_atom_completion: ImageAtomCompletion
 }
 export interface StructureToolView {
   // Transient visuals that replace the viewer without exporting them.

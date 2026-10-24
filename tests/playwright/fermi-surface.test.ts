@@ -1,15 +1,20 @@
 // Smoke coverage for the FermiSurface viewer on its demo route: the WebGPU canvas renders and
 // tracks the viewport, its controls work, and a dropped BXSF grid replaces the demo file.
 // Every test fails on a console/page error, navigation and first render included.
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import {
+  drag_canvas,
   drop_file,
   expect_combined_fullscreen,
   IS_CI,
   require_bbox,
+  sweep_gizmo_handles,
   test_without_errors as test,
   wait_for_3d_canvas,
+  webgl_on_ci_for_tagged,
 } from './helpers'
+
+webgl_on_ci_for_tagged()
 
 const VIEWER = `.fermi-surface`
 // The demo's default IFermi mesh is fetched, parsed and uploaded to the GPU before the first
@@ -37,13 +42,14 @@ const TINY_BXSF = [
   `END_BLOCK_BANDGRID_3D`,
 ].join(`\n`)
 
-// Force hover-only chrome visible so the gear toggle can be clicked without a pointer dance
-const open_controls = async (page: Page) => {
+// Force hover-only chrome visible so the gear toggle can be clicked without a pointer dance.
+// `scope` picks one viewer on pages with several.
+const open_controls = async (page: Page, scope: Page | Locator = page) => {
   await page.addStyleTag({
     content: `.hover-visible { opacity: 1 !important; pointer-events: auto !important; }`,
   })
-  await page.locator(`${VIEWER} button.controls-toggle`).click()
-  const pane = page.locator(`${VIEWER} .fermi-controls`)
+  await scope.locator(`${VIEWER} button.controls-toggle`).click()
+  const pane = scope.locator(`${VIEWER} .fermi-controls`)
   await expect(pane).toBeVisible()
   return pane
 }
@@ -197,4 +203,132 @@ test(`fermi-surface-bands: band colours match sheets, E_F crossings dotted`, asy
     return group && getComputedStyle(group.querySelector(`path`) ?? group).stroke
   }, band_idx)
   await expect(tooltip).toHaveCSS(`background-color`, band_rgb ?? `no band ${band_idx}`)
+})
+
+// One viewer for a material's structure, Fermi surface, bands and DOS. Orbiting the structure
+// turns the Fermi surface alike, read off its gizmo (handles are fixed in gizmo space, so they
+// move under the pointer only if its camera turned); a remounted Fermi camera rejoins in that
+// view; unlinked by the viewer's link button, it stays put. Cu's band 6 is dotted where it
+// crosses E_F, hovering the DOS marks its energy on the bands, a divider resizes bands and DOS,
+// the pane menu shows any subset and one button takes the viewer fullscreen.
+test(
+  `electronic-structure: one viewer, linked scenes and spectra, panes, fullscreen`,
+  { tag: `@webgl` },
+  async ({ page }) => {
+    test.slow() // each gizmo sweep takes 100 frames, and every view is read off two in a row
+    // tall enough for the whole 860px viewer (a hover that scrolled it would move the gizmo
+    // and bring the sweep demo's scenes below into view mid-test), and wide enough that its
+    // fullscreen scenes still sit side by side (pick_pane_orientation)
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+    const viewer = `.electronic-structure:not(.sweep-demo)`
+    const container = page.locator(viewer)
+    const [structure_canvas, fermi_canvas] = await Promise.all(
+      [`.structure`, VIEWER].map((panel) =>
+        wait_for_3d_canvas(page, `${viewer} ${panel}`, LOAD_TIMEOUT),
+      ),
+    )
+    const drag_structure = () => drag_canvas(structure_canvas, { dx: 120, dy: 40, steps: 8 })
+    // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on).
+    // The gizmo shows only while its viewer is hovered, so the pointer rests on an empty corner.
+    const settled_handles = async () => {
+      await fermi_canvas.hover({ position: { x: 20, y: 20 } })
+      let previous: string[] | undefined
+      let current: string[] = []
+      await expect
+        .poll(async () => {
+          previous = current
+          current = (await sweep_gizmo_handles(fermi_canvas)).map((hit) => hit.key)
+          return current.length > 0 && current.join(`;`) === previous.join(`;`)
+        })
+        .toBe(true)
+      return current
+    }
+    const initial = await settled_handles()
+    await drag_structure()
+    const turned = await settled_handles()
+    expect(turned).not.toEqual(initial)
+    // a projection toggle remounts the Fermi camera, which takes up the structure's view again
+    const pane = await open_controls(page, container)
+    await pane.getByLabel(`Projection`).selectOption(`orthographic`)
+    await container.locator(`${VIEWER} button.controls-toggle`).click()
+    await expect(pane).toBeHidden()
+    expect(await settled_handles()).toEqual(turned)
+
+    await container.hover()
+    const link_toggle = container.locator(`.sync-rotation-toggle`)
+    await link_toggle.click()
+    await expect(link_toggle).toHaveAttribute(`aria-pressed`, `false`)
+    await drag_structure()
+    expect(await settled_handles()).toEqual(turned)
+
+    // bands ↔ Fermi surface ↔ DOS
+    const [bands, dos] = [`bands`, `dos`].map((name) =>
+      container.locator(`[data-pane="${name}"] .scatter`),
+    )
+    await expect(bands.locator(`.band-crossings circle`)).toHaveCount(5)
+    const reference_line = bands.locator(`line[stroke*="bands-reference-line-color"]`)
+    await expect(reference_line).toHaveCount(0)
+    await dos.scrollIntoViewIfNeeded()
+    const dos_box = await require_bbox(dos)
+    // near the curve (low densities sit at the left): the DOS hovers within 50px of it
+    await page.mouse.move(dos_box.x + 0.2 * dos_box.width, dos_box.y + dos_box.height / 3)
+    await expect(reference_line).toHaveCount(1)
+    await page.mouse.move(0, 0)
+    await expect(reference_line).toHaveCount(0)
+
+    // the divider between bands and DOS resizes them
+    const spectra_divider = container.locator(`.spectra > .pane-divider`)
+    const [divider_box, dos_width] = [await require_bbox(spectra_divider), dos_box.width]
+    const mid_y = dos_box.y + dos_box.height / 2
+    await page.mouse.move(divider_box.x + divider_box.width / 2, mid_y)
+    await page.mouse.down()
+    await page.mouse.move(divider_box.x - 100, mid_y, { steps: 5 })
+    await page.mouse.up()
+    await expect
+      .poll(async () => (await require_bbox(dos)).width)
+      .toBeGreaterThan(dos_width + 80)
+
+    // the pane menu: the 3D scenes alone fill the viewer in one row
+    await container.hover()
+    await container.locator(`.panes-menu .view-mode-button`).click()
+    for (const label of [`Band structure`, `Density of states`]) {
+      await page.locator(`.view-mode-option`, { hasText: label }).click()
+    }
+    await page.keyboard.press(`Escape`)
+    await expect(container.locator(`.pane`)).toHaveCount(2)
+    await expect(container).toHaveClass(/one-row/)
+
+    await expect_combined_fullscreen(container, [`.structure`, VIEWER])
+  },
+)
+
+// The demo's pressure sweep: the control bar steps frames (loaded on demand, the neighbour
+// prefetched), the trends pane plots the loaded frames' N(E_F), a click on a point jumps to
+// its frame, and a structure-only descriptor covers every frame at once
+test(`electronic-structure sweep: control bar, lazy frames, trends selection`, async ({
+  page,
+}) => {
+  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  const viewer = page.locator(`.sweep-demo`)
+  await viewer.scrollIntoViewIfNeeded()
+  const status = viewer.locator(`.frame-status`)
+  await expect(status).toHaveText(/^0 GPa \(V\/V₀ = 1\.00\)/, { timeout: LOAD_TIMEOUT })
+  const trends = viewer.locator(`[data-pane="trends"]`)
+  const markers = trends.locator(`path.marker`)
+  await expect(markers).toHaveCount(2) // the shown frame and its prefetched neighbour
+  await viewer.hover()
+  await page.keyboard.press(`ArrowRight`)
+  await expect(status).toHaveText(/^8\.2 GPa/)
+  await expect(markers).toHaveCount(3)
+
+  await markers.first().click()
+  await expect(status).toHaveText(/^0 GPa/)
+
+  await trends.hover()
+  await trends.locator(`.descriptor-select`).selectOption({ label: `Volume per atom (Å³)` })
+  await expect(
+    trends.locator(`.axis-label`).filter({ hasText: `Volume per atom` }),
+  ).toHaveCount(1)
+  await expect(markers).toHaveCount(6) // computed from the structures every frame has
 })
