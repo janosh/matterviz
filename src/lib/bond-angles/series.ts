@@ -40,8 +40,11 @@ export function to_angle_bar_series(
 
   // by_triplet keys on the triplet label, none on the single TOTAL_TRIPLET_LABEL series
   const merged = new Map<string, number[]>()
+  // averaged over the structures that have angles: an angle-less one has no distribution
+  // to contribute, and counting it shrank the merged density's area below 1
+  const n_distributions = entries.filter(({ data }) => data.n_angles > 0).length
   for (const entry of entries) {
-    const weight = weight_of(entry.data) * (is_density ? 1 / entries.length : 1)
+    const weight = weight_of(entry.data) * (is_density ? 1 / Math.max(1, n_distributions) : 1)
     for (const { triplet, counts } of split_mode === `by_triplet`
       ? entry.data.by_triplet
       : [entry.data.total]) {

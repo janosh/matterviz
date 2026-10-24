@@ -442,6 +442,7 @@
             step="0.001"
             bind:value={dt_source}
             disabled={!use_dt}
+            aria-label="Time per source frame"
           />
           <input
             type="text"

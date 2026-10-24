@@ -154,7 +154,8 @@ const METADATA_KEY_ALIASES: Record<string, string> = {
 const comment_scalar = (raw: string): number | boolean | undefined => {
   const token = raw.trim()
   if (!token || /\s/u.test(token)) return undefined // multi-value: a signal, not a scalar
-  const num = Number(token) // number first so `1`/`0` stay numbers, not flags
+  // number first so `1`/`0` stay numbers, not flags; Fortran writers emit `1.0D-3`
+  const num = parse_float_token(token)
   return Number.isFinite(num) ? num : EXTXYZ_BOOL.get(token.toLowerCase())
 }
 
@@ -182,11 +183,13 @@ export function parse_xyz_comment_metadata(comment: string): {
       const values = raw
         .trim()
         .split(/[\s,]+/u)
-        .map(Number)
+        .map(parse_float_token)
       if (!values.every(Number.isFinite)) continue
-      // under `lower` like the scalars below: `Stress=` and `stress=` are one series
-      if (values.length === 3) signals[lower] = values
-      else if (values.length === 9) {
+      // under `lower` like the scalars below: `Stress=` and `stress=` are one series. A
+      // 6-value stress is Voigt order (ASE's own writer), which ase_stress_metadata expands.
+      if (values.length === 3 || (values.length === 6 && lower === `stress`)) {
+        signals[lower] = values
+      } else if (values.length === 9) {
         signals[lower] = [values.slice(0, 3), values.slice(3, 6), values.slice(6, 9)]
       }
       continue

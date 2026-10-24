@@ -257,10 +257,11 @@
           {energy_unit}
         </text>
       {/if}
-      <!-- fitted saddle: a cross, never a data point, since no image was computed there -->
+      <!-- fitted saddle: a cross, never a data point, since no image was computed there.
+        Only with its spline drawn: without it the arrow names the highest image instead -->
       {@const fit_x = x_scale_fn(spline.fitted_max.coord)}
       {@const fit_y = y_scale_fn(spline.fitted_max.energy - offset)}
-      {#if in_x(fit_x) && in_y(fit_y)}
+      {#if show_spline && in_x(fit_x) && in_y(fit_y)}
         {#each [[-5, -5, 5, 5], [-5, 5, 5, -5]] as const as [dx1, dy1, dx2, dy2] (dx1 + dy1)}
           {@render seg([fit_x + dx1, fit_y + dy1, fit_x + dx2, fit_y + dy2], {
             'stroke-width': 1.5,

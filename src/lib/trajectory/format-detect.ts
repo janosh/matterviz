@@ -100,13 +100,16 @@ export const FORMAT_PATTERNS = {
   vasp: (data: string, filename?: string) => {
     if (name_hint(filename, XDATCAR_NAME_REGEX)) return true
     if (!data.includes(`Direct configuration=`)) return false
-    // 9 lines: a 1-ion, 1-frame XDATCAR (see index_xdatcar_frames)
-    const lines = data.trimStart().split(/\r?\n/, 9)
-    return (
-      lines.length === 9 &&
-      !Number.isNaN(parse_leading_num(lines[1])) &&
-      lines.slice(2, 5).every((line) => line.trim().split(/\s+/).length === 3)
-    )
+    // 9 lines from the title: a 1-ion, 1-frame XDATCAR (see index_xdatcar_frames). The header
+    // starts at the first non-blank line, or the line before it when the title is blank
+    const lines = data.split(/\r?\n/, 64)
+    const first = lines.findIndex((line) => line.trim())
+    const header_at = (start: number): boolean =>
+      start >= 0 &&
+      lines.length >= start + 9 &&
+      !Number.isNaN(parse_leading_num(lines[start + 1])) &&
+      lines.slice(start + 2, start + 5).every((line) => line.trim().split(/\s+/).length === 3)
+    return header_at(first) || header_at(first - 1)
   },
 
   // <modeling> is vasprun.xml's root element; any other .xml (phonopy, XRDML) lacks it, so a

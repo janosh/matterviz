@@ -70,7 +70,7 @@ export const indexed_text_run = (
       throw new TypeError(`Indexed ${format} trajectories need text data, got ArrayBuffer`)
     }
     const lines = TextLines.of(data)
-    if (format === `xyz`) source = xyz_source(lines, collector)
+    if (format === `xyz`) source = xyz_source(lines, { ...collector, warn: warn_once })
     else if (format === `xdatcar`) source = open_xdatcar_frames(lines, warn_once)
     else source = open_lammps_frames(lines, warn_once, atom_type_mapping)
   }

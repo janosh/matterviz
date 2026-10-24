@@ -86,7 +86,8 @@ const set_labeled = async (label: string, value: number | string) => {
 }
 const timestep_inputs = () => ({
   use_dt: doc_query(`.stub-controls input[type="checkbox"]`, HTMLInputElement),
-  dt: doc_query(`.stub-controls input[type="number"][step="0.001"]`, HTMLInputElement),
+  // by accessible name: the wrapping label names only its first control, the checkbox
+  dt: doc_query(`.stub-controls input[aria-label="Time per source frame"]`, HTMLInputElement),
   unit: doc_query(`input[aria-label="Time unit"]`, HTMLInputElement),
 })
 // [use dt, dt, unit, unit disabled]

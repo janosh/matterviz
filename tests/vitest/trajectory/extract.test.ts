@@ -59,6 +59,16 @@ describe(`trajectory data extractors`, () => {
       { Step: 3, ...energies, stress_max: 2.1, pressure: 0, bandgap: 1.2, ref_energy: -3 },
       true,
     ],
+    // the structural fields were copied unfiltered and overrode the finite-only scan
+    [
+      `no non-finite structural fields`,
+      full_data_extractor,
+      5,
+      { temperature: Number.NaN, volume: Infinity, density: -Infinity },
+      undefined,
+      { Step: 5 },
+      true,
+    ],
     [
       `combined energy, force, SCF and structural fields`,
       full_data_extractor,

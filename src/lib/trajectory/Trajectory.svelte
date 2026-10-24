@@ -457,15 +457,19 @@
   }
 
   // === sources: prop, URL, drop ===
-  let loaded_source: typeof source
+  // Reload on a changed option value, never on a parent passing a fresh but equal object
+  // (that re-ran the effect, whose cleanup aborted the running load)
+  const loading_key = $derived(JSON.stringify(loading_options))
+  let loaded: { source: typeof source; key: string } | undefined
   $effect(() => {
-    const input = source
-    if (input === loaded_source) return
-    loaded_source = input
+    const [input, key] = [source, loading_key]
+    if (input === loaded?.source && key === loaded?.key) return
+    loaded = { source: input, key }
     // Hosts that clear a URL trait often send `` or null rather than undefined
     if (!input) return
     const controller = begin_load()
-    void open_source({ input }, controller)
+    // untracked: open_source reads loading_options itself, which loading_key already tracks
+    untrack(() => void open_source({ input }, controller))
     return () => {
       if (load_controller === controller) {
         controller.abort(new DOMException(`Source changed`, `AbortError`))

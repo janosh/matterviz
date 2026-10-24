@@ -130,7 +130,9 @@ describe(`extended XYZ reaction paths`, () => {
     [`a single frame`, frame(0, -10), /1 XYZ frame\(s\).*at least 2/],
     [`a frame with no energy in its comment`, `1\njust a comment\nLi 0.0 0.0 0.0\n1\njust a comment\nLi 1.0 0.0 0.0`, /neb\.xyz frame 1\b.*no parsable energy/],
     [`a non-numeric atom count`, `abc\ncomment\nLi 0 0 0`, /0 XYZ frame\(s\).*at least 2/],
-    [`a truncated frame`, `3\ncomment energy=-1\nLi 0 0 0`, /0 XYZ frame\(s\).*at least 2/],
+    [`a truncated frame`, `3\ncomment energy=-1\nLi 0 0 0`, /neb\.xyz frame 1 \(line 1\) declares 3 atoms but the file ends after 1 of them/],
+    // dropping a torn last image made the transition state the final state (reverse barrier 0)
+    [`a truncated last frame`, [frame(0, -10), frame(1, -9), `2\n${LATTICE} energy=-9.8\nLi 2 0 0`].join(`\n`), /neb\.xyz frame 3 \(line 7\) declares 2 atoms/],
   ])(`throws for %s`, (_name, content, pattern) => {
     expect(() => parse_xyz_reaction_path(content, `neb.xyz`)).toThrow(pattern)
   })

@@ -457,7 +457,7 @@
       <label style="display: flex; align-items: center; gap: 0.4em; margin-block: 0.5em">
         <input type="checkbox" bind:checked={scale_locked} /> Lock numeric color ranges
       </label>
-      <div class="thermal-legend" aria-label="Thermal color legend">
+      <div class="thermal-legend" role="group" aria-label="Thermal color legend">
         <strong
           >Bin-average {scale.metric === `energy`
             ? `kinetic energy`

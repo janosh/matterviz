@@ -99,15 +99,15 @@ export const ase_velocity = (momentum: number, mass: number): number =>
   (momentum / mass) * FS_IN_ASE_TIME
 
 export interface AseFrameOptions {
-  // ASE writes numbers and pbc into frame 0 only, repeating them when they change, so later
-  // frames inherit the last values seen
+  // ASE writes numbers and pbc into frame 0, and into every later frame once they change, so
+  // a frame without them inherits frame 0's
   fallback_numbers?: number[]
   fallback_pbc?: Pbc
   // Frame 0's recorded masses, which ASE gives every frame without its own topology header
   // (a frame with one carries its own masses, or none for standard ones)
   fallback_masses?: readonly number[]
-  // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers or
-  // pbc, so a frame with a complete topology never depends on (or decodes) earlier ones
+  // Lazy alternative to the two fallbacks, called only when the frame lacks its own numbers,
+  // so a frame with its own topology header never depends on (or decodes) earlier ones
   inherit?: () => { numbers?: number[]; pbc?: Pbc }
   base_offset?: number
 }
@@ -228,11 +228,10 @@ export function decode_ase_frame(
       ? ndarray_reader(view, positions_ref, base_offset).shape[0]
       : undefined)
 
+  // ASE's reader: a frame with its own numbers carries its whole topology header (numbers and
+  // pbc); one without takes frame 0's, ignoring any pbc of its own (as read_atoms does)
   const own_numbers = frame_data[`numbers.`] ?? frame_data.numbers
-  const inherited =
-    (own_numbers === undefined || frame_data.pbc === undefined) && inherit
-      ? inherit()
-      : undefined
+  const inherited = own_numbers === undefined ? inherit?.() : undefined
   const numbers_ref = own_numbers ?? fallback_numbers ?? inherited?.numbers
   const numbers: number[] = numbers_ref?.ndarray
     ? read_ndarray(numbers_ref).flat()
@@ -243,9 +242,10 @@ export function decode_ase_frame(
   }
   if (numbers.length !== n_atoms)
     throw new Error(`ASE frame has ${n_atoms} positions for ${numbers.length} atomic numbers`)
-  const pbc_value = frame_data.pbc ?? fallback_pbc ?? inherited?.pbc
+  const pbc_value =
+    own_numbers === undefined ? (fallback_pbc ?? inherited?.pbc) : frame_data.pbc
   if (pbc_value === undefined)
-    throw new Error(`missing pbc (ASE writes it in the first frame)`)
+    throw new Error(`missing pbc (ASE writes it with the frame's atomic numbers)`)
   const pbc = ase_pbc(pbc_value)
 
   // Per-atom forces (eV/Å) go on the sites, only their statistics into the metadata
@@ -364,51 +364,29 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       `ASE trajectory frame ${display_idx(frame_idx)} of ${n_items} (byte offset ${offset}): ${to_error(error).message}`,
       { cause: error },
     )
-  // Numbers and pbc in effect at each frame, cached once both are known. ASE repeats them only
-  // in frames where they change, so a frame without its own inherits them from the nearest
-  // EARLIER frame in the file, never from whichever frame was decoded last: random access
-  // (scrubbing, strided analysis) would otherwise give a frame a later composition change.
-  type Topology = { numbers?: number[]; pbc?: Pbc }
-  const topologies: Topology[] = []
-  // Walks headers back only until both are found, so a corrupt frame breaks just the frames
-  // that inherit through it, then caches (earliest first) each walked frame they determine
-  const inherited_topology = (frame_idx: number): Topology => {
-    const walked: [number, Topology][] = []
-    let found: Topology = {}
-    for (let idx = frame_idx - 1; idx >= 0 && !(found.numbers && found.pbc); idx--) {
-      let own = topologies[idx]
-      if (!own) {
-        const header = frame_header(idx)
-        const numbers_ref = header[`numbers.`] ?? header.numbers
-        own = {
-          numbers: is_ndarray_ref(numbers_ref)
-            ? read_ndarray_from_view(live().view, numbers_ref).flat()
-            : (numbers_ref as number[] | undefined),
-          pbc: header.pbc === undefined ? undefined : ase_pbc(header.pbc),
-        }
-      }
-      walked.push([idx, own])
-      found = { numbers: found.numbers ?? own.numbers, pbc: found.pbc ?? own.pbc }
-    }
-    let carried: Topology = {}
-    for (const [idx, own] of walked.toReversed()) {
-      carried = { numbers: own.numbers ?? carried.numbers, pbc: own.pbc ?? carried.pbc }
-      if (carried.numbers && carried.pbc) topologies[idx] = carried
-    }
-    return found
-  }
+  // ASE's reader rule (as read_atoms below follows): a frame without its own topology header
+  // takes frame 0's. ASE's writer repeats the header in every frame once one changes, so no
+  // file it writes inherits a later header. Frame 0's decode supplies it, read once.
+  let initial_topology: { numbers: number[]; pbc: Pbc } | undefined
   const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
-      const decoded = decode_ase_frame(view, buffer, offset, frame_idx, {
-        inherit: () => inherited_topology(frame_idx),
+      const { frame, numbers, pbc } = decode_ase_frame(view, buffer, offset, frame_idx, {
+        // frame 0 inherits from nothing (and must not recurse into its own decode)
+        inherit:
+          frame_idx === 0
+            ? undefined
+            : () => {
+                if (!initial_topology) decode_frame(0, true)
+                return initial_topology ?? {}
+              },
         fallback_masses: atom_masses,
         plot_row,
         warn,
       })
-      topologies[frame_idx] = { numbers: decoded.numbers, pbc: decoded.pbc }
-      return decoded.frame
+      if (frame_idx === 0) initial_topology ??= { numbers, pbc }
+      return frame
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
     }

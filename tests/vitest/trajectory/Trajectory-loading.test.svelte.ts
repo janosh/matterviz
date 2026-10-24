@@ -83,12 +83,13 @@ const deferred_worker = () => {
   const pending: {
     filename: string
     signal?: AbortSignal
+    options?: Parameters<WorkerParse>[3]
     resolve: (run: TrajectoryRun) => void
   }[] = []
   stub_worker(
     (_data, filename, _is_base64, options) =>
       new Promise<TrajectoryRun>((resolve) => {
-        pending.push({ filename, signal: options?.signal, resolve })
+        pending.push({ filename, signal: options?.signal, options, resolve })
       }),
   )
   return pending
@@ -125,6 +126,31 @@ describe(`source`, () => {
     pending[0].resolve(late)
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce())
     expect(on_file_load).not.toHaveBeenCalled()
+  })
+
+  // open_source read loading_options inside the source effect, so a parent re-render with a
+  // fresh but equal options object aborted the running load and never restarted it, while a
+  // real option change never reloaded the source
+  test(`reloads the source on changed loading_options values, not on a fresh equal object`, async () => {
+    const pending = deferred_worker()
+    const on_file_load = vi.fn()
+    const props = $state<Props>({
+      source: new File([MULTI_FRAME_XYZ], `slow.xyz`),
+      loading_options: { atom_type_mapping: { 1: `H` } },
+      on_file_load,
+    })
+    mount_viewer(props)
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    props.loading_options = { atom_type_mapping: { 1: `H` } }
+    flushSync()
+    expect(pending[0].signal?.aborted).toBe(false)
+    pending[0].resolve(make_run(`slow.xyz`))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledOnce())
+    props.loading_options = { atom_type_mapping: { 1: `Li` } }
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    expect(pending[1].options?.load_options?.atom_type_mapping).toEqual({ 1: `Li` })
+    pending[1].resolve(make_run(`slow.xyz`))
+    await vi.waitFor(() => expect(on_file_load).toHaveBeenCalledTimes(2))
   })
 
   const XYZ_FILE = new File([MULTI_FRAME_XYZ], `dropped.xyz`)

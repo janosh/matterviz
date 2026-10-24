@@ -96,17 +96,11 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
   // title, scale, 3 lattice rows, symbols, counts, one config marker and one ion = 9 lines
   if (lines.count < 9) throw new Error(`XDATCAR file too short`)
 
-  const { result: parsed, end: header_end } = parse_xdatcar_header(lines, 0)
-  if (!parsed.ok) throw new Error(parsed.error)
-  const { elements: element_names, counts: element_counts } = parsed.header
   // One fractional-coordinate line per ion, so no file can hold more ions than it has lines
   const line_budget = { max_ions: lines.count, source: `XDATCAR lines` }
-  let cell = make_cell(
-    parsed.header.lattice,
-    expand_ion_types(element_names, element_counts, line_budget),
-  )
+  let cell: XdatcarCell | null = null
   const frames: XdatcarFrameSpec[] = []
-  let line_idx = header_end
+  let line_idx = 0
 
   while (line_idx < lines.count) {
     // Scan forward from the cursor, never from line 0: a whole-file search per frame would be
@@ -118,14 +112,29 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
     }
     if (config_idx === lines.count) break
 
-    // Variable-cell runs repeat full headers; wrapped species blocks exceed seven lines.
-    if (config_idx > line_idx) {
-      const { result: repeat, end } = parse_xdatcar_header(lines, line_idx)
-      if (repeat.ok && end === config_idx) {
-        const { lattice, elements, counts } = repeat.header
-        cell = make_cell(lattice, expand_ion_types(elements, counts, line_budget))
+    // The file header, and the full header a variable-cell run repeats per frame (wrapped
+    // species blocks exceed seven lines), possibly after blank lines. Anything else before a
+    // marker is corruption: keeping the previous cell would misplace every atom of an NPT frame.
+    let header_idx = line_idx
+    while (header_idx < config_idx && !lines.line(header_idx)?.trim()) header_idx++
+    if (header_idx < config_idx) {
+      // the title line itself may be blank, so also try the header from the line before
+      const starts = header_idx > line_idx ? [header_idx, header_idx - 1] : [header_idx]
+      const attempts = starts.map((start) => parse_xdatcar_header(lines, start))
+      const header = attempts.find(
+        ({ result, end }) => result.ok && end === config_idx,
+      )?.result
+      if (!header?.ok) {
+        const { result } = attempts[0]
+        throw new Error(
+          `XDATCAR lines ${header_idx + 1}-${config_idx} before "Direct configuration=" are ` +
+            `not a cell header${result.ok ? `` : `: ${result.error}`}`,
+        )
       }
+      const { lattice, elements, counts } = header.header
+      cell = make_cell(lattice, expand_ion_types(elements, counts, line_budget))
     }
+    if (!cell) throw new Error(`XDATCAR has no cell header before line ${config_idx + 1}`)
 
     const config_line = lines.line(config_idx) ?? ``
     line_idx = config_idx + 1
