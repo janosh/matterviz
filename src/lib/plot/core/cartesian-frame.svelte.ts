@@ -590,7 +590,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   })
 
   const pan_zoom = create_pan_zoom({
-    axes: () => FACET_AXES.filter((axis) => axis !== `y2` || y2_sync.mode === `none`),
+    // A data-less x2/y2 would pan its [0, 1] sentinel and share that phantom range with a grid
+    axes: () =>
+      FACET_AXES.filter(
+        (axis) => axis_shown(axis) && (axis !== `y2` || y2_sync.mode === `none`),
+      ),
     ranges: () => ranges.current,
     scale_type: (axis) => opts.axes()[axis].scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
@@ -604,15 +608,16 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       // The live range keeps reversed axes reversed. Gate x2/y2 on real data: their
       // sentinel [0, 1] scales would store a phantom range.
       const zoom_axis = (axis: FacetAxis, from_px: number, to_px: number) => {
+        if (!axis_shown(axis)) return null
         const range = invert_rect_range(scales[axis], from_px, to_px, ranges.current[axis])
         if (range) synced_facet.update_range(axis, range)
         return range
       }
       if (!zoom_axis(`x`, start.x, current.x)) return
-      if (opts.has_x2()) zoom_axis(`x2`, start.x, current.x)
+      zoom_axis(`x2`, start.x, current.x)
       zoom_axis(`y`, start.y, current.y)
       // A synced y2 already followed the y zoom above; the bridge drops this one
-      if (opts.has_y2()) zoom_axis(`y2`, start.y, current.y)
+      zoom_axis(`y2`, start.y, current.y)
     },
     on_reset: () => {
       if (facet.reset_ranges()) return

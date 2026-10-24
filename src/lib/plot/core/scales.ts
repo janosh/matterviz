@@ -479,6 +479,9 @@ export function nice_range_from_extent(
   padding_factor: number,
   is_time = false,
 ): Vec2 {
+  // An inset would cut the data ends off (no caller passes one), and NaN poisons the range
+  if (!(padding_factor >= 0))
+    throw new RangeError(`range_padding must be >= 0, got ${padding_factor}`)
   const [min, max] = limits
   const type_name = get_scale_type_name(scale_type)
   // Invalid log samples must not hide a smaller positive sample in the same series.
@@ -502,15 +505,18 @@ export function nice_range_from_extent(
       !is_time && type_name === `log`
         ? { forward: Math.log10, inverse: (value: number) => 10 ** value }
         : axis_transform(is_time ? `time` : scale_type)
-    if (data_min !== data_max) {
+    // Compared in the scale's metric: [1e15, 1e15 + 1] is one point on a log axis, where
+    // padding by the zero span left nice() a collapsed [1e15, 1e15]
+    if (forward(data_min) !== forward(data_max)) {
       if (!is_time && type_name === `log`)
         [data_min, data_max] = positive_log_domain(data_min, data_max)
-      // Pad in the scale's metric; linear and time transforms are identity functions.
+      // Pad in the scale's metric; linear and time transforms are identity functions. The
+      // asinh/sinh round trip can land an ulp inside the data, which would cull the end points.
       const lower = forward(data_min)
       const upper = forward(data_max)
       const padding = (upper - lower) * padding_factor
-      data_min = inverse(lower - padding)
-      data_max = inverse(upper + padding)
+      data_min = Math.min(data_min, inverse(lower - padding))
+      data_max = Math.max(data_max, inverse(upper + padding))
       // Handle single data point case with fixed relative padding
     } else if (is_time) {
       data_min -= MS_PER_DAY
@@ -723,24 +729,17 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
       .domain([min_val, max_val])
       .range([min_radius, max_radius])
 
-    type ClampedSizeScale = ((value: number) => number) & {
-      domain: () => Vec2
-      range: () => Vec2
-      ticks: (count?: number) => number[]
-    }
-
     // Order the bounds first: a descending radius_range would otherwise collapse the scale to
     // the constant min_radius (this branch clamps by hand, unlike d3's .clamp(true) below).
-    const [lo_radius, hi_radius] =
-      min_radius <= max_radius ? [min_radius, max_radius] : [max_radius, min_radius]
-    const clamped_scale = ((value: number): number =>
-      math.clamp(arcsinh_scale(value), lo_radius, hi_radius)) as ClampedSizeScale
-
-    clamped_scale.domain = () => arcsinh_scale.domain()
-    clamped_scale.range = () => arcsinh_scale.range()
-    // Size legends pick their values from these
-    clamped_scale.ticks = (count) => arcsinh_scale.ticks(count)
-    return clamped_scale
+    const [lo_radius, hi_radius] = range_bounds([min_radius, max_radius])
+    const clamped = (value: number): number =>
+      math.clamp(arcsinh_scale(value), lo_radius, hi_radius)
+    // Size legends pick their values from domain and ticks
+    return Object.assign(clamped, {
+      domain: () => arcsinh_scale.domain(),
+      range: () => arcsinh_scale.range(),
+      ticks: (count?: number) => arcsinh_scale.ticks(count),
+    })
   }
 
   return scaleLinear().domain([min_val, max_val]).range([min_radius, max_radius]).clamp(true)

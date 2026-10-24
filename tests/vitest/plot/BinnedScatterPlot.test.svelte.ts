@@ -11,6 +11,7 @@ import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+  fire,
   mock_fullscreen,
   bind_props,
   click_export,
@@ -836,8 +837,7 @@ describe(`BinnedScatterPlot`, () => {
       window.dispatchEvent(
         new MouseEvent(`mousemove`, { buttons: 1, clientX: end[0], clientY: end[1] }),
       )
-      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: end[0], clientY: end[1] }))
-      await tick()
+      await fire(window, new MouseEvent(`mouseup`, { clientX: end[0], clientY: end[1] }))
     }
 
     // [min, max] of the numeric tick labels: the view the axis currently shows

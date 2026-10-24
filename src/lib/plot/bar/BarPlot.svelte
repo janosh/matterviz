@@ -86,6 +86,7 @@
     visible_bar_indices,
   } from './geometry'
   import type { LineSeriesPoint as BarLineSeriesPoint } from './geometry'
+  import { is_finite_num } from '#lib/plot/scatter/scatter-data.js'
 
   // Handler props for line marker events (extends BarHandlerProps with point-specific data)
   interface LineMarkerHandlerProps extends BarHandlerProps<Metadata> {
@@ -477,10 +478,9 @@
       ...(has_marker(srs, `points`)
         ? {
             symbol_type: point_style?.symbol_type ?? DEFAULTS.scatter.symbol_type,
-            symbol_color:
-              first_color_value != null
-                ? color_scale_fn(first_color_value)
-                : (point_style?.fill ?? color),
+            symbol_color: is_finite_num(first_color_value)
+              ? color_scale_fn(first_color_value)
+              : (point_style?.fill ?? color),
           }
         : {}),
     }
@@ -498,11 +498,14 @@
   })
   const mark_info = (key: MarkKey | null) => {
     if (!key) return null
-    const { series_idx, bar_idx, color } = key
+    const { series_idx, bar_idx, color, line: is_line } = key
     const srs = internal_series[series_idx]
-    return srs && srs.visible !== false && bar_idx < srs.x.length
-      ? get_bar_data(series_idx, bar_idx, color)
-      : null
+    // A NaN value draws no mark and anchored the tooltip at NaN (an invalid geometry throw);
+    // a 0 bar draws nothing either
+    const [coord_x, coord_y] = [srs?.x[bar_idx], srs?.y[bar_idx]]
+    const drawn =
+      Number.isFinite(coord_x) && Number.isFinite(coord_y) && (is_line || coord_y !== 0)
+    return srs?.visible !== false && drawn ? get_bar_data(series_idx, bar_idx, color) : null
   }
   const hover_info = $derived(mark_info(pin.shown(hover_key)))
 

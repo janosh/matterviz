@@ -244,13 +244,8 @@ describe(`PlotTooltip`, () => {
     expect(getComputedStyle(tooltip).whiteSpace).toBe(`normal`)
     // never inherits a centered page section
     expect(getComputedStyle(tooltip).textAlign).toBe(`start`)
-  })
-
-  test(`--plot-tooltip-max-width narrows the box, the container cap still applies`, () => {
-    const tooltip = mount_tooltip({
-      constrain_to: { width: 100, height: 300 },
-      style: `--plot-tooltip-max-width: 50px`,
-    })
+    // --plot-tooltip-max-width narrows the box, the container cap still applies
+    tooltip.style.setProperty(`--plot-tooltip-max-width`, `50px`)
     expect(getComputedStyle(tooltip).maxWidth).toBe(`min(50px, 84px)`)
   })
 
@@ -364,29 +359,24 @@ describe(`PlotTooltip`, () => {
     const tooltip = mount_tooltip({ x: 80, y: 50, offset: { x: 0, y: 0 }, ...fallback_box })
     expect(tooltip.style.left).toBe(`80px`)
     const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(50)
-    try {
-      trigger_resize_observer(tooltip)
-      flushSync()
-      expect(tooltip.style.left).toBe(`30px`) // 50px wide no longer fits right of x=80
-    } finally {
-      width_spy.mockRestore()
-    }
+    onTestFinished(() => width_spy.mockRestore())
+    trigger_resize_observer(tooltip)
+    flushSync()
+    expect(tooltip.style.left).toBe(`30px`) // 50px wide no longer fits right of x=80
   })
 
   test(`prefers measured size over fallback size`, () => {
-    const width_spy = vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(40)
-    const height_spy = vi
-      .spyOn(HTMLElement.prototype, `offsetHeight`, `get`)
-      .mockReturnValue(20)
-    try {
-      const props = { x: 75, y: 50, offset: { x: 0, y: 0 }, exclusion_rects: [] }
-      const tooltip = mount_tooltip({ ...props, ...fallback_box })
-      flushSync()
-      expect([tooltip.style.left, tooltip.style.top]).toEqual([`35px`, `50px`])
-    } finally {
-      width_spy.mockRestore()
-      height_spy.mockRestore()
+    for (const [getter, size] of [
+      [`offsetWidth`, 40],
+      [`offsetHeight`, 20],
+    ] as const) {
+      const spy = vi.spyOn(HTMLElement.prototype, getter, `get`).mockReturnValue(size)
+      onTestFinished(() => spy.mockRestore())
     }
+    const props = { x: 75, y: 50, offset: { x: 0, y: 0 }, exclusion_rects: [] }
+    const tooltip = mount_tooltip({ ...props, ...fallback_box })
+    flushSync()
+    expect([tooltip.style.left, tooltip.style.top]).toEqual([`35px`, `50px`])
   })
 
   // Most anchors track the pointer, so clearing its glyph is the default and only

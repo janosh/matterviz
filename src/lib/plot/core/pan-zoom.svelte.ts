@@ -276,11 +276,10 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     touch_state = null
   }
 
-  // SVG keydown: Escape cancels a rect drag, Enter/Space resets the view. The target check
-  // keeps bubbling activation of focusable children (bars, points) from resetting.
+  // SVG keydown: Enter/Space resets the view. The target check keeps bubbling activation
+  // of focusable children (bars, points) from resetting.
   const on_key_down = (evt: KeyboardEvent) => {
     if (evt.target !== evt.currentTarget) return
-    if (evt.key === `Escape` && drag_state) cancel_rect_drag()
     if ([`Enter`, ` `].includes(evt.key)) {
       evt.preventDefault()
       opts.on_reset()
@@ -319,8 +318,11 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     on_touch_move,
     on_touch_end,
     on_key_down,
+    // Escape cancels a rect drag from the window: mousedown's preventDefault keeps focus off
+    // the SVG, so an SVG listener only heard it when the plot happened to be focused already
     on_window_key_down: (evt: KeyboardEvent) => {
       if (evt.key === `Shift`) shift_held = true
+      else if (evt.key === `Escape` && drag_state) cancel_rect_drag()
     },
     on_window_key_up: (evt: KeyboardEvent) => {
       if (evt.key === `Shift`) shift_held = false

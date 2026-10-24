@@ -101,6 +101,9 @@ describe(`scales`, () => {
       [[-1, 1e-30, 1e-20], `log`, 0.05, false],
       [[new Date(2023, 0, 1).getTime(), new Date(2023, 11, 1).getTime()], `linear`, 0.1, true],
       [[42], `linear`, 0.1, false],
+      // one point in log10 (nice() collapsed it to [1e15, 1e15]), and on arcsinh
+      [[1e15, 1e15 + 1], `log`, 0.05, false],
+      [[1e15, 1e15 + 1], `arcsinh`, 0.05, false],
     ])(`pads %j on a %s scale`, (values, scale_type, padding, is_time) => {
       const range = nice_range(values, [null, null], scale_type, padding, is_time)
       const domain = scale_type === `log` ? values.filter((value) => value > 0) : values
@@ -108,6 +111,22 @@ describe(`scales`, () => {
       expect(range[0]).toBeLessThan(Math.min(...domain))
       expect(range[1]).toBeGreaterThan(Math.max(...domain))
       if (scale_type === `log`) expect(range[0]).toBeGreaterThan(0)
+    })
+
+    // Unpadded (ScatterPlot's default) asinh/sinh round trips used to land an ulp inside these
+    test.each([
+      [-17.1393039778679, 13049.493724387714],
+      [14.555529952936858, -6042.3967554855035],
+    ])(`unpadded arcsinh range keeps the data ends %d, %d`, (...values) => {
+      const [lower, upper] = nice_range(values, [null, null], `arcsinh`, 0)
+      expect(lower).toBeLessThanOrEqual(Math.min(...values))
+      expect(upper).toBeGreaterThanOrEqual(Math.max(...values))
+    })
+
+    test.each([-0.1, NaN])(`rejects range_padding %s`, (padding) => {
+      expect(() => nice_range([0, 1], [null, null], `linear`, padding)).toThrow(
+        `range_padding`,
+      )
     })
 
     test.each([0.09, 0.9, 9, 90])(`pads log singleton %s only once before nicing`, (value) => {

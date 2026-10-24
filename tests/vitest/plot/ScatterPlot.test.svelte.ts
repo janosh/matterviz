@@ -24,6 +24,7 @@ import {
   click_export,
   clip_rect,
   doc_query,
+  fire,
   flush_render,
   pin_cycle,
   form_controls,
@@ -112,10 +113,7 @@ const marker_radius = (marker: Element): number => {
   }
   return Math.abs(Number(match.groups.radius))
 }
-const hover = async (element: Element): Promise<void> => {
-  element.dispatchEvent(mouse(`mouseenter`))
-  await tick()
-}
+const hover = (element: Element): Promise<void> => fire(element, mouse(`mouseenter`))
 const next_animation_frame = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve()))
 // happy-dom reports a zero rect, so client coords are plot-local
@@ -163,8 +161,7 @@ describe(`ScatterPlot`, () => {
   // gone, so arrow keys drive a cursor through the data instead
   describe(`canvas keyboard cursor`, () => {
     const arrow = async (svg: Element, key: string) => {
-      svg.dispatchEvent(keydown(key))
-      await tick()
+      await fire(svg, keydown(key))
     }
     const announced = (plot: HTMLElement) => query(plot, `[aria-live="polite"]`).textContent
 
@@ -1257,12 +1254,10 @@ describe(`ScatterPlot`, () => {
       )
       await tick()
       check_vertices()
-      window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
-      await tick()
+      await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
       check_vertices()
       const dragged_paths = paths.map((path) => path.getAttribute(`d`))
-      window.dispatchEvent(new MouseEvent(`mouseup`))
-      await tick()
+      await fire(window, new MouseEvent(`mouseup`))
       check_vertices()
       expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
       expect(color_scan).not.toHaveBeenCalled()
@@ -2333,7 +2328,7 @@ describe(`ScatterPlot`, () => {
       [...document.querySelectorAll<HTMLElement>(`.legend-item.fill-item`)].find((element) =>
         element.textContent?.includes(label),
       )
-    const fire = async (label: string, type: `click` | `dblclick`) => {
+    const fire_fill = async (label: string, type: `click` | `dblclick`) => {
       fill_item(label)?.dispatchEvent(mouse(type))
       await flush_render()
     }
@@ -2343,7 +2338,7 @@ describe(`ScatterPlot`, () => {
 
     // click hides only that fill (writes `visible` into the bound fill_regions); the fill is
     // no longer drawn, but its legend item persists (greyed) so it can be toggled back
-    await fire(`Band`, `click`)
+    await fire_fill(`Band`, `click`)
     expect(visibility()).toEqual([false, undefined])
     expect(document.querySelectorAll(`.fill-region`)).toHaveLength(1)
     expect(fill_item(`Band`)?.classList.contains(`hidden`)).toBe(true)
@@ -2353,16 +2348,16 @@ describe(`ScatterPlot`, () => {
     await flush_render()
     expect(fill_item(`Band`)?.classList.contains(`active`)).toBe(false)
 
-    await fire(`Band`, `click`)
+    await fire_fill(`Band`, `click`)
     expect(visibility()).toEqual([true, undefined])
 
     // double-click isolates the fill; a second double-click on the sole visible fill shows all
-    await fire(`Cap`, `dblclick`)
+    await fire_fill(`Cap`, `dblclick`)
     expect(visibility()).toEqual([false, true])
-    await fire(`Cap`, `dblclick`)
+    await fire_fill(`Cap`, `dblclick`)
     expect(visibility()).toEqual([true, true])
     // double-clicking a hidden fill while another is visible isolates the clicked one
-    await fire(`Band`, `dblclick`)
+    await fire_fill(`Band`, `dblclick`)
     expect(visibility()).toEqual([true, false])
   })
 
@@ -2685,10 +2680,8 @@ describe(`ScatterPlot`, () => {
     )
     // Drag left by a quarter of the plot: the view follows the data, so the range moves right
     const end = { clientX: start_x - clip.width / 4, clientY: start_y }
-    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...end }))
-    await tick()
-    window.dispatchEvent(new MouseEvent(`mouseup`, end))
-    await tick()
+    await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...end }))
+    await fire(window, new MouseEvent(`mouseup`, end))
     expect(state.x_axis.range).toEqual([0, 100])
     expect(state.y_axis.range).toEqual([0, 10])
     // The view is now [25, 125]: x=10 scrolled out, x=50 sits a quarter of the way along the

@@ -40,15 +40,8 @@ describe(`filter_series_to_ranges`, () => {
         { x: [...x_values], y: x_values.map(() => 5), markers: `line` },
       ]
       const materialized = materialize_series_points(series)
-      for (const x_range of [
-        [0, 10],
-        [10, 0],
-        [5, 5],
-        [-20, -10],
-        [20, 30],
-        [NaN, 10],
-        [-Infinity, Infinity],
-      ]) {
+      // oxfmt-ignore
+      for (const x_range of [[0, 10], [10, 0], [5, 5], [-20, -10], [20, 30], [NaN, 10], [-Infinity, Infinity]]) {
         const [result] = filter_series_to_ranges(materialized, {
           ...ranges,
           x: [x_range[0], x_range[1]],
@@ -64,12 +57,8 @@ describe(`filter_series_to_ranges`, () => {
       }
       // A fully visible dataset keeps the same point array across pans; clipping either
       // axis still picks just the visible markers, and returning to full view recovers it.
-      for (const y_range of [
-        [0, 10],
-        [6, 10],
-        [NaN, 10],
-        [10, 0],
-      ]) {
+      // oxfmt-ignore
+      for (const y_range of [[0, 10], [6, 10], [NaN, 10], [10, 0]]) {
         const [result] = filter_series_to_ranges(materialized, {
           ...ranges,
           x: [-Infinity, Infinity],
@@ -419,13 +408,8 @@ describe(`viewport line projection`, () => {
           }
           const x_scale = (value: number) => value * 10
           const y_scale = (value: number) => value * 20
-          for (const range of [
-            [30.2, 40.8],
-            [40.8, 30.2],
-            [30.2, 30.8],
-            [-5, 2],
-            [98, 110],
-          ] as Vec2[]) {
+          // oxfmt-ignore
+          for (const range of [[30.2, 40.8], [40.8, 30.2], [30.2, 30.8], [-5, 2], [98, 110]] as Vec2[]) {
             const cropped = project_line_points(
               data,
               x_scale,

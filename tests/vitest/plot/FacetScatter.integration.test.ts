@@ -260,6 +260,17 @@ describe(`FacetGrid + Cartesian plots`, () => {
         expect(keys.map((key) => context_for(key).ranges.x)).toEqual(keys.map(() => initial_x))
         expect(keys.map((key) => context_for(key).ranges.y)).toEqual(keys.map(() => initial_y))
       })
+
+      // A shift-drag pan used to also pan the data-less x2/y2 sentinels into the grid
+      const secondary = () =>
+        ([`x2`, `y2`] as const).map((axis) => context_for(`top-right`).ranges[axis])
+      const initial_secondary = secondary()
+      const pan = { buttons: 1, clientY: 80, shiftKey: true }
+      svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: 180, ...pan }))
+      window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 240, ...pan }))
+      window.dispatchEvent(new MouseEvent(`mouseup`))
+      await vi.waitFor(() => expect(context_for(`top-left`).ranges.x).not.toEqual(initial_x))
+      expect(secondary()).toEqual(initial_secondary)
     },
   )
 

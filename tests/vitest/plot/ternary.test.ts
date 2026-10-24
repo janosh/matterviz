@@ -22,7 +22,9 @@ describe(`ternary_fractions`, () => {
     { triple: [50, 50, 0], expected: [0.5, 0.5, 0] },
     // 1 - 0.3 - 0.7 = -1.1e-16: round-off from computing the third fraction clamps to 0
     { triple: [0.3, 0.7, 1 - 0.3 - 0.7], expected: [0.3, 0.7, 0] },
-    { triple: [30, 70, -1e-8], expected: [0.3, 0.7, 0] }, // tolerance scales with the total
+    { triple: [30, 70, -1e-8], expected: [0.3, 0.7, 0] }, // tolerance scales with the largest amount
+    // the sum overflows to Infinity, which zeroed every fraction (the left corner)
+    { triple: [1e308, 1e308, 1e308], expected: [1 / 3, 1 / 3, 1 / 3] },
   ])(`$triple -> $expected`, ({ triple, expected }) => {
     const fractions = ternary_fractions(triple)
     expect(round(fractions)).toEqual(round(expected))
@@ -34,10 +36,16 @@ describe(`ternary_fractions`, () => {
     [[1, Infinity, 0], `three finite numbers`],
     [[1, -0.1, 0], `negative amount`],
     [[0.3, 0.7, -1e-8], `negative amount`], // past the round-off tolerance
+    [[1e308, 1e308, -5e300], `negative amount`], // an overflowing sum hid it
     [[0, 0, 0], `has no amounts`],
   ] as [Vec3, string][])(`rejects %j (%s)`, (triple, message) => {
     expect(() => ternary_fractions(triple, `Si-O-C point 3`)).toThrow(message)
     expect(() => ternary_fractions(triple, `Si-O-C point 3`)).toThrow(`Si-O-C point 3`)
+  })
+
+  // scaling every amount down to dodge overflow dropped bits of subnormal ones (5e-309 - 5e-324)
+  test(`keeps subnormal amounts exact`, () => {
+    expect(ternary_fractions([2, 1e-308, 0])[1]).toBe(5e-309)
   })
 })
 

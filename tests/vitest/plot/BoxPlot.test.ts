@@ -9,6 +9,7 @@ import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  fire,
   pin_cycle,
   expect_plot_controls,
   export_via_pane,
@@ -404,8 +405,7 @@ describe(`BoxPlot`, () => {
     })
     const hit = query(plot, `g.box-series[role="button"]`)
     hit.dispatchEvent(new MouseEvent(`mousemove`, { bubbles: true }))
-    hit.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
-    await tick()
+    await fire(hit, new MouseEvent(`click`, { bubbles: true }))
     expect(on_box_hover).toHaveBeenCalledOnce()
     // type-7 median: mean of the two middle order statistics
     expect(on_box_click).toHaveBeenCalledExactlyOnceWith(

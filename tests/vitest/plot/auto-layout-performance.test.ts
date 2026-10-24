@@ -7,21 +7,17 @@ const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1
 const AXIS_SIZE = 1200
 const measure_text = vi.fn((text: string) => ({ width: Array.from(text).length * 6 }))
 
-const generated_labels = (tick_count: number): string[] =>
-  Array.from(
+// Long labels at evenly spaced positions spanning the axis
+const generated_axis = (tick_count: number, axis_size = AXIS_SIZE): MeasuredAxis => ({
+  tick_values: Array.from(
     { length: tick_count },
     (_unused, tick_idx) =>
       `Phase ${String(tick_idx).padStart(3, `0`)} formation-energy average temperature`,
-  )
-
-const generated_positions = (tick_count: number, axis_size = AXIS_SIZE): number[] =>
-  Array.from({ length: tick_count }, (_unused, tick_idx) =>
-    tick_count === 1 ? axis_size / 2 : (tick_idx * axis_size) / (tick_count - 1),
-  )
-
-const generated_axis = (tick_count: number, axis_size = AXIS_SIZE): MeasuredAxis => ({
-  tick_values: generated_labels(tick_count),
-  tick_positions: generated_positions(tick_count, axis_size),
+  ),
+  tick_positions: Array.from(
+    { length: tick_count },
+    (_unused, tick_idx) => (tick_idx * axis_size) / (tick_count - 1),
+  ),
   axis_extent: { start: 0, end: axis_size },
   tick_label: {
     max_lines: 3,

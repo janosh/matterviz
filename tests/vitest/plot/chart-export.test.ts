@@ -63,6 +63,11 @@ describe(`export_filename`, () => {
     [[undefined, `  `, `x`], `x`],
     [[], `chart`], // never yields an empty filename
     [[`///`], `chart`],
+    [[`Énergie`, `ΔE<sub>F</sub> (eV)`, `Fe₂O₃`], `Énergie-ΔEF-eV-Fe₂O₃`],
+    [[`${`a`.repeat(99)} b`], `a`.repeat(99)], // the cut must not strand a dash
+    [[`-${`a`.repeat(98)}--b`], `${`a`.repeat(98)}-b`], // leading dashes cost no length
+    [[`形`.repeat(150)], `形`.repeat(33)], // 100 bytes: 3 per CJK, 4 per astral code point
+    [[`𝐸`.repeat(150)], `𝐸`.repeat(25)],
   ])(`%j -> %s`, (parts, expected) => {
     expect(export_filename(...parts)).toBe(expected)
   })

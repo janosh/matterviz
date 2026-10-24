@@ -71,6 +71,7 @@
     tick_label_format,
   } from '#lib/plot/core/scales.js'
   import Surface3D from '#lib/plot/scatter-3d/Surface3D.svelte'
+  import { finite_or_null } from '#lib/plot/scatter/scatter-data.js'
 
   let {
     series = [],
@@ -206,9 +207,7 @@
       const new_y = cam.y > 0 ? -half_z : half_z
       const new_z = cam.z > 0 ? -half_y : half_y
       if (pos.x === new_x && pos.y === new_y && pos.z === new_z) return
-      pos.x = new_x
-      pos.y = new_y
-      pos.z = new_z
+      pos = { x: new_x, y: new_y, z: new_z }
       invalidate() // axes/grids move with `pos`, and nothing else requests that frame
     },
     { autoInvalidate: false },
@@ -266,24 +265,24 @@
           z: coord_z,
           series_idx,
           point_idx,
-          color_value: srs.color_values?.[point_idx] ?? null,
-          size_value: srs.size_values?.[point_idx] ?? null,
+          color_value: finite_or_null(srs.color_values?.[point_idx]),
+          size_value: finite_or_null(srs.size_values?.[point_idx]),
           metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
           point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
         }
-        // NaN/null colour/size values fall back to the series style, as in 2D: a NaN radius
-        // poisons the bounding sphere (and every raycast)
+        // Missing colour/size values (NaN ones nulled above, for the payloads too) fall back to
+        // the series style, as in 2D: a NaN radius poisons the bounding sphere and raycasts
         const { color_value, size_value } = point
         instances.push({
           point,
           key: point_key(point),
           position: to_scene(coords),
           color:
-            color_value != null && Number.isFinite(color_value)
+            color_value != null
               ? color_scale_fn(color_value)
               : (point.point_style?.fill ?? plot_color(series_idx)),
           radius:
-            size_value != null && Number.isFinite(size_value)
+            size_value != null
               ? size_scale_fn(size_value)
               : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05,
         })

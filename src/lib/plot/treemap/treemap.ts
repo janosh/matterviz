@@ -160,7 +160,6 @@ export function align_tiling(prev: Tiling, next: Tiling): Rect[] {
     let parent_idx = arc.parent_idx
     while (parent_idx != null) {
       const ancestor = next.arcs[parent_idx]
-      if (!ancestor) break
       const ancestor_rect = by_id.get(ancestor.id)
       if (ancestor_rect) return ancestor_rect
       parent_idx = ancestor.parent_idx

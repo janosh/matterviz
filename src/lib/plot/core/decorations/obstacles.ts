@@ -234,23 +234,10 @@ export function bar_obstacles(vertical: boolean, cross: Vec2, span: Vec2): Obsta
   const [lower, upper] = clamp_to_plot(span)
   const [left, right] = clamp_to_plot(cross)
   if (!(upper >= lower && right >= left)) return []
-  const [x_span, y_span] = vertical
-    ? [
-        [left, right],
-        [lower, upper],
-      ]
-    : [
-        [lower, upper],
-        [left, right],
-      ]
-  return [
-    {
-      x: x_span[0],
-      y: y_span[0],
-      width: x_span[1] - x_span[0],
-      height: y_span[1] - y_span[0],
-    },
-  ]
+  const [min_x, max_x, min_y, max_y] = vertical
+    ? [left, right, lower, upper]
+    : [lower, upper, left, right]
+  return [{ x: min_x, y: min_y, width: max_x - min_x, height: max_y - min_y }]
 }
 
 // Project a decoration-independent normalized obstacle field into the final plot rectangle.

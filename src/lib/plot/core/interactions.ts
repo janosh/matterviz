@@ -205,10 +205,6 @@ export function zoom_range_by_factor(
   return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
 }
 
-// Coerce a scale.invert result (number, or Date for time scales) to an epoch number
-const to_epoch_num = (val: number | Date): number =>
-  val instanceof Date ? val.getTime() : val
-
 // Remove window drag/pan listeners and reset the body cursor. Call from onDestroy, since
 // unmounting mid-drag otherwise leaks listeners and leaves the cursor stuck.
 export function remove_drag_listeners(
@@ -240,7 +236,8 @@ export function invert_rect_range(
   b_px: number,
   current: Vec2,
 ): Vec2 | null {
-  const inverted: Vec2 = [to_epoch_num(scale.invert(a_px)), to_epoch_num(scale.invert(b_px))]
+  // Number() also turns a time scale's Date into epoch ms
+  const inverted: Vec2 = [Number(scale.invert(a_px)), Number(scale.invert(b_px))]
   const range = orient_range(inverted, current)
   return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
 }

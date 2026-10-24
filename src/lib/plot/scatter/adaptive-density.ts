@@ -123,10 +123,12 @@ const padded_extent = (
   scale_type?: ScaleType,
   range_padding = 0.05,
 ): Vec2 => {
-  const log_scale = get_scale_type_name(scale_type) === `log`
+  const type_name = get_scale_type_name(scale_type)
+  const log_scale = type_name === `log`
   if (!Number.isFinite(min) || !Number.isFinite(max)) return log_scale ? [1, 10] : [0, 1]
 
   const { forward, inverse } = axis_transform(scale_type)
+  const finite = (val: number) => clamp(val, -Number.MAX_VALUE, Number.MAX_VALUE)
   const t_min = forward(min)
   const t_max = forward(max)
   if (t_min === t_max) {
@@ -136,12 +138,14 @@ const padded_extent = (
         min * Math.sqrt(10),
       ])
     }
-    return [inverse(t_min - 0.5), inverse(t_max + 0.5)]
+    // Linear pads grow to 5% of the value past |10|: a fixed ±0.5 rounds away on huge values
+    // (1e20 - 0.5 === 1e20, a zero-width domain). Arcsinh pads its own transform space.
+    const half = type_name === `arcsinh` ? 0.5 : Math.max(0.5, Math.abs(t_min) * 0.05)
+    return [finite(inverse(t_min - half)), finite(inverse(t_max + half))]
   }
   const padding = (t_max - t_min) * range_padding
   if (log_scale)
     return validate_log_range([inverse(t_min - padding), inverse(t_max + padding)])
-  const finite = (val: number) => clamp(val, -Number.MAX_VALUE, Number.MAX_VALUE)
   return [finite(inverse(t_min - padding)), finite(inverse(t_max + padding))]
 }
 

@@ -213,12 +213,9 @@ describe(`TernaryPlot`, () => {
     expect(svg.getAttribute(`tabindex`)).toBe(`0`)
     const announced = () => query(plot, `[aria-live="polite"]`).textContent
     expect(announced()).toBe(``) // ChartShell mounts the region before its first message
-    for (const [key, point_idx] of [
-      [`ArrowRight`, 0],
-      [`ArrowLeft`, n_points - 1],
-      [`Home`, 0],
-      [`ArrowDown`, 1],
-    ] as const) {
+    // oxfmt-ignore
+    const steps = [[`ArrowRight`, 0], [`ArrowLeft`, n_points - 1], [`Home`, 0], [`ArrowDown`, 1]] as const
+    for (const [key, point_idx] of steps) {
       const event = keydown(key, { cancelable: true })
       await fire(svg, event)
       expect(event.defaultPrevented).toBe(true)

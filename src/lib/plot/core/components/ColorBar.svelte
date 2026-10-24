@@ -212,10 +212,8 @@
     if (label) {
       tick_font = resolve_font_spec(label)
       const style = getComputedStyle(label)
-      tick_spacing =
-        Number(style.paddingLeft.replace(`px`, ``)) +
-        Number(style.paddingRight.replace(`px`, ``)) +
-        4
+      const pads = [style.paddingLeft, style.paddingRight]
+      tick_spacing = pads.reduce((sum, pad) => sum + Number(pad.replace(`px`, ``)), 4)
     }
   })
   // Label deduplication precedes inside-label removal and overlap thinning.

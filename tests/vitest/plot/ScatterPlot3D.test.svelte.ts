@@ -327,19 +327,8 @@ test.each([
   onTestFinished(unmount_scene)
   flushSync()
   const labels = [...document.querySelectorAll(`.tick-label`)].map((node) => node.textContent)
-  expect(labels).toEqual([
-    `−1`,
-    `−0.5`,
-    `0`,
-    `0.5`,
-    `1`,
-    `−1`,
-    `−0.5`,
-    `0`,
-    `0.5`,
-    `1`,
-    ...expected,
-  ])
+  const unit_ticks = [`−1`, `−0.5`, `0`, `0.5`, `1`] // x and y
+  expect(labels).toEqual([...unit_ticks, ...unit_ticks, ...expected])
 })
 
 test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordinates`, async () => {
@@ -496,7 +485,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
 
 // The default tooltip is a PlotTooltip painted per tooltip_paint (an opaque marker fill as is,
 // a translucent one flattened); tooltip=false drops it (the hover halo stays). Its rows stay
-// start-aligned on a page that centers text.
+// start-aligned on a page that centers text, and a NaN color value gets no `value: NaN` row.
 test.each<[string, false | undefined, boolean]>([
   [`#ffffff`, undefined, true],
   [`rgba(255, 255, 255, 0.5)`, undefined, true],
@@ -508,7 +497,7 @@ test.each<[string, false | undefined, boolean]>([
   })
   const { unmount_scene } = mount_scene((anchor) =>
     ScatterPlot3DScene(anchor, {
-      series: [{ x: [1], y: [1], z: [1], point_style: { fill } }],
+      series: [{ x: [1], y: [1], z: [1], point_style: { fill }, color_values: [NaN] }],
       hovered_point: { x: 1, y: 1, z: 1, series_idx: 0, point_idx: 0 } as never,
       ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
       gizmo: false,
@@ -522,6 +511,7 @@ test.each<[string, false | undefined, boolean]>([
   if (!tip) return
   expect_tooltip_paint(tip, fill)
   expect(getComputedStyle(tip).textAlign).toBe(`start`)
+  expect(tip.textContent).not.toContain(`value`)
 })
 
 // The plot root's one tab stop walks the in-range markers like the 2D ScatterPlot cursor

@@ -41,10 +41,8 @@ describe(`PlotTitle`, () => {
     const title_lines = [...(title?.querySelectorAll(`tspan`) ?? [])]
     expect(title_lines.map((line) => line.textContent)).toEqual([`alpha beta`, `gamma`])
     expect(subtitle?.querySelectorAll(`tspan`)).toHaveLength(2)
-    expect(title?.getAttribute(`font-size`)).toBe(`10`)
-    expect(title?.getAttribute(`font-weight`)).toBe(`700`)
-    expect(title?.getAttribute(`text-anchor`)).toBe(`end`)
-    expect(title?.getAttribute(`x`)).toBe(`60`)
+    const attrs = [`font-size`, `font-weight`, `text-anchor`, `x`]
+    expect(attrs.map((attr) => title?.getAttribute(attr))).toEqual([`10`, `700`, `end`, `60`])
     expect(subtitle?.getAttribute(`font-style`)).toBe(`italic`)
     expect(svg.querySelector(`foreignObject`)).toBeNull()
     expect(Number(subtitle?.querySelector(`tspan`)?.getAttribute(`y`))).toBeGreaterThan(
@@ -55,11 +53,11 @@ describe(`PlotTitle`, () => {
 
   test(`keeps full title and subtitle labels accessible after visual truncation`, async () => {
     const full_title = `A long measured title`
-    const full_subtitle = `A descriptive subtitle`
+    const full_sub = `A descriptive subtitle`
     const { component, svg } = mount_title(
       {
         text: full_title,
-        subtitle: full_subtitle,
+        subtitle: full_sub,
         max_lines: 1,
         font: { font_size: 10, line_height: 12 },
         subtitle_font: { font_size: 9, line_height: 11 },
@@ -69,13 +67,10 @@ describe(`PlotTitle`, () => {
 
     const title = svg.querySelector(`text.plot-title-text`)
     const subtitle = svg.querySelector(`text.plot-subtitle-text`)
-    expect(title?.getAttribute(`role`)).toBe(`heading`)
-    expect(title?.getAttribute(`aria-level`)).toBe(`2`)
-    expect(title?.getAttribute(`aria-label`)).toBe(full_title)
-    expect(subtitle?.getAttribute(`role`)).toBe(`note`)
-    expect(subtitle?.getAttribute(`aria-label`)).toBe(full_subtitle)
-    expect(title?.textContent?.endsWith(`…`)).toBe(true)
-    expect(subtitle?.textContent?.endsWith(`…`)).toBe(true)
+    const aria = [`role`, `aria-level`, `aria-label`]
+    expect(aria.map((attr) => title?.getAttribute(attr))).toEqual([`heading`, `2`, full_title])
+    expect(aria.map((attr) => subtitle?.getAttribute(attr))).toEqual([`note`, null, full_sub])
+    expect([title, subtitle].map((text) => text?.textContent?.at(-1))).toEqual([`…`, `…`])
     expect(
       [...svg.querySelectorAll(`tspan`)].every(
         (line) => line.getAttribute(`aria-hidden`) === `true`,

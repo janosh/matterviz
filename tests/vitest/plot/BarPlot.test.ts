@@ -10,6 +10,7 @@ import { measure_text_width } from '#lib/plot/core/tick-layout.js'
 import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   clip_rect,
+  fire,
   pin_cycle,
   inside_clip_path,
   keydown,
@@ -141,8 +142,7 @@ describe(`BarPlot`, () => {
     const plot = await mount_sized_bar_plot({ series: [basic], on_bar_hover })
     const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
 
-    bars[0].dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-    await tick()
+    await fire(bars[0], new FocusEvent(`focusin`, { bubbles: true }))
     expect(on_bar_hover).toHaveBeenCalledOnce()
 
     // Focus moving to a sibling mark keeps the hover
@@ -182,8 +182,7 @@ describe(`BarPlot`, () => {
       )
       const bar = query(plot, `.bar-series path[role="button"]`)
       bar.dispatchEvent(mouse(`mousemove`))
-      bar.dispatchEvent(mouse(`mouseleave`))
-      await tick()
+      await fire(bar, mouse(`mouseleave`))
       // the caller sees the hover and the leave (BarPlot reports leaving the bar and the plot)
       const hovered = on_bar_hover.mock.calls.map(([info]) => info?.bar_idx ?? null)
       expect([hovered[0], hovered.at(-1)]).toEqual([0, null])
@@ -219,8 +218,7 @@ describe(`BarPlot`, () => {
     const plot = await mount_sized_bar_plot({ series: [basic] })
     const bars = [...plot.querySelectorAll<SVGPathElement>(`[data-roving-key]`)]
     bars[0].focus()
-    bars[0].dispatchEvent(keydown(`ArrowRight`))
-    await tick()
+    await fire(bars[0], keydown(`ArrowRight`))
     expect(bars[1].getAttribute(`tabindex`)).toBe(`0`)
     expect(bars[0].getAttribute(`tabindex`)).toBe(`-1`)
   })
@@ -456,6 +454,21 @@ describe(`BarPlot`, () => {
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
   })
 
+  // NaN colour/size values are missing like null: d3 scales map NaN to undefined, which
+  // painted the marker and legend swatch black at the default radius
+  test(`line markers and legend keep the series style for NaN color/size values`, async () => {
+    const values = [NaN, 1, 2, 3, 4]
+    const line = { render_mode: `line`, markers: `line+points` } as const
+    const plot = await mount_sized_bar_plot({
+      series: [{ ...basic, ...line, color_values: values, size_values: values }],
+      show_legend: true,
+    })
+    const marker = query(plot, `.line-points .marker`)
+    expect(marker.getAttribute(`fill`)).toContain(`steelblue`)
+    expect(marker.getAttribute(`d`)).toMatch(/^M4,0A4,4/) // the default radius
+    expect(query(plot, `.legend-marker`).innerHTML).toContain(`steelblue`)
+  })
+
   test(`markerless line series emit point hover and click callbacks`, async () => {
     const on_point_hover = vi.fn()
     const on_point_click = vi.fn()
@@ -572,8 +585,7 @@ describe(`BarPlot`, () => {
     // each series' first bar leaves the 140x50 fallback tooltip room to sit at anchor + offset
     for (const group of series_groups) {
       const [{ x: rect_x, y: rect_y, width, height }] = bar_rects(group)
-      query(group, `path[role="button"]`).dispatchEvent(mouse(`mousemove`))
-      await tick()
+      await fire(query(group, `path[role="button"]`), mouse(`mousemove`))
       const { left, top } = query(plot, `.plot-tooltip`).style
       const [anchor_x, anchor_y] =
         props.orientation === `horizontal`
@@ -591,6 +603,9 @@ describe(`BarPlot`, () => {
     [`series removed`, [grouped[0]]],
     [`bar removed`, [grouped[0], { ...grouped[1], x: [1], y: [6] }]],
     [`series hidden`, [grouped[0], { ...grouped[1], visible: false }]],
+    // NaN anchored the tooltip at NaN, which threw on invalid geometry; 0 draws no bar
+    [`NaN`, [grouped[0], { ...grouped[1], y: [6, NaN] }]],
+    [`0`, [grouped[0], { ...grouped[1], y: [6, 0] }]],
   ])(
     `a resting hover follows replaced data and closes once its bar is %s`,
     async (_, gone) => {
@@ -610,10 +625,8 @@ describe(`BarPlot`, () => {
         return plot.querySelector(`.plot-tooltip`)?.textContent ?? null
       }
       // S1's second bar
-      plot
-        .querySelectorAll(`.bar-series[data-series-idx="1"] path[role="button"]`)[1]
-        .dispatchEvent(mouse(`mousemove`))
-      await tick()
+      const bars = plot.querySelectorAll(`[data-series-idx="1"] path[role="button"]`)
+      await fire(bars[1], mouse(`mousemove`))
       expect(tooltip_after([s0, { ...s1, y: [6, 37] }])).toMatch(/y: 37/)
       expect(on_bar_hover).toHaveBeenCalledOnce()
       expect(tooltip_after(gone)).toBeNull()
@@ -672,8 +685,7 @@ describe(`BarPlot`, () => {
     })
     const bar = plot.querySelector(`path[role="button"]`)
     expect(bar).toBeInstanceOf(SVGPathElement)
-    bar?.dispatchEvent(mouse(`mousemove`))
-    await tick()
+    await fire(bar, mouse(`mousemove`))
     const text = plot.querySelector(`.plot-tooltip`)?.textContent ?? ``
     expect(text).toContain(`Group A`)
     expect(text).toContain(`Count`)
@@ -688,8 +700,7 @@ describe(`BarPlot`, () => {
     })
     const first_bar = plot.querySelector(`path[role="button"]`)
     expect(first_bar).toBeInstanceOf(SVGPathElement)
-    first_bar?.dispatchEvent(mouse(`mousemove`))
-    await tick()
+    await fire(first_bar, mouse(`mousemove`))
     expect(plot.querySelector(`.custom-tooltip`)?.textContent).toBe(`x: 1, y: 10`)
   })
 
@@ -780,8 +791,7 @@ describe(`BarPlot`, () => {
         on_bar_hover: hover_fn,
       })
       const bar = query(plot, `path[role="button"]`)
-      bar.dispatchEvent(mouse(`mousemove`))
-      await tick()
+      await fire(bar, mouse(`mousemove`))
       expect(hover_fn).toHaveBeenCalled()
       const data = hover_fn.mock.calls[0][0]
       expect(data.category_label).toBe(`Alpha`)
@@ -916,18 +926,15 @@ describe(`BarPlot`, () => {
       })
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeInstanceOf(SVGGElement)
       const first_legend_item = plot.querySelector(`.legend-item`)
-      first_legend_item?.dispatchEvent(mouse(`mouseenter`))
-      await tick()
+      await fire(first_legend_item, mouse(`mouseenter`))
       expect(plot.querySelectorAll(`.bar-series`)[1]?.getAttribute(`opacity`)).toBe(`0.25`)
-      first_legend_item?.dispatchEvent(mouse(`click`))
-      await tick()
+      await fire(first_legend_item, mouse(`click`))
       expect(plot.querySelector(`.legend-item`)?.classList.contains(`hidden`)).toBe(true)
       expect(orientation === `vertical` ? input[1].y_axis : input[1].x_axis).toBeUndefined()
       expect(plot.querySelector(`g.${secondary_axis}-axis`)).toBeNull()
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(1)
       expect(plot.querySelector(`.bar-series`)?.getAttribute(`opacity`)).toBe(`1`)
-      plot.querySelector(`.legend-item`)?.dispatchEvent(mouse(`click`))
-      await tick()
+      await fire(plot.querySelector(`.legend-item`), mouse(`click`))
       expect(
         [...plot.querySelectorAll(`.legend-item`)].every(
           (item) => !item.classList.contains(`hidden`),

@@ -1,6 +1,7 @@
 // The numbers behind a chart: CSV tables and export filenames (figures go through io/export).
 
 import type { ExportSource } from '#lib/io/export.js'
+import { html_to_text } from '#lib/utils.js'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
 // === CSV ===
@@ -49,15 +50,25 @@ export function series_to_csv_rows(series: readonly CsvSeries[]): {
   return { header, rows }
 }
 
-// Slug safe for a filename across platforms, from a chart title or axis labels
-export const export_filename = (...parts: (string | undefined)[]): string =>
-  parts
-    .filter((part): part is string => Boolean(part?.trim()))
+// Slug safe for a filename across platforms, from a chart title or axis labels. Labels are
+// HTML (E<sub>F</sub>) and may be non-ASCII (Énergie, ΔE): an ASCII-only \w dropped those
+// letters. Capped at 100 UTF-8 bytes (filesystems allow 255, leaving the extension room), cut
+// by code point so no pair splits, after dropping leading dashes and before trailing ones.
+export const export_filename = (...parts: (string | undefined)[]): string => {
+  const slug = parts
+    .map((part) => html_to_text(part ?? ``).trim())
+    .filter(Boolean)
     .join(`-`)
-    .replaceAll(/[^\w.-]+/g, `-`)
+    .replaceAll(/[^\p{L}\p{M}\p{N}_.-]+/gu, `-`)
     .replaceAll(/-{2,}/g, `-`) // a label like "E (eV)" leaves a dash on both sides of ")"
-    .replaceAll(/^-+|-+$/g, ``)
-    .slice(0, 100) || `chart`
+  let [cut, n_bytes] = [``, 0]
+  for (const char of slug.replace(/^-+/, ``)) {
+    n_bytes += new TextEncoder().encode(char).length
+    if (n_bytes > 100) break
+    cut += char
+  }
+  return cut.replace(/-+$/, ``) || `chart`
+}
 
 type ChartExportSource = {
   title_config?: { text?: string } | null

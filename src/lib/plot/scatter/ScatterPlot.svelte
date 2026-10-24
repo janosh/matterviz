@@ -133,6 +133,7 @@
     drawn_xy,
     lookalike_legend_label,
     filter_series_to_ranges,
+    is_finite_num,
     legend_row_dedupe,
     materialize_series_points,
     project_line_points,
@@ -740,8 +741,6 @@
       ? selected_series_idx
       : assigned_series.findIndex(Boolean),
   )
-  const is_finite_num = (val: number | null | undefined): val is number =>
-    typeof val === `number` && Number.isFinite(val)
 
   // Marker appearance shared by the canvas and SVG paths so they can't drift. Per-series
   // constants are read once here (per-point reactive reads cost more than all geometry at

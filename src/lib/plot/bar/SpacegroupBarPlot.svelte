@@ -206,22 +206,31 @@
 {#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad }: UserContentProps)}
   <g class="crystal-system-overlays" pointer-events="none">
     {#each crystal_system_regions as region (region.system)}
+      <!-- the system's band of spacegroups across the plot area: columns when vertical, rows
+        (spacegroups ascending upwards) when horizontal -->
+      <rect
+        {...orientation === `vertical`
+          ? {
+              x: x_scale_fn(region.sg_start - 0.5),
+              y: pad.t,
+              width: x_scale_fn(region.sg_end + 0.5) - x_scale_fn(region.sg_start - 0.5),
+              height: height - pad.t - pad.b,
+            }
+          : {
+              x: pad.l,
+              y: y_scale_fn(region.sg_end + 0.5),
+              width: width - pad.l - pad.r,
+              height: y_scale_fn(region.sg_start - 0.5) - y_scale_fn(region.sg_end + 0.5),
+            }}
+        fill={region.color}
+        opacity="0.15"
+        stroke={region.color}
+        stroke-width="1"
+        stroke-opacity="0.3"
+      />
       {#if orientation === `vertical`}
-        {@const x_start = x_scale_fn(region.sg_start - 0.5)}
-        {@const x_end = x_scale_fn(region.sg_end + 0.5)}
-        {@const x_center = (x_start + x_end) / 2}
-        {@const rect_width = x_end - x_start}
-        <rect
-          x={x_start}
-          y={pad.t}
-          width={rect_width}
-          height={height - pad.t - pad.b}
-          fill={region.color}
-          opacity="0.15"
-          stroke={region.color}
-          stroke-width="1"
-          stroke-opacity="0.3"
-        />
+        {@const x_center =
+          (x_scale_fn(region.sg_start - 0.5) + x_scale_fn(region.sg_end + 0.5)) / 2}
         <!-- Crystal system label (rotated 90 degrees) at top edge -->
         <text
           x={x_center}
@@ -249,21 +258,8 @@
           </text>
         {/if}
       {:else}
-        {@const y_start = y_scale_fn(region.sg_end + 0.5)}
-        {@const y_end = y_scale_fn(region.sg_start - 0.5)}
-        {@const y_center = (y_start + y_end) / 2}
-        {@const rect_height = y_end - y_start}
-        <rect
-          x={pad.l}
-          y={y_start}
-          width={width - pad.l - pad.r}
-          height={rect_height}
-          fill={region.color}
-          opacity="0.15"
-          stroke={region.color}
-          stroke-width="1"
-          stroke-opacity="0.3"
-        />
+        {@const y_center =
+          (y_scale_fn(region.sg_end + 0.5) + y_scale_fn(region.sg_start - 0.5)) / 2}
         <!-- Crystal system label (horizontal) at right edge -->
         <text
           x={width - pad.r - 8}

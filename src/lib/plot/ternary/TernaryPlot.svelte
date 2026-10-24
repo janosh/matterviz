@@ -46,6 +46,7 @@
     resolve_legend_visibility,
   } from '#lib/plot/core/utils/series-visibility.js'
   import ScatterPoint from '#lib/plot/scatter/ScatterPoint.svelte'
+  import { finite_or_null } from '#lib/plot/scatter/scatter-data.js'
   import type { TernaryPointProps, TernarySeries } from '#lib/plot/ternary/ternary.js'
   import {
     ternary_fractions,
@@ -165,11 +166,6 @@
   // `point_style` is one style for the series or one per point
   const style_at = (srs: TernarySeries<Metadata>, point_idx: number): PointStyle =>
     (Array.isArray(srs.point_style) ? srs.point_style[point_idx] : srs.point_style) ?? {}
-  // a NaN color value has no color: fall back to the series color like null does
-  const color_value_at = (srs: TernarySeries<Metadata>, point_idx: number): number | null => {
-    const value = srs.color_values?.[point_idx]
-    return typeof value === `number` && Number.isFinite(value) ? value : null
-  }
   let placed = $derived.by(() => {
     try {
       const groups = series_in.map((srs, series_idx) =>
@@ -183,7 +179,8 @@
             point_idx,
             fractions,
             xy: ternary_to_xy(fractions),
-            color_value: color_value_at(srs, point_idx),
+            // a NaN color value has no color: the series color, like null
+            color_value: finite_or_null(srs.color_values?.[point_idx]),
             style: style_at(srs, point_idx),
           }
         }),

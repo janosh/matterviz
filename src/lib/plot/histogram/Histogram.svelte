@@ -446,7 +446,8 @@
     if (!key) return null
     const hist = histogram_bins.find((binned) => binned.series_idx === key.series_idx)
     const bin = hist?.bins[key.bin_idx]
-    return hist && bin ? bar_data(hist, bin) : null
+    // an empty bin draws no bar, so an emptied one's tooltip closes like a removed series'
+    return hist && bin?.count ? bar_data(hist, bin) : null
   }
   const hover_info = $derived(bin_info(pin.shown(hover_key)))
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
@@ -545,7 +546,8 @@
           {@const bar_y = Math.min(baseline, value_px)}
           {@const bar_width = Math.max(1, Math.abs(x1_px - x0_px))}
           {@const bar_height = Math.abs(baseline - value_px)}
-          {#if bar_height > 0}
+          <!-- no bar for an empty bin even with 0 off-axis, as bin_info gives it no tooltip -->
+          {#if bin.count !== 0 && bar_height > 0}
             <path
               d={bar_path(
                 bar_x,

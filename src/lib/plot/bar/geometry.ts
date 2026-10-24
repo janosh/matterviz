@@ -5,6 +5,7 @@ import type { Point2D } from '#lib/math.js'
 import type { Rect } from '#lib/plot/core/layout.js'
 import { process_prop } from '#lib/plot/core/data-transform.js'
 import type { BarMode, InternalPoint, Orientation } from '#lib/plot/core/types.js'
+import { finite_or_null } from '#lib/plot/scatter/scatter-data.js'
 import type { GroupInfo, NumericBarSeries } from './data'
 
 // Point with computed screen coordinates plus original data values
@@ -39,8 +40,8 @@ export function compute_line_points<Metadata = Record<string, unknown>>(opts: {
         data_x: x_val,
         data_y: y_val,
         idx,
-        color_value: srs.color_values?.[idx] ?? null,
-        size_value: srs.size_values?.[idx] ?? null,
+        color_value: finite_or_null(srs.color_values?.[idx]),
+        size_value: finite_or_null(srs.size_values?.[idx]),
         point_style: process_prop(srs.point_style, idx),
         point_hover: process_prop(srs.point_hover, idx),
         point_label: process_prop(srs.point_label, idx),
