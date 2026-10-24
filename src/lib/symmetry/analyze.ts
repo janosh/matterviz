@@ -255,13 +255,27 @@ export const spacegroup_settings = (spacegroup_number: number): MoyoHallSymbolEn
   return wasm_ready ? hall_symbol_entries_from_number(spacegroup_number) : []
 }
 
-// Cell described by a MoyoCell (std_cell or prim_std_cell) as a Crystal. moyo-wasm uses the
-// same row-major serialization for output as for input, so the flat basis is row-major with
-// each row a lattice vector. `bonds` are dropped: site indices change under any cell
-// transform, so stale bond indices would mis-render. `charge` is per cell, so it scales by
-// the new cell's site count relative to the original's: an exact rational ratio, where the
-// volume ratio carried float noise into the integer charge bond-order perception looks up.
-const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
+export type CellType = `original` | `conventional` | `primitive`
+
+// The structure in the requested cell (moyo's std_cell or prim_std_cell). Unchanged for
+// `original` and while no symmetry data is available yet. Persisted settings are validated in
+// #lib/settings/viewer-state, so any other cell_type reaching here is a caller bug. moyo-wasm
+// serializes the output basis like the input one: row-major, each row a lattice vector.
+// `bonds` are dropped: site indices change under any cell transform, so stale bond indices
+// would mis-render. `charge` is per cell, so it scales by the new cell's site count relative
+// to the analyzed input cell's, which counts merged split-partial sites once as moyo's cells
+// do: an exact rational ratio, where the volume ratio carried float noise into the integer
+// charge bond-order perception looks up.
+export const transform_cell = (
+  structure: Crystal,
+  cell_type: CellType,
+  sym_data: SymmetryDataset | null,
+): Crystal => {
+  if (!sym_data || cell_type === `original`) return structure
+  const cell = { conventional: sym_data.std_cell, primitive: sym_data.prim_std_cell }[
+    cell_type
+  ]
+  if (!cell) throw new Error(`Unknown cell_type "${cell_type}"`)
   const matrix = math.vec9_to_mat3x3([...cell.lattice.basis])
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const sites = cell.positions.map((abc, idx) => {
@@ -271,31 +285,14 @@ const moyo_cell_to_structure = (cell: MoyoCell, original: Crystal): Crystal => {
     const wrapped_abc = wrap_to_unit_cell(abc)
     return make_site(element, wrapped_abc, frac_to_cart(wrapped_abc), element)
   })
-  const { bonds: _bonds, ...properties } = original.properties ?? {}
+  const { charge, id, lattice, properties: all_properties } = structure
+  const { bonds: _bonds, ...properties } = all_properties ?? {}
+  const n_input = sym_data.input_cell.positions.length
   return {
-    lattice: { matrix, pbc: original.lattice.pbc, ...math.calc_lattice_params(matrix) },
+    lattice: { matrix, pbc: lattice.pbc, ...math.calc_lattice_params(matrix) },
     sites,
-    charge:
-      original.charge && (original.charge * cell.positions.length) / original.sites.length,
-    id: original.id,
+    charge: charge && (charge * cell.positions.length) / n_input,
+    id,
     ...(Object.keys(properties).length > 0 ? { properties } : {}),
   }
-}
-
-export type CellType = `original` | `conventional` | `primitive`
-
-// The structure in the requested cell. Unchanged for `original` and while no symmetry data is
-// available yet. Persisted settings are validated in #lib/settings/viewer-state, so any other
-// cell_type reaching here is a caller bug.
-export const transform_cell = (
-  structure: Crystal,
-  cell_type: CellType,
-  sym_data: MoyoDataset | null,
-): Crystal => {
-  if (!sym_data || cell_type === `original`) return structure
-  const cell = { conventional: sym_data.std_cell, primitive: sym_data.prim_std_cell }[
-    cell_type
-  ]
-  if (!cell) throw new Error(`Unknown cell_type "${cell_type}"`)
-  return moyo_cell_to_structure(cell, structure)
 }
