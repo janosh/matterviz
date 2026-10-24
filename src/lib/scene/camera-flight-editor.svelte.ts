@@ -15,12 +15,7 @@ type FlightDraft = {
 // Each view owns its thumbnail; immutable drafts keep the pair together through edits and undo.
 export function create_camera_flight_editor() {
   let history = $state.raw<FlightDraft[]>([
-    {
-      views: [],
-      interpolation: `smooth`,
-      duration: 10,
-      automatic: true,
-    },
+    { views: [], interpolation: `smooth`, duration: 10, automatic: true },
   ])
   let cursor = $state(0)
   let selected = $state(-1)
@@ -100,9 +95,7 @@ export function create_camera_flight_editor() {
       if (from === to || to < 0 || to >= draft.views.length) return
       const views = [...draft.views]
       views.splice(to, 0, ...views.splice(from, 1))
-      commit({
-        views: views.map((view, idx) => ({ ...view, time: draft.views[idx].time })),
-      })
+      commit({ views: views.map((view, idx) => ({ ...view, time: draft.views[idx].time })) })
       selected = to
     },
     set_duration(duration: number) {

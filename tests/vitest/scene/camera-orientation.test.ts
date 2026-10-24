@@ -12,6 +12,7 @@ import { is_valid_zone_axis, zone_axis_direction } from '#lib/scene/zone-axis.js
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
 import { stub_reduced_motion } from '../setup'
+import { cubic_matrix } from '../test-fixtures'
 
 // Deliberately triclinic (no 90-degree angle) so direct and reciprocal directions genuinely
 // differ — a cubic-only test cannot tell the two conventions apart.
@@ -20,11 +21,7 @@ const triclinic: Matrix3x3 = [
   [1.1, 5.3, 0],
   [0.7, 1.9, 6.1],
 ]
-const cubic: Matrix3x3 = [
-  [3.5, 0, 0],
-  [0, 3.5, 0],
-  [0, 0, 3.5],
-]
+const cubic = cubic_matrix(3.5)
 
 // Reference directions from numpy: [uvw] as unit(indices @ A), (hkl) as unit(indices @ inv(A).T).
 // The (hkl) values were independently confirmed against the plane through the axis intercepts
@@ -99,9 +96,7 @@ describe(`zone axis directions`, () => {
     `resolves triclinic %s direction: %s`,
     (mode, _name, indices, expected) => {
       const actual = zone_axis_direction(triclinic, indices, mode)
-      for (const [idx, component] of expected.entries()) {
-        expect(actual[idx]).toBeCloseTo(component, 11)
-      }
+      expect(actual).toEqual(expected.map((component) => expect.closeTo(component, 11)))
       expect(Math.hypot(...actual)).toBeCloseTo(1, 14)
     },
   )
@@ -144,10 +139,8 @@ describe(`zone axis directions`, () => {
       const scaled = (factor: number) =>
         zone_axis_direction(triclinic, indices.map((index) => index * factor) as Vec3, `uvw`)
       const [base, doubled, negated] = [1, 2, -1].map(scaled)
-      for (const [idx, component] of base.entries()) {
-        expect(doubled[idx]).toBeCloseTo(component, 14)
-        expect(negated[idx]).toBeCloseTo(-component, 14)
-      }
+      expect(doubled).toEqual(base.map((component) => expect.closeTo(component, 14)))
+      expect(negated).toEqual(base.map((component) => expect.closeTo(-component, 14)))
       expect(Math.abs(dot(base, doubled) - 1)).toBeLessThan(DIRECTION_TOL)
     },
   )
@@ -307,9 +300,9 @@ describe(`camera fly-to`, () => {
         swept_deg = next_deg
       }
       expect(swept_deg).toBeCloseTo(90, 1)
-      for (const [idx, axis] of ([`x`, `y`, `z`] as const).entries()) {
-        expect(offset()[axis]).toBeCloseTo(expected_midpoint[idx], 2)
-      }
+      expect(to_array(offset())).toEqual(
+        expected_midpoint.map((val) => expect.closeTo(val, 2)),
+      )
       fly.step(1) // lands on `dir` (up to the 1e-3 pole nudge for +y to -y)
       expect(to_array(offset().normalize())).toEqual(dir.map((val) => expect.closeTo(val, 2)))
     },

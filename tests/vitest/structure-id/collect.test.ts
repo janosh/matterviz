@@ -163,12 +163,7 @@ describe(`collect_structure_id_sweep`, () => {
     expect(sweep.results[0].populations).toEqual({ other: 0, fcc: 32, hcp: 0, bcc: 0, ico: 0 })
     // skip_csp is forwarded, so no frame carries centrosymmetry
     expect(sweep.results.every(({ centrosymmetry }) => centrosymmetry === null)).toBe(true)
-    expect(seen).toEqual([
-      [1, 4],
-      [2, 4],
-      [3, 4],
-      [4, 4],
-    ])
+    expect(seen).toEqual([1, 2, 3, 4].map((done) => [done, 4]))
   })
 
   it.each([

@@ -28,11 +28,8 @@ import {
 // Non-periodic grids place point i at frac i/(n-1); periodic at i/n.
 const cubic = cubic_matrix(10)
 // Hexagonal-like non-orthogonal lattice (60° between a and b)
-const hexagonal: Matrix3x3 = [
-  [4, 0, 0],
-  [2, 2 * Math.sqrt(3), 0],
-  [0, 0, 6],
-]
+// oxfmt-ignore
+const hexagonal: Matrix3x3 = [[4, 0, 0], [2, 2 * Math.sqrt(3), 0], [0, 0, 6]]
 
 describe(`create_volume_sampler`, () => {
   test.each([
@@ -258,11 +255,8 @@ describe(`extract_volume_range`, () => {
   // Periodic 10-point grid: value at grid index ix (iy=iz=0) is ix/10
   const periodic_vol = () => linear_volume(10, cubic, true)
   // fractional window [min, max] along x over the full y and z extent
-  const x_window = (min: number, max: number): DisplayRange => [
-    [min, max],
-    [0, 1],
-    [0, 1],
-  ]
+  // oxfmt-ignore
+  const x_window = (min: number, max: number): DisplayRange => [[min, max], [0, 1], [0, 1]]
 
   test(`integer range reproduces tiled values on aligned sample points`, () => {
     const extracted = extract_volume_range(periodic_vol(), x_window(0, 2))
@@ -320,15 +314,8 @@ describe(`extract_volume_range`, () => {
   })
 
   test(`caps output resolution at the point budget`, () => {
-    const extracted = extract_volume_range(
-      periodic_vol(),
-      [
-        [0, 5],
-        [0, 5],
-        [0, 5],
-      ],
-      1000,
-    )
+    // oxfmt-ignore
+    const extracted = extract_volume_range(periodic_vol(), [[0, 5], [0, 5], [0, 5]], 1000)
     const [size_x, size_y, size_z] = extracted.dims
     expect(size_x * size_y * size_z).toBeLessThanOrEqual(1000)
     expect(Math.min(size_x, size_y, size_z)).toBeGreaterThanOrEqual(2)

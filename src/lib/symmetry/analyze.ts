@@ -22,10 +22,7 @@ import init, {
   wyckoff_positions,
 } from '@spglib/moyo-wasm'
 
-export type SymmetrySettings = {
-  symprec: number
-  algo: `Moyo` | `Spglib`
-}
+export type SymmetrySettings = { symprec: number; algo: `Moyo` | `Spglib` }
 export const default_sym_settings = {
   symprec: DEFAULTS.symmetry.symprec,
   algo: DEFAULTS.symmetry.algo,

@@ -8,7 +8,7 @@ import * as collect from '#lib/structure-id/collect.js'
 import type { StructureIdSweep } from '#lib/structure-id/collect.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { mount, tick, unmount } from 'svelte'
+import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, set_input } from '../setup'
 import { make_fcc } from './lattices'
@@ -42,6 +42,13 @@ vi.mock(`#lib/structure-id/StructureTypePlot.svelte`, async (import_original) =>
 })
 
 let mounted_component: ReturnType<typeof mount> | undefined
+const mount_pane = (props: ComponentProps<typeof TrajectoryStructureIdPane>) =>
+  (mounted_component = mount(TrajectoryStructureIdPane, { target: document.body, props }))
+// two analysed frames (0 and 10) of the all-fcc conventional cell
+const fcc_sweep = (): StructureIdSweep => {
+  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
+  return { frame_numbers: [0, 10], results: [fcc_result, fcc_result], frame_stride: 10 }
+}
 afterEach(async () => {
   if (mounted_component) await unmount(mounted_component)
   mounted_component = undefined
@@ -64,10 +71,7 @@ test(`passes the frame window, cap and skip_csp to the sweep, relays progress, s
     run: make_run(20),
     result: undefined as StructureIdSweep | undefined,
   })
-  mounted_component = mount(TrajectoryStructureIdPane, {
-    target: document.body,
-    props: bind_props({ pane_open: true }, state),
-  })
+  mount_pane(bind_props({ pane_open: true }, state))
   await settle()
   const controls = doc_query(`.trajectory-structure-id-controls`)
   // No position buffer: sampling uses the max-frames cap, without a stride or byte estimate.
@@ -81,14 +85,9 @@ test(`passes the frame window, cap and skip_csp to the sweep, relays progress, s
   )
   expect(max_frames.closest(`label`)?.textContent).toContain(`Max frames`)
   set_input(max_frames, `3`)
-  for (const [label, value] of [
-    // 1-based inclusive frames 3-18 are the 0-based window [2, 18)
-    [`Start frame`, `3`],
-    [`End frame`, `18`],
-  ]) {
-    const input = doc_query(`input[aria-label="${label}"]`, HTMLInputElement)
-    set_input(input, value)
-  }
+  // 1-based inclusive frames 3-18 are the 0-based window [2, 18)
+  set_input(doc_query(`input[aria-label="Start frame"]`, HTMLInputElement), `3`)
+  set_input(doc_query(`input[aria-label="End frame"]`, HTMLInputElement), `18`)
   await settle()
   expect(controls.textContent).toContain(`3 of 16 frames (every 6)`)
 
@@ -125,10 +124,7 @@ test(`keeps a caller-supplied result across mount; a failed sweep surfaces in th
     run: make_run(2),
     result: sweep_result,
   })
-  mounted_component = mount(TrajectoryStructureIdPane, {
-    target: document.body,
-    props: bind_props({ pane_open: true }, state),
-  })
+  mount_pane(bind_props({ pane_open: true }, state))
   await settle()
   expect(state.result).toEqual(sweep_result)
   const button = doc_query(`.trajectory-structure-id-controls button`, HTMLButtonElement)
@@ -139,18 +135,10 @@ test(`keeps a caller-supplied result across mount; a failed sweep surfaces in th
 })
 
 test(`hovering a structure type reports its atoms from the analysed frame nearest the one shown`, async () => {
-  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
   const on_atoms_hover = vi.fn()
   const state = $state({ current_frame_idx: 3 })
-  const result = {
-    frame_numbers: [0, 10],
-    results: [fcc_result, fcc_result],
-    frame_stride: 10,
-  }
-  mounted_component = mount(TrajectoryStructureIdPane, {
-    target: document.body,
-    props: bind_props({ pane_open: true, run: make_run(20), result, on_atoms_hover }, state),
-  })
+  const result = fcc_sweep()
+  mount_pane(bind_props({ pane_open: true, run: make_run(20), result, on_atoms_hover }, state))
   await settle()
   const fcc_item = [...document.querySelectorAll(`.legend-item`)].find((item) =>
     item.textContent?.includes(`FCC`),
@@ -181,22 +169,14 @@ test(`hovering a structure type reports its atoms from the analysed frame neares
 
 // The plot's Frame axis counts from 1 like the step input; clicks hand back 0-based indices
 test(`numbers plotted frames from 1 and seeks clicked frames 0-based`, async () => {
-  const fcc_result = calc_structure_id(make_fcc([1, 1, 1]), { skip_csp: true })
   const on_frame_select = vi.fn()
-  const result = {
-    frame_numbers: [0, 10],
-    results: [fcc_result, fcc_result],
-    frame_stride: 10,
-  }
-  mounted_component = mount(TrajectoryStructureIdPane, {
-    target: document.body,
-    props: {
-      pane_open: true,
-      run: make_run(20),
-      result,
-      current_frame_idx: 3,
-      on_frame_select,
-    },
+  const result = fcc_sweep()
+  mount_pane({
+    pane_open: true,
+    run: make_run(20),
+    result,
+    current_frame_idx: 3,
+    on_frame_select,
   })
   await settle()
   const { frame_labels, current_frame, on_frame_click } = plot_props.current ?? {}

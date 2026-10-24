@@ -15,10 +15,7 @@ export type CameraPose = {
   pan: Vec2
 }
 export type CameraKeyframe = CameraPose & { time: number }
-export type CameraFlight = {
-  keyframes: CameraKeyframe[]
-  interpolation: 'smooth' | 'linear'
-}
+export type CameraFlight = { keyframes: CameraKeyframe[]; interpolation: 'smooth' | 'linear' }
 
 const copy_pose = (pose: CameraPose): CameraPose => ({
   position: [...pose.position],
@@ -170,10 +167,7 @@ export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlig
 export const camera_flight_frame = (progress: number, start: number, end: number): number =>
   Math.round(lerp(start, end, clamp(progress, 0, 1)))
 
-type FlightControls = {
-  object: PerspectiveCamera | OrthographicCamera
-  target: Vector3
-}
+type FlightControls = { object: PerspectiveCamera | OrthographicCamera; target: Vector3 }
 
 // Owned by SceneCamera. A lease stops OrbitControls' update task as well as pointer input.
 export function create_camera_flight_controller(

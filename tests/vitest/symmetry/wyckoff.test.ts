@@ -13,7 +13,12 @@ import {
 } from '#lib/symmetry/wyckoff.js'
 import type { MoyoDataset, MoyoWyckoffPosition } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { cubic_matrix, make_crystal, make_wyckoff_dataset } from '../test-fixtures'
+import {
+  cubic_matrix,
+  FCC_FACE_CENTRES,
+  make_crystal,
+  make_wyckoff_dataset,
+} from '../test-fixtures'
 
 describe(`wyckoff_positions_from_moyo`, () => {
   // A plain MoyoDataset (straight from @spglib/moyo-wasm, never through analyze_structure) has
@@ -160,12 +165,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
       numbers: Array(48).fill(1),
       wyckoffs: Array(48).fill(`48a`),
       expected: [
-        {
-          wyckoff: `48a`,
-          elem: `H`,
-          abc: [0, 0, 0],
-          site_indices: Array.from({ length: 48 }, (_, idx) => idx),
-        },
+        { wyckoff: `48a`, elem: `H`, abc: [0, 0, 0], site_indices: [...Array(48).keys()] },
       ],
     },
     {
@@ -195,15 +195,7 @@ describe(`wyckoff_positions_from_moyo`, () => {
   test(`scales multiplicity by the std/input cell size ratio`, () => {
     const primitive_input = {
       input_cell: { positions: [[0, 0, 0]], numbers: [29] }, // Cu
-      std_cell: {
-        positions: [
-          [0, 0, 0],
-          [0, 0.5, 0.5],
-          [0.5, 0, 0.5],
-          [0.5, 0.5, 0],
-        ],
-        numbers: [29, 29, 29, 29],
-      },
+      std_cell: { positions: FCC_FACE_CENTRES, numbers: [29, 29, 29, 29] },
       wyckoffs: [`4a`],
       orbits: [0],
       site_symmetry_symbols: [`m-3m`],
@@ -219,113 +211,39 @@ describe(`wyckoff_positions_from_moyo`, () => {
 
 describe(`apply_symmetry_operations`, () => {
   const operations: Record<string, MoyoDataset[`operations`][number]> = {
-    identity: {
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      translation: [0, 0, 0],
-    },
-    inversion: {
-      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1],
-      translation: [0, 0, 0],
-    },
-    translation: {
-      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-      translation: [0.5, 0.5, 0.5],
-    },
-    rotation_90z: {
-      rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1],
-      translation: [0, 0, 0],
-    },
-    rotation_180z: {
-      rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1],
-      translation: [0, 0, 0],
-    },
-    rotation_270z: {
-      rotation: [0, -1, 0, 1, 0, 0, 0, 0, 1],
-      translation: [0, 0, 0],
-    },
-    mirror_x: {
-      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1],
-      translation: [0, 0, 0],
-    },
-    glide_x: {
-      rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1],
-      translation: [0.5, 0, 0],
-    },
+    identity: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] },
+    inversion: { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1], translation: [0, 0, 0] },
+    translation: { rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0.5, 0.5, 0.5] },
+    rotation_90z: { rotation: [0, 1, 0, -1, 0, 0, 0, 0, 1], translation: [0, 0, 0] },
+    rotation_180z: { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, 1], translation: [0, 0, 0] },
+    rotation_270z: { rotation: [0, -1, 0, 1, 0, 0, 0, 0, 1], translation: [0, 0, 0] },
+    mirror_x: { rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0, 0, 0] },
+    glide_x: { rotation: [-1, 0, 0, 0, 1, 0, 0, 0, 1], translation: [0.5, 0, 0] },
   }
 
+  // expected images in any order; their count pins the deduplication
   // oxfmt-ignore
-  test.each([
-    [
-      `identity operation`,
-      [0.25, 0.25, 0.25] as Vec3,
-      [operations.identity],
-      [[0.25, 0.25, 0.25]],
-      1,
-    ],
-    [
-      `inversion operation`,
-      [0.25, 0.25, 0.25] as Vec3,
-      [operations.identity, operations.inversion],
-      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
-      2,
-    ],
-    [
-      `translation operation`,
-      [0.25, 0.25, 0.25] as Vec3,
-      [operations.identity, operations.translation],
-      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],
-      2,
-    ],
-    [
-      `deduplication of equivalent positions`,
-      [0, 0, 0] as Vec3,
-      [operations.identity, operations.identity],
-      [[0, 0, 0]],
-      1,
-    ],
-    [
-      `complex rotation matrix`,
-      [1, 0, 0] as Vec3,
-      [operations.rotation_90z],
-      [[0, 0, 0]], // [1,0,0] * rotation = [0,-1,0] -> [0,0,0] after wrapping
-      1,
-    ],
-    [
-      `multiple operations with deduplication`,
-      [0.5, 0.5, 0.5] as Vec3,
-      [operations.identity, operations.inversion, operations.translation],
-      [[0.5, 0.5, 0.5], [0, 0, 0]],
-      2,
-    ],
-    [
-      `4-fold orbit about z`,
-      [0.25, 0, 0] as Vec3,
-      [
-        operations.identity,
-        operations.rotation_90z,
-        operations.rotation_180z,
-        operations.rotation_270z,
-      ],
-      [[0.25, 0, 0], [0, 0.25, 0], [0.75, 0, 0], [0, 0.75, 0]],
-      4,
-    ],
-    [
-      `mirror perpendicular to x`,
-      [0.25, 0.5, 0.75] as Vec3,
-      [operations.identity, operations.mirror_x],
-      [[0.25, 0.5, 0.75], [0.75, 0.5, 0.75]],
-      2,
-    ],
-    [
-      `a-glide (mirror + half translation)`,
-      [0.125, 0.25, 0.25] as Vec3,
-      [operations.identity, operations.glide_x],
-      [[0.125, 0.25, 0.25], [0.375, 0.25, 0.25]], // -0.125 + 0.5 = 0.375
-      2,
-    ],
-  ])(`handles %s`, (_, position, ops, expected_positions, expected_length) => {
-    const result = apply_symmetry_operations(position, ops)
-    expect(result).toHaveLength(expected_length)
+  test.each<[string, Vec3, (keyof typeof operations)[], Vec3[]]>([
+    [`identity operation`, [0.25, 0.25, 0.25], [`identity`], [[0.25, 0.25, 0.25]]],
+    [`inversion operation`, [0.25, 0.25, 0.25], [`identity`, `inversion`],
+      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]]],
+    [`translation operation`, [0.25, 0.25, 0.25], [`identity`, `translation`],
+      [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]]],
+    [`deduplication of equivalent positions`, [0, 0, 0], [`identity`, `identity`], [[0, 0, 0]]],
+    // [1,0,0] * rotation = [0,-1,0] -> [0,0,0] after wrapping
+    [`complex rotation matrix`, [1, 0, 0], [`rotation_90z`], [[0, 0, 0]]],
+    [`multiple operations with deduplication`, [0.5, 0.5, 0.5], [`identity`, `inversion`, `translation`],
+      [[0.5, 0.5, 0.5], [0, 0, 0]]],
+    [`4-fold orbit about z`, [0.25, 0, 0], [`identity`, `rotation_90z`, `rotation_180z`, `rotation_270z`],
+      [[0.25, 0, 0], [0, 0.25, 0], [0.75, 0, 0], [0, 0.75, 0]]],
+    [`mirror perpendicular to x`, [0.25, 0.5, 0.75], [`identity`, `mirror_x`],
+      [[0.25, 0.5, 0.75], [0.75, 0.5, 0.75]]],
+    // -0.125 + 0.5 = 0.375
+    [`a-glide (mirror + half translation)`, [0.125, 0.25, 0.25], [`identity`, `glide_x`],
+      [[0.125, 0.25, 0.25], [0.375, 0.25, 0.25]]],
+  ])(`handles %s`, (_, position, op_names, expected_positions) => {
+    const result = apply_symmetry_operations(position, op_names.map((name) => operations[name]))
+    expect(result).toHaveLength(expected_positions.length)
     expect(result).toEqual(expect.arrayContaining(expected_positions))
   })
 
@@ -363,10 +281,7 @@ describe(`apply_symmetry_operations`, () => {
 
 describe(`map_wyckoff_to_all_atoms`, () => {
   const mock_structure = (sites: { abc: Vec3; element: ElementSymbol }[]): Crystal =>
-    make_crystal(
-      1,
-      sites.map(({ element, abc }) => ({ element, abc })),
-    )
+    make_crystal(1, sites)
 
   const mock_sym_data = (): MoyoDataset =>
     ({
@@ -375,9 +290,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
         { rotation: [-1, 0, 0, 0, -1, 0, 0, 0, -1], translation: [0, 0, 0] }, // Inversion
       ],
       std_cell: {
-        lattice: {
-          basis: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-        },
+        lattice: { basis: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
         positions: [],
         numbers: [],
       },
@@ -411,10 +324,7 @@ describe(`map_wyckoff_to_all_atoms`, () => {
   test(`handles different elements correctly`, () => {
     const original = mock_structure([
       { abc: [0, 0, 0], element: `H` },
-      {
-        abc: [0.5, 0.5, 0.5],
-        element: `O`,
-      },
+      { abc: [0.5, 0.5, 0.5], element: `O` },
     ])
     const displayed = mock_structure([
       { abc: [0, 0, 0], element: `H` },

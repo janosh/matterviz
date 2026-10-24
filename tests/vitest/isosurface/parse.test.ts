@@ -11,7 +11,7 @@ import type { VolumetricFileData } from '#lib/isosurface/types.js'
 import type { Vec3 } from '#lib/math.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { normalize_scientific_notation } from '#lib/utils.js'
-import { grid_value, read_maybe_gz } from '../test-fixtures'
+import { grid_value, make_grid, read_maybe_gz } from '../test-fixtures'
 import { create_volume_sampler } from '#lib/isosurface/sampling.js'
 // spies are per-test: a bare `warn.mockRestore()` at a test's end is skipped by the first
 // failing assertion above it, silencing console.warn for the rest of the file
@@ -68,32 +68,14 @@ describe(`parse_decimal_token`, () => {
   // Fast path (integer mantissa < 2^53, |exp10| <= 22) and every fallback trigger must
   // agree with Number(normalize_scientific_notation(token)) bit for bit (Object.is, so
   // -0 and NaN are distinguished)
-  const fast_path = [
-    `0`,
-    `-0`,
-    `1`,
-    `+1`,
-    `.5`,
-    `5.`,
-    `1.e2`,
-    `+.5e-1`,
-    `0.1`,
-    `0.7`,
-    `3.14159265358979`,
-  ]
+  // oxfmt-ignore
+  const fast_path = [`0`, `-0`, `1`, `+1`, `.5`, `5.`, `1.e2`, `+.5e-1`, `0.1`, `0.7`, `3.14159265358979`]
   const fortran = [`0.12345678901E+02`, `-1.5D+02`, `1d5`, `1D-05`, `1.0D-04`]
   // mantissas past 2^53, |exp10| past 22 and the ends of the float range
+  // oxfmt-ignore
   const fallback = [
-    `9.42600000000E-125`,
-    `123456789012345678`,
-    `9007199254740993`,
-    `1e23`,
-    `1e-23`,
-    `1e22`,
-    `1e-22`,
-    `0.0000000000000000000001`,
-    `1.7976931348623157e308`,
-    `5e-324`,
+    `9.42600000000E-125`, `123456789012345678`, `9007199254740993`, `1e23`, `1e-23`, `1e22`,
+    `1e-22`, `0.0000000000000000000001`, `1.7976931348623157e308`, `5e-324`,
   ]
   const invalid = [`abc`, `1.2.3`, `1e`, `e5`, `.e2`, `1e+`, `--1`, `1-2`, `−1.5`, `1*^5`]
   test.each([...fast_path, ...fortran, ...fallback, ...invalid])(
@@ -456,13 +438,9 @@ describe(`parse_cube`, () => {
     expect(result?.structure.lattice?.a).toBeCloseTo(2 * 1.889726 * 0.529177210544, 10)
   })
 
-  test.each([
-    [1, `H`],
-    [6, `C`],
-    [26, `Fe`],
-    [79, `Au`],
-    [118, `Og`],
-  ])(`maps atomic number %i to %s`, (z_num: number, expected: string) => {
+  // oxfmt-ignore
+  const elements: [number, string][] = [[1, `H`], [6, `C`], [26, `Fe`], [79, `Au`], [118, `Og`]]
+  test.each(elements)(`maps atomic number %i to %s`, (z_num, expected) => {
     const result = parse_cube(make_cube({ n_atoms: 1, atoms: [[z_num, 0, 0, 0, 0]] }))
     expect(result.structure.sites[0].species[0].element).toBe(expected)
   })
@@ -587,17 +565,12 @@ describe(`parse_cube geometry`, () => {
     const field = (coord_x: number, coord_y: number, coord_z: number) =>
       coord_x + 2 * coord_y + 3 * coord_z
     // z-fastest, like the .cube data block
-    const values = Array.from({ length: n_pts ** 3 }, (_, idx) => {
-      const grid_idx = [
-        Math.floor(idx / n_pts ** 2),
-        Math.floor(idx / n_pts) % n_pts,
-        idx % n_pts,
-      ]
+    const values = make_grid(n_pts, n_pts, n_pts, (...grid_idx) => {
       const [coord_x, coord_y, coord_z] = grid_idx.map(
         (val, axis) => origin[axis] + val * voxel,
       )
-      return field(coord_x, coord_y, coord_z).toFixed(6)
-    })
+      return field(coord_x, coord_y, coord_z)
+    }).flat(2)
     const atoms = [
       [6, 0, 0.75, -0.25, 1.25], // on grid points
       [1, 0, -1.25, -1.25, -1.25], // first corner
@@ -611,7 +584,7 @@ describe(`parse_cube geometry`, () => {
         voxels: cubic_voxels(voxel),
         n_atoms: atoms.length,
         atoms,
-        data: values.join(`  `),
+        data: values.map((val) => val.toFixed(6)).join(`  `),
       }),
     )
     const [volume] = result.volumes

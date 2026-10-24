@@ -415,10 +415,7 @@ export function map_wyckoff_to_all_atoms(
       }
 
       if (matched.size > 0) any_matched = true
-      return {
-        ...wyckoff_pos,
-        site_indices: math.sorted_numbers(matched),
-      }
+      return { ...wyckoff_pos, site_indices: math.sorted_numbers(matched) }
     })
     return any_matched || displayed_structure.sites.length === 0 ? rows : null
   }

@@ -10,11 +10,7 @@ import * as THREE from 'three/webgpu'
 // Structural rather than the concrete OrbitControls class: Threlte's <OrbitControls> `ref` and
 // three's own export are separate declarations of the same object, and only these three members
 // are needed to orbit a camera around a target.
-export type FlyToControls = {
-  target: THREE.Vector3
-  enabled: boolean
-  update: () => unknown
-}
+export type FlyToControls = { target: THREE.Vector3; enabled: boolean; update: () => unknown }
 
 type FlyToHooks = {
   // Read as getters, not values: the camera and controls are bound asynchronously and can be

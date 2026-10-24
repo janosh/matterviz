@@ -7,7 +7,7 @@ import {
 } from '#lib/symmetry/analyze.js'
 import type { MoyoCell } from '@spglib/moyo-wasm'
 import { describe, expect, test } from 'vitest'
-import { make_crystal } from '../test-fixtures'
+import { cubic_matrix, make_crystal } from '../test-fixtures'
 
 // Helper to create a MoyoCell
 const make_moyo_cell = (
@@ -66,11 +66,7 @@ describe(`moyo cell → structure`, () => {
 
     const result = to_structure(moyo_cell, original_2d)
 
-    expect(result.lattice.matrix).toEqual([
-      [5, 0, 0],
-      [0, 5, 0],
-      [0, 0, 5],
-    ])
+    expect(result.lattice.matrix).toEqual(cubic_matrix(5))
     const [length, angle] = [expect.closeTo(5, 5), expect.closeTo(90, 5)]
     expect(result.lattice).toMatchObject({ a: length, b: length, c: length })
     expect(result.lattice).toMatchObject({ alpha: angle, beta: angle, gamma: angle })

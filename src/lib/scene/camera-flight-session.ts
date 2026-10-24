@@ -26,13 +26,7 @@ export function create_camera_flight_session(hooks: {
   let operation: AbortController | undefined
   let queue: Promise<unknown> = Promise.resolve()
   let activity: FlightActivity = null
-  let origin:
-    | {
-        pose: CameraPose
-        frame?: number
-        resume?: () => void
-      }
-    | undefined
+  let origin: { pose: CameraPose; frame?: number; resume?: () => void } | undefined
   const notify = () => hooks.on_change(activity, Boolean(origin))
   const cancel = () => {
     operation?.abort()

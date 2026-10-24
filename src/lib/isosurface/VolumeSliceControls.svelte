@@ -81,9 +81,7 @@
       active_volume?.data_range.min ?? 0,
       active_volume?.data_range.max ?? 1,
     ]
-    update_color_scale({
-      value_range: bound_idx === 0 ? [value, maximum] : [minimum, value],
-    })
+    update_color_scale({ value_range: bound_idx === 0 ? [value, maximum] : [minimum, value] })
   }
 
   const cross_section_settings = $derived(

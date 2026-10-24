@@ -7,6 +7,7 @@ import { calc_lattice_params, create_cart_to_frac, create_frac_to_cart } from '#
 import type { Crystal } from '#lib/structure/index.js'
 import { make_site } from '#lib/structure/site.js'
 import { make_rng } from '../numeric-helpers'
+import { cubic_matrix } from '../test-fixtures'
 
 export const FCC_LATTICE_CONST = 3.615 // Å, Cu
 export const BCC_LATTICE_CONST = 2.8665 // Å, alpha-Fe
@@ -49,12 +50,6 @@ function build_supercell(
   }
 }
 
-const cubic = (lattice_const: number): Matrix3x3 => [
-  [lattice_const, 0, 0],
-  [0, lattice_const, 0],
-  [0, 0, lattice_const],
-]
-
 const FCC_BASIS: Vec3[] = [
   [0, 0, 0],
   [0, 0.5, 0.5],
@@ -74,12 +69,12 @@ const HCP_BASIS: Vec3[] = [
 export const make_fcc = (
   reps: [number, number, number] = [4, 4, 4],
   lattice_const = FCC_LATTICE_CONST,
-): Crystal => build_supercell(cubic(lattice_const), FCC_BASIS, reps, `Cu`)
+): Crystal => build_supercell(cubic_matrix(lattice_const), FCC_BASIS, reps, `Cu`)
 
 export const make_bcc = (
   reps: [number, number, number] = [4, 4, 4],
   lattice_const = BCC_LATTICE_CONST,
-): Crystal => build_supercell(cubic(lattice_const), BCC_BASIS, reps, `Fe`)
+): Crystal => build_supercell(cubic_matrix(lattice_const), BCC_BASIS, reps, `Fe`)
 
 export function make_hcp(
   reps: [number, number, number] = [4, 4, 4],

@@ -24,10 +24,10 @@ const hex = (len: number, gamma = 120): Matrix2x2 => [
   [len, 0],
   [len * Math.cos(math.to_radians(gamma)), len * Math.sin(math.to_radians(gamma))],
 ]
-const OBLIQUE: Matrix2x2 = [
-  [3.1, 0],
-  [-0.9, 4.2],
-]
+// oxfmt-ignore
+const OBLIQUE: Matrix2x2 = [[3.1, 0], [-0.9, 4.2]]
+// oxfmt-ignore
+const OBLIQUE_FILM: Matrix2x2 = [[2.7, 0], [1.1, 3.9]]
 // fcc(100) 1×1 surface meshes: square of side a/√2
 const CU_100 = square(3.615 / Math.SQRT2)
 const AG_100 = square(4.086 / Math.SQRT2)
@@ -95,11 +95,8 @@ const fold = (degrees: number, period: number): number =>
 
 describe(`surface_frame`, () => {
   // a mesh rotated arbitrarily in 3D, with a c that is not normal to it
-  const rotation: Matrix3x3 = [
-    [0.36, 0.48, -0.8],
-    [-0.8, 0.6, 0],
-    [0.48, 0.64, 0.6],
-  ]
+  // oxfmt-ignore
+  const rotation: Matrix3x3 = [[0.36, 0.48, -0.8], [-0.8, 0.6, 0], [0.48, 0.64, 0.6]]
   test.each([
     [`square`, square(2.5)],
     [`hexagonal`, hex(2.9)],
@@ -116,11 +113,8 @@ describe(`surface_frame`, () => {
   })
 
   test(`collinear in-plane vectors throw with the vectors`, () => {
-    const lattice: Matrix3x3 = [
-      [2, 0, 0],
-      [4, 0, 0],
-      [0, 0, 5],
-    ]
+    // oxfmt-ignore
+    const lattice: Matrix3x3 = [[2, 0, 0], [4, 0, 0], [0, 0, 5]]
     const crystal = make_crystal(lattice, [[`Cu`, [0, 0, 0]]])
     expect(() => surface_frame(crystal)).toThrow(`a=[2,0,0] and b=[4,0,0] are degenerate`)
   })
@@ -270,32 +264,13 @@ describe(`match_lattices`, () => {
   // differently: 60.1° vs 119.9° (or 75° vs 105°) differ by far more than angle_tol, so only
   // the (v, −u) or (u, v − u) tie partner of the film basis finds the 1×1 match.
   const rhombic = (gamma: number): Matrix2x2 => hex(2.6, gamma)
+  // oxfmt-ignore
   test.each([
     [`hexagonal 60.1° on 119.9°`, rhombic(60.1), rhombic(119.9)],
     [`hexagonal 119.9° on 60.1°`, rhombic(119.9), rhombic(60.1)],
     [`rhombic 75° on 105°`, rhombic(75), rhombic(105)],
-    [
-      `centred rectangular b_x = +0.4999 on -0.4999`,
-      [
-        [1, 0],
-        [0.4999, 2],
-      ],
-      [
-        [1, 0],
-        [-0.4999, 2],
-      ],
-    ],
-    [
-      `centred rectangular b_x = -0.4999 on +0.4999`,
-      [
-        [1, 0],
-        [-0.4999, 2],
-      ],
-      [
-        [1, 0],
-        [0.4999, 2],
-      ],
-    ],
+    [`centred rectangular b_x = +0.4999 on -0.4999`, [[1, 0], [0.4999, 2]], [[1, 0], [-0.4999, 2]]],
+    [`centred rectangular b_x = -0.4999 on +0.4999`, [[1, 0], [-0.4999, 2]], [[1, 0], [0.4999, 2]]],
   ] satisfies [string, Matrix2x2, Matrix2x2][])(
     `%s: tie partner finds the 1×1 match`,
     (_, film, sub_mesh) => {
@@ -343,33 +318,13 @@ describe(`match_lattices`, () => {
 
   // unit_cell_match: the same tolerances on the primitive meshes, a → a and b → b only
   const identity = { film_matrix: square(1), substrate_matrix: square(1) }
+  // oxfmt-ignore
   test.each([
     [`identical`, SQUARE, 0],
     // uniaxial: von Mises strain = |ε_xx| = 1 − 1 / (1 + inside)
-    [
-      `a stretched inside length_tol`,
-      [
-        [1 + inside, 0],
-        [0, 1],
-      ],
-      inside / (1 + inside),
-    ],
-    [
-      `a stretched outside length_tol`,
-      [
-        [1 + outside, 0],
-        [0, 1],
-      ],
-      null,
-    ],
-    [
-      `b stretched outside length_tol`,
-      [
-        [1, 0],
-        [0, 1 + outside],
-      ],
-      null,
-    ],
+    [`a stretched inside length_tol`, [[1 + inside, 0], [0, 1]], inside / (1 + inside)],
+    [`a stretched outside length_tol`, [[1 + outside, 0], [0, 1]], null],
+    [`b stretched outside length_tol`, [[1, 0], [0, 1 + outside]], null],
     [`angle outside angle_tol`, tilted(outside), null],
   ] satisfies [string, Matrix2x2, number | null][])(
     `unit_cell_match on a square substrate, %s`,
@@ -417,12 +372,8 @@ describe(`match_lattices`, () => {
   // Only equal principal strains merge, and only into a cell count they divide: matches a
   // hair apart in strain, or at the same strain on a non-multiple cell, stay distinct
   test(`keeps near-equal strains and equal strains on non-multiple cells`, () => {
-    const film: Matrix2x2 = [
-      [2.7, 0],
-      [1.1, 3.9],
-    ]
-    const matches = match_lattices(OBLIQUE, film)
-    expect_consistent(matches, OBLIQUE, film)
+    const matches = match_lattices(OBLIQUE, OBLIQUE_FILM)
+    expect_consistent(matches, OBLIQUE, OBLIQUE_FILM)
     const near_pairs = matches.flatMap((match, idx) =>
       matches.slice(0, idx).filter((prev) => {
         const [d_mean, d_radius] = principal(match).map((val, comp) =>
@@ -450,14 +401,7 @@ describe(`match_lattices`, () => {
   test.each([
     [`square`, CU_100, AG_100],
     [`hexagonal`, CU_111, PD_111],
-    [
-      `oblique`,
-      OBLIQUE,
-      [
-        [2.7, 0],
-        [1.1, 3.9],
-      ] satisfies Matrix2x2,
-    ],
+    [`oblique`, OBLIQUE, OBLIQUE_FILM],
   ])(`%s matches are scale-invariant`, (_, substrate, film) => {
     const matches = match_lattices(substrate, film, { max_area: 300 })
     const doubled = match_lattices(scaled(substrate, 2), scaled(film, 2), { max_area: 1200 })
@@ -503,6 +447,7 @@ describe(`match_lattices`, () => {
     expect_consistent(matches, CU_111, PD_111, { max_matches: 5 })
   })
 
+  // oxfmt-ignore
   test.each([
     [{ max_area: 0 }, CU_100, `max_area must be in (0, Infinity), got 0`],
     [{ length_tol: 1 }, CU_100, `length_tol must be in (0, 1), got 1`],
@@ -511,22 +456,8 @@ describe(`match_lattices`, () => {
     [{ max_matches: 0 }, CU_100, `max_matches must be a positive integer, got 0`],
     [{ max_matches: 2.5 }, CU_100, `max_matches must be a positive integer, got 2.5`],
     [{ max_area: 1e5 }, CU_100, `would search 15304 substrate cells`],
-    [
-      {},
-      [
-        [1, 0],
-        [0, -1],
-      ] satisfies Matrix2x2,
-      `substrate in-plane basis [[1,0],[0,-1]] must be`,
-    ],
-    [
-      {},
-      [
-        [1, 0],
-        [2, 1e-9],
-      ] satisfies Matrix2x2,
-      `substrate in-plane basis`,
-    ],
+    [{}, [[1, 0], [0, -1]] satisfies Matrix2x2, `substrate in-plane basis [[1,0],[0,-1]] must be`],
+    [{}, [[1, 0], [2, 1e-9]] satisfies Matrix2x2, `substrate in-plane basis`],
   ])(`rejects %j`, (options, substrate, message) => {
     expect(() => match_lattices(substrate, AG_100, options)).toThrow(message)
   })

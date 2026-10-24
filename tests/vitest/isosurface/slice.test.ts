@@ -108,10 +108,7 @@ describe(`hkl_slice_plane + sample_plane_slice`, () => {
     expect([...result.data].map((val) => Number(val.toFixed(10)))).toEqual(
       Array(16).fill(value),
     )
-    expect([result.min, result.max]).toEqual([
-      expect.closeTo(value, 10),
-      expect.closeTo(value, 10),
-    ])
+    expect([result.min, result.max]).toEqual(Array(2).fill(expect.closeTo(value, 10)))
   })
 
   // Planes containing the z axis sample the ramp at z = 0, 1/3, 2/3, 1 (wrapping to 0) at
@@ -126,11 +123,8 @@ describe(`hkl_slice_plane + sample_plane_slice`, () => {
   })
 
   test(`non-cubic lattice: samples outside the cell cross-section are masked as NaN and skipped by min/max`, () => {
-    const hex_lattice: Matrix3x3 = [
-      [2.5, 0, 0],
-      [1.25, 2.165, 0],
-      [0, 0, 6.66],
-    ]
+    // oxfmt-ignore
+    const hex_lattice: Matrix3x3 = [[2.5, 0, 0], [1.25, 2.165, 0], [0, 0, 6.66]]
     const vol = make_volume(
       make_grid(4, 4, 4, (idx_x) => idx_x),
       { lattice: hex_lattice },
@@ -253,11 +247,8 @@ describe(`sample_plane_slice`, () => {
   })
 
   test(`preserves aspect ratio and enforces the pixel budget`, () => {
-    const volume = linear_volume([
-      [10, 0, 0],
-      [0, 2, 0],
-      [0, 0, 1],
-    ])
+    // oxfmt-ignore
+    const volume = linear_volume([[10, 0, 0], [0, 2, 0], [0, 0, 1]])
     const plane: CartesianPlane = { point: [5, 1, 0.5], normal: [0, 0, 1], up: [1, 0, 0] }
     const result = plane_slice(plane, { resolution: 100, max_pixels: Number.NaN }, volume)
     expect([result.width, result.height]).toEqual([100, 20])
@@ -277,22 +268,18 @@ describe(`sample_plane_slice`, () => {
   })
 
   test(`supports repeated fractional bounds for periodic slices`, () => {
+    // oxfmt-ignore
     const result = plane_slice(
       { point: [15, 5, 5], normal: [1, 0, 0], up: [0, 1, 0] },
-      {
-        resolution: [7, 7],
-        fractional_bounds: [
-          [1, 2],
-          [0, 1],
-          [0, 1],
-        ],
-      },
+      { resolution: [7, 7], fractional_bounds: [[1, 2], [0, 1], [0, 1]] },
       linear_volume(cubic, [0, 0, 0], true),
     )
     expect(result.mask.every((value) => value === 1)).toBe(true)
     expect(result.data[Math.floor(result.data.length / 2)]).toBeCloseTo(3.5, 8)
   })
 
+  // oxfmt-ignore
+  const skewed: Matrix3x3 = [[4, 0, 0], [-1.5, 3.5, 0], [0.4, 0.3, 6]]
   // Rows are sampled as per-cell cubics: they must match point-wise trilinear sampling on rough
   // data and a skewed lattice, for wrapped, finite and singleton-axis grids
   test.each([
@@ -306,15 +293,7 @@ describe(`sample_plane_slice`, () => {
         make_grid(...dims, (idx_x, idx_y, idx_z) =>
           Math.sin(idx_x * 12.9 + idx_y * 78.2 + idx_z * 37.7),
         ),
-        {
-          lattice: [
-            [4, 0, 0],
-            [-1.5, 3.5, 0],
-            [0.4, 0.3, 6],
-          ],
-          origin: [0.2, -0.3, 0.5],
-          periodic,
-        },
+        { lattice: skewed, origin: [0.2, -0.3, 0.5], periodic },
       )
       const sample = create_volume_sampler(volume, { out_of_bounds: `fallback` })
       const plane = { point: [1, 1.5, 3] as Vec3, normal: [0.3, 0.5, 1] as Vec3 }

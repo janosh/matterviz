@@ -19,10 +19,7 @@ import { make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 const make_volume = (overrides?: Partial<VolumetricData>): VolumetricData =>
   make_volume_fixture(
     make_grid(2, 2, 2, (idx_x, idx_y, idx_z) => idx_x * 4 + idx_y * 2 + idx_z + 1),
-    {
-      data_range: { min: 1, max: 8, abs_max: 8, mean: 4.5 },
-      ...overrides,
-    },
+    { data_range: { min: 1, max: 8, abs_max: 8, mean: 4.5 }, ...overrides },
   )
 
 const make_layer = (
@@ -168,9 +165,7 @@ describe(`IsosurfaceControls`, () => {
       const input = find_label(label)?.querySelector<HTMLInputElement>(`input`)
       if (!input) throw new Error(`${label} input not found`)
       if (label === `Wireframe`) input.click()
-      else {
-        set_input(input, `0.25`)
-      }
+      else set_input(input, `0.25`)
       flushSync()
       expect(props.settings).not.toBe(initial)
       expect(props.settings.layers).toBe(initial.layers)
@@ -246,6 +241,8 @@ describe(`IsosurfaceControls multi-volume`, () => {
       [make_layer(`0`, { color_volume_id: `1`, color_scale: `interpolateRdBu`, ...layer })],
       { volumes },
     )
+  const edit_min_bound = () =>
+    change_value(doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`), `2.5`)
   const change_color_scale = (label: string) => {
     const input = doc_query<HTMLInputElement>(
       `input[aria-label="Colormap for sampled values"]`,
@@ -535,11 +532,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     {
       desc: `editing one bound of an auto range seeds the other from the color volume's data range`,
       layer: { color_volume_id: `1`, color_scale: `interpolateViridis` },
-      act: () =>
-        change_value(
-          doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`),
-          `2.5`,
-        ),
+      act: edit_min_bound,
       // color volume data_range is [1, 8] → the untouched max bound comes from there
       expected: { color_scale: { scheme: `interpolateViridis`, value_range: [2.5, 8] } },
       reset_visible: true,
@@ -556,11 +549,7 @@ describe(`IsosurfaceControls multi-volume`, () => {
     {
       desc: `editing a bound of a scheme-less color_scale keeps the default colormap`,
       layer: { color_volume_id: `1`, color_scale: { type: `log` } },
-      act: () =>
-        change_value(
-          doc_query<HTMLInputElement>(`input[aria-label="Color range minimum"]`),
-          `2.5`,
-        ),
+      act: edit_min_bound,
       expected: { color_scale: { type: `log`, value_range: [2.5, 8] } },
       reset_visible: true,
     },

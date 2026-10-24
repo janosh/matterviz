@@ -51,11 +51,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     [`normalized`, { id_results: frames, normalize: true }],
     [
       `over_frames with labels`,
-      {
-        id_results: frames,
-        layout: `over_frames`,
-        frame_labels: [10, 20, 30],
-      },
+      { id_results: frames, layout: `over_frames`, frame_labels: [10, 20, 30] },
     ],
   ])(`renders %s`, async (_name, props) => {
     const root = await mount_plot(props)

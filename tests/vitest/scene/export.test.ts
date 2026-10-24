@@ -333,10 +333,8 @@ describe(`3D Export Color Preservation`, () => {
         expect(mtl).toContain(`Kd ${diffuse_color}`)
         expect(mtl).toContain(`Ka ${ambient_color}`)
         const { color } = new MTLLoader().parse(mtl, ``).create(`test`) as MeshPhongMaterial
-        for (const [idx, channel] of [color.r, color.g, color.b].entries()) {
-          // six-decimal sRGB quantization → ~1e-5 linear; linear-write error is ~0.29
-          expect(channel, `channel ${idx}`).toBeCloseTo(rgb[idx], 4)
-        }
+        // six-decimal sRGB quantization → ~1e-5 linear; linear-write error is ~0.29
+        expect(color.toArray()).toEqual(rgb.map((channel) => expect.closeTo(channel, 4)))
       },
     )
 

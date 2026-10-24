@@ -32,6 +32,8 @@ import {
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'
 
+beforeAll(init_moyo_for_tests)
+
 // Helper to get structure or throw with descriptive error
 function get_structure(identifier: string) {
   const structure = structure_map.get(identifier)
@@ -51,6 +53,14 @@ const expect_multiplicities_fill_std_cell = (sym_data: SymmetryDataset) => {
   const total = rows.reduce((sum, row) => sum + Number(/^\d+/.exec(row.wyckoff)?.[0]), 0)
   expect(total).toBe(sym_data.std_cell.positions.length)
 }
+
+// [letter, element, site indices] per Wyckoff row
+const wyckoff_summary = (sym_data: SymmetryDataset) =>
+  wyckoff_positions_from_moyo(sym_data).map(({ wyckoff, elem, site_indices }) => [
+    wyckoff,
+    elem,
+    site_indices,
+  ])
 
 // Shared primitive/non-conventional input cells reused across the orbit-mapping tests.
 // Each returns a fresh Crystal so tests can't cross-contaminate via shared references.
@@ -130,8 +140,6 @@ const triclinic_p_1 = () =>
   ])
 
 describe(`reference structures`, () => {
-  beforeAll(init_moyo_for_tests)
-
   test.each([
     {
       label: `NaCl rocksalt`,
@@ -253,13 +261,7 @@ describe(`reference structures`, () => {
     ])
     expect(input_cell.numbers).toEqual([3, 9])
     expect(orig_site_indices_by_input_idx).toEqual([[2], [0, 1]])
-    expect(
-      wyckoff_positions_from_moyo(sym_data).map((row) => [
-        row.wyckoff,
-        row.elem,
-        row.site_indices,
-      ]),
-    ).toEqual([
+    expect(wyckoff_summary(sym_data)).toEqual([
       [`1a`, `F`, [0, 1]],
       [`1b`, `Li`, [2]],
     ])
@@ -300,8 +302,6 @@ describe(`reference structures`, () => {
 })
 
 describe(`moyo-wasm integration`, () => {
-  beforeAll(init_moyo_for_tests)
-
   // Issue #139: Mg atoms were missing from Wyckoff table. Root cause: moyo's wyckoffs
   // array indexes the INPUT cell, not std_cell — fixed by grouping input sites by orbit.
   test.each([
@@ -384,8 +384,6 @@ describe(`moyo-wasm integration`, () => {
 // orbits, site_symmetry_symbols) index the INPUT cell while std_cell may have a
 // different size/order — these tests pin the orbit-based Wyckoff row construction.
 describe(`Wyckoff rows for non-conventional input cells`, () => {
-  beforeAll(init_moyo_for_tests)
-
   test(`primitive FCC Cu (1 atom input, 4 atom std cell) → single 4a row`, async () => {
     const sym_data = await analyze_crystal(prim_fcc_cu())
     expect(sym_data.number).toBe(225)
@@ -405,8 +403,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     expect(sym_data.std_cell.positions).toHaveLength(1)
 
     // NOT 2a: multiplicity counts the conventional cell; both supercell copies map to the row
-    const rows = wyckoff_positions_from_moyo(sym_data)
-    expect(rows.map((row) => [row.wyckoff, row.site_indices])).toEqual([[`1a`, [0, 1]]])
+    expect(wyckoff_summary(sym_data)).toEqual([[`1a`, `Po`, [0, 1]]])
   })
 
   test(`NaCl conventional cell with Cl listed first → 4a Na and 4b Cl rows`, async () => {
@@ -415,13 +412,7 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     const sym_data = await analyze_crystal(crystal)
     expect(sym_data.number).toBe(225)
     // site indices must track the input order (Cl occupies indices 0-3)
-    expect(
-      wyckoff_positions_from_moyo(sym_data).map((row) => [
-        row.wyckoff,
-        row.elem,
-        row.site_indices,
-      ]),
-    ).toEqual([
+    expect(wyckoff_summary(sym_data)).toEqual([
       [`4a`, `Na`, [4, 5, 6, 7]],
       [`4b`, `Cl`, [0, 1, 2, 3]],
     ])
@@ -433,11 +424,10 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
     const sites = triclinic_p1().sites.map(({ abc }): [string, Vec3] => [`Si`, abc])
     const sym_data = await analyze_crystal(make_crystal(TRICLINIC_LATTICE, sites))
     expect(sym_data.number).toBe(1)
-    const rows = wyckoff_positions_from_moyo(sym_data)
-    expect(rows.map((row) => [row.wyckoff, row.site_indices])).toEqual([
-      [`1a`, [0]],
-      [`1a`, [1]],
-      [`1a`, [2]],
+    expect(wyckoff_summary(sym_data)).toEqual([
+      [`1a`, `Si`, [0]],
+      [`1a`, `Si`, [1]],
+      [`1a`, `Si`, [2]],
     ])
   })
 })
@@ -446,7 +436,6 @@ describe(`Wyckoff rows for non-conventional input cells`, () => {
 // the input's: the volume ratio gave a charge of 4.0000009 that bond-order perception, which
 // looks charges up by exact key, could not use
 test(`scales charge to an exact integer for a real moyo conventional cell`, async () => {
-  await init_moyo_for_tests()
   const matrix = fcc_primitive_matrix(3.61)
   matrix[0][0] += 1e-6
   const prim = make_crystal(matrix, [{ element: `Cu`, abc: [0, 0, 0] }], { charge: 1 })
@@ -456,8 +445,6 @@ test(`scales charge to an exact integer for a real moyo conventional cell`, asyn
 })
 
 describe(`map_wyckoff_to_all_atoms across display frames`, () => {
-  beforeAll(init_moyo_for_tests)
-
   // Analyze `orig`, then re-express its Wyckoff rows onto the `displayed` cell (whatever
   // frame the viewer renders) and return the mapped rows.
   const map_rows = (orig: Crystal, displayed: Crystal, sym_data: SymmetryDataset) =>
@@ -504,50 +491,37 @@ describe(`map_wyckoff_to_all_atoms across display frames`, () => {
 })
 
 // Cross-validate the hand-rolled space group tables against moyo's authoritative data
-describe(`space group tables vs moyo`, () => {
-  beforeAll(init_moyo_for_tests)
-
-  test(`crystal system, lattice system + HM symbols for all 230 space groups`, () => {
-    for (let num = 1; num <= 230; num++) {
-      const sg_type = space_group_type(num)
-      expect(spacegroup_to_crystal_sys(num), `crystal system of ${num}`).toBe(
-        sg_type.crystal_system.toLowerCase(),
-      )
-      expect(spacegroup_to_lattice_system(num), `lattice system of ${num}`).toBe(
-        sg_type.lattice_system.toLowerCase(),
-      )
-      // condensed short Hermann-Mauguin symbol must round-trip through the symbol table
-      const condensed_hm = sg_type.hm_short.replaceAll(/\s+/g, ``)
-      expect(SPACEGROUP_SYMBOL_TO_NUM[condensed_hm], `symbol ${condensed_hm} → number`).toBe(
-        num,
-      )
-    }
-  })
+test(`crystal system, lattice system + HM symbols for all 230 space groups`, () => {
+  for (let num = 1; num <= 230; num++) {
+    const sg_type = space_group_type(num)
+    expect(spacegroup_to_crystal_sys(num), `crystal system of ${num}`).toBe(
+      sg_type.crystal_system.toLowerCase(),
+    )
+    expect(spacegroup_to_lattice_system(num), `lattice system of ${num}`).toBe(
+      sg_type.lattice_system.toLowerCase(),
+    )
+    // condensed short Hermann-Mauguin symbol must round-trip through the symbol table
+    const condensed_hm = sg_type.hm_short.replaceAll(/\s+/g, ``)
+    expect(SPACEGROUP_SYMBOL_TO_NUM[condensed_hm], `symbol ${condensed_hm} → number`).toBe(num)
+  }
 })
 
 // The WASM lookups take integer ids and panic (not throw) on anything else, which a malformed
 // `sym_data` prop would trigger inside SymmetryStats' $derived; out-of-range ids return []
-describe(`space-group database lookups validate their ids`, () => {
-  beforeAll(init_moyo_for_tests)
-
-  test.each([
-    [`spacegroup_wyckoff_positions`, spacegroup_wyckoff_positions, 1, 530],
-    [`spacegroup_settings`, spacegroup_settings, 1, 230],
-  ] as const)(`%s returns rows for %i..%i and [] otherwise`, (_name, lookup, min, max) => {
-    for (const valid of [min, max, Math.floor((min + max) / 2)]) {
-      expect(lookup(valid).length, `id ${valid}`).toBeGreaterThan(0)
-    }
-    for (const invalid of [0, -1, min - 1, max + 1, 1.5, NaN, Infinity, -Infinity]) {
-      expect(lookup(invalid), `id ${invalid}`).toEqual([])
-    }
-  })
+test.each([
+  [`spacegroup_wyckoff_positions`, spacegroup_wyckoff_positions, 1, 530],
+  [`spacegroup_settings`, spacegroup_settings, 1, 230],
+] as const)(`%s returns rows for %i..%i and [] otherwise`, (_name, lookup, min, max) => {
+  for (const valid of [min, max, Math.floor((min + max) / 2)])
+    expect(lookup(valid).length, `id ${valid}`).toBeGreaterThan(0)
+  for (const invalid of [0, -1, min - 1, max + 1, 1.5, NaN, Infinity, -Infinity])
+    expect(lookup(invalid), `id ${invalid}`).toEqual([])
 })
 
 // A host backend returns moyo-wasm's own shapes, so the dataset (labels mapped back, input cell,
 // site map) and the synchronous database lookups match the WASM path exactly. This "host" wraps
 // the real WASM functions, standing in for a native moyo build of the same version.
 describe(`host symmetry backend`, () => {
-  beforeAll(init_moyo_for_tests)
   afterEach(() => set_symmetry_backend(null))
 
   const wasm_backend = () => ({
