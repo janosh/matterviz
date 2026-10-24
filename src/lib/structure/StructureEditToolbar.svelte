@@ -81,7 +81,9 @@
   {#each MEASURE_MODES as { mode, icon, label, scale } (mode)}
     {@const disabled = mode === `edit-bonds` && !session.bond_edits_enabled}
     <button
+      type="button"
       class={['view-mode-option', { selected: measure_mode === mode }]}
+      aria-pressed={measure_mode === mode}
       {disabled}
       title={disabled ? `Bond editing is only available for the original 1x1x1 cell` : label}
       onclick={() => {

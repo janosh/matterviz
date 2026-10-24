@@ -9,6 +9,8 @@
   // Structure viewer: panes, toolbar, keyboard shortcuts, symmetry and the single/2x2 viewport
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '#lib/colors/index.js'
+  import { rgb } from 'd3-color'
+  import { clamp } from '#lib/math.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
@@ -33,7 +35,7 @@
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
-  import { parse_warnings_notice } from '#lib/labels.js'
+  import { format_num, parse_warnings_notice } from '#lib/labels.js'
   import { chain_handlers, is_editable_event_target } from 'svelte-widgets/utils'
   import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
@@ -1231,14 +1233,18 @@
   const key_walk = key_walk_root() // the active pane's atoms, by keyboard (see KeyWalk)
   const wheel_gate = wheel_zoom_gate()
 
-  // Only override the themed --struct-bg when a color is given; opacity becomes the alpha byte
-  let background_override = $derived(
-    background_color
-      ? `${background_color}${Math.round(background_opacity * 255)
-          .toString(16)
-          .padStart(2, `0`)}`
-      : undefined,
-  )
+  // Only override the themed --struct-bg when a color is given, its own alpha scaled by the
+  // opacity. Any CSS color: appending an alpha byte made `white` or `#fff` invalid, which drops
+  // the var() fallback too and leaves the viewer transparent. Colors the browser resolves
+  // later (var(), currentColor) go through color-mix, which scales their alpha the same way.
+  let background_override = $derived.by(() => {
+    if (!background_color) return undefined
+    const opacity = clamp(background_opacity, 0, 1)
+    const parsed = rgb(background_color)
+    return parsed.displayable()
+      ? parsed.copy({ opacity: parsed.opacity * opacity }).formatRgb()
+      : `color-mix(in srgb, ${background_color} ${format_num(opacity, `.1~%`)}, transparent)`
+  })
   // === site sidebar ===
   // The structure's own sites: image atoms drawn at cell faces repeat them. get_pbc_image_sites
   // appends images after the sites it copies, so a row's index stays its scene index.
@@ -1441,9 +1447,9 @@
               </button>
             {/if}
 
-            {#if has_3d_view && enable_info_pane && session.base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
+            {#if has_3d_view && enable_info_pane && session.mapped_base_structure && session.displayed_structure && controls_config.visible(`info-pane`)}
               <StructureInfoPane
-                structure={session.base_structure}
+                structure={session.mapped_base_structure}
                 displayed_structure={session.render_structure}
                 bonding_strategy={scene_props.bonding_strategy}
                 bind:pane_open={
@@ -1481,7 +1487,7 @@
                 bind:flight_pane_open={
                   () => is_pane_open(`flight`), (open) => set_pane_open(`flight`, open)
                 }
-                structure={session.normalized_structure}
+                structure={session.mapped_normalized_structure}
                 {wrapper}
                 {scene}
                 image_canvas={display_mode === `slice` ? slice_canvas : undefined}

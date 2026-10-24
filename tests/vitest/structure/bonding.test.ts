@@ -321,6 +321,9 @@ describe(`Explicit Bond Metadata`, () => {
     [`restores a removed bond at its calculated order`, `add`, { removed_bonds: bond_0_1(1) }, [1, 0], 1, undefined, `restored`, true, { removed_bonds: [], bond_order_overrides: [] }],
     [`restores a removed bond with a new order`, `add`, { removed_bonds: bond_0_1(1) }, [1, 0], 2, undefined, `restored`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(2) }],
     [`restores a removed order-2 bond as order 1`, `add`, { removed_bonds: bond_0_1(2) }, [0, 1], 1, 2, `restored`, true, { removed_bonds: [], bond_order_overrides: bond_0_1(1) }],
+    // removed, then no longer calculated (bonding settings changed): only an addition shows it
+    [`adds a removed bond the strategy no longer finds`, `add`, { removed_bonds: [edge(2, 3, 1)] }, [3, 2], 1, undefined, `added`, true, { added_bonds: [edge(2, 3, 1)], removed_bonds: [] }],
+    [`ordering a removed bond the strategy no longer finds adds it`, `order`, { removed_bonds: [edge(2, 3, 1)] }, [2, 3], 2, undefined, `ordered-added`, true, { added_bonds: [edge(2, 3, 2)], removed_bonds: [] }],
     [`restoring clears stale same-key edits`, `add`, { added_bonds: bond_0_1(1), removed_bonds: bond_0_1(2), bond_order_overrides: bond_0_1(3) }, [1, 0], 2, 2, `restored`, true, { added_bonds: [], removed_bonds: [], bond_order_overrides: [] }],
     [`deletes a calculated bond`, `delete`, {}, [1, 0], 1, undefined, `deleted-calculated`, true, { removed_bonds: bond_0_1(1) }],
     [`deleting records the calculated order`, `delete`, {}, [1, 0], 1, 2, `deleted-calculated`, true, { removed_bonds: bond_0_1(2) }],
@@ -1694,6 +1697,12 @@ describe(`neighbor_query`, () => {
     const chain_knn = bonding.neighbor_query(chain, { k: 2 })
     expect(Array.from(chain_knn.offsets)).toEqual([0, 2, 4, 6])
     expect(Array.from(chain_knn.distances)).toEqual([50, 100, 50, 50, 50, 100])
+    // two atoms at opposite box corners: their distance rounds 1 ulp above hypot(extents)
+    const corners = make_molecule([
+      [`O`, [2.4347959638802195, 4.836360971011535, 4.090214663192215]],
+      [`O`, [5.182636053845052, -0.16486257602122423, 0.654857615062942]],
+    ])
+    expect(Array.from(bonding.neighbor_query(corners, { k: 1 }).offsets)).toEqual([0, 1, 2])
     const list = bonding.neighbor_query(water, { cutoff: 1.2 })
     expect(list.offsets[3]).toBeGreaterThanOrEqual(4) // two O-H contacts, both ends
     for (let center = 0; center < 3; center++) {

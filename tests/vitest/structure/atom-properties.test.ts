@@ -405,6 +405,8 @@ describe(`Custom`, () => {
       (site) => site.xyz[2] || NaN,
     )
     expect(nan_at_0.colors).toEqual([ramp[1], ramp[0], ramp[2]])
+    // nor the legend's range: a NaN in the sort left [NaN, 1, 2] unsorted with min NaN
+    expect(nan_at_0).toMatchObject({ unique_values: [1, 2], min_value: 1, max_value: 2 })
     // an all-NaN column has no extent at all, and Infinity (which array_extent does not skip)
     // gives a finite-min/infinite-max one that collapsed every real value onto t = 0
     for (const fill of [() => NaN, (site: Site) => site.xyz[2] || Infinity]) {
@@ -593,6 +595,14 @@ describe(`Site property coloring`, () => {
       for (const [other_idx, other] of values.entries())
         expect(result.colors[idx] === result.colors[other_idx]).toBe(value === other)
     }
+  })
+
+  test(`a categorical legend gets an unknown entry for sites missing the key`, () => {
+    const structure = with_props([{ charge: 1 }, {}, { charge: 2 }])
+    const by_type = (type: `categorical` | `continuous`) =>
+      atom_properties.get_site_property_colors(structure, `charge`, undefined, type)
+    expect(by_type(`categorical`).unique_values).toEqual([1, 2, `unknown`])
+    expect(by_type(`continuous`).unique_values).toEqual([1, 2])
   })
 
   test.each(

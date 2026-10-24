@@ -324,7 +324,10 @@
     onkeydown: (event) => handle_site_keydown(event, card),
   })
 
-  let wyckoff_table_expanded = $derived(wyckoff_positions.length < 50)
+  // Through a boolean, like analysis_kind: the rows are rebuilt on every displayed-structure
+  // change (image atoms, supercells, edits), which must not undo the user's collapse/expand
+  const wyckoff_table_short = $derived(wyckoff_positions.length < 50)
+  let wyckoff_table_expanded = $derived(wyckoff_table_short)
 </script>
 
 <ViewerPane

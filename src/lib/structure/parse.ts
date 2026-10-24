@@ -1230,6 +1230,7 @@ const PARSER_BY_EXTENSION = new Map<string, FormatParser>([
   [`yaml`, parse_phonopy_yaml],
   [`yml`, parse_phonopy_yaml],
   [`poscar`, parse_poscar],
+  [`vasp`, parse_poscar], // VESTA's POSCAR extension
 ])
 
 // The parser a file's name selects, or null when the name leaves the format open
@@ -1300,7 +1301,10 @@ function parser_for_content(content: string): FormatParser | null {
 // unknown one, the format is sniffed from the content. Failures retain their local cause
 // and include the requested filename so callers can surface them directly. Recoverable
 // issues (skipped rows, placeholder cells, guessed elements) go to parse_warn.
-export function parse_structure_file(content: string, filename?: string): AnyStructure {
+export function parse_structure_file(raw_content: string, filename?: string): AnyStructure {
+  // A UTF-8 byte order mark (Windows editors, Python's `utf-8` codec keeps it) is no content:
+  // JSON.parse rejects it and line-anchored markers (`data_`, `loop_`) miss the first line
+  const content = raw_content.replace(/^\uFEFF/, ``)
   try {
     const parser =
       (filename ? parser_for_filename(filename, content) : null) ?? parser_for_content(content)
@@ -1459,6 +1463,7 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
         ? `crystal`
         : `molecule`,
   ],
+  [/\.vasp$/i, () => `crystal`],
   // last, so an explicit extension (POSCAR_to_water.xyz) decides first
   [VASP_FILES_REGEX, () => `crystal`],
 ]

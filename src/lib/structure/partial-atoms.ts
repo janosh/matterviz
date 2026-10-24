@@ -1,4 +1,4 @@
-import { grow_capacity } from '#lib/math.js'
+import { grow_capacity, same_position } from '#lib/math.js'
 import type { InstancedAtom } from './atom-instances'
 import { atom_field_color, type AtomColorField } from './atom-color-field'
 import { cutaway_excludes, cutaway_planes } from './cutaway'
@@ -139,7 +139,13 @@ export class PartialAtoms extends Group {
     for (let first = 0, last = 0; first < atoms.length; first = ++last) {
       const { site_idx, position, radius, is_image_atom, render_start_cap, start_phi } =
         atoms[first]
-      while (atoms[last + 1]?.site_idx === site_idx) last++
+      // one copy's wedges: a whole-atom cutaway draws a site again elsewhere (its shell
+      // copies), which is a separate sphere to hit
+      while (
+        atoms[last + 1]?.site_idx === site_idx &&
+        same_position(atoms[last + 1].position, position)
+      )
+        last++
       if (this.ghost_images && is_image_atom) continue
       sphere.center.fromArray(position)
       sphere.radius = radius / 2

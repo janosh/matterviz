@@ -677,6 +677,25 @@ describe(`StructureGallery`, () => {
     expect(prop_cells().find((cell) => cell.key === `spacegroup`)?.style).toBe(``)
   })
 
+  // A missing value written as NaN has no rank: Viridis turned it into an undefined color,
+  // whose contrast pick threw and took the whole gallery down
+  test(`non-finite property values stay untinted`, () => {
+    const with_nan = prop_items.map((item, idx) =>
+      idx === 0 ? { ...item, properties: { ...item.properties, energy: Number.NaN } } : item,
+    )
+    mount_gallery({
+      items: with_nan,
+      layout: `horizontal`,
+      property_color_scheme: `interpolateViridis`,
+    })
+    const energies = prop_cells().filter((cell) => cell.key === `energy`)
+    expect(energies.map((cell) => cell.style.startsWith(`--prop-rank-color`))).toEqual([
+      false,
+      true,
+      true,
+    ])
+  })
+
   // The scale spans the collection, not the render window. Every rendered card
   // here holds the same mid-range value, so a window-scoped scale paints nothing.
   test(`scales against items that are far outside the render window`, () => {

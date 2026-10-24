@@ -52,12 +52,10 @@ describe(`StructureInfoPane`, () => {
     `symmetry table threshold behavior: %s`,
     async (_scenario_name, atom_count, expanded_by_default) => {
       const structure = get_dummy_structure(`H`, atom_count, true)
-      mount_info_pane({
-        structure,
-        pane_open: true,
-        sym_data: make_sym_data(atom_count),
-        wyckoff_positions: rows_per_site(atom_count),
-      })
+      const rows = $state({ wyckoff_positions: rows_per_site(atom_count) })
+      mount_info_pane(
+        bind_props({ structure, pane_open: true, sym_data: make_sym_data(atom_count) }, rows),
+      )
 
       const content = document.body.textContent || ``
       expect(content).toContain(`(${atom_count} sites)`)
@@ -73,6 +71,10 @@ describe(`StructureInfoPane`, () => {
       wyckoff.querySelector(`summary`)?.click()
       await tick()
       expect(wyckoff_rows()).toHaveLength(atom_count - default_row_count)
+      // the session rebuilds equal rows on every displayed change: the user's toggle stays
+      rows.wyckoff_positions = rows_per_site(atom_count)
+      await tick()
+      expect(wyckoff.open).toBe(!expanded_by_default)
     },
   )
 

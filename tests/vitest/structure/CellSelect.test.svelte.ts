@@ -68,6 +68,16 @@ describe(`CellSelect`, () => {
       focusout(doc_query(`.custom-input-row input`))
       await tick()
       expect(dropdown()).toBeInstanceOf(HTMLElement)
+      // a press on a button Safari won't focus blurs to nowhere, which must not swallow it
+      focusout(null)
+      await tick()
+      expect(dropdown()).toBeInstanceOf(HTMLElement)
+      // ...but focus leaving the page (Tab into the browser chrome) blurs the window and closes
+      globalThis.dispatchEvent(new FocusEvent(`blur`))
+      await tick()
+      expect(dropdown()).toBeNull()
+      toggle.click()
+      await tick()
       focusout(document.body)
       await tick()
       expect(dropdown()).toBeNull()

@@ -116,3 +116,14 @@ test(`change-element field keeps an unknown symbol, applies a valid one as one u
   expect(undo.disabled).toBe(true)
   expect(doc_query(`button[aria-label^="Redo ("]`).textContent?.trim()).toBe(`1`)
 })
+
+// The current mode is announced, not only styled: the toggle's label never names it
+test(`measure mode options mark the active mode pressed`, async () => {
+  mount_toolbar(`angle`, [])
+  await fire(doc_query(`button[aria-label="Measure / Edit"]`))
+  const pressed = [...document.querySelectorAll<HTMLButtonElement>(`.view-mode-option`)].map(
+    (option) => [option.textContent?.trim(), option.getAttribute(`aria-pressed`)],
+  )
+  expect(pressed.filter(([, state]) => state === `true`)).toEqual([[`Angle`, `true`]])
+  expect(pressed.every(([, state]) => state === `true` || state === `false`)).toBe(true)
+})

@@ -326,7 +326,9 @@
     // one distinct value has no rank, so it stays untinted
     return (key: string, value: number | string): string => {
       const span = spans.get(key)
-      if (typeof value !== `number` || !span || span[1] - span[0] < Number.EPSILON) return ``
+      // NaN/Infinity have no rank either (interpolating NaN yields no color to contrast)
+      if (typeof value !== `number` || !Number.isFinite(value)) return ``
+      if (!span || span[1] - span[0] < Number.EPSILON) return ``
       const rank = (value - span[0]) / (span[1] - span[0])
       // read at call time, which the template tracks: flipping the direction
       // repaints without rebuilding every span

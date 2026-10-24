@@ -338,7 +338,9 @@ export function add_or_restore_bond(
   const record = make_bond_record(bond, order)
   const key = rendered_bond_key_for(record)
   const removed_bond = find_bond_by_key(edit_state.removed_bonds, key)
-  if (removed_bond) {
+  // A removal names a bond the strategy found. Once it finds it no more (bonding settings
+  // changed), lifting the removal alone would leave the pair unbonded, so it is added instead.
+  if (removed_bond && includes_bond_key(calculated_bonds, key)) {
     return {
       action: `restored`,
       changed: true,
@@ -353,15 +355,15 @@ export function add_or_restore_bond(
       },
     }
   }
-  if (has_visible_bond(edit_state, record, calculated_bonds)) {
+  if (!removed_bond && has_visible_bond(edit_state, record, calculated_bonds)) {
     return { action: `already-visible`, changed: false, state: edit_state }
   }
   return {
     action: `added`,
     changed: true,
     state: {
-      ...edit_state,
       added_bonds: replace_bond(edit_state.added_bonds, record),
+      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
       bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
     },
   }
@@ -440,12 +442,13 @@ export function set_bond_order(
       },
     }
   }
+  // a stale removal (see add_or_restore_bond) would hide the added bond
   return {
     action: `ordered-added`,
     changed: true,
     state: {
-      ...edit_state,
       added_bonds: replace_bond(edit_state.added_bonds, record),
+      removed_bonds: remove_bond_key(edit_state.removed_bonds, key),
       bond_order_overrides: remove_bond_key(edit_state.bond_order_overrides, key),
     },
   }
@@ -1285,7 +1288,9 @@ const k_search_bounds = (
   const extents = [0, 1, 2].map((axis) => Math.max(maxs[axis] - mins[axis], 1))
   return {
     total_volume: extents[0] * extents[1] * extents[2],
-    max_cutoff: Math.hypot(...extents),
+    // A pair at opposite box corners spans the diagonal exactly, and its distance can round
+    // 1 ulp above hypot(extents); the margin keeps that pair inside the last pass's radius
+    max_cutoff: Math.hypot(...extents) * (1 + 1e-9),
   }
 }
 

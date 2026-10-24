@@ -357,7 +357,8 @@
     when?: () => boolean // conditional rows (e.g. a color swatch only in uniform mode)
     get?: () => unknown
     set?: (value: unknown) => void
-    pair?: { key: StructureSettingKey; when: () => boolean }
+    // `label` names the swatch, which the row's <label> (naming its first control) does not
+    pair?: { key: StructureSettingKey; label: string; when: () => boolean }
   }
   const row = (key: StructureSettingKey, label: string, step?: number): Row => ({
     key,
@@ -452,6 +453,7 @@
       ...row(`polyhedra_color_mode`, `Color`),
       pair: {
         key: `polyhedra_color`,
+        label: `Polyhedra color`,
         when: () => scene_value(`polyhedra_color_mode`) === `uniform`,
       },
     },
@@ -574,15 +576,27 @@
     get,
     set: (value) => set(value as T),
   })
-  // Mode and property resets restore the selected field and its saved scale type together.
+  // Mode and property resets restore the selected field and its saved scale type together. A
+  // custom mode comes back with its own color_fn: no other mode switch can supply one.
   const atom_coloring = local(
     () => ({
       mode: atom_color_config.mode,
       property_key:
         `property_key` in atom_color_config ? atom_color_config.property_key : undefined,
+      color_fn: `color_fn` in atom_color_config ? atom_color_config.color_fn : undefined,
       scale_type: atom_color_config.scale_type,
     }),
-    set_atom_coloring,
+    ({ color_fn, ...coloring }) => {
+      if (coloring.mode === `custom` && color_fn) {
+        const { color_scale } = atom_color_config
+        atom_color_config = {
+          mode: `custom`,
+          color_fn,
+          color_scale,
+          scale_type: coloring.scale_type,
+        }
+      } else set_atom_coloring(coloring)
+    },
   )
   // One row driving two scene props (a mode plus its color, say). Sharing a key means the row's
   // reset restores both halves at once instead of leaving a half-reverted pair behind.
@@ -1093,6 +1107,7 @@
               <input
                 class="swatch"
                 type="color"
+                aria-label={pair.label}
                 bind:value={
                   () => scene_value(pair.key) as string,
                   (value) => update_scene({ [pair.key]: value })

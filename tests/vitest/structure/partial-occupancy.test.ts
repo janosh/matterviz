@@ -390,6 +390,20 @@ describe(`PartialAtoms`, () => {
     raycaster.far = pole_hit.distance - 1e-6
     expect(raycaster.intersectObject(group, true)).toEqual([])
     raycaster.far = Infinity
+    // A second copy of site 1 (a whole-atom cutaway's shell atom) 10 A along x is hit too, not
+    // folded into the first copy's pick group, whose sphere alone was tested
+    const copy = atoms
+      .filter((atom) => atom.site_idx === 1)
+      .map((atom): PartialAtom => ({
+        ...atom,
+        position: [atom.position[0] + 10, ...atom.position.slice(1)] as Vec3,
+      }))
+    partial.update([...atoms.slice(0, 3), ...copy, ...atoms.slice(3)], false, 12)
+    const [copy_x, copy_y] = copy[0].position
+    expect(pick([copy_x, copy_y, 10], [0, 0, -1]).map(({ instanceId }) => instanceId)).toEqual(
+      [3],
+    )
+    partial.update(atoms, false, 12)
     // Ghosted edit-mode images are not interactive
     const images = atoms.map((atom) => ({ ...atom, is_image_atom: atom.site_idx === 0 }))
     for (const ghost_images of [false, true]) {

@@ -69,7 +69,12 @@
   $effect(() => observe_canvas_presence(wrapper, (found) => (wrapper_canvas = found)))
   let has_canvas = $derived(Boolean(image_canvas || wrapper_canvas))
 
-  let prediction_error = $state(``)
+  // Set by a failed export; cleared with the prediction it is about (a cleared or replaced one
+  // has no Prediction section left whose next export would reset it)
+  let prediction_error = $derived.by(() => {
+    void prediction
+    return ``
+  })
   function prediction_text(): string | null {
     prediction_error = ``
     try {

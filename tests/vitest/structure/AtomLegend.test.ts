@@ -276,6 +276,53 @@ describe(`AtomLegend Component`, () => {
     })
   })
 
+  // hidden `1` charges must not hide the |magmom| = 1 atoms once the property switches
+  test(`switching the colored property clears hidden property values`, async () => {
+    const hidden_prop_vals = new Set<string | number>([1])
+    const colored = new SvelteMap([[`key`, `charge`]])
+    const { color_scale } = DEFAULT_ATOM_COLOR_CONFIG
+    const props = {
+      get atom_color_config(): AtomColorConfig {
+        void colored.get(`rebuild`)
+        const property_key = colored.get(`key`) ?? ``
+        return { mode: `property`, property_key, scale_type: `categorical`, color_scale }
+      },
+      property_colors: prop_colors([1, 2]),
+      hidden_prop_vals,
+    }
+    mounted_components.push(mount(AtomLegend, { target: document.body, props }))
+    await tick()
+    expect([...hidden_prop_vals]).toEqual([1])
+    // a rebuilt config for the same property (hosts derive a fresh object) keeps them
+    colored.set(`key`, `charge`)
+    colored.set(`rebuild`, `1`)
+    await tick()
+    expect([...hidden_prop_vals]).toEqual([1])
+    colored.set(`key`, `magmom`)
+    await tick()
+    expect(hidden_prop_vals.size).toBe(0)
+  })
+
+  // hosts rebuild a custom color_fn on every derive: a new function is no new quantity
+  test(`a rebuilt custom color_fn keeps hidden property values`, async () => {
+    const hidden_prop_vals = new Set<string | number>([1])
+    const rebuild = new SvelteMap([[`count`, 0]])
+    const { color_scale } = DEFAULT_ATOM_COLOR_CONFIG
+    const props = {
+      get atom_color_config(): AtomColorConfig {
+        void rebuild.get(`count`)
+        return { mode: `custom`, color_fn: () => 1, scale_type: `categorical`, color_scale }
+      },
+      property_colors: prop_colors([1, 2]),
+      hidden_prop_vals,
+    }
+    mounted_components.push(mount(AtomLegend, { target: document.body, props }))
+    await tick()
+    rebuild.set(`count`, 1)
+    await tick()
+    expect([...hidden_prop_vals]).toEqual([1])
+  })
+
   describe(`Property Legend - Continuous`, () => {
     test(`integer values render a titled discrete bar of toggleable labeled segments`, async () => {
       mount_legend({

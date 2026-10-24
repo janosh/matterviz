@@ -50,6 +50,19 @@ describe(`next_site_selection`, () => {
       { measured_sites: [1, 2, 3], selected_sites: [1, 2, 7, 3] },
     ],
     [
+      `angle roll of a site already selected (not measured) moves it, not repeats it`,
+      5,
+      state({ measure_mode: `angle`, measured_sites: [0, 1, 2], selected_sites: [5] }),
+      { measured_sites: [1, 2, 5], selected_sites: [5] },
+    ],
+    // measured picks decide: a selected-only site joins both lists instead of toggling off
+    [
+      `distance pick of a site selected but not measured`,
+      4,
+      state({ measured_sites: [0], selected_sites: [4, 0] }),
+      { measured_sites: [0, 4], selected_sites: [0, 4] },
+    ],
+    [
       `angle re-pick at the cap toggles off, not rolls`,
       1,
       state({ measure_mode: `angle`, ...picks([0, 1, 2]) }),
@@ -264,7 +277,8 @@ describe(`ScenePointer`, () => {
     expect([hover.idx, pointer.tooltip_active]).toEqual([1, true])
     pointer.schedule_hover_clear(1)
     pointer.drop_hover()
-    expect(hover.idx).toBeNull()
+    // the tooltip flag goes too, or an external hover would pop up the 3D tooltip
+    expect([hover.idx, pointer.tooltip_active]).toEqual([null, false])
     // re-hover the same site: a surviving timer would clear it again
     pointer.set_hover(1)
     vi.advanceTimersByTime(ATOM_HOVER_CLEAR_DELAY_MS)

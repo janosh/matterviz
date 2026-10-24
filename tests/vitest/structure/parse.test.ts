@@ -147,8 +147,13 @@ describe(`POSCAR Parser`, () => {
 
   // POSCAR body shared by the edge cases below: scale 1.0 and a cubic 3 Å cell
   const cube3 = `1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0`
+  type EdgeCase = {
+    name: string
+    content: string
+    expected: { volume?: number; abc?: number[]; elements?: string[] }
+  }
   // oxfmt-ignore
-  it.each([
+  it.each<EdgeCase>([
     // negative scale factor is a target volume, not a multiplier
     { name: `negative scale factor`, content: `Test\n-27.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27.0 } },
     // Negative coordinates are wrapped: -0.2 -> 0.8, -0.3 -> 0.7
@@ -163,6 +168,22 @@ describe(`POSCAR Parser`, () => {
     // the first placeholder is H and an index-0-only check can't tell the indexed placeholders
     // apart from a blanket "unknown element becomes hydrogen".
     { name: `VASP 4 indexed element fallback`, content: vasp4_format, expected: { elements: [`H`, `H`, `He`] } },
+    // ...unless the comment line names one species per count, as VASP's own inputs do
+    { name: `VASP 4 species from a formula comment`, content: `SiC\n4.35\n0.5 0.5 0\n0 0.5 0.5\n0.5 0 0.5\n1 1\ndirect\n0 0 0\n0.25 0.25 0.25`, expected: { elements: [`Si`, `C`] } },
+    { name: `VASP 4 species among comment words`, content: `fcc Si\n${cube3}\n1\nDirect\n0 0 0`, expected: { elements: [`Si`] } },
+    // a formula word plus other words, or a space-group token beside it
+    { name: `VASP 4 species from a formula among words`, content: `Fe2O3 relaxed\n${cube3}\n2 3\nDirect\n0 0 0\n0.5 0 0\n0 0.5 0\n0 0 0.5\n0.5 0.5 0`, expected: { elements: [`Fe`, `Fe`, `O`, `O`, `O`] } },
+    { name: `VASP 4 species beside a space group`, content: `HfO2 P21/c\n${cube3}\n1 2\nDirect\n0 0 0\n0.5 0 0\n0 0.5 0`, expected: { elements: [`Hf`, `O`, `O`] } },
+    { name: `VASP 4 species beside a count`, content: `Si bulk 8 atoms\n${cube3}\n1\nDirect\n0 0 0`, expected: { elements: [`Si`] } },
+    // a lone symbol that is also an English word is a title, not a species: placeholders stay
+    ...[`No title`, `I made this`, `As relaxed`, `Be careful`, `In this file`, `He said so`].map((comment) => (
+      { name: `VASP 4 comment "${comment}"`, content: `${comment}\n${cube3}\n1\nDirect\n0 0 0`, expected: { elements: [`H`] } }
+    )),
+    // `POSCAR` spells P, O, S, C, Ar: five symbols for one count is no species list
+    { name: `VASP 4 comment spelling elements`, content: `POSCAR\n${cube3}\n2\nDirect\n0 0 0\n0.5 0.5 0.5`, expected: { elements: [`H`, `H`] } },
+    // `!` comments after the counts, as on the scale and lattice lines
+    { name: `comments on header lines`, content: `O atom in a box\n1.0 ! scale\n8 0 0 ! a\n0 8 0\n0 0 8\n1 ! number of atoms\ncart ! positions\n0 0 0`, expected: { elements: [`O`], volume: 512 } },
+    { name: `comment after VASP 5 symbols and counts`, content: `Test\n${cube3}\nSi O # species\n1 2 # counts\nDirect\n0 0 0\n0.5 0 0\n0 0.5 0`, expected: { elements: [`Si`, `O`, `O`] } },
     // VASP reads only the first 3 numbers of a lattice line, so a trailing comment is ignored
     { name: `lattice lines with trailing comments`, content: `Test\n1.0\n3.0 0.0 0.0 ! a\n0.0 3.0 0.0 ! b\n0.0 0.0 3.0 ! c\nH\n1\nDirect\n0.0 0.0 0.0`, expected: { volume: 27 } },
   ])(`should handle $name`, ({ content, expected }) => {
@@ -483,9 +504,17 @@ describe(`Auto-detection & Error Handling`, () => {
     { name: `POSCAR by content`, content: ba_ti_o3_tetragonal, sites: 5 },
     { name: `POSCAR by content with per-axis scale factors`, content: `Test\n1.1 1.1 1.2\n5 0 0\n0 5 0\n0 0 5\nH O\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5`, sites: 2 },
     { name: `Tinker-style XYZ with title after atom count`, content: `2 water fragment\ncomment\nO 0.0 0.0 0.0\nH 0.0 0.0 1.0`, sites: 2 },
+    // a UTF-8 byte order mark (Notepad, Python's utf-8 codec) is not part of the content
+    { name: `JSON with a byte order mark`, content: `\uFEFF{"sites": [{"species": ["Fe"], "xyz": [0, 0, 0]}]}`, sites: 1 },
   ])(`should detect $name`, ({ content, filename, sites }) => {
     const result = parse_structure_file(content, filename)
     expect(result.sites).toHaveLength(sites)
+  })
+
+  // a BOM before a first-line record hid the PDB's CRYST1 cell: the crystal read as a molecule
+  it(`keeps a PDB cell whose CRYST1 record follows a byte order mark`, () => {
+    const pdb = nacl_rocksalt_pdb.slice(nacl_rocksalt_pdb.indexOf(`CRYST1`))
+    expect(parse_structure_file(`\uFEFF${pdb}`, `NaCl.pdb`)).toHaveProperty(`lattice`)
   })
 
   it(`should not misread a blank POSCAR element line as VASP 4 zero counts`, () => {
@@ -2152,6 +2181,7 @@ describe(`detect_structure_type`, () => {
     [`file.cif`, `any`, `crystal`],
     [`POSCAR`, `any`, `crystal`],
     [`file.poscar`, `any`, `crystal`],
+    [`Si.vasp`, `any`, `crystal`],
     [`file.yaml`, `phonopy:\n  version: 2.0`, `crystal`],
     [`file.yml`, `phono3py:\n  version: 2.0`, `crystal`],
     [`file.yaml`, `other: content`, `unknown`],

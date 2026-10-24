@@ -108,6 +108,45 @@ type VaspHeaderResult = { ok: true; header: VaspHeader } | { ok: false; error: s
 const fail = (error: string): VaspHeaderResult => ({ ok: false, error })
 
 const split_tokens = (line: string): string[] => line.trim().split(/\s+/)
+// Symbol and count lines may end in a `!` or `#` comment, as VASP's own example inputs write
+// them (`1   ! number of atoms`)
+const header_tokens = (line: string): string[] =>
+  split_tokens(line.split(/[!#]/)[0]).filter(Boolean)
+
+// Element symbols that are also common English words: a title like `No title`, `I made this`
+// or `As relaxed` reads them as the lone species of a one-count header
+const ENGLISH_WORD_SYMBOLS = new Set([
+  `I`,
+  `In`,
+  `As`,
+  `Be`,
+  `No`,
+  `He`,
+  `At`,
+  `Am`,
+  `Is`,
+  `If`,
+  `Or`,
+  `So`,
+  `Do`,
+])
+
+// A VASP 4 header has no symbol line, but its comment line often names the species in POTCAR
+// order (`SiC`, `GaAs`, `fcc Si`), which ASE reads them from too. Each word that is a formula
+// once digits and `-_,.=` are dropped (`Fe2O3`) contributes its symbols, other words (`fcc`)
+// none. Only a list naming exactly one species per count is used: a longer one (`POSCAR`
+// reads P, O, S, C, Ar) is a word that happens to spell elements, not the species. Unlike ASE,
+// a lone symbol that is also an English word (see ENGLISH_WORD_SYMBOLS) keeps the placeholder.
+const comment_line_species = (comment: string, n_species: number): ElementSymbol[] | null => {
+  const symbols = split_tokens(comment).flatMap((word) => {
+    const letters = word.replaceAll(/[-_,.=\d]/g, ``)
+    const parts: string[] = letters.match(/[A-Z][a-z]?/g) ?? []
+    const elements = parts.filter(is_elem_symbol)
+    return parts.join(``) === letters && elements.length === parts.length ? elements : []
+  })
+  if (symbols.length === 1 && ENGLISH_WORD_SYMBOLS.has(symbols[0])) return null
+  return symbols.length === n_species ? symbols : null
+}
 
 const require_line = (line: string | undefined, error: string): string => {
   if (line === undefined) throw new Error(error)
@@ -124,8 +163,9 @@ export function parse_vasp_header(
 ): VaspHeaderResult {
   const { format, coord_mode = `strict`, line_offset = 0, strict_species = false } = options
   try {
-    require_line(cursor.peek(), `${format}: file ends before the comment line`)
-    cursor.advance() // the comment line carries no data
+    // kept for VASP 4 headers, which may name their species there
+    const comment = require_line(cursor.peek(), `${format}: file ends before the comment line`)
+    cursor.advance()
 
     // Scale line: one factor (negative means target volume) or three per-axis Cartesian
     // factors, Fortran `5.0D-01` exponents included.
@@ -200,15 +240,14 @@ export function parse_vasp_header(
       for (let offset = 0; offset < symbol_lines; offset++) {
         const symbol_line = cursor.peek(offset)
         // a blank symbol line names no species (like VASP 4), not one empty symbol
-        if (symbol_line !== undefined)
-          raw_symbols.push(...split_tokens(symbol_line).filter(Boolean))
+        if (symbol_line !== undefined) raw_symbols.push(...header_tokens(symbol_line))
         const count_line = cursor.peek(symbol_lines + offset)
-        if (count_line !== undefined) counts.push(...split_tokens(count_line).map(Number))
+        if (count_line !== undefined) counts.push(...header_tokens(count_line).map(Number))
       }
       cursor.advance(2 * symbol_lines)
     } else {
       // VASP 4: atom counts only
-      counts = split_tokens(species_line).map(Number)
+      counts = header_tokens(species_line).map(Number)
       cursor.advance()
     }
 
@@ -217,11 +256,16 @@ export function parse_vasp_header(
       if (strict_species) {
         return fail(`${format}: element symbols are missing (VASP 4 header)`)
       }
-      elements = counts.map(
-        (_count, idx) => VASP4_PLACEHOLDER_ELEMENTS[idx % VASP4_PLACEHOLDER_ELEMENTS.length],
-      )
+      const named = comment_line_species(comment, counts.length)
+      elements =
+        named ??
+        counts.map(
+          (_count, idx) => VASP4_PLACEHOLDER_ELEMENTS[idx % VASP4_PLACEHOLDER_ELEMENTS.length],
+        )
       parse_warn(
-        `${format}: no element symbols (VASP 4 header), falling back to ${elements.join(`, `)}`,
+        `${format}: no element symbols (VASP 4 header), ${
+          named ? `read` : `falling back to`
+        } ${elements.join(`, `)}${named ? ` from the comment line` : ``}`,
       )
     } else {
       // POTCAR suffixes (`Si_GW`, `Fe/abc123` in VASP 6 headers) are dropped; a symbol naming no

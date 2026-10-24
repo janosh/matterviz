@@ -11,13 +11,14 @@ import type {
 } from '#lib/structure/index.js'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
-import { explicit_only } from '#lib/structure/bonding.js'
+import { explicit_only, get_bond_data } from '#lib/structure/bonding.js'
 import { MAX_HISTORY, StructureSession } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
+import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -154,6 +155,9 @@ describe(`display pipeline`, () => {
       host.structure?.sites.map((site) => site.xyz),
     )
     expect(session.tool_input).not.toBe(original_input)
+    // the info pane's and the exports' views carry the mapping too
+    for (const view of [session.mapped_base_structure, session.mapped_normalized_structure])
+      expect(view?.sites.map((site) => site.species[0].element)).toEqual(Array(3).fill(`Na`))
     expect(host.structure?.sites[0].species[0].element).toBe(`H`)
     session.element_mapping = undefined
     flushSync()
@@ -381,6 +385,33 @@ it(`switching image_atom_completion rebuilds the displayed atoms`, () => {
     flushSync()
     expect(completion_elements(), completion).toEqual(expected)
   }
+})
+
+// Completion runs on the edited bond graph: bond edits reach it as the structure's explicit
+// bonds. Ti with 3 close O is below the minimum CN of 4, so it is stamped no polyhedron center;
+// adding a bond to the far O makes it one, stamped and drawn.
+it(`a bond edit that makes a new polyhedron center stamps it and draws it`, () => {
+  // oxfmt-ignore
+  const structure = make_crystal(10, [
+    [`Ti`, [0.5, 0.5, 0.5]], [`O`, [0.6, 0.6, 0.6]], [`O`, [0.4, 0.4, 0.6]],
+    [`O`, [0.4, 0.6, 0.4]], [`O`, [0.1, 0.5, 0.5]],
+  ])
+  const { session } = make_session({
+    structure,
+    show_image_atoms: true,
+    measure_mode: `edit-bonds`,
+  })
+  const center = () => {
+    const displayed = session.displayed_structure ?? { sites: [] }
+    const bonds = get_bond_data(displayed, `electroneg_ratio`)
+    const cns = compute_polyhedra(displayed, bonds).map((poly) => poly.vertex_site_idxs.length)
+    return [displayed.sites[0]?.provenance?.polyhedron_center, cns]
+  }
+  expect(center()).toEqual([false, []])
+  session.push_bond_undo()
+  session.added_bonds = [{ site_idx_1: 0, site_idx_2: 4, order: 1 }]
+  flushSync()
+  expect(center()).toEqual([true, [4]])
 })
 
 // SrTiO3 with Ti on the corners: its 24 O corner copies go once Ti is no polyhedron center

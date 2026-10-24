@@ -22,6 +22,7 @@ import * as extras from '@threlte/extras'
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import * as camera_fit from '#lib/structure/camera-fit.js'
 import { make_site, numeric_sites } from '#lib/structure/site.js'
+import { get_center_of_mass } from '#lib/structure/index.js'
 import StructureScene from '#lib/structure/StructureScene.svelte'
 import ArrowInstances from '#lib/structure/ArrowInstances.svelte'
 import { pack_arrows } from '#lib/structure/arrow-instances.js'
@@ -62,6 +63,7 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
+import { SvelteSet } from 'svelte/reactivity'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
 // Spy on Threlte's interactivity() and return a getter for the scene's interactivity state
@@ -589,6 +591,12 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   flushSync()
   expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
   expect(document.querySelector(`.bond-context-menu`)).toBeNull()
+  // keyboard and screen-reader activation is a bare click (detail 0), no pointer press
+  click(1.5, { button: 2 }, `contextmenu`)
+  const triple = [...document.querySelectorAll<HTMLButtonElement>(`.bond-context-menu button`)]
+  triple.find((button) => button.textContent?.trim() === `Triple`)?.click()
+  flushSync()
+  expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
   state.bond_edit_mode = `delete`
   flushSync()
   click(1.5)
@@ -602,6 +610,257 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   flushSync()
   click(0.2) // straight down through atom 0's cap before the bond's hit cylinder
   expect(state.added_bonds).toEqual([])
+})
+
+// The add-atom plane sits inside the manual-rotation groups: its hit point is in world space
+// and must be mapped back into the structure frame, or a rotated view places atoms elsewhere
+test(`add-atom click places the atom in the structure frame of a rotated scene`, () => {
+  const interactivity = spy_interactivity()
+  const on_add_atom = vi.fn()
+  // two carbons along x: the rotation pivot (center of mass) is [1, 0, 0]
+  mount_structure({
+    structure: {
+      sites: [0, 2].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+    },
+    show_bonds: `never`,
+    measure_mode: `edit-atoms`,
+    add_atom_mode: true,
+    rotation: [0, 0, Math.PI / 2],
+    on_add_atom,
+  })
+  const scene_interactivity = interactivity()
+  // world [1, 3] is 3 A along +y of the pivot, i.e. 3 A along +x before the 90 deg z rotation
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(1, 3, 10), new Vector3(0, 0, -1))
+  const target = scene_interactivity.target.current
+  target?.dispatchEvent(new PointerEvent(`pointerdown`))
+  target?.dispatchEvent(new MouseEvent(`click`))
+  flushSync()
+  expect(on_add_atom).toHaveBeenCalledOnce()
+  const [xyz, element] = on_add_atom.mock.calls[0]
+  expect(element).toBe(`C`)
+  expect(xyz).toEqual([4, 0, 0].map((coord) => expect.closeTo(coord, 9)))
+})
+
+// Reset aims at the content's center as drawn: the scene turns content by `rotation` about
+// its pivot (the center of mass), so an off-pivot center moves with it. A heavy I at x = 10
+// pulls the pivot to x = 8.49, away from the bounding-box center at x = 5: turned 180 deg about
+// y, the drawn center is 8.49 + (8.49 - 5) = 11.98, where an unrotated target left it at 5.
+test(`reset target follows a manual rotation of an off-pivot molecule`, () => {
+  const bound = $state<SceneProps>({ get_reset_target: undefined, rotation: [0, 0, 0] })
+  const structure = {
+    sites: [
+      make_site(`C`, [0, 0, 0], [0, 0, 0], `C`),
+      make_site(`C`, [0, 0, 0], [1, 0, 0], `C`),
+      make_site(`I`, [0, 0, 0], [10, 0, 0], `I`),
+    ],
+  }
+  mount_structure({ structure, show_atoms: false }, bound)
+  const pivot = get_center_of_mass(structure)?.[0] ?? NaN
+  expect(bound.get_reset_target?.()[0]).toBeCloseTo(5, 9)
+  bound.rotation = [0, Math.PI, 0]
+  flushSync()
+  expect(bound.get_reset_target?.()[0]).toBeCloseTo(2 * pivot - 5, 9)
+})
+
+// The fit zoom measures content along the camera's view of it as drawn: a 20 A rod along x,
+// turned 90 deg about z, stands upright on screen, so a 800x200 viewport fits it by its height
+test(`fit zoom measures a rotated rod as drawn`, () => {
+  const fit_zoom = (rotation: Vec3): number => {
+    const bound = $state<SceneProps>({ initial_computed_zoom: undefined })
+    const sites = [0, 20].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
+    mount_structure(
+      { structure: { sites }, rotation, width: 800, height: 200, camera_direction: [0, 0, 1] },
+      bound,
+    )
+    return bound.initial_computed_zoom ?? NaN
+  }
+  const [flat, upright] = [fit_zoom([0, 0, 0]), fit_zoom([0, 0, Math.PI / 2])]
+  // the rod spans 4x the viewport's height-limited share once upright
+  expect(upright).toBeLessThan(flat / 3)
+})
+
+// The bonds binding addresses base sites: a bond picked to an image atom is stored as its base
+// site plus a cell shift, never under the image's display index (out of range for the input,
+// and another atom once the image set renumbers)
+test(`edit-bonds stores a bond to an image atom by base site and cell shift`, () => {
+  const interactivity = spy_interactivity()
+  const state = $state<{ added_bonds: StructureBond[] }>({ added_bonds: [] })
+  // 5.2 A apart: too far for a calculated bond, so the pick adds one
+  const crystal = make_crystal(6, [
+    [`Na`, [0, 0, 0]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+  ])
+  const { scene } = mount_structure(
+    {
+      structure: get_pbc_image_sites(crystal, image_options(`none`)),
+      show_bonds: `never`,
+      measure_mode: `edit-bonds`,
+    },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  for (const [x_coord, y_coord] of [
+    [3, 3], // Cl
+    [6, 0], // topmost Na copy on this column, the image at abc [1, 0, 1]
+  ]) {
+    scene_interactivity.compute = (_event, { raycaster }) =>
+      raycaster.set(new Vector3(x_coord, y_coord, 10), new Vector3(0, 0, -1))
+    const target = scene_interactivity.target.current
+    target?.dispatchEvent(new PointerEvent(`pointerdown`))
+    target?.dispatchEvent(new MouseEvent(`click`))
+    flushSync()
+  }
+  expect(state.added_bonds).toEqual([
+    { site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, -1] },
+  ])
+  // ...yet drawn where it was picked: between Cl and that Na image (and every other copy pair
+  // on screen), not from the base Na toward an empty spot outside the cell
+  const [bond_mesh] = meshes_of(scene, BondMesh)
+  const ends = bond_endpoints(bond_mesh).map((pair) =>
+    pair
+      .map((point) => point.map((coord) => Math.round(coord)))
+      .toSorted((point_a, point_b) => point_a[0] - point_b[0]),
+  )
+  expect(ends).toContainEqual([
+    [3, 3, 3],
+    [6, 0, 6],
+  ])
+  expect(ends.flat().every((point) => point.every((coord) => coord >= 0 && coord <= 6))).toBe(
+    true,
+  )
+})
+
+// An added periodic bond is drawn only between copies on screen: with images off there is none
+// (a base-Na copy would end on an empty spot outside the cell), and an image hidden by its
+// property value takes its bond with it
+test.each([
+  [`images shown`, true, false, 1],
+  [`images off`, false, false, 0],
+  [`the image copy hidden`, true, true, 0],
+])(
+  `an added periodic bond with %s draws only on-screen copies`,
+  (_label, images, hide_image, n_drawn) => {
+    const crystal = make_crystal(6, [
+      [`Na`, [0, 0, 0]],
+      [`Cl`, [0.5, 0.5, 0.5]],
+    ])
+    const structure = images ? get_pbc_image_sites(crystal, image_options(`none`)) : crystal
+    // the one Na copy bonded to Cl: the image at abc [1, 0, 1]
+    const image_idx = structure.sites.findIndex(
+      ({ abc, provenance }) => provenance?.image_of === 0 && abc.join(`,`) === `1,0,1`,
+    )
+    const values = structure.sites.map((_site, idx) => (idx === image_idx ? 1 : 0))
+    const { scene } = mount_structure({
+      structure,
+      show_bonds: `never`,
+      added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [-1, 0, -1] }],
+      property_colors: { colors: values.map(() => `red`), values },
+      hidden_prop_vals: new SvelteSet(hide_image ? [1] : []),
+    })
+    expect(meshes_of(scene, BondMesh)[0]?.count ?? 0).toBe(n_drawn)
+  },
+)
+
+// The bonds binding hands an added bond back on the structure, so perception reports it as an
+// explicit bond. Deleting it must undo the addition alone: read as "also calculated", it was
+// recorded as a removal too, leaving an empty override where add + delete should cancel out
+test(`deleting an added bond echoed back as an explicit bond leaves no edits`, () => {
+  const interactivity = spy_interactivity()
+  const added: StructureBond = {
+    site_idx_1: 0,
+    site_idx_2: 1,
+    order: 1,
+    cell_shift: [-1, 0, -1],
+  }
+  const crystal = make_crystal(6, [
+    [`Na`, [0, 0, 0]],
+    [`Cl`, [0.5, 0.5, 0.5]],
+  ])
+  crystal.properties = { bonds: [added] } // as the session emits it
+  const state = $state<{
+    added_bonds: StructureBond[]
+    removed_bonds: StructureBond[]
+    bond_order_overrides: StructureBond[]
+  }>({ added_bonds: [added], removed_bonds: [], bond_order_overrides: [] })
+  mount_structure(
+    {
+      structure: get_pbc_image_sites(crystal, image_options(`none`)),
+      show_bonds: `always`,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode: `delete`,
+    },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  // mid-bond between Cl at [3, 3, 3] and the Na image at [6, 0, 6]
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(4.5, 1.5, 10), new Vector3(0, 0, -1))
+  const target = scene_interactivity.target.current
+  // reordering it edits the addition too, rather than turning it into an override
+  target?.dispatchEvent(new PointerEvent(`pointerdown`, { button: 2 }))
+  target?.dispatchEvent(new MouseEvent(`contextmenu`, { button: 2 }))
+  flushSync()
+  const menu = [...document.querySelectorAll<HTMLButtonElement>(`.bond-context-menu button`)]
+  menu.find((button) => button.textContent?.trim() === `Double`)?.click()
+  flushSync()
+  expect(state.added_bonds).toEqual([{ ...added, order: 2 }])
+  expect(state.bond_order_overrides).toEqual([])
+  target?.dispatchEvent(new PointerEvent(`pointerdown`))
+  target?.dispatchEvent(new MouseEvent(`click`))
+  flushSync()
+  expect([state.added_bonds, state.removed_bonds]).toEqual([[], []])
+})
+
+// A site label button selects its atom on a pointer press, and on the bare click (detail 0)
+// keyboard and screen-reader activation send; a pointer's own click must not toggle it back
+test(`site label buttons select on press and on keyboard or assistive activation`, () => {
+  const state = $state<{ selected_sites: number[] }>({ selected_sites: [] })
+  mount_structure(
+    {
+      structure: {
+        sites: [0, 3].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`)),
+      },
+      show_bonds: `never`,
+      show_site_labels: true,
+    },
+    state,
+  )
+  const [first, second] = document.querySelectorAll<HTMLButtonElement>(`.atom-label`)
+  first.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true }))
+  first.dispatchEvent(new MouseEvent(`click`, { bubbles: true, detail: 1 }))
+  flushSync()
+  expect(state.selected_sites).toEqual([0])
+  second.click()
+  flushSync()
+  expect(state.selected_sites).toEqual([0, 1])
+})
+
+// The order menu of a bond drawn to an image atom reads the bond's order by its canonical key
+// (base sites + cell shift, as edits store it): the rendered key (image index, no shift)
+// matched no edit, so a perceived bond set to triple still said order 1
+test(`bond order menu on an image atom's bond shows that bond's edited order`, () => {
+  const interactivity = spy_interactivity()
+  // O on the x = 0 face gets an image at x = 10, 1.6 A from Si: the perceived bond ends there
+  const crystal = make_crystal(10, [
+    [`Si`, [0.84, 0.5, 0.5]],
+    [`O`, [0, 0.5, 0.5]],
+  ])
+  mount_structure({
+    structure: get_pbc_image_sites(crystal, image_options(`none`)),
+    show_bonds: `always`,
+    measure_mode: `edit-bonds`,
+    bond_order_overrides: [{ site_idx_1: 0, site_idx_2: 1, order: 3, cell_shift: [1, 0, 0] }],
+  })
+  const scene_interactivity = interactivity()
+  // mid-bond between Si at x = 8.4 and the O image at x = 10
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(9.2, 5, 10), new Vector3(0, 0, -1))
+  const target = scene_interactivity.target.current
+  target?.dispatchEvent(new PointerEvent(`pointerdown`, { button: 2 }))
+  target?.dispatchEvent(new MouseEvent(`contextmenu`, { button: 2 }))
+  flushSync()
+  expect(doc_query(`.bond-context-menu strong`).textContent).toBe(`Bond Order (3)`)
 })
 
 // A delete-mode bond is hit anywhere in its 5x wide invisible cylinder, also under a cutaway,
@@ -646,6 +905,120 @@ test.each<[string, number, StructureCutaway | undefined]>([
   target?.dispatchEvent(new MouseEvent(`click`))
   flushSync()
   expect(state.added_bonds).toHaveLength(n_bonds)
+})
+
+// A keyed hit cylinder outlives thickness changes and bond moves, so its transform must follow
+// them: created at 0.02 Å (0.1 Å hit radius) it missed a click 0.3 Å off the axis after the
+// slider went to 0.1 Å, and a moved bond stayed pickable only where it was first drawn
+test(`delete-mode hit cylinders follow bond thickness and bond moves`, () => {
+  const interactivity = spy_interactivity()
+  const at = (x_1: number, x_2: number) =>
+    [x_1, x_2].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
+  const state = $state<SceneProps>({
+    added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+    bond_thickness: 0.02,
+    structure: { sites: at(0, 3) },
+  })
+  mount_structure(
+    { show_bonds: `never`, measure_mode: `edit-bonds`, bond_edit_mode: `delete` },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  const click_at = (x_coord: number) => {
+    scene_interactivity.compute = (_event, { raycaster }) =>
+      raycaster.set(new Vector3(x_coord, 0.3, 10), new Vector3(0, 0, -1))
+    const target = scene_interactivity.target.current
+    target?.dispatchEvent(new PointerEvent(`pointerdown`))
+    target?.dispatchEvent(new MouseEvent(`click`))
+    flushSync()
+  }
+  click_at(1.5)
+  expect(state.added_bonds).toHaveLength(1) // 0.3 Å is outside the 0.1 Å hit radius
+  state.structure = { sites: at(10, 13) } // same sites and bond key, new place
+  state.bond_thickness = 0.1
+  flushSync()
+  click_at(1.5)
+  expect(state.added_bonds).toHaveLength(1) // nothing is drawn there anymore
+  click_at(11.5)
+  expect(state.added_bonds).toEqual([])
+})
+
+// The hover highlight is a keyed cylinder too: it must follow the bond thickness (a new
+// structure, the other way its bond could move, clears the hover)
+test(`edit-bonds hover highlight follows bond thickness`, () => {
+  const interactivity = spy_interactivity()
+  const at = (x_1: number, x_2: number) =>
+    [x_1, x_2].map((x_coord) => make_site(`C`, [0, 0, 0], [x_coord, 0, 0], `C`))
+  let bond_thickness = $state(0.1)
+  const { scene } = mount_structure({
+    structure: { sites: at(0, 3) },
+    get bond_thickness() {
+      return bond_thickness
+    },
+    show_bonds: `never`,
+    measure_mode: `edit-bonds`,
+    bond_edit_mode: `delete`,
+    added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+  })
+  scene.updateMatrixWorld()
+  const scene_interactivity = interactivity()
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(1.5, 0, 10), new Vector3(0, 0, -1))
+  scene_interactivity.target.current?.dispatchEvent(new PointerEvent(`pointermove`))
+  flushSync()
+  // the translucent highlight: the one raycast-disabled cylinder with an opacity-0.25 material
+  const highlight = () => {
+    const found: Mesh[] = []
+    scene.traverse((object) => {
+      const material = object instanceof Mesh ? object.material : undefined
+      if (material && `opacity` in material && material.opacity === 0.25)
+        found.push(object as Mesh)
+    })
+    if (found.length !== 1)
+      throw new Error(`expected one hover highlight, got ${found.length}`)
+    return found[0]
+  }
+  const radius = () => new Vector3().setFromMatrixColumn(highlight().matrix, 0).length()
+  const center_x = () => new Vector3().setFromMatrixPosition(highlight().matrix).x
+  expect([radius(), center_x()]).toEqual([expect.closeTo(0.11, 6), expect.closeTo(1.5, 6)])
+  bond_thickness = 0.2
+  flushSync()
+  expect([radius(), center_x()]).toEqual([expect.closeTo(0.22, 6), expect.closeTo(1.5, 6)])
+})
+
+// A whole-atom cutaway draws a center's complete shell, bonds past the slab included, so those
+// bonds stay editable: their hit cylinders used to sit under the slab's clipping
+test(`delete-mode click removes a whole-atom shell bond outside the slab`, () => {
+  const interactivity = spy_interactivity()
+  const state = $state<{ added_bonds: StructureBond[] }>({
+    added_bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 1 }],
+  })
+  mount_structure(
+    {
+      // Cl inside the slab (|z| < 0.1) is the center, its Na neighbor 2 A above it
+      structure: {
+        sites: [
+          make_site(`Na`, [0, 0, 0], [3, 0, 2], `Na`),
+          make_site(`Cl`, [0, 0, 0], [0, 0, 0.05], `Cl`),
+        ],
+      },
+      show_bonds: `never`,
+      bond_thickness: 0.1,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode: `delete`,
+      cutaway: whole_atom_cutaway(),
+    },
+    state,
+  )
+  const scene_interactivity = interactivity()
+  // straight down onto the bond's midpoint at z ~ 1, outside the slab
+  scene_interactivity.compute = (_event, { raycaster }) =>
+    raycaster.set(new Vector3(1.5, 0, 10), new Vector3(0, 0, -1))
+  const target = scene_interactivity.target.current
+  target?.dispatchEvent(new PointerEvent(`pointerdown`))
+  target?.dispatchEvent(new MouseEvent(`click`))
+  flushSync()
+  expect(state.added_bonds).toEqual([])
 })
 
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
@@ -1651,6 +2024,8 @@ test.each([
     show_bonds: `always`,
     show_polyhedra: `never`,
     cutaway: whole_atom_cutaway(),
+    // both drawn copies of one periodic bond get a hit cylinder (they once shared its key)
+    measure_mode: `edit-bonds`,
   })
   const [bond_mesh] = meshes_of(scene, BondMesh)
   if (!bond_mesh) throw new Error(`no bond mesh rendered`)

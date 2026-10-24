@@ -330,6 +330,10 @@ export class StructureSession {
   // Host computations see mapped elements in the borrowed input cell, without display
   // tiling, images or cell standardization. Mapping changes therefore change input identity.
   tool_input = $derived.by(() => this.map_elements(this.inputs.structure()))
+  // The analyzed cell and the wrapped input with mapped elements, for what describes or saves
+  // the atoms the legend shows: the info pane's formula and density, the text exports
+  mapped_base_structure = $derived.by(() => this.map_elements(this.base_structure))
+  mapped_normalized_structure = $derived.by(() => this.map_elements(this.normalized_structure))
   private map_elements(struct: AnyStructure | undefined): AnyStructure | undefined {
     const mapping = this.element_mapping
     if (!struct || !mapping || Object.keys(mapping).length === 0) return struct
@@ -357,17 +361,22 @@ export class StructureSession {
   private readonly mapped_supercell = $derived.by(() =>
     this.map_elements(this.supercell_structure),
   )
-  // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing
-  private last_imaged: { struct: AnyStructure; key: string; imaged: AnyStructure } | undefined
+  // Kept while setting changes leave the drawn copies as they were, so the scene redoes nothing.
+  // Only a settings change on the same structure can, so new frames build no image_set_key.
+  private last_imaged: { struct: AnyStructure; key?: string; imaged: AnyStructure } | undefined
   // Element-mapped + PBC image atoms. Images are skipped during drags.
   displayed_structure = $derived.by((): AnyStructure | undefined => {
     const struct = this.mapped_supercell
     if (this.dragging_atoms || !this.inputs.show_image_atoms() || !struct) return struct
     if (!(`lattice` in struct)) return struct
     const imaged = get_pbc_image_sites(struct, this.image_options)
-    const key = image_set_key(imaged)
     const last = this.last_imaged
-    if (last?.struct === struct && last.key === key) return last.imaged
+    let key: string | undefined
+    if (last?.struct === struct) {
+      last.key ??= image_set_key(last.imaged)
+      key = image_set_key(imaged)
+      if (key === last.key) return last.imaged
+    }
     this.last_imaged = { struct, key, imaged }
     return imaged
   })
@@ -648,7 +657,8 @@ export class StructureSession {
   // sites and cell shifts, so they stay): site-indexed state follows each copy through its
   // (base site, lattice shift) token, dropping copies no longer drawn. A changed base cell (an
   // async supercell, a conventional cell once symmetry lands) drops it all: its indices name
-  // other atoms. The token index is built only once state points at a copy.
+  // other atoms. A copy is looked up among the image sites of its own base site, so frames
+  // build no index over every site.
   private remap_image_sites(before?: AnyStructure, after?: AnyStructure): void {
     const { inputs } = this
     // images follow the base sites, so the first one's index is the base site count
@@ -656,19 +666,22 @@ export class StructureSession {
       const first_image = sites.findIndex((site) => site.provenance?.image_of !== undefined)
       return first_image === -1 ? sites.length : first_image
     }
-    let same_base: boolean | undefined
-    let new_idx: Map<string, number> | undefined
+    let base_counts: [number, number] | undefined
     const remap = (idx: number): number | undefined => {
       if (!before || !after) return undefined
       const site = before.sites[idx]
       if (!site) return undefined
-      same_base ??= base_count(before) === base_count(after)
-      if (!same_base) return undefined
-      if (site.provenance?.image_of === undefined) return idx
-      new_idx ??= new Map(
-        after.sites.map((_site, after_idx) => [site_token(after, after_idx), after_idx]),
-      )
-      return new_idx.get(site_token(before, idx))
+      base_counts ??= [base_count(before), base_count(after)]
+      const [before_base, after_base] = base_counts
+      if (before_base !== after_base) return undefined
+      const base_idx = site.provenance?.image_of
+      if (base_idx === undefined) return idx
+      const token = site_token(before, idx)
+      for (let after_idx = after_base; after_idx < after.sites.length; after_idx++) {
+        if (after.sites[after_idx].provenance?.image_of !== base_idx) continue
+        if (site_token(after, after_idx) === token) return after_idx
+      }
+      return undefined
     }
     for (const [get, set] of [
       [inputs.selected_sites, inputs.set_selected_sites],
@@ -676,19 +689,20 @@ export class StructureSession {
       [inputs.highlighted_sites, inputs.set_highlighted_sites],
     ] as const) {
       const sites = get()
-      if (sites.some((idx) => remap(idx) !== idx))
-        set(sites.flatMap((idx) => remap(idx) ?? []))
+      const mapped = sites.map(remap)
+      if (mapped.some((idx, pos) => idx !== sites[pos]))
+        set(mapped.filter((idx) => idx !== undefined))
     }
     const hovered = inputs.hovered_site_idx()
-    if (hovered !== null && remap(hovered) !== hovered)
-      inputs.set_hovered_site_idx(remap(hovered) ?? null)
-    const overrides = [...this.site_radius_overrides]
-    if (overrides.every(([idx]) => remap(idx) === idx)) return
+    const hovered_mapped = hovered === null ? null : (remap(hovered) ?? null)
+    if (hovered_mapped !== hovered) inputs.set_hovered_site_idx(hovered_mapped)
+    const overrides = [...this.site_radius_overrides].map(
+      ([idx, radius]) => [remap(idx), idx, radius] as const,
+    )
+    if (overrides.every(([mapped, idx]) => mapped === idx)) return
     this.site_radius_overrides.clear()
-    for (const [idx, radius] of overrides) {
-      const mapped = remap(idx)
+    for (const [mapped, , radius] of overrides)
       if (mapped !== undefined) this.site_radius_overrides.set(mapped, radius)
-    }
   }
   private notice(message: string): void {
     this.inputs.on_notice?.(message)

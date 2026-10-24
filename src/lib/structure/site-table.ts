@@ -34,9 +34,13 @@ const is_vec3_like = (value: unknown): value is (number | boolean)[] =>
 export const vec3_norm = (vec: readonly (number | boolean)[]): number =>
   Math.hypot(Number(vec[0]), Number(vec[1]), Number(vec[2]))
 
+// Own keys only: a site property named `constructor` or `toString` must not read Object's
+const own = <Value>(record: Record<string, Value>, key: string): Value | undefined =>
+  Object.hasOwn(record, key) ? record[key] : undefined
+
 // Label and unit of a property from the config that labels the plot axes
 export const property_config = (key: string): TrajPropertyConfig | undefined =>
-  trajectory_property_config[key] ?? trajectory_property_config[key.toLowerCase()]
+  own(trajectory_property_config, key) ?? own(trajectory_property_config, key.toLowerCase())
 
 // Shared by the site table and the trajectory inspector's other tables: virtualized plain
 // tables (no heatmap) with column toggles, numbers to 6 significant digits
@@ -103,7 +107,7 @@ export const property_column = (prop_name: string, axis?: string): Column => {
       : axis
         ? `${prop_name} ${axis}`
         : (config?.label ?? prop_name)
-  const unit = SITE_PROPERTY_UNITS[prop_name] ?? config?.unit
+  const unit = own(SITE_PROPERTY_UNITS, prop_name) ?? config?.unit
   const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
   return { id, key: id, label: unit ? `${label} (${unit})` : label, description: prop_name }
 }

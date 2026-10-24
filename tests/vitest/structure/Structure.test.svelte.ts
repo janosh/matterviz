@@ -36,6 +36,7 @@ import type {
 import { structure_host_tool } from '#lib/structure/host-tool.svelte.js'
 import { prediction_from_json, prediction_to_json } from '#lib/structure/prediction.js'
 import { make_supercell } from '#lib/structure/supercell.js'
+import * as export_funcs from '#lib/structure/export.js'
 import StructureOwnerHarness from './StructureOwnerHarness.svelte'
 import { StructureSession } from '#lib/structure/session.svelte.js'
 import StructureViewport from '#lib/structure/StructureViewport.svelte'
@@ -44,6 +45,7 @@ import { structures } from '#site/structures.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { Matrix4, OrthographicCamera } from 'three/webgpu'
+import { rgb } from 'd3-color'
 import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
 import type { AtomColorField } from '#lib/structure/atom-color-field.js'
 import {
@@ -1693,6 +1695,66 @@ const stub_fullscreen_api = () => {
 }
 
 describe(`Structure`, () => {
+  // A legend remap (VASP 4 placeholder H -> Fe) is what the info pane describes and the text
+  // exports write: both read the unmapped input, so POSCAR still said H at a 56x lower density
+  test(`element remapping reaches the info pane's formula and density and the text exports`, async () => {
+    const poscar_reason = vi.spyOn(
+      export_funcs.STRUCT_TEXT_FORMATS.poscar,
+      `unavailable_reason`,
+    )
+    const crystal = make_crystal(3, [{ element: `H`, abc: [0, 0, 0] }])
+    const state = $state<ComponentProps<typeof Structure>>({
+      structure: crystal,
+      active_pane: `info`,
+    })
+    mount_structure(state)
+    await tick()
+    const density = () =>
+      Number(
+        /(?<density>[\d.]+) g\/cm³/.exec(
+          document.querySelector(`.structure-info`)?.textContent ?? ``,
+        )?.groups?.density,
+      )
+    const h_density = density()
+    doc_query(`.element-legend label`).dispatchEvent(
+      new MouseEvent(`contextmenu`, { bubbles: true }),
+    )
+    await tick()
+    const search = doc_query<HTMLInputElement>(`.remap-search`)
+    set_input(search, `Fe`)
+    search.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Enter`, bubbles: true }))
+    await tick()
+    expect(document.querySelector(`.structure-info`)?.textContent).toContain(`Fe`)
+    // the ratio of the atomic masses (Fe 55.845, H 1.008) at 3 significant digits of density
+    expect(density() / h_density).toBeCloseTo(55.845 / 1.008, 0)
+    state.active_pane = `export`
+    await tick()
+    const exported = poscar_reason.mock.lastCall?.[0]
+    expect(exported?.sites.map(({ species }) => species[0].element)).toEqual([`Fe`])
+  })
+
+  // Any CSS color takes the opacity, multiplied into its own alpha: `white` + an alpha byte was
+  // invalid CSS (the viewer went transparent) and add_alpha replaced a color's own alpha
+  test.each([
+    [`#ff0000`, 0.1, 0.1],
+    [`white`, 0.5, 0.5],
+    [`rgba(0, 0, 255, 0.5)`, 0.5, 0.25],
+    [`#0f0`, 1, 1],
+  ])(`background_color %s at opacity %f has alpha %f`, (color, opacity, alpha) => {
+    mount_structure({ background_color: color, background_opacity: opacity })
+    const css = doc_query(`.structure`).style.getPropertyValue(`--struct-bg-override`)
+    const parsed = rgb(css)
+    expect(parsed.displayable()).toBe(true)
+    expect(parsed.opacity).toBeCloseTo(alpha, 12)
+  })
+  // a color only the browser resolves keeps its var() and mixes in the opacity
+  test(`a var() background_color is mixed with transparent by its opacity`, () => {
+    mount_structure({ background_color: `var(--brand)`, background_opacity: 0.4 })
+    expect(doc_query(`.structure`).style.getPropertyValue(`--struct-bg-override`)).toBe(
+      `color-mix(in srgb, var(--brand) 40%, transparent)`,
+    )
+  })
+
   test(`each viewer keeps its own color_scheme and picked colors, page colors untouched`, async () => {
     const page_colors = { ...colors.element }
     const oxide = make_crystal(4, [{ element: `O`, abc: [0, 0, 0] }])

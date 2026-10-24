@@ -324,9 +324,11 @@ describe(`StructureControls schema rows`, () => {
     // uniform polyhedra color mode pairs the mode select with its color swatch in ONE row
     const polyhedra_color_row = row_of(`polyhedra_color`)
     expect(polyhedra_color_row.querySelector(`select`)?.value).toBe(`uniform`)
-    expect(
-      polyhedra_color_row.querySelector<HTMLInputElement>(`input[type="color"]`)?.value,
-    ).toBe(DEFAULTS.structure.polyhedra_color)
+    const polyhedra_swatch =
+      polyhedra_color_row.querySelector<HTMLInputElement>(`input[type="color"]`)
+    expect(polyhedra_swatch?.value).toBe(DEFAULTS.structure.polyhedra_color)
+    // the row's label names its select, so the swatch carries its own name
+    expect(polyhedra_swatch?.getAttribute(`aria-label`)).toBe(`Polyhedra color`)
 
     for (const [key, expected] of [
       [`bond_thickness`, 0.2],
@@ -924,6 +926,35 @@ describe(`StructureControls reactive props`, () => {
     expect(
       target.querySelector(`[data-key="atom_color_mode"] .setting-reset-button`),
     ).toBeNull()
+  })
+
+  // A viewer started in custom coloring: the mode reset must hand back its color_fn, since a
+  // plain switch to `custom` has none and throws
+  test(`atom color mode reset restores a custom coloring`, async () => {
+    const color_fn = (_site: unknown, idx: number) => idx
+    let atom_color_config = $state.raw<AtomColorConfig>({
+      ...DEFAULT_ATOM_COLOR_CONFIG,
+      mode: `custom`,
+      color_fn,
+      scale_type: `categorical`,
+    })
+    const state = {
+      get atom_color_config() {
+        return atom_color_config
+      },
+      set atom_color_config(value) {
+        atom_color_config = value
+      },
+    }
+    await mount_bound_controls(state)
+    await choose(`atom_color_mode`, `element`)
+    expect(state.atom_color_config.mode).toBe(`element`)
+    await reset_row(`atom_color_mode`)
+    expect(state.atom_color_config).toMatchObject({
+      mode: `custom`,
+      color_fn,
+      scale_type: `categorical`,
+    })
   })
 
   // The label colors are CSS strings the scene owns, read through derived bindings rather than

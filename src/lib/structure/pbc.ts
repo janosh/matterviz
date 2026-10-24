@@ -16,14 +16,21 @@ import type { AnyStructure, Site } from './index'
 
 export type Pbc = readonly [boolean, boolean, boolean]
 
+// An integer lattice shift. Read-only: the shared constants below are handed to every caller.
+type Shift = Readonly<Vec3>
+const shifted = (vec: Shift, shift: Shift): Vec3 => [
+  vec[0] + shift[0],
+  vec[1] + shift[1],
+  vec[2] + shift[2],
+]
 // Pack a site index and its lattice shift (-1/0/1 per axis) into one integer key, so the
 // image dedupe in find_image_atoms builds no string per candidate
-const pack_image_key = (site_idx: number, shift: Vec3): number =>
+const pack_image_key = (site_idx: number, shift: Shift): number =>
   site_idx * 27 + (shift[0] + 1) * 9 + (shift[1] + 1) * 3 + shift[2] + 1
 const FACE_TOLERANCE = 0.1 // Å from a cell face that still counts as on it (see phase 1)
-const ZERO_SHIFT: Vec3 = [0, 0, 0]
+const ZERO_SHIFT: Shift = [0, 0, 0]
 // The displayed copies of an interior site: just the base atom
-const BASE_ONLY: readonly Vec3[] = [ZERO_SHIFT]
+const BASE_ONLY: readonly Shift[] = [ZERO_SHIFT]
 const AXES = [0, 1, 2] as const
 
 // Wrap a single fractional coordinate to [0, 1), snapping near-1 values to 0 and rounding
@@ -96,12 +103,12 @@ function image_atoms(
   const images: ImageAtom[] = []
   const seen_images = new Set<number>()
   // Add the copy of a site shifted by whole cells, at most once
-  const add_copy = (site_idx: number, shift: Vec3, is_completion: boolean): void => {
+  const add_copy = (site_idx: number, shift: Shift, is_completion: boolean): void => {
     if (shift[0] === 0 && shift[1] === 0 && shift[2] === 0) return // the base atom
     const key = pack_image_key(site_idx, shift)
     if (seen_images.has(key)) return
     seen_images.add(key)
-    const img_abc = math.add(structure.sites[site_idx].abc, shift)
+    const img_abc = shifted(structure.sites[site_idx].abc, shift)
     images.push([site_idx, frac_to_cart(img_abc), img_abc, is_completion])
   }
 
@@ -114,7 +121,7 @@ function image_atoms(
     pbc[axis] && Math.abs(abc[axis]) < tolerances[axis]
   const near_high = (abc: Vec3, axis: number) =>
     pbc[axis] && Math.abs(abc[axis] - 1) < tolerances[axis]
-  const copy_shifts = structure.sites.map(({ abc }): readonly Vec3[] => {
+  const copy_shifts = structure.sites.map(({ abc }): readonly Shift[] => {
     if (AXES.every((axis) => !near_low(abc, axis) && !near_high(abc, axis))) return BASE_ONLY
     // per axis: stay, +1 off the low face, -1 off the high face
     const [shifts_a, shifts_b, shifts_c] = AXES.map((axis) => [
@@ -154,7 +161,7 @@ function image_atoms(
   // Copies stay in the cell's neighbor shell (shifts of -1/0/1): completing the shells of
   // copies further out (bonds of a corner image pointing away from the cell) grows a cluster,
   // e.g. 36 instead of 12 completion images for a 1-atom fcc cell
-  const in_shell = (shift: Vec3) => shift.every((val) => Math.abs(val) <= 1)
+  const in_shell = (shift: Shift) => shift.every((val) => Math.abs(val) <= 1)
 
   // Each displayed copy of a polyhedron center gets all its corners or none: a copy truncated
   // at the shell's edge is left out of complete_centers, so compute_polyhedra keeps it undrawn
@@ -171,7 +178,7 @@ function image_atoms(
       return frac.map((coord, axis) => Math.round(coord - abc[axis])) as Vec3
     })
     for (const copy_shift of copy_shifts[center_site_idx]) {
-      const shifts = corner_shifts.map((shift) => math.add(shift, copy_shift))
+      const shifts = corner_shifts.map((shift) => shifted(shift, copy_shift))
       if (!shifts.every(in_shell)) continue
       complete_centers?.add(pack_image_key(center_site_idx, copy_shift))
       for (const [vertex_idx, shift] of shifts.entries())
@@ -190,7 +197,7 @@ function image_atoms(
   const shift: Vec3 = [0, 0, 0] // scratch: add_copy copies it
   // The bond's far end beside every displayed copy of a face atom at its near end; `sign`
   // flips the bond's cell shift for the reverse direction
-  const complete_bond = (near: number, far: number, bond_shift: Vec3, sign: number): void => {
+  const complete_bond = (near: number, far: number, bond_shift: Shift, sign: number): void => {
     if (copy_shifts[near] === BASE_ONLY) return // interior atom
     for (const copy_shift of copy_shifts[near]) {
       for (const axis of AXES) shift[axis] = copy_shift[axis] + sign * bond_shift[axis]
@@ -221,7 +228,7 @@ export function get_pbc_image_sites(
 ): AnyStructure {
   const { images, complete_centers } = image_atoms(structure, options)
   if (images.length === 0 && !complete_centers) return structure
-  const stamp = (site: Site, site_idx: number, shift: Vec3): Site =>
+  const stamp = (site: Site, site_idx: number, shift: Shift): Site =>
     complete_centers
       ? {
           ...site,

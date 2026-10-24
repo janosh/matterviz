@@ -104,12 +104,17 @@
   let mode_toggle_el = $state<HTMLButtonElement>()
   let mode_toggle_visible = $derived(show_mode_toggle || mode_menu_open)
 
-  // Clear hidden property values when switching modes (since they may not be valid).
-  // prev_mode is bookkeeping for this effect only, so it stays a plain variable.
-  let prev_mode = untrack(() => atom_color_config.mode)
+  // Clear hidden property values when the colored quantity changes (mode or property key): the
+  // values they name belong to the previous one. A custom color_fn is not part of the key: hosts
+  // rebuild it on every derive, which would clear the user's hidden values each time. The
+  // previous key is bookkeeping for this effect only, so it stays a plain variable.
+  const colored_by = (config: AtomColorConfig): string =>
+    `${config.mode}:${`property_key` in config ? config.property_key : ``}`
+  let prev_colored_by = untrack(() => colored_by(atom_color_config))
   $effect(() => {
-    if (atom_color_config.mode === prev_mode) return
-    prev_mode = atom_color_config.mode
+    const current = colored_by(atom_color_config)
+    if (current === prev_colored_by) return
+    prev_colored_by = current
     untrack(() => hidden_prop_vals.clear())
   })
 

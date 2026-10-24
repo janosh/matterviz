@@ -26,7 +26,7 @@ import type { Polyhedron } from '#lib/structure/polyhedra.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { numeric_sites } from '#lib/structure/site.js'
+import { make_site, numeric_sites } from '#lib/structure/site.js'
 import {
   BufferAttribute,
   BufferGeometry,
@@ -610,6 +610,33 @@ describe(`compute_polyhedra`, () => {
     expect(at_cap(bonds)?.vertices).toHaveLength(6)
     expect(at_cap([...bonds, dupe])?.vertices).toHaveLength(6)
     expect(at_cap([...bonds, dupe])?.volume).toBeCloseTo(at_cap(bonds)?.volume ?? 0, 12)
+  })
+
+  // A disordered anion stored as two split sites on one position (O 0.5 + F 0.5, the form
+  // merge_split_partial_sites draws as one atom) is one vertex: counted per site, the TiX6
+  // octahedron had CN 12, past max_neighbors, and vanished
+  test(`split partial-occupancy vertices count once`, () => {
+    const arms: Vec3[] = [
+      [1, 0, 0],
+      [-1, 0, 0],
+      [0, 1, 0],
+      [0, -1, 0],
+      [0, 0, 1],
+      [0, 0, -1],
+    ]
+    const sites = [
+      make_site(`Ti`, [0, 0, 0], [0, 0, 0], `Ti`),
+      ...arms.flatMap((arm) =>
+        [`O`, `F`].map((element) =>
+          make_site(element as `O` | `F`, [0, 0, 0], scale(arm, 1.95), element, {}, 0.5),
+        ),
+      ),
+    ]
+    const structure = { sites }
+    const shells = compute_polyhedra(structure, electroneg_ratio(structure)).map(
+      ({ center_element, vertices }) => [center_element, vertices.length],
+    )
+    expect(shells).toEqual([[`Ti`, 6]])
   })
 
   test(`duplicate center positions are deduped`, () => {

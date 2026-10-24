@@ -19,8 +19,9 @@
     on_close: () => void
   } = $props()
 
-  // Act on pointerdown (a click would arrive after orbit-controls' start handler already
-  // closed the menu) or Enter/Space
+  // Act on pointerdown (a pointer's click would arrive after orbit-controls' start handler
+  // already closed the menu), else on the click that keyboard and assistive-tech activation
+  // send (detail 0: a screen reader's activate never presses a key or pointer)
   const action_props = (action: () => void) => {
     const run = (event: Event) => {
       event.preventDefault()
@@ -29,8 +30,12 @@
     }
     return {
       onpointerdown: run,
+      onclick: (event: MouseEvent) => {
+        if (event.detail === 0) run(event)
+      },
+      // the key's click acts; the key itself must not reach the viewer's shortcuts
       onkeydown: (event: KeyboardEvent) => {
-        if (event.key === `Enter` || event.key === ` `) run(event)
+        if (event.key === `Enter` || event.key === ` `) event.stopPropagation()
       },
     }
   }
