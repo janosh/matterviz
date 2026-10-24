@@ -10,8 +10,11 @@ import { describe, expect, test } from 'vitest'
 import { make_crystal } from '../test-fixtures'
 
 const CELL = 4
+// `forces` (pymatgen's plural) on the site: loose dropped structures read it like `force`
 const cubic_structure = (x_frac: number) =>
-  make_crystal(CELL, [{ element: `Li`, abc: [x_frac, 0, 0] }])
+  make_crystal(CELL, [
+    { element: `Li`, abc: [x_frac, 0, 0], properties: { forces: [0, 0, x_frac] } },
+  ])
 const direct_path = reaction_paths[`direct hop`]
 const curved_path = reaction_paths[`curved hop`]
 
@@ -165,6 +168,9 @@ describe(`dropped files`, () => {
       })),
     )
     expect(Object.keys(paths)).toEqual([`dropped images`])
+    expect(paths[`dropped images`].images.map(({ forces }) => forces?.[0][2])).toEqual([
+      0.1, 0.3, 0.5,
+    ])
     expect(analyze_barrier(paths[`dropped images`]).reaction_energy).toBeCloseTo(0.3, 12)
   })
 
@@ -172,15 +178,17 @@ describe(`dropped files`, () => {
   // content first like parse_xyz_reaction_path does — otherwise a leading blank line
   // shifts the comment out from under it and the energy reads as missing
   test.each([``, `  \n\n`])(
-    `a loose single-frame XYZ keeps its comment energy after %j of leading whitespace`,
+    `a loose single-frame XYZ keeps its comment energy and forces after %j of leading whitespace`,
     (lead) => {
       const xyz = (x_val: number, energy: number) =>
-        `${lead}1\nenergy=${energy}\nLi ${x_val} 0.0 0.0`
+        `${lead}1\nProperties=species:S:1:pos:R:3:forces:R:3 energy=${energy}\nLi ${x_val} 0 0 0.5 0 0`
       const paths = parse_dropped_paths([
         { content: xyz(0, -10), filename: `a.xyz` },
         { content: xyz(1, -9.2), filename: `b.xyz` },
       ])
-      expect(paths[`dropped images`].images.map((image) => image.energy)).toEqual([-10, -9.2])
+      const { images } = paths[`dropped images`]
+      expect(images.map((image) => image.energy)).toEqual([-10, -9.2])
+      expect(images.map((image) => image.forces)).toEqual([[[0.5, 0, 0]], [[0.5, 0, 0]]])
     },
   )
 

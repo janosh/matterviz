@@ -182,6 +182,9 @@ const FIXTURES = [
     frame0_metadata: { step: 0, energy: -58.97273254394531, force_max: 0.025402992964072665 }, last_metadata: { energy: -58.59364700317383 } },
   { file: `gold-nanoparticle-md.h5`, format: `hdf5`, frame_count: 100, n_atoms: 55, steps: [1, 991], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
+    // the canonical `force` every reader writes (a TorchSim `forces` stayed plural, and export dropped it)
+    site0_properties: { force: [-1.2743433713912964, 0.6032001972198486, -0.13765788078308105],
+      velocity: [0.003630077699199319, 0.010611849837005138, -0.0009142969502136111] },
     volume: [17206.47404956977, 17206.47404956977], site0_xyz: [12.910871505737305, 12.91317081451416, 12.907877922058105] },
   { file: `flame-gold-cluster-55-atoms.h5`, format: `hdf5`, frame_count: 20, n_atoms: 55, steps: [25, 500], species: { Au: 55 },
     pbc: [false, false, false], abc: [[25.816495895385742, 25.816495895385742, 25.816495895385742], [25.816495895385742, 25.816495895385742, 25.816495895385742]],
@@ -253,6 +256,9 @@ describe(`content sniffing`, () => {
   it.each([
     [`multi-frame XYZ`, `${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz`, 2],
     [`single-frame XYZ`, VALID_XYZ_FRAME, `xyz`, 1],
+    // TextLines keeps a BOM, which hid a lone frame and the first of several
+    [`BOM + single-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}`, `xyz`, 1],
+    [`BOM + multi-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz`, 2],
     [`LAMMPS`, lammps_content, `lammps`, 1],
   ])(`detects %s by content`, async (_label, content, format, frame_count) => {
     for (const filename of [undefined, blob_uuid]) {
@@ -1478,11 +1484,11 @@ describe(`XYZ`, () => {
   })
 
   // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
-  // one frame and `free_energy=` in the next are the same plot line
+  // one frame and `free_energy=` in the next are the same plot line; of two, the leftmost wins
   it(`folds extXYZ metadata keys to lower case across frames`, async () => {
     const content = [
       xyz_frame([`H 0 0 0`], `Free_Energy=-1.5 MyFlag=T`),
-      xyz_frame([`H 0 0 0`], `free_energy=-2.5 myflag=F`),
+      xyz_frame([`H 0 0 0`], `free_energy=-2.5 myflag=F FREE_ENERGY=-9 MYFLAG=T`),
     ].join(`\n`)
     const frames = await frames_of(await open(content, `casing.extxyz`))
     expect(frames.map((frame) => frame.metadata?.free_energy)).toEqual([-1.5, -2.5])

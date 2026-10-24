@@ -2,6 +2,7 @@ import { display_idx } from '#lib/labels.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { is_finite_vec3, type Matrix3x3 } from '#lib/math.js'
+import { parse_leading_num } from '#lib/utils.js'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { ExtxyzColumn, XyzFrameSpec } from '#lib/trajectory/helpers.js'
@@ -418,7 +419,16 @@ export function parse_xyz_trajectory(
   collector: WarningCollector,
 ): ParsedTrajectory {
   const lines = TextLines.of(content)
-  const specs = index_xyz_frames(lines, collector.warn)
+  const dropped: string[] = []
+  const specs = index_xyz_frames(lines, (message) => dropped.push(message))
+  if (specs.length === 0) {
+    // Decode a whole first frame the sampler skipped (title after the count, numeric species)
+    // or dropped (bad last line), as parse_xyz does; only one that ended early fails as dropped
+    const num_atoms = Math.trunc(parse_leading_num(lines.line(0) ?? ``))
+    if (!(num_atoms > 0 && num_atoms + 2 <= lines.count))
+      throw new Error(dropped[0] ?? `No XYZ frames found`)
+    specs.push({ start: 0, num_atoms, comment: lines.line(1) ?? ``, end: num_atoms + 2 })
+  } else for (const message of dropped) collector.warn(message)
   const frames = specs.map((spec, frame_idx) =>
     build_xyz_frame(
       lines,
@@ -430,6 +440,5 @@ export function parse_xyz_trajectory(
       collector,
     ),
   )
-  if (frames.length === 0) throw new Error(`No XYZ frames found`)
   return { format: `xyz`, frames, metadata: extxyz_run_metadata(specs[0]?.comment) }
 }

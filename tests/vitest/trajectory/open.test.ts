@@ -102,12 +102,15 @@ describe(`loading policy`, () => {
   )
 
   it.each([undefined, `frame.xyz`, `blob-id`])(
-    `opens a single XYZ frame named %s, keeping its warnings on the run`,
+    `opens a single XYZ frame named %s, keeping its warnings, energy and unwrapped sites`,
     async (filename) => {
-      const run = await open(`1\npbc="bogus"\nHe 0.5 0 0\n`, filename)
+      // read like one frame of a longer file: the structure parser lost energy and wrapped -1 to 3
+      const xyz = `1\nLattice="4 0 0 0 4 0 0 0 4" energy=-3.5 pbc="bogus"\nHe -1 0 0\n`
+      const run = await open(xyz, filename)
       expect(run.frame_count).toBe(1)
       expect(run.provenance.format).toBe(`xyz`)
-      expect(run.preview.structure.sites[0].xyz).toEqual([0.5, 0, 0])
+      expect(run.preview.structure.sites[0].xyz).toEqual([-1, 0, 0])
+      expect(run.properties.rows[0].properties.energy).toBe(-3.5)
       expect(run.warnings).toEqual([expect.stringMatching(/^Invalid EXTXYZ pbc/)])
     },
   )
@@ -164,12 +167,16 @@ describe(`loading policy`, () => {
     expect(run.properties.complete).toBe(true)
   })
 
-  it(`honours an already-aborted signal and an abort during HDF5 parsing`, async () => {
+  it(`honours an already-aborted signal and an abort during text or HDF5 parsing`, async () => {
     const aborted = new AbortController()
     aborted.abort(new Error(`gone`))
     await expect(
       open_trajectory(text, { filename: `run.extxyz`, signal: aborted.signal }),
     ).rejects.toThrow(`gone`)
+    // aborted from a progress report while the text parses, it rejects with that reason
+    const late = new AbortController()
+    const options = { signal: late.signal, on_progress: () => late.abort(new Error(`late`)) }
+    await expect(open_trajectory(text, options)).rejects.toThrow(`late`)
     const controller = new AbortController()
     const pending = open_trajectory(read_binary_test_file(`gold-nanoparticle-md.h5`), {
       filename: `gold.h5`,
@@ -211,19 +218,27 @@ describe(`JSON runs`, () => {
     ])
   })
 
-  it(`trajectory_from_json builds the same run synchronously from a parsed value`, () => {
-    const run = trajectory_from_json([he_frame(0, 0, -1).structure], { filename: `mem.json` })
+  it(`trajectory_from_json builds the same run synchronously, with the structure parser's warnings`, () => {
+    // singular: cart→frac warns and falls back to axis lengths
+    // oxfmt-ignore
+    const matrix = [[4, 0, 0], [8, 0, 0], [0, 0, 4]]
+    const structure = { ...he_frame(0, 0, -1).structure, lattice: { matrix } }
+    const run = trajectory_from_json([structure], { filename: `mem.json` })
     expect(run.frame_count).toBe(1)
     expect(run.provenance).toEqual({ filename: `mem.json`, format: `json` })
+    expect(run.warnings).toEqual([expect.stringMatching(/^Singular JSON lattice/)])
   })
 
   // oxfmt-ignore
   test.each([
     [`.xyz that is not XYZ`, `not xyz at all`, `broken.xyz`, /Failed to parse broken.xyz as XYZ/],
     [`truncated XYZ`, `2\ncomment\nHe 0 0 0`, `broken.xyz`,
-      /Failed to parse broken.xyz as XYZ: XYZ file has no complete frame/],
+      /Failed to parse broken.xyz as XYZ: Dropping truncated final XYZ frame 1 \(line 1\): 1 of 2 atom lines$/],
+    // complete frames fail with their own error, not as a truncated one
     [`invalid XYZ coordinate`, `1\ncomment\nHe invalid 0 0`, `broken.xyz`,
-      /Failed to parse broken.xyz as XYZ:.*frame 1\b/],
+      /as XYZ: XYZ frame 1 .*non-numeric coordinates/],
+    [`numeric XYZ species`, `2\ncomment\n1 0 0 0\n1 0 0 1`, `broken.xyz`,
+      /as XYZ: XYZ frame 1 .*no atom with a recognised element/],
     [`unrecognized text`, `1\ncomment\nHe invalid 0 0`, `blob-id`, /Unsupported text format/],
     // bytes that are neither ASE nor HDF5 read as text, unless they look binary
     [`binary bytes under a text name`, new Blob([new Uint8Array([0, 1, 2, 0])]), `data.xyz`,

@@ -81,18 +81,9 @@ describe(`collect_msd_positions`, () => {
       }) as Promise<TrajectoryPositionStream>
     })
     const run = { ...backing, collect_positions }
-    await collect_msd_positions(run, {
-      frame_stride: 2,
-      max_bytes: 4096,
-      on_progress: progress,
-      signal: controller.signal,
-    })
-    expect(collect_positions).toHaveBeenCalledWith({
-      frame_stride: 2,
-      max_bytes: 4096,
-      on_progress: progress,
-      signal: controller.signal,
-    })
+    const options = { frame_stride: 2, max_bytes: 4096, on_progress: progress }
+    await collect_msd_positions(run, { ...options, signal: controller.signal })
+    expect(collect_positions).toHaveBeenCalledWith({ ...options, signal: controller.signal })
     expect(progress).toHaveBeenCalledWith({ current: 1, total: 4, stage: `Collecting` })
   })
 

@@ -94,7 +94,7 @@ test.each([
         1,
       )
     expect(doc_query(`.analysis-note`).textContent).toContain(
-      `4 frames (every 5th) × 32 atoms`,
+      `4 frames (every 5) × 32 atoms`, // not `every 2th` for a stride of 2
     )
     expect(download).not.toHaveBeenCalled()
     expect(stringify).not.toHaveBeenCalledWith(

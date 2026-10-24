@@ -101,6 +101,11 @@ const mount_trajectory = (props: Props): HTMLElement => {
   flushSync()
   return target
 }
+const mount_ticked = async (props: Props): Promise<HTMLElement> => {
+  const target = mount_trajectory(props)
+  await tick()
+  return target
+}
 const default_props = (overrides: Partial<Props> = {}): Props => ({
   trajectory: make_run(),
   display_mode: `structure+plot`,
@@ -206,8 +211,7 @@ describe(`display modes`, () => {
         },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(target.querySelector(`.structure`)).not.toBeNull()
     expect(read_frame.mock.calls.map(([idx]) => idx)).toContain(0)
     props.structure_props = {
@@ -333,8 +337,7 @@ describe(`display modes`, () => {
         ({ energy: -1_750_000 + idx, kinetic_energy: 9500 + idx, total_energy: -1_740_500 + 2 * idx }),
     })],
   ])(`defaults to structure-only for a %s run`, async (kind, trajectory) => {
-    const target = mount_trajectory(default_props({ trajectory, display_mode: undefined }))
-    await tick()
+    const target = await mount_ticked(default_props({ trajectory, display_mode: undefined }))
     expect(target.querySelector(`.scatter`)).toBeNull()
     expect(target.querySelector(`.structure`)).not.toBeNull()
     if (kind === `constant-value` || kind === `visually-flat`)
@@ -354,8 +357,7 @@ describe(`display modes`, () => {
       properties: new TrajectoryProperties(flat_run.properties.rows.slice(0, 1)),
     }
     const props = $state(default_props({ trajectory, display_mode: `auto` }))
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(target.querySelector(`.content-area`)?.classList.contains(`show-both`)).toBe(true)
     expect(target.textContent).toContain(`Sampling trajectory plot data`)
     trajectory.properties.push(flat_run.properties.rows.slice(1))
@@ -402,8 +404,7 @@ describe(`display modes`, () => {
         trajectory: make_run({ properties: (idx) => ({ energy: -1, force_max: idx }) }),
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     target
       .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for Fmax"]`)
       ?.click()
@@ -416,8 +417,7 @@ describe(`display modes`, () => {
   test(`view-mode menu switches display_mode and reports the change`, async () => {
     const on_display_mode_change = vi.fn<(data: TrajHandlerData) => void>()
     const props = $state(default_props({ on_display_mode_change, plot_type: `distribution` }))
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     const view_mode_button = doc_query<HTMLButtonElement>(`${CONTROLS} .view-mode-button`)
     expect(view_mode_button.querySelectorAll(`svg`)).toHaveLength(1)
     view_mode_button.click()
@@ -514,8 +514,7 @@ describe(`controls`, () => {
   test(`every hideable control renders by default`, async () => {
     // the info button hides while the inspector's Info tab shows the same cards
     const props = $state(default_props({ data_inspector_open: false }))
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     for (const [hidden, selector] of HIDEABLE_CONTROLS) {
       expect(target.querySelector(`${CONTROLS} ${selector}`), hidden).not.toBeNull()
     }
@@ -744,8 +743,7 @@ describe(`controls`, () => {
         },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     const structure = target.querySelector(`.structure`)
     expect(structure).not.toBeNull()
     const pane = doc_query(`.hotspots-pane`)
@@ -825,8 +823,7 @@ describe(`controls`, () => {
   })
 
   test.each(HIDEABLE_CONTROLS)(`hidden: ['%s'] removes %s`, async (hidden, selector) => {
-    const target = mount_trajectory(default_props({ show_controls: { hidden: [hidden] } }))
-    await tick()
+    const target = await mount_ticked(default_props({ show_controls: { hidden: [hidden] } }))
     expect(target.querySelector(`${CONTROLS} ${selector}`)).toBeNull()
   })
 
@@ -940,8 +937,7 @@ describe(`plot`, () => {
         histogram_props: { controls_open: true },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     const reads = read_frame.mock.calls.length
     const coverage = () =>
       target.querySelector(`.plot-controls-pane .distribution-coverage`)?.textContent
@@ -1003,8 +999,7 @@ describe(`plot`, () => {
         scatter_props: { legend: { on_toggle } },
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     // Unset: the default selection is written back once the series exist
     expect(props.visible_properties?.toSorted()).toEqual([`energy`, `force_max`])
     expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
@@ -1064,8 +1059,7 @@ describe(`plot`, () => {
     const props = $state(
       default_props({ visible_properties: undefined, display_mode: `plot` }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(legend_state(target)).toEqual({ Energy: true, Fmax: true, Volume: false })
     // defaults written for run A must not stick and hide run B's series
     props.trajectory = make_run({
@@ -1099,8 +1093,7 @@ describe(`plot`, () => {
         }),
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     target
       .querySelector<HTMLElement>(`.legend-item[aria-label="Toggle visibility for SCF"]`)
       ?.click()
@@ -1118,8 +1111,7 @@ describe(`plot`, () => {
     `x_quantity auto-picks %s and writes it back`,
     async (_kind, run, expected, options) => {
       const props = $state(default_props({ trajectory: run, x_quantity: undefined }))
-      const target = mount_trajectory(props)
-      await tick()
+      const target = await mount_ticked(props)
       expect(props.x_quantity).toBe(expected)
       const select = target.querySelector<HTMLSelectElement>(`.x-quantity-select`)
       // The select only appears when there is a choice to make
@@ -1132,8 +1124,7 @@ describe(`plot`, () => {
     const props = $state(
       default_props({ x_quantity: `step` as TrajectoryXQuantity | undefined }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(props.x_quantity).toBe(`step`)
     expect(axis_labels(target)[0]).toBe(`Step`)
     expect(doc_query<HTMLSelectElement>(`.x-quantity-select`).value).toBe(`step`)
@@ -1174,8 +1165,7 @@ describe(`plot`, () => {
           histogram_props: { controls_open: true, controls_extra: extra_controls },
         }),
       )
-      const target = mount_trajectory(props)
-      await tick()
+      const target = await mount_ticked(props)
       const reads = read_frame.mock.calls.length
       const toggle = doc_query<HTMLInputElement>(`input[name=relative_energy]`)
       expect(document.body.textContent).toContain(`Host control`)
@@ -1413,8 +1403,7 @@ describe(`panes`, () => {
         on_pause,
       }),
     )
-    const target = mount_trajectory(props)
-    await tick()
+    const target = await mount_ticked(props)
     expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
     // Trajectory forwards its keys to playback, so the nav buttons name their shortcuts
     const nav_keys = [`Previous step`, `Pause`, `Next step`].map((label) =>
@@ -1610,8 +1599,7 @@ describe(`events`, () => {
     // an fps already on the grid is no change, so mounting with it reports nothing
     const on_grid_change = vi.fn<(data: TrajHandlerData) => void>()
     const on_grid = $state(default_props({ fps: 10, on_frame_rate_change: on_grid_change }))
-    mount_trajectory(on_grid)
-    await tick()
+    await mount_ticked(on_grid)
     expect(on_grid_change).not.toHaveBeenCalled()
   })
 
@@ -1637,8 +1625,7 @@ describe(`events`, () => {
     `Escape closes %s without flashing and leaves parent-owned fullscreen alone`,
     async (button_class) => {
       mock_fullscreen()
-      const target = mount_trajectory(default_props())
-      await tick()
+      const target = await mount_ticked(default_props())
       // a host app (e.g. a slide deck) owns fullscreen while the viewer is embedded inside it
       await target.requestFullscreen()
       const exit_fullscreen = vi.spyOn(document, `exitFullscreen`)
@@ -1784,8 +1771,7 @@ describe(`panes track progressively loaded property rows`, () => {
         frame_count: 5,
         properties,
       }
-      const target = mount_trajectory(default_props({ trajectory, ...pane_props }))
-      await tick()
+      const target = await mount_ticked(default_props({ trajectory, ...pane_props }))
       const row_count = () => pattern.exec(target.textContent ?? ``)?.groups?.count
       expect(row_count()).toBe(expected[0])
       properties.push(rows_for([2, 3, 4]))

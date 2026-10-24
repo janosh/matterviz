@@ -12,7 +12,7 @@ import { DEFAULTS } from '#lib/settings.js'
 import { is_plain_object } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import type { AnyStructure } from '#lib/structure/index.js'
-import { is_structure_like, parse_xyz, structure_from_json } from '#lib/structure/parse.js'
+import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
 import { FORMAT_PATTERNS, xyz_ext_hint } from './format-detect'
 import { count_xyz_frames, has_multiple_xyz_frames, TextLines } from './helpers'
 import type {
@@ -106,14 +106,11 @@ const json_frames = (entries: unknown[]): TrajectoryFrame[] =>
 
 // Structure parsers report through parse_warn: route a successful parse's warnings onto the
 // run (a failed one's describe no run)
-const with_run_warnings = <Value>(collector: WarningCollector, parse: () => Value): Value => {
-  const { value, warnings } = collect_parse_warnings(parse)
-  for (const message of warnings) collector.warn(message)
-  return value
+const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTrajectory => {
+  const parsed = collect_parse_warnings(() => parse_json_frames(value, collector))
+  for (const message of parsed.warnings) collector.warn(message)
+  return parsed.value
 }
-
-const parse_json_value = (value: unknown, collector: WarningCollector): ParsedTrajectory =>
-  with_run_warnings(collector, () => parse_json_frames(value, collector))
 
 const parse_json_frames = (value: unknown, collector: WarningCollector): ParsedTrajectory => {
   if (Array.isArray(value)) return { format: `json`, frames: json_frames(value), metadata: {} }
@@ -193,22 +190,16 @@ const parse_text = (
   }
   const data = whole()
   if (xyz_hint || (xyz_hint === null && count_xyz_frames(head, 1) === 1)) {
-    let structure: AnyStructure | undefined
+    // The trajectory reader, as for two frames: the structure parser dropped a lone EXTXYZ
+    // frame's energy, forces and step, and wrapped its sites into the cell
     try {
-      structure = with_run_warnings(collector, () => parse_xyz(data))
+      return parsed(parse_xyz_trajectory(data, collector))
     } catch (error) {
       // A declared XYZ format is authoritative; an unrecognized name can still hold JSON.
       if (xyz_hint)
         throw new Error(`Failed to parse ${filename} as XYZ: ${to_error(error).message}`, {
           cause: error,
         })
-    }
-    if (structure) {
-      return parsed({
-        format: `xyz`,
-        frames: [{ structure, step: 0, metadata: {} }],
-        metadata: {},
-      })
     }
   }
   let value: unknown
@@ -235,6 +226,8 @@ export async function open_trajectory(
     index_above_bytes = DEFAULTS.trajectory.index_above_bytes,
   } = options
   signal?.throwIfAborted()
+  // TextLines keeps a BOM, which hid a lone XYZ frame and frame 1 of a longer file
+  if (typeof source === `string` && source.startsWith(`\uFEFF`)) source = source.slice(1)
   const report = (current: number, stage: string): void =>
     on_progress?.({ current, total: 100, stage })
   report(0, `Detecting format…`)

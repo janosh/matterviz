@@ -165,6 +165,14 @@ const xyz_comment_energy = (comment: string, context: string): number => {
   )
 }
 
+// Forces the parsers put on the sites (XYZ frames and loose files), kept only when all finite
+const site_forces = ({ sites }: AnyStructure): Pick<NebImage, `forces`> => {
+  const forces = sites.map(({ properties }) =>
+    finite_vec3_from_values(properties?.force ?? properties?.forces),
+  )
+  return forces.every((force): force is Vec3 => force !== undefined) ? { forces } : {}
+}
+
 // Read a multi-frame extended-XYZ file as one reaction path, one image per frame. Frame
 // walking, `Properties=` column layout, lattice, pbc and comment metadata all come from
 // the trajectory XYZ parser, which is the single source of truth for the format.
@@ -184,15 +192,10 @@ export function parse_xyz_reaction_path(content: string, filename = `path.xyz`):
       { frame_label: context, default_step: image_idx },
       collector,
     )
-    // Forces as read by the trajectory parser onto the sites, which it keeps only when every
-    // site got a finite one
-    const forces = structure.sites.map(({ properties }) =>
-      finite_vec3_from_values(properties?.force),
-    )
     images.push({
       structure,
       energy: xyz_comment_energy(frame.comment, context),
-      ...(forces.every((force): force is Vec3 => force !== undefined) && { forces }),
+      ...site_forces(structure),
     })
   }
   // A frame cut short by the end of the file: dropping it silently made the transition
@@ -279,6 +282,7 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
         ? xyz_comment_energy(content.trim().split(/\r?\n/)[1] ?? ``, filename)
         : structure_energy(structure, filename),
       label: filename,
+      ...site_forces(structure),
     })
   }
 

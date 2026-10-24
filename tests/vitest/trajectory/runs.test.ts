@@ -37,7 +37,7 @@ import { frame_atom_batch } from '#lib/trajectory/atom-batches.js'
 import type { ParseProgress, TrajectoryFrame } from '#lib/trajectory/index.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import type { TrajectoryRun } from '#lib/trajectory/run.js'
+import type { SyncRunSource, TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
@@ -54,6 +54,9 @@ const N_ATOMS = 27
 const XYZ_TEXT = synthetic_extxyz(N_FRAMES, N_ATOMS)
 const collector = create_warning_collector()
 const reference_frames = parse_xyz_trajectory(XYZ_TEXT, collector).frames
+// A synchronous run without provenance, metadata or warnings
+const bare_run = (source: Omit<SyncRunSource, `provenance` | `metadata` | `warnings`>) =>
+  sync_run({ provenance: {}, metadata: {}, warnings: [], ...source })
 
 describe(`numeric frames`, () => {
   it(`counts shared backing buffers once, including their unused capacity`, () => {
@@ -526,16 +529,13 @@ const RUN_CASES: RunCase[] = [
 it.each([27, 100_000])(
   `uses the full %i atom count to gate frame-backed analysis`,
   (atom_count) => {
-    const run = sync_run({
+    const run = bare_run({
       label: `sampled preview`,
       atom_count,
       frame_count: 1,
       preview: reference_frames[0],
       read: () => encode_frame(reference_frames[0]),
       properties: new TrajectoryProperties(),
-      provenance: {},
-      metadata: {},
-      warnings: [],
     })
     expect(run.atom_count).toBe(atom_count)
     expect(run.compute_hotspots !== undefined).toBe(atom_count === 27)
@@ -752,14 +752,11 @@ describe(`worker-served run lifecycle`, () => {
       )
       frame.available_vector_keys = [`force`]
       frame.scalar_columns = { charge: Float64Array.of(0.5) }
-      const served = sync_run({
+      const served = bare_run({
         label: `numeric metadata`,
         frame_count: 1,
         read: () => frame,
         properties: new TrajectoryProperties([], true),
-        provenance: {},
-        metadata: {},
-        warnings: [],
       })
       const run = make_worker_run(served)
       const channels = { vectors: [`force`] }
@@ -805,16 +802,13 @@ describe(`worker-served run lifecycle`, () => {
         materialized.structure.sites[2].provenance = { image_of: 0, unit_cell_idx: 0 }
         return encode_frame(materialized)
       })
-      const served = sync_run({
+      const served = bare_run({
         label: `prepared MD`,
         frame_count: source.length,
         atom_count: 3,
         preview: materialize_frame(source[0]),
         read: (idx) => source[idx],
         properties: new TrajectoryProperties(),
-        provenance: {},
-        metadata: {},
-        warnings: [],
       })
       const run = make_worker_run(served)
       if (!run.prepare_frame) throw new Error(`Missing worker preparation`)
@@ -1093,15 +1087,12 @@ describe(`TrajectoryProperties`, () => {
     `releases a %s source even when its completion subscriber throws`,
     async (kind) => {
       const release = vi.fn()
-      const source = sync_run({
+      const source = bare_run({
         label: `test trajectory`,
         frame_count: 1,
         read: () => encode_frame(reference_frames[0]),
         properties: new TrajectoryProperties(),
         release: kind === `synchronous` ? release : undefined,
-        provenance: {},
-        metadata: {},
-        warnings: [],
       })
       const run =
         kind === `host`

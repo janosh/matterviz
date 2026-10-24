@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 
 const execute = promisify(execFile)
+const movie_spec = JSON.stringify({ source: { url: `https://example.invalid/run.h5` } })
 
 it(`starts its private viewer from the checkout when invoked elsewhere`, async () => {
   const root = resolve(`.`)
@@ -13,10 +14,7 @@ it(`starts its private viewer from the checkout when invoked elsewhere`, async (
   const spec = `${directory}/movie.json`
   const loader = `${directory}/viewer-loader.mjs`
   try {
-    await writeFile(
-      spec,
-      JSON.stringify({ source: { url: `https://example.invalid/run.h5` } }),
-    )
+    await writeFile(spec, movie_spec)
     // Stop before opening a browser and inspect the directory used at the server boundary.
     await writeFile(
       loader,
@@ -65,10 +63,7 @@ it.each([``, `.json`, `.review`])(
     const spec = `${directory}/movie.json`
     try {
       await writeFile(destination, `preserve this file`)
-      await writeFile(
-        spec,
-        JSON.stringify({ source: { url: `https://example.invalid/run.h5` } }),
-      )
+      await writeFile(spec, movie_spec)
       await expect(
         execute(process.execPath, [
           resolve(`src/scripts/movie.mjs`),

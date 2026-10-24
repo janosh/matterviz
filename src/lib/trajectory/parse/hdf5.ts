@@ -118,7 +118,10 @@ const STRUCTURAL_ALIASES = new Set([
   ...PBC_ALIASES,
 ])
 const MASS_ALIASES = new Set([`masses`, `mass`, `atomic_masses`])
+// Site-property names as every other reader writes them (extXYZ export skips a plural `forces`)
 const SIGNAL_ALIASES: Record<string, string> = {
+  forces: `force`,
+  force: `force`,
   velocities: `velocity`,
   velocity: `velocity`,
   dipoles: `dipole`,
