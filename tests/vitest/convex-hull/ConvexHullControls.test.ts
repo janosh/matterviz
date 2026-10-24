@@ -97,17 +97,12 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
   })
 
   // camera rows are data-driven per dimensionality: ternary tilts in degrees, quaternary in radians
+  // oxfmt-ignore
   test.each([
-    [
-      { elevation: 30.4, azimuth: -15.6, zoom: 1, center_x: 0, center_y: 0 },
-      `Elev°|30|5|false;Azim°|-16|15|false`,
-      `elevation`,
-    ],
-    [
-      { rotation_x: 0.456, rotation_y: -0.123, zoom: 1, center_x: 0, center_y: 0 },
-      `φ|0.46|0.1|true;θ|-0.12|0.1|false`,
-      `rotation_x`,
-    ],
+    [{ elevation: 30.4, azimuth: -15.6, zoom: 1, center_x: 0, center_y: 0 },
+      `Elev°|30|5|false;Azim°|-16|15|false`, `elevation`],
+    [{ rotation_x: 0.456, rotation_y: -0.123, zoom: 1, center_x: 0, center_y: 0 },
+      `φ|0.46|0.1|true;θ|-0.12|0.1|false`, `rotation_x`],
   ] as const)(`camera rows render and write back`, (camera, expected, key) => {
     const state = { ...camera }
     mount_controls({ camera: state })

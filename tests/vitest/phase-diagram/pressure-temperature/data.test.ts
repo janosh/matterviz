@@ -113,15 +113,9 @@ describe(`parse_pt_data`, () => {
     const from_python = {
       ...with_boundary({ sigma_t: null, sigma_p: null, label: null }),
       ...Object.fromEntries(
-        [
-          `regions`,
-          `special_points`,
-          `pressure_range`,
-          `temperature_range`,
-          `pressure_unit`,
-          `temperature_unit`,
-          `title`,
-        ].map((key) => [key, null]),
+        `regions special_points pressure_range temperature_range pressure_unit temperature_unit title`
+          .split(` `)
+          .map((key) => [key, null]),
       ),
     }
     const { data, errors } = parse_pt_data(from_python)

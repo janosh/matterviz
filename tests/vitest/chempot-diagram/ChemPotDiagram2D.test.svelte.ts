@@ -318,22 +318,14 @@ test(`chempot state keeps only non-display axis slices and reuses a slice's curv
 // Requested slices are clamped, in element order, into the range left feasible by the slices
 // before them: a slice above an element's reference, or a pair jointly above a compound's
 // (F = 0 leaves Rb at most E(FRb)-bound), would otherwise empty the region
+// oxfmt-ignore
 test.each([
-  {
-    label: `absolute chempots put S below -3 eV`,
-    entries: ytos_entries,
-    config: { elements: [`O`, `Ti`, `Y`], formal_chempots: false, slice_chempots: { S: -3 } },
-  },
-  {
-    label: `F and Rb both at 0`,
-    entries: quinary_entries,
-    config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 0, Rb: 0 } },
-  },
-  {
-    label: `out-of-limits values`,
-    entries: quinary_entries,
-    config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 5, Rb: -99 } },
-  },
+  { label: `absolute chempots put S below -3 eV`, entries: ytos_entries,
+    config: { elements: [`O`, `Ti`, `Y`], formal_chempots: false, slice_chempots: { S: -3 } } },
+  { label: `F and Rb both at 0`, entries: quinary_entries,
+    config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 0, Rb: 0 } } },
+  { label: `out-of-limits values`, entries: quinary_entries,
+    config: { elements: [`La`, `Ni`, `O`], slice_chempots: { F: 5, Rb: -99 } } },
 ])(`chempot state clamps infeasible slices: $label`, async ({ entries, config }) => {
   const chempot = await chempot_state(() => entries, config)
   expect(chempot.error).toBeNull()

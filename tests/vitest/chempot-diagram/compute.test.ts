@@ -55,6 +55,9 @@ const chunk = (size: number, flat: number[]): number[][] =>
     flat.slice(idx * size, (idx + 1) * size),
   )
 
+// Whitespace-separated words of a (possibly multi-line) string, for long formula lists
+const words = (text: string): string[] => text.trim().split(/\s+/)
+
 const test_dir = import.meta.dirname
 const entries = load_json<PhaseData[]>(`${test_dir}/pd_entries_test.json.gz`)
 const ytos_entries = load_json<PhaseData[]>(`${test_dir}/ytos_entries.json.gz`)
@@ -196,24 +199,14 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
     expect(cpd_binary.elements).toEqual([`Fe`, `O`])
     expect(cpd_ternary.elements).toEqual([`Fe`, `Li`, `O`])
     expect(cpd_ternary_formal.elements).toEqual([`Fe`, `Li`, `O`])
-    expect(cpd_ternary.lims).toEqual([
-      [-25, 0],
-      [-25, 0],
-      [-25, 0],
-    ])
+    expect(cpd_ternary.lims).toEqual(chunk(2, [-25, 0, -25, 0, -25, 0]))
   })
 
+  // oxfmt-ignore
   test.each([
-    {
-      label: `absolute`,
-      refs: ternary_hull_input.el_refs,
-      expected: { Li: -1.91301487, Fe: -6.5961471, O: -25.54966885 },
-    },
-    {
-      label: `formal → zero`,
-      refs: ternary_formal_hull_input.el_refs,
-      expected: { Li: 0, Fe: 0, O: 0 },
-    },
+    { label: `absolute`, refs: ternary_hull_input.el_refs,
+      expected: { Li: -1.91301487, Fe: -6.5961471, O: -25.54966885 } },
+    { label: `formal → zero`, refs: ternary_formal_hull_input.el_refs, expected: { Li: 0, Fe: 0, O: 0 } },
   ])(`el_refs ($label)`, ({ refs, expected }) => {
     for (const [element, energy] of Object.entries(expected)) {
       expect(refs[element].energy).toBeCloseTo(energy, 5)
@@ -221,109 +214,61 @@ describe(`pymatgen parity: ChemicalPotentialDiagram`, () => {
   })
 
   test(`border_hyperplanes`, () => {
-    const desired = [
-      [-1, 0, 0, -25],
-      [1, 0, 0, 0],
-      [0, -1, 0, -25],
-      [0, 1, 0, 0],
-      [0, 0, -1, -25],
-      [0, 0, 1, 0],
-    ]
-    const lims: Vec2[] = [
-      [-25, 0],
-      [-25, 0],
-      [-25, 0],
-    ]
+    // rows [...normal, offset]: -mu_i - 25 <= 0 and mu_i <= 0 per axis
+    const desired = chunk(
+      4,
+      [-1, 0, 0, -25, 1, 0, 0, 0, 0, -1, 0, -25, 0, 1, 0, 0, 0, 0, -1, -25, 0, 0, 1, 0],
+    )
+    const lims = chunk(2, [-25, 0, -25, 0, -25, 0]) as Vec2[]
     expect(build_border_hyperplanes(lims)).toEqual(close_rows(desired, 5))
   })
 
-  test.each([
-    [
-      `Fe`,
-      [
-        [-25.0, -6.596147, -25.0],
-        [-25.0, -6.596147, -7.115354],
-        [-3.931615, -6.596147, -7.115354],
-        [-3.625002, -6.596147, -7.268661],
-        [-3.351598, -6.596147, -7.610416],
-        [-1.913015, -6.596147, -25.0],
-        [-1.913015, -6.596147, -10.487582],
-      ],
+  // pymatgen's vertices per domain as flat [mu_Li, mu_Fe, mu_O] triples
+  const pmg_domain_vertices: Record<string, number[]> = {
+    Fe: [
+      -25.0, -6.596147, -25.0, -25.0, -6.596147, -7.115354, -3.931615, -6.596147, -7.115354,
+      -3.625002, -6.596147, -7.268661, -3.351598, -6.596147, -7.610416, -1.913015, -6.596147,
+      -25.0, -1.913015, -6.596147, -10.487582,
     ],
-    [
-      `Fe2O3`,
-      [
-        [-25.0, -10.739688, -4.258278],
-        [-25.0, -7.29639, -6.55381],
-        [-5.550202, -10.739688, -4.258278],
-        [-5.406275, -10.451834, -4.450181],
-        [-4.35446, -7.29639, -6.55381],
-      ],
+    Fe2O3: [
+      -25.0, -10.739688, -4.258278, -25.0, -7.29639, -6.55381, -5.550202, -10.739688,
+      -4.258278, -5.406275, -10.451834, -4.450181, -4.35446, -7.29639, -6.55381,
     ],
-    [
-      `Fe3O4`,
-      [
-        [-25.0, -7.29639, -6.55381],
-        [-25.0, -6.741594, -6.969907],
-        [-4.35446, -7.29639, -6.55381],
-        [-4.077062, -6.741594, -6.969907],
-      ],
+    Fe3O4: [
+      -25.0, -7.29639, -6.55381, -25.0, -6.741594, -6.969907, -4.35446, -7.29639, -6.55381,
+      -4.077062, -6.741594, -6.969907,
     ],
-    [
-      `FeO`,
-      [
-        [-25.0, -6.741594, -6.969907],
-        [-25.0, -6.596147, -7.115354],
-        [-4.077062, -6.741594, -6.969907],
-        [-3.931615, -6.596147, -7.115354],
-      ],
+    FeO: [
+      -25.0, -6.741594, -6.969907, -25.0, -6.596147, -7.115354, -4.077062, -6.741594,
+      -6.969907, -3.931615, -6.596147, -7.115354,
     ],
-    [
-      `Li`,
-      [
-        [-1.913015, -25.0, -25.0],
-        [-1.913015, -25.0, -10.487582],
-        [-1.913015, -6.596147, -25.0],
-        [-1.913015, -6.596147, -10.487582],
-      ],
+    Li: [
+      -1.913015, -25.0, -25.0, -1.913015, -25.0, -10.487582, -1.913015, -6.596147, -25.0,
+      -1.913015, -6.596147, -10.487582,
     ],
-    [
-      `Li2O`,
-      [
-        [-4.612511, -25.0, -5.088591],
-        [-4.612511, -10.378885, -5.088591],
-        [-3.351598, -6.596147, -7.610416],
-        [-1.913015, -25.0, -10.487582],
-        [-1.913015, -6.596147, -10.487582],
-      ],
+    Li2O: [
+      -4.612511, -25.0, -5.088591, -4.612511, -10.378885, -5.088591, -3.351598, -6.596147,
+      -7.610416, -1.913015, -25.0, -10.487582, -1.913015, -6.596147, -10.487582,
     ],
-    [
-      `Li2O2`,
-      [
-        [-5.442823, -25.0, -4.258278],
-        [-5.442823, -10.954446, -4.258278],
-        [-4.739887, -10.251509, -4.961215],
-        [-4.612511, -25.0, -5.088591],
-        [-4.612511, -10.378885, -5.088591],
-      ],
+    Li2O2: [
+      -5.442823, -25.0, -4.258278, -5.442823, -10.954446, -4.258278, -4.739887, -10.251509,
+      -4.961215, -4.612511, -25.0, -5.088591, -4.612511, -10.378885, -5.088591,
     ],
-    [
-      `O2`,
-      [
-        [-25.0, -25.0, -4.258278],
-        [-25.0, -10.739688, -4.258278],
-        [-5.550202, -10.739688, -4.258278],
-        [-5.442823, -25.0, -4.258278],
-        [-5.442823, -10.954446, -4.258278],
-      ],
+    O2: [
+      -25.0, -25.0, -4.258278, -25.0, -10.739688, -4.258278, -5.550202, -10.739688, -4.258278,
+      -5.442823, -25.0, -4.258278, -5.442823, -10.954446, -4.258278,
     ],
-  ])(`domain vertices for %s match pymatgen`, (pmg_formula, pmg_vertices) => {
-    const our_key = pmg_to_ours[pmg_formula] ?? pmg_formula
-    const actual_pts = cpd_ternary.domains[our_key]
-    expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
-    const expected = sort_rows(reorder_cols(pmg_vertices))
-    expect(sort_rows(dedup_vertices(actual_pts))).toEqual(close_rows(expected, 4))
-  })
+  }
+  test.each(Object.entries(pmg_domain_vertices))(
+    `domain vertices for %s match pymatgen`,
+    (pmg_formula, pmg_vertices) => {
+      const our_key = pmg_to_ours[pmg_formula] ?? pmg_formula
+      const actual_pts = cpd_ternary.domains[our_key]
+      expect(actual_pts, `Domain missing for ${our_key}`).toBeDefined()
+      const expected = sort_rows(reorder_cols(chunk(3, pmg_vertices)))
+      expect(sort_rows(dedup_vertices(actual_pts))).toEqual(close_rows(expected, 4))
+    },
+  )
 })
 
 describe(`physical invariants`, () => {
@@ -391,10 +336,7 @@ test.each<[string, PhaseData[]]>([
 ])(`Li2O domain runs from (0, -6) to (-3, 0): %s`, (_label, li_o) => {
   const { domains } = compute_chempot_diagram(li_o, { default_min_limit: -20 })
   expect(Object.keys(domains).toSorted()).toEqual([`Li`, `Li2O`, `O`])
-  expect_vertices(domains.Li2O, [
-    [0, -6],
-    [-3, 0],
-  ])
+  expect_vertices(domains.Li2O, chunk(2, [0, -6, -3, 0]))
 })
 
 describe(`analytic binary A-B-AB`, () => {
@@ -429,10 +371,7 @@ describe(`analytic binary A-B-AB`, () => {
       formal_chempots: true,
       limits: { B: [-10, 0] },
     })
-    expect(lims).toEqual([
-      [-20, 0],
-      [-10, 0],
-    ])
+    expect(lims).toEqual(chunk(2, [-20, 0, -10, 0]))
     expect_vertices(domains.A, chunk(2, [0, -7, 0, -10]))
     expect_vertices(domains.B, chunk(2, [-7, 0, -20, 0]))
     expect_vertices(domains.AB, chunk(2, [0, -7, -7, 0]))
@@ -446,10 +385,7 @@ describe(`analytic binary A-B-AB`, () => {
       [make_phase({ A: 1 }, 0), make_phase({ B: 1 }, 0), make_phase({ A: 1, B: 2 }, -50)],
       { default_min_limit: -100, formal_chempots: true, limits: { A: [-1, 0] } },
     )
-    expect(lims).toEqual([
-      [-1, 0],
-      [-100, 0],
-    ])
+    expect(lims).toEqual(chunk(2, [-1, 0, -100, 0]))
     // B is never stable inside the box (mu_B = 0 needs mu_A <= -150), so it has no domain
     expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB2`])
     expect_vertices(domains.A, chunk(2, [0, -75, 0, -100]))
@@ -506,39 +442,11 @@ describe(`analytic ternary A-B-C with AB and ABC`, () => {
     make_phase({ A: 1, B: 1, C: 1 }, -5.0), // E_form = -3 eV/atom
   ]
   const formal_vertices = {
-    A: [
-      [0, -2, -7],
-      [0, -9, 0],
-      [0, -50, 0],
-      [0, -2, -50],
-      [0, -50, -50],
-    ],
-    B: [
-      [-2, 0, -7],
-      [-9, 0, 0],
-      [-50, 0, 0],
-      [-2, 0, -50],
-      [-50, 0, -50],
-    ],
-    C: [
-      [0, -9, 0],
-      [-9, 0, 0],
-      [0, -50, 0],
-      [-50, 0, 0],
-      [-50, -50, 0],
-    ],
-    AB: [
-      [0, -2, -7],
-      [-2, 0, -7],
-      [0, -2, -50],
-      [-2, 0, -50],
-    ],
-    ABC: [
-      [0, -2, -7],
-      [-2, 0, -7],
-      [0, -9, 0],
-      [-9, 0, 0],
-    ],
+    A: chunk(3, [0, -2, -7, 0, -9, 0, 0, -50, 0, 0, -2, -50, 0, -50, -50]),
+    B: chunk(3, [-2, 0, -7, -9, 0, 0, -50, 0, 0, -2, 0, -50, -50, 0, -50]),
+    C: chunk(3, [0, -9, 0, -9, 0, 0, 0, -50, 0, -50, 0, 0, -50, -50, 0]),
+    AB: chunk(3, [0, -2, -7, -2, 0, -7, 0, -2, -50, -2, 0, -50]),
+    ABC: chunk(3, [0, -2, -7, -2, 0, -7, 0, -9, 0, -9, 0, 0]),
   }
   // Absolute chempots: every plane moves by the element reference energies (-1, -2, -3),
   // so each vertex coordinate shifts by its element's reference, except coordinates pinned
@@ -602,28 +510,15 @@ describe(`analytic ternary A-B-C with AB and ABC`, () => {
 })
 
 describe(`error handling`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      label: `< 2 elements`,
-      phase_entries: [make_phase({ A: 1 }, -1.0)],
-      message: `requires 2+ elements`,
-    },
-    {
-      label: `missing elemental ref`,
+    { label: `< 2 elements`, phase_entries: [make_phase({ A: 1 }, -1.0)], message: `requires 2+ elements` },
+    { label: `missing elemental ref`,
       phase_entries: [make_phase({ A: 1, B: 1 }, -3.0), make_phase({ A: 2, B: 1 }, -5.0)],
-      message: `Missing elemental reference`,
-    },
-    {
-      label: `empty entries`,
-      phase_entries: [] as PhaseData[],
-      message: `requires 2+ elements`,
-    },
-    {
-      label: `config.elements naming an absent element`,
-      phase_entries: Object.values(AB_REFS),
-      config: { elements: [`A`, `C`] },
-      message: `Missing elemental reference`,
-    },
+      message: `Missing elemental reference` },
+    { label: `empty entries`, phase_entries: [] as PhaseData[], message: `requires 2+ elements` },
+    { label: `config.elements naming an absent element`, phase_entries: Object.values(AB_REFS),
+      config: { elements: [`A`, `C`] }, message: `Missing elemental reference` },
   ])(`throws for $label`, ({ phase_entries, config, message }) => {
     expect(() => compute_chempot_diagram(phase_entries, config)).toThrow(message)
   })
@@ -698,13 +593,8 @@ test(`renormalize_entries zeroes the element refs and keeps compound formation e
   const compound = make_phase({ A: 1, B: 1 }, -3.0)
   const renormed = renormalize_entries([...Object.values(AB_REFS), compound], AB_REFS)
   // rows are [energy_per_atom, energy]
-  const expected = [
-    [0, 0],
-    [0, 0],
-    [-0.5, -1],
-  ]
   expect(renormed.map((entry) => [entry.energy_per_atom, entry.energy])).toEqual(
-    close_rows(expected, 8),
+    close_rows(chunk(2, [0, 0, 0, 0, -0.5, -1]), 8),
   )
 })
 
@@ -720,16 +610,7 @@ describe(`build_hyperplanes`, () => {
     expect(
       hyperplane_entries.map((entry) => formula_key_from_composition(entry.composition)),
     ).toEqual([`A`, `B`, `AB`])
-    expect(hyperplanes).toEqual(
-      close_rows(
-        [
-          [1, 0, 2],
-          [0, 1, 3],
-          [0.5, 0.5, 6],
-        ],
-        12,
-      ),
-    )
+    expect(hyperplanes).toEqual(close_rows(chunk(3, [1, 0, 2, 0, 1, 3, 0.5, 0.5, 6]), 12))
   })
 
   test.each([
@@ -796,26 +677,24 @@ describe(`element padding`, () => {
 
 describe(`simple_pca`, () => {
   test(`matches pymatgen output`, () => {
-    const points_3d = [
-      [-25.0, -6.5961471, -7.11535414],
-      [-25.0, -6.74159386, -6.96990738],
-      [-4.07706195, -6.74159386, -6.96990738],
-      [-3.93161519, -6.5961471, -7.11535414],
-    ]
-    const expected_2d = [
-      [10.49782722, 0.10320265],
-      [10.4978342, -0.10249014],
-      [-10.42510384, -0.10320018],
-      [-10.57055758, 0.10248767],
-    ]
+    const points_3d = chunk(
+      3,
+      [
+        -25.0, -6.5961471, -7.11535414, -25.0, -6.74159386, -6.96990738, -4.07706195,
+        -6.74159386, -6.96990738, -3.93161519, -6.5961471, -7.11535414,
+      ],
+    )
+    const expected_2d = chunk(
+      2,
+      [
+        10.49782722, 0.10320265, 10.4978342, -0.10249014, -10.42510384, -0.10320018,
+        -10.57055758, 0.10248767,
+      ],
+    )
     const { scores } = simple_pca(points_3d)
     // component signs are arbitrary, so compare magnitudes
-    expect(scores.map((row) => row.map(Math.abs))).toEqual(
-      close_rows(
-        expected_2d.map((row) => row.map(Math.abs)),
-        3,
-      ),
-    )
+    const magnitudes = (rows: number[][]) => rows.map((row) => row.map(Math.abs))
+    expect(magnitudes(scores)).toEqual(close_rows(magnitudes(expected_2d), 3))
   })
 
   test(`empty data returns empty`, () => {
@@ -850,14 +729,7 @@ describe(`simple_pca`, () => {
   test.each([0, 1, 2])(
     `spans the plane of a polygon with zero variance along axis %i`,
     (flat_axis) => {
-      const polygon = [
-        [0, 0],
-        [4, 0],
-        [6, 3],
-        [4, 7],
-        [0, 7],
-        [-2, 3],
-      ].map(([u_val, v_val]) => {
+      const polygon = chunk(2, [0, 0, 4, 0, 6, 3, 4, 7, 0, 7, -2, 3]).map(([u_val, v_val]) => {
         const point = [-6.6, -6.6, -6.6]
         point[(flat_axis + 1) % 3] = u_val
         point[(flat_axis + 2) % 3] = v_val
@@ -934,19 +806,7 @@ describe(`orthonormal_2d`, () => {
 
 describe(`config.elements projection vs subsystem`, () => {
   // every stable phase of the full Fe-Li-O hull, in our alphabetical formula-key notation
-  const fe_li_o_stable = [
-    `Fe`,
-    `Fe2O3`,
-    `Fe3O4`,
-    `FeLi2O3`,
-    `FeLi5O4`,
-    `FeLiO2`,
-    `FeO`,
-    `Li`,
-    `Li2O`,
-    `LiO`,
-    `O`,
-  ]
+  const fe_li_o_stable = words(`Fe Fe2O3 Fe3O4 FeLi2O3 FeLi5O4 FeLiO2 FeO Li Li2O LiO O`)
 
   test(`binary elements on ternary data triggers projection (includes Li phases)`, () => {
     const result = compute_chempot_diagram(entries, {
@@ -965,21 +825,11 @@ describe(`config.elements projection vs subsystem`, () => {
   })
 
   // config.elements equal to the data's own system is a plain subsystem, no projection
+  // oxfmt-ignore
   test.each([
-    {
-      label: `binary`,
-      phase_entries: binary_entries,
-      elements: [`Fe`, `O`],
-      base: cpd_binary,
-    },
-    {
-      label: `ternary`,
-      phase_entries: entries,
-      elements: [`Fe`, `Li`, `O`],
-      base: cpd_ternary,
-    },
-  ])(`$label elements on $label data match the default diagram`, (row) => {
-    const { phase_entries, elements, base } = row
+    { label: `binary`, phase_entries: binary_entries, elements: [`Fe`, `O`], base: cpd_binary },
+    { label: `ternary`, phase_entries: entries, elements: [`Fe`, `Li`, `O`], base: cpd_ternary },
+  ])(`$label elements on $label data match the default diagram`, ({ phase_entries, elements, base }) => {
     const result = compute_chempot_diagram(phase_entries, {
       elements,
       default_min_limit: -25,
@@ -1028,37 +878,10 @@ describe(`config.elements projection vs subsystem`, () => {
 describe(`YTOS quaternary system (projection mode)`, () => {
   // Projection keeps every stable phase of the full Y-Ti-O-S hull regardless of which
   // three elements span the axes, so both diagrams carry the same 29 domains
-  const ytos_stable = [
-    `O`,
-    `O12S3Y2`,
-    `O2S`,
-    `O2SY2`,
-    `O2Ti`,
-    `O3S`,
-    `O3Ti2`,
-    `O3Y2`,
-    `O5S2Ti2Y2`,
-    `O5STi`,
-    `O5TiY2`,
-    `O7Ti2Y2`,
-    `O8S2Ti`,
-    `OTi`,
-    `OTi2`,
-    `OTi3`,
-    `OTi6`,
-    `S`,
-    `S2Ti`,
-    `S3Ti`,
-    `S3Ti8`,
-    `S3Y2`,
-    `S7Y5`,
-    `S8Ti5`,
-    `STi`,
-    `STi2`,
-    `SY`,
-    `Ti`,
-    `Y`,
-  ]
+  const ytos_stable = words(`
+    O O12S3Y2 O2S O2SY2 O2Ti O3S O3Ti2 O3Y2 O5S2Ti2Y2 O5STi O5TiY2 O7Ti2Y2 O8S2Ti OTi OTi2
+    OTi3 OTi6 S S2Ti S3Ti S3Ti8 S3Y2 S7Y5 S8Ti5 STi STi2 SY Ti Y
+  `)
   test.each([
     { label: `Y-Ti-O`, diagram: ytos_y_ti_o, elements: [`O`, `Ti`, `Y`] },
     { label: `Ti-O-S`, diagram: ytos_ti_o_s, elements: [`O`, `S`, `Ti`] },
@@ -1264,36 +1087,23 @@ describe(`assign_faces_to_domains`, () => {
 })
 
 describe(`safe_energy_per_atom`, () => {
+  // oxfmt-ignore
   test.each([
-    {
-      label: `returns energy_per_atom when present`,
-      entry: make_phase({ Fe: 2 }, -3.0),
-      expected: -3.0,
-    },
-    {
-      label: `computes from energy / atoms when energy_per_atom missing`,
-      entry: { composition: { Fe: 2, O: 1 }, energy: -9.0 },
-      expected: -3.0,
-    },
-    {
-      label: `applies the MP total-energy correction like the convex hull`,
+    { label: `returns energy_per_atom when present`, entry: make_phase({ Fe: 2 }, -3.0), expected: -3.0 },
+    { label: `computes from energy / atoms when energy_per_atom missing`,
+      entry: { composition: { Fe: 2, O: 1 }, energy: -9.0 }, expected: -3.0 },
+    { label: `applies the MP total-energy correction like the convex hull`,
       entry: { composition: { Ni: 9, O: 13 }, energy: -22 * 4.643, correction: -22 * 1.445 },
-      expected: -6.088,
-    },
+      expected: -6.088 },
   ])(`$label`, ({ entry, expected }) => {
     expect(safe_energy_per_atom(entry)).toBeCloseTo(expected, 8)
   })
 
+  // oxfmt-ignore
   test.each([
     { label: `empty composition`, entry: { composition: {}, energy: -1.0 } },
-    {
-      label: `non-finite explicit EPA`,
-      entry: { composition: { Li: 1 }, energy: -1, energy_per_atom: Number.NaN },
-    },
-    {
-      label: `non-finite total energy`,
-      entry: { composition: { Li: 1 }, energy: Number.POSITIVE_INFINITY },
-    },
+    { label: `non-finite explicit EPA`, entry: { composition: { Li: 1 }, energy: -1, energy_per_atom: Number.NaN } },
+    { label: `non-finite total energy`, entry: { composition: { Li: 1 }, energy: Number.POSITIVE_INFINITY } },
   ])(`returns NaN for $label (safe for $derived)`, ({ entry }) => {
     expect(Number.isNaN(safe_energy_per_atom(entry))).toBe(true)
   })
@@ -1373,15 +1183,7 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   )
 
   test.each([
-    [
-      `tetrahedron`,
-      [
-        [0, 0, 0],
-        [10, 0, 0],
-        [0, 10, 0],
-        [0, 0, 10],
-      ],
-    ],
+    [`tetrahedron`, chunk(3, [0, 0, 0, 10, 0, 0, 0, 10, 0, 0, 0, 10])],
     [
       `unit cube`,
       [0, 1].flatMap((x_val) =>
@@ -1389,31 +1191,16 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
       ),
     ],
     // planar square plus one vertex lifted by 1e-3 of its size: no longer a polygon
-    [
-      `square with a lifted corner`,
-      [
-        [0, 0, 0],
-        [10, 0, 0],
-        [10, 10, 0.01],
-        [0, 10, 0],
-      ],
-    ],
+    [`square with a lifted corner`, chunk(3, [0, 0, 0, 10, 0, 0, 10, 10, 0.01, 0, 10, 0])],
   ])(`%s is reported non-planar`, (_label, pts) => {
     expect(get_3d_domain_simplexes_and_ann_loc(pts).is_planar).toBe(false)
   })
 
   // duplicates never reach the edge list: every edge names the first occurrence of its vertex
+  // oxfmt-ignore
   test.each([
-    [
-      `trailing duplicates`,
-      chunk(3, [0, 0, 0, 10, 0, 0, 5, 10, 0, 0, 0, 0, 10, 0, 0]),
-      [0, 1, 2],
-    ],
-    [
-      `a duplicate at a non-zero index`,
-      chunk(3, [5, 10, 0, 5, 10, 0, 0, 0, 0, 10, 0, 0]),
-      [0, 2, 3],
-    ],
+    [`trailing duplicates`, chunk(3, [0, 0, 0, 10, 0, 0, 5, 10, 0, 0, 0, 0, 10, 0, 0]), [0, 1, 2]],
+    [`a duplicate at a non-zero index`, chunk(3, [5, 10, 0, 5, 10, 0, 0, 0, 0, 10, 0, 0]), [0, 2, 3]],
   ])(`%s map to first occurrences`, (_label, pts, expected) => {
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices).toHaveLength(3)
@@ -1424,12 +1211,7 @@ describe(`get_3d_domain_simplexes_and_ann_loc`, () => {
   })
 
   test(`nearly collinear 3D points produce valid edges`, () => {
-    const pts = [
-      [0, 0, 0],
-      [10, 0.001, 0],
-      [5, 0.0005, 0],
-      [20, 0.002, 0],
-    ]
+    const pts = chunk(3, [0, 0, 0, 10, 0.001, 0, 5, 0.0005, 0, 20, 0.002, 0])
     const result = get_3d_domain_simplexes_and_ann_loc(pts)
     expect(result.simplex_indices.length).toBeGreaterThanOrEqual(1)
     assert_valid_edges(result, pts.length)
@@ -1449,18 +1231,11 @@ test.each([
 })
 
 describe(`chebyshev_centre`, () => {
-  const box: Vec2[] = [
-    [-10, 0],
-    [-10, 0],
-  ]
+  const box = chunk(2, [-10, 0, -10, 0]) as Vec2[]
   // Formal binary: mu_A <= 0, mu_B <= 0 and the AB plane (mu_A + mu_B)/2 <= -2 cut the corner
   // off the [-10, 0]² box. By symmetry the largest inscribed circle sits on the diagonal,
   // touching both lower walls and the AB line: -10 + r = -2 - r/√2 → r = 8 / (1 + 1/√2)
-  const ab_rows = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [0.5, 0.5, 2],
-  ]
+  const ab_rows = chunk(3, [1, 0, 0, 0, 1, 0, 0.5, 0.5, 2])
   test(`maximises the inscribed radius`, () => {
     const radius = 8 / (1 + Math.SQRT1_2)
     const { centre, radius: found } = chebyshev_centre(ab_rows, box)
@@ -1473,14 +1248,7 @@ describe(`chebyshev_centre`, () => {
 
   test.each([
     [`an entry below every reachable chemical potential`, [[0.5, 0.5, 50]], box],
-    [
-      `inverted limits`,
-      ab_rows,
-      [
-        [0, -1],
-        [-10, 0],
-      ] as Vec2[],
-    ],
+    [`inverted limits`, ab_rows, chunk(2, [0, -1, -10, 0]) as Vec2[]],
   ])(`reports an empty region for %s`, (_label, rows, lims) => {
     expect(chebyshev_centre(rows, lims).radius).toBe(-Infinity)
   })
@@ -1548,10 +1316,7 @@ describe(`compute_chempot_diagram edge cases`, () => {
       formal_chempots: true,
     })
     expect(result.elements).toEqual(elements)
-    expect(result.lims).toEqual([
-      [-25, 0],
-      [-25, 0],
-    ])
+    expect(result.lims).toEqual(chunk(2, [-25, 0, -25, 0]))
     for (const pts of Object.values(result.domains)) {
       for (const point of pts) expect(point).toHaveLength(2)
     }
@@ -1685,19 +1450,10 @@ describe(`get_ternary_combinations`, () => {
     { elements: [], expected: [] as string[][], label: `empty` },
     { elements: [`Li`], expected: [], label: `unary` },
     { elements: [`Li`, `O`], expected: [], label: `binary` },
-    {
-      elements: [`O`, `Fe`, `Li`],
-      expected: [[`Fe`, `Li`, `O`]],
-      label: `ternary`,
-    },
+    { elements: [`O`, `Fe`, `Li`], expected: [[`Fe`, `Li`, `O`]], label: `ternary` },
     {
       elements: [`O`, `Ni`, `Co`, `Li`],
-      expected: [
-        [`Co`, `Li`, `Ni`],
-        [`Co`, `Li`, `O`],
-        [`Co`, `Ni`, `O`],
-        [`Li`, `Ni`, `O`],
-      ],
+      expected: [`Co Li Ni`, `Co Li O`, `Co Ni O`, `Li Ni O`].map(words),
       label: `quaternary`,
     },
     { elements: [`Co`, `Li`, `Ni`, `O`, `S`], expected_count: 10, label: `quinary` },
@@ -2058,13 +1814,7 @@ describe(`sections (slicing non-display axes at fixed mu)`, () => {
     expect(slice_range(system, second, 1, -50, { [first]: first_top })[1]).toBeLessThan(
       second_top,
     )
-    for (const [frac_1, frac_2] of [
-      [0, 0],
-      [0, 1],
-      [1, 0],
-      [1, 1],
-      [0.5, 1],
-    ]) {
+    for (const [frac_1, frac_2] of chunk(2, [0, 0, 0, 1, 1, 0, 1, 1, 0.5, 1])) {
       const slices: Record<string, number> = {}
       for (const [element, frac] of [
         [first, frac_1],

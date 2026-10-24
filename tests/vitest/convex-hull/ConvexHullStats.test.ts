@@ -147,26 +147,17 @@ describe(`ConvexHullStats`, () => {
 
   // One histogram per energy distribution with finite data: E_form and E_above_hull;
   // NaN/Infinity are dropped, and an absolute energy_per_atom is NOT a formation energy
+  // oxfmt-ignore
   test.each([
     { desc: `E_form and E_hull`, entries: [{}], n_histograms: 2 },
-    {
-      desc: `energy_per_atom only (not a formation energy → E_hull histogram alone)`,
+    { desc: `energy_per_atom only (not a formation energy → E_hull histogram alone)`,
       entries: [{ e_form_per_atom: undefined, energy_per_atom: -0.3, e_above_hull: 0.1 }],
-      n_histograms: 1,
-    },
-    {
-      desc: `missing energies (E_hull only)`,
-      entries: [{ e_form_per_atom: undefined, energy_per_atom: undefined }],
-      n_histograms: 1,
-    },
-    {
-      desc: `non-finite energies`,
-      entries: [
-        { e_form_per_atom: NaN, e_above_hull: Infinity },
-        { e_form_per_atom: Infinity, e_above_hull: NaN },
-      ],
-      n_histograms: 0,
-    },
+      n_histograms: 1 },
+    { desc: `missing energies (E_hull only)`,
+      entries: [{ e_form_per_atom: undefined, energy_per_atom: undefined }], n_histograms: 1 },
+    { desc: `non-finite energies`,
+      entries: [{ e_form_per_atom: NaN, e_above_hull: Infinity },
+        { e_form_per_atom: Infinity, e_above_hull: NaN }], n_histograms: 0 },
   ] as { desc: string; entries: Partial<ConvexHullEntry>[]; n_histograms: number }[])(
     `renders $n_histograms histogram(s) for entries with $desc`,
     ({ entries, n_histograms }) => {
@@ -584,28 +575,15 @@ describe(`ConvexHullStats`, () => {
   })
 
   describe(`subsystem_coverage`, () => {
+    // oxfmt-ignore
     test.each([
-      {
-        desc: `binary entries count once per pair`,
-        system: `Li-Fe-O`,
-        compositions: [
-          { Li: 1, Fe: 1 },
-          { Fe: 1, O: 1 },
-        ],
-        chips: [`Fe-Li 1`, `Fe-O 1`, `Li-O 0`],
-      },
-      {
-        desc: `a ternary entry increments all 3 pairs`,
-        system: `Li-Fe-O`,
-        compositions: [{ Li: 1, Fe: 1, O: 2 }],
-        chips: [`Fe-Li 1`, `Fe-O 1`, `Li-O 1`],
-      },
-      {
-        desc: `quaternary system has 6 pairs`,
-        system: `Li-Fe-P-O`,
+      { desc: `binary entries count once per pair`, system: `Li-Fe-O`,
+        compositions: [{ Li: 1, Fe: 1 }, { Fe: 1, O: 1 }], chips: [`Fe-Li 1`, `Fe-O 1`, `Li-O 0`] },
+      { desc: `a ternary entry increments all 3 pairs`, system: `Li-Fe-O`,
+        compositions: [{ Li: 1, Fe: 1, O: 2 }], chips: [`Fe-Li 1`, `Fe-O 1`, `Li-O 1`] },
+      { desc: `quaternary system has 6 pairs`, system: `Li-Fe-P-O`,
         compositions: [{ Li: 1, Fe: 1, P: 1, O: 4 }],
-        chips: [`Fe-Li 1`, `Fe-O 1`, `Fe-P 1`, `Li-O 1`, `Li-P 1`, `O-P 1`],
-      },
+        chips: [`Fe-Li 1`, `Fe-O 1`, `Fe-P 1`, `Li-O 1`, `Li-P 1`, `O-P 1`] },
     ])(`$desc`, ({ system, compositions, chips }) => {
       mount_stats({
         phase_stats: mock_stats({ chemical_system: system }),

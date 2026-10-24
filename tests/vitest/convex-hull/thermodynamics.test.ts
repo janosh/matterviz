@@ -386,48 +386,29 @@ describe(`calculate_e_above_hull`, () => {
     make_phase({ Fe: 1 }, -8, { e_form_per_atom: e_form, entry_id: `Fe-${e_form}` }),
   )
 
+  // oxfmt-ignore
   test.each([
-    [
-      `unary polymorph 0.5 eV/atom above the lowest`,
+    [`unary polymorph 0.5 eV/atom above the lowest`,
       make_phase({ Fe: 1 }, -3.5, { entry_id: `Fe-high` }),
-      [make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-stable` })],
-      0.5,
-    ],
-    [
-      `oxidation-state keys normalized against plain-symbol refs`,
-      make_phase({ 'Fe2+': 1, 'O2-': 1 }, -6.5, { entry_id: `FeO-charged` }),
-      fe_o_feo_refs,
-      1,
-    ],
+      [make_phase({ Fe: 1 }, -4.0, { entry_id: `Fe-stable` })], 0.5],
+    [`oxidation-state keys normalized against plain-symbol refs`,
+      make_phase({ 'Fe2+': 1, 'O2-': 1 }, -6.5, { entry_id: `FeO-charged` }), fe_o_feo_refs, 1],
     // tie-line FeO (x=0.5, -1) → synthetic O corner (x=1, 0) gives -0.5 at x=0.75
-    [
-      `missing unary refs become E_form = 0 corners`,
-      make_phase({ Fe: 1, O: 3 }, 0, { entry_id: `FeO3`, e_form_per_atom: -0.25 }),
-      fe_feo_refs,
-      0.25,
-    ],
-    [
-      `precomputed e_form_per_atom wins over recomputation`,
-      make_phase({ Fe: 1, O: 1 }, -6.0, { entry_id: `FeO`, e_form_per_atom: 0.5 }),
-      fe_o_refs,
-      0.5,
-    ],
+    [`missing unary refs become E_form = 0 corners`,
+      make_phase({ Fe: 1, O: 3 }, 0, { entry_id: `FeO3`, e_form_per_atom: -0.25 }), fe_feo_refs,
+      0.25],
+    [`precomputed e_form_per_atom wins over recomputation`,
+      make_phase({ Fe: 1, O: 1 }, -6.0, { entry_id: `FeO`, e_form_per_atom: 0.5 }), fe_o_refs, 0.5],
     [`facet-less hull: off-zero unary is on it`, off_zero_refs[0], off_zero_refs, 0],
     // 0.3 above the tie-line midpoint 0.1
-    [
-      `facet-less hull: distance to the tilted line`,
-      make_phase({ Fe: 1, O: 1 }, -5, { e_form_per_atom: 0.3, entry_id: `FeO` }),
-      off_zero_refs,
-      0.2,
+    [`facet-less hull: distance to the tilted line`,
+      make_phase({ Fe: 1, O: 1 }, -5, { e_form_per_atom: 0.3, entry_id: `FeO` }), off_zero_refs, 0.2
     ],
     [`tilted plane: compound on it`, tilted_refs[3], tilted_refs, 0],
     // plane at x_Fe = 0.25 is 0.075
-    [
-      `tilted plane: distance above it`,
+    [`tilted plane: distance above it`,
       make_phase({ Li: 1, Fe: 1, O: 2 }, -5, { e_form_per_atom: 0.175, entry_id: `LiFeO2` }),
-      tilted_refs,
-      0.1,
-    ],
+      tilted_refs, 0.1],
     // the lowest unary is the hull, even off E_form = 0
     [`lone unary off zero`, fe_polymorphs[0], [fe_polymorphs[0]], 0],
     [`unary polymorph above an off-zero ground state`, fe_polymorphs[1], fe_polymorphs, 0.1],
