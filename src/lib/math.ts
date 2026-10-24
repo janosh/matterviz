@@ -821,14 +821,22 @@ export function unimodular_completion(
   }
   if (working[pivot] < 0) rows[pivot] = scale(rows[pivot], -1)
   let [short, long] = rows.filter((_, axis) => axis !== pivot)
+  // Hexagonal cells put dot/norm exactly on a ±1/2 tie that float error splits
+  // (-0.5000000000000001), so Math.round swung `long` between ±short until the step cap. Near-ties
+  // snap to the half-integer and equal lengths do not swap. 1e-9 is far above the ~1e-15 error
+  // of these few-term dot products and below the 1/(2·norm_short) distance from a half-integer
+  // that exact integer inputs keep (norms < 5e8), so those reduce bit-identically.
+  const tie_eps = 1e-9
   for (let step = 0; step < MAX_REDUCTION_STEPS; step++) {
     const [cart_short, cart_long] = [embed(short), embed(long)]
     const norm_short = dot(cart_short, cart_short)
-    if (dot(cart_long, cart_long) < norm_short) {
+    if (dot(cart_long, cart_long) < norm_short * (1 - tie_eps)) {
       ;[short, long] = [long, short]
       continue
     }
-    const factor = Math.round(dot(cart_short, cart_long) / norm_short)
+    const twice_ratio = (2 * dot(cart_short, cart_long)) / norm_short
+    const near_tie = Math.abs(twice_ratio - Math.round(twice_ratio)) <= 2 * tie_eps
+    const factor = Math.round((near_tie ? Math.round(twice_ratio) : twice_ratio) / 2)
     if (factor === 0) return [rows[pivot], short, long]
     long = subtract(long, scale(short, factor))
   }

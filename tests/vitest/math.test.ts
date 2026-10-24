@@ -1551,6 +1551,35 @@ describe(`gcd and Miller index reduction`, () => {
     expect(() => math.unimodular_completion([2, 4, 0])).toThrow(`primitive integer vector`)
   })
 
+  // |a| = |b| hexagonal cells sit on a ±1/2 Gauss tie that float error split, so the reduction
+  // swung between ±short and threw after 64 steps (make_slab(mp-12712, [0, 0, 1]))
+  it.each([
+    [
+      `mp-12712, γ = 120°`,
+      [
+        [6.279279366746268, -10.876030898123462, 0],
+        [6.279279366746268, 10.876030898123462, 0],
+        [0, 0, 5.560004668537685],
+      ],
+    ],
+    [`a = 2.0411, γ = 60°`, math.cell_to_lattice_matrix(2.0411, 2.0411, 5, 90, 90, 60)],
+    [`a = 2.685, γ = 60°`, math.cell_to_lattice_matrix(2.685, 2.685, 5, 90, 90, 60)],
+  ] as [string, math.Matrix3x3][])(
+    `unimodular_completion reduces (001) of %s`,
+    (_name, cell) => {
+      const to_cart = math.create_frac_to_cart(cell)
+      const unimodular = math.unimodular_completion([0, 0, 1], to_cart)
+      expect(math.mat3x3_vec3_multiply(unimodular, [0, 0, 1])).toEqual([1, 0, 0])
+      expect(Math.abs(math.det_3x3(unimodular))).toBe(1)
+      const [first, second] = unimodular.slice(1).map((row) => to_cart(row))
+      const norm_first = math.dot(first, first)
+      expect(2 * Math.abs(math.dot(first, second))).toBeLessThanOrEqual(
+        norm_first * (1 + 1e-9),
+      )
+      expect(norm_first).toBeLessThanOrEqual(math.dot(second, second) * (1 + 1e-9))
+    },
+  )
+
   it(`validate_miller_indices accepts unreduced indices`, () => {
     expect(() => math.validate_miller_indices([2, 2, 0])).not.toThrow()
   })

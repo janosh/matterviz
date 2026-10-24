@@ -110,10 +110,17 @@ const parse_rgb_function = (color: string): RGBColor | undefined => {
   // rgb() and rgba() are aliases (CSS Color 4): either takes an optional fourth alpha
   if (comma_syntax && channels.length === 4) alpha = channels.pop()
   if (channels.length !== 3) return undefined
-  const parse_component = (value: string, percent_scale: number): number =>
-    value.endsWith(`%`) ? (Number(value.slice(0, -1)) * percent_scale) / 100 : Number(value)
-  const [red, green, blue] = channels.map((value) => parse_component(value, 255))
-  return rgb(red, green, blue, parse_component(alpha ?? `1`, 1))
+  // CSS decimals only: Number() also reads `` (rgb(,,)) as 0 and 0x10 as 16
+  const parse_component = (value: string, percent_scale: number): number => {
+    const number = value.endsWith(`%`) ? value.slice(0, -1) : value
+    if (!/^[+-]?(?:\d*\.)?\d+(?:e[+-]?\d+)?$/i.test(number)) return NaN
+    return number === value ? Number(number) : (Number(number) * percent_scale) / 100
+  }
+  const components = [...channels, alpha ?? `1`].map((value, idx) =>
+    parse_component(value, idx < 3 ? 255 : 1),
+  )
+  const [red, green, blue, opacity] = components
+  return components.some(Number.isNaN) ? undefined : rgb(red, green, blue, opacity)
 }
 const to_rgb = (color: string): RGBColor | undefined => {
   const parsed = parse_rgb_function(color) ?? d3_color(color)?.rgb()

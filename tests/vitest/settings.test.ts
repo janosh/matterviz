@@ -67,6 +67,9 @@ describe(`Settings`, () => {
     [`element list with a number`, struct_cfg.polyhedra_excluded_elements, [8], false],
     [`free-form map`, struct_cfg.vector_configs, { force: { visible: true } }, true],
     [`array for a map`, struct_cfg.vector_configs, [], false],
+    [`map with a non-object entry`, struct_cfg.vector_configs, { force: true }, false],
+    [`string-valued map`, traj_cfg.atom_type_mapping, { 1: `Si`, 2: `O` }, true],
+    [`string map with a number`, traj_cfg.atom_type_mapping, { 1: 14 }, false],
     [`boolean`, struct_cfg.show_atoms, false, true],
     [`string for a boolean`, struct_cfg.show_atoms, `yes`, false],
     // color scales: a scheme name or a ColorScaleConfig object, not just the default's string

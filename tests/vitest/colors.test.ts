@@ -102,7 +102,11 @@ describe(`is_color function`, () => {
     [`hello world`, false], [``, false], [123, false], [null, false],
     // incomplete or malformed functions and hex
     [`rgb`, false], [`var`, false], [`color`, false], [`#gg0000`, false], [`#12`, false],
-    [`rgb(255, 0)`, false], // incomplete rgb values are rejected
+    // incomplete rgb values are rejected, as are empty and non-decimal channels
+    [`rgb(255, 0)`, false],
+    [`rgb(,,)`, false],
+    [`rgba(255, 0, 0, )`, false],
+    [`rgb(0x10, 0, 0)`, false],
     [`#12345`, false], // 5-digit hex is invalid (regression vs old COLOR_FN_REGEX)
     [`#1234567`, false], // 7-digit hex is invalid (regression vs old COLOR_FN_REGEX)
   ])(`%s -> %s`, (input, expected) => {

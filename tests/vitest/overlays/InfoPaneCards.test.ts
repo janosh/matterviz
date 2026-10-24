@@ -1,6 +1,6 @@
 import type { InfoPaneCard } from '#lib/overlays/index.js'
 import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-import { flushSync, mount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 import { describe, expect, test } from 'vitest'
 import { doc_query, set_input } from '../setup'
 
@@ -12,10 +12,10 @@ const titles = () =>
   [...document.querySelectorAll(`.info-card h4`)].map((element) => element.textContent?.trim())
 
 describe(`InfoPaneCards`, () => {
-  test(`renders duplicate unkeyed rows; the filter matches rendered text, not markup`, () => {
+  test(`renders duplicate unkeyed rows; the filter matches rendered text, not markup`, async () => {
     const same = { label: `Same`, value: `Value` }
     const forces = { label: `F<sub>max</sub>`, value: `1 eV/&Aring;` }
-    mount(InfoPaneCards, {
+    const filtered = mount(InfoPaneCards, {
       target: document.body,
       props: {
         cards: [
@@ -36,6 +36,10 @@ describe(`InfoPaneCards`, () => {
       flushSync()
       expect(titles(), query).toEqual(expected)
     }
+    expect(doc_query(`.empty-filter`).textContent).toBe(`No info matches "sub".`)
+    await unmount(filtered)
+    mount(InfoPaneCards, { target: document.body, props: { cards: [], empty_label: `info` } })
+    expect(doc_query(`.empty-filter`).textContent).toBe(`No info.`)
   })
 
   test(`pages long lists, clamps after filtering and resets the page on a new filter`, () => {

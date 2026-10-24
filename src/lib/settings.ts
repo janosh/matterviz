@@ -12,7 +12,7 @@ import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import { is_plain_object } from '#lib/utils.js'
+import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
 import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
@@ -1188,13 +1188,18 @@ const valid_array = (value: unknown, setting: SettingType, reference: readonly u
 // Whether `value` may stand in for the schema default: its kind's shape (a color scale name or
 // config), enum membership, a finite number inside
 // minimum/maximum/multipleOf, an array of the default's item types inside minItems/maxItems
-// (items inside `items`), a plain object for free-form maps, else the default's primitive type.
+// (items inside `items`), a plain object of `additionalProperties`-typed values for free-form
+// maps, else the default's primitive type.
 export const is_valid_setting_value = (value: unknown, setting: SettingType): boolean => {
   if (setting.kind === `color_scale`) return is_color_scale(value)
   if (setting.enum) return typeof value === `string` && Object.hasOwn(setting.enum, value)
   if (typeof setting.value === `number`) return valid_number(value, setting)
   if (Array.isArray(setting.value)) return valid_array(value, setting, setting.value)
-  if (is_plain_object(setting.value)) return is_plain_object(value)
+  if (is_plain_object(setting.value)) {
+    // settings.json is not schema-checked: { "1": 14 } must not map a LAMMPS type to 14
+    const [is_kind] = JSON_KINDS[setting.additionalProperties?.type ?? `string`]
+    return is_plain_object(value) && Object.values(value).every(is_kind)
+  }
   return same_primitive_type(value, setting.value)
 }
 
