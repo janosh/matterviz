@@ -349,9 +349,7 @@ describe(`Einstein fit`, () => {
       lags,
       lags,
       lags.map((lag) => 3 * lag),
-      {
-        dimensionality,
-      },
+      { dimensionality },
     )
     expect(fit?.diffusion_coefficient).toBeCloseTo(3 / divisor, 14)
   })
@@ -362,12 +360,9 @@ describe(`Einstein fit`, () => {
     expect(fit_einstein_diffusion(lags, lags, lags, options)).toBeNull()
   })
 
+  // oxfmt-ignore
   it.each([
-    [
-      `inverted window`,
-      { start_fraction: 0.8, end_fraction: 0.2 },
-      /start_fraction .* must be below end_fraction/,
-    ],
+    [`inverted window`, { start_fraction: 0.8, end_fraction: 0.2 }, /start_fraction .* must be below end_fraction/],
     [`bad dimensionality`, { dimensionality: 0 }, /dimensionality must be positive/],
   ])(`throws on %s`, (_label, options, pattern) => {
     expect(() => fit_einstein_diffusion([1, 2], [1, 2], [1, 2], options)).toThrow(pattern)
@@ -406,41 +401,22 @@ describe(`time axis`, () => {
 describe(`input validation`, () => {
   const drifting = (n_frames: number) => ballistic([0.1, 0, 0], n_frames)
 
+  // oxfmt-ignore
   it.each([
     [`single frame`, () => calc_msd(build_positions([[[0, 0, 0]]])), /at least 2 frames/],
-    [
-      `element/atom mismatch`,
-      () => calc_msd({ ...drifting(5), elements: [`H`, `H`] as ElementSymbol[] }),
-      /element labels for 1 atoms/,
-    ],
-    [
-      `truncated position buffer`,
-      () => calc_msd({ ...drifting(5), positions: new Float64Array(6) }),
-      /positions has 6 entries/,
-    ],
-    [
-      `lattice count mismatch`,
-      () => calc_msd({ ...drifting(5), lattice_matrices: [cubic_matrix(3)] }),
-      /1 lattice matrices for 5 frames/,
-    ],
-    [
-      `out-of-range max_lag_fraction`,
-      () => calc_msd(drifting(5), { max_lag_fraction: 2 }),
-      /max_lag_fraction must be in/,
-    ],
-    [
-      // A fractional cap would make the derived lag stride non-integer and index the flat
-      // buffer at non-integer frame offsets
-      `fractional max_lags`,
-      () => calc_msd(drifting(20), { max_lags: 1.5 }),
-      /max_lags must be a positive integer/,
-    ],
+    [`element/atom mismatch`, () => calc_msd({ ...drifting(5), elements: [`H`, `H`] as ElementSymbol[] }),
+      /element labels for 1 atoms/],
+    [`truncated position buffer`, () => calc_msd({ ...drifting(5), positions: new Float64Array(6) }),
+      /positions has 6 entries/],
+    [`lattice count mismatch`, () => calc_msd({ ...drifting(5), lattice_matrices: [cubic_matrix(3)] }),
+      /1 lattice matrices for 5 frames/],
+    [`out-of-range max_lag_fraction`, () => calc_msd(drifting(5), { max_lag_fraction: 2 }),
+      /max_lag_fraction must be in/],
+    // A fractional cap would make the derived lag stride non-integer and index the flat
+    // buffer at non-integer frame offsets
+    [`fractional max_lags`, () => calc_msd(drifting(20), { max_lags: 1.5 }), /max_lags must be a positive integer/],
     // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
-    [
-      `dt without a time unit`,
-      () => calc_msd(drifting(20), { dt: 0.5 }),
-      /dt was supplied .* without time_unit/,
-    ],
+    [`dt without a time unit`, () => calc_msd(drifting(20), { dt: 0.5 }), /dt was supplied .* without time_unit/],
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)
   })

@@ -744,10 +744,7 @@ const parse_torch_sim_datasets = (
       lattice,
       pbc_for_frame(frame_idx),
       steps[frame_idx],
-      {
-        ...(energy === undefined ? {} : { energy }),
-        ...(time === undefined ? {} : { time }),
-      },
+      { ...(energy === undefined ? {} : { energy }), ...(time === undefined ? {} : { time }) },
       vector_signals.map(({ key }) => key),
     )
     frame.available_vector_keys = available_vector_keys

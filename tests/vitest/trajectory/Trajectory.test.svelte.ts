@@ -111,10 +111,7 @@ const default_props = (overrides: Partial<Props> = {}): Props => ({
 test(`trajectory page initializes without reading query parameters during prerendering`, async () => {
   // Exercise the page's prerender guard without mounting every 3D viewer in its gallery.
   const viewer = vi.fn()
-  vi.doMock(`#lib/trajectory/index.js`, () => ({
-    trajectory_from_frames,
-    Trajectory: viewer,
-  }))
+  vi.doMock(`#lib/trajectory/index.js`, () => ({ trajectory_from_frames, Trajectory: viewer }))
   try {
     const { default: TrajectoryTestPage } =
       await import('../../../src/routes/test/trajectory/+page.svelte')
@@ -326,20 +323,15 @@ describe(`display modes`, () => {
     },
   )
 
+  // oxfmt-ignore
   test.each([
     [`single-frame`, make_run({ steps: [0] })],
     [`constant-value`, make_run({ properties: () => ({ energy: -1 }) })],
     [`no-properties`, make_run({ properties: () => ({}) })],
-    [
-      `visually-flat`,
-      make_run({
-        properties: (idx) => ({
-          energy: -1_750_000 + idx,
-          kinetic_energy: 9500 + idx,
-          total_energy: -1_740_500 + 2 * idx,
-        }),
-      }),
-    ],
+    [`visually-flat`, make_run({
+      properties: (idx) =>
+        ({ energy: -1_750_000 + idx, kinetic_energy: 9500 + idx, total_energy: -1_740_500 + 2 * idx }),
+    })],
   ])(`defaults to structure-only for a %s run`, async (kind, trajectory) => {
     const target = mount_trajectory(default_props({ trajectory, display_mode: undefined }))
     await tick()
@@ -542,14 +534,10 @@ describe(`controls`, () => {
   // its sites, so selection and hover map between the two in both directions
   // Open by default, except where its menu entry is hidden: there nothing could close it.
   // Its Info tab shows the info pane's cards, so the info button hides while it shows.
+  // oxfmt-ignore
   test.each([
     [`default props`, {}, true, false],
-    [
-      `a hidden menu entry`,
-      { show_controls: { hidden: [`data-inspector-pane` as const] } },
-      false,
-      true,
-    ],
+    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true],
     [`no controls`, { show_controls: `never` as const }, false, false],
     [`data_inspector_open=false`, { data_inspector_open: false }, false, true],
   ])(
@@ -862,21 +850,10 @@ describe(`controls`, () => {
       `Data inspector`,
     ])
 
-    const bare = mount_trajectory(
-      default_props({
-        show_controls: {
-          hidden: [
-            `msd-pane`,
-            `vacf-pane`,
-            `rdf-pane`,
-            `spectroscopy-pane`,
-            `hotspots-pane`,
-            `structure-id-pane`,
-            `data-inspector-pane`,
-          ],
-        },
-      }),
-    )
+    // oxfmt-ignore
+    const hidden = [`msd-pane`, `vacf-pane`, `rdf-pane`, `spectroscopy-pane`, `hotspots-pane`,
+      `structure-id-pane`, `data-inspector-pane`] as const
+    const bare = mount_trajectory(default_props({ show_controls: { hidden: [...hidden] } }))
     expect(bare.querySelector(`button[aria-label="Analysis"]`)).toBeNull()
   })
 
@@ -1069,14 +1046,12 @@ describe(`plot`, () => {
     props.plot_type = `time-series`
     await tick()
     expect(legend_state(target)).toEqual({ Energy: false, Fmax: false, Volume: true })
+    // oxfmt-ignore
     for (const [properties, expected] of [
       [[], [false, false, false]],
       [[`Energy`], [false, false, false]],
       [[`energy`], [true, false, false]],
-      [
-        [`ENERGY`, `force_max`, `volume`],
-        [false, true, true],
-      ],
+      [[`ENERGY`, `force_max`, `volume`], [false, true, true]],
     ] as const) {
       props.visible_properties = [...properties]
       await tick()
@@ -1134,15 +1109,11 @@ describe(`plot`, () => {
     expect(legend_state(target)).toEqual({ Energy: false, Fmax: true, SCF: true })
   })
 
+  // oxfmt-ignore
   test.each([
     [`time when steps and a time step exist`, make_run(), `time`, [`Frame`, `Step`, `Time`]],
     [`step without a time step`, make_run({ time_step: null }), `step`, [`Frame`, `Step`]],
-    [
-      `frame when steps equal frame numbers`,
-      make_run({ steps: [0, 1, 2], time_step: null }),
-      `frame`,
-      [],
-    ],
+    [`frame when steps equal frame numbers`, make_run({ steps: [0, 1, 2], time_step: null }), `frame`, []],
   ] as const)(
     `x_quantity auto-picks %s and writes it back`,
     async (_kind, run, expected, options) => {
@@ -1183,11 +1154,8 @@ describe(`plot`, () => {
     expect(doc_query<HTMLSelectElement>(`.x-quantity-select`).value).toBe(`time`)
   })
 
-  test.each([
-    [`time-series`, 3],
-    [`distribution`, 3],
-    [`distribution`, 1],
-  ] as const)(
+  // oxfmt-ignore
+  test.each([[`time-series`, 3], [`distribution`, 3], [`distribution`, 1]] as const)(
     `%s with %s frames switches energy references with custom labels and preserves source data`,
     async (plot_type, frame_count) => {
       const prepare_scatter = vi.spyOn(plotting, `prepare_trajectory_scatter_series`)
@@ -1510,10 +1478,7 @@ describe(`events`, () => {
         // Descendant focus must survive modes that remove the structure viewer entirely.
         const focused = viewer.querySelector<HTMLElement>(`.structure`) ?? viewer
         focused.focus()
-        const event = keydown(shift_key ? `V` : `v`, {
-          shiftKey: shift_key,
-          cancelable: true,
-        })
+        const event = keydown(shift_key ? `V` : `v`, { shiftKey: shift_key, cancelable: true })
         focused.dispatchEvent(event)
         await tick()
         expect(event.defaultPrevented).toBe(true)
@@ -1693,11 +1658,8 @@ describe(`events`, () => {
 })
 
 describe(`bindings`, () => {
-  test.each([
-    [Number.MAX_SAFE_INTEGER, 2],
-    [-5, 0],
-    [1.7, 1],
-  ])(
+  // oxfmt-ignore
+  test.each([[Number.MAX_SAFE_INTEGER, 2], [-5, 0], [1.7, 1]])(
     `clamps an initial current_step_idx of %s to %s and notifies`,
     async (initial, expected) => {
       const on_step_change = vi.fn<(data: TrajHandlerData) => void>()
@@ -1779,11 +1741,7 @@ describe(`bindings`, () => {
       const props = $state(
         default_props({ current_step_idx: 0, on_step_change, on_controller, show_controls }),
       )
-      const target = document.createElement(`div`)
-      document.body.append(target)
-      const component = mount(Trajectory, { target, props })
-      mounted.push(component)
-      flushSync()
+      const target = mount_trajectory(props)
       expect(on_controller).toHaveBeenCalledOnce()
       const controller = on_controller.mock.calls[0][0]
       expect(controller?.state()).toEqual({ current_step_idx: 0, total_frames: 3 })
@@ -1796,8 +1754,7 @@ describe(`bindings`, () => {
       )
       expect(controller?.state()).toEqual({ current_step_idx: 2, total_frames: 3 })
       expect(controller?.set_step(99)).toBe(2)
-      await unmount(component)
-      mounted.splice(mounted.indexOf(component), 1)
+      for (const component of mounted.splice(0)) await unmount(component)
       expect(on_controller).toHaveBeenLastCalledWith(null)
     },
   )
@@ -1813,19 +1770,11 @@ describe(`panes track progressively loaded property rows`, () => {
       properties: { energy: -1 - idx },
     }))
 
+  // oxfmt-ignore
   test.each([
-    [
-      `info`,
-      { active_pane: `info`, data_inspector_open: false },
-      /Property Rows\s*(?<count>\d+(?: loaded)?)/,
-      [`2 loaded`, `5 loaded`, `5`],
-    ],
-    [
-      `data inspector`,
-      { data_inspector_open: true },
-      /Frames \((?<count>\d+)\)/,
-      [`2`, `5`, `5`],
-    ],
+    [`info`, { active_pane: `info`, data_inspector_open: false }, /Property Rows\s*(?<count>\d+(?: loaded)?)/,
+      [`2 loaded`, `5 loaded`, `5`]],
+    [`data inspector`, { data_inspector_open: true }, /Frames \((?<count>\d+)\)/, [`2`, `5`, `5`]],
   ] as const)(
     `%s follows rows pushed and finished after mount`,
     async (_name, pane_props, pattern, expected) => {

@@ -10,8 +10,5 @@ export const BOND_ANGLE_SPLIT_MODES = {
 export type BondAngleSplitMode = keyof typeof BOND_ANGLE_SPLIT_MODES
 
 // Raw counts scale with cell size, so several structures are only comparable as densities
-export const BOND_ANGLE_NORMALIZE_MODES = {
-  counts: `Counts`,
-  density: `Density`,
-} as const
+export const BOND_ANGLE_NORMALIZE_MODES = { counts: `Counts`, density: `Density` } as const
 export type BondAngleNormalizeMode = keyof typeof BOND_ANGLE_NORMALIZE_MODES

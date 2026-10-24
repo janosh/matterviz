@@ -481,10 +481,7 @@ type RunCase = {
 }
 
 const RUN_CASES: RunCase[] = [
-  {
-    name: `memory`,
-    make: () => trajectory_from_frames(reference_frames),
-  },
+  { name: `memory`, make: () => trajectory_from_frames(reference_frames) },
   {
     name: `indexed xyz`,
     make: () =>
@@ -516,17 +513,8 @@ const RUN_CASES: RunCase[] = [
     n_frames: 100,
     n_atoms: 55,
   },
-  {
-    name: `worker port`,
-    make: make_worker_run,
-    sync_reads: false,
-  },
-  {
-    name: `host`,
-    make: make_host_run,
-    sync_reads: false,
-    has_collect: false,
-  },
+  { name: `worker port`, make: make_worker_run, sync_reads: false },
+  { name: `host`, make: make_host_run, sync_reads: false, has_collect: false },
 ].map((entry) => ({
   sync_reads: true,
   has_collect: true,
@@ -674,11 +662,7 @@ describe(`collect_positions parity with the memory run`, () => {
       const outcome = run
         .prepare_frame(
           0,
-          {
-            bonding_strategy: `electroneg_ratio`,
-            bonding_options: {},
-            bonds: false,
-          },
+          { bonding_strategy: `electroneg_ratio`, bonding_options: {}, bonds: false },
           controller.signal,
         )
         .catch((error: unknown) => error)
@@ -815,9 +799,7 @@ describe(`worker-served run lifecycle`, () => {
         }
         for (let idx = 0; idx < 3; idx++)
           frame.coordinates.set([step, idx, -1, step + 1, idx, 2], idx * 12 + 6)
-        frame.structure.properties = {
-          bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }],
-        }
+        frame.structure.properties = { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }] }
         if (!records) return frame
         const materialized = materialize_frame(frame)
         materialized.structure.sites[2].provenance = { image_of: 0, unit_cell_idx: 0 }
@@ -884,16 +866,13 @@ describe(`worker-served run lifecycle`, () => {
       expect(first).toEqual(retained)
     },
   )
+  // oxfmt-ignore
   it.each([
     { label: `custom label` },
     { species: [{ element: `H`, occu: 0.5, oxidation_state: 0 }] },
     { species: [{ element: `H`, occu: 1, oxidation_state: -0 }] },
     { species: [{ element: `H`, occu: 1, oxidation_state: 0, isotope: 2 }] },
-    {
-      species: Object.assign([{ element: `H`, occu: 1, oxidation_state: 0 }], {
-        source: `test`,
-      }),
-    },
+    { species: Object.assign([{ element: `H`, occu: 1, oxidation_state: 0 }], { source: `test` }) },
     { properties: { force: Object.assign([1, 2, 3], { unit: `eV/A` }) } },
     { properties: { empty: undefined } },
     { provenance: { image_of: 0, unit_cell_idx: 0, completion: true } },
@@ -1047,9 +1026,7 @@ describe(`worker-served run lifecycle`, () => {
           () =>
             handler.call(
               port,
-              new MessageEvent(`message`, {
-                data: { properties: batch, complete: true },
-              }),
+              new MessageEvent(`message`, { data: { properties: batch, complete: true } }),
             ),
           failures.slice(0, error_count),
         )
@@ -1264,27 +1241,18 @@ describe(`TrajectoryProperties`, () => {
 })
 
 describe(`trajectory_from_frames validation`, () => {
+  const one_frame = reference_frames.slice(0, 1)
+  // oxfmt-ignore
   it.each([
     [`no frames`, [] as TrajectoryFrame[], {}, /at least one frame/],
     [`bad step`, [{ ...reference_frames[0], step: NaN }], {}, /invalid step/],
-    [
-      `wrong mass count`,
-      reference_frames.slice(0, 1),
-      { atom_masses: [1, 2] },
-      /atom_masses has 2/,
-    ],
-    [
-      `signal length`,
-      reference_frames.slice(0, 1),
+    [`wrong mass count`, one_frame, { atom_masses: [1, 2] }, /atom_masses has 2/],
+    [`signal length`, one_frame,
       { signals: { dipole: { values: new Float64Array(2), sample_shape: [3], steps: [0] } } },
-      /signals.dipole needs a Float64Array of 3 values/,
-    ],
-    [
-      `signal sample shape`,
-      reference_frames.slice(0, 1),
+      /signals.dipole needs a Float64Array of 3 values/],
+    [`signal sample shape`, one_frame,
       { signals: { dipole: { values: new Float64Array(), sample_shape: [0], steps: [0] } } },
-      /sample_shape must be scalar/,
-    ],
+      /sample_shape must be scalar/],
   ])(`rejects %s`, (_label, frames, extras, pattern) => {
     expect(() => trajectory_from_frames(frames, extras)).toThrow(pattern)
   })

@@ -426,38 +426,22 @@ describe(`vasprun.xml`, () => {
         (_, scf_idx) =>
           `<scstep>\n<energy>\n${energies(scf_idx === n_scf - 1 ? energy : energy - 1)}\n</energy>\n</scstep>`,
       ),
-      `<structure>\n<crystal>\n${varray(`basis`, [
-        [lat_a, 0, 0],
-        [0, lat_a, 0],
-        [0, 0, lat_a],
-      ])}\n</crystal>\n${varray(`positions`, frac)}\n</structure>`,
+      // oxfmt-ignore
+      `<structure>\n<crystal>\n${varray(`basis`, [[lat_a, 0, 0], [0, lat_a, 0], [0, 0, lat_a]])}\n</crystal>\n` +
+        `${varray(`positions`, frac)}\n</structure>`,
       varray(`forces`, forces),
-      varray(`stress`, [
-        [-3, 0, 0],
-        [0, -6, 0],
-        [0, 0, -9],
-      ]),
+      // oxfmt-ignore
+      varray(`stress`, [[-3, 0, 0], [0, -6, 0], [0, 0, -9]]),
       `<energy>\n${energies(energy + pv)}${molecular_dynamics ? `\n<i name="kinetic"> 0.5 </i>\n<i name="total"> ${energy + 0.5} </i>` : ``}\n</energy>`,
       ...(close ? [`</calculation>`] : []),
     ].join(`\n`)
   const atominfo = (rows: [string, number][], types: [number, string, number][]) =>
     `<atominfo>\n<atoms> ${rows.length} </atoms>\n<array name="atoms" >\n<set>\n${rows.map(([symbol, type_idx]) => `<rc><c>${symbol}</c><c> ${type_idx}</c></rc>`).join(`\n`)}\n</set>\n</array>\n<array name="atomtypes" >\n<set>\n${types.map(([count, symbol, mass]) => `<rc><c> ${count}</c><c>${symbol}</c><c> ${mass}</c><c> 4.0</c><c> PAW_PBE ${symbol}</c></rc>`).join(`\n`)}\n</set>\n</array>\n</atominfo>`
+  // oxfmt-ignore
+  const si_o_atoms = atominfo([[`Si`, 1], [`O`, 2]], [[1, `Si`, 28.085], [1, `O`, 15.999]])
   const vasprun = (
     calculations: string[],
-    {
-      ibrion = 2,
-      potim = 0.5,
-      atoms = atominfo(
-        [
-          [`Si`, 1],
-          [`O`, 2],
-        ],
-        [
-          [1, `Si`, 28.085],
-          [1, `O`, 15.999],
-        ],
-      ),
-    } = {},
+    { ibrion = 2, potim = 0.5, atoms = si_o_atoms } = {},
   ): string =>
     [
       `<?xml version="1.0" encoding="ISO-8859-1"?>`,
@@ -907,32 +891,16 @@ describe(`LAMMPS`, () => {
   // A dump written by `dump_modify element` names its species, so those names beat guessing
   // an element from the type number; an explicit mapping still beats the file, and an element
   // column holding type labels falls back to the guess instead of rejecting the file
+  // oxfmt-ignore
   it.each([
     [`element column`, undefined, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Si`, `O`], 0],
-    [
-      `mapping over column`,
-      { 1: `Ge`, 2: `O` },
-      [`1 1 Si 0 0 0`, `2 2 O 1 1 1`],
-      [`Ge`, `O`],
-      0,
-    ],
-    [
-      `type labels in column`,
-      undefined,
-      [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`],
-      [`H`, `He`],
-      1,
-    ],
+    [`mapping over column`, { 1: `Ge`, 2: `O` }, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Ge`, `O`], 0],
+    [`type labels in column`, undefined, [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`], [`H`, `He`], 1],
   ] as const)(
     `resolves elements with a type and an element column: %s`,
     async (_name, atom_type_mapping, atom_lines, expected, n_warnings) => {
-      const run = await open(
-        lammps_frame(`id type element x y z`, [...atom_lines]),
-        `t.lammpstrj`,
-        {
-          atom_type_mapping,
-        },
-      )
+      const dump = lammps_frame(`id type element x y z`, [...atom_lines])
+      const run = await open(dump, `t.lammpstrj`, { atom_type_mapping })
       expect(elements_of(run.preview)).toEqual(expected)
       expect(run.metadata).toMatchObject({ atom_types: [1, 2] })
       expect(run.warnings).toHaveLength(n_warnings)
@@ -2106,22 +2074,15 @@ describe(`JSON`, () => {
       '@class': cls,
       ...fields,
     })
+    // oxfmt-ignore
+    const coords = [[[0, 0, 0], [0.5, 0.5, 0.5]], [[0.1, 0, 0], [0.5, 0.5, 0.5]]]
     const run = await open(
       pymatgen({
         species: [
           monty(`Species`, { element: `Fe`, oxidation_state: 3, spin: null }),
           monty(`Element`, { element: `O` }),
         ],
-        coords: [
-          [
-            [0, 0, 0],
-            [0.5, 0.5, 0.5],
-          ],
-          [
-            [0.1, 0, 0],
-            [0.5, 0.5, 0.5],
-          ],
-        ],
+        coords,
       }),
       `decorated.json`,
     )
@@ -2130,9 +2091,8 @@ describe(`JSON`, () => {
       [{ element: `Fe`, oxidation_state: 3, occu: 1, spin: null }],
       [{ element: `O`, oxidation_state: 0, occu: 1 }],
     ]
-    for (const { structure } of frames) {
+    for (const { structure } of frames)
       expect(structure.sites.map((site) => site.species)).toEqual(expected)
-    }
     // parsed frames share species; the run hands each read its own copy
     expect(frames[0].structure.sites[0].species).not.toBe(frames[1].structure.sites[0].species)
     const reread = structure_from_json(JSON.parse(structure_to_json_str(frames[1].structure)))
@@ -2393,12 +2353,7 @@ describe(`HDF5 slice budgets`, () => {
       )
     })
     const dataset = fake_dataset([sample_count, sample_size], slice)
-    const values = read_numeric_samples(
-      dataset,
-      `/observables/dipole`,
-      sample_count,
-      sample_size,
-    )
+    const values = read_numeric_samples(dataset, `/dipole`, sample_count, sample_size)
     expect(slice).toHaveBeenCalledTimes(2)
     expect(values).toHaveLength(sample_count * sample_size)
     expect(values.at(-1)).toBe(sample_count - 1)
@@ -2416,6 +2371,10 @@ describe(`HDF5`, () => {
   // oxfmt-ignore
   const cell_21 = [[21, 0, 0], [0, 10, 0], [0, 0, 10]]
   const REPLICA_1 = `/molecules/h2o/replicas/1`
+  const site_like = (xyz: number[], element: ElementSymbol) => ({
+    xyz,
+    species: [{ element }],
+  })
   const open_replica = async (n_frames: number, hdf5_group_path = REPLICA_1) =>
     open(await make_reference_md_h5_buffer([100, 101], n_frames), `reference-md.h5`, {
       hdf5_group_path,
@@ -2471,20 +2430,12 @@ describe(`HDF5`, () => {
   // must not become a lattice (downstream inverts it and hits a singular matrix). A real cell
   // keeps its lattice whether periodic or decorative, per frame when the cell is dynamic.
   const cube = (edge: number) => [edge, 0, 0, 0, edge, 0, 0, 0, edge]
+  // oxfmt-ignore
   it.each([
-    {
-      label: `all-zero dynamic cell, pbc=false`,
-      cells: [cube(0), cube(0)],
-      pbc: [0, 0, 0],
-      edges: [undefined, undefined],
-    },
+    { label: `all-zero dynamic cell, pbc=false`, cells: [cube(0), cube(0)], pbc: [0, 0, 0],
+      edges: [undefined, undefined] },
     { label: `static cubic cell, pbc=true`, cells: [cube(3.4)], pbc: [1, 1, 1], edges: [3.4] },
-    {
-      label: `growing decorative cell, pbc=false`,
-      cells: [cube(3.4), cube(3.6)],
-      pbc: [0, 0, 0],
-      edges: [3.4, 3.6],
-    },
+    { label: `growing decorative cell, pbc=false`, cells: [cube(3.4), cube(3.6)], pbc: [0, 0, 0], edges: [3.4, 3.6] },
   ])(`TorchSim $label → per-frame lattice edges $edges`, async ({ cells, pbc, edges }) => {
     const n_frames = cells.length
     const buffer = await h5_bytes(`torch-sim-cell`, (file) => {
@@ -2955,10 +2906,7 @@ describe(`HDF5`, () => {
     const run = await open(await make_grouped_h5_buffer(two_runs, true), `mixed-groups.h5`, {
       hdf5_group_path: `/run_b`,
     })
-    expect(run.preview.structure.sites[0]).toMatchObject({
-      xyz: [9, 0, 0],
-      species: [{ element: `H` }],
-    })
+    expect(run.preview.structure.sites[0]).toMatchObject(site_like([9, 0, 0], `H`))
     expect(run.time_step).toEqual({ value: 0.5, unit: `fs` })
     expect(run.metadata.temperature).toBe(301)
     expect(run.atom_masses).toBeUndefined()
@@ -2971,10 +2919,7 @@ describe(`HDF5`, () => {
       { name: `model`, atomic_number: 1, x_position: 9 },
     ]
     const run = await open(await make_grouped_h5_buffer(groups), `canonical-data.h5`)
-    expect(run.preview.structure.sites[0]).toMatchObject({
-      xyz: [1, 0, 0],
-      species: [{ element: `Au` }],
-    })
+    expect(run.preview.structure.sites[0]).toMatchObject(site_like([1, 0, 0], `Au`))
   })
 
   it(`scopes nested TorchSim steps, signals, masses, and metadata to the selected run`, async () => {
@@ -3006,10 +2951,7 @@ describe(`HDF5`, () => {
     })
     const run = await open(content, `nested-runs.h5`, { hdf5_group_path: `/run_b/data` })
     expect(await steps_of(run)).toEqual([0, 2])
-    expect(run.preview.structure.sites[0]).toMatchObject({
-      xyz: [9, 0, 0],
-      species: [{ element: `H` }],
-    })
+    expect(run.preview.structure.sites[0]).toMatchObject(site_like([9, 0, 0], `H`))
     expect(run.atom_masses).toEqual([1])
     // the dipole is sampled on the run's own geometry steps [0, 2]
     expect(run.signals?.dipole).toEqual({

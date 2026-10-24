@@ -366,10 +366,7 @@ export const parse_md_h5_file = (
             key,
             trajectory_signal(
               read_samples(channels[key].name, start, end),
-              {
-                sample_shape: sample_shape(channels[key].width),
-                unit: channels[key].unit,
-              },
+              { sample_shape: sample_shape(channels[key].width), unit: channels[key].unit },
               steps.slice(start, end),
             ),
           ]),

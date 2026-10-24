@@ -386,10 +386,7 @@ export const parse_frame_signal = (
     return { values: (value as number[][]).flat(), sample_shape: [3, 3] }
   }
   if (value.length === n_atoms) {
-    return {
-      values: (value as number[][]).flat(),
-      sample_shape: [n_atoms, 3],
-    }
+    return { values: (value as number[][]).flat(), sample_shape: [n_atoms, 3] }
   }
   return null
 }

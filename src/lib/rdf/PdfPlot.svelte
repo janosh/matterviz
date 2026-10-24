@@ -125,10 +125,7 @@
         label: curve_label,
         legend_group: label,
         markers: `line` as const,
-        line_style: {
-          stroke: plot_color(color_idx++),
-          stroke_width: curve_idx === 0 ? 2 : 1,
-        },
+        line_style: { stroke: plot_color(color_idx++), stroke_width: curve_idx === 0 ? 2 : 1 },
       }))
     })
   })

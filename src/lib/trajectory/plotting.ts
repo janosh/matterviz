@@ -119,11 +119,7 @@ export function available_x_quantities(
   return quantities
 }
 
-export const X_QUANTITY_LABELS = {
-  frame: `Frame`,
-  step: `Step`,
-  time: `Time`,
-}
+export const X_QUANTITY_LABELS = { frame: `Frame`, step: `Step`, time: `Time` }
 
 // Read `ys` at `value` on the strictly increasing `xs` grid, interpolating between grid
 // points and clamping past either end. Running it with the two arrays swapped inverts the

@@ -454,9 +454,7 @@ function create_lammps_reader(
         )
       }
     }
-    return {
-      atom_types: math.sorted_numbers(atom_types_found),
-    }
+    return { atom_types: math.sorted_numbers(atom_types_found) }
   }
 
   return { read_frame, read_run }

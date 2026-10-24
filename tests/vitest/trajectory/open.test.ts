@@ -217,39 +217,18 @@ describe(`JSON runs`, () => {
     expect(run.provenance).toEqual({ filename: `mem.json`, format: `json` })
   })
 
+  // oxfmt-ignore
   test.each([
-    [
-      `.xyz that is not XYZ`,
-      `not xyz at all`,
-      `broken.xyz`,
-      /Failed to parse broken.xyz as XYZ/,
-    ],
-    [
-      `truncated XYZ`,
-      `2\ncomment\nHe 0 0 0`,
-      `broken.xyz`,
-      /Failed to parse broken.xyz as XYZ: XYZ file has no complete frame/,
-    ],
-    [
-      `invalid XYZ coordinate`,
-      `1\ncomment\nHe invalid 0 0`,
-      `broken.xyz`,
-      /Failed to parse broken.xyz as XYZ:.*frame 1\b/,
-    ],
+    [`.xyz that is not XYZ`, `not xyz at all`, `broken.xyz`, /Failed to parse broken.xyz as XYZ/],
+    [`truncated XYZ`, `2\ncomment\nHe 0 0 0`, `broken.xyz`,
+      /Failed to parse broken.xyz as XYZ: XYZ file has no complete frame/],
+    [`invalid XYZ coordinate`, `1\ncomment\nHe invalid 0 0`, `broken.xyz`,
+      /Failed to parse broken.xyz as XYZ:.*frame 1\b/],
     [`unrecognized text`, `1\ncomment\nHe invalid 0 0`, `blob-id`, /Unsupported text format/],
     // bytes that are neither ASE nor HDF5 read as text, unless they look binary
-    [
-      `binary bytes under a text name`,
-      new Blob([new Uint8Array([0, 1, 2, 0])]),
-      `data.xyz`,
-      /Unsupported binary format: data.xyz/,
-    ],
-    [
-      `text bytes that parse as nothing`,
-      new Blob([`x`]),
-      `data.xyz`,
-      /Failed to parse data.xyz/,
-    ],
+    [`binary bytes under a text name`, new Blob([new Uint8Array([0, 1, 2, 0])]), `data.xyz`,
+      /Unsupported binary format: data.xyz/],
+    [`text bytes that parse as nothing`, new Blob([`x`]), `data.xyz`, /Failed to parse data.xyz/],
   ])(`rejects %s`, async (_label, content, filename, pattern) => {
     await expect(open_trajectory(content, { filename })).rejects.toThrow(pattern)
   })

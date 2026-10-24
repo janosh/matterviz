@@ -28,10 +28,7 @@ describe(`VDOS peak position`, () => {
     `puts the %s peak of a 1 fs-sampled orbit at the input frequency`,
     (_label, cycles_per_frame, expected_thz) => {
       // dt = 1 fs, so a frequency of f cycles/frame is f * 1000 THz
-      const result = calc_vacf(orbit(1000, cycles_per_frame), {
-        dt: 1,
-        time_unit: `fs`,
-      })
+      const result = calc_vacf(orbit(1000, cycles_per_frame), { dt: 1, time_unit: `fs` })
       expect(result.frequency_unit).toBe(`THz`)
       expect(result.curves[0].peak_frequency).not.toBeNull()
       // Tolerance is tied to the frequency grid, not picked by eye: the VDOS is only
@@ -95,13 +92,11 @@ describe(`VDOS peak position`, () => {
     )
   })
 
+  // oxfmt-ignore
   it.each([
     [`no timestep was supplied`, {}],
     // cycles per collected frame, so the grid (and Nyquist) are independent of the numerical dt
-    [
-      `dt is supplied but the axis asks for frames`,
-      { dt: 2, time_unit: `fs`, vdos: { frequency_unit: `1/frame` } },
-    ],
+    [`dt is supplied but the axis asks for frames`, { dt: 2, time_unit: `fs`, vdos: { frequency_unit: `1/frame` } }],
   ] as const)(`reports inverse-frame frequencies when %s`, (_label, options) => {
     const result = calc_vacf(orbit(600, 0.02), options)
     expect(result.frequency_unit).toBe(`1/frame`)
@@ -169,33 +164,18 @@ describe(`windowing`, () => {
 describe(`no-dt policy`, () => {
   const not_convertible = (time_unit: string) =>
     `time_unit '${time_unit}' with frequency_unit 'THz' is not convertible; use frequency_unit '1/frame'`
+  const no_timestep = /no timestep was supplied, so the only honest axis is '1\/frame'/
+  // oxfmt-ignore
   it.each([
     [`a dt without a time_unit`, { dt: 0.5 }, /dt was supplied \(0.5\) without time_unit/],
-    [
-      `a dt with the frame sentinel time unit`,
-      { dt: 0.5, time_unit: `frame` },
-      /time_unit 'frame' cannot be combined with dt/,
-    ],
-    [
-      `a THz axis when no timestep was supplied`,
-      { vdos: { frequency_unit: `THz` } },
-      /no timestep was supplied, so the only honest axis is '1\/frame'/,
-    ],
-    [
-      `a cm^-1 axis when no timestep was supplied`,
-      { vdos: { frequency_unit: `cm^-1` } },
-      /no timestep was supplied, so the only honest axis is '1\/frame'/,
-    ],
-    [
-      `a THz axis for time_unit 'arbitrary units'`,
-      { dt: 1, time_unit: `arbitrary units`, vdos: { frequency_unit: `THz` } },
-      not_convertible(`arbitrary units`),
-    ],
-    [
-      `a THz axis for time_unit 'toString'`,
-      { dt: 1, time_unit: `toString`, vdos: { frequency_unit: `THz` } },
-      not_convertible(`toString`),
-    ],
+    [`a dt with the frame sentinel time unit`, { dt: 0.5, time_unit: `frame` },
+      /time_unit 'frame' cannot be combined with dt/],
+    [`a THz axis when no timestep was supplied`, { vdos: { frequency_unit: `THz` } }, no_timestep],
+    [`a cm^-1 axis when no timestep was supplied`, { vdos: { frequency_unit: `cm^-1` } }, no_timestep],
+    [`a THz axis for time_unit 'arbitrary units'`,
+      { dt: 1, time_unit: `arbitrary units`, vdos: { frequency_unit: `THz` } }, not_convertible(`arbitrary units`)],
+    [`a THz axis for time_unit 'toString'`, { dt: 1, time_unit: `toString`, vdos: { frequency_unit: `THz` } },
+      not_convertible(`toString`)],
   ] as const)(`refuses %s`, (_label, options, error) => {
     expect(() => calc_vacf(orbit(50, 0.1), options)).toThrow(error)
   })

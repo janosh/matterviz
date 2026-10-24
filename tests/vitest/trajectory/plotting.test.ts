@@ -639,15 +639,11 @@ describe(`x axis quantity`, () => {
     },
   )
 
+  // oxfmt-ignore
   it.each([
     { quantity: `frame` as const, expected_x: [1, 2, 3, 4], label: `Frame`, unit: `` },
     { quantity: `step` as const, expected_x: [0, 500, 1000, 1500], label: `Step`, unit: `` },
-    {
-      quantity: `time` as const,
-      expected_x: [0, 1000, 2000, 3000],
-      label: `Time`,
-      unit: `fs`,
-    },
+    { quantity: `time` as const, expected_x: [0, 1000, 2000, 3000], label: `Time`, unit: `fs` },
   ])(`plots $quantity on the x axis`, ({ quantity, expected_x, label, unit }) => {
     const rows = strided_rows()
     const samples = get_frame_step_samples(rows)

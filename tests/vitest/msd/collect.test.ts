@@ -154,12 +154,7 @@ describe(`MSD components`, () => {
     mounted.push(
       mount(TrajectoryMsdPane, {
         target: document.body,
-        props: {
-          run,
-          pane_open: true,
-          default_dt: 2,
-          default_time_unit: `fs`,
-        },
+        props: { run, pane_open: true, default_dt: 2, default_time_unit: `fs` },
       }),
     )
     await tick()

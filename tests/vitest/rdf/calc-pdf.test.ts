@@ -125,22 +125,11 @@ const window_values = (
 ): number[] => values.filter((_, idx) => pattern.r[idx] >= r_lo && pattern.r[idx] < r_hi)
 
 describe(`reduced PDF G(r)`, () => {
+  // oxfmt-ignore
   test.each([
     { name: `simple cubic`, frac: SC_FRAC, nn_dist: CUBIC_A, coordination: 6, r_window: 4.3 },
-    {
-      name: `bcc`,
-      frac: BCC_FRAC,
-      nn_dist: (CUBIC_A * Math.sqrt(3)) / 2,
-      coordination: 8,
-      r_window: 3.4,
-    },
-    {
-      name: `fcc`,
-      frac: FCC_FACE_CENTRES,
-      nn_dist: CUBIC_A / Math.SQRT2,
-      coordination: 12,
-      r_window: 3,
-    },
+    { name: `bcc`, frac: BCC_FRAC, nn_dist: (CUBIC_A * Math.sqrt(3)) / 2, coordination: 8, r_window: 3.4 },
+    { name: `fcc`, frac: FCC_FACE_CENTRES, nn_dist: CUBIC_A / Math.SQRT2, coordination: 12, r_window: 3 },
   ])(
     `$name: first G(r) peak sits at the analytic nn distance and integrates to CN $coordination`,
     ({ frac, nn_dist, coordination, r_window }) => {

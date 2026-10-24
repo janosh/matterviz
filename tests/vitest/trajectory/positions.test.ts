@@ -143,24 +143,15 @@ describe(`validate_position_stream_layout`, () => {
     ).not.toThrow()
   })
 
+  // oxfmt-ignore
   it.each([
     [`too few frames`, two_atoms(1), /calc_msd: need at least 2 frames, got 1/],
     [`no atoms`, two_atoms(3, { n_atoms: 0 }), /need at least 1 atom, got 0/],
-    [
-      `element count`,
-      two_atoms(3, { elements: [`Li`] }),
-      /got 1 element labels for 2 atoms; atom order is the atom identity/,
-    ],
-    [
-      `buffer length`,
-      two_atoms(3, { positions: new Float64Array(17) }),
-      /positions has 17 entries but 3 frames x 2 atoms x 3 requires 18/,
-    ],
-    [
-      `lattice count`,
-      two_atoms(3, { lattice_matrices: [null] }),
-      /got 1 lattice matrices for 3 frames/,
-    ],
+    [`element count`, two_atoms(3, { elements: [`Li`] }),
+      /got 1 element labels for 2 atoms; atom order is the atom identity/],
+    [`buffer length`, two_atoms(3, { positions: new Float64Array(17) }),
+      /positions has 17 entries but 3 frames x 2 atoms x 3 requires 18/],
+    [`lattice count`, two_atoms(3, { lattice_matrices: [null] }), /got 1 lattice matrices for 3 frames/],
   ])(`rejects %s`, (_label, stream, expected) => {
     expect(() => validate_position_stream_layout(stream, `calc_msd`, 2)).toThrow(expected)
   })
@@ -178,10 +169,7 @@ describe(`accumulate_positions validation`, () => {
           if (phase === `read` && frame_idx === 499) abort()
           return frame
         },
-        {
-          signal: controller.signal,
-          on_progress: phase === `progress` ? abort : undefined,
-        },
+        { signal: controller.signal, on_progress: phase === `progress` ? abort : undefined },
       ),
     ).rejects.toThrow(`collection cancelled`)
   })
@@ -300,45 +288,18 @@ describe(`numeric position input`, () => {
     },
   )
 
+  // oxfmt-ignore
   it.each([
-    [
-      `species`,
-      (frame: NumericFrame) => {
-        frame.sites = new Uint8Array([8, 1])
-      },
-      /Atom ordering changed/,
-    ],
-    [
-      `ID`,
-      (frame: NumericFrame) => {
-        frame.scalar_columns = { id: new Float64Array([2, 1]) }
-      },
-      /Atom identity changed/,
-    ],
-    [
-      `invalid vector`,
-      (frame: NumericFrame) => {
-        frame.coordinates[6] = Infinity
-      },
-      /no finite vec3 property "velocity"/,
-    ],
-    [
-      `scalar override`,
-      (frame: NumericFrame) => {
-        frame.scalar_columns = {
-          id: new Float64Array([1, 2]),
-          velocity: new Float64Array([1, 2]),
-        }
-      },
-      /no finite vec3 property "velocity"/,
-    ],
-    [
-      `wrapping convention`,
-      (frame: NumericFrame) => {
-        frame.header.metadata = { coords_unwrapped: true }
-      },
-      /coords_unwrapped flipped/,
-    ],
+    [`species`, (frame: NumericFrame) => { frame.sites = new Uint8Array([8, 1]) }, /Atom ordering changed/],
+    [`ID`, (frame: NumericFrame) => { frame.scalar_columns = { id: new Float64Array([2, 1]) } },
+      /Atom identity changed/],
+    [`invalid vector`, (frame: NumericFrame) => { frame.coordinates[6] = Infinity },
+      /no finite vec3 property "velocity"/],
+    [`scalar override`, (frame: NumericFrame) => {
+      frame.scalar_columns = { id: new Float64Array([1, 2]), velocity: new Float64Array([1, 2]) }
+    }, /no finite vec3 property "velocity"/],
+    [`wrapping convention`, (frame: NumericFrame) => { frame.header.metadata = { coords_unwrapped: true } },
+      /coords_unwrapped flipped/],
   ] as const)(`preserves rejection of changed %s`, async (_label, mutate, error) => {
     const frames = [0, 1].map((step) => {
       const frame = encode_frame(

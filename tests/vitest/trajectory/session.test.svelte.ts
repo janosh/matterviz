@@ -296,10 +296,7 @@ describe(`frame loading`, () => {
 
   it(`serves sync runs immediately and clamps out-of-range indices with a notification`, () => {
     const run = trajectory_from_frames(frames(5))
-    const { host, session, events } = make_session({
-      run,
-      index: Number.MAX_SAFE_INTEGER,
-    })
+    const { host, session, events } = make_session({ run, index: Number.MAX_SAFE_INTEGER })
     expect(host.index).toBe(4)
     expect(events).toEqual([`step:4`])
     expect(session.current_frame?.step).toBe(40)
@@ -730,11 +727,7 @@ describe(`controller and playback`, () => {
     const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
     const { run, pending, reads, resolve_next } = make_async_run(frames(4))
-    const { host, session, errors } = make_session({
-      run,
-      fps: 30,
-      wait_for_render: true,
-    })
+    const { host, session, errors } = make_session({ run, fps: 30, wait_for_render: true })
     const tick = (time: number) => {
       raf_callbacks.at(-1)?.(time)
       flushSync()
