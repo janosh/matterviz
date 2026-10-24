@@ -1,75 +1,16 @@
-import type {
-  AnyStructure,
-  BondEditMode,
-  BondOrder,
-  MeasureMode,
-  StructureBond,
-} from '#lib/structure/index.js'
-import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
-import { StructureSession } from '#lib/structure/session.svelte.js'
+import type { MeasureMode } from '#lib/structure/index.js'
 import StructureEditToolbar from '#lib/structure/StructureEditToolbar.svelte'
 import { flushSync } from 'svelte'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { doc_query, fire, keydown, mount_in_test, set_input } from '../setup'
-import { get_dummy_structure } from '../test-fixtures'
+import { make_session } from './session-harness.svelte'
 
 const RESET = `button[aria-label="Reset selection and bond edits"]`
 
 // A real session over plain $state, so toolbar clicks run the actual edit operations
 function mount_toolbar(measure_mode: MeasureMode, selected_sites: number[]) {
-  const host = $state<{
-    structure: AnyStructure | undefined
-    bonds: StructureBond[] | undefined
-    selected_sites: number[]
-    measured_sites: number[]
-    measure_mode: MeasureMode
-    bond_edit_mode: BondEditMode
-    bond_edit_order: BondOrder
-  }>({
-    structure: get_dummy_structure(`H`, 3, true),
-    bonds: undefined,
-    selected_sites,
-    measured_sites: [...selected_sites],
-    measure_mode,
-    bond_edit_mode: `add`,
-    bond_edit_order: 1,
-  })
-  const created: { session?: StructureSession } = {}
-  const destroy = $effect.root(() => {
-    created.session = new StructureSession({
-      structure: () => host.structure,
-      set_structure: (value) => (host.structure = value),
-      bonds: () => host.bonds,
-      set_bonds: (value) => (host.bonds = value),
-      series_key: () => null,
-      selected_sites: () => host.selected_sites,
-      set_selected_sites: (value) => (host.selected_sites = value),
-      measured_sites: () => host.measured_sites,
-      set_measured_sites: (value) => (host.measured_sites = value),
-      highlighted_sites: () => [],
-      set_highlighted_sites: () => {},
-      hovered_site_idx: () => null,
-      set_hovered_site_idx: () => {},
-      measure_mode: () => host.measure_mode,
-      set_measure_mode: (value) => (host.measure_mode = value),
-      bond_edit_mode: () => host.bond_edit_mode,
-      set_bond_edit_mode: (value) => (host.bond_edit_mode = value),
-      bond_edit_order: () => host.bond_edit_order,
-      set_bond_edit_order: (value) => (host.bond_edit_order = value),
-      supercell_scaling: () => `1x1x1`,
-      apply_supercell_scaling: () => true,
-      show_image_atoms: () => false,
-      image_atom_options: () => ({ completion: `none` }),
-      cell_type: () => `original`,
-      set_cell_type: () => {},
-      sym_data: () => null,
-      atom_color_config: () => DEFAULT_ATOM_COLOR_CONFIG,
-      bonding_strategy: () => `electroneg_ratio`,
-    })
-  })
-  onTestFinished(destroy)
-  const { session } = created
-  if (!session) throw new Error(`StructureSession was not created`)
+  const measured_sites = [...selected_sites]
+  const { host, session } = make_session({ measure_mode, selected_sites, measured_sites })
   mount_in_test(StructureEditToolbar, { session, shortcut_style: () => `` })
   flushSync()
   return { host, session }

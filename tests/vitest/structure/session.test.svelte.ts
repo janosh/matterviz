@@ -2,123 +2,25 @@
 // selection validated against what is displayed, invalidation on topology/transform/mode
 // changes, edit-atoms operations with undo/redo, the edit-bonds layer and pane bookkeeping.
 import type { Vec3 } from '#lib/math.js'
-import type {
-  AnyStructure,
-  BondEditMode,
-  BondOrder,
-  MeasureMode,
-  StructureBond,
-} from '#lib/structure/index.js'
-import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
+import type { AnyStructure, StructureBond } from '#lib/structure/index.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import { explicit_only, get_bond_data } from '#lib/structure/bonding.js'
-import { MAX_HISTORY, StructureSession } from '#lib/structure/session.svelte.js'
+import type { StructureSession } from '#lib/structure/session.svelte.js'
+import { MAX_HISTORY } from '#lib/structure/session.svelte.js'
 import { is_image_site, snapshot_topologies } from '#lib/structure/site.js'
 import { make_supercell } from '#lib/structure/supercell.js'
-import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
-import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
-import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
 import { flushSync } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fcc_primitive_matrix,
-  get_dummy_structure,
-  image_options,
   init_moyo_for_tests,
   make_crystal,
   make_rocksalt,
   make_srtio3,
 } from '../test-fixtures'
-
-type Host = {
-  structure: AnyStructure | undefined
-  bonds: StructureBond[] | undefined
-  series_key: unknown
-  selected_sites: number[]
-  measured_sites: number[]
-  highlighted_sites: number[]
-  hovered_site_idx: number | null
-  measure_mode: MeasureMode
-  bond_edit_mode: BondEditMode
-  bond_edit_order: BondOrder
-  supercell_scaling: string
-  apply_supercell_scaling: boolean
-  show_image_atoms: boolean
-  image_atom_completion: ImageAtomCompletion
-  polyhedra_options: Partial<ResolvedPolyhedraOptions>
-  cell_type: CellType
-  sym_data: SymmetryDataset | null
-  atom_color_config: AtomColorConfig
-  site_properties?: Record<string, unknown>[]
-}
-
-const crystal = (atoms = 3): AnyStructure => get_dummy_structure(`H`, atoms, true)
-
-function make_session(initial: Partial<Host> = {}, read_structure?: () => AnyStructure) {
-  const host = $state<Host>({
-    structure: crystal(),
-    bonds: undefined,
-    series_key: undefined,
-    selected_sites: [],
-    measured_sites: [],
-    highlighted_sites: [],
-    hovered_site_idx: null,
-    measure_mode: `distance`,
-    bond_edit_mode: `add`,
-    bond_edit_order: 1,
-    supercell_scaling: `1x1x1`,
-    apply_supercell_scaling: true,
-    show_image_atoms: false,
-    image_atom_completion: `polyhedra`,
-    polyhedra_options: {},
-    cell_type: `original`,
-    sym_data: null,
-    atom_color_config: DEFAULT_ATOM_COLOR_CONFIG,
-    ...initial,
-  })
-  const notices: string[] = []
-  let session!: StructureSession
-  const destroy = $effect.root(() => {
-    session = new StructureSession({
-      structure: read_structure ?? (() => host.structure),
-      site_properties: () => host.site_properties,
-      set_structure: (value) => (host.structure = value),
-      bonds: () => host.bonds,
-      set_bonds: (value) => (host.bonds = value),
-      series_key: () => host.series_key ?? host.structure,
-      selected_sites: () => host.selected_sites,
-      set_selected_sites: (value) => (host.selected_sites = value),
-      measured_sites: () => host.measured_sites,
-      set_measured_sites: (value) => (host.measured_sites = value),
-      highlighted_sites: () => host.highlighted_sites,
-      set_highlighted_sites: (value) => (host.highlighted_sites = value),
-      hovered_site_idx: () => host.hovered_site_idx,
-      set_hovered_site_idx: (value) => (host.hovered_site_idx = value),
-      measure_mode: () => host.measure_mode,
-      set_measure_mode: (value) => (host.measure_mode = value),
-      bond_edit_mode: () => host.bond_edit_mode,
-      set_bond_edit_mode: (value) => (host.bond_edit_mode = value),
-      bond_edit_order: () => host.bond_edit_order,
-      set_bond_edit_order: (value) => (host.bond_edit_order = value),
-      supercell_scaling: () => host.supercell_scaling,
-      apply_supercell_scaling: () => host.apply_supercell_scaling,
-      show_image_atoms: () => host.show_image_atoms,
-      image_atom_options: () =>
-        image_options(host.image_atom_completion, host.polyhedra_options),
-      cell_type: () => host.cell_type,
-      set_cell_type: (value) => (host.cell_type = value),
-      sym_data: () => host.sym_data,
-      atom_color_config: () => host.atom_color_config,
-      bonding_strategy: () => `electroneg_ratio`,
-      on_notice: (message) => notices.push(message),
-    })
-  })
-  onTestFinished(destroy)
-  flushSync()
-  return { host, session, notices }
-}
+import { crystal, flush_set, make_session, type SessionHost } from './session-harness.svelte'
 
 // Rendered explicit bond lengths (Å, cell_shift included) to 1e-9 Å: a wrong shift is Å off
 const bond_lengths = (structure: AnyStructure | undefined): number[] =>
@@ -131,12 +33,10 @@ describe(`display pipeline`, () => {
   it(`adds image atoms, tiles supercells synchronously below the async threshold and maps elements`, () => {
     const { host, session } = make_session()
     expect(session.displayed_structure?.sites).toHaveLength(3)
-    host.show_image_atoms = true
-    flushSync()
+    flush_set(host, { show_image_atoms: true })
     const with_images = session.displayed_structure?.sites.length ?? 0
     expect(with_images).toBeGreaterThan(3)
-    host.supercell_scaling = `2x1x1`
-    flushSync()
+    flush_set(host, { supercell_scaling: `2x1x1` })
     expect(session.supercell_loading).toBe(false)
     expect(session.supercell_structure?.sites).toHaveLength(6)
     expect(session.scaled_cell_displayed).toBe(true)
@@ -164,10 +64,13 @@ describe(`display pipeline`, () => {
     expect(session.tool_input).toBe(original_input)
   })
 
+  // Edit-atoms keeps the input's sites selected through the async build: they lead the supercell
   it(`builds large supercells off the main task and keeps the previous build while loading`, () => {
-    const { host, session } = make_session({ structure: crystal(200) })
-    host.supercell_scaling = `2x2x2`
-    flushSync()
+    const { host, session } = make_session({
+      structure: crystal(200),
+      measure_mode: `edit-atoms`,
+    })
+    flush_set(host, { selected_sites: [0, 5], supercell_scaling: `2x2x2` })
     expect(session.supercell_loading).toBe(true)
     expect(session.displayed_structure?.sites).toHaveLength(200)
     expect(session.supercell_tiling).toEqual([1, 1, 1])
@@ -176,6 +79,7 @@ describe(`display pipeline`, () => {
     expect(session.supercell_loading).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(1600)
     expect(session.supercell_tiling).toEqual([2, 2, 2])
+    expect(host.selected_sites).toEqual([0, 5])
   })
 
   // A caller-supplied supercell (phonon mode explorer) carries unit_cell_idx into a cell
@@ -219,8 +123,7 @@ describe(`display pipeline`, () => {
     expect(foreign.sites[2].properties).not.toHaveProperty(`charge`)
 
     // once the session tiles a supercell itself, its unit_cell_idx is followed
-    host.supercell_scaling = `1x2x1`
-    flushSync()
+    flush_set(host, { supercell_scaling: `1x2x1` })
     expect(session.supercell_structure?.sites).toHaveLength(8)
     const site_idx = session.displayed_structure?.sites.findIndex(
       (site) => site.provenance?.unit_cell_idx === 3 && !is_image_site(site),
@@ -236,9 +139,7 @@ describe(`display pipeline`, () => {
     })
     expect(session.displayed_structure?.sites).toHaveLength(3)
     expect(session.scaled_cell_displayed).toBe(true)
-    host.apply_supercell_scaling = true
-    host.supercell_scaling = `invalid`
-    flushSync()
+    flush_set(host, { apply_supercell_scaling: true, supercell_scaling: `invalid` })
     expect(session.has_supercell).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(3)
     expect(session.bond_edits_enabled).toBe(true)
@@ -270,8 +171,7 @@ describe(`symmetry-aware display`, () => {
     ])
     expect(session.property_colors?.values).toEqual([`4a|Cu`])
 
-    host.cell_type = `conventional`
-    flushSync()
+    flush_set(host, { cell_type: `conventional` })
     expect(session.displayed_structure?.sites).toHaveLength(4)
     expect(session.shows_input_frame).toBe(false)
     // all four conventional-cell copies belong to the single 4a row ...
@@ -281,10 +181,11 @@ describe(`symmetry-aware display`, () => {
     expect(new Set(session.property_colors?.colors).size).toBe(1)
 
     // a supercell of the input cell stays in the input frame; image atoms join their row
-    host.cell_type = `original`
-    host.supercell_scaling = `2x1x1`
-    host.show_image_atoms = true
-    flushSync()
+    flush_set(host, {
+      cell_type: `original`,
+      supercell_scaling: `2x1x1`,
+      show_image_atoms: true,
+    })
     expect(session.shows_input_frame).toBe(true)
     const n_displayed = session.displayed_structure?.sites.length ?? 0
     expect(n_displayed).toBeGreaterThan(2)
@@ -296,8 +197,7 @@ describe(`symmetry-aware display`, () => {
     flushSync()
     expect(session.wyckoff_rows[0].site_indices).toHaveLength(n_displayed)
 
-    host.atom_color_config = DEFAULT_ATOM_COLOR_CONFIG
-    flushSync()
+    flush_set(host, { atom_color_config: DEFAULT_ATOM_COLOR_CONFIG })
     expect(session.property_colors).toBeNull()
   })
 
@@ -317,21 +217,17 @@ describe(`symmetry-aware display`, () => {
         host.structure?.sites.length,
         session.history.undo_stack.length,
       ]
-      host.cell_type = `conventional`
-      flushSync()
+      flush_set(host, { cell_type: `conventional` })
       if (!ready) {
         // no symmetry data yet, so the original cell still shows: the pick stays, no bake
         expect(cell_state()).toEqual([`conventional`, 1, 0])
-        host.selected_sites = [0]
-        host.sym_data = sym_data
-        flushSync()
+        flush_set(host, { selected_sites: [0], sym_data })
       }
       // the 4-atom conventional cell became the raw structure, one undo away from the input
       expect(cell_state()).toEqual([`original`, 4, 1])
       expect(host.selected_sites).toEqual([]) // picked on the previous cell
       // so edits hit the picked site of the baked cell
-      host.selected_sites = [3]
-      flushSync()
+      flush_set(host, { selected_sites: [3] })
       expect(session.delete_selected()).toBe(true)
       flushSync()
       expect(host.structure?.sites).toHaveLength(3)
@@ -354,9 +250,7 @@ describe(`symmetry-aware display`, () => {
       measure_mode: `edit-atoms`,
     })
     const input = host.structure
-    host.selected_sites = [2]
-    host.cell_type = `conventional`
-    flushSync()
+    flush_set(host, { selected_sites: [2], cell_type: `conventional` })
     expect(host.cell_type).toBe(`original`)
     expect(host.structure).toBe(input)
     expect(session.history.undo_stack).toHaveLength(0)
@@ -381,8 +275,7 @@ it(`switching image_atom_completion rebuilds the displayed atoms`, () => {
     [`boundary`, [`Ti`, `Ti`, `Ti`, `Ti`, `Ti`, `Ti`]],
     [`none`, []],
   ] as const) {
-    host.image_atom_completion = completion
-    flushSync()
+    flush_set(host, { image_atom_completion: completion })
     expect(completion_elements(), completion).toEqual(expected)
   }
 })
@@ -427,19 +320,16 @@ it(`changing the polyhedra options rebuilds the completion copies`, () => {
   expect(completion_count()).toBe(24)
   // an equal options object keeps the displayed structure (no rerun of the bond search)
   const displayed = session.displayed_structure
-  host.polyhedra_options = { ...host.polyhedra_options }
-  flushSync()
+  flush_set(host, { polyhedra_options: { ...host.polyhedra_options } })
   expect(session.displayed_structure).toBe(displayed)
-  host.selected_sites = [0, 20, 21] // base Ti, the last face copy, the first O corner copy
-  flushSync()
+  // base Ti, the last face copy, the first O corner copy
+  flush_set(host, { selected_sites: [0, 20, 21] })
   // O is no polyhedron center, so excluding it (as hiding it in the legend does) draws the
   // same copies: the displayed structure and the selection stay
-  host.polyhedra_options = { excluded_center_elements: [`O`] }
-  flushSync()
+  flush_set(host, { polyhedra_options: { excluded_center_elements: [`O`] } })
   expect(session.displayed_structure).toBe(displayed)
   expect(host.selected_sites).toEqual([0, 20, 21])
-  host.polyhedra_options = { excluded_center_elements: [`Ti`] }
-  flushSync()
+  flush_set(host, { polyhedra_options: { excluded_center_elements: [`Ti`] } })
   expect(completion_count()).toBe(0)
   expect(host.selected_sites).toEqual([0, 20]) // the corner copy is gone, the face copy stays
 })
@@ -463,8 +353,9 @@ it(`completion settings remap site state to the same copies`, () => {
   host.hovered_site_idx = na_copy
   session.site_radius_overrides.set(na_copy, 2)
   flushSync()
-  host.polyhedra_options = { neighbor_mode: `bonded`, excluded_center_elements: [`Na`] }
-  flushSync()
+  flush_set(host, {
+    polyhedra_options: { neighbor_mode: `bonded`, excluded_center_elements: [`Na`] },
+  })
   const moved = sites().findIndex(
     (site) =>
       site.provenance?.image_of === provenance?.image_of && String(site.abc) === String(abc),
@@ -502,13 +393,10 @@ it.each([`frame`, `drag`] as const)(`image copies keep their state across a %s`,
   const sources = () =>
     session.displayed_structure?.sites.map((site) => site.provenance?.image_of)
   expect(sources()).toEqual([undefined, undefined, 0, 1])
-  host.selected_sites = [1, 3]
-  host.hovered_site_idx = 3
-  flushSync()
+  flush_set(host, { selected_sites: [1, 3], hovered_site_idx: 3 })
   session.dragging_atoms = how === `drag`
   flushSync()
-  host.structure = cell(0.2)
-  flushSync()
+  flush_set(host, { structure: cell(0.2) })
   session.dragging_atoms = false
   flushSync()
   expect(sources()).toEqual([undefined, undefined, 1])
@@ -522,11 +410,9 @@ it.each([
   [`completion off`, { show_image_atoms: true, image_atom_completion: `none` }],
 ] as const)(`polyhedra settings keep the selection with %s`, (_label, initial) => {
   const { host, session } = make_session(initial)
-  host.selected_sites = [0]
-  flushSync()
+  flush_set(host, { selected_sites: [0] })
   const displayed = session.displayed_structure
-  host.polyhedra_options = { min_neighbors: 5 }
-  flushSync()
+  flush_set(host, { polyhedra_options: { min_neighbors: 5 } })
   expect(host.selected_sites).toEqual([0])
   expect(session.displayed_structure).toBe(displayed)
 })
@@ -536,19 +422,14 @@ describe(`selection validity`, () => {
     const { host, session } = make_session({ show_image_atoms: true })
     // the last site is an image atom: the dummy crystal puts all atoms on cell boundaries
     const count = session.displayed_structure?.sites.length ?? 0
-    host.selected_sites = [0, count - 1]
-    host.measured_sites = [0, count - 1]
-    flushSync()
+    flush_set(host, { selected_sites: [0, count - 1], measured_sites: [0, count - 1] })
     expect(session.measured_sites).toEqual([0, count - 1])
-    host.show_image_atoms = false
-    flushSync()
+    flush_set(host, { show_image_atoms: false })
     // The pre-effect cleared the host picks before any consumer could read them
     expect(host.measured_sites).toEqual([])
     expect(host.selected_sites).toEqual([])
     // Even a stale write from a host is filtered against the displayed count
-    host.measured_sites = [0, 99]
-    host.hovered_site_idx = 99
-    flushSync()
+    flush_set(host, { measured_sites: [0, 99], hovered_site_idx: 99 })
     expect(session.measured_sites).toEqual([0])
     expect(session.hovered_site_idx).toBeNull()
   })
@@ -598,24 +479,19 @@ describe(`selection validity`, () => {
       }
       flushSync()
       expect(host.selected_sites).toEqual([])
-      host.selected_sites = [0]
-      flushSync()
+      flush_set(host, { selected_sites: [0] })
       const site = host.structure.sites[0]
       if (field === `label`) site.label = `changed`
       else if (field === `element`) site.species[0].element = `Ne`
       else site.species[0][field] = 0.5
       flushSync()
       expect(host.selected_sites).toEqual([])
-      host.selected_sites = [0]
-      flushSync()
-      host.structure = { ...base, sites: base.sites.slice(1) }
-      flushSync()
+      flush_set(host, { selected_sites: [0] })
+      flush_set(host, { structure: { ...base, sites: base.sites.slice(1) } })
       expect(site_state()).toEqual([[], [], undefined, []])
       expect([host.highlighted_sites, host.hovered_site_idx]).toEqual([[], null])
-      host.selected_sites = [0]
-      flushSync()
-      host.series_key = {}
-      flushSync()
+      flush_set(host, { selected_sites: [0] })
+      flush_set(host, { series_key: {} })
       expect(host.selected_sites).toEqual([])
     },
   )
@@ -626,8 +502,7 @@ describe(`selection validity`, () => {
     snapshot_topologies.set(first, identity)
     let displayed = $state.raw(first)
     const { host } = make_session({ series_key: {} }, () => displayed)
-    host.selected_sites = [0]
-    flushSync()
+    flush_set(host, { selected_sites: [0] })
     const next = structuredClone(first)
     const label_read = vi.fn(() => first.sites[0].label)
     Object.defineProperty(next.sites[0], `label`, { get: label_read })
@@ -644,26 +519,21 @@ describe(`selection validity`, () => {
   })
 
   it(`preserves the selection through transforms in edit-atoms mode only`, () => {
-    const { host } = make_session({ measure_mode: `edit-atoms` })
-    host.selected_sites = [0]
-    flushSync()
-    host.supercell_scaling = `2x1x1`
-    flushSync()
+    const { host } = make_session({ measure_mode: `edit-atoms`, supercell_scaling: `2x1x1` })
+    // a 1x2x1 tiling puts another atom at the 2x1x1 copy's index 4: only input sites stay
+    flush_set(host, { selected_sites: [0, 4] })
+    flush_set(host, { supercell_scaling: `1x2x1` })
     expect(host.selected_sites).toEqual([0])
-    host.measure_mode = `distance`
-    flushSync()
+    flush_set(host, { measure_mode: `distance` })
     expect(host.selected_sites, `mode switch clears`).toEqual([])
-    host.measured_sites = [0]
-    flushSync()
-    host.show_image_atoms = true
-    flushSync()
+    flush_set(host, { measured_sites: [0] })
+    flush_set(host, { show_image_atoms: true })
     expect(host.measured_sites).toEqual([])
   })
 
   it(`leaves edit-bonds mode with a notice when bond edits become unavailable`, () => {
     const { host, notices } = make_session({ measure_mode: `edit-bonds` })
-    host.supercell_scaling = `2x2x2`
-    flushSync()
+    flush_set(host, { supercell_scaling: `2x2x2` })
     expect(host.measure_mode).toBe(`distance`)
     expect(notices).toContain(`Bond editing is only available for the original 1x1x1 cell`)
   })
@@ -682,13 +552,11 @@ describe(`edit-atoms`, () => {
     })
     const image_idx = (session.displayed_structure?.sites.length ?? 0) - 1
     // image atoms alone leave no base site to delete: no undo point, nothing rewritten
-    host.selected_sites = [image_idx]
-    flushSync()
+    flush_set(host, { selected_sites: [image_idx] })
     expect(session.delete_selected()).toBe(false)
     expect(session.history.undo_stack).toHaveLength(0)
     expect(host.selected_sites).toEqual([image_idx])
-    host.selected_sites = [0, image_idx]
-    flushSync()
+    flush_set(host, { selected_sites: [0, image_idx] })
     expect(session.delete_selected()).toBe(true)
     flushSync()
     expect(host.structure?.sites).toHaveLength(2)
@@ -711,15 +579,13 @@ describe(`edit-atoms`, () => {
     expect(session.history.redo_stack, `a new edit invalidates redo`).toHaveLength(0)
     // the session's own edits kept the history; an external structure change clears it
     flushSync()
-    host.structure = crystal(4)
-    flushSync()
+    flush_set(host, { structure: crystal(4) })
     expect(session.history.undo_stack).toHaveLength(0)
   })
 
   it(`duplicates into a new selection, changes elements and adds atoms with fractional coords`, () => {
     const { host, session, notices } = make_session({ measure_mode: `edit-atoms` })
-    host.selected_sites = [1]
-    flushSync()
+    flush_set(host, { selected_sites: [1] })
     expect(session.duplicate_selected()).toBe(true)
     flushSync()
     expect(host.structure?.sites).toHaveLength(4)
@@ -739,6 +605,62 @@ describe(`edit-atoms`, () => {
     expect(notices.at(-1)).toBe(`Added O at (0.50, 0.50, 0.50)`)
     expect(session.history.undo_stack).toHaveLength(3)
   })
+
+  // Edits renumber supercell tiles and image copies: state on a copy must stay on its atom (a
+  // 2x1x1 tile Cl at x=8.46 Å once turned into one at 5.64) or go. A measurement losing a member
+  // goes whole: the angle [0, 1, copy] read on as the distance [0, 1].
+  const add = (session: StructureSession) => session.add_atom([1.3, 1.1, 0.7], `C`)
+  const edits: Record<string, (session: StructureSession, host: SessionHost) => unknown> = {
+    add,
+    duplicate: (session) => session.duplicate_selected(),
+    're-element': (session) => session.change_element(`K`),
+    'undo an add': (session) => session.undo(),
+    'image toggle': (_session, host) => flush_set(host, { show_image_atoms: true }),
+  }
+  it.each([
+    [`add`, `2x1x1`, false, false],
+    [`add`, `1x1x1`, true, false],
+    [`duplicate`, `1x1x1`, true, false],
+    [`re-element`, `2x1x1`, false, true],
+    [`undo an add`, `1x1x1`, true, false],
+    [`image toggle`, `2x1x1`, false, true],
+  ])(
+    `%s in a %s cell (images %s) keeps copies on their atoms: %s`,
+    (label, scaling, images, kept) => {
+      const { host, session } = make_session({
+        structure: make_rocksalt(),
+        measure_mode: `edit-atoms`,
+        supercell_scaling: scaling,
+      })
+      if (label === `undo an add`) add(session)
+      flush_set(host, { show_image_atoms: images })
+      const sites = () => session.displayed_structure?.sites ?? []
+      const copy = sites().length - 1
+      const copy_xyz = sites()[copy].xyz
+      flush_set(host, {
+        selected_sites: [1, copy],
+        measured_sites: [0, 1, copy],
+        hovered_site_idx: copy,
+      })
+      session.site_radius_overrides.set(copy, 1.2)
+      edits[label](session, host)
+      flushSync()
+      const new_copy = kept
+        ? sites().findIndex(({ xyz }) => String(xyz) === String(copy_xyz))
+        : -1
+      expect(kept ? sites()[host.hovered_site_idx ?? -1]?.xyz : host.hovered_site_idx).toEqual(
+        kept ? copy_xyz : null,
+      )
+      expect([...session.site_radius_overrides.keys()]).toEqual(kept ? [new_copy] : [])
+      // the copies of site 1 and of the image's source become the selection
+      if (label === `duplicate`) expect(host.selected_sites).toEqual([8, 9])
+      else if (label === `undo an add`) expect(host.selected_sites).toEqual([])
+      else {
+        expect(host.selected_sites).toEqual(kept ? [1, new_copy] : [1])
+        expect(host.measured_sites).toEqual(kept ? [0, 1, new_copy] : [])
+      }
+    },
+  )
 
   it(`moves sites with wrapped fractional coordinates and caps history at MAX_HISTORY`, () => {
     const { host, session } = make_session({ measure_mode: `edit-atoms` })
@@ -813,16 +735,14 @@ describe(`edit-atoms`, () => {
     expect(added?.abc, `a new site mirrors xyz`).toEqual([2, 2, 0])
     expect(notice_count()).toBe(1)
 
-    host.selected_sites = [1]
-    flushSync()
+    flush_set(host, { selected_sites: [1] })
     expect(session.duplicate_selected()).toBe(true)
     flushSync()
     expect(host.structure?.sites[3]).toMatchObject({ xyz: [3.5, 4, 0.5], abc: [0.6, 0.7, 0] })
     expect(notice_count()).toBe(1)
 
     // an external load of another singular lattice notifies once more
-    host.structure = make_singular()
-    flushSync()
+    flush_set(host, { structure: make_singular() })
     session.move_sites([0], [1, 0, 0])
     flushSync()
     expect(notice_count()).toBe(2)
@@ -880,14 +800,12 @@ describe(`edit-bonds`, () => {
     session.added_bonds = [{ site_idx_1: 1, site_idx_2: 2, order: 1 }]
     flushSync()
     expect(bond_lengths(session.base_structure)).toEqual([1, 4.5])
-    host.structure = out_of_cell()
-    flushSync()
+    flush_set(host, { structure: out_of_cell() })
     expect(bond_lengths(session.base_structure), `stale emitted bonds replaced`).toEqual([1])
     // the drag's re-derived set stays the session's own, so the next load still replaces it
     session.move_sites([1], [-0.6, 0, 0])
     flushSync()
-    host.structure = out_of_cell(1, 2)
-    flushSync()
+    flush_set(host, { structure: out_of_cell(1, 2) })
     expect(host.bonds).toEqual([{ site_idx_1: 1, site_idx_2: 2, order: 1 }])
   })
 
@@ -900,8 +818,7 @@ describe(`edit-bonds`, () => {
     expect(session.undo_bond_edit()).toBe(true)
     flushSync()
     expect(session.bond_history.redo_stack).toHaveLength(1)
-    host.bonds = [{ site_idx_1: 0, site_idx_2: 1, order: 2 }]
-    flushSync()
+    flush_set(host, { bonds: [{ site_idx_1: 0, site_idx_2: 1, order: 2 }] })
     expect(session.bond_history.redo_stack).toHaveLength(0)
     expect(session.redo_bond_edit()).toBe(false)
     expect(host.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 2 }])
@@ -939,15 +856,12 @@ describe(`edit-bonds`, () => {
       expect(host.bonds).toHaveLength(1)
     }
     edit()
-    host.show_image_atoms = true
-    flushSync()
+    flush_set(host, { show_image_atoms: true })
     expect(session.has_bond_edits).toBe(false)
     expect(host.bonds, `transform restores the (empty) source`).toBeUndefined()
-    host.show_image_atoms = false
-    flushSync()
+    flush_set(host, { show_image_atoms: false })
     edit()
-    host.bonds = [{ site_idx_1: 1, site_idx_2: 2, order: 3 }]
-    flushSync()
+    flush_set(host, { bonds: [{ site_idx_1: 1, site_idx_2: 2, order: 3 }] })
     expect(session.has_bond_edits, `caller replaced the source`).toBe(false)
     expect(session.bond_history.undo_stack).toHaveLength(0)
   })

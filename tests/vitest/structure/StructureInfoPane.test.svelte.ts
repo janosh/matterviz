@@ -127,8 +127,9 @@ describe(`StructureInfoPane`, () => {
 
   test(`selected cards hover, copy, and keyboard navigate; search selects sites`, async () => {
     const structure = get_dummy_structure(`H`, 3, true)
-    // a numeric-string magmom (as some parsers store it) still shows
+    // a numeric-string magmom (as some parsers store it) still shows, so do non-collinear ones
     structure.sites[0].properties = { selective_dynamics: [true, false, true], magmom: `2.5` }
+    structure.sites[1].properties = { magmoms: [0, 0, 1.5], forces: [0, 3, 4], magmom: [] }
     const state = $state({
       highlighted_sites: [] as number[],
       hovered_site_idx: null as number | null,
@@ -143,6 +144,9 @@ describe(`StructureInfoPane`, () => {
     expect(site_cards()[0].textContent).toContain(`Cart.`)
     expect(site_cards()[0].textContent).toContain(`(true, false, true)`) // not (1, 0, 1)
     expect(site_cards()[0].textContent).toContain(`2.5 μB`)
+    expect(site_cards()[1].textContent).toContain(`(0, 0, 1.5) μB`)
+    expect(site_cards()[1].textContent).toContain(`5 eV/Å`)
+    expect(site_cards()[1].textContent).not.toContain(`()`) // an empty magmom shows nothing
     expect(document.querySelector(`.site-color`)).toBeNull()
 
     const site_row = site_cards()[1]

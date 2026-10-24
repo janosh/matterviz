@@ -5,11 +5,12 @@ import { colors } from '#lib/state.svelte.js'
 import AtomLegend from '#lib/structure/AtomLegend.svelte'
 import type { AtomColorConfig, AtomPropertyColors } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
+import { element_radius } from '#lib/structure/index.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
-import { dismiss_popover, doc_query, set_input } from '../setup'
+import { bind_props, dismiss_popover, doc_query, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 
 let mounted_components: ReturnType<typeof mount>[] = []
@@ -556,6 +557,20 @@ describe(`AtomLegend Component`, () => {
       expect(element_input.value).toBe(`0.5`) // H's display radius, not its 0.25 Å atomic radius
       set_input(element_input, `0.7`)
       expect(element_radius_overrides).toEqual({ H: 0.7 })
+    })
+
+    // The scene draws H mapped to Na with Na's radius, so the override must be keyed by Na
+    test(`radius of a remapped element edits the displayed element`, async () => {
+      const overrides = { element_radius_overrides: {} }
+      mount_legend(
+        bind_props({ elements: { H: 1 }, element_mapping: { H: `Na` as const } }, overrides),
+      )
+      await open_remap_menu()
+      expect(doc_query(`.radius-control span`).textContent).toBe(`Radius (Na)`)
+      const element_input = doc_query<HTMLInputElement>(`.radius-control input`)
+      expect(element_input.value).toBe(String(element_radius(`Na`)))
+      set_input(element_input, `0.7`)
+      expect(overrides.element_radius_overrides).toEqual({ Na: 0.7 })
     })
 
     // oxfmt-ignore

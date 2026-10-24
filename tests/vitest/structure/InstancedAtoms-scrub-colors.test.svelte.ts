@@ -25,6 +25,7 @@ import {
 } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
+import { flush_set } from './session-harness.svelte'
 
 const frame_task = vi.hoisted(() => ({ update: () => {} }))
 vi.mock(`@threlte/core`, async () => {
@@ -141,51 +142,45 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   encode.mockClear()
   dispose_texture.mockClear()
   // Scaling changes only the proxy bounds; periodic sampling reuses the original grid.
-  props.tiling = [3, 2, 1]
-  flushSync()
+  flush_set(props, { tiling: [3, 2, 1] })
   expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([3, 1, 1])
-  props.tiling = [1, 1, 1]
-  flushSync()
+  flush_set(props, { tiling: [1, 1, 1] })
   expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 1, 1])
   expect(texture.version).toBe(texture_version)
   expect(encode).not.toHaveBeenCalled()
   expect(dispose_texture).not.toHaveBeenCalled()
-  props.opacity = 0
-  flushSync()
+  flush_set(props, { opacity: 0 })
   expect(mesh.visible).toBe(false)
-  props.field = { ...field, colors: new Float32Array([0, 1, 0, 0.5, 0, 0, 0, 0]) }
-  flushSync()
+  flush_set(props, {
+    field: { ...field, colors: new Float32Array([0, 1, 0, 0.5, 0, 0, 0, 0]) },
+  })
   expect(encode).not.toHaveBeenCalled()
   expect(texture.version).toBe(texture_version)
-  props.opacity = 0.8
-  props.field = { ...props.field, cartesian_to_fractional: new Matrix4().makeScale(0.5, 1, 1) }
-  flushSync()
+  flush_set(props, {
+    opacity: 0.8,
+    field: { ...props.field, cartesian_to_fractional: new Matrix4().makeScale(0.5, 1, 1) },
+  })
   expect(mesh.visible).toBe(true)
   expect(mesh.matrix.elements[0]).toBe(2)
   expect(encode.mock.calls.map(([value]) => value)).toEqual([0, 0.5, 0, 0.5, 0, 0, 0, 0])
   expect(texture.version).toBe(texture_version + 1)
   expect(texture.image.data).toBe(texels)
   encode.mockClear()
-  props.field = { ...field, colors: new Float32Array(colors) }
-  flushSync()
+  flush_set(props, { field: { ...field, colors: new Float32Array(colors) } })
   expect(encode).toHaveBeenCalledTimes(8)
   expect(dispose_texture).not.toHaveBeenCalled()
   expect(texture.image.data).toBe(texels)
-  props.field = { ...props.field, dims: [1, 2, 1] }
-  flushSync()
+  flush_set(props, { field: { ...props.field, dims: [1, 2, 1] } })
   expect(dispose_texture).toHaveBeenCalledTimes(1)
   expect(texture.image).toMatchObject({ data: texels, width: 1, height: 2, depth: 1 })
-  props.field = { ...field, dims: [1, 3, 1], colors: new Float32Array(12) }
-  flushSync()
+  flush_set(props, { field: { ...field, dims: [1, 3, 1], colors: new Float32Array(12) } })
   expect(texture.image.data).not.toBe(texels)
   expect(texture.image.data).toHaveLength(12)
   expect(threlte_stub.nodes.at(-1)?.props.is).toBe(mesh)
   const periodic_texels = texture.image.data
   const periodic_version = texture.version
   encode.mockClear()
-  props.tiling = [2, 3, 4]
-  props.field = { ...props.field, pbc: [false, true, false] }
-  flushSync()
+  flush_set(props, { tiling: [2, 3, 4], field: { ...props.field, pbc: [false, true, false] } })
   expect(mesh.geometry.boundingBox?.max.toArray()).toEqual([1, 3, 1])
   expect(texture).toMatchObject({
     wrapS: ClampToEdgeWrapping,
@@ -215,8 +210,7 @@ test(`heatmap updates and toggles preserve atom meshes, buffers, and geometry`, 
     cartesian_to_fractional: new Matrix4(),
     pbc: [true, true, true],
   }
-  props.color_field = field
-  flushSync()
+  flush_set(props, { color_field: field })
   const controller = update.mock.contexts[0]
   if (
     !(controller instanceof AtomFieldMaterial) ||
@@ -230,25 +224,22 @@ test(`heatmap updates and toggles preserve atom meshes, buffers, and geometry`, 
   const color_node = mesh.material.colorNode
   const material_version = mesh.material.version
   // Frame changes only update the transform, not the texture or the shader program.
-  props.color_field = { ...field, cartesian_to_fractional: new Matrix4().makeScale(0.5, 1, 1) }
-  flushSync()
+  flush_set(props, {
+    color_field: { ...field, cartesian_to_fractional: new Matrix4().makeScale(0.5, 1, 1) },
+  })
   expect(texture.version).toBe(version)
   expect(controller.transform.value.elements[0]).toBe(0.5)
   expect(mesh.material.version).toBe(material_version)
   const texture_dispose = vi.spyOn(texture, `dispose`)
-  props.color_field = { ...field, colors: new Float32Array([0, 1, 0, 1]) }
-  flushSync()
+  flush_set(props, { color_field: { ...field, colors: new Float32Array([0, 1, 0, 1]) } })
   expect(texture.version).toBe(version + 1)
   expect(texture_dispose).not.toHaveBeenCalled()
-  props.color_field = { ...field, dims: [2, 1, 1], colors: new Float32Array(8) }
-  flushSync()
+  flush_set(props, { color_field: { ...field, dims: [2, 1, 1], colors: new Float32Array(8) } })
   expect(texture_dispose).toHaveBeenCalledTimes(1)
   expect(texture.image).toMatchObject({ width: 1, height: 1, depth: 2 })
-  props.color_field = undefined
-  flushSync()
+  flush_set(props, { color_field: undefined })
   expect(mesh.material.colorNode).not.toBe(color_node)
-  props.color_field = field
-  flushSync()
+  flush_set(props, { color_field: field })
   expect(mesh.material.colorNode).toBe(color_node)
   expect(current_mesh()).toBe(mesh)
   expect(mesh.geometry).toBe(geometry)
@@ -269,8 +260,7 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   expect(mesh.colors.updateRanges).toEqual([{ start: 0, count: 15 }])
 
   // scrub to a frame with fewer atoms: same mesh, slot 0 is a different element now
-  props.atoms = h2o()
-  flushSync()
+  flush_set(props, { atoms: h2o() })
   expect(current_mesh()).toBe(mesh) // grow-only capacity, so no new mesh hides the staleness
   expect(mesh.count).toBe(3)
   expect(slot_color(0)).toEqual([1, 0, 0])
@@ -281,8 +271,7 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   ])
 
   const color_version = mesh.colors.version
-  props.atoms = h2o(0.5)
-  flushSync()
+  flush_set(props, { atoms: h2o(0.5) })
   expect(mesh.colors.version).toBe(color_version)
   expect(mesh.positions.array[0]).toBe(0.5)
   props.atoms[0].radius = 1
@@ -306,8 +295,7 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   expect(mesh.positions.version).toBe(matrix_version)
 
   // measure mode desaturates the same way mid-scrub
-  props.ghost = true
-  flushSync()
+  flush_set(props, { ghost: true })
   expect(mesh.material).toMatchObject({ transparent: true, opacity: 0.5 })
   const ghosted = new Color(1, 0, 0).lerp(new Color(0x999999), 0.4)
   // colors is a f32 buffer, so the readback rounds the f64 expectation
@@ -319,35 +307,27 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
   const material_version = mesh.material.version
   const buffer_versions = [mesh.positions.version, mesh.colors.version]
   for (const opacity of [0.5, 0, 0.8, 1]) {
-    props.opacity = opacity
-    flushSync()
+    flush_set(props, { opacity })
     expect(current_mesh()).toBe(mesh)
     expect(mesh.material).toMatchObject({ opacity: opacity * 0.5, visible: opacity > 0 })
     expect(mesh.material.version).toBe(material_version)
     expect([mesh.positions.version, mesh.colors.version]).toEqual(buffer_versions)
   }
-  props.opacity = 0.5
-  props.ghost = false
-  flushSync()
+  flush_set(props, { opacity: 0.5, ghost: false })
   expect(mesh.material).toMatchObject({ transparent: true, opacity: 0.5 })
   expect(slot_color(0)).toEqual([1, 0, 0])
-  props.opacity = 1
-  props.ghost = true
-  flushSync()
+  flush_set(props, { opacity: 1, ghost: true })
 
   // A newly occupied slot with an omitted color must not reuse its retired color.
-  props.atoms = []
-  flushSync()
-  props.atoms = [{ position: [0, 0, 0], radius: 0.5 }]
-  flushSync()
+  flush_set(props, { atoms: [] })
+  flush_set(props, { atoms: [{ position: [0, 0, 0], radius: 0.5 }] })
   expect(current_mesh()).toBe(mesh)
   expect(slot_color(0)).toEqual(new Color(0x999999).toArray().map(Math.fround))
   const default_color_version = mesh.colors.version
   props.atoms[0].color = `#999999`
   flushSync()
   expect(mesh.colors.version).toBe(default_color_version)
-  props.ghost = false
-  flushSync()
+  flush_set(props, { ghost: false })
   expect(mesh.material).toMatchObject({ transparent: false, opacity: 1 })
   const captured = mesh.clone()
   const blue = [atom(`blue`, 0)]
@@ -418,15 +398,13 @@ test.each([
     camera.position.z = 1
     camera.updateMatrixWorld(true)
     for (const requested of [8, 32, 12, 20]) {
-      props.sphere_segments = requested
-      flushSync()
+      flush_set(props, { sphere_segments: requested })
       frame_task.update()
       flushSync()
       expect(segments()).toBe(requested)
       unchanged_atoms()
     }
-    props.atoms = h2o()
-    flushSync()
+    flush_set(props, { atoms: h2o() })
     frame_task.update()
     flushSync()
     expect(segments()).toBe(20)
@@ -441,23 +419,18 @@ test.each([
 test(`growing a trajectory reserves capacity without drawing spare slots`, () => {
   const props = mount_atoms([])
   expect(threlte_stub.nodes).toHaveLength(0)
-  props.atoms = ch4()
-  flushSync()
-  props.atoms = [...ch4(), atom(`red`, 5)]
-  flushSync()
+  flush_set(props, { atoms: ch4() })
+  flush_set(props, { atoms: [...ch4(), atom(`red`, 5)] })
   const grown = current_mesh()
   expect(grown.count).toBe(6)
   expect(grown.positions.count).toBe(8)
-  props.atoms = [...props.atoms, atom(`blue`, 6)]
-  flushSync()
+  flush_set(props, { atoms: [...props.atoms, atom(`blue`, 6)] })
   expect(current_mesh()).toBe(grown)
   expect(grown.count).toBe(7)
   expect(slot_color(6)).toEqual([0, 0, 1])
-  props.atoms = []
-  flushSync()
+  flush_set(props, { atoms: [] })
   expect(grown.count).toBe(0)
-  props.atoms = h2o()
-  flushSync()
+  flush_set(props, { atoms: h2o() })
   expect(current_mesh()).toBe(grown)
   expect(grown.count).toBe(3)
   expect(slot_color(0)).toEqual([1, 0, 0])

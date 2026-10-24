@@ -64,6 +64,7 @@ import {
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { SvelteSet } from 'svelte/reactivity'
 import { expect, onTestFinished, test, vi } from 'vitest'
+import { flush_set } from './session-harness.svelte'
 
 // Spy on Threlte's interactivity() and return a getter for the scene's interactivity state
 const spy_interactivity = () => {
@@ -223,8 +224,7 @@ test.each(
     const ray = new Raycaster(new Vector3(-0.1, 0, 2), new Vector3(0, 0, -1))
     const hits = () => ray.intersectObjects(targets, true)
     expect(hits()[0]?.distance).toBeLessThan(2)
-    state.cutaway = settings
-    flushSync()
+    flush_set(state, { cutaway: settings })
     // Center selection preserves the near sphere surface across the slab boundary.
     // Surface clipping instead exposes the vacancy cap at z=0 for partial occupancy.
     if (whole_atoms) expect(hits()[0]?.distance).toBeLessThan(2)
@@ -233,18 +233,15 @@ test.each(
     if (whole_atoms) {
       // Moving atoms must leave and reenter a fixed slice instead of reusing its old selection.
       for (const z_coord of [0.3, 0]) {
-        state.structure = { sites: [carbon(z_coord)] }
-        flushSync()
+        flush_set(state, { structure: { sites: [carbon(z_coord)] } })
         if (z_coord) expect(hits()).toEqual([])
         else expect(hits()[0]?.distance).toBeLessThan(2)
       }
     }
-    state.cutaway = { ...settings, position: -0.3 }
-    flushSync()
+    flush_set(state, { cutaway: { ...settings, position: -0.3 } })
     expect(hits()).toEqual([])
     // Disabling clipping restores the full-sphere target, including its pole-safe hover.
-    state.cutaway = undefined
-    flushSync()
+    flush_set(state, { cutaway: undefined })
     expect(hits()[0]?.distance).toBeLessThan(2)
   },
 )
@@ -579,8 +576,7 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
     }
   }
   // A picked pair becomes a bond and the picks clear; a delete-mode click removes it again
-  state.measure_mode = `edit-bonds`
-  flushSync()
+  flush_set(state, { measure_mode: `edit-bonds` })
   click(0)
   expect(state.selected_sites).toEqual([0])
   click(3)
@@ -597,17 +593,14 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
   menu_button(`Triple`)?.click()
   flushSync()
   expect(state.added_bonds).toMatchObject([{ site_idx_1: 0, site_idx_2: 1, order: 3 }])
-  state.bond_edit_mode = `delete`
-  flushSync()
+  flush_set(state, { bond_edit_mode: `delete` })
   click(1.5)
   expect(state.added_bonds).toEqual([])
   // in delete mode a bond outranks the atom in front of it, which ignores the click
-  state.bond_edit_mode = `add`
-  flushSync()
+  flush_set(state, { bond_edit_mode: `add` })
   click(0)
   click(3)
-  state.bond_edit_mode = `delete`
-  flushSync()
+  flush_set(state, { bond_edit_mode: `delete` })
   click(0.2) // straight down through atom 0's cap before the bond's hit cylinder
   expect(state.added_bonds).toEqual([])
 })
@@ -877,9 +870,8 @@ test(`delete-mode hit cylinders follow bond thickness and bond moves`, () => {
   const click_at = (x_coord: number) => pointer_at(interactivity(), x_coord, 0.3)
   click_at(1.5)
   expect(state.added_bonds).toHaveLength(1) // 0.3 Å is outside the 0.1 Å hit radius
-  state.structure = { sites: carbons_at(10, 13) } // same sites and bond key, new place
-  state.bond_thickness = 0.1
-  flushSync()
+  // same sites and bond key, new place
+  flush_set(state, { structure: { sites: carbons_at(10, 13) }, bond_thickness: 0.1 })
   click_at(1.5)
   expect(state.added_bonds).toHaveLength(1) // nothing is drawn there anymore
   click_at(11.5)
@@ -1247,8 +1239,7 @@ test(`Scene reuses bond colors only for an explicit matching topology and appear
   flushSync()
   expect(received_colors).toHaveLength(2)
   expect(received_colors[1][1]).toBe(`#123456`)
-  state.bond_color = `white`
-  flushSync()
+  flush_set(state, { bond_color: `white` })
   expect(received_colors).toHaveLength(3)
   structure = make_structure(1)
   flushSync()
@@ -1312,8 +1303,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     [`blue`, `red`],
     [`red`, `red`],
   ]) {
-    state.site_colors = palette
-    flushSync()
+    flush_set(state, { site_colors: palette })
     for (const [buffer, color] of [
       [colors_start, palette[0]],
       [colors_end, palette[1]],
@@ -1333,8 +1323,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
     colors_start.clearUpdateRanges()
   }
   bonds = make_frame(1)
-  state.site_colors = [`lime`, `lime`]
-  flushSync()
+  flush_set(state, { site_colors: [`lime`, `lime`] })
   upload_colors()
   bonds = make_frame(3)
   flushSync()
@@ -1342,8 +1331,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   expect(uploaded).toEqual(colors_start.array)
 
   bonds = make_frame(2, true)
-  state.site_colors = [`red`, `red`, `red`, `red`]
-  flushSync()
+  flush_set(state, { site_colors: [`red`, `red`, `red`, `red`] })
   upload_colors()
   flushSync(() => {
     state.site_colors[0] = `lime`
@@ -1364,8 +1352,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   const uploads = update.mock.calls.length
   const centers = mesh.centers.array.slice()
   for (const value of [-0.2, 0, 0.2]) {
-    state.thickness = value
-    flushSync()
+    flush_set(state, { thickness: value })
     expect(mesh.thickness).toBe(value)
     expect(update).toHaveBeenCalledTimes(uploads)
     expect(mesh.centers.array).toEqual(centers)
@@ -1586,8 +1573,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     flushSync() // Initial camera fitting may inspect sites; subsequent colors must not.
     get_site.mockClear()
     expect(scene.getObjectByProperty(`isLineSegments2`, true)).toBeUndefined()
-    state.polyhedra_show_edges = true
-    flushSync()
+    flush_set(state, { polyhedra_show_edges: true })
     const edges = scene.getObjectByProperty(`isLineSegments2`, true)
     const faces = polyhedra_faces(scene)
     if (!(edges instanceof LineSegments2) || !faces)
@@ -1596,8 +1582,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     const face_geometry = faces.geometry
     face_geometry.addEventListener(`dispose`, face_disposal)
     for (const value of [`vertex`, `center`, `uniform`] as const) {
-      state.polyhedra_color_mode = value
-      flushSync()
+      flush_set(state, { polyhedra_color_mode: value })
       expect(scene.getObjectById(edges.id)).toBe(edges)
       // vertex sites 1-4 alternate O (odd) / H (even), see the atomic numbers above
       const site_color = (site_idx: number) =>
@@ -1616,14 +1601,11 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
       expect(get_site).not.toHaveBeenCalled()
     }
     for (const visible of [false, true]) {
-      state.polyhedra_show_edges = visible
-      flushSync()
+      flush_set(state, { polyhedra_show_edges: visible })
       expect(edges.visible).toBe(visible)
-      state.show_polyhedra = `never`
-      flushSync()
+      flush_set(state, { show_polyhedra: `never` })
       expect(scene.getObjectById(edges.id)).toBeUndefined()
-      state.show_polyhedra = `always`
-      flushSync()
+      flush_set(state, { show_polyhedra: `always` })
       expect(scene.getObjectById(edges.id)).toBe(edges)
       expect(edges.visible).toBe(visible)
       expect(disposal).not.toHaveBeenCalled()
@@ -1633,8 +1615,7 @@ test(`numeric polyhedra reuse outlines and resolve colors without decoding atom 
     Object.assign(state, { defer_expensive_geometry: true, show_polyhedra: `never` })
     flushSync()
     expect(scene.getObjectById(edges.id)).toBe(edges)
-    state.defer_expensive_geometry = false
-    flushSync()
+    flush_set(state, { defer_expensive_geometry: false })
     expect(scene.getObjectById(edges.id)).toBeUndefined()
   } finally {
     await unmount_scene()
@@ -1961,11 +1942,9 @@ test(`Scene marks a volumetric slice plane with a translucent fan fill and a clo
 
   // a new polygon rebuilds and releases the old buffers; fewer than 3 corners draw nothing
   const dispose = fill && vi.spyOn(fill.geometry, `dispose`)
-  state.slice_polygon = square.slice(0, 3)
-  flushSync()
+  flush_set(state, { slice_polygon: square.slice(0, 3) })
   expect(dispose).toHaveBeenCalledOnce()
-  state.slice_polygon = square.slice(0, 2)
-  flushSync()
+  flush_set(state, { slice_polygon: square.slice(0, 2) })
   expect(plane_meshes()).toEqual({ outlines: [], fill: undefined })
 })
 
@@ -1991,8 +1970,7 @@ test(`active-site highlights resolve the CSS color token where the canvas sits`,
   host.style.setProperty(`--struct-active-highlight-color`, `rgb(255, 0, 0)`)
   host.append(canvas)
   document.body.append(host)
-  state.active_sites = [0]
-  flushSync()
+  flush_set(state, { active_sites: [0] })
   const highlight_colors: string[] = []
   scene.traverse((object) => {
     const { material } = object as { material?: { depthTest?: boolean; color?: Color } }
@@ -2107,8 +2085,7 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
   const scale_before = view_scale()
   if (step.hidden) Object.assign(state, { width: 0, height: 0 })
   if (step.clear_target) {
-    state.camera_target = undefined
-    flushSync()
+    flush_set(state, { camera_target: undefined })
   }
   if (step.flight) {
     const lease = camera_flight_registry.get(canvas)?.begin()
@@ -2123,8 +2100,7 @@ test.each<[string, FollowStep, Vec3 | `reframe`]>([
   flushSync()
   if (step.orbiting) {
     expect(state.camera_target).toEqual(pose.target)
-    state.camera_is_moving = false
-    flushSync()
+    flush_set(state, { camera_is_moving: false })
   }
   const { camera_target, camera_position } = state
   if (!camera_target) throw new Error(`Missing camera target`)

@@ -77,6 +77,7 @@ import {
   make_srtio3,
   make_volume,
 } from '../test-fixtures'
+import { flush_set } from './session-harness.svelte'
 
 // Exercise viewport lifecycle without creating a renderer in happy-dom.
 vi.mock(`@threlte/core`, async (import_original) => ({
@@ -300,12 +301,9 @@ test(`a new frame leaves the shared viewport bundle alone`, async () => {
         xyz: site.xyz.map((coord) => coord + 0.01 * step) as Vec3,
       })),
     }
-    state.render_token = step
-    state.trajectory_line_end_frame = step
-    flushSync()
+    flush_set(state, { render_token: step, trajectory_line_end_frame: step })
     // as hovering a site table row sets it (a new structure clears highlights)
-    state.highlighted_sites = [step]
-    flushSync()
+    flush_set(state, { highlighted_sites: [step] })
     await tick()
     expect(scene_stub.props?.render_token).toBe(step)
     expect(scene_stub.props?.trajectory_line_end_frame).toBe(step)
@@ -891,7 +889,7 @@ test(`host geometry moves drawn atoms and cell, keeps the input, selection and v
     selected_sites: number[]
     prediction?: StructureToolPrediction
   }>({ structure: input, selected_sites: [], prediction: undefined })
-  flushSync(() => (state.selected_sites = [1]))
+  flush_set(state, { selected_sites: [1] })
   const [tool_input, bound_input] = [tool.host_props.structure, state.structure]
   // Drawn sites (images excluded) and cell box.
   const drawn = () => ({
@@ -964,7 +962,7 @@ test(`host geometry moves drawn atoms and cell, keeps the input, selection and v
   flushSync(() => tool.on_overlay(null))
   await tick()
   expect(drawn()).toEqual(input_drawn)
-  flushSync(() => (state.prediction = reopened))
+  flush_set(state, { prediction: reopened })
   await tick()
   expect(drawn()).toEqual({ xyz: final_geometry.positions, cell: relaxed_cell })
   expect(state.structure).toEqual(input)
@@ -1054,7 +1052,7 @@ test(`replace_input adopts a result's geometry as the input, keeps its predictio
     expect(state.volumetric_data).toEqual([])
   }
   // A new edit after the undo drops the redo, and with it the result.
-  flushSync(() => (state.selected_sites = [1]))
+  flush_set(state, { selected_sites: [1] })
   await press(`Delete`, {})
   expect(state.structure.sites).toHaveLength(1)
   await press(`y`)
@@ -1313,7 +1311,7 @@ test.each([
     })
     expect(state.atom_color_config).toEqual(original_color)
     // A later tool cleanup must not restore the saved configuration a second time.
-    flushSync(() => (state.atom_color_config = { ...DEFAULT_ATOM_COLOR_CONFIG }))
+    flush_set(state, { atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG } })
     flushSync(() => tool_props.on_overlay(null))
     expect(state.atom_color_config).toEqual(DEFAULT_ATOM_COLOR_CONFIG)
     expect(state.isosurface_settings.layers).toEqual([])
@@ -2258,8 +2256,7 @@ test(`exposes read-only wyckoff_positions once symmetry analysis lands and remap
     expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),
   ])
   // the conventional fcc cell holds four copies of the lone 4a site
-  state.cell_type = `conventional`
-  flushSync()
+  flush_set(state, { cell_type: `conventional` })
   expect(analysis.wyckoff_positions).toHaveLength(1)
   expect(analysis.wyckoff_positions[0].site_indices).toEqual([0, 1, 2, 3])
 })
@@ -2305,8 +2302,7 @@ test.each([`symmetry`, `lattice planes`, `thermal`])(
     flushSync()
     expect(document.querySelector(TOAST_MESSAGE)).toBeNull()
     for (const cell_type of [`original`, `conventional`, `original`] as const) {
-      props.cell_type = cell_type
-      flushSync()
+      flush_set(props, { cell_type })
       const show_thermal = thermal && cell_type === `original`
       for (const prop of [`atom_color_field`, `volume_color_field`, `cutaway`] as const) {
         expect(scene_stub.props?.[prop], `${cell_type}: ${prop}`).toBe(
@@ -2453,24 +2449,20 @@ test(`clears stale picks in the same flush that shrinks the displayed structure`
   const analysis = await mount_settled(props)
   const displayed_count = () => analysis.displayed_structure?.sites.length ?? 0
   const pick_last_displayed = () => {
-    props.measured_sites = [0, 1, displayed_count() - 1]
-    flushSync()
+    flush_set(props, { measured_sites: [0, 1, displayed_count() - 1] })
     expect(props.measured_sites).toHaveLength(3)
   }
   // image atoms: the last displayed site is an image that vanishes when they're hidden
   expect(displayed_count()).toBeGreaterThan(structure.sites.length)
   pick_last_displayed()
-  props.show_image_atoms = false
-  flushSync()
+  flush_set(props, { show_image_atoms: false })
   expect(props.measured_sites).toEqual([])
   expect(displayed_count()).toBe(structure.sites.length)
   // supercell: grow, pick a site that only exists in the 2x2x2 cell, shrink back
-  props.supercell_scaling = `2x2x2`
-  flushSync()
+  flush_set(props, { supercell_scaling: `2x2x2` })
   expect(displayed_count()).toBe(8 * structure.sites.length)
   pick_last_displayed()
-  props.supercell_scaling = `1x1x1`
-  flushSync()
+  flush_set(props, { supercell_scaling: `1x1x1` })
   expect(props.measured_sites).toEqual([])
   expect(displayed_count()).toBe(structure.sites.length)
 })
@@ -3345,7 +3337,7 @@ test.each([
       volumes: [live_volume(`density`, 1, `Saved`)],
     }
     const imported_snapshot = structuredClone(imported)
-    flushSync(() => (state.prediction = imported))
+    flush_set(state, { prediction: imported })
     await tick()
     expect(volume_labels(state.volumetric_data)).toEqual([`Saved`])
     const shown_import = tool.host_props.prediction
@@ -3395,8 +3387,7 @@ test(`caller-owned Structure exposes live read-only analysis with file drops dis
   const analysis = await mount_settled(props)
   expect(analysis.displayed_structure?.sites).toHaveLength(structure.sites.length)
   expect(Reflect.set(analysis, `displayed_structure`, undefined)).toBe(false)
-  props.structure = { ...structure, sites: structure.sites.slice(0, 1) }
-  flushSync()
+  flush_set(props, { structure: { ...structure, sites: structure.sites.slice(0, 1) } })
   expect(analysis.displayed_structure?.sites).toHaveLength(1)
   drop_file(SAMPLE_POSCAR_CONTENT, `input.poscar`)
   await tick()

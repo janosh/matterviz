@@ -417,27 +417,27 @@
             })}
           >
             <div class="radius-control">
+              <!-- the scene sizes atoms by their displayed (mapped) element, like it colors them -->
               <label
-                title={displayed_elem !== elem
-                  ? `Radius for ${elem} atoms (displayed as ${displayed_elem})`
-                  : `Radius for ${elem} atoms`}
+                title={`Radius for ${displayed_elem} atoms`}
                 {@attach tooltip({ placement: `top` })}
               >
-                <span>Radius ({elem})</span>
+                <span>Radius ({displayed_elem})</span>
                 <input
                   type="number"
                   min={MIN_RADIUS}
                   max={MAX_RADIUS}
                   step={0.05}
-                  value={element_radius(symbol, element_radius_overrides)}
-                  oninput={(event) => update_element_radius(symbol, event.currentTarget.value)}
+                  value={element_radius(displayed_elem, element_radius_overrides)}
+                  oninput={(event) =>
+                    update_element_radius(displayed_elem, event.currentTarget.value)}
                 />
                 <span class="unit">Å</span>
               </label>
-              {#if element_radius_overrides[symbol] !== undefined}
+              {#if element_radius_overrides[displayed_elem] !== undefined}
                 <button
                   class="reset-btn"
-                  onclick={() => clear_element_radius(symbol)}
+                  onclick={() => clear_element_radius(displayed_elem)}
                   title="Reset to default radius"
                   {@attach tooltip({ placement: `top` })}
                 >
