@@ -10,6 +10,7 @@
     compute_fermi_slice,
     reciprocal_cell_section,
     sample_slice_energies,
+    sheet_key,
     slice_axis_label,
     slice_point_to_k,
     slice_shading_rgba,
@@ -86,33 +87,39 @@
     return [slice_axis_label(in_plane_u, `k₁`), slice_axis_label(in_plane_v, `k₂`)]
   })
 
-  // One series per isoline; the shared legend_id folds a band's segments into a single legend
-  // row that toggles and isolates them together
+  // One series per isoline; the shared legend_id folds a sheet's (band and spin) segments into
+  // a single legend row that toggles and isolates them together
   const shows_band = (band_index: number) =>
     selected_bands === undefined || selected_bands.includes(band_index)
 
-  // Electron or hole carrier per band, named in the legend and picking the side pockets shade
+  // Electron or hole carrier per sheet, named in the legend and picking the side pockets shade
   let carriers = $derived(
     band_data && slice_data
       ? band_carriers(band_data, slice_data, { mu, interpolation_factor })
-      : new Map<number, CarrierType>(),
+      : new Map<string, CarrierType>(),
   )
 
   let series: DataSeries[] = $derived(
     slice_data?.isolines
       .filter((iso) => shows_band(iso.band_index))
-      .map((iso, idx) => ({
-        id: `iso-${iso.band_index}-${idx}`,
-        legend_id: iso.band_index,
-        x: iso.points_2d.map((point) => point[0]),
-        y: iso.points_2d.map((point) => point[1]),
-        markers: `line` as const,
-        label: `Band ${iso.band_index + 1}${carriers.has(iso.band_index) ? ` · ${carriers.get(iso.band_index)}` : ``}`,
-        line_style: {
-          stroke: band_colors[iso.band_index % band_colors.length],
-          stroke_width: line_width,
-        },
-      })) ?? [],
+      .map((iso, idx) => {
+        const carrier = carriers.get(sheet_key(iso.band_index, iso.spin))
+        const spin = iso.spin ? (iso.spin === `up` ? ` ↑` : ` ↓`) : ``
+        return {
+          id: `iso-${iso.band_index}-${idx}`,
+          legend_id: sheet_key(iso.band_index, iso.spin),
+          x: iso.points_2d.map((point) => point[0]),
+          y: iso.points_2d.map((point) => point[1]),
+          markers: `line` as const,
+          label: `Band ${iso.band_index + 1}${spin}${carrier ? ` · ${carrier}` : ``}`,
+          // spin-down dashed as in Bands, so a band's two spin rows tell apart
+          line_style: {
+            stroke: band_colors[iso.band_index % band_colors.length],
+            stroke_width: line_width,
+            ...(iso.spin === `down` && { line_dash: `4,2` }),
+          },
+        }
+      }) ?? [],
   )
 
   // Data bounds padded by 10% (single pass: spreading 10^5 points into Math.min overflows)

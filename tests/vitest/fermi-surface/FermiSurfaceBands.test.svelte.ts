@@ -372,9 +372,10 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   }
   props.band_data = band_data
   props.mu = 0
-  // the spin channel Bands hides (its control or bands_props) gets no crossings either
+  // these bands are unpolarized, so Bands draws them in every spin mode and so do the E_F
+  // crossings: `down_only` used to drop the dots while the bands stayed drawn
   for (const [band_spin_mode, dots] of [
-    [`down_only`, () => []],
+    [`down_only`, fermi_dots],
     [`up_only`, fermi_dots],
   ] as const) {
     props.bands_props = { ...props.bands_props, band_spin_mode }

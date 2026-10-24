@@ -736,6 +736,9 @@ export function reciprocal_cell_section(
 }
 
 export type CarrierType = `electron` | `hole`
+// A Fermi sheet's identity: band and spin channel, as spin-polarized grids repeat band indices
+export const sheet_key = (band_index: number, spin: SpinChannel): string =>
+  `${band_index}:${spin}`
 // FermiSlice shading: band pockets (electron solid, hole hatched), occupied side, ε − E_F
 export type SliceShading = `pockets` | `occupied` | `energy`
 export interface SliceEnergyMap {
@@ -789,7 +792,7 @@ export function slice_shading_rgba(
   {
     opacity = 0.22,
     carriers = new Map(),
-  }: { opacity?: number; carriers?: Map<number, CarrierType> } = {},
+  }: { opacity?: number; carriers?: Map<string, CarrierType> } = {},
 ): Uint8ClampedArray<ArrayBuffer> {
   const { width, height, layers } = energy_map
   const n_pixels = width * height
@@ -798,9 +801,9 @@ export function slice_shading_rgba(
   if (mode !== `energy`) {
     // straight-alpha source-over of each layer's shaded side (alpha in [0, 1] until the end)
     const rgba = new Float32Array(4 * n_pixels)
-    for (const { band_index, values } of layers) {
+    for (const { band_index, spin, values } of layers) {
       const { r, g, b } = rgb(band_colors[band_index % band_colors.length])
-      const hole = mode === `pockets` && carriers.get(band_index) === `hole`
+      const hole = mode === `pockets` && carriers.get(sheet_key(band_index, spin)) === `hole`
       for (let idx = 0; idx < n_pixels; idx++) {
         if (!(hole ? values[idx] > 0 : values[idx] < 0)) continue
         if (hole && (Math.floor(idx / width) + (idx % width)) % 6 >= 3) continue // stripes
@@ -840,16 +843,17 @@ export function slice_shading_rgba(
   return pixels
 }
 
-// Electron or hole carrier per band from its slice contours: the band's energy at a point inside
-// each contour is below E_F + mu for an electron pocket, above for a hole pocket, and the band
-// takes its contours' majority (ties go to electron). A contour cut open by the cell boundary is
-// closed by its chord, which keeps the point inside the usual convex pocket.
+// Electron or hole carrier per sheet (band and spin, keyed by sheet_key) from its slice
+// contours: the band's energy at a point inside each contour is below E_F + mu for an electron
+// pocket, above for a hole pocket, and the sheet takes its contours' majority (ties go to
+// electron). A contour cut open by the cell boundary is closed by its chord, which keeps the
+// point inside the usual convex pocket.
 export function band_carriers(
   band_data: BandGridData,
   slice_data: FermiSliceData,
   { mu = 0, interpolation_factor = 1 }: { mu?: number; interpolation_factor?: number } = {},
-): Map<number, CarrierType> {
-  const hole_votes = new Map<number, number>()
+): Map<string, CarrierType> {
+  const hole_votes = new Map<string, number>()
   for (const { points_2d, band_index, spin } of slice_data.isolines) {
     const band_idx = band_data.band_indices?.indexOf(band_index) ?? band_index
     const grid = band_data.energies[spin === `down` ? 1 : 0]?.[band_idx]
@@ -860,7 +864,8 @@ export function band_carriers(
     const k_point = slice_point_to_k(slice_data, ...inside)
     const [energy] = sample_band_energies(band_data, grid, interpolation_factor, k_point)
     const vote = energy < band_data.fermi_energy + mu ? -1 : 1
-    hole_votes.set(band_index, (hole_votes.get(band_index) ?? 0) + vote)
+    const key = sheet_key(band_index, spin)
+    hole_votes.set(key, (hole_votes.get(key) ?? 0) + vote)
   }
   return new Map(
     [...hole_votes].map(([band, votes]) => [band, votes > 0 ? `hole` : `electron`]),

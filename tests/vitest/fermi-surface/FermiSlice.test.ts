@@ -1,5 +1,9 @@
 import FermiSlice from '#lib/fermi-surface/FermiSlice.svelte'
-import type { FermiSliceData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
+import type {
+  FermiSliceData,
+  FermiSurfaceData,
+  SpinChannel,
+} from '#lib/fermi-surface/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { createRawSnippet, mount, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
@@ -11,23 +15,41 @@ import {
   make_fermi_surface,
 } from '../test-fixtures'
 
-// Box-shaped Fermi surface data with one sheet per band
-const create_mock_fermi_data = (band_indices: number[] = [0, 1]): FermiSurfaceData =>
+// Box-shaped Fermi surface data with one sheet per band (and spin, when given)
+const create_mock_fermi_data = (
+  band_indices: number[] = [0, 1],
+  spins: SpinChannel[] = [],
+): FermiSurfaceData =>
   make_fermi_surface(
-    band_indices.map((band_index) =>
-      make_fermi_isosurface(BOX_VERTICES, BOX_TRI_FACES, { band_index }),
+    band_indices.map((band_index, idx) =>
+      make_fermi_isosurface(BOX_VERTICES, BOX_TRI_FACES, {
+        band_index,
+        spin: spins[idx] ?? null,
+      }),
     ),
   )
 
 describe(`FermiSlice`, () => {
   test.each([
     // one band sliced into two isolines: their shared legend_id folds them into one row
-    [`omitted defaults to visible for one band`, [0, 0], undefined, [`Band 1`]],
-    [`false hides three bands`, [0, 1, 2], false, []],
-  ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected) => {
+    [`omitted defaults to visible for one band`, [0, 0], undefined, [`Band 1`], []],
+    [`false hides three bands`, [0, 1, 2], false, [], []],
+    // a spin-polarized band slices into one sheet per spin, each its own legend row
+    [
+      `spin sheets of one band get a row each`,
+      [0, 0],
+      true,
+      [`Band 1 ↑`, `Band 1 ↓`],
+      [`up`, `down`],
+    ],
+  ] as const)(`legend visibility: %s`, async (_desc, bands, show_legend, expected, spins) => {
     const plot = await mount_sized(
       FermiSlice,
-      { fermi_data: create_mock_fermi_data([...bands]), show_legend, distance: 0.05 },
+      {
+        fermi_data: create_mock_fermi_data([...bands], [...spins]),
+        show_legend,
+        distance: 0.05,
+      },
       { selector: `.fermi-slice` },
     )
     await tick()
@@ -35,6 +57,11 @@ describe(`FermiSlice`, () => {
     expect(plot.querySelectorAll(`g[data-series-id^="iso-"]`)).toHaveLength(bands.length)
     const items = [...plot.querySelectorAll(`.legend-item`)]
     expect(items.map((item) => item.textContent?.trim())).toEqual(expected)
+    // spin-down rows are dashed as in Bands, so a band's two rows tell apart
+    const dashes = items.map((item) =>
+      item.querySelector(`line`)?.getAttribute(`stroke-dasharray`),
+    )
+    expect(dashes).toEqual(expected.map((label) => (label.endsWith(`↓`) ? `4,2` : `none`)))
   })
 
   test(`on_error callback when compute_fermi_slice throws`, async () => {

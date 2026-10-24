@@ -229,10 +229,8 @@ test(
       ),
     )
     const drag_structure = () => drag_canvas(structure_canvas, { dx: 120, dy: 40, steps: 8 })
-    // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on).
-    // The gizmo shows only while its viewer is hovered, so the pointer rests on an empty corner.
+    // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on)
     const settled_handles = async () => {
-      await fermi_canvas.hover({ position: { x: 20, y: 20 } })
       let previous: string[] | undefined
       let current: string[] = []
       await expect

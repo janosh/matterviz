@@ -16,7 +16,11 @@ import {
 } from '#lib/math.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
-import { frequency_unit_per_thz, parse_frequency_unit } from './frequency-units'
+import {
+  convert_frequencies,
+  frequency_unit_per_thz,
+  parse_frequency_unit,
+} from './frequency-units'
 import type { KPathData } from '#lib/brillouin/types.js'
 import type * as types from './types'
 
@@ -256,6 +260,23 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
   )
 }
 
+// Converter of raw band values in their `declared` unit to the stored one: THz for phonons, eV
+// for electronic energies. Null for an unrecognised unit or electronic energies declared as a
+// frequency (THz, cm^-1): a malformed input. `unit: null` counts as undeclared, as it does for
+// normalize_dos; undeclared phonon bands are THz, or cm^-1 in the frequencies_cm layout.
+const band_unit_converter = (
+  declared: unknown,
+  type: types.BandStructureType,
+  in_cm = false,
+): ((band: number[]) => number[]) | null => {
+  const data_unit = type === `electronic` ? `eV` : `THz`
+  const source_unit =
+    declared == null ? (in_cm ? `cm^-1` : data_unit) : parse_frequency_unit(declared)
+  if (!source_unit) return null
+  if (type === `electronic` && (source_unit === `THz` || source_unit === `cm^-1`)) return null
+  return (band) => convert_frequencies(band, data_unit, source_unit)
+}
+
 // Convert pymatgen bands while retaining their physical type and reference energy.
 function convert_pymatgen_band_structure(
   pmg: Record<string, unknown>,
@@ -283,12 +304,10 @@ function convert_pymatgen_band_structure(
   }
 
   const labels_dict = pmg.labels_dict as Record<string, Vec3> | undefined
-  // Bands are stored in THz. Electronic pymatgen objects carry no `unit`, so their eV values
-  // pass through untouched; an unrecognised declared unit is a malformed input, not THz.
-  // `unit: null` counts as undeclared, as it does for normalize_dos.
-  const source_unit =
-    pmg.unit == null ? (has_frequencies_cm ? `cm^-1` : `THz`) : parse_frequency_unit(pmg.unit)
-  if (!source_unit) return null
+  // electronic pymatgen bands carry no `unit`
+  const type = is_electronic_band_struct(pmg) ? `electronic` : `phonon`
+  const to_data_unit = band_unit_converter(pmg.unit, type, has_frequencies_cm)
+  if (!to_data_unit) return null
 
   if (
     !Array.isArray(raw_qpts) ||
@@ -357,10 +376,6 @@ function convert_pymatgen_band_structure(
     })
   }
 
-  const thz_per_source_unit = 1 / frequency_unit_per_thz(source_unit)
-  const to_thz = (band: number[]): number[] =>
-    thz_per_source_unit === 1 ? band : band.map((val) => val * thz_per_source_unit)
-
   const valid_spin_down_bands =
     Array.isArray(raw_spin_down_bands) &&
     raw_spin_down_bands.length === raw_bands.length &&
@@ -371,14 +386,14 @@ function convert_pymatgen_band_structure(
       : null
 
   return {
-    type: is_electronic_band_struct(pmg) ? `electronic` : `phonon`,
+    type,
     ...(typeof pmg.efermi === `number` && { efermi: pmg.efermi }),
     qpoints,
     recip_lattice,
     branches,
     distance,
-    bands: raw_bands.map(to_thz),
-    spin_down_bands: valid_spin_down_bands?.map(to_thz),
+    bands: raw_bands.map(to_data_unit),
+    spin_down_bands: valid_spin_down_bands?.map(to_data_unit),
     nb_bands: raw_bands.length,
     labels_dict: labels_dict ?? {},
     ...(typeof pmg.has_nac === `boolean` && { has_nac: pmg.has_nac }),
@@ -425,13 +440,24 @@ export function normalize_band_structure(
     !branches.every((branch) => is_valid_branch(branch, n_qpts))
   )
     return null
+  const type = is_electronic_band_struct(band_struct) ? `electronic` : `phonon`
+  const to_data_unit = band_unit_converter(band_struct.unit, type)
+  if (!to_data_unit) return null
 
-  // Fill the defaults (labels_dict/nb_bands) not covered above so the cast below is sound
+  // Fill the defaults (labels_dict/nb_bands) not covered above so the cast below is sound;
+  // `unit` is dropped once applied, so normalizing again does not convert twice
+  const { unit: _applied, spin_down_bands, ...rest } = band_struct
   return {
-    ...band_struct,
-    type: is_electronic_band_struct(band_struct) ? `electronic` : `phonon`,
-    nb_bands: typeof band_struct.nb_bands === `number` ? band_struct.nb_bands : bands.length,
-    labels_dict: band_struct.labels_dict ?? {},
+    ...rest,
+    type,
+    bands: bands.map(to_data_unit),
+    ...(Array.isArray(spin_down_bands) && {
+      spin_down_bands: spin_down_bands.map((band) =>
+        Array.isArray(band) ? to_data_unit(band) : band,
+      ),
+    }),
+    nb_bands: typeof rest.nb_bands === `number` ? rest.nb_bands : bands.length,
+    labels_dict: rest.labels_dict ?? {},
   } as unknown as types.BaseBandStructure
 }
 
@@ -628,6 +654,15 @@ export function qpoint_x_position(
   }
   return null
 }
+
+// The spin channels a band plot draws: a channel selection needs a spin-down channel to pick
+// from, otherwise `down_only` would draw nothing (and unmount the plot with the control that
+// could switch it back), so unpolarized bands always overlay
+export const resolve_spin_mode = (
+  mode: types.BandsSpinMode,
+  has_spin_down: boolean,
+): `overlay` | `up_only` | `down_only` =>
+  has_spin_down && (mode === `up_only` || mode === `down_only`) ? mode : `overlay`
 
 // Bands' line colours, also FermiSurfaceBands' crossing dots and muted lines
 export const BANDS_CSS_COLORS = {
@@ -976,7 +1011,7 @@ export function extract_efermi(
 }
 
 // Calculate fraction of |values| that are negative. Used to detect imaginary phonon modes.
-export function negative_fraction(values: number[]): number {
+export function negative_fraction(values: readonly number[]): number {
   let [neg, total] = [0, 0]
   for (const val of values) {
     if (!Number.isFinite(val)) continue
@@ -1032,6 +1067,15 @@ export function is_electronic_band_struct(band_struct: unknown): boolean {
   )
 }
 
+// Whether the negatives among phonon `values` are noise to clamp at 0 (see below)
+export const negatives_are_noise = (
+  values: readonly number[],
+  mode_values: readonly number[],
+): boolean =>
+  values.some((val) => val < 0) &&
+  negative_fraction(values) < IMAGINARY_MODE_NOISE_THRESHOLD &&
+  !mode_values.some((val) => val < -ACOUSTIC_FREQ_THRESHOLD)
+
 // Min/max of the finite `values` padded by `padding_factor` of the span; a phonon range whose
 // negatives are numerical noise (< IMAGINARY_MODE_NOISE_THRESHOLD) is clamped to start at 0.
 // A genuine imaginary mode (any of `mode_values`, the band frequencies in THz, below
@@ -1047,14 +1091,7 @@ export function padded_frequency_range(
   const finite = values.filter(Number.isFinite)
   if (finite.length === 0) return undefined
   let [min_val, max_val] = array_extent(finite)
-  if (
-    is_phonon &&
-    min_val < 0 &&
-    negative_fraction(finite) < IMAGINARY_MODE_NOISE_THRESHOLD &&
-    !mode_values.some((val) => val < -ACOUSTIC_FREQ_THRESHOLD)
-  ) {
-    min_val = 0
-  }
+  if (is_phonon && negatives_are_noise(finite, mode_values)) min_val = 0
   const padding = (max_val - min_val) * padding_factor
   return [min_val === 0 ? 0 : min_val - padding, max_val + padding]
 }

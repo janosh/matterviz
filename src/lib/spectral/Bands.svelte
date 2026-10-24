@@ -163,12 +163,15 @@
   const band_type = $derived(helpers.spectral_type(band_structs) ?? `phonon`)
   const effective_fermi_level = $derived(fermi_level ?? structures[0]?.bs.efermi)
 
-  let effective_spin_mode = $derived.by((): BandsSpinMode => {
-    if (band_type !== `electronic`) return null
-    return band_spin_mode === `up_only` || band_spin_mode === `down_only`
-      ? band_spin_mode
-      : `overlay`
-  })
+  // whether any structure has a spin-down channel to select, else the Spin control is hidden
+  const has_spin_down = $derived(
+    structures.some(({ bs: band_structure }) => band_structure.spin_down_bands?.length),
+  )
+  let effective_spin_mode = $derived<BandsSpinMode>(
+    band_type === `electronic`
+      ? helpers.resolve_spin_mode(band_spin_mode, has_spin_down)
+      : null,
+  )
 
   // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
   // below uses the canonical unit so no $derived throws on an alias
@@ -583,7 +586,9 @@
   const path_settings = track_settings(
     () => ({
       path_mode,
-      ...(band_type === `phonon` ? { units: unit } : { band_spin_mode, show_gap_annotation }),
+      ...(band_type === `phonon`
+        ? { units: unit }
+        : { ...(has_spin_down && { band_spin_mode }), show_gap_annotation }),
     }),
     {
       path_mode: `strict`,
@@ -696,7 +701,7 @@
           path_mode = `strict`
           if (band_type === `phonon`) units = `THz`
           else {
-            band_spin_mode = `overlay`
+            if (has_spin_down) band_spin_mode = `overlay`
             show_gap_annotation = true
           }
         }}
@@ -713,14 +718,16 @@
         {#if band_type === `phonon`}
           <FrequencyUnitSelect id="bands-units" bind:units />
         {:else}
-          <label>
-            <span>Spin</span>
-            <select id="bands-spin-mode" bind:value={band_spin_mode}>
-              <option value="overlay">overlay</option>
-              <option value="up_only">up only</option>
-              <option value="down_only">down only</option>
-            </select>
-          </label>
+          {#if has_spin_down}
+            <label>
+              <span>Spin</span>
+              <select id="bands-spin-mode" bind:value={band_spin_mode}>
+                <option value="overlay">overlay</option>
+                <option value="up_only">up only</option>
+                <option value="down_only">down only</option>
+              </select>
+            </label>
+          {/if}
           <label>
             <input
               id="bands-gap-annotation"

@@ -109,6 +109,15 @@ describe(`Bands component`, () => {
       expected_line_count: band_spin_mode === `overlay` ? 8 : 4,
     })),
     {
+      // without a spin-down channel `down_only` drew nothing, unmounting plot and controls
+      name: `unpolarized electronic with down_only`,
+      props: {
+        band_structs: { '': { ...base_band_structure, type: `electronic` } },
+        band_spin_mode: `down_only`,
+      },
+      expected_line_count: 4,
+    },
+    {
       name: `explicit physical two-point branch`,
       props: {
         band_structs: {
@@ -365,6 +374,24 @@ describe(`Bands component`, () => {
       expect(document.querySelector(selector)).toBeNull()
     },
   )
+
+  // the Spin control and its reset only exist with a spin-down channel to pick: a hidden
+  // `down_only` marked the section changed with nothing visible to reset
+  it.each([
+    [`unpolarized`, false, { ...base_band_structure, type: `electronic` as const }],
+    [`spin-polarized`, true, spin_polarized_electronic],
+  ])(`%s bands show the Spin control: %s`, async (_label, has_spin, band_structure) => {
+    await mount_plot({
+      band_structs: { '': band_structure },
+      band_spin_mode: `down_only`,
+      show_controls: true,
+      controls_open: true,
+    })
+    await vi.waitFor(() => expect(document.querySelector(`#bands-path-mode`)).not.toBeNull())
+    expect(Boolean(document.querySelector(`#bands-spin-mode`))).toBe(has_spin)
+    const reset = document.querySelector(`button[title="Reset path to defaults"]`)
+    expect(Boolean(reset)).toBe(has_spin)
+  })
 
   it(`forwards flat control props and controls_open binding`, async () => {
     expect.hasAssertions()

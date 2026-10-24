@@ -3,6 +3,7 @@ import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import {
   auto_interpolation_factor,
   band_carriers,
+  sheet_key,
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
@@ -369,7 +370,7 @@ describe(`slice energy shading`, () => {
         height: 2,
         layers: [{ band_index: 0, spin: null, values }],
       }
-      const carriers = new Map([[0, carrier]])
+      const carriers = new Map([[sheet_key(0, null), carrier]])
       const pixels = slice_shading_rgba(pocket_map, `pockets`, [`#f00`], { carriers })
       return Array.from({ length: 24 }, (_, idx) => pixels[4 * idx + 3] > 0)
     }
@@ -391,12 +392,35 @@ describe(`pocket classification`, () => {
       fermi_energy: sign * 0.3,
     })
     const slice = compute_fermi_slice(extract_fermi_surface(band_data))
-    expect(band_carriers(band_data, slice)).toEqual(new Map([[0, carrier]]))
+    expect(band_carriers(band_data, slice)).toEqual(new Map([[sheet_key(0, null), carrier]]))
     // a zero-area contour has no inside to sample: it casts no vote
     const [isoline] = slice.isolines
     // oxfmt-ignore
     const collapsed = { ...isoline, points_2d: [[0, 0], [0.1, 0.1], [0.2, 0.2], [0.1, 0.1]] as Vec2[] }
     expect(band_carriers(band_data, { ...slice, isolines: [collapsed] })).toEqual(new Map())
+  })
+
+  test(`spin channels of one band index get their own carriers`, () => {
+    // band 0 is an electron pocket in spin up and a hole pocket in spin down: keyed by band
+    // index alone, the two votes cancelled into one `electron` for both
+    const [up, down] = [1, -1].map(
+      (sign) =>
+        make_band_data(16, (fx, fy, fz) => sign * (sphere(fx, fy, fz) - 0.3), {
+          periodic: true,
+        }).energies[0],
+    )
+    const band_data = {
+      ...make_band_data(16, sphere, { periodic: true }),
+      energies: [up, down],
+      n_spins: 2,
+    }
+    const slice = compute_fermi_slice(extract_fermi_surface(band_data))
+    expect(band_carriers(band_data, slice)).toEqual(
+      new Map([
+        [sheet_key(0, `up`), `electron`],
+        [sheet_key(0, `down`), `hole`],
+      ]),
+    )
   })
 })
 

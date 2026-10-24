@@ -21,8 +21,7 @@
     extract_efermi,
     spectral_type,
     format_dos_tooltip,
-    IMAGINARY_MODE_NOISE_THRESHOLD,
-    negative_fraction,
+    negatives_are_noise,
     NORMALIZATION_MODES,
     SPIN_MODES,
     validate_sigma_range,
@@ -216,12 +215,8 @@
   )
   // like padded_frequency_range for Bands: density below -ACOUSTIC_FREQ_THRESHOLD is a real
   // imaginary mode and is never clamped away as noise
-  let clamp_to_zero = $derived(
-    is_phonon &&
-      array_extent(all_freqs)[0] < 0 &&
-      negative_fraction(all_freqs) < IMAGINARY_MODE_NOISE_THRESHOLD &&
-      dos_imaginary_frequencies(Object.values(doses)).length === 0,
-  )
+  let imaginary_freqs = $derived(dos_imaginary_frequencies(Object.values(doses)))
+  let clamp_to_zero = $derived(is_phonon && negatives_are_noise(all_freqs, imaginary_freqs))
 
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 

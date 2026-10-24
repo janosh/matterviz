@@ -3,7 +3,7 @@ import type { FermiBandsLinkInputs } from '#lib/fermi-surface/fermi-bands-link.s
 import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
 import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
 import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
-import type { BandsSpinMode } from '#lib/spectral/types.js'
+import type { BandsSpinMode, BaseBandStructure } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { expect, onTestFinished, test } from 'vitest'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -36,7 +36,7 @@ const band_event = (band_idx: number, y: number, spin: `up` | `down` = `up`) =>
 type Host = { mu: number; selected_bands?: number[]; band_data: BandGridData } & {
   [key in `bands_props` | `fermi_props`]: ReturnType<FermiBandsLinkInputs[key]>
 }
-const make_link = (band_spin_mode?: BandsSpinMode) => {
+const make_link = (band_spin_mode?: BandsSpinMode, band_struct?: BaseBandStructure) => {
   const host = $state<Host>({
     mu: 0,
     band_data,
@@ -48,7 +48,7 @@ const make_link = (band_spin_mode?: BandsSpinMode) => {
     $effect.root(() => {
       link = new FermiBandsLink({
         band_data: () => host.band_data,
-        band_struct: () => undefined,
+        band_struct: () => band_struct,
         k_lattice: () => IDENTITY_MATRIX3,
         mu: { get: () => host.mu, set: (mu) => (host.mu = mu) },
         selected_bands: () => host.selected_bands,
@@ -67,6 +67,28 @@ test.each<[BandsSpinMode | undefined, string[] | undefined]>([
   [`down_only`, [`down`]],
 ])(`spin mode %s shows spin channels %j of a spin-polarized grid`, (mode, spins) => {
   expect(make_link(mode).link.selected_spins).toEqual(spins)
+})
+
+// with bands beside the grid their spin channels decide, as in Bands: unpolarized bands draw
+// spin up whatever the mode, so `down_only` must not hide the up sheets and crossings
+test.each([
+  [`unpolarized`, undefined, undefined],
+  [`spin-polarized`, [[0, 0]], [`down`]],
+])(`down_only beside %s bands shows spin channels %j`, (_label, spin_down_bands, spins) => {
+  const band_struct: BaseBandStructure = {
+    type: `electronic`,
+    qpoints: [
+      { label: null, frac_coords: [0, 0, 0] },
+      { label: null, frac_coords: [0.5, 0, 0] },
+    ],
+    branches: [{ start_index: 0, end_index: 1, name: `` }],
+    labels_dict: {},
+    distance: [0, 1],
+    nb_bands: 1,
+    bands: [[0, 2]],
+    ...(spin_down_bands && { spin_down_bands }),
+  }
+  expect(make_link(`down_only`, band_struct).link.selected_spins).toEqual(spins)
 })
 
 // a new inline props literal whose other keys changed must not reset a control's choice
