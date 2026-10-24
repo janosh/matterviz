@@ -170,9 +170,10 @@ export interface PhononModeSelection {
 
 // Born effective charges and high-frequency dielectric tensor from a phonopy BORN file.
 export interface BornChargeData {
-  factor: number // NAC unit conversion factor, recorded but not applied here
+  factor: number | null // NAC unit conversion factor (null: calculator default), not applied
   dielectric: Matrix3x3
   born_charges: Matrix3x3[] // one Z* tensor per atom, in units of e
+  atom_indices?: number[] // 0-based atoms of phonopy's `# epsilon and Z* of atoms …` comment
 }
 
 // One mode of a vibrational spectrum with its computed activities.

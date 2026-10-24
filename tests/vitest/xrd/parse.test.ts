@@ -173,8 +173,9 @@ describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
 
 describe(`parse_rigaku_asc_file`, () => {
   const header = `*TYPE = Raw\n*START = 4\n*STOP = 4.03\n*STEP = 0.01\n*COUNT = 4\n*BEGIN\n`
-  test(`uses *START/*STEP and the counts between *BEGIN and *END`, () => {
-    const result = parse_rigaku_asc_file(`${header}10, 20\n30, 40\n*END`)
+  test(`uses *START/*STEP and the counts between the first *BEGIN and *END`, () => {
+    const second_group = `*BEGIN\n*START = 50\n*STEP = 1\n*COUNT = 1\n5\n*END\n*EOF`
+    const result = parse_rigaku_asc_file(`${header}10, 20\n30, 40\n*END\n${second_group}`)
     expect(result.x.map((val) => Math.round(val * 100) / 100)).toEqual([4, 4.01, 4.02, 4.03])
     expect(result.y).toEqual([25, 50, 75, 100])
   })
@@ -217,7 +218,10 @@ describe(`parse_uxd_file`, () => {
   // oxfmt-ignore
   test.each([
     [`_2THETACOUNTS two-column section`, `_START=3\n_2THETACOUNTS\n10.0\t100\n20.0\t200\n30.0\t300\n_NEXT=1\n1 2`],
+    [`_2THETACPS count rates`, `_2THETACPS\n10 100\n20 200\n30 300`],
+    [`_2THETACOUNTSTIME rows`, `_2THETACOUNTSTIME\n10 100 2\n20 200 2\n30 300 2`],
     [`_COUNTS on the _START/_STEPSIZE grid`, `; comment\n_START=10.0\n_STEPSIZE=10.0\n_COUNTS\n100 200\n300`],
+    [`_CPS on the _START/_STEPSIZE grid`, `_START=10\n_STEPSIZE=10\n_CPS\n100 200 300`],
     [`_2THETA / _STEPWIDTH aliases`, `_2THETA=10.0\n_STEPWIDTH=10.0\n_COUNTS\n100\n200\n300`],
     // _2THETA is the detector position at the start; _START is the scan start even when listed later
     [`_START over a preceding _2THETA`, `_2THETA=40\n_START=10\n_STEPSIZE=10\n_COUNTS\n100 200 300`],
@@ -226,7 +230,7 @@ describe(`parse_uxd_file`, () => {
   )
 
   test.each([
-    [`no counts section`, `_START=10\n10 100\n20 200`, /no _COUNTS or _2THETACOUNTS/],
+    [`no counts section`, `_START=10\n10 100\n20 200`, /no _COUNTS, _CPS, _2THETACOUNTS or/],
     [`_COUNTS without a grid`, `_COUNTS\n100 200`, /needs _START/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_uxd_file(content)).toThrow(pattern),
@@ -375,20 +379,24 @@ describe(`parse_bruker_raw_file (RAW1.01)`, () => {
 })
 
 describe(`parse_xrdml_file`, () => {
-  const xrdml = (intensities: string, start = 10, end = 30) =>
+  const start_end = (start: number, end: number) =>
+    `<startPosition>${start}</startPosition><endPosition>${end}</endPosition>`
+  const xrdml = (intensities: string, positions = start_end(10, 30), tag = `intensities`) =>
     `<?xml version="1.0"?><xrdMeasurements><xrdMeasurement><scan><dataPoints>
-      <positions axis="2Theta" unit="deg"><startPosition>${start}</startPosition><endPosition>${end}</endPosition></positions>
-      <intensities unit="counts">${intensities}</intensities>
+      <positions axis="2Theta" unit="deg">${positions}</positions>
+      <${tag} unit="counts">${intensities}</${tag}>
     </dataPoints></scan></xrdMeasurement></xrdMeasurements>`
 
-  test(`spreads the intensities uniformly between start and end`, () => {
-    const content = xrdml(`100 200 300`)
-    expect(rounded(parse_xrdml_file(content))).toEqual(THREE_POINTS)
-    expect(parse_xrdml_file(xrdml(`500`, 45, 45))).toEqual({
-      x: [45],
-      y: [100],
-      kind: `profile`,
-    })
+  const listed = `<listPositions>10 20 30</listPositions>`
+  // oxfmt-ignore
+  test.each([
+    [`intensities spread between start and end`, xrdml(`100 200 300`), THREE_POINTS],
+    [`newer schemas' <counts>`, xrdml(`100 200 300`, undefined, `counts`), THREE_POINTS],
+    [`listPositions`, xrdml(`100 200 300`, listed), THREE_POINTS],
+    [`a single point at its start`, xrdml(`500`, start_end(45, 45)), { x: [45], y: [100] }],
+  ])(`reads %s`, (_name, content, expected) => {
+    const pattern = parse_xrdml_file(content)
+    expect({ ...rounded(pattern), kind: pattern.kind }).toEqual({ ...expected, kind: `profile` })
   })
 
   test.each([
@@ -400,6 +408,7 @@ describe(`parse_xrdml_file`, () => {
       /needs numeric startPosition and endPosition/,
     ],
     [`empty intensities`, xrdml(``), /empty <intensities>/],
+    [`listPositions of another length`, xrdml(`1 2`, listed), /3 angles but 2/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_xrdml_file(content)).toThrow(pattern),
   )

@@ -408,9 +408,7 @@ const symmetric_eigensystem = (
     Array.from({ length: size }, (_column, col_idx) => (row_idx === col_idx ? 1 : 0)),
   )
   for (let iteration = 0; iteration < 100 * size * size; iteration++) {
-    let row_max = 0
-    let col_max = 1
-    let off_diagonal = Math.abs(matrix[row_max]?.[col_max] ?? 0)
+    let [row_max, col_max, off_diagonal] = [0, 1, 0]
     for (let row_idx = 0; row_idx < size; row_idx++) {
       for (let col_idx = row_idx + 1; col_idx < size; col_idx++) {
         const candidate = Math.abs(matrix[row_idx][col_idx])
@@ -725,48 +723,25 @@ const signal_rotations = (
   })
 }
 
-const rotate_vector_signal = (
-  signal: TrajectorySignal,
-  rotations: Matrix3x3[],
-): Float64Array => {
-  const rotated = new Float64Array(signal.values.length)
-  for (let sample_idx = 0; sample_idx < signal.steps.length; sample_idx++) {
-    rotated.set(
-      rotate_vec(
-        rotations[sample_idx],
-        signal.values.subarray(sample_idx * 3, sample_idx * 3 + 3),
-      ),
-      sample_idx * 3,
-    )
+// One rotation per sample (signal_rotations), so it applies to its 3-vector
+const rotate_vector_signal = (values: Float64Array, rotations: Matrix3x3[]): Float64Array => {
+  const rotated = new Float64Array(values.length)
+  for (const [sample_idx, rotation] of rotations.entries()) {
+    const base = sample_idx * 3
+    rotated.set(rotate_vec(rotation, values.subarray(base, base + 3)), base)
   }
   return rotated
 }
 
+// Each sample's symmetric part (the only one that scatters) as R·α·Rᵀ
 const rotate_tensor_signal = (values: Float64Array, rotations: Matrix3x3[]): Float64Array => {
   const rotated = new Float64Array(values.length)
-  for (let sample_idx = 0; sample_idx < rotations.length; sample_idx++) {
+  for (const [sample_idx, rotation] of rotations.entries()) {
     const base = sample_idx * 9
-    const [
-      tensor_xx,
-      tensor_xy,
-      tensor_xz,
-      tensor_yx,
-      tensor_yy,
-      tensor_yz,
-      tensor_zx,
-      tensor_zy,
-      tensor_zz,
-    ] = values.subarray(base, base + 9)
-    const symmetric: Matrix3x3 = [
-      [tensor_xx, (tensor_xy + tensor_yx) / 2, (tensor_xz + tensor_zx) / 2],
-      [(tensor_yx + tensor_xy) / 2, tensor_yy, (tensor_yz + tensor_zy) / 2],
-      [(tensor_zx + tensor_xz) / 2, (tensor_zy + tensor_yz) / 2, tensor_zz],
-    ]
-    const transformed = dot(
-      dot(rotations[sample_idx], symmetric),
-      transpose_3x3_matrix(rotations[sample_idx]),
-    )
-    rotated.set(transformed.flat(), base)
+    const entry = (row: number, col: number) =>
+      (values[base + 3 * row + col] + values[base + 3 * col + row]) / 2
+    const symmetric = [0, 1, 2].map((row) => [0, 1, 2].map((col) => entry(row, col)))
+    rotated.set(dot(dot(rotation, symmetric), transpose_3x3_matrix(rotation)).flat(), base)
   }
   return rotated
 }
@@ -799,6 +774,11 @@ const remove_rigid_velocity = (
       }
     }
     for (let axis = 0; axis < 3; axis++) center_velocity[axis] /= total_mass
+    const sample_base = sample_idx * stream.n_atoms * 3
+    // this sample's velocities relative to the centre of mass
+    const relative = velocities.slice(sample_base, sample_base + stream.n_atoms * 3)
+    for (const [idx, value] of relative.entries())
+      relative[idx] = value - center_velocity[idx % 3]
     const centered_positions = center_frame(
       prepared.lab_positions,
       position_frame_idx,
@@ -812,16 +792,8 @@ const remove_rigid_velocity = (
       const inertia = Array.from({ length: 3 }, () => [0, 0, 0])
       const angular_momentum = [0, 0, 0]
       for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
-        const position_base = atom_idx * 3
-        const velocity_base = (sample_idx * stream.n_atoms + atom_idx) * 3
-        const position = Array.from(
-          centered_positions.subarray(position_base, position_base + 3),
-        )
-        const velocity = [
-          velocities[velocity_base] - center_velocity[0],
-          velocities[velocity_base + 1] - center_velocity[1],
-          velocities[velocity_base + 2] - center_velocity[2],
-        ]
+        const base = atom_idx * 3
+        const position = Array.from(centered_positions.subarray(base, base + 3))
         const radius_squared = position.reduce((total, value) => total + value * value, 0)
         for (let row_idx = 0; row_idx < 3; row_idx++) {
           for (let col_idx = 0; col_idx < 3; col_idx++) {
@@ -831,7 +803,7 @@ const remove_rigid_velocity = (
                 position[row_idx] * position[col_idx])
           }
         }
-        const contribution = cross_3d(position, velocity)
+        const contribution = cross_3d(position, relative.subarray(base, base + 3))
         for (let axis = 0; axis < 3; axis++) {
           angular_momentum[axis] += masses[atom_idx] * contribution[axis]
         }
@@ -840,18 +812,11 @@ const remove_rigid_velocity = (
     }
     const rotation = prepared.rotations[position_frame_idx]
     for (let atom_idx = 0; atom_idx < stream.n_atoms; atom_idx++) {
-      const position_base = atom_idx * 3
-      const velocity_base = (sample_idx * stream.n_atoms + atom_idx) * 3
-      const rotation_velocity = cross_3d(
-        angular_velocity,
-        centered_positions.subarray(position_base, position_base + 3),
-      )
-      const residual = [
-        velocities[velocity_base] - center_velocity[0] - rotation_velocity[0],
-        velocities[velocity_base + 1] - center_velocity[1] - rotation_velocity[1],
-        velocities[velocity_base + 2] - center_velocity[2] - rotation_velocity[2],
-      ]
-      output.set(rotate_vec(rotation, residual), velocity_base)
+      const base = atom_idx * 3
+      const position = centered_positions.subarray(base, base + 3)
+      const rotation_velocity = cross_3d(angular_velocity, position)
+      const residual = [0, 1, 2].map((axis) => relative[base + axis] - rotation_velocity[axis])
+      output.set(rotate_vec(rotation, residual), sample_base + base)
     }
   }
   return output
@@ -1211,10 +1176,7 @@ const detect_peaks = (
     position_frequency_factor,
   )
   const displacement_by_frequency = new Map(
-    frequencies_with_displacements.map((frequency, frequency_idx) => [
-      frequency,
-      displacements[frequency_idx],
-    ]),
+    frequencies_with_displacements.map((freq, freq_idx) => [freq, displacements[freq_idx]]),
   )
   const ir_stats = curve_activity_stats(infrared)
   const raman_stats = curve_activity_stats(raman)
@@ -1223,12 +1185,8 @@ const detect_peaks = (
     const displacement = displacement_by_frequency.get(frequency)
     const ir_score = curve_score(infrared, frequency, ir_stats)
     const raman_score = curve_score(raman, frequency, raman_stats)
-    const vdos_prominence = Math.max(
-      0,
-      ...group.flatMap((candidate) =>
-        candidate.source === `vdos` ? [candidate.prominence] : [],
-      ),
-    )
+    const vdos_group = group.filter(({ source }) => source === `vdos`)
+    const vdos_prominence = Math.max(0, ...vdos_group.map(({ prominence }) => prominence))
     return {
       frequency,
       ir_activity: ir_score.activity,
@@ -1425,7 +1383,7 @@ export const calc_trajectory_spectroscopy = (
     // dipole/polarization spectra get the ω² of the classical absorption coefficient; a
     // current signal is already the time derivative and must not be weighted again
     infrared = build_curve(
-      rotate_vector_signal(series, rotations),
+      rotate_vector_signal(series.values, rotations),
       3,
       series.steps,
       input,

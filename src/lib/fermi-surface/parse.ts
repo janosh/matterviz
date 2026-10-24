@@ -72,12 +72,19 @@ function parse_bxsf(content: string): BandGridData {
   if (block_start === -1) throw new Error(`BXSF file missing BEGIN_BLOCK_BANDGRID_3D`)
 
   // The Fermi energy lives in the header (BEGIN_INFO block or a comment) before the band
-  // grid, e.g. "Fermi Energy: 19.0343" — only that slice is scanned, not the data body
+  // grid, e.g. "Fermi Energy: 19.0343" — only that slice is scanned, not the data body. The
+  // format requires it: without it the surface's energy reference is unknown
   const fermi_match =
     /fermi[\s_]*energy[^\n=:]*(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i.exec(
       content.slice(0, block_start),
     )
-  const fermi_energy = Number(fermi_match?.groups?.value ?? 0)
+  const fermi_value = fermi_match?.groups?.value
+  if (fermi_value === undefined) {
+    throw new Error(
+      `BXSF header before BEGIN_BLOCK_BANDGRID_3D has no 'Fermi Energy: <value>'`,
+    )
+  }
+  const fermi_energy = Number(fermi_value)
 
   const reader = line_reader(content, block_start)
   reader.next() // BEGIN_BLOCK_BANDGRID_3D

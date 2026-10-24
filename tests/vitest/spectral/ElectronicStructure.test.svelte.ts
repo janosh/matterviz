@@ -986,81 +986,62 @@ test(`a sweep's spectra axes span all its frames, unless the caller passes a ran
   expect(viewers.bands?.y_axis?.range).toEqual([5, 9])
 })
 
-// Frames the window and recent list have left drop their spectra (sweep-frames' eviction):
-// the axes keep the span of every frame loaded so far, reset only by another series
-test(`evicting a loaded frame does not shrink the spectra's span`, async () => {
-  const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
-  const sweep: Sweep = {
-    axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
-    series: [
-      { id: `fcc`, frames: Array.from({ length: 7 }, (_, idx) => ({ value: 10 * idx })) },
-      { id: `bcc`, frames: [{ value: 0 }] },
-    ],
-    // only fcc's frame 1 reaches 20 eV
-    load_frame: async (series_id: string, frame_idx: number) => ({
-      doses: { total: series_id === `fcc` && frame_idx === 1 ? wide_dos : dos },
-    }),
-  }
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep,
-    series_id: `fcc`,
-    frame_idx: 0,
-    panes: [`dos`],
-  })
-  mount_host(props)
-  const range = () => viewers.dos?.x_axis?.range // energy runs along x without bands
-  const [wide, narrow] = [wide_dos, dos].map((entry) => compute_frequency_range({}, { entry }))
-  await vi.waitFor(() => expect(range()).toEqual(wide)) // frame 1 prefetched beside frame 0
-  // frame 6 shows frames 5 to 2 recently and prefetches 0 and 5: frame 1 is evicted
-  for (const frame_idx of [1, 2, 3, 4, 5, 6]) {
-    props.frame_idx = frame_idx
+// Frames the window and recent list have left drop their data (sweep-frames' eviction): the
+// spectra's span and the default panes are those of every frame loaded so far, reset only by
+// another series
+const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
+test.each([
+  {
+    kept: `the spectra's span`, // only fcc's frame 1 reaches 20 eV
+    frame_1: { doses: { total: wide_dos } },
+    panes: [`dos`] satisfies ElectronicPane[],
+    read: () => viewers.dos?.x_axis?.range, // energy runs along x without bands
+    loaded: compute_frequency_range({}, { wide_dos }),
+    reset: compute_frequency_range({}, { dos }),
+  },
+  {
+    kept: `the bands pane`, // only fcc's frame 1 has a band structure
+    frame_1: { doses: { total: dos }, band_structs: { cu: band_struct } },
+    panes: undefined,
+    read: (root: Element) => shown_panes(root).includes(`bands`),
+    loaded: true,
+    reset: false,
+  },
+])(
+  `evicting the only frame with data keeps $kept`,
+  async ({ frame_1, panes, read, ...want }) => {
+    const sweep: Sweep = {
+      axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
+      series: [
+        { id: `fcc`, frames: Array.from({ length: 7 }, (_, idx) => ({ value: 10 * idx })) },
+        { id: `bcc`, frames: [{ value: 0 }] },
+      ],
+      load_frame: async (series_id: string, frame_idx: number) =>
+        series_id === `fcc` && frame_idx === 1 ? frame_1 : { doses: { total: dos } },
+    }
+    const props = $state<ComponentProps<typeof ElectronicStructure>>({
+      sweep,
+      series_id: `fcc`,
+      frame_idx: 0,
+      panes,
+    })
+    const root = mount_host(props)
+    await vi.waitFor(() => expect(read(root)).toEqual(want.loaded)) // frame 1 prefetched
+    // frame 6 shows frames 5 to 2 recently and prefetches 0 and 5: frame 1 is evicted
+    for (const frame_idx of [1, 2, 3, 4, 5, 6]) {
+      props.frame_idx = frame_idx
+      flushSync()
+      await vi.waitFor(() => expect(viewers.dos?.doses?.total).toBeDefined())
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0))
     flushSync()
-    await vi.waitFor(() => expect(viewers.dos?.doses?.total).toBeDefined())
-  }
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  flushSync()
-  expect(range()).toEqual(wide)
-  props.series_id = `bcc`
-  props.frame_idx = 0
-  flushSync()
-  await vi.waitFor(() => expect(range()).toEqual(narrow))
-})
-
-// The default panes are those any loaded frame of the series had data for, so a pane whose
-// only frame got evicted stays (sweep-frames' eviction), reset only by another series
-test(`evicting the only frame with bands keeps the bands pane`, async () => {
-  const sweep: Sweep = {
-    axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
-    series: [
-      { id: `fcc`, frames: Array.from({ length: 7 }, (_, idx) => ({ value: 10 * idx })) },
-      { id: `bcc`, frames: [{ value: 0 }] },
-    ],
-    // only fcc's frame 1 has a band structure
-    load_frame: async (series_id: string, frame_idx: number) => ({
-      doses: { total: dos },
-      ...(series_id === `fcc` && frame_idx === 1 && { band_structs: { cu: band_struct } }),
-    }),
-  }
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep,
-    series_id: `fcc`,
-    frame_idx: 0,
-  })
-  const root = mount_host(props)
-  await vi.waitFor(() => expect(shown_panes(root)).toContain(`bands`)) // frame 1 prefetched
-  for (const frame_idx of [1, 2, 3, 4, 5, 6]) {
-    props.frame_idx = frame_idx
+    expect(read(root)).toEqual(want.loaded)
+    props.series_id = `bcc`
+    props.frame_idx = 0
     flushSync()
-    await vi.waitFor(() => expect(viewers.dos?.doses?.total).toBeDefined())
-  }
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  flushSync()
-  expect(shown_panes(root)).toContain(`bands`)
-  props.series_id = `bcc`
-  props.frame_idx = 0
-  flushSync()
-  await vi.waitFor(() => expect(shown_panes(root)).not.toContain(`bands`))
-})
+    await vi.waitFor(() => expect(read(root)).toEqual(want.reset))
+  },
+)
 
 // A bound descriptor carries over to a new sweep only when it has that key
 test(`replacing the sweep resets a descriptor it does not have`, () => {

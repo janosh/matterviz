@@ -706,20 +706,30 @@ describe(`parse_born`, () => {
     },
   )
 
+  const phonopy_head = (atoms: string) => `# epsilon and Z* of atoms ${atoms}\n${UNIT_TENSOR}`
+  // oxfmt-ignore
   it.each([
-    [`comments and blank lines`, `# lead\n\n14.4 # trailing\n\n${UNIT_TENSOR.repeat(2)}`],
-    [`factor plus q-direction`, `14.4 0.0 0.0 1.0\n${UNIT_TENSOR.repeat(2)}`],
-  ])(`tolerates %s`, (_name, content) => {
+    [`comments and blank lines`, `# lead\n\n14.4 # trailing\n\n${UNIT_TENSOR.repeat(2)}`, 14.4, undefined],
+    [`factor plus G_cutoff and Lambda`, `14.4 0.0 0.0\n${UNIT_TENSOR.repeat(2)}`, 14.4, undefined],
+    // phonopy-vasp-born's own output: the comment takes the factor line's place
+    [`phonopy's comment factor line`, `${phonopy_head(`1`)}${UNIT_TENSOR}`, null, [0]],
+  ])(`tolerates %s`, (_name, content, factor, atom_indices) => {
     const born = parse_born(content)
-    expect(born.factor).toBeCloseTo(14.4, 12)
+    expect(born.factor).toBe(factor)
     expect(born.born_charges).toHaveLength(1)
+    expect(born.atom_indices).toEqual(atom_indices)
   })
 
+  // oxfmt-ignore
   it.each([
-    [`too few lines`, `14.4\n${UNIT_TENSOR}`, /need at least 3/],
+    [`too few lines`, `14.4\n${UNIT_TENSOR}`, /has 2 data lines; need at least 3 \(factor/],
+    [`phonopy's comment and dielectric only`, phonopy_head(`1`), /1 data lines; need at least 2 after phonopy's/],
     [`missing factor line`, UNIT_TENSOR.repeat(3), /expected the NAC unit conversion factor/],
     [`short tensor`, `14.4\n${UNIT_TENSOR}1 0 0\n`, /expected 9 numbers/],
     [`non-numeric token`, `14.4\n${UNIT_TENSOR}foo 0 0 0 1 0 0 0 1\n`, /is not a number/],
+    // e.g. rutile: phonopy writes Ti 1 and O 3, leaving their symmetry images to expansion
+    [`independent atoms only`, `${phonopy_head(`1 3`)}${UNIT_TENSOR.repeat(2)}`, /names atoms 1 3 for its 2 Z/],
+    [`more tensors than listed atoms`, `${phonopy_head(`1`)}${UNIT_TENSOR.repeat(2)}`, /names atoms 1 for its 2/],
   ])(`throws on %s`, (_name, content, pattern) => {
     expect(() => parse_born(content)).toThrow(pattern)
   })

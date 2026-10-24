@@ -89,7 +89,7 @@ export function default_phonon_mode_selection(
 export function phonon_band_structure_from_modes(data: PhononModeData): PhononBandStructure {
   if (data.path_segments.length === 0) {
     throw new Error(
-      `Phonon mode data has no band path metadata. Use q-point and mode selectors for qpoints.yaml or mesh.yaml data.`,
+      `Phonon mode data has no band path metadata. Use q-point and mode selectors for mesh.yaml data.`,
     )
   }
   const distances = data.qpoints.map(({ distance: qpoint_distance }) => {
