@@ -1785,11 +1785,12 @@
       gap: 5pt;
       min-height: 1.7em;
       min-width: 0;
-      /* a long label must not squeeze the checkbox, swatch or clear button */
-      > :not(span) {
+      /* a long label must not squeeze the checkbox (bare or in a schema row's .ctrl-pair),
+         swatch or clear button: only the text span shrinks, to an ellipsis */
+      > :is(input, button, .ctrl-pair) {
         flex-shrink: 0;
       }
-      > span {
+      > span:not(.ctrl-pair) {
         min-width: 0;
         overflow: hidden;
         white-space: nowrap;
