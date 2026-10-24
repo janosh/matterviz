@@ -103,8 +103,9 @@
   electrons (∝ 1/a²) and pressures from a Birch–Murnaghan equation of state (B₀ = 140 GPa, B₀′
   = 5). The phonon pane below the electronic spectra shows a nearest-neighbour force-constant
   model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) on its own
-  axis; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. No frame
-  is a calculation at its pressure.
+  axis; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. Markers on
+  the phonon bands, coloured and sized by value, show the mode-resolved coupling λ<sub>qν</sub>
+  wherever the model's q grid meets the path. No frame is a calculation at its pressure.
 </p>
 
 {#if cu_sweep && band_data}

@@ -53,6 +53,7 @@
   import { create_bands_dos_sync } from './synced-axes.svelte'
   import type {
     BaseBandStructure,
+    ModeValues,
     PhononModeData,
     PhononModeDataset,
     PhononModeSelection,
@@ -76,6 +77,7 @@
     auto_play = true,
     pane_ratio = $bindable(1.15 / 2.1),
     show_bz_inset = true,
+    mode_values,
     trajectory_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
@@ -96,6 +98,8 @@
     // Brillouin zone in a corner of the atomic-motion pane marking the selected and hovered
     // q-points on the path; needs a lattice and more than one q-point
     show_bz_inset?: boolean
+    // Per-mode values (e.g. λ_qν) drawn over the dispersion, see Bands
+    mode_values?: ModeValues
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
       | `class`
@@ -608,6 +612,7 @@ under its open panes -->
         {#if band_structure}
           <Bands
             {band_structs}
+            {mode_values}
             y_axis={plot_sync.y_axes[0]}
             bind:view={plot_sync.views[0]}
             bind:resolved_padding={() => undefined, plot_sync.raise_padding}

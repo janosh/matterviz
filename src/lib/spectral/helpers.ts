@@ -616,7 +616,7 @@ function fold_to_first_bz(cart: Vec3, recip: Matrix3x3): Vec3 {
 }
 
 // Branches that have a plot x-range, paired with it (Bands.svelte's x_positions output)
-const plotted_branches = (
+export const plotted_branches = (
   band_struct: types.BaseBandStructure,
   x_positions: Record<string, Vec2>,
 ): [types.Branch, Vec2][] => {

@@ -100,6 +100,7 @@ test(`the sweep ascends in pressure and its loader builds each frame's spectra`,
     await sweep.load_frame(series.id, 2, { signal }),
     `frame 2`,
   )
+  expect(loaded.phonon?.mode_values?.label).toBe(`λ_qν`)
   expect(Object.keys(loaded).toSorted()).toEqual([
     `band_data`,
     `band_structs`,
@@ -186,7 +187,7 @@ test(`α²F moments: λ round-trips, a narrow peak at ω₀ gives ω_log = ω₂
   expect(Math.abs(omega_2 - kelvin) / kelvin).toBeLessThan(1e-12)
 })
 
-test(`compressed frames stiffen as (V/V₀)^−γ, coupling falling as 1/ω²`, () => {
+test(`compressed frames stiffen as (V/V₀)^−γ, coupling (and every λ_qν) falling as 1/ω²`, () => {
   const ambient = cu_phonons(fcc, band_struct)
   const ratio = 0.8
   const { phonon, scalars } = cu_frame_phonons(ambient, ratio, Math.cbrt(ratio))
@@ -202,4 +203,21 @@ test(`compressed frames stiffen as (V/V₀)^−γ, coupling falling as 1/ω²`, 
   const ambient_scalars = cu_frame_phonons(ambient, 1, 1).scalars
   expect(scalars.omega_log / ambient_scalars.omega_log).toBeCloseTo(stiffening, 10)
   expect(ambient_scalars.omega_2).toBeGreaterThan(ambient_scalars.omega_log)
+
+  // λ_qν on the 20³ grid: none at Γ, λ_qν ω_qν constant (α²F ∝ F) and the grid mean of
+  // Σ_ν λ_qν the frame's λ (a sum of 3·7999 terms: allow ~1e3 eps relative)
+  const { mode_values } = phonon
+  if (!mode_values) throw new Error(`no mode values`)
+  expect(mode_values.qpoints).toHaveLength(20 ** 3)
+  expect(mode_values.values[0]).toEqual([NaN, NaN, NaN])
+  const off_gamma = mode_values.values.slice(1)
+  const mean = off_gamma.flat().reduce((sum, value) => sum + value, 0) / off_gamma.length
+  expect(Math.abs(mean - scalars.lambda) / scalars.lambda).toBeLessThan(1e-12)
+  const products = off_gamma.flatMap((row, idx) =>
+    row.map((value, mode_idx) => value * mode_values.frequencies[idx + 1][mode_idx]),
+  )
+  const spread = (Math.max(...products) - Math.min(...products)) / products[0]
+  expect(spread).toBeLessThan(1e-12)
+  const ambient_freq = ambient.mode_values.frequencies[42][2]
+  expect(mode_values.frequencies[42][2]).toBeCloseTo(ambient_freq * stiffening, 12)
 })

@@ -210,8 +210,21 @@ export interface SpectraRecords {
   doses?: Record<string, DosData>
 }
 
+// A q- and mode-resolved quantity, e.g. the electron–phonon coupling λ_qν, drawn over a band
+// structure as markers at its modes' frequencies wherever its q-points lie on the band path.
+// q-points are fractional in the band structure's reciprocal basis (its recip_lattice and its
+// qpoints' frame) and may be a full q mesh: points off the path are not drawn.
+export interface ModeValues {
+  label: string // e.g. `λ_qν`, titles the colour bar
+  qpoints: Vec3[]
+  frequencies: number[][] // [q][mode] in the bands' data unit (THz), negative = imaginary
+  values: number[][] // [q][mode], NaN = no value
+}
+
 // A material's phonon spectra beside its electronic ones: dispersion and DOS on one frequency
-// axis, Eliashberg functions α²F(ω) (dimensionless) on their own axis over the same frequencies
+// axis, Eliashberg functions α²F(ω) (dimensionless) on their own axis over the same frequencies,
+// and mode values (e.g. λ_qν) over the dispersion
 export interface PhononSpectra extends SpectraRecords {
   a2f?: Record<string, PhononDos>
+  mode_values?: ModeValues
 }

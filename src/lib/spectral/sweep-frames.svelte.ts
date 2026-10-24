@@ -32,8 +32,8 @@ type FrameEntry =
 const merge = <Value extends object>(base?: Value, data?: Value): Value | undefined =>
   base && data ? { ...base, ...data } : (base ?? data)
 
-// The loaded fields over the frame's own, every record (phonon's too) key by key; the frame's
-// value always wins
+// The loaded fields over the frame's own, every record (phonon's too) key by key, phonon's
+// mode_values whole (its arrays align by q-point); the frame's value always wins
 const merge_frame = (base: SweepFrame, data: SweepFrameData): SweepFrame => {
   const { phonon } = base
   return {
@@ -49,6 +49,7 @@ const merge_frame = (base: SweepFrame, data: SweepFrameData): SweepFrame => {
             band_structs: merge(phonon.band_structs, data.phonon.band_structs),
             doses: merge(phonon.doses, data.phonon.doses),
             a2f: merge(phonon.a2f, data.phonon.a2f),
+            mode_values: data.phonon.mode_values ?? phonon.mode_values,
           }
         : (phonon ?? data.phonon),
     value: base.value,

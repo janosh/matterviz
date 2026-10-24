@@ -343,7 +343,8 @@ test(
 
 // The demo's pressure sweep: the control bar steps frames (loaded on demand, the neighbour
 // prefetched), the trends pane plots the loaded frames' N(E_F), a click on a point jumps to
-// its frame, and a structure-only descriptor covers every frame at once
+// its frame, a structure-only descriptor covers every frame at once, and the phonon bands carry
+// λ_qν markers where the frame's q grid meets the path: 51 visits × 3 modes less Γ's two (NaN)
 test(`electronic-structure sweep: control bar, lazy frames, trends selection`, async ({
   page,
 }) => {
@@ -352,6 +353,9 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await viewer.scrollIntoViewIfNeeded()
   const status = viewer.locator(`.frame-status`)
   await expect(status).toHaveText(/^0 GPa \(V\/V₀ = 1\.00\)/, { timeout: LOAD_TIMEOUT })
+  const phonon = viewer.locator(`[data-pane="phonon"]`)
+  await expect(phonon.locator(`path.marker`)).toHaveCount(147)
+  await expect(phonon.locator(`.colorbar`)).toContainText(`λ_qν`)
   const trends = viewer.locator(`[data-pane="trends"]`)
   const markers = trends.locator(`path.marker`)
   await expect(markers).toHaveCount(2) // the shown frame and its prefetched neighbour

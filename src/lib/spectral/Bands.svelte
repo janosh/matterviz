@@ -28,6 +28,12 @@
     parse_frequency_unit,
   } from '#lib/spectral/frequency-units.js'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
+  import {
+    mode_value_markers,
+    normalize_mode_values,
+    project_qpoints_onto_path,
+  } from './mode-values'
+  import type { ModeValueMarker } from './mode-values'
   import type {
     BandLineStyle,
     BandsSpinMode,
@@ -35,6 +41,7 @@
     Branch,
     FrequencyUnit,
     LineKwargs,
+    ModeValues,
     PathMode,
     QPoint,
     RibbonConfig,
@@ -67,6 +74,7 @@
     highlight_regions = [],
     shade_imaginary_modes = true,
     show_gap_annotation = true,
+    mode_values,
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
     show_controls,
     controls_open = $bindable(false),
@@ -118,6 +126,10 @@
     }[]
     shade_imaginary_modes?: boolean // Shade y<0 region for phonon plots with imaginary modes
     show_gap_annotation?: boolean // Annotate electronic VBM/CBM and gap when available
+    // Per-mode values (e.g. λ_qν) drawn as markers at their modes' frequencies, coloured and
+    // sized by value with a colour bar titled by their label, wherever their q-points lie on
+    // the first band structure's path
+    mode_values?: ModeValues
   } = $props()
 
   // A band line's style: the caller's over the structure colour, emphasised or muted while a
@@ -432,6 +444,62 @@
     )
   })
 
+  // === Mode values (e.g. λ_qν) on the path ===
+  // Placed in the first band structure's reciprocal lattice (its q-points' frame), else the
+  // structure's. Malformed values or none on the path only drop the markers, with a notice.
+  let mode_overlay = $derived.by((): { markers: ModeValueMarker[]; error?: string } => {
+    const band_structure = structures[0]?.bs
+    if (!mode_values || !band_structure) return { markers: [] }
+    const { label } = mode_values
+    const lattice = band_structure.recip_lattice ?? k_lattice
+    if (!lattice) {
+      return {
+        markers: [],
+        error: `${label} needs a reciprocal lattice (band data or structure) to place its q-points on the path`,
+      }
+    }
+    try {
+      const parsed = normalize_mode_values(mode_values)
+      const projections = project_qpoints_onto_path(
+        band_structure,
+        lattice,
+        parsed.qpoints,
+        internal_x_positions,
+      )
+      if (parsed.qpoints.length > 0 && projections.length === 0) {
+        return {
+          markers: [],
+          error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
+        }
+      }
+      return { markers: mode_value_markers(parsed, projections) }
+    } catch (exc) {
+      return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
+    }
+  })
+  // band_idx names the mode for the tooltip; without a qpoint_idx no path link reads it
+  let mode_series = $derived.by((): DataSeries | null => {
+    const { markers } = mode_overlay
+    if (!mode_values || markers.length === 0) return null
+    const values = markers.map(({ value }) => value)
+    const { label, qpoints, frequencies } = mode_values
+    return {
+      id: `mode-values`,
+      label,
+      x: markers.map(({ x }) => x),
+      y: convert_band_values(markers.map(({ frequency }) => frequency)),
+      markers: `points`,
+      color_values: values,
+      size_values: values,
+      metadata: markers.map(({ q_idx, mode_idx, value }) => ({
+        band_idx: mode_idx,
+        nb_bands: frequencies[q_idx].length,
+        frac_coords: qpoints[q_idx],
+        mode_value: value,
+      })),
+    }
+  })
+
   let x_range = $derived.by((): Vec2 => {
     const flat = Object.values(internal_x_positions).flat()
     return [flat[0] ?? 0, flat.at(-1) ?? 1]
@@ -622,7 +690,8 @@
       qpoint_label,
       band_width,
       slope,
-    } = (metadata ?? {}) as Partial<helpers.BandPointMeta>}
+      mode_value,
+    } = (metadata ?? {}) as Partial<helpers.BandPointMeta & { mode_value: number }>}
     {#if num_structures > 1 && label}<strong>{label}</strong><br />{/if}
     <TooltipValue
       label={internal_y_axis.label || `Value`}
@@ -649,6 +718,9 @@
         .map((coord: number) => format_num(coord, `.3f`))
         .join(`, `)}]
     {/if}
+    {#if typeof mode_value === `number` && mode_values}
+      <br /><TooltipValue label={mode_values.label} value={format_num(mode_value, `.3~g`)} />
+    {/if}
     {#if typeof band_width === `number` && band_width > 0}
       <br />Projection: {format_num(band_width, `.3~g`)}
     {/if}
@@ -664,7 +736,11 @@
     tooltip={rest.tooltip ?? bands_tooltip}
     id={identifier}
     data-testid={data_testid}
-    series={series_data}
+    series={mode_series ? [...series_data, mode_series] : series_data}
+    color_bar={mode_series && rest.color_bar !== null
+      ? { title: mode_series.label, ...rest.color_bar }
+      : rest.color_bar}
+    size_legend={rest.size_legend ?? null}
     {point_hit_padding}
     {fill_regions}
     x_axis={internal_x_axis}
@@ -915,6 +991,7 @@
     <ViewerNotices>
       <StatusMessage message={gap_result.error} type="warning" class="gap-error" />
       <StatusMessage message={bz_popup_error} type="warning" class="bz-popup-error" />
+      <StatusMessage message={mode_overlay.error} type="warning" class="mode-values-error" />
     </ViewerNotices>
     <!-- hidden while zoomed away from its tick -->
     {#if ZonePopup && k_lattice && bz_popup_x !== null && bz_popup_points.length > 0 && in_range(bz_popup_x, ctx.x_range)}

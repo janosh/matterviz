@@ -5,13 +5,15 @@
 // measured values). Each frame's DOS is computed from its scaled band grid. The phonons are a
 // nearest-neighbour central-force model of fcc (maximum 7.25 THz at ambient, near Cu's) whose
 // frequencies stiffen as (V/V₀)^−γ with Grüneisen γ = 2, and α²F(ω) is the phonon DOS scaled
-// to λ = 0.13 at ambient, falling as 1/ω² under compression. Illustrative only: no frame is
-// the result of a calculation at its pressure.
+// to λ = 0.13 at ambient, falling as 1/ω² under compression. The mode-resolved coupling λ_qν
+// on the DOS's q grid is the one that α²F implies: λ_qν ω_qν constant (α²F ∝ F), averaging to
+// λ. Illustrative only: no frame is the result of a calculation at its pressure.
 import { eos_pressure } from '#lib/eos/fit.js'
 import type { EosParams } from '#lib/eos/fit.js'
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import {
+  create_cart_to_frac,
   create_frac_to_cart,
   det_3x3,
   dot,
@@ -21,7 +23,12 @@ import {
 } from '#lib/math.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { trapezoid_weights } from '#lib/spectral/helpers.js'
-import type { BaseBandStructure, PhononDos, PhononSpectra } from '#lib/spectral/types.js'
+import type {
+  BaseBandStructure,
+  ModeValues,
+  PhononDos,
+  PhononSpectra,
+} from '#lib/spectral/types.js'
 import type { DescriptorSpec, Sweep, SweepFrameLoader } from '#lib/spectral/sweep.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
@@ -156,12 +163,16 @@ const model_frequencies = (neighbors: Vec3[], q_vec: Vec3): Vec3 => {
   return symmetric_eigenvalues(matrix).map((val) => Math.sqrt(Math.max(val, 0))) as Vec3
 }
 
-// The model's ambient dispersion along the band structure's path and its DOS (THz, ∫F = 3
-// modes per cell) from a 20³ q grid, Gaussian-smeared by 0.1 THz
+export const CU_LAMBDA_QNU_LABEL = `λ_qν`
+
+// The model's ambient dispersion along the band structure's path, its DOS (THz, ∫F = 3 modes
+// per cell) from a 20³ q grid, Gaussian-smeared by 0.1 THz, and λ_qν on that grid (q-points in
+// the band structure's reciprocal basis): C/ω_qν with C setting the grid mean of Σ_ν λ_qν to
+// CU_LAMBDA, NaN at Γ, whose acoustic modes are zero
 export function cu_phonons(
   structure: Crystal,
   band_struct: BaseBandStructure,
-): { bands: BaseBandStructure; dos: PhononDos } {
+): { bands: BaseBandStructure; dos: PhononDos; mode_values: ModeValues } {
   const neighbors = fcc_neighbors(structure.lattice.matrix)
   // the DOS grid spans the cell's own zone, the path's fractions refer to the band structure's
   const cell_recip = reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
@@ -172,15 +183,22 @@ export function cu_phonons(
   const at = frequencies_in(cell_recip)
   const n_grid = 20
   const grid: number[] = []
+  const grid_qpoints: Vec3[] = []
+  const path_recip = band_struct.recip_lattice ?? cell_recip
+  const [cell_to_cart, cart_to_path] = [
+    create_frac_to_cart(cell_recip),
+    create_cart_to_frac(path_recip),
+  ]
   // Γ left out: its three zero modes, smeared to ω ≈ 0, would make ∫ α²F ln ω / ω dω (ω_log)
   // grow with the bin count instead of converging
   for (let flat_idx = 1; flat_idx < n_grid ** 3; flat_idx++) {
-    const [idx_a, idx_b, idx_c] = [n_grid ** 2, n_grid, 1].map(
-      (stride) => Math.floor(flat_idx / stride) % n_grid,
-    )
-    grid.push(...at([idx_a / n_grid, idx_b / n_grid, idx_c / n_grid]))
+    const frac = [n_grid ** 2, n_grid, 1].map(
+      (stride) => (Math.floor(flat_idx / stride) % n_grid) / n_grid,
+    ) as Vec3
+    grid.push(...at(frac))
+    grid_qpoints.push(cart_to_path(cell_to_cart(frac)))
   }
-  const along_path = frequencies_in(band_struct.recip_lattice ?? cell_recip)
+  const along_path = frequencies_in(path_recip)
   const path = band_struct.qpoints.map(({ frac_coords }) => along_path(frac_coords))
   const raw_max = [...grid, ...path.flat()].reduce((max, val) => Math.max(max, val), 0)
   const to_thz = CU_MAX_PHONON_THZ / raw_max
@@ -199,8 +217,21 @@ export function cu_phonons(
       densities[idx] += norm * Math.exp(-(((frequencies[idx] - freq) / sigma) ** 2) / 2)
     }
   }
+  const grid_thz = grid.map((raw) => raw * to_thz)
+  // λ_qν = C/ω_qν averaging (over q, summed over ν) to CU_LAMBDA
+  const inverse_sum = grid_thz.reduce((sum, freq) => sum + 1 / freq, 0)
+  const coupling_scale = (CU_LAMBDA * grid_qpoints.length) / inverse_sum
+  const per_qpoint = (values: number[]) =>
+    grid_qpoints.map((_, q_idx) => values.slice(3 * q_idx, 3 * q_idx + 3))
+  const mode_values: ModeValues = {
+    label: CU_LAMBDA_QNU_LABEL,
+    qpoints: [[0, 0, 0], ...grid_qpoints],
+    frequencies: [[0, 0, 0], ...per_qpoint(grid_thz)],
+    values: [[NaN, NaN, NaN], ...per_qpoint(grid_thz.map((freq) => coupling_scale / freq))],
+  }
   const { qpoints, branches, labels_dict, distance } = band_struct
   return {
+    mode_values,
     bands: {
       type: `phonon`,
       qpoints,
@@ -245,9 +276,9 @@ export function eliashberg_moments(a2f: PhononDos): {
 }
 
 // The phonon spectra and electron–phonon scalars of the frame at volume ratio V/V₀ (cell
-// scaled by lattice_scale): frequencies × (V/V₀)^−γ, λ ∝ 1/ω²
+// scaled by lattice_scale): frequencies × (V/V₀)^−γ, λ and every λ_qν ∝ 1/ω²
 export function cu_frame_phonons(
-  ambient: { bands: BaseBandStructure; dos: PhononDos },
+  ambient: ReturnType<typeof cu_phonons>,
   volume_ratio: number,
   lattice_scale: number,
 ): { phonon: PhononSpectra; scalars: Record<string, number> } {
@@ -265,6 +296,15 @@ export function cu_frame_phonons(
       },
       doses: { 'phonon DOS': dos },
       a2f: { 'α²F': a2f },
+      mode_values: {
+        ...ambient.mode_values,
+        frequencies: ambient.mode_values.frequencies.map((row) =>
+          row.map((freq) => freq * stiffening),
+        ),
+        values: ambient.mode_values.values.map((row) =>
+          row.map((value) => value / stiffening ** 2),
+        ),
+      },
     },
     scalars: eliashberg_moments(a2f),
   }

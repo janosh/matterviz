@@ -534,9 +534,13 @@
       filled.push(`dos`)
     }
     if (bands?.type === `phonon` || dos?.type === `phonon`) {
+      // mode values are placed on their own band structure's path, so leave with it
       phonon = {
         ...phonon,
-        ...(bands?.type === `phonon` && { band_structs: { [filename]: bands } }),
+        ...(bands?.type === `phonon` && {
+          band_structs: { [filename]: bands },
+          mode_values: undefined,
+        }),
         ...(dos?.type === `phonon` && { doses: { [filename]: dos } }),
       }
       filled.push(`phonon`)
@@ -900,6 +904,7 @@
                 <BandsAndDos
                   {...phonon_props}
                   bands_props={{
+                    mode_values: shown_phonon.mode_values,
                     ...phonon_props.bands_props,
                     show_controls: pane_controls(phonon_props.bands_props?.show_controls),
                   }}

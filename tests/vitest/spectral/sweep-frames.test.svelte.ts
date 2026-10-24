@@ -8,7 +8,12 @@ import type {
   SweepFrameLoader,
 } from '#lib/spectral/sweep.js'
 import { create_sweep_frames, RECENT_FRAMES } from '#lib/spectral/sweep-frames.svelte.js'
-import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/types.js'
+import type {
+  BaseBandStructure,
+  ElectronicDos,
+  ModeValues,
+  PhononDos,
+} from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -68,6 +73,21 @@ const phonon_bands: BaseBandStructure = {
   bands: [[0]],
 }
 const phonon_dos: PhononDos = { type: `phonon`, frequencies: [0, 1], densities: [0, 1] }
+const own_mode_values: ModeValues = {
+  label: `λ_qν`,
+  qpoints: [
+    [0, 0, 0],
+    [0.5, 0, 0],
+  ],
+  frequencies: [[1], [2]],
+  values: [[0.1], [0.2]],
+}
+const loaded_mode_values: ModeValues = {
+  ...own_mode_values,
+  qpoints: [[0.25, 0, 0]],
+  frequencies: [[3]],
+  values: [[NaN]],
+}
 const electronic_dos: ElectronicDos = {
   type: `electronic`,
   energies: [0, 1],
@@ -85,7 +105,7 @@ test(`without a loader every frame is ready as given and requests do nothing`, (
   expect(frames.frame(series, 1)).toBe(series.frames[1])
 })
 
-test(`a requested frame loads once, every record merged key by key over its own`, async () => {
+test(`a requested frame loads once, every record merged key by key over its own, mode values whole`, async () => {
   const { load, calls } = deferred_loader()
   const { frames, inputs } = setup(load)
   const series = inputs.sweep.series[0]
@@ -94,7 +114,7 @@ test(`a requested frame loads once, every record merged key by key over its own`
     scalars: { volume: 9, tc: 1 },
     status: { note: `relaxed` },
     doses: { total: electronic_dos },
-    phonon: { doses: { 'phonon DOS': phonon_dos } },
+    phonon: { doses: { 'phonon DOS': phonon_dos }, mode_values: own_mode_values },
   }
   frames.request(series, [1])
   frames.request(series, [1]) // already loading
@@ -110,7 +130,11 @@ test(`a requested frame loads once, every record merged key by key over its own`
     scalars: { tc: 12 },
     status: { unstable: true },
     doses: { Cu: electronic_dos },
-    phonon: { band_structs: { Cu: phonon_bands }, a2f: { 'α²F': phonon_dos } },
+    phonon: {
+      band_structs: { Cu: phonon_bands },
+      a2f: { 'α²F': phonon_dos },
+      mode_values: loaded_mode_values,
+    },
   })
   await settle()
   expect([frames.is_loading(series, 1), frames.is_ready(series, 1)]).toEqual([false, true])
@@ -124,6 +148,7 @@ test(`a requested frame loads once, every record merged key by key over its own`
       doses: { 'phonon DOS': phonon_dos },
       band_structs: { Cu: phonon_bands },
       a2f: { 'α²F': phonon_dos },
+      mode_values: loaded_mode_values, // replaced as one field, its q-points aligned with its rows
     },
   })
   frames.request(series, [1]) // loaded
