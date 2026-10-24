@@ -1,12 +1,9 @@
-// Rotation link between sibling 3D scenes: a host provides a link during init, every
-// SceneCamera below joins it with its OrbitControls, and orbiting (or auto-rotating, resetting,
-// a gizmo fly-to, a landed camera flight) any member turns the others to the same view
-// direction, as does joining late (a viewer remounting its camera on a projection toggle).
-// Members turn at the leader's rate, so of several auto-rotating members each adds its own
-// steps: let one auto-rotate. Each member keeps its own orbit target, distance, zoom and pan,
-// so scenes of different size and units (a crystal in Å, its Fermi surface in Å⁻¹) stay framed.
-// Meant for scenes sharing one Cartesian frame with the same camera up vector (the scene
-// default +y), else equal directions do not mean equal views.
+// Rotation link between sibling 3D scenes: every SceneCamera below a host's link joins with its
+// OrbitControls, and any member's view direction change (orbit, auto-rotate, reset, gizmo
+// fly-to, landed camera flight) turns the others alike, as does joining late. Each member keeps
+// its own target, distance, zoom and pan, so scenes in different units (a crystal in Å, its
+// Fermi surface in Å⁻¹) stay framed. Assumes one shared Cartesian frame and camera up vector.
+// Several auto-rotating members each add their own steps: let one auto-rotate.
 import { getContext, setContext } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Vector3 } from 'three/webgpu'
@@ -32,8 +29,8 @@ export function create_orbit_link(): OrbitLink {
     }
   }
   const direction = new Vector3()
-  // Sets `direction` to the member's view direction; false for a camera on its target (not
-  // yet framed) or off any finite position (NaN, Infinity), which has none to share
+  // Sets `direction` to the member's view direction; false when it has none (camera on its
+  // target or at a non-finite position)
   const read_direction = ({ object, target }: OrbitControls): boolean => {
     direction.subVectors(object.position, target)
     const length_sq = direction.lengthSq()
@@ -44,9 +41,8 @@ export function create_orbit_link(): OrbitLink {
   const aim = (member: OrbitControls): void => {
     const distance = member.object.position.distanceTo(member.target)
     member.object.position.copy(member.target).addScaledVector(direction, distance)
-    // re-aims the camera and emits `change` (none for an unmoved pose, e.g. after a
-    // zoom-only wheel tick), which re-renders its canvas; without the member's own
-    // auto-rotate step, else each leader step would add one per auto-rotating follower
+    // re-aims the camera and emits `change` (none for an unmoved pose) to re-render its
+    // canvas, skipping the member's own auto-rotate step so followers don't add theirs
     const { autoRotate } = member
     member.autoRotate = false
     member.update()
@@ -54,8 +50,7 @@ export function create_orbit_link(): OrbitLink {
   }
   return {
     join: (controls) => {
-      // a late joiner takes up the others' view (read_direction leaves it in `direction`),
-      // before its own listeners would echo that back
+      // a late joiner takes up the others' view (left in `direction` by read_direction)
       if ([...members].some(read_direction) && !flight_holds(controls)) aim(controls)
       members.add(controls)
       // a follower's own change (e.g. its damping gliding on during a re-aim) must not
@@ -63,8 +58,7 @@ export function create_orbit_link(): OrbitLink {
       const on_change = () => {
         if (!following && read_direction(controls)) follow(controls, aim)
       }
-      // Followers see the leader's gesture as their own, so their hosts track the move as for
-      // a drag (hover suppressed meanwhile, pose synced and reported once it ends)
+      // Followers see the leader's gesture as their own, so their hosts track it like a drag
       const on_start = () =>
         follow(controls, (member) => member.dispatchEvent({ type: `start` }))
       const on_end = () => follow(controls, (member) => member.dispatchEvent({ type: `end` }))

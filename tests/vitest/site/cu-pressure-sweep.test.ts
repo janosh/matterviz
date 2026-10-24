@@ -8,15 +8,14 @@ import {
   validate_sweep,
   volume_per_atom,
 } from '#lib/spectral/sweep.js'
+import { dot, transpose_3x3_matrix } from '#lib/math.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
 import {
-  birch_murnaghan_pressure,
   CU_GRUNEISEN,
   CU_LAMBDA,
   CU_MAX_PHONON_THZ,
   CU_SWEEP_DESCRIPTORS,
-  CU_VOLUME_RATIOS,
   cu_frame_phonons,
   cu_phonons,
   cu_pressure_sweep,
@@ -32,14 +31,8 @@ import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 const structure = make_crystal(3.6, [[`Cu`, [0, 0, 0]]])
 // fcc Cu's primitive cell (a = 3.6 Å), the phonon model's lattice
-const fcc = make_crystal(
-  [
-    [0, 1.8, 1.8],
-    [1.8, 0, 1.8],
-    [1.8, 1.8, 0],
-  ],
-  [[`Cu`, [0, 0, 0]]],
-)
+// oxfmt-ignore
+const fcc = make_crystal([[0, 1.8, 1.8], [1.8, 0, 1.8], [1.8, 1.8, 0]], [[`Cu`, [0, 0, 0]]])
 const band_data: BandGridData = {
   energies: [
     [{ values: Float64Array.from([5, 7, 9, 11]), dims: [1, 2, 2], order: `z_fastest` }],
@@ -66,23 +59,6 @@ const band_struct: BaseBandStructure = {
   recip_lattice: IDENTITY_MATRIX3,
 }
 
-// The pressure is −dE/dV of the third-order Birch–Murnaghan energy (V₀ = 1), checked by a
-// central difference independent of the closed form: step 1e-5 leaves a truncation error
-// ~1e-10 relative and round-off ~eps·E/h ~1e-11, far inside the 1e-7 tolerance
-const birch_murnaghan_energy = (volume: number, bulk_modulus: number, prime: number) => {
-  const strain = volume ** (-2 / 3) - 1 // η² − 1
-  return (9 / 16) * bulk_modulus * (strain ** 3 * prime + strain ** 2 * (6 - 4 * (strain + 1)))
-}
-test.each([1, 0.95, 0.8, 0.75])(`Birch–Murnaghan pressure at V/V₀ = %s is −dE/dV`, (ratio) => {
-  const step = 1e-5
-  const slope =
-    (birch_murnaghan_energy(ratio + step, 140, 5) -
-      birch_murnaghan_energy(ratio - step, 140, 5)) /
-    (2 * step)
-  const pressure = birch_murnaghan_pressure(ratio, 140, 5)
-  expect(Math.abs(pressure + slope)).toBeLessThan(1e-7 * Math.max(1, Math.abs(pressure)))
-})
-
 test(`a scaled crystal keeps fractional positions, its volume scaling as s³`, () => {
   const scaled = scale_crystal(structure, 0.9)
   expect(volume_per_atom(scaled) / volume_per_atom(structure)).toBeCloseTo(0.9 ** 3, 12)
@@ -107,8 +83,9 @@ test(`the sweep ascends in pressure and its loader builds each frame's spectra`,
   const sweep = cu_pressure_sweep({ structure: fcc, band_data, band_struct })
   validate_sweep(sweep)
   const [series] = sweep.series
-  expect(series.frames).toHaveLength(CU_VOLUME_RATIOS.length)
-  expect(series.frames[0]).toMatchObject({ value: 0, label: `0 GPa (V/V₀ = 1.00)` })
+  // Birch–Murnaghan pressures (B₀ = 140 GPa, B₀′ = 5) at CU_VOLUME_RATIOS, to 0.1 GPa
+  expect(series.frames.map(({ value }) => value)).toEqual([0, 8.2, 19.2, 34.2, 54.7, 83.1])
+  expect(series.frames[0].label).toBe(`0 GPa (V/V₀ = 1.00)`)
   // frames bring only their structures up front
   expect(series.frames.every((frame) => frame.structure && !frame.band_data)).toBe(true)
   if (!sweep.load_frame) throw new Error(`no loader`)
@@ -132,32 +109,21 @@ test(`the sweep ascends in pressure and its loader builds each frame's spectra`,
   expect(values.fermi_dos).toBeCloseTo(1.9921717774309593, 12)
 })
 
-// R·diag·Rᵀ for a rotation R about (1, 1, 1): eigenvalues = diag. Distinct ones come out to
-// f64 round-off (~1e-15); a degenerate pair puts acos at ±1, where its slope diverges, so the
-// pair is only good to ~√eps ≈ 1.5e-8 (measured 8.1e-9)
+// R·diag·Rᵀ for a proper rotation R: eigenvalues = diag, to f64 round-off (measured ≤ 9e-16).
+// A degenerate pair puts acos at ±1, where its slope diverges, so it is only guaranteed to
+// ~√eps ≈ 1.5e-8 (exact here only because this R lands on the clamp at -1)
 test.each([
   [[1, 2, 3], 1e-12],
   [[-2, 0, 5], 1e-12],
   [[1, 1, 3], 3e-8],
 ])(`symmetric_eigenvalues of a rotated diag(%j)`, (diag, tol) => {
-  const [cos, sin] = [Math.cos(0.7), Math.sin(0.7)]
-  const axis = [1, 1, 1].map((coord) => coord / Math.sqrt(3))
-  const rot = [0, 1, 2].map((row) =>
-    [0, 1, 2].map((col) => {
-      const cross = [
-        [0, -axis[2], axis[1]],
-        [axis[2], 0, -axis[0]],
-        [-axis[1], axis[0], 0],
-      ][row][col]
-      return (row === col ? cos : 0) + (1 - cos) * axis[row] * axis[col] + sin * cross
-    }),
-  )
-  const matrix = [0, 1, 2].map((row) =>
-    [0, 1, 2].map((col) =>
-      [0, 1, 2].reduce((sum, idx) => sum + rot[row][idx] * diag[idx] * rot[col][idx], 0),
-    ),
-  ) as Matrix3x3
-  const eigs = symmetric_eigenvalues(matrix)
+  const rot = [
+    [2, -1, 2],
+    [2, 2, -1],
+    [-1, 2, 2],
+  ].map((row) => row.map((val) => val / 3)) as Matrix3x3
+  const rot_diag = rot.map((row) => row.map((val, idx) => val * diag[idx])) as Matrix3x3
+  const eigs = symmetric_eigenvalues(dot(rot_diag, transpose_3x3_matrix(rot)))
   const expected = diag.toSorted((lhs, rhs) => lhs - rhs)
   for (const [idx, val] of eigs.entries())
     expect(Math.abs(val - expected[idx])).toBeLessThan(tol)

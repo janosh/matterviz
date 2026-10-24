@@ -46,10 +46,8 @@ const simon = ([p_0, t_0]: Vec2, [p_1, t_1]: Vec2, scale: number) => {
 }
 
 // Iron-like single-component system: four solids (bcc α and δ, fcc γ, hcp ε) and the liquid
-const fe_triple = { aeg: [10.5, 770], gdl: [5.2, 1991], gel: [90, 2950] } satisfies Record<
-  string,
-  Vec2
->
+// oxfmt-ignore
+const fe_triple = { aeg: [10.5, 770], gdl: [5.2, 1991], gel: [90, 2950] } satisfies Record<string, Vec2>
 const gamma_melting = simon(fe_triple.gdl, fe_triple.gel, 27)
 const eps_melting = simon(fe_triple.gel, [150, 3600], 160)
 
@@ -67,51 +65,16 @@ export const iron_pt_diagram: PtPhaseDiagramData = {
     { id: `epsilon`, name: `ε-Fe`, description: `hcp` },
     { id: `liquid`, name: `Liquid` },
   ],
+  // alpha-epsilon is near-vertical, so its error is a pressure error at fixed temperature
+  // oxfmt-ignore
   boundaries: [
-    curve([`alpha`, `gamma`], [0, fe_triple.aeg[0]], through([0, 1185], fe_triple.aeg), {
-      t: (pressure) => 12 + 2.5 * pressure,
-    }),
-    // near-vertical, so its error is a pressure error at fixed temperature
-    // oxfmt-ignore
+    curve([`alpha`, `gamma`], [0, fe_triple.aeg[0]], through([0, 1185], fe_triple.aeg), { t: (pressure) => 12 + 2.5 * pressure }),
     { id: `alpha-epsilon`, phases: [`alpha`, `epsilon`], points: [[13, 300], [12.4, 420], [11.8, 540], [11.1, 660], [10.5, 770]], sigma_p: [0.9, 0.8, 0.7, 0.6, 0.5] },
-    curve(
-      [`gamma`, `epsilon`],
-      [fe_triple.aeg[0], fe_triple.gel[0]],
-      (pressure) =>
-        through(fe_triple.aeg, fe_triple.gel)(pressure) +
-        180 * Math.sin((Math.PI * (pressure - 10.5)) / 79.5),
-      { t: (pressure) => 25 + 1.1 * pressure, p: (pressure) => 0.4 + 0.03 * pressure },
-    ),
-    curve(
-      [`gamma`, `delta`],
-      [0, fe_triple.gdl[0]],
-      through([0, 1667], fe_triple.gdl),
-      {
-        t: () => 15,
-      },
-      6,
-    ),
-    curve(
-      [`delta`, `liquid`],
-      [0, fe_triple.gdl[0]],
-      through([0, 1811], fe_triple.gdl),
-      {
-        t: () => 20,
-      },
-      6,
-    ),
-    curve([`gamma`, `liquid`], [fe_triple.gdl[0], fe_triple.gel[0]], gamma_melting, {
-      t: (pressure) => 20 + 1.3 * pressure,
-    }),
-    curve(
-      [`epsilon`, `liquid`],
-      [fe_triple.gel[0], 150],
-      eps_melting,
-      {
-        t: (pressure) => 60 + 1.4 * (pressure - 60),
-      },
-      10,
-    ),
+    curve([`gamma`, `epsilon`], [fe_triple.aeg[0], fe_triple.gel[0]], (pressure) => through(fe_triple.aeg, fe_triple.gel)(pressure) + 180 * Math.sin((Math.PI * (pressure - 10.5)) / 79.5), { t: (pressure) => 25 + 1.1 * pressure, p: (pressure) => 0.4 + 0.03 * pressure }),
+    curve([`gamma`, `delta`], [0, fe_triple.gdl[0]], through([0, 1667], fe_triple.gdl), { t: () => 15 }, 6),
+    curve([`delta`, `liquid`], [0, fe_triple.gdl[0]], through([0, 1811], fe_triple.gdl), { t: () => 20 }, 6),
+    curve([`gamma`, `liquid`], [fe_triple.gdl[0], fe_triple.gel[0]], gamma_melting, { t: (pressure) => 20 + 1.3 * pressure }),
+    curve([`epsilon`, `liquid`], [fe_triple.gel[0], 150], eps_melting, { t: (pressure) => 60 + 1.4 * (pressure - 60) }, 10),
   ],
   // oxfmt-ignore
   special_points: [

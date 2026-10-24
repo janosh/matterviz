@@ -302,11 +302,8 @@ it(`phonon supercells follow the viewer's polyhedra settings`, () => {
   const { structure } = phonon_supercell(
     {
       n_atoms: 5,
-      lattice: [
-        [3.9, 0, 0],
-        [0, 3.9, 0],
-        [0, 0, 3.9],
-      ],
+      // oxfmt-ignore
+      lattice: [[3.9, 0, 0], [0, 3.9, 0], [0, 0, 3.9]],
       atoms: [
         { symbol: `Sr`, mass: 87.62, coordinates: [0, 0, 0] },
         { symbol: `Ti`, mass: 47.87, coordinates: [0.5, 0.5, 0.5] },

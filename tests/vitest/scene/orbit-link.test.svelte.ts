@@ -43,6 +43,12 @@ const expect_parallel = (dir_a: Vector3, dir_b: Vector3): void => {
   expect(dir_a.distanceTo(dir_b)).toBeLessThan(1e-12)
 }
 
+// A link the members join in order
+const link_all = (...members: OrbitControls[]): void => {
+  const link = create_orbit_link()
+  for (const controls of members) link.join(controls)
+}
+
 // A crystal-sized scene off the origin and a zone-sized one at it, as a structure (Å) beside
 // its Fermi surface (Å⁻¹)
 const setups = () => [
@@ -56,8 +62,7 @@ describe(`create_orbit_link`, () => {
     `member %i leads, the others turn alike and keep their framing`,
     (lead) => {
       const members = setups()
-      const link = create_orbit_link()
-      for (const controls of members) link.join(controls)
+      link_all(...members)
       const before = members.map((controls) => ({
         target: controls.target.clone(),
         distance: distance(controls),
@@ -129,12 +134,9 @@ describe(`create_orbit_link`, () => {
   // followers after it must still take the leader's direction, not its
   test(`a damped follower's glide does not steer the followers after it`, () => {
     const [leader, damped, last] = setups()
-    const link = create_orbit_link()
-    link.join(leader)
     damped.enableDamping = true
     damped.rotateLeft(0.8) // applies 5% of the turn, leaving the rest to glide on
-    link.join(damped)
-    link.join(last)
+    link_all(leader, damped, last)
     const direction = new Vector3(2, 1, -1).normalize()
     orbit(leader, direction)
     expect(view_dir(damped).distanceTo(direction)).toBeGreaterThan(1e-3)
@@ -155,9 +157,7 @@ describe(`create_orbit_link`, () => {
     solo.autoRotate = true
     leader.autoRotate = true
     follower.autoRotate = both
-    const link = create_orbit_link()
-    link.join(leader)
-    link.join(follower)
+    link_all(leader, follower)
     for (let frame = 0; frame < 10; frame++) {
       for (const controls of [solo, leader, follower]) controls.update()
     }
@@ -167,9 +167,7 @@ describe(`create_orbit_link`, () => {
 
   test.each([NaN, Infinity])(`a leader at a %s position moves no follower`, (bad) => {
     const [leader, follower] = setups()
-    const link = create_orbit_link()
-    link.join(leader)
-    link.join(follower)
+    link_all(leader, follower)
     const before = follower.object.position.toArray()
     leader.object.position.set(bad, 0, 0)
     leader.dispatchEvent({ type: `change` })
@@ -180,9 +178,7 @@ describe(`create_orbit_link`, () => {
   // the view (e.g. after a zoom-only wheel tick) neither moves nor re-renders
   test(`a leader that only zoomed changes no follower`, () => {
     const [leader, follower] = setups()
-    const link = create_orbit_link()
-    link.join(leader)
-    link.join(follower)
+    link_all(leader, follower)
     orbit(leader, new Vector3(1, 1, 1))
     const on_change = vi.fn()
     follower.addEventListener(`change`, on_change)
@@ -193,9 +189,7 @@ describe(`create_orbit_link`, () => {
 
   test(`a member a camera flight holds stays where the flight puts it`, () => {
     const [leader, flying] = setups()
-    const link = create_orbit_link()
-    link.join(leader)
-    link.join(flying)
+    link_all(leader, flying)
     lock_fly_to(flying, true)
     onTestFinished(() => lock_fly_to(flying, false))
     const before = flying.object.position.toArray()

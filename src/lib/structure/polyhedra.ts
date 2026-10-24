@@ -5,9 +5,8 @@ import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { get_element_counts } from './density'
 // Coordination polyhedra detection: vertices come from the rendered bond graph, hulls from a
 // custom quickhull tailored to small point sets (CN 4-12). Three-free, so image-atom completion
-// (pbc.ts) can run it wherever structures are parsed; polyhedra-render.ts turns the result into
-// merged typed arrays drawn in 1-2 calls. Hot paths use scalar math and per-element caches to
-// scale to large structures.
+// (pbc.ts) can run it; polyhedra-render.ts builds the meshes. Hot paths use scalar math and
+// per-element caches to scale to large structures.
 
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
@@ -32,10 +31,8 @@ export interface PolyhedraOptions {
 }
 
 // A viewer's polyhedra_* settings as detection options, shared by the scene, the trajectory
-// worker and image-atom completion so all three find the same polyhedra. The two CN sliders
-// have overlapping ranges (min goes to 12, max down to 4), so they can be dragged past each
-// other: widening the cap instead of honoring an empty window keeps polyhedra on screen rather
-// than silently rendering none. Element lists are copied so they survive structured cloning.
+// worker and image-atom completion. The CN sliders' ranges overlap, so crossed sliders widen
+// the cap rather than render nothing. Element lists are copied to survive structured cloning.
 export type PolyhedraSettings = Partial<
   Pick<
     DefaultSettings['structure'],

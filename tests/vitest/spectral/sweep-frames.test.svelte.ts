@@ -41,8 +41,8 @@ const settle = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0))
   flushSync()
 }
-const band_struct_stub: BaseBandStructure = {
-  type: `electronic`,
+const phonon_bands: BaseBandStructure = {
+  type: `phonon`,
   qpoints: [{ label: `GAMMA`, frac_coords: [0, 0, 0], distance: 0 }],
   branches: [],
   labels_dict: {},
@@ -87,7 +87,6 @@ test(`a requested frame loads once, every record merged key by key over its own`
   expect(frames.is_ready(series, 3)).toBe(true)
   expect(load).toHaveBeenCalledOnce()
 
-  const phonon_bands = { ...band_struct_stub, type: `phonon` as const }
   calls[0].resolve({
     label: `loaded`,
     scalars: { tc: 12 },

@@ -2,6 +2,7 @@
 import type { ElementSymbol } from '#lib/element/types.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type { Matrix3x3 } from '#lib/math.js'
+import type { Pbc } from '#lib/structure/index.js'
 import {
   compute_descriptor,
   descriptor_point,
@@ -26,44 +27,25 @@ const FCC: Matrix3x3 = [
   [2, 0, 2],
   [2, 2, 0],
 ]
-const cu = make_crystal(FCC, [[`Cu`, [0, 0, 0]]])
+const lone_cu = (lattice: Matrix3x3, pbc?: Pbc) =>
+  make_crystal(lattice, [[`Cu`, [0, 0, 0]]], { pbc })
+const cu = lone_cu(FCC)
 // rock salt in its 8-atom cubic cell (a = 4 Å): Na–Cl at a/2, Na–Na and Cl–Cl at a/√2
+// oxfmt-ignore
 const nacl = make_crystal(4, [
-  ...(
-    [
-      [0, 0, 0],
-      [0, 0.5, 0.5],
-      [0.5, 0, 0.5],
-      [0.5, 0.5, 0],
-    ] as const
-  ).map((abc): [string, [number, number, number]] => [`Na`, [...abc]]),
-  ...(
-    [
-      [0.5, 0, 0],
-      [0, 0.5, 0],
-      [0, 0, 0.5],
-      [0.5, 0.5, 0.5],
-    ] as const
-  ).map((abc): [string, [number, number, number]] => [`Cl`, [...abc]]),
+  [`Na`, [0, 0, 0]], [`Na`, [0, 0.5, 0.5]], [`Na`, [0.5, 0, 0.5]], [`Na`, [0.5, 0.5, 0]],
+  [`Cl`, [0.5, 0, 0]], [`Cl`, [0, 0.5, 0]], [`Cl`, [0, 0, 0.5]], [`Cl`, [0.5, 0.5, 0.5]],
 ])
 const dos = (energies: number[], densities: number[], extra: Partial<ElectronicDos> = {}) =>
   ({ type: `electronic`, energies, densities, efermi: 1, ...extra }) satisfies ElectronicDos
 // two bands on a 2³ grid: band 0 spans 0..2 (crosses E_F = 1), band 1 lies at 3..4
+const band = (values: number[]): BandGridData[`energies`][number][number] => ({
+  values: Float64Array.from(values),
+  dims: [2, 2, 2],
+  order: `z_fastest`,
+})
 const grid: BandGridData = {
-  energies: [
-    [
-      {
-        values: Float64Array.from([0, 2, 0, 2, 0, 2, 0, 2]),
-        dims: [2, 2, 2],
-        order: `z_fastest`,
-      },
-      {
-        values: Float64Array.from([3, 4, 3, 4, 3, 4, 3, 4]),
-        dims: [2, 2, 2],
-        order: `z_fastest`,
-      },
-    ],
-  ],
+  energies: [[band([0, 2, 0, 2, 0, 2, 0, 2]), band([3, 4, 3, 4, 3, 4, 3, 4])]],
   k_grid: [2, 2, 2],
   k_lattice: IDENTITY_MATRIX3,
   fermi_energy: 1,
@@ -117,45 +99,13 @@ describe(`computed descriptors`, () => {
     expect(volume_per_atom(nacl)).toBeCloseTo(8, 12) // 64 Å³ / 8 sites
   })
 
-  test.each<
-    [string, typeof cu, [ElementSymbol, ElementSymbol] | undefined, number | undefined]
-  >([
+  // oxfmt-ignore
+  test.each<[string, typeof cu, [ElementSymbol, ElementSymbol] | undefined, number | undefined]>([
     [`fcc Cu, its own images`, cu, undefined, 4 / Math.SQRT2],
     // b − 3a = (0.5, 0.5, 0): a shift no [-2, 2]³ search of the raw cell reaches
-    [
-      `a strongly sheared cell's own image`,
-      make_crystal(
-        [
-          [3, 0, 0],
-          [9.5, 0.5, 0],
-          [0, 0, 10],
-        ],
-        [[`Cu`, [0, 0, 0]]],
-      ),
-      undefined,
-      Math.SQRT1_2,
-    ],
-    // the short non-periodic c axis brings no image
-    [
-      `a slab's own images in-plane only`,
-      make_crystal(
-        [
-          [3, 0, 0],
-          [0, 3, 0],
-          [0, 0, 1],
-        ],
-        [[`Cu`, [0, 0, 0]]],
-        { pbc: [true, true, false] },
-      ),
-      undefined,
-      3,
-    ],
-    [
-      `a molecule's own images (none)`,
-      make_crystal(1, [[`Cu`, [0, 0, 0]]], { pbc: [false, false, false] }),
-      undefined,
-      undefined,
-    ],
+    [`a strongly sheared cell's own image`, lone_cu([[3, 0, 0], [9.5, 0.5, 0], [0, 0, 10]]), undefined, Math.SQRT1_2],
+    [`a slab's own images in-plane only`, lone_cu([[3, 0, 0], [0, 3, 0], [0, 0, 1]], [true, true, false]), undefined, 3],
+    [`a molecule's own images (none)`, lone_cu(IDENTITY_MATRIX3, [false, false, false]), undefined, undefined],
     [`Cu–Cu in fcc Cu`, cu, [`Cu`, `Cu`], 4 / Math.SQRT2],
     [`any pair in rock salt`, nacl, undefined, 2],
     [`Na–Cl`, nacl, [`Na`, `Cl`], 2],
@@ -335,8 +285,8 @@ describe(`normalize_sweep`, () => {
   // oxfmt-ignore
   test.each<[string, unknown, string]>([
     [`no object`, [], `at root: must be an object`],
-    [`no axis key`, { axis: { label: `P` }, series: [] }, `at axis: needs a key and a label`],
-    [`no series array`, raw_sweep({}, { series: {} }), `at series: must be an array`],
+    [`no axis key`, { axis: { label: `P` }, series: [] }, `at axis.key: must be a string, got undefined`],
+    [`no series array`, raw_sweep({}, { series: {} }), `at root.series: must be an array, got {}`],
     [`a frame without value`, raw_sweep({ value: undefined }), `series[0].frames[0]: value must be a number`],
     [`a molecule structure`, raw_sweep({ structure: { sites: json_structure.sites } }), `frames[0].structure: needs a periodic structure`],
     [`an unparsable DOS`, raw_sweep({ doses: { x: 1 } }), `frames[0].doses.x: unrecognized data`],
@@ -347,7 +297,7 @@ describe(`normalize_sweep`, () => {
     [`a non-boolean unstable flag`, raw_sweep({ status: { unstable: `yes` } }), `frames[0].status.unstable: must be a boolean`],
     [`a non-string frame label`, raw_sweep({ label: 5 }), `frames[0].label: must be a string, got 5`],
     [`a non-string axis unit`, raw_sweep({}, { axis: { key: `p`, label: `P`, unit: 1 } }), `axis.unit: must be a string, got 1`],
-    [`a numeric series id`, raw_sweep({}, { series: [{ id: 1, frames: [{ value: 0 }] }] }), `series[0]: needs a string id`],
+    [`a numeric series id`, raw_sweep({}, { series: [{ id: 1, frames: [{ value: 0 }] }] }), `series[0].id: must be a string, got 1`],
     [`an electronic DOS among the phonons`, raw_sweep({ phonon: { doses: { x: { energies: [0], densities: [1] } } } }), `frames[0].phonon.doses.x: must be phonon data, got electronic`],
     [`a phonon DOS among the electronic ones`, raw_sweep({ doses: { x: { frequencies: [0], densities: [1] } } }), `frames[0].doses.x: must be electronic data, got phonon`],
     [`an unknown frame field (e.g. a typo)`, raw_sweep({ dos: {} }), `frames[0].dos: unknown field`],
@@ -358,7 +308,8 @@ describe(`normalize_sweep`, () => {
     [`an unknown axis field`, raw_sweep({}, { axis: { key: `p`, label: `P`, units: `GPa` } }), `axis.units: unknown field`],
     [`an unknown root field`, raw_sweep({}, { extra: 1 }), `root.extra: unknown field`],
     [`an unknown descriptor field`, descriptor({ units: `K` }), `descriptors[0].units: unknown field`],
-    [`an unknown computed descriptor`, descriptor({ compute: `magic` }), `descriptors[0].compute: unknown "magic"`],
+    [`a string threshold`, descriptor({ threshold: `20` }), `descriptors[0].threshold: must be a finite number, got "20"`],
+    [`an unknown computed descriptor`, descriptor({ compute: `magic` }), `descriptors[0].compute: must be one of volume_per_atom, min_pair_distance, fermi_dos, fermi_dos_share, fermi_band_count, got "magic"`],
     [`a descriptor pair that is no element symbols`, descriptor({ compute: `min_pair_distance`, pair: [`Hx`, `H`] }), `descriptors[0].pair: must be two element symbols, got ["Hx","H"]`],
     [`a non-list overlay`, descriptor({ overlay: `y` }), `descriptors[0].overlay: must be descriptor keys`],
     // normalize_sweep validates what it parsed

@@ -6,6 +6,7 @@
 // cache nothing reads anymore.
 import { untrack } from 'svelte'
 import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+import { to_error } from 'svelte-widgets/utils'
 import { normalize_frame_data } from './sweep'
 import type { Sweep, SweepFrame, SweepFrameData, SweepSeries } from './sweep'
 
@@ -67,7 +68,7 @@ export function create_sweep_frames(inputs: {
           failed.add(base)
           // a previous sweep's failure is no longer the caller's concern
           if (loaded !== cache.loaded) return
-          const reason = error instanceof Error ? error.message : String(error)
+          const reason = to_error(error).message
           inputs.on_error(`Loading frame ${idx} of series "${series.id}" failed: ${reason}`)
         },
       )

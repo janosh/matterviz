@@ -7,6 +7,8 @@
 // frequencies stiffen as (V/V₀)^−γ with Grüneisen γ = 2, and α²F(ω) is the phonon DOS scaled
 // to λ = 0.13 at ambient, falling as 1/ω² under compression. Illustrative only: no frame is
 // the result of a calculation at its pressure.
+import { eos_pressure } from '#lib/eos/fit.js'
+import type { EosParams } from '#lib/eos/fit.js'
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import {
@@ -24,21 +26,10 @@ import type { DescriptorSpec, Sweep, SweepFrameLoader } from '#lib/spectral/swee
 import type { Crystal } from '#lib/structure/index.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
 
-export const CU_BULK_MODULUS_GPA = 140
-export const CU_BULK_MODULUS_PRIME = 5
+// V₀ = 1 so volumes are V/V₀ and pressures come out in B₀'s GPa
+const CU_EOS: EosParams = { e0: 0, v0: 1, b0: 140, b0_prime: 5 }
 // V/V₀ of the frames, in ascending pressure
-export const CU_VOLUME_RATIOS = [1, 0.95, 0.9, 0.85, 0.8, 0.75]
-
-// Third-order Birch–Murnaghan pressure (units of bulk_modulus) at volume ratio V/V₀
-export function birch_murnaghan_pressure(
-  volume_ratio: number,
-  bulk_modulus: number,
-  bulk_modulus_prime: number,
-): number {
-  const eta = volume_ratio ** (-1 / 3) // (V₀/V)^(1/3)
-  const correction = 1 + 0.75 * (bulk_modulus_prime - 4) * (eta ** 2 - 1)
-  return 1.5 * bulk_modulus * (eta ** 7 - eta ** 5) * correction
-}
+const CU_VOLUME_RATIOS = [1, 0.95, 0.9, 0.85, 0.8, 0.75]
 
 const scale_matrix = (matrix: Matrix3x3, factor: number): Matrix3x3 =>
   matrix.map((row) => row.map((coord) => coord * factor)) as Matrix3x3
@@ -52,7 +43,7 @@ export const scale_crystal = (structure: Crystal, lattice_scale: number): Crysta
   ),
   sites: structure.sites.map((site) => ({
     ...site,
-    xyz: site.xyz.map((coord) => coord * lattice_scale) as Crystal[`sites`][number][`xyz`],
+    xyz: scale(site.xyz, lattice_scale),
   })),
 })
 
@@ -155,11 +146,7 @@ function fcc_neighbors(lattice: Matrix3x3): Vec3[] {
 // Phonon frequencies (arbitrary units, ascending) of a monatomic lattice at Cartesian q, one
 // central spring to each neighbour: D(q) = Σ_r r̂ r̂ᵀ (1 − cos q·r)
 const model_frequencies = (neighbors: Vec3[], q_vec: Vec3): Vec3 => {
-  const matrix: Matrix3x3 = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
-  ]
+  const matrix = [0, 1, 2].map(() => [0, 0, 0]) as Matrix3x3
   for (const vec of neighbors) {
     const weight = (1 - Math.cos(dot(q_vec, vec))) / dot(vec, vec)
     for (const row of [0, 1, 2]) {
@@ -187,13 +174,11 @@ export function cu_phonons(
   const grid: number[] = []
   // Γ left out: its three zero modes, smeared to ω ≈ 0, would make ∫ α²F ln ω / ω dω (ω_log)
   // grow with the bin count instead of converging
-  for (let idx_a = 0; idx_a < n_grid; idx_a++) {
-    for (let idx_b = 0; idx_b < n_grid; idx_b++) {
-      for (let idx_c = 0; idx_c < n_grid; idx_c++) {
-        if (idx_a + idx_b + idx_c === 0) continue
-        grid.push(...at([idx_a / n_grid, idx_b / n_grid, idx_c / n_grid]))
-      }
-    }
+  for (let flat_idx = 1; flat_idx < n_grid ** 3; flat_idx++) {
+    const [idx_a, idx_b, idx_c] = [n_grid ** 2, n_grid, 1].map(
+      (stride) => Math.floor(flat_idx / stride) % n_grid,
+    )
+    grid.push(...at([idx_a / n_grid, idx_b / n_grid, idx_c / n_grid]))
   }
   const along_path = frequencies_in(band_struct.recip_lattice ?? cell_recip)
   const path = band_struct.qpoints.map(({ frac_coords }) => along_path(frac_coords))
@@ -317,11 +302,7 @@ export function cu_pressure_sweep(input: {
         id: `fcc`,
         label: `fcc Cu`,
         frames: CU_VOLUME_RATIOS.map((ratio, idx) => {
-          const pressure = birch_murnaghan_pressure(
-            ratio,
-            CU_BULK_MODULUS_GPA,
-            CU_BULK_MODULUS_PRIME,
-          )
+          const pressure = eos_pressure(`birch_murnaghan`, CU_EOS, ratio)
           const value = Math.round(pressure * 10) / 10
           return {
             value,

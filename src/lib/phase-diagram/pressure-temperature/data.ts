@@ -2,6 +2,7 @@
 
 import { plot_color } from '#lib/colors/index.js'
 import { array_extent, type Vec2 } from '#lib/math.js'
+import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
 import type { TempUnit } from '../types'
 import { named_phase_color } from '../utils'
 import type {
@@ -62,14 +63,11 @@ const duplicate_ids = (kind: string, items: readonly { id: string }[]): string[]
 
 const SPECIAL_POINT_TYPES: readonly PtSpecialPointType[] = [`triple`, `critical`, `custom`]
 
-const is_object = (value: unknown): value is Record<string, unknown> =>
-  typeof value === `object` && value !== null && !Array.isArray(value)
-
 // Python's None arrives as null: drop null-valued object keys (recursively, not array
 // entries) so null means "not set" everywhere, like an omitted key
 const drop_nulls = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(drop_nulls)
-  if (!is_object(value)) return value
+  if (!is_plain_object(value)) return value
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, entry]) =>
       entry === null ? [] : [[key, drop_nulls(entry)]],
@@ -77,15 +75,7 @@ const drop_nulls = (value: unknown): unknown => {
   )
 }
 
-// Field kinds the shape check knows, with the name its errors use
-const KINDS = {
-  string: [(value: unknown) => typeof value === `string`, `a string`],
-  array: [Array.isArray, `an array`],
-  boolean: [(value: unknown) => typeof value === `boolean`, `a boolean`],
-  object: [is_object, `an object`],
-  number: [Number.isFinite, `a finite number`],
-} as const satisfies Record<string, readonly [(value: unknown) => boolean, string]>
-type Kind = keyof typeof KINDS
+type Kind = keyof typeof JSON_KINDS
 // One error per key of `obj` not in `fields` and per field set to the wrong kind, named
 // `${owner}${field}`
 const field_errors = (
@@ -97,7 +87,7 @@ const field_errors = (
     Object.hasOwn(fields, key) ? [] : [`${owner}${key} is not a known field`],
   ),
   ...Object.entries(fields).flatMap(([field, kind]) => {
-    const [is_kind, name] = KINDS[kind]
+    const [is_kind, name] = JSON_KINDS[kind]
     return obj[field] === undefined || is_kind(obj[field])
       ? []
       : [`${owner}${field} must be ${name}`]
@@ -150,7 +140,7 @@ const STYLE_FIELDS = { color: `string`, width: `number`, dash: `string` } as con
 // Shape problems (unknown keys, wrong container types, non-object entries, missing ids,
 // mistyped fields) that would make the detailed checks throw or the diagram render garbage
 function shape_errors(data: unknown): string[] {
-  if (!is_object(data)) return [`data must be an object`]
+  if (!is_plain_object(data)) return [`data must be an object`]
   const errors = field_errors(data, TOP_FIELDS, ``)
   for (const [key, [owner, fields]] of Object.entries(LISTS)) {
     const list = data[key]
@@ -160,13 +150,13 @@ function shape_errors(data: unknown): string[] {
       continue
     }
     list.forEach((entry, idx) => {
-      if (!is_object(entry)) errors.push(`${key}[${idx}] must be an object`)
+      if (!is_plain_object(entry)) errors.push(`${key}[${idx}] must be an object`)
       else if (key !== `regions` && !(typeof entry.id === `string` && entry.id)) {
         errors.push(`${key}[${idx}] needs a non-empty string id`)
       } else {
         const name = key === `regions` ? `region ${idx} ` : `${owner} '${entry.id}' `
         errors.push(...field_errors(entry, fields, name))
-        if (is_object(entry.style)) {
+        if (is_plain_object(entry.style)) {
           errors.push(...field_errors(entry.style, STYLE_FIELDS, `${name}style.`))
         }
       }

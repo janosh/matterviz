@@ -43,9 +43,12 @@ const integral = (energies: number[], densities: number[]): number =>
 const WEIGHT_TOL = 2e-6
 
 describe(`band_grid_dos`, () => {
-  test(`a flat band is one unit-area Gaussian per spin-degenerate band at its energy`, () => {
+  // a flat band is one unit-area Gaussian at its energy holding two electrons, or one in each
+  // channel of a polarized grid
+  test(`flat bands: unit-area Gaussians, two electrons per band or one per spin`, () => {
     const sigma = 0.2
-    const dos = band_grid_dos(make_grid([[band([2, 2, 2], () => 1)]], true), { sigma })
+    const flat = (energy: number) => band([2, 2, 2], () => energy)
+    const dos = band_grid_dos(make_grid([[flat(1)]], true), { sigma })
     expect(Math.abs(integral(dos.energies, dos.densities) - 2)).toBeLessThan(WEIGHT_TOL)
     const peak_idx = dos.densities.indexOf(Math.max(...dos.densities))
     const step = dos.energies[1] - dos.energies[0]
@@ -54,6 +57,11 @@ describe(`band_grid_dos`, () => {
     expect(dos.energies.at(-1)).toBeCloseTo(1 + 5 * sigma, 12)
     expect(dos).toMatchObject({ type: `electronic`, efermi: 0.5 })
     expect(dos.spin_polarized).toBeUndefined()
+    const polarized = band_grid_dos(make_grid([[flat(0)], [flat(1)]], true), { sigma })
+    expect(polarized.spin_polarized).toBe(true)
+    for (const densities of [polarized.densities, polarized.spin_down_densities ?? []]) {
+      expect(Math.abs(integral(polarized.energies, densities) - 1)).toBeLessThan(WEIGHT_TOL)
+    }
   })
 
   // the k = 1 planes of an endpoint-inclusive grid repeat k = 0, so a value only they hold
@@ -80,16 +88,6 @@ describe(`band_grid_dos`, () => {
     },
   )
 
-  test(`each spin channel of a polarized grid holds one electron per band`, () => {
-    const grid = make_grid([[band([2, 2, 2], () => 0)], [band([2, 2, 2], () => 1)]], true)
-    const dos = band_grid_dos(grid, { sigma: 0.1 })
-    expect(dos.spin_polarized).toBe(true)
-    expect(Math.abs(integral(dos.energies, dos.densities) - 1)).toBeLessThan(WEIGHT_TOL)
-    expect(Math.abs(integral(dos.energies, dos.spin_down_densities ?? []) - 1)).toBeLessThan(
-      WEIGHT_TOL,
-    )
-  })
-
   // the binned-and-convolved DOS against one Gaussian summed per k-point at every output
   // energy, on a dispersive two-band grid in both spin channels
   test(`matches the direct Gaussian sum`, () => {
@@ -100,19 +98,13 @@ describe(`band_grid_dos`, () => {
     const grid = make_grid([bands, bands.toReversed()], true)
     const dos = band_grid_dos(grid, { sigma })
     const norm = 1 / (sigma * Math.sqrt(2 * Math.PI))
-    const direct = dos.energies.map((at) =>
-      bands.reduce(
-        (sum, { values }) =>
-          sum +
-          values.reduce(
-            (band_sum, value) =>
-              band_sum + norm * Math.exp(-0.5 * ((at - value) / sigma) ** 2),
-            0,
-          ) /
-            values.length,
-        0,
-      ),
-    )
+    const direct = dos.energies.map((at) => {
+      let sum = 0
+      for (const { values } of bands) {
+        for (const value of values) sum += Math.exp(-0.5 * ((at - value) / sigma) ** 2)
+      }
+      return (norm * sum) / bands[0].values.length // both bands hold 7 x 6 x 5 k-points
+    })
     const peak = Math.max(...direct)
     // linear binning at step h smooths a Gaussian by at most ~(h/σ)²/8 of its peak (2e-3 at
     // this grid's h ≈ σ/7.7; measured 4.7e-4), the grid-normalized kernel adds far less

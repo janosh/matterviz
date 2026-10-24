@@ -2,13 +2,13 @@
   // A Fermi surface beside the band structure of the same calculation, linked by FermiBandsLink
   // (hover previews, click pins and isolates a sheet, E_F crossings dotted on bands and path)
   import PanelsFullscreenButton from '#lib/layout/PanelsFullscreenButton.svelte'
+  import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import Bands from '#lib/spectral/Bands.svelte'
   import type { BaseBandStructure } from '#lib/spectral/types.js'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import BandCrossings from './BandCrossings.svelte'
   import { FermiBandsLink } from './fermi-bands-link.svelte'
-  import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import FermiSurface from './FermiSurface.svelte'
   import type { BandGridJson } from './parse'
   import type { BandGridData } from './types'
@@ -35,7 +35,6 @@
     bands_props?: Partial<ComponentProps<typeof Bands>>
   } = $props()
 
-  // the band structure's k-path in the grid's reciprocal space (same calculation and lattice)
   const link = new FermiBandsLink({
     band_data: () => band_data,
     band_struct: () => band_struct,

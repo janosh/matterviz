@@ -142,8 +142,7 @@
       // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
       custom_property_label?: string
       selected_bands?: number[]
-      // shown alone over selected_bands while set (e.g. a clicked band line); a band edit in
-      // the controls ends it
+      // shown alone over selected_bands (e.g. a clicked band line) until a controls band edit
       isolated_band?: number | null
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
       show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>

@@ -400,6 +400,15 @@ export const make_rocksalt = (lattice_const = 5.64, cation = `Na`, anion = `Cl`)
     })),
   ])
 
+// Cubic SrTiO3 perovskite with Ti on the cell corners (TiO6 octahedra crossing every face) or
+// in the body center (its octahedron inside the cell)
+export const SRTIO3_A = 3.905
+// oxfmt-ignore
+export const make_srtio3 = (ti_at: `corner` | `body`): Crystal =>
+  make_crystal(SRTIO3_A, ti_at === `corner`
+    ? [[`Ti`, [0, 0, 0]], [`Sr`, [0.5, 0.5, 0.5]], [`O`, [0.5, 0, 0]], [`O`, [0, 0.5, 0]], [`O`, [0, 0, 0.5]]]
+    : [[`Sr`, [0, 0, 0]], [`Ti`, [0.5, 0.5, 0.5]], [`O`, [0.5, 0.5, 0]], [`O`, [0.5, 0, 0.5]], [`O`, [0, 0.5, 0.5]]])
+
 // Trajectory frame with sites at explicit Cartesian coordinates. With `box_length` the
 // structure is a cubic crystal (abc derived); without one it is a molecule, so there is no
 // lattice to unwrap against. Per-site `velocities` land in site.properties.velocity.

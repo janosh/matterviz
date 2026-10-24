@@ -40,6 +40,8 @@ import {
   image_options,
   make_crystal,
   make_rocksalt,
+  make_srtio3,
+  SRTIO3_A,
 } from '../test-fixtures'
 import { octahedron_points } from './geometry-fixtures'
 
@@ -456,22 +458,12 @@ describe(`compute_polyhedra`, () => {
   // Corner-Ti SrTiO3: completion stamps all 8 displayed Ti copies whole. A removed corner bond
   // or a hidden corner O (whose bonds the scene drops) shrinks the octahedra it touched
   // instead of deleting them. Returns [base Ti CN, CN of every drawn polyhedron].
-  const a_srtio3 = 3.905
-  const srtio3 = get_pbc_image_sites(
-    make_crystal(a_srtio3, [
-      [`Ti`, [0, 0, 0]],
-      [`Sr`, [0.5, 0.5, 0.5]],
-      [`O`, [0.5, 0, 0]],
-      [`O`, [0, 0.5, 0]],
-      [`O`, [0, 0, 0.5]],
-    ]),
-    image_options(),
-  )
+  const srtio3 = get_pbc_image_sites(make_srtio3(`corner`), image_options())
   // the bond from base Ti to the O at x = sign * a/2
   const is_ti_x_bond = (sign: number) => (bond: BondPair) =>
     [bond.site_idx_1, bond.site_idx_2].includes(0) &&
     [bond.pos_1, bond.pos_2].some(([x, y, z]) =>
-      [x - (sign * a_srtio3) / 2, y, z].every((coord) => Math.abs(coord) < 1e-6),
+      [x - (sign * SRTIO3_A) / 2, y, z].every((coord) => Math.abs(coord) < 1e-6),
     )
   test.each([
     [`no edit`, () => false, [6, Array(8).fill(6)]],

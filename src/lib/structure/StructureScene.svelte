@@ -103,8 +103,8 @@
     bond_records,
     bond_site_1,
     bond_site_2,
-    type BondData,
   } from './bond-rendering'
+  import type { BondData } from './bond-rendering'
   import type { BondEditResult, BondingStrategy, BondKeyTarget } from './bonding'
   import {
     add_or_restore_bond,

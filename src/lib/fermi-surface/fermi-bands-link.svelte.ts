@@ -1,11 +1,9 @@
 // Links a Fermi surface to the band structure of the same calculation, bands matched by absolute
 // index (band_indices, e.g. BXSF `BAND: n` → n − 1). Hovering a band point previews the surface
-// at its energy and marks its k-point and branch on the 3D k-path (and vice versa); a click
-// pins the energy as mu and isolates the band's sheet (click again for all). Band lines take
-// their sheet's colour, and where they cross E_F (and the shown energy) is dotted on the bands
-// (BandCrossings) and on the 3D k-path, where the path pierces the surface. Shared by
-// FermiSurfaceBands and ElectronicStructure; without a band grid (no Fermi data, or a
-// pre-meshed surface) only the k-path link remains.
+// at its energy and marks its k-point and branch on the 3D k-path (and vice versa); a click pins
+// the energy as mu and isolates the band's sheet (click again for all). Band lines take their
+// sheet's colour, and their E_F (and shown energy) crossings are dotted on the bands
+// (BandCrossings) and the 3D k-path. Without a band grid only the k-path link remains.
 import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
 import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
@@ -48,8 +46,7 @@ export class FermiBandsLink {
   private hovered_band = $state<number | null>(null)
   // energy previewed until the pointer leaves: a hovered band point's, or one a host sets
   hovered_energy = $state<number | null>(null)
-  // the grid's band numbering, so new data with the same bands (a sweep's next frame) keeps
-  // an isolated band
+  // the grid's band numbering, so a sweep's next frame (same bands) keeps an isolated band
   private readonly band_layout = $derived.by((): string => {
     const grid = this.inputs.band_data()
     return grid ? (grid.band_indices ?? grid.energies[0].map((_, idx) => idx)).join(`,`) : ``
@@ -82,8 +79,8 @@ export class FermiBandsLink {
     x_positions: () => this.x_positions,
   })
   // three.js parses neither var() nor light-dark(), so the 3D markers take Bands' E_F and
-  // reference line colours resolved where the 2D dots resolve them (inside Bands, so a
-  // caller's bands style applies to both), re-read on theme changes
+  // reference line colours resolved where the 2D dots are (inside Bands, so a caller's bands
+  // style applies to both), re-read on theme changes
   private level_rgb = $state({ fermi: `#e74c3c`, reference: `#d48860` })
 
   readonly fermi_energy = $derived.by(() => this.inputs.band_data()?.fermi_energy)
@@ -114,16 +111,17 @@ export class FermiBandsLink {
   )
   // the band emphasised on the plot: hovered (in either view), else isolated
   readonly highlighted_band = $derived(this.hovered_band ?? this.isolated_band)
-  // Bands' hover and click radius: band lines are thin targets for previewing a surface
+  // band lines are thin targets for previewing a surface: a wide hover and click radius
   readonly bands_hover_config = $derived.by((): Partial<HoverConfig> => ({
     threshold_px: 50,
     click_threshold_px: 50,
     ...this.inputs.bands_props().hover_config,
   }))
 
-  // Property mode colours sheets by vertex where the grid carries properties (every sheet
-  // samples all of them), else the scene keeps flat sheet colours (which the band lines then
-  // take). Read off the grid, not the shown surface, so previewing an energy without sheets
+  // Each grid band's line in its sheet's colour over the caller's style (other bands muted
+  // unless the caller colours them; electronic bands take a per-mode style's `optical`).
+  // Property mode with grid properties colours sheets by vertex, so lines keep the caller's
+  // style. Read off the grid, not the shown surface, so previewing an energy without sheets
   // does not flip the band colours.
   readonly line_kwargs = $derived.by((): LineKwargs | undefined => {
     const grid = this.inputs.band_data()
@@ -133,9 +131,6 @@ export class FermiBandsLink {
       color_property === `property` && Object.keys(grid?.properties ?? {}).length > 0
     if (!grid || vertex_colored) return kwargs
     const sheet_spin = (spin: `up` | `down`) => (grid.n_spins === 2 ? spin : null)
-    // Each band line in its sheet's colour over the caller's style (grid bands only, the rest
-    // muted unless the caller colours them). Electronic bands take a per-mode
-    // (acoustic/optical) style's `optical`.
     return (band_idx, spin, structure) => {
       const style = band_line_style(kwargs ?? {}, band_idx, spin, false, structure)
       return {
@@ -185,17 +180,15 @@ export class FermiBandsLink {
     $effect(() => {
       const node = this.crossings_svg
       if (!node) return undefined
+      const { fermi, reference } = BANDS_CSS_COLORS
       const read = () => {
         this.level_rgb = {
-          fermi: resolve_color_token(node, BANDS_CSS_COLORS.fermi),
-          reference: resolve_color_token(node, BANDS_CSS_COLORS.reference),
+          fermi: resolve_color_token(node, fermi),
+          reference: resolve_color_token(node, reference),
         }
       }
       read()
-      return watch_theme_changes(node, read, [
-        ...css_var_names(BANDS_CSS_COLORS.fermi),
-        ...css_var_names(BANDS_CSS_COLORS.reference),
-      ])
+      return watch_theme_changes(node, read, css_var_names(fermi + reference))
     })
   }
 
@@ -228,9 +221,8 @@ export class FermiBandsLink {
   readonly band_hover = (event: ScatterHandlerEvent | null): void => {
     const point = band_point_meta(event?.point.metadata)
     this.hovered_band = point?.band_idx ?? null
-    // only bands the grid holds have a surface to preview
+    // only grid bands have a surface to preview; without a grid the k-point still shows
     const in_grid = event && point && this.grid_bands.has(point.band_idx) ? event : null
-    // without a grid the hovered k-point still shows on the path
     this.path.hover_band(this.grid_bands.size > 0 ? in_grid : event)
     this.hovered_energy = in_grid ? in_grid.point.y : null
   }
@@ -238,30 +230,18 @@ export class FermiBandsLink {
   // plain lines (on_point_click would draw a marker per k-point)
   readonly band_click = (event: ScatterHandlerEvent): void => {
     const point = band_point_meta(event.point.metadata)
-    const { fermi_energy } = this
-    if (!point || !this.grid_bands.has(point.band_idx) || fermi_energy === undefined) return
+    const grid = this.inputs.band_data()
+    if (!point || !grid || !this.grid_bands.has(point.band_idx)) return
     const { y, metadata } = event.point
-    const has_sheet = this.grid_band_spans(point.band_idx, metadata?.spin, y)
+    // isolate only a band with a sheet at `y`: strictly inside its range (in the clicked spin
+    // channel), read off the grid as the shown surface may still be extracting
+    const spin_idx = metadata?.spin === `down` && grid.n_spins === 2 ? 1 : 0
+    const band_pos = grid.band_indices?.indexOf(point.band_idx) ?? point.band_idx
+    const band = grid.energies[spin_idx]?.[band_pos]
+    const values = band ? (Array.isArray(band) ? band.flat(2) : band.values) : []
+    const has_sheet = values.some((value) => value < y) && values.some((value) => value > y)
     this.isolated_band =
       this.isolated_band !== point.band_idx && has_sheet ? point.band_idx : null
-    this.inputs.mu.set(y - fermi_energy)
-  }
-
-  // Whether `energy` lies strictly inside the grid band's finite range (in `spin`'s channel of a
-  // polarized grid), i.e. the band has a sheet there: read off the grid, as the shown surface
-  // may still be extracting
-  private grid_band_spans(band_idx: number, spin: unknown, energy: number): boolean {
-    const grid = this.inputs.band_data()
-    if (!grid) return false
-    const spin_idx = spin === `down` && grid.n_spins === 2 ? 1 : 0
-    const band = grid.energies[spin_idx]?.[grid.band_indices?.indexOf(band_idx) ?? band_idx]
-    if (!band) return false
-    let [below, above] = [false, false]
-    for (const value of Array.isArray(band) ? band.flat(2) : band.values) {
-      below ||= value < energy
-      above ||= value > energy
-      if (below && above) return true
-    }
-    return false
+    this.inputs.mu.set(y - grid.fermi_energy)
   }
 }

@@ -4,7 +4,7 @@ import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type Bands from '#lib/spectral/Bands.svelte'
 import type BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type Dos from '#lib/spectral/Dos.svelte'
-import type { Matrix3x3 } from '#lib/math.js'
+import type { Matrix3x3, Vec2 } from '#lib/math.js'
 import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
 import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
@@ -12,11 +12,11 @@ import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
 import { compute_frequency_range } from '#lib/spectral/helpers.js'
 import type {
   BaseBandStructure,
-  DosData,
   ElectronicDos,
   ElectronicPane,
   PhononDos,
   PhononSpectra,
+  SpectraRecords,
 } from '#lib/spectral/types.js'
 import type { Site } from '#lib/structure/index.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
@@ -80,42 +80,30 @@ vi.mock(`#lib/spectral/BandsAndDos.svelte`, () => ({
     return {}
   },
 }))
-vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, async (original) => {
-  const { default: Component } = await original<{ default: typeof FermiSurface }>()
-  return {
-    default: (...[anchor, props]: Parameters<typeof FermiSurface>) => {
-      viewers.fermi = props
-      return Component(anchor, props)
+// renders the original component, recording its live props in `viewers`
+const record_props = vi.hoisted(
+  () =>
+    async <Key extends `fermi` | `bands` | `dos` | `trends`>(
+      key: Key,
+      original: <Module>() => Promise<Module>,
+    ) => {
+      type Props = NonNullable<(typeof viewers)[Key]>
+      type Render = (anchor: Node, props: Props) => unknown
+      const { default: Component } = await original<{ default: Render }>()
+      return {
+        default: (anchor: Node, props: Props) => {
+          viewers[key] = props
+          return Component(anchor, props)
+        },
+      }
     },
-  }
-})
-vi.mock(`#lib/spectral/Bands.svelte`, async (original) => {
-  const { default: Component } = await original<{ default: typeof Bands }>()
-  return {
-    default: (...[anchor, props]: Parameters<typeof Bands>) => {
-      viewers.bands = props
-      return Component(anchor, props)
-    },
-  }
-})
-vi.mock(`#lib/spectral/SweepTrends.svelte`, async (original) => {
-  const { default: Component } = await original<{ default: typeof SweepTrends }>()
-  return {
-    default: (...[anchor, props]: Parameters<typeof SweepTrends>) => {
-      viewers.trends = props
-      return Component(anchor, props)
-    },
-  }
-})
-vi.mock(`#lib/spectral/Dos.svelte`, async (original) => {
-  const { default: Component } = await original<{ default: typeof Dos }>()
-  return {
-    default: (...[anchor, props]: Parameters<typeof Dos>) => {
-      viewers.dos = props
-      return Component(anchor, props)
-    },
-  }
-})
+)
+vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, (original) =>
+  record_props(`fermi`, original),
+)
+vi.mock(`#lib/spectral/Bands.svelte`, (original) => record_props(`bands`, original))
+vi.mock(`#lib/spectral/SweepTrends.svelte`, (original) => record_props(`trends`, original))
+vi.mock(`#lib/spectral/Dos.svelte`, (original) => record_props(`dos`, original))
 
 // a_i · b_j = 2π δ_ij with the band grid's identity k_lattice: one Cartesian frame
 const structure = make_crystal(2 * Math.PI, [[`Cu`, [0, 0, 0]]])
@@ -208,18 +196,11 @@ const phonon: PhononSpectra = {
   doses: { 'phonon DOS': phonon_dos },
   a2f: { 'α²F': { ...phonon_dos, densities: [0, 0.3, 0] } },
 }
-// the viewer's measured width: the DOS sits beside the bands from 520px, else below
-const set_width = (width: number) =>
-  vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
-const WIDTHS = [
-  [800, true],
-  [400, false],
-] as const
-
-test.each(WIDTHS)(
+test.each([800, 400])(
   `one viewer %dpx wide: one control row over scenes above spectra`,
-  (width, side) => {
-    set_width(width)
+  (width) => {
+    vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
+    const side = width >= 520 // the DOS sits beside the bands from 520px, else below
     const root = mount_host({ ...all_data, class: `caller`, layout: `vertical` })
     expect(root.getAttribute(`role`)).toBe(`group`)
     expect([...root.classList]).toEqual(expect.arrayContaining([`caller`, `two-rows`]))
@@ -244,6 +225,11 @@ test.each(WIDTHS)(
     // the band structure's k-path runs through the Wigner-Seitz zone of the Fermi surface
     expect(viewers.fermi?.wigner_seitz).toBe(true)
     expect(viewers.fermi?.k_path).toMatchObject({ path: { points: expect.any(Array) } })
+    // beside the DOS, the bands mirror its settled left padding on their right
+    if (!viewers.dos || !viewers.bands) throw new Error(`no spectra`)
+    viewers.dos.resolved_padding = { t: 20, r: 5, b: 50, l: 37 }
+    flushSync()
+    expect(viewers.bands.padding?.r).toBe(side ? 37 : 5)
   },
 )
 
@@ -360,18 +346,6 @@ test.each([true, false])(`hovering the DOS previews the Fermi surface (grid: %s)
   expect(viewers.fermi?.mu).toBe(0)
   expect(viewers.fermi?.previewing).toBe(false)
 })
-
-test.each(WIDTHS)(
-  `%dpx wide, the bands mirror the DOS's left padding beside it`,
-  (width, side) => {
-    set_width(width)
-    mount_host(all_data)
-    if (!viewers.dos || !viewers.bands) throw new Error(`no spectra`)
-    viewers.dos.resolved_padding = { t: 20, r: 5, b: 50, l: 37 } // the DOS's settled padding
-    flushSync()
-    expect(viewers.bands.padding?.r).toBe(side ? 37 : 5)
-  },
-)
 
 // a POSCAR of lattice `rows` (Å), one Si atom
 const poscar = (rows: number[][]) =>
@@ -691,27 +665,15 @@ test(`a sweep's spectra axes span all its frames, unless the caller passes a ran
   }
   fcc.frames[0].phonon = phonon
   fcc.frames[1] = { ...fcc.frames[1], doses: { total: wide_dos }, phonon: fast_phonons }
-  const span = (entries: [Record<string, BaseBandStructure>, Record<string, DosData>][]) => {
-    const ranges = entries.flatMap(([bands, doses]) => {
-      const range = compute_frequency_range(bands, doses)
-      return range ? [range] : []
-    })
-    return [
-      Math.min(...ranges.map(([low]) => low)),
-      Math.max(...ranges.map(([, high]) => high)),
-    ]
+  // min/max computed here, not via union_ranges, which the component uses
+  const span = (spectra: SpectraRecords[]): Vec2 => {
+    const ranges = spectra
+      .map(({ band_structs = {}, doses = {} }) => compute_frequency_range(band_structs, doses))
+      .filter((range) => range !== undefined)
+    return [Math.min(...ranges.map(([lo]) => lo)), Math.max(...ranges.map(([, hi]) => hi))]
   }
-  const frame_spectra = fcc.frames.map(
-    (frame): [Record<string, BaseBandStructure>, Record<string, DosData>] => [
-      frame.band_structs ?? {},
-      frame.doses ?? {},
-    ],
-  )
-  const electronic = span(frame_spectra)
-  const phonons = span([
-    [phonon.band_structs ?? {}, phonon.doses ?? {}],
-    [{}, fast_phonons.doses ?? {}],
-  ])
+  const electronic = span(fcc.frames)
+  const phonons = span([phonon, fast_phonons])
   expect(electronic[1]).toBeGreaterThan(19) // frame 1's DOS reaches 20 eV
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
     sweep,

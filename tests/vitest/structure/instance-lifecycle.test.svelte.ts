@@ -45,7 +45,7 @@ import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import { mount_scene } from '../scene/mount'
 import { bind_props, doc_query } from '../setup'
-import { image_options, make_crystal } from '../test-fixtures'
+import { image_options, make_crystal, make_srtio3 } from '../test-fixtures'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, untrack } from 'svelte'
@@ -939,14 +939,7 @@ test.each([
 ] as const)(
   `Scene with bonds %s, polyhedra %s draws %i atoms`,
   (show_bonds, show_polyhedra, n_atoms) => {
-    const srtio3 = make_crystal(3.905, [
-      [`Sr`, [0, 0, 0]],
-      [`Ti`, [0.5, 0.5, 0.5]],
-      [`O`, [0.5, 0.5, 0]],
-      [`O`, [0.5, 0, 0.5]],
-      [`O`, [0, 0.5, 0.5]],
-    ])
-    const structure = get_pbc_image_sites(srtio3, image_options(`boundary`))
+    const structure = get_pbc_image_sites(make_srtio3(`body`), image_options(`boundary`))
     expect(structure.sites.filter((site) => site.provenance?.completion)).toHaveLength(6)
     const { scene } = mount_structure({ structure, show_bonds, show_polyhedra })
     expect(sphere_count(scene)).toBe(n_atoms)

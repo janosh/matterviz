@@ -1,8 +1,9 @@
 // FermiBandsLink: the state a Fermi surface and its band structure share, driven directly
+import type { FermiBandsLinkInputs } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
 import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
-import type { BandEnergyGrid, BandGridData, ColorProperty } from '#lib/fermi-surface/types.js'
-import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
-import type { BandsSpinMode, LineKwargs } from '#lib/spectral/types.js'
+import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
+import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
+import type { BandsSpinMode } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { expect, onTestFinished, test } from 'vitest'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -32,16 +33,8 @@ const band_event = (band_idx: number, y: number, spin: `up` | `down` = `up`) =>
     point: { x: 0, y, metadata: { band_idx, qpoint_idx: 0, spin } },
   }) as unknown as ScatterHandlerEvent
 
-type Host = {
-  mu: number
-  selected_bands?: number[]
-  band_data: BandGridData
-  bands_props: {
-    band_spin_mode?: BandsSpinMode
-    line_kwargs?: LineKwargs
-    hover_config?: Partial<HoverConfig>
-  }
-  fermi_props: { color_property?: ColorProperty }
+type Host = { mu: number; selected_bands?: number[]; band_data: BandGridData } & {
+  [key in `bands_props` | `fermi_props`]: ReturnType<FermiBandsLinkInputs[key]>
 }
 const make_link = (band_spin_mode?: BandsSpinMode) => {
   const host = $state<Host>({
@@ -125,6 +118,9 @@ test(`a band click pins its energy and isolates its sheet, a second click ends i
 
 test(`hovering a grid band previews its energy, another band only highlights`, () => {
   const { link, host } = make_link()
+  // wide hover radius for thin band lines, unless the caller sets one
+  expect(link.bands_hover_config).toEqual({ threshold_px: 50, click_threshold_px: 50 })
+  host.bands_props = { ...host.bands_props, hover_config: { click_threshold_px: 10 } }
   host.mu = 0.25
   const shown = () => [
     link.mu,
@@ -141,12 +137,5 @@ test(`hovering a grid band previews its energy, another band only highlights`, (
   link.band_hover(null)
   flushSync()
   expect(shown()).toEqual([0.25, false, 1.25, null])
-})
-
-test(`the caller's hover radius overrides the link's wide default`, () => {
-  const { link, host } = make_link()
-  expect(link.bands_hover_config).toEqual({ threshold_px: 50, click_threshold_px: 50 })
-  host.bands_props = { ...host.bands_props, hover_config: { click_threshold_px: 10 } }
-  flushSync()
   expect(link.bands_hover_config).toEqual({ threshold_px: 50, click_threshold_px: 10 })
 })

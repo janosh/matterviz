@@ -191,23 +191,17 @@
           draw(down, `down`, down_color, overlay ? `4,2` : undefined)
         }
       }
-      const n_doses = Object.keys(doses).length
-      for (const [a2f_idx, [label, { frequencies, densities }]] of Object.entries(
-        a2f,
-      ).entries()) {
-        const x_values = convert_frequencies(frequencies, unit)
+      for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {
+        const x_values = convert_frequencies(curve.frequencies, unit)
+        const stroke = plot_color(Object.keys(doses).length + a2f_idx)
         all_series.push({
           id: JSON.stringify([label, `a2f`]),
-          x: is_horizontal ? densities : x_values,
-          y: is_horizontal ? x_values : densities,
+          x: is_horizontal ? curve.densities : x_values,
+          y: is_horizontal ? x_values : curve.densities,
           ...(is_horizontal ? { x_axis: `x2` } : { y_axis: `y2` }),
           markers: `line`,
           label: label || `α²F ${a2f_idx + 1}`,
-          line_style: {
-            stroke: plot_color(n_doses + a2f_idx),
-            stroke_width: 1.5,
-            line_dash: `5,3`,
-          },
+          line_style: { stroke, stroke_width: 1.5, line_dash: `5,3` },
         })
       }
       return { series_data: all_series, stacked_areas: areas }

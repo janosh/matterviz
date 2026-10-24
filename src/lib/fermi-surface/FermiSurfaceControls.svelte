@@ -55,9 +55,7 @@
     fitted_value_range?: Vec2 // placeholder for the color_scale.value_range ends left unset
     custom_property_label?: string // label of the unnamed property, e.g. "Fermi velocity"
     selected_bands?: number[]
-    // a host's isolated band (e.g. a clicked band line), shown alone over selected_bands until
-    // a band edit here takes over from it
-    isolated_band?: number | null
+    isolated_band?: number | null // a host's band shown alone until a band edit here ends it
     shortcut_scopes?: readonly ShortcutScope[] // listed at the bottom of the pane
     children?: Snippet<[{ fermi_data?: FermiSurfaceData; band_data?: BandGridData }]>
   } = $props()

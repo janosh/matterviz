@@ -45,11 +45,8 @@
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import {
-    FullscreenButton,
-    pick_pane_orientation,
-    SettingsSection,
-  } from '#lib/layout/index.js'
+  import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
+  import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'

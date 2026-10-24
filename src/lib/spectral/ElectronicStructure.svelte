@@ -1,45 +1,32 @@
 <script lang="ts">
-  // One viewer fusing a material's crystal structure, Fermi surface, band structure and DOS, as
-  // Trajectory fuses a structure and its plots: one frame, control row, fullscreen and file
-  // drop. The 3D scenes sit on top (side by side or stacked by their row's shape), the spectra
-  // below on one shared energy axis, every split at a draggable divider, and the pane menu
-  // shows any subset (default: the panes with data). The views are linked:
+  // One viewer fusing a material's crystal structure, Fermi surface, band structure and DOS (plus
+  // phonon spectra and sweep trends), as Trajectory fuses a structure and its plots: one frame,
+  // control row, fullscreen and file drop. 3D scenes on top, spectra below, every split at a
+  // draggable divider; the pane menu shows any subset (default: the panes with data). Links:
   // - Real and reciprocal lattice share one Cartesian frame (b_i · a_j = 2π δ_ij), so orbiting
-  //   either scene turns the other alike (sync_rotation), each keeping its own zoom. Data in
-  //   different frames is reported and keeps the rotations apart.
+  //   either scene turns the other alike (sync_rotation). Data in different frames is reported
+  //   and keeps the rotations apart.
   // - Bands ↔ Fermi surface: hover previews, click pins and isolates a sheet (FermiBandsLink).
   // - Bands ↔ DOS share zoom and hover lines on the energy axis; hovering the DOS previews the
   //   Fermi surface at that energy too.
-  // Phonon bands and DOS (α²F on its own axis) sit below the electronic spectra on their own
-  // frequency axis (`phonon`).
-  // A sweep (`sweep`) runs the viewer along one axis, e.g. pressure: a control bar steps through
-  // a series' frames, every pane shows the selected frame, the sweep's `load_frame` fetches
-  // frames' heavy data on demand (the neighbours prefetched), the spectra span every loaded
-  // frame of the series so their axes hold still while stepping, and the trends pane plots
-  // descriptors against the axis, a click selecting that frame (see sweep.ts).
-  // A dropped file replaces the data of the panes it fills: a structure file the structure, a
-  // trajectory its final frame's structure (plus a vaspout.h5's DOS, never bands), a band grid
-  // or meshed surface the Fermi surface, a band structure and/or DOS JSON (also BandsAndDos'
-  // { band_structure, dos }) or an electronic-only vaspout.h5 the spectra (phonon ones the
-  // phonon pane); a sweep JSON the sweep, which while shown takes no other files.
-  import {
-    normalize_show_controls,
-    shows_fullscreen_toggle,
-    type ShowControlsProp,
-  } from '#lib/controls.js'
+  // A `sweep` runs the viewer along one axis, e.g. pressure: a control bar steps through a
+  // series' frames, `load_frame` fetches frames on demand (neighbours prefetched), the spectra
+  // span every loaded frame so their axes hold still, and the trends pane plots descriptors
+  // against the axis (see sweep.ts). A dropped file replaces the data of the panes it fills
+  // (see `fill`); while a sweep is shown only sweep JSONs are taken.
+  import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import type { ShowControlsProp } from '#lib/controls.js'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import BandCrossings from '#lib/fermi-surface/BandCrossings.svelte'
   import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
-  import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-  import {
-    type BandGridJson,
-    type FermiSurfaceJson,
-    normalize_band_grid,
-    normalize_fermi_surface,
-  } from '#lib/fermi-surface/parse.js'
+  import { normalize_band_grid, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
+  import type { BandGridJson, FermiSurfaceJson } from '#lib/fermi-surface/parse.js'
   import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
   import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
+  import { chain_callbacks } from '#lib/plot/core/interactions.js'
+  import { union_ranges } from '#lib/plot/core/shared-axes.js'
+  import { observe_size } from '#lib/plot/core/utils.js'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import {
     create_sequence_player,
@@ -50,7 +37,7 @@
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-  import { clamp, dot, matrix_inverse_3x3, type Matrix3x3, type Vec2 } from '#lib/math.js'
+  import { clamp, dot, matrix_inverse_3x3, type Matrix3x3 } from '#lib/math.js'
   import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
@@ -346,21 +333,13 @@
     panes_with_data(sweep ? shown_frames : [pane_data], Boolean(sweep?.descriptors?.length)),
   )
   // In a sweep, the frequency extent (data units) of every loaded frame of the series
-  const sweep_span = (
-    pick: (frame: SweepFrame) => SpectraRecords | undefined,
-  ): Vec2 | undefined => {
-    if (!sweep) return undefined
-    const ranges = shown_frames.flatMap((entry) => {
-      const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
-      const range = compute_frequency_range(bands, dos)
-      return range ? [range] : []
-    })
-    if (!ranges.length) return undefined
-    return [
-      Math.min(...ranges.map(([low]) => low)),
-      Math.max(...ranges.map(([, high]) => high)),
-    ]
-  }
+  const sweep_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
+    union_ranges(
+      shown_frames.map((entry) => {
+        const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
+        return compute_frequency_range(bands, dos)
+      }),
+    )
   const electronic_span = $derived(sweep_span((entry) => entry))
   const phonon_span = $derived(sweep_span((entry) => entry.phonon))
   const shown = $derived.by((): Set<ElectronicPane> => {
@@ -464,7 +443,8 @@
     error_msg = message
     on_error?.({ error_msg: message, filename })
   }
-  // Fill the panes a parsed file has data for (see the header), else say why it fills none
+  // Fill the panes a parsed file has data for (a trajectory: its final frame's structure and a
+  // vaspout.h5's DOS, never bands; phonon spectra: the phonon pane), else say why it fills none
   const fill = async (opened: OpenedMaterial): Promise<ElectronicPane[] | string> => {
     const { filename } = opened
     if (opened.type === `json_browser` && is_sweep_like(opened.data)) {
@@ -556,11 +536,6 @@
       }
     },
   })
-  const measure_chrome = (node: HTMLElement) => {
-    const observer = new ResizeObserver(() => (chrome_height = node.offsetHeight))
-    observer.observe(node)
-    return () => observer.disconnect()
-  }
 </script>
 
 <div
@@ -581,12 +556,7 @@
   {@attach keys}
 >
   {#if sweep && series}
-    <SequenceControlBar
-      class="sweep-controls"
-      {controls_config}
-      {fullscreen}
-      bind:height={bar_height}
-    >
+    <SequenceControlBar {controls_config} {fullscreen} bind:height={bar_height}>
       {#if sweep.series.length > 1 && controls_config.visible(`series`)}
         <label class="series-control">
           Series
@@ -627,7 +597,7 @@
       {wrapper}
       fullscreen_bg_css_var="--electronic-bg-fullscreen"
       style={top_row_style}
-      {@attach measure_chrome}
+      {@attach observe_size(({ height }) => (chrome_height = height))}
     >
       {#if scenes_split && controls_config.visible(`sync-rotation`)}
         {@const linked = sync_rotation && !frames_differ}

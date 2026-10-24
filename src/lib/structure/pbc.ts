@@ -103,12 +103,10 @@ function image_atoms(
     images.push([site_idx, frac_to_cart(img_abc), img_abc, is_completion])
   }
 
-  // Phase 1: true periodic copies (bond lengths preserved, not clamped to the face) of atoms
-  // within 0.1 Å of a cell face, measured along the cell heights. That covers relaxation noise
-  // on atoms sitting on a face, edge or corner; anything further in is an interior atom, whose
-  // copy would float outside the drawn cell (0.5 Å imaged 114 of mp-1204603's 444 sites, 0.1 Å
-  // the 24 that sit on its faces). copy_shifts lists each site's displayed copies, the base
-  // atom first; interior sites, the vast majority in a supercell, share one list.
+  // Phase 1: true periodic copies (not clamped to the face) of atoms within FACE_TOLERANCE of
+  // a cell face along the cell heights: relaxation noise on face, edge and corner atoms, while
+  // an interior atom's copy would float outside the drawn cell. copy_shifts lists each site's
+  // displayed copies, base atom first; interior sites (most of a supercell) share one list.
   const tolerances = heights.map((height) => FACE_TOLERANCE / height)
   const near_low = (abc: Vec3, axis: number) =>
     pbc[axis] && Math.abs(abc[axis]) < tolerances[axis]
@@ -131,33 +129,23 @@ function image_atoms(
   for (const [idx, shifts] of copy_shifts.entries())
     for (const shift of shifts) add_copy(idx, shift, false)
 
-  // Phase 2: copies beyond the faces that complete what the boundary draws, read off the
-  // renderer's bonding on the periodic bond graph, so a copy only ever appears as the bonded
-  // partner of a displayed atom (base atom or phase-1 copy). The modes nest, each adding to
-  // the last:
-  // - polyhedra: the corners of every polyhedron the renderer draws (compute_polyhedra's own
-  //   center and vertex rules), beside each displayed copy of its center, so polyhedra
-  //   crossing a face stay whole while all other bonds stop at it
+  // Phase 2: copies beyond the faces, read off the renderer's bonding on the periodic bond
+  // graph, so a copy only appears as the bonded partner of a displayed atom. The modes nest:
+  // - polyhedra: the corners of every polyhedron the renderer draws, beside each displayed
+  //   copy of its center, so polyhedra crossing a face stay whole while other bonds stop at it
   // - boundary: also every bond of an atom on a face, edge or corner
   // - none: nothing beyond the phase-1 face copies
-  // Completing every bond of every atom (an earlier rule) pulled whole rows of copies out of
-  // small cells: Sc2H2Ru's interior H drew 4 Sc and 4 H copies around the cell.
-  // No periodic axis means nothing to complete, and a zero-volume cell has no periodic bond
-  // graph (the neighbor search rejects its infinite cell heights).
+  // A zero-volume cell has no periodic bond graph (infinite cell heights).
   if (options.completion === `none` || !pbc.some(Boolean) || heights.includes(Infinity))
     return { images }
-  const {
-    completion,
-    polyhedra: polyhedra_options,
-    bonding_strategy,
-    bonding_options,
-  } = options
+  const { completion, polyhedra: polyhedra_options } = options
   const { symbols, site_elem_ids, elem_data } = intern_site_elements(structure.sites)
   // Anion polyhedra need a nonmetal corner: metals and alloys skip the bond search (and with
   // no polyhedra to judge, stamp nothing)
   const anion_mode = polyhedra_options.neighbor_mode === `anion`
   if (completion === `polyhedra` && anion_mode && elem_data.every((elem) => elem?.metal))
     return { images }
+  const { bonding_strategy, bonding_options } = options
   const bonds = get_bond_data(structure, bonding_strategy, { ...bonding_options, pbc })
   // Copies stay in the cell's neighbor shell (shifts of -1/0/1): completing the shells of
   // copies further out (bonds of a corner image pointing away from the cell) grows a cluster,
@@ -171,14 +159,10 @@ function image_atoms(
   const cart_to_frac = math.create_cart_to_frac(matrix)
   const polyhedra = compute_polyhedra(structure, bonds, polyhedra_options)
   for (const { center_site_idx, vertex_site_idxs, vertices } of polyhedra) {
-    const corner_shifts = vertex_site_idxs.map((site_idx, vertex_idx): Vec3 => {
-      const frac = cart_to_frac(vertices[vertex_idx])
+    const corner_shifts = vertex_site_idxs.map((site_idx, vertex_idx) => {
       const { abc } = structure.sites[site_idx]
-      return [
-        Math.round(frac[0] - abc[0]),
-        Math.round(frac[1] - abc[1]),
-        Math.round(frac[2] - abc[2]),
-      ]
+      const frac = cart_to_frac(vertices[vertex_idx])
+      return frac.map((coord, axis) => Math.round(coord - abc[axis])) as Vec3
     })
     for (const copy_shift of copy_shifts[center_site_idx]) {
       const shifts = corner_shifts.map((shift) => math.add(shift, copy_shift))
@@ -223,10 +207,9 @@ function image_atoms(
   return { images, complete_centers }
 }
 
-// Return structure with image atoms added (unchanged when none are generated,
-// e.g. for scattered trajectory-like data). Once completion read the periodic polyhedra,
-// every site carries polyhedron_center: true only on the displayed copies whose polyhedron
-// it completed, so compute_polyhedra draws no truncated copy.
+// Return structure with image atoms added (unchanged when none are generated, e.g. for
+// scattered trajectory-like data). Once completion read the periodic polyhedra, every site
+// carries polyhedron_center, true only on the displayed copies whose polyhedron it completed.
 export function get_pbc_image_sites(
   structure: AnyStructure,
   options: ImageAtomOptions,

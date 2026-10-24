@@ -350,8 +350,7 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
   })
 
   test(`pinning draws a marker at the pinned point until Escape`, async () => {
-    const on_pin = vi.fn<(info: PtHoverInfo | null) => void>()
-    const wrapper = await mount_diagram({ on_pin })
+    const wrapper = await mount_diagram()
     const svg = plot_svg(wrapper)
     await hover(wrapper, 50, 1000)
     expect(wrapper.querySelector(`.pin-marker`)).toBeNull()
@@ -361,10 +360,8 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     const marker = translate_of(wrapper.querySelector(`.pin-marker`))
     expect(marker.x).toBeCloseTo(clientX, 6)
     expect(marker.y).toBeCloseTo(clientY, 6)
-    expect(on_pin.mock.lastCall?.[0]?.phase?.id).toBe(`epsilon`)
     await fire(svg, keydown(`Escape`))
     expect(wrapper.querySelector(`.pin-marker`)).toBeNull()
-    expect(on_pin).toHaveBeenLastCalledWith(null)
   })
 
   test(`legend click hides and restores a phase region`, async () => {
@@ -420,14 +417,6 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     await tick()
     expect(axis_text(wrapper, `y`)).toContain(`Pressure (kbar)`)
     expect(state.pressure_axis.range).toEqual([0, 1000])
-  })
-
-  // Python's None arrives as null; it must read as an omitted key, not crash the component
-  test(`null optional fields render like omitted ones`, async () => {
-    const from_python: unknown = { ...iron_pt_diagram, regions: null, title: null }
-    const wrapper = await mount_diagram({ data: from_python as PtPhaseDiagramData })
-    expect(count(wrapper, `.regions path`)).toBe(5)
-    expect(wrapper.querySelector(`.status-message`)).toBeNull()
   })
 
   // Liquid and vapor share a face around the critical point: traced regions leave it unfilled

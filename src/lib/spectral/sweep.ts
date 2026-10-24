@@ -7,12 +7,13 @@ import { is_elem_symbol } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { normalize_band_grid, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
-import { create_lattice_converters, det_3x3, pbc_dist } from '#lib/math.js'
+import { add, create_lattice_converters, det_3x3, pbc_dist, scale } from '#lib/math.js'
 import type { LatticeConverters } from '#lib/math.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
 import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
 import { is_crystal } from '#lib/structure/validation.js'
-import { is_plain_object } from '#lib/utils.js'
+import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
+import { to_error } from 'svelte-widgets/utils'
 import { normalize_band_structure, normalize_dos } from './helpers'
 import type {
   BaseBandStructure,
@@ -159,21 +160,16 @@ export const volume_per_atom = (structure: Crystal): number =>
 // uses, where the shortest vector has coefficients in [-1, 1] (±2 is margin), however sheared
 // the input cell: [[3,0,0],[9.5,0.5,0],[0,0,10]] reaches 0.707 Å = |b − 3a| this way.
 const shortest_translation = (converters: LatticeConverters, pbc: Pbc): number => {
-  const basis = converters.search_basis(pbc).lattice
+  const [vec_a, vec_b, vec_c] = converters.search_basis(pbc).lattice
   const shifts = (axis: number) => (pbc[axis] ? [-2, -1, 0, 1, 2] : [0])
-  let shortest = Infinity
-  for (const n_a of shifts(0)) {
-    for (const n_b of shifts(1)) {
-      for (const n_c of shifts(2)) {
-        if (n_a === 0 && n_b === 0 && n_c === 0) continue
-        const shift = [0, 1, 2].map(
-          (axis) => n_a * basis[0][axis] + n_b * basis[1][axis] + n_c * basis[2][axis],
-        )
-        shortest = Math.min(shortest, Math.hypot(...shift))
-      }
-    }
-  }
-  return shortest
+  const lengths = shifts(0).flatMap((n_a) =>
+    shifts(1).flatMap((n_b) =>
+      shifts(2).map((n_c) =>
+        Math.hypot(...add(scale(vec_a, n_a), scale(vec_b, n_b), scale(vec_c, n_c))),
+      ),
+    ),
+  )
+  return Math.min(...lengths.filter((length) => length > 0))
 }
 
 // Shortest distance between two sites (or a site and its own image) under the lattice's
@@ -246,18 +242,14 @@ const total_dos = (doses: Record<string, DosData>): DosData | undefined => {
 export function fermi_band_count(frame: Partial<SweepFrame>): number | undefined {
   const grid = frame.band_data
   if (grid) {
-    let count = 0
-    for (const spin of grid.energies) {
-      for (const { values } of spin) {
-        let [lowest, highest] = [Infinity, -Infinity]
-        for (const energy of values) {
-          if (energy < lowest) lowest = energy
-          if (energy > highest) highest = energy
-        }
-        if (lowest < grid.fermi_energy && highest > grid.fermi_energy) count++
-      }
-    }
-    return count
+    const { energies, fermi_energy } = grid
+    return energies
+      .flat()
+      .filter(
+        ({ values }) =>
+          values.some((energy) => energy < fermi_energy) &&
+          values.some((energy) => energy > fermi_energy),
+      ).length
   }
   if (frame.fermi_data) {
     const { isosurfaces } = frame.fermi_data
@@ -331,123 +323,124 @@ const fail = (path: string, problem: string): never => {
   throw new Error(`Invalid sweep at ${path}: ${problem}`)
 }
 
-// Fails on a field the sweep format has no use for, e.g. a typo like `units` for `unit`
-const reject_unknown = (
-  raw: Record<string, unknown>,
-  allowed: readonly string[],
+// A field's test and what it must be, for the error
+type FieldCheck = readonly [is_valid: (value: unknown) => boolean, expected: string]
+type FieldChecks<T> = { [key in keyof T]-?: FieldCheck }
+const is_string = (value: unknown): value is string => typeof value === `string`
+const is_symbol = (value: unknown): boolean => is_string(value) && is_elem_symbol(value)
+const is_pair_of =
+  (is_item: (item: unknown) => boolean) =>
+  (value: unknown): boolean =>
+    Array.isArray(value) && value.length === 2 && value.every(is_item)
+const { string: STRING, object: OBJECT, array: ARRAY } = JSON_KINDS
+
+// raw as a T: an object of only T's fields (failing on others, e.g. a typo like `units` for
+// `unit`), each absent (unless required) or passing its check
+function parse_fields<T extends object>(
+  raw: unknown,
   path: string,
-): void => {
-  const unknown_key = Object.keys(raw).find((key) => !allowed.includes(key))
+  checks: FieldChecks<T>,
+  required: (keyof T)[] = [],
+): T {
+  if (!is_plain_object(raw)) return fail(path, `must be an object`)
+  const unknown_key = Object.keys(raw).find((key) => !Object.hasOwn(checks, key))
   if (unknown_key !== undefined) fail(`${path}.${unknown_key}`, `unknown field`)
-}
-// an optional string field: absent, or a string
-const optional_string = (value: unknown, path: string): string | undefined =>
-  value === undefined || typeof value === `string`
-    ? value
-    : fail(path, `must be a string, got ${JSON.stringify(value)}`)
-
-const FRAME_DATA_KEYS = [
-  `label`,
-  `structure`,
-  `band_data`,
-  `fermi_data`,
-  `band_structs`,
-  `doses`,
-  `phonon`,
-  `scalars`,
-  `status`,
-] as const satisfies (keyof SweepFrameData)[]
-
-// an optional object field: absent, or a plain object
-const object_field = (
-  raw: Record<string, unknown>,
-  key: string,
-  path: string,
-): Record<string, unknown> | undefined => {
-  const data = raw[key]
-  return data === undefined || is_plain_object(data)
-    ? data
-    : fail(`${path}.${key}`, `must be an object`)
+  for (const [key, [is_valid, expected]] of Object.entries<FieldCheck>(checks)) {
+    const value = raw[key]
+    if (value === undefined ? required.some((name) => name === key) : !is_valid(value)) {
+      fail(`${path}.${key}`, `must be ${expected}, got ${JSON.stringify(value)?.slice(0, 80)}`)
+    }
+  }
+  return raw as T
 }
 
-// A record of band structures and one of DOS, all of `type`: plotted in the other's panes,
-// energies would read as frequencies or the reverse
-function normalize_spectra(
-  raw: Record<string, unknown>,
-  path: string,
-  type: `electronic` | `phonon`,
-): SpectraRecords {
-  const band_structs = typed_record(raw, `band_structs`, path, normalize_band_structure, type)
-  const doses = typed_record(raw, `doses`, path, normalize_dos, type)
-  return { ...(band_structs && { band_structs }), ...(doses && { doses }) }
+type RawRecords<Keys extends PropertyKey> = Partial<Record<Keys, Record<string, unknown>>>
+type RawFrameData = { label?: string } & RawRecords<Exclude<keyof SweepFrameData, `label`>>
+// oxfmt-ignore
+const FRAME_FIELDS: FieldChecks<RawFrameData> = {
+  label: STRING, structure: OBJECT, band_data: OBJECT, fermi_data: OBJECT, band_structs: OBJECT,
+  doses: OBJECT, phonon: OBJECT, scalars: OBJECT, status: OBJECT,
 }
 
-// A record field whose entries parse to data of `type`
+// A record whose entries (under `path`) parse to data of `type`
 function typed_record<Value extends { type: string }, Typed extends Value = Value>(
-  raw: Record<string, unknown>,
-  key: string,
+  data: Record<string, unknown> | undefined,
   path: string,
   normalize: (item: unknown) => Value | null,
   type: Typed[`type`],
 ): Record<string, Typed> | undefined {
-  const data = object_field(raw, key, path)
   if (!data) return undefined
   const is_typed = (parsed: Value): parsed is Typed => parsed.type === type
   return Object.fromEntries(
     Object.entries(data).map(([name, item]) => {
-      const item_path = `${path}.${key}.${name}`
-      const parsed = normalize(item) ?? fail(item_path, `unrecognized data`)
+      const parsed = normalize(item) ?? fail(`${path}.${name}`, `unrecognized data`)
       if (is_typed(parsed)) return [name, parsed]
-      return fail(item_path, `must be ${type} data, got ${parsed.type}`)
+      return fail(`${path}.${name}`, `must be ${type} data, got ${parsed.type}`)
     }),
   )
+}
+
+// Band structures and DOS all of `type`: plotted in the other's panes, energies would read as
+// frequencies or the reverse
+function normalize_spectra(
+  raw: RawRecords<keyof SpectraRecords>,
+  path: string,
+  type: `electronic` | `phonon`,
+): SpectraRecords {
+  const band_structs = typed_record(
+    raw.band_structs,
+    `${path}.band_structs`,
+    normalize_band_structure,
+    type,
+  )
+  const doses = typed_record(raw.doses, `${path}.doses`, normalize_dos, type)
+  return { ...(band_structs && { band_structs }), ...(doses && { doses }) }
 }
 
 // A frame's fields besides its value (a loader's result, or a JSON frame's rest), parsed like
 // single files: throws naming the field (under `path`) that is wrong or unknown
 export function normalize_frame_data(raw: unknown, path: string): SweepFrameData {
-  if (!is_plain_object(raw)) return fail(path, `must be an object`)
-  reject_unknown(raw, FRAME_DATA_KEYS, path)
-  const frame: SweepFrameData = normalize_spectra(raw, path, `electronic`)
-  const label = optional_string(raw.label, `${path}.label`)
-  if (label !== undefined) frame.label = label
-  const { structure } = raw
-  if (structure !== undefined) {
+  const { label, structure, band_data, fermi_data, phonon, scalars, status, ...spectra } =
+    parse_fields(raw, path, FRAME_FIELDS)
+  const frame: SweepFrameData = {
+    ...(label !== undefined && { label }),
+    ...normalize_spectra(spectra, path, `electronic`),
+  }
+  if (structure) {
     const parsed = is_structure_like(structure) ? structure_from_json(structure) : undefined
     if (!is_crystal(parsed)) return fail(`${path}.structure`, `needs a periodic structure`)
     frame.structure = parsed
   }
   // the grid and surface parsers name the field that is wrong; prefix where in the sweep
-  const parse = <Value>(
-    key: string,
-    normalize: (data: Record<string, unknown>) => Value,
-  ): Value | undefined => {
-    const data = object_field(raw, key, path)
-    if (!data) return undefined
+  const parse = <Value>(key: string, normalize: () => Value): Value => {
     try {
-      return normalize(data)
+      return normalize()
     } catch (error) {
-      return fail(`${path}.${key}`, error instanceof Error ? error.message : String(error))
+      return fail(`${path}.${key}`, to_error(error).message)
     }
   }
-  const band_data = parse(`band_data`, normalize_band_grid)
-  if (band_data) frame.band_data = band_data
-  const fermi_data = parse(`fermi_data`, normalize_fermi_surface)
-  if (fermi_data) frame.fermi_data = fermi_data
-  const phonon = object_field(raw, `phonon`, path)
+  if (band_data) frame.band_data = parse(`band_data`, () => normalize_band_grid(band_data))
+  if (fermi_data) {
+    frame.fermi_data = parse(`fermi_data`, () => normalize_fermi_surface(fermi_data))
+  }
   if (phonon) {
     const phonon_path = `${path}.phonon`
-    reject_unknown(phonon, [`band_structs`, `doses`, `a2f`], phonon_path)
-    const a2f = typed_record<DosData, PhononDos>(
+    const { a2f, ...phonon_spectra } = parse_fields<RawRecords<keyof PhononSpectra>>(
       phonon,
-      `a2f`,
       phonon_path,
+      { band_structs: OBJECT, doses: OBJECT, a2f: OBJECT },
+    )
+    const a2f_doses = typed_record<DosData, PhononDos>(
+      a2f,
+      `${phonon_path}.a2f`,
       normalize_dos,
       `phonon`,
     )
-    frame.phonon = { ...normalize_spectra(phonon, phonon_path, `phonon`), ...(a2f && { a2f }) }
+    frame.phonon = {
+      ...normalize_spectra(phonon_spectra, phonon_path, `phonon`),
+      ...(a2f_doses && { a2f: a2f_doses }),
+    }
   }
-  const scalars = object_field(raw, `scalars`, path)
   if (scalars) {
     frame.scalars = Object.fromEntries(
       Object.entries(scalars).map(([key, scalar]) =>
@@ -457,18 +450,11 @@ export function normalize_frame_data(raw: unknown, path: string): SweepFrameData
       ),
     )
   }
-  const status = object_field(raw, `status`, path)
   if (status) {
-    reject_unknown(status, [`unstable`, `note`], `${path}.status`)
-    const { unstable } = status
-    if (unstable !== undefined && typeof unstable !== `boolean`) {
-      return fail(`${path}.status.unstable`, `must be a boolean`)
-    }
-    const note = optional_string(status.note, `${path}.status.note`)
-    frame.status = {
-      ...(unstable !== undefined && { unstable }),
-      ...(note !== undefined && { note }),
-    }
+    frame.status = parse_fields<NonNullable<SweepFrame[`status`]>>(status, `${path}.status`, {
+      unstable: JSON_KINDS.boolean,
+      note: STRING,
+    })
   }
   return frame
 }
@@ -480,64 +466,19 @@ function normalize_frame(raw: unknown, path: string): SweepFrame {
   return { value, ...normalize_frame_data(data, path) }
 }
 
-const DESCRIPTOR_KEYS = [
-  `key`,
-  `label`,
-  `unit`,
-  `compute`,
-  `pair`,
-  `element`,
-  `range`,
-  `threshold`,
-  `overlay`,
-] as const satisfies (keyof DescriptorSpec)[]
-const is_computed = (name: unknown): name is ComputedDescriptor =>
-  COMPUTED_DESCRIPTORS.some((computed) => computed === name)
-
-function normalize_descriptor(raw: unknown, idx: number): DescriptorSpec {
-  const path = `descriptors[${idx}]`
-  if (!is_plain_object(raw)) return fail(path, `must be an object`)
-  reject_unknown(raw, DESCRIPTOR_KEYS, path)
-  const { key, label, compute, pair, element, range, threshold, overlay } = raw
-  if (typeof key !== `string` || typeof label !== `string`) {
-    return fail(path, `needs a key and a label`)
-  }
-  const unit = optional_string(raw.unit, `${path}.unit`)
-  const strings = (value: unknown): value is string[] =>
-    Array.isArray(value) && value.every((item) => typeof item === `string`)
-  const is_symbol = (value: unknown): value is ElementSymbol =>
-    typeof value === `string` && is_elem_symbol(value)
-  if (compute !== undefined && !is_computed(compute)) {
-    return fail(`${path}.compute`, `unknown ${JSON.stringify(compute)}`)
-  }
-  const is_pair = (value: unknown): value is [ElementSymbol, ElementSymbol] =>
-    Array.isArray(value) && value.length === 2 && value.every(is_symbol)
-  if (pair !== undefined && !is_pair(pair)) {
-    return fail(`${path}.pair`, `must be two element symbols, got ${JSON.stringify(pair)}`)
-  }
-  if (element !== undefined && !is_symbol(element)) {
-    return fail(`${path}.element`, `must be an element symbol, got ${JSON.stringify(element)}`)
-  }
-  if (range !== undefined && !(strings(range) && range.length === 2)) {
-    return fail(`${path}.range`, `must be two scalar keys`)
-  }
-  if (threshold !== undefined && typeof threshold !== `number`) {
-    return fail(`${path}.threshold`, `must be a number`)
-  }
-  if (overlay !== undefined && !strings(overlay)) {
-    return fail(`${path}.overlay`, `must be descriptor keys`)
-  }
-  return {
-    key,
-    label,
-    ...(unit !== undefined && { unit }),
-    ...(compute !== undefined && { compute }),
-    ...(pair && { pair: [pair[0], pair[1]] }),
-    ...(element !== undefined && { element }),
-    ...(range && { range: [range[0], range[1]] }),
-    ...(threshold !== undefined && { threshold }),
-    ...(overlay && { overlay: [...overlay] }),
-  }
+const DESCRIPTOR_FIELDS: FieldChecks<DescriptorSpec> = {
+  key: STRING,
+  label: STRING,
+  unit: STRING,
+  compute: [
+    (value) => COMPUTED_DESCRIPTORS.some((name) => name === value),
+    `one of ${COMPUTED_DESCRIPTORS.join(`, `)}`,
+  ],
+  pair: [is_pair_of(is_symbol), `two element symbols`],
+  element: [is_symbol, `an element symbol`],
+  range: [is_pair_of(is_string), `two scalar keys`],
+  threshold: JSON_KINDS.number,
+  overlay: [(value) => Array.isArray(value) && value.every(is_string), `descriptor keys`],
 }
 
 // Whether parsed JSON looks like a sweep (an axis and a series list), so a dropped JSON file
@@ -548,42 +489,36 @@ export const is_sweep_like = (raw: unknown): boolean =>
 // A sweep from parsed JSON: structures, band grids, meshed surfaces, band structures and DOS
 // in their JSON forms are normalized like single files. Throws naming the offending path.
 export function normalize_sweep(raw: unknown): Sweep {
-  if (!is_plain_object(raw)) return fail(`root`, `must be an object`)
-  reject_unknown(raw, [`axis`, `series`, `descriptors`], `root`)
-  const { axis, series, descriptors } = raw
-  if (!is_plain_object(axis)) return fail(`axis`, `must be an object`)
-  reject_unknown(axis, [`key`, `label`, `unit`], `axis`)
-  if (!Array.isArray(series)) return fail(`series`, `must be an array`)
-  if (typeof axis.key !== `string` || typeof axis.label !== `string`) {
-    return fail(`axis`, `needs a key and a label`)
-  }
-  const axis_unit = optional_string(axis.unit, `axis.unit`)
+  const root = parse_fields<{ axis: unknown; series: unknown[]; descriptors?: unknown[] }>(
+    raw,
+    `root`,
+    { axis: OBJECT, series: ARRAY, descriptors: ARRAY },
+    [`axis`, `series`],
+  )
   const sweep: Sweep = {
-    axis: {
-      key: axis.key,
-      label: axis.label,
-      ...(axis_unit !== undefined && { unit: axis_unit }),
-    },
-    series: series.map((entry, series_idx) => {
+    axis: parse_fields<SweepAxis>(
+      root.axis,
+      `axis`,
+      { key: STRING, label: STRING, unit: STRING },
+      [`key`, `label`],
+    ),
+    series: root.series.map((entry, series_idx) => {
       const path = `series[${series_idx}]`
-      if (!is_plain_object(entry) || !Array.isArray(entry.frames)) {
-        return fail(path, `needs an id and a frames array`)
-      }
-      reject_unknown(entry, [`id`, `label`, `frames`], path)
-      return {
-        id: typeof entry.id === `string` ? entry.id : fail(path, `needs a string id`),
-        ...(entry.label !== undefined && {
-          label: optional_string(entry.label, `${path}.label`),
-        }),
-        frames: entry.frames.map((frame, frame_idx) =>
-          normalize_frame(frame, `${path}.frames[${frame_idx}]`),
-        ),
-      }
+      const { frames, ...rest } = parse_fields<{
+        id: string
+        label?: string
+        frames: unknown[]
+      }>(entry, path, { id: STRING, label: STRING, frames: ARRAY }, [`id`, `frames`])
+      const parsed = frames.map((frame, idx) =>
+        normalize_frame(frame, `${path}.frames[${idx}]`),
+      )
+      return { ...rest, frames: parsed }
     }),
   }
-  if (descriptors !== undefined) {
-    if (!Array.isArray(descriptors)) return fail(`descriptors`, `must be an array`)
-    sweep.descriptors = descriptors.map((spec, idx) => normalize_descriptor(spec, idx))
+  if (root.descriptors) {
+    sweep.descriptors = root.descriptors.map((spec, idx) =>
+      parse_fields(spec, `descriptors[${idx}]`, DESCRIPTOR_FIELDS, [`key`, `label`]),
+    )
   }
   validate_sweep(sweep)
   return sweep

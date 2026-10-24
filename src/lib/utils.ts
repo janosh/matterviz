@@ -7,6 +7,15 @@ export const is_plain_object = (value: unknown): value is Record<string, unknown
   return prototype === Object.prototype || prototype === null
 }
 
+// JSON value kinds for input validation: each kind's test and the phrase its errors use
+export const JSON_KINDS = {
+  string: [(value: unknown) => typeof value === `string`, `a string`],
+  number: [Number.isFinite, `a finite number`],
+  boolean: [(value: unknown) => typeof value === `boolean`, `a boolean`],
+  array: [Array.isArray, `an array`],
+  object: [is_plain_object, `an object`],
+} as const satisfies Record<string, readonly [(value: unknown) => boolean, string]>
+
 // Clamp a number to the [0, 1] range.
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
 

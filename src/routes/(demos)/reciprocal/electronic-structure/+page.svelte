@@ -1,7 +1,6 @@
 <script lang="ts">
   import { open_material } from '#lib'
   import type { BandGridData } from '#lib/fermi-surface/index.js'
-  import type { ElectronicPane } from '#lib/spectral/index.js'
   import { band_grid_dos, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
   import { ElectronicStructure, normalize_band_structure } from '#lib/spectral/index.js'
   import { is_structure_like, structure_from_json } from '#lib/structure/parse.js'
@@ -52,14 +51,6 @@
   const cu_sweep = $derived(
     band_data && cu_pressure_sweep({ structure, band_data, band_struct }),
   )
-  const sweep_panes: ElectronicPane[] = [
-    `structure`,
-    `fermi`,
-    `trends`,
-    `bands`,
-    `dos`,
-    `phonon`,
-  ]
 </script>
 
 <svelte:head>
@@ -82,7 +73,7 @@
 {#if error_msg}
   <p style="color: var(--error-color, crimson)">{error_msg}</p>
 {:else if band_data}
-  {@const fermi_energy = band_data.fermi_energy}
+  {@const { fermi_energy } = band_data}
   <ElectronicStructure
     {structure}
     {band_data}
@@ -116,10 +107,10 @@
 </p>
 
 {#if cu_sweep && band_data}
-  {@const fermi_energy = band_data.fermi_energy}
+  {@const { fermi_energy } = band_data}
   <ElectronicStructure
     sweep={cu_sweep}
-    panes={sweep_panes}
+    panes={[`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`]}
     fermi_props={{ show_controls: `hover` }}
     bands_props={{
       y_axis: { label: `Energy (eV)`, range: [fermi_energy - 6, fermi_energy + 6] },

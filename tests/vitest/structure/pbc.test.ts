@@ -7,7 +7,7 @@ import {
   get_pbc_image_sites,
   wrap_to_unit_cell,
 } from '#lib/structure/pbc.js'
-import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
+import type { ImageAtom, ImageAtomCompletion } from '#lib/structure/pbc.js'
 import { DEFAULTS } from '#lib/settings.js'
 import {
   electroneg_ratio,
@@ -27,7 +27,13 @@ import nacl_poscar from '#site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '#site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
 import { describe, expect, test } from 'vitest'
-import { fcc_primitive_matrix, image_options, make_crystal } from '../test-fixtures'
+import {
+  fcc_primitive_matrix,
+  image_options,
+  make_crystal,
+  make_srtio3,
+  SRTIO3_A,
+} from '../test-fixtures'
 
 const mp_1_struct = structure_map.get(`mp-1`) as Crystal
 const mp_2_struct = structure_map.get(`mp-2`) as Crystal
@@ -121,7 +127,7 @@ function assert_integer_translation(orig_abc: Vec3, image_abc: Vec3, tol: number
 
 function validate_image_tuples(
   structure: Crystal,
-  image_atoms: [number, Vec3, Vec3, boolean?][],
+  image_atoms: ImageAtom[],
   opts?: { min_dist?: number; tol?: number },
 ): void {
   const { min_dist = 0.01, tol = 1e-8 } = opts ?? {}
@@ -142,49 +148,28 @@ function validate_image_tuples(
 }
 
 // SrTiO3 with Ti on the corners: every corner copy of Ti needs its 6 O, 24 of them beyond the
-// faces. With Ti in the body center its octahedron sits inside the cell, and only bonds of the
-// face O reach across to Ti. fcc Cu has no polyhedra at all, only metal bonds of the corner Cu.
-const srtio3_ti_corner = () =>
-  make_crystal(3.905, [
-    [`Ti`, [0, 0, 0]],
-    [`Sr`, [0.5, 0.5, 0.5]],
-    [`O`, [0.5, 0, 0]],
-    [`O`, [0, 0.5, 0]],
-    [`O`, [0, 0, 0.5]],
-  ])
+// faces. With Ti in the body center only bonds of the face O reach across to Ti. fcc Cu has no
+// polyhedra at all, only metal bonds of the corner Cu.
 const completion_fixtures = {
-  srtio3_ti_corner,
-  srtio3_ti_body: () =>
-    make_crystal(3.905, [
-      [`Sr`, [0, 0, 0]],
-      [`Ti`, [0.5, 0.5, 0.5]],
-      [`O`, [0.5, 0.5, 0]],
-      [`O`, [0.5, 0, 0.5]],
-      [`O`, [0, 0.5, 0.5]],
-    ]),
+  srtio3_ti_corner: () => make_srtio3(`corner`),
+  srtio3_ti_body: () => make_srtio3(`body`),
   cu_fcc: () => make_crystal(fcc_primitive_matrix(3.61), [[`Cu`, [0, 0, 0]]]),
 }
 // The modes nest: none adds nothing, polyhedra the corners of drawn polyhedra, boundary
-// those plus every bond partner of a face atom
+// those plus every bond partner of a face atom. Default completion stamps every site once it
+// judged polyhedra; metals in anion mode have none to judge (no bond search), so they stay
+// unstamped and keep the max-CN rule.
 test.each([
-  [`srtio3_ti_corner`, { polyhedra: { O: 24 }, boundary: { O: 24 }, none: {} }],
-  [`srtio3_ti_body`, { polyhedra: {}, boundary: { Ti: 6 }, none: {} }],
-  [`cu_fcc`, { polyhedra: {}, boundary: { Cu: 12 }, none: {} }],
-] as const)(`completion modes on %s`, (name, expected) => {
+  [`srtio3_ti_corner`, { polyhedra: { O: 24 }, boundary: { O: 24 }, none: {} }, true],
+  [`srtio3_ti_body`, { polyhedra: {}, boundary: { Ti: 6 }, none: {} }, true],
+  [`cu_fcc`, { polyhedra: {}, boundary: { Cu: 12 }, none: {} }, false],
+] as const)(`completion modes on %s`, (name, expected, stamped) => {
   const structure = completion_fixtures[name]()
   for (const completion of COMPLETIONS) {
     expect(completion_counts(structure, completion), completion).toEqual(expected[completion])
     expect(completion_problems(structure, completion)).toEqual(NO_PROBLEMS)
   }
-})
-
-// Completion stamps every site once it judged polyhedra; metals in anion mode have none to
-// judge (no bond search), so they stay unstamped and keep the max-CN rule
-test.each([
-  [`srtio3_ti_corner`, true],
-  [`cu_fcc`, false],
-] as const)(`%s carries polyhedron stamps: %s`, (name, stamped) => {
-  const { sites } = get_pbc_image_sites(completion_fixtures[name](), image_options())
+  const { sites } = get_pbc_image_sites(structure, image_options())
   const stamps = sites.map((site) => site.provenance?.polyhedron_center)
   expect(stamps.every((stamp) => (stamp === undefined) !== stamped)).toBe(true)
 })
@@ -219,12 +204,12 @@ test.each(
 })
 
 test(`completion images carry provenance, phase-1 face images do not`, () => {
-  const structure = srtio3_ti_corner()
+  const structure = make_srtio3(`corner`)
   const image_atoms = find_image_atoms(structure, image_options())
   // the O copy at x=-0.5 completes the octahedron of the base corner Ti
   const completing = image_atoms.find(
     ([site_idx, img_xyz]) =>
-      site_idx === 2 && euclidean_dist(img_xyz, [-3.905 / 2, 0, 0]) < 1e-6,
+      site_idx === 2 && euclidean_dist(img_xyz, [-SRTIO3_A / 2, 0, 0]) < 1e-6,
   )
   expect(completing?.[3]).toBe(true)
   const boundary = image_atoms.filter(([site_idx]) => site_idx === 0)
@@ -639,8 +624,7 @@ describe(`wrap_to_unit_cell`, () => {
 test(`find_image_atoms skips image generation along non-periodic axes (slab)`, () => {
   // Corner atom in a fully periodic cell generates images along all 3 dims. Counts are of
   // phase-1 images: phase 2 also completes the drawn 5 Å Na-Na bonds, but never across vacuum.
-  const is_boundary_image = ([, , , is_completion]: [number, Vec3, Vec3, boolean?]) =>
-    !is_completion
+  const is_boundary_image = ([, , , is_completion]: ImageAtom) => !is_completion
   const periodic = make_crystal(5, [[`Na`, [0, 0, 0]]])
   const periodic_images = find_image_atoms(periodic, image_options()).filter(is_boundary_image)
   expect(periodic_images).toHaveLength(7) // 2^3 - 1 corner images

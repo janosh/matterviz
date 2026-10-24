@@ -28,6 +28,7 @@ import {
   init_moyo_for_tests,
   make_crystal,
   make_rocksalt,
+  make_srtio3,
 } from '../test-fixtures'
 
 type Host = {
@@ -364,13 +365,7 @@ describe(`symmetry-aware display`, () => {
 it(`switching image_atom_completion rebuilds the displayed atoms`, () => {
   const { host, session } = make_session({
     show_image_atoms: true,
-    structure: make_crystal(3.905, [
-      [`Sr`, [0, 0, 0]],
-      [`Ti`, [0.5, 0.5, 0.5]],
-      [`O`, [0.5, 0.5, 0]],
-      [`O`, [0.5, 0, 0.5]],
-      [`O`, [0, 0.5, 0.5]],
-    ]),
+    structure: make_srtio3(`body`),
   })
   const completion_elements = () =>
     (session.displayed_structure?.sites ?? [])
@@ -392,13 +387,7 @@ it(`switching image_atom_completion rebuilds the displayed atoms`, () => {
 it(`changing the polyhedra options rebuilds the completion copies`, () => {
   const { host, session } = make_session({
     show_image_atoms: true,
-    structure: make_crystal(3.905, [
-      [`Ti`, [0, 0, 0]],
-      [`Sr`, [0.5, 0.5, 0.5]],
-      [`O`, [0.5, 0, 0]],
-      [`O`, [0, 0.5, 0]],
-      [`O`, [0, 0, 0.5]],
-    ]),
+    structure: make_srtio3(`corner`),
     // the live options reach completion: a JSON round trip would turn the cap into null
     polyhedra_options: { max_neighbors: Infinity },
   })

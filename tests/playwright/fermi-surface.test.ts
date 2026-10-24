@@ -3,6 +3,7 @@
 // Every test fails on a console/page error, navigation and first render included.
 import { expect, type Locator, type Page } from '@playwright/test'
 import {
+  drag_canvas,
   drop_file,
   expect_combined_fullscreen,
   IS_CI,
@@ -220,23 +221,14 @@ test(
     // fullscreen scenes still sit side by side (pick_pane_orientation)
     await page.setViewportSize({ width: 1600, height: 1000 })
     await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
-    const container = page.locator(`.electronic-structure:not(.sweep-demo)`)
+    const viewer = `.electronic-structure:not(.sweep-demo)`
+    const container = page.locator(viewer)
     const [structure_canvas, fermi_canvas] = await Promise.all(
       [`.structure`, VIEWER].map((panel) =>
-        wait_for_3d_canvas(
-          page,
-          `.electronic-structure:not(.sweep-demo) ${panel}`,
-          LOAD_TIMEOUT,
-        ),
+        wait_for_3d_canvas(page, `${viewer} ${panel}`, LOAD_TIMEOUT),
       ),
     )
-    const drag_structure = async () => {
-      const { x, y, width, height } = await require_bbox(structure_canvas)
-      await page.mouse.move(x + width / 3, y + height / 3)
-      await page.mouse.down()
-      await page.mouse.move(x + width / 3 + 120, y + height / 3 + 40, { steps: 8 })
-      await page.mouse.up()
-    }
+    const drag_structure = () => drag_canvas(structure_canvas, { dx: 120, dy: 40, steps: 8 })
     // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on).
     // The gizmo shows only while its viewer is hovered, so the pointer rests on an empty corner.
     const settled_handles = async () => {
@@ -288,12 +280,10 @@ test(
     // the divider between bands and DOS resizes them
     const spectra_divider = container.locator(`.spectra > .pane-divider`)
     const [divider_box, dos_width] = [await require_bbox(spectra_divider), dos_box.width]
-    await page.mouse.move(
-      divider_box.x + divider_box.width / 2,
-      dos_box.y + dos_box.height / 2,
-    )
+    const mid_y = dos_box.y + dos_box.height / 2
+    await page.mouse.move(divider_box.x + divider_box.width / 2, mid_y)
     await page.mouse.down()
-    await page.mouse.move(divider_box.x - 100, dos_box.y + dos_box.height / 2, { steps: 5 })
+    await page.mouse.move(divider_box.x - 100, mid_y, { steps: 5 })
     await page.mouse.up()
     await expect
       .poll(async () => (await require_bbox(dos)).width)
