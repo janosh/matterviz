@@ -1387,6 +1387,89 @@ test(`a compared series loads through the same frame cache, window and aborts`, 
   expect(side_labels(root)).toEqual([`fcc · fcc 1`, `bcc · bcc 0`])
 })
 
+// === background fill of the trends plot ===
+// Six frames with only structures and their supplied tc up front, their DOS (thus the
+// computed N(E_F)) from a loader whose loads settle when the test says
+function fill_setup(props: Partial<ComponentProps<typeof ElectronicStructure>> = {}) {
+  const calls: { idx: number; signal: AbortSignal; resolve: () => void }[] = []
+  const load_frame = vi.fn(
+    (_series_id: string, frame_idx: number, { signal }: { signal: AbortSignal }) =>
+      new Promise<Partial<SweepFrame>>((resolve) => {
+        const density = frame_idx + 1
+        const data = { doses: { total: { ...dos, densities: [0, density, density, 0] } } }
+        calls.push({ idx: frame_idx, signal, resolve: () => resolve(data) })
+      }),
+  )
+  const frames = Array.from({ length: 6 }, (_, idx) => ({
+    value: 50 * idx,
+    structure,
+    scalars: { tc: idx },
+  }))
+  const state = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep: { ...make_sweep(), series: [{ id: `fcc`, frames }], load_frame },
+    frame_idx: 0,
+    descriptor: `n_ef`,
+    panes: ALL_PANES,
+    ...props,
+  })
+  const root = mount_host(state)
+  const settle = async (...indices: number[]) => {
+    for (const call of calls) if (indices.includes(call.idx)) call.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    flushSync()
+  }
+  const note = () => root.querySelector(`.trends-fill`)?.textContent?.trim() ?? null
+  const loaded = () => calls.map(({ idx }) => idx)
+  return { state, root, calls, settle, note, loaded }
+}
+
+test(`the trends pane fills a computed descriptor's unloaded frames one by one, after the shown window`, async () => {
+  const { state, calls, settle, note, loaded } = fill_setup()
+  // the window first (the first frame has no previous one), nothing else
+  expect([loaded(), note()]).toEqual([[0, 1], `0/6`])
+  await settle(0, 1)
+  expect([loaded(), note()]).toEqual([[0, 1, 2], `2/6`]) // then one frame, in index order
+  // stepping starts the new window's loads at once, the fill keeps running
+  state.frame_idx = 4
+  flushSync()
+  expect([loaded(), calls[2].signal.aborted]).toEqual([[0, 1, 2, 4, 5, 3], false])
+  await settle(2)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 4, 5, 3], `3/6`]) // no fill while 4, 5, 3 load
+  // the filled frame was evicted (no DOS kept) with its value
+  const [series, frame_of] = [state.sweep?.series[0], viewers.trends?.frame_of]
+  if (!series || !frame_of) throw new Error(`no trends`)
+  const filled = frame_of(series, 2)
+  expect([filled.doses, filled.scalars?.n_ef]).toEqual([undefined, 3])
+  await settle(4, 5, 3)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 4, 5, 3], null]) // all six filled: done
+})
+
+// A new sweep (or loader) starts a fresh cache: the old one's fill is aborted with its loads
+// and the new one loads its window again before any fill
+// oxfmt-ignore
+test.each<[string, (props: ComponentProps<typeof ElectronicStructure>) => void, number[]]>([
+  [`the trends pane hides`, (props) => (props.panes = [`structure`, `dos`]), []],
+  [`the descriptor turns to a supplied one`, (props) => (props.descriptor = `tc`), []],
+  [`the sweep changes`, (props) => (props.sweep = props.sweep && { ...props.sweep }), [0, 1]],
+])(`the fill stops when %s`, async (_desc, change, reloads) => {
+  const { state, calls, settle, note, loaded } = fill_setup()
+  await settle(0, 1)
+  expect(loaded()).toEqual([0, 1, 2])
+  change(state)
+  flushSync()
+  expect([calls[2].signal.aborted, loaded()]).toEqual([true, [0, 1, 2, ...reloads]])
+  if (reloads.length > 0) return
+  await settle(2)
+  expect([loaded(), note()]).toEqual([[0, 1, 2], null])
+})
+
+test(`a supplied descriptor's frames need no fill`, async () => {
+  const { settle, note, loaded } = fill_setup({ descriptor: `tc` })
+  expect(note()).toBeNull()
+  await settle(0, 1)
+  expect(loaded()).toEqual([0, 1])
+})
+
 test(`compared scenes share one rotation link, all four turning together`, () => {
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
     sweep: make_sweep(),

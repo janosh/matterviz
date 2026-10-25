@@ -13,6 +13,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
+  import { html_to_text } from '#lib/utils.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {
@@ -24,8 +25,8 @@
   import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
-    frequency_unit_label,
     parse_frequency_unit,
+    spectral_value_label,
   } from '#lib/spectral/frequency-units.js'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import {
@@ -450,7 +451,7 @@
   let mode_overlay = $derived.by((): { markers: ModeValueMarker[]; error?: string } => {
     const band_structure = structures[0]?.bs
     if (!mode_values || !band_structure) return { markers: [] }
-    const { label } = mode_values
+    const label = html_to_text(mode_values.label) // notices are plain text
     const lattice = band_structure.recip_lattice ?? k_lattice
     if (!lattice) {
       return {
@@ -531,8 +532,7 @@
   let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
   const internal_y_axis = $derived<AxisConfig>({
-    label:
-      band_type === `phonon` ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
+    label: spectral_value_label(band_type === `phonon`, unit),
     format: `.2f`,
     range: y_range,
     ...y_axis,

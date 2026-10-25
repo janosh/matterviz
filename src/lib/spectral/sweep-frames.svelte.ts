@@ -9,6 +9,10 @@
 // outside it and the RECENT_FRAMES last shown ones drop their heavy data, keeping only the light
 // fields the trends plot reads (see light_data). A dropped or aborted frame loads again when
 // requested.
+// A background frame (fill: e.g. the trends plot's frames without a value yet) loads through the
+// same cache at the lowest priority: started only while no window frame is loading, never
+// aborted for being outside the windows while it is the background frame, and evicted like any
+// frame outside them once loaded, keeping its light fields.
 import { untrack } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { to_error } from 'svelte-widgets/utils'
@@ -23,6 +27,8 @@ export const RECENT_FRAMES = 4
 
 // A series and the indices of its frames to load: the shown frame first, then its neighbours
 export type FrameWindow = [SweepSeries, [number, ...number[]]]
+// One frame of a series by index
+export type FrameRef = [SweepSeries, number]
 
 // A frame's load. `data` is the loader's result, only its light fields once evicted (also
 // while loading again or after a failed reload, so the trends plot keeps its points).
@@ -92,6 +98,9 @@ export function create_sweep_frames(inputs: {
     loader: inputs.sweep()?.load_frame,
     entries: new SvelteMap<SweepFrame, FrameEntry>(),
     recent: [] as SweepFrame[], // the last shown frames, most recent first
+    // the last request's window frames (none before the first request)
+    in_window: new Set<SweepFrame>(),
+    background: undefined as SweepFrame | undefined, // the frame load_background loads
   })
   // a replaced cache (new sweep or loader) and unmounting abort the loads still running
   $effect(() => {
@@ -130,25 +139,15 @@ export function create_sweep_frames(inputs: {
       )
   }
 
-  // Abort loads outside the windows, evict loaded frames outside them and the recent ones, then
-  // start the windows' loads (the shown frames first)
-  const show = (current: typeof cache, windows: FrameWindow[]): void => {
-    const { entries } = current
-    const valid = windows.map(([series, window]) => ({
-      series,
-      indices: window.filter((idx) => in_range(series, idx)),
-      shown: in_range(series, window[0]) ? series.frames[window[0]] : undefined,
-    }))
-    const in_window = new Set(
-      valid.flatMap(({ series, indices }) => indices.map((idx) => series.frames[idx])),
-    )
-    const shown = valid.flatMap((entry) => (entry.shown ? [entry.shown] : []))
-    const older = current.recent.filter((frame) => !shown.includes(frame))
-    current.recent = [...shown, ...older].slice(0, RECENT_FRAMES)
+  // Abort loads outside the windows (the background frame's excepted), evict loaded frames
+  // outside them and the recent ones
+  const release = (current: typeof cache): void => {
+    const { entries, in_window, background } = current
     const descriptors = inputs.sweep()?.descriptors ?? []
     for (const [base, entry] of entries) {
       if (in_window.has(base)) continue
       if (entry.state === `loading`) {
+        if (base === background) continue
         entry.controller.abort()
         if (entry.data) entries.set(base, { state: `evicted`, data: entry.data })
         else entries.delete(base)
@@ -159,6 +158,23 @@ export function create_sweep_frames(inputs: {
         })
       }
     }
+  }
+
+  // Make the windows the loaded frames (see release), then start their loads (the shown
+  // frames first)
+  const show = (current: typeof cache, windows: FrameWindow[]): void => {
+    const valid = windows.map(([series, window]) => ({
+      series,
+      indices: window.filter((idx) => in_range(series, idx)),
+      shown: in_range(series, window[0]) ? series.frames[window[0]] : undefined,
+    }))
+    current.in_window = new Set(
+      valid.flatMap(({ series, indices }) => indices.map((idx) => series.frames[idx])),
+    )
+    const shown = valid.flatMap((entry) => (entry.shown ? [entry.shown] : []))
+    const older = current.recent.filter((frame) => !shown.includes(frame))
+    current.recent = [...shown, ...older].slice(0, RECENT_FRAMES)
+    release(current)
     // each window's first frame, then each window's second and so on
     const depth = Math.max(...valid.map(({ indices }) => indices.length))
     for (let rank = 0; rank < depth; rank++) {
@@ -184,6 +200,13 @@ export function create_sweep_frames(inputs: {
     },
     is_loading: (series: SweepSeries, idx: number): boolean =>
       cache.entries.get(series.frames[idx])?.state === `loading`,
+    // Whether the frame's load settled once: loaded, failed, or loaded and since evicted (its
+    // light fields kept), so loading it again would add no light field. True without a loader.
+    is_settled(series: SweepSeries, idx: number): boolean {
+      if (!cache.loader || !in_range(series, idx)) return true
+      const entry = cache.entries.get(series.frames[idx])
+      return entry !== undefined && (entry.state !== `loading` || entry.data !== undefined)
+    },
     // Make the windows' frames (one window per shown series, each its shown frame first, then
     // the neighbours to prefetch; indices outside the series are skipped) the loaded frames:
     // start each one's load unless it is loaded, loading or failed, abort the others' loads
@@ -197,6 +220,23 @@ export function create_sweep_frames(inputs: {
         for (const idx of window) void series.frames[idx]
       }
       untrack(() => show(current, windows))
+    },
+    // Load `target` in the background (none: stop), one frame at a time at the lowest priority:
+    // it starts once a request named the windows and none of their frames is loading, and is
+    // not aborted for being outside them. A previous background frame is released like any
+    // frame outside the windows: aborted while loading, evicted once loaded. Call from an
+    // effect, which reruns when the windows' loads settle so a waiting target starts then.
+    load_background(target?: FrameRef): void {
+      const current = cache
+      const base = target && in_range(...target) ? target[0].frames[target[1]] : undefined
+      const busy = [...current.in_window].some(
+        (frame) => current.entries.get(frame)?.state === `loading`,
+      )
+      untrack(() => {
+        current.background = base
+        release(current)
+        if (target && base && current.in_window.size > 0 && !busy) start(current, ...target)
+      })
     },
   }
 }

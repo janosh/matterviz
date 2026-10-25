@@ -4,12 +4,12 @@
 // Birch–Murnaghan equation of state at that volume with B₀ = 140 GPa and B₀′ = 5 (near Cu's
 // measured values). Each frame's DOS is computed from its scaled band grid. The phonons are a
 // nearest-neighbour central-force model of fcc (maximum 7.25 THz at ambient, near Cu's) whose
-// frequencies stiffen as (V/V₀)^−γ with Grüneisen γ = 2, and α²F(ω) is the phonon DOS scaled
-// to λ = 0.13 at ambient, falling as 1/ω² under compression. The mode-resolved coupling λ_qν
-// on the DOS's q grid is the one that α²F implies: λ_qν ω_qν constant (α²F ∝ F), averaging to
-// λ. A second series puts the same volumes at a stiffer equation of state's pressures (B₀ =
-// 180 GPa), so at one pressure it shows a less compressed cell. Illustrative only: no frame is
-// the result of a calculation at its pressure.
+// frequencies stiffen as (V/V₀)^−γ with Grüneisen γ = 2, and α²F(ω) = α²(ω) F(ω) with a mildly
+// falling coupling α²(ω) ∝ ω^−½, scaled to λ = 0.13 at ambient and falling as 1/ω² under
+// compression. The mode-resolved coupling λ_qν on the DOS's q grid is the one that α²F implies:
+// λ_qν ∝ α²(ω_qν)/ω_qν, averaging to λ. A second series puts the same volumes at a stiffer
+// equation of state's pressures (B₀ = 180 GPa), so at one pressure it shows a less compressed
+// cell. Illustrative only: no frame is the result of a calculation at its pressure.
 import { eos_pressure } from '#lib/eos/fit.js'
 import type { EosParams } from '#lib/eos/fit.js'
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
@@ -123,6 +123,11 @@ export const CU_SWEEP_DESCRIPTORS: DescriptorSpec[] = [
 export const CU_MAX_PHONON_THZ = 7.25
 export const CU_GRUNEISEN = 2
 export const CU_LAMBDA = 0.13 // electron–phonon coupling at ambient
+// p of the model's coupling α²(ω) ∝ ω^−p. A frequency-independent α² (p = 0) would make α²F a
+// scaled copy of F, indistinguishable from the phonon DOS on its own axis. A small p shifts
+// α²F's weight from the longitudinal peak towards the softer transverse modes while keeping
+// its shape recognisably F's. Illustrative, not fitted to Cu.
+export const CU_COUPLING_EXPONENT = 0.5
 const KELVIN_PER_THZ = 47.9924 // h · 1 THz / k_B
 
 // Eigenvalues of a real symmetric 3×3 matrix in ascending order, in closed form (Smith 1961)
@@ -170,12 +175,14 @@ const model_frequencies = (neighbors: Vec3[], q_vec: Vec3): Vec3 => {
   return symmetric_eigenvalues(matrix).map((val) => Math.sqrt(Math.max(val, 0))) as Vec3
 }
 
-export const CU_LAMBDA_QNU_LABEL = `λ_qν`
+export const CU_LAMBDA_QNU_LABEL = `λ<sub>qν</sub>`
 
 // The model's ambient dispersion along the band structure's path, its DOS (THz, ∫F = 3 modes
 // per cell) from a 20³ q grid, Gaussian-smeared by 0.1 THz, and λ_qν on that grid (q-points in
-// the band structure's reciprocal basis): C/ω_qν with C setting the grid mean of Σ_ν λ_qν to
-// CU_LAMBDA, NaN at Γ, whose acoustic modes are zero
+// the band structure's reciprocal basis). α²F(ω) = (1/2N_q) Σ_qν λ_qν ω_qν δ(ω − ω_qν) and
+// α²F = α²(ω) F(ω) give λ_qν = 2 α²(ω_qν)/ω_qν, so λ_qν = C ω_qν^−(1+p) with C setting the grid
+// mean of Σ_ν λ_qν to CU_LAMBDA, as eliashberg_function scales α²F's λ. NaN at Γ, whose
+// acoustic modes are zero.
 export function cu_phonons(
   structure: Crystal,
   band_struct: BaseBandStructure,
@@ -225,16 +232,20 @@ export function cu_phonons(
     }
   }
   const grid_thz = grid.map((raw) => raw * to_thz)
-  // λ_qν = C/ω_qν averaging (over q, summed over ν) to CU_LAMBDA
-  const inverse_sum = grid_thz.reduce((sum, freq) => sum + 1 / freq, 0)
-  const coupling_scale = (CU_LAMBDA * grid_qpoints.length) / inverse_sum
+  // λ_qν = C ω_qν^−(1+p) averaging (over q, summed over ν) to CU_LAMBDA
+  const mode_coupling = (freq: number) => freq ** -(1 + CU_COUPLING_EXPONENT)
+  const coupling_sum = grid_thz.reduce((sum, freq) => sum + mode_coupling(freq), 0)
+  const coupling_scale = (CU_LAMBDA * grid_qpoints.length) / coupling_sum
   const per_qpoint = (values: number[]) =>
     grid_qpoints.map((_, q_idx) => values.slice(3 * q_idx, 3 * q_idx + 3))
   const mode_values: ModeValues = {
     label: CU_LAMBDA_QNU_LABEL,
     qpoints: [[0, 0, 0], ...grid_qpoints],
     frequencies: [[0, 0, 0], ...per_qpoint(grid_thz)],
-    values: [[NaN, NaN, NaN], ...per_qpoint(grid_thz.map((freq) => coupling_scale / freq))],
+    values: [
+      [NaN, NaN, NaN],
+      ...per_qpoint(grid_thz.map((freq) => coupling_scale * mode_coupling(freq))),
+    ],
   }
   const { qpoints, branches, labels_dict, distance } = band_struct
   return {
@@ -263,10 +274,21 @@ const integrate = (dos: PhononDos, kernel: (freq: number) => number): number => 
 }
 const coupling = (a2f: PhononDos): number => 2 * integrate(a2f, (freq) => 1 / freq)
 
-// α²F(ω) of shape F(ω) scaled to coupling `lambda`
-export function eliashberg_function(dos: PhononDos, lambda: number): PhononDos {
-  const factor = lambda / coupling(dos)
-  return { ...dos, densities: dos.densities.map((density) => density * factor) }
+// α²F(ω) = α²(ω) F(ω) with α²(ω) ∝ ω^−exponent, scaled to coupling `lambda`. Rescaling the
+// frequencies by s rescales α²F's frequency axis alone, so λ's 1/ω² law and ω_log ∝ ω hold.
+export function eliashberg_function(
+  dos: PhononDos,
+  lambda: number,
+  exponent: number,
+): PhononDos {
+  const shaped: PhononDos = {
+    ...dos,
+    densities: dos.densities.map(
+      (density, idx) => density * dos.frequencies[idx] ** -exponent,
+    ),
+  }
+  const factor = lambda / coupling(shaped)
+  return { ...shaped, densities: shaped.densities.map((density) => density * factor) }
 }
 
 // λ and the Allen–Dynes frequency moments ω_log = exp((2/λ) ∫ α²F ln ω / ω dω) and
@@ -283,7 +305,8 @@ export function eliashberg_moments(a2f: PhononDos): {
 }
 
 // The phonon spectra and electron–phonon scalars of the frame at volume ratio V/V₀ (cell
-// scaled by lattice_scale): frequencies × (V/V₀)^−γ, λ and every λ_qν ∝ 1/ω²
+// scaled by lattice_scale): frequencies × (V/V₀)^−γ, λ and every λ_qν ∝ 1/ω² (α²F and λ_qν
+// keep their shapes in ω/ω_max, so λ_qν's grid mean stays the frame's λ)
 export function cu_frame_phonons(
   ambient: ReturnType<typeof cu_phonons>,
   volume_ratio: number,
@@ -295,7 +318,7 @@ export function cu_frame_phonons(
     frequencies: ambient.dos.frequencies.map((freq) => freq * stiffening),
     densities: ambient.dos.densities.map((density) => density / stiffening),
   }
-  const a2f = eliashberg_function(dos, CU_LAMBDA / stiffening ** 2)
+  const a2f = eliashberg_function(dos, CU_LAMBDA / stiffening ** 2, CU_COUPLING_EXPONENT)
   return {
     phonon: {
       band_structs: {

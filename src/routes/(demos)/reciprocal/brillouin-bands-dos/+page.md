@@ -20,7 +20,6 @@ This example uses bands and DOS from different materials.
   band_structs={{ '': electronic_bands.cao_2605 }}
   doses={{ '': total_dos }}
   structure={structure_map.get('mp-1')}
-  bands_props={{ y_axis: { label: 'Energy (eV)' } }}
   dos_props={{ y_axis: { label: '' } }}
   class="full-bleed"
   style="margin-block: 1em 2em"

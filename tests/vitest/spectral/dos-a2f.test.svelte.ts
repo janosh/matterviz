@@ -2,7 +2,7 @@
 import type { DataSeries } from '#lib/plot/index.js'
 import type ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import Dos from '#lib/spectral/Dos.svelte'
-import type { PhononDos } from '#lib/spectral/types.js'
+import type { ElectronicDos, PhononDos } from '#lib/spectral/types.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 
@@ -58,3 +58,31 @@ test.each([
     expect(mev.curve[freq_axis]).toEqual(mev.dos_curve[freq_axis])
   },
 )
+
+// A pinned top/bottom padding (BandsAndDos' shared one) grows to fit the titles along it, as
+// auto padding would: tick row 16 + gap 20 + the title's lines past their first's centre
+// (+ 10 per line of 20) + 4 air, i.e. 50 for one line, 70 for two
+const electronic: ElectronicDos = {
+  type: `electronic`,
+  energies: [0, 1],
+  densities: [1, 1],
+  efermi: 0.5,
+}
+// oxfmt-ignore
+test.each<[string, Partial<ComponentProps<typeof Dos>>, object | undefined]>([
+  [`α²F along the top`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 50, b: 50 }],
+  [`α²F on the right`, { a2f: { 'α²F': a2f }, orientation: `vertical`, padding: { t: 20, b: 50 } }, { t: 20, b: 50 }],
+  [`no α²F`, { orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 20, b: 50 }],
+  [`a larger pin`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { t: 80, b: 90 } }, { t: 80, b: 90 }],
+  [`unpinned sides`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { l: 15 } }, { l: 15 }],
+  [`no padding`, { a2f: { 'α²F': a2f }, orientation: `horizontal` }, undefined],
+  [`a two-line electron DOS title`, { doses: { total: electronic }, orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 20, b: 70 }],
+])(`a pinned padding fits the titles: %s`, (_desc, extra, expected) => {
+  const component = mount(Dos, {
+    target: document.body,
+    props: { doses: { 'phonon DOS': phonon_dos }, ...extra },
+  })
+  onTestFinished(() => void unmount(component))
+  flushSync()
+  expect(plot.props?.padding).toEqual(expected)
+})

@@ -13,7 +13,8 @@
   // A `sweep` runs the viewer along one axis, e.g. pressure: a control bar steps through a
   // series' frames, `load_frame` fetches frames on demand (neighbours prefetched), the spectra
   // span every loaded frame so their axes hold still, and the trends pane plots descriptors
-  // against the axis (see sweep.ts). `compare_series` shows a second series beside the first:
+  // against the axis (see sweep.ts), loading the frames still lacking its values in the
+  // background. `compare_series` shows a second series beside the first:
   // every frame pane splits into two sides, the compared series' frame nearest the shown value
   // on the right, sharing spectra axes, one rotation link and the frame cache. A dropped file
   // replaces the data of the panes it fills (see `fill`); while a sweep is shown only sweep JSONs
@@ -84,6 +85,7 @@
   } from './helpers'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
   import {
+    descriptor_value,
     format_axis_value,
     is_sweep_like,
     nearest_frame,
@@ -91,7 +93,7 @@
     sweep_spacing,
     validate_sweep,
   } from './sweep'
-  import type { Sweep, SweepFrame, SweepSeries } from './sweep'
+  import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
   import { create_sweep_frames, type FrameWindow } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
@@ -429,6 +431,29 @@
   const show_spectra = $derived(shown.has(`bands`) || shown.has(`dos`))
   const show_phonon = $derived(shown.has(`phonon`))
   const show_trends = $derived(shown.has(`trends`)) // `shown` checks the sweep has descriptors
+  // The trends plot's lines (its descriptor and those it overlays) and the frames of the shown
+  // series still missing a value there because they never loaded (a supplied null is a value):
+  // while the trends pane shows, they load in the background one at a time in index order, at
+  // the lowest priority (see frames.load_background), their values kept when evicted
+  const trend_lines = $derived.by((): DescriptorSpec[] => {
+    const specs = sweep?.descriptors ?? []
+    const spec =
+      descriptor === undefined ? specs[0] : specs.find(({ key }) => key === descriptor)
+    return spec ? [spec, ...specs.filter(({ key }) => spec.overlay?.includes(key))] : []
+  })
+  const unfilled = $derived.by((): number[] => {
+    if (!series || !show_trends) return []
+    return series.frames.flatMap((_frame, idx) => {
+      if (frames.is_settled(series, idx)) return []
+      const entry = frames.frame(series, idx)
+      return trend_lines.some((line) => descriptor_value(entry, line) === undefined)
+        ? [idx]
+        : []
+    })
+  })
+  $effect(() => {
+    frames.load_background(series && unfilled.length > 0 ? [series, unfilled[0]] : undefined)
+  })
   // the electronic spectra above the phonons, beside the trends
   const show_column = $derived(show_spectra || show_phonon)
   const column_split = $derived(show_spectra && show_phonon)
@@ -841,6 +866,17 @@
               show_controls={pane_controls(trends_props.show_controls)}
               fullscreen_toggle={false}
             />
+            {#if unfilled.length > 0}
+              {@const total = series.frames.length}
+              <small
+                class="trends-fill"
+                role="status"
+                title="{total -
+                  unfilled.length} of {total} frames loaded for the trends, loading the rest"
+              >
+                {total - unfilled.length}/{total}
+              </small>
+            {/if}
           </div>
         {/if}
         {#if lower_split}
@@ -1224,6 +1260,15 @@
     .far {
       color: var(--warning-color, darkorange);
     }
+  }
+  .trends-fill {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    translate: -50%;
+    pointer-events: none;
+    color: var(--text-muted, currentColor);
+    font-size: 0.8em;
   }
   .frame-status {
     display: flex;

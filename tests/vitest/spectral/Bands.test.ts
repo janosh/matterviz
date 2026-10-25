@@ -340,7 +340,7 @@ describe(`Bands component`, () => {
             Number(element.textContent),
           ),
         )
-      expect(document.body.textContent).toContain(`Frequency (cm−1)`)
+      expect(document.body.textContent).toContain(`Phonon frequency (cm−1)`)
       // −1 is a raised segment, not the ⁻¹ glyphs fonts set unevenly
       const exponent = doc_query(`.y-axis .axis-label tspan[baseline-shift="super"]`)
       expect(exponent.textContent).toBe(`−1`)
@@ -351,7 +351,7 @@ describe(`Bands component`, () => {
       // the synthetic change event must bubble like a real one)
       select.value = `meV`
       await fire(select, new Event(`change`, { bubbles: true }))
-      expect(document.body.textContent).toContain(`Frequency (meV)`)
+      expect(document.body.textContent).toContain(`Phonon frequency (meV)`)
       // 0..16 meV: the default range must follow the data instead of the stale copy the zoom
       // sync mirrored into the y_axis prop
       expect(max_y_tick()).toBeGreaterThan(10)
@@ -553,7 +553,7 @@ describe(`Bands component`, () => {
         units: `cm^-1`,
         show_gap_annotation: true,
       })
-      expect(document.body.textContent).toContain(`Energy (eV)`)
+      expect(document.body.textContent).toContain(`Electron energy (eV)`)
       expect(document.body.textContent).toMatch(gap_label)
     },
   )
@@ -574,7 +574,7 @@ describe(`Bands component`, () => {
 
   // λ_qν on Γ (4 modes), between path q-points (one NaN mode), off the path and on X (4 modes)
   const mode_values = {
-    label: `λ_qν`,
+    label: `λ<sub>qν</sub>`,
     qpoints: [
       [0, 0, 0],
       [0.125, 0, 0],
@@ -599,15 +599,16 @@ describe(`Bands component`, () => {
   it.each<[string, Partial<ComponentProps<typeof Bands>>, number, string | null]>([
     [`on-path q-points as markers`, { band_structs: { '': with_lattice }, mode_values }, 11, null],
     [`from the structure's lattice`, { band_structs: { '': base_band_structure }, structure: make_crystal(1, [[`Cu`, [0, 0, 0]]]), mode_values }, 11, null],
-    [`none without a lattice`, { band_structs: { '': base_band_structure }, mode_values }, 0, `λ_qν needs a reciprocal lattice`],
-    [`none off the path`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, qpoints: mode_values.qpoints.map(() => [0.5, 0.5, 0] as Vec3) } }, 0, `None of the 4 q-points of λ_qν lie on the band path`],
-    [`none for ragged values`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, values: [[0.1]] } }, 0, `Invalid λ_qν: values must have one row per q-point (4), got 1`],
+    [`none without a lattice`, { band_structs: { '': base_band_structure }, mode_values }, 0, `λqν needs a reciprocal lattice`],
+    [`none off the path`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, qpoints: mode_values.qpoints.map(() => [0.5, 0.5, 0] as Vec3) } }, 0, `None of the 4 q-points of λqν lie on the band path`],
+    [`none for ragged values`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, values: [[0.1]] } }, 0, `Invalid λqν: values must have one row per q-point (4), got 1`],
   ])(`mode_values: %s`, async (_desc, props, n_markers, notice) => {
     const plot = await mount_plot({ ...props, show_controls: false })
     expect(plot.querySelectorAll(`path.marker`)).toHaveLength(n_markers)
+    // the HTML label renders sanitized, its subscript a real <sub>
     const colorbar = plot.querySelector(`.colorbar`)
-    expect(colorbar?.textContent ?? null).toEqual(
-      n_markers ? expect.stringContaining(`λ_qν`) : null,
+    expect(colorbar?.querySelector(`.label sub`)?.textContent ?? null).toBe(
+      n_markers ? `qν` : null,
     )
     expect(document.querySelector(`.mode-values-error`)?.textContent?.trim() ?? null).toEqual(
       notice && expect.stringContaining(notice),

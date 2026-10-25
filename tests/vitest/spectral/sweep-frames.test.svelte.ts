@@ -367,3 +367,44 @@ test(`one request windows two series: shown frames load first, both stay until d
   expect([frames.is_ready(bcc, 0), frames.is_ready(bcc, 1)]).toEqual([true, false])
   expect(load).toHaveBeenCalledTimes(5)
 })
+
+// fill: a background frame through the same cache, after the windows' loads, kept past them
+test(`a background fill waits for the windows, survives their changes and is released after`, async () => {
+  const { load, calls } = deferred_loader()
+  const { frames, inputs } = setup(load, 6)
+  const series = inputs.sweep.series[0]
+  frames.load_background([series, 3]) // no window requested yet: the shown frame must go first
+  expect(load).not.toHaveBeenCalled()
+  frames.request([series, [0, 1]])
+  frames.load_background([series, 3]) // the windows are loading
+  expect(ids(calls)).toEqual([0, 1])
+  calls[0].resolve({ doses: { total: electronic_dos } })
+  calls[1].resolve({})
+  await settle()
+  frames.load_background([series, 3])
+  frames.load_background([series, 3]) // loading already: one at a time
+  expect(ids(calls)).toEqual([0, 1, 3])
+  expect(frames.is_settled(series, 3)).toBe(false)
+  // a window moving elsewhere starts its own loads at once and leaves the fill running
+  frames.request([series, [5]])
+  expect([ids(calls), calls[2].signal.aborted]).toEqual([[0, 1, 3, 5], false])
+  calls[2].resolve({ doses: { total: { ...electronic_dos, efermi: 0.5 } } })
+  await settle()
+  expect([frames.is_ready(series, 3), frames.is_settled(series, 3)]).toEqual([true, true])
+  // the next fill releases the loaded one: its heavy data goes, its computed values stay
+  frames.load_background([series, 4])
+  expect(ids(calls)).toEqual([0, 1, 3, 5]) // frame 5 still loading
+  const released = frames.frame(series, 3)
+  expect([released.doses, frames.is_ready(series, 3), frames.is_settled(series, 3)]).toEqual([
+    undefined,
+    false,
+    true,
+  ])
+  expect(descriptor_value(released, fermi_dos_spec)).toBe(1)
+  calls[3].resolve({})
+  await settle()
+  frames.load_background([series, 4])
+  expect(ids(calls)).toEqual([0, 1, 3, 5, 4])
+  frames.load_background() // stopping aborts the fill in flight
+  expect([calls[4].signal.aborted, frames.is_settled(series, 4)]).toEqual([true, false])
+})

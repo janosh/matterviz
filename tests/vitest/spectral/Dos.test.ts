@@ -70,6 +70,24 @@ const mount_plot = (props: Partial<ComponentProps<typeof Dos>>) =>
   mount_sized(Dos, props, { selector: `.scatter` })
 
 describe(`Dos component`, () => {
+  // the default labels name the particle, the density axis following the orientation; beside
+  // the bands (horizontal) the electron DOS's x title breaks before its unit (its lines: the
+  // y titles may wrap to fit the test plot's height)
+  // oxfmt-ignore
+  it.each([
+    [{ '': phonon_dos }, `vertical`, [`Phonon frequency (THz)`], `Phonon DOS`],
+    [{ '': phonon_dos }, `horizontal`, [`Phonon DOS`], `Phonon frequency (THz)`],
+    [{ '': electronic_dos }, `vertical`, [`Electron energy (eV)`], `Electron DOS (states/eV)`],
+    [{ '': electronic_dos }, `horizontal`, [`Electron DOS`, `(states/eV)`], `Electron energy (eV)`],
+  ] as const)(`%# default axis labels (%s)`, async (doses, orientation, x_lines, y_label) => {
+    const plot = await mount_plot({ doses, orientation })
+    const lines_of = (axis: string) =>
+      [...plot.querySelectorAll(`.${axis}-axis text.axis-label > tspan`)].map((line) =>
+        line.textContent?.trim(),
+      )
+    expect([lines_of(`x`), lines_of(`y`).join(` `)]).toEqual([x_lines, y_label])
+  })
+
   // One line series per DOS per drawn spin channel: spin-polarized inputs default to
   // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
   type RenderCase = [string, ComponentProps<typeof Dos>, number]
@@ -121,7 +139,7 @@ describe(`Dos component`, () => {
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
-    expect(document.body.textContent).toContain(`Frequency (cm−1)`)
+    expect(document.body.textContent).toContain(`Phonon frequency (cm−1)`)
     const select = doc_query<HTMLSelectElement>(`#dos-units`)
     expect(select.value).toBe(`cm^-1`)
     // picking an option writes the canonical unit back to `units` (the handler is delegated, so
@@ -129,7 +147,7 @@ describe(`Dos component`, () => {
     select.value = `meV`
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
-    expect(document.body.textContent).toContain(`Frequency (meV)`)
+    expect(document.body.textContent).toContain(`Phonon frequency (meV)`)
     for (const section of [`dos`, `smearing`]) {
       const selector = `button[title="Reset ${section} to defaults"]`
       doc_query<HTMLButtonElement>(selector).click()

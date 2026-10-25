@@ -9,7 +9,11 @@
   import { array_extent, type Vec2 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '#lib/plot/core/scales.js'
-  import { plot_area_line } from '#lib/plot/core/layout.js'
+  import {
+    AXIS_TITLE_OFFSET,
+    plot_area_line,
+    resolve_axis_title_layout,
+  } from '#lib/plot/core/layout.js'
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
@@ -28,9 +32,10 @@
   } from './helpers'
   import {
     convert_frequencies,
-    frequency_unit_label,
+    dos_density_label,
     frequency_unit_per_thz,
     parse_frequency_unit,
+    spectral_value_label,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
@@ -253,21 +258,22 @@
     label: `α²F(ω)`,
     format: `.2f`,
     range: compute_range(is_horizontal ? `x` : `y`, true, true),
+    // few ticks along a narrow DOS column beside the bands, as its density axis has
+    ...(is_horizontal && { ticks: 2 }),
   })
 
-  let value_label = $derived(
-    is_phonon ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
-  )
+  let value_label = $derived(spectral_value_label(is_phonon, unit))
+  let density_label = $derived(dos_density_label(is_phonon, is_horizontal))
 
   const internal_x_axis = $derived<AxisConfig>({
-    label: is_horizontal ? `Density of States` : value_label,
+    label: is_horizontal ? density_label : value_label,
     format: `.2f`,
     range: x_range,
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
   const internal_y_axis = $derived<AxisConfig>({
-    label: is_horizontal ? value_label : `Density of States`,
+    label: is_horizontal ? value_label : density_label,
     format: `.2f`,
     range: y_range,
     ...y_axis,
@@ -281,6 +287,25 @@
   let internal_y2_axis = $derived({
     ...(has_a2f && !is_horizontal && a2f_axis),
     ...rest.y2_axis,
+  })
+
+  // A caller's pinned top/bottom padding (BandsAndDos's and ElectronicStructure's shared one,
+  // which the bands then follow) still fits the titles along them, as auto padding would: α²F's
+  // axis along the top and the x title (two lines beside the bands) along the bottom, each a
+  // tick row, the gap and the title's lines past the plot, plus 4px of air
+  const title_reach = (axis: AxisConfig): number => {
+    const { height, line_height } = resolve_axis_title_layout(axis)
+    return height > 0 ? AXIS_TITLE_OFFSET + height - line_height / 2 + 4 : 0
+  }
+  const padding = $derived.by(() => {
+    const pinned = rest.padding
+    if (!pinned) return pinned
+    const top = has_a2f && is_horizontal ? title_reach(a2f_axis) : 0
+    return {
+      ...pinned,
+      ...(pinned.t !== undefined && { t: Math.max(pinned.t, top) }),
+      ...(pinned.b !== undefined && { b: Math.max(pinned.b, title_reach(internal_x_axis)) }),
+    }
   })
 
   // Auto-detect sigma range based on frequency/energy range
@@ -345,6 +370,7 @@
 
   <ScatterPlot
     {...rest}
+    {padding}
     tooltip={rest.tooltip ?? dos_tooltip}
     series={series_data}
     x_axis={internal_x_axis}
