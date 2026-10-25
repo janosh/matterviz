@@ -7,7 +7,6 @@
 import { css_var_names, resolve_color_token } from '#lib/colors/backdrop.svelte.js'
 import type { Matrix3x3, Vec2 } from '#lib/math.js'
 import type { HoverConfig, ScatterHandlerEvent } from '#lib/plot/core/types.js'
-import { DEFAULTS } from '#lib/settings.js'
 import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-link.svelte.js'
 import {
   band_crossings,
@@ -17,7 +16,7 @@ import {
 } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
 import { watch_theme_changes } from '#lib/theme/index.js'
-import { sheet_color } from './constants'
+import { resolve_color_property, sheet_color } from './constants'
 import type { BandGridJson } from './parse'
 import type { BandGridData, ColorProperty, FermiHoverData, SpinChannel } from './types'
 
@@ -72,12 +71,12 @@ export class FermiBandsLink {
     (): BandsSpinMode => this.inputs.bands_props().band_spin_mode ?? `overlay`,
   )
   private readonly caller_color_property = $derived.by(
-    (): ColorProperty =>
-      this.inputs.fermi_props().color_property ?? DEFAULTS.fermi.color_property,
+    (): ColorProperty | undefined => this.inputs.fermi_props().color_property,
   )
   // Bands' spin control writes this; a hidden channel gets no crossings or sheets either
   band_spin_mode = $derived.by((): BandsSpinMode => this.caller_spin_mode)
-  color_property = $derived.by((): ColorProperty => this.caller_color_property)
+  // FermiSurface's colouring choice; unset follows the grid (see resolve_color_property)
+  color_property = $derived.by((): ColorProperty | undefined => this.caller_color_property)
   readonly path = create_band_path_link({
     band_struct: () => this.inputs.band_struct(),
     k_lattice: () => this.inputs.k_lattice(),
@@ -137,9 +136,10 @@ export class FermiBandsLink {
   readonly line_kwargs = $derived.by((): LineKwargs | undefined => {
     const grid = this.inputs.band_data()
     const kwargs = this.inputs.bands_props().line_kwargs
-    const { color_property, grid_bands } = this
-    const vertex_colored =
-      color_property === `property` && Object.keys(grid?.properties ?? {}).length > 0
+    const property_names = Object.keys(grid?.properties ?? {})
+    const color_property = resolve_color_property(this.color_property, property_names)
+    const vertex_colored = color_property === `property` && property_names.length > 0
+    const { grid_bands } = this
     if (!grid || vertex_colored) return kwargs
     const sheet_spin = (spin: `up` | `down`) => (grid.n_spins === 2 ? spin : null)
     return (band_idx, spin, structure) => {

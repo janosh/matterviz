@@ -1,3 +1,4 @@
+import { DEFAULTS } from '#lib/settings.js'
 import type { ColorProperty, SpinChannel } from './types'
 
 // Band colors (ColorBrewer Set1 palette for categorical data)
@@ -27,6 +28,19 @@ export const sheet_color = (
   color_property === `spin` && spin
     ? SPIN_COLORS[spin]
     : BAND_COLORS[band_index % BAND_COLORS.length]
+
+// Colouring shown for a chosen one (a caller's prop or a controls pick; undefined: none): data
+// carrying per-vertex properties (λ_nk, Δ_nk, …) opens coloured by them, so a choice of
+// `property` falls back to the default only while the data has none and returns with them
+export const resolve_color_property = (
+  chosen: ColorProperty | undefined,
+  property_names: readonly string[],
+): ColorProperty =>
+  chosen !== undefined && chosen !== `property`
+    ? chosen
+    : property_names.length > 0
+      ? `property`
+      : DEFAULTS.fermi.color_property
 
 // Key of a per-vertex property its source leaves unnamed (an IFermi/JSON `properties` array,
 // a scalar FRMSF colour block). FermiSurface's custom_property_label relabels it for display.

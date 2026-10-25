@@ -198,6 +198,14 @@ test(`band lines take their sheet's colour unless sheets are coloured by vertex`
   host.band_data = { ...band_data, properties: { v_F: band_data.energies } }
   flushSync()
   expect(link.line_kwargs).toBe(line_kwargs)
+  // without a choice a grid with properties colours its sheets by them too, unlike a pick
+  host.fermi_props = {}
+  flushSync()
+  expect(link.color_property).toBeUndefined()
+  expect(link.line_kwargs).toBe(line_kwargs)
+  link.color_property = `band`
+  flushSync()
+  expect(style(1)?.stroke).toBe(sheet_color(1, `up`, `band`))
 })
 
 // Ten electronic bands along Γ → X (each case sets band 8); bands 8 and 9 have a sheet. Band 9

@@ -12,7 +12,7 @@
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import { untrack, type Snippet } from 'svelte'
   import type { Vec2 } from '#lib/math.js'
-  import { property_label } from './constants'
+  import { property_label, resolve_color_property } from './constants'
   import { available_property_names } from './geometry'
   import type { BandGridData, FermiSurfaceData, FermiSurfaceSettings } from './types'
 
@@ -23,7 +23,7 @@
     fermi_data,
     band_data,
     mu: chemical_potential = $bindable(defaults.mu),
-    color_property = $bindable(defaults.color_property),
+    color_property = $bindable(), // a choice; unset follows the data (see resolve_color_property)
     color_scale = $bindable(defaults.color_scale),
     property_name = $bindable(),
     fitted_value_range,
@@ -71,6 +71,13 @@
   // per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) the data carries
   let available_properties = $derived(available_property_names(fermi_data, band_data))
   let has_property = $derived(available_properties.length > 0)
+  // the colouring shown, and the one a reset returns to (which then follows the data again)
+  const shown_color_property = $derived(
+    resolve_color_property(color_property, available_properties),
+  )
+  const default_color_property = $derived(
+    resolve_color_property(undefined, available_properties),
+  )
 
   let available_bands = $derived(
     fermi_data
@@ -86,8 +93,6 @@
   let previous_bands: number[] = []
   const hidden_bands = new Set<number>()
   const sync_bindable_defaults = (bands_changed = false): void => {
-    if (color_property === `property` && !has_property)
-      color_property = defaults.color_property
     // A property the new data lacks falls back to the first one, and its fixed range with it
     if (!available_properties.includes(property_name ?? ``)) {
       if (property_name !== undefined) set_value_range(undefined)
@@ -157,9 +162,16 @@
       selected_bands: available_bands,
     }),
   )
-  const appearance_settings = track_settings(
-    () => ({ color_property, color_scale, representation, surface_opacity }),
-    defaults,
+  const appearance_settings = $derived(
+    track_settings(
+      () => ({
+        color_property: shown_color_property,
+        color_scale,
+        representation,
+        surface_opacity,
+      }),
+      { ...defaults, color_property: default_color_property },
+    ),
   )
   const bz_settings = track_settings(
     () => ({ show_bz, bz_opacity, show_vectors, tile_bz }),
@@ -245,13 +257,14 @@
       title="Appearance"
       changed_keys={appearance_settings.changed_keys}
       on_reset={() => {
-        ;({ color_property, color_scale, representation, surface_opacity } = defaults)
+        ;({ color_scale, representation, surface_opacity } = defaults)
+        color_property = undefined
       }}
       layout="grid"
     >
       <label>
         <span>Color by</span>
-        <select bind:value={color_property}>
+        <select bind:value={() => shown_color_property, (value) => (color_property = value)}>
           <option value="band">Band</option>
           <option value="spin">Spin</option>
           {#if has_property}
@@ -263,7 +276,7 @@
           {/if}
         </select>
       </label>
-      {#if color_property === `property`}
+      {#if shown_color_property === `property`}
         {#if available_properties.length > 1}
           <label>
             <span>Property</span>

@@ -2,9 +2,13 @@ import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
 import type * as extract_async from '#lib/fermi-surface/extract-async.js'
 import { type BandGridJson, normalize_fermi_surface } from '#lib/fermi-surface/parse.js'
-import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
+import type {
+  BandGridData,
+  ColorProperty,
+  FermiSurfaceData,
+} from '#lib/fermi-surface/types.js'
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import { can_create_worker } from '#lib/worker-client.svelte.js'
 import {
   bind_props,
@@ -13,9 +17,15 @@ import {
   doc_query,
   expect_shortcuts_in_pane,
   mock_parse_worker,
+  set_select,
 } from '../setup'
 import type { Vec3 } from '#lib/math.js'
-import { IDENTITY_MATRIX3, make_bxsf } from '../test-fixtures'
+import {
+  IDENTITY_MATRIX3,
+  make_bxsf,
+  make_fermi_isosurface,
+  make_fermi_surface,
+} from '../test-fixtures'
 
 beforeEach(mock_parse_worker)
 
@@ -52,6 +62,13 @@ vi.mock(`#lib/fermi-surface/extract-async.js`, async (original) => {
     register_fermi_viewer: () => extraction.release,
   }
 })
+
+// No renderer in happy-dom: the canvas stays empty, so a test may fake navigator.gpu to get
+// the overlays (colour bar) that webgpu_available() gates
+vi.mock(`@threlte/core`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  Canvas: () => ({}),
+}))
 
 const mounted: ReturnType<typeof mount>[] = []
 
@@ -440,4 +457,95 @@ test.each([
   const toggle = document.querySelector(`.fermi-export-toggle`)
   expect(toggle === null).toBe(offered === null)
   if (offered) expect(await click_export(null, document)).toEqual(offered)
+})
+
+// === Data-driven colouring ===
+
+const fake_webgpu = () => {
+  Object.defineProperty(navigator, `gpu`, { value: {}, configurable: true })
+  onTestFinished(() => void Reflect.deleteProperty(navigator, `gpu`))
+}
+// One triangle carrying the named per-vertex properties, e.g. an anisotropic e-ph run's λ_nk
+const triangle: Vec3[] = [
+  [0, 0, 0],
+  [1, 0, 0],
+  [0, 1, 0],
+]
+const surface_with = (...names: string[]): FermiSurfaceData => {
+  const properties = Object.fromEntries(
+    names.map((name, idx) => [name, Float32Array.of(idx, idx + 1, idx + 2)]),
+  )
+  return make_fermi_surface([make_fermi_isosurface(triangle, [[0, 1, 2]], { properties })])
+}
+const color_by = () => doc_query<HTMLSelectElement>(`.fermi-controls select`)
+const colorbar_title = () =>
+  document.querySelector(`.property-colorbar .label`)?.textContent ?? null
+
+test.each<[ColorProperty | undefined, ColorProperty, string | null]>([
+  [undefined, `property`, `Δ_nk (meV)`],
+  [`spin`, `spin`, null],
+  [`band`, `band`, null],
+])(
+  `color_property %s over data with properties shows %s, colour bar %s`,
+  async (color_property, shown, title) => {
+    fake_webgpu()
+    const fermi_data = surface_with(`Δ_nk (meV)`, `λ_nk`)
+    mounted.push(
+      mount(FermiSurface, {
+        target: document.body,
+        props: { fermi_data, color_property, controls_open: true },
+      }),
+    )
+    await tick()
+    expect([color_by().value, colorbar_title()]).toEqual([shown, title])
+  },
+)
+
+test(`a colouring picked in the controls survives frames, data without properties shows bands`, async () => {
+  fake_webgpu()
+  const props = $state<{
+    fermi_data: FermiSurfaceData
+    color_property?: ColorProperty
+    property_name?: string
+  }>({
+    fermi_data: surface_with(`Δ_nk (meV)`, `λ_nk`),
+    color_property: undefined,
+    property_name: undefined,
+  })
+  mounted.push(
+    mount(FermiSurface, {
+      target: document.body,
+      props: bind_props({ controls_open: true }, props),
+    }),
+  )
+  await tick()
+  set_select(doc_query(`select[aria-label="Fermi surface colouring property"]`), `λ_nk`)
+  await tick()
+  const shown = () => [
+    props.color_property,
+    props.property_name,
+    color_by().value,
+    colorbar_title(),
+  ]
+  expect(shown()).toEqual([undefined, `λ_nk`, `property`, `λ_nk`])
+  // a sweep's next frame with the same properties keeps the pick
+  props.fermi_data = surface_with(`Δ_nk (meV)`, `λ_nk`)
+  await tick()
+  expect(shown()).toEqual([undefined, `λ_nk`, `property`, `λ_nk`])
+  // none to colour by: band colours, until properties return
+  props.fermi_data = surface_with()
+  await tick()
+  expect(shown()).toEqual([undefined, undefined, `band`, null])
+  props.fermi_data = surface_with(`Δ_nk (meV)`)
+  await tick()
+  expect(shown()).toEqual([undefined, `Δ_nk (meV)`, `property`, `Δ_nk (meV)`])
+  // an explicit pick holds over data with and without properties
+  set_select(color_by(), `band`)
+  await tick()
+  for (const names of [[`Δ_nk (meV)`], []]) {
+    props.fermi_data = surface_with(...names)
+    await tick()
+    expect(shown().slice(2)).toEqual([`band`, null])
+  }
+  expect(props.color_property).toBe(`band`)
 })

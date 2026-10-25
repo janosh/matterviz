@@ -29,6 +29,8 @@ const render_controls = async (state: ComponentProps<typeof FermiSurfaceControls
   onTestFinished(() => unmount(component))
   await tick()
 }
+// the "Color by" select, the pane's first
+const color_by = () => doc_query<HTMLSelectElement>(`.fermi-controls select`)
 const reset_section = async (section: string) => {
   const selector = `button[aria-label="Reset ${section} to defaults"]`
   doc_query<HTMLButtonElement>(selector).click()
@@ -74,7 +76,7 @@ describe(`FermiSurfaceControls`, () => {
     expected_bands?: number[]
   }>([
     {
-      name: `initializes bands and clears unavailable property coloring`,
+      name: `initializes bands and shows band coloring for an unavailable property`,
       color_property: `property`,
       expected_bands: [0, 1],
     },
@@ -89,7 +91,8 @@ describe(`FermiSurfaceControls`, () => {
     const state = { selected_bands, color_property, fermi_data: make_fermi_data(band_indices) }
     await render_controls(state)
     expect(state.selected_bands).toEqual(expected_bands)
-    expect(state.color_property).toBe(`band`)
+    // the choice is kept for data that has a property, the select shows what is drawn
+    expect([state.color_property, color_by().value]).toEqual([color_property, `band`])
     if (selected_bands === undefined && expected_bands?.length) {
       expect(document.querySelector(`button[aria-label="Reset bands to defaults"]`)).toBeNull()
     }
@@ -164,17 +167,24 @@ describe(`FermiSurfaceControls`, () => {
     const state = $state<ComponentProps<typeof FermiSurfaceControls>>({
       fermi_data: make_fermi_data([0, 1], true),
       selected_bands: [1],
-      color_property: `property`,
+      color_property: undefined,
       color_scale: `interpolateViridis`,
     })
     await render_controls(state)
-    expect(
-      document.querySelector(`button[aria-label="Reset appearance to defaults"]`),
-    ).not.toBeNull()
+    // data with a property opens coloured by it, which is no change to reset
+    const reset_css = `button[aria-label="Reset appearance to defaults"]`
+    expect([color_by().value, document.querySelector(reset_css)]).toEqual([`property`, null])
+    set_select(color_by(), `band`)
     state.color_scale = `interpolatePlasma`
     await tick()
+    expect(state.color_property).toBe(`band`)
+    // a reset returns the colouring to following the data
     await reset_section(`appearance`)
-    expect([state.color_property, state.color_scale]).toEqual([`band`, `interpolateViridis`])
+    expect([state.color_property, state.color_scale]).toEqual([
+      undefined,
+      `interpolateViridis`,
+    ])
+    expect(color_by().value).toBe(`property`)
     await reset_section(`bands`)
     expect(state.selected_bands).toEqual([0, 1])
     state.fermi_data = make_fermi_data([3, 4, 5])
