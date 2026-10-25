@@ -190,3 +190,13 @@ test.each<[string, Partial<ComponentProps<typeof SweepTrends>>, string]>([
 ])(`%s throws`, (_desc, props, message) => {
   expect(() => render(props).props.series).toThrow(message) // the mock reads props lazily
 })
+
+// HTML in a descriptor label (subscripts) reaches the axis title, which renders it
+test(`an HTML descriptor label keeps its markup on the y axis`, () => {
+  const html_sweep: Sweep = {
+    ...sweep,
+    descriptors: [{ key: `tc`, label: `T<sub>c</sub>`, unit: `K` }],
+  }
+  const { props } = render({ sweep: html_sweep })
+  expect(props.y_axis?.label).toBe(`T<sub>c</sub> (K)`)
+})

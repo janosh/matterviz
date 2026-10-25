@@ -104,8 +104,13 @@ export function scale_band_structure(
 }
 
 export const CU_SWEEP_DESCRIPTORS: DescriptorSpec[] = [
-  { key: `fermi_dos`, label: `N(E_F)`, unit: `states/eV/cell`, compute: `fermi_dos` },
-  { key: `fermi_band_count`, label: `Bands at E_F`, compute: `fermi_band_count` },
+  {
+    key: `fermi_dos`,
+    label: `N(E<sub>F</sub>)`,
+    unit: `states/eV/cell`,
+    compute: `fermi_dos`,
+  },
+  { key: `fermi_band_count`, label: `Bands at E<sub>F</sub>`, compute: `fermi_band_count` },
   { key: `volume_per_atom`, label: `Volume per atom`, unit: `Å³`, compute: `volume_per_atom` },
   {
     key: `cu_cu_distance`,
@@ -115,7 +120,7 @@ export const CU_SWEEP_DESCRIPTORS: DescriptorSpec[] = [
     pair: [`Cu`, `Cu`],
   },
   { key: `lambda`, label: `λ (electron–phonon)` },
-  { key: `omega_log`, label: `ω_log`, unit: `K`, overlay: [`omega_2`] },
+  { key: `omega_log`, label: `ω<sub>log</sub>`, unit: `K`, overlay: [`omega_2`] },
   { key: `omega_2`, label: `ω₂`, unit: `K` },
 ]
 

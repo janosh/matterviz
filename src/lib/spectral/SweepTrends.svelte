@@ -6,6 +6,7 @@
   // loaded) are left out until it is; a value outside its range, or not finite, throws.
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
+  import { html_to_text } from '#lib/utils.js'
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
   import type { ComponentProps } from 'svelte'
   import { descriptor_point } from './sweep'
@@ -165,7 +166,7 @@
           onchange={(event) => (descriptor = event.currentTarget.value)}
         >
           {#each specs as { key, label, unit } (key)}
-            <option value={key}>{with_unit(label, unit)}</option>
+            <option value={key}>{html_to_text(with_unit(label, unit))}</option>
           {/each}
         </select>
       {/if}
@@ -174,7 +175,7 @@
       {@render rest.children?.(ctx)}
       {#if !has_values}
         <p class="no-values" style:width="{ctx.width}px" style:height="{ctx.height}px">
-          No {spec.label} values yet
+          No {html_to_text(spec.label)} values yet
         </p>
       {/if}
     {/snippet}
