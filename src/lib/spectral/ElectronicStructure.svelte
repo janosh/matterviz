@@ -354,7 +354,8 @@
   // layout neither waits on the shown frame's load nor collapses on a frame without it
   const loaded_frames = (entry?: SweepSeries): SweepFrame[] =>
     entry ? entry.frames.map((_frame, idx) => frames.frame(entry, idx)) : []
-  const shown_frames = $derived(loaded_frames(series))
+  // the shown and the compared series' loaded frames: either side's data opens its pane
+  const shown_frames = $derived([...loaded_frames(series), ...loaded_frames(compared?.series)])
   // the panes any of the entries (frames, or the props) has data for
   const panes_with_data = (
     entries: Partial<SweepFrame>[],
