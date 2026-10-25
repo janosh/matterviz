@@ -143,10 +143,14 @@ export function create_sweep_frames(inputs: {
           if (signal.aborted) return
           const reason = to_error(error).message
           const message = `Loading frame ${idx} of series "${series.id}" failed: ${reason}`
+          // a shown frame's error on screen wins over a background one
+          const shown_failed = [...current.shown].some(
+            (frame) => entries.get(frame)?.state === `failed`,
+          )
           if (current.shown.has(base)) {
             entries.set(base, { state: `failed`, data: entry?.data })
             inputs.on_error(message)
-          } else if (background && !current.background_failed) {
+          } else if (background && !current.background_failed && !shown_failed) {
             // the first failure of frames nobody asked to see stands for the rest
             current.background_failed = true
             entries.set(base, { state: `failed`, data: entry?.data })

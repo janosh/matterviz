@@ -1249,6 +1249,30 @@ const energy_span = (frames: SweepFrame[]): Vec2 => {
   return [Math.min(...ranges.map(([lo]) => lo)), Math.max(...ranges.map(([, hi]) => hi))]
 }
 
+// A caller's density range beats the sides' shared one, with or without a compared series
+test.each([undefined, `bcc`])(
+  `explicit DOS density ranges win (compare_series %s)`,
+  (compare_series) => {
+    const sweep = make_sweep()
+    for (const entry of sweep.series.flatMap(({ frames }) => frames)) entry.phonon = phonon
+    mount_host({
+      sweep,
+      compare_series,
+      frame_idx: 0,
+      panes: [...ALL_PANES, `phonon`],
+      dos_props: { density_range: [0, 9] },
+      phonon_props: { density_range: [0, 7] },
+    })
+    expect([
+      instances.dos.at(-1)?.density_range,
+      instances.phonon.at(-1)?.density_range,
+    ]).toEqual([
+      [0, 9],
+      [0, 7],
+    ])
+  },
+)
+
 test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
   const sweep = make_sweep()
   const [fcc, bcc] = sweep.series
@@ -1417,13 +1441,20 @@ function fill_setup(
   series_ids = [`fcc`],
   n_frames = 6,
 ) {
-  const calls: { id: string; idx: number; signal: AbortSignal; resolve: () => void }[] = []
+  const calls: {
+    id: string
+    idx: number
+    signal: AbortSignal
+    resolve: () => void
+    reject: () => void
+  }[] = []
   const load_frame = vi.fn(
     (id: string, frame_idx: number, { signal }: { signal: AbortSignal }) =>
-      new Promise<Partial<SweepFrame>>((resolve) => {
+      new Promise<Partial<SweepFrame>>((resolve, reject) => {
         const density = frame_idx + 1
         const data = { doses: { total: { ...dos, densities: [0, density, density, 0] } } }
-        calls.push({ id, idx: frame_idx, signal, resolve: () => resolve(data) })
+        const fail = () => reject(new Error(`down`))
+        calls.push({ id, idx: frame_idx, signal, resolve: () => resolve(data), reject: fail })
       }),
   )
   const series = series_ids.map((id) => ({
@@ -1471,6 +1502,19 @@ test(`the trends pane fills a computed descriptor's unloaded frames one by one, 
   expect([filled.doses, filled.scalars?.n_ef]).toEqual([undefined, 3])
   await settle(4, 5, 3)
   expect([loaded(), note()]).toEqual([[0, 1, 2, 4, 5, 3], null]) // all six filled: done
+})
+
+test(`a frame failing to fill counts as missing in the note and isn't loaded again`, async () => {
+  const { calls, settle, note, loaded } = fill_setup()
+  await settle(0, 1)
+  calls[2].reject()
+  await settle()
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 3], `2/6`]) // the fill moves on to frame 3
+  await settle(3)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 3, 4], `3/6`])
+  await settle(4)
+  await settle(5)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 3, 4, 5], null]) // nothing left to load
 })
 
 // A new sweep (or loader) starts a fresh cache: the old one's fill is aborted with its loads

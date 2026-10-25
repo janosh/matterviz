@@ -421,25 +421,28 @@ test(`failures report while their frame shows: prefetched and background ones on
   frames.request([series, [0, 1]])
   await fail(calls[1]) // the prefetched neighbour fails first: nothing to report yet
   await fail(calls[0])
-  for (const idx of [2, 3]) {
-    frames.load_background([series, idx])
-    await fail()
-  }
+  frames.load_background([series, 2])
+  await fail() // the shown frame's error is up: the background one waits
+  frames.request([series, [4]])
+  calls.at(-1)?.resolve({})
+  await settle()
+  frames.load_background([series, 3])
+  await fail() // no shown error now: the first background failure stands for the rest
   frames.request([series, [5]])
   await fail()
   expect([ids(calls), messages()]).toEqual([
-    [0, 1, 2, 3, 5],
+    [0, 1, 2, 4, 3, 5],
     [
       `Loading frame 0 of series "fcc" failed: down`,
-      `Loading frame 2 of series "fcc" failed: down (other frames' failures show with the frame)`,
+      `Loading frame 3 of series "fcc" failed: down (other frames' failures show with the frame)`,
       `Loading frame 5 of series "fcc" failed: down`,
     ],
   ])
   // showing a frame that failed unseen reports it then, once, without loading it again
-  for (const idx of [1, 3, 1]) frames.request([series, [idx]])
-  expect(load).toHaveBeenCalledTimes(5)
+  for (const idx of [1, 2, 1]) frames.request([series, [idx]])
+  expect(load).toHaveBeenCalledTimes(6)
   expect(messages().slice(3)).toEqual([
     `Loading frame 1 of series "fcc" failed: down`,
-    `Loading frame 3 of series "fcc" failed: down`,
+    `Loading frame 2 of series "fcc" failed: down`,
   ])
 })

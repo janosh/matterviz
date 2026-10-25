@@ -438,19 +438,20 @@
   // they never loaded (a supplied null is a value): while it shows they load in the background
   // one at a time, the shown series first, then the compared one and the rest, each in index
   // order (see frames.load_background)
-  const unfilled = $derived.by((): FrameRef[] => {
+  // A failed frame stays missing (it counts against the loaded note) but isn't loaded again
+  const missing = $derived.by((): FrameRef[] => {
     if (!sweep || !series || !show_trends) return []
     const lines = descriptor_lines(sweep, descriptor)
     const order = new Set([series, compared?.series ?? series, ...sweep.series])
     return [...order].flatMap((entry) =>
       entry.frames.flatMap((_frame, idx): FrameRef[] => {
-        if (frames.is_settled(entry, idx)) return []
         const value_of = (line: DescriptorSpec) =>
           descriptor_value(frames.frame(entry, idx), line)
         return lines.some((line) => value_of(line) === undefined) ? [[entry, idx]] : []
       }),
     )
   })
+  const unfilled = $derived(missing.filter(([entry, idx]) => !frames.is_settled(entry, idx)))
   $effect(() => frames.load_background(unfilled[0]))
   // the electronic spectra above the phonons, beside the trends
   const show_column = $derived(show_spectra || show_phonon)
@@ -849,7 +850,7 @@
             />
             {#if unfilled.length > 0}
               {@const trend_frames = sweep.series.flatMap((entry) => entry.frames).length}
-              {@const filled = trend_frames - unfilled.length}
+              {@const filled = trend_frames - missing.length}
               <small
                 class="trends-fill"
                 role="status"
@@ -1071,7 +1072,8 @@
                 orientation={side.spectra_side ? `horizontal` : `vertical`}
                 x_axis={sync.dos_x_axis}
                 y_axis={sync.y_axes[1]}
-                density_range={shared_density((entry) => entry.dos_density)}
+                density_range={dos_props.density_range ??
+                  shared_density((entry) => entry.dos_density)}
                 bind:density_extent={side.dos_density}
                 bind:view={sync.views[1]}
                 bind:resolved_padding={
@@ -1120,7 +1122,8 @@
             doses={spectra.doses ?? {}}
             a2f={spectra.a2f}
             frequency_range={phonon_span}
-            density_range={shared_density((entry) => entry.phonon_density)}
+            density_range={phonon_props.density_range ??
+              shared_density((entry) => entry.phonon_density)}
             bind:density_extent={side.phonon_density}
             bind:units
             fullscreen_toggle={false}
