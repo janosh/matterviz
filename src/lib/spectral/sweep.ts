@@ -161,6 +161,33 @@ export function validate_sweep(sweep: Sweep): void {
 export const format_axis_value = (axis: SweepAxis, frame: SweepFrame): string =>
   frame.label ?? `${frame.value}${axis.unit ? ` ${axis.unit}` : ``}`
 
+// The series' frame nearest `value` (the lower one on a tie) and how far off its value is
+export function nearest_frame(
+  series: SweepSeries,
+  value: number,
+): { idx: number; distance: number } {
+  let nearest = { idx: 0, distance: Infinity }
+  for (const [idx, frame] of series.frames.entries()) {
+    const distance = Math.abs(frame.value - value)
+    if (distance < nearest.distance) nearest = { idx, distance }
+  }
+  return nearest
+}
+
+// The sweep's typical step along its axis: the median gap between consecutive frames over all
+// series (0 when no series has two frames). A frame of another series further off than this
+// from a value does not lie at it.
+export function sweep_spacing(sweep: Sweep): number {
+  const gaps = sweep.series
+    .flatMap(({ frames }) =>
+      frames.slice(1).map((frame, idx) => frame.value - frames[idx].value),
+    )
+    .toSorted((lhs, rhs) => lhs - rhs)
+  if (gaps.length === 0) return 0
+  const mid = Math.floor(gaps.length / 2)
+  return gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2
+}
+
 // === computed descriptors ===
 export const volume_per_atom = (structure: Crystal): number =>
   Math.abs(det_3x3(structure.lattice.matrix)) / structure.sites.length

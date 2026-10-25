@@ -1,6 +1,6 @@
 <script lang="ts">
   // One descriptor of a sweep against its axis, a line per series: clicking a point selects
-  // that frame (marked by the vertical line), unstable frames are hollow and grey, a
+  // that frame (marked by the vertical line and a larger point, as is a compared frame), unstable frames are hollow and grey, a
   // descriptor's range draws as error bars and its threshold as a dashed line, the descriptors
   // it overlays as dashed lines on the same axes. Frames whose value is unknown yet (data not
   // loaded) are left out until it is; a value outside its range, or not finite, throws.
@@ -18,6 +18,7 @@
     frame_of,
     series_id,
     frame_idx,
+    compare,
     descriptor = $bindable(),
     on_frame_select,
     ...rest
@@ -26,6 +27,7 @@
     frame_of: (series: SweepSeries, idx: number) => SweepFrame // with loaded data merged
     series_id: string // the selected frame's series and index
     frame_idx: number
+    compare?: PointMeta // the frame shown beside the selected one, marked as large
     descriptor?: string // the key of the plotted descriptor (default: the first), else throws
     on_frame_select: (series_id: string, frame_idx: number) => void
   } = $props()
@@ -68,9 +70,13 @@
   const series = $derived(
     points.map(({ entry, line, line_idx, points: line_points }): DataSeries<PointMeta> => {
       const { id, label = id } = entry
-      const selected = id === series_id
+      const marked = new Set(
+        [{ series_id, frame_idx }, ...(compare ? [compare] : [])].flatMap((point) =>
+          point.series_id === id ? [point.frame_idx] : [],
+        ),
+      )
       const point_style = line_points.map(({ frame, idx }): PointStyle => ({
-        radius: selected && idx === frame_idx ? 7 : 4.5,
+        radius: marked.has(idx) ? 7 : 4.5,
         cursor: `pointer`,
         ...(frame.status?.unstable && {
           fill: `transparent`,

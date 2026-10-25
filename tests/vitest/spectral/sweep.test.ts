@@ -12,7 +12,9 @@ import {
   format_axis_value,
   frame_fermi_energy,
   min_pair_distance,
+  nearest_frame,
   normalize_sweep,
+  sweep_spacing,
   validate_sweep,
   volume_per_atom,
 } from '#lib/spectral/sweep.js'
@@ -225,6 +227,41 @@ test(`format_axis_value prefers the frame's label`, () => {
   expect(format_axis_value(axis, { value: 150, label: `150 GPa (151.3 relaxed)` })).toBe(
     `150 GPa (151.3 relaxed)`,
   )
+})
+
+// the nearest frame of a series at 0, 50, 120: ties go to the lower frame
+test.each([
+  [-30, 0, 30],
+  [25, 0, 25],
+  [80, 1, 30],
+  [85, 1, 35],
+  [90, 2, 30],
+  [500, 2, 380],
+])(`nearest_frame at %d is frame %d, %d off`, (value, idx, distance) => {
+  const series = { id: `fcc`, frames: [0, 50, 120].map((at) => ({ value: at })) }
+  expect(nearest_frame(series, value)).toEqual({ idx, distance })
+})
+
+// the median of every series' consecutive gaps, 0 without any
+test.each([
+  [[[0, 50, 120]], 60],
+  [
+    [
+      [0, 50, 120],
+      [100, 110],
+    ],
+    50,
+  ],
+  [[[0], [7]], 0],
+])(`sweep_spacing of series at %j is %d`, (series_values, spacing) => {
+  const sweep: Sweep = {
+    axis: { key: `pressure`, label: `Pressure` },
+    series: series_values.map((values, idx) => ({
+      id: `s${idx}`,
+      frames: values.map((value) => ({ value })),
+    })),
+  }
+  expect(sweep_spacing(sweep)).toBe(spacing)
 })
 
 describe(`normalize_sweep`, () => {

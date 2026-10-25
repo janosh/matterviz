@@ -51,6 +51,8 @@
   const cu_sweep = $derived(
     band_data && cu_pressure_sweep({ structure, band_data, band_struct }),
   )
+  // the second series shown beside the first (the viewer's "Compare with" select too)
+  let compare_series = $state<string>()
 </script>
 
 <svelte:head>
@@ -105,13 +107,27 @@
   model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) on its own
   axis; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. Markers on
   the phonon bands, coloured and sized by value, show the mode-resolved coupling λ<sub>qν</sub>
-  wherever the model's q grid meets the path. No frame is a calculation at its pressure.
+  wherever the model's q grid meets the path. No frame is a calculation at its pressure. A second
+  series puts the same volumes at the pressures of a stiffer equation of state (B₀ = 180 GPa): compare
+  it to split every frame pane in two, its frame nearest the shown pressure on the right, on the
+  same axes and one rotation.
 </p>
+
+<label>
+  <input
+    type="checkbox"
+    checked={compare_series !== undefined}
+    onchange={(event) =>
+      (compare_series = event.currentTarget.checked ? `fcc-stiff` : undefined)}
+  />
+  Compare with the stiffer equation of state
+</label>
 
 {#if cu_sweep && band_data}
   {@const { fermi_energy } = band_data}
   <ElectronicStructure
     sweep={cu_sweep}
+    bind:compare_series
     panes={[`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`]}
     fermi_props={{ show_controls: `hover` }}
     bands_props={{

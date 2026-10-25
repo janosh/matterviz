@@ -29,6 +29,8 @@
     doses,
     a2f,
     frequency_range,
+    density_range,
+    density_extent = $bindable(),
     structure,
     units = $bindable(`THz`),
     fermi_level,
@@ -46,6 +48,8 @@
     doses: Record<string, DosData>
     a2f?: Record<string, PhononDos> // Eliashberg functions, on the DOS's own α²F axis
     frequency_range?: Vec2 // the extent (data units) to span instead of the data's
+    density_range?: Vec2 // the DOS's density extent to span instead of its data's
+    density_extent?: Vec2 // read only: the DOS data's density extent
     structure?: Crystal // adds its Brillouin zone with the bands' k-path
     units?: FrequencyUnit
     fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
@@ -178,6 +182,8 @@
     style="grid-area: dos; {dos_props.style ?? ``}"
     {doses}
     {a2f}
+    {density_range}
+    bind:density_extent
     bind:units
     fermi_level={sync.fermi_level}
     orientation={side_by_side ? `horizontal` : `vertical`}

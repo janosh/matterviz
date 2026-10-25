@@ -99,7 +99,7 @@ const ids = (calls: { args: [string, number] }[]) => calls.map(({ args }) => arg
 test(`without a loader every frame is ready as given and requests do nothing`, () => {
   const { frames, inputs } = setup()
   const series = inputs.sweep.series[0]
-  frames.request(series, [0])
+  frames.request([series, [0]])
   expect(frames.is_ready(series, 0)).toBe(true)
   expect(frames.is_loading(series, 0)).toBe(false)
   expect(frames.frame(series, 1)).toBe(series.frames[1])
@@ -116,12 +116,12 @@ test(`a requested frame loads once, every record merged key by key over its own,
     doses: { total: electronic_dos },
     phonon: { doses: { 'phonon DOS': phonon_dos }, mode_values: own_mode_values },
   }
-  frames.request(series, [1])
-  frames.request(series, [1]) // already loading
+  frames.request([series, [1]])
+  frames.request([series, [1]]) // already loading
   expect(load).toHaveBeenCalledExactlyOnceWith(`fcc`, 1, { signal: calls[0].signal })
   expect([frames.is_loading(series, 1), frames.is_ready(series, 1)]).toEqual([true, false])
   // frames outside the series are ready (playback never waits on them) and never loaded
-  frames.request(series, [1, 3, -1])
+  frames.request([series, [1, 3, -1]])
   expect(frames.is_ready(series, 3)).toBe(true)
   expect(load).toHaveBeenCalledOnce()
 
@@ -151,7 +151,7 @@ test(`a requested frame loads once, every record merged key by key over its own,
       mode_values: loaded_mode_values, // replaced as one field, its q-points aligned with its rows
     },
   })
-  frames.request(series, [1]) // loaded
+  frames.request([series, [1]]) // loaded
   expect(load).toHaveBeenCalledOnce()
 })
 
@@ -160,7 +160,7 @@ test(`loaded data follows its frame through inserts, in-place edits show at once
   const { load, calls } = deferred_loader()
   const { frames, inputs } = setup(load)
   const series = inputs.sweep.series[0]
-  frames.request(series, [0])
+  frames.request([series, [0]])
   calls[0].resolve({ scalars: { tc: 5 } })
   await settle()
   series.frames[0].scalars = { tc: 1, lambda: 0.5 } // the loaded tc still wins
@@ -176,14 +176,14 @@ test(`a failed load is reported once with its 0-based index, counts as ready, no
   const { load, calls } = deferred_loader()
   const { frames, inputs, on_error } = setup(load)
   const series = inputs.sweep.series[0]
-  frames.request(series, [2])
+  frames.request([series, [2]])
   calls[0].reject(new Error(`cluster unreachable`))
   await settle()
   expect(on_error).toHaveBeenCalledExactlyOnceWith(
     `Loading frame 2 of series "fcc" failed: cluster unreachable`,
   )
   expect(frames.is_ready(series, 2)).toBe(true)
-  frames.request(series, [2])
+  frames.request([series, [2]])
   expect(load).toHaveBeenCalledOnce()
   expect(frames.frame(series, 2)).toBe(series.frames[2])
 })
@@ -198,7 +198,7 @@ test.each([
   const { load, calls } = deferred_loader()
   const { frames, inputs, on_error } = setup(load)
   const series = inputs.sweep.series[0]
-  frames.request(series, [1])
+  frames.request([series, [1]])
   calls[0].resolve(data)
   await settle()
   expect(on_error).toHaveBeenCalledOnce()
@@ -211,7 +211,7 @@ test(`a new sweep starts a fresh cache, aborting loads still running for the old
   const { load, calls } = deferred_loader()
   const { frames, inputs, on_error } = setup(load)
   const old_series = inputs.sweep.series[0]
-  frames.request(old_series, [0, 1, 2])
+  frames.request([old_series, [0, 1, 2]])
   const [, old_1, old_2] = calls
   calls[0].resolve({ label: `old 0` })
   await settle()
@@ -227,7 +227,7 @@ test(`a new sweep starts a fresh cache, aborting loads still running for the old
   calls.length = 0
   await settle()
   expect(frames.frame(series, 1).label).toBeUndefined()
-  frames.request(series, [0]) // loads again for the new sweep
+  frames.request([series, [0]]) // loads again for the new sweep
   expect(load).toHaveBeenCalledTimes(4)
   expect(calls[0].args).toEqual([`fcc`, 0])
   expect(on_error).not.toHaveBeenCalled()
@@ -242,7 +242,7 @@ test(`requests from an effect rerun it for a new loader, not as loads start and 
     const frames = create_sweep_frames({ sweep: () => inputs.sweep, on_error })
     $effect(() => {
       runs++
-      frames.request(inputs.sweep.series[0], [0, 1])
+      frames.request([inputs.sweep.series[0], [0, 1]])
     })
   })
   onTestFinished(cleanup)
@@ -279,8 +279,8 @@ test.each([
   const { load, calls } = deferred_loader()
   const { frames, inputs, on_error } = setup(load)
   const series = inputs.sweep.series[0]
-  frames.request(series, [0, 1])
-  frames.request(series, [1, 2]) // frame 0 leaves the window
+  frames.request([series, [0, 1]])
+  frames.request([series, [1, 2]]) // frame 0 leaves the window
   expect([ids(calls), calls.map(({ signal }) => signal.aborted)]).toEqual([
     [0, 1, 2],
     [true, false, false],
@@ -290,7 +290,7 @@ test.each([
   await settle()
   expect(frames.frame(series, 0)).toBe(series.frames[0])
   expect(on_error).not.toHaveBeenCalled()
-  frames.request(series, [0])
+  frames.request([series, [0]])
   expect([ids(calls), calls[3].signal.aborted]).toEqual([[0, 1, 2, 0], false])
   calls[3].resolve({ label: `again` })
   await settle()
@@ -311,7 +311,7 @@ test(`frames beyond the window and the recently shown ones keep only their light
   // show frames 0 to RECENT_FRAMES one by one, each prefetching its next frame
   const frame_0_states: SweepFrame[] = []
   for (let idx = 0; idx <= RECENT_FRAMES; idx++) {
-    frames.request(series, [idx, idx + 1])
+    frames.request([series, [idx, idx + 1]])
     for (const call of calls) call.resolve(data(call.args[1]))
     await settle()
     frame_0_states.push(frames.frame(series, 0))
@@ -334,13 +334,36 @@ test(`frames beyond the window and the recently shown ones keep only their light
   const expected_kept = series.frames.map((_frame, idx) => idx > 0 && idx <= RECENT_FRAMES + 1)
   expect(kept).toEqual(expected_kept)
   // a prefetched frame that was never shown is evicted once the window moves past it
-  frames.request(series, [RECENT_FRAMES + 2])
+  frames.request([series, [RECENT_FRAMES + 2]])
   expect(frames.frame(series, RECENT_FRAMES + 1).doses).toBeUndefined()
   // an evicted frame shows its light fields while it loads again, then all of them
-  frames.request(series, [0])
+  frames.request([series, [0]])
   expect([frames.is_loading(series, 0), frames.frame(series, 0)]).toEqual([true, evicted])
   calls.at(-1)?.resolve(data(0))
   await settle()
   expect(frames.frame(series, 0).doses).toEqual(data(0).doses)
   expect(ids(calls).filter((idx) => idx === 0)).toHaveLength(2)
+})
+
+test(`one request windows two series: shown frames load first, both stay until dropped`, async () => {
+  const { load, calls } = deferred_loader()
+  const { frames, inputs } = setup(load)
+  inputs.sweep.series.push({ id: `bcc`, frames: [{ value: 25 }, { value: 75 }] })
+  const [fcc, bcc] = inputs.sweep.series
+  frames.request([fcc, [1, 2, 0]], [bcc, [0, 1]])
+  expect(calls.map(({ args }) => args)).toEqual([
+    [`fcc`, 1],
+    [`bcc`, 0],
+    [`fcc`, 2],
+    [`bcc`, 1],
+    [`fcc`, 0],
+  ])
+  for (const call of calls) call.resolve({ label: call.args.join(` `) })
+  await settle()
+  expect([frames.frame(bcc, 0).label, frames.is_ready(bcc, 0)]).toEqual([`bcc 0`, true])
+  // the compared series' window is left: its prefetched frame drops its data, the shown one
+  // stays among the recent frames
+  frames.request([fcc, [1, 2, 0]])
+  expect([frames.is_ready(bcc, 0), frames.is_ready(bcc, 1)]).toEqual([true, false])
+  expect(load).toHaveBeenCalledTimes(5)
 })

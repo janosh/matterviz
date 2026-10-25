@@ -64,6 +64,8 @@
     show_normalize_control = false,
     show_units_control = false,
     sigma_range,
+    density_range,
+    density_extent = $bindable(),
     // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
     ...rest
@@ -87,6 +89,10 @@
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
     sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
+    // the density extent to span instead of the data's (e.g. several plots' union); a range in
+    // x_axis or y_axis still wins
+    density_range?: Vec2
+    density_extent?: Vec2 // read only: the drawn data's density extent (α²F's not included)
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -235,8 +241,14 @@
     const from_zero = is_density_axis ? !has_mirrored_spin : clamp_to_zero
     return [from_zero ? 0 : acc.min, acc.max]
   }
-  let x_range = $derived(compute_range(`x`, is_horizontal))
-  let y_range = $derived(compute_range(`y`, !is_horizontal))
+  const data_density_extent = $derived(compute_range(is_horizontal ? `x` : `y`, true))
+  $effect(() => {
+    density_extent = data_density_extent
+  })
+  const density_axis_range = $derived(density_range ?? data_density_extent)
+  const frequency_range = $derived(compute_range(is_horizontal ? `y` : `x`, false))
+  let x_range = $derived(is_horizontal ? density_axis_range : frequency_range)
+  let y_range = $derived(is_horizontal ? frequency_range : density_axis_range)
   const a2f_axis = $derived<AxisConfig>({
     label: `α²F(ω)`,
     format: `.2f`,

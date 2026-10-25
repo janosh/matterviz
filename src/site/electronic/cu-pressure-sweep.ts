@@ -7,7 +7,9 @@
 // frequencies stiffen as (V/V₀)^−γ with Grüneisen γ = 2, and α²F(ω) is the phonon DOS scaled
 // to λ = 0.13 at ambient, falling as 1/ω² under compression. The mode-resolved coupling λ_qν
 // on the DOS's q grid is the one that α²F implies: λ_qν ω_qν constant (α²F ∝ F), averaging to
-// λ. Illustrative only: no frame is the result of a calculation at its pressure.
+// λ. A second series puts the same volumes at a stiffer equation of state's pressures (B₀ =
+// 180 GPa), so at one pressure it shows a less compressed cell. Illustrative only: no frame is
+// the result of a calculation at its pressure.
 import { eos_pressure } from '#lib/eos/fit.js'
 import type { EosParams } from '#lib/eos/fit.js'
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
@@ -35,6 +37,11 @@ import { make_lattice } from '#lib/structure/parsers/shared.js'
 
 // V₀ = 1 so volumes are V/V₀ and pressures come out in B₀'s GPa
 const CU_EOS: EosParams = { e0: 0, v0: 1, b0: 140, b0_prime: 5 }
+// the sweep's series: one equation of state each over the same volumes
+const CU_SERIES: { id: string; label: string; eos: EosParams }[] = [
+  { id: `fcc`, label: `fcc Cu`, eos: CU_EOS },
+  { id: `fcc-stiff`, label: `fcc Cu (B₀ = 180 GPa)`, eos: { ...CU_EOS, b0: 180 } },
+]
 // V/V₀ of the frames, in ascending pressure
 const CU_VOLUME_RATIOS = [1, 0.95, 0.9, 0.85, 0.8, 0.75]
 
@@ -312,7 +319,8 @@ export function cu_frame_phonons(
 
 // The sweep: structures up front, and a loader computing each frame's band grid, band
 // structure, DOS and phonon spectra when the viewer first shows it, as a remote loader would
-// fetch them
+// fetch them. Both series' frames are the same volumes, so a frame's data depends on its index
+// alone.
 export function cu_pressure_sweep(input: {
   structure: Crystal
   band_data: BandGridData
@@ -338,21 +346,19 @@ export function cu_pressure_sweep(input: {
   }
   return {
     axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
-    series: [
-      {
-        id: `fcc`,
-        label: `fcc Cu`,
-        frames: CU_VOLUME_RATIOS.map((ratio, idx) => {
-          const pressure = eos_pressure(`birch_murnaghan`, CU_EOS, ratio)
-          const value = Math.round(pressure * 10) / 10
-          return {
-            value,
-            label: `${value} GPa (V/V₀ = ${ratio.toFixed(2)})`,
-            structure: scale_crystal(input.structure, scales[idx]),
-          }
-        }),
-      },
-    ],
+    series: CU_SERIES.map(({ id, label, eos }) => ({
+      id,
+      label,
+      frames: CU_VOLUME_RATIOS.map((ratio, idx) => {
+        const pressure = eos_pressure(`birch_murnaghan`, eos, ratio)
+        const value = Math.round(pressure * 10) / 10
+        return {
+          value,
+          label: `${value} GPa (V/V₀ = ${ratio.toFixed(2)})`,
+          structure: scale_crystal(input.structure, scales[idx]),
+        }
+      }),
+    })),
     descriptors: CU_SWEEP_DESCRIPTORS,
     load_frame,
   }

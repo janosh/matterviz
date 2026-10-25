@@ -372,5 +372,18 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await expect(
     trends.locator(`.axis-label`).filter({ hasText: `Volume per atom` }),
   ).toHaveCount(1)
-  await expect(markers).toHaveCount(6) // computed from the structures every frame has
+  // computed from the structures every frame of both series has
+  await expect(markers).toHaveCount(12)
+
+  // comparing the stiffer equation of state splits the frame panes into two labelled sides
+  await page.getByLabel(`Compare with the stiffer equation of state`).check()
+  await expect(viewer.locator(`.side-label`)).toHaveText([
+    /^fcc Cu · 0 GPa/,
+    /^fcc Cu \(B₀ = 180 GPa\) · 0 GPa/,
+  ])
+  await expect(viewer.locator(`[data-pane="bands"]`)).toHaveCount(2)
+  await expect(viewer.locator(`[data-pane="trends"]`)).toHaveCount(1)
+  await expect(phonon).toHaveCount(2)
+  await page.getByLabel(`Compare with the stiffer equation of state`).uncheck()
+  await expect(viewer.locator(`.side-label`)).toHaveCount(0)
 })

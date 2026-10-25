@@ -82,10 +82,16 @@ test(`band energies scale about E_F by 1/s², k-space lengths by 1/s`, () => {
 test(`the sweep ascends in pressure and its loader builds each frame's spectra`, async () => {
   const sweep = cu_pressure_sweep({ structure: fcc, band_data, band_struct })
   validate_sweep(sweep)
-  const [series] = sweep.series
+  const [series, stiff] = sweep.series
   // Birch–Murnaghan pressures (B₀ = 140 GPa, B₀′ = 5) at CU_VOLUME_RATIOS, to 0.1 GPa
   expect(series.frames.map(({ value }) => value)).toEqual([0, 8.2, 19.2, 34.2, 54.7, 83.1])
   expect(series.frames[0].label).toBe(`0 GPa (V/V₀ = 1.00)`)
+  // the stiffer series (B₀ = 180 GPa): the same cells at 180/140 of each pressure
+  expect([stiff.id, stiff.label]).toEqual([`fcc-stiff`, `fcc Cu (B₀ = 180 GPa)`])
+  expect(stiff.frames.map(({ value }) => value)).toEqual([0, 10.5, 24.7, 44, 70.4, 106.8])
+  expect(stiff.frames.map(({ structure: cell }) => cell)).toEqual(
+    series.frames.map(({ structure: cell }) => cell),
+  )
   // frames bring only their structures up front
   expect(series.frames.every((frame) => frame.structure && !frame.band_data)).toBe(true)
   if (!sweep.load_frame) throw new Error(`no loader`)
