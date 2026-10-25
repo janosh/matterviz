@@ -75,6 +75,14 @@ describe(`validate_sweep`, () => {
       { id: `a`, frames: [{ value: 1 }] },
     ],
   }
+  const shared_frame = { value: 0 }
+  const shared_frames: Sweep = {
+    ...sweep_of([0]),
+    series: [
+      { id: `a`, frames: [shared_frame] },
+      { id: `b`, frames: [shared_frame] },
+    ],
+  }
   // oxfmt-ignore
   test.each<[string, Sweep, string]>([
     [`no series`, { ...sweep_of([0]), series: [] }, `at least one series`],
@@ -83,6 +91,7 @@ describe(`validate_sweep`, () => {
     [`repeated values`, sweep_of([50, 50]), `strictly ascending`],
     [`a non-finite value`, sweep_of([0, Number.NaN]), `frame 1 has a non-finite value NaN`],
     [`duplicate series ids`, duplicate_ids, `series id "a" is not unique`],
+    [`a frame shared by two series`, shared_frames, `series "b" frame 0 reuses the frame object of series "a" frame 0`],
     [`duplicate descriptor keys`, with_descriptors({ key: `tc`, label: `Tc` }, { key: `tc`, label: `T_c` }), `descriptor key "tc" is not unique`],
     [`an element share without element`, with_descriptors({ key: `h`, label: `H`, compute: `fermi_dos_share` }), `element goes with (and only with) fermi_dos_share`],
     [`an element on another descriptor`, with_descriptors({ key: `n`, label: `N`, compute: `fermi_dos`, element: `H` }), `element goes with (and only with) fermi_dos_share`],

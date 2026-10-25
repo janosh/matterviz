@@ -109,11 +109,22 @@ export function validate_sweep(sweep: Sweep): void {
   }
   if (!sweep.series?.length) throw new Error(`Sweep needs at least one series`)
   const series_ids = new Set<string>()
+  // The frame cache keys loads by frame object, so one object in two places would show the
+  // data loaded for the first of them in the other
+  const frame_owners = new Map<SweepFrame, string>()
   for (const { id, frames } of sweep.series) {
     if (series_ids.has(id)) throw new Error(`Sweep series id "${id}" is not unique`)
     series_ids.add(id)
     if (!frames.length) throw new Error(`Sweep series "${id}" has no frames`)
-    for (const [idx, { value }] of frames.entries()) {
+    for (const [idx, frame] of frames.entries()) {
+      const owner = frame_owners.get(frame)
+      if (owner !== undefined) {
+        throw new Error(
+          `Sweep series "${id}" frame ${idx} reuses the frame object of ${owner}`,
+        )
+      }
+      frame_owners.set(frame, `series "${id}" frame ${idx}`)
+      const { value } = frame
       if (!Number.isFinite(value)) {
         throw new RangeError(
           `Sweep series "${id}" frame ${idx} has a non-finite value ${value}`,
