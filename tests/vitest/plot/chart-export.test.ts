@@ -18,6 +18,9 @@ describe(`to_csv`, () => {
     // A cell that silently became `NaN`/`Infinity` would read as data downstream
     [`non-finite numbers blank out`, [[NaN, Infinity]], `a,b\n,`],
     [`null and undefined blank out`, [[null, undefined]], `a,b\n,`],
+    // Spreadsheets would evaluate these; negative numbers stay numbers
+    [`formula-leading text gets a quote`, [[`=SUM(A1)`, -1]], `a,b\n'=SUM(A1),-1`],
+    [`+ @ - lead too`, [[`@x`, `+y`, `-z`]], `a,b\n'@x,'+y,'-z`],
   ])(`%s`, (_name, rows, expected) => {
     expect(to_csv([`a`, `b`], rows)).toBe(expected)
   })

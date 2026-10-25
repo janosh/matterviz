@@ -263,7 +263,7 @@
   })
 
   let value_label = $derived(spectral_value_label(is_phonon, unit))
-  let density_label = $derived(dos_density_label(is_phonon, is_horizontal))
+  let density_label = $derived(dos_density_label(is_phonon, is_horizontal, normalize))
 
   const internal_x_axis = $derived<AxisConfig>({
     label: is_horizontal ? density_label : value_label,

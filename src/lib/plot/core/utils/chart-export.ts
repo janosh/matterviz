@@ -8,9 +8,17 @@ import { escape_csv_field } from 'svelte-widgets/csv'
 
 export type CsvCell = string | number | null | undefined
 
-// Non-finite chart values represent missing data, not literal NaN/Infinity fields.
+// Non-finite chart values represent missing data, not literal NaN/Infinity fields. Text
+// starting like a formula (e.g. a label decoded from `&#61;SUM(...)`) gets a leading quote so
+// spreadsheets show it rather than evaluate it.
 const csv_cell = (cell: CsvCell): string =>
-  escape_csv_field(typeof cell === `number` && !Number.isFinite(cell) ? null : cell)
+  escape_csv_field(
+    typeof cell === `number` && !Number.isFinite(cell)
+      ? null
+      : typeof cell === `string` && /^[=+\-@\t\r]/.test(cell)
+        ? `'${cell}`
+        : cell,
+  )
 
 export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
   [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)

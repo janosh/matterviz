@@ -766,6 +766,26 @@ describe(`ScatterPlot`, () => {
     expect(state.resolved_padding).toMatchObject({ t: 7, l: 13, r: 17 })
   })
 
+  test(`resolved_padding fed back into the plot settles instead of looping`, async () => {
+    const state = $state<{ resolved_padding?: Required<Sides> }>({
+      resolved_padding: undefined,
+    })
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const props = {
+      series: [{ ...basic, color_values: [1, 2, 3, 4, 5] }],
+      padding: { r: 70 },
+      // the scatter-plot demo sizes its external color bar from the bound padding
+      get color_bar() {
+        const { t = 0, b = 0 } = state.resolved_padding ?? {}
+        return { wrapper_style: `position: absolute; height: calc(100% - ${t + b}px)` }
+      },
+    }
+    await mount_sized_scatter_plot(bind_props(props, state))
+    await flush_render()
+    expect(state.resolved_padding?.r).toBe(70)
+    expect(error_spy.mock.calls.flat().join(` `)).not.toContain(`effect_update_depth_exceeded`)
+  })
+
   test.each([
     [`closed by default`, {}, true, false],
     [`hidden`, { show_controls: false }, false, false],

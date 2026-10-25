@@ -1880,8 +1880,10 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
       .map((_, idx) => ({ value: idx * 2 })),
   }
 
-  // Right padding makes space for the external color bar; the other sides fit the axes
+  // Right padding makes space for the external color bar; the other sides fit the axes,
+  // so the bar's height follows the padding the plot resolves
   const plot_padding = { r: 70 }
+  let resolved_padding = $state({ t: 20, b: 50, l: 50, r: 70 })
 
   // Color Scaling Controls
   let color_scale = $state({ type: `linear`, scheme: `interpolateCool` }) // Track which color scale type is active
@@ -1905,6 +1907,7 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
   y_axis={{ label: 'Y Position', range: [0, 100], format: '~s' }}
   {color_scale}
   padding={plot_padding}
+  bind:resolved_padding
   color_bar={{
     title: `Color Bar Title (${color_scale.type})`,
     orientation: `vertical`,
@@ -1914,7 +1917,7 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
       right: 10px;
       inset-block: 0;
       margin-block: auto;
-      height: calc(100% - ${plot_padding.t + plot_padding.b}px);
+      height: calc(100% - ${resolved_padding.t + resolved_padding.b}px);
       max-height: 100%;
     `,
     bar_style: `width: 15px; height: 100%;`,

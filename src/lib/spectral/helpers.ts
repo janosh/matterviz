@@ -1136,7 +1136,7 @@ export function format_dos_tooltip(opts: {
   const { x_formatted, y_formatted, label, is_horizontal, is_phonon, units } = opts
   const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
   const freq_default = parse_axis_label(spectral_value_label(is_phonon, units))
-  const density_default = parse_axis_label(dos_density_label(is_phonon, false))
+  const density_default = parse_axis_label(dos_density_label(is_phonon, false, null))
   const freq_line = (parsed: { name: string; unit?: string }, value: string) => ({
     label: parsed.name || freq_default.name,
     value,

@@ -118,7 +118,7 @@
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
-  import type { Sides } from '#lib/plot/core/layout.js'
+  import { sides_equal, type Sides } from '#lib/plot/core/layout.js'
   import {
     CANVAS_MARKER_THRESHOLD,
     type CanvasMarker,
@@ -506,10 +506,14 @@
 
   $effect(() => {
     const { pad: frame_pad, title_pad } = frame
-    resolved_padding = {
+    const next = {
       ...frame_pad,
       t: Math.max(frame_pad.t, title_pad.t),
       b: Math.max(frame_pad.b, title_pad.b),
+    }
+    // A fresh object per run would loop through a host that feeds it back into the plot
+    if (!untrack(() => resolved_padding && sides_equal(resolved_padding, next))) {
+      resolved_padding = next
     }
   })
 
