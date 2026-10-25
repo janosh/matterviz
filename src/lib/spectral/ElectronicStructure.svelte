@@ -118,6 +118,9 @@
   const PANE_IDS = PANES.map(({ pane }) => pane)
   // Beside each other, the divider keeps bands and DOS this wide (px), room for their axes
   const [MIN_BANDS_WIDTH, MIN_DOS_WIDTH] = [300, 120]
+  // Below this width (px) the panes stack in one column, each at its own height, rather than
+  // share the viewer's height (a chat card's 650x560 squeezed the bands to a strip)
+  const STACK_WIDTH = 800
   const SWEEP_FPS_RANGE = [0.25, 5] as const // frames per second while playing a sweep
   // The structure is in the Fermi data's frame when a_i · b_j / 2π is an integer matrix (its
   // cell a supercell of the zone's) or the inverse of one (the zone's cell a supercell of its).
@@ -218,6 +221,8 @@
   let wrapper = $state<HTMLDivElement>()
   let dragover = $state(false)
   let chrome_width = $state(0)
+  let viewer_width = $state(0)
+  const stacked = $derived(viewer_width > 0 && viewer_width < STACK_WIDTH)
 
   const controls_config = $derived(normalize_show_controls(show_controls))
   const pane_controls = <Prop>(prop: Prop): Prop | false =>
@@ -552,9 +557,11 @@
     })
     scenes_size = $state({ width: 0, height: 0 })
     scene_orientation = $derived(
-      layout === `auto`
-        ? pick_pane_orientation(this.scenes_size.width, this.scenes_size.height)
-        : layout,
+      layout !== `auto`
+        ? layout
+        : stacked
+          ? `vertical`
+          : pick_pane_orientation(this.scenes_size.width, this.scenes_size.height),
     )
     spectra_width = $state(0)
     spectra_side = $derived(spectra_split && this.spectra_width >= MIN_SIDE_BY_SIDE_WIDTH)
@@ -713,6 +720,7 @@
 
 <div
   bind:this={wrapper}
+  bind:clientWidth={viewer_width}
   role="group"
   aria-label="Electronic structure viewer"
   aria-keyshortcuts={shows_fullscreen_toggle(fullscreen_toggle, controls_config)
@@ -722,7 +730,7 @@
   class={[
     `electronic-structure`,
     show_scenes && show_lower ? `two-rows` : `one-row`,
-    { dragover },
+    { dragover, stacked },
     rest.class,
   ]}
   {@attach drop_zone}
@@ -818,7 +826,7 @@
       {@render sided(scenes_row, true)}
     {/if}
 
-    {#if show_scenes && show_lower}
+    {#if show_scenes && show_lower && !stacked}
       <SplitPane
         orientation="vertical"
         bind:ratio={row_ratio}
@@ -861,14 +869,14 @@
             {/if}
           </div>
         {/if}
-        {#if lower_split}
+        {#if lower_split && !stacked}
           <SplitPane
             bind:ratio={trends_ratio}
             aria-label="Resize sweep descriptors and spectra"
           />
         {/if}
         {#if show_column}
-          {@render sided(spectra_column, !show_scenes)}
+          {@render sided(spectra_column, !show_scenes || stacked)}
         {/if}
       </div>
     {/if}
@@ -941,7 +949,7 @@
           />
         </div>
       {/if}
-      {#if scenes_split}
+      {#if scenes_split && !stacked}
         <SplitPane
           orientation={side.scene_orientation}
           bind:ratio={pane_ratio}
@@ -1097,7 +1105,7 @@
           {/if}
         </div>
       {/if}
-      {#if column_split}
+      {#if column_split && !stacked}
         <SplitPane
           orientation="vertical"
           bind:ratio={phonon_ratio}
@@ -1166,6 +1174,42 @@
       height: var(--electronic-height, 860px);
       > .panes {
         grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
+      }
+    }
+    /* stacked (narrow): one scrolling column of full-width panes, each its own height; the
+       viewer grows to fit them unless its height is set */
+    &.stacked {
+      height: var(--electronic-height, auto);
+      --pane-height: var(--electronic-stacked-pane-height, 320px);
+      > .panes {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+      .row:not(.side),
+      .sides,
+      .sides > .side {
+        display: flex;
+        flex: none;
+        flex-direction: column;
+      }
+      .sides > .side + .side {
+        border-top: 1px solid var(--border-color, light-dark(#ddd, #444));
+        border-left: none;
+      }
+      .pane,
+      .row.side {
+        flex: none;
+        height: var(--pane-height);
+      }
+      .row.side > .pane {
+        height: auto;
+      }
+    }
+    /* below MIN_SIDE_BY_SIDE_WIDTH the phonon pane stacks its DOS under its bands */
+    @container (width < 520px) {
+      &.stacked [data-pane='phonon'] {
+        height: calc(2 * var(--pane-height));
       }
     }
     &.dragover {

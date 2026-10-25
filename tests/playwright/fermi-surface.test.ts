@@ -392,3 +392,69 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await page.getByLabel(`Compare with the stiffer equation of state`).uncheck()
   await expect(viewer.locator(`.side-label`)).toHaveCount(0)
 })
+
+// Narrow, the sweep viewer stacks its panes in one column, each its own height: none overlaps
+// another and every plot keeps its axis titles inside it
+test(`electronic-structure sweep: a narrow viewer stacks its panes without overlap`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  const viewer = page.locator(`.sweep-demo`)
+  await viewer.scrollIntoViewIfNeeded()
+  await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
+  await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
+    timeout: LOAD_TIMEOUT,
+  })
+  const panes = await viewer.locator(`[data-pane]`).evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { left, top, width, height } = node.getBoundingClientRect()
+      return { pane: node.getAttribute(`data-pane`), left, top, width, height }
+    }),
+  )
+  expect(panes.map(({ pane }) => pane)).toEqual([
+    `structure`,
+    `fermi`,
+    `trends`,
+    `bands`,
+    `dos`,
+    `phonon`,
+  ])
+  for (const { pane, height } of panes) expect(height, pane ?? ``).toBeGreaterThanOrEqual(300)
+  const overlaps = panes.flatMap((lhs, idx) =>
+    panes
+      .slice(idx + 1)
+      .filter(
+        (rhs) =>
+          lhs.left < rhs.left + rhs.width - 1 &&
+          rhs.left < lhs.left + lhs.width - 1 &&
+          lhs.top < rhs.top + rhs.height - 1 &&
+          rhs.top < lhs.top + lhs.height - 1,
+      )
+      .map((rhs) => `${lhs.pane} × ${rhs.pane}`),
+  )
+  expect(overlaps).toEqual([])
+  // each axis title within its plot's SVG, measured on screen (plots off screen hold their
+  // last layout until scrolled into view)
+  const plots = viewer.locator(`.scatter > svg`)
+  const outside: string[] = []
+  for (const plot of await plots.all()) {
+    await plot.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
+    outside.push(
+      ...(await plot.evaluate((svg) => {
+        const frame = svg.getBoundingClientRect()
+        return [...svg.querySelectorAll(`.axis-label`)].flatMap((label) => {
+          const box = label.getBoundingClientRect()
+          const inside =
+            box.left >= frame.left - 1 &&
+            box.right <= frame.right + 1 &&
+            box.top >= frame.top - 1 &&
+            box.bottom <= frame.bottom + 1
+          return inside || box.width === 0 ? [] : [label.textContent?.trim() ?? ``]
+        })
+      })),
+    )
+  }
+  expect(outside).toEqual([])
+})

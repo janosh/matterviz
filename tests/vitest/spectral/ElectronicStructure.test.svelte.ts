@@ -246,9 +246,11 @@ test.each([800, 400])(
   (width) => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
     const side = width >= 520 // the DOS sits beside the bands from 520px, else below
+    const stacked = width < 800 // narrower, the panes stack each at its own height
     const root = mount_host({ ...all_data, class: `caller`, layout: `vertical` })
     expect(root.getAttribute(`role`)).toBe(`group`)
     expect([...root.classList]).toEqual(expect.arrayContaining([`caller`, `two-rows`]))
+    expect(root.classList.contains(`stacked`)).toBe(stacked)
     // the panes' own fullscreen toggles are off: the viewer's row holds the only one
     expect(count(root, `.fullscreen-btn`)).toBe(1)
     expect(
@@ -263,9 +265,9 @@ test.each([800, 400])(
     ).toContain(side ? `side` : `stacked`)
     // beside the bands, the DOS resizes at a divider of its own
     expect(count(root, `.spectra > .pane-divider`)).toBe(side ? 1 : 0)
-    // a divider between the rows and one between the scenes
-    expect(count(root, `:scope > .panes > .pane-divider`)).toBe(1)
-    expect(count(root, `.scenes > .pane-divider`)).toBe(1)
+    // a divider between the rows and one between the scenes, unless stacked
+    expect(count(root, `:scope > .panes > .pane-divider`)).toBe(stacked ? 0 : 1)
+    expect(count(root, `.scenes > .pane-divider`)).toBe(stacked ? 0 : 1)
     expect(count(root, `.pane`)).toBe(4)
     // the band structure's k-path runs through the Wigner-Seitz zone of the Fermi surface
     expect(viewers.fermi?.wigner_seitz).toBe(true)
@@ -1262,6 +1264,47 @@ test.each([undefined, `bcc`])(
     ]).toEqual([new Set([`[0,9]`]), new Set([`[0,7]`])])
   },
 )
+
+// Narrow, the panes stack in one column, each its own height, rather than share the viewer's:
+// no dividers between them, the scenes one above the other, and every compared side labelled
+test.each([
+  [700, true],
+  [1200, false],
+])(`at %ipx wide the panes stack: %s`, async (width, stacked) => {
+  // every pane row measures 700x320, where the scenes would split side by side unstacked
+  for (const [key, size] of [
+    [`clientWidth`, 700],
+    [`clientHeight`, 320],
+  ] as const) {
+    const spy = vi.spyOn(HTMLElement.prototype, key, `get`).mockReturnValue(size)
+    onTestFinished(() => spy.mockRestore())
+  }
+  const root = await mount_sized(
+    ElectronicStructure,
+    { sweep: make_sweep(), compare_series: `bcc`, panes: ALL_PANES },
+    {
+      selector: `.electronic-structure`,
+      width,
+      height: 400,
+      on_mount: (comp) => mounted.push(comp),
+    },
+  )
+  flushSync()
+  const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
+  expect({
+    stacked: root.classList.contains(`stacked`),
+    rows_divider: divider(`Resize 3D scenes and the plots below`),
+    trends_divider: divider(`Resize sweep descriptors and spectra`),
+    side_labels: side_labels(root).length,
+  }).toEqual({
+    stacked,
+    rows_divider: !stacked,
+    trends_divider: !stacked,
+    side_labels: stacked ? 4 : 2,
+  })
+  const scenes_row = root.querySelector(`.row.scenes`)
+  expect(scenes_row?.classList.contains(`vertical`)).toBe(stacked)
+})
 
 test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
   const sweep = make_sweep()
