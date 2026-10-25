@@ -1159,6 +1159,35 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
   expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`])
 })
 
+// The old sweep's panes read their props as they unmount, which re-runs the viewer's frame
+// deriveds against the old sweep: its loads must still reach the panes afterwards
+test(`a replaced lazy sweep draws the frames its own loader returns`, async () => {
+  // frames holding only their value, so swapping sweeps unmounts the loaded panes
+  const bare_sweep = () => {
+    const load_frame = vi.fn(async () => ({ structure, doses: { total: dos } }))
+    const sweep = make_sweep()
+    for (const series of sweep.series)
+      series.frames = series.frames.map(({ value }) => ({ value }))
+    return { sweep: { ...sweep, load_frame }, load_frame }
+  }
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep: bare_sweep().sweep,
+    frame_idx: 0,
+  })
+  const root = mount_host(props)
+  // a DOS pane without its empty state (undefined while there is no pane)
+  const dos_drawn = () =>
+    root.querySelector(`[data-pane="dos"]`)?.querySelector(`.empty-state`) === null
+  await vi.waitFor(() => expect(dos_drawn()).toBe(true))
+  const { sweep, load_frame } = bare_sweep()
+  props.sweep = sweep
+  flushSync()
+  await vi.waitFor(() =>
+    expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
+  )
+  await vi.waitFor(() => expect(dos_drawn()).toBe(true))
+})
+
 test(`a dropped sweep JSON replaces the viewer's data, which then takes only sweeps`, async () => {
   const on_error = vi.fn()
   const on_file_load = vi.fn()
