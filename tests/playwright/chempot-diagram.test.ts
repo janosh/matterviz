@@ -178,7 +178,7 @@ test.describe(`ChemPot Diagram interactions`, { tag: `@webgl` }, () => {
     // the legend's bar; the controls pane's colour-scale picker draws preview bars of its own
     const colorbar = diagram.locator(`.chempot-legend .colorbar`)
     await expect(colorbar).toBeVisible()
-    await expect(colorbar).toContainText(`Energy per atom`)
+    await expect(colorbar).toContainText(`Total energy (eV/atom)`)
     await expect(controls_pane.getByLabel(`Color scale:`)).toBeVisible()
 
     await color_mode_select.selectOption(`arity`)

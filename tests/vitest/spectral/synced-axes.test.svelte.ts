@@ -4,6 +4,7 @@ import {
 } from '#lib/spectral/synced-axes.svelte.js'
 import type { Vec2 } from '#lib/math.js'
 import type { AxisConfig } from '#lib/plot/core/types.js'
+import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
 import type { BaseBandStructure, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
 import { afterEach, expect, test } from 'vitest'
@@ -51,7 +52,7 @@ test.each([`phonon`, `electronic`] as const)(
           units: () => units,
           side_by_side: () => inputs.side_by_side,
           sync_zoom: () => inputs.sync_zoom,
-          base_padding: { t: 20, b: 50 },
+          base_padding: DEFAULT_PLOT_PADDING, // as the viewers pass it: only t and b count
         })
       }),
     )

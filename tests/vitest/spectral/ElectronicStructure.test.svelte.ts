@@ -248,11 +248,11 @@ test.each([800, 400])(
     expect(
       root.querySelector(`:scope > .panes > .control-buttons .fullscreen-btn`),
     ).not.toBeNull()
-    expect(root.querySelector(`:scope > .panes > .row.scenes`)?.classList).toContain(
-      `vertical`,
-    )
     expect(
-      root.querySelector(`:scope > .panes > .row.lower > .row.column > .row.spectra`)
+      root.querySelector(`:scope > .panes > .sides > .side > .row.scenes`)?.classList,
+    ).toContain(`vertical`)
+    expect(
+      root.querySelector(`.row.lower > .sides > .side > .row.column > .row.spectra`)
         ?.classList,
     ).toContain(side ? `side` : `stacked`)
     // beside the bands, the DOS resizes at a divider of its own
@@ -295,7 +295,9 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
     units: `THz`,
   })
   const root = mount_host(props)
-  const column = root.querySelector(`:scope > .panes > .row.lower > .row.column`)
+  const column = root.querySelector(
+    `:scope > .panes > .row.lower > .sides > .side > .row.column`,
+  )
   expect(column?.classList).toContain(`vertical`)
   expect(count(root, `.column > .pane-divider`)).toBe(1)
   expect([...(column?.children ?? [])].map((child) => child.className.split(` `)[0])).toEqual([
@@ -920,11 +922,12 @@ test(`clicking a trends point selects its series and frame`, () => {
 
 test(`load_frame fetches the shown frame and its neighbours, merged into the panes`, async () => {
   const sweep = make_sweep()
-  // only structures and values up front, the spectra come from the loader
+  // only structures, values and the plotted tc up front (no fill), spectra from the loader
   for (const series of sweep.series) {
-    series.frames = series.frames.map(({ value, structure: crystal }) => ({
+    series.frames = series.frames.map(({ value, structure: crystal, scalars }) => ({
       value,
       structure: crystal,
+      scalars,
     }))
   }
   const load_frame = vi.fn(async (series_id: string, frame_idx: number) => ({
@@ -1249,6 +1252,10 @@ const energy_span = (frames: SweepFrame[]): Vec2 => {
 test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
   const sweep = make_sweep()
   const [fcc, bcc] = sweep.series
+  // HTML labels (the trends legend and axis render it) read as plain text in options, side
+  // labels and the slider's aria-label
+  bcc.label = `b<i>c</i>c`
+  sweep.axis.label = `P<sub>ext</sub>`
   // bcc's DOS reaches 20 eV and density 4, beyond every fcc frame
   for (const entry of bcc.frames) {
     entry.doses = { total: { ...wide_dos, densities: [0, 4, 4, 0] } }
@@ -1262,18 +1269,27 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
     panes: [...ALL_PANES, `phonon`],
   })
   const root = mount_host(props)
+  // the mounted scenes and spectra: comparing adds the compared side's, never remounts
+  const mounted_views = () => [scenes.all.length, instances.bands.length, instances.dos.length]
+  expect(mounted_views()).toEqual([2, 1, 1])
   // off: one side, as without a compared series
-  expect([count(root, `.row.compare`), count(root, `.side-label`)]).toEqual([0, 0])
+  expect([count(root, `.sides.compare`), count(root, `.side-label`)]).toEqual([0, 0])
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`])
   expect(viewers.bands?.y_axis?.range).toEqual(energy_span(fcc.frames))
   expect(viewers.trends?.compare).toBeUndefined()
   const compare_select = series_select(root, `Compare with`)
   expect([...compare_select.options].map(({ value }) => value)).toEqual([``, `bcc`])
+  const option_texts = (select: HTMLSelectElement) =>
+    [...select.options].map(({ textContent }) => textContent?.trim())
+  expect(option_texts(compare_select)).toEqual([`none`, `bcc`])
+  expect(option_texts(series_select(root, `Series`))).toEqual([`fcc`, `bcc`])
+  expect(root.querySelector(`[aria-label="Pext frame"]`)).not.toBeNull()
 
   choose(compare_select, `bcc`)
   expect(props.compare_series).toBe(`bcc`)
   // the scenes' row and the spectra's column split, the trends pane stays single
-  expect(count(root, `.row.compare`)).toBe(2)
+  expect(count(root, `.sides.compare`)).toBe(2)
+  expect(mounted_views()).toEqual([4, 2, 2])
   // oxfmt-ignore
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`, `bands`, `dos`, `phonon`])
   expect(side_labels(root)).toEqual([`fcc · 100 GPa`, `bcc · 100 GPa`])
@@ -1305,14 +1321,21 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
   choose(series_select(root, `Series`), `bcc`)
   expect([props.series_id, props.frame_idx, props.compare_series]).toEqual([`bcc`, 0, `fcc`])
   expect(side_labels(root)).toEqual([`bcc · 100 GPa`, `fcc · 100 GPa`])
+  // so does a click on the compared series' point in the trends plot
+  viewers.trends?.on_frame_select?.(`fcc`, 1)
+  flushSync()
+  expect([props.series_id, props.frame_idx, props.compare_series]).toEqual([`fcc`, 1, `bcc`])
+  choose(series_select(root, `Series`), `bcc`)
 
   // clearing the compare restores the single side, on the shown series' own span again
   choose(series_select(root, `Compare with`), ``)
   expect(props.compare_series).toBeUndefined()
-  expect([count(root, `.row.compare`), count(root, `.side-label`)]).toEqual([0, 0])
+  expect([count(root, `.sides.compare`), count(root, `.side-label`)]).toEqual([0, 0])
+  expect(mounted_views()).toEqual([4, 2, 2])
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`])
-  expect(viewers.bands?.y_axis?.range).toEqual(energy_span(bcc.frames))
-  expect(viewers.dos?.density_range).toBeUndefined()
+  // the shown side's plots, mounted before comparing
+  expect(instances.bands[0].y_axis?.range).toEqual(energy_span(bcc.frames))
+  expect(instances.dos[0].density_range).toBeUndefined()
   expect(viewers.trends?.compare).toBeUndefined()
 
   // a replaced sweep without the compared series drops it
@@ -1325,19 +1348,18 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
   expect([props.series_id, props.compare_series]).toEqual([`bcc`, undefined])
 })
 
-// series a at 0, 40, 80, 120 GPa and b at 10, 75, 200: the sweep's spacing is the median gap,
-// 40 GPa, so only a's last frame has no b frame near it (75 GPa lies 45 off)
+// a's frames bunch at 0 to 8 GPa while b's lie at 10, 50, 90: b's own spacing, its median gap of
+// 40 GPa, sets how far its frame may lie off (a's gaps would make 20 off far)
 test.each([
   [0, `b · 10 GPa`, 0, ``],
-  [1, `b · 10 GPa`, 0, ``], // 30 GPa below beats 35 above
-  [2, `b · 75 GPa`, 1, ``],
-  [3, `b · 75 GPa`, 1, `no frame within 40 GPa of 120 GPa`],
+  [5, `b · 10 GPa`, 0, ``], // 30 GPa: a tie goes to the lower frame
+  [6, `b · 90 GPa`, 2, `no frame within 40 GPa of 140 GPa`],
 ])(`frame %d of a is compared with %s`, (frame_idx, label, compare_idx, notice) => {
   const sweep: Sweep = {
     ...make_sweep(),
     series: [
-      { id: `a`, frames: [0, 40, 80, 120].map((value) => sweep_frame(value, 1)) },
-      { id: `b`, frames: [10, 75, 200].map((value) => sweep_frame(value, 2)) },
+      { id: `a`, frames: [0, 2, 4, 6, 8, 30, 140].map((value) => sweep_frame(value, 1)) },
+      { id: `b`, frames: [10, 50, 90].map((value) => sweep_frame(value, 2)) },
     ],
   }
   const root = mount_host({ sweep, frame_idx, compare_series: `b`, panes: ALL_PANES })
@@ -1351,7 +1373,7 @@ test.each([
 test(`a compared series loads through the same frame cache, window and aborts`, async () => {
   const sweep = make_sweep()
   for (const series of sweep.series) {
-    series.frames = series.frames.map(({ value }) => ({ value, structure }))
+    series.frames = series.frames.map(({ value, scalars }) => ({ value, structure, scalars }))
   }
   const load_frame = vi.fn(async (series_id: string, frame_idx: number) => ({
     doses: { total: { ...dos, densities: [0, 10 + frame_idx, 10 + frame_idx, 0] } },
@@ -1390,23 +1412,30 @@ test(`a compared series loads through the same frame cache, window and aborts`, 
 // === background fill of the trends plot ===
 // Six frames with only structures and their supplied tc up front, their DOS (thus the
 // computed N(E_F)) from a loader whose loads settle when the test says
-function fill_setup(props: Partial<ComponentProps<typeof ElectronicStructure>> = {}) {
-  const calls: { idx: number; signal: AbortSignal; resolve: () => void }[] = []
+function fill_setup(
+  props: Partial<ComponentProps<typeof ElectronicStructure>> = {},
+  series_ids = [`fcc`],
+  n_frames = 6,
+) {
+  const calls: { id: string; idx: number; signal: AbortSignal; resolve: () => void }[] = []
   const load_frame = vi.fn(
-    (_series_id: string, frame_idx: number, { signal }: { signal: AbortSignal }) =>
+    (id: string, frame_idx: number, { signal }: { signal: AbortSignal }) =>
       new Promise<Partial<SweepFrame>>((resolve) => {
         const density = frame_idx + 1
         const data = { doses: { total: { ...dos, densities: [0, density, density, 0] } } }
-        calls.push({ idx: frame_idx, signal, resolve: () => resolve(data) })
+        calls.push({ id, idx: frame_idx, signal, resolve: () => resolve(data) })
       }),
   )
-  const frames = Array.from({ length: 6 }, (_, idx) => ({
-    value: 50 * idx,
-    structure,
-    scalars: { tc: idx },
+  const series = series_ids.map((id) => ({
+    id,
+    frames: Array.from({ length: n_frames }, (_, idx) => ({
+      value: 50 * idx,
+      structure,
+      scalars: { tc: idx },
+    })),
   }))
   const state = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep: { ...make_sweep(), series: [{ id: `fcc`, frames }], load_frame },
+    sweep: { ...make_sweep(), series, load_frame },
     frame_idx: 0,
     descriptor: `n_ef`,
     panes: ALL_PANES,
@@ -1463,6 +1492,24 @@ test.each<[string, (props: ComponentProps<typeof ElectronicStructure>) => void, 
   expect([loaded(), note()]).toEqual([[0, 1, 2], null])
 })
 
+// the trends plot draws every series: the fill covers them all, the shown and compared first
+test(`the fill covers every series, after the shown and compared windows`, async () => {
+  const { calls, settle, note } = fill_setup(
+    { compare_series: `hcp` },
+    [`fcc`, `bcc`, `hcp`],
+    3,
+  )
+  const loads = () => calls.map(({ id, idx }) => `${id} ${idx}`)
+  expect([loads(), note()]).toEqual([[`fcc 0`, `hcp 0`, `fcc 1`, `hcp 1`], `0/9`])
+  const notes = []
+  for (let step = 0; step < 6; step++) {
+    await settle(0, 1, 2)
+    notes.push(note())
+  }
+  expect(loads().slice(4)).toEqual([`fcc 2`, `hcp 2`, `bcc 0`, `bcc 1`, `bcc 2`])
+  expect(notes).toEqual([`4/9`, `5/9`, `6/9`, `7/9`, `8/9`, null])
+})
+
 test(`a supplied descriptor's frames need no fill`, async () => {
   const { settle, note, loaded } = fill_setup({ descriptor: `tc` })
   expect(note()).toBeNull()
@@ -1477,9 +1524,16 @@ test(`compared scenes share one rotation link, all four turning together`, () =>
     compare_series: `bcc`,
     panes: [`structure`, `fermi`],
     sync_rotation: true,
+    selected_bands: undefined,
   })
   const root = mount_host(props)
   expect(scenes.all).toHaveLength(4)
+  // the compared side keeps its own sheet selection, apart from the bound one
+  const shown_selection = props.selected_bands
+  if (!viewers.fermi) throw new Error(`no compared Fermi surface`)
+  viewers.fermi.selected_bands = [9]
+  flushSync()
+  expect([props.selected_bands, viewers.fermi.selected_bands]).toEqual([shown_selection, [9]])
   const direction = new Vector3(-2, 1, 3).normalize()
   orbit(scenes.all[3], direction) // the compared Fermi surface leads
   for (const controls of scenes.all) {
@@ -1494,7 +1548,17 @@ test(`compared scenes share one rotation link, all four turning together`, () =>
   expect(scenes.all.slice(1).map((controls) => view_dir(controls).toArray())).toEqual(
     before.slice(1),
   )
+  // compare off: the shown side's scenes stay mounted and linked, the compared ones leave
+  Object.assign(props, { sync_rotation: true, compare_series: undefined })
+  flushSync()
+  const left = scenes.all.slice(2).map((controls) => view_dir(controls).toArray())
+  const turn = new Vector3(1, 2, 2).normalize()
+  orbit(scenes.all[0], turn)
+  expect(view_dir(scenes.all[1]).distanceTo(turn)).toBeLessThan(1e-12)
+  expect(scenes.all.slice(2).map((controls) => view_dir(controls).toArray())).toEqual(left)
+  expect(scenes.all).toHaveLength(4)
   // one scene per side still makes two to link
+  props.compare_series = `bcc`
   props.panes = [`structure`]
   flushSync()
   expect(count(root, `.sync-rotation-toggle`)).toBe(1)

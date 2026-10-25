@@ -1892,7 +1892,7 @@ describe(`ScatterPlot`, () => {
   // oxfmt-ignore
   test.each<[string, Partial<ComponentProps<typeof ScatterPlot>>, string[], string[]]>([
     [`axis labels instead of bare x/y`, { series: [{ x: [1, 2, 3], y: [10, 20, 30] }], x_axis: { label: `Time (s)` }, y_axis: { label: `Speed` }, tooltip_point: mid_point }, [`Time: 2 s`, `Speed`, `20`], []],
-    [`series label with several series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Alpha` }, { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` }], tooltip_point: mid_point }, [`Alpha`], []],
+    [`series label with several series, HTML rendered`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `A<sub>1</sub>lpha` }, { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` }], tooltip_point: mid_point }, [`A1lpha`], [`<sub>`]],
     [`no series label for a single series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Only` }], tooltip_point: mid_point }, [], [`Only`]],
     [`color value with color bar title`, { series: color_series, color_bar: { title: `Temperature` }, tooltip_point: { ...mid_point, color_value: 200 } }, [`Temperature`, `200`], []],
     [`color value without title`, { series: color_series, color_bar: {}, tooltip_point: { ...mid_point, color_value: 200 } }, [`Color`, `200`], []],

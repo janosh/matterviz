@@ -9,6 +9,7 @@
   import { reciprocal_lattice } from '#lib/math.js'
   import type { Vec2 } from '#lib/math.js'
   import type { InternalPoint } from '#lib/plot/index.js'
+  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
   import type { Crystal } from '#lib/structure/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
@@ -104,11 +105,12 @@
     data_range: () => frequency_range,
     shared_axis: () => shared_y_axis,
     sync_zoom: () => sync_y_zoom,
+    // the plot defaults, less room on top below the Brillouin zone
     base_padding: {
       get t() {
-        return structure ? 5 : 20
+        return structure ? 5 : DEFAULT_PLOT_PADDING.t
       },
-      b: 50,
+      b: DEFAULT_PLOT_PADDING.b,
     },
   })
 </script>

@@ -38,6 +38,7 @@ import {
   keydown,
   set_input,
   expect_axis_titles_placed,
+  clip_rect,
 } from '../setup'
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import type { Component, ComponentProps } from 'svelte'
@@ -1192,6 +1193,22 @@ describe(`plot`, () => {
       expect(read_frame).toHaveBeenCalledTimes(reads)
     },
   )
+})
+
+// ScatterPlot pads to fit the axes shown (the y2 axis here); a side the caller pins holds
+// exactly, where fixed 60/100 px floors used to override it
+test(`the time-series plot keeps a caller's pinned padding`, async () => {
+  const plot_area = async (padding: { r: number; b: number }) => {
+    const target = await mount_ticked(default_props({ scatter_props: { padding } }))
+    return clip_rect(query(target, `.scatter`))
+  }
+  const [tight, loose] = await Promise.all([
+    plot_area({ r: 30, b: 20 }),
+    plot_area({ r: 80, b: 50 }),
+  ])
+  expect(tight.x).toBe(loose.x)
+  expect(tight.width - loose.width).toBeCloseTo(50, 9)
+  expect(tight.height - loose.height).toBeCloseTo(30, 9)
 })
 
 describe(`banners`, () => {

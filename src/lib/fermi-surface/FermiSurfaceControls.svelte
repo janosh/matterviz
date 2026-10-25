@@ -8,7 +8,7 @@
   import CameraSection from '#lib/scene/CameraSection.svelte'
   import { DEFAULTS } from '#lib/settings.js'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
-  import { make_change_detector, parse_num_token } from '#lib/utils.js'
+  import { html_to_text, make_change_detector, parse_num_token } from '#lib/utils.js'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import { untrack, type Snippet } from 'svelte'
   import type { Vec2 } from '#lib/math.js'
@@ -71,6 +71,9 @@
   // per-vertex scalars (Fermi velocity, λ_nk, Δ_nk, …) the data carries
   let available_properties = $derived(available_property_names(fermi_data, band_data))
   let has_property = $derived(available_properties.length > 0)
+  // a property's <option> text: plain, though the colour bar and tooltip render its label's HTML
+  const option_label = (name: string): string =>
+    html_to_text(property_label(name, custom_property_label))
   // the colouring shown, and the one a reset returns to (which then follows the data again)
   const shown_color_property = $derived(
     resolve_color_property(color_property, available_properties),
@@ -270,7 +273,7 @@
           {#if has_property}
             <option value="property">
               {available_properties.length === 1
-                ? property_label(available_properties[0], custom_property_label)
+                ? option_label(available_properties[0])
                 : `Property`}
             </option>
           {/if}
@@ -286,7 +289,7 @@
               aria-label="Fermi surface colouring property"
             >
               {#each available_properties as name (name)}
-                <option value={name}>{property_label(name, custom_property_label)}</option>
+                <option value={name}>{option_label(name)}</option>
               {/each}
             </select>
           </label>

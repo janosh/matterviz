@@ -10,9 +10,9 @@
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '#lib/plot/core/scales.js'
   import {
-    AXIS_TITLE_OFFSET,
     plot_area_line,
     resolve_axis_title_layout,
+    x_axis_reach,
   } from '#lib/plot/core/layout.js'
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
@@ -290,13 +290,9 @@
   })
 
   // A caller's pinned top/bottom padding (BandsAndDos's and ElectronicStructure's shared one,
-  // which the bands then follow) still fits the titles along them, as auto padding would: α²F's
-  // axis along the top and the x title (two lines beside the bands) along the bottom, each a
-  // tick row, the gap and the title's lines past the plot, plus 4px of air
-  const title_reach = (axis: AxisConfig): number => {
-    const { height, line_height } = resolve_axis_title_layout(axis)
-    return height > 0 ? AXIS_TITLE_OFFSET + height - line_height / 2 + 4 : 0
-  }
+  // which the bands then follow) still fits the axes along them, as auto padding would: α²F's
+  // along the top and the x axis (its title two lines beside the bands) along the bottom
+  const title_reach = (axis: AxisConfig) => x_axis_reach(resolve_axis_title_layout(axis))
   const padding = $derived.by(() => {
     const pinned = rest.padding
     if (!pinned) return pinned

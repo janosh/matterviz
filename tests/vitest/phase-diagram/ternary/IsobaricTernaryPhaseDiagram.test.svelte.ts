@@ -716,9 +716,11 @@ test.each([true, false])(`allow_file_drop=%s gates file drops`, async (allow_fil
 })
 
 // A host's on_file_drop takes the raw file instead of the entries parse, and a throwing
-// on_file_load is reported as the load's failure, not as unreadable file content
+// on_file_load is reported as the load's failure, not as unreadable file content. Bad files
+// dropped around a good one get one report counting both, not the last bad file's message
+// (nor none, as the good file used to clear it).
 test.each([
-  [`on_file_drop`, { on_file_drop: vi.fn() }, null],
+  [`on_file_drop`, { on_file_drop: vi.fn() }, null, []],
   [
     `a throwing on_file_load`,
     {
@@ -727,12 +729,21 @@ test.each([
       },
     },
     `Failed to load 1 file — toy.json: host boom`,
+    [],
   ],
-])(`dropped entries with %s`, async (_label, props, error) => {
+  [
+    `two unparsable files around a good one`,
+    {},
+    /^Failed to load 2 files — a\.json: Expected a JSON array.*; b\.json: /,
+    [`{}`, `not json`],
+  ],
+])(`dropped entries with %s`, async (_label, props, error, bad_texts: string[]) => {
   mount_diagram(props)
   const content = JSON.stringify(toy_entries)
   const file = new File([content], `toy.json`)
-  doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(file))
+  const [bad_a, bad_b] = bad_texts.map((json, idx) => new File([json], `${`ab`[idx]}.json`))
+  const files = bad_a && bad_b ? [bad_a, file, bad_b] : file
+  doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(files))
   if (`on_file_drop` in props) {
     await vi.waitFor(() =>
       expect(props.on_file_drop).toHaveBeenCalledWith(
@@ -743,5 +754,6 @@ test.each([
     )
   }
   const banner = () => document.querySelector(`.status-message.error`)?.textContent?.trim()
-  await vi.waitFor(() => expect(banner() ?? null).toBe(error))
+  if (error instanceof RegExp) await vi.waitFor(() => expect(banner()).toMatch(error))
+  else await vi.waitFor(() => expect(banner() ?? null).toBe(error))
 })

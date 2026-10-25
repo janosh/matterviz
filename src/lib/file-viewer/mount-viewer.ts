@@ -40,20 +40,18 @@ export interface MountViewerOptions {
 // Every embedded viewer fills its host; its fullscreen toggle follows host.fullscreen
 export const VIEWER_COMMON_PROPS = { style: `height: 100%; border-radius: 0` } as const
 
-// Bands, DOS or both side by side, whichever is given; a lone plot also gets `padding`
+// Bands, DOS or both side by side, whichever is given, padded to fit their axes
 export function mount_spectral(
   target: HTMLElement,
   { bands, dos }: { bands: BaseBandStructure | null; dos: DosData | null },
   props: { style: string; class?: string },
-  padding?: { b: number },
 ): ReturnType<typeof mount> {
   if (bands && dos) {
     const both = { band_structs: { '': bands }, doses: { '': dos }, ...props }
     return mount(BandsAndDos, { target, props: both })
   }
-  const single = { ...props, ...(padding && { padding }) }
-  if (bands) return mount(Bands, { target, props: { band_structs: { '': bands }, ...single } })
-  if (dos) return mount(Dos, { target, props: { doses: { '': dos }, ...single } })
+  if (bands) return mount(Bands, { target, props: { band_structs: { '': bands }, ...props } })
+  if (dos) return mount(Dos, { target, props: { doses: { '': dos }, ...props } })
   throw new Error(`No bands or DOS to plot`)
 }
 
@@ -119,7 +117,7 @@ export function mount_viewer(
     const dos = type === `band_structure` ? null : normalize_dos(record.dos ?? data)
     if (type !== `dos` && !bands) throw new Error(`Invalid band structure data`)
     if (type !== `band_structure` && !dos) throw new Error(`Invalid DOS data`)
-    return mount_spectral(target, { bands, dos }, VIEWER_COMMON_PROPS, { b: 60 })
+    return mount_spectral(target, { bands, dos }, VIEWER_COMMON_PROPS)
   }
   if (type === `brillouin_zone`) {
     const record = data as Record<string, unknown>

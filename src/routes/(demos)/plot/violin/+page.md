@@ -185,7 +185,7 @@ slot. Series in a shared slot are identified by the legend rather than colored a
   kind="violin"
   show_legend
   legend={{ style: `left: auto; right: 4px; top: 50%; transform: translateY(-50%)` }}
-  padding={{ t: 20, b: 50, l: 50, r: 120 }}
+  padding={{ r: 120 }}
   x_axis={{ label: `Element` }}
   y_axis={{ label: `Property` }}
   style="height: 400px"

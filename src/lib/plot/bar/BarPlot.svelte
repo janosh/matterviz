@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { sanitize_html } from '#lib/sanitize.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num } from '#lib/labels.js'
@@ -58,7 +59,7 @@
   import { has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { clamp01 } from '#lib/utils.js'
+  import { clamp01, html_to_text } from '#lib/utils.js'
   import { clamp, type Vec2 } from '#lib/math.js'
   import { measure_text_width } from '#lib/plot/core/tick-layout.js'
   import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
@@ -864,7 +865,7 @@
                     role="button"
                     tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
                     {...{ [ROVING_ATTR]: roving_key(series_idx, bar_idx) }}
-                    aria-label={`bar ${bar_idx + 1} of ${srs.label ?? `Series ${series_idx + 1}`}: ${format_value_or_num(
+                    aria-label={`bar ${bar_idx + 1} of ${srs.label ? html_to_text(srs.label) : `Series ${series_idx + 1}`}: ${format_value_or_num(
                       srs.y[bar_idx],
                       plot_axes[value_axis_key(srs)].format,
                     )}`}
@@ -986,7 +987,7 @@
         {:else}
           {@const series_label = series[hover_info.series_idx]?.label}
           {#if series.length > 1 && series_label}
-            <div><strong>{series_label}</strong></div>
+            <div><strong>{@html sanitize_html(series_label)}</strong></div>
           {/if}
           <div>
             <TooltipValue

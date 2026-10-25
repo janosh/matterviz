@@ -5,6 +5,7 @@ import type { Matrix3x3 } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
 import {
   compute_descriptor,
+  descriptor_lines,
   descriptor_point,
   descriptor_value,
   dos_at_energy,
@@ -14,7 +15,7 @@ import {
   min_pair_distance,
   nearest_frame,
   normalize_sweep,
-  sweep_spacing,
+  series_spacing,
   validate_sweep,
   volume_per_atom,
 } from '#lib/spectral/sweep.js'
@@ -242,26 +243,34 @@ test.each([
   expect(nearest_frame(series, value)).toEqual({ idx, distance })
 })
 
-// the median of every series' consecutive gaps, 0 without any
+// the median of the series' consecutive gaps, 0 without any
 test.each([
-  [[[0, 50, 120]], 60],
-  [
-    [
-      [0, 50, 120],
-      [100, 110],
-    ],
-    50,
-  ],
-  [[[0], [7]], 0],
-])(`sweep_spacing of series at %j is %d`, (series_values, spacing) => {
-  const sweep: Sweep = {
-    axis: { key: `pressure`, label: `Pressure` },
-    series: series_values.map((values, idx) => ({
-      id: `s${idx}`,
-      frames: values.map((value) => ({ value })),
-    })),
-  }
-  expect(sweep_spacing(sweep)).toBe(spacing)
+  [[0, 50, 120], 60],
+  [[0, 10, 30, 60], 20],
+  [[100, 110], 10],
+  [[7], 0],
+])(`series_spacing of frames at %j is %d`, (values, spacing) => {
+  const frames = values.map((value) => ({ value }))
+  expect(series_spacing({ id: `fcc`, frames })).toBe(spacing)
+})
+
+// a descriptor's lines: itself, then its overlays in their order; the first without a key
+test.each([
+  [undefined, [`tc`, `w2`, `wlog`]],
+  [`wlog`, [`wlog`]],
+  [`n_ef`, [`n_ef`]],
+])(`descriptor_lines(%s) draws %j`, (key, keys) => {
+  const descriptors: DescriptorSpec[] = [`tc`, `n_ef`, `wlog`, `w2`].map((at) => ({
+    key: at,
+    label: at,
+  }))
+  descriptors[0] = { ...descriptors[0], overlay: [`w2`, `wlog`] }
+  const sweep: Sweep = { axis: { key: `p`, label: `P` }, series: [], descriptors }
+  expect(descriptor_lines(sweep, key).map((spec) => spec.key)).toEqual(keys)
+  expect(descriptor_lines({ ...sweep, descriptors: undefined })).toEqual([])
+  expect(() => descriptor_lines(sweep, `tc_typo`)).toThrow(
+    `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef, wlog, w2)`,
+  )
 })
 
 describe(`normalize_sweep`, () => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { html_to_text } from '#lib/utils.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import Popover from 'svelte-widgets/Popover.svelte'
   import { Check, Close } from 'svelte-widgets/icons'
@@ -24,7 +25,7 @@
   }: {
     label: string // Label text (supports HTML)
     value: string | number | undefined // Value to display (supports HTML)
-    copy_value?: string | number // Value to copy to clipboard (defaults to value)
+    copy_value?: string | number // Value to copy to clipboard (defaults to value's text)
     title?: string // Tooltip text
     variant?: InfoTagVariant // Visual variant for semantic meaning
     size?: InfoTagSize // Size variant
@@ -37,7 +38,10 @@
 
   // one key, since a tag copies a single value; `copied` handles the timed reset
   const { copied, copy } = create_clipboard_feedback()
-  const to_copy = $derived(copy_value ?? value)
+  // the clipboard takes plain text, so an HTML value (Fe<sub>2</sub>O<sub>3</sub>) copies as it reads
+  const to_copy = $derived(
+    copy_value ?? (typeof value === `string` ? html_to_text(value) : value),
+  )
   const has_action = $derived(Boolean(onclick) || to_copy !== undefined)
 
   function handle_click(event: MouseEvent): void {

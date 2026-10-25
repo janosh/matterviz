@@ -801,19 +801,25 @@ test.describe(`Trajectory Component`, () => {
       await page.keyboard.press(`Escape`)
       await page.setViewportSize({ width: 1500, height: 1400 })
       await expect(pane).not.toBeVisible()
-      const atom_bounds = await require_bbox(atom_canvas)
       const thermal_tooltip = page.getByRole(`tooltip`).filter({ hasText: `Bin-average` })
-      // Probe the canvas itself: the volume must not intercept the underlying atom hover.
-      for (const row of [0.5, 0.4, 0.6, 0.3, 0.7]) {
-        for (const col of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+      // Probe the canvas itself: the volume must not intercept the underlying atom hover. The
+      // canvas and its camera settle after the viewport change, and the raycast hover shows the
+      // tooltip a frame or more after a move, so each sweep re-measures and waits briefly.
+      const spots = [0.5, 0.4, 0.6, 0.3, 0.7].flatMap((row) =>
+        [0.5, 0.4, 0.6, 0.3, 0.7].map((col) => [col, row]),
+      )
+      await expect(async () => {
+        const atom_bounds = await require_bbox(atom_canvas)
+        for (const [col, row] of spots) {
           await page.mouse.move(
             atom_bounds.x + col * atom_bounds.width,
             atom_bounds.y + row * atom_bounds.height,
           )
-          if (await thermal_tooltip.isVisible()) break
+          const shown = thermal_tooltip.waitFor({ state: `visible`, timeout: 300 })
+          if (await shown.then(() => true).catch(() => false)) return
         }
-        if (await thermal_tooltip.isVisible()) break
-      }
+        throw new Error(`no thermal tooltip at any of ${JSON.stringify(spots)}`)
+      }).toPass({ timeout: 30_000 })
       await expect(thermal_tooltip).toContainText(`Bin-average kinetic energy:`)
       await expect(
         thermal_tooltip.locator(`small`).filter({ hasText: `eV/atom` }),

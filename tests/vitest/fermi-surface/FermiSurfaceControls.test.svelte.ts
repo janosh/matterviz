@@ -110,6 +110,7 @@ describe(`FermiSurfaceControls`, () => {
       property_name: undefined,
       color_scale: { scheme: `interpolateMagma`, value_range: [0, 2] },
       fitted_value_range: [0.1, 0.9],
+      custom_property_label: `v<sub>F</sub>`, // the unnamed property's, HTML in the colour bar
     })
     const fixed_range = () =>
       to_color_scale_config(state.color_scale ?? `interpolateViridis`).value_range
@@ -145,6 +146,15 @@ describe(`FermiSurfaceControls`, () => {
     await tick()
     expect([state.property_name, fixed_range()]).toEqual([`v`, undefined])
     expect(document.querySelector(select_css)).toBeNull()
+    // options are plain text: the unnamed property's HTML label reads vF
+    const option_texts = (target: HTMLSelectElement) =>
+      Array.from(target.options, (option) => option.textContent?.trim())
+    state.fermi_data = named([`Property`, `Δ`])
+    await tick()
+    expect(option_texts(doc_query<HTMLSelectElement>(select_css))).toEqual([`vF`, `Δ`])
+    state.fermi_data = named([`Property`]) // a lone property names the Color by option
+    await tick()
+    expect(option_texts(color_by())).toEqual([`Band`, `Spin`, `vF`])
   })
 
   // a property the data lacks drops its fixed range already at init, keeping the scheme

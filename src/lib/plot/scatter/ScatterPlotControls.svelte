@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { html_to_text } from '#lib/utils.js'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { first_point_style } from '#lib/plot/core/data-transform.js'
@@ -169,7 +170,9 @@
           <span>Series</span>
           <select bind:value={selected_series_idx}>
             {#each series as srs, idx (idx)}
-              {#if srs}<option value={idx}>{srs.label || `Series ${idx + 1}`}</option>{/if}
+              {#if srs}<option value={idx}
+                  >{srs.label ? html_to_text(srs.label) : `Series ${idx + 1}`}</option
+                >{/if}
             {/each}
           </select>
         </label>

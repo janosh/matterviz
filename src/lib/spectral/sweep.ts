@@ -174,14 +174,12 @@ export function nearest_frame(
   return nearest
 }
 
-// The sweep's typical step along its axis: the median gap between consecutive frames over all
-// series (0 when no series has two frames). A frame of another series further off than this
-// from a value does not lie at it.
-export function sweep_spacing(sweep: Sweep): number {
-  const gaps = sweep.series
-    .flatMap(({ frames }) =>
-      frames.slice(1).map((frame, idx) => frame.value - frames[idx].value),
-    )
+// The series' typical step along the axis: the median gap between its consecutive frames (0 for
+// a single frame). Its frame further off than this from a value does not lie at that value.
+export function series_spacing({ frames }: SweepSeries): number {
+  const gaps = frames
+    .slice(1)
+    .map((frame, idx) => frame.value - frames[idx].value)
     .toSorted((lhs, rhs) => lhs - rhs)
   if (gaps.length === 0) return 0
   const mid = Math.floor(gaps.length / 2)
@@ -353,6 +351,19 @@ export function descriptor_point(
     throw new RangeError(`${where}: range [${lower}, ${upper}] does not bracket ${value}`)
   }
   return { value, lower, upper }
+}
+
+// The lines a trends plot draws for descriptor `key` (default: the first): its spec, then the
+// descriptors it overlays (none without descriptors). Throws for a key the sweep lacks.
+export function descriptor_lines(sweep: Sweep, key?: string): DescriptorSpec[] {
+  const specs = sweep.descriptors ?? []
+  const spec = key === undefined ? specs[0] : specs.find((other) => other.key === key)
+  if (!spec && key !== undefined) {
+    const keys = specs.map((other) => other.key).join(`, `)
+    throw new Error(`descriptor "${key}" is not a descriptor of the sweep (${keys})`)
+  }
+  const overlaid = (other_key: string) => specs.filter((other) => other.key === other_key)
+  return spec ? [spec, ...(spec.overlay ?? []).flatMap(overlaid)] : []
 }
 
 // === JSON input (dropped files, notebook widgets) and loaded frame data ===

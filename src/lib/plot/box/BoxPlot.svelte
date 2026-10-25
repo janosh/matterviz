@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { parse_axis_label, format_value_or_num } from '#lib/labels.js'
@@ -661,7 +662,7 @@
     csv: csv_source(() => ({
       header: [`series`, ...cols, `outliers`],
       rows: visible_boxes.map(({ series: srs, idx, stats }) => [
-        srs.label ?? default_box_label(idx),
+        srs.label ? html_to_text(srs.label) : default_box_label(idx),
         ...cols.map((col) => stats[col]),
         stats.outliers.join(` `),
       ]),
@@ -796,7 +797,7 @@
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
             {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
-            aria-label={`${box_name ? `box ${box_item.idx + 1}: ${box_name}` : default_box_label(box_item.idx)}, median ${format_value_or_num(
+            aria-label={`${box_name ? `box ${box_item.idx + 1}: ${html_to_text(box_name)}` : default_box_label(box_item.idx)}, median ${format_value_or_num(
               stats.median,
               plot_axes[val_axis_key(box_item.series)].format,
             )}`}

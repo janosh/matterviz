@@ -82,11 +82,11 @@ export const dom_click = (target: Locator): Promise<void> => target.dispatchEven
 // picker shows only in Uniform mode; resolves to the button group
 export const expect_face_color_modes = async (
   controls: Locator,
-  active: `Uniform` | `Energy` | `Element` | `Index`,
+  active: `Uniform` | `Formation energy` | `Element` | `Index`,
 ): Promise<Locator> => {
   const mode_buttons = controls.locator(`.face-color-mode-buttons`)
   await expect(mode_buttons).toBeVisible()
-  for (const label of [`Uniform`, `Energy`, `Element`, `Index`]) {
+  for (const label of [`Uniform`, `Formation energy`, `Element`, `Index`]) {
     await expect(mode_buttons.getByText(label)).toBeVisible()
   }
   await expect(mode_buttons.getByText(active)).toHaveClass(/active/)

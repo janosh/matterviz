@@ -36,7 +36,7 @@ export function series_to_csv_rows(series: readonly CsvSeries[]): {
   const header = [`series`, `x`, `y`, ...extra_keys]
   const rows: CsvCell[][] = []
   series.forEach((srs, series_idx) => {
-    const name = srs.label ?? `series ${series_idx + 1}`
+    const name = srs.label ? html_to_text(srs.label) : `series ${series_idx + 1}` // HTML label
     const count = Math.min(srs.x.length, srs.y.length)
     for (let idx = 0; idx < count; idx++) {
       rows.push([

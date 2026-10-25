@@ -17,7 +17,7 @@
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { join_hover_link } from '#lib/tooltip/index.js'
-  import { first_duplicate } from '#lib/utils.js'
+  import { first_duplicate, html_to_text } from '#lib/utils.js'
   import ConvexHullControls from './ConvexHullControls.svelte'
   import ConvexHullInfoPane from './ConvexHullInfoPane.svelte'
   import ConvexHullTooltip from './ConvexHullTooltip.svelte'
@@ -363,7 +363,8 @@
 
     {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
       <ExportPane
-        filename={export_filename ?? (title.replaceAll(/<[^>]+>|\s+/g, ``) || `convex-hull`)}
+        filename={export_filename ??
+          (html_to_text(title).replaceAll(/\s+/g, ``) || `convex-hull`)}
         sources={export_sources}
         {export_formats}
         {on_export}

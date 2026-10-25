@@ -1,6 +1,7 @@
 <script lang="ts">
   // Marginal-distribution strips on any side of a 2D plot. Must be a direct child of the host
   // <svg> (outside the plot clip group); each strip self-clips. Math in core/marginals.ts.
+  import { sanitize_html } from '#lib/sanitize.js'
   import type { Vec2 } from '#lib/math.js'
   import type { Rect, Sides } from '#lib/plot/core/layout.js'
   import type {
@@ -600,7 +601,8 @@
           {#if tip.snippet}
             {@render tip.snippet(hovered)}
           {:else}
-            {#if tip.label}<strong>{tip.label}</strong><br />{/if}<TooltipValue
+            {#if tip.label}<strong>{@html sanitize_html(tip.label)}</strong><br
+              />{/if}<TooltipValue
               label={tip.head_label}
               value={tip.head_value}
               unit={tip.unit}

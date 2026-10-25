@@ -2,6 +2,8 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
@@ -152,6 +154,8 @@
     series[series_idx]?.color ?? plot_color(series_idx)
   const series_label = (series_idx: number): string =>
     series[series_idx]?.label ?? `Series ${series_idx + 1}`
+  // the label as text, for the accessible names and CSV (it may be HTML, e.g. <sub>)
+  const series_text = (series_idx: number): string => html_to_text(series_label(series_idx))
 
   // Every point of every series, validated and placed in the unit triangle. An invalid triple
   // fails the whole plot with a message in place of the chart rather than dropping data.
@@ -172,7 +176,7 @@
         srs.points.map((triple, point_idx): PlacedPoint => {
           const fractions = ternary_fractions(
             triple,
-            `${srs.label ?? `Series ${series_idx + 1}`} point ${point_idx + 1}`,
+            `${srs.label ? html_to_text(srs.label) : `Series ${series_idx + 1}`} point ${point_idx + 1}`,
           )
           return {
             series_idx,
@@ -291,7 +295,7 @@
   })
   clear_stale_hover(() => pin.value && !tip_info, pin.unpin)
   const accessible_label = (point: PlacedPoint): string =>
-    `${series_label(point.series_idx)}: ${labels
+    `${series_text(point.series_idx)}: ${labels
       .map((label, idx) => `${label} = ${format_value(point.fractions[idx], tick_format)}`)
       .join(`, `)}`
 
@@ -468,7 +472,7 @@
     csv: csv_source(() => ({
       header: [`series`, ...labels, `color_value`],
       rows: visible_points.map((point) => [
-        series_label(point.series_idx),
+        series_text(point.series_idx),
         ...point.fractions,
         point.color_value,
       ]),
@@ -633,7 +637,7 @@
         {#if tooltip}
           {@render tooltip(tip_info)}
         {:else}
-          <strong>{tip_info.series_label}</strong>
+          <strong>{@html sanitize_html(tip_info.series_label)}</strong>
           {#each labels as label, idx (idx)}
             <br /><TooltipValue
               {label}

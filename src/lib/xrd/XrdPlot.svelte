@@ -74,7 +74,7 @@
       | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
       | PatternEntry[]
     peak_width?: number // stick width in degrees 2θ
-    annotate_peaks?: number // int => top-k, float in (0,1) => threshold of max
+    annotate_peaks?: number // per pattern: int => its top k, float in (0,1) => fraction of its max
     hkl_format?: HklFormat
     show_angles?: boolean | null
     wavelength?: number | null
@@ -170,7 +170,9 @@
       // Determine which peaks to annotate
       const selected_indices: number[] = []
       if (annotate_peaks > 0) {
-        const threshold = annotate_peaks < 1 ? annotate_peaks * 100 : -Infinity
+        // of this pattern's own tallest peak, like top-k: the plot's shared scale puts a weak
+        // pattern's peaks far below the global maximum, which left them all unlabelled
+        const threshold = annotate_peaks < 1 ? annotate_peaks * array_max(y_values) : -Infinity
         const max_peaks = annotate_peaks < 1 ? Infinity : Math.floor(annotate_peaks)
         // Strongest first, so a crowded neighbourhood is won by its tallest peak
         const candidates = y_values

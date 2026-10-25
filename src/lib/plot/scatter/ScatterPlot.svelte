@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
@@ -1380,7 +1381,7 @@
     const metadata_label = point.metadata?.[`aria_label`]
     if (typeof metadata_label === `string`) return metadata_label
     const series_label = assigned_series[point.series_idx]?.label
-    return `Select ${series_label ?? `series ${point.series_idx + 1}`} point ${point.point_idx + 1}`
+    return `Select ${series_label ? html_to_text(series_label) : `series ${point.series_idx + 1}`} point ${point.point_idx + 1}`
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
@@ -1928,7 +1929,8 @@
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {#if has_multiple_series && handler_props.label}<strong>{handler_props.label}</strong
+          {#if has_multiple_series && handler_props.label}<strong
+              >{@html sanitize_html(handler_props.label)}</strong
             ><br />{/if}
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
           <TooltipValue

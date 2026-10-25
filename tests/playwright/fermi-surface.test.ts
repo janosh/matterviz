@@ -342,7 +342,8 @@ test(
 )
 
 // The demo's pressure sweep: the control bar steps frames (loaded on demand, the neighbour
-// prefetched), the trends pane plots the loaded frames' N(E_F), a click on a point jumps to
+// prefetched), the trends pane loads the other frames of both series in the background (a
+// progress note counts them until done) and plots their N(E_F), a click on a point jumps to
 // its frame, a structure-only descriptor covers every frame at once, and the phonon bands carry
 // λ_qν markers where the frame's q grid meets the path: 51 visits × 3 modes less Γ's two (NaN)
 test(`electronic-structure sweep: control bar, lazy frames, trends selection`, async ({
@@ -358,14 +359,17 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await expect(phonon.locator(`.colorbar .label sub`)).toHaveText(`qν`)
   const trends = viewer.locator(`[data-pane="trends"]`)
   const markers = trends.locator(`path.marker`)
-  await expect(markers).toHaveCount(2) // the shown frame and its prefetched neighbour
+  // every frame of both series once the background fill is done, its progress note gone
+  await expect(markers).toHaveCount(12, { timeout: LOAD_TIMEOUT })
+  await expect(trends.locator(`.trends-fill`)).toHaveCount(0)
   await viewer.hover()
   await page.keyboard.press(`ArrowRight`)
   await expect(status).toHaveText(/^8\.2 GPa/)
-  await expect(markers).toHaveCount(3)
 
-  await markers.first().click()
-  await expect(status).toHaveText(/^0 GPa/)
+  // the shown series' third frame (both series' first frames coincide at 0 GPa, the stiffer
+  // one's on top)
+  await trends.locator(`g[data-series-id="fcc"] path.marker`).nth(2).click()
+  await expect(status).toHaveText(/^19\.2 GPa \(V\/V₀ = 0\.90\)/)
 
   await trends.hover()
   await trends.locator(`.descriptor-select`).selectOption({ label: `Volume per atom (Å³)` })
@@ -375,11 +379,12 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   // computed from the structures every frame of both series has
   await expect(markers).toHaveCount(12)
 
-  // comparing the stiffer equation of state splits the frame panes into two labelled sides
+  // comparing the stiffer equation of state splits the frame panes into two labelled sides,
+  // the compared one at its frame nearest in pressure
   await page.getByLabel(`Compare with the stiffer equation of state`).check()
   await expect(viewer.locator(`.side-label`)).toHaveText([
-    /^fcc Cu · 0 GPa/,
-    /^fcc Cu \(B₀ = 180 GPa\) · 0 GPa/,
+    /^fcc Cu · 19\.2 GPa/,
+    /^fcc Cu \(B₀ = 180 GPa\) · 24\.7 GPa/,
   ])
   await expect(viewer.locator(`[data-pane="bands"]`)).toHaveCount(2)
   await expect(viewer.locator(`[data-pane="trends"]`)).toHaveCount(1)

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   click_export,
+  clip_rect,
   create_drop_event,
   export_via_pane,
   doc_query,
@@ -256,6 +257,26 @@ describe(`convex hull replacement state`, () => {
     for (const end of [0, 1]) expect(style.includes(interpolateReds(end))).toBe(uses_scale)
   })
 
+  // The binary hull pins only its top padding: left (and bottom) follow the axes like any
+  // plot's, so a y title gets its band beside the tick labels and dropping it narrows the side
+  test(`binary hull sizes its left padding to its y axis`, async () => {
+    const entries = [
+      make_phase({ Li: 1 }, 0),
+      make_phase({ O: 1 }, 0),
+      make_phase({ Li: 2, O: 1 }, -2.1),
+    ]
+    const left_pad = async (y_axis: ComponentProps<typeof ConvexHull>[`y_axis`]) => {
+      const plot = await mount_sized(
+        ConvexHull,
+        { entries, y_axis },
+        { selector: `.convex-hull-2d`, width: 500, height: 400 },
+      )
+      return clip_rect(plot).x
+    }
+    const [titled, untitled] = [await left_pad({}), await left_pad({ label: `` })]
+    expect(titled).toBeGreaterThan(untitled + 15)
+  })
+
   // One export pane for every dimensionality: the 2D plot as SVG/PNG, 3D/4D as a PNG
   // redrawn at export resolution; entries as CSV (element amounts as columns) and JSON
   test.each([`Li O`, `Li Fe O`, `Li Fe P O`])(`%s hull export pane`, async (chem_sys) => {
@@ -266,9 +287,12 @@ describe(`convex hull replacement state`, () => {
       make_phase({ [elements[0]]: 2, [elements.at(-1) ?? ``]: 1 }, -2, { entry_id: `mix` }),
     ]
     const on_export = vi.fn()
-    const target = await mount_hull({ entries, on_export })
+    // the title renders as HTML; the filename and canvas label get its plain text
+    const title = `${chem_sys} &amp; E<sub>hull</sub>`
+    const target = await mount_hull({ entries, on_export, controls: { title } })
     const result = await export_via_pane(on_export, `CSV`, target)
     expect(result.offered).toEqual(offered)
+    expect(result.filename).toBe(`${elements.join(``)}&Ehull`)
     const [header, ...rows] = String(result.data).split(`\n`)
     const energy_cols = `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`
     const element_cols = elements.toSorted().join(`,`)
@@ -286,6 +310,9 @@ describe(`convex hull replacement state`, () => {
       is_stable: true,
     })
     if (elements.length === 2) return
+    expect(target.querySelector(`canvas[tabindex="0"]`)?.getAttribute(`aria-label`)).toBe(
+      `${chem_sys} & Ehull`,
+    )
     // the canvas hull redraws into a fresh 2x canvas rather than upscaling the screen bitmap
     const sizes: number[][] = []
     vi.spyOn(HTMLCanvasElement.prototype, `toBlob`).mockImplementation(function (

@@ -439,6 +439,29 @@ test.each([
   expect(host.wheel_zoom).toBe(`always`) // a viewer filling the tab has no page to scroll
 })
 
+// a lone bands or DOS plot pads itself to fit its axes, as the vaspout path's does
+test.each([
+  [`dos`, { type: `electronic`, energies: [0, 1, 2], densities: [0.1, 0.2, 0.3] }, `doses`],
+  [
+    `band_structure`,
+    {
+      qpoints: [{ label: null, frac_coords: [0, 0, 0] }],
+      branches: [],
+      bands: [[0]],
+      distance: [0],
+    },
+    `band_structs`,
+  ],
+] as [string, unknown, string][])(
+  `create_display mounts %s data without pinned padding`,
+  (type, data, prop_name) => {
+    create_display(make_container(), { type, data, filename: `test.json` } as ParseResult)
+    const mount_props = last_mount_props()
+    expect(Object.keys(mount_props[prop_name] as object)).toEqual([``])
+    expect(mount_props).not.toHaveProperty(`padding`)
+  },
+)
+
 describe(`create_display trajectory display options`, () => {
   const trajectory_result = (): ParseResult => ({
     type: `trajectory`,

@@ -117,7 +117,6 @@
         structures={selected_structures}
         strategy={multi_strategy}
         split_mode={multi_split_mode}
-        padding={{ l: 50 }}
         style="height: 100%"
         on_sites_hover={(highlights) => (multi_highlights = highlights ?? [])}
       />

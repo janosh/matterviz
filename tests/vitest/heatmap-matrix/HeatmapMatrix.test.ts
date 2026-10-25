@@ -872,11 +872,13 @@ describe(`show_values`, () => {
 
 describe(`axis titles`, () => {
   test.each([
-    [`x`, `Columns`],
-    [`y`, `Rows`],
-  ])(`%s_axis.label renders its title`, (axis, label) => {
+    [`x`, `Columns`, `Columns`],
+    [`y`, `Rows`, `Rows`],
+    // markup renders as on plot axes rather than as literal tags
+    [`x`, `E<sub>F</sub> (eV)`, `EF (eV)`],
+  ])(`%s_axis.label %s renders its title`, (axis, label, text) => {
     mount_matrix({ [`${axis}_axis`]: { label } })
-    expect(doc_query(`.${axis}-title`).textContent).toBe(label)
+    expect(doc_query(`.${axis}-title`).textContent).toBe(text)
     if (axis === `y`) expect(doc_query(`.heatmap`).style.paddingLeft).toBe(`1.8em`)
   })
 })

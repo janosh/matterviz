@@ -269,6 +269,8 @@
   </g>
 {/snippet}
 
+<!-- top padding clears the hull title and corner controls; bottom and left stay auto so they
+fit the axes' tick labels and titles -->
 <ScatterPlot
   {...rest}
   class={[`convex-hull-2d`, rest.class]}
@@ -316,7 +318,7 @@
           }
         : null,
     )}
-  padding={{ t: 30 + title_height, b: 60, l: 60, r: 30 }}
+  padding={{ t: 30 + title_height, r: 30 }}
 >
   {@render children?.({ model: hull_data.model, highlighted_entries, selected_entry })}
   {@render chrome(null)}

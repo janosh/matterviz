@@ -57,7 +57,7 @@
   import { is_crystal } from '#lib/structure/validation.js'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
   import { format_num } from '#lib/labels.js'
-  import { is_plain_object } from '#lib/utils.js'
+  import { html_to_text, is_plain_object } from '#lib/utils.js'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -85,18 +85,19 @@
   } from './helpers'
   import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
   import {
+    descriptor_lines,
     descriptor_value,
     format_axis_value,
     is_sweep_like,
     nearest_frame,
     normalize_sweep,
-    sweep_spacing,
+    series_spacing,
     validate_sweep,
   } from './sweep'
   import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
-  import { create_sweep_frames, type FrameWindow } from './sweep-frames.svelte'
+  import { create_sweep_frames, type FrameRef, type FrameWindow } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
-  import type { Sides } from '#lib/plot/core/layout.js'
+  import { DEFAULT_PLOT_PADDING, type Sides } from '#lib/plot/core/layout.js'
   import type {
     BaseBandStructure,
     DosData,
@@ -227,15 +228,20 @@
   // `picked` is the series the viewer itself selected (series menu, trends click): a new sweep
   // without it opens at its first series, while a caller's series_id must name one.
   let picked: { sweep: Sweep; id: string } | undefined
+  // the sweep's series of a prop's id, else throws naming the prop
+  const series_of = (active: Sweep, prop: string, id: string): SweepSeries => {
+    const match = active.series.find((entry) => entry.id === id)
+    if (match) return match
+    const ids = active.series.map((entry) => entry.id).join(`, `)
+    throw new Error(`${prop} "${id}" is not a series of the sweep (${ids})`)
+  }
   const series = $derived.by(() => {
     if (!sweep) return undefined
     validate_sweep(sweep)
     if (series_id === undefined) return sweep.series[0]
-    const match = sweep.series.find(({ id }) => id === series_id)
-    if (match) return match
-    if (picked && picked.sweep !== sweep && picked.id === series_id) return sweep.series[0]
-    const ids = sweep.series.map(({ id }) => id).join(`, `)
-    throw new Error(`series_id "${series_id}" is not a series of the sweep (${ids})`)
+    const stale_pick = picked && picked.sweep !== sweep && picked.id === series_id
+    if (stale_pick && !sweep.series.some(({ id }) => id === series_id)) return sweep.series[0]
+    return series_of(sweep, `series_id`, series_id)
   })
   const frame_index = $derived.by(() => {
     if (!series) return 0
@@ -269,22 +275,19 @@
   // the frame after the shown one, wrapping as playback does
   const next_index = $derived(series ? (frame_index + 1) % series.frames.length : 0)
   // the compared series, at its frames nearest the shown frame's and the next one's values
-  const compare_target = $derived.by((): SweepSeries | undefined => {
-    if (!sweep || !series || compare_series === undefined || compare_series === series.id)
-      return undefined
-    const match = sweep.series.find(({ id }) => id === compare_series)
-    if (match) return match
-    const ids = sweep.series.map(({ id }) => id).join(`, `)
-    throw new Error(`compare_series "${compare_series}" is not a series of the sweep (${ids})`)
-  })
+  const compare_target = $derived(
+    sweep && series && compare_series !== undefined && compare_series !== series.id
+      ? series_of(sweep, `compare_series`, compare_series)
+      : undefined,
+  )
   const compared = $derived.by(() => {
     if (!compare_target || !series) return undefined
     const at = (idx: number) => nearest_frame(compare_target, series.frames[idx].value)
     return { series: compare_target, shown: at(frame_index), next: at(next_index).idx }
   })
   const compare_frame = $derived(compared && frames.frame(compared.series, compared.shown.idx))
-  // the compared frame lies off the shown value by more than the sweep's typical step
-  const spacing = $derived(sweep ? sweep_spacing(sweep) : 0)
+  // the compared frame lies off the shown value by more than its series' typical step
+  const spacing = $derived(compared ? series_spacing(compared.series) : 0)
   const compare_far = $derived(compared !== undefined && compared.shown.distance > spacing)
   const with_unit = (value: number): string =>
     `${format_num(value)}${sweep?.axis.unit ? ` ${sweep.axis.unit}` : ``}`
@@ -331,19 +334,19 @@
   let bar_height = $state(0)
   // the hover-revealed control bar overlays the top row, whose controls sit below it
   const bar_offset = $derived(series && controls_config.mode === `hover` ? bar_height : 0)
+  // a frame of another series (series menu, trends click) trades places with the compared
+  // series when it is that one
   const select_frame = (id: string, idx: number): void => {
+    if (series && id === compare_series) compare_series = series.id
     picked = sweep && { sweep, id }
     series_id = id
     frame_idx = idx
   }
-  // another series opens at its frame nearest the shown frame's axis value, trading places
-  // with the compared series when it is that one
+  // another series opens at its frame nearest the shown frame's axis value
   const select_series = (id: string): void => {
     const target = sweep?.series.find((entry) => entry.id === id)
-    if (series && id === compare_series) compare_series = series.id
     const value = frame?.value
-    if (!target || value === undefined) return select_frame(id, 0)
-    select_frame(id, nearest_frame(target, value).idx)
+    select_frame(id, target && value !== undefined ? nearest_frame(target, value).idx : 0)
   }
 
   // === panes and layout ===
@@ -431,29 +434,24 @@
   const show_spectra = $derived(shown.has(`bands`) || shown.has(`dos`))
   const show_phonon = $derived(shown.has(`phonon`))
   const show_trends = $derived(shown.has(`trends`)) // `shown` checks the sweep has descriptors
-  // The trends plot's lines (its descriptor and those it overlays) and the frames of the shown
-  // series still missing a value there because they never loaded (a supplied null is a value):
-  // while the trends pane shows, they load in the background one at a time in index order, at
-  // the lowest priority (see frames.load_background), their values kept when evicted
-  const trend_lines = $derived.by((): DescriptorSpec[] => {
-    const specs = sweep?.descriptors ?? []
-    const spec =
-      descriptor === undefined ? specs[0] : specs.find(({ key }) => key === descriptor)
-    return spec ? [spec, ...specs.filter(({ key }) => spec.overlay?.includes(key))] : []
+  // The frames the trends plot lacks a value for (its descriptor's or an overlay's) because
+  // they never loaded (a supplied null is a value): while it shows they load in the background
+  // one at a time, the shown series first, then the compared one and the rest, each in index
+  // order (see frames.load_background)
+  const unfilled = $derived.by((): FrameRef[] => {
+    if (!sweep || !series || !show_trends) return []
+    const lines = descriptor_lines(sweep, descriptor)
+    const order = new Set([series, compared?.series ?? series, ...sweep.series])
+    return [...order].flatMap((entry) =>
+      entry.frames.flatMap((_frame, idx): FrameRef[] => {
+        if (frames.is_settled(entry, idx)) return []
+        const value_of = (line: DescriptorSpec) =>
+          descriptor_value(frames.frame(entry, idx), line)
+        return lines.some((line) => value_of(line) === undefined) ? [[entry, idx]] : []
+      }),
+    )
   })
-  const unfilled = $derived.by((): number[] => {
-    if (!series || !show_trends) return []
-    return series.frames.flatMap((_frame, idx) => {
-      if (frames.is_settled(series, idx)) return []
-      const entry = frames.frame(series, idx)
-      return trend_lines.some((line) => descriptor_value(entry, line) === undefined)
-        ? [idx]
-        : []
-    })
-  })
-  $effect(() => {
-    frames.load_background(series && unfilled.length > 0 ? [series, unfilled[0]] : undefined)
-  })
+  $effect(() => frames.load_background(unfilled[0]))
   // the electronic spectra above the phonons, beside the trends
   const show_column = $derived(show_spectra || show_phonon)
   const column_split = $derived(show_spectra && show_phonon)
@@ -491,9 +489,9 @@
   // spectra's ranges and (one orbit link) the scenes' rotation.
   type SideInputs = {
     series: () => SweepSeries | undefined
-    frame: () => SweepFrame | undefined
-    data: () => Partial<SweepFrame>
-    selected_bands: { get: () => number[] | undefined; set: (bands?: number[]) => void }
+    data: () => Partial<SweepFrame> // the shown frame's in a sweep
+    // its Fermi surface's shown bands
+    bands: { get: () => number[] | undefined; set: (bands?: number[]) => void }
   }
   // reported anew for each structure or zone (e.g. a dropped file) while the frames differ,
   // in a sweep once per series (its frames share one calculation's frame), also when a lazily
@@ -501,8 +499,10 @@
   const reported_series = new WeakSet<SweepSeries>()
   class FrameSide {
     #inputs: SideInputs
+    bands: SideInputs['bands']
     constructor(inputs: SideInputs) {
       this.#inputs = inputs
+      this.bands = inputs.bands
       $effect(() => {
         if (!this.frames_differ) return
         const entry = this.series
@@ -516,11 +516,12 @@
     }
     series = $derived.by(() => this.#inputs.series())
     data = $derived.by(() => this.#inputs.data())
-    // e.g. `fcc Cu · 175 GPa`
+    // e.g. `fcc Cu · 175 GPa`, plain text (a series label may hold the trends legend's HTML)
     label = $derived.by((): string => {
-      const [entry, shown_frame] = [this.series, this.#inputs.frame()]
-      if (!sweep || !entry || !shown_frame) return ``
-      return `${entry.label ?? entry.id} · ${format_axis_value(sweep.axis, shown_frame)}`
+      const { value, label } = this.data
+      if (!sweep || !this.series || value === undefined) return ``
+      const { id, label: name = id } = this.series
+      return `${html_to_text(name)} · ${format_axis_value(sweep.axis, { value, label })}`
     })
     // each field on its own, so rewriting one (e.g. a pane's bound grid) leaves the others be
     structure = $derived(this.data.structure)
@@ -543,12 +544,6 @@
         matrix.flat().every((val) => Math.abs(val - Math.round(val)) < FRAME_TOL)
       return !integral(overlap) && !integral(matrix_inverse_3x3(overlap))
     })
-    get selected_bands(): number[] | undefined {
-      return this.#inputs.selected_bands.get()
-    }
-    set selected_bands(bands: number[] | undefined) {
-      this.#inputs.selected_bands.set(bands)
-    }
     scenes_size = $state({ width: 0, height: 0 })
     scene_orientation = $derived(
       layout === `auto`
@@ -568,7 +563,7 @@
       band_struct: () => this.first_band_struct,
       k_lattice: () => this.k_lattice,
       mu: { get: () => mu, set: (value) => (mu = value) },
-      selected_bands: () => this.selected_bands,
+      selected_bands: () => this.bands.get(),
       bands_props: () => bands_props,
       fermi_props: () => fermi_props,
     })
@@ -581,16 +576,15 @@
       dos_props: () => dos_props,
       side_by_side: () => this.spectra_side,
       data_range: () => electronic_span,
-      base_padding: { t: 20, b: 50 },
+      base_padding: DEFAULT_PLOT_PADDING,
     })
     // the energy marked on both spectra: the previewed surface's, else the hovered one
     reference_energy = $derived(this.link.reference_frequency ?? this.sync.hovered_frequency)
   }
   const main_side = new FrameSide({
     series: () => series,
-    frame: () => frame,
     data: () => pane_data,
-    selected_bands: { get: () => selected_bands, set: (bands) => (selected_bands = bands) },
+    bands: { get: () => selected_bands, set: (bands) => (selected_bands = bands) },
   })
   // the compared side's own band selection (another series numbers its bands its own way),
   // reset with the compared series
@@ -600,9 +594,8 @@
   })
   const compare_side = new FrameSide({
     series: () => compared?.series,
-    frame: () => compare_frame,
     data: () => compare_frame ?? {},
-    selected_bands: { get: () => compare_bands, set: (bands) => (compare_bands = bands) },
+    bands: { get: () => compare_bands, set: (bands) => (compare_bands = bands) },
   })
   const sides = $derived(compared ? [main_side, compare_side] : [main_side])
   const corner_side = $derived(compared ? compare_side : main_side)
@@ -735,31 +728,19 @@
   {#if sweep && series}
     <SequenceControlBar {controls_config} {fullscreen} bind:height={bar_height}>
       {#if sweep.series.length > 1 && controls_config.visible(`series`)}
-        <label class="series-control">
-          Series
-          <select
-            value={series.id}
-            onchange={(event) => select_series(event.currentTarget.value)}
-          >
-            {#each sweep.series as { id, label } (id)}
-              <option value={id}>{label ?? id}</option>
-            {/each}
-          </select>
-        </label>
+        {@render series_menu(`Series`, series.id, sweep.series, select_series, false)}
       {/if}
       {#if sweep.series.length > 1 && controls_config.visible(`compare`)}
-        <label class="series-control">
-          Compare with
-          <select
-            value={compared?.series.id ?? ``}
-            onchange={(event) => (compare_series = event.currentTarget.value || undefined)}
-          >
-            <option value="">none</option>
-            {#each sweep.series as { id, label } (id)}
-              {#if id !== series.id}<option value={id}>{label ?? id}</option>{/if}
-            {/each}
-          </select>
-        </label>
+        {@const others = sweep.series.filter(({ id }) => id !== series.id)}
+        {@render series_menu(
+          `Compare with`,
+          compared?.series.id ?? ``,
+          others,
+          (id) => {
+            compare_series = id || undefined
+          },
+          true,
+        )}
       {/if}
       <SequenceControls
         {controls_config}
@@ -767,7 +748,7 @@
         count={series.frames.length}
         {playback}
         item_name="frame"
-        aria_label="{sweep.axis.label} frame"
+        aria_label="{html_to_text(sweep.axis.label)} frame"
         aria_valuetext={frame_label}
         disable_step_while_playing={false}
       />
@@ -867,14 +848,14 @@
               fullscreen_toggle={false}
             />
             {#if unfilled.length > 0}
-              {@const total = series.frames.length}
+              {@const trend_frames = sweep.series.flatMap((entry) => entry.frames).length}
+              {@const filled = trend_frames - unfilled.length}
               <small
                 class="trends-fill"
                 role="status"
-                title="{total -
-                  unfilled.length} of {total} frames loaded for the trends, loading the rest"
+                title="{filled} of {trend_frames} frames loaded for the trends, loading the rest"
               >
-                {total - unfilled.length}/{total}
+                {filled}/{trend_frames}
               </small>
             {/if}
           </div>
@@ -892,30 +873,47 @@
     {/if}
   </div>
 
+  <!-- a series select, with a `none` option (empty value) for the compared series; options are
+  plain text, series labels may hold the trends legend's HTML -->
+  {#snippet series_menu(
+    title: string,
+    value: string,
+    options: SweepSeries[],
+    on_pick: (id: string) => void,
+    none: boolean,
+  )}
+    <label class="series-control">
+      {title}
+      <select {value} onchange={(event) => on_pick(event.currentTarget.value)}>
+        {#if none}<option value="">none</option>{/if}
+        {#each options as { id, label = id } (id)}
+          <option value={id}>{html_to_text(label)}</option>
+        {/each}
+      </select>
+    </label>
+  {/snippet}
+
   <!-- the frame panes of one side, or while comparing both sides next to each other, each
   labelled by its series and axis value in the first row -->
   {#snippet sided(content: Snippet<[FrameSide]>, labelled: boolean)}
-    {#if compared}
-      <div class="row compare">
-        {#each sides as side (side)}
-          <div class="compare-side">
-            {#if labelled}
-              <div class="side-label">
-                {side.label}
-                {#if side === compare_side && compare_far && frame}
-                  <small class="far" role="status">
-                    no frame within {with_unit(spacing)} of {with_unit(frame.value)}
-                  </small>
-                {/if}
-              </div>
-            {/if}
-            {@render content(side)}
-          </div>
-        {/each}
-      </div>
-    {:else}
-      {@render content(main_side)}
-    {/if}
+    <!-- keyed by side, so comparing mounts and drops only the compared side's panes -->
+    <div class={[`sides`, { compare: compared }]}>
+      {#each sides as side (side)}
+        <div class="side">
+          {#if compared && labelled}
+            <div class="side-label">
+              {side.label}
+              {#if side === compare_side && compare_far && frame}
+                <small class="far" role="status">
+                  no frame within {with_unit(spacing)} of {with_unit(frame.value)}
+                </small>
+              {/if}
+            </div>
+          {/if}
+          {@render content(side)}
+        </div>
+      {/each}
+    </div>
   {/snippet}
 
   {#snippet scenes_row(side: FrameSide)}
@@ -975,7 +973,7 @@
             previewing={link.previewing}
             bind:color_property={link.color_property}
             bind:mu={link.mu}
-            bind:selected_bands={side.selected_bands}
+            bind:selected_bands={side.bands.get, side.bands.set}
             bind:isolated_band={link.isolated_band}
             k_marker={link.path.hovered_k_point}
             k_path={link.k_path}
@@ -1234,20 +1232,26 @@
     gap: 0.4em;
     align-items: center;
   }
-  /* compared sides split their row in half, a hairline between them */
-  .row.compare {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    > .compare-side + .compare-side {
-      border-left: 1px solid var(--border-color, light-dark(#ddd, #444));
-    }
-  }
-  .compare-side {
-    display: flex;
-    flex-direction: column;
+  /* one cell per side: compared sides split their row in half, a hairline between them.
+     Direct children only: `.row.side` is the spectra row with bands beside the DOS. */
+  .sides {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-rows: minmax(0, 1fr);
     min-width: 0;
     min-height: 0;
-    > .row {
-      flex: 1;
+    > .side {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      > .row {
+        flex: 1;
+      }
+    }
+    > .side + .side {
+      border-left: 1px solid var(--border-color, light-dark(#ddd, #444));
     }
   }
   .side-label {

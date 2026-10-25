@@ -202,6 +202,31 @@ describe(`Bands component`, () => {
     expect(state.hovered_frequency).toBeNull()
   })
 
+  // With several structures the tooltip titles the hovered one with its legend's HTML, names
+  // the particle without a y title, and judges dispersion against that structure's own bands
+  it(`tooltip of one of several structures: HTML title, particle, own dispersion`, async () => {
+    const steep = {
+      ...base_band_structure,
+      bands: base_band_structure.bands.map((band) => band.map((freq) => freq * 20)),
+    }
+    const plot = await mount_plot({
+      band_structs: { 'A<sub>1</sub>': base_band_structure, B: steep },
+      y_axis: { label: `` },
+      on_point_click: vi.fn(),
+      point_tween: { duration: 0 },
+    })
+    const svg = plot_svg(plot)
+    svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 400, height: 300 })
+    const point = marker_position(plot, 1) // A's band 1 at its second q-point
+    svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    const tooltip = plot.querySelector(`.plot-tooltip`)
+    expect(tooltip?.querySelector(`strong sub`)?.textContent).toBe(`1`)
+    expect(tooltip?.textContent).toContain(`Phonon frequency: 0.5 THz`)
+    // as steep as A gets, though 20× flatter than B
+    expect(tooltip?.textContent).toContain(`Dispersion: steep`)
+  })
+
   it(`keeps material/spin visibility through reorder, band/branch changes and spin modes`, async () => {
     const state = fromStore(
       writable({

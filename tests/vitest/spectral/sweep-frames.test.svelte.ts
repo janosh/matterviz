@@ -408,3 +408,38 @@ test(`a background fill waits for the windows, survives their changes and is rel
   frames.load_background() // stopping aborts the fill in flight
   expect([calls[4].signal.aborted, frames.is_settled(series, 4)]).toEqual([true, false])
 })
+
+test(`failures report while their frame shows: prefetched and background ones once shown`, async () => {
+  const { load, calls } = deferred_loader()
+  const { frames, inputs, on_error } = setup(load, 6)
+  const series = inputs.sweep.series[0]
+  const messages = () => on_error.mock.calls.map(([message]) => message)
+  const fail = async (call = calls.at(-1)) => {
+    call?.reject(new Error(`down`))
+    await settle()
+  }
+  frames.request([series, [0, 1]])
+  await fail(calls[1]) // the prefetched neighbour fails first: nothing to report yet
+  await fail(calls[0])
+  for (const idx of [2, 3]) {
+    frames.load_background([series, idx])
+    await fail()
+  }
+  frames.request([series, [5]])
+  await fail()
+  expect([ids(calls), messages()]).toEqual([
+    [0, 1, 2, 3, 5],
+    [
+      `Loading frame 0 of series "fcc" failed: down`,
+      `Loading frame 2 of series "fcc" failed: down (other frames' failures show with the frame)`,
+      `Loading frame 5 of series "fcc" failed: down`,
+    ],
+  ])
+  // showing a frame that failed unseen reports it then, once, without loading it again
+  for (const idx of [1, 3, 1]) frames.request([series, [idx]])
+  expect(load).toHaveBeenCalledTimes(5)
+  expect(messages().slice(3)).toEqual([
+    `Loading frame 1 of series "fcc" failed: down`,
+    `Loading frame 3 of series "fcc" failed: down`,
+  ])
+})

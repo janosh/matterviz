@@ -38,6 +38,17 @@ describe(`resolve_plot_title`, () => {
     expect(block_height).toBe(12 * expected.length)
   })
 
+  // titles draw as SVG text: markup axis labels render (E<sub>F</sub>) must not show as tags
+  it(`draws an HTML title and subtitle as their text`, () => {
+    const { title, subtitle } = resolve_plot_title(
+      { text: ` E<sub>F</sub> shift `, subtitle: `x &lt; 1` },
+      { width: 500 },
+      fixed_width_measure(5),
+    )
+    expect([title?.label, subtitle?.label]).toEqual([`EF shift`, `x < 1`])
+    expect(title?.lines.map((line) => line.text)).toEqual([`EF shift`])
+  })
+
   it.each([
     [`start`, 10],
     [`middle`, 60],

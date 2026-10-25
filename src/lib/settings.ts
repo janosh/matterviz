@@ -234,7 +234,7 @@ const convex_hull_settings = (
     color_mode: {
       value: `energy` as const,
       description: `Color mode for ${hull} points`,
-      enum: { stability: `Stability`, energy: `Energy` },
+      enum: { stability: `Stability`, energy: `Energy above hull` },
     },
     color_scale: color_scale_setting(`${hull} energy mode`),
     show_stable: { value: true, description: `Show stable phases in ${hull}` },

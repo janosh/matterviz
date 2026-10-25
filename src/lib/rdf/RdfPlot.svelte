@@ -13,6 +13,7 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
+  import { html_to_text } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
@@ -115,7 +116,8 @@
           structure: struct,
         }))
       } catch (exc) {
-        failures.push(`${label}: ${to_error(exc).message}`)
+        // the label's formula is <sub> markup for the legend; the notice is plain text
+        failures.push(`${html_to_text(label)}: ${to_error(exc).message}`)
         return []
       }
     })

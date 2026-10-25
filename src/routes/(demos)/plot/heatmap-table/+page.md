@@ -811,7 +811,7 @@ Combines per-column filters, filtered summaries, diverging normalization, quanti
     // diverging: zero sits at the scale's midpoint, so sign reads at a glance
     {
       id: `E_form`,
-      label: `E_form`,
+      label: `E<sub>form</sub>`,
       color_scale: `interpolateRdBu`,
       normalize: `diverging`,
       format: `.1f`,

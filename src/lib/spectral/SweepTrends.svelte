@@ -1,15 +1,16 @@
 <script lang="ts">
   // One descriptor of a sweep against its axis, a line per series: clicking a point selects
-  // that frame (marked by the vertical line and a larger point, as is a compared frame), unstable frames are hollow and grey, a
-  // descriptor's range draws as error bars and its threshold as a dashed line, the descriptors
-  // it overlays as dashed lines on the same axes. Frames whose value is unknown yet (data not
-  // loaded) are left out until it is; a value outside its range, or not finite, throws.
+  // that frame (marked by the vertical line and a larger point, as is a compared frame),
+  // unstable frames are hollow and grey, a descriptor's range draws as error bars and its
+  // threshold as a dashed line, the descriptors it overlays as dashed lines on the same axes.
+  // Frames whose value is unknown yet (data not loaded) are left out until it is; a value
+  // outside its range, or not finite, throws.
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { html_to_text } from '#lib/utils.js'
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
   import type { ComponentProps } from 'svelte'
-  import { descriptor_point } from './sweep'
+  import { descriptor_lines, descriptor_point } from './sweep'
   import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
 
   type PointMeta = { series_id: string; frame_idx: number }
@@ -34,24 +35,11 @@
   } = $props()
 
   const specs = $derived(sweep.descriptors ?? [])
-  const spec = $derived.by((): DescriptorSpec | undefined => {
-    if (descriptor === undefined) return specs[0]
-    const match = specs.find(({ key }) => key === descriptor)
-    if (match) return match
-    const keys = specs.map(({ key }) => key).join(`, `)
-    throw new Error(`descriptor "${descriptor}" is not a descriptor of the sweep (${keys})`)
-  })
+  // the plotted descriptor, then those it overlays (same unit, dashed)
+  const lines = $derived(descriptor_lines(sweep, descriptor))
+  const spec = $derived<DescriptorSpec | undefined>(lines[0])
   const with_unit = (label: string, unit?: string) => (unit ? `${label} (${unit})` : label)
 
-  // the plotted descriptor, then those it overlays (same unit, dashed)
-  const lines = $derived(
-    spec
-      ? [
-          spec,
-          ...(spec.overlay ?? []).flatMap((key) => specs.filter((other) => other.key === key)),
-        ]
-      : [],
-  )
   // each line's points per series (sweeps are a few frames: recomputed on every change),
   // apart from the selection so selecting recomputes no values
   const points = $derived(
@@ -72,8 +60,8 @@
     points.map(({ entry, line, line_idx, points: line_points }): DataSeries<PointMeta> => {
       const { id, label = id } = entry
       const marked = new Set(
-        [{ series_id, frame_idx }, ...(compare ? [compare] : [])].flatMap((point) =>
-          point.series_id === id ? [point.frame_idx] : [],
+        [{ series_id, frame_idx }, compare].flatMap((point) =>
+          point?.series_id === id ? [point.frame_idx] : [],
         ),
       )
       const point_style = line_points.map(({ frame, idx }): PointStyle => ({

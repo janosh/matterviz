@@ -362,8 +362,11 @@ describe(`format_dos_tooltip`, () => {
   it.each([
     [[`5.00`, `0.50`, `DOS 1`, false, true, `Frequency (THz)`, `Density`, 2], `DOS 1`, [[`Density`, `0.50`], [`Frequency`, `5.00`, `THz`]]],
     [[`0.50`, `-2.00`, null, true, false, `Density (states/(eV atom))`, `Energy (eV)`, 1], undefined, [[`Energy`, `-2.00`, `eV`], [`Density`, `0.50`, `states/(eV atom)`]]],
-    // bare axis labels fall back to the quantity name and the display unit
-    [[`1`, `2`, `only`, false, true, ``, ``, 1], undefined, [[`Density`, `2`], [`Frequency`, `1`, `cm^-1`]]],
+    // bare axis labels fall back to the default ones, which name the particle
+    [[`1`, `2`, `only`, false, true, ``, ``, 1], undefined, [[`Phonon DOS`, `2`], [`Phonon frequency`, `1`, `cm<sup>−1</sup>`]]],
+    [[`1`, `-2`, null, true, false, ``, ``, 1], undefined, [[`Electron energy`, `-2`, `eV`], [`Electron DOS`, `1`, `states/eV`]]],
+    // a named axis without a unit keeps the display unit
+    [[`1`, `2`, null, false, true, `Frequency`, `Density`, 1], undefined, [[`Density`, `2`], [`Frequency`, `1`, `cm<sup>−1</sup>`]]],
   ] as [Args, string | undefined, [string, string, string?][]][])(`%j`, (args, title, lines) => {
     const [x_formatted, y_formatted, label, is_horizontal, is_phonon, ...rest] = args
     const [x_axis_label, y_axis_label, num_series] = rest

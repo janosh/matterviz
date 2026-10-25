@@ -203,7 +203,7 @@
   <label>
     Color:
     <select bind:value={color_mode}>
-      <option value="energy">Energy</option>
+      <option value="energy">Hull distance</option>
       <option value="stability">Stability</option>
     </select>
   </label>

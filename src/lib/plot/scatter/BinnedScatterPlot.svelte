@@ -4,6 +4,7 @@
 >
   // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
   // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
+  import { html_to_text } from '#lib/utils.js'
   import { host } from '#lib/host.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
@@ -336,7 +337,7 @@
         x_range,
         y_range,
         bin_transforms,
-        series.map((srs, idx) => srs.label ?? `Series ${idx + 1}`),
+        series.map((srs, idx) => (srs.label ? html_to_text(srs.label) : `Series ${idx + 1}`)),
       ),
     })),
   }

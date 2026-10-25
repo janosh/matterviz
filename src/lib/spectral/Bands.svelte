@@ -13,6 +13,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { html_to_text } from '#lib/utils.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
@@ -243,16 +244,19 @@
     x_positions = internal_x_positions
   })
 
-  // Band-line series, fat-band ribbons and the max |slope| (for the tooltip's dispersion
-  // label) in one pass over the plotted branch segments
-  let { series_data, ribbon_data, max_abs_slope } = $derived.by(() => {
+  // Band-line series, fat-band ribbons and, per series, its structure's max |slope| (the
+  // tooltip's dispersion label judges a band against its own structure's steepest, not another
+  // material's) in one pass over the plotted branch segments
+  let { series_data, ribbon_data, slope_scales } = $derived.by(() => {
     const all_series: DataSeries[] = []
     const all_ribbons: RibbonData[] = []
-    let max_slope = 0
+    const scales: number[] = [] // aligned with all_series
     const markers = rest.on_point_click ? `line+points` : `line`
     const { opacity = 0.3, max_width = 6, scale = 1, color: ribbon_color } = ribbon_config
 
     for (const [bs_idx, { label, bs: band_structure, keys }] of structures.entries()) {
+      const first_series = all_series.length
+      let max_slope = 0
       const color = plot_color(bs_idx)
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
@@ -351,8 +355,9 @@
           }
         }
       }
+      scales.push(...Array(all_series.length - first_series).fill(max_slope || 1))
     }
-    return { series_data: all_series, ribbon_data: all_ribbons, max_abs_slope: max_slope || 1 }
+    return { series_data: all_series, ribbon_data: all_ribbons, slope_scales: scales }
   })
 
   // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
@@ -674,6 +679,7 @@
     y_formatted,
     label,
     metadata,
+    series_idx,
   }: ScatterHandlerProps)}
     {@const segment_key = Object.entries(internal_x_positions).find(
       ([, [start, end]]) => coord_x >= start && coord_x <= end,
@@ -692,9 +698,9 @@
       slope,
       mode_value,
     } = (metadata ?? {}) as Partial<helpers.BandPointMeta & { mode_value: number }>}
-    {#if num_structures > 1 && label}<strong>{label}</strong><br />{/if}
+    {#if num_structures > 1 && label}<strong>{@html sanitize_html(label)}</strong><br />{/if}
     <TooltipValue
-      label={internal_y_axis.label || `Value`}
+      label={internal_y_axis.label || spectral_value_label(band_type === `phonon`, unit)}
       value={y_formatted}
       unit={internal_y_axis.unit}
     /><br />
@@ -725,7 +731,7 @@
       <br />Projection: {format_num(band_width, `.3~g`)}
     {/if}
     {#if typeof slope === `number` && Number.isFinite(slope)}
-      {@const rel = Math.abs(slope) / max_abs_slope}
+      {@const rel = Math.abs(slope) / (slope_scales[series_idx] ?? 1)}
       <br />Dispersion: {rel < 0.15 ? `flat` : rel < 0.5 ? `moderate` : `steep`}
     {/if}
   {/snippet}

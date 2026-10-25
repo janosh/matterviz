@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { format_num } from '#lib/labels.js'
@@ -409,8 +410,9 @@
     label: ({ point: { x, y, z, series_idx, point_idx } }) => {
       const axes = [x_axis, y_axis, z_axis]
       const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
-      const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
-      return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+      const series_label = series[series_idx]?.label
+      const name = series_label ? html_to_text(series_label) : `Series ${series_idx + 1}`
+      return `${name} point ${point_idx + 1}: ${coords.join(`, `)}`
     },
   })
 

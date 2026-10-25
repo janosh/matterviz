@@ -301,6 +301,17 @@ test(`no route repeats a literal LazyDemo label`, () => {
     ).toBe(0)
   }
 })
+// Auto padding sizes a plot's left and bottom sides to its tick labels and axis titles; a demo
+// pinning them to a number clipped or crowded the titles, so demos pin only the top and right
+// sides they reserve for legends and colour bars
+test(`no demo pins a plot's left or bottom padding`, () => {
+  const files = globSync(`src/routes/(demos)/**/*.{svelte,md}`)
+  expect(files.length).toBeGreaterThan(20)
+  for (const file of files) {
+    const pinned = readFileSync(file, `utf8`).match(/padding(?:=\{\{| = \{)[^}]*\b[lb]:\s*\d/g)
+    expect(pinned, file).toBeNull()
+  }
+})
 test.each([BrillouinZonePage, PeriodicTablePage])(`%# region names are unique`, (demo) => {
   mount(demo, { target: document.body })
   const regions = [...document.querySelectorAll(`[role="region"]`)]

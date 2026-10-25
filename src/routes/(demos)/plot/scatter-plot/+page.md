@@ -1880,8 +1880,8 @@ Vertical color bar on the right, outside the plot, spanning the full height. Cha
       .map((_, idx) => ({ value: idx * 2 })),
   }
 
-  // Adjust right padding to make space for the external color bar
-  const plot_padding = { t: 20, b: 50, l: 60, r: 70 } // Increased right padding
+  // Right padding makes space for the external color bar; the other sides fit the axes
+  const plot_padding = { r: 70 }
 
   // Color Scaling Controls
   let color_scale = $state({ type: `linear`, scheme: `interpolateCool` }) // Track which color scale type is active

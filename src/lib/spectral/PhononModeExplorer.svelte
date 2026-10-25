@@ -12,6 +12,7 @@
   import { in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
+  import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
   import { parse_supercell_scaling, type StructureSettings } from '#lib/structure/index.js'
   import {
     polyhedra_options_from,
@@ -224,7 +225,7 @@
     band_structs: () => band_structs,
     units: () => `THz`,
     side_by_side: () => side_by_side,
-    base_padding: { t: 20, b: 50 },
+    base_padding: DEFAULT_PLOT_PADDING,
   })
   // Every visit of the spectrum's q-point (Γ) on the path, where bands and peaks are the same modes
   let spectrum_qpoint_indices = $derived.by(() => {

@@ -379,15 +379,26 @@ describe(`IsosurfaceControls multi-volume`, () => {
 
   // A removed volume could only come back by reloading its file
   test(`a removed volume restores in place with its surfaces until volumes change`, () => {
-    const props = mount_layers([make_layer(`0`), make_layer(`1`, { isovalue: 3 })])
-    click_button(`Remove volume density.cube`)
+    // an HTML label (a slice's colour bar renders it) reads as plain text in the controls
+    const volumes = [
+      make_volume({ label: `ρ<sub>e</sub>` }),
+      make_volume({ id: `1`, label: `esp.cube` }),
+    ]
+    const props = mount_layers([make_layer(`0`), make_layer(`1`, { isovalue: 3 })], {
+      volumes,
+    })
+    const color_by = find_label(`Color by`)?.querySelector(`select`)
+    expect(option_texts(color_by)).toEqual([`None (solid)`, `ρe`, `esp.cube`])
+    expect(document.querySelector(`.volume-label`)?.getAttribute(`title`)).toBe(`ρe`)
+    click_button(`Remove volume ρe`)
     expect(props.volumes.map(({ id }) => id)).toEqual([`1`])
     expect(props.settings.layers).toEqual([make_layer(`1`, { isovalue: 3 })])
     const groups = document.querySelectorAll(`.volume-group`)
     expect(groups).toHaveLength(1)
     expect(groups[0].querySelector(`.volume-label`)?.textContent).toBe(`esp.cube`)
     expect(groups[0].querySelectorAll(`.layer-row`)).toHaveLength(1)
-    click_button(`Restore volume density.cube`)
+    expect(document.querySelector(`.removed-volumes button`)?.textContent).toBe(`↺ ρe`)
+    click_button(`Restore volume ρe`)
     expect(props.volumes.map(({ id }) => id)).toEqual([`0`, `1`])
     expect(props.settings.layers).toEqual([make_layer(`1`, { isovalue: 3 }), make_layer(`0`)])
     expect(document.querySelector(`.removed-volumes`)).toBeNull()

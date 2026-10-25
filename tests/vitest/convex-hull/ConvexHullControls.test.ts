@@ -199,7 +199,7 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
       )
     expect(buttons().map((btn) => btn.textContent?.trim())).toEqual([
       `Uniform`,
-      `Energy`,
+      `Formation energy`,
       `Element`,
       `Index`,
     ])
@@ -219,9 +219,9 @@ describe(`ConvexHullControls category filters (magnetic default)`, () => {
       )
     expect(mode_button(`Stability`)?.classList.contains(`active`)).toBe(true)
     expect(document.querySelector(`.color-scale-row`)).toBeNull()
-    mode_button(`Energy`)?.click()
+    mode_button(`Hull distance`)?.click()
     flushSync()
-    expect(mode_button(`Energy`)?.classList.contains(`active`)).toBe(true)
+    expect(mode_button(`Hull distance`)?.classList.contains(`active`)).toBe(true)
     expect(document.querySelector(`.color-scale-row`)).not.toBeNull()
     expect(document.querySelector(`.legend-item`)).toBeNull()
   })

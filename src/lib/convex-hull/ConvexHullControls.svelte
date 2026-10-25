@@ -31,7 +31,10 @@
   // Face color mode button labels and tooltips
   const FACE_COLOR_MODES: Record<HullFaceColorMode, [label: string, tip: string]> = {
     uniform: [`Uniform`, `Single uniform color for all faces`],
-    formation_energy: [`Energy`, `Color by average formation energy of face vertices`],
+    formation_energy: [
+      `Formation energy`,
+      `Color by average formation energy of face vertices`,
+    ],
     dominant_element: [
       `Element`,
       `Color by element with highest concentration at face centroid`,
@@ -323,7 +326,7 @@
         () => (color_mode = `stability`),
       ],
       [
-        `Energy`,
+        `Hull distance`,
         `Color points by energy above hull`,
         color_mode === `energy`,
         () => (color_mode = `energy`),

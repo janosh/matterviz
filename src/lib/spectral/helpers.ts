@@ -18,8 +18,10 @@ import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
 import {
   convert_frequencies,
+  dos_density_label,
   frequency_unit_per_thz,
   parse_frequency_unit,
+  spectral_value_label,
 } from './frequency-units'
 import type { KPathData } from '#lib/brillouin/types.js'
 import type * as types from './types'
@@ -1118,7 +1120,8 @@ export function compute_frequency_range(
 }
 
 // DOS tooltip content from the axis labels and the hovered point's formatted values. The
-// series label is the title only when several DOS are plotted.
+// series label is the title only when several DOS are plotted. A bare axis label falls back to
+// the default one, which names the particle (electron or phonon).
 export function format_dos_tooltip(opts: {
   x_formatted: string
   y_formatted: string
@@ -1132,17 +1135,18 @@ export function format_dos_tooltip(opts: {
 }): { title?: string; lines: { label: string; value: string; unit?: string }[] } {
   const { x_formatted, y_formatted, label, is_horizontal, is_phonon, units } = opts
   const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
+  const freq_default = parse_axis_label(spectral_value_label(is_phonon, units))
+  const density_default = parse_axis_label(dos_density_label(is_phonon, false))
   const freq_line = (parsed: { name: string; unit?: string }, value: string) => ({
-    label: parsed.name || (is_phonon ? `Frequency` : `Energy`),
+    label: parsed.name || freq_default.name,
     value,
-    unit: parsed.unit ?? (is_phonon ? units : `eV`),
+    unit: parsed.unit ?? freq_default.unit,
   })
-  const density_line = (parsed: { name: string; unit?: string }, value: string) => ({
-    label: parsed.name || `Density`,
-    value,
-    unit: parsed.unit,
-  })
-  // the frequency/energy line always comes first
+  const density_line = (parsed: { name: string; unit?: string }, value: string) =>
+    parsed.name
+      ? { label: parsed.name, value, unit: parsed.unit }
+      : { label: density_default.name, value, unit: density_default.unit }
+  // the y-axis quantity comes first: frequency/energy when horizontal, density when vertical
   const lines = is_horizontal
     ? [freq_line(y_parsed, y_formatted), density_line(x_parsed, x_formatted)]
     : [density_line(y_parsed, y_formatted), freq_line(x_parsed, x_formatted)]

@@ -88,7 +88,7 @@
     `Fill colour`,
     [
       [`uniform`, `Uniform`, `One colour for every tie-triangle`],
-      [`formation_energy`, `Energy`, `Mean formation energy of the vertices`],
+      [`formation_energy`, `Formation energy`, `Mean formation energy of the vertices`],
       [`facet_index`, `Index`, `Distinct colour per tie-triangle`],
     ],
   ]
