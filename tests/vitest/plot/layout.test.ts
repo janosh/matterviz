@@ -15,6 +15,7 @@ import {
   point_in_rect,
   rect_within_rect,
   resolve_axis_title_layout,
+  TITLE_EDGE_AIR,
   y_axis_label_x,
   y2_axis_label_x,
 } from '#lib/plot/core/layout.js'
@@ -474,7 +475,11 @@ describe(`layout utility functions`, () => {
 
     it.each([
       [`no title`, {}, 0],
-      [`a title`, { label: `state` }, LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2],
+      [
+        `a title`,
+        { label: `state` },
+        LABEL_GAP_DEFAULT + AXIS_LABEL_HEIGHT / 2 + TITLE_EDGE_AIR,
+      ],
     ] as [string, Partial<MeasuredAxis>, number][])(
       `reserves the tilted labels' band below an x axis with %s`,
       (_label, base_axis, title_room) => {
@@ -955,7 +960,7 @@ describe(`layout utility functions`, () => {
       const top_padding = (tick_values: number[], axis: Partial<MeasuredAxis> = {}) =>
         calc_auto_padding({ ...no_padding, x2_axis: slot_axis(tick_values, axis) }).t
       const title_axis = { label: `Energy` }
-      const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2
+      const default_title_pad = AXIS_TITLE_OFFSET + AXIS_LABEL_HEIGHT / 2 + TITLE_EDGE_AIR
       expect([top_padding([], title_axis), top_padding([1, 2], title_axis)]).toEqual([
         default_title_pad,
         default_title_pad,
@@ -963,7 +968,7 @@ describe(`layout utility functions`, () => {
       expect([
         top_padding([1, 2], { ...title_axis, label_shift: { y: 60 } }),
         top_padding([1, 2], { ...title_axis, label_shift: { y: -14 } }),
-      ]).toEqual([60 + AXIS_LABEL_HEIGHT / 2, top_padding([1, 2])])
+      ]).toEqual([60 + AXIS_LABEL_HEIGHT / 2 + TITLE_EDGE_AIR, top_padding([1, 2])])
     })
 
     // an outward tick-label or title shift grows that side's padding by exactly the shift

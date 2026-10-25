@@ -275,7 +275,9 @@
       selected_series_idx?: number
       wrapper?: HTMLDivElement
       // Read-only: the padding in effect, so hosts laying out several plots (BandsAndDos)
-      // can feed the maximum back as a shared `padding` to align their chart areas
+      // can feed the maximum back as a shared `padding` to align their chart areas. Top and
+      // bottom are raised to what the axes need, since an explicit shared padding stops a
+      // plot measuring its own titles (a wrapped x title would spill past the plot's edge).
       resolved_padding?: Required<Sides>
       // The range each axis shows after pan/zoom. Hosts writing it move the view without
       // touching axis config, so linked panels share one zoom but keep their own reset target
@@ -503,7 +505,12 @@
   let [y2_min, y2_max] = $derived(frame.ranges.current.y2)
 
   $effect(() => {
-    resolved_padding = frame.pad
+    const { pad: frame_pad, title_pad } = frame
+    resolved_padding = {
+      ...frame_pad,
+      t: Math.max(frame_pad.t, title_pad.t),
+      b: Math.max(frame_pad.b, title_pad.b),
+    }
   })
 
   // Two-way `view` sync, compared by value on both legs so a host mirroring a write back

@@ -11,7 +11,7 @@ import type {
 } from '#lib/plot/core/types.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
-import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
+import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
@@ -752,6 +752,18 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`.x-axis`)).toBeNull()
     expect(plot.querySelector(`.y-axis`)).not.toBeNull()
     expect(update_range).not.toHaveBeenCalled()
+  })
+
+  // Shared side-by-side padding is explicit, so the plot must report its axes' needs back up
+  test(`resolved_padding raises explicit top/bottom to what the axis titles need`, async () => {
+    const state = $state<{ resolved_padding?: Required<Sides> }>({
+      resolved_padding: undefined,
+    })
+    const padding = { t: 7, b: 11, l: 13, r: 17 }
+    const x_axis = { label: `Electron density of states per unit energy (states/eV)` }
+    await mount_sized_scatter_plot(bind_props({ series: [basic], padding, x_axis }, state))
+    await vi.waitFor(() => expect(state.resolved_padding?.b).toBeGreaterThan(padding.b))
+    expect(state.resolved_padding).toMatchObject({ t: 7, l: 13, r: 17 })
   })
 
   test.each([

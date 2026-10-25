@@ -181,6 +181,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // The same without the caller's padding. Outside decorations stack on this, so callers
   // padding past the axis band get the decoration inside that room rather than on top of it.
   let axis_pad = $derived(DEFAULT_PLOT_PADDING)
+  // Explicit top/bottom padding stops the plot measuring its titles. Hosts sharing one padding
+  // across plots (BandsAndDos) read this instead: the axes' need, floored at the explicit value.
+  let title_pad = $derived(DEFAULT_PLOT_PADDING)
   const title_config = $derived(normalize_plot_title(opts.title()))
   const axis_shown = (axis: FacetAxis): boolean =>
     axis === `x2` ? opts.has_x2() : axis === `y2` ? opts.has_y2() : true
@@ -335,24 +338,34 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       y_axis: measure(`y`),
       y2_axis: measure(`y2`),
     }
-    const auto_pad = (padding: Sides): Required<Sides> =>
+    const auto_pad = (
+      padding: Sides,
+      default_padding: Required<Sides> = DEFAULT_PLOT_PADDING,
+    ): Required<Sides> =>
       pad_for_plot_title(
         width && height
           ? calc_auto_padding({
               padding,
-              default_padding: DEFAULT_PLOT_PADDING,
+              default_padding,
               width,
               height,
               controls_row: opts.controls_row(),
               ...measured_axes,
             })
-          : filter_padding(padding, DEFAULT_PLOT_PADDING),
+          : filter_padding(padding, default_padding),
         title_config,
         width,
         height,
       )
-    const new_pad = auto_pad(opts.padding())
+    const explicit_pad = opts.padding()
+    const new_pad = auto_pad(explicit_pad)
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
+    const { t, b, ...sides } = explicit_pad
+    const new_title_pad =
+      t == null && b == null
+        ? new_pad
+        : auto_pad(sides, filter_padding({ t, b }, DEFAULT_PLOT_PADDING))
+    if (!sides_equal(title_pad, new_title_pad)) title_pad = new_title_pad
     const new_axis_pad = auto_pad({})
     if (!sides_equal(axis_pad, new_axis_pad)) axis_pad = new_axis_pad
   })
@@ -720,6 +733,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get pad() {
       return pad
+    },
+    get title_pad() {
+      return title_pad
     },
     get chart_width() {
       return chart_width

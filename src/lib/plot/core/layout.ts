@@ -24,12 +24,15 @@ export const AXIS_LABEL_HEIGHT = 20
 export const AXIS_TITLE_WRAP_WIDTH = 200
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
+// Clearance between an x/x2 title's outer edge and the SVG edge, so a title doesn't touch
+// whatever borders the plot there (a stacked pane's divider, the frame of a card)
+export const TITLE_EDGE_AIR = 4
 
 // How far past the plot edge an x/x2 axis reaches: its tick labels' band, then a title's first
-// line centred one gap past them, its further lines stacking outward in full
+// line centred one gap past them, its further lines stacking outward in full, plus edge air
 export const x_axis_reach = (title: AxisTitleLayout, tick_band = TICK_LABEL_HEIGHT): number =>
   title.height > 0
-    ? tick_band + LABEL_GAP_DEFAULT + title.height - title.line_height / 2
+    ? tick_band + LABEL_GAP_DEFAULT + title.height - title.line_height / 2 + TITLE_EDGE_AIR
     : tick_band
 
 // Height of ChartShell's corner controls row (gear, fullscreen) from the plot's top edge
@@ -472,7 +475,8 @@ export const calc_auto_padding = ({
       ? Math.max(0, x2_axis.label_shift?.y ?? AXIS_TITLE_OFFSET) +
         Math.max(0, tick_band - TICK_LABEL_HEIGHT) +
         title_layout.height -
-        title_layout.line_height / 2
+        title_layout.line_height / 2 +
+        TITLE_EDGE_AIR
       : 0
     return Math.max(controls_floor, default_padding.t, tick_reach, title_reach)
   }

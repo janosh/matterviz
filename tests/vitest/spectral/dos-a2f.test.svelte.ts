@@ -70,13 +70,13 @@ const electronic: ElectronicDos = {
 }
 // oxfmt-ignore
 test.each<[string, Partial<ComponentProps<typeof Dos>>, object | undefined]>([
-  [`α²F along the top`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 46, b: 50 }],
+  [`α²F along the top`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 50, b: 50 }],
   [`α²F on the right`, { a2f: { 'α²F': a2f }, orientation: `vertical`, padding: { t: 20, b: 50 } }, { t: 20, b: 50 }],
   [`no α²F`, { orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 20, b: 50 }],
   [`a larger pin`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { t: 80, b: 90 } }, { t: 80, b: 90 }],
   [`unpinned sides`, { a2f: { 'α²F': a2f }, orientation: `horizontal`, padding: { l: 15 } }, { l: 15 }],
   [`no padding`, { a2f: { 'α²F': a2f }, orientation: `horizontal` }, undefined],
-  [`a two-line electron DOS title`, { doses: { total: electronic }, orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 20, b: 66 }],
+  [`a two-line electron DOS title`, { doses: { total: electronic }, orientation: `horizontal`, padding: { t: 20, b: 50 } }, { t: 20, b: 70 }],
 ])(`a pinned padding fits the titles: %s`, (_desc, extra, expected) => {
   const component = mount(Dos, {
     target: document.body,
