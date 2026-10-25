@@ -12,7 +12,13 @@ import type {
 } from '#lib/isosurface/types.js'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { doc_query, bind_props, expect_labelled_settings_grid, set_input } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  expect_labelled_settings_grid,
+  option_texts,
+  set_input,
+} from '../setup'
 import { make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 
 // Minimal VolumetricData fixture for testing controls (2x2x2 grid with values 1..8)
@@ -43,8 +49,6 @@ const find_label = (text: string): HTMLLabelElement | undefined =>
   Array.from(document.querySelectorAll(`label`)).find((label) =>
     label.textContent?.includes(text),
   )
-const option_texts = (select: HTMLSelectElement | null | undefined): string[] =>
-  Array.from(select?.options ?? [], (opt) => opt.textContent ?? ``)
 
 const click_button = (label: string) => {
   doc_query<HTMLButtonElement>(`button[aria-label="${label}"]`).click()

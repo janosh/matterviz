@@ -7,7 +7,7 @@ import type {
 import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test } from 'vitest'
-import { bind_props, doc_query, set_input, set_select } from '../setup'
+import { bind_props, doc_query, option_texts, set_input, set_select } from '../setup'
 import { IDENTITY_MATRIX3, make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // One single-vertex sheet per band, optionally carrying a per-vertex property
@@ -147,8 +147,6 @@ describe(`FermiSurfaceControls`, () => {
     expect([state.property_name, fixed_range()]).toEqual([`v`, undefined])
     expect(document.querySelector(select_css)).toBeNull()
     // options are plain text: the unnamed property's HTML label reads vF
-    const option_texts = (target: HTMLSelectElement) =>
-      Array.from(target.options, (option) => option.textContent?.trim())
     state.fermi_data = named([`Property`, `Δ`])
     await tick()
     expect(option_texts(doc_query<HTMLSelectElement>(select_css))).toEqual([`vF`, `Δ`])

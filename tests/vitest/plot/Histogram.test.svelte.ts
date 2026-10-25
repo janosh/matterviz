@@ -16,16 +16,17 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
-  fire,
-  pin_cycle,
   expect_tooltip_paint,
   export_via_pane,
+  fire,
   form_controls,
   keydown,
   mount_sized,
   mouse,
   one_tab_stop,
+  option_texts,
   pattern_id_of,
+  pin_cycle,
   plot_svg,
   roving_tabindexes,
   set_input,
@@ -420,9 +421,14 @@ describe(`Histogram`, () => {
     const { control, set_value } = form_controls()
     const series_select = control(`Series`)
     if (!(series_select instanceof HTMLSelectElement)) throw new Error(`Series is no select`)
-    const option_labels = [...series_select.options].map((option) => option.textContent)
     // an option shows text, so an HTML label reads as it renders in the legend
-    expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series 4`, `Series 5`, `EF`])
+    expect(option_texts(series_select)).toEqual([
+      `Repeated`,
+      `Repeated`,
+      `Series 4`,
+      `Series 5`,
+      `EF`,
+    ])
     expect(series_select.value).toBe(`1`)
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
     expect(document.querySelector(`input[aria-label="Fill color hex"]`)).toBeNull()

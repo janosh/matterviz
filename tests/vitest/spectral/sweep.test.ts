@@ -264,22 +264,27 @@ test.each([
 })
 
 // a descriptor's lines: itself, then its overlays in their order; the first without a key
-test.each([
-  [undefined, [`tc`, `w2`, `wlog`]],
-  [`wlog`, [`wlog`]],
-  [`n_ef`, [`n_ef`]],
-])(`descriptor_lines(%s) draws %j`, (key, keys) => {
-  const descriptors: DescriptorSpec[] = [`tc`, `n_ef`, `wlog`, `w2`].map((at) => ({
-    key: at,
-    label: at,
-  }))
-  descriptors[0] = { ...descriptors[0], overlay: [`w2`, `wlog`] }
-  const sweep: Sweep = { axis: { key: `p`, label: `P` }, series: [], descriptors }
-  expect(descriptor_lines(sweep, key).map((spec) => spec.key)).toEqual(keys)
-  expect(descriptor_lines({ ...sweep, descriptors: undefined })).toEqual([])
-  expect(() => descriptor_lines(sweep, `tc_typo`)).toThrow(
+const lines_sweep = sweep_of([], {
+  descriptors: [
+    { key: `tc`, label: `tc`, overlay: [`w2`, `wlog`] },
+    ...[`n_ef`, `wlog`, `w2`].map((key) => ({ key, label: key })),
+  ],
+})
+test.each<[string, Sweep, string | undefined, string[] | string]>([
+  [`no key`, lines_sweep, undefined, [`tc`, `w2`, `wlog`]],
+  [`an overlay`, lines_sweep, `wlog`, [`wlog`]],
+  [`a plain descriptor`, lines_sweep, `n_ef`, [`n_ef`]],
+  [`no descriptors`, { ...lines_sweep, descriptors: undefined }, undefined, []],
+  [
+    `an unknown key`,
+    lines_sweep,
+    `tc_typo`,
     `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef, wlog, w2)`,
-  )
+  ],
+])(`descriptor_lines with %s`, (_desc, sweep, key, expected) => {
+  const keys = () => descriptor_lines(sweep, key).map((spec) => spec.key)
+  if (typeof expected === `string`) expect(keys).toThrow(expected)
+  else expect(keys()).toEqual(expected)
 })
 
 describe(`normalize_sweep`, () => {

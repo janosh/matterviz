@@ -123,6 +123,10 @@ export function query<T extends Element = HTMLElement>(
   }
   return node as T
 }
+// A select's option labels as shown (trimmed text)
+export const option_texts = (select: HTMLSelectElement | null | undefined): string[] =>
+  Array.from(select?.options ?? [], (option) => option.textContent?.trim() ?? ``)
+
 export const doc_query = <T extends Element = HTMLElement>(
   selector: string,
   element_constructor?: Element_constructor<T>,

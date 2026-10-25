@@ -81,14 +81,15 @@ describe(`Dos component`, () => {
   // y titles may wrap to fit the test plot's height). Normalizing changes the density's unit.
   // oxfmt-ignore
   it.each([
-    [{ '': phonon_dos }, `vertical`, null, [`Phonon frequency (THz)`], `Phonon DOS`],
-    [{ '': phonon_dos }, `horizontal`, null, [`Phonon DOS`], `Phonon frequency (THz)`],
-    [{ '': electronic_dos }, `vertical`, null, [`Electron energy (eV)`], `Electron DOS (states/eV)`],
-    [{ '': electronic_dos }, `horizontal`, null, [`Electron DOS`, `(states/eV)`], `Electron energy (eV)`],
-    [{ '': electronic_dos }, `vertical`, `max`, [`Electron energy (eV)`], `Electron DOS`],
-    [{ '': electronic_dos }, `horizontal`, `integral`, [`Electron DOS`, `(1/eV)`], `Electron energy (eV)`],
-    [{ '': phonon_dos }, `vertical`, `sum`, [`Phonon frequency (THz)`], `Phonon DOS`],
-  ] as const)(`%# default axis labels (%s, %s)`, async (doses, orientation, normalize, x_lines, y_label) => {
+    [`phonon`, `vertical`, null, [`Phonon frequency (THz)`], `Phonon DOS`],
+    [`phonon`, `horizontal`, null, [`Phonon DOS`], `Phonon frequency (THz)`],
+    [`electronic`, `vertical`, null, [`Electron energy (eV)`], `Electron DOS (states/eV)`],
+    [`electronic`, `horizontal`, null, [`Electron DOS`, `(states/eV)`], `Electron energy (eV)`],
+    [`electronic`, `vertical`, `max`, [`Electron energy (eV)`], `Electron DOS`],
+    [`electronic`, `horizontal`, `integral`, [`Electron DOS`, `(1/eV)`], `Electron energy (eV)`],
+    [`phonon`, `vertical`, `sum`, [`Phonon frequency (THz)`], `Phonon DOS`],
+  ] as const)(`default axis labels (%s, %s, normalize %s)`, async (type, orientation, normalize, x_lines, y_label) => {
+    const doses = { '': type === `phonon` ? phonon_dos : electronic_dos }
     const plot = await mount_plot({ doses, orientation, normalize })
     const lines_of = (axis: string) =>
       [...plot.querySelectorAll(`.${axis}-axis text.axis-label > tspan`)].map((line) =>

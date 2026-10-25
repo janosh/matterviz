@@ -734,15 +734,16 @@ test.each([
   [
     `two unparsable files around a good one`,
     {},
-    /^Failed to load 2 files — a\.json: Expected a JSON array.*; b\.json: /,
-    [`{}`, `not json`],
+    expect.stringMatching(
+      /^Failed to load 2 files — a\.json: Expected a JSON array.*; b\.json: /,
+    ),
+    [new File([`{}`], `a.json`), new File([`not json`], `b.json`)],
   ],
-])(`dropped entries with %s`, async (_label, props, error, bad_texts: string[]) => {
+])(`dropped entries with %s`, async (_label, props, error, bad_files: File[]) => {
   mount_diagram(props)
   const content = JSON.stringify(toy_entries)
   const file = new File([content], `toy.json`)
-  const [bad_a, bad_b] = bad_texts.map((json, idx) => new File([json], `${`ab`[idx]}.json`))
-  const files = bad_a && bad_b ? [bad_a, file, bad_b] : file
+  const files = bad_files.toSpliced(1, 0, file) // the good file between the bad ones
   doc_query(`.ternary-phase-diagram`).dispatchEvent(create_drop_event(files))
   if (`on_file_drop` in props) {
     await vi.waitFor(() =>
@@ -754,6 +755,5 @@ test.each([
     )
   }
   const banner = () => document.querySelector(`.status-message.error`)?.textContent?.trim()
-  if (error instanceof RegExp) await vi.waitFor(() => expect(banner()).toMatch(error))
-  else await vi.waitFor(() => expect(banner() ?? null).toBe(error))
+  await vi.waitFor(() => expect(banner() ?? null).toEqual(error))
 })

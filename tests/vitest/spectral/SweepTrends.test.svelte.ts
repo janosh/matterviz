@@ -36,7 +36,7 @@ const sweep: Sweep = {
   ],
   descriptors: [
     { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 2.5 },
-    { key: `vol`, label: `Volume`, unit: `Å³`, compute: `volume_per_atom` },
+    { key: `vol`, label: `V<sub>atom</sub>`, unit: `Å³`, compute: `volume_per_atom` },
   ],
 }
 function render(props: Partial<ComponentProps<typeof SweepTrends>> = {}) {
@@ -97,14 +97,15 @@ test.each([
   expect(props.current_x_value).toBe(0) // the line stays at the selected frame
 })
 
-test(`a computed descriptor fills frames from their data`, () => {
+test(`a computed descriptor fills frames from their data, its HTML label on the y axis`, () => {
   const with_structures: Sweep = {
     ...sweep,
     series: [{ id: `fcc`, frames: [{ value: 0, structure }, { value: 10 }] }],
   }
   const { props } = render({ sweep: with_structures, descriptor: `vol` })
   expect(props.series?.[0].y).toEqual([27]) // 3³ Å³ for one atom; the frame without one skipped
-  expect(props.y_axis?.label).toBe(`Volume (Å³)`)
+  // the axis title renders HTML (subscripts), so the label's markup reaches it as given
+  expect(props.y_axis?.label).toBe(`V<sub>atom</sub> (Å³)`)
   expect(props.ref_lines).toEqual([])
 })
 
@@ -189,14 +190,4 @@ test.each<[string, Partial<ComponentProps<typeof SweepTrends>>, string]>([
   [`a value outside its range`, { sweep: { ...sweep, series: [{ id: `a`, frames: [{ value: 0, scalars: { tc: 3, tc_lo: 0, tc_hi: 2 } }] }] } }, `Descriptor "tc" at 0: range [0, 2] does not bracket 3`],
 ])(`%s throws`, (_desc, props, message) => {
   expect(() => render(props).props.series).toThrow(message) // the mock reads props lazily
-})
-
-// HTML in a descriptor label (subscripts) reaches the axis title, which renders it
-test(`an HTML descriptor label keeps its markup on the y axis`, () => {
-  const html_sweep: Sweep = {
-    ...sweep,
-    descriptors: [{ key: `tc`, label: `T<sub>c</sub>`, unit: `K` }],
-  }
-  const { props } = render({ sweep: html_sweep })
-  expect(props.y_axis?.label).toBe(`T<sub>c</sub> (K)`)
 })
