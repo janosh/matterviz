@@ -376,24 +376,26 @@
     }
     return PANE_IDS.filter((pane) => filled[pane])
   }
-  // In a sweep, what a series' frames loaded so far add up to: a running value that grows as
+  // In a sweep, what the series' frames loaded so far add up to: a running value that grows as
   // frames load and never shrinks when they are evicted, so panes stay and axes hold still,
-  // reset by a new sweep, loader or series
+  // reset by a new sweep, loader or series (any of `of`'s)
   function running<T>(
-    of: () => SweepSeries | undefined,
+    of: () => (SweepSeries | undefined)[],
     next: (prev: T | undefined) => T,
   ): () => T {
     let seen: { key: unknown[]; value?: T } = { key: [] }
     return () => {
-      const key = [sweep, sweep?.load_frame, of()]
-      if (key.some((part, idx) => part !== seen.key[idx])) seen = { key }
+      const key = [sweep, sweep?.load_frame, ...of()]
+      if (key.length !== seen.key.length || key.some((part, idx) => part !== seen.key[idx])) {
+        seen = { key }
+      }
       seen.value = next(seen.value)
       return seen.value
     }
   }
   const sweep_panes = $derived.by(
     running(
-      () => series,
+      () => [series, compared?.series],
       (prev: ElectronicPane[] = []) => {
         const now = panes_with_data(shown_frames, Boolean(sweep?.descriptors?.length))
         return PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
@@ -404,14 +406,16 @@
   // the frequency extent (data units) of the shown and the compared series' loaded frames
   const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) => {
     const spans = [() => series, () => compared?.series].map((of) =>
-      running<Vec2 | undefined>(of, (prev) =>
-        union_ranges([
-          prev,
-          ...loaded_frames(of()).map((entry) => {
-            const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
-            return compute_frequency_range(bands, dos)
-          }),
-        ]),
+      running<Vec2 | undefined>(
+        () => [of()],
+        (prev) =>
+          union_ranges([
+            prev,
+            ...loaded_frames(of()).map((entry) => {
+              const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
+              return compute_frequency_range(bands, dos)
+            }),
+          ]),
       ),
     )
     return () => union_ranges(spans.map((span) => span()))

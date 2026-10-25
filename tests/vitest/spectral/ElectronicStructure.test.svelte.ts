@@ -1249,15 +1249,25 @@ const energy_span = (frames: SweepFrame[]): Vec2 => {
   return [Math.min(...ranges.map(([lo]) => lo)), Math.max(...ranges.map(([, hi]) => hi))]
 }
 
-// Default panes open for data on either side: only the compared series has phonons here
-test.each([
-  [undefined, false],
-  [`bcc`, true],
-])(`default panes with compare_series %s show phonons: %s`, (compare_series, has_phonon) => {
+// Default panes open for data on either side and close with its side: only the compared
+// series has phonons here
+test(`default panes follow the compared series' data`, () => {
   const sweep = make_sweep()
   for (const entry of sweep.series[1].frames) entry.phonon = phonon
-  const root = mount_host({ sweep, compare_series, frame_idx: 0 })
-  expect(shown_panes(root).includes(`phonon`)).toBe(has_phonon)
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep,
+    compare_series: undefined,
+    frame_idx: 0,
+  })
+  const root = mount_host(props)
+  const has_phonon = () => shown_panes(root).includes(`phonon`)
+  expect(has_phonon()).toBe(false)
+  props.compare_series = `bcc`
+  flushSync()
+  expect(has_phonon()).toBe(true)
+  props.compare_series = undefined
+  flushSync()
+  expect(has_phonon()).toBe(false)
 })
 
 // A caller's density range beats the sides' shared one, with or without a compared series
