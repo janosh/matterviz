@@ -138,9 +138,8 @@ export class FermiBandsLink {
     const kwargs = this.inputs.bands_props().line_kwargs
     const property_names = Object.keys(grid?.properties ?? {})
     const color_property = resolve_color_property(this.color_property, property_names)
-    const vertex_colored = color_property === `property` && property_names.length > 0
+    if (!grid || color_property === `property`) return kwargs
     const { grid_bands } = this
-    if (!grid || vertex_colored) return kwargs
     const sheet_spin = (spin: `up` | `down`) => (grid.n_spins === 2 ? spin : null)
     return (band_idx, spin, structure) => {
       const style = band_line_style(kwargs ?? {}, band_idx, spin, false, structure)

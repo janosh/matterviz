@@ -105,11 +105,10 @@
   model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) on its own
   axis, the DOS weighted by a coupling falling as ω<sup>−½</sup>; its λ, ω<sub>log</sub> and ω₂
   (overlaid on ω<sub>log</sub>) are descriptors. Markers on the phonon bands, coloured and
-  sized by value, show the mode-resolved coupling λ<sub>qν</sub>
-  wherever the model's q grid meets the path. No frame is a calculation at its pressure. A second
-  series puts the same volumes at the pressures of a stiffer equation of state (B₀ = 180 GPa): compare
-  it to split every frame pane in two, its frame nearest the shown pressure on the right, on the
-  same axes and one rotation.
+  sized by value, show the mode-resolved coupling λ<sub>qν</sub> wherever the model's q grid meets
+  the path. No frame is a calculation at its pressure. A second series puts the same volumes at the
+  pressures of a stiffer equation of state (B₀ = 180 GPa): compare it to split every frame pane in
+  two, its frame nearest the shown pressure on the right, on the same axes and one rotation.
 </p>
 
 <label>

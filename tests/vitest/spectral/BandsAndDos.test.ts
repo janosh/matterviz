@@ -40,6 +40,41 @@ const layouts = [
 ] as const
 
 describe(`bands/DOS wrappers`, () => {
+  // Side by side, the shared padding fits the DOS's titles in both panels: the electron DOS's
+  // two-line x title below, α²F's top axis and title above (the DOS reports them through
+  // resolved_padding, as an explicit shared padding stops it measuring its own titles)
+  it.each([
+    [`an electron DOS`, `electronic`, {}, { t: 20, b: 70 }],
+    [
+      `a phonon DOS with α²F`,
+      `phonon`,
+      { a2f: { 'α²F': { ...phonon_dos, densities: [0, 1, 1, 1, 0] } } },
+      { t: 50, b: 50 },
+    ],
+  ] as const)(
+    `side by side, %s fits both panels' titles`,
+    async (_desc, type, extra, { t, b }) => {
+      const electronic = type === `electronic`
+      const props = electronic
+        ? {
+            band_structs: { '': { ...band_structs, type, efermi: 2 } },
+            doses: { '': { type, energies: [0, 4], densities: [0, 1], efermi: 3 } },
+          }
+        : extra
+      const root = await mount_pair(props)
+      await vi.waitFor(() => {
+        const sides = [...root.querySelectorAll(`.scatter`)].map((plot) => {
+          const { y, height } = clip_rect(plot)
+          return [Math.round(y), Math.round(600 - y - height)]
+        })
+        expect(sides).toEqual([
+          [t, b],
+          [t, b],
+        ])
+      })
+    },
+  )
+
   it.each(layouts)(
     `shares an explicit Fermi reference (%s, %ipx)`,
     async (_label, width, layout_props) => {

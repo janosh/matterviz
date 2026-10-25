@@ -2,6 +2,7 @@ import type { D3SymbolName } from '#lib/labels.js'
 import type { DataSeries, LegendItem, PointStyle } from '#lib/plot/core/types.js'
 import { DEFAULT_SERIES_SYMBOLS } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
+import { html_to_text } from '#lib/utils.js'
 
 // Get auto-cycling symbol for series at given index (wraps every 7)
 export const get_series_symbol = (series_idx: number): D3SymbolName =>
@@ -43,6 +44,10 @@ export function build_legend_items<Series extends LegendSeries>(
     display_style: display_style(series_data, series_idx),
   }))
 }
+
+// A series' label as plain text (aria labels, select options), else its generated `Series N`
+export const series_text = (label: string | null | undefined, series_idx: number): string =>
+  label ? html_to_text(label) : `Series ${series_idx + 1}`
 
 // Per-point value of an array-or-scalar prop: the element at idx, or the scalar for every idx
 export const process_prop = <T>(

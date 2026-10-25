@@ -292,7 +292,7 @@ describe(`convex hull replacement state`, () => {
     const target = await mount_hull({ entries, on_export, controls: { title } })
     const result = await export_via_pane(on_export, `CSV`, target)
     expect(result.offered).toEqual(offered)
-    expect(result.filename).toBe(`${elements.join(``)}&Ehull`)
+    expect(result.filename).toBe(`${elements.join(`-`)}-Ehull`) // slugged like every chart's
     const [header, ...rows] = String(result.data).split(`\n`)
     const energy_cols = `energy_per_atom,e_form_per_atom,e_above_hull,is_stable`
     const element_cols = elements.toSorted().join(`,`)

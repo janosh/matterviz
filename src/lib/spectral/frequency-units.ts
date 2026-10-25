@@ -78,9 +78,9 @@ export const dos_density_label = (
   narrow: boolean,
   normalize: NormalizationMode,
 ): string => {
-  const unit = normalize === null ? `states/eV` : normalize === `integral` ? `1/eV` : null
-  if (is_phonon || !unit) return is_phonon ? `Phonon DOS` : `Electron DOS`
-  return `Electron DOS${narrow ? `\n` : ` `}(${unit})`
+  if (is_phonon) return `Phonon DOS`
+  const unit = normalize === null ? `states/eV` : normalize === `integral` ? `1/eV` : ``
+  return unit ? `Electron DOS${narrow ? `\n` : ` `}(${unit})` : `Electron DOS`
 }
 
 // Time units whose inverse is expressible in THz. A dt in anything else can still drive a

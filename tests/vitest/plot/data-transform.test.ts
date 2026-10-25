@@ -1,9 +1,22 @@
-import { build_legend_items, extract_series_color } from '#lib/plot/core/data-transform.js'
+import {
+  build_legend_items,
+  extract_series_color,
+  series_text,
+} from '#lib/plot/core/data-transform.js'
 import type { DataSeries } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { describe, expect, test } from 'vitest'
 
 describe(`data-transform utility functions`, () => {
+  test.each([
+    [`A<sub>2</sub>B &amp; C`, 0, `A2B & C`],
+    [undefined, 2, `Series 3`],
+    [null, 0, `Series 1`],
+    [``, 1, `Series 2`],
+  ])(`series_text(%j, %i) is %j`, (label, series_idx, expected) => {
+    expect(series_text(label, series_idx)).toBe(expected)
+  })
+
   describe(`extract_series_color`, () => {
     const fallback = `#4A9EFF`
     // oxfmt-ignore

@@ -1121,7 +1121,8 @@ export function compute_frequency_range(
 
 // DOS tooltip content from the axis labels and the hovered point's formatted values. The
 // series label is the title only when several DOS are plotted. A bare axis label falls back to
-// the default one, which names the particle (electron or phonon).
+// the default one, which names the particle (electron or phonon) and the density's unit under
+// `normalize`.
 export function format_dos_tooltip(opts: {
   x_formatted: string
   y_formatted: string
@@ -1129,6 +1130,7 @@ export function format_dos_tooltip(opts: {
   is_horizontal: boolean // frequency/energy on y and density on x
   is_phonon: boolean
   units: FrequencyUnit
+  normalize?: types.NormalizationMode // default null (none)
   x_axis_label: string
   y_axis_label: string
   num_series: number
@@ -1136,7 +1138,9 @@ export function format_dos_tooltip(opts: {
   const { x_formatted, y_formatted, label, is_horizontal, is_phonon, units } = opts
   const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
   const freq_default = parse_axis_label(spectral_value_label(is_phonon, units))
-  const density_default = parse_axis_label(dos_density_label(is_phonon, false, null))
+  const density_default = parse_axis_label(
+    dos_density_label(is_phonon, false, opts.normalize ?? null),
+  )
   const freq_line = (parsed: { name: string; unit?: string }, value: string) => ({
     label: parsed.name || freq_default.name,
     value,

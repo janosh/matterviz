@@ -181,9 +181,10 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // The same without the caller's padding. Outside decorations stack on this, so callers
   // padding past the axis band get the decoration inside that room rather than on top of it.
   let axis_pad = $derived(DEFAULT_PLOT_PADDING)
-  // Explicit top/bottom padding stops the plot measuring its titles. Hosts sharing one padding
-  // across plots (BandsAndDos) read this instead: the axes' need, floored at the explicit value.
-  let title_pad = $derived(DEFAULT_PLOT_PADDING)
+  // Explicit top/bottom padding stops the plot measuring its axes there: this is the axes'
+  // need, floored at the explicit value, which ScatterPlot reports as resolved_padding so
+  // hosts sharing one padding across plots (BandsAndDos) raise it to fit.
+  let fit_pad = $derived(DEFAULT_PLOT_PADDING)
   const title_config = $derived(normalize_plot_title(opts.title()))
   const axis_shown = (axis: FacetAxis): boolean =>
     axis === `x2` ? opts.has_x2() : axis === `y2` ? opts.has_y2() : true
@@ -361,11 +362,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     const new_pad = auto_pad(explicit_pad)
     if (!sides_equal(base_pad, new_pad)) base_pad = new_pad
     const { t, b, ...sides } = explicit_pad
-    const new_title_pad =
+    const new_fit_pad =
       t == null && b == null
         ? new_pad
         : auto_pad(sides, filter_padding({ t, b }, DEFAULT_PLOT_PADDING))
-    if (!sides_equal(title_pad, new_title_pad)) title_pad = new_title_pad
+    if (!sides_equal(fit_pad, new_fit_pad)) fit_pad = new_fit_pad
     const new_axis_pad = auto_pad({})
     if (!sides_equal(axis_pad, new_axis_pad)) axis_pad = new_axis_pad
   })
@@ -734,8 +735,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get pad() {
       return pad
     },
-    get title_pad() {
-      return title_pad
+    get fit_pad() {
+      return fit_pad
     },
     get chart_width() {
       return chart_width

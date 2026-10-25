@@ -5,15 +5,12 @@
   import { plot_color } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, type Vec2 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import { accumulate_extent, empty_extent } from '#lib/plot/core/scales.js'
-  import {
-    plot_area_line,
-    resolve_axis_title_layout,
-    x_axis_reach,
-  } from '#lib/plot/core/layout.js'
+  import { plot_area_line } from '#lib/plot/core/layout.js'
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
@@ -289,21 +286,6 @@
     ...rest.y2_axis,
   })
 
-  // A caller's pinned top/bottom padding (BandsAndDos's and ElectronicStructure's shared one,
-  // which the bands then follow) still fits the axes along them, as auto padding would: α²F's
-  // along the top and the x axis (its title two lines beside the bands) along the bottom
-  const title_reach = (axis: AxisConfig) => x_axis_reach(resolve_axis_title_layout(axis))
-  const padding = $derived.by(() => {
-    const pinned = rest.padding
-    if (!pinned) return pinned
-    const top = has_a2f && is_horizontal ? title_reach(a2f_axis) : 0
-    return {
-      ...pinned,
-      ...(pinned.t !== undefined && { t: Math.max(pinned.t, top) }),
-      ...(pinned.b !== undefined && { b: Math.max(pinned.b, title_reach(internal_x_axis)) }),
-    }
-  })
-
   // Auto-detect sigma range based on frequency/energy range
   let effective_sigma_range = $derived.by((): Vec2 => {
     if (sigma_range) return sigma_range
@@ -354,11 +336,13 @@
       is_horizontal,
       is_phonon,
       units: unit,
+      normalize,
       x_axis_label: internal_x_axis.label ?? ``,
       y_axis_label: internal_y_axis.label ?? ``,
       num_series: Object.keys(doses).length,
     })}
-    {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
+    {#if tooltip_data.title}<strong>{@html sanitize_html(tooltip_data.title)}</strong><br
+      />{/if}
     {#each tooltip_data.lines as line, line_idx (line_idx)}
       <TooltipValue {...line} />{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
     {/each}
@@ -366,7 +350,6 @@
 
   <ScatterPlot
     {...rest}
-    {padding}
     tooltip={rest.tooltip ?? dos_tooltip}
     series={series_data}
     x_axis={internal_x_axis}

@@ -11,7 +11,6 @@
 // equation of state's pressures (B₀ = 180 GPa), so at one pressure it shows a less compressed
 // cell. Illustrative only: no frame is the result of a calculation at its pressure.
 import { eos_pressure } from '#lib/eos/fit.js'
-import type { EosParams } from '#lib/eos/fit.js'
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
 import type { BandGridData } from '#lib/fermi-surface/types.js'
 import {
@@ -35,12 +34,10 @@ import type { DescriptorSpec, Sweep, SweepFrameLoader } from '#lib/spectral/swee
 import type { Crystal } from '#lib/structure/index.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
 
-// V₀ = 1 so volumes are V/V₀ and pressures come out in B₀'s GPa
-const CU_EOS: EosParams = { e0: 0, v0: 1, b0: 140, b0_prime: 5 }
-// the sweep's series: one equation of state each over the same volumes
-const CU_SERIES: { id: string; label: string; eos: EosParams }[] = [
-  { id: `fcc`, label: `fcc Cu`, eos: CU_EOS },
-  { id: `fcc-stiff`, label: `fcc Cu (B₀ = 180 GPa)`, eos: { ...CU_EOS, b0: 180 } },
+// the sweep's series: one equation of state each (its B₀ in GPa) over the same volumes
+const CU_SERIES = [
+  { id: `fcc`, label: `fcc Cu`, b0: 140 },
+  { id: `fcc-stiff`, label: `fcc Cu (B₀ = 180 GPa)`, b0: 180 },
 ]
 // V/V₀ of the frames, in ascending pressure
 const CU_VOLUME_RATIOS = [1, 0.95, 0.9, 0.85, 0.8, 0.75]
@@ -374,10 +371,12 @@ export function cu_pressure_sweep(input: {
   }
   return {
     axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
-    series: CU_SERIES.map(({ id, label, eos }) => ({
+    series: CU_SERIES.map(({ id, label, b0 }) => ({
       id,
       label,
       frames: CU_VOLUME_RATIOS.map((ratio, idx) => {
+        // V₀ = 1 so volumes are V/V₀ and pressures come out in B₀'s GPa
+        const eos = { e0: 0, v0: 1, b0, b0_prime: 5 }
         const pressure = eos_pressure(`birch_murnaghan`, eos, ratio)
         const value = Math.round(pressure * 10) / 10
         return {

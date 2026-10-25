@@ -1017,15 +1017,15 @@ test(`a sweep's spectra axes span all its frames, unless the caller passes a ran
 })
 
 // Frames the window and recent list have left drop their data (sweep-frames' eviction): the
-// spectra's span and the default panes are those of every frame loaded so far, reset only by
-// another series
+// spectra's span and the default panes are those of every frame each shown series loaded so
+// far: kept while another series is compared, cleared or swapped in, gone with the series
 const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
 test.each([
   {
     kept: `the spectra's span`, // only fcc's frame 1 reaches 20 eV
     frame_1: { doses: { total: wide_dos } },
     panes: [`dos`] satisfies ElectronicPane[],
-    read: () => viewers.dos?.x_axis?.range, // energy runs along x without bands
+    read: () => instances.dos[0]?.x_axis?.range, // the shown side's; energy on x without bands
     loaded: compute_frequency_range({}, { wide_dos }),
     reset: compute_frequency_range({}, { dos }),
   },
@@ -1053,6 +1053,7 @@ test.each([
       sweep,
       series_id: `fcc`,
       frame_idx: 0,
+      compare_series: undefined,
       panes,
     })
     const root = mount_host(props)
@@ -1066,8 +1067,16 @@ test.each([
     await new Promise((resolve) => setTimeout(resolve, 0))
     flushSync()
     expect(read(root)).toEqual(want.loaded)
-    props.series_id = `bcc`
-    props.frame_idx = 0
+    for (const compare_series of [`bcc`, undefined, `bcc`]) {
+      props.compare_series = compare_series
+      flushSync()
+      expect(read(root)).toEqual(want.loaded)
+    }
+    // the series select swaps the shown and compared series: fcc's stays beside bcc
+    choose(series_select(root, `Series`), `bcc`)
+    expect([props.series_id, props.compare_series]).toEqual([`bcc`, `fcc`])
+    expect(read(root)).toEqual(want.loaded)
+    props.compare_series = undefined // bcc alone: its own
     flushSync()
     await vi.waitFor(() => expect(read(root)).toEqual(want.reset))
   },
@@ -1366,6 +1375,8 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
   choose(series_select(root, `Series`), `bcc`)
   expect([props.series_id, props.frame_idx, props.compare_series]).toEqual([`bcc`, 0, `fcc`])
   expect(side_labels(root)).toEqual([`bcc · 100 GPa`, `fcc · 100 GPa`])
+  // both selects show the swapped series among their re-rendered options
+  expect([series_select(root, `Series`).value, compare_select.value]).toEqual([`bcc`, `fcc`])
   // so does a click on the compared series' point in the trends plot
   viewers.trends?.on_frame_select?.(`fcc`, 1)
   flushSync()
@@ -1391,29 +1402,47 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
   props.sweep = other
   flushSync()
   expect([props.series_id, props.compare_series]).toEqual([`bcc`, undefined])
+  // so does the same sweep losing it in place
+  props.sweep?.series.push(make_sweep().series[0])
+  props.compare_series = `fcc`
+  flushSync()
+  expect(side_labels(root)).toHaveLength(2)
+  props.sweep?.series.pop()
+  flushSync()
+  expect([props.compare_series, side_labels(root)]).toEqual([undefined, []])
 })
 
 // a's frames bunch at 0 to 8 GPa while b's lie at 10, 50, 90: b's own spacing, its median gap of
-// 40 GPa, sets how far its frame may lie off (a's gaps would make 20 off far)
+// 40 GPa, sets how far its frame may lie off (a's gaps would make 20 off far). A one-frame b
+// has no spacing of its own, so a's median gap (2 GPa) sets it.
+const spread = [10, 50, 90]
 test.each([
-  [0, `b · 10 GPa`, 0, ``],
-  [5, `b · 10 GPa`, 0, ``], // 30 GPa: a tie goes to the lower frame
-  [6, `b · 90 GPa`, 2, `no frame within 40 GPa of 140 GPa`],
-])(`frame %d of a is compared with %s`, (frame_idx, label, compare_idx, notice) => {
-  const sweep: Sweep = {
-    ...make_sweep(),
-    series: [
-      { id: `a`, frames: [0, 2, 4, 6, 8, 30, 140].map((value) => sweep_frame(value, 1)) },
-      { id: `b`, frames: [10, 50, 90].map((value) => sweep_frame(value, 2)) },
-    ],
-  }
-  const root = mount_host({ sweep, frame_idx, compare_series: `b`, panes: ALL_PANES })
-  const [main_label, compare_label] = side_labels(root)
-  expect(main_label).toBe(`a · ${sweep.series[0].frames[frame_idx].value} GPa`)
-  expect(compare_label).toBe(notice ? `${label} ${notice}` : label)
-  expect(root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``).toBe(notice)
-  expect(viewers.trends?.compare).toEqual({ series_id: `b`, frame_idx: compare_idx })
-})
+  [0, spread, `b · 10 GPa`, 0, ``],
+  [5, spread, `b · 10 GPa`, 0, ``], // 30 GPa: a tie goes to the lower frame
+  [6, spread, `b · 90 GPa`, 2, ``], // 130 GPa: exactly one step off is not far
+  [7, spread, `b · 90 GPa`, 2, `no frame within 40 GPa of 140 GPa`],
+  [0, [60], `b · 60 GPa`, 0, `no frame within 2 GPa of 0 GPa`],
+])(
+  `frame %d of a is compared with b at %j: %s`,
+  (frame_idx, b_values, label, compare_idx, notice) => {
+    const sweep: Sweep = {
+      ...make_sweep(),
+      series: [
+        {
+          id: `a`,
+          frames: [0, 2, 4, 6, 8, 30, 130, 140].map((value) => sweep_frame(value, 1)),
+        },
+        { id: `b`, frames: b_values.map((value) => sweep_frame(value, 2)) },
+      ],
+    }
+    const root = mount_host({ sweep, frame_idx, compare_series: `b`, panes: ALL_PANES })
+    const [main_label, compare_label] = side_labels(root)
+    expect(main_label).toBe(`a · ${sweep.series[0].frames[frame_idx].value} GPa`)
+    expect(compare_label).toBe(notice ? `${label} ${notice}` : label)
+    expect(root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``).toBe(notice)
+    expect(viewers.trends?.compare).toEqual({ series_id: `b`, frame_idx: compare_idx })
+  },
+)
 
 test(`a compared series loads through the same frame cache, window and aborts`, async () => {
   const sweep = make_sweep()

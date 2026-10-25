@@ -3,7 +3,6 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
@@ -15,7 +14,7 @@
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import { build_legend_items } from '#lib/plot/core/data-transform.js'
+  import { build_legend_items, series_text } from '#lib/plot/core/data-transform.js'
   import { has_marker } from '#lib/plot/core/types.js'
   import {
     CANVAS_MARKER_THRESHOLD,
@@ -155,7 +154,8 @@
   const series_label = (series_idx: number): string =>
     series[series_idx]?.label ?? `Series ${series_idx + 1}`
   // the label as text, for the accessible names and CSV (it may be HTML, e.g. <sub>)
-  const series_text = (series_idx: number): string => html_to_text(series_label(series_idx))
+  const label_text = (series_idx: number): string =>
+    series_text(series[series_idx]?.label, series_idx)
 
   // Every point of every series, validated and placed in the unit triangle. An invalid triple
   // fails the whole plot with a message in place of the chart rather than dropping data.
@@ -176,7 +176,7 @@
         srs.points.map((triple, point_idx): PlacedPoint => {
           const fractions = ternary_fractions(
             triple,
-            `${srs.label ? html_to_text(srs.label) : `Series ${series_idx + 1}`} point ${point_idx + 1}`,
+            `${series_text(srs.label, series_idx)} point ${point_idx + 1}`,
           )
           return {
             series_idx,
@@ -295,7 +295,7 @@
   })
   clear_stale_hover(() => pin.value && !tip_info, pin.unpin)
   const accessible_label = (point: PlacedPoint): string =>
-    `${series_text(point.series_idx)}: ${labels
+    `${label_text(point.series_idx)}: ${labels
       .map((label, idx) => `${label} = ${format_value(point.fractions[idx], tick_format)}`)
       .join(`, `)}`
 
@@ -472,7 +472,7 @@
     csv: csv_source(() => ({
       header: [`series`, ...labels, `color_value`],
       rows: visible_points.map((point) => [
-        series_text(point.series_idx),
+        label_text(point.series_idx),
         ...point.fractions,
         point.color_value,
       ]),

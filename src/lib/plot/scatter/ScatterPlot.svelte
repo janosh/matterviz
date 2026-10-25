@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
@@ -68,7 +67,11 @@
     axis_scale_types,
   } from '#lib/plot/core/axis-assignment.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
-  import { extract_series_color, get_series_symbol } from '#lib/plot/core/data-transform.js'
+  import {
+    extract_series_color,
+    get_series_symbol,
+    series_text,
+  } from '#lib/plot/core/data-transform.js'
   import { density_contours as compute_density_contours } from '#lib/plot/core/density-contours.js'
   import type { FacetAxis } from '#lib/plot/core/facets.js'
   import { FACET_AXES } from '#lib/plot/core/facets.js'
@@ -274,10 +277,10 @@
       on_fill_hover?: (event: FillHandlerEvent | null) => void
       selected_series_idx?: number
       wrapper?: HTMLDivElement
-      // Read-only: the padding in effect, so hosts laying out several plots (BandsAndDos)
-      // can feed the maximum back as a shared `padding` to align their chart areas. Top and
-      // bottom are raised to what the axes need, since an explicit shared padding stops a
-      // plot measuring its own titles (a wrapped x title would spill past the plot's edge).
+      // Read-only: the padding the plot needs, so hosts laying out several plots (BandsAndDos)
+      // can feed the maximum back as a shared `padding` to align their chart areas. It is the
+      // padding in effect, except that an explicit top/bottom smaller than the axes need
+      // (an explicit padding stops a plot measuring its titles) reports that need instead.
       resolved_padding?: Required<Sides>
       // The range each axis shows after pan/zoom. Hosts writing it move the view without
       // touching axis config, so linked panels share one zoom but keep their own reset target
@@ -505,12 +508,8 @@
   let [y2_min, y2_max] = $derived(frame.ranges.current.y2)
 
   $effect(() => {
-    const { pad: frame_pad, title_pad } = frame
-    const next = {
-      ...frame_pad,
-      t: Math.max(frame_pad.t, title_pad.t),
-      b: Math.max(frame_pad.b, title_pad.b),
-    }
+    const { t, b } = frame.fit_pad
+    const next = { ...pad, t: Math.max(pad.t, t), b: Math.max(pad.b, b) }
     // A fresh object per run would loop through a host that feeds it back into the plot
     if (!untrack(() => resolved_padding && sides_equal(resolved_padding, next))) {
       resolved_padding = next
@@ -1392,7 +1391,7 @@
     const metadata_label = point.metadata?.[`aria_label`]
     if (typeof metadata_label === `string`) return metadata_label
     const series_label = assigned_series[point.series_idx]?.label
-    return `Select ${series_label ? html_to_text(series_label) : `series ${point.series_idx + 1}`} point ${point.point_idx + 1}`
+    return `Select ${series_text(series_label, point.series_idx)} point ${point.point_idx + 1}`
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {

@@ -21,8 +21,9 @@ import type { DescriptorSpec, Sweep, SweepFrame, SweepFrameData, SweepSeries } f
 
 // The last shown frames (the current one included) that keep their heavy data after leaving
 // the window, so flipping back to a frame just compared needs no reload. A frame's band grid
-// is up to 64³ points × bands (~20 MB at 10 bands in f64), so the window's 3 frames plus 3
-// older ones cap the cache near 120 MB (twice the window while comparing two series).
+// is up to 64³ points × bands (~20 MB at 10 bands in f64), so the window's 3 frames, 3 older
+// ones and the background frame while it loads cap the cache near 140 MB (~160 MB while
+// comparing two series: 5 window frames, 2 older ones).
 export const RECENT_FRAMES = 4
 
 // A series and the indices of its frames to load: the shown frame first, then its neighbours
@@ -36,8 +37,8 @@ type FrameEntry =
   | { state: `loading`; controller: AbortController; data?: SweepFrameData }
   | { state: `loaded`; data: SweepFrameData }
   | { state: `evicted`; data: SweepFrameData }
-  // not retried until the sweep or loader changes; `unreported` holds the error of a frame that
-  // was not shown when it failed, reported once a request shows it
+  // not retried until the sweep or loader changes; `unreported` holds its error until reported
+  // (at once while shown, else once a request shows it)
   | { state: `failed`; data?: SweepFrameData; unreported?: string }
 
 // data's entries over base's (undefined when neither is set)
@@ -118,12 +119,15 @@ export function create_sweep_frames(inputs: {
   const in_range = (series: SweepSeries, idx: number) =>
     Number.isInteger(idx) && idx >= 0 && idx < series.frames.length
 
-  const start = (
-    current: typeof cache,
-    series: SweepSeries,
-    idx: number,
-    background = false,
-  ): void => {
+  // Report a failed frame's error unless reported already, with `suffix` appended
+  const report = (current: typeof cache, base: SweepFrame, suffix = ``): void => {
+    const entry = current.entries.get(base)
+    if (entry?.state !== `failed` || entry.unreported === undefined) return
+    current.entries.set(base, { state: `failed`, data: entry.data })
+    inputs.on_error(`${entry.unreported}${suffix}`)
+  }
+
+  const start = (current: typeof cache, series: SweepSeries, idx: number): void => {
     const { loader, entries } = current
     if (!loader) return
     const base = series.frames[idx]
@@ -142,20 +146,15 @@ export function create_sweep_frames(inputs: {
         (error: unknown) => {
           if (signal.aborted) return
           const reason = to_error(error).message
-          const message = `Loading frame ${idx} of series "${series.id}" failed: ${reason}`
-          // a shown frame's error on screen wins over a background one
-          const shown_failed = [...current.shown].some(
-            (frame) => entries.get(frame)?.state === `failed`,
-          )
-          if (current.shown.has(base)) {
-            entries.set(base, { state: `failed`, data: entry?.data })
-            inputs.on_error(message)
-          } else if (background && !current.background_failed && !shown_failed) {
+          const unreported = `Loading frame ${idx} of series "${series.id}" failed: ${reason}`
+          entries.set(base, { state: `failed`, data: entry?.data, unreported })
+          const { shown } = current
+          if (shown.has(base)) report(current, base)
+          else if (base === current.background && !current.background_failed) {
             // the first failure of frames nobody asked to see stands for the rest
             current.background_failed = true
-            entries.set(base, { state: `failed`, data: entry?.data })
-            inputs.on_error(`${message} (other frames' failures show with the frame)`)
-          } else entries.set(base, { state: `failed`, data: entry?.data, unreported: message })
+            report(current, base, ` (other frames' failures show with the frame)`)
+          }
         },
       )
   }
@@ -200,12 +199,7 @@ export function create_sweep_frames(inputs: {
     current.recent = [...shown, ...older].slice(0, RECENT_FRAMES)
     current.shown = new Set(shown)
     release(current)
-    for (const frame of shown) {
-      const entry = current.entries.get(frame)
-      if (entry?.state !== `failed` || entry.unreported === undefined) continue
-      current.entries.set(frame, { state: `failed`, data: entry.data })
-      inputs.on_error(entry.unreported)
-    }
+    for (const frame of shown) report(current, frame)
     for (const { series, idx } of loads) start(current, series, idx)
   }
 
@@ -249,7 +243,8 @@ export function create_sweep_frames(inputs: {
     // it starts once a request named the windows and none of their frames is loading, and is
     // not aborted for being outside them. A previous background frame is released like any
     // frame outside the windows: aborted while loading, evicted once loaded (light fields
-    // kept). Only the first failure is reported at once, the others once their frame shows.
+    // kept). Only the first failure of the background frame (the one last passed here, also
+    // when a window started its load) is reported at once, the others once their frame shows.
     // Call from an effect, which reruns when the windows' loads settle so a waiting target
     // starts then.
     load_background(target?: FrameRef): void {
@@ -261,9 +256,7 @@ export function create_sweep_frames(inputs: {
       untrack(() => {
         current.background = base
         release(current)
-        if (target && base && current.in_window.size > 0 && !busy) {
-          start(current, ...target, true)
-        }
+        if (target && base && current.in_window.size > 0 && !busy) start(current, ...target)
       })
     },
   }

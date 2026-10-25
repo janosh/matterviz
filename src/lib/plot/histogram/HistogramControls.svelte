@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { html_to_text } from '#lib/utils.js'
+  import { series_text } from '#lib/plot/core/data-transform.js'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
@@ -97,9 +97,7 @@
               {#if !has_visible_series}<option value={-1}>No visible series</option>{/if}
               {#each series as { label, visible = true }, series_idx (series_idx)}
                 {#if visible}
-                  <option value={series_idx}
-                    >{label ? html_to_text(label) : `Series ${series_idx + 1}`}</option
-                  >
+                  <option value={series_idx}>{series_text(label, series_idx)}</option>
                 {/if}
               {/each}
             </select>

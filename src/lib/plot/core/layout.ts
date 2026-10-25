@@ -28,13 +28,6 @@ export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 // whatever borders the plot there (a stacked pane's divider, the frame of a card)
 export const TITLE_EDGE_AIR = 4
 
-// How far past the plot edge an x/x2 axis reaches: its tick labels' band, then a title's first
-// line centred one gap past them, its further lines stacking outward in full, plus edge air
-export const x_axis_reach = (title: AxisTitleLayout, tick_band = TICK_LABEL_HEIGHT): number =>
-  title.height > 0
-    ? tick_band + LABEL_GAP_DEFAULT + title.height - title.line_height / 2 + TITLE_EDGE_AIR
-    : tick_band
-
 // Height of ChartShell's corner controls row (gear, fullscreen) from the plot's top edge
 const CONTROLS_ROW_HEIGHT = 24
 // Per-side floors; measured ticks and titles win when they need more
@@ -494,7 +487,16 @@ export const calc_auto_padding = ({
       ? horizontal_tick_layout(x_axis, available_width, `x`).band
       : TICK_LABEL_HEIGHT
     const tick_shift = Math.max(0, x_axis.tick_label?.shift?.y ?? 0)
-    const below_baseline = x_axis_reach(title_layout, band)
+    // The title's first line is centered one gap past the labels (half a line further);
+    // wrapped lines stack below it in full
+    const below_baseline =
+      title_height > 0
+        ? band +
+          LABEL_GAP_DEFAULT +
+          title_height -
+          title_layout.line_height / 2 +
+          TITLE_EDGE_AIR
+        : band
     const title_shift = title_height > 0 ? Math.max(0, x_axis.label_shift?.y ?? 0) : 0
     const content_reach = below_baseline + tick_shift + title_shift
     return Math.max(default_padding.b, content_reach)

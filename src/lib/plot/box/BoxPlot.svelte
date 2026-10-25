@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { sanitize_html } from '#lib/sanitize.js'
   import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
@@ -1003,7 +1004,7 @@
             ...(show_mean ? [[`mean`, stat.mean] as const] : []),
           ] as const}
           {#if hover_info.category_label}
-            <div><strong>{hover_info.category_label}</strong></div>
+            <div><strong>{@html sanitize_html(hover_info.category_label)}</strong></div>
           {/if}
           {#each rows as [label, value] (label)}
             <div>

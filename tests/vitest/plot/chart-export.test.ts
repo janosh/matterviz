@@ -21,6 +21,8 @@ describe(`to_csv`, () => {
     // Spreadsheets would evaluate these; negative numbers stay numbers
     [`formula-leading text gets a quote`, [[`=SUM(A1)`, -1]], `a,b\n'=SUM(A1),-1`],
     [`+ @ - lead too`, [[`@x`, `+y`, `-z`]], `a,b\n'@x,'+y,'-z`],
+    // signed numeric text (oxidation-state categories) is data, not a formula
+    [`numeric text stays as is`, [[`-2`, `+1.5e3`]], `a,b\n-2,+1.5e3`],
   ])(`%s`, (_name, rows, expected) => {
     expect(to_csv([`a`, `b`], rows)).toBe(expected)
   })
@@ -38,7 +40,7 @@ describe(`series_to_csv_rows`, () => {
     expect(rows).toEqual([
       [`A`, 1, 10],
       [`A`, 2, 20],
-      [`series 2`, 3, 30],
+      [`Series 2`, 3, 30],
       [`EF & co`, 4, 40],
     ])
   })

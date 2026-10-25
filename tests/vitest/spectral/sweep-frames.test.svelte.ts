@@ -421,28 +421,43 @@ test(`failures report while their frame shows: prefetched and background ones on
   frames.request([series, [0, 1]])
   await fail(calls[1]) // the prefetched neighbour fails first: nothing to report yet
   await fail(calls[0])
-  frames.load_background([series, 2])
-  await fail() // the shown frame's error is up: the background one waits
-  frames.request([series, [4]])
-  calls.at(-1)?.resolve({})
-  await settle()
-  frames.load_background([series, 3])
-  await fail() // no shown error now: the first background failure stands for the rest
+  // the first background failure stands for the rest, even with the shown frame's error up
+  // (else no failure of them would ever show), later ones wait for their frame
+  for (const idx of [2, 3]) {
+    frames.load_background([series, idx])
+    await fail()
+  }
   frames.request([series, [5]])
   await fail()
   expect([ids(calls), messages()]).toEqual([
-    [0, 1, 2, 4, 3, 5],
+    [0, 1, 2, 3, 5],
     [
       `Loading frame 0 of series "fcc" failed: down`,
-      `Loading frame 3 of series "fcc" failed: down (other frames' failures show with the frame)`,
+      `Loading frame 2 of series "fcc" failed: down (other frames' failures show with the frame)`,
       `Loading frame 5 of series "fcc" failed: down`,
     ],
   ])
   // showing a frame that failed unseen reports it then, once, without loading it again
-  for (const idx of [1, 2, 1]) frames.request([series, [idx]])
-  expect(load).toHaveBeenCalledTimes(6)
+  for (const idx of [1, 3, 1]) frames.request([series, [idx]])
+  expect(load).toHaveBeenCalledTimes(5)
   expect(messages().slice(3)).toEqual([
     `Loading frame 1 of series "fcc" failed: down`,
-    `Loading frame 2 of series "fcc" failed: down`,
+    `Loading frame 3 of series "fcc" failed: down`,
   ])
+})
+
+// the background frame's load counts as the background's even when a window started it
+test(`a window's load the background takes over reports its failure as the background's`, async () => {
+  const { load, calls } = deferred_loader()
+  const { frames, inputs, on_error } = setup(load, 6)
+  const series = inputs.sweep.series[0]
+  frames.request([series, [0, 1]])
+  frames.load_background([series, 1]) // frame 1 loading for the window already
+  frames.request([series, [3]]) // frame 1 leaves the window, its load kept for the background
+  expect([ids(calls), calls[1].signal.aborted]).toEqual([[0, 1, 3], false])
+  calls[1].reject(new Error(`down`))
+  await settle()
+  expect(on_error).toHaveBeenCalledExactlyOnceWith(
+    `Loading frame 1 of series "fcc" failed: down (other frames' failures show with the frame)`,
+  )
 })

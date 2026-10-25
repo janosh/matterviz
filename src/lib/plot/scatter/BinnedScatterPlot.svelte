@@ -4,7 +4,8 @@
 >
   // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
   // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
-  import { html_to_text } from '#lib/utils.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { series_text } from '#lib/plot/core/data-transform.js'
   import { host } from '#lib/host.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { format_value } from '#lib/labels.js'
@@ -337,7 +338,7 @@
         x_range,
         y_range,
         bin_transforms,
-        series.map((srs, idx) => (srs.label ? html_to_text(srs.label) : `Series ${idx + 1}`)),
+        series.map((srs, idx) => series_text(srs.label, idx)),
       ),
     })),
   }
@@ -994,8 +995,9 @@
         bg_color={bin_color(hovered_bin)}
       >
         {#if hovered_bin.series_idx != null}
-          {series[hovered_bin.series_idx].label ?? `Series ${hovered_bin.series_idx + 1}`}<br
-          />
+          {@html sanitize_html(
+            series[hovered_bin.series_idx].label ?? `Series ${hovered_bin.series_idx + 1}`,
+          )}<br />
         {/if}
         {hovered_bin.count.toLocaleString()} samples<br />
         {@const { x_range: bin_x, y_range: bin_y } = hovered_bin}

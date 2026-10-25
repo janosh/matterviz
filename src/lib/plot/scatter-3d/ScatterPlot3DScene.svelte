@@ -2,7 +2,6 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { format_num } from '#lib/labels.js'
@@ -44,7 +43,7 @@
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { plot_color } from '#lib/colors/index.js'
-  import { extract_series_color } from '#lib/plot/core/data-transform.js'
+  import { extract_series_color, series_text } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
   import {
@@ -411,7 +410,7 @@
       const axes = [x_axis, y_axis, z_axis]
       const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
       const series_label = series[series_idx]?.label
-      const name = series_label ? html_to_text(series_label) : `Series ${series_idx + 1}`
+      const name = series_text(series_label, series_idx)
       return `${name} point ${point_idx + 1}: ${coords.join(`, `)}`
     },
   })

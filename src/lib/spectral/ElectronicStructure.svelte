@@ -94,7 +94,7 @@
     series_spacing,
     validate_sweep,
   } from './sweep'
-  import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
+  import type { Sweep, SweepFrame, SweepSeries } from './sweep'
   import { create_sweep_frames, type FrameRef, type FrameWindow } from './sweep-frames.svelte'
   import SweepTrends from './SweepTrends.svelte'
   import { DEFAULT_PLOT_PADDING, type Sides } from '#lib/plot/core/layout.js'
@@ -256,12 +256,17 @@
     if (series && frame_idx !== frame_index) frame_idx = frame_index
     if (series && compare_series === series.id) compare_series = undefined
   })
-  // a replaced sweep (also a dropped one) keeps the plotted descriptor and the compared series
-  // only if it has them
-  let kept_sweep = untrack(() => sweep)
+  // a replaced sweep (also a dropped one), or one whose series or descriptors change in place,
+  // keeps the plotted descriptor and the compared series only if it has them
+  const sweep_keys = (active?: Sweep): string =>
+    [...(active?.series ?? []), ...(active?.descriptors ?? [])]
+      .map((entry) => (`id` in entry ? entry.id : entry.key))
+      .join(`\n`)
+  let kept = untrack(() => ({ sweep, keys: sweep_keys(sweep) }))
   $effect.pre(() => {
-    if (sweep === kept_sweep) return
-    kept_sweep = sweep
+    const keys = sweep_keys(sweep)
+    if (sweep === kept.sweep && keys === kept.keys) return
+    kept = { sweep, keys }
     const [key, compare_id] = untrack(() => [descriptor, compare_series])
     if (!sweep?.descriptors?.some((spec) => spec.key === key)) descriptor = undefined
     if (!sweep?.series.some(({ id }) => id === compare_id)) compare_series = undefined
@@ -286,23 +291,28 @@
     return { series: compare_target, shown: at(frame_index), next: at(next_index).idx }
   })
   const compare_frame = $derived(compared && frames.frame(compared.series, compared.shown.idx))
-  // the compared frame lies off the shown value by more than its series' typical step
-  const spacing = $derived(compared ? series_spacing(compared.series) : 0)
-  const compare_far = $derived(compared !== undefined && compared.shown.distance > spacing)
+  // the compared frame lies off the shown value by more than its series' typical step (the
+  // shown series' for a one-frame compared series; none when neither has a step)
+  const spacing = $derived(
+    compared && series ? series_spacing(compared.series) || series_spacing(series) : 0,
+  )
+  const compare_far = $derived(
+    compared !== undefined && spacing > 0 && compared.shown.distance > spacing,
+  )
   const with_unit = (value: number): string =>
     `${format_num(value)}${sweep?.axis.unit ? ` ${sweep.axis.unit}` : ``}`
   // the shown frames first, then their neighbours, so a step lands on loaded data
   $effect(() => {
     if (!series) return
-    const shown: FrameWindow = [series, [frame_index, next_index, frame_index - 1]]
-    if (compared) frames.request(shown, [compared.series, [compared.shown.idx, compared.next]])
-    else frames.request(shown)
+    const own: FrameWindow = [series, [frame_index, next_index, frame_index - 1]]
+    if (compared) frames.request(own, [compared.series, [compared.shown.idx, compared.next]])
+    else frames.request(own)
   })
   // the panes' data: the shown frame's in a sweep, else the props' (JSON grids parsed, as
   // sweeps parse theirs)
   const pane_data = $derived<Partial<SweepFrame>>(
     sweep
-      ? { ...frame }
+      ? (frame ?? {})
       : {
           structure,
           fermi_data: fermi_data && normalize_fermi_surface(fermi_data),
@@ -345,17 +355,10 @@
   // another series opens at its frame nearest the shown frame's axis value
   const select_series = (id: string): void => {
     const target = sweep?.series.find((entry) => entry.id === id)
-    const value = frame?.value
-    select_frame(id, target && value !== undefined ? nearest_frame(target, value).idx : 0)
+    select_frame(id, target && frame ? nearest_frame(target, frame.value).idx : 0)
   }
 
   // === panes and layout ===
-  // In a sweep, a pane has data when any frame of the series has (loaded) it, so the default
-  // layout neither waits on the shown frame's load nor collapses on a frame without it
-  const loaded_frames = (entry?: SweepSeries): SweepFrame[] =>
-    entry ? entry.frames.map((_frame, idx) => frames.frame(entry, idx)) : []
-  // the shown and the compared series' loaded frames: either side's data opens its pane
-  const shown_frames = $derived([...loaded_frames(series), ...loaded_frames(compared?.series)])
   // the panes any of the entries (frames, or the props) has data for
   const panes_with_data = (
     entries: Partial<SweepFrame>[],
@@ -376,52 +379,50 @@
     }
     return PANE_IDS.filter((pane) => filled[pane])
   }
-  // In a sweep, what the series' frames loaded so far add up to: a running value that grows as
-  // frames load and never shrinks when they are evicted, so panes stay and axes hold still,
-  // reset by a new sweep, loader or series (any of `of`'s)
-  function running<T>(
-    of: () => (SweepSeries | undefined)[],
-    next: (prev: T | undefined) => T,
-  ): () => T {
-    let seen: { key: unknown[]; value?: T } = { key: [] }
+  // In a sweep, what each shown series' frames loaded so far add up to: a running value per
+  // series that grows as its frames load and never shrinks when they are evicted, so panes stay
+  // and axes hold still (also across a swap or a series compared again), reset by a new sweep or
+  // loader. A pane has data when any frame has (loaded) it, so the default layout neither waits
+  // on the shown frame's load nor collapses on a frame without it.
+  const shown_series = $derived(series ? [series, ...(compared ? [compared.series] : [])] : [])
+  function running<T>(next: (loaded: SweepFrame[], prev?: T) => T): () => T[] {
+    let seen = { key: [] as unknown[], values: new WeakMap<SweepSeries, T>() }
     return () => {
-      const key = [sweep, sweep?.load_frame, ...of()]
-      if (key.length !== seen.key.length || key.some((part, idx) => part !== seen.key[idx])) {
-        seen = { key }
-      }
-      seen.value = next(seen.value)
-      return seen.value
+      const key = [sweep, sweep?.load_frame]
+      if (key.some((part, idx) => part !== seen.key[idx]))
+        seen = { key, values: new WeakMap() }
+      return shown_series.map((entry) => {
+        const loaded = entry.frames.map((_frame, idx) => frames.frame(entry, idx))
+        const value = next(loaded, seen.values.get(entry))
+        seen.values.set(entry, value)
+        return value
+      })
     }
   }
   const sweep_panes = $derived.by(
-    running(
-      () => [series, compared?.series],
-      (prev: ElectronicPane[] = []) => {
-        const now = panes_with_data(shown_frames, Boolean(sweep?.descriptors?.length))
-        return PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
-      },
-    ),
+    running<ElectronicPane[]>((loaded, prev = []) => {
+      const now = panes_with_data(loaded, Boolean(sweep?.descriptors?.length))
+      return PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
+    }),
   )
-  const with_data = $derived(sweep ? sweep_panes : panes_with_data([pane_data], false))
-  // the frequency extent (data units) of the shown and the compared series' loaded frames
-  const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) => {
-    const spans = [() => series, () => compared?.series].map((of) =>
-      running<Vec2 | undefined>(
-        () => [of()],
-        (prev) =>
-          union_ranges([
-            prev,
-            ...loaded_frames(of()).map((entry) => {
-              const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
-              return compute_frequency_range(bands, dos)
-            }),
-          ]),
-      ),
+  const with_data = $derived(
+    sweep
+      ? PANE_IDS.filter((pane) => sweep_panes.some((filled) => filled.includes(pane)))
+      : panes_with_data([pane_data], false),
+  )
+  // the frequency extent (data units) the shown series' loaded frames span, shared by the sides
+  const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
+    running<Vec2 | undefined>((loaded, prev) =>
+      union_ranges([
+        prev,
+        ...loaded.map((entry) => {
+          const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
+          return compute_frequency_range(bands, dos)
+        }),
+      ]),
     )
-    return () => union_ranges(spans.map((span) => span()))
-  }
-  const electronic_span = $derived.by(running_span((entry) => entry))
-  const phonon_span = $derived.by(running_span((entry) => entry.phonon))
+  const electronic_spans = $derived.by(running_span((entry) => entry))
+  const phonon_spans = $derived.by(running_span((entry) => entry.phonon))
   const shown = $derived.by((): Set<ElectronicPane> => {
     if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
     if (panes?.includes(`trends`) && !sweep?.descriptors?.length) {
@@ -447,12 +448,13 @@
   const missing = $derived.by((): FrameRef[] => {
     if (!sweep || !series || !show_trends) return []
     const lines = descriptor_lines(sweep, descriptor)
-    const order = new Set([series, compared?.series ?? series, ...sweep.series])
+    const order = new Set([...shown_series, ...sweep.series])
     return [...order].flatMap((entry) =>
       entry.frames.flatMap((_frame, idx): FrameRef[] => {
-        const value_of = (line: DescriptorSpec) =>
-          descriptor_value(frames.frame(entry, idx), line)
-        return lines.some((line) => value_of(line) === undefined) ? [[entry, idx]] : []
+        const loaded = frames.frame(entry, idx)
+        return lines.some((line) => descriptor_value(loaded, line) === undefined)
+          ? [[entry, idx]]
+          : []
       }),
     )
   })
@@ -504,11 +506,9 @@
   // loaded frame turns frames_differ off and on again
   const reported_series = new WeakSet<SweepSeries>()
   class FrameSide {
-    #inputs: SideInputs
-    bands: SideInputs['bands']
+    inputs: SideInputs
     constructor(inputs: SideInputs) {
-      this.#inputs = inputs
-      this.bands = inputs.bands
+      this.inputs = inputs
       $effect(() => {
         if (!this.frames_differ) return
         const entry = this.series
@@ -520,8 +520,8 @@
         untrack(() => report_error(message))
       })
     }
-    series = $derived.by(() => this.#inputs.series())
-    data = $derived.by(() => this.#inputs.data())
+    series = $derived.by(() => this.inputs.series())
+    data = $derived.by(() => this.inputs.data())
     // e.g. `fcc Cu · 175 GPa`, plain text (a series label may hold the trends legend's HTML)
     label = $derived.by((): string => {
       const { value, label } = this.data
@@ -569,7 +569,7 @@
       band_struct: () => this.first_band_struct,
       k_lattice: () => this.k_lattice,
       mu: { get: () => mu, set: (value) => (mu = value) },
-      selected_bands: () => this.bands.get(),
+      selected_bands: () => this.inputs.bands.get(),
       bands_props: () => bands_props,
       fermi_props: () => fermi_props,
     })
@@ -581,7 +581,7 @@
       bands_props: () => bands_props,
       dos_props: () => dos_props,
       side_by_side: () => this.spectra_side,
-      data_range: () => electronic_span,
+      data_range: () => union_ranges(electronic_spans),
       base_padding: DEFAULT_PLOT_PADDING,
     })
     // the energy marked on both spectra: the previewed surface's, else the hovered one
@@ -594,10 +594,7 @@
   })
   // the compared side's own band selection (another series numbers its bands its own way),
   // reset with the compared series
-  let compare_bands = $derived.by((): number[] | undefined => {
-    void compare_target
-    return undefined
-  })
+  let compare_bands = $derived.by((): number[] | undefined => void compare_target)
   const compare_side = new FrameSide({
     series: () => compared?.series,
     data: () => compare_frame ?? {},
@@ -742,9 +739,7 @@
           `Compare with`,
           compared?.series.id ?? ``,
           others,
-          (id) => {
-            compare_series = id || undefined
-          },
+          (id) => (compare_series = id || undefined),
           true,
         )}
       {/if}
@@ -979,7 +974,7 @@
             previewing={link.previewing}
             bind:color_property={link.color_property}
             bind:mu={link.mu}
-            bind:selected_bands={side.bands.get, side.bands.set}
+            bind:selected_bands={side.inputs.bands.get, side.inputs.bands.set}
             bind:isolated_band={link.isolated_band}
             k_marker={link.path.hovered_k_point}
             k_path={link.k_path}
@@ -1126,7 +1121,7 @@
             band_structs={spectra.band_structs ?? {}}
             doses={spectra.doses ?? {}}
             a2f={spectra.a2f}
-            frequency_range={phonon_span}
+            frequency_range={union_ranges(phonon_spans)}
             density_range={phonon_props.density_range ??
               shared_density((entry) => entry.phonon_density)}
             bind:density_extent={side.phonon_density}

@@ -29,9 +29,9 @@ export const sheet_color = (
     ? SPIN_COLORS[spin]
     : BAND_COLORS[band_index % BAND_COLORS.length]
 
-// Colouring shown for a chosen one (a caller's prop or a controls pick; undefined: none): data
-// carrying per-vertex properties (λ_nk, Δ_nk, …) opens coloured by them, so a choice of
-// `property` falls back to the default only while the data has none and returns with them
+// Colouring drawn for a choice (a caller's prop or a controls pick): `band` and `spin` hold,
+// while no choice or `property` colours by the data's per-vertex properties (λ_nk, Δ_nk, …)
+// whenever it has some, else falls back to the default
 export const resolve_color_property = (
   chosen: ColorProperty | undefined,
   property_names: readonly string[],

@@ -347,7 +347,6 @@
   // The requested property when present, else the first; the fitted range spans visible sheets
   // and fills the ends color_scale.value_range leaves unset
   const available_properties = $derived(available_property_names(surface_data, grid_data))
-  // data carrying per-vertex properties (λ_nk, Δ_nk, …) opens coloured by the first
   const shown_color_property = $derived(
     resolve_color_property(color_property, available_properties),
   )
@@ -498,7 +497,7 @@
         />
       </Canvas>
 
-      {#if color_bar && shown_color_property === `property` && active_property !== undefined}
+      {#if color_bar && shown_color_property === `property`}
         <ColorBar
           title={property_label(active_property, custom_property_label)}
           color_scale={resolved_color_scale}

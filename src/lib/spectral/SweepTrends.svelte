@@ -11,7 +11,7 @@
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
   import type { ComponentProps } from 'svelte'
   import { descriptor_lines, descriptor_point } from './sweep'
-  import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
+  import type { Sweep, SweepFrame, SweepSeries } from './sweep'
 
   type PointMeta = { series_id: string; frame_idx: number }
 
@@ -37,7 +37,7 @@
   const specs = $derived(sweep.descriptors ?? [])
   // the plotted descriptor, then those it overlays (same unit, dashed)
   const lines = $derived(descriptor_lines(sweep, descriptor))
-  const spec = $derived<DescriptorSpec | undefined>(lines[0])
+  const spec = $derived(lines.at(0))
   const with_unit = (label: string, unit?: string) => (unit ? `${label} (${unit})` : label)
 
   // each line's points per series (sweeps are a few frames: recomputed on every change),

@@ -426,6 +426,9 @@ describe(`BoxPlot`, () => {
     }
     expect(text).not.toMatch(/max|min/)
     expect(tooltip_after([{ y: [1, 2, 30, 40, 50], label: `A` }])).toContain(`median: 30`)
+    // the header renders an HTML label as markup, as the legend does
+    expect(tooltip_after([{ y: [1, 2, 3], label: `A<sub>2</sub>` }])).toContain(`A2`)
+    expect(plot.querySelector(`.plot-tooltip strong sub`)?.textContent).toBe(`2`)
     expect(tooltip_after([])).toBeNull()
     expect(on_box_hover).toHaveBeenLastCalledWith(null)
   })
