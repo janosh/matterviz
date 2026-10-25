@@ -311,6 +311,12 @@ describe(`Settings`, () => {
         show_stable_labels: `undefined marks the prop as not passed, so large datasets may auto-hide labels; it resolves through get_convex_hull_defaults`,
         show_unstable_labels: `undefined marks the prop as not passed, so large datasets may auto-hide labels; it resolves through get_convex_hull_defaults`,
       },
+      'fermi-surface/FermiSurface': {
+        color_property: `undefined lets the data choose: the first per-state property when the band grid has one, else the schema value (resolve_color_property)`,
+      },
+      'fermi-surface/FermiSurfaceControls': {
+        color_property: `undefined lets the data choose: the first per-state property when the band grid has one, else the schema value (resolve_color_property)`,
+      },
       'scene/SceneCamera': {
         camera_projection: `shared camera primitive; every scene passes its own schema value`,
         gizmo: `shared camera primitive; every scene passes its own schema value`,
