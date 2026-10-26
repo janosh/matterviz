@@ -218,6 +218,7 @@
 
   link_orbits(() => sync_rotation && !frames_differ)
 
+  const NO_RECORDS: Record<string, never> = Object.freeze({})
   let wrapper = $state<HTMLDivElement>()
   let dragover = $state(false)
   let chrome_width = $state(0)
@@ -390,24 +391,32 @@
   // loader. A pane has data when any frame has (loaded) it, so the default layout neither waits
   // on the shown frame's load nor collapses on a frame without it.
   const shown_series = $derived(series ? [series, ...(compared ? [compared.series] : [])] : [])
+  // `next` returns `prev` while nothing changed, and the array is the last one while every
+  // series' value holds, so a load that changes no value (one of a series not shown, or
+  // another frame's) re-renders nothing downstream.
   function running<T>(next: (loaded: SweepFrame[], prev?: T) => T): () => T[] {
-    let seen = { key: [] as unknown[], values: new WeakMap<SweepSeries, T>() }
+    let seen = { key: [] as unknown[], values: new WeakMap<SweepSeries, T>(), last: [] as T[] }
     return () => {
       const key = [sweep, sweep?.load_frame]
       if (key.some((part, idx) => part !== seen.key[idx]))
-        seen = { key, values: new WeakMap() }
-      return shown_series.map((entry) => {
+        seen = { key, values: new WeakMap(), last: [] }
+      const values = shown_series.map((entry) => {
         const loaded = entry.frames.map((_frame, idx) => frames.frame(entry, idx))
         const value = next(loaded, seen.values.get(entry))
         seen.values.set(entry, value)
         return value
       })
+      const { last } = seen
+      if (values.length !== last.length || values.some((value, idx) => value !== last[idx]))
+        seen.last = values
+      return seen.last
     }
   }
   const sweep_panes = $derived.by(
     running<ElectronicPane[]>((loaded, prev = []) => {
       const now = panes_with_data(loaded, Boolean(sweep?.descriptors?.length))
-      return PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
+      const grown = PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
+      return grown.length === prev.length ? prev : grown // a superset of prev
     }),
   )
   const with_data = $derived(
@@ -417,15 +426,16 @@
   )
   // the frequency extent (data units) the shown series' loaded frames span, shared by the sides
   const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
-    running<Vec2 | undefined>((loaded, prev) =>
-      union_ranges([
+    running<Vec2 | undefined>((loaded, prev) => {
+      const span = union_ranges([
         prev,
         ...loaded.map((entry) => {
           const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
           return compute_frequency_range(bands, dos)
         }),
-      ]),
-    )
+      ])
+      return span?.[0] === prev?.[0] && span?.[1] === prev?.[1] ? prev : span
+    })
   const electronic_spans = $derived.by(running_span((entry) => entry))
   const phonon_spans = $derived.by(running_span((entry) => entry.phonon))
   const shown = $derived.by((): Set<ElectronicPane> => {
@@ -539,9 +549,10 @@
     band_data = $derived(this.data.band_data)
     // the frame's own surface, else what FermiSurface extracts from its band grid
     surface = $derived(this.data.fermi_data)
-    band_structs = $derived(this.data.band_structs ?? {})
-    doses = $derived(this.data.doses ?? {})
-    phonon = $derived(this.data.phonon ?? {})
+    // one empty record for every absent field, so a rerun without them changes nothing
+    band_structs = $derived(this.data.band_structs ?? NO_RECORDS)
+    doses = $derived(this.data.doses ?? NO_RECORDS)
+    phonon = $derived(this.data.phonon ?? NO_RECORDS)
     first_band_struct = $derived(Object.values(this.band_structs)[0])
     // the Fermi surface's zone
     k_lattice = $derived((this.band_data ?? this.surface)?.k_lattice)

@@ -1669,6 +1669,25 @@ test(`the fill covers every series, after the shown and compared windows`, async
   expect(notes).toEqual([`4/9`, `5/9`, `6/9`, `7/9`, `8/9`, null])
 })
 
+// A load the shown frames don't need (here the fill's, of a series not shown) leaves every
+// prop of the shown spectra as it was, so nothing downstream of the frame cache re-renders
+test(`a background load leaves the shown spectra's props untouched`, async () => {
+  const { calls, settle } = fill_setup({}, [`fcc`, `bcc`], 2)
+  await settle(0, 1)
+  const fill = calls.find(({ id }) => id === `bcc`)
+  const spectra = { bands: viewers.bands, dos: viewers.dos }
+  if (!fill || !spectra.bands || !spectra.dos) throw new Error(`no fill or spectra`)
+  const props_now = () =>
+    Object.entries(spectra).flatMap(([name, props]) =>
+      Object.entries(props ?? {}).map(([key, value]) => [`${name}.${key}`, value] as const),
+    )
+  const before = new Map(props_now())
+  fill.resolve()
+  await settle()
+  const changed = props_now().filter(([key, value]) => !Object.is(value, before.get(key)))
+  expect(changed.map(([key]) => key)).toEqual([])
+})
+
 test(`a supplied descriptor's frames need no fill`, async () => {
   const { settle, note, loaded } = fill_setup({ descriptor: `tc` })
   expect(note()).toBeNull()
