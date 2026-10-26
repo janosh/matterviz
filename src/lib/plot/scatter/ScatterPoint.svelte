@@ -99,7 +99,8 @@
   // every render (BarPlot passes coordinates through unclamped).
   const tweened = create_settling_tween(
     () => target,
-    { duration: 600, easing: cubicOut, interpolate: marker_interpolator() },
+    // every animated update takes `live`'s interpolator; settling updates snap
+    { duration: 600, easing: cubicOut },
     {
       live: () => ({
         ...point_tween,

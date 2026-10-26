@@ -121,12 +121,14 @@ export function create_sweep_frames(inputs: {
       }
     }
   })
+  // sets the frame's entry, or deletes it when none
   const set_entry = (
     entries: Map<SweepFrame, FrameEntry>,
     base: SweepFrame,
-    entry: FrameEntry,
+    entry?: FrameEntry,
   ) => {
-    entries.set(base, entry)
+    if (entry) entries.set(base, entry)
+    else entries.delete(base)
     version += 1
   }
   // the frame's entry in the current cache, tracking every entry change
@@ -187,11 +189,7 @@ export function create_sweep_frames(inputs: {
       if (entry.state === `loading`) {
         if (base === background) continue
         entry.controller.abort()
-        if (entry.data) set_entry(entries, base, { state: `evicted`, data: entry.data })
-        else {
-          entries.delete(base)
-          version += 1
-        }
+        set_entry(entries, base, entry.data && { state: `evicted`, data: entry.data })
       } else if (entry.state === `loaded` && !current.recent.includes(base)) {
         set_entry(entries, base, {
           state: `evicted`,
