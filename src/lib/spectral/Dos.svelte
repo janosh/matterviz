@@ -47,6 +47,7 @@
   let {
     doses,
     a2f = {},
+    a2f_sigma,
     stack = false,
     sigma = $bindable(0),
     units = $bindable(`THz`),
@@ -74,9 +75,14 @@
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
     doses: Record<string, DosData>
     // Eliashberg functions α²F(ω), dimensionless: dashed on their own density axis (top beside
-    // bands, else right) over the DOS frequencies, never rescaled with units, smeared,
-    // normalized or stacked
+    // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
+    // stacked
     a2f?: Record<string, PhononDos>
+    // Gaussian width α²F is broadened by for display, in the data unit like sigma (the
+    // broadening keeps its integral, so λ): a q-mesh α²F is a comb of mode peaks a dashed line
+    // can't draw. Unset takes 1% of its frequency span where the grid resolves that (2+
+    // samples per width), else draws it as given, as 0 always does.
+    a2f_sigma?: number
     stack?: boolean
     // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
     // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer
@@ -195,11 +201,17 @@
       }
       for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {
         const x_values = convert_frequencies(curve.frequencies, unit)
+        const { min = 0, max = 0 } = accumulate_extent(empty_extent(), x_values)
+        const auto_width = 0.01 * (max - min)
+        const resolved = auto_width >= (2 * (max - min)) / Math.max(1, x_values.length - 1)
+        const width =
+          a2f_sigma === undefined ? (resolved ? auto_width : 0) : a2f_sigma * display_factor
+        const densities = apply_gaussian_smearing(x_values, curve.densities, width)
         const stroke = plot_color(Object.keys(doses).length + a2f_idx)
         all_series.push({
           id: JSON.stringify([label, `a2f`]),
-          x: is_horizontal ? curve.densities : x_values,
-          y: is_horizontal ? x_values : curve.densities,
+          x: is_horizontal ? densities : x_values,
+          y: is_horizontal ? x_values : densities,
           ...(is_horizontal ? { x_axis: `x2` } : { y_axis: `y2` }),
           markers: `line`,
           label: label || `α²F ${a2f_idx + 1}`,
