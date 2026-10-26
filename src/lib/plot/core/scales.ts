@@ -472,6 +472,12 @@ export const positive_log_domain = (lower: number, upper: number, widen = 1.1): 
   return validate_log_range(descending ? [ceiling, floor] : [floor, ceiling])
 }
 
+// Range padding factor that leaves `edge_px` between the outermost data and the frame of an
+// axis `axis_px` long, so marks centred on the data ends draw whole (0.05 when too short, 0
+// when nothing reaches past the data)
+export const edge_range_padding = (edge_px: number, axis_px: number): number =>
+  edge_px <= 0 ? 0 : axis_px > 2 * edge_px ? edge_px / (axis_px - 2 * edge_px) : 0.05
+
 export function nice_range_from_extent(
   { min: min_ext, max: max_ext, min_positive, n_finite }: RunningExtent,
   limits: [number | null, number | null],

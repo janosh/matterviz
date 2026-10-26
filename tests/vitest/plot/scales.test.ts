@@ -19,6 +19,7 @@ import {
   generate_log_ticks,
   generate_ticks,
   create_size_scale,
+  edge_range_padding,
   log_floor_scale,
   nice_range_from_extent,
   scale_arcsinh,
@@ -89,6 +90,21 @@ describe(`scales`, () => {
         expect(Number.isFinite(scale.invert(250))).toBe(true)
       },
     )
+  })
+
+  // Padding f of the span puts the data ends f / (1 + 2f) of the axis inside the frame
+  test.each([
+    [4, 400, 4 / 392],
+    [0, 400, 0],
+    [10, 20, 0.05],
+    [10, 0, 0.05],
+    [0, 0, 0],
+  ])(`edge_range_padding(%d px, %d px axis) = %f`, (edge_px, axis_px, expected) => {
+    const padding = edge_range_padding(edge_px, axis_px)
+    expect(padding).toBe(expected)
+    if (axis_px > 2 * edge_px) {
+      expect((axis_px * padding) / (1 + 2 * padding)).toBeCloseTo(edge_px, 12)
+    }
   })
 
   describe(`nice_range_from_extent`, () => {

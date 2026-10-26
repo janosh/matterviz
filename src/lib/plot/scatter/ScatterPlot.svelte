@@ -45,6 +45,7 @@
     to_color_scale_config,
     create_scale,
     create_size_scale,
+    edge_range_padding,
     empty_extent,
     log_floor_scale,
     nice_range_from_extent,
@@ -121,7 +122,12 @@
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
-  import { sides_equal, type Sides } from '#lib/plot/core/layout.js'
+  import {
+    DEFAULT_PLOT_PADDING,
+    filter_padding,
+    sides_equal,
+    type Sides,
+  } from '#lib/plot/core/layout.js'
   import {
     CANVAS_MARKER_THRESHOLD,
     type CanvasMarker,
@@ -416,24 +422,64 @@
 
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
 
+  // How far markers and error-bar caps reach past their data point in px, sized as they render
+  // (series_appearance). Auto ranges leave that much room so marks on the outermost points
+  // aren't cut in half by the plot-area clip.
+  let edge_px = $derived.by(() => {
+    let max_px = 0
+    const size_radius = Math.max(...(size_scale.radius_range ?? SCALE_DEFAULTS.radius))
+    for (const [series_idx, srs] of assigned_series.entries()) {
+      if (!srs || srs.visible === false) continue
+      // caps reach error_bar_cap along the bar's normal, plus half the 1px bar stroke
+      if (srs.x_error != null || srs.y_error != null) {
+        max_px = Math.max(max_px, error_bar_cap + 0.5)
+      }
+      if (!show_points || !has_marker(srs, `points`)) continue
+      const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
+      const sized = srs.size_values?.some(is_finite_num) ?? false
+      for (const style of [srs.point_style ?? {}].flat()) {
+        const radius = sized ? size_radius : (point_ctrl?.size ?? style.radius ?? 3)
+        const symbol_size = sized ? undefined : style.symbol_size
+        const symbol =
+          style.symbol_type ?? styles.point?.symbol_type ?? get_series_symbol(series_idx)
+        // a circle reaches its radius, other symbols their bounding radius (d3 sizes are areas)
+        const reach =
+          symbol === `Circle` && symbol_size == null
+            ? radius
+            : Math.sqrt(symbol_size ?? Math.PI * radius ** 2)
+        const stroke_width =
+          point_ctrl?.stroke_width ?? style.stroke_width ?? DEFAULTS.scatter.point.stroke_width
+        max_px = Math.max(max_px, reach + stroke_width / 2)
+      }
+    }
+    return max_px
+  })
+  // Plot-area size before tick-label measurement, which itself depends on the ranges
+  let base_pad = $derived(filter_padding(padding, DEFAULT_PLOT_PADDING))
+
   const auto_range = (
     data_extent: RunningExtent,
     axis: typeof final_x_axis,
+    axis_px: number,
     time_scale = false,
   ): Vec2 =>
     nice_range_from_extent(
       data_extent,
       axis.range ?? [null, null],
       axis.scale_type ?? `linear`,
-      range_padding,
+      Math.max(range_padding, edge_range_padding(edge_px, axis_px)),
       time_scale,
     )
   // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
-  const intrinsic_ranges = $derived({
-    x: auto_range(extents_by_axis.x, final_x_axis, is_time_x),
-    x2: auto_range(extents_by_axis.x2, final_x2_axis, is_time_x2),
-    y: auto_range(extents_by_axis.y, final_y_axis),
-    y2: auto_range(extents_by_axis.y2, final_y2_axis),
+  const intrinsic_ranges = $derived.by(() => {
+    const x_px = frame.width - base_pad.l - base_pad.r
+    const y_px = frame.height - base_pad.t - base_pad.b
+    return {
+      x: auto_range(extents_by_axis.x, final_x_axis, x_px, is_time_x),
+      x2: auto_range(extents_by_axis.x2, final_x2_axis, x_px, is_time_x2),
+      y: auto_range(extents_by_axis.y, final_y_axis, y_px),
+      y2: auto_range(extents_by_axis.y2, final_y2_axis, y_px),
+    }
   })
   const frame = create_cartesian_frame({
     controls_row: () => has_controls_row(show_controls, fullscreen_toggle),

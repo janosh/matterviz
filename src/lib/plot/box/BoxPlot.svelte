@@ -59,6 +59,7 @@
   import {
     accumulate_extent,
     create_axis_scales,
+    edge_range_padding,
     empty_extent,
     nice_range_from_extent,
   } from '#lib/plot/core/scales.js'
@@ -462,10 +463,7 @@
       ? frame.height - initial_pad.t - initial_pad.b
       : frame.width - initial_pad.l - initial_pad.r
     const marker_extent = sample_state.radius + sample_state.stroke_width / 2
-    const marker_range_padding =
-      value_axis_pixels > 2 * marker_extent
-        ? marker_extent / (value_axis_pixels - 2 * marker_extent)
-        : 0.05
+    const marker_range_padding = edge_range_padding(marker_extent, value_axis_pixels)
     const primary_boxes = visible_boxes.filter((box_item) => !is_secondary(box_item.series))
     const calc_value_range = (boxes: Box[], axis: AxisConfig): Vec2 => {
       const scale_type = axis.scale_type ?? `linear`

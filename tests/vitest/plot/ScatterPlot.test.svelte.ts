@@ -684,6 +684,55 @@ describe(`ScatterPlot`, () => {
       const y_values = nums.filter((_, idx) => idx % 2 === 1)
       expect(Math.max(...y_values) - Math.min(...y_values)).toBeGreaterThan(1)
     })
+
+    // Ends at nice tick values used to become the exact auto range, putting the outer
+    // markers and their caps on the frame where the plot-area clip cut them in half
+    test.each([
+      [`default markers`, {}, 2.75],
+      [`large markers`, { point_style: { radius: 12, stroke_width: 2 } }, 13],
+      [`sized markers`, { size_values: [1, 2] }, 10.25],
+      // a d3 triangle reaches 1.555 r from its centre, past the circle radius
+      [`triangles`, { point_style: { radius: 8, symbol_type: `Triangle` } }, 1.555 * 8 + 0.5],
+    ])(
+      `%s and caps at the data extremes draw inside the frame`,
+      async (_name, extra, extent) => {
+        const plot = await mount_sized_scatter_plot({
+          ...bare,
+          series: [
+            {
+              x: [175, 200],
+              y: [200, 240],
+              y_error: { lower: [5, 10], upper: [10, 0] },
+              ...extra,
+            },
+          ],
+        })
+        const { x, y, width, height } = clip_rect(plot)
+        // Markers reach `extent` past their centre; every vertex of the bars' M/H/V path, caps
+        // included, half the 1px bar stroke
+        const bar_vertices: { x: number; y: number }[] = []
+        const bar_path = plot.querySelector(`path.error-bars`)?.getAttribute(`d`) ?? ``
+        for (const { groups } of bar_path.matchAll(/(?<cmd>[MHV])(?<args>[^MHV]+)/g)) {
+          const { cmd, args } = groups ?? {}
+          const nums = args.split(`,`).map(Number)
+          const prev = bar_vertices.at(-1) ?? { x: Number.NaN, y: Number.NaN }
+          if (cmd === `M`) bar_vertices.push({ x: nums[0], y: nums[1] })
+          else if (cmd === `H`) bar_vertices.push({ x: nums[0], y: prev.y })
+          else bar_vertices.push({ x: prev.x, y: nums[0] })
+        }
+        const boxes = [
+          ...[0, 1].map((idx) => [marker_position(plot, idx), extent] as const),
+          ...bar_vertices.map((vertex) => [vertex, 0.5] as const),
+        ]
+        expect(boxes.length).toBeGreaterThan(2)
+        for (const [center, half] of boxes) {
+          expect(center.x - half).toBeGreaterThanOrEqual(x)
+          expect(center.x + half).toBeLessThanOrEqual(x + width)
+          expect(center.y - half).toBeGreaterThanOrEqual(y)
+          expect(center.y + half).toBeLessThanOrEqual(y + height)
+        }
+      },
+    )
   })
 
   // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
@@ -744,9 +793,10 @@ describe(`ScatterPlot`, () => {
 
     await vi.waitFor(() => expect(report_layout).toHaveBeenCalled())
     const report = report_layout.mock.calls.at(-1)?.[0]
+    // ranges reach half a tick past the data so the end markers (radius 5) aren't clipped
     expect(report).toEqual({
       padding: { t: 7, b: 11, l: 13, r: 17 },
-      ranges: { x: [1, 5], x2: [0, 1], y: [2, 8], y2: [0, 1] },
+      ranges: { x: [0.5, 5.5], x2: [0, 1], y: [1.5, 8.5], y2: [0, 1] },
     })
     expect(clip_rect(plot)).toEqual({ x: 83, y: 17, width: 288, height: 236 })
     expect(plot.querySelector(`.x-axis`)).toBeNull()
@@ -2736,6 +2786,27 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `x`)).toContain(`0`)
     expect(axis_tick_labels(plot, `x`)).not.toContain(`120`)
     expect(state.x_axis.range).toEqual([0, 100])
+  })
+
+  // A grown auto range (more data, or a narrower plot: the padding is in px) moves an unzoomed
+  // view along but leaves a zoomed one where the user put it
+  test(`a grown auto range keeps a zoomed view and moves an unzoomed one`, async () => {
+    const state = $state<{ series: DataSeries[]; view: Partial<AxisRanges> | undefined }>({
+      series: [{ x: [1, 9], y: [1, 9] }],
+      view: undefined,
+    })
+    await mount_sized_scatter_plot(bind_props({ ...bare }, state))
+    await tick()
+    const grow = async (x_max: number) => {
+      state.series = [{ x: [1, x_max], y: [1, 9] }]
+      await flush_render()
+    }
+    await grow(19)
+    expect(state.view?.x?.[1]).toBeGreaterThanOrEqual(19)
+    state.view = { ...state.view, x: [2, 4] }
+    await tick()
+    await grow(29)
+    expect(state.view?.x).toEqual([2, 4])
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the range-sync

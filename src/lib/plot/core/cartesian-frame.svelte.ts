@@ -287,9 +287,14 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
           (has_data[axis] ?? true) || pinned,
         )
         if (!changed) continue
-        // copy: initial is the reset target, so it must not alias the live current range
+        // A zoomed or panned view stays put (auto ranges also grow when the plot shrinks: their
+        // padding is in px); the reset target follows. Copy: it must not alias the live range.
+        const zoomed = !vec2_equal(
+          untrack(() => ranges.current[axis]),
+          initial[axis],
+        )
         ranges.initial[axis] = range
-        ranges.current[axis] = [...range] as Vec2
+        if (!zoomed) ranges.current[axis] = [...range] as Vec2
       }
     } else if (!axis_ranges_equal(initial, next)) {
       ranges = { initial: { ...next }, current: snapshot_ranges(next) }
