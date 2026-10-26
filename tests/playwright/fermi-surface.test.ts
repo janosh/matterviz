@@ -355,7 +355,8 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   const status = viewer.locator(`.frame-status`)
   await expect(status).toHaveText(/^0 GPa \(V\/V₀ = 1\.00\)/, { timeout: LOAD_TIMEOUT })
   const phonon = viewer.locator(`[data-pane="phonon"]`)
-  await expect(phonon.locator(`path.marker`)).toHaveCount(147)
+  // thinned to the strongest per mode in each 1/50 of the path
+  await expect(phonon.locator(`path.marker`)).toHaveCount(129)
   await expect(phonon.locator(`.colorbar .label sub`)).toHaveText(`qν`)
   const trends = viewer.locator(`[data-pane="trends"]`)
   const markers = trends.locator(`path.marker`)

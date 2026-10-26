@@ -180,6 +180,26 @@ export interface ModeValueMarker {
   mode_idx: number
 }
 
+// A q mesh meets the path every few pixels, and a triangle at each one fills the bands, so
+// each mode keeps its strongest marker (|value|, which size and colour show) in every
+// 1/MODE_MARKER_BINS of the path span: strong coupling always stays, weak ones thin out
+export const MODE_MARKER_BINS = 50
+export function thin_mode_markers(
+  markers: readonly ModeValueMarker[],
+  [x_min, x_max]: readonly [number, number],
+): ModeValueMarker[] {
+  const span = x_max - x_min
+  if (!(span > 0)) return [...markers]
+  const kept = new Map<string, ModeValueMarker>()
+  for (const marker of markers) {
+    const bin = Math.floor(((marker.x - x_min) / span) * MODE_MARKER_BINS)
+    const key = `${marker.mode_idx} ${Math.min(MODE_MARKER_BINS - 1, Math.max(0, bin))}`
+    const held = kept.get(key)
+    if (!held || Math.abs(marker.value) > Math.abs(held.value)) kept.set(key, marker)
+  }
+  return [...kept.values()]
+}
+
 // The markers to draw: every mode with a value at every projected q-point
 export const mode_value_markers = (
   { frequencies, values }: ModeValues,

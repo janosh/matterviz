@@ -33,6 +33,7 @@
   import {
     mode_value_markers,
     normalize_mode_values,
+    thin_mode_markers,
     project_qpoints_onto_path,
   } from './mode-values'
   import type { ModeValueMarker } from './mode-values'
@@ -478,7 +479,7 @@
           error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
         }
       }
-      return { markers: mode_value_markers(parsed, projections) }
+      return { markers: thin_mode_markers(mode_value_markers(parsed, projections), x_range) }
     } catch (exc) {
       return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
     }
