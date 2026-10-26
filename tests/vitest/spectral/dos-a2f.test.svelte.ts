@@ -20,10 +20,10 @@ vi.mock(`#lib/plot/scatter/ScatterPlot.svelte`, () => ({
 const phonon_dos: PhononDos = { type: `phonon`, frequencies: [0, 3, 6], densities: [0, 2, 0] }
 const a2f: PhononDos = { ...phonon_dos, densities: [0, 0.3, 0] }
 
-// A q-mesh α²F is a comb of mode peaks: dense ones are broadened for display (by 1% of their
-// span, or a2f_sigma) keeping their integral, while a coarse grid or a2f_sigma 0 draws as given
-// peaks every 0.5 THz from 5 to 45 THz on a 0 to 50 THz grid, clear of its ends so no
-// broadened peak spills past them
+// A q-mesh α²F (and a tetrahedron DOS) is a comb of mode peaks: Dos draws every curve smoothed
+// by sigma or, if wider, the display width (1/300 of the span drawn), keeping its area, so
+// sigma only ever smooths more; a grid coarser than that width is drawn as given.
+// peaks every 0.5 THz from 5 to 45 THz on a 0 to 50 THz grid, clear of its ends
 const comb_freqs = Array.from({ length: 1001 }, (_, idx) => idx * 0.05)
 const comb: PhononDos = {
   type: `phonon`,
@@ -34,30 +34,72 @@ const trapezoid = (xs: readonly number[], ys: readonly number[]) =>
   ys
     .slice(1)
     .reduce((sum, y_val, idx) => sum + ((y_val + ys[idx]) * (xs[idx + 1] - xs[idx])) / 2, 0)
+const area = trapezoid(comb.frequencies, comb.densities)
+// the drawn curve's peak and area, α²F's or the electron DOS's
+const drawn = (label: string, horizontal = false) => {
+  const series: readonly DataSeries[] = plot.props?.series ?? []
+  const curve = series.find((srs) => srs.label === label)
+  if (!curve) throw new Error(`no ${label} curve`)
+  const [xs, ys] = (horizontal ? [curve.y, curve.x] : [curve.x, curve.y]) as number[][]
+  return { peak: Math.max(...ys), area: trapezoid(xs, ys), ys }
+}
 test.each([
-  [`a dense comb is broadened by default`, comb, undefined, true],
-  [`a dense comb with a2f_sigma 0 is drawn as given`, comb, 0, false],
-  [`a dense comb is broadened by a2f_sigma 1 THz`, comb, 1, true],
-  [`a coarse grid is drawn as given`, a2f, undefined, false],
-])(`α²F of %s`, (_desc, curve, a2f_sigma, broadened) => {
+  [`α²F`, undefined, 0.122],
+  [`α²F`, 0.01, 0.122], // under the display width, which wins
+  [`α²F`, 1, 0.1], // the comb flattened to its mean density
+  [`total`, undefined, 0.122],
+  [`total`, 1, 0.1],
+])(`a dense %s with sigma %s peaks at %d, its area kept`, (label, sigma, peak) => {
   const component = mount(Dos, {
     target: document.body,
-    props: { doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': curve }, a2f_sigma },
+    props: {
+      ...(label === `α²F`
+        ? { doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': comb } }
+        : {
+            doses: {
+              total: { type: `electronic`, energies: comb_freqs, densities: comb.densities },
+            },
+          }),
+      ...(sigma !== undefined && { sigma }),
+    },
   })
   onTestFinished(() => void unmount(component))
   flushSync()
-  const series: readonly DataSeries[] = plot.props?.series ?? []
-  const drawn = series.find(({ label }) => label === `α²F`)
-  if (!drawn) throw new Error(`no α²F curve`)
-  const ys = drawn.y as number[]
-  expect(ys).toHaveLength(curve.densities.length)
-  if (!broadened) expect(ys).toEqual(curve.densities)
-  else {
-    // the peaks melt into a smooth curve, its area (so λ) kept to 0.1%
-    expect(Math.max(...ys)).toBeLessThan(0.5 * Math.max(...curve.densities))
-    const area = trapezoid(curve.frequencies, curve.densities)
-    expect(trapezoid(curve.frequencies, ys)).toBeCloseTo(area, 2)
-  }
+  const curve = drawn(label)
+  expect(curve.peak).toBeCloseTo(peak, 2)
+  expect(curve.area).toBeCloseTo(area, 2)
+})
+// the span drawn is a caller's frequency-axis range where it sets one (BandsAndDos's shared
+// energy axis): on the horizontal plot that is y_axis, on the vertical one x_axis. A 10 THz
+// range's width (0.033, under the 0.05 sampling) leaves the comb's peaks far sharper.
+test.each<[`horizontal` | `vertical`, Partial<ComponentProps<typeof Dos>>, number]>([
+  [`horizontal`, { y_axis: { range: [20, 30] } }, 0.6],
+  [`horizontal`, { x_axis: { range: [20, 30] } }, 0.122], // the density axis: no effect
+  [`vertical`, { x_axis: { range: [20, 30] } }, 0.6],
+])(`a %s DOS reads its width off %o`, (orientation, axes, peak) => {
+  const component = mount(Dos, {
+    target: document.body,
+    props: {
+      doses: {
+        total: { type: `electronic`, energies: comb_freqs, densities: comb.densities },
+      },
+      orientation,
+      ...axes,
+    },
+  })
+  onTestFinished(() => void unmount(component))
+  flushSync()
+  expect(drawn(`total`, orientation === `horizontal`).peak).toBeCloseTo(peak, 2)
+})
+
+test(`a coarse α²F is drawn as given`, () => {
+  const component = mount(Dos, {
+    target: document.body,
+    props: { doses: { 'phonon DOS': phonon_dos }, a2f: { 'α²F': a2f } },
+  })
+  onTestFinished(() => void unmount(component))
+  flushSync()
+  drawn(`α²F`).ys.forEach((value, idx) => expect(value).toBeCloseTo(a2f.densities[idx], 9))
 })
 
 test.each([

@@ -14,10 +14,11 @@
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
-    apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
     density_divisor,
+    DISPLAY_BROADENING,
+    display_smoother,
     dos_imaginary_frequencies,
     extract_efermi,
     spectral_type,
@@ -47,7 +48,6 @@
   let {
     doses,
     a2f = {},
-    a2f_sigma,
     stack = false,
     sigma = $bindable(0),
     units = $bindable(`THz`),
@@ -78,14 +78,11 @@
     // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
     // stacked
     a2f?: Record<string, PhononDos>
-    // Gaussian width α²F is broadened by for display, in the data unit like sigma (the
-    // broadening keeps its integral, so λ): a q-mesh α²F is a comb of mode peaks a dashed line
-    // can't draw. Unset takes 1% of its frequency span where the grid resolves that (2+
-    // samples per width), else draws it as given, as 0 always does.
-    a2f_sigma?: number
     stack?: boolean
     // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
-    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer
+    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer.
+    // Every curve (α²F too) is smoothed by sigma or, if wider, the display width that only
+    // removes detail finer than the plot draws (see display_smoother), so 0 draws that.
     sigma?: number
     units?: FrequencyUnit
     normalize?: NormalizationMode
@@ -113,6 +110,23 @@
   // Display units per data unit; electronic energies are never converted
   const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
   const display_sigma = $derived(sigma * display_factor)
+  // The smoothing width (display unit): sigma, or if wider DISPLAY_BROADENING of the frequency
+  // span drawn, a caller's axis range (BandsAndDos's shared energy axis) where it sets one,
+  // else all curves' extent, so curves in one plot share one width
+  const smooth_width = $derived.by(() => {
+    let [lo, hi] = array_extent(
+      [...Object.values(doses), ...Object.values(a2f)].flatMap((dos) =>
+        array_extent(
+          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies,
+        ),
+      ),
+    )
+    const [range_lo, range_hi] = (is_horizontal ? y_axis : x_axis).range ?? []
+    if (typeof range_lo === `number` && Number.isFinite(range_lo)) lo = range_lo
+    if (typeof range_hi === `number` && Number.isFinite(range_hi)) hi = range_hi
+    const span = Number.isFinite(hi - lo) ? Math.abs(hi - lo) : 0
+    return Math.max(display_sigma, DISPLAY_BROADENING * span)
+  })
   const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
   const fermi_color = `var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`
 
@@ -136,21 +150,20 @@
 
       for (const [dos_idx, [label, dos]] of Object.entries(doses).entries()) {
         const color = plot_color(dos_idx)
-        const x_values =
-          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies
+        const smoother = display_smoother(
+          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies,
+          smooth_width,
+        )
+        const x_values = smoother.x
         const series_label = label || `DOS ${dos_idx + 1}`
         const raw_down =
           dos.type === `electronic` && dos.spin_down_densities?.length === dos.densities.length
             ? dos.spin_down_densities
             : null
 
-        // per display unit (a phonon DOS is stored per THz), then smeared
-        const smear = (raw: number[]): number[] => {
-          const densities = raw.map((density) => density / display_factor)
-          return display_sigma > 0
-            ? apply_gaussian_smearing(x_values, densities, display_sigma)
-            : densities
-        }
+        // per display unit (a phonon DOS is stored per THz), then smoothed
+        const smear = (raw: number[]): number[] =>
+          smoother.smooth(raw.map((density) => density / display_factor))
         const up = effective_spin_mode === `down_only` ? null : smear(dos.densities)
         const down =
           raw_down && effective_spin_mode && effective_spin_mode !== `up_only`
@@ -200,13 +213,11 @@
         }
       }
       for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {
-        const x_values = convert_frequencies(curve.frequencies, unit)
-        const { min = 0, max = 0 } = accumulate_extent(empty_extent(), x_values)
-        const auto_width = 0.01 * (max - min)
-        const resolved = auto_width >= (2 * (max - min)) / Math.max(1, x_values.length - 1)
-        const width =
-          a2f_sigma === undefined ? (resolved ? auto_width : 0) : a2f_sigma * display_factor
-        const densities = apply_gaussian_smearing(x_values, curve.densities, width)
+        const { x: x_values, smooth } = display_smoother(
+          convert_frequencies(curve.frequencies, unit),
+          smooth_width,
+        )
+        const densities = smooth(curve.densities)
         const stroke = plot_color(Object.keys(doses).length + a2f_idx)
         all_series.push({
           id: JSON.stringify([label, `a2f`]),
