@@ -436,21 +436,27 @@
       }
       if (!show_points || !has_marker(srs, `points`)) continue
       const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
-      const sized = srs.size_values?.some(is_finite_num) ?? false
-      for (const style of [srs.point_style ?? {}].flat()) {
-        const radius = sized ? size_radius : (point_ctrl?.size ?? style.radius ?? 3)
-        const symbol_size = sized ? undefined : style.symbol_size
-        const symbol =
-          style.symbol_type ?? styles.point?.symbol_type ?? get_series_symbol(series_idx)
-        // a circle reaches its radius, other symbols their bounding radius (d3 sizes are areas)
-        const reach =
-          symbol === `Circle` && symbol_size == null
-            ? radius
-            : Math.sqrt(symbol_size ?? Math.PI * radius ** 2)
-        const stroke_width =
-          point_ctrl?.stroke_width ?? style.stroke_width ?? DEFAULTS.scatter.point.stroke_width
-        max_px = Math.max(max_px, reach + stroke_width / 2)
-      }
+      // A finite size_value sizes its marker by the scale, any other point keeps its style's
+      // size: a series mixing the two reaches as far as the larger
+      const by_size = [srs.size_values?.some(is_finite_num) ?? false]
+      if (by_size[0] && !srs.size_values?.every(is_finite_num)) by_size.push(false)
+      for (const style of [srs.point_style ?? {}].flat())
+        for (const sized of by_size) {
+          const radius = sized ? size_radius : (point_ctrl?.size ?? style.radius ?? 3)
+          const symbol_size = sized ? undefined : style.symbol_size
+          const symbol =
+            style.symbol_type ?? styles.point?.symbol_type ?? get_series_symbol(series_idx)
+          // a circle reaches its radius, other symbols their bounding radius (d3 sizes are areas)
+          const reach =
+            symbol === `Circle` && symbol_size == null
+              ? radius
+              : Math.sqrt(symbol_size ?? Math.PI * radius ** 2)
+          const stroke_width =
+            point_ctrl?.stroke_width ??
+            style.stroke_width ??
+            DEFAULTS.scatter.point.stroke_width
+          max_px = Math.max(max_px, reach + stroke_width / 2)
+        }
     }
     return max_px
   })

@@ -691,6 +691,12 @@ describe(`ScatterPlot`, () => {
       [`default markers`, {}, 2.75],
       [`large markers`, { point_style: { radius: 12, stroke_width: 2 } }, 13],
       [`sized markers`, { size_values: [1, 2] }, 10.25],
+      // the unsized point keeps its style's radius, past the size scale's largest
+      [
+        `mixed sized and unsized markers`,
+        { size_values: [1, Number.NaN], point_style: { radius: 12, stroke_width: 2 } },
+        13,
+      ],
       // a d3 triangle reaches 1.555 r from its centre, past the circle radius
       [
         `triangles`,
@@ -2795,10 +2801,11 @@ describe(`ScatterPlot`, () => {
   // A grown auto range (more data, or a narrower plot: the padding is in px) moves an unzoomed
   // view along but leaves a zoomed one where the user put it
   test(`a grown auto range keeps a zoomed view and moves an unzoomed one`, async () => {
-    const state = $state<{ series: DataSeries[]; view: Partial<AxisRanges> | undefined }>({
-      series: [{ x: [1, 9], y: [1, 9] }],
-      view: undefined,
-    })
+    const state = $state<{
+      series: DataSeries[]
+      view: Partial<AxisRanges> | undefined
+      x_axis: AxisConfig
+    }>({ series: [{ x: [1, 9], y: [1, 9] }], view: undefined, x_axis: {} })
     await mount_sized_scatter_plot(bind_props({ ...bare }, state))
     await tick()
     const grow = async (x_max: number) => {
@@ -2811,6 +2818,10 @@ describe(`ScatterPlot`, () => {
     await tick()
     await grow(29)
     expect(state.view?.x).toEqual([2, 4])
+    // an explicit bound the caller sets is its new view, zoomed or not
+    state.x_axis = { range: [0, 50] }
+    await flush_render()
+    expect(state.view?.x).toEqual([0, 50])
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the range-sync
