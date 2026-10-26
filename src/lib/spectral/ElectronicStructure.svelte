@@ -348,15 +348,15 @@
       (frames.is_ready(series, next_index) &&
         (!compared || frames.is_ready(compared.series, compared.next))),
   })
-  // Playback keys work while the viewer is focused or hovered, as in Trajectory
-  const keys = viewer_keydown(
-    (event) =>
-      Boolean(series) && is_sequence_key_target(event) && playback.handle_keydown(event),
-  )
   // The control bar plays a series of several frames and picks among several series; a single
   // frame of a single series leaves it nothing to show
   const steps = $derived((series?.frames.length ?? 0) > 1)
   const show_bar = $derived(Boolean(sweep && series && (steps || sweep.series.length > 1)))
+  // Playback keys work while the viewer is focused or hovered, as in Trajectory, and leave a
+  // single frame's Space and PageDown to the page
+  const keys = viewer_keydown(
+    (event) => steps && is_sequence_key_target(event) && playback.handle_keydown(event),
+  )
   let bar_height = $state(0)
   // the hover-revealed control bar overlays the top row, whose controls sit below it
   const bar_offset = $derived(show_bar && controls_config.mode === `hover` ? bar_height : 0)

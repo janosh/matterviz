@@ -930,24 +930,31 @@ test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, ()
 })
 
 // One frame has nothing to play and, as the only series, nothing to pick: the bar keeps what
-// still applies (the series menus, the frame's status) and goes when that is nothing.
+// still applies (the series menus, the frame's status) and goes when that is nothing, and
+// Space plays only frames to step through (else it scrolls the page).
 test.each([
-  [`several frames`, [3, 2], [1, 1, `0 GPa`]],
-  [`one frame beside another series`, [1, 2], [1, 0, `0 GPa`]],
-  [`one frame, the only series`, [1], [0, 0, undefined]],
-])(`a sweep with %s shows bar, playback and status %j`, (_label, frame_counts, expected) => {
-  const sweep = make_sweep()
-  sweep.series = frame_counts.map((n_frames, idx) => ({
-    ...sweep.series[idx],
-    frames: sweep.series[idx].frames.slice(0, n_frames),
-  }))
-  const root = mount_host({ sweep, panes: ALL_PANES })
-  expect([
-    count(root, `.sequence-control-bar`),
-    count(root, `.sequence-control-bar input[type="range"]`),
-    status(root),
-  ]).toEqual(expected)
-})
+  [`several frames`, [3, 2], [1, 1, `0 GPa`, true]],
+  [`one frame beside another series`, [1, 2], [1, 0, `0 GPa`, false]],
+  [`one frame, the only series`, [1], [0, 0, undefined, false]],
+])(
+  `a sweep with %s shows bar, playback, status and takes Space %j`,
+  (_label, frame_counts, expected) => {
+    const sweep = make_sweep()
+    sweep.series = frame_counts.map((n_frames, idx) => ({
+      ...sweep.series[idx],
+      frames: sweep.series[idx].frames.slice(0, n_frames),
+    }))
+    const root = mount_host({ sweep, panes: ALL_PANES })
+    const space = new KeyboardEvent(`keydown`, { key: ` `, bubbles: true, cancelable: true })
+    root.dispatchEvent(space)
+    expect([
+      count(root, `.sequence-control-bar`),
+      count(root, `.sequence-control-bar input[type="range"]`),
+      status(root),
+      space.defaultPrevented,
+    ]).toEqual(expected)
+  },
+)
 
 test(`clicking a trends point selects its series and frame`, () => {
   const { props, root } = mount_live({
