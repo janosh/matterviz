@@ -1182,6 +1182,7 @@ test(`a replaced lazy sweep draws the frames its own loader returns`, async () =
   const { sweep, load_frame } = bare_sweep()
   props.sweep = sweep
   flushSync()
+  expect(dos_drawn()).toBe(false) // the old DOS unmounted, the path this test is about
   await vi.waitFor(() =>
     expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
   )
