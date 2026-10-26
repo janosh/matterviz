@@ -15,6 +15,7 @@
 
   import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
   import { format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
   import { get_scale_type_name } from '#lib/plot/core/types.js'
@@ -979,8 +980,9 @@
       class={[`color-bar`, `color-bar-${color_bar_side}`, color_bar.class]}
     />
   {/if}
-  {#if x_axis.label}<div class="x-title">{x_axis.label}</div>{/if}
-  {#if y_axis.label}<div class="y-title">{y_axis.label}</div>{/if}
+  <!-- axis titles take sub/superscript markup like every other plot's (E<sub>F</sub>) -->
+  {#if x_axis.label}<div class="x-title">{@html sanitize_html(x_axis.label)}</div>{/if}
+  {#if y_axis.label}<div class="y-title">{@html sanitize_html(y_axis.label)}</div>{/if}
 </div>
 
 <style>

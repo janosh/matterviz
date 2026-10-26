@@ -9,7 +9,12 @@
   import SceneCamera from '#lib/scene/SceneCamera.svelte'
   import SceneLights from '#lib/scene/SceneLights.svelte'
   import type { CameraProjection } from '#lib/settings.js'
-  import { ortho_zoom_for_extent } from '#lib/structure/camera-fit.js'
+  import {
+    ortho_zoom_for_extent,
+    perspective_distance_for_extent,
+  } from '#lib/structure/camera-fit.js'
+  import * as math from '#lib/math.js'
+  import { untrack } from 'svelte'
   import { default_camera_position, polyhedron_centroid } from './geometry'
 
   let {
@@ -41,12 +46,25 @@
   })
   const controls = $derived(resolve_scene_controls(scene_controls))
   const target = $derived(polyhedron_centroid(zone_vertices))
-  const position = $derived(default_camera_position(size))
-
   // initial_zoom is relative (50 = fit to the shorter viewport edge), so it has to go through
   // ortho_zoom_for_extent — handing it to the camera raw treats it as an absolute zoom and
   // renders the zone several times too small.
   const measured = $derived(width > 0 && height > 0)
+  // Perspective frames by distance, not zoom: fit_extent's sphere in view along the default
+  // direction (a fixed 10 |b| framed the zone at about half the viewport). Set when the content,
+  // fov or first measured viewport changes, not on every resize, which would snap an orbit back.
+  const position = $derived.by((): Vec3 => {
+    const fallback = default_camera_position(size)
+    if (camera_projection !== `perspective` || !measured) return fallback
+    const [view_width, view_height] = untrack(() => [width, height])
+    const distance = perspective_distance_for_extent(
+      fit_extent,
+      view_width,
+      view_height,
+      controls.fov,
+    )
+    return math.scale(fallback, distance / Math.hypot(...fallback))
+  })
   const scene_camera = create_scene_camera({
     controls: () => ({ ...controls, camera_projection }),
     target: () => target,

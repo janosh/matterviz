@@ -199,6 +199,25 @@ describe(`XrdPlot`, () => {
     },
   )
 
+  // A fractional annotate_peaks is a fraction of each pattern's own maximum, as top-k counts
+  // each pattern's own peaks: the weak pattern (max 30 of the shared 300) keeps its labels
+  test(`fractional annotate_peaks thresholds each pattern on its own maximum`, async () => {
+    const weak = { ...pattern, y: pattern.y.map((val) => val / 10) }
+    const target = await mount_xrd({
+      patterns: { Strong: { pattern }, Weak: { pattern: weak } },
+      annotate_peaks: 0.6,
+      show_angles: false,
+    })
+    const labels = [...target.querySelectorAll(`.bar-series`)].map((series) =>
+      [...series.querySelectorAll(`.bar-label`)].map((label) => label.textContent?.trim()),
+    )
+    // y >= 0.6 * max: 200 and 300 of [100, 200, 150, 300, 120], in either pattern
+    expect(labels).toEqual([
+      [`110`, `200`],
+      [`110`, `200`],
+    ])
+  })
+
   test(`children prop`, () => {
     mount(XrdPlot, {
       target: document.body,

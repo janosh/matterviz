@@ -5,6 +5,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
+  import { sanitize_html } from '#lib/sanitize.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import { array_extent, type Vec2 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
@@ -13,10 +14,11 @@
   import type { AxisConfig, DataSeries } from '#lib/plot/core/types.js'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
   import {
-    apply_gaussian_smearing,
     calculate_sigma_step,
     closed_edge_path,
     density_divisor,
+    DISPLAY_BROADENING,
+    display_smoother,
     dos_imaginary_frequencies,
     extract_efermi,
     spectral_type,
@@ -28,9 +30,10 @@
   } from './helpers'
   import {
     convert_frequencies,
-    frequency_unit_label,
+    dos_density_label,
     frequency_unit_per_thz,
     parse_frequency_unit,
+    spectral_value_label,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import type {
@@ -64,18 +67,22 @@
     show_normalize_control = false,
     show_units_control = false,
     sigma_range,
+    density_range,
+    density_extent = $bindable(),
     // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
     doses: Record<string, DosData>
     // Eliashberg functions α²F(ω), dimensionless: dashed on their own density axis (top beside
-    // bands, else right) over the DOS frequencies, never rescaled with units, smeared,
-    // normalized or stacked
+    // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
+    // stacked
     a2f?: Record<string, PhononDos>
     stack?: boolean
     // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
-    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer
+    // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer.
+    // Every curve (α²F too) is smoothed by sigma or, if wider, the display width that only
+    // removes detail finer than the plot draws (see display_smoother), so 0 draws that.
     sigma?: number
     units?: FrequencyUnit
     normalize?: NormalizationMode
@@ -87,6 +94,10 @@
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)
     sigma_range?: Vec2 // Min/max range for sigma slider (auto-detected if not provided)
+    // the density extent to span instead of the data's (e.g. several plots' union); a range in
+    // x_axis or y_axis still wins
+    density_range?: Vec2
+    density_extent?: Vec2 // read only: the drawn data's density extent (α²F's not included)
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -99,6 +110,23 @@
   // Display units per data unit; electronic energies are never converted
   const display_factor = $derived(is_phonon ? frequency_unit_per_thz(unit) : 1)
   const display_sigma = $derived(sigma * display_factor)
+  // The smoothing width (display unit): sigma, or if wider DISPLAY_BROADENING of the frequency
+  // span drawn, a caller's axis range (BandsAndDos's shared energy axis) where it sets one,
+  // else all curves' extent, so curves in one plot share one width
+  const smooth_width = $derived.by(() => {
+    let [lo, hi] = array_extent(
+      [...Object.values(doses), ...Object.values(a2f)].flatMap((dos) =>
+        array_extent(
+          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies,
+        ),
+      ),
+    )
+    const [range_lo, range_hi] = (is_horizontal ? y_axis : x_axis).range ?? []
+    if (typeof range_lo === `number` && Number.isFinite(range_lo)) lo = range_lo
+    if (typeof range_hi === `number` && Number.isFinite(range_hi)) hi = range_hi
+    const span = Number.isFinite(hi - lo) ? Math.abs(hi - lo) : 0
+    return Math.max(display_sigma, DISPLAY_BROADENING * span)
+  })
   const effective_fermi_level = $derived(fermi_level ?? extract_efermi(doses))
   const fermi_color = `var(--dos-fermi-line-color, light-dark(#e74c3c, #ff6b6b))`
 
@@ -122,21 +150,20 @@
 
       for (const [dos_idx, [label, dos]] of Object.entries(doses).entries()) {
         const color = plot_color(dos_idx)
-        const x_values =
-          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies
+        const smoother = display_smoother(
+          dos.type === `phonon` ? convert_frequencies(dos.frequencies, unit) : dos.energies,
+          smooth_width,
+        )
+        const x_values = smoother.x
         const series_label = label || `DOS ${dos_idx + 1}`
         const raw_down =
           dos.type === `electronic` && dos.spin_down_densities?.length === dos.densities.length
             ? dos.spin_down_densities
             : null
 
-        // per display unit (a phonon DOS is stored per THz), then smeared
-        const smear = (raw: number[]): number[] => {
-          const densities = raw.map((density) => density / display_factor)
-          return display_sigma > 0
-            ? apply_gaussian_smearing(x_values, densities, display_sigma)
-            : densities
-        }
+        // per display unit (a phonon DOS is stored per THz), then smoothed
+        const smear = (raw: number[]): number[] =>
+          smoother.smooth(raw.map((density) => density / display_factor))
         const up = effective_spin_mode === `down_only` ? null : smear(dos.densities)
         const down =
           raw_down && effective_spin_mode && effective_spin_mode !== `up_only`
@@ -186,12 +213,16 @@
         }
       }
       for (const [a2f_idx, [label, curve]] of Object.entries(a2f).entries()) {
-        const x_values = convert_frequencies(curve.frequencies, unit)
+        const { x: x_values, smooth } = display_smoother(
+          convert_frequencies(curve.frequencies, unit),
+          smooth_width,
+        )
+        const densities = smooth(curve.densities)
         const stroke = plot_color(Object.keys(doses).length + a2f_idx)
         all_series.push({
           id: JSON.stringify([label, `a2f`]),
-          x: is_horizontal ? curve.densities : x_values,
-          y: is_horizontal ? x_values : curve.densities,
+          x: is_horizontal ? densities : x_values,
+          y: is_horizontal ? x_values : densities,
           ...(is_horizontal ? { x_axis: `x2` } : { y_axis: `y2` }),
           markers: `line`,
           label: label || `α²F ${a2f_idx + 1}`,
@@ -235,27 +266,34 @@
     const from_zero = is_density_axis ? !has_mirrored_spin : clamp_to_zero
     return [from_zero ? 0 : acc.min, acc.max]
   }
-  let x_range = $derived(compute_range(`x`, is_horizontal))
-  let y_range = $derived(compute_range(`y`, !is_horizontal))
+  const data_density_extent = $derived(compute_range(is_horizontal ? `x` : `y`, true))
+  $effect(() => {
+    density_extent = data_density_extent
+  })
+  const density_axis_range = $derived(density_range ?? data_density_extent)
+  const frequency_range = $derived(compute_range(is_horizontal ? `y` : `x`, false))
+  let x_range = $derived(is_horizontal ? density_axis_range : frequency_range)
+  let y_range = $derived(is_horizontal ? frequency_range : density_axis_range)
   const a2f_axis = $derived<AxisConfig>({
     label: `α²F(ω)`,
     format: `.2f`,
     range: compute_range(is_horizontal ? `x` : `y`, true, true),
+    // few ticks along a narrow DOS column beside the bands, as its density axis has
+    ...(is_horizontal && { ticks: 2 }),
   })
 
-  let value_label = $derived(
-    is_phonon ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
-  )
+  let value_label = $derived(spectral_value_label(is_phonon, unit))
+  let density_label = $derived(dos_density_label(is_phonon, is_horizontal, normalize))
 
   const internal_x_axis = $derived<AxisConfig>({
-    label: is_horizontal ? `Density of States` : value_label,
+    label: is_horizontal ? density_label : value_label,
     format: `.2f`,
     range: x_range,
     ...(is_horizontal && { ticks: 4 }),
     ...x_axis,
   })
   const internal_y_axis = $derived<AxisConfig>({
-    label: is_horizontal ? value_label : `Density of States`,
+    label: is_horizontal ? value_label : density_label,
     format: `.2f`,
     range: y_range,
     ...y_axis,
@@ -321,11 +359,13 @@
       is_horizontal,
       is_phonon,
       units: unit,
+      normalize,
       x_axis_label: internal_x_axis.label ?? ``,
       y_axis_label: internal_y_axis.label ?? ``,
       num_series: Object.keys(doses).length,
     })}
-    {#if tooltip_data.title}<strong>{tooltip_data.title}</strong><br />{/if}
+    {#if tooltip_data.title}<strong>{@html sanitize_html(tooltip_data.title)}</strong><br
+      />{/if}
     {#each tooltip_data.lines as line, line_idx (line_idx)}
       <TooltipValue {...line} />{#if line_idx < tooltip_data.lines.length - 1}<br />{/if}
     {/each}

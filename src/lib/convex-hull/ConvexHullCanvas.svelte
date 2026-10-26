@@ -37,6 +37,7 @@
   import type { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { merge_hull_config } from './index'
+  import { html_to_text } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '#lib/controls.js'
   import type { HullSelection } from './canvas-interactions.svelte'
@@ -285,7 +286,7 @@
   <canvas
     bind:this={canvas}
     tabindex="0"
-    aria-label={merged_controls.title ||
+    aria-label={html_to_text(merged_controls.title ?? ``) ||
       hull_data.phase_stats?.chemical_system ||
       `${dim}D Convex Hull`}
     {...interactions.canvas_handlers}

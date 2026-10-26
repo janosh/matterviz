@@ -50,35 +50,39 @@
   // Size, colour and the label's offset glide with the position, so re-encoding a marker (new
   // size or colour column, colour scale, log toggle) or re-placing its label animates like a
   // data change. Colour blends in RGB; an unset radius or a colour d3 can't parse (e.g. a CSS
-  // variable) switches at the start.
-  const interpolate_marker = (from: Marker, to: Marker) => {
-    const position = point_tween.interpolate?.(from, to)
-    const [from_fill, to_fill] = [rgb(from.fill ?? ``), rgb(to.fill ?? ``)]
-    const blend_fill =
-      from.fill !== to.fill && from_fill.displayable() && to_fill.displayable()
-    return (frac: number): Marker => ({
-      ...(position?.(frac) ?? { x: lerp(from.x, to.x, frac), y: lerp(from.y, to.y, frac) }),
-      label:
-        from.label && to.label
-          ? {
-              x: lerp(from.label.x, to.label.x, frac),
-              y: lerp(from.label.y, to.label.y, frac),
-            }
-          : to.label,
-      radius:
-        from.radius === undefined || to.radius === undefined
-          ? to.radius
-          : lerp(from.radius, to.radius, frac),
-      fill: blend_fill
-        ? rgb(
-            lerp(from_fill.r, to_fill.r, frac),
-            lerp(from_fill.g, to_fill.g, frac),
-            lerp(from_fill.b, to_fill.b, frac),
-            lerp(from_fill.opacity, to_fill.opacity, frac),
-          ).formatRgb()
-        : to.fill,
-    })
-  }
+  // variable) switches at the start. The position interpolator is the caller's, read when the
+  // target is set: Tween builds its interpolator on its first frame, which can come after the
+  // point unmounted (a hidden window's paused frames), when reading props warns derived_inert.
+  const marker_interpolator =
+    (interpolate_position?: TweenOptions<Point2D>[`interpolate`]) =>
+    (from: Marker, to: Marker) => {
+      const position = interpolate_position?.(from, to)
+      const [from_fill, to_fill] = [rgb(from.fill ?? ``), rgb(to.fill ?? ``)]
+      const blend_fill =
+        from.fill !== to.fill && from_fill.displayable() && to_fill.displayable()
+      return (frac: number): Marker => ({
+        ...(position?.(frac) ?? { x: lerp(from.x, to.x, frac), y: lerp(from.y, to.y, frac) }),
+        label:
+          from.label && to.label
+            ? {
+                x: lerp(from.label.x, to.label.x, frac),
+                y: lerp(from.label.y, to.label.y, frac),
+              }
+            : to.label,
+        radius:
+          from.radius === undefined || to.radius === undefined
+            ? to.radius
+            : lerp(from.radius, to.radius, frac),
+        fill: blend_fill
+          ? rgb(
+              lerp(from_fill.r, to_fill.r, frac),
+              lerp(from_fill.g, to_fill.g, frac),
+              lerp(from_fill.b, to_fill.b, frac),
+              lerp(from_fill.opacity, to_fill.opacity, frac),
+            ).formatRgb()
+          : to.fill,
+      })
+    }
   const label_offset = $derived({ x: label.offset?.x ?? 10, y: label.offset?.y ?? 0 })
   const target = $derived({
     x: coord_x + offset.x,
@@ -95,9 +99,13 @@
   // every render (BarPlot passes coordinates through unclamped).
   const tweened = create_settling_tween(
     () => target,
-    { duration: 600, easing: cubicOut, interpolate: interpolate_marker },
+    // every animated update takes `live`'s interpolator; settling updates snap
+    { duration: 600, easing: cubicOut },
     {
-      live: () => ({ ...point_tween, interpolate: interpolate_marker }),
+      live: () => ({
+        ...point_tween,
+        interpolate: marker_interpolator(point_tween.interpolate),
+      }),
       is_same: (left, right) =>
         Object.is(left.x, right.x) &&
         Object.is(left.y, right.y) &&

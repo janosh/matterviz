@@ -1,10 +1,8 @@
 <script lang="ts">
   import type { BrillouinZoneData } from '#lib/brillouin/index.js'
   import {
-    bz_fit_extent,
     bz_hover_data,
     cartesian_to_fractional,
-    k_cell_fit_extent,
     k_lattice_inverse,
     bz_mark_sizes,
     k_space_size,
@@ -47,7 +45,7 @@
     visible_isosurfaces,
   } from './geometry'
   import { IDENTITY_4x4, lattice_point_group_matrices } from './symmetry'
-  import { reciprocal_cell_section, slice_plane_normal } from './compute'
+  import { fermi_fit_extent, reciprocal_cell_section, slice_plane_normal } from './compute'
   import SlicePlane from '#lib/isosurface/SlicePlane.svelte'
   import KPath from '#lib/brillouin/KPath.svelte'
   import KSpaceCamera from '#lib/brillouin/KSpaceCamera.svelte'
@@ -250,13 +248,7 @@
   // Tiling replicates by point-group symmetry, which maps the zone onto itself, so it does not
   // widen the fitted extent
   const fit_extent = $derived(
-    Math.max(
-      bz_fit_extent(bz_data?.vertices, fermi_data?.k_lattice),
-      // Marching cubes leaves surfaces in the centered parallelepiped and does not clip them to
-      // the Wigner-Seitz zone (see compute.ts), so for a skew lattice framing only the zone
-      // crops them.
-      k_cell_fit_extent(fermi_data?.k_lattice),
-    ),
+    fermi_fit_extent(bz_data?.vertices, fermi_data?.k_lattice, fermi_data?.reciprocal_cell),
   )
   // No hover while orbiting/zooming (OrbitControls fires start/end around wheel zooms too):
   // a drag would raycast up to 48 tiled meshes per pointermove, and the tooltip popping in

@@ -82,21 +82,24 @@ describe(`BarPlot`, () => {
   )
 
   // aria-labels are read aloud: a summed 0.1 + 0.2 reads as 0.3, in the value axis' format,
-  // and an unlabeled series is named as in the legend and CSV export
+  // an unlabeled series is named as in the legend and CSV export, an HTML label by its text
   test.each([
-    [`vertical`, {}, `0.3`],
-    [`vertical`, { y_axis: { format: `.0%` } }, `30%`],
-    [`horizontal`, { x_axis: { format: `.0%` } }, `30%`],
-  ] as const)(`%s aria-label formats bar values with %j`, async (orientation, axes, value) => {
-    const plot = await mount_sized_bar_plot({
-      series: [{ x: [1], y: [0.1 + 0.2] }],
-      orientation,
-      ...axes,
-    })
-    expect(query(plot, `.bar-series path`).getAttribute(`aria-label`)).toBe(
-      `bar 1 of Series 1: ${value}`,
-    )
-  })
+    [`vertical`, {}, undefined, `Series 1: 0.3`],
+    [`vertical`, { y_axis: { format: `.0%` } }, `E<sub>F</sub>`, `EF: 30%`],
+    [`horizontal`, { x_axis: { format: `.0%` } }, undefined, `Series 1: 30%`],
+  ] as const)(
+    `%s aria-label formats bar values with %j`,
+    async (orientation, axes, label, named_value) => {
+      const plot = await mount_sized_bar_plot({
+        series: [{ x: [1], y: [0.1 + 0.2], label }],
+        orientation,
+        ...axes,
+      })
+      expect(query(plot, `.bar-series path`).getAttribute(`aria-label`)).toBe(
+        `bar 1 of ${named_value}`,
+      )
+    },
+  )
 
   test.each([`vertical`, `horizontal`] as const)(
     `only mounts bars crossing the %s viewport and keeps source indices`,

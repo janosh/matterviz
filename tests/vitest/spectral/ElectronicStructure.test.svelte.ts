@@ -31,6 +31,7 @@ import {
   mock_parse_worker,
   mount_sized,
   mouse,
+  option_texts,
   plot_svg,
 } from '../setup'
 import {
@@ -41,11 +42,13 @@ import {
 } from '../test-fixtures'
 
 // The 3D scenes' props and orbit controls (no renderer in happy-dom): each stub joins the
-// host's orbit link with real controls, as its SceneCamera would
+// host's orbit link with real controls, as its SceneCamera would. `controls` holds the last
+// mounted scene of each kind, `all` every mounted one's.
 type SceneName = `structure` | `fermi`
 const scenes = vi.hoisted(() => ({
   props: {} as Partial<Record<SceneName, Record<string, unknown>>>,
   controls: {} as Partial<Record<SceneName, OrbitControls>>,
+  all: [] as OrbitControls[],
 }))
 const scene_stub = vi.hoisted(
   () => async (name: SceneName, position: [number, number, number]) => {
@@ -61,6 +64,7 @@ const scene_stub = vi.hoisted(
         const controls = new OrbitControls(camera, document.createElement(`div`))
         controls.update()
         scenes.controls[name] = controls
+        scenes.all.push(controls)
         join_orbit_link(() => controls)
         return {}
       },
@@ -75,6 +79,7 @@ vi.mock(`@threlte/core`, async (import_original) => ({
 vi.mock(`#lib/structure/StructureScene.svelte`, () => scene_stub(`structure`, [10, 3, 8]))
 vi.mock(`#lib/fermi-surface/FermiSurfaceScene.svelte`, () => scene_stub(`fermi`, [0, 0, 2]))
 // the live props of the Fermi viewer, bands and DOS, to drive and read the links between them
+// (the last mounted of each; `instances` holds every mounted one's, e.g. both compared sides')
 const viewers = vi.hoisted(() => ({
   fermi: null as Partial<ComponentProps<typeof FermiSurface>> | null,
   bands: null as Partial<ComponentProps<typeof Bands>> | null,
@@ -82,19 +87,26 @@ const viewers = vi.hoisted(() => ({
   trends: null as Partial<ComponentProps<typeof SweepTrends>> | null,
   phonon: null as Partial<ComponentProps<typeof BandsAndDos>> | null,
 }))
+const instances = vi.hoisted(() => ({
+  bands: [] as Partial<ComponentProps<typeof Bands>>[],
+  dos: [] as Partial<ComponentProps<typeof Dos>>[],
+  phonon: [] as Partial<ComponentProps<typeof BandsAndDos>>[],
+}))
 // a stub: its own Bands and DOS would overwrite the electronic ones' props above
 vi.mock(`#lib/spectral/BandsAndDos.svelte`, () => ({
   default: (_anchor: Node, props: Partial<ComponentProps<typeof BandsAndDos>>) => {
     viewers.phonon = props
+    instances.phonon.push(props)
     return {}
   },
 }))
-// renders the original component, recording its live props in `viewers`
+// renders the original component, recording its live props in `viewers` (and `on_mount`)
 const record_props = vi.hoisted(
   () =>
     async <Key extends `fermi` | `bands` | `dos` | `trends`>(
       key: Key,
       original: <Module>() => Promise<Module>,
+      on_mount?: (props: NonNullable<(typeof viewers)[Key]>) => void,
     ) => {
       type Props = NonNullable<(typeof viewers)[Key]>
       type Render = (anchor: Node, props: Props) => unknown
@@ -102,6 +114,7 @@ const record_props = vi.hoisted(
       return {
         default: (anchor: Node, props: Props) => {
           viewers[key] = props
+          on_mount?.(props)
           return Component(anchor, props)
         },
       }
@@ -110,9 +123,13 @@ const record_props = vi.hoisted(
 vi.mock(`#lib/fermi-surface/FermiSurface.svelte`, (original) =>
   record_props(`fermi`, original),
 )
-vi.mock(`#lib/spectral/Bands.svelte`, (original) => record_props(`bands`, original))
+vi.mock(`#lib/spectral/Bands.svelte`, (original) =>
+  record_props(`bands`, original, (props) => instances.bands.push(props)),
+)
 vi.mock(`#lib/spectral/SweepTrends.svelte`, (original) => record_props(`trends`, original))
-vi.mock(`#lib/spectral/Dos.svelte`, (original) => record_props(`dos`, original))
+vi.mock(`#lib/spectral/Dos.svelte`, (original) =>
+  record_props(`dos`, original, (props) => instances.dos.push(props)),
+)
 // the nodes CSS colour tokens are resolved on, for three.js (which parses no var())
 const resolved = vi.hoisted(() => [] as { node: Element; value: string }[])
 vi.mock(`#lib/colors/backdrop.svelte.js`, async (original) => {
@@ -176,8 +193,10 @@ afterEach(() => {
   for (const component of mounted.splice(0)) void unmount(component)
   for (const controls of Object.values(scenes.controls)) controls?.dispose()
   Object.assign(viewers, { fermi: null, bands: null, dos: null, trends: null, phonon: null })
+  for (const list of Object.values(instances)) list.length = 0
   scenes.props = {}
   scenes.controls = {}
+  scenes.all = []
   Reflect.deleteProperty(navigator, `gpu`)
 })
 const mount_host = (props: ComponentProps<typeof ElectronicStructure>) => {
@@ -188,6 +207,11 @@ const mount_host = (props: ComponentProps<typeof ElectronicStructure>) => {
   const root = target.querySelector(`.electronic-structure`)
   if (!root) throw new Error(`no root`)
   return root
+}
+// mounts the host on live props, which tests change in place to drive it
+const mount_live = (init: ComponentProps<typeof ElectronicStructure>) => {
+  const props = $state(init)
+  return { props, root: mount_host(props) }
 }
 const count = (root: Element, selector: string) => root.querySelectorAll(selector).length
 const shown_panes = (root: Element) =>
@@ -222,26 +246,28 @@ test.each([800, 400])(
   (width) => {
     vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(width)
     const side = width >= 520 // the DOS sits beside the bands from 520px, else below
+    const stacked = width < 800 // narrower, the panes stack each at its own height
     const root = mount_host({ ...all_data, class: `caller`, layout: `vertical` })
     expect(root.getAttribute(`role`)).toBe(`group`)
     expect([...root.classList]).toEqual(expect.arrayContaining([`caller`, `two-rows`]))
+    expect(root.classList.contains(`stacked`)).toBe(stacked)
     // the panes' own fullscreen toggles are off: the viewer's row holds the only one
     expect(count(root, `.fullscreen-btn`)).toBe(1)
     expect(
       root.querySelector(`:scope > .panes > .control-buttons .fullscreen-btn`),
     ).not.toBeNull()
-    expect(root.querySelector(`:scope > .panes > .row.scenes`)?.classList).toContain(
-      `vertical`,
-    )
     expect(
-      root.querySelector(`:scope > .panes > .row.lower > .row.column > .row.spectra`)
+      root.querySelector(`:scope > .panes > .sides > .side > .row.scenes`)?.classList,
+    ).toContain(`vertical`)
+    expect(
+      root.querySelector(`.row.lower > .sides > .side > .row.column > .row.spectra`)
         ?.classList,
     ).toContain(side ? `side` : `stacked`)
     // beside the bands, the DOS resizes at a divider of its own
     expect(count(root, `.spectra > .pane-divider`)).toBe(side ? 1 : 0)
-    // a divider between the rows and one between the scenes
-    expect(count(root, `:scope > .panes > .pane-divider`)).toBe(1)
-    expect(count(root, `.scenes > .pane-divider`)).toBe(1)
+    // a divider between the rows and one between the scenes, unless stacked
+    expect(count(root, `:scope > .panes > .pane-divider`)).toBe(stacked ? 0 : 1)
+    expect(count(root, `.scenes > .pane-divider`)).toBe(stacked ? 0 : 1)
     expect(count(root, `.pane`)).toBe(4)
     // the band structure's k-path runs through the Wigner-Seitz zone of the Fermi surface
     expect(viewers.fermi?.wigner_seitz).toBe(true)
@@ -271,13 +297,10 @@ test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, Electron
 })
 
 test(`phonon spectra sit below the electronic ones, resized at their own divider`, () => {
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    ...all_data,
-    phonon,
-    units: `THz`,
-  })
-  const root = mount_host(props)
-  const column = root.querySelector(`:scope > .panes > .row.lower > .row.column`)
+  const { props, root } = mount_live({ ...all_data, phonon, units: `THz` })
+  const column = root.querySelector(
+    `:scope > .panes > .row.lower > .sides > .side > .row.column`,
+  )
   expect(column?.classList).toContain(`vertical`)
   expect(count(root, `.column > .pane-divider`)).toBe(1)
   expect([...(column?.children ?? [])].map((child) => child.className.split(` `)[0])).toEqual([
@@ -303,11 +326,7 @@ test(`phonon spectra sit below the electronic ones, resized at their own divider
 })
 
 test(`the pane menu shows any subset, never none`, () => {
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    ...all_data,
-    panes: undefined,
-  })
-  const root = mount_host(props)
+  const { props, root } = mount_live({ ...all_data, panes: undefined })
   root.querySelector<HTMLButtonElement>(`.panes-menu .view-mode-button`)?.click()
   flushSync()
   const option = (label: string) =>
@@ -328,8 +347,7 @@ test(`the pane menu shows any subset, never none`, () => {
 })
 
 test(`orbiting either scene turns the other until the link button unlinks them`, () => {
-  const props = $state({ structure, band_data, sync_rotation: true })
-  const root = mount_host(props)
+  const { props, root } = mount_live({ structure, band_data, sync_rotation: true })
   const cases: [SceneName, SceneName, Vector3][] = [
     [`structure`, `fermi`, new Vector3(-2, 1, 3).normalize()],
     [`fermi`, `structure`, new Vector3(1, 2, -1).normalize()],
@@ -354,19 +372,28 @@ test(`orbiting either scene turns the other until the link button unlinks them`,
 })
 
 // without a band grid (none, or a meshed surface) there is no other energy's surface to show
-test.each([true, false])(`hovering the DOS previews the Fermi surface (grid: %s)`, (grid) => {
-  mount_host({ ...all_data, band_data: grid ? band_data : undefined, panes: [`fermi`, `dos`] })
-  expect(viewers.fermi?.mu).toBe(0)
-  if (!viewers.dos) throw new Error(`no DOS`)
-  viewers.dos.hovered_frequency = 7.5 // the DOS writes its hovered energy through the binding
-  flushSync()
-  expect(viewers.fermi?.mu).toBe(grid ? 0.5 : 0)
-  expect(viewers.fermi?.previewing).toBe(grid)
-  viewers.dos.hovered_frequency = null
-  flushSync()
-  expect(viewers.fermi?.mu).toBe(0)
-  expect(viewers.fermi?.previewing).toBe(false)
-})
+test.each([true, false])(
+  `hovering the DOS previews the Fermi surface and marks the bands (grid: %s)`,
+  (grid) => {
+    mount_host({
+      ...all_data,
+      band_data: grid ? band_data : undefined,
+      panes: [`fermi`, `bands`, `dos`],
+    })
+    expect(viewers.fermi?.mu).toBe(0)
+    if (!viewers.dos) throw new Error(`no DOS`)
+    viewers.dos.hovered_frequency = 7.5 // the DOS writes its hovered energy through the binding
+    flushSync()
+    expect(viewers.fermi?.mu).toBe(grid ? 0.5 : 0)
+    expect(viewers.fermi?.previewing).toBe(grid)
+    expect(viewers.bands?.reference_frequency).toBe(7.5)
+    viewers.dos.hovered_frequency = null
+    flushSync()
+    expect(viewers.fermi?.mu).toBe(0)
+    expect(viewers.fermi?.previewing).toBe(false)
+    expect(viewers.bands?.reference_frequency).toBeNull()
+  },
+)
 
 // === bands ↔ Fermi surface ===
 // Ten electronic bands of one run; the grid holds bands 8 and 9 (band_indices). Band 8 runs
@@ -651,7 +678,7 @@ const POSCAR = poscar([
 test(`one drop zone fills the panes each file has data for and rejects the rest`, async () => {
   const on_file_load = vi.fn()
   const on_error = vi.fn()
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { props, root } = mount_live({
     structure,
     band_data,
     band_structs: {},
@@ -663,7 +690,6 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
     on_file_load,
     on_error,
   })
-  const root = mount_host(props)
   const drop = async (content: string, filename: string) => {
     on_file_load.mockClear()
     on_error.mockClear()
@@ -715,14 +741,14 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
 const drop_into_empty = async (file: File) => {
   const [on_file_load, on_error] = [vi.fn(), vi.fn()]
   // every key the drop may fill is present, so the viewer's writes reach these props
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { props, root } = mount_live({
     structure: undefined,
     band_structs: {},
     doses: {},
     on_file_load,
     on_error,
   })
-  mount_host(props).dispatchEvent(create_drop_event(file))
+  root.dispatchEvent(create_drop_event(file))
   await vi.waitFor(() =>
     expect(on_file_load.mock.calls.length + on_error.mock.calls.length).toBe(1),
   )
@@ -829,9 +855,46 @@ const make_sweep = (): Sweep => ({
 const ALL_PANES: ElectronicPane[] = [`structure`, `fermi`, `trends`, `bands`, `dos`]
 const shown_density = () => viewers.dos?.doses?.total?.densities[1]
 const status = (root: Element) => root.querySelector(`.frame-status`)?.textContent?.trim()
+const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
+// the union of the records' padded frequency extents, as the spectra span them (min/max
+// computed here, not via union_ranges, which the component uses)
+const spectra_span = (spectra: SpectraRecords[]): Vec2 => {
+  const ranges = spectra
+    .map(({ band_structs = {}, doses = {} }) => compute_frequency_range(band_structs, doses))
+    .filter((range) => range !== undefined)
+  return [Math.min(...ranges.map(([lo]) => lo)), Math.max(...ranges.map(([, hi]) => hi))]
+}
+const series_select = (root: Element, label: string) => {
+  const control = [...root.querySelectorAll(`.series-control`)].find((node) =>
+    node.textContent?.includes(label),
+  )
+  const select = control?.querySelector(`select`)
+  if (!select) throw new Error(`no ${label} select`)
+  return select
+}
+const choose = (select: HTMLSelectElement, value: string) => {
+  select.value = value
+  select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  flushSync()
+}
+// a sweep whose frames hold only structures, values and the plotted tc (so no fill), their
+// spectra from a loader labelling each frame `<series> <idx>` with density 10 + idx at E_F
+const lazy_sweep = () => {
+  const sweep = make_sweep()
+  for (const series of sweep.series) {
+    series.frames = series.frames.map(({ value, scalars }) => ({ value, structure, scalars }))
+  }
+  const load_frame = vi.fn(async (series_id: string, frame_idx: number) => ({
+    doses: { total: { ...dos, densities: [0, 10 + frame_idx, 10 + frame_idx, 0] } },
+    label: `${series_id} ${frame_idx}`,
+  }))
+  sweep.load_frame = load_frame
+  const loads = () => load_frame.mock.calls.map(([series_id, idx]) => [series_id, idx])
+  return { sweep, load_frame, loads }
+}
 
 test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, () => {
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { props, root } = mount_live({
     sweep: make_sweep(),
     frame_idx: 0,
     series_id: undefined,
@@ -839,7 +902,6 @@ test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, ()
     // the props a sweep replaces: never shown while it is set
     doses: { total: { ...dos, densities: [9, 9, 9, 9] } },
   })
-  const root = mount_host(props)
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`])
   expect(status(root)).toBe(`0 GPa`)
   expect(shown_density()).toBe(1)
@@ -857,11 +919,7 @@ test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, ()
   // the series select opens the new series at the frame nearest the shown value (100 GPa)
   props.frame_idx = 2
   flushSync()
-  const select = root.querySelector<HTMLSelectElement>(`.series-control select`)
-  if (!select) throw new Error(`no series select`)
-  select.value = `bcc`
-  select.dispatchEvent(new Event(`change`, { bubbles: true }))
-  flushSync()
+  choose(series_select(root, `Series`), `bcc`)
   expect([props.series_id, props.frame_idx]).toEqual([`bcc`, 0])
   expect(status(root)).toBe(`100 GPa`)
   expect(shown_density()).toBe(4)
@@ -872,13 +930,12 @@ test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, ()
 })
 
 test(`clicking a trends point selects its series and frame`, () => {
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { props, root } = mount_live({
     sweep: make_sweep(),
     frame_idx: 0,
     series_id: undefined,
     panes: ALL_PANES,
   })
-  const root = mount_host(props)
   viewers.trends?.on_frame_select?.(`bcc`, 0)
   flushSync()
   expect([props.series_id, props.frame_idx]).toEqual([`bcc`, 0])
@@ -892,28 +949,14 @@ test(`clicking a trends point selects its series and frame`, () => {
 })
 
 test(`load_frame fetches the shown frame and its neighbours, merged into the panes`, async () => {
-  const sweep = make_sweep()
-  // only structures and values up front, the spectra come from the loader
-  for (const series of sweep.series) {
-    series.frames = series.frames.map(({ value, structure: crystal }) => ({
-      value,
-      structure: crystal,
-    }))
-  }
-  const load_frame = vi.fn(async (series_id: string, frame_idx: number) => ({
-    doses: { total: { ...dos, densities: [0, 10 + frame_idx, 10 + frame_idx, 0] } },
-    label: `${series_id} ${frame_idx}`,
-  }))
-  sweep.load_frame = load_frame
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { sweep, load_frame, loads } = lazy_sweep()
+  const { props, root } = mount_live({
     sweep,
     series_id: undefined,
     frame_idx: 2,
     panes: ALL_PANES,
   })
-  const root = mount_host(props)
   // the last frame's next is the first, where playback wraps
-  const loads = () => load_frame.mock.calls.map(([series_id, idx]) => [series_id, idx])
   expect(loads()).toEqual([
     [`fcc`, 2],
     [`fcc`, 0],
@@ -952,29 +995,20 @@ test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, a
 test(`a sweep's spectra axes span all its frames, unless the caller passes a range`, () => {
   const sweep = make_sweep()
   const [fcc] = sweep.series
-  const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
   const fast_phonons: PhononSpectra = {
     doses: { ph: { ...phonon_dos, frequencies: [0, 5, 9] } },
   }
   fcc.frames[0].phonon = phonon
   fcc.frames[1] = { ...fcc.frames[1], doses: { total: wide_dos }, phonon: fast_phonons }
-  // min/max computed here, not via union_ranges, which the component uses
-  const span = (spectra: SpectraRecords[]): Vec2 => {
-    const ranges = spectra
-      .map(({ band_structs = {}, doses = {} }) => compute_frequency_range(band_structs, doses))
-      .filter((range) => range !== undefined)
-    return [Math.min(...ranges.map(([lo]) => lo)), Math.max(...ranges.map(([, hi]) => hi))]
-  }
-  const electronic = span(fcc.frames)
-  const phonons = span([phonon, fast_phonons])
+  const electronic = spectra_span(fcc.frames)
+  const phonons = spectra_span([phonon, fast_phonons])
   expect(electronic[1]).toBeGreaterThan(19) // frame 1's DOS reaches 20 eV
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { props } = mount_live({
     sweep,
     frame_idx: 0,
     panes: [`bands`, `dos`, `phonon`],
     bands_props: {},
   })
-  mount_host(props)
   for (const frame_idx of [0, 1, 2]) {
     props.frame_idx = frame_idx
     flushSync()
@@ -987,15 +1021,14 @@ test(`a sweep's spectra axes span all its frames, unless the caller passes a ran
 })
 
 // Frames the window and recent list have left drop their data (sweep-frames' eviction): the
-// spectra's span and the default panes are those of every frame loaded so far, reset only by
-// another series
-const wide_dos: ElectronicDos = { ...dos, energies: [0, 2, 4, 20] }
+// spectra's span and the default panes are those of every frame each shown series loaded so
+// far: kept while another series is compared, cleared or swapped in, gone with the series
 test.each([
   {
     kept: `the spectra's span`, // only fcc's frame 1 reaches 20 eV
     frame_1: { doses: { total: wide_dos } },
     panes: [`dos`] satisfies ElectronicPane[],
-    read: () => viewers.dos?.x_axis?.range, // energy runs along x without bands
+    read: () => instances.dos[0]?.x_axis?.range, // the shown side's; energy on x without bands
     loaded: compute_frequency_range({}, { wide_dos }),
     reset: compute_frequency_range({}, { dos }),
   },
@@ -1019,13 +1052,13 @@ test.each([
       load_frame: async (series_id: string, frame_idx: number) =>
         series_id === `fcc` && frame_idx === 1 ? frame_1 : { doses: { total: dos } },
     }
-    const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    const { props, root } = mount_live({
       sweep,
       series_id: `fcc`,
       frame_idx: 0,
+      compare_series: undefined,
       panes,
     })
-    const root = mount_host(props)
     await vi.waitFor(() => expect(read(root)).toEqual(want.loaded)) // frame 1 prefetched
     // frame 6 shows frames 5 to 2 recently and prefetches 0 and 5: frame 1 is evicted
     for (const frame_idx of [1, 2, 3, 4, 5, 6]) {
@@ -1036,8 +1069,16 @@ test.each([
     await new Promise((resolve) => setTimeout(resolve, 0))
     flushSync()
     expect(read(root)).toEqual(want.loaded)
-    props.series_id = `bcc`
-    props.frame_idx = 0
+    for (const compare_series of [`bcc`, undefined, `bcc`]) {
+      props.compare_series = compare_series
+      flushSync()
+      expect(read(root)).toEqual(want.loaded)
+    }
+    // the series select swaps the shown and compared series: fcc's stays beside bcc
+    choose(series_select(root, `Series`), `bcc`)
+    expect([props.series_id, props.compare_series]).toEqual([`bcc`, `fcc`])
+    expect(read(root)).toEqual(want.loaded)
+    props.compare_series = undefined // bcc alone: its own
     flushSync()
     await vi.waitFor(() => expect(read(root)).toEqual(want.reset))
   },
@@ -1045,12 +1086,7 @@ test.each([
 
 // A bound descriptor carries over to a new sweep only when it has that key
 test(`replacing the sweep resets a descriptor it does not have`, () => {
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
-    sweep: make_sweep(),
-    descriptor: `n_ef`,
-    panes: ALL_PANES,
-  })
-  mount_host(props)
+  const { props } = mount_live({ sweep: make_sweep(), descriptor: `n_ef`, panes: ALL_PANES })
   expect(viewers.trends?.descriptor).toBe(`n_ef`)
   props.sweep = make_sweep() // has n_ef: kept
   flushSync()
@@ -1078,13 +1114,7 @@ test.each([false, true])(
     }
     const load_frame = lazy ? vi.fn(async () => ({ band_data })) : undefined
     if (load_frame) sweep.load_frame = load_frame
-    const props = $state<ComponentProps<typeof ElectronicStructure>>({
-      sweep,
-      series_id: undefined,
-      frame_idx: 0,
-      on_error,
-    })
-    mount_host(props)
+    const { props } = mount_live({ sweep, series_id: undefined, frame_idx: 0, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
     // frame 2 is not prefetched from frame 0: its grid loads after the jump
     props.frame_idx = 2
@@ -1118,8 +1148,7 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
     frame_idx === 0 ? { doses: { total: dos } } : {},
   )
   sweep.load_frame = load_frame
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({ sweep, frame_idx: 0 })
-  const root = mount_host(props)
+  const { props, root } = mount_live({ sweep, frame_idx: 0 })
   expect(shown_panes(root)).toEqual([`structure`, `trends`])
   await vi.waitFor(() => expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`]))
   props.frame_idx = 1 // a frame without DOS keeps the pane (empty) instead of collapsing it
@@ -1130,10 +1159,40 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
   expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`])
 })
 
+// The old sweep's panes read their props as they unmount, which re-runs the viewer's frame
+// deriveds against the old sweep: its loads must still reach the panes afterwards
+test(`a replaced lazy sweep draws the frames its own loader returns`, async () => {
+  // frames holding only their value, so swapping sweeps unmounts the loaded panes
+  const bare_sweep = () => {
+    const load_frame = vi.fn(async () => ({ structure, doses: { total: dos } }))
+    const sweep = make_sweep()
+    for (const series of sweep.series)
+      series.frames = series.frames.map(({ value }) => ({ value }))
+    return { sweep: { ...sweep, load_frame }, load_frame }
+  }
+  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+    sweep: bare_sweep().sweep,
+    frame_idx: 0,
+  })
+  const root = mount_host(props)
+  // a DOS pane without its empty state (undefined while there is no pane)
+  const dos_drawn = () =>
+    root.querySelector(`[data-pane="dos"]`)?.querySelector(`.empty-state`) === null
+  await vi.waitFor(() => expect(dos_drawn()).toBe(true))
+  const { sweep, load_frame } = bare_sweep()
+  props.sweep = sweep
+  flushSync()
+  expect(dos_drawn()).toBe(false) // the old DOS unmounted, the path this test is about
+  await vi.waitFor(() =>
+    expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
+  )
+  await vi.waitFor(() => expect(dos_drawn()).toBe(true))
+})
+
 test(`a dropped sweep JSON replaces the viewer's data, which then takes only sweeps`, async () => {
   const on_error = vi.fn()
   const on_file_load = vi.fn()
-  const props = $state<ComponentProps<typeof ElectronicStructure>>({
+  const { props, root } = mount_live({
     structure,
     sweep: undefined,
     frame_idx: 0,
@@ -1141,7 +1200,6 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
     on_error,
     on_file_load,
   })
-  const root = mount_host(props)
   const sweep_json = {
     axis: { key: `pressure`, label: `Pressure`, unit: `GPa` },
     series: [{ id: `fcc`, frames: [{ value: 0 }, { value: 20, doses: { total: dos } }] }],
@@ -1193,6 +1251,450 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
   )
 })
 
+// === compare ===
+const side_labels = (root: Element) =>
+  [...root.querySelectorAll(`.side-label`)].map((label) =>
+    label.textContent?.replaceAll(/\s+/g, ` `).trim(),
+  )
+
+// Default panes open for data on either side and close with its side: only the compared
+// series has phonons here
+test(`default panes follow the compared series' data`, () => {
+  const sweep = make_sweep()
+  for (const entry of sweep.series[1].frames) entry.phonon = phonon
+  const { props, root } = mount_live({ sweep, compare_series: undefined, frame_idx: 0 })
+  const has_phonon = () => shown_panes(root).includes(`phonon`)
+  expect(has_phonon()).toBe(false)
+  props.compare_series = `bcc`
+  flushSync()
+  expect(has_phonon()).toBe(true)
+  props.compare_series = undefined
+  flushSync()
+  expect(has_phonon()).toBe(false)
+})
+
+// A caller's density range beats the sides' shared one, with or without a compared series
+test.each([undefined, `bcc`])(
+  `explicit DOS density ranges win (compare_series %s)`,
+  (compare_series) => {
+    const sweep = make_sweep()
+    for (const entry of sweep.series.flatMap(({ frames }) => frames)) entry.phonon = phonon
+    mount_host({
+      sweep,
+      compare_series,
+      frame_idx: 0,
+      panes: [...ALL_PANES, `phonon`],
+      dos_props: { density_range: [0, 9] },
+      phonon_props: { density_range: [0, 7] },
+    })
+    // every side's plots, the shown one's as well as a compared one's
+    expect([
+      new Set(instances.dos.map(({ density_range }) => JSON.stringify(density_range))),
+      new Set(instances.phonon.map(({ density_range }) => JSON.stringify(density_range))),
+    ]).toEqual([new Set([`[0,9]`]), new Set([`[0,7]`])])
+  },
+)
+
+// Narrow, the panes stack in one column, each its own height, rather than share the viewer's:
+// no dividers between them, the scenes one above the other, and every compared side labelled
+test.each([
+  [700, true],
+  [1200, false],
+])(`at %ipx wide the panes stack: %s`, async (width, stacked) => {
+  // every pane row measures 700x320, where the scenes would split side by side unstacked
+  for (const [key, size] of [
+    [`clientWidth`, 700],
+    [`clientHeight`, 320],
+  ] as const) {
+    const spy = vi.spyOn(HTMLElement.prototype, key, `get`).mockReturnValue(size)
+    onTestFinished(() => spy.mockRestore())
+  }
+  const root = await mount_sized(
+    ElectronicStructure,
+    { sweep: make_sweep(), compare_series: `bcc`, panes: ALL_PANES },
+    {
+      selector: `.electronic-structure`,
+      width,
+      height: 400,
+      on_mount: (comp) => mounted.push(comp),
+    },
+  )
+  flushSync()
+  const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
+  expect({
+    stacked: root.classList.contains(`stacked`),
+    rows_divider: divider(`Resize 3D scenes and the plots below`),
+    trends_divider: divider(`Resize sweep descriptors and spectra`),
+    side_labels: side_labels(root).length,
+  }).toEqual({
+    stacked,
+    rows_divider: !stacked,
+    trends_divider: !stacked,
+    side_labels: stacked ? 4 : 2,
+  })
+  const scenes_row = root.querySelector(`.row.scenes`)
+  expect(scenes_row?.classList.contains(`vertical`)).toBe(stacked)
+})
+
+test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
+  const sweep = make_sweep()
+  const [fcc, bcc] = sweep.series
+  // HTML labels (the trends legend and axis render it) read as plain text in options, side
+  // labels and the slider's aria-label
+  bcc.label = `b<i>c</i>c`
+  sweep.axis.label = `P<sub>ext</sub>`
+  // bcc's DOS reaches 20 eV and density 4, beyond every fcc frame
+  for (const entry of bcc.frames) {
+    entry.doses = { total: { ...wide_dos, densities: [0, 4, 4, 0] } }
+    entry.phonon = phonon
+  }
+  const { props, root } = mount_live({
+    sweep,
+    series_id: undefined,
+    frame_idx: 2,
+    compare_series: undefined,
+    panes: [...ALL_PANES, `phonon`],
+  })
+  // the mounted scenes and spectra: comparing adds the compared side's, never remounts
+  const mounted_views = () => [scenes.all.length, instances.bands.length, instances.dos.length]
+  expect(mounted_views()).toEqual([2, 1, 1])
+  // off: one side, as without a compared series
+  expect([count(root, `.sides.compare`), count(root, `.side-label`)]).toEqual([0, 0])
+  expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`])
+  expect(viewers.bands?.y_axis?.range).toEqual(spectra_span(fcc.frames))
+  expect(viewers.trends?.compare).toBeUndefined()
+  const compare_select = series_select(root, `Compare with`)
+  expect([...compare_select.options].map(({ value }) => value)).toEqual([``, `bcc`])
+  expect(option_texts(compare_select)).toEqual([`none`, `bcc`])
+  expect(option_texts(series_select(root, `Series`))).toEqual([`fcc`, `bcc`])
+  expect(root.querySelector(`[aria-label="Pext frame"]`)).not.toBeNull()
+
+  choose(compare_select, `bcc`)
+  expect(props.compare_series).toBe(`bcc`)
+  // the scenes' row and the spectra's column split, the trends pane stays single
+  expect(count(root, `.sides.compare`)).toBe(2)
+  expect(mounted_views()).toEqual([4, 2, 2])
+  // oxfmt-ignore
+  expect(shown_panes(root)).toEqual([`structure`, `fermi`, `structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`, `bands`, `dos`, `phonon`])
+  expect(side_labels(root)).toEqual([`fcc · 100 GPa`, `bcc · 100 GPa`])
+  expect(viewers.trends?.compare).toEqual({ series_id: `bcc`, frame_idx: 0 })
+  // both sides span both series' energies, their DOS one density range, their phonons one
+  // frequency range
+  const both = spectra_span([...fcc.frames, ...bcc.frames])
+  expect(both[1]).toBeGreaterThan(19)
+  const [main_bands, compared_bands] = instances.bands.slice(-2)
+  expect([main_bands.y_axis?.range, compared_bands.y_axis?.range]).toEqual([both, both])
+  const [main_dos, compared_dos] = instances.dos.slice(-2)
+  expect([main_dos.doses, compared_dos.doses]).toEqual([
+    fcc.frames[2].doses,
+    bcc.frames[0].doses,
+  ])
+  expect([main_dos.density_range, compared_dos.density_range]).toEqual([
+    [0, 4],
+    [0, 4],
+  ])
+  const phonon_span = compute_frequency_range({}, phonon.doses ?? {})
+  const sides_phonons = instances.phonon.slice(-2)
+  expect(sides_phonons.map(({ frequency_range }) => frequency_range)).toEqual([
+    phonon_span,
+    phonon_span,
+  ])
+  expect(sides_phonons.map(({ doses }) => doses)).toEqual([{}, phonon.doses])
+
+  // the series select picking the compared series trades places with the shown one
+  choose(series_select(root, `Series`), `bcc`)
+  expect([props.series_id, props.frame_idx, props.compare_series]).toEqual([`bcc`, 0, `fcc`])
+  expect(side_labels(root)).toEqual([`bcc · 100 GPa`, `fcc · 100 GPa`])
+  // both selects show the swapped series among their re-rendered options
+  expect([series_select(root, `Series`).value, compare_select.value]).toEqual([`bcc`, `fcc`])
+  // so does a click on the compared series' point in the trends plot
+  viewers.trends?.on_frame_select?.(`fcc`, 1)
+  flushSync()
+  expect([props.series_id, props.frame_idx, props.compare_series]).toEqual([`fcc`, 1, `bcc`])
+  choose(series_select(root, `Series`), `bcc`)
+
+  // clearing the compare restores the single side, on the shown series' own span again
+  choose(series_select(root, `Compare with`), ``)
+  expect(props.compare_series).toBeUndefined()
+  expect([count(root, `.sides.compare`), count(root, `.side-label`)]).toEqual([0, 0])
+  expect(mounted_views()).toEqual([4, 2, 2])
+  expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`])
+  // the shown side's plots, mounted before comparing
+  expect(instances.bands[0].y_axis?.range).toEqual(spectra_span(bcc.frames))
+  expect(instances.dos[0].density_range).toBeUndefined()
+  expect(viewers.trends?.compare).toBeUndefined()
+
+  // a replaced sweep without the compared series drops it
+  props.compare_series = `fcc`
+  flushSync()
+  const other = make_sweep()
+  other.series = [other.series[1]]
+  props.sweep = other
+  flushSync()
+  expect([props.series_id, props.compare_series]).toEqual([`bcc`, undefined])
+  // so does the same sweep losing it in place
+  props.sweep?.series.push(make_sweep().series[0])
+  props.compare_series = `fcc`
+  flushSync()
+  expect(side_labels(root)).toHaveLength(2)
+  props.sweep?.series.pop()
+  flushSync()
+  expect([props.compare_series, side_labels(root)]).toEqual([undefined, []])
+})
+
+// a's frames bunch at 0 to 8 GPa while b's lie at 10, 50, 90: b's own spacing, its median gap of
+// 40 GPa, sets how far its frame may lie off (a's gaps would make 20 off far). A one-frame b
+// has no spacing of its own, so a's median gap (2 GPa) sets it.
+const spread = [10, 50, 90]
+test.each([
+  [0, spread, `b · 10 GPa`, 0, ``],
+  [5, spread, `b · 10 GPa`, 0, ``], // 30 GPa: a tie goes to the lower frame
+  [6, spread, `b · 90 GPa`, 2, ``], // 130 GPa: exactly one step off is not far
+  [7, spread, `b · 90 GPa`, 2, `no frame within 40 GPa of 140 GPa`],
+  [0, [60], `b · 60 GPa`, 0, `no frame within 2 GPa of 0 GPa`],
+])(
+  `frame %d of a is compared with b at %j: %s`,
+  (frame_idx, b_values, label, compare_idx, notice) => {
+    const sweep: Sweep = {
+      ...make_sweep(),
+      series: [
+        {
+          id: `a`,
+          frames: [0, 2, 4, 6, 8, 30, 130, 140].map((value) => sweep_frame(value, 1)),
+        },
+        { id: `b`, frames: b_values.map((value) => sweep_frame(value, 2)) },
+      ],
+    }
+    const root = mount_host({ sweep, frame_idx, compare_series: `b`, panes: ALL_PANES })
+    const [main_label, compare_label] = side_labels(root)
+    expect(main_label).toBe(`a · ${sweep.series[0].frames[frame_idx].value} GPa`)
+    expect(compare_label).toBe(notice ? `${label} ${notice}` : label)
+    expect(root.querySelector(`.side-label .far`)?.textContent?.trim() ?? ``).toBe(notice)
+    expect(viewers.trends?.compare).toEqual({ series_id: `b`, frame_idx: compare_idx })
+  },
+)
+
+test(`a compared series loads through the same frame cache, window and aborts`, async () => {
+  const { sweep, load_frame, loads } = lazy_sweep()
+  const { props, root } = mount_live({
+    sweep,
+    frame_idx: 2,
+    compare_series: `bcc`,
+    panes: ALL_PANES,
+  })
+  // the shown frames first: fcc's 100 GPa and bcc's nearest, then fcc's neighbours (bcc's
+  // frame nearest the next one, 0 GPa, is the same frame)
+  expect(loads()).toEqual([
+    [`fcc`, 2],
+    [`bcc`, 0],
+    [`fcc`, 0],
+    [`fcc`, 1],
+  ])
+  await vi.waitFor(() => expect(side_labels(root)).toEqual([`fcc · fcc 2`, `bcc · bcc 0`]))
+  expect(instances.dos.at(-1)?.doses?.total?.densities[1]).toBe(10)
+  // cleared and compared again: the recently shown bcc frame needs no reload
+  props.compare_series = undefined
+  flushSync()
+  props.frame_idx = 1
+  flushSync()
+  props.compare_series = `bcc`
+  flushSync()
+  expect(load_frame).toHaveBeenCalledTimes(4)
+  expect(side_labels(root)).toEqual([`fcc · fcc 1`, `bcc · bcc 0`])
+})
+
+test(`compared scenes share one rotation link, all four turning together`, () => {
+  const { props, root } = mount_live({
+    sweep: make_sweep(),
+    frame_idx: 2,
+    compare_series: `bcc`,
+    panes: [`structure`, `fermi`],
+    sync_rotation: true,
+    selected_bands: undefined,
+  })
+  expect(scenes.all).toHaveLength(4)
+  // the compared side keeps its own sheet selection, apart from the bound one
+  const shown_selection = props.selected_bands
+  if (!viewers.fermi) throw new Error(`no compared Fermi surface`)
+  viewers.fermi.selected_bands = [9]
+  flushSync()
+  expect([props.selected_bands, viewers.fermi.selected_bands]).toEqual([shown_selection, [9]])
+  const direction = new Vector3(-2, 1, 3).normalize()
+  orbit(scenes.all[3], direction) // the compared Fermi surface leads
+  for (const controls of scenes.all) {
+    expect(view_dir(controls).distanceTo(direction)).toBeLessThan(1e-12)
+  }
+  const toggle = root.querySelector<HTMLButtonElement>(`.sync-rotation-toggle`)
+  toggle?.click()
+  flushSync()
+  expect(props.sync_rotation).toBe(false)
+  const before = scenes.all.map((controls) => view_dir(controls).toArray())
+  orbit(scenes.all[0], new Vector3(0, 1, 1).normalize())
+  expect(scenes.all.slice(1).map((controls) => view_dir(controls).toArray())).toEqual(
+    before.slice(1),
+  )
+  // compare off: the shown side's scenes stay mounted and linked, the compared ones leave
+  Object.assign(props, { sync_rotation: true, compare_series: undefined })
+  flushSync()
+  const left = scenes.all.slice(2).map((controls) => view_dir(controls).toArray())
+  const turn = new Vector3(1, 2, 2).normalize()
+  orbit(scenes.all[0], turn)
+  expect(view_dir(scenes.all[1]).distanceTo(turn)).toBeLessThan(1e-12)
+  expect(scenes.all.slice(2).map((controls) => view_dir(controls).toArray())).toEqual(left)
+  expect(scenes.all).toHaveLength(4)
+  // one scene per side still makes two to link
+  props.compare_series = `bcc`
+  props.panes = [`structure`]
+  flushSync()
+  expect(count(root, `.sync-rotation-toggle`)).toBe(1)
+})
+
+// === background fill of the trends plot ===
+// Six frames with only structures and their supplied tc up front, their DOS (thus the
+// computed N(E_F)) from a loader whose loads settle when the test says
+function fill_setup(
+  props: Partial<ComponentProps<typeof ElectronicStructure>> = {},
+  series_ids = [`fcc`],
+  n_frames = 6,
+) {
+  const calls: {
+    id: string
+    idx: number
+    signal: AbortSignal
+    resolve: () => void
+    reject: () => void
+  }[] = []
+  const load_frame = vi.fn(
+    (id: string, frame_idx: number, { signal }: { signal: AbortSignal }) =>
+      new Promise<Partial<SweepFrame>>((resolve, reject) => {
+        const density = frame_idx + 1
+        const data = { doses: { total: { ...dos, densities: [0, density, density, 0] } } }
+        const fail = () => reject(new Error(`down`))
+        calls.push({ id, idx: frame_idx, signal, resolve: () => resolve(data), reject: fail })
+      }),
+  )
+  const series = series_ids.map((id) => ({
+    id,
+    frames: Array.from({ length: n_frames }, (_, idx) => ({
+      value: 50 * idx,
+      structure,
+      scalars: { tc: idx },
+    })),
+  }))
+  const { props: state, root } = mount_live({
+    sweep: { ...make_sweep(), series, load_frame },
+    frame_idx: 0,
+    descriptor: `n_ef`,
+    panes: ALL_PANES,
+    ...props,
+  })
+  const settle = async (...indices: number[]) => {
+    for (const call of calls) if (indices.includes(call.idx)) call.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    flushSync()
+  }
+  const note = () => root.querySelector(`.trends-fill`)?.textContent?.trim() ?? null
+  const loaded = () => calls.map(({ idx }) => idx)
+  return { state, root, calls, settle, note, loaded }
+}
+
+test(`the trends pane fills a computed descriptor's unloaded frames one by one, after the shown window`, async () => {
+  const { state, calls, settle, note, loaded } = fill_setup()
+  // the window first (the first frame has no previous one), nothing else
+  expect([loaded(), note()]).toEqual([[0, 1], `0/6`])
+  await settle(0, 1)
+  expect([loaded(), note()]).toEqual([[0, 1, 2], `2/6`]) // then one frame, in index order
+  // stepping starts the new window's loads at once, the fill keeps running
+  state.frame_idx = 4
+  flushSync()
+  expect([loaded(), calls[2].signal.aborted]).toEqual([[0, 1, 2, 4, 5, 3], false])
+  await settle(2)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 4, 5, 3], `3/6`]) // no fill while 4, 5, 3 load
+  // the filled frame was evicted (no DOS kept) with its value
+  const [series, frame_of] = [state.sweep?.series[0], viewers.trends?.frame_of]
+  if (!series || !frame_of) throw new Error(`no trends`)
+  const filled = frame_of(series, 2)
+  expect([filled.doses, filled.scalars?.n_ef]).toEqual([undefined, 3])
+  await settle(4, 5, 3)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 4, 5, 3], null]) // all six filled: done
+})
+
+test(`a frame failing to fill counts as missing in the note and isn't loaded again`, async () => {
+  const { calls, settle, note, loaded } = fill_setup()
+  await settle(0, 1)
+  calls[2].reject()
+  await settle()
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 3], `2/6`]) // the fill moves on to frame 3
+  await settle(3)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 3, 4], `3/6`])
+  await settle(4)
+  await settle(5)
+  expect([loaded(), note()]).toEqual([[0, 1, 2, 3, 4, 5], null]) // nothing left to load
+})
+
+// A new sweep (or loader) starts a fresh cache: the old one's fill is aborted with its loads
+// and the new one loads its window again before any fill
+// oxfmt-ignore
+test.each<[string, (props: ComponentProps<typeof ElectronicStructure>) => void, number[]]>([
+  [`the trends pane hides`, (props) => (props.panes = [`structure`, `dos`]), []],
+  [`the descriptor turns to a supplied one`, (props) => (props.descriptor = `tc`), []],
+  [`the sweep changes`, (props) => (props.sweep = props.sweep && { ...props.sweep }), [0, 1]],
+])(`the fill stops when %s`, async (_desc, change, reloads) => {
+  const { state, calls, settle, note, loaded } = fill_setup()
+  await settle(0, 1)
+  expect(loaded()).toEqual([0, 1, 2])
+  change(state)
+  flushSync()
+  expect([calls[2].signal.aborted, loaded()]).toEqual([true, [0, 1, 2, ...reloads]])
+  if (reloads.length > 0) return
+  await settle(2)
+  expect([loaded(), note()]).toEqual([[0, 1, 2], null])
+})
+
+// the trends plot draws every series: the fill covers them all, the shown and compared first
+test(`the fill covers every series, after the shown and compared windows`, async () => {
+  const { calls, settle, note } = fill_setup(
+    { compare_series: `hcp` },
+    [`fcc`, `bcc`, `hcp`],
+    3,
+  )
+  const loads = () => calls.map(({ id, idx }) => `${id} ${idx}`)
+  expect([loads(), note()]).toEqual([[`fcc 0`, `hcp 0`, `fcc 1`, `hcp 1`], `0/9`])
+  const notes = []
+  for (let step = 0; step < 6; step++) {
+    await settle(0, 1, 2)
+    notes.push(note())
+  }
+  expect(loads().slice(4)).toEqual([`fcc 2`, `hcp 2`, `bcc 0`, `bcc 1`, `bcc 2`])
+  expect(notes).toEqual([`4/9`, `5/9`, `6/9`, `7/9`, `8/9`, null])
+})
+
+// A load the shown frames don't need (here the fill's, of a series not shown) leaves every
+// prop of the shown spectra as it was, so nothing downstream of the frame cache re-renders
+test(`a background load leaves the shown spectra's props untouched`, async () => {
+  const { calls, settle } = fill_setup({}, [`fcc`, `bcc`], 2)
+  await settle(0, 1)
+  const fill = calls.find(({ id }) => id === `bcc`)
+  const spectra = { bands: viewers.bands, dos: viewers.dos }
+  if (!fill || !spectra.bands || !spectra.dos) throw new Error(`no fill or spectra`)
+  const props_now = () =>
+    Object.entries(spectra).flatMap(([name, props]) =>
+      Object.entries(props ?? {}).map(([key, value]) => [`${name}.${key}`, value] as const),
+    )
+  const before = new Map(props_now())
+  fill.resolve()
+  await settle()
+  const changed = props_now().filter(([key, value]) => !Object.is(value, before.get(key)))
+  expect(changed.map(([key]) => key)).toEqual([])
+})
+
+test(`a supplied descriptor's frames need no fill`, async () => {
+  const { settle, note, loaded } = fill_setup({ descriptor: `tc` })
+  expect(note()).toBeNull()
+  await settle(0, 1)
+  expect(loaded()).toEqual([0, 1])
+})
+
 const TRENDS_PANES: ElectronicPane[] = [`structure`, `trends`]
 // oxfmt-ignore
 test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, string]>([
@@ -1203,6 +1705,7 @@ test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, string]>
   [`a sweep with an unknown series_id`, { sweep: make_sweep(), series_id: `hcp` }, `"hcp" is not a series of the sweep (fcc, bcc)`],
   [`a sweep with a NaN frame_idx`, { sweep: make_sweep(), frame_idx: Number.NaN }, `frame_idx must be finite, got NaN`],
   [`an unknown descriptor`, { sweep: make_sweep(), descriptor: `tc_typo`, panes: TRENDS_PANES }, `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef)`],
+  [`an unknown compare_series`, { sweep: make_sweep(), compare_series: `hcp` }, `compare_series "hcp" is not a series of the sweep (fcc, bcc)`],
 ])(`%s throws, naming what is wrong`, (_desc, props, message) => {
   expect(() => mount_host(props)).toThrow(message)
 })

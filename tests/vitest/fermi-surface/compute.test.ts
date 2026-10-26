@@ -7,6 +7,7 @@ import {
   compute_fermi_slice,
   detect_irreducible_bz,
   extract_fermi_surface,
+  fermi_fit_extent,
   fold_to_wigner_seitz,
   preview_interpolation_factor,
   reciprocal_cell_section,
@@ -1225,3 +1226,25 @@ describe(`lattice_point_group_matrices`, () => {
     },
   )
 })
+
+// Surfaces folded into the zone frame the zone alone; ones filling the centred parallelepiped
+// (or of unknown cell) frame that cell too: here a cube zone of side 2 inside a 100-unit cell,
+// both padded to 92% of the shorter viewport edge
+test.each([
+  [`wigner_seitz`, 2 * Math.sqrt(3)],
+  [`parallelepiped`, Math.hypot(100, 1, 1)],
+  [undefined, Math.hypot(100, 1, 1)],
+] as const)(
+  `fermi_fit_extent of %s surfaces spans %d before padding`,
+  (reciprocal_cell, extent) => {
+    const cube: Vec3[] = [-1, 1].flatMap((x) =>
+      [-1, 1].flatMap((y) => [-1, 1].map((z): Vec3 => [x, y, z])),
+    )
+    const k_lattice: Matrix3x3 = [
+      [100, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]
+    expect(fermi_fit_extent(cube, k_lattice, reciprocal_cell)).toBeCloseTo(extent / 0.92, 10)
+  },
+)

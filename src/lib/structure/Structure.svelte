@@ -1631,22 +1631,24 @@
             />
           {/snippet}
 
-          {#if display_mode === `slice`}
-            {@render slice_view()}
-            <!-- no GPU adapter in SSR and the vitest runner -->
-          {:else if webgpu_available()}
+          <!-- One stage for every layout, so switching between the cross-section and the split
+          view keeps the slice (and between 3D and split the scene) mounted. No GPU adapter in
+          SSR and the vitest runner, where only the cross-section renders. -->
+          {#if display_mode === `slice` || webgpu_available()}
             <div
               class="viewport-stage"
               class:multi={is_multi_view_active}
               class:split={display_mode === `split`}
             >
-              {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
-              {#if is_multi_view_active}
-                {#each views.slice(1) as view, idx (idx)}
-                  {@render extra_viewport(view, idx + 1)}
-                {/each}
+              {#if has_3d_view}
+                {@render primary_viewport(is_multi_view_active ? (views[0] ?? {}) : {})}
+                {#if is_multi_view_active}
+                  {#each views.slice(1) as view, idx (idx)}
+                    {@render extra_viewport(view, idx + 1)}
+                  {/each}
+                {/if}
               {/if}
-              {#if display_mode === `split`}{@render slice_view()}{/if}
+              {#if display_mode !== `structure`}{@render slice_view()}{/if}
             </div>
           {/if}
 

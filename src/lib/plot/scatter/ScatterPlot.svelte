@@ -67,7 +67,11 @@
     axis_scale_types,
   } from '#lib/plot/core/axis-assignment.js'
   import { AXIS_DEFAULTS, X2_AXIS_DEFAULTS } from '#lib/plot/core/axis-utils.js'
-  import { extract_series_color, get_series_symbol } from '#lib/plot/core/data-transform.js'
+  import {
+    extract_series_color,
+    get_series_symbol,
+    series_text,
+  } from '#lib/plot/core/data-transform.js'
   import { density_contours as compute_density_contours } from '#lib/plot/core/density-contours.js'
   import type { FacetAxis } from '#lib/plot/core/facets.js'
   import { FACET_AXES } from '#lib/plot/core/facets.js'
@@ -117,7 +121,7 @@
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
-  import type { Sides } from '#lib/plot/core/layout.js'
+  import { sides_equal, type Sides } from '#lib/plot/core/layout.js'
   import {
     CANVAS_MARKER_THRESHOLD,
     type CanvasMarker,
@@ -273,8 +277,10 @@
       on_fill_hover?: (event: FillHandlerEvent | null) => void
       selected_series_idx?: number
       wrapper?: HTMLDivElement
-      // Read-only: the padding in effect, so hosts laying out several plots (BandsAndDos)
-      // can feed the maximum back as a shared `padding` to align their chart areas
+      // Read-only: the padding the plot needs, so hosts laying out several plots (BandsAndDos)
+      // can feed the maximum back as a shared `padding` to align their chart areas. It is the
+      // padding in effect, except that an explicit top/bottom smaller than the axes need
+      // (an explicit padding stops a plot measuring its titles) reports that need instead.
       resolved_padding?: Required<Sides>
       // The range each axis shows after pan/zoom. Hosts writing it move the view without
       // touching axis config, so linked panels share one zoom but keep their own reset target
@@ -502,7 +508,12 @@
   let [y2_min, y2_max] = $derived(frame.ranges.current.y2)
 
   $effect(() => {
-    resolved_padding = frame.pad
+    const { t, b } = frame.fit_pad
+    const next = { ...pad, t: Math.max(pad.t, t), b: Math.max(pad.b, b) }
+    // A fresh object per run would loop through a host that feeds it back into the plot
+    if (!untrack(() => resolved_padding && sides_equal(resolved_padding, next))) {
+      resolved_padding = next
+    }
   })
 
   // Two-way `view` sync, compared by value on both legs so a host mirroring a write back
@@ -1380,7 +1391,7 @@
     const metadata_label = point.metadata?.[`aria_label`]
     if (typeof metadata_label === `string`) return metadata_label
     const series_label = assigned_series[point.series_idx]?.label
-    return `Select ${series_label ?? `series ${point.series_idx + 1}`} point ${point.point_idx + 1}`
+    return `Select ${series_text(series_label, point.series_idx)} point ${point.point_idx + 1}`
   }
 
   function activate_point(point: InternalPoint<Metadata>, event: MouseEvent): void {
@@ -1928,7 +1939,8 @@
         {#if tooltip}
           {@render tooltip(handler_props)}
         {:else}
-          {#if has_multiple_series && handler_props.label}<strong>{handler_props.label}</strong
+          {#if has_multiple_series && handler_props.label}<strong
+              >{@html sanitize_html(handler_props.label)}</strong
             ><br />{/if}
           {@html sanitize_html(point_label?.text ? `${point_label.text}<br />` : ``)}
           <TooltipValue

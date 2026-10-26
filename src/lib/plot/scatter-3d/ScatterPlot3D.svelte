@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { html_to_text } from '#lib/utils.js'
   import { plot_color } from '#lib/colors/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
@@ -266,7 +267,9 @@
   {children}
   live_message={key_walk.message}
   role="application"
-  aria-label="3D scatter plot of {resolved_x_axis.label}, {resolved_y_axis.label} and {resolved_z_axis.label}"
+  aria-label="3D scatter plot of {html_to_text(
+    `${resolved_x_axis.label}, ${resolved_y_axis.label} and ${resolved_z_axis.label}`,
+  )}"
   tabindex={0}
   {...rest}
   {@attach viewer_keys(() => ({ r: () => reset_scene_cameras(wrapper) }))}

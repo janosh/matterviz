@@ -11,7 +11,7 @@
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { scheme_name, to_color_scale_config } from '#lib/plot/core/scales.js'
   import type { ColorScaleConfig } from '#lib/plot/core/types.js'
-  import { clamp01 } from '#lib/utils.js'
+  import { clamp01, html_to_text } from '#lib/utils.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import { auto_color_config, ISO_COLORMAP_SELECT_PROPS } from './coloring'
   import type { DisplayRange } from './sampling'
@@ -46,7 +46,9 @@
     if (normalized_id !== active_volume_id) active_volume_id = normalized_id
   })
 
-  const vol_label = (idx: number): string => volumes[idx]?.label ?? `Volume ${idx + 1}`
+  // plain text for options, titles and aria labels (a slice's colour bar renders the label's HTML)
+  const vol_label = (idx: number): string =>
+    html_to_text(volumes[idx]?.label ?? `Volume ${idx + 1}`)
 
   const volume_by_id = $derived(index_volumes(volumes))
   const resolve_geo_idx = (layer: IsosurfaceLayer): number =>
@@ -577,12 +579,13 @@
   {#if removed_volumes.length > 0}
     <div class="removed-volumes">
       {#each removed_volumes as { volume }, removed_idx (volume.id)}
+        {@const name = html_to_text(volume.label ?? volume.id)}
         <button
           type="button"
           onclick={() => restore_volume(removed_idx)}
-          aria-label="Restore volume {volume.label ?? volume.id}"
+          aria-label="Restore volume {name}"
           {@attach tooltip({ content: `Bring this volume back with its surfaces` })}
-          >↺ {volume.label ?? volume.id}</button
+          >↺ {name}</button
         >
       {/each}
     </div>

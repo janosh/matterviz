@@ -85,7 +85,7 @@ test.describe(`ConvexHull2D (Binary)`, () => {
     await expect(controls_btn).toHaveAttribute(`aria-expanded`, `true`)
     const controls = pd2d.locator(`.draggable-pane.convex-hull-controls-pane`)
     await expect(controls.getByText(`Color mode`)).toBeVisible()
-    await dom_click(controls.getByText(`Energy`, { exact: true }))
+    await dom_click(controls.getByText(`Hull distance`, { exact: true }))
     await expect(controls.getByText(`Color scale`)).toBeVisible()
     // Stability mode swaps the Color scale selector for Points toggles
     await dom_click(controls.getByText(`Stability`, { exact: true }))

@@ -27,7 +27,7 @@ export const arity_legend_labels = (formulas: string[]): string[] => {
 // Exhaustively typed over the numeric color modes so adding a new mode
 // fails compilation here instead of rendering an undefined colorbar title
 const COLOR_MODE_LABELS: Record<Exclude<ChemPotColorMode, `none` | `arity`>, string> = {
-  energy: `Energy per atom (eV)`,
+  energy: `Total energy (eV/atom)`,
   formation_energy: `Formation energy (eV/atom)`,
   entries: `Entry count`,
 }

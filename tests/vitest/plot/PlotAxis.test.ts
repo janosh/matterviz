@@ -1,6 +1,11 @@
 import PlotAxis from '#lib/plot/core/components/PlotAxis.svelte'
 import { svg_to_string } from '#lib/io/export.js'
-import { AXIS_LABEL_HEIGHT, AXIS_TITLE_OFFSET } from '#lib/plot/core/layout.js'
+import {
+  AXIS_LABEL_HEIGHT,
+  AXIS_TITLE_OFFSET,
+  resolve_axis_title_layout,
+  TITLE_EDGE_AIR,
+} from '#lib/plot/core/layout.js'
 import { get_text_metrics_revision } from '#lib/plot/core/text-metrics.js'
 import { TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
 import { type ComponentProps, mount, tick } from 'svelte'
@@ -254,30 +259,67 @@ describe(`PlotAxis`, () => {
   // Long titles wrap at the plot width (x) or the fixed vertical budget (y) into tspans
   // centered on label_x; sub/sup markup survives as shifted segments.
   test.each([
-    [`x`, 400, 2],
-    [`x`, 200, 3],
-    [`y`, 200, 3],
-  ] as const)(`long %s axis title wraps (width=%s)`, async (side, plot_width, min_lines) => {
+    [`x`, 400, 2, 200],
+    [`x`, 200, 3, 100],
+    [`y`, 200, 3, 123],
+  ] as const)(
+    `long %s axis title wraps (width=%s)`,
+    async (side, plot_width, min_lines, x) => {
+      mock_text_measurement()
+      const svg = await mount_axis({
+        side,
+        ticks: [50],
+        width: plot_width,
+        axis: {
+          label: `Formation E<sub>hull</sub> per atom with a deliberately descriptive scientific title`,
+        },
+        label_x: x,
+        label_y: 50,
+      })
+      const label = query(svg, `.axis-label.${side}-label`)
+      expect(label.getAttribute(`x`)).toBe(`${x}`)
+      expect(svg.querySelector(`foreignObject`)).toBeNull()
+      const lines = [...label.children]
+      expect(lines.length).toBeGreaterThanOrEqual(min_lines)
+      expect(lines.every((line) => line.getAttribute(`x`) === `${x}`)).toBe(true)
+      expect(label.querySelector(`tspan[baseline-shift="sub"]`)?.textContent?.trim()).toBe(
+        `hull`,
+      )
+    },
+  )
+
+  // An x/x2 title centred too near an edge (a narrow DOS column's) slides inward to keep
+  // TITLE_EDGE_AIR there; one wider than the SVG centres on it. y titles stay put.
+  test.each([
+    [`x`, 400, 395, `right edge`],
+    [`x2`, 400, 2, `left edge`],
+    [`x`, 400, 200, `centred`],
+    [`x`, 60, 50, `wider than the SVG`],
+    [`y`, 400, 395, `y axis`],
+  ] as const)(`%s title at %i: %s`, async (side, svg_width, label_x, _desc) => {
     mock_text_measurement()
+    const axis = { label: `Electron DOS` }
     const svg = await mount_axis({
       side,
       ticks: [50],
-      width: plot_width,
-      axis: {
-        label: `Formation E<sub>hull</sub> per atom with a deliberately descriptive scientific title`,
-      },
-      label_x: 123,
+      width: svg_width,
+      axis,
+      label_x,
       label_y: 50,
     })
+    const half = resolve_axis_title_layout(axis, Math.max(svg_width, 200)).width / 2
+    const expected =
+      side === `y`
+        ? label_x
+        : svg_width - 2 * TITLE_EDGE_AIR < 2 * half
+          ? svg_width / 2
+          : Math.min(
+              Math.max(label_x, TITLE_EDGE_AIR + half),
+              svg_width - TITLE_EDGE_AIR - half,
+            )
     const label = query(svg, `.axis-label.${side}-label`)
-    expect(label.getAttribute(`x`)).toBe(`123`)
-    expect(svg.querySelector(`foreignObject`)).toBeNull()
-    const lines = [...label.children]
-    expect(lines.length).toBeGreaterThanOrEqual(min_lines)
-    expect(lines.every((line) => line.getAttribute(`x`) === `123`)).toBe(true)
-    expect(label.querySelector(`tspan[baseline-shift="sub"]`)?.textContent?.trim()).toBe(
-      `hull`,
-    )
+    expect(Number(label.getAttribute(`x`))).toBeCloseTo(expected, 6)
+    if (side !== `y` && label_x !== 200) expect(expected).not.toBe(label_x)
   })
 
   test.each([

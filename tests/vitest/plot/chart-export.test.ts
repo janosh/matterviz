@@ -18,22 +18,30 @@ describe(`to_csv`, () => {
     // A cell that silently became `NaN`/`Infinity` would read as data downstream
     [`non-finite numbers blank out`, [[NaN, Infinity]], `a,b\n,`],
     [`null and undefined blank out`, [[null, undefined]], `a,b\n,`],
+    // Spreadsheets would evaluate these; negative numbers stay numbers
+    [`formula-leading text gets a quote`, [[`=SUM(A1)`, -1]], `a,b\n'=SUM(A1),-1`],
+    [`+ @ - lead too`, [[`@x`, `+y`, `-z`]], `a,b\n'@x,'+y,'-z`],
+    // signed numeric text (oxidation-state categories) is data, not a formula
+    [`numeric text stays as is`, [[`-2`, `+1.5e3`]], `a,b\n-2,+1.5e3`],
   ])(`%s`, (_name, rows, expected) => {
     expect(to_csv([`a`, `b`], rows)).toBe(expected)
   })
 })
 
 describe(`series_to_csv_rows`, () => {
+  // an HTML label (as legends render it) is named by its text
   test(`emits one row per point, series named in a column`, () => {
     const { header, rows } = series_to_csv_rows([
       { label: `A`, x: [1, 2], y: [10, 20] },
       { x: [3], y: [30] },
+      { label: `E<sub>F</sub> &amp; co`, x: [4], y: [40] },
     ])
     expect(header).toEqual([`series`, `x`, `y`])
     expect(rows).toEqual([
       [`A`, 1, 10],
       [`A`, 2, 20],
-      [`series 2`, 3, 30],
+      [`Series 2`, 3, 30],
+      [`EF & co`, 4, 40],
     ])
   })
 

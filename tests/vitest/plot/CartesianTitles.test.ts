@@ -143,5 +143,9 @@ describe(`Cartesian plot titles`, () => {
     expect(y_label?.querySelector(`tspan[baseline-shift="super"]`)?.textContent?.trim()).toBe(
       `2`,
     )
+    // the chart's accessible name reads the labels' text, not their tags
+    expect(root.querySelector(`svg[role="application"]`)?.getAttribute(`aria-label`)).toBe(
+      `Long formation Ehull relative energy scale vs Long squared x2 response property scale`,
+    )
   })
 })

@@ -51,6 +51,8 @@
   const cu_sweep = $derived(
     band_data && cu_pressure_sweep({ structure, band_data, band_struct }),
   )
+  // the second series shown beside the first (the viewer's "Compare with" select too)
+  let compare_series = $state<string>()
 </script>
 
 <svelte:head>
@@ -81,9 +83,7 @@
     band_structs={{ Cu: band_struct }}
     {doses}
     fermi_props={{ show_controls: `hover` }}
-    bands_props={{
-      y_axis: { label: `Energy (eV)`, range: [fermi_energy - 4, fermi_energy + 4] },
-    }}
+    bands_props={{ y_axis: { range: [fermi_energy - 4, fermi_energy + 4] } }}
     class="bleed-1400"
     style="--electronic-border-radius: 8px"
   />
@@ -103,21 +103,33 @@
   electrons (∝ 1/a²) and pressures from a Birch–Murnaghan equation of state (B₀ = 140 GPa, B₀′
   = 5). The phonon pane below the electronic spectra shows a nearest-neighbour force-constant
   model of fcc stiffening with Grüneisen γ = 2, with an Eliashberg function α²F(ω) on its own
-  axis; its λ, ω<sub>log</sub> and ω₂ (overlaid on ω<sub>log</sub>) are descriptors. Markers on
-  the phonon bands, coloured and sized by value, show the mode-resolved coupling λ<sub>qν</sub>
-  wherever the model's q grid meets the path. No frame is a calculation at its pressure.
+  axis, the DOS weighted by a coupling falling as ω<sup>−½</sup>; its λ, ω<sub>log</sub> and ω₂
+  (overlaid on ω<sub>log</sub>) are descriptors. Markers on the phonon bands, coloured and
+  sized by value, show the mode-resolved coupling λ<sub>qν</sub> wherever the model's q grid meets
+  the path. No frame is a calculation at its pressure. A second series puts the same volumes at the
+  pressures of a stiffer equation of state (B₀ = 180 GPa): compare it to split every frame pane in
+  two, its frame nearest the shown pressure on the right, on the same axes and one rotation.
 </p>
+
+<label>
+  <input
+    type="checkbox"
+    checked={compare_series !== undefined}
+    onchange={(event) =>
+      (compare_series = event.currentTarget.checked ? `fcc-stiff` : undefined)}
+  />
+  Compare with the stiffer equation of state
+</label>
 
 {#if cu_sweep && band_data}
   {@const { fermi_energy } = band_data}
   <ElectronicStructure
     sweep={cu_sweep}
+    bind:compare_series
     panes={[`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`]}
     fermi_props={{ show_controls: `hover` }}
-    bands_props={{
-      y_axis: { label: `Energy (eV)`, range: [fermi_energy - 6, fermi_energy + 6] },
-    }}
+    bands_props={{ y_axis: { range: [fermi_energy - 6, fermi_energy + 6] } }}
     class="bleed-1400 sweep-demo"
-    style="--electronic-border-radius: 8px; --electronic-height: 1100px"
+    style="--electronic-border-radius: 8px; --electronic-height: 1300px"
   />
 {/if}

@@ -31,6 +31,10 @@ const hover_until_tooltip = async (page: Page, plot: Locator): Promise<string> =
   throw new Error(`no DOS tooltip at any probed curve point: ${JSON.stringify(points)}`)
 }
 
+// tooltip and axis labels name the particle: the DOS and the frequency/energy axis
+const DENSITY_LABELS = [`Phonon DOS`, `Electron DOS`]
+const VALUE_LABELS = [`Phonon frequency`, `Electron energy`]
+
 // position of the earliest of `labels` in tooltip text (-1 if none occur)
 const first_idx = (text: string, labels: string[]): number => {
   const indices = labels.map((label) => text.indexOf(label)).filter((idx) => idx >= 0)
@@ -69,7 +73,7 @@ test.describe(`DOS Component Tests`, () => {
     const text = await hover_until_tooltip(page, plot)
     const label_idx = text.search(/DOS[12]/)
     expect(label_idx, text).toBeGreaterThan(-1)
-    expect(label_idx, text).toBeLessThan(first_idx(text, [`Density`, `Frequency`, `Energy`]))
+    expect(label_idx, text).toBeLessThan(first_idx(text, [...DENSITY_LABELS, ...VALUE_LABELS]))
 
     const svg_curves = curves(plot.locator(`svg`))
     await expect(svg_curves).toHaveCount(2)
@@ -114,8 +118,10 @@ test.describe(`DOS Component Tests`, () => {
         `${axis} ticks`,
       ).toBe(true)
     }
-    await expect(plot.locator(`.x-label`)).toContainText(/Density/i)
-    await expect(plot.locator(`.y-label`)).toContainText(/(?:Frequency|Energy)/i)
+    await expect(plot.locator(`.x-label`)).toContainText(/^(?:Phonon|Electron) DOS/)
+    await expect(plot.locator(`.y-label`)).toContainText(
+      /^(?:Phonon frequency|Electron energy)/,
+    )
   })
 
   test(`converts frequencies to different units`, async ({ page }) => {
@@ -136,14 +142,14 @@ test.describe(`DOS Component Tests`, () => {
     }) => {
       const plot = page.locator(`[data-testid="${test_id}"]`)
       const text = await hover_until_tooltip(page, plot)
-      const density_idx = text.indexOf(`Density`)
-      const freq_idx = first_idx(text, [`Frequency`, `Energy`])
+      const density_idx = first_idx(text, DENSITY_LABELS)
+      const freq_idx = first_idx(text, VALUE_LABELS)
       expect(density_idx, text).toBeGreaterThan(-1)
       expect(freq_idx, text).toBeGreaterThan(-1)
       if (orientation === `vertical`) {
-        expect(text).toMatch(/Density.*:/)
-        expect(density_idx).toBeLessThan(freq_idx)
-      } else expect(freq_idx).toBeLessThan(density_idx)
+        expect(text).toMatch(/(?:Phonon|Electron) DOS.*:/)
+        expect(density_idx, text).toBeLessThan(freq_idx)
+      } else expect(freq_idx, text).toBeLessThan(density_idx)
 
       const box = await require_bbox(plot, `plot`)
       await page.mouse.move(box.x - 50, box.y - 50)

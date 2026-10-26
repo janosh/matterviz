@@ -8,9 +8,14 @@ import {
   normalize_dos,
   validate_sigma_range,
 } from '#lib/spectral/helpers.js'
-import type { ElectronicDos, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
+import type {
+  ElectronicDos,
+  FrequencyUnit,
+  NormalizationMode,
+  PhononDos,
+} from '#lib/spectral/types.js'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   bind_props,
   clip_rect,
@@ -21,6 +26,7 @@ import {
   translate_of,
 } from '../setup'
 import { convert_frequencies } from '#lib/spectral/frequency-units.js'
+import type { Sides } from '#lib/plot/core/layout.js'
 
 // Test fixtures
 const phonon_dos: PhononDos = {
@@ -70,6 +76,65 @@ const mount_plot = (props: Partial<ComponentProps<typeof Dos>>) =>
   mount_sized(Dos, props, { selector: `.scatter` })
 
 describe(`Dos component`, () => {
+  // the default labels name the particle, the density axis following the orientation; beside
+  // the bands (horizontal) the electron DOS's x title breaks before its unit (its lines: the
+  // y titles may wrap to fit the test plot's height). Normalizing changes the density's unit.
+  // oxfmt-ignore
+  it.each([
+    [`phonon`, `vertical`, null, [`Phonon frequency (THz)`], `Phonon DOS`],
+    [`phonon`, `horizontal`, null, [`Phonon DOS`], `Phonon frequency (THz)`],
+    [`electronic`, `vertical`, null, [`Electron energy (eV)`], `Electron DOS (states/eV)`],
+    [`electronic`, `horizontal`, null, [`Electron DOS`, `(states/eV)`], `Electron energy (eV)`],
+    [`electronic`, `vertical`, `max`, [`Electron energy (eV)`], `Electron DOS`],
+    [`electronic`, `horizontal`, `integral`, [`Electron DOS`, `(1/eV)`], `Electron energy (eV)`],
+    [`phonon`, `vertical`, `sum`, [`Phonon frequency (THz)`], `Phonon DOS`],
+  ] as const)(`default axis labels (%s, %s, normalize %s)`, async (type, orientation, normalize, x_lines, y_label) => {
+    const doses = { '': type === `phonon` ? phonon_dos : electronic_dos }
+    const plot = await mount_plot({ doses, orientation, normalize })
+    const lines_of = (axis: string) =>
+      [...plot.querySelectorAll(`.${axis}-axis text.axis-label > tspan`)].map((line) =>
+        line.textContent?.trim(),
+      )
+    expect([lines_of(`x`), lines_of(`y`).join(` `)]).toEqual([x_lines, y_label])
+  })
+
+  // with several DOS the tooltip titles the hovered one with its label's HTML, as the legend
+  it(`tooltip titles the hovered DOS with its HTML label`, async () => {
+    const tooltip_point = { x: 1, y: 0.1, series_idx: 0, point_idx: 1 }
+    // `hovered` is no Dos option but reaches the plot through its rest props
+    const props = {
+      doses: { 'A<sub>1</sub>': phonon_dos, B: phonon_dos },
+      tooltip_point,
+      hovered: true,
+    }
+    const plot = await mount_plot(props)
+    expect(plot.querySelector(`.plot-tooltip strong sub`)?.textContent).toBe(`1`)
+  })
+
+  // A pinned top/bottom padding (BandsAndDos' shared one) stays as given, but resolved_padding
+  // raises it to what the axes along it need, for the host to share: tick row 16 + gap 20 +
+  // the title's lines past their first's centre (+10 per line of 20) + edge air 4, i.e. 50 for
+  // α²F's one-line x2 title along the top, 70 for the electron DOS's two-line x title. On the
+  // right, α²F's y2 ticks keep clear of the controls row instead (24 + 16).
+  const a2f = {
+    'α²F': { ...phonon_dos, densities: phonon_dos.densities.map((val) => val / 3) },
+  }
+  const pin = { t: 20, b: 50 }
+  // oxfmt-ignore
+  it.each<[string, Partial<ComponentProps<typeof Dos>>, Partial<Sides>]>([
+    [`α²F along the top`, { a2f, orientation: `horizontal`, padding: pin }, { t: 50, b: 50 }],
+    [`α²F on the right`, { a2f, orientation: `vertical`, padding: pin }, { t: 40, b: 50 }],
+    [`no α²F`, { orientation: `horizontal`, padding: pin }, pin],
+    [`a larger pin`, { a2f, orientation: `horizontal`, padding: { t: 80, b: 90 } }, { t: 80, b: 90 }],
+    [`unpinned sides`, { a2f, orientation: `horizontal`, padding: { l: 15 } }, { t: 50, b: 50, l: 15 }],
+    [`two-line x title`, { doses: { '': electronic_dos }, orientation: `horizontal`, padding: pin }, { t: 20, b: 70 }],
+  ])(`resolved_padding fits the axes along a pinned padding: %s`, async (_desc, props, expected) => {
+    const state: { resolved_padding?: Required<Sides> } = { resolved_padding: undefined }
+    // no legend, whose outside placement would widen the padding too
+    await mount_plot(bind_props({ doses: { '': phonon_dos }, legend: null, ...props }, state))
+    await vi.waitFor(() => expect(state.resolved_padding).toMatchObject(expected))
+  })
+
   // One line series per DOS per drawn spin channel: spin-polarized inputs default to
   // `mirror`, `up_only`/`down_only` keep one channel, pDOS draws one per kept atom/orbital
   type RenderCase = [string, ComponentProps<typeof Dos>, number]
@@ -121,7 +186,7 @@ describe(`Dos component`, () => {
     await tick()
     expect(document.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(document.querySelectorAll(`svg path[fill="none"]`)).toHaveLength(1)
-    expect(document.body.textContent).toContain(`Frequency (cm−1)`)
+    expect(document.body.textContent).toContain(`Phonon frequency (cm−1)`)
     const select = doc_query<HTMLSelectElement>(`#dos-units`)
     expect(select.value).toBe(`cm^-1`)
     // picking an option writes the canonical unit back to `units` (the handler is delegated, so
@@ -129,7 +194,7 @@ describe(`Dos component`, () => {
     select.value = `meV`
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
-    expect(document.body.textContent).toContain(`Frequency (meV)`)
+    expect(document.body.textContent).toContain(`Phonon frequency (meV)`)
     for (const section of [`dos`, `smearing`]) {
       const selector = `button[title="Reset ${section} to defaults"]`
       doc_query<HTMLButtonElement>(selector).click()
@@ -338,19 +403,37 @@ describe(`format_dos_tooltip`, () => {
   // The series label titles the tooltip only when several DOS are plotted; the axis that
   // carries frequency/energy is listed first whichever orientation it is on
   // rows: format_dos_tooltip args [x_formatted, y_formatted, label, is_horizontal, is_phonon,
-  // x_axis_label, y_axis_label, num_series], expected title, expected [label, value, unit] lines
-  type Args = [string, string, string | null, boolean, boolean, string, string, number]
+  // x_axis_label, y_axis_label, num_series, normalize?], expected title, expected [label, value,
+  // unit] lines
+  type Args = [
+    string,
+    string,
+    string | null,
+    boolean,
+    boolean,
+    string,
+    string,
+    number,
+    NormalizationMode?,
+  ]
   // oxfmt-ignore
   it.each([
     [[`5.00`, `0.50`, `DOS 1`, false, true, `Frequency (THz)`, `Density`, 2], `DOS 1`, [[`Density`, `0.50`], [`Frequency`, `5.00`, `THz`]]],
     [[`0.50`, `-2.00`, null, true, false, `Density (states/(eV atom))`, `Energy (eV)`, 1], undefined, [[`Energy`, `-2.00`, `eV`], [`Density`, `0.50`, `states/(eV atom)`]]],
-    // bare axis labels fall back to the quantity name and the display unit
-    [[`1`, `2`, `only`, false, true, ``, ``, 1], undefined, [[`Density`, `2`], [`Frequency`, `1`, `cm^-1`]]],
+    // bare axis labels fall back to the default ones, which name the particle
+    [[`1`, `2`, `only`, false, true, ``, ``, 1], undefined, [[`Phonon DOS`, `2`], [`Phonon frequency`, `1`, `cm<sup>−1</sup>`]]],
+    [[`1`, `-2`, null, true, false, ``, ``, 1], undefined, [[`Electron energy`, `-2`, `eV`], [`Electron DOS`, `1`, `states/eV`]]],
+    // normalized by the max the density has no unit, by the integral it is per eV
+    [[`1`, `-2`, null, true, false, ``, ``, 1, `max`], undefined, [[`Electron energy`, `-2`, `eV`], [`Electron DOS`, `1`]]],
+    [[`1`, `-2`, null, true, false, ``, ``, 1, `integral`], undefined, [[`Electron energy`, `-2`, `eV`], [`Electron DOS`, `1`, `1/eV`]]],
+    // a named axis without a unit keeps the display unit
+    [[`1`, `2`, null, false, true, `Frequency`, `Density`, 1], undefined, [[`Density`, `2`], [`Frequency`, `1`, `cm<sup>−1</sup>`]]],
   ] as [Args, string | undefined, [string, string, string?][]][])(`%j`, (args, title, lines) => {
     const [x_formatted, y_formatted, label, is_horizontal, is_phonon, ...rest] = args
-    const [x_axis_label, y_axis_label, num_series] = rest
+    const [x_axis_label, y_axis_label, num_series, normalize] = rest
     const result = format_dos_tooltip({
-      units: `cm^-1`, x_formatted, y_formatted, label, is_horizontal, is_phonon, x_axis_label, y_axis_label, num_series,
+      units: `cm^-1`, x_formatted, y_formatted, label, is_horizontal, is_phonon, x_axis_label, y_axis_label,
+      num_series, normalize,
     })
     expect(result.title).toBe(title)
     expect(result.lines).toEqual(lines.map(([line_label, value, unit]) => ({ label: line_label, value, unit })))

@@ -16,16 +16,17 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
   doc_query,
-  fire,
-  pin_cycle,
   expect_tooltip_paint,
   export_via_pane,
+  fire,
   form_controls,
   keydown,
   mount_sized,
   mouse,
   one_tab_stop,
+  option_texts,
   pattern_id_of,
+  pin_cycle,
   plot_svg,
   roving_tabindexes,
   set_input,
@@ -409,7 +410,7 @@ describe(`Histogram`, () => {
 
   test(`single mode selects exactly one series by its original index, including duplicate and empty labels`, async () => {
     const state = $state({ selected_series_idx: 0 })
-    const labels = [`Repeated`, `Repeated`, ``, undefined]
+    const labels = [`Repeated`, `Repeated`, ``, undefined, `E<sub>F</sub>`]
     const series = [
       series_of([1], { label: `Hidden`, visible: false }),
       ...labels.map((label) => series_of([1], { label })),
@@ -420,8 +421,14 @@ describe(`Histogram`, () => {
     const { control, set_value } = form_controls()
     const series_select = control(`Series`)
     if (!(series_select instanceof HTMLSelectElement)) throw new Error(`Series is no select`)
-    const option_labels = [...series_select.options].map((option) => option.textContent)
-    expect(option_labels).toEqual([`Repeated`, `Repeated`, `Series 4`, `Series 5`])
+    // an option shows text, so an HTML label reads as it renders in the legend
+    expect(option_texts(series_select)).toEqual([
+      `Repeated`,
+      `Repeated`,
+      `Series 4`,
+      `Series 5`,
+      `EF`,
+    ])
     expect(series_select.value).toBe(`1`)
     expect(document.querySelectorAll(`g.histogram-series`)).toHaveLength(1)
     expect(document.querySelector(`input[aria-label="Fill color hex"]`)).toBeNull()
@@ -434,7 +441,7 @@ describe(`Histogram`, () => {
       expect(shown).toEqual([String(series_idx)])
     }
     const legend_items = document.querySelectorAll<HTMLElement>(`.legend-item`)
-    for (const series_idx of [1, 2, 3, 4]) {
+    for (const series_idx of [1, 2, 3, 4, 5]) {
       legend_items[series_idx].click()
       await tick()
     }
@@ -611,10 +618,11 @@ describe(`Histogram`, () => {
     expect(tip_side === `top` ? arc_px < start_px : arc_px > start_px, path).toBe(true)
   })
 
-  // aria-labels are read aloud, so bin edges carry the tooltip's formatting, not float noise
+  // aria-labels are read aloud, so bin edges carry the tooltip's formatting, not float noise,
+  // and an HTML series label its text
   test(`bar aria-labels format bin edges and normalized values`, async () => {
     await mount_histogram({
-      series: [series_of([0.15, 0.35, 0.35], { label: `A` })],
+      series: [series_of([0.15, 0.35, 0.35], { label: `A<sub>1</sub>` })],
       bins: 3,
       normalize: `probability`,
       // the third bin's lower edge is 0.1 + 0.2 = 0.30000000000000004
@@ -622,8 +630,8 @@ describe(`Histogram`, () => {
     })
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
     expect([...bars].map((bar) => bar.getAttribute(`aria-label`))).toEqual([
-      `A bin 1: 0.1 to 0.2, count 1, value 0.333`,
-      `A bin 3: 0.3 to 0.4, count 2, value 0.667`,
+      `A1 bin 1: 0.1 to 0.2, count 1, value 0.333`,
+      `A1 bin 3: 0.3 to 0.4, count 2, value 0.667`,
     ])
   })
 

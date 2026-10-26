@@ -215,7 +215,9 @@ export interface SpectraRecords {
 // q-points are fractional in the band structure's reciprocal basis (its recip_lattice and its
 // qpoints' frame) and may be a full q mesh: points off the path are not drawn.
 export interface ModeValues {
-  label: string // e.g. `λ_qν`, titles the colour bar
+  // e.g. `λ<sub>qν</sub>`: titles the colour bar, legend and tooltip as sanitized HTML (plain
+  // text in notices)
+  label: string
   qpoints: Vec3[]
   frequencies: number[][] // [q][mode] in the bands' data unit (THz), negative = imaginary
   values: number[][] // [q][mode], NaN = no value

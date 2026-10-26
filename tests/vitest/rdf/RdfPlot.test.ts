@@ -44,7 +44,11 @@ function create_synthetic_pattern(
 
 // a NaN position the neighbour search rejects
 const good_and_broken = () => {
-  const broken = make_crystal(4, [[`Si`, [0, 0, 0]]])
+  // two sites, so its formula label carries <sub> markup (Si<sub>2</sub>)
+  const broken = make_crystal(4, [
+    [`Si`, [0, 0, 0]],
+    [`Si`, [0.5, 0.5, 0.5]],
+  ])
   broken.sites[0].xyz = [NaN, 0, 0]
   return { good: nacl_structure, broken }
 }
@@ -258,6 +262,10 @@ describe(`RdfPlot`, () => {
     const plot = await mount_sized_rdf_plot({ structures: good_and_broken() })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     await vi.waitFor(() => expect(document.body.textContent).toMatch(/broken: .*non-finite/))
+    // the plain-text notice names the formula without its legend markup
+    expect(document.querySelector(`.status-message.error`)?.textContent).toMatch(
+      /^\s*Si2: broken: /,
+    )
   })
 
   test(`the failure message clears once the broken structure is removed`, async () => {
@@ -406,6 +414,15 @@ describe(`PdfPlot`, () => {
     })
     expect(target.textContent).toContain(`No neutron scattering length for Po`)
     expect(target.querySelector(`svg[role="application"]`)).toBeNull()
+    // an unlabelled structure is named by its formula, as plain text in the notice
+    const po2 = make_crystal(3.35, [
+      [`Po`, [0, 0, 0]],
+      [`Po`, [0.5, 0.5, 0.5]],
+    ])
+    const po2_target = await mount_pdf_plot({ structures: po2, radiation: `neutron` })
+    expect(po2_target.querySelector(`.status-message.error`)?.textContent).toMatch(
+      /^\s*Po2: .*No neutron scattering length for Po/,
+    )
     // a structure WAS supplied, so the empty-state message would contradict the error
     expect(target.textContent).not.toContain(`No structures to compute a PDF for`)
     expect((await mount_pdf_plot({})).textContent).toContain(

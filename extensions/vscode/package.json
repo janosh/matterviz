@@ -773,7 +773,7 @@
         "matterviz.fermi.color_property": {
           "type": "string",
           "default": "band",
-          "description": "Quantity mapped onto the Fermi surface color scale",
+          "description": "Quantity mapped onto the Fermi surface color scale when the data has no per-state properties (with them, the first property colors the surface unless one is chosen)",
           "enum": [
             "band",
             "spin",

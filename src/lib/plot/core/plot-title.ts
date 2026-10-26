@@ -7,6 +7,7 @@ import {
 } from '#lib/plot/core/text-metrics.js'
 import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
 import type { Sides } from '#lib/plot/core/layout.js'
+import { html_to_text } from '#lib/utils.js'
 
 type PlotTitleAlign = `start` | `middle` | `end`
 type PlotTitleFontOverrides = Partial<FontSpec>
@@ -126,7 +127,8 @@ const normalized_font = (
   }
 }
 
-const normalize_label = (value: string | undefined): string => value?.trim() ?? ``
+// Titles draw as SVG text, so markup that axis labels render (E<sub>F</sub>) reads as text
+const normalize_label = (value: string | undefined): string => html_to_text(value ?? ``).trim()
 
 const truncate_with_ellipsis = (
   line: string,

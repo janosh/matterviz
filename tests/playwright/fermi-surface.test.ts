@@ -342,7 +342,8 @@ test(
 )
 
 // The demo's pressure sweep: the control bar steps frames (loaded on demand, the neighbour
-// prefetched), the trends pane plots the loaded frames' N(E_F), a click on a point jumps to
+// prefetched), the trends pane loads the other frames of both series in the background (a
+// progress note counts them until done) and plots their N(E_F), a click on a point jumps to
 // its frame, a structure-only descriptor covers every frame at once, and the phonon bands carry
 // λ_qν markers where the frame's q grid meets the path: 51 visits × 3 modes less Γ's two (NaN)
 test(`electronic-structure sweep: control bar, lazy frames, trends selection`, async ({
@@ -354,23 +355,136 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   const status = viewer.locator(`.frame-status`)
   await expect(status).toHaveText(/^0 GPa \(V\/V₀ = 1\.00\)/, { timeout: LOAD_TIMEOUT })
   const phonon = viewer.locator(`[data-pane="phonon"]`)
-  await expect(phonon.locator(`path.marker`)).toHaveCount(147)
-  await expect(phonon.locator(`.colorbar`)).toContainText(`λ_qν`)
+  // thinned to the strongest per mode in each 1/50 of the path
+  await expect(phonon.locator(`path.marker`)).toHaveCount(129)
+  await expect(phonon.locator(`.colorbar .label sub`)).toHaveText(`qν`)
   const trends = viewer.locator(`[data-pane="trends"]`)
   const markers = trends.locator(`path.marker`)
-  await expect(markers).toHaveCount(2) // the shown frame and its prefetched neighbour
+  // every frame of both series once the background fill is done, its progress note gone
+  await expect(markers).toHaveCount(12, { timeout: LOAD_TIMEOUT })
+  await expect(trends.locator(`.trends-fill`)).toHaveCount(0)
   await viewer.hover()
   await page.keyboard.press(`ArrowRight`)
   await expect(status).toHaveText(/^8\.2 GPa/)
-  await expect(markers).toHaveCount(3)
 
-  await markers.first().click()
-  await expect(status).toHaveText(/^0 GPa/)
+  // the shown series' third frame (both series' first frames coincide at 0 GPa, the stiffer
+  // one's on top)
+  await trends.locator(`g[data-series-id="fcc"] path.marker`).nth(2).click()
+  await expect(status).toHaveText(/^19\.2 GPa \(V\/V₀ = 0\.90\)/)
 
   await trends.hover()
   await trends.locator(`.descriptor-select`).selectOption({ label: `Volume per atom (Å³)` })
   await expect(
     trends.locator(`.axis-label`).filter({ hasText: `Volume per atom` }),
   ).toHaveCount(1)
-  await expect(markers).toHaveCount(6) // computed from the structures every frame has
+  // computed from the structures every frame of both series has
+  await expect(markers).toHaveCount(12)
+
+  // comparing the stiffer equation of state splits the frame panes into two labelled sides,
+  // the compared one at its frame nearest in pressure
+  await page.getByLabel(`Compare with the stiffer equation of state`).check()
+  await expect(viewer.locator(`.side-label`)).toHaveText([
+    /^fcc Cu · 19\.2 GPa/,
+    /^fcc Cu \(B₀ = 180 GPa\) · 24\.7 GPa/,
+  ])
+  await expect(viewer.locator(`[data-pane="bands"]`)).toHaveCount(2)
+  await expect(viewer.locator(`[data-pane="trends"]`)).toHaveCount(1)
+  await expect(phonon).toHaveCount(2)
+  await page.getByLabel(`Compare with the stiffer equation of state`).uncheck()
+  await expect(viewer.locator(`.side-label`)).toHaveCount(0)
+})
+
+// Narrow, the sweep viewer stacks its panes in one column, each its own height: none overlaps
+// another and every plot keeps its axis titles inside it
+test(`electronic-structure sweep: a narrow viewer stacks its panes without overlap`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  const viewer = page.locator(`.sweep-demo`)
+  await viewer.scrollIntoViewIfNeeded()
+  await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
+  // grown to fit its panes (the page scrolls it), despite the demo's --electronic-height
+  const panes_scroll = () =>
+    viewer.locator(`.panes`).evaluate((node) => node.scrollHeight - node.clientHeight)
+  await expect.poll(panes_scroll).toBe(0)
+  await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
+    timeout: LOAD_TIMEOUT,
+  })
+  const panes = await viewer.locator(`[data-pane]`).evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { left, top, width, height } = node.getBoundingClientRect()
+      return { pane: node.getAttribute(`data-pane`), left, top, width, height }
+    }),
+  )
+  expect(panes.map(({ pane }) => pane)).toEqual([
+    `structure`,
+    `fermi`,
+    `trends`,
+    `bands`,
+    `dos`,
+    `phonon`,
+  ])
+  for (const { pane, height } of panes) expect(height, pane ?? ``).toBeGreaterThanOrEqual(300)
+  const overlaps = panes.flatMap((lhs, idx) =>
+    panes
+      .slice(idx + 1)
+      .filter(
+        (rhs) =>
+          lhs.left < rhs.left + rhs.width - 1 &&
+          rhs.left < lhs.left + lhs.width - 1 &&
+          lhs.top < rhs.top + rhs.height - 1 &&
+          rhs.top < lhs.top + lhs.height - 1,
+      )
+      .map((rhs) => `${lhs.pane} × ${rhs.pane}`),
+  )
+  expect(overlaps).toEqual([])
+  // each axis title within its plot's SVG, measured on screen (plots off screen hold their
+  // last layout until scrolled into view)
+  const plots = viewer.locator(`.scatter > svg`)
+  const outside: string[] = []
+  for (const plot of await plots.all()) {
+    await plot.scrollIntoViewIfNeeded()
+    await page.waitForTimeout(300)
+    outside.push(
+      ...(await plot.evaluate((svg) => {
+        const frame = svg.getBoundingClientRect()
+        return [...svg.querySelectorAll(`.axis-label`)].flatMap((label) => {
+          const box = label.getBoundingClientRect()
+          const inside =
+            box.left >= frame.left - 1 &&
+            box.right <= frame.right + 1 &&
+            box.top >= frame.top - 1 &&
+            box.bottom <= frame.bottom + 1
+          return inside || box.width === 0 ? [] : [label.textContent?.trim() ?? ``]
+        })
+      })),
+    )
+  }
+  expect(outside).toEqual([])
+
+  // a host keeping it in a fixed box scrolls the panes, and the hover control bar stays
+  // above the buttons of a pane scrolled up under it
+  await viewer.evaluate((node) =>
+    node.style.setProperty(`--electronic-stacked-height`, `600px`),
+  )
+  await expect.poll(panes_scroll).toBeGreaterThan(0)
+  await viewer.scrollIntoViewIfNeeded()
+  await viewer.hover({ position: { x: 100, y: 200 } })
+  await viewer.locator(`.panes`).evaluate((node) => (node.scrollTop = 40))
+  const covered = await viewer.evaluate((node) => {
+    const bar = node.querySelector(`.sequence-control-bar`)?.getBoundingClientRect()
+    if (!bar) return null
+    return [...node.querySelectorAll(`[data-pane="structure"] button`)].flatMap((button) => {
+      const box = button.getBoundingClientRect()
+      if (!box.width || box.top >= bar.bottom || box.bottom <= bar.top) return []
+      const top = document.elementFromPoint(
+        box.left + box.width / 2,
+        Math.max(box.top, bar.top) + 2,
+      )
+      return [Boolean(top?.closest(`.sequence-control-bar`))]
+    })
+  })
+  expect(covered?.length).toBeGreaterThan(0)
+  expect(covered?.every(Boolean)).toBe(true)
 })

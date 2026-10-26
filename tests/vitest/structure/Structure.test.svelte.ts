@@ -1828,7 +1828,7 @@ test(`split layout shows 3D beside the slice and marks the slice plane in 3D`, a
   await select_structure_layout(`3D + 2D cross-section`)
   expect(props.display_mode).toBe(`split`)
   // the cross-section sits in the 3D stage and 3D chrome stays available
-  doc_query(`.viewport-stage.split [data-testid="volume-slice"]`)
+  const slice_view = doc_query(`.viewport-stage.split [data-testid="volume-slice"]`)
   doc_query(`button[aria-label="Measure / Edit"]`)
   // (001) at 30% of the unit cell's height: the square z = 0.3
   const square: Vec3[] = scene_stub.props?.slice_polygon ?? []
@@ -1843,6 +1843,12 @@ test(`split layout shows 3D beside the slice and marks the slice plane in 3D`, a
   expect(scene_stub.props?.slice_polygon).toEqual([])
   await select_structure_layout(`2D cross-section`)
   expect(document.querySelector(plane_toggle)).toBeNull()
+  // the cross-section stays mounted when the 3D half goes, and the scene when it comes back
+  expect(doc_query(`[data-testid="volume-slice"]`)).toBe(slice_view)
+  const stage = doc_query(`.viewport-stage`)
+  await select_structure_layout(`3D + 2D cross-section`)
+  expect(doc_query(`[data-testid="volume-slice"]`)).toBe(slice_view)
+  expect(doc_query(`.viewport-stage`)).toBe(stage)
 })
 
 // volume-only data has no sites to show, and a stale volume ID falls back to the first one

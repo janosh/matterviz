@@ -77,7 +77,8 @@
         const partial_rdfs = calculate_all_pair_rdfs(struct, { cutoff, n_bins, pbc })
         return { struct, label, partial_rdfs, rho_0 }
       } catch (exc) {
-        return { failure: `${label}: ${to_error(exc).message}` }
+        // a formula label is <sub> markup for the legend; the notice is plain text
+        return { failure: `${html_to_text(label)}: ${to_error(exc).message}` }
       }
     }),
   )
@@ -94,7 +95,7 @@
         const total = weight_pdf_partials(struct, partial_rdfs, { radiation, rho_0 })
         totals.push({ label, total })
       } catch (exc) {
-        failures.push(`${entry.label}: ${to_error(exc).message}`)
+        failures.push(`${html_to_text(entry.label)}: ${to_error(exc).message}`)
       }
     }
     return { totals, failures }

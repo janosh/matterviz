@@ -36,7 +36,7 @@ const sweep: Sweep = {
   ],
   descriptors: [
     { key: `tc`, label: `Tc`, unit: `K`, range: [`tc_lo`, `tc_hi`], threshold: 2.5 },
-    { key: `vol`, label: `Volume`, unit: `Å³`, compute: `volume_per_atom` },
+    { key: `vol`, label: `V<sub>atom</sub>`, unit: `Å³`, compute: `volume_per_atom` },
   ],
 }
 function render(props: Partial<ComponentProps<typeof SweepTrends>> = {}) {
@@ -84,14 +84,28 @@ test(`plots one line per series, skipping missing values, with ranges and a thre
   expect(props.show_legend).toBe(true)
 })
 
-test(`a computed descriptor fills frames from their data`, () => {
+// a compared frame (another series') is marked as large as the selected one
+test.each([
+  [undefined, [7, 4.5], [4.5]],
+  [{ series_id: `bcc`, frame_idx: 0 }, [7, 4.5], [7]],
+])(`compare %j enlarges the selected and compared points`, (compare, fcc_radii, bcc_radii) => {
+  const { props } = render({ compare })
+  const radii = (props.series ?? []).map(({ point_style }: DataSeries) =>
+    (Array.isArray(point_style) ? point_style : []).map(({ radius }) => radius),
+  )
+  expect(radii).toEqual([fcc_radii, bcc_radii])
+  expect(props.current_x_value).toBe(0) // the line stays at the selected frame
+})
+
+test(`a computed descriptor fills frames from their data, its HTML label on the y axis`, () => {
   const with_structures: Sweep = {
     ...sweep,
     series: [{ id: `fcc`, frames: [{ value: 0, structure }, { value: 10 }] }],
   }
   const { props } = render({ sweep: with_structures, descriptor: `vol` })
   expect(props.series?.[0].y).toEqual([27]) // 3³ Å³ for one atom; the frame without one skipped
-  expect(props.y_axis?.label).toBe(`Volume (Å³)`)
+  // the axis title renders HTML (subscripts), so the label's markup reaches it as given
+  expect(props.y_axis?.label).toBe(`V<sub>atom</sub> (Å³)`)
   expect(props.ref_lines).toEqual([])
 })
 

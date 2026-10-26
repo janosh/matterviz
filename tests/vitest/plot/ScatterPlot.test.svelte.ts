@@ -11,7 +11,7 @@ import type {
 } from '#lib/plot/core/types.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
-import { rects_overlap, type Rect } from '#lib/plot/core/layout.js'
+import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
@@ -752,6 +752,38 @@ describe(`ScatterPlot`, () => {
     expect(plot.querySelector(`.x-axis`)).toBeNull()
     expect(plot.querySelector(`.y-axis`)).not.toBeNull()
     expect(update_range).not.toHaveBeenCalled()
+  })
+
+  // Shared side-by-side padding is explicit, so the plot must report its axes' needs back up
+  test(`resolved_padding raises explicit top/bottom to what the axis titles need`, async () => {
+    const state = $state<{ resolved_padding?: Required<Sides> }>({
+      resolved_padding: undefined,
+    })
+    const padding = { t: 7, b: 11, l: 13, r: 17 }
+    const x_axis = { label: `Electron density of states per unit energy (states/eV)` }
+    await mount_sized_scatter_plot(bind_props({ series: [basic], padding, x_axis }, state))
+    await vi.waitFor(() => expect(state.resolved_padding?.b).toBeGreaterThan(padding.b))
+    expect(state.resolved_padding).toMatchObject({ t: 7, l: 13, r: 17 })
+  })
+
+  test(`resolved_padding fed back into the plot settles instead of looping`, async () => {
+    const state = $state<{ resolved_padding?: Required<Sides> }>({
+      resolved_padding: undefined,
+    })
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const props = {
+      series: [{ ...basic, color_values: [1, 2, 3, 4, 5] }],
+      padding: { r: 70 },
+      // the scatter-plot demo sizes its external color bar from the bound padding
+      get color_bar() {
+        const { t = 0, b = 0 } = state.resolved_padding ?? {}
+        return { wrapper_style: `position: absolute; height: calc(100% - ${t + b}px)` }
+      },
+    }
+    await mount_sized_scatter_plot(bind_props(props, state))
+    await flush_render()
+    expect(state.resolved_padding?.r).toBe(70)
+    expect(error_spy.mock.calls.flat().join(` `)).not.toContain(`effect_update_depth_exceeded`)
   })
 
   test.each([
@@ -1892,7 +1924,7 @@ describe(`ScatterPlot`, () => {
   // oxfmt-ignore
   test.each<[string, Partial<ComponentProps<typeof ScatterPlot>>, string[], string[]]>([
     [`axis labels instead of bare x/y`, { series: [{ x: [1, 2, 3], y: [10, 20, 30] }], x_axis: { label: `Time (s)` }, y_axis: { label: `Speed` }, tooltip_point: mid_point }, [`Time: 2 s`, `Speed`, `20`], []],
-    [`series label with several series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Alpha` }, { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` }], tooltip_point: mid_point }, [`Alpha`], []],
+    [`series label with several series, HTML rendered`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `A<sub>1</sub>lpha` }, { x: [1, 2, 3], y: [5, 15, 25], label: `Beta` }], tooltip_point: mid_point }, [`A1lpha`], [`<sub>`]],
     [`no series label for a single series`, { series: [{ x: [1, 2, 3], y: [10, 20, 30], label: `Only` }], tooltip_point: mid_point }, [], [`Only`]],
     [`color value with color bar title`, { series: color_series, color_bar: { title: `Temperature` }, tooltip_point: { ...mid_point, color_value: 200 } }, [`Temperature`, `200`], []],
     [`color value without title`, { series: color_series, color_bar: {}, tooltip_point: { ...mid_point, color_value: 200 } }, [`Color`, `200`], []],

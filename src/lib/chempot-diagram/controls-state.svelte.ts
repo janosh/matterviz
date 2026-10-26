@@ -411,7 +411,7 @@ export const highlight_key_of = (hovered?: string, external?: string | null): st
 // [value, label] pairs for the color-mode <select> in both panes
 export const CHEMPOT_COLOR_MODE_OPTIONS = [
   [`none`, `None`],
-  [`energy`, `Energy/atom`],
+  [`energy`, `Total energy/atom`],
   [`formation_energy`, `Formation energy`],
   [`arity`, `Element count`],
   [`entries`, `Entry count`],

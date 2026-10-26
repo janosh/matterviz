@@ -13,7 +13,10 @@
   import { ViewerChrome } from '#lib/layout/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { json_source, svg_sources, type ExportSources } from '#lib/io/export.js'
-  import { csv_source } from '#lib/plot/core/utils/chart-export.js'
+  import {
+    csv_source,
+    export_filename as chart_filename,
+  } from '#lib/plot/core/utils/chart-export.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { join_hover_link } from '#lib/tooltip/index.js'
@@ -363,7 +366,7 @@
 
     {#if export_formats?.length !== 0 && controls_config.visible(`export-pane`)}
       <ExportPane
-        filename={export_filename ?? (title.replaceAll(/<[^>]+>|\s+/g, ``) || `convex-hull`)}
+        filename={export_filename ?? chart_filename(title || `convex-hull`)}
         sources={export_sources}
         {export_formats}
         {on_export}

@@ -18,7 +18,6 @@ This example uses bands and DOS from different materials.
 <BandsAndDos
   band_structs={{ '': electronic_bands.cao_2605 }}
   doses={{ '': total_dos }}
-  bands_props={{ y_axis: { label: 'Energy (eV)' } }}
   dos_props={{ y_axis: { label: '' } }}
   shared_y_axis
   class="full-bleed"

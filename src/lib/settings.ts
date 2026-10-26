@@ -234,7 +234,7 @@ const convex_hull_settings = (
     color_mode: {
       value: `energy` as const,
       description: `Color mode for ${hull} points`,
-      enum: { stability: `Stability`, energy: `Energy` },
+      enum: { stability: `Stability`, energy: `Energy above hull` },
     },
     color_scale: color_scale_setting(`${hull} energy mode`),
     show_stable: { value: true, description: `Show stable phases in ${hull}` },
@@ -698,7 +698,7 @@ export const SETTINGS_CONFIG = define_settings({
     mu: { value: 0, description: `Chemical potential offset from the Fermi level (eV)` },
     color_property: {
       value: `band`,
-      description: `Quantity mapped onto the Fermi surface color scale`,
+      description: `Quantity mapped onto the Fermi surface color scale when the data has no per-state properties (with them, the first property colors the surface unless one is chosen)`,
       enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
     color_scale: color_scale_setting(`the Fermi surface`),

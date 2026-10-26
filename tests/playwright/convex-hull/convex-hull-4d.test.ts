@@ -82,7 +82,7 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, { tag: `@webgl` }, () => {
     const color_bar = diagram.locator(`.colorbar`).first()
     await color_modes.getByRole(`button`, { name: `Stability`, exact: true }).click()
     await expect(color_bar).toBeHidden()
-    await color_modes.getByRole(`button`, { name: `Energy`, exact: true }).click()
+    await color_modes.getByRole(`button`, { name: `Hull distance`, exact: true }).click()
     await expect(color_bar).toBeVisible()
     await expect(color_bar.getByText(/Energy above hull/i)).toBeVisible()
 

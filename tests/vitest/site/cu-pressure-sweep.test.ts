@@ -12,6 +12,7 @@ import { dot, transpose_3x3_matrix } from '#lib/math.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
 import {
+  CU_COUPLING_EXPONENT,
   CU_GRUNEISEN,
   CU_LAMBDA,
   CU_MAX_PHONON_THZ,
@@ -82,10 +83,16 @@ test(`band energies scale about E_F by 1/s², k-space lengths by 1/s`, () => {
 test(`the sweep ascends in pressure and its loader builds each frame's spectra`, async () => {
   const sweep = cu_pressure_sweep({ structure: fcc, band_data, band_struct })
   validate_sweep(sweep)
-  const [series] = sweep.series
+  const [series, stiff] = sweep.series
   // Birch–Murnaghan pressures (B₀ = 140 GPa, B₀′ = 5) at CU_VOLUME_RATIOS, to 0.1 GPa
   expect(series.frames.map(({ value }) => value)).toEqual([0, 8.2, 19.2, 34.2, 54.7, 83.1])
   expect(series.frames[0].label).toBe(`0 GPa (V/V₀ = 1.00)`)
+  // the stiffer series (B₀ = 180 GPa): the same cells at 180/140 of each pressure
+  expect([stiff.id, stiff.label]).toEqual([`fcc-stiff`, `fcc Cu (B₀ = 180 GPa)`])
+  expect(stiff.frames.map(({ value }) => value)).toEqual([0, 10.5, 24.7, 44, 70.4, 106.8])
+  expect(stiff.frames.map(({ structure: cell }) => cell)).toEqual(
+    series.frames.map(({ structure: cell }) => cell),
+  )
   // frames bring only their structures up front
   expect(series.frames.every((frame) => frame.structure && !frame.band_data)).toBe(true)
   if (!sweep.load_frame) throw new Error(`no loader`)
@@ -100,7 +107,7 @@ test(`the sweep ascends in pressure and its loader builds each frame's spectra`,
     await sweep.load_frame(series.id, 2, { signal }),
     `frame 2`,
   )
-  expect(loaded.phonon?.mode_values?.label).toBe(`λ_qν`)
+  expect(loaded.phonon?.mode_values?.label).toBe(`λ<sub>qν</sub>`)
   expect(Object.keys(loaded).toSorted()).toEqual([
     `band_data`,
     `band_structs`,
@@ -172,19 +179,48 @@ test(`the phonon model's X point: degenerate transverse modes at 1/√2 of the l
   expect(Math.abs(lower / upper - Math.SQRT1_2)).toBeLessThan(1e-7)
 })
 
-test(`α²F moments: λ round-trips, a narrow peak at ω₀ gives ω_log = ω₂ = ω₀`, () => {
-  const frequencies = Array.from({ length: 101 }, (_, idx) => 0.05 + idx * 0.1)
-  const peak: PhononDos = {
-    type: `phonon`,
-    frequencies,
-    densities: frequencies.map((freq) => (Math.abs(freq - 5.05) < 1e-9 ? 1 : 0)),
-  }
-  const a2f = eliashberg_function(peak, 0.8)
-  const { lambda, omega_log, omega_2 } = eliashberg_moments(a2f)
-  expect(Math.abs(lambda - 0.8)).toBeLessThan(1e-12)
-  const kelvin = 5.05 * 47.9924
-  expect(Math.abs(omega_log - kelvin) / kelvin).toBeLessThan(1e-12)
-  expect(Math.abs(omega_2 - kelvin) / kelvin).toBeLessThan(1e-12)
+// whatever the coupling's exponent, a narrow peak keeps its moments at the peak
+test.each([0, CU_COUPLING_EXPONENT, 2])(
+  `α²F moments (α² ∝ ω^−%s): λ round-trips, a narrow peak at ω₀ gives ω_log = ω₂ = ω₀`,
+  (exponent) => {
+    const frequencies = Array.from({ length: 101 }, (_, idx) => 0.05 + idx * 0.1)
+    const peak: PhononDos = {
+      type: `phonon`,
+      frequencies,
+      densities: frequencies.map((freq) => (Math.abs(freq - 5.05) < 1e-9 ? 1 : 0)),
+    }
+    const a2f = eliashberg_function(peak, 0.8, exponent)
+    const { lambda, omega_log, omega_2 } = eliashberg_moments(a2f)
+    expect(Math.abs(lambda - 0.8)).toBeLessThan(1e-12)
+    const kelvin = 5.05 * 47.9924
+    expect(Math.abs(omega_log - kelvin) / kelvin).toBeLessThan(1e-12)
+    expect(Math.abs(omega_2 - kelvin) / kelvin).toBeLessThan(1e-12)
+  },
+)
+
+// α² ∝ ω^−p reweights F: α²F/F follows ω^−p bin by bin, so it no longer overlaps the DOS on
+// its own axis as a constant coupling's scaled copy of F would, and weighting the soft modes
+// lowers ω_log and ω₂ below the constant coupling's
+test(`the model's α²F is F reweighted by ω^−p, its moments below a constant coupling's`, () => {
+  const { dos } = cu_phonons(fcc, band_struct)
+  const [shaped, flat] = [CU_COUPLING_EXPONENT, 0].map((exponent) =>
+    eliashberg_function(dos, CU_LAMBDA, exponent),
+  )
+  const ratios = shaped.densities.flatMap((density, idx) =>
+    dos.densities[idx] > 1e-3
+      ? [(density / dos.densities[idx]) * dos.frequencies[idx] ** CU_COUPLING_EXPONENT]
+      : [],
+  )
+  // one constant over every bin with weight, to a few eps (measured 5.8e-16 relative)
+  expect((Math.max(...ratios) - Math.min(...ratios)) / ratios[0]).toBeLessThan(1e-14)
+  const [moments, flat_moments] = [shaped, flat].map(eliashberg_moments)
+  expect(Math.abs(moments.lambda - CU_LAMBDA)).toBeLessThan(1e-12)
+  expect(moments.omega_log).toBeLessThan(flat_moments.omega_log)
+  expect(moments.omega_2).toBeLessThan(flat_moments.omega_2)
+  // regression pins: the ambient moments in K (197.6 and 224.8 at p = 0), as computed when this
+  // test was written
+  expect(moments.omega_log).toBeCloseTo(176.98263046572177, 9)
+  expect(moments.omega_2).toBeCloseTo(210.82665481854582, 9)
 })
 
 test(`compressed frames stiffen as (V/V₀)^−γ, coupling (and every λ_qν) falling as 1/ω²`, () => {
@@ -204,8 +240,9 @@ test(`compressed frames stiffen as (V/V₀)^−γ, coupling (and every λ_qν) f
   expect(scalars.omega_log / ambient_scalars.omega_log).toBeCloseTo(stiffening, 10)
   expect(ambient_scalars.omega_2).toBeGreaterThan(ambient_scalars.omega_log)
 
-  // λ_qν on the 20³ grid: none at Γ, λ_qν ω_qν constant (α²F ∝ F) and the grid mean of
-  // Σ_ν λ_qν the frame's λ (a sum of 3·7999 terms: allow ~1e3 eps relative)
+  // λ_qν on the 20³ grid: none at Γ, λ_qν ω_qν^(1+p) constant (λ_qν = 2α²(ω_qν)/ω_qν with
+  // α² ∝ ω^−p) and the grid mean of Σ_ν λ_qν the frame's λ (a sum of 3·7999 terms: allow
+  // ~1e3 eps relative)
   const { mode_values } = phonon
   if (!mode_values) throw new Error(`no mode values`)
   expect(mode_values.qpoints).toHaveLength(20 ** 3)
@@ -214,7 +251,10 @@ test(`compressed frames stiffen as (V/V₀)^−γ, coupling (and every λ_qν) f
   const mean = off_gamma.flat().reduce((sum, value) => sum + value, 0) / off_gamma.length
   expect(Math.abs(mean - scalars.lambda) / scalars.lambda).toBeLessThan(1e-12)
   const products = off_gamma.flatMap((row, idx) =>
-    row.map((value, mode_idx) => value * mode_values.frequencies[idx + 1][mode_idx]),
+    row.map(
+      (value, mode_idx) =>
+        value * mode_values.frequencies[idx + 1][mode_idx] ** (1 + CU_COUPLING_EXPONENT),
+    ),
   )
   const spread = (Math.max(...products) - Math.min(...products)) / products[0]
   expect(spread).toBeLessThan(1e-12)

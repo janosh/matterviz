@@ -2,7 +2,11 @@
   import { in_range, type Vec2 } from '#lib/math.js'
   import AxisLabel from '#lib/plot/core/components/AxisLabel.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
-  import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout.js'
+  import {
+    AXIS_TITLE_WRAP_WIDTH,
+    resolve_axis_title_layout,
+    TITLE_EDGE_AIR,
+  } from '#lib/plot/core/layout.js'
   import type { FontSpec } from '#lib/plot/core/text-metrics.js'
   import {
     DEFAULT_FONT_SPEC,
@@ -273,6 +277,7 @@
       color={axis.color}
       on_select={on_axis_change}
       width={title_wrap_width}
+      x_span={is_x ? [TITLE_EDGE_AIR, width - TITLE_EDGE_AIR] : undefined}
     />
   {/if}
 </g>

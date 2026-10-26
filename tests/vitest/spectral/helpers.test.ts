@@ -11,6 +11,7 @@ import {
   are_qpoints_equivalent,
   band_k_path,
   apply_gaussian_smearing,
+  display_smoother,
   gaussian_kernel_smooth,
   branch_path_label,
   branch_segment_keys,
@@ -168,6 +169,69 @@ describe(`density_divisor`, () => {
     // Math.max(...densities) overflows the argument limit; DOS grids reach 1e7 points
     const large = Array.from({ length: 300_000 }, (_, idx) => (idx % 97) + 1)
     expect(density_divisor([large], large, `max`)).toBe(97)
+  })
+})
+
+// display_smoother draws a spectral density at a width's resolution: a dense comb of mode
+// peaks melts into a curve keeping its area, a constant stays exact to the grid's ends, a width
+// under the sampling leaves the curve as given, and a dense grid is binned so it stays O(n)
+describe(`display_smoother`, () => {
+  const grid = Array.from({ length: 1001 }, (_, idx) => idx * 0.05) // 0 to 50
+  const comb = grid.map((_, idx) => (idx % 10 === 5 && idx > 100 && idx < 900 ? 1 : 0))
+  const area = (xs: readonly number[], ys: readonly number[]) =>
+    ys
+      .slice(1)
+      .reduce((sum, y_val, idx) => sum + ((y_val + ys[idx]) * (xs[idx + 1] - xs[idx])) / 2, 0)
+
+  it(`melts a dense comb of peaks into a curve keeping its area`, () => {
+    const { x, smooth } = display_smoother(grid, 50 / 300)
+    const smoothed = smooth(comb)
+    expect(x).toEqual(grid)
+    expect(Math.max(...smoothed)).toBeLessThan(0.4)
+    expect(area(x, smoothed)).toBeCloseTo(area(grid, comb), 3)
+  })
+  it.each([
+    [`a constant stays exact up to the grid's ends`, 1, grid.map(() => 2), grid.map(() => 2)],
+    [`a width under the sampling leaves the curve as given`, 0.005, comb, comb],
+  ])(`%s`, (_desc, width, values, expected) => {
+    const smoothed = display_smoother(grid, width).smooth(values)
+    smoothed.forEach((value, idx) => expect(value).toBeCloseTo(expected[idx], 9))
+  })
+  it(`skips a NaN sample without spreading it`, () => {
+    const holed = comb.map((value, idx) => (idx === 500 ? NaN : value))
+    const { smooth } = display_smoother(grid, 0.2)
+    const [clean, with_hole] = [smooth(comb), smooth(holed)]
+    expect(with_hole.every(Number.isFinite)).toBe(true)
+    // beyond the ±4 widths window around the hole nothing changes
+    expect(with_hole.slice(0, 480)).toEqual(clean.slice(0, 480))
+  })
+  it(`smooths a descending grid as its ascending twin, in its own order`, () => {
+    const ascending = display_smoother(grid, 0.2).smooth(comb)
+    const descending = display_smoother(grid.toReversed(), 0.2)
+    expect(descending.x).toEqual(grid.toReversed())
+    const reversed = descending.smooth(comb.toReversed()).toReversed()
+    reversed.forEach((value, idx) => expect(value).toBeCloseTo(ascending[idx], 12))
+  })
+  it(`bins a dense grid, staying fast and keeping the area`, () => {
+    const dense = Array.from({ length: 100_001 }, (_, idx) => idx * 0.0005) // 0 to 50
+    const spiky = dense.map((_, idx) => (idx % 97 === 0 ? 5 : 0.1))
+    const start = performance.now()
+    const { x, smooth } = display_smoother(dense, 50 / 300)
+    const smoothed = smooth(spiky)
+    expect(performance.now() - start).toBeLessThan(500)
+    expect(x).toHaveLength(Math.ceil(50 / (50 / 300 / 4)))
+    expect(area(x, smoothed)).toBeCloseTo(area(dense, spiky), 1)
+  })
+  it(`keeps a 1 eV gap open on a 52 eV span`, () => {
+    const energies = Array.from({ length: 5001 }, (_, idx) => -25 + idx * 0.01)
+    const gapped = energies.map((energy) => (Math.abs(energy) < 0.5 ? 0 : 1))
+    const { x, smooth } = display_smoother(energies, 52 / 300) // binned: 100 samples per eV
+    const smoothed = smooth(gapped)
+    const mid_gap = x.reduce(
+      (best, energy, idx) => (Math.abs(energy) < Math.abs(x[best]) ? idx : best),
+      0,
+    )
+    expect(smoothed[mid_gap]).toBeLessThan(0.05)
   })
 })
 

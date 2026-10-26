@@ -173,4 +173,32 @@ describe(`create_settling_tween`, () => {
     void unmount(component)
     target.remove()
   })
+
+  // Tween builds its interpolator on the first frame after a retarget, which can come after
+  // the point unmounted (a hidden window's paused frames while its plot refreshes), when
+  // reading props warned derived_inert once per point: it takes the caller's interpolator
+  // current at the retarget, whatever the props hold by that frame
+  test(`ScatterPoint's tween uses the interpolator current at its retarget`, async () => {
+    const linear = () =>
+      vi.fn((from: Point2D, to: Point2D) => (frac: number) => ({
+        x: from.x + (to.x - from.x) * frac,
+        y: from.y + (to.y - from.y) * frac,
+      }))
+    const [at_retarget, later] = [linear(), linear()]
+    const props = $state({ x: 100, y: 100, point_tween: { interpolate: at_retarget } })
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const component = mount(ScatterPoint, { target, props })
+    flushSync()
+    settle()
+    props.x = 300
+    flushSync()
+    props.point_tween = { interpolate: later }
+    flushSync()
+    void unmount(component)
+    target.remove()
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+    expect(at_retarget).toHaveBeenCalledOnce()
+    expect(later).not.toHaveBeenCalled()
+  })
 })

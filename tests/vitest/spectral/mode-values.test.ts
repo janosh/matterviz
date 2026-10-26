@@ -2,6 +2,8 @@ import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { branch_segment_keys } from '#lib/spectral/helpers.js'
 import {
   mode_value_markers,
+  MODE_MARKER_BINS,
+  thin_mode_markers,
   normalize_mode_values,
   project_qpoints_onto_path,
 } from '#lib/spectral/mode-values.js'
@@ -157,5 +159,42 @@ describe(`normalize_mode_values`, () => {
     [`values missing`, { values: undefined }, `values must have one row per q-point (2), got undefined`],
   ])(`rejects %s`, (_desc, patch, message) => {
     expect(() => normalize_mode_values({ ...valid, ...patch })).toThrow(message)
+  })
+})
+
+// a q mesh meeting the path every few pixels would fill the bands with triangles: each mode
+// keeps its strongest marker per 1/MODE_MARKER_BINS of the path, so strong coupling stays
+describe(`thin_mode_markers`, () => {
+  const marker = (x: number, mode_idx: number, value: number) => ({
+    x,
+    frequency: mode_idx,
+    value,
+    q_idx: Math.round(x * 1000),
+    mode_idx,
+  })
+  const bin = 1 / MODE_MARKER_BINS
+  test(`keeps the strongest |value| per mode in each stretch of the path`, () => {
+    const markers = [
+      marker(0.1 * bin, 0, 0.2),
+      marker(0.5 * bin, 0, -3), // the strongest in the first stretch, by |value|
+      marker(0.9 * bin, 0, 1),
+      marker(0.5 * bin, 1, 0.1), // another mode: kept on its own
+      marker(1.5 * bin, 0, 0.1), // the next stretch
+      marker(1, 0, 0.4), // the path's end falls in the last stretch
+    ]
+    expect(thin_mode_markers(markers, [0, 1])).toEqual([
+      markers[1],
+      markers[3],
+      markers[4],
+      markers[5],
+    ])
+  })
+  test(`thins a dense mesh to one marker per mode and stretch`, () => {
+    const dense = Array.from({ length: 1000 }, (_, idx) => marker(idx / 999, idx % 3, idx))
+    expect(thin_mode_markers(dense, [0, 1])).toHaveLength(3 * MODE_MARKER_BINS)
+  })
+  test(`a path without extent keeps every marker`, () => {
+    const markers = [marker(0, 0, 1), marker(0, 0, 2)]
+    expect(thin_mode_markers(markers, [0, 0])).toEqual(markers)
   })
 })

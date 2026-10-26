@@ -5,7 +5,7 @@
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import type BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
   import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types.js'
-  import { HIGHLIGHT, plot_color } from '#lib/colors/index.js'
+  import { HIGHLIGHT, is_dark_mode, plot_color, resolve_backdrop } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -13,6 +13,8 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { html_to_text } from '#lib/utils.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {
@@ -24,13 +26,14 @@
   import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
-    frequency_unit_label,
     parse_frequency_unit,
+    spectral_value_label,
   } from '#lib/spectral/frequency-units.js'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import {
     mode_value_markers,
     normalize_mode_values,
+    thin_mode_markers,
     project_qpoints_onto_path,
   } from './mode-values'
   import type { ModeValueMarker } from './mode-values'
@@ -83,10 +86,12 @@
     point_hit_padding = 3,
     // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
+    wrapper = $bindable(),
     children: user_children,
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
     band_structs: Record<string, BaseBandStructure>
+    wrapper?: HTMLDivElement // the plot's root, as ScatterPlot binds it
     // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
     // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
     // and phonopy inputs carry one) or, overriding it, from this crystal's lattice
@@ -242,16 +247,19 @@
     x_positions = internal_x_positions
   })
 
-  // Band-line series, fat-band ribbons and the max |slope| (for the tooltip's dispersion
-  // label) in one pass over the plotted branch segments
-  let { series_data, ribbon_data, max_abs_slope } = $derived.by(() => {
+  // Band-line series, fat-band ribbons and, per series, its structure's max |slope| (the
+  // tooltip's dispersion label judges a band against its own structure's steepest, not another
+  // material's) in one pass over the plotted branch segments
+  let { series_data, ribbon_data, slope_scales } = $derived.by(() => {
     const all_series: DataSeries[] = []
     const all_ribbons: RibbonData[] = []
-    let max_slope = 0
+    const scales: number[] = [] // aligned with all_series
     const markers = rest.on_point_click ? `line+points` : `line`
     const { opacity = 0.3, max_width = 6, scale = 1, color: ribbon_color } = ribbon_config
 
     for (const [bs_idx, { label, bs: band_structure, keys }] of structures.entries()) {
+      const first_series = all_series.length
+      let max_slope = 0
       const color = plot_color(bs_idx)
       const structure_label = label || `Structure ${bs_idx + 1}`
       const gamma_indices =
@@ -350,8 +358,9 @@
           }
         }
       }
+      scales.push(...Array(all_series.length - first_series).fill(max_slope || 1))
     }
-    return { series_data: all_series, ribbon_data: all_ribbons, max_abs_slope: max_slope || 1 }
+    return { series_data: all_series, ribbon_data: all_ribbons, slope_scales: scales }
   })
 
   // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
@@ -450,7 +459,7 @@
   let mode_overlay = $derived.by((): { markers: ModeValueMarker[]; error?: string } => {
     const band_structure = structures[0]?.bs
     if (!mode_values || !band_structure) return { markers: [] }
-    const { label } = mode_values
+    const label = html_to_text(mode_values.label) // notices are plain text
     const lattice = band_structure.recip_lattice ?? k_lattice
     if (!lattice) {
       return {
@@ -472,10 +481,15 @@
           error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
         }
       }
-      return { markers: mode_value_markers(parsed, projections) }
+      return { markers: thin_mode_markers(mode_value_markers(parsed, projections), x_range) }
     } catch (exc) {
       return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
     }
+  })
+  // resolved to a concrete colour, which the canvas renderer (past 1000 markers) needs
+  const mode_marker_stroke = resolve_backdrop(() => wrapper, {
+    css_var: [`--bands-mode-marker-stroke`, `--page-bg`],
+    fallback: () => (is_dark_mode(wrapper) ? `#18171c` : `white`),
   })
   // band_idx names the mode for the tooltip; without a qpoint_idx no path link reads it
   let mode_series = $derived.by((): DataSeries | null => {
@@ -491,6 +505,12 @@
       markers: `points`,
       color_values: values,
       size_values: values,
+      // a hairline in the page's own colour keeps overlapping markers apart in either theme
+      point_style: {
+        stroke: mode_marker_stroke.current,
+        stroke_width: 0.5,
+        stroke_opacity: 1,
+      },
       metadata: markers.map(({ q_idx, mode_idx, value }) => ({
         band_idx: mode_idx,
         nb_bands: frequencies[q_idx].length,
@@ -531,8 +551,7 @@
   let y_range = $derived(raw_y_range && (convert_band_values(raw_y_range) as Vec2))
 
   const internal_y_axis = $derived<AxisConfig>({
-    label:
-      band_type === `phonon` ? `Frequency (${frequency_unit_label(unit)})` : `Energy (eV)`,
+    label: spectral_value_label(band_type === `phonon`, unit),
     format: `.2f`,
     range: y_range,
     ...y_axis,
@@ -674,6 +693,7 @@
     y_formatted,
     label,
     metadata,
+    series_idx,
   }: ScatterHandlerProps)}
     {@const segment_key = Object.entries(internal_x_positions).find(
       ([, [start, end]]) => coord_x >= start && coord_x <= end,
@@ -692,9 +712,9 @@
       slope,
       mode_value,
     } = (metadata ?? {}) as Partial<helpers.BandPointMeta & { mode_value: number }>}
-    {#if num_structures > 1 && label}<strong>{label}</strong><br />{/if}
+    {#if num_structures > 1 && label}<strong>{@html sanitize_html(label)}</strong><br />{/if}
     <TooltipValue
-      label={internal_y_axis.label || `Value`}
+      label={internal_y_axis.label || spectral_value_label(band_type === `phonon`, unit)}
       value={y_formatted}
       unit={internal_y_axis.unit}
     /><br />
@@ -725,7 +745,7 @@
       <br />Projection: {format_num(band_width, `.3~g`)}
     {/if}
     {#if typeof slope === `number` && Number.isFinite(slope)}
-      {@const rel = Math.abs(slope) / max_abs_slope}
+      {@const rel = Math.abs(slope) / (slope_scales[series_idx] ?? 1)}
       <br />Dispersion: {rel < 0.15 ? `flat` : rel < 0.5 ? `moderate` : `steep`}
     {/if}
   {/snippet}
@@ -743,6 +763,7 @@
     size_legend={rest.size_legend ?? null}
     {point_hit_padding}
     {fill_regions}
+    bind:wrapper
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
     bind:view

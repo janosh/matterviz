@@ -2,6 +2,7 @@
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { AXIS_TITLE_WRAP_WIDTH, resolve_axis_title_layout } from '#lib/plot/core/layout.js'
+  import { clamp, type Vec2 } from '#lib/math.js'
   import type { AxisOption } from '#lib/plot/core/types.js'
 
   // Axis title centered on (x, y). Static titles are SVG text wrapped by the same
@@ -19,6 +20,7 @@
     axis_type,
     on_select,
     width = AXIS_TITLE_WRAP_WIDTH,
+    x_span,
   }: {
     x: number
     y: number
@@ -33,6 +35,9 @@
     // Maximum line width (vertical titles keep the default: PlotAxis does not forward their
     // plot height)
     width?: number
+    // Horizontal span the title stays within: centred on x unless that crosses an end, then
+    // slid inward (centred on the span when even that fails), e.g. over a narrow DOS column
+    x_span?: Vec2
   } = $props()
 
   const title_layout = $derived(
@@ -43,6 +48,19 @@
   )
   // Keep browser wrapping from splitting the trigger when canvas metrics under-estimate page fonts.
   const trigger_width = $derived(Math.max(width, title_layout.width))
+  // The rendered text's width: canvas metrics can under-estimate page fonts
+  let text_width = $state(0)
+  const measure_text = (node: SVGTextElement) => {
+    void title_layout.lines // re-measure when the text changes
+    text_width = node.getBBox().width
+  }
+  const x = $derived.by(() => {
+    if (!x_span) return coord_x
+    const half =
+      (options?.length ? trigger_width : Math.max(text_width, title_layout.width)) / 2
+    const [lo, hi] = x_span
+    return hi - lo < 2 * half ? (lo + hi) / 2 : clamp(coord_x, lo + half, hi - half)
+  })
 
   const stop = (evt: Event) => evt.stopPropagation()
   // Only stop propagation for keys the dropdown handles, allow Tab/Escape for navigation
@@ -55,7 +73,7 @@
   {#if options?.length}
     <foreignObject
       data-export-exclude
-      x={coord_x - trigger_width / 2}
+      x={x - trigger_width / 2}
       y={coord_y - title_layout.height / 2}
       width={trigger_width}
       height={title_layout.height}
@@ -98,15 +116,13 @@
       pointer-events="none"
       text-anchor="middle"
       aria-label={title_layout.label}
-      x={coord_x}
+      {x}
       y={coord_y}
+      {@attach measure_text}
     >
       <!-- contiguous markup keeps textContent free of layout whitespace -->
       {#each title_layout.lines as line, line_idx}
-        <tspan
-          x={coord_x}
-          y={first_line_y + line_idx * title_layout.line_height}
-          aria-hidden="true"
+        <tspan {x} y={first_line_y + line_idx * title_layout.line_height} aria-hidden="true"
           >{#each line.segments as segment}<tspan
               baseline-shift={segment.shift}
               font-size={segment.shift ? `75%` : undefined}>{segment.text}</tspan

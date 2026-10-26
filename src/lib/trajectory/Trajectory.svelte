@@ -1117,30 +1117,10 @@
   // Spectroscopy owns the plot region while open.
   let show_plot = $derived(spectroscopy_open || effective_display_mode !== `structure`)
   let show_structure = $derived(spectroscopy_open || effective_display_mode !== `plot`)
-  let has_y2_series = $derived(
-    plot_series.some(
-      ({ y: coord_y, y_axis: axis_name, visible }) =>
-        axis_name === `y2` && visible && coord_y.some(Number.isFinite),
-    ),
-  )
   // Keep plot configuration referentially stable while only the active frame changes:
-  // recreating these objects would invalidate ScatterPlot's scales and hover index per frame
-  // Caller padding is honoured as a floor: the y2 axis needs its right margin whatever the
-  // caller asked for, and a caller cannot know whether a y2 series is currently visible
-  let trajectory_scatter_padding = $derived.by(() => {
-    const {
-      t: pad_top = 20,
-      b: pad_bottom = 60,
-      r: pad_right = 0,
-      ...user
-    } = scatter_props.padding ?? {}
-    return {
-      ...user,
-      t: pad_top,
-      b: pad_bottom,
-      r: Math.max(pad_right, has_y2_series ? 100 : 20),
-    }
-  })
+  // recreating these objects would invalidate ScatterPlot's scales and hover index per frame.
+  // Padding is the caller's or ScatterPlot's auto padding, which fits the axes shown (a y2
+  // axis's ticks and title when a y2 series is visible) rather than fixed margins.
   let trajectory_hover_config = $derived({ ...scatter_props.hover_config, mode: `x` as const })
   // Hold the plot's active-frame tick still during a pointer burst; snap it when settled
   let last_settled_step = untrack(() => current_step_idx)
@@ -1902,7 +1882,6 @@
               }}
               range_padding={0}
               style="height: 100%"
-              padding={trajectory_scatter_padding}
               hover_config={trajectory_hover_config}
             >
               {#snippet controls_extra(config)}

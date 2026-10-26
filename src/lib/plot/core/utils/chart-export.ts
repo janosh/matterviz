@@ -1,6 +1,7 @@
 // The numbers behind a chart: CSV tables and export filenames (figures go through io/export).
 
 import type { ExportSource } from '#lib/io/export.js'
+import { series_text } from '#lib/plot/core/data-transform.js'
 import { html_to_text } from '#lib/utils.js'
 import { escape_csv_field } from 'svelte-widgets/csv'
 
@@ -8,9 +9,17 @@ import { escape_csv_field } from 'svelte-widgets/csv'
 
 export type CsvCell = string | number | null | undefined
 
-// Non-finite chart values represent missing data, not literal NaN/Infinity fields.
+// Non-finite chart values represent missing data, not literal NaN/Infinity fields. Text
+// starting like a formula (e.g. a label decoded from `&#61;SUM(...)`) gets a leading quote so
+// spreadsheets show it rather than evaluate it; numeric text (a `-2` category) is no formula.
 const csv_cell = (cell: CsvCell): string =>
-  escape_csv_field(typeof cell === `number` && !Number.isFinite(cell) ? null : cell)
+  escape_csv_field(
+    typeof cell === `number` && !Number.isFinite(cell)
+      ? null
+      : typeof cell === `string` && /^[=+\-@\t\r]/.test(cell) && Number.isNaN(Number(cell))
+        ? `'${cell}`
+        : cell,
+  )
 
 export const to_csv = (header: readonly string[], rows: readonly CsvCell[][]): string =>
   [header, ...rows].map((row) => row.map(csv_cell).join(`,`)).join(`\n`)
@@ -36,7 +45,7 @@ export function series_to_csv_rows(series: readonly CsvSeries[]): {
   const header = [`series`, `x`, `y`, ...extra_keys]
   const rows: CsvCell[][] = []
   series.forEach((srs, series_idx) => {
-    const name = srs.label ?? `series ${series_idx + 1}`
+    const name = series_text(srs.label, series_idx)
     const count = Math.min(srs.x.length, srs.y.length)
     for (let idx = 0; idx < count; idx++) {
       rows.push([

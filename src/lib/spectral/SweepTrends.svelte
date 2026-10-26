@@ -1,15 +1,17 @@
 <script lang="ts">
   // One descriptor of a sweep against its axis, a line per series: clicking a point selects
-  // that frame (marked by the vertical line), unstable frames are hollow and grey, a
-  // descriptor's range draws as error bars and its threshold as a dashed line, the descriptors
-  // it overlays as dashed lines on the same axes. Frames whose value is unknown yet (data not
-  // loaded) are left out until it is; a value outside its range, or not finite, throws.
+  // that frame (marked by the vertical line and a larger point, as is a compared frame),
+  // unstable frames are hollow and grey, a descriptor's range draws as error bars and its
+  // threshold as a dashed line, the descriptors it overlays as dashed lines on the same axes.
+  // Frames whose value is unknown yet (data not loaded) are left out until it is; a value
+  // outside its range, or not finite, throws.
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
+  import { html_to_text } from '#lib/utils.js'
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
   import type { ComponentProps } from 'svelte'
-  import { descriptor_point } from './sweep'
-  import type { DescriptorSpec, Sweep, SweepFrame, SweepSeries } from './sweep'
+  import { descriptor_lines, descriptor_point } from './sweep'
+  import type { Sweep, SweepFrame, SweepSeries } from './sweep'
 
   type PointMeta = { series_id: string; frame_idx: number }
 
@@ -18,6 +20,7 @@
     frame_of,
     series_id,
     frame_idx,
+    compare,
     descriptor = $bindable(),
     on_frame_select,
     ...rest
@@ -26,29 +29,17 @@
     frame_of: (series: SweepSeries, idx: number) => SweepFrame // with loaded data merged
     series_id: string // the selected frame's series and index
     frame_idx: number
+    compare?: PointMeta // the frame shown beside the selected one, marked as large
     descriptor?: string // the key of the plotted descriptor (default: the first), else throws
     on_frame_select: (series_id: string, frame_idx: number) => void
   } = $props()
 
   const specs = $derived(sweep.descriptors ?? [])
-  const spec = $derived.by((): DescriptorSpec | undefined => {
-    if (descriptor === undefined) return specs[0]
-    const match = specs.find(({ key }) => key === descriptor)
-    if (match) return match
-    const keys = specs.map(({ key }) => key).join(`, `)
-    throw new Error(`descriptor "${descriptor}" is not a descriptor of the sweep (${keys})`)
-  })
+  // the plotted descriptor, then those it overlays (same unit, dashed)
+  const lines = $derived(descriptor_lines(sweep, descriptor))
+  const spec = $derived(lines.at(0))
   const with_unit = (label: string, unit?: string) => (unit ? `${label} (${unit})` : label)
 
-  // the plotted descriptor, then those it overlays (same unit, dashed)
-  const lines = $derived(
-    spec
-      ? [
-          spec,
-          ...(spec.overlay ?? []).flatMap((key) => specs.filter((other) => other.key === key)),
-        ]
-      : [],
-  )
   // each line's points per series (sweeps are a few frames: recomputed on every change),
   // apart from the selection so selecting recomputes no values
   const points = $derived(
@@ -68,9 +59,13 @@
   const series = $derived(
     points.map(({ entry, line, line_idx, points: line_points }): DataSeries<PointMeta> => {
       const { id, label = id } = entry
-      const selected = id === series_id
+      const marked = new Set(
+        [{ series_id, frame_idx }, compare].flatMap((point) =>
+          point?.series_id === id ? [point.frame_idx] : [],
+        ),
+      )
       const point_style = line_points.map(({ frame, idx }): PointStyle => ({
-        radius: selected && idx === frame_idx ? 7 : 4.5,
+        radius: marked.has(idx) ? 7 : 4.5,
         cursor: `pointer`,
         ...(frame.status?.unstable && {
           fill: `transparent`,
@@ -159,7 +154,7 @@
           onchange={(event) => (descriptor = event.currentTarget.value)}
         >
           {#each specs as { key, label, unit } (key)}
-            <option value={key}>{with_unit(label, unit)}</option>
+            <option value={key}>{html_to_text(with_unit(label, unit))}</option>
           {/each}
         </select>
       {/if}
@@ -168,7 +163,7 @@
       {@render rest.children?.(ctx)}
       {#if !has_values}
         <p class="no-values" style:width="{ctx.width}px" style:height="{ctx.height}px">
-          No {spec.label} values yet
+          No {html_to_text(spec.label)} values yet
         </p>
       {/if}
     {/snippet}

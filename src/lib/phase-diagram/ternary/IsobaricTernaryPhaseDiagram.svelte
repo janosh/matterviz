@@ -357,17 +357,13 @@
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_error: (message) => (drop_error = message),
+    // A bad file throws, so a multi-file drop reports its failures once, with a count and
+    // each filename, instead of each overwriting (or a later good file clearing) the last
     on_drop: (content, filename, metadata) => {
       if (on_file_drop) return on_file_drop(content, filename, metadata)
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(as_text(content))
-        if (!Array.isArray(parsed))
-          throw new Error(`Expected a JSON array of convex-hull entries`)
-      } catch (error) {
-        drop_error = `${filename}: ${to_error(error).message}`
-        return
-      }
+      const parsed: unknown = JSON.parse(as_text(content))
+      if (!Array.isArray(parsed))
+        throw new Error(`Expected a JSON array of convex-hull entries`)
       drop_error = null
       selected_phase = null
       dropped_entries = parsed as PhaseData[]

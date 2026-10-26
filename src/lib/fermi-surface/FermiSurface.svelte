@@ -39,7 +39,7 @@
   import FermiSurfaceControls from './FermiSurfaceControls.svelte'
   import FermiSurfaceScene from './FermiSurfaceScene.svelte'
   import FermiSurfaceTooltip from './FermiSurfaceTooltip.svelte'
-  import { property_label } from './constants'
+  import { property_label, resolve_color_property } from './constants'
   import {
     available_property_names,
     property_value_range,
@@ -72,7 +72,7 @@
     bz_data = $bindable(),
     mu: mean = $bindable(DEFAULTS.fermi.mu),
     controls_open = $bindable(false),
-    color_property = $bindable(DEFAULTS.fermi.color_property),
+    color_property = $bindable(), // a choice; unset follows the data (see resolve_color_property)
     color_scale = $bindable(DEFAULTS.fermi.color_scale),
     property_name = $bindable(),
     color_bar = {},
@@ -347,13 +347,16 @@
   // The requested property when present, else the first; the fitted range spans visible sheets
   // and fills the ends color_scale.value_range leaves unset
   const available_properties = $derived(available_property_names(surface_data, grid_data))
+  const shown_color_property = $derived(
+    resolve_color_property(color_property, available_properties),
+  )
   const active_property = $derived(
     property_name !== undefined && available_properties.includes(property_name)
       ? property_name
       : available_properties[0],
   )
   const fitted_value_range = $derived<Vec2>(
-    color_property === `property`
+    shown_color_property === `property`
       ? property_value_range(
           visible_isosurfaces(surface_data?.isosurfaces, shown_bands, selected_spins),
           active_property,
@@ -465,7 +468,7 @@
         <FermiSurfaceScene
           fermi_data={surface_data}
           {bz_data}
-          {color_property}
+          color_property={shown_color_property}
           color_scale={resolved_color_scale}
           property_name={active_property}
           property_label={custom_property_label}
@@ -494,7 +497,7 @@
         />
       </Canvas>
 
-      {#if color_bar && color_property === `property` && active_property !== undefined}
+      {#if color_bar && shown_color_property === `property`}
         <ColorBar
           title={property_label(active_property, custom_property_label)}
           color_scale={resolved_color_scale}

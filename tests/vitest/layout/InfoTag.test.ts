@@ -59,13 +59,21 @@ describe(`InfoTag`, () => {
     { value: `mp-1234`, copy_value: undefined, copied: `mp-1234` },
     { value: 123.456, copy_value: undefined, copied: `123.456` },
     { value: `abc123`, copy_value: `full-id-abc123`, copied: `full-id-abc123` },
+    // an HTML value copies as the text it renders, an explicit copy_value verbatim
+    {
+      value: `Fe<sub>2</sub>O<sub>3</sub> &amp; co`,
+      copy_value: undefined,
+      copied: `Fe2O3 & co`,
+      text: `Fe2O3 & co`,
+    },
+    { value: `Fe<sub>2</sub>`, copy_value: `<b>raw</b>`, copied: `<b>raw</b>`, text: `Fe2` },
     { value: undefined, copy_value: `full-id-abc123`, copied: `full-id-abc123` },
   ])(
     `value=$value, copy_value=$copy_value copies $copied`,
-    ({ value, copy_value, copied }) => {
+    ({ value, copy_value, copied, text = String(value ?? ``) }) => {
       const write_text_spy = mock_clipboard_write()
       const tag = mount_tag({ label: `ID:`, value, copy_value })
-      expect(doc_query(`em`).textContent).toBe(value === undefined ? `` : String(value))
+      expect(doc_query(`em`).textContent).toBe(text)
       expect(tag.getAttribute(`role`)).toBe(copied ? `button` : null)
       expect(tag.getAttribute(`tabindex`)).toBe(copied ? `0` : null)
       tag.click()

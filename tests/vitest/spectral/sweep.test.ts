@@ -5,6 +5,7 @@ import type { Matrix3x3 } from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
 import {
   compute_descriptor,
+  descriptor_lines,
   descriptor_point,
   descriptor_value,
   dos_at_energy,
@@ -12,7 +13,9 @@ import {
   format_axis_value,
   frame_fermi_energy,
   min_pair_distance,
+  nearest_frame,
   normalize_sweep,
+  series_spacing,
   validate_sweep,
   volume_per_atom,
 } from '#lib/spectral/sweep.js'
@@ -72,6 +75,14 @@ describe(`validate_sweep`, () => {
       { id: `a`, frames: [{ value: 1 }] },
     ],
   }
+  const shared_frame = { value: 0 }
+  const shared_frames: Sweep = {
+    ...sweep_of([0]),
+    series: [
+      { id: `a`, frames: [shared_frame] },
+      { id: `b`, frames: [shared_frame] },
+    ],
+  }
   // oxfmt-ignore
   test.each<[string, Sweep, string]>([
     [`no series`, { ...sweep_of([0]), series: [] }, `at least one series`],
@@ -80,6 +91,7 @@ describe(`validate_sweep`, () => {
     [`repeated values`, sweep_of([50, 50]), `strictly ascending`],
     [`a non-finite value`, sweep_of([0, Number.NaN]), `frame 1 has a non-finite value NaN`],
     [`duplicate series ids`, duplicate_ids, `series id "a" is not unique`],
+    [`a frame shared by two series`, shared_frames, `series "b" frame 0 reuses the frame object of series "a" frame 0`],
     [`duplicate descriptor keys`, with_descriptors({ key: `tc`, label: `Tc` }, { key: `tc`, label: `T_c` }), `descriptor key "tc" is not unique`],
     [`an element share without element`, with_descriptors({ key: `h`, label: `H`, compute: `fermi_dos_share` }), `element goes with (and only with) fermi_dos_share`],
     [`an element on another descriptor`, with_descriptors({ key: `n`, label: `N`, compute: `fermi_dos`, element: `H` }), `element goes with (and only with) fermi_dos_share`],
@@ -225,6 +237,54 @@ test(`format_axis_value prefers the frame's label`, () => {
   expect(format_axis_value(axis, { value: 150, label: `150 GPa (151.3 relaxed)` })).toBe(
     `150 GPa (151.3 relaxed)`,
   )
+})
+
+// the nearest frame of a series at 0, 50, 120: ties go to the lower frame
+test.each([
+  [-30, 0, 30],
+  [25, 0, 25],
+  [80, 1, 30],
+  [85, 1, 35],
+  [90, 2, 30],
+  [500, 2, 380],
+])(`nearest_frame at %d is frame %d, %d off`, (value, idx, distance) => {
+  const series = { id: `fcc`, frames: [0, 50, 120].map((at) => ({ value: at })) }
+  expect(nearest_frame(series, value)).toEqual({ idx, distance })
+})
+
+// the median of the series' consecutive gaps, 0 without any
+test.each([
+  [[0, 50, 120], 60],
+  [[0, 10, 30, 60], 20],
+  [[100, 110], 10],
+  [[7], 0],
+])(`series_spacing of frames at %j is %d`, (values, spacing) => {
+  const frames = values.map((value) => ({ value }))
+  expect(series_spacing({ id: `fcc`, frames })).toBe(spacing)
+})
+
+// a descriptor's lines: itself, then its overlays in their order; the first without a key
+const lines_sweep = sweep_of([], {
+  descriptors: [
+    { key: `tc`, label: `tc`, overlay: [`w2`, `wlog`] },
+    ...[`n_ef`, `wlog`, `w2`].map((key) => ({ key, label: key })),
+  ],
+})
+test.each<[string, Sweep, string | undefined, string[] | string]>([
+  [`no key`, lines_sweep, undefined, [`tc`, `w2`, `wlog`]],
+  [`an overlay`, lines_sweep, `wlog`, [`wlog`]],
+  [`a plain descriptor`, lines_sweep, `n_ef`, [`n_ef`]],
+  [`no descriptors`, { ...lines_sweep, descriptors: undefined }, undefined, []],
+  [
+    `an unknown key`,
+    lines_sweep,
+    `tc_typo`,
+    `descriptor "tc_typo" is not a descriptor of the sweep (tc, n_ef, wlog, w2)`,
+  ],
+])(`descriptor_lines with %s`, (_desc, sweep, key, expected) => {
+  const keys = () => descriptor_lines(sweep, key).map((spec) => spec.key)
+  if (typeof expected === `string`) expect(keys).toThrow(expected)
+  else expect(keys()).toEqual(expected)
 })
 
 describe(`normalize_sweep`, () => {

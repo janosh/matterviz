@@ -178,7 +178,7 @@ describe(`BinnedScatterPlot`, () => {
             density_color_scale: `interpolateBlues`,
           },
           {
-            label: `Red`,
+            label: `R<sub>ed</sub>`, // HTML renders as markup in the tooltip header
             x: [0.5, 0.5],
             y: [0.5, 0.5],
             metadata: [{ model: `Red` }, { model: `Red` }],
@@ -204,6 +204,7 @@ describe(`BinnedScatterPlot`, () => {
         await settle()
         expect(doc_query(`.plot-tooltip`).textContent).toContain(series_idx ? `Red` : `Blue`)
         expect(doc_query(`.plot-tooltip`).textContent).toContain(`${series_idx + 1} samples`)
+        if (series_idx) expect(doc_query(`.plot-tooltip sub`).textContent).toBe(`ed`)
         click_plot(center_x, center_y)
         expect(on_point_click).toHaveBeenLastCalledWith(
           expect.objectContaining({

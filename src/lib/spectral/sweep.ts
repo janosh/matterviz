@@ -109,11 +109,22 @@ export function validate_sweep(sweep: Sweep): void {
   }
   if (!sweep.series?.length) throw new Error(`Sweep needs at least one series`)
   const series_ids = new Set<string>()
+  // The frame cache keys loads by frame object, so one object in two places would show the
+  // data loaded for the first of them in the other
+  const frame_owners = new Map<SweepFrame, string>()
   for (const { id, frames } of sweep.series) {
     if (series_ids.has(id)) throw new Error(`Sweep series id "${id}" is not unique`)
     series_ids.add(id)
     if (!frames.length) throw new Error(`Sweep series "${id}" has no frames`)
-    for (const [idx, { value }] of frames.entries()) {
+    for (const [idx, frame] of frames.entries()) {
+      const owner = frame_owners.get(frame)
+      if (owner !== undefined) {
+        throw new Error(
+          `Sweep series "${id}" frame ${idx} reuses the frame object of ${owner}`,
+        )
+      }
+      frame_owners.set(frame, `series "${id}" frame ${idx}`)
+      const { value } = frame
       if (!Number.isFinite(value)) {
         throw new RangeError(
           `Sweep series "${id}" frame ${idx} has a non-finite value ${value}`,
@@ -160,6 +171,31 @@ export function validate_sweep(sweep: Sweep): void {
 
 export const format_axis_value = (axis: SweepAxis, frame: SweepFrame): string =>
   frame.label ?? `${frame.value}${axis.unit ? ` ${axis.unit}` : ``}`
+
+// The series' frame nearest `value` (the lower one on a tie) and how far off its value is
+export function nearest_frame(
+  series: SweepSeries,
+  value: number,
+): { idx: number; distance: number } {
+  let nearest = { idx: 0, distance: Infinity }
+  for (const [idx, frame] of series.frames.entries()) {
+    const distance = Math.abs(frame.value - value)
+    if (distance < nearest.distance) nearest = { idx, distance }
+  }
+  return nearest
+}
+
+// The series' typical step along the axis: the median gap between its consecutive frames (0 for
+// a single frame). Its frame further off than this from a value does not lie at that value.
+export function series_spacing({ frames }: SweepSeries): number {
+  const gaps = frames
+    .slice(1)
+    .map((frame, idx) => frame.value - frames[idx].value)
+    .toSorted((lhs, rhs) => lhs - rhs)
+  if (gaps.length === 0) return 0
+  const mid = Math.floor(gaps.length / 2)
+  return gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2
+}
 
 // === computed descriptors ===
 export const volume_per_atom = (structure: Crystal): number =>
@@ -326,6 +362,19 @@ export function descriptor_point(
     throw new RangeError(`${where}: range [${lower}, ${upper}] does not bracket ${value}`)
   }
   return { value, lower, upper }
+}
+
+// The lines a trends plot draws for descriptor `key` (default: the first): its spec, then the
+// descriptors it overlays (none without descriptors). Throws for a key the sweep lacks.
+export function descriptor_lines(sweep: Sweep, key?: string): DescriptorSpec[] {
+  const specs = sweep.descriptors ?? []
+  const spec = key === undefined ? specs[0] : specs.find((other) => other.key === key)
+  if (!spec && key !== undefined) {
+    const keys = specs.map((other) => other.key).join(`, `)
+    throw new Error(`descriptor "${key}" is not a descriptor of the sweep (${keys})`)
+  }
+  const overlaid = (other_key: string) => specs.filter((other) => other.key === other_key)
+  return spec ? [spec, ...(spec.overlay ?? []).flatMap(overlaid)] : []
 }
 
 // === JSON input (dropped files, notebook widgets) and loaded frame data ===

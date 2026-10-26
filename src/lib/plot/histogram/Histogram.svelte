@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { html_to_text } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'
@@ -432,7 +434,7 @@
     const count = format_value_or_num(bin.count, count_format)
     const value =
       normalize === `count` ? `` : `, value ${format_value_or_num(bin.value, `.3~g`)}`
-    return `${hist.label} bin ${bin_idx + 1}: ${lower} to ${upper}, count ${count}${value}`
+    return `${html_to_text(hist.label)} bin ${bin_idx + 1}: ${lower} to ${upper}, count ${count}${value}`
   }
   // Hover state is indices only: the tooltip follows rebinned data and closes once its bin is
   // gone. A click pins the hovered bin's tooltip unless on_bar_click takes the click.
@@ -482,7 +484,13 @@
     csv: csv_source(() => ({
       header: [`series`, `bin_start`, `bin_end`, `count`, `value`],
       rows: histogram_bins.flatMap((hist) =>
-        hist.bins.map((bin) => [hist.label, bin.x0, bin.x1, bin.count, bin.value]),
+        hist.bins.map((bin) => [
+          html_to_text(hist.label),
+          bin.x0,
+          bin.x1,
+          bin.count,
+          bin.value,
+        ]),
       ),
     })),
   }
@@ -652,7 +660,7 @@
               />
             </div>
           {/if}
-          {#if mode === `overlay`}<div>{hover_info.property}</div>{/if}
+          {#if mode === `overlay`}<div>{@html sanitize_html(hover_info.property)}</div>{/if}
         {/if}
       </PlotTooltip>
     {/if}

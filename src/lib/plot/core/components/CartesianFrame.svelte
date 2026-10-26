@@ -24,6 +24,7 @@
   import type { UserContentProps } from '#lib/plot/core/types.js'
   import { svg_sources, type ExportProps, type ExportSources } from '#lib/io/export.js'
   import { chart_export_filename } from '#lib/plot/core/utils/chart-export.js'
+  import { html_to_text } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
@@ -141,11 +142,14 @@
   }: Props = $props()
 
   const pan_zoom = $derived(frame.pan_zoom)
-  // An explicit aria-label wins; otherwise the title, then `X label vs Y label`, then the fallback
+  // An explicit aria-label wins; otherwise the title, then `X label vs Y label`, then the
+  // fallback. Axis labels are HTML (E<sub>F</sub>) the attribute would read out verbatim.
   const svg_aria_label = $derived(
     aria_label_override ??
-      (frame.title_config?.text ||
-        [frame.axes.x.label, frame.axes.y.label].filter(Boolean).join(` vs `) ||
+      (html_to_text(
+        frame.title_config?.text ||
+          [frame.axes.x.label, frame.axes.y.label].filter(Boolean).join(` vs `),
+      ) ||
         aria_label),
   )
 

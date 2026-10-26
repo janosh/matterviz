@@ -18,8 +18,10 @@ import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type { FrequencyUnit } from './frequency-units'
 import {
   convert_frequencies,
+  dos_density_label,
   frequency_unit_per_thz,
   parse_frequency_unit,
+  spectral_value_label,
 } from './frequency-units'
 import type { KPathData } from '#lib/brillouin/types.js'
 import type * as types from './types'
@@ -174,6 +176,84 @@ export function apply_gaussian_smearing(
   // so the convolution would return all zeros instead of leaving the input alone
   if (weights.every((weight) => weight === 0)) return densities
   return gaussian_pass(freqs_or_energies, densities, sigma, weights)
+}
+
+// Display width of a spectral density's smoothing as a share of the frequency span drawn: about
+// a pixel on a 300 to 600px axis, so it removes only detail finer than the plot can draw
+export const DISPLAY_BROADENING = 1 / 300
+
+// A spectral density sampled finer than a plot draws (a tetrahedron DOS on a 0.01 eV grid, a
+// q-mesh α²F's comb of mode peaks) reads as a filled band. This draws it at a width's
+// resolution: the Gaussian local average Σ y·w·K / Σ w·K over the trapezoid measure w, which
+// keeps a constant exact (no droop where an energy window cuts a band), the area to rounding,
+// and the curve as given where the width is under its sampling. A grid with more than 8
+// samples per width is first averaged onto bins of width / 4, so the cost stays O(n); the
+// curves then come on that bin grid, the same for every curve over one grid. Non-finite
+// samples count as missing.
+export function display_smoother(
+  grid: readonly number[],
+  width: number,
+): { x: number[]; smooth: (values: readonly number[]) => number[] } {
+  const finite = grid.flatMap((value, idx) => (Number.isFinite(value) ? [idx] : []))
+  const [min, max] = array_extent(finite.map((idx) => grid[idx]))
+  if (!(width > 0) || finite.length < 3 || !(max > min)) {
+    return { x: [...grid], smooth: (values) => [...values] }
+  }
+  const bin_width = width / 4
+  // average onto bins where the grid samples them densely, else keep it as the points
+  let points: { x: number; members: number[] }[]
+  if ((max - min) / (finite.length - 1) < bin_width / 2) {
+    const n_bins = Math.max(1, Math.ceil((max - min) / bin_width))
+    points = Array.from({ length: n_bins }, (_, bin) => ({
+      x: min + (bin + 0.5) * bin_width,
+      members: [],
+    }))
+    for (const idx of finite) {
+      const bin = Math.min(n_bins - 1, Math.floor((grid[idx] - min) / bin_width))
+      points[bin].members.push(idx)
+    }
+  } else {
+    points = finite
+      .toSorted((lhs, rhs) => grid[lhs] - grid[rhs])
+      .map((idx) => ({ x: grid[idx], members: [idx] }))
+  }
+  const point_x = points.map(({ x }) => x)
+  const measure = trapezoid_weights(point_x)
+  const cutoff = 4 * width
+  const inv_two_sigma_sq = 1 / (2 * width ** 2)
+  const smooth = (values: readonly number[]): number[] => {
+    // each point's mean value over its members (NaN for none), then the local average
+    const means = points.map(({ members }) => {
+      const kept = members.filter((idx) => Number.isFinite(values[idx]))
+      return kept.length ? kept.reduce((sum, idx) => sum + values[idx], 0) / kept.length : NaN
+    })
+    const out = Array(points.length).fill(NaN)
+    let [start, end] = [0, 0]
+    for (let idx = 0; idx < points.length; idx++) {
+      const center = point_x[idx]
+      while (center - point_x[start] > cutoff) start++
+      while (end < points.length && point_x[end] - center <= cutoff) end++
+      let [sum, weight_sum] = [0, 0]
+      for (let jdx = start; jdx < end; jdx++) {
+        if (!Number.isFinite(means[jdx])) continue
+        const weight =
+          measure[jdx] * Math.exp(-((center - point_x[jdx]) ** 2) * inv_two_sigma_sq)
+        sum += means[jdx] * weight
+        weight_sum += weight
+      }
+      if (weight_sum > 0) out[idx] = sum / weight_sum
+    }
+    if (points.length === grid.length && finite.length === grid.length) {
+      // as many points as samples: back in the grid's own order
+      const ordered = Array(grid.length)
+      points.forEach(({ members: [idx] }, pos) => (ordered[idx] = out[pos]))
+      return ordered
+    }
+    return out
+  }
+  const x_out =
+    points.length === grid.length && finite.length === grid.length ? [...grid] : point_x
+  return { x: x_out, smooth }
 }
 
 // Nadaraya-Watson Gaussian smoother Σ w·y / Σ w for a scattered (x, y) series. Unlike the DOS
@@ -1118,7 +1198,9 @@ export function compute_frequency_range(
 }
 
 // DOS tooltip content from the axis labels and the hovered point's formatted values. The
-// series label is the title only when several DOS are plotted.
+// series label is the title only when several DOS are plotted. A bare axis label falls back to
+// the default one, which names the particle (electron or phonon) and the density's unit under
+// `normalize`.
 export function format_dos_tooltip(opts: {
   x_formatted: string
   y_formatted: string
@@ -1126,23 +1208,27 @@ export function format_dos_tooltip(opts: {
   is_horizontal: boolean // frequency/energy on y and density on x
   is_phonon: boolean
   units: FrequencyUnit
+  normalize?: types.NormalizationMode // default null (none)
   x_axis_label: string
   y_axis_label: string
   num_series: number
 }): { title?: string; lines: { label: string; value: string; unit?: string }[] } {
   const { x_formatted, y_formatted, label, is_horizontal, is_phonon, units } = opts
   const [x_parsed, y_parsed] = [opts.x_axis_label, opts.y_axis_label].map(parse_axis_label)
+  const freq_default = parse_axis_label(spectral_value_label(is_phonon, units))
+  const density_default = parse_axis_label(
+    dos_density_label(is_phonon, false, opts.normalize ?? null),
+  )
   const freq_line = (parsed: { name: string; unit?: string }, value: string) => ({
-    label: parsed.name || (is_phonon ? `Frequency` : `Energy`),
+    label: parsed.name || freq_default.name,
     value,
-    unit: parsed.unit ?? (is_phonon ? units : `eV`),
+    unit: parsed.unit ?? freq_default.unit,
   })
-  const density_line = (parsed: { name: string; unit?: string }, value: string) => ({
-    label: parsed.name || `Density`,
-    value,
-    unit: parsed.unit,
-  })
-  // the frequency/energy line always comes first
+  const density_line = (parsed: { name: string; unit?: string }, value: string) =>
+    parsed.name
+      ? { label: parsed.name, value, unit: parsed.unit }
+      : { label: density_default.name, value, unit: density_default.unit }
+  // the y-axis quantity comes first: frequency/energy when horizontal, density when vertical
   const lines = is_horizontal
     ? [freq_line(y_parsed, y_formatted), density_line(x_parsed, x_formatted)]
     : [density_line(y_parsed, y_formatted), freq_line(x_parsed, x_formatted)]

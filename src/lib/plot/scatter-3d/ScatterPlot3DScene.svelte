@@ -43,7 +43,7 @@
   import { Line2 } from 'three/examples/jsm/lines/webgpu/Line2.js'
   import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
   import { plot_color } from '#lib/colors/index.js'
-  import { extract_series_color } from '#lib/plot/core/data-transform.js'
+  import { extract_series_color, series_text } from '#lib/plot/core/data-transform.js'
   import ReferenceLine3D from '#lib/plot/scatter-3d/ReferenceLine3D.svelte'
   import ReferencePlane from '#lib/plot/scatter-3d/ReferencePlane.svelte'
   import {
@@ -409,8 +409,9 @@
     label: ({ point: { x, y, z, series_idx, point_idx } }) => {
       const axes = [x_axis, y_axis, z_axis]
       const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
-      const series_label = series[series_idx]?.label ?? `Series ${series_idx + 1}`
-      return `${series_label} point ${point_idx + 1}: ${coords.join(`, `)}`
+      const series_label = series[series_idx]?.label
+      const name = series_text(series_label, series_idx)
+      return `${name} point ${point_idx + 1}: ${coords.join(`, `)}`
     },
   })
 

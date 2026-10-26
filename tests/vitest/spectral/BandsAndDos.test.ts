@@ -20,6 +20,15 @@ const phonon_dos: PhononDos = {
   frequencies: [0, 1, 2, 3, 4],
   densities: [0, 1, 2, 1, 0],
 }
+// electronic bands and DOS with their own Fermi energies
+const electron_bands: BaseBandStructure = { ...band_structs, type: `electronic`, efermi: 2 }
+const electron_dos: ElectronicDos = {
+  type: `electronic`,
+  energies: [0, 4],
+  densities: [0, 1],
+  efermi: 3,
+}
+const electron_pair = { band_structs: { '': electron_bands }, doses: { '': electron_dos } }
 const pair_props = { band_structs: { '': band_structs }, doses: { '': phonon_dos } }
 const structure = make_crystal(3, [])
 // copies props' descriptors, so a getter prop stays live
@@ -40,22 +49,35 @@ const layouts = [
 ] as const
 
 describe(`bands/DOS wrappers`, () => {
+  // Side by side, the shared padding fits the DOS's titles in both panels: the electron DOS's
+  // two-line x title below, α²F's top axis and title above (the DOS reports them through
+  // resolved_padding, as an explicit shared padding stops it measuring its own titles)
+  it.each([
+    [`an electron DOS`, electron_pair, [20, 70]],
+    [
+      `a phonon DOS with α²F`,
+      { a2f: { 'α²F': { ...phonon_dos, densities: [0, 1, 1, 1, 0] } } },
+      [50, 50],
+    ],
+  ] as const)(`side by side, %s fits both panels' titles`, async (_desc, props, sides) => {
+    const root = await mount_pair(props)
+    await vi.waitFor(() => {
+      const top_bottom = [...root.querySelectorAll(`.scatter`)].map((plot) => {
+        const { y, height } = clip_rect(plot)
+        return [Math.round(y), Math.round(600 - y - height)]
+      })
+      expect(top_bottom).toEqual([sides, sides])
+    })
+  })
+
   it.each(layouts)(
     `shares an explicit Fermi reference (%s, %ipx)`,
     async (_label, width, layout_props) => {
-      const bands: BaseBandStructure = { ...band_structs, type: `electronic`, efermi: 2 }
-      const dos: ElectronicDos = {
-        type: `electronic`,
-        energies: [0, 4],
-        densities: [0, 1],
-        efermi: 3,
-      }
       const reference = fromStore(writable<number | undefined>(undefined))
       const root = await mount_pair(
         {
           ...layout_props,
-          band_structs: { '': bands },
-          doses: { '': dos },
+          ...electron_pair,
           get fermi_level() {
             return reference.current
           },
@@ -80,7 +102,7 @@ describe(`bands/DOS wrappers`, () => {
           expect(Number(line?.getAttribute(`${axis}1`))).toBe(translate_of(tick)[axis])
         }
       }
-      expect([bands.efermi, dos.efermi]).toEqual([2, 3])
+      expect([electron_bands.efermi, electron_dos.efermi]).toEqual([2, 3])
     },
   )
 

@@ -32,7 +32,7 @@ The `normalize_band_structure` adapter converts pymatgen `BandStructureSymmLine`
   import { electronic_bands } from '#site/electronic/bands/index.js'
 </script>
 
-<Bands band_structs={{ '': electronic_bands.cao_2605 }} y_axis={{ label: 'Energy (eV)' }} />
+<Bands band_structs={{ '': electronic_bands.cao_2605 }} />
 ```
 
 ### Spin-Polarized Electronic Bands
@@ -45,11 +45,7 @@ Spin-polarized electronic band structures can be shown in `overlay`, `up_only`, 
   import { electronic_bands } from '#site/electronic/bands/index.js'
 </script>
 
-<Bands
-  band_structs={{ '': electronic_bands.vbr2_971787 }}
-  band_spin_mode="overlay"
-  y_axis={{ label: 'Energy (eV)' }}
-/>
+<Bands band_structs={{ '': electronic_bands.vbr2_971787 }} band_spin_mode="overlay" />
 ```
 
 ### Electronic Gap Annotation
@@ -66,7 +62,6 @@ For gapped electronic structures, `Bands` automatically annotates VBM/CBM and th
   band_structs={{ '': electronic_bands.cao_2605 }}
   band_spin_mode="up_only"
   show_gap_annotation
-  y_axis={{ label: 'Energy (eV)' }}
 />
 ```
 

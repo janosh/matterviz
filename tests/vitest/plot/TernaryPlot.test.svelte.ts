@@ -27,6 +27,8 @@ const series: TernarySeries[] = [
   { label: `Oxides`, color: `#e15759`, points: [[1, 0, 0], [0.2, 0.3, 0.5], [2, 2, 6]] },
   { label: `Path`, color: `#4e79a7`, markers: `line+points`, points: [[0, 1, 0], [0, 0, 1]] },
 ]
+// an HTML series label renders as markup in the tooltip and reads as its text (Ox2ides) elsewhere
+const html_series = [{ ...series[0], label: `Ox<sub>2</sub>ides` }, series[1]]
 // the three pure corners
 type Triple = [number, number, number]
 // oxfmt-ignore
@@ -112,10 +114,10 @@ describe(`TernaryPlot`, () => {
 
   test(`an invalid triple renders an error naming the point instead of a chart`, async () => {
     // oxfmt-ignore
-    const bad: TernarySeries = { label: `Bad`, points: [[1, 0, 0], [0, -1, 2]] }
+    const bad: TernarySeries = { label: `Bad<sub>x</sub>`, points: [[1, 0, 0], [0, -1, 2]] }
     const plot = await mount_ternary({ series: [bad] })
     const message = plot.querySelector(`.viewer-error [role="alert"]`)?.textContent
-    expect(message).toContain(`Bad point 2 has a negative amount`)
+    expect(message).toContain(`Badx point 2 has a negative amount`) // the label's text
     expect(markers(plot)).toHaveLength(0)
   })
 
@@ -272,12 +274,16 @@ describe(`TernaryPlot`, () => {
   })
 
   test(`markers share one tab stop and expose fractions as their accessible name`, async () => {
-    const plot = await mount_ternary({ series, labels: [`Fe`, `Ni`, `Cr`] })
+    const plot = await mount_ternary({ series: html_series, labels: [`Fe`, `Ni`, `Cr`] })
     const tabindexes = roving_tabindexes(plot)
     expect(tabindexes).toEqual(one_tab_stop(5))
     expect(markers(plot)[1].getAttribute(`aria-label`)).toBe(
-      `Oxides: Fe = 20%, Ni = 30%, Cr = 50%`,
+      `Ox2ides: Fe = 20%, Ni = 30%, Cr = 50%`,
     )
+    await fire(markers(plot)[1], mouse(`mousemove`, { clientX: 100, clientY: 100 }))
+    const tooltip = plot.querySelector(`.plot-tooltip`)
+    expect(tooltip?.querySelector(`strong sub`)?.textContent).toBe(`2`)
+    expect(tooltip?.textContent).not.toContain(`<sub>`)
   })
 
   test.each([
@@ -431,12 +437,12 @@ describe(`TernaryPlot`, () => {
 // CSV rows hold each visible point's normalized fractions under the corner labels
 test(`TernaryPlot CSV export lists normalized fractions per series`, async () => {
   const on_export = vi.fn()
-  const plot = await mount_ternary({ series, labels: [`A`, `B`, `C`], on_export })
+  const plot = await mount_ternary({ series: html_series, labels: [`A`, `B`, `C`], on_export })
   const result = await export_via_pane(on_export, `CSV`, plot)
   expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`])
   expect(result.filename).toBe(`ternary-A-B-C`)
   const [header, ...rows] = String(result.data).split(`\n`)
   expect(header).toBe(`series,A,B,C,color_value`)
-  expect(rows).toContain(`Oxides,0.2,0.2,0.6,`) // raw counts [2, 2, 6] normalized
+  expect(rows).toContain(`Ox2ides,0.2,0.2,0.6,`) // raw counts [2, 2, 6] normalized
   expect(rows).toHaveLength(5)
 })

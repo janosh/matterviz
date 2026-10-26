@@ -6,6 +6,7 @@ import {
   PLANCK_J_S,
   THZ_TO_INVERSE_CM,
 } from '#lib/constants.js'
+import type { NormalizationMode } from './types'
 
 // Units a phonon DOS / band structure can be displayed in. `cm^-1` is the only spelling;
 // the plots render it as cm⁻¹ (see `frequency_unit_label`).
@@ -64,6 +65,23 @@ export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null =>
 export const frequency_unit_label = (unit: string): string =>
   unit === `cm^-1` ? `cm<sup>−1</sup>` : unit
 export const frequency_unit_text = (unit: string): string => (unit === `cm^-1` ? `cm⁻¹` : unit)
+
+// The default axis labels of band structures and DOS, naming the particle so electronic and
+// phonon spectra shown together read apart: the band energy / frequency axis and the DOS's
+// density axis. `narrow` breaks the latter before its unit, for a DOS column beside the bands,
+// whose x title would overflow the column on one line (axis titles wrap at 200px at the least).
+export const spectral_value_label = (is_phonon: boolean, unit: string): string =>
+  is_phonon ? `Phonon frequency (${frequency_unit_label(unit)})` : `Electron energy (eV)`
+// Normalizing by the max or sum leaves the DOS unitless; by the integral, per energy
+export const dos_density_label = (
+  is_phonon: boolean,
+  narrow: boolean,
+  normalize: NormalizationMode,
+): string => {
+  if (is_phonon) return `Phonon DOS`
+  const unit = normalize === null ? `states/eV` : normalize === `integral` ? `1/eV` : ``
+  return unit ? `Electron DOS${narrow ? `\n` : ` `}(${unit})` : `Electron DOS`
+}
 
 // Time units whose inverse is expressible in THz. A dt in anything else can still drive a
 // lag axis, but asking for a THz / cm^-1 spectrum on top of it throws.
