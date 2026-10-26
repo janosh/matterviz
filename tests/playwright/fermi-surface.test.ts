@@ -405,15 +405,18 @@ test(`electronic-structure sweep: both DOS share one column, the bar the viewer'
   const dos = viewer.locator(`[data-pane="dos"]`)
   const phonon_dos = viewer.locator(`[data-pane="phonon"] [style*="grid-area: dos"]`)
   await expect(phonon_dos).toBeVisible({ timeout: LOAD_TIMEOUT })
-  const columns = await Promise.all(
+  // the bands' share is a ratio of the row, so the edges agree to within sub-pixel rounding
+  const [electronic, phonon] = await Promise.all(
     [dos, phonon_dos].map((plot) =>
       plot.evaluate((node) => {
         const { left, right } = node.getBoundingClientRect()
-        return [Math.round(left), Math.round(right)]
+        return [left, right]
       }),
     ),
   )
-  expect(columns[0]).toEqual(columns[1])
+  for (const idx of [0, 1]) {
+    expect(Math.abs(electronic[idx] - phonon[idx])).toBeLessThanOrEqual(1)
+  }
   const corners = await viewer.locator(`.sequence-control-bar`).evaluate((bar) => {
     const style = getComputedStyle(bar)
     return [style.borderTopLeftRadius, style.borderBottomLeftRadius]
