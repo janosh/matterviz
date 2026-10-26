@@ -1187,10 +1187,11 @@
         grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
       }
     }
-    /* stacked (narrow): one scrolling column of full-width panes, each its own height; the
-       viewer grows to fit them unless its height is set */
+    /* stacked (narrow): one column of full-width panes, each its own height, which the viewer
+       grows to fit (a chat thread or page scrolls it as a whole); a host that must keep it in
+       a fixed box sets --electronic-stacked-height, and the panes then scroll inside */
     &.stacked {
-      height: var(--electronic-height, auto);
+      height: var(--electronic-stacked-height, auto);
       --pane-height: var(--electronic-stacked-pane-height, 320px);
       > .panes {
         display: flex;
@@ -1234,8 +1235,11 @@
       background: var(--electronic-bg-fullscreen, var(--electronic-bg, var(--struct-bg)));
     }
   }
+  /* isolated so nothing in the panes (their buttons, a host's tool) stacks above the hover
+     control bar overlaying them, also while panes scroll up under it */
   .panes {
     position: relative;
+    isolation: isolate;
     display: grid;
     flex: 1;
     min-height: 0;

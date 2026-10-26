@@ -403,6 +403,10 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
   const viewer = page.locator(`.sweep-demo`)
   await viewer.scrollIntoViewIfNeeded()
   await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
+  // grown to fit its panes (the page scrolls it), despite the demo's --electronic-height
+  const panes_scroll = () =>
+    viewer.locator(`.panes`).evaluate((node) => node.scrollHeight - node.clientHeight)
+  await expect.poll(panes_scroll).toBe(0)
   await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
     timeout: LOAD_TIMEOUT,
   })
@@ -457,4 +461,29 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
     )
   }
   expect(outside).toEqual([])
+
+  // a host keeping it in a fixed box scrolls the panes, and the hover control bar stays
+  // above the buttons of a pane scrolled up under it
+  await viewer.evaluate((node) =>
+    node.style.setProperty(`--electronic-stacked-height`, `600px`),
+  )
+  await expect.poll(panes_scroll).toBeGreaterThan(0)
+  await viewer.scrollIntoViewIfNeeded()
+  await viewer.hover({ position: { x: 100, y: 200 } })
+  await viewer.locator(`.panes`).evaluate((node) => (node.scrollTop = 40))
+  const covered = await viewer.evaluate((node) => {
+    const bar = node.querySelector(`.sequence-control-bar`)?.getBoundingClientRect()
+    if (!bar) return null
+    return [...node.querySelectorAll(`[data-pane="structure"] button`)].flatMap((button) => {
+      const box = button.getBoundingClientRect()
+      if (!box.width || box.top >= bar.bottom || box.bottom <= bar.top) return []
+      const top = document.elementFromPoint(
+        box.left + box.width / 2,
+        Math.max(box.top, bar.top) + 2,
+      )
+      return [Boolean(top?.closest(`.sequence-control-bar`))]
+    })
+  })
+  expect(covered?.length).toBeGreaterThan(0)
+  expect(covered?.every(Boolean)).toBe(true)
 })
