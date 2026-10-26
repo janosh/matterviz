@@ -692,7 +692,11 @@ describe(`ScatterPlot`, () => {
       [`large markers`, { point_style: { radius: 12, stroke_width: 2 } }, 13],
       [`sized markers`, { size_values: [1, 2] }, 10.25],
       // a d3 triangle reaches 1.555 r from its centre, past the circle radius
-      [`triangles`, { point_style: { radius: 8, symbol_type: `Triangle` } }, 1.555 * 8 + 0.5],
+      [
+        `triangles`,
+        { point_style: { radius: 8, symbol_type: `Triangle` as const } },
+        1.555 * 8 + 0.5,
+      ],
     ])(
       `%s and caps at the data extremes draw inside the frame`,
       async (_name, extra, extent) => {
