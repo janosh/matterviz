@@ -5,7 +5,7 @@
   import type { ScatterHandlerProps, ScatterPlotOptions } from '#lib/plot/index.js'
   import type BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
   import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types.js'
-  import { HIGHLIGHT, plot_color } from '#lib/colors/index.js'
+  import { HIGHLIGHT, is_dark_mode, plot_color, resolve_backdrop } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -86,10 +86,12 @@
     point_hit_padding = 3,
     // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
+    wrapper = $bindable(),
     children: user_children,
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
     band_structs: Record<string, BaseBandStructure>
+    wrapper?: HTMLDivElement // the plot's root, as ScatterPlot binds it
     // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
     // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
     // and phonopy inputs carry one) or, overriding it, from this crystal's lattice
@@ -484,6 +486,11 @@
       return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
     }
   })
+  // resolved to a concrete colour, which the canvas renderer (past 1000 markers) needs
+  const mode_marker_stroke = resolve_backdrop(() => wrapper, {
+    css_var: [`--bands-mode-marker-stroke`, `--page-bg`],
+    fallback: () => (is_dark_mode(wrapper) ? `#18171c` : `white`),
+  })
   // band_idx names the mode for the tooltip; without a qpoint_idx no path link reads it
   let mode_series = $derived.by((): DataSeries | null => {
     const { markers } = mode_overlay
@@ -498,6 +505,12 @@
       markers: `points`,
       color_values: values,
       size_values: values,
+      // a hairline in the page's own colour keeps overlapping markers apart in either theme
+      point_style: {
+        stroke: mode_marker_stroke.current,
+        stroke_width: 0.5,
+        stroke_opacity: 1,
+      },
       metadata: markers.map(({ q_idx, mode_idx, value }) => ({
         band_idx: mode_idx,
         nb_bands: frequencies[q_idx].length,
@@ -750,6 +763,7 @@
     size_legend={rest.size_legend ?? null}
     {point_hit_padding}
     {fill_regions}
+    bind:wrapper
     x_axis={internal_x_axis}
     y_axis={internal_y_axis}
     bind:view

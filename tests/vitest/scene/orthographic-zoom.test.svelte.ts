@@ -9,6 +9,10 @@ import { camera_flight_registry } from '#lib/scene/camera-flight.js'
 import { camera_resets } from '#lib/scene/camera-reset.js'
 import { create_fly_to } from '#lib/scene/fly-to.js'
 import SceneCamera from '#lib/scene/SceneCamera.svelte'
+import KSpaceCamera from '#lib/brillouin/KSpaceCamera.svelte'
+import { default_camera_position } from '#lib/brillouin/geometry.js'
+import { perspective_distance_for_extent } from '#lib/structure/camera-fit.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { read_pan_offset, set_pan_offset } from '#lib/scene/pan.js'
 import { type ComponentProps, flushSync } from 'svelte'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
@@ -349,3 +353,32 @@ test(`create_scene_camera derives orbit props from controls, target and fit-awar
   })
   cleanup()
 })
+
+// A reciprocal-space perspective camera stands where fit_extent's sphere fills the view along
+// the default direction (a fixed 10 |b| framed a zone at about half the viewport), set when
+// the viewport is first measured, not moved by a later resize; orthographic frames by zoom
+test.each([`perspective`, `orthographic`] as const)(
+  `a %s k-space camera's distance follows the fit, not resizes`,
+  (camera_projection) => {
+    const props = $state<ComponentProps<typeof KSpaceCamera>>({
+      camera_projection,
+      size: 2,
+      fit_extent: 3,
+      width: 400,
+      height: 300,
+      set_camera_is_moving: () => {},
+    })
+    const scene = mount_scene((anchor) => KSpaceCamera(anchor, props))
+    onTestFinished(scene.unmount_scene)
+    flushSync()
+    const distance = () => scene.camera.current.position.length()
+    const fitted =
+      camera_projection === `perspective`
+        ? perspective_distance_for_extent(3, 400, 300, DEFAULTS.structure.fov)
+        : Math.hypot(...default_camera_position(2))
+    expect(distance()).toBeCloseTo(fitted, 9)
+    props.width = 200 // narrower than tall: a tracked size would refit to the horizontal fov
+    flushSync()
+    expect(distance()).toBeCloseTo(fitted, 9)
+  },
+)

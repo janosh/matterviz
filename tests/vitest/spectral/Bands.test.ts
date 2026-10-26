@@ -630,6 +630,14 @@ describe(`Bands component`, () => {
   ])(`mode_values: %s`, async (_desc, props, n_markers, notice) => {
     const plot = await mount_plot({ ...props, show_controls: false })
     expect(plot.querySelectorAll(`path.marker`)).toHaveLength(n_markers)
+    // each outlined by a hairline in the page's colour, resolved to one the canvas renderer
+    // (past 1000 markers) can paint: no --page-bg here, so light mode's white
+    for (const marker of plot.querySelectorAll(`path.marker`)) {
+      expect([marker.getAttribute(`stroke`), marker.getAttribute(`stroke-width`)]).toEqual([
+        `white`,
+        `0.5`,
+      ])
+    }
     // the HTML label renders sanitized, its subscript a real <sub>
     const colorbar = plot.querySelector(`.colorbar`)
     expect(colorbar?.querySelector(`.label sub`)?.textContent ?? null).toBe(

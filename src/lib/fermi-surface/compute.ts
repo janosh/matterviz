@@ -3,6 +3,7 @@
 import { rgb } from 'd3-color'
 import { interpolateRdBu } from 'd3-scale-chromatic'
 import { compute_brillouin_zone, generate_bz_vertices } from '#lib/brillouin/compute.js'
+import { bz_fit_extent, k_cell_fit_extent } from '#lib/brillouin/geometry.js'
 import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
@@ -1109,4 +1110,18 @@ export function detect_irreducible_bz(fermi_data: FermiSurfaceData): boolean {
     }
   }
   return min_coord >= -IRREDUCIBLE_BZ_TOLERANCE * extent
+}
+
+// What a Fermi-surface view frames: its zone, and for surfaces filling the centred
+// parallelepiped (marching cubes leaves band-grid surfaces there unless folded into the zone)
+// that cell too, which off the simple cubic lattice is far wider (1.7x for bcc, 2.3x for fcc)
+export const fermi_fit_extent = (
+  zone_vertices: Vec3[] | undefined,
+  k_lattice: math.Matrix3x3 | undefined,
+  reciprocal_cell: FermiSurfaceData[`reciprocal_cell`] | undefined,
+): number => {
+  const zone = bz_fit_extent(zone_vertices, k_lattice)
+  return reciprocal_cell === `wigner_seitz`
+    ? zone
+    : Math.max(zone, k_cell_fit_extent(k_lattice))
 }
