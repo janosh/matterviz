@@ -484,6 +484,9 @@ export function nice_range_from_extent(
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
+  // Padding factor of marks centred on the data ends (edge_range_padding). An automatic end
+  // that snaps to an observed 0 then sits just far enough past 0 for those marks to draw whole.
+  zero_edge_padding = 0,
 ): Vec2 {
   // An inset would cut the data ends off (no caller passes one), and NaN poisons the range
   if (!(padding_factor >= 0))
@@ -504,13 +507,17 @@ export function nice_range_from_extent(
     type_name !== `log`
   const snap_zero_min = can_snap_zero && min === null && min_ext === 0 && data_min === 0
   const snap_zero_max = can_snap_zero && max === null && max_ext === 0 && data_max === 0
+  const { forward, inverse } =
+    !is_time && type_name === `log`
+      ? { forward: Math.log10, inverse: (value: number) => 10 ** value }
+      : axis_transform(is_time ? `time` : scale_type)
+  // Given the opposite end, places 0 the marks' share f / (1 + 2f) of the axis inside the
+  // frame, in the scale's metric (asinh(0) = 0); `|| 0` turns -0 into 0.
+  const zero_end = (other_end: number): number =>
+    inverse((-zero_edge_padding * forward(other_end)) / (1 + zero_edge_padding)) || 0
 
   // Apply padding *only if* limits were NOT provided
   if (min === null && max === null && n_finite > 0) {
-    const { forward, inverse } =
-      !is_time && type_name === `log`
-        ? { forward: Math.log10, inverse: (value: number) => 10 ** value }
-        : axis_transform(is_time ? `time` : scale_type)
     // Compared in the scale's metric: [1e15, 1e15 + 1] is one point on a log axis, where
     // padding by the zero span left nice() a collapsed [1e15, 1e15]
     if (forward(data_min) !== forward(data_max)) {
@@ -550,7 +557,10 @@ export function nice_range_from_extent(
 
   // D3's nice() for pretty boundaries, except arcsinh which keeps the padded domain
   if (type_name === `arcsinh`) {
-    return [snap_zero_min ? 0 : data_min, snap_zero_max ? 0 : data_max]
+    return [
+      snap_zero_min ? zero_end(data_max) : data_min,
+      snap_zero_max ? zero_end(data_min) : data_max,
+    ]
   }
 
   const scale =
@@ -561,9 +571,11 @@ export function nice_range_from_extent(
   scale.nice()
   const [nice_min = data_min, nice_max = data_max] = scale.domain()
   // Nice ticks may expand automatic endpoints, but must not round a valid explicit bound.
+  const lower = min !== null && (type_name !== `log` || min > 0) ? min : nice_min
+  const upper = max !== null && (type_name !== `log` || max > 0) ? max : nice_max
   const result: Vec2 = [
-    min !== null && (type_name !== `log` || min > 0) ? min : snap_zero_min ? 0 : nice_min,
-    max !== null && (type_name !== `log` || max > 0) ? max : snap_zero_max ? 0 : nice_max,
+    snap_zero_min ? zero_end(upper) : lower,
+    snap_zero_max ? zero_end(lower) : upper,
   ]
   return type_name === `log` ? validate_log_range(result) : result
 }

@@ -468,14 +468,18 @@
     axis: typeof final_x_axis,
     axis_px: number,
     time_scale = false,
-  ): Vec2 =>
-    nice_range_from_extent(
+  ): Vec2 => {
+    const edge_padding = edge_range_padding(edge_px, axis_px)
+    // edge_padding also lets a zero end extend past 0 so markers on 0 aren't cut in half
+    return nice_range_from_extent(
       data_extent,
       axis.range ?? [null, null],
       axis.scale_type ?? `linear`,
-      Math.max(range_padding, edge_range_padding(edge_px, axis_px)),
+      Math.max(range_padding, edge_padding),
       time_scale,
+      edge_padding,
     )
+  }
   // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
   const intrinsic_ranges = $derived.by(() => {
     const x_px = frame.width - base_pad.l - base_pad.r

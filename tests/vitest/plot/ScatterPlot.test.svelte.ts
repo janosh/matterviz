@@ -703,6 +703,12 @@ describe(`ScatterPlot`, () => {
         { point_style: { radius: 8, symbol_type: `Triangle` as const } },
         1.555 * 8 + 0.5,
       ],
+      // an automatic range used to snap a zero end to 0, halving the marker sitting on it
+      [
+        `markers on zero`,
+        { x: [0, 200], y: [0, 240], y_error: { lower: [0, 10], upper: [10, 0] } },
+        2.75,
+      ],
     ])(
       `%s and caps at the data extremes draw inside the frame`,
       async (_name, extra, extent) => {
@@ -743,6 +749,21 @@ describe(`ScatterPlot`, () => {
         }
       },
     )
+  })
+
+  // Without markers nothing reaches past the data, so a line from (0, 0) starts at the frame
+  // corner: both zero ends snap to 0
+  test(`a line-only series keeps its zero ends on the frame`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      ...bare,
+      series: [{ x: [0, 1, 2, 3], y: [0, 8, 1, 9], markers: `line` }],
+      line_tween: { duration: 0 },
+    })
+    const { x, y, height } = clip_rect(plot)
+    const line_d = query(plot_svg(plot), `path[fill="none"][d^="M"]`).getAttribute(`d`) ?? ``
+    const [start_x, start_y] = (line_d.match(/-?[\d.]+(?:e-?\d+)?/g) ?? []).map(Number)
+    expect(start_x).toBeCloseTo(x, 9)
+    expect(start_y).toBeCloseTo(y + height, 9)
   })
 
   // Regression: every mark used to carry tabindex=0, so tabbing past a chart meant
