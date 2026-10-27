@@ -475,11 +475,15 @@
           point_mode(box_item.series) !== `none` ||
           (show_outliers && box_item.stats.outliers.length > 0),
       )
+      const edge_padding = has_edge_markers ? marker_range_padding : 0
       return nice_range_from_extent(
         accumulate_extent(empty_extent(), values),
         axis.range ?? [null, null],
         scale_type,
-        has_edge_markers ? Math.max(range_padding, marker_range_padding) : range_padding,
+        Math.max(range_padding, edge_padding),
+        false,
+        // outliers or samples on 0 draw whole, as scatter markers do
+        edge_padding,
       )
     }
     const value_primary = calc_value_range(primary_boxes, plot_axes[vertical ? `y` : `x`])

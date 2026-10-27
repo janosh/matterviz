@@ -282,6 +282,16 @@ describe(`BoxPlot`, () => {
       expect(ys[1] - ys[0]).toBeGreaterThan(clip.height / 2)
     })
 
+    // An automatic value axis whose data ends at 0 still starts at 0, unless markers sit there:
+    // then it reaches just past 0 so a sample on 0 draws whole, not cut by the frame
+    test(`a sample on 0 draws inside the frame`, async () => {
+      const series = [{ y: [0, ...dist(60, 10, 1)].map(Math.abs), label: `Zero` }]
+      const strip = await mount_sized_box_plot({ series, points: `strip` })
+      const clip = svg_rect(query(strip, `clipPath rect`))
+      const lowest = Math.max(...sample_points(strip).map((pt) => pt.y))
+      expect(lowest).toBeLessThan(clip.y + clip.height - 1)
+    })
+
     // Strips jitter over half the box (0.8 slot), styled by sample_style
     test(`per-series override and strip jitter within half the box`, async () => {
       const plot = await mount_sized_box_plot(
