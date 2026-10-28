@@ -100,7 +100,22 @@
     return { badge, description: type_descriptions[type] ?? null, temperature }
   })
 
-  // Calculate distance to nearest phase boundary (liquidus/solidus)
+  // Temperatures where a boundary crosses `composition`: interpolated on each segment that
+  // spans it (vertices are often far apart), or a lone point within 2% composition
+  const boundary_temps_at = (
+    points: PhaseBoundary[`points`],
+    composition: number,
+  ): number[] =>
+    points.length === 1
+      ? points.flatMap(([x_val, temp]) => (Math.abs(x_val - composition) < 0.02 ? [temp] : []))
+      : points.slice(1).flatMap(([x_end, t_end], idx) => {
+          const [x_start, t_start] = points[idx]
+          if (x_start === x_end) return []
+          const frac = (composition - x_start) / (x_end - x_start)
+          return frac >= 0 && frac <= 1 ? [t_start + frac * (t_end - t_start)] : []
+        })
+
+  // Distance in temperature to the nearest liquidus/solidus/solvus at the cursor's composition
   const boundary_distance = $derived.by(() => {
     if (boundaries.length === 0) return null
     const { composition, temperature } = hover_info
@@ -108,9 +123,7 @@
 
     for (const boundary of boundaries) {
       if (![`liquidus`, `solidus`, `solvus`].includes(boundary.type)) continue
-      // Nearest-in-temperature boundary point within 2% composition of the cursor
-      for (const [basis_x, boundary_temp] of boundary.points) {
-        if (Math.abs(basis_x - composition) >= 0.02) continue
+      for (const boundary_temp of boundary_temps_at(boundary.points, composition)) {
         const delta = temperature - boundary_temp
         if (!min_dist || Math.abs(delta) < Math.abs(min_dist.delta_t)) {
           min_dist = { type: boundary.type, delta_t: delta }

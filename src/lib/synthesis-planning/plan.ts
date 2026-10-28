@@ -370,7 +370,11 @@ export function plan_synthesis(
       `Target ${target.id} is a higher-energy polymorph of ${target.formula}; planning for this polymorph, but the ground state (${ground_state.id}) is thermodynamically preferred`,
     )
   }
-  assign_e_above_hull(phase_set.phases)
+  // A displaced ground state still forms from every mixture that makes its polymorph, with a
+  // larger driving force: it stays in the hull and among the competitors
+  const working_phases =
+    ground_state.id === target.id ? phase_set.phases : [...phase_set.phases, ground_state]
+  assign_e_above_hull(working_phases)
 
   const gases = phase_set.phases.filter((phase) => phase.is_gas)
   const gas_species = gases.map((gas) => gas.id.replace(`gas:`, ``) as GasSpecies)
@@ -389,7 +393,7 @@ export function plan_synthesis(
     open_elements: phase_set.elements.map((_, el_idx) =>
       gases.some((gas) => gas.fractions[el_idx] > 0),
     ),
-    competitor_phases: phase_set.phases.filter(
+    competitor_phases: working_phases.filter(
       (phase) =>
         phase.e_above_hull <= COMPETITOR_E_ABOVE_HULL + ENERGY_TOL || phase.id === target.id,
     ),

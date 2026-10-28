@@ -216,10 +216,10 @@ export function compute_label_properties(
     }
   }
 
-  // Scale down as last resort (min 70%)
-  const scale = Math.max(0.7, Math.min(avail_w / label_width, avail_h / line_height, 1))
-  const rotation = is_tall ? -90 : 0
-  return { rotation, lines: [label], scale }
+  // Scale down as last resort (min 70%). A rotated label runs along the region's height.
+  const [along, across] = is_tall ? [avail_h, avail_w] : [avail_w, avail_h]
+  const scale = Math.max(0.7, Math.min(along / label_width, across / line_height, 1))
+  return { rotation: is_tall ? -90 : 0, lines: [label], scale }
 }
 
 // Wrap text into multiple lines at delimiter boundaries

@@ -1,5 +1,6 @@
 import { HIGHLIGHT } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import { format_amount } from '#lib/composition/format.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
   drop_cached_hull_data,
@@ -536,7 +537,7 @@ export function get_entry_label(
   return (Object.entries(entry.composition).filter(([, amt]) => (amt ?? 0) > 0) as Pairs)
     .toSorted(([el1], [el2]) => elements.indexOf(el1) - elements.indexOf(el2))
     .map(([element, amt]) =>
-      Math.abs(amt - 1) < 1e-6 ? element : `${element}${format_num(amt, `.2~`)}`,
+      Math.abs(amt - 1) < 1e-6 ? element : `${element}${format_amount(amt)}`,
     )
     .join(``)
 }

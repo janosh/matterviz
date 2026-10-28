@@ -164,6 +164,51 @@ describe(`canvas-draw: markers and hit testing`, () => {
     expect([min, max, center, z_scale]).toEqual([-1.5, 0.5, -0.5, 0.375])
   })
 
+  // Where labels compete for room, hull phases claim it before phases above the hull, however
+  // deep the latter's E_form: ranking by E_form alone gave the space to an unstable LiO
+  test(`draw_hull_labels places stable phases' labels before unstable ones`, () => {
+    const painted: string[] = []
+    const ctx = {
+      font: ``,
+      measureText: (text: string) => ({ width: 6 * text.length }),
+      fillText: (text: string) => painted.push(text),
+      save: () => {},
+      restore: () => {},
+    } as unknown as CanvasRenderingContext2D
+    // Only the slot below the shared point fits the canvas, so one label can be placed
+    const at = { x: 12, y: 0, z: 0 }
+    const entries = [
+      {
+        ...at,
+        reduced_formula: `LiO`,
+        composition: { Li: 1, O: 1 },
+        e_form_per_atom: -0.5,
+        e_above_hull: 0.1,
+        is_stable: false,
+      },
+      {
+        ...at,
+        reduced_formula: `FeO`,
+        composition: { Fe: 1, O: 1 },
+        e_form_per_atom: -0.1,
+        e_above_hull: 0,
+        is_stable: true,
+      },
+    ] as ConvexHullEntry[]
+    draw.draw_hull_labels(ctx, entries, {
+      project: (x, y) => ({ x, y, depth: 0 }),
+      elements: [`Li`, `Fe`, `O`],
+      scale: 1,
+      text_color: `black`,
+      width: 24,
+      height: 100,
+      show_stable_labels: true,
+      show_unstable_labels: true,
+      max_hull_dist_show_labels: 1,
+    })
+    expect(painted).toEqual([`FeO`])
+  })
+
   test(`marker_path_data returns d3 symbols for known markers, null otherwise`, () => {
     expect(draw.marker_path_data(5, `circle`)).toMatch(/^M/)
     expect(draw.marker_path_data(5, `triangle`)).not.toBe(draw.marker_path_data(5, `circle`))
@@ -647,6 +692,9 @@ describe(`helpers: temperature interpolation`, () => {
       [`single element`, { composition: { Fe: 1 } }, `Fe`],
       [`unreduced cell`, { composition: { La: 12, Ni: 6, O: 25 } }, `La12Ni6O25`],
       [`multi-atom unary`, { composition: { La: 4 } }, `La4`],
+      // counts keep their digits: 2 significant figures printed Ni1.3e2O2.6e2 and Li2.3
+      [`large cell`, { composition: { Ni: 128, O: 256 } }, `Ni128O256`],
+      [`fractional count`, { composition: { Li: 2.25, O: 1 } }, `Li2.25O`],
       // the given element order, not the composition key order
       [`elements order`, { composition: { O: 3, Fe: 1, Li: 2 } }, `Li2FeO3`],
     ] as [string, { composition: Record<string, number> }, string][])(

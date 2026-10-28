@@ -335,6 +335,18 @@ describe(`compute_label_properties`, () => {
     })
   })
 
+  // A shrunk label rotated in a tall region runs along its height, so the height sets the
+  // scale (it used the width, as for a flat label, and bottomed out at 0.7)
+  test.each([
+    { width: 60, height: 100, rotation: -90, scale: 80 / 86.4, desc: `tall, narrow` },
+    { width: 95, height: 100, rotation: -90, scale: 80 / 86.4, desc: `tall, nearly square` },
+    { width: 100, height: 40, rotation: 0, scale: 80 / 86.4, desc: `wide` },
+  ])(`scale fallback: $desc`, ({ width, height, rotation, scale }) => {
+    const result = compute_label_properties(`ABCDEFGHIJKL`, { width, height }, 12)
+    expect(result.rotation).toBe(rotation)
+    expect(result.scale).toBeCloseTo(scale, 12)
+  })
+
   test(`wrapped labels join words with spaces, not underscores`, () => {
     // Bounds force chars_per_line=3 so "α" and "+" join on one line
     const result = compute_label_properties(`α + β`, { width: 30, height: 40 }, 12)

@@ -95,6 +95,30 @@ test.each([`Vesta`, `Jmol`, `Dark Mode`] as const)(
   },
 )
 
+// Element symbols are buttons (focusable, tooltip on focus) only when a click does something;
+// a plain formula used to put every symbol in the tab order as a button that did nothing
+test.each([
+  { desc: `without on_click`, on_click: undefined, role: null, tabindex: null },
+  { desc: `with on_click`, on_click: vi.fn(), role: `button`, tabindex: `0` },
+])(
+  `Formula symbols $desc: role=$role tabindex=$tabindex`,
+  async ({ on_click, role, tabindex }) => {
+    mount_formula({ formula: `Fe2O3`, on_click })
+    const group = doc_query(`.element-group`)
+    expect([group.getAttribute(`role`), group.getAttribute(`tabindex`)]).toEqual([
+      role,
+      tabindex,
+    ])
+    if (!on_click) return
+    group.dispatchEvent(new FocusEvent(`focus`))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(document.querySelector(`.plot-tooltip`)?.textContent).toContain(`Iron`)
+    group.dispatchEvent(new FocusEvent(`blur`))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(document.querySelector(`.plot-tooltip`)).toBeNull()
+  },
+)
+
 test.each([`Vesta`, `Jmol`] as const)(
   `Formula tooltip ElementTile uses same color scheme as symbol text (%s)`,
   async (color_scheme) => {

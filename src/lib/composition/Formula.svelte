@@ -108,7 +108,7 @@
 
   function show_tooltip(
     element: ElementSymbol,
-    event: MouseEvent & { currentTarget: HTMLElement },
+    event: (MouseEvent | FocusEvent) & { currentTarget: HTMLElement },
   ) {
     const { left, top, width, height } = event.currentTarget.getBoundingClientRect()
     hovered = { element, rect: { x: left, y: top, width, height } }
@@ -125,12 +125,14 @@
     {@const color = element_color(element)}
     {@const brightness = perceived_brightness(color)}
     {@const oxi = format_oxi_state(oxidation_state)}
+    <!-- a button only when clicking does something; keyboard focus shows the tooltip too -->
     <span
       class="element-group"
-      role="button"
-      tabindex="0"
+      {...on_click ? { role: `button`, tabindex: 0 } : {}}
       onmouseenter={(event) => show_tooltip(element, event)}
       onmouseleave={() => (hovered = null)}
+      onfocus={(event) => show_tooltip(element, event)}
+      onblur={() => (hovered = null)}
       onclick={(event) => on_click?.(element, event)}
       onkeydown={(event) => {
         if (event.key === `Enter` || event.key === ` `) {

@@ -1,3 +1,4 @@
+import { point_in_polygon, type Vec2 } from '#lib/math.js'
 import { format_hover_info_text, get_phase_color } from '#lib/phase-diagram/utils.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { DiagramInput } from '#lib/phase-diagram/diagram-input.js'
@@ -151,6 +152,29 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.special-points`)?.textContent).toContain(`E`)
     expect(wrapper.querySelector(`.x-axis`)?.textContent).toContain(`Cu (at%)`)
     expect(wrapper.querySelector(`.y-axis`)?.textContent).toContain(`Temperature (K)`)
+  })
+
+  // The area centroid of an L-shaped field lies outside it (here at x ≈ 0.31, T ≈ 373, right
+  // of the x = 0.3 arm): the label must sit inside its own region, not on the neighbor
+  test(`a concave region's label lands inside the region`, async () => {
+    const l_shape = pts(0, 0, 1, 0, 1, 200, 0.3, 200, 0.3, 1000, 0, 1000)
+    const regions = [
+      { id: `alpha`, name: `α`, vertices: l_shape },
+      { id: `liq`, name: `Liquid`, vertices: pts(0.3, 200, 1, 200, 1, 1000, 0.3, 1000) },
+    ]
+    const wrapper = await mount_diagram({ data: { ...eutectic, regions } })
+    const label = [...wrapper.querySelectorAll(`.region-labels > g`)].find(
+      (group) => group.textContent === `α`,
+    )
+    const [, label_x, label_y] =
+      /translate\((?<x>[-\d.e]+), (?<y>[-\d.e]+)\)/.exec(
+        label?.getAttribute(`transform`) ?? ``,
+      ) ?? []
+    const to_svg = ([comp, temp]: Vec2): Vec2 => {
+      const { clientX, clientY } = to_client(comp, temp)
+      return [clientX, clientY]
+    }
+    expect(point_in_polygon(Number(label_x), Number(label_y), l_shape.map(to_svg))).toBe(true)
   })
 
   // a snippet replaces the default tooltip content, false hides the tooltip

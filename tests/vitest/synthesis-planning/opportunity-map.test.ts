@@ -99,6 +99,13 @@ test.each([0.01, 0.1, 1])(
     })
     expect(cell.e_above_hull).toBeGreaterThanOrEqual(offset - 1e-12)
     expect(cell.e_above_hull).toBe(expected.target_stability.e_above_hull)
+    // The ground state outcompetes its polymorph on every route, as in the planner
+    for (const { id: identifier, selectivity_margin } of cell.routes) {
+      expect(selectivity_margin).toBeGreaterThan(0)
+      const route = expected.routes.find((planned) => planned.id === identifier)
+      if (route)
+        expect(selectivity_margin).toBeCloseTo(route.selectivity.selectivity_margin, 12)
+    }
   },
 )
 
