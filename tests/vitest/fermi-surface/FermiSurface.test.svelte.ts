@@ -153,6 +153,44 @@ test(`built-in drops load typed Fermi surface data and provenance`, async () => 
   )
 })
 
+// The controls unmount while a file loads and remount with the previous file's selection,
+// which read as the host's choice: dropping bands [4, 5] after [0, 1] showed no sheet at all
+test(`a dropped file shows its own bands, not the previous file's selection`, async () => {
+  const surface_json = (band_indices: number[]) =>
+    JSON.stringify({
+      isosurfaces: band_indices.map((band_index) => ({
+        vertices: [
+          [0, 0, 0],
+          [0.1, 0, 0],
+          [0, 0.1, 0],
+        ],
+        faces: [[0, 1, 2]],
+        band_index,
+        spin: null,
+      })),
+      k_lattice: IDENTITY_MATRIX3,
+      fermi_energy: 0,
+      reciprocal_cell: `wigner_seitz`,
+      metadata: { n_bands: band_indices.length, n_surfaces: band_indices.length },
+    })
+  const props = $state<{ selected_bands?: number[]; isolated_band: number | null }>({
+    selected_bands: undefined,
+    isolated_band: null,
+  })
+  mounted.push(mount(FermiSurface, { target: document.body, props }))
+  await tick()
+  const drop = (bands: number[], name: string) => {
+    const file = new File([surface_json(bands)], name)
+    document.querySelector(`.fermi-surface`)?.dispatchEvent(create_drop_event(file))
+  }
+  drop([0, 1], `a.json`)
+  await vi.waitFor(() => expect(props.selected_bands).toEqual([0, 1]))
+  props.isolated_band = 1
+  drop([4, 5], `b.json`)
+  await vi.waitFor(() => expect(props.selected_bands).toEqual([4, 5]))
+  expect(props.isolated_band).toBeNull()
+})
+
 // Extracting a surface from a URL-loaded grid stores a new fermi_data. A bound parent hands
 // back a proxy of it, so claiming the raw result left the loader reading the proxy as
 // caller-supplied: it dropped the URL and never fetched the next one.

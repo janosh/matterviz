@@ -235,9 +235,32 @@ export function enumerate_reciprocal_points(
     (row) => Math.ceil(max_radius * Math.hypot(...row)) + 1,
   )
   // Cap the point count, not max(h,k,l): rocksalt TiC at 200 kV over [0, 90]° has h_max 246
-  // but 6.1e7 points (~8.5 GB)
+  // but 6.1e7 points (~8.5 GB). A Laue bound keeps only the 2·⌊max_laue⌋ + 1 reciprocal
+  // planes n = h·u + k·v + l·w, each 1/|uvw| apart (V/|uvw| points per unit area), so a
+  // 40 Å cell's SAED stores ~1% of its 2e6-point sphere
+  const cell_volume = Math.abs(math.det_3x3(direct_rows))
+  const sphere_points = (4 / 3) * Math.PI * max_radius ** 3 * cell_volume
+  // |u·a + v·b + w·c|
+  const zone_length = laue_bound
+    ? Math.hypot(
+        ...[0, 1, 2].map((axis) =>
+          direct_rows.reduce(
+            (sum, row, idx) => sum + laue_bound.zone_axis[idx] * row[axis],
+            0,
+          ),
+        ),
+      )
+    : 0
   const estimated_points =
-    (4 / 3) * Math.PI * max_radius ** 3 * Math.abs(math.det_3x3(direct_rows))
+    laue_bound && zone_length > 0
+      ? Math.min(
+          sphere_points,
+          (2 * Math.floor(laue_bound.max_laue) + 1) *
+            Math.PI *
+            max_radius ** 2 *
+            (cell_volume / zone_length),
+        )
+      : sphere_points
   const MAX_POINTS = 2e6
   // The loops sweep the enclosing box (|a||b||c| / V times the sphere), so oblique cells need
   // their own cap

@@ -248,6 +248,14 @@ describe(`compute_saed_pattern validation`, () => {
     expect(() => compute_saed_pattern(make_simple_cubic(4), options)).toThrow(expected)
   })
 
+  // The point cap counts the Laue-bounded slab the pattern keeps, not the whole max_g sphere
+  // (2.1e6 points at a = 40 Å, past the 2e6 cap, of which ~1% can light up)
+  test(`a large cell stays under the point cap`, () => {
+    const pattern = compute_saed_pattern(make_simple_cubic(40))
+    expect(pattern.spots.length).toBeGreaterThan(1000)
+    expect(pattern.spots.every(({ hkl: [, , l_idx] }) => Math.abs(l_idx) <= 2)).toBe(true)
+  })
+
   test(`intensities follow |f_e|²·sinc²(t·s_g), scaled to 100 and sorted strongest-first`, () => {
     const thickness = 50
     // Al, so |F|² below is a single form factor with no interference term

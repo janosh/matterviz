@@ -119,7 +119,7 @@ export type SaedSpot = {
   laue_zone: number
   // d = 1/|g| in Angstrom
   d_spacing: number
-  // Excitation error s_g in 1/Angstrom (negative when the point lies inside the Ewald sphere)
+  // Excitation error s_g in 1/Angstrom (positive when the point lies inside the Ewald sphere)
   excitation_error: number
 }
 

@@ -167,9 +167,11 @@
     new Set([...highlighted_mode_indices, ...hovered_mode_indices]),
   )
 
-  // Slider bounds scale with the plotted range so they stay sensible in every unit.
+  // Slider bounds scale with the highest peak frequency (the axis starts at 0) so they stay
+  // sensible in every unit. Not the plotted range: its padding grows with the FWHM, so each
+  // drag to the max raised the max (a single peak's by 1.6x) and the width ran away.
   let fwhm_input = $derived.by(() => {
-    const span = plot_range[1] - plot_range[0]
+    const span = array_max(sticks.x)
     const [min, max] = span > 0 ? [span / 2000, span / 10] : [0.01, 1]
     return { min, max, step: (max - min) / 200 || 0.01 }
   })

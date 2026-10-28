@@ -844,6 +844,24 @@ describe(`IrRamanSpectrum component`, () => {
     },
   )
 
+  // The bounds came from the plotted range, whose padding is 8 FWHM around a single peak: each
+  // drag to the max raised the max by 1.6x, so the width ran away without limit
+  it.each([`multiple peaks`, `single peak`])(
+    `the FWHM slider bounds stay put as the width changes (%s)`,
+    async (variant) => {
+      const modes = variant === `single peak` ? [co2_spectrum.modes[8]] : co2_spectrum.modes
+      render({ spectrum: { ...co2_spectrum, modes }, fwhm: 10, controls_open: true })
+      await tick()
+      const slider = doc_query<HTMLInputElement>(`#ir-raman-fwhm`)
+      const bounds = [slider.min, slider.max]
+      for (let drag = 0; drag < 3; drag++) {
+        set_input(slider, slider.max)
+        await tick()
+        expect([slider.min, slider.max]).toEqual(bounds)
+      }
+    },
+  )
+
   it(`selects a mode from a stick by pointer or keyboard`, async () => {
     const on_mode_select = vi.fn()
     render({ fwhm: 25, on_mode_select })

@@ -189,6 +189,10 @@
       ? helpers.resolve_spin_mode(band_spin_mode, has_spin_down)
       : null,
   )
+  // A structure without a spin-down channel holds the same bands for both spins, so a channel
+  // selection never hides it (down_only dropped it, legend entry and band gap included)
+  const structure_spin_mode = (band_structure: BaseBandStructure): BandsSpinMode =>
+    band_structure.spin_down_bands?.length ? effective_spin_mode : null
 
   // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
   // below uses the canonical unit so no $derived throws on an alias
@@ -269,6 +273,7 @@
         (band_structure.band_widths ?? []).flat().filter(Number.isFinite),
       )
       const px_per_width = width_max > 0 ? (max_width * scale) / width_max : 0
+      const spin_mode = structure_spin_mode(band_structure)
 
       for (const [branch_idx, branch] of band_structure.branches.entries()) {
         const segment_key = keys[branch_idx]
@@ -303,11 +308,11 @@
 
           // Spin channels to draw: [values, spin, label, line style]
           const channels: [number[], `up` | `down`, string, DataSeries[`line_style`]][] = []
-          if (effective_spin_mode !== `down_only`) {
+          if (spin_mode !== `down_only`) {
             const label_up = y_down ? `${structure_label} (↑)` : structure_label
             channels.push([y_up, `up`, label_up, style_of(`up`)])
           }
-          if (y_down && effective_spin_mode !== `up_only`) {
+          if (y_down && spin_mode !== `up_only`) {
             const { stroke, stroke_width } = style_of(`down`)
             const style_down = {
               stroke,
@@ -346,7 +351,8 @@
           const half_widths = (band_structure.band_widths?.[band_idx] ?? [])
             .slice(start_idx, end_idx)
             .map((width) => (Number.isFinite(width) && width > 0 ? width * px_per_width : 0))
-          if (half_widths.some((half_width) => half_width > 0)) {
+          // ribbons widen the spin-up line, so they go when it does
+          if (spin_mode !== `down_only` && half_widths.some((half_width) => half_width > 0)) {
             all_ribbons.push({
               x_values: x_vals,
               y_values: y_up,
@@ -607,9 +613,10 @@
     if (!show_gap_annotation || band_type !== `electronic` || !band_structure)
       return { gap: null }
     const { bands, spin_down_bands, occupations, spin_down_occupations } = band_structure
+    const spin_mode = structure_spin_mode(band_structure)
     const shown = (up: number[][], down: number[][] | undefined): number[][] => [
-      ...(effective_spin_mode !== `down_only` ? up : []),
-      ...(effective_spin_mode !== `up_only` ? (down ?? []) : []),
+      ...(spin_mode !== `down_only` ? up : []),
+      ...(spin_mode !== `up_only` ? (down ?? []) : []),
     ]
     const filling = occupations
       ? shown(occupations, spin_down_occupations)
