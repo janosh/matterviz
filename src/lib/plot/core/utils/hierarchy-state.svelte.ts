@@ -306,15 +306,17 @@ export class HierarchyChartState<
     this.set_hover(idx, event)
   }
 
-  // Re-root the view on the given node (or the data root when null) and notify
+  // Re-root the view on the given node (or the data root when null) and notify if it moved
+  // (opening an 'Other' bucket under the view root re-roots on that same root)
   zoom_to = (arc: PositionedArc<Metadata> | null): void => {
     const root = arc && arc.depth > 0 ? arc : null
     // Returning to the data root drops every manual expansion with it
     if (!root) this.expanded_parents.clear()
+    const moved = (root?.id ?? null) !== this.#opts.zoom_root_id()
     this.#opts.set_zoom_root_id(root?.id ?? null)
     // The clicked node collapses/expands: drop the stale hover/tooltip
     this.set_hover(null)
-    this.#opts.on_zoom({ root: root && this.#node_props(root) })
+    if (moved) this.#opts.on_zoom({ root: root && this.#node_props(root) })
   }
 
   zoom_out = (event?: Event): void => {

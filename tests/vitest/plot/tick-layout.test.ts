@@ -317,6 +317,25 @@ describe(`strategy candidates through resolve_tick_layout`, () => {
     expect(layout.labels.map(({ full_text }) => full_text)).toEqual(labels)
   })
 
+  // Rounded strides keep labels 2 and 3 ticks apart when thinning 41 to the estimated 17, and
+  // 2 ticks (15px here) is less than a 16px line: the thinned y labels overlapped
+  it.each([
+    [41, 300],
+    [51, 400],
+  ])(`thins %d crowded y labels over %dpx until none overlap`, (n_ticks, size) => {
+    const step = size / (n_ticks - 1)
+    const texts = Array.from({ length: n_ticks }, (_, idx) => String(idx))
+    const layout = resolve_tick_layout(
+      { tick_values: texts, tick_positions: texts.map((_, idx) => size - idx * step) },
+      size,
+      `y`,
+    )
+    const visible = layout.visible_tick_indices
+    expect([layout.strategy, visible[0], visible.at(-1)]).toEqual([`thin`, 0, n_ticks - 1])
+    const gaps = visible.slice(1).map((tick_idx, pos) => (tick_idx - visible[pos]) * step)
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(16 + TICK_LABEL_GAP)
+  })
+
   it(`ellipsizes to the longest fitting grapheme prefix and records the loss`, () => {
     // Slot width = 30px - 1px gap at 7.2px per code point: "abc…" (28.8px) fits, the ZWJ emoji
     // is one grapheme but three code points so only "AB…" fits, and "xyz" (21.6px) is untouched.

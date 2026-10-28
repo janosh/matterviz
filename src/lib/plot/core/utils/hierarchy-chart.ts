@@ -151,7 +151,7 @@ export function compute_node_infos<Metadata>(
     return {
       variants,
       // screen readers have no tooltip to say what a bucket folded away
-      aria: `${node_display_name(arc)}: ${arc.value}${
+      aria: `${node_display_name(arc)}: ${format_value(arc.value, value_format)}${
         arc.other_count ? ` (${arc.other_count} grouped)` : ``
       }`,
       fill,

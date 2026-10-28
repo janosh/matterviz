@@ -22,6 +22,10 @@ export const LABEL_PLACEMENT_DEFAULTS = {
   leader_line_threshold: 15,
 } satisfies Partial<LabelPlacementConfig>
 
+// Font size ScatterPoint draws a label without its own `font_size` at, so placement sizes
+// such labels as drawn (the text-metrics default is 12px)
+export const POINT_LABEL_FONT_SIZE = `10px`
+
 // Anneal budget and start temperature for a re-solve that inherits the previous layout. Far
 // below the cold defaults (1000, 1): the layout is good, so the pass only nudges what moved.
 const WARM_SA_ITERATIONS = 12
@@ -592,7 +596,10 @@ export function compute_label_positions(
       const anchor_y = y_scale(point.y) + (point.point_offset?.y ?? 0)
       const label_size =
         point.point_label.size ??
-        estimate_label_size(point.point_label.text, point.point_label.font_size)
+        estimate_label_size(
+          point.point_label.text,
+          point.point_label.font_size ?? POINT_LABEL_FONT_SIZE,
+        )
       const label_width = Math.max(0, label_size.width)
       const label_height = Math.max(0, label_size.height)
       const radius = Math.max(0, point.point_style?.radius ?? 3)
@@ -634,23 +641,19 @@ export function compute_label_positions(
     return {}
   }
 
-  // Fallback: too many labels, just offset to the right with bounds clamping
+  // Fallback: too many labels, so each takes its right-hand candidate clamped into the plot,
+  // reported by its centre like the solved positions (renderers centre labels on them)
   if (config.max_labels && num_labels > config.max_labels) {
     warm_start?.clear() // positions below are a pure function of the anchors, nothing to carry
     return Object.fromEntries(
-      label_infos.map((info) => [
-        info.id,
-        {
-          x: Math.min(
-            Math.max(info.anchor.x + 5, plot_bounds.min_x),
-            plot_bounds.max_x - info.width,
-          ),
-          y: Math.min(
-            Math.max(info.anchor.y, plot_bounds.min_y),
-            plot_bounds.max_y - info.height,
-          ),
-        },
-      ]),
+      label_infos.map(({ id, candidates: [right], width: label_w, height: label_h }) => {
+        const left = Math.min(
+          Math.max(right.x, plot_bounds.min_x),
+          plot_bounds.max_x - label_w,
+        )
+        const top = Math.min(Math.max(right.y, plot_bounds.min_y), plot_bounds.max_y - label_h)
+        return [id, { x: left + label_w / 2, y: top + label_h / 2 }]
+      }),
     )
   }
 

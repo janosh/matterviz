@@ -380,6 +380,28 @@ describe(`bucket_sankey_data`, () => {
     expect(nodes.map((node) => node.id)).toEqual([`src`, `big`, `src/Other`])
   })
 
+  // Real nodes are colored by their pre-fold index, so a bucket colored by its folded index
+  // could repeat one: with a, c folded, plot_color(3) went to both b and src/Other
+  test(`an Other bucket takes its source's color, not a surviving node's`, async () => {
+    const graph = hub([
+      [`src`, `a`, 1],
+      [`src`, `c`, 1],
+      [`src`, `big`, 50],
+      [`src`, `b`, 50],
+    ])
+    const colored = graph.nodes.map((node, idx) => ({ ...node, color: plot_color(idx) }))
+    const bucket = bucket_sankey_data(
+      { ...graph, nodes: colored },
+      { min_fraction: 0.1 },
+    ).nodes.find((node) => node.id === `src/Other`)
+    expect(bucket?.color).toBe(plot_color(0))
+    const plot = await mount_sized_sankey({ data: graph, min_fraction: 0.1 })
+    const fills = [...plot.querySelectorAll(`.nodes rect`)].map((rect) =>
+      rect.getAttribute(`fill`),
+    )
+    expect(new Set(fills).size).toBe(fills.length - 1) // only src and its bucket share
+  })
+
   // `max_links` bounds the links kept under their own name, not the total drawn: the bucket
   // is additional (same contract as `max_children` on the hierarchy charts)
   // oxfmt-ignore

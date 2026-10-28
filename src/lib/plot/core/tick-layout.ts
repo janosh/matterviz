@@ -1112,10 +1112,22 @@ const compute_tick_layout = (
         non_colliding_count > 0 ? non_colliding_count : density_count,
       ),
     )
-    const selected = (
+    const thin_indices =
       auto_layout.endpoint_policy === `adaptive` ? adaptive_thin_indices : thin_tick_indices
-    )(renderable_indices.length, requested_count)
-    const selected_indices = new Set(selected.map((idx) => renderable_indices[idx]))
+    const select = (count: number): Set<number> =>
+      new Set(
+        thin_indices(renderable_indices.length, count).map((idx) => renderable_indices[idx]),
+      )
+    // The estimate assumes evenly spaced picks, but rounding the stride spaces them unevenly
+    // (41 ticks thinned to 17 sit 2 and 3 ticks apart), so the closest pair can still overlap.
+    // Thin further until the upright subset clears; ~5% steps bound the passes on huge axes.
+    let selected_indices = select(requested_count)
+    for (let count = requested_count; count > min_visible_ticks;) {
+      const thinned = thinned_candidate(upright, selected_indices, `thin`)
+      if (measure_candidate(thinned, config).collisions === 0) break
+      count = Math.max(min_visible_ticks, count - Math.max(1, Math.floor(count / 20)))
+      selected_indices = select(count)
+    }
     // Compose thinning only with fixed rotations, avoiding arbitrary strategy combinations.
     candidates.push(
       ...[upright, ...rotated].map((source) =>

@@ -871,7 +871,7 @@ describe(`Histogram`, () => {
 
     // empty, log-empty and out-of-domain series
     expect(count_range([], `linear`)).toEqual([0, 1])
-    expect(count_range([], `log`)).toEqual([1, 1])
+    expect(count_range([], `log`)).toEqual([1, 10])
     expect(count_range([series_of([500, 600])], `linear`)).toEqual([0, 1])
     const lin_range = count_range([series_of([1, 1, 1, 9])], `linear`)
     expect(lin_range[0]).toBe(0)

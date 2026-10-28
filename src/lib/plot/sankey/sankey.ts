@@ -105,6 +105,21 @@ function node_ref_resolver(
   }
 }
 
+// Every value must be a non-negative number before d3 sees it: one NaN makes the whole
+// layout NaN, a negative one gives an invalid stroke-width and silently shrinks its source.
+// Folding checks too: a negative tail link summed into an 'Other' bucket hid the bad value.
+function assert_link_values(links: readonly SankeyLink<unknown>[]): void {
+  for (const link of links) {
+    if (!Number.isFinite(link.value) || link.value < 0) {
+      throw new Error(
+        `Sankey link ${JSON.stringify(link.source)} -> ${JSON.stringify(
+          link.target,
+        )} needs a non-negative finite value, got ${JSON.stringify(link.value)}`,
+      )
+    }
+  }
+}
+
 // A node without an id is identified by its index, so no other node's id may equal it: links
 // naming that number (and the folded graph bucket_sankey_data emits) would be ambiguous
 function assert_unique_node_keys(nodes: readonly SankeyNode<unknown>[]): void {
@@ -234,6 +249,7 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
   // Identity is `id ?? index`, matching what compute_sankey_layout emits: labels need not be
   // unique, so keying on one would merge distinct nodes. References resolve as in the layout.
   const keys: (string | number)[] = data.nodes.map((node, idx) => node.id ?? idx)
+  assert_link_values(data.links)
   assert_unique_node_keys(data.nodes)
   // -1 for a reference that names no node; such a link is left for the layout to report
   const resolve = node_ref_resolver(data, false)
@@ -318,7 +334,9 @@ export function bucket_sankey_data<Metadata = Record<string, unknown>>(
     let bucket_id = base_id
     for (let suffix = 2; taken.has(bucket_id); suffix++) bucket_id = `${base_id}~${suffix}`
     taken.add(bucket_id)
-    nodes.push({ id: bucket_id, label: other_label })
+    // The bucket wears its source's color, like a hierarchy chart's 'Other' its parent's: a
+    // palette color by folded index could repeat one a surviving node keeps
+    nodes.push({ id: bucket_id, label: other_label, color: data.nodes[source].color })
     links.push({
       source: remapped.get(source) ?? keys[source],
       target: bucket_id,
@@ -347,17 +365,7 @@ export function compute_sankey_layout<Metadata = Record<string, unknown>>(
     iterations = DEFAULTS.sankey.iterations,
   } = opts
 
-  // Every value must be a non-negative number before d3 sees it: one NaN makes the whole
-  // layout NaN, a negative one gives an invalid stroke-width and silently shrinks its source.
-  for (const link of data.links) {
-    if (!Number.isFinite(link.value) || link.value < 0) {
-      throw new Error(
-        `Sankey link ${JSON.stringify(link.source)} -> ${JSON.stringify(
-          link.target,
-        )} needs a non-negative finite value, got ${JSON.stringify(link.value)}`,
-      )
-    }
-  }
+  assert_link_values(data.links)
   assert_unique_node_keys(data.nodes)
   // All-zero link values would make d3-sankey divide by zero (NaN ribbon paths)
   const has_flow = data.links.some((link) => link.value > 0)

@@ -317,8 +317,8 @@ export function compute_count_range(
     if (hist.max_value > max_value) max_value = hist.max_value
     if (hist.min_value < min_value) min_value = hist.min_value
   }
-  // no-data fallback: a positive floor on log (counts can't be <= 0), else 0
-  if (max_value === 0) return [type_name === `log` ? 1 : 0, 1]
+  // no-data fallback: one decade on log (counts can't be <= 0, and [1, 1] collapses the axis)
+  if (max_value === 0) return type_name === `log` ? [1, 10] : [0, 1]
 
   const min_count = type_name === `log` ? min_value : 0
   const [coord_y_0, coord_y_1] = nice_range_from_extent(

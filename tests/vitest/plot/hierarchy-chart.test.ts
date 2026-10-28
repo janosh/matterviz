@@ -174,6 +174,16 @@ describe(`hierarchy chart helpers`, () => {
       variants: [{ text: `a1`, width: 12 }],
     })
     expect(child_info.clickable).toBeUndefined()
+    // screen readers hear the value_format text, not the float noise of a summed parent
+    const summed_arcs = compute_sunburst_layout(
+      {
+        label: `root`,
+        children: [{ label: `p`, children: [{ value: 0.1 }, { value: 0.2 }] }],
+      },
+      {},
+    ).arcs
+    const summed = compute_node_infos(summed_arcs, node_info_opts)
+    expect(summed[1].aria).toBe(`p: 0.3`)
     // Hiding labels skips their variants, preserving paint and accessibility.
     const hidden = compute_node_infos(arcs, { ...node_info_opts, label_text: null })
     expect(infos.some((info) => info.variants.length > 0)).toBe(true)

@@ -9,6 +9,7 @@
     estimate_label_size,
     LABEL_PLACEMENT_DEFAULTS,
     label_leader_segment,
+    POINT_LABEL_FONT_SIZE,
   } from '#lib/plot/core/utils/label-placement.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { rgb } from 'd3-color'
@@ -192,7 +193,9 @@
             point: { x: 0, y: 0 },
             point_radius: radius ?? 3,
             label_center: { x: offset_x, y: offset_y },
-            label_size: label.size ?? estimate_label_size(label.text, label.font_size),
+            label_size:
+              label.size ??
+              estimate_label_size(label.text, label.font_size ?? POINT_LABEL_FONT_SIZE),
             min_length: 6,
           })
         : null}
@@ -214,7 +217,8 @@
       x={offset_x}
       y={offset_y}
       text-anchor={label.auto_placement ? `middle` : undefined}
-      style="font-size: {label.font_size ?? `10px`}; font-family: {label.font_family ??
+      style="font-size: {label.font_size ??
+        POINT_LABEL_FONT_SIZE}; font-family: {label.font_family ??
         `sans-serif`}; pointer-events: var(--scatter-point-label-pointer-events, none)"
       fill="var(--scatter-point-label-fill, currentColor)"
       dominant-baseline="middle"

@@ -101,7 +101,7 @@ test(`a wrapped legend is placed by its column, strip and box footprints`, () =>
   const right = place({
     legend: { footprint: box, column_footprint: { width: 80, height: 260 } },
   })
-  expect([right.pad.r, right.legend_pos.y]).toEqual([96, base_pad.t + (245 - 150) / 2])
+  expect([right.pad.r, right.legend_pos.y]).toEqual([108, base_pad.t + (245 - 150) / 2])
 })
 
 // Each cell at its natural size, whatever the legend's layout: an item by its children (not
@@ -200,7 +200,7 @@ describe(`place_outside_decorations`, () => {
 
   test.each([
     [`wide/short`, { width: 120, height: 60 }, { b: 118, r: 20 }, { x: 155, y: 232 }],
-    [`narrow/tall`, { width: 80, height: 200 }, { b: 50, r: 96 }, { x: 312 }],
+    [`narrow/tall`, { width: 80, height: 200 }, { b: 50, r: 108 }, { x: 312 }],
   ])(`crowded %s legend reserves its cheaper margin`, (_name, footprint, pad, legend_pos) => {
     const layout = place({ legend: { footprint } })
     expect(layout).toMatchObject({ legend_outside: true, pad, legend_pos })
@@ -274,10 +274,24 @@ describe(`place_outside_decorations`, () => {
     const large_right_pad = { ...base_pad, r: 180 }
     const layout = place({
       base_pad: large_right_pad,
+      axis_pad: base_pad,
       legend: { footprint: { width: 80, height: 200 } },
     })
     expect(layout.legend_outside).toBe(true)
     expect(layout.pad).toMatchObject(large_right_pad)
+  })
+
+  // A y2 axis's tick labels and title fill the right axis band: a legend moved to the right
+  // margin sits past that band, as a vertical colorbar does, instead of on top of the labels
+  test(`a right legend clears the y2 axis band`, () => {
+    const y2_pad = { ...base_pad, r: 70 }
+    const layout = place({
+      base_pad: y2_pad,
+      legend: { footprint: { width: 80, height: 200 } },
+    })
+    expect(layout).toMatchObject({ legend_outside: true, legend_side: `right` })
+    const y2_band_end = width - layout.pad.r + y2_pad.r
+    expect(y2_band_end).toBeLessThanOrEqual(layout.legend_pos.x)
   })
 
   test(`a decoration larger than the plot moves outside even over sparse data`, () => {

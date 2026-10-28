@@ -446,6 +446,12 @@ describe(`BarPlot`, () => {
     expect(markers).toHaveLength(5)
     expect(markers.every((marker) => !marker.getAttribute(`d`)?.includes(`NaN`))).toBe(true)
     expect(markers.every((marker) => marker.closest(`[clip-path]`) === null)).toBe(true)
+    // the focusable marker groups name themselves to screen readers, like the bars do
+    const focusable = [...plot.querySelectorAll(`.line-points [tabindex]`)]
+    expect(focusable.map((point) => point.getAttribute(`aria-label`))).toEqual(
+      basic.y.map((value, idx) => `point ${idx + 1} of Test Series: ${value}`),
+    )
+    expect(focusable.every((point) => point.getAttribute(`role`) === `button`)).toBe(true)
     markers[0].dispatchEvent(mouse(`mouseover`))
     markers[0].dispatchEvent(mouse(`click`))
     expect(on_point_hover).toHaveBeenCalledOnce()
