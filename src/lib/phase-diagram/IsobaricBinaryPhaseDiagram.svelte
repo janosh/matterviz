@@ -11,7 +11,12 @@
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { sanitize_svg } from '#lib/sanitize.js'
-  import { array_extent, compute_bounding_box_2d, polygon_centroid } from '#lib/math.js'
+  import {
+    array_extent,
+    compute_bounding_box_2d,
+    polygon_centroid,
+    polygon_label_point,
+  } from '#lib/math.js'
   import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
   import { unique_id } from '#lib/plot/core/utils.js'
   import { to_error } from 'svelte-widgets/utils'
@@ -235,9 +240,12 @@
   const transformed_regions = $derived(
     effective_data.regions.map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
+      // Not the area centroid, which lies outside concave (L-shaped) fields; the room at the
+      // label point, not the bounding box, then sizes the label
+      const anchor = polygon_label_point(svg_vertices)
       const label_props = compute_label_properties(
         region.name,
-        compute_bounding_box_2d(svg_vertices),
+        anchor ?? compute_bounding_box_2d(svg_vertices),
         merged_config.font_size,
       )
       const [x_min, x_max] = array_extent(svg_vertices.map(([svg_x]) => svg_x))
@@ -246,7 +254,7 @@
         svg_path: generate_region_path(svg_vertices),
         label_pos: region.label_position
           ? [x_scale(region.label_position[0]), y_scale(region.label_position[1])]
-          : polygon_centroid(svg_vertices),
+          : (anchor?.at ?? polygon_centroid(svg_vertices)),
         label_rotation: label_props.rotation,
         label_lines: label_props.lines,
         label_scale: label_props.scale,

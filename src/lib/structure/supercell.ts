@@ -3,7 +3,11 @@ import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { Crystal, Site, StructureBond } from './index'
 import { wrap_frac_coord } from './pbc'
-import { normalize_structure_bond, shift_bonds_for_moved_sites } from './bonding'
+import {
+  get_explicit_bond_metadata,
+  normalize_structure_bond,
+  shift_bonds_for_moved_sites,
+} from './bonding'
 
 const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor
 
@@ -297,8 +301,10 @@ export function make_supercell(
       : {
           ...structure.properties,
           bonds: shift_bonds_for_moved_sites(
+            // the bonds the unit cell draws: an out-of-range index rejected there would be
+            // offset into range by the tiling and bond atoms of a neighbouring cell
             replicate_bonds_for_supercell(
-              structure.properties.bonds,
+              get_explicit_bond_metadata(structure),
               n_sites,
               supercell_scaling,
             ),

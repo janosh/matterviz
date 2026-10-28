@@ -80,6 +80,11 @@ const mol2_element = (
   return element_from_candidates(candidates, atom_idx)
 }
 
+// SYBYL types naming no atom: dummy atoms, lone pairs and query wildcards (any atom, halogen,
+// heteroatom, heavy atom). Read through the name fallback, `Du` became H (via deuterium `D`)
+// and `LP` failed the whole file.
+const MOL2_NON_ATOM_TYPES = new Set([`du`, `lp`, `any`, `hal`, `het`, `hev`])
+
 export const parse_mol2 = (content: string): AnyStructure => {
   // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
   const molecule_headers = [...content.matchAll(/^[ \t]*@<TRIPOS>MOLECULE/gim)]
@@ -111,6 +116,8 @@ export const parse_mol2 = (content: string): AnyStructure => {
 
   const sites: Site[] = []
   const site_idx_by_atom_id = new Map<number, number>()
+  const skipped_types = new Set<string>()
+  const skipped_atom_ids = new Set<number>()
   for (const [atom_idx, row] of atom_rows.entries()) {
     // atom_id atom_name x y z atom_type [subst_id subst_name charge]
     const tokens = row_tokens(row, 5, `MOL2 atom row (need 'id name x y z [type]')`)
@@ -118,30 +125,42 @@ export const parse_mol2 = (content: string): AnyStructure => {
       tokens.slice(2, 5).map(parse_coordinate),
       `MOL2 atom coordinates on row '${row}'`,
     )
-    const element = mol2_element(tokens[5] ?? ``, tokens[1], atom_idx)
+    const atom_type = tokens[5] ?? ``
+    if (MOL2_NON_ATOM_TYPES.has(atom_type.toLowerCase())) {
+      skipped_types.add(atom_type)
+      skipped_atom_ids.add(Number(tokens[0]))
+      continue
+    }
+    const element = mol2_element(atom_type, tokens[1], atom_idx)
     const abc = to_frac(xyz)
-    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
-    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), atom_idx)
+    // keyed to the site index, which runs behind atom_idx once a row is skipped
+    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), sites.length)
+    sites.push(make_site(element, abc, xyz, `${element}${sites.length + 1}`))
   }
+  if (skipped_types.size > 0)
+    parse_warn(`MOL2: skipped non-atom rows of SYBYL type ${[...skipped_types].join(`, `)}`)
 
   const raw_bonds: RawBond[] = []
   for (const row of sections.get(`BOND`) ?? []) {
     // bond_id origin_atom_id target_atom_id bond_type
     const tokens = row_tokens(row, 4, `MOL2 bond row (need 'id origin target type')`)
     const bond_type = tokens[3].toLowerCase()
-    // `nc` declares the pair explicitly not connected
-    if (bond_type === `nc`) continue
+    // `nc` declares the pair explicitly not connected, and a skipped row's bonds (a lone
+    // pair's to its atom) go with it rather than warning as bonds to unknown atoms, unless a
+    // real atom shares its id
+    const ids = [Number(tokens[1]), Number(tokens[2])]
+    if (
+      bond_type === `nc` ||
+      ids.some((id) => skipped_atom_ids.has(id) && !site_idx_by_atom_id.has(id))
+    )
+      continue
     const order = MOL2_BOND_ORDERS[bond_type]
     if (order === undefined) {
       parse_warn(
         `MOL2 bond type '${tokens[3]}' has no definite order, treating as single: '${row}'`,
       )
     }
-    raw_bonds.push({
-      atom_id_1: Number(tokens[1]),
-      atom_id_2: Number(tokens[2]),
-      order: order ?? 1,
-    })
+    raw_bonds.push({ atom_id_1: ids[0], atom_id_2: ids[1], order: order ?? 1 })
   }
   const bonds = resolve_bonds(raw_bonds, site_idx_by_atom_id, `MOL2 bond block`)
 

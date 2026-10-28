@@ -2,8 +2,8 @@ import { colors } from '#lib/state.svelte.js'
 import type { WyckoffPos } from '#lib/symmetry/index.js'
 import WyckoffTable from '#lib/symmetry/WyckoffTable.svelte'
 import type { MoyoWyckoffPosition } from '@spglib/moyo-wasm'
-import { type ComponentProps, mount } from 'svelte'
-import { describe, expect, onTestFinished, test } from 'vitest'
+import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { doc_query } from '../setup'
 
 describe(`WyckoffTable`, () => {
@@ -21,6 +21,21 @@ describe(`WyckoffTable`, () => {
     const row: WyckoffPos = { wyckoff: `1`, elem: `Ac`, abc: [0, 0, 0], site_indices: [0] }
     mount_table([row, { ...row }])
     expect(document.querySelectorAll(`tbody tr`)).toHaveLength(2)
+  })
+
+  // Unmounting under the pointer (the info pane closed with Esc, the table collapsed) fires no
+  // mouseleave, so the hovered row's highlight used to stay on in the 3D scene
+  test.each([
+    [`hovered`, true, [[[0]], [null]]],
+    [`not hovered`, false, []],
+  ])(`unmounting while %s clears the parent's hover`, (_name, hovered, expected_calls) => {
+    const on_hover = vi.fn()
+    const row: WyckoffPos = { wyckoff: `1a`, elem: `Ac`, abc: [0, 0, 0], site_indices: [0] }
+    const table = mount_table([row], { on_hover })
+    if (hovered) doc_query(`tbody tr`).dispatchEvent(new MouseEvent(`mouseenter`))
+    flushSync()
+    void unmount(table)
+    expect(on_hover.mock.calls).toEqual(expected_calls)
   })
 
   // Element badge text contrast: a translucent user override must composite against the

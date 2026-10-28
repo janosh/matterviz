@@ -39,6 +39,9 @@ export const hover_tooltip =
     const show = () => {
       if (close) return
       const host = document.createElement(`div`)
+      // Out of the mark's subtree, so carry over its scheme (an embed themed apart from the
+      // page) for the tooltip's light-dark() tokens
+      host.style.colorScheme = getComputedStyle(node).colorScheme
       document.body.append(host)
       const component = mount(PlotTooltip, { target: host, props })
       const off_key = on(document, `keydown`, (event) => {

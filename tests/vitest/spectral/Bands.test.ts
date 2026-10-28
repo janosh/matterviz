@@ -465,6 +465,31 @@ describe(`Bands component`, () => {
     expect(half_widths.map(String)).toEqual([`10,20`, `1,0`, `100,50`])
   })
 
+  // A channel selection applies per structure: down_only dropped an unpolarized material whole
+  // (legend entry included) and drew the polarized one's ribbons around its hidden up line
+  it.each([
+    [`down_only`, [`magnetic (↓)`, `nonmagnetic`], 0],
+    [`up_only`, [`magnetic (↑)`, `nonmagnetic`], 4],
+    [`overlay`, [`magnetic (↑)`, `magnetic (↓)`, `nonmagnetic`], 4],
+  ] as const)(
+    `band_spin_mode %s keeps unpolarized materials and ribbons only on drawn lines`,
+    async (band_spin_mode, legend, n_ribbons) => {
+      const band_widths = spin_polarized_electronic.bands.map(() => [1, 1, 1, 1])
+      await mount_plot({
+        band_structs: {
+          magnetic: { ...spin_polarized_electronic, band_widths },
+          nonmagnetic: { ...base_band_structure, type: `electronic` },
+        },
+        band_spin_mode,
+      })
+      const labels = [...document.querySelectorAll(`.legend-item`)].map((item) =>
+        item.textContent?.trim(),
+      )
+      expect(labels).toEqual(legend)
+      expect(document.querySelectorAll(`path.fat-band-ribbon`)).toHaveLength(n_ribbons)
+    },
+  )
+
   it(`emphasizes the selection, extends marker hit areas, draws highlight regions`, async () => {
     const on_point_click = vi.fn()
     await mount_bands({

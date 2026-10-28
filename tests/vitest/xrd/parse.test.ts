@@ -91,6 +91,13 @@ describe(`parse_xy_file`, () => {
         .join(`\n`),
       /reverses direction in 3 of 25 steps/,
     ],
+    // whitespace-separated columns with decimal commas: x = 10, 10, 10, … never reverses
+    [
+      `decimal commas`,
+      Array.from({ length: 40 }, (_, idx) => `10,${2 * idx}\t${100 + idx}`).join(`\n`),
+      /'10,0' in row '10,0\t100' uses a decimal comma/,
+    ],
+    [`a decimal-comma intensity`, `10.0 1,5\n20.0 2,5`, /'1,5' .* decimal comma/],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_xy_file(content)).toThrow(pattern),
   )
@@ -394,6 +401,10 @@ describe(`parse_xrdml_file`, () => {
     [`newer schemas' <counts>`, xrdml(`100 200 300`, undefined, `counts`), THREE_POINTS],
     [`listPositions`, xrdml(`100 200 300`, listed), THREE_POINTS],
     [`a single point at its start`, xrdml(`500`, start_end(45, 45)), { x: [45], y: [100] }],
+    // raw counts times the attenuator factor: 100, 200, 3000, so the attenuated peak dominates
+    [`<counts> through <beamAttenuationFactors>`, xrdml(`100 200 300`, undefined, `counts`).replace(`<counts`, `<beamAttenuationFactors>1 1 10</beamAttenuationFactors><counts`), { x: [10, 20, 30], y: [3.33, 6.67, 100] }],
+    // <intensities> are already corrected: the factors must not apply twice
+    [`<intensities> beside <beamAttenuationFactors>`, xrdml(`100 200 300`).replace(`<intensities`, `<beamAttenuationFactors>1 1 10</beamAttenuationFactors><intensities`), THREE_POINTS],
   ])(`reads %s`, (_name, content, expected) => {
     const pattern = parse_xrdml_file(content)
     expect({ ...rounded(pattern), kind: pattern.kind }).toEqual({ ...expected, kind: `profile` })
@@ -409,6 +420,14 @@ describe(`parse_xrdml_file`, () => {
     ],
     [`empty intensities`, xrdml(``), /empty <intensities>/],
     [`listPositions of another length`, xrdml(`1 2`, listed), /3 angles but 2/],
+    [
+      `attenuation factors of another length`,
+      xrdml(`1 2 3`, undefined, `counts`).replace(
+        `<counts`,
+        `<beamAttenuationFactors>1 1</beamAttenuationFactors><counts`,
+      ),
+      /2 <beamAttenuationFactors> for 3 <counts>/,
+    ],
   ])(`throws on %s`, (_name, content, pattern) =>
     expect(() => parse_xrdml_file(content)).toThrow(pattern),
   )

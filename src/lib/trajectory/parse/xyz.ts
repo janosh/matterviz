@@ -1,7 +1,13 @@
 import { display_idx } from '#lib/labels.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
-import { is_finite_vec3, type Matrix3x3 } from '#lib/math.js'
+import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
+import {
+  cell_to_lattice_matrix,
+  is_finite_vec3,
+  type Matrix3x3,
+  transpose_3x3_matrix,
+} from '#lib/math.js'
 import { parse_leading_num } from '#lib/utils.js'
 import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { Pbc } from '#lib/structure/pbc.js'
@@ -31,6 +37,71 @@ function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
   return [vals.slice(0, 3), vals.slice(3, 6), vals.slice(6, 9)] as Matrix3x3
+}
+
+// i-PI heads each frame `# CELL(abcABC): a b c alpha beta gamma Step: 4 Bead: 0
+// positions{atomic_unit} cell{atomic_unit}`, or `CELL(H):` / `CELL(GENH):` with the cell
+// matrix (lattice vectors as columns, written row-major; GENH is the general cell in the
+// positions' own frame, which i-PI rotates into its upper-triangular H). Lengths are in their
+// tagged unit, Bohr untagged as in i-PI's reader: read as Å, they came out 1.89x too large.
+const IPI_LENGTH_UNITS: Record<string, number> = {
+  atomic_unit: BOHR_TO_ANGSTROM,
+  angstrom: 1,
+  picometer: 0.01,
+  nanometer: 10,
+  meter: 1e10,
+}
+const ipi_length_scale = (unit = `atomic_unit`): number => {
+  const scale = IPI_LENGTH_UNITS[unit]
+  if (scale === undefined) {
+    const known = Object.keys(IPI_LENGTH_UNITS).join(`, `)
+    throw new Error(`i-PI length unit {${unit}} is not supported (${known})`)
+  }
+  return scale
+}
+function parse_ipi_header(comment: string): { lattice?: Matrix3x3; pos_scale: number } {
+  // `positions{angstrom}  cell{angstrom}`: the frame's quantity and the cell, each with a unit
+  const { cell: cell_unit, ...quantities } = Object.fromEntries(
+    Array.from(comment.matchAll(/(?<name>\w+)\{(?<unit>[^}]*)\}/g), ([, name, unit]) => [
+      name,
+      unit,
+    ]),
+  )
+  const [quantity, unit] = Object.entries(quantities)[0] ?? [undefined, undefined]
+  const cell = /\bCELL\((?<kind>\w*)\):(?<raw>[-+0-9.eE\s]*)/.exec(comment)?.groups
+  // positions (an i-PI header's untagged default) are lengths; forces or velocities are not
+  const is_length =
+    quantity === undefined
+      ? cell !== undefined
+      : [`positions`, `x_centroid`].includes(quantity)
+  const pos_scale = is_length ? ipi_length_scale(unit) : 1
+  if (!cell) return { pos_scale }
+  const { kind, raw } = cell
+  if (![`abcABC`, `H`, `GENH`].includes(kind)) {
+    throw new Error(`i-PI CELL(${kind}) is not supported (abcABC, H or GENH)`)
+  }
+  const vals = raw.trim().split(/\s+/).map(Number)
+  if (vals.length !== (kind === `abcABC` ? 6 : 9) || !vals.every(Number.isFinite)) {
+    throw new Error(`Invalid i-PI CELL(${kind}): "${raw.trim()}"`)
+  }
+  const cell_scale = ipi_length_scale(cell_unit)
+  const [len_a, len_b, len_c, alpha, beta, gamma] = vals
+  const lattice =
+    kind === `abcABC`
+      ? cell_to_lattice_matrix(
+          len_a * cell_scale,
+          len_b * cell_scale,
+          len_c * cell_scale,
+          alpha,
+          beta,
+          gamma,
+        )
+      : transpose_3x3_matrix(
+          [0, 3, 6].map((start) =>
+            vals.slice(start, start + 3).map((val) => val * cell_scale),
+          ) as Matrix3x3,
+        )
+  return { lattice, pos_scale }
 }
 
 const EXTXYZ_BOOL = new Map([
@@ -131,8 +202,9 @@ function parse_extxyz_pbc(comment: string): Pbc | undefined {
 
 // Every `key=value` (or `key: value`) pair of an extXYZ comment, in order. Quote-aware, and a
 // bare value is consumed whole, so `Properties=species:S:1:pos:R:3` yields no colon pairs.
+// A bare value's trailing comma separates pairs (CP2K: `i =  5, time =  2.500, E = -17.1`)
 const EXTXYZ_PAIR_RE =
-  /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+))/gu
+  /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+?),?(?=\s|$))/gu
 
 // Read back by dedicated parsers (lattice, pbc, columns) or the step regex below, so
 // re-emitting them as frame properties would duplicate or contradict the frame
@@ -345,7 +417,8 @@ export function build_xyz_frame(
 ): TrajectoryFrame {
   const { comment } = frame
   const { step, properties, flags, signals } = parse_xyz_comment_metadata(comment)
-  const lattice_matrix = parse_extxyz_lattice(comment)
+  const ipi = parse_ipi_header(comment)
+  const lattice_matrix = parse_extxyz_lattice(comment) ?? ipi.lattice
   const parsed_pbc = parse_extxyz_pbc(comment)
   if (parsed_pbc === undefined && /\bpbc\s*=/iu.test(comment)) {
     collector.warn_once(
@@ -360,6 +433,9 @@ export function build_xyz_frame(
     opts.frame_label,
     collector.warn,
   )
+  if (ipi.pos_scale !== 1) {
+    for (const xyz of positions) for (const axis of [0, 1, 2]) xyz[axis] *= ipi.pos_scale
+  }
   const metadata: Record<string, unknown> = { ...properties, ...flags, ...signals }
   // an extXYZ `stress=` follows ASE (eV/Å³, tensile positive); store it like every other
   // reader, with its pressure, unless the comment states a pressure itself
@@ -403,10 +479,19 @@ export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[]
   const last = specs.at(-1)
   // only a frame that reaches the end of the text can have a half-written last line
   if (!last || last.end < lines.count) return specs
-  const { pos_col, min_cols } = parse_extxyz_columns(last.comment)
+  const { pos_col, min_cols, layout } = parse_extxyz_columns(last.comment)
+  // Every declared column, not just through pos: a line cut inside its forces dropped the
+  // whole frame's forces instead of the torn frame. Capped by the frame's first atom line, so
+  // a writer that omits a declared column on every line keeps its last frame.
   const scanner = new LineScanner()
+  const first_line_cols = last.num_atoms > 1 ? lines.scan(scanner, last.start + 2) : Infinity
+  const declared_end = Math.max(
+    0,
+    ...Object.values(layout ?? {}).map(({ offset, ncols }) => offset + ncols),
+  )
+  const declared_cols = Math.max(min_cols, Math.min(first_line_cols, declared_end))
   const complete =
-    lines.scan(scanner, last.end - 1) >= min_cols &&
+    lines.scan(scanner, last.end - 1) >= declared_cols &&
     [0, 1, 2].every((axis) => Number.isFinite(scanner.num(pos_col + axis)))
   if (complete) return specs
   specs.pop()

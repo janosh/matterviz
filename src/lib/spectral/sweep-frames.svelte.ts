@@ -14,6 +14,7 @@
 // A failed load is reported while its frame is shown, so a prefetched or background frame's
 // failure waits until a request shows that frame instead of overwriting the shown frame's error.
 import { untrack } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { to_error } from 'svelte-widgets/utils'
 import { compute_descriptor, normalize_frame_data } from './sweep'
 import type { DescriptorSpec, Sweep, SweepFrame, SweepFrameData, SweepSeries } from './sweep'
@@ -96,15 +97,15 @@ export function create_sweep_frames(inputs: {
   sweep: () => Sweep | undefined
   on_error: (message: string) => void
 }) {
-  // Bumped on every entry change. Readers track this one signal, made once with the frames,
-  // never per-entry signals of a map the cache derives: when a component's teardown reads a
-  // dirty derived (a pane's onDestroy reading its props), Svelte re-runs it against the old
-  // values, and a rerun that built its own map left its readers subscribed to that map, so
-  // loads into the current one never reached them (a swapped sweep's panes stayed empty).
-  let version = $state(0)
+  // Bumped once per cache, by the effect below, after the old sweep's panes tore down: their
+  // teardown reading props makes Svelte re-run dirty deriveds against the old values, which left
+  // the frame cache's readers subscribed to a throwaway map, so loads into the current one never
+  // reached them (a swapped sweep's panes stayed empty). The bump re-runs them on the current
+  // cache, whose per-entry signals then notify only a loaded frame's readers.
+  let epoch = $state(0)
   const cache = $derived({
     loader: inputs.sweep()?.load_frame,
-    entries: new Map<SweepFrame, FrameEntry>(),
+    entries: new SvelteMap<SweepFrame, FrameEntry>(),
     recent: [] as SweepFrame[], // the last shown frames, most recent first
     // the last request's window frames (none before the first request)
     in_window: new Set<SweepFrame>(),
@@ -115,25 +116,16 @@ export function create_sweep_frames(inputs: {
   // a replaced cache (new sweep or loader) and unmounting abort the loads still running
   $effect(() => {
     const { entries } = cache
+    epoch = untrack(() => epoch) + 1
     return () => {
       for (const entry of entries.values()) {
         if (entry.state === `loading`) entry.controller.abort()
       }
     }
   })
-  // sets the frame's entry, or deletes it when none
-  const set_entry = (
-    entries: Map<SweepFrame, FrameEntry>,
-    base: SweepFrame,
-    entry?: FrameEntry,
-  ) => {
-    if (entry) entries.set(base, entry)
-    else entries.delete(base)
-    version += 1
-  }
-  // the frame's entry in the current cache, tracking every entry change
+  // the frame's entry in the current cache, tracking it and the cache's replacement
   const entry_of = (base: SweepFrame): FrameEntry | undefined => {
-    void version
+    void epoch
     return cache.entries.get(base)
   }
   const in_range = (series: SweepSeries, idx: number) =>
@@ -143,7 +135,7 @@ export function create_sweep_frames(inputs: {
   const report = (current: typeof cache, base: SweepFrame, suffix = ``): void => {
     const entry = current.entries.get(base)
     if (entry?.state !== `failed` || entry.unreported === undefined) return
-    set_entry(current.entries, base, { state: `failed`, data: entry.data })
+    current.entries.set(base, { state: `failed`, data: entry.data })
     inputs.on_error(`${entry.unreported}${suffix}`)
   }
 
@@ -155,19 +147,19 @@ export function create_sweep_frames(inputs: {
     if (entry && entry.state !== `evicted`) return
     const controller = new AbortController()
     const { signal } = controller
-    set_entry(entries, base, { state: `loading`, controller, data: entry?.data })
+    entries.set(base, { state: `loading`, controller, data: entry?.data })
     // an aborted load is neither cached nor reported: its entry was already reset
     loader(series.id, idx, { signal })
       .then((data) => normalize_frame_data(data, `load_frame("${series.id}", ${idx})`))
       .then(
         (data) => {
-          if (!signal.aborted) set_entry(entries, base, { state: `loaded`, data })
+          if (!signal.aborted) entries.set(base, { state: `loaded`, data })
         },
         (error: unknown) => {
           if (signal.aborted) return
           const reason = to_error(error).message
           const unreported = `Loading frame ${idx} of series "${series.id}" failed: ${reason}`
-          set_entry(entries, base, { state: `failed`, data: entry?.data, unreported })
+          entries.set(base, { state: `failed`, data: entry?.data, unreported })
           const { shown } = current
           if (shown.has(base)) report(current, base)
           else if (base === current.background && !current.background_failed) {
@@ -189,9 +181,10 @@ export function create_sweep_frames(inputs: {
       if (entry.state === `loading`) {
         if (base === background) continue
         entry.controller.abort()
-        set_entry(entries, base, entry.data && { state: `evicted`, data: entry.data })
+        if (entry.data) entries.set(base, { state: `evicted`, data: entry.data })
+        else entries.delete(base)
       } else if (entry.state === `loaded` && !current.recent.includes(base)) {
-        set_entry(entries, base, {
+        entries.set(base, {
           state: `evicted`,
           data: light_data(base, entry.data, descriptors),
         })

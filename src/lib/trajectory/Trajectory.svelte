@@ -12,7 +12,7 @@
     HistogramSeries,
     Orientation,
   } from '#lib/plot/index.js'
-  import { create_flash, create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_shortcut_flash } from '#lib/effects.svelte.js'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
@@ -48,7 +48,7 @@
   import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
-  import { ToolbarMenu } from '#lib/overlays/index.js'
+  import { create_clipboard_feedback, ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
@@ -868,7 +868,9 @@
       ? pick_pane_orientation(content_size.width, content_size.height)
       : layout,
   )
-  const filename_copied = create_flash(false, 1000)
+  // The check shows only once the write lands: a denied clipboard (insecure origin, no
+  // permission) is logged instead of claiming a copy that never happened
+  const filename_copy = create_clipboard_feedback()
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)
   // Structure's own info/export panes; its controls pane is this viewer's `controls` pane
@@ -1436,13 +1438,10 @@
             class="filename"
             title="Click to copy filename {filename}"
             {@attach tooltip()}
-            onclick={() => {
-              navigator.clipboard.writeText(filename)
-              filename_copied.show(true)
-            }}
+            onclick={() => void filename_copy.copy(filename)}
           >
             {filename}
-            {#if filename_copied.value}
+            {#if filename_copy.copied.has(filename)}
               <Icon
                 icon={Check}
                 style="--icon-size: 16px; color: var(--success-color); position: absolute; right: 3pt; top: 50%; transform: translateY(-50%); animation: fade-in 0.1s; background: var(--surface-bg-hover); border-radius: 50%; padding: 2px; box-sizing: content-box"

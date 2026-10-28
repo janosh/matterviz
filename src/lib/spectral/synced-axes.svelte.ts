@@ -17,6 +17,9 @@ import type { BaseBandStructure, DosData, FrequencyUnit } from './types'
 // Narrowest row (px) a DOS sits beside its bands in (BandsAndDos, ElectronicStructure); below
 // it stacks under them
 export const MIN_SIDE_BY_SIDE_WIDTH = 520
+// Width (px) of a DOS beside its bands: room for its legend to the right of the plot, and one
+// column for the electronic and phonon DOS stacked in an ElectronicStructure
+export const SIDE_DOS_WIDTH = 200
 
 // Floor for the vertical padding two side-by-side panels share. A panel that moves its
 // legend/colorbar outside widens its own bottom margin, and the other panel must follow or the

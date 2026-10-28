@@ -391,6 +391,7 @@
             value={color}
             oninput={(event) => palette.set(displayed_elem, event.currentTarget.value)}
             title="Double click to reset color"
+            aria-label="{displayed_elem} color"
           />
         </label>
         <button
@@ -608,16 +609,20 @@
   .category-label.hidden {
     opacity: 0.4;
   }
+  /* transparent but not visibility: hidden, which took the picker (and the remap menu its
+     context-menu key opens) out of the tab order */
   .element-legend label input[type='color'] {
     z-index: var(--struct-legend-input-z, 1);
     opacity: 0;
     position: absolute;
-    visibility: hidden;
-    /* cover the chip instead of protruding past it: a hidden input still widens the
+    /* cover the chip instead of protruding past it: an invisible input still widens the
        page's scrollable overflow when the legend sits at the viewer's right edge */
     inset: 0;
     width: 100%;
     height: 100%;
+  }
+  .element-legend label:has(input:focus-visible) {
+    outline: 2px solid var(--accent-color, #4a9eff);
   }
   /* Toggle visibility button - shared between element and property legends */
   .atom-legend button.toggle-visibility {

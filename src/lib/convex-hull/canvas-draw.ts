@@ -412,9 +412,11 @@ function hull_label_entries(
         : show_unstable_labels && (entry.e_above_hull ?? 0) <= max_hull_dist_show_labels
     }),
   )
+  // Hull phases first: a deep E_form above the hull must not take a stable phase's label room
   // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort -- helper returns a fresh array
   return labelled.sort(
     (entry_1, entry_2) =>
+      Number(entry_is_stable(entry_2)) - Number(entry_is_stable(entry_1)) ||
       label_priority_energy(entry_1) - label_priority_energy(entry_2) ||
       (entry_1.e_above_hull ?? 0) - (entry_2.e_above_hull ?? 0),
   )

@@ -76,10 +76,11 @@ export function place_outside_decorations(
   const column = legend?.column_footprint ?? legend?.footprint ?? { width: 0, height: 0 }
   const { width: legend_width, height: legend_height } = column
   const box = legend?.footprint ?? column
-  // Too wide unless the caller's right padding already has room for it (costs no plot width)
+  // Too wide unless the caller's right padding already has room for it past the axis band
+  // (costs no plot width)
   const too_wide =
     legend_width > LEGEND_MAX_RIGHT_WIDTH_FRACTION * base_w &&
-    legend_width + 2 * gap > base_pad.r
+    axis_pad.r + legend_width + gap > base_pad.r
   const too_big =
     legend_width * legend_height > LEGEND_MAX_INTERIOR_AREA_FRACTION * base_w * base_h
 
@@ -100,8 +101,9 @@ export function place_outside_decorations(
     !too_wide &&
     !colorbar_takes_right &&
     legend_height * base_w > legend_width * base_h
-  // Top/bottom/colorbar-right reservations sit just past the axis band; a caller's larger
-  // padding absorbs them rather than growing further (see DecorationScene.axis_pad)
+  // Every outside reservation sits just past the axis band (a right legend would otherwise
+  // cover y2 tick labels); a caller's larger padding absorbs them rather than growing
+  // further (see DecorationScene.axis_pad)
   const past_axis = (side: keyof Sides, size: number) =>
     Math.max(base_pad[side], axis_pad[side] + size + gap)
   const strip = legend?.strip_footprint ?? box
@@ -116,7 +118,7 @@ export function place_outside_decorations(
     l: base_pad.l,
     b: legend_bottom ? strip_pad : base_pad.b,
     r: legend_right
-      ? Math.max(base_pad.r, box.width + 2 * gap)
+      ? past_axis(`r`, box.width)
       : colorbar_takes_right
         ? past_axis(`r`, colorbar_width)
         : base_pad.r,

@@ -187,8 +187,14 @@ export const parse_lammps_data = (content: string): Crystal => {
     const atom_type = Number(tokens[0])
     const mass = Number(tokens[1])
     if (!Number.isInteger(atom_type) || !Number.isFinite(mass)) continue
-    const from_comment = coerce_elem_symbol(capitalize_symbol(comment_of(row).split(/\s+/)[0]))
-    const element = from_comment ?? element_for_mass(mass)
+    const comment = comment_of(row).split(/\s+/)[0]
+    const from_comment = coerce_elem_symbol(capitalize_symbol(comment))
+    const by_mass = element_for_mass(mass)
+    // Force-field type names (`# CA` aromatic C, `# os` ether O, `# NA`) capitalize into other
+    // elements, so only an exactly cased symbol overrides the mass (reduced-unit files write
+    // mass 1.0 for every type), as ASE and pymatgen go by mass
+    const element =
+      from_comment && (comment === from_comment || !by_mass) ? from_comment : by_mass
     if (element) element_by_type.set(atom_type, element)
     else parse_warn(`LAMMPS data: mass ${mass} of atom type ${atom_type} matches no element`)
   }

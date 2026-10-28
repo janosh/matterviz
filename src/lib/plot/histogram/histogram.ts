@@ -57,7 +57,8 @@ export interface BinnedSeries {
   x_axis?: `x` | `x2`
   y_axis?: `y` | `y2`
   max_value: number // tallest bar (0 when every bin is empty)
-  min_value: number // shortest non-empty bar (Infinity when every bin is empty)
+  min_value: number // shortest positive bar (Infinity when there is none)
+  floor_value?: number // lowest bar when negative weights sum one below 0, else 0
 }
 
 // Map data values into the space where bins are uniform and back. Log bins are uniform in
@@ -280,10 +281,11 @@ export function compute_histogram_bins(
     const bins = normalize_counts(edges, counts, normalize, total)
     let max_value = 0
     let min_value = Infinity
-    for (const { count, value } of bins) {
-      if (count === 0) continue
+    let floor_value = 0
+    for (const { value } of bins) {
       if (value > max_value) max_value = value
-      if (value < min_value) min_value = value
+      if (value > 0 && value < min_value) min_value = value
+      if (value < floor_value) floor_value = value
     }
     return {
       id: series_data.id ?? series_idx,
@@ -295,15 +297,17 @@ export function compute_histogram_bins(
       y_axis: series_data.y_axis,
       max_value,
       min_value,
+      floor_value,
     }
   })
 }
 
 // Nice [min, max] value-axis range spanning a set of binned series. Linear/arcsinh axes start
-// at 0; on a log axis the lower bound sits just below the shortest non-empty bar so singleton
-// tail bins keep visible height.
+// at 0, or reach down to a bar that negative weights sum below 0; on a log axis, which shows
+// only positive bars, the lower bound sits just below the shortest one so singleton tail bins
+// keep visible height.
 export function compute_count_range(
-  histograms: readonly Pick<BinnedSeries, `max_value` | `min_value`>[],
+  histograms: readonly Pick<BinnedSeries, `max_value` | `min_value` | `floor_value`>[],
   {
     scale_type,
     y_limit,
@@ -313,14 +317,17 @@ export function compute_count_range(
   const type_name = get_scale_type_name(scale_type)
   let max_value = 0
   let min_value = Infinity
+  let floor_value = 0
   for (const hist of histograms) {
     if (hist.max_value > max_value) max_value = hist.max_value
     if (hist.min_value < min_value) min_value = hist.min_value
+    if ((hist.floor_value ?? 0) < floor_value) floor_value = hist.floor_value ?? 0
   }
-  // no-data fallback: a positive floor on log (counts can't be <= 0), else 0
-  if (max_value === 0) return [type_name === `log` ? 1 : 0, 1]
+  const is_log = type_name === `log`
+  // no-data fallback: one decade on log (counts can't be <= 0, and [1, 1] collapses the axis)
+  if (max_value === 0 && (is_log || floor_value === 0)) return is_log ? [1, 10] : [0, 1]
 
-  const min_count = type_name === `log` ? min_value : 0
+  const min_count = is_log ? min_value : floor_value
   const [coord_y_0, coord_y_1] = nice_range_from_extent(
     accumulate_extent(empty_extent(), [min_count, max_value]),
     y_limit,
@@ -328,9 +335,9 @@ export function compute_count_range(
     range_padding,
   )
   // Keep singleton log bins visible; a missing lower limit falls back to the positive minimum.
-  if (type_name === `log`) {
+  if (is_log) {
     const lower = min_count / 1.1
     return [y_limit[0] ?? (lower < coord_y_1 ? lower : coord_y_0), coord_y_1]
   }
-  return [Math.max(0, coord_y_0), coord_y_1]
+  return [floor_value < 0 ? coord_y_0 : Math.max(0, coord_y_0), coord_y_1]
 }

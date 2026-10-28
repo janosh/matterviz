@@ -85,10 +85,18 @@
 
   const { copy } = create_clipboard_feedback()
 
+  // Whether the hover came from this pane's site cards. Closing the pane (Esc) unmounts them
+  // under the pointer without a mouseleave, so the close clears their hover itself, leaving
+  // one from the 3D scene alone.
+  let pane_hover = false
   function set_site_hover(site_idx: number | null) {
     highlighted_sites = site_idx === null ? [] : [site_idx]
     hovered_site_idx = site_idx
+    pane_hover = site_idx !== null
   }
+  $effect(() => {
+    if (!pane_open && pane_hover) set_site_hover(null)
+  })
 
   function select_site(site_idx: number, event?: MouseEvent | KeyboardEvent) {
     set_site_hover(null)

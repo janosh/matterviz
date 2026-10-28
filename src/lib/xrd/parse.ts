@@ -89,6 +89,14 @@ export function parse_xy_file(content: string, format = `XY`): XrdPattern {
     if (!trimmed || /^[#;!]/.test(trimmed)) continue
     const values = leading_numbers(trimmed)
     if (values.length < 2) continue
+    // `10,02\t101` splits into 10, 2, 101: x would be 2θ's integer part, y its decimals, and
+    // the x column never reverses, so the direction check below cannot catch it
+    const decimal_comma = trimmed.split(/\s+/).find((token) => /^[-+]?\d+,\d+$/.test(token))
+    if (decimal_comma && /\s/.test(trimmed)) {
+      throw new Error(
+        `${format}: '${decimal_comma}' in row '${trimmed}' uses a decimal comma; use a decimal point`,
+      )
+    }
     x_values.push(values[0])
     y_values.push(values[1])
     max_cols = Math.max(max_cols, values.length)
@@ -521,15 +529,27 @@ function parse_brml_xml(xml_content: string): XrdPattern {
 
 // PANalytical .xrdml: <dataPoints> with <positions axis="2Theta"> holding startPosition and
 // endPosition (a uniform grid) or a <listPositions> list, and the counts as a space-separated
-// <intensities> or (newer schemas) <counts> list.
+// <intensities> or (newer schemas) <counts> list. Raw <counts> are taken before the automatic
+// beam attenuator, so each is multiplied by its <beamAttenuationFactors> entry when listed
+// (<intensities> are already corrected): left raw, the attenuated strongest peaks shrink.
 export function parse_xrdml_file(content: string): XrdPattern {
   const doc = parse_xml(content, `XRDML`)
   const data_points = doc.querySelector(`dataPoints`)
   if (!data_points) throw new Error(`XRDML: no <dataPoints> element`)
-  const counts =
-    data_points.querySelector(`intensities`) ?? data_points.querySelector(`counts`)
-  const values = leading_numbers(counts?.textContent ?? ``)
+  const intensities = data_points.querySelector(`intensities`)
+  const counts = intensities ?? data_points.querySelector(`counts`)
+  let values = leading_numbers(counts?.textContent ?? ``)
   if (values.length === 0) throw new Error(`XRDML: empty <intensities> or <counts>`)
+  const attenuation = data_points.querySelector(`beamAttenuationFactors`)
+  if (!intensities && attenuation) {
+    const factors = leading_numbers(attenuation.textContent ?? ``)
+    if (factors.length !== values.length) {
+      throw new Error(
+        `XRDML: ${factors.length} <beamAttenuationFactors> for ${values.length} <counts>`,
+      )
+    }
+    values = values.map((count, idx) => count * factors[idx])
+  }
   const positions = data_points.querySelector(`positions[axis="2Theta"]`)
   const listed = leading_numbers(positions?.querySelector(`listPositions`)?.textContent ?? ``)
   if (listed.length > 0) return finalize(listed, values, `XRDML`)

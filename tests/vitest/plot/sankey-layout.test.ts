@@ -1,6 +1,10 @@
 import type { Vec3 } from '#lib/math.js'
 import type { SankeyData } from '#lib/plot/index.js'
-import { compute_sankey_layout, sankey_from_links } from '#lib/plot/sankey/sankey.js'
+import {
+  bucket_sankey_data,
+  compute_sankey_layout,
+  sankey_from_links,
+} from '#lib/plot/sankey/sankey.js'
 import { sankey as d3_sankey, sankeyJustify } from 'd3-sankey'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -156,6 +160,14 @@ describe(`compute_sankey_layout`, () => {
       ],
     } as SankeyData
     expect(() => compute_sankey_layout(data, dims)).toThrow(/non-negative finite value/)
+    // folding the small tail must not sum the bad value into a valid-looking 'Other' link
+    const with_tail = {
+      nodes: [...data.nodes, { id: `D` }],
+      links: [...data.links, { source: `A`, target: `D`, value: 1 }],
+    }
+    expect(() => bucket_sankey_data(with_tail, { min_fraction: 0.2 })).toThrow(
+      /non-negative finite value/,
+    )
   })
 
   test(`drops link-less nodes so extra labels don't pile up below the plot`, () => {

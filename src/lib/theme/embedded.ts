@@ -32,11 +32,15 @@ const declared_theme = (element: Element): ThemeType | null => {
 }
 
 export function detect_parent_theme(target_element?: HTMLElement): ThemeType {
-  // The nearest statement above the widget decides: its shadow host chain (marimo cells), then
-  // <body> and <html> (VS Code/marimo mark body, JupyterLab and many sites html). The widget's
-  // own element is skipped since it carries the color-scheme this detection sets.
+  // The nearest statement above the widget decides: its shadow host chain (marimo cells), else
+  // its own ancestors (a dark-themed container), <body> and <html> (VS Code/marimo mark body,
+  // JupyterLab and many sites html). The widget's own element is skipped since it carries the
+  // color-scheme this detection sets.
   const root_node = target_element?.getRootNode()
-  const start = root_node instanceof ShadowRoot ? root_node.host : document.body
+  const start =
+    root_node instanceof ShadowRoot
+      ? root_node.host
+      : (target_element?.parentElement ?? document.body)
   const declared = nearest_declared(start, declared_theme)
   if (declared) return declared
 

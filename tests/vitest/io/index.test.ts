@@ -314,18 +314,22 @@ describe(`load_from_url`, () => {
     expect(globalThis.fetch).toHaveBeenCalledOnce()
   })
 
-  // Sniffed gzip magic on a URL without .gz extension is decompressed; a binary inner
-  // extension from Content-Disposition (relax.traj.gz) keeps the payload an ArrayBuffer
+  // Sniffed gzip magic on a URL without .gz extension is decompressed, text names included
+  // (as for a dropped file); a binary inner extension from Content-Disposition
+  // (relax.traj.gz) keeps the payload an ArrayBuffer
   test.each([
-    [`data.bin`, `string`, {}],
+    [`data.bin`, `data.bin`, `string`, {}],
+    [`POSCAR`, `POSCAR`, `string`, {}],
+    [`run.xyz`, `run.xyz`, `string`, {}],
     [
+      `data.bin`,
       `relax.traj`,
       `binary`,
       { 'content-disposition': `attachment; filename="relax.traj.gz"` },
     ],
-  ] as const)(`sniffed gzip -> %s (%s)`, async (expected_name, kind, headers) => {
+  ] as const)(`sniffed gzip %s -> %s (%s)`, async (url_name, expected_name, kind, headers) => {
     const { received_content, received_filename } = await load_test_url(
-      `https://example.com/data.bin`,
+      `https://example.com/${url_name}`,
       gzip(`inner bytes`),
       headers,
     )

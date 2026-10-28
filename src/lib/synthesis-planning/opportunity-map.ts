@@ -69,6 +69,8 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
   if (!resolved) throw new Error(`Scan target ${target_id} matches no entry id or formula`)
   const { target, ground_state } = place_target(phase_set, resolved)
   const { phases } = phase_set
+  // The displaced ground state competes with its polymorph, as in plan_synthesis
+  const working_phases = ground_state.id === target.id ? phases : [...phases, ground_state]
   const gases = phases.filter((phase) => phase.is_gas)
   const gas_species = gases.map((phase) => phase.id.slice(4) as GasSpecies)
   const provider = conditions.gas_provider ?? get_default_gas_provider()
@@ -94,7 +96,7 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
     if (!target_product)
       throw new Error(`Scan route ${identifier} cannot balance to ${target.formula}`)
     const excluded = new Set([target.id, ...precursor_ids])
-    const competitors = phases.flatMap((phase) => {
+    const competitors = working_phases.flatMap((phase) => {
       if (phase.is_gas || excluded.has(phase.id)) return []
       const product = prepare_product(phase, false)
       return product ? [product] : []
@@ -115,7 +117,7 @@ export function compute_opportunity_map(request: OpportunityRequest): Opportunit
             : (conditions.partial_pressures?.[species] ?? DEFAULT_GAS_PRESSURES[species]),
         )
       }
-      assign_e_above_hull(phases)
+      assign_e_above_hull(working_phases)
       return {
         temperature,
         pressure,

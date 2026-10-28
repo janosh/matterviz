@@ -22,7 +22,8 @@
   "sideEffects": [
     "**/*.css",
     "**/file-viewer/main.*",
-    "**/theme/embedded.*"
+    "**/theme/embedded.*",
+    "./dist/elements/**"
   ],
   "imports": {
     "#lib": "./src/lib/index.ts",
@@ -37,6 +38,7 @@
       "svelte": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./elements": "./dist/elements/matterviz-elements.js",
     "./element/data": {
       "types": "./dist/element/data.d.ts",
       "default": "./dist/element/data.js"
@@ -296,7 +298,7 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning",
     "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
-    "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs && node src/scripts/check-dist-imports.mjs",
+    "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs && vp build --config src/elements/vite.config.ts && node src/scripts/check-dist-imports.mjs",
     "build:anywidget": "pnpm package:dist && pnpm -C extensions/anywidget install && pnpm -C extensions/anywidget build",
     "prepare": "node src/scripts/prepare.mjs",
     "prepublishOnly": "pnpm run package:dist"
@@ -367,6 +369,8 @@
       ".": {
         "entry": [
           "src/site/**/*.{js,ts,svelte}",
+          "src/elements/index.svelte.ts",
+          "src/elements/vite.config.ts",
           "src/scripts/capture-screenshots.mjs",
           "src/scripts/fetch-elem-images.mjs",
           "src/lib/scene/three-compat.ts",

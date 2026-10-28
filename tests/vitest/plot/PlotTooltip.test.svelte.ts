@@ -152,6 +152,13 @@ describe(`PlotTooltip`, () => {
     onTestFinished(cleanup)
     flushSync()
     const enter = (mark: Element) => mark.dispatchEvent(new PointerEvent(`pointerenter`))
+    // the tooltip lives under <body>, so it carries over its mark's scheme (a themed embed)
+    marks[1].style.colorScheme = `dark`
+    enter(marks[1])
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).parentElement?.style.colorScheme).toBe(`dark`)
+    marks[1].dispatchEvent(new PointerEvent(`pointerleave`))
+    flushSync()
     const text = await pin_cycle(
       (step, mark_idx) => {
         const mark = mark_idx === null ? document.body : marks[mark_idx]

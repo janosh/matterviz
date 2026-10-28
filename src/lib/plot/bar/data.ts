@@ -195,6 +195,9 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
     // In stacked mode, calculate stacked totals for accurate range (only for bars on the same axis)
     if (mode === `stacked`) {
       const stacked_totals = new Map<number, { pos: number; neg: number }>()
+      // A log axis floors at its smallest value, not at 0, so it must reach every segment's
+      // tip: sized by the totals alone, a stack's lower segments fell below the floor
+      const segment_tips: number[] = []
       series_list
         .filter((srs) => srs.render_mode !== `line`)
         .forEach((srs) =>
@@ -205,11 +208,13 @@ export function compute_bar_auto_ranges<Metadata = Record<string, unknown>>(
             if (y_val >= 0) totals.pos += y_val
             else totals.neg += y_val
             stacked_totals.set(x_val, totals)
+            if (type_name === `log`) segment_tips.push(totals.pos)
           }),
         )
 
       // Replace values with stacked totals + line series (which don't stack)
       values = [
+        ...segment_tips,
         ...Array.from(stacked_totals.values()).flatMap(({ pos, neg }) => [
           ...(pos > 0 ? [pos] : []),
           ...(neg < 0 ? [neg] : []),

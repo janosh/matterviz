@@ -154,14 +154,20 @@
   {#if controls_config.visible(`controls`)}
     <div class={[`pdf-controls`, controls_config.class]} style={controls_config.style}>
       {#each [[`g_r`, `g(r)`], [`reduced_g_r`, `G(r)`]] as const as [key, label] (key)}
-        <button class:active={quantity === key} onclick={() => (quantity = key)}
-          >{label}</button
+        <button
+          type="button"
+          class:active={quantity === key}
+          aria-pressed={quantity === key}
+          onclick={() => (quantity = key)}>{label}</button
         >
       {/each}
       <span class="separator">|</span>
       {#each RADIATIONS as [key, label] (key)}
-        <button class:active={radiation === key} onclick={() => (radiation = key)}
-          >{label}</button
+        <button
+          type="button"
+          class:active={radiation === key}
+          aria-pressed={radiation === key}
+          onclick={() => (radiation = key)}>{label}</button
         >
       {/each}
       <span class="separator">|</span>

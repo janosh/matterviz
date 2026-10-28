@@ -1,6 +1,7 @@
 import type { Vec2 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { accumulate_error_extent, error_bar_path } from '#lib/plot/core/error-bars.js'
+import { axis_transform } from '#lib/plot/core/interactions.js'
 import type { ErrorValues } from '#lib/plot/core/error-bars.js'
 import {
   accumulate_extent,
@@ -19,6 +20,7 @@ import {
   generate_log_ticks,
   generate_ticks,
   create_size_scale,
+  edge_range_padding,
   log_floor_scale,
   nice_range_from_extent,
   scale_arcsinh,
@@ -43,6 +45,7 @@ const nice_range = (
   scale_type: ScaleType,
   padding: number,
   is_time = false,
+  zero_edge_padding = 0,
 ): Vec2 =>
   nice_range_from_extent(
     accumulate_extent(empty_extent(), values),
@@ -50,6 +53,7 @@ const nice_range = (
     scale_type,
     padding,
     is_time,
+    zero_edge_padding,
   )
 
 describe(`scales`, () => {
@@ -89,6 +93,21 @@ describe(`scales`, () => {
         expect(Number.isFinite(scale.invert(250))).toBe(true)
       },
     )
+  })
+
+  // Padding f of the span puts the data ends f / (1 + 2f) of the axis inside the frame
+  test.each([
+    [4, 400, 4 / 392],
+    [0, 400, 0],
+    [10, 20, 0.05],
+    [10, 0, 0.05],
+    [0, 0, 0],
+  ])(`edge_range_padding(%d px, %d px axis) = %f`, (edge_px, axis_px, expected) => {
+    const padding = edge_range_padding(edge_px, axis_px)
+    expect(padding).toBe(expected)
+    if (axis_px > 2 * edge_px) {
+      expect((axis_px * padding) / (1 + 2 * padding)).toBeCloseTo(edge_px, 12)
+    }
   })
 
   describe(`nice_range_from_extent`, () => {
@@ -240,6 +259,35 @@ describe(`scales`, () => {
     ])(`snaps observed zero edges for x=$xs`, ({ xs: x_values, padding, check }) => {
       expect(check(nice_range(x_values, [null, null], `linear`, padding))).toBe(true)
     })
+
+    // With edge marks (scatter markers) a zero end extends just past 0, leaving 0 the marks'
+    // share f / (1 + 2f) of the axis (in the scale's metric) from the frame. Explicit bounds
+    // stay put, log axes stay positive, and without marks (bars, lines) the end stays at 0.
+    test.each<[number[], Limits, ScaleType, number, Vec2 | null]>([
+      [[0, 4.7], [null, null], `linear`, 0.05, null],
+      [[-4.7, 0], [null, null], `linear`, 0.05, null],
+      [[0, 240], [null, null], `linear`, 0.02, null],
+      [[0, 4.7], [null, 10], `linear`, 0.05, null],
+      [[0, 1000], [null, null], `arcsinh`, 0.05, null],
+      [[0, 4.7], [null, null], `linear`, 0, [0, 5]],
+      [[0, 4.7], [0, null], `linear`, 0.05, [0, 5]],
+      [[-4.7, 0], [null, 0], `linear`, 0.05, [-5, 0]],
+      [[0, 1, 10], [null, null], `log`, 0.05, null],
+    ])(
+      `zero end of %j (limits %j, %s) with edge padding %f`,
+      (values, limits, scale_type, edge, expected) => {
+        const range = nice_range(values, limits, scale_type, edge, false, edge)
+        if (expected) expect(range).toEqual(expected)
+        else if (scale_type === `log`) expect(range[0]).toBeGreaterThan(0)
+        else {
+          const { forward } = axis_transform(scale_type)
+          const [lower, upper] = range.map(forward)
+          const zero_share =
+            values[0] === 0 ? -lower / (upper - lower) : upper / (upper - lower)
+          expect(zero_share).toBeCloseTo(edge / (1 + 2 * edge), 12)
+        }
+      },
+    )
   })
 
   describe(`accumulate_extent / nice_range_from_extent`, () => {

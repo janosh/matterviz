@@ -206,6 +206,12 @@ describe(`compute_bar_auto_ranges`, () => {
         .y,
     )
     expect(with_zeros.y[0]).toBeGreaterThan(0)
+    // a stack's lower segments end below the smallest total: the floor must still reach them
+    const stacked = [bar({ y: [1, 1] }), bar({ y: [1000, 50] })]
+    const log_y = { axes: { y: { scale_type: `log` } } } as const
+    const stacked_floor = auto_ranges(stacked, { ...log_y, mode: `stacked` }).y[0]
+    expect(stacked_floor).toBeLessThanOrEqual(1)
+    expect(stacked_floor).toBe(auto_ranges(stacked, { ...log_y, mode: `grouped` }).y[0])
   })
 
   test(`categorical range reserves slots and expands for wider bars`, () => {

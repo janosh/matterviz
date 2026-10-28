@@ -394,6 +394,36 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await expect(viewer.locator(`.side-label`)).toHaveCount(0)
 })
 
+// The electronic DOS takes the phonon DOS's column (its width leaves room for a legend beside
+// the plot), so the two line up; the control bar takes the viewer's top corners only
+test(`electronic-structure sweep: both DOS share one column, the bar the viewer's top corners`, async ({
+  page,
+}) => {
+  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  const viewer = page.locator(`.sweep-demo`)
+  await viewer.scrollIntoViewIfNeeded()
+  const dos = viewer.locator(`[data-pane="dos"]`)
+  const phonon_dos = viewer.locator(`[data-pane="phonon"] [style*="grid-area: dos"]`)
+  await expect(phonon_dos).toBeVisible({ timeout: LOAD_TIMEOUT })
+  // the bands' share is a ratio of the row, so the edges agree to within sub-pixel rounding
+  const [electronic, phonon] = await Promise.all(
+    [dos, phonon_dos].map((plot) =>
+      plot.evaluate((node) => {
+        const { left, right } = node.getBoundingClientRect()
+        return [left, right]
+      }),
+    ),
+  )
+  for (const idx of [0, 1]) {
+    expect(Math.abs(electronic[idx] - phonon[idx])).toBeLessThanOrEqual(1)
+  }
+  const corners = await viewer.locator(`.sequence-control-bar`).evaluate((bar) => {
+    const style = getComputedStyle(bar)
+    return [style.borderTopLeftRadius, style.borderBottomLeftRadius]
+  })
+  expect(corners).toEqual([`8px`, `0px`]) // the demo's --electronic-border-radius
+})
+
 // Narrow, the sweep viewer stacks its panes in one column, each its own height: none overlaps
 // another and every plot keeps its axis titles inside it
 test(`electronic-structure sweep: a narrow viewer stacks its panes without overlap`, async ({

@@ -149,6 +149,25 @@ describe(`PhaseDiagramTooltip`, () => {
       },
     )
 
+    // Between two boundary vertices the boundary is read off the segment at the cursor's
+    // composition: vertices 0.5 apart used to give no reading (none within 2 at%) or the
+    // nearest vertex's temperature
+    test.each([
+      { composition: 0.5, expected: `150 K above liquidus` }, // boundary at 750 K
+      { composition: 0.1, expected: `50 K below liquidus` }, // boundary at 950 K, not 1000 K
+    ])(
+      `interpolates along a boundary segment at x = $composition`,
+      ({ composition, expected }) => {
+        const hover_info = create_hover_info({ composition, temperature: 900 })
+        const boundaries: PhaseBoundary[] = [
+          { id: `liq`, type: `liquidus`, points: pts(0, 1000, 1, 500) },
+        ]
+        mount_tooltip({ hover_info, boundaries })
+        const text = document.querySelector(`.boundary-info`)?.textContent ?? ``
+        expect(text.replaceAll(/\s+/g, ` `).trim()).toBe(expected)
+      },
+    )
+
     test.each([
       [`no boundaries`, []],
       [`a non-relevant boundary type`, [{ id: `t1`, type: `tie-line`, points: [[0.5, 900]] }]],

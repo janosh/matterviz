@@ -83,7 +83,11 @@
     normalize_band_structure,
     normalize_dos,
   } from './helpers'
-  import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
+  import {
+    create_bands_dos_sync,
+    MIN_SIDE_BY_SIDE_WIDTH,
+    SIDE_DOS_WIDTH,
+  } from './synced-axes.svelte'
   import {
     descriptor_lines,
     descriptor_value,
@@ -148,7 +152,7 @@
     layout = `auto`,
     pane_ratio = $bindable(0.5),
     row_ratio = $bindable(0.5),
-    spectra_ratio = $bindable(0.78),
+    spectra_ratio = $bindable(),
     trends_ratio = $bindable(0.4),
     phonon_ratio = $bindable(0.5),
     sync_rotation = $bindable(true),
@@ -192,7 +196,9 @@
     layout?: `auto` | `horizontal` | `vertical` // the 3D scenes' split, auto by their row's shape
     pane_ratio?: number // the structure's share of the scenes' row
     row_ratio?: number // the scenes' share of the viewer height above the spectra
-    spectra_ratio?: number // the bands' share of the spectra's row beside the DOS
+    // the bands' share of the spectra's row beside the DOS; unset, the DOS takes the phonon
+    // pane's DOS width, so the two DOS columns line up and the legend fits beside the plot
+    spectra_ratio?: number
     trends_ratio?: number // the trends pane's share of the lower row beside the spectra
     phonon_ratio?: number // the electronic spectra's share of their column above the phonons
     sync_rotation?: boolean // orbiting one scene turns the other alike
@@ -342,14 +348,18 @@
       (frames.is_ready(series, next_index) &&
         (!compared || frames.is_ready(compared.series, compared.next))),
   })
-  // Playback keys work while the viewer is focused or hovered, as in Trajectory
+  // The control bar plays a series of several frames and picks among several series; a single
+  // frame of a single series leaves it nothing to show
+  const steps = $derived((series?.frames.length ?? 0) > 1)
+  const show_bar = $derived(Boolean(sweep && series && (steps || sweep.series.length > 1)))
+  // Playback keys work while the viewer is focused or hovered, as in Trajectory, and leave a
+  // single frame's Space and PageDown to the page
   const keys = viewer_keydown(
-    (event) =>
-      Boolean(series) && is_sequence_key_target(event) && playback.handle_keydown(event),
+    (event) => steps && is_sequence_key_target(event) && playback.handle_keydown(event),
   )
   let bar_height = $state(0)
   // the hover-revealed control bar overlays the top row, whose controls sit below it
-  const bar_offset = $derived(series && controls_config.mode === `hover` ? bar_height : 0)
+  const bar_offset = $derived(show_bar && controls_config.mode === `hover` ? bar_height : 0)
   // a frame of another series (series menu, trends click) trades places with the compared
   // series when it is that one
   const select_frame = (id: string, idx: number): void => {
@@ -747,7 +757,7 @@
   {@attach drop_zone}
   {@attach keys}
 >
-  {#if sweep && series}
+  {#if sweep && series && show_bar}
     <SequenceControlBar {controls_config} {fullscreen} bind:height={bar_height}>
       {#if sweep.series.length > 1 && controls_config.visible(`series`)}
         {@render series_menu(`Series`, series.id, sweep.series, select_series, false)}
@@ -762,16 +772,18 @@
           true,
         )}
       {/if}
-      <SequenceControls
-        {controls_config}
-        index={frame_index}
-        count={series.frames.length}
-        {playback}
-        item_name="frame"
-        aria_label="{html_to_text(sweep.axis.label)} frame"
-        aria_valuetext={frame_label}
-        disable_step_while_playing={false}
-      />
+      {#if steps}
+        <SequenceControls
+          {controls_config}
+          index={frame_index}
+          count={series.frames.length}
+          {playback}
+          item_name="frame"
+          aria_label="{html_to_text(sweep.axis.label)} frame"
+          aria_valuetext={frame_label}
+          disable_step_while_playing={false}
+        />
+      {/if}
       <span class="frame-status" aria-live="polite">
         {frame_label}
         {#if frames.is_loading(series, frame_index)}<small>loading…</small>{/if}
@@ -1074,7 +1086,11 @@
           {#if shown.has(`dos`)}
             {#if side.spectra_side}
               <SplitPane
-                bind:ratio={spectra_ratio}
+                bind:ratio={
+                  () => spectra_ratio ?? 1 - SIDE_DOS_WIDTH / side.spectra_width,
+                  (ratio) => (spectra_ratio = ratio)
+                }
+                max_ratio={1}
                 min_px={MIN_BANDS_WIDTH}
                 second_min_px={MIN_DOS_WIDTH}
                 aria-label="Resize band structure and DOS"
@@ -1176,6 +1192,9 @@
     --struct-buttons-gap: 1px;
     --struct-buttons-btn-padding: 4px;
     --struct-buttons-align: center;
+    /* the control bar spans the viewer's top edge, so it takes the viewer's corners there */
+    --sequence-controls-border-radius: var(--electronic-border-radius, 0)
+      var(--electronic-border-radius, 0) 0 0;
     --fermi-bg: transparent;
     --struct-height: 100%;
     --struct-min-width: 0;

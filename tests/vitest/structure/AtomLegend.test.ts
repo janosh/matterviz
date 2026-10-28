@@ -122,6 +122,9 @@ describe(`AtomLegend Component`, () => {
 
     const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
     expect(color_input.title).toBe(`Double click to reset color`)
+    // reachable by keyboard: visibility: hidden took it out of the tab order
+    expect(color_input.getAttribute(`aria-label`)).toBe(`${shown} color`)
+    expect(getComputedStyle(color_input).visibility).not.toBe(`hidden`)
 
     set_input(color_input, `#ff0000`)
     expect(colors.element[shown]).toBe(`#ff0000`)

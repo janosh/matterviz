@@ -16,7 +16,11 @@
   import Bands from './Bands.svelte'
   import Dos from './Dos.svelte'
   import { create_band_path_link } from './band-path-link.svelte'
-  import { create_bands_dos_sync, MIN_SIDE_BY_SIDE_WIDTH } from './synced-axes.svelte'
+  import {
+    create_bands_dos_sync,
+    MIN_SIDE_BY_SIDE_WIDTH,
+    SIDE_DOS_WIDTH,
+  } from './synced-axes.svelte'
   import type {
     BaseBandStructure,
     DosData,
@@ -76,7 +80,7 @@
   })
 
   // Layout by container width (not the viewport: embedded at arbitrary sizes in notebooks and
-  // IDEs). Without a zone the 200px DOS column stacks below the bands in narrow rows; with
+  // IDEs). Without a zone the SIDE_DOS_WIDTH column stacks below the bands in narrow rows; with
   // one, the three panels sit side by side from 1200px, else the bands span the BZ and DOS
   // (tablet) or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
   let clientWidth = $state(1200)
@@ -128,6 +132,7 @@
 <div
   {...rest}
   class={[`bands-and-dos mv-panels`, layout, rest.class]}
+  style:--side-dos-width="{SIDE_DOS_WIDTH}px"
   bind:clientWidth
   bind:this={wrapper}
 >
@@ -217,7 +222,7 @@
   .bands-and-dos {
     display: grid;
     &.side {
-      grid-template-columns: minmax(0, 1fr) 200px;
+      grid-template-columns: minmax(0, 1fr) var(--side-dos-width);
       grid-template-areas: 'bands dos';
     }
     &.stacked {

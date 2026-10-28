@@ -554,6 +554,21 @@ const place_series = (
 const place = (points: LabeledPoint[], config = default_config) =>
   place_series(make_labeled_series(points), config)
 
+// A label without a font_size is sized at the 10px ScatterPoint draws it at, not the 12px
+// text-metrics default, which placed it further out than its drawn text
+test(`labels without a font_size are placed at the drawn default size`, () => {
+  const points = [labeled(100, 100, `Alpha`), labeled(104, 102, `Beta`)]
+  const [series] = make_labeled_series(points)
+  const unsized = {
+    ...series,
+    filtered_data: series.filtered_data?.map(({ point_label, ...point }) => ({
+      ...point,
+      point_label: { ...point_label, font_size: undefined },
+    })),
+  }
+  expect(place_series([unsized])).toEqual(place_series([series]))
+})
+
 // A series on the secondary axes anchors to the x2/y2 scales, not x/y
 test.each([
   [{}, 0, 0],
@@ -784,27 +799,30 @@ describe(`compute_label_positions`, () => {
       labeled(idx * 40, idx * 30, `P${idx}`),
     )
     const result = place_and_expect_finite(points, { ...default_config, max_labels: 5 })
-    // All fallback positions must stay within plot bounds (pad=10 each side)
-    for (const pos of Object.values(result)) {
-      expect(pos.x).toBeGreaterThanOrEqual(10)
-      expect(pos.x).toBeLessThanOrEqual(390)
-      expect(pos.y).toBeGreaterThanOrEqual(10)
-      expect(pos.y).toBeLessThanOrEqual(290)
+    // Positions are label centres, like solved ones: every whole label stays within the plot
+    // bounds (pad=10 each side), the one at the left edge included
+    const label_h = 12 // 10px font * 1.2 line height
+    for (const [idx, pos] of Object.values(result).entries()) {
+      const half_w = estimate_label_width(points[idx].text) / 2
+      expect(pos.x - half_w).toBeGreaterThanOrEqual(10)
+      expect(pos.x + half_w).toBeLessThanOrEqual(390)
+      expect(pos.y - label_h / 2).toBeGreaterThanOrEqual(10)
+      expect(pos.y + label_h / 2).toBeLessThanOrEqual(290)
     }
-    // Interior points still get the +5 offset (not clamped)
+    // Interior labels sit right of their marker (radius 4 + gap 4), not centred on it
     const mid_key = Object.keys(result)[3]
-    expect(result[mid_key].x).toBe(points[3].x + 5)
-    expect(result[mid_key].y).toBe(points[3].y)
+    expect(result[mid_key].x).toBe(points[3].x + 8 + estimate_label_width(`P3`) / 2)
+    expect(result[mid_key].y).toBe(points[3].y - label_h / 2 + 4)
   })
 
   test(`fallback clamps right-edge point to keep label within bounds`, () => {
-    // max_labels=1 forces the fallback; the right-edge label (380 + 5 + ~22px > max_x=390)
-    // clamps to max_x - label_width
+    // max_labels=1 forces the fallback; the right-edge label (380 + 8 + ~22px > max_x=390)
+    // clamps to end at max_x
     const points = [labeled(50, 50, `OK`), labeled(380, 150, `RR`)]
     const result = place_and_expect_finite(points, { ...default_config, max_labels: 1 })
     const edge_key = Object.keys(result)[1]
     const label_w = estimate_label_width(`RR`)
-    expect(result[edge_key].x).toBe(390 - label_w)
+    expect(result[edge_key].x).toBe(390 - label_w / 2)
   })
 
   test(`candidate_gap controls candidate distance from marker radius`, () => {

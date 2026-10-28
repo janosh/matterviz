@@ -827,6 +827,11 @@
                       label={point.point_label ?? {}}
                       offset={point.point_offset ?? { x: 0, y: 0 }}
                       data-bar-idx={point.idx}
+                      role="button"
+                      aria-label={`point ${point.idx + 1} of ${series_text(srs.label, series_idx)}: ${format_value_or_num(
+                        srs.y[point.idx],
+                        plot_axes[value_axis_key(srs)].format,
+                      )}`}
                       {...{ [ROVING_ATTR]: roving_key(series_idx, point.idx) }}
                       tabindex={roving.tabindex(roving_key(series_idx, point.idx))}
                     />

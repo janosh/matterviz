@@ -697,6 +697,14 @@ describe(`plan_synthesis`, () => {
     expect(plan.target_stability.decomposition.map(({ phase }) => phase.formula)).toEqual([
       `BaTiO3`,
     ])
+    // The displaced ground state forms from the same mixture with a larger driving force, so
+    // it competes with the polymorph on every route (it was dropped from the competitors)
+    expect(plan.routes.length).toBeGreaterThan(0)
+    for (const { selectivity } of plan.routes) {
+      const rival = selectivity.competitors.find(({ phase }) => phase.id === ground?.id)
+      expect(rival?.more_favorable_than_target).toBe(true)
+      expect(selectivity.target_is_most_favorable).toBe(false)
+    }
     // Nothing else reaches an elemental target's composition: it is its own hull vertex
     const elemental = plan_synthesis({ entries: toy_entries, target: `Ti` }).target_stability
     expect(elemental).toMatchObject({ e_above_hull: 0, is_stable: true })

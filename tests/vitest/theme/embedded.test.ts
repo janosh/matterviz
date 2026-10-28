@@ -79,8 +79,9 @@ const trigger_dom_mutation = (): void => {
 }
 
 describe(`detect_parent_theme`, () => {
-  // The nearest statement wins, so a shadow host beats <body>, which beats <html>
-  test(`prefers the nearest declaration: shadow host over body over html`, () => {
+  // The nearest statement wins, so a shadow host or light-DOM ancestor beats <body>, which
+  // beats <html>; a light-DOM widget's own element is skipped
+  test(`prefers the nearest declaration: shadow host or ancestor over body over html`, () => {
     document.documentElement.dataset.theme = `dark`
     document.body.classList.add(`light`)
     const { host, inner } = make_shadow_element()
@@ -88,6 +89,15 @@ describe(`detect_parent_theme`, () => {
     expect(detect_parent_theme(inner)).toBe(`light`)
     host.dataset.theme = `dark`
     expect(detect_parent_theme(inner)).toBe(`dark`)
+
+    const container = document.createElement(`div`)
+    const widget = document.createElement(`div`)
+    widget.className = `light`
+    container.append(widget)
+    document.body.append(container)
+    expect(detect_parent_theme(widget)).toBe(`light`)
+    container.className = `v-theme--dark`
+    expect(detect_parent_theme(widget)).toBe(`dark`)
   })
 
   // A declared marker anywhere up a shadow host's chain decides; a host's own background

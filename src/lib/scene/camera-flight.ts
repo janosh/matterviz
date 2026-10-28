@@ -134,13 +134,19 @@ export function create_camera_flight_sampler(
   }
 }
 
-// Level turntable about world up, as OrbitControls orbits (a rolled start view is leveled)
-export function orbit_camera_flight(pose: CameraPose, duration = 10): CameraFlight {
+// Level turntable about the camera's up vector (world +y unless the viewer sets camera_up), as
+// OrbitControls orbits (a rolled start view is leveled)
+export function orbit_camera_flight(
+  pose: CameraPose,
+  duration = 10,
+  up_dir: Readonly<Vec3> = [0, 1, 0],
+): CameraFlight {
   const target = new Vector3(...pose.target)
   const offset = new Vector3(...pose.position).sub(target)
   if (offset.lengthSq() === 0)
     throw new Error(`Camera position coincides with its orbit target`)
-  const up = new Vector3(0, 1, 0)
+  const up = new Vector3(...up_dir).normalize()
+  if (up.lengthSq() === 0) throw new Error(`Orbit up vector must be non-zero`)
   const elevation_deg = to_degrees(Math.asin(offset.dot(up) / offset.length()))
   if (Math.abs(elevation_deg) >= 89)
     throw new RangeError(`Orbit needs |elevation| < 89°, got ${elevation_deg}°`)
@@ -226,6 +232,8 @@ export function create_camera_flight_controller(
   }
   return {
     capture,
+    // the axis OrbitControls orbits about
+    up: (): Vec3 => camera.up.toArray(),
     begin() {
       if (active || disposed) throw new Error(`Camera is unavailable or already flying`)
       const original = capture()

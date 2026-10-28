@@ -259,6 +259,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       y2_sync.mode === `none` ? ([...untrack(() => ranges.initial.y2)] as Vec2) : synced_y2()
   })
 
+  // Each axis's explicit bounds as last synced: a changed one moves a zoomed view too
+  const synced_bounds: PerAxis<string> = {}
   // Sync ranges from axis.range overrides and auto ranges, skipping transient non-finite
   // bounds (NaN breaks scales and loops the effect). Runs pre-render so new data is never
   // culled against stale ranges, which would remount markers and discard their tweens.
@@ -281,15 +283,24 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       const has_data = opts.has_data?.() ?? {}
       for (const axis of FACET_AXES) {
         const pinned = sources[axis].range?.some((bound) => bound != null) ?? false
+        const bounds = JSON.stringify(sources[axis].range ?? null)
+        const bounds_moved = bounds !== (synced_bounds[axis] ??= bounds)
+        synced_bounds[axis] = bounds
         const { range, changed } = expand_range_if_needed(
           initial[axis],
           next[axis],
           (has_data[axis] ?? true) || pinned,
         )
         if (!changed) continue
-        // copy: initial is the reset target, so it must not alias the live current range
+        // A zoomed or panned view stays put while the auto range grows (it also grows when the
+        // plot shrinks: its padding is in px), and the reset target follows; a changed explicit
+        // bound is the caller's new view. Copy: it must not alias the live range.
+        const zoomed = !vec2_equal(
+          untrack(() => ranges.current[axis]),
+          initial[axis],
+        )
         ranges.initial[axis] = range
-        ranges.current[axis] = [...range] as Vec2
+        if (!zoomed || bounds_moved) ranges.current[axis] = [...range] as Vec2
       }
     } else if (!axis_ranges_equal(initial, next)) {
       ranges = { initial: { ...next }, current: snapshot_ranges(next) }

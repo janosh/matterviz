@@ -394,10 +394,12 @@ describe(`Histogram`, () => {
     [`a log axis`, { scale_type: `log` }, [1, 5, 9, ...Array(300).fill(3), ...Array(300).fill(7)], 5],
     // counts [20, 1, 1, 20]: wide outer bars whose center lines leave room between them
     [`wide bars`, {}, [...Array(20).fill(1), 4, 6, ...Array(20).fill(9)], 4],
-  ] as const)(`automatic legend placement avoids the bars on %s`, async (_name, y_axis, values, bins) => {
+    // negative weights: the left-hand bars hang from 0 at the top down the whole axis
+    [`negative bars`, {}, [1, 3, 5, 7, 9], 5, [-20, -20, -1, -1, -1]],
+  ] as const)(`automatic legend placement avoids the bars on %s`, async (_name, y_axis, values, bins, weights?: readonly number[]) => {
     vi.spyOn(HTMLElement.prototype, `offsetWidth`, `get`).mockReturnValue(120)
     vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(60)
-    await mount_histogram({ series: [{ values, label: `A` }], bins, show_legend: true, y_axis })
+    await mount_histogram({ series: [{ values, weights, label: `A` }], bins, show_legend: true, y_axis })
     const { left, top } = doc_query(`.legend`).style
     const [legend_x, legend_y] = [left, top].map((px) => Number(px.replace(`px`, ``)))
     const bars = bar_boxes()
@@ -871,7 +873,7 @@ describe(`Histogram`, () => {
 
     // empty, log-empty and out-of-domain series
     expect(count_range([], `linear`)).toEqual([0, 1])
-    expect(count_range([], `log`)).toEqual([1, 1])
+    expect(count_range([], `log`)).toEqual([1, 10])
     expect(count_range([series_of([500, 600])], `linear`)).toEqual([0, 1])
     const lin_range = count_range([series_of([1, 1, 1, 9])], `linear`)
     expect(lin_range[0]).toBe(0)
@@ -880,6 +882,16 @@ describe(`Histogram`, () => {
     expect(log_lo).toBeCloseTo(1 / 1.1, 10)
     expect(log_hi).toBeGreaterThanOrEqual(4)
     expect(count_range([series_of([1, 1, 9])], `log`, [0.5, null])[0]).toBe(0.5)
+    // negative weights sum a bin below 0: linear axes reach it (also with no positive bin),
+    // a log axis shows only the positive bars, floored by the shortest of them
+    const signed = [series_of([1, 5, 9], { weights: [0.5, -2, 3] })]
+    const [signed_lo, signed_hi] = count_range(signed, `linear`)
+    expect(signed_lo).toBeLessThanOrEqual(-2)
+    expect(signed_hi).toBeGreaterThanOrEqual(3)
+    const only_negative = [series_of([1], { weights: [-2] })]
+    expect(count_range(only_negative, `linear`)[0]).toBeLessThanOrEqual(-2)
+    expect(count_range(only_negative, `log`)).toEqual([1, 10])
+    expect(count_range(signed, `log`)[0]).toBeCloseTo(0.5 / 1.1, 12)
     const with_x2 = [series_of([1, 1]), series_of([150, 150, 150, 150], { x_axis: `x2` })]
     expect(count_range(with_x2, `linear`)[1]).toBeGreaterThanOrEqual(4)
     // one bin per sample stays finite and fast

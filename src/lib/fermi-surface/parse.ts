@@ -75,7 +75,7 @@ function parse_bxsf(content: string): BandGridData {
   // grid, e.g. "Fermi Energy: 19.0343" — only that slice is scanned, not the data body. The
   // format requires it: without it the surface's energy reference is unknown
   const fermi_match =
-    /fermi[\s_]*energy[^\n=:]*(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/i.exec(
+    /fermi[\s_]*energy[^\n=:]*(?:=|:)\s*(?<value>[-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?)/i.exec(
       content.slice(0, block_start),
     )
   const fermi_value = fermi_match?.groups?.value
@@ -84,7 +84,8 @@ function parse_bxsf(content: string): BandGridData {
       `BXSF header before BEGIN_BLOCK_BANDGRID_3D has no 'Fermi Energy: <value>'`,
     )
   }
-  const fermi_energy = Number(fermi_value)
+  // Fortran codes write `0.7D+01` here too, which Number() reads as NaN (and the regex as 0.7)
+  const fermi_energy = Number(normalize_scientific_notation(fermi_value))
 
   const reader = line_reader(content, block_start)
   reader.next() // BEGIN_BLOCK_BANDGRID_3D
@@ -494,7 +495,16 @@ function band_grid_from_json(json: unknown, source: string): BandGridData {
       `BandGridData JSON: band_indices must be distinct non-negative integers, got [${band_indices.join(`, `)}]`,
     )
   }
-  return { ...json, energies, properties }
+  // the isovalue is E_F + mu, so a missing E_F would extract no surface without a word
+  if (!Number.isFinite(json.fermi_energy)) {
+    throw new TypeError(
+      `BandGridData JSON: fermi_energy must be a finite number, got ${JSON.stringify(json.fermi_energy)}`,
+    )
+  }
+  // counts left out follow the energies: n_spins decides spin labels and electrons per state
+  const n_spins = typeof json.n_spins === `number` ? json.n_spins : energies.length
+  const n_bands = typeof json.n_bands === `number` ? json.n_bands : energies[0].length
+  return { ...json, energies, properties, n_spins, n_bands }
 }
 
 // First non-zero number in a fallback chain (an explicit 0 falls through like undefined)

@@ -111,6 +111,9 @@ END_BLOCK_BANDGRID_3D
         19.0343,
       ],
       [`a key=value comment`, `# fermi_energy = -0.5\n`, -0.5],
+      // Fortran D exponents, as in the band data (the mantissa alone read as 0.7)
+      [`a Fortran D exponent`, `Fermi Energy: 0.7D+01\n`, 7],
+      [`a lowercase d exponent`, `Fermi Energy: -0.25d1\n`, -2.5],
       // Only the header before the band grid is scanned; a stray mention after it is not, and
       // the format requires one there
       [`nothing in the header`, ``, /has no 'Fermi Energy: <value>'/],
@@ -377,6 +380,22 @@ END_BLOCK_BANDGRID_3D
       ])
     })
 
+    // left undefined, n_spins labelled both channels' sheets spin null (colliding sheet keys)
+    // and counted 2 electrons per state in each channel's DOS
+    test(`infers n_spins and n_bands left out of BandGridData JSON from its energies`, () => {
+      const band = [[[0, 1]], [[2, 3]]]
+      const json = {
+        energies: [
+          [band, band],
+          [band, band],
+        ],
+        k_grid: [2, 1, 2],
+      }
+      const content = JSON.stringify({ ...json, k_lattice: IDENTITY_MATRIX3, fermi_energy: 1 })
+      const band_data = parse_grid(content, `grid.json`)
+      expect([band_data.n_spins, band_data.n_bands]).toEqual([2, 2])
+    })
+
     test.each([
       [`non-integer k_grid dim`, { k_grid: [2, 2.5, 2] }, /Invalid BandGridData/],
       [`zero k_grid dim`, { k_grid: [2, 0, 2] }, /Invalid BandGridData/],
@@ -385,6 +404,12 @@ END_BLOCK_BANDGRID_3D
         `a band shape that disagrees with k_grid`,
         { energies: [[[[[0, 1, 2]], [[3, 4, 5]]]]], k_grid: [3, 1, 2] },
         /energies\[0\]\[0\] has shape 2×1×3 but k_grid is 3×1×2/,
+      ],
+      // E_F + mu is the isovalue: without E_F no surface came out and no error said why
+      [
+        `no fermi_energy`,
+        { energies: [[[[[1]]]]] },
+        /fermi_energy must be a finite number, got undefined/,
       ],
     ])(`rejects BandGridData JSON with %s`, (_label, overrides, message) => {
       const base = { energies: [[[[1]]]], k_grid: [1, 1, 1], k_lattice: IDENTITY_MATRIX3 }

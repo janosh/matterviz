@@ -40,6 +40,7 @@ import {
 } from '#lib/trajectory/parse/ase.js'
 import {
   AMU_KG,
+  BOHR_TO_ANGSTROM,
   ELEMENTARY_CHARGE_C,
   EV_PER_A3_TO_GPA,
   FS_IN_ASE_TIME,
@@ -973,6 +974,9 @@ describe(`LAMMPS`, () => {
     [`ends before ITEM: NUMBER OF ATOMS`, `ITEM: TIMESTEP\n100`, `LAMMPS frame at timestep 100 ends before "ITEM: NUMBER OF ATOMS"`],
     [`ends after the ITEM: NUMBER OF ATOMS header`, `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS`,
       `LAMMPS frame at timestep 100 ends after "ITEM: NUMBER OF ATOMS"`],
+    // a header cut before its position columns failed the whole dump as a column-less frame
+    [`ends inside the ITEM: ATOMS header`, `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n0 10\n0 10\n0 10\nITEM: ATOMS id type x`,
+      `LAMMPS frame at timestep 100 ends after its "ITEM: ATOMS" header`],
     // The writer was cut mid-way through the last atom line
     [`ends in a short final atom line`, lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0`], { timestep: 100 }),
       `LAMMPS atom line 22 (timestep 100) has 4 columns, expected 5`],
@@ -1315,6 +1319,58 @@ describe(`XYZ`, () => {
     expect(frame.structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
   })
 
+  // i-PI writes its cell into the comment and its lengths in Bohr unless tagged otherwise:
+  // read as Å, the cell was dropped and every coordinate came out 1.89x too large
+  const bohr = BOHR_TO_ANGSTROM
+  // oxfmt-ignore
+  it.each([
+    [`abcABC in Bohr`, `CELL(abcABC): 10 10 12 90 90 120 Step: 4 Bead: 0 positions{atomic_unit} cell{atomic_unit}`,
+      [[10 * bohr, 0, 0], [-5 * bohr, 5 * Math.sqrt(3) * bohr, 0], [0, 0, 12 * bohr]], bohr, 4],
+    // untagged lengths are Bohr, as in i-PI's reader
+    [`untagged abcABC`, `CELL(abcABC): 10 10 10 90 90 90 Step: 0`,
+      [[10 * bohr, 0, 0], [0, 10 * bohr, 0], [0, 0, 10 * bohr]], bohr, 0],
+    // h holds the lattice vectors as columns
+    [`H in Å`, `CELL(H): 10 2 0 0 10 0 0 0 10 Step: 1 Bead: 0 x_centroid{angstrom} cell{angstrom}`,
+      [[10, 0, 0], [2, 10, 0], [0, 0, 10]], 1, 1],
+    // GENH is the general (unrotated) cell, in the positions' frame
+    [`GENH in nm`, `CELL(GENH): 1 0.2 0 0 1 0 0 0 1 Step: 3 positions{nanometer} cell{nanometer}`,
+      [[10, 0, 0], [2, 10, 0], [0, 0, 10]], 10, 3],
+    // a unit tag counts without a cell too
+    [`no cell`, `Step: 5 positions{atomic_unit}`, undefined, bohr, 5],
+    // only positions are lengths
+    [`forces in a Bohr cell`, `CELL(abcABC): 10 10 10 90 90 90 Step: 2 forces{atomic_unit} cell{atomic_unit}`,
+      [[10 * bohr, 0, 0], [0, 10 * bohr, 0], [0, 0, 10 * bohr]], 1, 2],
+  ])(`reads an i-PI header with %s`, async (_label, header, matrix, pos_scale, step) => {
+    const frame = xyz_frame([`H 0 0 1`, `H 1 0 0`], `# ${header}`)
+    const [parsed] = await frames_of(await open(`${frame}\n${frame}`, `sim.pos_0.xyz`))
+    expect(parsed.step).toBe(step)
+    if (matrix === undefined) expect(`lattice` in parsed.structure).toBe(false)
+    else {
+      lattice_of(parsed).matrix.flat().forEach((val, idx) => {
+        expect(val).toBeCloseTo(matrix.flat()[idx], 12)
+      })
+    }
+    expect(parsed.structure.sites.map(({ xyz }) => xyz)).toEqual([
+      [0, 0, pos_scale],
+      [pos_scale, 0, 0],
+    ])
+  })
+
+  it.each([
+    [`CELL(abcABC): 10 10 positions{angstrom}`, `Invalid i-PI CELL(abcABC): "10 10"`],
+    [
+      `CELL(abcABC): 1 1 1 90 90 90 positions{furlong} cell{angstrom}`,
+      `i-PI length unit {furlong} is not supported`,
+    ],
+    [
+      `CELL(XYZ): 1 1 1 positions{angstrom}`,
+      `i-PI CELL(XYZ) is not supported (abcABC, H or GENH)`,
+    ],
+  ])(`rejects the i-PI header %s`, async (header, error) => {
+    const frame = xyz_frame([`H 0 0 1`], `# ${header}`)
+    await expect(open(`${frame}\n${frame}`, `sim.xyz`)).rejects.toThrow(error)
+  })
+
   // `total_energy` (an MD total) was folded into `energy`, so an exported OUTCAR frame lost it
   // on re-import, and a bare `t` (often a time) was read as a temperature
   it(`keeps total_energy apart from energy and reads no temperature from t`, async () => {
@@ -1476,11 +1532,14 @@ describe(`XYZ`, () => {
     [`Temperature: 300`, { temperature: 300 }],
     // Fortran exponents were dropped from comment scalars though read in every atom column
     [`energy=-1.5D-3 pressure=2.0d+1`, { energy: -0.0015, pressure: 20 }],
+    // CP2K separates its pairs with commas, which dropped every value but the last
+    [`i =        5, time =        2.500, E =     -17.1655`, { time: 2.5, energy: -17.1655 }],
+    [`time=1,2 E=3`, { energy: 3 }], // an inner comma is no separator
   ])(`anchors comment metadata keys at word boundaries: %s`, async (comment, expected) => {
     const frame = xyz_frame([`H 0.0 0.0 0.0`], comment)
-    const { energy, pressure, temperature } =
+    const { energy, pressure, temperature, time } =
       (await open(`${frame}\n${frame}`, `test.xyz`)).preview.metadata ?? {}
-    expect({ energy, pressure, temperature }).toEqual(expected)
+    expect({ energy, pressure, temperature, time }).toEqual(expected)
   })
 
   // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
@@ -1584,6 +1643,8 @@ describe(`XYZ`, () => {
     [`a half-written third atom line in a 3-atom frame`, `3\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 3 (line 13): partial atom line 17 "H 0 1"`],
     [`a missing atom line after a half-written third`, `4\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 3 (line 13): 3 of 4 atom lines`],
     [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 3 (line 13): partial atom line 18 "H 1 1 1.2e"`],
+    // cut inside a declared column after pos: kept, it silently lost every force of the frame
+    [`a last atom line cut inside its forces`, xyz_frame([`H 0 0 0 0 0 1`, `H 1 0 0 0 1 0`, `H 0 1 0 1 0 0`, `H 1 1 1 0.1`], `Properties=species:S:1:pos:R:3:forces:R:3`), `Dropping truncated final XYZ frame 3 (line 13): partial atom line 18 "H 1 1 1 0.1"`],
     // truncation wins over a corrupt header: the header of a frame cut short is never decoded
     [`missing atom lines and a corrupt Lattice`, `4\nLattice="1 0 0"\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 3 (line 13): 2 of 4 atom lines`],
     // the warning names the frame's own count line, not a numeric comment line inside it
@@ -1632,6 +1693,8 @@ describe(`XYZ`, () => {
     [`a complete frame without a trailing newline`, xyz_frame(four_atoms()), [0, 1, 2]],
     [`a complete frame followed by blank lines`, `${xyz_frame(four_atoms())}\n\n\n`, [0, 1, 2]],
     [`a zero-atom frame`, `0\ncomment`, [0, 1]],
+    // a declared column no line carries is a writer quirk, not a torn last line
+    [`a frame missing a declared column on every line`, xyz_frame(four_atoms(), `Properties=species:S:1:pos:R:3:forces:R:3`), [0, 1, 2]],
   ])(`keeps every complete frame before %s`, async (_label, tail, steps) => {
     const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms()), tail].join(`\n`)
     for (const options of [{}, { index_above_bytes: 0 }]) {

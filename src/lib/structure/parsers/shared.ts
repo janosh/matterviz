@@ -565,6 +565,8 @@ export const cif_block_ids = (lines: readonly string[]): number[] => {
 // Walk CIF loop_ blocks: yields each loop's header tags plus the index of its first data line.
 // Blank and comment lines between `loop_` and its tags (`# symmetry operations`) are skipped:
 // stopping at them dropped every tag, silently losing a symop loop or the atom-site loop.
+// A tag line is tokenized like a data line, so a trailing comment (`_atom_site_label # name`)
+// is no part of the tag and several tags may share a line.
 export function* iter_cif_loops(
   lines: string[],
 ): Generator<{ headers: string[]; data_start: number }> {
@@ -574,7 +576,7 @@ export function* iter_cif_loops(
     let col_index = idx + 1
     for (; col_index < lines.length; col_index++) {
       const trimmed = lines[col_index].trim()
-      if (trimmed.startsWith(`_`)) headers.push(trimmed)
+      if (trimmed.startsWith(`_`)) headers.push(...split_cif_tokens(trimmed))
       else if (!is_cif_blank_or_comment(trimmed)) break
     }
     yield { headers, data_start: col_index }

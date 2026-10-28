@@ -177,13 +177,15 @@ describe(`Treemap`, () => {
     // Clicking a bucket used to zoom *into* it, landing on one meaningless full-viewport
     // cell, because a bucket stands for nodes it does not itself contain. Every child of
     // `thin` is tiny next to the root total; re-rooted on `thin`, they clear the threshold.
-    [`a min_fraction bucket`, [{ label: `fat`, value: 900 }, { label: `thin`, children: leaves([40, 30, 30]) }], { min_fraction: 0.1 }, [`a`, `b`, `c`]],
+    [`a min_fraction bucket`, [{ label: `fat`, value: 900 }, { label: `thin`, children: leaves([40, 30, 30]) }], { min_fraction: 0.1 }, [`a`, `b`, `c`], 1],
     // a rank cap re-applied against the zoom root would make the bucket reappear
-    [`a max_children bucket`, [{ label: `p`, children: leaves([5, 4, 3, 2, 1]) }], { max_children: 3 }, [`a`, `b`, `c`, `d`, `e`]],
-    // zooming to the data root is a reset, which drops expansions incl. the one just made
-    [`a root-level bucket`, leaves([5, 4, 3, 2, 1]), { max_children: 3 }, [`a`, `b`, `c`, `d`, `e`]],
-  ] satisfies [string, TreemapNode[], Partial<ComponentProps<typeof Treemap>>, string[]][])(`clicking %s opens it`, async (_name, data, props, revealed) => {
-    const plot = await mount_sized_treemap({ data, ...props })
+    [`a max_children bucket`, [{ label: `p`, children: leaves([5, 4, 3, 2, 1]) }], { max_children: 3 }, [`a`, `b`, `c`, `d`, `e`], 1],
+    // zooming to the data root is a reset, which drops expansions incl. the one just made;
+    // the view stays on the root, so on_zoom must not report a zoom-out that never happened
+    [`a root-level bucket`, leaves([5, 4, 3, 2, 1]), { max_children: 3 }, [`a`, `b`, `c`, `d`, `e`], 0],
+  ] satisfies [string, TreemapNode[], Partial<ComponentProps<typeof Treemap>>, string[], number][])(`clicking %s opens it`, async (_name, data, props, revealed, zoom_calls) => {
+    const on_zoom = vi.fn()
+    const plot = await mount_sized_treemap({ data, ...props, on_zoom })
     const cell_names = () =>
       [...plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)].map(
         (rect) => rect.getAttribute(`aria-label`)?.split(`:`)[0] ?? ``,
@@ -193,6 +195,7 @@ describe(`Treemap`, () => {
     await fire(plot.querySelectorAll(`.cells rect[data-treemap-node-idx]`)[bucket_idx])
     expect(cell_names()).toEqual(expect.arrayContaining(revealed))
     expect(cell_names().some((name) => name.startsWith(`Other`))).toBe(false)
+    expect(on_zoom).toHaveBeenCalledTimes(zoom_calls)
   })
 
   // Zoom-aware bucketing rebuilds the arcs on every zoom, so the tween can no longer

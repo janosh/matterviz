@@ -885,7 +885,8 @@ O2   O   0.410  0.140  0.880  1.000`
     ])
   })
 
-  // Symops may be listed unquoted next to a site id (`1 x,y,z`, or sloppily `1 x, y, z`);
+  // Symops may be listed unquoted next to a site id (`1 x,y,z`, or sloppily `1 x, y, z`), or
+  // several rows to a line;
   // joining the whole row used to read `1x,y,z` as an op with zero coefficients, which
   // generated phantom atoms at the translation vector
   // oxfmt-ignore
@@ -894,6 +895,9 @@ O2   O   0.410  0.140  0.880  1.000`
     [`unquoted`, [`1 x,y,z`, `2 -x,-y,-z`]],
     [`unquoted with spaces`, [`1 x, y, z`, `2 -x, -y, -z`]],
     [`unquoted op column first`, [`x,y,z 1`, `-x,-y,-z 2`]],
+    // loop values are a token stream: several rows may share one line
+    [`quoted rows sharing a line`, [`1 'x, y, z' 2 '-x, -y, -z'`]],
+    [`unquoted rows sharing a line`, [`1 x,y,z 2 -x,-y,-z`]],
   ])(`expands %s two-column symop rows without phantom atoms`, (_name, symop_rows) => {
     const op_first = symop_rows[0].startsWith(`x`)
     const headers = op_first
@@ -1043,6 +1047,8 @@ O2   O   0.410  0.140  0.880  1.000`
     // collection used to stop there, dropping the symops or rejecting the atom-site loop
     [`a comment and blank line before the symop tag`, `loop_\n# symmetry operations\n\n_symmetry_equiv_pos_as_xyz\n'x, y, z'\n'-x, -y, -z'\n${atom_loop}\nCl1 Cl 0.5 0.5 0.5`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7], [0.5, 0.5, 0.5]]],
     [`a comment and blank line before the atom-site tags`, `${symop_loop(`'-x, -y, -z'`)}\n${atom_loop.replace(`loop_\n`, `loop_\n# atoms\n\n`)}\nCl1 Cl 0.5 0.5 0.5`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7], [0.5, 0.5, 0.5]]],
+    // a comment after a tag is no part of it (the atom-site loop used to be rejected)
+    [`comments after the atom-site tags`, `${symop_loop(`'-x, -y, -z'`)}\n${atom_loop.replaceAll(/^(?<tag>_atom_site_\w+)$/gm, `$<tag> # column`)}`, [[0.1, 0.2, 0.3], [0.9, 0.8, 0.7]]],
   ])(`expands only real symop rows, with %s`, (_case, body, expected_abc) => {
     const result = parse_cif(`data_test\n${cell5}\n${body}`)
     expect(rounded_abc(result.sites)).toEqual(expected_abc)
@@ -1170,7 +1176,7 @@ O3 O2- 0.75 0.25 0.75`
     })
 
     // A charged type symbol decorates the species (pymatgen's CifWriter writes `Ag+`, `O2-`,
-    // `Fe2.5+`); a group symbol's charge (`NO3-`) belongs to no single element
+    // `Fe2.5+`); a group symbol's charge (`NO3-`, `NH4+`) belongs to no single element
     test.each([
       [`Ag+`, `Ag`, 1],
       [`O2-`, `O`, -2],
@@ -1178,6 +1184,23 @@ O3 O2- 0.75 0.25 0.75`
       [`Fe2.5+`, `Fe`, 2.5],
       [`Zr`, `Zr`, 0],
       [`NO3-`, `N`, 0],
+      [`NH4+`, `N`, 0],
+      [`ND4+`, `N`, 0],
+      [`NO+`, `N`, 0],
+      [`NO2+`, `N`, 0],
+      [`NO2-`, `N`, 0],
+      [`HO-`, `O`, 0],
+      [`OD-`, `O`, 0],
+      [`H2O`, `O`, 0],
+      [`D2O`, `O`, 0],
+      // anion groups carry no positive charge, so these are the Co3+, Po4+ and Ho3+ ions
+      [`CO3+`, `Co`, 3],
+      [`PO4+`, `Po`, 4],
+      [`HO3+`, `Ho`, 3],
+      [`HO`, `Ho`, 0], // hydroxide carries a charge
+      // unless the two letters spell an element that forms no ions (copernicium, nobelium)
+      [`CN+`, `C`, 0],
+      [`NO3+`, `N`, 0],
       // sign-first symbols are not the CIF convention: undecorated without a loop, as in pymatgen
       [`O-2`, `O`, 0],
       [`Fe+2`, `Fe`, 0],
@@ -2597,6 +2620,11 @@ describe(`molecular and LAMMPS structure formats`, () => {
     [`restricted triclinic tilts`, [`0.0 4.0 xlo xhi`, `0.0 4.0 ylo yhi`, `0.0 4.0 zlo zhi`, `1.0 0.0 0.0 xy xz yz`], `1 26.9815`, `1 1 2.0 2.0 2.0`, `Al`, [[4, 0, 0], [1, 4, 0], [0, 0, 4]], [2, 2, 2], [0.375, 0.5, 0.5]],
     [`a shifted box origin`, [`-2.0 2.0 xlo xhi`, `-2.0 2.0 ylo yhi`, `-2.0 2.0 zlo zhi`], `1 12.011  # C`, `1 1 -1.0 0.0 1.0`, `C`, [[4, 0, 0], [0, 4, 0], [0, 0, 4]], [1, 2, 3], [0.25, 0.5, 0.75]],
     [`a general triclinic box origin`, [`4 0 0 avec`, `1 5 0 bvec`, `0.5 0.25 6 cvec`, `-2 -3 -4 abc   origin`], `1 12.011 # C`, `1 1 0.75 -0.375 -1.0`, `C`, [[4, 0, 0], [1, 5, 0], [0.5, 0.25, 6]], [2.75, 2.625, 3], [0.5, 0.5, 0.5]],
+    // force-field type names in the comment are not elements: the mass decides
+    [`a force-field type CA (aromatic C, not Ca)`, [`0.0 4.0 xlo xhi`, `0.0 4.0 ylo yhi`, `0.0 4.0 zlo zhi`], `1 12.011 # CA`, `1 1 1.0 2.0 3.0`, `C`, [[4, 0, 0], [0, 4, 0], [0, 0, 4]], [1, 2, 3], [0.25, 0.5, 0.75]],
+    [`a force-field type os (ether O, not Os)`, [`0.0 4.0 xlo xhi`, `0.0 4.0 ylo yhi`, `0.0 4.0 zlo zhi`], `1 15.999 # os`, `1 1 1.0 2.0 3.0`, `O`, [[4, 0, 0], [0, 4, 0], [0, 0, 4]], [1, 2, 3], [0.25, 0.5, 0.75]],
+    // an exactly cased symbol still wins over a reduced-unit mass
+    [`an Ar comment over reduced-unit mass 1`, [`0.0 4.0 xlo xhi`, `0.0 4.0 ylo yhi`, `0.0 4.0 zlo zhi`], `1 1.0 # Ar`, `1 1 1.0 2.0 3.0`, `Ar`, [[4, 0, 0], [0, 4, 0], [0, 0, 4]], [1, 2, 3], [0.25, 0.5, 0.75]],
   ])(`LAMMPS data reads %s`, (_name, box, mass, atom, element, matrix, xyz, abc) => {
     const result = parse_structure_file(lammps_data(box, mass, [atom]), `box.lmp`)
     assert(`lattice` in result)
@@ -2838,6 +2866,31 @@ describe(`multi-model / multi-record structure files`, () => {
     const warning = `PDB contains multiple END-terminated entries; parsed the first`
     expect(warn_spy.mock.calls.flat()).toEqual(has_second_entry ? [warning] : [])
   })
+})
+
+// SYBYL dummy (`Du`) and lone-pair (`LP`) rows are no atoms: `Du` used to read as H (its name
+// fell back to deuterium `D`) and `LP` failed the whole file. Bonds keep their atoms by id,
+// and a lone pair's bond goes with it.
+test(`MOL2 skips dummy and lone-pair rows`, () => {
+  const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  onTestFinished(() => warn_spy.mockRestore())
+  // oxfmt-ignore
+  const content = [
+    `@<TRIPOS>MOLECULE`, `x`, ` 5 2 1 0 0`, `SMALL`, `NO_CHARGES`, `@<TRIPOS>ATOM`,
+    `1 C1 1.0 2.0 3.0 C.3 1 RES1 0.0`, `2 DU1 0.5 0.0 0.0 Du 1 RES1 0.0`,
+    `3 LP1 0.0 0.5 0.0 LP 1 RES1 0.0`, `4 N1 1.0 2.0 4.5 N.3 1 RES1 0.0`,
+    // a lone pair reusing N's id must not take the C-N bond with it
+    `4 LP2 0.0 0.0 0.5 LP 1 RES1 0.0`,
+    `@<TRIPOS>BOND`, `1 1 4 1`, `2 4 3 1`,
+  ].join(`\n`)
+  const result = parse_structure_file(content, `dummy.mol2`)
+  expect(result.sites.map((site) => [site.species[0].element, site.xyz])).toEqual([
+    [`C`, [1, 2, 3]],
+    [`N`, [1, 2, 4.5]],
+  ])
+  expect(result.properties?.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
+  // the lone pair's bond goes with it, without a warning about bonds to unknown atoms
+  expect(warn_spy.mock.calls).toEqual([[`MOL2: skipped non-atom rows of SYBYL type Du, LP`]])
 })
 
 describe(`malformed molecular / LAMMPS input records a failure reason`, () => {

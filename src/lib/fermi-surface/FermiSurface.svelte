@@ -250,6 +250,10 @@
       const loaded = is_fermi_surface_data(parsed)
         ? { fermi_data: parsed, band_data: undefined }
         : { fermi_data: undefined, band_data: parsed }
+      // a new file's bands start shown: the controls remount after loading and would take the
+      // previous file's selection for the host's
+      selected_bands = undefined
+      isolated_band = null
       fermi_data = loaded.fermi_data
       band_data = loaded.band_data
       on_file_load?.({ ...loaded, ...opened.provenance })
