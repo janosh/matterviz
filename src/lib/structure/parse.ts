@@ -3,6 +3,7 @@ import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
 import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
+import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import { coerce_elem_symbol, is_elem_symbol, species_symbol } from '#lib/element/helpers.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
 import { is_pbc, type Vec3 } from '#lib/math.js'
@@ -519,12 +520,50 @@ const cif_group_element = (text = ``): ElementSymbol | undefined => {
   return group === undefined ? undefined : CIF_GROUP_ELEMENTS[group]
 }
 
+// Groups a type symbol may also spell, beyond the label ones: nitrosyl/nitryl (`NO+`, `NO2-`),
+// deuterated ammonium, hydroxide `HO`, deuteroxide and water. As labels they would shadow
+// all-caps element sites (`ND4` neodymium, `HO1` holmium). Longest first, so `D2O` is not `D`.
+const CIF_SYMBOL_GROUPS: Readonly<Record<string, ElementSymbol>> = {
+  ...CIF_GROUP_ELEMENTS,
+  ND4: `N`,
+  NO2: `N`,
+  NO: `N`,
+  HO: `O`,
+  OD: `O`,
+  H2O: `O`,
+  D2O: `O`,
+}
+const CIF_SYMBOL_GROUP_RE = new RegExp(
+  `^(?<group>${Object.keys(CIF_SYMBOL_GROUPS)
+    .toSorted((key_1, key_2) => key_2.length - key_1.length)
+    .join(`|`)})(?![A-Za-z])`,
+)
+const CIF_CATION_GROUPS = new Set([`NH4`, `ND4`, `NO`, `NO2`])
+// Elements from Fm (Z 100) on form no ions in crystals, so `NO3+` stays nitrate's N, not No
+const ION_FORMER_COUNT = ELEM_SYMBOLS.indexOf(`Fm`)
+
+// The atom of the group a CIF type symbol spells, if it stands for one. A charge the group
+// can't carry makes the symbol the ion of the element its two letters spell: anion groups
+// carry no `+` (uppercase `CO3+` is Co3+, `PO4+` Po4+) and hydroxide only `-` (`HO`, `HO3+`
+// are holmium).
+const cif_symbol_group = (raw_symbol = ``): ElementSymbol | undefined => {
+  const group = CIF_SYMBOL_GROUP_RE.exec(raw_symbol)?.groups?.group
+  if (group === undefined) return undefined
+  const sign = raw_symbol.at(-1)
+  const ion = coerce_elem_symbol(capitalize_symbol(leading_letters(raw_symbol).slice(0, 2)))
+  const is_ion =
+    ion !== undefined &&
+    ELEM_SYMBOLS.indexOf(ion) < ION_FORMER_COUNT &&
+    (sign === `+` ? !CIF_CATION_GROUPS.has(group) : group === `HO` && sign !== `-`)
+  return is_ion ? undefined : CIF_SYMBOL_GROUPS[group]
+}
+
 // The element a CIF type symbol (`Fe2+`, `FE2+`, `O2-`, `NO3`) names: a group, then its
 // leading letters read two-then-one case-normalized; undefined when it names nothing
 const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => {
   const letters = leading_letters(raw_symbol)
   return (
-    cif_group_element(raw_symbol) ??
+    cif_symbol_group(raw_symbol) ??
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 2))) ??
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 1)))
   )
@@ -535,7 +574,7 @@ const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => 
 // this decorates without an _atom_type_oxidation_number loop. Sign-first symbols (`O-2`,
 // `Fe+2`) are not the CIF convention and read 0 without a loop, as in pymatgen.
 const cif_type_symbol_oxidation = (raw_symbol = ``): number => {
-  if (cif_group_element(raw_symbol)) return 0
+  if (cif_symbol_group(raw_symbol)) return 0
   const { magnitude = `1`, sign } =
     /^[A-Za-z]{1,2}(?<magnitude>\d+(?:\.\d+)?)?(?<sign>[+-])$/.exec(raw_symbol)?.groups ?? {}
   return sign ? Number(`${sign}${magnitude}`) : 0

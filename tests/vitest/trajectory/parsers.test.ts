@@ -40,6 +40,7 @@ import {
 } from '#lib/trajectory/parse/ase.js'
 import {
   AMU_KG,
+  BOHR_TO_ANGSTROM,
   ELEMENTARY_CHARGE_C,
   EV_PER_A3_TO_GPA,
   FS_IN_ASE_TIME,
@@ -1316,6 +1317,58 @@ describe(`XYZ`, () => {
     const lattice = lattice_of(frame)
     expect([lattice.a, lattice.b, lattice.c]).toEqual([4, 4, 4])
     expect(frame.structure.sites[1].abc).toEqual([0.25, 0.25, 0.25])
+  })
+
+  // i-PI writes its cell into the comment and its lengths in Bohr unless tagged otherwise:
+  // read as Å, the cell was dropped and every coordinate came out 1.89x too large
+  const bohr = BOHR_TO_ANGSTROM
+  // oxfmt-ignore
+  it.each([
+    [`abcABC in Bohr`, `CELL(abcABC): 10 10 12 90 90 120 Step: 4 Bead: 0 positions{atomic_unit} cell{atomic_unit}`,
+      [[10 * bohr, 0, 0], [-5 * bohr, 5 * Math.sqrt(3) * bohr, 0], [0, 0, 12 * bohr]], bohr, 4],
+    // untagged lengths are Bohr, as in i-PI's reader
+    [`untagged abcABC`, `CELL(abcABC): 10 10 10 90 90 90 Step: 0`,
+      [[10 * bohr, 0, 0], [0, 10 * bohr, 0], [0, 0, 10 * bohr]], bohr, 0],
+    // h holds the lattice vectors as columns
+    [`H in Å`, `CELL(H): 10 2 0 0 10 0 0 0 10 Step: 1 Bead: 0 x_centroid{angstrom} cell{angstrom}`,
+      [[10, 0, 0], [2, 10, 0], [0, 0, 10]], 1, 1],
+    // GENH is the general (unrotated) cell, in the positions' frame
+    [`GENH in nm`, `CELL(GENH): 1 0.2 0 0 1 0 0 0 1 Step: 3 positions{nanometer} cell{nanometer}`,
+      [[10, 0, 0], [2, 10, 0], [0, 0, 10]], 10, 3],
+    // a unit tag counts without a cell too
+    [`no cell`, `Step: 5 positions{atomic_unit}`, undefined, bohr, 5],
+    // only positions are lengths
+    [`forces in a Bohr cell`, `CELL(abcABC): 10 10 10 90 90 90 Step: 2 forces{atomic_unit} cell{atomic_unit}`,
+      [[10 * bohr, 0, 0], [0, 10 * bohr, 0], [0, 0, 10 * bohr]], 1, 2],
+  ])(`reads an i-PI header with %s`, async (_label, header, matrix, pos_scale, step) => {
+    const frame = xyz_frame([`H 0 0 1`, `H 1 0 0`], `# ${header}`)
+    const [parsed] = await frames_of(await open(`${frame}\n${frame}`, `sim.pos_0.xyz`))
+    expect(parsed.step).toBe(step)
+    if (matrix === undefined) expect(`lattice` in parsed.structure).toBe(false)
+    else {
+      lattice_of(parsed).matrix.flat().forEach((val, idx) => {
+        expect(val).toBeCloseTo(matrix.flat()[idx], 12)
+      })
+    }
+    expect(parsed.structure.sites.map(({ xyz }) => xyz)).toEqual([
+      [0, 0, pos_scale],
+      [pos_scale, 0, 0],
+    ])
+  })
+
+  it.each([
+    [`CELL(abcABC): 10 10 positions{angstrom}`, `Invalid i-PI CELL(abcABC): "10 10"`],
+    [
+      `CELL(abcABC): 1 1 1 90 90 90 positions{furlong} cell{angstrom}`,
+      `i-PI length unit {furlong} is not supported`,
+    ],
+    [
+      `CELL(XYZ): 1 1 1 positions{angstrom}`,
+      `i-PI CELL(XYZ) is not supported (abcABC, H or GENH)`,
+    ],
+  ])(`rejects the i-PI header %s`, async (header, error) => {
+    const frame = xyz_frame([`H 0 0 1`], `# ${header}`)
+    await expect(open(`${frame}\n${frame}`, `sim.xyz`)).rejects.toThrow(error)
   })
 
   // `total_energy` (an MD total) was folded into `energy`, so an exported OUTCAR frame lost it

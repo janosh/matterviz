@@ -1176,7 +1176,7 @@ O3 O2- 0.75 0.25 0.75`
     })
 
     // A charged type symbol decorates the species (pymatgen's CifWriter writes `Ag+`, `O2-`,
-    // `Fe2.5+`); a group symbol's charge (`NO3-`) belongs to no single element
+    // `Fe2.5+`); a group symbol's charge (`NO3-`, `NH4+`) belongs to no single element
     test.each([
       [`Ag+`, `Ag`, 1],
       [`O2-`, `O`, -2],
@@ -1184,6 +1184,23 @@ O3 O2- 0.75 0.25 0.75`
       [`Fe2.5+`, `Fe`, 2.5],
       [`Zr`, `Zr`, 0],
       [`NO3-`, `N`, 0],
+      [`NH4+`, `N`, 0],
+      [`ND4+`, `N`, 0],
+      [`NO+`, `N`, 0],
+      [`NO2+`, `N`, 0],
+      [`NO2-`, `N`, 0],
+      [`HO-`, `O`, 0],
+      [`OD-`, `O`, 0],
+      [`H2O`, `O`, 0],
+      [`D2O`, `O`, 0],
+      // anion groups carry no positive charge, so these are the Co3+, Po4+ and Ho3+ ions
+      [`CO3+`, `Co`, 3],
+      [`PO4+`, `Po`, 4],
+      [`HO3+`, `Ho`, 3],
+      [`HO`, `Ho`, 0], // hydroxide carries a charge
+      // unless the two letters spell an element that forms no ions (copernicium, nobelium)
+      [`CN+`, `C`, 0],
+      [`NO3+`, `N`, 0],
       // sign-first symbols are not the CIF convention: undecorated without a loop, as in pymatgen
       [`O-2`, `O`, 0],
       [`Fe+2`, `Fe`, 0],
@@ -2852,16 +2869,19 @@ describe(`multi-model / multi-record structure files`, () => {
 })
 
 // SYBYL dummy (`Du`) and lone-pair (`LP`) rows are no atoms: `Du` used to read as H (its name
-// fell back to deuterium `D`) and `LP` failed the whole file. Bonds keep their atoms by id.
+// fell back to deuterium `D`) and `LP` failed the whole file. Bonds keep their atoms by id,
+// and a lone pair's bond goes with it.
 test(`MOL2 skips dummy and lone-pair rows`, () => {
   const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
   onTestFinished(() => warn_spy.mockRestore())
   // oxfmt-ignore
   const content = [
-    `@<TRIPOS>MOLECULE`, `x`, ` 4 1 1 0 0`, `SMALL`, `NO_CHARGES`, `@<TRIPOS>ATOM`,
+    `@<TRIPOS>MOLECULE`, `x`, ` 5 2 1 0 0`, `SMALL`, `NO_CHARGES`, `@<TRIPOS>ATOM`,
     `1 C1 1.0 2.0 3.0 C.3 1 RES1 0.0`, `2 DU1 0.5 0.0 0.0 Du 1 RES1 0.0`,
     `3 LP1 0.0 0.5 0.0 LP 1 RES1 0.0`, `4 N1 1.0 2.0 4.5 N.3 1 RES1 0.0`,
-    `@<TRIPOS>BOND`, `1 1 4 1`,
+    // a lone pair reusing N's id must not take the C-N bond with it
+    `4 LP2 0.0 0.0 0.5 LP 1 RES1 0.0`,
+    `@<TRIPOS>BOND`, `1 1 4 1`, `2 4 3 1`,
   ].join(`\n`)
   const result = parse_structure_file(content, `dummy.mol2`)
   expect(result.sites.map((site) => [site.species[0].element, site.xyz])).toEqual([
@@ -2869,7 +2889,8 @@ test(`MOL2 skips dummy and lone-pair rows`, () => {
     [`N`, [1, 2, 4.5]],
   ])
   expect(result.properties?.bonds).toEqual([{ site_idx_1: 0, site_idx_2: 1, order: 1 }])
-  expect(warn_spy).toHaveBeenCalledWith(`MOL2: skipped non-atom rows of SYBYL type Du, LP`)
+  // the lone pair's bond goes with it, without a warning about bonds to unknown atoms
+  expect(warn_spy.mock.calls).toEqual([[`MOL2: skipped non-atom rows of SYBYL type Du, LP`]])
 })
 
 describe(`malformed molecular / LAMMPS input records a failure reason`, () => {

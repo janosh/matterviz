@@ -337,7 +337,7 @@
         const baseline = y_scale(bar_foot(current[hist.y_axis ?? `y`]))
         return hist.bins.flatMap(({ x0: coord_x_0, x1: coord_x_1, value }) => {
           const cross: Vec2 = [x_scale(coord_x_0), x_scale(coord_x_1)]
-          return value <= 0 ? [] : bar_obstacles(true, cross, [y_scale(value), baseline])
+          return value === 0 ? [] : bar_obstacles(true, cross, [y_scale(value), baseline])
         })
       })
     }),
