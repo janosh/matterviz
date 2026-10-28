@@ -64,6 +64,16 @@
       on_click?.(null)
     }
   })
+  // Unmounting under the pointer (a closed pane, a collapsed table) fires no mouseleave, so
+  // the parent's hover highlight would stay on with no row left to clear it
+  let hovering = false
+  const hover_row = (site_indices: number[] | null) => {
+    hovering = site_indices !== null
+    on_hover?.(site_indices)
+  }
+  $effect(() => () => {
+    if (hovering) on_hover?.(null)
+  })
   const select_row = (row_key: string, wyckoff_pos: WyckoffPos) => {
     const is_selected = selected_key === row_key
     selected_key = is_selected ? null : row_key
@@ -93,8 +103,8 @@
         <tr
           class={['wyckoff-row', { selected: is_selected }]}
           tabindex="0"
-          onmouseenter={() => on_hover?.(site_indices)}
-          onmouseleave={() => on_hover?.(null)}
+          onmouseenter={() => hover_row(site_indices)}
+          onmouseleave={() => hover_row(null)}
           onclick={() => select_row(row_key, wyckoff_pos)}
           onkeydown={(event) => {
             if ([`Enter`, ` `].includes(event.key)) {

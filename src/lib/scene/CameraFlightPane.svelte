@@ -337,7 +337,10 @@
         <button
           type="button"
           onclick={() =>
-            replace_path((pose) => orbit_camera_flight(pose, draft.duration), true)}
+            replace_path((pose) => {
+              const up = canvas ? camera_flight_registry.get(canvas)?.up() : undefined
+              return orbit_camera_flight(pose, draft.duration, up)
+            }, true)}
           disabled={!canvas}
           title="Create a complete orbit; Undo keeps your previous path">360° orbit</button
         >

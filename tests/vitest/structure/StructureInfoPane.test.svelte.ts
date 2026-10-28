@@ -134,10 +134,11 @@ describe(`StructureInfoPane`, () => {
       highlighted_sites: [] as number[],
       hovered_site_idx: null as number | null,
       selected_sites: [0, 1, 2],
+      pane_open: true,
     })
     // afterEach restores this spy
     const clipboard_spy = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
-    mount_info_pane(bind_props({ structure, pane_open: true }, state))
+    mount_info_pane(bind_props({ structure }, state))
     const site_cards = () => Array.from(document.querySelectorAll<HTMLElement>(`.site-card`))
     expect(site_cards()).toHaveLength(3)
     expect(site_cards()[0].textContent).toContain(`Frac.`)
@@ -156,6 +157,21 @@ describe(`StructureInfoPane`, () => {
     site_row.dispatchEvent(new MouseEvent(`mouseleave`, { bubbles: true }))
     expect(state.highlighted_sites).toEqual([])
     expect(state.hovered_site_idx).toBeNull()
+    // closing the pane (Esc) under the pointer unmounts the card without a mouseleave, which
+    // used to leave its atom highlighted; a hover from the 3D scene survives the close
+    site_row.dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
+    state.pane_open = false
+    await tick()
+    expect([state.highlighted_sites, state.hovered_site_idx]).toEqual([[], null])
+    state.hovered_site_idx = 2
+    state.pane_open = true
+    await tick()
+    state.pane_open = false
+    await tick()
+    expect(state.hovered_site_idx).toBe(2)
+    state.hovered_site_idx = null
+    state.pane_open = true
+    await tick()
 
     const filter_input = doc_query<HTMLInputElement>(`input[aria-label="Find site"]`)
     set_input(filter_input, `H2`)

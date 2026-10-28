@@ -201,6 +201,9 @@ describe(`make_supercell`, () => {
       [{ site_idx_1: 0, site_idx_2: 1, order: 2 }, { site_idx_1: 2, site_idx_2: 3, order: 2 }]],
     [`across supercell boundaries`, [{ site_idx_1: 0, site_idx_2: 1, order: 2, cell_shift: [1, 0, 0] }],
       [{ site_idx_1: 0, site_idx_2: 3, order: 2 }, { site_idx_1: 1, site_idx_2: 2, order: 2, cell_shift: [-1, 0, 0] }]],
+    // out-of-range entries the unit cell ignores must not be offset onto the next cell's atoms
+    [`skipping entries the unit cell rejects`, [{ site_idx_1: 0, site_idx_2: 1, order: 2 }, { site_idx_1: 0, site_idx_2: 2, order: 1 }, { site_idx_1: -1, site_idx_2: 1, order: 1 }],
+      [{ site_idx_1: 0, site_idx_2: 1, order: 2 }, { site_idx_1: 2, site_idx_2: 3, order: 2 }]],
   ] as [string, StructureBond[], StructureBond[]][])(
     `replicates explicit bond metadata %s`,
     (_desc, bonds, expected) => {

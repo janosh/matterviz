@@ -631,14 +631,21 @@ const CIF_SYMOP_TAG_RE =
 // The symmetry operation in one row of a symop loop. Ops are usually quoted (`1 'x, y, z'`),
 // which split_cif_tokens keeps as one token; unquoted ones may be written `1 x,y,z` or,
 // sloppily, `1 x, y, z`, which splits the op across tokens. Any tokens beyond the loop's
-// column count are assumed to belong to the op column and are joined back together.
-const cif_symop_of = (row: string, n_columns: number, symop_col: number): string => {
+// column count are assumed to belong to the op column and are joined back together, unless
+// they make a whole number of rows: loop values are a token stream, so one line may hold
+// several rows (`'x,y,z' '-x,-y,-z'`), which joining would merge into one unreadable op.
+const cif_symops_of = (row: string, n_columns: number, symop_col: number): string[] => {
   const tokens = split_cif_tokens(row)
+  const strip = (op: string): string => op.replaceAll(/\s+/g, ``)
+  if (tokens.length > n_columns && tokens.length % n_columns === 0) {
+    const ops = Array.from({ length: tokens.length / n_columns }, (_, row_idx) =>
+      strip(tokens[row_idx * n_columns + symop_col]),
+    )
+    // every op whole (3 or 4 comma-separated parts), so `1 x, y, z` still joins
+    if (ops.every((op) => /^[^,]+(?:,[^,]+){2,3}$/.test(op))) return ops
+  }
   const extra = Math.max(0, tokens.length - n_columns)
-  return tokens
-    .slice(symop_col, symop_col + 1 + extra)
-    .join(``)
-    .replaceAll(/\s+/g, ``)
+  return [strip(tokens.slice(symop_col, symop_col + 1 + extra).join(``))]
 }
 
 // Data lines of the loop whose header ends before `data_start`, up to the next loop_/data_
@@ -795,7 +802,7 @@ export const parse_cif = (content: string): Crystal => {
     if (symop_col === -1) continue
     const ops = /centering/i.test(headers[symop_col]) ? centering_ops : symmetry_ops
     for (const line of cif_loop_lines(block_lines, data_start)) {
-      ops.push(cif_symop_of(line, headers.length, symop_col))
+      ops.push(...cif_symops_of(line, headers.length, symop_col))
     }
   }
 

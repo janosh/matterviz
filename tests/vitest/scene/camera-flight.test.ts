@@ -1,4 +1,5 @@
 import type { CameraFlight, CameraPose } from '#lib/scene/camera-flight.js'
+import type { Vec3 } from '#lib/math.js'
 import {
   camera_flight_frame,
   create_camera_flight_sampler,
@@ -198,44 +199,55 @@ describe(`camera flight sampling`, () => {
     expect(create_camera_flight_sampler(flight)(1).quaternion).toEqual(pose.quaternion)
   })
 
-  // Level camera, and the tilted rolled one whose orbit is a small circle around world up (not a
-  // great circle, so slerping offsets alone would leave it) and which gets leveled
-  it.each([pose, tilted])(`flies an exactly circular, uniform orbit from %j`, (start) => {
-    const flight = orbit_camera_flight(start, 8)
-    expect(flight.keyframes).toHaveLength(9)
-    const { quaternion } = flight.keyframes[0]
-    expect(flight.keyframes[0]).toEqual({ ...start, time: 0, quaternion })
-    expect(flight.keyframes[8]).toEqual({ ...start, time: 8, quaternion })
-    expect(() => orbit_camera_flight({ ...start, position: start.target })).toThrow(
-      `orbit target`,
-    )
-    expect(() => orbit_camera_flight({ ...pose, position: [0, 10, 0] })).toThrow(`89°`)
-    const sample = create_camera_flight_sampler(flight)
-    const center = new Vector3(...start.target)
-    const start_offset = new Vector3(...start.position).sub(center)
-    const radius = start_offset.length()
-    const up = new Vector3(0, 1, 0)
-    const height = start_offset.dot(up)
-    const in_plane = (vec: Vector3) => vec.clone().projectOnPlane(up)
-    // Each sample is a few quaternion products, one slerp and a vector add, each exact to a
-    // couple of f64 eps; 64 eps (1.4e-14) of the radius bounds their sum with margin.
-    const tol = 64 * Number.EPSILON * radius
-    for (let step = 0; step <= 800; step++) {
-      const time = step / 100
-      const { position, quaternion: rotation } = sample(time)
-      const vec = new Vector3(...position).sub(center)
-      expect(Math.abs(vec.length() - radius)).toBeLessThan(tol)
-      expect(Math.abs(vec.dot(up) - height)).toBeLessThan(tol)
-      // No roll: the camera's right axis stays level (measured 0.75 eps)
-      const right = new Vector3(1, 0, 0).applyQuaternion(new Quaternion(...rotation))
-      expect(Math.abs(right.y)).toBeLessThan(8 * Number.EPSILON)
-      // Uniform angular speed: swept azimuth is exactly proportional to time. angleTo is an
-      // acos, which resolves angles near 0 and π only to ~sqrt(2 eps) = 2e-8 rad.
-      const swept = in_plane(start_offset).angleTo(in_plane(vec))
-      const expected = Math.PI - Math.abs(Math.PI - (2 * Math.PI * time) / 8)
-      expect(Math.abs(swept - expected)).toBeLessThan(1e-7)
-    }
-  })
+  // Level camera, and the tilted rolled one whose orbit is a small circle around the up axis
+  // (not a great circle, so slerping offsets alone would leave it) and which gets leveled. A
+  // z-up viewer (camera_up) orbits about z, as its OrbitControls do, not about world y.
+  it.each([
+    [pose, [0, 1, 0]],
+    [tilted, [0, 1, 0]],
+    [tilted, [0, 0, 2]],
+  ] as [CameraPose, Vec3][])(
+    `flies an exactly circular, uniform orbit from %j about %j`,
+    (start, up_dir) => {
+      const flight = orbit_camera_flight(start, 8, up_dir)
+      expect(flight.keyframes).toHaveLength(9)
+      const { quaternion } = flight.keyframes[0]
+      expect(flight.keyframes[0]).toEqual({ ...start, time: 0, quaternion })
+      expect(flight.keyframes[8]).toEqual({ ...start, time: 8, quaternion })
+      expect(() => orbit_camera_flight({ ...start, position: start.target })).toThrow(
+        `orbit target`,
+      )
+      const up = new Vector3(...up_dir).normalize()
+      const overhead = new Vector3(...pose.target).addScaledVector(up, 10).toArray()
+      expect(() => orbit_camera_flight({ ...pose, position: overhead }, 8, up_dir)).toThrow(
+        `89°`,
+      )
+      const sample = create_camera_flight_sampler(flight)
+      const center = new Vector3(...start.target)
+      const start_offset = new Vector3(...start.position).sub(center)
+      const radius = start_offset.length()
+      const height = start_offset.dot(up)
+      const in_plane = (vec: Vector3) => vec.clone().projectOnPlane(up)
+      // Each sample is a few quaternion products, one slerp and a vector add, each exact to a
+      // couple of f64 eps; 64 eps (1.4e-14) of the radius bounds their sum with margin.
+      const tol = 64 * Number.EPSILON * radius
+      for (let step = 0; step <= 800; step++) {
+        const time = step / 100
+        const { position, quaternion: rotation } = sample(time)
+        const vec = new Vector3(...position).sub(center)
+        expect(Math.abs(vec.length() - radius)).toBeLessThan(tol)
+        expect(Math.abs(vec.dot(up) - height)).toBeLessThan(tol)
+        // No roll: the camera's right axis stays level (measured 0.75 eps)
+        const right = new Vector3(1, 0, 0).applyQuaternion(new Quaternion(...rotation))
+        expect(Math.abs(right.dot(up))).toBeLessThan(8 * Number.EPSILON)
+        // Uniform angular speed: swept azimuth is exactly proportional to time. angleTo is an
+        // acos, which resolves angles near 0 and π only to ~sqrt(2 eps) = 2e-8 rad.
+        const swept = in_plane(start_offset).angleTo(in_plane(vec))
+        const expected = Math.PI - Math.abs(Math.PI - (2 * Math.PI * time) / 8)
+        expect(Math.abs(swept - expected)).toBeLessThan(1e-7)
+      }
+    },
+  )
 
   it.each([
     [0, 5],
@@ -277,6 +289,9 @@ it.each([`perspective`, `orthographic`] as const)(
     const active = vi.fn()
     const invalidate = vi.fn()
     const controller = flight_controller(camera, target, active, invalidate)
+    // the 360° orbit turns about the axis OrbitControls orbit about
+    camera.up.set(0, 0, 1)
+    expect(controller.up()).toEqual([0, 0, 1])
     const original = controller.capture()
     const lease = controller.begin()
     expect(() => controller.begin()).toThrow(`already flying`)

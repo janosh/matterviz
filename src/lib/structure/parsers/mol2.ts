@@ -80,6 +80,11 @@ const mol2_element = (
   return element_from_candidates(candidates, atom_idx)
 }
 
+// SYBYL types naming no atom: dummy atoms, lone pairs and query wildcards (any atom, halogen,
+// heteroatom, heavy atom). Read through the name fallback, `Du` became H (via deuterium `D`)
+// and `LP` failed the whole file.
+const MOL2_NON_ATOM_TYPES = new Set([`du`, `lp`, `any`, `hal`, `het`, `hev`])
+
 export const parse_mol2 = (content: string): AnyStructure => {
   // Multi-molecule MOL2 files repeat @<TRIPOS>MOLECULE; only the first is parsed
   const molecule_headers = [...content.matchAll(/^[ \t]*@<TRIPOS>MOLECULE/gim)]
@@ -111,6 +116,7 @@ export const parse_mol2 = (content: string): AnyStructure => {
 
   const sites: Site[] = []
   const site_idx_by_atom_id = new Map<number, number>()
+  const skipped_types = new Set<string>()
   for (const [atom_idx, row] of atom_rows.entries()) {
     // atom_id atom_name x y z atom_type [subst_id subst_name charge]
     const tokens = row_tokens(row, 5, `MOL2 atom row (need 'id name x y z [type]')`)
@@ -118,11 +124,19 @@ export const parse_mol2 = (content: string): AnyStructure => {
       tokens.slice(2, 5).map(parse_coordinate),
       `MOL2 atom coordinates on row '${row}'`,
     )
-    const element = mol2_element(tokens[5] ?? ``, tokens[1], atom_idx)
+    const atom_type = tokens[5] ?? ``
+    if (MOL2_NON_ATOM_TYPES.has(atom_type.toLowerCase())) {
+      skipped_types.add(atom_type)
+      continue
+    }
+    const element = mol2_element(atom_type, tokens[1], atom_idx)
     const abc = to_frac(xyz)
-    sites.push(make_site(element, abc, xyz, `${element}${atom_idx + 1}`))
-    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), atom_idx)
+    // keyed to the site index, which runs behind atom_idx once a row is skipped
+    record_atom_id(site_idx_by_atom_id, Number(tokens[0]), sites.length)
+    sites.push(make_site(element, abc, xyz, `${element}${sites.length + 1}`))
   }
+  if (skipped_types.size > 0)
+    parse_warn(`MOL2: skipped non-atom rows of SYBYL type ${[...skipped_types].join(`, `)}`)
 
   const raw_bonds: RawBond[] = []
   for (const row of sections.get(`BOND`) ?? []) {
