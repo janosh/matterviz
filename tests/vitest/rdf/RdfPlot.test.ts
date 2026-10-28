@@ -372,6 +372,17 @@ describe(`PdfPlot`, () => {
         expect(toolbar?.classList.contains(`hover-visible`)).toBe(true)
         expect(toolbar?.style.opacity).toBe(`0.5`)
         expect(toolbar?.textContent).toContain(`Cutoff`)
+        // the active quantity and radiation are announced, not only coloured
+        const pressed = [...(toolbar?.querySelectorAll(`button`) ?? [])].map(
+          (button) => `${button.textContent?.trim()}:${button.getAttribute(`aria-pressed`)}`,
+        )
+        expect(pressed).toEqual([
+          `g(r):false`,
+          `G(r):true`,
+          `X-ray:true`,
+          `Neutron:false`,
+          `Electron:false`,
+        ])
       }
     },
   )

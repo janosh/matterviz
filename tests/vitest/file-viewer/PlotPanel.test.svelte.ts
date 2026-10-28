@@ -15,7 +15,8 @@ test(`new data clears a toolbar plot-type override back to initial_type`, async 
   const props = $state({ data: rows(`x`), initial_type: `bar` as const })
   mount(PlotPanel, { target: document.body, props })
   flushSync()
-  const select = doc_query<HTMLSelectElement>(`.toolbar > select`)
+  // looked up by its accessible name: an unlabelled select is announced as just "combo box"
+  const select = doc_query<HTMLSelectElement>(`.toolbar > select[aria-label='Plot type']`)
   expect(select.value).toBe(`bar`)
 
   select.value = `scatter`
@@ -38,4 +39,18 @@ test(`column-based table rows come from the equal-length columns only`, () => {
   expect(body_rows).toHaveLength(3)
   expect(body_rows[0].textContent).toContain(`a`)
   expect(document.querySelector(`.empty-row`)).toBeNull()
+})
+
+test(`row-based table tolerates non-object rows past the sampled first two`, () => {
+  // detection samples only the leading rows, so a null record further down reached the table
+  // and crashed it; the table drops the empty row it becomes
+  const data = [{ a: 1, b: 2 }, { a: 2, b: 3 }, null, { a: 4, b: 5 }]
+  mount(PlotPanel, { target: document.body, props: { data, initial_type: `table` } })
+  flushSync()
+  const body_rows = document.querySelectorAll(`tbody tr:not(.virtual-spacer)`)
+  expect([...body_rows].map((row) => row.textContent?.replaceAll(/\s+/g, ``))).toEqual([
+    `12`,
+    `23`,
+    `45`,
+  ])
 })

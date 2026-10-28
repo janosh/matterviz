@@ -131,8 +131,9 @@ function parse_extxyz_pbc(comment: string): Pbc | undefined {
 
 // Every `key=value` (or `key: value`) pair of an extXYZ comment, in order. Quote-aware, and a
 // bare value is consumed whole, so `Properties=species:S:1:pos:R:3` yields no colon pairs.
+// A bare value's trailing comma separates pairs (CP2K: `i =  5, time =  2.500, E = -17.1`)
 const EXTXYZ_PAIR_RE =
-  /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+))/gu
+  /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+?),?(?=\s|$))/gu
 
 // Read back by dedicated parsers (lattice, pbc, columns) or the step regex below, so
 // re-emitting them as frame properties would duplicate or contradict the frame
@@ -403,10 +404,19 @@ export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[]
   const last = specs.at(-1)
   // only a frame that reaches the end of the text can have a half-written last line
   if (!last || last.end < lines.count) return specs
-  const { pos_col, min_cols } = parse_extxyz_columns(last.comment)
+  const { pos_col, min_cols, layout } = parse_extxyz_columns(last.comment)
+  // Every declared column, not just through pos: a line cut inside its forces dropped the
+  // whole frame's forces instead of the torn frame. Capped by the frame's first atom line, so
+  // a writer that omits a declared column on every line keeps its last frame.
   const scanner = new LineScanner()
+  const first_line_cols = last.num_atoms > 1 ? lines.scan(scanner, last.start + 2) : Infinity
+  const declared_end = Math.max(
+    0,
+    ...Object.values(layout ?? {}).map(({ offset, ncols }) => offset + ncols),
+  )
+  const declared_cols = Math.max(min_cols, Math.min(first_line_cols, declared_end))
   const complete =
-    lines.scan(scanner, last.end - 1) >= min_cols &&
+    lines.scan(scanner, last.end - 1) >= declared_cols &&
     [0, 1, 2].every((axis) => Number.isFinite(scanner.num(pos_col + axis)))
   if (complete) return specs
   specs.pop()

@@ -1,5 +1,4 @@
-import { classify_payload, compression_wrapper_of, text_or_blob } from './decompress'
-import { is_known_text_file } from './is-binary'
+import { classify_payload, compression_wrapper_of } from './decompress'
 import type {
   FileInfo,
   FileLoadCallback,
@@ -84,9 +83,8 @@ async function load_url_content(
   const source_filename = extract_filename(resp.headers, url_basename)
   const emit = (content: string | ArrayBuffer | Blob, filename: string) =>
     callback(content, filename, { source_filename, source_url: url } satisfies FileLoadMeta)
-  if (is_known_text_file(url_basename))
-    return emit(await text_or_blob(await resp.blob(), hdf5_as_blob), source_filename)
-  // Everything else is classified from one Blob so binary payloads never need a second fetch
+  // Classified from one Blob so binary payloads never need a second fetch, and like a dropped
+  // file a gzip body behind a text name (POSCAR, run.xyz) inflates by its magic bytes
   const { content, filename } = await classify_payload(
     await resp.blob(),
     [source_filename, url_basename],

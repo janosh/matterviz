@@ -251,8 +251,12 @@ export const parse_in_worker = async (
       load_options,
       options.on_progress,
     )
-    // the parse can't be interrupted, but an abort during it still rejects like the worker path
-    options.signal?.throwIfAborted()
+    // the parse can't be interrupted, but an abort during it still rejects like the worker path,
+    // releasing the run nobody will receive (a host run's stream listener, a file's reader)
+    if (options.signal?.aborted) {
+      if (result.type === `trajectory`) result.data.dispose()
+      options.signal.throwIfAborted()
+    }
     return result
   }
   let dispose_pool: (() => void) | undefined

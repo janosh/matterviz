@@ -63,9 +63,12 @@
 
   // Row-based data for HeatmapTable. Column-based data transposes the extracted columns
   // (equal-length, non-empty), so an empty or ragged array beside them can't zero the rows.
+  // Detection only samples the leading rows, so a null or scalar entry further down becomes
+  // an empty record (as in extract_columns) instead of crashing the table.
   let table_data = $derived.by<RowData[]>(() => {
     if (plot_type !== `table`) return []
-    if (Array.isArray(data)) return data as RowData[]
+    if (Array.isArray(data))
+      return data.map((row) => (row && typeof row === `object` ? row : {})) as RowData[]
     const entries = [...columns]
     return Array.from(
       { length: entries[0]?.[1].values.length ?? 0 },
@@ -126,7 +129,7 @@
           &times;
         </button>
       {/if}
-      <select bind:value={plot_type}>
+      <select bind:value={plot_type} aria-label="Plot type">
         {#each available_types as opt (opt.value)}
           <option value={opt.value}>{opt.label}</option>
         {/each}

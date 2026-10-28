@@ -36,6 +36,7 @@ import {
   form_controls,
   fire,
   keydown,
+  mock_clipboard_write,
   set_input,
   expect_axis_titles_placed,
   clip_rect,
@@ -1720,6 +1721,21 @@ describe(`bindings`, () => {
     await tick()
     expect(props.current_step_idx).toBe(1)
     expect(doc_query(`.step-section span`).textContent).toBe(`/ 5`)
+  })
+
+  test.each([
+    [`succeeds`, undefined, true],
+    [`is denied`, new Error(`Write permission denied`), false],
+  ])(`filename copy check shows only when the clipboard write %s`, async (_, error, shown) => {
+    const write_text = mock_clipboard_write(error)
+    const console_error = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const target = await mount_ticked(default_props())
+    doc_query(`.filename`).click()
+    await vi.waitFor(() => expect(write_text).toHaveBeenCalledWith(`movie.extxyz`))
+    await tick()
+    await tick()
+    expect(target.querySelector(`.filename svg`) !== null).toBe(shown)
+    expect(console_error).toHaveBeenCalledTimes(shown ? 0 : 1)
   })
 
   test(`hovered follows pointerenter/pointerleave and wrapper is the viewer element`, async () => {

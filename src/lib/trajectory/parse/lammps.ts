@@ -234,6 +234,13 @@ function create_lammps_reader(
 
     require_section(`ITEM: ATOMS`, timestep)
     const cols = read_line().replace(`ITEM: ATOMS`, ``).trim().toLowerCase().split(/\s+/)
+    // A header with no atom line after it is a torn tail, possibly cut inside its own column
+    // list, so it is not validated as a frame that declares too few columns
+    if (idx >= lines.count) {
+      throw new TornLammpsFrameError(
+        `LAMMPS frame at timestep ${timestep} ends after its "ITEM: ATOMS" header`,
+      )
+    }
     // A repeated name silently let the LAST index win, so `id type x y z x` read the trailing
     // column as the x coordinate. Every other malformed header here throws rather than guess.
     const duplicate = cols.find((name, col_idx) => cols.indexOf(name) !== col_idx)

@@ -112,7 +112,7 @@ export function suggest_mapping(columns: Map<string, ColumnInfo>): {
   let plot_type: PlotType = `scatter`
   if (mapping.z) {
     plot_type = `scatter3d`
-  } else if (mapping.x && columns.get(mapping.x)?.type === `string`) {
+  } else if (mapping.x && mapping.y && columns.get(mapping.x)?.type === `string`) {
     plot_type = `bar`
   } else if ((!mapping.x || !mapping.y) && numeric_cols.length >= 1) {
     plot_type = `histogram`

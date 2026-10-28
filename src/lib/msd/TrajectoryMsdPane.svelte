@@ -77,8 +77,22 @@
     </label>
     <label>
       Fit window
-      <input type="number" min="0" max="1" step="0.05" bind:value={fit_start_fraction} />
-      <input type="number" min="0" max="1" step="0.05" bind:value={fit_end_fraction} />
+      <input
+        type="number"
+        aria-label="Einstein fit window start (fraction of max lag)"
+        min="0"
+        max="1"
+        step="0.05"
+        bind:value={fit_start_fraction}
+      />
+      <input
+        type="number"
+        aria-label="Einstein fit window end (fraction of max lag)"
+        min="0"
+        max="1"
+        step="0.05"
+        bind:value={fit_end_fraction}
+      />
     </label>
   {/snippet}
   {#snippet children(ctx)}

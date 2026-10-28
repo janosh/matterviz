@@ -476,6 +476,32 @@ describe(`parse_in_worker`, () => {
     await expect(pending).rejects.toThrow(/abort/i)
   })
 
+  // A host marker (or a workerless page) parses on the main thread, where an abort only lands
+  // once the run exists: that run (its host listener, its reader) must not outlive the load
+  it(`disposes a main-thread trajectory whose load was aborted mid-parse`, async () => {
+    vi.stubGlobal(`Worker`, undefined)
+    const run = trajectory_from_frames([frame])
+    const dispose = vi.spyOn(run, `dispose`)
+    const controller = new AbortController()
+    vi.resetModules()
+    vi.doMock(`#lib/file-viewer/parse.js`, () => ({
+      parse_file_content: () => {
+        controller.abort()
+        return Promise.resolve({ type: `trajectory`, data: run, filename: `md.xyz` })
+      },
+    }))
+    try {
+      const module = await import(`#lib/file-viewer/parse-in-worker.js`)
+      const pending = module.parse_in_worker(`LARGE_FILE:/md.xyz:9`, `md.xyz`, false, {
+        signal: controller.signal,
+      })
+      await expect(pending).rejects.toThrow(/abort/i)
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      vi.doUnmock(`#lib/file-viewer/parse.js`)
+    }
+  })
+
   it(`posts a file request and stops the worker after a non-trajectory reply`, async () => {
     use_fake_timeouts()
     const worker = make_fake_worker()

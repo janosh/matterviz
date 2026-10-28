@@ -149,6 +149,12 @@ describe(`MSD components`, () => {
       }),
     )
     await tick()
+    // the two fit-window bounds share one visible label, so each needs its own name
+    const fit_inputs = document.querySelectorAll(`[aria-label^="Einstein fit window"]`)
+    expect([...fit_inputs].map((input) => input.getAttribute(`aria-label`))).toEqual([
+      `Einstein fit window start (fraction of max lag)`,
+      `Einstein fit window end (fraction of max lag)`,
+    ])
     const button = doc_query<HTMLButtonElement>(`.trajectory-msd-controls button`)
     button.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain(`Å²/fs`))

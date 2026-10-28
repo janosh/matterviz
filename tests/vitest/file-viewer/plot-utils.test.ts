@@ -87,6 +87,9 @@ test.each([
   [`single numeric column`, { a: [1, 2, 3] },
     { plot_type: `histogram`, mapping: { x: `a` } }],
   [`empty columns`, {}, { plot_type: `table`, mapping: { x: undefined, y: undefined } }],
+  // a string column beside only mixed ones has no bar heights: a table, not an empty bar plot
+  [`string + mixed columns`, { name: [`Si`, `Ge`, `C`, `Sn`], gap: [1.1, `N/A`, 5.5, `N/A`] },
+    { plot_type: `table`, mapping: { x: `name`, y: undefined } }],
 ])(`suggest_mapping for %s`, (_label, data, expected) => {
   const columns = extract_columns(data)
   expect(columns.size).toBe(Object.keys(data).length)

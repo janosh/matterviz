@@ -973,6 +973,9 @@ describe(`LAMMPS`, () => {
     [`ends before ITEM: NUMBER OF ATOMS`, `ITEM: TIMESTEP\n100`, `LAMMPS frame at timestep 100 ends before "ITEM: NUMBER OF ATOMS"`],
     [`ends after the ITEM: NUMBER OF ATOMS header`, `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS`,
       `LAMMPS frame at timestep 100 ends after "ITEM: NUMBER OF ATOMS"`],
+    // a header cut before its position columns failed the whole dump as a column-less frame
+    [`ends inside the ITEM: ATOMS header`, `ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n0 10\n0 10\n0 10\nITEM: ATOMS id type x`,
+      `LAMMPS frame at timestep 100 ends after its "ITEM: ATOMS" header`],
     // The writer was cut mid-way through the last atom line
     [`ends in a short final atom line`, lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0`], { timestep: 100 }),
       `LAMMPS atom line 22 (timestep 100) has 4 columns, expected 5`],
@@ -1476,11 +1479,14 @@ describe(`XYZ`, () => {
     [`Temperature: 300`, { temperature: 300 }],
     // Fortran exponents were dropped from comment scalars though read in every atom column
     [`energy=-1.5D-3 pressure=2.0d+1`, { energy: -0.0015, pressure: 20 }],
+    // CP2K separates its pairs with commas, which dropped every value but the last
+    [`i =        5, time =        2.500, E =     -17.1655`, { time: 2.5, energy: -17.1655 }],
+    [`time=1,2 E=3`, { energy: 3 }], // an inner comma is no separator
   ])(`anchors comment metadata keys at word boundaries: %s`, async (comment, expected) => {
     const frame = xyz_frame([`H 0.0 0.0 0.0`], comment)
-    const { energy, pressure, temperature } =
+    const { energy, pressure, temperature, time } =
       (await open(`${frame}\n${frame}`, `test.xyz`)).preview.metadata ?? {}
-    expect({ energy, pressure, temperature }).toEqual(expected)
+    expect({ energy, pressure, temperature, time }).toEqual(expected)
   })
 
   // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
@@ -1584,6 +1590,8 @@ describe(`XYZ`, () => {
     [`a half-written third atom line in a 3-atom frame`, `3\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 3 (line 13): partial atom line 17 "H 0 1"`],
     [`a missing atom line after a half-written third`, `4\ncomment\nH 0 0 0\nH 1 0 0\nH 0 1`, `Dropping truncated final XYZ frame 3 (line 13): 3 of 4 atom lines`],
     [`a non-numeric coordinate on the last atom line`, xyz_frame(four_atoms(`H 1 1 1.2e`)), `Dropping truncated final XYZ frame 3 (line 13): partial atom line 18 "H 1 1 1.2e"`],
+    // cut inside a declared column after pos: kept, it silently lost every force of the frame
+    [`a last atom line cut inside its forces`, xyz_frame([`H 0 0 0 0 0 1`, `H 1 0 0 0 1 0`, `H 0 1 0 1 0 0`, `H 1 1 1 0.1`], `Properties=species:S:1:pos:R:3:forces:R:3`), `Dropping truncated final XYZ frame 3 (line 13): partial atom line 18 "H 1 1 1 0.1"`],
     // truncation wins over a corrupt header: the header of a frame cut short is never decoded
     [`missing atom lines and a corrupt Lattice`, `4\nLattice="1 0 0"\nH 0 0 0\nH 1 0 0`, `Dropping truncated final XYZ frame 3 (line 13): 2 of 4 atom lines`],
     // the warning names the frame's own count line, not a numeric comment line inside it
@@ -1632,6 +1640,8 @@ describe(`XYZ`, () => {
     [`a complete frame without a trailing newline`, xyz_frame(four_atoms()), [0, 1, 2]],
     [`a complete frame followed by blank lines`, `${xyz_frame(four_atoms())}\n\n\n`, [0, 1, 2]],
     [`a zero-atom frame`, `0\ncomment`, [0, 1]],
+    // a declared column no line carries is a writer quirk, not a torn last line
+    [`a frame missing a declared column on every line`, xyz_frame(four_atoms(), `Properties=species:S:1:pos:R:3:forces:R:3`), [0, 1, 2]],
   ])(`keeps every complete frame before %s`, async (_label, tail, steps) => {
     const content = [xyz_frame(four_atoms()), xyz_frame(four_atoms()), tail].join(`\n`)
     for (const options of [{}, { index_above_bytes: 0 }]) {
