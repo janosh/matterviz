@@ -456,7 +456,8 @@
   const handle_bar_hover =
     (hist: BinnedSeries, bin_idx: number) => (evt: MouseEvent | FocusEvent) => {
       hovered = true
-      hover_key = { series_idx: hist.series_idx, bin_idx }
+      const next = { series_idx: hist.series_idx, bin_idx }
+      if (!pin.same(next, hover_key)) hover_key = next
       on_bar_hover?.({ ...bar_data(hist, hist.bins[bin_idx]), event: evt })
     }
   const clear_hover = () => {

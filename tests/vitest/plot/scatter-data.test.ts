@@ -10,6 +10,7 @@ import {
   build_series_legend_items,
   drawn_xy,
   filter_series_to_ranges,
+  line_reaches_view,
   lookalike_legend_label,
   materialize_series_points,
   pick_tooltip_bg,
@@ -392,6 +393,52 @@ describe(`pick_tooltip_bg`, () => {
   ])(`%s`, (_desc, point, series, expected) => {
     expect(pick_tooltip_bg(point, series, color_scale)).toBe(expected)
   })
+})
+
+// The view is x [0, 10], y [0, 10] (y2 [-50, 50]): a line whose vertices all sit on one side
+// of it draws nothing, unless its curve can overshoot them or underlays bring their own
+// oxfmt-ignore
+test.each<[string, Partial<DataSeries>, boolean]>([
+  [`inside`, { x: [1, 2], y: [1, 2] }, true],
+  [`crossing the view between two outside vertices`, { x: [5, 5], y: [-5, 15] }, true],
+  [`touching the top edge`, { x: [1, 2], y: [10, 12] }, true],
+  [`above`, { x: [1, 2], y: [11, 12] }, false],
+  [`below`, { x: [1, 2], y: [-3, -2] }, false],
+  [`left`, { x: [-3, -2], y: [1, 2] }, false],
+  [`right`, { x: [11, 12], y: [1, 2] }, false],
+  [`above on y but inside y2`, { x: [1, 2], y: [11, 12], y_axis: `y2` }, true],
+  [`a natural curve above (may overshoot)`, { x: [1, 2], y: [11, 12], line_style: { curve: `natural` } }, true],
+  [`a step curve above`, { x: [1, 2], y: [11, 12], line_style: { curve: `step` } }, false],
+  [`with underlays above`, { x: [1, 2], y: [11, 12], line_underlays: [{ x: [1], y: [1] }] }, true],
+])(`line_reaches_view: %s`, (_desc, partial, expected) => {
+  const [series] = materialize_series_points([{ x: [], y: [], markers: `line`, ...partial }])
+  expect(line_reaches_view(series, ranges)).toBe(expected)
+})
+
+// A break lifts the pen before its point: a NaN vertex (Line's d3 generator skips it, ending
+// the subpath) unless the line has no point yet or already ended on one
+test.each<[string, number[], number[], (number | null)[]]>([
+  [`none`, [0, 1, 2, 3], [], [0, 1, 2, 3]],
+  [`one`, [0, 1, 2, 3], [2], [0, 1, null, 2, 3]],
+  [`at the first point`, [0, 1, 2, 3], [0, 2], [0, 1, null, 2, 3]],
+  [`after an invalid point`, [0, NaN, 2, 3], [1, 2], [0, null, 2, 3]],
+  [
+    `repeated (an empty branch), then another`,
+    [0, 1, 2, 3],
+    [2, 2, 3],
+    [0, 1, null, 2, null, 3],
+  ],
+])(`project_line_points line_breaks: %s`, (_desc, y, line_breaks, expected) => {
+  const data = { x: y.map((_, idx) => idx), y, line_breaks }
+  const points = project_line_points(
+    data,
+    (val) => val,
+    (val) => val,
+    [0, 3],
+    0,
+    `linear`,
+  )
+  expect(points.map(([, py]) => (Number.isNaN(py) ? null : py))).toEqual(expected)
 })
 
 describe(`viewport line projection`, () => {

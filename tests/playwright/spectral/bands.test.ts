@@ -2,15 +2,30 @@ import { expect, type Locator, test } from '@playwright/test'
 import { numeric_y_ticks, require_bbox } from '../helpers'
 
 const band_paths = (plot: Locator) => plot.locator(`svg path[fill="none"]`)
+// Drawn line stretches: each band is one path across the branches, a subpath per branch
+const stretch_count = (plot: Locator) =>
+  band_paths(plot).evaluateAll((paths) =>
+    paths.reduce((sum, path) => sum + (path.getAttribute(`d`)?.match(/M/g)?.length ?? 0), 0),
+  )
 // Discontinuity labels join their points with no-break spaces so the axis never wraps them
 const x_axis_labels = async (plot: Locator) =>
   (await plot.locator(`g.x-axis text`).allTextContents()).join(`,`).replaceAll(`\u00A0`, ` `)
 
-// SVG path elements have zero-size bounding boxes, so force: true is needed for hover. The
-// nearest point can resolve to a neighbouring band, so re-hover until the tooltip matches.
+// A point on the line itself (a third along it): a band's path spans the whole plot, so its
+// bounding-box centre can sit far from the line. The nearest point can resolve to a
+// neighbouring band, so re-hover until the tooltip matches.
 const hover_expect_tooltip = (plot: Locator, path: Locator, expected: (string | RegExp)[]) =>
   expect(async () => {
-    await path.hover({ force: true })
+    await plot.scrollIntoViewIfNeeded()
+    const point = await path.evaluate((element) => {
+      const svg_path = element as SVGPathElement
+      const matrix = svg_path.getScreenCTM()
+      if (!matrix) throw new Error(`Band path has no screen transform`)
+      const on_line = svg_path.getPointAtLength(svg_path.getTotalLength() / 3)
+      const { x, y } = on_line.matrixTransform(matrix)
+      return { x, y } // DOMPoint does not serialize
+    })
+    await plot.page().mouse.move(point.x, point.y)
     const tooltip = plot.locator(`.plot-tooltip`)
     await expect(tooltip).toBeVisible({ timeout: 500 })
     for (const text of expected) await expect(tooltip).toContainText(text, { timeout: 500 })
@@ -30,7 +45,7 @@ test.describe(`Bands Component Tests`, () => {
       // 4 bands × 2 branches (Γ→X, X→M) from mock data
       const paths = band_paths(plot)
       await expect(paths.first()).toBeVisible()
-      await expect(paths).toHaveCount(8)
+      await expect.poll(() => stretch_count(plot)).toBe(8)
 
       await expect(plot.locator(`g.x-axis`)).toBeVisible()
       await expect(plot.locator(`g.y-axis`)).toBeVisible()
@@ -54,7 +69,7 @@ test.describe(`Bands Component Tests`, () => {
         await expect(plot).toBeVisible()
         const paths = band_paths(plot)
         await expect(paths.first()).toBeVisible()
-        if (path_count !== null) await expect(paths).toHaveCount(path_count)
+        if (path_count !== null) await expect.poll(() => stretch_count(plot)).toBe(path_count)
         const labels = await x_axis_labels(plot)
         for (const label of x_labels) expect(labels).toContain(label)
       })
@@ -107,11 +122,11 @@ test.describe(`Bands Component Tests`, () => {
     await expect(legend).toContainText(`BS2`)
 
     // 2 structures × 4 bands × 2 branches
-    await expect(paths).toHaveCount(16)
+    await expect.poll(() => stretch_count(plot)).toBe(16)
     await legend_items.first().click()
-    await expect(paths).toHaveCount(8, { timeout: 2000 })
+    await expect.poll(() => stretch_count(plot), { timeout: 2000 }).toBe(8)
     await legend_items.first().click()
-    await expect(paths).toHaveCount(16, { timeout: 2000 })
+    await expect.poll(() => stretch_count(plot), { timeout: 2000 }).toBe(16)
   })
 
   test(`maintains responsive layout`, async ({ page }) => {

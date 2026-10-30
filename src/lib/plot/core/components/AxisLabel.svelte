@@ -48,11 +48,15 @@
   )
   // Keep browser wrapping from splitting the trigger when canvas metrics under-estimate page fonts.
   const trigger_width = $derived(Math.max(width, title_layout.width))
-  // The rendered text's width: canvas metrics can under-estimate page fonts
+  // The rendered text's width (canvas metrics can under-estimate page fonts), which only an
+  // x_span reads. getBBox forces a layout mid-update, so it runs when the text changes, not
+  // whenever a resize or data change rebuilds an equal layout.
   let text_width = $state(0)
+  const needs_width = $derived(x_span !== undefined)
+  const title_text = $derived(title_layout.lines.map(({ text }) => text).join(`\n`))
   const measure_text = (node: SVGTextElement) => {
-    void title_layout.lines // re-measure when the text changes
-    text_width = node.getBBox().width
+    void title_text
+    if (needs_width) text_width = node.getBBox().width
   }
   const x = $derived.by(() => {
     if (!x_span) return coord_x

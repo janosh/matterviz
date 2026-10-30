@@ -204,6 +204,26 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
   return out
 }
 
+// Whether a series' line can reach the view: one whose vertices' bounding box misses it draws
+// nothing there when its curve stays inside that box (linear, monotone, step and basis curves
+// do; natural and Catmull-Rom ones overshoot). Underlays have vertices of their own, so a
+// series with any is kept. A band structure's bands far from the shown energies are such lines.
+export function line_reaches_view(
+  series: Pick<MaterializedSeries, `x_axis` | `y_axis` | `line_style` | `line_underlays`> & {
+    point_bounds: { x: Vec2; y: Vec2 }
+  },
+  ranges: AxisRanges,
+): boolean {
+  const curve = series.line_style?.curve
+  if (curve === `natural` || curve === `catmull-rom` || series.line_underlays?.length)
+    return true
+  const [x_lo, x_hi] = range_bounds(series.x_axis === `x2` ? ranges.x2 : ranges.x)
+  const [y_lo, y_hi] = range_bounds(series.y_axis === `y2` ? ranges.y2 : ranges.y)
+  const { x, y } = series.point_bounds
+  // NaN bounds fail every comparison, keeping the line
+  return !(x[1] < x_lo || x[0] > x_hi || y[1] < y_lo || y[0] > y_hi)
+}
+
 // Display style attached to each legend item (matches PlotLegend expectations)
 type LegendDisplayStyle = LegendItem[`display_style`]
 
@@ -445,7 +465,7 @@ export const strict_x_direction = (values: readonly number[]): -1 | 0 | 1 => {
 // Retain boundary-crossing segments and enough neighboring vertices for d3's local
 // monotone tangents. Natural/basis/Catmull–Rom curves retain their complete path.
 export function project_line_points(
-  data: Pick<DataSeries, `x` | `y`>,
+  data: Pick<DataSeries, `x` | `y` | `line_breaks`>,
   x_scale: (value: number) => number,
   y_scale: (value: number) => number,
   x_range: Vec2,
@@ -475,7 +495,14 @@ export function project_line_points(
       if (finite_at(end)) count++
   }
   const points: Vec2[] = []
+  // a NaN vertex before each break's first point ends the subpath there (Line skips it)
+  const breaks = data.line_breaks ?? []
+  let next_break = partition_point(breaks, (break_idx) => break_idx <= start)
   for (let idx = start; idx < end; idx++) {
+    if (breaks[next_break] <= idx) {
+      while (breaks[next_break] <= idx) next_break++ // repeated breaks (an empty branch)
+      if (points.length > 0 && Number.isFinite(points.at(-1)?.[0])) points.push([NaN, NaN])
+    }
     const pixel_x = x_scale(coord_x[idx])
     const pixel_y = y_scale(coord_y[idx])
     if (Number.isFinite(pixel_x) && Number.isFinite(pixel_y)) points.push([pixel_x, pixel_y])

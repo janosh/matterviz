@@ -22,8 +22,8 @@ import type { DescriptorSpec, Sweep, SweepFrame, SweepFrameData, SweepSeries } f
 // The last shown frames (the current one included) that keep their heavy data after leaving
 // the window, so flipping back to a frame just compared needs no reload. A frame's band grid
 // is up to 64³ points × bands (~20 MB at 10 bands in f64), so the window's 3 frames, 3 older
-// ones and the background frame while it loads cap the cache near 140 MB (~160 MB while
-// comparing two series: 5 window frames, 2 older ones).
+// ones and the background frame while it loads cap the cache near 140 MB (~180 MB while
+// comparing two series: 6 window frames, 2 older ones).
 export const RECENT_FRAMES = 4
 
 // A series and the indices of its frames to load: the shown frame first, then its neighbours

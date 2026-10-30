@@ -1322,6 +1322,25 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  // A band structure draws every band, most far off the shown energies: those lines get no
+  // component at all until a pan or zoom brings them into view
+  test(`draws only the lines that reach the view`, async () => {
+    const x = [0, 1, 2]
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { id: `in`, x, y: [0.2, 0.5, 0.8], markers: `line` },
+        { id: `above`, x, y: [5, 6, 7], markers: `line` },
+        { id: `below`, x, y: [-7, -6, -5], markers: `line` },
+      ],
+      y_axis: { range: [0, 1] },
+    })
+    const drawn = () =>
+      [...plot.querySelectorAll(`g[data-series-id]:has(> path[fill="none"])`)].map((group) =>
+        group.getAttribute(`data-series-id`),
+      )
+    expect(drawn()).toEqual([`in`])
+  })
+
   test.each([0, 300])(
     `keeps line cropping consistent through pan for duration %s`,
     async (duration) => {
@@ -1610,6 +1629,27 @@ describe(`ScatterPlot`, () => {
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+  })
+
+  // a written bindable prop is proxied anew: rewriting the same point would re-run every
+  // marker's hover look on each pointer frame
+  test(`moving within one point leaves the bound tooltip point unwritten`, async () => {
+    let tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`] = null
+    const set_point = vi.fn((point: typeof tooltip_point) => (tooltip_point = point))
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      point_tween: { duration: 0 },
+      get tooltip_point() {
+        return tooltip_point
+      },
+      set tooltip_point(point) {
+        set_point(point)
+      },
+    })
+    await move_to_marker(plot, 1)
+    await move_to_marker(plot, 1, { dy: 2 })
+    expect(set_point).toHaveBeenCalledOnce()
+    expect(tooltip_point).toMatchObject({ x: 2, y: 3 })
   })
 
   test(`shows a pointer cursor only where a plot click would reach a point`, async () => {

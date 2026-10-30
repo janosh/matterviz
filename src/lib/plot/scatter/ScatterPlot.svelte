@@ -143,6 +143,7 @@
     drawn_xy,
     lookalike_legend_label,
     filter_series_to_ranges,
+    line_reaches_view,
     is_finite_num,
     legend_row_dedupe,
     materialize_series_points,
@@ -372,8 +373,10 @@
   const show_lines = $derived(styles.show_lines ?? DEFAULTS.scatter.show_lines)
 
   let hovered_fill_key = $state<string | null>(null)
-  // Solver-placed label positions, keyed by `series_idx-point_idx`
-  let label_positions = $state<Record<string, Point2D>>({})
+  // Solver-placed label positions, keyed by `series_idx-point_idx`. Raw and reset to one empty
+  // record, so a data change without auto-placed labels re-resolves no point's label.
+  const no_label_positions: Record<string, Point2D> = {}
+  let label_positions = $state.raw(no_label_positions)
 
   // Hovering a legend entry fades every other series
   const is_legend_dimmed = (series_idx: number | undefined): boolean =>
@@ -744,6 +747,18 @@
     ),
   )
   type FilteredSeries = (typeof filtered_series)[number]
+  // The series each draw loop walks, so a plot of many lines (a band structure's, most far
+  // off the shown energies) reconciles only those it draws on every data change
+  const line_series = $derived(
+    filtered_series.filter(
+      (srs) => has_marker(srs, `line`) && line_reaches_view(srs, frame.ranges.current),
+    ),
+  )
+  const marker_series = $derived(
+    filtered_series.flatMap((series_data, series_pos) =>
+      has_marker(series_data, `points`) ? [{ series_data, series_pos }] : [],
+    ),
+  )
 
   // === Density contours ===
   // One KDE per series in its own px frame: drawn on a grid over the plot area (plus the blur
@@ -1301,7 +1316,10 @@
     }
     // Construct handler props synchronously to avoid stale derived reads
     const props = construct_handler_props(closest_point)
-    tooltip_point = tooltip === false ? null : closest_point
+    // a written bindable prop is proxied anew, so rewriting the same point would re-run every
+    // marker's hover look each pointer frame
+    const next = tooltip === false ? null : closest_point
+    if (!next || !same_logical_point(next, tooltip_point)) tooltip_point = next
     hover_event = evt && props ? evt : null
     if (evt && props) on_point_hover?.({ ...props, event: evt, point: closest_point })
   }
@@ -1394,7 +1412,7 @@
       previous_label_config = label_config_key
     }
     if (!width || !height || !has_auto_placed_labels) {
-      label_positions = {}
+      label_positions = no_label_positions
       label_offsets.clear()
       return
     }
@@ -1806,23 +1824,24 @@
     {/if}
 
     {#if show_lines}
-      {#each filtered_series as series_data (series_data._id)}
+      {#each line_series as series_data (series_data._id)}
         {@const series_idx = series_data.orig_series_idx}
-        {#if has_marker(series_data, `line`)}
-          {@const project = series_projector(series_data)}
-          {@const series_default_color = plot_color(series_idx)}
-          {@const line = scatter_line_style(
-            assigned_series[series_idx],
-            series_idx,
-            color_scale_fn,
-            series_idx === active_series_idx ? styles.line : undefined,
-          )}
-          <g
-            data-series-id={series_data._id}
-            clip-path="url(#{clip_path_id})"
-            opacity={is_legend_dimmed(series_idx) ? 0.25 : 1}
-          >
-            {#each series_data.line_underlays ?? [] as underlay}
+        {@const project = series_projector(series_data)}
+        {@const series_default_color = plot_color(series_idx)}
+        {@const line = scatter_line_style(
+          assigned_series[series_idx],
+          series_idx,
+          color_scale_fn,
+          series_idx === active_series_idx ? styles.line : undefined,
+        )}
+        <g
+          data-series-id={series_data._id}
+          clip-path="url(#{clip_path_id})"
+          opacity={is_legend_dimmed(series_idx) ? 0.25 : 1}
+        >
+          <!-- the guard spares a series without underlays an each block to reconcile -->
+          {#if series_data.line_underlays?.length}
+            {#each series_data.line_underlays as underlay}
               <Line
                 points={project.line(underlay, underlay_directions.get(underlay.x) ?? 0)}
                 line_color={underlay.line_style?.stroke ?? series_default_color}
@@ -1832,17 +1851,17 @@
                 line_tween={effective_line_tween}
               />
             {/each}
-            <Line
-              points={project.line(series_data, series_data.line_direction)}
-              line_color={line.color}
-              line_width={line.width}
-              line_dash={line.dash}
-              stroke-opacity={line.opacity}
-              curve={series_data.line_style?.curve}
-              line_tween={effective_line_tween}
-            />
-          </g>
-        {/if}
+          {/if}
+          <Line
+            points={project.line(series_data, series_data.line_direction)}
+            line_color={line.color}
+            line_width={line.width}
+            line_dash={line.dash}
+            stroke-opacity={line.opacity}
+            curve={series_data.line_style?.curve}
+            line_tween={effective_line_tween}
+          />
+        </g>
       {/each}
     {/if}
 
@@ -1871,77 +1890,73 @@
          their canvas marker. Point centers are range-filtered, but marker geometry may extend
          beyond the plot edge: keep complete icons visible, only lines and area are clipped. -->
     {#if show_points}
-      {#each filtered_series as series_data, series_pos (series_data._id)}
-        {#if has_marker(series_data, `points`)}
-          {@const rendered_points = use_canvas_markers
-            ? (svg_overlay_points_by_series[series_pos] ?? [])
-            : series_data.filtered_data}
-          {@const { marker_of } = series_appearance(series_data)}
-          {@const project = series_projector(series_data)}
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <g
-            data-series-id={series_data._id}
-            role="group"
-            onfocusin={roving.focusin}
-            onkeydown={roving.handle_keydown}
-          >
-            {#each rendered_points as point (point.point_idx)}
-              {@const [center_x, center_y] = project.point(point)}
-              {@const offset = point.point_offset ?? ZERO_OFFSET}
-              {@const appearance = marker_of(point)}
-              <ScatterPoint
-                x={center_x - offset.x}
-                y={center_y - offset.y}
-                is_dimmed={is_legend_dimmed(point.series_idx) || is_link_dimmed(point)}
-                is_hovered={pin.lit(point, tooltip_point)}
-                is_selected={same_logical_point(point, selected_point) ||
-                  selected_keys.has(roving_key(point.series_idx, point.point_idx))}
-                leader_line_threshold={actual_label_config.leader_line_threshold}
-                style={{
-                  symbol_type: appearance.symbol_type,
-                  ...point.point_style,
-                  radius: appearance.radius,
-                  symbol_size: appearance.symbol_size,
-                  fill: appearance.fill,
-                  stroke_width: appearance.stroke_width,
-                  stroke: appearance.stroke,
-                  stroke_opacity: appearance.stroke_opacity,
-                  fill_opacity: appearance.fill_opacity,
-                  cursor: points_interactive ? `pointer` : undefined,
-                }}
-                hover={point.point_hover ?? {}}
-                label={resolve_point_label(point, center_x, center_y)}
-                {offset}
-                point_tween={effective_point_tween}
-                hit_padding={points_interactive ? point_hit_padding : 0}
-                role={points_interactive ? `button` : undefined}
-                tabindex={points_interactive
-                  ? roving.tabindex(roving_key(point.series_idx, point.point_idx))
-                  : undefined}
-                {...points_interactive
-                  ? { [ROVING_ATTR]: roving_key(point.series_idx, point.point_idx) }
-                  : {}}
-                aria-label={points_interactive ? point_accessible_label(point) : undefined}
-                {...point_events &&
-                  Object.fromEntries(
-                    point_event_names.map((name) => [
-                      name,
-                      (event: Event) => point_events?.[name]?.({ point, event }),
-                    ]),
-                  )}
-                onkeydown={(event: KeyboardEvent) => {
-                  point_events?.onkeydown?.({ point, event })
-                  if (!points_interactive || !is_activation_key(event)) return
-                  event.preventDefault()
-                  event.currentTarget?.dispatchEvent(
-                    new MouseEvent(`click`, { bubbles: true }),
-                  )
-                }}
-                onclick={(event: MouseEvent) => activate_point(point, event)}
-              />
-            {/each}
-          </g>
-        {/if}
+      {#each marker_series as { series_data, series_pos } (series_data._id)}
+        {@const rendered_points = use_canvas_markers
+          ? (svg_overlay_points_by_series[series_pos] ?? [])
+          : series_data.filtered_data}
+        {@const { marker_of } = series_appearance(series_data)}
+        {@const project = series_projector(series_data)}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <g
+          data-series-id={series_data._id}
+          role="group"
+          onfocusin={roving.focusin}
+          onkeydown={roving.handle_keydown}
+        >
+          {#each rendered_points as point (point.point_idx)}
+            {@const [center_x, center_y] = project.point(point)}
+            {@const offset = point.point_offset ?? ZERO_OFFSET}
+            {@const appearance = marker_of(point)}
+            <ScatterPoint
+              x={center_x - offset.x}
+              y={center_y - offset.y}
+              is_dimmed={is_legend_dimmed(point.series_idx) || is_link_dimmed(point)}
+              is_hovered={pin.lit(point, tooltip_point)}
+              is_selected={same_logical_point(point, selected_point) ||
+                selected_keys.has(roving_key(point.series_idx, point.point_idx))}
+              leader_line_threshold={actual_label_config.leader_line_threshold}
+              style={{
+                symbol_type: appearance.symbol_type,
+                ...point.point_style,
+                radius: appearance.radius,
+                symbol_size: appearance.symbol_size,
+                fill: appearance.fill,
+                stroke_width: appearance.stroke_width,
+                stroke: appearance.stroke,
+                stroke_opacity: appearance.stroke_opacity,
+                fill_opacity: appearance.fill_opacity,
+                cursor: points_interactive ? `pointer` : undefined,
+              }}
+              hover={point.point_hover ?? {}}
+              label={resolve_point_label(point, center_x, center_y)}
+              {offset}
+              point_tween={effective_point_tween}
+              hit_padding={points_interactive ? point_hit_padding : 0}
+              role={points_interactive ? `button` : undefined}
+              tabindex={points_interactive
+                ? roving.tabindex(roving_key(point.series_idx, point.point_idx))
+                : undefined}
+              {...points_interactive
+                ? { [ROVING_ATTR]: roving_key(point.series_idx, point.point_idx) }
+                : {}}
+              aria-label={points_interactive ? point_accessible_label(point) : undefined}
+              {...point_events &&
+                Object.fromEntries(
+                  point_event_names.map((name) => [
+                    name,
+                    (event: Event) => point_events?.[name]?.({ point, event }),
+                  ]),
+                )}
+              onkeydown={(event: KeyboardEvent) => {
+                point_events?.onkeydown?.({ point, event })
+                if (!points_interactive || !is_activation_key(event)) return
+                event.preventDefault()
+                event.currentTarget?.dispatchEvent(new MouseEvent(`click`, { bubbles: true }))
+              }}
+              onclick={(event: MouseEvent) => activate_point(point, event)}
+            />
+          {/each}
+        </g>
       {/each}
     {/if}
 

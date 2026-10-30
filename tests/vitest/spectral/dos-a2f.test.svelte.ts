@@ -114,6 +114,7 @@ test.each([
       orientation,
       stack: true,
       units: `THz`,
+      a2f_extent: undefined,
     })
     const component = mount(Dos, { target: document.body, props })
     onTestFinished(() => void unmount(component))
@@ -138,5 +139,13 @@ test.each([
     const freq_axis = density_axis === `y` ? `x` : `y`
     expect(Math.max(...mev.dos_curve[density_axis])).toBeCloseTo(2 / 4.135667696, 6)
     expect(mev.curve[freq_axis]).toEqual(mev.dos_curve[freq_axis])
+    // its drawn extent goes out, and a given range (a sweep's held one) replaces the data's
+    expect(props.a2f_extent).toEqual([0, 0.3])
+    props.a2f_range = [0, 1]
+    flushSync()
+    expect([read().axis?.range, props.a2f_extent]).toEqual([
+      [0, 1],
+      [0, 0.3],
+    ])
   },
 )

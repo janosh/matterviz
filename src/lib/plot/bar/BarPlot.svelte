@@ -513,6 +513,10 @@
     return srs?.visible !== false && drawn ? get_bar_data(series_idx, bar_idx, color) : null
   }
   const hover_info = $derived(mark_info(pin.shown(hover_key)))
+  // pointer moves within one mark keep its key, so its lit styles and tooltip don't re-run
+  const set_hover_key = (next: MarkKey) => {
+    if (!pin.same(next, hover_key) || next.color !== hover_key?.color) hover_key = next
+  }
 
   function get_bar_data(
     series_idx: number,
@@ -579,7 +583,7 @@
     (series_idx: number, bar_idx: number, color: string) =>
     (event: MouseEvent | FocusEvent) => {
       hovered = true
-      hover_key = { series_idx, bar_idx, color }
+      set_hover_key({ series_idx, bar_idx, color })
       on_bar_hover?.({ ...get_bar_data(series_idx, bar_idx, color), event })
     }
 
@@ -715,7 +719,7 @@
                 if (!point) return clear_point_hover()
                 hovered = true
                 const fill = line_point_fill(point, color)
-                hover_key = { series_idx, bar_idx: point.idx, color: fill, line: true }
+                set_hover_key({ series_idx, bar_idx: point.idx, color: fill, line: true })
                 const point_data = get_bar_data(series_idx, point.idx, fill)
                 on_point_hover?.({ ...point_data, event: evt, point })
               }}

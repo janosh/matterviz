@@ -39,9 +39,13 @@ export class TooltipPin<T extends K, K = T> {
   is = (value: K | null | undefined): boolean =>
     value != null && this.value !== null && this.#key(value) === this.#key(this.value)
 
+  // Whether two marks are the same one (a hover handler skips rewriting an unchanged mark)
+  same = (left: K | null | undefined, right: K | null | undefined): boolean =>
+    left != null && right != null && this.#key(left) === this.#key(right)
+
   // Whether `mark` wears its hover look: it is the `hovered` mark or the pinned one
   lit = (mark: K, hovered: K | null | undefined): boolean =>
-    this.is(mark) || (hovered != null && this.#key(hovered) === this.#key(mark))
+    this.is(mark) || this.same(mark, hovered)
 
   // The mark the tooltip and any one-at-a-time highlight show: the pinned one, else `hovered`
   shown = <H extends T | null | undefined>(hovered: H): T | H => this.value ?? hovered

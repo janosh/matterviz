@@ -1151,7 +1151,9 @@ const compute_tick_layout = (
 
 // === Memoisation ===
 
-const MAX_CACHED_LAYOUTS_PER_SIDE = 4
+// Every plot on a page shares it: a compared sweep viewer has ~10 plots, each resolving its axes
+// for up to three paddings, so a few entries per side thrash and re-lay every tick each update
+const MAX_CACHED_LAYOUTS_PER_SIDE = 64
 type CacheEntry = {
   key: string
   full_texts: readonly string[]
@@ -1162,7 +1164,7 @@ type CacheEntry = {
 // while still bounding geometry retained across resizes and zooms.
 const cached_layouts: Partial<Record<TickLayoutSide, CacheEntry[]>> = {}
 
-const arrays_equal = (
+export const arrays_equal = (
   left: readonly (number | string)[],
   right: readonly (number | string)[],
 ): boolean =>

@@ -26,7 +26,6 @@
   import { chart_export_filename } from '#lib/plot/core/utils/chart-export.js'
   import { html_to_text } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
-  import { onDestroy } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { on } from 'svelte/events'
   import { viewer_keys } from '#lib/shortcuts.js'
@@ -192,7 +191,12 @@
     y2: get_marginal_axis(`y2`),
   })
 
-  onDestroy(() => pan_zoom.destroy())
+  // Destroys the controller it captured: reading `frame` in a teardown resolves it through
+  // callers' spread props, re-running their stale deriveds there (see create_prop_state)
+  $effect(() => {
+    const controller = pan_zoom
+    return () => controller.destroy()
+  })
 </script>
 
 <svelte:window

@@ -6,7 +6,7 @@ import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type Bands from '#lib/spectral/Bands.svelte'
 import type BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type Dos from '#lib/spectral/Dos.svelte'
-import type { Matrix3x3, Vec2 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
 import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
@@ -475,7 +475,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   // series id is JSON [label, segment, band_idx, spin]
   const band_path = (band: number) =>
     [...svg.querySelectorAll(`g[data-series-id]`)]
-      .find((node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band)
+      .find((node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[1] === band)
       ?.querySelector(`path`)
   const band_vertex = (band: number, qpoint_idx = 0) => {
     const coords = (band_path(band)?.getAttribute(`d`) ?? ``).match(/[-\d.e]+/g)?.map(Number)
@@ -915,6 +915,12 @@ test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, ()
   expect(status(root)).toBe(`50 GPa`)
   expect(shown_density()).toBe(2)
   expect(viewers.trends?.frame_idx).toBe(1)
+  // the density axis grows to the largest DOS shown so far and holds there: stepping back to a
+  // smaller one moves no axis
+  expect(viewers.dos?.density_range).toEqual([0, 2])
+  props.frame_idx = 0
+  flushSync()
+  expect([shown_density(), viewers.dos?.density_range]).toEqual([1, [0, 2]])
 
   // the series select opens the new series at the frame nearest the shown value (100 GPa)
   props.frame_idx = 2
@@ -1015,6 +1021,29 @@ test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, a
   mount_host({ sweep, frame_idx: 0 })
   await vi.waitFor(() => expect(viewers.phonon?.band_structs).toEqual(phonon.band_structs))
   expect(viewers.phonon?.a2f).toEqual(phonon.a2f)
+})
+
+// The phonon bands' mode values (e.g. λ_qν) share one colour and size scale over the sweep's
+// loaded frames, so marker colours compare across frames and the colour bar holds still
+test(`a sweep's mode-value markers share one scale over its frames`, () => {
+  const mode_values = (values: number[]) => ({
+    label: `λ`,
+    qpoints: [[0, 0, 0]] as Vec3[],
+    frequencies: [values.map((_, idx) => idx + 1)],
+    values: [values],
+  })
+  const sweep = make_sweep()
+  for (const [idx, frame] of sweep.series[0].frames.entries()) {
+    frame.phonon = { ...phonon, mode_values: mode_values([0.1 * (idx + 1), 0.5 + idx]) }
+  }
+  mount_host({ sweep, frame_idx: 0 })
+  const { color_scale, size_scale, mode_values: shown } = viewers.phonon?.bands_props ?? {}
+  expect(shown?.values).toEqual([[0.1, 0.5]])
+  const color_range = typeof color_scale === `object` ? color_scale.value_range : undefined
+  expect([color_range, size_scale?.value_range]).toEqual([
+    [0.1, 2.5],
+    [0.1, 2.5],
+  ])
 })
 
 // Stepping through a sweep, the spectra span every loaded frame of the series: the axes hold
@@ -1448,7 +1477,7 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`])
   // the shown side's plots, mounted before comparing
   expect(instances.bands[0].y_axis?.range).toEqual(spectra_span(bcc.frames))
-  expect(instances.dos[0].density_range).toBeUndefined()
+  expect(instances.dos[0].density_range).toEqual([0, 4]) // its own series' range again
   expect(viewers.trends?.compare).toBeUndefined()
 
   // a replaced sweep without the compared series drops it

@@ -69,6 +69,8 @@
     sigma_range,
     density_range,
     density_extent = $bindable(),
+    a2f_range,
+    a2f_extent = $bindable(),
     // the padding the plot settled on; BandsAndDos aligns both panels to it
     resolved_padding = $bindable(),
     ...rest
@@ -98,6 +100,8 @@
     // x_axis or y_axis still wins
     density_range?: Vec2
     density_extent?: Vec2 // read only: the drawn data's density extent (α²F's not included)
+    a2f_range?: Vec2 // α²F's axis extent instead of its data's, like density_range
+    a2f_extent?: Vec2 // read only: the drawn α²F's extent
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
@@ -274,10 +278,14 @@
   const frequency_range = $derived(compute_range(is_horizontal ? `y` : `x`, false))
   let x_range = $derived(is_horizontal ? density_axis_range : frequency_range)
   let y_range = $derived(is_horizontal ? frequency_range : density_axis_range)
+  const data_a2f_extent = $derived(compute_range(is_horizontal ? `x` : `y`, true, true))
+  $effect(() => {
+    a2f_extent = data_a2f_extent
+  })
   const a2f_axis = $derived<AxisConfig>({
     label: `α²F(ω)`,
     format: `.2f`,
-    range: compute_range(is_horizontal ? `x` : `y`, true, true),
+    range: a2f_range ?? data_a2f_extent,
     // few ticks along a narrow DOS column beside the bands, as its density axis has
     ...(is_horizontal && { ticks: 2 }),
   })

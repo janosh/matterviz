@@ -15,6 +15,7 @@
   } from '#lib/plot/core/text-metrics.js'
   import type { TicksOption } from '#lib/plot/core/scales.js'
   import {
+    arrays_equal,
     centers_tick_lines,
     resolve_tick_layout,
     TICK_LABEL_HEIGHT,
@@ -71,7 +72,14 @@
 
   const is_x = $derived(side === `x` || side === `x2`)
   const inside = $derived(axis.tick_label?.inside ?? false)
-  const tick_positions = $derived(ticks.map(place))
+  // the same positions keep their array, so a parent passing a fresh `place` (each update)
+  // re-renders no tick
+  let last_positions: number[] = []
+  const tick_positions = $derived.by(() => {
+    const next = ticks.map(place)
+    if (!arrays_equal(next, last_positions)) last_positions = next
+    return last_positions
+  })
   const plot_w = $derived(Math.max(0, width - pad.l - pad.r))
   const plot_h = $derived(Math.max(0, height - pad.b - pad.t))
   let axis_group: SVGGElement | undefined = $state()
