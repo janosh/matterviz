@@ -1332,13 +1332,29 @@ test.each([
       structure: make_crystal(1, [{ element: `H`, abc: [0, 0, 0] }]),
       volumetric_data: [],
     })
-    const run = await mount_host_structure(bind_props({}, state))
+    let structure_reads = 0
+    const run = await mount_host_structure({
+      get structure() {
+        structure_reads++
+        return state.structure
+      },
+      get volumetric_data() {
+        return state.volumetric_data
+      },
+      set volumetric_data(value) {
+        state.volumetric_data = value
+      },
+    })
     let next_run: StructureToolRun | undefined
     flushSync(() => run.on_overlay({ volumes: volumetric_data }))
     if (cause === `unmount`) {
       const component = mounted.pop()
       if (!component) throw new Error(`Missing mounted viewer`)
+      // Unmount with the input's deriveds dirty: teardown must not re-run them
+      if (state.structure) state.structure = { ...state.structure }
+      structure_reads = 0
       await unmount(component)
+      expect(structure_reads).toBe(0)
     } else {
       flushSync(() => {
         if (cause === `replace tool`) structure_host_tool.component = () => ({})

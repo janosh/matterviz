@@ -16,7 +16,7 @@ import {
   symbolTriangle,
   symbolWye,
 } from 'd3-shape'
-import { type ComponentProps, flushSync, mount, tick } from 'svelte'
+import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { doc_query, keydown, mouse, set_input } from '../setup'
@@ -178,9 +178,11 @@ describe(`PlotLegend`, () => {
     ],
   ] as const)(
     `%j marks the active item and reports hovered items`,
-    (active_props, series_data, active_idx, hover_idx, hovered) => {
+    async (active_props, series_data, active_idx, hover_idx, hovered) => {
       const on_item_hover = vi.fn()
-      mount_legend({ ...active_props, series_data: [...series_data], on_item_hover })
+      const props = { ...active_props, series_data: [...series_data], on_item_hover }
+      const legend = mount_legend(props)
+      flushSync() // registers the teardown
       const items = [...document.querySelectorAll(`.legend-item`)]
       expect(items.map((item) => item.classList.contains(`active`))).toEqual(
         items.map((_, idx) => idx === active_idx),
@@ -189,6 +191,15 @@ describe(`PlotLegend`, () => {
       expect(on_item_hover).toHaveBeenLastCalledWith(expect.objectContaining(hovered))
       items[hover_idx].dispatchEvent(mouse(`mouseleave`))
       expect(on_item_hover).toHaveBeenLastCalledWith(null)
+      // Unmounting clears a hover the legend still holds and calls nothing otherwise
+      items[hover_idx].dispatchEvent(mouse(`mouseenter`))
+      await unmount(legend)
+      expect(on_item_hover).toHaveBeenLastCalledWith(null)
+      const n_calls = on_item_hover.mock.calls.length
+      const unhovered = mount_legend(props)
+      flushSync()
+      await unmount(unhovered)
+      expect(on_item_hover).toHaveBeenCalledTimes(n_calls)
     },
   )
 

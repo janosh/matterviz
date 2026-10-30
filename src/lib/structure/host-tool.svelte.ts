@@ -156,9 +156,12 @@ export function create_structure_tool_controller(
       if (current && !current.is_current()) invalidate()
     },
     clear: invalidate,
+    // Unmounting only aborts: the viewer's output goes with it, and clearing it would write
+    // state and read props (through the input getters) during teardown
     dispose(): void {
       disposed = true
-      invalidate()
+      current?.abort.abort()
+      current = undefined
     },
   }
 }
