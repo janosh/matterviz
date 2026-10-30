@@ -1353,9 +1353,7 @@
       }
       /* a rule between consecutive items of each stacked column, as between compared sides */
       > .panes > * + *,
-      .row:not(.side) > * + *,
-      .sides > * + *,
-      .sides > .side > * + * {
+      :is(.row:not(.side), .sides, .sides > .side) > * + * {
         border-top: 1px solid var(--border-color, light-dark(#ddd, #444));
       }
       .sides > .side + .side {
