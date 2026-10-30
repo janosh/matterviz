@@ -3,7 +3,9 @@
 // belongs to, so frames inserted, removed or edited in place (a $state sweep) keep their data.
 // Reads merge the loaded fields over the frame's own, so an in-place edit shows at once. Each
 // sweep and loader pair gets its own cache, whose loads are aborted when the pair is replaced
-// or the owner unmounts.
+// or the owner unmounts. A sweep replaced by an equal one (same loader, series ids, frame
+// values and descriptors, e.g. a host re-rendering a copy) keeps the cache, its frames
+// standing for the replaced sweep's.
 // Memory stays bounded: a request names the window (per series shown, e.g. a compared one: the
 // shown frame and the neighbours to prefetch). Loads outside it are aborted, and loaded frames
 // outside it and the RECENT_FRAMES last shown ones drop their heavy data, keeping only the light
@@ -31,15 +33,35 @@ export type FrameWindow = [SweepSeries, [number, ...number[]]]
 // One frame of a series by index
 export type FrameRef = [SweepSeries, number]
 
+// A frame's load state as the trends plot marks it: evicted frames count as loaded
+export type FrameLoadState = `unloaded` | `loading` | `loaded` | `failed`
+
 // A frame's load. `data` is the loader's result, only its light fields once evicted (also
 // while loading again or after a failed reload, so the trends plot keeps its points).
 type FrameEntry =
   | { state: `loading`; controller: AbortController; data?: SweepFrameData }
   | { state: `loaded`; data: SweepFrameData }
   | { state: `evicted`; data: SweepFrameData }
-  // not retried until the sweep or loader changes; `unreported` holds its error until reported
-  // (at once while shown, else once a request shows it)
+  // not retried until the cache is replaced; `unreported` holds its error until reported (at
+  // once while shown, else once a request shows it)
   | { state: `failed`; data?: SweepFrameData; unreported?: string }
+
+// Whether `next` has `prev`'s series ids, frame values and descriptors (light_data computes
+// those), so each of its frames can stand for the one at its place. Frames are matched by value,
+// not by reference (a host's $state hands over proxied copies), so a host that changes what a
+// frame holds without moving it passes a new loader to reload. Failed frames stay failed.
+const same_frames = (prev: Sweep | undefined, next: Sweep | undefined): boolean =>
+  prev === next ||
+  (prev !== undefined &&
+    next !== undefined &&
+    prev.series.length === next.series.length &&
+    prev.series.every(
+      ({ id, frames }, series_idx) =>
+        next.series[series_idx].id === id &&
+        next.series[series_idx].frames.length === frames.length &&
+        frames.every(({ value }, idx) => next.series[series_idx].frames[idx].value === value),
+    ) &&
+    JSON.stringify(prev.descriptors) === JSON.stringify(next.descriptors))
 
 // data's entries over base's (undefined when neither is set)
 const merge = <Value extends object>(base?: Value, data?: Value): Value | undefined =>
@@ -103,15 +125,38 @@ export function create_sweep_frames(inputs: {
   // reached them (a swapped sweep's panes stayed empty). The bump re-runs them on the current
   // cache, whose per-entry signals then notify only a loaded frame's readers.
   let epoch = $state(0)
-  const cache = $derived({
-    loader: inputs.sweep()?.load_frame,
+  const new_cache = (sweep?: Sweep) => ({
+    loader: sweep?.load_frame,
+    // keyed by the frame objects of the sweep the cache was made for (or inserted since)
     entries: new SvelteMap<SweepFrame, FrameEntry>(),
+    // an equal sweep's frames, each to the key of the frame it stands for
+    keys: new WeakMap<SweepFrame, SweepFrame>(),
     recent: [] as SweepFrame[], // the last shown frames, most recent first
     // the last request's window frames (none before the first request)
     in_window: new Set<SweepFrame>(),
     shown: new Set<SweepFrame>(), // the last request's shown frames (each window's first)
     background: undefined as SweepFrame | undefined, // the frame load_background loads
     background_failed: false, // a background load failed (reported once per cache)
+  })
+  let last: { sweep?: Sweep; cache: ReturnType<typeof new_cache> } | undefined
+  const cache = $derived.by(() => {
+    const sweep = inputs.sweep()
+    const loader = sweep?.load_frame
+    return untrack(() => {
+      if (last && last.cache.loader === loader && same_frames(last.sweep, sweep)) {
+        const { cache: kept, sweep: prev } = last
+        prev?.series.forEach(({ frames }, series_idx) =>
+          frames.forEach((frame, idx) => {
+            const next = sweep?.series[series_idx].frames[idx]
+            if (next && next !== frame) kept.keys.set(next, kept.keys.get(frame) ?? frame)
+          }),
+        )
+        last = { sweep, cache: kept }
+        return kept
+      }
+      last = { sweep, cache: new_cache(sweep) }
+      return last.cache
+    })
   })
   // a replaced cache (new sweep or loader) and unmounting abort the loads still running
   $effect(() => {
@@ -123,10 +168,14 @@ export function create_sweep_frames(inputs: {
       }
     }
   })
+  // the cache's key of a frame: the frame it stands for when its sweep replaced an equal one
+  const key_of = (current: typeof cache, frame: SweepFrame): SweepFrame =>
+    current.keys.get(frame) ?? frame
   // the frame's entry in the current cache, tracking it and the cache's replacement
-  const entry_of = (base: SweepFrame): FrameEntry | undefined => {
+  const entry_of = (frame: SweepFrame): FrameEntry | undefined => {
     void epoch
-    return cache.entries.get(base)
+    const current = cache
+    return current.entries.get(key_of(current, frame))
   }
   const in_range = (series: SweepSeries, idx: number) =>
     Number.isInteger(idx) && idx >= 0 && idx < series.frames.length
@@ -142,7 +191,7 @@ export function create_sweep_frames(inputs: {
   const start = (current: typeof cache, series: SweepSeries, idx: number): void => {
     const { loader, entries } = current
     if (!loader) return
-    const base = series.frames[idx]
+    const base = key_of(current, series.frames[idx])
     const entry = entries.get(base)
     if (entry && entry.state !== `evicted`) return
     const controller = new AbortController()
@@ -203,9 +252,11 @@ export function create_sweep_frames(inputs: {
           .map((idx, rank) => ({ series, idx, rank })),
       )
       .toSorted((lhs, rhs) => lhs.rank - rhs.rank)
-    current.in_window = new Set(loads.map(({ series, idx }) => series.frames[idx]))
+    current.in_window = new Set(
+      loads.map(({ series, idx }) => key_of(current, series.frames[idx])),
+    )
     const shown = windows.flatMap(([series, [first]]) =>
-      in_range(series, first) ? [series.frames[first]] : [],
+      in_range(series, first) ? [key_of(current, series.frames[first])] : [],
     )
     const older = current.recent.filter((frame) => !shown.includes(frame))
     current.recent = [...shown, ...older].slice(0, RECENT_FRAMES)
@@ -238,6 +289,15 @@ export function create_sweep_frames(inputs: {
       const entry = entry_of(series.frames[idx])
       return entry !== undefined && (entry.state !== `loading` || entry.data !== undefined)
     },
+    // The frame's load state, `loaded` without a loader, once evicted or while reloading the
+    // data it had (so a replayed sweep's points don't flash hollow; see FrameLoadState)
+    load_state(series: SweepSeries, idx: number): FrameLoadState {
+      if (!cache.loader) return `loaded`
+      const entry = entry_of(series.frames[idx])
+      if (!entry) return `unloaded`
+      if (entry.state === `evicted`) return `loaded`
+      return entry.state === `loading` && entry.data ? `loaded` : entry.state
+    },
     // Make the windows' frames (one per shown series: its shown frame, then the neighbours to
     // prefetch; indices outside the series skipped) the loaded frames: start each one's load
     // unless loaded, loading or failed, abort the others' and evict their data (see
@@ -261,7 +321,10 @@ export function create_sweep_frames(inputs: {
     // starts then.
     load_background(target?: FrameRef): void {
       const current = cache
-      const base = target && in_range(...target) ? target[0].frames[target[1]] : undefined
+      const base =
+        target && in_range(...target)
+          ? key_of(current, target[0].frames[target[1]])
+          : undefined
       const busy = [...current.in_window].some((frame) => entry_of(frame)?.state === `loading`)
       untrack(() => {
         current.background = base

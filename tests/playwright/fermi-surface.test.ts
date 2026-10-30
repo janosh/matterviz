@@ -443,20 +443,9 @@ test(`electronic-structure sweep: both DOS share one column, the bar the viewer'
   expect(corners).toEqual([`8px`, `0px`]) // the demo's --electronic-border-radius
 })
 
-// Narrow, the sweep viewer stacks its panes in one column, each its own height: none overlaps
-// another and every plot keeps its axis titles inside it
-test(`electronic-structure sweep: a narrow viewer stacks its panes without overlap`, async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 600, height: 900 })
-  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
-  const viewer = page.locator(`.sweep-demo`)
-  await viewer.scrollIntoViewIfNeeded()
-  await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
-  // grown to fit its panes (the page scrolls it), despite the demo's --electronic-height
-  const panes_scroll = () =>
-    viewer.locator(`.panes`).evaluate((node) => node.scrollHeight - node.clientHeight)
-  await expect.poll(panes_scroll).toBe(0)
+// The stacked sweep viewer's panes, one column each its own height: none overlaps another and
+// every plot keeps its axis titles inside it
+const expect_panes_apart = async (page: Page, viewer: Locator): Promise<void> => {
   await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
     timeout: LOAD_TIMEOUT,
   })
@@ -488,21 +477,6 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
       .map((rhs) => `${lhs.pane} × ${rhs.pane}`),
   )
   expect(overlaps).toEqual([])
-  // a 1px rule tops every pane below the first, drawn by it or a wrapper starting there
-  const unruled = await viewer.locator(`[data-pane]`).evaluateAll((nodes) => {
-    const first_top = nodes[0].getBoundingClientRect().top
-    return nodes.flatMap((node) => {
-      const { top } = node.getBoundingClientRect()
-      if (top - first_top < 1) return []
-      for (let el: Element | null = node; el && !el.matches(`.panes`); el = el.parentElement) {
-        const ruled = getComputedStyle(el).borderTopWidth === `1px`
-        // a wrapper's own border puts its content 1px below its top
-        if (ruled && Math.abs(el.getBoundingClientRect().top - top) < 2) return []
-      }
-      return [node.getAttribute(`data-pane`)]
-    })
-  })
-  expect(unruled).toEqual([])
   // each axis title within its plot's SVG, measured on screen (plots off screen hold their
   // last layout until scrolled into view)
   const plots = viewer.locator(`.scatter > svg`)
@@ -526,6 +500,36 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
     )
   }
   expect(outside).toEqual([])
+}
+
+test(`electronic-structure sweep: a narrow viewer stacks its panes without overlap`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 600, height: 900 })
+  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  const viewer = page.locator(`.sweep-demo`)
+  await viewer.scrollIntoViewIfNeeded()
+  await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
+  // grown to fit its panes (the page scrolls it), despite the demo's --electronic-height
+  const panes_scroll = () =>
+    viewer.locator(`.panes`).evaluate((node) => node.scrollHeight - node.clientHeight)
+  await expect.poll(panes_scroll).toBe(0)
+  await expect_panes_apart(page, viewer)
+  // a 1px rule tops every pane below the first, drawn by it or a wrapper starting there
+  const unruled = await viewer.locator(`[data-pane]`).evaluateAll((nodes) => {
+    const first_top = nodes[0].getBoundingClientRect().top
+    return nodes.flatMap((node) => {
+      const { top } = node.getBoundingClientRect()
+      if (top - first_top < 1) return []
+      for (let el: Element | null = node; el && !el.matches(`.panes`); el = el.parentElement) {
+        const ruled = getComputedStyle(el).borderTopWidth === `1px`
+        // a wrapper's own border puts its content 1px below its top
+        if (ruled && Math.abs(el.getBoundingClientRect().top - top) < 2) return []
+      }
+      return [node.getAttribute(`data-pane`)]
+    })
+  })
+  expect(unruled).toEqual([])
 
   // a host keeping it in a fixed box scrolls the panes, and the hover control bar stays
   // above the buttons of a pane scrolled up under it
@@ -551,4 +555,33 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
   })
   expect(covered?.length).toBeGreaterThan(0)
   expect(covered?.every(Boolean)).toBe(true)
+})
+
+// Wide enough for the side-by-side layout but too short for it (a dashboard cell), the viewer
+// stacks its panes too, keeping its box and scrolling them inside it
+test(`electronic-structure sweep: a short wide viewer stacks its panes in its box`, async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  const viewer = page.locator(`.sweep-demo`)
+  await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
+    timeout: LOAD_TIMEOUT,
+  })
+  await viewer.evaluate((node) => {
+    node.style.setProperty(`width`, `830px`, `important`) // beats the demo's bleed width
+    node.style.setProperty(`--electronic-height`, `500px`)
+  })
+  await viewer.scrollIntoViewIfNeeded()
+  await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
+  const size = await viewer.evaluate((node) => {
+    const panes = node.querySelector(`.panes`)
+    return {
+      width: node.clientWidth,
+      height: node.getBoundingClientRect().height,
+      scrolls: panes ? panes.scrollHeight > panes.clientHeight : false,
+    }
+  })
+  expect(size).toEqual({ width: 830, height: 500, scrolls: true })
+  await expect_panes_apart(page, viewer)
 })

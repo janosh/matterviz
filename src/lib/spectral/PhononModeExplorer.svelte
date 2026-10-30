@@ -735,7 +735,7 @@ under its open panes -->
     grid-template-columns: minmax(0, var(--split-pane-size, 54.7619%)) minmax(0, 1fr);
     flex: 1;
     min-height: 0;
-    border-block: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
+    border-block: var(--pane-rule);
   }
   .plot-pane,
   .trajectory-pane {
@@ -909,7 +909,7 @@ under its open panes -->
     }
     .plot-pane,
     .trajectory-pane {
-      border-block: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
+      border-block: var(--pane-rule);
     }
   }
   @media (max-width: 560px) {

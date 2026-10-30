@@ -37,6 +37,8 @@
   --pane-bg: light-dark(rgb(229, 231, 235), rgb(28 29 33));
   /* light-dark() takes colors only: a whole `1px solid …` inside it invalidates the property */
   --pane-border: 1px solid light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15));
+  /* the rule between a viewer's panes where no divider splits them (stacked, compared sides) */
+  --pane-rule: 1px solid var(--border-color);
   --pane-box-shadow: 0 4px 20px -4px light-dark(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.5));
   --dropzone-bg: light-dark(rgba(0, 0, 0, 0.02), rgba(45, 55, 72, 0.5));
   --dragover-border: 1px solid light-dark(#4f46e5, #007acc);

@@ -459,7 +459,7 @@
         display: none;
       }
       > .structure-pane {
-        border-top: 1px solid var(--border-color, light-dark(#ddd, #444));
+        border-top: var(--pane-rule);
       }
     }
   }

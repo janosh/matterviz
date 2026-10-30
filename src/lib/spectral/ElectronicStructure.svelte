@@ -20,7 +20,7 @@
   // replaces the data of the panes it fills (see `fill`); while a sweep is shown only sweep JSONs
   // are taken.
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
-  import { create_prop_state } from '#lib/effects.svelte.js'
+  import { create_on_screen, create_prop_state } from '#lib/effects.svelte.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
@@ -127,6 +127,10 @@
   // Below this width (px) the panes stack in one column, each at its own height, rather than
   // share the viewer's height (a chat card's 650x560 squeezed the bands to a strip)
   const STACK_WIDTH = 800
+  // Below this height (px) per pane the side-by-side layout's plots have no room for their axis
+  // titles, which then overlap the pane below (a dashboard cell's 830x500 holding a sweep), so
+  // the panes stack too
+  const MIN_PANE_HEIGHT = 200
   const SWEEP_FPS_RANGE = [0.25, 5] as const // frames per second while playing a sweep
   // The structure is in the Fermi data's frame when a_i · b_j / 2π is an integer matrix (its
   // cell a supercell of the zone's) or the inverse of one (the zone's cell a supercell of its).
@@ -231,7 +235,10 @@
   let dragover = $state(false)
   let chrome_width = $state(0)
   let viewer_width = $state(0)
-  const stacked = $derived(viewer_width > 0 && viewer_width < STACK_WIDTH)
+  let panes_height = $state(0)
+  // off screen (e.g. one of several viewers down a long page) playback holds its frame, so no
+  // pane re-renders until it is scrolled back into view and plays on
+  const on_screen = create_on_screen()
 
   const controls_config = $derived(normalize_show_controls(show_controls))
   const pane_controls = <Prop>(prop: Prop): Prop | false =>
@@ -375,11 +382,12 @@
     set_fps: (value) => (fps = value),
     fps_range: () => SWEEP_FPS_RANGE,
     should_auto_play: () => false,
-    // playback waits for the next frames' data
+    // playback waits for the next frames' data, and while the viewer is off screen
     can_advance: () =>
-      !series ||
-      (frames.is_ready(series, next_index) &&
-        (!compared || frames.is_ready(compared.series, compared.next))),
+      on_screen.current &&
+      (!series ||
+        (frames.is_ready(series, next_index) &&
+          (!compared || frames.is_ready(compared.series, compared.next)))),
   })
   // The control bar plays a series of several frames and picks among several series; a single
   // frame of a single series leaves it nothing to show
@@ -579,6 +587,15 @@
   const lower_split = $derived(show_trends && show_column)
   const scenes_split = $derived(shown.has(`structure`) && shown.has(`fermi`))
   const spectra_split = $derived(shown.has(`bands`) && shown.has(`dos`))
+  // Narrow, or too short to give each pane of the side-by-side layout's tallest column (scenes
+  // over spectra over phonons) MIN_PANE_HEIGHT, the panes stack in one column, each at its own
+  // height. A narrow viewer grows to fit them, a short one keeps its height and scrolls them, so
+  // the height measured is the same either way and stacking can't flip it.
+  const narrow = $derived(viewer_width > 0 && viewer_width < STACK_WIDTH)
+  const pane_levels = $derived(Number(show_scenes) + (column_split ? 2 : Number(show_lower)))
+  const stacked = $derived(
+    narrow || (panes_height > 0 && panes_height < pane_levels * MIN_PANE_HEIGHT),
+  )
   // The pane in the viewer's top-right corner (on the compared side while comparing) lines its
   // own controls up left of the viewer's
   const corner_pane = $derived.by((): ElectronicPane => {
@@ -875,11 +892,12 @@
   class={[
     `electronic-structure`,
     show_scenes && show_lower ? `two-rows` : `one-row`,
-    { dragover, stacked },
+    { dragover, stacked, narrow },
     rest.class,
   ]}
   {@attach drop_zone}
   {@attach keys}
+  {@attach on_screen.attach}
 >
   {#if sweep && series && show_bar}
     <SequenceControlBar {controls_config} {fullscreen} bind:height={bar_height}>
@@ -917,7 +935,7 @@
     </SequenceControlBar>
   {/if}
 
-  <div class="panes">
+  <div class="panes" bind:clientHeight={panes_height}>
     <ViewerChrome
       {controls_config}
       bind:fullscreen
@@ -992,6 +1010,7 @@
               {...trends_props}
               {sweep}
               frame_of={frames.frame}
+              load_state_of={frames.load_state}
               series_id={series.id}
               frame_idx={frame_index}
               compare={compared && {
@@ -1333,11 +1352,14 @@
         grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
       }
     }
-    /* stacked (narrow): one column of full-width panes, each its own height, which the viewer
-       grows to fit (a chat thread or page scrolls it as a whole); a host that must keep it in
-       a fixed box sets --electronic-stacked-height, and the panes then scroll inside */
-    &.stacked {
+    /* stacked: one column of full-width panes, each its own height. Narrow, the viewer grows to
+       fit them (a chat thread or page scrolls it as a whole); a host that must keep it in a
+       fixed box sets --electronic-stacked-height, and the panes then scroll inside. Short, it
+       keeps its height and scrolls them. */
+    &.narrow {
       height: var(--electronic-stacked-height, auto);
+    }
+    &.stacked {
       --pane-height: var(--electronic-stacked-pane-height, 320px);
       > .panes {
         display: flex;
@@ -1354,7 +1376,7 @@
       /* a rule between consecutive items of each stacked column, as between compared sides */
       > .panes > * + *,
       :is(.row:not(.side), .sides, .sides > .side) > * + * {
-        border-top: 1px solid var(--border-color, light-dark(#ddd, #444));
+        border-top: var(--pane-rule);
       }
       .sides > .side + .side {
         border-left: none;
@@ -1463,7 +1485,7 @@
       }
     }
     > .side + .side {
-      border-left: 1px solid var(--border-color, light-dark(#ddd, #444));
+      border-left: var(--pane-rule);
     }
   }
   .side-label {
