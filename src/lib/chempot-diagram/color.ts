@@ -7,6 +7,8 @@ import { group } from 'd3-array'
 import {
   best_form_energy_for_formula as best_form_energy,
   formula_key_from_composition,
+  get_energy_stats_by_formula,
+  get_min_entries_and_el_refs,
 } from './compute'
 import type { FormulaEnergyStats } from './compute'
 import type { ChemPotColorMode } from './types'
@@ -44,18 +46,42 @@ interface ChemPotDomainColorData {
   color_bar: ChemPotColorBar | null // null for none/arity (categorical)
 }
 
-// Per-formula domain colors plus color-bar props for the active color mode.
-// Shared by ChemPotDiagram2D and ChemPotDiagram3D.
-export function get_domain_color_data(opts: {
-  formulas: string[]
-  color_mode: ChemPotColorMode
-  color_scale: ColorScaleConfig
-  // Entries + raw (non-renormalized) elemental refs for formation energy lookups
-  entries: PhaseData[]
+// Per-formula inputs of the numeric color modes: raw (non-renormalized) elemental refs for true
+// formation energies (the formal-chempot pipeline renormalizes its own refs to zero), energy
+// stats and entries
+interface FormulaColorData {
   el_refs: Record<string, PhaseData>
   energy_stats: Map<string, FormulaEnergyStats>
-}): ChemPotDomainColorData {
-  const { formulas, color_mode, entries, el_refs, energy_stats } = opts
+  entries_by_formula: Map<string, PhaseData[]>
+}
+// Memoized per entries array, so grid panes sharing one (see get_temp_filter_payload) scan it
+// once and a slice-slider step (new drawn formulas) never regroups it
+const formula_color_data = new WeakMap<PhaseData[], FormulaColorData>()
+export function get_formula_color_data(entries: PhaseData[]): FormulaColorData {
+  let data = formula_color_data.get(entries)
+  if (!data) {
+    data = {
+      el_refs: get_min_entries_and_el_refs(entries).el_refs,
+      energy_stats: get_energy_stats_by_formula(entries),
+      entries_by_formula: group(entries, (entry) =>
+        formula_key_from_composition(entry.composition),
+      ),
+    }
+    formula_color_data.set(entries, data)
+  }
+  return data
+}
+
+// Per-formula domain colors plus color-bar props for the active color mode.
+// Shared by ChemPotDiagram2D and ChemPotDiagram3D.
+export function get_domain_color_data(
+  opts: FormulaColorData & {
+    formulas: string[]
+    color_mode: ChemPotColorMode
+    color_scale: ColorScaleConfig
+  },
+): ChemPotDomainColorData {
+  const { formulas, color_mode, entries_by_formula, el_refs, energy_stats } = opts
   const colors = new Map<string, string>()
   if (color_mode === `none`) return { colors, color_bar: null }
 
@@ -67,11 +93,6 @@ export function get_domain_color_data(opts: {
     }
     return { colors, color_bar: null }
   }
-
-  const entries_by_formula =
-    color_mode === `formation_energy`
-      ? group(entries, (entry) => formula_key_from_composition(entry.composition))
-      : new Map<string, PhaseData[]>()
 
   const get_value = (formula: string): number | null => {
     if (color_mode === `energy`) return energy_stats.get(formula)?.min_energy_per_atom ?? null

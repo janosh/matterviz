@@ -18,6 +18,7 @@
     InternalPoint3D,
     LegendConfig,
     Scatter3DHandlerEvent,
+    Surface3DConfig,
   } from '#lib/plot/core/types.js'
   import { assert_series_lengths, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { Canvas } from '@threlte/core'
@@ -181,7 +182,15 @@
     x: resolve_axis_range({ range: x_axis.range }, auto_xy_ranges.x),
     y: resolve_axis_range({ range: y_axis.range }, auto_xy_ranges.y),
   })
-  const auto_ranges = $derived({ ...auto_xy_ranges, z: auto_ranges_over(xy_ranges).z })
+  // Only grid surfaces spanning the plot's x or y miss the first pass, so only they need a
+  // second one, which otherwise re-scans every series for the same bounds
+  const spans_plot = ({ type, z_fn, x_range, y_range }: Surface3DConfig): boolean =>
+    type === `grid` && Boolean(z_fn) && !(x_range && y_range)
+  const auto_ranges = $derived(
+    visible_surfaces.some(spans_plot)
+      ? { ...auto_xy_ranges, z: auto_ranges_over(xy_ranges).z }
+      : auto_xy_ranges,
+  )
   const ranges = $derived({
     ...xy_ranges,
     z: resolve_axis_range({ range: z_axis.range }, auto_ranges.z),

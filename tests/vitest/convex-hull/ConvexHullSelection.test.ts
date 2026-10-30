@@ -730,7 +730,11 @@ describe(`convex hull replacement state`, () => {
 
       const initial_builds = builds.mock.calls.length
       expect(initial_builds).toBeGreaterThan(0)
-      for (const toggle of [`toggle-hull-labels`, `toggle-hull-category`]) {
+      for (const toggle of [
+        `toggle-hull-labels`,
+        `toggle-hull-category`,
+        `toggle-hull-color-scale`,
+      ]) {
         const before = clears.base
         button(toggle).click()
         await let_frames_run()

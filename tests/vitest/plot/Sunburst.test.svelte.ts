@@ -6,6 +6,7 @@ import { type ComponentProps, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { expect_a1_hover, tree } from './hierarchy-fixtures'
 import {
+  count_attribute_updates,
   export_via_pane,
   fire,
   flush_render,
@@ -623,11 +624,16 @@ describe(`Sunburst zoom navigation`, () => {
     const leaf = arc_path(plot, `B`)
     expect(leaf.getAttribute(`role`)).toBeNull()
     expect(leaf.getAttribute(`aria-label`)).toBe(`B: 10`)
+    const arcs = [...plot.querySelectorAll(`.arcs path`)]
+    const updates = count_attribute_updates(arcs)
     leaf.focus()
     expect(document.activeElement).toBe(leaf)
     expect(getComputedStyle(leaf).outlineStyle).toBe(`none`)
     await fire(leaf, new FocusEvent(`focusin`, { bubbles: true }))
     expect(tab_stops()).toEqual([leaf]) // tab stop follows focus
+    // only the old and new tab stop re-apply their attributes, not every arc
+    const moved = new Set<Element>([arc_path(plot, `A`), leaf])
+    expect(updates.map(Boolean)).toEqual(arcs.map((arc) => moved.has(arc)))
 
     // A focused node anchors its tooltip at the node center, where there is no
     // pointer glyph — dodging one would push the chip off the arc it describes.

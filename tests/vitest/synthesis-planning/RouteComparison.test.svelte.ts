@@ -237,3 +237,24 @@ test.each([
   if (n_hulls) await vi.waitFor(() => doc_query(hulls))
   expect(document.querySelectorAll(hulls)).toHaveLength(n_hulls)
 })
+
+// The x axis is the fraction of the hull's second element, in code-unit order (NH4H2PO4 before
+// Na2CO3) rather than the reaction's localeCompare order (Na2CO3 first)
+test.each([
+  [[`Na2CO3`, `NH4H2PO4`], `Na2CO3`],
+  [[`BaCO3`, `TiO2`], `TiO2`],
+])(`reaction slice of %o labels its x axis with %s`, async (formulas, x_formula) => {
+  const reactants = solids.map((species, idx) => ({
+    ...species,
+    phase: { ...species.phase, formula: formulas[idx] },
+  }))
+  mount_in_test(ReactionSlicePlot, {
+    route: {
+      ...base,
+      reaction: { ...base.reaction, reactants },
+      selectivity: { ...base.selectivity, competitors: [] },
+    },
+  })
+  await vi.waitFor(() => doc_query(`.x-label`))
+  expect(doc_query(`.x-label`).textContent).toContain(`Atom fraction of ${x_formula} in`)
+})

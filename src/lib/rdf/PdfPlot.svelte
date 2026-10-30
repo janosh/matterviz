@@ -57,6 +57,9 @@
   } & ScatterPlotOptions = $props()
 
   const controls_config = $derived(normalize_show_controls(show_controls))
+  // Slider drafts: the readouts follow a drag live, the neighbour search runs once on release
+  let cutoff_draft = $derived(cutoff)
+  let n_bins_draft = $derived(n_bins)
 
   const struct_list = $derived(
     label_structures(structures).map(({ struct, label }) => ({
@@ -172,12 +175,28 @@
       {/each}
       <span class="separator">|</span>
       <label>
-        Cutoff: <input type="range" min="5" max="40" step="1" bind:value={cutoff} />
-        {format_num(cutoff, `.0~f`)} Å
+        Cutoff:
+        <input
+          type="range"
+          min="5"
+          max="40"
+          step="1"
+          bind:value={cutoff_draft}
+          onchange={() => (cutoff = cutoff_draft)}
+        />
+        {format_num(cutoff_draft, `.0~f`)} Å
       </label>
       <label>
-        Bins: <input type="range" min="100" max="3000" step="100" bind:value={n_bins} />
-        {n_bins} ({format_num(cutoff / n_bins, `.3~f`)} Å)
+        Bins:
+        <input
+          type="range"
+          min="100"
+          max="3000"
+          step="100"
+          bind:value={n_bins_draft}
+          onchange={() => (n_bins = n_bins_draft)}
+        />
+        {n_bins_draft} ({format_num(cutoff_draft / n_bins_draft, `.3~f`)} Å)
       </label>
       <label>
         <input type="checkbox" bind:checked={show_partials} /> Partials

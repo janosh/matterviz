@@ -349,10 +349,13 @@
   // estimated in log10 space (bandwidth in decades); non-positive clip bounds stay open.
   const to_log = (bound: number | null) =>
     bound !== null && bound > 0 ? Math.log10(bound) : null
+  // Which series draw a violin as one key (1/0 per series), so switching between `violin` and
+  // `violin+box` re-estimates no KDE
+  const violin_flags = $derived(series_in.map((srs) => (draws_violin(srs) ? 1 : 0)).join(``))
   let violin_kdes = $derived.by(() => {
     const map = new Map<number, ViolinKde>()
     for (const [series_idx, srs] of series_in.entries()) {
-      if (!draws_violin(srs)) continue
+      if (violin_flags[series_idx] !== `1`) continue
       const clip = srs.clip ?? kde_clip
       const log = log_axes.split(` `).includes(val_axis_key(srs))
       const samples = log ? srs.y.filter((val) => val > 0).map(Math.log10) : srs.y
@@ -573,20 +576,23 @@
   )
 
   // === Tooltip / hover ===
-  // Box index + pointer (null on keyboard focus: whisker-tip anchor), so a resting tooltip
-  // follows new data and closes once its box is gone. A click pins the hovered box's tooltip
-  // unless on_box_click takes the click.
-  type BoxKey = { idx: number; pointer: Point2D | null }
+  // Box index only, so a resting tooltip follows new data and closes once its box is gone, and
+  // pointer moves within one box leave its content alone. The pointer (null on keyboard focus:
+  // whisker-tip anchor) only moves the tooltip. A click pins the hovered box's tooltip unless
+  // on_box_click takes the click.
+  type BoxKey = { idx: number }
   let hover_key = $state<BoxKey | null>(null)
+  let hover_pointer = $state<Point2D | null>(null)
   const pin = new TooltipPin<BoxKey>({
     key: ({ idx }) => idx,
     enabled: () => tooltip !== false && !on_box_click,
   })
   const shown_key = $derived(pin.shown(hover_key))
+  const tip_pointer = pin.anchored(() => hover_pointer)
   const box_info = (key: BoxKey | null): BoxHover | null => {
     const box_item = key && visible_boxes.find((item) => item.idx === key.idx)
     if (!box_item || !Number.isFinite(box_item.stats.median)) return null
-    return get_box_data(box_item, key.pointer)
+    return get_box_data(box_item)
   }
   const hover_info = $derived(box_info(shown_key))
 
@@ -626,9 +632,10 @@
   // violins are wide and a fixed anchor lands far from the pointer
   const handle_box_hover = (box_item: Box) => (event: MouseEvent | FocusEvent) => {
     hovered = true
-    const pointer = pointer_pos(event, frame.svg_element)
-    hover_key = { idx: box_item.idx, pointer }
-    on_box_hover?.({ ...get_box_data(box_item, pointer), event })
+    hover_pointer = pointer_pos(event, frame.svg_element)
+    const next = { idx: box_item.idx }
+    if (!pin.same(next, hover_key)) hover_key = next
+    on_box_hover?.({ ...get_box_data(box_item, hover_pointer), event })
   }
 
   const clear_hover = () => {
@@ -973,10 +980,10 @@
 
     {#if hover_info && (hovered || pin.value) && tooltip !== false}
       <PlotTooltip
-        x={hover_info.cx}
-        y={hover_info.cy}
+        x={tip_pointer.current?.x ?? hover_info.cx}
+        y={tip_pointer.current?.y ?? hover_info.cy}
         offset={{ x: 10, y: 5 }}
-        avoid_cursor={Boolean(shown_key?.pointer)}
+        avoid_cursor={Boolean(tip_pointer.current)}
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}

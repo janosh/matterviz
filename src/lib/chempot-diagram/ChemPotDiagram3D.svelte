@@ -684,7 +684,7 @@
   // domain buried inside the envelope (projection mode) is never reported
   const hover_mesh_data = $derived.by((): HoverMesh[] => {
     if (!diagram_data) return []
-    const { lims } = diagram_data
+    const { lims, domains } = diagram_data
     const drawn = render_domains.filter(({ formula }) => owned_faces.has(formula))
     return drawn.map((domain) => {
       const { formula, points_3d } = domain
@@ -696,7 +696,8 @@
         n_points: points_3d.length,
         ann_loc: domain.ann_loc,
         axis_ranges: build_axis_ranges(points_3d, plot_elements),
-        touches_limits: get_touches_limits(points_3d, lims, plot_elements),
+        // unpadded: padding moves floor vertices off the lower limits
+        touches_limits: get_touches_limits(domains[formula], lims, plot_elements),
         is_elemental: all_entry_elements.includes(formula),
         is_draw_formula: overlay_formulas.has(formula),
         matching_entry_count: 0,

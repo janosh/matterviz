@@ -1,11 +1,12 @@
 import InterfaceBuilder from '#lib/interface/InterfaceBuilder.svelte'
+import * as lattice_match from '#lib/interface/lattice-match.js'
 import { match_lattices, surface_frame } from '#lib/interface/lattice-match.js'
 import type { Heterostructure, LatticeMatchOptions } from '#lib/interface/types.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { flushSync } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { bind_props, doc_query, mount_in_test, mouse } from '../setup'
 import { make_crystal, fcc_cell } from '../test-fixtures'
 
@@ -197,10 +198,41 @@ describe(`InterfaceBuilder`, () => {
     expect(details.open).toBe(true)
   })
 
+  // a thicker slab keeps its in-plane mesh: the stack is rebuilt, the search is not redone
+  test(`restacks a thicker slab without re-running the match search`, () => {
+    const search = vi.spyOn(lattice_match, `match_lattices`)
+    onTestFinished(() => search.mockRestore())
+    const state = $state({ substrate: CU_100, interface: null as Heterostructure | null })
+    mount_in_test(InterfaceBuilder, bind_props({ film: AG_100 }, state))
+    flushSync()
+    const thick = make_slab(fcc_cell(3.615, `Cu`), [1, 0, 0], { min_slab_thickness: 8 })
+    expect(thick.sites.length).toBeGreaterThan(CU_100.sites.length)
+    state.substrate = thick
+    flushSync()
+    expect(search).toHaveBeenCalledOnce()
+    const [{ n_substrate_cells, n_film_cells }] = MATCHES
+    expect(state.interface?.sites).toHaveLength(
+      n_substrate_cells * thick.sites.length + n_film_cells * AG_100.sites.length,
+    )
+  })
+
   // errors from the search and from stacking surface as text instead of throwing
   test.each([
     [`invalid tolerance`, CU_100, { length_tol: 2 }, `length_tol must be in (0, 1), got 2`],
     [`empty substrate`, { ...CU_100, sites: [] }, {}, `substrate slab has no sites`],
+    [
+      `collinear in-plane vectors`,
+      make_crystal(
+        [
+          [1, 0, 0],
+          [2, 0, 0],
+          [0, 0, 10],
+        ],
+        [[`Cu`, [0, 0, 0]]],
+      ),
+      {},
+      `In-plane lattice vectors a=[1,0,0] and b=[2,0,0] are degenerate or not finite (|a × b| = 0 Å²)`,
+    ],
   ] satisfies [string, Crystal, Partial<BuilderState>, string][])(
     `surfaces an error for %s`,
     (_, substrate, overrides, message) => {

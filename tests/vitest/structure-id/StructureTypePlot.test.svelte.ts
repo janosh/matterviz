@@ -265,7 +265,7 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     expect(state.id_results).toEqual([])
   })
 
-  test(`equivalent recreated ID options do not recompute`, async () => {
+  test(`equivalent recreated ID options and kept structures do not recompute`, async () => {
     const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
     const structure = make_fcc([1, 1, 1])
     const props = $state({
@@ -294,5 +294,11 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
       true,
       false,
     ])
+    // one more structure (a dropped file) computes only that one, reusing the others' results
+    await compute_spy.mock.results[1]?.value
+    const added = make_bcc([1, 1, 1])
+    props.structures = [...props.structures, { label: `added`, structure: added }]
+    await vi.waitFor(() => expect(compute_spy).toHaveBeenCalledTimes(3))
+    expect(compute_spy).toHaveBeenLastCalledWith(added, { skip_csp: false }, expect.anything())
   })
 })

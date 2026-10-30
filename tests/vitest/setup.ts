@@ -1,4 +1,5 @@
 import { tooltip_paint } from '#lib/colors/index.js'
+import { is_plain_object } from '#lib/utils.js'
 import { host } from '#lib/host.js'
 import { AXIS_TITLE_OFFSET, type Rect } from '#lib/plot/core/layout.js'
 import { SHORTCUTS, shortcuts_for } from '#lib/shortcuts.js'
@@ -109,6 +110,31 @@ export const one_tab_stop = (n_marks: number): string[] => [
   `0`,
   ...Array<string>(n_marks - 1).fill(`-1`),
 ]
+
+// Per element, how often Svelte touched its attributes: the runtime reads an element's
+// attribute cache on each run of the effect that sets them, changed or not. Tells an update
+// that re-runs a few marks from one that re-runs all of them.
+export const count_attribute_updates = (elements: Element[]): number[] => {
+  const counts = elements.map(() => 0)
+  for (const [idx, element] of elements.entries()) {
+    // happy-dom keeps its own Symbol(attributes) too: Svelte's is a plain record
+    const key = Object.getOwnPropertySymbols(element).find(
+      (sym) => sym.description === `attributes` && is_plain_object(Reflect.get(element, sym)),
+    )
+    if (!key) throw new Error(`${element.tagName} has no Svelte attribute cache`)
+    let cache: unknown = Reflect.get(element, key)
+    Object.defineProperty(element, key, {
+      get: () => {
+        counts[idx]++
+        return cache
+      },
+      set: (value: unknown) => {
+        cache = value
+      },
+    })
+  }
+  return counts
+}
 
 // querySelector that throws instead of returning null, so a stale selector fails loudly
 export function query<T extends Element = HTMLElement>(

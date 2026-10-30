@@ -12,6 +12,7 @@
   import type { CnaTypeName } from './calc-cna'
   import { CNA_TYPE_COLORS, CNA_TYPE_LABELS, CNA_TYPE_NAMES } from './calc-cna'
   import type { StructureIdOptions, StructureIdResult } from './calc-structure-id'
+  import type { AnyStructure } from '#lib/structure/index.js'
 
   type PlotMetadata = Record<string, unknown>
 
@@ -65,13 +66,24 @@
   // outlive their entries); empty when the results came in through the prop instead
   const computed_labels = $derived(entries.map(({ label }) => label))
 
+  // Last result per structure (stored once resolved), so dropping one more file computes
+  // only that file instead of re-posting every structure to the worker
+  const id_cache = new WeakMap<AnyStructure, { key: string; result: StructureIdResult }>()
   use_async_result({
     input: () => (entries.length > 0 ? entries : undefined),
     options: () => id_options,
-    compute: (inputs, options, signal) =>
-      Promise.all(
-        inputs.map(({ structure }) => calc_structure_id_async(structure, options, { signal })),
-      ),
+    compute: (inputs, options, signal) => {
+      const key = JSON.stringify(options)
+      return Promise.all(
+        inputs.map(async ({ structure }) => {
+          const cached = id_cache.get(structure)
+          if (cached?.key === key) return cached.result
+          const result = await calc_structure_id_async(structure, options, { signal })
+          id_cache.set(structure, { key, result })
+          return result
+        }),
+      )
+    },
     set_result: (value) => (id_results = value ?? []),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),

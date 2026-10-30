@@ -185,13 +185,15 @@ export function create_hull_data_pipeline(inputs: HullDataPipelineInputs) {
     if (effective_entries.length > inputs.label_threshold()) inputs.hide_labels()
   })
 
+  // Markers once per model, so threshold steps keep entry identities (selection and popups
+  // match entries without entry_id by identity)
+  const marked_entries = $derived(
+    helpers.apply_category_markers(model.entries, inputs.entry_category()),
+  )
   // Filter by threshold; visibility is a view predicate, not entry state.
   const plot_entries = $derived(
-    helpers.apply_category_markers(
-      model.entries.filter((entry) =>
-        helpers.entry_within_hull_dist(entry, inputs.max_hull_dist_show_phases()),
-      ),
-      inputs.entry_category(),
+    marked_entries.filter((entry) =>
+      helpers.entry_within_hull_dist(entry, inputs.max_hull_dist_show_phases()),
     ),
   )
   const visible_entries = $derived(

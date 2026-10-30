@@ -24,19 +24,35 @@ export class CellSelection {
   // true once a drag crossed into another cell, so the click on release can be swallowed
   drag_moved = false
 
-  // Every selected cell as "row:col", for O(1) lookups while rendering
-  keys = $derived.by(() => {
-    const keys = new Set<string>()
-    for (const rect of this.rects) {
-      const { row_lo, row_hi, col_lo, col_hi } = rect_bounds(rect)
-      for (let row = row_lo; row <= row_hi; row++)
-        for (let col = col_lo; col <= col_hi; col++) keys.add(`${row}:${col}`)
+  // Tested per rendered cell, so it checks the few rectangles rather than materializing
+  // every selected cell (a 10k x 30 drag rebuilt 300k keys per pointer move)
+  bounds = $derived(this.rects.map(rect_bounds))
+  has = (row: number, col: number): boolean =>
+    this.bounds.some(
+      ({ row_lo, row_hi, col_lo, col_hi }) =>
+        row >= row_lo && row <= row_hi && col >= col_lo && col <= col_hi,
+    )
+  // Distinct selected cells (rectangles may overlap): sweep the row bands between rectangle
+  // edges, merging the column spans of the rectangles covering each band
+  size = $derived.by(() => {
+    const edges = [
+      ...new Set(this.bounds.flatMap((rect) => [rect.row_lo, rect.row_hi + 1])),
+    ].toSorted((edge_a, edge_b) => edge_a - edge_b)
+    let total = 0
+    for (let idx = 1; idx < edges.length; idx++) {
+      const band_lo = edges[idx - 1]
+      const spans = this.bounds
+        .filter((rect) => rect.row_lo <= band_lo && rect.row_hi >= band_lo)
+        .toSorted((rect_a, rect_b) => rect_a.col_lo - rect_b.col_lo)
+      let [width, reach] = [0, -Infinity] // reach: last column counted so far
+      for (const { col_lo, col_hi } of spans) {
+        width += Math.max(0, col_hi - Math.max(col_lo, reach + 1) + 1)
+        reach = Math.max(reach, col_hi)
+      }
+      total += width * (edges[idx] - band_lo)
     }
-    return keys
+    return total
   })
-  size = $derived(this.keys.size)
-
-  has = (row: number, col: number): boolean => this.keys.has(`${row}:${col}`)
   // A no-op when empty, so clearing on every data update re-runs no cell's has()
   clear = (): void => {
     if (this.rects.length > 0) this.rects = []

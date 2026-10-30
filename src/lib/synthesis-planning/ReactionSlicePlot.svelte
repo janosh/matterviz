@@ -23,7 +23,12 @@
   // edits that rebuild the route object keep these, so the hull isn't recomputed
   const reaction = $derived(route.reaction)
   const selectivity = $derived(route.selectivity)
-  const components = $derived(solid_reactants(reaction).map(({ phase }) => phase.formula))
+  // code-unit order like the hull's axes (the reaction lists them by localeCompare)
+  const components = $derived(
+    solid_reactants(reaction)
+      .map(({ phase }) => phase.formula)
+      .toSorted(),
+  )
 
   const entries = $derived(
     reaction_slice_points({ reaction, selectivity }).map(

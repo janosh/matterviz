@@ -130,6 +130,9 @@
     <circle class="direct-beam" cx={center.x} cy={center.y} r={max_radius * 0.9} />
     {#each placed_spots as { spot, cx: center_x, cy: center_y, radius, opacity, label } (hkl_key(spot))}
       {@const spot_key = hkl_key(spot)}
+      <!-- per-spot booleans: a hover or pin change re-runs two spots' attributes, not all -->
+      {@const selected = spot_key === selected_key}
+      {@const hovered = spot_key === hovered_key}
       <circle
         cx={center_x}
         cy={center_y}
@@ -137,11 +140,11 @@
         {opacity}
         class="spot"
         class:higher-zone={spot.laue_zone > 0}
-        class:selected={spot_key === selected_key}
-        class:hovered={spot_key === hovered_key}
+        class:selected
+        class:hovered
         role="button"
         aria-label="{format_hkl(spot.hkl, `full`)}, {laue_zone_label(spot.laue_zone)}"
-        aria-pressed={spot_key === selected_key}
+        aria-pressed={selected}
         tabindex={roving.tabindex(spot_key)}
         {...{ [ROVING_ATTR]: spot_key }}
         onmouseenter={() => (hovered_spot = spot)}

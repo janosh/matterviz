@@ -699,6 +699,13 @@ test(`the domain tooltip stays compact and left-aligned`, async () => {
   )
   const sides = new Set(touches_limits.map(({ side }) => side))
   expect(bound_rows).toHaveLength(sides.size)
+  // bounds from the unpadded vertices: the default element_padding moves floor ones off the
+  // lower limits
+  const lower_bounded = scene().hover_meshes.filter(
+    ({ info }) =>
+      info.view === `3d` && info.touches_limits.some(({ side }) => side === `lower`),
+  )
+  expect(lower_bounded.length).toBeGreaterThan(0)
 })
 
 // Each grid pane keeps its own hover (tooltip only there) while every pane highlights it

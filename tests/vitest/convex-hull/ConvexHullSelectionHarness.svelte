@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ConvexHull, MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/index.js'
   import type { ConvexHullEntry, HullModel, PhaseData } from '#lib/convex-hull/index.js'
+  import type { D3InterpolateName } from '#lib/colors/index.js'
 
   const elements_by_dim = {
     '2d': [`Li`, `O`],
@@ -51,6 +52,8 @@
   // Read by the draw code but only reachable through `config`, so it exercises whether the
   // renderer's repaint list covers config as well as the individual toggles.
   let config = $state({ show_labels: true })
+  // Stability mode, where the point colours ignore it: only the hull faces read color_scale
+  let color_scale = $state<D3InterpolateName>(`interpolateViridis`)
 </script>
 
 <button
@@ -101,9 +104,21 @@
   >Toggle Category</button
 >
 
+<button
+  type="button"
+  data-testid="toggle-hull-color-scale"
+  onclick={() =>
+    (color_scale =
+      color_scale === `interpolateViridis` ? `interpolatePlasma` : `interpolateViridis`)}
+>
+  Toggle Color Scale
+</button>
+
 <ConvexHull
   {entries}
   {config}
+  {color_scale}
+  color_mode="stability"
   {entry_category}
   {allow_file_drop}
   on_file_load={(loaded) => {

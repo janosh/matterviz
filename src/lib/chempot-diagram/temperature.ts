@@ -11,6 +11,10 @@ interface TempFilterPayload {
   temp_filtered_entries: PhaseData[]
 }
 
+// Last payload per entries array: grid panes share the parent's entries and temperature, so
+// they share one filtered array too (and with it get_formula_color_data's memo)
+const payload_memo = new WeakMap<PhaseData[], { key: string; payload: TempFilterPayload }>()
+
 // Entries evaluated at `temperature` (interpolated per config) when the dataset carries G(T)
 // tables and a temperature is set; otherwise the entries unchanged
 export function get_temp_filter_payload(
@@ -18,6 +22,13 @@ export function get_temp_filter_payload(
   temperature: number | undefined,
   config: ChemPotDiagramConfig,
 ): TempFilterPayload {
+  const key = JSON.stringify([
+    temperature,
+    config.interpolate_temperature,
+    config.max_interpolation_gap,
+  ])
+  const memo = payload_memo.get(entries)
+  if (memo?.key === key) return memo.payload
   const { has_temp_data, available_temperatures } = analyze_temperature_data(entries)
   const temp_filtered_entries =
     has_temp_data && temperature !== undefined
@@ -28,5 +39,7 @@ export function get_temp_filter_payload(
             config.max_interpolation_gap ?? CHEMPOT_DEFAULTS.max_interpolation_gap,
         })
       : entries
-  return { has_temp_data, available_temperatures, temp_filtered_entries }
+  const payload = { has_temp_data, available_temperatures, temp_filtered_entries }
+  payload_memo.set(entries, { key, payload })
+  return payload
 }

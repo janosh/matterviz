@@ -700,6 +700,13 @@ describe(`FormulaFilter`, () => {
       mount_filter({ value: ``, on_change, search_mode: `chemsys`, mode_locked: true })
       submit_input(`Fe:1-2-Li`)
       expect(on_change).toHaveBeenLastCalledWith(`Fe:1-2-Li`, `chemsys`)
+      // `-` joins chemsys tokens, so an exclusion keeps its `!`: Fe-Li--O re-parsed O as included
+      submit_input(`Li-Fe-!O`)
+      expect(on_change).toHaveBeenLastCalledWith(`Fe-Li-!O`, `chemsys`)
+      const chips = [...document.querySelectorAll<HTMLButtonElement>(`.token-chip`)]
+      expect(chips.map((chip) => chip.textContent?.trim())).toEqual([`+Fe`, `+Li`, `!O`])
+      chips[1].click() // removing a chip re-serializes the rest the same way
+      expect(on_change).toHaveBeenLastCalledWith(`Fe-!O`, `chemsys`)
     })
   })
 })

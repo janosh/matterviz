@@ -13,7 +13,7 @@
   import type { HTMLAttributes } from 'svelte/elements'
   import { match_lattices, surface_frame } from './lattice-match'
   import { make_interface } from './stack'
-  import type { Heterostructure, LatticeMatch } from './types'
+  import type { Heterostructure, LatticeMatch, Matrix2x2 } from './types'
   import { INTERFACE_DEFAULTS } from './types'
 
   let {
@@ -46,12 +46,19 @@
     error?: string | null
   } & HTMLAttributes<HTMLDivElement> = $props()
 
-  // Matches depend on the two in-plane meshes only, so slab thickness edits keep the pick
+  // Matches depend on the two in-plane meshes only, so slab thickness edits keep the pick.
+  // Compared as a string, so those edits don't redo the search (tens of ms) either.
+  const bases_json = $derived.by((): string | Error => {
+    try {
+      return JSON.stringify([substrate, film].map((slab) => surface_frame(slab).basis))
+    } catch (err) {
+      return to_error(err)
+    }
+  })
   const matching = $derived.by((): { matches: LatticeMatch[]; error: string | null } => {
     try {
-      const [sub_basis, film_basis] = [substrate, film].map(
-        (slab) => surface_frame(slab).basis,
-      )
+      if (bases_json instanceof Error) throw bases_json
+      const [sub_basis, film_basis]: Matrix2x2[] = JSON.parse(bases_json)
       return {
         matches: match_lattices(sub_basis, film_basis, { max_area, length_tol, angle_tol }),
         error: null,

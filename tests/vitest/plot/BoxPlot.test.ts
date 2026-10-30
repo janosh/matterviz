@@ -771,7 +771,7 @@ describe(`BoxPlot`, () => {
       show_controls: true,
       controls_open: true,
     })
-    const { control } = form_controls(plot)
+    const { control, set_value } = form_controls(plot)
     const [mean, outliers] = [control(`Show mean`), control(`Show outliers`)]
     if (!(mean instanceof HTMLInputElement && outliers instanceof HTMLInputElement)) {
       throw new TypeError(`Show mean/outliers are not checkboxes`)
@@ -788,6 +788,9 @@ describe(`BoxPlot`, () => {
     expect([mean.checked, outliers.checked]).toEqual([true, false])
     expect(plot.querySelectorAll(`.box-series circle`)).toHaveLength(0)
     expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(1)
+    // dropping the box keeps every violin, and so their density estimates
+    await set_value(`Glyph`, `violin`)
+    expect(plot.querySelectorAll(`.iqr-box`)).toHaveLength(0)
     expect([kde_spy, summary_spy].map((spy) => spy.mock.calls.length)).toEqual([
       kde_calls,
       summary_calls,

@@ -338,10 +338,13 @@
   const is_valid_constraint = (constraint: string): boolean =>
     /^(?:\d+|\d+-\d+|(?:>=|<=|>|<)\d+)$/.test(constraint)
 
+  // chemsys joins tokens with `-`, so an exclusion there is `!O`: `Fe--O` would re-parse as
+  // an included O
   function serialize_token(
     token: Pick<FormulaFilterToken, `operator` | `element` | `constraint`>,
+    mode: FormulaSearchMode = search_mode,
   ): string {
-    const prefix = token.operator === `exclude` ? `-` : ``
+    const prefix = token.operator === `exclude` ? (mode === `chemsys` ? `!` : `-`) : ``
     const suffix = token.constraint ? `:${token.constraint}` : ``
     return `${prefix}${token.element}${suffix}`
   }
@@ -401,7 +404,7 @@
           Number(token_a.is_wildcard) - Number(token_b.is_wildcard) ||
           token_a.element.localeCompare(token_b.element),
       )
-      .map(serialize_token)
+      .map((token) => serialize_token(token, mode))
       .join(MODE_SEPARATOR[mode])
   }
 
@@ -588,7 +591,8 @@
     const tokens = tokenize_query(input_value, search_mode).filter(
       (_, idx) => idx !== token_idx,
     )
-    set_value(tokens.map(serialize_token).join(MODE_SEPARATOR[search_mode]), search_mode)
+    const serialized = tokens.map((token) => serialize_token(token))
+    set_value(serialized.join(MODE_SEPARATOR[search_mode]), search_mode)
   }
 
   // History buttons act on mousedown and cancel it, so the input keeps focus (no blur commit)

@@ -1,5 +1,6 @@
 import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import ColorBarDecoration from '#lib/plot/core/components/ColorBarDecoration.svelte'
+import * as text_metrics from '#lib/plot/core/text-metrics.js'
 import { create_colorbar_decoration } from '#lib/plot/core/placed-decoration.svelte.js'
 import type { PlacedDecoration } from '#lib/plot/core/placed-decoration.svelte.js'
 import type { Vec2 } from '#lib'
@@ -249,6 +250,12 @@ describe(`ColorBar tick labels`, () => {
           expect(tick_texts().at(-1)).toBe(expected.at(-1))
         }
       }
+      // a resize leaving the labels' font alone re-thins the ticks without re-measuring them
+      const measure = vi.spyOn(text_metrics, `measure_text_line`)
+      onTestFinished(() => measure.mockRestore())
+      trigger_resize_observer(bar)
+      await tick()
+      expect(measure).not.toHaveBeenCalled()
     },
   )
 

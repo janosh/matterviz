@@ -93,7 +93,7 @@
   // Computed entries keep the structure they came from, for the atoms behind a hover. A
   // structure the neighbour search rejects is reported, and the others still plot.
   type ComputedEntry = RdfEntry & { structure?: Crystal }
-  const computed = $derived.by((): { entries: ComputedEntry[]; failures: string[] } => {
+  const computed = $derived.by((): { curves: ComputedEntry[]; failures: string[] } => {
     // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
     const struct_list = [
       ...label_structures(structures),
@@ -121,10 +121,14 @@
         return []
       }
     })
-    // Explicitly supplied patterns come first, in the order they were given
-    return { entries: [...(patterns ? [patterns].flat() : []), ...curves], failures }
+    return { curves, failures }
   })
-  const entries = $derived(computed.entries)
+  // Explicitly supplied patterns come first, in the order they were given. Joined apart from
+  // `computed` so new patterns don't re-run the structures' neighbour searches.
+  const entries = $derived<ComputedEntry[]>([
+    ...(patterns ? [patterns].flat() : []),
+    ...computed.curves,
+  ])
   // a failure report clears once its structure is gone, a drop error on the next drop
   const error_report = bind_error_report(
     { get: () => error_msg, set: (msg) => (error_msg = msg) },

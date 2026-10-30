@@ -401,10 +401,10 @@
   // where the first cell track starts, past the label track
   let grid_offset_left = $state(0)
   let grid_offset_top = $state(0)
-  // Windowed in grid-track space: by rank under `gaps`, else by position in `visible`
-  const window_axis = (axis: Axis, scroll: number, viewport: number, count: number) => {
-    const [visible, rank] = axis === `x` ? [vis_x, ranks.x] : [vis_y, ranks.y]
-    if (!virtual_config) return visible
+  // Window [start, end) in grid-track space, destructured into primitive deriveds below so
+  // scroll events within one track leave the rendered rows and cells untouched
+  const window_bounds = (scroll: number, viewport: number, count: number): Vec2 => {
+    if (!virtual_config) return [0, count]
     const { start, end } = virtual_window({
       scroll,
       viewport,
@@ -412,16 +412,24 @@
       count,
       ...virtual_config,
     })
+    return [start, end]
+  }
+  let [x_start, x_end] = $derived(
+    window_bounds(scroll_left - grid_offset_left, viewport_width, col_count),
+  )
+  let [y_start, y_end] = $derived(
+    window_bounds(scroll_top - grid_offset_top, viewport_height, row_count),
+  )
+  // Windowed by rank under `gaps`, else by position in `visible`
+  const window_axis = (axis: Axis, start: number, end: number) => {
+    const [visible, rank] = axis === `x` ? [vis_x, ranks.x] : [vis_y, ranks.y]
+    if (!virtual_config) return visible
     return gaps_mode
       ? visible.filter((item_idx) => rank[item_idx] >= start && rank[item_idx] < end)
       : visible.slice(start, end)
   }
-  let render_vis_x = $derived(
-    window_axis(`x`, scroll_left - grid_offset_left, viewport_width, col_count),
-  )
-  let render_vis_y = $derived(
-    window_axis(`y`, scroll_top - grid_offset_top, viewport_height, row_count),
-  )
+  let render_vis_x = $derived(window_axis(`x`, x_start, x_end))
+  let render_vis_y = $derived(window_axis(`y`, y_start, y_end))
   // DOM order: each key keeps its rank from when first rendered, so reordering moves no nodes
   // (grid lines place them). Plain maps: bookkeeping, not reactive state.
   const key_ranks = { x: new Map<string, number>(), y: new Map<string, number>() }
@@ -676,7 +684,12 @@
     )
   const export_sources: ExportSources = {
     ...svg_sources(() => matrix_el && html_to_svg(matrix_el)),
-    csv: () => rows_to_csv(visible_rows()),
+    // explicit header: object key order would put integer-like labels ("1", "10") first
+    csv: () =>
+      rows_to_csv(visible_rows(), [
+        `y_key`,
+        ...vis_x.map((x_idx) => axis_key(x_items[x_idx])),
+      ]),
     json: json_source(visible_rows),
   }
   const controls_mode = $derived(normalize_show_controls(show_controls))
