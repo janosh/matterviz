@@ -437,7 +437,7 @@ test.each<[string, Partial<DataSeries>, boolean, AxisKey[]?]>([
   [`a step curve above`, { x: [1, 2], y: [11, 12], line_style: { curve: `step` } }, false],
   [`with underlays above`, { x: [1, 2], y: [11, 12], line_underlays: [{ x: [1], y: [1] }] }, true],
   [`below a log y axis (held at its floor)`, { x: [1, 2], y: [-3, -2] }, true, [`y`]],
-  [`left of a log x axis`, { x: [-3, -2], y: [1, 2] }, true, [`x`]],
+  [`left of a log x axis (x is not floored)`, { x: [-3, -2], y: [1, 2] }, false, [`x`]],
   [`above a log y axis`, { x: [1, 2], y: [11, 12] }, false, [`y`]],
   [`below y while only y2 is log`, { x: [1, 2], y: [-3, -2] }, false, [`y2`]],
 ])(`line_reaches_view: %s`, (_desc, partial, expected, log_axes = []) => {

@@ -750,12 +750,11 @@
   type FilteredSeries = (typeof filtered_series)[number]
   // The series each draw loop walks, so a plot of many lines (a band structure's, most far
   // off the shown energies) reconciles only those it draws on every data change
-  const log_axes = $derived(
+  // (log y axes hold lines below them at their floor, see line_reaches_view)
+  const log_y_axes = $derived(
     new Set(
       (
         [
-          [`x`, final_x_axis],
-          [`x2`, final_x2_axis],
           [`y`, final_y_axis],
           [`y2`, final_y2_axis],
         ] as const
@@ -767,7 +766,7 @@
   const line_series = $derived(
     filtered_series.filter(
       (srs) =>
-        has_marker(srs, `line`) && line_reaches_view(srs, frame.ranges.current, log_axes),
+        has_marker(srs, `line`) && line_reaches_view(srs, frame.ranges.current, log_y_axes),
     ),
   )
   const marker_series = $derived(

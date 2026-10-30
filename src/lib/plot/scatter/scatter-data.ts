@@ -228,10 +228,11 @@ export function line_reaches_view(
   const [x_lo, x_hi] = range_bounds(ranges[x_key])
   const [y_lo, y_hi] = range_bounds(ranges[y_key])
   const { x, y } = series.point_bounds
-  // NaN bounds fail every comparison, keeping the line. A log axis draws values below its
-  // floor at the floor (log_floor_scale), so a line under it still shows along that edge.
-  const below = (axis: AxisKey, hi: number, lo: number) => hi < lo && !log_axes.has(axis)
-  return !(below(x_key, x[1], x_lo) || x[0] > x_hi || below(y_key, y[1], y_lo) || y[0] > y_hi)
+  // NaN bounds fail every comparison, keeping the line. A log y axis draws lines below its
+  // floor at the floor (log_floor_scale), so a line under it still shows along that edge; x
+  // is not floored (series_projector.line), so a line left of a log x view draws nothing.
+  const below_y = y[1] < y_lo && !log_axes.has(y_key)
+  return !(x[1] < x_lo || x[0] > x_hi || below_y || y[0] > y_hi)
 }
 
 // Display style attached to each legend item (matches PlotLegend expectations)
