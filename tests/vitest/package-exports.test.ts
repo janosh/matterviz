@@ -57,8 +57,13 @@ const source_extensions = [`.ts`, `.svelte`, `.js`, `.mjs`]
 // Map a built ./dist/* target back to candidate source files in src/lib, preserving the path
 // structure exactly: ./dist/foo.js must originate from src/lib/foo.ts, NOT src/lib/foo/index.ts.
 // This way an export pointing at a flat file when the source is a directory (or vice versa) fails.
+// dist/elements is a vite bundle of the custom elements in src/elements, not svelte-package output
+const bundled_dist_dirs: Record<string, string> = { elements: `src/elements/index.svelte.ts` }
+
 function source_candidates(dist_target: string): string[] {
   const rel = dist_target.replace(/^\.\/dist\//, ``).replace(/\.d\.ts$/, ``)
+  const bundle_source = bundled_dist_dirs[rel.split(`/`)[0]]
+  if (bundle_source) return [join(repo_root, bundle_source)]
   if (/\.(?:css|json)$/.test(rel)) return [join(lib_dir, rel)] // assets copied verbatim
   const base = rel.replace(/\.(?:js|mjs|cjs)$/, ``)
   return source_extensions.map((ext) => join(lib_dir, `${base}${ext}`))
@@ -267,7 +272,9 @@ describe(`package.json exports`, () => {
     )
     const orphans = readdirSync(dist_dir).filter(
       (entry) =>
-        !entry.startsWith(`.`) && !source_stems.has(entry.replace(/\.d\.ts$|\.js$/, ``)),
+        !entry.startsWith(`.`) &&
+        !(entry in bundled_dist_dirs) &&
+        !source_stems.has(entry.replace(/\.d\.ts$|\.js$/, ``)),
     )
     expect(orphans, `dist/ entries without a src/lib source`).toEqual([])
   })
@@ -330,6 +337,7 @@ describe(`package.json exports`, () => {
       `**/*.css`,
       `**/file-viewer/main.*`,
       `**/theme/embedded.*`,
+      `./dist/elements/**`,
     ])
   })
 
@@ -402,6 +410,7 @@ describe(`prepare hook`, () => {
   const build_cmds = [
     `svelte-package`,
     `node src/scripts/package-dist-assets.mjs`,
+    `vp build --config src/elements/vite.config.ts`,
     `node src/scripts/check-dist-imports.mjs`,
   ]
 
