@@ -473,15 +473,14 @@
     axis_px: number,
     time_scale = false,
   ): Vec2 => {
-    const edge_padding = edge_range_padding(edge_px, axis_px)
-    // edge_padding also lets a zero end extend past 0 so markers on 0 aren't cut in half
+    // edge padding widens the niced ends (a zero end past 0 too) just enough for the marks
     return nice_range_from_extent(
       data_extent,
       axis.range ?? [null, null],
       axis.scale_type ?? `linear`,
-      Math.max(range_padding, edge_padding),
+      range_padding,
       time_scale,
-      edge_padding,
+      edge_range_padding(edge_px, axis_px),
     )
   }
   // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
@@ -1207,15 +1206,24 @@
     return groups
   })
 
+  // Marks tween in px, so a resize (of the window, of panes restacking) would glide them in
+  // from where the old size put them: the markers, unclipped so edge points draw whole, across
+  // whatever sits beside the plot. They snap until the frame after a resize, as while panning.
+  const size_key = $derived(`${width} ${height}`)
+  let tweened_size = $state(``)
+  $effect(() => {
+    const key = size_key
+    const frame_id = requestAnimationFrame(() => (tweened_size = key))
+    return () => cancelAnimationFrame(frame_id)
+  })
   // Snap marks while panning: animating leaves them trailing the axes while hover
   // hit-testing already uses live scales
+  const snap_marks = $derived(pan_zoom.is_panning || size_key !== tweened_size)
   const effective_point_tween = $derived(
-    use_canvas_markers || pan_zoom.is_panning ? { duration: 0 } : point_tween,
+    use_canvas_markers || snap_marks ? { duration: 0 } : point_tween,
   )
   const resolved_line_tween = $derived(resolve_line_tween(line_tween, line_tween_load))
-  const effective_line_tween = $derived(
-    pan_zoom.is_panning ? { duration: 0 } : resolved_line_tween,
-  )
+  const effective_line_tween = $derived(snap_marks ? { duration: 0 } : resolved_line_tween)
 
   const hover_radius = $derived(hover_config.threshold_px ?? 20)
 

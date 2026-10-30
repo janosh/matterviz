@@ -483,9 +483,9 @@
         accumulate_extent(empty_extent(), values),
         axis.range ?? [null, null],
         scale_type,
-        Math.max(range_padding, edge_padding),
+        range_padding,
         false,
-        // outliers or samples on 0 draw whole, as scatter markers do
+        // outliers or samples on the auto range ends (0 included) draw whole, as scatter markers do
         edge_padding,
       )
     }

@@ -484,9 +484,10 @@ export function nice_range_from_extent(
   scale_type: ScaleType,
   padding_factor: number,
   is_time = false,
-  // Padding factor of marks centred on the data ends (edge_range_padding). An automatic end
-  // that snaps to an observed 0 then sits just far enough past 0 for those marks to draw whole.
-  zero_edge_padding = 0,
+  // Padding factor of marks centred on the data ends (edge_range_padding). After nicing, each
+  // automatic end widens just enough for those marks to draw whole (also when the other end is
+  // pinned, and past an end snapped to an observed 0), not by a whole extra tick step.
+  edge_padding = 0,
 ): Vec2 {
   // An inset would cut the data ends off (no caller passes one), and NaN poisons the range
   if (!(padding_factor >= 0))
@@ -511,10 +512,38 @@ export function nice_range_from_extent(
     !is_time && type_name === `log`
       ? { forward: Math.log10, inverse: (value: number) => 10 ** value }
       : axis_transform(is_time ? `time` : scale_type)
-  // Given the opposite end, places 0 the marks' share f / (1 + 2f) of the axis inside the
-  // frame, in the scale's metric (asinh(0) = 0); `|| 0` turns -0 into 0.
-  const zero_end = (other_end: number): number =>
-    inverse((-zero_edge_padding * forward(other_end)) / (1 + zero_edge_padding)) || 0
+  // A log bound <= 0 is invalid and replaced like a missing one
+  const is_auto = (bound: number | null): boolean =>
+    bound === null || (!is_time && type_name === `log` && bound <= 0)
+
+  // Widen the automatic ends of `ends` least so each data end inside it sits the marks'
+  // share f / (1 + 2f) of the axis (in the scale's metric) inside the frame. Moving one end
+  // shrinks the other's share, so when both fall short they solve together: data ± f·span.
+  const fit_marks = (ends: Vec2): Vec2 => {
+    const [lower, upper] = ends
+    if (!(edge_padding > 0) || min_ext === undefined || max_ext === undefined) return ends
+    const [lo, hi, data_lo, data_hi] = [lower, upper, min_ext, max_ext].map(forward)
+    if (!(lo < hi)) return ends
+    const inside = (value: number): boolean => value >= lo && value <= hi
+    const fit_lo = is_auto(min) && inside(data_lo)
+    const fit_hi = is_auto(max) && inside(data_hi)
+    const share = edge_padding / (1 + 2 * edge_padding)
+    // the end that leaves its data end exactly `share` of the axis, given the opposite end
+    const lo_for = (top: number) => (data_lo - share * top) / (1 - share)
+    const hi_for = (bottom: number) => (data_hi - share * bottom) / (1 - share)
+    let new_lo = fit_lo ? Math.min(lo, lo_for(hi)) : lo
+    let new_hi = fit_hi ? Math.max(hi, hi_for(new_lo)) : hi
+    if (fit_lo && new_hi > hi && lo_for(new_hi) < new_lo) {
+      const pad = edge_padding * (data_hi - data_lo)
+      new_lo = Math.min(new_lo, data_lo - pad)
+      new_hi = Math.max(new_hi, data_hi + pad)
+    }
+    // the asinh/sinh round trip can land an ulp inside the end it widens
+    return [
+      new_lo < lo ? Math.min(lower, inverse(new_lo)) : lower,
+      new_hi > hi ? Math.max(upper, inverse(new_hi)) : upper,
+    ]
+  }
 
   // Apply padding *only if* limits were NOT provided
   if (min === null && max === null && n_finite > 0) {
@@ -553,14 +582,12 @@ export function nice_range_from_extent(
   }
 
   // If time or no range after padding, return the (potentially padded) domain directly
-  if (is_time || data_min === data_max) return [data_min, data_max]
+  if (data_min === data_max) return [data_min, data_max]
+  if (is_time) return fit_marks([data_min, data_max])
 
   // D3's nice() for pretty boundaries, except arcsinh which keeps the padded domain
   if (type_name === `arcsinh`) {
-    return [
-      snap_zero_min ? zero_end(data_max) : data_min,
-      snap_zero_max ? zero_end(data_min) : data_max,
-    ]
+    return fit_marks([snap_zero_min ? 0 : data_min, snap_zero_max ? 0 : data_max])
   }
 
   const scale =
@@ -573,10 +600,7 @@ export function nice_range_from_extent(
   // Nice ticks may expand automatic endpoints, but must not round a valid explicit bound.
   const lower = min !== null && (type_name !== `log` || min > 0) ? min : nice_min
   const upper = max !== null && (type_name !== `log` || max > 0) ? max : nice_max
-  const result: Vec2 = [
-    snap_zero_min ? zero_end(upper) : lower,
-    snap_zero_max ? zero_end(lower) : upper,
-  ]
+  const result = fit_marks([snap_zero_min ? 0 : lower, snap_zero_max ? 0 : upper])
   return type_name === `log` ? validate_log_range(result) : result
 }
 

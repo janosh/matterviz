@@ -16,6 +16,7 @@ import {
   pick_tooltip_bg,
   project_line_points,
   strict_x_direction,
+  scatter_line_style,
 } from '#lib/plot/scatter/scatter-data.js'
 import { describe, expect, test } from 'vitest'
 
@@ -242,6 +243,30 @@ describe(`build_series_legend_items and build_fill_legend_items`, () => {
     ...build_series_legend_items(series, color_scale),
     ...build_fill_legend_items(fills),
   ]
+
+  // a hollow first point (e.g. a flagged one) says nothing about the series' colour: its
+  // line and legend symbol take the next shown point's (unset: the palette's); a series hollow
+  // throughout keeps its stroke-coloured symbol and a palette line
+  test.each([
+    [
+      `hollow first, unset rest`,
+      plot_color(0),
+      plot_color(0),
+      [{ fill: `transparent`, stroke: `gray` }, {}],
+    ],
+    [
+      `hollow first, filled rest`,
+      `teal`,
+      `teal`,
+      [{ fill: `none`, stroke: `gray` }, { fill: `teal` }],
+    ],
+    [`hollow throughout`, `gray`, plot_color(0), [{ fill: `transparent`, stroke: `gray` }]],
+  ])(`%s: legend symbol %s, line %s`, (_desc, symbol_color, line_color, point_style) => {
+    const series: DataSeries = { x: [1, 2], y: [1, 2], markers: `line+points`, point_style }
+    const [row] = build_series_legend_items([series], color_scale)
+    expect(row.display_style.symbol_color).toBe(symbol_color)
+    expect(scatter_line_style(series, 0, color_scale).color).toBe(line_color)
+  })
 
   test(`multi-series with fills: labels, default styles, fill entries`, () => {
     const series: DataSeries[] = [

@@ -6,7 +6,11 @@ import { plot_color } from '#lib/colors/index.js'
 import { symbol_names } from '#lib/labels.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { first_duplicate } from '#lib/utils.js'
-import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transform.js'
+import {
+  get_series_symbol,
+  is_transparent_or_none,
+  shown_point_style,
+} from '#lib/plot/core/data-transform.js'
 import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
 import type {
@@ -254,12 +258,6 @@ export const scatter_series_label = <Metadata>(
     ? data_series.metadata.label
     : `Series ${series_idx + 1}`)
 
-const is_transparent_or_none = (color: string | undefined | null): boolean =>
-  !color ||
-  color === `none` ||
-  color === `transparent` ||
-  /rgba\([^)]+[,/]\s*0(?:\.0*)?\s*\)$/.test(color)
-
 // Legend rows in render order, for both the rendered legend and the solver's footprint tracker.
 // A null series keeps its index (points and styles are looked up by it) but contributes no row,
 // else the legend shows a phantom `Series N`.
@@ -309,7 +307,11 @@ export function scatter_line_style<Metadata>(
   color_scale: (value: number) => string,
   override?: StyleOverrides[`line`],
 ) {
-  let color = override?.color ?? series.line_style?.stroke ?? first_point_style(series)?.fill
+  const fill = shown_point_style(series)?.fill
+  let color =
+    override?.color ??
+    series.line_style?.stroke ??
+    (is_transparent_or_none(fill) ? undefined : fill)
   if (color == null) {
     const value = series.color_values?.find(is_finite_num)
     color = value != null ? color_scale(value) : plot_color(series_idx)
@@ -336,7 +338,7 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
   ): LegendDisplayStyle => {
     const series_default_color = plot_color(series_idx)
     const display_style: LegendDisplayStyle = {}
-    const point_style = first_point_style(data_series)
+    const point_style = shown_point_style(data_series)
     const point_override = series_idx === selected_series_idx ? styles.point : undefined
 
     if (has_marker(data_series, `points`) && styles.show_points !== false) {
@@ -442,7 +444,7 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
   const has_points = has_marker(series, `points`)
   if (has_points) candidates.push(point_style?.stroke)
   if (has_marker(series, `line`)) {
-    const series_style = first_point_style(series)
+    const series_style = shown_point_style(series)
     candidates.push(
       series?.line_style?.stroke,
       series_style?.fill,

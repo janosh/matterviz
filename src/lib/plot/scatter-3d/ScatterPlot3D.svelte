@@ -7,7 +7,7 @@
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
-  import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
+  import { build_legend_items, shown_point_style } from '#lib/plot/core/data-transform.js'
   import { chain_callbacks, resolve_axis_range } from '#lib/plot/core/interactions.js'
   import type {
     AxisConfig3D,
@@ -205,7 +205,7 @@
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: `Circle` as const,
-      symbol_color: first_point_style(srs)?.fill ?? plot_color(series_idx),
+      symbol_color: shown_point_style(srs)?.fill ?? plot_color(series_idx),
     })),
   )
   // Lift the gizmo above the color bar when one is shown; otherwise pass `gizmo` through as-is

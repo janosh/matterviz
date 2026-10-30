@@ -288,6 +288,38 @@ describe(`scales`, () => {
         }
       },
     )
+
+    // Edge padding f widens the niced range just enough that each data end sits the share
+    // s = f / (1 + 2f) of the axis inside the frame: a nice end with that room stays, a free
+    // end beside a pinned one widens too, and data on nice ticks gets f·span, not a whole step.
+    const edge = 0.02
+    const share = edge / (1 + 2 * edge)
+    const epoch = Date.UTC(2026, 0, 1)
+    // `expected` is relative to `offset` (time stamps are too large for 9 digits); null on
+    // arcsinh, which skips nice(), so both ends solve together in asinh space
+    test.each<[string, number[], Limits, ScaleType, Vec2 | null, number?]>([
+      [`ends on nice ticks`, [1, 5], [null, null], `linear`, [0.92, 5.08]],
+      [`nice ends with room`, [1.3, 4.6], [null, null], `linear`, [1, 5]],
+      [`one end short`, [1, 4.6], [null, null], `linear`, [(1 - 5 * share) / (1 - share), 5]],
+      [`pinned min`, [1, 5], [0, null], `linear`, [0, 5 / (1 - share)]],
+      [`pinned max`, [1, 5], [null, 10], `linear`, [(1 - 10 * share) / (1 - share), 10]],
+      [`log decades`, [1, 100], [null, null], `log`, [10 ** -0.04, 10 ** 2.04]],
+      [`arcsinh`, [-2, 7], [null, null], `arcsinh`, null],
+      [`time`, [epoch, epoch + 1000], [null, null], `time`, [-20, 1020], epoch],
+    ])(
+      `edge padding fits marks: %s`,
+      (_name, values, limits, scale_type, expected, offset = 0) => {
+        const range = nice_range(values, limits, scale_type, 0, scale_type === `time`, edge)
+        if (expected) {
+          for (const idx of [0, 1]) expect(range[idx] - offset).toBeCloseTo(expected[idx], 9)
+        } else {
+          const { forward } = axis_transform(scale_type)
+          const [lower, upper] = range.map(forward)
+          expect((forward(values[0]) - lower) / (upper - lower)).toBeCloseTo(share, 12)
+          expect((upper - forward(values[1])) / (upper - lower)).toBeCloseTo(share, 12)
+        }
+      },
+    )
   })
 
   describe(`accumulate_extent / nice_range_from_extent`, () => {

@@ -59,7 +59,7 @@
   import { has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import {
     build_legend_items,
-    first_point_style,
+    shown_point_style,
     series_text,
   } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -468,13 +468,13 @@
     category_tick_labels(category_list, plot_axes[cat_axis].ticks),
   )
 
-  // Legend swatch: bars show a square, line series a line and/or their first point's symbol
+  // Legend swatch: bars show a square, line series a line and/or their shown point's symbol
   const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
     const color = series_color(srs)
     if (srs.render_mode !== `line`) {
       return { symbol_type: `Square`, symbol_color: color, pattern: srs.pattern }
     }
-    const point_style = first_point_style(srs)
+    const point_style = shown_point_style(srs)
     const first_color_value = srs.color_values?.[0]
     return {
       ...(has_marker(srs, `line`)
