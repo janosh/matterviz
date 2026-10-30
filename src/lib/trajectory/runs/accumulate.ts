@@ -4,7 +4,13 @@
 import { display_idx } from '#lib/labels.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
-import { is_finite_vec3, type Matrix3x3, reciprocal_lattice } from '#lib/math.js'
+import {
+  finite_vec3_from_values,
+  is_finite_vec3,
+  type Matrix3x3,
+  reciprocal_lattice,
+  type Vec3,
+} from '#lib/math.js'
 import type { Pbc } from '#lib/structure/index.js'
 import { site_stride, vector_offset } from '#lib/structure/site.js'
 import { values_per_sample } from '../helpers'
@@ -88,6 +94,7 @@ class PositionAccumulator {
   private atom_ids: (number | null)[] | null = null
   private pbc: Pbc | null = null
   private coords_unwrapped = false
+  private box_origin: Vec3 = [0, 0, 0] // the first frame's
   private frame_count = 0
   // Reciprocal rows of the last lattice seen (frac_i = b_i · cart); a fixed cell hands back
   // the same matrix every frame, so only NPT runs rebuild the inverse
@@ -174,9 +181,16 @@ class PositionAccumulator {
     }
 
     const is_first_frame = this.frame_count === 0
+    // LAMMPS positions are relative to each frame's box origin, which a barostat or fix deform
+    // moves: shift them to the first frame's origin so a moving box adds no fake displacement
+    const box_origin = finite_vec3_from_values(header.metadata?.box_origin) ?? [0, 0, 0]
     if (is_first_frame) {
       this.pbc = lattice ? [...lattice.pbc] : null
+      this.box_origin = box_origin
     }
+    const [shift_x, shift_y, shift_z] = box_origin.map(
+      (value, axis) => value - this.box_origin[axis],
+    )
 
     const base = this.frame_count * this.n_atoms * 3
     for (let atom_idx = 0; atom_idx < sites.length; atom_idx++) {
@@ -213,9 +227,9 @@ class PositionAccumulator {
       const off = base + atom_idx * 3
       const xyz = `header` in frame ? frame.coordinates : frame.structure.sites[atom_idx].xyz
       const xyz_offset = numeric ? atom_idx * width : 0
-      this.positions[off] = xyz[xyz_offset]
-      this.positions[off + 1] = xyz[xyz_offset + 1]
-      this.positions[off + 2] = xyz[xyz_offset + 2]
+      this.positions[off] = xyz[xyz_offset] + shift_x
+      this.positions[off + 1] = xyz[xyz_offset + 1] + shift_y
+      this.positions[off + 2] = xyz[xyz_offset + 2] + shift_z
       for (const { key, source, offset, scalar, target } of vector_sources) {
         const value = scalar ? scalar[atom_idx] : properties?.[key]
         const values =
