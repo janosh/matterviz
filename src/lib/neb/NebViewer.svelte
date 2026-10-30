@@ -451,11 +451,15 @@
     /* Keep embedded viewer controls below the sequence bar. */
     isolation: isolate;
     grid-template-columns: minmax(0, var(--split-pane-size, 60%)) minmax(0, 1fr);
+    /* stacked: the structure under the plot, a rule in place of the hidden divider */
     @media (max-width: 900px) {
       grid-template-columns: 1fr;
       gap: 8pt;
       > :global(.pane-divider) {
         display: none;
+      }
+      > .structure-pane {
+        border-top: 1px solid var(--border-color, light-dark(#ddd, #444));
       }
     }
   }
