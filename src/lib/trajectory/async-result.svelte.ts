@@ -3,6 +3,7 @@
 // superseded job is aborted so the worker client stops tracking it (and terminates the busy
 // worker once nothing else is in flight), its settlement is ignored, and a failure clears the stale
 // curves so the plot's empty-state message can show the error.
+import { same_while_equal } from '#lib/utils.js'
 import { getAbortSignal } from 'svelte'
 import { to_error } from 'svelte-widgets/utils'
 import type { TrajectoryPositionStream } from './index'
@@ -62,14 +63,20 @@ interface AsyncResultBinding<Input, Options, Result> {
 export function use_async_result<Input, Options, Result>(
   binding: AsyncResultBinding<Input, Options, Result>,
 ): void {
-  const options_key = $derived(JSON.stringify(binding.options()))
+  // By value: callers rebuild equal options on every read, and a new object must not recompute.
+  // A snapshot (workers can't clone a $state proxy), not a JSON round trip: that turned an
+  // Infinity option into null.
+  const keep_options = same_while_equal<Options>()
+  const options = $derived.by(() => {
+    const snapshot = $state.snapshot(binding.options())
+    return keep_options(snapshot as Options) // the same options, minus proxies
+  })
   // Dropped whenever the input changes, so a superseded result is never revised onto the next
   let computed = $state.raw<Result>()
   // Non-reactive, and reset on withdrawal so it never pins a (maybe hundreds of MB) buffer
   let last_input: Input | undefined
   $effect(() => {
     const input = binding.input()
-    const options: Options = JSON.parse(options_key)
     if (input !== last_input) computed = undefined
     // Aborted when the effect re-runs or unmounts, so `signal.aborted` is exactly "superseded
     // or unmounted": nobody will read that answer (nor its abort rejection)

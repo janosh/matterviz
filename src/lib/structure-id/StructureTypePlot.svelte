@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { value_key } from '#lib/utils.js'
   import { format_num } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import type { StructurePlotProps } from '#lib/plot/bar/index.js'
@@ -74,7 +75,7 @@
     input: () => (entries.length > 0 ? entries : undefined),
     options: () => id_options,
     compute: (inputs, options, signal) => {
-      const key = JSON.stringify(options)
+      const key = value_key(options)
       return Promise.all(
         inputs.map(async ({ structure }) => {
           const cached = id_cache.get(structure)

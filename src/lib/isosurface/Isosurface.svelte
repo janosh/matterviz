@@ -3,6 +3,7 @@
   // volume and optionally a color volume sampled at the vertices through a colormap (e.g.
   // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
   // only remap through the LUT and never rerun marching cubes.
+  import { value_key } from '#lib/utils.js'
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
@@ -179,7 +180,7 @@
 
   // range_key covers halo + tiling, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    JSON.stringify([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
+    value_key([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number

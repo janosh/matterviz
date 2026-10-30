@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { value_key } from '#lib/utils.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ExportSources } from '#lib/io/export.js'
@@ -1399,7 +1400,7 @@
   })
   // The merged object (and an inline `label_placement_config={{...}}` prop) is a fresh
   // identity per update, so the warm start below compares by value, not reference.
-  const label_config_key = $derived(JSON.stringify(actual_label_config))
+  const label_config_key = $derived(value_key(actual_label_config))
 
   // Skip the per-frame label solver on plots with no auto-placed labels. Scans
   // `assigned_series`, not range-refiltered `filtered_series`, to stay off the frame loop.

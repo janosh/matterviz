@@ -4,7 +4,7 @@
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
 // messages before that for callers that passed `on_progress`.
-import { is_plain_object } from '#lib/utils.js'
+import { identity_token, value_key } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 
 interface WorkerClientConfig<Input, Options, Result, Progress> {
@@ -122,70 +122,26 @@ export function create_worker_client<
     terminate_worker()
   }
 
-  let next_token = 0
-  const tokens = new WeakMap<object, number>()
-  const identity_token = (value: object): number => {
-    const existing = tokens.get(value)
-    if (existing !== undefined) return existing
-    tokens.set(value, ++next_token)
-    return next_token
-  }
-
-  // Identity for the input, canonical serialization for the options. Hashing megabytes of
-  // positions would cost more than the compute, so identity stands in for contents; a partial
-  // content fingerprint is not a safe substitute, since two inputs differing only in a field it
-  // omits (labels, ids) would share one promise and the second caller would get the first one's
-  // result. Plain-object keys are sorted at every depth and arrays retain order. Non-plain
-  // values use identity: no current worker option schema needs value semantics for them.
-  const canonical_key_of = (value: unknown): string => {
-    const seen = new WeakMap<object, number>()
-    let next_reference = 0
-    const encode = (item: unknown): unknown[] => {
-      if (item === null || item === undefined) return [String(item)]
-      if (
-        typeof item === `number` ||
-        typeof item === `string` ||
-        typeof item === `boolean` ||
-        typeof item === `bigint`
-      ) {
-        return [typeof item, Object.is(item, -0) ? `-0` : String(item)]
-      }
-      if (typeof item !== `object`) {
-        throw new TypeError(`${label} worker options cannot contain ${typeof item} values`)
-      }
-
-      const existing_reference = seen.get(item)
-      if (existing_reference !== undefined) return [`reference`, existing_reference]
-      seen.set(item, next_reference++)
-
-      if (Array.isArray(item)) {
-        return [
-          `array`,
-          Array.from({ length: item.length }, (_unused, idx) =>
-            Object.hasOwn(item, idx) ? encode(item[idx]) : [`hole`],
-          ),
-        ]
-      }
-
-      if (is_plain_object(item)) {
-        return [
-          `object`,
-          Object.entries(item)
-            .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-            .map(([key, entry_value]) => [key, encode(entry_value)]),
-        ]
-      }
-
-      return [`identity`, Object.prototype.toString.call(item), identity_token(item)]
+  // Identity for the input, canonical serialization (value_key) for the options. Hashing
+  // megabytes of positions would cost more than the compute, so identity stands in for
+  // contents; a partial content fingerprint is not a safe substitute, since two inputs
+  // differing only in a field it omits (labels, ids) would share one promise and the second
+  // caller would get the first one's result.
+  const options_key_of = (options: unknown): string => {
+    try {
+      return value_key(options, true)
+    } catch (error) {
+      throw new TypeError(`${label} worker options ${to_error(error).message}`, {
+        cause: error,
+      })
     }
-    return JSON.stringify(encode(value))
   }
   const payload_key_of = (payload: unknown): string => {
     if (!Array.isArray(payload)) {
       throw new TypeError(`${label} worker unordered payload dedupe requires an array payload`)
     }
     const item_keys = Array.from({ length: payload.length }, (_unused, idx) =>
-      Object.hasOwn(payload, idx) ? canonical_key_of(payload[idx]) : `hole`,
+      Object.hasOwn(payload, idx) ? value_key(payload[idx]) : `hole`,
     )
     return JSON.stringify(item_keys.toSorted())
   }
@@ -328,7 +284,7 @@ export function create_worker_client<
         : `input:${identity_token(input)}`
       const request_key = main_thread
         ? `main:${++next_id}`
-        : `${input_key.length}:${input_key}${canonical_key_of(options)}`
+        : `${input_key.length}:${input_key}${options_key_of(options)}`
       const existing = pending_by_key.get(request_key)
       if (existing) return join(existing, request_options)
 

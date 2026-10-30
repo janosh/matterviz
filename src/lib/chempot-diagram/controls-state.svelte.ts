@@ -1,5 +1,6 @@
 // Reactive state shared by ChemPotDiagram2D and ChemPotDiagram3D: per-key control overrides,
 // the temperature slice of the entries, the worker computation and the domain colouring
+import { value_key } from '#lib/utils.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
 import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
@@ -139,7 +140,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     elements: axes.compute,
   })
   // A recreated but equal config must not recompute
-  const compute_key = $derived(JSON.stringify(compute_config))
+  const compute_key = $derived(value_key(compute_config))
   let system = $state.raw<ChemPotSystem | null>(null)
   let computing = $state(false)
   let worker_error = $state<string | null>(null)
@@ -255,8 +256,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     return Object.fromEntries(
       Object.keys(slices).map((element) => {
         const range = slice_ranges[element]
-        // JSON drops the undefined value: the key holds only the other slices
-        const key = JSON.stringify([{ ...slices, [element]: undefined }, range, axes.display])
+        // the key drops the undefined value, so it holds only the other slices
+        const key = value_key([{ ...slices, [element]: undefined }, range, axes.display])
         let cached = curve_cache.get(element)
         if (cached?.system !== sys || cached.key !== key) {
           const curves = section_measure_curves(sys, axes.display, slices, element, range)

@@ -25,6 +25,28 @@ const PULSE_FREQUENCY = 4
 
 export const pulsing_highlight_opacity = (pulse_unit: number): number => 0.1 + 0.1 * pulse_unit
 
+// `busy`, switching on once it has held for delay_ms and off once it has been idle as long:
+// work that usually finishes sooner (each playback frame's read, each slider step's recompute)
+// shows no spinner or dimming, and work that keeps restarting (slow frame after slow frame)
+// keeps it up, where an instant one flashed and shifted the layout on every update. Creates
+// an $effect, so call it during component init.
+export function create_delayed_flag(
+  busy: () => boolean,
+  delay_ms = 300,
+): { readonly current: boolean } {
+  let current = $state(false)
+  $effect(() => {
+    const target = busy()
+    const timer = setTimeout(() => (current = target), delay_ms)
+    return () => clearTimeout(timer)
+  })
+  return {
+    get current() {
+      return current
+    },
+  }
+}
+
 // Whether a node is on screen, with `attach` as its attachment. Optimistic until an observer
 // says otherwise: waiting for the first callback would delay whatever this gates, and stall
 // forever under test DOMs whose stub IntersectionObserver never fires (happy-dom). A gated

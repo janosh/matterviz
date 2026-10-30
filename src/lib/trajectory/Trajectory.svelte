@@ -12,7 +12,7 @@
     HistogramSeries,
     Orientation,
   } from '#lib/plot/index.js'
-  import { create_shortcut_flash } from '#lib/effects.svelte.js'
+  import { create_delayed_flag, create_shortcut_flash } from '#lib/effects.svelte.js'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
@@ -30,7 +30,7 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import {
     display_idx,
@@ -468,7 +468,7 @@
   // === sources: prop, URL, drop ===
   // Reload on a changed option value, never on a parent passing a fresh but equal object
   // (that re-ran the effect, whose cleanup aborted the running load)
-  const loading_key = $derived(JSON.stringify(loading_options))
+  const loading_key = $derived(value_key(loading_options))
   let loaded: { source: typeof source; key: string } | undefined
   $effect(() => {
     const [input, key] = [source, loading_key]
@@ -601,6 +601,9 @@
       if (trajectory) frame_error = { run: trajectory, idx: frame_idx, message }
     },
   })
+  // An async frame read (worker, remote host) shows the spinner once it runs long: every
+  // playback or scrub step starts one, and an instant spinner flashed and shifted the bar
+  const slow_read = create_delayed_flag(() => session.loading)
   const { player, controller } = session
   let movie_abort: AbortController | undefined
   let movie_generation = 0
@@ -1516,7 +1519,7 @@
 
         <div class="info-section">
           {@render extra_controls?.()}
-          {#if session.loading}
+          {#if slow_read.current}
             <Spinner style="--spinner-size: 1em; margin: 0" />
           {/if}
           <!-- The inspector's Info tab shows the same cards -->

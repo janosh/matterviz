@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { value_key } from '#lib/utils.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
   import { untrack } from 'svelte'
@@ -52,7 +53,7 @@
     if (!sampling_settings) return null
     const { render_mode, color_scale, contour_levels, symmetric, show_plane, ...plane } =
       sampling_settings
-    return JSON.stringify(plane)
+    return value_key(plane)
   })
 
   // smooth isolines on coarse grids; refined once per volume, not per slider frame

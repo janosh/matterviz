@@ -13,7 +13,7 @@
   import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
   import { Graph } from 'svelte-widgets/icons'
   import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
-  import { clamp01 } from '#lib/utils.js'
+  import { clamp01, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway.js'
   import type { TrajectoryRun } from './run'
@@ -153,7 +153,7 @@
       ? hotspot_requirements(options)
       : `Hotspot analysis is unavailable for this trajectory reader. Open a local file with per-atom velocities or kinetic energies.`,
   )
-  const options_json = $derived(JSON.stringify(options))
+  const options_json = $derived(value_key(options))
   $effect(() => {
     const next = run
     untrack(() => {

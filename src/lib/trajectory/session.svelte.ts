@@ -2,6 +2,7 @@
 // loading, scrub (rAF-coalesced) vs commit (settled) stepping, prefetch, playback (through
 // the shared sequence player) and the imperative controller hosts use. No DOM, so it is
 // unit-testable on its own; Trajectory.svelte only renders what it exposes.
+import { value_key } from '#lib/utils.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import { cache_prepared_polyhedra } from '#lib/structure/polyhedra.js'
 import { BondFrame } from '#lib/structure/bond-rendering.js'
@@ -92,7 +93,7 @@ export function create_trajectory_session(
     const settings = inputs.preparation?.()
     return settings && channels ? { ...settings, channels } : settings
   })
-  const request_key = $derived(JSON.stringify(preparation ?? { channels }))
+  const request_key = $derived(value_key(preparation ?? { channels }))
   const matches_request = (frame: SessionFrame): boolean => frame.request_key === request_key
   const read_display = (
     run: TrajectoryRun,

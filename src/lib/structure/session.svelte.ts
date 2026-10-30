@@ -3,6 +3,7 @@
 // what is on screen, edit-atoms and edit-bonds state with undo/redo, and the multi-pane camera
 // bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
 // exposes and StructureViewport binds the scene to it.
+import { same_while_equal } from '#lib/utils.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol } from '#lib/element/helpers.js'
 import { format_num, plural } from '#lib/labels.js'
@@ -326,13 +327,10 @@ export class StructureSession {
   }
   // Completion settings, kept by identity while their value is unchanged: hosts rebuild them
   // on every read, and a new object must not rerun the bond search
-  private last_image_options: { key: string; options: ImageAtomOptions } | undefined
-  private readonly image_options = $derived.by(() => {
-    const options = this.inputs.image_atom_options()
-    const key = JSON.stringify(options)
-    if (this.last_image_options?.key !== key) this.last_image_options = { key, options }
-    return this.last_image_options.options
-  })
+  private readonly keep_image_options = same_while_equal<ImageAtomOptions>()
+  private readonly image_options = $derived.by(() =>
+    this.keep_image_options(this.inputs.image_atom_options()),
+  )
   private readonly mapped_supercell = $derived.by(() =>
     this.map_elements(this.supercell_structure),
   )

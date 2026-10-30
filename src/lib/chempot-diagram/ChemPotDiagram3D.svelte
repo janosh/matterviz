@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { create_delayed_flag } from '#lib/effects.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
   import { get_formula_label_segments } from '#lib/composition/format.js'
@@ -154,6 +155,8 @@
     domain_colors,
     color_bar,
   } = $derived(chempot)
+  // A recompute (each temperature-slider step's) dims the shown diagram only once it runs long
+  const recomputing = create_delayed_flag(() => diagram_computing)
   const formulas_to_draw = $derived(chempot.resolve(`formulas_to_draw`))
   const draw_formula_meshes = $derived(chempot.resolve(`draw_formula_meshes`))
   const draw_formula_lines = $derived(chempot.resolve(`draw_formula_lines`))
@@ -1238,13 +1241,13 @@
       </EmptyState>
     {/if}
   {:else if mounted && webgpu_available()}
-    {#if diagram_computing}
+    {#if recomputing.current}
       <Spinner
         text="Computing chemical potential domains..."
         style="position: absolute; inset: 0; justify-content: center; margin: 0; z-index: 5; --spinner-size: 1.2em"
       />
     {/if}
-    <div class={[`scene`, { stale: diagram_computing }]}>
+    <div class={[`scene`, { stale: recomputing.current }]}>
       <Canvas createRenderer={create_renderer}>
         <ChemPotScene3D
           bind:orbit_controls={orbit_controls_ref}

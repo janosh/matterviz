@@ -24,7 +24,13 @@
     get_scale_type_name,
     SCALE_DEFAULTS,
   } from '#lib/plot/core/types.js'
-  import { clamp01, html_to_text, is_plain_object, with_defaults } from '#lib/utils.js'
+  import {
+    clamp01,
+    html_to_text,
+    is_plain_object,
+    same_while_equal,
+    with_defaults,
+  } from '#lib/utils.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type {
@@ -531,15 +537,16 @@
   // Per-column filters over all columns (hiding one mustn't change which rows show). Cached
   // by content since column_prefs also holds widths: else each resize pointermove would
   // re-filter every row and wipe the cell selection.
-  let filter_cache = { key: ``, filters: [] as { key: string; filter: ColumnFilter }[] }
-  let active_filters = $derived.by(() => {
-    const filters = columns
-      .map((col) => ({ key: cell_key(col), filter: prefs_of(col.id).filter }))
-      .filter((entry): entry is { key: string; filter: ColumnFilter } => Boolean(entry.filter))
-    const key = JSON.stringify(filters)
-    if (key !== filter_cache.key) filter_cache = { key, filters }
-    return filter_cache.filters
-  })
+  const keep_filters = same_while_equal<{ key: string; filter: ColumnFilter }[]>()
+  let active_filters = $derived(
+    keep_filters(
+      columns
+        .map((col) => ({ key: cell_key(col), filter: prefs_of(col.id).filter }))
+        .filter((entry): entry is { key: string; filter: ColumnFilter } =>
+          Boolean(entry.filter),
+        ),
+    ),
+  )
 
   // A keystroke re-filters every row and rebuilds one d3 scale per column (60 ms at 10k x 30).
   // Clearing applies at once, since waiting reads as a hang.

@@ -1,3 +1,4 @@
+import { value_key } from '#lib/utils.js'
 import {
   analyze_temperature_data,
   filter_entries_at_temperature,
@@ -26,8 +27,8 @@ export function get_temp_filter_payload(
     config.interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature
   const max_interpolation_gap =
     config.max_interpolation_gap ?? CHEMPOT_DEFAULTS.max_interpolation_gap
-  // a template, not JSON.stringify: that writes an Infinity gap (no limit) as null
-  const key = `${temperature}|${interpolate}|${max_interpolation_gap}`
+  // value_key, not JSON.stringify: that writes an Infinity gap (no limit) as null
+  const key = value_key([temperature, interpolate, max_interpolation_gap])
   const memo = payload_memo.get(entries)
   if (memo?.key === key) return memo.payload
   const { has_temp_data, available_temperatures } = analyze_temperature_data(entries)

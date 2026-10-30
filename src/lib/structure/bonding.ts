@@ -1,5 +1,6 @@
 // Bonding algorithms for structure visualization
 
+import { value_key } from '#lib/utils.js'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '../element/data'
 import { element_from_atomic_number } from '../element/helpers'
@@ -1409,12 +1410,12 @@ export const BONDING_STRATEGIES = {
 export type BondingStrategy = keyof typeof BONDING_STRATEGIES
 
 // Memo for the costly neighbor search: WeakMap keyed by structure (GC'd with it), each holding a
-// per-signature (strategy + JSON options) map of results. The multi-side view's 4 panes share one
+// per-signature (strategy + value_key of the options) map of results. The multi-side view's 4 panes share one
 // search (identical inputs, one flush); the per-signature map also lets alternating
 // strategies/options on the same structure reuse earlier results instead of thrashing one slot.
 const bond_memo = new WeakMap<AnyStructure, Map<string, BondPair[] | BondFrame>>()
 const bond_sig = (strategy: BondingStrategy, options: Record<string, unknown>): string =>
-  `${strategy}:${JSON.stringify(options)}`
+  `${strategy}:${value_key(options)}`
 
 // Store bonds for this exact structure + signature in bond_memo: the one write path, used both
 // by get_bond_data to memoize its own search and to install bonds the source worker computed.
