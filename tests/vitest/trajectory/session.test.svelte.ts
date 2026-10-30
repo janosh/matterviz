@@ -1,3 +1,4 @@
+import { host_frame_cache } from '#lib/file-viewer/host-frame-cache.js'
 import type { FrameChannels } from '#lib/trajectory/frame.js'
 import {
   create_numeric_md_frame,
@@ -952,4 +953,27 @@ describe(`resolve_frame`, () => {
       if (change === `disposal`) expect(await session.resolve_frame(0)).toBeNull()
     },
   )
+})
+
+it(`displays a warmed remote frame in the same scrub animation frame`, async () => {
+  const frame_list = frames(8)
+  const backing = trajectory_from_frames(frame_list)
+  const request = vi.fn(async (start: number, count: number) =>
+    frame_list.slice(start, start + count),
+  )
+  const cache = host_frame_cache(8, 3, 64, request)
+  await cache.read_frame(1)
+  const run = host_run(summarize_run(backing), cache.read_frame, cache.dispose)
+  const { session, host, errors } = make_session({ run })
+  const callbacks = stub_raf()
+  session.scrub(4)
+  callbacks.shift()?.(0)
+  flushSync()
+  expect(host.index).toBe(4)
+  expect(session.numeric_frame?.header.step).toBe(40)
+  expect(session.loading).toBe(false)
+  expect(errors).toEqual([])
+  expect(request).toHaveBeenCalledTimes(1)
+  session.dispose()
+  run.dispose()
 })

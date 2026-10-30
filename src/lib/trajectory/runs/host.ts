@@ -1,5 +1,5 @@
 // Run whose frames live with an embedding host (the VS Code extension process): the host
-// indexed the file, sent a summary, and answers one frame per request. Progressive plot
+// indexed the file, sent a summary, and serves frames on demand. Progressive plot
 // rows arrive through `properties.push()` from whoever owns the host channel.
 import { encode_frame, select_frame_channels } from '../frame'
 import type { TrajectoryFrame } from '../index'
@@ -9,7 +9,10 @@ import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../ru
 
 export const host_run = (
   summary: TrajectoryRunSummary,
-  request_frame: (frame_idx: number, signal?: AbortSignal) => Promise<TrajectoryFrame>,
+  request_frame: (
+    frame_idx: number,
+    signal?: AbortSignal,
+  ) => TrajectoryFrame | Promise<TrajectoryFrame>,
   release: () => void = () => {},
 ): TrajectoryRun => {
   const fields = run_fields_from_summary(summary)
@@ -27,9 +30,10 @@ export const host_run = (
       if (signal?.aborted) return Promise.reject(to_error(signal.reason))
       if (frame_idx === 0 && !summary.preview.metadata?.render_sample)
         return select_frame_channels(encode_frame(summary.preview), channels)
-      return request_frame(frame_idx, signal).then((frame) =>
-        select_frame_channels(encode_frame(frame), channels),
-      )
+      const frame = request_frame(frame_idx, signal)
+      const select = (value: TrajectoryFrame) =>
+        select_frame_channels(encode_frame(value), channels)
+      return frame instanceof Promise ? frame.then(select) : select(frame)
     },
     dispose: () => {
       if (disposed) return

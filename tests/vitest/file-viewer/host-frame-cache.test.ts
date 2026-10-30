@@ -68,3 +68,82 @@ test(`retries failed batches and rejects invalid indices`, async () => {
     await expect(cache.read_frame(index)).rejects.toThrow(/outside/)
   cache.dispose()
 })
+
+test(`returns warmed frames synchronously and prefetches when dragging backwards`, async () => {
+  const request = vi.fn(async (start, count) => frames(start, count))
+  const cache = host_frame_cache(5001, 160, 64, request)
+  await cache.read_frame(120)
+  const cached = cache.read_frame(100)
+  expect(cached).not.toBeInstanceOf(Promise)
+  expect((cached as TrajectoryFrame).step).toBe(100)
+  await cache.read_frame(80)
+  await settle()
+  expect(request).toHaveBeenCalledWith(0, 64, expect.any(AbortSignal))
+  const previous = cache.read_frame(40)
+  expect(previous).not.toBeInstanceOf(Promise)
+  expect((previous as TrajectoryFrame).step).toBe(40)
+  cache.dispose()
+})
+
+test(`cancels abandoned drag batches and retries without adopting late frames`, async () => {
+  const completions: ((value: TrajectoryFrame[]) => void)[] = []
+  const request = vi.fn(
+    (_start, _count, _signal) =>
+      new Promise<TrajectoryFrame[]>((resolve) => {
+        completions.push(resolve)
+      }),
+  )
+  const cache = host_frame_cache(5001, 160, 64, request)
+  const controller = new AbortController()
+  const abandoned = cache.read_frame(1, controller.signal)
+  await Promise.resolve()
+  controller.abort()
+  await expect(abandoned).rejects.toMatchObject({ name: `AbortError` })
+  expect(request.mock.calls[0][2].aborted).toBe(true)
+  const latest = cache.read_frame(2)
+  await Promise.resolve()
+  expect(request).toHaveBeenCalledTimes(2)
+  completions[0](frames(0, 64))
+  completions[1](frames(0, 64))
+  expect((await latest).step).toBe(2)
+  expect(cache.read_frame(3)).not.toBeInstanceOf(Promise)
+  cache.dispose()
+})
+
+test(`a distant drag cancels speculation at the old playhead`, async () => {
+  const request = vi.fn((start: number, count: number, _signal: AbortSignal) =>
+    start === 128
+      ? new Promise<TrajectoryFrame[]>(() => {})
+      : Promise.resolve(frames(start, count)),
+  )
+  const cache = host_frame_cache(5001, 160, 64, request)
+  await cache.read_frame(99)
+  await settle()
+  const old_prefetch = request.mock.calls.find(([start]) => start === 128)
+  expect(old_prefetch).toBeDefined()
+  await cache.read_frame(400)
+  expect(old_prefetch?.[2].aborted).toBe(true)
+  cache.dispose()
+})
+
+test(`dragging within a pending batch reuses it instead of starving on restarts`, async () => {
+  let finish!: (value: TrajectoryFrame[]) => void
+  const request = vi.fn(
+    (_start, _count, _signal) =>
+      new Promise<TrajectoryFrame[]>((resolve) => {
+        finish = resolve
+      }),
+  )
+  const cache = host_frame_cache(5001, 160, 64, request)
+  const controller = new AbortController()
+  const previous = cache.read_frame(1, controller.signal)
+  await Promise.resolve()
+  controller.abort()
+  const current = cache.read_frame(2)
+  await expect(previous).rejects.toMatchObject({ name: `AbortError` })
+  expect(request).toHaveBeenCalledTimes(1)
+  expect(request.mock.calls[0][2].aborted).toBe(false)
+  finish(frames(0, 64))
+  expect((await current).step).toBe(2)
+  cache.dispose()
+})

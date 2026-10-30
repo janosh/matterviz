@@ -696,7 +696,9 @@ describe(`LARGE_FILE markers`, () => {
     const result = await (await fresh_parse())(marker, `movie.extxyz`)
     const run = result.data as TrajectoryRun
     expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
-    expect((await materialize_frame_result(run.read_frame(2))).step).toBe(2)
+    const cached_frame = run.read_frame(2)
+    expect(cached_frame).not.toBeInstanceOf(Promise)
+    expect((await materialize_frame_result(cached_frame)).step).toBe(2)
     const batches = post_message.mock.calls
       .map(([message]) => message)
       .filter((message) => message.command === `request_frames`)
