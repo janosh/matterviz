@@ -1793,7 +1793,7 @@ describe(`HeatmapTable`, () => {
     // keep their objects, so only changed rows re-render
     it(`keeps the objects of unchanged rows across a data refresh`, async () => {
       const on_row_click = vi.fn()
-      const state = $state({
+      const state = $state<{ data: { A: number; B: number | undefined }[] }>({
         data: [
           { A: 1, B: 1 },
           { A: 2, B: 2 },
@@ -1814,6 +1814,22 @@ describe(`HeatmapTable`, () => {
       const [[, kept], [, changed]] = on_row_click.mock.calls
       expect(kept).toBe(first)
       expect(changed).toBe(state.data[1])
+      // a class row's getter is no own value, so equal own fields don't vouch for its cell
+      const scores = new Map([[1, 1]])
+      class Scored {
+        constructor(readonly A: number) {}
+        get B() {
+          return scores.get(this.A)
+        }
+      }
+      state.data = [new Scored(1)]
+      await tick()
+      scores.set(1, 5)
+      state.data = [new Scored(1)]
+      await tick()
+      expect(
+        doc_query(`tbody td[data-row-idx="0"][data-col-idx="1"]`).textContent?.trim(),
+      ).toBe(`5`)
     })
 
     // A HeatmapTable nested in a cell (a per-row mini table) carries its own data-row-idx /

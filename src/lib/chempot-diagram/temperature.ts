@@ -22,21 +22,20 @@ export function get_temp_filter_payload(
   temperature: number | undefined,
   config: ChemPotDiagramConfig,
 ): TempFilterPayload {
-  const key = JSON.stringify([
-    temperature,
-    config.interpolate_temperature,
-    config.max_interpolation_gap,
-  ])
+  const interpolate =
+    config.interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature
+  const max_interpolation_gap =
+    config.max_interpolation_gap ?? CHEMPOT_DEFAULTS.max_interpolation_gap
+  // a template, not JSON.stringify: that writes an Infinity gap (no limit) as null
+  const key = `${temperature}|${interpolate}|${max_interpolation_gap}`
   const memo = payload_memo.get(entries)
   if (memo?.key === key) return memo.payload
   const { has_temp_data, available_temperatures } = analyze_temperature_data(entries)
   const temp_filtered_entries =
     has_temp_data && temperature !== undefined
       ? filter_entries_at_temperature(entries, temperature, {
-          interpolate:
-            config.interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature,
-          max_interpolation_gap:
-            config.max_interpolation_gap ?? CHEMPOT_DEFAULTS.max_interpolation_gap,
+          interpolate,
+          max_interpolation_gap,
         })
       : entries
   const payload = { has_temp_data, available_temperatures, temp_filtered_entries }

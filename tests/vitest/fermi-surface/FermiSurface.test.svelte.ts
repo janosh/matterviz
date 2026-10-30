@@ -19,7 +19,8 @@ import {
   mock_parse_worker,
   set_select,
 } from '../setup'
-import type { Vec3 } from '#lib/math.js'
+import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import type { BrillouinZoneData } from '#lib/brillouin/types.js'
 import {
   IDENTITY_MATRIX3,
   make_bxsf,
@@ -480,18 +481,22 @@ test(`results commit in job order, only the newest reports errors, none land aft
   expect([props.error_msg, on_error.mock.calls.length]).toEqual([error_msg, 1])
 })
 
-// A sweep's next frame brings a new band grid and no surface: the last surface stays drawn
-// until the new one extracts (no blank frame, no remount of every sheet), and goes once that
-// extraction fails
+// A sweep's next frame brings a new band grid and no surface: the last surface stays drawn,
+// inside its own zone, until the new one extracts (no blank frame, no remount of every
+// sheet), and goes once an extraction fails, also when its last fermi_data is still set
 test(`the last surface stays up while the next grid's extracts`, async () => {
   const jobs: NonNullable<typeof extraction.jobs> = []
   extraction.jobs = jobs
   let rendered: FermiSurfaceData | undefined
-  const children = createRawSnippet<[{ fermi_data?: FermiSurfaceData }]>((get) => ({
+  let rendered_zone: Matrix3x3 | undefined
+  const children = createRawSnippet<
+    [{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]
+  >((get) => ({
     render: () => `<span></span>`,
     setup: () => {
       $effect(() => {
         rendered = get().fermi_data
+        rendered_zone = get().bz_data?.k_lattice
       })
     },
   })) as ComponentProps<typeof FermiSurface>[`children`]
@@ -507,20 +512,31 @@ test(`the last surface stays up while the next grid's extracts`, async () => {
   const first = jobs[0].settle()
   await tick()
   expect(rendered?.isosurfaces[0].positions).toBe(first)
-  const next_frame = async () => {
-    props.band_data = typed_grid(
-      sphere_energies(6).map((plane) => plane.map((row) => row.map((val) => val + 0.01))),
-    )
-    props.fermi_data = undefined
+  const doubled: Matrix3x3 = [
+    [2, 0, 0],
+    [0, 2, 0],
+    [0, 0, 2],
+  ]
+  const next_frame = async (k_lattice: Matrix3x3, clear_surface = true) => {
+    props.band_data = {
+      ...typed_grid(
+        sphere_energies(6).map((plane) => plane.map((row) => row.map((val) => val + 0.01))),
+      ),
+      k_lattice,
+    }
+    if (clear_surface) props.fermi_data = undefined
     flushSync()
     await vi.advanceTimersByTimeAsync(40)
   }
-  await next_frame()
+  await next_frame(doubled)
   expect(rendered?.isosurfaces[0].positions).toBe(first) // held while jobs[1] runs
+  expect(rendered_zone).toEqual(IDENTITY_MATRIX3) // in the held surface's zone
   const second = jobs[1].settle()
   await tick()
   expect(rendered?.isosurfaces[0].positions).toBe(second)
-  await next_frame()
+  expect(rendered_zone).toEqual(doubled)
+  // a mu change re-extracts with the committed surface still bound as fermi_data
+  await next_frame(doubled, false)
   jobs[2].fail(new Error(`boom`))
   await tick()
   expect(rendered).toBeUndefined()

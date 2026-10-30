@@ -1,7 +1,7 @@
 import { line } from 'd3-shape'
 import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
 import type { Vec2 } from '#lib/math.js'
-import type { AxisRanges, DataSeries } from '#lib/plot/index.js'
+import type { AxisKey, AxisRanges, DataSeries } from '#lib/plot/index.js'
 import { plot_color } from '#lib/colors/index.js'
 import { get_series_symbol } from '#lib/plot/core/data-transform.js'
 import type { LegendFill } from '#lib/plot/scatter/scatter-data.js'
@@ -396,9 +396,10 @@ describe(`pick_tooltip_bg`, () => {
 })
 
 // The view is x [0, 10], y [0, 10] (y2 [-50, 50]): a line whose vertices all sit on one side
-// of it draws nothing, unless its curve can overshoot them or underlays bring their own
+// of it draws nothing, unless its curve can overshoot them, underlays bring their own, or a
+// log axis holds it at its floor
 // oxfmt-ignore
-test.each<[string, Partial<DataSeries>, boolean]>([
+test.each<[string, Partial<DataSeries>, boolean, AxisKey[]?]>([
   [`inside`, { x: [1, 2], y: [1, 2] }, true],
   [`crossing the view between two outside vertices`, { x: [5, 5], y: [-5, 15] }, true],
   [`touching the top edge`, { x: [1, 2], y: [10, 12] }, true],
@@ -410,9 +411,13 @@ test.each<[string, Partial<DataSeries>, boolean]>([
   [`a natural curve above (may overshoot)`, { x: [1, 2], y: [11, 12], line_style: { curve: `natural` } }, true],
   [`a step curve above`, { x: [1, 2], y: [11, 12], line_style: { curve: `step` } }, false],
   [`with underlays above`, { x: [1, 2], y: [11, 12], line_underlays: [{ x: [1], y: [1] }] }, true],
-])(`line_reaches_view: %s`, (_desc, partial, expected) => {
+  [`below a log y axis (held at its floor)`, { x: [1, 2], y: [-3, -2] }, true, [`y`]],
+  [`left of a log x axis`, { x: [-3, -2], y: [1, 2] }, true, [`x`]],
+  [`above a log y axis`, { x: [1, 2], y: [11, 12] }, false, [`y`]],
+  [`below y while only y2 is log`, { x: [1, 2], y: [-3, -2] }, false, [`y2`]],
+])(`line_reaches_view: %s`, (_desc, partial, expected, log_axes = []) => {
   const [series] = materialize_series_points([{ x: [], y: [], markers: `line`, ...partial }])
-  expect(line_reaches_view(series, ranges)).toBe(expected)
+  expect(line_reaches_view(series, ranges, new Set(log_axes))).toBe(expected)
 })
 
 // A break lifts the pen before its point: a NaN vertex (Line's d3 generator skips it, ending

@@ -67,7 +67,8 @@
   const computed_labels = $derived(entries.map(({ label }) => label))
 
   // Last result per structure (stored once resolved), so dropping one more file computes
-  // only that file instead of re-posting every structure to the worker
+  // only that file instead of re-posting every structure to the worker. Structures are
+  // snapshots, as for every identity-keyed structure cache: an edit passes a new object.
   const id_cache = new WeakMap<AnyStructure, { key: string; result: StructureIdResult }>()
   use_async_result({
     input: () => (entries.length > 0 ? entries : undefined),

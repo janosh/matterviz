@@ -42,6 +42,8 @@ describe(`get_temp_filter_payload`, () => {
     { config: { interpolate_temperature: true, max_interpolation_gap: 1000 }, li: true },
     // unset keys fall back to CHEMPOT_DEFAULTS (interpolate across at most 500 K < 600 K)
     { config: {}, li: false },
+    // after the default above: an unlimited gap must not reuse its memoized payload
+    { config: { interpolate_temperature: true, max_interpolation_gap: Infinity }, li: true },
   ])(`$config keeps Li: $li`, ({ config, li: lithium }) => {
     const payload = get_payload_at_700(config)
     expect(has_formula(payload.temp_filtered_entries, `Li`)).toBe(lithium)
@@ -74,6 +76,7 @@ describe(`get_temp_filter_payload`, () => {
     [700, {}, true],
     [900, {}, false],
     [700, { max_interpolation_gap: 1000 }, false],
+    [700, { max_interpolation_gap: 500 }, true], // the default, spelled out
   ])(`%d K with %o reuses the 700 K payload: %s`, (temperature, config, same) => {
     const payload = get_payload_at_700()
     const next = get_temp_filter_payload(temp_entries_fixture, temperature, config)

@@ -207,18 +207,21 @@
   const surface_data = $derived(surface_result.value)
   // What the scene draws: while a band grid's surface extracts and none is given yet (a sweep's
   // next frame), the last one stays up, so the scene neither blanks for a frame nor remounts
-  // every sheet and decoration it draws. A failed extraction clears it.
+  // every sheet and decoration it draws. A failed extraction clears it, also when the last
+  // committed fermi_data (a surface for an earlier mu or grid) is still set.
   let held_surface: FermiSurfaceData | undefined
   const shown_surface = $derived.by(() => {
+    if (grid_data && extraction_failed) return (held_surface = undefined)
     if (surface_data) return (held_surface = surface_data)
-    if (!grid_data || extraction_failed) return (held_surface = undefined)
+    if (!grid_data) return (held_surface = undefined)
     return held_surface
   })
   const grid_data = $derived(grid_result.value)
 
-  // BZ of whichever reciprocal lattice is available (priority order)
+  // BZ of whichever reciprocal lattice is available (priority order), the shown surface's
+  // first so a held surface stays inside its own zone while a new grid's extracts
   const k_lattice = $derived(
-    surface_data?.k_lattice ??
+    shown_surface?.k_lattice ??
       grid_data?.k_lattice ??
       (structure?.lattice?.matrix
         ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })

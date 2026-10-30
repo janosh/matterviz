@@ -10,6 +10,7 @@ import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transf
 import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
 import type {
+  AxisKey,
   AxisRanges,
   DataSeries,
   FillRegion,
@@ -213,15 +214,20 @@ export function line_reaches_view(
     point_bounds: { x: Vec2; y: Vec2 }
   },
   ranges: AxisRanges,
+  log_axes: ReadonlySet<AxisKey>,
 ): boolean {
   const curve = series.line_style?.curve
   if (curve === `natural` || curve === `catmull-rom` || series.line_underlays?.length)
     return true
-  const [x_lo, x_hi] = range_bounds(series.x_axis === `x2` ? ranges.x2 : ranges.x)
-  const [y_lo, y_hi] = range_bounds(series.y_axis === `y2` ? ranges.y2 : ranges.y)
+  const x_key = series.x_axis === `x2` ? `x2` : `x`
+  const y_key = series.y_axis === `y2` ? `y2` : `y`
+  const [x_lo, x_hi] = range_bounds(ranges[x_key])
+  const [y_lo, y_hi] = range_bounds(ranges[y_key])
   const { x, y } = series.point_bounds
-  // NaN bounds fail every comparison, keeping the line
-  return !(x[1] < x_lo || x[0] > x_hi || y[1] < y_lo || y[0] > y_hi)
+  // NaN bounds fail every comparison, keeping the line. A log axis draws values below its
+  // floor at the floor (log_floor_scale), so a line under it still shows along that edge.
+  const below = (axis: AxisKey, hi: number, lo: number) => hi < lo && !log_axes.has(axis)
+  return !(below(x_key, x[1], x_lo) || x[0] > x_hi || below(y_key, y[1], y_lo) || y[0] > y_hi)
 }
 
 // Display style attached to each legend item (matches PlotLegend expectations)

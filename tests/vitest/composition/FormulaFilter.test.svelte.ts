@@ -85,6 +85,10 @@ describe(`FormulaFilter`, () => {
     [`*-*-O`, `chemsys`, `O-*-*`],
     [`*-*-Li-O`, `chemsys`, `Li-O-*-*`],
     [`*-Li-*-O-*`, `chemsys`, `Li-O-*-*-*`],
+    // chemsys spells an exclusion !O (a - would join it as an included element)
+    [`Li-Fe-!O`, `chemsys`, `Fe-Li-!O`],
+    [`!O-Li`, `chemsys`, `Li-!O`],
+    [`!O`, `elements`, `-O`],
     [`LiFePO4`, `exact`, `FeLiO4P`],
     [`NaCl`, `exact`, `ClNa`],
     [`Fe[+3]2O[-2]3`, `exact`, `Fe2O3`],

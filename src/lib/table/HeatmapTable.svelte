@@ -24,7 +24,7 @@
     get_scale_type_name,
     SCALE_DEFAULTS,
   } from '#lib/plot/core/types.js'
-  import { clamp01, html_to_text, with_defaults } from '#lib/utils.js'
+  import { clamp01, html_to_text, is_plain_object, with_defaults } from '#lib/utils.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type {
@@ -271,7 +271,8 @@
 
   // Keyed cell access is internal; callers can use ordinary typed row interfaces. With row_key,
   // a row equal to its id's previous one keeps that object: a live refresh (a trajectory
-  // frame's fresh rows) then re-renders only the rows whose values changed.
+  // frame's fresh rows) then re-renders only the rows whose values changed. Plain objects
+  // only: own keys and values are all a cell can read of them (a class row's getters aren't).
   let prev_rows = new Map<RowId, Row & RowData>()
   const data = $derived.by(() => {
     const rows = input_data as (Row & RowData)[]
@@ -283,6 +284,7 @@
       const old = prev.get(id)
       const kept =
         old &&
+        is_plain_object(row) &&
         same_parts(Object.keys(old), Object.keys(row)) &&
         same_parts(Object.values(old), Object.values(row))
           ? old
