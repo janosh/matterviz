@@ -208,7 +208,7 @@ test(`electronic-structure: k-path label hover marks the bands, band colours mat
     ([band, scope]) => {
       const series = [...document.querySelectorAll(`${scope} g[data-series-id]`)]
       const group = series.find(
-        (node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band,
+        (node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[1] === band,
       )
       return group && getComputedStyle(group.querySelector(`path`) ?? group).stroke
     },
@@ -355,8 +355,9 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   const status = viewer.locator(`.frame-status`)
   await expect(status).toHaveText(/^0 GPa \(V\/V₀ = 1\.00\)/, { timeout: LOAD_TIMEOUT })
   const phonon = viewer.locator(`[data-pane="phonon"]`)
-  // thinned to the strongest per mode in each 1/50 of the path
-  await expect(phonon.locator(`path.marker`)).toHaveCount(129)
+  // the λ_qν markers paint on one canvas, not as SVG nodes
+  await expect(phonon.locator(`foreignObject canvas`)).toHaveCount(1)
+  await expect(phonon.locator(`path.marker`)).toHaveCount(0)
   await expect(phonon.locator(`.colorbar .label sub`)).toHaveText(`qν`)
   const trends = viewer.locator(`[data-pane="trends"]`)
   const markers = trends.locator(`path.marker`)
@@ -390,6 +391,24 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await expect(viewer.locator(`[data-pane="bands"]`)).toHaveCount(2)
   await expect(viewer.locator(`[data-pane="trends"]`)).toHaveCount(1)
   await expect(phonon).toHaveCount(2)
+  // compared, every step lands, also back onto frames whose compared plots remount (their
+  // teardown once froze the frame index). The checkbox keeps its arrow keys while focused.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await viewer.hover()
+  for (const [key, ratio] of [
+    [`ArrowRight`, `0.85`],
+    [`ArrowRight`, `0.80`],
+    [`ArrowRight`, `0.75`],
+    [`ArrowLeft`, `0.80`],
+    [`ArrowLeft`, `0.85`],
+    [`ArrowLeft`, `0.90`],
+    [`ArrowLeft`, `0.95`],
+  ]) {
+    await page.keyboard.press(key)
+    await expect(status).toHaveText(new RegExp(`\\(V/V₀ = ${ratio}\\)`), {
+      timeout: LOAD_TIMEOUT,
+    })
+  }
   await page.getByLabel(`Compare with the stiffer equation of state`).uncheck()
   await expect(viewer.locator(`.side-label`)).toHaveCount(0)
 })

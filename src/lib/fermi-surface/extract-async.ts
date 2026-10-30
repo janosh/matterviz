@@ -85,6 +85,9 @@ export async function extract_fermi_surface_async(
     .get(token)
     ?.add(resolved_factor(grid, options.interpolation_factor ?? 1))
   if (factors && factors.size > PREPARED_FACTORS_PER_BAND) factors.delete([...factors][0])
+  // A structured clone gives each μ its own lattice, so every zone drawn from it would rebuild:
+  // results of one grid share the first one's
+  result.k_lattice = cache.values().next().value?.k_lattice ?? result.k_lattice
   return lru_set(cache, key, result, RESULT_CACHE_SIZE)
 }
 

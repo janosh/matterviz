@@ -149,20 +149,36 @@ describe(`VolumeSlice`, () => {
     expect(context.lineTo).toHaveBeenCalledWith(1.5, 1)
   })
 
-  test(`does not contour masked cells below explicit thresholds`, async () => {
-    const slice = make_slice()
-    slice.data.fill(-20)
-    slice.mask[0] = 0
-    slice.min = -20
-    slice.max = -20
-    const { context } = await mount_volume_slice({
+  // Masked pixels used to sit below every level, so each threshold crossed along the mask
+  // edge of any field above it; they now repeat their row's nearest in-mask value (or the
+  // nearest filled row), so a uniform field contours like its unmasked self
+  test.each([
+    { desc: `a masked corner below explicit thresholds`, value: -20, masked: [0] },
+    { desc: `a masked column`, value: 20, masked: [0, 4, 8, 12] },
+    { desc: `a masked first row`, value: 20, masked: [0, 1, 2, 3] },
+    { desc: `a masked last row`, value: 20, masked: [12, 13, 14, 15] },
+  ])(`a uniform field with $desc contours like an unmasked one`, async ({ value, masked }) => {
+    const uniform_slice = () => {
+      const slice = { ...make_slice(), min: value, max: value }
+      slice.data.fill(value)
+      return slice
+    }
+    // masked first, so the reused contour buffer holds no values from an unmasked pass
+    const slice = uniform_slice()
+    for (const idx of masked) [slice.mask[idx], slice.data[idx]] = [0, Number.NaN]
+    const { context, props } = await mount_volume_slice({
       slice,
       mode: `contours`,
       color_scale: { value_range: [0, 1] },
-      contour_levels: [-10],
+      contour_levels: [-10, 10],
     })
-    expect(context.moveTo).toHaveBeenCalledTimes(1)
-    expect(context.lineTo).toHaveBeenCalledTimes(3)
+    const n_masked = context.lineTo.mock.calls.length
+    context.lineTo.mockClear()
+    props.slice = uniform_slice()
+    await tick()
+    // clip path + d3's band-0 border ring for each level the field reaches
+    expect(context.lineTo).toHaveBeenCalledTimes(value > 0 ? 3 + 16 * 2 : 3)
+    expect(n_masked).toBe(context.lineTo.mock.calls.length)
   })
 
   // Canvas takes a colour value, so `currentColor` has to be sampled in JS and the slice

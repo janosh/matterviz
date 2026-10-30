@@ -484,6 +484,31 @@ describe(`path_spline on structures`, () => {
     expect(ungraded - arc.fitted_max.energy).toBeGreaterThan(0.2)
   })
 
+  // Arc-length coords double as the slope widths: the path's sites aren't walked again
+  test(`reuses arc-length coords for the slope widths`, () => {
+    let site_reads = 0
+    const images = rescale_path.map((image) => ({
+      ...image,
+      structure: new Proxy(image.structure, {
+        get: (target, key) => {
+          if (key === `sites`) site_reads++
+          return Reflect.get(target, key)
+        },
+      }),
+    }))
+    const coords = reaction_coordinate(images)
+    const count_reads = (run: () => unknown) => {
+      site_reads = 0
+      run()
+      return site_reads
+    }
+    // path_spline validates the path, then projects the forces: nothing more
+    expect(count_reads(() => path_spline(images, {}, coords))).toBe(
+      count_reads(() => assert_path(images)) +
+        count_reads(() => projected_force_slopes(images)),
+    )
+  })
+
   // A cubic Hermite segment with exact end slopes reproduces any cubic exactly, so a cubic
   // energy profile E(x) = 1.5x² − x³ (maximum 0.5 at x = 1) sampled at uneven positions
   // with its analytic forces F = −dE/dx is an exact analytic case for the whole chain:

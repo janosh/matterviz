@@ -517,13 +517,7 @@
   <SlicePlane polygon={slice_polygon} color={SLICE_PLANE_COLOR} />
 
   {#if k_path}
-    <KPath
-      {...k_path}
-      size={scene_size}
-      edge_width={DEFAULTS.brillouin.edge_width}
-      {on_kpath_hover}
-      {touch_hover}
-    />
+    <KPath {...k_path} size={scene_size} {on_kpath_hover} {touch_hover} />
   {/if}
   {#if k_marker}
     <!-- drawn on top of everything so the dot stays visible inside or behind sheets -->

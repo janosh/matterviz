@@ -436,10 +436,15 @@ export const UNIT_CELL_RANGE: DisplayRange = [
 // The finite grid marching cubes runs on: a VESTA-style fractional window, else the whole cell.
 // Both resample through extract_volume_range so the endpoints land exactly on the requested
 // fractions; block-averaging instead shifted an f = x_frac isosurface by 0.1 Å in a 20 Å cell.
+// A finite in-budget cell with at least 2 points per axis would be copied unchanged, so it
+// is reused as is (e.g. an already prepared grid on every isovalue change).
 export function prepare_geometry_grid(
   volume: VolumeGrid,
   range: DisplayRange | null,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3 } {
+  const { values, dims, lattice, origin, periodic } = volume
+  if (!range && !periodic && values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2))
+    return { grid: volume, lattice, origin }
   const extracted = extract_volume_range(volume, range ?? UNIT_CELL_RANGE)
   return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

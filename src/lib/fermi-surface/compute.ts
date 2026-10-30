@@ -304,6 +304,7 @@ export function extract_fermi_surface(
     const centered = prepared_band_grid(band_data, grid, interpolation_factor)
     const mesh = marching_cubes(centered.grid, isovalue, band_data.k_lattice, {
       periodic: band_data.periodic ?? false,
+      endpoint_wrap: !band_data.periodic, // the zone is periodic either way
       position_offset: frac_to_cart(centered.index0_frac),
     })
     if (mesh.positions.length === 0) continue

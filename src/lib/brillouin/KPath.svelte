@@ -35,7 +35,6 @@
     on_kpath_hover,
     touch_hover,
     size,
-    edge_width = 0,
   }: {
     path: KPathData
     hovered_k_point?: Vec3 | null
@@ -48,14 +47,13 @@
     // the host scene's scene_interactivity().touch_hover, so a tap on the path shows its tooltip
     touch_hover: (handlers: HoverHandlers) => TouchHoverProps
     size: number // characteristic reciprocal-space size (k_space_size) the marks scale with
-    edge_width?: number
   } = $props()
 
   const { invalidate } = useThrelte()
   // A caller spreading a fresh props object per hover re-runs every prop read: this stops it
   // before the meshes rebuild (which clears that hover)
   const stable_path = $derived(path)
-  const mark_sizes = $derived(bz_mark_sizes(size, edge_width))
+  const mark_sizes = $derived(bz_mark_sizes(size, 0)) // no zone edges here: their width never rebuilds the path
   // Same k-point, with a tolerance scaled to the zone: positions come from the same fold but
   // may be recomputed by the caller
   const same_point = (point_a: Vec3, point_b: Vec3) =>

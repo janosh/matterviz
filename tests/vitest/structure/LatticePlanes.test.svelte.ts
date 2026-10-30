@@ -42,21 +42,30 @@ const vertex_counts = (tag: string) =>
     .filter((node) => node.tag === tag)
     .map((node) => (node.props.geometry as BufferGeometry).getAttribute(`position`).count)
 
-test(`cell surfaces reuse unchanged geometry and dispose replaced blocks independently`, async () => {
-  const props = $state({ matrix: cubic, tiling: [2, 1, 1] as Vec3, show_cell_vectors: false })
+test(`cell surfaces and vectors reuse unchanged geometry and dispose replaced blocks independently`, async () => {
+  const props = $state({ matrix: cubic, tiling: [2, 1, 1] as Vec3 })
   const component = mount(Lattice, { target: document.body, props })
   teardown = () => void unmount(component)
   flushSync()
   const geometries = () =>
     threlte_stub.nodes
-      .filter((node) => node.tag === `Mesh`)
+      .filter((node) => node.tag === `Mesh` && node.props.geometry)
       .map((node) => node.props.geometry as BufferGeometry)
+  // each cell vector arrow's shaft and head
+  const arrow_args = () =>
+    threlte_stub.nodes
+      .filter(({ tag }) => tag === `CylinderGeometry` || tag === `ConeGeometry`)
+      .map((node) => node.props.args)
   const [block, origin] = geometries()
   const disposed = [block, origin].map((geometry) => vi.spyOn(geometry, `dispose`))
+  const args = arrow_args()
+  expect(args).toHaveLength(6)
+  // a trajectory frame's fresh but equal matrix rebuilds nothing
   props.matrix = structuredClone(cubic)
   props.tiling = [2, 1, 1]
   flushSync()
   expect(geometries()).toEqual([block, origin])
+  expect(arrow_args().filter((arg, idx) => arg !== args[idx])).toEqual([])
   expect(disposed.map((spy) => spy.mock.calls.length)).toEqual([0, 0])
   props.tiling = [3, 1, 1]
   flushSync()

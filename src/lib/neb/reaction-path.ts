@@ -469,11 +469,13 @@ export function path_spline(
   // projected_force_slopes returns dE/ds per Å of arc length, so a segment's Hermite tangent
   // is that slope times the segment's ARC width, whatever the plotted x axis is. Rescaling by a
   // central-difference ds/di instead made the saddle depend on the x-axis dropdown (0.99727 vs
-  // 1.02563 on a sin² path, true 1). Derived for every slope-bearing fit, since caller-supplied
-  // `coords` need not be arc lengths either.
-  const slope_widths = slopes
-    ? knot_widths(reaction_coordinate(path, { ...options, mode: `arc_length` }), energies)
-    : undefined
+  // 1.02563 on a sin² path, true 1). `coords` follow `options`, so they are those arc widths
+  // unless the x axis is the image index.
+  const arc_coords =
+    options.mode === `image_index`
+      ? reaction_coordinate(path, { ...options, mode: `arc_length` })
+      : coords
+  const slope_widths = slopes ? knot_widths(arc_coords, energies) : undefined
   return fit_path_spline(coords, energies, {
     n_samples,
     slopes: slopes ?? undefined,

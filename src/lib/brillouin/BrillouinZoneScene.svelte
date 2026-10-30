@@ -231,7 +231,6 @@
       on_kpath_hover={handle_kpath_hover}
       {touch_hover}
       size={bz_size}
-      {edge_width}
     />
 
     <!-- Pinned k-points: sized with the zone and drawn over its faces, edges and labels so they

@@ -480,6 +480,52 @@ test(`results commit in job order, only the newest reports errors, none land aft
   expect([props.error_msg, on_error.mock.calls.length]).toEqual([error_msg, 1])
 })
 
+// A sweep's next frame brings a new band grid and no surface: the last surface stays drawn
+// until the new one extracts (no blank frame, no remount of every sheet), and goes once that
+// extraction fails
+test(`the last surface stays up while the next grid's extracts`, async () => {
+  const jobs: NonNullable<typeof extraction.jobs> = []
+  extraction.jobs = jobs
+  let rendered: FermiSurfaceData | undefined
+  const children = createRawSnippet<[{ fermi_data?: FermiSurfaceData }]>((get) => ({
+    render: () => `<span></span>`,
+    setup: () => {
+      $effect(() => {
+        rendered = get().fermi_data
+      })
+    },
+  })) as ComponentProps<typeof FermiSurface>[`children`]
+  const props = $state<{ fermi_data?: FermiSurfaceData; band_data: BandGridData }>({
+    fermi_data: undefined,
+    band_data: typed_grid(sphere_energies(6)),
+  })
+  mounted.push(
+    mount(FermiSurface, { target: document.body, props: bind_props({ children }, props) }),
+  )
+  fake_frames()
+  await vi.advanceTimersByTimeAsync(40)
+  const first = jobs[0].settle()
+  await tick()
+  expect(rendered?.isosurfaces[0].positions).toBe(first)
+  const next_frame = async () => {
+    props.band_data = typed_grid(
+      sphere_energies(6).map((plane) => plane.map((row) => row.map((val) => val + 0.01))),
+    )
+    props.fermi_data = undefined
+    flushSync()
+    await vi.advanceTimersByTimeAsync(40)
+  }
+  await next_frame()
+  expect(rendered?.isosurfaces[0].positions).toBe(first) // held while jobs[1] runs
+  const second = jobs[1].settle()
+  await tick()
+  expect(rendered?.isosurfaces[0].positions).toBe(second)
+  await next_frame()
+  jobs[2].fail(new Error(`boom`))
+  await tick()
+  expect(rendered).toBeUndefined()
+})
+
 // The viewer's one export pane: a PNG of the view plus the visible sheets as 3D models
 test.each([
   [{}, [`PNG`, `STL`, `OBJ`, `GLB`]],

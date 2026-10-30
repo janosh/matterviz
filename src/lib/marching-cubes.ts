@@ -285,6 +285,9 @@ export interface MarchingCubesBuffers {
 interface MarchingCubesOptions {
   // Whether to apply periodic boundary conditions (wrap around grid edges)
   periodic?: boolean
+  // A non-periodic grid whose last point repeats its first (BXSF k-meshes): boundary normals
+  // wrap past that duplicate instead of taking a one-sided difference, which creases the sheet
+  endpoint_wrap?: boolean
   // Whether to compute per-vertex normals via central differences on the grid.
   // Default true. Set false to skip (caller can use geometry.computeVertexNormals() instead).
   normals?: boolean
@@ -315,7 +318,12 @@ export function marching_cubes(
   k_lattice: Matrix3x3,
   options: MarchingCubesOptions = {},
 ): MarchingCubesBuffers {
-  const { periodic = true, normals: compute_norms = true, position_offset } = options
+  const {
+    periodic = true,
+    endpoint_wrap = false,
+    normals: compute_norms = true,
+    position_offset,
+  } = options
   // Front faces (CCW) and normals point toward decreasing values; the triangle table winds that
   // way in index space, which a left-handed lattice mirrors
   const flip_winding = det_3x3(k_lattice) < 0
@@ -383,14 +391,18 @@ export function marching_cubes(
   ): number => {
     let lo_idx = idx - 1
     let hi_idx = idx + 1
+    const wraps_endpoint = endpoint_wrap && dim > 2
     if (periodic) {
       lo_idx = (lo_idx + dim) % dim
       hi_idx %= dim
+    } else if (wraps_endpoint) {
+      if (lo_idx < 0) lo_idx = dim - 2
+      if (hi_idx > dim - 1) hi_idx = 1
     } else {
       lo_idx = Math.max(lo_idx, 0)
       hi_idx = Math.min(hi_idx, dim - 1)
     }
-    const span = periodic ? 2 : hi_idx - lo_idx
+    const span = periodic || wraps_endpoint ? 2 : hi_idx - lo_idx
     const lo_val = values[base_offset + lo_idx * stride]
     const hi_val = values[base_offset + hi_idx * stride]
     return -(hi_val - lo_val) / span

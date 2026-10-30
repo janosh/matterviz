@@ -62,14 +62,18 @@
   let tiling_key = $derived(whole_tile_counts(tiling).join(`,`))
   let tile_counts: Vec3 = $derived(tiling_key.split(`,`).map(Number) as Vec3)
   let n_tiles = $derived(tile_counts[0] * tile_counts[1] * tile_counts[2])
+  // Gate everything drawn from the cell on its numbers, not matrix identity: trajectory frames
+  // hand over a fresh matrix every step, which would rebuild every geometry and arrow
+  let matrix_key = $derived(matrix?.flat().join(`,`) ?? ``)
+  let cell_matrix = $derived.by(() => (void matrix_key, untrack(() => matrix)))
   // Cell vectors of the whole tiled block
   let block_matrix: math.Matrix3x3 | null = $derived(
-    matrix ? math.scale_lattice_matrix(matrix, tile_counts) : null,
+    cell_matrix ? math.scale_lattice_matrix(cell_matrix, tile_counts) : null,
   )
-  let lattice_center: Vec3 = $derived(cell_center(matrix ?? null))
+  let lattice_center: Vec3 = $derived(cell_center(cell_matrix ?? null))
   // Lattice vector arrows start just outside the origin corner, colored like the gizmo's a/b/c
-  let vector_origin: Vec3 = $derived(matrix ? cell_vector_origin(matrix) : [0, 0, 0])
-  let arrow_sizes = $derived(cell_vector_arrow_sizes(matrix, VECTOR_SCALE))
+  let vector_origin: Vec3 = $derived(cell_matrix ? cell_vector_origin(cell_matrix) : [0, 0, 0])
+  let arrow_sizes = $derived(cell_vector_arrow_sizes(cell_matrix, VECTOR_SCALE))
   let block_center: Vec3 = $derived(cell_center(block_matrix))
 
   let tile_edges = $derived(supercell_grid_edges(tile_counts))
@@ -86,20 +90,10 @@
     return new BoxGeometry(1, 1, 1).applyMatrix4(basis)
   }
 
-  // Gate geometry rebuilds on cell numbers, not matrix identity (trajectory frames hand over
-  // a fresh matrix object every step)
-  let matrix_key = $derived(matrix?.flat().join(`,`) ?? ``)
-  const box_geometry = $derived.by(() => {
-    void matrix_key
-    const cell = untrack(() => matrix)
-    return cell ? make_box_geometry(cell) : null
-  })
-  const block_geometry = $derived.by(() => {
-    void matrix_key
-    void tiling_key
-    const cell = untrack(() => block_matrix)
-    return cell && untrack(() => n_tiles) !== 1 ? make_box_geometry(cell) : null
-  })
+  const box_geometry = $derived(cell_matrix ? make_box_geometry(cell_matrix) : null)
+  const block_geometry = $derived(
+    block_matrix && n_tiles !== 1 ? make_box_geometry(block_matrix) : null,
+  )
   dispose_on_change(() => [box_geometry])
   dispose_on_change(() => [block_geometry])
 
@@ -139,8 +133,7 @@
   // The origin cell's own 12 edges: for each cell vector, the four edges parallel to it start
   // at the corners spanned by the other two vectors
   $effect(() => {
-    void matrix_key
-    const cell = untrack(() => matrix)
+    const cell = cell_matrix
     if (!cell) return
     const [buffer, radius] = [edge_mesh.instanceMatrix.array, cell_edge_width * 0.01]
     let edge_idx = 0
@@ -161,8 +154,7 @@
   })
   // tile_mesh is rebuilt whenever tile_edges changes, so tracking the mesh tracks the edges
   $effect(() => {
-    void matrix_key
-    const [cell, mesh] = [untrack(() => matrix), tile_mesh]
+    const [cell, mesh] = [cell_matrix, tile_mesh]
     if (!cell || !mesh) return
     const radius = cell_edge_width * 0.01 * TILE_EDGE_THINNING
     const buffer = mesh.instanceMatrix.array
@@ -192,7 +184,7 @@
   })
 </script>
 
-{#if matrix && box_geometry}
+{#if cell_matrix && box_geometry}
   <!-- dispose={false}: the mesh outlives re-renders and is disposed with this component -->
   <T is={edge_mesh} dispose={false} />
   {#if tile_mesh}
@@ -226,7 +218,7 @@
 
   {#if show_cell_vectors}
     <!-- Stable A/B/C slot keys preserve Arrow instances; vector props update reactively. -->
-    {#each matrix as vec, idx (idx)}
+    {#each cell_matrix as vec, idx (idx)}
       <Arrow
         position={vector_origin}
         vector={vec}
@@ -242,7 +234,7 @@
 
     <!-- Tooltip for hovered vector -->
     {#if hovered_idx !== null}
-      {@const hovered_vec = matrix[hovered_idx]}
+      {@const hovered_vec = cell_matrix[hovered_idx]}
       {@const tooltip_position = math.add(vector_origin, hovered_vec)}
       <CanvasTooltip position={tooltip_position} bg_color={AXIS_COLORS[hovered_idx][2]}>
         <strong>{[`A`, `B`, `C`][hovered_idx]}</strong> =

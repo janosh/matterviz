@@ -7,7 +7,12 @@ import {
   compute_isosurface_geometries,
   geometry_result_transferables,
 } from '#lib/isosurface/geometry.js'
-import { create_volume_sampler, prepare_geometry_grid } from '#lib/isosurface/sampling.js'
+import {
+  create_volume_sampler,
+  extract_volume_range,
+  prepare_geometry_grid,
+  UNIT_CELL_RANGE,
+} from '#lib/isosurface/sampling.js'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
 import { cross_3d, dot, subtract, type Vec3 } from '#lib/math.js'
 import { afterEach, beforeAll, describe, expect, test } from 'vitest'
@@ -87,6 +92,32 @@ describe(`compute_isosurface_geometries`, () => {
       const [idx_x, idx_y, idx_z] = [Math.floor(idx / 81) % 8, (Math.floor(idx / 9) % 9) % 8, (idx % 9) % 8]
       expect(val).toBe(volume.values[(idx_x * 8 + idx_y) * 8 + idx_z])
     }
+  })
+
+  // Re-extracting a finite cell copied the whole grid and rescanned its range on every isovalue
+  // change; with every axis >= 2 points that copy is exact, so the grid is reused instead
+  test.each([
+    { dims: [4, 5, 6] as Vec3, reused: true },
+    { dims: [1, 5, 6] as Vec3, reused: false }, // a 1-point axis still resamples to 2 points
+  ])(`no range on a finite $dims cell: reused=$reused`, ({ dims, reused }) => {
+    const values = Float64Array.from({ length: dims[0] * dims[1] * dims[2] }, (_, idx) =>
+      Math.sin(idx),
+    )
+    const volume = make_flat_volume(values, dims, {
+      id: `density`,
+      lattice: cubic_matrix(3),
+      origin: [1, 2, 3],
+      periodic: false,
+    })
+    const prepared = prepare_geometry_grid(volume, null)
+    expect(prepared.grid.values === values).toBe(reused)
+    const extracted = extract_volume_range(volume, UNIT_CELL_RANGE)
+    expect(prepared.grid.values).toEqual(extracted.values)
+    expect([prepared.grid.dims, prepared.lattice, prepared.origin]).toEqual([
+      extracted.dims,
+      extracted.lattice,
+      extracted.origin,
+    ])
   })
 
   // block averaging read output sample k at source fraction (s_k + e_k - 1)/2/(N - 1) while
