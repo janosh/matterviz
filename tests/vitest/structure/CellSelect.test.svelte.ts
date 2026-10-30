@@ -27,18 +27,14 @@ const mount_and_open = async (props: CellSelectProps): Promise<void> => {
 describe(`CellSelect`, () => {
   describe(`rendering`, () => {
     test.each([
-      [`2x2x2`, `original`, false, `2x2x2`],
-      [`1x1x1`, `primitive`, false, `Prim 1x1x1`],
-      [`1x1x1`, `original`, true, ``], // the spinner replaces the label
-      [`3x3x3`, `conventional`, false, `Conv 3x3x3`],
-    ] as const)(
-      `displays "%s" with cell_type=%s, loading=%s as "%s"`,
-      (scaling, cell_type, loading, expected) => {
-        mount_select({ supercell_scaling: scaling, cell_type, loading })
-        expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(expected)
-        expect(document.querySelector(`.toggle-btn .spinner`) !== null).toBe(loading)
-      },
-    )
+      [`2x2x2`, `original`, `2x2x2`],
+      [`1x1x1`, `primitive`, `Prim 1x1x1`],
+      [`1x1x1`, `original`, `1x1x1`],
+      [`3x3x3`, `conventional`, `Conv 3x3x3`],
+    ] as const)(`displays "%s" with cell_type=%s as "%s"`, (scaling, cell_type, expected) => {
+      mount_select({ supercell_scaling: scaling, cell_type })
+      expect(normalize_supercell_label(doc_query(`.toggle-btn`).textContent)).toBe(expected)
+    })
   })
 
   describe(`dropdown menu`, () => {

@@ -96,7 +96,6 @@
     color_scheme = $bindable(DEFAULTS.color_scheme),
     atom_color_config = $bindable<AtomColorConfig>({ ...DEFAULT_ATOM_COLOR_CONFIG }),
     structure = undefined,
-    supercell_loading = false,
     sym_data = null,
     cell_type = $bindable(`original`),
     volumetric_data = $bindable<VolumetricData[]>(),
@@ -133,7 +132,6 @@
     color_scheme?: ColorSchemeName
     atom_color_config?: AtomColorConfig
     structure?: AnyStructure
-    supercell_loading?: boolean
     sym_data?: SymmetryDataset | null
     cell_type?: CellType // Cell type: original, conventional, or primitive
     volumetric_data?: VolumetricData[] // Volumetric data volumes for isosurface controls
@@ -1442,9 +1440,7 @@
                 if (supercell_input_valid) supercell_scaling = supercell_draft
               }}
               placeholder="1x1x1"
-              style="border: {supercell_input_valid
-                ? undefined
-                : `1px dashed red`}; opacity: {supercell_loading ? 0.5 : 1}"
+              style:border={supercell_input_valid ? undefined : `1px dashed red`}
               inputmode="text"
               autocomplete="off"
               spellcheck="false"
@@ -1454,12 +1450,6 @@
                 : `Invalid format. Use "2x2x2", "3x1x2", or "2"`}
             />
           </label>
-          {#if supercell_loading}
-            <Spinner
-              text="Generating supercell..."
-              style="--spinner-size: 12px; --spinner-border-width: 2px; --spinner-margin: 4pt 0 0; font-size: 0.85em; color: var(--accent-color)"
-            />
-          {/if}
           {#if !supercell_input_valid}
             <small data-testid="supercell-input-error" class="control-error">
               Invalid format. Use patterns like "2x2x2", "3x1x2", or "2".

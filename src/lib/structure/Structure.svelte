@@ -1535,7 +1535,6 @@
                 multi_view_control_visible={controls_config.visible(`multi-view`)}
                 {multi_view_unavailable_reason}
                 structure={tool_structure}
-                supercell_loading={session.supercell_loading}
                 {sym_data}
                 {polyhedra_rendered_elements}
                 {displacement_summary}
@@ -1575,7 +1574,6 @@
                     bind:supercell_scaling
                     bind:cell_type
                     {sym_data}
-                    loading={session.supercell_loading}
                     analyzing={symmetry_analyzing}
                   />
                 {/if}

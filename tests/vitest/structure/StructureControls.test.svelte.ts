@@ -148,7 +148,7 @@ const trail_stream = (): TrajectoryPositionStream =>
 
 describe(`StructureControls inputs`, () => {
   test(`supercell input flags invalid values, applies on change (not per keystroke) and stays editable`, async () => {
-    const state = $state({ supercell_scaling: `invalid`, supercell_loading: false })
+    const state = $state({ supercell_scaling: `invalid` })
     await mount_bound_controls(state)
     const input = doc_query<HTMLInputElement>(`input[placeholder="1x1x1"]`)
     const expect_validity = (invalid: boolean, title: string) => {
@@ -161,8 +161,6 @@ describe(`StructureControls inputs`, () => {
     set_input(input, `3`) // a valid prefix of 3x1x1 must not start a 27-tile build
     await tick()
     expect(state.supercell_scaling).toBe(`invalid`)
-    state.supercell_loading = true // a build in flight must not lock the field
-    await tick()
     expect(input.disabled).toBe(false)
     set_input(input, `3x1x1`)
     input.dispatchEvent(new Event(`change`, { bubbles: true }))
