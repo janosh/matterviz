@@ -11,9 +11,11 @@
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
 import { display_idx } from '#lib/labels.js'
-import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
+import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
+import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { to_error } from 'svelte-widgets/utils'
+import { frame_from_wire } from './host-protocol'
 import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
 
 export interface VSCodeAPI {
@@ -130,8 +132,8 @@ export async function request_large_file_content(
           bind_host_properties(
             host_run(
               data.run_summary,
-              (frame_idx, signal) =>
-                request_host_frame(file_path, filename, frame_idx, signal),
+              (frame_idx, signal, channels) =>
+                request_host_frame(file_path, filename, frame_idx, signal, channels),
               () => stop_property_stream(),
             ),
           ),
@@ -147,17 +149,18 @@ const request_host_frame = (
   filename: string,
   frame_idx: number,
   signal?: AbortSignal,
-): Promise<TrajectoryFrame> => {
+  channels?: FrameChannels,
+): Promise<NumericFrame> => {
   if (!host_api) return Promise.reject(new Error(`No host bridge is available`))
   return post_request(
     host_api,
-    { command: `request_frame`, file_path, filename, frame_index: frame_idx },
+    { command: `request_frame`, file_path, filename, frame_index: frame_idx, channels },
     10_000,
     `Frame ${display_idx(frame_idx)} timeout after 10s`,
     (data, resolve, reject) => {
       if (data.command !== `frame_response`) return false
       if (data.error) reject(new Error(data.error))
-      else if (data.frame) resolve(data.frame)
+      else if (data.frame) resolve(frame_from_wire(data.frame))
       else reject(new Error(`Host returned no trajectory frame ${display_idx(frame_idx)}`))
       return true
     },

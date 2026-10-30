@@ -3,14 +3,18 @@
 // each a round trip away over Remote SSH, see read_concurrency). Progressive plot
 // rows arrive through `properties.push()` from whoever owns the host channel.
 import { encode_frame, select_frame_channels } from '../frame'
-import type { TrajectoryFrame } from '../index'
+import type { FrameChannels, NumericFrame } from '../frame'
 import { to_error } from 'svelte-widgets/utils'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
 
 export const host_run = (
   summary: TrajectoryRunSummary,
-  request_frame: (frame_idx: number, signal?: AbortSignal) => Promise<TrajectoryFrame>,
+  request_frame: (
+    frame_idx: number,
+    signal?: AbortSignal,
+    channels?: FrameChannels,
+  ) => Promise<NumericFrame>,
   release: () => void = () => {},
 ): TrajectoryRun => {
   const fields = run_fields_from_summary(summary)
@@ -29,8 +33,9 @@ export const host_run = (
       if (signal?.aborted) return Promise.reject(to_error(signal.reason))
       if (frame_idx === 0 && !summary.preview.metadata?.render_sample)
         return select_frame_channels(encode_frame(summary.preview), channels)
-      return request_frame(frame_idx, signal).then((frame) =>
-        select_frame_channels(encode_frame(frame), channels),
+      // a host may send more channels than asked for
+      return request_frame(frame_idx, signal, channels).then((frame) =>
+        select_frame_channels(frame, channels),
       )
     },
     dispose: () => {

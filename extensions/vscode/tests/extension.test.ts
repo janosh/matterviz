@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vscode'
 import pkg_json from '../package.json' with { type: 'json' }
 import type { WebviewToHostMessage } from '#lib/file-viewer/host-protocol.js'
+import type { FrameChannels } from '#lib/trajectory/frame.js'
 import {
   activate,
   active_auto_render_panels,
@@ -57,12 +58,17 @@ const large_file_msg = (file_path: string, request_id: string): WebviewToHostMes
   file_path,
   filename: basename_of(file_path),
 })
-const frame_msg = (file_path: string, frame_index: number): WebviewToHostMessage => ({
+const frame_msg = (
+  file_path: string,
+  frame_index: number,
+  channels?: FrameChannels,
+): WebviewToHostMessage => ({
   command: `request_frame`,
   request_id: `frame-request`,
   file_path,
   filename: basename_of(file_path),
   frame_index,
+  channels,
 })
 type CommandCallback = (uri?: Uri) => Promise<void> | void
 
@@ -393,7 +399,8 @@ describe(`MatterViz Extension`, () => {
     const n_frames = 7100
     const trajectory = Array.from(
       { length: n_frames },
-      (_unused, idx) => `1\nframe=${idx} energy=${-idx}\nH ${idx} 0 0`,
+      (_unused, idx) =>
+        `1\nProperties=species:S:1:pos:R:3:forces:R:3 frame=${idx} energy=${-idx}\nH ${idx} 0 0 0 0 1`,
     ).join(`\n`)
     const compressed = new Uint8Array(gzipSync(`${trajectory}\n`))
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: compressed.byteLength, type: 1 })
@@ -450,14 +457,24 @@ describe(`MatterViz Extension`, () => {
       )
     }
 
-    mock_webview.postMessage.mockClear()
-    await handle_msg(frame_msg(file_path, 1), mock_webview)
-    expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
-      command: `frame_response`,
-      request_id: `frame-request`,
-      frame: expect.objectContaining({ step: 1 }),
-      frame_index: 1,
-    })
+    // numeric, its coordinates an ArrayBuffer that VS Code's postMessage carries as such,
+    // with only the vector channels asked for
+    for (const [channels, vector_keys] of [
+      [undefined, [`force`]],
+      [{ vectors: [] }, []],
+    ] as const) {
+      await handle_msg(frame_msg(file_path, 1, channels), mock_webview)
+      expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
+        command: `frame_response`,
+        request_id: `frame-request`,
+        frame: expect.objectContaining({
+          header: expect.objectContaining({ step: 1 }),
+          coordinates: expect.any(ArrayBuffer),
+          vector_keys,
+        }),
+        frame_index: 1,
+      })
+    }
     await handle_msg(frame_msg(file_path, n_frames), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({

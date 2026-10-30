@@ -470,7 +470,7 @@ const make_host_run = (): TrajectoryRun => {
   return host_run(summarize_run(backing), async (frame_idx, signal) => {
     await next_tick()
     signal?.throwIfAborted()
-    return materialize_frame_result(backing.read_frame(frame_idx))
+    return backing.read_frame(frame_idx)
   })
 }
 
@@ -1098,7 +1098,11 @@ describe(`TrajectoryProperties`, () => {
       })
       const run =
         kind === `host`
-          ? host_run(summarize_run(source), async () => reference_frames[0], release)
+          ? host_run(
+              summarize_run(source),
+              async () => encode_frame(reference_frames[0]),
+              release,
+            )
           : source
       const failure = new Error(`Completion observer failed`)
       run.properties.subscribe(() => {

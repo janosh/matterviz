@@ -1,4 +1,4 @@
-import type { FrameChannels } from '#lib/trajectory/frame.js'
+import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
 import {
   create_numeric_md_frame,
   encode_frame,
@@ -42,10 +42,10 @@ const make_async_run = (frame_list: TrajectoryFrame[], read_concurrency?: number
   const reads: number[] = []
   const host = host_run(summarize_run(backing), (idx, signal) => {
     reads.push(idx)
-    return new Promise<TrajectoryFrame>((resolve, reject) => {
+    return new Promise<NumericFrame>((resolve, reject) => {
       const entry = {
         idx,
-        resolve: () => resolve(materialize_frame_result(backing.read_frame(idx))),
+        resolve: () => resolve(backing.read_frame(idx)),
         reject,
       }
       pending.push(entry)
@@ -279,14 +279,14 @@ describe(`frame loading`, () => {
       structure: { ...summary.preview.structure, sites: [] },
     }
     const complete = backing.preview
-    const pending = Promise.withResolvers<TrajectoryFrame>()
+    const pending = Promise.withResolvers<NumericFrame>()
     const read = vi.fn(() => pending.promise)
     const run = host_run(summary, read)
     expect(run.atom_count).toBe(1_000_000)
     const { session } = make_session({ run })
-    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal), undefined)
     expect(session.current_structure).toBeUndefined()
-    pending.resolve(complete)
+    pending.resolve(encode_frame(complete))
     await pending.promise
     await Promise.resolve()
     flushSync()
@@ -906,7 +906,7 @@ describe(`property mirroring`, () => {
     const progressive = new TrajectoryProperties()
     const run = host_run(
       { ...summarize_run(backing), properties: { rows: [], complete: false } },
-      async (idx) => materialize_frame_result(backing.read_frame(idx)),
+      async (idx) => backing.read_frame(idx),
     )
     Object.defineProperty(run, `properties`, { value: progressive })
     const { host, session } = make_session({ run })

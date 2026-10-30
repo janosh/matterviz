@@ -1,4 +1,3 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
 // VS Code's webview postMessage API takes a single argument (no targetOrigin),
 // so unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
@@ -14,6 +13,7 @@ import type {
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '#lib/file-viewer/host-protocol.js'
+import { frame_to_wire } from '#lib/file-viewer/host-protocol.js'
 import { is_plain_object } from '#lib/utils.js'
 import { format_bytes } from 'svelte-widgets/format'
 import { to_error } from 'svelte-widgets/utils'
@@ -354,12 +354,12 @@ export const handle_msg = async (
     }
   } else if (msg.command === `request_frame` && msg.file_path) {
     try {
-      const { request_id, file_path, frame_index } = msg
+      const { request_id, file_path, frame_index, channels } = msg
       if (typeof request_id !== `string` || !Number.isInteger(frame_index) || frame_index < 0)
         throw new Error(`Invalid request_id or frame_index`)
       const run = await active_runs.get(file_path)
       if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
-      const frame = await materialize_frame_result(run.read_frame(frame_index))
+      const frame = frame_to_wire(await run.read_frame(frame_index, undefined, channels))
       webview.postMessage({ command: `frame_response`, request_id, frame, frame_index })
     } catch (error) {
       const error_message = to_error(error).message
