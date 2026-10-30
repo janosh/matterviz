@@ -209,7 +209,7 @@ export function create_trajectory_session(
     trim_cache(protected_idx, 0, 0, 0, protected_frames)
   }
 
-  // === current frame: latest request wins, stale async reads are aborted ===
+  // === current frame: latest request wins, stale async reads are aborted (see trailing) ===
   // Raw: frames can hold thousands of sites and deep-proxying each one makes scrubbing pay
   // proxy traps throughout structure normalization, bonding and scene-buffer updates.
   let loaded = $state.raw<(SessionFrame & { run: TrajectoryRun; idx: number }) | null>(null)
@@ -225,9 +225,27 @@ export function create_trajectory_session(
   }
   const prefetched = new Map<number, PrefetchRequest>()
 
-  const cancel_in_flight = (): void => {
-    in_flight?.abort(new DOMException(`Superseded by a newer frame request`, `AbortError`))
+  // Aborting frees nothing on a source that pipelines reads (a remote host, see
+  // read_concurrency), so there reads a newer request of the same run and settings supersedes
+  // keep running, oldest first, and each shows as it lands, dropping older ones: a drag or
+  // held arrow key trails by a round trip instead of showing nothing until it stops. Every
+  // trailing read is newer than the displayed frame. Other sources abort superseded reads,
+  // which frees their decoder for the target.
+  let in_flight_key: string | undefined
+  let in_flight_idx = -1
+  type Read = { controller: AbortController; idx: number }
+  const trailing: Read[] = []
+  const supersede = (reads: Read[]): void => {
+    for (const { controller } of reads)
+      controller.abort(new DOMException(`Superseded by a newer frame request`, `AbortError`))
+  }
+  const drop_trailing = (): void => supersede(trailing.splice(0))
+  const trail_idx_of = (controller: AbortController): number =>
+    trailing.findIndex((read) => read.controller === controller)
+  const cancel_in_flight = (trail = false): void => {
+    if (in_flight) trailing.push({ controller: in_flight, idx: in_flight_idx })
     in_flight = undefined
+    if (!trail) drop_trailing()
   }
   const cancel_prefetch = (): void => {
     if (prefetch_timer !== undefined) clearTimeout(prefetch_timer)
@@ -271,7 +289,9 @@ export function create_trajectory_session(
   }
 
   function request_frame(run: TrajectoryRun | undefined, requested_idx: number): void {
-    cancel_in_flight()
+    cancel_in_flight(
+      run === cache_owner && Boolean(run?.read_concurrency) && in_flight_key === request_key,
+    )
     frame_failure = undefined
     const frame_idx = run ? normalize_idx(requested_idx, run.frame_count) : null
     for (const waiter of render_waiters) {
@@ -306,8 +326,16 @@ export function create_trajectory_session(
     }
     claim_cache(run)
     if (cache_hit) {
+      drop_trailing()
       loaded = { run, idx: frame_idx, ...cached }
       schedule_prefetch(run, frame_idx)
+      return
+    }
+    // A retained read of this frame (a drag back over it) is the target again, not a re-read
+    const retained = next ? -1 : trailing.findIndex(({ idx }) => idx === frame_idx)
+    if (retained !== -1) {
+      in_flight = trailing.splice(retained, 1)[0].controller
+      in_flight_idx = frame_idx
       return
     }
     let pending: Promise<SessionFrame>
@@ -315,28 +343,42 @@ export function create_trajectory_session(
     try {
       const result = next?.result ?? read_display(run, frame_idx, controller.signal)
       if (!is_promise(result)) {
+        drop_trailing()
         settle(run, frame_idx, result)
         if (player.is_playing) schedule_prefetch(run, frame_idx)
         return
       }
       pending = result
     } catch (error) {
+      drop_trailing()
       return fail_frame(frame_idx, error)
     }
     in_flight = controller
+    in_flight_key = request_key
+    in_flight_idx = frame_idx
     pending.then(
       (frame) => {
         // Cancelled preparation may still finish on the primary worker; never retain it.
         if (!controller.signal.aborted && matches_request(frame))
           cache_put(run, frame_idx, frame)
-        if (in_flight !== controller) return
-        in_flight = undefined
+        if (in_flight === controller) {
+          in_flight = undefined
+          drop_trailing() // older reads would only step back
+        } else {
+          const trail_idx = trail_idx_of(controller)
+          if (trail_idx === -1) return
+          supersede(trailing.splice(0, trail_idx))
+          trailing.shift() // this read
+        }
         loaded = { run, idx: frame_idx, ...frame }
-        schedule_prefetch(run, frame_idx)
+        if (!in_flight) schedule_prefetch(run, frame_idx)
       },
       (error: unknown) => {
+        const trail_idx = trail_idx_of(controller)
+        if (trail_idx !== -1) trailing.splice(trail_idx, 1)
         if (in_flight !== controller) return
         in_flight = undefined
+        drop_trailing()
         fail_frame(frame_idx, error)
       },
     )
@@ -353,10 +395,13 @@ export function create_trajectory_session(
     const records = current ? site_record_count(current) : run.atom_count
     // Read a second ahead to absorb variable decoding and neighbor-list rebuild costs.
     // Keep at least two waves busy; reservations bound both pending and completed frames.
-    const playback_window =
-      preparation && run.preparation_concurrency
-        ? Math.max(2 * run.preparation_concurrency, Math.ceil(player.fps))
-        : 1
+    const concurrency = preparation ? run.preparation_concurrency : run.read_concurrency
+    const playback_window = concurrency ? Math.max(2 * concurrency, Math.ceil(player.fps)) : 1
+    // A pipelining source holds at most read_concurrency unanswered reads (the displayed
+    // target's and trailing ones included), which a seek then waits behind (the host can't
+    // drop a request); answered ones fill the rest of the window
+    const max_unanswered =
+      preparation || !run.read_concurrency ? Infinity : run.read_concurrency
     const prefetch_limit = Math.min(
       player.is_playing ? playback_window : 2,
       cache_max_frames - 1,
@@ -376,6 +421,11 @@ export function create_trajectory_session(
           protected_frames.add(idx)
           continue
         }
+        const unanswered =
+          Number(in_flight !== undefined) +
+          trailing.length +
+          [...prefetched.values()].filter(({ result }) => is_promise(result)).length
+        if (unanswered >= max_unanswered) break
         // Reserve only missing frames: a complete loop that fits remains reusable.
         // Playback permits one next frame even when the current frame exceeds its budget.
         bytes ??= current ? display_frame_bytes(current) : 0

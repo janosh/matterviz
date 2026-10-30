@@ -1,4 +1,9 @@
 import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import {
+  frame_from_wire,
+  frame_to_wire,
+  type WireFrame,
+} from '#lib/file-viewer/host-protocol.js'
 import { create_display } from '#lib/file-viewer/main.js'
 import { host } from '#lib/host.js'
 import { parse_file_content } from '#lib/file-viewer/parse.js'
@@ -587,10 +592,12 @@ describe(`create_display trajectory display options`, () => {
 describe(`LARGE_FILE markers`, () => {
   const marker = `LARGE_FILE:/data/movie.extxyz:268435456`
   const backing = trajectory_from_frames(
-    [0, 1, 2].map((step) => ({
-      step,
-      structure: make_crystal(5, [[`H`, [0, 0, step / 10]]]),
-    })),
+    [0, 1, 2].map((step) => {
+      const structure = make_crystal(5, [[`H`, [0, 0, step / 10]]])
+      // a force channel the host sends whatever the viewer asks for
+      for (const site of structure.sites) site.properties = { force: [0, 0, step] }
+      return { step, structure }
+    }),
     { provenance: { filename: `movie.extxyz`, format: `xyz` } },
   )
   // The host's answer to request_large_file: the run summary with plot rows still streaming
@@ -598,6 +605,51 @@ describe(`LARGE_FILE markers`, () => {
     command: `large_file_response`,
     request_id: request.request_id,
     run_summary: { ...summarize_run(backing), properties: { rows: [], complete: false } },
+  })
+
+  // A message as VS Code's webview postMessage delivers it: JSON, except that ArrayBuffers
+  // survive (engines >= 1.57); a typed array arrives as an index-keyed object
+  const vscode_clone = (value: unknown): unknown => {
+    const buffers: ArrayBuffer[] = []
+    const json = JSON.stringify(value, (_key, val: unknown) =>
+      val instanceof ArrayBuffer ? { buffer_idx: buffers.push(val.slice(0)) - 1 } : val,
+    )
+    return JSON.parse(json, (_key, val: unknown) =>
+      val &&
+      typeof val === `object` &&
+      `buffer_idx` in val &&
+      typeof val.buffer_idx === `number`
+        ? buffers[val.buffer_idx]
+        : val,
+    )
+  }
+  const wire_frame = (frame_idx: number): unknown => {
+    const frame = backing.read_frame(frame_idx)
+    if (frame instanceof Promise) throw new Error(`Memory runs read synchronously`)
+    return vscode_clone(frame_to_wire(frame))
+  }
+
+  test(`a wire frame posts only its views' own bytes and survives VS Code's transport`, () => {
+    const frame = backing.read_frame(2)
+    if (frame instanceof Promise) throw new Error(`Memory runs read synchronously`)
+    const padded = new Float64Array(frame.coordinates.length + 4)
+    padded.set(frame.coordinates, 2)
+    const input = {
+      ...frame,
+      coordinates: padded.subarray(2, 2 + frame.coordinates.length),
+      sites: new Uint8Array([0, 1, 0]).subarray(1, 2), // one H atom
+      scalar_columns: { charge: new Float64Array([0.5]) },
+      topology: { kind: `fixed-order`, revision: 3 } as const,
+      available_vector_keys: [`forces`],
+    }
+    const wire = frame_to_wire(input)
+    expect(wire.coordinates.byteLength).toBe(frame.coordinates.byteLength)
+    expect(wire.sites instanceof ArrayBuffer && wire.sites.byteLength).toBe(1)
+    expect(frame_from_wire(vscode_clone(wire) as WireFrame)).toEqual({
+      ...input,
+      coordinates: frame.coordinates,
+      sites: new Uint8Array([1]),
+    })
   })
 
   // post_request listens on globalThis, not an EventTarget in vitest's node environment
@@ -628,7 +680,7 @@ describe(`LARGE_FILE markers`, () => {
         ? {
             command: `frame_response`,
             request_id: request.request_id,
-            frame: materialize_frame_result(backing.read_frame(Number(request.frame_index))),
+            frame: wire_frame(Number(request.frame_index)),
           }
         : summary_reply(request),
     )
@@ -646,17 +698,21 @@ describe(`LARGE_FILE markers`, () => {
     expect(run.provenance).toMatchObject({ filename: `movie.extxyz`, format: `xyz` })
     expect(materialize_frame_result(run.read_frame(0))).toEqual(run.preview)
 
-    // Frames past the preview are fetched from the host one request at a time
-    const frame = await materialize_frame_result(run.read_frame(2))
+    // Frames past the preview are fetched from the host one request at a time, asking only
+    // for the vector channels the viewer reads
+    const frame = await materialize_frame_result(run.read_frame(2, undefined, { vectors: [] }))
     expect(post_message).toHaveBeenLastCalledWith({
       command: `request_frame`,
       request_id: expect.any(String),
       file_path: `/data/movie.extxyz`,
       filename: `movie.extxyz`,
       frame_index: 2,
+      channels: { vectors: [] },
     })
     expect(frame.step).toBe(2)
     expect(frame.structure.sites[0].xyz[2]).toBeCloseTo(1, 12)
+    // the run trims channels a host sent beyond those asked for
+    expect(frame.structure.sites[0].properties).toEqual({})
 
     // Plot rows stream in after the summary, keyed by the host file path
     expect(run.properties.complete).toBe(false)
@@ -747,6 +803,21 @@ describe(`LARGE_FILE markers`, () => {
   test.each([
     [{ command: `frame_response` }, `Host returned no trajectory frame 3`],
     [{}, `Frame 3 timeout after 10s`], // host never answers
+    // a host that skipped frame_to_wire fails here, not as empty coordinates downstream
+    [
+      { command: `frame_response`, frame: { step: 2, structure: {} } },
+      `Malformed host frame: expected ArrayBuffer coordinates and sites (see frame_to_wire), got fields step, structure`,
+    ],
+    [
+      {
+        command: `frame_response`,
+        frame: {
+          ...(wire_frame(2) as WireFrame),
+          scalar_columns: { charge: new ArrayBuffer(0) },
+        },
+      },
+      `Malformed host frame: scalar column charge has 0 bytes for 1 sites`,
+    ],
   ])(`frame reply %j rejects with "%s" (1-based)`, async (frame_reply, msg) => {
     with_host((request) =>
       request.command === `request_frame`

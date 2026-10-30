@@ -18,6 +18,7 @@ const skip_build =
 const package_dist = [
   `svelte-package`,
   `node src/scripts/package-dist-assets.mjs`,
+  `vp build --config src/elements/vite.config.ts`,
   `node src/scripts/check-dist-imports.mjs`,
 ]
 const commands = [`svelte-kit sync`, ...(skip_build ? [] : package_dist)]
