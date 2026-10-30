@@ -196,6 +196,10 @@ export interface TrajectoryRun {
   read_frame(frame_idx: number, signal?: AbortSignal, channels?: FrameChannels): FrameResult
   // Source workers can prepare the next scene alongside decoding, before transferring it.
   readonly preparation_concurrency?: number
+  // Unanswered reads to keep in flight for a source that pipelines them over a round trip (a
+  // remote host): playback reads ahead instead of waiting a round trip per frame, and
+  // superseded reads keep running rather than being aborted
+  readonly read_concurrency?: number
   prepare_frame?(
     frame_idx: number,
     preparation: FramePreparation,

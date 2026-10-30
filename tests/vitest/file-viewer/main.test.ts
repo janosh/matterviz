@@ -680,37 +680,6 @@ describe(`LARGE_FILE markers`, () => {
     ).rejects.toThrow(/disposed/)
   })
 
-  test(`uses advertised frame batches through the real postMessage transport`, async () => {
-    const { post_message } = with_host((request) =>
-      request.command === `request_frames`
-        ? {
-            command: `frames_response`,
-            request_id: request.request_id,
-            start: request.start,
-            frames: Array.from({ length: Number(request.count) }, (_, index) =>
-              materialize_frame_result(backing.read_frame(Number(request.start) + index)),
-            ),
-          }
-        : { ...summary_reply(request), frame_batch_size: 64 },
-    )
-    const result = await (await fresh_parse())(marker, `movie.extxyz`)
-    const run = result.data as TrajectoryRun
-    expect((await materialize_frame_result(run.read_frame(1))).step).toBe(1)
-    const cached_frame = run.read_frame(2)
-    expect(cached_frame).not.toBeInstanceOf(Promise)
-    expect((await materialize_frame_result(cached_frame)).step).toBe(2)
-    const batches = post_message.mock.calls
-      .map(([message]) => message)
-      .filter((message) => message.command === `request_frames`)
-    expect(batches).toEqual([
-      expect.objectContaining({ start: 0, count: 3, filename: `movie.extxyz` }),
-    ])
-    expect(
-      post_message.mock.calls.some(([message]) => message.command === `request_frame`),
-    ).toBe(false)
-    run.dispose()
-  })
-
   test(`surfaces a host-side error for the file`, async () => {
     with_host((request) => ({
       command: `large_file_response`,

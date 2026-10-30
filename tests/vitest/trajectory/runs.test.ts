@@ -545,7 +545,7 @@ it.each([27, 100_000])(
 
 describe.each(RUN_CASES)(
   `$name run`,
-  ({ make, sync_reads, has_collect, n_frames, n_atoms }) => {
+  ({ name, make, sync_reads, has_collect, n_frames, n_atoms }) => {
     it(`exposes frame_count, preview, range-checked reads and ordered property rows`, async () => {
       const run = await make()
       expect(run.frame_count).toBe(n_frames)
@@ -562,6 +562,8 @@ describe.each(RUN_CASES)(
         expect(() => materialize_frame_result(run.read_frame(bad_idx))).toThrow(RangeError)
       }
       expect(run.collect_positions !== undefined).toBe(has_collect)
+      // a host pipelines reads over its round trip, so sessions keep several in flight
+      expect(run.read_concurrency).toBe(name === `host` ? 8 : undefined)
       await run.properties.done
       const { rows } = run.properties
       expect(rows.length).toBeGreaterThan(0)

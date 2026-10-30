@@ -33,7 +33,6 @@ type HostFileRequest = {
 export type HostRequest =
   | ({ command: `request_large_file` } & HostFileRequest)
   | ({ command: `request_frame`; frame_index: number } & HostFileRequest)
-  | ({ command: `request_frames`; start: number; count: number } & HostFileRequest)
 
 // The host watches the rendered file itself (no webview subscription step)
 export type FileChangeMessage =
@@ -69,8 +68,6 @@ export type HostToWebviewMessage =
       request_id: string
       // The host keeps the run; the webview streams frames with request_frame.
       run_summary?: TrajectoryRunSummary
-      // Optional capability: older embedding hosts keep using request_frame.
-      frame_batch_size?: number
       error?: string
     }
   | {
@@ -78,13 +75,6 @@ export type HostToWebviewMessage =
       request_id: string
       frame_index?: number
       frame?: TrajectoryFrame | null
-      error?: string
-    }
-  | {
-      command: `frames_response`
-      request_id: string
-      start?: number
-      frames?: TrajectoryFrame[]
       error?: string
     }
   // Progressive per-frame plot rows of a host-served run, batched after large_file_response

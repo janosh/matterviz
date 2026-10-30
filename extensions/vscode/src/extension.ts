@@ -346,44 +346,11 @@ export const handle_msg = async (
       // Panels on one file share its load (see active_runs)
       const run = await (active_runs.get(file_path) ?? load_run(file_path))
       stream_plot_rows(run, file_path, webview)
-      webview.postMessage({
-        command,
-        request_id,
-        run_summary: summarize_run(run),
-        frame_batch_size: 64,
-      })
+      webview.postMessage({ command, request_id, run_summary: summarize_run(run) })
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to setup indexed parsing:`, error_message)
       webview.postMessage({ command, request_id: msg.request_id, error: error_message })
-    }
-  } else if (msg.command === `request_frames` && msg.file_path) {
-    try {
-      const { request_id, file_path, start, count } = msg
-      if (
-        typeof request_id !== `string` ||
-        !request_id ||
-        !Number.isInteger(start) ||
-        start < 0 ||
-        !Number.isInteger(count) ||
-        count < 1 ||
-        count > 64
-      )
-        throw new Error(`Invalid frame batch request`)
-      const run = await active_runs.get(file_path)
-      if (!run) throw new Error(`No indexed trajectory is open for file: ${file_path}`)
-      if (start >= run.frame_count || count > run.frame_count - start)
-        throw new RangeError(`Frame batch is outside the trajectory`)
-      const frames = []
-      for (let index = start; index < start + count; index++)
-        frames.push(await materialize_frame_result(run.read_frame(index)))
-      webview.postMessage({ command: `frames_response`, request_id, start, frames })
-    } catch (error) {
-      webview.postMessage({
-        command: `frames_response`,
-        request_id: msg.request_id,
-        error: to_error(error).message,
-      })
     }
   } else if (msg.command === `request_frame` && msg.file_path) {
     try {

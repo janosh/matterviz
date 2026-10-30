@@ -1,4 +1,3 @@
-import { host_frame_cache } from '#lib/file-viewer/host-frame-cache.js'
 import type { FrameChannels } from '#lib/trajectory/frame.js'
 import {
   create_numeric_md_frame,
@@ -35,12 +34,13 @@ const flush_microtasks = async (): Promise<void> => {
 }
 const PREPARATION = { bonding_strategy: `electroneg_ratio`, bonding_options: {} } as const
 
-// Async run whose reads resolve by hand, to order races deliberately
-const make_async_run = (frame_list: TrajectoryFrame[]) => {
+// Async run whose reads resolve by hand, to order races deliberately. One read at a time
+// unless read_concurrency says the source pipelines them (as a host does)
+const make_async_run = (frame_list: TrajectoryFrame[], read_concurrency?: number) => {
   const backing = trajectory_from_frames(frame_list)
   const pending: { idx: number; resolve: () => void; reject: (error: Error) => void }[] = []
   const reads: number[] = []
-  const run = host_run(summarize_run(backing), (idx, signal) => {
+  const host = host_run(summarize_run(backing), (idx, signal) => {
     reads.push(idx)
     return new Promise<TrajectoryFrame>((resolve, reject) => {
       const entry = {
@@ -56,6 +56,7 @@ const make_async_run = (frame_list: TrajectoryFrame[]) => {
       })
     })
   })
+  const run = Object.assign(host, { read_concurrency })
   const resolve_next = async (): Promise<void> => {
     pending.shift()?.resolve()
     await flush_microtasks()
@@ -538,6 +539,56 @@ describe(`scrub vs commit`, () => {
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
   })
 
+  it.each([undefined, 1])(
+    `with read_concurrency %s, navigation keeps superseded async reads, showing each as it lands`,
+    async (read_concurrency) => {
+      const raf_callbacks = stub_raf()
+      const { run, pending, reads } = make_async_run(frames(8), read_concurrency)
+      const { host, session } = make_session({ run })
+      const scrub_to = (idx: number) => {
+        session.scrub(idx)
+        raf_callbacks.at(-1)?.(16)
+        flushSync()
+      }
+      const pending_idxs = () => pending.map(({ idx }) => idx)
+      const land = async (idx: number) => {
+        const [entry] = pending.splice(pending_idxs().indexOf(idx), 1)
+        entry.resolve()
+        await flush_microtasks()
+      }
+      for (const idx of [2, 4, 6]) scrub_to(idx)
+      expect(reads).toEqual([2, 4, 6])
+      // a source that can't pipeline frees its decoder for the target instead
+      expect(pending_idxs()).toEqual(read_concurrency ? [2, 4, 6] : [6])
+      if (!read_concurrency) return
+      // a slow source trails the drag: frame 4 shows before the target lands, dropping 2
+      await land(4)
+      expect(session.scene_frame?.idx).toBe(4)
+      expect(session.current_frame).toBeNull()
+      expect(pending_idxs()).toEqual([6])
+      await land(6)
+      expect(session.current_frame?.step).toBe(60)
+      // held arrow keys (commits) trail too, and the target landing first drops older reads
+      for (const idx of [1, 3, 5]) {
+        session.commit(idx)
+        flushSync()
+      }
+      expect(pending_idxs()).toEqual([1, 3, 5])
+      await land(5)
+      expect(session.current_frame?.step).toBe(50)
+      expect(pending_idxs()).toEqual([])
+      // a run swap drops the old run's reads
+      session.commit(2)
+      flushSync()
+      expect(pending_idxs()).toEqual([2])
+      host.run = trajectory_from_frames(frames(8))
+      host.index = 0
+      flushSync()
+      expect(pending_idxs()).toEqual([])
+      expect(host.index).toBe(0)
+    },
+  )
+
   it(`drops a pending scrub when the run is swapped before the next animation frame`, () => {
     const raf_callbacks = stub_raf()
     const { host, session, events } = make_session({ run: trajectory_from_frames(frames(20)) })
@@ -696,6 +747,24 @@ describe(`controller and playback`, () => {
       expect(session.current_frame?.step).toBe(60)
       session.player.pause()
       expect(pending).toHaveLength(0)
+    },
+  )
+
+  it.each([
+    [undefined, 64, [1]],
+    // a pipelining source keeps that many reads unanswered, within the cache budget
+    [8, 64, [1, 2, 3, 4, 5, 6, 7, 8]],
+    [8, 4, [1, 2, 3]],
+  ])(
+    `plays with read_concurrency %s and cache_max_frames %i reading %o ahead`,
+    async (read_concurrency, cache_max_frames, expected) => {
+      stub_raf()
+      const { run, reads } = make_async_run(frames(40), read_concurrency)
+      const { session } = make_session({ run, fps: 30 }, { cache_max_frames })
+      session.player.play()
+      flushSync()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(reads).toEqual(expected)
     },
   )
 
@@ -953,27 +1022,4 @@ describe(`resolve_frame`, () => {
       if (change === `disposal`) expect(await session.resolve_frame(0)).toBeNull()
     },
   )
-})
-
-it(`displays a warmed remote frame in the same scrub animation frame`, async () => {
-  const frame_list = frames(8)
-  const backing = trajectory_from_frames(frame_list)
-  const request = vi.fn(async (start: number, count: number) =>
-    frame_list.slice(start, start + count),
-  )
-  const cache = host_frame_cache(8, 3, 64, request)
-  await cache.read_frame(1)
-  const run = host_run(summarize_run(backing), cache.read_frame, cache.dispose)
-  const { session, host, errors } = make_session({ run })
-  const callbacks = stub_raf()
-  session.scrub(4)
-  callbacks.shift()?.(0)
-  flushSync()
-  expect(host.index).toBe(4)
-  expect(session.numeric_frame?.header.step).toBe(40)
-  expect(session.loading).toBe(false)
-  expect(errors).toEqual([])
-  expect(request).toHaveBeenCalledTimes(1)
-  session.dispose()
-  run.dispose()
 })
