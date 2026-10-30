@@ -561,6 +561,9 @@ describe(`scrub vs commit`, () => {
       // a source that can't pipeline frees its decoder for the target instead
       expect(pending_idxs()).toEqual(read_concurrency ? [2, 4, 6] : [6])
       if (!read_concurrency) return
+      // the settled drag reads nothing ahead while the host still owes more than the cap
+      await vi.advanceTimersByTimeAsync(100)
+      expect(reads).toEqual([2, 4, 6])
       // a slow source trails the drag: frame 4 shows before the target lands, dropping 2
       await land(4)
       expect(session.scene_frame?.idx).toBe(4)

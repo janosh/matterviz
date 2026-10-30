@@ -397,8 +397,9 @@ export function create_trajectory_session(
     // Keep at least two waves busy; reservations bound both pending and completed frames.
     const concurrency = preparation ? run.preparation_concurrency : run.read_concurrency
     const playback_window = concurrency ? Math.max(2 * concurrency, Math.ceil(player.fps)) : 1
-    // A pipelining source holds at most read_concurrency unanswered reads, which a seek then
-    // waits behind (the host can't drop a request); answered ones fill the rest of the window
+    // A pipelining source holds at most read_concurrency unanswered reads (the displayed
+    // target's and trailing ones included), which a seek then waits behind (the host can't
+    // drop a request); answered ones fill the rest of the window
     const max_unanswered =
       preparation || !run.read_concurrency ? Infinity : run.read_concurrency
     const prefetch_limit = Math.min(
@@ -420,8 +421,11 @@ export function create_trajectory_session(
           protected_frames.add(idx)
           continue
         }
-        const unanswered = [...prefetched.values()].filter(({ result }) => is_promise(result))
-        if (unanswered.length >= max_unanswered) break
+        const unanswered =
+          Number(in_flight !== undefined) +
+          trailing.length +
+          [...prefetched.values()].filter(({ result }) => is_promise(result)).length
+        if (unanswered >= max_unanswered) break
         // Reserve only missing frames: a complete loop that fits remains reusable.
         // Playback permits one next frame even when the current frame exceeds its budget.
         bytes ??= current ? display_frame_bytes(current) : 0
