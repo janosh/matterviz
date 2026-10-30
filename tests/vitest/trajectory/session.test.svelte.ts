@@ -568,6 +568,12 @@ describe(`scrub vs commit`, () => {
       expect(pending_idxs()).toEqual([6])
       await land(6)
       expect(session.current_frame?.step).toBe(60)
+      // dragging back over a frame still in flight adopts its read instead of re-reading it
+      for (const idx of [7, 5, 7]) scrub_to(idx)
+      expect(reads.slice(3)).toEqual([7, 5])
+      await land(7)
+      expect(session.current_frame?.step).toBe(70)
+      expect(pending_idxs()).toEqual([])
       // held arrow keys (commits) trail too, and the target landing first drops older reads
       for (const idx of [1, 3, 5]) {
         session.commit(idx)
@@ -755,6 +761,7 @@ describe(`controller and playback`, () => {
     // a pipelining source keeps that many reads unanswered, within the cache budget
     [8, 64, [1, 2, 3, 4, 5, 6, 7, 8]],
     [8, 4, [1, 2, 3]],
+    [0, 64, [1]], // zero pipelines nothing, yet still reads one ahead
   ])(
     `plays with read_concurrency %s and cache_max_frames %i reading %o ahead`,
     async (read_concurrency, cache_max_frames, expected) => {

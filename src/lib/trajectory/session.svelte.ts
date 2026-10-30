@@ -232,14 +232,18 @@ export function create_trajectory_session(
   // trailing read is newer than the displayed frame. Other sources abort superseded reads,
   // which frees their decoder for the target.
   let in_flight_key: string | undefined
-  const trailing: AbortController[] = []
-  const supersede = (controllers: AbortController[]): void => {
-    for (const controller of controllers)
+  let in_flight_idx = -1
+  type Read = { controller: AbortController; idx: number }
+  const trailing: Read[] = []
+  const supersede = (reads: Read[]): void => {
+    for (const { controller } of reads)
       controller.abort(new DOMException(`Superseded by a newer frame request`, `AbortError`))
   }
   const drop_trailing = (): void => supersede(trailing.splice(0))
+  const trail_idx_of = (controller: AbortController): number =>
+    trailing.findIndex((read) => read.controller === controller)
   const cancel_in_flight = (trail = false): void => {
-    if (in_flight) trailing.push(in_flight)
+    if (in_flight) trailing.push({ controller: in_flight, idx: in_flight_idx })
     in_flight = undefined
     if (!trail) drop_trailing()
   }
@@ -327,6 +331,13 @@ export function create_trajectory_session(
       schedule_prefetch(run, frame_idx)
       return
     }
+    // A retained read of this frame (a drag back over it) is the target again, not a re-read
+    const retained = next ? -1 : trailing.findIndex(({ idx }) => idx === frame_idx)
+    if (retained !== -1) {
+      in_flight = trailing.splice(retained, 1)[0].controller
+      in_flight_idx = frame_idx
+      return
+    }
     let pending: Promise<SessionFrame>
     const controller = next?.controller ?? new AbortController()
     try {
@@ -344,6 +355,7 @@ export function create_trajectory_session(
     }
     in_flight = controller
     in_flight_key = request_key
+    in_flight_idx = frame_idx
     pending.then(
       (frame) => {
         // Cancelled preparation may still finish on the primary worker; never retain it.
@@ -353,7 +365,7 @@ export function create_trajectory_session(
           in_flight = undefined
           drop_trailing() // older reads would only step back
         } else {
-          const trail_idx = trailing.indexOf(controller)
+          const trail_idx = trail_idx_of(controller)
           if (trail_idx === -1) return
           supersede(trailing.splice(0, trail_idx))
           trailing.shift() // this read
@@ -362,7 +374,7 @@ export function create_trajectory_session(
         if (!in_flight) schedule_prefetch(run, frame_idx)
       },
       (error: unknown) => {
-        const trail_idx = trailing.indexOf(controller)
+        const trail_idx = trail_idx_of(controller)
         if (trail_idx !== -1) trailing.splice(trail_idx, 1)
         if (in_flight !== controller) return
         in_flight = undefined
@@ -387,7 +399,8 @@ export function create_trajectory_session(
     const playback_window = concurrency ? Math.max(2 * concurrency, Math.ceil(player.fps)) : 1
     // A pipelining source holds at most read_concurrency unanswered reads, which a seek then
     // waits behind (the host can't drop a request); answered ones fill the rest of the window
-    const max_unanswered = preparation ? Infinity : (run.read_concurrency ?? Infinity)
+    const max_unanswered =
+      preparation || !run.read_concurrency ? Infinity : run.read_concurrency
     const prefetch_limit = Math.min(
       player.is_playing ? playback_window : 2,
       cache_max_frames - 1,
