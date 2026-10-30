@@ -488,6 +488,21 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
       .map((rhs) => `${lhs.pane} × ${rhs.pane}`),
   )
   expect(overlaps).toEqual([])
+  // a 1px rule tops every pane below the first, drawn by it or a wrapper starting there
+  const unruled = await viewer.locator(`[data-pane]`).evaluateAll((nodes) => {
+    const first_top = nodes[0].getBoundingClientRect().top
+    return nodes.flatMap((node) => {
+      const { top } = node.getBoundingClientRect()
+      if (top - first_top < 1) return []
+      for (let el: Element | null = node; el && !el.matches(`.panes`); el = el.parentElement) {
+        const ruled = getComputedStyle(el).borderTopWidth === `1px`
+        // a wrapper's own border puts its content 1px below its top
+        if (ruled && Math.abs(el.getBoundingClientRect().top - top) < 2) return []
+      }
+      return [node.getAttribute(`data-pane`)]
+    })
+  })
+  expect(unruled).toEqual([])
   // each axis title within its plot's SVG, measured on screen (plots off screen hold their
   // last layout until scrolled into view)
   const plots = viewer.locator(`.scatter > svg`)
