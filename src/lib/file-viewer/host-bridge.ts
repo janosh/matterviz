@@ -11,6 +11,7 @@
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 
 import { display_idx } from '#lib/labels.js'
+import { host_frame_cache } from './host-frame-cache'
 import type { TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { to_error } from 'svelte-widgets/utils'
@@ -126,13 +127,29 @@ export async function request_large_file_content(
       if (data.command !== `large_file_response`) return false
       if (data.error) reject(new Error(data.error))
       else if (data.run_summary && typeof data.run_summary === `object`) {
+        const cache =
+          typeof data.frame_batch_size === `number` &&
+          Number.isInteger(data.frame_batch_size) &&
+          data.frame_batch_size > 0
+            ? host_frame_cache(
+                data.run_summary.frame_count,
+                data.run_summary.atom_count,
+                Math.min(64, data.frame_batch_size),
+                (start, count, signal) =>
+                  request_host_frames(file_path, filename, start, count, signal),
+              )
+            : undefined
         resolve(
           bind_host_properties(
             host_run(
               data.run_summary,
-              (frame_idx, signal) =>
-                request_host_frame(file_path, filename, frame_idx, signal),
-              () => stop_property_stream(),
+              cache?.read_frame ??
+                ((frame_idx, signal) =>
+                  request_host_frame(file_path, filename, frame_idx, signal)),
+              () => {
+                cache?.dispose()
+                stop_property_stream()
+              },
             ),
           ),
         )
@@ -159,6 +176,35 @@ const request_host_frame = (
       if (data.error) reject(new Error(data.error))
       else if (data.frame) resolve(data.frame)
       else reject(new Error(`Host returned no trajectory frame ${display_idx(frame_idx)}`))
+      return true
+    },
+    signal,
+  )
+}
+
+const request_host_frames = (
+  file_path: string,
+  filename: string,
+  start: number,
+  count: number,
+  signal: AbortSignal,
+): Promise<TrajectoryFrame[]> => {
+  if (!host_api) return Promise.reject(new Error(`No host bridge is available`))
+  return post_request(
+    host_api,
+    { command: `request_frames`, file_path, filename, start, count },
+    30_000,
+    `Trajectory frame batch timed out`,
+    (data, resolve, reject) => {
+      if (data.command !== `frames_response`) return false
+      if (data.error) reject(new Error(data.error))
+      else if (
+        data.start !== start ||
+        !Array.isArray(data.frames) ||
+        data.frames.length !== count
+      )
+        reject(new Error(`Malformed trajectory frame batch`))
+      else resolve(data.frames)
       return true
     },
     signal,

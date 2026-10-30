@@ -467,6 +467,58 @@ describe(`MatterViz Extension`, () => {
     )
   })
 
+  test(`serves bounded frame batches and rejects invalid ranges`, async () => {
+    const file_path = `/test/batched.extxyz`
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(
+      new TextEncoder().encode(
+        Array.from({ length: 70 }, (_, index) => `1\nframe=${index}\nH 0 0 ${index}\n`).join(
+          ``,
+        ),
+      ),
+    )
+    await handle_msg(large_file_msg(file_path, `open`), mock_webview)
+    expect(mock_webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: `large_file_response`,
+        frame_batch_size: 64,
+      }),
+    )
+    const batch = (start: number, count: number): WebviewToHostMessage => ({
+      command: `request_frames`,
+      file_path,
+      filename: `batched.extxyz`,
+      request_id: `batch`,
+      start,
+      count,
+    })
+    await handle_msg(batch(64, 6), mock_webview)
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith({
+      command: `frames_response`,
+      request_id: `batch`,
+      start: 64,
+      frames: Array.from({ length: 6 }, (_, index) =>
+        expect.objectContaining({ step: 64 + index }),
+      ),
+    })
+    for (const [start, count] of [
+      [-1, 1],
+      [0, 65],
+      [0, 0],
+      [69, 2],
+      [70, 1],
+      [0.5, 1],
+    ]) {
+      await handle_msg(batch(start, count), mock_webview)
+      expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          command: `frames_response`,
+          request_id: `batch`,
+          error: expect.any(String),
+        }),
+      )
+    }
+  })
+
   // Simultaneous opens share one read. A file change while it loads evicts the load, so the
   // re-request after fileUpdated indexes the new bytes instead of receiving the stale run
   test(`concurrent large-file requests share one load that a file change evicts`, async () => {
