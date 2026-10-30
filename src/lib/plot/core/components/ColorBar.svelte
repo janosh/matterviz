@@ -17,6 +17,7 @@
   import { observe_size } from '#lib/plot/core/utils.js'
   import {
     DEFAULT_FONT_SPEC,
+    font_spec_to_css,
     measure_text_line,
     resolve_font_spec,
   } from '#lib/plot/core/text-metrics.js'
@@ -210,7 +211,9 @@
     bar_px = width
     const label = node.querySelector<HTMLElement>(`.tick-label`)
     if (label) {
-      tick_font = resolve_font_spec(label)
+      // A new font object per resize would re-measure every tick label
+      const font = resolve_font_spec(label)
+      if (font_spec_to_css(font) !== font_spec_to_css(tick_font)) tick_font = font
       const style = getComputedStyle(label)
       const pads = [style.paddingLeft, style.paddingRight]
       tick_spacing = pads.reduce((sum, pad) => sum + Number(pad.replace(`px`, ``)), 4)

@@ -1,7 +1,7 @@
 import { line } from 'd3-shape'
 import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
 import type { Vec2 } from '#lib/math.js'
-import type { AxisRanges, DataSeries } from '#lib/plot/index.js'
+import type { AxisKey, AxisRanges, DataSeries } from '#lib/plot/index.js'
 import { plot_color } from '#lib/colors/index.js'
 import { get_series_symbol } from '#lib/plot/core/data-transform.js'
 import type { LegendFill } from '#lib/plot/scatter/scatter-data.js'
@@ -10,11 +10,13 @@ import {
   build_series_legend_items,
   drawn_xy,
   filter_series_to_ranges,
+  line_reaches_view,
   lookalike_legend_label,
   materialize_series_points,
   pick_tooltip_bg,
   project_line_points,
   strict_x_direction,
+  scatter_line_style,
 } from '#lib/plot/scatter/scatter-data.js'
 import { describe, expect, test } from 'vitest'
 
@@ -242,6 +244,30 @@ describe(`build_series_legend_items and build_fill_legend_items`, () => {
     ...build_fill_legend_items(fills),
   ]
 
+  // a hollow first point (e.g. a flagged one) says nothing about the series' colour: its
+  // line and legend symbol take the next shown point's (unset: the palette's); a series hollow
+  // throughout keeps its stroke-coloured symbol and a palette line
+  test.each([
+    [
+      `hollow first, unset rest`,
+      plot_color(0),
+      plot_color(0),
+      [{ fill: `transparent`, stroke: `gray` }, {}],
+    ],
+    [
+      `hollow first, filled rest`,
+      `teal`,
+      `teal`,
+      [{ fill: `none`, stroke: `gray` }, { fill: `teal` }],
+    ],
+    [`hollow throughout`, `gray`, plot_color(0), [{ fill: `transparent`, stroke: `gray` }]],
+  ])(`%s: legend symbol %s, line %s`, (_desc, symbol_color, line_color, point_style) => {
+    const series: DataSeries = { x: [1, 2], y: [1, 2], markers: `line+points`, point_style }
+    const [row] = build_series_legend_items([series], color_scale)
+    expect(row.display_style.symbol_color).toBe(symbol_color)
+    expect(scatter_line_style(series, 0, color_scale).color).toBe(line_color)
+  })
+
   test(`multi-series with fills: labels, default styles, fill entries`, () => {
     const series: DataSeries[] = [
       { x: [1], y: [1], label: `alpha`, point_style: { symbol_type: `Square` } },
@@ -392,6 +418,57 @@ describe(`pick_tooltip_bg`, () => {
   ])(`%s`, (_desc, point, series, expected) => {
     expect(pick_tooltip_bg(point, series, color_scale)).toBe(expected)
   })
+})
+
+// The view is x [0, 10], y [0, 10] (y2 [-50, 50]): a line whose vertices all sit on one side
+// of it draws nothing, unless its curve can overshoot them, underlays bring their own, or a
+// log axis holds it at its floor
+// oxfmt-ignore
+test.each<[string, Partial<DataSeries>, boolean, AxisKey[]?]>([
+  [`inside`, { x: [1, 2], y: [1, 2] }, true],
+  [`crossing the view between two outside vertices`, { x: [5, 5], y: [-5, 15] }, true],
+  [`touching the top edge`, { x: [1, 2], y: [10, 12] }, true],
+  [`above`, { x: [1, 2], y: [11, 12] }, false],
+  [`below`, { x: [1, 2], y: [-3, -2] }, false],
+  [`left`, { x: [-3, -2], y: [1, 2] }, false],
+  [`right`, { x: [11, 12], y: [1, 2] }, false],
+  [`above on y but inside y2`, { x: [1, 2], y: [11, 12], y_axis: `y2` }, true],
+  [`a natural curve above (may overshoot)`, { x: [1, 2], y: [11, 12], line_style: { curve: `natural` } }, true],
+  [`a step curve above`, { x: [1, 2], y: [11, 12], line_style: { curve: `step` } }, false],
+  [`with underlays above`, { x: [1, 2], y: [11, 12], line_underlays: [{ x: [1], y: [1] }] }, true],
+  [`below a log y axis (held at its floor)`, { x: [1, 2], y: [-3, -2] }, true, [`y`]],
+  [`left of a log x axis (x is not floored)`, { x: [-3, -2], y: [1, 2] }, false, [`x`]],
+  [`above a log y axis`, { x: [1, 2], y: [11, 12] }, false, [`y`]],
+  [`below y while only y2 is log`, { x: [1, 2], y: [-3, -2] }, false, [`y2`]],
+])(`line_reaches_view: %s`, (_desc, partial, expected, log_axes = []) => {
+  const [series] = materialize_series_points([{ x: [], y: [], markers: `line`, ...partial }])
+  expect(line_reaches_view(series, ranges, new Set(log_axes))).toBe(expected)
+})
+
+// A break lifts the pen before its point: a NaN vertex (Line's d3 generator skips it, ending
+// the subpath) unless the line has no point yet or already ended on one
+test.each<[string, number[], number[], (number | null)[]]>([
+  [`none`, [0, 1, 2, 3], [], [0, 1, 2, 3]],
+  [`one`, [0, 1, 2, 3], [2], [0, 1, null, 2, 3]],
+  [`at the first point`, [0, 1, 2, 3], [0, 2], [0, 1, null, 2, 3]],
+  [`after an invalid point`, [0, NaN, 2, 3], [1, 2], [0, null, 2, 3]],
+  [
+    `repeated (an empty branch), then another`,
+    [0, 1, 2, 3],
+    [2, 2, 3],
+    [0, 1, null, 2, null, 3],
+  ],
+])(`project_line_points line_breaks: %s`, (_desc, y, line_breaks, expected) => {
+  const data = { x: y.map((_, idx) => idx), y, line_breaks }
+  const points = project_line_points(
+    data,
+    (val) => val,
+    (val) => val,
+    [0, 3],
+    0,
+    `linear`,
+  )
+  expect(points.map(([, py]) => (Number.isNaN(py) ? null : py))).toEqual(expected)
 })
 
 describe(`viewport line projection`, () => {

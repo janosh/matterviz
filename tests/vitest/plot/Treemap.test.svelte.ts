@@ -5,6 +5,7 @@ import { type ComponentProps, flushSync, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { expect_a1_hover, tree } from './hierarchy-fixtures'
 import {
+  count_attribute_updates,
   export_via_pane,
   fire,
   flush_render,
@@ -59,6 +60,13 @@ describe(`Treemap`, () => {
     expect(cell_rect(plot, `A`).getAttribute(`role`)).toBe(`button`)
     expect(cell_rect(plot, `A`).getAttribute(`aria-label`)).toBe(`A: 10`)
     expect(plot.querySelectorAll(`.cells rect[tabindex="0"]`)).toHaveLength(1)
+    // focus moves the tab stop A -> B: only those two cells re-apply their attributes
+    const cells = [...plot.querySelectorAll(`.cells rect`)]
+    const updates = count_attribute_updates(cells)
+    await fire(cell_rect(plot, `B`), new FocusEvent(`focusin`, { bubbles: true }))
+    expect(cell_rect(plot, `B`).getAttribute(`tabindex`)).toBe(`0`)
+    const moved = new Set<Element>([cell_rect(plot, `A`), cell_rect(plot, `B`)])
+    expect(updates.map(Boolean)).toEqual(cells.map((cell) => moved.has(cell)))
   })
 
   test.each([
@@ -226,6 +234,25 @@ describe(`Treemap`, () => {
     flushSync()
     // animated: B (zero-size while zoomed into A) is not rendered on the first frame
     expect(shown_idxs(plot)).not.toContain(IDX.B)
+    vi.restoreAllMocks()
+  })
+
+  // The chrome takes its color from the settled tiling: zooming out of leaf B, the corner's
+  // A is still collapsed on the tween's first frame but already tints the chrome
+  test(`chrome color follows the settled tiling through a zoom tween`, async () => {
+    let now = 0
+    vi.spyOn(performance, `now`).mockImplementation(() => now)
+    // a dark B tints the chrome white while it fills the view, A's red tints it black
+    const data = [tree[0], { ...tree[1], color: `#20306e` }]
+    const plot = await mount_sized(Treemap, { data, zoom_root_id: `B` }, size)
+    const chrome_color = () =>
+      query(plot, `.header-controls`).style.getPropertyValue(`--chart-chrome-color`)
+    expect(chrome_color()).toBe(`white`)
+    now = 2000
+    plot.querySelector<HTMLButtonElement>(`.breadcrumb`)?.click() // 'all'
+    flushSync()
+    expect(shown_idxs(plot)).not.toContain(IDX.A)
+    expect(chrome_color()).toBe(`black`)
     vi.restoreAllMocks()
   })
 

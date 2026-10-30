@@ -15,7 +15,7 @@
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { html_to_text } from '#lib/utils.js'
-  import type { Vec2, Vec3 } from '#lib/math.js'
+  import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {
     AxisConfig,
@@ -59,6 +59,7 @@
     bz_popup_props = {},
     line_kwargs = {},
     path_mode = `strict`,
+    path_length,
     show_legend,
     x_axis = {},
     y_axis = {},
@@ -102,6 +103,10 @@
     >
     line_kwargs?: LineKwargs
     path_mode?: PathMode
+    // x length the plotted path spans, its segments keeping their proportions (default: its own
+    // reciprocal-space distance). A sweep fixes it, so frames whose cell (and so path length)
+    // changes share one x axis instead of rescaling ticks and lines on every frame.
+    path_length?: number
     // Plot x-range of every plotted path segment, keyed by segment key (read-only output)
     x_positions?: Record<string, Vec2>
     // Horizontal line in the data unit (THz or eV) whatever `units` displays, like Dos
@@ -235,14 +240,25 @@
       ...canonical_keys.filter((key) => segments_to_plot.has(key)),
       ...[...segments_to_plot].filter((key) => !canonical_keys.includes(key)),
     ]
-    const positions: Record<string, Vec2> = {}
-    let current_x = 0
-    for (const key of ordered) {
+    const lengths = ordered.map((key) => {
       const [band_structure, branch] = all_segments[key][0]
-      const segment_len =
+      return (
         band_structure.distance[branch.end_index] - band_structure.distance[branch.start_index]
-      positions[key] = [current_x, current_x + segment_len]
-      current_x += segment_len
+      )
+    })
+    const total = lengths.reduce((sum, len) => sum + len, 0)
+    // Each boundary scaled whole, so the path ends at exactly path_length, and rounded to 1e-12
+    // of it: frames whose paths differ only in scale (a sweep's) then place their ticks at the
+    // very same x, which lets every axis reuse its tick layout
+    const place = (raw_x: number): number => {
+      if (path_length === undefined || !(total > 0)) return raw_x
+      return (Math.round((raw_x / total) * 1e12) / 1e12) * path_length
+    }
+    const positions: Record<string, Vec2> = {}
+    let raw_x = 0
+    for (const [idx, key] of ordered.entries()) {
+      positions[key] = [place(raw_x), place(raw_x + lengths[idx])]
+      raw_x += lengths[idx]
     }
     return positions
   })
@@ -275,54 +291,69 @@
       const px_per_width = width_max > 0 ? (max_width * scale) / width_max : 0
       const spin_mode = structure_spin_mode(band_structure)
 
-      for (const [branch_idx, branch] of band_structure.branches.entries()) {
-        const segment_key = keys[branch_idx]
-        if (!segments_to_plot.has(segment_key)) continue
-        const start_idx = branch.start_index
-        const end_idx = branch.end_index + 1 // exclusive
-        const x_vals = Array.from({ length: end_idx - start_idx }, (_, offset) =>
-          helpers.branch_x(
-            band_structure,
-            branch,
-            internal_x_positions[segment_key],
-            start_idx + offset,
-          ),
-        )
-
-        for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
-          const y_up = convert_band_values(
-            band_structure.bands[band_idx].slice(start_idx, end_idx),
+      // The plotted branches in x order. Each band (and spin) is one series across them, its
+      // line lifting at every branch start: the lines of separate series per branch, but one
+      // component, path and hover target per band instead of one per band and branch.
+      const branches = band_structure.branches
+        .flatMap((branch, branch_idx) => {
+          const segment_key = keys[branch_idx]
+          const x_range = internal_x_positions[segment_key]
+          if (!segments_to_plot.has(segment_key) || !x_range) return []
+          const start_idx = branch.start_index
+          const end_idx = branch.end_index + 1 // exclusive
+          const x_vals = Array.from({ length: end_idx - start_idx }, (_, offset) =>
+            helpers.branch_x(band_structure, branch, x_range, start_idx + offset),
           )
-          const is_acoustic = helpers.classify_acoustic(
-            band_structure,
-            band_idx,
-            gamma_indices,
-          )
-          const style_of = (spin: `up` | `down`) =>
-            get_line_style(color, band_idx, spin, is_acoustic === true, structure_label)
-          const spin_down_band = band_structure.spin_down_bands?.[band_idx]
-          const y_down =
-            band_type === `electronic` && spin_down_band && spin_down_band.length >= end_idx
-              ? convert_band_values(spin_down_band.slice(start_idx, end_idx))
-              : null
+          return [{ segment_key, x_start: x_range[0], start_idx, end_idx, x_vals }]
+        })
+        .toSorted((lhs, rhs) => lhs.x_start - rhs.x_start)
 
-          // Spin channels to draw: [values, spin, label, line style]
-          const channels: [number[], `up` | `down`, string, DataSeries[`line_style`]][] = []
-          if (spin_mode !== `down_only`) {
-            const label_up = y_down ? `${structure_label} (↑)` : structure_label
-            channels.push([y_up, `up`, label_up, style_of(`up`)])
-          }
-          if (y_down && spin_mode !== `up_only`) {
-            const { stroke, stroke_width } = style_of(`down`)
-            const style_down = {
+      for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
+        const is_acoustic = helpers.classify_acoustic(band_structure, band_idx, gamma_indices)
+        const style_of = (spin: `up` | `down`) =>
+          get_line_style(color, band_idx, spin, is_acoustic === true, structure_label)
+        const spin_down_band =
+          band_type === `electronic` ? band_structure.spin_down_bands?.[band_idx] : undefined
+
+        // Spin channels to draw, each with its energies over the whole path
+        const channels: {
+          spin: `up` | `down`
+          series_label: string
+          line_style: DataSeries[`line_style`]
+          values: number[]
+        }[] = []
+        if (spin_mode !== `down_only`) {
+          channels.push({
+            spin: `up`,
+            series_label: spin_down_band ? `${structure_label} (↑)` : structure_label,
+            line_style: style_of(`up`),
+            values: band_structure.bands[band_idx],
+          })
+        }
+        if (spin_down_band && spin_mode !== `up_only`) {
+          const { stroke, stroke_width } = style_of(`down`)
+          channels.push({
+            spin: `down`,
+            series_label: `${structure_label} (↓)`,
+            line_style: {
               stroke,
               line_dash: `4,2`,
               stroke_width: Math.max(1, stroke_width - 0.1),
-            }
-            channels.push([y_down, `down`, `${structure_label} (↓)`, style_down])
-          }
-          for (const [y_vals, spin, series_label, line_style] of channels) {
-            const metadata = helpers.build_point_metadata({
+            },
+            values: spin_down_band,
+          })
+        }
+        for (const { spin, series_label, line_style, values } of channels) {
+          const [x, y, metadata, line_breaks] = [[], [], [], []] as [
+            number[],
+            number[],
+            helpers.BandPointMeta[],
+            number[],
+          ]
+          for (const { start_idx, end_idx, x_vals } of branches) {
+            if (values.length < end_idx) continue // a channel short of this branch
+            const y_vals = convert_band_values(values.slice(start_idx, end_idx))
+            const branch_metadata = helpers.build_point_metadata({
               x_vals,
               y_vals,
               band_idx,
@@ -331,37 +362,52 @@
               bs: band_structure,
               start_idx,
             })
-            for (const { slope } of metadata) {
+            for (const { slope } of branch_metadata) {
               if (slope !== null && Number.isFinite(slope)) {
                 max_slope = Math.max(max_slope, Math.abs(slope))
               }
             }
-            all_series.push({
-              id: JSON.stringify([label, segment_key, band_idx, spin]),
-              legend_id: JSON.stringify([label, spin]),
-              x: x_vals,
-              y: y_vals,
-              markers,
-              label: series_label,
-              line_style,
-              metadata,
-            })
+            if (x.length > 0) line_breaks.push(x.length)
+            for (let idx = 0; idx < x_vals.length; idx++) {
+              x.push(x_vals[idx])
+              y.push(y_vals[idx])
+              metadata.push(branch_metadata[idx])
+            }
           }
-
+          if (x.length === 0) continue
+          all_series.push({
+            id: JSON.stringify([label, band_idx, spin]),
+            legend_id: JSON.stringify([label, spin]),
+            x,
+            y,
+            line_breaks,
+            markers,
+            label: series_label,
+            line_style,
+            metadata,
+          })
+        }
+      }
+      // fat-band ribbons stay one closed area per branch and band, branch by branch
+      for (const { segment_key, start_idx, end_idx, x_vals } of branches) {
+        for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
           const half_widths = (band_structure.band_widths?.[band_idx] ?? [])
             .slice(start_idx, end_idx)
             .map((width) => (Number.isFinite(width) && width > 0 ? width * px_per_width : 0))
           // ribbons widen the spin-up line, so they go when it does
-          if (spin_mode !== `down_only` && half_widths.some((half_width) => half_width > 0)) {
-            all_ribbons.push({
-              x_values: x_vals,
-              y_values: y_up,
-              half_widths,
-              color: ribbon_color ?? color,
-              opacity,
-              key: `${structure_label}-${segment_key}-${band_idx}`,
-            })
+          if (spin_mode === `down_only` || !half_widths.some((half_width) => half_width > 0)) {
+            continue
           }
+          all_ribbons.push({
+            x_values: x_vals,
+            y_values: convert_band_values(
+              band_structure.bands[band_idx].slice(start_idx, end_idx),
+            ),
+            half_widths,
+            color: ribbon_color ?? color,
+            opacity,
+            key: `${structure_label}-${segment_key}-${band_idx}`,
+          })
         }
       }
       scales.push(...Array(all_series.length - first_series).fill(max_slope || 1))
@@ -462,7 +508,20 @@
   // === Mode values (e.g. λ_qν) on the path ===
   // Placed in the first band structure's reciprocal lattice (its q-points' frame), else the
   // structure's. Malformed values or none on the path only drop the markers, with a notice.
-  let mode_overlay = $derived.by((): { markers: ModeValueMarker[]; error?: string } => {
+  type ModeOverlay = { markers: ModeValueMarker[]; error?: string }
+  // Each frame's markers once: a sweep revisits frames and a step can re-run this derived, and
+  // validating and projecting a q mesh is the costly part. Keyed by the mode values, valid for
+  // the band structure, lattice and path layout they were placed on.
+  const mode_overlays = new WeakMap<
+    ModeValues,
+    {
+      band_structure: BaseBandStructure
+      lattice: Matrix3x3
+      positions: string
+      overlay: ModeOverlay
+    }
+  >()
+  let mode_overlay = $derived.by((): ModeOverlay => {
     const band_structure = structures[0]?.bs
     if (!mode_values || !band_structure) return { markers: [] }
     const label = html_to_text(mode_values.label) // notices are plain text
@@ -473,25 +532,47 @@
         error: `${label} needs a reciprocal lattice (band data or structure) to place its q-points on the path`,
       }
     }
-    try {
-      const parsed = normalize_mode_values(mode_values)
-      const projections = project_qpoints_onto_path(
-        band_structure,
-        lattice,
-        parsed.qpoints,
-        internal_x_positions,
-      )
-      if (parsed.qpoints.length > 0 && projections.length === 0) {
-        return {
-          markers: [],
-          error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
+    const positions = JSON.stringify(internal_x_positions)
+    const cached = mode_overlays.get(mode_values)
+    if (
+      cached?.band_structure === band_structure &&
+      cached.lattice === lattice &&
+      cached.positions === positions
+    )
+      return cached.overlay
+    const overlay = ((): ModeOverlay => {
+      try {
+        const parsed = normalize_mode_values(mode_values)
+        const projections = project_qpoints_onto_path(
+          band_structure,
+          lattice,
+          parsed.qpoints,
+          internal_x_positions,
+        )
+        if (parsed.qpoints.length > 0 && projections.length === 0) {
+          return {
+            markers: [],
+            error: `None of the ${parsed.qpoints.length} q-points of ${label} lie on the band path`,
+          }
         }
+        return { markers: thin_mode_markers(mode_value_markers(parsed, projections), x_range) }
+      } catch (exc) {
+        return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
       }
-      return { markers: thin_mode_markers(mode_value_markers(parsed, projections), x_range) }
-    } catch (exc) {
-      return { markers: [], error: `Invalid ${label}: ${to_error(exc).message}` }
-    }
+    })()
+    mode_overlays.set(mode_values, { band_structure, lattice, positions, overlay })
+    return overlay
   })
+  // the colour bar for the mode markers, one object while its title holds: a new one per frame
+  // of a sweep would re-measure the bar (a forced layout) though nothing on it changed
+  const mode_bar_title = $derived(
+    mode_overlay.markers.length > 0 && mode_values ? mode_values.label : null,
+  )
+  const mode_color_bar = $derived(
+    mode_bar_title !== null && rest.color_bar !== null
+      ? { title: mode_bar_title, ...rest.color_bar }
+      : rest.color_bar,
+  )
   // resolved to a concrete colour, which the canvas renderer (past 1000 markers) needs
   const mode_marker_stroke = resolve_backdrop(() => wrapper, {
     css_var: [`--bands-mode-marker-stroke`, `--page-bg`],
@@ -513,6 +594,8 @@
       size_values: values,
       // a hairline in the page's own colour keeps overlapping markers apart in either theme
       point_style: {
+        // its own shape, not the next in the series cycle (which moves with the band count)
+        symbol_type: `Triangle`,
         stroke: mode_marker_stroke.current,
         stroke_width: 0.5,
         stroke_opacity: 1,
@@ -764,10 +847,10 @@
     id={identifier}
     data-testid={data_testid}
     series={mode_series ? [...series_data, mode_series] : series_data}
-    color_bar={mode_series && rest.color_bar !== null
-      ? { title: mode_series.label, ...rest.color_bar }
-      : rest.color_bar}
+    color_bar={mode_color_bar}
     size_legend={rest.size_legend ?? null}
+    point_tween={rest.point_tween ?? (mode_series ? { duration: 0 } : undefined)}
+    marker_renderer={rest.marker_renderer ?? (mode_series ? `canvas` : `auto`)}
     {point_hit_padding}
     {fill_regions}
     bind:wrapper

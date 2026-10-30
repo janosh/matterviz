@@ -27,9 +27,11 @@
     curve?: LineCurve
   } = $props()
 
-  // null/undefined curves mean monotone; unknown names from untyped (Python/JSON) callers throw
+  // null/undefined curves mean monotone; unknown names from untyped (Python/JSON) callers throw.
+  // A non-finite point lifts the pen (a series' line_breaks), the line resuming after it.
   const line_generator = $derived(
     line<Vec2>()
+      .defined(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
       .x((point) => point[0])
       .y((point) => point[1])
       .curve(line_curve_factory(curve)),
@@ -49,11 +51,12 @@
     return typeof duration === `number` && duration <= 0
   })
 
-  // Zero duration rather than skipping the retarget while disabled: `current` would otherwise
-  // freeze at whatever it last animated to, and re-enabling would jump back there and morph
-  // forward again.
-  const live = () => (tween_disabled ? { duration: 0 } : line_tween)
-  const tweened_line = create_settling_tween(() => line_path, default_tween, { live })
+  // Disabled, the tween sits out (a plot past its morph budget has hundreds of lines) and snaps
+  // to the path once re-enabled instead of morphing from where it was left
+  const tweened_line = create_settling_tween(() => line_path, default_tween, {
+    live: () => line_tween,
+    enabled: () => !tween_disabled,
+  })
 
   const line_d = $derived(tween_disabled ? line_path : tweened_line.current)
 </script>

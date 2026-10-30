@@ -39,7 +39,7 @@ import {
   slice_range,
   strip_closing_faces,
 } from '#lib/chempot-diagram/compute.js'
-import { get_domain_color_data } from '#lib/chempot-diagram/color.js'
+import { get_domain_color_data, get_formula_color_data } from '#lib/chempot-diagram/color.js'
 import type { ChemPotColorMode } from '#lib/chempot-diagram/types.js'
 import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import type { ColorScaleConfig } from '#lib/plot/core/types.js'
@@ -1405,10 +1405,11 @@ describe(`best_form_energy_for_formula`, () => {
       formulas,
       color_mode,
       color_scale,
-      entries: color_entries,
+      ...get_formula_color_data(color_entries),
       el_refs: AB_REFS,
-      energy_stats: get_energy_stats_by_formula(color_entries),
     })
+    // grouped once per entries array, not per drawn-formula change
+    expect(get_formula_color_data(color_entries)).toBe(get_formula_color_data(color_entries))
     expect(formulas.map((formula) => by_formula.get(formula))).toEqual(colors)
     expect(color_bar?.color_scale.value_range).toEqual(value_range)
   })

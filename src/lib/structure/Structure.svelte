@@ -576,7 +576,10 @@
     tool_source = session.tool_input
     tool_source_revision = tool_overlay ? tool_input_revision : ``
   }
-  const apply_tool_overlay = (published: StructureToolPrediction | null): void => {
+  const apply_tool_overlay = (
+    published: StructureToolPrediction | null,
+    adopt_source = true,
+  ): void => {
     // A transient overlay over its run's result previews other field values (e.g. an earlier
     // SCF step) or geometry (a relaxation step) on the same layers: the result stays the
     // prediction with its site properties and colors, keeps whatever the preview omits, and
@@ -623,7 +626,7 @@
       for (const identifier of owned_volume_ids)
         if (!volume_by_id.has(identifier)) removed_tool_fields.add(identifier)
     tool_overlay = overlay
-    adopt_tool_source()
+    if (adopt_source) adopt_tool_source()
     const restore_active =
       active_volume_id !== undefined && owned_volume_set.has(active_volume_id)
     const preserve_active = restore_active || (same_run && owned_volume_ids.length > 0)
@@ -728,7 +731,12 @@
     clear_stale_prediction()
     return tool_controller.start_run(provenance)
   }
-  onDestroy(() => tool_controller.dispose())
+  // Prediction output must not outlive the viewer in a caller's bound document, so release
+  // it, but leave the input unread: teardown reads re-run callers' stale deriveds
+  onDestroy(() => {
+    tool_controller.dispose()
+    if (tool_overlay) apply_tool_overlay(null, false)
+  })
   function load_prediction(incoming: StructureToolPrediction): void {
     const snapshot = copy_prediction(incoming)
     structure = snapshot.input
@@ -1535,7 +1543,6 @@
                 multi_view_control_visible={controls_config.visible(`multi-view`)}
                 {multi_view_unavailable_reason}
                 structure={tool_structure}
-                supercell_loading={session.supercell_loading}
                 {sym_data}
                 {polyhedra_rendered_elements}
                 {displacement_summary}
@@ -1575,7 +1582,6 @@
                     bind:supercell_scaling
                     bind:cell_type
                     {sym_data}
-                    loading={session.supercell_loading}
                     analyzing={symmetry_analyzing}
                   />
                 {/if}

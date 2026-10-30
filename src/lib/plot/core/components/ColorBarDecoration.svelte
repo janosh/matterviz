@@ -4,6 +4,7 @@
     PlacedDecoration,
   } from '#lib/plot/core/placed-decoration.svelte.js'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
+  import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // Absolutely positioned wrapper around a solver-placed ColorBar (see
@@ -27,6 +28,15 @@
     wrapper_style,
     ...bar_props
   } = $derived(color_bar)
+  // The bar's tick labels are absolutely positioned, so a new scale or label resizes no box the
+  // decoration observes: measure its footprint again once the DOM shows it, and only then
+  const content_key = $derived(JSON.stringify(bar_props))
+  let measured_key = untrack(() => content_key)
+  $effect(() => {
+    if (content_key === measured_key) return
+    measured_key = content_key
+    decoration.content_changed()
+  })
 </script>
 
 <div

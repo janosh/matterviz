@@ -14,6 +14,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { rgb } from 'd3-color'
   import { symbol, symbolCircle } from 'd3-shape'
+  import { untrack } from 'svelte'
   import { cubicOut } from 'svelte/easing'
   import type { SVGAttributes } from 'svelte/elements'
   import type { TweenOptions } from 'svelte/motion'
@@ -117,6 +118,7 @@
     },
   )
   const { radius, fill } = $derived(tweened.current)
+  const marker_transform = () => `translate(${tweened.current.x} ${tweened.current.y})`
 
   // The ring's CSS pulse animates an SVG transform, which costs a style recalc and layout per
   // frame even off screen (8 rings scrolled away kept a page at ~100 ms/s CPU), so it pauses
@@ -135,8 +137,12 @@
   })
 </script>
 
+<!-- A spread puts every attribute in one effect that re-reads `rest`, so the tween's frames
+     move the marker through the attachment: the attribute (untracked) is only its first
+     position, also when rendered on the server -->
 <g
-  transform="translate({tweened.current.x} {tweened.current.y})"
+  transform={untrack(() => marker_transform())}
+  {@attach (node: SVGGElement) => node.setAttribute(`transform`, marker_transform())}
   style="--hover-scale: {hover.scale ?? 1.5}; {hover.stroke === ``
     ? ``
     : `--hover-stroke: ${hover.stroke ?? `white`}; `}--hover-stroke-width: {hover.stroke_width ??

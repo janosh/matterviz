@@ -59,7 +59,7 @@
   import { has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import {
     build_legend_items,
-    first_point_style,
+    shown_point_style,
     series_text,
   } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
@@ -468,13 +468,13 @@
     category_tick_labels(category_list, plot_axes[cat_axis].ticks),
   )
 
-  // Legend swatch: bars show a square, line series a line and/or their first point's symbol
+  // Legend swatch: bars show a square, line series a line and/or their shown point's symbol
   const legend_swatch = (srs: BarSeries<Metadata>): LegendItem[`display_style`] => {
     const color = series_color(srs)
     if (srs.render_mode !== `line`) {
       return { symbol_type: `Square`, symbol_color: color, pattern: srs.pattern }
     }
-    const point_style = first_point_style(srs)
+    const point_style = shown_point_style(srs)
     const first_color_value = srs.color_values?.[0]
     return {
       ...(has_marker(srs, `line`)
@@ -513,6 +513,10 @@
     return srs?.visible !== false && drawn ? get_bar_data(series_idx, bar_idx, color) : null
   }
   const hover_info = $derived(mark_info(pin.shown(hover_key)))
+  // pointer moves within one mark keep its key, so its lit styles and tooltip don't re-run
+  const set_hover_key = (next: MarkKey) => {
+    if (!pin.same(next, hover_key) || next.color !== hover_key?.color) hover_key = next
+  }
 
   function get_bar_data(
     series_idx: number,
@@ -579,7 +583,7 @@
     (series_idx: number, bar_idx: number, color: string) =>
     (event: MouseEvent | FocusEvent) => {
       hovered = true
-      hover_key = { series_idx, bar_idx, color }
+      set_hover_key({ series_idx, bar_idx, color })
       on_bar_hover?.({ ...get_bar_data(series_idx, bar_idx, color), event })
     }
 
@@ -715,7 +719,7 @@
                 if (!point) return clear_point_hover()
                 hovered = true
                 const fill = line_point_fill(point, color)
-                hover_key = { series_idx, bar_idx: point.idx, color: fill, line: true }
+                set_hover_key({ series_idx, bar_idx: point.idx, color: fill, line: true })
                 const point_data = get_bar_data(series_idx, point.idx, fill)
                 on_point_hover?.({ ...point_data, event: evt, point })
               }}

@@ -44,6 +44,7 @@ import {
   ELEMENTARY_CHARGE_C,
   EV_PER_A3_TO_GPA,
   FS_IN_ASE_TIME,
+  HARTREE_TO_EV,
 } from '#lib/constants.js'
 import { ATOM_BATCH_SIZE } from '#lib/trajectory/atom-batches.js'
 import { hotspot_mean } from '#lib/trajectory/hotspots.js'
@@ -1526,20 +1527,29 @@ describe(`XYZ`, () => {
   })
 
   it.each<[string, Record<string, number>]>([
-    [`frame=5`, {}], // 'e' of frame must not match energy
-    [`step=100 dt=0.5`, {}], // 'p' of step / 't' of dt must not match pressure/temperature
-    [`E = 2.0`, { energy: 2.0 }],
-    [`Temperature: 300`, { temperature: 300 }],
+    [`frame=5`, { step: 5 }], // 'e' of frame must not match energy
+    [`step=100 dt=0.5`, { step: 100 }], // 'p' of step / 't' of dt must not match pressure/temperature
+    [`E = 2.0`, { step: 0, energy: 2.0 }],
+    [`Temperature: 300`, { step: 0, temperature: 300 }],
     // Fortran exponents were dropped from comment scalars though read in every atom column
-    [`energy=-1.5D-3 pressure=2.0d+1`, { energy: -0.0015, pressure: 20 }],
-    // CP2K separates its pairs with commas, which dropped every value but the last
-    [`i =        5, time =        2.500, E =     -17.1655`, { time: 2.5, energy: -17.1655 }],
-    [`time=1,2 E=3`, { energy: 3 }], // an inner comma is no separator
+    [`energy=-1.5D-3 pressure=2.0d+1`, { step: 0, energy: -0.0015, pressure: 20 }],
+    // a separator comma ended the bare value, which then read as NaN and was dropped
+    [`energy=-1.5, temperature=300`, { step: 0, energy: -1.5, temperature: 300 }],
+    // CP2K MD and geometry-optimization headers: `i` is the step, `E` in Hartree
+    [
+      ` i =        5, time =        2.500, E =       -34.4655669852`,
+      { step: 5, time: 2.5, energy: -34.4655669852 * HARTREE_TO_EV },
+    ],
+    [
+      ` i =        3, E =      -17.1643447508`,
+      { step: 3, energy: -17.1643447508 * HARTREE_TO_EV },
+    ],
+    [`time=1,2 E=3`, { step: 0, energy: 3 }], // an inner comma is no separator
   ])(`anchors comment metadata keys at word boundaries: %s`, async (comment, expected) => {
     const frame = xyz_frame([`H 0.0 0.0 0.0`], comment)
-    const { energy, pressure, temperature, time } =
-      (await open(`${frame}\n${frame}`, `test.xyz`)).preview.metadata ?? {}
-    expect({ energy, pressure, temperature, time }).toEqual(expected)
+    const { metadata, step } = (await open(`${frame}\n${frame}`, `test.xyz`)).preview
+    const { energy, pressure, temperature, time, i } = metadata ?? {}
+    expect({ step, energy, pressure, temperature, time, i }).toEqual(expected)
   })
 
   // Writer casing must not split one key into two half-populated series: `Free_Energy=` in
@@ -1593,28 +1603,35 @@ describe(`XYZ`, () => {
     expect((await open(content, `test.xyz`)).frame_count).toBe(frame_count)
   })
 
+  // One warning per unknown symbol, not per atom: Wannier centres (`X`) flooded the list
   it(`normalises symbol casing and skips unknown symbols with a warning`, async () => {
-    const frame = xyz_frame([`FE 0 0 0`, `si 1 0 0`, `X 2 0 0`, `O 3 0 0`])
+    const frame = xyz_frame([
+      `FE 0 0 0`,
+      `si 1 0 0`,
+      `X 2 0 0`,
+      `O 3 0 0`,
+      `X 4 0 0`,
+      `Q 5 0 0`,
+    ])
     const run = await open(`${frame}\n${frame}`, `ghost.xyz`)
     expect((await frames_of(run)).map(elements_of)).toEqual([
       [`Fe`, `Si`, `O`],
       [`Fe`, `Si`, `O`],
     ])
     expect(run.warnings).toEqual([
-      `Skipping XYZ atom with unknown element symbol "X" in frame 1 (line 1) at line 5`,
-      `Skipping XYZ atom with unknown element symbol "X" in frame 2 (line 7) at line 11`,
+      `Skipping XYZ atoms with unknown element symbol "X", first in frame 1 (line 1) at line 5`,
+      `Skipping XYZ atoms with unknown element symbol "Q", first in frame 1 (line 1) at line 8`,
     ])
   })
 
   // An indexed frame decodes for its plot row and again on every read: each warning once
-  it(`warns once per skipped atom in an indexed run however often frames are read`, async () => {
+  it(`warns once per unknown symbol in an indexed run however often frames are read`, async () => {
     const frame = xyz_frame([`X 0 0 0`, `O 3 0 0`])
     const run = await open(`${frame}\n${frame}`, `ghost.xyz`, { index_above_bytes: 0 })
     await run.properties.done
     for (let read = 0; read < 3; read++) await frames_of(run)
     expect(run.warnings).toEqual([
-      `Skipping XYZ atom with unknown element symbol "X" in indexed frame 1 at line 3`,
-      `Skipping XYZ atom with unknown element symbol "X" in indexed frame 2 at line 7`,
+      `Skipping XYZ atoms with unknown element symbol "X", first in indexed frame 1 at line 3`,
     ])
   })
 
@@ -2892,6 +2909,8 @@ describe(`HDF5`, () => {
     const run = await open_replica(12)
     expect(run.frame_count).toBe(12)
     expect(run.properties.rows).toHaveLength(12)
+    const slice_spy = vi.spyOn(H5Dataset.prototype, `slice`)
+    onTestFinished(() => slice_spy.mockRestore())
     for (const frame_idx of [0, 5, 7, 11]) {
       const numeric = await run.read_frame(frame_idx)
       expect(numeric.sites).toEqual(Uint8Array.of(1, 8))
@@ -2902,6 +2921,36 @@ describe(`HDF5`, () => {
         { velocity: [1, 0, 0] },
         { velocity: [0, 2, 0] },
       ])
+    }
+    // Forward reads integrate on from the previous frame, reading each velocity sample once
+    const velocity_ranges = slice_spy.mock.calls
+      .filter((_call, idx) =>
+        (slice_spy.mock.contexts[idx] as H5Dataset).path.endsWith(`velocity_angstrom_per_ps`),
+      )
+      .map(([ranges]) => ranges[0].slice(0, 2))
+    expect(velocity_ranges).toEqual([
+      [0, 6],
+      [5, 8],
+      [7, 12],
+    ]) // frame 0 is read on open
+    // and bit-identically to a replay from the checkpoint (a fresh run's first read)
+    const varied_velocity = (frame_idx: number) =>
+      Array.from({ length: 12 }, (_unused, idx) => Math.sin(1.7 * frame_idx + idx) / 3)
+    const varied_run = async () =>
+      open(
+        await make_reference_md_h5_buffer([100, 101], 12, undefined, varied_velocity),
+        `reference-md.h5`,
+        { hdf5_group_path: REPLICA_1 },
+      )
+    const site_xyz = async (source: TrajectoryRun, frame_idx: number) =>
+      materialize_frame_result(await source.read_frame(frame_idx)).structure.sites.map(
+        ({ xyz }) => xyz,
+      )
+    const sequential = await varied_run()
+    for (let frame_idx = 0; frame_idx < 12; frame_idx++) {
+      const xyz = await site_xyz(sequential, frame_idx)
+      if (frame_idx % 4 === 3)
+        expect(xyz).toEqual(await site_xyz(await varied_run(), frame_idx))
     }
     const stream = await collect(run, { frame_stride: 2, vector_keys: [`velocity`] })
     expect(stream).toMatchObject({

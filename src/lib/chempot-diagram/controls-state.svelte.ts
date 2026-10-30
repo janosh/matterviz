@@ -1,5 +1,6 @@
 // Reactive state shared by ChemPotDiagram2D and ChemPotDiagram3D: per-key control overrides,
 // the temperature slice of the entries, the worker computation and the domain colouring
+import { value_key } from '#lib/utils.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
 import { get_valid_temperature } from '#lib/convex-hull/helpers.js'
@@ -11,13 +12,11 @@ import type { ColorScaleConfig } from '#lib/plot/core/types.js'
 import { to_error } from 'svelte-widgets/utils'
 import { getAbortSignal, untrack } from 'svelte'
 import { compute_chempot_async } from './async-compute.svelte'
-import { get_domain_color_data } from './color'
+import { get_domain_color_data, get_formula_color_data } from './color'
 import {
   chempot_axes,
   entry_elements,
   formula_key_from_composition,
-  get_energy_stats_by_formula,
-  get_min_entries_and_el_refs,
   section_chempot_system,
   section_measure_curves,
   slice_range,
@@ -141,7 +140,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     elements: axes.compute,
   })
   // A recreated but equal config must not recompute
-  const compute_key = $derived(JSON.stringify(compute_config))
+  const compute_key = $derived(value_key(compute_config))
   let system = $state.raw<ChemPotSystem | null>(null)
   let computing = $state(false)
   let worker_error = $state<string | null>(null)
@@ -257,8 +256,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     return Object.fromEntries(
       Object.keys(slices).map((element) => {
         const range = slice_ranges[element]
-        // JSON drops the undefined value: the key holds only the other slices
-        const key = JSON.stringify([{ ...slices, [element]: undefined }, range, axes.display])
+        // the key drops the undefined value, so it holds only the other slices
+        const key = value_key([{ ...slices, [element]: undefined }, range, axes.display])
         let cached = curve_cache.get(element)
         if (cached?.system !== sys || cached.key !== key) {
           const curves = section_measure_curves(sys, axes.display, slices, element, range)
@@ -275,15 +274,8 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     overrides.set(`slice_chempots`, value === undefined ? rest : { ...rest, [element]: value })
   }
 
-  // Raw (non-renormalized) elemental references for true formation energies; the
-  // formal-chempot pipeline renormalizes its own refs to zero. Memoized apart from the
-  // colours so colour toggles don't re-scan the entries.
-  const el_refs = $derived(
-    get_min_entries_and_el_refs(temp_payload.temp_filtered_entries).el_refs,
-  )
-  const energy_stats = $derived(
-    get_energy_stats_by_formula(temp_payload.temp_filtered_entries),
-  )
+  // Memoized apart from the colours so colour toggles don't re-scan the entries
+  const formula_data = $derived(get_formula_color_data(temp_payload.temp_filtered_entries))
   // Field-wise defaults, so a bare scheme name keeps the default reversed palette_range
   const color_scale = $derived({
     ...CHEMPOT_DEFAULTS.color_scale,
@@ -294,9 +286,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
       formulas: opts.formulas(),
       color_mode: resolve(`color_mode`),
       color_scale,
-      entries: temp_payload.temp_filtered_entries,
-      el_refs,
-      energy_stats,
+      ...formula_data,
     }),
   )
   // The active numeric mode's title and color scale under the user's ColorBar props; null in
@@ -369,7 +359,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
     },
     set_slice,
     get energy_stats() {
-      return energy_stats
+      return formula_data.energy_stats
     },
     get domain_colors() {
       return color.colors

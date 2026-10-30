@@ -156,7 +156,7 @@
     project_point,
     render_frame,
     // oxfmt-ignore
-    repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, energy_range, merged_config, overlay],
+    repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, color_scale, energy_range, merged_config, overlay],
   })
   // PNG export: the scene redrawn at export resolution rather than the screen bitmap scaled up
   export const to_png_blob = (png_dpi: number): Promise<Blob> => {

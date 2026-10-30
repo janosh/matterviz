@@ -226,6 +226,24 @@ describe(`FacetGrid`, () => {
     ])
   })
 
+  // Free axes: one panel's pan moves only its own ranges, so every other panel keeps its
+  // context and doesn't re-lay itself out
+  test(`a free-axis pan hands a new context to the panned panel only`, async () => {
+    const { context_getters } = await mount_grid(make_panels(`left`, `right`), {
+      columns: 2,
+      axis_modes: { x: `free`, y: `free` },
+    })
+    for (const key of [`left`, `right`])
+      context_for(context_getters, key).report_layout({ ranges: { x: [0, 10] } })
+    await tick()
+    const [left, right] = [`left`, `right`].map((key) => context_for(context_getters, key))
+    left.update_range(`x`, [4, 6])
+    await tick()
+    expect(context_for(context_getters, `left`).ranges.x).toEqual([4, 6])
+    expect(context_for(context_getters, `left`)).not.toBe(left)
+    expect(context_for(context_getters, `right`)).toBe(right)
+  })
+
   test(`ignores repeated resolved layout echoes without losing intrinsic reports`, async () => {
     const { context_getters } = await mount_grid(make_panels(`left`, `right`), { columns: 2 })
     context_for(context_getters, `left`).report_layout({

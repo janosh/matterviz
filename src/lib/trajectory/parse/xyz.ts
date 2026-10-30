@@ -1,7 +1,7 @@
 import { display_idx } from '#lib/labels.js'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
-import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
+import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '#lib/constants.js'
 import {
   cell_to_lattice_matrix,
   is_finite_vec3,
@@ -206,6 +206,9 @@ function parse_extxyz_pbc(comment: string): Pbc | undefined {
 const EXTXYZ_PAIR_RE =
   /(?:^|\s)(?<key>[A-Za-z_]\w*)\s*[=:]\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)'|(?<bare>\S+?),?(?=\s|$))/gu
 
+// CP2K's header (MD adds `time = ...` between): `i` is the step, `E` the energy in Hartree
+const CP2K_COMMENT_RE = /^\s*i\s*=\s*\d+,\s*(?:time|E)\s*=/
+
 // Read back by dedicated parsers (lattice, pbc, columns) or the step regex below, so
 // re-emitting them as frame properties would duplicate or contradict the frame
 const RESERVED_COMMENT_KEY_RE = /^(?:lattice|properties|pbc|step|frame|ionic_step)$/
@@ -274,6 +277,11 @@ export function parse_xyz_comment_metadata(comment: string): {
     if (typeof value === `boolean`) flags[canonical] = value
     else properties[canonical] = value
   }
+  if (CP2K_COMMENT_RE.test(comment)) {
+    if (properties.energy !== undefined) properties.energy *= HARTREE_TO_EV
+    const { i: step, ...rest } = properties
+    return { step, properties: rest, flags, signals }
+  }
   const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
   return { step: step ? Math.trunc(Number(step)) : undefined, properties, flags, signals }
 }
@@ -298,7 +306,7 @@ function parse_xyz_atom_lines(
   lines: TextLines,
   { start, num_atoms, comment }: XyzFrameSpec,
   frame_label: string,
-  warn: WarningCollector[`warn`],
+  warn_once: WarningCollector[`warn_once`],
 ): {
   elements: ElementSymbol[]
   positions: number[][]
@@ -339,8 +347,11 @@ function parse_xyz_atom_lines(
     }
     const element_symbol = scanned_element(scanner, symbol_col, atomic_number_col)
     if (!element_symbol) {
-      warn(
-        `Skipping XYZ atom with unknown element symbol "${scanner.str(symbol_col)}" in ${frame_label} at line ${line_number}`,
+      // once per symbol: a file of Wannier centres (`X`) would warn for every frame's atoms
+      const symbol = scanner.str(symbol_col)
+      warn_once(
+        `unknown-element:${symbol}`,
+        `Skipping XYZ atoms with unknown element symbol "${symbol}", first in ${frame_label} at line ${line_number}`,
       )
       continue
     }
@@ -431,7 +442,7 @@ export function build_xyz_frame(
     lines,
     frame,
     opts.frame_label,
-    collector.warn,
+    collector.warn_once,
   )
   if (ipi.pos_scale !== 1) {
     for (const xyz of positions) for (const axis of [0, 1, 2]) xyz[axis] *= ipi.pos_scale

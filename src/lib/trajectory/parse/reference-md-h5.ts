@@ -430,15 +430,31 @@ export const parse_reference_md_h5_file = (
       )
     }
   }
-  const reconstruct_positions = (frame_number: number): Float64Array => {
+  // Playback resumes from the last reconstructed frame when it lies between the checkpoint
+  // and the requested frame: the same summation order, so bit-identical to a checkpoint replay
+  let cursor = { frame: n_frames - 1, positions: integrated_positions }
+  // Positions of a frame plus its velocity sample, read by the same integration pass
+  const reconstruct_frame = (frame_number: number) => {
     assert_frame_number(frame_number)
     const checkpoint_idx = Math.floor(frame_number / checkpoint_interval)
     const checkpoint_frame = checkpoint_idx * checkpoint_interval
-    const positions = checkpoint_positions[checkpoint_idx].slice()
-    if (checkpoint_frame !== frame_number) {
-      integrate_velocity_frames(checkpoint_frame, frame_number + 1, positions)
+    if (cursor.frame < checkpoint_frame || cursor.frame > frame_number) {
+      cursor = {
+        frame: checkpoint_frame,
+        positions: checkpoint_positions[checkpoint_idx].slice(),
+      }
     }
-    return positions
+    let velocity = new Float64Array(0)
+    integrate_velocity_frames(
+      cursor.frame,
+      frame_number + 1,
+      cursor.positions,
+      (idx, chunk, offset) => {
+        if (idx === frame_number) velocity = chunk.slice(offset, offset + velocity_sample_size)
+      },
+    )
+    cursor.frame = frame_number
+    return { positions: cursor.positions.slice(), velocity }
   }
   const selected_scalar = (
     manifest: ObservableManifest | undefined,
@@ -451,10 +467,10 @@ export const parse_reference_md_h5_file = (
     ...(temperature ? { temperature: selected_scalar(temperature, frame_number) } : {}),
   })
   const load_frame = (frame_number: number, requested?: FrameChannels) => {
-    const positions = reconstruct_positions(frame_number)
+    const { positions, velocity: frame_velocity } = reconstruct_frame(frame_number)
     const velocity =
       !requested?.vectors || requested.vectors.includes(`velocity`)
-        ? read_replica_samples(velocity_manifest, 1, frame_number, frame_number + 1)
+        ? frame_velocity
         : undefined
     const frame = create_numeric_md_frame(
       positions,
@@ -539,7 +555,7 @@ export const parse_reference_md_h5_file = (
     const native_velocity = signal_keys.includes(`velocity`)
       ? new Float64Array((end_frame - start_frame) * velocity_sample_size)
       : null
-    const stream_positions = reconstruct_positions(start_frame)
+    const stream_positions = reconstruct_frame(start_frame).positions
     let selected_idx = 0
     integrate_velocity_frames(
       start_frame,

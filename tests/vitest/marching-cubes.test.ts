@@ -261,6 +261,28 @@ describe(`marching_cubes`, () => {
     expect(max_edge).toBeLessThan(0.5)
   })
 
+  // An endpoint-inclusive grid (BXSF) is the periodic grid plus a repeat of its first plane:
+  // wrapping past that repeat, its normals match the periodic ones on the cell faces too
+  test(`endpoint_wrap normals match the periodic grid's`, () => {
+    const wave = (idx: number) => Math.cos((2 * Math.PI * idx) / 8)
+    const value = (idx_x: number, idx_y: number, idx_z: number) =>
+      wave(idx_x) + 0.5 * wave(idx_y) + 0.2 * wave(idx_z)
+    const periodic = marching_cubes(make_grid(8, 8, 8, value), 0.3, IDENTITY, PERIODIC)
+    const endpoint = marching_cubes(make_grid(9, 9, 9, value), 0.3, IDENTITY, {
+      periodic: false,
+      endpoint_wrap: true,
+    })
+    const key = (vertex: Vec3) => vertex.map((coord) => coord.toFixed(5)).join(`,`)
+    const periodic_normals = new Map(
+      periodic.vertices.map((vertex, idx) => [key(vertex), periodic.normals[idx]]),
+    )
+    expect(endpoint.vertices.some(([coord_x]) => coord_x === 0 || coord_x === 1)).toBe(true)
+    for (const [idx, vertex] of endpoint.vertices.entries()) {
+      const expected = periodic_normals.get(key(vertex))?.map((val) => expect.closeTo(val, 5))
+      expect(endpoint.normals[idx]).toEqual(expected)
+    }
+  })
+
   // value = ix², iso 2 crosses the x-edge between ix=1 (1) and ix=2 (4) at frac 1/3, and
   // vertices stay inside the cell spanned from the origin
   test.each([1, 2])(

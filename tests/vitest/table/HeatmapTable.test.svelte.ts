@@ -11,6 +11,7 @@ import type {
 } from '#lib/table/index.js'
 import DateTimeFormatMenu from '#lib/table/DateTimeFormatMenu.svelte'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+import * as table_index from '#lib/table/index.js'
 import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
@@ -18,6 +19,7 @@ import * as animations from 'svelte/animate'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
 import {
   bind_props,
+  count_attribute_updates,
   dismiss_popover,
   doc_query,
   fire,
@@ -1787,6 +1789,49 @@ describe(`HeatmapTable`, () => {
       expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[1]])
     })
 
+    // A live refresh (a trajectory frame) hands over fresh rows: those equal to the shown ones
+    // keep their objects, so only changed rows re-render
+    it(`keeps the objects of unchanged rows across a data refresh`, async () => {
+      const on_row_click = vi.fn()
+      const state = $state<{ data: { A: number; B: number | undefined }[] }>({
+        data: [
+          { A: 1, B: 1 },
+          { A: 2, B: 2 },
+        ],
+      })
+      const [first] = state.data
+      mount_table(
+        bind_props({ columns: plain_columns(`A`, `B`), row_key: `A`, on_row_click }, state),
+      )
+      await tick()
+      state.data = [
+        { A: 1, B: 1 },
+        { A: 2, B: 3 },
+      ]
+      await tick()
+      for (const idx of [0, 1])
+        doc_query(`tbody tr[data-row-idx="${idx}"]`).dispatchEvent(mouse(`click`))
+      const [[, kept], [, changed]] = on_row_click.mock.calls
+      expect(kept).toBe(first)
+      expect(changed).toBe(state.data[1])
+      // a class row's getter is no own value, so equal own fields don't vouch for its cell
+      const scores = new Map([[1, 1]])
+      class Scored {
+        constructor(readonly A: number) {}
+        get B() {
+          return scores.get(this.A)
+        }
+      }
+      state.data = [new Scored(1)]
+      await tick()
+      scores.set(1, 5)
+      state.data = [new Scored(1)]
+      await tick()
+      expect(
+        doc_query(`tbody td[data-row-idx="0"][data-col-idx="1"]`).textContent?.trim(),
+      ).toBe(`5`)
+    })
+
     // A HeatmapTable nested in a cell (a per-row mini table) carries its own data-row-idx /
     // data-col-idx attributes, so the outer lookups must stop at their own <tbody> instead of
     // resolving the inner table's coordinates against the outer rows
@@ -1866,15 +1911,24 @@ describe(`HeatmapTable`, () => {
     expect(on_row_hover.mock.calls.slice(n_calls)).toEqual([[null]])
   })
 
-  // A linked view names a row (an atom hovered in 3D): it is shaded like the hovered row
+  // A linked view names a row (an atom hovered in 3D): it is shaded like the hovered row,
+  // without re-running the duplicate-id pass over every row on each hover
   it(`highlighted_row_id shades the named row`, async () => {
     const state = $state<{ highlighted_row_id: number | null }>({ highlighted_row_id: 2 })
+    let offscreen_reads = 0
+    const offscreen_row = {
+      get id() {
+        offscreen_reads++
+        return 4
+      },
+    }
     mount_table(
       bind_props(
         {
           columns: plain_columns(`id`),
-          data: [{ id: 1 }, { id: 2 }, { id: 3 }],
+          data: [{ id: 1 }, { id: 2 }, { id: 3 }, offscreen_row],
           row_key: `id`,
+          pagination: { page_size: 3 },
         },
         state,
       ),
@@ -1885,9 +1939,21 @@ describe(`HeatmapTable`, () => {
         row.classList.contains(`hovered`),
       )
     expect(shaded()).toEqual([false, true, false])
-    state.highlighted_row_id = null
-    await tick()
-    expect(shaded()).toEqual([false, false, false])
+    offscreen_reads = 0
+    // only rows whose highlight changes re-apply their attributes (on then off, off, never)
+    const attribute_updates = count_attribute_updates([
+      ...document.querySelectorAll(`tbody tr[data-row-idx]`),
+    ])
+    for (const [row_id, expected] of [
+      [1, [true, false, false]],
+      [null, [false, false, false]],
+    ] as const) {
+      state.highlighted_row_id = row_id
+      await tick()
+      expect(shaded()).toEqual(expected)
+    }
+    expect(offscreen_reads).toBe(0)
+    expect(attribute_updates).toEqual([2, 1, 0])
   })
 
   describe(`Filtering, summaries and per-column state`, () => {
@@ -2235,7 +2301,9 @@ describe(`HeatmapTable`, () => {
       )
     })
 
-    it(`omits summary statistics for columns that aren't fully numeric`, () => {
+    it(`omits summary statistics for columns that aren't fully numeric`, async () => {
+      const stats_spy = vi.spyOn(table_index, `compute_column_stats`)
+      onTestFinished(() => stats_spy.mockRestore())
       mount_table({
         data: [
           { Model: `A`, Score: 10, Mixed: `ok` },
@@ -2244,6 +2312,9 @@ describe(`HeatmapTable`, () => {
         columns: plain_columns(`Model`, `Score`, `Mixed`),
         summary: [`mean`],
       })
+      await tick()
+      // one pass per column: writing back the resolved column_order re-scans none
+      expect(stats_spy).toHaveBeenCalledTimes(3)
       const cells = [...document.querySelectorAll(`tfoot .summary-row td`)].map((cell) =>
         cell.textContent?.trim(),
       )
@@ -2513,12 +2584,24 @@ describe(`HeatmapTable`, () => {
     // (derived from the FILTERED rows) dropped it mid-typing
     it(`keeps the color control for a mixed column the search empties of numbers`, async () => {
       fake_search_timers()
-      const state = $state({ search_query: `` })
+      const state = $state({
+        search_query: ``,
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+      })
+      let model_reads = 0
       const data = [
         { Model: `alpha 1`, Score: 1 },
         { Model: `alpha 2`, Score: 2 },
         { Model: `beta`, Score: `N/A` },
-      ]
+      ].map(
+        (row) =>
+          new Proxy(row, {
+            get: (target, key) => {
+              if (key === `Model`) model_reads++
+              return Reflect.get(target, key)
+            },
+          }),
+      )
       const columns = plain_columns(`Model`, `Score`)
       mount_table(bind_props({ data, columns, show_controls: true, search: true }, state))
       await click(document.querySelector<HTMLButtonElement>(`.pane-toggle`))
@@ -2530,6 +2613,12 @@ describe(`HeatmapTable`, () => {
       const score_labels = [`Score color scheme`, `Score better direction`]
       expect(color_labels()).toEqual(score_labels)
       expect(cell_at(0, 1).style.getPropertyValue(`--cell-bg`)).not.toBe(``) // it paints
+      // a resize writes column_prefs: the control list must not rescan the text column
+      model_reads = 0
+      state.column_prefs = { Model: { width: 120 } }
+      await tick()
+      expect(model_reads).toBe(0)
+      expect(color_labels()).toEqual(score_labels)
 
       await settle_search(state, `beta`) // filters away every numeric Score
       expect(col_values(`Model`)).toEqual([`beta`])
@@ -2757,8 +2846,14 @@ describe(`HeatmapTable`, () => {
     })
 
     it(`moves the window and preserves absolute row numbers on scroll`, async () => {
-      mount_virtual({ show_row_numbers: true, keyboard_cells: true })
+      const row_key = vi.fn((row: RowData) => Number(row.Score))
+      mount_virtual({ show_row_numbers: true, keyboard_cells: true, row_key })
       const scroller = await scroll_to(30 * row_height_px)
+      // a scroll within one row keeps the window, so no rendered row is re-keyed
+      row_key.mockClear()
+      await scroll_to(30 * row_height_px + 5)
+      expect(row_key).not.toHaveBeenCalled()
+      await scroll_to(30 * row_height_px)
 
       const start = 30 - overscan
       const end = start + min_window
@@ -2768,6 +2863,13 @@ describe(`HeatmapTable`, () => {
       expect(spacers()[1].style.height).toBe(`${(many_rows.length - end) * row_height_px}px`)
       expect(rendered_rows()[0].querySelector(`.row-num-col`)?.textContent?.trim()).toBe(`21`)
       expect(col_values(`Model`)[0]).toBe(`Model 20`)
+
+      // the tab stop moves one row down: only those two cells re-apply their attributes
+      const cells = [...document.querySelectorAll(`tbody td[data-col-idx]`)]
+      const updates = count_attribute_updates(cells)
+      await fire(cell_at(start, 0), keydown(`ArrowDown`))
+      expect(document.activeElement).toBe(cell_at(start + 1, 0))
+      expect(updates.filter(Boolean)).toHaveLength(2)
 
       await fire(cell_at(start, 0), keydown(`ArrowRight`))
       expect(scroller.scrollTop).toBe(30 * row_height_px)

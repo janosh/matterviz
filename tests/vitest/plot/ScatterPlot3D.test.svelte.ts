@@ -20,6 +20,7 @@ import {
   get_3d_auto_ranges,
   span_or,
 } from '#lib/plot/scatter-3d/scene-coords.js'
+import * as scene_coords from '#lib/plot/scatter-3d/scene-coords.js'
 import { mount_scene } from '../scene/mount'
 import { brighten_hex } from '#lib/scene/index.js'
 import * as extras from '@threlte/extras'
@@ -338,7 +339,11 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
     normalize_to_scene(data_z, [0, 4], 5),
     normalize_to_scene(data_y, [0, 4], 10),
   ]
-  const state = $state<{ series: DataSeries3D[]; hovered_point: unknown }>({
+  const state = $state<{
+    series: DataSeries3D[]
+    hovered_point: unknown
+    ranges: Record<`x` | `y` | `z`, Vec2>
+  }>({
     series: [
       {
         x: [1, 2, 3, 3.5, 9, 1],
@@ -348,6 +353,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
       },
     ],
     hovered_point: null,
+    ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
   })
   const portal = document.createElement(`div`)
   document.body.append(portal)
@@ -375,7 +381,9 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
         return state.series
       },
       on_point_hover,
-      ranges: { x: [0, 4], y: [0, 4], z: [0, 4] },
+      get ranges() {
+        return state.ranges
+      },
       // same tick options as the 2D axes: an interval used to yield no ticks, a map 5 defaults,
       // a `d` format turned 0.5 steps into duplicate integer labels
       x_axis: { label: `&alpha;<sub>x</sub>`, ticks: -1 },
@@ -442,6 +450,13 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   expect(edges).toHaveLength(1)
   for (let frame = 0; frame < 3; frame++) render_frame()
   expect(Array.from({ length: 5 }, render_frame)).toEqual(Array(5).fill(false))
+  // fresh ranges with the same bounds (a host's axis label edit) rebuild nothing
+  const normalized = vi.spyOn(scene_coords, `normalize_to_scene`)
+  onTestFinished(() => normalized.mockRestore())
+  state.ranges = { x: [0, 4], y: [0, 4], z: [0, 4] }
+  flushSync()
+  expect(normalized).not.toHaveBeenCalled()
+  expect(render_frame()).toBe(false)
 
   state.hovered_point = { x: 2, y: 1, z: 3, series_idx: 0, point_idx: 1 }
   flushSync()
@@ -703,6 +718,11 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
   state.display = { show_axes: false, projections: { xy: true } }
   flushSync()
   expect(marker(0, true)).toEqual(shadow_of(half))
+  // a display toggle leaving the shadow plane put rewrites none of its buffers
+  const shadow_rewrites = vi.spyOn(instanced(true)[0], `computeBoundingSphere`)
+  state.display = { ...state.display, show_grid: false }
+  flushSync()
+  expect(shadow_rewrites).not.toHaveBeenCalled()
   // reassigning equal data keeps the running tween going instead of restarting it
   set_xs([9, 4, 1], 1, 6)
   advance(150)
@@ -1033,6 +1053,7 @@ describe(`ScatterPlot3D smoke tests`, () => {
         display: {},
         x_axis: { label: `X`, range: [0.25, null] },
       })
+      const scans = vi.spyOn(scene_coords, `get_3d_auto_ranges`)
       mounted_component = mount(ScatterPlot3D, {
         target: container,
         props: bind_props(
@@ -1041,6 +1062,8 @@ describe(`ScatterPlot3D smoke tests`, () => {
         ),
       })
       await tick()
+      // one data scan: no surface here spans the plot's x/y, which alone needs a second pass
+      expect(scans).toHaveBeenCalledOnce()
 
       const show_axes = query<HTMLInputElement>(container, `input[type="checkbox"]`)
       const x_min = query<HTMLInputElement>(container, `[aria-label="X min"]`)
@@ -1088,8 +1111,11 @@ describe(`ScatterPlot3D smoke tests`, () => {
       }
       type_into(x_max, `7`)
       expect(controls_state.x_axis.range).toEqual([null, 7])
+      // a label keystroke keeps the ranges, so no data is re-scanned
+      scans.mockClear()
       type_into(query<HTMLInputElement>(container, `[aria-label="X label"]`), `Energy`)
       expect(controls_state.x_axis.label).toBe(`Energy`)
+      expect(scans).not.toHaveBeenCalled()
       click_titled(`Restore axes to initial values`)
       expect(controls_state.x_axis).toEqual({ label: `X`, range: [0.25, null] })
       expect(x_min.value).toBe(`0.25`)

@@ -46,14 +46,20 @@
     const current = mesh
     return () => current.dispose() // frees only the instance buffers
   })
+  // Primitives, so a fresh projection naming the same plane (a display toggle, a camera
+  // move along another axis) rewrites no buffers
+  const {
+    axis: flat_axis,
+    at: flat_at,
+    scale: flat_scale,
+  } = $derived(projection ?? { axis: null, at: 0, scale: 1 })
   $effect(() => {
     // Locals, as each prop or derived read in the loop would be a signal read per instance
-    const [values, instances, flatten] = [packed, mesh, projection]
-    const scale = flatten?.scale ?? 1
+    const [values, instances, axis, at, scale] = [packed, mesh, flat_axis, flat_at, flat_scale]
     for (let idx = 0; idx < instances.count; idx++) {
       const offset = idx * INSTANCE_STRIDE
       scratch_position.fromArray(values, offset)
-      if (flatten) scratch_position.setComponent(flatten.axis, flatten.at)
+      if (axis !== null) scratch_position.setComponent(axis, at)
       const radius = values[offset + 3] * scale
       scratch_matrix.makeScale(radius, radius, radius).setPosition(scratch_position)
       instances.setMatrixAt(idx, scratch_matrix)

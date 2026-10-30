@@ -3,6 +3,7 @@
 // what is on screen, edit-atoms and edit-bonds state with undo/redo, and the multi-pane camera
 // bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
 // exposes and StructureViewport binds the scene to it.
+import { same_while_equal } from '#lib/utils.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol } from '#lib/element/helpers.js'
 import { format_num, plural } from '#lib/labels.js'
@@ -118,10 +119,6 @@ type SupercellJob = { base: Crystal; scaling: string }
 type SupercellBuild = { structure: AnyStructure | undefined; applied: boolean; error?: string }
 
 export const MAX_HISTORY = 20
-// Supercells past this many sites (or tiles) build off the current task so the spinner gets a
-// frame to show in
-const ASYNC_SUPERCELL_SITES = 1000
-const ASYNC_SUPERCELL_TILES = 8
 
 // Normalize "fe" → "Fe"; null for unknown symbols
 const normalize_element = (input: string): ElementSymbol | null =>
@@ -281,48 +278,27 @@ export class StructureSession {
     if (!base || !(`lattice` in base) || !this.has_supercell) return undefined
     return { base, scaling: this.inputs.supercell_scaling() }
   })
-  private readonly supercell_is_large = $derived.by(() => {
+  // Built in the derived: ~2 ms for 1000 sites x 8 tiles, ~70 ms for 135k sites (less than
+  // drawing them). Deferring large builds a task to paint a spinner made every trajectory
+  // frame flash it, dim the input and hold the cell tiling at 1 until the build landed.
+  private readonly supercell = $derived.by((): SupercellBuild => {
     const job = this.supercell_job
-    if (!job) return false
-    const tiles = (this.supercell_factors ?? [1, 1, 1]).reduce((prod, factor) => prod * factor)
-    return (
-      job.base.sites.length * tiles > ASYNC_SUPERCELL_SITES || tiles > ASYNC_SUPERCELL_TILES
-    )
-  })
-  // $state.raw: supercells hold thousands of sites and every downstream read (bonding, PBC
-  // images, instancing) would otherwise traverse proxy traps
-  private async_supercell = $state.raw<(SupercellJob & SupercellBuild) | undefined>(undefined)
-  private readonly supercell = $derived.by((): SupercellBuild & { loading: boolean } => {
-    const job = this.supercell_job
-    if (!job) return { structure: this.base_structure, applied: false, loading: false }
-    if (!this.supercell_is_large)
-      return { ...build_supercell(job.base, job.scaling), loading: false }
-    const ready = this.async_supercell
-    if (ready && ready.base === job.base && ready.scaling === job.scaling) {
-      return { structure: ready.structure, applied: ready.applied, loading: false }
-    }
-    // Keep the previous build on screen while the next one computes (trajectory frames)
-    return { structure: ready?.structure ?? job.base, applied: false, loading: true }
+    if (!job) return { structure: this.base_structure, applied: false }
+    return build_supercell(job.base, job.scaling)
   })
   supercell_structure = $derived(this.supercell.structure)
-  supercell_loading = $derived(this.supercell.loading)
   scaled_cell_displayed = $derived.by(
     () =>
       this.has_scaled_cell &&
       (!this.inputs.apply_supercell_scaling() || this.supercell.applied),
   )
-  // Tiling factors for the drawn cell and isosurface geometry; held at 1 until the supercell
-  // structure lands so cell tiles, surfaces and atoms update in the same frame
+  // Tiling factors for the drawn cell and isosurface geometry; 1 unless the supercell built
   supercell_tiling = $derived.by((): Vec3 => {
-    if (!this.has_supercell || !this.supercell.applied || this.supercell.loading)
-      return [1, 1, 1]
+    if (!this.has_supercell || !this.supercell.applied) return [1, 1, 1]
     return this.supercell_factors ?? [1, 1, 1]
   })
   bond_edits_enabled = $derived.by(
-    () =>
-      this.inputs.cell_type() === `original` &&
-      !this.scaled_cell_displayed &&
-      !this.supercell_loading,
+    () => this.inputs.cell_type() === `original` && !this.scaled_cell_displayed,
   )
   // Remap element symbols for display (LAMMPS type placeholders → real elements)
   element_mapping = $state<Partial<Record<ElementSymbol, ElementSymbol>> | undefined>()
@@ -351,13 +327,10 @@ export class StructureSession {
   }
   // Completion settings, kept by identity while their value is unchanged: hosts rebuild them
   // on every read, and a new object must not rerun the bond search
-  private last_image_options: { key: string; options: ImageAtomOptions } | undefined
-  private readonly image_options = $derived.by(() => {
-    const options = this.inputs.image_atom_options()
-    const key = JSON.stringify(options)
-    if (this.last_image_options?.key !== key) this.last_image_options = { key, options }
-    return this.last_image_options.options
-  })
+  private readonly keep_image_options = same_while_equal<ImageAtomOptions>()
+  private readonly image_options = $derived.by(() =>
+    this.keep_image_options(this.inputs.image_atom_options()),
+  )
   private readonly mapped_supercell = $derived.by(() =>
     this.map_elements(this.supercell_structure),
   )
@@ -503,15 +476,6 @@ export class StructureSession {
   // A parameter property so TypeScript sees `inputs` assigned before the field initializers
   // above; the $derived fields only read it lazily anyway
   constructor(readonly inputs: StructureSessionInputs) {
-    $effect(() => {
-      const job = this.supercell_job
-      if (!job || !this.supercell_is_large) return undefined
-      const timer = setTimeout(() => {
-        this.async_supercell = { ...job, ...build_supercell(job.base, job.scaling) }
-      }, 10)
-      return () => clearTimeout(timer)
-    })
-
     // Publish merged bonds through the binding; once the last edit is undone the captured
     // source bonds go back out and the edit layer forgets its base
     $effect(() => {

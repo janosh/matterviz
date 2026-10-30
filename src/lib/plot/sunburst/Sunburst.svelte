@@ -406,6 +406,8 @@
             {:else}
               {@const info = chart_state.node_infos[arc.node_idx]}
               {@const opacity = chart_state.node_dim(arc.node_idx).opacity}
+              <!-- a per-node boolean: a moved tab stop re-runs two nodes' attributes, not all -->
+              {@const tab_stop = arc.node_idx === roving_idx}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <path
                 d={arc_paths[visible_idx]}
@@ -413,7 +415,7 @@
                 fill={batch_paints ? `transparent` : (info.pattern?.url ?? info.fill)}
                 fill-opacity={opacity}
                 role={info.clickable ? `button` : undefined}
-                tabindex={arc.node_idx === roving_idx ? 0 : -1}
+                tabindex={tab_stop ? 0 : -1}
                 aria-label={info.aria}
                 style:cursor={info.clickable ? `pointer` : `default`}
               />

@@ -10,7 +10,7 @@ import type {
 import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
 import type * as worker_client from '#lib/worker-client.svelte.js'
 import { flushSync, mount, unmount } from 'svelte'
-import type { BufferGeometry } from 'three/webgpu'
+import { BufferAttribute, type BufferGeometry } from 'three/webgpu'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { make_grid, make_volume } from '../test-fixtures'
 import { threlte_stub } from './threlte-stub'
@@ -23,7 +23,7 @@ vi.mock(`@threlte/core`, async () => ({
   useThrelte: () => ({ invalidate }),
 }))
 // Large volumes go through the geometry worker; tests swap it for a controllable stub
-const compute_geometries_async = vi.hoisted(() => vi.fn())
+const compute_geometries_async = vi.hoisted(() => Object.assign(vi.fn(), { release: vi.fn() }))
 vi.mock(`#lib/isosurface/async-geometry.svelte.js`, () => ({ compute_geometries_async }))
 // Hosts that disable workers (anywidget) leave `Worker` defined, so the gate must be
 // can_create_worker rather than `typeof Worker`; flip `workers_disabled` to simulate one
@@ -104,7 +104,7 @@ const hold_worker_jobs = () => {
   vi.stubGlobal(`Worker`, vi.fn())
   const pending: { resolve: (value: unknown) => void; signal: AbortSignal }[] = []
   compute_geometries_async.mockImplementation(
-    (_input: unknown, { signal }: { signal: AbortSignal }) =>
+    (_input: unknown, _options: unknown, { signal }: { signal: AbortSignal }) =>
       new Promise((resolve) => pending.push({ resolve, signal })),
   )
   return pending
@@ -122,6 +122,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   compute_geometries_async.mockReset()
+  compute_geometries_async.release.mockReset()
 })
 
 describe(`Isosurface`, () => {
@@ -304,11 +305,37 @@ describe(`Isosurface`, () => {
     await settle()
     props.settings.layers[0].isovalue = 0.4
     await settle() // queues the rerun behind the in-flight job
+    expect(compute_geometries_async.release).not.toHaveBeenCalled()
     teardown?.()
     teardown = undefined
+    // an idle worker outlived every isosurface
+    expect(compute_geometries_async.release).toHaveBeenCalledOnce()
     pending[0].resolve({ volumes: [] })
     await settle()
     expect(compute_geometries_async).toHaveBeenCalledOnce()
+  })
+
+  // The prepared grid was filed under the range read after the worker await, so a halo change
+  // mid-job cached the old window under the new key and the rerun kept drawing it
+  test(`a range change during a worker job re-extracts the new window`, async () => {
+    const pending = hold_worker_jobs()
+    const props = mount_isosurface({ volumes: [big_volume()] })
+    await settle()
+    props.settings.halo = 0.25
+    await settle()
+    const [job] = compute_geometries_async.mock.calls[0][0].volumes
+    const grid = { values: new Float64Array(8), dims: [2, 2, 2], order: `z_fastest` }
+    const { lattice, origin } = job.volume
+    pending[0].resolve({
+      volumes: [
+        { token: job.token, grid, lattice, origin, prepare_geometry_ms: 0, surfaces: [] },
+      ],
+    })
+    await settle()
+    expect(compute_geometries_async).toHaveBeenCalledTimes(2)
+    expect(compute_geometries_async.mock.calls[1][0].volumes[0].range).toEqual(
+      Array.from({ length: 3 }, () => [-0.25, 1.25]),
+    )
   })
 
   test(`large grids stay on the main thread where workers are disabled`, async () => {
@@ -388,12 +415,43 @@ describe(`Isosurface`, () => {
     await settle()
     expect(geometry_of(meshes()[0])).toBe(geometry)
     expect(Float32Array.from(color_attr.array)).not.toEqual(before_replacement)
+    const replaced_colors = Float32Array.from(color_attr.array)
 
     // Clearing the color source drops the attribute and restores the solid color
     props.settings.layers = [{ ...colored, color_volume_id: undefined }]
     await settle()
     expect(geometry.getAttribute(`color`)).toBeUndefined()
     expect(materials()[0].props).toMatchObject({ vertexColors: false, color: `#112233` })
+
+    // restoring the same source recolors although its color inputs match the cleared ones
+    props.settings.layers = [{ ...colored, color_scale: `interpolateRdBu` }]
+    await settle()
+    expect(Float32Array.from(geometry.getAttribute(`color`).array)).toEqual(replaced_colors)
+  })
+
+  // Every rebuild remapped and re-uploaded all colour-mapped surfaces, also those it reused
+  test(`rebuilding one colour-mapped layer leaves the others' colours untouched`, async () => {
+    const colored = (isovalue: number) => layer(isovalue, { opacity: 1, color_volume_id: `1` })
+    const props = mount_isosurface({
+      volumes: [positive_volume(), { ...signed_volume(), id: `1` }],
+      settings: with_layers([colored(0.3), colored(0.6)]),
+    })
+    await settle()
+    const [kept, rebuilt] = meshes().map(geometry_of)
+    // three bumps an attribute's version on every needsUpdate (GPU re-upload)
+    const color_version = () => {
+      const color_attr = kept.getAttribute(`color`)
+      return color_attr instanceof BufferAttribute ? color_attr.version : -1
+    }
+    const kept_version = color_version()
+    expect(kept_version).toBeGreaterThanOrEqual(0)
+    props.settings.layers[1].isovalue = 0.5
+    await settle()
+    expect(geometry_of(meshes()[0])).toBe(kept)
+    expect(color_version()).toBe(kept_version)
+    const fresh = geometry_of(meshes()[1])
+    expect(fresh).not.toBe(rebuilt)
+    expect(fresh.getAttribute(`color`).count).toBe(fresh.getAttribute(`position`).count)
   })
 
   test(`removing all volumes disposes every geometry`, async () => {

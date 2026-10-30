@@ -4,7 +4,10 @@
   // unstable frames are hollow and grey, a descriptor's range draws as error bars and its
   // threshold as a dashed line, the descriptors it overlays as dashed lines on the same axes.
   // Frames whose value is unknown yet (data not loaded) are left out until it is; a value
-  // outside its range, or not finite, throws.
+  // outside its range, or not finite, throws. With load_state_of, points still loading are
+  // hollow and failed ones red-edged crosses, a failed frame without a value a faint red
+  // vertical line at its axis value.
+  import { plot_color } from '#lib/colors/index.js'
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { html_to_text } from '#lib/utils.js'
@@ -12,12 +15,16 @@
   import type { ComponentProps } from 'svelte'
   import { descriptor_lines, descriptor_point } from './sweep'
   import type { Sweep, SweepFrame, SweepSeries } from './sweep'
+  import type { FrameLoadState } from './sweep-frames.svelte'
 
   type PointMeta = { series_id: string; frame_idx: number }
+  const FAILED_COLOR = `crimson`
+  const FAILED_LINE = { color: FAILED_COLOR, dash: `2 3`, opacity: 0.4 }
 
   let {
     sweep,
     frame_of,
+    load_state_of,
     series_id,
     frame_idx,
     compare,
@@ -27,6 +34,7 @@
   }: Partial<ComponentProps<typeof ScatterPlot>> & {
     sweep: Sweep
     frame_of: (series: SweepSeries, idx: number) => SweepFrame // with loaded data merged
+    load_state_of?: (series: SweepSeries, idx: number) => FrameLoadState // lazy sweeps' loads
     series_id: string // the selected frame's series and index
     frame_idx: number
     compare?: PointMeta // the frame shown beside the selected one, marked as large
@@ -56,23 +64,38 @@
       })),
     ),
   )
-  const series = $derived(
-    points.map(({ entry, line, line_idx, points: line_points }): DataSeries<PointMeta> => {
+  const series = $derived<DataSeries<PointMeta>[]>(
+    points.map(({ entry, line, line_idx, points: line_points }, series_idx) => {
       const { id, label = id } = entry
+      // the series' colour, for the hollow rings of points still loading
+      const color = plot_color(series_idx)
       const marked = new Set(
         [{ series_id, frame_idx }, compare].flatMap((point) =>
           point?.series_id === id ? [point.frame_idx] : [],
         ),
       )
-      const point_style = line_points.map(({ frame, idx }): PointStyle => ({
-        radius: marked.has(idx) ? 7 : 4.5,
-        cursor: `pointer`,
-        ...(frame.status?.unstable && {
-          fill: `transparent`,
-          stroke: `gray`,
-          stroke_width: 1.5,
-        }),
-      }))
+      const point_style = line_points.map(({ frame, idx }): PointStyle => {
+        const load_state = load_state_of?.(entry, idx)
+        return {
+          radius: marked.has(idx) ? 7 : 4.5,
+          cursor: `pointer`,
+          ...(load_state === `loading` && {
+            fill: `transparent`,
+            stroke: color,
+            stroke_width: 1.5,
+          }),
+          ...(frame.status?.unstable && {
+            fill: `transparent`,
+            stroke: `gray`,
+            stroke_width: 1.5,
+          }),
+          ...(load_state === `failed` && {
+            symbol_type: `Cross`,
+            stroke: FAILED_COLOR,
+            stroke_width: 1.5,
+          }),
+        }
+      })
       const ranged = line_points.some(({ lower, upper }) => lower !== null || upper !== null)
       const overlaid = lines.length > 1
       return {
@@ -110,6 +133,20 @@
   const selected_value = $derived(
     sweep.series.find(({ id }) => id === series_id)?.frames[frame_idx]?.value ?? null,
   )
+  // the frames whose load failed without a value for the plotted descriptor
+  const failed_lines = $derived<RefLine[]>(
+    load_state_of
+      ? points.flatMap(({ entry, line_idx, points: line_points }) => {
+          if (line_idx > 0) return []
+          const plotted = new Set(line_points.map(({ idx }) => idx))
+          return entry.frames.flatMap(({ value }, idx): RefLine[] =>
+            !plotted.has(idx) && load_state_of(entry, idx) === `failed`
+              ? [{ type: `vertical`, x: value, style: FAILED_LINE }]
+              : [],
+          )
+        })
+      : [],
+  )
   const ref_lines = $derived<RefLine[]>(
     spec?.threshold === undefined
       ? []
@@ -122,6 +159,10 @@
           },
         ],
   )
+  // the same array while no frame failed, so loads re-render no reference line
+  const plot_ref_lines = $derived(
+    failed_lines.length > 0 ? [...ref_lines, ...failed_lines] : ref_lines,
+  )
 </script>
 
 {#if spec}
@@ -129,7 +170,7 @@
     show_legend={series.length > 1}
     {...rest}
     {series}
-    {ref_lines}
+    ref_lines={plot_ref_lines}
     x_axis={{
       label: with_unit(sweep.axis.label, sweep.axis.unit),
       range: x_range,

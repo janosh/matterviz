@@ -1,9 +1,10 @@
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import { CANVAS_MARKER_THRESHOLD } from '#lib/plot/core/canvas-markers.svelte.js'
+import * as spatial_index from '#lib/plot/core/spatial-index.js'
 import { make_rng } from '../numeric-helpers'
 import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   bind_props,
   pin_cycle,
@@ -170,6 +171,35 @@ describe(`TernaryPlot`, () => {
     expect(on_point_hover).toHaveBeenLastCalledWith(null)
     await fire(plot_svg(plot), mouse(`mouseleave`))
     expect(on_point_hover).toHaveBeenCalledTimes(3)
+  })
+
+  // A legend hover only dims: the canvas repaints, the markers' hit index isn't rebuilt
+  test(`legend hover past the canvas threshold re-dims without re-indexing`, async () => {
+    const alphas: number[] = []
+    const ctx = mock_canvas_context()
+    Object.defineProperty(ctx, `globalAlpha`, {
+      set: (alpha: number) => {
+        alphas.push(alpha)
+      },
+    })
+    const rng = make_rng(0)
+    const points = Array.from(
+      { length: CANVAS_MARKER_THRESHOLD },
+      () => [rng(), rng(), rng()] as Triple,
+    )
+    const plot = await mount_ternary({
+      series: [
+        { points, label: `A` },
+        { points: points.slice(0, 2), label: `B` },
+      ],
+      show_legend: true,
+    })
+    const index_spy = vi.spyOn(spatial_index, `build_spatial_index`)
+    onTestFinished(() => index_spy.mockRestore())
+    alphas.length = 0
+    await fire(plot.querySelectorAll(`.legend-item`)[1], mouse(`mouseenter`))
+    expect(alphas).toContain(0.25) // series A dims
+    expect(index_spy).not.toHaveBeenCalled()
   })
 
   // ScatterPlot's threshold: one canvas instead of an SVG node per marker, still pickable

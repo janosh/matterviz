@@ -42,6 +42,7 @@ import {
   svg_query,
   set_input,
   translate_of,
+  trigger_resize_observer,
   type PinStep,
 } from '../setup'
 
@@ -70,9 +71,14 @@ const dense = {
 // an instantly settled plot without legend or controls
 const bare = { point_tween: { duration: 0 }, legend: null, show_controls: false }
 
-const mount_sized_scatter_plot = (
+// Sizing the plot is a resize, whose marks snap until the next frame: wait it out
+const mount_sized_scatter_plot = async (
   props: Partial<ComponentProps<typeof ScatterPlot>>,
-): Promise<HTMLElement> => mount_sized(ScatterPlot, props, { selector: `.scatter` })
+): Promise<HTMLElement> => {
+  const plot = await mount_sized(ScatterPlot, props, { selector: `.scatter` })
+  await new Promise(requestAnimationFrame)
+  return plot
+}
 
 test(`CDF geometry refreshes after domain, scale, style, and data changes`, async () => {
   const state = $state<{
@@ -741,11 +747,13 @@ describe(`ScatterPlot`, () => {
           ...bar_vertices.map((vertex) => [vertex, 0.5] as const),
         ]
         expect(boxes.length).toBeGreaterThan(2)
+        // ranges leave the outermost marks exactly their reach, so allow float round-off
+        const eps = 1e-9
         for (const [center, half] of boxes) {
-          expect(center.x - half).toBeGreaterThanOrEqual(x)
-          expect(center.x + half).toBeLessThanOrEqual(x + width)
-          expect(center.y - half).toBeGreaterThanOrEqual(y)
-          expect(center.y + half).toBeLessThanOrEqual(y + height)
+          expect(center.x - half).toBeGreaterThanOrEqual(x - eps)
+          expect(center.x + half).toBeLessThanOrEqual(x + width + eps)
+          expect(center.y - half).toBeGreaterThanOrEqual(y - eps)
+          expect(center.y + half).toBeLessThanOrEqual(y + height + eps)
         }
       },
     )
@@ -824,10 +832,22 @@ describe(`ScatterPlot`, () => {
 
     await vi.waitFor(() => expect(report_layout).toHaveBeenCalled())
     const report = report_layout.mock.calls.at(-1)?.[0]
-    // ranges reach half a tick past the data so the end markers (radius 5) aren't clipped
+    // the data [1, 5] x [2, 8] ends on nice ticks, so ranges reach just past it (not a whole
+    // tick) for the end markers' radius 5 plus half their 0.5px stroke: f of the span on each
+    // side, f = reach / (axis px - 2 reach) on the 400 - 13 - 17 by 300 - 7 - 11 px plot area
+    const reach = 5.25
+    const [pad_x, pad_y] = [
+      [370, 4],
+      [282, 6],
+    ].map(([axis_px, span]) => (span * reach) / (axis_px - 2 * reach))
     expect(report).toEqual({
       padding: { t: 7, b: 11, l: 13, r: 17 },
-      ranges: { x: [0.5, 5.5], x2: [0, 1], y: [1.5, 8.5], y2: [0, 1] },
+      ranges: {
+        x: [expect.closeTo(1 - pad_x, 12), expect.closeTo(5 + pad_x, 12)],
+        x2: [0, 1],
+        y: [expect.closeTo(2 - pad_y, 12), expect.closeTo(8 + pad_y, 12)],
+        y2: [0, 1],
+      },
     })
     expect(clip_rect(plot)).toEqual({ x: 83, y: 17, width: 288, height: 236 })
     expect(plot.querySelector(`.x-axis`)).toBeNull()
@@ -1322,6 +1342,25 @@ describe(`ScatterPlot`, () => {
     },
   )
 
+  // A band structure draws every band, most far off the shown energies: those lines get no
+  // component at all until a pan or zoom brings them into view
+  test(`draws only the lines that reach the view`, async () => {
+    const x = [0, 1, 2]
+    const plot = await mount_sized_scatter_plot({
+      series: [
+        { id: `in`, x, y: [0.2, 0.5, 0.8], markers: `line` },
+        { id: `above`, x, y: [5, 6, 7], markers: `line` },
+        { id: `below`, x, y: [-7, -6, -5], markers: `line` },
+      ],
+      y_axis: { range: [0, 1] },
+    })
+    const drawn = () =>
+      [...plot.querySelectorAll(`g[data-series-id]:has(> path[fill="none"])`)].map((group) =>
+        group.getAttribute(`data-series-id`),
+      )
+    expect(drawn()).toEqual([`in`])
+  })
+
   test.each([0, 300])(
     `keeps line cropping consistent through pan for duration %s`,
     async (duration) => {
@@ -1610,6 +1649,27 @@ describe(`ScatterPlot`, () => {
     await move_to_marker(plot, 1)
     expect(on_point_hover).toHaveBeenCalledOnce()
     expect(on_point_hover.mock.calls[0][0]).toMatchObject({ x: 1, y: 1 })
+  })
+
+  // a written bindable prop is proxied anew: rewriting the same point would re-run every
+  // marker's hover look on each pointer frame
+  test(`moving within one point leaves the bound tooltip point unwritten`, async () => {
+    let tooltip_point: ComponentProps<typeof ScatterPlot>[`tooltip_point`] = null
+    const set_point = vi.fn((point: typeof tooltip_point) => (tooltip_point = point))
+    const plot = await mount_sized_scatter_plot({
+      series: [basic],
+      point_tween: { duration: 0 },
+      get tooltip_point() {
+        return tooltip_point
+      },
+      set tooltip_point(point) {
+        set_point(point)
+      },
+    })
+    await move_to_marker(plot, 1)
+    await move_to_marker(plot, 1, { dy: 2 })
+    expect(set_point).toHaveBeenCalledOnce()
+    expect(tooltip_point).toMatchObject({ x: 2, y: 3 })
   })
 
   test(`shows a pointer cursor only where a plot click would reach a point`, async () => {
@@ -1936,6 +1996,43 @@ describe(`ScatterPlot`, () => {
       expect(marker().parentElement?.getAttribute(`transform`)).toBe(position)
     },
   )
+
+  // Markers are unclipped (edge points draw whole) and tween in px, so a resize used to glide
+  // them in from the old area's positions, over whatever sat beside the plot
+  test(`every marker stays inside the plot-area clip as the plot resizes`, async () => {
+    const plot = await mount_sized_scatter_plot({
+      ...bare,
+      series: [basic],
+      point_tween: { duration: 60_000 },
+    })
+    for (const [width, height] of [
+      [200, 150],
+      [600, 450],
+    ]) {
+      vi.spyOn(performance, `now`).mockReturnValue(performance.now() + SETTLE_MS + 1)
+      await resize_element(plot, width, height)
+      trigger_resize_observer(plot)
+      const clip = await vi.waitFor(() => {
+        const rect = clip_rect(plot)
+        expect(rect.width).toBeLessThan(width)
+        expect(rect.width).toBeGreaterThan(width - 100)
+        return rect
+      })
+      const markers = plot.querySelectorAll(`.marker`)
+      expect(markers).toHaveLength(basic.x.length)
+      for (const marker of markers) {
+        // markers reach their radius plus half their stroke past their centre
+        const stroke_width = Number(marker.getAttribute(`stroke-width`))
+        const reach = basic.point_style.radius + stroke_width / 2
+        const { x, y } = translate_of(marker.parentElement)
+        const eps = 1e-9 // the outermost markers fit exactly, up to float round-off
+        expect(x - reach).toBeGreaterThanOrEqual(clip.x - eps)
+        expect(x + reach).toBeLessThanOrEqual(clip.x + clip.width + eps)
+        expect(y - reach).toBeGreaterThanOrEqual(clip.y - eps)
+        expect(y + reach).toBeLessThanOrEqual(clip.y + clip.height + eps)
+      }
+    }
+  })
 
   test(`reports all visible group keys when more than two axes are required`, async () => {
     const target = document.createElement(`div`)

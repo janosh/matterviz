@@ -3,6 +3,7 @@
   // volume and optionally a color volume sampled at the vertices through a colormap (e.g.
   // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
   // only remap through the LUT and never rerun marching cubes.
+  import { value_key } from '#lib/utils.js'
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from 'svelte-widgets/utils'
   import { resolve_value_range, to_color_scale_config } from '#lib/plot/core/scales.js'
@@ -129,6 +130,8 @@
     // color-range changes only remap through the LUT without resampling
     scalars: Float32Array | null
     scalars_volume_id: number | null
+    // inputs of the current vertex colors, so a rebuild skips remapping unchanged entries
+    color_key: string | null
   }
   // $state.raw: entries hold Three.js objects that must not be proxied; the array
   // is replaced wholesale on rebuild so the template stays reactive.
@@ -160,7 +163,11 @@
     colored_keys.clear()
   }
 
-  $effect(() => reset_surfaces) // on unmount
+  // On unmount; release ends the shared worker once no other isosurface awaits it
+  $effect(() => () => {
+    reset_surfaces()
+    compute_geometries_async.release()
+  })
 
   // Any finite isovalue draws: 0 is a signed field's nodal surface and a negative value its
   // negative lobe. show_negative mirrors the surface at -isovalue, which at 0 is the same one.
@@ -173,11 +180,14 @@
 
   // range_key covers halo + tiling, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    JSON.stringify([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
+    value_key([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
     volume: VolumetricData
+    // range_key at request time: a range change during a worker job must not file the old
+    // window's grid under the new key
+    prepared_key: string
   }
 
   const estimated_prepared_points = (vol: VolumetricData): number => {
@@ -229,12 +239,10 @@
   ): Map<string, BufferGeometry> {
     const geometries = new Map<string, BufferGeometry>()
     for (const volume_result of response.volumes) {
-      const source_volume = pending.find(
-        (surface) => vol_id(surface.volume) === volume_result.token,
-      )?.volume
-      if (source_volume) {
-        prepared_cache.set(source_volume, {
-          key: range_key(source_volume),
+      const source = pending.find((surface) => vol_id(surface.volume) === volume_result.token)
+      if (source) {
+        prepared_cache.set(source.volume, {
+          key: source.prepared_key,
           grid: volume_result.grid,
           lattice: volume_result.lattice,
           origin: volume_result.origin,
@@ -288,6 +296,7 @@
             sign,
             isovalue: sign * layer.isovalue,
             volume: layer.volume,
+            prepared_key: range_key(layer.volume),
           }
           pending.push(surface)
           plans.push(surface)
@@ -303,6 +312,7 @@
       try {
         const response = await compute_geometries_async(
           { volumes: jobs },
+          {},
           { signal: abort.signal },
         )
         if (generation !== rebuild_generation) return
@@ -349,6 +359,7 @@
             render_order: 0,
             scalars: null,
             scalars_volume_id: null,
+            color_key: null,
           },
         ]
       })
@@ -430,6 +441,10 @@
 
   // === Cross-volume vertex coloring ===
 
+  // function schemes compare by source
+  const to_key = (value: unknown): string =>
+    JSON.stringify(value, (_, val) => (typeof val === `function` ? String(val) : val))
+
   // Vertices and volumes share the structure coordinate frame
   const sample_entry_scalars = (entry: MeshEntry, color_vol: VolumetricData): Float32Array =>
     time_stage(`sample_scalars`, () => {
@@ -455,6 +470,7 @@
         if (entry.geometry.getAttribute(`color`)) entry.geometry.deleteAttribute(`color`)
         entry.scalars = null
         entry.scalars_volume_id = null
+        entry.color_key = null
         colored_keys.delete(entry.key)
         continue
       }
@@ -495,16 +511,20 @@
       if (!layer || !entry.scalars) continue
       const scalars = entry.scalars
       const color_scale = layer.color_scale ?? {}
-      time_stage(`apply_colormap`, () =>
-        set_vertex_colors(entry.geometry, scalars, {
+      const options = {
+        color_scale,
+        value_range: resolve_value_range(
           color_scale,
-          value_range: resolve_value_range(
-            color_scale,
-            auto_ranges.get(entry.layer_idx) ?? [0, 1],
-          ),
-          fallback_color: lobe_color(layer, entry.sign),
-        }),
-      )
+          auto_ranges.get(entry.layer_idx) ?? [0, 1],
+        ),
+        fallback_color: lobe_color(layer, entry.sign),
+      }
+      // scalars are resampled in place only when the color volume changes, so its id stands in
+      const color_key = to_key([entry.scalars_volume_id, options])
+      if (color_key !== entry.color_key) {
+        time_stage(`apply_colormap`, () => set_vertex_colors(entry.geometry, scalars, options))
+        entry.color_key = color_key
+      }
       colored_keys.add(entry.key)
     }
     record_stage(`recolor_total`, performance.now() - profile_start, {
@@ -522,10 +542,7 @@
         return [
           layer.color_volume_id ?? ``,
           color_vol ? vol_id(color_vol) : ``,
-          // function schemes compare by source
-          JSON.stringify(layer.color_scale ?? ``, (_, val) =>
-            typeof val === `function` ? String(val) : val,
-          ),
+          to_key(layer.color_scale ?? ``),
           layer.color,
           layer.negative_color,
         ].join(`.`)

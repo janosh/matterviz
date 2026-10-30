@@ -108,8 +108,12 @@ describe(`host prediction ownership`, () => {
     else if (cause === `mutated input`) {
       state.structure.sites[0].xyz[0] = 9
       expect(old_run.structure.sites[0].xyz[0]).toBe(0)
-    } else if (cause === `unmount`) controller.dispose()
-    else old_run.cancel()
+    } else if (cause === `unmount`) {
+      const calls = [on_prediction.mock.calls.length, on_view.mock.calls.length]
+      controller.dispose()
+      // Teardown only aborts: clearing would write state and read props while unmounting
+      expect([on_prediction.mock.calls.length, on_view.mock.calls.length]).toEqual(calls)
+    } else old_run.cancel()
     const prediction_calls = on_prediction.mock.calls.length
     const view_calls = on_view.mock.calls.length
     // Same-turn callbacks before invalidation effects run are stale too.
@@ -124,8 +128,10 @@ describe(`host prediction ownership`, () => {
     controller.invalidate_if_changed()
     expect(old_run.signal.aborted).toBe(true)
     expect(on_view).toHaveBeenLastCalledWith(null)
-    if (cause === `new run`)
-      expect(on_prediction.mock.lastCall?.[0]?.site_properties).toEqual([{ charge: 2 }])
+    if (cause === `new run` || cause === `unmount`)
+      expect(on_prediction.mock.lastCall?.[0]?.site_properties).toEqual([
+        { charge: cause === `new run` ? 2 : 1 },
+      ])
     else expect(on_prediction).toHaveBeenLastCalledWith(null)
     if (cause === `unmount`) expect(() => controller.start_run(provenance)).toThrow(`mounted`)
   })

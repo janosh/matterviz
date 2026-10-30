@@ -139,6 +139,10 @@
   :global(.docked-sidebar-row.docked-sidebar-stacked > .pane-divider) {
     display: none;
   }
+  /* a rule in place of the hidden divider */
+  :global(.docked-sidebar-row.docked-sidebar-stacked > .docked-sidebar) {
+    border-top: var(--pane-rule);
+  }
   .docked-sidebar {
     display: flex;
     flex-direction: column;

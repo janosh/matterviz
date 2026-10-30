@@ -1,3 +1,4 @@
+import { value_key } from '#lib/utils.js'
 import {
   analyze_temperature_data,
   filter_entries_at_temperature,
@@ -11,6 +12,10 @@ interface TempFilterPayload {
   temp_filtered_entries: PhaseData[]
 }
 
+// Last payload per entries array: grid panes share the parent's entries and temperature, so
+// they share one filtered array too (and with it get_formula_color_data's memo)
+const payload_memo = new WeakMap<PhaseData[], { key: string; payload: TempFilterPayload }>()
+
 // Entries evaluated at `temperature` (interpolated per config) when the dataset carries G(T)
 // tables and a temperature is set; otherwise the entries unchanged
 export function get_temp_filter_payload(
@@ -18,15 +23,23 @@ export function get_temp_filter_payload(
   temperature: number | undefined,
   config: ChemPotDiagramConfig,
 ): TempFilterPayload {
+  const interpolate =
+    config.interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature
+  const max_interpolation_gap =
+    config.max_interpolation_gap ?? CHEMPOT_DEFAULTS.max_interpolation_gap
+  // value_key, not JSON.stringify: that writes an Infinity gap (no limit) as null
+  const key = value_key([temperature, interpolate, max_interpolation_gap])
+  const memo = payload_memo.get(entries)
+  if (memo?.key === key) return memo.payload
   const { has_temp_data, available_temperatures } = analyze_temperature_data(entries)
   const temp_filtered_entries =
     has_temp_data && temperature !== undefined
       ? filter_entries_at_temperature(entries, temperature, {
-          interpolate:
-            config.interpolate_temperature ?? CHEMPOT_DEFAULTS.interpolate_temperature,
-          max_interpolation_gap:
-            config.max_interpolation_gap ?? CHEMPOT_DEFAULTS.max_interpolation_gap,
+          interpolate,
+          max_interpolation_gap,
         })
       : entries
-  return { has_temp_data, available_temperatures, temp_filtered_entries }
+  const payload = { has_temp_data, available_temperatures, temp_filtered_entries }
+  payload_memo.set(entries, { key, payload })
+  return payload
 }

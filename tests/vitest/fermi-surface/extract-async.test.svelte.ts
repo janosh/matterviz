@@ -46,9 +46,11 @@ const warm = (grid: BandGridData, factors: number[]) =>
 test(`worker extraction matches the main thread, sends each grid once, caches results`, async () => {
   const grid = $state(load_cu()) // a viewer's grid: deeply proxied, so not structured-cloneable
   expect(fermi_extraction_warm(grid, 0)).toBe(false)
+  const lattices = []
   for (const mu of [0, -2.5]) {
     const options = { mu, interpolation_factor: 0, wigner_seitz: true }
     const result = await extract_fermi_surface_async(grid, options)
+    lattices.push(result.k_lattice)
     // d bands at −2.5 eV give several sheets, folded and clipped into the zone
     expect(result).toEqual(extract_fermi_surface(grid, options))
     expect(result.isosurfaces.length).toBeGreaterThan(0)
@@ -61,6 +63,8 @@ test(`worker extraction matches the main thread, sends each grid once, caches re
       expect(cached).toBe(result)
     }
   }
+  // one lattice identity per grid, so a zone drawn from it isn't rebuilt per μ
+  expect(lattices[1]).toBe(lattices[0])
   expect_module_worker(stub.instances, `src/lib/fermi-surface/extract-worker.ts`)
   expect_worker_safe_import_graph([`src/lib/fermi-surface/extract-worker.ts`], 5) // no Svelte
   // every mesh buffer is moved, none twice

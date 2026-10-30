@@ -494,7 +494,12 @@
         y_axis={{ ...plot_y_axis, label_shift: { x: 2, ...plot_y_axis.label_shift } }}
         tooltip={tooltip ?? peak_tooltip}
         on_bar_hover={(data) => {
-          hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
+          // fires per pointer move: a fresh object for the same stick re-runs every reader
+          if (
+            hovered_peak?.pattern_idx !== data?.series_idx ||
+            hovered_peak?.peak_idx !== data?.bar_idx
+          )
+            hovered_peak = data && peak_at(data.series_idx, data.bar_idx)
           on_bar_hover?.(data)
         }}
         on_bar_click={(data) => {

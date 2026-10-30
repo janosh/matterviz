@@ -205,11 +205,23 @@
     attempt(invalid, () => band_data && normalize_band_grid(band_data)),
   )
   const surface_data = $derived(surface_result.value)
+  // What the scene draws: while a band grid's surface extracts and none is given yet (a sweep's
+  // next frame), the last one stays up, so the scene neither blanks for a frame nor remounts
+  // every sheet and decoration it draws. A failed extraction clears it, also when the last
+  // committed fermi_data (a surface for an earlier mu or grid) is still set.
+  let held_surface: FermiSurfaceData | undefined
+  const shown_surface = $derived.by(() => {
+    if (grid_data && extraction_failed) return (held_surface = undefined)
+    if (surface_data) return (held_surface = surface_data)
+    if (!grid_data) return (held_surface = undefined)
+    return held_surface
+  })
   const grid_data = $derived(grid_result.value)
 
-  // BZ of whichever reciprocal lattice is available (priority order)
+  // BZ of whichever reciprocal lattice is available (priority order), the shown surface's
+  // first so a held surface stays inside its own zone while a new grid's extracts
   const k_lattice = $derived(
-    surface_data?.k_lattice ??
+    shown_surface?.k_lattice ??
       grid_data?.k_lattice ??
       (structure?.lattice?.matrix
         ? reciprocal_lattice(structure.lattice.matrix, { two_pi: true })
@@ -272,6 +284,8 @@
   let extraction_job_id = 0
   let committed_job_id = 0
   let extracting = $state(false)
+  // the newest extraction failed: nothing stands in for its surface
+  let extraction_failed = $state(false)
   // nothing commits, reports or clears the spinner after unmount
   $effect(() => {
     const unregister = extraction.register_fermi_viewer()
@@ -284,6 +298,7 @@
   })
   $effect(() => {
     const job_id = ++extraction_job_id
+    extraction_failed = false
     if (!grid_data) {
       extracting = false
       return
@@ -306,6 +321,7 @@
           },
           (err: unknown) => {
             if (job_id !== extraction_job_id) return
+            extraction_failed = true
             error_msg = `Fermi surface extraction failed: ${to_error(err).message}`
             on_error?.({ error_msg })
           },
@@ -350,7 +366,7 @@
   const shown_bands = $derived(isolated_band === null ? selected_bands : [isolated_band])
   // The requested property when present, else the first; the fitted range spans visible sheets
   // and fills the ends color_scale.value_range leaves unset
-  const available_properties = $derived(available_property_names(surface_data, grid_data))
+  const available_properties = $derived(available_property_names(shown_surface, grid_data))
   const shown_color_property = $derived(
     resolve_color_property(color_property, available_properties),
   )
@@ -362,7 +378,7 @@
   const fitted_value_range = $derived<Vec2>(
     shown_color_property === `property`
       ? property_value_range(
-          visible_isosurfaces(surface_data?.isosurfaces, shown_bands, selected_spins),
+          visible_isosurfaces(shown_surface?.isosurfaces, shown_bands, selected_spins),
           active_property,
         )
       : [0, 1],
@@ -374,7 +390,7 @@
 
   // Auto-enable BZ tiling when irreducible data is detected
   $effect(() => {
-    if (surface_data && detect_irreducible_bz(surface_data)) tile_bz = true
+    if (shown_surface && detect_irreducible_bz(shown_surface)) tile_bz = true
   })
 
   // `f` is owned by FullscreenButton, Escape by the open pane, else it unpins the tooltip
@@ -404,7 +420,7 @@
   {@attach wheel_gate}
 >
   <LiveMessage message={key_walk.message} />
-  {@render children?.({ fermi_data: surface_data, bz_data })}
+  {@render children?.({ fermi_data: shown_surface, bz_data })}
   {#if loading}
     <TaskStatus overlay spinner label="Loading Fermi surface..." {spinner_props} />
   {:else if error_msg}
@@ -426,7 +442,7 @@
       {#if controls_config.visible(`controls`)}
         <FermiSurfaceControls
           bind:controls_open
-          fermi_data={surface_data}
+          fermi_data={shown_surface}
           band_data={grid_data}
           bind:mu={mean}
           bind:color_property
@@ -470,7 +486,7 @@
         dpr={Math.min(2, window.devicePixelRatio)}
       >
         <FermiSurfaceScene
-          fermi_data={surface_data}
+          fermi_data={shown_surface}
           {bz_data}
           color_property={shown_color_property}
           color_scale={resolved_color_scale}

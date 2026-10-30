@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { value_key } from '#lib/utils.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
@@ -101,7 +102,7 @@
     } satisfies TrajectorySpectroscopyOptions,
   })
   let completed_settings_key = $state<string>()
-  let current_settings_key = $derived(JSON.stringify(settings_snapshot()))
+  let current_settings_key = $derived(value_key(settings_snapshot()))
   let settings_dirty = $derived(
     Boolean(
       result && completed_settings_key && completed_settings_key !== current_settings_key,
@@ -168,7 +169,7 @@
       )
       if (request_is_current()) {
         result = calculation_result
-        completed_settings_key = JSON.stringify(request_settings)
+        completed_settings_key = value_key(request_settings)
       }
     } catch (error) {
       if (request_is_current()) {

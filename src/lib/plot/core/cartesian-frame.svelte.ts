@@ -53,7 +53,11 @@ import { normalize_plot_title, pad_for_plot_title } from '#lib/plot/core/plot-ti
 import { index_ref_lines, solve_reference_annotations } from '#lib/plot/core/reference-line.js'
 import { create_axis_scales, generate_ticks, log_floor_scale } from '#lib/plot/core/scales.js'
 import type { FontSpec } from '#lib/plot/core/text-metrics.js'
-import { measured_axis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
+import {
+  arrays_equal,
+  measured_axis,
+  resolve_tick_layout,
+} from '#lib/plot/core/tick-layout.js'
 import type {
   AxisConfig,
   AxisRanges,
@@ -190,6 +194,27 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     axis === `x2` ? opts.has_x2() : axis === `y2` ? opts.has_y2() : true
   const measured_axis_config = (axis: FacetAxis): AxisConfig =>
     opts.measured_axes?.()[axis] ?? opts.axes()[axis]
+
+  // Each axis config keeps its object while its fields hold: callers rebuild them on every data
+  // change, and every tick of an axis reads its config, so a new but equal one re-renders all
+  let last_axes: ReturnType<typeof opts.axes> | undefined
+  const stable_axes = $derived.by(() => {
+    const next = opts.axes()
+    const prev = last_axes
+    if (!prev) return (last_axes = next)
+    const same = (axis: FacetAxis): boolean => {
+      const [old_config, new_config] = [prev[axis], next[axis]] as Record<string, unknown>[]
+      const keys = Object.keys(new_config)
+      return (
+        keys.length === Object.keys(old_config).length &&
+        keys.every((key) => Object.is(old_config[key], new_config[key]))
+      )
+    }
+    if (FACET_AXES.every(same)) return prev
+    last_axes = { ...next }
+    for (const axis of FACET_AXES) if (same(axis)) last_axes[axis] = prev[axis]
+    return last_axes
+  })
 
   const facet = create_facet_plot_adapter({
     facet_layout: opts.facet_layout,
@@ -378,7 +403,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         ? new_pad
         : auto_pad(sides, filter_padding({ t, b }, DEFAULT_PLOT_PADDING))
     if (!sides_equal(fit_pad, new_fit_pad)) fit_pad = new_fit_pad
-    const new_axis_pad = auto_pad({})
+    // without explicit sides, the axes' own need is the pad just computed
+    const explicit = Object.values(explicit_pad).some((side) => side != null)
+    const new_axis_pad = explicit ? auto_pad({}) : new_pad
     if (!sides_equal(axis_pad, new_axis_pad)) axis_pad = new_axis_pad
   })
 
@@ -510,18 +537,28 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   let held_solution: DecorationSolution | undefined
   const base_decoration_solution = $derived.by(() => {
     if (legend_is_dragging && held_solution) return held_solution
+    const items = [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])]
     return (held_solution = solve_decorations({
       base_pad: effective_base_pad,
       reserved_pad: marginal_pad,
       axis_pad: facet.padding(axis_pad),
       width,
       height,
-      obstacles_norm: opts.obstacles(),
+      // only placed items dodge the data: with none, a pan frame never rebuilds the obstacles
+      obstacles_norm: items.length ? opts.obstacles() : [],
       exclusion_rects: pinned_rects,
-      items: [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])],
+      items,
     }))
   })
-  const pad = $derived(base_decoration_solution.pad)
+  // pad, scales and ticks keep their identity while their values hold: the solver re-runs on
+  // every data change (its obstacles are the data), and a new pad, scale or tick array would
+  // re-project every point, line and tick of the plot even though no axis moved
+  let last_pad: Required<Sides> | undefined
+  const pad = $derived.by(() => {
+    const next = base_decoration_solution.pad
+    if (!last_pad || !sides_equal(last_pad, next)) last_pad = next
+    return last_pad
+  })
   const outside_pad = $derived.by(() => {
     const bands = { t: 0, b: 0, l: 0, r: 0 }
     for (const placement of base_decoration_solution.placements) {
@@ -537,8 +574,28 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const chart_width = $derived(Math.max(1, width - pad.l - pad.r))
   const chart_height = $derived(Math.max(1, height - pad.t - pad.b))
 
-  const scales = $derived(create_axis_scales(opts.axes(), ranges.current, pad, width, height))
-  const ticks = $derived(compute_ticks(scales, ranges.current))
+  let last_scales: { key: string; value: ReturnType<typeof create_axis_scales> } | undefined
+  const scales = $derived.by(() => {
+    const axes = opts.axes()
+    const { current } = ranges
+    const key = JSON.stringify([
+      FACET_AXES.map((axis) => [axes[axis].scale_type ?? `linear`, current[axis]]),
+      pad,
+      width,
+      height,
+    ])
+    if (last_scales?.key !== key) {
+      last_scales = { key, value: create_axis_scales(axes, current, pad, width, height) }
+    }
+    return last_scales.value
+  })
+  let last_ticks: Record<FacetAxis, number[]> | undefined
+  const ticks = $derived.by(() => {
+    const next = compute_ticks(scales, ranges.current)
+    const prev = last_ticks
+    if (prev && FACET_AXES.every((axis) => arrays_equal(prev[axis], next[axis]))) return prev
+    return (last_ticks = next)
+  })
   // Ref lines on a data-less x2/y2 (whose scales are [0, 1] sentinels) resolve against the
   // primary axis, so charts without secondary axes still honour `x_axis: 'x2'`
   const ref_line_axes = $derived.by(() => {
@@ -552,15 +609,17 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   })
   const ref_lines = $derived(index_ref_lines(opts.ref_lines?.()))
   const decoration_solution = $derived(
-    solve_reference_annotations({
-      base_solution: base_decoration_solution,
-      base_pad: pad,
-      width,
-      height,
-      obstacles_norm: opts.obstacles(),
-      lines: ref_lines,
-      ...ref_line_axes,
-    }),
+    ref_lines.length === 0
+      ? base_decoration_solution
+      : solve_reference_annotations({
+          base_solution: base_decoration_solution,
+          base_pad: pad,
+          width,
+          height,
+          obstacles_norm: opts.obstacles(),
+          lines: ref_lines,
+          ...ref_line_axes,
+        }),
   )
   const legend_placement = $derived(get_decoration_placement(decoration_solution, `legend`))
   // A managed legend below the plot wraps into a row; a dragged or dropped one keeps the wrap
@@ -735,7 +794,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       return legend_manual_position
     },
     get axes() {
-      return opts.axes()
+      return stable_axes
     },
     get ranges() {
       return ranges

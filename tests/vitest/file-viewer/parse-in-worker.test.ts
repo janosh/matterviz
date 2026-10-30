@@ -468,12 +468,26 @@ describe(`parse_in_worker`, () => {
     expect(result).toEqual(await parse_file_content(content, `empty.json`))
     if (disabled) expect(worker_global).not.toHaveBeenCalled()
     // an abort while the main-thread parse runs still rejects, as on the worker path
-    const controller = new AbortController()
-    const pending = module.parse_in_worker(content, `empty.json`, false, {
-      signal: controller.signal,
+    const abort_parse = async () => {
+      const controller = new AbortController()
+      const pending = module.parse_in_worker(content, `empty.json`, false, {
+        signal: controller.signal,
+      })
+      controller.abort()
+      await expect(pending).rejects.toThrow(/abort/i)
+    }
+    await abort_parse()
+    // and disposes a trajectory parsed meanwhile, else its listeners leak
+    const run = trajectory_from_frames([frame])
+    const dispose = vi.spyOn(run, `dispose`)
+    const parse_module = await import(`#lib/file-viewer/parse.js`)
+    vi.spyOn(parse_module, `parse_file_content`).mockResolvedValueOnce({
+      type: `trajectory`,
+      data: run,
+      filename: `run.xyz`,
     })
-    controller.abort()
-    await expect(pending).rejects.toThrow(/abort/i)
+    await abort_parse()
+    expect(dispose).toHaveBeenCalledOnce()
   })
 
   // A host marker (or a workerless page) parses on the main thread, where an abort only lands

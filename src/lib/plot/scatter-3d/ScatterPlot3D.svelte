@@ -7,7 +7,7 @@
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import PlotLegend from '#lib/plot/core/components/PlotLegend.svelte'
-  import { build_legend_items, first_point_style } from '#lib/plot/core/data-transform.js'
+  import { build_legend_items, shown_point_style } from '#lib/plot/core/data-transform.js'
   import { chain_callbacks, resolve_axis_range } from '#lib/plot/core/interactions.js'
   import type {
     AxisConfig3D,
@@ -18,6 +18,7 @@
     InternalPoint3D,
     LegendConfig,
     Scatter3DHandlerEvent,
+    Surface3DConfig,
   } from '#lib/plot/core/types.js'
   import { assert_series_lengths, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { Canvas } from '@threlte/core'
@@ -181,7 +182,15 @@
     x: resolve_axis_range({ range: x_axis.range }, auto_xy_ranges.x),
     y: resolve_axis_range({ range: y_axis.range }, auto_xy_ranges.y),
   })
-  const auto_ranges = $derived({ ...auto_xy_ranges, z: auto_ranges_over(xy_ranges).z })
+  // Only grid surfaces spanning the plot's x or y miss the first pass, so only they need a
+  // second one, which otherwise re-scans every series for the same bounds
+  const spans_plot = ({ type, z_fn, x_range, y_range }: Surface3DConfig): boolean =>
+    type === `grid` && Boolean(z_fn) && !(x_range && y_range)
+  const auto_ranges = $derived(
+    visible_surfaces.some(spans_plot)
+      ? { ...auto_xy_ranges, z: auto_ranges_over(xy_ranges).z }
+      : auto_xy_ranges,
+  )
   const ranges = $derived({
     ...xy_ranges,
     z: resolve_axis_range({ range: z_axis.range }, auto_ranges.z),
@@ -196,7 +205,7 @@
   let legend_data = $derived(
     build_legend_items(series, (srs, series_idx) => ({
       symbol_type: `Circle` as const,
-      symbol_color: first_point_style(srs)?.fill ?? plot_color(series_idx),
+      symbol_color: shown_point_style(srs)?.fill ?? plot_color(series_idx),
     })),
   )
   // Lift the gizmo above the color bar when one is shown; otherwise pass `gizmo` through as-is

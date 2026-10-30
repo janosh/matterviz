@@ -57,10 +57,13 @@ export function create_placed_decoration(opts: {
   let element = $state<HTMLDivElement | undefined>()
   let size_revision = $state(0)
   const pinned = $derived(Boolean(opts.config()?.wrapper_style))
-  // Measured footprint, else the estimate until it renders
+  // The estimate as its own derived: a caller rebuilding its config per data change without
+  // changing the estimate (most do) re-measures nothing, a measure being a forced layout
+  const fallback_footprint = $derived(opts.fallback_footprint())
+  // Measured footprint (on mount, resize and content_changed), else the estimate until it renders
   const footprint = $derived.by(() => {
     void size_revision
-    return full_footprint_or(element, opts.fallback_footprint())
+    return full_footprint_or(element, fallback_footprint)
   })
   const items = $derived<DecorationItem[]>(
     opts.enabled() && !pinned
@@ -112,6 +115,8 @@ export function create_placed_decoration(opts: {
     get size_revision() {
       return size_revision
     },
+    // Content that resizes no box (e.g. absolutely positioned tick labels) changed: measure again
+    content_changed: () => (size_revision += 1),
     get data_attrs() {
       return decoration_data_attrs(placement)
     },

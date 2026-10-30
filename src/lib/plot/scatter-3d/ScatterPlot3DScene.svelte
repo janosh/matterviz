@@ -217,7 +217,16 @@
   const sign_x = $derived(pos.x < 0 ? -1 : 1)
   const sign_y = $derived(pos.y < 0 ? -1 : 1)
 
-  const { x: x_range, y: y_range, z: z_range } = $derived(ranges)
+  // Bounds compared by value: a host's fresh ranges with the same numbers (e.g. after an axis
+  // label edit) rebuild no markers, lines or axes
+  const {
+    x: [x_min, x_max],
+    y: [y_min, y_max],
+    z: [z_min, z_max],
+  } = $derived(ranges)
+  const x_range = $derived<Vec2>([x_min, x_max])
+  const y_range = $derived<Vec2>([y_min, y_max])
+  const z_range = $derived<Vec2>([z_min, z_max])
 
   const normalize_x = (value: number) => normalize_to_scene(value, x_range, scene_x)
   const normalize_y = (value: number) => normalize_to_scene(value, y_range, scene_y)

@@ -1,3 +1,4 @@
+import type { Vec2 } from '#lib/math.js'
 import type {
   CompUnit,
   PhaseBoundary,
@@ -124,28 +125,28 @@ describe(`PhaseDiagramTooltip`, () => {
   })
 
   describe(`boundary distance`, () => {
-    test.each<[number, number, string, TempUnit, string]>([
-      [1050, 1000, `liquidus`, `K`, `above`], // temp > boundary → above
-      [750, 800, `solidus`, `°C`, `below`], // temp < boundary → below
-      [900, 1000, `solvus`, `K`, `below`],
+    // Boundary temperatures interpolate on the segment spanning the composition: at x = 0.19
+    // the Cu-like liquidus sits at 1112.9 K, not at its 1100 K sample at x = 0.2
+    const liquidus = pts(0, 1358, 0.2, 1100, 0.4, 900)
+    test.each<[number, number, PhaseBoundary[`type`], Vec2[], TempUnit, string, number]>([
+      [0.5, 1050, `liquidus`, pts(0, 1000, 1, 1000), `K`, `above`, 50], // temp > boundary
+      [0.5, 750, `solidus`, pts(0, 800, 1, 800), `°C`, `below`, 50], // temp < boundary
+      [0.5, 900, `solvus`, pts(0, 1100, 1, 900), `K`, `below`, 100],
+      [0.1, 1300, `liquidus`, liquidus, `K`, `above`, 71],
+      [0.19, 1200, `liquidus`, liquidus, `K`, `above`, 87],
     ])(
-      `shows %dK vs boundary at %dK (%s) as "%s"`,
-      (temperature, boundary_temp, boundary_type, unit, direction) => {
-        const hover_info = create_hover_info({ composition: 0.5, temperature })
-        const boundaries: PhaseBoundary[] = [
-          {
-            id: `b1`,
-            type: boundary_type as PhaseBoundary[`type`],
-            points: [[0.5, boundary_temp]],
-          },
-        ]
-        mount_tooltip({ hover_info, boundaries, temperature_unit: unit })
-
-        const info = document.querySelector(`.boundary-info`)
-        expect(info).not.toBeNull()
-        expect(info?.textContent).toContain(direction)
-        expect(info?.textContent).toContain(boundary_type)
-        expect(info?.textContent).toContain(`${Math.abs(temperature - boundary_temp)}`)
+      `at x=%s, %s K vs a %s %o in %s shows "%s" by %s`,
+      (composition, temperature, type, points, unit, direction, delta) => {
+        const hover_info = create_hover_info({ composition, temperature })
+        mount_tooltip({
+          hover_info,
+          boundaries: [{ id: `b1`, type, points }],
+          temperature_unit: unit,
+        })
+        const text = document.querySelector(`.boundary-info`)?.textContent ?? ``
+        expect(text.replaceAll(/\s+/g, ` `).trim()).toBe(
+          `${delta} ${unit} ${direction} ${type}`,
+        )
       },
     )
 

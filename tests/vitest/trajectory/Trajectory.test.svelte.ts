@@ -1582,9 +1582,10 @@ describe(`events`, () => {
     play()
     flushSync()
     expect(handlers.on_play).toHaveBeenCalledExactlyOnceWith(payload(1, 10))
-    // One animation frame per 100 ms step at 10 fps: 1 -> 2 -> wrap
+    // One animation frame per 100 ms step at 10 fps: 1 -> 2 -> wrap. A frame runs every
+    // callback queued before it (the plot's resize commit too), not those it queues itself.
     const step_frame = (now: number) => {
-      raf_callbacks.shift()?.(now)
+      for (const callback of raf_callbacks.splice(0)) callback(now)
       flushSync()
     }
     step_frame(100)

@@ -2,10 +2,12 @@ import {
   create_hull_selection,
   HOVER_PREVIEW_DELAY_MS,
 } from '#lib/convex-hull/canvas-interactions.svelte.js'
+import { create_hull_data_pipeline } from '#lib/convex-hull/hull-state.svelte.js'
 import type { AnyStructure } from '#lib/structure/index.js'
-import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
+import { MAGNETIC_ORDERING_CATEGORY, type ConvexHullEntry } from '#lib/convex-hull/types.js'
 import { flushSync } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { make_phase } from '../test-fixtures'
 
 const entry: ConvexHullEntry = {
   composition: { Li: 1, O: 1 },
@@ -160,3 +162,50 @@ describe(`create_hull_selection timers: copy feedback and hover preview`, () => 
     expect(vi.getTimerCount()).toBe(0)
   })
 })
+
+// Category markers are applied once per model, so a threshold step keeps the plot entries'
+// identities: selection, hover and popups match id-less entries by identity
+it.each([0.5, 0.05])(
+  `hull distance threshold %s keeps the marked plot entries`,
+  (threshold) => {
+    const entries = [
+      make_phase({ Li: 1 }),
+      make_phase({ O: 1 }),
+      make_phase({ Li: 1, O: 1 }, -1, { magnetic_ordering: `FM` }),
+      make_phase({ Li: 2, O: 1 }, -0.5, { magnetic_ordering: `AFM` }),
+    ]
+    let max_hull_dist = $state(1)
+    let pipeline!: ReturnType<typeof create_hull_data_pipeline>
+    const destroy = $effect.root(() => {
+      pipeline = create_hull_data_pipeline({
+        entries: () => entries,
+        temperature: () => undefined,
+        interpolate_temperature: () => true,
+        max_interpolation_gap: () => 500,
+        gas_config: () => undefined,
+        gas_pressures: () => ({}),
+        energy_source_mode: () => `on-the-fly`,
+        components: () => undefined,
+        max_hull_dist_show_phases: () => max_hull_dist,
+        show_stable: () => true,
+        show_unstable: () => true,
+        entry_category: () => MAGNETIC_ORDERING_CATEGORY,
+        hidden_categories: () => [],
+        label_threshold: () => 50,
+        set_temperature: () => {},
+        set_max_hull_dist_show_phases: (value) => (max_hull_dist = value),
+        hide_labels: () => {},
+      })
+    })
+    flushSync()
+    max_hull_dist = 1
+    flushSync()
+    const before = pipeline.plot_entries
+    expect(before.filter(({ marker }) => marker)).toHaveLength(2)
+    max_hull_dist = threshold
+    flushSync()
+    expect(pipeline.plot_entries.length).toBeGreaterThan(0)
+    for (const plot_entry of pipeline.plot_entries) expect(before).toContain(plot_entry)
+    destroy()
+  },
+)

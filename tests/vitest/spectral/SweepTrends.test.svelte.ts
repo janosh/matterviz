@@ -2,7 +2,10 @@
 import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
 import type { DataSeries } from '#lib/plot/index.js'
 import type ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
+import { plot_color } from '#lib/colors/index.js'
+import { build_series_legend_items } from '#lib/plot/scatter/scatter-data.js'
 import type { Sweep, SweepFrame, SweepSeries } from '#lib/spectral/sweep.js'
+import type { FrameLoadState } from '#lib/spectral/sweep-frames.svelte.js'
 import SweepTrends from '#lib/spectral/SweepTrends.svelte'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
@@ -95,6 +98,47 @@ test.each([
   )
   expect(radii).toEqual([fcc_radii, bcc_radii])
   expect(props.current_x_value).toBe(0) // the line stays at the selected frame
+})
+
+// the line and legend take the series' colour, not its first point's (here unstable, grey)
+test(`load states mark points and failed frames, lines and legend keep the series colour`, () => {
+  const [fcc, bcc] = sweep.series
+  const [first, missing, last] = fcc.frames
+  const marked: Sweep = {
+    ...sweep,
+    series: [
+      {
+        ...fcc,
+        frames: [
+          { ...first, status: { unstable: true } },
+          missing,
+          { ...last, status: undefined },
+        ],
+      },
+      bcc,
+    ],
+  }
+  const states: Record<string, FrameLoadState[]> = {
+    fcc: [`loaded`, `failed`, `loading`],
+    bcc: [`failed`],
+  }
+  const { props } = render({
+    sweep: marked,
+    load_state_of: (series: SweepSeries, idx: number) => states[series.id][idx],
+  })
+  const lines: readonly DataSeries[] = props.series ?? []
+  const styles = lines.map(({ point_style }) =>
+    Array.isArray(point_style) ? point_style : [],
+  )
+  expect(styles[0][1]).toMatchObject({ fill: `transparent`, stroke: plot_color(0) }) // loading
+  expect(styles[1][0]).toMatchObject({ symbol_type: `Cross`, stroke: `crimson` }) // failed
+  // frame 1 failed without a value: a line where its point would be
+  expect(props.ref_lines?.at(-1)).toMatchObject({ type: `vertical`, x: 50 })
+  // the legend's line colour is the drawn line's (scatter_line_style)
+  const colours = [plot_color(0), plot_color(1)]
+  const legend = build_series_legend_items(lines, () => ``)
+  expect(legend.map(({ display_style }) => display_style.line_color)).toEqual(colours)
+  expect(legend[1].display_style.symbol_color).toBe(colours[1]) // its first point failed
 })
 
 test(`a computed descriptor fills frames from their data, its HTML label on the y axis`, () => {

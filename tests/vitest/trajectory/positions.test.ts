@@ -254,7 +254,12 @@ describe(`numeric position input`, () => {
           },
         )
         if (`lattice` in frame.structure) frame.structure.lattice.pbc = [true, false, true]
-        frame.metadata = { dipole: [idx, 0, 1], temperature: 300 + idx }
+        // a LAMMPS box whose origin drifts (barostat, fix deform) by a quarter Å per frame
+        frame.metadata = {
+          dipole: [idx, 0, 1],
+          temperature: 300 + idx,
+          box_origin: [idx / 4, 0, 0],
+        }
         frame.structure.sites.forEach((site, site_idx) => {
           site.label = `${site.species[0].element}${site_idx + 1}`
           // a numeric id travels as a scalar column; a string property keeps the records
@@ -279,6 +284,10 @@ describe(`numeric position input`, () => {
       expect(numeric).toEqual(records)
       expect(numeric.steps).toEqual(steps)
       expect(numeric.positions).toHaveLength(steps.length * 6)
+      // positions shift to the first collected frame's origin: the box move is no displacement
+      expect(steps.map((_step, frame_idx) => numeric.positions[frame_idx * 6 + 3])).toEqual(
+        steps.map((step) => 2 + (step / 10 - 1) / 4),
+      )
       // Returning an analysis result must not expose a source snapshot for mutation.
       expect(numeric.pbc).not.toBe(frames[1].structure.lattice?.pbc)
       const matrix = numeric.lattice_matrices?.[0]

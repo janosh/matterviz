@@ -426,14 +426,16 @@ const two_nodes = {
   links: [{ source: `a`, target: `b`, value: 1 }],
 }
 // oxfmt-ignore
-test.each<[string, unknown, string, Props, string, MouseEventInit?]>([
+const hover_charts: [string, unknown, string, Props, string, MouseEventInit?][] = [
   [`.bar-plot`, BarPlot, `on_bar_hover`, { series: [{ x: [1, 2], y: [3, 4] }] }, `path[role="button"]`],
   [`.box-plot`, BoxPlot, `on_box_hover`, { series: [{ y: [1, 2, 3] }] }, `g.box-series[role="button"]`],
   [`.histogram`, Histogram, `on_bar_hover`, { series: [{ values: [0, 1] }] }, `g.histogram-series path[role="button"]`],
   [`.sankey`, Sankey, `on_node_hover`, { data: two_nodes }, `.nodes rect`, { clientX: 30, clientY: 40 }],
   [`.sunburst`, Sunburst, `on_node_hover`, { data: [{ label: `A`, value: 1 }], tween: { duration: 0 } }, `[data-sunburst-node-idx="1"]`],
   [`.ternary`, TernaryPlot, `on_point_hover`, { series: [{ points: [[0.2, 0.3, 0.5]] }] }, `[data-ternary-idx="0"]`, { clientX: 100, clientY: 100 }],
-])(`%s with tooltip=false keeps its hover handler`, async (selector, chart, handler, props, target, init) => {
+]
+// oxfmt-ignore
+test.each(hover_charts)(`%s with tooltip=false keeps its hover handler`, async (selector, chart, handler, props, target, init) => {
   for (const tooltip of [undefined, false]) {
     const on_hover = vi.fn()
     const options = { selector, width: 500, height: 360 }
@@ -444,6 +446,33 @@ test.each<[string, unknown, string, Props, string, MouseEventInit?]>([
     plot.parentElement?.remove()
   }
 })
+
+// A tooltip snippet's payload holds while the pointer moves within one mark: only the
+// tooltip's position follows the pointer, so its content doesn't re-render per move
+test.each(hover_charts)(
+  `%s keeps the tooltip payload across moves within a mark`,
+  async (selector, chart, _handler, props, target, init) => {
+    let payload_reads = 0
+    const tooltip = createRawSnippet((payload: () => unknown) => ({
+      render: () => `<span>tip</span>`,
+      setup: () => {
+        $effect(() => {
+          void payload()
+          payload_reads++
+        })
+      },
+    }))
+    const options = { selector, width: 500, height: 360 }
+    const plot = await mount_sized(chart as Component<Props>, { ...props, tooltip }, options)
+    const { clientX = 100, clientY = 100 } = init ?? {}
+    for (const shift of [0, 3]) {
+      const move = { clientX: clientX + shift, clientY: clientY + shift }
+      await fire(plot.querySelector(target), mouse(`mousemove`, move))
+    }
+    expect(payload_reads).toBe(1)
+    plot.parentElement?.remove()
+  },
+)
 
 // The pin state machine every pinnable tooltip shares. Marks are keyed by `id`, so `a2` is a
 // fresher snapshot of the pinned `a`; `off` stands for a mark whose click the host claimed.
@@ -467,6 +496,14 @@ describe(`TooltipPin`, () => {
     for (const mark of clicks) pin.toggle(mark)
     expect(pin.value).toBe(pinned)
     expect(on_unpin).toHaveBeenCalledTimes(n_unpins)
+  })
+
+  // hover handlers skip rewriting an unchanged mark, so a move within one bar re-runs nothing
+  test(`same compares marks by key and never matches a missing one`, () => {
+    const pin = new TooltipPin<Mark>({ key: ({ id }) => id })
+    expect([pin.same(a, a2), pin.same(a, b), pin.same(a, null), pin.same(null, null)]).toEqual(
+      [true, false, false, false],
+    )
   })
 
   test(`hovers other than the pinned mark are held off; Escape reports whether it unpinned`, () => {

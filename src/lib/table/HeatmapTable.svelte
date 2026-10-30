@@ -24,7 +24,13 @@
     get_scale_type_name,
     SCALE_DEFAULTS,
   } from '#lib/plot/core/types.js'
-  import { clamp01, html_to_text, with_defaults } from '#lib/utils.js'
+  import {
+    clamp01,
+    html_to_text,
+    is_plain_object,
+    same_while_equal,
+    with_defaults,
+  } from '#lib/utils.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type {
@@ -269,8 +275,30 @@
     element.dataset.title = text
   }
 
-  // Keyed cell access is internal; callers can use ordinary typed row interfaces.
-  const data = $derived(input_data as (Row & RowData)[])
+  // Keyed cell access is internal; callers can use ordinary typed row interfaces. With row_key,
+  // a row equal to its id's previous one keeps that object: a live refresh (a trajectory
+  // frame's fresh rows) then re-renders only the rows whose values changed. Plain objects
+  // only: own keys and values are all a cell can read of them (a class row's getters aren't).
+  let prev_rows = new Map<RowId, Row & RowData>()
+  const data = $derived.by(() => {
+    const rows = input_data as (Row & RowData)[]
+    if (row_key === undefined) return rows
+    const prev = prev_rows
+    prev_rows = new Map()
+    return rows.map((row) => {
+      const id = get_row_id(row)
+      const old = prev.get(id)
+      const kept =
+        old &&
+        is_plain_object(row) &&
+        same_parts(Object.keys(old), Object.keys(row)) &&
+        same_parts(Object.values(old), Object.values(row))
+          ? old
+          : row
+      prev_rows.set(id, kept)
+      return kept
+    })
+  })
 
   // Elementwise === of two lists, for the memoized deriveds below
   const same_parts = (parts: readonly unknown[], prev: readonly unknown[]): boolean =>
@@ -430,9 +458,16 @@
     const new_order = ordered_columns.map((col) => col.id)
     if (!same_parts(new_order, column_order)) column_order = new_order
   })
-  let visible_columns = $derived(
-    ordered_columns.filter((col) => col.visible !== false && !hidden_columns.includes(col.id)),
-  )
+  // Kept while the same columns show in the same order: the mount-time column_order write-back
+  // (a fresh but equal ordered_columns) then re-scans no column statistics
+  let prev_visible_columns: Column<Row>[] = []
+  let visible_columns = $derived.by(() => {
+    const next = ordered_columns.filter(
+      (col) => col.visible !== false && !hidden_columns.includes(col.id),
+    )
+    if (same_parts(next, prev_visible_columns)) return prev_visible_columns
+    return (prev_visible_columns = next)
+  })
   let has_group_header = $derived(visible_columns.some((col) => col.group))
   // Cells rendered before the data columns: the select checkbox and the row number
   let leading_cols = $derived((show_row_select ? 1 : 0) + (show_row_numbers ? 1 : 0))
@@ -502,15 +537,16 @@
   // Per-column filters over all columns (hiding one mustn't change which rows show). Cached
   // by content since column_prefs also holds widths: else each resize pointermove would
   // re-filter every row and wipe the cell selection.
-  let filter_cache = { key: ``, filters: [] as { key: string; filter: ColumnFilter }[] }
-  let active_filters = $derived.by(() => {
-    const filters = columns
-      .map((col) => ({ key: cell_key(col), filter: prefs_of(col.id).filter }))
-      .filter((entry): entry is { key: string; filter: ColumnFilter } => Boolean(entry.filter))
-    const key = JSON.stringify(filters)
-    if (key !== filter_cache.key) filter_cache = { key, filters }
-    return filter_cache.filters
-  })
+  const keep_filters = same_while_equal<{ key: string; filter: ColumnFilter }[]>()
+  let active_filters = $derived(
+    keep_filters(
+      columns
+        .map((col) => ({ key: cell_key(col), filter: prefs_of(col.id).filter }))
+        .filter((entry): entry is { key: string; filter: ColumnFilter } =>
+          Boolean(entry.filter),
+        ),
+    ),
+  )
 
   // A keystroke re-filters every row and rebuilds one d3 scale per column (60 ms at 10k x 30).
   // Clearing applies at once, since waiting reads as a hang.
@@ -647,7 +683,9 @@
   let viewport_height = $state(0)
   let avg_row_height = $state(33) // refined from rendered rows after mount
   let row_height_measured = $state(false)
-  let virtual_range = $derived(
+  // Destructured into primitives, so scroll events inside one row keep virtual_range, and with
+  // it the rendered rows, as they are
+  let { start: virtual_start, end: virtual_end } = $derived(
     virtual_config
       ? virtual_window({
           scroll: scroll_top,
@@ -658,6 +696,7 @@
         })
       : { start: 0, end: row_count },
   )
+  let virtual_range = $derived({ start: virtual_start, end: virtual_end })
 
   // Scroll events only read offsets; clientHeight can force layout, so only measure on request
   const sync_viewport = (measure_size = false) => {
@@ -763,9 +802,17 @@
   // Does the column paint? An unconfigured numeric column defaults to interpolateViridis, so the
   // configured scale alone can't say. Over UNFILTERED data: `column_stats` is filtered, so the
   // control vanished mid-search. Looser than `numeric_columns`: mixed-in "N/A" still paints.
+  // The data scan is its own derived so a column_prefs write (each resize pointermove)
+  // doesn't rescan every text column.
+  let any_numeric_ids = $derived(
+    new Set(
+      columns
+        .filter((col) => data.some((row) => parse_numeric_val(row[cell_key(col)]) !== null))
+        .map((col) => col.id),
+    ),
+  )
   const is_colored_column = (col: Column<Row>): boolean =>
-    color_scale_of(col) !== null &&
-    data.some((row) => parse_numeric_val(row[cell_key(col)]) !== null)
+    color_scale_of(col) !== null && any_numeric_ids.has(col.id)
   // Columns the color controls apply to: the colored ones, plus any explicitly configured —
   // `color_scale: null` included, so turning a heatmap off can be undone
   let colored_columns = $derived(
@@ -1296,8 +1343,12 @@
     }
     return identifier
   }
+  // A boolean, so linked hovers that move highlighted_row_id between rows skip the O(n) pass
+  let needs_row_ids = $derived(
+    show_row_select || highlighted_row_id !== null || row_key !== undefined,
+  )
   $effect(() => {
-    if (!show_row_select && highlighted_row_id === null && row_key === undefined) return
+    if (!needs_row_ids) return
     if (row_key === undefined)
       throw new Error(`row_key is required with show_row_select or highlighted_row_id`)
     const ids = new Set<RowId>()
@@ -1310,13 +1361,15 @@
   let selected_id_set = $derived(new Set(selected_ids))
   const is_row_selected = (row: Row): boolean => selected_id_set.has(get_row_id(row))
   // Shared by the animated and static row loops
+  // Outside row_attrs: a linked hover moving between rows re-applies no row's attributes
+  const is_highlighted = (row: Row & RowData): boolean =>
+    highlighted_row_id !== null && get_row_id(row) === highlighted_row_id
   const row_attrs = (row: Row & RowData, abs_idx: number) => ({
     style: row.style,
     class: [
       row.class,
       {
         selected: show_row_select && is_row_selected(row),
-        hovered: highlighted_row_id !== null && get_row_id(row) === highlighted_row_id,
       },
     ],
     'data-row-idx': abs_idx,
@@ -1907,6 +1960,8 @@
             {@const date_val = view.dt_mode
               ? format_datetime_cell(val, col, view.dt_mode)
               : null}
+            <!-- a per-cell boolean: a moved tab stop re-runs two cells' attributes, not all -->
+            {@const tab_stop_cell = tab_row === abs_idx && tab_col === col_idx}
             <td
               data-col={col.label}
               data-sort-value={is_html ? null : val instanceof Date ? val.getTime() : val}
@@ -1917,11 +1972,7 @@
               class:numeric-col={view.numeric}
               class:cell-selected={selection.has(abs_idx, col_idx)}
               class:best-cell={view.best !== null && num === view.best}
-              tabindex={keyboard_cells
-                ? tab_row === abs_idx && tab_col === col_idx
-                  ? 0
-                  : -1
-                : undefined}
+              tabindex={keyboard_cells ? (tab_stop_cell ? 0 : -1) : undefined}
               style:--cell-bg={col.render_as === `bar` ? null : color.bg}
               style:color={col.render_as === `bar` ? null : color.text}
               style={view.cell_style}
@@ -1968,14 +2019,20 @@
         {:else if motion_duration(row_animation_ms) > 0 && !virtual_config}
           {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
             {@const abs_idx = display_range.start + row_idx}
-            <tr animate:flip={{ duration: row_animation_ms }} {...row_attrs(row, abs_idx)}>
+            <tr
+              animate:flip={{ duration: row_animation_ms }}
+              {...row_attrs(row, abs_idx)}
+              class:hovered={is_highlighted(row)}
+            >
               {@render row_cells(row, abs_idx)}
             </tr>
           {/each}
         {:else}
           {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
             {@const abs_idx = display_range.start + row_idx}
-            <tr {...row_attrs(row, abs_idx)}>{@render row_cells(row, abs_idx)}</tr>
+            <tr {...row_attrs(row, abs_idx)} class:hovered={is_highlighted(row)}>
+              {@render row_cells(row, abs_idx)}
+            </tr>
           {/each}
         {/if}
         {@render virtual_spacer(spacer_bottom)}

@@ -48,8 +48,11 @@ describe(`PlotMarginals integration`, () => {
     async (type) => {
       const compute = vi.spyOn(marginal_utils, `compute_marginal_curve`)
       const index = vi.spyOn(marginal_utils, `create_marginal_hit_test`)
+      // pinned: auto ranges leave the end markers their px reach, so they follow the size
       const root = await mount_scatter({
         marginals: { top: type, bottom: type, left: type, right: type },
+        x_axis: { range: [0, 11] },
+        y_axis: { range: [0, 10] },
       })
       const paths = () => Array.from(root.querySelectorAll(`.marginal path`))
       const before = paths().map((path) => [

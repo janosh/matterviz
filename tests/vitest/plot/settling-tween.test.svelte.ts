@@ -31,9 +31,11 @@ const with_tween = <T>(
   {
     is_same,
     defaults = SLOW,
+    enabled,
   }: {
     is_same?: (left: T, right: T) => boolean
     defaults?: TweenOptions<T>
+    enabled?: () => boolean
   } = {},
 ) => {
   const store = $state<{ value: T; live: TweenOptions<T> | undefined }>({
@@ -49,6 +51,7 @@ const with_tween = <T>(
         return store.live
       },
       is_same,
+      enabled,
     })
   })
   flushSync()
@@ -124,6 +127,43 @@ describe(`create_settling_tween`, () => {
         expect(tween.current).not.toBe(20) // an explicit live duration still animates
       },
       { defaults: { duration: 0 } },
+    )
+  })
+
+  // A snap mid-animation stops it (else the tween's frames would carry on from under the
+  // snapped value), and the next animation starts from the snapped value
+  test(`a snap stops a running animation, the next one starts from the snap`, () => {
+    with_tween(0, ({ tween, set, set_live }) => {
+      settle()
+      set(10) // animating
+      expect(tween.current).not.toBe(10)
+      set_live({ duration: 0 })
+      set(20)
+      expect(tween.current).toBe(20)
+      set_live(undefined)
+      set(30)
+      expect(tween.current).toBe(20) // animating again, from the snapped 20
+    })
+  })
+
+  // A Line past its plot's morph budget draws its path directly: the tween reads and writes
+  // nothing meanwhile, and once re-enabled snaps rather than morphing from a stale path
+  test(`disabled, it skips updates, then snaps once re-enabled`, () => {
+    const gate = $state({ on: false })
+    with_tween(
+      0,
+      ({ tween, set, retargets }) => {
+        settle()
+        set(10)
+        set(20)
+        expect([tween.current, retargets()]).toEqual([0, 0])
+        gate.on = true
+        flushSync()
+        expect(tween.current).toBe(20)
+        set(30)
+        expect([tween.current === 30, retargets()]).toEqual([false, 1])
+      },
+      { enabled: () => gate.on },
     )
   })
 

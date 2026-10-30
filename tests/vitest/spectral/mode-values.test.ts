@@ -1,5 +1,5 @@
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { branch_segment_keys } from '#lib/spectral/helpers.js'
+import { branch_segment_keys, branch_x, plotted_branches } from '#lib/spectral/helpers.js'
 import {
   mode_value_markers,
   MODE_MARKER_BINS,
@@ -110,7 +110,144 @@ describe(`project_qpoints_onto_path`, () => {
     expect(project(x_positions, 0.3)).toEqual([0, 1, 2])
     expect(project({ [first_key]: x_positions[first_key] })).toEqual([1])
   })
+
+  // The grid pruning must not change a single projection: compare against the all-pairs scan it
+  // replaced, on sheared lattices, paths with jumps and revisits, mesh points on cell edges,
+  // shifted images near the path and tolerances whose boxes outgrow a period
+  test.each([0.05, 0.1, 0.5, 3])(`matches the all-pairs scan at rel_tol %s`, (rel_tol) => {
+    let seed = 7
+    const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
+    for (let trial = 0; trial < 12; trial++) {
+      const lattice = [0, 1, 2].map((row) =>
+        [0, 1, 2].map((col) => (row === col ? 1 + rand() : rand() - 0.5)),
+      ) as Matrix3x3
+      const n_path = 6 + Math.floor(rand() * 30)
+      const path: Vec3[] = []
+      for (let idx = 0; idx < n_path; idx++) {
+        const prev = path.at(-1) ?? [0, 0, 0]
+        // revisit an earlier point now and then, else step a little
+        path.push(
+          idx > 3 && rand() < 0.15
+            ? path[Math.floor(rand() * idx)]
+            : (prev.map((coord) => coord + (rand() - 0.5) * 0.3) as Vec3),
+        )
+      }
+      const cut = 2 + Math.floor(rand() * (n_path - 4))
+      const band_struct = path_struct(path, [
+        [0, cut],
+        [cut + 1, n_path - 1],
+      ])
+      const n_mesh = 4 + Math.floor(rand() * 5)
+      const mesh: Vec3[] = Array.from(
+        { length: n_mesh ** 3 },
+        (_, flat) =>
+          [n_mesh ** 2, n_mesh, 1].map(
+            (stride) => (Math.floor(flat / stride) % n_mesh) / n_mesh,
+          ) as Vec3,
+      )
+      const near_path = path.map(
+        (point) =>
+          point.map(
+            (coord) => coord + (rand() - 0.5) * 0.02 + Math.round(rand() * 4 - 2),
+          ) as Vec3,
+      )
+      const qpoints = [...mesh, ...near_path, ...path]
+      const positions = x_positions_of(band_struct)
+      const fast = project_qpoints_onto_path(band_struct, lattice, qpoints, positions, rel_tol)
+      expect(fast).toEqual(
+        all_pairs_projection(band_struct, lattice, qpoints, positions, rel_tol),
+      )
+    }
+  })
 })
+
+// The projection as one scan of every q-point against every path segment (the reference for
+// the pruned version above)
+function all_pairs_projection(
+  band_struct: BaseBandStructure,
+  lattice: Matrix3x3,
+  qpoints: readonly Vec3[],
+  x_positions: Record<string, Vec2>,
+  rel_tol: number,
+): { q_idx: number; x: number }[] {
+  const to_cart = (frac: readonly number[]): Vec3 =>
+    [0, 1, 2].map((col) =>
+      frac.reduce((sum, coord, row) => sum + coord * lattice[row][col], 0),
+    ) as Vec3
+  const path = band_struct.qpoints.map(({ frac_coords }) => frac_coords)
+  const segments: {
+    origin: Vec3
+    end: number
+    vec: Vec3
+    len_sq: number
+    x_range: Vec2
+    continues: boolean
+  }[] = []
+  const branches = plotted_branches(band_struct, x_positions).toSorted(
+    ([, [start_a]], [, [start_b]]) => start_a - start_b,
+  )
+  for (const [branch, x_range] of branches) {
+    const prev = segments.at(-1)
+    let continues =
+      prev !== undefined &&
+      Math.abs(prev.x_range[1] - x_range[0]) <= 1e-9 * (1 + Math.abs(x_range[0])) &&
+      path[prev.end].every(
+        (coord, axis) => Math.abs(coord - path[branch.start_index][axis]) <= 1e-9,
+      )
+    for (
+      let idx = branch.start_index;
+      idx <= Math.max(branch.start_index, branch.end_index - 1);
+      idx++
+    ) {
+      const end = Math.min(idx + 1, branch.end_index)
+      const vec = to_cart(path[end].map((coord, axis) => coord - path[idx][axis]))
+      segments.push({
+        origin: path[idx],
+        end,
+        vec,
+        len_sq: vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2,
+        x_range: [idx, end].map((q_idx) =>
+          branch_x(band_struct, branch, x_range, q_idx),
+        ) as Vec2,
+        continues,
+      })
+      continues = true
+    }
+  }
+  const steps = segments
+    .map(({ len_sq }) => Math.sqrt(len_sq))
+    .filter((step) => step > 0)
+    .toSorted((a, b) => a - b)
+  const tol_sq = (rel_tol * (steps[Math.floor(steps.length / 2)] ?? 0)) ** 2
+  const projections: { q_idx: number; x: number }[] = []
+  for (const [q_idx, qpoint] of qpoints.entries()) {
+    let [best_sq, best_x] = [Infinity, NaN]
+    for (const { origin, vec, len_sq, x_range, continues } of segments) {
+      const rel = to_cart(
+        qpoint.map((coord, axis) => {
+          const diff = coord - origin[axis]
+          return diff - Math.round(diff)
+        }),
+      )
+      const along = rel[0] * vec[0] + rel[1] * vec[1] + rel[2] * vec[2]
+      const frac = len_sq > 0 ? Math.min(1, Math.max(0, along / len_sq)) : 0
+      const dist_sq = rel.reduce(
+        (sum, coord, axis) => sum + (coord - frac * vec[axis]) ** 2,
+        0,
+      )
+      if (!continues || dist_sq > tol_sq) {
+        if (best_sq <= tol_sq) projections.push({ q_idx, x: best_x })
+        best_sq = Infinity
+      }
+      if (dist_sq <= tol_sq && dist_sq < best_sq) {
+        best_sq = dist_sq
+        best_x = x_range[0] + frac * (x_range[1] - x_range[0])
+      }
+    }
+    if (best_sq <= tol_sq) projections.push({ q_idx, x: best_x })
+  }
+  return projections
+}
 
 describe(`normalize_mode_values`, () => {
   const valid = {

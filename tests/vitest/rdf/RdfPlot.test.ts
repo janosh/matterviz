@@ -4,8 +4,9 @@ import type { RdfPattern } from '#lib/rdf/index.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import { structure_map } from '#site/structures.js'
 import { type Component, type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
-import { create_drop_event, mount_sized, resize_element } from '../setup'
+import { create_drop_event, mount_sized, query, resize_element, set_input } from '../setup'
 import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
@@ -172,8 +173,14 @@ describe(`RdfPlot`, () => {
       `ScatterPlot`,
     )
     const [on_bin_hover, on_sites_hover] = [vi.fn(), vi.fn()]
+    // a reactive getter, so the patterns can be swapped under the computed curves below
+    const supplied = new SvelteMap([
+      [`patterns`, { label: `Test`, pattern: create_synthetic_pattern() }],
+    ])
     const plot = await mount_sized_rdf_plot({
-      patterns: { label: `Test`, pattern: create_synthetic_pattern() },
+      get patterns() {
+        return supplied.get(`patterns`)
+      },
       structures: nacl_structure,
       mode: `element_pairs`,
       on_bin_hover,
@@ -219,6 +226,17 @@ describe(`RdfPlot`, () => {
       entry: expect.objectContaining({ label: `Lu-Lu` }),
       bin_idx,
     })
+
+    // new patterns join the computed curves without re-running the neighbour search
+    vi.mocked(calculate_all_pair_rdfs).mockClear()
+    supplied.set(`patterns`, { label: `Swapped`, pattern: create_synthetic_pattern() })
+    await tick()
+    const swapped = scatter.mock.lastCall?.[1].series ?? []
+    expect(swapped.map(({ label }) => label)).toEqual([
+      `Swapped`,
+      ...series.slice(1).map(({ label }) => label),
+    ])
+    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
   })
 
   // Drops open through open_material, whose parse warnings reach a notice named by file
@@ -493,6 +511,17 @@ describe(`PdfPlot`, () => {
     expect(caption()).toContain(`w(H-Ni) = −`)
     // radiation only re-weights the partials; the neighbour search must not re-run
     expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
+    // dragging the cutoff slider updates its readout; the search runs once, on release
+    const cutoff_slider = query<HTMLInputElement>(target, `input[type="range"]`)
+    for (const value of [`9`, `10`, `11`]) {
+      set_input(cutoff_slider, value)
+      await tick()
+    }
+    expect(cutoff_slider.parentElement?.textContent).toContain(`11 Å`)
+    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
+    cutoff_slider.dispatchEvent(new Event(`change`, { bubbles: true }))
+    await tick()
+    expect(calculate_all_pair_rdfs).toHaveBeenCalledOnce()
 
     expect(y_label()).toContain(`G(r)`)
     click(`g(r)`)

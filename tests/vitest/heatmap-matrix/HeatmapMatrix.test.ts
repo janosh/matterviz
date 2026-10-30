@@ -985,6 +985,26 @@ describe(`virtualization`, () => {
     expect(Number(focused?.dataset?.[fixed_axis])).toBe(fixed)
   })
 
+  // Each scroll event inside one track used to hand every row a fresh cell array to re-diff,
+  // seen here through the tab-stop effect that re-runs per window change
+  test(`scrolling within one track leaves the rendered window untouched`, async () => {
+    mount_virtual({ on_click: () => {} })
+    await tick()
+    const grid = doc_query(`.grid`)
+    const set_attribute = vi.spyOn(HTMLElement.prototype, `setAttribute`)
+    const tab_stop_writes = async (scroll: number): Promise<number> => {
+      set_attribute.mockClear()
+      grid.scrollLeft = scroll
+      grid.dispatchEvent(new Event(`scroll`))
+      await tick()
+      return set_attribute.mock.calls.filter(([name]) => name === `tabindex`).length
+    }
+    // window edges sit at floor(scroll / stride) and ceil(scroll / stride): 1020 and 1050 share both
+    expect(await tab_stop_writes(1020)).toBeGreaterThan(0)
+    expect(await tab_stop_writes(1050)).toBe(0)
+    expect(await tab_stop_writes(1200)).toBeGreaterThan(0)
+  })
+
   // Labels and summaries are one node per track, so the full list mounted 30 of each for a
   // handful of cells. Measuring also left the scroll handler, so a resize must re-window.
   test(`windows the label and summary tracks, and re-windows on a resize`, async () => {
@@ -1041,13 +1061,15 @@ const svg_texts = (data: string) =>
     (text) => text.textContent,
   )
 test.each([
-  [`csv`, (data: string) => data.split(`\n`)[1], `X,1,2,3`],
-  [`json`, (data: string) => JSON.parse(data)[2], { y_key: `Z`, A: 7, B: 8, C: 9 }],
+  [`csv`, (data: string) => data.split(`\n`)[1], `X,1,2,3`, {}],
+  // integer-like labels keep their column order (object keys would sort them first)
+  [`csv`, (data: string) => data.split(`\n`)[0], `y_key,10,2,1`, { x: [`10`, `2`, `1`] }],
+  [`json`, (data: string) => JSON.parse(data)[2], { y_key: `Z`, A: 7, B: 8, C: 9 }, {}],
   // every cell and label lands in the drawing (all mocked to one 40x20 box here)
-  [`svg`, svg_texts, expect.arrayContaining([`A`, `X`, `1`, `9`])],
+  [`svg`, svg_texts, expect.arrayContaining([`A`, `X`, `1`, `9`]), {}],
 ] as const)(
   `%s export hands the serialized matrix to on_export`,
-  async (format, pick, expected) => {
+  async (format, pick, expected, axes) => {
     const on_export = vi.fn()
     vi.spyOn(Element.prototype, `getBoundingClientRect`).mockReturnValue(
       DOMRect.fromRect({ width: 40, height: 20 }),
@@ -1056,7 +1078,7 @@ test.each([
       DOMRect.fromRect({ width: 8, height: 12 }),
     )
     const props = { show_controls: `hover`, show_values: true, on_export } as const
-    mount_matrix({ values: numbered_values, ...props })
+    mount_matrix({ values: numbered_values, ...axes, ...props })
     await tick()
     const result = await export_via_pane(on_export, format.toUpperCase())
     expect(result.offered).toEqual([`PNG`, `SVG`, `CSV`, `JSON`])

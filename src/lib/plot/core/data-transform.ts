@@ -8,21 +8,30 @@ import { html_to_text } from '#lib/utils.js'
 export const get_series_symbol = (series_idx: number): D3SymbolName =>
   DEFAULT_SERIES_SYMBOLS[series_idx % DEFAULT_SERIES_SYMBOLS.length]
 
-// The style a series shows as a whole: its single PointStyle, or the first entry of a
-// per-point array (nullish series yield undefined)
-export const first_point_style = (
-  series_data: { point_style?: PointStyle[] | PointStyle } | null | undefined,
-): PointStyle | undefined =>
-  Array.isArray(series_data?.point_style)
-    ? series_data.point_style[0]
-    : series_data?.point_style
+export const is_transparent_or_none = (color: string | undefined | null): boolean =>
+  !color ||
+  color === `none` ||
+  color === `transparent` ||
+  /rgba\([^)]+[,/]\s*0(?:\.0*)?\s*\)$/.test(color)
 
-// A series' color as a whole: line stroke, else first point fill, else `fallback`
+// The point style a series shows as a whole (line colour, legend symbol, style controls): the
+// first whose fill shows (unset draws the series colour), else the first. A hollow first point
+// (e.g. a flagged one) says nothing about the series' colour. Nullish series yield undefined.
+export const shown_point_style = (
+  series_data: { point_style?: PointStyle[] | PointStyle } | null | undefined,
+): PointStyle | undefined => {
+  const styles = [series_data?.point_style ?? []].flat()
+  return (
+    styles.find((style) => !style?.fill || !is_transparent_or_none(style.fill)) ?? styles[0]
+  )
+}
+
+// A series' color as a whole: line stroke, else its shown point's fill, else `fallback`
 export const extract_series_color = (
   series_data: Pick<DataSeries, `line_style` | `point_style`> | null | undefined,
   fallback: string = DEFAULTS.scatter.point.color,
 ): string =>
-  series_data?.line_style?.stroke ?? first_point_style(series_data)?.fill ?? fallback
+  series_data?.line_style?.stroke ?? shown_point_style(series_data)?.fill ?? fallback
 
 // Minimal series shape every chart's legend entry is derived from.
 type LegendSeries = { label?: string | null; visible?: boolean; legend_group?: string }

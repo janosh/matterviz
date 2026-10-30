@@ -30,14 +30,13 @@ beforeEach(() => vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] }))
 afterEach(() => vi.useRealTimers())
 
 describe(`display pipeline`, () => {
-  it(`adds image atoms, tiles supercells synchronously below the async threshold and maps elements`, () => {
+  it(`adds image atoms, tiles supercells and maps elements`, () => {
     const { host, session } = make_session()
     expect(session.displayed_structure?.sites).toHaveLength(3)
     flush_set(host, { show_image_atoms: true })
     const with_images = session.displayed_structure?.sites.length ?? 0
     expect(with_images).toBeGreaterThan(3)
     flush_set(host, { supercell_scaling: `2x1x1` })
-    expect(session.supercell_loading).toBe(false)
     expect(session.supercell_structure?.sites).toHaveLength(6)
     expect(session.scaled_cell_displayed).toBe(true)
     expect(session.supercell_tiling).toEqual([2, 1, 1])
@@ -64,22 +63,21 @@ describe(`display pipeline`, () => {
     expect(session.tool_input).toBe(original_input)
   })
 
-  // Edit-atoms keeps the input's sites selected through the async build: they lead the supercell
-  it(`builds large supercells off the main task and keeps the previous build while loading`, () => {
+  // A large supercell builds in the same update as its input, as each trajectory frame's must
+  // (a deferred build flashed a spinner and held the cell tiling at 1 every frame), and
+  // edit-atoms keeps the input's sites selected: they lead the supercell
+  it(`builds large supercells in the same update and keeps the selection`, () => {
     const { host, session } = make_session({
       structure: crystal(200),
       measure_mode: `edit-atoms`,
     })
     flush_set(host, { selected_sites: [0, 5], supercell_scaling: `2x2x2` })
-    expect(session.supercell_loading).toBe(true)
-    expect(session.displayed_structure?.sites).toHaveLength(200)
-    expect(session.supercell_tiling).toEqual([1, 1, 1])
-    vi.runAllTimers()
-    flushSync()
-    expect(session.supercell_loading).toBe(false)
     expect(session.displayed_structure?.sites).toHaveLength(1600)
     expect(session.supercell_tiling).toEqual([2, 2, 2])
     expect(host.selected_sites).toEqual([0, 5])
+    flush_set(host, { structure: crystal(200) }) // the next frame
+    expect(session.displayed_structure?.sites).toHaveLength(1600)
+    expect(session.supercell_tiling).toEqual([2, 2, 2])
   })
 
   // A caller-supplied supercell (phonon mode explorer) carries unit_cell_idx into a cell

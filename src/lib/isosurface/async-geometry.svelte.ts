@@ -1,11 +1,12 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // Async wrapper for compute_isosurface_geometries via the shared persistent-worker client.
 // Falls back to synchronous main-thread extraction during SSR / where Worker is missing.
-import { create_worker_client, type WorkerRequestOptions } from '#lib/worker-client.svelte.js'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
 import type { GeometryInput, GeometryResult } from './geometry'
 import { compute_isosurface_geometries } from './geometry'
 
-const run_geometry = create_worker_client<
+// The client itself, so `.release` travels with it for the component's unmount path
+export const compute_geometries_async = create_worker_client<
   GeometryInput,
   Record<string, never>,
   GeometryResult
@@ -33,8 +34,3 @@ const run_geometry = create_worker_client<
     })),
   }),
 })
-
-export const compute_geometries_async = (
-  input: GeometryInput,
-  request_options?: WorkerRequestOptions,
-): Promise<GeometryResult> => run_geometry(input, {}, request_options)

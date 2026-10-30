@@ -329,14 +329,16 @@
 
   // The chrome floats over the cells, so its icons take the color of the top-most cell
   // (parents paint first, so the last hit) under the top-right corner. Probes the settled
-  // tiling: tweened rects re-ran this ~24x per zoom and flickered the icons.
+  // tiling, visibility included: tweened rects re-ran this ~24x per zoom and flickered the
+  // icons (a cell still collapsed in the tween's start frame was skipped).
   let chrome_color = $derived.by(() => {
     const probe = { x: chart_state.inner_width - 1, y: 1 }
     let label_fill: string | undefined
-    for (const idx of visible_idxs) {
+    for (const [idx, arc] of chart_state.arcs.entries()) {
       const rect = target_rects[idx]
       if (
         rect &&
+        cell_visible(arc, rect) &&
         probe.x >= rect.x &&
         probe.x <= rect.x + rect.width &&
         probe.y >= rect.y &&
@@ -417,6 +419,8 @@
             {:else}
               {@const info = chart_state.node_infos[idx]}
               {@const opacity = chart_state.node_dim(idx).opacity}
+              <!-- a per-node boolean: a moved tab stop re-runs two nodes' attributes, not all -->
+              {@const tab_stop = idx === roving_idx}
               <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
               <rect
                 x={rect.x}
@@ -427,7 +431,7 @@
                 fill={info.pattern?.url ?? info.fill}
                 fill-opacity={opacity}
                 role={cells_clickable ? `button` : undefined}
-                tabindex={idx === roving_idx ? 0 : -1}
+                tabindex={tab_stop ? 0 : -1}
                 aria-label={info.aria}
                 style:cursor={cells_clickable ? `pointer` : `default`}
               />

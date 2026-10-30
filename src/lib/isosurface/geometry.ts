@@ -42,7 +42,7 @@ export interface GeometryResult {
 export function compute_isosurface_geometries(input: GeometryInput): GeometryResult {
   const volumes = input.volumes.map((job): GeometryVolumeResult => {
     const prepare_start = performance.now()
-    // Always a fresh endpoint-inclusive grid (a periodic cell gains its wrap-around samples)
+    // An endpoint-inclusive grid (a periodic cell gains its wrap-around samples)
     const { grid, lattice, origin } = prepare_geometry_grid(job.volume, job.range)
     const prepare_geometry_ms = performance.now() - prepare_start
     const surfaces = job.surfaces.map(({ token, isovalue }): GeometrySurfaceResult => {

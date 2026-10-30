@@ -2,7 +2,11 @@ import { CellSelection } from '#lib/table/selection.svelte.js'
 import { describe, expect, it } from 'vitest'
 
 describe(`CellSelection`, () => {
-  const sorted_keys = (selection: CellSelection) => [...selection.keys].toSorted()
+  // Selected cells of a 10x10 grid as "row:col", probed through has()
+  const sorted_keys = (selection: CellSelection) =>
+    Array.from({ length: 100 }, (_unused_value, idx) => [Math.floor(idx / 10), idx % 10])
+      .filter(([row, col]) => selection.has(row, col))
+      .map(([row, col]) => `${row}:${col}`)
 
   it(`drag selects a rectangle in either direction, additive drags stack`, () => {
     const selection = new CellSelection()
@@ -23,10 +27,56 @@ describe(`CellSelection`, () => {
     selection.clear()
     expect(selection.size).toBe(0)
     // clearing an empty selection changes nothing, so no cell's has() re-runs
-    const { keys } = selection
+    const { bounds } = selection
     selection.clear()
-    expect(selection.keys).toBe(keys)
+    expect(selection.bounds).toBe(bounds)
     expect(selection.end_drag()).toBe(false)
+  })
+
+  // size counts distinct cells: overlapping rectangles share theirs, and a select-all on a
+  // huge table is measured from the rectangles instead of enumerating every cell
+  it.each([
+    {
+      rects: [
+        [0, 0, 2, 2],
+        [1, 1, 3, 3],
+      ],
+      size: 14,
+    },
+    {
+      rects: [
+        [0, 0, 4, 0],
+        [2, 0, 2, 0],
+        [0, 2, 1, 3],
+      ],
+      size: 9,
+    },
+    {
+      rects: [
+        [3, 3, 0, 0],
+        [0, 5, 3, 6],
+        [1, 4, 2, 5],
+      ],
+      size: 26,
+    },
+    {
+      rects: [
+        [0, 0, 9, 9],
+        [5, 5, 5, 5],
+      ],
+      size: 100,
+    },
+    { rects: [[0, 0, 1e8 - 1, 9]], size: 1e9 },
+  ])(`size of $rects is $size`, ({ rects, size }) => {
+    const selection = new CellSelection()
+    selection.rects = rects.map(([start_row, start_col, end_row, end_col]) => ({
+      start_row,
+      start_col,
+      end_row,
+      end_col,
+    }))
+    expect(selection.size).toBe(size)
+    if (size <= 100) expect(sorted_keys(selection)).toHaveLength(size)
   })
 
   it(`keyboard steps replace the selection, Shift grows it from the anchor`, () => {

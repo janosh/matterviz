@@ -360,10 +360,10 @@ describe(`frame_rows_to_csv`, () => {
   })
 
   // rows_to_csv keys off the first row alone, so a property only later frames carry would
-  // otherwise vanish from the file entirely
+  // otherwise vanish from the file entirely. An integer-like key stays behind frame and step.
   test(`aligns missing and unitless property columns across frames`, () => {
     const table = make_property_table([
-      { frame: 0, step: 0, properties: { frame: 999, step: 999, energy: -1 } },
+      { frame: 0, step: 0, properties: { frame: 999, step: 999, energy: -1, 2: 5 } },
       {
         frame: 1,
         step: 1,
@@ -371,9 +371,9 @@ describe(`frame_rows_to_csv`, () => {
       },
     ])
     expect(frame_rows_to_csv(table).split(`\n`)).toEqual([
-      `frame,step,energy (eV),temperature (K),some_custom_prop`,
-      `1,0,-1,,`,
-      `2,1,-2,300,1.5`,
+      `frame,step,2,energy (eV),temperature (K),some_custom_prop`,
+      `1,0,5,-1,,`,
+      `2,1,,-2,300,1.5`,
     ])
   })
 })

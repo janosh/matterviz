@@ -3,7 +3,7 @@ import { compute_saed_pattern } from '#lib/xrd/saed.js'
 import SaedPattern from '#lib/xrd/SaedPattern.svelte'
 import { mount, tick, unmount } from 'svelte'
 import { expect, test } from 'vitest'
-import { bind_props, query, resize_element } from '../setup'
+import { bind_props, count_attribute_updates, query, resize_element } from '../setup'
 import { make_crystal } from '../test-fixtures'
 
 // Simple cubic Al, by default down [001]: a square net of hk0 spots, strongest first
@@ -29,10 +29,13 @@ test(`spots expose hover and a toggling pin matched by hkl, by pointer and keybo
   const only = (spot_idx: number) => circles.map((_, idx) => idx === spot_idx)
   expect(flags(`aria-pressed`, `true`)).toEqual(only(2))
 
+  const updates = count_attribute_updates(circles)
   circles[1].dispatchEvent(new MouseEvent(`mouseenter`))
   await tick()
   expect(state.hovered_spot).toEqual(second)
   expect(circles[1].classList.contains(`hovered`)).toBe(true)
+  // only the hovered spot re-applies its attributes, not every spot
+  expect(updates.map(Boolean)).toEqual(only(1))
   circles[1].dispatchEvent(new MouseEvent(`mouseleave`))
   expect(state.hovered_spot).toBeNull()
 

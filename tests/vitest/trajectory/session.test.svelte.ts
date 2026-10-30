@@ -1,4 +1,4 @@
-import type { FrameChannels } from '#lib/trajectory/frame.js'
+import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
 import {
   create_numeric_md_frame,
   encode_frame,
@@ -34,17 +34,18 @@ const flush_microtasks = async (): Promise<void> => {
 }
 const PREPARATION = { bonding_strategy: `electroneg_ratio`, bonding_options: {} } as const
 
-// Async run whose reads resolve by hand, to order races deliberately
-const make_async_run = (frame_list: TrajectoryFrame[]) => {
+// Async run whose reads resolve by hand, to order races deliberately. One read at a time
+// unless read_concurrency says the source pipelines them (as a host does)
+const make_async_run = (frame_list: TrajectoryFrame[], read_concurrency?: number) => {
   const backing = trajectory_from_frames(frame_list)
   const pending: { idx: number; resolve: () => void; reject: (error: Error) => void }[] = []
   const reads: number[] = []
-  const run = host_run(summarize_run(backing), (idx, signal) => {
+  const host = host_run(summarize_run(backing), (idx, signal) => {
     reads.push(idx)
-    return new Promise<TrajectoryFrame>((resolve, reject) => {
+    return new Promise<NumericFrame>((resolve, reject) => {
       const entry = {
         idx,
-        resolve: () => resolve(materialize_frame_result(backing.read_frame(idx))),
+        resolve: () => resolve(backing.read_frame(idx)),
         reject,
       }
       pending.push(entry)
@@ -55,6 +56,7 @@ const make_async_run = (frame_list: TrajectoryFrame[]) => {
       })
     })
   })
+  const run = Object.assign(host, { read_concurrency })
   const resolve_next = async (): Promise<void> => {
     pending.shift()?.resolve()
     await flush_microtasks()
@@ -277,14 +279,14 @@ describe(`frame loading`, () => {
       structure: { ...summary.preview.structure, sites: [] },
     }
     const complete = backing.preview
-    const pending = Promise.withResolvers<TrajectoryFrame>()
+    const pending = Promise.withResolvers<NumericFrame>()
     const read = vi.fn(() => pending.promise)
     const run = host_run(summary, read)
     expect(run.atom_count).toBe(1_000_000)
     const { session } = make_session({ run })
-    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal))
+    expect(read).toHaveBeenCalledWith(0, expect.any(AbortSignal), undefined)
     expect(session.current_structure).toBeUndefined()
-    pending.resolve(complete)
+    pending.resolve(encode_frame(complete))
     await pending.promise
     await Promise.resolve()
     flushSync()
@@ -537,6 +539,65 @@ describe(`scrub vs commit`, () => {
     expect(events).toEqual([`step:9`, `step:12`, `step:19`])
   })
 
+  it.each([undefined, 1])(
+    `with read_concurrency %s, navigation keeps superseded async reads, showing each as it lands`,
+    async (read_concurrency) => {
+      const raf_callbacks = stub_raf()
+      const { run, pending, reads } = make_async_run(frames(8), read_concurrency)
+      const { host, session } = make_session({ run })
+      const scrub_to = (idx: number) => {
+        session.scrub(idx)
+        raf_callbacks.at(-1)?.(16)
+        flushSync()
+      }
+      const pending_idxs = () => pending.map(({ idx }) => idx)
+      const land = async (idx: number) => {
+        const [entry] = pending.splice(pending_idxs().indexOf(idx), 1)
+        entry.resolve()
+        await flush_microtasks()
+      }
+      for (const idx of [2, 4, 6]) scrub_to(idx)
+      expect(reads).toEqual([2, 4, 6])
+      // a source that can't pipeline frees its decoder for the target instead
+      expect(pending_idxs()).toEqual(read_concurrency ? [2, 4, 6] : [6])
+      if (!read_concurrency) return
+      // the settled drag reads nothing ahead while the host still owes more than the cap
+      await vi.advanceTimersByTimeAsync(100)
+      expect(reads).toEqual([2, 4, 6])
+      // a slow source trails the drag: frame 4 shows before the target lands, dropping 2
+      await land(4)
+      expect(session.scene_frame?.idx).toBe(4)
+      expect(session.current_frame).toBeNull()
+      expect(pending_idxs()).toEqual([6])
+      await land(6)
+      expect(session.current_frame?.step).toBe(60)
+      // dragging back over a frame still in flight adopts its read instead of re-reading it
+      for (const idx of [7, 5, 7]) scrub_to(idx)
+      expect(reads.slice(3)).toEqual([7, 5])
+      await land(7)
+      expect(session.current_frame?.step).toBe(70)
+      expect(pending_idxs()).toEqual([])
+      // held arrow keys (commits) trail too, and the target landing first drops older reads
+      for (const idx of [1, 3, 5]) {
+        session.commit(idx)
+        flushSync()
+      }
+      expect(pending_idxs()).toEqual([1, 3, 5])
+      await land(5)
+      expect(session.current_frame?.step).toBe(50)
+      expect(pending_idxs()).toEqual([])
+      // a run swap drops the old run's reads
+      session.commit(2)
+      flushSync()
+      expect(pending_idxs()).toEqual([2])
+      host.run = trajectory_from_frames(frames(8))
+      host.index = 0
+      flushSync()
+      expect(pending_idxs()).toEqual([])
+      expect(host.index).toBe(0)
+    },
+  )
+
   it(`drops a pending scrub when the run is swapped before the next animation frame`, () => {
     const raf_callbacks = stub_raf()
     const { host, session, events } = make_session({ run: trajectory_from_frames(frames(20)) })
@@ -698,6 +759,25 @@ describe(`controller and playback`, () => {
     },
   )
 
+  it.each([
+    [undefined, 64, [1]],
+    // a pipelining source keeps that many reads unanswered, within the cache budget
+    [8, 64, [1, 2, 3, 4, 5, 6, 7, 8]],
+    [8, 4, [1, 2, 3]],
+    [0, 64, [1]], // zero pipelines nothing, yet still reads one ahead
+  ])(
+    `plays with read_concurrency %s and cache_max_frames %i reading %o ahead`,
+    async (read_concurrency, cache_max_frames, expected) => {
+      stub_raf()
+      const { run, reads } = make_async_run(frames(40), read_concurrency)
+      const { session } = make_session({ run, fps: 30 }, { cache_max_frames })
+      session.player.play()
+      flushSync()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(reads).toEqual(expected)
+    },
+  )
+
   it(`adopts large-frame read-ahead without duplicate reads or evicting the display`, async () => {
     const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
@@ -836,7 +916,7 @@ describe(`property mirroring`, () => {
     const progressive = new TrajectoryProperties()
     const run = host_run(
       { ...summarize_run(backing), properties: { rows: [], complete: false } },
-      async (idx) => materialize_frame_result(backing.read_frame(idx)),
+      async (idx) => backing.read_frame(idx),
     )
     Object.defineProperty(run, `properties`, { value: progressive })
     const { host, session } = make_session({ run })

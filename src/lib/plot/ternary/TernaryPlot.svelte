@@ -311,11 +311,18 @@
   // Past CANVAS_MARKER_THRESHOLD markers paint on one canvas like ScatterPlot's. Null when
   // markers stay SVG: below the threshold or a paint canvas can't parse (e.g. a CSS variable).
   // Hover and click resolve the nearest marker through `hits`, not per-point DOM targets.
+  // Markers are undimmed here: a legend hover re-dims them in canvas_markers, keeping the
+  // layer and its spatial index.
   type HitItem = { cx: number; cy: number; idx: number }
   const canvas_layer = $derived.by(
-    (): { markers: CanvasMarker[]; hits: SpatialIndex<HitItem> } | null => {
+    (): {
+      markers: CanvasMarker[]
+      series_idxs: number[]
+      hits: SpatialIndex<HitItem>
+    } | null => {
       if (rendered.length <= CANVAS_MARKER_THRESHOLD) return null
       const markers: CanvasMarker[] = []
+      const series_idxs: number[] = []
       const items: HitItem[] = []
       let max_radius = 0
       for (const [idx, point] of rendered.entries()) {
@@ -326,6 +333,7 @@
         items.push({ cx, cy, idx })
         max_radius = Math.max(max_radius, style.radius)
         if (needs_svg(point)) continue
+        series_idxs.push(point.series_idx)
         // ScatterPoint's SVG defaults
         markers.push({
           cx,
@@ -338,13 +346,24 @@
           stroke,
           stroke_width: style.stroke_width ?? 1,
           stroke_opacity: style.stroke_opacity ?? 1,
-          opacity: is_dimmed(point.series_idx) ? 0.25 : 1,
+          opacity: 1,
         })
       }
       // the same reach as an SVG marker's hit target
-      return { markers, hits: build_spatial_index(items, max_radius + HIT_PADDING) }
+      return {
+        markers,
+        series_idxs,
+        hits: build_spatial_index(items, max_radius + HIT_PADDING),
+      }
     },
   )
+  const canvas_markers = $derived.by(() => {
+    if (!canvas_layer) return []
+    const { markers, series_idxs } = canvas_layer
+    return markers.map((marker, idx) =>
+      is_dimmed(series_idxs[idx]) ? { ...marker, opacity: 0.25 } : marker,
+    )
+  })
   // [index into `rendered`, point] per SVG marker: all, or in canvas mode the highlighted ones
   // plus the hovered and pinned ones. Derived apart from the hover so pointer moves don't
   // rescan points.
@@ -363,7 +382,7 @@
   })
 
   const marker_canvas = create_marker_canvas(() => ({
-    markers: canvas_layer?.markers ?? [],
+    markers: canvas_markers,
     width,
     height,
   }))

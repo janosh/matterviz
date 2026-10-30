@@ -380,6 +380,10 @@ describe(`XrdPlot`, () => {
     }
     fire(1, `mousemove`)
     expect(harness.get_peaks().hovered_peak).toEqual(second_peak)
+    // moving within the stick keeps the same object, so hovered_peak readers don't re-run
+    const { hovered_peak } = harness.get_peaks()
+    fire(1, `mousemove`)
+    expect(harness.get_peaks().hovered_peak).toBe(hovered_peak)
     // host handlers still fire alongside the bindings
     expect(on_bar_hover).toHaveBeenLastCalledWith(expect.objectContaining({ bar_idx: 1 }))
     fire(1, `mouseleave`)

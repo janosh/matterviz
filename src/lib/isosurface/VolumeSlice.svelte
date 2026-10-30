@@ -78,19 +78,38 @@
 
   function draw_contours(context: CanvasRenderingContext2D, current_slice: SliceResult): void {
     if (contour_thresholds.length === 0) return
-    const threshold_min = contour_thresholds[0]
-    const outside_value =
-      Math.min(...value_range, threshold_min) -
-      Math.max(1, Math.abs(threshold_min), Math.abs(value_range[1] - value_range[0]))
-    if (contour_values.length !== current_slice.data.length) {
-      contour_values = new Float64Array(current_slice.data.length)
+    const { data, mask, width, height } = current_slice
+    if (contour_values.length !== data.length) contour_values = new Float64Array(data.length)
+    // Masked pixels repeat their row's nearest in-mask value, and rows without one the nearest
+    // filled row: a constant outside value made every level cross along the mask edge, inside
+    // the clip polygon as often as outside it
+    const valid = (idx: number): boolean => mask[idx] !== 0 && Number.isFinite(data[idx])
+    let filled_row = -1
+    for (let row = 0; row < height; row++) {
+      const start = row * width
+      let carry = Number.NaN
+      for (let idx = start; idx < start + width && Number.isNaN(carry); idx++) {
+        if (valid(idx)) carry = data[idx]
+      }
+      if (Number.isNaN(carry)) {
+        if (filled_row >= 0) {
+          contour_values.copyWithin(start, filled_row * width, (filled_row + 1) * width)
+        }
+        continue
+      }
+      for (let idx = start; idx < start + width; idx++) {
+        if (valid(idx)) carry = data[idx]
+        contour_values[idx] = carry
+      }
+      // leading rows without in-mask pixels repeat the first filled one
+      if (filled_row < 0) {
+        for (let empty_row = 0; empty_row < row; empty_row++) {
+          contour_values.copyWithin(empty_row * width, start, start + width)
+        }
+      }
+      filled_row = row
     }
-    for (let data_idx = 0; data_idx < current_slice.data.length; data_idx++) {
-      const value = current_slice.data[data_idx]
-      contour_values[data_idx] =
-        current_slice.mask[data_idx] && Number.isFinite(value) ? value : outside_value
-    }
-    const { width, height } = current_slice
+    if (filled_row < 0) return
     context.save()
     clip_to_slice_polygon(context, current_slice)
     context.strokeStyle = contour_color.current

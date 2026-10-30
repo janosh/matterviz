@@ -1466,7 +1466,7 @@
   // Anchor unwrapped trails to wrapped displayed sites only while atom identities still match.
   let trajectory_line_anchors = $derived(
     trajectory_position_stream
-      ? trajectory_trail_anchors(structure?.sites, trajectory_position_stream.n_atoms)
+      ? trajectory_trail_anchors(structure, trajectory_position_stream.n_atoms)
       : undefined,
   )
 

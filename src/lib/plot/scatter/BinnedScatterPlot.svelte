@@ -4,6 +4,7 @@
 >
   // Dense scatter for 10^5-10^6 points: a canvas density heatmap that switches to canvas
   // markers once few enough are visible, with spatial-index picking, on the Cartesian frame
+  import { value_key } from '#lib/utils.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { series_text } from '#lib/plot/core/data-transform.js'
   import { host } from '#lib/host.js'
@@ -476,7 +477,7 @@
     ...point_labels_settings.placement,
   })
   // See ScatterPlot: compared by value, the merged object being a fresh identity per update
-  const label_config_key = $derived(JSON.stringify(actual_label_placement_config))
+  const label_config_key = $derived(value_key(actual_label_placement_config))
 
   const point_radius_for_value = (size_value: number | null | undefined): number =>
     size_value == null || !Number.isFinite(size_value)

@@ -177,9 +177,16 @@
     end_drag()
     on_drag_end(event)
   }
+  // Whether the parent holds a hover from this legend: teardown clears only that one, as reading
+  // the callback prop while unmounting re-runs callers' stale deriveds
+  let hover_reported = false
+  const report_item_hover = (item: LegendItem | null): void => {
+    hover_reported = item !== null
+    on_item_hover?.(item)
+  }
   onDestroy(() => {
     end_drag()
-    on_item_hover?.(null)
+    if (hover_reported) on_item_hover?.(null)
   })
 
   function handle_legend_mouse_down(event: MouseEvent) {
@@ -225,7 +232,7 @@
     fill_action: typeof on_fill_toggle,
     series_action: (series_idx: number) => void,
   ): void => {
-    on_item_hover?.(null)
+    report_item_hover(null)
     if (
       item.item_type === `fill` &&
       fill_action &&
@@ -284,10 +291,10 @@
     onclick={(event) => stop_and_run(event, () => toggle_item(series))}
     ondblclick={(event) => stop_and_run(event, () => double_click_item(series))}
     onkeydown={(event) => keyboard_activate(event, () => toggle_item(series))}
-    onmouseenter={() => on_item_hover?.(series)}
-    onmouseleave={() => on_item_hover?.(null)}
-    onfocus={() => on_item_hover?.(series)}
-    onblur={() => on_item_hover?.(null)}
+    onmouseenter={() => report_item_hover(series)}
+    onmouseleave={() => report_item_hover(null)}
+    onfocus={() => report_item_hover(series)}
+    onblur={() => report_item_hover(null)}
     role="button"
     tabindex="0"
     aria-pressed={series.visible}

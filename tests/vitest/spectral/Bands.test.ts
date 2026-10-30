@@ -92,7 +92,12 @@ const mount_bands = async (props: ComponentProps<typeof Bands>): Promise<void> =
   await tick()
 }
 
-const line_count = (): number => document.querySelectorAll(`svg path[fill="none"]`).length
+// Drawn line stretches: each band is one path across the branches, a subpath per branch
+const line_count = (): number =>
+  [...document.querySelectorAll(`svg path[fill="none"]`)].reduce(
+    (sum, path) => sum + (path.getAttribute(`d`)?.match(/M/g)?.length ?? 0),
+    0,
+  )
 const mount_plot = (props: Partial<ComponentProps<typeof Bands>>, width?: number) =>
   mount_sized(Bands, props, { selector: `.scatter`, width })
 
@@ -305,19 +310,22 @@ describe(`Bands component`, () => {
   })
 
   // Mismatched paths: union appends the second structure's segment after the canonical path,
-  // intersection has nothing in common and falls through to the EmptyState
+  // intersection has nothing in common and falls through to the EmptyState. A path_length
+  // stretches the laid-out path to that length, keeping the segments' proportions.
   it.each([
-    [`union`, 8, { GAMMA_X: [0, 3], GAMMA_K: [3, 5] }, `Wave Vector`],
-    [`intersection`, 0, {}, `No plottable band segments`],
+    [`union`, undefined, 8, { GAMMA_X: [0, 3], GAMMA_K: [3, 5] }, `Wave Vector`],
+    [`union`, 1, 8, { GAMMA_X: [0, 0.6], GAMMA_K: [0.6, 1] }, `Wave Vector`],
+    [`intersection`, undefined, 0, {}, `No plottable band segments`],
   ] as const)(
-    `path_mode=%s lays out mismatched paths`,
-    async (path_mode, expected_lines, expected_positions, expected_text) => {
+    `path_mode=%s, path_length %s lays out mismatched paths`,
+    async (path_mode, path_length, expected_lines, expected_positions, expected_text) => {
       const state: { x_positions?: Record<string, Vec2> } = { x_positions: undefined }
       await mount_bands(
         bind_props(
           {
             band_structs: { canonical: base_band_structure, alt: path_mismatch_structure },
             path_mode,
+            path_length,
           },
           state,
         ),
@@ -530,10 +538,10 @@ describe(`Bands component`, () => {
         highlighted_band_index: highlighted,
       })
       const series = [...document.querySelectorAll(`g[data-series-id]`)].map((group) => {
-        const [, , band, spin] = JSON.parse(group.getAttribute(`data-series-id`) ?? `[]`)
+        const [, band, spin] = JSON.parse(group.getAttribute(`data-series-id`) ?? `[]`)
         return { band, spin, stroke: group.querySelector(`path`)?.getAttribute(`stroke`) }
       })
-      expect(series).toHaveLength(8)
+      expect(series).toHaveLength(8) // 4 bands × 2 spins
       expect(series.map(({ stroke }) => stroke)).toEqual(
         series.map(({ band, spin }) =>
           highlighted === null || band === highlighted
@@ -653,15 +661,18 @@ describe(`Bands component`, () => {
     [`none off the path`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, qpoints: mode_values.qpoints.map(() => [0.5, 0.5, 0] as Vec3) } }, 0, `None of the 4 q-points of λqν lie on the band path`],
     [`none for ragged values`, { band_structs: { '': with_lattice }, mode_values: { ...mode_values, values: [[0.1]] } }, 0, `Invalid λqν: values must have one row per q-point (4), got 1`],
   ])(`mode_values: %s`, async (_desc, props, n_markers, notice) => {
-    const plot = await mount_plot({ ...props, show_controls: false })
+    // as SVG to inspect each marker (they paint on a canvas by default, see below)
+    const plot = await mount_plot({ ...props, show_controls: false, marker_renderer: `svg` })
     expect(plot.querySelectorAll(`path.marker`)).toHaveLength(n_markers)
-    // each outlined by a hairline in the page's colour, resolved to one the canvas renderer
-    // (past 1000 markers) can paint: no --page-bg here, so light mode's white
+    // each a triangle (two L segments, whatever the band count) outlined by a hairline in the
+    // page's colour, resolved to one the canvas renderer can paint: no --page-bg here, so light
+    // mode's white
     for (const marker of plot.querySelectorAll(`path.marker`)) {
-      expect([marker.getAttribute(`stroke`), marker.getAttribute(`stroke-width`)]).toEqual([
-        `white`,
-        `0.5`,
-      ])
+      expect([
+        marker.getAttribute(`stroke`),
+        marker.getAttribute(`stroke-width`),
+        marker.getAttribute(`d`)?.match(/L/g)?.length,
+      ]).toEqual([`white`, `0.5`, 2])
     }
     // the HTML label renders sanitized, its subscript a real <sub>
     const colorbar = plot.querySelector(`.colorbar`)
@@ -672,6 +683,13 @@ describe(`Bands component`, () => {
       notice && expect.stringContaining(notice),
     )
     expect(line_count()).toBeGreaterThan(0) // the bands stay
+  })
+
+  // A q mesh's markers redraw on every frame of a sweep: one canvas instead of a component each
+  it(`paints mode markers on a canvas unless told otherwise`, async () => {
+    const plot = await mount_plot({ band_structs: { '': with_lattice }, mode_values })
+    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(0)
+    expect(plot.querySelector(`foreignObject`)).not.toBeNull()
   })
 
   const tick_labels = () => [

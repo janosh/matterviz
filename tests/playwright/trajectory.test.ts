@@ -86,6 +86,15 @@ test(`demo viewers keep a data inspector within its box, a third wide, evenly sh
       [sidebar_bg, `none`],
     ])
   }
+  // narrow, the inspector stacks under the viewer, ruled off in place of the hidden divider
+  await page.setViewportSize({ width: 560, height: 1200 })
+  const viewer = viewers.first()
+  await viewer.scrollIntoViewIfNeeded()
+  await expect(viewer.locator(`:scope > .viewer-row`)).toHaveClass(/docked-sidebar-stacked/)
+  await expect(viewer.locator(`.trajectory-data-inspector-sidebar`)).toHaveCSS(
+    `border-top-width`,
+    `1px`,
+  )
 })
 
 async function select_display_mode(trajectory: Locator, mode_name: string) {

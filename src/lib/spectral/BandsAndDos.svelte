@@ -36,6 +36,8 @@
     frequency_range,
     density_range,
     density_extent = $bindable(),
+    a2f_range,
+    a2f_extent = $bindable(),
     structure,
     units = $bindable(`THz`),
     fermi_level,
@@ -55,6 +57,8 @@
     frequency_range?: Vec2 // the extent (data units) to span instead of the data's
     density_range?: Vec2 // the DOS's density extent to span instead of its data's
     density_extent?: Vec2 // read only: the DOS data's density extent
+    a2f_range?: Vec2 // the α²F axis's extent to span instead of its data's
+    a2f_extent?: Vec2 // read only: the drawn α²F's extent
     structure?: Crystal // adds its Brillouin zone with the bands' k-path
     units?: FrequencyUnit
     fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
@@ -191,6 +195,8 @@
     {a2f}
     {density_range}
     bind:density_extent
+    {a2f_range}
+    bind:a2f_extent
     bind:units
     fermi_level={sync.fermi_level}
     orientation={side_by_side ? `horizontal` : `vertical`}

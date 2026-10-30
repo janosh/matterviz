@@ -1,7 +1,7 @@
 // Mode values (e.g. the electron–phonon coupling λ_qν) over a band structure: their parsing,
 // the projection of their q-points onto the band path and the markers Bands draws there
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
-import { is_finite_vec3 } from '#lib/math.js'
+import { is_finite_vec3, matrix_inverse_3x3 } from '#lib/math.js'
 import { is_plain_object } from '#lib/utils.js'
 import { branch_x, plotted_branches } from './helpers'
 import type { BaseBandStructure, ModeValues } from './types'
@@ -124,7 +124,8 @@ export function project_qpoints_onto_path(
     const origin = band_struct.qpoints[segment.start].frac_coords
     const target = band_struct.qpoints[segment.end].frac_coords
     const vec = to_cart(target[0] - origin[0], target[1] - origin[1], target[2] - origin[2])
-    return { ...segment, origin, vec, len_sq: vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2 }
+    const len_sq = vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2
+    return { ...segment, origin, end_frac: target, vec, len_sq }
   })
   const steps = segments
     .map(({ len_sq }) => Math.sqrt(len_sq))
@@ -132,14 +133,24 @@ export function project_qpoints_onto_path(
     .toSorted((lhs, rhs) => lhs - rhs)
   const tolerance = rel_tol * (steps[Math.floor(steps.length / 2)] ?? 0)
   const tol_sq = tolerance ** 2
+  const candidates = segment_candidates(segments, qpoints, recip_lattice, tolerance)
 
-  // The hot loop (a full q mesh against every path segment) works in scalars, on squared
-  // distances, allocating nothing per pair
+  // Only a q-point's candidate segments can lie within tolerance: every other one is out of
+  // reach and ends the run, as a gap between candidates does here. The pair test works in
+  // scalars, on squared distances, allocating nothing.
   const projections: PathProjection[] = []
-  for (const [q_idx, [q_0, q_1, q_2]] of qpoints.entries()) {
+  for (const [q_idx, seg_idxs] of candidates) {
+    const [q_0, q_1, q_2] = qpoints[q_idx]
     // the closest point of the current run of consecutive segments within tolerance
     let [best_sq, best_x] = [Infinity, NaN]
-    for (const { origin, vec, len_sq, x_range, continues } of segments) {
+    let prev_idx = -2
+    for (const seg_idx of seg_idxs) {
+      const { origin, vec, len_sq, x_range, continues } = segments[seg_idx]
+      if (seg_idx !== prev_idx + 1) {
+        if (best_sq <= tol_sq) projections.push({ q_idx, x: best_x })
+        best_sq = Infinity
+      }
+      prev_idx = seg_idx
       // q relative to the segment start, at its periodic image nearest that start
       let f_0 = q_0 - origin[0]
       let f_1 = q_1 - origin[1]
@@ -169,6 +180,79 @@ export function project_qpoints_onto_path(
     if (best_sq <= tol_sq) projections.push({ q_idx, x: best_x })
   }
   return projections
+}
+
+// For each q-point that may lie within `tolerance` of a segment, those segments' indices in
+// path order, keyed in q order: a superset found through a periodic grid over the q-points'
+// images in [0, 1)³. A point within the tolerance of a segment lies, in fractional coordinates,
+// inside the segment's box widened by |Δf_i| ≤ tolerance · ‖column i of B⁻¹‖ (f = r · B⁻¹), so
+// each segment visits the few cells that box covers instead of every q-point.
+function segment_candidates(
+  segments: readonly { origin: Vec3; end_frac: Vec3 }[],
+  qpoints: readonly Vec3[],
+  recip_lattice: Matrix3x3,
+  tolerance: number,
+): Map<number, number[]> {
+  const inverse = matrix_inverse_3x3(recip_lattice)
+  // slack (relative, and 1e-9 absolute, far past an image's rounding across a cell edge) so a
+  // box edge rounded inward never drops a point the exact test keeps
+  const reach = [0, 1, 2].map(
+    (axis) =>
+      tolerance *
+        Math.hypot(inverse[0][axis], inverse[1][axis], inverse[2][axis]) *
+        (1 + 1e-9) +
+      1e-9,
+  )
+  // counting sort of the q-points into n_cells³ cells, about one point per cell
+  const per_side = Math.round(Math.cbrt(qpoints.length))
+  const n_cells = Math.max(1, Math.min(64, per_side))
+  const cell_of = (frac: number): number =>
+    Math.min(n_cells - 1, Math.floor((frac - Math.floor(frac)) * n_cells))
+  const q_cells = Int32Array.from(qpoints, ([f_0, f_1, f_2]) => {
+    return (cell_of(f_0) * n_cells + cell_of(f_1)) * n_cells + cell_of(f_2)
+  })
+  const cell_starts = new Int32Array(n_cells ** 3 + 1)
+  for (const cell of q_cells) cell_starts[cell + 1]++
+  for (let cell = 0; cell < n_cells ** 3; cell++) cell_starts[cell + 1] += cell_starts[cell]
+  const cell_items = new Int32Array(qpoints.length)
+  const fill = cell_starts.slice(0, -1)
+  for (const [q_idx, cell] of q_cells.entries()) cell_items[fill[cell]++] = q_idx
+
+  // a box wider than a period wraps onto every cell along that axis once
+  const cell_span = (lo: number, hi: number): number[] => {
+    const [first, last] = [Math.floor(lo * n_cells), Math.floor(hi * n_cells)]
+    const count = Math.min(n_cells, last - first + 1)
+    return Array.from({ length: count }, (_, step) => {
+      const cell = (first + step) % n_cells
+      return cell < 0 ? cell + n_cells : cell
+    })
+  }
+  const candidates = new Map<number, number[]>()
+  const seen_in = new Int32Array(qpoints.length).fill(-1) // one visit per (segment, q-point)
+  for (const [seg_idx, { origin, end_frac }] of segments.entries()) {
+    const [span_0, span_1, span_2] = [0, 1, 2].map((axis) =>
+      cell_span(
+        Math.min(origin[axis], end_frac[axis]) - reach[axis],
+        Math.max(origin[axis], end_frac[axis]) + reach[axis],
+      ),
+    )
+    for (const cell_0 of span_0) {
+      for (const cell_1 of span_1) {
+        for (const cell_2 of span_2) {
+          const cell = (cell_0 * n_cells + cell_1) * n_cells + cell_2
+          for (let item = cell_starts[cell]; item < cell_starts[cell + 1]; item++) {
+            const q_idx = cell_items[item]
+            if (seen_in[q_idx] === seg_idx) continue
+            seen_in[q_idx] = seg_idx
+            const list = candidates.get(q_idx)
+            if (list) list.push(seg_idx)
+            else candidates.set(q_idx, [seg_idx])
+          }
+        }
+      }
+    }
+  }
+  return new Map([...candidates].toSorted(([q_a], [q_b]) => q_a - q_b))
 }
 
 // One mode of a projected q-point with a value

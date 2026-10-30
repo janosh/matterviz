@@ -20,7 +20,9 @@ import {
 } from '#lib/structure/trajectory-lines.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
-import { describe, expect, test } from 'vitest'
+import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
+import { NumericSites } from '#lib/structure/site.js'
+import { describe, expect, test, vi } from 'vitest'
 import { image_options, make_crystal, make_position_stream } from '../test-fixtures'
 
 // One atom drifting +1 Å along x per frame, wrapped into a 10 Å cell: 0,1,…,9,0,1,…
@@ -376,19 +378,38 @@ describe(`anchoring trails to the displayed atoms`, () => {
     const imaged = get_pbc_image_sites(nacl, image_options())
     expect(imaged.sites.length).toBeGreaterThan(nacl.sites.length)
 
-    const anchors = trajectory_trail_anchors(imaged.sites, nacl.sites.length)
+    const anchors = trajectory_trail_anchors(imaged, nacl.sites.length)
     expect(anchors).toEqual(new Float64Array([0, 0, 0, 2.5, 2.5, 2.5]))
     for (const site of imaged.sites)
       site.properties = { orig_site_idx: 0, orig_unit_cell_idx: 0, completion_image: true }
-    expect(trajectory_trail_anchors(imaged.sites, nacl.sites.length)).toEqual(anchors)
+    expect(trajectory_trail_anchors(imaged, nacl.sites.length)).toEqual(anchors)
   })
 
   test.each([
     // [case, sites, n_atoms] -> null: nothing here can be matched to the stream's atom order
-    [`fewer displayed sites than stream atoms`, make_crystal(5, [[`Na`, [0, 0, 0]]]).sites, 2],
-    [`a supercell, which renumbers every atom`, make_supercell(nacl, [2, 1, 1]).sites, 2],
-  ])(`returns null for %s`, (_case, sites, n_atoms) => {
-    expect(trajectory_trail_anchors(sites, n_atoms)).toBeNull()
+    [`fewer displayed sites than stream atoms`, make_crystal(5, [[`Na`, [0, 0, 0]]]), 2],
+    [`a supercell, which renumbers every atom`, make_supercell(nacl, [2, 1, 1]), 2],
+  ])(`returns null for %s`, (_case, structure, n_atoms) => {
+    expect(trajectory_trail_anchors(structure, n_atoms)).toBeNull()
+  })
+
+  test(`a numeric frame anchors from its columns without building site records`, () => {
+    const positions = new Float64Array([0, 0, 0, 1, 2, 3, 4, 5, 6])
+    const frame = new FrameView().update(
+      create_numeric_md_frame(
+        positions,
+        new Uint8Array([3, 8, 8]),
+        undefined,
+        undefined,
+        0,
+        {},
+        [],
+      ),
+    )
+    const materialize = vi.spyOn(NumericSites.prototype, `materialize`)
+    expect(trajectory_trail_anchors(frame.structure, 2)).toEqual(positions.slice(0, 6))
+    expect(materialize).not.toHaveBeenCalled()
+    materialize.mockRestore()
   })
 })
 

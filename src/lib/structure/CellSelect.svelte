@@ -1,6 +1,5 @@
 <script lang="ts">
   import Icon from 'svelte-widgets/Icon.svelte'
-  import Spinner from 'svelte-widgets/Spinner.svelte'
   import { Check } from 'svelte-widgets/icons'
   import { motion_duration } from '#lib/effects.svelte.js'
   import { is_valid_supercell_input } from '#lib/structure/supercell.js'
@@ -12,13 +11,11 @@
     supercell_scaling = $bindable(`1x1x1`),
     cell_type = $bindable(`original`),
     sym_data = null,
-    loading = false,
     analyzing = false,
   }: {
     supercell_scaling: string
     cell_type?: CellType
     sym_data?: SymmetryDataset | null
-    loading?: boolean
     analyzing?: boolean // symmetry analysis under way, so Prim/Conv enable once it lands
   } = $props()
 
@@ -47,6 +44,8 @@
       tooltip: `Conventional cell (standardized representation)`,
     },
   ]
+  const type_label = $derived(cell_types.find(({ type }) => type === cell_type)?.label)
+
   const hair_space = `\u200A`
 
   const format_supercell_label = (supercell_value: string): string =>
@@ -99,16 +98,9 @@
     aria-expanded={menu_open}
     {@attach tooltip({ content: `Cell type & supercell` })}
   >
-    {#if loading}
-      <Spinner
-        style="--spinner-border-width: 2px; --spinner-size: 1em; --spinner-margin: 0; display: inline-block; vertical-align: middle"
-      />
-    {:else}
-      {@const type_label = cell_types.find(({ type }) => type === cell_type)?.label}
-      {cell_type === `original` ? `` : `${type_label} `}{format_supercell_label(
-        supercell_scaling,
-      )}
-    {/if}
+    {cell_type === `original` ? `` : `${type_label} `}{format_supercell_label(
+      supercell_scaling,
+    )}
   </button>
 
   {#if menu_open}

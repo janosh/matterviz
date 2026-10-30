@@ -305,6 +305,8 @@ export function frame_rows_to_csv({ rows }: TrajectoryPropertyTable): string {
       for (const { key, header } of columns) record[header] = properties[key] ?? null
       return record
     }),
+    // explicit header: object key order would put integer-like keys ("1", "10") first
+    [`frame`, `step`, ...columns.map(({ header }) => header)],
   )
 }
 

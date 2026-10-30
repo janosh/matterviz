@@ -250,6 +250,7 @@ export const make_reference_md_h5_buffer = (
   global_ids = [100, 101],
   n_frames = 3,
   cell_matrix = [10, 0, 0, 0, 10, 0, 0, 0, 10],
+  velocity_of = (_frame_idx: number) => [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0],
 ): Promise<ArrayBuffer> =>
   h5_bytes(`reference-md`, (file) => {
     const frames = file.create_group(`frames`)
@@ -300,7 +301,7 @@ export const make_reference_md_h5_buffer = (
     create_dataset(
       observables,
       `atomic_velocity_angstrom_per_ps`,
-      flat_frames(n_frames, () => [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0]),
+      flat_frames(n_frames, velocity_of),
       [n_frames, 2, 2, 3],
     )
     create_dataset(

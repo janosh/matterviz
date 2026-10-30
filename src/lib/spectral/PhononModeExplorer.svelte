@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { same_while_equal } from '#lib/utils.js'
   import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index.js'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -162,10 +163,10 @@
   // The viewer's live polyhedra settings pick the corner copies, so editing them in its
   // controls rebuilds the supercell. Keyed by value: a host prop change hands a new object.
   let live_scene_props = $state<StructureSettings>()
-  let polyhedra_key = $derived(JSON.stringify(polyhedra_options_from(live_scene_props ?? {})))
+  const keep_polyhedra = same_while_equal<ResolvedPolyhedraOptions>()
+  let polyhedra = $derived(keep_polyhedra(polyhedra_options_from(live_scene_props ?? {})))
   let supercell_result = $derived.by(() => {
     const { n_atoms, atoms, lattice } = mode_data
-    const polyhedra: ResolvedPolyhedraOptions = JSON.parse(polyhedra_key)
     return try_generate(() =>
       phonon_supercell($state.snapshot({ n_atoms, atoms, lattice }), supercell, polyhedra),
     )
@@ -735,7 +736,7 @@ under its open panes -->
     grid-template-columns: minmax(0, var(--split-pane-size, 54.7619%)) minmax(0, 1fr);
     flex: 1;
     min-height: 0;
-    border-block: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
+    border-block: var(--pane-rule);
   }
   .plot-pane,
   .trajectory-pane {
@@ -909,7 +910,7 @@ under its open panes -->
     }
     .plot-pane,
     .trajectory-pane {
-      border-block: 1px solid color-mix(in srgb, var(--border-color, #b7bec8) 55%, transparent);
+      border-block: var(--pane-rule);
     }
   }
   @media (max-width: 560px) {

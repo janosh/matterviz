@@ -1,5 +1,6 @@
 import { in_view } from 'svelte-widgets/attachments'
 import type { Attachment } from 'svelte/attachments'
+import { untrack } from 'svelte'
 import { prefersReducedMotion } from 'svelte/motion'
 
 // Animation length honoring the OS "reduce motion" setting: 0 (snap) while it is on. Reactive
@@ -23,6 +24,28 @@ type Flash<T> = { readonly value: T; show: (value: T) => void; reset: () => void
 const PULSE_FREQUENCY = 4
 
 export const pulsing_highlight_opacity = (pulse_unit: number): number => 0.1 + 0.1 * pulse_unit
+
+// `busy`, switching on once it has held for delay_ms and off once it has been idle as long:
+// work that usually finishes sooner (each playback frame's read, each slider step's recompute)
+// shows no spinner or dimming, and work that keeps restarting (slow frame after slow frame)
+// keeps it up, where an instant one flashed and shifted the layout on every update. Creates
+// an $effect, so call it during component init.
+export function create_delayed_flag(
+  busy: () => boolean,
+  delay_ms = 300,
+): { readonly current: boolean } {
+  let current = $state(false)
+  $effect(() => {
+    const target = busy()
+    const timer = setTimeout(() => (current = target), delay_ms)
+    return () => clearTimeout(timer)
+  })
+  return {
+    get current() {
+      return current
+    },
+  }
+}
 
 // Whether a node is on screen, with `attach` as its attachment. Optimistic until an observer
 // says otherwise: waiting for the first callback would delay whatever this gates, and stall
@@ -129,5 +152,27 @@ export function create_shortcut_flash<T extends string>() {
       flash.value === control
         ? `background: ${color}; box-shadow: 0 0 0 1px ${color}; transition: none`
         : `transition: background-color 0.2s ease-out, box-shadow 0.2s ease-out`,
+  }
+}
+
+// A bindable prop the component writes itself, as state its deriveds read instead of the prop.
+// A derived that re-runs inside a teardown (e.g. a bind:this resolving a prop through callers'
+// spreads) reads a prop its component wrote and no caller binds untracked (Svelte 5.57's
+// prop() returns the bare value then), so it loses that dependency and never updates again.
+// `current` writes through to the prop; the caller's own writes arrive through `get`. Creates
+// an $effect.pre, so it must be called during component init.
+export function create_prop_state<T>(get: () => T, set: (value: T) => void): { current: T } {
+  let value = $state.raw(untrack(get))
+  $effect.pre(() => {
+    value = get()
+  })
+  return {
+    get current() {
+      return value
+    },
+    set current(next: T) {
+      value = next
+      set(next)
+    },
   }
 }

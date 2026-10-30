@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
   import * as math from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { DataSeries } from '#lib/plot/index.js'
@@ -163,12 +164,22 @@
     return context.canvas.toDataURL()
   })
 
+  // The zone depends on the lattice alone, so band and shading changes reuse it
+  let k_lattice = $derived(
+    fermi_data?.reciprocal_cell === `parallelepiped` ? undefined : fermi_data?.k_lattice,
+  )
+  let zone_edges = $derived(k_lattice && compute_brillouin_zone(k_lattice, 1).edges)
   // Where the plane cuts the cell the surfaces live in, in slice coordinates: the (periodic)
   // shading is clipped to it to cover the same area as the contours
   let cell_section = $derived.by((): Vec2[] | null => {
     if (!slice_data || !fermi_data || !shading_image) return null
     const { plane_normal, plane_distance, in_plane_basis } = slice_data
-    const corners = reciprocal_cell_section(fermi_data, plane_normal, plane_distance)
+    const corners = reciprocal_cell_section(
+      fermi_data,
+      plane_normal,
+      plane_distance,
+      zone_edges,
+    )
     return corners.length
       ? corners.map((corner) => in_plane_basis.map((axis) => math.dot(corner, axis)) as Vec2)
       : null

@@ -6,10 +6,10 @@ import type { BandGridData } from '#lib/fermi-surface/types.js'
 import type Bands from '#lib/spectral/Bands.svelte'
 import type BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
 import type Dos from '#lib/spectral/Dos.svelte'
-import type { Matrix3x3, Vec2 } from '#lib/math.js'
+import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import type Structure from '#lib/structure/Structure.svelte'
 import ElectronicStructure from '#lib/spectral/ElectronicStructure.svelte'
-import type { Sweep, SweepFrame } from '#lib/spectral/sweep.js'
+import type { Sweep, SweepFrame, SweepFrameLoader } from '#lib/spectral/sweep.js'
 import type SweepTrends from '#lib/spectral/SweepTrends.svelte'
 import { BANDS_CSS_COLORS, compute_frequency_range } from '#lib/spectral/helpers.js'
 import type {
@@ -33,6 +33,7 @@ import {
   mouse,
   option_texts,
   plot_svg,
+  trigger_intersection,
 } from '../setup'
 import {
   IDENTITY_MATRIX3,
@@ -100,6 +101,9 @@ vi.mock(`#lib/spectral/BandsAndDos.svelte`, () => ({
     return {}
   },
 }))
+// a viewer whose teardown reads its props, as an onDestroy reading a prop does (the trigger of
+// sveltejs/svelte#19099: Svelte re-runs dirty deriveds behind them against the old values)
+const teardown_reads = vi.hoisted(() => new Set<string>())
 // renders the original component, recording its live props in `viewers` (and `on_mount`)
 const record_props = vi.hoisted(
   () =>
@@ -111,10 +115,12 @@ const record_props = vi.hoisted(
       type Props = NonNullable<(typeof viewers)[Key]>
       type Render = (anchor: Node, props: Props) => unknown
       const { default: Component } = await original<{ default: Render }>()
+      const { onDestroy } = await import(`svelte`)
       return {
         default: (anchor: Node, props: Props) => {
           viewers[key] = props
           on_mount?.(props)
+          if (teardown_reads.has(key)) onDestroy(() => void Object.values(props))
           return Component(anchor, props)
         },
       }
@@ -475,7 +481,7 @@ test(`hover previews a band point's energy, a click pins it and isolates the ban
   // series id is JSON [label, segment, band_idx, spin]
   const band_path = (band: number) =>
     [...svg.querySelectorAll(`g[data-series-id]`)]
-      .find((node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[2] === band)
+      .find((node) => JSON.parse(node.getAttribute(`data-series-id`) ?? `[]`)[1] === band)
       ?.querySelector(`path`)
   const band_vertex = (band: number, qpoint_idx = 0) => {
     const coords = (band_path(band)?.getAttribute(`d`) ?? ``).match(/[-\d.e]+/g)?.map(Number)
@@ -915,6 +921,12 @@ test(`a sweep's frame feeds every pane, stepped by its control bar and keys`, ()
   expect(status(root)).toBe(`50 GPa`)
   expect(shown_density()).toBe(2)
   expect(viewers.trends?.frame_idx).toBe(1)
+  // the density axis grows to the largest DOS shown so far and holds there: stepping back to a
+  // smaller one moves no axis
+  expect(viewers.dos?.density_range).toEqual([0, 2])
+  props.frame_idx = 0
+  flushSync()
+  expect([shown_density(), viewers.dos?.density_range]).toEqual([1, [0, 2]])
 
   // the series select opens the new series at the frame nearest the shown value (100 GPa)
   props.frame_idx = 2
@@ -955,6 +967,33 @@ test.each([
     ]).toEqual(expected)
   },
 )
+
+test(`playback holds its frame while the viewer is off screen and plays on in view`, () => {
+  vi.useFakeTimers({
+    toFake: [`requestAnimationFrame`, `cancelAnimationFrame`, `performance`],
+  })
+  onTestFinished(() => {
+    vi.useRealTimers()
+  })
+  const { props, root } = mount_live({
+    sweep: make_sweep(),
+    frame_idx: 0,
+    series_id: undefined,
+    fps: 5,
+    panes: ALL_PANES,
+  })
+  trigger_intersection(root, false)
+  root.dispatchEvent(new KeyboardEvent(`keydown`, { key: ` `, bubbles: true }))
+  flushSync()
+  vi.advanceTimersByTime(1000)
+  flushSync()
+  const playing = () => root.querySelector(`.play-button`)?.classList.contains(`playing`)
+  expect([props.frame_idx, playing()]).toEqual([0, true])
+  trigger_intersection(root, true)
+  vi.advanceTimersByTime(100) // the held step lands on the first frame back in view
+  flushSync()
+  expect([props.frame_idx, playing()]).toEqual([1, true])
+})
 
 test(`clicking a trends point selects its series and frame`, () => {
   const { props, root } = mount_live({
@@ -1015,6 +1054,29 @@ test(`a sweep frame's phonons merge its own α²F with the loaded dispersion`, a
   mount_host({ sweep, frame_idx: 0 })
   await vi.waitFor(() => expect(viewers.phonon?.band_structs).toEqual(phonon.band_structs))
   expect(viewers.phonon?.a2f).toEqual(phonon.a2f)
+})
+
+// The phonon bands' mode values (e.g. λ_qν) share one colour and size scale over the sweep's
+// loaded frames, so marker colours compare across frames and the colour bar holds still
+test(`a sweep's mode-value markers share one scale over its frames`, () => {
+  const mode_values = (values: number[]) => ({
+    label: `λ`,
+    qpoints: [[0, 0, 0]] as Vec3[],
+    frequencies: [values.map((_, idx) => idx + 1)],
+    values: [values],
+  })
+  const sweep = make_sweep()
+  for (const [idx, frame] of sweep.series[0].frames.entries()) {
+    frame.phonon = { ...phonon, mode_values: mode_values([0.1 * (idx + 1), 0.5 + idx]) }
+  }
+  mount_host({ sweep, frame_idx: 0 })
+  const { color_scale, size_scale, mode_values: shown } = viewers.phonon?.bands_props ?? {}
+  expect(shown?.values).toEqual([[0.1, 0.5]])
+  const color_range = typeof color_scale === `object` ? color_scale.value_range : undefined
+  expect([color_range, size_scale?.value_range]).toEqual([
+    [0.1, 2.5],
+    [0.1, 2.5],
+  ])
 })
 
 // Stepping through a sweep, the spectra span every loaded frame of the series: the axes hold
@@ -1186,8 +1248,8 @@ test(`a lazy sweep's default panes are those any frame has, so loads only add pa
   expect(shown_panes(root)).toEqual([`structure`, `trends`, `dos`])
 })
 
-// The old sweep's panes read their props as they unmount, which re-runs the viewer's frame
-// deriveds against the old sweep: its loads must still reach the panes afterwards
+// The old sweep's panes read their props as they unmount (the DOS here), which re-runs the
+// viewer's frame deriveds against the old sweep: its loads must still reach the panes afterwards
 test(`a replaced lazy sweep draws the frames its own loader returns`, async () => {
   // frames holding only their value, so swapping sweeps unmounts the loaded panes
   const bare_sweep = () => {
@@ -1197,6 +1259,8 @@ test(`a replaced lazy sweep draws the frames its own loader returns`, async () =
       series.frames = series.frames.map(({ value }) => ({ value }))
     return { sweep: { ...sweep, load_frame }, load_frame }
   }
+  teardown_reads.add(`dos`)
+  onTestFinished(() => void teardown_reads.delete(`dos`))
   const props = $state<ComponentProps<typeof ElectronicStructure>>({
     sweep: bare_sweep().sweep,
     frame_idx: 0,
@@ -1214,6 +1278,39 @@ test(`a replaced lazy sweep draws the frames its own loader returns`, async () =
     expect(load_frame).toHaveBeenCalledWith(`fcc`, 0, { signal: expect.any(AbortSignal) }),
   )
   await vi.waitFor(() => expect(dos_drawn()).toBe(true))
+})
+
+// a host re-rendering hands over an equal copy (new objects): its frames load no more
+test(`an equal copy of a lazy sweep reuses its loaded frames, a changed one loads again`, async () => {
+  const { sweep, loads } = lazy_sweep()
+  const { props } = mount_live({ sweep, frame_idx: 0, panes: [`structure`, `dos`] })
+  await vi.waitFor(() => expect(shown_density()).toBe(10))
+  const copy = (frame_value = 0): Sweep => ({
+    ...sweep,
+    series: sweep.series.map((entry) => ({
+      ...entry,
+      frames: entry.frames.map((frame, idx) => ({
+        ...frame,
+        value: frame.value + (idx === 2 ? frame_value : 0),
+      })),
+    })),
+  })
+  props.sweep = copy()
+  flushSync()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect([loads(), shown_density()]).toEqual([
+    [
+      [`fcc`, 0],
+      [`fcc`, 1],
+    ],
+    10,
+  ])
+  props.sweep = copy(10) // frame 2 moved: another sweep
+  await vi.waitFor(() => expect(loads()).toHaveLength(4))
+  expect(loads().slice(2)).toEqual([
+    [`fcc`, 0],
+    [`fcc`, 1],
+  ])
 })
 
 test(`a dropped sweep JSON replaces the viewer's data, which then takes only sweeps`, async () => {
@@ -1322,20 +1419,25 @@ test.each([undefined, `bcc`])(
   },
 )
 
-// Narrow, the panes stack in one column, each its own height, rather than share the viewer's:
-// no dividers between them, the scenes one above the other, and every compared side labelled
+// Narrow, or too short for the side-by-side layout's pane levels (scenes over spectra) at 200px
+// each, the panes stack in one column, each its own height, rather than share the viewer's: no
+// dividers between them, the scenes one above the other, and every compared side labelled
 test.each([
-  [700, true],
-  [1200, false],
-])(`at %ipx wide the panes stack: %s`, async (width, stacked) => {
+  [700, 900, true],
+  [1200, 400, false],
+  [1200, 390, true],
+])(`at %ipx wide, %ipx high the panes stack: %s`, async (width, panes_height, stacked) => {
   // every pane row measures 700x320, where the scenes would split side by side unstacked
-  for (const [key, size] of [
-    [`clientWidth`, 700],
-    [`clientHeight`, 320],
-  ] as const) {
-    const spy = vi.spyOn(HTMLElement.prototype, key, `get`).mockReturnValue(size)
-    onTestFinished(() => spy.mockRestore())
-  }
+  const width_spy = vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(700)
+  const height_spy = vi
+    .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+    .mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains(`panes`) ? panes_height : 320
+    })
+  onTestFinished(() => {
+    width_spy.mockRestore()
+    height_spy.mockRestore()
+  })
   const root = await mount_sized(
     ElectronicStructure,
     { sweep: make_sweep(), compare_series: `bcc`, panes: ALL_PANES },
@@ -1448,7 +1550,7 @@ test(`compare_series splits the frame panes into two labelled sides on shared ax
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `trends`, `bands`, `dos`, `phonon`])
   // the shown side's plots, mounted before comparing
   expect(instances.bands[0].y_axis?.range).toEqual(spectra_span(bcc.frames))
-  expect(instances.dos[0].density_range).toBeUndefined()
+  expect(instances.dos[0].density_range).toEqual([0, 4]) // its own series' range again
   expect(viewers.trends?.compare).toBeUndefined()
 
   // a replaced sweep without the compared series drops it
@@ -1652,6 +1754,14 @@ test(`a frame failing to fill counts as missing in the note and isn't loaded aga
   calls[2].reject()
   await settle()
   expect([loaded(), note()]).toEqual([[0, 1, 2, 3], `2/6`]) // the fill moves on to frame 3
+  // the trends plot marks it (a line where its point would be), and frame 3 as loading
+  const series = viewers.trends?.sweep?.series[0]
+  const load_state_of = viewers.trends?.load_state_of
+  if (!series || !load_state_of) throw new Error(`no trends load states`)
+  const states = series.frames.map((_frame: SweepFrame, idx: number) =>
+    load_state_of(series, idx),
+  )
+  expect(states).toEqual([`loaded`, `loaded`, `failed`, `loading`, `unloaded`, `unloaded`])
   await settle(3)
   expect([loaded(), note()]).toEqual([[0, 1, 2, 3, 4], `3/6`])
   await settle(4)
@@ -1659,13 +1769,16 @@ test(`a frame failing to fill counts as missing in the note and isn't loaded aga
   expect([loaded(), note()]).toEqual([[0, 1, 2, 3, 4, 5], null]) // nothing left to load
 })
 
-// A new sweep (or loader) starts a fresh cache: the old one's fill is aborted with its loads
+// A new loader (or sweep) starts a fresh cache: the old one's fill is aborted with its loads
 // and the new one loads its window again before any fill
 // oxfmt-ignore
 test.each<[string, (props: ComponentProps<typeof ElectronicStructure>) => void, number[]]>([
   [`the trends pane hides`, (props) => (props.panes = [`structure`, `dos`]), []],
   [`the descriptor turns to a supplied one`, (props) => (props.descriptor = `tc`), []],
-  [`the sweep changes`, (props) => (props.sweep = props.sweep && { ...props.sweep }), [0, 1]],
+  [`the loader changes`, (props) => {
+    const load_frame = props.sweep?.load_frame
+    if (props.sweep && load_frame) props.sweep = { ...props.sweep, load_frame: (...args: Parameters<SweepFrameLoader>) => load_frame(...args) }
+  }, [0, 1]],
 ])(`the fill stops when %s`, async (_desc, change, reloads) => {
   const { state, calls, settle, note, loaded } = fill_setup()
   await settle(0, 1)

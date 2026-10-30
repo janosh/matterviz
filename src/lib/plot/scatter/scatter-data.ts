@@ -6,10 +6,15 @@ import { plot_color } from '#lib/colors/index.js'
 import { symbol_names } from '#lib/labels.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { first_duplicate } from '#lib/utils.js'
-import { first_point_style, get_series_symbol } from '#lib/plot/core/data-transform.js'
+import {
+  get_series_symbol,
+  is_transparent_or_none,
+  shown_point_style,
+} from '#lib/plot/core/data-transform.js'
 import { is_fill_gradient } from '#lib/plot/core/fill-utils.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
 import type {
+  AxisKey,
   AxisRanges,
   DataSeries,
   FillRegion,
@@ -204,6 +209,32 @@ export function filter_series_to_ranges<Metadata = Record<string, unknown>>(
   return out
 }
 
+// Whether a series' line can reach the view: one whose vertices' bounding box misses it draws
+// nothing there when its curve stays inside that box (linear, monotone, step and basis curves
+// do; natural and Catmull-Rom ones overshoot). Underlays have vertices of their own, so a
+// series with any is kept. A band structure's bands far from the shown energies are such lines.
+export function line_reaches_view(
+  series: Pick<MaterializedSeries, `x_axis` | `y_axis` | `line_style` | `line_underlays`> & {
+    point_bounds: { x: Vec2; y: Vec2 }
+  },
+  ranges: AxisRanges,
+  log_axes: ReadonlySet<AxisKey>,
+): boolean {
+  const curve = series.line_style?.curve
+  if (curve === `natural` || curve === `catmull-rom` || series.line_underlays?.length)
+    return true
+  const x_key = series.x_axis === `x2` ? `x2` : `x`
+  const y_key = series.y_axis === `y2` ? `y2` : `y`
+  const [x_lo, x_hi] = range_bounds(ranges[x_key])
+  const [y_lo, y_hi] = range_bounds(ranges[y_key])
+  const { x, y } = series.point_bounds
+  // NaN bounds fail every comparison, keeping the line. A log y axis draws lines below its
+  // floor at the floor (log_floor_scale), so a line under it still shows along that edge; x
+  // is not floored (series_projector.line), so a line left of a log x view draws nothing.
+  const below_y = y[1] < y_lo && !log_axes.has(y_key)
+  return !(x[1] < x_lo || x[0] > x_hi || below_y || y[0] > y_hi)
+}
+
 // Display style attached to each legend item (matches PlotLegend expectations)
 type LegendDisplayStyle = LegendItem[`display_style`]
 
@@ -227,12 +258,6 @@ export const scatter_series_label = <Metadata>(
   typeof data_series.metadata.label === `string`
     ? data_series.metadata.label
     : `Series ${series_idx + 1}`)
-
-const is_transparent_or_none = (color: string | undefined | null): boolean =>
-  !color ||
-  color === `none` ||
-  color === `transparent` ||
-  /rgba\([^)]+[,/]\s*0(?:\.0*)?\s*\)$/.test(color)
 
 // Legend rows in render order, for both the rendered legend and the solver's footprint tracker.
 // A null series keeps its index (points and styles are looked up by it) but contributes no row,
@@ -283,7 +308,11 @@ export function scatter_line_style<Metadata>(
   color_scale: (value: number) => string,
   override?: StyleOverrides[`line`],
 ) {
-  let color = override?.color ?? series.line_style?.stroke ?? first_point_style(series)?.fill
+  const fill = shown_point_style(series)?.fill
+  let color =
+    override?.color ??
+    series.line_style?.stroke ??
+    (is_transparent_or_none(fill) ? undefined : fill)
   if (color == null) {
     const value = series.color_values?.find(is_finite_num)
     color = value != null ? color_scale(value) : plot_color(series_idx)
@@ -310,7 +339,7 @@ export function build_series_legend_items<Metadata = Record<string, unknown>>(
   ): LegendDisplayStyle => {
     const series_default_color = plot_color(series_idx)
     const display_style: LegendDisplayStyle = {}
-    const point_style = first_point_style(data_series)
+    const point_style = shown_point_style(data_series)
     const point_override = series_idx === selected_series_idx ? styles.point : undefined
 
     if (has_marker(data_series, `points`) && styles.show_points !== false) {
@@ -416,7 +445,7 @@ export function pick_tooltip_bg<Metadata = Record<string, unknown>>(
   const has_points = has_marker(series, `points`)
   if (has_points) candidates.push(point_style?.stroke)
   if (has_marker(series, `line`)) {
-    const series_style = first_point_style(series)
+    const series_style = shown_point_style(series)
     candidates.push(
       series?.line_style?.stroke,
       series_style?.fill,
@@ -445,7 +474,7 @@ export const strict_x_direction = (values: readonly number[]): -1 | 0 | 1 => {
 // Retain boundary-crossing segments and enough neighboring vertices for d3's local
 // monotone tangents. Natural/basis/Catmull–Rom curves retain their complete path.
 export function project_line_points(
-  data: Pick<DataSeries, `x` | `y`>,
+  data: Pick<DataSeries, `x` | `y` | `line_breaks`>,
   x_scale: (value: number) => number,
   y_scale: (value: number) => number,
   x_range: Vec2,
@@ -475,7 +504,14 @@ export function project_line_points(
       if (finite_at(end)) count++
   }
   const points: Vec2[] = []
+  // a NaN vertex before each break's first point ends the subpath there (Line skips it)
+  const breaks = data.line_breaks ?? []
+  let next_break = partition_point(breaks, (break_idx) => break_idx <= start)
   for (let idx = start; idx < end; idx++) {
+    if (breaks[next_break] <= idx) {
+      while (breaks[next_break] <= idx) next_break++ // repeated breaks (an empty branch)
+      if (points.length > 0 && Number.isFinite(points.at(-1)?.[0])) points.push([NaN, NaN])
+    }
     const pixel_x = x_scale(coord_x[idx])
     const pixel_y = y_scale(coord_y[idx])
     if (Number.isFinite(pixel_x) && Number.isFinite(pixel_y)) points.push([pixel_x, pixel_y])

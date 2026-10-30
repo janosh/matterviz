@@ -188,6 +188,25 @@ test(`a failed load is reported once with its 0-based index, counts as ready, no
   expect(frames.frame(series, 2)).toBe(series.frames[2])
 })
 
+// what the trends plot marks per frame: evicted frames, and reloads of their data, count as loaded
+test(`load states per frame`, async () => {
+  const { load, calls } = deferred_loader()
+  const { frames, inputs } = setup(load, RECENT_FRAMES + 3)
+  const series = inputs.sweep.series[0]
+  const states = () => series.frames.map((_frame, idx) => frames.load_state(series, idx))
+  frames.request([series, [0, 1, 2]])
+  flushSync()
+  calls[0].resolve({ label: `0` })
+  calls[1].reject(new Error(`down`))
+  await settle()
+  expect(states().slice(0, 4)).toEqual([`loaded`, `failed`, `loading`, `unloaded`])
+  for (let idx = 3; idx < series.frames.length; idx++) frames.request([series, [idx]])
+  expect([states()[0], frames.is_ready(series, 0)]).toEqual([`loaded`, false]) // evicted
+  frames.request([series, [0]]) // reloading what it had: still marked loaded
+  expect([states()[0], frames.is_loading(series, 0)]).toEqual([`loaded`, true])
+  expect(setup().frames.load_state(series, 0)).toBe(`loaded`) // no loader: all given
+})
+
 // oxfmt-ignore
 test.each([
   [`an electronic DOS among the phonons`, { phonon: { doses: { x: electronic_dos } } }, `.phonon.doses.x: must be phonon data, got electronic`],
@@ -217,7 +236,7 @@ test(`a new sweep starts a fresh cache, aborting loads still running for the old
   await settle()
   expect(frames.frame(old_series, 0).label).toBe(`old 0`)
 
-  inputs.sweep = make_sweep(load)
+  inputs.sweep = make_sweep(load, 4) // another frame: not an equal sweep
   flushSync()
   expect([old_1.signal.aborted, old_2.signal.aborted]).toEqual([true, true])
   const series = inputs.sweep.series[0]
@@ -230,6 +249,38 @@ test(`a new sweep starts a fresh cache, aborting loads still running for the old
   frames.request([series, [0]]) // loads again for the new sweep
   expect(load).toHaveBeenCalledTimes(4)
   expect(calls[0].args).toEqual([`fcc`, 0])
+  expect(on_error).not.toHaveBeenCalled()
+})
+
+// a host re-rendering hands over a copy: new objects, same frames
+// oxfmt-ignore
+test.each<[string, (load: SweepFrameLoader) => Sweep, boolean, number[]]>([
+  [`an equal copy`, (load) => make_sweep(load), true, [0, 1]],
+  [`another loader`, () => make_sweep(deferred_loader().load), false, [0, 1]], // its own calls
+  [`another frame`, (load) => make_sweep(load, 4), false, [0, 1, 0, 1]],
+  [`a frame value`, (load) => ({ ...make_sweep(load), series: [{ id: `fcc`, frames: [{ value: 0 }, { value: 60 }, { value: 100 }] }] }), false, [0, 1, 0, 1]],
+  [`a series id`, (load) => ({ ...make_sweep(load), series: [{ ...make_sweep(load).series[0], id: `bcc` }] }), false, [0, 1, 0, 1]],
+  [`a descriptor`, (load) => ({ ...make_sweep(load), descriptors: [{ ...fermi_dos_spec, key: `n_ef` }] }), false, [0, 1, 0, 1]],
+])(`a sweep replaced by %s keeps the loaded frames only when equal`, async (_desc, replace, kept, loads) => {
+  const { load, calls } = deferred_loader()
+  const { frames, inputs, on_error } = setup(load)
+  frames.request([inputs.sweep.series[0], [0, 1]])
+  calls[0].resolve({ label: `0` })
+  await settle()
+  inputs.sweep = replace(load)
+  flushSync()
+  const series = inputs.sweep.series[0]
+  expect(calls[1].signal.aborted).toBe(!kept)
+  frames.request([series, [0, 1]])
+  // kept: frame 0 loaded, frame 1 still loading, its load landing on the new frame
+  expect([frames.frame(series, 0).label, ids(calls)]).toEqual([kept ? `0` : undefined, loads])
+  calls[1].resolve({ label: `1` })
+  await settle()
+  expect(frames.frame(series, 1).label).toBe(kept ? `1` : undefined)
+  // a chain of equal copies keeps the first sweep's loads
+  inputs.sweep = { ...inputs.sweep, series: [{ ...series, frames: series.frames.map((frame) => ({ ...frame })) }] }
+  flushSync()
+  expect(frames.frame(inputs.sweep.series[0], 1).label).toBe(kept ? `1` : undefined)
   expect(on_error).not.toHaveBeenCalled()
 })
 

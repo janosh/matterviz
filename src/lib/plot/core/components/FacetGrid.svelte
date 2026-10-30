@@ -22,6 +22,7 @@
   } from '#lib/plot/core/facets.js'
   import { is_valid_range } from '#lib/plot/core/shared-axes.js'
   import { observe_size } from '#lib/plot/core/utils.js'
+  import type { Rect } from '#lib/plot/core/layout.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'
@@ -62,6 +63,13 @@
   const range_overrides = new SvelteMap<FacetKey, FacetAxisRanges>()
   type PanelCallbacks = Pick<FacetPanelContext<Datum>, `report_layout` | `update_range`>
   const panel_callbacks = new SvelteMap<FacetKey, PanelCallbacks>()
+  // Per key, the last context and the panel layout it was built from: one panel's pan
+  // re-resolves every panel's ranges, but only panels whose ranges moved get a new context
+  // (and re-lay themselves out against it)
+  const context_memo = new Map<
+    FacetKey,
+    { panel: object; context: FacetPanelContext<Datum> }
+  >()
 
   const layout = $derived(assign_facet_panels(panels, columns, rows))
   const active_shared_bands = $derived.by((): FacetSharedBandSizes => {
@@ -291,7 +299,7 @@
     for (const { key } of layout.panels) {
       if (!panel_callbacks.has(key)) panel_callbacks.set(key, create_panel_callbacks(key))
     }
-    for (const state of [layout_reports, range_overrides, panel_callbacks]) {
+    for (const state of [layout_reports, range_overrides, panel_callbacks, context_memo]) {
       for (const key of state.keys()) if (!current_keys.has(key)) state.delete(key)
     }
   }
@@ -300,18 +308,26 @@
   sync_panel_keys()
   $effect.pre(sync_panel_keys)
 
+  const same_rect = (left: Rect, right: Rect): boolean =>
+    ([`x`, `y`, `width`, `height`] as const).every((side) => left[side] === right[side])
   const contexts = $derived(
     panel_layouts.map((panel): FacetPanelContext<Datum> => {
       const callbacks = panel_callbacks.get(panel.key)
       if (!callbacks) throw new Error(`Missing callback state for facet "${panel.key}"`)
-      return {
-        ...panel,
-        rect:
-          resolved_geometry.panels.find((entry) => entry.key === panel.key)?.rect ??
-          zero_rect(),
-        ranges: resolved_ranges.find((entry) => entry.key === panel.key)?.ranges ?? {},
-        ...callbacks,
-      }
+      const rect =
+        resolved_geometry.panels.find((entry) => entry.key === panel.key)?.rect ?? zero_rect()
+      const ranges = resolved_ranges.find((entry) => entry.key === panel.key)?.ranges ?? {}
+      const memo = context_memo.get(panel.key)
+      if (
+        memo?.panel === panel &&
+        memo.context.update_range === callbacks.update_range &&
+        same_rect(memo.context.rect, rect) &&
+        ranges_equal(memo.context.ranges, ranges)
+      )
+        return memo.context
+      const context = { ...panel, rect, ranges, ...callbacks }
+      context_memo.set(panel.key, { panel, context })
+      return context
     }),
   )
 

@@ -45,6 +45,7 @@ export type BandsOptions = SpectralPlotOptions &
     | 'show_gap_annotation'
     | 'bz_popup_props'
     | 'mode_values'
+    | 'path_length'
   >
 export type DosOptions = SpectralPlotOptions &
   Pick<

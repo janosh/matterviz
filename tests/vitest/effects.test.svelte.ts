@@ -2,7 +2,9 @@ import FlashHarness from './fixtures/FlashHarness.svelte'
 import PulseAnimationHarness from './fixtures/PulseAnimationHarness.svelte'
 import { stub_reduced_motion, trigger_intersection } from './setup'
 import {
+  create_delayed_flag,
   type create_flash,
+  create_prop_state,
   motion_duration,
   pulsing_highlight_opacity,
 } from '#lib/effects.svelte.js'
@@ -342,4 +344,70 @@ describe(`create_flash`, () => {
     vi.advanceTimersByTime(2000)
     expect(flash.value).toBe(`copied`)
   })
+})
+
+// The state a component's deriveds read in place of a prop it writes itself: its own writes
+// reach the prop, the caller's writes reach the state, and a derived over it follows both
+test(`create_prop_state mirrors a prop both ways`, () => {
+  const prop = $state({ value: 1 })
+  const written: number[] = []
+  let mirror: { current: number } | undefined
+  let doubled = () => NaN
+  const dispose = $effect.root(() => {
+    const state = create_prop_state(
+      () => prop.value,
+      (value) => {
+        written.push(value)
+        prop.value = value
+      },
+    )
+    const twice = $derived(state.current * 2)
+    mirror = state
+    doubled = () => twice
+  })
+  flushSync()
+  if (!mirror) throw new Error(`create_prop_state returned nothing`)
+  expect([mirror.current, doubled()]).toEqual([1, 2])
+  mirror.current = 3 // the component's own write
+  flushSync()
+  expect([mirror.current, doubled(), prop.value, written]).toEqual([3, 6, 3, [3]])
+  prop.value = 5 // the caller's
+  flushSync()
+  expect([mirror.current, doubled(), written]).toEqual([5, 10, [3]])
+  dispose()
+})
+
+// Each playback frame's read or slider step's recompute that finishes in time shows nothing,
+// where an instant spinner flashed and shifted the layout on every update
+test(`create_delayed_flag switches only once busy or idle has held for its delay`, () => {
+  vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+  const busy = $state({ value: false })
+  let flag: { readonly current: boolean } | undefined
+  const dispose = $effect.root(() => {
+    flag = create_delayed_flag(() => busy.value, 300)
+  })
+  const step = (value: boolean, ms: number) => {
+    busy.value = value
+    flushSync()
+    vi.advanceTimersByTime(ms)
+    flushSync()
+    return flag?.current
+  }
+  // quick work, again and again: never shown
+  expect([step(true, 200), step(false, 50), step(true, 200), step(false, 0)]).toEqual([
+    false,
+    false,
+    false,
+    false,
+  ])
+  expect([step(true, 299), step(true, 1)]).toEqual([false, true])
+  // slow work after slow work (a frame read per 400 ms) keeps it up instead of blinking
+  expect([step(false, 100), step(true, 300), step(false, 299), step(false, 1)]).toEqual([
+    true,
+    true,
+    true,
+    false,
+  ])
+  dispose()
+  vi.useRealTimers()
 })

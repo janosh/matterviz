@@ -142,6 +142,9 @@ export interface DataSeries<Metadata = Record<string, unknown>> {
     line_dash?: string
     curve?: LineCurve // d3-shape curve for the connecting line; `linear` = straight segments
   }
+  // Point indices where the line lifts the pen and starts anew, ascending: many disjoint
+  // stretches in one series draw as one path (a band across a path's branches)
+  line_breaks?: readonly number[]
 }
 
 // Throw when arrays that are indexed in lockstep have different lengths. Absent arrays are skipped.

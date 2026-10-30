@@ -1,3 +1,4 @@
+import { value_key } from '#lib/utils.js'
 import type { BondData } from './bond-rendering'
 import { BondFrame, bond_site_1, bond_site_2 } from './bond-rendering'
 import { get_orig_site_idx, get_site, numeric_sites, site_count } from './site'
@@ -67,7 +68,7 @@ export const polyhedra_options_from = (
 // Worker results belong to one immutable bond snapshot. Filters or bond edits create a
 // different graph; appearance changes leave this geometry reusable.
 const polyhedra_options_key = (options: PolyhedraOptions): string =>
-  JSON.stringify([
+  value_key([
     options.neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
     options.min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
     options.max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,

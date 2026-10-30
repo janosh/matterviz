@@ -19,7 +19,8 @@ import { clamp, create_cart_to_frac, is_valid_index } from '#lib/math.js'
 import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
 import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-import type { Site } from '#lib/structure/index.js'
+import type { AnyStructure } from '#lib/structure/index.js'
+import { numeric_sites, site_count } from '#lib/structure/site.js'
 
 // `element` paints each trail in its atom's color (matching the spheres in the scene),
 // `time` runs a d3 ramp from the oldest sampled frame to the newest so the head of a
@@ -431,12 +432,22 @@ export function trail_color_texels(
 // get_pbc_image_sites keeps the base sites at [0, n_atoms) in stream order and appends the
 // image copies, so those leading sites still anchor. A supercell instead renumbers every
 // atom (every site carries unit-cell provenance), leaving nothing to anchor one-to-one.
+// A numeric frame's columns anchor directly: they carry no provenance, and reading `sites` would
+// build every atom's record each frame of playback.
 export function trajectory_trail_anchors(
-  sites: readonly Site[] | undefined,
+  structure: AnyStructure | null | undefined,
   n_atoms: number | undefined,
 ): Float64Array | null {
-  if (!sites || !n_atoms || sites.length < n_atoms) return null
+  if (!structure || !n_atoms || site_count(structure) < n_atoms) return null
   const anchors = new Float64Array(n_atoms * 3)
+  const columns = numeric_sites.get(structure)
+  if (columns) {
+    const { coordinates, stride } = columns
+    for (let idx = 0; idx < n_atoms * 3; idx++)
+      anchors[idx] = coordinates[Math.floor(idx / 3) * stride + (idx % 3)]
+    return anchors
+  }
+  const { sites } = structure
   for (let site_idx = 0; site_idx < n_atoms; site_idx++) {
     const site = sites[site_idx]
     const { image_of, unit_cell_idx } = site.provenance ?? {}

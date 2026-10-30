@@ -20,6 +20,7 @@
   // replaces the data of the panes it fills (see `fill`); while a sweep is shown only sweep JSONs
   // are taken.
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
+  import { create_on_screen, create_prop_state } from '#lib/effects.svelte.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { open_material, type OpenedMaterial } from '#lib/file-viewer/open.js'
   import { FermiBandsLink } from '#lib/fermi-surface/fermi-bands-link.svelte.js'
@@ -107,6 +108,7 @@
     DosData,
     ElectronicPane,
     FrequencyUnit,
+    ModeValues,
     PhononSpectra,
     SpectraRecords,
   } from './types'
@@ -125,6 +127,10 @@
   // Below this width (px) the panes stack in one column, each at its own height, rather than
   // share the viewer's height (a chat card's 650x560 squeezed the bands to a strip)
   const STACK_WIDTH = 800
+  // Below this height (px) per pane the side-by-side layout's plots have no room for their axis
+  // titles, which then overlap the pane below (a dashboard cell's 830x500 holding a sweep), so
+  // the panes stack too
+  const MIN_PANE_HEIGHT = 200
   const SWEEP_FPS_RANGE = [0.25, 5] as const // frames per second while playing a sweep
   // The structure is in the Fermi data's frame when a_i · b_j / 2π is an integer matrix (its
   // cell a supercell of the zone's) or the inverse of one (the zone's cell a supercell of its).
@@ -229,7 +235,10 @@
   let dragover = $state(false)
   let chrome_width = $state(0)
   let viewer_width = $state(0)
-  const stacked = $derived(viewer_width > 0 && viewer_width < STACK_WIDTH)
+  let panes_height = $state(0)
+  // off screen (e.g. one of several viewers down a long page) playback holds its frame, so no
+  // pane re-renders until it is scrolled back into view and plays on
+  const on_screen = create_on_screen()
 
   const controls_config = $derived(normalize_show_controls(show_controls))
   const pane_controls = <Prop>(prop: Prop): Prop | false =>
@@ -247,26 +256,46 @@
     const ids = active.series.map((entry) => entry.id).join(`, `)
     throw new Error(`${prop} "${id}" is not a series of the sweep (${ids})`)
   }
+  // The series, frame and compared series as state (see create_prop_state): each frame step
+  // mounts and unmounts plots, whose teardowns left a derived reading the props stale (a
+  // compared sweep's frame index froze)
+  const nav = {
+    series_id: create_prop_state(
+      () => series_id,
+      (id) => (series_id = id),
+    ),
+    frame_idx: create_prop_state(
+      () => frame_idx,
+      (idx) => (frame_idx = idx),
+    ),
+    compare_series: create_prop_state(
+      () => compare_series,
+      (id) => (compare_series = id),
+    ),
+  }
   const series = $derived.by(() => {
     if (!sweep) return undefined
     validate_sweep(sweep)
-    if (series_id === undefined) return sweep.series[0]
-    const stale_pick = picked && picked.sweep !== sweep && picked.id === series_id
-    if (stale_pick && !sweep.series.some(({ id }) => id === series_id)) return sweep.series[0]
-    return series_of(sweep, `series_id`, series_id)
+    const id = nav.series_id.current
+    if (id === undefined) return sweep.series[0]
+    const stale_pick = picked && picked.sweep !== sweep && picked.id === id
+    if (stale_pick && !sweep.series.some((entry) => entry.id === id)) return sweep.series[0]
+    return series_of(sweep, `series_id`, id)
   })
   const frame_index = $derived.by(() => {
     if (!series) return 0
-    if (!Number.isFinite(frame_idx))
-      throw new RangeError(`frame_idx must be finite, got ${frame_idx}`)
-    return clamp(Math.round(frame_idx), 0, series.frames.length - 1)
+    const idx = nav.frame_idx.current
+    if (!Number.isFinite(idx)) throw new RangeError(`frame_idx must be finite, got ${idx}`)
+    return clamp(Math.round(idx), 0, series.frames.length - 1)
   })
   // the bound series and index follow those shown (a shorter series clamps the index), and a
   // series is not compared with itself
   $effect(() => {
-    if (series && series_id !== undefined && series_id !== series.id) series_id = series.id
-    if (series && frame_idx !== frame_index) frame_idx = frame_index
-    if (series && compare_series === series.id) compare_series = undefined
+    if (!series) return
+    const id = nav.series_id.current
+    if (id !== undefined && id !== series.id) nav.series_id.current = series.id
+    if (nav.frame_idx.current !== frame_index) nav.frame_idx.current = frame_index
+    if (nav.compare_series.current === series.id) nav.compare_series.current = undefined
   })
   // a replaced sweep (also a dropped one), or one whose series or descriptors change in place,
   // keeps the plotted descriptor and the compared series only if it has them
@@ -279,9 +308,10 @@
     const keys = sweep_keys(sweep)
     if (sweep === kept.sweep && keys === kept.keys) return
     kept = { sweep, keys }
-    const [key, compare_id] = untrack(() => [descriptor, compare_series])
+    const [key, compare_id] = untrack(() => [descriptor, nav.compare_series.current])
     if (!sweep?.descriptors?.some((spec) => spec.key === key)) descriptor = undefined
-    if (!sweep?.series.some(({ id }) => id === compare_id)) compare_series = undefined
+    if (!sweep?.series.some(({ id }) => id === compare_id))
+      nav.compare_series.current = undefined
   })
   const frames = create_sweep_frames({
     sweep: () => sweep,
@@ -291,16 +321,24 @@
   const frame_label = $derived(sweep && frame ? format_axis_value(sweep.axis, frame) : ``)
   // the frame after the shown one, wrapping as playback does
   const next_index = $derived(series ? (frame_index + 1) % series.frames.length : 0)
-  // the compared series, at its frames nearest the shown frame's and the next one's values
+  // the compared series, at its frames nearest the shown frame's and its neighbours' values
   const compare_target = $derived(
-    sweep && series && compare_series !== undefined && compare_series !== series.id
-      ? series_of(sweep, `compare_series`, compare_series)
+    sweep &&
+      series &&
+      nav.compare_series.current !== undefined &&
+      nav.compare_series.current !== series.id
+      ? series_of(sweep, `compare_series`, nav.compare_series.current)
       : undefined,
   )
   const compared = $derived.by(() => {
     if (!compare_target || !series) return undefined
     const at = (idx: number) => nearest_frame(compare_target, series.frames[idx].value)
-    return { series: compare_target, shown: at(frame_index), next: at(next_index).idx }
+    return {
+      series: compare_target,
+      shown: at(frame_index),
+      next: at(next_index).idx,
+      previous: at(Math.max(0, frame_index - 1)).idx,
+    }
   })
   const compare_frame = $derived(compared && frames.frame(compared.series, compared.shown.idx))
   // the compared frame lies off the shown value by more than its series' typical step (the
@@ -317,8 +355,10 @@
   $effect(() => {
     if (!series) return
     const own: FrameWindow = [series, [frame_index, next_index, frame_index - 1]]
-    if (compared) frames.request(own, [compared.series, [compared.shown.idx, compared.next]])
-    else frames.request(own)
+    if (compared) {
+      const { series: other, shown, next, previous } = compared
+      frames.request(own, [other, [shown.idx, next, previous]])
+    } else frames.request(own)
   })
   // the panes' data: the shown frame's in a sweep, else the props' (JSON grids parsed, as
   // sweeps parse theirs)
@@ -337,16 +377,17 @@
   const playback = create_sequence_player({
     count: () => series?.frames.length ?? 0,
     index: () => frame_index,
-    set_index: (idx) => (frame_idx = idx),
+    set_index: (idx) => (nav.frame_idx.current = idx),
     fps: () => fps,
     set_fps: (value) => (fps = value),
     fps_range: () => SWEEP_FPS_RANGE,
     should_auto_play: () => false,
-    // playback waits for the next frames' data
+    // playback waits for the next frames' data, and while the viewer is off screen
     can_advance: () =>
-      !series ||
-      (frames.is_ready(series, next_index) &&
-        (!compared || frames.is_ready(compared.series, compared.next))),
+      on_screen.current &&
+      (!series ||
+        (frames.is_ready(series, next_index) &&
+          (!compared || frames.is_ready(compared.series, compared.next)))),
   })
   // The control bar plays a series of several frames and picks among several series; a single
   // frame of a single series leaves it nothing to show
@@ -363,10 +404,10 @@
   // a frame of another series (series menu, trends click) trades places with the compared
   // series when it is that one
   const select_frame = (id: string, idx: number): void => {
-    if (series && id === compare_series) compare_series = series.id
+    if (series && id === nav.compare_series.current) nav.compare_series.current = series.id
     picked = sweep && { sweep, id }
-    series_id = id
-    frame_idx = idx
+    nav.series_id.current = id
+    nav.frame_idx.current = idx
   }
   // another series opens at its frame nearest the shown frame's axis value
   const select_series = (id: string): void => {
@@ -404,9 +445,11 @@
   // `next` returns `prev` while nothing changed, and the array is the last one while every
   // series' value holds, so a load that changes no value (one of a series not shown, or
   // another frame's) re-renders nothing downstream.
-  function running<T>(next: (loaded: SweepFrame[], prev?: T) => T): () => T[] {
+  // An effect keeps the values as state, written only when one changes: every frame cache write
+  // would otherwise mark the whole viewer reading them (Svelte marks each path down the graph)
+  function running<T>(next: (loaded: SweepFrame[], prev?: T) => T): { readonly current: T[] } {
     let seen = { key: [] as unknown[], values: new WeakMap<SweepSeries, T>(), last: [] as T[] }
-    return () => {
+    const compute = (): T[] => {
       const key = [sweep, sweep?.load_frame]
       if (key.some((part, idx) => part !== seen.key[idx]))
         seen = { key, values: new WeakMap(), last: [] }
@@ -421,33 +464,85 @@
         seen.last = values
       return seen.last
     }
+    let current = $state.raw(untrack(compute))
+    $effect.pre(() => {
+      const values = compute()
+      if (values !== untrack(() => current)) current = values
+    })
+    return {
+      get current() {
+        return current
+      },
+    }
   }
-  const sweep_panes = $derived.by(
-    running<ElectronicPane[]>((loaded, prev = []) => {
-      const now = panes_with_data(loaded, Boolean(sweep?.descriptors?.length))
-      const grown = PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
-      return grown.length === prev.length ? prev : grown // a superset of prev
-    }),
-  )
+  const sweep_panes = running<ElectronicPane[]>((loaded, prev = []) => {
+    const now = panes_with_data(loaded, Boolean(sweep?.descriptors?.length))
+    const grown = PANE_IDS.filter((pane) => prev.includes(pane) || now.includes(pane))
+    return grown.length === prev.length ? prev : grown // a superset of prev
+  })
   const with_data = $derived(
     sweep
-      ? PANE_IDS.filter((pane) => sweep_panes.some((filled) => filled.includes(pane)))
+      ? PANE_IDS.filter((pane) => sweep_panes.current.some((filled) => filled.includes(pane)))
       : panes_with_data([pane_data], false),
   )
-  // the frequency extent (data units) the shown series' loaded frames span, shared by the sides
+  // the frequency extent (data units) the shown series' loaded frames span, shared by the
+  // sides. Each frame's extent is cached by its records, which a lazily loaded frame keeps
+  // across reads, so a load costs that frame's extent, not every frame's.
+  type BandRecords = Record<string, BaseBandStructure>
+  const frame_spans = new WeakMap<
+    BandRecords,
+    WeakMap<Record<string, DosData>, Vec2 | undefined>
+  >()
+  const frame_span = (bands: BandRecords, dos: Record<string, DosData>): Vec2 | undefined => {
+    let by_dos = frame_spans.get(bands)
+    if (!by_dos) frame_spans.set(bands, (by_dos = new WeakMap()))
+    if (!by_dos.has(dos)) by_dos.set(dos, compute_frequency_range(bands, dos))
+    return by_dos.get(dos)
+  }
   const running_span = (pick: (frame: SweepFrame) => SpectraRecords | undefined) =>
     running<Vec2 | undefined>((loaded, prev) => {
       const span = union_ranges([
         prev,
         ...loaded.map((entry) => {
-          const { band_structs: bands = {}, doses: dos = {} } = pick(entry) ?? {}
-          return compute_frequency_range(bands, dos)
+          const { band_structs: bands = NO_RECORDS, doses: dos = NO_RECORDS } =
+            pick(entry) ?? {}
+          return frame_span(bands, dos)
         }),
       ])
       return span?.[0] === prev?.[0] && span?.[1] === prev?.[1] ? prev : span
     })
-  const electronic_spans = $derived.by(running_span((entry) => entry))
-  const phonon_spans = $derived.by(running_span((entry) => entry.phonon))
+  const electronic_spans = running_span((entry) => entry)
+  const phonon_spans = running_span((entry) => entry.phonon)
+  // The mode values' (e.g. λ_qν) extent over the loaded frames, the phonon bands' colour and size
+  // scale: frames compare on one scale, and the colour bar holds still instead of re-laying out
+  // on every frame. Each frame's extent is cached by its mode values.
+  const mode_value_extents = new WeakMap<ModeValues, Vec2 | undefined>()
+  const mode_value_extent = (mode_values: ModeValues): Vec2 | undefined => {
+    if (!mode_value_extents.has(mode_values)) {
+      let [lo, hi] = [Infinity, -Infinity]
+      for (const row of mode_values.values) {
+        for (const value of row) {
+          if (value < lo) lo = value
+          if (value > hi) hi = value
+        }
+      }
+      mode_value_extents.set(mode_values, lo <= hi ? [lo, hi] : undefined)
+    }
+    return mode_value_extents.get(mode_values)
+  }
+  const mode_value_spans = running<Vec2 | undefined>((loaded, prev) => {
+    const span = union_ranges([
+      prev,
+      ...loaded.map(({ phonon: spectra }) =>
+        spectra?.mode_values ? mode_value_extent(spectra.mode_values) : undefined,
+      ),
+    ])
+    return span?.[0] === prev?.[0] && span?.[1] === prev?.[1] ? prev : span
+  })
+  const mode_value_scales = $derived.by((): Partial<ComponentProps<typeof Bands>> => {
+    const value_range = sweep ? union_ranges(mode_value_spans.current) : undefined
+    return value_range ? { color_scale: { value_range }, size_scale: { value_range } } : {}
+  })
   const shown = $derived.by((): Set<ElectronicPane> => {
     if (panes?.length === 0) throw new Error(`ElectronicStructure needs at least one pane`)
     if (panes?.includes(`trends`) && !sweep?.descriptors?.length) {
@@ -492,6 +587,15 @@
   const lower_split = $derived(show_trends && show_column)
   const scenes_split = $derived(shown.has(`structure`) && shown.has(`fermi`))
   const spectra_split = $derived(shown.has(`bands`) && shown.has(`dos`))
+  // Narrow, or too short to give each pane of the side-by-side layout's tallest column (scenes
+  // over spectra over phonons) MIN_PANE_HEIGHT, the panes stack in one column, each at its own
+  // height. A narrow viewer grows to fit them, a short one keeps its height and scrolls them, so
+  // the height measured is the same either way and stacking can't flip it.
+  const narrow = $derived(viewer_width > 0 && viewer_width < STACK_WIDTH)
+  const pane_levels = $derived(Number(show_scenes) + (column_split ? 2 : Number(show_lower)))
+  const stacked = $derived(
+    narrow || (panes_height > 0 && panes_height < pane_levels * MIN_PANE_HEIGHT),
+  )
   // The pane in the viewer's top-right corner (on the compared side while comparing) lines its
   // own controls up left of the viewer's
   const corner_pane = $derived.by((): ElectronicPane => {
@@ -592,6 +696,7 @@
     // the density extents its DOS plots drew, shared by both sides while comparing
     dos_density = $state<Vec2>()
     phonon_density = $state<Vec2>()
+    a2f_density = $state<Vec2>()
     link = new FermiBandsLink({
       band_data: () => this.band_data,
       band_struct: () => this.first_band_struct,
@@ -609,7 +714,7 @@
       bands_props: () => bands_props,
       dos_props: () => dos_props,
       side_by_side: () => this.spectra_side,
-      data_range: () => union_ranges(electronic_spans),
+      data_range: () => union_ranges(electronic_spans.current),
       base_padding: DEFAULT_PLOT_PADDING,
     })
     // the energy marked on both spectra: the previewed surface's, else the hovered one
@@ -631,9 +736,43 @@
   const sides = $derived(compared ? [main_side, compare_side] : [main_side])
   const corner_side = $derived(compared ? compare_side : main_side)
   const frames_differ = $derived(sides.some((side) => side.frames_differ))
-  // while comparing, both sides' DOS span the union of their density extents
-  const shared_density = (pick: (side: FrameSide) => Vec2 | undefined): Vec2 | undefined =>
-    compared ? union_ranges(sides.map(pick)) : undefined
+  // The DOS density (and α²F) axes: in a sweep they grow to the largest value shown so far and hold, as
+  // the frequency spans do, so stepping frames moves no axis (no re-laid ticks, padding or band
+  // lines) and frames compare on one scale; a new sweep, series, unit or normalization starts
+  // over. Without a sweep, compared sides share the union of their extents.
+  const running_density = (
+    pick: (side: FrameSide) => Vec2 | undefined,
+    scale_key: () => unknown,
+  ) => {
+    let held: { key: unknown[]; range?: Vec2 } = { key: [] }
+    return (): Vec2 | undefined => {
+      if (!sweep) return compared ? union_ranges(sides.map(pick)) : undefined
+      const key = [sweep, units, scale_key(), ...shown_series]
+      if (key.length !== held.key.length || key.some((part, idx) => part !== held.key[idx]))
+        held = { key }
+      const next = union_ranges([held.range, ...sides.map(pick)])
+      if (next?.[0] !== held.range?.[0] || next?.[1] !== held.range?.[1]) held.range = next
+      return held.range
+    }
+  }
+  const dos_density_range = $derived.by(
+    running_density(
+      (side) => side.dos_density,
+      () => dos_props.normalize,
+    ),
+  )
+  const phonon_density_range = $derived.by(
+    running_density(
+      (side) => side.phonon_density,
+      () => phonon_props.dos_props?.normalize,
+    ),
+  )
+  const a2f_range = $derived.by(
+    running_density(
+      (side) => side.a2f_density,
+      () => phonon_props.dos_props?.normalize,
+    ),
+  )
 
   // === file drop ===
   const report_error = (message: string, filename?: string): void => {
@@ -651,7 +790,9 @@
       } catch (error) {
         return error instanceof Error ? error.message : String(error)
       }
-      ;[sweep, series_id, frame_idx] = [dropped, undefined, 0]
+      sweep = dropped
+      nav.series_id.current = undefined
+      nav.frame_idx.current = 0
       const dropped_frames = dropped.series.flatMap((entry) => entry.frames)
       return panes_with_data(dropped_frames, Boolean(dropped.descriptors?.length))
     }
@@ -751,11 +892,12 @@
   class={[
     `electronic-structure`,
     show_scenes && show_lower ? `two-rows` : `one-row`,
-    { dragover, stacked },
+    { dragover, stacked, narrow },
     rest.class,
   ]}
   {@attach drop_zone}
   {@attach keys}
+  {@attach on_screen.attach}
 >
   {#if sweep && series && show_bar}
     <SequenceControlBar {controls_config} {fullscreen} bind:height={bar_height}>
@@ -768,7 +910,7 @@
           `Compare with`,
           compared?.series.id ?? ``,
           others,
-          (id) => (compare_series = id || undefined),
+          (id) => (nav.compare_series.current = id || undefined),
           true,
         )}
       {/if}
@@ -793,7 +935,7 @@
     </SequenceControlBar>
   {/if}
 
-  <div class="panes">
+  <div class="panes" bind:clientHeight={panes_height}>
     <ViewerChrome
       {controls_config}
       bind:fullscreen
@@ -868,6 +1010,7 @@
               {...trends_props}
               {sweep}
               frame_of={frames.frame}
+              load_state_of={frames.load_state}
               series_id={series.id}
               frame_idx={frame_index}
               compare={compared && {
@@ -1031,6 +1174,7 @@
           {#if shown.has(`bands`)}
             <div class="pane" data-pane="bands" style={pane_style(`bands`, side)}>
               <Bands
+                path_length={sweep ? 1 : undefined}
                 {...bands_props}
                 band_structs={side.band_structs}
                 bind:units
@@ -1107,8 +1251,7 @@
                 orientation={side.spectra_side ? `horizontal` : `vertical`}
                 x_axis={sync.dos_x_axis}
                 y_axis={sync.y_axes[1]}
-                density_range={dos_props.density_range ??
-                  shared_density((entry) => entry.dos_density)}
+                density_range={dos_props.density_range ?? dos_density_range}
                 bind:density_extent={side.dos_density}
                 bind:view={sync.views[1]}
                 bind:resolved_padding={
@@ -1146,6 +1289,8 @@
             {...phonon_props}
             bands_props={{
               mode_values: spectra.mode_values,
+              path_length: sweep ? 1 : undefined,
+              ...mode_value_scales,
               ...phonon_props.bands_props,
               show_controls: pane_controls(phonon_props.bands_props?.show_controls),
             }}
@@ -1156,10 +1301,11 @@
             band_structs={spectra.band_structs ?? {}}
             doses={spectra.doses ?? {}}
             a2f={spectra.a2f}
-            frequency_range={union_ranges(phonon_spans)}
-            density_range={phonon_props.density_range ??
-              shared_density((entry) => entry.phonon_density)}
+            frequency_range={union_ranges(phonon_spans.current)}
+            density_range={phonon_props.density_range ?? phonon_density_range}
             bind:density_extent={side.phonon_density}
+            a2f_range={phonon_props.a2f_range ?? a2f_range}
+            bind:a2f_extent={side.a2f_density}
             bind:units
             fullscreen_toggle={false}
           />
@@ -1206,11 +1352,14 @@
         grid-template-rows: minmax(0, var(--split-pane-size, 50%)) minmax(0, 1fr);
       }
     }
-    /* stacked (narrow): one column of full-width panes, each its own height, which the viewer
-       grows to fit (a chat thread or page scrolls it as a whole); a host that must keep it in
-       a fixed box sets --electronic-stacked-height, and the panes then scroll inside */
-    &.stacked {
+    /* stacked: one column of full-width panes, each its own height. Narrow, the viewer grows to
+       fit them (a chat thread or page scrolls it as a whole); a host that must keep it in a
+       fixed box sets --electronic-stacked-height, and the panes then scroll inside. Short, it
+       keeps its height and scrolls them. */
+    &.narrow {
       height: var(--electronic-stacked-height, auto);
+    }
+    &.stacked {
       --pane-height: var(--electronic-stacked-pane-height, 320px);
       > .panes {
         display: flex;
@@ -1224,8 +1373,12 @@
         flex: none;
         flex-direction: column;
       }
+      /* a rule between consecutive items of each stacked column, as between compared sides */
+      > .panes > * + *,
+      :is(.row:not(.side), .sides, .sides > .side) > * + * {
+        border-top: var(--pane-rule);
+      }
       .sides > .side + .side {
-        border-top: 1px solid var(--border-color, light-dark(#ddd, #444));
         border-left: none;
       }
       .pane,
@@ -1332,7 +1485,7 @@
       }
     }
     > .side + .side {
-      border-left: 1px solid var(--border-color, light-dark(#ddd, #444));
+      border-left: var(--pane-rule);
     }
   }
   .side-label {
