@@ -139,6 +139,12 @@ export const frame_from_wire = (wire: WireFrame): NumericFrame => {
     throw new Error(
       `Malformed host frame: ${coordinates.byteLength} coordinate bytes for ${n_sites} sites with vectors [${rest.vector_keys}]`,
     )
+  // one value per site, else sites past a short column would read undefined
+  for (const [key, column] of Object.entries(scalar_columns ?? {}))
+    if (column.byteLength !== n_sites * Float64Array.BYTES_PER_ELEMENT)
+      throw new Error(
+        `Malformed host frame: scalar column ${key} has ${column.byteLength} bytes for ${n_sites} sites`,
+      )
   return {
     ...rest,
     coordinates: new Float64Array(coordinates),

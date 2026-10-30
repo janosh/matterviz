@@ -592,10 +592,12 @@ describe(`create_display trajectory display options`, () => {
 describe(`LARGE_FILE markers`, () => {
   const marker = `LARGE_FILE:/data/movie.extxyz:268435456`
   const backing = trajectory_from_frames(
-    [0, 1, 2].map((step) => ({
-      step,
-      structure: make_crystal(5, [[`H`, [0, 0, step / 10]]]),
-    })),
+    [0, 1, 2].map((step) => {
+      const structure = make_crystal(5, [[`H`, [0, 0, step / 10]]])
+      // a force channel the host sends whatever the viewer asks for
+      for (const site of structure.sites) site.properties = { force: [0, 0, step] }
+      return { step, structure }
+    }),
     { provenance: { filename: `movie.extxyz`, format: `xyz` } },
   )
   // The host's answer to request_large_file: the run summary with plot rows still streaming
@@ -709,6 +711,8 @@ describe(`LARGE_FILE markers`, () => {
     })
     expect(frame.step).toBe(2)
     expect(frame.structure.sites[0].xyz[2]).toBeCloseTo(1, 12)
+    // the run trims channels a host sent beyond those asked for
+    expect(frame.structure.sites[0].properties).toEqual({})
 
     // Plot rows stream in after the summary, keyed by the host file path
     expect(run.properties.complete).toBe(false)
@@ -803,6 +807,16 @@ describe(`LARGE_FILE markers`, () => {
     [
       { command: `frame_response`, frame: { step: 2, structure: {} } },
       `Malformed host frame: expected ArrayBuffer coordinates and sites (see frame_to_wire), got fields step, structure`,
+    ],
+    [
+      {
+        command: `frame_response`,
+        frame: {
+          ...(wire_frame(2) as WireFrame),
+          scalar_columns: { charge: new ArrayBuffer(0) },
+        },
+      },
+      `Malformed host frame: scalar column charge has 0 bytes for 1 sites`,
     ],
   ])(`frame reply %j rejects with "%s" (1-based)`, async (frame_reply, msg) => {
     with_host((request) =>
