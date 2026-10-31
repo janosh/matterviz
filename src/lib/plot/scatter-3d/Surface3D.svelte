@@ -28,42 +28,71 @@
     scene_z?: number
   } = $props()
 
-  // Calculate vertex color based on config. THREE.Color never throws on an unknown color
-  // string: it warns and keeps the default white, so no fallback is needed here.
-  function get_vertex_color(x_val: number, y_val: number, z_val: number): THREE.Color {
-    if (config.color_fn) return new THREE.Color(config.color_fn(x_val, y_val, z_val))
-    if (config.color) return new THREE.Color(config.color)
-    // Default: color by z value (blue to red gradient)
-    const z_norm = (z_val - z_range[0]) / (z_range[1] - z_range[0] || 1)
-    return new THREE.Color().setHSL(0.66 - z_norm * 0.66, 0.8, 0.5)
-  }
+  // The config fields the geometry reads, as a plain object kept while they keep their values,
+  // so restyling a surface (opacity, wireframe, double_sided) rebuilds no geometry. A field
+  // edited in place on a $state config still rebuilds: the geometry reads through it.
+  const shape_of = (surface: Surface3DConfig) => ({
+    type: surface.type,
+    resolution: surface.resolution,
+    x_range: surface.x_range,
+    y_range: surface.y_range,
+    u_range: surface.u_range,
+    v_range: surface.v_range,
+    z_fn: surface.z_fn,
+    parametric_fn: surface.parametric_fn,
+    points: surface.points,
+    triangles: surface.triangles,
+    color: surface.color,
+    color_fn: surface.color_fn,
+  })
+  let prev_shape: ReturnType<typeof shape_of> | null = null
+  const shape = $derived.by(() => {
+    const [prev, next] = [prev_shape, shape_of(config)]
+    const keys = Object.keys(next) as (keyof typeof next)[]
+    if (prev && keys.every((key) => prev[key] === next[key])) return prev
+    return (prev_shape = next)
+  })
 
   // Scene geometry from the shared vertex grid (the same vertices the axis bounds sample).
   // A non-finite vertex (z_fn undefined off its domain) leaves a hole: triangles touching it
   // are dropped so NaN doesn't spread into neighbouring normals, and it is parked at the
-  // origin so bounds stay finite.
-  function create_geometry(): THREE.BufferGeometry | null {
-    const vertices = surface_vertices(config, { x: x_range, y: y_range })
+  // origin so bounds stay finite. Vertex colours come from color_fn, else color, else a blue
+  // to red gradient over z; each distinct colour string is parsed once (THREE.Color never
+  // throws on an unknown one: it warns and keeps the default white).
+  function create_geometry(
+    surface: ReturnType<typeof shape_of>,
+    [ranges_x, ranges_y, ranges_z]: [Vec2, Vec2, Vec2],
+    [size_x, size_y, size_z]: [number, number, number],
+  ): THREE.BufferGeometry | null {
+    const vertices = surface_vertices(surface, { x: ranges_x, y: ranges_y })
     if (!vertices) return null
     const { points, grid, triangles } = vertices
-    const positions: number[] = []
-    const colors: number[] = []
-    const valid: boolean[] = []
-    for (const { x: x_val, y: y_val, z: z_val } of points) {
-      const is_valid = [x_val, y_val, z_val].every(Number.isFinite)
-      valid.push(is_valid)
-      if (!is_valid) {
-        positions.push(0, 0, 0)
-        colors.push(0, 0, 0)
+    const positions = new Float32Array(points.length * 3)
+    const colors = new Float32Array(points.length * 3)
+    const valid = new Uint8Array(points.length)
+    const { color, color_fn } = surface
+    const parsed = new Map<string, THREE.Color>()
+    const parse = (css: string): THREE.Color => {
+      let rgb = parsed.get(css)
+      if (!rgb) parsed.set(css, (rgb = new THREE.Color(css)))
+      return rgb
+    }
+    const gradient = new THREE.Color()
+    const z_span = ranges_z[1] - ranges_z[0] || 1
+    for (let idx = 0; idx < points.length; idx++) {
+      const { x: x_val, y: y_val, z: z_val } = points[idx]
+      if (!(Number.isFinite(x_val) && Number.isFinite(y_val) && Number.isFinite(z_val)))
         continue
-      }
-      positions.push(
-        normalize_to_scene(x_val, x_range, scene_x),
-        normalize_to_scene(z_val, z_range, scene_z), // user Z → Three.js Y (vertical)
-        normalize_to_scene(y_val, y_range, scene_y), // user Y → Three.js Z (depth)
-      )
-      const color = get_vertex_color(x_val, y_val, z_val)
-      colors.push(color.r, color.g, color.b)
+      valid[idx] = 1
+      positions[3 * idx] = normalize_to_scene(x_val, ranges_x, size_x)
+      positions[3 * idx + 1] = normalize_to_scene(z_val, ranges_z, size_z) // user Z → Three.js Y
+      positions[3 * idx + 2] = normalize_to_scene(y_val, ranges_y, size_y) // user Y → Three.js Z
+      const rgb = color_fn
+        ? parse(color_fn(x_val, y_val, z_val))
+        : color
+          ? parse(color)
+          : gradient.setHSL(0.66 - ((z_val - ranges_z[0]) / z_span) * 0.66, 0.8, 0.5)
+      rgb.toArray(colors, 3 * idx)
     }
     const indices: number[] = []
     const add_triangle = (idx_0: number, idx_1: number, idx_2: number) => {
@@ -86,15 +115,17 @@
       for (let idx = 0; idx + 2 < points.length; idx += 3) add_triangle(idx, idx + 1, idx + 2)
     }
     const geom = new THREE.BufferGeometry()
-    geom.setAttribute(`position`, new THREE.Float32BufferAttribute(positions, 3))
-    geom.setAttribute(`color`, new THREE.Float32BufferAttribute(colors, 3))
+    geom.setAttribute(`position`, new THREE.BufferAttribute(positions, 3))
+    geom.setAttribute(`color`, new THREE.BufferAttribute(colors, 3))
     geom.setIndex(indices)
     geom.computeVertexNormals()
     return geom
   }
 
+  let geometry = $derived(
+    create_geometry(shape, [x_range, y_range, z_range], [scene_x, scene_y, scene_z]),
+  )
   // Separate disposers so toggling the wireframe doesn't release the rendered surface geometry
-  let geometry = $derived(create_geometry())
   let wireframe_geometry = $derived(
     config.wireframe && geometry ? new THREE.WireframeGeometry(geometry) : null,
   )

@@ -42,7 +42,7 @@ import {
 } from 'three/webgpu'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import type { InstanceTween } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
-import { pack_instances } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
+import { srgb_parser } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { canvas_overlay_png_blob } from '#lib/io/export.js'
 import type * as colors from '#lib/colors/index.js'
 import { tooltip_paint } from '#lib/colors/index.js'
@@ -80,6 +80,13 @@ vi.mock(`$app/state`, () => ({
     },
   },
 }))
+
+// The bounding sphere the scene wrote for a marker mesh is exactly the one three computes
+const expect_three_bounds = (mesh: InstancedMesh) => {
+  const written = mesh.boundingSphere?.clone()
+  mesh.computeBoundingSphere()
+  expect(written).toEqual(mesh.boundingSphere)
+}
 
 const basic_series: DataSeries3D = {
   x: [1, 2, 3, 4, 5],
@@ -196,7 +203,9 @@ test.each([`surface`, `axes`, `reference plane`] as const)(
 // depth-only twin shares the geometry and sorts right before the surface: same renderOrder and
 // position, lower id. Opaque surfaces skip it.
 test(`translucent surfaces get a depth-only pre-pass drawn right before them`, async () => {
-  const inputs = $state<{ opacity: number; double_sided?: boolean }>({ opacity: 0.6 })
+  const inputs = $state<{ opacity: number; double_sided?: boolean; resolution?: number }>({
+    opacity: 0.6,
+  })
   const { scene, unmount_scene } = mount_scene((anchor) =>
     Surface3D(anchor, {
       get config(): Surface3DConfig {
@@ -220,7 +229,8 @@ test(`translucent surfaces get a depth-only pre-pass drawn right before them`, a
   })
   expect(depth_material.polygonOffsetUnits).toBeGreaterThan(0)
   expect(surface_material).toMatchObject({ colorWrite: true, transparent: true })
-  expect(depth_pass.geometry).toBe(surface.geometry)
+  const { geometry } = surface
+  expect(depth_pass.geometry).toBe(geometry)
   expect(depth_pass.id).toBeLessThan(surface.id)
   expect(depth_pass.renderOrder).toBe(surface.renderOrder)
   expect(depth_pass.matrixWorld.equals(surface.matrixWorld)).toBe(true)
@@ -232,6 +242,12 @@ test(`translucent surfaces get a depth-only pre-pass drawn right before them`, a
   inputs.opacity = 1
   flushSync()
   expect(depth_pass.visible).toBe(false)
+  // restyling (a fresh config with the same shape) keeps the geometry; a shape edit rebuilds it
+  expect(surface.geometry).toBe(geometry)
+  inputs.resolution = 5
+  flushSync()
+  expect(surface.geometry).not.toBe(geometry)
+  expect(surface.geometry.getAttribute(`position`).count).toBe(25)
 })
 
 // A descending axis range must not drop an extended line or shrink a normal-defined plane
@@ -426,6 +442,7 @@ test(`ScatterPlot3DScene keeps data in the box, idles, and hovers in data coordi
   expect(tick_labels).toEqual([`0`, `1`, `2`, `3`, `4`, `a`, `b`, `0`, `1`, `2`, `3`, `4`])
   expect(instances().count).toBe(4)
   expect(position_of(1)).toEqual(scene_pos(2, 1, 3))
+  expect_three_bounds(instances())
   const [group, ...others] = find_objects(scene, ClippingGroup)
   expect(others).toHaveLength(0)
   // the planes keep the 10 x 5 x 10 box (user z is Three.js y) and cut just outside it
@@ -718,6 +735,7 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
   state.display = { show_axes: false, projections: { xy: true } }
   flushSync()
   expect(marker(0, true)).toEqual(shadow_of(half))
+  for (const mesh of [...instanced(false), ...instanced(true)]) expect_three_bounds(mesh)
   // a display toggle leaving the shadow plane put rewrites none of its buffers
   const shadow_rewrites = vi.spyOn(instanced(true)[0], `computeBoundingSphere`)
   state.display = { ...state.display, show_grid: false }
@@ -779,16 +797,23 @@ test(`ScatterPlot3DScene tweens marker position, size and colour by point identi
   expect(marker(0)).toEqual(drawn(packed(1, 2, 0)))
 })
 
-test(`pack_instances draws an unparsable colour white instead of the previous one`, () => {
+test(`srgb_parser draws an unparsable colour white instead of the previous one`, () => {
   const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
   onTestFinished(() => {
     warn.mockRestore()
   })
-  const item = (color: string) => ({ position: [1, 2, 3], radius: 0.5, color })
+  const [red, white] = [
+    { r: 1, g: 0, b: 0 },
+    { r: 1, g: 1, b: 1 },
+  ]
   const colors = [`#ff0000`, `var(--accent)`, `#ff0000`, `var(--accent)`]
-  const packed = pack_instances(colors.map(item))
-  expect([...packed.subarray(0, 14)]).toEqual([1, 2, 3, 0.5, 1, 0, 0, 1, 2, 3, 0.5, 1, 1, 1])
-  expect([...packed.subarray(14)]).toEqual([...packed.subarray(0, 14)])
+  // as stored in the f32 packed layout (the sRGB round trip leaves 1 - 1e-16)
+  const packed = colors.map(srgb_parser()).map(({ r, g, b }) => ({
+    r: Math.fround(r),
+    g: Math.fround(g),
+    b: Math.fround(b),
+  }))
+  expect(packed).toEqual([red, white, red, white])
   expect(warn).toHaveBeenCalledOnce() // each distinct colour is parsed once
 })
 

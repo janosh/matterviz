@@ -130,35 +130,127 @@ const inside_unit_square = ({ x: coord_x, y: coord_y }: DecorationPoint): boolea
   coord_y <= 1
 
 // Liang-Barsky clipping keeps sampling proportional to the visible segment rather
-// than spending the fixed sample budget on far-offscreen portions.
-export const clip_segment_to_unit_square = (
-  start: DecorationPoint,
-  end: DecorationPoint,
-): [DecorationPoint, DecorationPoint] | null => {
-  const delta_x = end.x - start.x
-  const delta_y = end.y - start.y
-  if (!Number.isFinite(delta_x) || !Number.isFinite(delta_y)) return null
+// than spending the fixed sample budget on far-offscreen portions. Writes the visible part's
+// [lower, upper] fractions of the segment to clip_span, false when none of it is visible.
+const clip_span: [number, number] = [0, 1]
+const clip_fractions = (
+  start_x: number,
+  start_y: number,
+  delta_x: number,
+  delta_y: number,
+): boolean => {
+  if (!Number.isFinite(delta_x) || !Number.isFinite(delta_y)) return false
   let lower = 0
   let upper = 1
-  for (const [direction, distance] of [
-    [-delta_x, start.x],
-    [delta_x, 1 - start.x],
-    [-delta_y, start.y],
-    [delta_y, 1 - start.y],
-  ] as const) {
+  // the four edges in turn: x >= 0, x <= 1, y >= 0, y <= 1
+  for (let edge = 0; edge < 4; edge++) {
+    const direction =
+      edge === 0 ? -delta_x : edge === 1 ? delta_x : edge === 2 ? -delta_y : delta_y
+    const distance =
+      edge === 0 ? start_x : edge === 1 ? 1 - start_x : edge === 2 ? start_y : 1 - start_y
     if (direction === 0) {
-      if (distance < 0) return null
+      if (distance < 0) return false
       continue
     }
     const ratio = distance / direction
     if (direction < 0) lower = Math.max(lower, ratio)
     else upper = Math.min(upper, ratio)
-    if (lower > upper) return null
+    if (lower > upper) return false
   }
+  clip_span[0] = lower
+  clip_span[1] = upper
+  return true
+}
+
+export const clip_segment_to_unit_square = (
+  start: DecorationPoint,
+  end: DecorationPoint,
+): [DecorationPoint, DecorationPoint] | null => {
+  const [delta_x, delta_y] = [end.x - start.x, end.y - start.y]
+  if (!clip_fractions(start.x, start.y, delta_x, delta_y)) return null
+  const [lower, upper] = clip_span
   return [
     { x: start.x + lower * delta_x, y: start.y + lower * delta_y },
     { x: start.x + upper * delta_x, y: start.y + upper * delta_y },
   ]
+}
+
+// Each mark's occupied cells as (col, row) pairs in the order its walk first visits them, kept
+// per mark object and plot box: a host handing back the marks it didn't change (the other
+// series beside a legend toggle) skips their walks. Marks are read as immutable.
+type MarkCells = { base_w: number; base_h: number; cells: Int32Array }
+const mark_cells_cache = new WeakMap<ObstacleSeries, MarkCells>()
+
+// The cells one mark covers: its points, plus the segments between them for a drawn line
+function walk_mark_cells(
+  { points, draws_line = false }: ObstacleSeries,
+  cell_w: number,
+  cell_h: number,
+  step: number,
+  // per-cell stamp of the walk that last marked it, which spares clearing it between marks
+  seen: { stamp: Int32Array; walk: number; cols: number },
+): Int32Array {
+  const { stamp, walk, cols } = seen
+  const seen_outside = new Set<number>()
+  const cells: number[] = []
+  let last_col = NaN
+  let last_row = NaN
+  const add_point = (coord_x: number, coord_y: number): void => {
+    // plain statements, not destructured pairs: this runs per sample of every line
+    const col = Math.floor(coord_x / cell_w)
+    const row = Math.floor(coord_y / cell_h)
+    // the line walk mostly revisits the cell it just marked
+    if (col === last_col && row === last_row) return
+    last_col = col
+    last_row = row
+    // a rounding error can put a key past the grid's edges, which a set then holds
+    const key = row * cols + col
+    if (key >= 0 && key < stamp.length) {
+      if (stamp[key] === walk) return
+      stamp[key] = walk
+    } else {
+      if (seen_outside.has(key)) return
+      seen_outside.add(key)
+    }
+    cells.push(col, row)
+  }
+  // A drawn line is walked a cell at a time, so no decoration slips across it
+  const add_segment = (start: DecorationPoint, end: DecorationPoint): void => {
+    const delta_x = end.x - start.x
+    const delta_y = end.y - start.y
+    if (!clip_fractions(start.x, start.y, delta_x, delta_y)) return
+    const from_x = start.x + clip_span[0] * delta_x
+    const from_y = start.y + clip_span[0] * delta_y
+    const to_x = start.x + clip_span[1] * delta_x
+    const to_y = start.y + clip_span[1] * delta_y
+    const n_steps = Math.max(1, Math.ceil(Math.hypot(to_x - from_x, to_y - from_y) / step))
+    for (let idx = 0; idx <= n_steps; idx++) {
+      const frac = idx / n_steps
+      add_point(from_x + (to_x - from_x) * frac, from_y + (to_y - from_y) * frac)
+    }
+  }
+  const add_if_inside = (point: DecorationPoint): void => {
+    if (inside_unit_square(point)) add_point(point.x, point.y)
+  }
+  if (!draws_line) {
+    for (const point of points) add_if_inside(point)
+    return Int32Array.from(cells)
+  }
+  // A vertex joined to no neighbour (non-finite ones break the line) is a lone point
+  let previous: DecorationPoint | null = null
+  let previous_joined = false
+  for (const point of points) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      if (previous && !previous_joined) add_if_inside(previous)
+      previous = null
+      continue
+    }
+    if (previous) add_segment(previous, point)
+    previous_joined = previous !== null
+    previous = point
+  }
+  if (previous && !previous_joined) add_if_inside(previous)
+  return Int32Array.from(cells)
 }
 
 // Build normalized obstacles from data so decoration reservations cannot change the result and
@@ -170,56 +262,42 @@ export function build_obstacles_norm(
 ): Obstacle[] {
   // Points snap to placement-cell rects, one per occupied cell, added as they are sampled: the
   // count stays bounded by the plot area however dense or noisy a mark is (nothing upstream
-  // thins it), and coverage stays conservative
+  // thins it), and coverage stays conservative. Merging each mark's cells in mark order adds
+  // the same cells, in the same order, as one walk over every mark.
   const [cell_w, cell_h] = [PLACEMENT_CELL / base_w, PLACEMENT_CELL / base_h]
   const cols = Math.ceil(1 / cell_w) + 1
-  const occupied = new Set<number>()
-  const obstacles: Obstacle[] = []
-  const add_point = (coord_x: number, coord_y: number): void => {
-    const [col, row] = [Math.floor(coord_x / cell_w), Math.floor(coord_y / cell_h)]
-    if (occupied.has(row * cols + col)) return
-    occupied.add(row * cols + col)
-    obstacles.push({ x: col * cell_w, y: row * cell_h, width: cell_w, height: cell_h })
-  }
-  // A drawn line is walked a cell at a time, so no decoration slips across it
+  const n_cells = cols * (Math.ceil(1 / cell_h) + 1)
   const step = PLACEMENT_CELL / Math.max(base_w, base_h, 1)
-  const add_segment = (start: DecorationPoint, end: DecorationPoint): void => {
-    const n_steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / step))
-    for (let idx = 0; idx <= n_steps; idx++) {
-      const frac = idx / n_steps
-      add_point(start.x + (end.x - start.x) * frac, start.y + (end.y - start.y) * frac)
-    }
-  }
-  const add_if_inside = (point: DecorationPoint): void => {
-    if (inside_unit_square(point)) add_point(point.x, point.y)
-  }
+  const occupied = new Uint8Array(n_cells)
+  const occupied_outside = new Set<number>()
+  let seen: { stamp: Int32Array; walk: number; cols: number } | undefined
+  const obstacles: Obstacle[] = []
   for (const mark of marks) {
     if (!(`points` in mark)) {
       obstacles.push(mark)
       continue
     }
-    const { points, draws_line = false } = mark
-    if (!draws_line) {
-      for (const point of points) add_if_inside(point)
-      continue
+    let cached = mark_cells_cache.get(mark)
+    if (cached?.base_w !== base_w || cached.base_h !== base_h) {
+      seen ??= { stamp: new Int32Array(n_cells), walk: 0, cols }
+      seen.walk++
+      const cells = walk_mark_cells(mark, cell_w, cell_h, step, seen)
+      mark_cells_cache.set(mark, (cached = { base_w, base_h, cells }))
     }
-    // A vertex joined to no neighbour (non-finite ones break the line) is a lone point
-    let previous: DecorationPoint | null = null
-    let previous_joined = false
-    for (const point of points) {
-      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-        if (previous && !previous_joined) add_if_inside(previous)
-        previous = null
-        continue
+    const { cells } = cached
+    for (let idx = 0; idx < cells.length; idx += 2) {
+      const col = cells[idx]
+      const row = cells[idx + 1]
+      const key = row * cols + col
+      if (key >= 0 && key < n_cells) {
+        if (occupied[key]) continue
+        occupied[key] = 1
+      } else {
+        if (occupied_outside.has(key)) continue
+        occupied_outside.add(key)
       }
-      if (previous) {
-        const clipped = clip_segment_to_unit_square(previous, point)
-        if (clipped) add_segment(...clipped)
-      }
-      previous_joined = previous !== null
-      previous = point
+      obstacles.push({ x: col * cell_w, y: row * cell_h, width: cell_w, height: cell_h })
     }
-    if (previous && !previous_joined) add_if_inside(previous)
   }
   return obstacles
 }

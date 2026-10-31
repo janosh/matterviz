@@ -11,8 +11,10 @@ import type {
 } from '#lib/plot/core/types.js'
 import type { FacetLayoutContext } from '#lib/plot/core/facets.js'
 import { place_tooltip } from '#lib/plot/core/decorations/tooltip.js'
+import { level_densities } from '#lib/plot/core/density-contours.js'
 import { rects_overlap, type Rect, type Sides } from '#lib/plot/core/layout.js'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
+import * as scales from '#lib/plot/core/scales.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { rgb } from 'd3-color'
@@ -50,6 +52,12 @@ import {
 vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
   const original = await import_original<{ place_tooltip: typeof place_tooltip }>()
   return { ...original, place_tooltip: vi.fn(original.place_tooltip) }
+})
+
+// Pass-through spy counting the series-wide density level computations
+vi.mock(`#lib/plot/core/density-contours.js`, async (import_original) => {
+  const original = await import_original<{ level_densities: typeof level_densities }>()
+  return { ...original, level_densities: vi.fn(original.level_densities) }
 })
 
 afterEach(() => {
@@ -536,6 +544,39 @@ describe(`ScatterPlot`, () => {
         expect(path.getAttribute(`stroke`)).toBe(stroke)
         expect(path.getAttribute(`stroke-width`)).toBe(stroke_width)
       }
+    })
+
+    // A pan only translates px, so its frames reuse each series' levels while the contours
+    // move with the view; a zoom rescales px and recomputes them
+    test(`pan frames reuse the contour levels, a zoom recomputes them`, async () => {
+      const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view: undefined })
+      const series = [cloud(3, 3), cloud(6, 6)]
+      const plot = await mount_sized_scatter_plot(
+        bind_props({ series, density_contours: true, ...bare }, state),
+      )
+      const paths = () =>
+        [...plot.querySelectorAll(`g.density-contours path`)].map((path) =>
+          path.getAttribute(`d`),
+        )
+      const before = paths()
+      vi.mocked(level_densities).mockClear()
+      const clip = clip_rect(plot)
+      const [start_x, start_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
+      plot_svg(plot).dispatchEvent(
+        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: start_x, clientY: start_y }),
+      )
+      for (const step of [1, 2, 3]) {
+        const at = { clientX: start_x - 7 * step, clientY: start_y + 5 * step }
+        await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at }))
+      }
+      await fire(window, new MouseEvent(`mouseup`, { clientX: start_x, clientY: start_y }))
+      expect(paths()).toHaveLength(before.length)
+      expect(paths()).not.toEqual(before)
+      expect(level_densities).not.toHaveBeenCalled()
+      const [x_lo, x_hi] = state.view?.x ?? [NaN, NaN]
+      state.view = { ...state.view, x: [x_lo, (x_lo + x_hi) / 2] }
+      await flush_render()
+      expect(level_densities).toHaveBeenCalledTimes(series.length)
     })
 
     // The arcsinh scale reads a JSON null as 0, a real pixel; on a log axis non-positive
@@ -1052,6 +1093,43 @@ describe(`ScatterPlot`, () => {
       expect(tweened.querySelector(`circle.effect-ring.selected`)).not.toBeNull()
     })
 
+    // Marker styles are built per data change, so a pan frame only re-projects: the colour
+    // scale runs once per point at mount, never while panning, and the canvas paints its fills
+    test(`pans canvas markers without re-running the colour scale`, async () => {
+      const fill_style = vi.fn()
+      const ctx = mock_canvas_context()
+      Object.defineProperty(ctx, `fillStyle`, { set: fill_style })
+      const scheme = vi.fn((fraction: number) => `rgb(${Math.round(fraction * 255)}, 0, 0)`)
+      const plot = await mount_canvas({
+        series: [{ ...dense, color_values: dense.x }],
+        color_scale: { scheme },
+      })
+      expect(scheme.mock.calls.length).toBeGreaterThanOrEqual(dense.x.length)
+      scheme.mockClear()
+      fill_style.mockClear()
+      const clip = clip_rect(plot)
+      const at = (dx: number, buttons = 1) => ({
+        bubbles: true,
+        buttons,
+        shiftKey: true,
+        clientX: clip.x + 100 + dx,
+        clientY: clip.y + 50,
+      })
+      plot_svg(plot).dispatchEvent(new MouseEvent(`mousedown`, at(0)))
+      for (const dx of [5, 10, 15]) {
+        window.dispatchEvent(new MouseEvent(`mousemove`, at(dx)))
+        flushSync()
+      }
+      window.dispatchEvent(new MouseEvent(`mouseup`, at(15, 0)))
+      flushSync()
+      expect(scheme).not.toHaveBeenCalled()
+      // the moved markers were painted, in the scale's colours
+      expect(fill_style.mock.calls.length).toBeGreaterThan(0)
+      expect(fill_style.mock.calls.every(([color]) => /^rgb\(\d+, 0, 0\)$/.test(color))).toBe(
+        true,
+      )
+    })
+
     test(`skips canvas markers when points are hidden`, async () => {
       const arc = vi.fn()
       mock_canvas_context({ arc })
@@ -1386,12 +1464,14 @@ describe(`ScatterPlot`, () => {
       })
       const paths = [...plot.querySelectorAll(`g[data-series-id] > path[fill="none"]`)]
       expect(paths).toHaveLength(2)
-      const check_vertices = () => {
+      // Snapping lines anchor while a pan runs: the cropped underlay then keeps a plot width
+      // (~10.6 x units here) past each side, so the shifted path still covers the view
+      const check_vertices = (anchored = false) => {
         const vertices = paths.map((path) => path.getAttribute(`d`)?.match(/C/g)?.length ?? 0)
         if (duration > 0) expect(vertices[0]).toBe(100)
         else {
-          expect(vertices[0]).toBeGreaterThan(10)
-          expect(vertices[0]).toBeLessThan(20)
+          expect(vertices[0]).toBeGreaterThan(anchored ? 30 : 10)
+          expect(vertices[0]).toBeLessThan(anchored ? 40 : 20)
         }
         expect(vertices[1]).toBe(100)
       }
@@ -1405,13 +1485,19 @@ describe(`ScatterPlot`, () => {
         mouse(`mousedown`, { button: 0, shiftKey: true, ...at(10) }),
       )
       await tick()
-      check_vertices()
+      check_vertices(duration === 0)
+      const grabbed_paths = paths.map((path) => path.getAttribute(`d`))
       await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
-      check_vertices()
+      check_vertices(duration === 0)
       const dragged_paths = paths.map((path) => path.getAttribute(`d`))
+      // anchored lines move by their transform alone, never rebuilding a path mid-pan
+      if (duration === 0) expect(dragged_paths).toEqual(grabbed_paths)
       await fire(window, new MouseEvent(`mouseup`))
       check_vertices()
-      expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
+      // morphing lines keep their vertices through the release, so nothing glides
+      if (duration > 0) {
+        expect(paths.map((path) => path.getAttribute(`d`))).toEqual(dragged_paths)
+      }
       expect(color_scan).not.toHaveBeenCalled()
     },
   )
@@ -1846,6 +1932,57 @@ describe(`ScatterPlot`, () => {
       expect(has_cubic).toBe(cubic)
     },
   )
+
+  // the line path cache tracks every value, so $state arrays edited in place (same identity)
+  // redraw their line, for a value change and a live append alike
+  type Editable = { x: number[]; y: number[]; markers: `line` }
+  test.each([
+    [`a value edited`, (series: Editable) => void (series.y[2] = 15)],
+    [`a point appended`, (series: Editable) => void (series.x.push(5), series.y.push(-15))],
+  ])(`a $state series' line follows %s in place`, async (_desc, edit) => {
+    const state = $state<{ series: Editable[] }>({
+      series: [{ x: [0, 1, 2, 3], y: [0, 8, 1, 9], markers: `line` }],
+    })
+    const x_axis: AxisConfig = { range: [0, 6] }
+    const y_axis: AxisConfig = { range: [-20, 20] }
+    const plot = await mount_sized_scatter_plot(
+      bind_props({ line_tween: { duration: 0 }, legend: null, x_axis, y_axis }, state),
+    )
+    const paths = () =>
+      [...plot_svg(plot).querySelectorAll(`path`)].map((path) => path.getAttribute(`d`))
+    const before = paths()
+    edit(state.series[0])
+    await flush_render()
+    expect(paths()).not.toEqual(before)
+  })
+
+  // A legend toggle hands the decoration solver back the cached obstacle marks (and so cells)
+  // of the series whose data and view held, projecting none of them anew
+  test(`a legend toggle rebuilds no other series' obstacle mark`, async () => {
+    const state = $state<{ hidden_series: (string | number)[] }>({ hidden_series: [] })
+    const series = [0, 1, 2].map((offset) => ({
+      x: [0, 1, 2, 3],
+      y: [0, 8, 1, 9].map((val) => val + offset),
+      markers: `line+points` as const,
+      label: `s${offset}`,
+      id: `s${offset}`,
+    }))
+    const x_axis: AxisConfig = { range: [-1, 4] }
+    const y_axis: AxisConfig = { range: [-1, 12] }
+    await mount_sized_scatter_plot(
+      bind_props({ series, line_tween: { duration: 0 }, x_axis, y_axis }, state),
+    )
+    const scale_spy = vi.spyOn(scales, `create_scale`)
+    const unit_scales = () =>
+      scale_spy.mock.calls.filter(([, , range]) => range?.[0] === 0 && range[1] === 1)
+    state.hidden_series = [`s0`]
+    await flush_render()
+    state.hidden_series = []
+    await flush_render()
+    // the shown-again series' mark is still cached too: nothing is projected anew
+    expect(unit_scales()).toHaveLength(0)
+    scale_spy.mockRestore()
+  })
 
   test.each([`x2`, `y2`] as const)(
     `does not render the %s axis without a finite x/y pair`,
@@ -2940,6 +3077,15 @@ describe(`ScatterPlot`, () => {
     state.x_axis = { range: [0, 50] }
     await flush_render()
     expect(state.view?.x).toEqual([0, 50])
+    // ...also one equal to the auto range it already resets to
+    state.x_axis = {}
+    await flush_render()
+    const auto_x = state.view?.x
+    state.view = { ...state.view, x: [2, 4] }
+    await tick()
+    state.x_axis = { range: auto_x }
+    await flush_render()
+    expect(state.view?.x).toEqual(auto_x)
   })
 
   // Regression guard for effect_update_depth_exceeded: with an explicit y range the range-sync
@@ -2991,5 +3137,24 @@ describe(`ScatterPlot`, () => {
     expect(state.view?.y).toEqual([1e299, 1.1e300])
     expect(state.view?.y2).toEqual(state.view?.y)
     expect(error_spy).not.toHaveBeenCalled()
+  })
+
+  // With no visible y data, a synced y2's data alone drives the shared range
+  test.each([
+    [`y2 data only`, [{ x: [0, 1, 2], y: [50, 75, 100], y_axis: `y2` as const }]],
+    [
+      `y series hidden`,
+      [
+        { x: [0, 1, 2], y: [0, 1, 2], visible: false },
+        { x: [0, 1, 2], y: [50, 75, 100], y_axis: `y2` as const },
+      ],
+    ],
+  ])(`synced y2 shows every y2 point: %s`, async (_name, series) => {
+    const plot = await mount_sized_scatter_plot({
+      series,
+      y2_axis: { sync: `synced` },
+      ...bare,
+    })
+    expect(plot.querySelectorAll(`path.marker`)).toHaveLength(3)
   })
 })

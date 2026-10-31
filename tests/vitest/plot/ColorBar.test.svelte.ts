@@ -345,23 +345,16 @@ describe(`ColorBar tick labels`, () => {
     },
   )
 
+  // five decades thin to every other one for the 3 labels asked for
   test.each<{ range: Vec2; values: number[]; labels: string[] }>([
-    {
-      range: [1, 27946],
-      values: [1, 10, 100, 1000, 10000],
-      labels: [`1`, `10`, `100`, `1k`, `10k`],
-    },
-    {
-      range: [27946, 1],
-      values: [10000, 1000, 100, 10, 1],
-      labels: [`10k`, `1k`, `100`, `10`, `1`],
-    },
+    { range: [1, 27946], values: [1, 100, 10000], labels: [`1`, `100`, `10k`] },
+    { range: [27946, 1], values: [10000, 100, 1], labels: [`10k`, `100`, `1`] },
     // d3's six sub-decade ticks overshoot the 3 asked for, so every other one is kept
     { range: [2.3, 8.7], values: [3, 5, 7], labels: [`3`, `5`, `7`] },
     {
       range: [1e-12, 3e-8],
-      values: [1e-12, 1e-11, 1e-10, 1e-9, 1e-8],
-      labels: [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`],
+      values: [1e-12, 1e-10, 1e-8],
+      labels: [`1e-12`, `1e-10`, `1e-8`],
     },
   ])(
     `uses readable log ticks within an unexpanded $range`,
@@ -402,7 +395,9 @@ describe(`ColorBar tick labels`, () => {
     [`log`, [0.05, 3], [`0.01`, `0.1`, `1`, `10`]],
     [`linear`, [100, 0], [`100`, `80`, `60`, `40`, `20`, `0`]],
     // positive bounds below the LOG_EPS axis floor (1e-9) keep their full span
-    [`log`, [1e-12, 1e-6], [`1e-12`, `1e-11`, `1e-10`, `1e-9`, `1e-8`, `1e-7`, `1e-6`]],
+    [`log`, [1e-12, 1e-6], [`1e-12`, `1e-10`, `1e-8`, `1e-6`]],
+    // 17 decades keep every 4th for the 4 labels asked for, not one label per decade
+    [`log`, [1e-8, 1e8], [`1e-8`, `1e-4`, `1`, `10k`, `100M`]],
     // a descending log range runs high-to-low instead of collapsing to one point
     [`log`, [1000, 1], [`1k`, `100`, `10`, `1`]],
   ])(`%s ticks for range %j`, (scale_type, range, ticks) => {

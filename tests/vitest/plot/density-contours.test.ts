@@ -204,14 +204,15 @@ describe(`density_contours`, () => {
   test(`panning a cluster out of view leaves the other's contour unchanged`, () => {
     const cluster_a = gaussian_cloud(2000, [300, 150], 12, 21)
     const cluster_b = gaussian_cloud(2000, [80, 150], 30, 22)
-    const ring_radius = (shift: number) => {
+    const ys = [...cluster_a.ys, ...cluster_b.ys]
+    const ring_radius = (shift: number, densities?: number[] | null) => {
       const xs = [...cluster_a.xs, ...cluster_b.xs].map((val) => val + shift)
-      const ys = [...cluster_a.ys, ...cluster_b.ys]
       const [ring] = density_contours(xs, ys, {
         width: 400,
         height: 300,
         bandwidth: 6,
         levels: [0.5],
+        densities,
       })
       const nums = path_numbers(ring.path)
       const radii = []
@@ -226,6 +227,11 @@ describe(`density_contours`, () => {
     // B at x = -170, beyond the grid's blur pad. Same samples, translated: equal up to the
     // 0.01 px path rounding
     expect(Math.abs(ring_radius(-250) - both_in_view)).toBeLessThan(0.02)
+    // so levels computed before a pan (as ScatterPlot reuses them) draw the same ring after it
+    const unshifted = level_densities([...cluster_a.xs, ...cluster_b.xs], ys, [0.5], {
+      bandwidth: 6,
+    })
+    expect(ring_radius(-250, unshifted)).toBe(ring_radius(-250))
   })
 
   test(`level grid ignores far outliers`, () => {

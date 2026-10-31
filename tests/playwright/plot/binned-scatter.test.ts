@@ -149,6 +149,25 @@ test(`demo opens the lazily loaded structure popup on a density bin click`, asyn
   await page.goto(`/plot/binned-scatter`, { waitUntil: `domcontentloaded` })
   const area = page.locator(`.binned-scatter svg[role="application"]`).first()
   await expect(area).toBeVisible()
+  // The plot starts below the fold, where page.mouse events reach nothing
+  await area.scrollIntoViewIfNeeded()
+  // The colorbar and stats badge glide to their solved spots after mount and would take a
+  // click aimed at a bin they pass over
+  const decoration_rects = () =>
+    page
+      .locator(`.binned-scatter :is(.colorbar-wrapper, .annotation)`)
+      .evaluateAll((elements) =>
+        elements.map((element) => JSON.stringify(element.getBoundingClientRect())).join(`;`),
+      )
+  let previous_rects = ``
+  await expect
+    .poll(async () => {
+      const rects = await decoration_rects()
+      const settled = rects !== `` && rects === previous_rects
+      previous_rects = rects
+      return settled
+    })
+    .toBe(true)
   const box = await svg_rect(page.locator(`.binned-scatter clipPath rect`).first())
   const frame = await area.boundingBox()
   if (!frame) throw new Error(`binned scatter frame has no bounding box`)
@@ -159,6 +178,12 @@ test(`demo opens the lazily loaded structure popup on a density bin click`, asyn
       frame.x + box.x + box.width * frac,
       frame.y + box.y + box.height * (1 - frac),
     ]
+    // Only a bin the plot itself receives counts: not one under the colorbar or badge
+    const on_plot = await area.evaluate(
+      (svg, [x, y]) => svg.contains(document.elementFromPoint(x, y)),
+      [coord_x, coord_y],
+    )
+    if (!on_plot) continue
     await page.mouse.move(coord_x, coord_y)
     if (await tooltip.isVisible()) hit = { x: coord_x, y: coord_y }
   }

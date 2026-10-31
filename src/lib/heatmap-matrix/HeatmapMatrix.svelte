@@ -178,11 +178,16 @@
       children?: Snippet
     } = $props()
 
-  // Cells on the far side of the diagonal (by rendered rank) are skipped in symmetric mode
-  const is_hidden_cell = (x_idx: number, y_idx: number): boolean =>
-    symmetric === `lower`
-      ? ranks.x[x_idx] > ranks.y[y_idx]
-      : symmetric === `upper` && ranks.x[x_idx] < ranks.y[y_idx]
+  // Cells on the far side of the diagonal (by rendered rank) are skipped in symmetric mode.
+  // This and the other per-cell lookups below are closures over the current props and
+  // deriveds, so each of the thousands of rendered cells makes one reactive read per lookup
+  // rather than one per prop it consults.
+  const is_hidden_cell = $derived.by(() => {
+    const [mode, rank_x, rank_y] = [symmetric, ranks.x, ranks.y]
+    if (!mode) return (_x_idx: number, _y_idx: number): boolean => false
+    return (x_idx: number, y_idx: number): boolean =>
+      mode === `lower` ? rank_x[x_idx] > rank_y[y_idx] : rank_x[x_idx] < rank_y[y_idx]
+  })
 
   // === Value resolution ===
   let x_keys = $derived(x_items.map(axis_key))
@@ -299,20 +304,30 @@
   // fill for cells with no mappable value (default transparent)
   let missing_fill = $derived(missing.color ?? `transparent`)
   // whether a value lacks a mappable scale color (-> missing fill + label/style decorations)
-  const cell_is_missing = (val: CellValue): boolean =>
-    val === null ||
-    (typeof val === `string` ? !is_color(val) : !Number.isFinite(val) || (use_log && val <= 0))
-  function value_to_color(val: CellValue): string | null {
-    if (cell_is_missing(val)) return missing_fill || null
-    if (typeof val !== `number`) return val
-    return ramp.color_fn(val)
-  }
+  const cell_is_missing = $derived.by(() => {
+    const log = use_log
+    return (val: CellValue): boolean =>
+      val === null ||
+      (typeof val === `string` ? !is_color(val) : !Number.isFinite(val) || (log && val <= 0))
+  })
   // Resolved per rendered or inspected cell, so offscreen virtualized cells cost nothing
-  const background_at = (x_idx: number, y_idx: number): string | null =>
-    is_hidden_cell(x_idx, y_idx)
-      ? null
-      : (color_overrides[y_keys[y_idx]]?.[x_keys[x_idx]] ??
-        value_to_color(get_value(x_idx, y_idx)))
+  const background_at = $derived.by(() => {
+    const [hidden, missing_value, overrides] = [
+      is_hidden_cell,
+      cell_is_missing,
+      color_overrides,
+    ]
+    const [cell_value, keys_x, keys_y] = [get_value, x_keys, y_keys]
+    const [fill_missing, color_fn] = [missing_fill || null, ramp.color_fn]
+    return (x_idx: number, y_idx: number): string | null => {
+      if (hidden(x_idx, y_idx)) return null
+      const override = overrides[keys_y[y_idx]]?.[keys_x[x_idx]]
+      if (override != null) return override
+      const val = cell_value(x_idx, y_idx)
+      if (missing_value(val)) return fill_missing
+      return typeof val === `number` ? color_fn(val) : val
+    }
+  })
 
   let matrix_el: HTMLDivElement | undefined = $state()
   // Cell fills may be translucent (overrides, missing fills), so contrast needs the backdrop

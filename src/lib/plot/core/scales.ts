@@ -268,6 +268,26 @@ export function create_axis_scales<A extends { scale_type?: ScaleType }>(
   }
 }
 
+// Local-time starts (as d3's time ticks) of every month or year in [min_val, max_val]
+const calendar_starts = (
+  min_val: number,
+  max_val: number,
+  unit: `month` | `year`,
+): number[] => {
+  const first = new Date(min_val)
+  const date = new Date(min_val)
+  // setFullYear, not the Date constructor, which reads years 0-99 as 1900-1999
+  date.setFullYear(first.getFullYear(), unit === `year` ? 0 : first.getMonth(), 1)
+  date.setHours(0, 0, 0, 0)
+  const starts: number[] = []
+  while (date.getTime() <= max_val) {
+    if (date.getTime() >= min_val) starts.push(date.getTime())
+    if (unit === `year`) date.setFullYear(date.getFullYear() + 1)
+    else date.setMonth(date.getMonth() + 1)
+  }
+  return starts
+}
+
 // Unified tick generation function
 export function generate_ticks(
   domain: Vec2,
@@ -319,16 +339,14 @@ export function generate_ticks(
     if (interval_days !== undefined) {
       assert_tick_count(count, `a tick interval of ${interval_days} day(s)`, max_val - min_val)
     }
+    // Month and year starts are listed outright: d3 picks its interval from the count, so a
+    // short span (`month` over 10 days) gets weekly ticks and none of them a month start
+    if (ticks_option === `month` || ticks_option === `year`) {
+      return calendar_starts(min_val, max_val, ticks_option)
+    }
     const dates = scaleTime()
       .domain([new Date(min_val), new Date(max_val)])
       .ticks(count)
-      .filter((date) =>
-        ticks_option === `month`
-          ? date.getDate() === 1
-          : ticks_option === `year`
-            ? date.getMonth() === 0 && date.getDate() === 1
-            : true,
-      )
     return dates.map((date) => date.getTime())
   }
 
@@ -624,16 +642,21 @@ const thin_log_ticks = (ticks: number[], count: number): number[] => {
   return best.filter((_, idx) => idx % stride === 0)
 }
 
-// Log ticks: powers of 10; 1-2-5 mantissas under three decades when > 5 ticks are asked;
-// d3's mantissa ticks (thinned toward the count) where fewer than two powers fit.
+// Log ticks: powers of 10 (with an explicit count, every n-th past count + 1 of them, at
+// least two); 1-2-5 mantissas under three decades when > 5 ticks are asked; d3's mantissa
+// ticks (thinned toward the count) where fewer than two powers fit.
 export function generate_log_ticks(min: number, max: number, count?: number): number[] {
   ;[min, max] = positive_log_domain(Math.min(min, max), Math.max(min, max))
   const min_power = Math.floor(Math.log10(min))
   const max_power = Math.ceil(Math.log10(max))
   const in_range = (tick: number): boolean => tick >= min && tick <= max
   const powers = range(min_power, max_power + 1).map((power: number) => 10 ** power)
-  const in_range_powers = powers.filter(in_range)
   const tick_count = count !== undefined && count > 0 ? count : 5
+  // Exponents a multiple of the stride, so 1 stays a tick
+  const all_powers = powers.filter(in_range)
+  const stride = count ? Math.ceil(all_powers.length / (tick_count + 1)) : 1
+  const strided = all_powers.filter((tick) => Math.round(Math.log10(tick)) % stride === 0)
+  const in_range_powers = strided.length >= 2 ? strided : all_powers
   // Powers of ten, or d3's fine mantissa ticks when fewer than two powers fall in range
   const fine_ticks =
     in_range_powers.length < 2

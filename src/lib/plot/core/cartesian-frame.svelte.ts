@@ -29,6 +29,7 @@ import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte.js
 import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets.js'
 import {
   axis_ranges_equal,
+  axis_transform,
   expand_range_if_needed,
   invert_rect_range,
   normalize_y2_sync,
@@ -284,6 +285,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       y2_sync.mode === `none` ? ([...untrack(() => ranges.initial.y2)] as Vec2) : synced_y2()
   })
 
+  // A 'synced' y2 copies y's range, so y's auto range (and data flag) covers the y2 data too,
+  // or is y2's alone while no y data backs it
+  const synced_auto = $derived.by(() => {
+    const [auto, has_data] = [opts.auto_ranges(), opts.has_data?.() ?? {}]
+    if (y2_sync.mode !== `synced` || !opts.has_y2() || has_data.y2 === false) {
+      return { auto, has_data }
+    }
+    const bounds = has_data.y === false ? auto.y2 : [...auto.y, ...auto.y2]
+    const [lo, hi] = [Math.min(...bounds), Math.max(...bounds)]
+    const y: Vec2 = auto.y[0] > auto.y[1] ? [hi, lo] : [lo, hi]
+    return { auto: { ...auto, y }, has_data: { ...has_data, y: true } }
+  })
+
   // Each axis's explicit bounds as last synced: a changed one moves a zoomed view too
   const synced_bounds: PerAxis<string> = {}
   // Sync ranges from axis.range overrides and auto ranges, skipping transient non-finite
@@ -291,7 +305,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // culled against stale ranges, which would remount markers and discard their tweens.
   const sync_ranges = () => {
     const sources = opts.range_sources?.() ?? opts.axes()
-    const next = resolve_axis_ranges(sources, opts.auto_ranges())
+    const next = resolve_axis_ranges(sources, synced_auto.auto)
     if (!next) return
     // untrack the read of `ranges` so the writes below can't re-trigger this effect
     // (reading + writing the same state otherwise causes effect_update_depth_exceeded).
@@ -305,7 +319,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       }
     } else if (opts.range_sync === `expand`) {
       // Adopt each axis's new range unless nothing backs it (no data, no pinned bound)
-      const has_data = opts.has_data?.() ?? {}
+      const { has_data } = synced_auto
       for (const axis of FACET_AXES) {
         const pinned = sources[axis].range?.some((bound) => bound != null) ?? false
         const bounds = JSON.stringify(sources[axis].range ?? null)
@@ -316,7 +330,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
           next[axis],
           (has_data[axis] ?? true) || pinned,
         )
-        if (!changed) continue
+        // A moved bound counts even when it lands on the current range (a host pinning the
+        // auto range it shows to undo a zoom)
+        if (!changed && !bounds_moved) continue
         // A zoomed or panned view stays put while the auto range grows (it also grows when the
         // plot shrinks: its padding is in px), and the reset target follows; a changed explicit
         // bound is the caller's new view. Copy: it must not alias the live range.
@@ -534,14 +550,27 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const marginal_pad = $derived(reserve_marginal_pad(opts.marginals()))
   // A legend drag holds the layout: re-solving per mousemove would evict and re-admit the
   // decorations it passes over, resizing the plot under the cursor. The drop re-solves once.
+  // A pan holds it too: each frame would rebuild the obstacle field from every mark (most of
+  // a 100k-point or many-line pan frame) only to move the legend under the cursor. The
+  // gesture's end re-solves against where the data landed. A pan re-solves early only when
+  // the frame's own geometry moves (tick labels widening the axis pad, a resize).
   let held_solution: DecorationSolution | undefined
+  let held_geometry: { axis_pad: Required<Sides>; width: number; height: number } | undefined
   const base_decoration_solution = $derived.by(() => {
-    if (legend_is_dragging && held_solution) return held_solution
+    const frame_axis_pad = facet.padding(axis_pad)
+    const same_geometry =
+      held_geometry !== undefined &&
+      sides_equal(held_geometry.axis_pad, frame_axis_pad) &&
+      held_geometry.width === width &&
+      held_geometry.height === height
+    if (held_solution && (legend_is_dragging || (pan_zoom.is_panning && same_geometry)))
+      return held_solution
+    held_geometry = { axis_pad: frame_axis_pad, width, height }
     const items = [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])]
     return (held_solution = solve_decorations({
       base_pad: effective_base_pad,
       reserved_pad: marginal_pad,
-      axis_pad: facet.padding(axis_pad),
+      axis_pad: frame_axis_pad,
       width,
       height,
       // only placed items dodge the data: with none, a pan frame never rebuilds the obstacles
@@ -588,6 +617,26 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       last_scales = { key, value: create_axis_scales(axes, current, pad, width, height) }
     }
     return last_scales.value
+  })
+  // Each axis's px per unit of its transformed metric (see axis_transform). A pan keeps it up
+  // to round-off, so the last record is handed back while every axis stays within 1e-9 of it:
+  // layout keyed on it (density levels, swarm packing) reruns on zoom or resize, not per pan
+  let last_px_per_unit: Record<FacetAxis, number> | undefined
+  const px_per_unit = $derived.by(() => {
+    const next = Object.fromEntries(
+      FACET_AXES.map((axis) => {
+        const { forward } = axis_transform(opts.axes()[axis].scale_type)
+        const [[dom_lo, dom_hi], [px_lo, px_hi]] = [
+          scales[axis].domain(),
+          scales[axis].range(),
+        ]
+        return [axis, (px_hi - px_lo) / (forward(dom_hi) - forward(dom_lo))]
+      }),
+    ) as Record<FacetAxis, number>
+    const prev = last_px_per_unit
+    const near = (axis: FacetAxis) =>
+      prev !== undefined && Math.abs(next[axis] - prev[axis]) <= 1e-9 * Math.abs(next[axis])
+    return FACET_AXES.every(near) && prev ? prev : (last_px_per_unit = next)
   })
   let last_ticks: Record<FacetAxis, number[]> | undefined
   const ticks = $derived.by(() => {
@@ -817,10 +866,19 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     get scales() {
       return scales
     },
+    get px_per_unit() {
+      return px_per_unit
+    },
     // Pixel scale of a value axis whose log floor holds bar bases and whisker lows at the
-    // axis minimum instead of NaN geometry (`scales` for a tweened or facet-local set)
+    // axis minimum instead of NaN geometry (`scales` for a tweened or facet-local set). The
+    // floor is the scale's own (positive) domain: the view's range can still reach below zero
+    // on a log axis (one switched to log over signed data), and a floor there maps to NaN.
     value_scale: (axis: FacetAxis, axis_scales = scales) =>
-      log_floor_scale(axis_scales[axis], opts.axes()[axis].scale_type, ranges.current[axis]),
+      log_floor_scale(
+        axis_scales[axis],
+        opts.axes()[axis].scale_type,
+        axis_scales[axis].domain(),
+      ),
     // Whether a pixel lies in the plot area, edges included
     in_plot: (coord_x: number, coord_y: number): boolean =>
       coord_x >= pad.l &&
@@ -862,7 +920,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     // The controls' range reset targets: x2/y2 only while they carry data
     get controls_auto_ranges() {
-      const auto = opts.auto_ranges()
+      const { auto } = synced_auto
       return {
         ...auto,
         x2: opts.has_x2() ? auto.x2 : undefined,
@@ -871,6 +929,70 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     },
     get legend_visible() {
       return opts.legend_visible()
+    },
+  }
+}
+
+// === Pan anchor ===
+// A pan only translates the plot (px per unit holds, see px_per_unit), so while one runs, marks
+// can keep the projection of the view the pan started from and be shifted instead of
+// re-projected and re-rendered per frame. `scales` is that view's (the live ones while no pan
+// runs or `enabled` is off), `shift` the px to translate marks on an x/y axis pair by (null when
+// none). Marks cropped to the view are cropped `reach` px (a plot width or height) past each
+// side of the anchored view along `cropped_axes`, and re-anchor once the pan travels that far.
+// Call during component init.
+export function create_pan_anchor(
+  frame: Pick<
+    CartesianFrame,
+    `scales` | `px_per_unit` | `pad` | `chart_width` | `chart_height` | `pan_zoom`
+  >,
+  enabled: () => boolean,
+  cropped_axes: readonly FacetAxis[],
+) {
+  type Anchor = Pick<CartesianFrame, `scales` | `px_per_unit` | `pad`>
+  let anchor: Anchor | null = null
+  const view = $derived.by(() => {
+    const { scales, px_per_unit, pad } = frame
+    // the view at rest is the anchor a pan starts from
+    if (!frame.pan_zoom.is_panning || !enabled()) {
+      anchor = enabled() ? { scales, px_per_unit, pad } : null
+      return { scales, reach: { x: 0, y: 0 }, shift: null }
+    }
+    // px the live scale puts the anchor's view origin at, relative to where the anchor did
+    const shift_of = (from: Anchor, axis: FacetAxis) =>
+      scales[axis](from.scales[axis].domain()[0]) - from.scales[axis].range()[0]
+    const reach = { x: frame.chart_width, y: frame.chart_height }
+    const prev = anchor
+    const valid =
+      prev?.px_per_unit === px_per_unit &&
+      prev.pad === pad &&
+      cropped_axes.every(
+        (axis) => Math.abs(shift_of(prev, axis)) <= reach[axis.startsWith(`x`) ? `x` : `y`],
+      )
+    const current = valid ? prev : (anchor = { scales, px_per_unit, pad })
+    const shift = Object.fromEntries(
+      FACET_AXES.map((axis) => [axis, shift_of(current, axis)]),
+    ) as Record<FacetAxis, number>
+    return { scales: current.scales, reach, shift }
+  })
+  // Apart, so that consumers re-run only when the anchor moves, not with the shift per frame
+  const scales = $derived(view.scales)
+  const reach_x = $derived(view.reach.x)
+  const reach_y = $derived(view.reach.y)
+  const reach = $derived({ x: reach_x, y: reach_y })
+  return {
+    get scales() {
+      return scales
+    },
+    get reach() {
+      return reach
+    },
+    // SVG transform of marks drawn on these axes (none unless anchored mid-pan)
+    transform: (x_axis: `x` | `x2`, y_axis: `y` | `y2`): string | undefined => {
+      const { shift } = view
+      if (!shift) return undefined
+      const [shift_x, shift_y] = [shift[x_axis], shift[y_axis]]
+      return shift_x || shift_y ? `translate(${shift_x} ${shift_y})` : undefined
     },
   }
 }

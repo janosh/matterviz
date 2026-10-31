@@ -2,6 +2,7 @@ import type { Vec2 } from '#lib'
 import Line from '#lib/plot/core/components/Line.svelte'
 import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
 import { resolve_line_tween } from '#lib/plot/core/utils.js'
+import * as svg_paths from '#lib/plot/core/svg.js'
 import { flushSync, mount } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, expect_transition_properties } from '../setup'
@@ -39,6 +40,68 @@ describe(`Line`, () => {
     expect(line_path.getAttribute(`stroke`)).toBe(stroke)
     expect(line_path.getAttribute(`stroke-width`)).toBe(width)
     expect(line_path.getAttribute(`stroke-dasharray`)).toBe(dash)
+  })
+
+  // A parent's per-frame series objects mark the path stale every pan frame (and Svelte keeps
+  // re-running a derived whose last run returned an equal path), so it is traced once per
+  // points array and curve, not per run
+  test(`traces its path once per coordinates and curve, in-place edits included`, () => {
+    const traces = vi.spyOn(svg_paths, `line_path`)
+    let frame = $state(0)
+    // oxfmt-ignore
+    let points = $state.raw<Vec2[]>([[0, 0], [10, 5], [20, 0]])
+    let curve = $state<`monotone` | `linear`>(`monotone`)
+    mount(Line, {
+      target: document.body,
+      props: {
+        get points() {
+          void frame // the parent rebuilding the series objects it reads points from
+          return points
+        },
+        get curve() {
+          return curve
+        },
+        line_tween: { duration: 0 },
+      },
+    })
+    flushSync()
+    const path = doc_query(`path`)
+    const first = path.getAttribute(`d`)
+    for (let step = 1; step <= 3; step++) {
+      frame = step
+      flushSync()
+    }
+    expect([traces.mock.calls.length, path.getAttribute(`d`)]).toEqual([1, first])
+    points = points.map(([x, y]): Vec2 => [x, y + 1])
+    flushSync()
+    curve = `linear`
+    flushSync()
+    expect(traces).toHaveBeenCalledTimes(3)
+    // equal coordinates in a new array reuse the trace
+    points = points.map(([x, y]): Vec2 => [x, y])
+    flushSync()
+    expect(traces).toHaveBeenCalledTimes(3)
+    traces.mockRestore()
+  })
+
+  // a $state array edited in place keeps its identity, which an identity-keyed cache missed
+  test.each([
+    [`a replaced point`, (pts: Vec2[]) => (pts[1] = [10, 50])],
+    [`a pushed point`, (pts: Vec2[]) => pts.push([30, 5])],
+  ])(`re-traces a $state line after %s`, (_desc, edit) => {
+    // oxfmt-ignore
+    const points = $state<Vec2[]>([[0, 0], [10, 5], [20, 0]])
+    mount(Line, {
+      target: document.body,
+      props: { points, curve: `linear`, line_tween: { duration: 0 } },
+    })
+    flushSync()
+    const path = doc_query(`path`)
+    expect(path.getAttribute(`d`)).toBe(`M0,0L10,5L20,0`)
+    edit(points)
+    flushSync()
+    const expected = [...points].map(([x, y], idx) => `${idx ? `L` : `M`}${x},${y}`).join(``)
+    expect(path.getAttribute(`d`)).toBe(expected)
   })
 
   test(`does not CSS-transition path geometry`, () => {

@@ -164,16 +164,18 @@ export function multipolygon_path(
 // Iso-proportion density contours of the whole series (see level_densities), drawn on a grid
 // over [0, width] x [0, height]. Outermost (largest enclosed fraction) first so filled layers
 // stack with the densest core on top. Empty when there is no mass to contour in view.
+// `densities` passes level_densities' result in, which a pan leaves unchanged.
 export function density_contours(
   xs: ArrayLike<number>,
   ys: ArrayLike<number>,
-  opts: DensityContourOptions,
+  opts: DensityContourOptions & { densities?: readonly number[] | null },
 ): DensityContour[] {
   const fractions = density_level_fractions(opts.levels)
   if (xs.length === 0 || opts.width <= 0 || opts.height <= 0) return []
   const grid = density_grid(xs, ys, opts)
   const cell_area = grid.cell_size ** 2
-  const levels = level_densities(xs, ys, fractions, opts)
+  const levels =
+    opts.densities === undefined ? level_densities(xs, ys, fractions, opts) : opts.densities
   const thresholds = levels
     ? levels.map((value) => value * cell_area)
     : mass_thresholds(grid.values, fractions)

@@ -19,25 +19,19 @@ export type InstanceTween = Pick<TweenOptions<unknown>, `delay` | `easing`> & {
 
 const DEFAULTS = { delay: 0, duration: 600, easing: cubicOut }
 
-// Packs marker specs into the flat layout above. Each distinct colour is parsed once; one three
-// can't parse (e.g. a CSS variable) draws white, three's default, and warns once per pack.
-export function pack_instances(
-  items: readonly { position: readonly number[]; radius: number; color: string }[],
-): Float32Array {
-  const packed = new Float32Array(items.length * INSTANCE_STRIDE)
+// sRGB channels in [0, 1] of a CSS colour, for the packed layout. Each distinct colour is
+// parsed once per parser; one three can't parse (e.g. a CSS variable) draws white, three's
+// default, and warns once.
+export function srgb_parser(): (color: string) => { r: number; g: number; b: number } {
   const rgb_by_color = new Map<string, { r: number; g: number; b: number }>()
-  items.forEach(({ position, radius, color }, idx) => {
+  return (color) => {
     let rgb = rgb_by_color.get(color)
     if (!rgb) {
       rgb = new Color(color).getRGB({ r: 0, g: 0, b: 0 }, SRGBColorSpace)
       rgb_by_color.set(color, rgb)
     }
-    const offset = idx * INSTANCE_STRIDE
-    packed.set(position, offset)
-    packed[offset + 3] = radius
-    packed.set([rgb.r, rgb.g, rgb.b], offset + 4)
-  })
-  return packed
+    return rgb
+  }
 }
 
 const same_items = <T>(left: ArrayLike<T>, right: ArrayLike<T>): boolean => {
@@ -50,7 +44,7 @@ export interface InstanceTweenClock {
   // What to draw right now, in the packed layout
   readonly current: Float32Array
   retarget: (
-    next_keys: readonly string[],
+    next_keys: ArrayLike<number>,
     next_target: Float32Array,
     now: number,
     options?: InstanceTween,
@@ -60,11 +54,11 @@ export interface InstanceTweenClock {
 }
 
 export function create_instance_tween(): InstanceTweenClock {
-  let keys: readonly string[] = []
+  let keys: ArrayLike<number> = []
   let from: Float32Array = new Float32Array(0)
   let target: Float32Array = new Float32Array(0)
   // Plain, so the hot loops below don't pay for signal reads; `frame` tells readers it moved
-  let current = new Float32Array(0)
+  let current: Float32Array = new Float32Array(0)
   let frame = $state(0)
   let started_at = 0
   let { delay, duration, easing } = DEFAULTS
@@ -84,22 +78,24 @@ export function create_instance_tween(): InstanceTweenClock {
       delay = options.delay ?? DEFAULTS.delay
       duration = motion_duration(options.duration ?? DEFAULTS.duration)
       easing = options.easing ?? DEFAULTS.easing
-      if (duration <= 0) from = next_target.slice()
+      // A snap shares the target: `current` is only written while animating, and an
+      // animation always starts from a copy
+      if (duration <= 0) from = next_target
       else if (same_keys) from = current.slice() // the common re-encoding case: no lookups
       else {
         from = next_target.slice()
-        const prev_idx = new Map(keys.map((key, idx) => [key, idx]))
-        next_keys.forEach((key, idx) => {
-          const prev = prev_idx.get(key)
-          if (prev === undefined) return
+        const prev_idx = new Map(Array.from(keys, (key, idx): [number, number] => [key, idx]))
+        for (let idx = 0; idx < next_keys.length; idx++) {
+          const prev = prev_idx.get(next_keys[idx])
+          if (prev === undefined) continue
           for (let field = 0; field < INSTANCE_STRIDE; field++) {
             from[idx * INSTANCE_STRIDE + field] = current[prev * INSTANCE_STRIDE + field]
           }
-        })
+        }
       }
       keys = next_keys
       target = next_target
-      current = from.slice()
+      current = duration <= 0 ? from : from.slice()
       frame += 1
       started_at = now + delay
       animating = duration > 0
