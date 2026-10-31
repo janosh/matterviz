@@ -434,6 +434,8 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     height: 60,
   }
   let legend_footprint = $state(legend_footprint_fallback)
+  // A legend a host hides with CSS (e.g. a collapsed toggle) is invisible, so it claims no space
+  let legend_hidden = $state(false)
   let legend_cells = $state.raw<LegendCellSizes | null>(null)
   let legend_offset = $state({ x: 0, y: 0 })
   $effect(() => {
@@ -441,6 +443,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     const element = legend_element
     const size = measured_footprint(element, legend_footprint_fallback)
     const cells = element ? legend_cell_sizes(element) : null
+    const hidden = element ? getComputedStyle(element).display === `none` : false
     const offset =
       element && legend_has_explicit_pos
         ? { x: element.offsetLeft, y: element.offsetTop }
@@ -451,6 +454,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       }
       if (JSON.stringify(cells) !== JSON.stringify(legend_cells)) legend_cells = cells
       if (offset.x !== legend_offset.x || offset.y !== legend_offset.y) legend_offset = offset
+      if (hidden !== legend_hidden) legend_hidden = hidden
     })
   })
   // A legend left to the frame's layout (no layout or layout_tracks) is placed by the column
@@ -521,7 +525,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   // An explicitly styled or dragged legend stays outside solver ownership, but its measured
   // rectangle remains an exclusion for the automatic items
   const legend_pinned_rects: Rect[] = $derived(
-    legend_element && (legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
+    legend_element &&
+      !legend_hidden &&
+      (legend_has_explicit_pos || legend_is_dragging || legend_manual_position)
       ? [{ ...(legend_manual_position ?? legend_offset), ...legend_footprint }]
       : [],
   )
@@ -532,6 +538,7 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
         opts.legend() != null &&
         opts.legend_visible() &&
         legend_element != null &&
+        !legend_hidden &&
         !legend_has_explicit_pos &&
         !legend_is_dragging &&
         !legend_manual_position,

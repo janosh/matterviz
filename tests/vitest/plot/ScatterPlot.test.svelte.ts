@@ -681,6 +681,19 @@ describe(`ScatterPlot`, () => {
       expect(rects_overlap(size_rect, colorbar_rect)).toBe(false)
     })
 
+    test(`a CSS-hidden legend leaves its corner to the size legend`, async () => {
+      const series = [bubbles([1, 5, 9], { label: `a` }), bubbles([2, 6], { label: `b` })]
+      const shown = await mount_sized_scatter_plot({ series, color_bar: null })
+      const hidden = await mount_sized_scatter_plot({
+        series,
+        color_bar: null,
+        legend: { style: `display: none` },
+      })
+      expect(query(shown, `.legend`).getAttribute(`data-decoration-x`)).not.toBeNull()
+      expect(query(hidden, `.legend`).getAttribute(`data-decoration-x`)).toBeNull()
+      expect(query(hidden, `.size-legend-wrapper`).dataset.decorationLocation).toBe(`interior`)
+    })
+
     test(`wrapper_style pins it outside the solver`, async () => {
       const plot = await mount_sized_scatter_plot({
         series: [bubbles([1, 5, 9])],
