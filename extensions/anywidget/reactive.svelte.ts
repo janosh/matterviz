@@ -153,9 +153,9 @@ const as_state = <T>(value: T): T => {
 // Data props the components read but never mutate in place, so they stay unproxied: a deep
 // proxy over a 30k-site structure put every read behind proxy traps and mounted the
 // Structure widget 10x slower
-const DATA_PROPS = new Set([
+export const DATA_PROPS = new Set([
   ...`structure structures series surfaces entries patterns x_items y_items values`.split(` `),
-  ...`band_structs doses fermi_data band_data bz_data`.split(` `),
+  ...`band_structs doses fermi_data band_data bz_data trajectory volumetric_data`.split(` `),
 ])
 
 export interface ReactiveWidget {
@@ -189,10 +189,13 @@ export function reactive_widget(
   // components re-render when they mutate one in place (a controls pane toggling display.x_grid)
   const values = new SvelteMap<string, unknown>()
   // An undefined value removes the key, so the component uses its own fallback: passing
-  // undefined for a $bindable-with-fallback trips Svelte's props_invalid_value
+  // undefined for a $bindable-with-fallback trips Svelte's props_invalid_value. DATA_PROPS keep
+  // their key (no widget binds one with a fallback), whose setter lets a component write data
+  // it loads itself (a data_url structure) back as is: without one, Svelte proxies it.
   const store = (key: string, value: unknown): void => {
-    if (value === undefined) values.delete(key)
-    else values.set(key, DATA_PROPS.has(key) ? value : as_state(value))
+    if (DATA_PROPS.has(key)) values.set(key, value)
+    else if (value === undefined) values.delete(key)
+    else values.set(key, as_state(value))
   }
   // Keys held at mount get a setter, through which Svelte writes $bindable props back
   const props = new Proxy<Record<string, unknown>>(

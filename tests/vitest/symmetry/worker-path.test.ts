@@ -7,7 +7,7 @@ import type * as MoyoWasm from '@spglib/moyo-wasm'
 import type { MoyoCell } from '@spglib/moyo-wasm'
 import { analyze_cell } from '@spglib/moyo-wasm'
 import { wyckoff_positions_from_moyo } from '#lib/symmetry/wyckoff.js'
-import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, expect, test, vi } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { init_moyo_for_tests, make_rocksalt } from '../test-fixtures'
 
@@ -35,8 +35,6 @@ beforeAll(async () => {
   analyze = await import(`#lib/symmetry/analyze.js`)
   await init_moyo_for_tests()
 })
-// the tests' WASM bytes are a host source, which keeps analysis here: forget it first
-beforeEach(() => analyze.set_moyo_wasm_source(null))
 afterEach(() => {
   stub.reset()
   vi.mocked(analyze_cell).mockClear()
@@ -70,6 +68,7 @@ test(`an aborted analysis rejects without posting to the worker`, async () => {
   expect(stub.posted).toEqual([])
 })
 
+// Last in this file: a registered source cannot be unregistered.
 // The worker loads the WASM from its default location, so a host serving it elsewhere runs here:
 // the VS Code webview (its workers fetch nothing), bytes, or a relative URL the worker would
 // resolve against itself instead of the page

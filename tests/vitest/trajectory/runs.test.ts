@@ -873,13 +873,23 @@ describe(`worker-served run lifecycle`, () => {
     { properties: { empty: undefined } },
     { provenance: { image_of: 0, unit_cell_idx: 0, completion: true } },
     { magnetic_order: `up` },
+    { properties: { grid: new Float32Array([1, 2]), tags: new Map([[`a`, 1]]), sparse: Object.assign(Array(3), { 0: 1, 2: 3 }) } },
   ])(`preserves nonstandard atom metadata %j`, async (metadata) => {
     const frame = make_trajectory_frame(0, 1)
     Object.assign(frame.structure.sites[0], metadata)
     const source = structuredClone(frame)
     const served = trajectory_from_frames([frame])
     const run = make_worker_run(served)
-    expect(await materialize_frame_result(run.read_frame(0))).toStrictEqual(source)
+    const numeric = await run.read_frame(0)
+    expect(materialize_frame(numeric)).toStrictEqual(source)
+    // the viewer's frames too, each with its own copy of every record value
+    const [first, second] = [0, 1].map(() => new FrameView().update(numeric))
+    expect(first).toStrictEqual(source)
+    const [site_a, site_b] = [first, second].map(({ structure }) => structure.sites[0])
+    const values = (site: typeof site_a) => [site.species, ...Object.values(site.properties)]
+    for (const [idx, value] of values(site_a).entries()) {
+      if (typeof value === `object` && value) expect(values(site_b)[idx]).not.toBe(value)
+    }
     expect(frame).toStrictEqual(source)
   })
 

@@ -183,6 +183,25 @@ describe(`reactive_widget`, () => {
 
     reactive.dispose()
   })
+
+  // A structure the component loads itself (data_url) while the trait is None reaches the
+  // props as loaded: with no key at mount, Svelte would keep a deep proxy of it instead
+  test(`real mount(): data a component loads writes back unproxied`, () => {
+    const model = new MockModel({ structure: null })
+    const reactive = reactive_widget(as_model(model), [drive_prop(`structure`)])
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const inst = mount(Harness, { target, props: reactive.props }) as unknown as {
+      load: (value: object) => void
+      read: () => object
+    }
+    const loaded = { sites: [{ xyz: [0, 0, 0] }] }
+    inst.load(loaded)
+    flushSync()
+    expect([reactive.props.structure, inst.read()]).toEqual([loaded, loaded])
+    expect(inst.read()).toBe(loaded) // the component reads it unproxied too
+    reactive.dispose()
+  })
 })
 
 describe(`throttle`, () => {

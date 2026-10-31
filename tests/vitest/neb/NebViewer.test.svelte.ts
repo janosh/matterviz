@@ -252,8 +252,16 @@ describe(`NebViewer`, () => {
     // a path it cannot profile is reported beside those that render
     const [first, second] = direct_path.images
     const dup = { images: [first, first, second] }
-    const viewer = await mount_viewer({ paths: { ...reaction_paths, dup } })
+    // as is one in a third energy unit, which has no y axis left
+    const [mev, kcal] = [`meV`, `kcal/mol`].map((energy_unit) => ({
+      ...direct_path,
+      energy_unit,
+    }))
+    const viewer = await mount_viewer({ paths: { ...reaction_paths, dup, mev, kcal } })
     expect(viewer.textContent).toMatch(/dup: .*zero-length path tangent/)
+    expect(viewer.textContent).toContain(
+      `kcal: no y axis left for kcal/mol (eV and meV plotted)`,
+    )
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
     expect(

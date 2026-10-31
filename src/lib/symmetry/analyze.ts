@@ -75,9 +75,8 @@ let wasm_ready = false
 // Where hosts serving the WASM elsewhere (the VS Code webview) keep it. Registering it fetches
 // nothing: the first analysis does, and a retry after a failed fetch reuses it.
 let registered_source: InitInput | undefined
-// null forgets it: the WASM is served next to the glue module again
-export const set_moyo_wasm_source = (source: InitInput | null): void => {
-  registered_source = source ?? undefined
+export const set_moyo_wasm_source = (source: InitInput): void => {
+  registered_source = source
 }
 export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
   if (symmetry_backend) return Promise.resolve()

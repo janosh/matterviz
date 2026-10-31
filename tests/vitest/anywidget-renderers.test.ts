@@ -1,13 +1,21 @@
 // @vitest-environment happy-dom
 import { DEFAULTS } from '../../src/lib/settings'
 import { is_plain_object } from '../../src/lib/utils'
+import { DATA_PROPS } from '../../extensions/anywidget/reactive.svelte'
+import { extract_prop_docs } from '../../src/scripts/prop-docs'
 import { flushSync } from 'svelte'
+import { globSync } from 'node:fs'
 import { describe, expect, test, vi } from 'vitest'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
-const { disable_workers, spectral_doc } = vi.hoisted(() => ({
+const { disable_workers, spectral_doc, WIDGET_COMPONENTS } = vi.hoisted(() => ({
   disable_workers: vi.fn(),
+  WIDGET_COMPONENTS: `Bands BandsAndDos BarPlot BrillouinZone ChemPotDiagram Composition
+    ConvexHull Dos FermiSurface HeatmapMatrix Histogram IsobaricBinaryPhaseDiagram PeriodicTable
+    RdfPlot ScatterPlot ScatterPlot3D SpacegroupBarPlot Structure Trajectory Treemap XrdPlot`
+    .trim()
+    .split(/\s+/),
   // the generic wiring test's string seeds count as documents
   spectral_doc: (doc: unknown) =>
     typeof doc === `string` || (doc as { kind?: string } | null)?.kind === `doc`
@@ -18,12 +26,8 @@ const { disable_workers, spectral_doc } = vi.hoisted(() => ({
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
   const stub_module = await import(`./reactive-renderer-stub.svelte`)
-  const components = `Bands BandsAndDos BarPlot BrillouinZone ChemPotDiagram Composition ConvexHull
-    Dos FermiSurface HeatmapMatrix Histogram IsobaricBinaryPhaseDiagram
-    PeriodicTable RdfPlot ScatterPlot ScatterPlot3D SpacegroupBarPlot Structure
-    Trajectory Treemap XrdPlot`
   return {
-    ...Object.fromEntries(components.split(/\s+/).map((name) => [name, stub_module.default])),
+    ...Object.fromEntries(WIDGET_COMPONENTS.map((name) => [name, stub_module.default])),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
     disable_workers,
@@ -87,6 +91,20 @@ const controls_traits = {
 // The props named in `expected`, for exact (not toMatchObject's partial, nested) comparison
 const pick = (props: Record<string, unknown>, expected: object) =>
   Object.fromEntries(Object.keys(expected).map((key) => [key, props[key]]))
+
+// reactive_widget keeps undefined DATA_PROPS keys, whose setter lets a component write data it
+// loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
+// default: the widgets' real components must declare none
+test(`no widget component binds a data prop with a default`, () => {
+  const files = WIDGET_COMPONENTS.flatMap((name) => globSync(`src/lib/**/${name}.svelte`))
+  expect(files).toHaveLength(WIDGET_COMPONENTS.length)
+  const defaulted = Object.entries(extract_prop_docs(files)).flatMap(([component, docs]) =>
+    docs
+      .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
+      .map(({ name, default: init }) => `${component}.${name} = ${init}`),
+  )
+  expect(defaulted).toEqual([])
+})
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
 const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram xrd rdf_plot`
@@ -449,7 +467,7 @@ describe(`render() lifecycle`, () => {
     const model = new MockModel({ widget_type: `trajectory` })
     const element = document.createElement(`div`)
     stop_theme.mockClear()
-    void anywidget_module.default.render({ model: as_model(model), el: element } as never)
+    void anywidget_module.default.render({ model: as_model(model), el: element })
     model.push_from_python(`trajectory`, `malformed`)
     expect(element.textContent).toBe(`MatterViz trajectory: malformed trajectory`)
     expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])

@@ -45,7 +45,9 @@ const as_state = <T>(value: T): T => {
 // Bindable data the components replace but never mutate in place, so it stays unproxied: a
 // deep proxy over a 30k-site structure (set by the page or parsed from `source`) put every
 // read behind $state traps and took mv-structure 2.8 s to render
-const DATA_PROPS = new Set([`structure`, `bonds`, `fermi_data`, `band_data`, `bz_data`])
+const DATA_PROPS = new Set(
+  `structure bonds fermi_data band_data bz_data trajectory volumetric_data`.split(` `),
+)
 
 for (const [tag, spec] of Object.entries(elements)) {
   const { load, props: prop_names, seeded } = spec

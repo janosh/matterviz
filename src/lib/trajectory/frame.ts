@@ -214,12 +214,40 @@ export const encode_frame = ({ structure, ...header }: TrajectoryFrame): Numeric
   return { ...snapshot, sites: structuredClone(records) }
 }
 
+// structuredClone's result for frame data, 6x faster per site: arrays (named keys included)
+// and plain objects of any realm (worker packets) are copied here, anything else (typed
+// arrays, maps) is structured-cloned
+const clone_record = <Value>(value: Value): Value => {
+  if (typeof value !== `object` || value === null) return value
+  if (Array.isArray(value)) {
+    const copy: unknown[] = Array(value.length) // keeps holes
+    let n_items = 0
+    for (let idx = 0; idx < value.length; idx++) {
+      if (!(idx in value)) continue
+      copy[idx] = clone_record(value[idx])
+      n_items++
+    }
+    // named keys (a force vector's unit) follow the indices
+    const keys = Object.keys(value)
+    for (const key of keys.slice(n_items))
+      Reflect.set(copy, key, clone_record(Reflect.get(value, key)))
+    return copy as Value
+  }
+  const proto: unknown = Object.getPrototypeOf(value)
+  if (proto !== null && Object.getPrototypeOf(proto) !== null) return structuredClone(value)
+  const copy: Record<string, unknown> = {}
+  for (const key of Object.keys(value)) copy[key] = clone_record(Reflect.get(value, key))
+  return copy as Value
+}
+
+// Every frame owns its records: phonon runs hand each frame the same site records and cell,
+// and an edit to one frame must not move the others
 export const materialize_frame = (frame: NumericFrame): TrajectoryFrame => {
   const { header, structure, sites, vector_keys, coordinates } = frame
   return {
-    ...structuredClone(header),
+    ...clone_record(header),
     structure: {
-      ...structuredClone(structure),
+      ...clone_record(structure),
       sites: Array.from({ length: sites.length }, (_unused, idx) => {
         const offset = idx * site_stride(vector_keys)
         const xyz: Site[`xyz`] = [
@@ -238,7 +266,7 @@ export const materialize_frame = (frame: NumericFrame): TrajectoryFrame => {
           if (!element)
             throw new Error(`Invalid atomic number ${sites[idx]} at site ${display_idx(idx)}`)
           site = make_site(element, abc, xyz, `${element}${idx + 1}`)
-        } else site = { ...structuredClone(sites[idx]), xyz, abc }
+        } else site = { ...clone_record(sites[idx]), xyz, abc }
         write_site_properties(frame, idx, site.properties)
         return site
       }),
@@ -354,50 +382,8 @@ export class FrameView {
     identities: Pick<Site, 'species' | 'label'>[]
     elements?: Uint8Array // element bytes of a topology-less frame
   }
-  // Record-site sources may hand every frame the same records and cell (phonon animations):
-  // those are cloned once and each frame copies only the per-site shells and its own lattice,
-  // so an edit to one frame's cell stays in that frame. Species are shared as in the topology
-  // path below.
-  private shared?: {
-    records: NumericFrame['sites']
-    structure: NumericFrame['structure']
-    identities: Omit<Site, 'xyz' | 'abc'>[]
-    cell: NumericFrame['structure']
-  }
-
   clear(): void {
     this.topology = undefined
-    this.shared = undefined
-  }
-
-  // materialize_frame's result, cloning shared records and cells once per source object
-  private materialize_records(
-    data: NumericFrame,
-    records: Omit<Site, 'xyz' | 'abc'>[],
-  ): TrajectoryFrame {
-    const { structure, coordinates } = data
-    if (this.shared?.records !== records || this.shared.structure !== structure) {
-      const [identities, cell] = [structuredClone(records), structuredClone(structure)]
-      this.shared = { records, structure, identities, cell }
-    }
-    const { identities, cell } = this.shared
-    const width = site_stride(data.vector_keys)
-    const sites = identities.map((identity, idx): Site => {
-      const offset = idx * width
-      const properties = { ...identity.properties }
-      write_site_properties(data, idx, properties)
-      return {
-        ...identity,
-        xyz: [coordinates[offset], coordinates[offset + 1], coordinates[offset + 2]],
-        abc: [coordinates[offset + 3], coordinates[offset + 4], coordinates[offset + 5]],
-        properties,
-      }
-    })
-    const lattice = cell.lattice && structuredClone(cell.lattice)
-    return {
-      ...structuredClone(data.header),
-      structure: { ...cell, ...(lattice && { lattice }), sites },
-    }
   }
 
   update(data: NumericFrame): TrajectoryFrame {
@@ -444,7 +430,7 @@ export class FrameView {
         metadata: data.header.metadata && { ...data.header.metadata },
         structure,
       }
-    } else frame = this.materialize_records(data, sites)
+    } else frame = materialize_frame(data)
     if (data.available_vector_keys)
       register_structure_vectors(frame.structure, data.available_vector_keys)
     return frame

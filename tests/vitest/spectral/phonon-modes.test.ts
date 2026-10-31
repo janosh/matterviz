@@ -392,8 +392,7 @@ describe(`staged phonon runs`, () => {
     ).toBeLessThanOrEqual(0.5 + 1e-12)
     expect(() => materialize_frame_result(short_run.read_frame(4))).toThrow(RangeError)
 
-    // Frames share the cell and site records; the viewer clones those once and copies only
-    // per-site shells, decoding exactly what a full materialization gives
+    // Frames share the source's cell and site records; each decoded frame owns its copies
     const view = new FrameView()
     const [first, second] = [0, 1].map((frame_idx) => {
       const numeric = short_run.read_frame(frame_idx)
@@ -405,12 +404,13 @@ describe(`staged phonon runs`, () => {
     expect(second.numeric.sites).toBe(first.numeric.sites)
     expect(second.numeric.structure).toBe(first.numeric.structure)
     const [site_a, site_b] = [first, second].map(({ decoded }) => decoded.structure.sites[0])
-    expect(site_b.species).toBe(site_a.species)
-    expect(site_b.species).not.toBe(cell.structure.sites[0].species)
+    // editing one frame's site or cell must not edit the next frame's
+    site_a.species[0].occu = 0.5
+    expect(site_b.species[0].occu).toBe(1)
+    expect(cell.structure.sites[0].species[0].occu).toBe(1)
     const lattices = [first, second].map(({ decoded }) =>
       `lattice` in decoded.structure ? decoded.structure.lattice : undefined,
     )
-    // each frame owns its lattice: editing one frame's cell must not move the next frame's
     expect(lattices[1]).not.toBe(lattices[0])
     expect(site_b.properties).not.toBe(site_a.properties)
   })
