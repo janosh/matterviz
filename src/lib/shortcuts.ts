@@ -1,6 +1,10 @@
 import { forward_window_keydown } from 'svelte-widgets/attachments'
 import { on } from 'svelte/events'
-import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+import {
+  format_shortcut,
+  is_editable_event_target,
+  is_modifier_chord,
+} from 'svelte-widgets/utils'
 
 // One registry of the keyboard shortcuts viewers handle. Each viewer lists its scopes' entries
 // at the bottom of its info (or settings) pane (ShortcutsList), and buttons with a shortcut take
@@ -64,23 +68,12 @@ export const SHORTCUTS = {
 export type ShortcutId = keyof typeof SHORTCUTS
 export type ShortcutScope = (typeof SHORTCUTS)[ShortcutId]['scopes'][number]
 
-const KEY_LABELS: Record<string, string> = {
-  ArrowLeft: `←`,
-  ArrowRight: `→`,
-  Control: `Ctrl`,
-  Meta: `⌘`,
-  Escape: `Esc`,
-  PageUp: `PgUp`,
-  PageDown: `PgDn`,
-  Delete: `Del`,
-}
-
 // Human-readable keys of a shortcut: `Home Control+ArrowLeft` -> `Home / Ctrl+←`
 export const format_shortcut_keys = ({ keys, label }: Shortcut): string =>
   label ??
   keys
     .split(` `)
-    .map((chord) => chord.replaceAll(/\w{2,}/g, (key) => KEY_LABELS[key] ?? key))
+    .map((chord) => format_shortcut(chord).join(`+`))
     .join(` / `)
 
 // `Reset camera (R)`: a button's title naming its shortcut

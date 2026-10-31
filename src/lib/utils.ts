@@ -146,16 +146,6 @@ export function same_while_equal<T>(): (value: T) => T {
   }
 }
 
-export function make_change_detector(): (value: unknown) => boolean {
-  const unset = Symbol(`unset`)
-  let prev: unknown = unset
-  return (value: unknown) => {
-    const changed = prev !== unset && value !== prev
-    prev = value
-    return changed
-  }
-}
-
 // Append `item`, or drop every copy of it when already present; keeps insertion order
 export const toggle_item = <T>(items: readonly T[], item: T): T[] =>
   items.includes(item) ? items.filter((entry) => entry !== item) : [...items, item]

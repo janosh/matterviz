@@ -46,7 +46,7 @@ describe(`shortcut registry`, () => {
     [SHORTCUTS.reset_camera, `R`],
     [SHORTCUTS.first, `Home / Ctrl+←`],
     [SHORTCUTS.speed, `- / +`],
-    [SHORTCUTS.redo, `Ctrl+Y / ⌘+Y / Ctrl+Shift+Z / ⌘+Shift+Z`],
+    [SHORTCUTS.redo, `Ctrl+Y / ⌘+Y / Ctrl+⇧+Z / ⌘+⇧+Z`],
     [SHORTCUTS.jump, `0-9`],
     [SHORTCUTS.close, `Esc`],
     [SHORTCUTS.wheel_zoom, `⌘/Ctrl + scroll`],
@@ -59,7 +59,7 @@ describe(`shortcut registry`, () => {
       'aria-keyshortcuts': `R`,
       title: `Reset camera (R)`,
     })
-    expect(shortcut_attrs(`view_mode`, `Plot-only`).title).toBe(`Plot-only (V / Shift+V)`)
+    expect(shortcut_attrs(`view_mode`, `Plot-only`).title).toBe(`Plot-only (V / ⇧+V)`)
   })
 
   test(`shortcuts_for lists each matching entry once, in registry order`, () => {

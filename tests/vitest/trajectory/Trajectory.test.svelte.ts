@@ -346,7 +346,7 @@ describe(`display modes`, () => {
     if (kind === `constant-value` || kind === `visually-flat`)
       expect(
         target.querySelector(`${CONTROLS} .view-mode-button`)?.getAttribute(`aria-label`),
-      ).toBe(`Automatic: Structure-only (V / Shift+V)`)
+      ).toBe(`Automatic: Structure-only (V / ⇧+V)`)
   })
 
   test(`automatic view waits for property sampling, rechecks new runs, and respects menu choices`, async () => {
@@ -447,7 +447,7 @@ describe(`display modes`, () => {
       frame_count: 3,
       frame: expect.objectContaining({ header: expect.objectContaining({ step: 0 }) }),
     })
-    expect(view_mode_button.title).toBe(`Plot-only (V / Shift+V)`)
+    expect(view_mode_button.title).toBe(`Plot-only (V / ⇧+V)`)
     expect(target.querySelector(`.view-mode-dropdown`)).toBeNull()
     expect(target.querySelector(`.histogram`)).not.toBeNull()
     expect(target.querySelector(`.scatter`)).toBeNull()

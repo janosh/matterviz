@@ -1,14 +1,10 @@
 // Headless (DOM-free, unit-testable) row logic for HeatmapTable: numeric cell reading,
 // sorting, search/filter predicates and date-time parsing/formatting.
-import {
-  HTML_ENTITY_SRC,
-  html_to_text,
-  normalize_unicode_minus,
-  toggle_item,
-} from '#lib/utils.js'
+import { HTML_ENTITY_SRC, html_to_text, normalize_unicode_minus } from '#lib/utils.js'
 import { graphemes } from '#lib/plot/core/text-metrics.js'
+import { type CellReaders, default_is_missing } from 'svelte-widgets/table'
 import { fuzzy_match, HTML_TAG_SRC } from 'svelte-widgets/utils'
-import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
+import type { CellVal, DateTimeFormatMode, Column, RowData } from './index'
 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = <Row extends object>(rows: Row[]): Column<Row>[] => {
@@ -27,11 +23,9 @@ export const middle_ellipsis_parts = (text: string): [string, string] => {
   return [chars.slice(0, split_at).join(``), chars.slice(split_at).join(``)]
 }
 
-// Missing values, NaN and invalid dates render as n/a and sort to the bottom
-export const is_invalid = (val: unknown): boolean =>
-  val == null ||
-  (typeof val === `number` && Number.isNaN(val)) ||
-  (val instanceof Date && Number.isNaN(val.getTime()))
+// Missing values, NaN and invalid dates render as n/a, sort to the bottom and never match a
+// category filter: the table widgets' own missing-cell test
+export const is_invalid = default_is_missing
 
 const HTML_MARKUP_RE = new RegExp(`${HTML_TAG_SRC}|${HTML_ENTITY_SRC}`, `i`)
 // Distinguish actual tags/entities from ordinary comparison and ampersand text so plain
@@ -200,74 +194,12 @@ export function sort_table_rows<Row extends RowData>(
 export const text_matches_query = (text: string, query: string, fuzzy = false): boolean =>
   text.includes(query) || (fuzzy && fuzzy_match(query, text))
 
-export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {
-  if (filter.kind === `numeric`) {
-    const num = parse_numeric_val(val)
-    if (num === null) return false
-    return (
-      (filter.min == null || num >= filter.min) && (filter.max == null || num <= filter.max)
-    )
-  }
-  const text = cell_text(val)
-  if (filter.kind === `category`) return filter.values.includes(text)
-  return text.toLowerCase().includes(filter.text.toLowerCase())
-}
-
-// Above this many distinct values a column gets a substring box instead of a checklist
-export const CATEGORY_LIMIT = 40
-type FilterPanel = { kind: `numeric` | `category` | `text`; options: string[] }
-
-// Options and control type for one column's filter panel, from unfiltered rows so a filter
-// never hides the options to widen it. Explicit `category` columns are uncapped.
-export function column_filter_panel(
-  col: Omit<Column, `cell`>,
-  rows: RowData[],
-  row_key: string,
-  is_numeric: boolean,
-): FilterPanel {
-  const capped = col.filter !== `category`
-  const seen = new Set<string>()
-  // missing and empty cells share one (blank) option, offered beside real values only
-  let has_blank = false
-  for (const row of rows) {
-    const text = cell_text(row[row_key])
-    if (text === ``) has_blank = true
-    else seen.add(text)
-    if (capped && seen.size > CATEGORY_LIMIT) {
-      seen.clear() // too many to pick from: fall back to a substring box
-      break
-    }
-  }
-  const options = [...(has_blank && seen.size > 0 ? [``] : []), ...[...seen].toSorted()]
-  const configured = col.filter && col.filter !== `auto` ? col.filter : null
-  const detected = is_numeric ? `numeric` : options.length > 0 ? `category` : `text`
-  return { options, kind: configured ?? detected }
-}
-
-// A numeric filter with neither bound, or a category filter allowing everything, is the same
-// as no filter: both collapse to undefined so the funnel icon and row count stay honest.
-export function with_numeric_bound(
-  current: ColumnFilter | undefined,
-  bound: `min` | `max`,
-  raw: string,
-): ColumnFilter | undefined {
-  const base = current?.kind === `numeric` ? current : { kind: `numeric` as const }
-  const value = raw.trim() === `` ? undefined : Number(raw)
-  const next = { ...base, [bound]: Number.isFinite(value) ? value : undefined }
-  return next.min == null && next.max == null ? undefined : next
-}
-export function with_category_toggled(
-  current: ColumnFilter | undefined,
-  value: string,
-  options: string[],
-): ColumnFilter | undefined {
-  // Values no row holds any more drop out, else they'd keep an allow-everything filter active
-  const selected =
-    current?.kind === `category`
-      ? current.values.filter((val) => options.includes(val))
-      : options
-  const next = toggle_item(selected, value)
-  return next.length === options.length ? undefined : { kind: `category`, values: next }
+// How filters (compile_filter and the column filter panel) read a cell: markup stripped,
+// numbers through the same parse that sorting and coloring use, so "1.23 ± 0.05" filters as
+// 1.23. Missing cells use the widgets' default, which is_invalid is.
+export const cell_readers: CellReaders<CellVal> = {
+  to_text: cell_text,
+  to_number: parse_numeric_val,
 }
 
 // === Date/time columns ===

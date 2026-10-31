@@ -1,16 +1,8 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
-import type {
-  CellVal,
-  ColumnFilter,
-  Column,
-  RowData,
-  SortCriterion,
-} from '#lib/table/index.js'
+import type { CellVal, Column, RowData, SortCriterion } from '#lib/table/index.js'
 import {
-  CATEGORY_LIMIT,
-  cell_matches_filter,
+  cell_readers,
   cell_text,
-  column_filter_panel,
   compare_rows,
   compute_column_stats,
   discover_columns,
@@ -22,15 +14,10 @@ import {
   parse_numeric_val,
   resolve_color_domain,
   sort_table_rows,
-  table_to_delimited,
-  table_to_json,
-  table_to_latex,
-  table_to_markdown,
   virtual_window,
-  with_category_toggled,
-  with_numeric_bound,
 } from '#lib/table/index.js'
 import { html_to_text } from '#lib/utils.js'
+import { compile_filter, type ColumnFilterValue } from 'svelte-widgets/table'
 import { describe, expect, it } from 'vitest'
 
 // one-shot wrapper around the memoized factory, for the single-cell assertions below
@@ -482,79 +469,20 @@ describe(`compare_rows`, () => {
 })
 
 describe(`search and filters`, () => {
-  it.each<[CellVal, ColumnFilter, boolean]>([
+  it.each<[CellVal, ColumnFilterValue, boolean]>([
     [`1.5 ± 0.1`, { kind: `numeric`, min: 1, max: 2 }, true],
     [3, { kind: `numeric`, min: 1, max: 2 }, false],
     [`abc`, { kind: `numeric`, min: 0 }, false],
     [5, { kind: `numeric`, max: 5 }, true],
     [`<i>oxide</i>`, { kind: `category`, values: [`oxide`] }, true],
-    [null, { kind: `category`, values: [``] }, true],
+    // n/a cells never match a category, blank strings do
+    [null, { kind: `category`, values: [``] }, false],
+    [NaN, { kind: `category`, values: [``] }, false],
+    [``, { kind: `category`, values: [``] }, true],
     [`Fe2O3`, { kind: `text`, text: `e2o` }, true],
     [`Fe2O3`, { kind: `text`, text: `cu` }, false],
-  ])(`cell_matches_filter(%j, %j) = %j`, (val, filter, expected) => {
-    expect(cell_matches_filter(val, filter)).toBe(expected)
-  })
-
-  it(`picks the filter panel kind from config, then the data, capping auto-detected checklists`, () => {
-    const tags = Array.from({ length: CATEGORY_LIMIT + 1 }, (_, idx) => ({ Tag: `t${idx}` }))
-    const column: Column = { id: `Tag`, label: `Tag` }
-    const few = [{ Tag: `b` }, { Tag: `<i>a</i>` }, { Tag: null }, { Tag: `b` }]
-    expect(column_filter_panel(column, few, `Tag`, false)).toEqual({
-      kind: `category`,
-      options: [``, `a`, `b`], // distinct, markup-stripped, sorted; missing cells as (blank)
-    })
-    // unchecking `a` keeps the null row: before, no option could ever allow a missing cell
-    expect(with_category_toggled(undefined, `a`, [``, `a`, `b`])).toEqual({
-      kind: `category`,
-      values: [``, `b`],
-    })
-    expect(column_filter_panel(column, tags, `Tag`, false)).toEqual({
-      kind: `text`,
-      options: [],
-    })
-    // an explicit category column lists every value however many there are
-    expect(
-      column_filter_panel({ ...column, filter: `category` }, tags, `Tag`, false).options,
-    ).toHaveLength(CATEGORY_LIMIT + 1)
-    expect(column_filter_panel(column, few, `Tag`, true).kind).toBe(`numeric`)
-    expect(column_filter_panel({ ...column, filter: `text` }, few, `Tag`, true).kind).toBe(
-      `text`,
-    )
-    expect(column_filter_panel(column, [], `Tag`, false).kind).toBe(`text`)
-    // blanks join real values but neither make a checklist alone nor count toward the cap
-    const blanks = [{ Tag: null }, { Tag: `` }, { Tag: NaN }]
-    expect(column_filter_panel(column, blanks, `Tag`, false)).toEqual({
-      kind: `text`,
-      options: [],
-    })
-    const at_cap = [...tags.slice(0, CATEGORY_LIMIT), ...blanks]
-    expect(column_filter_panel(column, at_cap, `Tag`, false).options).toHaveLength(
-      CATEGORY_LIMIT + 1,
-    )
-  })
-
-  it(`collapses no-op filters to undefined when editing bounds and checklists`, () => {
-    const min_only = with_numeric_bound(undefined, `min`, ` 1.5 `)
-    expect(min_only).toEqual({ kind: `numeric`, min: 1.5 })
-    expect(with_numeric_bound(min_only, `max`, `abc`)).toEqual({ kind: `numeric`, min: 1.5 })
-    expect(with_numeric_bound(min_only, `min`, ``)).toBeUndefined()
-    // a text filter on the same column is replaced, not merged
-    expect(with_numeric_bound({ kind: `text`, text: `x` }, `max`, `2`)).toEqual({
-      kind: `numeric`,
-      max: 2,
-    })
-
-    const options = [`a`, `b`, `c`]
-    const without_b = with_category_toggled(undefined, `b`, options)
-    expect(without_b).toEqual({ kind: `category`, values: [`a`, `c`] })
-    expect(with_category_toggled(without_b, `a`, options)).toEqual({
-      kind: `category`,
-      values: [`c`],
-    })
-    expect(with_category_toggled(without_b, `b`, options)).toBeUndefined() // all allowed again
-    // a value no row holds any more drops out instead of keeping the filter active
-    const stale = { kind: `category` as const, values: [`a`, `c`, `gone`] }
-    expect(with_category_toggled(stale, `b`, options)).toBeUndefined()
+  ])(`cell %j against %j through cell_readers: %j`, (val, filter, expected) => {
+    expect(compile_filter(filter, cell_readers)(val)).toBe(expected)
   })
 })
 
@@ -634,64 +562,4 @@ it.each<[Partial<Parameters<typeof virtual_window>[0]>, [number, number]]>([
   [{ scroll: 0, count: 0 }, [0, 0]], // empty data
 ])(`virtual_window(%o) = %j`, (opts, [start, end]) => {
   expect(virtual_window({ ...window_base, scroll: 0, ...opts })).toEqual({ start, end })
-})
-
-describe(`table exporters`, () => {
-  const matrix = {
-    headers: [`Name`, `a|b`, `Val`],
-    rows: [
-      [`x, "q"`, `multi\nline`, `1`],
-      [`50% & $3_{}`, `^~\\`, `2`],
-      [`cr\rline`, ``, `3`], // a bare CR is a record separator to most readers: quoted too
-    ],
-    numeric: [false, false, true],
-  }
-
-  it(`emits CSV with RFC 4180 quoting and TSV with flattened newlines`, () => {
-    expect(table_to_delimited(matrix, `,`)).toBe(
-      `Name,a|b,Val\n"x, ""q""","multi\nline",1\n50% & $3_{},^~\\,2\n"cr\rline",,3`,
-    )
-    expect(table_to_delimited(matrix, `\t`).split(`\n`).slice(1)).toEqual([
-      `x, "q"\tmulti line\t1`,
-      `50% & $3_{}\t^~\\\t2`,
-      `cr line\t\t3`,
-    ])
-  })
-
-  it(`exports JSON keyed by stable IDs despite repeated or renamed headers`, () => {
-    const when = new Date(Date.UTC(2024, 0, 2))
-    const rows: RowData[] = [
-      { 'n<sub>val</sub>': 1, Name: `<b>Fe</b>&amp;O`, When: when, Skip: 5 },
-    ]
-    const columns = [
-      { id: `valence`, label: `Value`, key: `n<sub>val</sub>` },
-      { id: `Name`, label: `Value`, key: `Name` },
-      { id: `When`, label: `Value`, key: `When` },
-    ]
-    expect(JSON.parse(table_to_json(rows, columns))).toEqual([
-      { valence: 1, Name: `Fe&O`, When: when.toISOString() },
-    ])
-    columns[0].label = `Renamed`
-    expect(JSON.parse(table_to_json(rows, columns))[0].valence).toBe(1)
-  })
-
-  it(`escapes markdown backslashes, pipes and newlines and right-aligns numeric columns`, () => {
-    const [header, align, row_1, row_2] = table_to_markdown(matrix).split(`\n`)
-    expect(header).toBe(`| Name | a\\|b | Val |`)
-    expect(align).toBe(`| :--- | :--- | ---: |`)
-    expect(row_1).toBe(`| x, "q" | multi<br>line | 1 |`)
-    expect(row_2).toBe(`| 50% & $3_{} | ^~\\\\ | 2 |`)
-    // decoded escaped markup stays text: `<br>` must not become a live line break
-    const markdown = table_to_markdown({ headers: [`<br> &lt;`], rows: [], numeric: [false] })
-    expect(markdown.split(`\n`)[0]).toBe(`| &lt;br> &amp;lt; |`)
-  })
-
-  it(`escapes LaTeX specials once and builds a booktabs tabular`, () => {
-    const lines = table_to_latex(matrix).split(`\n`)
-    expect(lines[0]).toBe(`\\begin{tabular}{llr}`)
-    expect(lines[6]).toBe(
-      `  50\\% \\& \\$3\\_\\{\\} & \\textasciicircum{}\\textasciitilde{}\\textbackslash{} & 2 \\\\`,
-    )
-    expect(lines.at(-1)).toBe(`\\end{tabular}`)
-  })
 })

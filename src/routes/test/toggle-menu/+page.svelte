@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { HeatmapTable, TABLE_EXPORT_FORMATS, ToggleMenu } from '#lib/table/index.js'
+  import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
+  import { sanitize_html } from '#lib/sanitize.js'
+  import { ColumnPicker } from 'svelte-widgets/table'
   import type { Column } from '#lib/table/index.js'
 
   // === Example 1: Basic flat list (no groups) ===
@@ -142,10 +144,10 @@
 </script>
 
 <svelte:head>
-  <title>ToggleMenu Demo</title>
+  <title>ColumnPicker Demo</title>
 </svelte:head>
 
-<h1 id="togglemenu-component-demo" data-hydrated={hydrated}>ToggleMenu Component Demo</h1>
+<h1 id="togglemenu-component-demo" data-hydrated={hydrated}>ColumnPicker Component Demo</h1>
 <p>
   A flexible toggle menu supporting grouped sections, collapsible headers, and disabled states.
 </p>
@@ -178,7 +180,7 @@
     <h2 id="1-basic-flat-list">1. Basic Flat List</h2>
     <p>No groups - displays as a simple grid of toggles.</p>
     <div class="demo-container">
-      <ToggleMenu bind:columns={basic_columns} bind:column_panel_open={basic_open} />
+      <ColumnPicker bind:columns={basic_columns} bind:open={basic_open} />
     </div>
     <div class="state-display">
       <strong>Visible:</strong>
@@ -190,10 +192,10 @@
     <h2 id="2-grouped-sections">2. Grouped Sections</h2>
     <p>Columns grouped by category with collapsible section headers.</p>
     <div class="demo-container">
-      <ToggleMenu
+      <ColumnPicker
         bind:columns={grouped_columns}
-        bind:column_panel_open={grouped_open}
-        bind:collapsed_sections={grouped_collapsed}
+        bind:open={grouped_open}
+        bind:collapsed_groups={grouped_collapsed}
       />
     </div>
     <div class="state-display">
@@ -206,7 +208,7 @@
     <h2 id="3-with-disabled-items">3. With Disabled Items</h2>
     <p>Some toggles are disabled and cannot be changed. Hover for tooltips.</p>
     <div class="demo-container">
-      <ToggleMenu bind:columns={disabled_columns} bind:column_panel_open={disabled_open} />
+      <ColumnPicker bind:columns={disabled_columns} bind:open={disabled_open} />
     </div>
     <div class="state-display">
       <strong>Disabled:</strong>
@@ -221,11 +223,13 @@
     <h2 id="4-html-labels">4. HTML Labels</h2>
     <p>Labels support HTML for subscripts, superscripts, etc.</p>
     <div class="demo-container">
-      <ToggleMenu
+      <ColumnPicker
         bind:columns={html_columns}
-        bind:column_panel_open={html_open}
-        bind:collapsed_sections={html_collapsed}
-      />
+        bind:open={html_open}
+        bind:collapsed_groups={html_collapsed}
+      >
+        {#snippet toggle_label({ column })}{@html sanitize_html(column.label)}{/snippet}
+      </ColumnPicker>
     </div>
   </div>
 
@@ -233,10 +237,10 @@
     <h2 id="5-pre-collapsed-sections">5. Pre-collapsed Sections</h2>
     <p>Some sections start collapsed (Group B and D).</p>
     <div class="demo-container">
-      <ToggleMenu
+      <ColumnPicker
         bind:columns={many_groups_columns}
-        bind:column_panel_open={many_groups_open}
-        bind:collapsed_sections={many_groups_collapsed}
+        bind:open={many_groups_open}
+        bind:collapsed_groups={many_groups_collapsed}
       />
     </div>
     <div class="state-display">
@@ -249,10 +253,10 @@
     <h2 id="6-multi-column-sections">6. Multi-column Sections</h2>
     <p>Each section header spans the full width and its items wrap into up to 3 columns.</p>
     <div class="demo-container">
-      <ToggleMenu
+      <ColumnPicker
         bind:columns={multicolumn_columns}
-        bind:column_panel_open={multicolumn_open}
-        bind:collapsed_sections={multicolumn_collapsed}
+        bind:open={multicolumn_open}
+        bind:collapsed_groups={multicolumn_collapsed}
       />
     </div>
     <div class="state-display">

@@ -37,7 +37,6 @@
     CellColor,
     CellSnippet,
     CellVal,
-    ColumnFilter,
     ColumnPrefs,
     ColumnStats,
     DateTimeFormatMode,
@@ -58,11 +57,10 @@
     NULL_CELL_COLOR,
     resolve_color_domain,
   } from '#lib/table/index.js'
-  import ColumnFilterMenu from './ColumnFilter.svelte'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
   import type { SortCriterion } from './data'
   import {
-    cell_matches_filter,
+    cell_readers,
     cell_text,
     sort_table_rows,
     DATETIME_MODES_BY_KIND,
@@ -77,16 +75,20 @@
     parse_numeric_val,
     text_matches_query,
   } from './data'
-  import type { TableMatrix } from './export'
   import {
-    table_to_delimited,
+    type CellPos,
+    cell_range_select,
+    CellSelection,
+    ColumnFilter,
+    type ColumnFilterValue,
+    ColumnPicker,
+    compile_filter,
+    INTERACTIVE_SELECTOR,
     table_to_json,
-    table_to_latex,
-    table_to_markdown,
+    table_to_text,
+    type TableMatrix,
     tsv_cell,
-  } from './export'
-  import { type CellPos, CellSelection } from './selection.svelte'
-  import ToggleMenu from './ToggleMenu.svelte'
+  } from 'svelte-widgets/table'
   import { virtual_window } from 'svelte-widgets/virtual'
   import type { IconData } from 'svelte-widgets'
   import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
@@ -383,6 +385,11 @@
   const toggle_popover = (kind: PopoverKind, col_id: string) => {
     header_popover = popover_open(kind, col_id) ? null : { kind, col_id }
   }
+  // A close clears the entry only while this popover still owns it, never a newer one
+  const set_popover = (kind: PopoverKind, col_id: string, open: boolean) => {
+    if (open) header_popover = { kind, col_id }
+    else if (popover_open(kind, col_id)) header_popover = null
+  }
 
   const color_scale_options = [
     `interpolateViridis`,
@@ -571,7 +578,7 @@
   // Per-column filters over all columns (hiding one mustn't change which rows show). Cached
   // by content since column_prefs also holds widths: else each resize pointermove would
   // re-filter every row and wipe the cell selection.
-  const keep_filters = same_while_equal<{ key: string; filter: ColumnFilter }[]>()
+  const keep_filters = same_while_equal<{ key: string; filter: ColumnFilterValue }[]>()
   let active_filters = $derived(
     keep_filters(
       columns
@@ -580,7 +587,7 @@
           key: cell_key(col),
           filter: $state.snapshot(prefs_of(col.id).filter),
         }))
-        .filter((entry): entry is { key: string; filter: ColumnFilter } =>
+        .filter((entry): entry is { key: string; filter: ColumnFilterValue } =>
           Boolean(entry.filter),
         ),
     ),
@@ -626,10 +633,18 @@
     return index
   })
 
+  // One compiled test per filter, rebuilt only when the filters change
+  let filter_tests = $derived(
+    active_filters.map(({ key, filter }) => ({
+      key,
+      test: compile_filter(filter, cell_readers),
+    })),
+  )
+
   // Rows surviving the global query and every per-column filter, with their index in `data`
   let filtered_items = $derived.by(() => {
     const query = debounced_query.toLowerCase().trim()
-    const [filters, fuzzy] = [active_filters, search_config?.fuzzy]
+    const [tests, fuzzy] = [filter_tests, search_config?.fuzzy]
     const matches_query = ({ values, text }: SearchEntry): boolean =>
       values.some((val, val_idx) =>
         text_matches_query(
@@ -642,8 +657,7 @@
       )
     return search_index.filter(
       ({ row, entry }) =>
-        filters.every(({ key, filter }) => cell_matches_filter(row[key], filter)) &&
-        (!query || matches_query(entry)),
+        tests.every(({ key, test }) => test(row[key])) && (!query || matches_query(entry)),
     )
   })
   let filtered_data = $derived(filtered_items.map(({ row }) => row))
@@ -1064,7 +1078,6 @@
   const selection = new CellSelection()
   // Roving tabindex anchor: exactly one cell is tabbable, and arrow keys move it
   let active_cell = $state({ row: 0, col: 0 })
-  let suppress_row_click = false
   // Stale (row, col) coordinates must not survive a change of the row set or column layout.
   // Not the page or virtual window: coordinates are absolute, so scrolling/paging keeps them.
   $effect(() => {
@@ -1088,13 +1101,13 @@
   const tab_col = $derived(tab_stop.col)
 
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
+    target instanceof Element && Boolean(target.closest(INTERACTIVE_SELECTOR))
 
   // Body events are delegated to <tbody>; cells and rows carry their absolute index. Only
   // this table's own rows/cells count (a nested HeatmapTable has the same attributes). tbody
   // comes from currentTarget since bind:this resolves late, after a keydown right at mount.
   type BodyEvent = Event & { currentTarget: HTMLTableSectionElement }
-  const cell_under = ({ target, currentTarget: tbody }: BodyEvent): CellPos | null => {
+  const cell_in = (target: EventTarget | null, tbody: Element): CellPos | null => {
     let cell_el =
       target instanceof Element ? target.closest<HTMLElement>(`td[data-row-idx]`) : null
     while (cell_el && cell_el.parentElement?.parentElement !== tbody) {
@@ -1103,6 +1116,7 @@
     if (!cell_el) return null
     return { row: Number(cell_el.dataset.rowIdx), col: Number(cell_el.dataset.colIdx) }
   }
+  const cell_under = (event: BodyEvent) => cell_in(event.target, event.currentTarget)
   const row_under = ({ target, currentTarget: tbody }: BodyEvent): number | null => {
     let row_el =
       target instanceof Element ? target.closest<HTMLElement>(`tr[data-row-idx]`) : null
@@ -1181,28 +1195,6 @@
     })
   })
 
-  function handle_body_pointerdown(event: PointerEvent & BodyEvent) {
-    const pos = cell_under(event)
-    if (!pos || event.button !== 0 || is_interactive_cell_target(event.target)) return
-    selection.start_drag(pos, event.shiftKey || event.metaKey || event.ctrlKey)
-  }
-  function extend_cell_drag(event: PointerEvent & BodyEvent) {
-    if (!selection.dragging) return
-    const pos = cell_under(event)
-    // A native text selection may have started before user-select: none kicked in; drop it
-    // so the cell selection is the only visible one
-    if (pos && selection.extend_drag(pos)) globalThis.getSelection()?.removeAllRanges()
-  }
-  function end_cell_drag() {
-    // A drag that crossed cells must not fire the row click on release
-    if (selection.end_drag()) suppress_row_click = true
-  }
-  function suppress_click_after_cell_drag(event: MouseEvent) {
-    if (!suppress_row_click) return
-    suppress_row_click = false
-    event.stopPropagation()
-    event.preventDefault()
-  }
   function handle_body_focusin(event: FocusEvent & BodyEvent) {
     // One of this table's own cells, not a link or nested table inside it: that focus leaves
     // the tab stop where it was
@@ -1218,20 +1210,19 @@
     if (pos && !is_interactive_cell_target(event.target))
       open_column_context_menu(event, cols[pos.col].id)
   }
-  function handle_window_pointerdown(event: PointerEvent) {
-    const target = event.target instanceof Element ? event.target : null
-    // A drag's suppress flag is consumed by the click right after pointerup; if that click
-    // never fired (released outside the table), any NEW interaction must not inherit it
-    suppress_row_click = false
-    if (selection.size > 0 && !(target && container_el?.contains(target))) selection.clear()
+  // Drag-select cells and copy them as TSV. Attached to the whole container, so presses on
+  // the controls and context menu keep the selection; a press outside clears it. Cells out of
+  // range read as undefined, which to_tsv skips.
+  const selected_cell_text = (row: number, col: number) => {
+    const [row_data, view] = [sorted_data[row], cols[col]]
+    return row_data && view ? cell_text(row_data[view.key]) : undefined
   }
-
+  const cell_selection = cell_range_select(selection, {
+    cell_at: (target) => (tbody_el ? cell_in(target, tbody_el) : null),
+    cell_text: selected_cell_text,
+  })
   const copy_selected_cells = () =>
-    void navigator.clipboard?.writeText(
-      selection.to_tsv(sorted_data.length, cols.length, (row, col) =>
-        tsv_cell(cell_text(sorted_data[row][cols[col].key])),
-      ),
-    )
+    void navigator.clipboard?.writeText(selection.to_tsv(selected_cell_text))
   // Every sorted+filtered value of one column (all pages), one per line
   const copy_column_values = (col_id: string) =>
     void navigator.clipboard?.writeText(
@@ -1285,17 +1276,6 @@
     active_cell = { row, col }
     // The row may not be rendered yet (page flip or virtual window), so wait a tick
     void tick().then(() => own_cell_el(row, col)?.focus())
-  }
-
-  function handle_window_keydown(event: KeyboardEvent) {
-    if (selection.size === 0) return
-    if (event.key === `Escape`) return selection.clear()
-    if (event.key !== `c` || !(event.metaKey || event.ctrlKey)) return
-    // Native text selections and focused form fields keep native copy
-    if (is_interactive_cell_target(event.target) || globalThis.getSelection()?.toString())
-      return
-    event.preventDefault()
-    copy_selected_cells()
   }
 
   // Cell navigation first, then row keys: Enter/Space activate, Up/Down step by absolute
@@ -1474,14 +1454,16 @@
   })
   // CSV/Markdown/LaTeX share the text matrix; JSON keeps raw values under stable column ids
   const export_sources: ExportSources = {
-    csv: () => table_to_delimited(table_matrix(), `,`),
+    csv: () => table_to_text(table_matrix(), `csv`),
     json: () =>
       table_to_json(
         export_rows,
         cols.map((view) => ({ id: view.col.id, key: view.key })),
+        // numbers, dates and nested values are kept; string cells lose their markup
+        (val) => (typeof val === `string` ? html_to_text(val) : val),
       ),
-    md: () => table_to_markdown(table_matrix()),
-    tex: () => table_to_latex(table_matrix()),
+    md: () => table_to_text(table_matrix(), `md`),
+    tex: () => table_to_text(table_matrix(), `tex`),
   }
 
   // === Controls pane helpers ===
@@ -1496,7 +1478,7 @@
     }
     return { color, rest: remaining }
   }
-  // Keep the bindable `hidden_columns` list authoritative while ToggleMenu edits a projection
+  // Keep the bindable `hidden_columns` list authoritative while ColumnPicker edits a projection
   function set_column_visible(col_id: string, visible: boolean) {
     const others = hidden_columns.filter((identifier) => identifier !== col_id)
     hidden_columns = visible ? others : [...others, col_id]
@@ -1611,12 +1593,6 @@
   {/if}
 {/snippet}
 
-<svelte:window
-  onpointerdown={handle_window_pointerdown}
-  onpointerup={end_cell_drag}
-  onkeydown={handle_window_keydown}
-/>
-
 {#snippet icon_btn(icon: IconData, tip: string, on_click: () => void)}
   <button
     class="icon-btn"
@@ -1661,16 +1637,15 @@
   {/if}
 {/snippet}
 
-<!-- svelte-ignore a11y_no_static_element_interactions (capture-phase guard swallowing the click that follows a cell-range drag) -->
 <div
   {@attach table_tooltips}
+  {@attach cell_selection}
   {...rest}
   style={root_styles}
   bind:this={container_el}
   class={[`table-container`, rest.class, { 'cell-dragging': selection.dragging }]}
   data-density={density}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
-  onclickcapture={suppress_click_after_cell_drag}
 >
   {#if controls_config.mode !== `never`}
     <section
@@ -1699,15 +1674,19 @@
       {/if}
 
       {#if show_column_toggle}
-        <ToggleMenu
+        <ColumnPicker
           columns={toggle_columns}
-          bind:column_panel_open={
+          bind:open={
             () => columns_open,
             (open) => {
               columns_open = open
               if (open) export_pane_open = false
             }
           }
+          search_text={(col) =>
+            [col.id, col.key, html_to_text(col.label), col.description, col.group]
+              .filter(Boolean)
+              .join(` `)}
           on_toggle={(col, visible) => set_column_visible(col.id, visible)}
         >
           {#snippet trigger({ open })}
@@ -1717,7 +1696,11 @@
               ><Icon icon={Columns} /></span
             >
           {/snippet}
-        </ToggleMenu>
+          {#snippet toggle_label({ column })}{@html sanitize_html(column.label)}{/snippet}
+          {#snippet description({ column })}
+            {@html sanitize_html(column.description ?? ``)}
+          {/snippet}
+        </ColumnPicker>
       {/if}
 
       {#if export_formats.length}
@@ -1741,7 +1724,7 @@
                 {
                   label: `TSV`,
                   hint: `Tab-separated, pastes into spreadsheet columns`,
-                  copy_text: () => table_to_delimited(table_matrix(), `\t`),
+                  copy_text: () => table_to_text(table_matrix(), `tsv`),
                 },
               ],
             },
@@ -1933,16 +1916,23 @@
                 >
               {/if}
               {#if show_filters && col.filter !== false}
-                <ColumnFilterMenu
-                  {col}
-                  rows={data}
-                  row_key={view.key}
-                  is_numeric={view.numeric}
-                  filter={prefs_of(col_id).filter}
-                  stats={view.stats}
-                  open={popover_open(`filter`, col_id)}
-                  on_toggle={() => toggle_popover(`filter`, col_id)}
-                  on_change={(filter) => set_pref(col_id, `filter`, filter)}
+                <ColumnFilter
+                  class="header-popover"
+                  column={html_to_text(col.label)}
+                  values={() => data.map((row) => row[view.key])}
+                  options={{
+                    kind: col.filter || `auto`,
+                    numeric: view.numeric,
+                    ...cell_readers,
+                  }}
+                  bind:filter={
+                    () => prefs_of(col_id).filter,
+                    (filter) => set_pref(col_id, `filter`, filter)
+                  }
+                  bind:open={
+                    () => popover_open(`filter`, col_id),
+                    (open) => set_popover(`filter`, col_id, open)
+                  }
                 />
               {/if}
               {#if dt_mode}
@@ -1981,11 +1971,9 @@
       </thead>
       <!-- One listener set for every row and cell: pointer/keyboard/focus events identify their
            row and cell from the data-row-idx/data-col-idx they carry instead of a closure per cell -->
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (delegated cell navigation and row actions) -->
       <tbody
         bind:this={tbody_el}
-        onpointerdown={handle_body_pointerdown}
-        onpointermove={extend_cell_drag}
         onpointerover={on_row_hover ? handle_body_pointerover : undefined}
         onpointerleave={on_row_hover ? handle_body_pointerleave : undefined}
         onfocusin={handle_body_focusin}
@@ -2209,8 +2197,9 @@
 </div>
 
 <style>
-  /* Chrome shared by the header popovers (ColumnFilter, DateTimeFormatMenu): the inline
-     wrapper, its 14 px trigger and the floating panel. Each component keeps only what differs. */
+  /* Chrome of the header popovers: the inline wrapper and touch halo (ColumnFilter,
+     DateTimeFormatMenu), and DateTimeFormatMenu's 14 px trigger and floating select.
+     ColumnFilter's scoped trigger and panel rules win, so it's themed via --column-filter-*. */
   :global(.header-popover) {
     display: inline-flex;
     align-items: center;
@@ -2248,7 +2237,7 @@
   :global(.header-popover > button:is(:hover, [aria-expanded='true'])) {
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
   }
-  :global(.header-popover > :is(div, select)) {
+  :global(.header-popover > select) {
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
     border-radius: 4px;
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
@@ -2268,6 +2257,8 @@
   }
   .table-container {
     --table-accent: var(--accent-color, #4a9eff);
+    --column-filter-active-color: var(--table-accent);
+    --column-filter-panel-bg: var(--heatmap-header-bg, var(--page-bg, Canvas));
     font-size: var(--heatmap-font-size, 0.9em);
     width: fit-content;
     max-width: 100%;
