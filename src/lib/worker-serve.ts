@@ -39,7 +39,10 @@ export function serve_worker<Input, Options, Result>(
           { transfer: transferables(result) },
         )
       } catch (err) {
-        self.postMessage({ id: identifier, result: null, error: to_error(err).message })
+        // never empty: `throw new Error()` must not read as success
+        const { name, message } = to_error(err)
+        const error = message || `${name} thrown without a message`
+        self.postMessage({ id: identifier, result: null, error })
       }
     },
   )

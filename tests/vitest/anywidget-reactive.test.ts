@@ -2,6 +2,7 @@
 import { flushSync, mount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
+  data_props,
   derived_prop,
   drive_prop,
   drive_props,
@@ -55,6 +56,24 @@ describe(`reactive_widget`, () => {
     expect(props).toEqual({ a: 1, b: `x`, on_click: callback_fn })
     model.push_from_python(`a`, 7)
     expect(props.a).toBe(7)
+  })
+
+  // A deep proxy over a 30k-site structure mounted the Structure widget 10x slower, while a
+  // config object must stay a proxy so a controls pane mutating it in place re-renders
+  test(`data props reach the component as the trait values, other objects as proxies`, () => {
+    const structure = { sites: [{ xyz: [0, 0, 0] }] }
+    const display = { x_grid: true }
+    const model = new MockModel({ structure, display })
+    const { props } = reactive_widget(as_model(model), [
+      ...data_props([`structure`]),
+      drive_prop(`display`),
+    ])
+    expect(props.structure).toBe(structure)
+    expect(props.display).not.toBe(display)
+    expect(props.display).toEqual(display)
+    const moved = { sites: [{ xyz: [1, 0, 0] }] }
+    model.push_from_python(`structure`, moved)
+    expect(props.structure).toBe(moved)
   })
 
   test(`derived: recomputes when any dep trait changes`, () => {

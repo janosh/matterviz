@@ -620,6 +620,8 @@ O2   O   0.410  0.140  0.880  1.000`
         { element: `O`, abc: [0.41, 0.27, 0.12] },
         { element: `O`, abc: [0.41, 0.14, 0.88] },
       ],
+      // no symop loop, so only the asymmetric unit is drawn, which must not pass silently
+      warning: `CIF declares space group P3121 but lists no symmetry operations; showing only the listed sites, not the full cell`,
     },
     {
       name: `monoclinic (β ≠ 90°)`,
@@ -630,20 +632,41 @@ O2   O   0.410  0.140  0.880  1.000`
         { element: `P`, abc: [0.25, 0.25, 0.25] },
         { element: `S`, abc: [0.5, 0.5, 0.5] },
       ],
+      warning: undefined,
     },
-  ])(`should parse CIF format correctly: $name`, ({ cif, expected_lattice, expected_abc }) => {
-    const result = parse_cif(cif)
-    expect(result.sites).toHaveLength(expected_abc.length)
-    for (const [param, expected_val] of Object.entries(expected_lattice)) {
-      expect(result.lattice[param as `a`], param).toBeCloseTo(expected_val, 6)
-    }
-    expected_abc.forEach((expected, idx) => {
-      const site = result.sites[idx]
-      expect(site.species[0].element).toBe(expected.element)
-      expect_vec3_close(site.abc, expected.abc, 12)
-      expect(site.species[0].occu).toBe(1.0)
-    })
-    expect_sites_reconstruct(result)
+  ])(
+    `should parse CIF format correctly: $name`,
+    ({ cif, expected_lattice, expected_abc, warning }) => {
+      const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      onTestFinished(() => warn_spy.mockRestore())
+      const result = parse_cif(cif)
+      expect(warn_spy.mock.calls).toEqual(warning ? [[warning]] : [])
+      expect(result.sites).toHaveLength(expected_abc.length)
+      for (const [param, expected_val] of Object.entries(expected_lattice)) {
+        expect(result.lattice[param as `a`], param).toBeCloseTo(expected_val, 6)
+      }
+      expected_abc.forEach((expected, idx) => {
+        const site = result.sites[idx]
+        expect(site.species[0].element).toBe(expected.element)
+        expect_vec3_close(site.abc, expected.abc, 12)
+        expect(site.species[0].occu).toBe(1.0)
+      })
+      expect_sites_reconstruct(result)
+    },
+  )
+
+  // the missing-symops warning is only for a cell left incomplete: a trailing comment is not
+  // part of the symbol, and centering that reconciles the atom-type counts fills the cell
+  // oxfmt-ignore
+  test.each([
+    [`P1 with a trailing comment`, `_symmetry_space_group_name_H-M 'P 1' # triclinic`, 1],
+    [`centering fills the cell`, `_symmetry_space_group_name_H-M 'F m -3 m'\nloop_\n_atom_type_symbol\n_atom_type_number_in_cell\nFe 4`, 4],
+  ])(`no missing-symops warning: %s`, (_desc, header, n_sites) => {
+    const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    onTestFinished(() => warn_spy.mockRestore())
+    const cif = `data_test\n${cif_cell(5, 5, 5, [90, 90, 90])}\n${header}\n${site_loop}\nFe1 Fe 0 0 0`
+    expect(parse_cif(cif).sites).toHaveLength(n_sites)
+    expect(warn_spy.mock.calls).toEqual([])
   })
 
   it.each([
@@ -913,14 +936,13 @@ O2   O   0.410  0.140  0.880  1.000`
   // CIF tags are case-insensitive and real files ship `'X, Y, Z'`. The x/y/z lookup was not,
   // so every uppercase term fell through to the numeric branch, `Number('X')` was NaN and each
   // dimension collapsed to 0 - the whole asymmetric unit mapped onto the origin, giving one
-  // fabricated atom there instead of the images the ops describe.
-  test.each([`lower`, `upper`])(`expands %scase symmetry ops alike`, (which) => {
+  // fabricated atom there instead of the images the ops describe. The atom-site loop was
+  // found by a case-sensitive tag test too, so an uppercase file had "no valid atom site loop".
+  test.each([`lower`, `upper`])(`reads %scase tags and symmetry ops alike`, (which) => {
     const ops = [`x, y, z`, `-x, -y, z`, `-x, y, -z`, `x, -y, -z`]
-    const rows = (which === `upper` ? ops.map((operation) => operation.toUpperCase()) : ops)
-      .map((operation) => `'${operation}'`)
-      .join(`\n`)
+    const rows = ops.map((operation) => `'${operation}'`).join(`\n`)
     const cif = `data_t\n${cell5}\nloop_\n_symmetry_equiv_pos_as_xyz\n${rows}\n${site_loop}\nSi1 Si 0.25 0.1 0.3`
-    const result = parse_cif(cif)
+    const result = parse_cif(which === `upper` ? cif.toUpperCase() : cif)
 
     // oxfmt-ignore
     expect(rounded_abc(result.sites)).toEqual([
@@ -1758,6 +1780,8 @@ describe(`parse_structure_file`, () => {
       expect(`lattice` in result).toBe(false)
       // molecules get a placeholder abc so every Site carries both coordinate kinds
       expect(result.sites[0].abc).toEqual([0, 0, 0])
+      // and an unlabelled site (old pymatgen Molecule JSON writes only `name`) a label
+      expect(result.sites[0].label).toBe(`${result.sites[0].species[0].element}1`)
     })
 
     test(`derives abc from xyz (and vice versa) when a JSON site carries only one`, () => {
@@ -1783,6 +1807,8 @@ describe(`parse_structure_file`, () => {
         [plain(`C`)],
         [plain(`Fe`, 0.5), plain(`Ni`)],
       ])
+      // unlabelled sites are named like every other parser's, never left undefined
+      expect(result.sites.map(({ label }) => label)).toEqual([`C1`, `C2`, `Fe3`])
     })
 
     // oxfmt-ignore
@@ -2111,32 +2137,50 @@ describe(`shared numeric coercion`, () => {
 
   // The char-code fast path must round exactly like Number(): every token below is compared
   // bit for bit against parse_float_token, including the ones that must take the slow path
+  // (mantissas at and past 2^53, exponents past ±22, Fortran/unicode/hex spellings)
   test(`LineScanner tokenizes like split(/\\s+/) and decodes like parse_float_token`, () => {
     // oxfmt-ignore
     const tokens = [
-      `0`, `-0`, `+5`, `1.`, `.5`, `-.5`, `.`, `-`, `+`, `1e3`, `1E-3`, `-2.5e+2`, `1.0D-3`, `0x10`,
-      `Infinity`, `NaN`, `abc`, `1,5`, `1.0abc`, `0.000123`, `123456789012345`, `1234567890123456`,
-      `0.1234567890123456789`, `1e400`, `9.87654321e-300`, `Fe`, `T`, `00012`, `1e`, `1e+`, `--1`,
-      `1.2.3`, `0.30000000000000004`, `-0.0000000000000000000001`,
+      `0`, `-0`, `+5`, `1.`, `.5`, `-.5`, `+.5`, `.`, `-`, `+`, `1e3`, `1E-3`, `-2.5e+2`, `1.0D-3`,
+      `1.0d+3`, `0x10`, `0b101`, `Infinity`, `-Infinity`, `infinity`, `NaN`, `abc`, `1,5`, `1.0abc`,
+      `0.000123`, `123456789012345`, `1234567890123456`, `0.1234567890123456789`, `1e400`, `1e-400`,
+      `0e400`, `-0e5`, `9.87654321e-300`, `Fe`, `T`, `In`, `00012`, `1e`, `1e+`, `1e-`, `.e5`, `e5`,
+      `--1`, `+-1`, `1.2.3`, `1e5.5`, `1e+0005`, `1e22`, `1e23`, `3e23`, `1e-22`, `1e-23`, `123e-24`,
+      `9007199254740991`, `9007199254740992`, `9007199254740993`, `-900719925474099.3e7`,
+      `0.30000000000000004`, `-0.0000000000000000000001`, `\u22121.5`, `1.5e\u22123`, `1*^5`,
+      `1\u00A0`, `\uFEFF5`,
     ]
     const rng = (seed: number) => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32
     const random = rng(3)
     for (let idx = 0; idx < 2000; idx++) {
-      const digits = Math.floor(random() * 12)
-      const magnitude = (random() - 0.5) * 10 ** Math.floor(random() * 40 - 20)
-      tokens.push(magnitude.toFixed(digits), magnitude.toExponential(digits))
+      const digits = Math.floor(random() * 20)
+      const magnitude = (random() - 0.5) * 10 ** Math.floor(random() * 50 - 25)
+      tokens.push(
+        magnitude.toFixed(digits),
+        magnitude.toExponential(digits),
+        String(magnitude),
+      )
     }
     const scanner = new LineScanner()
-    for (let start = 0; start < tokens.length; start += 7) {
-      const chunk = tokens.slice(start, start + 7)
-      const line = `  ${chunk.join(`\t `)}\r`
-      expect(scanner.scan(line)).toBe(chunk.length)
+    const expect_tokens = (chunk: string[]) => {
       for (const [token_idx, token] of chunk.entries()) {
         expect(scanner.str(token_idx)).toBe(token)
+        expect(scanner.token_length(token_idx)).toBe(token.length)
         expect(scanner.num(token_idx)).toBe(parse_float_token(token))
       }
       expect(scanner.num(chunk.length)).toBeNaN()
     }
+    for (let start = 0; start < tokens.length; start += 7) {
+      const chunk = tokens.slice(start, start + 7)
+      expect(scanner.scan(`  ${chunk.join(`\t `)}\r`)).toBe(chunk.length)
+      expect_tokens(chunk)
+    }
+    // all of them as one window of a larger text, as TextLines scans its lines
+    const text = `1 2\r\n${tokens.join(` `)}\r\n3 4`
+    expect(scanner.scan(text, 5, text.length - 5)).toBe(tokens.length)
+    expect_tokens(tokens)
+    expect(scanner.scan(``)).toBe(0)
+    expect(scanner.scan(` \t\r`)).toBe(0)
   })
 })
 

@@ -181,17 +181,25 @@ const CENTERING_VECTORS: Record<string, Vec3[]> = {
   F: [[0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]],
   R: [[2 / 3, 1 / 3, 1 / 3], [1 / 3, 2 / 3, 2 / 3]],
 }
-// Detect the centering letter from a CIF's space-group H-M symbol, if present.
-const extract_cif_centering = (lines: readonly string[]): string | null => {
+// The space group a CIF block declares: its H-M symbol (quotes and spaces dropped, so
+// `'P 31 2 1'` is `P3121`) and IT number, each null when absent or unset
+const cif_space_group = (
+  lines: readonly string[],
+): { symbol: string | null; number: number | null } => {
+  let symbol: string | null = null
+  let number: number | null = null
   for (const line of lines) {
-    const match =
-      /^_(?:symmetry_space_group_name_h-m|space_group_name_h-m(?:_alt)?)\s+(?<symbol>.+)/i.exec(
+    const { tag, value = `` } =
+      /^_(?<tag>symmetry_space_group_name_h-m|space_group_name_h-m(?:_alt)?|symmetry_int_tables_number|space_group_it_number)\s+(?<value>.+)/i.exec(
         line.trim(),
-      )
-    const letter = match?.groups?.symbol.replaceAll(/['"]/g, ``).trim()[0]?.toUpperCase()
-    if (letter && letter in CENTERING_VECTORS) return letter
+      )?.groups ?? {}
+    // a trailing `# comment` is not part of the value (`'P 1' # triclinic` is P1)
+    const text = value.replace(/(?:^|\s)#.*$/, ``).replaceAll(/['"\s]/g, ``)
+    if (!tag || is_cif_unset(text) || !text) continue
+    if (/number/i.test(tag)) number ??= parse_cif_uncertain_number(text)
+    else symbol ??= text
   }
-  return null
+  return { symbol, number }
 }
 
 interface PhonopyCell {
@@ -789,7 +797,7 @@ export const parse_cif = (content: string): Crystal => {
   const find_atom_loop = () => {
     let failure = `No valid atom site loop found in CIF file`
     for (const { headers, data_start } of iter_cif_loops(lines)) {
-      if (!headers.some((header) => header.includes(`_atom_site_`))) continue
+      // tags are case-insensitive: only a loop with atom-site coordinates is a candidate
       const header_indices = build_cif_atom_site_header_indices(headers)
       const coord_cols = cif_coord_columns(header_indices)
       if (!coord_cols) continue
@@ -917,14 +925,17 @@ export const parse_cif = (content: string): Crystal => {
       coefficients.some((row, dim) => row.some((coef, col) => coef !== (dim === col ? 1 : 0))),
   )
 
+  const space_group = cif_space_group(block_lines)
   // Candidate lattice-centering translations from the space-group symbol (R
   // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
   // apply them is decided below by reconciling against _atom_type_number_in_cell.
-  const centering_letter = extract_cif_centering(block_lines)
+  const centering_letter = space_group.symbol?.[0]?.toUpperCase()
   const is_hexagonal_setting =
     Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
   const centering =
-    centering_letter && (centering_letter !== `R` || is_hexagonal_setting)
+    centering_letter &&
+    centering_letter in CENTERING_VECTORS &&
+    (centering_letter !== `R` || is_hexagonal_setting)
       ? CENTERING_VECTORS[centering_letter]
       : []
   // mcif centering ops are pure translations applied on top of every op, like centering vectors
@@ -1010,6 +1021,7 @@ export const parse_cif = (content: string): Crystal => {
   // COD 7008984, where listed ops + atoms already total the cell contents).
   let { sites, n_overlaps } = build_sites(magn_centering)
   const expected_total = Object.values(atom_type_counts).reduce((sum, num) => sum + num, 0)
+  let centering_fills_cell = false
   if (centering.length > 0 && expected_total > sites.length) {
     // The letter's translations add to explicit mcif centerings (with all their sums)
     const centered = build_sites([
@@ -1030,6 +1042,23 @@ export const parse_cif = (content: string): Crystal => {
       elements.length === expected_total &&
       Object.entries(atom_type_counts).every(([element, exp]) => counts[element] === exp)
     if (reconciles) ({ sites, n_overlaps } = centered)
+    centering_fills_cell = reconciles
+  }
+  // Without a symop loop only the listed sites are drawn (ops are not generated from the
+  // space-group symbol, as pymatgen does): say so when the block declares a space group with
+  // more operations than the identity and neither its rows nor centering fill the cell
+  const declares_symmetry =
+    (space_group.symbol !== null && !/^P1$/i.test(space_group.symbol)) ||
+    (space_group.number !== null && space_group.number > 1)
+  if (
+    symmetry_ops.length === 0 &&
+    declares_symmetry &&
+    !already_enumerated &&
+    !centering_fills_cell
+  ) {
+    parse_warn(
+      `CIF declares space group ${space_group.symbol ?? space_group.number} but lists no symmetry operations; showing only the listed sites, not the full cell`,
+    )
   }
   if (n_overlaps > 0) {
     parse_warn(
@@ -1104,9 +1133,10 @@ function* json_structure_records(obj: unknown): Generator<Record<string, unknown
 // species plus abc and/or xyz; the lattice, when present, is authoritative only in its
 // matrix (default pymatgen verbosity writes matrix + pbc and no scalar params)
 type StructureLike = Omit<AnyStructure, `sites` | `lattice`> & {
-  sites: (Omit<Site, `abc` | `xyz` | `properties`> & {
+  sites: (Omit<Site, `abc` | `xyz` | `label` | `properties`> & {
     abc?: Vec3
     xyz?: Vec3
+    label?: string
     properties?: Site[`properties`]
   })[]
   lattice?: { matrix: math.Matrix3x3; pbc?: unknown }
@@ -1159,6 +1189,11 @@ export function json_species(species: unknown, where: string): Species[] {
   })
 }
 
+// A JSON site's label, named like every other parser's (`C1`) when it carries none: pymatgen
+// Molecule JSON before labels existed writes only `name`, as do hand-written files
+const json_site_label = (label: unknown, species: Species[], idx: number): string =>
+  typeof label === `string` ? label : `${species[0].element}${idx + 1}`
+
 // Promote a structure-like JSON object to an AnyStructure: the lattice is rebuilt from its
 // matrix (scalar params recomputed, pbc kept when declared, else fully periodic), every
 // site gets both abc and xyz, and periodic fractional coordinates are wrapped into [0, 1).
@@ -1175,9 +1210,11 @@ export function structure_from_json(
         throw new Error(
           `JSON site ${display_idx(idx)} has no xyz and the structure has no lattice`,
         )
+      const species = json_species(site.species, `JSON site ${display_idx(idx)}`)
       return {
         ...site,
-        species: json_species(site.species, `JSON site ${display_idx(idx)}`),
+        species,
+        label: json_site_label(site.label, species, idx),
         properties: site.properties ?? {},
         xyz: site.xyz,
         abc: site.abc ?? ([0, 0, 0] as Vec3),
@@ -1191,7 +1228,8 @@ export function structure_from_json(
   const cart_to_frac = cart_to_frac_with_fallback(matrix, { context: `JSON lattice` }).convert
   const sites = raw_sites.map((raw_site, idx) => {
     const species = json_species(raw_site.species, `JSON site ${display_idx(idx)}`)
-    const site = { ...raw_site, species, properties: raw_site.properties ?? {} }
+    const label = json_site_label(raw_site.label, species, idx)
+    const site = { ...raw_site, species, label, properties: raw_site.properties ?? {} }
     if (site.abc && site.xyz) return { ...site, abc: site.abc, xyz: site.xyz }
     if (site.abc) return { ...site, abc: site.abc, xyz: frac_to_cart(site.abc) }
     if (site.xyz) return { ...site, xyz: site.xyz, abc: cart_to_frac(site.xyz) }

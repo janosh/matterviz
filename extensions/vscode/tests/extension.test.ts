@@ -368,6 +368,20 @@ describe(`MatterViz Extension`, () => {
     expect(await read_file(`/test/${filename}`)).toEqual({ filename, is_base64, content })
   })
 
+  // Windows PowerShell redirection writes UTF-16 with a byte-order mark
+  test.each([
+    [`utf-8`, Buffer.from(`H2O\n`)],
+    [`utf-16le`, Buffer.from(`\uFEFFH2O\n`, `utf16le`)],
+    [`utf-16be`, Buffer.from(`\uFEFFH2O\n`, `utf16le`).swap16()],
+  ])(`file reading: decodes %s text by its byte-order mark`, async (_encoding, bytes) => {
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(new Uint8Array(bytes))
+    expect(await read_file(`/test/water.xyz`)).toEqual({
+      filename: `water.xyz`,
+      content: `H2O\n`,
+      is_base64: false,
+    })
+  })
+
   test.each([`large-trajectory.traj`, `large.extxyz`])(
     `file reading: large trajectory %s returns an indexed marker`,
     async (filename) => {

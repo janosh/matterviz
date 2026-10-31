@@ -45,6 +45,10 @@ describe(`parse_formula`, () => {
     [`Li0.5Na0.5Cl`, { Li: 0.5, Na: 0.5, Cl: 1 }],
     [`Li.5Na.5Cl`, { Li: 0.5, Na: 0.5, Cl: 1 }],
     [`Fe2.5O3.75`, { Fe: 2.5, O: 3.75 }],
+    // pymatgen's own output for amounts below 1e-4 (Composition.formula: "Fe1e-05 O1")
+    [`Fe1e-05 O1`, { Fe: 0.00001, O: 1 }],
+    [`Li2.5e-3(Fe1e2)2Er3`, { Li: 0.0025, Fe: 200, Er: 3 }], // E of Er is not an exponent
+    [`Fe1e+2O·1e1H2O`, { Fe: 100, O: 11, H: 20 }],
     // charges are accepted and ignored for plain compositions
     [`Fe^2+O3`, { Fe: 1, O: 3 }],
     [`Fe[3+]2O[2-]3`, { Fe: 2, O: 3 }],
@@ -88,6 +92,8 @@ describe(`parse_formula`, () => {
     [`Fe^-2+`, `Unexpected character`],
     [`Fe[+2-]`, `Unexpected character`],
     [`Fe[-2+]`, `Unexpected character`],
+    [`Fe1e`, `Unexpected character "e" at position 3`], // exponent needs digits
+    [`Fe1E5`, `Invalid element symbol: E`], // uppercase E is an element, never an exponent
   ])(`%s -> %s`, (formula, expected) => {
     expect(() => parse_formula(formula)).toThrow(expected)
   })

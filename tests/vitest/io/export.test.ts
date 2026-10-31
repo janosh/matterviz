@@ -10,6 +10,7 @@ import {
   render_video_frames,
   renderer_registry,
   scene_registry,
+  set_png_dpi,
   svg_to_png_blob,
   svg_to_string,
   type ExportSources,
@@ -19,6 +20,7 @@ import { download } from 'svelte-widgets/download'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera } from 'three/webgpu'
 import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
+import { crc32 } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { mock_object_url } from '../setup'
 
@@ -33,15 +35,48 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+// A 1x1 PNG as a canvas encoder writes it: IHDR, IDAT, IEND and no pHYs
+const png_blob = (): Blob =>
+  new Blob(
+    [
+      Uint8Array.from(
+        atob(
+          `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
+        ),
+        (char) => char.charCodeAt(0),
+      ),
+    ],
+    { type: `image/png` },
+  )
+
+// The chunk types of a PNG in file order, checking each chunk's CRC, plus the DPI its pHYs
+// declares (null without one)
+const read_png = async (blob: Blob) => {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const view = new DataView(bytes.buffer)
+  const chunks: string[] = []
+  let dpi: number | null = null
+  for (let pos = 8; pos < bytes.length;) {
+    const length = view.getUint32(pos)
+    const type = new TextDecoder().decode(bytes.subarray(pos + 4, pos + 8))
+    expect(view.getUint32(pos + 8 + length)).toBe(
+      crc32(bytes.subarray(pos + 4, pos + 8 + length)),
+    )
+    if (type === `pHYs`) {
+      expect([view.getUint32(pos + 8), bytes[pos + 16]]).toEqual([view.getUint32(pos + 12), 1])
+      dpi = view.getUint32(pos + 8) * 0.0254
+    }
+    chunks.push(type)
+    pos += 12 + length
+  }
+  return { chunks, dpi }
+}
+
 const make_mock_canvas = (
   toBlob_impl?: (callback_fn: BlobCallback) => void,
 ): HTMLCanvasElement =>
   ({
-    toBlob: vi.fn(
-      toBlob_impl ??
-        ((callback_fn: BlobCallback) =>
-          callback_fn(new Blob([`test`], { type: `image/png` }))),
-    ),
+    toBlob: vi.fn(toBlob_impl ?? ((callback_fn: BlobCallback) => callback_fn(png_blob()))),
     width: 800,
     height: 600,
   }) as unknown as HTMLCanvasElement
@@ -237,6 +272,30 @@ test.each([
   expect(dpi_to_scale(png_dpi)).toBeCloseTo(expected, 12)
 })
 
+describe(`set_png_dpi`, () => {
+  test.each([72, 300, 600])(
+    `declares %s DPI right after IHDR, replacing any pHYs`,
+    async (dpi) => {
+      const png = await set_png_dpi(png_blob(), dpi)
+      expect(await read_png(png)).toEqual({
+        chunks: [`IHDR`, `pHYs`, `IDAT`, `IEND`],
+        dpi: expect.closeTo(dpi, 1),
+      })
+      // setting it again replaces the chunk instead of adding a second one
+      expect(await read_png(await set_png_dpi(png, 150))).toEqual({
+        chunks: [`IHDR`, `pHYs`, `IDAT`, `IEND`],
+        dpi: expect.closeTo(150, 1),
+      })
+    },
+  )
+
+  test(`refuses bytes that are no PNG`, async () => {
+    await expect(set_png_dpi(new Blob([`test`]), 300)).rejects.toThrow(
+      `Canvas encoder returned no PNG (4 bytes)`,
+    )
+  })
+})
+
 describe(`canvas_to_png_blob`, () => {
   test.each([
     { width: 800, height: 600, delay_ms: 0 },
@@ -244,12 +303,16 @@ describe(`canvas_to_png_blob`, () => {
     { width: 4000, height: 4000, delay_ms: 40_000 },
   ])(`encodes $width×$height PNG after $delay_ms ms`, async ({ width, height, delay_ms }) => {
     vi.useFakeTimers()
-    const blob = new Blob([`test`], { type: `image/png` })
-    const canvas = make_mock_canvas((callback) => setTimeout(() => callback(blob), delay_ms))
+    const canvas = make_mock_canvas((callback) =>
+      setTimeout(() => callback(png_blob()), delay_ms),
+    )
     Object.assign(canvas, { width, height })
     const pending = canvas_to_png_blob(canvas, 72).catch((error: unknown) => error)
     await vi.runAllTimersAsync()
-    expect(await pending).toBe(blob)
+    expect(await read_png((await pending) as Blob)).toEqual({
+      chunks: [`IHDR`, `pHYs`, `IDAT`, `IEND`],
+      dpi: expect.closeTo(72, 1), // integer pixels per meter: 2835 -> 72.009
+    })
     // at native resolution the canvas itself is encoded, with no offscreen rescale
     expect(canvas.toBlob).toHaveBeenCalledExactlyOnceWith(expect.any(Function), `image/png`)
     expect(vi.getTimerCount()).toBe(0)
@@ -268,7 +331,8 @@ describe(`canvas_to_png_blob`, () => {
       const canvas = make_mock_canvas()
       Object.assign(canvas, { clientWidth: client[0], clientHeight: client[1] })
       const scaled_canvas = mock_offscreen_canvas()
-      await canvas_to_png_blob(canvas, dpi)
+      const png = await canvas_to_png_blob(canvas, dpi)
+      expect((await read_png(png)).dpi).toBeCloseTo(dpi, 1)
       expect(canvas.toBlob).toHaveBeenCalledTimes(direct ? 1 : 0)
       if (direct) return
       expect([scaled_canvas.width, scaled_canvas.height]).toEqual(size)
@@ -669,7 +733,11 @@ describe(`svg_to_png_blob`, () => {
         svg.append(rect)
       }
       document.body.append(svg)
-      expect(await svg_to_png_blob(svg, dpi)).toBeInstanceOf(Blob)
+      // the declared DPI is the one rendered, past dpi_to_scale's 720 DPI cap
+      expect((await read_png(await svg_to_png_blob(svg, dpi))).dpi).toBeCloseTo(
+        Math.min(dpi, 720),
+        1,
+      )
       expect([mock_canvas_element.width, mock_canvas_element.height]).toEqual(size)
       const svg_blob = object_url.create.mock.calls[0][0] as Blob
       expect(svg_blob.type).toBe(`image/svg+xml;charset=utf-8`)
@@ -767,9 +835,8 @@ test.each([
   [`no overlays`, 0, 800, null],
   [`an unlaid-out canvas`, 1, 0, `has not been laid out (zero size)`],
 ])(`canvas_overlay_png_blob with %s`, async (_label, n_overlays, size, error) => {
-  const frame_blob = new Blob([`frame`], { type: `image/png` })
   const canvas = Object.assign(
-    make_mock_canvas((callback) => callback(frame_blob)),
+    make_mock_canvas((callback) => callback(png_blob())),
     {
       getBoundingClientRect: () => new DOMRect(0, 0, size, size),
     },
@@ -779,7 +846,7 @@ test.each([
   const overlays = Array.from({ length: n_overlays }, () => document.createElement(`div`))
   const result = canvas_overlay_png_blob(canvas, overlays, 72)
   if (error) await expect(result).rejects.toThrow(error)
-  else expect(await result).toBe(frame_blob)
+  else expect((await read_png(await result)).dpi).toBeCloseTo(72, 1)
   expect(bitmap_spy).not.toHaveBeenCalled()
 })
 

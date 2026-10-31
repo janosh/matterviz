@@ -149,7 +149,9 @@
     </div>
   {/if}
 
-  {#each filtered_files as file (file.name)}
+  <!-- neither half is unique alone: runs in different directories share names like
+       vasprun.xml, and entries that are not fetchable all carry url `` -->
+  {#each filtered_files as file (`${file.url}\n${file.name}`)}
     {@const base_type = get_base_file_type(file)}
     {@const paint = paint_for(base_type)}
     {@const is_active = active_files.includes(file.name)}

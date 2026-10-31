@@ -328,6 +328,7 @@ test.each([
 test.each([
   [null, null, null], // An explicit null is a valid result, not a missing one.
   [null, `boom`, /boom/],
+  [null, ``, /^$/], // an empty message is still an error, not a null result
   [undefined, null, /Test worker returned no result for request 1/],
 ] as const)(`handles result=%s, error=%s`, async (result, error, expected_error) => {
   const run = make_client<string | null>(() => null)
@@ -578,7 +579,7 @@ test.each([`abort`, `cancel`] as const)(
   },
 )
 
-test(`serve_worker answers an undeserializable request with an id-less error reply`, () => {
+test(`serve_worker replies with results, message-less errors and an id-less deserialization error`, () => {
   // Stand in for the worker global scope: record listeners and posted replies
   const listeners = new Map<string, (event: unknown) => void>()
   const posted: unknown[] = []
@@ -587,11 +588,18 @@ test(`serve_worker answers an undeserializable request with an id-less error rep
       listeners.set(type, handler),
     postMessage: (message: unknown) => posted.push(message),
   })
-  serve_worker((input: number) => input * 2)
+  serve_worker((input: number) => {
+    // oxlint-disable-next-line eslint-plugin-unicorn/error-message -- message-less on purpose
+    if (input < 0) throw new TypeError()
+    return input * 2
+  })
   listeners.get(`message`)?.({ data: { id: 7, input: 21, options: {} } })
+  // a message-less error still replies with a non-empty error
+  listeners.get(`message`)?.({ data: { id: 8, input: -1, options: {} } })
   listeners.get(`messageerror`)?.({})
   expect(posted).toEqual([
     { id: 7, result: 42, error: null },
+    { id: 8, result: null, error: `TypeError thrown without a message` },
     { id: null, result: null, error: expect.stringMatching(/could not be deserialized/) },
   ])
 })
