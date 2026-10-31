@@ -216,6 +216,7 @@
   })
   // === Dispersion and spectrum side by side ===
   let plot_width = $state(800)
+  let plot_height = $state(0)
   let both_plots = $derived(Boolean(band_structure && active_spectrum))
   // Below 480px a spectrum column would squeeze the bands, so the spectrum turns vertical and
   // stacks underneath, as in BandsAndDos
@@ -226,6 +227,7 @@
     band_structs: () => band_structs,
     units: () => `THz`,
     side_by_side: () => side_by_side,
+    size: () => [plot_width, plot_height],
     base_padding: DEFAULT_PLOT_PADDING,
   })
   // Every visit of the spectrum's q-point (Γ) on the path, where bands and peaks are the same modes
@@ -610,6 +612,7 @@ under its open panes -->
         class:spectrum_stacked={both_plots && !side_by_side}
         aria-label="Phonon mode plot"
         bind:clientWidth={plot_width}
+        bind:clientHeight={plot_height}
       >
         {#if band_structure}
           <Bands

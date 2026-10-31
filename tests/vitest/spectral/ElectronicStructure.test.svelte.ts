@@ -220,6 +220,11 @@ const mount_live = (init: ComponentProps<typeof ElectronicStructure>) => {
   return { props, root: mount_host(props) }
 }
 const count = (root: Element, selector: string) => root.querySelectorAll(selector).length
+// Elements measure 800x600 here: tall enough panes for the side-by-side layout's plots
+const mock_panes_height = (height: number) => {
+  const spy = vi.spyOn(HTMLElement.prototype, `clientHeight`, `get`).mockReturnValue(height)
+  onTestFinished(() => spy.mockRestore())
+}
 const shown_panes = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>(`.pane`)].map((pane) => pane.dataset.pane)
 const view_dir = (controls?: OrbitControls): Vector3 => {
@@ -303,6 +308,7 @@ test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, Electron
 })
 
 test(`phonon spectra sit below the electronic ones, resized at their own divider`, () => {
+  mock_panes_height(800) // scenes, spectra and phonons at 200px each
   const { props, root } = mount_live({ ...all_data, phonon, units: `THz` })
   const column = root.querySelector(
     `:scope > .panes > .row.lower > .sides > .side > .row.column`,
@@ -1419,13 +1425,14 @@ test.each([undefined, `bcc`])(
   },
 )
 
-// Narrow, or too short for the side-by-side layout's pane levels (scenes over spectra) at 200px
-// each, the panes stack in one column, each its own height, rather than share the viewer's: no
-// dividers between them, the scenes one above the other, and every compared side labelled
+// Narrow, or too short to give each plot of the side-by-side layout 200px, the panes stack in
+// one column, each its own height, rather than share the viewer's: no dividers between them,
+// the scenes one above the other, and every compared side labelled. At 1200px each compared
+// side's column is 360px wide, its bands over a DOS getting 2/5 of the spectra's half.
 test.each([
-  [700, 900, true],
-  [1200, 400, false],
-  [1200, 390, true],
+  [700, 1200, true],
+  [1200, 1000, false],
+  [1200, 990, true],
 ])(`at %ipx wide, %ipx high the panes stack: %s`, async (width, panes_height, stacked) => {
   // every pane row measures 700x320, where the scenes would split side by side unstacked
   const width_spy = vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(700)
@@ -1466,6 +1473,8 @@ test.each([
 })
 
 test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
+  // each side's bands and phonons over their DOS in a 240px column
+  mock_panes_height(2000)
   const sweep = make_sweep()
   const [fcc, bcc] = sweep.series
   // HTML labels (the trends legend and axis render it) read as plain text in options, side
@@ -1604,6 +1613,7 @@ test.each([
 )
 
 test(`a compared series loads through the same frame cache, window and aborts`, async () => {
+  mock_panes_height(1000)
   const { sweep, load_frame, loads } = lazy_sweep()
   const { props, root } = mount_live({
     sweep,

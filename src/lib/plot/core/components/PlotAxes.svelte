@@ -38,9 +38,15 @@
   {@const shift = axis.label_shift ?? {}}
   {@const label_x =
     side === `y`
-      ? y_axis_label_x(axis, pad.l, frame.tick_label_widths.y_max)
+      ? y_axis_label_x(axis, pad.l, frame.tick_label_widths.y_max, frame.chart_height)
       : side === `y2`
-        ? y2_axis_label_x(axis, frame.width, pad.r, frame.tick_label_widths.y2_max)
+        ? y2_axis_label_x(
+            axis,
+            frame.width,
+            pad.r,
+            frame.tick_label_widths.y2_max,
+            frame.chart_height,
+          )
         : pad.l + frame.chart_width / 2 + (shift.x ?? 0)}
   {@const label_y =
     side === `x`

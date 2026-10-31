@@ -4,6 +4,7 @@ import type { AutoPaddingConfig, Sides } from '#lib/plot/core/layout.js'
 import {
   AXIS_LABEL_HEIGHT,
   AXIS_TITLE_OFFSET,
+  axis_title_wrap_width,
   calc_auto_padding,
   centered_rect,
   compute_element_placement,
@@ -1025,6 +1026,28 @@ describe(`layout utility functions`, () => {
       ).toBe(AXIS_LABEL_HEIGHT)
     })
 
+    it(`wraps a y title longer than its plot's height and places it by its wrapped band`, () => {
+      mock_text_measurement(7) // `Electron DOS (states/eV)`: 24 chars, 168px on one line
+      const axis = slot_axis([], { label: `Electron DOS (states/eV)` })
+      const left_pad = (height?: number) =>
+        calc_auto_padding({ ...no_padding, width: 240, height, y_axis: axis }).l
+      // a 100px plot (no top/bottom padding) wraps it to two lines, a tall or unknown one doesn't
+      expect(left_pad(100) - left_pad(400)).toBe(AXIS_LABEL_HEIGHT)
+      expect(left_pad()).toBe(left_pad(400))
+      expect(y_axis_label_x(axis, 100, 0, 400) - y_axis_label_x(axis, 100, 0, 100)).toBe(
+        AXIS_LABEL_HEIGHT / 2,
+      )
+      // x titles reserve the lines they render in, wrapped at least AXIS_TITLE_WRAP_WIDTH wide
+      // however narrow the plot (a DOS squeezed mid-layout reserved four lines, rendered two)
+      const x_axis = slot_axis([], { label: `Electron DOS (states/eV)` })
+      const bottom_pad = (width: number) =>
+        calc_auto_padding({ ...no_padding, width, height: 300, x_axis }).b
+      expect(bottom_pad(60)).toBe(bottom_pad(400))
+      expect(axis_title_wrap_width(false, 100)).toBe(100)
+      expect(axis_title_wrap_width(false, 10)).toBeGreaterThan(10) // floored, not word by word
+      expect(axis_title_wrap_width(true, 100)).toBeGreaterThan(100) // x titles keep their floor
+    })
+
     it.each([
       [`volume`, undefined, `Long volume property (Å³)`],
       [undefined, `Choose a property`, `Choose a property`],
@@ -1074,25 +1097,25 @@ describe(`layout utility functions`, () => {
   describe(`y_axis_label_x / y2_axis_label_x`, () => {
     const title_center = AXIS_LABEL_HEIGHT / 2
     test.each([
-      [`left auto-padding`, () => y_axis_label_x({}, 90, 30), 22],
-      [`left explicit padding`, () => y_axis_label_x({}, 120, 30), 52],
+      [`left auto-padding`, () => y_axis_label_x({}, 90, 30, 300), 22],
+      [`left explicit padding`, () => y_axis_label_x({}, 120, 30, 300), 52],
       // a pad too tight to seat the tick band clamps the title to its own band
-      [`left clamped to the title band`, () => y_axis_label_x({}, 40, 30), title_center],
+      [`left clamped to the title band`, () => y_axis_label_x({}, 40, 30, 300), title_center],
       [
         `left inside ticks`,
-        () => y_axis_label_x({ tick_label: { inside: true } }, 60, 30),
+        () => y_axis_label_x({ tick_label: { inside: true } }, 60, 30, 300),
         30,
       ],
-      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30), 378],
-      [`right explicit padding`, () => y2_axis_label_x({}, 400, 120, 30), 348],
+      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30, 300), 378],
+      [`right explicit padding`, () => y2_axis_label_x({}, 400, 120, 30, 300), 348],
       [
         `right clamped to the title band`,
-        () => y2_axis_label_x({}, 400, 40, 30),
+        () => y2_axis_label_x({}, 400, 40, 30, 300),
         400 - title_center,
       ],
       [
         `right inside ticks`,
-        () => y2_axis_label_x({ tick_label: { inside: true } }, 400, 60, 30),
+        () => y2_axis_label_x({ tick_label: { inside: true } }, 400, 60, 30, 300),
         370,
       ],
     ])(`positions %s`, (_, get_position, expected) => {

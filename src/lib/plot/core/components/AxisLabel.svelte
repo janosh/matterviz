@@ -32,9 +32,7 @@
     loading?: boolean
     axis_type: `x` | `x2` | `y` | `y2`
     on_select?: (key: string) => void
-    // Maximum line width (vertical titles keep the default: PlotAxis does not forward their
-    // plot height)
-    width?: number
+    width?: number // maximum line width (see axis_title_wrap_width)
     // Horizontal span the title stays within: centred on x unless that crosses an end, then
     // slid inward (centred on the span when even that fails), e.g. over a narrow DOS column
     x_span?: Vec2

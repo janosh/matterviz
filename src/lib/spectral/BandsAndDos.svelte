@@ -88,6 +88,7 @@
   // one, the three panels sit side by side from 1200px, else the bands span the BZ and DOS
   // (tablet) or all stack (phone). Only side by side do the DOS and bands share the vertical axis.
   let clientWidth = $state(1200)
+  let clientHeight = $state(0)
   const layout = $derived(
     structure
       ? clientWidth >= 1200
@@ -110,6 +111,7 @@
     bands_props: () => bands_props,
     dos_props: () => dos_props,
     side_by_side: () => side_by_side,
+    size: () => [clientWidth, clientHeight],
     data_range: () => frequency_range,
     shared_axis: () => shared_y_axis,
     sync_zoom: () => sync_y_zoom,
@@ -138,6 +140,7 @@
   class={[`bands-and-dos mv-panels`, layout, rest.class]}
   style:--side-dos-width="{SIDE_DOS_WIDTH}px"
   bind:clientWidth
+  bind:clientHeight
   bind:this={wrapper}
 >
   {@render children?.({
