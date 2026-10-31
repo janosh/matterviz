@@ -78,31 +78,39 @@ export function update_ordered_atom_positions<
 }
 
 // More raycast scratch, next to picking.ts's
-const hit_sphere = new Sphere(new Vector3(), 0.5)
+const hit_sphere = new Sphere()
 const hit_point = new Vector3()
+const atom_center = new Vector3()
 // xyz then uniform radius per atom
 const PACKED_ATOM = { stride: 4, position_at: 0, scale_at: 3 }
 
-// Invisible full-sphere targets need no triangle test (which can miss exactly at a pole).
-// `visible_scale` is the drawn atom's share of an enlarged edit target: under a cutaway the target
-// keeps its size but can't resurrect an atom the cutaway removes entirely.
-const atom_center = new Vector3()
-export function enable_atom_sphere_picking(mesh: Mesh, visible_scale = 1): void {
-  mesh.raycast = (raycaster, hits) => {
-    // Invisible objects may not have been visited by the renderer since their transform changed.
-    mesh.updateWorldMatrix(true, false)
-    const { matrixWorld } = mesh
-    local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(matrixWorld).invert())
-    if (!local_ray.intersectSphere(hit_sphere, hit_point)) return
-    const planes = cutaway_planes(mesh)
-    atom_center.setFromMatrixPosition(matrixWorld)
-    const drawn_radius = 0.5 * visible_scale * matrixWorld.getMaxScaleOnAxis()
-    if (cutaway_excludes(planes, atom_center, drawn_radius)) return
+// Analytic spheres (a triangle test can miss exactly at a pole) `hit_scale` times each atom's
+// drawn size in `target`'s space, reported with their index as instanceId. Under a cutaway a
+// target keeps its size but can't resurrect an atom the cutaway removes entirely.
+export function raycast_atom_spheres(
+  target: Mesh,
+  spheres: readonly { position: Vec3; radius: number }[],
+  hit_scale: number,
+  raycaster: Raycaster,
+  hits: Intersection[],
+): void {
+  // Invisible objects may not have been visited by the renderer since their transform changed.
+  target.updateWorldMatrix(true, false)
+  const { matrixWorld } = target
+  const planes = cutaway_planes(target)
+  const world_scale = matrixWorld.getMaxScaleOnAxis()
+  local_ray.copy(raycaster.ray).applyMatrix4(scratch_matrix.copy(matrixWorld).invert())
+  for (const [idx, { position, radius }] of spheres.entries()) {
+    hit_sphere.center.fromArray(position)
+    hit_sphere.radius = 0.5 * radius * hit_scale
+    if (!local_ray.intersectSphere(hit_sphere, hit_point)) continue
+    atom_center.fromArray(position).applyMatrix4(matrixWorld)
+    if (cutaway_excludes(planes, atom_center, 0.5 * radius * world_scale)) continue
     hit_point.applyMatrix4(matrixWorld)
-    if (cutaway_excludes(planes, hit_point)) return
+    if (cutaway_excludes(planes, hit_point)) continue
     const distance = raycaster.ray.origin.distanceTo(hit_point)
-    if (distance < raycaster.near || distance > raycaster.far) return
-    hits.push({ distance, point: hit_point.clone(), object: mesh })
+    if (distance < raycaster.near || distance > raycaster.far) continue
+    hits.push({ distance, point: hit_point.clone(), object: target, instanceId: idx })
   }
 }
 

@@ -312,12 +312,8 @@
   })
   // Resolved per rendered or inspected cell, so offscreen virtualized cells cost nothing
   const background_at = $derived.by(() => {
-    const [hidden, missing_value, overrides] = [
-      is_hidden_cell,
-      cell_is_missing,
-      color_overrides,
-    ]
-    const [cell_value, keys_x, keys_y] = [get_value, x_keys, y_keys]
+    const [hidden, missing_value, cell_value] = [is_hidden_cell, cell_is_missing, get_value]
+    const [overrides, keys_x, keys_y] = [color_overrides, x_keys, y_keys]
     const [fill_missing, color_fn] = [missing_fill || null, ramp.color_fn]
     return (x_idx: number, y_idx: number): string | null => {
       if (hidden(x_idx, y_idx)) return null

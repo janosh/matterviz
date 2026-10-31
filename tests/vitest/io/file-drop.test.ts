@@ -33,6 +33,12 @@ const make_event = (files: File[] = [], items: unknown[] = []) =>
   }) as unknown as DragEvent
 // a local drop also carries the File itself, for size and webkitRelativePath; a URL drop
 // has no File to carry
+// what decompress_file resolves to
+const loaded = (content: string | ArrayBuffer, filename: string) => ({
+  content,
+  filename,
+  byte_size: 0,
+})
 const source_meta = (source_filename: string, source_url?: string) =>
   source_url
     ? { source_filename, source_url }
@@ -86,11 +92,7 @@ describe(`create_file_drop_handler`, () => {
       await callback(`remote`, `f.cif`, source_meta(`f.cif`, `https://example.com/f.cif`))
     })
     const file = new File([`local`], `test.txt`)
-    vi.mocked(decompress_file).mockResolvedValue({
-      content: `local`,
-      filename: file.name,
-      byte_size: 0,
-    })
+    vi.mocked(decompress_file).mockResolvedValue(loaded(`local`, file.name))
 
     await run({}, [file])
 
@@ -118,11 +120,7 @@ describe(`create_file_drop_handler`, () => {
     async (files, error) => {
       vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/f.cif`)
       vi.mocked(load_from_url).mockRejectedValue(new Error(`404`))
-      vi.mocked(decompress_file).mockResolvedValue({
-        content: `data`,
-        filename: `b.cube`,
-        byte_size: 0,
-      })
+      vi.mocked(decompress_file).mockResolvedValue(loaded(`data`, `b.cube`))
       await run({}, files)
       expect(vi.mocked(on_drop).mock.calls).toEqual(
         files.length ? [[`data`, `b.cube`, source_meta(`b.cube.gz`)]] : [],
@@ -152,11 +150,7 @@ describe(`create_file_drop_handler`, () => {
   // to test; this only pins that we route through it.
   test(`expands a dropped folder rather than loading the folder itself`, async () => {
     const inner = new File([`a`], `a.cif`)
-    vi.mocked(decompress_file).mockResolvedValue({
-      content: `data`,
-      filename: inner.name,
-      byte_size: 0,
-    })
+    vi.mocked(decompress_file).mockResolvedValue(loaded(`data`, inner.name))
     // splice drains it, which is how readEntries signals the end: an empty second batch
     const batch = [{ isFile: true, file: (valid: (arg: File) => void) => valid(inner) }]
     const entry = {
@@ -188,11 +182,7 @@ describe(`create_file_drop_handler`, () => {
     if (desc === `on_drop` || desc.startsWith(`empty`)) {
       const content =
         desc === `on_drop` ? `x` : desc === `empty file` ? `` : new ArrayBuffer(0)
-      vi.mocked(decompress_file).mockResolvedValue({
-        content,
-        filename: `f.txt`,
-        byte_size: 0,
-      })
+      vi.mocked(decompress_file).mockResolvedValue(loaded(content, `f.txt`))
     } else vi.mocked(decompress_file).mockRejectedValue(rejection)
     await run({ on_drop: throwing_drop }, [new File([`x`], `f.txt`)])
     expect(on_error).toHaveBeenCalledWith(`Failed to load 1 file — f.txt: ${expected}`)
@@ -233,7 +223,7 @@ describe(`create_file_drop_handler`, () => {
       await callback(`remote`, `u.cif`, source_meta(`u.cif`, `https://example.com/u.cif`))
     })
     vi.mocked(decompress_file)
-      .mockResolvedValueOnce({ content: `first`, filename: `a.cube`, byte_size: 0 })
+      .mockResolvedValueOnce(loaded(`first`, `a.cube`))
       .mockRejectedValueOnce(new Error(`corrupt`))
       .mockRejectedValueOnce(new Error(`bad`))
     const calls: unknown[] = []
@@ -260,8 +250,8 @@ describe(`create_file_drop_handler`, () => {
 
   // Files load sequentially in drop order; a failing file never aborts the rest and all
   // failures aggregate into one message
-  const ok_a = { content: `first`, filename: `a.cube`, byte_size: 0 }
-  const ok_b = { content: `second`, filename: `b.cube`, byte_size: 0 }
+  const ok_a = loaded(`first`, `a.cube`)
+  const ok_b = loaded(`second`, `b.cube`)
   test.each([
     [
       `both load`,
@@ -299,7 +289,7 @@ describe(`create_file_drop_handler`, () => {
   test(`overlapping drops are processed sequentially, not interleaved`, async () => {
     const order: string[] = []
     vi.mocked(decompress_file).mockImplementation((file: File) =>
-      Promise.resolve({ content: `data`, filename: file.name, byte_size: 0 }),
+      Promise.resolve(loaded(`data`, file.name)),
     )
     const slow_drop = vi.fn(async (_content: string | ArrayBuffer, filename: string) => {
       order.push(`start ${filename}`)
@@ -327,11 +317,7 @@ describe(`create_file_drop_handler`, () => {
       const throwing_error = () => {
         throw new Error(`error callback failed`)
       }
-      vi.mocked(decompress_file).mockResolvedValue({
-        content: `second`,
-        filename: `second.cube`,
-        byte_size: 0,
-      })
+      vi.mocked(decompress_file).mockResolvedValue(loaded(`second`, `second.cube`))
       if (failure_source === `on_error`)
         vi.mocked(decompress_file).mockRejectedValueOnce(new Error(`corrupt`))
       const queue_drop = vi.fn<FileLoadCallback>()
@@ -431,11 +417,7 @@ test.each([
 
 test(`file_drop_zone toggles the dragover class, clears it on drop, and detaches cleanly`, async () => {
   vi.mocked(dropped_file_url).mockReturnValue(undefined)
-  vi.mocked(decompress_file).mockResolvedValue({
-    content: `ok`,
-    filename: `f.cif`,
-    byte_size: 0,
-  })
+  vi.mocked(decompress_file).mockResolvedValue(loaded(`ok`, `f.cif`))
   const node = document.createElement(`div`)
   const on_drop = vi.fn()
   const on_dragover = vi.fn()

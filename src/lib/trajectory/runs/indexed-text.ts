@@ -39,7 +39,7 @@ const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames =>
     frame_label: `indexed frame ${display_idx(frame_idx)}`,
     default_step: frame_idx,
   })
-  const read_plain = (frame_idx: number): (NumericFrame & { sites: Uint8Array }) | null =>
+  const read_plain = (frame_idx: number) =>
     read_xyz_frame(lines, frames[frame_idx], opts(frame_idx), collector)
   const decode = (frame_idx: number) =>
     build_xyz_frame(lines, frames[frame_idx], opts(frame_idx), collector)

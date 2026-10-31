@@ -418,18 +418,14 @@ export const SPACEGROUP_SYMBOL_TO_NUM: Record<string, number> = {
   'I4_1/a-32/d': 230,
 } as const
 
-// Built once at load; throws if dropping underscores ever merged two groups' symbols
-const COMPACT_SYMBOL_TO_NUM = new Map<string, number>()
-for (const [symbol, num] of Object.entries(SPACEGROUP_SYMBOL_TO_NUM)) {
-  const key = compact_symbol(symbol)
-  const existing = COMPACT_SYMBOL_TO_NUM.get(key)
-  if (existing !== undefined && existing !== num) {
-    throw new Error(
-      `Space group symbol ${symbol} (${num}) collides with ${existing} as ${key}`,
-    )
-  }
-  COMPACT_SYMBOL_TO_NUM.set(key, num)
-}
+// Built once at load. Dropping underscores and spaces must not merge two groups' symbols:
+// the tests normalize every listed symbol back to its own number.
+const COMPACT_SYMBOL_TO_NUM = new Map(
+  Object.entries(SPACEGROUP_SYMBOL_TO_NUM).map(([symbol, num]) => [
+    compact_symbol(symbol),
+    num,
+  ]),
+)
 
 export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(SPACEGROUP_SYMBOL_TO_NUM).reduce<
   Record<number, string>

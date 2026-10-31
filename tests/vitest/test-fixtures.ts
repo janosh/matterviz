@@ -638,3 +638,8 @@ export const image_options = (
         bonding_strategy: `electroneg_ratio`,
         bonding_options: {},
       }
+
+// A 1x1 PNG as a canvas encoder writes it: IHDR, IDAT, IEND and no pHYs
+const png_base64 = `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`
+export const png_blob = (): Blob =>
+  new Blob([Buffer.from(png_base64, `base64`)], { type: `image/png` })

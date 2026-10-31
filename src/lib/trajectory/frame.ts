@@ -355,19 +355,19 @@ export class FrameView {
     elements?: Uint8Array // element bytes of a topology-less frame
   }
   // Record-site sources may hand every frame the same records and cell (phonon animations):
-  // those are cloned once and each frame copies only the per-site shells and its lattice.
-  // Species are shared between frames as in the topology path below; the lattice is the
-  // frame's own, as there, so an edit to one frame's cell stays in that frame.
-  private record_source?: { sites: NumericFrame['sites']; clone: Omit<Site, 'xyz' | 'abc'>[] }
-  private cell_source?: {
+  // those are cloned once and each frame copies only the per-site shells and its own lattice,
+  // so an edit to one frame's cell stays in that frame. Species are shared as in the topology
+  // path below.
+  private shared?: {
+    records: NumericFrame['sites']
     structure: NumericFrame['structure']
-    clone: NumericFrame['structure']
+    identities: Omit<Site, 'xyz' | 'abc'>[]
+    cell: NumericFrame['structure']
   }
 
   clear(): void {
     this.topology = undefined
-    this.record_source = undefined
-    this.cell_source = undefined
+    this.shared = undefined
   }
 
   // materialize_frame's result, cloning shared records and cells once per source object
@@ -375,32 +375,28 @@ export class FrameView {
     data: NumericFrame,
     records: Omit<Site, 'xyz' | 'abc'>[],
   ): TrajectoryFrame {
-    if (this.record_source?.sites !== records)
-      this.record_source = { sites: records, clone: structuredClone(records) }
-    if (this.cell_source?.structure !== data.structure)
-      this.cell_source = { structure: data.structure, clone: structuredClone(data.structure) }
-    const identities = this.record_source.clone
-    const { coordinates } = data
+    const { structure, coordinates } = data
+    if (this.shared?.records !== records || this.shared.structure !== structure) {
+      const [identities, cell] = [structuredClone(records), structuredClone(structure)]
+      this.shared = { records, structure, identities, cell }
+    }
+    const { identities, cell } = this.shared
     const width = site_stride(data.vector_keys)
-    const sites = Array.from<unknown, Site>({ length: records.length }, (_unused, idx) => {
+    const sites = identities.map((identity, idx): Site => {
       const offset = idx * width
-      const site: Site = {
-        ...identities[idx],
+      const properties = { ...identity.properties }
+      write_site_properties(data, idx, properties)
+      return {
+        ...identity,
         xyz: [coordinates[offset], coordinates[offset + 1], coordinates[offset + 2]],
         abc: [coordinates[offset + 3], coordinates[offset + 4], coordinates[offset + 5]],
+        properties,
       }
-      site.properties = { ...site.properties }
-      write_site_properties(data, idx, site.properties)
-      return site
     })
-    const { lattice } = this.cell_source.clone
+    const lattice = cell.lattice && structuredClone(cell.lattice)
     return {
       ...structuredClone(data.header),
-      structure: {
-        ...this.cell_source.clone,
-        ...(lattice && { lattice: structuredClone(lattice) }),
-        sites,
-      },
+      structure: { ...cell, ...(lattice && { lattice }), sites },
     }
   }
 

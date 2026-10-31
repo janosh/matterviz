@@ -298,7 +298,7 @@ interface MarchingCubesOptions {
 type GrowableArray = Float32Array | Uint32Array
 
 // Double the capacity of a typed array until `needed` entries fit
-const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
+export const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
   if (needed <= array.length) return array
   let capacity = Math.max(2 * array.length, 1024)
   while (capacity < needed) capacity *= 2
@@ -338,16 +338,27 @@ function reduce_blocks(
 
 // Per block of BLOCK_SIZE³ cubes, whether its corners straddle `isovalue` (some below, some
 // not, exactly the cube_index test), so blocks without any crossing cube skip the cube loop.
-// `point_offsets` hold each axis's (wrapped) grid offsets for cube corner indices 0..max.
 // Separable: flags (1 below, 2 not) OR-reduced along z while reading, then along y and x.
 function crossing_blocks(
   values: ArrayLike<number>,
   isovalue: number,
-  point_offsets: [Int32Array, Int32Array, Int32Array],
-  [blocks_x, blocks_y, blocks_z]: Vec3,
+  sizes: Vec3,
+  strides: Vec3,
+  periodic: boolean,
 ): Uint8Array {
-  const [offsets_x, offsets_y, offsets_z] = point_offsets
-  const [points_x, points_y, points_z] = point_offsets.map((offsets) => offsets.length)
+  // each axis's grid offsets of cube corner indices 0..max (periodic: max wraps to 0)
+  const [offsets_x, offsets_y, offsets_z] = sizes.map((size, axis) =>
+    Int32Array.from(
+      { length: periodic ? size + 1 : size },
+      (_, idx) => (idx % size) * strides[axis],
+    ),
+  )
+  const [points_x, points_y, points_z] = [offsets_x, offsets_y, offsets_z].map(
+    (offsets) => offsets.length,
+  )
+  const [blocks_x, blocks_y, blocks_z] = [points_x, points_y, points_z].map((n_points) =>
+    Math.ceil((n_points - 1) / BLOCK_SIZE),
+  )
   const z_blocks = new Uint8Array(points_x * points_y * blocks_z)
   let flat_idx = 0
   for (let idx_x = 0; idx_x < points_x; idx_x++) {
@@ -594,22 +605,15 @@ export function marching_cubes(
     return vert_idx
   }
 
-  const corner_offsets = (max: number, size: number, stride: number): Int32Array =>
-    Int32Array.from({ length: max + 1 }, (_, idx) => (idx % size) * stride)
-  const block_counts: Vec3 = [max_x, max_y, max_z].map((max) =>
-    Math.ceil(max / BLOCK_SIZE),
-  ) as Vec3
   const crossing = crossing_blocks(
     values,
     isovalue,
-    [
-      corner_offsets(max_x, size_x, stride_x),
-      corner_offsets(max_y, size_y, stride_y),
-      corner_offsets(max_z, size_z, stride_z),
-    ],
-    block_counts,
+    [size_x, size_y, size_z],
+    [stride_x, stride_y, stride_z],
+    periodic,
   )
-  const [, blocks_y, blocks_z] = block_counts
+  const blocks_y = Math.ceil(max_y / BLOCK_SIZE)
+  const blocks_z = Math.ceil(max_z / BLOCK_SIZE)
 
   // Edge caches need clearing only after a slab that created vertices: a sparse level set
   // leaves most slabs empty, and clearing 3 planes per slab outcost their cubes. The recycled
@@ -636,44 +640,44 @@ export function marching_cubes(
       const offset_01 = x_offset + y1_offset
       const block_row = (block_x_base + Math.floor(idx_y / BLOCK_SIZE)) * blocks_z
 
-      for (let block_z = 0; block_z < blocks_z; block_z++) {
-        // a block with no crossing cube emits nothing
-        if (crossing[block_row + block_z] === 0) continue
-        const z_end = Math.min(block_z * BLOCK_SIZE + BLOCK_SIZE, max_z)
-        for (let idx_z = block_z * BLOCK_SIZE; idx_z < z_end; idx_z++) {
-          const z_offset = idx_z * stride_z
-          const z1_offset = ((idx_z + 1) % size_z) * stride_z
-          cube_values[0] = values[offset_00 + z_offset]
-          cube_values[1] = values[offset_10 + z_offset]
-          cube_values[2] = values[offset_11 + z_offset]
-          cube_values[3] = values[offset_01 + z_offset]
-          cube_values[4] = values[offset_00 + z1_offset]
-          cube_values[5] = values[offset_10 + z1_offset]
-          cube_values[6] = values[offset_11 + z1_offset]
-          cube_values[7] = values[offset_01 + z1_offset]
+      for (let idx_z = 0; idx_z < max_z; idx_z++) {
+        // a block with no crossing cube emits nothing (blocks are entered at their first cube)
+        if (crossing[block_row + Math.floor(idx_z / BLOCK_SIZE)] === 0) {
+          idx_z += BLOCK_SIZE - 1
+          continue
+        }
+        const z_offset = idx_z * stride_z
+        const z1_offset = ((idx_z + 1) % size_z) * stride_z
+        cube_values[0] = values[offset_00 + z_offset]
+        cube_values[1] = values[offset_10 + z_offset]
+        cube_values[2] = values[offset_11 + z_offset]
+        cube_values[3] = values[offset_01 + z_offset]
+        cube_values[4] = values[offset_00 + z1_offset]
+        cube_values[5] = values[offset_10 + z1_offset]
+        cube_values[6] = values[offset_11 + z1_offset]
+        cube_values[7] = values[offset_01 + z1_offset]
 
-          let cube_index = 0
-          if (cube_values[0] < isovalue) cube_index |= 1
-          if (cube_values[1] < isovalue) cube_index |= 2
-          if (cube_values[2] < isovalue) cube_index |= 4
-          if (cube_values[3] < isovalue) cube_index |= 8
-          if (cube_values[4] < isovalue) cube_index |= 16
-          if (cube_values[5] < isovalue) cube_index |= 32
-          if (cube_values[6] < isovalue) cube_index |= 64
-          if (cube_values[7] < isovalue) cube_index |= 128
+        let cube_index = 0
+        if (cube_values[0] < isovalue) cube_index |= 1
+        if (cube_values[1] < isovalue) cube_index |= 2
+        if (cube_values[2] < isovalue) cube_index |= 4
+        if (cube_values[3] < isovalue) cube_index |= 8
+        if (cube_values[4] < isovalue) cube_index |= 16
+        if (cube_values[5] < isovalue) cube_index |= 32
+        if (cube_values[6] < isovalue) cube_index |= 64
+        if (cube_values[7] < isovalue) cube_index |= 128
 
-          // Empty for a cube entirely inside or outside. Each triangle spans 3 distinct edges,
-          // each with its own cache slot, so none is degenerate.
-          const tri_list = TRI_TABLE[cube_index]
-          for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
-            const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
-            const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
-            const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
-            indices = grow(indices, n_indices + 3)
-            indices[n_indices++] = vector_0
-            indices[n_indices++] = flip_winding ? vector_2 : vector_1
-            indices[n_indices++] = flip_winding ? vector_1 : vector_2
-          }
+        // Empty for a cube entirely inside or outside. Each triangle spans 3 distinct edges,
+        // each with its own cache slot, so none is degenerate.
+        const tri_list = TRI_TABLE[cube_index]
+        for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
+          const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
+          const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
+          const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
+          indices = grow(indices, n_indices + 3)
+          indices[n_indices++] = vector_0
+          indices[n_indices++] = flip_winding ? vector_2 : vector_1
+          indices[n_indices++] = flip_winding ? vector_1 : vector_2
         }
       }
     }

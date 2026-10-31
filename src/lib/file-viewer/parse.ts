@@ -17,13 +17,7 @@ import { parse_volumetric_file } from '#lib/isosurface/parse.js'
 import { parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
 import type { StructureToolPrediction } from '#lib/structure/prediction.js'
 import { prediction_from_json } from '#lib/structure/prediction.js'
-import {
-  is_structure_like,
-  optimade_structure_from_raw,
-  optimade_to_structure,
-  parse_structure_file,
-  structure_from_json,
-} from '#lib/structure/parse.js'
+import { parse_structure_file, structure_from_json_value } from '#lib/structure/parse.js'
 import {
   is_indexable_trajectory_filename,
   KNOWN_FORMAT_EXT_REGEX,
@@ -201,7 +195,7 @@ export const parse_file_content = async (
     // UTF-16 by its byte-order mark, like every other text payload (see text_or_blob)
     source = as_text(source instanceof Blob ? await source.arrayBuffer() : source)
   }
-  // A host that decodes the file itself (VS Code's Buffer.toString) keeps a UTF-8 BOM, which
+  // A host that decodes the file itself may keep a UTF-8 BOM (Node's Buffer.toString does), which
   // JSON.parse rejects; the text parsers already skip it as whitespace
   const content = source.replace(/^\uFEFF/, ``)
 
@@ -248,17 +242,10 @@ export const parse_file_content = async (
     if (detected === `structure`) {
       // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.); a shape that
       // looks like a structure but fails the detailed parse still gets the JSON browser.
-      // Built from the parsed root, which detect_view_type found to be an OPTIMADE entry or
-      // structure-like, as parse_structure_file would, without parsing the text again
-      // (JSON.parse is ~40% of opening a 20 MB structure JSON).
-      const json_root = parsed_json
-      const optimade = optimade_structure_from_raw(json_root)
+      // Built from the parsed value, without parsing the text again (JSON.parse is ~40% of
+      // opening a 20 MB structure JSON).
       try {
-        return structure_result(() => {
-          if (optimade) return optimade_to_structure(optimade)
-          if (is_structure_like(json_root)) return structure_from_json(json_root)
-          throw new Error(`${filename} holds no OPTIMADE entry or structure at its root`)
-        }, filename)
+        return structure_result(() => structure_from_json_value(parsed_json), filename)
       } catch {
         return { type: `json_browser`, data: parsed_json, filename }
       }

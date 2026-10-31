@@ -4,7 +4,6 @@ import type { ElementSymbol } from '#lib/element/types.js'
 import { symbol_to_atomic_number } from '#lib/element/helpers.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { Pbc } from '#lib/structure/pbc.js'
 import { LineScanner } from '#lib/structure/parsers/shared.js'
 import { parse_vasp_header } from '#lib/structure/parsers/vasp-header.js'
 import {
@@ -171,7 +170,6 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
 export function open_xdatcar_frames(lines: TextLines, warn: WarnFn): AseFrames {
   const frames = index_xdatcar_frames(lines, warn)
   const scanner = new LineScanner()
-  const pbc: Pbc = [true, true, true]
   const positions_of = (frame_idx: number): Float64Array => {
     // only the last frame can hold the torn final line, and a torn last frame was dropped
     const positions = read_positions(lines, frames[frame_idx], scanner)
@@ -189,7 +187,7 @@ export function open_xdatcar_frames(lines: TextLines, warn: WarnFn): AseFrames {
         positions_of(frame_idx),
         cell.numbers.slice(),
         structuredClone(cell.lattice),
-        [...pbc],
+        [true, true, true],
         step,
         {},
         [],
@@ -208,7 +206,7 @@ export function open_xdatcar_frames(lines: TextLines, warn: WarnFn): AseFrames {
         coords,
         cell.elements,
         cell.lattice,
-        pbc,
+        [true, true, true],
         step,
         {},
         undefined,
@@ -218,7 +216,14 @@ export function open_xdatcar_frames(lines: TextLines, warn: WarnFn): AseFrames {
     plot_row_frame: (frame_idx) => {
       const { step, cell } = frames[frame_idx]
       positions_of(frame_idx)
-      return create_plot_row_frame(cell.numbers, cell.lattice, pbc, step, {}, warn)
+      return create_plot_row_frame(
+        cell.numbers,
+        cell.lattice,
+        [true, true, true],
+        step,
+        {},
+        warn,
+      )
     },
   }
 }

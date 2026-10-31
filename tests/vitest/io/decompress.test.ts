@@ -24,17 +24,14 @@ const compress = async (
 const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
 const encode = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text)
 // UTF-16 with its BOM, as Windows PowerShell 5.1 redirection writes text
-const encode_utf16 = (text: string, little_endian: boolean): Uint8Array<ArrayBuffer> => {
-  const view = new DataView(new ArrayBuffer(2 + 2 * text.length))
-  view.setUint16(0, 0xfeff, little_endian)
-  for (let idx = 0; idx < text.length; idx++)
-    view.setUint16(2 + 2 * idx, text.charCodeAt(idx), little_endian)
-  return new Uint8Array(view.buffer)
+const utf16 = (text: string, little_endian: boolean) => {
+  const bytes = Buffer.from(`\uFEFF${text}`, `utf16le`)
+  return Uint8Array.from(little_endian ? bytes : bytes.swap16())
 }
 const encoders = {
   utf8: encode,
-  'utf-16le': (text: string) => encode_utf16(text, true),
-  'utf-16be': (text: string) => encode_utf16(text, false),
+  'utf-16le': (text: string) => utf16(text, true),
+  'utf-16be': (text: string) => utf16(text, false),
 }
 
 test.each([

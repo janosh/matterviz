@@ -1579,8 +1579,8 @@ test.each([false, true])(
     const tool_props = await mount_host_structure(bind_props({}, state))
     await vi.waitFor(() => expect(document.querySelector(`.cell-select`)).not.toBeNull())
     flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
-    await symmetry.analyze_structure_symmetry(crystal)
-    await tick()
+    // the viewer's own main-thread analysis settles within this task's microtasks
+    await new Promise((resolve) => setTimeout(resolve, 0))
     const overlay = {
       volumes: [{ ...volumetric_data[0], label: `Prediction`, periodic: true }],
     }

@@ -162,22 +162,16 @@ test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
       0,
     )
     expect(expected).toBeGreaterThan(0)
-    // typed columns at their exact length: one object per angle cost 108 MiB at 11k atoms
-    const { angles, center_idxs, neighbor_idxs, label_ids } = calc_bond_angles(structure)
-    expect(angles).toBeInstanceOf(Float64Array)
-    expect([angles, center_idxs, label_ids].map((column) => column.length)).toEqual([
-      expected,
-      expected,
-      expected,
-    ])
-    expect(neighbor_idxs).toHaveLength(2 * expected)
+    // columns at their exact length: one object per angle cost 108 MiB at 11k atoms
+    const { angles, center_idxs, label_ids, neighbor_idxs } = calc_bond_angles(structure)
+    const lengths = [angles, center_idxs, label_ids, neighbor_idxs].map(({ length }) => length)
+    expect(lengths).toEqual([expected, expected, expected, 2 * expected])
   },
 )
 
 // Rocksalt whose cation at the origin is Na 0.5 / K 0.5 stored as two split sites: drawn as
-// one atom, so it is one neighbor of each Cl, adding neither CN nor 0-degree angles
-// split sites are one neighbor named by its majority element (ties alphabetical), in any site
-// order, and a neighbor filter matches any of its elements
+// one atom, so it is one neighbor of each Cl (no extra CN, no 0-degree angles), named by its
+// majority element (ties alphabetical) in any site order; a neighbor filter matches either
 test.each([
   [`Na`, `K`],
   [`K`, `Na`],
@@ -189,18 +183,14 @@ test.each([
       { element: second, abc: [0, 0, 0], occu: 0.5 },
       ...make_rocksalt(5.64)
         .sites.slice(1)
-        .map(({ species, abc }) => ({
-          element: species[0].element,
-          abc,
-        })),
+        .map(({ species, abc }) => ({ element: species[0].element, abc })),
     ])
     expect(calc_coordination_nums(split_rocksalt).coordination_nums).toEqual(Array(9).fill(6))
     const triplets = triplets_of(split_rocksalt)
     expect(angle_tally(triplets)).toEqual({ '90.0000': 9 * 12, '180.0000': 9 * 3 })
     // Cl-centred angles name the split site (and its periodic images) by the tie-broken K
-    const labels = new Set(triplets.map(({ triplet }) => triplet))
-    const expected = [`Cl-K-Cl`, `Cl-Na-Cl`, `K-Cl-K`, `K-Cl-Na`, `Na-Cl-Na`]
-    expect([...labels].toSorted()).toEqual(expected)
+    const labels = [...new Set(triplets.map(({ triplet }) => triplet))].toSorted()
+    expect(labels).toEqual([`Cl-K-Cl`, `Cl-Na-Cl`, `K-Cl-K`, `K-Cl-Na`, `Na-Cl-Na`])
     // filtering by Na keeps the split site too: all 6 neighbours of each of the 4 Cl, C(6, 2)
     const { angles } = calc_bond_angles(split_rocksalt, { neighbor_elements: [`Na`] })
     expect(angles).toHaveLength(4 * 15)

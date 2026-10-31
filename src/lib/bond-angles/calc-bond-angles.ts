@@ -181,29 +181,27 @@ export function calc_bond_angles(
   type Neighbor = { site_idx: number; elem_id: number; vec: Vec3 }
   const adjacency: Neighbor[][] = Array.from({ length: n_sites }, () => [])
   const { groups, partner_of } = split_site_partners(sites)
-  const group_elem = new Map<number, number>()
+  const elem_of_partner = Int32Array.from(elem_of_site)
   for (const [render_idx, members] of groups) {
     const occupancy = new Map<number, number>()
     for (const member of members) {
-      const occu = sites[member].species.reduce((sum, species) => sum + species.occu, 0)
       const elem_id = elem_of_site[member]
+      const occu = sites[member].species.reduce((sum, species) => sum + species.occu, 0)
       occupancy.set(elem_id, (occupancy.get(elem_id) ?? 0) + occu)
     }
     const [[majority]] = [...occupancy].toSorted(
       ([elem_a, occu_a], [elem_b, occu_b]) =>
         occu_b - occu_a || elements[elem_a].localeCompare(elements[elem_b]),
     )
-    group_elem.set(render_idx, majority)
+    elem_of_partner[render_idx] = majority
   }
-  const elem_of_partner = (partner: number): number =>
-    group_elem.get(partner) ?? elem_of_site[partner]
   for (const { site_idx_1, site_idx_2, pos_1, pos_2, cell_shift } of bonds) {
     const delta: Vec3 = [pos_2[0] - pos_1[0], pos_2[1] - pos_1[1], pos_2[2] - pos_1[2]]
     const partner_2 = partner_of(site_idx_1, site_idx_2, false, cell_shift)
     if (partner_2 !== -1) {
       adjacency[site_idx_1].push({
         site_idx: partner_2,
-        elem_id: elem_of_partner(partner_2),
+        elem_id: elem_of_partner[partner_2],
         vec: delta,
       })
     }
@@ -211,7 +209,7 @@ export function calc_bond_angles(
     if (partner_1 !== -1) {
       adjacency[site_idx_2].push({
         site_idx: partner_1,
-        elem_id: elem_of_partner(partner_1),
+        elem_id: elem_of_partner[partner_1],
         vec: [-delta[0], -delta[1], -delta[2]],
       })
     }

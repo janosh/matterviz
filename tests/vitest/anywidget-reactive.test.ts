@@ -2,7 +2,6 @@
 import { flushSync, mount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
-  data_props,
   derived_prop,
   drive_prop,
   drive_props,
@@ -64,10 +63,7 @@ describe(`reactive_widget`, () => {
     const structure = { sites: [{ xyz: [0, 0, 0] }] }
     const display = { x_grid: true }
     const model = new MockModel({ structure, display })
-    const { props } = reactive_widget(as_model(model), [
-      ...data_props([`structure`]),
-      drive_prop(`display`),
-    ])
+    const { props } = reactive_widget(as_model(model), drive_props([`structure`, `display`]))
     expect(props.structure).toBe(structure)
     expect(props.display).not.toBe(display)
     expect(props.display).toEqual(display)

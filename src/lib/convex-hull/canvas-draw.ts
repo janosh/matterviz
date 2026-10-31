@@ -451,26 +451,26 @@ function measure_segments(ctx: CanvasRenderingContext2D, segments: FormulaLabelS
 }
 
 // Labels to place, in priority order, with their formula segments and width (fixed fonts):
-// cached per entries array and toggles, so camera frames only redo placement. Regrouping
-// and re-measuring every label per frame was ~4 ms at 50k entries.
+// cached per entries array and toggles, so camera frames only redo placement (regrouping and
+// re-measuring every label per frame was ~4 ms at 50k entries)
 type LabelItem = {
   entry: ConvexHullEntry
   segments: FormulaLabelSegment[]
-  text_width?: number
+  text_width: number
 }
-const label_item_cache = new WeakMap<
-  readonly ConvexHullEntry[],
-  { key: string; items: LabelItem[] }
->()
-function hull_label_items(entries: ConvexHullEntry[], opts: LabelOpts): LabelItem[] {
-  const { show_stable_labels, show_unstable_labels, max_hull_dist_show_labels } = opts
-  const key = `${show_stable_labels}|${show_unstable_labels}|${max_hull_dist_show_labels}|${opts.elements.join(`,`)}`
+const label_item_cache = new WeakMap<ConvexHullEntry[], { key: string; items: LabelItem[] }>()
+function hull_label_items(
+  ctx: CanvasRenderingContext2D,
+  entries: ConvexHullEntry[],
+  opts: LabelOpts,
+): LabelItem[] {
+  const key = `${opts.show_stable_labels}|${opts.show_unstable_labels}|${opts.max_hull_dist_show_labels}|${opts.elements}`
   const cached = label_item_cache.get(entries)
   if (cached?.key === key) return cached.items
-  const items = hull_label_entries(entries, opts).map((entry) => ({
-    entry,
-    segments: get_formula_label_segments(get_entry_label(entry, opts.elements)),
-  }))
+  const items = hull_label_entries(entries, opts).map((entry) => {
+    const segments = get_formula_label_segments(get_entry_label(entry, opts.elements))
+    return { entry, segments, text_width: measure_segments(ctx, segments) }
+  })
   label_item_cache.set(entries, { key, items })
   return items
 }
@@ -492,11 +492,8 @@ export function draw_hull_labels(
   ctx.fillStyle = text_color
   ctx.textAlign = `left`
   ctx.textBaseline = `top`
-  for (const item of hull_label_items(entries, opts)) {
-    const { entry, segments } = item
+  for (const { entry, segments, text_width } of hull_label_items(ctx, entries, opts)) {
     const projected = project(entry.x, entry.y, entry.z)
-    const text_width = item.text_width ?? measure_segments(ctx, segments)
-    item.text_width = text_width
     const gap = point_radius(entry) * scale + 4 * scale
     const side = gap + scale + text_width / 2
     const half_height = label_height / 2
@@ -559,20 +556,20 @@ export function hull_face_sets(
     vertex_indices.set(vertex, idx)
     return idx
   }
-  const seen = new Set<string>()
-  return facet_entries.flatMap((facet, facet_idx) =>
-    (facet.length === 3 ? [facet] : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1)))
-      .filter((vertices) => {
-        const key = vertices
-          .map(vertex_idx)
-          .toSorted((idx_a, idx_b) => idx_a - idx_b)
-          .join(`,`)
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-      .map((vertices) => ({ vertices, facet_idx, e_form: face_e_form(vertices) })),
-  )
+  const faces = new Map<string, HullFaceSet>()
+  for (const [facet_idx, facet] of facet_entries.entries()) {
+    for (const vertices of facet.length === 3
+      ? [facet]
+      : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1))) {
+      const key = vertices
+        .map(vertex_idx)
+        .toSorted((idx_a, idx_b) => idx_a - idx_b)
+        .join(`,`)
+      if (!faces.has(key))
+        faces.set(key, { vertices, facet_idx, e_form: face_e_form(vertices) })
+    }
+  }
+  return [...faces.values()]
 }
 
 // Drawable faces of the lower hull, back to front; shared vertices are projected once

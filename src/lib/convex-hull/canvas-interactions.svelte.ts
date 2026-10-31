@@ -297,9 +297,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   const view_scale = $derived(
     Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom,
   )
-  // Rotated view coordinates → canvas position: x = origin_x + view_x * view_scale, y the
-  // same but flipped for canvas coordinates. One snapshot per pan/zoom/resize, so projecting
-  // a point reads no reactive state.
+  // Rotated view coords → canvas position (x = origin_x + view_x * view_scale, y flipped): one
+  // snapshot per pan/zoom/resize, so projecting a point reads no reactive state
   const screen = $derived({
     origin_x: canvas_dims.width / 2 + camera.center_x,
     origin_y: canvas_dims.height / 2 + camera.center_y,

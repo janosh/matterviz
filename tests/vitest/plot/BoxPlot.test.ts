@@ -395,17 +395,10 @@ describe(`BoxPlot`, () => {
       const [mid_x, mid_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
       const drag = async (init: MouseEventInit, [dx, dy]: Vec2) => {
         const at = { clientX: mid_x, clientY: mid_y }
-        svg.dispatchEvent(
-          new MouseEvent(`mousedown`, { bubbles: true, button: 0, ...init, ...at }),
-        )
-        for (const step of [1, 2, 3]) {
-          const moved = { clientX: mid_x + (dx * step) / 3, clientY: mid_y + (dy * step) / 3 }
-          await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...moved }))
-        }
-        await fire(
-          window,
-          new MouseEvent(`mouseup`, { clientX: mid_x + dx, clientY: mid_y + dy }),
-        )
+        svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...init, ...at }))
+        const end = { clientX: mid_x + dx, clientY: mid_y + dy }
+        await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...end }))
+        await fire(window, new MouseEvent(`mouseup`, end))
       }
       for (const delta of [
         [-12, 0],

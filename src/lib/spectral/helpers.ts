@@ -787,14 +787,6 @@ export interface BandCrossing {
 // Each band channel's [min, max] (NaN q-points ignored), once per band array: an energy
 // outside it meets no q-point of the band, so band_crossings skips the band without a scan
 const band_extents = new WeakMap<readonly number[], Vec2>()
-function band_extent(energies: readonly number[]): Vec2 {
-  let extent = band_extents.get(energies)
-  if (!extent) {
-    extent = array_extent(energies)
-    band_extents.set(energies, extent)
-  }
-  return extent
-}
 export function band_crossings(
   band_struct: types.BaseBandStructure,
   energy: number,
@@ -816,8 +808,9 @@ export function band_crossings(
     ] as const) {
       for (const [band_idx, energies] of channel.entries()) {
         if (!include(band_idx, spin)) continue
-        const [min_energy, max_energy] = band_extent(energies)
-        if (energy < min_energy || energy > max_energy) continue
+        let extent = band_extents.get(energies)
+        if (!extent) band_extents.set(energies, (extent = array_extent(energies)))
+        if (energy < extent[0] || energy > extent[1]) continue
         for (let qpoint_idx = start_index; qpoint_idx <= end_index; qpoint_idx++) {
           const [e_here, e_next] = [energies[qpoint_idx], energies[qpoint_idx + 1]]
           if (e_here === energy) {

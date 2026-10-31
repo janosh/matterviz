@@ -124,23 +124,6 @@ const marker_paint = (opacity: number, style: MarkerStyle) => {
 
 type MarkerPaint = ReturnType<typeof marker_paint>
 
-// `first`'s markers, then `second`'s (painted over them)
-export const concat_marker_batches = (
-  first: MarkerBatch,
-  second: MarkerBatch,
-): MarkerBatch => {
-  const joined = create_marker_batch(first.length + second.length)
-  for (const key of [`cx`, `cy`, `opacity`] as const) {
-    joined[key].set(first[key].subarray(0, first.length))
-    joined[key].set(second[key].subarray(0, second.length), first.length)
-  }
-  for (let idx = 0; idx < first.length; idx++) joined.style[idx] = first.style[idx]
-  for (let idx = 0; idx < second.length; idx++)
-    joined.style[first.length + idx] = second.style[idx]
-  joined.length = first.length + second.length
-  return joined
-}
-
 // Whether marker `idx` paints like marker `other` (-1: none), shape aside; a shared style
 // object answers without comparing fields
 const same_style = (batch: MarkerBatch, idx: number, other: number): boolean => {

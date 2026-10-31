@@ -551,31 +551,28 @@ export function parse_cube(
   const { count } = parse_float_block(content, pos, data.length, data)
   if (count < data.length) {
     throw new Error(
-      `.cube (${n_grid.join(`×`)}${values_per_point > 1 ? ` × ${values_per_point} values` : ``}): expected ${data.length} data values, got ${count} — file truncated?`,
+      `.cube (${n_grid.join(`×`)}): expected ${data.length} data values, got ${count} — file truncated?`,
     )
   }
 
   // Volume ids must be unique, so repeated MO numbers (alpha and beta) fall back to positions
   const named_orbitals =
     orbital_ids.length === values_per_point && new Set(orbital_ids).size === values_per_point
-  const field_label = (field_idx: number): string => {
-    if (values_per_point === 1) return `volumetric data`
-    return named_orbitals ? `MO ${orbital_ids[field_idx]}` : `field ${field_idx + 1}`
-  }
   // .cube data is already z-fastest (z varies fastest, then y, then x)
   const volumes = Array.from({ length: values_per_point }, (_, field_idx) => {
-    let values = data
+    let [values, label] = [data, `volumetric data`]
     if (values_per_point > 1) {
       values = new Float64Array(n_points)
       for (let idx = 0; idx < n_points; idx++)
         values[idx] = data[idx * values_per_point + field_idx]
+      label = named_orbitals ? `MO ${orbital_ids[field_idx]}` : `field ${field_idx + 1}`
     }
     return make_volume(values, n_grid, {
-      id: values_per_point === 1 ? `scalar` : field_label(field_idx),
+      id: values_per_point > 1 ? label : `scalar`,
       lattice,
       origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
       periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
-      label: field_label(field_idx),
+      label,
     })
   })
   return { structure, volumes }

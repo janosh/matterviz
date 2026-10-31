@@ -145,8 +145,6 @@ export function rdf_bin_sites(
   }
 }
 
-export type RdfBinSites = ReturnType<typeof rdf_bin_sites>
-
 // Past this the bitsets would outweigh the search they save (10k sites on 100k bins: 250 MB),
 // so each bin is answered by its own search instead
 const MAX_RDF_BIN_INDEX_BYTES = 32 * 1024 ** 2
@@ -159,7 +157,7 @@ export function rdf_bin_site_index(
   options: Omit<RdfOptions, `center_species` | `neighbor_species`> & {
     element_pair?: readonly [string, string]
   },
-): (bin_idx: number) => RdfBinSites {
+): (bin_idx: number) => ReturnType<typeof rdf_bin_sites> {
   const { element_pair } = options
   const prepared = prepare_rdf(structure, options)
   const { n_bins } = prepared

@@ -208,16 +208,16 @@ test.each([
 })
 // The structure is built from the parsed root, not by parsing the text a second time (half
 // the time of opening a 20 MB structure JSON)
-test.each([`structures/mp-1.json`, `structures/mp-7000-optimade.json`])(
-  `%s is parsed as JSON once`,
-  async (fixture) => {
-    const content = read_maybe_gz(`src/site/${fixture}`)
-    const json_parse = vi.spyOn(JSON, `parse`)
-    const result = await parse_file_content(content, `structure.json`)
-    expect(result.type === `structure` && result.data.sites.length).toBeGreaterThan(0)
-    expect(json_parse.mock.calls.filter(([text]) => text === content)).toHaveLength(1)
-  },
-)
+test.each([
+  [`structures/mp-1.json`, 2],
+  [`structures/mp-7000-optimade.json`, 9],
+])(`%s is parsed as JSON once`, async (fixture, n_sites) => {
+  const content = read_maybe_gz(`src/site/${fixture}`)
+  const json_parse = vi.spyOn(JSON, `parse`)
+  const result = await parse_file_content(content, `structure.json`)
+  expect(result.type === `structure` && result.data.sites.length).toBe(n_sites)
+  expect(json_parse.mock.calls.filter(([text]) => text === content)).toHaveLength(1)
+})
 
 // .dat payloads stay bytes through classification (is_binary_payload), so the parser decodes
 // them itself: by their byte-order mark, as UTF-16 written by Windows PowerShell redirection

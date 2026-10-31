@@ -280,13 +280,13 @@
       styles.point?.size ?? 2,
     ]
     const [ranges_x, ranges_y, ranges_z] = [x_range, y_range, z_range]
-    const bounds = [ranges_x, ranges_y, ranges_z].map(([lo, hi]) => [
-      Math.min(lo, hi),
-      Math.max(lo, hi),
-    ])
-    const [[x_lo, x_hi], [y_lo, y_hi], [z_lo, z_hi]] = bounds
-    const shown = series.filter((srs) => srs.visible ?? true)
-    const capacity = shown.reduce((sum, srs) => sum + srs.x.length, 0)
+    const [[x_lo, x_hi], [y_lo, y_hi], [z_lo, z_hi]] = [ranges_x, ranges_y, ranges_z].map(
+      ([lo, hi]) => [Math.min(lo, hi), Math.max(lo, hi)],
+    )
+    const capacity = series.reduce(
+      (sum, srs) => sum + ((srs.visible ?? true) ? srs.x.length : 0),
+      0,
+    )
     const keys = new Float64Array(capacity)
     const packed = new Float32Array(capacity * INSTANCE_STRIDE)
     const srgb = srgb_parser()
@@ -311,8 +311,10 @@
         keys[count++] = series_idx * KEY_BASE + point_idx
       }
     })
-    if (count === capacity) return { keys, packed }
-    return { keys: keys.slice(0, count), packed: packed.slice(0, count * INSTANCE_STRIDE) }
+    return {
+      keys: keys.subarray(0, count),
+      packed: packed.subarray(0, count * INSTANCE_STRIDE),
+    }
   })
 
   // Instance index of the marker with `key`, -1 when it isn't drawn

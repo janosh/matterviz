@@ -135,10 +135,9 @@
     () => [drop_error, ...computed.failures],
   )
 
-  // Each curve's bin → sites index, built by one neighbour search on its first bin hover so
-  // sweeping the pointer along the curve reads bins back instead of searching per bin (2048
-  // sites, 15 Å, 75 bins: 3 to 56 ms per bin -> one 55 ms build, then 0.01 ms per bin). Keyed
-  // by the entry, which a new structure, cutoff, n_bins or pbc replaces.
+  // Each curve's bin → sites index from one neighbour search on its first bin hover, so a
+  // pointer sweep reads bins back (2048 sites, 15 Å, 75 bins: 3-56 ms per bin -> one 55 ms
+  // build, then 0.01 ms). Keyed by the entry, which new structure/cutoff/n_bins/pbc replace.
   const bin_site_indices = new WeakMap<ComputedEntry, ReturnType<typeof rdf_bin_site_index>>()
   // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)
   const hovered_sites = (entry_idx: number, bin_idx: number | null) => {
@@ -148,11 +147,10 @@
     const highlight = { label: legend_group ?? label, structure }
     const element_pair = pattern.element_pair
     if (bin_idx !== null) {
-      let index = bin_site_indices.get(entry)
-      if (!index) {
-        index = rdf_bin_site_index(structure, { cutoff, n_bins, pbc, element_pair })
-        bin_site_indices.set(entry, index)
-      }
+      const index =
+        bin_site_indices.get(entry) ??
+        rdf_bin_site_index(structure, { cutoff, n_bins, pbc, element_pair })
+      bin_site_indices.set(entry, index)
       const { site_indices, neighbor_indices } = index(bin_idx)
       return [{ ...highlight, site_indices, neighbor_indices }]
     }

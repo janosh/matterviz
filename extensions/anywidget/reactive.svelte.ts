@@ -104,15 +104,12 @@ export const throttle = <Args extends unknown[]>(
 //   - writeback: also push prop -> trait via set_model ($bindable the component mutates)
 //   - fallback:  seed/revert value for a writeback prop whose trait is absent/None
 //                (null would crash components that expect [], 0, ...)
-//   - raw:     hand the value over as is instead of as a $state proxy, for large data the
-//              component never mutates in place (see reactive_widget)
 export type DrivenProp = {
   prop: string
   deps: readonly string[]
   compute: (model: AnyModel) => unknown
   writeback?: boolean
   fallback?: unknown
-  raw?: boolean
 }
 
 // Plain driven key (trait name == component prop name).
@@ -123,10 +120,6 @@ export const drive_prop = (key: string): DrivenProp => ({
 })
 
 export const drive_props = (keys: readonly string[]): DrivenProp[] => keys.map(drive_prop)
-
-// Driven data the component reads but never mutates in place (structures, series, entries)
-export const data_props = (keys: readonly string[]): DrivenProp[] =>
-  keys.map((key) => ({ ...drive_prop(key), raw: true }))
 
 // Like drive_prop, but a trait set to None reaches the component as null instead of its
 // default, for props where null means off (e.g. color_bar=None hides the bar)
@@ -157,6 +150,14 @@ const as_state = <T>(value: T): T => {
   return state
 }
 
+// Data props the components read but never mutate in place, so they stay unproxied: a deep
+// proxy over a 30k-site structure put every read behind proxy traps and mounted the
+// Structure widget 10x slower
+const DATA_PROPS = new Set([
+  ...`structure structures series surfaces entries patterns x_items y_items values`.split(` `),
+  ...`band_structs doses fermi_data band_data bz_data`.split(` `),
+])
+
 export interface ReactiveWidget {
   // Reactive props object to pass straight into Svelte's mount().
   props: Record<string, unknown>
@@ -184,17 +185,14 @@ export function reactive_widget(
     return spec.writeback ? (spec.fallback ?? null) : undefined
   }
 
-  // One reactive slot per prop. Values become $state proxies, so components re-render when
-  // they mutate one in place (a controls pane toggling display.x_grid), except data props:
-  // a deep proxy over a 30k-site structure put every read behind proxy traps and mounted the
-  // Structure widget 10x slower.
+  // One reactive slot per prop. Values other than DATA_PROPS become $state proxies, so
+  // components re-render when they mutate one in place (a controls pane toggling display.x_grid)
   const values = new SvelteMap<string, unknown>()
-  const raw_keys = new Set(driven.filter((spec) => spec.raw).map((spec) => spec.prop))
   // An undefined value removes the key, so the component uses its own fallback: passing
   // undefined for a $bindable-with-fallback trips Svelte's props_invalid_value
   const store = (key: string, value: unknown): void => {
     if (value === undefined) values.delete(key)
-    else values.set(key, raw_keys.has(key) ? value : as_state(value))
+    else values.set(key, DATA_PROPS.has(key) ? value : as_state(value))
   }
   // Keys held at mount get a setter, through which Svelte writes $bindable props back
   const props = new Proxy<Record<string, unknown>>(
@@ -205,7 +203,6 @@ export function reactive_widget(
         if (typeof key === `string`) store(key, value)
         return typeof key === `string`
       },
-      deleteProperty: (_, key) => typeof key === `string` && values.delete(key),
       has: (_, key) => typeof key === `string` && values.has(key),
       ownKeys: () => [...values.keys()],
       getOwnPropertyDescriptor: (_, key) =>

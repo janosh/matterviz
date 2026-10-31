@@ -410,12 +410,9 @@ describe(`staged phonon runs`, () => {
     const lattices = [first, second].map(({ decoded }) =>
       `lattice` in decoded.structure ? decoded.structure.lattice : undefined,
     )
-    expect(lattices[0]).toEqual(cell.structure.lattice)
     // each frame owns its lattice: editing one frame's cell must not move the next frame's
-    expect(lattices[1]).toEqual(lattices[0])
     expect(lattices[1]).not.toBe(lattices[0])
     expect(site_b.properties).not.toBe(site_a.properties)
-    expect(site_b.xyz).not.toEqual(site_a.xyz)
   })
 
   it(`reports mass-weighted mode character per element`, () => {

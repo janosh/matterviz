@@ -38,11 +38,7 @@ function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   const raw = match?.groups?.double ?? match?.groups?.single
   if (raw === undefined) return undefined
   // commas too, as ASE's reader and the vector signals below accept: `Lattice="1.98, -0.37, …"`
-  const vals = raw
-    .trim()
-    .split(/[\s,]+/u)
-    .filter(Boolean)
-    .map(parse_float_token)
+  const vals = raw.split(/[\s,]/).filter(Boolean).map(parse_float_token)
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
@@ -507,6 +503,7 @@ export function build_xyz_frame(
   )
 }
 
+const PLAIN_XYZ_COLUMNS = new Set([`species`, `pos`, `forces`, `force`])
 // The numeric frame encode_frame makes of build_xyz_frame's, decoded straight from the atom
 // lines when they hold only a species symbol, positions and optional forces: no Site, species
 // record, label or per-atom array (1k atoms: 0.65 -> 0.22 ms per frame). Other layouts, and
@@ -521,40 +518,27 @@ export function read_xyz_frame(
   const { start, num_atoms, comment } = frame
   const { symbol_col, pos_col, forces_col, min_cols, layout, spec_error } =
     parse_extxyz_columns(comment)
-  const plain =
-    !spec_error &&
-    num_atoms > 0 &&
-    Object.keys(layout ?? {}).every((name) =>
-      [`species`, `pos`, `forces`, `force`].includes(name),
-    )
-  if (!plain) return null
+  const plain = Object.keys(layout ?? {}).every((name) => PLAIN_XYZ_COLUMNS.has(name))
+  if (spec_error || num_atoms === 0 || !plain) return null
+  const header = xyz_frame_header(comment, opts.frame_label, collector)
   const numbers = new Uint8Array(num_atoms)
   const positions = new Float64Array(num_atoms * 3)
   const forces = new Float64Array(forces_col >= 0 ? num_atoms * 3 : 0)
-  let n_forces = 0
+  // calc_force_stats' arithmetic, in order, over the packed vectors
+  let [n_forces, force_max, sum_sq] = [0, -Infinity, 0]
   const scanner = new LineScanner()
   for (let idx = 0; idx < num_atoms; idx++) {
-    const line_idx = start + 2 + idx
-    const n_cols = lines.scan(scanner, line_idx)
-    const pos_x = scanner.num(pos_col)
-    const pos_y = scanner.num(pos_col + 1)
-    const pos_z = scanner.num(pos_col + 2)
-    const atomic_number = symbol_to_atomic_number(
-      elem_symbol_from_token(scanner.str(symbol_col)) ?? ``,
-    )
+    const n_cols = lines.scan(scanner, start + 2 + idx)
+    const symbol = elem_symbol_from_token(scanner.str(symbol_col))
+    const atomic_number = symbol && symbol_to_atomic_number(symbol)
     // build_xyz_frame reports a short or non-numeric line and resolves odd species
-    if (
-      n_cols < min_cols ||
-      !Number.isFinite(pos_x) ||
-      !Number.isFinite(pos_y) ||
-      !Number.isFinite(pos_z) ||
-      !atomic_number
-    )
-      return null
+    if (n_cols < min_cols || !atomic_number) return null
     numbers[idx] = atomic_number
-    positions[idx * 3] = pos_x
-    positions[idx * 3 + 1] = pos_y
-    positions[idx * 3 + 2] = pos_z
+    for (let axis = 0; axis < 3; axis++) {
+      const coord = scanner.num(pos_col + axis)
+      if (!Number.isFinite(coord)) return null
+      positions[idx * 3 + axis] = coord * header.pos_scale
+    }
     if (forces_col < 0 || n_cols < forces_col + 3) continue
     const force_x = scanner.num(forces_col)
     const force_y = scanner.num(forces_col + 1)
@@ -564,24 +548,16 @@ export function read_xyz_frame(
     forces[idx * 3] = force_x
     forces[idx * 3 + 1] = force_y
     forces[idx * 3 + 2] = force_z
+    const magnitude = Math.hypot(force_x, force_y, force_z)
+    if (magnitude > force_max) force_max = magnitude
+    sum_sq += magnitude ** 2
     n_forces++
   }
-  const header = xyz_frame_header(comment, opts.frame_label, collector)
-  if (header.pos_scale !== 1)
-    for (let idx = 0; idx < positions.length; idx++) positions[idx] *= header.pos_scale
   // Forces count only when every atom has them, as on the decoded sites
-  const has_forces = n_forces > 0 && n_forces === num_atoms
-  let force_stats: ReturnType<typeof calc_force_stats> = null
-  if (has_forces) {
-    // calc_force_stats' arithmetic, in order, over the packed vectors
-    let [force_max, sum_sq] = [-Infinity, 0]
-    for (let idx = 0; idx < forces.length; idx += 3) {
-      const magnitude = Math.hypot(forces[idx], forces[idx + 1], forces[idx + 2])
-      if (magnitude > force_max) force_max = magnitude
-      sum_sq += magnitude ** 2
-    }
-    force_stats = { force_max, force_norm: Math.sqrt(sum_sq / num_atoms) }
-  }
+  const has_forces = n_forces === num_atoms
+  const force_stats = has_forces
+    ? { force_max, force_norm: Math.sqrt(sum_sq / num_atoms) }
+    : null
   const numeric = create_numeric_md_frame(
     positions,
     numbers,

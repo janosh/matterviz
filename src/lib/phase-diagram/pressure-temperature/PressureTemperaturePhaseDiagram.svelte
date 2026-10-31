@@ -234,9 +234,8 @@
   // Lowest pressure a log axis shows (data units); null when the data has no positive one
   const log_floor = $derived(wants_log && pt_data ? pressure_log_floor(pt_data) : null)
   const log_pressure = $derived(log_floor !== null)
-  // The converters below are plain functions over a snapshot of their reactive inputs (units,
-  // log floor, swap, scales), rebuilt when one changes: the region, boundary and uncertainty
-  // deriveds call them per point, and reading every input per call dominated a pan
+  // The converters below snapshot their reactive inputs and are rebuilt when one changes:
+  // they run per point, and reading every input per call dominated a pan
   // On a log axis P <= 0 has no position: such points go far below the axis floor and the plot
   // clip cuts them (a line from 0 GPa enters at the left edge). Positive values aren't clamped.
   const p_to_display = $derived.by(() => {
@@ -420,10 +419,9 @@
     boundaries.map((boundary) => {
       const pixels = boundary.points.map(data_to_px)
       const has_sigma = Boolean(boundary.sigma_p || boundary.sigma_t)
-      const sigma_of = sigma_px
       const deltas = has_sigma
         ? boundary.points.map((point, idx) =>
-            sigma_of(point, boundary.sigma_p?.[idx], boundary.sigma_t?.[idx]),
+            sigma_px(point, boundary.sigma_p?.[idx], boundary.sigma_t?.[idx]),
           )
         : []
       // Error bars thinned to one per ERROR_BAR_SPACING_PX along the line

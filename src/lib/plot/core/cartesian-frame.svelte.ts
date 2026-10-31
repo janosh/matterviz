@@ -557,24 +557,17 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
   const marginal_pad = $derived(reserve_marginal_pad(opts.marginals()))
   // A legend drag holds the layout: re-solving per mousemove would evict and re-admit the
   // decorations it passes over, resizing the plot under the cursor. The drop re-solves once.
-  // A pan holds it too: each frame would rebuild the obstacle field from every mark (most of
-  // a 100k-point or many-line pan frame) only to move the legend under the cursor. The
-  // gesture's end re-solves against where the data landed. A pan re-solves early only when
-  // the frame's own geometry moves (tick labels widening the axis pad, a resize).
-  let held_solution: DecorationSolution | undefined
-  let held_geometry: { axis_pad: Required<Sides>; width: number; height: number } | undefined
+  // A pan holds it too (each frame would rebuild the obstacle field from every mark only to
+  // move the legend under the cursor) unless the frame's own geometry moves (a resize, tick
+  // labels widening the axis pad); its end re-solves against where the data landed.
+  let held: { solution: DecorationSolution; geometry: string } | undefined
   const base_decoration_solution = $derived.by(() => {
     const frame_axis_pad = facet.padding(axis_pad)
-    const same_geometry =
-      held_geometry !== undefined &&
-      sides_equal(held_geometry.axis_pad, frame_axis_pad) &&
-      held_geometry.width === width &&
-      held_geometry.height === height
-    if (held_solution && (legend_is_dragging || (pan_zoom.is_panning && same_geometry)))
-      return held_solution
-    held_geometry = { axis_pad: frame_axis_pad, width, height }
+    const geometry = JSON.stringify([frame_axis_pad, width, height])
+    if (held && (legend_is_dragging || (pan_zoom.is_panning && held.geometry === geometry)))
+      return held.solution
     const items = [...(legend_item ? [legend_item] : []), ...(opts.decorations?.() ?? [])]
-    return (held_solution = solve_decorations({
+    const solution = solve_decorations({
       base_pad: effective_base_pad,
       reserved_pad: marginal_pad,
       axis_pad: frame_axis_pad,
@@ -584,7 +577,9 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       obstacles_norm: items.length ? opts.obstacles() : [],
       exclusion_rects: pinned_rects,
       items,
-    }))
+    })
+    held = { solution, geometry }
+    return solution
   })
   // pad, scales and ticks keep their identity while their values hold: the solver re-runs on
   // every data change (its obstacles are the data), and a new pad, scale or tick array would
@@ -941,13 +936,11 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
 }
 
 // === Pan anchor ===
-// A pan only translates the plot (px per unit holds, see px_per_unit), so while one runs, marks
-// can keep the projection of the view the pan started from and be shifted instead of
-// re-projected and re-rendered per frame. `scales` is that view's (the live ones while no pan
-// runs or `enabled` is off), `shift` the px to translate marks on an x/y axis pair by (null when
-// none). Marks cropped to the view are cropped `reach` px (a plot width or height) past each
-// side of the anchored view along `cropped_axes`, and re-anchor once the pan travels that far.
-// Call during component init.
+// A pan only translates the plot (px per unit holds), so while one runs, marks keep the
+// projection of the view it started from (`scales`; the live ones at rest or while `enabled` is
+// off) and are shifted by `transform` instead of re-rendered per frame. Marks cropped to the
+// view keep `reach` px (a plot width or height) past each side along `cropped_axes`, and
+// re-anchor once the pan travels that far. Call during component init.
 export function create_pan_anchor(
   frame: Pick<
     CartesianFrame,

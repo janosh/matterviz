@@ -925,11 +925,11 @@ export const parse_cif = (content: string): Crystal => {
       coefficients.some((row, dim) => row.some((coef, col) => coef !== (dim === col ? 1 : 0))),
   )
 
-  const space_group = cif_space_group(block_lines)
+  const { symbol: sg_symbol, number: sg_number } = cif_space_group(block_lines)
   // Candidate lattice-centering translations from the space-group symbol (R
   // only valid in the hexagonal setting, α≈β≈90°, γ≈120°). Whether to actually
   // apply them is decided below by reconciling against _atom_type_number_in_cell.
-  const centering_letter = space_group.symbol?.[0]?.toUpperCase()
+  const centering_letter = sg_symbol?.[0]?.toUpperCase()
   const is_hexagonal_setting =
     Math.abs(alpha - 90) <= 1 && Math.abs(beta - 90) <= 1 && Math.abs(gamma - 120) <= 1
   const centering =
@@ -1047,17 +1047,10 @@ export const parse_cif = (content: string): Crystal => {
   // Without a symop loop only the listed sites are drawn (ops are not generated from the
   // space-group symbol, as pymatgen does): say so when the block declares a space group with
   // more operations than the identity and neither its rows nor centering fill the cell
-  const declares_symmetry =
-    (space_group.symbol !== null && !/^P1$/i.test(space_group.symbol)) ||
-    (space_group.number !== null && space_group.number > 1)
-  if (
-    symmetry_ops.length === 0 &&
-    declares_symmetry &&
-    !already_enumerated &&
-    !centering_fills_cell
-  ) {
+  const lists_cell = symmetry_ops.length > 0 || already_enumerated || centering_fills_cell
+  if (!lists_cell && (!/^P1$/i.test(sg_symbol ?? `P1`) || (sg_number ?? 1) > 1)) {
     parse_warn(
-      `CIF declares space group ${space_group.symbol ?? space_group.number} but lists no symmetry operations; showing only the listed sites, not the full cell`,
+      `CIF declares space group ${sg_symbol ?? sg_number} but lists no symmetry operations; showing only the listed sites, not the full cell`,
     )
   }
   if (n_overlaps > 0) {
@@ -1275,9 +1268,8 @@ export function normalize_fractional_coords<T extends AnyStructure>(structure: T
   return { ...structure, sites, properties: { ...structure.properties, bonds: moved_bonds } }
 }
 
-// JSON holding an OPTIMADE response or a pymatgen-style structure (possibly nested)
-const parse_json_structure: FormatParser = (content) => {
-  const parsed: unknown = JSON.parse(content)
+// Parsed JSON holding an OPTIMADE response or a pymatgen-style structure (possibly nested)
+export function structure_from_json_value(parsed: unknown): AnyStructure {
   // A root OPTIMADE envelope is authoritative, including its missing-atom diagnostics.
   const root_optimade = optimade_structure_from_raw(parsed)
   if (root_optimade) return optimade_to_structure(root_optimade)
@@ -1288,6 +1280,8 @@ const parse_json_structure: FormatParser = (content) => {
   }
   throw new Error(`JSON content does not contain a valid structure format`)
 }
+const parse_json_structure: FormatParser = (content) =>
+  structure_from_json_value(JSON.parse(content))
 
 type FormatParser = (content: string) => AnyStructure
 

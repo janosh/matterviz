@@ -87,13 +87,13 @@ const digit_scratch = new Uint8Array(10)
 
 // Room for one command: the letter, 6 int32 numbers of at most 12 bytes (sign, 7 digits and a
 // 4-byte fraction) and 5 commas. A fallback text reserves its own length on top.
+const COMMAND_BYTES = 1 + 6 * 12 + 5
 const reserve = (n_bytes: number): void => {
   if (path_len + n_bytes <= path_bytes.length) return
   const grown = new Uint8Array(Math.max(path_bytes.length * 2, path_len + n_bytes))
   grown.set(path_bytes.subarray(0, path_len))
   path_bytes = grown
 }
-const COMMAND_BYTES = 1 + 6 * 12 + 5
 
 const write_number = (val: number): void => {
   const scaled = Math.round(val * 1000)
@@ -131,28 +131,25 @@ const write_pair = (x: number, y: number): void => {
   write_number(y)
 }
 
-// The d3-path context a curve draws into. Tracks the subpath's start and current x as d3's
-// Path does, which decide whether closePath writes a Z; arcs are never drawn by line curves.
+// The d3-path context a curve draws into. Line curves only close single-point subpaths, right
+// after their moveTo, so unlike d3's Path no subpath start is tracked, and they draw no arcs.
+const no_arcs = (): never => {
+  throw new Error(`line paths draw no arcs or rects`)
+}
 class PathWriter {
-  #x0: number | null = null
-  #x1: number | null = null
   moveTo(x: number, y: number): void {
     write_letter(77) // M
     write_pair(x, y)
-    this.#x0 = x
-    this.#x1 = x
   }
   lineTo(x: number, y: number): void {
     write_letter(76) // L
     write_pair(x, y)
-    this.#x1 = x
   }
   quadraticCurveTo(x1: number, y1: number, x: number, y: number): void {
     write_letter(81) // Q
     write_pair(x1, y1)
     path_bytes[path_len++] = 44
     write_pair(x, y)
-    this.#x1 = x
   }
   bezierCurveTo(x1: number, y1: number, x2: number, y2: number, x: number, y: number): void {
     write_letter(67) // C
@@ -161,22 +158,13 @@ class PathWriter {
     write_pair(x2, y2)
     path_bytes[path_len++] = 44
     write_pair(x, y)
-    this.#x1 = x
   }
   closePath(): void {
-    if (this.#x1 === null) return
-    this.#x1 = this.#x0
     write_letter(90) // Z
   }
-  arcTo(): void {
-    throw new Error(`line paths draw no arcs`)
-  }
-  arc(): void {
-    throw new Error(`line paths draw no arcs`)
-  }
-  rect(): void {
-    throw new Error(`line paths draw no rects`)
-  }
+  arcTo = no_arcs
+  arc = no_arcs
+  rect = no_arcs
 }
 
 // d3.line().x(x_of).y(y_of).curve(curve).defined(defined)(points) ?? ``: a point failing

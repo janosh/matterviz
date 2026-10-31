@@ -19,16 +19,8 @@ import {
   mock_parse_worker,
   mount_sized,
 } from '../setup'
-import { make_phase } from '../test-fixtures'
+import { make_phase, png_blob } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
-
-// canvas encoders write real PNGs, whose resolution the export declares (set_png_dpi)
-const ONE_PIXEL_PNG = Uint8Array.from(
-  atob(
-    `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
-  ),
-  (char) => char.charCodeAt(0),
-)
 
 beforeEach(mock_parse_worker)
 
@@ -328,7 +320,7 @@ describe(`convex hull replacement state`, () => {
       callback: BlobCallback,
     ) {
       sizes.push([this.width, this.height])
-      callback(new Blob([ONE_PIXEL_PNG], { type: `image/png` }))
+      callback(png_blob())
     })
     on_export.mockClear()
     await click_export(`PNG`, target)

@@ -521,58 +521,40 @@
     return timestamp === null ? null : format_datetime(timestamp, mode, relative_now_ms)
   }
 
-  // Every column's cells read as numbers once per data change (NaN where a cell has none, no
-  // array for a column without numbers), shared by alignment, the heatmap toggle and the
-  // column statistics. Those re-parsed every cell, the statistics on each search keystroke or
-  // filter step (~290 ms at 50k x 30). `all_numeric`: some cell is non-empty and every
-  // non-empty one is numeric.
-  type ParsedColumn = { nums: Float64Array | null; all_numeric: boolean }
-  // Row-major: each row object is read once for all its columns. A column-at-a-time pass walks
-  // every row object per column, and those scattered loads cost ~8x the parsing (50k x 30:
-  // parsing 155 -> 19 ms, mount 480 -> 250 ms).
+  // Every column's cells read as numbers once per data change (NaN where a cell has none),
+  // shared by alignment, the heatmap toggle and the column statistics, which re-parsed every
+  // cell on each search keystroke (~290 ms at 50k x 30). `all_numeric`: every non-empty cell is
+  // numeric. Row-major: a column-at-a-time pass walks every row object per column, and those
+  // scattered loads cost ~8x the parsing (50k x 30: 155 -> 19 ms, mount 480 -> 250 ms).
   let parsed_columns = $derived.by(() => {
-    const keys = [...new Set(columns.map(cell_key))]
-    const nums = keys.map(() => new Float64Array(data.length))
-    const [any_value, any_numeric, all_numeric] = [0, 0, 1].map((init) =>
-      new Uint8Array(keys.length).fill(init),
-    )
+    const cols = [...new Set(columns.map(cell_key))].map((key) => ({
+      key,
+      nums: new Float64Array(data.length),
+      any_numeric: false,
+      all_numeric: true,
+    }))
     for (let row_idx = 0; row_idx < data.length; row_idx++) {
       const row = data[row_idx]
-      for (let key_idx = 0; key_idx < keys.length; key_idx++) {
-        const val = row[keys[key_idx]]
+      for (const col of cols) {
+        const val = row[col.key]
         const num = parse_numeric_val(val)
-        nums[key_idx][row_idx] = num ?? NaN
-        if (num !== null) any_numeric[key_idx] = 1
-        if (is_invalid(val) || val === ``) continue
-        any_value[key_idx] = 1
-        if (num === null) all_numeric[key_idx] = 0
+        col.nums[row_idx] = num ?? NaN
+        if (num !== null) col.any_numeric = true
+        else if (!is_invalid(val) && val !== ``) col.all_numeric = false
       }
     }
-    return new Map<string, ParsedColumn>(
-      keys.map((key, key_idx) => [
-        key,
-        {
-          nums: any_numeric[key_idx] ? nums[key_idx] : null,
-          all_numeric: Boolean(all_numeric[key_idx] && any_value[key_idx]),
-        },
-      ]),
-    )
+    return new Map(cols.map((col) => [col.key, col]))
   })
 
   // Right-align all-numeric columns (not dates or custom cells). Checks every row, not a
   // sample, since a column may turn to text near the end.
-  let numeric_columns = $derived(
-    new Set(
-      columns
-        .filter(
-          (col) =>
-            !is_datetime_column(col) &&
-            !col.cell &&
-            parsed_columns.get(cell_key(col))?.all_numeric === true,
-        )
-        .map((col) => col.id),
-    ),
-  )
+  let numeric_columns = $derived.by(() => {
+    const is_numeric = (col: Column<Row>) => {
+      const parsed = parsed_columns.get(cell_key(col))
+      return !is_datetime_column(col) && !col.cell && parsed?.any_numeric && parsed.all_numeric
+    }
+    return new Set(columns.filter(is_numeric).map((col) => col.id))
+  })
 
   // === Filtering ===
   // Per-column filters over all columns (hiding one mustn't change which rows show). Cached
@@ -603,8 +585,6 @@
     return () => clearTimeout(timer)
   })
 
-  // Without search.keys only column data is searched, not row style/class or other fields
-  let search_keys = $derived(search_config?.keys ?? columns.map(cell_key))
   const has_value = (row: RowData): boolean => {
     for (const key in row) if (Object.hasOwn(row, key) && row[key] !== undefined) return true
     return false
@@ -615,19 +595,21 @@
   // query: 537 -> 132 ms). Objects and Dates can change inside, so their text is never cached.
   type SearchEntry = { values: CellVal[]; text: string[] }
   const search_cache = new WeakMap<object, SearchEntry>()
-  const entry_current = ({ values }: SearchEntry, row: RowData, keys: string[]): boolean =>
-    values.length === keys.length &&
-    keys.every((key, key_idx) => Object.is(values[key_idx], row[key]))
-  // Every row holding any defined value, with its index in `data`
+  // Every row holding any defined value, with its index in `data`. Without search.keys only
+  // column data is searched, not row style/class or other fields.
   let search_index = $derived.by(() => {
-    const keys = search_keys
+    const keys = search_config?.keys ?? columns.map(cell_key)
     const index: { row: Row & RowData; row_idx: number; entry: SearchEntry }[] = []
     for (let row_idx = 0; row_idx < data.length; row_idx++) {
       const row = data[row_idx]
       if (!has_value(row)) continue
-      let entry = search_cache.get(row)
-      if (!entry || !entry_current(entry, row, keys))
-        search_cache.set(row, (entry = { values: keys.map((key) => row[key]), text: [] }))
+      const cached = search_cache.get(row)
+      const entry =
+        cached?.values.length === keys.length &&
+        keys.every((key, key_idx) => Object.is(cached.values[key_idx], row[key]))
+          ? cached
+          : { values: keys.map((key) => row[key]), text: [] }
+      if (entry !== cached) search_cache.set(row, entry)
       index.push({ row, row_idx, entry })
     }
     return index
@@ -645,19 +627,19 @@
   let filtered_items = $derived.by(() => {
     const query = debounced_query.toLowerCase().trim()
     const [tests, fuzzy] = [filter_tests, search_config?.fuzzy]
-    const matches_query = ({ values, text }: SearchEntry): boolean =>
-      values.some((val, val_idx) =>
-        text_matches_query(
-          val !== null && typeof val === `object`
-            ? cell_text(val).toLowerCase()
-            : (text[val_idx] ??= cell_text(val).toLowerCase()),
-          query,
-          fuzzy,
-        ),
-      )
     return search_index.filter(
-      ({ row, entry }) =>
-        tests.every(({ key, test }) => test(row[key])) && (!query || matches_query(entry)),
+      ({ row, entry: { values, text } }) =>
+        tests.every(({ key, test }) => test(row[key])) &&
+        (!query ||
+          values.some((val, val_idx) =>
+            text_matches_query(
+              val !== null && typeof val === `object`
+                ? cell_text(val).toLowerCase()
+                : (text[val_idx] ??= cell_text(val).toLowerCase()),
+              query,
+              fuzzy,
+            ),
+          )),
     )
   })
   let filtered_data = $derived(filtered_items.map(({ row }) => row))
@@ -849,8 +831,9 @@
     const stats = new Map<string, ColumnStats & { domain: [number, number] }>()
     const groups = new Map<string, [number, number]>()
     for (const col of visible_columns) {
-      const nums = parsed_columns.get(cell_key(col))?.nums
-      if (!nums) continue
+      const parsed = parsed_columns.get(cell_key(col))
+      if (!parsed?.any_numeric) continue
+      const { nums } = parsed
       const col_stats = compute_column_stats(
         filtered_items.map(({ row_idx }) => nums[row_idx]),
         undefined,
@@ -877,7 +860,7 @@
   let any_numeric_ids = $derived(
     new Set(
       columns
-        .filter((col) => parsed_columns.get(cell_key(col))?.nums != null)
+        .filter((col) => parsed_columns.get(cell_key(col))?.any_numeric)
         .map((col) => col.id),
     ),
   )
@@ -1296,11 +1279,10 @@
     const step = event.key === `ArrowDown` ? 1 : -1
     const target_idx = abs_idx + step
     if (target_idx < 0 || target_idx >= sorted_data.length) return
-    // Paged like cell navigation: the row past a page edge is on the neighbouring page
-    const next_page = pagination_config ? Math.floor(target_idx / page_size) + 1 : page
-    const flips_page = next_page !== page
-    if (flips_page) current_page = next_page
-    if (scroll_row_into_window(target_idx, step > 0) || flips_page) await tick()
+    // Paged like focus_cell: the row past a page edge is on the neighbouring page
+    if (pagination_config) current_page = Math.floor(target_idx / page_size) + 1
+    scroll_row_into_window(target_idx, step > 0)
+    await tick()
     own_row_el(target_idx)?.focus()
   }
 

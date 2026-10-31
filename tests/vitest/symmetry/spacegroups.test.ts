@@ -89,6 +89,11 @@ describe(`SPACEGROUP_SYMBOL_TO_NUM`, () => {
     expect(spg.SPACEGROUP_SYMBOL_TO_NUM[symbol]).toBe(number)
     expect(spg.normalize_spacegroup(symbol)).toBe(number)
   })
+  // normalize_spacegroup compacts symbols (drops `_` and spaces), which must merge no two groups
+  test(`every listed symbol normalizes to its own number`, () => {
+    for (const [symbol, num] of Object.entries(spg.SPACEGROUP_SYMBOL_TO_NUM))
+      expect(spg.normalize_spacegroup(symbol), symbol).toBe(num)
+  })
 })
 
 describe(`SPACEGROUP_NUM_TO_SYMBOL`, () => {

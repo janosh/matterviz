@@ -18,7 +18,7 @@ import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercel
 import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type { NumericFrame } from '#lib/trajectory/frame.js'
-import { trajectory_from_numeric_source } from '#lib/trajectory/runs/memory.js'
+import { numeric_run } from '#lib/trajectory/runs/memory.js'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import { acoustic_mode_indices } from './ir-raman'
 import type {
@@ -501,7 +501,7 @@ export function phonon_mode_run(
     }
   }
 
-  return trajectory_from_numeric_source(n_frames, read_frame, {
+  return numeric_run(n_frames, read_frame, {
     properties: Array.from({ length: n_frames }, (_unused, frame_idx) => ({
       frame_number: frame_idx,
       step: frame_idx,

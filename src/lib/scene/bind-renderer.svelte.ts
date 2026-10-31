@@ -64,7 +64,7 @@ type ListenedTextures = {
   by_texture: WeakMap<Texture, WeakRef<Texture>>
 }
 const texture_listeners = new WeakMap<TexturesManager, ListenedTextures>()
-let texture_listeners_guarded = false
+const guarded_prototypes = new WeakSet<object>()
 
 // three's Textures (r186, still on dev) adds a `dispose` listener to every texture it uploads and
 // removes it only when that texture is disposed: Renderer.dispose() drops its texture data but
@@ -73,9 +73,9 @@ let texture_listeners_guarded = false
 // canvas: every 3D viewer stayed in memory after unmounting (+2 canvases and ~1 MB per visit to
 // a Brillouin zone page). Remove the listeners along with the renderer's texture data.
 export function guard_texture_listeners(textures: TexturesManager): void {
-  if (texture_listeners_guarded) return
-  texture_listeners_guarded = true
   const proto = Object.getPrototypeOf(textures) as TexturesManager
+  if (guarded_prototypes.has(proto)) return
+  guarded_prototypes.add(proto)
   const { updateTexture: update_texture, dispose } = proto
   // a destroyed texture already removed its own listener
   const destroy_texture = Reflect.get(proto, `_destroyTexture`) as DestroyTexture

@@ -278,12 +278,14 @@ const calendar_starts = (
   const date = new Date(min_val)
   // setFullYear, not the Date constructor, which reads years 0-99 as 1900-1999
   date.setFullYear(first.getFullYear(), unit === `year` ? 0 : first.getMonth(), 1)
-  date.setHours(0, 0, 0, 0)
   const starts: number[] = []
-  while (date.getTime() <= max_val) {
-    if (date.getTime() >= min_val) starts.push(date.getTime())
+  let time = date.setHours(0, 0, 0, 0)
+  while (time <= max_val) {
+    if (time >= min_val) starts.push(time)
     if (unit === `year`) date.setFullYear(date.getFullYear() + 1)
     else date.setMonth(date.getMonth() + 1)
+    // re-floored: after a DST change at midnight on the 1st, setMonth keeps the 01:00
+    time = date.setHours(0, 0, 0, 0)
   }
   return starts
 }

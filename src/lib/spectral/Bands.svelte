@@ -38,7 +38,6 @@
   } from './mode-values'
   import type { ModeValueMarker } from './mode-values'
   import type {
-    BandLineStyle,
     BandsSpinMode,
     BaseBandStructure,
     Branch,
@@ -143,25 +142,22 @@
   } = $props()
 
   // A band line's style: the caller's over the structure colour, emphasised or muted while a
-  // band is highlighted
-  function get_line_style(color: string, ...line: helpers.BandLine): Required<BandLineStyle> {
-    const [band_idx, , is_acoustic] = line
+  // band is highlighted. A spin-down line is dashed and a hair thinner than its spin-up twin.
+  function get_line_style(color: string, ...line: helpers.BandLine): DataSeries[`line_style`] {
+    const [band_idx, spin, is_acoustic] = line
     const custom = helpers.band_line_style(line_kwargs, ...line)
-    const style = {
-      stroke: custom.stroke ?? color,
-      stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
-    }
-    if (highlighted_band_index === null) return style
-    const selected = highlighted_band_index === band_idx
-    return {
+    let stroke = custom.stroke ?? color
+    let stroke_width = custom.stroke_width ?? (is_acoustic ? 1.5 : 1)
+    if (highlighted_band_index !== null) {
+      const selected = highlighted_band_index === band_idx
       // a caller-coloured band keeps its colour while emphasised
-      stroke: selected
+      stroke = selected
         ? (custom.stroke ?? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`)
-        : helpers.BANDS_CSS_COLORS.muted,
-      stroke_width: selected
-        ? Math.max(3, style.stroke_width * 2)
-        : Math.min(1, style.stroke_width),
+        : helpers.BANDS_CSS_COLORS.muted
+      stroke_width = selected ? Math.max(3, stroke_width * 2) : Math.min(1, stroke_width)
     }
+    if (spin === `up`) return { stroke, stroke_width }
+    return { stroke, line_dash: `4,2`, stroke_width: Math.max(1, stroke_width - 0.1) }
   }
 
   interface RibbonData {
@@ -405,30 +401,15 @@
     return { series_geometry: all_series, ribbon_data: all_ribbons, slope_scales: scales }
   })
 
-  // A spin-down line is dashed and a hair thinner than its spin-up twin
-  type SeriesLineStyle = { stroke: string; stroke_width: number; line_dash?: string }
-  function series_line_style(color: string, line: helpers.BandLine): SeriesLineStyle {
-    const { stroke, stroke_width } = get_line_style(color, ...line)
-    if (line[1] === `up`) return { stroke, stroke_width }
-    return { stroke, line_dash: `4,2`, stroke_width: Math.max(1, stroke_width - 0.1) }
-  }
   // Each band series with its style. A band hover restyles only the lines it emphasises or
   // mutes: every other series keeps its object (and its points), so ScatterPlot sees them as
   // unchanged. Non-reactive bookkeeping keyed by the geometry entries, dropped with them.
   const styled_series = new WeakMap<(typeof series_geometry)[number], DataSeries>()
   let series_data = $derived(
     series_geometry.map((entry) => {
-      const line_style = series_line_style(entry.color, entry.line)
+      const line_style = get_line_style(entry.color, ...entry.line)
       const prev = styled_series.get(entry)
-      const { stroke, stroke_width, line_dash } = prev?.line_style ?? {}
-      if (
-        prev &&
-        stroke === line_style.stroke &&
-        stroke_width === line_style.stroke_width &&
-        line_dash === line_style.line_dash
-      ) {
-        return prev
-      }
+      if (prev && JSON.stringify(prev.line_style) === JSON.stringify(line_style)) return prev
       const series = { ...entry.series, line_style }
       styled_series.set(entry, series)
       return series

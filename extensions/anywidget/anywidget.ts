@@ -38,7 +38,6 @@ import { watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
 import type { DrivenProp } from './reactive.svelte'
 import {
-  data_props,
   derived_prop,
   drive_prop,
   drive_props,
@@ -127,8 +126,7 @@ const merged_prop = (target: string, sub_key: string, source: string): DrivenPro
   )
 
 const plot_common_drive: readonly DrivenProp[] = [
-  ...data_props([`series`]),
-  ...drive_props([`display`, `legend`, `ref_lines`, `padding`, `range_padding`]),
+  ...drive_props([`series`, `display`, `legend`, `ref_lines`, `padding`, `range_padding`]),
   ...[`x`, `x2`, `y`, `y2`].map((axis) =>
     merged_prop(`${axis}_axis`, `range`, `${axis}_range`),
   ),
@@ -232,22 +230,12 @@ const spectral_record = <T>(
     }),
   )
 }
-const band_structs_prop: DrivenProp = {
-  ...derived_prop(`band_structs`, [`band_structs`], (model) =>
-    spectral_record(
-      get_prop(model, `band_structs`),
-      normalize_band_structure,
-      `band structure`,
-    ),
-  ),
-  raw: true,
-}
-const doses_prop: DrivenProp = {
-  ...derived_prop(`doses`, [`doses`], (model) =>
-    spectral_record(get_prop(model, `doses`), normalize_dos, `DOS`),
-  ),
-  raw: true,
-}
+const band_structs_prop = derived_prop(`band_structs`, [`band_structs`], (model) =>
+  spectral_record(get_prop(model, `band_structs`), normalize_band_structure, `band structure`),
+)
+const doses_prop = derived_prop(`doses`, [`doses`], (model) =>
+  spectral_record(get_prop(model, `doses`), normalize_dos, `DOS`),
+)
 
 // Shape pushed back to Python for scatter point click/hover interactions.
 type ScatterPointEvent = {
@@ -359,8 +347,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: Structure,
     static_props: no_file_drop,
     drive: [
-      ...data_props([`structure`]),
       ...drive_props([
+        `structure`,
         // show_site_labels/show_site_indices are delivered via scene_props (see
         // scene_pick_keys), not as top-level Structure props.
         ...traj_structure_prop_keys,
@@ -468,24 +456,23 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   scatter_plot_3d: {
     component: ScatterPlot3D,
     base_drive: style_base_drive,
-    drive: [
-      ...data_props([`series`, `surfaces`]),
-      ...with_plot_controls([
-        `ref_lines`,
-        `ref_planes`,
-        `x_axis`,
-        `y_axis`,
-        `z_axis`,
-        `display`,
-        `styles`,
-        `show_legend`,
-        `color_scale`,
-        `size_scale`,
-        `legend`,
-        `camera_projection`,
-        `point_tween`,
-      ]),
-    ],
+    drive: with_plot_controls([
+      `series`,
+      `surfaces`,
+      `ref_lines`,
+      `ref_planes`,
+      `x_axis`,
+      `y_axis`,
+      `z_axis`,
+      `display`,
+      `styles`,
+      `show_legend`,
+      `color_scale`,
+      `size_scale`,
+      `legend`,
+      `camera_projection`,
+      `point_tween`,
+    ]),
   },
   bar_plot: {
     component: BarPlot,
@@ -522,20 +509,18 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   convex_hull: {
     component: ConvexHull,
     static_props: no_file_drop,
-    drive: [
-      ...data_props([`entries`]),
-      ...drive_props([
-        `show_stable`,
-        `show_unstable`,
-        `show_hull_faces`,
-        `hull_face_opacity`,
-        `show_stable_labels`,
-        `show_unstable_labels`,
-        `max_hull_dist_show_labels`,
-        `max_hull_dist_show_phases`,
-        `temperature`,
-      ]),
-    ],
+    drive: drive_props([
+      `entries`,
+      `show_stable`,
+      `show_unstable`,
+      `show_hull_faces`,
+      `hull_face_opacity`,
+      `show_stable_labels`,
+      `show_unstable_labels`,
+      `max_hull_dist_show_labels`,
+      `max_hull_dist_show_phases`,
+      `temperature`,
+    ]),
   },
   band_structure: {
     component: Bands,
@@ -570,8 +555,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
       // structure adds its Brillouin zone beside the bands, configured by bz_props
       band_structs_prop,
       doses_prop,
-      ...data_props([`structure`]),
-      ...drive_props([`fermi_level`, `bz_props`]),
+      ...drive_props([`fermi_level`, `structure`, `bz_props`]),
       picked_prop(`bands_props`, [`show_legend`, ...plot_control_keys]),
       picked_prop(`dos_props`, [
         `stack`,
@@ -587,8 +571,9 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: FermiSurface,
     static_props: no_file_drop,
     drive: [
-      ...data_props([`fermi_data`, `band_data`]),
       ...drive_props([
+        `fermi_data`,
+        `band_data`,
         `mu`,
         `color_property`,
         `color_scale`,
@@ -607,20 +592,19 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   brillouin_zone: {
     component: BrillouinZone,
     static_props: no_file_drop,
-    drive: [
-      ...data_props([`structure`, `bz_data`]),
-      ...drive_props([
-        `surface_color`,
-        `surface_opacity`,
-        `edge_color`,
-        `edge_width`,
-        `show_vectors`,
-        `show_ibz`,
-        `ibz_color`,
-        `ibz_opacity`,
-        `camera_projection`,
-      ]),
-    ],
+    drive: drive_props([
+      `structure`,
+      `bz_data`,
+      `surface_color`,
+      `surface_opacity`,
+      `edge_color`,
+      `edge_width`,
+      `show_vectors`,
+      `show_ibz`,
+      `ibz_color`,
+      `ibz_opacity`,
+      `camera_projection`,
+    ]),
   },
   phase_diagram: {
     component: IsobaricBinaryPhaseDiagram,
@@ -631,7 +615,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: XrdPlot,
     base_drive: style_base_drive,
     static_props: no_file_drop,
-    drive: [...data_props([`patterns`]), ...plot_controls_drive],
+    drive: with_plot_controls([`patterns`]),
   },
   periodic_table: {
     component: PeriodicTable,
@@ -652,23 +636,24 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: RdfPlot,
     base_drive: style_base_drive,
     static_props: no_file_drop,
-    drive: [
-      ...data_props([`patterns`, `structures`]),
-      ...with_plot_controls([
-        `mode`,
-        `show_reference_line`,
-        `cutoff`,
-        `n_bins`,
-        `x_axis`,
-        `y_axis`,
-      ]),
-    ],
+    drive: with_plot_controls([
+      `patterns`,
+      `structures`,
+      `mode`,
+      `show_reference_line`,
+      `cutoff`,
+      `n_bins`,
+      `x_axis`,
+      `y_axis`,
+    ]),
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
     drive: [
-      ...data_props([`x_items`, `y_items`, `values`]),
       ...drive_props([
+        `x_items`,
+        `y_items`,
+        `values`,
         `color_scale`,
         `missing`,
         `x_axis`,

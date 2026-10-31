@@ -83,9 +83,8 @@ export function parse_numeric_val(val: CellVal): number | null {
   return text === null ? null : parse_numeric_string(text)
 }
 
-// A number with a unit or other suffix ("1.5 eV", "-3 GPa"). A suffix starting with `.` or `,`
-// (versions, IPs, thousands separators) is no unit, nor is a radix prefix (0x1f, 0b101), so
-// those cells keep the text order.
+// A number with a unit or other suffix ("1.5 eV", "-3 GPa"), not a version, IP, thousands
+// separator (suffix starting `.`/`,`) or radix prefix (0x1f), which keep the text order
 const LEADING_NUMBER_RE =
   /^\s*(?![-+−]?0[xXbBoO])(?<numeric>[-+−]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+−]?\d+)?)\s*[^\d\s.,]/
 
@@ -173,19 +172,20 @@ export function sort_table_rows<Row extends RowData>(
     if (parsed === undefined) values.set(val, (parsed = get_sort_val(val)))
     return parsed
   }
-  const keys = criteria.map(({ key }) => rows.map((row) => sort_value(row[key])))
-  const order = rows.map((_, idx) => idx)
-  // in place on a fresh index array, sort is as stable as toSorted
-  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort
-  order.sort((idx_a, idx_b) => {
-    for (const [crit_idx, { ascending }] of criteria.entries()) {
-      const crit_keys = keys[crit_idx]
-      const cmp = compare_sort_vals(crit_keys[idx_a], crit_keys[idx_b], ascending)
-      if (cmp !== 0) return cmp
-    }
-    return 0
-  })
-  return order.map((idx) => rows[idx])
+  const keyed = criteria.map(({ key, ascending }) => ({
+    ascending,
+    vals: rows.map((row) => sort_value(row[key])),
+  }))
+  return rows
+    .map((_, idx) => idx)
+    .toSorted((idx_a, idx_b) => {
+      for (const { ascending, vals } of keyed) {
+        const cmp = compare_sort_vals(vals[idx_a], vals[idx_b], ascending)
+        if (cmp !== 0) return cmp
+      }
+      return 0
+    })
+    .map((idx) => rows[idx])
 }
 
 // === Search and per-column filters ===

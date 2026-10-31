@@ -1,11 +1,9 @@
 <script lang="ts">
-  // Edit-bonds raycast targets: one invisible target holding a hit cylinder per editable bond
-  // (plus a translucent highlight on the hovered one) and one holding a hit sphere per selectable
-  // atom. Each raycast tests its cylinders/spheres one by one and reports the hit's index as
-  // instanceId, which Threlte tracks hover by as for instanced meshes. A Threlte mesh per bond
-  // and atom took 9 s to enter edit mode on a 5k-atom cell (each registration scans an array of
-  // all others) and ran out of memory at 48k. A press near a bond end picks that end's atom; in
-  // delete mode a press removes the bond.
+  // Edit-bonds raycast targets: one invisible target for all editable bonds' hit cylinders (plus
+  // a translucent highlight on the hovered one) and one for all selectable atoms' hit spheres,
+  // reporting the hit's index as instanceId (Threlte tracks hover by it). A Threlte mesh each
+  // took 9 s to enter edit mode on a 5k-atom cell. A press near a bond end picks that end's
+  // atom; in delete mode a press removes the bond.
   import type { Vec3 } from '#lib/math.js'
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { HoverHandlers } from '#lib/scene/index.js'
@@ -20,10 +18,10 @@
     type Object3D,
     Ray,
     type Raycaster,
-    Sphere,
     Vector3,
   } from 'three/webgpu'
   import type { SiteAnchor } from './atom-groups'
+  import { raycast_atom_spheres } from './atom-instances'
   import { raycast_bond } from './bond-mesh'
   import { rendered_bond_key_for } from './bonding'
   import { write_bond_transform } from './bond-rendering'
@@ -89,17 +87,12 @@
     hit_material.dispose()
   })
 
-  // Raycast scratch: one hit cylinder posed per bond, rays and spheres in the targets' space
+  // Raycast scratch: one hit cylinder posed per bond, the ray in the bond target's space
   const bond_matrix = new Float32Array(16)
   const hit_cylinder = new Mesh(bond_hit_geometry, hit_material)
   const [local_matrix, inverse] = [new Matrix4(), new Matrix4()]
   const local_ray = new Ray()
-  const [bond_center, sphere_point, world_center] = [
-    new Vector3(),
-    new Vector3(),
-    new Vector3(),
-  ]
-  const hit_sphere = new Sphere()
+  const bond_center = new Vector3()
   const candidates: Intersection[] = []
 
   const set_bond_transform = (mesh: Mesh, bond: BondPair, radius: number): void => {
@@ -156,32 +149,8 @@
     candidates.length = 0
   }
 
-  // Full analytic spheres (a triangle test can miss exactly at a pole). Under a cutaway a target
-  // keeps its size but can't resurrect an atom the cutaway removes entirely.
-  atom_target.raycast = (raycaster: Raycaster, hits: Intersection[]): void => {
-    atom_target.updateWorldMatrix(true, false)
-    const { matrixWorld } = atom_target
-    const planes = cutaway_planes(atom_target)
-    const world_scale = matrixWorld.getMaxScaleOnAxis()
-    local_ray.copy(raycaster.ray).applyMatrix4(inverse.copy(matrixWorld).invert())
-    for (const [atom_idx, { position, radius }] of atom_targets.entries()) {
-      hit_sphere.center.fromArray(position)
-      hit_sphere.radius = 0.5 * radius * ATOM_HIT_RADIUS_SCALE
-      if (!local_ray.intersectSphere(hit_sphere, sphere_point)) continue
-      world_center.fromArray(position).applyMatrix4(matrixWorld)
-      if (cutaway_excludes(planes, world_center, 0.5 * radius * world_scale)) continue
-      sphere_point.applyMatrix4(matrixWorld)
-      if (cutaway_excludes(planes, sphere_point)) continue
-      const distance = raycaster.ray.origin.distanceTo(sphere_point)
-      if (distance < raycaster.near || distance > raycaster.far) continue
-      hits.push({
-        distance,
-        point: sphere_point.clone(),
-        object: atom_target,
-        instanceId: atom_idx,
-      })
-    }
-  }
+  atom_target.raycast = (raycaster: Raycaster, hits: Intersection[]): void =>
+    raycast_atom_spheres(atom_target, atom_targets, ATOM_HIT_RADIUS_SCALE, raycaster, hits)
 
   const event_bond = (event: { instanceId?: number }): BondPair | undefined =>
     bonds[event.instanceId ?? -1]

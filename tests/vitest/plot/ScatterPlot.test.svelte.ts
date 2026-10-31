@@ -134,6 +134,22 @@ const next_animation_frame = (): Promise<void> =>
 const stub_svg_rect = (svg: SVGSVGElement) => {
   svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 500, height: 300 })
 }
+// Shift-drag pan from the plot centre through `offsets` (px from it), released at the last
+const shift_pan = async (plot: HTMLElement, offsets: Vec2[]) => {
+  const clip = clip_rect(plot)
+  const at = ([dx, dy]: Vec2) => ({
+    clientX: clip.x + clip.width / 2 + dx,
+    clientY: clip.y + clip.height / 2 + dy,
+  })
+  plot_svg(plot).dispatchEvent(
+    mouse(`mousedown`, { button: 0, shiftKey: true, ...at([0, 0]) }),
+  )
+  for (const offset of offsets) {
+    await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(offset) }))
+  }
+  const release = at(offsets.at(-1) ?? [0, 0])
+  await fire(window, new MouseEvent(`mouseup`, release))
+}
 const click_at = (element: Element, position: { x: number; y: number }) =>
   element.dispatchEvent(
     mouse(`click`, { detail: 1, clientX: position.x, clientY: position.y }),
@@ -560,16 +576,10 @@ describe(`ScatterPlot`, () => {
         )
       const before = paths()
       vi.mocked(level_densities).mockClear()
-      const clip = clip_rect(plot)
-      const [start_x, start_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
-      plot_svg(plot).dispatchEvent(
-        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: start_x, clientY: start_y }),
+      await shift_pan(
+        plot,
+        [1, 2, 3].map((step): Vec2 => [-7 * step, 5 * step]),
       )
-      for (const step of [1, 2, 3]) {
-        const at = { clientX: start_x - 7 * step, clientY: start_y + 5 * step }
-        await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at }))
-      }
-      await fire(window, new MouseEvent(`mouseup`, { clientX: start_x, clientY: start_y }))
       expect(paths()).toHaveLength(before.length)
       expect(paths()).not.toEqual(before)
       expect(level_densities).not.toHaveBeenCalled()
@@ -1120,21 +1130,10 @@ describe(`ScatterPlot`, () => {
       expect(scheme.mock.calls.length).toBeGreaterThanOrEqual(dense.x.length)
       scheme.mockClear()
       fill_style.mockClear()
-      const clip = clip_rect(plot)
-      const at = (dx: number, buttons = 1) => ({
-        bubbles: true,
-        buttons,
-        shiftKey: true,
-        clientX: clip.x + 100 + dx,
-        clientY: clip.y + 50,
-      })
-      plot_svg(plot).dispatchEvent(new MouseEvent(`mousedown`, at(0)))
-      for (const dx of [5, 10, 15]) {
-        window.dispatchEvent(new MouseEvent(`mousemove`, at(dx)))
-        flushSync()
-      }
-      window.dispatchEvent(new MouseEvent(`mouseup`, at(15, 0)))
-      flushSync()
+      await shift_pan(
+        plot,
+        [5, 10, 15].map((dx): Vec2 => [dx, 0]),
+      )
       expect(scheme).not.toHaveBeenCalled()
       // the moved markers were painted, in the scale's colours
       expect(fill_style.mock.calls.length).toBeGreaterThan(0)
@@ -3032,16 +3031,9 @@ describe(`ScatterPlot`, () => {
     const plot = await mount_sized_scatter_plot(
       bind_props({ series: [{ x: [10, 50, 90], y: [1, 5, 9] }], ...bare }, state),
     )
-    const svg = plot_svg(plot)
     const clip = clip_rect(plot)
-    const [start_x, start_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
-    svg.dispatchEvent(
-      mouse(`mousedown`, { button: 0, shiftKey: true, clientX: start_x, clientY: start_y }),
-    )
     // Drag left by a quarter of the plot: the view follows the data, so the range moves right
-    const end = { clientX: start_x - clip.width / 4, clientY: start_y }
-    await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...end }))
-    await fire(window, new MouseEvent(`mouseup`, end))
+    await shift_pan(plot, [[-clip.width / 4, 0]])
     expect(state.x_axis.range).toEqual([0, 100])
     expect(state.y_axis.range).toEqual([0, 10])
     // The view is now [25, 125]: x=10 scrolled out, x=50 sits a quarter of the way along the

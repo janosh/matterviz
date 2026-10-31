@@ -520,11 +520,6 @@ export function parse_extxyz_columns(comment: string): {
   }
 }
 
-// The frame walk reads LAMMPS `dump xyz` types (see parse_xyz_atom_lines); format sniffing
-// through is_xyz_atom_line does not
-const is_walked_xyz_atom_line = (scanner: LineScanner): boolean =>
-  is_scanned_xyz_atom_line(scanner, true)
-
 // Atom-line test for one frame, built from that frame's own column layout: enough columns
 // and numeric coordinates where `Properties=` says the positions are. A file whose layout
 // puts another column first (`id:I:1:species:S:1:pos:R:3`, `Z:I:1:pos:R:3`) is legal extXYZ
@@ -532,7 +527,8 @@ const is_walked_xyz_atom_line = (scanner: LineScanner): boolean =>
 // The test reads a line already tokenized into the scanner.
 function make_xyz_atom_line_test(comment: string): (scanner: LineScanner) => boolean {
   const { pos_col, min_cols, layout } = parse_extxyz_columns(comment)
-  if (!layout) return is_walked_xyz_atom_line
+  // the frame walk reads LAMMPS `dump xyz` types (see parse_xyz_atom_lines); sniffing does not
+  if (!layout) return (scanner) => is_scanned_xyz_atom_line(scanner, true)
   // Only a declared STRING species column can be checked for a symbol shape; `Z:I:1` names
   // the atom with a number, so there is nothing non-numeric to assert
   const species_col = layout.species?.type === `s` ? layout.species.offset : -1

@@ -486,23 +486,21 @@ export function structure_factors_squared(
     intensities[point_idx] = f_real * f_real + f_imag * f_imag
   }
 
-  const done_rows = new Set<number>()
   for (const [key, row] of rows) {
-    if (done_rows.has(key)) continue
-    const { hkl } = reflections[row[0]]
-    const [h_idx, k_idx] = hkl
+    const [h_idx, k_idx] = reflections[row[0]].hkl
     const partner_key = row_key(-h_idx, -k_idx)
     const partner = partner_key === key ? undefined : rows.get(partner_key)
-    done_rows.add(key).add(partner_key)
+    if (partner && partner_key < key) continue // evaluated with its partner
     // l range of this row and the partner's mirrored l
     let [l_lo, l_hi] = [Infinity, -Infinity]
-    for (const point_idx of row) {
-      l_lo = Math.min(l_lo, reflections[point_idx].hkl[2])
-      l_hi = Math.max(l_hi, reflections[point_idx].hkl[2])
-    }
-    for (const point_idx of partner ?? []) {
-      l_lo = Math.min(l_lo, -reflections[point_idx].hkl[2])
-      l_hi = Math.max(l_hi, -reflections[point_idx].hkl[2])
+    for (const [sign, points] of [
+      [1, row],
+      [-1, partner ?? []],
+    ] as const) {
+      for (const point_idx of points) {
+        l_lo = Math.min(l_lo, sign * reflections[point_idx].hkl[2])
+        l_hi = Math.max(l_hi, sign * reflections[point_idx].hkl[2])
+      }
     }
     const h_offset = (h_idx + h_max) * n_species
     const k_offset = (k_idx + k_max) * n_species

@@ -8,7 +8,7 @@ import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
-import { marching_cubes } from '#lib/marching-cubes.js'
+import { grow, marching_cubes } from '#lib/marching-cubes.js'
 import type {
   BandEnergyGrid,
   BandGridData,
@@ -466,11 +466,7 @@ export function fold_to_wigner_seitz(
   let out_indices = new Uint32Array(indices.length)
   let n_out_indices = 0
   const push_triangle = (idx_0: number, idx_1: number, idx_2: number): void => {
-    if (n_out_indices + 3 > out_indices.length) {
-      const grown = new Uint32Array(2 * out_indices.length + 3)
-      grown.set(out_indices)
-      out_indices = grown
-    }
+    out_indices = grow(out_indices, n_out_indices + 3)
     out_indices[n_out_indices++] = idx_0
     out_indices[n_out_indices++] = idx_1
     out_indices[n_out_indices++] = idx_2
@@ -532,11 +528,7 @@ export function fold_to_wigner_seitz(
   // minimum image and nothing needs clipping.
   const own_shift = new Int32Array(n_vertices).fill(-1)
   for (let idx = 0; idx < n_vertices; idx++) {
-    const [pos_x, pos_y, pos_z] = [
-      positions[3 * idx],
-      positions[3 * idx + 1],
-      positions[3 * idx + 2],
-    ]
+    const [pos_x, pos_y, pos_z] = vec_at(positions, idx)
     if (!past_face(pos_x, pos_y, pos_z, -2 * tol)) own_shift[idx] = zero_shift
     else {
       const shift_id = shift_id_of(planes[worst_plane].indices)

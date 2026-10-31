@@ -786,14 +786,9 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
   // reduction, which allocated per candidate (614 ms).
   test(`symmetry elements 41472 ops`, async () => {
     const n_rep = 6
-    const perms = [
-      [0, 1, 2],
-      [0, 2, 1],
-      [1, 0, 2],
-      [1, 2, 0],
-      [2, 0, 1],
-      [2, 1, 0],
-    ]
+    const perms = [`012`, `021`, `102`, `120`, `201`, `210`].map((perm) =>
+      Array.from(perm, Number),
+    )
     const rotations = perms.flatMap((perm) =>
       Array.from({ length: 8 }, (_, signs) => {
         const flat: MoyoOperation[`rotation`] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -817,11 +812,7 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       centerings.flatMap((centering) =>
         shifts.map((shift): MoyoOperation => ({
           rotation,
-          translation: [
-            (centering[0] + shift[0]) / n_rep,
-            (centering[1] + shift[1]) / n_rep,
-            (centering[2] + shift[2]) / n_rep,
-          ],
+          translation: centering.map((frac, axis) => (frac + shift[axis]) / n_rep) as Vec3,
         })),
       ),
     )

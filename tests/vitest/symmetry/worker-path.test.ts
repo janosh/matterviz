@@ -61,6 +61,15 @@ test(`analyzes in the moyo worker, never on the main thread, with the main-threa
   expect(rows.map(({ wyckoff, elem }) => `${elem} ${wyckoff}`)).toEqual([`Na 4a`, `Cl 4b`])
 })
 
+// A superseded viewer run must not queue another multi-second analysis behind the live one
+test(`an aborted analysis rejects without posting to the worker`, async () => {
+  const controller = new AbortController()
+  const pending = analyze.analyze_structure_symmetry(make_rocksalt(), {}, controller.signal)
+  controller.abort()
+  await expect(pending).rejects.toThrow(`aborted`)
+  expect(stub.posted).toEqual([])
+})
+
 // The worker loads the WASM from its default location, so a host serving it elsewhere runs here:
 // the VS Code webview (its workers fetch nothing), bytes, or a relative URL the worker would
 // resolve against itself instead of the page

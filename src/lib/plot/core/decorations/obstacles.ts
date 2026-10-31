@@ -133,6 +133,14 @@ const inside_unit_square = ({ x: coord_x, y: coord_y }: DecorationPoint): boolea
 // than spending the fixed sample budget on far-offscreen portions. Writes the visible part's
 // [lower, upper] fractions of the segment to clip_span, false when none of it is visible.
 const clip_span: [number, number] = [0, 1]
+// One edge's bound on the span (direction: the segment's travel toward that edge's outside)
+const clip_edge = (direction: number, distance: number): boolean => {
+  if (direction === 0) return distance >= 0
+  const ratio = distance / direction
+  if (direction < 0) clip_span[0] = Math.max(clip_span[0], ratio)
+  else clip_span[1] = Math.min(clip_span[1], ratio)
+  return clip_span[0] <= clip_span[1]
+}
 const clip_fractions = (
   start_x: number,
   start_y: number,
@@ -140,26 +148,14 @@ const clip_fractions = (
   delta_y: number,
 ): boolean => {
   if (!Number.isFinite(delta_x) || !Number.isFinite(delta_y)) return false
-  let lower = 0
-  let upper = 1
-  // the four edges in turn: x >= 0, x <= 1, y >= 0, y <= 1
-  for (let edge = 0; edge < 4; edge++) {
-    const direction =
-      edge === 0 ? -delta_x : edge === 1 ? delta_x : edge === 2 ? -delta_y : delta_y
-    const distance =
-      edge === 0 ? start_x : edge === 1 ? 1 - start_x : edge === 2 ? start_y : 1 - start_y
-    if (direction === 0) {
-      if (distance < 0) return false
-      continue
-    }
-    const ratio = distance / direction
-    if (direction < 0) lower = Math.max(lower, ratio)
-    else upper = Math.min(upper, ratio)
-    if (lower > upper) return false
-  }
-  clip_span[0] = lower
-  clip_span[1] = upper
-  return true
+  clip_span[0] = 0
+  clip_span[1] = 1
+  return (
+    clip_edge(-delta_x, start_x) &&
+    clip_edge(delta_x, 1 - start_x) &&
+    clip_edge(-delta_y, start_y) &&
+    clip_edge(delta_y, 1 - start_y)
+  )
 }
 
 export const clip_segment_to_unit_square = (
@@ -175,44 +171,38 @@ export const clip_segment_to_unit_square = (
   ]
 }
 
-// Each mark's occupied cells as (col, row) pairs in the order its walk first visits them, kept
-// per mark object and plot box: a host handing back the marks it didn't change (the other
+// Each mark's occupied cell keys (row * cols + col) in the order its walk first visits them,
+// kept per mark object and plot box: a host handing back the marks it didn't change (the other
 // series beside a legend toggle) skips their walks. Marks are read as immutable.
-type MarkCells = { base_w: number; base_h: number; cells: Int32Array }
-const mark_cells_cache = new WeakMap<ObstacleSeries, MarkCells>()
+const mark_cells_cache = new WeakMap<
+  ObstacleSeries,
+  { base_w: number; base_h: number; cells: Int32Array }
+>()
+// `stamp`: per cell, the walk that last marked it, which spares clearing it between marks
+type CellGrid = {
+  cell_w: number
+  cell_h: number
+  cols: number
+  rows: number
+  step: number
+  stamp: Int32Array
+  walk: number
+}
 
 // The cells one mark covers: its points, plus the segments between them for a drawn line
 function walk_mark_cells(
   { points, draws_line = false }: ObstacleSeries,
-  cell_w: number,
-  cell_h: number,
-  step: number,
-  // per-cell stamp of the walk that last marked it, which spares clearing it between marks
-  seen: { stamp: Int32Array; walk: number; cols: number },
+  { cell_w, cell_h, cols, rows, step, stamp, walk }: CellGrid,
 ): Int32Array {
-  const { stamp, walk, cols } = seen
-  const seen_outside = new Set<number>()
   const cells: number[] = []
-  let last_col = NaN
-  let last_row = NaN
   const add_point = (coord_x: number, coord_y: number): void => {
-    // plain statements, not destructured pairs: this runs per sample of every line
-    const col = Math.floor(coord_x / cell_w)
-    const row = Math.floor(coord_y / cell_h)
-    // the line walk mostly revisits the cell it just marked
-    if (col === last_col && row === last_row) return
-    last_col = col
-    last_row = row
-    // a rounding error can put a key past the grid's edges, which a set then holds
+    // clamped, as rounding can put a clipped end just past the unit square
+    const col = Math.min(Math.max(Math.floor(coord_x / cell_w), 0), cols - 1)
+    const row = Math.min(Math.max(Math.floor(coord_y / cell_h), 0), rows - 1)
     const key = row * cols + col
-    if (key >= 0 && key < stamp.length) {
-      if (stamp[key] === walk) return
-      stamp[key] = walk
-    } else {
-      if (seen_outside.has(key)) return
-      seen_outside.add(key)
-    }
-    cells.push(col, row)
+    if (stamp[key] === walk) return
+    stamp[key] = walk
+    cells.push(key)
   }
   // A drawn line is walked a cell at a time, so no decoration slips across it
   const add_segment = (start: DecorationPoint, end: DecorationPoint): void => {
@@ -265,12 +255,18 @@ export function build_obstacles_norm(
   // thins it), and coverage stays conservative. Merging each mark's cells in mark order adds
   // the same cells, in the same order, as one walk over every mark.
   const [cell_w, cell_h] = [PLACEMENT_CELL / base_w, PLACEMENT_CELL / base_h]
-  const cols = Math.ceil(1 / cell_w) + 1
-  const n_cells = cols * (Math.ceil(1 / cell_h) + 1)
+  const [cols, rows] = [Math.ceil(1 / cell_w) + 1, Math.ceil(1 / cell_h) + 1]
   const step = PLACEMENT_CELL / Math.max(base_w, base_h, 1)
-  const occupied = new Uint8Array(n_cells)
-  const occupied_outside = new Set<number>()
-  let seen: { stamp: Int32Array; walk: number; cols: number } | undefined
+  const grid = {
+    cell_w,
+    cell_h,
+    cols,
+    rows,
+    step,
+    stamp: new Int32Array(cols * rows),
+    walk: 0,
+  }
+  const occupied = new Uint8Array(cols * rows)
   const obstacles: Obstacle[] = []
   for (const mark of marks) {
     if (!(`points` in mark)) {
@@ -279,23 +275,14 @@ export function build_obstacles_norm(
     }
     let cached = mark_cells_cache.get(mark)
     if (cached?.base_w !== base_w || cached.base_h !== base_h) {
-      seen ??= { stamp: new Int32Array(n_cells), walk: 0, cols }
-      seen.walk++
-      const cells = walk_mark_cells(mark, cell_w, cell_h, step, seen)
-      mark_cells_cache.set(mark, (cached = { base_w, base_h, cells }))
+      grid.walk++
+      cached = { base_w, base_h, cells: walk_mark_cells(mark, grid) }
+      mark_cells_cache.set(mark, cached)
     }
-    const { cells } = cached
-    for (let idx = 0; idx < cells.length; idx += 2) {
-      const col = cells[idx]
-      const row = cells[idx + 1]
-      const key = row * cols + col
-      if (key >= 0 && key < n_cells) {
-        if (occupied[key]) continue
-        occupied[key] = 1
-      } else {
-        if (occupied_outside.has(key)) continue
-        occupied_outside.add(key)
-      }
+    for (const key of cached.cells) {
+      if (occupied[key]) continue
+      occupied[key] = 1
+      const [col, row] = [key % cols, Math.floor(key / cols)]
       obstacles.push({ x: col * cell_w, y: row * cell_h, width: cell_w, height: cell_h })
     }
   }

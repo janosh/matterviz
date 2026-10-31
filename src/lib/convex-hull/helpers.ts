@@ -283,7 +283,8 @@ export function highlight_matcher<T extends { entry_id?: string; structure_id?: 
   highlighted_list: readonly (string | T)[],
 ): (entry: T) => boolean {
   if (highlighted_list.length === 0) return () => false
-  const [entry_ids, structure_ids] = [new Set<string>(), new Set<string>()]
+  const entry_ids = new Set<string | undefined>()
+  const structure_ids = new Set<string | undefined>()
   for (const item of highlighted_list) {
     if (typeof item === `string`) {
       entry_ids.add(item)
@@ -291,13 +292,9 @@ export function highlight_matcher<T extends { entry_id?: string; structure_id?: 
     } else if (item?.structure_id) structure_ids.add(item.structure_id)
     else if (item?.entry_id !== undefined) entry_ids.add(item.entry_id)
   }
-  return ({ entry_id, structure_id }) => {
-    if (!entry_id && !structure_id) return false
-    return (
-      (entry_id !== undefined && entry_ids.has(entry_id)) ||
-      (structure_id !== undefined && structure_ids.has(structure_id))
-    )
-  }
+  return ({ entry_id, structure_id }) =>
+    [entry_id, structure_id].some(Boolean) &&
+    (entry_ids.has(entry_id) || structure_ids.has(structure_id))
 }
 
 // Check if entry matches any item in highlighted_list (by structure_id or entry_id)

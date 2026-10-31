@@ -56,12 +56,7 @@ export class KeyWalk<T> {
     if (event.defaultPrevented || event.isComposing || is_modifier_chord(event)) return false
     const { targets, hovered, hover, leave, click, unpin } = this.#options
     const items = targets()
-    let pointer_idx = -1
-    if (hovered) {
-      for (let idx = 0; idx < items.length && pointer_idx === -1; idx++) {
-        if (hovered(items[idx])) pointer_idx = idx
-      }
-    }
+    const pointer_idx = hovered ? Array.prototype.findIndex.call(items, hovered) : -1
     const idx = pointer_idx === -1 ? this.idx : pointer_idx
     const current = idx === null ? null : (items[idx] ?? null)
     if (event.key === `Escape`) {

@@ -231,9 +231,8 @@
       : [...highlighted_entries, entry_link.linked],
   )
   const { config, highlight_style, gizmo, x_axis, y_axis, ...dom_attrs } = $derived(rest)
-  // Hover-driven props (overlay, linked highlights, selection) are passed on their own: in
-  // this spread, every change re-ran each derived reading any renderer prop (50k-point hover:
-  // re-projection, re-sort and pick index per hover)
+  // Hover-driven props (overlay, linked highlights, selection) stay out of this spread: there
+  // each hover re-ran every renderer derived (50k points: re-projection, re-sort, pick index)
   const plot_props = $derived({
     ...dom_attrs,
     hull_data,

@@ -141,7 +141,6 @@
   import {
     CANVAS_MARKER_THRESHOLD,
     canvas_safe_color,
-    concat_marker_batches,
     create_marker_batch,
     create_marker_canvas,
     type MarkerBatch,
@@ -940,6 +939,8 @@
   const marker_styles = $derived.by(() => {
     const by_series = new Map<number, { by_idx: MarkerStyle[]; unsafe: Set<MarkerStyle> }>()
     for (const series_data of materialized_series) {
+      // line-only series draw no markers (their error bars restyle through style_of)
+      if (!has_marker(series_data, `points`)) continue
       const style_for = style_builder(series_data)
       const shared = new Map<PointStyle | undefined, MarkerStyle>()
       const by_idx: MarkerStyle[] = []
@@ -1037,11 +1038,8 @@
   }
 
   // === Lines during a pan ===
-  // A pan only translates the plot (px per unit holds, see frame.px_per_unit), so while one
-  // runs, lines keep the projection of the view it started from and their paths are shifted
-  // instead: rebuilding the path strings of many long lines was most of such a frame (and,
-  // anchored to the first pan frame, all of the first one). Anchored lines are cropped a plot
-  // width past each side and re-anchor once the pan travels that far.
+  // Mid-pan, lines keep the view the pan started from and their paths are shifted (see
+  // create_pan_anchor): rebuilding many long lines' path strings was most of a pan frame.
   // Only while lines snap (a morph would glide from the shifted path on release) and on
   // linear axes, as a log axis holds lines below its view at the live floor.
   // A boolean, as resolved_line_tween is a fresh object whenever the drawn lines change
@@ -1056,27 +1054,18 @@
       ),
   )
   const line_anchor = create_pan_anchor(frame, () => lines_anchorable, [`x`, `x2`])
-  const line_scales = $derived(line_anchor.scales)
-  const line_reach = $derived(line_anchor.reach.x)
   // The shift of a series' line paths (none unless anchored mid-pan)
   const line_transform = (series_data: Pick<DataSeries, `x_axis` | `y_axis`>) =>
     line_anchor.transform(
       series_data.x_axis === `x2` ? `x2` : `x`,
       series_data.y_axis === `y2` ? `y2` : `y`,
     )
-  // Projected vertices by layer, by its x and y arrays (series objects are rebuilt every
-  // frame and on legend toggles), kept while the projection holds, so a Line whose vertices
-  // didn't move (an anchored pan frame, another series toggled) keeps its path string.
-  // Rebuilt when any line value changes: reading every x and y (underlays too) tracks edits
-  // made in place to $state arrays, whose identity holds; visibility isn't read, so a legend
-  // toggle keeps the other series' paths. The pan reach isn't a key: a line its last crop left
-  // whole stays whole under a wider one, so a pan starting keeps every uncropped path.
-  type LineEntry = {
-    params: unknown[]
-    reach: number
-    cropped: boolean
-    points: Vec2[]
-  }
+  // Projected vertices by layer's x and y arrays (series objects are rebuilt every frame),
+  // kept while the projection holds, so a Line whose vertices didn't move (an anchored pan
+  // frame, another series toggled) keeps its path string. Dropped when any line value changes:
+  // reading every x and y tracks in-place edits of $state arrays. A line its last crop left
+  // whole stays whole under a wider pan reach, so a pan starting keeps uncropped paths.
+  type LineEntry = { params: unknown[]; reach: number; cropped: boolean; points: Vec2[] }
   const line_values_read = $derived.by(() => {
     for (const srs of series_in) {
       const layers = [srs, ...(srs?.line_underlays ?? [])]
@@ -1088,7 +1077,7 @@
     return {}
   })
   const line_points_cache = $derived.by(() => {
-    void [line_values_read, line_scales, pad, width, styles.line, lines_snap]
+    void [line_values_read, line_anchor.scales, pad, width, styles.line, lines_snap]
     return new WeakMap<object, WeakMap<object, LineEntry>>()
   })
   const line_points = (
@@ -1109,13 +1098,13 @@
       layer.line_breaks,
     ]
     const hit = by_y.get(layer.y)
-    const reach = line_reach
+    const reach = line_anchor.reach.x
     if (
       hit?.params.every((param, idx) => param === params[idx]) &&
       (hit.reach === reach || (!hit.cropped && reach > hit.reach))
     )
       return hit.points
-    const { points, cropped } = series_projector(series_data, line_scales, reach).line(
+    const { points, cropped } = series_projector(series_data, line_anchor.scales, reach).line(
       layer,
       direction,
     )
@@ -1156,27 +1145,27 @@
     if (!canvas_requested || !show_points || needs_svg_events) return null
     const selected = selected_point
     const keys = selected_keys
-    // Link-dimmed markers paint first so the highlighted ones sit on top of them
     const markers = create_marker_batch(visible_marker_count)
-    const dimmed = highlight_set && create_marker_batch(visible_marker_count)
-    for (const series_data of filtered_series) {
-      if (!has_marker(series_data, `points`)) continue
-      const series_styles = marker_styles.get(series_data.orig_series_idx)
-      if (!series_styles) continue
-      const { by_idx, unsafe } = series_styles
-      const project = series_projector(series_data)
-      const legend_opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
-      for (const point of series_data.filtered_data) {
-        const style = by_idx[point.point_idx]
-        if (unsafe.size > 0 && unsafe.has(style)) return null
-        if (needs_static_svg_overlay(point, selected, keys)) continue
-        const cx = project.x_px(point)
-        const cy = project.y_px(point)
-        if (dimmed && is_link_dimmed(point)) push_marker(dimmed, cx, cy, 0.25, style)
-        else push_marker(markers, cx, cy, legend_opacity, style)
+    // Link-dimmed markers paint in a first pass, so the highlighted ones sit on top of them
+    for (const dimmed_pass of highlight_set ? [true, false] : [false]) {
+      for (const series_data of filtered_series) {
+        if (!has_marker(series_data, `points`)) continue
+        const series_styles = marker_styles.get(series_data.orig_series_idx)
+        if (!series_styles) continue
+        const { by_idx, unsafe } = series_styles
+        const project = series_projector(series_data)
+        const legend_opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
+        for (const point of series_data.filtered_data) {
+          const style = by_idx[point.point_idx]
+          if (unsafe.has(style)) return null
+          if (is_link_dimmed(point) !== dimmed_pass) continue
+          if (needs_static_svg_overlay(point, selected, keys)) continue
+          const opacity = dimmed_pass ? 0.25 : legend_opacity
+          push_marker(markers, project.x_px(point), project.y_px(point), opacity, style)
+        }
       }
     }
-    return dimmed?.length ? concat_marker_batches(dimmed, markers) : markers
+    return markers
   })
   const use_canvas_markers = $derived(canvas_markers !== null)
   // In canvas mode only labelled/selected/highlighted points get SVG nodes. Derived apart

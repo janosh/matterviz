@@ -361,14 +361,6 @@ export function match_lattices(
   // kept one went quadratic (19k matches at max_area 2000: ~50 s).
   const kept: LatticeMatch[] = []
   const kept_by_bucket = new Map<number, LatticeMatch[]>()
-  const is_redundant = (match: LatticeMatch, n_sub: number): boolean => {
-    const bucket = Math.floor(match.von_mises / VON_MISES_BUCKET)
-    return [bucket - 1, bucket, bucket + 1].some((near) =>
-      (kept_by_bucket.get(near) ?? []).some(
-        (prev) => n_sub % prev.n_substrate_cells === 0 && same_strain(prev, match, symmetries),
-      ),
-    )
-  }
   for (let n_sub = 1; n_sub * area_substrate <= max_area; n_sub++) {
     // film cell counts whose area any match within the tolerances could have
     const n_equal_area = (n_sub * area_substrate) / area_film
@@ -400,9 +392,15 @@ export function match_lattices(
     }
     found.sort((match_1, match_2) => match_1.von_mises - match_2.von_mises)
     for (const match of found) {
-      if (is_redundant(match, n_sub)) continue
-      kept.push(match)
       const bucket = Math.floor(match.von_mises / VON_MISES_BUCKET)
+      const redundant = [bucket - 1, bucket, bucket + 1].some((near) =>
+        (kept_by_bucket.get(near) ?? []).some(
+          (prev) =>
+            n_sub % prev.n_substrate_cells === 0 && same_strain(prev, match, symmetries),
+        ),
+      )
+      if (redundant) continue
+      kept.push(match)
       const same_bucket = kept_by_bucket.get(bucket)
       if (same_bucket) same_bucket.push(match)
       else kept_by_bucket.set(bucket, [match])

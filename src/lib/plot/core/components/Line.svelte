@@ -35,26 +35,21 @@
   // null/undefined curves mean monotone; unknown names from untyped (Python/JSON) callers throw.
   // A non-finite point lifts the pen (a series' line_breaks), the line resuming after it.
   const curve_factory = $derived(line_curve_factory(curve))
-  // Traced once per coordinates and curve. Svelte re-runs a derived whose last run returned an
-  // equal value (an identical path from new points, say) whenever anything upstream marks it
-  // maybe-dirty, as every pan frame does through the parent's per-frame series objects: without
-  // this, such a line was re-traced on every frame of every later pan. Compared by value, not
-  // array identity: a $state array edited in place keeps its identity, and reading every
-  // coordinate keeps the derived subscribed to them.
+  // Traced once per coordinates and curve: Svelte re-runs this derived whenever upstream marks
+  // it maybe-dirty, as every pan frame does through a parent's per-frame series objects.
+  // Compared by value, as a $state array edited in place keeps its identity (a miss re-traces,
+  // reading every coordinate, so the derived stays subscribed to them).
   let traced: { coords: Float64Array; curve: CurveFactory; path: string } | null = null
-  const traced_coords_match = (coords: Float64Array): boolean => {
-    let match = coords.length === 2 * points.length
-    for (let idx = 0; idx < points.length; idx++) {
-      const [x, y] = points[idx]
-      match &&= Object.is(coords[2 * idx], x) && Object.is(coords[2 * idx + 1], y)
-    }
-    return match
-  }
   const line_path = $derived.by(() => {
-    const curve_fn = curve_factory
-    if (traced?.curve === curve_fn && traced_coords_match(traced.coords)) return traced.path
-    const path = trace_line(points, curve_fn, point_x, point_y, is_finite_point)
-    traced = { coords: Float64Array.from(points.flat()), curve: curve_fn, path }
+    const coords = traced?.curve === curve_factory ? traced.coords : null
+    const same =
+      coords?.length === 2 * points.length &&
+      points.every(
+        ([x, y], idx) => Object.is(coords[2 * idx], x) && Object.is(coords[2 * idx + 1], y),
+      )
+    if (same && traced) return traced.path
+    const path = trace_line(points, curve_factory, point_x, point_y, is_finite_point)
+    traced = { coords: Float64Array.from(points.flat()), curve: curve_factory, path }
     return path
   })
 

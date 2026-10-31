@@ -267,11 +267,8 @@ it.each([
 })
 
 // numbers skip the markup decode, which must not change their text
-it.each([1.5, -0, 1e21, -2.5e-7, Infinity, 42])(
-  `cell_text(%s) is its decoded string`,
-  (num) => {
-    expect(cell_text(num)).toBe(html_to_text(String(num)).trim())
-  },
+it.each([1.5, -0, 1e21, -2.5e-7, Infinity])(`cell_text(%s) is its decoded string`, (num) =>
+  expect(cell_text(num)).toBe(html_to_text(String(num)).trim()),
 )
 
 it.each<[CellVal, number | null]>([

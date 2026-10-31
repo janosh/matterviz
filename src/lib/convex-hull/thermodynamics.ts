@@ -512,9 +512,8 @@ function initial_simplex(points: number[][]): number[] | null {
   is_chosen[second] = 1
   const origin = points[first]
   const basis = [math.normalize_vec(math.subtract(points[second], origin))]
-  // Component of (point - origin) orthogonal to the span of the chosen points, written into
-  // one reused array: this scan over every point allocated three arrays per point and basis
-  // vector, most of a 50k-point hull build
+  // Component of (point - origin) orthogonal to the span of the chosen points, in one reused
+  // array (allocating three per point and basis vector was most of a 50k-point hull build)
   const residual: number[] = Array(dim).fill(0)
   const project_residual = (point: number[]): number[] => {
     for (let axis = 0; axis < dim; axis++) residual[axis] = point[axis] - origin[axis]
@@ -681,11 +680,8 @@ export function compute_e_above_hull_nd(
   return query_points.map((query) => {
     if (!query.every(Number.isFinite)) return NaN
     const key = query.slice(0, spatial_dim).join(`,`)
-    let energy = hull_energies.get(key)
-    if (energy === undefined) {
-      energy = hull_energy(query)
-      hull_energies.set(key, energy)
-    }
+    const energy = hull_energies.get(key) ?? hull_energy(query)
+    hull_energies.set(key, energy)
     return query[spatial_dim] - energy
   })
 }

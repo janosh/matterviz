@@ -7,7 +7,7 @@ import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
 import * as svg_paths from '#lib/plot/core/svg.js'
 import type { Vec2 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
-import { flushSync, tick, type ComponentProps } from 'svelte'
+import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   clip_rect,
@@ -46,13 +46,14 @@ const plot_cases = [
   [`ScatterPlot`, () => mount_scatter()],
 ] satisfies [string, () => Promise<SVGSVGElement>][]
 
-type DragOptions = { shift?: boolean; alt?: boolean; mid_drag?: () => void }
+// `steps` pointer moves from start to end, `mid_drag` run after the last before the release
+type DragOptions = { shift?: boolean; alt?: boolean; steps?: number; mid_drag?: () => void }
 
 async function drag(
   svg: SVGSVGElement,
   start: LocalPoint,
   end: LocalPoint,
-  { shift = false, alt = false, mid_drag }: DragOptions = {},
+  { shift = false, alt = false, steps = 1, mid_drag }: DragOptions = {},
 ): Promise<boolean> {
   const bounds = svg.getBoundingClientRect()
   const event_init = ({ x: coord_x, y: coord_y, button = 0 }: LocalPoint): MouseEventInit => ({
@@ -64,8 +65,12 @@ async function drag(
     altKey: alt,
   })
   svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...event_init(start) }))
-  window.dispatchEvent(new MouseEvent(`mousemove`, event_init(end)))
-  await tick()
+  for (let step = 1; step <= steps; step++) {
+    const [delta_x, delta_y] = [(end.x - start.x) / steps, (end.y - start.y) / steps]
+    const at = { x: start.x + delta_x * step, y: start.y + delta_y * step }
+    window.dispatchEvent(new MouseEvent(`mousemove`, event_init(at)))
+    await tick()
+  }
   const active = svg.querySelector(`.zoom-rect`) instanceof SVGRectElement
   mid_drag?.()
   window.dispatchEvent(new MouseEvent(`mouseup`, { ...event_init(end), buttons: 0 }))
@@ -338,29 +343,18 @@ test.each([
     legend: null,
   })
   const paths = () => [...svg.querySelectorAll(`g[data-series-id] path`)]
-  const at = (step: number, buttons = 1): MouseEventInit => ({
-    bubbles: true,
-    buttons,
-    shiftKey: true,
-    clientX: 200 - step * 15,
-    clientY: 150 + step * 4,
-  })
   const before = paths().map((path) => path.getAttribute(`d`))
   const traces = vi.spyOn(svg_paths, `line_path`)
-  svg.dispatchEvent(new MouseEvent(`mousedown`, at(0)))
-  flushSync()
-  for (let step = 1; step <= 4; step++) {
-    window.dispatchEvent(new MouseEvent(`mousemove`, at(step)))
-    flushSync()
+  let during: { d: string; shift: { x: number; y: number } }[] = []
+  const mid_drag = () => {
+    expect(traces.mock.calls.length > 0).toBe(!anchors)
+    during = paths().map((path) => ({
+      d: path.getAttribute(`d`) ?? ``,
+      shift: path.hasAttribute(`transform`) ? translate_of(path) : { x: 0, y: 0 },
+    }))
   }
-  expect(traces.mock.calls.length > 0).toBe(!anchors)
+  await drag(svg, { x: 200, y: 150 }, { x: 140, y: 166 }, { shift: true, steps: 4, mid_drag })
   traces.mockRestore()
-  const during = paths().map((path) => ({
-    d: path.getAttribute(`d`) ?? ``,
-    shift: path.hasAttribute(`transform`) ? translate_of(path) : { x: 0, y: 0 },
-  }))
-  window.dispatchEvent(new MouseEvent(`mouseup`, at(4, 0)))
-  flushSync()
   const live = paths().map((path) => path.getAttribute(`d`) ?? ``)
   expect(during).toHaveLength(2)
   expect(during.map(({ d }, idx) => d === before[idx])).toEqual([anchors, anchors])
@@ -371,21 +365,17 @@ test.each([
       y: Number(groups?.y) + shift.y,
     }))
   const clip = clip_rect(svg)
-  let max_diff = 0
   for (const [idx, { d, shift }] of during.entries()) {
     const shown = vertices(d, shift)
     const in_view = vertices(live[idx]).filter(
       ({ x }) => x >= clip.x && x <= clip.x + clip.width,
     )
     expect(in_view.length).toBeGreaterThan(20)
-    for (const vertex of in_view) {
-      const match = shown.reduce((best, other) =>
-        Math.abs(other.x - vertex.x) < Math.abs(best.x - vertex.x) ? other : best,
-      )
-      max_diff = Math.max(max_diff, Math.abs(match.x - vertex.x), Math.abs(match.y - vertex.y))
-    }
+    // the shifted path draws every in-view vertex of the live one
+    const drawn = ({ x, y }: { x: number; y: number }) =>
+      shown.some((pt) => Math.abs(pt.x - x) <= 1e-3 && Math.abs(pt.y - y) <= 1e-3)
+    expect(in_view.filter((vertex) => !drawn(vertex))).toEqual([])
   }
-  expect(max_diff).toBeLessThanOrEqual(1e-3)
 })
 
 // Bars ride their series group's translate while a pan runs, keeping the paths of the view at
@@ -415,28 +405,24 @@ test.each([
         bar.getAttribute(`d`),
       ]),
     )
-  const shifted = () => svg.querySelector(`.bar-series g[transform]`)
+  const shifted = () => svg.querySelector(`.bar-series g[transform]`) !== null
   const rest = paths()
-  const at = (step: number, buttons = 1): MouseEventInit => ({
-    bubbles: true,
-    buttons,
-    shiftKey: true,
-    clientX: 200 - step * 15,
-    clientY: 150,
-  })
-  svg.dispatchEvent(new MouseEvent(`mousedown`, at(0)))
-  for (let step = 1; step <= 3; step++) {
-    window.dispatchEvent(new MouseEvent(`mousemove`, at(step)))
-    flushSync()
+  const mid_drag = () => {
+    const during = paths()
+    expect(shifted()).toBe(anchors)
+    expect([...rest].every(([label, d]) => during.get(label) === d)).toBe(anchors)
+    if (!anchors) return
+    // anchored, the bars a plot width either side of the view are mounted too, clipped by the
+    // untransformed parent (a clip on the translated group would move with it)
+    expect(during.size).toBeGreaterThan(2 * rest.size)
+    const group = svg.querySelector(`.bar-series g[transform]`)
+    expect([
+      group?.getAttribute(`clip-path`),
+      group?.parentElement?.getAttribute(`clip-path`),
+    ]).toEqual([null, expect.stringMatching(/^url\(#/)])
   }
-  const during = paths()
-  expect(shifted() !== null).toBe(anchors)
-  expect([...rest].every(([label, d]) => during.get(label) === d)).toBe(anchors)
-  // anchored, the bars a plot width either side of the view are mounted too
-  if (anchors) expect(during.size).toBeGreaterThan(2 * rest.size)
-  window.dispatchEvent(new MouseEvent(`mouseup`, at(3, 0)))
-  flushSync()
-  expect(shifted()).toBeNull()
+  await drag(svg, { x: 200, y: 150 }, { x: 155, y: 150 }, { shift: true, steps: 3, mid_drag })
+  expect(shifted()).toBe(false)
 })
 
 // The rubber band spans its two corners whichever way the drag went, tinted for Alt+drag

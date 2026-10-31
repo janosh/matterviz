@@ -817,7 +817,6 @@
   set_isosurface_error_handler((message) => (isosurface_error = message))
 
   // === symmetry ===
-  let symmetry_run_id = 0
   let symmetry_error = $state<string>()
   // The structure parse_warnings came with: a host swapping in another one (or an edit)
   // retires the notice instead of leaving it to describe the wrong structure
@@ -847,7 +846,6 @@
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
-    const run_id = ++symmetry_run_id
     if (session.dragging_atoms) return
     if (symmetry_wanted) symmetry_demanded = true
     // the session's plain copy: reading tens of thousands of proxied sites again to post them
@@ -872,25 +870,27 @@
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
     // happy-dom cannot fetch WASM assets
     if (typeof process !== `undefined` && process.env?.VITEST) return
+    // aborted when this run is superseded or the viewer unmounts, so it never writes stale data
+    // and its queued worker job is dropped
+    const controller = new AbortController()
+    const { signal } = controller
     symmetry
       .ensure_moyo_wasm_ready()
       .then(() =>
-        run_id === symmetry_run_id
-          ? symmetry.analyze_structure_symmetry(current_structure, { symprec, algo })
-          : null,
+        signal.aborted
+          ? null
+          : symmetry.analyze_structure_symmetry(current_structure, { symprec, algo }, signal),
       )
       .then((data) => {
-        if (data && run_id === symmetry_run_id) untrack(() => (sym_data = data))
+        if (data && !signal.aborted) untrack(() => (sym_data = data))
       })
       .catch((err) => {
-        if (run_id !== symmetry_run_id) return
+        if (signal.aborted) return
         untrack(() => (sym_data = null))
         symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
         console.error(`Symmetry analysis failed:`, err)
       })
-    return () => {
-      symmetry_run_id++
-    }
+    return () => controller.abort()
   })
 
   // Cell-aligned overlays are blanked outside the input frame
@@ -1136,7 +1136,6 @@
 
   $effect(() => () => {
     toast_store.destroy()
-    symmetry_run_id += 1 // a run landing after unmount must not write into dead bindings
   })
 
   // === keyboard ===

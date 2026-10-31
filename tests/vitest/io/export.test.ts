@@ -23,6 +23,7 @@ import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
 import { crc32 } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import { mock_object_url } from '../setup'
+import { png_blob } from '../test-fixtures'
 
 vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
 
@@ -34,20 +35,6 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
-
-// A 1x1 PNG as a canvas encoder writes it: IHDR, IDAT, IEND and no pHYs
-const png_blob = (): Blob =>
-  new Blob(
-    [
-      Uint8Array.from(
-        atob(
-          `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
-        ),
-        (char) => char.charCodeAt(0),
-      ),
-    ],
-    { type: `image/png` },
-  )
 
 // The chunk types of a PNG in file order, checking each chunk's CRC, plus the DPI its pHYs
 // declares (null without one)

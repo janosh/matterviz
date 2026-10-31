@@ -84,15 +84,9 @@
       for (let dim = 0; dim < 3; dim++) {
         matrices[matrix_at + 12 + dim] = dim === axis ? at : values[offset + dim]
       }
-      scratch_color.setRGB(
-        values[offset + 4],
-        values[offset + 5],
-        values[offset + 6],
-        SRGBColorSpace,
-      )
-      colors[color_at] = scratch_color.r
-      colors[color_at + 1] = scratch_color.g
-      colors[color_at + 2] = scratch_color.b
+      scratch_color
+        .setRGB(values[offset + 4], values[offset + 5], values[offset + 6], SRGBColorSpace)
+        .toArray(colors, color_at)
       // the instance's sphere from the stored (f32) matrix, as three reads it back
       const radius = matrices[matrix_at]
       scratch_sphere.center.set(
