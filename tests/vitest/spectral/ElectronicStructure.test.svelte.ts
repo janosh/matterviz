@@ -1427,50 +1427,57 @@ test.each([undefined, `bcc`])(
 
 // Narrow, or too short to give each plot of the side-by-side layout 200px, the panes stack in
 // one column, each its own height, rather than share the viewer's: no dividers between them,
-// the scenes one above the other, and every compared side labelled. At 1200px each compared
-// side's column is 360px wide, its bands over a DOS getting 2/5 of the spectra's half.
+// and every compared side labelled. At 1200px each compared side's column is 360px wide, its
+// bands over a DOS getting 2/5 of the spectra's half. Stacked, the scenes still share their
+// row while each keeps 320px.
 test.each([
-  [700, 1200, true],
-  [1200, 1000, false],
-  [1200, 990, true],
-])(`at %ipx wide, %ipx high the panes stack: %s`, async (width, panes_height, stacked) => {
-  // every pane row measures 700x320, where the scenes would split side by side unstacked
-  const width_spy = vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(700)
-  const height_spy = vi
-    .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
-    .mockImplementation(function (this: HTMLElement) {
-      return this.classList.contains(`panes`) ? panes_height : 320
+  [700, 1200, 700, true, `horizontal`],
+  [1200, 1000, 700, false, `horizontal`],
+  [1200, 990, 700, true, `horizontal`],
+  [700, 1200, 600, true, `vertical`],
+])(
+  `at %ipx wide, %ipx high, %ipx rows the panes stack: %s, scenes %s`,
+  async (width, panes_height, row_width, stacked, scene_split) => {
+    // every pane row measures row_width x 320
+    const width_spy = vi
+      .spyOn(HTMLElement.prototype, `clientWidth`, `get`)
+      .mockReturnValue(row_width)
+    const height_spy = vi
+      .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains(`panes`) ? panes_height : 320
+      })
+    onTestFinished(() => {
+      width_spy.mockRestore()
+      height_spy.mockRestore()
     })
-  onTestFinished(() => {
-    width_spy.mockRestore()
-    height_spy.mockRestore()
-  })
-  const root = await mount_sized(
-    ElectronicStructure,
-    { sweep: make_sweep(), compare_series: `bcc`, panes: ALL_PANES },
-    {
-      selector: `.electronic-structure`,
-      width,
-      height: 400,
-      on_mount: (comp) => mounted.push(comp),
-    },
-  )
-  flushSync()
-  const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
-  expect({
-    stacked: root.classList.contains(`stacked`),
-    rows_divider: divider(`Resize 3D scenes and the plots below`),
-    trends_divider: divider(`Resize sweep descriptors and spectra`),
-    side_labels: side_labels(root).length,
-  }).toEqual({
-    stacked,
-    rows_divider: !stacked,
-    trends_divider: !stacked,
-    side_labels: stacked ? 4 : 2,
-  })
-  const scenes_row = root.querySelector(`.row.scenes`)
-  expect(scenes_row?.classList.contains(`vertical`)).toBe(stacked)
-})
+    const root = await mount_sized(
+      ElectronicStructure,
+      { sweep: make_sweep(), compare_series: `bcc`, panes: ALL_PANES },
+      {
+        selector: `.electronic-structure`,
+        width,
+        height: 400,
+        on_mount: (comp) => mounted.push(comp),
+      },
+    )
+    flushSync()
+    const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
+    expect({
+      stacked: root.classList.contains(`stacked`),
+      rows_divider: divider(`Resize 3D scenes and the plots below`),
+      trends_divider: divider(`Resize sweep descriptors and spectra`),
+      side_labels: side_labels(root).length,
+    }).toEqual({
+      stacked,
+      rows_divider: !stacked,
+      trends_divider: !stacked,
+      side_labels: stacked ? 4 : 2,
+    })
+    const scenes_row = root.querySelector(`.row.scenes`)
+    expect(scenes_row?.classList).toContain(scene_split)
+  },
+)
 
 test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
   // each side's bands and phonons over their DOS in a 240px column

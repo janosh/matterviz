@@ -32,7 +32,7 @@
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { union_ranges } from '#lib/plot/core/shared-axes.js'
   import { observe_size } from '#lib/plot/core/utils.js'
-  import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
+  import { MIN_PANE_SIZE, pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import {
     create_sequence_player,
     is_sequence_key_target,
@@ -709,11 +709,15 @@
       return !integral(overlap) && !integral(matrix_inverse_3x3(overlap))
     })
     scenes_size = $state({ width: 0, height: 0 })
+    // stacked, the scenes share their row while each keeps a readable width (each row is one
+    // pane high, so stacking them too only doubles the scroll)
     scene_orientation = $derived(
       layout !== `auto`
         ? layout
         : stacked
-          ? `vertical`
+          ? this.scenes_size.width / 2 >= MIN_PANE_SIZE.width
+            ? `horizontal`
+            : `vertical`
           : pick_pane_orientation(this.scenes_size.width, this.scenes_size.height),
     )
     spectra_width = $state(0)
@@ -1423,6 +1427,16 @@
       }
       .row.side > .pane {
         height: auto;
+      }
+      .row.scenes.horizontal {
+        flex-direction: row;
+        > .pane {
+          flex: 1;
+        }
+        > * + * {
+          border-top: none;
+          border-left: var(--pane-rule);
+        }
       }
     }
     /* below MIN_SIDE_BY_SIDE_WIDTH the phonon pane stacks its DOS under its bands */

@@ -565,13 +565,15 @@
     return overlay
   })
   // the colour bar for the mode markers, one object while its title holds: a new one per frame
-  // of a sweep would re-measure the bar (a forced layout) though nothing on it changed
+  // of a sweep would re-measure the bar (a forced layout) though nothing on it changed. Its
+  // title sits beside the bar, a line shorter, so it fits above the bands of short plots
+  // instead of pushing them down from outside.
   const mode_bar_title = $derived(
     mode_overlay.markers.length > 0 && mode_values ? mode_values.label : null,
   )
   const mode_color_bar = $derived(
     mode_bar_title !== null && rest.color_bar !== null
-      ? { title: mode_bar_title, ...rest.color_bar }
+      ? { title: mode_bar_title, title_side: `left` as const, ...rest.color_bar }
       : rest.color_bar,
   )
   // resolved to a concrete colour, which the canvas renderer (past 1000 markers) needs

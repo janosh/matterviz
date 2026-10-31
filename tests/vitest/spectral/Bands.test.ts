@@ -690,10 +690,14 @@ describe(`Bands component`, () => {
         marker.getAttribute(`d`)?.match(/L/g)?.length,
       ]).toEqual([`white`, `0.5`, 2])
     }
-    // the HTML label renders sanitized, its subscript a real <sub>
+    // the HTML label renders sanitized, its subscript a real <sub>, beside the bar rather than
+    // a line above it, so the bar fits over the bands of short plots
     const colorbar = plot.querySelector(`.colorbar`)
     expect(colorbar?.querySelector(`.label sub`)?.textContent ?? null).toBe(
       n_markers ? `qν` : null,
+    )
+    expect(colorbar?.querySelector(`.title-row`)?.classList.contains(`left`) ?? null).toBe(
+      n_markers ? true : null,
     )
     expect(document.querySelector(`.mode-values-error`)?.textContent?.trim() ?? null).toEqual(
       notice && expect.stringContaining(notice),
