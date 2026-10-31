@@ -95,7 +95,8 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // reactive_widget keeps undefined DATA_PROPS keys, whose setter lets a component write data it
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
-test(`no widget component binds a data prop with a default`, () => {
+// a TypeScript program over 21 components: seconds on shared CI runners
+test(`no widget component binds a data prop with a default`, { timeout: 30_000 }, () => {
   const files = WIDGET_COMPONENTS.flatMap((name) => globSync(`src/lib/**/${name}.svelte`))
   expect(files).toHaveLength(WIDGET_COMPONENTS.length)
   const defaulted = Object.entries(extract_prop_docs(files)).flatMap(([component, docs]) =>
@@ -467,7 +468,7 @@ describe(`render() lifecycle`, () => {
     const model = new MockModel({ widget_type: `trajectory` })
     const element = document.createElement(`div`)
     stop_theme.mockClear()
-    void anywidget_module.default.render({ model: as_model(model), el: element })
+    void anywidget_module.default.render({ model: as_model(model), el: element } as never)
     model.push_from_python(`trajectory`, `malformed`)
     expect(element.textContent).toBe(`MatterViz trajectory: malformed trajectory`)
     expect([listener_count(model), stop_theme.mock.calls.length]).toEqual([0, 1])
