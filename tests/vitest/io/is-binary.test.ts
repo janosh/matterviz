@@ -6,7 +6,6 @@ import {
   is_binary,
   is_binary_data_extension,
   is_binary_payload,
-  is_known_text_file,
   magic_head,
 } from '#lib/io/is-binary.js'
 import { describe, expect, test } from 'vitest'
@@ -82,17 +81,6 @@ describe(`extension / filename classification`, () => {
     [``, ``],
   ])(`ext_of(%s) -> %s`, (name, expected) => {
     expect(ext_of(name)).toBe(expected)
-  })
-
-  test.each([
-    [`structure.xyz`, true],
-    [`config.json`, true],
-    [`POSCAR`, true], // VASP basename without extension
-    [`contcar`, true], // case-insensitive
-    [`run.h5`, false],
-    [`blob-uuid`, false],
-  ])(`is_known_text_file(%s) -> %s`, (name, expected) => {
-    expect(is_known_text_file(name)).toBe(expected)
   })
 
   test.each([

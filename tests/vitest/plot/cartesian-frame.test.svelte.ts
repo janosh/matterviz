@@ -18,6 +18,8 @@ import {
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
 import type { PaneToggleProps } from '#lib/overlays/index.js'
+import type * as decorations from '#lib/plot/core/decorations/index.js'
+import { solve_decorations } from '#lib/plot/core/decorations/index.js'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -30,10 +32,18 @@ import {
   mount_in_test,
   mount_sized,
   query,
+  resize_element,
   with_measured_text,
   set_input,
   svg_rect,
+  trigger_resize_observer,
 } from '../setup'
+
+// Passthrough spy, so tests can count decoration solves
+vi.mock(`#lib/plot/core/decorations/index.js`, async (import_original) => {
+  const original = await import_original<typeof decorations>()
+  return { ...original, solve_decorations: vi.fn(original.solve_decorations) }
+})
 
 const dist = (count: number, center = 0): number[] =>
   Array.from({ length: count }, (_, idx) => center + Math.sin(idx * 1.7))
@@ -438,6 +448,43 @@ describe(`cartesian frame`, () => {
     expect(pinned.getAttribute(`data-decoration-x`)).toBeNull()
   })
 
+  // A pan holds the decoration layout like a legend drag: re-solving per frame rebuilt the
+  // obstacle field from every mark only to move the legend under the cursor. Its end re-solves,
+  // as does a resize mid-pan (the frame's own geometry moved, so the held pad no longer fits).
+  test.each(frame_charts)(
+    `$name pan holds the legend until the gesture ends`,
+    async (chart) => {
+      const root = await mount_chart(chart, { ...chart.props(), show_legend: true })
+      const svg = doc_query(`svg[role="application"]`)
+      const solves = vi.mocked(solve_decorations)
+      const pan_event = (step: number, buttons = 1): MouseEventInit => ({
+        bubbles: true,
+        buttons,
+        shiftKey: true,
+        clientX: 200 + step * 10,
+        clientY: 150 + step * 5,
+      })
+      svg.dispatchEvent(new MouseEvent(`mousedown`, pan_event(0)))
+      solves.mockClear()
+      const axis_before = svg.querySelector(`.x-axis`)?.innerHTML
+      for (let step = 1; step <= 5; step++) {
+        window.dispatchEvent(new MouseEvent(`mousemove`, pan_event(step)))
+        flushSync()
+      }
+      // it panned, without solving the layout once
+      expect(svg.querySelector(`.x-axis`)?.innerHTML).not.toBe(axis_before)
+      expect(solves).not.toHaveBeenCalled()
+      await resize_element(root, 520, 380)
+      trigger_resize_observer(root)
+      flushSync()
+      expect(solves.mock.calls.length).toBeGreaterThan(0)
+      solves.mockClear()
+      window.dispatchEvent(new MouseEvent(`mouseup`, pan_event(5, 0)))
+      flushSync()
+      expect(solves.mock.calls.length).toBeGreaterThan(0)
+    },
+  )
+
   // The accessible name comes from the axis labels unless the caller passes one explicitly;
   // either way only the SVG carries it, not the wrapper
   test.each(axis_charts)(
@@ -715,6 +762,22 @@ describe(`cartesian frame`, () => {
       expect(plot.querySelectorAll(chart.series_selector).length).toBeGreaterThan(0)
     },
   )
+
+  // A synced y2 copies y's range, so y's auto range must span the y2 data (100x the y data)
+  test.each(frame_charts)(`$name synced y2 range covers the y2 data`, async (chart) => {
+    // Histogram's y axes count values, so pile the y2 values into one 300-count bin
+    const values = chart.name === `Histogram` ? Array(300).fill(2) : [100, 200, 300]
+    const props = chart.secondary_props(values)
+    // drop the x2 series, which Histogram also counts on y
+    const series = (props.series as { label: string }[]).filter(({ label }) => label !== `X2`)
+    const plot = await mount_chart(chart, { ...props, series, y2_axis: { sync: `synced` } })
+    const tick_values = (axis: `y` | `y2`): number[] =>
+      [...plot.querySelectorAll(`g.${axis}-axis g.tick text`)].map((text) =>
+        Number(text.textContent),
+      )
+    expect(Math.max(...tick_values(`y`))).toBeGreaterThanOrEqual(200)
+    expect(tick_values(`y2`)).toEqual(tick_values(`y`))
+  })
 
   test.each(frame_charts)(
     `$name explicit top/right padding is not overridden by secondary-axis auto-padding`,

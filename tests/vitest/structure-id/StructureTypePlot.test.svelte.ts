@@ -5,7 +5,8 @@ import * as async_compute from '#lib/structure-id/async-compute.svelte.js'
 import type { StructureInput } from '#lib/plot/core/structure-input.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
-import { bind_props, mount_sized } from '../setup'
+import { bind_props, create_drop_event, mount_sized } from '../setup'
+import { BAD_ROW_CIF } from '../test-fixtures'
 import { make_bcc, make_fcc, make_hcp } from './lattices'
 
 // Mounting BarPlot in happy-dom costs seconds, so every case here earns its mount
@@ -143,6 +144,16 @@ describe(`StructureTypePlot`, { timeout: 30_000 }, () => {
     expectTypeOf<
       Extract<keyof ComponentProps<typeof StructureTypePlot>, `on_sites_hover`>
     >().toBeNever()
+  })
+
+  // a dropped structure reaches the compute as plain data, not a $state proxy
+  test(`analyses a dropped file's structure as plain data`, async () => {
+    const compute_spy = vi.spyOn(async_compute, `calc_structure_id_async`)
+    const root = await mount_plot({ structures: {} })
+    root.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `si.cif`)))
+    await vi.waitFor(() => expect(compute_spy).toHaveBeenCalledTimes(1))
+    const [[dropped]] = compute_spy.mock.calls
+    expect(() => structuredClone(dropped.sites)).not.toThrow()
   })
 
   // Results-only mode (no `structures`): the parent drives `loading` one-way while it collects

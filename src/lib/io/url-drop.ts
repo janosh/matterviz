@@ -1,3 +1,4 @@
+import type { LoadedPayload } from './decompress'
 import { classify_payload, compression_wrapper_of } from './decompress'
 import type {
   FileInfo,
@@ -61,14 +62,24 @@ export const load_trajectory_from_url = (
   signal?: AbortSignal,
 ): Promise<void> => load_url_content(url, callback, true, signal)
 
-// Fetch `url` and hand its payload to `callback`, classified the way a dropped File would be
-// (see classify_payload); compressed payloads are inflated by their bytes, not their name.
+// Hand a fetched payload to `callback` with its source identity
 async function load_url_content(
   url: string,
   callback: TrajectoryFileLoadCallback,
   hdf5_as_blob: boolean,
   signal?: AbortSignal,
 ): Promise<void> {
+  const { content, filename, source_filename } = await fetch_payload(url, hdf5_as_blob, signal)
+  return callback(content, filename, { source_filename, source_url: url })
+}
+
+// Fetch `url` and classify its payload the way a dropped File would be (see
+// classify_payload); compressed payloads are inflated by their bytes, not their name.
+export async function fetch_payload(
+  url: string,
+  hdf5_as_blob: boolean,
+  signal?: AbortSignal,
+): Promise<LoadedPayload<string | ArrayBuffer | Blob> & FileLoadMeta> {
   // Strip query string/hash before basename/extension detection so pre-signed
   // URLs like traj.h5?X-Amz-Expires=300 still hit the right format path
   const url_basename = basename_from_url(url)
@@ -81,14 +92,13 @@ async function load_url_content(
     throw new Error(`Failed to fetch ${url}: HTTP ${status}`)
   }
   const source_filename = extract_filename(resp.headers, url_basename)
-  const emit = (content: string | ArrayBuffer | Blob, filename: string) =>
-    callback(content, filename, { source_filename, source_url: url } satisfies FileLoadMeta)
   // Classified from one Blob so binary payloads never need a second fetch, and like a dropped
   // file a gzip body behind a text name (POSCAR, run.xyz) inflates by its magic bytes
-  const { content, filename } = await classify_payload(
-    await resp.blob(),
-    [source_filename, url_basename],
-    { hdf5_as_blob, wrappers_may_be_decoded: true, source: url, signal },
-  )
-  return emit(content, filename)
+  const payload = await classify_payload(await resp.blob(), [source_filename, url_basename], {
+    hdf5_as_blob,
+    wrappers_may_be_decoded: true,
+    source: url,
+    signal,
+  })
+  return { ...payload, source_filename, source_url: url }
 }

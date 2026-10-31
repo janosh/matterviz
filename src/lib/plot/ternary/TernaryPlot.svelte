@@ -18,9 +18,11 @@
   import { has_marker } from '#lib/plot/core/types.js'
   import {
     CANVAS_MARKER_THRESHOLD,
-    type CanvasMarker,
     canvas_safe_color,
+    create_marker_batch,
     create_marker_canvas,
+    type MarkerBatch,
+    push_marker,
   } from '#lib/plot/core/canvas-markers.svelte.js'
   import {
     build_spatial_index,
@@ -41,7 +43,7 @@
   import { svg_sources } from '#lib/io/export.js'
   import { COLOR_BAR_GAP } from '#lib/plot/core/utils/hierarchy-chart.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
-  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
+  import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -316,12 +318,12 @@
   type HitItem = { cx: number; cy: number; idx: number }
   const canvas_layer = $derived.by(
     (): {
-      markers: CanvasMarker[]
+      markers: MarkerBatch
       series_idxs: number[]
       hits: SpatialIndex<HitItem>
     } | null => {
       if (rendered.length <= CANVAS_MARKER_THRESHOLD) return null
-      const markers: CanvasMarker[] = []
+      const markers = create_marker_batch(rendered.length)
       const series_idxs: number[] = []
       const items: HitItem[] = []
       let max_radius = 0
@@ -335,9 +337,7 @@
         if (needs_svg(point)) continue
         series_idxs.push(point.series_idx)
         // ScatterPoint's SVG defaults
-        markers.push({
-          cx,
-          cy,
+        push_marker(markers, cx, cy, 1, {
           radius: style.radius,
           symbol_type: style.symbol_type,
           symbol_size: style.symbol_size ?? undefined,
@@ -346,7 +346,6 @@
           stroke,
           stroke_width: style.stroke_width ?? 1,
           stroke_opacity: style.stroke_opacity ?? 1,
-          opacity: 1,
         })
       }
       // the same reach as an SVG marker's hit target
@@ -358,11 +357,12 @@
     },
   )
   const canvas_markers = $derived.by(() => {
-    if (!canvas_layer) return []
+    if (!canvas_layer) return create_marker_batch(0)
     const { markers, series_idxs } = canvas_layer
-    return markers.map((marker, idx) =>
-      is_dimmed(series_idxs[idx]) ? { ...marker, opacity: 0.25 } : marker,
+    const opacity = markers.opacity.map((value, idx) =>
+      idx < markers.length && is_dimmed(series_idxs[idx]) ? 0.25 : value,
     )
+    return { ...markers, opacity }
   })
   // [index into `rendered`, point] per SVG marker: all, or in canvas mode the highlighted ones
   // plus the hovered and pinned ones. Derived apart from the hover so pointer moves don't
@@ -634,7 +634,7 @@
               data-ternary-idx={flat_idx}
               role={on_point_click ? `button` : `img`}
               tabindex={roving.tabindex(key)}
-              {...{ [ROVING_ATTR]: key }}
+              data-roving-key={key}
               aria-label={accessible_label(point)}
             />
           {/each}

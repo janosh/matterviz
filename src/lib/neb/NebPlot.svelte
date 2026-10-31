@@ -77,6 +77,16 @@
   const active = $derived(
     profiles.find((profile) => profile.key === active_path_key) ?? profiles[0],
   )
+  // Energies are plotted as given, never converted, so each distinct unit gets its own y axis
+  // (first on y, second on y2) and every series and label names its own path's unit
+  const units = $derived.by(() => {
+    const distinct = [...new Set(profiles.map(({ path }) => path_energy_unit(path)))]
+    if (distinct.length > 2) {
+      throw new Error(`NebPlot plots at most 2 energy units, got ${distinct.join(`, `)}`)
+    }
+    return distinct
+  })
+  const unit_axis = (unit: string): `y` | `y2` => (unit === units[0] ? `y` : `y2`)
   const energy_unit = $derived(path_energy_unit(active.path))
   const clamped_idx = $derived(clamp(active_image_idx, 0, active.path.images.length - 1))
 
@@ -87,7 +97,10 @@
   }
 
   const series = $derived<DataSeries<PlotPointMeta>[]>(
-    profiles.flatMap(({ key, color, coords, energies, spline, offset }) => {
+    profiles.flatMap(({ key, path, color, coords, energies, spline, offset }) => {
+      // the spline shares its images' unit and axis: unitless, it took y and pushed them to y2
+      const unit = path_energy_unit(path)
+      const axis = { unit, y_axis: unit_axis(unit) }
       const points: DataSeries<PlotPointMeta> = {
         id: `${key}-images`,
         x: coords,
@@ -97,7 +110,7 @@
         metadata: energies.map((_energy, image_idx) => ({ path_key: key, image_idx })),
         point_style: { fill: color, radius: key === active.key ? 6 : 4 },
         line_style: { stroke: color, stroke_width: 2 },
-        unit: energy_unit,
+        ...axis,
       }
       if (!show_spline) return [points]
       const curve: DataSeries<PlotPointMeta> = {
@@ -109,6 +122,7 @@
         // the path key, so hovering this curve selects an image of THIS path
         metadata: spline.coords.map(() => ({ path_key: key })),
         line_style: { stroke: color, stroke_width: 1.5, curve: `linear` },
+        ...axis,
       }
       return [curve, points]
     }),
@@ -117,11 +131,10 @@
   const x_label = $derived(
     coord_mode === `image_index` ? `Image number` : `Reaction coordinate (Å)`,
   )
-  const y_label = $derived(
+  const y_label = (unit: string) =>
     energy_reference === `initial`
-      ? `Energy relative to initial state (${energy_unit})`
-      : `Energy (${energy_unit})`,
-  )
+      ? `Energy relative to initial state (${unit})`
+      : `Energy (${unit})`
 
   const current_coord = $derived(active.coords[clamped_idx])
   const IS_TS_FS_RULE: SegAttrs = {
@@ -152,7 +165,8 @@
   bind:controls_open
   {series}
   x_axis={{ label: x_label, ...x_axis }}
-  y_axis={{ label: y_label, ...y_axis }}
+  y_axis={{ label: y_label(units[0]), ...y_axis }}
+  y2_axis={{ ...(units[1] && { label: y_label(units[1]) }), ...rest.y2_axis }}
   current_x_value={current_coord}
   on_point_hover={(event) => {
     select_point(event)
@@ -192,7 +206,9 @@
       </label>
     </SettingsSection>
   {/snippet}
-  {#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad })}
+  {#snippet user_content({ width, height, x_scale_fn, y_scale_fn: y_scale, y2_scale_fn, pad })}
+    {@const y_scale_fn =
+      unit_axis(energy_unit) === `y2` && y2_scale_fn ? y2_scale_fn : y_scale}
     {@const left = pad.l}
     {@const right = width - pad.r}
     {@const top = pad.t}

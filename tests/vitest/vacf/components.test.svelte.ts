@@ -2,6 +2,7 @@
 // happy-dom has no Worker, so a stub is installed before the module is imported and the
 // real postMessage path runs; the components then exercise the synchronous fallback.
 import type * as VacfAsyncModule from '#lib/vacf/async-compute.svelte.js'
+import * as collect_module from '#lib/vacf/collect.js'
 import { calc_vacf } from '#lib/vacf/calc-vacf.js'
 import type { VacfInput, VacfOptions, VacfResult } from '#lib/vacf/index.js'
 import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
@@ -240,6 +241,7 @@ describe(`TrajectoryVacfPane`, () => {
   // hand VacfPlot a fresh options object and send the buffer back through the worker
   it(`starts empty, collects and plots on click, and ignores stride edits without a timestep`, async () => {
     const compute = vi.spyOn(vacf_async_module, `compute_vacf_async`)
+    const collect = vi.spyOn(collect_module, `collect_vacf_input`)
     const initial_text = await mount_and_read(TrajectoryVacfPane, {
       run: orbit_run(60, 0.04, 1),
       pane_open: true,
@@ -255,6 +257,8 @@ describe(`TrajectoryVacfPane`, () => {
     // both the VACF and the VDOS panel are drawn by default
     expect(document.querySelectorAll(`.scatter`)).toHaveLength(2)
     expect(compute).toHaveBeenCalledTimes(1)
+    // the collected stream itself, never a deep $state proxy of its steps and cells
+    expect(compute.mock.calls[0][0]).toBe(await collect.mock.results[0].value)
     const stride_input = document.querySelector<HTMLInputElement>(
       `.trajectory-vacf-controls input[min='1'][step='1']`,
     )

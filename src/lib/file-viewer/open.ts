@@ -7,7 +7,7 @@ import {
 import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
-import { basename_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
+import { basename_from_url, fetch_payload } from '#lib/io/url-drop.js'
 import { parse_in_worker } from './parse-in-worker'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { to_error } from 'svelte-widgets/utils'
@@ -16,6 +16,9 @@ export interface MaterialPayload extends Partial<FileLoadMeta> {
   data: TrajectorySource
   filename: string
   is_base64?: boolean
+  // Size of `data` in bytes as loaded (inflated), so a string need not be re-encoded to be
+  // measured; caller-built payloads may omit it
+  byte_size?: number
 }
 
 export type MaterialSource = string | URL | File | MaterialPayload
@@ -70,21 +73,13 @@ export const source_provenance = (source: MaterialSource): Partial<MaterialProve
     source_filename: source.source_filename ?? source.filename,
     source_url: source.source_url,
     file: source.file,
-    file_size: content_byte_size(source.data),
+    file_size: source.byte_size ?? content_byte_size(source.data),
   }
 }
 
 const load_url = async (url: string, signal?: AbortSignal): Promise<MaterialPayload> => {
-  let payload: MaterialPayload | undefined
-  await load_trajectory_from_url(
-    url,
-    (data, filename, metadata) => {
-      payload = { data, filename, ...metadata }
-    },
-    signal,
-  )
-  if (!payload) throw new Error(`No content returned for ${url}`)
-  return payload
+  const { content: data, ...payload } = await fetch_payload(url, true, signal)
+  return { data, ...payload }
 }
 
 export const acquire_material = async (
@@ -94,14 +89,17 @@ export const acquire_material = async (
   if (typeof source === `string` || source instanceof URL)
     return load_url(String(source), signal)
   if (is_file(source)) {
-    const { content: data, filename } = await decompress_trajectory_file(source, signal)
-    return { data, filename, source_filename: source.name, file: source }
+    const { content: data, ...payload } = await decompress_trajectory_file(source, signal)
+    return { data, ...payload, source_filename: source.name, file: source }
   }
   const { data, filename, is_base64, ...metadata } = source
   if (typeof data === `string` || is_base64) return source
   const blob = data instanceof Blob ? data : new Blob([data])
-  const classified = await classify_payload(blob, [filename], { hdf5_as_blob: true, signal })
-  return { data: classified.content, filename: classified.filename, ...metadata }
+  const { content, ...classified } = await classify_payload(blob, [filename], {
+    hdf5_as_blob: true,
+    signal,
+  })
+  return { ...metadata, data: content, ...classified }
 }
 
 // Hand a source's fetched/decompressed bytes or text plus its identity to a reader of its own
@@ -148,14 +146,10 @@ export async function open_material(
     filename,
     is_base64 = false,
     source_filename = filename,
+    byte_size = content_byte_size(data),
     ...metadata
   } = payload
-  const parse_provenance = {
-    filename,
-    source_filename,
-    file_size: content_byte_size(data),
-    ...metadata,
-  }
+  const parse_provenance = { filename, source_filename, file_size: byte_size, ...metadata }
   let result: ParseResult
   try {
     result = await parse_in_worker(data, filename, is_base64, {

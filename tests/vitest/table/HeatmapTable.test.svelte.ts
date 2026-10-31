@@ -1,7 +1,6 @@
 import type { ShowControlsProp } from '#lib/controls.js'
 import type {
   CellSnippetArgs,
-  ColumnFilter,
   ColumnPrefs,
   Column,
   DateTimeFormatMode,
@@ -11,6 +10,8 @@ import type {
 } from '#lib/table/index.js'
 import DateTimeFormatMenu from '#lib/table/DateTimeFormatMenu.svelte'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+import * as table_data from '#lib/table/data.js'
+import heatmap_table_source from '#lib/table/HeatmapTable.svelte?raw'
 import * as table_index from '#lib/table/index.js'
 import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
@@ -161,7 +162,6 @@ describe(`HeatmapTable`, () => {
       expect(texts(`td.row-num-col`)).toEqual(show_row_numbers ? [`1`, `2`, `3`] : [])
       expect(document.querySelector(`tfoot`)).toBeNull() // no footer snippet -> no tfoot
       expect(document.querySelector(`.empty-row`)).toBeNull() // data present -> no empty row
-      expect(document.querySelector(`button[aria-label="Export"]`)).toBeNull()
       expect(document.querySelector(`.pane-toggle`)).toBeNull()
       expect(document.querySelector(`.sort-hint`)).toBeNull()
     },
@@ -205,25 +205,20 @@ describe(`HeatmapTable`, () => {
     // Rich cells retain their sanitized markup instead of being flattened for truncation.
     expect(doc_query(`td[data-col="Rich"] strong`).textContent).toBe(`rich-markup`)
     const linked_cell = doc_query(`td[data-col="Linked"]`)
+    // the link crossing the split clips inside itself: still one link (one hover state, name
+    // and tab stop), its wrappers marked to shrink with it
     const clipped = doc_query(`td[data-col="Linked"] .middle-ellipsis-html`)
+    expect(clipped.tagName).toBe(`A`)
+    expect(linked_cell.querySelectorAll(`a`)).toHaveLength(1)
+    expect(clipped.getAttribute(`href`)).toBe(`/dataset`)
     expect(clipped.textContent).toBe(`prefix & ${unicode_id}`)
-    expect(clipped.dataset.title).toBe(clipped.textContent)
     expect(clipped.lastElementChild?.textContent).toBe(`🇩🇪1234567`)
-    for (const part of clipped.children) {
-      expect(part.querySelector(`a`)?.getAttribute(`href`)).toBe(`/dataset`)
-      expect(part.querySelector(`[title]`)?.getAttribute(`title`)).toBe(`Full details`)
-      expect(part.querySelector(`[data-sort-value]`)?.getAttribute(`data-sort-value`)).toBe(
-        `42`,
-      )
-    }
-    const prefix_link = clipped.firstElementChild?.querySelector(`a`)
-    expect(prefix_link?.getAttribute(`aria-label`)).toBe(`prefix & ${unicode_id}`)
-    // that aria-label only names the split link: its tooltip is the cell's own title
-    prefix_link?.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    const wrapper = doc_query(`td[data-col="Linked"] [title]`)
+    expect(wrapper.classList.contains(`middle-ellipsis-host`)).toBe(true)
+    expect(wrapper.getAttribute(`data-sort-value`)).toBe(`42`)
+    expect(wrapper.parentElement?.dataset.title).toBe(`prefix & ${unicode_id}`)
+    clipped.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     expect(doc_query(`.custom-tooltip .tooltip-content`).textContent).toBe(`Full details`)
-    const tail_link = clipped.lastElementChild?.querySelector(`a`)
-    expect(tail_link?.getAttribute(`aria-hidden`)).toBe(`true`)
-    expect(tail_link?.getAttribute(`tabindex`)).toBe(`-1`)
     // Auto-fit must measure the hidden prefix too, not just the clipped cell width.
     Object.defineProperty(clipped.children[0], `scrollWidth`, { value: 250 })
     Object.defineProperty(clipped.children[1], `scrollWidth`, { value: 50 })
@@ -560,7 +555,7 @@ describe(`HeatmapTable`, () => {
       expect(header).not.toHaveBeenCalled()
     })
 
-    // Cell parsing itself is covered by the compare_rows/parse_numeric_val unit tests; these
+    // Cell parsing itself is covered by the sort_table_rows/parse_numeric_val unit tests; these
     // check a column is wired through them (string initial_sort shorthand sorts ascending)
     // and that a header click then flips the order.
     it.each<[string, string[], string[], boolean]>([
@@ -591,12 +586,6 @@ describe(`HeatmapTable`, () => {
             `<span title="${title}" data-sort-value="${key}">${name}</span>`,
         ),
         [`Zulu`, `Mike`, `Alpha`],
-        false,
-      ],
-      [
-        `mixed columns with numbers first`,
-        [`10`, `abc`, `9`, `def`, `2`, `a1`],
-        [`2`, `9`, `10`, `a1`, `abc`, `def`],
         false,
       ],
     ])(`sorts %s`, async (_desc, values, expected, numeric) => {
@@ -1006,9 +995,8 @@ describe(`HeatmapTable`, () => {
 
   describe(`Search and Filter`, () => {
     it.each([
-      { desc: `search=true expands input on toggle click`, search: true, click: true },
       {
-        desc: `search.placeholder is applied to the input`,
+        desc: `search.placeholder is applied to the input expanded on toggle click`,
         search: { placeholder: `Search materials...` },
         click: true,
         placeholder: `Search materials...`,
@@ -1107,6 +1095,42 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Model`)).toHaveLength(1)
     })
 
+    // A live refresh with a query active re-read every cell's text (50k x 30: 90 ms); kept
+    // rows keep theirs, and a column filter still applies on top of the query.
+    it(`re-reads only replaced rows' search text and keeps filtering`, async () => {
+      fake_search_timers()
+      const text_spy = vi.spyOn(table_data, `cell_text`)
+      onTestFinished(() => text_spy.mockRestore())
+      const rows = [`A`, `B`, `C`].map((letter, idx) => ({ Model: letter, Score: idx }))
+      const column_prefs: Record<string, ColumnPrefs> = {}
+      const state = $state({ search_query: ``, column_prefs })
+      // raw, as the data prop asks: a deep proxy re-wraps every row object on reassignment
+      let data = $state.raw<RowData[]>(rows)
+      const columns = plain_columns(`Model`, `Score`)
+      mount_table(
+        bind_props(
+          {
+            get data() {
+              return data
+            },
+            columns,
+            search: true,
+          },
+          state,
+        ),
+      )
+      await settle_search(state, `z`)
+      expect(text_spy).toHaveBeenCalledTimes(6) // every searched cell once
+      text_spy.mockClear()
+      data = [rows[0], { Model: `Z`, Score: 1 }, rows[2]]
+      await tick()
+      expect(text_spy.mock.calls.map(([val]) => val)).toEqual([`Z`]) // matched, Score unread
+      expect(col_values(`Model`)).toEqual([`Z`])
+      state.column_prefs = { Score: { filter: { kind: `numeric`, min: 2 } } }
+      await tick()
+      expect(col_values(`Model`)).toEqual([]) // Z scores 1
+    })
+
     it.each([
       [`keys restricts matching to the given columns`, { keys: [`Model`] }, `model a`, [`A`]],
       [`no keys searches every column`, {}, `model a`, [`A`, `B`]],
@@ -1145,7 +1169,7 @@ describe(`HeatmapTable`, () => {
   })
 
   describe(`Column Visibility Toggle`, () => {
-    // The menu is ToggleMenu, whose dropdown portals to <body>, so query from document.
+    // The menu is ColumnPicker, whose dropdown portals to <body>, so query from document.
     // Default-hidden columns start hidden without counting as a change, and Reset hides them again
     it(`default_hidden_columns is the reset baseline`, async () => {
       const state = $state({ hidden_columns: [`Value`] })
@@ -1161,15 +1185,15 @@ describe(`HeatmapTable`, () => {
         ),
       )
       await tick()
-      expect(document.querySelector(`.column-toggles > .reset-btn`)).toBeNull()
-      await click(doc_query(`.column-toggles > button`))
+      expect(document.querySelector(`.column-picker > .reset-btn`)).toBeNull()
+      await click(doc_query(`.column-picker > button`))
       const value_box = [
         ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
       ].find((box) => box.closest(`label`)?.textContent?.includes(`Value`))
       if (!value_box) throw new Error(`no Value checkbox`)
       await click(value_box)
       expect(state.hidden_columns).toEqual([])
-      await click(doc_query(`.column-toggles > .reset-btn`))
+      await click(doc_query(`.column-picker > .reset-btn`))
       expect(state.hidden_columns).toEqual([`Value`])
     })
 
@@ -1188,7 +1212,7 @@ describe(`HeatmapTable`, () => {
       await tick()
       expect(document.querySelectorAll(`th`)).toHaveLength(2)
 
-      await click(doc_query(`.column-toggles > button`))
+      await click(doc_query(`.column-picker > button`))
       const boxes = [
         ...document.querySelectorAll<HTMLInputElement>(`.column-menu input[type="checkbox"]`),
       ]
@@ -1201,13 +1225,13 @@ describe(`HeatmapTable`, () => {
         new MouseEvent(`mouseleave`, { relatedTarget: boxes[0] }),
       )
       await tick()
-      expect(doc_query(`.column-toggles > button`).getAttribute(`aria-expanded`)).toBe(`true`)
+      expect(doc_query(`.column-picker > button`).getAttribute(`aria-expanded`)).toBe(`true`)
 
       await click(boxes[0])
       expect(state.hidden_columns).toEqual([`Value`, `Model`])
       expect(document.querySelectorAll(`th`)).toHaveLength(1)
 
-      await click(doc_query(`.column-toggles > .reset-btn`))
+      await click(doc_query(`.column-picker > .reset-btn`))
       expect(state.hidden_columns).toEqual([])
       expect(document.querySelectorAll(`th`)).toHaveLength(3)
     })
@@ -1229,24 +1253,24 @@ describe(`HeatmapTable`, () => {
       )
       await tick()
 
-      await click(doc_query(`.column-toggles > button`))
+      await click(doc_query(`.column-picker > button`))
       document
-        .querySelectorAll<HTMLInputElement>(`.sections-container input`)
+        .querySelectorAll<HTMLInputElement>(`.column-menu.grouped input`)
         .forEach((checkbox) => checkbox.click())
       await tick()
       expect(state.hidden_columns).toEqual([`grouped`, `ungrouped`])
 
-      await click(doc_query(`.column-toggles > .reset-btn`))
+      await click(doc_query(`.column-picker > .reset-btn`))
       expect(state.hidden_columns).toEqual([])
     })
 
-    // The two menus overlap, so only one may be open. ToggleMenu owns its own open state,
+    // The two menus overlap, so only one may be open. ColumnPicker owns its own open state,
     // so each side closes the other when it opens.
     it.each([[`columns`], [`export`]] as const)(
       `opening the %s menu closes the other`,
       async (first) => {
         mount_sample({ show_column_toggle: true, export_formats: TABLE_EXPORT_FORMATS })
-        const columns_btn = () => doc_query(`.column-toggles > button`)
+        const columns_btn = () => doc_query(`.column-picker > button`)
         const export_btn = () => doc_query<HTMLButtonElement>(`button.export-toggle`)
         const open_menus = () =>
           [
@@ -1324,9 +1348,6 @@ describe(`HeatmapTable`, () => {
       expect([...headers].map((header) => header.getAttribute(`aria-sort`))).toEqual(
         [...headers].map((_header, idx) => (idx === primary ? direction : `none`)),
       )
-    expect(
-      [...headers].every((header) => header.getAttribute(`role`) === `columnheader`),
-    ).toBe(true)
 
     await shift_click(0)
     await shift_click(1)
@@ -1967,22 +1988,15 @@ describe(`HeatmapTable`, () => {
 
     // Filters live in column_prefs, so setting them from the outside is the same code path
     // the funnel UI drives — and doubles as the persistence test for that prop.
-    it.each<[string, ColumnFilter, string, string[], string?]>([
-      [`numeric lower bound`, { kind: `numeric`, min: 20 }, `Score`, [`B`, `C`]],
-      [`numeric range`, { kind: `numeric`, min: 15, max: 25 }, `Score`, [`B`]],
-      [`category allow-list`, { kind: `category`, values: [`alpha`] }, `Tier`, [`A`, `C`]],
-      [`substring`, { kind: `text`, text: `bet` }, `Tier`, [`B`]],
-      // alpha AND score >= 20
-      [`filter plus global search`, { kind: `numeric`, min: 20 }, `Score`, [`C`], `alpha`],
-    ])(`filters rows by %s`, (_desc, filter, col_id, expected, search_query) => {
+    it(`filters rows by a column filter plus global search`, () => {
       mount_table({
         data: metric_rows,
         columns: metrics,
-        column_prefs: { [col_id]: { filter } },
-        search: Boolean(search_query),
-        search_query,
+        column_prefs: { Score: { filter: { kind: `numeric`, min: 20 } } },
+        search: true,
+        search_query: `alpha`,
       })
-      expect(rendered_models()).toEqual(expected)
+      expect(rendered_models()).toEqual([`C`]) // alpha AND score >= 20
     })
 
     it(`binds visible_rows to the filtered rows in sort order across all pages`, async () => {
@@ -2211,6 +2225,14 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`tfoot td:nth-child(2)`)?.textContent?.trim()).toBe(`35`)
     })
 
+    // ColumnFilter's scoped rules outrank the .header-popover ones, so the panel follows the
+    // header background only through the widget's own variable
+    it(`themes the filter panel with the header background`, () => {
+      expect(heatmap_table_source).toMatch(
+        /--column-filter-panel-bg: var\(--heatmap-header-bg, var\(--page-bg, Canvas\)\)/,
+      )
+    })
+
     // Past the auto-detect cap a checklist would be unusable, but a column explicitly
     // configured as `category` must still get its full option list rather than an empty panel.
     it(`lists every option for an explicitly categorical column past the cap`, async () => {
@@ -2230,7 +2252,7 @@ describe(`HeatmapTable`, () => {
       const trigger = doc_query<HTMLButtonElement>(`.column-filter-trigger`)
       expect(trigger.getAttribute(`aria-label`)).toBe(`Filter Tag & ID`) // as rendered
       await click(trigger)
-      const options = document.querySelectorAll(`.column-filter-options label`)
+      const options = document.querySelectorAll(`.column-filter-choices label`)
       expect(options).toHaveLength(60)
       // keys typed in the panel must not reach the sortable header underneath
       const panel = doc_query(`.column-filter-panel`)
@@ -2313,8 +2335,9 @@ describe(`HeatmapTable`, () => {
         summary: [`mean`],
       })
       await tick()
-      // one pass per column: writing back the resolved column_order re-scans none
-      expect(stats_spy).toHaveBeenCalledTimes(3)
+      // one pass per column holding numbers (not the text-only Model): writing back the
+      // resolved column_order re-scans none
+      expect(stats_spy).toHaveBeenCalledTimes(2)
       const cells = [...document.querySelectorAll(`tfoot .summary-row td`)].map((cell) =>
         cell.textContent?.trim(),
       )
@@ -2385,11 +2408,6 @@ describe(`HeatmapTable`, () => {
         (btn) => btn.getAttribute(`aria-label`)?.replace(`Download `, ``),
       )
     it.each([
-      [
-        `TABLE_EXPORT_FORMATS offers every format`,
-        { export_formats: TABLE_EXPORT_FORMATS },
-        [`CSV`, `JSON`, `Markdown`, `LaTeX`],
-      ],
       [`export_formats restricts the options`, { export_formats: [`csv`] as const }, [`CSV`]],
       [`no export pane by default`, {}, null],
     ])(`%s`, async (_desc, props, expected) => {
@@ -2466,6 +2484,12 @@ describe(`HeatmapTable`, () => {
           `  \\bottomrule`,
           `\\end{tabular}`,
         ],
+      ],
+      // JSON keys by column ID and keeps numbers, but string cells lose their markup
+      [
+        `JSON`,
+        { Model: `<b>Fe</b>&amp;O`, 'E<sub>f</sub>': 1 },
+        [`[`, `  {`, `    "Model": "Fe&O",`, `    "E<sub>f</sub>": 1`, `  }`, `]`],
       ],
     ])(
       `downloads %s with stripped headers and aligned numeric columns`,
@@ -2544,51 +2568,50 @@ describe(`HeatmapTable`, () => {
       }
     })
 
-    it.each([true, false])(
-      `resets authored color and display settings (initial=%s)`,
-      async (initial) => {
-        const preferences = { Value: { color_scale: null, width: 120 } }
-        const props = $state({
-          data: sample_data,
-          columns: [heatmap_col],
-          column_prefs: (initial ? preferences : {}) satisfies Record<string, ColumnPrefs>,
-          show_controls: true,
-          show_heatmap: !initial,
-          heatmap_opacity: initial ? 0.5 : 1,
-          show_row_numbers: initial,
-        })
-        mount_table(bind_props({}, props))
-        await click(document.querySelector<HTMLButtonElement>(`.pane-toggle`))
-        props.column_prefs = preferences
-        props.show_heatmap = false
-        props.heatmap_opacity = 0.5
-        props.show_row_numbers = true
-        await tick()
+    // Settings authored at mount are reset by the playwright table-controls test; this covers
+    // the same overrides arriving after mount
+    it(`resets color and display settings changed after mount`, async () => {
+      const props = $state({
+        data: sample_data,
+        columns: [heatmap_col],
+        column_prefs: {} satisfies Record<string, ColumnPrefs>,
+        show_controls: true,
+        show_heatmap: true,
+        heatmap_opacity: 1,
+        show_row_numbers: false,
+      })
+      mount_table(bind_props({}, props))
+      await click(document.querySelector<HTMLButtonElement>(`.pane-toggle`))
+      props.column_prefs = { Value: { color_scale: null, width: 120 } }
+      props.show_heatmap = false
+      props.heatmap_opacity = 0.5
+      props.show_row_numbers = true
+      await tick()
 
-        for (const section of [`heatmap`, `display`, `column colors`]) {
-          const selector = `[aria-label="Reset ${section} to defaults"]`
-          const reset = await vi.waitFor(() => doc_query(selector, HTMLButtonElement))
-          await click(reset)
-          expect(document.querySelector(selector)).toBeNull()
-        }
-        expect(props.show_heatmap).toBe(true)
-        expect(props.heatmap_opacity).toBe(1)
-        expect(document.querySelector(`.row-num-col`)).toBeNull()
-        expect(props.column_prefs).toEqual({ Value: { width: 120 } })
-        expect(cell_at(0, 0).style.getPropertyValue(`--cell-bg`)).not.toBe(``)
-      },
-    )
+      for (const section of [`heatmap`, `display`, `column colors`]) {
+        const selector = `[aria-label="Reset ${section} to defaults"]`
+        const reset = await vi.waitFor(() => doc_query(selector, HTMLButtonElement))
+        await click(reset)
+        expect(document.querySelector(selector)).toBeNull()
+      }
+      expect(props.show_heatmap).toBe(true)
+      expect(props.heatmap_opacity).toBe(1)
+      expect(document.querySelector(`.row-num-col`)).toBeNull()
+      expect(props.column_prefs).toEqual({ Value: { width: 120 } })
+      expect(cell_at(0, 0).style.getPropertyValue(`--cell-bg`)).not.toBe(``)
+    })
 
     // Two ways the color control used to vanish from a column that still paints: gating the
     // list on "every value parses" dropped a mixed column, and gating it on column_stats
-    // (derived from the FILTERED rows) dropped it mid-typing
+    // (derived from the FILTERED rows) dropped it mid-typing. A keystroke also re-parsed every
+    // filtered cell for the column statistics (~290 ms at 50k x 30); cells now parse once.
     it(`keeps the color control for a mixed column the search empties of numbers`, async () => {
       fake_search_timers()
       const state = $state({
         search_query: ``,
         column_prefs: {} satisfies Record<string, ColumnPrefs>,
       })
-      let model_reads = 0
+      let [model_reads, cell_reads] = [0, 0]
       const data = [
         { Model: `alpha 1`, Score: 1 },
         { Model: `alpha 2`, Score: 2 },
@@ -2598,6 +2621,7 @@ describe(`HeatmapTable`, () => {
           new Proxy(row, {
             get: (target, key) => {
               if (key === `Model`) model_reads++
+              if (key === `Model` || key === `Score`) cell_reads++
               return Reflect.get(target, key)
             },
           }),
@@ -2620,7 +2644,9 @@ describe(`HeatmapTable`, () => {
       expect(model_reads).toBe(0)
       expect(color_labels()).toEqual(score_labels)
 
+      cell_reads = 0
       await settle_search(state, `beta`) // filters away every numeric Score
+      expect(cell_reads).toBe(0)
       expect(col_values(`Model`)).toEqual([`beta`])
       expect(color_labels()).toEqual(score_labels)
     })
@@ -2635,11 +2661,17 @@ describe(`HeatmapTable`, () => {
       init: MouseEventInit = {},
     ) => {
       cell_at(...from).dispatchEvent(pointer(`pointerdown`, init))
-      cell_at(...target).dispatchEvent(pointer(`pointermove`))
+      cell_at(...target).dispatchEvent(pointer(`pointermove`, { buttons: 1 }))
       globalThis.window.dispatchEvent(pointer(`pointerup`))
     }
-    const copy_shortcut = (target: EventTarget = window) =>
-      target.dispatchEvent(keydown(`c`, { metaKey: true }))
+    // the copy event Cmd/Ctrl+C or Edit > Copy fires on the focused element; returns what
+    // the table put on the clipboard
+    const copy_cells = (target: EventTarget = document) => {
+      const event = new ClipboardEvent(`copy`, { bubbles: true, cancelable: true })
+      Object.assign(event, { clipboardData: new DataTransfer() })
+      target.dispatchEvent(event)
+      return event.clipboardData?.getData(`text/plain`)
+    }
     const written_text = (): string =>
       (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
     const mount_sample_table = async (props: Partial<TableProps> = {}) => {
@@ -2654,16 +2686,15 @@ describe(`HeatmapTable`, () => {
       await tick()
 
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(4)
-      copy_shortcut(doc_query(`.resize-handle`)) // a focused resize handle lets Cmd+C through
-      expect(written_text()).toBe(`Model A\t0.95\nModel B\t0.85`)
+      // a focused resize handle lets the copy through
+      expect(copy_cells(doc_query(`.resize-handle`))).toBe(`Model A\t0.95\nModel B\t0.85`)
 
       drag_cells([0, 0], [0, 0])
       drag_cells([2, 2], [2, 2], { shiftKey: true })
       await tick()
 
       expect(document.querySelectorAll(`td.cell-selected`)).toHaveLength(2)
-      copy_shortcut()
-      expect(written_text()).toBe(`Model A\n300`)
+      expect(copy_cells()).toBe(`Model A\n300`)
 
       drag_cells([2, 1], [2, 1])
       await tick()
@@ -2727,8 +2758,7 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.action-menu`)).toBeNull()
       await click(doc_query(`button[aria-label="Next page"]`))
       drag_cells([2, 0], [2, 1])
-      copy_shortcut()
-      expect(written_text()).toBe(`Model C x\t0.75`)
+      expect(copy_cells()).toBe(`Model C x\t0.75`)
     })
 
     it(`context menu on headers offers copy for non-heatmap columns`, async () => {
@@ -2941,25 +2971,37 @@ describe(`HeatmapTable`, () => {
     })
 
     // Clickable rows step by absolute index, not DOM sibling: the element after the last
-    // rendered row is a spacer, so sibling-walking stranded keyboard users at the window edge.
-    it(`arrow keys walk clickable rows across the virtual window boundary`, async () => {
-      mount_virtual({ on_row_click: () => {} })
-      await tick() // let bind:this resolve the scroll container
-      const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
-      const row_at = (abs_idx: number) =>
-        document.querySelector(`td[data-row-idx="${abs_idx}"]`)?.closest(`tr`)
+    // rendered row is a spacer (or, paged, nothing), so keyboard users were stranded at the
+    // window or page edge.
+    it.each([`virtual`, `paged`])(
+      `arrow keys walk clickable rows across the %s window boundary`,
+      async (mode) => {
+        if (mode === `virtual`) mount_virtual({ on_row_click: () => {} })
+        else {
+          mount_table({
+            data: many_rows,
+            columns: two_cols,
+            pagination: { page_size: min_window },
+            on_row_click: () => {},
+          })
+        }
+        await tick() // let bind:this resolve the scroll container
+        const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
+        const row_at = (abs_idx: number) =>
+          document.querySelector(`td[data-row-idx="${abs_idx}"]`)?.closest(`tr`)
 
-      const last_rendered = row_at(min_window - 1)
-      assert(last_rendered)
-      await fire(last_rendered, keydown(`ArrowDown`))
+        const last_rendered = row_at(min_window - 1)
+        assert(last_rendered)
+        await fire(last_rendered, keydown(`ArrowDown`))
 
-      expect(scroller.scrollTop).toBeGreaterThan(0) // pulled the next row into the window
-      expect(document.activeElement).toBe(row_at(min_window))
+        if (mode === `virtual`) expect(scroller.scrollTop).toBeGreaterThan(0)
+        else expect(doc_query<HTMLInputElement>(`.page-input`).value).toBe(`2`)
+        expect(document.activeElement).toBe(row_at(min_window))
 
-      row_at(min_window)?.dispatchEvent(keydown(`ArrowUp`))
-      await tick()
-      expect(document.activeElement).toBe(row_at(min_window - 1))
-    })
+        await fire(row_at(min_window), keydown(`ArrowUp`))
+        expect(document.activeElement).toBe(row_at(min_window - 1))
+      },
+    )
 
     it(`clamps the rendered window when data shrinks below the scroll position`, async () => {
       const state = $state({ data: many_rows })

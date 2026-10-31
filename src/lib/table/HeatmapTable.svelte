@@ -37,7 +37,6 @@
     CellColor,
     CellSnippet,
     CellVal,
-    ColumnFilter,
     ColumnPrefs,
     ColumnStats,
     DateTimeFormatMode,
@@ -58,11 +57,10 @@
     NULL_CELL_COLOR,
     resolve_color_domain,
   } from '#lib/table/index.js'
-  import ColumnFilterMenu from './ColumnFilter.svelte'
   import DateTimeFormatMenu from './DateTimeFormatMenu.svelte'
   import type { SortCriterion } from './data'
   import {
-    cell_matches_filter,
+    cell_readers,
     cell_text,
     sort_table_rows,
     DATETIME_MODES_BY_KIND,
@@ -77,16 +75,20 @@
     parse_numeric_val,
     text_matches_query,
   } from './data'
-  import type { TableMatrix } from './export'
   import {
-    table_to_delimited,
+    type CellPos,
+    cell_range_select,
+    CellSelection,
+    ColumnFilter,
+    type ColumnFilterValue,
+    ColumnPicker,
+    compile_filter,
+    INTERACTIVE_SELECTOR,
     table_to_json,
-    table_to_latex,
-    table_to_markdown,
+    table_to_text,
+    type TableMatrix,
     tsv_cell,
-  } from './export'
-  import { type CellPos, CellSelection } from './selection.svelte'
-  import ToggleMenu from './ToggleMenu.svelte'
+  } from 'svelte-widgets/table'
   import { virtual_window } from 'svelte-widgets/virtual'
   import type { IconData } from 'svelte-widgets'
   import ActionMenu from 'svelte-widgets/ActionMenu.svelte'
@@ -237,8 +239,10 @@
     render_html = sanitize_html
   })
 
-  // Split rendered markup at a grapheme boundary, retaining links and inline formatting
-  // on both sides. Only these HTML-owned nodes move; Svelte cell snippets stay untouched.
+  // Split rendered markup at a grapheme boundary, retaining inline formatting on both sides.
+  // A link crossing the split is split inside itself, so it stays one link (one hover state,
+  // accessible name and tab stop) and nodes beside it (e.g. a marker) stay unclipped. Only
+  // these HTML-owned nodes move; Svelte cell snippets stay untouched.
   function ellipsize_html(element: HTMLSpanElement) {
     const text = element.textContent ?? ``
     if (text.length <= MIDDLE_ELLIPSIS_MIN_LENGTH) return
@@ -250,28 +254,21 @@
       node = walker.nextNode()
     }
     if (!node) return
-    const split_link = node.parentElement?.closest(`a`)
-    const link_label = split_link?.getAttribute(`aria-label`) ?? split_link?.textContent
+    const box = node.parentElement?.closest(`a`) ?? element
     const range = document.createRange()
-    range.selectNodeContents(element)
+    range.selectNodeContents(box)
     range.setStart(node, offset)
     const end = document.createElement(`span`)
     end.append(range.extractContents())
-    // A link crossing the split keeps one accessible name and keyboard stop. Its
-    // visible tail still follows the same href when clicked.
-    if (split_link && link_label) {
-      if (split_link.textContent) {
-        split_link.setAttribute(`aria-label`, link_label)
-        split_link.dataset.ellipsisSplit = ``
-        const tail_link = end.querySelector(`a`)
-        tail_link?.setAttribute(`aria-hidden`, `true`)
-        tail_link?.setAttribute(`tabindex`, `-1`)
-      } else split_link.remove()
-    }
     const start = document.createElement(`span`)
-    start.append(...element.childNodes)
-    element.append(start, end)
-    element.classList.add(`middle-ellipsis-html`)
+    start.append(...box.childNodes)
+    box.append(start, end)
+    box.classList.add(`middle-ellipsis-html`)
+    // wrappers around the link shrink with it so its head can clip
+    for (let host = box; host !== element && host.parentElement;) {
+      host = host.parentElement
+      host.classList.add(`middle-ellipsis-host`)
+    }
     element.dataset.title = text
   }
 
@@ -382,6 +379,11 @@
     header_popover?.kind === kind && header_popover.col_id === col_id
   const toggle_popover = (kind: PopoverKind, col_id: string) => {
     header_popover = popover_open(kind, col_id) ? null : { kind, col_id }
+  }
+  // A close clears the entry only while this popover still owns it, never a newer one
+  const set_popover = (kind: PopoverKind, col_id: string, open: boolean) => {
+    if (open) header_popover = { kind, col_id }
+    else if (popover_open(kind, col_id)) header_popover = null
   }
 
   const color_scale_options = [
@@ -514,35 +516,55 @@
     return timestamp === null ? null : format_datetime(timestamp, mode, relative_now_ms)
   }
 
-  // Right-align all-numeric columns (not dates or custom cells). Checks every row, not a
-  // sample, since a column may turn to text near the end; `every` bails early on text.
-  let numeric_columns = $derived.by(() => {
-    const col_ids = new Set<string>()
-    for (const col of columns) {
-      if (is_datetime_column(col) || col.cell) continue
-      const data_key = cell_key(col)
-      let any_value = false
-      const all_numeric = data.every((row) => {
-        const val = row[data_key]
-        if (is_invalid(val) || val === ``) return true
-        any_value = true
-        return parse_numeric_val(val) !== null
-      })
-      if (all_numeric && any_value) col_ids.add(col.id)
+  // Every column's cells read as numbers once per data change (NaN where a cell has none),
+  // shared by alignment, the heatmap toggle and the column statistics, which re-parsed every
+  // cell on each search keystroke (~290 ms at 50k x 30). `all_numeric`: every non-empty cell is
+  // numeric. Row-major: a column-at-a-time pass walks every row object per column, and those
+  // scattered loads cost ~8x the parsing (50k x 30: 155 -> 19 ms, mount 480 -> 250 ms).
+  let parsed_columns = $derived.by(() => {
+    const cols = [...new Set(columns.map(cell_key))].map((key) => ({
+      key,
+      nums: new Float64Array(data.length),
+      any_numeric: false,
+      all_numeric: true,
+    }))
+    for (let row_idx = 0; row_idx < data.length; row_idx++) {
+      const row = data[row_idx]
+      for (const col of cols) {
+        const val = row[col.key]
+        const num = parse_numeric_val(val)
+        col.nums[row_idx] = num ?? NaN
+        if (num !== null) col.any_numeric = true
+        else if (!is_invalid(val) && val !== ``) col.all_numeric = false
+      }
     }
-    return col_ids
+    return new Map(cols.map((col) => [col.key, col]))
+  })
+
+  // Right-align all-numeric columns (not dates or custom cells). Checks every row, not a
+  // sample, since a column may turn to text near the end.
+  let numeric_columns = $derived.by(() => {
+    const is_numeric = (col: Column<Row>) => {
+      const parsed = parsed_columns.get(cell_key(col))
+      return !is_datetime_column(col) && !col.cell && parsed?.any_numeric && parsed.all_numeric
+    }
+    return new Set(columns.filter(is_numeric).map((col) => col.id))
   })
 
   // === Filtering ===
   // Per-column filters over all columns (hiding one mustn't change which rows show). Cached
   // by content since column_prefs also holds widths: else each resize pointermove would
   // re-filter every row and wipe the cell selection.
-  const keep_filters = same_while_equal<{ key: string; filter: ColumnFilter }[]>()
+  const keep_filters = same_while_equal<{ key: string; filter: ColumnFilterValue }[]>()
   let active_filters = $derived(
     keep_filters(
       columns
-        .map((col) => ({ key: cell_key(col), filter: prefs_of(col.id).filter }))
-        .filter((entry): entry is { key: string; filter: ColumnFilter } =>
+        // plain copies: column_prefs is a deep proxy, read per row and filter otherwise
+        .map((col) => ({
+          key: cell_key(col),
+          filter: $state.snapshot(prefs_of(col.id).filter),
+        }))
+        .filter((entry): entry is { key: string; filter: ColumnFilterValue } =>
           Boolean(entry.filter),
         ),
     ),
@@ -558,37 +580,64 @@
     return () => clearTimeout(timer)
   })
 
-  // Lowercased text is filled lazily once a query reaches it. Without search.keys only
+  const has_value = (row: RowData): boolean => {
+    for (const key in row) if (Object.hasOwn(row, key) && row[key] !== undefined) return true
+    return false
+  }
+  // Searched values and their lowercased text (filled lazily once a query reaches a cell) per
+  // row object. An entry outlives data updates while its row's searched values are unchanged,
+  // so a live refresh re-reads only replaced or edited rows (50k x 30, one row replaced under a
+  // query: 537 -> 132 ms). Objects and Dates can change inside, so their text is never cached.
+  type SearchEntry = { values: CellVal[]; text: string[] }
+  const search_cache = new WeakMap<object, SearchEntry>()
+  // Every row holding any defined value, with its index in `data`. Without search.keys only
   // column data is searched, not row style/class or other fields.
   let search_index = $derived.by(() => {
     const keys = search_config?.keys ?? columns.map(cell_key)
-    return data.flatMap((row) =>
-      Object.values(row).some((val) => val !== undefined)
-        ? [{ row, values: keys.map((key) => row[key]), text: [] as string[] }]
-        : [],
-    )
+    const index: { row: Row & RowData; row_idx: number; entry: SearchEntry }[] = []
+    for (let row_idx = 0; row_idx < data.length; row_idx++) {
+      const row = data[row_idx]
+      if (!has_value(row)) continue
+      const cached = search_cache.get(row)
+      const entry =
+        cached?.values.length === keys.length &&
+        keys.every((key, key_idx) => Object.is(cached.values[key_idx], row[key]))
+          ? cached
+          : { values: keys.map((key) => row[key]), text: [] }
+      if (entry !== cached) search_cache.set(row, entry)
+      index.push({ row, row_idx, entry })
+    }
+    return index
   })
 
-  // Rows surviving the global query and every per-column filter
-  let filtered_data = $derived.by(() => {
+  // One compiled test per filter, rebuilt only when the filters change
+  let filter_tests = $derived(
+    active_filters.map(({ key, filter }) => ({
+      key,
+      test: compile_filter(filter, cell_readers),
+    })),
+  )
+
+  // Rows surviving the global query and every per-column filter, with their index in `data`
+  let filtered_items = $derived.by(() => {
     const query = debounced_query.toLowerCase().trim()
-    return search_index
-      .filter(
-        ({ row, values, text }) =>
-          active_filters.every(({ key, filter }) => cell_matches_filter(row[key], filter)) &&
-          (!query ||
-            values.some((val, val_idx) =>
-              text_matches_query(
-                typeof val === `object`
-                  ? cell_text(val).toLowerCase()
-                  : (text[val_idx] ??= cell_text(val).toLowerCase()),
-                query,
-                search_config?.fuzzy,
-              ),
-            )),
-      )
-      .map(({ row }) => row)
+    const [tests, fuzzy] = [filter_tests, search_config?.fuzzy]
+    return search_index.filter(
+      ({ row, entry: { values, text } }) =>
+        tests.every(({ key, test }) => test(row[key])) &&
+        (!query ||
+          values.some((val, val_idx) =>
+            text_matches_query(
+              val !== null && typeof val === `object`
+                ? cell_text(val).toLowerCase()
+                : (text[val_idx] ??= cell_text(val).toLowerCase()),
+              query,
+              fuzzy,
+            ),
+          )),
+    )
   })
+  let filtered_data = $derived(filtered_items.map(({ row }) => row))
 
   // === Sorting ===
   // Sort criteria as column IDs. multi_sort (Shift+click) takes precedence over the single
@@ -777,10 +826,11 @@
     const stats = new Map<string, ColumnStats & { domain: [number, number] }>()
     const groups = new Map<string, [number, number]>()
     for (const col of visible_columns) {
-      const key = cell_key(col)
-      const parsed = filtered_data.map((row) => parse_numeric_val(row[key]))
+      const parsed = parsed_columns.get(cell_key(col))
+      if (!parsed?.any_numeric) continue
+      const { nums } = parsed
       const col_stats = compute_column_stats(
-        parsed,
+        filtered_items.map(({ row_idx }) => nums[row_idx]),
         undefined,
         needs_median || col.normalize === `quantile`,
       )
@@ -802,12 +852,10 @@
   // Does the column paint? An unconfigured numeric column defaults to interpolateViridis, so the
   // configured scale alone can't say. Over UNFILTERED data: `column_stats` is filtered, so the
   // control vanished mid-search. Looser than `numeric_columns`: mixed-in "N/A" still paints.
-  // The data scan is its own derived so a column_prefs write (each resize pointermove)
-  // doesn't rescan every text column.
   let any_numeric_ids = $derived(
     new Set(
       columns
-        .filter((col) => data.some((row) => parse_numeric_val(row[cell_key(col)]) !== null))
+        .filter((col) => parsed_columns.get(cell_key(col))?.any_numeric)
         .map((col) => col.id),
     ),
   )
@@ -1008,7 +1056,6 @@
   const selection = new CellSelection()
   // Roving tabindex anchor: exactly one cell is tabbable, and arrow keys move it
   let active_cell = $state({ row: 0, col: 0 })
-  let suppress_row_click = false
   // Stale (row, col) coordinates must not survive a change of the row set or column layout.
   // Not the page or virtual window: coordinates are absolute, so scrolling/paging keeps them.
   $effect(() => {
@@ -1032,13 +1079,13 @@
   const tab_col = $derived(tab_stop.col)
 
   const is_interactive_cell_target = (target: EventTarget | null): boolean =>
-    target instanceof Element && Boolean(target.closest(`button, a, input, select, textarea`))
+    target instanceof Element && Boolean(target.closest(INTERACTIVE_SELECTOR))
 
   // Body events are delegated to <tbody>; cells and rows carry their absolute index. Only
   // this table's own rows/cells count (a nested HeatmapTable has the same attributes). tbody
   // comes from currentTarget since bind:this resolves late, after a keydown right at mount.
   type BodyEvent = Event & { currentTarget: HTMLTableSectionElement }
-  const cell_under = ({ target, currentTarget: tbody }: BodyEvent): CellPos | null => {
+  const cell_in = (target: EventTarget | null, tbody: Element): CellPos | null => {
     let cell_el =
       target instanceof Element ? target.closest<HTMLElement>(`td[data-row-idx]`) : null
     while (cell_el && cell_el.parentElement?.parentElement !== tbody) {
@@ -1047,6 +1094,7 @@
     if (!cell_el) return null
     return { row: Number(cell_el.dataset.rowIdx), col: Number(cell_el.dataset.colIdx) }
   }
+  const cell_under = (event: BodyEvent) => cell_in(event.target, event.currentTarget)
   const row_under = ({ target, currentTarget: tbody }: BodyEvent): number | null => {
     let row_el =
       target instanceof Element ? target.closest<HTMLElement>(`tr[data-row-idx]`) : null
@@ -1125,28 +1173,6 @@
     })
   })
 
-  function handle_body_pointerdown(event: PointerEvent & BodyEvent) {
-    const pos = cell_under(event)
-    if (!pos || event.button !== 0 || is_interactive_cell_target(event.target)) return
-    selection.start_drag(pos, event.shiftKey || event.metaKey || event.ctrlKey)
-  }
-  function extend_cell_drag(event: PointerEvent & BodyEvent) {
-    if (!selection.dragging) return
-    const pos = cell_under(event)
-    // A native text selection may have started before user-select: none kicked in; drop it
-    // so the cell selection is the only visible one
-    if (pos && selection.extend_drag(pos)) globalThis.getSelection()?.removeAllRanges()
-  }
-  function end_cell_drag() {
-    // A drag that crossed cells must not fire the row click on release
-    if (selection.end_drag()) suppress_row_click = true
-  }
-  function suppress_click_after_cell_drag(event: MouseEvent) {
-    if (!suppress_row_click) return
-    suppress_row_click = false
-    event.stopPropagation()
-    event.preventDefault()
-  }
   function handle_body_focusin(event: FocusEvent & BodyEvent) {
     // One of this table's own cells, not a link or nested table inside it: that focus leaves
     // the tab stop where it was
@@ -1162,20 +1188,19 @@
     if (pos && !is_interactive_cell_target(event.target))
       open_column_context_menu(event, cols[pos.col].id)
   }
-  function handle_window_pointerdown(event: PointerEvent) {
-    const target = event.target instanceof Element ? event.target : null
-    // A drag's suppress flag is consumed by the click right after pointerup; if that click
-    // never fired (released outside the table), any NEW interaction must not inherit it
-    suppress_row_click = false
-    if (selection.size > 0 && !(target && container_el?.contains(target))) selection.clear()
+  // Drag-select cells and copy them as TSV. Attached to the whole container, so presses on
+  // the controls and context menu keep the selection; a press outside clears it. Cells out of
+  // range read as undefined, which to_tsv skips.
+  const selected_cell_text = (row: number, col: number) => {
+    const [row_data, view] = [sorted_data[row], cols[col]]
+    return row_data && view ? cell_text(row_data[view.key]) : undefined
   }
-
+  const cell_selection = cell_range_select(selection, {
+    cell_at: (target) => (tbody_el ? cell_in(target, tbody_el) : null),
+    cell_text: selected_cell_text,
+  })
   const copy_selected_cells = () =>
-    void navigator.clipboard?.writeText(
-      selection.to_tsv(sorted_data.length, cols.length, (row, col) =>
-        tsv_cell(cell_text(sorted_data[row][cols[col].key])),
-      ),
-    )
+    void navigator.clipboard?.writeText(selection.to_tsv(selected_cell_text))
   // Every sorted+filtered value of one column (all pages), one per line
   const copy_column_values = (col_id: string) =>
     void navigator.clipboard?.writeText(
@@ -1231,17 +1256,6 @@
     void tick().then(() => own_cell_el(row, col)?.focus())
   }
 
-  function handle_window_keydown(event: KeyboardEvent) {
-    if (selection.size === 0) return
-    if (event.key === `Escape`) return selection.clear()
-    if (event.key !== `c` || !(event.metaKey || event.ctrlKey)) return
-    // Native text selections and focused form fields keep native copy
-    if (is_interactive_cell_target(event.target) || globalThis.getSelection()?.toString())
-      return
-    event.preventDefault()
-    copy_selected_cells()
-  }
-
   // Cell navigation first, then row keys: Enter/Space activate, Up/Down step by absolute
   // index (not DOM sibling: under virtualization the next sibling may be a spacer).
   async function handle_body_keydown(event: KeyboardEvent & BodyEvent) {
@@ -1260,7 +1274,10 @@
     const step = event.key === `ArrowDown` ? 1 : -1
     const target_idx = abs_idx + step
     if (target_idx < 0 || target_idx >= sorted_data.length) return
-    if (scroll_row_into_window(target_idx, step > 0)) await tick()
+    // Paged like focus_cell: the row past a page edge is on the neighbouring page
+    if (pagination_config) current_page = Math.floor(target_idx / page_size) + 1
+    scroll_row_into_window(target_idx, step > 0)
+    await tick()
     own_row_el(target_idx)?.focus()
   }
 
@@ -1414,14 +1431,16 @@
   })
   // CSV/Markdown/LaTeX share the text matrix; JSON keeps raw values under stable column ids
   const export_sources: ExportSources = {
-    csv: () => table_to_delimited(table_matrix(), `,`),
+    csv: () => table_to_text(table_matrix(), `csv`),
     json: () =>
       table_to_json(
         export_rows,
         cols.map((view) => ({ id: view.col.id, key: view.key })),
+        // numbers, dates and nested values are kept; string cells lose their markup
+        (val) => (typeof val === `string` ? html_to_text(val) : val),
       ),
-    md: () => table_to_markdown(table_matrix()),
-    tex: () => table_to_latex(table_matrix()),
+    md: () => table_to_text(table_matrix(), `md`),
+    tex: () => table_to_text(table_matrix(), `tex`),
   }
 
   // === Controls pane helpers ===
@@ -1436,7 +1455,7 @@
     }
     return { color, rest: remaining }
   }
-  // Keep the bindable `hidden_columns` list authoritative while ToggleMenu edits a projection
+  // Keep the bindable `hidden_columns` list authoritative while ColumnPicker edits a projection
   function set_column_visible(col_id: string, visible: boolean) {
     const others = hidden_columns.filter((identifier) => identifier !== col_id)
     hidden_columns = visible ? others : [...others, col_id]
@@ -1512,10 +1531,10 @@
     if (widest > 0) set_pref(col_id, `width`, clamp(widest + 8, 50, 500))
   }
 
-  // Delegation keeps tooltips across re-rendered cells. Skipped: ellipsis-split links (the cell
-  // is their tooltip) and data-no-tooltip controls (a resize handle's would pop up mid-drag)
+  // Delegation keeps tooltips across re-rendered cells. Skipped: data-no-tooltip controls (a
+  // resize handle's would pop up mid-drag)
   const table_tooltips = tooltip({
-    delegate: `[title], [aria-label]:not([data-ellipsis-split], [data-no-tooltip]), [data-title]`,
+    delegate: `[title], [aria-label]:not([data-no-tooltip]), [data-title]`,
   })
   const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
@@ -1550,12 +1569,6 @@
     {@html render_html(label)}
   {/if}
 {/snippet}
-
-<svelte:window
-  onpointerdown={handle_window_pointerdown}
-  onpointerup={end_cell_drag}
-  onkeydown={handle_window_keydown}
-/>
 
 {#snippet icon_btn(icon: IconData, tip: string, on_click: () => void)}
   <button
@@ -1601,16 +1614,15 @@
   {/if}
 {/snippet}
 
-<!-- svelte-ignore a11y_no_static_element_interactions (capture-phase guard swallowing the click that follows a cell-range drag) -->
 <div
   {@attach table_tooltips}
+  {@attach cell_selection}
   {...rest}
   style={root_styles}
   bind:this={container_el}
   class={[`table-container`, rest.class, { 'cell-dragging': selection.dragging }]}
   data-density={density}
   style:--heatmap-opacity="{heatmap_opacity * 100}%"
-  onclickcapture={suppress_click_after_cell_drag}
 >
   {#if controls_config.mode !== `never`}
     <section
@@ -1639,15 +1651,19 @@
       {/if}
 
       {#if show_column_toggle}
-        <ToggleMenu
+        <ColumnPicker
           columns={toggle_columns}
-          bind:column_panel_open={
+          bind:open={
             () => columns_open,
             (open) => {
               columns_open = open
               if (open) export_pane_open = false
             }
           }
+          search_text={(col) =>
+            [col.id, col.key, html_to_text(col.label), col.description, col.group]
+              .filter(Boolean)
+              .join(` `)}
           on_toggle={(col, visible) => set_column_visible(col.id, visible)}
         >
           {#snippet trigger({ open })}
@@ -1657,7 +1673,11 @@
               ><Icon icon={Columns} /></span
             >
           {/snippet}
-        </ToggleMenu>
+          {#snippet toggle_label({ column })}{@html sanitize_html(column.label)}{/snippet}
+          {#snippet description({ column })}
+            {@html sanitize_html(column.description ?? ``)}
+          {/snippet}
+        </ColumnPicker>
       {/if}
 
       {#if export_formats.length}
@@ -1681,7 +1701,7 @@
                 {
                   label: `TSV`,
                   hint: `Tab-separated, pastes into spreadsheet columns`,
-                  copy_text: () => table_to_delimited(table_matrix(), `\t`),
+                  copy_text: () => table_to_text(table_matrix(), `tsv`),
                 },
               ],
             },
@@ -1873,16 +1893,23 @@
                 >
               {/if}
               {#if show_filters && col.filter !== false}
-                <ColumnFilterMenu
-                  {col}
-                  rows={data}
-                  row_key={view.key}
-                  is_numeric={view.numeric}
-                  filter={prefs_of(col_id).filter}
-                  stats={view.stats}
-                  open={popover_open(`filter`, col_id)}
-                  on_toggle={() => toggle_popover(`filter`, col_id)}
-                  on_change={(filter) => set_pref(col_id, `filter`, filter)}
+                <ColumnFilter
+                  class="header-popover"
+                  column={html_to_text(col.label)}
+                  values={() => data.map((row) => row[view.key])}
+                  options={{
+                    kind: col.filter || `auto`,
+                    numeric: view.numeric,
+                    ...cell_readers,
+                  }}
+                  bind:filter={
+                    () => prefs_of(col_id).filter,
+                    (filter) => set_pref(col_id, `filter`, filter)
+                  }
+                  bind:open={
+                    () => popover_open(`filter`, col_id),
+                    (open) => set_popover(`filter`, col_id, open)
+                  }
                 />
               {/if}
               {#if dt_mode}
@@ -1921,11 +1948,9 @@
       </thead>
       <!-- One listener set for every row and cell: pointer/keyboard/focus events identify their
            row and cell from the data-row-idx/data-col-idx they carry instead of a closure per cell -->
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (drag cell-range selection; keyboard copy handled on window) -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions (delegated cell navigation and row actions) -->
       <tbody
         bind:this={tbody_el}
-        onpointerdown={handle_body_pointerdown}
-        onpointermove={extend_cell_drag}
         onpointerover={on_row_hover ? handle_body_pointerover : undefined}
         onpointerleave={on_row_hover ? handle_body_pointerleave : undefined}
         onfocusin={handle_body_focusin}
@@ -2149,8 +2174,9 @@
 </div>
 
 <style>
-  /* Chrome shared by the header popovers (ColumnFilter, DateTimeFormatMenu): the inline
-     wrapper, its 14 px trigger and the floating panel. Each component keeps only what differs. */
+  /* Chrome of the header popovers: the inline wrapper and touch halo (ColumnFilter,
+     DateTimeFormatMenu), and DateTimeFormatMenu's 14 px trigger and floating select.
+     ColumnFilter's scoped trigger and panel rules win, so it's themed via --column-filter-*. */
   :global(.header-popover) {
     display: inline-flex;
     align-items: center;
@@ -2188,7 +2214,7 @@
   :global(.header-popover > button:is(:hover, [aria-expanded='true'])) {
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.16));
   }
-  :global(.header-popover > :is(div, select)) {
+  :global(.header-popover > select) {
     border: 1px solid light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.18));
     border-radius: 4px;
     background: var(--heatmap-header-bg, var(--page-bg, Canvas));
@@ -2208,6 +2234,8 @@
   }
   .table-container {
     --table-accent: var(--accent-color, #4a9eff);
+    --column-filter-active-color: var(--table-accent);
+    --column-filter-panel-bg: var(--heatmap-header-bg, var(--page-bg, Canvas));
     font-size: var(--heatmap-font-size, 0.9em);
     width: fit-content;
     max-width: 100%;
@@ -2292,10 +2320,13 @@
       flex: none;
     }
   }
-  .table-container :global(.middle-ellipsis-html) {
+  .table-container :global(:is(.middle-ellipsis-host, .middle-ellipsis-html)) {
     display: inline-flex;
     max-width: 100%;
+    min-width: 0;
     vertical-align: bottom;
+  }
+  .table-container :global(.middle-ellipsis-html) {
     > :global(span:first-child) {
       min-width: 0;
       overflow: hidden;

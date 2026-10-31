@@ -1,5 +1,9 @@
 import { display_idx } from '#lib/labels.js'
-import { element_from_atomic_number } from '#lib/element/helpers.js'
+import {
+  element_from_atomic_number,
+  element_from_lammps_type,
+  symbol_to_atomic_number,
+} from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { BOHR_TO_ANGSTROM, HARTREE_TO_EV } from '#lib/constants.js'
 import {
@@ -21,6 +25,7 @@ import {
   TextLines,
 } from '#lib/trajectory/helpers.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { create_numeric_md_frame, type NumericFrame, write_frame_vector } from '../frame'
 import { ase_momentum_mass, ase_velocity } from './ase'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn, WarningCollector } from './shared'
@@ -32,7 +37,8 @@ function parse_extxyz_lattice(comment: string): Matrix3x3 | undefined {
   const match = /\bLattice\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/i.exec(comment)
   const raw = match?.groups?.double ?? match?.groups?.single
   if (raw === undefined) return undefined
-  const vals = raw.trim().split(/\s+/).filter(Boolean).map(parse_float_token)
+  // commas too, as ASE's reader and the vector signals below accept: `Lattice="1.98, -0.37, …"`
+  const vals = raw.split(/[\s,]/).filter(Boolean).map(parse_float_token)
   if (vals.length !== 9 || !vals.every(Number.isFinite)) {
     throw new Error(`Invalid EXTXYZ Lattice: expected 9 finite numbers, got "${raw}"`)
   }
@@ -208,6 +214,8 @@ const EXTXYZ_PAIR_RE =
 
 // CP2K's header (MD adds `time = ...` between): `i` is the step, `E` the energy in Hartree
 const CP2K_COMMENT_RE = /^\s*i\s*=\s*\d+,\s*(?:time|E)\s*=/
+// LAMMPS `dump xyz` header: ` Atoms. Timestep: 100`
+const LAMMPS_XYZ_COMMENT_RE = /^\s*Atoms\.\s+Timestep:\s*(?<step>\d+)/
 
 // Read back by dedicated parsers (lattice, pbc, columns) or the step regex below, so
 // re-emitting them as frame properties would duplicate or contradict the frame
@@ -282,6 +290,11 @@ export function parse_xyz_comment_metadata(comment: string): {
     const { i: step, ...rest } = properties
     return { step, properties: rest, flags, signals }
   }
+  const lammps_step = LAMMPS_XYZ_COMMENT_RE.exec(comment)?.groups?.step
+  if (lammps_step !== undefined) {
+    delete properties.timestep // the step itself
+    return { step: Number(lammps_step), properties, flags, signals }
+  }
   const step = /(?:^|\s)(?:step|frame|ionic_step)\s*[=:]?\s*(?<step>\d+)/i.exec(comment)?.[1]
   return { step: step ? Math.trunc(Number(step)) : undefined, properties, flags, signals }
 }
@@ -345,7 +358,17 @@ function parse_xyz_atom_lines(
         `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${quoted()}"`,
       )
     }
-    const element_symbol = scanned_element(scanner, symbol_col, atomic_number_col)
+    let element_symbol = scanned_element(scanner, symbol_col, atomic_number_col)
+    // Integer species are atomic numbers, or LAMMPS `dump xyz` atom types (unless dump_modify
+    // element names them), which the LAMMPS dump reader also reads as atomic numbers
+    const atom_type = element_symbol || atomic_number_col >= 0 ? NaN : scanner.num(symbol_col)
+    if (Number.isInteger(atom_type) && atom_type > 0) {
+      element_symbol = element_from_lammps_type(atom_type)
+      warn_once(
+        `lammps-types`,
+        `XYZ species column holds integers (first "${scanner.str(symbol_col)}" in ${frame_label} at line ${line_number}); read them as atomic numbers (1 = H), as for LAMMPS dump xyz atom types`,
+      )
+    }
     if (!element_symbol) {
       // once per symbol: a file of Wannier centres (`X`) would warn for every frame's atoms
       const symbol = scanner.str(symbol_col)
@@ -420,13 +443,8 @@ export function extxyz_run_metadata(comment: string | undefined): Record<string,
   return momenta && !explicit ? { velocity_unit: `A/fs` } : {}
 }
 
-export function build_xyz_frame(
-  lines: TextLines,
-  frame: XyzFrameSpec,
-  opts: { frame_label: string; default_step: number },
-  collector: WarningCollector,
-): TrajectoryFrame {
-  const { comment } = frame
+// Comment-line fields of a frame, shared by the record and numeric decoders
+function xyz_frame_header(comment: string, frame_label: string, collector: WarningCollector) {
   const { step, properties, flags, signals } = parse_xyz_comment_metadata(comment)
   const ipi = parse_ipi_header(comment)
   const lattice_matrix = parse_extxyz_lattice(comment) ?? ipi.lattice
@@ -434,19 +452,18 @@ export function build_xyz_frame(
   if (parsed_pbc === undefined && /\bpbc\s*=/iu.test(comment)) {
     collector.warn_once(
       `invalid-pbc`,
-      `Invalid EXTXYZ pbc (first seen in ${opts.frame_label}); defaulting to fully periodic [T, T, T]`,
+      `Invalid EXTXYZ pbc (first seen in ${frame_label}); defaulting to fully periodic [T, T, T]`,
     )
   }
-  const pbc = parsed_pbc ?? ([true, true, true] satisfies Pbc)
-  const { elements, positions, forces, site_properties } = parse_xyz_atom_lines(
-    lines,
-    frame,
-    opts.frame_label,
-    collector.warn_once,
-  )
-  if (ipi.pos_scale !== 1) {
-    for (const xyz of positions) for (const axis of [0, 1, 2]) xyz[axis] *= ipi.pos_scale
-  }
+  const pbc = lattice_matrix ? (parsed_pbc ?? ([true, true, true] satisfies Pbc)) : undefined
+  return { step, properties, flags, signals, pos_scale: ipi.pos_scale, lattice_matrix, pbc }
+}
+
+// Frame metadata from the comment and the atoms' force statistics
+function xyz_frame_metadata(
+  { properties, flags, signals }: ReturnType<typeof xyz_frame_header>,
+  force_stats: ReturnType<typeof calc_force_stats>,
+): Record<string, unknown> {
   const metadata: Record<string, unknown> = { ...properties, ...flags, ...signals }
   // an extXYZ `stress=` follows ASE (eV/Å³, tensile positive); store it like every other
   // reader, with its pressure, unless the comment states a pressure itself
@@ -454,17 +471,105 @@ export function build_xyz_frame(
   if (stress)
     Object.assign(metadata, { ...stress, pressure: properties.pressure ?? stress.pressure })
   // The vectors themselves live on the sites (`force`); only their statistics go here
-  Object.assign(metadata, calc_force_stats(forces))
+  return Object.assign(metadata, force_stats)
+}
+
+export function build_xyz_frame(
+  lines: TextLines,
+  frame: XyzFrameSpec,
+  opts: { frame_label: string; default_step: number },
+  collector: WarningCollector,
+): TrajectoryFrame {
+  const header = xyz_frame_header(frame.comment, opts.frame_label, collector)
+  const { elements, positions, forces, site_properties } = parse_xyz_atom_lines(
+    lines,
+    frame,
+    opts.frame_label,
+    collector.warn_once,
+  )
+  const { pos_scale } = header
+  if (pos_scale !== 1) {
+    for (const xyz of positions) for (const axis of [0, 1, 2]) xyz[axis] *= pos_scale
+  }
   return create_trajectory_frame(
     positions,
     elements,
-    lattice_matrix,
-    lattice_matrix ? pbc : undefined,
-    step ?? opts.default_step,
-    metadata,
+    header.lattice_matrix,
+    header.pbc,
+    header.step ?? opts.default_step,
+    xyz_frame_metadata(header, calc_force_stats(forces)),
     site_properties,
     collector.warn,
   )
+}
+
+const PLAIN_XYZ_COLUMNS = new Set([`species`, `pos`, `forces`, `force`])
+// The numeric frame encode_frame makes of build_xyz_frame's, decoded straight from the atom
+// lines when they hold only a species symbol, positions and optional forces: no Site, species
+// record, label or per-atom array (1k atoms: 0.65 -> 0.22 ms per frame). Other layouts, and
+// frames with an unrecognised or integer species, return null: they take build_xyz_frame,
+// whose frame a caller either encodes or uses as it is (a plot row needs no numeric frame).
+export function read_xyz_frame(
+  lines: TextLines,
+  frame: XyzFrameSpec,
+  opts: { frame_label: string; default_step: number },
+  collector: WarningCollector,
+): (NumericFrame & { sites: Uint8Array }) | null {
+  const { start, num_atoms, comment } = frame
+  const { symbol_col, pos_col, forces_col, min_cols, layout, spec_error } =
+    parse_extxyz_columns(comment)
+  const plain = Object.keys(layout ?? {}).every((name) => PLAIN_XYZ_COLUMNS.has(name))
+  if (spec_error || num_atoms === 0 || !plain) return null
+  const header = xyz_frame_header(comment, opts.frame_label, collector)
+  const numbers = new Uint8Array(num_atoms)
+  const positions = new Float64Array(num_atoms * 3)
+  const forces = new Float64Array(forces_col >= 0 ? num_atoms * 3 : 0)
+  // calc_force_stats' arithmetic, in order, over the packed vectors
+  let [n_forces, force_max, sum_sq] = [0, -Infinity, 0]
+  const scanner = new LineScanner()
+  for (let idx = 0; idx < num_atoms; idx++) {
+    const n_cols = lines.scan(scanner, start + 2 + idx)
+    const symbol = elem_symbol_from_token(scanner.str(symbol_col))
+    const atomic_number = symbol && symbol_to_atomic_number(symbol)
+    // build_xyz_frame reports a short or non-numeric line and resolves odd species
+    if (n_cols < min_cols || !atomic_number) return null
+    numbers[idx] = atomic_number
+    for (let axis = 0; axis < 3; axis++) {
+      const coord = scanner.num(pos_col + axis)
+      if (!Number.isFinite(coord)) return null
+      positions[idx * 3 + axis] = coord * header.pos_scale
+    }
+    if (forces_col < 0 || n_cols < forces_col + 3) continue
+    const force_x = scanner.num(forces_col)
+    const force_y = scanner.num(forces_col + 1)
+    const force_z = scanner.num(forces_col + 2)
+    if (!Number.isFinite(force_x) || !Number.isFinite(force_y) || !Number.isFinite(force_z))
+      continue
+    forces[idx * 3] = force_x
+    forces[idx * 3 + 1] = force_y
+    forces[idx * 3 + 2] = force_z
+    const magnitude = Math.hypot(force_x, force_y, force_z)
+    if (magnitude > force_max) force_max = magnitude
+    sum_sq += magnitude ** 2
+    n_forces++
+  }
+  // Forces count only when every atom has them, as on the decoded sites
+  const has_forces = n_forces === num_atoms
+  const force_stats = has_forces
+    ? { force_max, force_norm: Math.sqrt(sum_sq / num_atoms) }
+    : null
+  const numeric = create_numeric_md_frame(
+    positions,
+    numbers,
+    header.lattice_matrix,
+    header.pbc,
+    header.step ?? opts.default_step,
+    xyz_frame_metadata(header, force_stats),
+    has_forces ? [`force`] : [],
+    { fixed_order: false, warn: collector.warn },
+  )
+  if (has_forces) write_frame_vector(numeric, 0, forces)
+  return numeric
 }
 
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
@@ -518,11 +623,17 @@ export function parse_xyz_trajectory(
   const dropped: string[] = []
   const specs = index_xyz_frames(lines, (message) => dropped.push(message))
   if (specs.length === 0) {
-    // Decode a whole first frame the sampler skipped (title after the count, numeric species)
-    // or dropped (bad last line), as parse_xyz does; only one that ended early fails as dropped
+    // Decode a whole first frame the sampler skipped (title after the count) or dropped (bad
+    // last line), as parse_xyz does; only one that ended early fails as dropped. Like there, it
+    // must account for every line: decoding it alone silently dropped any later frames.
     const num_atoms = Math.trunc(parse_leading_num(lines.line(0) ?? ``))
     if (!(num_atoms > 0 && num_atoms + 2 <= lines.count))
       throw new Error(dropped[0] ?? `No XYZ frames found`)
+    if (num_atoms + 2 < lines.count) {
+      throw new Error(
+        `XYZ count line 1 "${lines.line(0)}" is not a bare atom count, and its ${num_atoms}-atom frame leaves lines ${num_atoms + 3}-${lines.count} unread`,
+      )
+    }
     specs.push({ start: 0, num_atoms, comment: lines.line(1) ?? ``, end: num_atoms + 2 })
   } else for (const message of dropped) collector.warn(message)
   const frames = specs.map((spec, frame_idx) =>

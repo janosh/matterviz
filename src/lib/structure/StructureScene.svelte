@@ -113,8 +113,15 @@
     structure_bond_to_bond_pair,
   } from './bonding'
   import { compose_perceived_bonds, perceive_bond_orders } from './index'
-  import type { PolyhedraColorMode, PolyhedraNeighborMode, Polyhedron } from './polyhedra'
-  import { compute_polyhedra, polyhedra_options_from } from './polyhedra'
+  import {
+    compute_polyhedra,
+    type PolyhedraColorMode,
+    type PolyhedraNeighborMode,
+    type Polyhedron,
+    polyhedra_options_from,
+    type ResolvedPolyhedraOptions,
+  } from './polyhedra'
+  import { same_while_equal } from '#lib/utils.js'
   import { find_drawn_completion_sites } from './pbc'
   import TrajectoryLines from './TrajectoryLines.svelte'
   import type {
@@ -755,6 +762,9 @@
             .filter((site_idx) => !is_image_site_idx(site_idx))
             .toSorted((idx_a, idx_b) => idx_a - idx_b)
         : [],
+    // Not built per change like targets: a pane drawing only image atoms (a cutaway) registers
+    // a walk with no steps, which takes no keys
+    active: () => interactive && atom_groups.first_by_site.size > 0,
     hover: pointer.set_hover,
     leave: pointer.clear_hover,
     click: (site_idx) => toggle_selection(site_idx),
@@ -1130,18 +1140,25 @@
 
   // Shared visibility check: site has at least one non-hidden element and
   // its property value (if any) isn't hidden. Used by both bond and vector filtering.
-  const is_site_visible = (site_idx: number): boolean => {
-    const site = get_site(structure, site_idx)
-    if (!site) return false
+  // Its props are read once per change, not per call: each read crosses three components, and
+  // filtering a supercell's bonds calls this twice per bond (140 ms of prop reads at 48k atoms).
+  const is_site_visible = $derived.by(() => {
+    const [current, elements, prop_vals] = [structure, hidden_elements, hidden_prop_vals]
+    const values = property_colors?.values
     // `.size` guards first: with nothing hidden (the default) this skips the per-species
     // SvelteSet lookups, which would otherwise run for every bond endpoint in a supercell
-    if (hidden_elements.size > 0) {
-      if (!site.species.some(({ element }) => !hidden_elements.has(element))) return false
-    } else if (site.species.length === 0) return false
-    if (hidden_prop_vals.size === 0) return true
-    const prop_val = property_colors?.values[site_idx]
-    return prop_val === undefined || !hidden_prop_vals.has(prop_val)
-  }
+    const [filter_elements, filter_prop_vals] = [elements.size > 0, prop_vals.size > 0]
+    return (site_idx: number): boolean => {
+      const site = get_site(current, site_idx)
+      if (!site) return false
+      if (filter_elements) {
+        if (!site.species.some(({ element }) => !elements.has(element))) return false
+      } else if (site.species.length === 0) return false
+      if (!filter_prop_vals) return true
+      const prop_val = values?.[site_idx]
+      return prop_val === undefined || !prop_vals.has(prop_val)
+    }
+  })
 
   // Perception layer: bond_pairs with optional bond-order perception applied.
   // Off by default (pass-through). Manual overrides are applied downstream in
@@ -1315,6 +1332,20 @@
   // (edited, filtered) bond graph as rendered bonds so the two never disagree.
   // Colors are resolved in InstancedStructure, so color-scheme/mode changes
   // never recompute the hull geometry.
+  // Kept by value: a host handing in a new, equal settings object (the viewer re-proxies it,
+  // so its element lists get new identities) must not recompute every hull
+  const keep_polyhedra_options = same_while_equal<ResolvedPolyhedraOptions>()
+  const polyhedra_options = $derived(
+    keep_polyhedra_options(
+      polyhedra_options_from({
+        polyhedra_neighbor_mode,
+        polyhedra_min_neighbors,
+        polyhedra_max_neighbors,
+        polyhedra_excluded_elements,
+        polyhedra_included_elements,
+      }),
+    ),
+  )
   let last_polyhedra: Polyhedron[] = []
   let polyhedra: Polyhedron[] = $derived.by(() => {
     // Deferred geometry keeps the last hulls
@@ -1324,17 +1355,7 @@
         !dragging_atoms &&
         applies_to_structure(effective_show_polyhedra, Boolean(lattice)) &&
         filtered_bond_pairs.length > 0
-          ? compute_polyhedra(
-              structure,
-              filtered_bond_pairs,
-              polyhedra_options_from({
-                polyhedra_neighbor_mode,
-                polyhedra_min_neighbors,
-                polyhedra_max_neighbors,
-                polyhedra_excluded_elements,
-                polyhedra_included_elements,
-              }),
-            )
+          ? compute_polyhedra(structure, filtered_bond_pairs, polyhedra_options)
           : []
     const centers = last_polyhedra.length > 0 ? cutaway_centers : undefined
     return centers
@@ -1616,11 +1637,14 @@
         mode={bond_edit_mode}
         {bond_thickness}
         bind:hovered_bond_key={pointer.hovered_bond_key}
-        atom_events={(site_idx) =>
-          touch_hover({
-            ...pointer.hover_props(site_idx),
-            onpointerdown: (event) => select_edit_bonds_site(site_idx, event),
-          })}
+        atom_events={touch_hover(
+          instance_handlers(editable_atom_hit_targets, {
+            onpointerenter: pointer.set_hover,
+            onpointermove: pointer.set_hover,
+            onpointerleave: pointer.schedule_hover_clear,
+            onpointerdown: select_edit_bonds_site,
+          }),
+        )}
         on_select_site={select_edit_bonds_site}
         on_delete_bond={(bond) => {
           remove_bond(bond)

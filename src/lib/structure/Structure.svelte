@@ -399,7 +399,8 @@
     toast_store.show(msg)
   }
 
-  let sym_data = $state<SymmetryDataset | null>(null)
+  // Raw: replaced per analysis, never edited; a deep proxy doubled the per-site Wyckoff mapping
+  let sym_data = $state.raw<SymmetryDataset | null>(null)
 
   // === session: display pipeline, selection, editing, cameras ===
   // Coordinate-only updates (trajectory frames) share one key; otherwise every structure is new
@@ -457,6 +458,7 @@
     atom_color_config: () => atom_color_config,
     bonding_strategy: () =>
       scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
+    bonding_options: () => scene_props.bonding_options ?? {},
     on_notice: show_toast,
     tool_prediction: () =>
       tool_source_revision === tool_input_revision ? saved_prediction : null,
@@ -815,7 +817,6 @@
   set_isosurface_error_handler((message) => (isosurface_error = message))
 
   // === symmetry ===
-  let symmetry_run_id = 0
   let symmetry_error = $state<string>()
   // The structure parse_warnings came with: a host swapping in another one (or an edit)
   // retires the notice instead of leaving it to describe the wrong structure
@@ -845,10 +846,12 @@
   // Skipped during atom drags: moving atoms does not change symmetry and WASM analysis on
   // every drag frame drops frames badly
   $effect(() => {
-    const run_id = ++symmetry_run_id
     if (session.dragging_atoms) return
     if (symmetry_wanted) symmetry_demanded = true
-    if (!symmetry_wanted || !structure || !(`lattice` in structure)) {
+    // the session's plain copy: reading tens of thousands of proxied sites again to post them
+    // to the analysis worker blocked the first press on a 47k-atom cell for ~0.7 s
+    const current_structure = session.plain_input
+    if (!symmetry_wanted || !current_structure || !(`lattice` in current_structure)) {
       untrack(() => {
         sym_data = null
         symmetry_error = undefined
@@ -856,7 +859,6 @@
       last_symmetry_structure = null
       return
     }
-    const current_structure = structure
     untrack(() => {
       // Keep previous data while recomputing the same structure so bound consumers
       // (SymmetryStats inputs) do not unmount and lose focus
@@ -868,25 +870,27 @@
     const { symprec, algo } = symmetry_settings ?? symmetry.default_sym_settings
     // happy-dom cannot fetch WASM assets
     if (typeof process !== `undefined` && process.env?.VITEST) return
+    // aborted when this run is superseded or the viewer unmounts, so it never writes stale data
+    // and its queued worker job is dropped
+    const controller = new AbortController()
+    const { signal } = controller
     symmetry
       .ensure_moyo_wasm_ready()
       .then(() =>
-        run_id === symmetry_run_id
-          ? symmetry.analyze_structure_symmetry(current_structure, { symprec, algo })
-          : null,
+        signal.aborted
+          ? null
+          : symmetry.analyze_structure_symmetry(current_structure, { symprec, algo }, signal),
       )
       .then((data) => {
-        if (data && run_id === symmetry_run_id) untrack(() => (sym_data = data))
+        if (data && !signal.aborted) untrack(() => (sym_data = data))
       })
       .catch((err) => {
-        if (run_id !== symmetry_run_id) return
+        if (signal.aborted) return
         untrack(() => (sym_data = null))
         symmetry_error = `Symmetry analysis failed: ${err?.message || err}`
         console.error(`Symmetry analysis failed:`, err)
       })
-    return () => {
-      symmetry_run_id++
-    }
+    return () => controller.abort()
   })
 
   // Cell-aligned overlays are blanked outside the input frame
@@ -1016,26 +1020,49 @@
   // Svelte re-walks a derived's whole reaction subtree once per dependency path that marks
   // it, and the frame-varying inputs below reached it through a dozen paths, walking ~40k
   // reaction edges per played frame.
+  // The settings go by reference, not copied: the scene reads each one through its own
+  // signal, so editing one marks only that setting's readers (a copy made every edit re-run
+  // polyhedra, fitting and every other scene derived on an atom-radius change).
   let shared_viewport_props = $derived({
     session,
     series_key,
     reference_structure,
-    scene_props: {
-      ...scene_props,
-      atom_color_field,
-      tooltip,
-      atom_opacity,
-      volume_color_field,
-      volume_opacity,
-      cutaway,
-      defer_expensive_geometry,
-      sphere_segments: effective_sphere_segments,
-      slice_polygon,
-    },
+    scene_props,
     gizmo: scene_props.gizmo,
     volumetric_data,
     isosurface_settings: display_isosurface_settings,
   })
+  // The viewer's own overrides of scene settings, read through getters for the same reason:
+  // a cutaway or opacity slider marks only the scene props it feeds
+  const scene_overrides = {
+    get atom_color_field() {
+      return atom_color_field
+    },
+    get tooltip() {
+      return tooltip
+    },
+    get atom_opacity() {
+      return atom_opacity
+    },
+    get volume_color_field() {
+      return volume_color_field
+    },
+    get volume_opacity() {
+      return volume_opacity
+    },
+    get cutaway() {
+      return cutaway
+    },
+    get defer_expensive_geometry() {
+      return defer_expensive_geometry
+    },
+    get sphere_segments() {
+      return effective_sphere_segments
+    },
+    get slice_polygon() {
+      return slice_polygon
+    },
+  }
   // Scene inputs that follow the displayed frame (tool_trail_positions too, as it reads the
   // frame's tool_input), passed beside the bundle above like active_sites and property_colors
   let frame_scene_props = $derived({
@@ -1109,7 +1136,6 @@
 
   $effect(() => () => {
     toast_store.destroy()
-    symmetry_run_id += 1 // a run landing after unmount must not write into dead bindings
   })
 
   // === keyboard ===
@@ -1476,9 +1502,12 @@
                   `viewer`,
                   `structure`,
                   `camera`,
-                  ...(measure_mode === `edit-atoms` || measure_mode === `edit-bonds`
-                    ? [`structure-edit` as const]
-                    : []),
+                  // layer toggles only while viewing; each edit mode lists only its own keys
+                  measure_mode === `edit-atoms`
+                    ? `structure-edit-atoms`
+                    : measure_mode === `edit-bonds`
+                      ? `structure-edit-bonds`
+                      : `structure-view`,
                 ]}
                 {@attach attach_tooltip({ content: `Structure info pane` })}
               />
@@ -1597,6 +1626,7 @@
               {on_camera_move}
               {on_camera_reset}
               {...shared_viewport_props}
+              {scene_overrides}
               {frame_scene_props}
               active_sites={active_scene_sites}
               property_colors={session.property_colors}
@@ -1620,6 +1650,7 @@
               {...pane_props(pane_idx)}
               label={view.label}
               {...shared_viewport_props}
+              {scene_overrides}
               {frame_scene_props}
               active_sites={active_scene_sites}
               property_colors={session.property_colors}

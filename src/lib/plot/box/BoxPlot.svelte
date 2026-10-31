@@ -50,12 +50,13 @@
   import { DEFAULT_PLOT_PADDING, filter_padding } from '#lib/plot/core/layout.js'
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
   import {
+    axis_transform,
     create_focus_exit,
     is_activation_key,
     pointer_pos,
   } from '#lib/plot/core/interactions.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
-  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
+  import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import {
     accumulate_extent,
     create_axis_scales,
@@ -373,36 +374,49 @@
   // === Strip / swarm sample points ===
   // Marker centers are range-bounded; their full circles may reach into the plot padding
   const in_plot = ([px_x, px_y]: Vec2): boolean => frame.in_plot(px_x, px_y)
-  // Screen positions of each visible box's samples, inside the plot area only. Packed in px,
-  // so they re-lay out on resize/zoom; a log value axis drops non-positive samples.
-  let box_points = $derived.by(() => {
-    const map = new Map<number, Vec2[]>()
-    for (const { series: srs, idx, slot } of visible_boxes) {
+  // Each visible box's drawn samples (a log value axis drops non-positive ones) and their
+  // cross-axis offsets. Packed in px, so they re-lay out on resize/zoom, but in a frame scaled
+  // like the plot's and not offset: a pan along either axis reuses them.
+  let box_offsets = $derived.by(() => {
+    const map = new Map<number, { values: number[]; offsets: Float64Array }>()
+    for (const { series: srs, idx } of visible_boxes) {
       const mode = point_mode(srs)
       if (mode === `none`) continue
       const axis_key = val_axis_key(srs)
-      const raw_scale = frame.scales[axis_key]
-      const log = get_scale_type_name(plot_axes[axis_key].scale_type) === `log`
-      const value_px = box_summaries[idx].values
-        .filter((val) => !log || val > 0)
-        .map((val) => raw_scale(val))
+      const { scale_type } = plot_axes[axis_key]
+      const log = get_scale_type_name(scale_type) === `log`
+      const values = box_summaries[idx].values.filter((val) => !log || val > 0)
+      const { forward } = axis_transform(scale_type)
+      const value_px = values.map((val) => frame.px_per_unit[axis_key] * forward(val))
       const body = violin_kdes.has(idx)
         ? (srs.violin_width ?? violin_width)
         : box_width_of(srs, idx)
       // Swarms may fill the body; strip jitter keeps to half of it, reading as noise around
       // the center line
       const spread = mode === `strip` ? body / 2 : body
-      const center = cat_scale(slot)
       const offsets = box_point_offsets(value_px, mode, {
         radius: sample_state.radius,
-        half_width: Math.abs(cat_scale(slot + spread / 2) - center),
+        half_width: Math.abs((frame.px_per_unit[vertical ? `x` : `y`] * spread) / 2),
         // Half violins keep their samples on their own half (split violins share a slot)
         side: draws_violin(srs) ? to_screen_side(srs.side ?? side) : `both`,
         seed: idx + 1,
       })
-      const pts = value_px.map((val_px, pt_idx): Vec2 =>
-        vertical ? [center + offsets[pt_idx], val_px] : [val_px, center + offsets[pt_idx]],
-      )
+      map.set(idx, { values, offsets })
+    }
+    return map
+  })
+  // Screen positions of each visible box's samples, inside the plot area only
+  let box_points = $derived.by(() => {
+    const map = new Map<number, Vec2[]>()
+    for (const { series: srs, idx, slot } of visible_boxes) {
+      const layout = box_offsets.get(idx)
+      if (!layout) continue
+      const raw_scale = frame.scales[val_axis_key(srs)]
+      const center = cat_scale(slot)
+      const pts = layout.values.map((val, pt_idx): Vec2 => {
+        const [val_px, cat_px] = [raw_scale(val), center + layout.offsets[pt_idx]]
+        return vertical ? [cat_px, val_px] : [val_px, cat_px]
+      })
       map.set(idx, pts.filter(in_plot))
     }
     return map
@@ -806,7 +820,7 @@
             data-box-idx={box_item.idx}
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
-            {...{ [ROVING_ATTR]: roving_key(box_item.idx, 0) }}
+            data-roving-key={roving_key(box_item.idx, 0)}
             aria-label={`${box_name ? `box ${box_item.idx + 1}: ${html_to_text(box_name)}` : default_box_label(box_item.idx)}, median ${format_value_or_num(
               stats.median,
               plot_axes[val_axis_key(box_item.series)].format,

@@ -2,13 +2,20 @@ import * as parse_worker from '#lib/file-viewer/parse-in-worker.js'
 import { deliver_raw_file, MaterialOpenError, open_material } from '#lib/file-viewer/open.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import { afterEach, expect, test, vi } from 'vitest'
-import { gzip_bytes, make_run } from '../test-fixtures'
+import { make_run } from '../test-fixtures'
 
 afterEach(() => vi.restoreAllMocks())
 
-test(`URL acquisition decompresses once and records source provenance`, async () => {
+// file_size is the inflated payload's own size (UTF-16 here: 2 bytes per char plus a BOM),
+// carried from decompression rather than measured by re-encoding the decoded text as UTF-8
+test(`URL and File acquisition decompress once and record source provenance`, async () => {
   const text = `structure text`
-  vi.spyOn(globalThis, `fetch`).mockResolvedValue(new Response(await gzip_bytes(text)))
+  const utf16 = new Uint16Array([0xfeff, ...Array.from(text, (char) => char.charCodeAt(0))])
+  const gzipped = await new Response(
+    new Blob([utf16]).stream().pipeThrough(new CompressionStream(`gzip`)),
+  ).arrayBuffer()
+  const file_size = utf16.byteLength
+  vi.spyOn(globalThis, `fetch`).mockResolvedValue(new Response(gzipped))
   const parse = vi
     .spyOn(parse_worker, `parse_in_worker`)
     .mockImplementation(async (_data, filename): Promise<ParseResult> => ({
@@ -25,8 +32,10 @@ test(`URL acquisition decompresses once and records source provenance`, async ()
     filename: `si.cif`,
     source_filename: `si.cif.gz`,
     source_url: `https://example.com/si.cif.gz`,
-    file_size: new Blob([text]).size,
+    file_size,
   })
+  const dropped = await open_material(new File([gzipped], `si.cif.gz`))
+  expect(dropped.provenance.file_size).toBe(file_size)
 })
 
 // An empty Blob-backed (HDF5) payload is rejected before being read into an ArrayBuffer

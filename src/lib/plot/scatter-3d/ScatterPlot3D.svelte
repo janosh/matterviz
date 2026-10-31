@@ -306,7 +306,7 @@
   {#snippet body()}
     <!-- Prevent Canvas from rendering during SSR to avoid hydration mismatch -->
     {#if mounted && webgpu_available()}
-      <Canvas createRenderer={create_renderer}>
+      <Canvas createRenderer={create_renderer} shadows={false}>
         <ScatterPlot3DScene
           {series}
           {surfaces}

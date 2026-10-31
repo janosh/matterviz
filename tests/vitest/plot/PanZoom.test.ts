@@ -4,11 +4,19 @@ import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
+import * as svg_paths from '#lib/plot/core/svg.js'
 import type { Vec2 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
 import { tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
-import { mount_in_test, mount_sized, plot_svg, svg_rect, translate_of } from '../setup'
+import {
+  clip_rect,
+  mount_in_test,
+  mount_sized,
+  plot_svg,
+  svg_rect,
+  translate_of,
+} from '../setup'
 
 type LocalPoint = { x: number; y: number; button?: number }
 
@@ -38,13 +46,14 @@ const plot_cases = [
   [`ScatterPlot`, () => mount_scatter()],
 ] satisfies [string, () => Promise<SVGSVGElement>][]
 
-type DragOptions = { shift?: boolean; alt?: boolean; mid_drag?: () => void }
+// `steps` pointer moves from start to end, `mid_drag` run after the last before the release
+type DragOptions = { shift?: boolean; alt?: boolean; steps?: number; mid_drag?: () => void }
 
 async function drag(
   svg: SVGSVGElement,
   start: LocalPoint,
   end: LocalPoint,
-  { shift = false, alt = false, mid_drag }: DragOptions = {},
+  { shift = false, alt = false, steps = 1, mid_drag }: DragOptions = {},
 ): Promise<boolean> {
   const bounds = svg.getBoundingClientRect()
   const event_init = ({ x: coord_x, y: coord_y, button = 0 }: LocalPoint): MouseEventInit => ({
@@ -56,8 +65,12 @@ async function drag(
     altKey: alt,
   })
   svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...event_init(start) }))
-  window.dispatchEvent(new MouseEvent(`mousemove`, event_init(end)))
-  await tick()
+  for (let step = 1; step <= steps; step++) {
+    const [delta_x, delta_y] = [(end.x - start.x) / steps, (end.y - start.y) / steps]
+    const at = { x: start.x + delta_x * step, y: start.y + delta_y * step }
+    window.dispatchEvent(new MouseEvent(`mousemove`, event_init(at)))
+    await tick()
+  }
   const active = svg.querySelector(`.zoom-rect`) instanceof SVGRectElement
   mid_drag?.()
   window.dispatchEvent(new MouseEvent(`mouseup`, { ...event_init(end), buttons: 0 }))
@@ -275,6 +288,9 @@ describe(`shared plot drag zoom bounds`, () => {
     try {
       const svg = await mount_scatter(slow_tween_props)
       vi.advanceTimersByTime(SETTLE_MS + 1)
+      // past the frame after mount, when marks stop snapping for their first size
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await tick()
 
       const before = marker_xs(svg)
       expect(before).toHaveLength(3)
@@ -295,10 +311,118 @@ describe(`shared plot drag zoom bounds`, () => {
       expect(during).toHaveLength(before.length)
       for (const [idx, coord_x] of during.entries())
         expect(coord_x).toBeCloseTo(before[idx] - 100, 9)
+      // and stay there on release
+      for (const [idx, coord_x] of marker_xs(svg).entries())
+        expect(coord_x).toBeCloseTo(before[idx] - 100, 9)
     } finally {
       vi.useRealTimers()
     }
   })
+})
+
+// A pan only translates lines, so snapping lines keep the path the view at rest drew (none
+// is traced anew as the gesture starts, an uncropped line needing no wider crop) and ride a
+// translate rather than rebuilding every path string per frame. Shifted, that path draws what
+// the live projection does: in-view vertices agree within d3's 3-digit rounding of both paths
+// (5e-4 px each). A log axis holds lines at its live floor, so those re-project.
+test.each([
+  [`linear`, true],
+  [`log`, false],
+] as const)(`%s y axis pan shifts snapping line paths: %s`, async (scale_type, anchors) => {
+  const xs = Array.from({ length: 60 }, (_, idx) => idx + 1)
+  const svg = await mount_scatter({
+    series: [0, 1].map((offset) => ({
+      x: xs,
+      y: xs.map((coord_x) => 2 + Math.sin(coord_x / 5) + offset),
+      markers: `line` as const,
+      line_style: { curve: `linear` as const },
+    })),
+    line_tween: { duration: 0 },
+    y_axis: { scale_type },
+    // no legend, whose re-solve on release could move the plot area under the comparison
+    legend: null,
+  })
+  const paths = () => [...svg.querySelectorAll(`g[data-series-id] path`)]
+  const before = paths().map((path) => path.getAttribute(`d`))
+  const traces = vi.spyOn(svg_paths, `line_path`)
+  let during: { d: string; shift: { x: number; y: number } }[] = []
+  const mid_drag = () => {
+    expect(traces.mock.calls.length > 0).toBe(!anchors)
+    during = paths().map((path) => ({
+      d: path.getAttribute(`d`) ?? ``,
+      shift: path.hasAttribute(`transform`) ? translate_of(path) : { x: 0, y: 0 },
+    }))
+  }
+  await drag(svg, { x: 200, y: 150 }, { x: 140, y: 166 }, { shift: true, steps: 4, mid_drag })
+  traces.mockRestore()
+  const live = paths().map((path) => path.getAttribute(`d`) ?? ``)
+  expect(during).toHaveLength(2)
+  expect(during.map(({ d }, idx) => d === before[idx])).toEqual([anchors, anchors])
+  expect(during.every(({ shift }) => shift.x !== 0)).toBe(anchors)
+  const vertices = (d: string, shift = { x: 0, y: 0 }) =>
+    [...d.matchAll(/(?<x>-?[\d.]+),(?<y>-?[\d.]+)/g)].map(({ groups }) => ({
+      x: Number(groups?.x) + shift.x,
+      y: Number(groups?.y) + shift.y,
+    }))
+  const clip = clip_rect(svg)
+  for (const [idx, { d, shift }] of during.entries()) {
+    const shown = vertices(d, shift)
+    const in_view = vertices(live[idx]).filter(
+      ({ x }) => x >= clip.x && x <= clip.x + clip.width,
+    )
+    expect(in_view.length).toBeGreaterThan(20)
+    // the shifted path draws every in-view vertex of the live one
+    const drawn = ({ x, y }: { x: number; y: number }) =>
+      shown.some((pt) => Math.abs(pt.x - x) <= 1e-3 && Math.abs(pt.y - y) <= 1e-3)
+    expect(in_view.filter((vertex) => !drawn(vertex))).toEqual([])
+  }
+})
+
+// Bars ride their series group's translate while a pan runs, keeping the paths of the view at
+// rest, and bars a plot width past it are mounted to scroll in. A log value axis floors bars at
+// the live view's minimum, so those re-render instead.
+test.each([
+  [`linear`, true],
+  [`log`, false],
+] as const)(`%s value axis pan translates bars: %s`, async (scale_type, anchors) => {
+  const xs = Array.from({ length: 1200 }, (_, idx) => idx)
+  const svg = plot_svg(
+    await mount_sized(
+      BarPlot,
+      {
+        series: [{ x: xs, y: xs.map((idx) => 1 + (idx % 7)) }],
+        x_axis: { range: [100, 200] },
+        y_axis: { scale_type },
+        legend: null,
+      },
+      { selector: `.bar-plot` },
+    ),
+  )
+  const paths = () =>
+    new Map(
+      [...svg.querySelectorAll(`.bar-series path[role="button"]`)].map((bar) => [
+        bar.getAttribute(`aria-label`),
+        bar.getAttribute(`d`),
+      ]),
+    )
+  const shifted = () => svg.querySelector(`.bar-series g[transform]`) !== null
+  const rest = paths()
+  const mid_drag = () => {
+    const during = paths()
+    expect(shifted()).toBe(anchors)
+    expect([...rest].every(([label, d]) => during.get(label) === d)).toBe(anchors)
+    if (!anchors) return
+    // anchored, the bars a plot width either side of the view are mounted too, clipped by the
+    // untransformed parent (a clip on the translated group would move with it)
+    expect(during.size).toBeGreaterThan(2 * rest.size)
+    const group = svg.querySelector(`.bar-series g[transform]`)
+    expect([
+      group?.getAttribute(`clip-path`),
+      group?.parentElement?.getAttribute(`clip-path`),
+    ]).toEqual([null, expect.stringMatching(/^url\(#/)])
+  }
+  await drag(svg, { x: 200, y: 150 }, { x: 155, y: 150 }, { shift: true, steps: 3, mid_drag })
+  expect(shifted()).toBe(false)
 })
 
 // The rubber band spans its two corners whichever way the drag went, tinted for Alt+drag

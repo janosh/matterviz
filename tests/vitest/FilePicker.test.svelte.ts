@@ -40,6 +40,14 @@ describe(`FilePicker`, () => {
   it.each([
     [`nothing when there are no files`, [], 0],
     [`one row per file plus the legend`, mock_files, mock_files.length + 1],
+    // one name in two directories (two runs' vasprun.xml), or several non-fetchable entries
+    // sharing url ``, must not collide as each-block keys
+    [
+      `same-named files from different directories`,
+      [`run1`, `run2`].map((dir) => ({ name: `vasprun.xml`, url: `/${dir}/vasprun.xml` })),
+      2,
+    ],
+    [`entries without a url`, [`A-B.json`, `C-D.json`].map((name) => ({ name, url: `` })), 2],
   ])(`renders %s`, (_desc, files: FileInfo[], expected_children: number) => {
     mount(FilePicker, { target: document.body, props: { files } })
     expect(doc_query(`.file-picker`).children).toHaveLength(expected_children)

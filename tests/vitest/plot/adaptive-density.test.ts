@@ -116,7 +116,7 @@ describe(`adaptive density utilities`, () => {
     const index = build_spatial_index(projected_points(), 20)
     const picked = query_nearest(index, { x: 12, y: 9 })
 
-    expect(index.cells.size).toBe(3)
+    expect(index.cell_keys).toHaveLength(3)
     expect(picked?.point_id).toBe(`b`)
     expect(picked?.metadata).toEqual({ id: `b` })
   })

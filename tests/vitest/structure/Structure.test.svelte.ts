@@ -316,15 +316,60 @@ test(`a new frame leaves the shared viewport bundle alone`, async () => {
   expect(scene_stub.props?.trajectory_line_frame_stride).toBe(3)
 })
 
+// A settings edit marks only the scene props it feeds: a bundle copied on every edit re-ran
+// polyhedra, fitting and every other scene derived on a bond-thickness or opacity change, and a
+// replaced settings object re-ran every derived reading the structure
+test.each([
+  [`setting edited in place`, `bond_thickness`, 0.2, 1],
+  [`viewer override`, `atom_opacity`, 0.5, 1],
+  [`settings object replaced`, `bond_thickness`, 0.3, 2],
+] as const)(
+  `a %s marks only its own scene props`,
+  async (label, key, value, setting_reads) => {
+    mock_gpu()
+    const props = $state<StructureProps>({
+      structure,
+      scene_props: { bond_thickness: 0.1 },
+      atom_opacity: 1,
+    })
+    await mount_settled(props)
+    const reads = { structure: 0, setting: 0 }
+    onTestFinished(
+      $effect.root(() => {
+        $effect(() => {
+          void scene_stub.props?.structure
+          reads.structure += 1
+        })
+        $effect(() => {
+          void scene_stub.props?.polyhedra_max_neighbors
+          reads.setting += 1
+        })
+      }),
+    )
+    flushSync()
+    if (label === `settings object replaced`) props.scene_props = { bond_thickness: value }
+    else if (key === `bond_thickness` && props.scene_props) props.scene_props[key] = value
+    else props.atom_opacity = value
+    flushSync()
+    expect([scene_stub.props?.[key], reads]).toEqual([
+      value,
+      { structure: 1, setting: setting_reads },
+    ])
+  },
+)
+
 // StructureViewport is exported on its own: without Structure's frame_scene_props, a direct
 // caller's frame inputs in scene_props must reach the scene
 test(`a directly mounted StructureViewport keeps frame inputs from scene_props`, async () => {
   const on_rendered = vi.fn()
+  // the keys scene_overrides can override come from scene_props where it leaves them unset
   const scene_props = {
     show_trajectory_lines: true,
     on_rendered,
     render_token: 7,
     trajectory_line_end_frame: 4,
+    atom_opacity: 0.4,
+    sphere_segments: 32,
   }
   let session: StructureSession | undefined
   const cleanup = $effect.root(() => {
@@ -357,6 +402,7 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
       sym_data: () => null,
       atom_color_config: () => DEFAULT_ATOM_COLOR_CONFIG,
       bonding_strategy: () => DEFAULTS.structure.bonding_strategy,
+      bonding_options: () => ({}),
     })
   })
   if (!session) throw new Error(`StructureSession was not created`)
@@ -370,8 +416,9 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
   }
   const mount_viewport = (
     frame_scene_props?: ComponentProps<typeof StructureViewport>[`frame_scene_props`],
+    scene_overrides?: ComponentProps<typeof StructureViewport>[`scene_overrides`],
   ) => {
-    const props = { ...shared_props, frame_scene_props }
+    const props = { ...shared_props, frame_scene_props, scene_overrides }
     mounted.push(mount(StructureViewport, { target: document.body, props }))
     return tick()
   }
@@ -382,8 +429,11 @@ test(`a directly mounted StructureViewport keeps frame inputs from scene_props`,
   })
   void unmount(mounted.pop() ?? {})
   // an explicit null in frame_scene_props still wins over scene_props' stream (?? would not)
-  await mount_viewport({ trajectory_position_stream: null })
+  await mount_viewport({ trajectory_position_stream: null }, { sphere_segments: 12 })
   expect(scene_stub.props?.trajectory_position_stream).toBeNull()
+  expect([scene_stub.props?.sphere_segments, scene_stub.props?.atom_opacity]).toEqual([
+    12, 0.4,
+  ])
 })
 
 // Parser warnings (host-supplied or from a dropped file) show as one dismissible notice tied
@@ -1529,8 +1579,8 @@ test.each([false, true])(
     const tool_props = await mount_host_structure(bind_props({}, state))
     await vi.waitFor(() => expect(document.querySelector(`.cell-select`)).not.toBeNull())
     flushSync(() => doc_query<HTMLButtonElement>(`button.structure-controls-toggle`).click())
-    await symmetry.analyze_structure_symmetry(crystal)
-    await tick()
+    // the viewer's own main-thread analysis settles within this task's microtasks
+    await new Promise((resolve) => setTimeout(resolve, 0))
     const overlay = {
       volumes: [{ ...volumetric_data[0], label: `Prediction`, periodic: true }],
     }
@@ -1693,6 +1743,22 @@ test(`each viewer keeps its own color_scheme and picked colors, page colors unto
     mount_structure({ structure: oxide, color_scheme: `vesta` as ColorSchemeName }),
   ).toThrow(`Unknown color_scheme 'vesta', expected one of Vesta, Jmol`)
   expect(colors.element).toEqual(page_colors)
+})
+
+// a $state input's sites are proxies, which reading again to post to the analysis worker
+// blocked the first press on a 47k-atom cell; the session's plain copy goes instead
+test(`analyzes the symmetry of a plain copy of a $state structure`, async () => {
+  vi.stubEnv(`VITEST`, ``)
+  vi.spyOn(symmetry, `ensure_moyo_wasm_ready`).mockResolvedValue(undefined)
+  const analyze = vi
+    .spyOn(symmetry, `analyze_structure_symmetry`)
+    .mockReturnValue(new Promise(() => {}))
+  const state = $state({ structure: structuredClone(structure) })
+  mount_structure({ structure: state.structure, analyze_symmetry: true })
+  await vi.waitFor(() => expect(analyze).toHaveBeenCalledOnce())
+  const [analyzed] = analyze.mock.calls[0]
+  expect(() => structuredClone(analyzed)).not.toThrow()
+  expect(analyzed.sites.map(({ xyz }) => xyz)).toEqual(structure.sites.map(({ xyz }) => xyz))
 })
 
 test(`shows a dismissible symmetry warning when analysis fails`, async () => {
@@ -2007,7 +2073,7 @@ test(`hover keydown path bails in edit modes so destructive keys need focus`, as
     `viewer`,
     `structure`,
     `camera`,
-    `structure-edit`,
+    `structure-edit-atoms`,
   ])
   await fire(doc_query(`.structure`), new PointerEvent(`pointerenter`))
   // hovered (not focused) + edit mode → window forwarder ignores the key
@@ -2273,6 +2339,9 @@ test(`exposes read-only wyckoff_positions once symmetry analysis lands and remap
   flushSync()
   expect(analysis.wyckoff_positions).toEqual([])
   await vi.waitFor(() => expect(analysis.sym_data).not.toBeNull())
+  // plain data, not a $state proxy (which structuredClone rejects): per-site Wyckoff mapping
+  // through proxy traps took twice as long
+  expect(() => structuredClone(analysis.sym_data)).not.toThrow()
   flushSync()
   expect(analysis.wyckoff_positions).toEqual([
     expect.objectContaining({ wyckoff: `4a`, elem: `Cu`, site_indices: [0] }),

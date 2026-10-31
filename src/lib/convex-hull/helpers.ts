@@ -276,22 +276,32 @@ export const merge_highlight_style = (
   custom_style: HighlightStyle | undefined,
 ): Required<HighlightStyle> => ({ ...DEFAULT_HIGHLIGHT_STYLE, ...custom_style })
 
+// Predicate for entries matching any item in highlighted_list: a string matches entry_id or
+// structure_id, an object its structure_id if present, else its defined entry_id. Built once
+// per list, so canvases test every point per frame in O(1).
+export function highlight_matcher<T extends { entry_id?: string; structure_id?: string }>(
+  highlighted_list: readonly (string | T)[],
+): (entry: T) => boolean {
+  if (highlighted_list.length === 0) return () => false
+  const entry_ids = new Set<string | undefined>()
+  const structure_ids = new Set<string | undefined>()
+  for (const item of highlighted_list) {
+    if (typeof item === `string`) {
+      entry_ids.add(item)
+      structure_ids.add(item)
+    } else if (item?.structure_id) structure_ids.add(item.structure_id)
+    else if (item?.entry_id !== undefined) entry_ids.add(item.entry_id)
+  }
+  return ({ entry_id, structure_id }) =>
+    [entry_id, structure_id].some(Boolean) &&
+    (entry_ids.has(entry_id) || structure_ids.has(structure_id))
+}
+
 // Check if entry matches any item in highlighted_list (by structure_id or entry_id)
-export function is_entry_highlighted<T extends { entry_id?: string; structure_id?: string }>(
+export const is_entry_highlighted = <T extends { entry_id?: string; structure_id?: string }>(
   entry: T,
   highlighted_list: (string | T)[],
-): boolean {
-  if (highlighted_list.length === 0) return false
-  const { entry_id, structure_id } = entry
-  if (!entry_id && !structure_id) return false
-
-  return highlighted_list.some((item) => {
-    if (typeof item === `string`) return item === entry_id || item === structure_id
-    // Object: match by structure_id if present, else by a defined entry_id
-    if (item?.structure_id) return structure_id === item.structure_id
-    return item?.entry_id !== undefined && item.entry_id === entry_id
-  })
-}
+): boolean => highlight_matcher(highlighted_list)(entry)
 
 // === Polymorph statistics ===
 

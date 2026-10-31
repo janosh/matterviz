@@ -17,6 +17,7 @@ import {
   write_site_properties,
 } from '#lib/structure/site.js'
 import type { TrajectoryFrame } from './index'
+import type { WarnFn } from './parse/shared'
 
 const SITE_FIELDS = new Set([`xyz`, `abc`, `species`, `label`, `properties`])
 // Select from each frame's dense channels; a channel may be absent in individual frames.
@@ -213,12 +214,40 @@ export const encode_frame = ({ structure, ...header }: TrajectoryFrame): Numeric
   return { ...snapshot, sites: structuredClone(records) }
 }
 
+// structuredClone's result for frame data, 6x faster per site: arrays (named keys included)
+// and plain objects of any realm (worker packets) are copied here, anything else (typed
+// arrays, maps) is structured-cloned
+const clone_record = <Value>(value: Value): Value => {
+  if (typeof value !== `object` || value === null) return value
+  if (Array.isArray(value)) {
+    const copy: unknown[] = Array(value.length) // keeps holes
+    let n_items = 0
+    for (let idx = 0; idx < value.length; idx++) {
+      if (!(idx in value)) continue
+      copy[idx] = clone_record(value[idx])
+      n_items++
+    }
+    // named keys (a force vector's unit) follow the indices
+    const keys = Object.keys(value)
+    for (const key of keys.slice(n_items))
+      Reflect.set(copy, key, clone_record(Reflect.get(value, key)))
+    return copy as Value
+  }
+  const proto: unknown = Object.getPrototypeOf(value)
+  if (proto !== null && Object.getPrototypeOf(proto) !== null) return structuredClone(value)
+  const copy: Record<string, unknown> = {}
+  for (const key of Object.keys(value)) copy[key] = clone_record(Reflect.get(value, key))
+  return copy as Value
+}
+
+// Every frame owns its records: phonon runs hand each frame the same site records and cell,
+// and an edit to one frame must not move the others
 export const materialize_frame = (frame: NumericFrame): TrajectoryFrame => {
   const { header, structure, sites, vector_keys, coordinates } = frame
   return {
-    ...structuredClone(header),
+    ...clone_record(header),
     structure: {
-      ...structuredClone(structure),
+      ...clone_record(structure),
       sites: Array.from({ length: sites.length }, (_unused, idx) => {
         const offset = idx * site_stride(vector_keys)
         const xyz: Site[`xyz`] = [
@@ -237,7 +266,7 @@ export const materialize_frame = (frame: NumericFrame): TrajectoryFrame => {
           if (!element)
             throw new Error(`Invalid atomic number ${sites[idx]} at site ${display_idx(idx)}`)
           site = make_site(element, abc, xyz, `${element}${idx + 1}`)
-        } else site = { ...structuredClone(sites[idx]), xyz, abc }
+        } else site = { ...clone_record(sites[idx]), xyz, abc }
         write_site_properties(frame, idx, site.properties)
         return site
       }),
@@ -285,7 +314,9 @@ export const frame_transfers = (frame: NumericFrame): ArrayBufferLike[] => [
 ]
 
 // Direct MD decoder output: no Site, species record, label or per-atom vector allocations.
-// The source explicitly guarantees fixed row identity and supplies topology revision changes.
+// By default the source guarantees fixed row identity and supplies topology revision changes;
+// `fixed_order: false` makes no identity claim, which is exactly encode_frame's output for the
+// same standard sites (text formats decode straight to it).
 export function create_numeric_md_frame(
   positions: Float64Array,
   numbers: Uint8Array,
@@ -294,13 +325,15 @@ export function create_numeric_md_frame(
   step: number,
   metadata: Record<string, unknown>,
   vector_keys: string[],
-): NumericFrame {
+  { fixed_order = true, warn }: { fixed_order?: boolean; warn?: WarnFn } = {},
+): NumericFrame & { sites: Uint8Array } {
   if (positions.length !== numbers.length * 3)
     throw new Error(`MD frame has ${positions.length} coordinates for ${numbers.length} atoms`)
   const lattice = lattice_matrix ? make_lattice(lattice_matrix, pbc) : undefined
   const convert = lattice_matrix
     ? cart_to_frac_with_fallback(lattice_matrix, {
         context: `lattice ${JSON.stringify(lattice_matrix)}`,
+        warn,
       }).convert
     : undefined
   const width = site_stride(vector_keys)
@@ -330,7 +363,7 @@ export function create_numeric_md_frame(
     header: { step, metadata: lattice ? { ...metadata, volume: lattice.volume } : metadata },
     structure: lattice ? { lattice } : {},
     sites: numbers,
-    topology: { kind: `fixed-order`, revision: 0 },
+    ...(fixed_order && { topology: { kind: `fixed-order`, revision: 0 } as const }),
     vector_keys,
     coordinates,
   }
@@ -349,7 +382,6 @@ export class FrameView {
     identities: Pick<Site, 'species' | 'label'>[]
     elements?: Uint8Array // element bytes of a topology-less frame
   }
-
   clear(): void {
     this.topology = undefined
   }

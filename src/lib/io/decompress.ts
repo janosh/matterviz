@@ -148,20 +148,41 @@ const decompress_blob = async (
   }
 }
 
+// Encoding a text payload declares with its byte-order mark, else UTF-8. Windows PowerShell
+// 5.1 redirection (`python make_traj.py > md.xyz`) writes UTF-16LE with a BOM.
+export const text_encoding_of = (head: Uint8Array): `utf-8` | `utf-16le` | `utf-16be` =>
+  head[0] === 0xff && head[1] === 0xfe
+    ? `utf-16le`
+    : head[0] === 0xfe && head[1] === 0xff
+      ? `utf-16be`
+      : `utf-8`
+
 // Decode loaded content for parsers that only accept text.
 export const as_text = (content: string | ArrayBuffer): string =>
-  content instanceof ArrayBuffer ? new TextDecoder().decode(content) : content
+  content instanceof ArrayBuffer
+    ? new TextDecoder(text_encoding_of(new Uint8Array(content))).decode(content)
+    : content
 
 // V8's string length limit in UTF-16 units (Chrome, Node, VS Code); Firefox and Safari allow
 // longer strings, so this is the size past which no text payload decodes into one string
 export const MAX_STRING_CHARS = 0x1fffffe8
 
-// UTF-8 text of `source` as one string when it fits one, else as line-aligned chunks of
-// `chunk_bytes` (a Blob is read one window at a time, so its bytes and text only coexist for
-// one window). A line longer than a chunk widens it; every chunk but the last ends just after
-// a `\n`, so no line spans two (see TextLines). A 0x0A byte never sits inside a multi-byte
-// UTF-8 sequence, so the chunks join to exactly what one decode returns (a leading BOM
-// dropped, like blob.text()).
+// End of the last whole `\n` in `bytes`, 0 when there is none. A 0x0A byte never sits inside a
+// multi-byte UTF-8 sequence; a UTF-16 `\n` is a 2-byte unit at an even offset (chunks start
+// on one), since 0x0A also occurs as half of other units (U+010A).
+const newline_end = (bytes: Uint8Array, encoding: string): number => {
+  if (encoding === `utf-8`) return bytes.lastIndexOf(10) + 1
+  const [first, second] = encoding === `utf-16le` ? [10, 0] : [0, 10]
+  for (let idx = bytes.length - 2 - (bytes.length % 2); idx >= 0; idx -= 2)
+    if (bytes[idx] === first && bytes[idx + 1] === second) return idx + 2
+  return 0
+}
+
+// Text of `source` (UTF-8, or UTF-16 by its BOM) as one string when it fits one, else as
+// line-aligned chunks of `chunk_bytes` (a Blob is read one window at a time, so its bytes and
+// text only coexist for one window). A line longer than a chunk widens it; every chunk but the
+// last ends just after a `\n`, so no line spans two (see TextLines), and the chunks join to
+// exactly what one decode returns (a leading BOM dropped, like blob.text()).
 export const decode_text_chunks = async (
   source: ArrayBuffer | Blob,
   chunk_bytes?: number,
@@ -173,12 +194,13 @@ export const decode_text_chunks = async (
       ? new Uint8Array(await source.slice(from, to).arrayBuffer())
       : new Uint8Array(source, from, to - from)
   const chunks: string[] = []
+  const encoding = text_encoding_of(await read(0, Math.min(2, size)))
   // streamed, so only the first chunk drops a BOM (a later one is mid-text in one decode)
-  const decoder = new TextDecoder()
+  const decoder = new TextDecoder(encoding)
   for (let from = 0, window = window_bytes; from < size;) {
     const to = Math.min(from + window, size)
     const bytes = await read(from, to)
-    const cut = to === size ? bytes.length : bytes.lastIndexOf(10) + 1
+    const cut = to === size ? bytes.length : newline_end(bytes, encoding)
     if (cut === 0) {
       window *= 2
       continue
@@ -196,7 +218,12 @@ export const text_or_blob = async (
   blob: Blob,
   keep_large: boolean,
 ): Promise<string | Blob> => {
-  if (blob.size <= MAX_STRING_CHARS) return blob.text()
+  if (blob.size <= MAX_STRING_CHARS) {
+    const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
+    return text_encoding_of(head) === `utf-8`
+      ? blob.text()
+      : (await decode_text_chunks(blob))[0]
+  }
   if (keep_large) return blob
   throw new Error(
     `Text payload of ${blob.size} bytes exceeds the ${MAX_STRING_CHARS}-character JS string limit; only XYZ/EXTXYZ, LAMMPS dump and XDATCAR trajectories open past it`,
@@ -245,7 +272,8 @@ interface ClassifyPayloadOptions {
   signal?: AbortSignal
 }
 
-type LoadedPayload<Content> = { content: Content; filename: string }
+// `byte_size` is the payload's own (inflated) size, so text is not re-encoded to measure it
+export type LoadedPayload<Content> = { content: Content; filename: string; byte_size: number }
 
 // Real payloads nest 2-3 wrappers deep; the cap stops self-reproducing archives (ZIP or gzip
 // quines) from unwrapping forever
@@ -310,7 +338,7 @@ export async function classify_payload(
   ) {
     const filename =
       payload_names.find(is_hdf5_filename) ?? `${payload_names.find(Boolean) ?? ``}.h5`
-    return { content: blob, filename }
+    return { content: blob, filename, byte_size: blob.size }
   }
   // Only the payload's OWN name decides (ZIP entry above, else the
   // dropped name): matching any candidate let a URL basename force a text entry to ArrayBuffer
@@ -318,6 +346,7 @@ export async function classify_payload(
   return {
     content: is_binary ? await blob.arrayBuffer() : await text_or_blob(blob, hdf5_as_blob),
     filename: payload_names[0],
+    byte_size: blob.size,
   }
 }
 

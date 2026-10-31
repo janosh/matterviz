@@ -8,7 +8,7 @@ import * as math from '#lib/math.js'
 import { EPS } from '#lib/math.js'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
-import { marching_cubes } from '#lib/marching-cubes.js'
+import { grow, marching_cubes } from '#lib/marching-cubes.js'
 import type {
   BandEnergyGrid,
   BandGridData,
@@ -192,11 +192,14 @@ function center_grid_on_gamma(
     ),
   )
   const values = new Float64Array(dims[0] * dims[1] * dims[2])
+  const source = grid.values
   let out_idx = 0
   for (const x_offset of x_offsets) {
     for (const y_offset of y_offsets) {
-      for (const z_offset of z_offsets)
-        values[out_idx++] = grid.values[x_offset + y_offset + z_offset]
+      const row = x_offset + y_offset
+      // oxlint-disable-next-line typescript/prefer-for-of -- for-of ran this copy 5x slower (3 vs 0.6 ms on 101³)
+      for (let idx_z = 0; idx_z < z_offsets.length; idx_z++)
+        values[out_idx++] = source[row + z_offsets[idx_z]]
     }
   }
   return { grid: { values, dims, order: `z_fastest` }, index0_frac: new_index0 }
@@ -458,7 +461,16 @@ export function fold_to_wigner_seitz(
   const out_normals: number[] = []
   const prop_entries = Object.entries(properties ?? {})
   const props = prop_entries.map(([name, values]) => ({ name, values, extra: [] as number[] }))
-  const out_indices: number[] = []
+  // typed and doubled on demand: a number[] growing to millions of entries cost a third of a
+  // fold whose triangles mostly stay put
+  let out_indices = new Uint32Array(indices.length)
+  let n_out_indices = 0
+  const push_triangle = (idx_0: number, idx_1: number, idx_2: number): void => {
+    out_indices = grow(out_indices, n_out_indices + 3)
+    out_indices[n_out_indices++] = idx_0
+    out_indices[n_out_indices++] = idx_1
+    out_indices[n_out_indices++] = idx_2
+  }
   const append = (pos: Vec3, attrs: number[]): number => {
     out_positions.push(...pos)
     out_normals.push(attrs[0], attrs[1], attrs[2])
@@ -477,13 +489,22 @@ export function fold_to_wigner_seitz(
   ]
   // output index of each input vertex per shift id (−1 until emitted)
   const shifted_vertex: Int32Array[] = []
+  // scalar copy (no per-vertex arrays): whole sheets shifted by one G emit every vertex here
   const emit_original = (idx: number, shift_id: number): number => {
     if (shift_id === zero_shift) return idx
     shifted_vertex[shift_id] ??= new Int32Array(n_vertices).fill(-1)
     const out_ids = shifted_vertex[shift_id]
     if (out_ids[idx] === -1) {
-      const pos = math.subtract(vec_at(positions, idx), shift_carts[shift_id])
-      out_ids[idx] = append(pos, vertex_attrs(idx))
+      const [shift_x, shift_y, shift_z] = shift_carts[shift_id]
+      const at = 3 * idx
+      out_positions.push(
+        positions[at] - shift_x,
+        positions[at + 1] - shift_y,
+        positions[at + 2] - shift_z,
+      )
+      out_normals.push(normals[at], normals[at + 1], normals[at + 2])
+      for (const { values, extra } of props) extra.push(values[idx])
+      out_ids[idx] = n_vertices + out_positions.length / 3 - 1
     }
     return out_ids[idx]
   }
@@ -491,7 +512,7 @@ export function fold_to_wigner_seitz(
   // whether a point lies more than margin past a zone face; if so, worst_plane is the face it
   // is furthest past (points within the inradius skip the plane loop)
   let worst_plane = 0
-  const past_face = ([pos_x, pos_y, pos_z]: Vec3, margin: number): boolean => {
+  const past_face = (pos_x: number, pos_y: number, pos_z: number, margin: number): boolean => {
     if (pos_x * pos_x + pos_y * pos_y + pos_z * pos_z <= (inradius + margin) ** 2) return false
     let worst = -Infinity
     for (let at = 0; at < faces.length; at += 4) {
@@ -507,11 +528,12 @@ export function fold_to_wigner_seitz(
   // minimum image and nothing needs clipping.
   const own_shift = new Int32Array(n_vertices).fill(-1)
   for (let idx = 0; idx < n_vertices; idx++) {
-    const pos = vec_at(positions, idx)
-    if (!past_face(pos, -2 * tol)) own_shift[idx] = zero_shift
+    const [pos_x, pos_y, pos_z] = vec_at(positions, idx)
+    if (!past_face(pos_x, pos_y, pos_z, -2 * tol)) own_shift[idx] = zero_shift
     else {
       const shift_id = shift_id_of(planes[worst_plane].indices)
-      if (!past_face(math.subtract(pos, shift_carts[shift_id]), -2 * tol))
+      const [shift_x, shift_y, shift_z] = shift_carts[shift_id]
+      if (!past_face(pos_x - shift_x, pos_y - shift_y, pos_z - shift_z, -2 * tol))
         own_shift[idx] = shift_id
     }
   }
@@ -525,7 +547,7 @@ export function fold_to_wigner_seitz(
     const shared =
       tri_shift !== -1 && tri_shift === own_shift[idx_1] && tri_shift === own_shift[idx_2]
     if (shared && tri_shift === zero_shift) {
-      out_indices.push(idx_0, idx_1, idx_2)
+      push_triangle(idx_0, idx_1, idx_2)
       continue
     }
     const corner_ids = [idx_0, idx_1, idx_2]
@@ -540,7 +562,11 @@ export function fold_to_wigner_seitz(
         Math.hypot(...math.subtract(centroid, shift_carts[tri_shift])) >
         1e-6 + tol
     ) {
-      for (const idx of corner_ids) out_indices.push(emit_original(idx, tri_shift))
+      push_triangle(
+        emit_original(idx_0, tri_shift),
+        emit_original(idx_1, tri_shift),
+        emit_original(idx_2, tri_shift),
+      )
       continue
     }
     const image = math.min_image_displacement([0, 0, 0], centroid, k_lattice, converters)
@@ -552,8 +578,16 @@ export function fold_to_wigner_seitz(
     const base_id = shift_id_of(base_shift)
     const base_cart = shift_carts[base_id]
     const corner_pos = corner_ids.map((idx) => vec_at(positions, idx))
-    if (!corner_pos.some((pos) => past_face(math.subtract(pos, base_cart), tol))) {
-      for (const idx of corner_ids) out_indices.push(emit_original(idx, base_id))
+    if (
+      !corner_pos.some(([pos_x, pos_y, pos_z]) =>
+        past_face(pos_x - base_cart[0], pos_y - base_cart[1], pos_z - base_cart[2], tol),
+      )
+    ) {
+      push_triangle(
+        emit_original(idx_0, base_id),
+        emit_original(idx_1, base_id),
+        emit_original(idx_2, base_id),
+      )
       continue
     }
     const corners: ClipVertex[] = corner_ids.map((idx, corner) => ({
@@ -602,12 +636,12 @@ export function fold_to_wigner_seitz(
           math.euclidean_dist(pos_b, pos_c),
           math.euclidean_dist(pos_c, pos_a),
         )
-        if (twice_area > tol * longest) out_indices.push(ids[0], ids[fan], ids[fan + 1])
+        if (twice_area > tol * longest) push_triangle(ids[0], ids[fan], ids[fan + 1])
       }
     }
   }
   // nothing appended leaves every kept triangle as it was, so nothing changed unless one dropped
-  if (out_positions.length === 0 && out_indices.length === indices.length) return surface
+  if (out_positions.length === 0 && n_out_indices === indices.length) return surface
   const extend = (values: Float32Array, extra: number[]): Float32Array => {
     const out = new Float32Array(values.length + extra.length)
     out.set(values)
@@ -618,7 +652,7 @@ export function fold_to_wigner_seitz(
     ...surface,
     positions: extend(positions, out_positions),
     normals: normals.length === positions.length ? extend(normals, out_normals) : normals,
-    indices: Uint32Array.from(out_indices),
+    indices: out_indices.slice(0, n_out_indices),
     properties:
       properties &&
       Object.fromEntries(
@@ -641,37 +675,51 @@ function sample_vertex_values(
   const n_vertices = positions.length / 3
   const outputs = grids.map(() => new Float32Array(n_vertices))
   if (grids.length === 0) return outputs
-  const cart_to_frac = math.create_cart_to_frac(band_data.k_lattice)
-  const strides = scalar_grid_strides(grids[0])
-  const periods = grid_dimensions(grids[0]).map((count) =>
+  // Scalar arithmetic only (no per-vertex Vec3 or iterator): this runs per vertex per grid
+  const [[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]] = math.reciprocal_lattice(
+    band_data.k_lattice,
+  )
+  const [stride_x, stride_y, stride_z] = scalar_grid_strides(grids[0])
+  const [period_x, period_y, period_z] = grid_dimensions(grids[0]).map((count) =>
     Math.max(band_data.periodic ? count : count - 1, 1),
   )
-  const base: Vec3 = [0, 0, 0]
-  const fractions = [0, 0, 0]
+  const [index0_x, index0_y, index0_z] = index0_frac
+  const grid_values = grids.map(({ values }) => values)
   const corner_offsets = new Int32Array(8)
   const corner_weights = new Float64Array(8)
+  // Lower and upper wrapped grid offsets plus the fraction past the lower one, per axis
+  const axis_corners = (coord: number, period: number, stride: number, out: Float64Array) => {
+    const floor = Math.floor(coord)
+    const lower = ((floor % period) + period) % period
+    out[0] = lower * stride
+    out[1] = (lower + 1 === period ? 0 : lower + 1) * stride
+    out[2] = coord - floor
+  }
+  const [corners_x, corners_y, corners_z] = [0, 1, 2].map(() => new Float64Array(3))
   for (let vert_idx = 0; vert_idx < n_vertices; vert_idx++) {
     const offset = 3 * vert_idx
-    const point: Vec3 = [positions[offset], positions[offset + 1], positions[offset + 2]]
-    cart_to_frac(point, base)
-    for (let axis = 0; axis < 3; axis++) {
-      const coord = (base[axis] - index0_frac[axis]) * periods[axis]
-      base[axis] = Math.floor(coord)
-      fractions[axis] = coord - base[axis]
-    }
+    const pos_x = positions[offset]
+    const pos_y = positions[offset + 1]
+    const pos_z = positions[offset + 2]
+    const frac_x = r00 * pos_x + r01 * pos_y + r02 * pos_z
+    const frac_y = r10 * pos_x + r11 * pos_y + r12 * pos_z
+    const frac_z = r20 * pos_x + r21 * pos_y + r22 * pos_z
+    axis_corners((frac_x - index0_x) * period_x, period_x, stride_x, corners_x)
+    axis_corners((frac_y - index0_y) * period_y, period_y, stride_y, corners_y)
+    axis_corners((frac_z - index0_z) * period_z, period_z, stride_z, corners_z)
+    // corner bit 0 picks the upper x point, bit 1 y, bit 2 z
     for (let corner = 0; corner < 8; corner++) {
-      let corner_offset = 0
-      let weight = 1
-      for (let axis = 0; axis < 3; axis++) {
-        const upper = (corner >> axis) & 1
-        const period = periods[axis]
-        corner_offset += ((((base[axis] + upper) % period) + period) % period) * strides[axis]
-        weight *= upper ? fractions[axis] : 1 - fractions[axis]
-      }
-      corner_offsets[corner] = corner_offset
-      corner_weights[corner] = weight
+      const upper_x = corner & 1
+      const upper_y = (corner >> 1) & 1
+      const upper_z = (corner >> 2) & 1
+      corner_offsets[corner] = corners_x[upper_x] + corners_y[upper_y] + corners_z[upper_z]
+      corner_weights[corner] =
+        (upper_x ? corners_x[2] : 1 - corners_x[2]) *
+        (upper_y ? corners_y[2] : 1 - corners_y[2]) *
+        (upper_z ? corners_z[2] : 1 - corners_z[2])
     }
-    for (const [grid_idx, { values }] of grids.entries()) {
+    for (let grid_idx = 0; grid_idx < grid_values.length; grid_idx++) {
+      const values = grid_values[grid_idx]
       let [sum, weight_sum] = [0, 0]
       for (let corner = 0; corner < 8; corner++) {
         const value = values[corner_offsets[corner]]
@@ -690,7 +738,10 @@ function sample_vertex_values(
 function band_intersects_fermi(energies: Float64Array, isovalue: number): boolean {
   let has_below = false
   let has_above = false
-  for (const energy of energies) {
+  // Every extraction scans every band:
+  // oxlint-disable-next-line typescript/prefer-for-of -- for-of scanned 7x slower (5 vs 0.7 ms per 101³ band)
+  for (let idx = 0; idx < energies.length; idx++) {
+    const energy = energies[idx]
     if (energy < isovalue) has_below = true
     else if (energy > isovalue) has_above = true
     if (has_below && has_above) return true

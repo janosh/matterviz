@@ -104,3 +104,18 @@ export function join_orbit_link(controls: () => OrbitControls | undefined): void
     return orbit_controls ? link.join(orbit_controls) : undefined
   })
 }
+
+// three's OrbitControls (r186, still on dev) adds a capture keydown listener to its element's
+// root node on connect() and looks the root up again on disconnect(). Svelte removes the DOM
+// before teardown runs, so disconnect() finds the detached wrapper instead of `document`, which
+// keeps a listener per mount and through it the controls, camera, renderer and canvas. Returns
+// the teardown removing it from the root the controls connected to, captured while attached.
+export function release_orbit_root(controls: OrbitControls): () => void {
+  const root = controls.domElement?.getRootNode()
+  const listener: unknown = Reflect.get(controls, `_interceptControlDown`)
+  return () => {
+    if (typeof listener === `function`) {
+      root?.removeEventListener(`keydown`, listener as EventListener, { capture: true })
+    }
+  }
+}

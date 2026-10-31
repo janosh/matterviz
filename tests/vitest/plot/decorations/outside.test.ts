@@ -383,6 +383,32 @@ describe(`build_obstacles_norm`, () => {
     expect(new Set(cells.map(({ x, y }) => `${x},${y}`)).size).toBe(cells.length)
   })
 
+  // A mark handed back unchanged (a series beside a legend toggle) reuses its cells for the same
+  // plot box, its points unread, merged with the other marks exactly as a fresh walk would be
+  test(`reuses an unchanged mark's cells for the same plot box`, () => {
+    let reads = 0
+    const raw = Array.from({ length: 50 }, (_, idx) => ({ x: idx / 49, y: (idx % 5) / 4 }))
+    const points = new Proxy(raw, {
+      get(target, prop, receiver) {
+        if (typeof prop === `string` && /^\d+$/.test(prop)) reads++
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+    const mark = { points, draws_line: true }
+    // oxfmt-ignore
+    const other = { points: [{ x: 0.5, y: 0.5 }, { x: 0.6, y: 0.1 }], draws_line: true }
+    const first = build_obstacles_norm([other, mark], 300, 200)
+    const first_reads = reads
+    expect(first_reads).toBeGreaterThan(0)
+    expect(build_obstacles_norm([other, mark], 300, 200)).toEqual(first)
+    expect(build_obstacles_norm([mark], 300, 200)).toEqual(
+      build_obstacles_norm([{ points: raw, draws_line: true }], 300, 200),
+    )
+    expect(reads).toBe(first_reads)
+    build_obstacles_norm([mark], 200, 300)
+    expect(reads).toBeGreaterThan(first_reads)
+  })
+
   // a non-finite vertex breaks the line: its two neighbours stay lone points, not a segment
   test(`breaks a line at non-finite vertices`, () => {
     // oxfmt-ignore

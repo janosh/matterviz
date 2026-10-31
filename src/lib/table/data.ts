@@ -1,14 +1,10 @@
 // Headless (DOM-free, unit-testable) row logic for HeatmapTable: numeric cell reading,
 // sorting, search/filter predicates and date-time parsing/formatting.
-import {
-  HTML_ENTITY_SRC,
-  html_to_text,
-  normalize_unicode_minus,
-  toggle_item,
-} from '#lib/utils.js'
+import { HTML_ENTITY_SRC, html_to_text, normalize_unicode_minus } from '#lib/utils.js'
 import { graphemes } from '#lib/plot/core/text-metrics.js'
+import { type CellReaders, default_is_missing } from 'svelte-widgets/table'
 import { fuzzy_match, HTML_TAG_SRC } from 'svelte-widgets/utils'
-import type { CellVal, ColumnFilter, DateTimeFormatMode, Column, RowData } from './index'
+import type { CellVal, DateTimeFormatMode, Column, RowData } from './index'
 
 // Columns discovered from the first rows when the caller passes none
 export const discover_columns = <Row extends object>(rows: Row[]): Column<Row>[] => {
@@ -27,11 +23,9 @@ export const middle_ellipsis_parts = (text: string): [string, string] => {
   return [chars.slice(0, split_at).join(``), chars.slice(split_at).join(``)]
 }
 
-// Missing values, NaN and invalid dates render as n/a and sort to the bottom
-export const is_invalid = (val: unknown): boolean =>
-  val == null ||
-  (typeof val === `number` && Number.isNaN(val)) ||
-  (val instanceof Date && Number.isNaN(val.getTime()))
+// Missing values, NaN and invalid dates render as n/a, sort to the bottom and never match a
+// category filter: the table widgets' own missing-cell test
+export const is_invalid = default_is_missing
 
 const HTML_MARKUP_RE = new RegExp(`${HTML_TAG_SRC}|${HTML_ENTITY_SRC}`, `i`)
 // Distinguish actual tags/entities from ordinary comparison and ampersand text so plain
@@ -45,11 +39,14 @@ export const is_html_str = (val: unknown): val is string =>
 // quantifiers in O(n²) ways, so a 30k-digit cell ending in a letter took over a second.
 const NUMERIC_WITH_ERROR_RE =
   /^\s*(?<numeric>[-+−]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:(?:±|\+[-−]|\().*)?$/s
-const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
+// Either attribute quote: a single-quoted value was read as absent and sorted by the text
+const DATA_SORT_VALUE_RE = /data-sort-value=(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/
 
 // Plain text of a cell: markup stripped and decoded, dates as ISO, objects as JSON, invalid ``
 export const cell_text = (val: CellVal): string => {
   if (is_invalid(val)) return ``
+  // a number's text has no markup or padding, so skip the decode (2x for numeric searches)
+  if (typeof val === `number`) return String(val)
   if (val instanceof Date) return val.toISOString()
   if (typeof val === `object`) return JSON.stringify(val)
   return html_to_text(String(val)).trim()
@@ -58,7 +55,8 @@ export const cell_text = (val: CellVal): string => {
 // undefined without a data-sort-value, null for a blank one (Number('') is 0, which would
 // sort and color the cell as zero)
 const get_data_sort_value = (val: string): string | null | undefined => {
-  const captured = DATA_SORT_VALUE_RE.exec(val)?.groups?.value
+  const groups = DATA_SORT_VALUE_RE.exec(val)?.groups
+  const captured = groups?.double ?? groups?.single
   return captured?.trim() === `` ? null : captured
 }
 
@@ -85,74 +83,98 @@ export function parse_numeric_val(val: CellVal): number | null {
   return text === null ? null : parse_numeric_string(text)
 }
 
+// A number with a unit or other suffix ("1.5 eV", "-3 GPa"), not a version, IP, thousands
+// separator (suffix starting `.`/`,`) or radix prefix (0x1f), which keep the text order
+const LEADING_NUMBER_RE =
+  /^\s*(?![-+−]?0[xXbBoO])(?<numeric>[-+−]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+−]?\d+)?)\s*[^\d\s.,]/
+
+// Sort key only ([number, full text]; colors and filters still read these cells as text): the
+// collator compared digit runs as integers, so 1.5 eV sorted after 1.25 eV, -1 GPa before -3 GPa
+const leading_number_key = (text: string): [number, string] | null => {
+  const numeric_str = LEADING_NUMBER_RE.exec(text)?.groups?.numeric
+  const num = numeric_str === undefined ? NaN : Number(normalize_unicode_minus(numeric_str))
+  return Number.isFinite(num) ? [num, text] : null
+}
+
+type SortVal = string | number | [number, string] | null
+
 // Sorts on the same rendered text search/filters/export use: raw values sorted `<b>Mango</b>`
 // under `<`, and booleans/objects broke the total order. A data-sort-value that isn't a number
 // still overrides the visible text. ISO date/time text sorts by its instant: as text, `T09:00`
 // and ` 10:00` or two UTC offsets ordered wrongly. null marks a missing sort key.
-const get_sort_val = (val: CellVal): string | number | null => {
+const get_sort_val = (val: CellVal): SortVal => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
+  // ±Infinity sort as numbers at the ends: as text "-Infinity" landed after every number
+  if (typeof val === `number`) return val
   if (typeof val !== `string`) return parse_numeric_val(val) ?? cell_text(val)
   const text = sort_text(val)
   if (text === null) return null
-  return parse_numeric_string(text) ?? parse_datetime_text(text) ?? text
+  return (
+    parse_numeric_string(text) ?? parse_datetime_text(text) ?? leading_number_key(text) ?? text
+  )
 }
 
 export type SortCriterion = { key: string; ascending: boolean }
 const sort_collator = new Intl.Collator(undefined, { numeric: true, sensitivity: `base` })
 
-// Comparator over row keys: missing sort keys sink to the bottom regardless of direction,
-// numbers sort before strings, strings compare natural-order and case-insensitively.
-function compare_row_values(
-  row1: RowData,
-  row2: RowData,
-  criteria: SortCriterion[],
-  sort_value: (val: CellVal) => string | number | null,
+// Comparator over one criterion's sort keys: missing sort keys sink to the bottom regardless
+// of direction, numbers sort before strings, strings compare natural-order and
+// case-insensitively. Unit-suffixed cells rank by their number, ties going to a bare number,
+// then their text. 0 lets the next criterion decide.
+function compare_sort_vals(
+  sort_val1: SortVal,
+  sort_val2: SortVal,
+  ascending: boolean,
 ): number {
-  for (const { key, ascending } of criteria) {
-    const val1 = row1[key]
-    const val2 = row2[key]
-    if (val1 === val2) continue
-    const sort_val1 = sort_value(val1)
-    const sort_val2 = sort_value(val2)
-    // both missing ranks them equally low, so let the next criterion break the tie —
-    // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
-    if (sort_val1 === null && sort_val2 === null) continue
-    if (sort_val1 === null || sort_val2 === null) return sort_val1 === null ? 1 : -1
-    const modifier = ascending ? 1 : -1
-    if (typeof sort_val1 === `string` && typeof sort_val2 === `string`) {
-      const cmp = sort_collator.compare(sort_val1, sort_val2)
-      if (cmp !== 0) return cmp * modifier
-    } else if (typeof sort_val1 !== typeof sort_val2) {
-      // number<string is false both ways, breaking the comparator: numbers sort first
-      return (typeof sort_val1 === `number` ? -1 : 1) * modifier
-    } else if (sort_val1 !== sort_val2) {
-      return sort_val1 < sort_val2 ? -modifier : modifier
-    }
+  // both missing ranks them equally low, so let the next criterion break the tie
+  if (sort_val1 === null && sort_val2 === null) return 0
+  if (sort_val1 === null || sort_val2 === null) return sort_val1 === null ? 1 : -1
+  const modifier = ascending ? 1 : -1
+  const key1 = typeof sort_val1 === `object` ? sort_val1[0] : sort_val1
+  const key2 = typeof sort_val2 === `object` ? sort_val2[0] : sort_val2
+  if (typeof key1 === `string` && typeof key2 === `string`) {
+    return sort_collator.compare(key1, key2) * modifier
   }
-  return 0
+  if (typeof key1 !== typeof key2) {
+    // number<string is false both ways, breaking the comparator: numbers sort first
+    return (typeof key1 === `number` ? -1 : 1) * modifier
+  }
+  if (key1 !== key2) return key1 < key2 ? -modifier : modifier
+  const text1 = typeof sort_val1 === `object` ? sort_val1[1] : ``
+  const text2 = typeof sort_val2 === `object` ? sort_val2[1] : ``
+  return sort_collator.compare(text1, text2) * modifier
 }
 
-export const compare_rows = (
-  row1: RowData,
-  row2: RowData,
-  criteria: SortCriterion[],
-): number => compare_row_values(row1, row2, criteria, get_sort_val)
-
-// Parse each distinct cell once per sort, not on every O(n log n) comparison. The cache is
-// local to this operation, so edits to rows, objects and Dates are read on the next sort.
+// Parse each distinct cell once per sort, not on every O(n log n) comparison, and read each
+// row's keys up front so comparisons index arrays rather than re-reading cells (a 50k-row sort
+// went 67 -> 15 ms). The cache is local to this operation, so edits to rows, objects and
+// Dates are read on the next sort.
 export function sort_table_rows<Row extends RowData>(
   rows: Row[],
   criteria: SortCriterion[],
 ): Row[] {
-  const values = new Map<CellVal, string | number | null>()
-  const sort_value = (val: CellVal): string | number | null => {
+  const values = new Map<CellVal, SortVal>()
+  const sort_value = (val: CellVal): SortVal => {
     if (typeof val === `number`) return get_sort_val(val)
     let parsed = values.get(val)
     if (parsed === undefined) values.set(val, (parsed = get_sort_val(val)))
     return parsed
   }
-  return rows.toSorted((row1, row2) => compare_row_values(row1, row2, criteria, sort_value))
+  const keyed = criteria.map(({ key, ascending }) => ({
+    ascending,
+    vals: rows.map((row) => sort_value(row[key])),
+  }))
+  return rows
+    .map((_, idx) => idx)
+    .toSorted((idx_a, idx_b) => {
+      for (const { ascending, vals } of keyed) {
+        const cmp = compare_sort_vals(vals[idx_a], vals[idx_b], ascending)
+        if (cmp !== 0) return cmp
+      }
+      return 0
+    })
+    .map((idx) => rows[idx])
 }
 
 // === Search and per-column filters ===
@@ -161,71 +183,12 @@ export function sort_table_rows<Row extends RowData>(
 export const text_matches_query = (text: string, query: string, fuzzy = false): boolean =>
   text.includes(query) || (fuzzy && fuzzy_match(query, text))
 
-export const cell_matches_filter = (val: CellVal, filter: ColumnFilter): boolean => {
-  if (filter.kind === `numeric`) {
-    const num = parse_numeric_val(val)
-    if (num === null) return false
-    return (
-      (filter.min == null || num >= filter.min) && (filter.max == null || num <= filter.max)
-    )
-  }
-  const text = cell_text(val)
-  if (filter.kind === `category`) return filter.values.includes(text)
-  return text.toLowerCase().includes(filter.text.toLowerCase())
-}
-
-// Above this many distinct values a column gets a substring box instead of a checklist
-export const CATEGORY_LIMIT = 40
-type FilterPanel = { kind: `numeric` | `category` | `text`; options: string[] }
-
-// Options and control type for one column's filter panel, from unfiltered rows so a filter
-// never hides the options to widen it. Explicit `category` columns are uncapped.
-export function column_filter_panel(
-  col: Omit<Column, `cell`>,
-  rows: RowData[],
-  row_key: string,
-  is_numeric: boolean,
-): FilterPanel {
-  const capped = col.filter !== `category`
-  const seen = new Set<string>()
-  for (const row of rows) {
-    const val = row[row_key]
-    if (!is_invalid(val)) seen.add(cell_text(val))
-    if (capped && seen.size > CATEGORY_LIMIT) {
-      seen.clear() // too many to pick from: fall back to a substring box
-      break
-    }
-  }
-  const options = [...seen].toSorted()
-  const configured = col.filter && col.filter !== `auto` ? col.filter : null
-  const detected = is_numeric ? `numeric` : options.length > 0 ? `category` : `text`
-  return { options, kind: configured ?? detected }
-}
-
-// A numeric filter with neither bound, or a category filter allowing everything, is the same
-// as no filter: both collapse to undefined so the funnel icon and row count stay honest.
-export function with_numeric_bound(
-  current: ColumnFilter | undefined,
-  bound: `min` | `max`,
-  raw: string,
-): ColumnFilter | undefined {
-  const base = current?.kind === `numeric` ? current : { kind: `numeric` as const }
-  const value = raw.trim() === `` ? undefined : Number(raw)
-  const next = { ...base, [bound]: Number.isFinite(value) ? value : undefined }
-  return next.min == null && next.max == null ? undefined : next
-}
-export function with_category_toggled(
-  current: ColumnFilter | undefined,
-  value: string,
-  options: string[],
-): ColumnFilter | undefined {
-  // Values no row holds any more drop out, else they'd keep an allow-everything filter active
-  const selected =
-    current?.kind === `category`
-      ? current.values.filter((val) => options.includes(val))
-      : options
-  const next = toggle_item(selected, value)
-  return next.length === options.length ? undefined : { kind: `category`, values: next }
+// How filters (compile_filter and the column filter panel) read a cell: markup stripped,
+// numbers through the same parse that sorting and coloring use, so "1.23 ± 0.05" filters as
+// 1.23. Missing cells use the widgets' default, which is_invalid is.
+export const cell_readers: CellReaders<CellVal> = {
+  to_text: cell_text,
+  to_number: parse_numeric_val,
 }
 
 // === Date/time columns ===

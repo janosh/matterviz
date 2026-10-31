@@ -10,13 +10,21 @@ import { create_drop_event, mount_sized, query, resize_element, set_input } from
 import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
-import { calculate_all_pair_rdfs, rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
+import {
+  calculate_all_pair_rdfs,
+  rdf_bin_site_index,
+  rdf_bin_sites,
+} from '#lib/rdf/calc-rdf.js'
 import * as plot_module from '#lib/plot/index.js'
 
 // Spy on the neighbour search so the radiation buttons can be shown not to re-run it
 vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
   const actual = await import_original<typeof calc_rdf>()
-  return { ...actual, calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs) }
+  return {
+    ...actual,
+    calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs),
+    rdf_bin_site_index: vi.fn(actual.rdf_bin_site_index),
+  }
 })
 
 const nacl_structure = structure_map.get(`mp-1234`)
@@ -207,14 +215,18 @@ describe(`RdfPlot`, () => {
       on_bin_hover.mock.calls.map(([hover]) => hover && [hover.entry.label, hover.bin_idx]),
     ).toEqual([[`Test`, null], null, [`Lu-Lu`, null], null])
 
-    // a curve point is one r bin: its pairs are found on demand, once per bin
+    // a curve point is one r bin: its pairs are found on demand, once per bin, from one
+    // neighbour search per curve however many of its bins are hovered
     const { series = [], on_point_hover } = scatter.mock.lastCall?.[1] ?? {}
     const series_idx = series.findIndex(({ label }) => label === `Lu-Lu`)
     const bin_idx = series[series_idx]?.y.findIndex((g_val) => g_val > 0) ?? -1
     expect(bin_idx).toBeGreaterThan(0)
+    vi.mocked(rdf_bin_site_index).mockClear()
+    on_point_hover?.({ series_idx, point: { point_idx: bin_idx + 1 } })
     on_sites_hover.mockClear()
     on_point_hover?.({ series_idx, point: { point_idx: bin_idx } })
     on_point_hover?.({ series_idx, point: { point_idx: bin_idx } })
+    expect(rdf_bin_site_index).toHaveBeenCalledOnce()
     const lu_lu = { cutoff: 15, n_bins: 75, element_pair: [`Lu`, `Lu`] as [string, string] }
     const { n_pairs, ...expected } = rdf_bin_sites(nacl_structure, { ...lu_lu, bin_idx })
     expect(n_pairs).toBeGreaterThan(0)

@@ -47,13 +47,15 @@
   type PairEnd = { site_idx: number; position: Vec3 }
   // the drawn bond joining exactly these two sites at these points, either way round: a periodic
   // bond runs to an image of its partner, and small cells hold several bonds per site pair.
-  // Site indices first, so a trajectory frame's bonds aren't all expanded into records.
+  // Site indices first, so a trajectory frame's bonds aren't all expanded into records. The
+  // prop is read once: its getter crosses three components, 35 ms per scan of 110k bonds.
   const pair_bond = (end_i: PairEnd, end_j: PairEnd): BondPair | undefined => {
-    for (let idx = 0; idx < bonds.length; idx++) {
-      const [site_1, site_2] = [bond_site_1(bonds, idx), bond_site_2(bonds, idx)]
+    const drawn = bonds
+    for (let idx = 0; idx < drawn.length; idx++) {
+      const [site_1, site_2] = [bond_site_1(drawn, idx), bond_site_2(drawn, idx)]
       const forward = site_1 === end_i.site_idx && site_2 === end_j.site_idx
       if (!forward && !(site_1 === end_j.site_idx && site_2 === end_i.site_idx)) continue
-      const bond = bond_at(bonds, idx)
+      const bond = bond_at(drawn, idx)
       const [start, end] = forward ? [end_i, end_j] : [end_j, end_i]
       if (
         math.same_position(bond.pos_1, start.position) &&

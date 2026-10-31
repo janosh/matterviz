@@ -18,6 +18,8 @@ import {
   chebyshev_centre,
   compute_chempot_diagram,
   compute_chempot_system,
+  entry_elements,
+  normalize_chempot_entries,
   dedup_points,
   fit_plane,
   formula_key_from_composition,
@@ -1278,6 +1280,28 @@ describe(`chebyshev_centre`, () => {
 })
 
 describe(`compute_chempot_diagram edge cases`, () => {
+  // pymatgen species keys merge into their elements, as on the convex hull
+  test(`oxidation-state, spin and isotope keys give the plain-element diagram`, () => {
+    const plain = [
+      make_phase({ Li: 1 }, -1.9),
+      make_phase({ O: 2 }, -4.93),
+      make_phase({ H: 1 }, -3.4),
+      make_phase({ Li: 2, O: 1 }, -4.77),
+      make_phase({ Li: 1, O: 1, H: 1 }, -4.6),
+    ]
+    const species = [
+      ...plain.slice(0, 2),
+      make_phase({ D: 1 }, -3.4),
+      make_phase({ 'Li+': 2, 'O2-': 1 }, -4.77),
+      make_phase({ 'Li+,spin=0': 1, 'O2-': 0.5, O: 0.5, 'H+': 1 }, -4.6),
+    ]
+    expect(entry_elements(species)).toEqual([`H`, `Li`, `O`])
+    expect(compute_chempot_diagram(species)).toEqual(compute_chempot_diagram(plain))
+    // plain entries pass through by identity, keeping memos keyed by them shared
+    expect(normalize_chempot_entries(plain)).toBe(plain)
+    expect(normalize_chempot_entries(species)[0]).toBe(species[0])
+  })
+
   test(`config.elements reorders axes`, () => {
     const reordered = compute_chempot_diagram(entries, {
       elements: [`O`, `Fe`, `Li`],

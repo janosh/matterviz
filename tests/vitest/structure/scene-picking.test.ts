@@ -218,17 +218,15 @@ describe(`ScenePointer`, () => {
     expect(hover.idx).toBe(5)
   })
 
-  test(`hover_props enter and move hover, leave clears after the delay`, () => {
+  test(`set_hover hovers and cancels a scheduled clear, which clears after the delay`, () => {
     const { pointer, hover } = make_pointer()
-    const props = pointer.hover_props(7)
-    const event = {} as TapEvent
-    props.onpointerenter?.(event)
+    pointer.set_hover(7)
     expect(hover.idx).toBe(7)
-    props.onpointerleave?.(event)
-    props.onpointermove?.(event) // moving back over the atom cancels the clear
+    pointer.schedule_hover_clear(7)
+    pointer.set_hover(7) // moving back over the atom cancels the clear
     vi.advanceTimersByTime(ATOM_HOVER_CLEAR_DELAY_MS)
     expect(hover.idx).toBe(7)
-    props.onpointerleave?.(event)
+    pointer.schedule_hover_clear(7)
     vi.advanceTimersByTime(ATOM_HOVER_CLEAR_DELAY_MS)
     expect(hover.idx).toBeNull()
   })

@@ -23,7 +23,6 @@
     extract_efermi,
     spectral_type,
     format_dos_tooltip,
-    negatives_are_noise,
     NORMALIZATION_MODES,
     SPIN_MODES,
     validate_sigma_range,
@@ -243,10 +242,14 @@
       dos.type === `phonon` ? dos.frequencies : dos.energies,
     ),
   )
-  // like padded_frequency_range for Bands: density below -ACOUSTIC_FREQ_THRESHOLD is a real
-  // imaginary mode and is never clamped away as noise
-  let imaginary_freqs = $derived(dos_imaginary_frequencies(Object.values(doses)))
-  let clamp_to_zero = $derived(is_phonon && negatives_are_noise(all_freqs, imaginary_freqs))
+  // Density decides, not the grid: phonopy grids start a few tenths of a THz below 0 at zero
+  // density, while density below -ACOUSTIC_FREQ_THRESHOLD is a real imaginary mode that is
+  // never clamped away as noise
+  let clamp_to_zero = $derived(
+    is_phonon &&
+      all_freqs.some((freq) => freq < 0) &&
+      dos_imaginary_frequencies(Object.values(doses)).length === 0,
+  )
 
   let has_mirrored_spin = $derived(effective_spin_mode === `mirror` && has_spin_polarized)
 

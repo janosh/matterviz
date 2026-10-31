@@ -4,8 +4,7 @@ import type { ElementSymbol } from '#lib/element/types.js'
 import { symbol_to_atomic_number } from '#lib/element/helpers.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import type { Pbc } from '#lib/structure/pbc.js'
-import { parse_float_token } from '#lib/structure/parsers/shared.js'
+import { LineScanner } from '#lib/structure/parsers/shared.js'
 import { parse_vasp_header } from '#lib/structure/parsers/vasp-header.js'
 import {
   create_plot_row_frame,
@@ -13,7 +12,7 @@ import {
   expand_ion_types,
   TextLines,
 } from '#lib/trajectory/helpers.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
+import { create_numeric_md_frame } from '../frame'
 import type { AseFrames } from './ase'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
@@ -46,7 +45,7 @@ type XdatcarCell = {
   elements: ElementSymbol[]
   // header symbols are validated elements, so each has an atomic number
   numbers: Uint8Array
-  frac_to_cart: (frac: Vec3) => Vec3
+  frac_to_cart: (frac: Vec3, target?: Vec3) => Vec3
 }
 // `line` is the 0-based index of the frame's first coordinate line
 type XdatcarFrameSpec = { line: number; step: number; cell: XdatcarCell }
@@ -58,32 +57,34 @@ const make_cell = (lattice: Matrix3x3, elements: ElementSymbol[]): XdatcarCell =
   frac_to_cart: math.create_frac_to_cart(lattice),
 })
 
-// Cartesian positions of a frame's ions, or null when its last coordinate line is the file's
-// half-written final line
+// Cartesian positions of a frame's ions, 3 per ion, or null when its last coordinate line is
+// the file's half-written final line. Tokenized in place: a split per line cost 2/3 of a
+// frame's decode.
 function read_positions(
   lines: TextLines,
   { line, step, cell }: XdatcarFrameSpec,
-): Vec3[] | null {
-  const positions: Vec3[] = []
-  for (let line_idx = line; line_idx < line + cell.elements.length; line_idx++) {
-    const text = lines.line(line_idx) ?? ``
-    const tokens = text.trim().split(/\s+/)
-    const coords: Vec3 = [
-      parse_float_token(tokens[0]),
-      parse_float_token(tokens[1]),
-      parse_float_token(tokens[2]),
-    ]
-    if (
-      !Number.isFinite(coords[0]) ||
-      !Number.isFinite(coords[1]) ||
-      !Number.isFinite(coords[2])
-    ) {
+  scanner = new LineScanner(),
+): Float64Array | null {
+  const n_ions = cell.elements.length
+  const positions = new Float64Array(n_ions * 3)
+  const frac: Vec3 = [0, 0, 0]
+  const cart: Vec3 = [0, 0, 0]
+  for (let ion_idx = 0; ion_idx < n_ions; ion_idx++) {
+    const line_idx = line + ion_idx
+    lines.scan(scanner, line_idx)
+    frac[0] = scanner.num(0)
+    frac[1] = scanner.num(1)
+    frac[2] = scanner.num(2)
+    if (!Number.isFinite(frac[0]) || !Number.isFinite(frac[1]) || !Number.isFinite(frac[2])) {
       if (line_idx === lines.count - 1) return null
       throw new Error(
-        `XDATCAR frame ${step} line ${line_idx + 1} is not a fractional coordinate triple: "${text}"`,
+        `XDATCAR frame ${step} line ${line_idx + 1} is not a fractional coordinate triple: "${lines.line(line_idx) ?? ``}"`,
       )
     }
-    positions.push(cell.frac_to_cart(coords))
+    cell.frac_to_cart(frac, cart)
+    positions[ion_idx * 3] = cart[0]
+    positions[ion_idx * 3 + 1] = cart[1]
+    positions[ion_idx * 3 + 2] = cart[2]
   }
   return positions
 }
@@ -163,24 +164,67 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
 }
 
 // Indexed XDATCAR: open walks only headers and frame markers; a frame's coordinate lines are
-// read on demand. Plot rows take lattice and species from the header, but still parse the
-// coordinates so a frame that cannot be read gets no plot point either.
+// read on demand, straight into a numeric frame (what encode_frame makes of the decoded one).
+// Plot rows take lattice and species from the header, but still parse the coordinates so a
+// frame that cannot be read gets no plot point either.
 export function open_xdatcar_frames(lines: TextLines, warn: WarnFn): AseFrames {
   const frames = index_xdatcar_frames(lines, warn)
-  const frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
-    const { step, cell } = frames[frame_idx]
+  const scanner = new LineScanner()
+  const positions_of = (frame_idx: number): Float64Array => {
     // only the last frame can hold the torn final line, and a torn last frame was dropped
-    const coords = read_positions(lines, frames[frame_idx])
-    if (!coords) throw new Error(`XDATCAR frame ${step} ends in a partial line`)
-    const { lattice, elements, numbers } = cell
-    const pbc: Pbc = [true, true, true]
-    if (plot_row) return create_plot_row_frame(numbers, lattice, pbc, step, {}, warn)
-    return create_trajectory_frame(coords, elements, lattice, pbc, step, {}, undefined, warn)
+    const positions = read_positions(lines, frames[frame_idx], scanner)
+    if (!positions)
+      throw new Error(`XDATCAR frame ${frames[frame_idx].step} ends in a partial line`)
+    return positions
   }
   return {
     frame_count: frames.length,
-    decode: (frame_idx) => frame(frame_idx, false),
-    plot_row_frame: (frame_idx) => frame(frame_idx, true),
+    // fresh numbers, lattice and pbc per frame: frames of one cell sharing them would let an
+    // edit to one frame show in the others
+    read: (frame_idx) => {
+      const { step, cell } = frames[frame_idx]
+      return create_numeric_md_frame(
+        positions_of(frame_idx),
+        cell.numbers.slice(),
+        structuredClone(cell.lattice),
+        [true, true, true],
+        step,
+        {},
+        [],
+        { fixed_order: false, warn },
+      )
+    },
+    decode: (frame_idx) => {
+      const { step, cell } = frames[frame_idx]
+      const positions = positions_of(frame_idx)
+      const coords = Array.from({ length: cell.elements.length }, (_unused, idx): Vec3 => [
+        positions[idx * 3],
+        positions[idx * 3 + 1],
+        positions[idx * 3 + 2],
+      ])
+      return create_trajectory_frame(
+        coords,
+        cell.elements,
+        cell.lattice,
+        [true, true, true],
+        step,
+        {},
+        undefined,
+        warn,
+      )
+    },
+    plot_row_frame: (frame_idx) => {
+      const { step, cell } = frames[frame_idx]
+      positions_of(frame_idx)
+      return create_plot_row_frame(
+        cell.numbers,
+        cell.lattice,
+        [true, true, true],
+        step,
+        {},
+        warn,
+      )
+    },
   }
 }
 

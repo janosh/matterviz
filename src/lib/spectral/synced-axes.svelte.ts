@@ -25,19 +25,29 @@ export const SIDE_DOS_WIDTH = 200
 // legend/colorbar outside widens its own bottom margin, and the other panel must follow or the
 // shared frequency axis drifts; the panels report what they settled on and the floor is only
 // ever raised (half-pixel tolerance), so the feedback through the plot solver cannot oscillate.
-export function shared_resolved_padding_floor() {
-  let value = $state<Sides>({})
+// It starts over at each new panels size, where the margins settle anew (one raised in a short
+// stacked pane, or while a layout switch briefly squeezed the DOS and wrapped its title, would
+// otherwise shrink the plots for good).
+export function shared_resolved_padding_floor(size: () => Vec2) {
+  let floor = $state<{ size: Vec2; value: Sides }>({ size: [0, 0], value: {} })
+  const current = (): Sides => (vec2_equal(floor.size, size()) ? floor.value : {})
   return {
     get value(): Sides {
-      return value
+      return current()
     },
     raise(resolved: Required<Sides> | undefined): void {
       if (!resolved) return
+      const value = current()
       const next = {
         t: Math.max(value.t ?? 0, resolved.t),
         b: Math.max(value.b ?? 0, resolved.b),
       }
-      if (next.t > (value.t ?? 0) + 0.5 || next.b > (value.b ?? 0) + 0.5) value = next
+      if (
+        !vec2_equal(floor.size, size()) ||
+        next.t > (value.t ?? 0) + 0.5 ||
+        next.b > (value.b ?? 0) + 0.5
+      )
+        floor = { size: size(), value: next }
     },
   }
 }
@@ -53,6 +63,7 @@ interface BandsDosSyncInputs {
   // DOS horizontal beside the bands (frequency on both y axes); false stacks it below with
   // density on y, where only the bands axis takes part in the link
   side_by_side: () => boolean
+  size: () => Vec2 // the panels' [width, height] (px), at each new one their shared padding resets
   // the frequency extent (data units) to span instead of the shown data's, e.g. a sweep's
   // frames' so the axis holds still while stepping through them
   data_range?: () => Vec2 | undefined
@@ -162,7 +173,7 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
   // that panel's bottom margin, which must reach the bands panel too or the shared energy
   // axis drifts. ScatterPlot stacks outside reservations on the axis pad with max(), so this
   // converges after one round instead of ratcheting.
-  const floor = shared_resolved_padding_floor()
+  const floor = shared_resolved_padding_floor(inputs.size)
   const shared_padding = $derived(
     inputs.side_by_side()
       ? max_side_padding(

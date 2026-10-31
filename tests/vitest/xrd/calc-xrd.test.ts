@@ -584,12 +584,14 @@ describe(`radiation types`, () => {
         { hkl: [0, 0, 0], g_norm: 0 },
         { hkl: [-0, 0, -0], g_norm: 0 },
         { hkl: [4, 1, 2], g_norm: 0.9 },
+        // the Friedel partner row of (4, 1, l) with only an l the other row lacks
+        { hkl: [-4, -1, 5], g_norm: 1.2 },
       ]
       const thermal = { Ti: 0.4, O: 0.8, Fe: 0.2 }
-      // Friedel mates, repeats and unpaired reflections agree exactly with separate calls.
-      // Equal indices with different supplied norms must retain their own scattering factors.
+      // Friedel mates, repeats and unpaired reflections agree exactly with separate calls, which
+      // share each (h, k) row's sums with the (−h, −k) row. Equal indices with different
+      // supplied norms must retain their own scattering factors.
       for (const repeats of [1, 32]) {
-        // Cover both direct evaluation and the large-structure Friedel reuse path.
         const structure = {
           ...mixed,
           sites: Array.from({ length: repeats }, () => mixed.sites).flat(),

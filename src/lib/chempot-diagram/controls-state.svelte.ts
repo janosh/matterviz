@@ -17,6 +17,7 @@ import {
   chempot_axes,
   entry_elements,
   formula_key_from_composition,
+  normalize_chempot_entries,
   section_chempot_system,
   section_measure_curves,
   slice_range,
@@ -109,8 +110,9 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
   // Primitives, so a fresh config object doesn't re-slice the entries (and re-run the worker)
   const interpolate_temperature = $derived(opts.config().interpolate_temperature)
   const max_interpolation_gap = $derived(opts.config().max_interpolation_gap)
+  const normalized_entries = $derived(normalize_chempot_entries(opts.entries()))
   const temp_payload = $derived(
-    get_temp_filter_payload(opts.entries(), opts.temperature.get(), {
+    get_temp_filter_payload(normalized_entries, opts.temperature.get(), {
       interpolate_temperature,
       max_interpolation_gap,
     }),

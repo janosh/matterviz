@@ -80,23 +80,44 @@
     marker_geometry.dispose()
     marker_material.dispose()
   })
+  // The instanced meshes outlive a new path or marker set (each frame of a sweep moves both):
+  // three's WebGPU renderer names a mesh's instance buffer in its shaders, so every new mesh
+  // compiled new ones. Each is replaced only to grow, and draws its first `count` instances.
+  const grown = (sizes: { max: number }, count: number) =>
+    (sizes.max = Math.max(sizes.max, count))
+  const [kpath_sizes, marker_sizes] = [{ max: 0 }, { max: 0 }]
+  const kpath_capacity = $derived(grown(kpath_sizes, k_path_segs.length))
+  const marker_capacity = $derived(grown(marker_sizes, k_markers.length))
   const kpath_meshes = $derived.by(() => {
-    const [count, { kpath: radius, kpath_hover }] = [k_path_segs.length, mark_sizes]
-    const line = new InstancedMesh(kpath_geometry, kpath_material, count)
-    const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, count)
+    const line = new InstancedMesh(kpath_geometry, kpath_material, kpath_capacity)
+    const proxy = new InstancedMesh(kpath_geometry, kpath_proxy_material, kpath_capacity)
     line.raycast = () => undefined
     // path hovers win over the zone or Fermi sheets the path is drawn through (see front_hit)
     proxy.userData.pick_rank = 2 // above the IBZ wedge (1)
     for (const mesh of [line, proxy]) mesh.frustumCulled = false
+    return { line, proxy }
+  })
+  $effect.pre(() => {
+    const { line, proxy } = kpath_meshes
+    const { kpath: radius, kpath_hover } = mark_sizes
     for (const [instance_idx, { from, to }] of k_path_segs.entries()) {
       write_bond_transform(line.instanceMatrix.array, instance_idx, from, to, radius)
       write_bond_transform(proxy.instanceMatrix.array, instance_idx, from, to, kpath_hover)
     }
-    return { line, proxy }
+    for (const mesh of [line, proxy]) {
+      mesh.count = k_path_segs.length
+      mesh.instanceMatrix.needsUpdate = true
+      mesh.boundingSphere = null // raycasts refit it to the moved instances
+    }
+    invalidate()
   })
   const marker_mesh = $derived.by(() => {
-    const mesh = new InstancedMesh(marker_geometry, marker_material, k_markers.length)
+    const mesh = new InstancedMesh(marker_geometry, marker_material, marker_capacity)
     Object.assign(mesh, { renderOrder: 1000, frustumCulled: false, raycast: () => undefined })
+    return mesh
+  })
+  $effect.pre(() => {
+    const mesh = marker_mesh
     const radius = 2 * mark_sizes.kpath
     for (const [idx, { position, color }] of k_markers.entries()) {
       mesh.setMatrixAt(
@@ -105,7 +126,10 @@
       )
       mesh.setColorAt(idx, tint.set(color))
     }
-    return mesh
+    mesh.count = k_markers.length
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    invalidate()
   })
   $effect(() => {
     const mesh = marker_mesh
@@ -124,6 +148,11 @@
     return () => {
       line.dispose()
       proxy.dispose()
+    }
+  })
+  $effect(() => {
+    void k_path_segs
+    return () => {
       if (reported_qpoint !== null) report_hover(null)
     }
   })

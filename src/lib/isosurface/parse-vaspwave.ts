@@ -17,6 +17,7 @@ import {
   with_h5_file,
 } from '#lib/trajectory/parse/h5-utils.js'
 import { transpose_x_fastest } from './grid'
+import { VASP_BLOCK_LABELS } from './parse'
 import { make_volume, type VolumetricData, type VolumetricFileData } from './types'
 
 export { is_vaspwave_filename } from '#lib/constants.js'
@@ -105,11 +106,13 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   if (shape.length !== 4) {
     throw new Error(`${CHARGE_PATH} must have 4 dimensions, got [${shape}]`)
   }
+  // charge, then magnetization: one component (collinear spin) or m_x, m_y, m_z (noncollinear)
   const n_components = shape[0]
-  if (n_components < 1 || n_components > 2) {
+  const component_labels = VASP_BLOCK_LABELS.density[n_components]
+  if (!component_labels) {
     throw new Error(
       `${CHARGE_PATH} has unsupported component count ${n_components}; expected 1 ` +
-        `(non-spin-polarized) or 2 (total + magnetization)`,
+        `(non-spin-polarized), 2 (total + magnetization) or 4 (noncollinear)`,
     )
   }
   const grid_dims = to_number_array(read_dataset(h5_file, CHARGE_GRID_PATH))
@@ -141,7 +144,6 @@ function parse_vaspwave_charge_file(h5_file: h5wasm.File): VolumetricFileData {
   if (!(cell_volume > 0))
     throw new Error(`vaspwave.h5 lattice has no volume; cannot normalize ${CHARGE_PATH}`)
 
-  const component_labels = [`charge density`, `magnetization density`]
   const volumes: VolumetricData[] = Array.from(
     { length: n_components },
     (_, component_idx) => {

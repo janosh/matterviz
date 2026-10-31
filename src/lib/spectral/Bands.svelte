@@ -23,6 +23,7 @@
     FillRegion,
     UserContentProps,
   } from '#lib/plot/core/types.js'
+  import { COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
   import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
@@ -38,7 +39,6 @@
   } from './mode-values'
   import type { ModeValueMarker } from './mode-values'
   import type {
-    BandLineStyle,
     BandsSpinMode,
     BaseBandStructure,
     Branch,
@@ -143,25 +143,22 @@
   } = $props()
 
   // A band line's style: the caller's over the structure colour, emphasised or muted while a
-  // band is highlighted
-  function get_line_style(color: string, ...line: helpers.BandLine): Required<BandLineStyle> {
-    const [band_idx, , is_acoustic] = line
+  // band is highlighted. A spin-down line is dashed and a hair thinner than its spin-up twin.
+  function get_line_style(color: string, ...line: helpers.BandLine): DataSeries[`line_style`] {
+    const [band_idx, spin, is_acoustic] = line
     const custom = helpers.band_line_style(line_kwargs, ...line)
-    const style = {
-      stroke: custom.stroke ?? color,
-      stroke_width: custom.stroke_width ?? (is_acoustic ? 1.5 : 1),
-    }
-    if (highlighted_band_index === null) return style
-    const selected = highlighted_band_index === band_idx
-    return {
+    let stroke = custom.stroke ?? color
+    let stroke_width = custom.stroke_width ?? (is_acoustic ? 1.5 : 1)
+    if (highlighted_band_index !== null) {
+      const selected = highlighted_band_index === band_idx
       // a caller-coloured band keeps its colour while emphasised
-      stroke: selected
+      stroke = selected
         ? (custom.stroke ?? `var(--bands-selected-color, light-dark(#185adb, #75a7ff))`)
-        : helpers.BANDS_CSS_COLORS.muted,
-      stroke_width: selected
-        ? Math.max(3, style.stroke_width * 2)
-        : Math.min(1, style.stroke_width),
+        : helpers.BANDS_CSS_COLORS.muted
+      stroke_width = selected ? Math.max(3, stroke_width * 2) : Math.min(1, stroke_width)
     }
+    if (spin === `up`) return { stroke, stroke_width }
+    return { stroke, line_dash: `4,2`, stroke_width: Math.max(1, stroke_width - 0.1) }
   }
 
   interface RibbonData {
@@ -267,11 +264,12 @@
     x_positions = internal_x_positions
   })
 
-  // Band-line series, fat-band ribbons and, per series, its structure's max |slope| (the
-  // tooltip's dispersion label judges a band against its own structure's steepest, not another
-  // material's) in one pass over the plotted branch segments
-  let { series_data, ribbon_data, slope_scales } = $derived.by(() => {
-    const all_series: DataSeries[] = []
+  // Band-line series (unstyled, with the line their style derives from), fat-band ribbons and,
+  // per series, its structure's max |slope| (the tooltip's dispersion label judges a band
+  // against its own structure's steepest, not another material's) in one pass over the plotted
+  // branch segments
+  let { series_geometry, ribbon_data, slope_scales } = $derived.by(() => {
+    const all_series: { series: DataSeries; color: string; line: helpers.BandLine }[] = []
     const all_ribbons: RibbonData[] = []
     const scales: number[] = [] // aligned with all_series
     const markers = rest.on_point_click ? `line+points` : `line`
@@ -310,40 +308,26 @@
 
       for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
         const is_acoustic = helpers.classify_acoustic(band_structure, band_idx, gamma_indices)
-        const style_of = (spin: `up` | `down`) =>
-          get_line_style(color, band_idx, spin, is_acoustic === true, structure_label)
         const spin_down_band =
           band_type === `electronic` ? band_structure.spin_down_bands?.[band_idx] : undefined
 
         // Spin channels to draw, each with its energies over the whole path
-        const channels: {
-          spin: `up` | `down`
-          series_label: string
-          line_style: DataSeries[`line_style`]
-          values: number[]
-        }[] = []
+        const channels: { spin: `up` | `down`; series_label: string; values: number[] }[] = []
         if (spin_mode !== `down_only`) {
           channels.push({
             spin: `up`,
             series_label: spin_down_band ? `${structure_label} (↑)` : structure_label,
-            line_style: style_of(`up`),
             values: band_structure.bands[band_idx],
           })
         }
         if (spin_down_band && spin_mode !== `up_only`) {
-          const { stroke, stroke_width } = style_of(`down`)
           channels.push({
             spin: `down`,
             series_label: `${structure_label} (↓)`,
-            line_style: {
-              stroke,
-              line_dash: `4,2`,
-              stroke_width: Math.max(1, stroke_width - 0.1),
-            },
             values: spin_down_band,
           })
         }
-        for (const { spin, series_label, line_style, values } of channels) {
+        for (const { spin, series_label, values } of channels) {
           const [x, y, metadata, line_breaks] = [[], [], [], []] as [
             number[],
             number[],
@@ -376,15 +360,18 @@
           }
           if (x.length === 0) continue
           all_series.push({
-            id: JSON.stringify([label, band_idx, spin]),
-            legend_id: JSON.stringify([label, spin]),
-            x,
-            y,
-            line_breaks,
-            markers,
-            label: series_label,
-            line_style,
-            metadata,
+            series: {
+              id: JSON.stringify([label, band_idx, spin]),
+              legend_id: JSON.stringify([label, spin]),
+              x,
+              y,
+              line_breaks,
+              markers,
+              label: series_label,
+              metadata,
+            },
+            color,
+            line: [band_idx, spin, is_acoustic === true, structure_label],
           })
         }
       }
@@ -412,8 +399,23 @@
       }
       scales.push(...Array(all_series.length - first_series).fill(max_slope || 1))
     }
-    return { series_data: all_series, ribbon_data: all_ribbons, slope_scales: scales }
+    return { series_geometry: all_series, ribbon_data: all_ribbons, slope_scales: scales }
   })
+
+  // Each band series with its style. A band hover restyles only the lines it emphasises or
+  // mutes: every other series keeps its object (and its points), so ScatterPlot sees them as
+  // unchanged. Non-reactive bookkeeping keyed by the geometry entries, dropped with them.
+  const styled_series = new WeakMap<(typeof series_geometry)[number], DataSeries>()
+  let series_data = $derived(
+    series_geometry.map((entry) => {
+      const line_style = get_line_style(entry.color, ...entry.line)
+      const prev = styled_series.get(entry)
+      if (prev && JSON.stringify(prev.line_style) === JSON.stringify(line_style)) return prev
+      const series = { ...entry.series, line_style }
+      styled_series.set(entry, series)
+      return series
+    }),
+  )
 
   // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
   // from the first structure plotting each segment, with their q-point index in it
@@ -564,13 +566,22 @@
     return overlay
   })
   // the colour bar for the mode markers, one object while its title holds: a new one per frame
-  // of a sweep would re-measure the bar (a forced layout) though nothing on it changed
+  // of a sweep would re-measure the bar (a forced layout) though nothing on it changed. Its
+  // title sits beside the bar, a line shorter, and the bar spans 120px rather than 220px, so it
+  // fits above the bands of short or narrow plots instead of pushing them down from outside (a
+  // horizontal colour bar wider than 70% of the padded plot always goes outside). A long title
+  // widens it rather than crushing the bar's tick labels.
   const mode_bar_title = $derived(
     mode_overlay.markers.length > 0 && mode_values ? mode_values.label : null,
   )
   const mode_color_bar = $derived(
     mode_bar_title !== null && rest.color_bar !== null
-      ? { title: mode_bar_title, ...rest.color_bar }
+      ? {
+          title: mode_bar_title,
+          title_side: `left` as const,
+          bar_style: `width: 120px; height: ${COLOR_BAR_DEFAULTS.horizontal_bar_height}px`,
+          ...rest.color_bar,
+        }
       : rest.color_bar,
   )
   // resolved to a concrete colour, which the canvas renderer (past 1000 markers) needs

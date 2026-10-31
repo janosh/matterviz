@@ -48,60 +48,73 @@ const parse_token_slow = (text: string, start: number, end: number): number => {
   return Number(wide ? `${wide.mantissa}e${wide.exponent}` : token)
 }
 
-// Parse the decimal token text[start, end) (digits, one `.`, e/E/d/D exponent) from char
-// codes. With mantissa < 2^53 and |exponent| <= 22, `mantissa * 10^exp` is one correctly
-// rounded operation (Clinger's fast path) matching Number() bit for bit; anything else (long
-// mantissas, `*^`, unicode minus, NaN) takes the string path.
-export function parse_decimal_token(text: string, start: number, end: number): number {
+// One past the last character of the token scan_number last read
+let token_end = 0
+
+// Parse the decimal token (digits, one `.`, e/E/d/D exponent) at `start`, which ends at the
+// next whitespace or the end of `text`, in one pass over its char codes; token_end marks its
+// end. With mantissa < 2^53 and |exponent| <= 22, `mantissa * 10^exp` is one correctly rounded
+// operation (Clinger's fast path) matching Number() bit for bit; anything else (long mantissas,
+// `*^`, unicode minus, NaN) takes the string path. Fusing the scan with the parse (instead of
+// finding the token end first) read a 200^3 CHGCAR 1.7x faster.
+function scan_number(text: string, start: number): number {
   let pos = start
-  let negative = false
   let code = text.charCodeAt(pos)
+  let negative = false
   if (code === 45 || code === 43) {
     // '-' / '+'
     negative = code === 45
-    pos++
+    code = text.charCodeAt(++pos)
   }
   let mantissa = 0
-  let n_digits = 0
-  let exponent = 0
-  let seen_dot = false
-  for (; pos < end; pos++) {
-    code = text.charCodeAt(pos)
-    if (code >= 48 && code <= 57) {
-      mantissa = mantissa * 10 + (code - 48)
-      n_digits++
-      if (seen_dot) exponent--
-    } else if (code === 46 && !seen_dot) {
-      seen_dot = true
-    } else break
+  const digits_start = pos
+  while (code >= 48 && code <= 57) {
+    mantissa = mantissa * 10 + (code - 48)
+    code = text.charCodeAt(++pos)
   }
-  if (n_digits === 0 || mantissa >= MAX_SAFE_MANTISSA)
-    return parse_token_slow(text, start, end)
-  if (pos < end) {
+  let n_digits = pos - digits_start
+  let exponent = 0
+  if (code === 46) {
+    // '.': each fraction digit lowers the exponent by one
+    const fraction_start = ++pos
     code = text.charCodeAt(pos)
-    // e E d D
-    if (code !== 101 && code !== 69 && code !== 100 && code !== 68) {
-      return parse_token_slow(text, start, end)
+    while (code >= 48 && code <= 57) {
+      mantissa = mantissa * 10 + (code - 48)
+      code = text.charCodeAt(++pos)
     }
-    pos++
+    exponent = fraction_start - pos
+    n_digits -= exponent
+  }
+  if (code === 101 || code === 69 || code === 100 || code === 68) {
+    // e E d D
+    code = text.charCodeAt(++pos)
     let exp_negative = false
-    code = text.charCodeAt(pos)
     if (code === 45 || code === 43) {
       exp_negative = code === 45
-      pos++
+      code = text.charCodeAt(++pos)
     }
     let exp_value = 0
-    let n_exp_digits = 0
-    for (; pos < end; pos++) {
-      code = text.charCodeAt(pos)
-      if (code < 48 || code > 57) break
+    const exp_start = pos
+    while (code >= 48 && code <= 57) {
       exp_value = exp_value * 10 + (code - 48)
-      n_exp_digits++
+      code = text.charCodeAt(++pos)
     }
-    if (pos < end || n_exp_digits === 0) return parse_token_slow(text, start, end)
+    if (pos === exp_start) n_digits = 0 // `1e`: no exponent digits
     exponent += exp_negative ? -exp_value : exp_value
   }
-  if (Math.abs(exponent) > 22) return parse_token_slow(text, start, end)
+  // the token must end here: past the end of text, code is NaN and the comparison false
+  if (
+    n_digits === 0 ||
+    mantissa >= MAX_SAFE_MANTISSA ||
+    exponent > 22 ||
+    exponent < -22 ||
+    code > 32
+  ) {
+    while (pos < text.length && text.charCodeAt(pos) > 32) pos++
+    token_end = pos
+    return parse_token_slow(text, start, pos)
+  }
+  token_end = pos
   const value =
     exponent >= 0 ? mantissa * POWERS_OF_TEN[exponent] : mantissa / POWERS_OF_TEN[-exponent]
   return negative ? -value : value
@@ -152,11 +165,9 @@ export function parse_float_block(
     }
     if (pos >= len) break
 
-    // Find end of token
     const start = pos
-    while (pos < len && text.charCodeAt(pos) > 32) pos++
-
-    const num = parse_decimal_token(text, start, pos)
+    const num = scan_number(text, pos)
+    pos = token_end
     // Skipping an unreadable token would shift every later value one grid point early
     if (Number.isNaN(num) && !(allow_nan && nan_token_at(text, start))) {
       throw new TypeError(
@@ -231,7 +242,7 @@ const all_numeric = (tokens: readonly string[]): boolean =>
 // CHG, AECCAR*, PARCHG) hold the total density, then one magnetization block (collinear spin)
 // or three (m_x, m_y, m_z: noncollinear/SOC). Spin-polarized ELFCARs and LOCPOTs list up, down.
 type VaspVolumetricKind = `density` | `elfcar` | `locpot`
-const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string[]>> = {
+export const VASP_BLOCK_LABELS: Record<VaspVolumetricKind, Record<number, string[]>> = {
   density: {
     1: [`charge density`],
     2: [`charge density`, `magnetization density`],
@@ -496,48 +507,69 @@ export function parse_cube(
   }
   const structure = volumetric_crystal(sites, lattice, is_periodic)
 
-  // Values per grid point, declared twice: line 3's optional 5th field (NVAL) and the leading
-  // integer of the orbital header line ("NMO m1 m2 …"), which is the orbital count
-  let values_per_point = line2.length > 4 ? line2[4] : 1
+  // Values per grid point, declared twice: line 3's optional 5th field (NVAL) and the orbital
+  // header ("NMO m1 m2 …", Gaussian writes 10 integers per line), whose count is the orbitals'
+  const n_values = line2.length > 4 ? line2[4] : 1
+  if (!Number.isInteger(n_values) || n_values < 1) {
+    throw new Error(`.cube header line 3 declares ${n_values} values per grid point`)
+  }
+  const orbital_ids: number[] = []
   if (has_orbital_header) {
-    if (pos >= content.length) {
-      throw new Error(`.cube declares orbital data but ends before its orbital header line`)
+    let n_orbitals = 0
+    do {
+      if (pos >= content.length) {
+        throw new Error(`.cube declares orbital data but ends inside its orbital header`)
+      }
+      const cur = read_text_line(content, pos)
+      pos = cur.next
+      const tokens = cur.line.trim().split(/\s+/).filter(Boolean).map(Number)
+      if (!n_orbitals) {
+        n_orbitals = tokens.shift() ?? 0
+        if (!Number.isInteger(n_orbitals) || n_orbitals < 1) {
+          throw new Error(
+            `.cube orbital header "${cur.line.trim()}" does not start with an orbital count`,
+          )
+        }
+      }
+      orbital_ids.push(...tokens)
+    } while (orbital_ids.length < n_orbitals)
+    if (orbital_ids.length > n_orbitals || !orbital_ids.every(Number.isInteger)) {
+      throw new Error(`.cube orbital header lists [${orbital_ids}] for ${n_orbitals} orbitals`)
     }
-    const cur = read_text_line(content, pos)
-    pos = cur.next
-    const n_orbitals = Number(cur.line.trim().split(/\s+/)[0])
-    if (!Number.isInteger(n_orbitals) || n_orbitals < 1) {
-      throw new Error(
-        `.cube orbital header "${cur.line.trim()}" does not start with an orbital count`,
-      )
-    }
-    values_per_point = Math.max(values_per_point, n_orbitals)
   }
-  // The data interleaves that many fields per point: reading a 2-orbital cube as one field
-  // returned a volume alternating MO1/MO2 over half the grid
-  if (values_per_point !== 1) {
+  const values_per_point = Math.max(n_values, orbital_ids.length)
+
+  // Multi-field cubes (several MOs) interleave their fields per grid point
+  const n_points = checked_grid_points(n_grid, content.length - pos, `.cube`, values_per_point)
+  const data = new Float64Array(n_points * values_per_point)
+  const { count } = parse_float_block(content, pos, data.length, data)
+  if (count < data.length) {
     throw new Error(
-      `.cube carries ${values_per_point} values per grid point (multi-orbital cube). Only ` +
-        `single-field cubes are supported; split it into one cube per orbital first.`,
+      `.cube (${n_grid.join(`×`)}): expected ${data.length} data values, got ${count} — file truncated?`,
     )
   }
 
-  const { data, total, count } = read_grid_block(content, pos, n_grid, `.cube`)
-  if (count < total) {
-    throw new Error(
-      `.cube (${n_grid.join(`×`)}): expected ${total} data values, got ${count} — file truncated?`,
-    )
-  }
-
+  // Volume ids must be unique, so repeated MO numbers (alpha and beta) fall back to positions
+  const named_orbitals =
+    orbital_ids.length === values_per_point && new Set(orbital_ids).size === values_per_point
   // .cube data is already z-fastest (z varies fastest, then y, then x)
-  const volume = make_volume(data, n_grid, {
-    id: `scalar`,
-    lattice,
-    origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
-    periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
-    label: `volumetric data`,
+  const volumes = Array.from({ length: values_per_point }, (_, field_idx) => {
+    let [values, label] = [data, `volumetric data`]
+    if (values_per_point > 1) {
+      values = new Float64Array(n_points)
+      for (let idx = 0; idx < n_points; idx++)
+        values[idx] = data[idx * values_per_point + field_idx]
+      label = named_orbitals ? `MO ${orbital_ids[field_idx]}` : `field ${field_idx + 1}`
+    }
+    return make_volume(values, n_grid, {
+      id: values_per_point > 1 ? label : `scalar`,
+      lattice,
+      origin: [0, 0, 0], // same lattice frame as the shifted atomic positions
+      periodic: is_periodic, // periodic systems wrap; molecular .cube files include both endpoints
+      label,
+    })
   })
-  return { structure, volumes: [volume] }
+  return { structure, volumes }
 }
 
 type VolumetricFormat = `cube` | `chgcar`

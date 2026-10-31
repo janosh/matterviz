@@ -70,7 +70,7 @@
   import { DEFAULT_CUTAWAY } from '#lib/structure/cutaway.js'
   import { is_vector_key } from '#lib/structure/vectors.js'
   import { has_usable_lattice } from '#lib/structure/validation.js'
-  import { rdf_bin_sites } from '#lib/rdf/calc-rdf.js'
+  import { rdf_bin_site_index } from '#lib/rdf/calc-rdf.js'
   import { element_site_indices, scene_site_indices, site_source_atoms } from './linked-sites'
   import type { FrameChannels } from './frame'
   import Structure from '#lib/structure/Structure.svelte'
@@ -959,7 +959,9 @@
   let step_label_positions = $derived.by((): number[] => {
     if (!step_labels || total_frames <= 1) return []
     if (Array.isArray(step_labels)) {
-      return step_labels.filter((idx) => idx >= 0 && idx < total_frames)
+      // once each (SequenceControls keys its ticks by index), sorted
+      const in_range = step_labels.filter((idx) => idx >= 0 && idx < total_frames)
+      return [...new Set(in_range)].toSorted((idx_a, idx_b) => idx_a - idx_b)
     }
     const display_ticks =
       step_labels > 0
@@ -1188,15 +1190,27 @@
   }
   // One hover shared by the 3D view and the inspector's atom rows, so either points at the other
   let hovered_site_idx = $state<number | null>(null)
-  // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve
+  // An RDF bin's pairs are found in the displayed frame, not the time average behind the curve.
+  // One neighbour search indexes every bin of the frame and curve, so sweeping the pointer
+  // along it reads bins back instead of searching per bin (non-reactive: hover-only cache).
+  let shell_index: {
+    structure: object
+    key: string
+    sites_of: ReturnType<typeof rdf_bin_site_index>
+  } | null = null
   const on_shell_hover: ComponentProps<typeof TrajectoryRdfPane>[`on_shell_hover`] = (
     hover,
   ) => {
     const structure = session.current_structure
     if (!hover || !has_usable_lattice(structure)) return highlight([])
-    const { bin_idx, element_pair } = hover
-    if (bin_idx === null) return highlight(element_site_indices(structure, element_pair))
-    highlight(highlight_site_union(rdf_bin_sites(structure, { ...hover, bin_idx })))
+    const { bin_idx, ...options } = hover
+    if (bin_idx === null)
+      return highlight(element_site_indices(structure, options.element_pair))
+    const key = JSON.stringify(options)
+    if (shell_index?.structure !== structure || shell_index.key !== key) {
+      shell_index = { structure, key, sites_of: rdf_bin_site_index(structure, options) }
+    }
+    highlight(highlight_site_union(shell_index.sites_of(bin_idx)))
   }
 
   // === analysis menu ===

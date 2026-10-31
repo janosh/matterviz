@@ -460,7 +460,7 @@ test.each<[string, number[], number[], (number | null)[]]>([
   ],
 ])(`project_line_points line_breaks: %s`, (_desc, y, line_breaks, expected) => {
   const data = { x: y.map((_, idx) => idx), y, line_breaks }
-  const points = project_line_points(
+  const { points } = project_line_points(
     data,
     (val) => val,
     (val) => val,
@@ -487,7 +487,7 @@ describe(`viewport line projection`, () => {
           const y_scale = (value: number) => value * 20
           // oxfmt-ignore
           for (const range of [[30.2, 40.8], [40.8, 30.2], [30.2, 30.8], [-5, 2], [98, 110]] as Vec2[]) {
-            const cropped = project_line_points(
+            const { points: cropped, cropped: was_cropped } = project_line_points(
               data,
               x_scale,
               y_scale,
@@ -496,6 +496,7 @@ describe(`viewport line projection`, () => {
               curve,
             )
             const full = project_line_points(data, x_scale, y_scale, range, 0, curve)
+            expect([was_cropped, full.cropped]).toEqual([true, false])
             const lower = Math.min(...range) * 10
             const upper = Math.max(...range) * 10
             const segments = (points: Vec2[]) => {
@@ -522,8 +523,8 @@ describe(`viewport line projection`, () => {
                 } as unknown as CanvasRenderingContext2D)(points)
               return output
             }
-            expect(segments(cropped)).toEqual(segments(full))
-            expect(cropped.length).toBeLessThan(full.length)
+            expect(segments(cropped)).toEqual(segments(full.points))
+            expect(cropped.length).toBeLessThan(full.points.length)
           }
         }
       }
@@ -544,9 +545,10 @@ describe(`viewport line projection`, () => {
       expect(reads).toBeLessThanOrEqual(values.length + 1)
       const data = { x: values, y: values.map(() => 1) }
       const identity = (value: number) => value
-      expect(project_line_points(data, identity, identity, [1, 2], 0)).toEqual(
-        values.filter(Number.isFinite).map((value) => [value, 1]),
-      )
+      expect(project_line_points(data, identity, identity, [1, 2], 0)).toEqual({
+        points: values.filter(Number.isFinite).map((value) => [value, 1]),
+        cropped: false,
+      })
     },
   )
 })

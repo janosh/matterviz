@@ -35,7 +35,7 @@ import {
   is_time_scale,
 } from '#lib/plot/core/types.js'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 
 type Limits = [number | null, number | null]
 const sample_values = [1, 2, 3, 4, 5]
@@ -599,8 +599,13 @@ describe(`scales`, () => {
       { min: 7, max: 8, ticks: 8, expected: [7, 7.2, 7.4, 7.6, 7.8, 8] },
       { min: 2, max: 3, ticks: 8, expected: [2, 2.2, 2.4, 2.6, 2.8, 3] },
       // non-positive bounds clamp to LOG_EPS before the power scan
-      { min: -10, max: 100, ticks: 5, expected: [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1, 10, 100] },
-      { min: 1e-12, max: 1, ticks: 5, expected: [1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 1] },
+      { min: -10, max: 100, ticks: 5, expected: [1e-8, 1e-6, 1e-4, 0.01, 1, 100] },
+      // past count + 1 decades, every n-th power whose exponent is a multiple of n
+      { min: 1e-12, max: 1, ticks: 5, expected: [1e-12, 1e-9, 1e-6, 1e-3, 1] },
+      { min: 1e-8, max: 1e8, ticks: 4, expected: [1e-8, 1e-4, 1, 1e4, 1e8] },
+      // without a count (plot axes) every decade, their tick layout thins labels; never < 2 powers
+      { min: 1e-3, max: 1e3, ticks: undefined, expected: [1e-3, 0.01, 0.1, 1, 10, 100, 1000] },
+      { min: 10, max: 1000, ticks: 1, expected: [10, 100, 1000] },
       { min: 1e-20, max: 1e-18, ticks: 5, expected: [1e-20, 1e-19, 1e-18] },
     ])(`log ticks: $min to $max (ticks=$ticks)`, ({ min, max, ticks, expected }) => {
       const result = generate_log_ticks(min, max, ticks)
@@ -683,6 +688,12 @@ describe(`scales`, () => {
       { ticks: `month`, start: [2023, 0, 15], end: [2023, 5, 10], expected: [1, 2, 3, 4, 5].map((month) => [2023, month, 1]) },
       { ticks: `year`, start: [2020, 5, 15], end: [2025, 2, 10], expected: [2021, 2022, 2023, 2024, 2025].map((year) => [year, 0, 1]) },
       { ticks: `day`, start: [2023, 0, 30], end: [2023, 1, 3], expected: [[2023, 0, 30], [2023, 0, 31], [2023, 1, 1], [2023, 1, 2], [2023, 1, 3]] },
+      // short spans: d3 would tick weekly or daily and miss the month/year start inside
+      { ticks: `month`, start: [2023, 0, 25], end: [2023, 1, 4], expected: [[2023, 1, 1]] },
+      { ticks: `month`, start: [2023, 0, 3], end: [2023, 0, 28], expected: [] },
+      { ticks: `year`, start: [2023, 11, 28], end: [2024, 0, 3], expected: [[2024, 0, 1]] },
+      { ticks: `year`, start: [2023, 11, 1], end: [2025, 0, 1], expected: [[2024, 0, 1], [2025, 0, 1]] },
+      { ticks: `year`, start: [2024, 1, 1], end: [2024, 10, 1], expected: [] },
       // negative number: interval in days
       { ticks: -7, start: [2023, 0, 1], end: [2023, 0, 29], expected: weekly },
       // reversed domain: the interval count must come from the sorted span, not domain[1]-domain[0]
@@ -694,6 +705,17 @@ describe(`scales`, () => {
       expect(result.map((tick) => new Date(tick))).toEqual(
         expected.map((parts) => new Date(...parts)),
       )
+    })
+
+    // as d3's timeMonth: a 1st with no midnight ticks at 01:00, the next months at 00:00 again
+    test(`month ticks return to local midnight after a DST change on the 1st`, () => {
+      vi.stubEnv(`TZ`, `America/Asuncion`) // clocks jumped from 00:00 to 01:00 on 2017-10-01
+      onTestFinished(() => void vi.unstubAllEnvs())
+      const domain: Vec2 = [new Date(2017, 8, 15).getTime(), new Date(2018, 1, 15).getTime()]
+      const ticks = generate_ticks(domain, `time`, `month`, scaleTime().domain(domain))
+      expect(
+        ticks.map((tick) => [new Date(tick).getMonth(), new Date(tick).getHours()]),
+      ).toEqual([[9, 1], ...[10, 11, 0, 1].map((month) => [month, 0])])
     })
 
     // Stepping overshoots by float dust (3 * 0.1 = 0.30000000000000004), which PlotAxis's

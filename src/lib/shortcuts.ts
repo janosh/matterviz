@@ -1,6 +1,10 @@
 import { forward_window_keydown } from 'svelte-widgets/attachments'
 import { on } from 'svelte/events'
-import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+import {
+  format_shortcut,
+  is_editable_event_target,
+  is_modifier_chord,
+} from 'svelte-widgets/utils'
 
 // One registry of the keyboard shortcuts viewers handle. Each viewer lists its scopes' entries
 // at the bottom of its info (or settings) pane (ShortcutsList), and buttons with a shortcut take
@@ -20,7 +24,8 @@ export const SHORTCUTS = {
   close: { keys: `Escape`, description: `Close the open pane, menu or mode, unpin or clear the tooltip`, scopes: [`viewer`] },
   reset_camera: { keys: `R`, description: `Reset camera`, scopes: [`camera`] },
   wheel_zoom: { keys: `Control Meta`, label: `⌘/Ctrl + scroll`, description: `Zoom (an embedded viewer also zooms on plain scroll once clicked, until the pointer leaves)`, scopes: [`camera`, `ternary-phase-diagram`] },
-  hover_walk: { keys: `ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter`, label: `Arrows / Home / End / Enter`, description: `Step the tooltip through the scene (viewer focused), Enter clicks`, scopes: [`camera`, `ternary-phase-diagram`] },
+  hover_walk: { keys: `ArrowLeft ArrowRight ArrowUp ArrowDown Home End Enter`, label: `Arrows / Home / End / Enter`, description: `Step the tooltip through the scene (viewer focused), Enter clicks`, scopes: [`camera`] },
+  rod_walk: { keys: `ArrowUp ArrowDown Home End Enter`, label: `↑ / ↓ / Home / End / Enter`, description: `Step the tooltip through the 3D prism's phase rods (viewer focused), Enter selects`, scopes: [`ternary-phase-diagram`] },
   play: { keys: `Space`, description: `Play / pause`, scopes: [`sequence`] },
   previous: { keys: `ArrowLeft`, description: `Previous frame`, scopes: [`sequence`] },
   next: { keys: `ArrowRight`, description: `Next frame`, scopes: [`sequence`] },
@@ -33,17 +38,18 @@ export const SHORTCUTS = {
   view_mode: { keys: `V Shift+V`, description: `Next / previous view mode`, scopes: [`trajectory`] },
   info_pane: { keys: `I`, description: `Toggle info pane`, scopes: [`structure`, `brillouin`] },
   multi_view: { keys: `G`, description: `Toggle multi-view`, scopes: [`structure`] },
-  toggle_atoms: { keys: `A`, description: `Toggle atoms`, scopes: [`structure`] },
-  toggle_image_atoms: { keys: `Shift+A`, description: `Toggle image atoms`, scopes: [`structure`] },
-  toggle_bonds: { keys: `B`, description: `Toggle bonds`, scopes: [`structure`] },
-  toggle_polyhedra: { keys: `P`, description: `Toggle polyhedra`, scopes: [`structure`] },
-  add_mode: { keys: `A`, description: `Add atoms (atom editing) / add bonds (bond editing)`, scopes: [`structure-edit`] },
-  delete_bond_mode: { keys: `D`, description: `Delete bonds`, scopes: [`structure-edit`] },
-  change_element: { keys: `E`, description: `Change element of selected atoms`, scopes: [`structure-edit`] },
-  delete_atoms: { keys: `Delete Backspace`, description: `Delete selected atoms`, scopes: [`structure-edit`] },
-  duplicate: { keys: `Control+D Meta+D`, description: `Duplicate selected atoms`, scopes: [`structure-edit`] },
-  undo: { keys: `Control+Z Meta+Z`, description: `Undo`, scopes: [`structure-edit`] },
-  redo: { keys: `Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z`, description: `Redo`, scopes: [`structure-edit`] },
+  toggle_atoms: { keys: `A`, description: `Toggle atoms`, scopes: [`structure-view`] },
+  toggle_image_atoms: { keys: `Shift+A`, description: `Toggle image atoms`, scopes: [`structure-view`] },
+  toggle_bonds: { keys: `B`, description: `Toggle bonds`, scopes: [`structure-view`] },
+  toggle_polyhedra: { keys: `P`, description: `Toggle polyhedra`, scopes: [`structure-view`] },
+  add_atoms: { keys: `A`, description: `Add atoms`, scopes: [`structure-edit-atoms`] },
+  add_bonds: { keys: `A`, description: `Add bonds`, scopes: [`structure-edit-bonds`] },
+  delete_bond_mode: { keys: `D`, description: `Delete bonds`, scopes: [`structure-edit-bonds`] },
+  change_element: { keys: `E`, description: `Change element of selected atoms`, scopes: [`structure-edit-atoms`] },
+  delete_atoms: { keys: `Delete Backspace`, description: `Delete selected atoms`, scopes: [`structure-edit-atoms`] },
+  duplicate: { keys: `Control+D Meta+D`, description: `Duplicate selected atoms`, scopes: [`structure-edit-atoms`] },
+  undo: { keys: `Control+Z Meta+Z`, description: `Undo`, scopes: [`structure-edit-atoms`, `structure-edit-bonds`] },
+  redo: { keys: `Control+Y Meta+Y Control+Shift+Z Meta+Shift+Z`, description: `Redo`, scopes: [`structure-edit-atoms`, `structure-edit-bonds`] },
   color_mode: { keys: `C`, description: `Cycle color mode`, scopes: [`chempot-3d`] },
   hull_color_mode: { keys: `B`, description: `Toggle stability / energy coloring`, scopes: [`convex-hull`] },
   hull_stable: { keys: `S`, description: `Toggle stable phases`, scopes: [`convex-hull`] },
@@ -62,23 +68,12 @@ export const SHORTCUTS = {
 export type ShortcutId = keyof typeof SHORTCUTS
 export type ShortcutScope = (typeof SHORTCUTS)[ShortcutId]['scopes'][number]
 
-const KEY_LABELS: Record<string, string> = {
-  ArrowLeft: `←`,
-  ArrowRight: `→`,
-  Control: `Ctrl`,
-  Meta: `⌘`,
-  Escape: `Esc`,
-  PageUp: `PgUp`,
-  PageDown: `PgDn`,
-  Delete: `Del`,
-}
-
 // Human-readable keys of a shortcut: `Home Control+ArrowLeft` -> `Home / Ctrl+←`
 export const format_shortcut_keys = ({ keys, label }: Shortcut): string =>
   label ??
   keys
     .split(` `)
-    .map((chord) => chord.replaceAll(/\w{2,}/g, (key) => KEY_LABELS[key] ?? key))
+    .map((chord) => format_shortcut(chord).join(`+`))
     .join(` / `)
 
 // `Reset camera (R)`: a button's title naming its shortcut

@@ -1,4 +1,5 @@
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
+import { pick_contrast_color as pick_widget_contrast } from 'svelte-widgets/attachments'
 import type { ColorSchemeName } from '#lib/constants.js'
 import { evict_oldest } from '#lib/labels.js'
 import { clamp } from '#lib/math.js'
@@ -207,19 +208,6 @@ export function perceived_brightness(color: string): number {
   return (0.299 * red + 0.587 * green + 0.114 * blue) / 255 // https://stackoverflow.com/a/596243
 }
 
-// WCAG relative luminance from linearized sRGB channels
-const rgb_luminance = ({ r: red, g: green, b: blue }: RGBColor): number => {
-  const linearize = (channel: number): number => {
-    const fraction = channel / 255
-    return fraction <= 0.04045 ? fraction / 12.92 : ((fraction + 0.055) / 1.055) ** 2.4
-  }
-  return 0.2126 * linearize(red) + 0.7152 * linearize(green) + 0.0722 * linearize(blue)
-}
-
-// WCAG 2 contrast ratio between two relative luminances, from 1 (same) to 21 (black on white)
-const wcag_contrast = (lum_a: number, lum_b: number): number =>
-  (Math.max(lum_a, lum_b) + 0.05) / (Math.min(lum_a, lum_b) + 0.05)
-
 const composite_rgb = (foreground: RGBColor, backdrop: RGBColor): RGBColor => {
   const foreground_alpha = clamp01(foreground.opacity)
   const backdrop_alpha = clamp01(backdrop.opacity)
@@ -249,33 +237,27 @@ export interface Paint {
   choices?: readonly [string, string]
 }
 
-const DEFAULT_CONTRAST_CHOICES = [`black`, `white`] as const
-const WCAG_AA = 4.5
-
-// The lighter choice whenever it reaches WCAG AA (4.5:1), else the higher-contrast one (black
-// or white always reaches 4.58:1). Pure max-ratio flips near-ties like steelblue (both 4.6:1)
-// to black, which reads worse; APCA put white on mid-tones at 2.7-3.3:1.
+// svelte-widgets' WCAG pick: the lighter choice whenever it reaches AA (4.5:1), else the
+// higher-contrast one. Stricter than the widget about translucency: a translucent background
+// needs the backdrop it sits on, since assuming a white page is wrong in dark mode. Colors go
+// through parse_rgb first, whose canvas pass reads what the widget parser can't (color-mix(),
+// relative colors, system colors).
 export function pick_contrast_color(paint: Paint): string {
-  const { background, backdrop, choices = DEFAULT_CONTRAST_CHOICES } = paint
-  const parsed_bg = parse_rgb(background)
-  if (parsed_bg.opacity === 1) return contrast_on(parsed_bg, choices)
-  if (!backdrop) throw new Error(`Translucent background requires a backdrop: ${background}`)
-  const parsed_backdrop = parse_rgb(backdrop)
-  if (parsed_backdrop.opacity < 1) throw new Error(`backdrop must be opaque: ${backdrop}`)
-  return contrast_on(composite_rgb(parsed_bg, parsed_backdrop), choices)
-}
-const contrast_on = (bg: RGBColor, choices: readonly [string, string]): string => {
-  const bg_luminance = rgb_luminance(bg)
-  const choice_luminances = choices.map((choice) => {
-    const parsed_choice = parse_rgb(choice)
-    return rgb_luminance(
-      parsed_choice.opacity < 1 ? composite_rgb(parsed_choice, bg) : parsed_choice,
-    )
+  const { background, backdrop, choices } = paint
+  const bg = parse_rgb(background)
+  if (!backdrop && bg.opacity < 1) {
+    throw new Error(`Translucent background requires a backdrop: ${background}`)
+  }
+  const as_rgb = (color: string) => parse_rgb(color).formatRgb()
+  const [dark, light] = choices ?? [`black`, `white`]
+  const rgb_choices = [as_rgb(dark), as_rgb(light)] as const
+  const picked = pick_widget_contrast({
+    bg_color: bg.formatRgb(),
+    backdrop: backdrop === undefined ? undefined : as_rgb(backdrop),
+    choices: rgb_choices,
   })
-  const ratios = choice_luminances.map((lum) => wcag_contrast(lum, bg_luminance))
-  const lighter_idx = choice_luminances[1] >= choice_luminances[0] ? 1 : 0
-  if (ratios[lighter_idx] >= WCAG_AA) return choices[lighter_idx]
-  return ratios[0] >= ratios[1] ? choices[0] : choices[1]
+  // hand back the caller's own spelling of the winner, not its rgb() conversion
+  return picked === rgb_choices[0] ? dark : light
 }
 
 // Like pick_contrast_color but gives up on backgrounds JS cannot resolve (CSS vars,
@@ -302,7 +284,7 @@ export const tooltip_paint = (fill: unknown): TooltipPaint | null => {
   if (!parsed?.opacity) return null
   const opaque = parsed.copy({ opacity: 1 })
   const background = parsed.opacity === 1 ? fill : opaque.formatRgb()
-  return { background, color: contrast_on(opaque, DEFAULT_CONTRAST_CHOICES) }
+  return { background, color: pick_contrast_color({ background: opaque.formatRgb() }) }
 }
 
 // Distinct backgrounds a memo holds at once (a continuous scale yields a string per value).

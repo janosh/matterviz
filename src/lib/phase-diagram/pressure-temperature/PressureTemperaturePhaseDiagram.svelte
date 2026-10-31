@@ -234,19 +234,31 @@
   // Lowest pressure a log axis shows (data units); null when the data has no positive one
   const log_floor = $derived(wants_log && pt_data ? pressure_log_floor(pt_data) : null)
   const log_pressure = $derived(log_floor !== null)
+  // The converters below snapshot their reactive inputs and are rebuilt when one changes:
+  // they run per point, and reading every input per call dominated a pan
   // On a log axis P <= 0 has no position: such points go far below the axis floor and the plot
   // clip cuts them (a line from 0 GPa enters at the left edge). Positive values aren't clamped.
-  const p_to_display = (pressure: number): number =>
-    log_floor !== null && pressure <= 0
-      ? convert_pressure(log_floor, data_p_unit, p_unit) / 1e6
-      : convert_pressure(pressure, data_p_unit, p_unit)
-  const t_to_display = (temp: number): number => convert_temp(temp, data_t_unit, t_unit)
+  const p_to_display = $derived.by(() => {
+    const [floor, from_unit, to_unit] = [log_floor, data_p_unit, p_unit]
+    const below_floor = floor === null ? 0 : convert_pressure(floor, from_unit, to_unit) / 1e6
+    return (pressure: number): number =>
+      floor !== null && pressure <= 0
+        ? below_floor
+        : convert_pressure(pressure, from_unit, to_unit)
+  })
+  const t_to_display = $derived.by(() => {
+    const [from_unit, to_unit] = [data_t_unit, t_unit]
+    return (temp: number): number => convert_temp(temp, from_unit, to_unit)
+  })
   // [pressure, temperature] pair → [x, y] and back: swap_axes flips the sides
   const orient = <T>([pressure_side, temp_side]: [T, T]): [T, T] =>
     swap_axes ? [temp_side, pressure_side] : [pressure_side, temp_side]
   // [pressure, temperature] in data units → [x, y] in display units, and back
-  const to_xy = ([pressure, temp]: Vec2): Vec2 =>
-    orient([p_to_display(pressure), t_to_display(temp)])
+  const to_xy = $derived.by(() => {
+    const [to_p, to_t, swapped] = [p_to_display, t_to_display, swap_axes]
+    return ([pressure, temp]: Vec2): Vec2 =>
+      swapped ? [to_t(temp), to_p(pressure)] : [to_p(pressure), to_t(temp)]
+  })
   const from_xy = (xy: Vec2): Vec2 => {
     const [disp_p, disp_t] = orient(xy)
     return [
@@ -293,10 +305,13 @@
     clip_id_prefix: `pt-clip`,
   })
   const no_marginals = normalize_marginals(false)
-  const data_to_px = (point: Vec2): Vec2 => {
-    const [coord_x, coord_y] = to_xy(point)
-    return [frame.scales.x(coord_x), frame.scales.y(coord_y)]
-  }
+  const data_to_px = $derived.by(() => {
+    const [xy_of, { x: x_scale, y: y_scale }] = [to_xy, frame.scales]
+    return (point: Vec2): Vec2 => {
+      const [coord_x, coord_y] = xy_of(point)
+      return [x_scale(coord_x), y_scale(coord_y)]
+    }
+  })
   const px_to_data = ([px_x, px_y]: Vec2): Vec2 =>
     from_xy([Number(frame.scales.x.invert(px_x)), Number(frame.scales.y.invert(px_y))])
 
@@ -370,20 +385,20 @@
   // === Uncertainty ===
   // Signed pixel moves of a point under ±n_sigma standard errors. Pressure and temperature
   // each move along their own axis, so their x and y parts simply add (one of each is 0).
-  const sigma_px = ([pressure, temp]: Vec2, sigma_p = 0, sigma_t = 0): PixelSigma => {
-    const [base_x, base_y] = data_to_px([pressure, temp])
-    const moved = (sign: number): Vec2 => {
-      // on a log axis an error reaching P <= 0 runs to the axis floor, not 6 decades below it
-      const shifted_p = pressure + sign * n_sigma * sigma_p
-      const [p_x, p_y] = data_to_px([
-        log_floor !== null && shifted_p <= 0 ? log_floor : shifted_p,
-        temp,
-      ])
-      const [t_x, t_y] = data_to_px([pressure, temp + sign * n_sigma * sigma_t])
-      return [p_x + t_x - 2 * base_x, p_y + t_y - 2 * base_y]
+  const sigma_px = $derived.by(() => {
+    const [to_px, width, floor] = [data_to_px, n_sigma, log_floor]
+    return ([pressure, temp]: Vec2, sigma_p = 0, sigma_t = 0): PixelSigma => {
+      const [base_x, base_y] = to_px([pressure, temp])
+      const moved = (sign: number): Vec2 => {
+        // on a log axis an error reaching P <= 0 runs to the axis floor, not 6 decades below it
+        const shifted_p = pressure + sign * width * sigma_p
+        const [p_x, p_y] = to_px([floor !== null && shifted_p <= 0 ? floor : shifted_p, temp])
+        const [t_x, t_y] = to_px([pressure, temp + sign * width * sigma_t])
+        return [p_x + t_x - 2 * base_x, p_y + t_y - 2 * base_y]
+      }
+      return { plus: moved(1), minus: moved(-1) }
     }
-    return { plus: moved(1), minus: moved(-1) }
-  }
+  })
   // Capped bars along whichever axes (0: x, 1: y) the point has an error on
   const ERROR_BAR_CAP = 3
   const error_bars = (at: Vec2, { plus, minus }: PixelSigma): string =>
@@ -512,7 +527,7 @@
   )
 
   // === Hover and pin ===
-  let hover_info = $state<PtHoverInfo | null>(null)
+  let hover_info = $state.raw<PtHoverInfo | null>(null)
   // A click pins the hovered snapshot; the mark it names (special point, boundary or region)
   // makes a second click on the same mark unpin
   const mark_key = (info: PtHoverInfo): string =>

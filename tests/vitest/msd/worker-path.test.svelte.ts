@@ -7,11 +7,13 @@ import type { compute_msd_async as ComputeMsdAsync } from '#lib/msd/async-comput
 import { calc_msd } from '#lib/msd/calc-msd.js'
 import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
+import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
 import { drift_positions } from './helpers'
+import { orbit_run } from '../vacf/helpers'
 
 const stub = install_stub_worker<{
   id: number
@@ -98,4 +100,25 @@ it(`MsdPlot reports the element curve under a legend entry`, async () => {
     item?.dispatchEvent(new MouseEvent(`mouseleave`))
   }
   expect(on_curve_hover.mock.calls.flat()).toEqual([`Li`, null, `Li`, null, `Si`, null])
+})
+
+// The pane hands the collected stream itself to the worker client: a deep $state proxy of its
+// frame steps and cells made every payload snapshot 10x slower
+it(`TrajectoryMsdPane computes on the collected stream, not a proxy of it`, async () => {
+  const async_module = await import(`#lib/msd/async-compute.svelte.js`)
+  const compute = vi.spyOn(async_module, `compute_msd_async`)
+  const run = orbit_run(40, 0.04, 1)
+  const collect = vi.spyOn(run, `collect_positions`)
+  const component = mount(TrajectoryMsdPane, {
+    target: document.body,
+    props: { run, pane_open: true },
+  })
+  try {
+    await settle()
+    document.querySelector<HTMLButtonElement>(`.trajectory-msd-controls button`)?.click()
+    await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(1))
+    expect(compute.mock.calls[0][0]).toBe(await collect.mock.results[0].value)
+  } finally {
+    await unmount(component)
+  }
 })

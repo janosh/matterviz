@@ -22,16 +22,19 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
-// Load symmetry code only for tests that use it, then initialize WASM from its local binary.
+// Load symmetry code only for tests that use it, then initialize WASM from its local binary:
+// through the glue module itself, as a source handed to ensure_moyo_wasm_ready would register
+// a host source and keep every analysis off the worker path
 let moyo_initialized = false
 export async function init_moyo_for_tests(): Promise<void> {
   if (moyo_initialized) return
-  const { ensure_moyo_wasm_ready } = await import(`#lib/symmetry/analyze.js`)
-  await ensure_moyo_wasm_ready(
-    readFileSync(
-      resolve(import.meta.dirname, `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`),
-    ),
-  )
+  const [{ default: init_moyo }, { ensure_moyo_wasm_ready }] = await Promise.all([
+    import(`@spglib/moyo-wasm`),
+    import(`#lib/symmetry/analyze.js`),
+  ])
+  const wasm_path = `../../node_modules/@spglib/moyo-wasm/moyo_wasm_bg.wasm`
+  await init_moyo({ module_or_path: readFileSync(resolve(import.meta.dirname, wasm_path)) })
+  await ensure_moyo_wasm_ready() // the glue is initialized already, so this fetches nothing
   moyo_initialized = true
 }
 
@@ -638,3 +641,8 @@ export const image_options = (
         bonding_strategy: `electroneg_ratio`,
         bonding_options: {},
       }
+
+// A 1x1 PNG as a canvas encoder writes it: IHDR, IDAT, IEND and no pHYs
+const png_base64 = `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`
+export const png_blob = (): Blob =>
+  new Blob([Buffer.from(png_base64, `base64`)], { type: `image/png` })

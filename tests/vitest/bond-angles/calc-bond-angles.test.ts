@@ -6,6 +6,7 @@ import {
   calc_bond_angles,
   resolve_angle_bins,
 } from '#lib/bond-angles/calc-bond-angles.js'
+import * as calc_module from '#lib/bond-angles/calc-bond-angles.js'
 import BondAnglePlot from '#lib/bond-angles/BondAnglePlot.svelte'
 import { to_angle_bar_series } from '#lib/bond-angles/series.js'
 import type { BondAngleOptions, BondAngleSplitMode } from '#lib/bond-angles/index.js'
@@ -15,9 +16,9 @@ import type { Molecule } from '#lib/structure/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import { structure_map } from '#site/structures.js'
 import { tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
-import { bind_props, expect_plot_controls, mount_sized } from '../setup'
-import { make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { bind_props, create_drop_event, expect_plot_controls, mount_sized } from '../setup'
+import { BAD_ROW_CIF, make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 import { octahedron_points } from '../structure/geometry-fixtures'
 
 // Exact tetrahedral angle: acos(-1/3) in degrees
@@ -46,6 +47,16 @@ const tally = (keys: readonly string[]): Record<string, number> => {
   for (const key of keys) counts[key] = (counts[key] ?? 0) + 1
   return counts
 }
+// calc_bond_angles' columns as one record per angle, so expectations read per angle
+const triplets_of = (...args: Parameters<typeof calc_bond_angles>) => {
+  const { angles, center_idxs, neighbor_idxs, label_ids, labels } = calc_bond_angles(...args)
+  return Array.from(angles, (angle, idx) => ({
+    angle,
+    center_idx: center_idxs[idx],
+    neighbor_idxs: [neighbor_idxs[2 * idx], neighbor_idxs[2 * idx + 1]],
+    triplet: labels[label_ids[idx]],
+  }))
+}
 // Tally angles into { rounded_angle: count } so expectations read as geometry, not indices
 const angle_tally = (triplets: readonly { angle: number }[]): Record<string, number> =>
   tally(triplets.map((triplet) => triplet.angle.toFixed(4)))
@@ -54,7 +65,7 @@ const label_tally = (
   structure: Parameters<typeof calc_bond_angles>[0],
   options: Parameters<typeof calc_bond_angles>[1] = {},
 ): Record<string, number> =>
-  tally(calc_bond_angles(structure, options).map((triplet) => triplet.triplet))
+  tally(triplets_of(structure, options).map((triplet) => triplet.triplet))
 
 // C-H 1.087 Å along the four alternating cube diagonals
 const methane = ligand_shell(
@@ -97,7 +108,7 @@ describe(`calc_bond_angles analytic geometry`, () => {
   ] as const)(
     `%s reproduces the ideal angle multiset, every angle labelled %s`,
     (_name, structure, expected, label) => {
-      const triplets = calc_bond_angles(structure)
+      const triplets = triplets_of(structure)
       expect(angle_tally(triplets)).toEqual(expected)
       expect(triplets.every((triplet) => triplet.triplet === label)).toBe(true)
     },
@@ -105,7 +116,7 @@ describe(`calc_bond_angles analytic geometry`, () => {
 
   test(`every triplet names its centre and both outer site indices`, () => {
     // methane: C at site 0, H at sites 1-4; the six angles are the C(4, 2) unordered H pairs
-    const triplets = calc_bond_angles(methane)
+    const triplets = triplets_of(methane)
     expect(triplets.every(({ center_idx }) => center_idx === 0)).toBe(true)
     const pairs = triplets.map(({ neighbor_idxs }) =>
       neighbor_idxs.toSorted((left_value, right_value) => left_value - right_value),
@@ -151,9 +162,38 @@ test.each([`mp-1`, `mp-2`, `mp-1234`, `mp-756175`])(
       0,
     )
     expect(expected).toBeGreaterThan(0)
-    expect(calc_bond_angles(structure, { strategy: `electroneg_ratio` })).toHaveLength(
-      expected,
-    )
+    // columns at their exact length: one object per angle cost 108 MiB at 11k atoms
+    const { angles, center_idxs, label_ids, neighbor_idxs } = calc_bond_angles(structure)
+    const lengths = [angles, center_idxs, label_ids, neighbor_idxs].map(({ length }) => length)
+    expect(lengths).toEqual([expected, expected, expected, 2 * expected])
+  },
+)
+
+// Rocksalt whose cation at the origin is Na 0.5 / K 0.5 stored as two split sites: drawn as
+// one atom, so it is one neighbor of each Cl (no extra CN, no 0-degree angles), named by its
+// majority element (ties alphabetical) in any site order; a neighbor filter matches either
+test.each([
+  [`Na`, `K`],
+  [`K`, `Na`],
+])(
+  `coincident split partial sites count as one neighbor (%s listed first)`,
+  (first, second) => {
+    const split_rocksalt = make_crystal(5.64, [
+      { element: first, abc: [0, 0, 0], occu: 0.5 },
+      { element: second, abc: [0, 0, 0], occu: 0.5 },
+      ...make_rocksalt(5.64)
+        .sites.slice(1)
+        .map(({ species, abc }) => ({ element: species[0].element, abc })),
+    ])
+    expect(calc_coordination_nums(split_rocksalt).coordination_nums).toEqual(Array(9).fill(6))
+    const triplets = triplets_of(split_rocksalt)
+    expect(angle_tally(triplets)).toEqual({ '90.0000': 9 * 12, '180.0000': 9 * 3 })
+    // Cl-centred angles name the split site (and its periodic images) by the tie-broken K
+    const labels = [...new Set(triplets.map(({ triplet }) => triplet))].toSorted()
+    expect(labels).toEqual([`Cl-K-Cl`, `Cl-Na-Cl`, `K-Cl-K`, `K-Cl-Na`, `Na-Cl-Na`])
+    // filtering by Na keeps the split site too: all 6 neighbours of each of the 4 Cl, C(6, 2)
+    const { angles } = calc_bond_angles(split_rocksalt, { neighbor_elements: [`Na`] })
+    expect(angles).toHaveLength(4 * 15)
   },
 )
 
@@ -166,7 +206,7 @@ describe(`periodic bonding`, () => {
   const simple_cubic = make_crystal(2 * radius, [[`Po`, [0, 0, 0]]])
 
   test(`six-coordinate simple cubic gives 12 right angles and 3 straight angles`, () => {
-    const triplets = calc_bond_angles(simple_cubic)
+    const triplets = triplets_of(simple_cubic)
     expect(angle_tally(triplets)).toEqual({ '90.0000': 12, '180.0000': 3 })
     // Every neighbour is a periodic image of atom 0 itself, reported by its base site index
     expect(triplets.every((triplet) => triplet.triplet === `Po-Po-Po`)).toBe(true)
@@ -181,7 +221,7 @@ describe(`periodic bonding`, () => {
     [{ pbc: [true, true, false] }, 6],
     [{ pbc: [false, false, false] }, 0],
   ])(`%j gives %s angles for a one-atom cell`, (options, expected) => {
-    expect(calc_bond_angles(simple_cubic, options)).toHaveLength(expected)
+    expect(triplets_of(simple_cubic, options)).toHaveLength(expected)
   })
 
   // On real crystals periodic bonding is not a small correction: bonded as a finite box,
@@ -197,8 +237,8 @@ describe(`periodic bonding`, () => {
     `%s has %s angles across periodic boundaries but only %s in the finite box`,
     (identifier, periodic, bare) => {
       const structure = fixture(identifier)
-      expect(calc_bond_angles(structure)).toHaveLength(periodic)
-      expect(calc_bond_angles(structure, { pbc: [false, false, false] })).toHaveLength(bare)
+      expect(triplets_of(structure)).toHaveLength(periodic)
+      expect(triplets_of(structure, { pbc: [false, false, false] })).toHaveLength(bare)
     },
   )
 
@@ -210,7 +250,7 @@ describe(`periodic bonding`, () => {
       [`C`, [0, 0, 0]],
       [`C`, [0.5, 0, 0]],
     ])
-    const triplets = calc_bond_angles(chain, { strategy: `electroneg_ratio` })
+    const triplets = triplets_of(chain, { strategy: `electroneg_ratio` })
     expect(angle_tally(triplets)).toEqual({ '180.0000': 2 })
   })
 })
@@ -235,7 +275,7 @@ describe(`triplet labelling`, () => {
       [`H`, [h_x, h_y, 0]],
       [`H`, [-h_x, h_y, 0]],
     ])
-    const triplets = calc_bond_angles(formaldehyde)
+    const triplets = triplets_of(formaldehyde)
     expect(triplets.map((triplet) => triplet.triplet)).toEqual([`H-C-O`, `H-C-O`, `H-C-H`])
     const [hco_1, hco_2, hch] = triplets.map((triplet) => triplet.angle)
     expect(hco_1).toBeCloseTo(hco_angle, 12)
@@ -275,7 +315,7 @@ describe(`explicit bonds`, () => {
   test.each([`explicit_only`, `electroneg_ratio`] as const)(
     `cell_shift on an explicit bond gives one straight angle per atom under %s`,
     (strategy) => {
-      const triplets = calc_bond_angles(shifted_chain, { strategy })
+      const triplets = triplets_of(shifted_chain, { strategy })
       // Both atoms sit between two partners 4 Å apart on the x axis: one straight angle each
       expect(triplets.map((triplet) => triplet.center_idx)).toEqual([0, 1])
       for (const triplet of triplets) expect(triplet.angle).toBeCloseTo(180, 12)
@@ -293,13 +333,13 @@ describe(`explicit bonds`, () => {
     }
     const expected = { '90.0000': 96, '180.0000': 24 }
     for (const structure of [rocksalt, with_explicit]) {
-      const triplets = calc_bond_angles(structure, { strategy: `electroneg_ratio` })
+      const triplets = triplets_of(structure, { strategy: `electroneg_ratio` })
       expect(angle_tally(triplets)).toEqual(expected)
     }
   })
 
   test(`explicit_only without declared bonds yields no angles`, () => {
-    expect(calc_bond_angles(methane, { strategy: `explicit_only` })).toEqual([])
+    expect(triplets_of(methane, { strategy: `explicit_only` })).toEqual([])
   })
 })
 
@@ -493,12 +533,21 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     await expect_plot_controls(root, controls_state, `bond-angle`)
   })
 
+  // A dropped file is analysed as plain data: a $state proxy (which structuredClone rejects)
+  // made every site read of the bond search go through proxy traps
   test.each([
     [true, `Drag and drop structure files`],
     [false, `No bond angles to display`],
   ])(`allow_file_drop=%s shows %s when empty`, async (allow_file_drop, message) => {
+    const calc_spy = vi.spyOn(calc_module, `calc_bond_angles`)
+    onTestFinished(() => calc_spy.mockRestore())
     const root = await mount_plot({ structures: {}, allow_file_drop })
     expect(root.textContent).toContain(message)
+    if (!allow_file_drop) return
+    root.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `si.cif`)))
+    await vi.waitFor(() => expect(calc_spy).toHaveBeenCalledTimes(1))
+    const [[dropped]] = calc_spy.mock.calls
+    expect(() => structuredClone(dropped.sites)).not.toThrow()
   })
 
   // bin_width is a public prop and resolve_angle_bins throws on anything outside (0, 180],

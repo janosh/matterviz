@@ -6,6 +6,7 @@ import {
   lattice_pbc_or_throw,
   get_majority_element,
 } from '#lib/structure/bonding.js'
+import { split_site_partners } from '#lib/structure/partial-occupancy.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 
 // Element a site is bucketed under; `Unknown` when its majority species cannot be resolved
@@ -13,6 +14,8 @@ const site_element = (site: Site): string => get_majority_element(site) ?? `Unkn
 
 export interface CoordinationOptions {
   strategy?: BondingStrategy
+  // Strategy tuning (max_distance_ratio, strength_threshold, ...), as the scene's bonds use
+  bonding_options?: Record<string, unknown>
   // Periodic axes to bond across, defaults to the structure's own lattice.pbc
   pbc?: Pbc
 }
@@ -33,19 +36,24 @@ export function calc_coordination_nums(
   structure: AnyStructure,
   options: CoordinationOptions = {},
 ): CoordinationData {
-  const { strategy = `electroneg_ratio`, pbc } = options
+  const { strategy = `electroneg_ratio`, bonding_options, pbc } = options
   // via compute_bonds, not the raw strategy, so repeat passes reuse its memoized neighbor search
   const bonds = compute_bonds(structure, strategy, {
+    ...bonding_options,
     pbc: lattice_pbc_or_throw(structure, pbc),
   })
 
   const { sites } = structure
   // Every bond is a distinct (partner, image) contact for each of its ends, and a bond from
-  // a site to its own periodic image contributes both directions to that one site
+  // a site to its own periodic image contributes both directions to that one site. Split
+  // partial sites at one position are one partner, as the viewer draws them as one atom.
+  const { partner_of } = split_site_partners(sites)
   const coordination_nums = sites.map(() => 0)
-  for (const { site_idx_1, site_idx_2 } of bonds) {
-    coordination_nums[site_idx_1]++
-    coordination_nums[site_idx_2]++
+  for (const { site_idx_1, site_idx_2, cell_shift } of bonds) {
+    if (partner_of(site_idx_1, site_idx_2, false, cell_shift) !== -1)
+      coordination_nums[site_idx_1]++
+    if (partner_of(site_idx_2, site_idx_1, true, cell_shift) !== -1)
+      coordination_nums[site_idx_2]++
   }
 
   const cn_histogram = new Map<number, number>()

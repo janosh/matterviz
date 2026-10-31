@@ -9,13 +9,14 @@ import {
 import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
 import type { Snippet } from 'svelte'
 import type { ClassValue } from 'svelte/elements'
+import type { ColumnFilterValue } from 'svelte-widgets/table'
 
 export { default as HeatmapTable } from './HeatmapTable.svelte'
-export { default as ToggleMenu } from './ToggleMenu.svelte'
 export * from './data'
-export * from './export'
-export { type CellPos, CellSelection } from './selection.svelte'
 export { virtual_window } from 'svelte-widgets/virtual'
+
+// Every format a table can export, for opting in: <HeatmapTable export_formats={TABLE_EXPORT_FORMATS}>
+export const TABLE_EXPORT_FORMATS = [`csv`, `json`, `md`, `tex`] as const
 
 // Cell value types for table data
 export type CellVal =
@@ -44,7 +45,7 @@ export type Column<Row extends object = RowData> = {
   key?: Extract<keyof Row, string>
   cell?: CellSnippet<Row>
   // Columns sharing a group render under one spanning header row in HeatmapTable and can
-  // only be drag-reordered within that group. ToggleMenu also sections its list by it.
+  // only be drag-reordered within that group. The column picker also sections its list by it.
   group?: string
   description?: string
   format?: string
@@ -70,7 +71,7 @@ export type Column<Row extends object = RowData> = {
   sticky?: boolean
   visible?: boolean
   sortable?: boolean
-  // When true, the toggle checkbox in ToggleMenu is greyed out and non-interactive
+  // When true, the column picker's checkbox is greyed out and non-interactive
   disabled?: boolean
   style?: string
   cell_style?: string
@@ -101,15 +102,8 @@ export type ColumnPrefs = {
   better?: `higher` | `lower`
   color_scale?: D3InterpolateName | null // scheme picked in the controls pane
   datetime_format?: DateTimeFormatMode
-  filter?: ColumnFilter
+  filter?: ColumnFilterValue
 }
-
-// Active filter on one column. `values` is a category allow-list, `min`/`max` bound a
-// numeric range (either end optional), `text` is a case-insensitive substring.
-export type ColumnFilter =
-  | { kind: `numeric`; min?: number; max?: number }
-  | { kind: `text`; text: string }
-  | { kind: `category`; values: string[] }
 
 // Externally bindable table sort used by HeatmapTable's `sort` prop. Uses the column id.
 export type SortDir = `asc` | `desc`

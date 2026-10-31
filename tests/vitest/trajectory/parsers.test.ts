@@ -51,6 +51,8 @@ import { hotspot_mean } from '#lib/trajectory/hotspots.js'
 import { reference_checkpoint_interval } from '#lib/trajectory/parse/reference-md-h5.js'
 import { decode_text_chunks } from '#lib/io/decompress.js'
 import { has_multiple_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
+import * as helpers_module from '#lib/trajectory/helpers.js'
+import * as frame_module from '#lib/trajectory/frame.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { join } from 'node:path'
@@ -240,6 +242,9 @@ describe(`site fixtures`, () => {
 // === Content sniffing without a filename hint (blob: URLs) ===
 
 const VALID_XYZ_FRAME = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+// ASCII text as UTF-16LE bytes with a BOM (little-endian hosts)
+const utf16le = (text: string): ArrayBuffer =>
+  new Uint16Array([0xfeff, ...Array.from(text, (char) => char.charCodeAt(0))]).buffer
 // One LAMMPS dump frame in an orthogonal 10x10x10 box
 const lammps_frame = (
   columns: string,
@@ -261,6 +266,8 @@ describe(`content sniffing`, () => {
     // TextLines keeps a BOM, which hid a lone frame and the first of several
     [`BOM + single-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}`, `xyz`, 1],
     [`BOM + multi-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz`, 2],
+    // UTF-16LE bytes (Windows PowerShell 5.1 redirection) were sniffed as binary
+    [`UTF-16LE XYZ`, utf16le(`${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`), `xyz`, 2],
     [`LAMMPS`, lammps_content, `lammps`, 1],
   ])(`detects %s by content`, async (_label, content, format, frame_count) => {
     for (const filename of [undefined, blob_uuid]) {
@@ -403,6 +410,20 @@ describe(`XDATCAR`, () => {
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
     expect(indexed.warnings).toEqual([`Skipping plot data of frame 2: ${error}`])
+  })
+
+  // frames of one cell don't share arrays: an edit to one frame stays in it
+  it(`indexed frames own their lattice, pbc and species arrays`, async () => {
+    const frames = [1, 2].map((step) => config(step, `0.5 0.5 0.5`, `0.1 0.1 0.1`))
+    const indexed = await open(xdatcar(`H\n2`, frames), `XDATCAR`, { index_above_bytes: 0 })
+    const [first, second] = await Promise.all([indexed.read_frame(0), indexed.read_frame(1)])
+    const { lattice } = first.structure
+    if (!lattice || !(first.sites instanceof Uint8Array)) throw new Error(`expected a cell`)
+    lattice.matrix[0][0] = 99
+    first.sites[0] = 99
+    expect(second.structure.lattice?.matrix[0][0]).toBe(5)
+    expect(second.structure.lattice?.pbc).not.toBe(lattice.pbc)
+    expect(second.sites[0]).toBe(1)
   })
 })
 
@@ -1218,6 +1239,9 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
       timestep: frame_idx,
     }),
   ).join(`\n`)
+  // Two frames of one LAMMPS layout, ids unsorted (the numeric read must sort its columns)
+  const two_frames = (columns: string, rows: string[], pbc?: string) =>
+    [0, 1].map((timestep) => lammps_frame(columns, rows, { timestep, pbc })).join(`\n`)
   const collected = (run: TrajectoryRun) =>
     collect(run, { vector_keys: [`velocity`] }).then(
       (stream) => ({ stream }),
@@ -1256,6 +1280,15 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
     [`ase-images-Ag-0-to-97`, `images.xyz`, site_text(`trajectories/ase-images-Ag-0-to-97.xyz.gz`)],
     [`mp-1184225`, `mp.extxyz`, site_text(`trajectories/mp-1184225.extxyz`)],
     [`EXTXYZ frames with a torn tail`, `md.extxyz`, () => `${synthetic_extxyz(6, 5)}5\nLattice="1 0 0 0 1 0 0 0 1"\nAu 0 0 0`],
+    // the numeric read must take build_xyz_frame's way with each of these
+    [`EXTXYZ with forces missing on some atoms`, `md.extxyz`, () => `2\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:forces:R:3 energy=1\nH 0 0 0 1 2 3\nO 1 1 1\n2\nProperties=species:S:1:pos:R:3:forces:R:3 energy=2\nH 0 0 0 1 2 3\nO 1 1 1 NaN 0 0`],
+    [`i-PI frames in Bohr and Å`, `md.xyz`, () => `2\n# CELL(abcABC): 10 10 10 90 90 90 Step: 4 positions{angstrom} cell{angstrom}\nH 0 0 0\nO 1 1 1\n2\n# CELL(abcABC): 10 10 10 90 90 90 Step: 5 positions{atomic_unit} cell{atomic_unit}\nH 0 0 0.5\nO 1 1 1`],
+    [`XYZ with lower-case species and exponents`, `md.xyz`, () => `2\nenergy=1\nh 0 0 0\nO 1 1 1\n2\nstep=3\nh 0 0 0\no 1 1 1e-3`],
+    [`EXTXYZ with velocities, stress and partial pbc`, `md.extxyz`, () => `2\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:velocities:R:3 energy=1 pbc="T F T"\nH 0 0 0 1 2 3\nO 1 1 1 1 1 1\n2\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:velocities:R:3 stress="1 0 0 0 1 0 0 0 1"\nH 0 0 0 1 2 3\nO 1 1 1 1 1 1`],
+    [`LAMMPS with a non-finite compute column`, `md.lammpstrj`, () => two_frames(`id element x y z fx fy fz c_pe`, [`2 Si 1 2 3 1 2 3 NaN`, `1 O 5 5 5 1 1 1 2`])],
+    [`LAMMPS with a scalar named like a vector channel`, `md.lammpstrj`, () => two_frames(`id type x y z velocity`, [`2 1 1 2 3 1`, `1 2 5 5 5 1`])],
+    [`LAMMPS with an integer-named column`, `md.lammpstrj`, () => two_frames(`id type x y z 1`, [`2 1 1 2 3 1`, `1 2 5 5 5 1`])],
+    [`LAMMPS with per-atom masses and image flags`, `md.lammpstrj`, () => two_frames(`id mass x y z ix iy iz`, [`2 28.0855 1 2 3 1 0 -1`, `1 15.999 5 5 5 0 0 0`], `pp pp ff`)],
     [`CRLF EXTXYZ with non-ASCII comments and a half-written last line`, `md.extxyz`, () => `${synthetic_extxyz(4, 3).replaceAll(`pbc=`, `note="Å→漢 🎉" pbc=`)}3\nstep=9\nAu 0 0 0\nCu 1 1 1\nAu 2 2`.replaceAll(`\n`, `\r\n`)],
   ])(`%s reads the same frames, plot rows and warnings`, async (_label, filename, make_text, options = {}) => {
     const text = make_text()
@@ -1288,6 +1321,33 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
       await expect_same_run(lazy, eager)
     }
   })
+
+  // Reads and position sweeps of the common layouts build no Site records to encode
+  // (2-3.5x per frame)
+  it.each<[string, () => string]>([
+    [`md.extxyz`, () => synthetic_extxyz(4, 5)],
+    [`XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
+    [
+      `md.lammpstrj`,
+      () =>
+        two_frames(`id type xs ys zs vx vy vz fx fy fz q`, [
+          `2 1 0.1 0.2 0.3 1 2 3 1 0 1 0.5`,
+          `1 2 0.5 0.5 0.5 1 1 1 0 0 0 -0.5`,
+        ]),
+    ],
+  ])(`%s reads numeric frames without Site records`, async (filename, make_text) => {
+    const run = await open(make_text(), filename, { index_above_bytes: 0 })
+    await run.properties.done
+    const spies = [
+      vi.spyOn(helpers_module, `create_trajectory_frame`),
+      vi.spyOn(frame_module, `encode_frame`),
+    ]
+    onTestFinished(() => spies.forEach((spy) => spy.mockRestore()))
+    for (let frame_idx = 0; frame_idx < run.frame_count; frame_idx++)
+      await run.read_frame(frame_idx)
+    await collect(run, { vector_keys: filename === `md.lammpstrj` ? [`velocity`] : [] })
+    expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0])
+  })
 })
 
 // === XYZ / extended XYZ ===
@@ -1305,11 +1365,13 @@ describe(`XYZ`, () => {
   // ASE writes the cell double-quoted, but single-quoted extXYZ exists and the sibling `pbc`
   // reader already takes both. Matching only `"` dropped the cell silently, so the frame came
   // back with no lattice at all and every fractional coordinate sat on the origin.
+  // Comma-separated cells (ASE accepts them) were rejected as not 9 finite numbers.
   it.each([
-    [`double`, `"`],
-    [`single`, `'`],
-  ])(`reads a %s-quoted extXYZ Lattice and Properties`, async (_case, quote) => {
-    const comment = `Lattice=${quote}4 0 0 0 4 0 0 0 4${quote} Properties=${quote}species:S:1:pos:R:3:charge:R:1${quote} pbc="T T T"`
+    [`double`, `"`, `4 0 0 0 4 0 0 0 4`],
+    [`single`, `'`, `4 0 0 0 4 0 0 0 4`],
+    [`comma-separated double`, `"`, `4, 0, 0, 0, 4, 0, 0, 0, 4`],
+  ])(`reads a %s-quoted extXYZ Lattice and Properties`, async (_case, quote, cell) => {
+    const comment = `Lattice=${quote}${cell}${quote} Properties=${quote}species:S:1:pos:R:3:charge:R:1${quote} pbc="T T T"`
     const run = await open(xyz_frame([`Si 0 0 0 0.5`, `Si 1 1 1 -0.5`], comment), `cell.xyz`)
     const [frame] = await frames_of(run)
     expect(frame.structure.sites.map(({ properties }) => properties?.charge)).toEqual([
@@ -1601,6 +1663,38 @@ describe(`XYZ`, () => {
     [`empty lines and malformed frames`, `\n\n${VALID_XYZ_FRAME}\n\ninvalid\ncomment\nH 0.0 0.0 0.0\n\n${VALID_XYZ_FRAME}`, 2],
   ])(`skips %s and parses valid frames`, async (_name, content, frame_count) => {
     expect((await open(content, `test.xyz`)).frame_count).toBe(frame_count)
+  })
+
+  // LAMMPS `dump xyz` writes atom types where symbols go (no dump_modify element) and the step
+  // as ` Atoms. Timestep: N`: the frame walk rejected every frame of it
+  it.each([{}, { index_above_bytes: 0 }])(`reads a LAMMPS dump xyz (%o)`, async (options) => {
+    const content = [0, 100]
+      .map((step) => xyz_frame([`1 0 0 0`, `2 1 0 0`, `2 0 1 0`], ` Atoms. Timestep: ${step}`))
+      .join(`\n`)
+    const run = await open(content, `dump.xyz`, options)
+    const frames = await frames_of(run)
+    expect(frames.map(({ step }) => step)).toEqual([0, 100])
+    expect(frames.map(elements_of)).toEqual([
+      [`H`, `He`, `He`],
+      [`H`, `He`, `He`],
+    ])
+    expect(frames[1].metadata?.timestep).toBeUndefined()
+    expect(run.warnings).toEqual([
+      expect.stringMatching(
+        /^XYZ species column holds integers \(first "1" in .*frame 1.* at line 3\); read them as atomic numbers/,
+      ),
+    ])
+  })
+
+  // A title after the count (`3 water`) hides a frame from the walk, and decoding the first
+  // frame alone silently dropped the rest: like parse_xyz, read it only as the whole file
+  it(`reads a titled count line only when its frame is the whole file`, async () => {
+    const frame = (z: number) =>
+      `3 water\ncomment\nO 0 0 ${z}\nH 0.76 0.59 ${z}\nH -0.76 0.59 ${z}`
+    expect((await open(`${frame(0)}\n`, `water.xyz`)).frame_count).toBe(1)
+    await expect(open([0, 1, 2].map(frame).join(`\n`), `water.xyz`)).rejects.toThrow(
+      `XYZ count line 1 "3 water" is not a bare atom count, and its 3-atom frame leaves lines 6-15 unread`,
+    )
   })
 
   // One warning per unknown symbol, not per atom: Wannier centres (`X`) flooded the list

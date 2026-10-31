@@ -308,6 +308,8 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     await hover(wrapper, 50, 1000)
     await fire(plot_svg(wrapper), mouse(`click`))
     expect(wrapper.querySelector(`.pin-marker`)).not.toBeNull()
+    // the pin hands back the hovered snapshot itself (was a deep $state proxy of it)
+    expect(on_pin.mock.lastCall?.[0]).toBe(on_phase_hover.mock.lastCall?.[0])
     change(state)
     await tick()
     expect(wrapper.querySelector(`.pin-marker`)).toBeNull()

@@ -6,7 +6,7 @@
 // HDF5 file throws Hdf5GroupSelectionRequiredError.
 import { display_idx } from '#lib/labels.js'
 import { HDF5_EXT_REGEX } from '#lib/constants.js'
-import { decode_text_chunks, MAX_STRING_CHARS } from '#lib/io/decompress.js'
+import { decode_text_chunks, MAX_STRING_CHARS, text_encoding_of } from '#lib/io/decompress.js'
 import { is_binary } from '#lib/io/is-binary.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { is_plain_object } from '#lib/utils.js'
@@ -269,11 +269,13 @@ export async function open_trajectory(
     run = await open_hdf5(source)
   } else {
     // Any other bytes are text
-    const head =
+    const head = new Uint8Array(
       source instanceof Blob
         ? await source.slice(0, BINARY_SNIFF_BYTES).arrayBuffer()
-        : source.slice(0, BINARY_SNIFF_BYTES)
-    if (is_binary(new TextDecoder().decode(head))) {
+        : source.slice(0, BINARY_SNIFF_BYTES),
+    )
+    // sniffed as decoded text: every other byte of UTF-16 ASCII is NUL
+    if (is_binary(new TextDecoder(text_encoding_of(head)).decode(head))) {
       throw new Error(`Unsupported binary format${filename ? `: ${filename}` : ``}`)
     }
     report(10, `Parsing trajectory…`)

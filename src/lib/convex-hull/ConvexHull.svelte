@@ -231,6 +231,8 @@
       : [...highlighted_entries, entry_link.linked],
   )
   const { config, highlight_style, gizmo, x_axis, y_axis, ...dom_attrs } = $derived(rest)
+  // Hover-driven props (overlay, linked highlights, selection) stay out of this spread: there
+  // each hover re-ran every renderer derived (50k points: re-projection, re-sort, pick index)
   const plot_props = $derived({
     ...dom_attrs,
     hull_data,
@@ -238,10 +240,7 @@
     chrome: chrome_content,
     config,
     color_mode,
-    highlighted_entries: shown_highlights,
     highlight_style,
-    selected_entry,
-    overlay,
     children,
   })
   // === Export ===
@@ -491,6 +490,9 @@
     {#if dim === 2}
       <ConvexHull2D
         {...plot_props}
+        highlighted_entries={shown_highlights}
+        {selected_entry}
+        {overlay}
         {entry_category}
         {color_scale}
         {tooltip}
@@ -504,6 +506,9 @@
     {:else}
       <ConvexHullCanvas
         {...plot_props}
+        highlighted_entries={shown_highlights}
+        {selected_entry}
+        {overlay}
         bind:this={renderer}
         bind:wrapper
         {dim}

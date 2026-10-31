@@ -382,12 +382,13 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await expect(markers).toHaveCount(12)
 
   // comparing the stiffer equation of state splits the frame panes into two labelled sides,
-  // the compared one at its frame nearest in pressure
+  // the compared one at its frame nearest in pressure. Each side's column is then too narrow
+  // for bands beside their DOS, so the viewer stacks and labels each side over its scenes and
+  // again over its plots.
   await page.getByLabel(`Compare with the stiffer equation of state`).check()
-  await expect(viewer.locator(`.side-label`)).toHaveText([
-    /^fcc Cu · 19\.2 GPa/,
-    /^fcc Cu \(B₀ = 180 GPa\) · 24\.7 GPa/,
-  ])
+  await expect(viewer).toHaveClass(/\bstacked\b/)
+  const side_labels = [/^fcc Cu · 19\.2 GPa/, /^fcc Cu \(B₀ = 180 GPa\) · 24\.7 GPa/]
+  await expect(viewer.locator(`.side-label`)).toHaveText([...side_labels, ...side_labels])
   await expect(viewer.locator(`[data-pane="bands"]`)).toHaveCount(2)
   await expect(viewer.locator(`[data-pane="trends"]`)).toHaveCount(1)
   await expect(phonon).toHaveCount(2)
@@ -515,6 +516,11 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
     viewer.locator(`.panes`).evaluate((node) => node.scrollHeight - node.clientHeight)
   await expect.poll(panes_scroll).toBe(0)
   await expect_panes_apart(page, viewer)
+  // the λ_qν colour bar sits over the empty top of the 400px-wide phonon bands, not above them
+  const mode_bar = viewer.locator(
+    `[data-pane="phonon"] [data-decoration-location]:has(.colorbar)`,
+  )
+  await expect(mode_bar).toHaveAttribute(`data-decoration-location`, `interior`)
   // a 1px rule tops every pane below the first, drawn by it or a wrapper starting there
   const unruled = await viewer.locator(`[data-pane]`).evaluateAll((nodes) => {
     const first_top = nodes[0].getBoundingClientRect().top

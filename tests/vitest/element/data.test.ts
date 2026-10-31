@@ -145,6 +145,23 @@ test.each([
   }
 })
 
+// Wikipedia's element data pages, which pymatgen matches except Pm melting and Pr boiling.
+// The old values (Nd affinity 184.87 kJ/mol above O's 141, Pm melting at Pr's 1204 K, Er
+// boiling at Tb's 3503 K) put wrong colors on periodic-table heatmaps.
+test.each([
+  [`electron_affinity`, { Ga: 29.06, Ce: 57.91, Pr: 10.54, Nd: 9.406, Gd: 20.5, Tb: 12.67 }],
+  [`electron_affinity`, { Dy: 1.45, Lu: 23.04, Tl: 30.88, Th: 58.63, U: 30.39, Og: 7.72 }],
+  [`electron_affinity`, { O: 140.976, Cl: 348.575 }],
+  [`melting_point`, { B: 2349, O: 54.36, Cr: 2180, Ru: 2607, Pm: 1315, Am: 1449, Cm: 1613 }],
+  [`boiling_point`, { Tc: 4538, Pr: 3403, Er: 3141, Si: 3538, Cu: 2835 }],
+] as const)(`%s matches reference values %j`, (prop, expected) => {
+  for (const [symbol, value] of Object.entries(expected)) {
+    const actual = Number(get_element(symbol as ElementSymbol)[prop])
+    // 0.1%: reference values carry 3-6 significant digits
+    expect(Math.abs(actual - value) / value, symbol).toBeLessThan(1e-3)
+  }
+})
+
 test(`fluorine has highest electronegativity`, () => {
   const max = Math.max(
     ...element_data.map(({ electronegativity }) => electronegativity ?? -Infinity),

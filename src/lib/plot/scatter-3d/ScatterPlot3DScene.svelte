@@ -6,7 +6,7 @@
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { in_range, type Vec2, type Vec3 } from '#lib/math.js'
+  import type { Vec2, Vec3 } from '#lib/math.js'
   import type {
     AxisConfig3D,
     CameraProjection3D,
@@ -60,7 +60,7 @@
   import {
     create_instance_tween,
     INSTANCE_STRIDE,
-    pack_instances,
+    srgb_parser,
   } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
   import { SETTLE_MS } from '#lib/plot/core/settling-tween.svelte.js'
   import {
@@ -238,68 +238,114 @@
   const auto_size_range = $derived(collect_size_range(series, size_scale_type))
   let size_scale_fn = $derived(create_size_scale(size_scale, auto_size_range))
 
-  // One marker: `key` identifies the same logical point across data changes
-  type PointInstance = {
-    key: string
-    point: InternalPoint3D<Metadata>
-    position: Vec3
-    radius: number
-    color: string
+  // A marker's key packs (series_idx, point_idx) into one float, exact for point indices below
+  // 2^32 and fewer than 2^21 series; it names the same logical point across data changes
+  const KEY_BASE = 2 ** 32
+  const point_key = (point: Pick<InternalPoint3D<Metadata>, `series_idx` | `point_idx`>) =>
+    point.series_idx * KEY_BASE + point.point_idx
+  // A point's marker colour and radius. Missing colour/size values (NaN ones too) fall back to
+  // the series style, as in 2D: a NaN radius poisons the bounding sphere and raycasts.
+  const marker_color = (
+    srs: DataSeries3D<Metadata>,
+    series_idx: number,
+    point_idx: number,
+    color_fn: (value: number) => string,
+  ): string => {
+    const color_value = finite_or_null(srs.color_values?.[point_idx])
+    if (color_value != null) return color_fn(color_value)
+    const style = Array.isArray(srs.point_style) ? srs.point_style[point_idx] : srs.point_style
+    return style?.fill ?? plot_color(series_idx)
+  }
+  const marker_radius = (
+    srs: DataSeries3D<Metadata>,
+    point_idx: number,
+    size_fn: (value: number) => number,
+    default_size: number,
+  ): number => {
+    const size_value = finite_or_null(srs.size_values?.[point_idx])
+    if (size_value != null) return size_fn(size_value)
+    const style = Array.isArray(srs.point_style) ? srs.point_style[point_idx] : srs.point_style
+    return (style?.radius ?? default_size) * 0.05
   }
 
-  const point_key = (point: Pick<InternalPoint3D<Metadata>, `series_idx` | `point_idx`>) =>
-    `${point.series_idx}-${point.point_idx}`
-  // User Z → Three.js Y (vertical), user Y → Three.js Z (depth)
-  const to_scene = ([coord_x, coord_y, coord_z]: Vec3): Vec3 => [
-    normalize_x(coord_x),
-    normalize_z(coord_z),
-    normalize_y(coord_y),
-  ]
-
-  // Every in-range point of every visible series, in (series_idx, point_idx) order, with its
-  // scene position, radius and color. Out-of-range and non-finite points are left out.
-  let point_instances = $derived.by(() => {
-    const instances: PointInstance[] = []
+  // Every in-range point of every visible series as columns, in (series_idx, point_idx) order:
+  // its key (so keys ascend and lookups bisect) and its scene position, radius and colour in
+  // instance-tween's packed layout. Out-of-range and non-finite points are left out. Reactive
+  // inputs are read once, and point objects are only built for the one hovered, clicked or
+  // walked to, so a million-point cloud builds in one tight pass.
+  const markers = $derived.by(() => {
+    const [color_fn, size_fn, default_size] = [
+      color_scale_fn,
+      size_scale_fn,
+      styles.point?.size ?? 2,
+    ]
+    const [ranges_x, ranges_y, ranges_z] = [x_range, y_range, z_range]
+    const [[x_lo, x_hi], [y_lo, y_hi], [z_lo, z_hi]] = [ranges_x, ranges_y, ranges_z].map(
+      ([lo, hi]) => [Math.min(lo, hi), Math.max(lo, hi)],
+    )
+    const capacity = series.reduce(
+      (sum, srs) => sum + ((srs.visible ?? true) ? srs.x.length : 0),
+      0,
+    )
+    const keys = new Float64Array(capacity)
+    const packed = new Float32Array(capacity * INSTANCE_STRIDE)
+    const srgb = srgb_parser()
+    let count = 0
     series.forEach((srs, series_idx) => {
       if (!(srs.visible ?? true)) return
-      const { metadata, point_style } = srs
-      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
-        const [coord_x, coord_y, coord_z] = coords
-        if (!in_range(coord_x, x_range) || !in_range(coord_y, y_range)) continue
-        if (!in_range(coord_z, z_range)) continue
-        const point: InternalPoint3D<Metadata> = {
-          x: coord_x,
-          y: coord_y,
-          z: coord_z,
-          series_idx,
-          point_idx,
-          color_value: finite_or_null(srs.color_values?.[point_idx]),
-          size_value: finite_or_null(srs.size_values?.[point_idx]),
-          metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
-          point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
-        }
-        // Missing colour/size values (NaN ones nulled above, for the payloads too) fall back to
-        // the series style, as in 2D: a NaN radius poisons the bounding sphere and raycasts
-        const { color_value, size_value } = point
-        instances.push({
-          point,
-          key: point_key(point),
-          position: to_scene(coords),
-          color:
-            color_value != null
-              ? color_scale_fn(color_value)
-              : (point.point_style?.fill ?? plot_color(series_idx)),
-          radius:
-            size_value != null
-              ? size_scale_fn(size_value)
-              : (point.point_style?.radius ?? styles.point?.size ?? 2) * 0.05,
-        })
+      const { x: xs, y: ys, z: zs } = srs
+      for (let point_idx = 0; point_idx < xs.length; point_idx++) {
+        const [coord_x, coord_y, coord_z] = [xs[point_idx], ys[point_idx], zs[point_idx]]
+        if (!(coord_x >= x_lo && coord_x <= x_hi && coord_y >= y_lo && coord_y <= y_hi))
+          continue
+        if (!(coord_z >= z_lo && coord_z <= z_hi)) continue
+        const offset = count * INSTANCE_STRIDE
+        packed[offset] = normalize_to_scene(coord_x, ranges_x, scene_x)
+        packed[offset + 1] = normalize_to_scene(coord_z, ranges_z, scene_z)
+        packed[offset + 2] = normalize_to_scene(coord_y, ranges_y, scene_y)
+        packed[offset + 3] = marker_radius(srs, point_idx, size_fn, default_size)
+        const { r, g, b } = srgb(marker_color(srs, series_idx, point_idx, color_fn))
+        packed[offset + 4] = r
+        packed[offset + 5] = g
+        packed[offset + 6] = b
+        keys[count++] = series_idx * KEY_BASE + point_idx
       }
     })
-    return instances
+    return {
+      keys: keys.subarray(0, count),
+      packed: packed.subarray(0, count * INSTANCE_STRIDE),
+    }
   })
-  const idx_by_key = $derived(new Map(point_instances.map(({ key }, idx) => [key, idx])))
+
+  // Instance index of the marker with `key`, -1 when it isn't drawn
+  const marker_idx = (key: number): number => {
+    const { keys } = markers
+    let [lo, hi] = [0, keys.length - 1]
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      if (keys[mid] === key) return mid
+      if (keys[mid] < key) lo = mid + 1
+      else hi = mid - 1
+    }
+    return -1
+  }
+
+  // The data point behind a marker key, built on demand
+  const key_point = (key: number): InternalPoint3D<Metadata> => {
+    const [series_idx, point_idx] = [Math.floor(key / KEY_BASE), key % KEY_BASE]
+    const { x, y, z, color_values, size_values, metadata, point_style } = series[series_idx]
+    return {
+      x: x[point_idx],
+      y: y[point_idx],
+      z: z[point_idx],
+      series_idx,
+      point_idx,
+      color_value: finite_or_null(color_values?.[point_idx]),
+      size_value: finite_or_null(size_values?.[point_idx]),
+      metadata: Array.isArray(metadata) ? metadata[point_idx] : metadata,
+      point_style: Array.isArray(point_style) ? point_style[point_idx] : point_style,
+    }
+  }
 
   // A click pins a point's tooltip (see TooltipPin) unless on_point_click takes the click
   const pin = new TooltipPin<InternalPoint3D<Metadata>>({
@@ -312,14 +358,17 @@
   // points tracking the same logical point's current values and position, or drop them (tell
   // the host)
   $effect.pre(() => {
-    const lookup = idx_by_key
+    void markers
     untrack(() => {
-      const pinned = pin.value && point_instances[lookup.get(point_key(pin.value)) ?? -1]
-      if (pinned) pin.value = pinned.point
+      const current = (point: InternalPoint3D<Metadata>) => {
+        const key = point_key(point)
+        return marker_idx(key) === -1 ? null : key_point(key)
+      }
+      const pinned = pin.value && current(pin.value)
+      if (pinned) pin.value = pinned
       else pin.unpin()
       if (!hovered_point) return
-      const next = point_instances[lookup.get(point_key(hovered_point)) ?? -1]?.point ?? null
-      if (next === hovered_point) return
+      const next = current(hovered_point)
       hovered_point = next
       if (!next) on_point_hover?.(null)
     })
@@ -332,35 +381,36 @@
   const settled_at = performance.now() + SETTLE_MS
   const max_tweened_instances = 20_000
   $effect.pre(() => {
-    const instances = point_instances
+    const { keys, packed } = markers
     untrack(() => {
       const now = performance.now()
-      const snap = now < settled_at || instances.length > max_tweened_instances
-      const keys = instances.map(({ key }) => key)
-      const options = snap ? { duration: 0 } : point_tween
-      tween.retarget(keys, pack_instances(instances), now, options)
+      const snap = now < settled_at || keys.length > max_tweened_instances
+      tween.retarget(keys, packed, now, snap ? { duration: 0 } : point_tween)
     })
   })
   // Like the task above, runs every frame without forcing renders: only a moving tween
   // rewrites the instance buffers, which invalidates
   useTask(() => tween.step(performance.now()), { autoInvalidate: false })
-  const shown_idx = $derived(shown_point && idx_by_key.get(point_key(shown_point)))
+  const shown_key = $derived(shown_point && point_key(shown_point))
+  const shown_idx = $derived(shown_key == null ? -1 : marker_idx(shown_key))
   // The shown marker as drawn, so the halo and tooltip ride along with a moving point
   const hover_drawn = $derived.by(() => {
-    if (shown_idx == null) return null
+    if (shown_idx === -1) return null
     const [pos_x, pos_y, pos_z, radius] = tween.current.subarray(shown_idx * INSTANCE_STRIDE)
     return { position: [pos_x, pos_y, pos_z] as Vec3, radius }
   })
   // Keyed on the marker color alone, so tween frames re-deriving hover_drawn don't re-derive
   // the tooltip paint (a $derived only notifies when its value changes)
-  const hover_color = $derived(point_instances[shown_idx ?? -1]?.color)
+  const hover_color = $derived.by(() => {
+    if (shown_key == null || shown_idx === -1) return undefined
+    const series_idx = Math.floor(shown_key / KEY_BASE)
+    return marker_color(series[series_idx], series_idx, shown_key % KEY_BASE, color_scale_fn)
+  })
   const halo_color = $derived(brighten_hex(hover_color)) // the marker's hue, like every hover
 
   // One sphere mesh for every point: instance transforms carry each radius
   // 32 segments keep marker silhouettes round; past 5000 points 16 keep the triangle count down
-  const marker_segments = $derived(
-    sphere_segments ?? (point_instances.length > 5000 ? 16 : 32),
-  )
+  const marker_segments = $derived(sphere_segments ?? (markers.keys.length > 5000 ? 16 : 32))
   const point_geometry = $derived(
     new THREE.SphereGeometry(1, marker_segments, marker_segments),
   )
@@ -389,8 +439,10 @@
     on_point_click?.(make_event_data(point, event))
     pin.toggle(point)
   }
-  const instance_point = (event: InstanceEvent) =>
-    point_instances[event.instanceId ?? -1]?.point ?? null
+  const instance_point = (event: InstanceEvent) => {
+    const key = markers.keys[event.instanceId ?? -1]
+    return key === undefined ? null : key_point(key)
+  }
   // Threlte keys hover by instanceId, so moving between instances fires leave, then enter
   const point_events = {
     onpointerenter: (event: InstanceEvent) => {
@@ -407,15 +459,16 @@
   }
 
   // The plot root's one tab stop walks the in-range markers in (series, point) order, like the
-  // 2D ScatterPlot's cursor (see KeyWalk)
+  // 2D ScatterPlot's cursor (see KeyWalk), by their keys
   scene_key_walk({
-    targets: () => point_instances,
-    hover: ({ point }) => hover_point(point),
+    targets: () => markers.keys,
+    hover: (key) => hover_point(key_point(key)),
     leave: leave_point,
-    click: ({ point }) => click_point(point),
+    click: (key) => click_point(key_point(key)),
     unpin: pin.unpin,
-    hovered: ({ key }) => key === (hovered_point && point_key(hovered_point)),
-    label: ({ point: { x, y, z, series_idx, point_idx } }) => {
+    hovered: (key) => hovered_point != null && key === point_key(hovered_point),
+    label: (key) => {
+      const { x, y, z, series_idx, point_idx } = key_point(key)
       const axes = [x_axis, y_axis, z_axis]
       const coords = [x, y, z].map((value, idx) => format_num(value, axes[idx].format))
       const series_label = series[series_idx]?.label
@@ -464,15 +517,26 @@
   // the effect below can diff against previous lines and only rebuild what changed
   let line_inputs = $derived.by((): SeriesLineInput[] => {
     const inputs: SeriesLineInput[] = []
+    const [ranges_x, ranges_y, ranges_z] = [x_range, y_range, z_range]
     for (const [series_idx, srs] of series.entries()) {
       const line_style = srs.line_style
       if (!line_style || !(srs.visible ?? true)) continue
       // Lines run through every finite point, in range or not: the box's clipping group cuts
-      // them at the axes instead of dropping whole segments
+      // them at the axes instead of dropping whole segments. User Z → Three.js Y (vertical),
+      // user Y → Three.js Z (depth)
       const positions: number[] = []
-      for (let point_idx = 0; point_idx < srs.x.length; point_idx++) {
-        const coords: Vec3 = [srs.x[point_idx], srs.y[point_idx], srs.z[point_idx]]
-        if (coords.every(Number.isFinite)) positions.push(...to_scene(coords))
+      const { x: xs, y: ys, z: zs } = srs
+      for (let point_idx = 0; point_idx < xs.length; point_idx++) {
+        const [coord_x, coord_y, coord_z] = [xs[point_idx], ys[point_idx], zs[point_idx]]
+        if (
+          !(Number.isFinite(coord_x) && Number.isFinite(coord_y) && Number.isFinite(coord_z))
+        )
+          continue
+        positions.push(
+          normalize_to_scene(coord_x, ranges_x, scene_x),
+          normalize_to_scene(coord_z, ranges_z, scene_z),
+          normalize_to_scene(coord_y, ranges_y, scene_y),
+        )
       }
       if (positions.length < 6) continue // < 2 points
       inputs.push({

@@ -42,14 +42,21 @@ const as_state = <T>(value: T): T => {
   return state
 }
 
+// Bindable data the components replace but never mutate in place, so it stays unproxied: a
+// deep proxy over a 30k-site structure (set by the page or parsed from `source`) put every
+// read behind $state traps and took mv-structure 2.8 s to render
+const DATA_PROPS = new Set(
+  `structure bonds fermi_data band_data bz_data trajectory volumetric_data`.split(` `),
+)
+
 for (const [tag, spec] of Object.entries(elements)) {
   const { load, props: prop_names, seeded } = spec
-  const bindable = new Set(spec.bindable)
+  const proxied = new Set(spec.bindable.filter((name) => !DATA_PROPS.has(name)))
 
   class MatterVizElement extends HTMLElement {
     static observedAttributes = prop_names
-    // Set props, reactive per key. Only bindable ones become $state proxies, so `el.x = obj`
-    // keeps obj itself for every other prop.
+    // Set props, reactive per key. Only bindable ones outside DATA_PROPS become $state
+    // proxies, so `el.x = obj` keeps obj itself for every other prop.
     readonly #values = new SvelteMap<string, unknown>()
     // Props the page set, as opposed to ones the component wrote back into seeded keys
     readonly #page_set = new Set<string>()
@@ -111,7 +118,7 @@ for (const [tag, spec] of Object.entries(elements)) {
     // Unset props leave the map: Svelte rejects an undefined key whose prop has a default
     #store(name: string, value: unknown) {
       if (value === undefined) this.#values.delete(name)
-      else this.#values.set(name, bindable.has(name) ? as_state(value) : value)
+      else this.#values.set(name, proxied.has(name) ? as_state(value) : value)
     }
 
     attributeChangedCallback(name: string, _old: string | null, value: string | null) {

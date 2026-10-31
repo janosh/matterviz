@@ -13,6 +13,12 @@ import {
   TextLines,
 } from '#lib/trajectory/helpers.js'
 import type { AseFrames } from './ase'
+import {
+  create_numeric_md_frame,
+  encode_frame,
+  type NumericFrame,
+  write_frame_vector,
+} from '../frame'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 const is_periodic = (token: string): boolean => token.toLowerCase().startsWith(`p`)
@@ -97,22 +103,42 @@ type LammpsFrameHeader = {
   lattice_matrix: math.Matrix3x3
   metadata: Record<string, unknown>
 }
+// How much of each atom a frame read keeps: nothing past validation (the indexed open's scan),
+// Site records (the eager parser), or packed columns (the indexed run's numeric frames)
+type LammpsSites = `none` | `records` | `columns`
+// Per-atom values packed in file order: 3 per atom for positions and vectors, 1 for scalars.
+// `dense` is false once any vector or scalar value is missing or non-finite.
+type LammpsColumns = {
+  positions: Float64Array
+  vector_keys: string[]
+  vectors: Float64Array[]
+  scalar_keys: string[]
+  scalars: Float64Array[]
+  dense: boolean
+}
 // One frame as read from the dump, atoms in file order. `positions` and `site_properties`
-// stay empty when read without sites (the indexed open's validating scan); `ids` is empty
-// without an id column.
+// are filled only for `records`, `columns` only for `columns`; `ids` is empty without an id
+// column.
 type LammpsFrameRead = {
   header: LammpsFrameHeader
   elements: ElementSymbol[]
   ids: number[]
   positions: math.Vec3[]
   site_properties: Record<string, unknown>[]
+  columns?: LammpsColumns
+}
+
+// Frame order: by atom id when the dump has ids, so every frame lists atoms in one order
+const atom_order = ({ ids, elements }: LammpsFrameRead): number[] => {
+  const order = Array.from({ length: elements.length }, (_unused, atom_idx) => atom_idx)
+  if (ids.length > 0) order.sort((left_idx, right_idx) => ids[left_idx] - ids[right_idx])
+  return order
 }
 
 // Frames sorted by atom id (when the dump has ids) so every frame lists atoms in one order
 const lammps_frame = (read: LammpsFrameRead, warn: WarnFn): TrajectoryFrame => {
-  const { header, ids, elements, positions, site_properties } = read
-  const order = Array.from({ length: elements.length }, (_unused, atom_idx) => atom_idx)
-  if (ids.length > 0) order.sort((left_idx, right_idx) => ids[left_idx] - ids[right_idx])
+  const { header, elements, positions, site_properties } = read
+  const order = atom_order(read)
   return create_trajectory_frame(
     order.map((atom_idx) => positions[atom_idx]),
     order.map((atom_idx) => elements[atom_idx]),
@@ -123,6 +149,52 @@ const lammps_frame = (read: LammpsFrameRead, warn: WarnFn): TrajectoryFrame => {
     order.map((atom_idx) => site_properties[atom_idx]),
     warn,
   )
+}
+
+// The numeric frame encode_frame makes of lammps_frame's, built from a `columns` read without
+// Site records or per-atom arrays. Null when that encoding would keep per-site records
+// instead: a missing value, an element without atomic number, or property keys that do not
+// map one-to-one onto columns.
+const lammps_numeric_frame = (read: LammpsFrameRead, warn: WarnFn): NumericFrame | null => {
+  const { header, elements, columns } = read
+  if (!columns?.dense) return null
+  const keys = [...columns.vector_keys, ...columns.scalar_keys]
+  // a record's integer-like keys enumerate first, which would reorder its vector columns
+  if (new Set(keys).size !== keys.length || keys.some((key) => /^\d+$|^__proto__$/.test(key)))
+    return null
+  const order = atom_order(read)
+  const n_atoms = order.length
+  const numbers = new Uint8Array(n_atoms)
+  const permute = (values: Float64Array, width: number): Float64Array => {
+    const sorted = new Float64Array(values.length)
+    for (let idx = 0; idx < n_atoms; idx++)
+      for (let axis = 0; axis < width; axis++)
+        sorted[idx * width + axis] = values[order[idx] * width + axis]
+    return sorted
+  }
+  for (let idx = 0; idx < n_atoms; idx++) {
+    const atomic_number = symbol_to_atomic_number(elements[order[idx]])
+    if (!atomic_number) return null
+    numbers[idx] = atomic_number
+  }
+  const frame = create_numeric_md_frame(
+    permute(columns.positions, 3),
+    numbers,
+    header.lattice_matrix,
+    header.pbc,
+    header.timestep,
+    header.metadata,
+    columns.vector_keys,
+    { fixed_order: false, warn },
+  )
+  columns.vectors.forEach((values, column) =>
+    write_frame_vector(frame, column, permute(values, 3)),
+  )
+  if (columns.scalar_keys.length === 0) return frame
+  const scalar_columns = Object.fromEntries(
+    columns.scalar_keys.map((key, column) => [key, permute(columns.scalars[column], 1)]),
+  )
+  return { ...frame, scalar_columns }
 }
 
 // Frame reader over the dump's lines with the state frames share: `read_frame` reads the frame
@@ -165,7 +237,7 @@ function create_lammps_reader(
   const read_frame = (
     start: number,
     has_previous_frame: boolean,
-    sites: boolean,
+    sites: LammpsSites,
   ): LammpsFrameRead => {
     idx = start
     let time: number | null = null
@@ -291,6 +363,18 @@ function create_lammps_reader(
     const positions: math.Vec3[] = []
     const site_properties: Record<string, unknown>[] = []
     const frac_to_cart = pos_variant.scaled ? math.create_frac_to_cart(lattice_matrix) : null
+    const columns: LammpsColumns | undefined =
+      sites === `columns`
+        ? {
+            positions: new Float64Array(num_atoms * 3),
+            vector_keys: vector_props.map(({ key }) => key),
+            vectors: vector_props.map(() => new Float64Array(num_atoms * 3)),
+            scalar_keys: scalar_props.map(({ key }) => key),
+            scalars: scalar_props.map(() => new Float64Array(num_atoms)),
+            dense: true,
+          }
+        : undefined
+    const scratch: math.Vec3 = [0, 0, 0]
 
     for (let atom = 0; atom < num_atoms; atom++) {
       if (idx >= lines.count) {
@@ -367,10 +451,15 @@ function create_lammps_reader(
           `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-integer image flags: "${lines.line(idx - 1)}"`,
         )
       }
-      if (!sites) continue
-      const position: math.Vec3 = frac_to_cart
-        ? frac_to_cart(coords)
-        : [coords[0] - box_origin[0], coords[1] - box_origin[1], coords[2] - box_origin[2]]
+      if (sites === `none`) continue
+      // columns copy the position out, so they reuse one scratch vector
+      const position: math.Vec3 = columns ? scratch : [0, 0, 0]
+      if (frac_to_cart) frac_to_cart(coords, position)
+      else {
+        position[0] = coords[0] - box_origin[0]
+        position[1] = coords[1] - box_origin[1]
+        position[2] = coords[2] - box_origin[2]
+      }
       if (use_images) {
         const [vec_a, vec_b, vec_c] = lattice_matrix
         for (let axis = 0; axis < 3; axis++) {
@@ -378,6 +467,25 @@ function create_lammps_reader(
           position[axis] =
             position[axis] + img_x * vec_a[axis] + img_y * vec_b[axis] + img_z * vec_c[axis]
         }
+      }
+      if (columns) {
+        const offset = atom * 3
+        columns.positions.set(position, offset)
+        for (let column = 0; column < vector_props.length; column++) {
+          const { indices } = vector_props[column]
+          const values = columns.vectors[column]
+          for (let axis = 0; axis < 3; axis++) {
+            const value = scanner.num(indices[axis])
+            if (!Number.isFinite(value)) columns.dense = false
+            values[offset + axis] = value
+          }
+        }
+        for (let column = 0; column < scalar_props.length; column++) {
+          const value = scanner.num(scalar_props[column].col_idx)
+          if (!Number.isFinite(value)) columns.dense = false
+          columns.scalars[column][atom] = value
+        }
+        continue
       }
       positions.push(position)
 
@@ -411,14 +519,14 @@ function create_lammps_reader(
       ...(time === null ? {} : { time }),
     }
     const header = { timestep, pbc, lattice_matrix, metadata }
-    return { header, elements, ids, positions, site_properties }
+    return { header, elements, ids, positions, site_properties, columns }
   }
 
   // Hands each frame, from the top of the dump, to `on_frame` (a torn final frame is dropped
   // with a warning), then makes the run-level checks and warnings in the eager order and
   // returns the run metadata
   const read_run = (
-    sites: boolean,
+    sites: LammpsSites,
     on_frame: (read: LammpsFrameRead, start: number) => void,
   ): Record<string, unknown> => {
     const steps: number[] = []
@@ -474,7 +582,7 @@ export function parse_lammps_trajectory(
 ): ParsedTrajectory {
   const frames: TrajectoryFrame[] = []
   const reader = create_lammps_reader(TextLines.of(content), warn, atom_type_mapping)
-  const metadata = reader.read_run(true, (read) => frames.push(lammps_frame(read, warn)))
+  const metadata = reader.read_run(`records`, (read) => frames.push(lammps_frame(read, warn)))
   return { format: `lammps`, frames, metadata }
 }
 
@@ -488,18 +596,23 @@ export function open_lammps_frames(
 ): AseFrames {
   const reader = create_lammps_reader(lines, warn, atom_type_mapping)
   const frames: { start: number; header: LammpsFrameHeader; numbers: Uint8Array | null }[] = []
-  const run_metadata = reader.read_run(false, ({ header, elements }, start) => {
+  const run_metadata = reader.read_run(`none`, ({ header, elements }, start) => {
     // 0 marks a symbol an atom_type_mapping gave no atomic number, whose plot row needs sites
     const numbers = new Uint8Array(
       elements.map((element) => symbol_to_atomic_number(element) ?? 0),
     )
     frames.push({ start, header, numbers: numbers.includes(0) ? null : numbers })
   })
+  const read_frame = (frame_idx: number, sites: LammpsSites) =>
+    reader.read_frame(frames[frame_idx].start, frame_idx > 0, sites)
   const decode = (frame_idx: number): TrajectoryFrame =>
-    lammps_frame(reader.read_frame(frames[frame_idx].start, frame_idx > 0, true), warn)
+    lammps_frame(read_frame(frame_idx, `records`), warn)
   return {
     frame_count: frames.length,
     metadata: run_metadata,
+    read: (frame_idx) =>
+      lammps_numeric_frame(read_frame(frame_idx, `columns`), warn) ??
+      encode_frame(decode(frame_idx)),
     decode,
     plot_row_frame: (frame_idx) => {
       const { numbers, header } = frames[frame_idx]

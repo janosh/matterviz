@@ -246,14 +246,15 @@ describe(`Dos component`, () => {
     }
   })
 
-  // A phonon DOS on a -1…20 THz grid with its tallest peak at -0.8 THz (an imaginary mode,
-  // as a Bands plot of the same mode shows down to -1.2 THz): only 0.27% of |frequency| is
-  // negative, under the noise threshold, so the axis used to clamp to [0, 20] and cut it off
+  // Density decides, not the grid. On a -1…10 THz grid a tallest peak at -0.8 THz is an
+  // imaginary mode (as a Bands plot of the same mode shows down to -1.2 THz) the axis keeps,
+  // while a negligible tail is a grid reaching below 0 (as phonopy's do) that clamps although
+  // 1.1% of |frequency| is negative
   it.each([
-    [`an imaginary-mode peak below -0.5 THz`, 2, 1 / 21],
+    [`an imaginary-mode peak below -0.5 THz`, 2, 1 / 11],
     [`a negligible tail below -0.5 THz`, 1e-6, 0],
   ])(`frequency axis with %s starts at the right place`, async (_label, peak, zero_at) => {
-    const frequencies = Array.from({ length: 211 }, (_, idx) => -1 + idx / 10)
+    const frequencies = Array.from({ length: 111 }, (_, idx) => -1 + idx / 10)
     const densities = frequencies.map(
       (freq) =>
         peak * Math.exp(-(((freq + 0.8) / 0.15) ** 2)) + Math.exp(-(((freq - 8) / 4) ** 2)),
@@ -261,7 +262,7 @@ describe(`Dos component`, () => {
     const plot = await mount_plot({
       doses: { '': { type: `phonon`, frequencies, densities } },
     })
-    // relative position of the 0 THz tick: 1/21 of the way along [-1, 20], 0 if clamped
+    // relative position of the 0 THz tick: 1/11 of the way along [-1, 10], 0 if clamped
     const zero_tick = [...plot.querySelectorAll(`.x-axis .tick`)].find(
       (element) => element.textContent?.trim() === `0`,
     )

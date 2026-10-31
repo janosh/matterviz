@@ -206,6 +206,28 @@ test.each([
   const content = read_maybe_gz(`src/site/${fixture}`)
   expect((await parse_file_content(content, filename)).type).toBe(expected)
 })
+// The structure is built from the parsed root, not by parsing the text a second time (half
+// the time of opening a 20 MB structure JSON)
+test.each([
+  [`structures/mp-1.json`, 2],
+  [`structures/mp-7000-optimade.json`, 9],
+])(`%s is parsed as JSON once`, async (fixture, n_sites) => {
+  const content = read_maybe_gz(`src/site/${fixture}`)
+  const json_parse = vi.spyOn(JSON, `parse`)
+  const result = await parse_file_content(content, `structure.json`)
+  expect(result.type === `structure` && result.data.sites.length).toBe(n_sites)
+  expect(json_parse.mock.calls.filter(([text]) => text === content)).toHaveLength(1)
+})
+
+// .dat payloads stay bytes through classification (is_binary_payload), so the parser decodes
+// them itself: by their byte-order mark, as UTF-16 written by Windows PowerShell redirection
+test(`a UTF-16 text buffer under a binary-classified name decodes by its BOM`, async () => {
+  const text = `\uFEFF${JSON.stringify({ x: [1, 2, 3], y: [4, 5, 6] })}`
+  const utf16 = new Uint16Array(Array.from(text, (char) => char.charCodeAt(0)))
+  const result = await parse_file_content(utf16.buffer, `xy.dat`)
+  expect(result.type === `json_browser` && result.data).toEqual({ x: [1, 2, 3], y: [4, 5, 6] })
+})
+
 test(`a payload under a non-JSON name that merely starts with [ is not read as JSON`, async () => {
   const ini = parse_file_content(`[run]\nsteps = 3\n`, `run.txt`)
   await expect(ini).rejects.toThrow(`Failed to parse structure from 'run.txt'`)

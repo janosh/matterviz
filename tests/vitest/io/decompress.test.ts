@@ -23,6 +23,16 @@ const compress = async (
 
 const hdf5_signature = new Uint8Array([0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a])
 const encode = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text)
+// UTF-16 with its BOM, as Windows PowerShell 5.1 redirection writes text
+const utf16 = (text: string, little_endian: boolean) => {
+  const bytes = Buffer.from(`\uFEFF${text}`, `utf16le`)
+  return Uint8Array.from(little_endian ? bytes : bytes.swap16())
+}
+const encoders = {
+  utf8: encode,
+  'utf-16le': (text: string) => utf16(text, true),
+  'utf-16be': (text: string) => utf16(text, false),
+}
 
 test.each([
   [`test.json.gz`, `gzip`],
@@ -129,6 +139,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(await decompress_trajectory_file(file)).toEqual({
       content: text,
       filename: `structure.xyz`,
+      byte_size: bytes.length,
     })
   })
 
@@ -153,7 +164,11 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     [`test.json`, `{"gzipped": "test.json"}`, true],
   ])(`decodes text file %s to a string (gzipped=%s)`, async (filename, text, gzipped) => {
     const file = new File([gzipped ? await compress(encode(text)) : text], filename)
-    expect(await decompress_file(file)).toEqual({ content: text, filename })
+    expect(await decompress_file(file)).toEqual({
+      content: text,
+      filename,
+      byte_size: encode(text).length,
+    })
   })
 
   // Compressed bytes stream out of the File instead of being buffered
@@ -164,7 +179,11 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     const text = `{"compressed": true, "format": "${format}"}`
     const file = new File([await compress(encode(text), format)], `test.json.${ext}`)
     const array_buffer = vi.spyOn(file, `arrayBuffer`)
-    expect(await decompress_file(file)).toEqual({ content: text, filename: `test.json` })
+    expect(await decompress_file(file)).toEqual({
+      content: text,
+      filename: `test.json`,
+      byte_size: text.length,
+    })
     expect(array_buffer).not.toHaveBeenCalled()
     // Unlike HTTP bodies, dropped files cannot have had a transport wrapper removed.
     await expect(decompress_file(new File([text], `test.json.${ext}`))).rejects.toThrow(
@@ -187,15 +206,13 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
           filename += layer === `gzip` ? `.gz` : `.deflate`
         }
       }
-      expect(await decompress_file(new File([bytes], filename))).toEqual({
-        content: text,
-        filename: `nested.cif`,
-      })
+      const entry = { content: text, filename: `nested.cif`, byte_size: text.length }
+      expect(await decompress_file(new File([bytes], filename))).toEqual(entry)
       expect(
         await classify_payload(new Blob([bytes]), [filename], {
           wrappers_may_be_decoded: true,
         }),
-      ).toEqual({ content: text, filename: `nested.cif` })
+      ).toEqual(entry)
     },
   )
 
@@ -210,7 +227,11 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
         wrappers_may_be_decoded: true,
       })
       if (n_layers === MAX_WRAPPER_LAYERS) {
-        expect(await result).toEqual({ content: `data_deep`, filename: `deep.cif` })
+        expect(await result).toEqual({
+          content: `data_deep`,
+          filename: `deep.cif`,
+          byte_size: 9,
+        })
         return
       }
       await expect(result).rejects.toThrow(
@@ -228,7 +249,7 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
   // Stripping `.zip` named the CIF `bundle`; a sibling `.h5` URL basename forced it to bytes
   test(`names a ZIP payload after its entry, not the archive or a sibling name, and keeps a binary payload's own name authoritative`, async () => {
     const zip = zipSync({ 'nested/a.cif': encode(`data_zipped`) })
-    const entry = { content: `data_zipped`, filename: `a.cif` }
+    const entry = { content: `data_zipped`, filename: `a.cif`, byte_size: 11 }
     expect(await decompress_file(new File([zip], `bundle.zip`))).toEqual(entry)
     expect(await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`])).toEqual(
       entry,
@@ -289,7 +310,8 @@ test.each([
 })
 
 // Cuts land just after a newline, so chunks join to one decode's text: multi-byte UTF-8, CRLF,
-// a leading BOM (dropped) or later one (kept), lines longer than a chunk (which widen it)
+// a leading BOM (dropped) or later one (kept), lines longer than a chunk (which widen it), and
+// UTF-16 by its BOM, where U+010A (`Ċ`) holds a 0x0A byte that is not a newline
 test.each([
   ``,
   `a`,
@@ -299,22 +321,36 @@ test.each([
   `x\n\uFEFFy\n`,
   `漢字 🎉 é\nlong line ${`z`.repeat(40)}\nend`,
   `no newline at all ${`q`.repeat(30)}`,
-])(`decode_text_chunks chunks %j at every size and source type`, async (text) => {
-  const bytes = encode(text)
-  const expected = new TextDecoder().decode(bytes)
-  const longest_line = Math.max(...text.split(`\n`).map((line) => encode(line).length + 1))
-  for (const source of [bytes.buffer, new Blob([bytes])]) {
-    // by default, text that fits one string decodes to one
-    expect(await decode_text_chunks(source)).toEqual([expected])
-    for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
-      const chunks = await decode_text_chunks(source, chunk_bytes)
-      expect(chunks.join(``)).toBe(expected)
-      expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(`\n`))).toBe(true)
-      if (longest_line <= chunk_bytes)
-        expect(chunks.every((chunk) => encode(chunk).length <= chunk_bytes)).toBe(true)
+  `Ċ\nxĊ\nĊĊ`,
+])(`decode_text_chunks chunks %j at every size, encoding and source type`, async (text) => {
+  for (const [encoding, encode_as] of Object.entries(encoders)) {
+    const bytes = encode_as(text)
+    const expected = new TextDecoder(encoding).decode(bytes)
+    const longest_line = Math.max(...text.split(`\n`).map((line) => encode(line).length + 1))
+    for (const source of [bytes.buffer, new Blob([bytes])]) {
+      // by default, text that fits one string decodes to one
+      expect(await decode_text_chunks(source)).toEqual([expected])
+      for (const chunk_bytes of [1, 2, 3, 7, 16, 1000]) {
+        const chunks = await decode_text_chunks(source, chunk_bytes)
+        expect(chunks.join(``)).toBe(expected)
+        expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(`\n`))).toBe(true)
+        if (encoding === `utf8` && longest_line <= chunk_bytes)
+          expect(chunks.every((chunk) => encode(chunk).length <= chunk_bytes)).toBe(true)
+      }
     }
   }
 })
+
+// Windows PowerShell 5.1 writes UTF-16 text whose every other byte is NUL, which a UTF-8
+// decode turned into binary-looking garbage
+test.each([`utf-16le`, `utf-16be`] as const)(
+  `classify_payload decodes %s text by its BOM`,
+  async (encoding) => {
+    const text = `2\nframe 0\nH 0 0 0\nH 0.74 0 0\n`
+    const blob = new Blob([encoders[encoding](text)])
+    expect((await classify_payload(blob, [`md.xyz`])).content).toBe(text)
+  },
+)
 
 // gzip reaches 1029:1 on repetitive input (measured), so the compressed size bounds nothing:
 // a 10 MiB upload expands to 10 GB with no error until the tab dies
