@@ -4,6 +4,7 @@ import { try_parse_vec3, vector_reader } from './vectors'
 
 import type { ColorScaleType } from '#lib/colors/index.js'
 import { COLOR_SCALE_TYPES, is_color_scale } from '#lib/colors/index.js'
+import type { CoordinationOptions } from '#lib/coordination/calc-coordination.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import { array_extent, sorted_numbers } from '#lib/math.js'
 import { color_interpolator, resolve_color_scale } from '#lib/plot/core/scales.js'
@@ -130,11 +131,11 @@ export const apply_categorical_color_scale = (
 
 export function get_coordination_colors(
   structure: AnyStructure,
-  strategy: BondingStrategy = `electroneg_ratio`,
+  bonding: Pick<CoordinationOptions, `strategy` | `bonding_options`> = {},
   color_scale: ColorScale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
 ): AtomPropertyColors {
-  const coord_nums = calc_coordination_nums(structure, { strategy }).coordination_nums
+  const coord_nums = calc_coordination_nums(structure, bonding).coordination_nums
 
   const { colors, unique_values } = apply_color_scale(coord_nums, color_scale, type)
   return build_prop_colors(coord_nums, colors, unique_values)
@@ -444,6 +445,8 @@ export type AtomColorSources = {
   // StructureSession.to_base_site_idx).
   to_base_idx?: (site: Site, site_idx: number) => number
   bonding_strategy?: BondingStrategy
+  // The scene's bonding_options, so coordination colors count the bonds it draws
+  bonding_options?: Record<string, unknown>
   // Wyckoff rows whose site_indices already index the DISPLAYED structure
   wyckoff_rows?: readonly WyckoffPos[]
 }
@@ -474,6 +477,7 @@ export function get_atom_colors(
     base = structure,
     to_base_idx = get_orig_site_idx,
     bonding_strategy = `electroneg_ratio`,
+    bonding_options = {},
     wyckoff_rows = [],
   }: AtomColorSources = {},
 ): AtomPropertyColors {
@@ -481,7 +485,8 @@ export function get_atom_colors(
   const { mode, color_scale, scale_type } = normalized_config
 
   if (mode === `coordination`) {
-    const on_base = get_coordination_colors(base, bonding_strategy, color_scale, scale_type)
+    const bonding = { strategy: bonding_strategy, bonding_options }
+    const on_base = get_coordination_colors(base, bonding, color_scale, scale_type)
     return base === structure ? on_base : expand_to_displayed(on_base, structure, to_base_idx)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, wyckoff_rows, color_scale)

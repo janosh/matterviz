@@ -162,7 +162,7 @@ describe(`Coordination`, () => {
       const strategy = `electroneg_ratio`
       const structure = make_cubic_structure(nacl_corner_sites, 5)
       const bar_plot_cn = calc_coordination_nums(structure, { strategy }).coordination_nums
-      const viewer_cn = atom_properties.get_coordination_colors(structure, strategy).values
+      const viewer_cn = atom_properties.get_coordination_colors(structure, { strategy }).values
       const raw_cn = calc_coordination_nums(structure, {
         strategy,
         pbc: [false, false, false],

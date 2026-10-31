@@ -56,7 +56,18 @@ test.each([
   [`146`, 146],
   [`146:R`, 146], // setting-qualified numeric strings keep the leading integer
   [`62.0`, 62],
-])(`normalize_spacegroup parses numeric string %j as %i`, (input, expected) => {
+  // other tools' Hermann-Mauguin spellings: compact (ICSD, papers), ASE/CIF, full ITA (moyo)
+  [`P21/c`, 14],
+  [`P 21/c`, 14],
+  [`P 1 21/c 1`, 14],
+  [`P63/mmc`, 194],
+  [`P 63/m m c`, 194],
+  [`F m -3 m`, 225],
+  [` Fm-3m `, 225],
+  [`P 42 21 2`, 94],
+  [`P 4 21 2`, 90],
+  [`P 21 21 21`, 19],
+])(`normalize_spacegroup parses %j as %i`, (input, expected) => {
   expect(spg.normalize_spacegroup(input)).toBe(expected)
 })
 

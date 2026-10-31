@@ -1,5 +1,5 @@
-import type { Intersection, Object3D, Plane, Raycaster, Sphere, Vector3 } from 'three/webgpu'
-import { InstancedMesh, Matrix4, Mesh, Ray } from 'three/webgpu'
+import type { Intersection, Object3D, Plane, Raycaster, Sphere } from 'three/webgpu'
+import { InstancedMesh, Matrix4, Mesh, Ray, Vector3 } from 'three/webgpu'
 
 // interactivity() `filter` keeping a single hit: the front-most one among those whose object has
 // the highest `userData.pick_rank` (default 0). Threlte dispatches pointer events to every hit
@@ -63,6 +63,7 @@ export const scratch_matrix = new Matrix4()
 export const candidate = new Mesh()
 export const candidate_hits: Intersection[] = []
 export const candidate_indices: number[] = []
+const [world_center, world_offset] = [new Vector3(), new Vector3()]
 // makeScale(r).setPosition(p) instance matrices: column-major scale at 0, translation at 12
 const SCALED_TRANSLATION = { stride: 16, position_at: 12, scale_at: 0 }
 
@@ -70,6 +71,12 @@ const SCALED_TRANSLATION = { stride: 16, position_at: 12, scale_at: 0 }
 // like Three's native instancing (same hits, distances and instanceIds) but runs the matrix
 // products and triangle tests only for instances the analytic ray-sphere pass can't rule out.
 export class SphereInstances extends InstancedMesh {
+  // Report only the front-most hit (the one Raycaster's distance sort puts first), for hosts
+  // whose pointer filter keeps one hit per object anyway (scene_interactivity's front_hit
+  // without a clip plane). A dense cloud hands the triangle test hundreds of candidates under
+  // the cursor; this visits them nearest first and stops once none can come closer.
+  nearest_only = false
+
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
     if (this.material === undefined || this.count === 0) return
     if (!this.geometry.boundingSphere) this.geometry.computeBoundingSphere()
@@ -89,6 +96,11 @@ export class SphereInstances extends InstancedMesh {
     )
     candidate.geometry = this.geometry
     candidate.material = this.material
+    if (this.nearest_only) {
+      const front = this.#front_hit(raycaster, sphere)
+      if (front) intersects.push(front)
+      return
+    }
     for (const idx of candidate_indices) {
       this.getMatrixAt(idx, scratch_matrix)
       candidate.matrixWorld.multiplyMatrices(this.matrixWorld, scratch_matrix)
@@ -100,5 +112,46 @@ export class SphereInstances extends InstancedMesh {
       }
       candidate_hits.length = 0
     }
+  }
+
+  // The candidates' nearest hit, ties to the lowest instance like the stable distance sort.
+  // A hit inside an instance's world-space sphere lies no nearer than its centre's distance
+  // along the ray minus its radius, so candidates are tested in that order until the next
+  // bound passes the best hit.
+  #front_hit(raycaster: Raycaster, sphere: Sphere): Intersection | null {
+    const { origin, direction } = raycaster.ray
+    const max_scale = this.matrixWorld.getMaxScaleOnAxis()
+    const { array } = this.instanceMatrix
+    const order = candidate_indices.map((idx): [number, number] => {
+      const scale = array[idx * 16]
+      world_center
+        .copy(sphere.center)
+        .multiplyScalar(scale)
+        .add(world_offset.fromArray(array, idx * 16 + 12))
+        .applyMatrix4(this.matrixWorld)
+      // slack keeps rounding in the bound from skipping a hit right at it
+      const radius = Math.abs(scale) * sphere.radius * max_scale * (1 + 1e-6)
+      return [world_center.sub(origin).dot(direction) - radius, idx]
+    })
+    order.sort(([bound_a, idx_a], [bound_b, idx_b]) => bound_a - bound_b || idx_a - idx_b)
+    let best: Intersection | null = null
+    for (const [bound, idx] of order) {
+      if (best && bound > best.distance) break
+      this.getMatrixAt(idx, scratch_matrix)
+      candidate.matrixWorld.multiplyMatrices(this.matrixWorld, scratch_matrix)
+      candidate.raycast(raycaster, candidate_hits)
+      for (const hit of candidate_hits) {
+        const better =
+          !best ||
+          hit.distance < best.distance ||
+          (hit.distance === best.distance && idx < (best.instanceId ?? idx))
+        if (!better) continue
+        hit.instanceId = idx
+        hit.object = this
+        best = hit
+      }
+      candidate_hits.length = 0
+    }
+    return best
   }
 }

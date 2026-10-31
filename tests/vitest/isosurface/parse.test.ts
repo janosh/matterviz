@@ -78,12 +78,21 @@ describe(`parse_decimal_token`, () => {
     `1e-22`, `0.0000000000000000000001`, `1.7976931348623157e308`, `5e-324`,
   ]
   const invalid = [`abc`, `1.2.3`, `1e`, `e5`, `.e2`, `1e+`, `--1`, `1-2`, `−1.5`, `1*^5`]
+  // parse_float_block reads the same value (2 tokens, so the first one ends at whitespace) or
+  // throws on NaN rather than splitting the token
+  const block_values = (token: string): number[] => {
+    const data = new Float64Array(2)
+    parse_float_block(`  ${token} 7\n`, 0, 2, data)
+    return Array.from(data)
+  }
   test.each([...fast_path, ...fortran, ...fallback, ...invalid])(
     `%s matches Number()`,
     (token) => {
       const padded = `  ${token}\n`
       const reference = Number(normalize_scientific_notation(token))
       expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
+      if (Number.isNaN(reference)) expect(() => block_values(token)).toThrow(`Unreadable`)
+      else expect(block_values(token)).toEqual([reference, 7])
     },
   )
 
@@ -94,6 +103,7 @@ describe(`parse_decimal_token`, () => {
     [`.25-101`, 0.25e-101],
   ])(`%s parses as %d`, (token, expected) => {
     expect(parse_decimal_token(token, 0, token.length)).toBe(expected)
+    expect(block_values(token)).toEqual([expected, 7])
   })
 })
 
@@ -473,23 +483,53 @@ describe(`parse_cube`, () => {
     expect(result?.volumes[0].dims).toEqual([2, 2, 2])
   })
 
-  // A cube with N values per grid point interleaves N fields in one data block; reading
-  // nx·ny·nz values off the front returned one volume alternating MO1/MO2 over half the grid
-  // (max relative error 1.99 vs the true MO1 field). Both declarations of N are rejected.
+  // A cube with N values per grid point interleaves N fields in one data block (as ASE reads
+  // them): one volume per field. Reading nx·ny·nz values off the front returned one volume
+  // alternating MO1/MO2 over half the grid; Gaussian wraps the orbital header at 10 integers.
   test.each([
     [
-      `orbital header count`,
-      { n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `  2  1  2` },
+      `orbital header`,
+      { n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `  2  7  9` },
+      [`MO 7`, `MO 9`],
     ],
-    [`line-3 NVAL field`, { origin: [0, 0, 0, 2] }],
-  ])(`.cube with 2 values per grid point is rejected via the %s`, (_label, overrides) => {
+    [
+      `orbital header wrapped onto a second line`,
+      { n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `  2  7\n  9` },
+      [`MO 7`, `MO 9`],
+    ],
+    [
+      `repeated orbital numbers (alpha + beta)`,
+      { n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header: `  2  7  7` },
+      [`field 1`, `field 2`],
+    ],
+    [`line-3 NVAL field`, { origin: [0, 0, 0, 2] }, [`field 1`, `field 2`]],
+  ])(`.cube with 2 values per grid point splits via the %s`, (_label, overrides, labels) => {
     // 8 grid points x 2 interleaved values: first field 1..8, second its negation
     const data = Array.from({ length: 8 }, (_, idx) => `${idx + 1}.0  ${-(idx + 1)}.0`).join(
       `\n`,
     )
-    expect(() => parse_cube(make_cube({ ...overrides, data }))).toThrow(
-      /2 values per grid point/,
+    const { volumes } = parse_cube(make_cube({ ...overrides, data }))
+    expect(volumes.map(({ id, label }) => [id, label])).toEqual(
+      labels.map((label) => [label, label]),
     )
+    expect(volumes.map(({ values }) => Array.from(values))).toEqual([
+      [1, 2, 3, 4, 5, 6, 7, 8],
+      [-1, -2, -3, -4, -5, -6, -7, -8],
+    ])
+    expect(volumes[1].data_range).toMatchObject({ min: -8, max: -1 })
+  })
+
+  test.each([
+    [
+      `a truncated interleaved block`,
+      `  2  7  9`,
+      `1 2 3 4 5 6 7 8`,
+      /expected 16 data values, got 8/,
+    ],
+    [`an orbital header past EOF`, `  3  7  9`, ``, /ends inside its orbital header/],
+  ])(`multi-orbital .cube rejects %s`, (_label, orbital_header, data, message) => {
+    const overrides = { n_atoms: -1, atoms: [[1, 0, 0, 0, 0]], orbital_header, data }
+    expect(() => parse_cube(make_cube(overrides))).toThrow(message)
   })
 
   // oxfmt-ignore

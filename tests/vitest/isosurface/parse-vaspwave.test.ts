@@ -66,6 +66,38 @@ describe(`vaspwave.h5 charge density parsing`, () => {
     await expect(parse_fixture(fixture)).rejects.toThrow(expected_error)
   })
 
+  // noncollinear runs store charge + m_x, m_y, m_z (py4vasp's 4-component density), which threw
+  it.each([
+    [1, [`charge density`]],
+    [
+      4,
+      [`charge density`, ...[`x`, `y`, `z`].map((axis) => `magnetization density (${axis})`)],
+    ],
+    [3, `unsupported component count 3`],
+  ])(`%i charge components`, async (n_components, expected) => {
+    const buffer = await h5_bytes(`spin-vaspwave`, (file) => {
+      const charge = file.create_group(`charge`)
+      // component c holds c + 1 times V at every point, so each volume reads c + 1
+      const values = Array.from(
+        { length: n_components * 8 },
+        (_, idx) => 24 * (1 + (idx >> 3)),
+      )
+      create_dataset(charge, `charge`, values, [n_components, 2, 2, 2])
+      create_dataset(charge, `grid`, [2, 2, 2], [3])
+      const positions = file.create_group(`structure`).create_group(`positions`)
+      create_dataset(positions, `lattice_vectors`, [2, 0, 0, 0, 3, 0, 0, 0, 4], [3, 3])
+    })
+    const parsed = parse_vaspwave_charge(buffer, `vaspwave.h5`)
+    if (typeof expected === `string`) await expect(parsed).rejects.toThrow(expected)
+    else {
+      const { volumes } = await parsed
+      expect(volumes.map(({ label }) => label)).toEqual(expected)
+      expect(volumes.map(({ values }) => [...new Set(values)])).toEqual(
+        expected.map((_, idx) => [idx + 1]),
+      )
+    }
+  })
+
   // a zero volume skipped the division (raw rho * V_cell), torn/extra/mismatched ion blocks
   // kept or dropped ions silently; a leading step axis ([1, n, 3], like the lattice's) loads
   const cell = [4, 0, 0, 0, 5, 0, 0, 0, 6]

@@ -22,7 +22,7 @@ import type { BandGridData } from '#lib/fermi-surface/types.js'
 import { parse_chgcar } from '#lib/isosurface/parse.js'
 import { JsonTree } from 'svelte-widgets/json-tree'
 import { marching_cubes } from '#lib/marching-cubes.js'
-import type { Vec3 } from '#lib/math.js'
+import type { Vec2, Vec3 } from '#lib/math.js'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import { bin_points } from '#lib/plot/scatter/adaptive-density.js'
 import { compute_label_positions } from '#lib/plot/core/utils/label-placement.js'
@@ -42,6 +42,9 @@ import { materialize_frame_result, type NumericFrame } from '#lib/trajectory/fra
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { MAX_STRING_CHARS } from '#lib/io/decompress.js'
 import { compute_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+import { match_lattices } from '#lib/interface/lattice-match.js'
+import { symmetry_elements_from_ops } from '#lib/symmetry/symmetry-elements.js'
+import type { MoyoOperation } from '@spglib/moyo-wasm'
 import { reciprocal_lattice } from '#lib/math.js'
 import { sanitize_html } from '#lib/sanitize.js'
 import { scaleLinear } from 'd3-scale'
@@ -104,6 +107,12 @@ const BASELINES = {
   // 1000 sweeps per label. 2000 sweeps took 411 ms (reference 30.1), and 960 ms before the
   // anneal queried labels and markers through their own grids.
   'label placement 300 labels': (265 * REFERENCE_MS) / 41.1,
+  // 2026-10-30: M5 Max/Node 26.13/Vitest 5; median of 3 runs (reference 31.4 ms). ~50 s before
+  // kept matches were indexed by von Mises bucket for the symmetry-duplicate check.
+  'lattice match 2000 A^2 unbounded': (610 * REFERENCE_MS) / 31.4,
+  // 2026-10-30: M5 Max/Node 26.13/Vitest 5; median of 3 runs (reference 32.0 ms). 614 ms with
+  // per-candidate allocations in the glide reduction.
+  'symmetry elements 41472 ops': (182 * REFERENCE_MS) / 32.0,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -749,6 +758,75 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     expect(n_sheets).toBeGreaterThan(mus.length)
     await measure(`Fermi Cu 25^3 d-band hover sweep`, () => {
       expect(sweep()).toBe(n_sheets)
+    })
+  })
+
+  // Every kept match used to be compared against every earlier one: 19k matches took ~50 s
+  test(`lattice match 2000 A^2 unbounded`, async () => {
+    const substrate: [Vec2, Vec2] = [
+      [2.556, 0],
+      [-1.278, 2.556 * Math.sin(Math.PI / 3)],
+    ] // fcc(111)
+    const film: [Vec2, Vec2] = [
+      [3.988, 0],
+      [0, 3.988],
+    ] // rocksalt (100)
+    await measure(
+      `lattice match 2000 A^2 unbounded`,
+      () => {
+        const matches = match_lattices(substrate, film, { max_area: 2000, max_matches: 1e6 })
+        expect(matches.length).toBeGreaterThan(10_000)
+      },
+      3,
+    )
+  })
+
+  // Fm-3m conventional cell repeated 6x6x6, as moyo reports a supercell: 48 signed permutations
+  // x 4 centerings x 216 translations. Each translation is an in-plane offset of every glide
+  // reduction, which allocated per candidate (614 ms).
+  test(`symmetry elements 41472 ops`, async () => {
+    const n_rep = 6
+    const perms = [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ]
+    const rotations = perms.flatMap((perm) =>
+      Array.from({ length: 8 }, (_, signs) => {
+        const flat: MoyoOperation[`rotation`] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+        for (const [row, col] of perm.entries())
+          flat[col * 3 + row] = signs & (1 << row) ? -1 : 1
+        return flat
+      }),
+    )
+    const centerings: Vec3[] = [
+      [0, 0, 0],
+      [0, 0.5, 0.5],
+      [0.5, 0, 0.5],
+      [0.5, 0.5, 0],
+    ]
+    const shifts = Array.from({ length: n_rep ** 3 }, (_, idx): Vec3 => [
+      Math.floor(idx / n_rep ** 2),
+      Math.floor(idx / n_rep) % n_rep,
+      idx % n_rep,
+    ])
+    const operations = rotations.flatMap((rotation) =>
+      centerings.flatMap((centering) =>
+        shifts.map((shift): MoyoOperation => ({
+          rotation,
+          translation: [
+            (centering[0] + shift[0]) / n_rep,
+            (centering[1] + shift[1]) / n_rep,
+            (centering[2] + shift[2]) / n_rep,
+          ],
+        })),
+      ),
+    )
+    await measure(`symmetry elements 41472 ops`, () => {
+      expect(symmetry_elements_from_ops(operations)).toHaveLength(30_456)
     })
   })
 

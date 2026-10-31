@@ -6,6 +6,8 @@ import {
   site_label_offsets,
 } from '#lib/structure/atom-label-placement.js'
 import type { LabelPlacement } from '#lib/structure/atom-label-placement.js'
+import { BondFrame, pack_bonds } from '#lib/structure/bond-rendering.js'
+import { make_site } from '#lib/structure/site.js'
 import type { Camera } from 'three/webgpu'
 import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three/webgpu'
 import { describe, expect, test } from 'vitest'
@@ -45,22 +47,28 @@ describe(`label placement`, () => {
 
   test(`site_label_offsets turns each site's label away from all bonds at both ends`, () => {
     const base_offset: Vec3 = [0, 0.5, 0]
-    const bond = (site_idx_1: number, site_idx_2: number, pos_1: Vec3, pos_2: Vec3) => ({
+    const positions: Vec3[] = [
+      [0, 0, 0],
+      [0, 2, 0],
+      [0, -2, 0],
+      [5, 0, 0],
+      [5, 0, 0],
+    ]
+    const bond = (site_idx_1: number, site_idx_2: number) => ({
       site_idx_1,
       site_idx_2,
-      pos_1,
-      pos_2,
+      pos_1: positions[site_idx_1],
+      pos_2: positions[site_idx_2],
+      bond_length: 0,
     })
     // site 0 bonds up to site 1 and down to site 2 (listed second, so 0 is its far end);
     // the zero-length bond 3-4 adds no direction, so neither site gets an offset
-    const offsets = site_label_offsets(
-      [
-        bond(0, 1, [0, 0, 0], [0, 2, 0]),
-        bond(2, 0, [0, -2, 0], [0, 0, 0]),
-        bond(3, 4, [5, 0, 0], [5, 0, 0]),
-      ],
-      base_offset,
-    )
+    const records = [bond(0, 1), bond(2, 0), bond(3, 4)]
+    // packed columns (BondFrame) read the same endpoints off the structure's sites
+    const structure = { sites: positions.map((xyz) => make_site(`C`, xyz, xyz, `C`)) }
+    const offsets = site_label_offsets(records, base_offset)
+    const frame = new BondFrame(structure, pack_bonds(records))
+    expect(site_label_offsets(frame, base_offset)).toEqual(offsets)
     expect([...offsets.keys()]).toEqual([0, 1, 2])
     // site 0 must weigh both bonds (up and down blocked → sideways); 1 and 2 face away from 0
     const expected: Vec3[] = [

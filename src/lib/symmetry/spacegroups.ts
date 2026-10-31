@@ -68,20 +68,22 @@ export function spacegroup_to_lattice_system(
   return num !== null && RHOMBOHEDRAL_SPACEGROUPS.has(num) ? `rhombohedral` : `hexagonal`
 }
 
-// Normalize space group input (number, Hermann-Mauguin symbol, or numeric string
-// like "225") to a space group number in [1, 230], or null if invalid
+// Hermann-Mauguin spellings differ only in subscript underscores and spaces: pymatgen's
+// `P2_1/c`, compact `P21/c` (ICSD, papers), ASE/CIF `P 21/c`, full ITA `P 1 21/c 1`
+const compact_symbol = (symbol: string): string => symbol.replaceAll(/[\s_]/g, ``)
+
+// Normalize space group input (number, Hermann-Mauguin symbol in any of the spellings above,
+// or numeric string like "225") to a space group number in [1, 230], or null if invalid
 export function normalize_spacegroup(spacegroup: number | string): number | null {
   if (typeof spacegroup === `number`) {
     return Number.isInteger(spacegroup) && spacegroup >= 1 && spacegroup <= 230
       ? spacegroup
       : null
   }
-  // hasOwn, not a bare lookup: `constructor`, `toString`, `__proto__` and friends are
-  // inherited from Object.prototype, so they passed the `!== undefined` test and this
-  // returned a function where its signature promises a number
-  if (Object.hasOwn(SPACEGROUP_SYMBOL_TO_NUM, spacegroup)) {
-    return SPACEGROUP_SYMBOL_TO_NUM[spacegroup]
-  }
+  // a Map, not a plain object: `constructor`, `toString`, `__proto__` and friends would be
+  // inherited from Object.prototype and come back as a function where a number is promised
+  const num = COMPACT_SYMBOL_TO_NUM.get(compact_symbol(spacegroup))
+  if (num !== undefined) return num
   // Accept trailing setting qualifiers like `146:R` by parsing the leading integer
   const int_match = /^\s*(?<num>\d+)/.exec(spacegroup)
   return int_match ? normalize_spacegroup(Number(int_match[1])) : null
@@ -415,6 +417,19 @@ export const SPACEGROUP_SYMBOL_TO_NUM: Record<string, number> = {
   'I4/m-32/m': 229,
   'I4_1/a-32/d': 230,
 } as const
+
+// Built once at load; throws if dropping underscores ever merged two groups' symbols
+const COMPACT_SYMBOL_TO_NUM = new Map<string, number>()
+for (const [symbol, num] of Object.entries(SPACEGROUP_SYMBOL_TO_NUM)) {
+  const key = compact_symbol(symbol)
+  const existing = COMPACT_SYMBOL_TO_NUM.get(key)
+  if (existing !== undefined && existing !== num) {
+    throw new Error(
+      `Space group symbol ${symbol} (${num}) collides with ${existing} as ${key}`,
+    )
+  }
+  COMPACT_SYMBOL_TO_NUM.set(key, num)
+}
 
 export const SPACEGROUP_NUM_TO_SYMBOL = Object.entries(SPACEGROUP_SYMBOL_TO_NUM).reduce<
   Record<number, string>

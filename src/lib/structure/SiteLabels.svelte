@@ -17,7 +17,7 @@
     site_label_offsets,
   } from './atom-label-placement'
   import type { SiteAnchor } from './atom-groups'
-  import { bond_records, type BondData } from './bond-rendering'
+  import type { BondData } from './bond-rendering'
   import { get_site } from './site'
 
   let {
@@ -50,9 +50,25 @@
     on_select: (site_idx: number, event: Event) => void
   } = $props()
 
-  const smart_offsets = $derived(site_label_offsets(bond_records(bonds), offset))
-  // One signal read per label instead of walking the prop chain (Structure → Viewport → Scene)
-  const current_structure = $derived(structure)
+  // Past this many labels, they share the canvas overlay's layer instead of one layer each
+  const MAX_LAYERED_LABELS = 1000
+
+  const smart_offsets = $derived(site_label_offsets(bonds, offset))
+  // Everything a label renders, resolved per label here so no label reads a shared signal:
+  // tens of thousands of labels each subscribed to the same props made unmounting them
+  // quadratic (every removed subscription searched one shared list, 1.4 s at 47k labels)
+  const label_items = $derived(
+    entries.map(({ site_idx }) => ({
+      site_idx,
+      site: get_site(structure, site_idx),
+      show_labels,
+      show_indices,
+      atom_label,
+    })),
+  )
+  // Own compositor layers (will-change) keep moving labels off the paint path, but each
+  // layer costs ~0.3 ms to tear down: 47k labels froze the tab for 13 s on hiding them
+  const promote_layers = $derived(entries.length <= MAX_LAYERED_LABELS)
   const screen_margin = $derived(label_size * 10 + padding)
 
   const { camera, size, dom, renderStage } = useThrelte()
@@ -90,9 +106,10 @@
         continue
       }
       if (element.style.display === `none`) element.style.display = ``
-      const transform = `translate(-50%, -50%) translate3d(${placement.x.toFixed(1)}px, ${placement.y.toFixed(
+      // 2D: a 3D transform would promote every label to its own layer regardless
+      const transform = `translate(-50%, -50%) translate(${placement.x.toFixed(1)}px, ${placement.y.toFixed(
         1,
-      )}px, 0)`
+      )}px)`
       if (last_transforms[idx] !== transform) {
         last_transforms[idx] = transform
         element.style.transform = transform
@@ -122,21 +139,26 @@
 
 <T is={anchor} />
 
-<div bind:this={container} class="site-labels-overlay" {@attach portal_to_dom}>
-  {#each entries as { site_idx } (site_idx)}
-    {@const site = get_site(current_structure, site_idx)}
+<div
+  bind:this={container}
+  class={[`site-labels-overlay`, { layered: promote_layers }]}
+  style:--label-font-size="{label_size * 0.85}em"
+  style:--label-bg={bg_color}
+  style:--label-padding="{padding}px"
+  style:--label-color={color || `var(--text-color)`}
+  {@attach portal_to_dom}
+>
+  {#each label_items as item (item.site_idx)}
+    {@const { site, site_idx } = item}
     <!-- one div per entry, site or not: update_positions pairs them by index -->
     <div class="site-label">
       {#if site}
-        {#if atom_label}
-          {@render atom_label({ site, site_idx })}
+        {#if item.atom_label}
+          {@render item.atom_label({ site, site_idx })}
         {:else}
           <button
             type="button"
             class="atom-label"
-            style="font-size: {label_size *
-              0.85}em; background: {bg_color}; padding: {padding}px; color: {color ||
-              `var(--text-color)`}"
             onpointerdown={(event) => {
               event.preventDefault()
               event.stopImmediatePropagation()
@@ -154,16 +176,16 @@
               if (event.key === `Enter` || event.key === ` `) event.stopPropagation()
             }}
           >
-            {#if show_labels}
+            {#if item.show_labels}
               {#if site.species.length === 1}
-                {site.species[0].element}{#if show_indices}-{site_idx + 1}{/if}
+                {site.species[0].element}{#if item.show_indices}-{site_idx + 1}{/if}
               {:else}
                 {#each site.species as { element, occu, oxidation_state } (`${element}-${occu}-${oxidation_state}`)}
                   {element}<sub>{format_num(occu, `.3~`).replace(`0.`, `.`)}</sub>
                 {/each}
-                {#if show_indices}-{site_idx + 1}{/if}
+                {#if item.show_indices}-{site_idx + 1}{/if}
               {/if}
-            {:else if show_indices}
+            {:else if item.show_indices}
               {site_idx + 1}
             {/if}
           </button>
@@ -189,14 +211,20 @@
     /* measured A/B (888 labels, 2x2x2 supercell, auto-rotating, dpr 2): 60fps
       with will-change vs ~34fps without - promoting labels to their own layers
       avoids repaints when only transforms change */
-    will-change: transform;
+    .layered > & {
+      will-change: transform;
+    }
   }
-  /* background, color and padding come from the inline style (site_label_* settings) */
+  /* background, color and padding come from the overlay's variables (site_label_* settings) */
   .atom-label {
+    background: var(--label-bg);
+    padding: var(--label-padding);
+    color: var(--label-color);
     border: 0;
     border-radius: var(--struct-atom-label-border-radius, var(--border-radius, 3pt));
     cursor: pointer;
     font: inherit;
+    font-size: var(--label-font-size);
     white-space: nowrap;
   }
 </style>

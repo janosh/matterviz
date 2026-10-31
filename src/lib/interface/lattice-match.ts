@@ -16,6 +16,10 @@ import { INTERFACE_DEFAULTS } from './types'
 
 // Matches whose strains agree this closely (up to a film-lattice symmetry) are the same match
 const SAME_STRAIN_TOL = 1e-6
+// von Mises is I1² − 3·I2 under the root, invariant under the orthogonal maps same_strain
+// applies, and a seminorm, so strains within SAME_STRAIN_TOL per entry differ in it by at
+// most √6·SAME_STRAIN_TOL. Buckets this wide put any two same-strain matches in adjacent ones.
+const VON_MISES_BUCKET = 4 * SAME_STRAIN_TOL
 // Cells searched per side (max_area / primitive area). Super-lattices of index ≤ N number
 // ~0.8·N², so this bounds the search near 1e6 bases instead of hanging the tab.
 const MAX_SUPERCELL_INDEX = 1000
@@ -352,8 +356,19 @@ export function match_lattices(
     return lattices
   }
 
-  // Substrate cells grow with n_sub, so once max_matches survive no larger cell can enter
+  // Substrate cells grow with n_sub, so once max_matches survive no larger cell can enter.
+  // Kept matches are also indexed by von Mises bucket: comparing each new match against every
+  // kept one went quadratic (19k matches at max_area 2000: ~50 s).
   const kept: LatticeMatch[] = []
+  const kept_by_bucket = new Map<number, LatticeMatch[]>()
+  const is_redundant = (match: LatticeMatch, n_sub: number): boolean => {
+    const bucket = Math.floor(match.von_mises / VON_MISES_BUCKET)
+    return [bucket - 1, bucket, bucket + 1].some((near) =>
+      (kept_by_bucket.get(near) ?? []).some(
+        (prev) => n_sub % prev.n_substrate_cells === 0 && same_strain(prev, match, symmetries),
+      ),
+    )
+  }
   for (let n_sub = 1; n_sub * area_substrate <= max_area; n_sub++) {
     // film cell counts whose area any match within the tolerances could have
     const n_equal_area = (n_sub * area_substrate) / area_film
@@ -385,11 +400,12 @@ export function match_lattices(
     }
     found.sort((match_1, match_2) => match_1.von_mises - match_2.von_mises)
     for (const match of found) {
-      const redundant = kept.some(
-        (prev) => n_sub % prev.n_substrate_cells === 0 && same_strain(prev, match, symmetries),
-      )
-      if (redundant) continue
+      if (is_redundant(match, n_sub)) continue
       kept.push(match)
+      const bucket = Math.floor(match.von_mises / VON_MISES_BUCKET)
+      const same_bucket = kept_by_bucket.get(bucket)
+      if (same_bucket) same_bucket.push(match)
+      else kept_by_bucket.set(bucket, [match])
       if (kept.length === max_matches) return kept
     }
   }

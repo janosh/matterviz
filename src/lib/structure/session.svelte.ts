@@ -92,6 +92,7 @@ export interface StructureSessionInputs {
   // Atom coloring inputs; property colors are derived once here for the scene and the legend
   atom_color_config: () => AtomColorConfig
   bonding_strategy: () => BondingStrategy
+  bonding_options: () => Record<string, unknown>
   // Transient user-facing notices ("Deleted 2 sites", supercell failures)
   on_notice?: (message: string) => void
   // The host tool's result on the current input: an undo or redo that leaves the input keeps
@@ -224,18 +225,57 @@ function create_change_tracker() {
   }
 }
 
+// Whether a site's coordinates are read through a proxy: structuredClone refuses every Proxy,
+// and probing one 3-number array costs nothing next to the clone it guards
+const is_proxied = (structure: AnyStructure): boolean => {
+  // sites can be missing from an invalid input, which the viewer reports rather than throws on
+  const probe = structure.sites?.[0]?.abc
+  if (!probe) return false
+  try {
+    structuredClone(probe)
+    return false
+  } catch {
+    return true
+  }
+}
+
+// Deep copy of the arrays and plain objects in `value`, the only things Svelte proxies (typed
+// arrays, maps and class instances are kept as they are). $state.snapshot does the same but
+// passes every number through structuredClone, which tripled the copy of 100k sites.
+const plain_copy = <Value>(value: Value): Value => {
+  if (typeof value !== `object` || value === null) return value
+  if (Array.isArray(value)) {
+    const copy: unknown[] = Array(value.length)
+    for (let idx = 0; idx < value.length; idx++) copy[idx] = plain_copy(value[idx])
+    return copy as Value
+  }
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value
+  const copy: Record<string, unknown> = {}
+  for (const key of Object.keys(value)) copy[key] = plain_copy(Reflect.get(value, key))
+  return copy as Value
+}
+
+// The input as plain objects. Svelte deep-proxies a structure held in a caller's $state and
+// one Structure assigns itself (a bindable prop written locally, e.g. a dropped file), and
+// every site read through a proxy trap was ~70% of mounting 47k atoms (bonds, polyhedra hulls
+// and image atoms each read every site). One copy per input change pays it once.
+const plain_structure = (structure: AnyStructure | undefined): AnyStructure | undefined =>
+  structure && is_proxied(structure) ? plain_copy(structure) : structure
+
 export class StructureSession {
   // === display pipeline ===
+  // the input without proxies (also what symmetry analysis posts to its worker)
+  readonly plain_input = $derived.by(() => plain_structure(this.inputs.structure()))
   // Periodic fractional coordinates wrap into the cell; non-periodic axes keep out-of-cell
   // values (unwrapped trajectories). The bonds binding addresses these wrapped sites.
   normalized_structure = $derived.by(() => {
-    const structure = this.inputs.structure()
+    const structure = this.plain_input
     return structure && normalize_fractional_coords(structure)
   })
   // The drawn geometry: the input, or a host's geometry for its sites (wrapped like the input)
   private readonly geometry_structure = $derived.by(() => {
     const geometry = this.inputs.geometry?.()
-    const structure = this.inputs.structure()
+    const structure = this.plain_input
     return geometry && structure
       ? normalize_fractional_coords(apply_tool_geometry(structure, geometry))
       : this.normalized_structure
@@ -390,6 +430,7 @@ export class StructureSession {
       base: this.base_structure,
       to_base_idx: this.to_base_site_idx,
       bonding_strategy: this.inputs.bonding_strategy(),
+      bonding_options: this.inputs.bonding_options(),
       wyckoff_rows: config.mode === `wyckoff` ? this.wyckoff_rows : [],
     })
   })
@@ -401,7 +442,7 @@ export class StructureSession {
     const structure = this.inputs.structure()
     const snapshot = structure && snapshot_topologies.get(structure)
     if (snapshot) return snapshot
-    const sites = structure?.sites ?? []
+    const sites = this.plain_input?.sites ?? []
     const last = this.last_topology
     if (last && same_topology(sites, last)) return last
     return (this.last_topology = sites.map(({ label, species }) => ({

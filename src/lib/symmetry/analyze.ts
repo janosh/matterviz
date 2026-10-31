@@ -8,6 +8,7 @@ import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
+import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { is_identity, mat3_from_flat_col_major } from './symmetry-elements'
 import type {
   InitInput,
@@ -74,11 +75,14 @@ let wasm_ready = false
 // Where hosts serving the WASM elsewhere (the VS Code webview) keep it. Registering it fetches
 // nothing: the first analysis does, and a retry after a failed fetch reuses it.
 let registered_source: InitInput | undefined
-export const set_moyo_wasm_source = (source: InitInput): void => {
-  registered_source = source
+// null forgets it: the WASM is served next to the glue module again
+export const set_moyo_wasm_source = (source: InitInput | null): void => {
+  registered_source = source ?? undefined
 }
 export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
   if (symmetry_backend) return Promise.resolve()
+  // a source given here is where this host serves the WASM, as if registered
+  if (source !== undefined) registered_source = source
   // wasm-bindgen resolves the default .wasm relative to its glue module
   const module_or_path = source ?? registered_source
   init_promise ??= init(module_or_path === undefined ? undefined : { module_or_path })
@@ -91,6 +95,39 @@ export function ensure_moyo_wasm_ready(source?: InitInput): Promise<void> {
     })
   return init_promise.then(() => undefined)
 }
+
+// What the moyo worker needs besides the cell
+export type MoyoWorkerOptions = { symprec: number; setting: `Standard` | `Spglib` }
+
+// moyo's analyze_cell in a Web Worker: a 47k-site rocksalt supercell held the main thread for
+// 16-19 s. The worker loads the WASM from its default location next to the glue module, so a
+// host serving it elsewhere (a registered or passed source: the VS Code webview, whose workers
+// can fetch nothing, or a relative URL the worker would resolve against itself) runs here, as
+// does any host without Worker (SSR, tests, disable_workers), once ensure_moyo_wasm_ready has
+// initialized the main-thread build.
+const analyze_cell_async = create_worker_client<
+  { cell: MoyoCell },
+  MoyoWorkerOptions,
+  MoyoDataset
+>({
+  label: `Symmetry`,
+  create_worker: () =>
+    // oxlint-disable-next-line eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
+    new Worker(new URL(`./moyo-worker.js`, import.meta.url), { type: `module` }),
+  compute_sync: ({ cell }, options) => {
+    if (!options) throw new Error(`moyo analysis needs symprec and setting`)
+    return analyze_cell(JSON.stringify(cell), options.symprec, options.setting)
+  },
+  // Plain copies: positions are the sites' own abc arrays, $state proxies in a viewer
+  build_payload: ({ cell: { lattice, positions, numbers } }) => ({
+    cell: {
+      lattice: { basis: [...lattice.basis] },
+      positions: positions.map(([coord_a, coord_b, coord_c]) => [coord_a, coord_b, coord_c]),
+      numbers: [...numbers],
+    },
+  }),
+  requires_main_thread: () => registered_source !== undefined,
+})
 
 const OCCUPANCY_EPS = 1e-8
 
@@ -172,7 +209,7 @@ export async function analyze_structure_symmetry(
   const backend = symmetry_backend
   const sym_data = backend
     ? await backend.analyze_cell(cell, symprec, setting)
-    : analyze_cell(JSON.stringify(cell), symprec, setting)
+    : await analyze_cell_async({ cell }, { symprec, setting })
   if (backend && !backend_settings.has(sym_data.number)) {
     const database = await backend.space_group_database(sym_data.number)
     backend_settings.set(sym_data.number, database.settings)

@@ -41,7 +41,9 @@
     neighbor_elements?: readonly string[]
   } = $props()
 
-  let dropped_entries = $state<StructureEntry[]>([])
+  // Raw: a deep proxy routed every site read of the neighbor search through proxy traps
+  // (12x slower on a dropped 20k-atom file); drops replace the list, never mutate it
+  let dropped_entries = $state.raw<StructureEntry[]>([])
 
   // Geometry and binning are separate deriveds so dragging the bin-width slider re-bins an
   // unchanged triplet list instead of re-running the whole periodic bond search. A structure
