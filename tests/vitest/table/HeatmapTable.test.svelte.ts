@@ -205,25 +205,20 @@ describe(`HeatmapTable`, () => {
     // Rich cells retain their sanitized markup instead of being flattened for truncation.
     expect(doc_query(`td[data-col="Rich"] strong`).textContent).toBe(`rich-markup`)
     const linked_cell = doc_query(`td[data-col="Linked"]`)
+    // the link crossing the split clips inside itself: still one link (one hover state, name
+    // and tab stop), its wrappers marked to shrink with it
     const clipped = doc_query(`td[data-col="Linked"] .middle-ellipsis-html`)
+    expect(clipped.tagName).toBe(`A`)
+    expect(linked_cell.querySelectorAll(`a`)).toHaveLength(1)
+    expect(clipped.getAttribute(`href`)).toBe(`/dataset`)
     expect(clipped.textContent).toBe(`prefix & ${unicode_id}`)
-    expect(clipped.dataset.title).toBe(clipped.textContent)
     expect(clipped.lastElementChild?.textContent).toBe(`🇩🇪1234567`)
-    for (const part of clipped.children) {
-      expect(part.querySelector(`a`)?.getAttribute(`href`)).toBe(`/dataset`)
-      expect(part.querySelector(`[title]`)?.getAttribute(`title`)).toBe(`Full details`)
-      expect(part.querySelector(`[data-sort-value]`)?.getAttribute(`data-sort-value`)).toBe(
-        `42`,
-      )
-    }
-    const prefix_link = clipped.firstElementChild?.querySelector(`a`)
-    expect(prefix_link?.getAttribute(`aria-label`)).toBe(`prefix & ${unicode_id}`)
-    // that aria-label only names the split link: its tooltip is the cell's own title
-    prefix_link?.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
+    const wrapper = doc_query(`td[data-col="Linked"] [title]`)
+    expect(wrapper.classList.contains(`middle-ellipsis-host`)).toBe(true)
+    expect(wrapper.getAttribute(`data-sort-value`)).toBe(`42`)
+    expect(wrapper.parentElement?.dataset.title).toBe(`prefix & ${unicode_id}`)
+    clipped.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     expect(doc_query(`.custom-tooltip .tooltip-content`).textContent).toBe(`Full details`)
-    const tail_link = clipped.lastElementChild?.querySelector(`a`)
-    expect(tail_link?.getAttribute(`aria-hidden`)).toBe(`true`)
-    expect(tail_link?.getAttribute(`tabindex`)).toBe(`-1`)
     // Auto-fit must measure the hidden prefix too, not just the clipped cell width.
     Object.defineProperty(clipped.children[0], `scrollWidth`, { value: 250 })
     Object.defineProperty(clipped.children[1], `scrollWidth`, { value: 50 })

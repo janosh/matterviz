@@ -239,8 +239,10 @@
     render_html = sanitize_html
   })
 
-  // Split rendered markup at a grapheme boundary, retaining links and inline formatting
-  // on both sides. Only these HTML-owned nodes move; Svelte cell snippets stay untouched.
+  // Split rendered markup at a grapheme boundary, retaining inline formatting on both sides.
+  // A link crossing the split is split inside itself, so it stays one link (one hover state,
+  // accessible name and tab stop) and nodes beside it (e.g. a marker) stay unclipped. Only
+  // these HTML-owned nodes move; Svelte cell snippets stay untouched.
   function ellipsize_html(element: HTMLSpanElement) {
     const text = element.textContent ?? ``
     if (text.length <= MIDDLE_ELLIPSIS_MIN_LENGTH) return
@@ -252,28 +254,21 @@
       node = walker.nextNode()
     }
     if (!node) return
-    const split_link = node.parentElement?.closest(`a`)
-    const link_label = split_link?.getAttribute(`aria-label`) ?? split_link?.textContent
+    const box = node.parentElement?.closest(`a`) ?? element
     const range = document.createRange()
-    range.selectNodeContents(element)
+    range.selectNodeContents(box)
     range.setStart(node, offset)
     const end = document.createElement(`span`)
     end.append(range.extractContents())
-    // A link crossing the split keeps one accessible name and keyboard stop. Its
-    // visible tail still follows the same href when clicked.
-    if (split_link && link_label) {
-      if (split_link.textContent) {
-        split_link.setAttribute(`aria-label`, link_label)
-        split_link.dataset.ellipsisSplit = ``
-        const tail_link = end.querySelector(`a`)
-        tail_link?.setAttribute(`aria-hidden`, `true`)
-        tail_link?.setAttribute(`tabindex`, `-1`)
-      } else split_link.remove()
-    }
     const start = document.createElement(`span`)
-    start.append(...element.childNodes)
-    element.append(start, end)
-    element.classList.add(`middle-ellipsis-html`)
+    start.append(...box.childNodes)
+    box.append(start, end)
+    box.classList.add(`middle-ellipsis-html`)
+    // wrappers around the link shrink with it so its head can clip
+    for (let host = box; host !== element && host.parentElement;) {
+      host = host.parentElement
+      host.classList.add(`middle-ellipsis-host`)
+    }
     element.dataset.title = text
   }
 
@@ -1536,10 +1531,10 @@
     if (widest > 0) set_pref(col_id, `width`, clamp(widest + 8, 50, 500))
   }
 
-  // Delegation keeps tooltips across re-rendered cells. Skipped: ellipsis-split links (the cell
-  // is their tooltip) and data-no-tooltip controls (a resize handle's would pop up mid-drag)
+  // Delegation keeps tooltips across re-rendered cells. Skipped: data-no-tooltip controls (a
+  // resize handle's would pop up mid-drag)
   const table_tooltips = tooltip({
-    delegate: `[title], [aria-label]:not([data-ellipsis-split], [data-no-tooltip]), [data-title]`,
+    delegate: `[title], [aria-label]:not([data-no-tooltip]), [data-title]`,
   })
   const controls_config = $derived(normalize_show_controls(show_controls))
   let root_styles = $derived([rest.style, root_style].filter(Boolean).join(`; `) || undefined)
@@ -2325,10 +2320,13 @@
       flex: none;
     }
   }
-  .table-container :global(.middle-ellipsis-html) {
+  .table-container :global(:is(.middle-ellipsis-host, .middle-ellipsis-html)) {
     display: inline-flex;
     max-width: 100%;
+    min-width: 0;
     vertical-align: bottom;
+  }
+  .table-container :global(.middle-ellipsis-html) {
     > :global(span:first-child) {
       min-width: 0;
       overflow: hidden;
