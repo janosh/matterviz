@@ -15,7 +15,7 @@
     entry_is_stable,
     hull_distance_range,
     hull_style_css,
-    is_entry_highlighted,
+    highlight_matcher,
     merge_highlight_style,
     same_entry,
   } from './helpers'
@@ -84,8 +84,8 @@
   const show_hull_line = $derived(merged_config.show_hull)
 
   const merged_highlight_style = $derived(merge_highlight_style(highlight_style))
-  const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    is_entry_highlighted(entry, highlighted_entries)
+  // one matcher per highlight list, not one per entry check (its Sets cost O(list))
+  const is_highlighted = $derived(highlight_matcher(highlighted_entries))
 
   const elements = $derived(hull_data.elements)
   const plot_entries = $derived(hull_data.plot_entries)

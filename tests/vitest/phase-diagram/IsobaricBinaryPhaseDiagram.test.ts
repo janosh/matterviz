@@ -194,7 +194,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const wrapper = await mount_diagram({ on_phase_hover })
     await hover_at(wrapper, 0.5, 750) // inside Liquid
     const info = on_phase_hover.mock.lastCall?.[0]
-    expect(info?.region?.id).toBe(`liq`)
+    expect(info?.region).toBe(eutectic.regions[0]) // the data's own region, not a proxy of it
     expect(info?.composition).toBeCloseTo(0.5, 9)
     expect(info?.temperature).toBeCloseTo(750, 9)
     expect(info?.lever_rule).toBeUndefined()

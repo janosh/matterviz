@@ -18,7 +18,7 @@ import {
   current_entry,
   get_energy_color_scale,
   get_point_color_for_entry,
-  is_entry_highlighted,
+  highlight_matcher,
   merge_highlight_style,
   same_entry,
 } from './helpers'
@@ -257,7 +257,7 @@ interface CanvasInteractionInputs extends Pick<
   overlay_canvas: () => HTMLCanvasElement | undefined
   elements: () => ElementSymbol[]
   visible_entries: () => ConvexHullEntry[]
-  project_point: draw.ProjectPoint
+  project_point: () => draw.ProjectPoint
   // Point styling
   highlighted_entries: () => (string | PhaseData)[]
   highlight_style: () => HighlightStyle | undefined
@@ -297,22 +297,32 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   const view_scale = $derived(
     Math.min(canvas_dims.width, canvas_dims.height) * 0.6 * camera.zoom,
   )
-  // Rotated view coordinates → canvas position (y flipped for canvas coordinates)
-  const to_screen = (coord_x: number, coord_y: number, depth: number): draw.Projected => ({
-    x: canvas_dims.width / 2 + camera.center_x + coord_x * view_scale,
-    y: canvas_dims.height / 2 + camera.center_y - coord_y * view_scale,
-    depth,
+  // Rotated view coordinates → canvas position: x = origin_x + view_x * view_scale, y the
+  // same but flipped for canvas coordinates. One snapshot per pan/zoom/resize, so projecting
+  // a point reads no reactive state.
+  const screen = $derived({
+    origin_x: canvas_dims.width / 2 + camera.center_x,
+    origin_y: canvas_dims.height / 2 + camera.center_y,
+    view_scale,
   })
 
   // === Point styling ===
+  // Per-point predicates close over their inputs, read once per change rather than per point
+  // per frame (reactive prop reads were most of a 50k-point repaint)
   const highlight_style = $derived(merge_highlight_style(inputs.highlight_style()))
-  const is_highlighted = (entry: ConvexHullEntry): boolean =>
-    is_entry_highlighted(entry, inputs.highlighted_entries())
+  const is_highlighted = $derived(highlight_matcher(inputs.highlighted_entries()))
   const energy_color_scale = $derived(
     get_energy_color_scale(inputs.color_mode(), inputs.color_scale(), inputs.plot_entries()),
   )
-  const get_point_color = (entry: ConvexHullEntry): string =>
-    get_point_color_for_entry(entry, inputs.color_mode(), inputs.colors(), energy_color_scale)
+  const get_point_color = $derived.by(() => {
+    const [color_mode, colors, scale] = [
+      inputs.color_mode(),
+      inputs.colors(),
+      energy_color_scale,
+    ]
+    return (entry: ConvexHullEntry): string =>
+      get_point_color_for_entry(entry, color_mode, colors, scale)
+  })
   const hull_point_opts = (): draw.HullPointOpts => ({
     scale: canvas_dims.scale,
     shadow_factor: strategy.shadow_factor,
@@ -391,9 +401,10 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   // Cache all point projections + depth sorting per camera/data change
   const sorted_points_cache = $derived.by((): draw.HullPoint[] => {
     if (!inputs.canvas()) return []
+    const project = inputs.project_point()
     return inputs
       .visible_entries()
-      .map((entry) => ({ entry, projected: inputs.project_point(entry.x, entry.y, entry.z) }))
+      .map((entry) => ({ entry, projected: project(entry.x, entry.y, entry.z) }))
       .toSorted((left, right) => left.projected.depth - right.projected.depth)
   })
 
@@ -409,7 +420,7 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     if (!show_labels) return
     draw.draw_hull_labels(target, inputs.visible_entries(), {
       ...toggles,
-      project: inputs.project_point,
+      project: inputs.project_point(),
       elements: inputs.elements(),
       scale: canvas_dims.scale,
       text_color: surface.text_color,
@@ -454,9 +465,12 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     camera, // the $state proxy itself, so writes through it repaint
     reset_camera,
     recenter_camera,
-    to_screen,
-    is_highlighted,
-    get_point_color,
+    get is_highlighted() {
+      return is_highlighted
+    },
+    get get_point_color() {
+      return get_point_color
+    },
     draw_points,
     draw_labels,
     get is_dragging() {
@@ -467,6 +481,9 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
     },
     get view_scale() {
       return view_scale
+    },
+    get screen() {
+      return screen
     },
     get text_color() {
       return surface.text_color

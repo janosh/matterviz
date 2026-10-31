@@ -22,6 +22,14 @@ import {
 import { make_phase } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
+// canvas encoders write real PNGs, whose resolution the export declares (set_png_dpi)
+const ONE_PIXEL_PNG = Uint8Array.from(
+  atob(
+    `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
+  ),
+  (char) => char.charCodeAt(0),
+)
+
 beforeEach(mock_parse_worker)
 
 // Force the canvas hit-test to resolve to a real plot entry so hovering can be
@@ -320,7 +328,7 @@ describe(`convex hull replacement state`, () => {
       callback: BlobCallback,
     ) {
       sizes.push([this.width, this.height])
-      callback(new Blob([`png`], { type: `image/png` }))
+      callback(new Blob([ONE_PIXEL_PNG], { type: `image/png` }))
     })
     on_export.mockClear()
     await click_export(`PNG`, target)
@@ -699,13 +707,19 @@ describe(`convex hull replacement state`, () => {
 
   // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s
   // to animate one ring. The rings now live on a transparent canvas stacked over the hull.
+  // Selecting (like hovering) re-projected and re-sorted every point while selected_entry and
+  // the hover overlay rode in the renderer's prop spread (250 ms per hover at 50k entries).
   test.each([`3d`, `4d`] as const)(
     `pulse ticks repaint only the overlay canvas (%s)`,
     async (dim) => {
       const clears = count_canvas_clears()
       await mount_harness({ dim })
+      await let_frames_run()
+      const strategy = canvas_draw.HULL_CANVAS_STRATEGIES[dim === `3d` ? 3 : 4]
+      const rotation = vi.spyOn(strategy, `rotation`)
       button(`select-entry`).click()
       await let_frames_run()
+      expect(rotation).not.toHaveBeenCalled()
       expect(clears.overlay).toBeGreaterThan(0) // the pulse is actually running
 
       const settled = { ...clears }

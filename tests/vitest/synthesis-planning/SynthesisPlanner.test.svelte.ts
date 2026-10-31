@@ -187,17 +187,24 @@ test(`condition changes queue behind one plan; target changes abort stale work`,
   const stub = install_stub_worker<PlanMessage>()
   const state = $state({
     target: `BaTiO3`,
-    plan: null as SynthesisPlan | null,
     planning: false,
     conditions: {
       temperature: 1000,
       open_species: [`CO2`, `O2`],
     } satisfies SynthesisConditions,
   })
+  // bound raw, as the planner hands it out (a deep $state here would proxy it)
+  let plan = $state.raw<SynthesisPlan | null>(null)
+  const props = { entries, show_hull: false, show_opportunity_map: false }
   const component = mount(SynthesisPlanner, {
     target: document.body,
     // the map's own worker would share the stub's message log
-    props: bind_props({ entries, show_hull: false, show_opportunity_map: false }, state),
+    props: Object.defineProperty(bind_props(props, state), `plan`, {
+      get: () => plan,
+      set: (value: SynthesisPlan | null) => {
+        plan = value
+      },
+    }),
   })
   await vi.waitFor(() => expect(stub.posted).toHaveLength(1))
   const reply = (idx: number) => {
@@ -217,8 +224,11 @@ test(`condition changes queue behind one plan; target changes abort stale work`,
   expect(stub.posted[1].message.input.conditions?.temperature).toBe(1075)
   expect(state.planning).toBe(true)
   reply(1)
-  await vi.waitFor(() => expect(state.plan?.conditions.temperature).toBe(1075))
+  await vi.waitFor(() => expect(plan?.conditions.temperature).toBe(1075))
   expect(state.planning).toBe(false)
+  // plain data, so a host can post or store it (the plan used to carry $state proxies, which
+  // structuredClone rejects)
+  expect(structuredClone(plan)).toEqual(plan)
 
   state.conditions = { ...state.conditions, temperature: 1100 }
   await vi.waitFor(() => expect(stub.posted).toHaveLength(3))
@@ -231,7 +241,7 @@ test(`condition changes queue behind one plan; target changes abort stale work`,
     data: { id: stale_request.id, result: plan_synthesis(stale_request.input) },
   })
   await tick()
-  expect(state.plan).toBeNull()
+  expect(plan).toBeNull()
   expect(state.planning).toBe(true)
 
   await unmount(component)

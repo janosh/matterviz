@@ -67,6 +67,17 @@ describe(`shortcut registry`, () => {
     expect(listed).toEqual([reset_camera, wheel_zoom, hover_walk, info_pane])
     expect(shortcuts_for([])).toEqual([])
   })
+
+  // a Structure lists its mode's scope: no key twice, so none a mode doesn't handle
+  test.each([`structure-view`, `structure-edit-atoms`, `structure-edit-bonds`] as const)(
+    `a Structure in %s lists each key once`,
+    (mode) => {
+      const keys = shortcuts_for([`viewer`, `structure`, `camera`, mode]).flatMap((shortcut) =>
+        shortcut.keys.split(` `),
+      )
+      expect(keys.filter((key, idx) => keys.indexOf(key) !== idx)).toEqual([])
+    },
+  )
 })
 
 describe(`viewer_keys`, () => {

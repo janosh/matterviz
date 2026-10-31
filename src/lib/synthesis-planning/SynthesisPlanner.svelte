@@ -109,7 +109,7 @@
     if (!target && target_options.length) target = target_options[0].formula
   })
 
-  let worker_plan = $state<SynthesisPlan | null>(plan)
+  let worker_plan = $state.raw<SynthesisPlan | null>(plan)
   let planned_entries: PhaseData[] | undefined
   let planned_target = ``
   let hull_open = $state(false)

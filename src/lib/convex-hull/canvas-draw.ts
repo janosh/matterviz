@@ -48,8 +48,9 @@ export const simplex_centroid = (corners: readonly (readonly number[])[]): numbe
   )
 
 // Marker radius in CSS px before the container scale (stable points are larger)
+const stability_radius = (is_stable: boolean): number => (is_stable ? 6 : 4)
 export const point_radius = (entry: ConvexHullEntry): number =>
-  entry_is_stable(entry) ? 6 : 4
+  stability_radius(entry_is_stable(entry))
 
 // === Markers ===
 
@@ -153,25 +154,44 @@ function draw_highlight_effect(
   }
 }
 
+type MarkerPaths = { shadow: Path2D; body: Path2D }
+// A frame's shadow and marker outlines per marker and stability: all points share two sizes,
+// so each point skips create_marker_path's rounding and string key (half the frame at 50k)
+function frame_marker_paths(scale: number) {
+  const memo = new Map<MarkerSymbol, [MarkerPaths | undefined, MarkerPaths | undefined]>()
+  return (marker: MarkerSymbol, is_stable: boolean): MarkerPaths => {
+    let by_stability = memo.get(marker)
+    if (!by_stability) memo.set(marker, (by_stability = [undefined, undefined]))
+    const slot = Number(is_stable)
+    const size = stability_radius(is_stable) * scale
+    by_stability[slot] ??= {
+      shadow: create_marker_path(size * 0.8, marker),
+      body: create_marker_path(size, marker),
+    }
+    return by_stability[slot]
+  }
+}
+
 // One depth-sorted point: shadow, animated rings (only when `pulse` is given) and marker
 function draw_hull_point(
   ctx: CanvasRenderingContext2D,
   { entry, projected }: HullPoint,
   opts: HullPointOpts,
+  paths: ReturnType<typeof frame_marker_paths>,
   pulse?: HullPulse,
 ): void {
   const { scale, shadow_factor, highlight_style, is_highlighted, get_point_color } = opts
   const is_stable = entry_is_stable(entry)
   const entry_highlighted = is_highlighted(entry)
-  const size = point_radius(entry) * scale
+  const size = stability_radius(is_stable) * scale
   // oxlint-disable-next-line typescript/prefer-nullish-coalescing
-  const marker = entry.marker || `circle`
+  const { shadow, body } = paths(entry.marker || `circle`, is_stable)
 
   const shadow_offset = Math.abs(entry.z) * shadow_factor * scale
   ctx.fillStyle = `rgba(0, 0, 0, 0.2)`
   ctx.save()
   ctx.translate(projected.x + shadow_offset, projected.y + shadow_offset)
-  ctx.fill(create_marker_path(size * 0.8, marker))
+  ctx.fill(shadow)
   ctx.restore()
 
   if (pulse) {
@@ -193,11 +213,10 @@ function draw_hull_point(
       : get_point_color(entry)
   ctx.strokeStyle = is_stable ? `#ffffff` : `#000000`
   ctx.lineWidth = 0.5 * scale
-  const marker_path = create_marker_path(size, marker)
   ctx.save()
   ctx.translate(projected.x, projected.y)
-  ctx.fill(marker_path)
-  ctx.stroke(marker_path)
+  ctx.fill(body)
+  ctx.stroke(body)
   ctx.restore()
 }
 
@@ -207,9 +226,10 @@ export function draw_hull_points(
   sorted_points: HullPoint[],
   opts: HullPointOpts,
 ): void {
+  const paths = frame_marker_paths(opts.scale)
   for (const point of sorted_points) {
     if (is_pulsing(point.entry, opts)) continue // drawn on the pulse overlay instead
-    draw_hull_point(ctx, point, opts)
+    draw_hull_point(ctx, point, opts, paths)
   }
 }
 
@@ -223,8 +243,9 @@ export function draw_pulse_overlay(
 ): void {
   // Device pixels under a DPR-scaled context, so this over-covers — right for a full clear
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  const paths = frame_marker_paths(opts.scale)
   for (const point of sorted_points) {
-    if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, pulse)
+    if (is_pulsing(point.entry, opts)) draw_hull_point(ctx, point, opts, paths, pulse)
   }
 }
 
@@ -429,6 +450,31 @@ function measure_segments(ctx: CanvasRenderingContext2D, segments: FormulaLabelS
   }, 0)
 }
 
+// Labels to place, in priority order, with their formula segments and width (fixed fonts):
+// cached per entries array and toggles, so camera frames only redo placement. Regrouping
+// and re-measuring every label per frame was ~4 ms at 50k entries.
+type LabelItem = {
+  entry: ConvexHullEntry
+  segments: FormulaLabelSegment[]
+  text_width?: number
+}
+const label_item_cache = new WeakMap<
+  readonly ConvexHullEntry[],
+  { key: string; items: LabelItem[] }
+>()
+function hull_label_items(entries: ConvexHullEntry[], opts: LabelOpts): LabelItem[] {
+  const { show_stable_labels, show_unstable_labels, max_hull_dist_show_labels } = opts
+  const key = `${show_stable_labels}|${show_unstable_labels}|${max_hull_dist_show_labels}|${opts.elements.join(`,`)}`
+  const cached = label_item_cache.get(entries)
+  if (cached?.key === key) return cached.items
+  const items = hull_label_entries(entries, opts).map((entry) => ({
+    entry,
+    segments: get_formula_label_segments(get_entry_label(entry, opts.elements)),
+  }))
+  label_item_cache.set(entries, { key, items })
+  return items
+}
+
 // Formula labels at the first of 8 placements around each point that neither overlaps an
 // earlier label nor leaves the canvas
 export function draw_hull_labels(
@@ -436,7 +482,7 @@ export function draw_hull_labels(
   entries: ConvexHullEntry[],
   opts: LabelOpts,
 ): void {
-  const { project, elements, scale, text_color, width, height, paint_only } = opts
+  const { project, scale, text_color, width, height, paint_only } = opts
   const label_height = LABEL_FONT_SIZE + 2
   const padding = Math.max(1, 2 * scale)
   const canvas_rect: Rect = { x: 0, y: 0, width, height }
@@ -446,10 +492,11 @@ export function draw_hull_labels(
   ctx.fillStyle = text_color
   ctx.textAlign = `left`
   ctx.textBaseline = `top`
-  for (const entry of hull_label_entries(entries, opts)) {
+  for (const item of hull_label_items(entries, opts)) {
+    const { entry, segments } = item
     const projected = project(entry.x, entry.y, entry.z)
-    const segments = get_formula_label_segments(get_entry_label(entry, elements))
-    const text_width = measure_segments(ctx, segments)
+    const text_width = item.text_width ?? measure_segments(ctx, segments)
+    item.text_width = text_width
     const gap = point_radius(entry) * scale + 4 * scale
     const side = gap + scale + text_width / 2
     const half_height = label_height / 2
@@ -489,38 +536,64 @@ export function draw_hull_labels(
 
 // === Hull faces ===
 
-// A drawable hull face: vertex entries, projected points and mean formation energy. A 4D
-// tetrahedron's 4 faces share `facet_idx`, so they get one categorical colour.
-export type HullFace = {
+// A hull face to draw: vertex entries and mean formation energy. A 4D tetrahedron's 4 faces
+// share `facet_idx`, so they get one categorical colour.
+export type HullFaceSet = {
   vertices: readonly ConvexHullEntry[]
-  projected: Projected[]
   e_form: number
-  depth: number
   facet_idx: number
 }
 
-// Drawable faces of the lower hull, back to front
-export function build_hull_faces(
+// A drawable hull face: a face set with its projected points
+export type HullFace = HullFaceSet & { projected: Projected[]; depth: number }
+
+// Faces of the lower hull, built once per hull: each triangle facet, or the 4 triangles of a
+// tetrahedron. A triangle two tetrahedra share is kept once (with the first one's facet_idx),
+// since drawing it twice doubles its opacity.
+export function hull_face_sets(
   facet_entries: readonly (readonly ConvexHullEntry[])[],
+): HullFaceSet[] {
+  const vertex_indices = new Map<ConvexHullEntry, number>()
+  const vertex_idx = (vertex: ConvexHullEntry): number => {
+    const idx = vertex_indices.get(vertex) ?? vertex_indices.size
+    vertex_indices.set(vertex, idx)
+    return idx
+  }
+  const seen = new Set<string>()
+  return facet_entries.flatMap((facet, facet_idx) =>
+    (facet.length === 3 ? [facet] : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1)))
+      .filter((vertices) => {
+        const key = vertices
+          .map(vertex_idx)
+          .toSorted((idx_a, idx_b) => idx_a - idx_b)
+          .join(`,`)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((vertices) => ({ vertices, facet_idx, e_form: face_e_form(vertices) })),
+  )
+}
+
+// Drawable faces of the lower hull, back to front; shared vertices are projected once
+export function build_hull_faces(
+  face_sets: readonly HullFaceSet[],
   project: ProjectPoint,
 ): HullFace[] {
-  return face_vertex_sets(facet_entries)
-    .map(({ vertices, facet_idx }) => {
-      const projected = vertices.map((vertex) => project(vertex.x, vertex.y, vertex.z))
-      const depth = mean(projected.map((point) => point.depth))
-      return { vertices, projected, facet_idx, e_form: face_e_form(vertices), depth }
+  const projections = new Map<ConvexHullEntry, Projected>()
+  const project_vertex = (vertex: ConvexHullEntry): Projected => {
+    const projected = projections.get(vertex) ?? project(vertex.x, vertex.y, vertex.z)
+    projections.set(vertex, projected)
+    return projected
+  }
+  return face_sets
+    .map((face_set) => {
+      const projected = face_set.vertices.map(project_vertex)
+      return { ...face_set, projected, depth: mean(projected.map((point) => point.depth)) }
     })
     .toSorted((left, right) => left.depth - right.depth)
 }
 
-// Vertex sets of the drawn faces: each triangle facet, or the 4 triangles of a tetrahedron
-const face_vertex_sets = (facet_entries: readonly (readonly ConvexHullEntry[])[]) =>
-  facet_entries.flatMap((facet, facet_idx) =>
-    (facet.length === 3
-      ? [facet]
-      : [...facet.keys()].map((skip) => facet.toSpliced(skip, 1))
-    ).map((vertices) => ({ vertices, facet_idx })),
-  )
 const face_e_form = (vertices: readonly ConvexHullEntry[]): number =>
   mean(vertices.map((vertex) => vertex.e_form_per_atom ?? 0))
 
@@ -553,11 +626,6 @@ export function face_color_scale(color_scale: ColorScale, e_forms: readonly numb
   const [lower, upper] = array_extent(e_forms)
   return resolve_color_scale(config, [lower, Math.max(upper, lower + 0.1)])
 }
-
-// Mean formation energies of the faces build_hull_faces draws for these facets
-export const hull_face_e_forms = (
-  facet_entries: readonly (readonly ConvexHullEntry[])[],
-): number[] => face_vertex_sets(facet_entries).map(({ vertices }) => face_e_form(vertices))
 
 // Colour resolver for one frame's faces per hull_face_color_mode
 export function face_color_resolver(
@@ -709,8 +777,9 @@ export interface HullCanvasStrategy<Camera extends HullCamera = HullCamera> {
   face_stroke_alpha(fill_alpha: number): number
   // Plain or ⌘/Ctrl drag rotates the view (shift-drag pans)
   rotate(camera: Camera, delta_x: number, delta_y: number): void
-  // Data coords → view coords [x, y, depth] about the simplex centroid, before to_screen
-  rotate_point(camera: Camera, point: Vec3, energy_range: EnergyRange): Vec3
+  // Data coords → view coords [x, y, depth] about the simplex centroid, before the screen
+  // transform. Built once per camera change so points skip re-deriving the rotation.
+  rotation(camera: Camera, energy_range: EnergyRange): (...point: Vec3) => Vec3
   // Dashed simplex outline, edges in data coords
   outline_edges(energy_range: EnergyRange): [Vec3, Vec3][]
   // Axes drawn over the faces (none in 4D)
@@ -808,24 +877,26 @@ const TERNARY_HULL_STRATEGY: HullCanvasStrategy<TernaryCamera> = {
     camera.elevation -= delta_y * 0.3 // drag down tilts the view down
   },
   // Rz(azimuth) then Rx(-elevation) about the centroid, energy scaled into the view
-  rotate_point(camera, [coord_x, coord_y, coord_z], { center: e_ctr, z_scale }) {
+  rotation(camera, { center: e_ctr, z_scale }) {
     const [elev, azim] = [to_radians(camera.elevation), to_radians(camera.azimuth)]
     const [cos_az, sin_az] = [Math.cos(azim), Math.sin(azim)]
     const [cos_el, sin_el] = [Math.cos(-elev), Math.sin(-elev)]
-    const [delta_x, delta_y, delta_z] = [
-      coord_x - TRIANGLE_CENTROID[0],
-      coord_y - TRIANGLE_CENTROID[1],
-      (coord_z - e_ctr) * z_scale,
-    ]
-    const [coord_x_1, coord_y_1] = [
-      delta_x * cos_az - delta_y * sin_az,
-      delta_x * sin_az + delta_y * cos_az,
-    ]
-    return [
-      coord_x_1,
-      coord_y_1 * cos_el - delta_z * sin_el,
-      coord_y_1 * sin_el + delta_z * cos_el,
-    ]
+    return (coord_x, coord_y, coord_z) => {
+      const [delta_x, delta_y, delta_z] = [
+        coord_x - TRIANGLE_CENTROID[0],
+        coord_y - TRIANGLE_CENTROID[1],
+        (coord_z - e_ctr) * z_scale,
+      ]
+      const [coord_x_1, coord_y_1] = [
+        delta_x * cos_az - delta_y * sin_az,
+        delta_x * sin_az + delta_y * cos_az,
+      ]
+      return [
+        coord_x_1,
+        coord_y_1 * cos_el - delta_z * sin_el,
+        coord_y_1 * sin_el + delta_z * cos_el,
+      ]
+    }
   },
   // Dashed prism: triangles at E_form = 0 and at the lowest E_form, joined at the corners
   outline_edges: ({ min: e_form_min }) =>
@@ -901,23 +972,25 @@ const QUATERNARY_HULL_STRATEGY: HullCanvasStrategy<QuaternaryCamera> = {
     camera.rotation_x = clamp(camera.rotation_x - delta_y * 0.005, -Math.PI / 3, Math.PI / 3)
   },
   // Ry(rotation_y) then Rx(rotation_x) about the centroid (Materials Project camera)
-  rotate_point(camera, [coord_x, coord_y, coord_z]) {
-    const [center_x, center_y, center_z] = [
-      coord_x - TETRAHEDRON_CENTROID[0],
-      coord_y - TETRAHEDRON_CENTROID[1],
-      coord_z - TETRAHEDRON_CENTROID[2],
-    ]
+  rotation(camera) {
     const [cos_x, sin_x] = [Math.cos(camera.rotation_x), Math.sin(camera.rotation_x)]
     const [cos_y, sin_y] = [Math.cos(camera.rotation_y), Math.sin(camera.rotation_y)]
-    const [coord_x_1, coord_z_1] = [
-      center_x * cos_y - center_z * sin_y,
-      center_x * sin_y + center_z * cos_y,
-    ]
-    return [
-      coord_x_1,
-      center_y * cos_x - coord_z_1 * sin_x,
-      center_y * sin_x + coord_z_1 * cos_x,
-    ]
+    return (coord_x, coord_y, coord_z) => {
+      const [center_x, center_y, center_z] = [
+        coord_x - TETRAHEDRON_CENTROID[0],
+        coord_y - TETRAHEDRON_CENTROID[1],
+        coord_z - TETRAHEDRON_CENTROID[2],
+      ]
+      const [coord_x_1, coord_z_1] = [
+        center_x * cos_y - center_z * sin_y,
+        center_x * sin_y + center_z * cos_y,
+      ]
+      return [
+        coord_x_1,
+        center_y * cos_x - coord_z_1 * sin_x,
+        center_y * sin_x + coord_z_1 * cos_x,
+      ]
+    }
   },
   // Every pair of tetrahedron corners
   outline_edges: () =>

@@ -240,6 +240,23 @@ test(`the previous diagram stays drawn while the worker computes new axes; proje
     }
   }
   for (const path of co_o_paths) expect(path).not.toContain(`C`)
+  // chemical potentials are <= 0: on a log axis the labels have no position and are dropped
+  // rather than drawn at x="NaN"
+  doc_query<HTMLButtonElement>(`.plot-controls-toggle`).click()
+  await tick()
+  const [x_scale_select] = document.querySelectorAll<HTMLSelectElement>(
+    `[data-testid="scale-type-section"] select`,
+  )
+  x_scale_select.value = `log`
+  x_scale_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  await tick()
+  const label_xs = () =>
+    [...document.querySelectorAll(`.domain-label`)].map((label) => label.getAttribute(`x`))
+  expect(label_xs()).toEqual([])
+  x_scale_select.value = `linear`
+  x_scale_select.dispatchEvent(new Event(`change`, { bubbles: true }))
+  await tick()
+  expect(label_xs()).toHaveLength(labels.length)
   props.config = { elements: [`Li`, `O`] }
   flushSync()
   await tick()

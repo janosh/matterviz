@@ -1,7 +1,11 @@
 // Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import { entry_has_temp_data, find_lowest_energy_unary_refs } from './thermodynamics'
+import {
+  entry_has_temp_data,
+  find_lowest_energy_unary_refs,
+  unary_ref_score,
+} from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_num } from '#lib/labels.js'
@@ -293,12 +297,24 @@ export function apply_gas_corrections(
   })
   if (shifts.every((shift) => shift === 0)) return entries
 
-  // Elements with a moved unary: hull distances against them are stale. Δμ_e is the shift of
-  // the element's formation-energy reference (0 when only a polymorph moved).
+  // Elements with a moved unary: hull distances against them are stale. Δμ_e is how far the
+  // element's formation-energy reference level moves (0 when only a polymorph above it moved).
+  // The shifts can reorder polymorphs (a tabulated one only gets the pressure term), so the
+  // reference is picked again after shifting.
   const shifted_elements = new Set(unary_elements.filter((_, idx) => shifts[idx] !== 0))
+  const entry_idx = new Map(entries.map((entry, idx) => [entry, idx]))
+  const old_refs = find_lowest_energy_unary_refs(entries)
   const ref_shift = new Map<string, number>()
-  for (const [element, ref] of Object.entries(find_lowest_energy_unary_refs(entries))) {
-    ref_shift.set(element, shifts[entries.indexOf(ref)])
+  for (const [element, ref] of Object.entries(
+    find_lowest_energy_unary_refs(entries, shifts),
+  )) {
+    const shift = shifts[entry_idx.get(ref) ?? -1]
+    const old_ref = old_refs[element]
+    // the same reference moves by exactly its own shift (no score round trip)
+    ref_shift.set(
+      element,
+      ref === old_ref ? shift : unary_ref_score(ref) + shift - unary_ref_score(old_ref),
+    )
   }
 
   return entries.map((entry, idx) => {

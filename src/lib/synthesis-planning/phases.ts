@@ -12,6 +12,7 @@ import {
 } from '#lib/convex-hull/gas-thermodynamics.js'
 import {
   compute_e_form_per_atom,
+  e_above_hull_distances,
   find_lowest_energy_unary_refs,
   lowest_energy_mixture,
   normalize_hull_composition_keys,
@@ -203,13 +204,32 @@ export function prepare_phase_set(
 // The phase set's convex hull at `fractions` (atom fractions over its elements), null if none
 export const hull_at = lowest_energy_mixture<PlannerPhase>
 
-// Fill `e_above_hull` of every phase from the hull of the whole set (in place)
+// Quickhull's facets grow steeply with dimension: past five elements an LP per phase is faster
+// (measured 6: 32 vs 5 ms, 8: 1.4 s vs 15 ms; 4 elements, 2k entries: 77 ms vs 0.8 s)
+const MAX_QUICKHULL_ELEMENTS = 5
+
+// Fill `e_above_hull` of every phase from the hull of the whole set (in place): one quickhull
+// up to MAX_QUICKHULL_ELEMENTS, else an LP per phase
 export function assign_e_above_hull(phases: PlannerPhase[]): void {
-  for (const phase of phases) {
-    const hull = hull_at(phase.fractions, phases)
-    if (!hull) throw new Error(`No hull at composition of ${phase.formula}`)
-    phase.e_above_hull = Math.max(0, phase.energy_per_atom - hull.energy)
+  if ((phases[0]?.fractions.length ?? 0) > MAX_QUICKHULL_ELEMENTS) {
+    for (const phase of phases) {
+      const hull = hull_at(phase.fractions, phases)
+      if (!hull) throw new Error(`No hull at composition of ${phase.formula}`)
+      phase.e_above_hull = Math.max(0, phase.energy_per_atom - hull.energy)
+    }
+    return
   }
+  const entries = phases.map(({ composition, energy_per_atom }) => ({
+    composition,
+    energy: 0,
+    e_form_per_atom: energy_per_atom,
+  }))
+  e_above_hull_distances(entries, entries).forEach((dist, idx) => {
+    const phase = phases[idx]
+    if (!Number.isFinite(dist)) throw new Error(`No hull at composition of ${phase.formula}`)
+    // round-off off the plane (~1e-15) is on the hull, as the LP's exact 0 for a vertex
+    phase.e_above_hull = dist > ENERGY_TOL ? dist : 0
+  })
 }
 
 // Put the requested polymorph in place of its formula's lowest-energy phase (in place): plans

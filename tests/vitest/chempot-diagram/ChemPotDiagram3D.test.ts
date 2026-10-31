@@ -84,13 +84,20 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
     clientHeight: { value: 100 },
   })
   // the WebGPU frame is encoded (a 2D drawImage of the canvas reads no pixels) and composited
-  const frame_blob = new Blob([`frame`], { type: `image/png` })
+  // canvas encoders write real PNGs, whose resolution the export declares (set_png_dpi)
+  const png_bytes = Uint8Array.from(
+    atob(
+      `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
+    ),
+    (char) => char.charCodeAt(0),
+  )
+  const frame_blob = new Blob([png_bytes], { type: `image/png` })
   canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)
   const frame = { close: vi.fn() }
   const decode = vi.fn(async () => frame)
   vi.stubGlobal(`createImageBitmap`, decode)
   const context = { scale: vi.fn(), drawImage: vi.fn() }
-  const blob = new Blob([`pixels`], { type: `image/png` })
+  const blob = new Blob([png_bytes], { type: `image/png` })
   const output = {
     width: 0,
     height: 0,
@@ -106,14 +113,14 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
   await vi.runAllTimersAsync()
   expect([output.width, output.height]).toEqual([400, 200])
   expect(context.scale).toHaveBeenCalledExactlyOnceWith(2, 2)
-  expect(decode).toHaveBeenCalledExactlyOnceWith(frame_blob)
+  expect(decode).toHaveBeenCalledExactlyOnceWith(expect.any(Blob))
   expect(context.drawImage).toHaveBeenCalledExactlyOnceWith(frame, 0, 0, 200, 100)
   expect(frame.close).toHaveBeenCalledOnce()
   if (outcome === `success`) {
-    expect(settled).toHaveBeenCalledExactlyOnceWith(blob)
+    expect(settled).toHaveBeenCalledExactlyOnceWith(expect.any(Blob))
     // the SVG embeds that encoded frame too: toDataURL of a presented WebGPU canvas is blank
     const svg = await chempot_svg_string(wrapper, {})
-    expect(svg).toContain(`<image href="data:image/png;base64,${btoa(`frame`)}"`)
+    expect(svg).toContain(`<image href="data:image/png;base64,iVBORw0KGgo`)
   } else {
     expect(settled).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
