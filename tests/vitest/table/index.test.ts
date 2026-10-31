@@ -3,7 +3,6 @@ import type { CellVal, Column, RowData, SortCriterion } from '#lib/table/index.j
 import {
   cell_readers,
   cell_text,
-  compare_rows,
   compute_column_stats,
   discover_columns,
   format_datetime,
@@ -312,14 +311,12 @@ it(`parse_numeric_val stays linear on long digit runs`, () => {
   expect(performance.now() - start).toBeLessThan(200)
 })
 
-describe(`compare_rows`, () => {
+describe(`sort_table_rows`, () => {
   const rows = (...vals: CellVal[]): RowData[] => vals.map((val) => ({ val }))
   const order = (vals: CellVal[], ascending = true) => {
     const data = rows(...vals)
     const criteria = [{ key: `val`, ascending }]
-    const sorted = sort_table_rows(data, criteria)
-    expect(sorted).toEqual(data.toSorted((row1, row2) => compare_rows(row1, row2, criteria)))
-    return sorted.map((row) => row.val)
+    return sort_table_rows(data, criteria).map((row) => row.val)
   }
 
   it.each([true, false])(`sinks missing sort keys with ascending=%s`, (ascending) => {
@@ -391,9 +388,7 @@ describe(`compare_rows`, () => {
     [`an object`, { a: 1 }],
     [`an invalid date`, new Date(NaN)],
   ])(`compares a string against %s antisymmetrically`, (_case, other) => {
-    const cmp = (val1: CellVal, val2: CellVal) =>
-      compare_rows({ val: val1 }, { val: val2 }, [{ key: `val`, ascending: true }])
-    expect(cmp(`abc`, other)).toBe(-cmp(other, `abc`))
+    expect(order([`abc`, other])).toEqual(order([other, `abc`]))
   })
 
   it(`sorts one multiset to one order whatever order it arrives in`, () => {
@@ -459,9 +454,7 @@ describe(`compare_rows`, () => {
       [{ score: null, name: `b` }, { score: undefined, name: `a` }],
       [by_score, by_name], [`a`, `b`]],
   ])(`honours later criteria when %s`, (_case, data, criteria, expected) => {
-    const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
-    expect(sort_table_rows(data, criteria)).toEqual(sorted)
-    expect(sorted.map((row) => row.name)).toEqual(expected)
+    expect(sort_table_rows(data, criteria).map((row) => row.name)).toEqual(expected)
   })
 })
 

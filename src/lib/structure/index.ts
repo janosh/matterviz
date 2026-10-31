@@ -1,5 +1,4 @@
 import { display_idx } from '#lib/labels.js'
-import type { CompositionType } from '#lib/composition/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol, element_data } from '#lib/element/index.js'
 import type { FileLoadData } from '#lib/io/types.js'
@@ -161,11 +160,6 @@ export {
   compose_perceived_bonds,
   perceive_bond_orders,
 } from '#lib/structure/bond-order-perception.js'
-
-// Atomic radii in Angstroms (used for relative sizing, not absolute rendering scale)
-export const atomic_radii: CompositionType = Object.fromEntries(
-  element_data.map((element) => [element.symbol, element.atomic_radius ?? 1]),
-)
 
 const atomic_masses = new Map(
   element_data.map(({ number, atomic_mass }) => [number, atomic_mass]),

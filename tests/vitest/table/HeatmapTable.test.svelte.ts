@@ -555,7 +555,7 @@ describe(`HeatmapTable`, () => {
       expect(header).not.toHaveBeenCalled()
     })
 
-    // Cell parsing itself is covered by the compare_rows/parse_numeric_val unit tests; these
+    // Cell parsing itself is covered by the sort_table_rows/parse_numeric_val unit tests; these
     // check a column is wired through them (string initial_sort shorthand sorts ascending)
     // and that a header click then flips the order.
     it.each<[string, string[], string[], boolean]>([

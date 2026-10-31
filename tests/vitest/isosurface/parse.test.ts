@@ -3,7 +3,6 @@ import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
 import {
   parse_chgcar,
   parse_cube,
-  parse_decimal_token,
   parse_float_block,
   parse_volumetric_file,
 } from '#lib/isosurface/parse.js'
@@ -64,7 +63,7 @@ function make_chgcar({
 
 // === Token parsing ===
 
-describe(`parse_decimal_token`, () => {
+describe(`decimal tokens in parse_float_block`, () => {
   // Fast path (integer mantissa < 2^53, |exp10| <= 22) and every fallback trigger must
   // agree with Number(normalize_scientific_notation(token)) bit for bit (Object.is, so
   // -0 and NaN are distinguished)
@@ -88,9 +87,7 @@ describe(`parse_decimal_token`, () => {
   test.each([...fast_path, ...fortran, ...fallback, ...invalid])(
     `%s matches Number()`,
     (token) => {
-      const padded = `  ${token}\n`
       const reference = Number(normalize_scientific_notation(token))
-      expect(Object.is(parse_decimal_token(padded, 2, 2 + token.length), reference)).toBe(true)
       if (Number.isNaN(reference)) expect(() => block_values(token)).toThrow(`Unreadable`)
       else expect(block_values(token)).toEqual([reference, 7])
     },
@@ -102,7 +99,6 @@ describe(`parse_decimal_token`, () => {
     [`-1.5+123`, -1.5e123],
     [`.25-101`, 0.25e-101],
   ])(`%s parses as %d`, (token, expected) => {
-    expect(parse_decimal_token(token, 0, token.length)).toBe(expected)
     expect(block_values(token)).toEqual([expected, 7])
   })
 })

@@ -146,17 +146,6 @@ function compare_sort_vals(
   return sort_collator.compare(text1, text2) * modifier
 }
 
-export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriterion[]): number {
-  for (const { key, ascending } of criteria) {
-    const [val1, val2] = [row1[key], row2[key]]
-    // `val1 === val2` never catches two missing keys (NaN !== NaN, null !== undefined)
-    if (val1 === val2) continue
-    const cmp = compare_sort_vals(get_sort_val(val1), get_sort_val(val2), ascending)
-    if (cmp !== 0) return cmp
-  }
-  return 0
-}
-
 // Parse each distinct cell once per sort, not on every O(n log n) comparison, and read each
 // row's keys up front so comparisons index arrays rather than re-reading cells (a 50k-row sort
 // went 67 -> 15 ms). The cache is local to this operation, so edits to rows, objects and

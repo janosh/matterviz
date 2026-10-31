@@ -120,12 +120,6 @@ function scan_number(text: string, start: number): number {
   return negative ? -value : value
 }
 
-// Parse the decimal token text[start, end) like Number() (plus Fortran exponents)
-export function parse_decimal_token(text: string, start: number, end: number): number {
-  const value = scan_number(text, start)
-  return token_end === end ? value : parse_token_slow(text, start, end)
-}
-
 // Whether an optionally signed `nan` token (any case) starts at `start`, what Python and Rust
 // print for a missing value
 const nan_token_at = (text: string, start: number): boolean =>

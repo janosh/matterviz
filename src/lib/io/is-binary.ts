@@ -1,11 +1,7 @@
 // Single source of truth for binary-vs-text detection: (1) is_binary string heuristic,
 // (2) has_*_magic byte signatures, (3) extension/filename classification.
 
-import {
-  BINARY_VIEWER_EXTENSIONS,
-  VASP_STRUCTURE_FILES,
-  VASP_TRAJECTORY_FILES,
-} from '#lib/constants.js'
+import { BINARY_VIEWER_EXTENSIONS } from '#lib/constants.js'
 
 // === (1) string-content heuristic ===
 // Detect binary from UTF-8-decoded text: a NUL byte or a high ratio of non-text chars. Only
@@ -77,17 +73,6 @@ const BINARY_DATA_EXTENSIONS = new Set([
 ])
 export const is_binary_data_extension = (ext: string): boolean =>
   BINARY_DATA_EXTENSIONS.has(ext)
-
-// Known text formats (plus extensionless VASP files) — safe to fetch/sniff as text
-const TEXT_EXTENSIONS = new Set(
-  `xyz extxyz json cif poscar yaml yml txt md py js ts css html xml`.split(` `),
-)
-const VASP_BASENAME_RE = new RegExp(
-  `^(?:${[...VASP_STRUCTURE_FILES, ...VASP_TRAJECTORY_FILES].join(`|`)})$`,
-  `i`,
-)
-export const is_known_text_file = (basename: string): boolean =>
-  TEXT_EXTENSIONS.has(ext_of(basename)) || VASP_BASENAME_RE.test(basename)
 
 // Binary if the (post-decompression) extension is a known binary data format or the leading
 // bytes match a magic signature
