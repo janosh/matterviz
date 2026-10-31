@@ -9,6 +9,7 @@ import {
   find_lowest_energy_unary_refs,
   get_energy_per_atom,
   has_absolute_energy,
+  species_key_element,
 } from '#lib/convex-hull/thermodynamics.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import {
@@ -92,12 +93,34 @@ export function formula_key_from_composition(composition: Record<string, number>
     .join(``)
 }
 
+// Composition keys as elements: pymatgen species ("Li+", "O2-", "Fe2+,spin=5", "D") merge into
+// their element like on the convex hull; other keys stay (axes may be abstract components)
+const chempot_key = (key: string): string => species_key_element(key) ?? key
+
+// Entries with species keys merged into elements; amounts are summed as-is, so invalid ones
+// still reach build_chempot_hyperplanes' check. Entries (and the array) without species keys
+// come back as they are, so memos keyed by them hold across panes and repeat calls.
+export function normalize_chempot_entries(entries: PhaseData[]): PhaseData[] {
+  const has_species = (entry: PhaseData) =>
+    Object.keys(entry.composition).some((key) => chempot_key(key) !== key)
+  if (!entries.some(has_species)) return entries
+  return entries.map((entry) => {
+    if (!has_species(entry)) return entry
+    const composition: Record<string, number> = {}
+    for (const [key, amount] of Object.entries(entry.composition)) {
+      const element = chempot_key(key)
+      composition[element] = (composition[element] ?? 0) + amount
+    }
+    return { ...entry, composition }
+  })
+}
+
 // Sorted elements present (positive amount) in any entry: the chemical system of a dataset
 export function entry_elements(entries: PhaseData[]): string[] {
   const elements = new Set<string>()
   for (const entry of entries) {
-    for (const [element, amount] of Object.entries(entry.composition)) {
-      if (amount > 0) elements.add(element)
+    for (const [key, amount] of Object.entries(entry.composition)) {
+      if (amount > 0) elements.add(chempot_key(key))
     }
   }
   return [...elements].toSorted()
@@ -995,12 +1018,13 @@ export function compute_chempot_system(
     default_min_limit = CHEMPOT_DEFAULTS.default_min_limit,
     limits,
   } = config
-  const { compute: elements } = chempot_axes(entry_elements(entries), config.elements)
+  const normalized = normalize_chempot_entries(entries)
+  const { compute: elements } = chempot_axes(entry_elements(normalized), config.elements)
   if (elements.length < 2) {
     throw new Error(`ChemicalPotentialDiagram requires 2+ elements, got ${elements.length}`)
   }
   const { hyperplanes, hyperplane_entries } = build_chempot_hyperplanes(
-    entries,
+    normalized,
     elements,
     formal_chempots,
   )

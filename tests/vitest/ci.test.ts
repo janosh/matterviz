@@ -9,7 +9,7 @@ import { expect, onTestFinished, test, vi } from 'vitest'
 type Gate = {
   if: string
   needs: string[] | string
-  steps: { run: string; env: { RESULT: string } }[]
+  steps: { run: string; env: { RESULT: string; MATTERVIZ_PERF?: string } }[]
 }
 const { jobs, concurrency } = load(readFileSync(`.github/workflows/ci.yml`, `utf8`)) as {
   jobs: Record<string, Gate>
@@ -101,6 +101,17 @@ test.each([`true`, `false`, ``])(`E2E jobs run only when e2e-gate outputs run=%j
   expect(jobs[`e2e-test-shards`].needs).toBe(`build-site`)
 })
 
+// The 333k-atom hotspot E2E test takes ~10 min on CI's CPU renderer, so PRs skip it.
+test.each([
+  [`pull_request`, ``],
+  [`push`, `1`],
+  [`workflow_dispatch`, `1`],
+])(`source E2E on %s sets MATTERVIZ_PERF=%j`, (event_name, expected) => {
+  const env = jobs[`e2e-source`].steps.find(({ run }) => run?.includes(`playwright test`))?.env
+  const expression = env?.MATTERVIZ_PERF?.slice(3, -2) ?? ``
+  expect(eval_expr(expression, { github: { event_name } })).toBe(expected)
+})
+
 // Past CI runs (newest first) as [run id, head repo, E2E gate conclusion, event (default
 // pull_request)]; run 100 is this one. `shard failed` is a still-running run whose E2E shard
 // already failed, `running` one without a failure yet
@@ -141,7 +152,7 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
     const running = conclusion === `shard failed` || conclusion === `running`
     const jobs_json = [
       { name: `Unit tests`, conclusion: `failure` }, // non-E2E failures decide nothing
-      { name: `E2E production (shard 6/6)`, conclusion: running ? null : conclusion },
+      { name: `E2E production (shard 8/8)`, conclusion: running ? null : conclusion },
       { name: `E2E tests (shard 1/4)`, conclusion: running ? null : conclusion },
     ]
     if (conclusion === `shard failed`) jobs_json[1].conclusion = `failure`
@@ -300,4 +311,30 @@ test.each(
   expect(args.includes(`--check-url`)).toBe(job === `publish_pypi` && !dry_run)
   if (job === `publish_pypi`)
     expect(args).toEqual(expect.arrayContaining([`--trusted-publishing`, `always`]))
+})
+
+test(`PLAYWRIGHT_PORT moves the e2e server off the default port`, async () => {
+  vi.stubEnv(`PLAYWRIGHT_PORT`, `3123`)
+  onTestFinished(() => {
+    vi.unstubAllEnvs()
+  })
+  vi.resetModules()
+  const { default: config } = await import(`../../playwright.config`)
+  expect(config.webServer.port).toBe(3123)
+  expect(config.webServer.command).toMatch(/--port 3123$/)
+})
+
+// A reused server on the port may be another repo's dev server.
+test.each([
+  [`<script data-domain="matterviz.janosh.dev">`, false],
+  [`<script data-domain="svelte-widgets.janosh.dev">`, true],
+])(`e2e global setup rejects a server serving %s: %s`, async (html, rejects) => {
+  vi.stubGlobal(`fetch`, async () => new Response(html))
+  onTestFinished(() => {
+    vi.unstubAllGlobals()
+  })
+  const { default: global_setup } = await import(`../playwright/global-setup`)
+  const setup = global_setup({ webServer: { port: 3005 } })
+  if (rejects) await expect(setup).rejects.toThrow(`serves another app, not matterviz`)
+  else await expect(setup).resolves.toBeUndefined()
 })

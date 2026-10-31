@@ -46,7 +46,7 @@ describe(`shortcut registry`, () => {
     [SHORTCUTS.reset_camera, `R`],
     [SHORTCUTS.first, `Home / Ctrl+←`],
     [SHORTCUTS.speed, `- / +`],
-    [SHORTCUTS.redo, `Ctrl+Y / ⌘+Y / Ctrl+Shift+Z / ⌘+Shift+Z`],
+    [SHORTCUTS.redo, `Ctrl+Y / ⌘+Y / Ctrl+⇧+Z / ⌘+⇧+Z`],
     [SHORTCUTS.jump, `0-9`],
     [SHORTCUTS.close, `Esc`],
     [SHORTCUTS.wheel_zoom, `⌘/Ctrl + scroll`],
@@ -59,7 +59,7 @@ describe(`shortcut registry`, () => {
       'aria-keyshortcuts': `R`,
       title: `Reset camera (R)`,
     })
-    expect(shortcut_attrs(`view_mode`, `Plot-only`).title).toBe(`Plot-only (V / Shift+V)`)
+    expect(shortcut_attrs(`view_mode`, `Plot-only`).title).toBe(`Plot-only (V / ⇧+V)`)
   })
 
   test(`shortcuts_for lists each matching entry once, in registry order`, () => {
@@ -67,6 +67,17 @@ describe(`shortcut registry`, () => {
     expect(listed).toEqual([reset_camera, wheel_zoom, hover_walk, info_pane])
     expect(shortcuts_for([])).toEqual([])
   })
+
+  // a Structure lists its mode's scope: no key twice, so none a mode doesn't handle
+  test.each([`structure-view`, `structure-edit-atoms`, `structure-edit-bonds`] as const)(
+    `a Structure in %s lists each key once`,
+    (mode) => {
+      const keys = shortcuts_for([`viewer`, `structure`, `camera`, mode]).flatMap((shortcut) =>
+        shortcut.keys.split(` `),
+      )
+      expect(keys.filter((key, idx) => keys.indexOf(key) !== idx)).toEqual([])
+    },
+  )
 })
 
 describe(`viewer_keys`, () => {

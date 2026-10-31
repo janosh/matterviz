@@ -6,6 +6,8 @@
   import bi2zr2o8 from '#site/structures/Bi2Zr2O8-Fm3m.json'
   import al2lu from '#site/structures/mp-1234.json'
   import palladium from '#site/structures/mp-2.json'
+  import type { ComponentProps } from 'svelte'
+  import TestSection from '../TestSection.svelte'
 
   // Synthetic RDF patterns: decaying baseline plus Gaussian coordination-shell peaks
   const r_vals = Array.from({ length: 50 }, (_, idx) => (idx + 1) * 0.2)
@@ -46,62 +48,55 @@
     Pd: palladium,
     'Bi₂Zr₂O₈': bi2zr2o8,
   } as unknown as Record<string, Crystal>
+
+  const pattern_props = {
+    x_axis: { label: `r (Å)` },
+    y_axis: { label: `g(r)` },
+    cutoff: 10,
+    n_bins: 50,
+  }
+  const structure_props = { cutoff: 7, n_bins: 100 }
+  const cases: (ComponentProps<typeof RdfPlot> & { id: string; title: string })[] = [
+    {
+      id: `single-pattern`,
+      title: `Single synthetic pattern`,
+      patterns: synthetic_pattern,
+      ...pattern_props,
+    },
+    {
+      id: `multi-pattern`,
+      title: `Multiple synthetic patterns with legend`,
+      patterns: synthetic_patterns,
+      ...pattern_props,
+    },
+    {
+      id: `single-structure-element-pairs-plot`,
+      title: `Single structure, element pairs`,
+      structures: structures[`Al₂Lu`],
+      mode: `element_pairs`,
+      ...structure_props,
+    },
+    {
+      id: `single-structure-full`,
+      title: `Single structure, full RDF`,
+      structures: structures[`Al₂Lu`],
+      mode: `full`,
+      ...structure_props,
+    },
+    {
+      id: `multi-structure`,
+      title: `Multiple structures comparison`,
+      structures,
+      mode: `full`,
+      ...structure_props,
+    },
+  ]
 </script>
 
-<svelte:head>
-  <title>RdfPlot Test Page</title>
-</svelte:head>
+<h1>RdfPlot test page</h1>
 
-<h1 id="rdfplot-component-playwright-tests">RdfPlot Component Playwright Tests</h1>
-
-<h2 id="single-synthetic-pattern">Single Synthetic Pattern</h2>
-<RdfPlot
-  id="single-pattern"
-  patterns={synthetic_pattern}
-  x_axis={{ label: `r (Å)` }}
-  y_axis={{ label: `g(r)` }}
-  cutoff={10}
-  n_bins={50}
-  style="height: 360px"
-/>
-
-<h2 id="multiple-synthetic-patterns-with-legend">Multiple Synthetic Patterns with Legend</h2>
-<RdfPlot
-  id="multi-pattern"
-  patterns={synthetic_patterns}
-  x_axis={{ label: `r (Å)` }}
-  y_axis={{ label: `g(r)` }}
-  cutoff={10}
-  n_bins={50}
-  style="height: 360px"
-/>
-
-<h2 id="single-structure-element-pairs">Single Structure - Element Pairs</h2>
-<RdfPlot
-  id="single-structure-element-pairs-plot"
-  structures={structures[`Al₂Lu`]}
-  mode="element_pairs"
-  cutoff={7}
-  n_bins={100}
-  style="height: 360px"
-/>
-
-<h2 id="single-structure-full-rdf">Single Structure - Full RDF</h2>
-<RdfPlot
-  id="single-structure-full"
-  structures={structures[`Al₂Lu`]}
-  mode="full"
-  cutoff={7}
-  n_bins={100}
-  style="height: 360px"
-/>
-
-<h2 id="multiple-structures-comparison">Multiple Structures Comparison</h2>
-<RdfPlot
-  id="multi-structure"
-  {structures}
-  mode="full"
-  cutoff={7}
-  n_bins={100}
-  style="height: 360px"
-/>
+{#each cases as { id, title, ...props } (id)}
+  <TestSection {title}>
+    <RdfPlot {id} {...props} style="height: 360px" />
+  </TestSection>
+{/each}

@@ -103,27 +103,12 @@ test.describe(`BandsAndDos Component Tests`, () => {
     await expect_synced_y_ticks(bands_plot, dos_plot, initial_ticks)
   })
 
-  test(`applies custom widths, passes props to subcomponents and keeps independent y-axes apart`, async ({
-    page,
-  }) => {
+  test(`applies custom widths and keeps independent y-axes apart`, async ({ page }) => {
     const custom_container = page.locator(`[data-testid="bands-and-dos-custom-widths"]`)
     await expect(custom_container).toBeVisible()
     await expect(custom_container).toHaveAttribute(`style`, /grid-template-columns/)
 
-    const bands_container = page.locator(`[data-testid="bands-and-dos-bands-styling"]`)
-    const bands_path = bands_container
-      .locator(`.scatter`)
-      .first()
-      .locator(`path[fill="none"]`)
-      .first()
-    expect(
-      await bands_path.evaluate((element) => getComputedStyle(element).stroke),
-    ).toBeTruthy()
-
-    // Check DOS props passed (normalization)
-    const dos_container = page.locator(`[data-testid="bands-and-dos-dos-norm"]`)
-    await expect(dos_container.locator(`.scatter`).nth(1).locator(`g.y-axis`)).toBeVisible()
-
+    // bands_props styling reaching the lines is checked in brillouin-bands-dos.test.ts
     // independent y-axes keep their own ranges and render children
     await page.locator(`#independent-axes`).scrollIntoViewIfNeeded()
     const container = page.locator(`[data-testid="bands-and-dos-independent-axes"]`)

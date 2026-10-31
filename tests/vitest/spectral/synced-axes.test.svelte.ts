@@ -51,6 +51,7 @@ test.each([`phonon`, `electronic`] as const)(
           }),
           units: () => units,
           side_by_side: () => inputs.side_by_side,
+          size: () => [600, 400],
           sync_zoom: () => inputs.sync_zoom,
           base_padding: DEFAULT_PLOT_PADDING, // as the viewers pass it: only t and b count
         })
@@ -149,6 +150,7 @@ test.each<
           bands_props: () => ({ y_axis: { range: bands } }),
           dos_props: () => dos,
           side_by_side: () => side,
+          size: () => [600, 400],
           base_padding: { t: 20, b: 50 },
         })
       }),
@@ -160,8 +162,9 @@ test.each<
   },
 )
 
-test(`padding floor only ever rises, ignores sub-pixel creep and undefined reports`, () => {
-  const floor = shared_resolved_padding_floor()
+test(`padding floor only rises at one size, ignores sub-pixel creep and undefined reports`, () => {
+  let size = $state<Vec2>([600, 300])
+  const floor = shared_resolved_padding_floor(() => size)
   floor.raise(undefined)
   expect(floor.value).toEqual({})
   floor.raise({ t: 20, b: 50, l: 40, r: 10 })
@@ -172,4 +175,11 @@ test(`padding floor only ever rises, ignores sub-pixel creep and undefined repor
   expect(floor.value).toBe(raised)
   floor.raise({ t: 5, b: 58, l: 0, r: 0 })
   expect(floor.value).toEqual({ t: 20, b: 58 })
+  // a new height or width drops the old margins and settles anew, even on lower ones
+  size = [600, 500]
+  expect(floor.value).toEqual({})
+  floor.raise({ t: 10, b: 40, l: 0, r: 0 })
+  expect(floor.value).toEqual({ t: 10, b: 40 })
+  size = [400, 500]
+  expect(floor.value).toEqual({})
 })

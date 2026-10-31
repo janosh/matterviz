@@ -28,6 +28,7 @@
     LabelStyle,
     LayerZIndex,
     PlotConfig,
+    PointStyle,
     ScatterHandlerEvent,
     ScatterHandlerProps,
     SizeLegendConfig,
@@ -74,9 +75,14 @@
     get_series_symbol,
     series_text,
   } from '#lib/plot/core/data-transform.js'
-  import { density_contours as compute_density_contours } from '#lib/plot/core/density-contours.js'
+  import {
+    density_contours as compute_density_contours,
+    density_level_fractions,
+    level_densities,
+  } from '#lib/plot/core/density-contours.js'
   import type { FacetAxis } from '#lib/plot/core/facets.js'
   import { FACET_AXES } from '#lib/plot/core/facets.js'
+  import type { ObstacleSeries } from '#lib/plot/core/decorations/index.js'
   import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
   import { size_legend_entries } from '#lib/plot/core/size-legend.js'
@@ -113,6 +119,7 @@
     resolve_series_ref,
   } from '#lib/plot/core/fill-utils.js'
   import {
+    axis_transform,
     get_relative_coords,
     is_activation_key,
     range_bounds,
@@ -121,6 +128,7 @@
   } from '#lib/plot/core/interactions.js'
   import {
     create_cartesian_frame,
+    create_pan_anchor,
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
   import { resolve_plot_display } from '#lib/plot/core/display.svelte.js'
@@ -132,11 +140,14 @@
   } from '#lib/plot/core/layout.js'
   import {
     CANVAS_MARKER_THRESHOLD,
-    type CanvasMarker,
     canvas_safe_color,
+    create_marker_batch,
     create_marker_canvas,
+    type MarkerBatch,
+    type MarkerStyle,
+    push_marker,
   } from '#lib/plot/core/canvas-markers.svelte.js'
-  import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
+  import { build_spatial_index_at, query_nearest_id } from '#lib/plot/core/spatial-index.js'
   import { resolve_line_tween } from '#lib/plot/core/utils.js'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import {
@@ -149,6 +160,7 @@
     is_finite_num,
     legend_row_dedupe,
     materialize_series_points,
+    type MaterializedSeries,
     project_line_points,
     strict_x_direction,
     pick_tooltip_bg,
@@ -428,7 +440,7 @@
   let { has_x2_points, has_y2_points } = $derived(extents_by_axis)
 
   // How far markers and error-bar caps reach past their data point in px, sized as they render
-  // (series_appearance). Auto ranges leave that much room so marks on the outermost points
+  // (style_builder). Auto ranges leave that much room so marks on the outermost points
   // aren't cut in half by the plot-area clip.
   let edge_px = $derived.by(() => {
     let max_px = 0
@@ -609,6 +621,16 @@
     decoration_solution: () => frame.decoration_solution,
   })
 
+  // Each series' obstacle mark by its x and y arrays, handed back while the inputs it was built
+  // from hold, so the obstacle builder reuses its cells: a legend toggle walks only what
+  // changed (20 lines x 20k points: 97 -> 3 ms, 400 x 2k: 231 -> 15 ms). Dropped on in-place
+  // value edits (see line_values_read); series with point offsets, whose objects could be
+  // edited in place unseen, are built afresh.
+  type ObstacleEntry = { params: unknown[]; mark: ObstacleSeries }
+  const obstacle_marks = $derived.by(() => {
+    void line_values_read
+    return new WeakMap<object, WeakMap<object, ObstacleEntry>>()
+  })
   // Plot-specific immutable obstacle field: visible series points and sampled line segments in
   // normalized [0,1] coordinates (y=0 at top). Each series uses its assigned x/y scale.
   const obstacles_norm = $derived.by(() =>
@@ -620,15 +642,24 @@
         const y_config = uses_y2 ? final_y2_axis : final_y_axis
         const x_range = uses_x2 ? ([x2_min, x2_max] as Vec2) : ([x_min, x_max] as Vec2)
         const y_range = uses_y2 ? ([y2_min, y2_max] as Vec2) : ([y_min, y_max] as Vec2)
+        const draws_line = show_lines && has_marker(srs, `line`)
+        // oxfmt-ignore
+        const params = [uses_x2, uses_y2, ...x_range, ...y_range, x_config.scale_type, y_config.scale_type, base_w, base_h, draws_line]
+        let by_y = obstacle_marks.get(srs.x)
+        if (!by_y) obstacle_marks.set(srs.x, (by_y = new WeakMap()))
+        const hit = srs.point_offset == null ? by_y.get(srs.y) : undefined
+        if (hit?.params.every((param, idx) => param === params[idx])) return hit.mark
         const norm_x = create_scale(x_config.scale_type ?? `linear`, x_range, [0, 1])
         const norm_y = create_scale(y_config.scale_type ?? `linear`, y_range, [0, 1])
-        return {
+        const mark = {
           points: srs.filtered_data.map((point) => ({
             x: norm_x(point.x) + (point.point_offset?.x ?? 0) / base_w,
             y: 1 - norm_y(point.y) + (point.point_offset?.y ?? 0) / base_h,
           })),
-          draws_line: show_lines && has_marker(srs, `line`),
+          draws_line,
         }
+        by_y.set(srs.y, { params, mark })
+        return mark
       }),
     ),
   )
@@ -747,7 +778,6 @@
       ),
     ),
   )
-  type FilteredSeries = (typeof filtered_series)[number]
   // The series each draw loop walks, so a plot of many lines (a band structure's, most far
   // off the shown energies) reconciles only those it draws on every data change
   // (log y axes hold lines below them at their floor, see line_reaches_view)
@@ -779,6 +809,28 @@
   // One KDE per series in its own px frame: drawn on a grid over the plot area (plus the blur
   // pad), with levels from a grid over the whole series so they survive panning
   const density_config = $derived(density_contours === true ? {} : density_contours || null)
+  // A pan only translates px, which leaves those levels as they were: they're computed per
+  // series in a frame scaled like the plot's but not offset, so pans reuse them
+  const density_levels = $derived.by(() => {
+    if (!density_config) return []
+    const fractions = density_level_fractions(density_config.levels)
+    // Non-finite values and log-invalid ones become NaN pixels, which the grid skips
+    const to_px = (axis: FacetAxis, { scale_type }: typeof final_x_axis) => {
+      const { forward } = axis_transform(scale_type)
+      const is_log = get_scale_type_name(scale_type) === `log`
+      const slope = frame.px_per_unit[axis]
+      return (val: number) =>
+        Number.isFinite(val) && !(is_log && val <= 0) ? slope * forward(val) : NaN
+    }
+    return assigned_series.map((srs) => {
+      if (!srs || srs.visible === false) return null
+      const x_px = srs.x_axis === `x2` ? to_px(`x2`, final_x2_axis) : to_px(`x`, final_x_axis)
+      const y_px = srs.y_axis === `y2` ? to_px(`y2`, final_y2_axis) : to_px(`y`, final_y_axis)
+      const xs = Float64Array.from({ length: srs.x.length }, (_, idx) => x_px(srs.x[idx]))
+      const ys = Float64Array.from({ length: srs.x.length }, (_, idx) => y_px(srs.y[idx]))
+      return level_densities(xs, ys, fractions, { bandwidth: density_config.bandwidth })
+    })
+  })
   const density_layers = $derived.by(() => {
     if (!density_config) return []
     const [plot_width, plot_height] = [width - pad.l - pad.r, height - pad.t - pad.b]
@@ -802,6 +854,7 @@
         height: plot_height,
         levels,
         bandwidth,
+        densities: density_levels[series_idx],
       })
       return contours.length
         ? [{ series_idx, color: series_color(srs, series_idx), contours }]
@@ -839,15 +892,14 @@
       : assigned_series.findIndex(Boolean),
   )
 
-  // Marker appearance shared by the canvas and SVG paths so they can't drift. Per-series
-  // constants are read once here (per-point reactive reads cost more than all geometry at
-  // 100k points); the closure builds the CanvasMarker directly, one allocation per point.
-  const series_appearance = (series_data: FilteredSeries) => {
+  // Marker styles shared by the canvas and SVG paths so they can't drift. Per-series constants
+  // are read once (per-point reactive reads cost more than all geometry at 100k points).
+  const dense_markers = $derived(visible_marker_count >= DENSE_MARKER_COUNT)
+  const style_builder = (series_data: MaterializedSeries<Metadata>) => {
     const series_idx = series_data.orig_series_idx
     const point_ctrl = series_idx === active_series_idx ? styles.point : undefined
     const [sparse_radius, dense_radius] = has_marker(series_data, `line`) ? [2.5, 2] : [3, 2.5]
-    const default_radius =
-      visible_marker_count >= DENSE_MARKER_COUNT ? dense_radius : sparse_radius
+    const default_radius = dense_markers ? dense_radius : sparse_radius
     const default_fill = plot_color(series_idx)
     // A global symbol replaces the series cycle; authored point symbols still win.
     const default_symbol = styles.point?.symbol_type ?? get_series_symbol(series_idx)
@@ -855,73 +907,98 @@
     const { stroke_width: default_stroke_width, stroke_opacity: default_stroke_opacity } =
       DEFAULTS.scatter.point
     const [size_fn, color_fn] = [size_scale_fn, color_scale_fn]
-    return {
-      marker_of: (
-        point: InternalPoint<Metadata>,
-        cx = 0,
-        cy = 0,
-        opacity = 1,
-      ): CanvasMarker => {
-        const pt = point.point_style
-        const stroke = point_ctrl?.stroke_color ?? pt?.stroke
-        return {
-          cx,
-          cy,
-          opacity,
-          radius: is_finite_num(point.size_value)
-            ? size_fn(point.size_value)
-            : (point_ctrl?.size ?? pt?.radius ?? default_radius),
-          // A size_value sizes the marker through the scale, overriding any static symbol
-          // area, so the size legend always reads true
-          symbol_size: is_finite_num(point.size_value)
-            ? undefined
-            : (pt?.symbol_size ?? undefined),
-          symbol_type: pt?.symbol_type ?? default_symbol,
-          fill: is_finite_num(point.color_value)
-            ? color_fn(point.color_value)
-            : (point_ctrl?.color ?? pt?.fill ?? default_fill),
-          fill_opacity: point_ctrl?.opacity ?? pt?.fill_opacity ?? 1,
-          stroke: stroke ?? fallback_stroke,
-          stroke_width: point_ctrl?.stroke_width ?? pt?.stroke_width ?? default_stroke_width,
-          stroke_opacity:
-            point_ctrl?.stroke_opacity ??
-            pt?.stroke_opacity ??
-            (stroke == null ? default_stroke_opacity : 1),
-        }
-      },
-      // Colour-scale output is always a d3 colour, so only authored paints are checked.
-      // They come from a handful of strings, so the memo below makes this O(1) per point.
-      canvas_safe: (point: InternalPoint<Metadata>): boolean => {
-        const pt = point.point_style
-        const fill = is_finite_num(point.color_value)
-          ? null
-          : (point_ctrl?.color ?? pt?.fill ?? default_fill)
-        return (
-          (fill == null || canvas_safe_color(fill)) &&
-          canvas_safe_color(point_ctrl?.stroke_color ?? pt?.stroke ?? fallback_stroke)
-        )
-      },
+    return (point: InternalPoint<Metadata>): MarkerStyle => {
+      const pt = point.point_style
+      const stroke = point_ctrl?.stroke_color ?? pt?.stroke
+      return {
+        radius: is_finite_num(point.size_value)
+          ? size_fn(point.size_value)
+          : (point_ctrl?.size ?? pt?.radius ?? default_radius),
+        // A size_value sizes the marker through the scale, overriding any static symbol
+        // area, so the size legend always reads true
+        symbol_size: is_finite_num(point.size_value)
+          ? undefined
+          : (pt?.symbol_size ?? undefined),
+        symbol_type: pt?.symbol_type ?? default_symbol,
+        fill: is_finite_num(point.color_value)
+          ? color_fn(point.color_value)
+          : (point_ctrl?.color ?? pt?.fill ?? default_fill),
+        fill_opacity: point_ctrl?.opacity ?? pt?.fill_opacity ?? 1,
+        stroke: stroke ?? fallback_stroke,
+        stroke_width: point_ctrl?.stroke_width ?? pt?.stroke_width ?? default_stroke_width,
+        stroke_opacity:
+          point_ctrl?.stroke_opacity ??
+          pt?.stroke_opacity ??
+          (stroke == null ? default_stroke_opacity : 1),
+      }
     }
+  }
+  // Each series' styles by point_idx, built per data or style change rather than per pan/zoom
+  // frame. Points drawn alike (no size or colour value, one point_style) share one object,
+  // which the canvas batches by identity. `unsafe` holds those whose authored paint a canvas
+  // can't parse (colour-scale output is always a d3 colour, so only authored paint is checked).
+  const marker_styles = $derived.by(() => {
+    const by_series = new Map<number, { by_idx: MarkerStyle[]; unsafe: Set<MarkerStyle> }>()
+    for (const series_data of materialized_series) {
+      // line-only series draw no markers (their error bars restyle through style_of)
+      if (!has_marker(series_data, `points`)) continue
+      const style_for = style_builder(series_data)
+      const shared = new Map<PointStyle | undefined, MarkerStyle>()
+      const by_idx: MarkerStyle[] = []
+      const unsafe = new Set<MarkerStyle>()
+      for (const point of series_data.points) {
+        const by_value = is_finite_num(point.size_value) || is_finite_num(point.color_value)
+        let style = by_value ? undefined : shared.get(point.point_style)
+        if (!style) {
+          style = style_for(point)
+          if (!by_value) shared.set(point.point_style, style)
+          const fill_safe = is_finite_num(point.color_value) || canvas_safe_color(style.fill)
+          if (!fill_safe || !canvas_safe_color(style.stroke)) unsafe.add(style)
+        }
+        by_idx[point.point_idx] = style
+      }
+      by_series.set(series_data.orig_series_idx, { by_idx, unsafe })
+    }
+    return by_series
+  })
+  // A point's style; a point outliving its data (a pinned one, say) is styled afresh
+  const style_of = (point: InternalPoint<Metadata>): MarkerStyle => {
+    const cached = marker_styles.get(point.series_idx)?.by_idx[point.point_idx]
+    if (cached) return cached
+    const series_data = materialized_series.find(
+      (srs) => srs.orig_series_idx === point.series_idx,
+    )
+    if (!series_data) throw new Error(`ScatterPlot: no series ${point.series_idx} to style`)
+    return style_builder(series_data)(point)
   }
 
   // Per-series data->pixel projection: `point` places a marker (with point_offset), `line`
-  // maps raw x/y, holding non-positive log-y values at the domain floor instead of vanishing
-  const series_projector = (series_data: Pick<DataSeries, `x_axis` | `y_axis`>) => {
+  // maps raw x/y, holding non-positive log-y values at the domain floor instead of vanishing.
+  // `scales` and `reach` (px lines keep past each side when cropped) serve anchored lines.
+  const series_projector = (
+    series_data: Pick<DataSeries, `x_axis` | `y_axis`>,
+    scales: typeof frame.scales = frame.scales,
+    reach = 0,
+  ) => {
     const use_y2 = series_data.y_axis === `y2`
-    const x_scale = series_data.x_axis === `x2` ? x2_scale_fn : x_scale_fn
-    const y_scale = use_y2 ? y2_scale_fn : y_scale_fn
+    const x_scale = series_data.x_axis === `x2` ? scales.x2 : scales.x
+    const y_scale = use_y2 ? scales.y2 : scales.y
     const y_axis_config = use_y2 ? final_y2_axis : final_y_axis
     const y_line_scale = log_floor_scale(y_scale, y_axis_config.scale_type, y_scale.domain())
     // x needs the same floor as y for error bars: a lower end at or below zero on a log
     // x axis has no finite pixel, and one non-finite end drops the whole bar
     const x_axis_config = series_data.x_axis === `x2` ? final_x2_axis : final_x_axis
     const x_line_scale = log_floor_scale(x_scale, x_axis_config.scale_type, x_scale.domain())
+    const x_px = (point: InternalPoint<Metadata>): number =>
+      x_scale(point.x) + (point.point_offset?.x ?? 0)
+    const y_px = (point: InternalPoint<Metadata>): number =>
+      y_scale(point.y) + (point.point_offset?.y ?? 0)
     return {
       x_scale,
-      point: (point: InternalPoint<Metadata>): Vec2 => [
-        x_scale(point.x) + (point.point_offset?.x ?? 0),
-        y_scale(point.y) + (point.point_offset?.y ?? 0),
-      ],
+      // a marker's centre, also per coordinate for loops that shouldn't allocate a pair
+      point: (point: InternalPoint<Metadata>): Vec2 => [x_px(point), y_px(point)],
+      x_px,
+      y_px,
       // Error-bar ends in the point's offset frame, held at the log domain floor (not NaN)
       error_span: (point: InternalPoint<Metadata>, axis: `x` | `y`): Vec2 | null => {
         const error = axis === `x` ? point.x_error : point.y_error
@@ -937,7 +1014,7 @@
       line: (
         line: Pick<DataSeries, `x` | `y` | `line_style`>,
         direction: -1 | 0 | 1,
-      ): Vec2[] => {
+      ): ReturnType<typeof project_line_points> => {
         const margin =
           2 * Math.max(line.line_style?.stroke_width ?? 2, styles.line?.width ?? 2)
         // Dashes and morph tweens need stable vertices (incl. on pan release), so use the
@@ -945,21 +1022,95 @@
         const dashed = [line.line_style?.line_dash, styles.line?.dash].some(
           (dash) => dash && dash !== `none` && dash !== `solid`,
         )
-        const duration = resolved_line_tween?.duration
-        const crop = !dashed && typeof duration === `number` && duration <= 0
+        const crop = !dashed && lines_snap
         return project_line_points(
           line,
           x_scale,
           y_line_scale,
           [
-            Number(x_scale.invert(pad.l - margin)),
-            Number(x_scale.invert(width - pad.r + margin)),
+            Number(x_scale.invert(pad.l - margin - reach)),
+            Number(x_scale.invert(width - pad.r + margin + reach)),
           ],
           crop ? direction : 0,
           line.line_style?.curve,
         )
       },
     }
+  }
+
+  // === Lines during a pan ===
+  // Mid-pan, lines keep the view the pan started from and their paths are shifted (see
+  // create_pan_anchor): rebuilding many long lines' path strings was most of a pan frame.
+  // Only while lines snap (a morph would glide from the shifted path on release) and on
+  // linear axes, as a log axis holds lines below its view at the live floor.
+  // A boolean, as resolved_line_tween is a fresh object whenever the drawn lines change
+  const lines_snap = $derived.by(() => {
+    const duration = resolved_line_tween?.duration
+    return typeof duration === `number` && duration <= 0
+  })
+  const lines_anchorable = $derived(
+    lines_snap &&
+      [final_x_axis, final_x2_axis, final_y_axis, final_y2_axis].every(
+        ({ scale_type }) => get_scale_type_name(scale_type) !== `log`,
+      ),
+  )
+  const line_anchor = create_pan_anchor(frame, () => lines_anchorable, [`x`, `x2`])
+  // The shift of a series' line paths (none unless anchored mid-pan)
+  const line_transform = (series_data: Pick<DataSeries, `x_axis` | `y_axis`>) =>
+    line_anchor.transform(
+      series_data.x_axis === `x2` ? `x2` : `x`,
+      series_data.y_axis === `y2` ? `y2` : `y`,
+    )
+  // Projected vertices by layer's x and y arrays (series objects are rebuilt every frame),
+  // kept while the projection holds, so a Line whose vertices didn't move (an anchored pan
+  // frame, another series toggled) keeps its path string. Dropped when any line value changes:
+  // reading every x and y tracks in-place edits of $state arrays. A line its last crop left
+  // whole stays whole under a wider pan reach, so a pan starting keeps uncropped paths.
+  type LineEntry = { params: unknown[]; reach: number; cropped: boolean; points: Vec2[] }
+  const line_values_read = $derived.by(() => {
+    for (const srs of series_in) {
+      const layers = [srs, ...(srs?.line_underlays ?? [])]
+      for (const layer of layers) {
+        if (!layer) continue
+        for (const values of [layer.x, layer.y]) for (const value of values) void value
+      }
+    }
+    return {}
+  })
+  const line_points_cache = $derived.by(() => {
+    void [line_values_read, line_anchor.scales, pad, width, styles.line, lines_snap]
+    return new WeakMap<object, WeakMap<object, LineEntry>>()
+  })
+  const line_points = (
+    series_data: Pick<DataSeries, `x_axis` | `y_axis`>,
+    layer: Pick<DataSeries, `x` | `y` | `line_style` | `line_breaks`>,
+    direction: -1 | 0 | 1,
+  ): Vec2[] => {
+    let by_y = line_points_cache.get(layer.x)
+    if (!by_y) line_points_cache.set(layer.x, (by_y = new WeakMap()))
+    const style = layer.line_style
+    const params = [
+      series_data.x_axis,
+      series_data.y_axis,
+      direction,
+      style?.curve,
+      style?.stroke_width,
+      style?.line_dash,
+      layer.line_breaks,
+    ]
+    const hit = by_y.get(layer.y)
+    const reach = line_anchor.reach.x
+    if (
+      hit?.params.every((param, idx) => param === params[idx]) &&
+      (hit.reach === reach || (!hit.cropped && reach > hit.reach))
+    )
+      return hit.points
+    const { points, cropped } = series_projector(series_data, line_anchor.scales, reach).line(
+      layer,
+      direction,
+    )
+    by_y.set(layer.y, { params, reach, cropped, points })
+    return points
   }
 
   const highlight_set = $derived(highlighted_ids == null ? null : new Set(highlighted_ids))
@@ -985,7 +1136,7 @@
 
   // Canvas markers for every plain point, or null when markers must be SVG (canvas off, no
   // points, per-point handlers besides clicks, or unparsable paint). One pass does both.
-  const canvas_markers = $derived.by((): CanvasMarker[] | null => {
+  const canvas_markers = $derived.by((): MarkerBatch | null => {
     const canvas_requested =
       marker_renderer === `canvas` ||
       (marker_renderer === `auto` && visible_marker_count > CANVAS_MARKER_THRESHOLD)
@@ -995,23 +1146,27 @@
     if (!canvas_requested || !show_points || needs_svg_events) return null
     const selected = selected_point
     const keys = selected_keys
-    // Link-dimmed markers paint first so the highlighted ones sit on top of them
-    const dimmed: CanvasMarker[] = []
-    const markers: CanvasMarker[] = []
-    for (const series_data of filtered_series) {
-      if (!has_marker(series_data, `points`)) continue
-      const { marker_of, canvas_safe } = series_appearance(series_data)
-      const project = series_projector(series_data)
-      const legend_dimmed = is_legend_dimmed(series_data.orig_series_idx)
-      for (const point of series_data.filtered_data) {
-        if (!canvas_safe(point)) return null
-        if (needs_static_svg_overlay(point, selected, keys)) continue
-        const [cx, cy] = project.point(point)
-        if (is_link_dimmed(point)) dimmed.push(marker_of(point, cx, cy, 0.25))
-        else markers.push(marker_of(point, cx, cy, legend_dimmed ? 0.25 : 1))
+    const markers = create_marker_batch(visible_marker_count)
+    // Link-dimmed markers paint in a first pass, so the highlighted ones sit on top of them
+    for (const dimmed_pass of highlight_set ? [true, false] : [false]) {
+      for (const series_data of filtered_series) {
+        if (!has_marker(series_data, `points`)) continue
+        const series_styles = marker_styles.get(series_data.orig_series_idx)
+        if (!series_styles) continue
+        const { by_idx, unsafe } = series_styles
+        const project = series_projector(series_data)
+        const legend_opacity = is_legend_dimmed(series_data.orig_series_idx) ? 0.25 : 1
+        for (const point of series_data.filtered_data) {
+          const style = by_idx[point.point_idx]
+          if (unsafe.has(style)) return null
+          if (is_link_dimmed(point) !== dimmed_pass) continue
+          if (needs_static_svg_overlay(point, selected, keys)) continue
+          const opacity = dimmed_pass ? 0.25 : legend_opacity
+          push_marker(markers, project.x_px(point), project.y_px(point), opacity, style)
+        }
       }
     }
-    return dimmed.length > 0 ? [...dimmed, ...markers] : markers
+    return markers
   })
   const use_canvas_markers = $derived(canvas_markers !== null)
   // In canvas mode only labelled/selected/highlighted points get SVG nodes. Derived apart
@@ -1042,8 +1197,9 @@
     })
   })
 
+  const no_markers = create_marker_batch(0)
   const marker_canvas = create_marker_canvas(() => ({
-    markers: canvas_markers ?? [],
+    markers: canvas_markers ?? no_markers,
     width,
     height,
   }))
@@ -1231,18 +1387,24 @@
   // Lazy: built on the first hover after a data/scale change, not per frame.
   const hover_index = $derived.by(() => {
     if (hover_config.mode === `x` || hover_config.mode === `y`) return null
-    function* entries() {
-      for (const series_data of filtered_series) {
-        const project = series_projector(series_data)
-        const marker = has_marker(series_data, `points`)
-        for (const point of series_data.filtered_data) {
-          const [cx, cy] = project.point(point)
-          yield { cx, cy, point, marker }
-        }
+    let n_points = 0
+    for (const series_data of filtered_series) n_points += series_data.filtered_data.length
+    const points: InternalPoint<Metadata>[] = []
+    const [cx, cy] = [new Float64Array(n_points), new Float64Array(n_points)]
+    for (const series_data of filtered_series) {
+      const project = series_projector(series_data)
+      for (const point of series_data.filtered_data) {
+        cx[points.length] = project.x_px(point)
+        cy[points.length] = project.y_px(point)
+        points.push(point)
       }
     }
-    return build_spatial_index(entries(), hover_radius)
+    return build_spatial_index_at(points, cx, cy, hover_radius)
   })
+  // Series drawing markers, which clicks on canvas markers are limited to
+  const marker_series_idxs = $derived(
+    new Set(marker_series.map(({ series_data }) => series_data.orig_series_idx)),
+  )
 
   // Nearest point along one screen axis (`x` or `y` hover mode), ties broken by the other.
   // Only x-monotonic series are binary-searched; `y` mode scans every point.
@@ -1308,9 +1470,14 @@
     const { mode } = hover_config
     if (mode === `x` || mode === `y`)
       return axis_hover_candidate(mode, x_rel, y_rel, markers_only)
-    const accept = markers_only ? (item: { marker: boolean }) => item.marker : undefined
-    const hit = hover_index && query_nearest(hover_index, { x: x_rel, y: y_rel }, accept)
-    return hit && { point: hit.point, distance: Math.hypot(hit.cx - x_rel, hit.cy - y_rel) }
+    if (!hover_index) return null
+    const accept = markers_only
+      ? (point: InternalPoint<Metadata>) => marker_series_idxs.has(point.series_idx)
+      : undefined
+    const id = query_nearest_id(hover_index, { x: x_rel, y: y_rel }, accept)
+    if (id < 0) return null
+    const { items, cx, cy } = hover_index
+    return { point: items[id], distance: Math.hypot(cx[id] - x_rel, cy[id] - y_rel) }
   }
   // Point an on_plot_click at these coords would reach: the tooltip's candidate, but only
   // within the (usually tighter) click radius
@@ -1535,7 +1702,6 @@
     filtered_series.flatMap((series_data, series_pos) => {
       if (series_data.x_error == null && series_data.y_error == null) return []
       const project = series_projector(series_data)
-      const { marker_of } = series_appearance(series_data)
       const segments: string[] = []
       for (const point of series_data.filtered_data) {
         const [cx, cy] = project.point(point)
@@ -1546,7 +1712,7 @@
       }
       if (segments.length === 0) return []
       // segments imply at least one point, so the first one sets the series' bar color
-      const stroke = marker_of(series_data.filtered_data[0]).fill
+      const stroke = style_of(series_data.filtered_data[0]).fill
       return [{ series_pos, d: segments.join(``), stroke }]
     }),
   )
@@ -1850,7 +2016,7 @@
     {#if show_lines}
       {#each line_series as series_data (series_data._id)}
         {@const series_idx = series_data.orig_series_idx}
-        {@const project = series_projector(series_data)}
+        {@const transform = line_transform(series_data)}
         {@const series_default_color = plot_color(series_idx)}
         {@const line = scatter_line_style(
           assigned_series[series_idx],
@@ -1867,7 +2033,12 @@
           {#if series_data.line_underlays?.length}
             {#each series_data.line_underlays as underlay}
               <Line
-                points={project.line(underlay, underlay_directions.get(underlay.x) ?? 0)}
+                points={line_points(
+                  series_data,
+                  underlay,
+                  underlay_directions.get(underlay.x) ?? 0,
+                )}
+                {transform}
                 line_color={underlay.line_style?.stroke ?? series_default_color}
                 line_width={underlay.line_style?.stroke_width ?? 1}
                 line_dash={underlay.line_style?.line_dash}
@@ -1877,7 +2048,8 @@
             {/each}
           {/if}
           <Line
-            points={project.line(series_data, series_data.line_direction)}
+            points={line_points(series_data, series_data, series_data.line_direction)}
+            {transform}
             line_color={line.color}
             line_width={line.width}
             line_dash={line.dash}
@@ -1918,7 +2090,6 @@
         {@const rendered_points = use_canvas_markers
           ? (svg_overlay_points_by_series[series_pos] ?? [])
           : series_data.filtered_data}
-        {@const { marker_of } = series_appearance(series_data)}
         {@const project = series_projector(series_data)}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <g
@@ -1930,7 +2101,7 @@
           {#each rendered_points as point (point.point_idx)}
             {@const [center_x, center_y] = project.point(point)}
             {@const offset = point.point_offset ?? ZERO_OFFSET}
-            {@const appearance = marker_of(point)}
+            {@const appearance = style_of(point)}
             <ScatterPoint
               x={center_x - offset.x}
               y={center_y - offset.y}

@@ -43,7 +43,6 @@ describe(`WyckoffTable`, () => {
   test.each([
     [`#000000`, `white`],
     [`rgba(0, 0, 0, 0.5)`, `black`],
-    [`rgba(0, 0, 0, 0.1)`, `black`],
     [`var(--elem-color)`, `currentcolor`],
   ])(`element color %s renders badge text %s`, (elem_color, text_color) => {
     const original_color = colors.element.Ac

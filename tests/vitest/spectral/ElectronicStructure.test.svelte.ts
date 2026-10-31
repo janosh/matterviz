@@ -220,6 +220,16 @@ const mount_live = (init: ComponentProps<typeof ElectronicStructure>) => {
   return { props, root: mount_host(props) }
 }
 const count = (root: Element, selector: string) => root.querySelectorAll(selector).length
+// Elements measure 800x600 here: tall enough panes for the side-by-side layout's plots, under
+// 24px side labels
+const mock_panes_height = (height: number) => {
+  const spy = vi
+    .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+    .mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains(`side-label`) ? 24 : height
+    })
+  onTestFinished(() => spy.mockRestore())
+}
 const shown_panes = (root: Element) =>
   [...root.querySelectorAll<HTMLElement>(`.pane`)].map((pane) => pane.dataset.pane)
 const view_dir = (controls?: OrbitControls): Vector3 => {
@@ -303,6 +313,7 @@ test.each<[string, Partial<ComponentProps<typeof ElectronicStructure>>, Electron
 })
 
 test(`phonon spectra sit below the electronic ones, resized at their own divider`, () => {
+  mock_panes_height(800) // scenes, spectra and phonons at 200px each
   const { props, root } = mount_live({ ...all_data, phonon, units: `THz` })
   const column = root.querySelector(
     `:scope > .panes > .row.lower > .sides > .side > .row.column`,
@@ -1419,53 +1430,72 @@ test.each([undefined, `bcc`])(
   },
 )
 
-// Narrow, or too short for the side-by-side layout's pane levels (scenes over spectra) at 200px
-// each, the panes stack in one column, each its own height, rather than share the viewer's: no
-// dividers between them, the scenes one above the other, and every compared side labelled
+// Narrow, or too short to give each plot of the side-by-side layout 200px, the panes stack in
+// one column, each its own height, rather than share the viewer's: no dividers between them,
+// and every compared side labelled. At 1200px each compared side's column is 360px wide, its
+// bands over a DOS getting 2/5 of the spectra (200px bands need 333px, half the lower row,
+// itself half the viewer). Without scenes the 24px side labels sit over the spectra, which then
+// need 357px. Stacked, the scenes still share their row while each keeps 320px.
 test.each([
-  [700, 900, true],
-  [1200, 400, false],
-  [1200, 390, true],
-])(`at %ipx wide, %ipx high the panes stack: %s`, async (width, panes_height, stacked) => {
-  // every pane row measures 700x320, where the scenes would split side by side unstacked
-  const width_spy = vi.spyOn(HTMLElement.prototype, `clientWidth`, `get`).mockReturnValue(700)
-  const height_spy = vi
-    .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
-    .mockImplementation(function (this: HTMLElement) {
-      return this.classList.contains(`panes`) ? panes_height : 320
+  [700, 1200, 700, true, `horizontal`],
+  [1200, 670, 700, false, `horizontal`],
+  [1200, 660, 700, true, `horizontal`],
+  [700, 1200, 600, true, `vertical`],
+  [1200, 360, 700, false, null],
+  [1200, 355, 700, true, null],
+])(
+  `at %ipx wide, %ipx high, %ipx rows the panes stack: %s, scenes %s`,
+  async (width, panes_height, row_width, stacked, scene_split) => {
+    // every pane row measures row_width x 320, each side label 24px high
+    const width_spy = vi
+      .spyOn(HTMLElement.prototype, `clientWidth`, `get`)
+      .mockReturnValue(row_width)
+    const height_spy = vi
+      .spyOn(HTMLElement.prototype, `clientHeight`, `get`)
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.classList.contains(`side-label`)) return 24
+        return this.classList.contains(`panes`) ? panes_height : 320
+      })
+    onTestFinished(() => {
+      width_spy.mockRestore()
+      height_spy.mockRestore()
     })
-  onTestFinished(() => {
-    width_spy.mockRestore()
-    height_spy.mockRestore()
-  })
-  const root = await mount_sized(
-    ElectronicStructure,
-    { sweep: make_sweep(), compare_series: `bcc`, panes: ALL_PANES },
-    {
-      selector: `.electronic-structure`,
-      width,
-      height: 400,
-      on_mount: (comp) => mounted.push(comp),
-    },
-  )
-  flushSync()
-  const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
-  expect({
-    stacked: root.classList.contains(`stacked`),
-    rows_divider: divider(`Resize 3D scenes and the plots below`),
-    trends_divider: divider(`Resize sweep descriptors and spectra`),
-    side_labels: side_labels(root).length,
-  }).toEqual({
-    stacked,
-    rows_divider: !stacked,
-    trends_divider: !stacked,
-    side_labels: stacked ? 4 : 2,
-  })
-  const scenes_row = root.querySelector(`.row.scenes`)
-  expect(scenes_row?.classList.contains(`vertical`)).toBe(stacked)
-})
+    const root = await mount_sized(
+      ElectronicStructure,
+      {
+        sweep: make_sweep(),
+        compare_series: `bcc`,
+        panes: scene_split ? ALL_PANES : [`trends`, `bands`, `dos`],
+      },
+      {
+        selector: `.electronic-structure`,
+        width,
+        height: 400,
+        on_mount: (comp) => mounted.push(comp),
+      },
+    )
+    flushSync()
+    const divider = (label: string) => Boolean(root.querySelector(`[aria-label="${label}"]`))
+    expect({
+      stacked: root.classList.contains(`stacked`),
+      rows_divider: divider(`Resize 3D scenes and the plots below`),
+      trends_divider: divider(`Resize sweep descriptors and spectra`),
+      side_labels: side_labels(root).length,
+    }).toEqual({
+      stacked,
+      rows_divider: !stacked && scene_split !== null,
+      trends_divider: !stacked,
+      side_labels: stacked && scene_split ? 4 : 2,
+    })
+    const scenes_row = root.querySelector(`.row.scenes`)
+    if (scene_split) expect(scenes_row?.classList).toContain(scene_split)
+    else expect(scenes_row).toBeNull()
+  },
+)
 
 test(`compare_series splits the frame panes into two labelled sides on shared axes`, () => {
+  // each side's bands and phonons over their DOS in a 240px column
+  mock_panes_height(2000)
   const sweep = make_sweep()
   const [fcc, bcc] = sweep.series
   // HTML labels (the trends legend and axis render it) read as plain text in options, side
@@ -1604,6 +1634,7 @@ test.each([
 )
 
 test(`a compared series loads through the same frame cache, window and aborts`, async () => {
+  mock_panes_height(1000)
   const { sweep, load_frame, loads } = lazy_sweep()
   const { props, root } = mount_live({
     sweep,

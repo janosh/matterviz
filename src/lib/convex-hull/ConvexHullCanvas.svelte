@@ -13,12 +13,13 @@
     wheel_zoom_gate,
     wheel_zoom_surface,
   } from '#lib/scene/index.js'
+  import { release_orbit_root } from '#lib/scene/orbit-link.svelte.js'
   import { Canvas, T } from '@threlte/core'
   import { dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
   import * as extras from '@threlte/extras'
   import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
   import { PerspectiveCamera } from 'three/webgpu'
-  import type { Projected } from './canvas-draw'
+  import type { Projected, ProjectPoint } from './canvas-draw'
   import {
     build_hull_faces,
     draw_corner_labels,
@@ -28,8 +29,8 @@
     draw_overlay_segments,
     energy_range_of,
     face_color_scale,
-    hull_face_e_forms,
     HULL_CANVAS_STRATEGIES,
+    hull_face_sets,
     simplex_centroid,
   } from './canvas-draw'
   import { create_canvas_interactions } from './canvas-interactions.svelte'
@@ -113,6 +114,8 @@
   const visible_entries = $derived(hull_data.visible_entries)
   // Lower hull facets (triangles in 3D, tetrahedra in 4D) as vertex entries
   const hull_facets = $derived(hull_data.hull.facet_entries)
+  // Their faces, deduped once per hull rather than per frame
+  const hull_faces = $derived(hull_face_sets(hull_facets))
   // Formation energy range drives the 3D depth scaling (funnel depth), the energy axis and
   // the uniform-mode face opacity
   const energy_range = $derived(energy_range_of(hull_data.model.entries))
@@ -125,10 +128,15 @@
   wheel_zoom_surface(() => canvas)
 
   const centroid = simplex_centroid(strategy.corners)
-  const project_point = (coord_x: number, coord_y: number, coord_z: number): Projected =>
-    interactions.to_screen(
-      ...strategy.rotate_point(camera, [coord_x, coord_y, coord_z], energy_range),
-    )
+  // Data coords → canvas position, rebuilt per camera/size change rather than per point
+  const project_point = $derived.by((): ProjectPoint => {
+    const rotate = strategy.rotation(camera, energy_range)
+    const { origin_x, origin_y, view_scale } = interactions.screen
+    return (coord_x, coord_y, coord_z): Projected => {
+      const [view_x, view_y, depth] = rotate(coord_x, coord_y, coord_z)
+      return { x: origin_x + view_x * view_scale, y: origin_y - view_y * view_scale, depth }
+    }
+  })
 
   // Shared canvas scaffold (camera zoom/pan, mouse/keyboard handlers, hover/drag/popup
   // state, point styling, canvas sizing, render scheduler)
@@ -153,7 +161,7 @@
       show_unstable_labels,
       max_hull_dist_show_labels,
     }),
-    project_point,
+    project_point: () => project_point,
     render_frame,
     // oxfmt-ignore
     repaint_deps: () => [show_hull_faces, hull_facets, hull_face_color, hull_face_opacity, hull_face_color_mode, color_scale, energy_range, merged_config, overlay],
@@ -184,7 +192,7 @@
   function render_frame(ctx: CanvasRenderingContext2D): void {
     draw_dashed_edges(ctx, strategy.outline_edges(energy_range), project_point)
     if (show_hull_faces && hull_facets.length > 0) {
-      draw_hull_faces(ctx, build_hull_faces(hull_facets, project_point), {
+      draw_hull_faces(ctx, build_hull_faces(hull_faces, project_point), {
         mode: hull_face_color_mode,
         uniform_color: hull_face_color,
         color_scale,
@@ -221,6 +229,7 @@
   // === Gizmo: Three.js camera ↔ strategy camera angles (3D only) ===
   let gizmo_cam_ref = $state<PerspectiveCamera>()
   let gizmo_orbit_ref = $state<OrbitControls | undefined>(undefined)
+  $effect(() => gizmo_orbit_ref && release_orbit_root(gizmo_orbit_ref))
   let gizmo_active = $state(false)
   const gizmo_cam_state = $derived(strategy.gizmo?.to_three(camera))
 
@@ -249,7 +258,7 @@
   // Formation energy colour bar for the face shading: formation_energy mode draws the faces'
   // color_scale over their range, uniform mode its alpha ramp (0 at 0 eV, up to
   // hull_face_opacity at the most negative energy)
-  const face_e_forms = $derived(hull_face_e_forms(hull_facets))
+  const face_e_forms = $derived(hull_faces.map((face) => face.e_form))
   const e_form_color_scale = $derived<ColorScaleConfig>(
     hull_face_color_mode === `formation_energy`
       ? face_color_scale(color_scale, face_e_forms).color_scale
@@ -319,7 +328,7 @@
   <!-- Orientation gizmo (configurable placement, default top-right) -->
   {#if gizmo && gizmo_cam_state && webgpu_available()}
     <div class={[`gizmo-wrapper`, controls_config.class]} data-placement={gizmo_placement}>
-      <Canvas createRenderer={create_renderer}>
+      <Canvas createRenderer={create_renderer} shadows={false}>
         <T.PerspectiveCamera
           makeDefault
           bind:ref={gizmo_cam_ref}

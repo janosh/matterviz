@@ -18,7 +18,7 @@ describe(`data-transform utility functions`, () => {
   })
 
   describe(`extract_series_color`, () => {
-    const fallback = `#4A9EFF`
+    const fallback = DEFAULTS.scatter.point.color
     // oxfmt-ignore
     test.each([
       [`extracts color from line_style.stroke`, { line_style: { stroke: `red` } }, `red`],
@@ -28,8 +28,6 @@ describe(`data-transform utility functions`, () => {
       [`returns default color when no styles defined`, {}, fallback],
       [`returns default color when styles exist but no color`, { line_style: { stroke_width: 2 }, point_style: { radius: 5 } }, fallback],
       [`handles empty point_style array`, { point_style: [] }, fallback],
-      [`handles undefined stroke color`, { line_style: { stroke: undefined } }, fallback],
-      [`handles undefined fill color`, { point_style: { fill: undefined } }, fallback],
     ])(`%s`, (_name, styles, expected) => {
       const series: DataSeries = { x: [1, 2, 3], y: [1, 2, 3], ...styles }
       expect(extract_series_color(series)).toBe(expected)
@@ -69,7 +67,7 @@ describe(`data-transform utility functions`, () => {
         expected: [
           legend_item(0, `Series 1`, `red`),
           legend_item(1, `Series 2`, `blue`),
-          legend_item(2, `Series 3`, `#4A9EFF`),
+          legend_item(2, `Series 3`, DEFAULTS.scatter.point.color),
         ],
       },
       {

@@ -3,7 +3,7 @@
   import AxisLabel from '#lib/plot/core/components/AxisLabel.svelte'
   import type { Sides } from '#lib/plot/core/layout.js'
   import {
-    AXIS_TITLE_WRAP_WIDTH,
+    axis_title_wrap_width,
     resolve_axis_title_layout,
     TITLE_EDGE_AIR,
   } from '#lib/plot/core/layout.js'
@@ -136,7 +136,7 @@
   )
 
   // Same wrap width AxisLabel gets below, so both resolve the same line count
-  const title_wrap_width = $derived(is_x ? Math.max(plot_w, AXIS_TITLE_WRAP_WIDTH) : undefined)
+  const title_wrap_width = $derived(axis_title_wrap_width(is_x, is_x ? plot_w : plot_h))
   // Outside x-axis titles move past the rendered tick-label band. AxisLabel centers its block
   // on the title point, which calc_auto_padding reserves for the first line only, so a wrapped
   // title is pushed outward by the extra lines instead of climbing into the tick labels.

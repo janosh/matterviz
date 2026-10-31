@@ -66,7 +66,7 @@
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
-  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
+  import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg.js'
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
@@ -577,7 +577,7 @@
               stroke-width={resolved_bar.stroke_width}
               role="button"
               tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
-              {...{ [ROVING_ATTR]: roving_key(hist.series_idx, bin_idx) }}
+              data-roving-key={roving_key(hist.series_idx, bin_idx)}
               aria-label={bar_aria_label(hist, bin, bin_idx)}
               onmousemove={handle_bar_hover(hist, bin_idx)}
               onmouseleave={clear_hover}

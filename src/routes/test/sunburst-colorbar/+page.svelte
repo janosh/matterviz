@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Sunburst } from '#lib/plot/index.js'
   import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
+  import TestSection from '../TestSection.svelte'
 
   const data: SunburstNode[] = [
     { label: `A`, value: 10 },
@@ -11,15 +12,13 @@
   const padding = { t: 10, b: 10, l: 40, r: 24 }
 </script>
 
-<svelte:head>
-  <title>Sunburst Vertical Colorbar Tests</title>
-</svelte:head>
+<h1>Sunburst colorbar test page</h1>
 
-<h1 id="sunburst-vertical-colorbar-tests">Sunburst Vertical Colorbar Tests</h1>
-
-{#each color_bar_sides as color_bar_side}
-  <section id="vertical-colorbar-{color_bar_side}">
-    <h2>{color_bar_side}</h2>
+{#each color_bar_sides as color_bar_side (color_bar_side)}
+  <TestSection
+    title="Vertical colorbar ({color_bar_side})"
+    id="vertical-colorbar-{color_bar_side}"
+  >
     <Sunburst
       {data}
       color_values={(arc: PositionedArc) => arc.value}
@@ -28,5 +27,5 @@
       {padding}
       style="width: 600px; height: 360px"
     />
-  </section>
+  </TestSection>
 {/each}

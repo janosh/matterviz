@@ -113,15 +113,12 @@ describe(`rect_out_of_bounds_area`, () => {
 describe(`estimate_label_size`, () => {
   // happy-dom has no 2D canvas, so measure_text_line takes its deterministic fallback:
   // 0.6 em per code point. Width adds 10 px breathing room, height is 1.2 em per line.
+  // unit parsing (em/rem/pt/unitless/undefined) is resolve_font_size_css's, tested in
+  // text-metrics.test.ts
   test.each([
     { text: `abc`, font_size: `10px`, px: 10, n_chars: 3, n_lines: 1 },
-    { text: `abc`, font_size: `14`, px: 14, n_chars: 3, n_lines: 1 },
-    { text: `abc`, font_size: undefined, px: 12, n_chars: 3, n_lines: 1 },
     { text: `abc`, font_size: ``, px: 12, n_chars: 3, n_lines: 1 },
     { text: `abc`, font_size: `garbage`, px: 12, n_chars: 3, n_lines: 1 },
-    { text: `abc`, font_size: `1.5em`, px: 18, n_chars: 3, n_lines: 1 },
-    { text: `abc`, font_size: `1.5rem`, px: 18, n_chars: 3, n_lines: 1 },
-    { text: `abc`, font_size: `12pt`, px: 16, n_chars: 3, n_lines: 1 },
     // longest line sets the width, every line (even blank) counts toward the height
     { text: `Li2O\nwbm-123`, font_size: `10px`, px: 10, n_chars: 7, n_lines: 2 },
     { text: `a\r\n\r\nbc`, font_size: `10px`, px: 10, n_chars: 2, n_lines: 3 },

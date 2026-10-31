@@ -18,6 +18,8 @@ import {
   chebyshev_centre,
   compute_chempot_diagram,
   compute_chempot_system,
+  entry_elements,
+  normalize_chempot_entries,
   dedup_points,
   fit_plane,
   formula_key_from_composition,
@@ -885,15 +887,6 @@ describe(`YTOS quaternary system (projection mode)`, () => {
   test.each([
     { label: `Y-Ti-O`, diagram: ytos_y_ti_o, elements: [`O`, `Ti`, `Y`] },
     { label: `Ti-O-S`, diagram: ytos_ti_o_s, elements: [`O`, `S`, `Ti`] },
-    {
-      label: `Ti-S-Y (unsorted axes)`,
-      diagram: compute_chempot_diagram(ytos_entries, {
-        elements: [`Ti`, `S`, `Y`],
-        default_min_limit: -25,
-        formal_chempots: true,
-      }),
-      elements: [`Ti`, `S`, `Y`],
-    },
   ])(
     `$label projection metadata, all stable phases, and 3-column vertices`,
     ({ diagram, elements }) => {
@@ -910,23 +903,6 @@ describe(`YTOS quaternary system (projection mode)`, () => {
     expect(dedup_vertices(ytos_y_ti_o.domains.O7Ti2Y2).length).toBeGreaterThanOrEqual(3)
     expect_within_lims(ytos_y_ti_o)
     expect_elemental_touch(ytos_y_ti_o)
-  })
-
-  test(`projection produces more domains than subsystem filtering`, () => {
-    const oty_only = ytos_entries.filter((entry) => {
-      const els = Object.entries(entry.composition)
-        .filter(([, amt]) => amt > 0)
-        .map(([element]) => element)
-      return els.every((element) => [`O`, `Ti`, `Y`].includes(element))
-    })
-    const subsystem = compute_chempot_diagram(oty_only, {
-      elements: [`O`, `Ti`, `Y`],
-      default_min_limit: -25,
-      formal_chempots: true,
-    })
-    expect(Object.keys(ytos_y_ti_o.domains).length).toBeGreaterThan(
-      Object.keys(subsystem.domains).length,
-    )
   })
 })
 
@@ -1278,6 +1254,28 @@ describe(`chebyshev_centre`, () => {
 })
 
 describe(`compute_chempot_diagram edge cases`, () => {
+  // pymatgen species keys merge into their elements, as on the convex hull
+  test(`oxidation-state, spin and isotope keys give the plain-element diagram`, () => {
+    const plain = [
+      make_phase({ Li: 1 }, -1.9),
+      make_phase({ O: 2 }, -4.93),
+      make_phase({ H: 1 }, -3.4),
+      make_phase({ Li: 2, O: 1 }, -4.77),
+      make_phase({ Li: 1, O: 1, H: 1 }, -4.6),
+    ]
+    const species = [
+      ...plain.slice(0, 2),
+      make_phase({ D: 1 }, -3.4),
+      make_phase({ 'Li+': 2, 'O2-': 1 }, -4.77),
+      make_phase({ 'Li+,spin=0': 1, 'O2-': 0.5, O: 0.5, 'H+': 1 }, -4.6),
+    ]
+    expect(entry_elements(species)).toEqual([`H`, `Li`, `O`])
+    expect(compute_chempot_diagram(species)).toEqual(compute_chempot_diagram(plain))
+    // plain entries pass through by identity, keeping memos keyed by them shared
+    expect(normalize_chempot_entries(plain)).toBe(plain)
+    expect(normalize_chempot_entries(species)[0]).toBe(species[0])
+  })
+
   test(`config.elements reorders axes`, () => {
     const reordered = compute_chempot_diagram(entries, {
       elements: [`O`, `Fe`, `Li`],
@@ -1306,20 +1304,6 @@ describe(`compute_chempot_diagram edge cases`, () => {
       { default_min_limit: -10, formal_chempots: false },
     )
     expect(Object.keys(result.domains).toSorted()).toEqual([`A`, `B`])
-  })
-
-  test(`4-element YTOS → 2-axis projection`, () => {
-    const elements = [`Ti`, `Y`]
-    const result = compute_chempot_diagram(ytos_entries, {
-      elements,
-      default_min_limit: -25,
-      formal_chempots: true,
-    })
-    expect(result.elements).toEqual(elements)
-    expect(result.lims).toEqual(chunk(2, [-25, 0, -25, 0]))
-    for (const pts of Object.values(result.domains)) {
-      for (const point of pts) expect(point).toHaveLength(2)
-    }
   })
 })
 
@@ -1463,15 +1447,6 @@ describe(`get_ternary_combinations`, () => {
     if (expected !== undefined) expect(combos).toEqual(expected)
     else expect(combos).toHaveLength(expected_count ?? Number.NaN)
   })
-})
-
-test(`formal vs absolute YTOS chempots give different domain coords`, () => {
-  const absolute = compute_chempot_diagram(ytos_entries, {
-    default_min_limit: -25,
-    formal_chempots: false,
-    elements: [`O`, `Ti`, `Y`],
-  })
-  expect(ytos_y_ti_o.domains.O2Ti[0][0]).not.toBeCloseTo(absolute.domains.O2Ti[0][0], 1)
 })
 
 describe(`bbox_diagonal`, () => {

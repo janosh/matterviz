@@ -1,5 +1,4 @@
 // Agent-facing movie jobs. Uses the same viewer and frame producer as the export pane.
-import { chromium } from '@playwright/test'
 import { execFile } from 'node:child_process'
 import { addAbortSignal, Writable } from 'node:stream'
 import {
@@ -14,8 +13,8 @@ import {
   rename,
 } from 'node:fs/promises'
 import { basename, dirname, resolve, extname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { parseArgs, promisify } from 'node:util'
+import { start_viewer } from './viewer.mjs'
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -39,7 +38,6 @@ Without --url, starts a private local viewer. Progress is JSON on stderr; result
 
 const progress = (event) => process.stderr.write(`${JSON.stringify(event)}\n`)
 const exec_file = promisify(execFile)
-const root = fileURLToPath(new URL(`../../`, import.meta.url))
 let browser
 let server
 let temporary
@@ -88,39 +86,16 @@ try {
   if (review) await mkdir(review)
   const width = spec.video?.width ?? 1280
   const height = spec.video?.height ?? 720
-  let url = values.url
-  if (!url) {
-    // SvelteKit resolves its configuration from cwd, even with an explicit Vite root.
-    // Input and output paths above already retain the caller's directory.
-    process.chdir(root)
-    const { createServer } = await import(`vite`)
-    server = await createServer({
-      root,
-      logLevel: `silent`,
-      cacheDir: `.svelte-kit/movie-vite`,
-      server: { host: `127.0.0.1`, port: 0, open: false },
-    })
-    await server.listen()
-    const address = server.httpServer?.address()
-    if (!address || typeof address === `string`) throw new Error(`Viewer server did not start`)
-    url = `http://127.0.0.1:${address.port}`
-  }
-  browser = await chromium.launch({
-    channel: `chromium`,
-    headless: !values.headed,
-    args: [
-      `--enable-unsafe-webgpu`,
-      `--enable-features=Vulkan`,
-      `--enable-unsafe-swiftshader`,
-    ],
-  })
-  const page = await browser.newPage({
+  const viewer = await start_viewer({
+    url: values.url,
+    headed: values.headed,
     viewport: { width, height },
-    deviceScaleFactor: 1,
-    colorScheme: `dark`,
+    color_scheme: `dark`,
   })
+  ;({ browser, server } = viewer) // module scope, for cancellation and cleanup
+  const { page } = viewer
   page.on(`pageerror`, (error) => progress({ stage: `browser-error`, message: error.message }))
-  await page.goto(`${url.replace(/\/$/, ``)}/trajectory/render`)
+  await page.goto(`${viewer.url}/trajectory/render`)
   await page.waitForFunction(() => Boolean(window.matterviz_movie), undefined, {
     timeout: 120_000,
   })

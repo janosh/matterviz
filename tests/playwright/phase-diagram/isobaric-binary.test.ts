@@ -258,19 +258,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     }
   })
 
-  test(`editor updates the component name in the rendered diagram`, async ({ page }) => {
-    const { diagram, svg } = get_diagram_elements(page)
-    await diagram.hover() // corner buttons only take the pointer while the diagram is hovered
-    await diagram.locator(`.pd-editor-toggle`).click()
-    const editor = diagram.locator(`.pd-editor-pane`)
-    await editor.locator(`.json-value.string`).filter({ hasText: `"A"` }).first().dblclick()
-    const input = editor.locator(`.edit-input`)
-    await input.fill(`Edited`)
-    await input.press(`Enter`)
-    await expect(diagram).toHaveAttribute(`aria-label`, `Edited-B binary phase diagram`)
-    await expect(svg.locator(`text`).filter({ hasText: `Edited` })).toBeVisible()
-  })
-
   test(`a failed SVG drop shows an error banner left of the corner buttons`, async ({
     page,
   }) => {
@@ -289,8 +276,6 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
   test(`file picker switches diagrams`, async ({ page }) => {
     const { svg } = get_diagram_elements(page)
-    const files = page.locator(`.file-picker .file-item`)
-    test.skip((await files.count()) < 2, `Requires at least 2 diagram files to test switching`)
     const active_file = page.locator(`.file-picker .file-item.active`)
     await expect(active_file).toBeVisible({ timeout: 5000 })
     const initial_active_text = (await active_file.textContent())?.trim()
@@ -299,7 +284,8 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
       .locator(`.file-picker .file-item:not(.active)`)
       .filter({ hasText: /\.json/ })
       .first()
-    test.skip((await candidate.count()) === 0, `No inactive JSON file found to test switching`)
+    // the bundled fixtures always include inactive JSON diagrams; a missing one is a loader bug
+    await expect(candidate).toBeVisible()
     const filename = (await candidate.textContent())?.trim()
     if (!filename) throw new Error(`Inactive JSON file has no name`)
     await candidate.click()
@@ -318,7 +304,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // two-phase regions are labeled with "+"
     const two_phase_label = svg.locator(`.region-labels text`).filter({ hasText: /\+/ })
-    if ((await two_phase_label.count()) === 0) test.skip()
+    await expect(two_phase_label.first()).toBeVisible()
 
     await svg.scrollIntoViewIfNeeded()
     const box = await require_bbox(svg)

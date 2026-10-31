@@ -13,6 +13,9 @@
   import StructureScene from '#lib/structure/StructureScene.svelte'
   import mp1_struct from '#site/structures/mp-1.json' with { type: 'json' }
   import { type ComponentProps, untrack } from 'svelte'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   let active_pane = $state<StructurePane | null>(null)
   let background_color = $state(`#1e1e1e`)
@@ -43,6 +46,19 @@
   let structure = $state<Crystal | undefined>(
     source ? undefined : (mp1_struct as unknown as Crystal),
   )
+
+  // Buttons the specs click (data-testid="btn-<name>") to set selection and edit state
+  const actions: [string, () => void][] = [
+    [`select-site-0`, () => (selected_sites = [0])],
+    [`set-selected`, () => (selected_sites = [0, 1])],
+    [`clear-selected`, () => (selected_sites = [])],
+    [`set-measured`, () => (measured_sites = [0, 1, 2])],
+    [`clear-measured`, () => (measured_sites = [])],
+    [`set-edit-atoms`, () => (measure_mode = `edit-atoms`)],
+    [`set-edit-bonds`, () => (measure_mode = `edit-bonds`)],
+    [`set-bond-add`, () => (bond_edit_mode = `add`)],
+    [`set-bond-delete`, () => (bond_edit_mode = `delete`)],
+  ]
 
   // capture event data for testing
   let event_calls = $state<{ event: string; data: unknown }[]>([])
@@ -91,78 +107,83 @@
   })
 </script>
 
-<h1 id="structure-component-test-page">Structure Component Test Page</h1>
+<h1>Structure test page</h1>
 
-<section>
-  <h2 id="controls-for-test-page">Controls for Test Page</h2>
-  <label>
-    Controls Open: <input
-      type="checkbox"
-      bind:checked={
-        () => active_pane === `controls`, (open) => (active_pane = open ? `controls` : null)
-      }
-    />
-  </label><br />
-  <label>Background Color: <input type="color" bind:value={background_color} /></label><br />
-  <label>
-    Supercell Scaling:
-    <input type="text" bind:value={supercell_scaling} data-testid="supercell-input" />
-  </label><br />
-  <label
-    >Show Image Atoms:
-    <input
-      type="checkbox"
-      bind:checked={show_image_atoms}
-      data-testid="image-atoms-checkbox"
-    />
-  </label>
-  <div style="margin-top: 0.5em">
-    {#each [[`select-site-0`, () => (selected_sites = [0])], [`set-selected`, () => (selected_sites = [0, 1])], [`clear-selected`, () => (selected_sites = [])], [`set-measured`, () => (measured_sites = [0, 1, 2])], [`clear-measured`, () => (measured_sites = [])], [`set-edit-atoms`, () => (measure_mode = `edit-atoms`)], [`set-edit-bonds`, () => (measure_mode = `edit-bonds`)], [`set-bond-add`, () => (bond_edit_mode = `add`)], [`set-bond-delete`, () => (bond_edit_mode = `delete`)]] as const as [btn_type, onclick] (btn_type)}
-      <button type="button" data-testid="btn-{btn_type}" {onclick}>
-        {btn_type}
-      </button>
+<!-- specs locate the background color input by this section title -->
+<TestSection title="Controls for test page">
+  <TestControls>
+    <label>
+      Controls open
+      <input
+        type="checkbox"
+        bind:checked={
+          () => active_pane === `controls`, (open) => (active_pane = open ? `controls` : null)
+        }
+      />
+    </label>
+    <label>Background color <input type="color" bind:value={background_color} /></label>
+    <label>
+      Supercell scaling
+      <input type="text" bind:value={supercell_scaling} data-testid="supercell-input" />
+    </label>
+    <label>
+      Show image atoms
+      <input
+        type="checkbox"
+        bind:checked={show_image_atoms}
+        data-testid="image-atoms-checkbox"
+      />
+    </label>
+  </TestControls>
+  <TestControls>
+    {#each actions as [name, onclick] (name)}
+      <button type="button" data-testid="btn-{name}" {onclick}>{name}</button>
     {/each}
-  </div>
-</section>
+  </TestControls>
+</TestSection>
 
-<div class:comparison={comparison_mode} class="structure-test-layout">
-  <Structure
-    id="test-structure"
-    bind:structure
-    bind:active_pane
-    {source}
-    {background_color}
-    {show_controls}
-    bind:scene_props
-    on_file_load={create_event_handler(`on_file_load`)}
-    on_error={create_event_handler(`on_error`)}
-    on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
-    on_camera_move={create_event_handler(`on_camera_move`)}
-    on_camera_reset={create_event_handler(`on_camera_reset`)}
-    bind:selected_sites
-    bind:measured_sites
-    {enable_measure_mode}
-    bind:measure_mode
-    bind:bond_edit_mode
-    bind:supercell_scaling
-    bind:show_image_atoms
-    bind:bonds
-  />
-  {#if comparison_mode}
+<TestSection title="Viewer">
+  <div class:comparison={comparison_mode} class="structure-test-layout">
     <Structure
-      id="comparison-structure"
-      {structure}
-      show_controls="always"
-      performance_mode="speed"
-      style="--struct-min-width: 0"
+      id="test-structure"
+      bind:structure
+      bind:active_pane
+      {source}
+      {background_color}
+      {show_controls}
+      bind:scene_props
+      on_file_load={create_event_handler(`on_file_load`)}
+      on_error={create_event_handler(`on_error`)}
+      on_fullscreen_change={create_event_handler(`on_fullscreen_change`)}
+      on_camera_move={create_event_handler(`on_camera_move`)}
+      on_camera_reset={create_event_handler(`on_camera_reset`)}
+      bind:selected_sites
+      bind:measured_sites
+      {enable_measure_mode}
+      bind:measure_mode
+      bind:bond_edit_mode
+      bind:supercell_scaling
+      bind:show_image_atoms
+      bind:bonds
     />
-  {/if}
-</div>
+    {#if comparison_mode}
+      <Structure
+        id="comparison-structure"
+        {structure}
+        show_controls="always"
+        performance_mode="speed"
+        style="--struct-min-width: 0"
+      />
+    {/if}
+  </div>
+</TestSection>
 
-<div data-testid="controls-open-status" style="margin-top: 10px">
-  Controls Open Status: {active_pane === `controls`}
-</div>
-<div data-testid="bond-edit-mode-status">Bond Edit Mode: {bond_edit_mode}</div>
+<TestStatus
+  values={{
+    'controls-open-status': active_pane === `controls`,
+    'bond-edit-mode-status': bond_edit_mode,
+  }}
+/>
 
 <style>
   .structure-test-layout {

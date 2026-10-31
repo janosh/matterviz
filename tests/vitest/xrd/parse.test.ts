@@ -157,6 +157,18 @@ describe(`parse_xy_file`, () => {
       expect(kept.length).toBeGreaterThanOrEqual(count <= max_points ? 30 : 25)
     },
   )
+
+  // integer counts often top out in equal samples, which a strict local-max test never kept
+  test(`decimation keeps a flat-topped peak's maximum`, () => {
+    const y_vals = Array.from({ length: 20_000 }, () => 10)
+    const top = 10_007 // off the ~20-sample uniform grid
+    const plateau = [900, 1000, 1000, 900]
+    plateau.forEach((counts, offset) => (y_vals[top + offset - 1] = counts))
+    const x_vals = y_vals.map((_, idx) => 10 + idx * 0.004)
+    const result = decimate_pattern({ x: x_vals, y: y_vals, kind: `profile` }, 1000)
+    expect(result.x.length).toBeLessThanOrEqual(1000)
+    expect(array_max(result.y)).toBe(1000)
+  })
 })
 
 describe(`parse_block_scan (ILL / PSI neutron layouts)`, () => {
@@ -248,6 +260,10 @@ describe(`parse_gsas_file`, () => {
   // CONST start and step are centidegrees; FXYE banks carry their own centidegree x
   test.each([
     [`CONST`, `BANK 1 3 1 CONST 1000 1000 0 0\n100 200 300`],
+    [
+      `CONS (as GSAS-II exports it)`,
+      `BANK 1 3 1 CONS 1000.00 1000.00 0 0 FXYE\n1000 100 5 2000 200 7 3000 300 9`,
+    ],
     // NCHAN = 3 but the last record is zero-padded to a full line
     [`zero-padded STD`, `title\nBANK 1 3 1 CONST 1000.0 1000.0 0 0 STD\n100 200 300 0 0`],
     [`ESD with interleaved sigmas`, `BANK 1 3 1 CONST 1000 1000 0 0 ESD\n100 5 200 7 300 9`],

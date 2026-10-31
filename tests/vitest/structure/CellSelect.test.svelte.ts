@@ -123,16 +123,10 @@ describe(`CellSelect`, () => {
           [`original`, `primitive`, `conventional`].map((type) => type === cell_type),
         )
         expect(buttons.map((btn) => btn.disabled)).toEqual(disabled)
-        const tooltips = buttons.map((btn) => btn.getAttribute(`aria-label`))
-        expect(tooltips[0]).toBe(`Original unit cell (as provided)`)
-        if (sym_data) {
-          expect(tooltips.slice(1)).toEqual([
-            `Primitive cell (smallest repeating unit)`,
-            `Conventional cell (standardized representation)`,
-          ])
-        } else {
+        if (!sym_data) {
           const reason = analyzing ? `analyzing symmetry…` : `requires symmetry data`
-          for (const tip of tooltips.slice(1)) expect(tip).toContain(reason)
+          for (const btn of buttons.slice(1))
+            expect(btn.getAttribute(`aria-label`)).toContain(reason)
         }
       },
     )
@@ -157,7 +151,6 @@ describe(`CellSelect`, () => {
     await mount_and_open(bind_props({}, state))
     const buttons = [...document.querySelectorAll<HTMLButtonElement>(`.preset-btn`)]
     const labels = buttons.map((btn) => normalize_supercell_label(btn.textContent))
-    expect(labels).toEqual([`1x1x1`, `2x2x2`, `3x3x3`, `2x2x1`, `3x3x1`, `2x1x1`])
     const selected = buttons.filter((btn) => btn.classList.contains(`selected`))
     expect(selected.map((btn) => normalize_supercell_label(btn.textContent))).toEqual([
       `3x3x1`,
@@ -181,7 +174,6 @@ describe(`CellSelect`, () => {
       async (input_val, invalid_class, apply_disabled) => {
         await mount_and_open({ supercell_scaling: `1x1x1` })
         const input = doc_query<HTMLInputElement>(`.custom-input-row input`)
-        expect([input.placeholder, input.value]).toEqual([`e.g. 2x2x2`, `1x1x1`])
         set_input(input, input_val)
         await tick()
         expect(input.classList.contains(`invalid`)).toBe(invalid_class)

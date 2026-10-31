@@ -22,7 +22,7 @@
     calculate_rdf,
     label_structures,
     rdf_baseline,
-    rdf_bin_sites,
+    rdf_bin_site_index,
   } from './index'
   import type { RdfEntry } from './index'
   import { bind_error_report } from './error-report.svelte'
@@ -135,15 +135,23 @@
     () => [drop_error, ...computed.failures],
   )
 
+  // Each curve's bin → sites index from one neighbour search on its first bin hover, so a
+  // pointer sweep reads bins back (2048 sites, 15 Å, 75 bins: 3-56 ms per bin -> one 55 ms
+  // build, then 0.01 ms). Keyed by the entry, which new structure/cutoff/n_bins/pbc replace.
+  const bin_site_indices = new WeakMap<ComputedEntry, ReturnType<typeof rdf_bin_site_index>>()
   // Sites behind a hovered curve point (an r bin) or legend entry (bin_idx null)
   const hovered_sites = (entry_idx: number, bin_idx: number | null) => {
-    const { structure, legend_group, label, pattern } = entries[entry_idx]
+    const entry = entries[entry_idx]
+    const { structure, legend_group, label, pattern } = entry
     if (!structure) return null
     const highlight = { label: legend_group ?? label, structure }
     const element_pair = pattern.element_pair
     if (bin_idx !== null) {
-      const options = { cutoff, n_bins, pbc, bin_idx, element_pair }
-      const { site_indices, neighbor_indices } = rdf_bin_sites(structure, options)
+      const index =
+        bin_site_indices.get(entry) ??
+        rdf_bin_site_index(structure, { cutoff, n_bins, pbc, element_pair })
+      bin_site_indices.set(entry, index)
+      const { site_indices, neighbor_indices } = index(bin_idx)
       return [{ ...highlight, site_indices, neighbor_indices }]
     }
     // the full RDF's legend entry stands for every atom, which highlights nothing useful

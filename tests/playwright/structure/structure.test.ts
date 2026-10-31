@@ -20,7 +20,7 @@ import {
   select_view_layout as select_structure_layout,
   set_scene_props,
   structure_canvas,
-  sweep_gizmo_handles,
+  settled_gizmo_handles,
   webgl_on_ci_for_tagged,
   expect_canvas_changed,
   expect_canvas_changed_by,
@@ -527,8 +527,7 @@ test.describe(`Structure Component Tests`, () => {
     const canvas = structure_canvas(page)
     await activate_viewer(page, canvas)
 
-    const handles = await sweep_gizmo_handles(canvas)
-    expect(handles.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+    const handles = await settled_gizmo_handles(canvas)
     // A sweep can include edge pixels that only hover a handle, so try up to three candidates
     // and accept the first whose click reports a camera move.
     const candidates = [handles[0], handles[Math.floor(handles.length / 2)], handles.at(-1)]
@@ -925,35 +924,24 @@ test.describe(`Structure Event Handler Tests`, () => {
     return { camera_target, camera_zoom }
   }
 
-  // Two segments, each held past the 200 ms active-move sync interval, so even a software
+  // Two segments, each held until the 200 ms active-move sync reports it, so even a software
   // renderer draws a frame mid-drag and the sync reports a pose before the final one
   const drag_camera = async (page: Page) => {
     const box = await canvas_box(structure_canvas(page))
     const [center_x, center_y] = [box.x + box.width / 2, box.y + box.height / 2]
+    const count_moves = async () => (await events_named(page, `on_camera_move`)).length
     await page.mouse.move(center_x - 80, center_y)
     await page.mouse.down()
     for (const end_x of [center_x, center_x + 80]) {
+      const moves_before = await count_moves()
       await page.mouse.move(end_x, center_y, { steps: 3 })
-      await page.waitForTimeout(300)
+      await expect.poll(count_moves).toBeGreaterThan(moves_before)
     }
     await page.mouse.up()
     return box
   }
   const reset_camera_button = (page: Page) =>
     page.locator(`#test-structure .controls-pane button.reset-camera`)
-
-  test(`should trigger on_fullscreen_change event when fullscreen state changes`, async ({
-    page,
-  }) => {
-    await clear_events(page)
-    await page.locator(`#test-structure > section.control-buttons > .fullscreen-btn`).click()
-
-    const event = await wait_for_event(page, `on_fullscreen_change`, [
-      `fullscreen`,
-      `structure`,
-    ])
-    expect(event.data).toMatchObject({ fullscreen: true })
-  })
 
   test(`import notices and file errors overlay the viewer without shrinking its canvas`, async ({
     page,
@@ -1110,7 +1098,8 @@ test.describe(`Structure Event Handler Tests`, () => {
         position: { x: box.width / 2, y: box.height / 2 },
         force: true,
       })
-      await page.waitForTimeout(100) // include the post-end damping settle sync
+      // asserts an absence: outlast the 50 ms post-end settle-sync timer, which has no DOM signal
+      await page.waitForTimeout(100)
       expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
 
       const { pane_div } = await open_structure_control_pane(page)
@@ -1173,7 +1162,9 @@ test.describe(`Structure Event Handler Tests`, () => {
       /(?:⌘|Ctrl) \+ scroll to zoom · click to interact/,
     )
     await expect.poll(read_scroll).toBeGreaterThan(scroll_idle)
-    await page.waitForTimeout(100) // a zoom would report its camera move by now
+    // asserts an absence: a zoom would report its camera move within this window (incl. the
+    // 50 ms settle-sync timer), and no event or attribute signals that none is coming
+    await page.waitForTimeout(100)
     expect(await events_named(page, `on_camera_move`)).toHaveLength(0)
 
     await canvas.click({ position: { x: 5, y: 5 }, force: true })
@@ -1377,8 +1368,7 @@ test.describe(`Multi-side view (2x2 grid)`, () => {
       // gizmo with no DOM element. Hover first since it draws only while the viewer is active.
       const gizmo_span = async (canvas: Locator): Promise<number> => {
         await activate_viewer(page, canvas)
-        const hits = await sweep_gizmo_handles(canvas)
-        expect(hits.length, `gizmo handles on this canvas`).toBeGreaterThan(0)
+        const hits = await settled_gizmo_handles(canvas)
         const x_values = hits.map((hit) => hit.x)
         const y_values = hits.map((hit) => hit.y)
         return Math.max(

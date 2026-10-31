@@ -9,6 +9,7 @@ import type { PymatgenCompleteDos } from '#lib/spectral/helpers.js'
 import {
   ACOUSTIC_FREQ_THRESHOLD,
   are_qpoints_equivalent,
+  band_crossings,
   band_k_path,
   apply_gaussian_smearing,
   display_smoother,
@@ -401,6 +402,42 @@ describe(`branch_qpoint_range`, () => {
   ] as [number, Vec2 | null][])(`q-point %i lies in %j`, (qpoint_idx, expected) => {
     expect(branch_qpoint_range(band_structure, qpoint_idx)).toEqual(expected)
   })
+})
+
+// a hovered energy (FermiBandsLink calls this per band hover) scans only the bands whose
+// cached [min, max] spans it, not every q-point of every band
+it(`band_crossings skips the bands whose range excludes the energy`, () => {
+  const reads = new Map<number, number>() // q-point reads per band
+  // 20 bands 1 apart, each rising 0.5 over 11 q-points: only band 7 spans 0.33
+  const bands = Array.from(
+    { length: 20 },
+    (_, band) =>
+      new Proxy(
+        Array.from({ length: 11 }, (_unused, idx) => band - 7 + 0.05 * idx),
+        {
+          get: (target, key, receiver) => {
+            if (typeof key === `string` && /^\d+$/.test(key)) {
+              reads.set(band, (reads.get(band) ?? 0) + 1)
+            }
+            return Reflect.get(target, key, receiver)
+          },
+        },
+      ),
+  )
+  const band_structure = make_bs([`GAMMA`, ...Array(9).fill(null), `X`], { bands })
+  const { points } = band_k_path(band_structure, IDENTITY_MATRIX3)
+  const x_positions = { [branch_segment_keys(band_structure)[0]]: [0, 10] as Vec2 }
+  const crossings_at = (energy: number) =>
+    band_crossings(band_structure, energy, points, x_positions).map(({ band_idx, x }) => [
+      band_idx,
+      Math.round(x * 1e9) / 1e9,
+    ])
+  expect(crossings_at(0.33)).toEqual([[7, 6.6]]) // the first call caches every band's range
+  reads.clear()
+  expect(crossings_at(0.33)).toEqual([[7, 6.6]])
+  expect([...reads.keys()]).toEqual([7])
+  // a range's ends are inclusive: a band touching the energy at its max still crosses
+  expect(crossings_at(-6.5)).toEqual([[0, 10]])
 })
 
 describe(`extract_k_path_points`, () => {

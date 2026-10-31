@@ -38,6 +38,11 @@ export function create_material_loader<Value>(
   inputs: MaterialLoaderInputs<Value>,
 ): Attachment<HTMLElement> {
   let active_controller: AbortController | undefined
+  // A drop batch and a source load each hold the spinner; it goes off once neither runs, so
+  // a superseded drop's batch ending cannot hide a newer URL load still in flight
+  let batch_loading = false
+  let source_loading = false
+  const sync_loading = (): void => inputs.set_loading?.(batch_loading || source_loading)
   let loaded_url: string | undefined
   // Set once this loader has produced a value, so the viewer's own edits to it (and the proxy
   // a bindable hands back) still read as ours. Only a value present before we produced one
@@ -47,7 +52,8 @@ export function create_material_loader<Value>(
   const cancel_load = (): void => {
     active_controller?.abort()
     active_controller = undefined
-    inputs.set_loading?.(false)
+    source_loading = false
+    sync_loading()
   }
 
   // The drop zone owns loading indicators and error reporting across its whole batch.
@@ -56,7 +62,8 @@ export function create_material_loader<Value>(
     active_controller?.abort()
     const controller = new AbortController()
     active_controller = controller
-    if (!drop) inputs.set_loading?.(true)
+    source_loading = !drop
+    sync_loading()
     inputs.set_error(undefined)
     try {
       const on_file_drop = inputs.on_file_drop?.()
@@ -103,8 +110,9 @@ export function create_material_loader<Value>(
         : error
     } finally {
       if (controller === active_controller) {
-        if (!drop) inputs.set_loading?.(false)
         active_controller = undefined
+        source_loading = false
+        sync_loading()
       }
     }
   }
@@ -141,6 +149,9 @@ export function create_material_loader<Value>(
     on_drop: (source) => load(source, { drop: true }),
     on_error: (message) => inputs.report_error(message),
     on_dragover: inputs.set_dragover,
-    set_loading: inputs.set_loading,
+    set_loading: (loading) => {
+      batch_loading = loading
+      sync_loading()
+    },
   })
 }

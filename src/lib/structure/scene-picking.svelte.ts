@@ -60,12 +60,6 @@ export class ScenePointer {
     this.tooltip_active = false
   }
 
-  hover_props = (site_idx: number): HoverHandlers => ({
-    onpointerenter: () => this.set_hover(site_idx),
-    onpointermove: () => this.set_hover(site_idx),
-    onpointerleave: () => this.schedule_hover_clear(site_idx),
-  })
-
   remember_press = (site_idx: number): void => {
     this.#pressed_site = site_idx
     clearTimeout(this.#pressed_timeout)
@@ -97,14 +91,14 @@ export const disable_raycast = (mesh: Mesh): void => {
 // which indexes into the mesh's records. One handler set per mesh instead of one per atom.
 export const instance_handlers = (
   instance_atoms: readonly { site_idx: number }[],
-  handlers: Record<keyof HoverHandlers, (site_idx: number, event: TapEvent) => void>,
+  handlers: Partial<Record<keyof HoverHandlers, (site_idx: number, event: TapEvent) => void>>,
 ): HoverHandlers =>
   Object.fromEntries(
     Object.entries(handlers).map(([name, handler]) => [
       name,
       (event: TapEvent) => {
         const site_idx = instance_atoms[event.instanceId ?? -1]?.site_idx
-        if (site_idx != null) handler(site_idx, event)
+        if (site_idx != null) handler?.(site_idx, event)
       },
     ]),
   )

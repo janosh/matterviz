@@ -162,6 +162,44 @@ export const merge_split_partial_sites = (
   return render_sites
 }
 
+// Bond partners as coordination and bond-angle analysis count them: split partial sites that
+// merge_split_partial_sites draws as one atom are one neighbor too. `groups` maps each such
+// atom's render site to its source sites; `partner_of` gives `partner`'s render site the first
+// time `center` meets its group at `cell_shift` (negated for a bond read from its second end),
+// else -1.
+export const split_site_partners = (
+  sites: Site[],
+): {
+  groups: Map<number, number[]>
+  partner_of: (center: number, partner: number, negate: boolean, cell_shift?: Vec3) => number
+} => {
+  // -1 for a site no coincident split site shares a position with
+  const representative = new Int32Array(sites.length).fill(-1)
+  const groups = new Map<number, number[]>()
+  for (const { site_idx, source_site_indices } of merge_split_partial_sites(sites)) {
+    if (source_site_indices.length < 2) continue
+    groups.set(site_idx, source_site_indices)
+    for (const source_idx of source_site_indices) representative[source_idx] = site_idx
+  }
+  const seen = new Set<string>()
+  const partner_of = (
+    center: number,
+    partner: number,
+    negate: boolean,
+    cell_shift: Vec3 = [0, 0, 0],
+  ): number => {
+    const group = representative[partner]
+    if (group === -1) return partner
+    // join writes -0 as 0, so a negated zero shift keys like an unshifted one
+    const shift = negate ? cell_shift.map((val) => -val) : cell_shift
+    const key = `${center}:${group}@${shift.join(`,`)}`
+    if (seen.has(key)) return -1
+    seen.add(key)
+    return group
+  }
+  return { groups, partner_of }
+}
+
 export const compute_slice_geometry = (site_species: Site[`species`]): SliceGeometry[] => {
   const visible_species = merge_species_by_element(site_species)
   if (visible_species.length === 0) return []

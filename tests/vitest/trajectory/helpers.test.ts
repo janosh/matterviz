@@ -170,6 +170,8 @@ describe(`trajectory helpers`, () => {
       `a\r\nb\r\n`,
       // one long line fills the density sample, so the line buffer starts small and grows
       `${`x`.repeat(2 ** 16)}\n${`a b\n`.repeat(3000)}`,
+      // a short-lined head over a long-lined rest must not keep a head-density buffer
+      `${`a\n`.repeat(2 ** 15)}${`${`x`.repeat(200)}\n`.repeat(4000)}`,
     ]
     const [scanner, reference] = [new LineScanner(), new LineScanner()]
     const tokens = (line_scanner: LineScanner, count: number): string[] =>
@@ -183,6 +185,9 @@ describe(`trajectory helpers`, () => {
           ? [0, ...ends].map((from, idx) => text.slice(from, ends[idx])).filter(Boolean)
           : text
         const lines = new TextLines(chunks)
+        // the retained offset buffer holds at most 1/8 slack past the line count
+        const { starts } = lines as unknown as { starts: Uint32Array }
+        expect(starts.length).toBeLessThanOrEqual(lines.count + (lines.count >> 3) + 16)
         const indices = Array.from({ length: lines.count }, (_, idx) => idx)
         expect(indices.map((idx) => lines.line(idx))).toEqual(expected)
         // read back to front and in random order too, so chunk lookups also seek backward

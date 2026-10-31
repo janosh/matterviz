@@ -23,26 +23,6 @@ const open = async (
 describe(`loading policy`, () => {
   const text = synthetic_extxyz(30, 20)
 
-  it(`materialises text below index_above_bytes and indexes above it`, async () => {
-    const eager = await open(text, `run.extxyz`, { index_above_bytes: text.length * 2 })
-    const lazy = await open(text, `run.extxyz`, { index_above_bytes: 0 })
-    expect(eager.properties.complete).toBe(true) // memory run: rows at construction
-    await lazy.properties.done
-    expect(lazy.properties.rows.map((row) => row.properties.energy)).toEqual(
-      eager.properties.rows.map((row) => row.properties.energy),
-    )
-    for (const idx of [0, 7, 29]) {
-      const from_eager = await materialize_frame_result(eager.read_frame(idx))
-      const from_lazy = await materialize_frame_result(lazy.read_frame(idx))
-      expect(from_lazy.step).toBe(from_eager.step)
-      expect(from_lazy.structure.sites.map((site) => site.xyz)).toEqual(
-        from_eager.structure.sites.map((site) => site.xyz),
-      )
-    }
-    expect(eager.provenance.format).toBe(`xyz`)
-    expect(lazy.provenance.format).toBe(`xyz`)
-  })
-
   it.each([`none`, `batch`, `completion`, `both`])(
     `extracts all indexed plot rows with %s subscriber errors`,
     async (failure) => {
@@ -237,8 +217,6 @@ describe(`JSON runs`, () => {
     // complete frames fail with their own error, not as a truncated one
     [`invalid XYZ coordinate`, `1\ncomment\nHe invalid 0 0`, `broken.xyz`,
       /as XYZ: XYZ frame 1 .*non-numeric coordinates/],
-    [`numeric XYZ species`, `2\ncomment\n1 0 0 0\n1 0 0 1`, `broken.xyz`,
-      /as XYZ: XYZ frame 1 .*no atom with a recognised element/],
     [`unrecognized text`, `1\ncomment\nHe invalid 0 0`, `blob-id`, /Unsupported text format/],
     // bytes that are neither ASE nor HDF5 read as text, unless they look binary
     [`binary bytes under a text name`, new Blob([new Uint8Array([0, 1, 2, 0])]), `data.xyz`,

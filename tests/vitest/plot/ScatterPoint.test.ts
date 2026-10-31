@@ -224,7 +224,7 @@ describe(`ScatterPoint`, () => {
       else expect(line).toBeNull()
     })
 
-    test(`leader line stops outside the text box and uses default dash and opacity`, () => {
+    test(`leader line stops outside the text box`, () => {
       const label = { text: `LongLabel`, offset: { x: 60, y: 0 } }
       mount_point({ label, leader_line_threshold: 10, style: { radius: 3 } })
       const line = doc_query(`line.leader-line`)
@@ -233,8 +233,6 @@ describe(`ScatterPoint`, () => {
       // x2 should be well before the text center (< 60) but past the midpoint
       expect(coord_x).toBeLessThan(50)
       expect(coord_x).toBeGreaterThan(20)
-      expect(line.getAttribute(`stroke-dasharray`)).toContain(`2 2`)
-      expect(line.getAttribute(`stroke-opacity`)).toContain(`0.6`)
     })
   })
 

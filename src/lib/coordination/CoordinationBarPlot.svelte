@@ -41,7 +41,9 @@
     split_mode?: CoordinationSplitMode
   } = $props()
 
-  let dropped_entries = $state<StructureEntry[]>([])
+  // Raw: a deep proxy routed every site read of the neighbor search through proxy traps
+  // (12x slower on a dropped 20k-atom file); drops replace the list, never mutate it
+  let dropped_entries = $state.raw<StructureEntry[]>([])
 
   // Bonded across each structure's own pbc, the same call the 3D viewer makes, so
   // boundary-atom coordination matches it. A structure the neighbor search rejects is

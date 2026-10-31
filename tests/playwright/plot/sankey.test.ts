@@ -1,38 +1,12 @@
 import { expect, test } from '@playwright/test'
 
-test.describe(`Sankey Component Tests`, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(`/test/sankey`, { waitUntil: `networkidle` })
-  })
-
-  // Counts are pinned in tests/vitest/plot/Sankey.test.ts; this checks the demos lay out
-  test(`basic and gradient demos render nodes, links, labels and a legend`, async ({
-    page,
-  }) => {
-    // 6 nodes, 5 links in the basic flow fixture
-    const plot = page.locator(`#basic-sankey .sankey`)
-    await expect(plot.locator(`.nodes rect`)).toHaveCount(6)
-    await expect(plot.locator(`.links path`)).toHaveCount(5)
-    await expect(plot.locator(`.node-label`).first()).toBeVisible()
-    const gradient_plot = page.locator(`#gradient-sankey .sankey`)
-    await expect(gradient_plot.locator(`linearGradient`)).toHaveCount(5)
-    await expect(gradient_plot.locator(`.legend`)).toBeVisible()
-  })
-
-  test(`shows tooltip and updates handler info on node hover`, async ({ page }) => {
-    const section = page.locator(`#handlers-sankey`)
-    const plot = section.locator(`.sankey`)
-    await plot.locator(`.nodes rect`).first().hover()
-    await expect(plot.locator(`.plot-tooltip`)).toBeVisible()
-    await expect(section.locator(`.handler-info`)).toContainText(`Node:`)
-  })
-
-  test(`opens the controls pane`, async ({ page }) => {
-    const section = page.locator(`#vertical-sankey`)
-    // the toggle sits in the chart header row (ChartShell), not at a fixed offset
-    const toggle = section.locator(`.sankey-controls-toggle`)
-    await expect(toggle).toBeVisible()
-    await toggle.click()
-    await expect(section.locator(`.sankey-controls-pane`)).toBeVisible()
-  })
+// Counts, gradients, legend and handler payloads are pinned in tests/vitest/plot/Sankey.test.ts;
+// this checks a real pointer hover reaches the laid-out node
+test(`shows tooltip and updates handler info on node hover`, async ({ page }) => {
+  await page.goto(`/test/sankey`, { waitUntil: `networkidle` })
+  const section = page.locator(`#handlers-sankey`)
+  const plot = section.locator(`.sankey`)
+  await plot.locator(`.nodes rect`).first().hover()
+  await expect(plot.locator(`.plot-tooltip`)).toBeVisible()
+  await expect(section.locator(`.handler-info`)).toContainText(`Node:`)
 })

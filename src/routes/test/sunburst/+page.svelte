@@ -2,6 +2,8 @@
   import type { PositionedArc, SunburstNode } from '#lib/plot/index.js'
   import { Sunburst, sunburst_from_labels_parents } from '#lib/plot/index.js'
   import { spacegroup_sunburst_data } from '#lib/symmetry/index.js'
+  import TestSection from '../TestSection.svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   // Three-level energy tree: sector -> source -> technology
   const energy: SunburstNode[] = [
@@ -62,31 +64,23 @@
     })),
   }))
 
+  const plot_style = `height: 360px`
   let hover_msg = $state(`Hover over an arc`)
   let click_msg = $state(`Click an arc`)
   let zoom_msg = $state(`Zoom root: (root)`)
 </script>
 
-<svelte:head>
-  <title>Sunburst Test Page</title>
-</svelte:head>
+<h1>Sunburst test page</h1>
 
-<h1 id="sunburst-component-playwright-tests">Sunburst Component Playwright Tests</h1>
+<TestSection title="Basic (nested data)" id="basic-sunburst">
+  <Sunburst data={energy} style={plot_style} />
+</TestSection>
 
-<section id="basic-sunburst">
-  <h2 id="basic-nested-data">Basic (nested data)</h2>
-  <Sunburst data={energy} style="height: 360px" />
-</section>
+<TestSection title="Flat plotly-trace input, value_mode total, legend" id="flat-sunburst">
+  <Sunburst data={flat} value_mode="total" show_legend style={plot_style} />
+</TestSection>
 
-<section id="flat-sunburst">
-  <h2 id="flat-plotly-trace-input-value_mode-total-legend">
-    Flat plotly-trace input + value_mode total + legend
-  </h2>
-  <Sunburst data={flat} value_mode="total" show_legend style="height: 360px" />
-</section>
-
-<section id="zoom-sunburst">
-  <h2 id="click-to-zoom-with-handlers">Click-to-zoom with handlers</h2>
+<TestSection title="Click-to-zoom with handlers" id="zoom-sunburst">
   <Sunburst
     data={energy}
     tween={{ duration: 50 }}
@@ -96,22 +90,24 @@
         : `Hover over an arc`)}
     on_node_click={(data) => (click_msg = `Clicked: ${data.label}`)}
     on_zoom={(data) => (zoom_msg = `Zoom root: ${data.root?.label ?? `(root)`}`)}
-    style="height: 360px"
+    style={plot_style}
   />
   <div class="handler-info">
-    <p>{hover_msg}</p>
-    <p>{click_msg}</p>
-    <p>{zoom_msg}</p>
+    <TestStatus
+      values={{
+        'sunburst-hover': hover_msg,
+        'sunburst-click': click_msg,
+        'sunburst-zoom': zoom_msg,
+      }}
+    />
   </div>
-</section>
+</TestSection>
 
-<section id="icicle-sunburst">
-  <h2 id="icicle-shape">Icicle shape</h2>
-  <Sunburst shape="icicle" data={energy} tween={{ duration: 50 }} style="height: 360px" />
-</section>
+<TestSection title="Icicle shape" id="icicle-sunburst">
+  <Sunburst shape="icicle" data={energy} tween={{ duration: 50 }} style={plot_style} />
+</TestSection>
 
-<section id="other-sunburst">
-  <h2 id="min-fraction-bucketing-percent-labels">Min-fraction bucketing + percent labels</h2>
+<TestSection title="Min-fraction bucketing, percent labels" id="other-sunburst">
   <Sunburst
     data={[
       { label: `big`, value: 80 },
@@ -122,35 +118,25 @@
     ]}
     min_fraction={0.05}
     label_text="label+percent"
-    style="height: 360px"
+    style={plot_style}
   />
-</section>
+</TestSection>
 
-<section id="large-sunburst">
-  <h2 id="large-hierarchy-2920-arcs">Large hierarchy (2920 arcs)</h2>
+<TestSection title="Large hierarchy (2920 arcs)" id="large-sunburst">
   <Sunburst data={large} tween={{ duration: 50 }} show_labels={false} style="height: 400px" />
-</section>
+</TestSection>
 
-<section id="metric-sunburst">
-  <h2 id="metric-coloring-colorbar-reserves-space-no-overlap">
-    Metric coloring (colorbar reserves space, no overlap)
-  </h2>
+<TestSection
+  title="Metric coloring (colorbar reserves space, no overlap)"
+  id="metric-sunburst"
+>
   <Sunburst
     data={energy}
     color_values={(arc: PositionedArc) => arc.value}
-    style="height: 360px"
+    style={plot_style}
   />
-</section>
+</TestSection>
 
-<section id="spacegroup-sunburst">
-  <h2 id="spacegroup-sunburst-crystal-system-rarr-spacegroup">
-    Spacegroup sunburst (crystal system &rarr; spacegroup)
-  </h2>
+<TestSection title="Spacegroups (crystal system → spacegroup)" id="spacegroup-sunburst">
   <Sunburst data={spacegroup_sunburst_data(spacegroups)} style="height: 400px" />
-</section>
-
-<style>
-  section {
-    margin-block: 2em;
-  }
-</style>
+</TestSection>

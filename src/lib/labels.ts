@@ -371,19 +371,6 @@ export const ELEMENT_CATEGORIES = [
   `transition metal`,
 ] as const
 
-export const SUBSCRIPT_MAP = {
-  '0': `₀`,
-  '1': `₁`,
-  '2': `₂`,
-  '3': `₃`,
-  '4': `₄`,
-  '5': `₅`,
-  '6': `₆`,
-  '7': `₇`,
-  '8': `₈`,
-  '9': `₉`,
-} as const
-
 // replaces all signs and digits with their unicode superscript equivalent (the glyph at the
 // index of the ASCII character)
 export const superscript_digits = (input: string): string =>

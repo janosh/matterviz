@@ -31,6 +31,17 @@
   import type { StructureSession } from './session.svelte'
   import StructureScene from './StructureScene.svelte'
 
+  type OverrideKey =
+    | `atom_color_field`
+    | `tooltip`
+    | `atom_opacity`
+    | `volume_color_field`
+    | `volume_opacity`
+    | `cutaway`
+    | `defer_expensive_geometry`
+    | `sphere_segments`
+    | `slice_polygon`
+
   // Self-heal a lost GPU device (driver reset, resource pressure): unlike WebGL there is no
   // "restored" event, so recovery means remounting the <Canvas> for a fresh renderer.
   let canvas_remount_token = $state(0)
@@ -93,6 +104,7 @@
     series_key = undefined,
     reference_structure = undefined,
     scene_props = {},
+    scene_overrides = {},
     frame_scene_props = {},
     gizmo = false,
     volumetric_data = undefined,
@@ -140,6 +152,9 @@
     series_key?: unknown
     reference_structure?: AnyStructure // comparison geometry for displacement arrows
     scene_props?: ComponentProps<typeof StructureScene>
+    // a host's own overrides of scene_props, kept apart so changing one marks only the scene
+    // props it feeds (see Structure's shared_viewport_props). Unset keys fall back to scene_props.
+    scene_overrides?: Partial<Pick<ComponentProps<typeof StructureScene>, OverrideKey>>
     // inputs that change per trajectory frame, kept out of `scene_props` so a played frame
     // leaves every other scene prop unmarked (see Structure's shared_viewport_props). Unset
     // keys fall back to `scene_props`; an explicit undefined end frame means a tool trail.
@@ -175,6 +190,9 @@
   } = $props()
 
   let structure = $derived(session.render_structure)
+
+  const scene_input = <Key extends OverrideKey>(key: Key) =>
+    key in scene_overrides ? scene_overrides[key] : scene_props[key]
 
   // Cell-local dimensions (each pane is responsible for its own zoom sizing) and cursor
   let width = $state(0)
@@ -492,25 +510,33 @@
     </div>
   {/if}
   {#key canvas_remount_token}
-    <Canvas createRenderer={create_viewport_renderer}>
+    <Canvas createRenderer={create_viewport_renderer} shadows={false}>
+      <!-- Props after the spread resolve without reading scene_props: the structure before it
+        would re-run every structure-reading derived whenever a host replaces the settings -->
       <StructureScene
+        {...scene_props}
         {structure}
         base_structure={session.base_structure}
         to_base_site_idx={session.to_base_site_idx}
         {reference_structure}
         {series_key}
-        {...scene_props}
-        tooltip={session.shows_input_frame || scene_props.tooltip === false
-          ? scene_props.tooltip
+        tooltip={session.shows_input_frame || scene_input(`tooltip`) === false
+          ? scene_input(`tooltip`)
           : undefined}
-        atom_color_field={session.shows_input_frame ? scene_props.atom_color_field : undefined}
+        atom_color_field={session.shows_input_frame
+          ? scene_input(`atom_color_field`)
+          : undefined}
         volume_color_field={session.shows_input_frame
-          ? scene_props.volume_color_field
+          ? scene_input(`volume_color_field`)
           : undefined}
-        atom_opacity={!session.shows_input_frame && scene_props.volume_color_field
+        volume_opacity={scene_input(`volume_opacity`)}
+        atom_opacity={!session.shows_input_frame && scene_input(`volume_color_field`)
           ? 1
-          : scene_props.atom_opacity}
-        cutaway={session.shows_input_frame ? scene_props.cutaway : undefined}
+          : scene_input(`atom_opacity`)}
+        cutaway={session.shows_input_frame ? scene_input(`cutaway`) : undefined}
+        defer_expensive_geometry={scene_input(`defer_expensive_geometry`)}
+        sphere_segments={scene_input(`sphere_segments`)}
+        slice_polygon={scene_input(`slice_polygon`)}
         auto_rotate={in_grid ? 0 : scene_props.auto_rotate}
         symmetry_elements={session.shows_input_frame ? scene_props.symmetry_elements : []}
         lattice_planes={session.shows_input_frame ? scene_props.lattice_planes : []}

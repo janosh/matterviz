@@ -3,9 +3,13 @@
   import type { Crystal, ElementSymbol } from '#lib'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
+  import { format_num } from '#lib/labels.js'
   import { calc_lattice_params, mulberry32, type Matrix3x3 } from '#lib/math.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { tick } from 'svelte'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   type Dimension = `2d` | `3d` | `4d`
 
@@ -157,105 +161,102 @@
   const PRESETS = [100, 500, 1000, 2500, 5000, 10000]
 </script>
 
-<h1 id="convex-hull-performance-test">Convex Hull Performance Test</h1>
+<h1>ConvexHull performance test page</h1>
 
-<div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
-  <label>
-    Dimension:
-    <select bind:value={dimension} onchange={update_and_regenerate}>
-      <option value="2d">2D Binary</option>
-      <option value="3d">3D Ternary</option>
-      <option value="4d">4D Quaternary</option>
-    </select>
-  </label>
+<TestSection
+  title="Diagram"
+  description="Profile with the DevTools Performance tab while rotating; 4D is the most expensive."
+>
+  {#if is_generating}
+    <Spinner text="Generating {entry_count} entries..." />
+  {:else if generated_entries.length > 0}
+    {#key `${dimension}-${generated_entries.length}-${generation_time_ms}`}
+      <div style="height: min(70vh, 800px)" {@attach track_render}>
+        <ConvexHull
+          entries={generated_entries}
+          controls={{
+            title:
+              custom_title ?? `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
+          }}
+          {show_stable}
+          {show_unstable}
+          max_hull_dist_show_phases={max_hull_dist}
+          {color_mode}
+          {enable_click_selection}
+        />
+      </div>
+    {/key}
+  {/if}
+</TestSection>
 
-  <label>
-    Entries:
-    <input
-      type="number"
-      bind:value={entry_count}
-      min="10"
-      max="50000"
-      step="100"
-      style="width: 5em"
-      onchange={update_and_regenerate}
-    />
-  </label>
-
-  {#each PRESETS as count (count)}
-    <button
-      style:font-weight={entry_count === count ? `bold` : `normal`}
-      onclick={() => {
-        entry_count = count
-        update_and_regenerate()
-      }}
-    >
-      {count}
-    </button>
-  {/each}
-</div>
-
-<div style="display: flex; flex-wrap: wrap; gap: 2em; margin-bottom: 1em">
-  <label><input type="checkbox" bind:checked={show_stable} /> Stable</label>
-  <label><input type="checkbox" bind:checked={show_unstable} /> Unstable</label>
-  <label><input type="checkbox" bind:checked={enable_click_selection} /> Click selection</label
-  >
-  <label>
-    Color:
-    <select bind:value={color_mode}>
-      <option value="energy">Hull distance</option>
-      <option value="stability">Stability</option>
-    </select>
-  </label>
-  <label>
-    Hull dist:
-    <input
-      type="number"
-      bind:value={max_hull_dist}
-      min="0"
-      max="2"
-      step="0.1"
-      style="width: 4em"
-      onchange={update_url}
-    />
-  </label>
-  <button onclick={regenerate} disabled={is_generating}>🔄 Regenerate</button>
-</div>
-
-<p>
-  <strong>{ELEMENTS[dimension].join(`-`)}</strong> |
-  {generated_entries.length} entries | Gen: {generation_time_ms.toFixed(1)}ms | Render: {render_time_ms.toFixed(
-    1,
-  )}ms
-</p>
-
-{#if is_generating}
-  <Spinner text="Generating {entry_count} entries..." />
-{:else if generated_entries.length > 0}
-  {#key `${dimension}-${generated_entries.length}-${generation_time_ms}`}
-    <div style="height: min(70vh, 800px)" {@attach track_render}>
-      <ConvexHull
-        entries={generated_entries}
-        controls={{
-          title:
-            custom_title ?? `${ELEMENTS[dimension].join(`-`)} (${generated_entries.length})`,
-        }}
-        {show_stable}
-        {show_unstable}
-        max_hull_dist_show_phases={max_hull_dist}
-        {color_mode}
-        {enable_click_selection}
+<TestSection title="Controls">
+  <TestControls>
+    <label>
+      Dimension
+      <select bind:value={dimension} onchange={update_and_regenerate}>
+        <option value="2d">2D Binary</option>
+        <option value="3d">3D Ternary</option>
+        <option value="4d">4D Quaternary</option>
+      </select>
+    </label>
+    <label>
+      Entries
+      <input
+        type="number"
+        bind:value={entry_count}
+        min="10"
+        max="50000"
+        step="100"
+        style="width: 5em"
+        onchange={update_and_regenerate}
       />
-    </div>
-  {/key}
-{/if}
+    </label>
+    {#each PRESETS as count (count)}
+      <button
+        style:font-weight={entry_count === count ? `bold` : `normal`}
+        onclick={() => {
+          entry_count = count
+          update_and_regenerate()
+        }}
+      >
+        {count}
+      </button>
+    {/each}
+  </TestControls>
+  <TestControls>
+    <label><input type="checkbox" bind:checked={show_stable} /> Stable</label>
+    <label><input type="checkbox" bind:checked={show_unstable} /> Unstable</label>
+    <label
+      ><input type="checkbox" bind:checked={enable_click_selection} /> Click selection</label
+    >
+    <label>
+      Color
+      <select bind:value={color_mode}>
+        <option value="energy">Hull distance</option>
+        <option value="stability">Stability</option>
+      </select>
+    </label>
+    <label>
+      Hull dist
+      <input
+        type="number"
+        bind:value={max_hull_dist}
+        min="0"
+        max="2"
+        step="0.1"
+        style="width: 4em"
+        onchange={update_url}
+      />
+    </label>
+    <button onclick={regenerate} disabled={is_generating}>Regenerate</button>
+  </TestControls>
+</TestSection>
 
-<details style="margin-top: 1em">
-  <summary>Performance tips</summary>
-  <ul>
-    <li>Open DevTools Performance tab to profile</li>
-    <li>Check frame rate while rotating 3D/4D diagrams</li>
-    <li>Monitor memory for large entry counts</li>
-    <li>4D is most expensive (tetrahedron projection)</li>
-  </ul>
-</details>
+<TestStatus
+  values={{
+    'chem-system': ELEMENTS[dimension].join(`-`),
+    entries: generated_entries.length,
+    'generation-ms': format_num(generation_time_ms, `.1f`),
+    'render-ms': format_num(render_time_ms, `.1f`),
+  }}
+/>

@@ -41,7 +41,9 @@ export const normalize_formula_unicode = (formula: string): string =>
     .replaceAll(/[⋅•∙]/g, `·`)
     .replaceAll(`−`, `-`)
 
-const NUMBER_RE = /\d+(?:\.\d+)?|\.\d+/y
+// Optional exponent: pymatgen writes amounts below 1e-4 in Python float notation (Fe1e-05 O1).
+// Lowercase only, so Er, Es and Eu after a count stay element symbols.
+const NUMBER_RE = /(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?/y
 // ^2+, ^+2, ^-, [2-], [+] ... (bare sign = ±1)
 const CHARGE_RE = /\^(?<caret>[+-]\d+|\d+[+-]?|[+-])|\[(?<bracket>[+-]\d+|\d+[+-]?|[+-])\]/y
 

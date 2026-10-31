@@ -50,16 +50,32 @@ export function create_placed_tween(opts: {
   let previous_element: Element | null | undefined
   let previous_placement_revision: unknown
   let placed = $state(false)
+  // Moves glide only once the element was painted at a placement: the first placement is often
+  // solved before the element is measured, and the re-solve from its measured size a frame
+  // later (before or at first paint) slid legends and colorbars across the plot on every load
+  let painted = false
+  let paint_frame: number | null = null
 
   const coords = new Tween<Point>(
     { x: 0, y: 0 },
     untrack(() => ({ duration: 400, ...opts.tween?.() })),
   )
 
-  // Clear pending unlock timeout to prevent state updates after unmount
+  // Clear pending unlock timeout and paint frame to prevent state updates after unmount
   $effect(() => () => {
     if (unlock_timeout) clearTimeout(unlock_timeout)
+    if (paint_frame !== null) cancelAnimationFrame(paint_frame)
   })
+  // untracked: the placement effect calls this, and only non-responsive tweens track `placed`
+  const mark_placed = (): void => {
+    if (untrack(() => placed)) return
+    placed = true
+    if (paint_frame !== null) cancelAnimationFrame(paint_frame)
+    paint_frame = requestAnimationFrame(() => {
+      paint_frame = null
+      painted = placed
+    })
+  }
 
   // Decoration content (title, orientation, tick labels) can resize without the
   // plot dimensions changing. Observe it so frozen placements are recomputed.
@@ -67,7 +83,10 @@ export function create_placed_tween(opts: {
     const element = opts.element() ?? null
     if (previous_element !== undefined && previous_element !== element) {
       element_size_revision += 1
-      if (!element) placed = false
+      if (!element) {
+        placed = false
+        painted = false
+      }
     }
     previous_element = element
     if (!element || typeof ResizeObserver === `undefined`) return undefined
@@ -90,7 +109,7 @@ export function create_placed_tween(opts: {
     if (manual) {
       // Immediate update (no animation) for manually positioned elements
       void coords.set({ x: manual.x, y: manual.y }, { duration: 0 })
-      if (opts.element()) placed = true
+      if (opts.element()) mark_placed()
     }
     // Leave resize revisions pending so unlock recomputes the latest placement.
     if (hover_locked) return
@@ -125,11 +144,14 @@ export function create_placed_tween(opts: {
 
     void coords.set(
       { x: placement.x, y: placement.y },
-      // Skip animation on initial placement (avoids a jump from (0, 0)) and for reduced motion
-      has_initial_placement && !prefersReducedMotion.current ? undefined : { duration: 0 },
+      // Skip animation until the element was painted at a placement (avoids a jump from (0, 0)
+      // and the slide of its measured re-solve) and for reduced motion
+      has_initial_placement && painted && !prefersReducedMotion.current
+        ? undefined
+        : { duration: 0 },
     )
     // Only lock position after the element has an actual measured size
-    if (opts.element()) placed = true
+    if (opts.element()) mark_placed()
   })
 
   return { coords, placed: () => placed, set_locked }

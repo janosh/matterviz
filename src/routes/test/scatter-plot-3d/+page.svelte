@@ -8,6 +8,7 @@
   import type { DataSeries3D, InternalPoint3D } from '#lib/plot/core/types.js'
   import type { Camera, Scene } from 'three/webgpu'
   import { InstancedMesh, OrthographicCamera, Matrix4, Vector3 } from 'three/webgpu'
+  import TestSection from '../TestSection.svelte'
 
   // Generate test data with color values to trigger ColorBar rendering
   // This replicates the original issue where ColorBar could block gizmo clicks
@@ -97,16 +98,18 @@
   })
 </script>
 
-<h1 id="scatterplot3d-test-page">ScatterPlot3D Test Page</h1>
+<h1>ScatterPlot3D test page</h1>
 
-<ScatterPlot3D
-  id="test-scatter-3d"
-  style="height: 500px; width: 100%"
-  {series}
-  bind:tooltip_point={hovered_point}
-  bind:camera_position
-  bind:camera
-  bind:scene
-  bind:display
-  bind:wrapper
-/>
+<TestSection title="Helix with color bar">
+  <ScatterPlot3D
+    id="test-scatter-3d"
+    style="height: 500px; width: 100%"
+    {series}
+    bind:tooltip_point={hovered_point}
+    bind:camera_position
+    bind:camera
+    bind:scene
+    bind:display
+    bind:wrapper
+  />
+</TestSection>

@@ -51,6 +51,8 @@ import { hotspot_mean } from '#lib/trajectory/hotspots.js'
 import { reference_checkpoint_interval } from '#lib/trajectory/parse/reference-md-h5.js'
 import { decode_text_chunks } from '#lib/io/decompress.js'
 import { has_multiple_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
+import * as helpers_module from '#lib/trajectory/helpers.js'
+import * as frame_module from '#lib/trajectory/frame.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { join } from 'node:path'
@@ -240,6 +242,9 @@ describe(`site fixtures`, () => {
 // === Content sniffing without a filename hint (blob: URLs) ===
 
 const VALID_XYZ_FRAME = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
+// ASCII text as UTF-16LE bytes with a BOM (little-endian hosts)
+const utf16le = (text: string): ArrayBuffer =>
+  new Uint16Array([0xfeff, ...Array.from(text, (char) => char.charCodeAt(0))]).buffer
 // One LAMMPS dump frame in an orthogonal 10x10x10 box
 const lammps_frame = (
   columns: string,
@@ -261,6 +266,8 @@ describe(`content sniffing`, () => {
     // TextLines keeps a BOM, which hid a lone frame and the first of several
     [`BOM + single-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}`, `xyz`, 1],
     [`BOM + multi-frame XYZ`, `\uFEFF${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`, `xyz`, 2],
+    // UTF-16LE bytes (Windows PowerShell 5.1 redirection) were sniffed as binary
+    [`UTF-16LE XYZ`, utf16le(`${VALID_XYZ_FRAME}\n${VALID_XYZ_FRAME}`), `xyz`, 2],
     [`LAMMPS`, lammps_content, `lammps`, 1],
   ])(`detects %s by content`, async (_label, content, format, frame_count) => {
     for (const filename of [undefined, blob_uuid]) {
@@ -403,6 +410,20 @@ describe(`XDATCAR`, () => {
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ step }) => step)).toEqual([1, 3])
     expect(indexed.warnings).toEqual([`Skipping plot data of frame 2: ${error}`])
+  })
+
+  // frames of one cell don't share arrays: an edit to one frame stays in it
+  it(`indexed frames own their lattice, pbc and species arrays`, async () => {
+    const frames = [1, 2].map((step) => config(step, `0.5 0.5 0.5`, `0.1 0.1 0.1`))
+    const indexed = await open(xdatcar(`H\n2`, frames), `XDATCAR`, { index_above_bytes: 0 })
+    const [first, second] = await Promise.all([indexed.read_frame(0), indexed.read_frame(1)])
+    const { lattice } = first.structure
+    if (!lattice || !(first.sites instanceof Uint8Array)) throw new Error(`expected a cell`)
+    lattice.matrix[0][0] = 99
+    first.sites[0] = 99
+    expect(second.structure.lattice?.matrix[0][0]).toBe(5)
+    expect(second.structure.lattice?.pbc).not.toBe(lattice.pbc)
+    expect(second.sites[0]).toBe(1)
   })
 })
 
@@ -865,15 +886,11 @@ describe(`LAMMPS`, () => {
   // The last three tokens of the BOX BOUNDS line are boundary flags only when they read as
   // flags. A triclinic header with none appended puts `xy xz yz` there, none of which starts
   // with `p`, so the frame used to come out fully aperiodic and render with no periodic images.
-  it.each([
-    [`restricted triclinic with no flags`, `xy xz yz`, `0 10 0`, [true, true, true]],
-    [`restricted triclinic with flags`, `xy xz yz pp pp ff`, `0 10 0`, [true, true, false]],
-    [`orthogonal with flags`, `pp ff pp`, `0 10`, [true, false, true]],
-  ])(`reads periodicity from a %s header`, async (_case, header, bound, expected) => {
-    const box = `${bound}\n${bound}\n${bound}`
-    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS ${header}\n${box}\nITEM: ATOMS id type x y z\n1 1 0 0 0`
+  // (Headers with flags: `parses inline frames` and `converts restricted-triclinic bounds`.)
+  it(`reads a restricted triclinic header with no flags as fully periodic`, async () => {
+    const dump = `ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS xy xz yz\n0 10 0\n0 10 0\n0 10 0\nITEM: ATOMS id type x y z\n1 1 0 0 0`
     const run = await open(dump, `t.lammpstrj`)
-    expect(lattice_of(run.preview).pbc).toEqual(expected)
+    expect(lattice_of(run.preview).pbc).toEqual([true, true, true])
   })
 
   // ITEM: TIME is absolute and unitless: it lands in frame metadata but never becomes a
@@ -895,25 +912,6 @@ describe(`LAMMPS`, () => {
     expect(frames[0].metadata).not.toHaveProperty(`timestep`) // it is the frame's step
     expect(run.time_step).toBeUndefined()
   })
-
-  // A dump written by `dump_modify element` names its species, so those names beat guessing
-  // an element from the type number; an explicit mapping still beats the file, and an element
-  // column holding type labels falls back to the guess instead of rejecting the file
-  // oxfmt-ignore
-  it.each([
-    [`element column`, undefined, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Si`, `O`], 0],
-    [`mapping over column`, { 1: `Ge`, 2: `O` }, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Ge`, `O`], 0],
-    [`type labels in column`, undefined, [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`], [`H`, `He`], 1],
-  ] as const)(
-    `resolves elements with a type and an element column: %s`,
-    async (_name, atom_type_mapping, atom_lines, expected, n_warnings) => {
-      const dump = lammps_frame(`id type element x y z`, [...atom_lines])
-      const run = await open(dump, `t.lammpstrj`, { atom_type_mapping })
-      expect(elements_of(run.preview)).toEqual(expected)
-      expect(run.metadata).toMatchObject({ atom_types: [1, 2] })
-      expect(run.warnings).toHaveLength(n_warnings)
-    },
-  )
 
   // Corruption inside a frame is an error naming its line and timestep; it used to skip the
   // atom or frame silently and surface only as "No valid frames found"
@@ -1072,18 +1070,25 @@ describe(`LAMMPS`, () => {
     expect(run.preview.structure.sites[0].properties).toEqual({ ...expected, id: 1, type: 1 })
   })
 
+  // A dump written by `dump_modify element` names its species, so those names beat guessing
+  // an element from the type number; an explicit mapping still beats the file, and an element
+  // column holding type labels falls back to the guess instead of rejecting the file.
   // `dump custom ... mass` names elements like a data file's Masses section; it used to be
   // ignored, so a SiO2 dump read types 1/2 as H/He
   // oxfmt-ignore
   it.each([
-    [`type + mass`, `id type mass x y z`, [`1 1 28.0855 0 0 0`, `2 2 15.999 1 1 1`], [`Si`, `O`], 0],
-    [`mass only`, `id mass x y z`, [`1 28.0855 0 0 0`, `2 15.999 1 1 1`], [`Si`, `O`], 0],
-    [`element column over mass`, `id element mass x y z`, [`1 Ge 28.0855 0 0 0`, `2 O 15.999 1 1 1`], [`Ge`, `O`], 0],
-    [`coarse-grained mass falls back to type`, `id type mass x y z`, [`1 1 72.0 0 0 0`, `2 2 15.999 1 1 1`], [`H`, `O`], 1],
-    [`case-mangled element column`, `id element x y z`, [`1 FE 0 0 0`, `2 si 1 0 0`], [`Fe`, `Si`], 0],
-  ] as const)(`resolves elements from a mass or element column: %s`, async (_name, cols, atom_lines, expected, n_warnings) => {
-    const run = await open(lammps_frame(cols, [...atom_lines]), `m.lammpstrj`, { atom_type_mapping: undefined })
+    [`element column`, `id type element x y z`, undefined, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Si`, `O`], 0],
+    [`mapping over column`, `id type element x y z`, { 1: `Ge`, 2: `O` }, [`1 1 Si 0 0 0`, `2 2 O 1 1 1`], [`Ge`, `O`], 0],
+    [`type labels in column`, `id type element x y z`, undefined, [`1 1 Type1 0 0 0`, `2 2 Type2 1 1 1`], [`H`, `He`], 1],
+    [`type + mass`, `id type mass x y z`, undefined, [`1 1 28.0855 0 0 0`, `2 2 15.999 1 1 1`], [`Si`, `O`], 0],
+    [`mass only`, `id mass x y z`, undefined, [`1 28.0855 0 0 0`, `2 15.999 1 1 1`], [`Si`, `O`], 0],
+    [`element column over mass`, `id element mass x y z`, undefined, [`1 Ge 28.0855 0 0 0`, `2 O 15.999 1 1 1`], [`Ge`, `O`], 0],
+    [`coarse-grained mass falls back to type`, `id type mass x y z`, undefined, [`1 1 72.0 0 0 0`, `2 2 15.999 1 1 1`], [`H`, `O`], 1],
+    [`case-mangled element column`, `id element x y z`, undefined, [`1 FE 0 0 0`, `2 si 1 0 0`], [`Fe`, `Si`], 0],
+  ] as const)(`resolves elements from a type, mass or element column: %s`, async (_name, cols, atom_type_mapping, atom_lines, expected, n_warnings) => {
+    const run = await open(lammps_frame(cols, [...atom_lines]), `m.lammpstrj`, { atom_type_mapping })
     expect(elements_of(run.preview)).toEqual(expected)
+    if (cols.includes(` type `)) expect(run.metadata).toMatchObject({ atom_types: [1, 2] })
     expect(run.warnings).toHaveLength(n_warnings)
   })
 
@@ -1218,6 +1223,9 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
       timestep: frame_idx,
     }),
   ).join(`\n`)
+  // Two frames of one LAMMPS layout, ids unsorted (the numeric read must sort its columns)
+  const two_frames = (columns: string, rows: string[], pbc?: string) =>
+    [0, 1].map((timestep) => lammps_frame(columns, rows, { timestep, pbc })).join(`\n`)
   const collected = (run: TrajectoryRun) =>
     collect(run, { vector_keys: [`velocity`] }).then(
       (stream) => ({ stream }),
@@ -1256,6 +1264,15 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
     [`ase-images-Ag-0-to-97`, `images.xyz`, site_text(`trajectories/ase-images-Ag-0-to-97.xyz.gz`)],
     [`mp-1184225`, `mp.extxyz`, site_text(`trajectories/mp-1184225.extxyz`)],
     [`EXTXYZ frames with a torn tail`, `md.extxyz`, () => `${synthetic_extxyz(6, 5)}5\nLattice="1 0 0 0 1 0 0 0 1"\nAu 0 0 0`],
+    // the numeric read must take build_xyz_frame's way with each of these
+    [`EXTXYZ with forces missing on some atoms`, `md.extxyz`, () => `2\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:forces:R:3 energy=1\nH 0 0 0 1 2 3\nO 1 1 1\n2\nProperties=species:S:1:pos:R:3:forces:R:3 energy=2\nH 0 0 0 1 2 3\nO 1 1 1 NaN 0 0`],
+    [`i-PI frames in Bohr and Å`, `md.xyz`, () => `2\n# CELL(abcABC): 10 10 10 90 90 90 Step: 4 positions{angstrom} cell{angstrom}\nH 0 0 0\nO 1 1 1\n2\n# CELL(abcABC): 10 10 10 90 90 90 Step: 5 positions{atomic_unit} cell{atomic_unit}\nH 0 0 0.5\nO 1 1 1`],
+    [`XYZ with lower-case species and exponents`, `md.xyz`, () => `2\nenergy=1\nh 0 0 0\nO 1 1 1\n2\nstep=3\nh 0 0 0\no 1 1 1e-3`],
+    [`EXTXYZ with velocities, stress and partial pbc`, `md.extxyz`, () => `2\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:velocities:R:3 energy=1 pbc="T F T"\nH 0 0 0 1 2 3\nO 1 1 1 1 1 1\n2\nLattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3:velocities:R:3 stress="1 0 0 0 1 0 0 0 1"\nH 0 0 0 1 2 3\nO 1 1 1 1 1 1`],
+    [`LAMMPS with a non-finite compute column`, `md.lammpstrj`, () => two_frames(`id element x y z fx fy fz c_pe`, [`2 Si 1 2 3 1 2 3 NaN`, `1 O 5 5 5 1 1 1 2`])],
+    [`LAMMPS with a scalar named like a vector channel`, `md.lammpstrj`, () => two_frames(`id type x y z velocity`, [`2 1 1 2 3 1`, `1 2 5 5 5 1`])],
+    [`LAMMPS with an integer-named column`, `md.lammpstrj`, () => two_frames(`id type x y z 1`, [`2 1 1 2 3 1`, `1 2 5 5 5 1`])],
+    [`LAMMPS with per-atom masses and image flags`, `md.lammpstrj`, () => two_frames(`id mass x y z ix iy iz`, [`2 28.0855 1 2 3 1 0 -1`, `1 15.999 5 5 5 0 0 0`], `pp pp ff`)],
     [`CRLF EXTXYZ with non-ASCII comments and a half-written last line`, `md.extxyz`, () => `${synthetic_extxyz(4, 3).replaceAll(`pbc=`, `note="Å→漢 🎉" pbc=`)}3\nstep=9\nAu 0 0 0\nCu 1 1 1\nAu 2 2`.replaceAll(`\n`, `\r\n`)],
   ])(`%s reads the same frames, plot rows and warnings`, async (_label, filename, make_text, options = {}) => {
     const text = make_text()
@@ -1288,6 +1305,33 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
       await expect_same_run(lazy, eager)
     }
   })
+
+  // Reads and position sweeps of the common layouts build no Site records to encode
+  // (2-3.5x per frame)
+  it.each<[string, () => string]>([
+    [`md.extxyz`, () => synthetic_extxyz(4, 5)],
+    [`XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
+    [
+      `md.lammpstrj`,
+      () =>
+        two_frames(`id type xs ys zs vx vy vz fx fy fz q`, [
+          `2 1 0.1 0.2 0.3 1 2 3 1 0 1 0.5`,
+          `1 2 0.5 0.5 0.5 1 1 1 0 0 0 -0.5`,
+        ]),
+    ],
+  ])(`%s reads numeric frames without Site records`, async (filename, make_text) => {
+    const run = await open(make_text(), filename, { index_above_bytes: 0 })
+    await run.properties.done
+    const spies = [
+      vi.spyOn(helpers_module, `create_trajectory_frame`),
+      vi.spyOn(frame_module, `encode_frame`),
+    ]
+    onTestFinished(() => spies.forEach((spy) => spy.mockRestore()))
+    for (let frame_idx = 0; frame_idx < run.frame_count; frame_idx++)
+      await run.read_frame(frame_idx)
+    await collect(run, { vector_keys: filename === `md.lammpstrj` ? [`velocity`] : [] })
+    expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0])
+  })
 })
 
 // === XYZ / extended XYZ ===
@@ -1305,11 +1349,13 @@ describe(`XYZ`, () => {
   // ASE writes the cell double-quoted, but single-quoted extXYZ exists and the sibling `pbc`
   // reader already takes both. Matching only `"` dropped the cell silently, so the frame came
   // back with no lattice at all and every fractional coordinate sat on the origin.
+  // Comma-separated cells (ASE accepts them) were rejected as not 9 finite numbers.
   it.each([
-    [`double`, `"`],
-    [`single`, `'`],
-  ])(`reads a %s-quoted extXYZ Lattice and Properties`, async (_case, quote) => {
-    const comment = `Lattice=${quote}4 0 0 0 4 0 0 0 4${quote} Properties=${quote}species:S:1:pos:R:3:charge:R:1${quote} pbc="T T T"`
+    [`double`, `"`, `4 0 0 0 4 0 0 0 4`],
+    [`single`, `'`, `4 0 0 0 4 0 0 0 4`],
+    [`comma-separated double`, `"`, `4, 0, 0, 0, 4, 0, 0, 0, 4`],
+  ])(`reads a %s-quoted extXYZ Lattice and Properties`, async (_case, quote, cell) => {
+    const comment = `Lattice=${quote}${cell}${quote} Properties=${quote}species:S:1:pos:R:3:charge:R:1${quote} pbc="T T T"`
     const run = await open(xyz_frame([`Si 0 0 0 0.5`, `Si 1 1 1 -0.5`], comment), `cell.xyz`)
     const [frame] = await frames_of(run)
     expect(frame.structure.sites.map(({ properties }) => properties?.charge)).toEqual([
@@ -1603,6 +1649,38 @@ describe(`XYZ`, () => {
     expect((await open(content, `test.xyz`)).frame_count).toBe(frame_count)
   })
 
+  // LAMMPS `dump xyz` writes atom types where symbols go (no dump_modify element) and the step
+  // as ` Atoms. Timestep: N`: the frame walk rejected every frame of it
+  it.each([{}, { index_above_bytes: 0 }])(`reads a LAMMPS dump xyz (%o)`, async (options) => {
+    const content = [0, 100]
+      .map((step) => xyz_frame([`1 0 0 0`, `2 1 0 0`, `2 0 1 0`], ` Atoms. Timestep: ${step}`))
+      .join(`\n`)
+    const run = await open(content, `dump.xyz`, options)
+    const frames = await frames_of(run)
+    expect(frames.map(({ step }) => step)).toEqual([0, 100])
+    expect(frames.map(elements_of)).toEqual([
+      [`H`, `He`, `He`],
+      [`H`, `He`, `He`],
+    ])
+    expect(frames[1].metadata?.timestep).toBeUndefined()
+    expect(run.warnings).toEqual([
+      expect.stringMatching(
+        /^XYZ species column holds integers \(first "1" in .*frame 1.* at line 3\); read them as atomic numbers/,
+      ),
+    ])
+  })
+
+  // A title after the count (`3 water`) hides a frame from the walk, and decoding the first
+  // frame alone silently dropped the rest: like parse_xyz, read it only as the whole file
+  it(`reads a titled count line only when its frame is the whole file`, async () => {
+    const frame = (z: number) =>
+      `3 water\ncomment\nO 0 0 ${z}\nH 0.76 0.59 ${z}\nH -0.76 0.59 ${z}`
+    expect((await open(`${frame(0)}\n`, `water.xyz`)).frame_count).toBe(1)
+    await expect(open([0, 1, 2].map(frame).join(`\n`), `water.xyz`)).rejects.toThrow(
+      `XYZ count line 1 "3 water" is not a bare atom count, and its 3-atom frame leaves lines 6-15 unread`,
+    )
+  })
+
   // One warning per unknown symbol, not per atom: Wannier centres (`X`) flooded the list
   it(`normalises symbol casing and skips unknown symbols with a warning`, async () => {
     const frame = xyz_frame([
@@ -1680,28 +1758,6 @@ describe(`XYZ`, () => {
     expect(() => materialize_frame_result(indexed.read_frame(2))).toThrow(RangeError)
     await indexed.properties.done
     expect(indexed.properties.rows.map(({ frame_number }) => frame_number)).toEqual([0, 1])
-  })
-
-  // The in-memory rows are canonical (the indexed run's must equal them, see above)
-  it(`extracts canonical plot rows`, async () => {
-    const npt_frame = (frame_idx: number) => {
-      const cell = 5 + 0.1 * frame_idx
-      return [
-        `2`,
-        `Lattice="${cell} 0 0 0 ${cell} 0 0 0 ${cell + 1}" Properties=species:S:1:pos:R:3:forces:R:3 ` +
-          `energy=${-10 - frame_idx} ref_energy=1.5 bandgap=${1 + 0.1 * frame_idx} temperature=${300 + frame_idx} step=${10 * frame_idx} pbc="T T T"`,
-        `Si 0 0 0 0.1 0 ${0.01 * frame_idx}`,
-        `O 1 1 1 0 -0.2 0`,
-      ].join(`\n`)
-    }
-    const memory = await open([0, 1, 2].map(npt_frame).join(`\n`), `npt.extxyz`)
-    // the canonical rows carry the lattice geometry and density, and every finite scalar the
-    // file records
-    expect(Object.keys(memory.properties.rows[0].properties)).toEqual(
-      expect.arrayContaining([`energy`, `force_max`, `a`, `density`, `bandgap`, `ref_energy`]),
-    )
-    // bookkeeping is not a series: the step is the row's own axis
-    expect(memory.properties.rows[0].properties).not.toHaveProperty(`step`)
   })
 
   // Tails that are not truncation are kept (or skipped silently, like a 0-atom frame anywhere)

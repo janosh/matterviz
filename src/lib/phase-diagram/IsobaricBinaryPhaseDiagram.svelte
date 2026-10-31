@@ -289,7 +289,7 @@
       ),
   )
 
-  let hover_info = $state<PhaseHoverInfo | null>(null)
+  let hover_info = $state.raw<PhaseHoverInfo | null>(null)
   // A click pins the hovered snapshot; its region names the mark, so a click in it unpins
   const pin = new TooltipPin<PhaseHoverInfo, Pick<PhaseHoverInfo, `region`>>({
     key: ({ region }) => region.id,

@@ -64,7 +64,8 @@ test.describe(`Sunburst performance`, () => {
       )
       const bucket = page.locator(`.arcs path[aria-label^="Other:"]`).first()
       await expect(bucket).toBeVisible()
-      // Exercise a real tween after the component's initial 500 ms settling window.
+      // Exercise a real tween after the component's initial 500 ms settling window. Kept as a
+      // sleep: the window is wall-clock from component init and nothing in the DOM marks its end.
       await page.waitForTimeout(550)
       const zoom_frames = sample_frames(page, 700)
       await bucket.dispatchEvent(`click`)

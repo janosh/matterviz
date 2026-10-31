@@ -1,5 +1,4 @@
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
-import heatmap_source from '#lib/heatmap-matrix/HeatmapMatrix.svelte?raw'
 import type { AxisItem, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
 import { VIRTUAL_CELL_THRESHOLD } from '#lib/heatmap-matrix/index.js'
 import { format_num } from '#lib/labels.js'
@@ -74,8 +73,6 @@ describe(`HeatmapMatrix rendering`, () => {
     // 3x3 = 9 cells
     const cells = get_data_cells()
     expect(cells).toHaveLength(9)
-    // happy-dom drops nested CSS rules; Playwright checks the rendered colors and animations.
-    expect(heatmap_source).toMatch(/\.cell\s*\{[^{}]*transition:\s*none;/)
     expect(get_x_labels().map(label_text)).toEqual([`A`, `B`, `C`])
     expect(get_y_labels().map(label_text)).toEqual([`X`, `Y`, `Z`])
     // corner spacer present when both axes have labels
@@ -879,7 +876,6 @@ describe(`axis titles`, () => {
   ])(`%s_axis.label %s renders its title`, (axis, label, text) => {
     mount_matrix({ [`${axis}_axis`]: { label } })
     expect(doc_query(`.${axis}-title`).textContent).toBe(text)
-    if (axis === `y`) expect(doc_query(`.heatmap`).style.paddingLeft).toBe(`1.8em`)
   })
 })
 

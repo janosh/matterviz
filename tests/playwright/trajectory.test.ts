@@ -1195,50 +1195,15 @@ test.describe(`Trajectory Component`, () => {
         else await click_step.toHaveValue(initial_step)
       }
     })
-
-    test(`plot hides for constant-values and single-frame trajectories`, async ({ page }) => {
-      for (const [kind, frame_count] of [
-        [`constant-values`, 2],
-        [`single-frame`, 1],
-      ] as const) {
-        const viewer = page.locator(`#${kind}`)
-        const content_area = viewer.locator(`.content-area`)
-        await expect(content_area, kind).toHaveClass(/hide-plot/)
-        await expect(content_area.locator(`.structure`), kind).toBeVisible()
-        await expect(viewer.locator(`.step-input`), kind).toHaveValue(`1`)
-        await expect(
-          viewer.locator(`.trajectory-controls span`).filter({ hasText: `/ ${frame_count}` }),
-          kind,
-        ).toBeVisible()
-      }
-    })
   })
 
   test.describe(`advanced features`, () => {
-    test(`custom controls snippet works`, async ({ page }) => {
-      const custom_controls = page.locator(`#custom-controls`)
-      await expect(custom_controls.locator(`.trajectory-controls .nav-section`)).toBeHidden()
-      const buttons = custom_controls.locator(`.trajectory-controls button`)
-      await expect(buttons).toHaveText([`First`, `Last`])
-      await buttons.last().click()
-      await expect(custom_controls.locator(`.trajectory-controls`)).toContainText(
-        `Step 3 of 3`,
-      )
-    })
-
-    test(`accessibility attributes are present`, async ({ page }) => {
+    // role, tabindex and which toggles render are pinned in tests/vitest/trajectory/Trajectory
+    test(`info pane opened after closing the data inspector gives values more room than labels`, async ({
+      page,
+    }) => {
       const trajectory = page.locator(`#loaded-trajectory`)
       const trajectory_controls = trajectory.locator(`.trajectory-controls`)
-
-      // Basic accessibility
-      await expect(trajectory).toHaveAttribute(`role`, `application`)
-      await expect(trajectory).toHaveAttribute(`tabindex`, `0`)
-
-      // Button titles
-      await expect(trajectory_controls.locator(`.play-button`)).toHaveAttribute(
-        `title`,
-        /Play|Pause/,
-      )
       // The open data inspector's Info tab replaces the info button; closing it brings it back
       const info_toggle = trajectory_controls.locator(`.trajectory-info-toggle`)
       await expect(trajectory.locator(`.trajectory-data-inspector-sidebar`)).toBeVisible()
@@ -1247,7 +1212,6 @@ test.describe(`Trajectory Component`, () => {
       await trajectory
         .locator(`.analysis-dropdown button`, { hasText: `Data inspector` })
         .click()
-      await expect(info_toggle).toHaveAttribute(`aria-label`, /trajectory info/)
       await info_toggle.click()
       const info_pane = trajectory.locator(`.trajectory-info-pane`)
       const info_row = info_pane.locator(`.info-row`).first()
@@ -1258,10 +1222,6 @@ test.describe(`Trajectory Component`, () => {
       expect(widths).toHaveLength(2)
       const [label_width, value_width] = widths
       expect(value_width).toBeGreaterThan(label_width)
-      await expect(controls.locator(`.fullscreen-button`)).toHaveAttribute(
-        `aria-label`,
-        /fullscreen/,
-      )
     })
 
     test(`keyboard shortcuts skip inputs and V cycles only the focused viewer, keeping its focus`, async ({
@@ -1384,7 +1344,7 @@ test.describe(`Trajectory Component`, () => {
       await expect(content_area).toHaveClass(/show-structure-only/)
       await expect(display_button).toHaveAttribute(
         `aria-label`,
-        `Automatic: Structure-only (V / Shift+V)`,
+        `Automatic: Structure-only (V / ⇧+V)`,
       )
       await expect(trajectory.locator(`.scatter`)).toHaveCount(0)
       await select_display_mode(trajectory, `Structure-only`)
@@ -1396,23 +1356,6 @@ test.describe(`Trajectory Component`, () => {
       await expect(trajectory.locator(`.scatter`)).toBeVisible()
       await select_display_mode(trajectory, `Automatic`)
       await expect(content_area).toHaveClass(/show-structure-only/)
-    })
-
-    test(`mobile viewport forces vertical content layout for small screens`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: 700, height: 800 })
-      const trajectory = page.locator(`#auto-layout`)
-      const content_area = trajectory.locator(`.content-area`)
-      await expect(trajectory).toBeVisible({ timeout: LOAD_TIMEOUT })
-      await expect(content_area).toBeVisible({ timeout: LOAD_TIMEOUT })
-
-      await expect(async () => {
-        const columns = await content_area.evaluate(
-          (element) => getComputedStyle(element).gridTemplateColumns,
-        )
-        expect(columns.split(` `)).toHaveLength(1)
-      }).toPass({ timeout: 5000 })
     })
 
     test(`narrow container stacks the panes and widening it unstacks them`, async ({

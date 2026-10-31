@@ -99,12 +99,6 @@ describe(`Theme System`, () => {
     test(`app.css defines every token once as light-dark() with white/black overrides`, () => {
       const tokens = /:root,\s*:host \{(?<body>[^}]+)\}/.exec(app_css)?.groups?.body ?? ``
       expect(tokens).toContain(`color-scheme: light dark;`)
-      expect(tokens).toContain(
-        `--btn-bg: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.09));`,
-      )
-      expect(tokens).toContain(`--text-color: light-dark(#374151, #eee);`)
-      // same in both schemes: a plain value, not a light-dark() pair
-      expect(tokens).toContain(`--plot-bg: transparent;`)
       for (const [variant, page_bg] of [
         [`white`, `#ffffff`],
         [`black`, `#000000`],

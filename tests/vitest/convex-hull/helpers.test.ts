@@ -95,13 +95,23 @@ describe(`helpers: energy color scale + point color`, () => {
     },
   )
 
-  test(`hull_face_e_forms averages each drawn face, 4 per tetrahedron`, () => {
+  test(`hull_face_sets averages each face, 4 per tetrahedron, shared faces once`, () => {
     const vertex = (e_form_per_atom: number) => ({ e_form_per_atom }) as ConvexHullEntry
     const triangle = [vertex(-0.3), vertex(0), vertex(-0.6)]
     const tetrahedron = [vertex(-0.4), vertex(0), vertex(-0.8), vertex(-1.2)]
-    expect(draw.hull_face_e_forms([triangle, tetrahedron])).toEqual(
-      [-0.3, -2 / 3, -0.8, -1.6 / 3, -0.4].map((value) => expect.closeTo(value, 12)),
+    // shares its first 3 vertices' face with `tetrahedron`, drawn only for the first
+    const neighbor = [...tetrahedron.slice(0, 3), vertex(-2)]
+    const face_sets = draw.hull_face_sets([triangle, tetrahedron, neighbor])
+    expect(face_sets.map((face) => face.e_form)).toEqual(
+      [-0.3, -2 / 3, -0.8, -1.6 / 3, -0.4, -2.8 / 3, -3.2 / 3, -0.8].map((value) =>
+        expect.closeTo(value, 12),
+      ),
     )
+    expect(face_sets.map((face) => face.facet_idx)).toEqual([0, 1, 1, 1, 1, 2, 2, 2])
+    // each of the 8 distinct vertices is projected once per frame
+    const project = vi.fn(() => ({ x: 0, y: 0, depth: 0 }))
+    expect(draw.build_hull_faces(face_sets, project)).toHaveLength(8)
+    expect(project).toHaveBeenCalledTimes(8)
   })
 
   test(`stability mode colours and explicit is_stable=false overriding zero distance`, () => {

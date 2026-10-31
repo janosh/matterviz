@@ -235,7 +235,8 @@ export function parse_uxd_file(content: string): XrdPattern {
 
 // GSAS powder data. The BANK header reads
 //   BANK n NCHAN NREC BINTYP BCOEF1 BCOEF2 BCOEF3 BCOEF4 [TYPE]
-// with BINTYP CONST (BCOEF1 = start, BCOEF2 = step, both in centidegrees) and TYPE one of
+// with BINTYP CONST (BCOEF1 = start, BCOEF2 = step, both in centidegrees; GSAS-II's exporter
+// writes it as CONS) and TYPE one of
 // STD (counts), ESD (count, sigma pairs) or FXYE (x, y, sigma triplets, x in centidegrees).
 // Time-of-flight banks (RALF, SLOG, …) have no 2θ axis and are rejected.
 export function parse_gsas_file(content: string): XrdPattern {
@@ -249,9 +250,9 @@ export function parse_gsas_file(content: string): XrdPattern {
   if (!Number.isInteger(nchan) || nchan < 1) {
     throw new Error(`GSAS: BANK header '${lines[bank_idx].trim()}' has no valid NCHAN`)
   }
-  if (bintyp.toUpperCase() !== `CONST`) {
+  if (!/^CONST?$/i.test(bintyp)) {
     throw new Error(
-      `GSAS: BINTYP '${bintyp}' is not a constant-step 2theta bank (only CONST is supported)`,
+      `GSAS: BINTYP '${bintyp}' is not a constant-step 2theta bank (only CONST/CONS is supported)`,
     )
   }
   const start = Number(bcoef1) / 100

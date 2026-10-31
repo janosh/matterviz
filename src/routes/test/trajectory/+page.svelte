@@ -5,7 +5,8 @@
   import { calc_lattice_params, type Matrix3x3 } from '#lib/math.js'
   import { Structure, type Pbc } from '#lib/structure/index.js'
   import { Trajectory, trajectory_from_frames } from '#lib/trajectory/index.js'
-  import { onMount } from 'svelte'
+  import { type ComponentProps, onMount } from 'svelte'
+  import TestSection from '../TestSection.svelte'
 
   // Cubic cell with derived lengths, angles and volume (exact for the integer edges used here)
   const cubic_lattice = (edge: number) => {
@@ -52,30 +53,6 @@
     },
   )
 
-  // Each call owns its structure so the constant and single-frame viewers stay independent.
-  const constant_frame = (step: number): TrajectoryFrame => ({
-    step,
-    structure: {
-      sites: [
-        {
-          species: [{ element: `H`, occu: 1, oxidation_state: 0 }],
-          abc: [0, 0, 0],
-          xyz: [0, 0, 0],
-          label: `H1`,
-          properties: {},
-        },
-      ],
-      charge: 0,
-    },
-    metadata: { energy: -10, force_max: 0.1 },
-  })
-  const constant_trajectory = trajectory_from_frames([0, 1].map(constant_frame), {
-    metadata: { source_format: `test_data`, frame_count: 2, total_atoms: 1 },
-  })
-  const single_frame_trajectory = trajectory_from_frames([constant_frame(0)], {
-    metadata: { source_format: `test_data`, frame_count: 1, total_atoms: 1 },
-  })
-
   // Unrelated structures read as one trajectory (a benchmark set): a 2 Å, then a 6 Å cubic cell.
   const cubic_frame = (step: number, edge: number): TrajectoryFrame => ({
     step,
@@ -102,7 +79,17 @@
   let swapped = $state(false)
   let swap_camera = $state<{ target?: number[]; position?: number[] } | null>(null)
 
-  let current_step = $state(0)
+  // Horizontal-layout viewers that each differ from the loaded one in a single prop
+  const horizontal_variants: (Partial<ComponentProps<typeof Trajectory>> & {
+    id: string
+    title: string
+  })[] = [
+    { id: `no-controls`, title: `No controls`, show_controls: false },
+    { id: `negative-step-labels`, title: `Negative step labels`, step_labels: -1 },
+    { id: `array-step-labels`, title: `Array step labels`, step_labels: [0, 2] },
+    { id: `no-plot-skimming`, title: `No plot skimming`, plot_skimming: false },
+  ]
+
   let hydrated = $state(false)
   const single_viewer = $derived(browser && page.url.searchParams.has(`single-viewer`))
   onMount(() => {
@@ -110,104 +97,80 @@
   })
 </script>
 
-<h1 id="trajectory-component-test-page" data-hydrated={hydrated}>
-  Trajectory Component Test Page
-</h1>
+<h1 data-hydrated={hydrated}>Trajectory test page</h1>
 
 {#if !single_viewer}
-  <Trajectory id="empty-state" show_controls="always" />
+  <TestSection title="Empty state">
+    <Trajectory id="empty-state" show_controls="always" />
+  </TestSection>
 {/if}
 
-<Trajectory
-  id="loaded-trajectory"
-  trajectory={test_trajectory}
-  bind:current_step_idx={current_step}
-  fps={1}
-  step_labels={3}
-  show_controls="always"
-/>
+<TestSection title="Loaded trajectory">
+  <Trajectory
+    id="loaded-trajectory"
+    trajectory={test_trajectory}
+    fps={1}
+    step_labels={3}
+    show_controls="always"
+  />
+</TestSection>
 
 {#if !single_viewer}
-  <Trajectory
-    id="dataset-trajectory"
-    trajectory={dataset_trajectory}
-    show_controls="always"
-    structure_props={{
-      on_camera_move: ({ camera_target, camera_position }) =>
-        (dataset_camera = { target: camera_target, position: camera_position }),
-    }}
-  />
-  <output id="dataset-camera">{JSON.stringify(dataset_camera)}</output>
+  <TestSection
+    title="Dataset of unrelated cells"
+    description="Stepping to the 6 Å frame must re-frame the camera on its cell."
+  >
+    <Trajectory
+      id="dataset-trajectory"
+      trajectory={dataset_trajectory}
+      show_controls="always"
+      structure_props={{
+        on_camera_move: ({ camera_target, camera_position }) =>
+          (dataset_camera = { target: camera_target, position: camera_position }),
+      }}
+    />
+    <output id="dataset-camera">{JSON.stringify(dataset_camera)}</output>
+  </TestSection>
 
-  <button id="swap-structure" onclick={() => (swapped = true)}>Swap structure</button>
-  <Structure
-    id="swapped-structure"
-    structure={cubic_frame(0, swapped ? 6 : 4).structure}
-    on_camera_move={({ camera_target, camera_position }) =>
-      (swap_camera = { target: camera_target, position: camera_position })}
-  />
-  <output id="swap-camera">{JSON.stringify(swap_camera)}</output>
+  <TestSection
+    title="Structure swapped for a new cell"
+    description="A plain Structure given a 6 Å cell after a 4 Å one frames it afresh."
+  >
+    <button id="swap-structure" onclick={() => (swapped = true)}>Swap structure</button>
+    <Structure
+      id="swapped-structure"
+      structure={cubic_frame(0, swapped ? 6 : 4).structure}
+      on_camera_move={({ camera_target, camera_position }) =>
+        (swap_camera = { target: camera_target, position: camera_position })}
+    />
+    <output id="swap-camera">{JSON.stringify(swap_camera)}</output>
+  </TestSection>
 
   <!-- the inspector sidebar takes part of the row, so the auto layout tests close it to measure
   how the structure and plot panes split the viewer alone -->
-  <Trajectory
-    id="auto-layout"
-    trajectory={test_trajectory}
-    show_controls
-    step_labels={3}
-    data_inspector_open={false}
-  />
+  <TestSection title="Auto layout">
+    <Trajectory
+      id="auto-layout"
+      trajectory={test_trajectory}
+      show_controls
+      step_labels={3}
+      data_inspector_open={false}
+    />
+  </TestSection>
 
-  <Trajectory
-    id="vertical-layout"
-    trajectory={test_trajectory}
-    layout="vertical"
-    show_controls="hover"
-    step_labels={[-1]}
-  />
+  <TestSection title="Vertical layout">
+    <Trajectory
+      id="vertical-layout"
+      trajectory={test_trajectory}
+      layout="vertical"
+      show_controls="hover"
+      step_labels={[-1]}
+    />
+  </TestSection>
 
-  <Trajectory
-    id="no-controls"
-    trajectory={test_trajectory}
-    show_controls={false}
-    layout="horizontal"
-  />
-
-  <Trajectory
-    id="negative-step-labels"
-    trajectory={test_trajectory}
-    step_labels={-1}
-    layout="horizontal"
-  />
-
-  <Trajectory
-    id="array-step-labels"
-    trajectory={test_trajectory}
-    step_labels={[0, 2]}
-    layout="horizontal"
-  />
-
-  <Trajectory
-    id="custom-controls"
-    trajectory={test_trajectory}
-    layout="horizontal"
-    show_controls="always"
-  >
-    {#snippet trajectory_controls({ current_step_idx, total_frames, on_step_change })}
-      <button onclick={() => on_step_change(0)}>First</button>
-      <span>Step {current_step_idx + 1} of {total_frames}</span>
-      <button onclick={() => on_step_change(total_frames - 1)}>Last</button>
-    {/snippet}
-  </Trajectory>
-
-  <Trajectory id="constant-values" trajectory={constant_trajectory} layout="horizontal" />
-
-  <Trajectory id="single-frame" trajectory={single_frame_trajectory} layout="horizontal" />
-
-  <Trajectory
-    id="no-plot-skimming"
-    trajectory={test_trajectory}
-    layout="horizontal"
-    plot_skimming={false}
-  />
+  {#each horizontal_variants as { title, ...props } (props.id)}
+    <TestSection {title}>
+      <Trajectory trajectory={test_trajectory} layout="horizontal" {...props} />
+    </TestSection>
+  {/each}
 {/if}

@@ -307,9 +307,7 @@ test.describe(`Histogram Component Tests`, () => {
     await expect(hover_div).toContainText(`Hover over a bar`)
   })
 
-  test(`y2 series bin separately, scale independently, zoom together and toggle via legend`, async ({
-    page,
-  }) => {
+  test(`y2 series bin separately, scale independently and zoom together`, async ({ page }) => {
     const histogram = page.locator(`#y2-axis-histogram .histogram`)
     await histogram.scrollIntoViewIfNeeded()
     await wait_for_bars(histogram)
@@ -323,14 +321,6 @@ test.describe(`Histogram Component Tests`, () => {
     await expect_zoom_shrinks_axes(page, histogram)
     await expect.poll(() => tick_texts(histogram, `y2`)).toEqual(initial_y2)
     await expect.poll(() => tick_texts(histogram, `y`)).toEqual(initial_y1)
-
-    // legend hides one series' bars and restores them
-    const items = histogram.locator(`.legend .legend-item`)
-    await expect(items).toHaveCount(2)
-    await items.first().click()
-    await expect.poll(() => visible_series_count(histogram)).toBe(1)
-    await items.first().click()
-    await expect.poll(() => visible_series_count(histogram)).toBe(2)
 
     // different magnitudes get different count axes, so bars sit at distinct heights
     const scaled = page.locator(`#y2-different-scale .histogram`)

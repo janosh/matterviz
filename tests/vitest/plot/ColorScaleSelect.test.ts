@@ -5,20 +5,13 @@ import { describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, fire, mouse } from '../setup'
 
 describe(`ColorScaleSelect`, () => {
-  test.each([
-    [`14em`, undefined],
-    [`0`, `min-width: 0`],
-  ] as const)(`closed chip min-width is %s`, (min_width, style) => {
+  test(`a caller style overrides the closed chip's min-width`, () => {
     mount(ColorScaleSelect, {
       target: document.body,
-      props: {
-        value: `interpolateViridis`,
-        style,
-      },
+      props: { value: `interpolateViridis`, style: `min-width: 0` },
     })
-
     expect(doc_query(`.selected`).textContent?.trim()).toBe(`Viridis`)
-    expect(doc_query(`.multiselect`).style.minWidth).toBe(min_width)
+    expect(doc_query(`.multiselect`).style.minWidth).toBe(`0`)
   })
 
   test(`keeps a scalar bound value on mount and selection, and reports additions`, async () => {

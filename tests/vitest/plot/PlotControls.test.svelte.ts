@@ -143,8 +143,10 @@ describe(`PlotControls`, () => {
   })
 
   describe(`format input validation`, () => {
+    // one specifier per branch (d3 number format, d3 time format, empty); which strings d3
+    // itself accepts is d3's concern
     test.each([
-      ...[`.2r`, `.0%`, `~s`, `d`, `.2e`, `%Y-%m-%d`, `%B %d, %Y`, ``].map((format) => ({
+      ...[`.2r`, `%Y-%m-%d`, ``].map((format) => ({
         format,
         valid: true,
       })),
@@ -178,15 +180,6 @@ describe(`PlotControls`, () => {
       flushSync()
       expect(input.value).toBe(`.0%`)
       expect(input.classList.contains(`invalid`)).toBe(false)
-    })
-
-    test(`format inputs fill their grid column`, () => {
-      mount_controls({ auto_ranges: { x2: [0, 1], y2: [0, 1] } })
-      const inputs = document.querySelectorAll<HTMLInputElement>(
-        `[data-testid="tick-format-section"] input`,
-      )
-      expect(inputs).toHaveLength(4)
-      for (const input of inputs) expect(getComputedStyle(input).width).toBe(`100%`)
     })
   })
 

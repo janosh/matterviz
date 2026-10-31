@@ -4,6 +4,8 @@
   import * as math from '#lib/math.js'
   import type { DataSeries, InternalPoint, LabelStyle, ScaleType } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
 
   const range = (length: number) => Array.from({ length }, (_, idx) => idx)
   const one_to_ten = range(10).map((idx) => idx + 1)
@@ -237,31 +239,77 @@
       },
     },
   ]
+
+  // === Tooltip Background Color Precedence Data ===
+  const tooltip_precedence_cases: { id: string; title: string; series: DataSeries[] }[] = [
+    {
+      id: `fill-plot`,
+      title: `Fill color precedence (purple)`,
+      series: [{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }],
+    },
+    {
+      id: `stroke-plot`,
+      title: `Stroke color precedence (orange)`,
+      series: [
+        {
+          x: [1],
+          y: [1],
+          point_style: { fill: `transparent`, stroke: `orange`, stroke_width: 2, radius: 8 },
+        },
+      ],
+    },
+    {
+      id: `line-plot`,
+      title: `Line color precedence (green)`,
+      series: [
+        {
+          x: [1],
+          y: [1],
+          point_style: { fill: `transparent`, stroke: `transparent`, radius: 8 },
+          line_style: { stroke: `green`, stroke_width: 3 },
+          markers: `line+points`, // Need line+points for hover to work on the point
+        },
+      ],
+    },
+  ]
+
+  const color_mapped_line_series: DataSeries[] = [
+    {
+      x: [1, 2, 3, 4, 5],
+      y: [2, 4, 3, 5, 4],
+      color_values: [1, 2, 3, 4, 5],
+      label: `Color Mapped Line`,
+      point_style: { radius: 5 },
+      markers: `line+points`,
+      // Intentionally no line_style.stroke - should use color scale
+    },
+  ]
+
+  const xy_axes = { x_axis: { label: `X` }, y_axis: { label: `Y` } }
+  const xy_axes_long = { x_axis: { label: `X Axis` }, y_axis: { label: `Y Axis` } }
+  const density_quadrants = [
+    [`top_left`, `Top Left`],
+    [`top_right`, `Top Right`],
+    [`bottom_left`, `Bottom Left`],
+    [`bottom_right`, `Bottom Right`],
+  ] as const
 </script>
 
-<h1 id="scatterplot-component-e2e-test-page">ScatterPlot Component E2E Test Page</h1>
+<h1>ScatterPlot test page</h1>
 
-<section id="basic-example">
-  <h2 id="basic-example-1">Basic Example</h2>
-  <ScatterPlot
-    series={[basic_data]}
-    x_axis={{ label: `X Axis` }}
-    y_axis={{ label: `Y Axis` }}
-    show_controls
-  />
-</section>
+<TestSection id="basic-example" title="Basic example">
+  <ScatterPlot series={[basic_data]} {...xy_axes_long} show_controls />
+</TestSection>
 
-<section id="canvas-auto-renderer">
-  <h2 id="canvas-auto-renderer-1">Canvas Auto Renderer</h2>
+<TestSection id="canvas-auto-renderer" title="Canvas auto renderer">
   <ScatterPlot
     series={[canvas_auto_data]}
     show_controls={false}
     style="height: 320px; width: 480px"
   />
-</section>
+</TestSection>
 
-<section id="marginals-browser-regression">
-  <h2 id="marginals-browser-regression-1">Marginals Browser Regression</h2>
+<TestSection id="marginals-browser-regression" title="Marginals browser regression">
   <ScatterPlot
     series={marginal_browser_series}
     x_axis={{ label: `Energy`, range: [0, 10] }}
@@ -272,45 +320,39 @@
     }}
     style="height: 430px; width: 620px"
   />
-</section>
+</TestSection>
 
-<section id="color-scale">
-  <h2 id="color-scale-examples">Color Scale Examples</h2>
+<TestSection id="color-scale" title="Color scale with toggle">
   <div id="color-scale-toggle">
-    <h3 id="color-scale-with-toggle">Color Scale with Toggle</h3>
-    <div style="display: flex; justify-content: center; gap: 1em">
+    <TestControls>
       {#each [`linear`, `log`] as scale_type (scale_type)}
         <label>
           <input type="radio" value={scale_type} bind:group={color_scale.type} />
           {scale_type}
         </label>
       {/each}
-    </div>
+    </TestControls>
     <ScatterPlot
       series={[color_scale_series]}
-      x_axis={{ label: `X Axis` }}
-      y_axis={{ label: `Y Axis` }}
+      {...xy_axes_long}
       {color_scale}
       color_bar={{}}
     />
   </div>
-</section>
+</TestSection>
 
-<section id="bind-hovered">
-  <h2 id="bind-hovered-example">bind:hovered Example</h2>
+<TestSection id="bind-hovered" title="bind:hovered">
   <p>Plot is currently hovered: <strong id="hover-status">{is_plot_hovered}</strong></p>
   <ScatterPlot series={[bind_hovered_series]} bind:hovered={is_plot_hovered} />
-</section>
+</TestSection>
 
-<section
-  id="label-auto-placement-test"
-  style="height: 550px; width: 600px; border: 1px solid lightgray; margin-top: 20px; padding: 10px"
->
-  <h2 id="label-auto-placement-test-1">Label Auto Placement Test</h2>
-  <label>
-    <input type="checkbox" bind:checked={enable_auto_placement} />
-    Enable Auto Placement
-  </label>
+<TestSection id="label-auto-placement-test" title="Label auto placement" style="width: 600px">
+  <TestControls>
+    <label>
+      <input type="checkbox" bind:checked={enable_auto_placement} />
+      Enable Auto Placement
+    </label>
+  </TestControls>
   {#key enable_auto_placement}
     <ScatterPlot
       series={auto_placement_test_series}
@@ -319,26 +361,21 @@
       style="height: 450px; width: 100%"
     />
   {/key}
-</section>
+</TestSection>
 
-<section id="auto-colorbar-placement">
-  <h2 id="automatic-color-bar-placement">Automatic Color Bar Placement</h2>
-  This example demonstrates how the color bar automatically positions itself based on point density.
-  <div>
-    {#each [[`top_left`, `Top Left`], [`top_right`, `Top Right`], [`bottom_left`, `Bottom Left`], [`bottom_right`, `Bottom Right`]] as const as [quadrant, label] (label)}
+<TestSection
+  id="auto-colorbar-placement"
+  title="Automatic color bar placement"
+  description="The color bar positions itself in the least dense plot quadrant."
+>
+  <TestControls>
+    {#each density_quadrants as [quadrant, label] (label)}
       <label>
         {label}: {auto_placement_density[quadrant]}
-        <input
-          type="range"
-          min="0"
-          max="100"
-          bind:value={auto_placement_density[quadrant]}
-          style="width: 100px; margin-left: 0.5em"
-        />
+        <input type="range" min="0" max="100" bind:value={auto_placement_density[quadrant]} />
       </label>
     {/each}
-  </div>
-
+  </TestControls>
   <ScatterPlot
     series={auto_placement_plot_series}
     x_axis={{ label: `X Position`, range: [0, 100] }}
@@ -351,28 +388,23 @@
       Color value: {color_value?.toFixed(2)}
     {/snippet}
   </ScatterPlot>
-</section>
+</TestSection>
 
-<section id="legend-tests">
-  <h2 id="legend-rendering-tests">Legend Rendering Tests</h2>
-  <h3 id="multi-series-default-legend-legend-expected">
-    Multi Series (Default Legend) - Legend Expected
-  </h3>
+<TestSection id="legend-tests" title="Multi-series default legend">
   <ScatterPlot
     series={legend_multi_series}
     legend={{ draggable: true, style: `padding: 8px;` }}
     id="legend-multi-default"
     show_controls
   />
-</section>
+</TestSection>
 
-<section id="lin-log-transition">
-  <h2 id="linear-to-log-scale-transition-test">Linear-to-Log Scale Transition Test</h2>
-  <p>
-    Test switching between linear and log scales. Values near zero previously caused NaN errors
-    during the tweening animation.
-  </p>
-  <div style="display: flex; justify-content: center; gap: 1em; margin-bottom: 1em">
+<TestSection
+  id="lin-log-transition"
+  title="Linear-to-log scale transition"
+  description="Values near zero previously caused NaN errors during the tweening animation."
+>
+  <TestControls>
     {#each [`linear`, `log`] as scale_type (scale_type)}
       <label>
         <input
@@ -384,7 +416,7 @@
         {scale_type} y-axis
       </label>
     {/each}
-  </div>
+  </TestControls>
   <ScatterPlot
     series={[lin_log_transition_data]}
     x_axis={{ label: `X Axis (Linear)` }}
@@ -394,42 +426,40 @@
       range: lin_log_y_scale_type === `log` ? [math.LOG_EPS, null] : [null, null],
     }}
   />
-</section>
+</TestSection>
 
-<section id="point-sizing-spiral-test">
-  <h2 id="point-sizing-test-with-spiral-data">Point Sizing Test with Spiral Data</h2>
-  <label>
-    Min Size (px):
-    <input
-      type="number"
-      bind:value={size_scale.radius_range[0]}
-      min="0.5"
-      max="10"
-      step="0.5"
-      style="width: 50px"
-      aria-label="Min Size (px)"
-    />
-  </label>
-  <label>
-    Max Size (px):
-    <input
-      type="number"
-      bind:value={size_scale.radius_range[1]}
-      min="5"
-      max="30"
-      step="1"
-      style="width: 50px"
-      aria-label="Max Size (px)"
-    />
-  </label>
-  <label>
-    Size Scale:
-    <select bind:value={size_scale.type} aria-label="Size Scale">
-      <option value="linear">Linear</option>
-      <option value="log">Log</option>
-    </select>
-  </label>
-
+<TestSection id="point-sizing-spiral-test" title="Point sizing with spiral data">
+  <TestControls>
+    <label>
+      Min Size (px):
+      <input
+        type="number"
+        bind:value={size_scale.radius_range[0]}
+        min="0.5"
+        max="10"
+        step="0.5"
+        aria-label="Min Size (px)"
+      />
+    </label>
+    <label>
+      Max Size (px):
+      <input
+        type="number"
+        bind:value={size_scale.radius_range[1]}
+        min="5"
+        max="30"
+        step="1"
+        aria-label="Max Size (px)"
+      />
+    </label>
+    <label>
+      Size Scale:
+      <select bind:value={size_scale.type} aria-label="Size Scale">
+        <option value="linear">Linear</option>
+        <option value="log">Log</option>
+      </select>
+    </label>
+  </TestControls>
   <ScatterPlot
     series={[spiral_series]}
     x_axis={{ label: `X Axis`, range: [-15, 15] }}
@@ -446,67 +476,28 @@
       {/if}
     {/snippet}
   </ScatterPlot>
-</section>
+</TestSection>
 
-<section id="tooltip-precedence-test">
-  <h2 id="tooltip-background-color-precedence-test">
-    Tooltip Background Color Precedence Test
-  </h2>
-  <h3 id="fill-color-precedence-purple">Fill Color Precedence (Purple)</h3>
-  <ScatterPlot
-    id="fill-plot"
-    series={[{ x: [1], y: [1], point_style: { fill: `purple`, radius: 8 } }]}
-    hover_config={{ threshold_px: 100 }}
-    style="height: 200px; width: 300px"
-  />
+<TestSection id="tooltip-precedence-test" title="Tooltip background color precedence">
+  {#each tooltip_precedence_cases as { id, title, series } (id)}
+    <h3>{title}</h3>
+    <ScatterPlot
+      {id}
+      {series}
+      hover_config={{ threshold_px: 100 }}
+      style="height: 200px; width: 300px"
+    />
+  {/each}
+</TestSection>
 
-  <h3 id="stroke-color-precedence-orange">Stroke Color Precedence (Orange)</h3>
-  <ScatterPlot
-    id="stroke-plot"
-    series={[
-      {
-        x: [1],
-        y: [1],
-        point_style: {
-          fill: `transparent`,
-          stroke: `orange`,
-          stroke_width: 2,
-          radius: 8,
-        },
-      },
-    ]}
-    hover_config={{ threshold_px: 100 }}
-    style="height: 200px; width: 300px"
-  />
-
-  <h3 id="line-color-precedence-green">Line Color Precedence (Green)</h3>
-  <ScatterPlot
-    id="line-plot"
-    series={[
-      {
-        x: [1],
-        y: [1],
-        point_style: {
-          fill: `transparent`,
-          stroke: `transparent`,
-          radius: 8,
-        },
-        line_style: { stroke: `green`, stroke_width: 3 },
-        markers: `line+points`, // Need line+points for hover to work on the point
-      },
-    ]}
-    hover_config={{ threshold_px: 100 }}
-    style="height: 200px; width: 300px"
-  />
-</section>
-
-<section id="point-event-test">
-  <h2 id="point-event-test-1">Point Event Test</h2>
-  <p>Clicking a point should update the text below.</p>
+<TestSection
+  id="point-event-test"
+  title="Point events"
+  description="Clicking a point should update the text below."
+>
   <ScatterPlot
     series={[point_event_series]}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
+    {...xy_axes}
     point_events={{
       onclick: ({ point }) => (last_clicked_point_id = `Point: ${describe_point(point)}`),
       ondblclick: ({ point }) =>
@@ -519,45 +510,29 @@
   <p data-testid="last-double-clicked-point">
     Last Double-Clicked Point: {last_double_clicked_point_id ?? `none`}
   </p>
-</section>
+</TestSection>
 
-<section id="color-mapped-line-legend-test">
-  <h2 id="color-mapped-line-legend-test-1">Color-mapped Line Legend Test</h2>
-  <p>Tests that legend line color reflects the color scale for series with color_values.</p>
+<TestSection
+  id="color-mapped-line-legend-test"
+  title="Color-mapped line legend"
+  description="Legend line color reflects the color scale for series with color_values."
+>
   <ScatterPlot
     id="color-mapped-line-plot"
-    series={[
-      {
-        x: [1, 2, 3, 4, 5],
-        y: [2, 4, 3, 5, 4],
-        color_values: [1, 2, 3, 4, 5],
-        label: `Color Mapped Line`,
-        point_style: { radius: 5 },
-        markers: `line+points`,
-        // Intentionally no line_style.stroke - should use color scale
-      },
-    ]}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
+    series={color_mapped_line_series}
+    {...xy_axes}
     color_scale={{ scheme: `interpolateViridis` }}
     color_bar={{ title: `Color Value` }}
     legend={{ draggable: true }}
     show_legend
   />
-</section>
+</TestSection>
 
-<!-- Control Precedence Test: explicit styling should win on page load -->
-<section id="control-precedence-test">
-  <h2 id="control-precedence-test-1">Control Precedence Test</h2>
-  <p>
-    Tests that explicit per-series styling (point_style, line_style) is preserved on page load.
-    Control defaults should NOT override explicit props until user actually modifies a specific
-    control.
-  </p>
-  <p>
-    Expected on page load: Crimson points with radius=12 and stroke_width=3, Green points with
-    radius=8 and stroke_width=2, limegreen line with width=4.
-  </p>
+<TestSection
+  id="control-precedence-test"
+  title="Control precedence"
+  description="Explicit per-series point_style and line_style survive page load; control defaults only apply once that control is touched. Expected: crimson points r=12 stroke 3, green points r=8 stroke 2, limegreen line width 4."
+>
   <ScatterPlot
     id="control-precedence-plot"
     series={control_precedence_series}
@@ -566,4 +541,4 @@
     show_controls
     legend={{ draggable: true }}
   />
-</section>
+</TestSection>

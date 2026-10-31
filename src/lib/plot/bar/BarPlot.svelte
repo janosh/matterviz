@@ -32,9 +32,10 @@
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
   import {
     create_cartesian_frame,
+    create_pan_anchor,
     has_controls_row,
   } from '#lib/plot/core/cartesian-frame.svelte.js'
-  import type { FacetAxis } from '#lib/plot/core/facets.js'
+  import { FACET_AXES, type FacetAxis } from '#lib/plot/core/facets.js'
   import {
     create_legend_visibility,
     resolve_legend_visibility,
@@ -45,7 +46,7 @@
     is_activation_key,
   } from '#lib/plot/core/interactions.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
-  import { create_roving_focus, ROVING_ATTR } from 'svelte-widgets/roving-focus'
+  import { create_roving_focus } from 'svelte-widgets/roving-focus'
   import { assign_axes } from '#lib/plot/core/axis-assignment.js'
   import type { Obstacle, ObstacleSeries } from '#lib/plot/core/decorations/index.js'
   import { bar_obstacles, with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
@@ -56,7 +57,7 @@
     to_color_scale_config,
     create_size_scale,
   } from '#lib/plot/core/scales.js'
-  import { has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
+  import { get_scale_type_name, has_marker, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import {
     build_legend_items,
     shown_point_style,
@@ -340,14 +341,21 @@
     vertical ? (srs.y_axis === `y2` ? `y2` : `y`) : srs.x_axis === `x2` ? `x2` : `x`
   // A series' category (x/x2 vertical, y horizontal) and value pixel scales. Log value axes
   // clamp to the axis minimum so bars grow from the plot edge instead of vanishing with NaN
-  // geometry.
+  // geometry; other value scales are the plain ones, which keeps the view's range (read by
+  // that clamp) out of anchored bars' geometry.
   const series_scales = (
     srs: Pick<BarSeries, `x_axis` | `y_axis`>,
     scales: typeof frame.scales,
-  ) => ({
-    cat_scale: scales[vertical ? (srs.x_axis === `x2` ? `x2` : `x`) : `y`],
-    val_scale: frame.value_scale(value_axis_key(srs), scales),
-  })
+  ) => {
+    const value_axis = value_axis_key(srs)
+    return {
+      cat_scale: scales[vertical ? (srs.x_axis === `x2` ? `x2` : `x`) : `y`],
+      val_scale:
+        get_scale_type_name(plot_axes[value_axis].scale_type) === `log`
+          ? frame.value_scale(value_axis, scales)
+          : scales[value_axis],
+    }
+  }
 
   // Rendering, clipping and decoration placement use the same series geometry.
   const bar_geometry = (
@@ -367,8 +375,22 @@
       })
   }
 
+  // === Bars during a pan ===
+  // Bars keep the projection of the view a pan started from and their series group is
+  // translated instead (see create_pan_anchor): re-rendering thousands of bar paths was most of
+  // such a frame. Not on log axes, whose value floor follows the view, nor for series with
+  // labels, which are clamped into the live plot.
+  const bars_anchorable = $derived(
+    FACET_AXES.every((axis) => get_scale_type_name(plot_axes[axis].scale_type) !== `log`),
+  )
+  const bar_anchor = create_pan_anchor(frame, () => bars_anchorable, FACET_AXES)
+  const anchors_bars = (srs: BarSeries<Metadata>): boolean =>
+    bars_anchorable && !srs.labels?.some(Boolean)
+  const bar_clip = $derived(`url(#${frame.clip_path_id})`)
+
   // Small plots keep stable per-bar reactive geometry; virtualizing a few hundred
-  // marks costs more reconciliation than it saves. Large zoomed plots skip hidden marks.
+  // marks costs more reconciliation than it saves. Large zoomed plots skip hidden marks
+  // (anchored ones those beyond the pan reach).
   const small_bar_indices = $derived(
     internal_series.map((srs) =>
       srs.render_mode !== `line` && srs.x.length < 1000 ? srs.x.map((_, idx) => idx) : [],
@@ -378,15 +400,17 @@
     internal_series.map((srs, series_idx) => {
       if (srs.visible === false || srs.render_mode === `line`) return []
       if (srs.x.length < 1000) return small_bar_indices[series_idx]
+      const anchored = anchors_bars(srs)
+      const reach = anchored ? bar_anchor.reach : { x: 0, y: 0 }
       return visible_bar_indices({
         series: srs,
-        rect_at: bar_geometry(srs, series_idx),
+        rect_at: bar_geometry(srs, series_idx, anchored ? bar_anchor.scales : frame.scales),
         orientation,
         clip: {
-          x: frame.pad.l,
-          y: frame.pad.t,
-          width: frame.chart_width,
-          height: frame.chart_height,
+          x: frame.pad.l - reach.x,
+          y: frame.pad.t - reach.y,
+          width: frame.chart_width + 2 * reach.x,
+          height: frame.chart_height + 2 * reach.y,
         },
         stroke_width: bar_state.stroke_width,
       })
@@ -836,113 +860,132 @@
                         srs.y[point.idx],
                         plot_axes[value_axis_key(srs)].format,
                       )}`}
-                      {...{ [ROVING_ATTR]: roving_key(series_idx, point.idx) }}
+                      data-roving-key={roving_key(series_idx, point.idx)}
                       tabindex={roving.tabindex(roving_key(series_idx, point.idx))}
                     />
                   {/each}
                 </g>
               {/if}
             {:else}
-              {@const rect_at = bar_geometry(srs, series_idx)}
-              {#each rendered_bars[series_idx] as bar_idx (bar_idx)}
-                {@const color = series_color(srs)}
-                {@const click_bar = (event: MouseEvent | KeyboardEvent) =>
-                  on_bar_click?.({ ...get_bar_data(series_idx, bar_idx, color), event })}
-                {@const {
-                  c0: cat_start,
-                  c1: cat_end,
-                  v0: value_base,
-                  v1: value_tip,
-                  rect_x,
-                  rect_y,
-                  rect_w,
-                  rect_h,
-                } = rect_at(bar_idx)}
-                {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (vertical ? rect_h : rect_w) > 0}
-                  <path
-                    d={bar_path(
+              {@const anchored = anchors_bars(srs)}
+              {@const rect_at = bar_geometry(
+                srs,
+                series_idx,
+                anchored ? bar_anchor.scales : frame.scales,
+              )}
+              <!-- Anchored bars ride their group's pan translate, clipped outside it: a clip
+                   path resolves in the referencing element's user space, which would include
+                   the transform -->
+              <g clip-path={anchored ? bar_clip : undefined}>
+                <g
+                  transform={anchored
+                    ? bar_anchor.transform(
+                        srs.x_axis === `x2` ? `x2` : `x`,
+                        srs.y_axis === `y2` ? `y2` : `y`,
+                      )
+                    : undefined}
+                >
+                  {#each rendered_bars[series_idx] as bar_idx (bar_idx)}
+                    {@const color = series_color(srs)}
+                    {@const click_bar = (event: MouseEvent | KeyboardEvent) =>
+                      on_bar_click?.({ ...get_bar_data(series_idx, bar_idx, color), event })}
+                    {@const {
+                      c0: cat_start,
+                      c1: cat_end,
+                      v0: value_base,
+                      v1: value_tip,
                       rect_x,
                       rect_y,
                       rect_w,
                       rect_h,
-                      bar_state.border_radius ?? 0,
-                      vertical,
-                      vertical ? value_tip > value_base : value_tip < value_base,
-                    )}
-                    fill={series_patterns[series_idx]?.url ?? color}
-                    opacity={mode === `overlay` ? bar_state.opacity : 1}
-                    stroke={bar_state.stroke_color}
-                    stroke-opacity={bar_state.stroke_opacity}
-                    stroke-width={bar_state.stroke_width}
-                    clip-path="url(#{frame.clip_path_id})"
-                    role="button"
-                    tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
-                    {...{ [ROVING_ATTR]: roving_key(series_idx, bar_idx) }}
-                    aria-label={`bar ${bar_idx + 1} of ${series_text(srs.label, series_idx)}: ${format_value_or_num(
-                      srs.y[bar_idx],
-                      plot_axes[value_axis_key(srs)].format,
-                    )}`}
-                    onfocusin={(evt) => {
-                      roving.focusin(evt)
-                      // Focus is the keyboard's hover: without this the tooltip never
-                      // opens and on_bar_hover never fires for a keyboard user
-                      handle_bar_hover(series_idx, bar_idx, color)(evt)
-                    }}
-                    onfocusout={clear_hover_on_exit}
-                    style:cursor={on_bar_click ? `pointer` : undefined}
-                    onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
-                    onmouseleave={clear_hover}
-                    onclick={click_bar}
-                    onkeydown={(evt) => {
-                      if (roving.handle_keydown(evt)) return
-                      if (is_activation_key(evt)) {
-                        evt.preventDefault()
-                        click_bar(evt)
-                        pin.toggle(hover_key) // focus is the keyboard's hover
-                      }
-                    }}
-                  />
-                  {#if srs.labels?.[bar_idx]}
-                    {@const label_rotation = bar_state.label_rotation ?? 0}
-                    <!-- labels stay inside the plot: a centred one on an edge bar would spill onto
-                    the axis tick labels, one past the longest horizontal bar off the right edge -->
-                    {@const label_width = label_rotation
-                      ? 0
-                      : measure_text_width(srs.labels[bar_idx], BAR_LABEL_FONT)}
-                    {@const label_x = vertical
-                      ? clamp(
-                          (cat_start + cat_end) / 2,
-                          pad.l + label_width / 2,
-                          frame.width - pad.r - label_width / 2,
-                        )
-                      : Math.min(
-                          Math.max(value_base, value_tip) + 4,
-                          frame.width - pad.r - label_width,
+                    } = rect_at(bar_idx)}
+                    {#if Number.isFinite(rect_x) && Number.isFinite(rect_y) && Number.isFinite(rect_w) && Number.isFinite(rect_h) && (vertical ? rect_h : rect_w) > 0}
+                      <path
+                        d={bar_path(
+                          rect_x,
+                          rect_y,
+                          rect_w,
+                          rect_h,
+                          bar_state.border_radius ?? 0,
+                          vertical,
+                          vertical ? value_tip > value_base : value_tip < value_base,
                         )}
-                    {@const label_y = vertical
-                      ? Math.max(0, Math.min(value_base, value_tip) - 6)
-                      : (cat_start + cat_end) / 2}
-                    <text
-                      x={label_x}
-                      y={label_y}
-                      text-anchor={vertical
-                        ? label_rotation > 0
-                          ? `end`
-                          : label_rotation < 0
-                            ? `start`
-                            : `middle`
-                        : undefined}
-                      dominant-baseline={vertical ? undefined : `central`}
-                      transform={label_rotation
-                        ? `rotate(${label_rotation}, ${label_x}, ${label_y})`
-                        : undefined}
-                      class="bar-label"
-                    >
-                      {srs.labels[bar_idx]}
-                    </text>
-                  {/if}
-                {/if}
-              {/each}
+                        fill={series_patterns[series_idx]?.url ?? color}
+                        opacity={mode === `overlay` ? bar_state.opacity : 1}
+                        stroke={bar_state.stroke_color}
+                        stroke-opacity={bar_state.stroke_opacity}
+                        stroke-width={bar_state.stroke_width}
+                        clip-path={anchored ? undefined : bar_clip}
+                        role="button"
+                        tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
+                        data-roving-key={roving_key(series_idx, bar_idx)}
+                        aria-label={`bar ${bar_idx + 1} of ${series_text(srs.label, series_idx)}: ${format_value_or_num(
+                          srs.y[bar_idx],
+                          plot_axes[value_axis_key(srs)].format,
+                        )}`}
+                        onfocusin={(evt) => {
+                          roving.focusin(evt)
+                          // Focus is the keyboard's hover: without this the tooltip never
+                          // opens and on_bar_hover never fires for a keyboard user
+                          handle_bar_hover(series_idx, bar_idx, color)(evt)
+                        }}
+                        onfocusout={clear_hover_on_exit}
+                        style:cursor={on_bar_click ? `pointer` : undefined}
+                        onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
+                        onmouseleave={clear_hover}
+                        onclick={click_bar}
+                        onkeydown={(evt) => {
+                          if (roving.handle_keydown(evt)) return
+                          if (is_activation_key(evt)) {
+                            evt.preventDefault()
+                            click_bar(evt)
+                            pin.toggle(hover_key) // focus is the keyboard's hover
+                          }
+                        }}
+                      />
+                      {#if srs.labels?.[bar_idx]}
+                        {@const label_rotation = bar_state.label_rotation ?? 0}
+                        <!-- labels stay inside the plot: a centred one on an edge bar would spill onto
+                    the axis tick labels, one past the longest horizontal bar off the right edge -->
+                        {@const label_width = label_rotation
+                          ? 0
+                          : measure_text_width(srs.labels[bar_idx], BAR_LABEL_FONT)}
+                        {@const label_x = vertical
+                          ? clamp(
+                              (cat_start + cat_end) / 2,
+                              pad.l + label_width / 2,
+                              frame.width - pad.r - label_width / 2,
+                            )
+                          : Math.min(
+                              Math.max(value_base, value_tip) + 4,
+                              frame.width - pad.r - label_width,
+                            )}
+                        {@const label_y = vertical
+                          ? Math.max(0, Math.min(value_base, value_tip) - 6)
+                          : (cat_start + cat_end) / 2}
+                        <text
+                          x={label_x}
+                          y={label_y}
+                          text-anchor={vertical
+                            ? label_rotation > 0
+                              ? `end`
+                              : label_rotation < 0
+                                ? `start`
+                                : `middle`
+                            : undefined}
+                          dominant-baseline={vertical ? undefined : `central`}
+                          transform={label_rotation
+                            ? `rotate(${label_rotation}, ${label_x}, ${label_y})`
+                            : undefined}
+                          class="bar-label"
+                        >
+                          {srs.labels[bar_idx]}
+                        </text>
+                      {/if}
+                    {/if}
+                  {/each}
+                </g>
+              </g>
             {/if}
           </g>
         {/if}

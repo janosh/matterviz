@@ -1,5 +1,9 @@
-import { bar_path, violin_path } from '#lib/plot/core/svg.js'
+import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
+import { bar_path, line_path, violin_path } from '#lib/plot/core/svg.js'
+import type { LineCurve } from '#lib/plot/core/types.js'
+import { line } from 'd3-shape'
 import { describe, expect, it } from 'vitest'
+import { make_rng } from '../numeric-helpers'
 
 describe(`bar_path`, () => {
   it.each([
@@ -48,5 +52,54 @@ describe(`violin_path`, () => {
   })
   it(`returns an empty path for an empty grid`, () => {
     expect(violin_path([], [], 0, `both`, orient)).toBe(``)
+  })
+})
+
+describe(`line_path`, () => {
+  type Pt = [number, number]
+  const is_finite_pt = ([x, y]: Pt) => Number.isFinite(x) && Number.isFinite(y)
+  const d3_path = (points: Pt[], curve: LineCurve) =>
+    line().defined(is_finite_pt).curve(line_curve_factory(curve))(points) ?? ``
+  const ours = (points: Pt[], curve: LineCurve) =>
+    line_path(
+      points,
+      line_curve_factory(curve),
+      (pt) => pt[0],
+      (pt) => pt[1],
+      is_finite_pt,
+    )
+  // ties at half a thousandth, -0, values rounding to -0, past int32 thousandths, gaps
+  const edge_values = [0, -0, -0.0004, 0.0005, -0.0005, 1.0005, 2.5e-7, 999.9995, 123.4565]
+  const edge_values_big = [2_147_483.647, -2_147_483.648, 3e6, -7.5e9, 1e21, 0.1 + 0.2]
+  const rng = make_rng(4)
+  const random_points = (n_points: number, scale: number): Pt[] =>
+    Array.from({ length: n_points }, (_, idx) => [
+      idx * scale * 0.37 - scale,
+      (rng() - 0.5) * scale,
+    ])
+  const cases: [string, Pt[]][] = [
+    [`small px`, random_points(500, 800)],
+    [`large`, random_points(200, 3e7)],
+    [`edges`, edge_values.map((val, idx) => [idx + val, val])],
+    [`beyond int32`, edge_values_big.map((val, idx) => [idx, val])],
+    [
+      `gaps`,
+      [
+        [0, 1],
+        [1, NaN],
+        [2, 3],
+        [Infinity, 4],
+        [4, 5],
+        [5, 6.0004],
+      ],
+    ],
+    [`single point`, [[1.23456, 7.8901]]],
+    [`empty`, []],
+  ]
+  const curves: LineCurve[] = [`monotone`, `linear`, `step`, `natural`, `basis`, `catmull-rom`]
+  it.each(
+    cases.flatMap(([name, points]) => curves.map((curve) => [name, curve, points] as const)),
+  )(`writes d3's path text exactly (%s, %s)`, (_name, curve, points) => {
+    expect(ours(points, curve)).toBe(d3_path(points, curve))
   })
 })

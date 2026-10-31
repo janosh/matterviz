@@ -122,10 +122,7 @@ test.each([
     { x: `x`, y: `y`, z: `z`, color: `c`, size: `sz` },
     { x: [1, 4], y: [5, 8], z: [9, 12], color_values: [100, 400], size_values: [10, 40] }],
 ])(`scatter series builds %s, keeping color and size aligned`, (_label, build, data, mapping, expected) => {
-  const series = build(extract_columns(data), mapping)
-  expect(series).toMatchObject(expected)
-  if (build === build_scatter_series)
-    expect(series).toHaveProperty(`point_style`, { fill: `#4c6ef5` })
+  expect(build(extract_columns(data), mapping)).toMatchObject(expected)
 })
 
 test(`build_bar_series builds bar series with string x`, () => {

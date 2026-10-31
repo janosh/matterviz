@@ -61,18 +61,26 @@ export function compute_energy_mode_info(
   return { has_precomputed_e_form, can_compute, corrections_active, energy_mode, unary_refs }
 }
 
-export const apply_formation_energies = (
+// Precomputed mode keeps the data's E_form but still computes it for entries that lack one
+// and whose elements all have absolute-energy references: temperature filtering drops the 0 K
+// E_form of entries with free energies, which vanished from the hull whenever another element
+// had only E_form-only unaries
+export function apply_formation_energies(
   entries: PhaseData[],
   { energy_mode, unary_refs }: EnergyModeInfo,
-): PhaseData[] =>
-  energy_mode === `precomputed`
-    ? entries
-    : entries.map((entry) => {
-        // E_form-only entries have nothing to recompute their E_form from
-        if (!thermo.has_absolute_energy(entry)) return entry
-        const e_form = thermo.compute_e_form_per_atom(entry, unary_refs)
-        return e_form === null ? entry : { ...entry, e_form_per_atom: e_form }
-      })
+): PhaseData[] {
+  // an E_form-only reference has no energy to subtract
+  const absolute_refs = Object.fromEntries(
+    Object.entries(unary_refs).filter(([, ref]) => thermo.has_absolute_energy(ref)),
+  )
+  return entries.map((entry) => {
+    if (energy_mode === `precomputed` && Number.isFinite(entry.e_form_per_atom)) return entry
+    // E_form-only entries have nothing to recompute their E_form from
+    if (!thermo.has_absolute_energy(entry)) return entry
+    const e_form = thermo.compute_e_form_per_atom(entry, absolute_refs)
+    return e_form === null ? entry : { ...entry, e_form_per_atom: e_form }
+  })
+}
 
 // Simplex position with E_form on the last plotted axis (y in 2D, z in 3D, none in 4D)
 export function hull_plot_position(
@@ -141,7 +149,8 @@ export function build_hull_model(
   if (entries.some(needs_hull_distance)) {
     const raw_dists =
       hull_facets.length === 0
-        ? thermo.e_above_hull_distances(entries, entries) // flat hull: plane through corners
+        ? // flat hull: plane through corners; `elements` are the components of a pseudo-hull
+          thermo.e_above_hull_distances(entries, entries, elements)
         : thermo.compute_e_above_hull_nd(
             entries.map((entry) => hull_point(entry, dim)),
             hull_facets,

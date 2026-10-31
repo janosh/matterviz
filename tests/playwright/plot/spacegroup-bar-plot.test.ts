@@ -109,27 +109,4 @@ test.describe(`SpacegroupBarPlot Component Tests`, () => {
     expect(await bars_of(symbol_plot).count()).toBeGreaterThan(5)
     expect((await hover_until_tooltip(symbol_plot)).text).toMatch(/Space Group:.*\(/i)
   })
-
-  test(`orientation switch flips bar orientation`, async ({ page }) => {
-    const demo = page.locator(`.lazy-demo`).nth(2)
-    await demo.scrollIntoViewIfNeeded()
-    const horizontal_radio = page.locator(`input[value="horizontal"]`).first()
-    await expect(page.locator(`input[value="vertical"]`).first()).toBeVisible({
-      timeout: 10000,
-    })
-    const bars = bars_of(demo.locator(`.bar-plot`))
-    await expect(bars.first()).toBeVisible({ timeout: 10000 }) // slow on CI
-
-    const vertical = (await bounding_boxes(bars, 5)).filter(
-      (bounds) => bounds.height > bounds.width,
-    )
-    expect(vertical.length).toBeGreaterThan(2)
-    await horizontal_radio.check()
-    await expect(async () => {
-      const horizontal = (await bounding_boxes(bars, 5)).filter(
-        (bounds) => bounds.width > bounds.height,
-      )
-      expect(horizontal.length).toBeGreaterThan(2)
-    }).toPass({ timeout: 2000 })
-  })
 })

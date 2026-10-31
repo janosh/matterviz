@@ -6,11 +6,8 @@ import { doc_query } from '../setup'
 describe(`BohrAtom`, () => {
   test.each([
     [`H`, `Hydrogen`, [1]],
-    [`He`, `Helium`, [2]],
-    [`Li`, `Lithium`, [2, 1]],
-    [`Be`, `Beryllium`, [2, 2]],
     [`O`, `Oxygen`, [2, 6]],
-  ])(`renders with custom styles and properties`, (symbol, name, shells) => {
+  ])(`renders %s with custom styles and properties`, (symbol, name, shells) => {
     mount(BohrAtom, {
       target: document.body,
       props: {

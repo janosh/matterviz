@@ -131,7 +131,10 @@ export const trajectory_from_frame_source = (
 ): TrajectoryRun =>
   numeric_run(frame_count, (frame_idx) => encode_frame(read(frame_idx)), extras)
 
-function numeric_run(
+// Same, for sources that write each frame's columns directly (phonon modes). Frames are
+// immutable snapshots, so a source may hand every frame the same cell and site records;
+// FrameView then clones those once instead of per frame.
+export function numeric_run(
   frame_count: number,
   read: (frame_idx: number) => NumericFrame,
   extras: NumericRunExtras,

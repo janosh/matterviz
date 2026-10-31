@@ -91,10 +91,6 @@ describe(`PlotLegend`, () => {
     (idx, pressed, hidden, svgs, line, symbol) => {
       mount_legend()
       const wrapper = doc_query(`.legend`)
-      // Default layout is vertical, 1 column
-      expect(wrapper.style.gridTemplateColumns).toBe(`auto`)
-      expect(wrapper.style.gridTemplateRows).toBe(`repeat(1, auto)`)
-      expect(wrapper.style.gridAutoFlow).toBe(``)
       expect(wrapper.classList.contains(`grouped`)).toBe(false)
       expect(
         wrapper.querySelectorAll(`.legend-group-header, .legend-item.indented`),
@@ -145,21 +141,6 @@ describe(`PlotLegend`, () => {
       expect(style.gridAutoFlow).toBe(flow)
     },
   )
-
-  test(`auto tracks include grouped legend headers`, () => {
-    const series_data: LegendItem[] = [
-      legend_item(`First`, 0, {}, { legend_group: `Group` }),
-      legend_item(`Second`, 1, {}, { legend_group: `Group` }),
-    ]
-    mount_legend({
-      series_data,
-      layout: `vertical`,
-      layout_tracks: `auto`,
-      available_edge_length: 32,
-      item_extents: [{ height: 10 }, { height: 10 }, { height: 10 }],
-    })
-    expect(doc_query(`.legend`).style.gridTemplateRows).toBe(`repeat(3, auto)`)
-  })
 
   // active_fill_idx marks only the matching fill item (not the series sharing its index), and
   // hovering a fill item reports it whole (with fill_idx) so the plot can highlight it
@@ -588,7 +569,6 @@ describe(`PlotLegend`, () => {
     // can't override the color's own alpha) so different fill colors stay distinguishable
     test.each([
       [`rgba(52, 152, 219, 0.15)`, `rgb(52, 152, 219)`, 0.15],
-      [`rgba(231, 76, 60, 0.25)`, `rgb(231, 76, 60)`, 0.15],
       [`#2ecc71`, `rgb(46, 204, 113)`, 0.15],
       [`green`, `rgb(0, 128, 0)`, undefined],
     ] as const)(

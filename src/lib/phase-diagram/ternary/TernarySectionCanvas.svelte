@@ -14,6 +14,7 @@
     draw_hull_points,
     face_color_resolver,
     find_hull_entry_at_mouse,
+    hull_face_sets,
   } from '#lib/convex-hull/canvas-draw.js'
   import { get_energy_color_scale, merge_highlight_style } from '#lib/convex-hull/helpers.js'
   import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
@@ -165,15 +166,15 @@
 
   // Tie-triangles and their colours, shared by the base (all faces) and the overlay (the
   // hovered face), so a hover doesn't rebuild the face list
-  const faces = $derived(
-    build_hull_faces(
+  const face_sets = $derived(
+    hull_face_sets(
       section.facets.flatMap((facet) => {
         const entries = facet.map((idx) => hull_entries[idx])
         return entries.every((entry) => entry !== null) ? [entries] : []
       }),
-      project,
     ),
   )
+  const faces = $derived(build_hull_faces(face_sets, project))
   const face_color = $derived(
     face_color_resolver(faces, {
       mode: settings.face_color_mode,

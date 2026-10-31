@@ -1,17 +1,8 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
-import type {
-  CellVal,
-  ColumnFilter,
-  Column,
-  RowData,
-  SortCriterion,
-} from '#lib/table/index.js'
+import type { CellVal, Column, RowData, SortCriterion } from '#lib/table/index.js'
 import {
-  CATEGORY_LIMIT,
-  cell_matches_filter,
+  cell_readers,
   cell_text,
-  column_filter_panel,
-  compare_rows,
   compute_column_stats,
   discover_columns,
   format_datetime,
@@ -22,15 +13,10 @@ import {
   parse_numeric_val,
   resolve_color_domain,
   sort_table_rows,
-  table_to_delimited,
-  table_to_json,
-  table_to_latex,
-  table_to_markdown,
   virtual_window,
-  with_category_toggled,
-  with_numeric_bound,
 } from '#lib/table/index.js'
 import { html_to_text } from '#lib/utils.js'
+import { compile_filter, type ColumnFilterValue } from 'svelte-widgets/table'
 import { describe, expect, it } from 'vitest'
 
 // one-shot wrapper around the memoized factory, for the single-cell assertions below
@@ -279,6 +265,11 @@ it.each([
   expect(cell_text(input)).toBe(expected)
 })
 
+// numbers skip the markup decode, which must not change their text
+it.each([1.5, -0, 1e21, -2.5e-7, Infinity])(`cell_text(%s) is its decoded string`, (num) =>
+  expect(cell_text(num)).toBe(html_to_text(String(num)).trim()),
+)
+
 it.each<[CellVal, number | null]>([
   [42, 42],
   [Infinity, null],
@@ -294,6 +285,8 @@ it.each<[CellVal, number | null]>([
   [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
   [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
   [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
+  [`<span data-sort-value='7'>seven</span>`, 7], // single-quoted attribute
+  [`<span data-sort-value=''>42</span>`, null],
   [`abc`, null],
   // only decimal notation: Number() would read these literals as 16, 3 and 7
   [`0x10`, null],
@@ -318,14 +311,12 @@ it(`parse_numeric_val stays linear on long digit runs`, () => {
   expect(performance.now() - start).toBeLessThan(200)
 })
 
-describe(`compare_rows`, () => {
+describe(`sort_table_rows`, () => {
   const rows = (...vals: CellVal[]): RowData[] => vals.map((val) => ({ val }))
   const order = (vals: CellVal[], ascending = true) => {
     const data = rows(...vals)
     const criteria = [{ key: `val`, ascending }]
-    const sorted = sort_table_rows(data, criteria)
-    expect(sorted).toEqual(data.toSorted((row1, row2) => compare_rows(row1, row2, criteria)))
-    return sorted.map((row) => row.val)
+    return sort_table_rows(data, criteria).map((row) => row.val)
   }
 
   it.each([true, false])(`sinks missing sort keys with ascending=%s`, (ascending) => {
@@ -356,6 +347,9 @@ describe(`compare_rows`, () => {
   it(`puts numbers before strings and compares strings in natural order`, () => {
     const mixed = order([`10`, `abc`, `9`, `a2`, `a10`, 2])
     expect(mixed).toEqual([2, `9`, `10`, `a2`, `a10`, `abc`])
+    // ±Infinity are numbers at the ends, not text after them
+    expect(order([3, Infinity, `x`, -Infinity, 1])).toEqual([-Infinity, 1, 3, Infinity, `x`])
+    expect(order([3, Infinity, -Infinity, 1], false)).toEqual([Infinity, 3, 1, -Infinity])
     expect(order([`b`, `B`, `a`])).toEqual([`a`, `b`, `B`]) // case-insensitive keeps input order for ties
   })
 
@@ -374,15 +368,27 @@ describe(`compare_rows`, () => {
       .toEqual([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`])
   })
 
+  // as text the collator compared digit runs as integers: 1.5 eV after 1.25 eV, -1 before -3
+  // oxfmt-ignore
+  it.each<[CellVal[], CellVal[]]>([
+    [[`1.5 eV`, `1.25 eV`, `0.9 eV`], [`0.9 eV`, `1.25 eV`, `1.5 eV`]],
+    [[`-1 GPa`, `-3 GPa`, `2 GPa`], [`-3 GPa`, `-1 GPa`, `2 GPa`]],
+    // equal numbers: a bare number first, then by text
+    [[`2 meV`, `abc`, `2 eV`, 2, `1e3 K`], [2, `2 eV`, `2 meV`, `1e3 K`, `abc`]],
+    [[`3.10.0`, `3.9.0`], [`3.9.0`, `3.10.0`]], // versions keep natural text order
+    [[`0x1f`, `1 eV`, `0x0a`], [`1 eV`, `0x0a`, `0x1f`]], // so do hex IDs
+  ])(`sorts unit-suffixed numbers %j by their number`, (vals, expected) => {
+    expect(order(vals)).toEqual(expected)
+    expect(order(vals, false)).toEqual(expected.toReversed())
+  })
+
   // the type-mismatch branch answered "the other one first" both ways: not a total order
   it.each([
     [`a boolean`, true],
     [`an object`, { a: 1 }],
     [`an invalid date`, new Date(NaN)],
   ])(`compares a string against %s antisymmetrically`, (_case, other) => {
-    const cmp = (val1: CellVal, val2: CellVal) =>
-      compare_rows({ val: val1 }, { val: val2 }, [{ key: `val`, ascending: true }])
-    expect(cmp(`abc`, other)).toBe(-cmp(other, `abc`))
+    expect(order([`abc`, other])).toEqual(order([other, `abc`]))
   })
 
   it(`sorts one multiset to one order whatever order it arrives in`, () => {
@@ -397,8 +403,9 @@ describe(`compare_rows`, () => {
     expect(results[0]).toEqual([5, `abc`, false, true, `zed`]) // numbers first, then text
   })
 
-  it(`reads each object once per sort and refreshes mutated sort values`, () => {
-    let reads = 0
+  // cells were re-read on each of the O(n log n) comparisons (67 ms for 50k rows, now 15 ms)
+  it(`reads each cell and object once per sort and refreshes mutated sort values`, () => {
+    let [reads, cell_reads] = [0, 0]
     const values = Array.from({ length: 40 }, (_, idx) => ({
       rank: 39 - idx,
       toJSON() {
@@ -412,6 +419,15 @@ describe(`compare_rows`, () => {
       Array.from({ length: 40 }, (_, idx) => idx),
     )
     expect(reads).toBe(40)
+    const counted = values.map((_, idx) => ({
+      get val() {
+        cell_reads++
+        return 39 - idx
+      },
+    }))
+    const sorted = sort_table_rows(counted, criteria)
+    expect(cell_reads).toBe(40)
+    expect(sorted.map(({ val }) => val)).toEqual(Array.from({ length: 40 }, (_, idx) => idx))
     values[0].rank = -1
     expect(sort_table_rows(data, criteria)[0]).toBe(data[0])
     expect(reads).toBe(80)
@@ -438,71 +454,25 @@ describe(`compare_rows`, () => {
       [{ score: null, name: `b` }, { score: undefined, name: `a` }],
       [by_score, by_name], [`a`, `b`]],
   ])(`honours later criteria when %s`, (_case, data, criteria, expected) => {
-    const sorted = data.toSorted((row1, row2) => compare_rows(row1, row2, criteria))
-    expect(sort_table_rows(data, criteria)).toEqual(sorted)
-    expect(sorted.map((row) => row.name)).toEqual(expected)
+    expect(sort_table_rows(data, criteria).map((row) => row.name)).toEqual(expected)
   })
 })
 
 describe(`search and filters`, () => {
-  it.each<[CellVal, ColumnFilter, boolean]>([
+  it.each<[CellVal, ColumnFilterValue, boolean]>([
     [`1.5 ± 0.1`, { kind: `numeric`, min: 1, max: 2 }, true],
     [3, { kind: `numeric`, min: 1, max: 2 }, false],
     [`abc`, { kind: `numeric`, min: 0 }, false],
     [5, { kind: `numeric`, max: 5 }, true],
     [`<i>oxide</i>`, { kind: `category`, values: [`oxide`] }, true],
-    [null, { kind: `category`, values: [``] }, true],
+    // n/a cells never match a category, blank strings do
+    [null, { kind: `category`, values: [``] }, false],
+    [NaN, { kind: `category`, values: [``] }, false],
+    [``, { kind: `category`, values: [``] }, true],
     [`Fe2O3`, { kind: `text`, text: `e2o` }, true],
     [`Fe2O3`, { kind: `text`, text: `cu` }, false],
-  ])(`cell_matches_filter(%j, %j) = %j`, (val, filter, expected) => {
-    expect(cell_matches_filter(val, filter)).toBe(expected)
-  })
-
-  it(`picks the filter panel kind from config, then the data, capping auto-detected checklists`, () => {
-    const tags = Array.from({ length: CATEGORY_LIMIT + 1 }, (_, idx) => ({ Tag: `t${idx}` }))
-    const column: Column = { id: `Tag`, label: `Tag` }
-    const few = [{ Tag: `b` }, { Tag: `<i>a</i>` }, { Tag: null }, { Tag: `b` }]
-    expect(column_filter_panel(column, few, `Tag`, false)).toEqual({
-      kind: `category`,
-      options: [`a`, `b`], // distinct, markup-stripped, sorted; invalid cells skipped
-    })
-    expect(column_filter_panel(column, tags, `Tag`, false)).toEqual({
-      kind: `text`,
-      options: [],
-    })
-    // an explicit category column lists every value however many there are
-    expect(
-      column_filter_panel({ ...column, filter: `category` }, tags, `Tag`, false).options,
-    ).toHaveLength(CATEGORY_LIMIT + 1)
-    expect(column_filter_panel(column, few, `Tag`, true).kind).toBe(`numeric`)
-    expect(column_filter_panel({ ...column, filter: `text` }, few, `Tag`, true).kind).toBe(
-      `text`,
-    )
-    expect(column_filter_panel(column, [], `Tag`, false).kind).toBe(`text`)
-  })
-
-  it(`collapses no-op filters to undefined when editing bounds and checklists`, () => {
-    const min_only = with_numeric_bound(undefined, `min`, ` 1.5 `)
-    expect(min_only).toEqual({ kind: `numeric`, min: 1.5 })
-    expect(with_numeric_bound(min_only, `max`, `abc`)).toEqual({ kind: `numeric`, min: 1.5 })
-    expect(with_numeric_bound(min_only, `min`, ``)).toBeUndefined()
-    // a text filter on the same column is replaced, not merged
-    expect(with_numeric_bound({ kind: `text`, text: `x` }, `max`, `2`)).toEqual({
-      kind: `numeric`,
-      max: 2,
-    })
-
-    const options = [`a`, `b`, `c`]
-    const without_b = with_category_toggled(undefined, `b`, options)
-    expect(without_b).toEqual({ kind: `category`, values: [`a`, `c`] })
-    expect(with_category_toggled(without_b, `a`, options)).toEqual({
-      kind: `category`,
-      values: [`c`],
-    })
-    expect(with_category_toggled(without_b, `b`, options)).toBeUndefined() // all allowed again
-    // a value no row holds any more drops out instead of keeping the filter active
-    const stale = { kind: `category` as const, values: [`a`, `c`, `gone`] }
-    expect(with_category_toggled(stale, `b`, options)).toBeUndefined()
+  ])(`cell %j against %j through cell_readers: %j`, (val, filter, expected) => {
+    expect(compile_filter(filter, cell_readers)(val)).toBe(expected)
   })
 })
 
@@ -582,64 +552,4 @@ it.each<[Partial<Parameters<typeof virtual_window>[0]>, [number, number]]>([
   [{ scroll: 0, count: 0 }, [0, 0]], // empty data
 ])(`virtual_window(%o) = %j`, (opts, [start, end]) => {
   expect(virtual_window({ ...window_base, scroll: 0, ...opts })).toEqual({ start, end })
-})
-
-describe(`table exporters`, () => {
-  const matrix = {
-    headers: [`Name`, `a|b`, `Val`],
-    rows: [
-      [`x, "q"`, `multi\nline`, `1`],
-      [`50% & $3_{}`, `^~\\`, `2`],
-      [`cr\rline`, ``, `3`], // a bare CR is a record separator to most readers: quoted too
-    ],
-    numeric: [false, false, true],
-  }
-
-  it(`emits CSV with RFC 4180 quoting and TSV with flattened newlines`, () => {
-    expect(table_to_delimited(matrix, `,`)).toBe(
-      `Name,a|b,Val\n"x, ""q""","multi\nline",1\n50% & $3_{},^~\\,2\n"cr\rline",,3`,
-    )
-    expect(table_to_delimited(matrix, `\t`).split(`\n`).slice(1)).toEqual([
-      `x, "q"\tmulti line\t1`,
-      `50% & $3_{}\t^~\\\t2`,
-      `cr line\t\t3`,
-    ])
-  })
-
-  it(`exports JSON keyed by stable IDs despite repeated or renamed headers`, () => {
-    const when = new Date(Date.UTC(2024, 0, 2))
-    const rows: RowData[] = [
-      { 'n<sub>val</sub>': 1, Name: `<b>Fe</b>&amp;O`, When: when, Skip: 5 },
-    ]
-    const columns = [
-      { id: `valence`, label: `Value`, key: `n<sub>val</sub>` },
-      { id: `Name`, label: `Value`, key: `Name` },
-      { id: `When`, label: `Value`, key: `When` },
-    ]
-    expect(JSON.parse(table_to_json(rows, columns))).toEqual([
-      { valence: 1, Name: `Fe&O`, When: when.toISOString() },
-    ])
-    columns[0].label = `Renamed`
-    expect(JSON.parse(table_to_json(rows, columns))[0].valence).toBe(1)
-  })
-
-  it(`escapes markdown backslashes, pipes and newlines and right-aligns numeric columns`, () => {
-    const [header, align, row_1, row_2] = table_to_markdown(matrix).split(`\n`)
-    expect(header).toBe(`| Name | a\\|b | Val |`)
-    expect(align).toBe(`| :--- | :--- | ---: |`)
-    expect(row_1).toBe(`| x, "q" | multi<br>line | 1 |`)
-    expect(row_2).toBe(`| 50% & $3_{} | ^~\\\\ | 2 |`)
-    // decoded escaped markup stays text: `<br>` must not become a live line break
-    const markdown = table_to_markdown({ headers: [`<br> &lt;`], rows: [], numeric: [false] })
-    expect(markdown.split(`\n`)[0]).toBe(`| &lt;br> &amp;lt; |`)
-  })
-
-  it(`escapes LaTeX specials once and builds a booktabs tabular`, () => {
-    const lines = table_to_latex(matrix).split(`\n`)
-    expect(lines[0]).toBe(`\\begin{tabular}{llr}`)
-    expect(lines[6]).toBe(
-      `  50\\% \\& \\$3\\_\\{\\} & \\textasciicircum{}\\textasciitilde{}\\textbackslash{} & 2 \\\\`,
-    )
-    expect(lines.at(-1)).toBe(`\\end{tabular}`)
-  })
 })

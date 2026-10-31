@@ -15,7 +15,6 @@ import {
   curveStep,
   curveStepAfter,
   curveStepBefore,
-  line,
 } from 'd3-shape'
 import type {
   DataSeries,
@@ -28,6 +27,7 @@ import type {
 } from '#lib/plot/core/types.js'
 import { error_getter, error_lengths } from '#lib/plot/core/error-bars.js'
 import { range_bounds } from '#lib/plot/core/interactions.js'
+import { line_path } from '#lib/plot/core/svg.js'
 import { assert_aligned_lengths, assert_series_lengths } from '#lib/plot/core/types.js'
 
 // A 2D point in data (or pixel) coordinates
@@ -541,10 +541,12 @@ export const line_curve_factory = (curve: LineCurve | null | undefined): CurveFa
   get_curve(line_curve_to_fill(curve))
 
 const trace = (points: readonly Pt[], curve_type: FillCurveType): string =>
-  line<Pt>()
-    .x((point) => point.x)
-    .y((point) => point.y)
-    .curve(get_curve(curve_type))(points as Pt[]) ?? ``
+  line_path(
+    points,
+    get_curve(curve_type),
+    (point) => point.x,
+    (point) => point.y,
+  )
 
 // Closed SVG path for a fill segment (px): upper edge forward, lower edge backward, each with
 // its own curve via the series' line generator

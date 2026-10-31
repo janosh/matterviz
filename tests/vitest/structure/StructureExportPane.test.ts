@@ -86,18 +86,6 @@ describe(`StructureExportPane`, () => {
     await tick()
     expect(validate).toHaveBeenCalledOnce()
     validate.mockRestore()
-
-    const format_labels = [`JSON`, `XYZ`, `CIF`, `POSCAR`]
-    for (const label of format_labels) {
-      expect(document.body.textContent).toContain(label)
-    }
-
-    // 2 buttons per format (download + copy) * 4 formats = 8
-    const text_section = Array.from(document.querySelectorAll(`h4`)).find((heading) =>
-      heading.textContent?.includes(`Export as text`),
-    )?.nextElementSibling
-    const buttons = text_section?.querySelectorAll(`button`)
-    expect(buttons?.length).toBe(8)
     doc_query(`.export-item span[aria-haspopup]`).dispatchEvent(new MouseEvent(`mouseenter`))
     await vi.waitFor(() =>
       expect(document.querySelector(`.popover a`)?.getAttribute(`href`)).toBe(
@@ -195,8 +183,6 @@ describe(`StructureExportPane`, () => {
       `input[type="number"][title*="dots per inch"]`,
     )
     expect(dpi_input.value).toBe(`150`)
-    expect(dpi_input.min).toBe(`50`)
-    expect(dpi_input.max).toBe(`600`)
     expect(get_button(`PNG`).title).toContain(`(150 DPI)`)
 
     // editing the DPI updates the download button's title
@@ -439,7 +425,6 @@ describe(`StructureExportPane`, () => {
 
     const toggle = doc_query(`.structure-export-toggle`)
     expect(toggle.classList.contains(`custom-export-toggle`)).toBe(true)
-    expect(toggle.querySelector(`svg`)).not.toBeNull()
   })
 
   test.each([

@@ -19,6 +19,9 @@
   import { create_structure_tool_controller } from '#lib/structure/host-tool.svelte.js'
   import type { StructureToolPrediction } from '#lib/structure/prediction.js'
   import { prediction_to_json } from '#lib/structure/prediction.js'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   const lattice: Matrix3x3 = [
     [4, 0, 0],
@@ -239,29 +242,42 @@
   })
 </script>
 
-<button onclick={benchmark_prediction}>Benchmark prediction</button>
-<output data-testid="prediction-metrics"
-  >{prediction_metrics ? JSON.stringify(prediction_metrics) : `Not measured`}</output
->
-<button data-testid="change-isovalue" onclick={change_isovalue}>Change isovalue</button>
-<button data-testid="recolor" onclick={recolor}>Recolor only</button>
-<button data-testid="measure-fps" onclick={measure_fps}>Measure FPS</button>
+<h1>Isosurface performance test page</h1>
 
-<div class="benchmark-canvas" data-testid="isosurface-benchmark-canvas">
-  {#if volumes.length}
-    <Canvas createRenderer={create_renderer}>
-      <T.PerspectiveCamera makeDefault position={[2, 2, 12] satisfies Vec3} />
-      <T.AmbientLight intensity={1.4} />
-      <T.DirectionalLight position={[5, 8, 10]} intensity={2} />
-      <T.Group rotation={[0, animation_angle, 0]}>
-        <Isosurface {volumes} {settings} />
-      </T.Group>
-    </Canvas>
-  {/if}
-</div>
+<TestSection title="Controls">
+  <TestControls>
+    <button onclick={benchmark_prediction}>Benchmark prediction</button>
+    <button data-testid="change-isovalue" onclick={change_isovalue}>Change isovalue</button>
+    <button data-testid="recolor" onclick={recolor}>Recolor only</button>
+    <button data-testid="measure-fps" onclick={measure_fps}>Measure FPS</button>
+  </TestControls>
+</TestSection>
 
-<span hidden data-testid="profile-fps">{fps?.toFixed(2) ?? `pending`}</span>
-<span hidden data-testid="profile-heap">{heap_bytes ?? `unsupported`}</span>
+<TestSection title="Scene">
+  <div class="benchmark-canvas" data-testid="isosurface-benchmark-canvas">
+    {#if volumes.length}
+      <Canvas createRenderer={create_renderer}>
+        <T.PerspectiveCamera makeDefault position={[2, 2, 12] satisfies Vec3} />
+        <T.AmbientLight intensity={1.4} />
+        <T.DirectionalLight position={[5, 8, 10]} intensity={2} />
+        <T.Group rotation={[0, animation_angle, 0]}>
+          <Isosurface {volumes} {settings} />
+        </T.Group>
+      </Canvas>
+    {/if}
+  </div>
+</TestSection>
+
+<TestStatus
+  values={{
+    'prediction-metrics': prediction_metrics
+      ? JSON.stringify(prediction_metrics)
+      : `Not measured`,
+    'profile-fps': fps?.toFixed(2) ?? `pending`,
+    'profile-heap': heap_bytes ?? `unsupported`,
+  }}
+/>
+<!-- raw stage timings for the specs: hidden since a long JSON line is no readout -->
 <pre hidden data-testid="profile-events">{JSON.stringify(
     profile_events.slice(0, event_count),
   )}</pre>
@@ -270,7 +286,6 @@
   .benchmark-canvas {
     width: min(800px, 100%);
     height: 500px;
-    margin-block: 1rem;
     background: #111827;
   }
 </style>

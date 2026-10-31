@@ -36,6 +36,7 @@ export type SessionHost = {
   cell_type: CellType
   sym_data: SymmetryDataset | null
   atom_color_config: AtomColorConfig
+  bonding_options: Record<string, unknown>
   site_properties?: Record<string, unknown>[]
 }
 
@@ -64,6 +65,7 @@ export function make_session(
     cell_type: `original`,
     sym_data: null,
     atom_color_config: DEFAULT_ATOM_COLOR_CONFIG,
+    bonding_options: {},
     ...initial,
   })
   const notices: string[] = []
@@ -106,6 +108,7 @@ export function make_session(
       sym_data: () => host.sym_data,
       atom_color_config: () => host.atom_color_config,
       bonding_strategy: () => `electroneg_ratio`,
+      bonding_options: () => host.bonding_options,
       on_notice: (message) => notices.push(message),
     })
   })

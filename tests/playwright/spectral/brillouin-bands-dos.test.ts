@@ -62,7 +62,7 @@ test.describe(
       await expect_combined_fullscreen(container, panels, `.brillouin-zone`)
     })
 
-    test(`renders panels, custom bands styling, independent y-axes, BZ controls and multi-structure children`, async ({
+    test(`renders panels, custom bands styling, BZ controls and multi-structure children`, async ({
       page,
     }) => {
       await test.step(`default component renders all three panels with content`, async () => {
@@ -97,21 +97,8 @@ test.describe(
         expect(stroke).toContain(`rgb(255, 0, 0)`)
       })
 
-      await test.step(`independent y-axes and BZ controls`, async () => {
-        const indep_container = page.locator(`[data-testid="bz-bands-dos-independent-axes"]`)
-        const bands_y = await indep_container
-          .locator(`svg:has(g.x-axis)`)
-          .first()
-          .locator(`g.y-axis text`)
-          .allTextContents()
-        const dos_y = await indep_container
-          .locator(`svg:has(g.y-axis)`)
-          .nth(1)
-          .locator(`g.y-axis text`)
-          .allTextContents()
-        expect(bands_y).not.toEqual(dos_y)
-
-        // BZ controls visible when enabled
+      // independent y-axes are checked more strictly in bands-and-dos.test.ts
+      await test.step(`BZ controls`, async () => {
         const controls_container = page.locator(`[data-testid="bz-bands-dos-with-controls"]`)
         await expect(controls_container.locator(`button.controls-toggle`)).toBeVisible()
       })
@@ -142,42 +129,12 @@ test.describe(
       await expect_canvas_changed(bz_canvas, initial, 5000)
     })
 
-    test(`desktop panels show DOS hover reference lines and share y-axis ticks; zoom and reset propagate from either panel`, async ({
+    // hover reference lines and DOS-initiated zoom/reset are covered on the plain BandsAndDos
+    // in bands-and-dos.test.ts; here the three-panel desktop grid keeps them aligned
+    test(`desktop panels share y-axis rows and ticks; a bands zoom and reset propagate`, async ({
       page,
     }) => {
       const { bands_plot, dos_plot } = await get_default_desktop_plots(page)
-      // hover first: the zoom steps end with the mouse over the DOS, where a reference line
-      // would already show and hide the one this hover should add
-      await test.step(`hovering over DOS shows reference lines in both bands and DOS`, async () => {
-        const bands_svg = get_chart_svg(bands_plot)
-        const dos_svg = get_chart_svg(dos_plot)
-
-        // Get initial count of dashed lines (fermi level lines may already exist)
-        const initial_dashed_count = await bands_svg.locator(`line[stroke-dasharray]`).count()
-
-        // Hover a point on the DOS line: the center of its bounding box can lie further from
-        // the curve than the plot's hover radius (50px). The 1200px container overflows the
-        // viewport, so bring the DOS on screen first.
-        const dos_path = dos_svg.locator(line_path_selector).first()
-        await expect(dos_path).toBeVisible()
-        await dos_path.scrollIntoViewIfNeeded()
-        const on_line = await dos_path.evaluate((path: SVGPathElement) => {
-          const { x, y } = path.getPointAtLength(path.getTotalLength() / 2)
-          return new DOMPoint(x, y).matrixTransform(path.getScreenCTM() ?? new DOMMatrix())
-        })
-        await page.mouse.move(on_line.x, on_line.y)
-
-        // Wait for hover state to update - reference lines with stroke-dasharray should appear
-        await expect(async () => {
-          const current_dashed_count = await bands_svg
-            .locator(`line[stroke-dasharray]`)
-            .count()
-          // Reference line should be added on hover (in addition to any existing fermi level lines)
-          expect(current_dashed_count).toBeGreaterThan(initial_dashed_count)
-        }).toPass({ timeout: 3000 })
-      })
-      await page.mouse.move(0, 0)
-
       // plot control panes can extend beyond their grid cells
       await expect(bands_plot).toHaveCSS(`overflow`, `visible`)
       await expect(dos_plot).toHaveCSS(`overflow`, `visible`)
@@ -194,12 +151,6 @@ test.describe(
       await expect_synced_y_ticks(bands_plot, dos_plot)
 
       await reset_plot_area(bands_plot, bands_area)
-      await expect_synced_y_ticks(bands_plot, dos_plot, initial_bands_ticks)
-      const dos_area = await measure_plot_area(dos_plot)
-      await drag_plot_area(page, dos_area)
-      await expect.poll(() => numeric_y_ticks(dos_plot)).not.toEqual(initial_bands_ticks)
-      await expect_synced_y_ticks(dos_plot, bands_plot)
-      await reset_plot_area(dos_plot, dos_area)
       await expect_synced_y_ticks(bands_plot, dos_plot, initial_bands_ticks)
     })
 

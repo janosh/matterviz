@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test'
+import { EXPECT_TIMEOUT } from '../helpers'
 
 // The performance page builds synthetic entries client-side (no fixture download), so it is
 // the fast route to a hull of a given size; resolves to the rendered diagram
@@ -24,34 +25,42 @@ export async function ensure_pane_visible(pane: Locator, opener_btn: Locator): P
   }
 }
 
-// Open a DraggablePane through its toggle and retry while WebGL-heavy pages settle.
+// Open a DraggablePane through its toggle, re-clicking while a click lands before hydration.
+// Clicks only while the toggle reports the pane closed, so a retry never closes it again.
 async function open_pane(
-  page: Page,
   diagram: Locator,
   pane_selector: string,
   toggle_selector: string,
 ): Promise<Locator> {
   const pane = diagram.locator(`.draggable-pane.${pane_selector}`)
   const toggle = diagram.locator(toggle_selector).first()
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dom_click(toggle)
-    await page.waitForTimeout(200)
-    if (await pane.isVisible()) return pane
-  }
+  await expect(async () => {
+    if ((await toggle.getAttribute(`aria-expanded`)) !== `true`) await dom_click(toggle)
+    expect(await toggle.getAttribute(`aria-expanded`)).toBe(`true`)
+  }).toPass({ timeout: EXPECT_TIMEOUT })
+  await expect(pane).toBeVisible()
   return pane
 }
 
-export const open_controls_pane = (page: Page, diagram: Locator): Promise<Locator> =>
+export const open_controls_pane = (diagram: Locator): Promise<Locator> =>
   open_pane(
-    page,
     diagram,
     `convex-hull-controls-pane`,
     `.legend-controls-btn, .convex-hull-controls-toggle`,
   )
 
-export const open_info_pane = (page: Page, diagram: Locator): Promise<Locator> =>
-  open_pane(page, diagram, `convex-hull-info-pane`, `.info-btn`)
+export const open_info_pane = (diagram: Locator): Promise<Locator> =>
+  open_pane(diagram, `convex-hull-info-pane`, `.info-btn`)
+
+// Resolve after two animation frames: a pointer move threlte coalesces dispatches in the
+// first, and Svelte's DOM flush (and any rAF-scheduled canvas draw) lands before the second
+export const after_frames = (page: Page): Promise<void> =>
+  page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }),
+  )
 
 // Visible count X of an info-pane "Visible ... X / Y" row
 export const visible_count = async (info: Locator, testid: string): Promise<number> => {

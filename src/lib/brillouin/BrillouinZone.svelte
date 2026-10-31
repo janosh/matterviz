@@ -451,7 +451,7 @@
     </ViewerChrome>
 
     {#if webgpu_available()}
-      <Canvas createRenderer={create_renderer}>
+      <Canvas createRenderer={create_renderer} shadows={false}>
         <BrillouinZoneScene
           bz_data={zone}
           {surface_color}

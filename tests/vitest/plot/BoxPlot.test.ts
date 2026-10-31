@@ -2,7 +2,7 @@ import BoxPlot from '#lib/plot/box/BoxPlot.svelte'
 import * as kde_math from '#lib/plot/box/kde.js'
 import * as box_math from '#lib/plot/box/box-plot.js'
 import type { Vec2 } from '#lib'
-import type { BoxPlotSeries, Orientation, WhiskerMode } from '#lib/plot/index.js'
+import type { BoxPlotSeries, Orientation } from '#lib/plot/index.js'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
@@ -67,14 +67,6 @@ describe(`BoxPlot`, () => {
   // No series means no category labels, so the axis must fall back to generated ticks
   test.each([
     [`no series`, { series: [] }],
-    [`axis labels`, { series: [basic], x_axis: { label: `Model` }, y_axis: { label: `Err` } }],
-    ...([`minmax`, `percentile`, `std`] as WhiskerMode[]).map((whisker_mode) => [
-      `whisker_mode=${whisker_mode}`,
-      { series: [basic], whisker_mode },
-    ]),
-    [`a clamped y range`, { series: [basic], y_axis: { range: [-3, 3] as Vec2 } }],
-    [`an SI tick format`, { series: [basic], y_axis: { format: `.2~s` } }],
-    [`controls hidden`, { series: [basic], show_controls: false }],
     [`value labels`, { series: [basic, { ...basic, label: `B` }], show_value_labels: true }],
     [
       `an invisible series`,
@@ -110,6 +102,33 @@ describe(`BoxPlot`, () => {
       const lines = plot.querySelectorAll(`.zero-line`)
       expect(lines).toHaveLength(1)
       expect(lines[0].getAttribute(`${axis}1`)).toBe(lines[0].getAttribute(`${axis}2`))
+    },
+  )
+
+  // A log value axis whose range reaches below zero (switched to log over signed data, say)
+  // floors whiskers, boxes and violins at the scale's positive domain, never at that range
+  test.each([
+    [`vertical`, `box`],
+    [`horizontal`, `box`],
+    [`vertical`, `violin`],
+    [`horizontal`, `violin`],
+  ] as const)(
+    `%s %s on a log axis ranged below zero draws no NaN geometry`,
+    async (orientation, kind) => {
+      const axis = { scale_type: `log` as const, range: [-5, 10] as Vec2 }
+      const plot = await mount_sized_box_plot({
+        series: [basic],
+        orientation,
+        kind,
+        [orientation === `vertical` ? `y_axis` : `x_axis`]: axis,
+      })
+      const nan_attrs = [...plot.querySelectorAll(`svg *`)].flatMap((el) =>
+        [...el.attributes]
+          .filter((attr) => attr.value.includes(`NaN`))
+          .map((attr) => attr.name),
+      )
+      expect(plot.querySelectorAll(`g.box-series`).length).toBeGreaterThan(0)
+      expect(nan_attrs).toEqual([])
     },
   )
 
@@ -347,6 +366,52 @@ describe(`BoxPlot`, () => {
         }
       },
     )
+
+    // A pan along either axis only translates the samples, so it reuses their packing; a
+    // zoom rescales the value px and re-packs them
+    test(`pans move swarms rigidly without re-packing, a zoom re-packs`, async () => {
+      const plot = await mount_sized_box_plot(
+        {
+          series: [
+            { y: dist(80, 0, 1), label: `A` },
+            { y: dist(80, 1, 2), label: `B` },
+          ],
+          points: `swarm`,
+          y_axis: { range: [-10, 10] }, // room for every sample to stay in view
+        },
+        { width: 500, height: 400 },
+      )
+      const offsets_spy = vi.spyOn(box_math, `box_point_offsets`)
+      const svg = plot_svg(plot)
+      const clip = svg_rect(query(plot, `clipPath rect`))
+      const [mid_x, mid_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
+      const drag = async (init: MouseEventInit, [dx, dy]: Vec2) => {
+        const at = { clientX: mid_x, clientY: mid_y }
+        svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...init, ...at }))
+        const end = { clientX: mid_x + dx, clientY: mid_y + dy }
+        await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...end }))
+        await fire(window, new MouseEvent(`mouseup`, end))
+      }
+      for (const delta of [
+        [-12, 0],
+        [0, 9],
+      ] as Vec2[]) {
+        const before = sample_points(plot)
+        await drag({ shiftKey: true }, delta)
+        const after = sample_points(plot)
+        expect(after).toHaveLength(before.length)
+        // every sample moves by the same px shift, along the dragged axis only
+        const shift = [after[0].x - before[0].x, after[0].y - before[0].y]
+        expect(Math.hypot(...shift)).toBeGreaterThan(1)
+        for (const [idx, pt] of after.entries()) {
+          expect(pt.x - before[idx].x).toBeCloseTo(shift[0], 6)
+          expect(pt.y - before[idx].y).toBeCloseTo(shift[1], 6)
+        }
+      }
+      expect(offsets_spy).not.toHaveBeenCalled()
+      await drag({}, [clip.width / 4, clip.height / 4])
+      expect(offsets_spy).toHaveBeenCalledTimes(2)
+    })
 
     // The outlier toggle disables only once no box draws outliers apart from its samples
     test.each([

@@ -1,7 +1,17 @@
 import { TAP_MS, TouchTaps } from '#lib/scene/interactivity.js'
-import { front_hit } from '#lib/scene/picking.js'
-import { Object3D, Plane, Vector3 } from 'three/webgpu'
+import { front_hit, SphereInstances } from '#lib/scene/picking.js'
+import {
+  InstancedMesh,
+  Matrix4,
+  MeshBasicMaterial,
+  Object3D,
+  Plane,
+  Raycaster,
+  SphereGeometry,
+  Vector3,
+} from 'three/webgpu'
 import { expect, test, vi } from 'vitest'
+import { make_rng } from '../numeric-helpers'
 
 // Raycaster hits come sorted nearest first; each hit is labelled by its distance along z
 const hit = (z_coord: number, pick_rank?: number) => {
@@ -25,6 +35,56 @@ test.each([
 ])(`front_hit: %s`, (_desc, hits, clip_plane, expected) => {
   expect(front_hit(hits, clip_plane).map(({ z_coord }) => z_coord)).toEqual(expected)
 })
+
+// nearest_only reports exactly the hit native instancing sorts first (same distance, point,
+// face and instanceId), in dense clouds with duplicate markers (ties go to the lower instance)
+// and under a non-uniformly scaled, rotated mesh transform
+test.each([
+  [1, 3000, 0.4],
+  [2, 500, 0.1],
+])(
+  `SphereInstances nearest_only matches native front hits (seed %i, %i points)`,
+  (seed, n_points, max_radius) => {
+    const rng = make_rng(seed)
+    const geometry = new SphereGeometry(1, 12, 12)
+    const material = new MeshBasicMaterial()
+    const fast = Object.assign(new SphereInstances(geometry, material, n_points), {
+      nearest_only: true,
+    })
+    const native = new InstancedMesh(geometry, material, n_points)
+    const matrix = new Matrix4()
+    for (let idx = 0; idx < n_points; idx++) {
+      // every 10th marker duplicates the one before it
+      if (idx % 10 !== 9) {
+        const radius = 0.05 + max_radius * rng()
+        matrix
+          .makeScale(radius, radius, radius)
+          .setPosition(rng() * 4 - 2, rng() * 4 - 2, rng() * 4 - 2)
+      }
+      for (const mesh of [fast, native]) mesh.setMatrixAt(idx, matrix)
+    }
+    for (const mesh of [fast, native]) {
+      mesh.rotation.set(0.3, -0.5, 0.1)
+      mesh.scale.set(1, 2.5, 0.7)
+      mesh.position.set(1, -2, 0.5)
+      mesh.updateMatrixWorld(true)
+    }
+    let n_hit_rays = 0
+    for (let ray_idx = 0; ray_idx < 80; ray_idx++) {
+      const origin = new Vector3(rng() * 2 - 1, rng() * 2 - 1, 20)
+      const target = new Vector3(rng() * 4 - 2, rng() * 4 - 2, rng() * 4 - 2).applyMatrix4(
+        native.matrixWorld,
+      )
+      const raycaster = new Raycaster(origin, target.sub(origin).normalize())
+      const [actual, [expected]] = [fast, native].map((mesh) =>
+        raycaster.intersectObject(mesh),
+      )
+      expect(actual).toEqual(expected ? [{ ...expected, object: fast }] : [])
+      if (expected) n_hit_rays++
+    }
+    expect(n_hit_rays).toBeGreaterThan(40) // dense enough that most rays cross many markers
+  },
+)
 
 // Gestures (`name:object`) as threlte dispatches them to two touch_hover-wrapped objects (0, 1),
 // or `miss` on empty space. A click (at most 8 px from its press, else threlte sends none) first

@@ -368,6 +368,20 @@ describe(`MatterViz Extension`, () => {
     expect(await read_file(`/test/${filename}`)).toEqual({ filename, is_base64, content })
   })
 
+  // Windows PowerShell redirection writes UTF-16 with a byte-order mark
+  test.each([
+    [`utf-8`, Buffer.from(`H2O\n`)],
+    [`utf-16le`, Buffer.from(`\uFEFFH2O\n`, `utf16le`)],
+    [`utf-16be`, Buffer.from(`\uFEFFH2O\n`, `utf16le`).swap16()],
+  ])(`file reading: decodes %s text by its byte-order mark`, async (_encoding, bytes) => {
+    mock_vscode.workspace.fs.readFile.mockResolvedValue(new Uint8Array(bytes))
+    expect(await read_file(`/test/water.xyz`)).toEqual({
+      filename: `water.xyz`,
+      content: `H2O\n`,
+      is_base64: false,
+    })
+  })
+
   test.each([`large-trajectory.traj`, `large.extxyz`])(
     `file reading: large trajectory %s returns an indexed marker`,
     async (filename) => {
@@ -385,7 +399,7 @@ describe(`MatterViz Extension`, () => {
 
   test.each([
     [`large-structure.cif`, LARGE_FILE_THRESHOLD + 1, `supports trajectories only`],
-    [`huge.extxyz`, 1024 ** 3 + 1, `Maximum supported size: 1.00 GiB`],
+    [`huge.extxyz`, 1024 ** 3 + 1, `Maximum supported size: 1 GiB`],
     [`large-trajectory.traj`, 1024 ** 3 + 1, `Maximum supported size`],
   ])(`file reading: rejects unsupported large file %s`, async (filename, file_size, error) => {
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size: file_size, type: 1 })
@@ -890,9 +904,9 @@ describe(`MatterViz Extension`, () => {
 
     test(`should format file sizes correctly`, async () => {
       const size_cases = [
-        { size: 1024, expected: `1.00 KiB` },
-        { size: 1024 * 1024, expected: `1.00 MiB` },
-        { size: 1024 * 1024 * 1024, expected: `1.00 GiB` },
+        { size: 1024, expected: `1 KiB` },
+        { size: 1024 * 1024, expected: `1 MiB` },
+        { size: 1024 * 1024 * 1024, expected: `1 GiB` },
       ]
       const file_sizes = new Map(
         size_cases.map(({ size }) => [`/test/file_${size}.cif`, size]),

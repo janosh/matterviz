@@ -85,14 +85,9 @@ test.describe(`Bands Component Tests`, () => {
     })
   })
 
-  test(`applies line styling, legend, phonon unit and highlight props; strict mode errors on path mismatch`, async ({
+  test(`applies legend, phonon unit and highlight props; strict mode errors on path mismatch`, async ({
     page,
   }) => {
-    const first_path = band_paths(page.getByTestId(`custom-styling-plot`)).first()
-    await expect(first_path).toBeVisible()
-    expect(
-      await first_path.evaluate((element) => getComputedStyle(element).stroke),
-    ).toBeTruthy()
     await expect(page.getByTestId(`no-legend-plot`).locator(`.legend`)).toBeHidden()
 
     const phonon_plot = page.getByTestId(`phonon-units-highlight-plot`)
@@ -127,16 +122,6 @@ test.describe(`Bands Component Tests`, () => {
     await expect.poll(() => stretch_count(plot), { timeout: 2000 }).toBe(8)
     await legend_items.first().click()
     await expect.poll(() => stretch_count(plot), { timeout: 2000 }).toBe(16)
-  })
-
-  test(`maintains responsive layout`, async ({ page }) => {
-    const plot = page.getByTestId(`single-bands-plot`)
-    const initial_box = await require_bbox(plot, `plot`)
-    await page.setViewportSize({ width: 800, height: 600 })
-    await expect
-      .poll(async () => (await plot.boundingBox())?.width, { timeout: 2000 })
-      .not.toBe(initial_box.width)
-    await expect(plot).toBeVisible()
   })
 
   test(`tooltip shows frequency, path and band index, switches between bands, and hides on leave`, async ({

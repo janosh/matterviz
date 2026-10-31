@@ -139,6 +139,112 @@ describe(`marching_cubes`, () => {
     )
   })
 
+  // Small spheres (distance below the isovalue) on block corners and across the periodic
+  // wrap, one behind another along x (stale edge caches would merge them), and a NaN at point
+  // (4, 4, 4), which counts as not below: a bubble inside a sphere or a filled grid. Every
+  // crossed cube edge gets one vertex (periodic cubes keep the far faces apart, so a wrapped
+  // sphere stays open), each of the n_closed closed surfaces has F = 2V − 4, and blocks
+  // without a crossing are skipped (visiting every cube reads 8 values each).
+  test.each([
+    {
+      dims: [33, 18, 19],
+      periodic: false,
+      centers: [
+        [4, 4, 4],
+        [28, 4, 4],
+        [16, 12, 12.5],
+      ],
+      isovalue: 1.6,
+      n_closed: 4,
+    },
+    {
+      dims: [25, 22, 21],
+      periodic: true,
+      centers: [
+        [0.3, 0, 20.6],
+        [12, 12, 8],
+      ],
+      isovalue: 1.6,
+      n_closed: null,
+    },
+    { dims: [17, 9, 10], periodic: false, centers: [[4, 4, 4]], isovalue: 100, n_closed: 1 },
+  ] as {
+    dims: Vec3
+    periodic: boolean
+    centers: Vec3[]
+    isovalue: number
+    n_closed: number | null
+  }[])(
+    `sparse level set in $dims (periodic $periodic, isovalue $isovalue): one vertex per crossed edge`,
+    ({ dims, periodic, centers, isovalue, n_closed }) => {
+      const [size_x, size_y, size_z] = dims
+      const offset = (dist: number, size: number) =>
+        periodic ? Math.min(Math.abs(dist), size - Math.abs(dist)) : dist
+      // value at unwrapped grid point (periodic indices may reach the size)
+      const value_at = (point: number[]) => {
+        const [idx_x, idx_y, idx_z] = point.map((coord, axis) => coord % dims[axis])
+        if (idx_x === 4 && idx_y === 4 && idx_z === 4) return Number.NaN
+        return Math.min(
+          ...centers.map((center) =>
+            Math.hypot(
+              ...center.map((coord, axis) =>
+                offset([idx_x, idx_y, idx_z][axis] - coord, dims[axis]),
+              ),
+            ),
+          ),
+        )
+      }
+      const values = Float64Array.from({ length: size_x * size_y * size_z }, (_, flat_idx) =>
+        value_at([
+          Math.floor(flat_idx / (size_y * size_z)),
+          Math.floor(flat_idx / size_z) % size_y,
+          flat_idx % size_z,
+        ]),
+      )
+      let n_reads = 0
+      const counted = new Proxy(values, {
+        get: (target, key) => {
+          if (typeof key === `string` && /^\d+$/.test(key)) n_reads++
+          return Reflect.get(target, key)
+        },
+      })
+      const { positions, indices } = marching_cubes_buffers(
+        { values: counted, dims, order: `z_fastest` },
+        isovalue,
+        IDENTITY,
+        { periodic, normals: false },
+      )
+      const maxes = dims.map((size) => (periodic ? size : size - 1))
+      let crossed_edges = 0
+      for (let idx_x = 0; idx_x <= maxes[0]; idx_x++) {
+        for (let idx_y = 0; idx_y <= maxes[1]; idx_y++) {
+          for (let idx_z = 0; idx_z <= maxes[2]; idx_z++) {
+            const point = [idx_x, idx_y, idx_z]
+            for (let axis = 0; axis < 3; axis++) {
+              const next = point.with(axis, point[axis] + 1)
+              if (next[axis] > maxes[axis]) continue
+              if (value_at(point) < isovalue !== value_at(next) < isovalue) crossed_edges++
+            }
+          }
+        }
+      }
+      const n_vertices = positions.length / 3
+      expect(n_vertices).toBe(crossed_edges)
+      expect(n_reads).toBeLessThan(4 * values.length)
+      if (n_closed === null) return
+      const edge_uses = new Map<string, number>()
+      for (let tri = 0; tri < indices.length; tri += 3) {
+        for (let corner = 0; corner < 3; corner++) {
+          const [from, to] = [indices[tri + corner], indices[tri + ((corner + 1) % 3)]]
+          const key = `${Math.min(from, to)},${Math.max(from, to)}`
+          edge_uses.set(key, (edge_uses.get(key) ?? 0) + 1)
+        }
+      }
+      expect(new Set(edge_uses.values())).toEqual(new Set([2]))
+      expect(indices.length / 3).toBe(2 * n_vertices - 4 * n_closed)
+    },
+  )
+
   test(`flatten_grid returns canonical z-fastest marching-cubes input`, () => {
     const nested = indexed_grid(3, 2, 4)
     const flattened = flatten_grid(nested)

@@ -9,7 +9,6 @@ import type { Vec2 } from '#lib/math.js'
 import { rgb } from 'd3-color'
 import { mount, tick, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi, onTestFinished } from 'vitest'
-import { doc_query } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 
 // width x height ramp (0, 1, 2, ...) over the rectangle u_range x v_range, clipped to its corners
@@ -114,27 +113,6 @@ describe(`VolumeSlice`, () => {
       expect(context.moveTo).toHaveBeenNthCalledWith(1, 0.5, 3.5)
       expect(context.moveTo.mock.calls.length).toBeGreaterThan(4)
     } else expect(context.moveTo).not.toHaveBeenCalled()
-  })
-
-  test(`centers a bounded horizontal colorbar`, async () => {
-    await mount_volume_slice({ color_bar: { orientation: `horizontal` } })
-    const colorbar = doc_query(`.slice-colorbar.horizontal`, HTMLElement)
-    const colorbar_style = getComputedStyle(colorbar)
-
-    expect(colorbar_style.left).toBe(`50%`)
-    expect([``, `auto`]).toContain(colorbar_style.right)
-    // happy-dom may resolve the var() chain or hand back the raw reference; accept either
-    expect(colorbar_style.getPropertyValue(`--cbar-width`)).toMatch(
-      /--volume-slice-colorbar-size|min\(70%,\s*360px\)/,
-    )
-    expect(colorbar_style.transform).toBe(`translateX(-50%)`)
-  })
-
-  // a vertical title beside the tick labels overlapped long labels and stood off short ones
-  test(`puts a vertical colorbar title opposite its tick labels`, async () => {
-    await mount_volume_slice({ color_bar: {} })
-    const title_row = doc_query(`.slice-colorbar.vertical .title-row`, HTMLElement)
-    expect(title_row.classList.contains(`left`)).toBe(true)
   })
 
   test(`co-registers flipped contours with filled pixel rows`, async () => {

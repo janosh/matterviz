@@ -320,11 +320,21 @@ export class TextLines {
     // A chunk's lines start at 0 and after every `\n` before `to`; a chunk before the last
     // ends in the `\n` closing its final line, which starts none
     const to_of = (idx: number): number => (idx === last ? target : chunks[idx].length - 1)
-    // One pass into a buffer sized from the first 64k chars' line density plus 1/8 slack, grown
-    // 1.5x should the rest run denser: a count pass first cost as much again as the fill
-    const sample = chunks[0].slice(0, 2 ** 16)
-    const density = sample.split(`\n`).length / Math.max(sample.length, 1)
+    // One pass into a buffer sized from the line density of 16 windows spread over the text
+    // plus 1/8 slack, grown 1.5x should it run denser and trimmed should it run sparser: a
+    // count pass first cost as much again as the fill. Sampling only the head sized a file
+    // whose first frame has short lines for several times its line count, kept for good.
     const total_chars = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    let [sampled_chars, sampled_lines] = [0, 0]
+    for (let window = 0, chunk_idx = 0, chunk_start = 0; window < 16; window++) {
+      const offset = Math.floor((window * total_chars) / 16)
+      while (offset >= chunk_start + chunks[chunk_idx].length && chunk_idx < chunks.length - 1)
+        chunk_start += chunks[chunk_idx++].length
+      const sample = chunks[chunk_idx].slice(offset - chunk_start, offset - chunk_start + 4096)
+      sampled_chars += sample.length
+      sampled_lines += sample.split(`\n`).length - 1
+    }
+    const density = (sampled_lines + 1) / Math.max(sampled_chars, 1)
     let starts = new Uint32Array(Math.ceil(total_chars * density * 1.125) + 16)
     const chunk_lines = new Uint32Array(chunks.length + 1)
     let count = 0
@@ -348,7 +358,7 @@ export class TextLines {
     chunk_lines[chunks.length] = count
     this.count = count
     this.chunk_lines = chunk_lines
-    this.starts = starts
+    this.starts = starts.length > count + (count >> 3) + 16 ? starts.slice(0, count) : starts
   }
   static of(text: string | TextLines): TextLines {
     return typeof text === `string` ? new TextLines(text) : text
@@ -420,11 +430,13 @@ const atom_line_scanner = new LineScanner()
 
 // Whether the scanned line reads `symbol x y z`: a symbol (<= 3 chars, non-numeric) followed by
 // three numeric coordinates. Coordinates go through the same strict parser as the frame reader
-// so a Fortran `1.0D-3` token counts.
-const is_scanned_xyz_atom_line = (scanner: LineScanner): boolean =>
+// so a Fortran `1.0D-3` token counts. With `atom_types`, a positive integer stands in for the
+// symbol: LAMMPS `dump xyz` writes atom types there unless dump_modify element names them.
+const is_scanned_xyz_atom_line = (scanner: LineScanner, atom_types = false): boolean =>
   scanner.count >= 4 &&
   scanner.token_length(0) <= 3 &&
-  Number.isNaN(scanner.num(0)) &&
+  (Number.isNaN(scanner.num(0)) ||
+    (atom_types && Number.isInteger(scanner.num(0)) && scanner.num(0) > 0)) &&
   !Number.isNaN(scanner.num(1)) &&
   !Number.isNaN(scanner.num(2)) &&
   !Number.isNaN(scanner.num(3))
@@ -515,7 +527,8 @@ export function parse_extxyz_columns(comment: string): {
 // The test reads a line already tokenized into the scanner.
 function make_xyz_atom_line_test(comment: string): (scanner: LineScanner) => boolean {
   const { pos_col, min_cols, layout } = parse_extxyz_columns(comment)
-  if (!layout) return is_scanned_xyz_atom_line
+  // the frame walk reads LAMMPS `dump xyz` types (see parse_xyz_atom_lines); sniffing does not
+  if (!layout) return (scanner) => is_scanned_xyz_atom_line(scanner, true)
   // Only a declared STRING species column can be checked for a symbol shape; `Z:I:1` names
   // the atom with a number, so there is nothing non-numeric to assert
   const species_col = layout.species?.type === `s` ? layout.species.offset : -1

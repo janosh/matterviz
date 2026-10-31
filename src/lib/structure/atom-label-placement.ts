@@ -2,6 +2,7 @@ import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { Camera } from 'three/webgpu'
 import { Matrix4 } from 'three/webgpu'
+import { BondFrame, bond_site_1, bond_site_2, type BondData } from './bond-rendering'
 
 const LABEL_OFFSET_EPS = 1e-9
 
@@ -17,77 +18,100 @@ const LABEL_OFFSET_DIRECTIONS: Vec3[] = [
   [0, 0, -1],
 ]
 
-const label_direction_score = (
-  direction: Vec3,
-  bond_directions: Vec3[],
-  preferred_direction: Vec3,
-): number => {
-  let max_bond_alignment = 0
-  for (const bond_direction of bond_directions) {
-    max_bond_alignment = Math.max(
-      max_bond_alignment,
-      Math.max(0, math.dot(direction, bond_direction)),
-    )
-  }
-  const preferred_bonus = Math.max(0, math.dot(direction, preferred_direction)) * 0.05
-  const screen_plane_bonus = Math.abs(direction[2]) < LABEL_OFFSET_EPS ? 0.02 : 0
-  return -max_bond_alignment + preferred_bonus + screen_plane_bonus
+// Unit candidate directions for a label offset as flat xyz triples: the preferred direction
+// (base_offset's), a slot for each site's repulsion direction, then LABEL_OFFSET_DIRECTIONS
+const offset_candidates = (base_offset: Vec3): number[] => {
+  const preferred = math.normalize_vec(base_offset, [0, 1, 0])
+  const others = LABEL_OFFSET_DIRECTIONS.map((direction) => math.normalize_vec(direction))
+  return [preferred, preferred, ...others].flat()
 }
 
-export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: Vec3): Vec3 => {
+// Label offset for one site from its unit bond directions (flat xyz triples): among the
+// candidates, the one least aligned with any bond (small bonuses for the preferred direction
+// and the screen plane). Scalar math on flat arrays: this runs for every bonded site of a
+// structure whose labels are shown.
+function choose_offset(
+  directions: readonly number[],
+  base_offset: Vec3,
+  candidates = offset_candidates(base_offset),
+): Vec3 {
   const offset_length = Math.hypot(...base_offset)
-  if (offset_length < LABEL_OFFSET_EPS || bond_directions.length === 0) {
-    return base_offset
+  if (offset_length < LABEL_OFFSET_EPS || directions.length === 0) return base_offset
+  const [pref_x, pref_y, pref_z] = candidates
+  // repulsion: minus the sum of the bond directions (the preferred one where they cancel)
+  let [sum_x, sum_y, sum_z] = [0, 0, 0]
+  for (let idx = 0; idx < directions.length; idx += 3) {
+    sum_x -= directions[idx]
+    sum_y -= directions[idx + 1]
+    sum_z -= directions[idx + 2]
   }
-
-  const preferred_direction = math.normalize_vec(base_offset, [0, 1, 0])
-  const repulsion_direction = math.normalize_vec(
-    bond_directions.reduce<Vec3>(
-      (offset_sum, bond_direction) => math.subtract(offset_sum, bond_direction),
-      [0, 0, 0],
-    ),
-    preferred_direction,
-  )
-  let best_direction = preferred_direction
-  let best_score = -Infinity
-
-  for (const candidate_direction of [
-    preferred_direction,
-    repulsion_direction,
-    ...LABEL_OFFSET_DIRECTIONS,
-  ]) {
-    const direction = math.normalize_vec(candidate_direction, preferred_direction)
-    const score = label_direction_score(direction, bond_directions, preferred_direction)
+  // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- hypot is slower
+  const sum_len = Math.sqrt(sum_x * sum_x + sum_y * sum_y + sum_z * sum_z)
+  const short = sum_len < math.EPS
+  candidates[3] = short ? pref_x : sum_x / sum_len
+  candidates[4] = short ? pref_y : sum_y / sum_len
+  candidates[5] = short ? pref_z : sum_z / sum_len
+  let [best_x, best_y, best_z, best_score] = [pref_x, pref_y, pref_z, -Infinity]
+  for (let cand = 0; cand < candidates.length; cand += 3) {
+    const [dir_x, dir_y, dir_z] = [
+      candidates[cand],
+      candidates[cand + 1],
+      candidates[cand + 2],
+    ]
+    let max_bond_alignment = 0
+    for (let idx = 0; idx < directions.length; idx += 3) {
+      const alignment =
+        dir_x * directions[idx] + dir_y * directions[idx + 1] + dir_z * directions[idx + 2]
+      max_bond_alignment = Math.max(max_bond_alignment, alignment)
+    }
+    const preferred_bonus = Math.max(0, dir_x * pref_x + dir_y * pref_y + dir_z * pref_z)
+    const screen_plane_bonus = Math.abs(dir_z) < LABEL_OFFSET_EPS ? 0.02 : 0
+    const score = -max_bond_alignment + preferred_bonus * 0.05 + screen_plane_bonus
     if (score <= best_score + LABEL_OFFSET_EPS) continue
-    best_score = score
-    best_direction = direction
+    ;[best_x, best_y, best_z, best_score] = [dir_x, dir_y, dir_z, score]
   }
-  return math.scale(best_direction, offset_length)
+  return [best_x * offset_length, best_y * offset_length, best_z * offset_length]
 }
+
+export const choose_site_label_offset = (bond_directions: Vec3[], base_offset: Vec3): Vec3 =>
+  choose_offset(bond_directions.flat(), base_offset)
 
 // Per-site label offsets turned away from each site's bonds (both ends of every bond). Sites
 // without bonds are absent and keep base_offset. Plain Map: built and consumed inside
 // deriveds, so per-entry reactivity would only add signal overhead for thousands of sites.
-export function site_label_offsets(
-  bonds: Iterable<{ site_idx_1: number; site_idx_2: number; pos_1: Vec3; pos_2: Vec3 }>,
-  base_offset: Vec3,
-): Map<number, Vec3> {
-  const bond_directions_by_site = new Map<number, Vec3[]>()
-  const add_bond_direction = (site_idx: number, pos_1: Vec3, pos_2: Vec3) => {
-    const direction = math.normalize_vec(math.subtract(pos_2, pos_1), [0, 0, 0])
-    if (Math.hypot(...direction) < LABEL_OFFSET_EPS) return
-    const directions = bond_directions_by_site.get(site_idx)
-    if (directions) directions.push(direction)
-    else bond_directions_by_site.set(site_idx, [direction])
+// Reads packed bond columns directly, without expanding a BondFrame into records.
+export function site_label_offsets(bonds: BondData, base_offset: Vec3): Map<number, Vec3> {
+  // unit directions away from each bonded site, flat xyz triples in bond order
+  const directions = new Map<number, number[]>()
+  const add = (site_idx: number, x_val: number, y_val: number, z_val: number): void => {
+    const site_dirs = directions.get(site_idx)
+    if (site_dirs) site_dirs.push(x_val, y_val, z_val)
+    else directions.set(site_idx, [x_val, y_val, z_val])
   }
-  for (const { site_idx_1, site_idx_2, pos_1, pos_2 } of bonds) {
-    add_bond_direction(site_idx_1, pos_1, pos_2)
-    add_bond_direction(site_idx_2, pos_2, pos_1)
+  const [start, end]: [Vec3, Vec3] = [
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  for (let idx = 0; idx < bonds.length; idx++) {
+    let [pos_1, pos_2] = [start, end]
+    if (bonds instanceof BondFrame) bonds.write_endpoints(idx, start, end)
+    else [pos_1, pos_2] = [bonds[idx].pos_1, bonds[idx].pos_2]
+    const [delta_x, delta_y, delta_z] = [
+      pos_2[0] - pos_1[0],
+      pos_2[1] - pos_1[1],
+      pos_2[2] - pos_1[2],
+    ]
+    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- hypot is slower
+    const len = Math.sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z)
+    if (len < math.EPS) continue // a zero-length bond points nowhere
+    const [dir_x, dir_y, dir_z] = [delta_x / len, delta_y / len, delta_z / len]
+    add(bond_site_1(bonds, idx), dir_x, dir_y, dir_z)
+    add(bond_site_2(bonds, idx), -dir_x, -dir_y, -dir_z)
   }
+  const candidates = offset_candidates(base_offset)
   const offsets = new Map<number, Vec3>()
-  for (const [site_idx, bond_directions] of bond_directions_by_site) {
-    offsets.set(site_idx, choose_site_label_offset(bond_directions, base_offset))
-  }
+  for (const [site_idx, site_dirs] of directions)
+    offsets.set(site_idx, choose_offset(site_dirs, base_offset, candidates))
   return offsets
 }
 

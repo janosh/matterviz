@@ -7,6 +7,7 @@ import {
 } from '#lib/constants.js'
 import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
 import {
+  as_text,
   classify_payload,
   content_byte_size,
   MAX_STRING_CHARS,
@@ -16,7 +17,7 @@ import { parse_volumetric_file } from '#lib/isosurface/parse.js'
 import { parse_vaspwave_charge } from '#lib/isosurface/parse-vaspwave.js'
 import type { StructureToolPrediction } from '#lib/structure/prediction.js'
 import { prediction_from_json } from '#lib/structure/prediction.js'
-import { parse_structure_file } from '#lib/structure/parse.js'
+import { parse_structure_file, structure_from_json_value } from '#lib/structure/parse.js'
 import {
   is_indexable_trajectory_filename,
   KNOWN_FORMAT_EXT_REGEX,
@@ -141,15 +142,13 @@ const volumetric_result = (content: string, filename: string): ParseResult | nul
   return data && { type: `isosurface`, data, filename, warnings }
 }
 
-// Parse a structure file, collecting its warnings onto the result (not the console: the
-// viewer shows them). Its id is the filename without extension.
+// Parse a structure, collecting its warnings onto the result (not the console: the viewer
+// shows them). Its id is the filename without extension.
 const structure_result = (
-  content: string,
+  parse: () => AnyStructure,
   filename: string,
 ): Extract<ParseResult, { type: `structure` }> => {
-  const { value, warnings } = collect_parse_warnings(() =>
-    parse_structure_file(content, filename),
-  )
+  const { value, warnings } = collect_parse_warnings(parse)
   const id = filename.replace(/\.[^/.]+$/, ``)
   return { type: `structure`, data: { ...value, id }, filename, warnings }
 }
@@ -193,9 +192,10 @@ export const parse_file_content = async (
     ) {
       return trajectory_result(source, filename, load_options, on_progress)
     }
-    source = source instanceof Blob ? await source.text() : new TextDecoder().decode(source)
+    // UTF-16 by its byte-order mark, like every other text payload (see text_or_blob)
+    source = as_text(source instanceof Blob ? await source.arrayBuffer() : source)
   }
-  // A host that decodes the file itself (VS Code's Buffer.toString) keeps a UTF-8 BOM, which
+  // A host that decodes the file itself may keep a UTF-8 BOM (Node's Buffer.toString does), which
   // JSON.parse rejects; the text parsers already skip it as whitespace
   const content = source.replace(/^\uFEFF/, ``)
 
@@ -241,9 +241,11 @@ export const parse_file_content = async (
     const detected = detect_view_type(parsed_json)
     if (detected === `structure`) {
       // Structure JSON needs normalization (OPTIMADE, fractional coords, etc.); a shape that
-      // looks like a structure but fails the detailed parse still gets the JSON browser
+      // looks like a structure but fails the detailed parse still gets the JSON browser.
+      // Built from the parsed value, without parsing the text again (JSON.parse is ~40% of
+      // opening a 20 MB structure JSON).
       try {
-        return structure_result(content, filename)
+        return structure_result(() => structure_from_json_value(parsed_json), filename)
       } catch {
         return { type: `json_browser`, data: parsed_json, filename }
       }
@@ -292,7 +294,7 @@ export const parse_file_content = async (
 
   // CIF, POSCAR, XYZ, ...: parse_structure_file throws descriptive reasons on failure but can
   // still return zero atoms (a CIF with cell params but no _atom_site records)
-  const result = structure_result(content, filename)
+  const result = structure_result(() => parse_structure_file(content, filename), filename)
   if (!result.data.sites?.length) throw new Error(`No atoms found in ${filename}`)
   return result
 }

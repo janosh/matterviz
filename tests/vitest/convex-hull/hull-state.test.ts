@@ -1,3 +1,4 @@
+import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
 import type { HullModel } from '#lib/convex-hull/model.js'
 import { compute_energy_mode_info, compute_hull_model } from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
@@ -129,6 +130,28 @@ describe(`compute_hull_model`, () => {
     })
   })
 
+  // Temperature filtering drops the 0 K E_form of entries with free energies; with Na only
+  // E_form-only, precomputed mode left LiO without one and it vanished from the hull
+  test(`precomputed mode computes a dropped E_form where references allow`, () => {
+    const entries: PhaseData[] = [
+      { composition: { Na: 1 }, e_form_per_atom: 0 } as PhaseData,
+      make_phase({ Li: 1 }, -2),
+      make_phase({ O: 1 }, -5),
+      { composition: { Na: 1, O: 1 }, e_form_per_atom: -1, entry_id: `NaO` } as PhaseData,
+      make_phase({ Li: 1, O: 1 }, -6, {
+        e_form_per_atom: -2.5,
+        entry_id: `LiO`,
+        temperatures: [300, 1000],
+        free_energies: [-6, -6.5],
+      }),
+    ]
+    const model = compute_hull_model(filter_entries_at_temperature(entries, 1000))
+    const e_form_of = (id: string) =>
+      model.entries.find(({ entry_id }) => entry_id === id)?.e_form_per_atom
+    // G(1000 K) - (G_Li + G_O) / 2 = -6.5 + 3.5
+    expect([e_form_of(`LiO`), e_form_of(`NaO`)]).toEqual([-3, -1])
+  })
+
   // E_form-only data (no energy, or a 0 eV placeholder) keeps its E_form in either mode:
   // recomputing it from 0 eV energies put every entry at E_form = 0 on a flat stable hull
   test.each([
@@ -199,6 +222,17 @@ describe(`compute_hull_model`, () => {
     expect(compute_hull_model(entries, { components: [`BaO`, `TiO2`] }).entries).toHaveLength(
       3,
     )
+    // flat lower hull (end members, a phase on the tie line) takes the plane-through-corners path
+    for (const flat_entries of [
+      entries.slice(0, 2),
+      [...entries.slice(0, 2), make_phase({ BaO: 1, TiO2: 1 }, 0)],
+    ]) {
+      const flat = compute_hull_model(flat_entries, { components: [`BaO`, `TiO2`] })
+      expect(flat.facets).toEqual([])
+      expect(flat.entries.map((entry) => entry.e_above_hull)).toEqual(
+        flat_entries.map(() => 0),
+      )
+    }
     expect(() => compute_hull_model([])).toThrow(`found 0`)
   })
 })

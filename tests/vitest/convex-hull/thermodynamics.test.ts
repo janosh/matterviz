@@ -15,6 +15,7 @@ import {
 import { compute_hull_model } from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
+import * as math from '#lib/math.js'
 import { matrix_inverse_3x3, mat3x3_vec3_multiply, solve_linear_system } from '#lib/math.js'
 import { describe, expect, test, vi } from 'vitest'
 import { make_rng } from '../numeric-helpers'
@@ -359,6 +360,14 @@ describe(`N-dimensional quickhull`, () => {
     expect(facets).toHaveLength(2)
     const dist = compute_e_above_hull_nd(points, facets, points)
     expect(dist.map((val) => Math.round(val * 1e9) / 1e9)).toEqual([0, 0, 0, 0, 0.5])
+    // the hull energy is computed once per composition: the 3 x = 0.5 points cost one scan
+    const solver = vi.spyOn(math, `solve_linear_system`)
+    compute_e_above_hull_nd(points.slice(0, 3), facets, points)
+    const n_unique_solves = solver.mock.calls.length
+    solver.mockClear()
+    expect(compute_e_above_hull_nd(points, facets, points)).toEqual(dist)
+    expect(solver).toHaveBeenCalledTimes(n_unique_solves)
+    solver.mockRestore()
   })
 })
 

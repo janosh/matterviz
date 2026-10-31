@@ -8,9 +8,10 @@ import {
   calc_coordination_nums,
   coordination_bar_sites,
 } from '#lib/coordination/calc-coordination.js'
+import * as calc_module from '#lib/coordination/calc-coordination.js'
 import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
 import { tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vitest'
 import { create_drop_event, mount_sized } from '../setup'
 import { BAD_ROW_CIF, make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 
@@ -189,6 +190,8 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
     `allow_file_drop=%s shows %s when empty (host on_file_drop=%s)`,
     async (allow_file_drop, message, intercept) => {
       const on_file_drop = intercept ? vi.fn() : undefined
+      const calc_spy = vi.spyOn(calc_module, `calc_coordination_nums`)
+      onTestFinished(() => calc_spy.mockRestore())
       const root = await mount_plot({ structures: {}, allow_file_drop, on_file_drop })
       expect(root.textContent).toContain(message)
       // the mount target: the plot and its notices replace the empty-state root
@@ -209,6 +212,10 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
         expect(container?.querySelector(`.status-message.warning`)?.textContent).toMatch(
           /1 parse warning: si\.cif: CIF: skipped 1 atom-site row/,
         )
+        // the dropped structure is analysed as plain data: a $state proxy (which structuredClone
+        // rejects) made every site read of the neighbor search go through proxy traps
+        const [[dropped]] = calc_spy.mock.calls
+        expect(() => structuredClone(dropped.sites)).not.toThrow()
         return
       }
       await tick()

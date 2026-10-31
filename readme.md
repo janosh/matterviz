@@ -108,6 +108,17 @@ Host computations register a component through `structure_host_tool` from `matte
 
 Every `VolumetricData` has a nonempty, unique `id`. Isosurface layers require `volume_id` and optionally `color_volume_id`; `active_volume_id` selects the slice field. Keep IDs stable when replacing or reordering fields so selection and surface settings follow the data. Removing a field drops its surfaces and clears color references to it. File loading derives IDs from the source filename and field identity; host predictions use the same `id` contract. A volume’s `origin` is an offset in the structure’s Cartesian frame; cube parsing translates atoms and the grid together into that frame. File imports combine fields only when the nonempty ordered atoms, species, occupancies, coordinates, and lattice match (Cartesian coordinates and lattice vectors use an absolute tolerance below `1e-8 A`; species and occupancies match exactly); otherwise they replace the scene and its fields.
 
+#### Structure images from the command line
+
+From a repository checkout with Playwright Chromium installed, one command renders any number of files to images, one per file, named after its input without extensions:
+
+```sh
+pnpm snapshot structures/*.cif CHGCAR.gz relax.traj --out-dir images
+pnpm snapshot a.json b.vasp --out-dir images --format webp --props '{"cell_type":"conventional","background_color":"#ffffff"}' --dpi 300
+```
+
+Inputs are anything the viewer opens, compressed or not: structure formats (CIF, POSCAR, (ext)xyz, pymatgen/ASE/OPTIMADE JSON, PDB, LAMMPS, ...), volumetric files (CHGCAR, cube) with their default isosurfaces, and trajectories (frame `--frame`, default 0; `--hdf5-group` for HDF5 files with several). `--format` is `png` (default), `webp` or `jpeg` (`--quality`, default 0.9). `--props` takes `Structure` props as inline JSON or a JSON file path, e.g. `cell_type`, `supercell_scaling`, `isosurface_settings`, `color_scheme` or `scene_props` (`show_bonds`, `atom_radius`, `camera_position`, ...). Only the 3D canvas is captured: DOM overlays (site labels, legend, panes) and other display modes are not. `--width`/`--height` set the viewer size in CSS pixels and `--dpi` the resolution (72 = one pixel per CSS pixel, default 144; only PNG records it). Images are transparent unless `background_color` is set (JPEG falls back to white). Existing images are kept unless `--overwrite` is passed. Like `pnpm movie`, it starts a private viewer (`--url` uses a running server) and prints one JSON line per file with the drawn cell's site count. Paths resolve against the caller's directory, also via `node /path/to/matterviz/src/scripts/snapshot.mjs`. Its `/structure/render` page exposes `window.matterviz_snapshot.render(source, { png_dpi, format, quality, frame, hdf5_group_path }, structure_props)` for other automation, where `source` is a `File`, URL or `{ data, filename }` payload. Each call mounts a fresh `Structure` and exports once `Structure` acknowledges the scene's `render_token`, which waits for isosurfaces meshed in a worker.
+
 ### Composition
 
 ```svelte

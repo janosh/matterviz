@@ -114,15 +114,25 @@
   // The one options object both the summary table below and the plot's own annotation
   // measure the path with, so the two cannot report different barriers. Profiles are
   // computed once here and handed to the plot. A path that cannot be profiled (identical
-  // consecutive images give no arc length, mismatched site counts no displacement) is
-  // reported and left out instead of throwing through the render.
+  // consecutive images give no arc length, mismatched site counts no displacement) or plotted
+  // (a third energy unit, with y and y2 taken) is reported and left out instead of throwing
+  // through the render.
   const profile_options = $derived({ ...coord_options, mode: coord_mode })
   const { profiled, failures: profile_failures } = $derived.by(() => {
     const entries: { key: string; path: ReactionPath; profile: PathProfile }[] = []
     const failures: string[] = []
+    const units = new Set<string>()
     for (const { key, path } of named_paths) {
+      const unit = path_energy_unit(path)
+      if (units.size === 2 && !units.has(unit)) {
+        failures.push(
+          `${key}: no y axis left for ${unit} (${[...units].join(` and `)} plotted)`,
+        )
+        continue
+      }
       try {
         entries.push({ key, path, profile: path_profile(path, profile_options) })
+        units.add(unit)
       } catch (exc) {
         failures.push(`${key}: ${to_error(exc).message}`)
       }

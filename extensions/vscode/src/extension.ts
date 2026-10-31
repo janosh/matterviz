@@ -6,6 +6,7 @@ import {
   is_matterviz_filename,
 } from '#lib/file-viewer/eligibility.js'
 import { plan_host_file_transfer } from '#lib/file-viewer/host-transfer.js'
+import { text_encoding_of } from '#lib/io/decompress.js'
 import type { HostTransferRejectReason } from '#lib/file-viewer/host-transfer.js'
 import type {
   FileData,
@@ -160,8 +161,12 @@ export const read_file = async (file_path: string): Promise<FileData> => {
   }
 
   try {
-    const bytes = Buffer.from(await vscode.workspace.fs.readFile(uri))
-    const content = bytes.toString(transfer.is_base64 ? `base64` : `utf8`)
+    const bytes = await vscode.workspace.fs.readFile(uri)
+    // Text by its byte-order mark: a UTF-16 file (Windows PowerShell redirection) read as
+    // UTF-8 reached the parsers as NUL-interleaved garbage
+    const content = transfer.is_base64
+      ? Buffer.from(bytes).toString(`base64`)
+      : new TextDecoder(text_encoding_of(bytes)).decode(bytes)
     return { filename, content, is_base64: transfer.is_base64 }
   } catch (error) {
     throw new Error(`Failed to read file ${filename}: ${to_error(error).message}`, {

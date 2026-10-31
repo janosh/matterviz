@@ -140,7 +140,7 @@
     fallback: TERNARY_COLORS.pin,
   })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
-  let hover = $state<TernaryPhaseHover | null>(null)
+  let hover = $state.raw<TernaryPhaseHover | null>(null)
   let hovered_phase = $state<number | null>(null)
   $effect(() => {
     if (entries_prop) dropped_entries = null
@@ -455,7 +455,7 @@
           <div class="prism-fallback">WebGPU is required for the 3D prism view.</div>
         {:else if diagram_raw}
           <div class={[`prism-canvas`, { stale: !fresh }]}>
-            <Canvas createRenderer={create_renderer}>
+            <Canvas createRenderer={create_renderer} shadows={false}>
               <TernaryPrismScene
                 diagram={diagram_raw}
                 {section}

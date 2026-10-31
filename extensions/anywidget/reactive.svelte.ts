@@ -12,6 +12,7 @@
 // reimplement it, so we use AFM's model API (on/get/set/save_changes) directly.
 
 import type { AnyModel } from 'anywidget/types'
+import { SvelteMap } from 'svelte/reactivity'
 
 // Read a trait, mapping null to undefined so unset values are simply omitted from the
 // component props.
@@ -143,8 +144,22 @@ export const writeback_prop = (prop: string, fallback?: unknown): DrivenProp => 
   fallback,
 })
 
+// What Svelte expects of a value a component mutates in place: re-renders need a $state proxy
+const as_state = <T>(value: T): T => {
+  const state = $state(value)
+  return state
+}
+
+// Data props the components read but never mutate in place, so they stay unproxied: a deep
+// proxy over a 30k-site structure put every read behind proxy traps and mounted the
+// Structure widget 10x slower
+export const DATA_PROPS = new Set([
+  ...`structure structures series surfaces entries patterns x_items y_items values`.split(` `),
+  ...`band_structs doses fermi_data band_data bz_data trajectory volumetric_data`.split(` `),
+])
+
 export interface ReactiveWidget {
-  // Reactive ($state) props object to pass straight into Svelte's mount().
+  // Reactive props object to pass straight into Svelte's mount().
   props: Record<string, unknown>
   // Unregister model listeners and stop writeback effects (call on cleanup).
   dispose: () => void
@@ -170,26 +185,50 @@ export function reactive_widget(
     return spec.writeback ? (spec.fallback ?? null) : undefined
   }
 
-  // Seed props. Omit undefined drive-only props so the component uses its own
-  // fallback: passing undefined for a $bindable-with-fallback via a $state props
-  // object trips Svelte's props_invalid_value. Writeback props are always seeded
-  // (their fallback, never undefined) so the two-way binding is established.
-  const initial: Record<string, unknown> = { ...extra }
-  for (const spec of driven) {
-    const value = value_of(spec)
-    if (value !== undefined) initial[spec.prop] = value
+  // One reactive slot per prop. Values other than DATA_PROPS become $state proxies, so
+  // components re-render when they mutate one in place (a controls pane toggling display.x_grid)
+  const values = new SvelteMap<string, unknown>()
+  // An undefined value removes the key, so the component uses its own fallback: passing
+  // undefined for a $bindable-with-fallback trips Svelte's props_invalid_value. DATA_PROPS keep
+  // their key (no widget binds one with a fallback), whose setter lets a component write data
+  // it loads itself (a data_url structure) back as is: without one, Svelte proxies it.
+  const store = (key: string, value: unknown): void => {
+    if (DATA_PROPS.has(key)) values.set(key, value)
+    else if (value === undefined) values.delete(key)
+    else values.set(key, as_state(value))
   }
-  const props = $state(initial)
+  // Keys held at mount get a setter, through which Svelte writes $bindable props back
+  const props = new Proxy<Record<string, unknown>>(
+    {},
+    {
+      get: (_, key) => (typeof key === `string` ? values.get(key) : undefined),
+      set: (_, key, value) => {
+        if (typeof key === `string`) store(key, value)
+        return typeof key === `string`
+      },
+      has: (_, key) => typeof key === `string` && values.has(key),
+      ownKeys: () => [...values.keys()],
+      getOwnPropertyDescriptor: (_, key) =>
+        typeof key === `string` && values.has(key)
+          ? {
+              get: () => values.get(key),
+              set: (value: unknown) => store(key, value),
+              enumerable: true,
+              configurable: true,
+            }
+          : undefined,
+    },
+  )
+  // Writeback props are always seeded (their fallback, never undefined) so the two-way
+  // binding is established
+  for (const [key, value] of Object.entries(extra)) store(key, value)
+  for (const spec of driven) store(spec.prop, value_of(spec))
 
   // Re-apply one prop after a relevant trait changed.
   const apply = (spec: DrivenProp): void => {
     const value = value_of(spec)
-    if (value !== undefined) {
-      if (!equal(props[spec.prop], value)) props[spec.prop] = value
-    } else if (spec.prop in props) {
-      // drive-only trait cleared (None): drop the key so the component falls back
-      Reflect.deleteProperty(props, spec.prop)
-    }
+    // drive-only trait cleared (None): store drops the key so the component falls back
+    if (value === undefined || !equal(values.get(spec.prop), value)) store(spec.prop, value)
   }
 
   // Map each trait to the props that depend on it (a trait may feed several props,

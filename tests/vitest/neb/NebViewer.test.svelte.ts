@@ -80,6 +80,22 @@ describe(`NebPlot`, () => {
     const plot = await mount_plot({ paths })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`eV`)
+    // a unitless spline took y and pushed its own images onto an independently scaled y2
+    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
+  })
+
+  test(`gives each energy unit its own axis and labels each path with its own unit`, async () => {
+    // ScatterPlot binds y2_axis into its controls: forwarding NebPlot's own unbound prop when
+    // one unit leaves y2 empty warned ownership_invalid_binding
+    const warn = vi.spyOn(console, `warn`)
+    await mount_plot({ paths: { A: direct_path }, show_controls: true })
+    expect(warn.mock.calls.flat().join(` `)).not.toContain(`ownership_invalid_binding`)
+    const mev = { ...direct_path, energy_unit: `meV` }
+    const plot = await mount_plot({ paths: { A: direct_path, B: mev }, active_path_key: `B` })
+    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`(eV)`)
+    expect(plot.querySelector(`.y2-axis .axis-label`)?.textContent).toContain(`(meV)`)
+    // the active meV path's barrier is annotated in its own unit
+    expect(squash(plot.textContent)).toMatch(/Eact = [\d.]+ meV/)
   })
 
   // oxfmt-ignore
@@ -236,8 +252,16 @@ describe(`NebViewer`, () => {
     // a path it cannot profile is reported beside those that render
     const [first, second] = direct_path.images
     const dup = { images: [first, first, second] }
-    const viewer = await mount_viewer({ paths: { ...reaction_paths, dup } })
+    // as is one in a third energy unit, which has no y axis left
+    const [mev, kcal] = [`meV`, `kcal/mol`].map((energy_unit) => ({
+      ...direct_path,
+      energy_unit,
+    }))
+    const viewer = await mount_viewer({ paths: { ...reaction_paths, dup, mev, kcal } })
     expect(viewer.textContent).toMatch(/dup: .*zero-length path tangent/)
+    expect(viewer.textContent).toContain(
+      `kcal: no y axis left for kcal/mol (eV and meV plotted)`,
+    )
     expect(viewer.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     expect(viewer.querySelector(`.structure-pane`)).toBeInstanceOf(HTMLElement)
     expect(

@@ -42,19 +42,22 @@ async function wheel_over(page: Page, root: Locator, zoom = false) {
   const box = await require_bbox(canvas, `canvas`)
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   const start_y = await page.evaluate(() => {
+    Reflect.deleteProperty(globalThis, `last_wheel`) // left over from a previous call
     const record = (event: WheelEvent) => Object.assign(globalThis, { last_wheel: event })
     globalThis.addEventListener(`wheel`, record, { capture: true, once: true })
     return globalThis.scrollY
   })
   await (zoom ? zoom_wheel(page, 200) : page.mouse.wheel(0, 200))
+  // Recorded before any handler runs, so seeing it from a later task means its dispatch is done
+  // and defaultPrevented final. A prevented (zoom) wheel can't scroll the page after that.
+  await page.waitForFunction(() => `last_wheel` in globalThis)
   // A plain wheel scrolls with an animation that a software-rendered (CI WebGL) viewer can
-  // stall past any fixed wait, so wait for the page to move; a zoom must leave it put
-  if (zoom) await page.waitForTimeout(300)
-  else
+  // stall past any fixed wait, so wait for the page to move
+  if (!zoom) {
     await page
       .waitForFunction((start) => globalThis.scrollY !== start, start_y, { timeout: 5000 })
       .catch(() => {}) // the assertion below reports a page that never scrolled
-  await page.waitForTimeout(100) // let the scroll settle
+  }
   return page.evaluate((start) => {
     const { last_wheel } = globalThis as unknown as { last_wheel?: WheelEvent }
     return { scrolled: globalThis.scrollY - start, prevented: last_wheel?.defaultPrevented }

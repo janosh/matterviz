@@ -455,9 +455,6 @@ describe(`StructureControls schema rows`, () => {
       })
       label.dispatchEvent(new PointerEvent(`pointerout`, { bubbles: true }))
     }
-    expect(
-      target.querySelectorAll(`section.grid > label, section.grid > .setting`).length,
-    ).toBeGreaterThan(20)
 
     const sliders = [
       [`Radius (Å)`, `atom_radius`, undefined, 0.05],
@@ -478,13 +475,6 @@ describe(`StructureControls schema rows`, () => {
         if (expected_step !== undefined) expect(input.step).toBe(`${expected_step}`)
       }
       expect(inputs[1].getAttribute(`aria-label`)).toBe(label_text)
-    }
-    const opacity_inputs = target.querySelectorAll<HTMLInputElement>(
-      `[data-key="background_opacity"] input`,
-    )
-    expect(opacity_inputs).toHaveLength(2)
-    for (const input of opacity_inputs) {
-      expect([input.min, input.max, input.step]).toEqual([`0`, `1`, `0.02`])
     }
 
     // Every schema-backed slider writes a number (never the input's string) to the object

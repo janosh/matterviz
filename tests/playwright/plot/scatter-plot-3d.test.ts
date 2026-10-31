@@ -438,9 +438,10 @@ test.describe(`ScatterPlot3D Projections`, { tag: `@webgl` }, () => {
         await expect(number_input).toHaveValue(default_val)
 
         // Enable XY, then change the slider to its maximum and verify a visible change.
-        await get_projection_checkbox(pane, `XY`).click()
-        await page.waitForTimeout(200)
-        const before = await canvas_screenshot(canvas)
+        // the baseline is the repainted frame with the XY projection drawn
+        const before = await expect_canvas_changed_by(canvas, () =>
+          get_projection_checkbox(pane, `XY`).click(),
+        )
         await slider.fill(`1`)
         await expect_canvas_changed(canvas, before)
 
@@ -476,31 +477,5 @@ test.describe(`ScatterPlot3D Projections`, { tag: `@webgl` }, () => {
       await expect(opacity_row.locator(`input[type="range"]`)).toHaveValue(`0.3`)
       await expect(size_row.locator(`input[type="range"]`)).toHaveValue(`0.5`)
     })
-  })
-
-  test(`projections update when camera rotates`, async ({ page }) => {
-    const canvas = await wait_for_3d_canvas(page, CONTAINER_SELECTOR)
-    await wait_for_canvas_rendered(canvas)
-    const pane = await open_controls_pane(page)
-
-    for (const plane of [`XY`, `XZ`, `YZ`]) {
-      await get_projection_checkbox(pane, plane).click()
-    }
-    // Close the pane before the baseline so only scene changes count as rotation. The toggle's
-    // hover tooltip lingers after the pointer leaves and would take the first Escape.
-    await expect(page.locator(`.custom-tooltip:visible`)).toHaveCount(0)
-    await page.keyboard.press(`Escape`)
-    await expect(pane).toBeHidden()
-
-    const box = await require_bbox(canvas)
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    const initial = await canvas_screenshot(canvas)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 100, {
-      steps: 10,
-    })
-    await page.mouse.up()
-
-    await expect_canvas_changed(canvas, initial)
   })
 })

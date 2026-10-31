@@ -37,16 +37,12 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(document.querySelector(`.lever`)).toBeNull()
   })
 
-  test.each<[number, TempUnit, string]>([
-    [500, `K`, `500 K`],
-    [25, `°C`, `25 °C`],
-    [1000, `°F`, `1000 °F`],
-  ])(`displays temperature %d %s correctly`, (temperature, unit, expected) => {
-    const hover_info = create_hover_info({ temperature })
-    mount_tooltip({ hover_info, temperature_unit: unit })
-
-    expect(tooltip_text()).toContain(expected)
-    expect(document.querySelector(`dd small`)?.textContent).toBe(unit)
+  // per-unit formatting is format_temperature's (utils.test.ts); this pins the prop's wiring
+  test(`displays the temperature in temperature_unit`, () => {
+    const hover_info = create_hover_info({ temperature: 25 })
+    mount_tooltip({ hover_info, temperature_unit: `°C` })
+    expect(tooltip_text()).toContain(`25 °C`)
+    expect(document.querySelector(`dd small`)?.textContent).toBe(`°C`)
   })
 
   // Weight percentages need real elements (Al-Cu), unknown components (A-B) get none
@@ -126,14 +122,18 @@ describe(`PhaseDiagramTooltip`, () => {
 
   describe(`boundary distance`, () => {
     // Boundary temperatures interpolate on the segment spanning the composition: at x = 0.19
-    // the Cu-like liquidus sits at 1112.9 K, not at its 1100 K sample at x = 0.2
+    // the Cu-like liquidus sits at 1112.9 K, not at its 1100 K sample at x = 0.2. Vertices
+    // 0.5 apart used to give no reading (none within 2 at%) or the nearest vertex's temperature
     const liquidus = pts(0, 1358, 0.2, 1100, 0.4, 900)
+    const sloped = pts(0, 1000, 1, 500)
     test.each<[number, number, PhaseBoundary[`type`], Vec2[], TempUnit, string, number]>([
       [0.5, 1050, `liquidus`, pts(0, 1000, 1, 1000), `K`, `above`, 50], // temp > boundary
       [0.5, 750, `solidus`, pts(0, 800, 1, 800), `°C`, `below`, 50], // temp < boundary
       [0.5, 900, `solvus`, pts(0, 1100, 1, 900), `K`, `below`, 100],
       [0.1, 1300, `liquidus`, liquidus, `K`, `above`, 71],
       [0.19, 1200, `liquidus`, liquidus, `K`, `above`, 87],
+      [0.5, 900, `liquidus`, sloped, `K`, `above`, 150], // boundary at 750 K
+      [0.1, 900, `liquidus`, sloped, `K`, `below`, 50], // boundary at 950 K, not 1000 K
     ])(
       `at x=%s, %s K vs a %s %o in %s shows "%s" by %s`,
       (composition, temperature, type, points, unit, direction, delta) => {
@@ -147,25 +147,6 @@ describe(`PhaseDiagramTooltip`, () => {
         expect(text.replaceAll(/\s+/g, ` `).trim()).toBe(
           `${delta} ${unit} ${direction} ${type}`,
         )
-      },
-    )
-
-    // Between two boundary vertices the boundary is read off the segment at the cursor's
-    // composition: vertices 0.5 apart used to give no reading (none within 2 at%) or the
-    // nearest vertex's temperature
-    test.each([
-      { composition: 0.5, expected: `150 K above liquidus` }, // boundary at 750 K
-      { composition: 0.1, expected: `50 K below liquidus` }, // boundary at 950 K, not 1000 K
-    ])(
-      `interpolates along a boundary segment at x = $composition`,
-      ({ composition, expected }) => {
-        const hover_info = create_hover_info({ composition, temperature: 900 })
-        const boundaries: PhaseBoundary[] = [
-          { id: `liq`, type: `liquidus`, points: pts(0, 1000, 1, 500) },
-        ]
-        mount_tooltip({ hover_info, boundaries })
-        const text = document.querySelector(`.boundary-info`)?.textContent ?? ``
-        expect(text.replaceAll(/\s+/g, ` `).trim()).toBe(expected)
       },
     )
 

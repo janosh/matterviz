@@ -63,6 +63,22 @@ describe(`display pipeline`, () => {
     expect(session.tool_input).toBe(original_input)
   })
 
+  // The host's $state deep-proxies its structure; the pipeline reads a plain copy (every site
+  // read through a proxy trap was most of mounting 47k atoms), plain inputs pass through as is
+  it(`reads a proxied input as one plain copy and plain inputs as they are`, () => {
+    const { host, session } = make_session({ show_image_atoms: true })
+    const not_proxied = (value: unknown) => structuredClone(value) !== undefined
+    expect(() => structuredClone(host.structure?.sites[0].xyz)).toThrow(/could not be cloned/)
+    for (const view of [session.normalized_structure, session.displayed_structure]) {
+      expect(
+        view?.sites.every((site) => not_proxied(site.xyz) && not_proxied(site.species)),
+      ).toBe(true)
+    }
+    expect(session.normalized_structure).toEqual($state.snapshot(host.structure))
+    const plain = crystal()
+    expect(make_session({}, () => plain).session.normalized_structure).toBe(plain)
+  })
+
   // A large supercell builds in the same update as its input, as each trajectory frame's must
   // (a deferred build flashed a spinner and held the cell tiling at 1 every frame), and
   // edit-atoms keeps the input's sites selected: they lead the supercell
@@ -128,6 +144,18 @@ describe(`display pipeline`, () => {
     )
     expect([...session.scene_to_structure_indices([site_idx ?? -1])]).toEqual([3])
     expect(session.property_colors?.values[site_idx ?? -1]).toBe(40)
+  })
+
+  // coordination colors count the bonds the scene draws, so they follow the host's bonding_options
+  it(`coordination colors follow bonding_options`, () => {
+    const { host, session } = make_session({
+      structure: make_rocksalt(),
+      atom_color_config: { ...DEFAULT_ATOM_COLOR_CONFIG, mode: `coordination` },
+    })
+    expect(session.property_colors?.values).toEqual(Array(8).fill(6))
+    // no Na-Cl contact passes a 1.0 distance ratio, so the scene draws no bonds
+    flush_set(host, { bonding_options: { max_distance_ratio: 1 } })
+    expect(session.property_colors?.values).toEqual(Array(8).fill(0))
   })
 
   it(`shows an already-materialized supercell as-is and falls back on invalid scaling`, () => {

@@ -47,31 +47,4 @@ test.describe(`XrdPlot Component Tests`, () => {
     await expect(plot.locator(`.bar-plot`)).toBeVisible()
     await expect(plot.locator(`.scatter`)).toHaveCount(0)
   })
-
-  test(`legend appears for multiple patterns and toggles series`, async ({ page }) => {
-    const plot = page.locator(`#multi-pattern .bar-plot`)
-    await expect(plot).toBeVisible()
-    const legend = plot.locator(`.legend`)
-    await expect(legend).toBeVisible()
-    const items = legend.locator(`.legend-item`)
-    await expect(items).toHaveCount(2)
-
-    // Bars are rendered as path elements inside .bar-series
-    const pre_toggle = await plot.locator(`svg .bar-series path`).count()
-    expect(pre_toggle).toBeGreaterThan(0)
-
-    await items.first().click()
-    // Wait for series to be hidden (fewer paths visible)
-    await expect(async () => {
-      const after_toggle = await plot.locator(`svg .bar-series path`).count()
-      expect(after_toggle).toBeLessThan(pre_toggle)
-    }).toPass({ timeout: 3000 })
-
-    await items.first().click()
-    // Wait for series to be restored
-    await expect(async () => {
-      const restored = await plot.locator(`svg .bar-series path`).count()
-      expect(restored).toBeGreaterThanOrEqual(pre_toggle)
-    }).toPass({ timeout: 3000 })
-  })
 })

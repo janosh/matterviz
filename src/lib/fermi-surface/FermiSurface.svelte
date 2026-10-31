@@ -483,6 +483,7 @@
       <Canvas
         createRenderer={create_renderer}
         renderMode="on-demand"
+        shadows={false}
         dpr={Math.min(2, window.devicePixelRatio)}
       >
         <FermiSurfaceScene

@@ -93,7 +93,7 @@ describe(`spatial index`, () => {
       idx,
     }))
     const cluster_index = build_spatial_index(clustered, 20)
-    expect(cluster_index.cells.size).toBe(1)
+    expect(cluster_index.cell_keys).toHaveLength(1)
     expect(query_nearest(cluster_index, { x: 0.99, y: 0 })?.idx).toBe(99)
   })
 

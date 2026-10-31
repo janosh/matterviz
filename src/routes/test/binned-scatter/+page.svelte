@@ -2,6 +2,7 @@
   import type { Vec2 } from '#lib/math.js'
   import { BinnedScatterPlot, type DensePointSeries } from '#lib/plot/index.js'
   import { onMount } from 'svelte'
+  import TestSection from '../TestSection.svelte'
 
   type TestMode = `density` | `points` | `singleton`
 
@@ -94,11 +95,9 @@
   })
 </script>
 
-<svelte:head>
-  <title>Binned Scatter Test</title>
-</svelte:head>
+<h1>BinnedScatterPlot test page</h1>
 
-<main>
+<TestSection title="Status">
   <output
     data-testid="binned-scatter-status"
     data-ready={ready}
@@ -112,26 +111,23 @@
     {mode}
     {n_points.toLocaleString()} mount {mount_ms.toFixed(1)}ms
   </output>
+</TestSection>
 
-  {#if series.length}
+{#if series.length}
+  <TestSection title="Plot">
     <BinnedScatterPlot
       {series}
       {x_axis}
       {y_axis}
       {density}
-      style="height: 600px; width: 900px;"
+      style="height: 600px; width: 900px"
       on_density_zoom={() => (zoom_count += 1)}
       on_point_click={() => (point_click_count += 1)}
     />
-  {/if}
-</main>
+  </TestSection>
+{/if}
 
 <style>
-  main {
-    display: grid;
-    gap: 1rem;
-    padding: 1rem;
-  }
   output {
     font: 12px/1.4 monospace;
   }

@@ -8,6 +8,8 @@
     StyleOverrides,
   } from '#lib/plot/core/types.js'
   import { onMount } from 'svelte'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
 
   // Keep the full [0, 1] dataset visible throughout the alternating pan/zoom gestures.
   const initial_view = (): Partial<AxisRanges> => ({ x: [-0.25, 1.25], y: [-0.25, 1.25] })
@@ -44,46 +46,52 @@
   })
 </script>
 
-<button onclick={reset}>Reset</button>
-<button
-  onclick={() =>
-    (color_scale = {
-      scheme:
-        color_scale.scheme === `interpolateViridis`
-          ? `interpolatePlasma`
-          : `interpolateViridis`,
-    })}>Color</button
->
-<button
-  onclick={() =>
-    (size_scale = {
-      radius_range: size_scale.radius_range?.[1] === 3 ? [2, 5] : [1, 3],
-    })}>Size</button
->
-<output data-testid="scatter-state" hidden>
-  {JSON.stringify({
-    points: series[0]?.x.length,
-    mode: import.meta.env.DEV ? `dev` : `production`,
-    view,
-    color_scale,
-    size_scale,
-  })}
-</output>
+<h1>ScatterPlot performance test page</h1>
 
-{#if series.length}
-  <ScatterPlot
-    {series}
-    bind:view
-    bind:styles
-    {color_scale}
-    {size_scale}
-    marker_renderer="canvas"
-    show_controls={false}
-    show_legend={false}
-    color_bar={null}
-    fullscreen_toggle={false}
-    point_tween={{ duration: 0 }}
-    line_tween={{ duration: 0 }}
-    style="width: 1000px; height: 600px;"
-  />
-{/if}
+<TestSection title="Canvas scatter">
+  <TestControls>
+    <button onclick={reset}>Reset</button>
+    <button
+      onclick={() =>
+        (color_scale = {
+          scheme:
+            color_scale.scheme === `interpolateViridis`
+              ? `interpolatePlasma`
+              : `interpolateViridis`,
+        })}>Color</button
+    >
+    <button
+      onclick={() =>
+        (size_scale = {
+          radius_range: size_scale.radius_range?.[1] === 3 ? [2, 5] : [1, 3],
+        })}>Size</button
+    >
+  </TestControls>
+  <output data-testid="scatter-state" hidden>
+    {JSON.stringify({
+      points: series[0]?.x.length,
+      mode: import.meta.env.DEV ? `dev` : `production`,
+      view,
+      color_scale,
+      size_scale,
+    })}
+  </output>
+
+  {#if series.length}
+    <ScatterPlot
+      {series}
+      bind:view
+      bind:styles
+      {color_scale}
+      {size_scale}
+      marker_renderer="canvas"
+      show_controls={false}
+      show_legend={false}
+      color_bar={null}
+      fullscreen_toggle={false}
+      point_tween={{ duration: 0 }}
+      line_tween={{ duration: 0 }}
+      style="width: 1000px; height: 600px"
+    />
+  {/if}
+</TestSection>

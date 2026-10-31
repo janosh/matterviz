@@ -19,6 +19,7 @@ import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ter
 import TernaryPhaseDiagramControls from '#lib/phase-diagram/ternary/TernaryPhaseDiagramControls.svelte'
 import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/async-compute.svelte.js'
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
+import { shortcuts_for } from '#lib/shortcuts.js'
 import { type Component, createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -96,6 +97,12 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
       `viewer`,
       `ternary-phase-diagram`,
     ])
+    // each listed key does one thing: ←/→ step T, so the rod walk only takes ↑/↓ (was listed
+    // as all four arrows)
+    const listed_keys = shortcuts_for([`viewer`, `ternary-phase-diagram`]).flatMap(
+      (shortcut) => shortcut.keys.split(` `),
+    )
+    expect(listed_keys).toEqual([...new Set(listed_keys)])
     await wait_for_events()
     expect(release).not.toHaveBeenCalled()
     const items = [...document.querySelectorAll(`.phase-event-list li`)]
@@ -183,9 +190,14 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect_tooltip_paint(doc_query(`.ternary-tooltip`), null)
   })
 
-  // tooltip=false hides the hover tooltip, a snippet replaces its content
+  // tooltip=false hides the hover tooltip, a snippet replaces its content and gets the hover
+  // as plain data (it was a deep $state proxy, which structuredClone rejects)
+  const hovers: TernaryPhaseHover[] = []
   const kind_snippet = createRawSnippet((hover: () => TernaryPhaseHover) => ({
-    render: () => `<b>${hover().kind}</b>`,
+    render: () => {
+      hovers.push(hover())
+      return `<b>${hover().kind}</b>`
+    },
   }))
   test.each([
     [`false`, false, null],
@@ -196,6 +208,7 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     move_to([1, 0])
     const tooltip_text = document.querySelector(`.ternary-tooltip`)?.textContent?.trim()
     expect(tooltip_text ?? null).toBe(expected_text)
+    for (const hover of hovers.splice(0)) expect(structuredClone(hover)).toEqual(hover)
   })
 
   test(`stability map steps T itself but lets shift+arrows reach the host`, async () => {

@@ -57,6 +57,21 @@ describe(`reactive_widget`, () => {
     expect(props.a).toBe(7)
   })
 
+  // A deep proxy over a 30k-site structure mounted the Structure widget 10x slower, while a
+  // config object must stay a proxy so a controls pane mutating it in place re-renders
+  test(`data props reach the component as the trait values, other objects as proxies`, () => {
+    const structure = { sites: [{ xyz: [0, 0, 0] }] }
+    const display = { x_grid: true }
+    const model = new MockModel({ structure, display })
+    const { props } = reactive_widget(as_model(model), drive_props([`structure`, `display`]))
+    expect(props.structure).toBe(structure)
+    expect(props.display).not.toBe(display)
+    expect(props.display).toEqual(display)
+    const moved = { sites: [{ xyz: [1, 0, 0] }] }
+    model.push_from_python(`structure`, moved)
+    expect(props.structure).toBe(moved)
+  })
+
   test(`derived: recomputes when any dep trait changes`, () => {
     const model = new MockModel({ a: 1, b: 2 })
     const { props } = reactive_widget(as_model(model), [
@@ -166,6 +181,25 @@ describe(`reactive_widget`, () => {
     expect(`current_step_idx` in reactive.props).toBe(false)
     expect(target.querySelector(`span`)?.textContent).toBe(`0`) // component fallback
 
+    reactive.dispose()
+  })
+
+  // A structure the component loads itself (data_url) while the trait is None reaches the
+  // props as loaded: with no key at mount, Svelte would keep a deep proxy of it instead
+  test(`real mount(): data a component loads writes back unproxied`, () => {
+    const model = new MockModel({ structure: null })
+    const reactive = reactive_widget(as_model(model), [drive_prop(`structure`)])
+    const target = document.createElement(`div`)
+    document.body.append(target)
+    const inst = mount(Harness, { target, props: reactive.props }) as unknown as {
+      load: (value: object) => void
+      read: () => object
+    }
+    const loaded = { sites: [{ xyz: [0, 0, 0] }] }
+    inst.load(loaded)
+    flushSync()
+    expect([reactive.props.structure, inst.read()]).toEqual([loaded, loaded])
+    expect(inst.read()).toBe(loaded) // the component reads it unproxied too
     reactive.dispose()
   })
 })

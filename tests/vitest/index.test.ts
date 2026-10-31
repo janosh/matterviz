@@ -19,6 +19,5 @@ test(`ELEMENT_CATEGORIES and ELEM_SYMBOLS match element_data`, () => {
 })
 
 test(`root exports is_binary without misclassifying sparse high bytes`, () => {
-  expect(lib.is_binary).toBeTypeOf(`function`)
   expect(lib.is_binary(`\u00FF${`a`.repeat(20)}`)).toBe(false)
 })

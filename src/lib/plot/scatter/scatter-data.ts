@@ -472,7 +472,8 @@ export const strict_x_direction = (values: readonly number[]): -1 | 0 | 1 => {
 }
 
 // Retain boundary-crossing segments and enough neighboring vertices for d3's local
-// monotone tangents. Natural/basis/Catmull–Rom curves retain their complete path.
+// monotone tangents. Natural/basis/Catmull–Rom curves retain their complete path. `cropped`:
+// whether the range left any vertex out (a wider range then keeps more).
 export function project_line_points(
   data: Pick<DataSeries, `x` | `y` | `line_breaks`>,
   x_scale: (value: number) => number,
@@ -480,7 +481,7 @@ export function project_line_points(
   x_range: Vec2,
   direction: -1 | 0 | 1,
   curve: LineCurve = `monotone`,
-): Vec2[] {
+): { points: Vec2[]; cropped: boolean } {
   const { x: coord_x, y: coord_y } = data
   let start = 0
   let end = coord_x.length
@@ -516,5 +517,5 @@ export function project_line_points(
     const pixel_y = y_scale(coord_y[idx])
     if (Number.isFinite(pixel_x) && Number.isFinite(pixel_y)) points.push([pixel_x, pixel_y])
   }
-  return points
+  return { points, cropped: start > 0 || end < coord_x.length }
 }

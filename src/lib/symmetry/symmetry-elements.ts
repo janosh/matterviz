@@ -195,47 +195,74 @@ const is_integer = (val: number): boolean => Math.abs(val - Math.round(val)) < E
 
 const is_zero_vec = (vec: Vec3): boolean => vec.every((val) => Math.abs(val) < ELEM_TOL)
 
-// Order on glide representatives so every operation of one geometric glide gets the same vector
-// and letter: shorter, then sparser (R3c's c/2 beats the equally short (1/3,-1/3,1/6)), then
-// lexicographically larger
-const n_nonzero = (vec: Vec3): number => vec.filter((val) => Math.abs(val) > ELEM_TOL).length
-const precedes = (cand: Vec3, best: Vec3): boolean => {
-  const shorter = math.dot(best, best) - math.dot(cand, cand)
-  if (Math.abs(shorter) > ELEM_TOL) return shorter > 0
-  const sparser = n_nonzero(best) - n_nonzero(cand)
-  if (sparser !== 0) return sparser > 0
-  const decisive = math.subtract(cand, best).find((val) => Math.abs(val) > ELEM_TOL)
-  return decisive !== undefined && decisive > 0
-}
+// Components of (x, y, z) past ELEM_TOL
+const n_nonzero = (x_val: number, y_val: number, z_val: number): number =>
+  Number(Math.abs(x_val) > ELEM_TOL) +
+  Number(Math.abs(y_val) > ELEM_TOL) +
+  Number(Math.abs(z_val) > ELEM_TOL)
 
 // Shortest representative of the glide class w_i + (Λ ∩ plane), exact even in sheared cells:
 // Λ ∩ plane is the union of the centering cosets offset + ℤ-span(basis), and for a Gauss-reduced
-// 2D basis every closest point to a target lies within ±1 of its rounded coordinates
+// 2D basis every closest point to a target lies within ±1 of its rounded coordinates.
+// Representatives are ordered so every operation of one geometric glide gets the same vector
+// and letter: shorter, then sparser (R3c's c/2 beats the equally short (1/3,-1/3,1/6)), then
+// lexicographically larger. Scalar arithmetic throughout: supercells bring one offset per
+// in-plane lattice translation, and allocating per candidate was half of a 1000-site analysis.
 function reduce_glide(
   w_intrinsic: Vec3,
   [first, second]: [Vec3, Vec3],
   offsets: readonly Vec3[],
 ): Vec3 {
-  const g_11 = math.dot(first, first)
-  const g_12 = math.dot(first, second)
-  const g_22 = math.dot(second, second)
+  const [first_x, first_y, first_z] = first
+  const [second_x, second_y, second_z] = second
+  const g_11 = first_x * first_x + first_y * first_y + first_z * first_z
+  const g_12 = first_x * second_x + first_y * second_y + first_z * second_z
+  const g_22 = second_x * second_x + second_y * second_y + second_z * second_z
   const det = g_11 * g_22 - g_12 * g_12
-  let best = w_intrinsic
-  for (const offset of offsets) {
-    const target = math.subtract(w_intrinsic, offset)
-    const [proj_1, proj_2] = [math.dot(target, first), math.dot(target, second)]
+  const [w_x, w_y, w_z] = w_intrinsic
+  let [best_x, best_y, best_z] = w_intrinsic
+  let best_sq = best_x * best_x + best_y * best_y + best_z * best_z
+  let best_nonzero = n_nonzero(best_x, best_y, best_z)
+  for (const [offset_x, offset_y, offset_z] of offsets) {
+    const target_x = w_x - offset_x
+    const target_y = w_y - offset_y
+    const target_z = w_z - offset_z
+    const proj_1 = target_x * first_x + target_y * first_y + target_z * first_z
+    const proj_2 = target_x * second_x + target_y * second_y + target_z * second_z
     const coef_1 = Math.round((g_22 * proj_1 - g_12 * proj_2) / det)
     const coef_2 = Math.round((g_11 * proj_2 - g_12 * proj_1) / det)
     for (let mult_1 = coef_1 - 1; mult_1 <= coef_1 + 1; mult_1++) {
       for (let mult_2 = coef_2 - 1; mult_2 <= coef_2 + 1; mult_2++) {
-        const cand = target.map(
-          (val, idx) => val - (mult_1 * first[idx] + mult_2 * second[idx]),
-        ) as Vec3
-        if (precedes(cand, best)) best = cand
+        const cand_x = target_x - (mult_1 * first_x + mult_2 * second_x)
+        const cand_y = target_y - (mult_1 * first_y + mult_2 * second_y)
+        const cand_z = target_z - (mult_1 * first_z + mult_2 * second_z)
+        const cand_sq = cand_x * cand_x + cand_y * cand_y + cand_z * cand_z
+        const shorter = best_sq - cand_sq
+        let wins: boolean
+        if (Math.abs(shorter) > ELEM_TOL) wins = shorter > 0
+        else {
+          const sparser = best_nonzero - n_nonzero(cand_x, cand_y, cand_z)
+          const diff_x = cand_x - best_x
+          const diff_y = cand_y - best_y
+          wins =
+            sparser !== 0
+              ? sparser > 0
+              : Math.abs(diff_x) > ELEM_TOL
+                ? diff_x > 0
+                : Math.abs(diff_y) > ELEM_TOL
+                  ? diff_y > 0
+                  : cand_z - best_z > ELEM_TOL
+        }
+        if (!wins) continue
+        best_x = cand_x
+        best_y = cand_y
+        best_z = cand_z
+        best_sq = cand_sq
+        best_nonzero = n_nonzero(cand_x, cand_y, cand_z)
       }
     }
   }
-  return best
+  return [best_x, best_y, best_z]
 }
 
 // Glide letter from the reduced glide vector: a/b/c (half along one cell axis),
@@ -502,14 +529,24 @@ export function symmetry_elements_from_ops(
       shifts.push([s_x + 1, s_y, s_z], [s_x, s_y + 1, s_z], [s_x, s_y, s_z + 1])
     }
   }
-  // Stable order: by kind (SYM_ELEM_KINDS sequence), then descending order, label, point
-  return [...seen.values()].toSorted(
-    (el1, el2) =>
-      SYM_ELEM_KINDS.indexOf(el1.kind) - SYM_ELEM_KINDS.indexOf(el2.kind) ||
-      el2.order - el1.order ||
-      el1.label.localeCompare(el2.label) ||
-      el1.point.join(`,`).localeCompare(el2.point.join(`,`)),
-  )
+  // Stable order: by kind (SYM_ELEM_KINDS sequence), then descending order, label, point.
+  // Sort keys are built once per element, not twice per comparison (30k elements of a
+  // 1000-site supercell); the collator is what localeCompare uses, without its per-call setup.
+  const collator = new Intl.Collator()
+  return [...seen.values()]
+    .map((elem) => ({
+      elem,
+      kind_idx: SYM_ELEM_KINDS.indexOf(elem.kind),
+      point_key: elem.point.join(`,`),
+    }))
+    .toSorted(
+      (key_1, key_2) =>
+        key_1.kind_idx - key_2.kind_idx ||
+        key_2.elem.order - key_1.elem.order ||
+        collator.compare(key_1.elem.label, key_2.elem.label) ||
+        collator.compare(key_1.point_key, key_2.point_key),
+    )
+    .map(({ elem }) => elem)
 }
 
 // Evenly-spaced dash layout along a segment of given length (Å): returns dash centers

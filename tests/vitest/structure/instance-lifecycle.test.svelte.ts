@@ -21,6 +21,8 @@ import * as extras from '@threlte/extras'
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import * as camera_fit from '#lib/structure/camera-fit.js'
 import { make_site, numeric_sites } from '#lib/structure/site.js'
+import * as site_module from '#lib/structure/site.js'
+import * as polyhedra_module from '#lib/structure/polyhedra.js'
 import { get_center_of_mass } from '#lib/structure/index.js'
 import StructureScene from '#lib/structure/StructureScene.svelte'
 import ArrowInstances from '#lib/structure/ArrowInstances.svelte'
@@ -43,6 +45,7 @@ import { colors } from '#lib/state.svelte.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { cache_prepared_bonds } from '#lib/structure/bonding.js'
 import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
+import MeasurementOverlays from '#lib/structure/MeasurementOverlays.svelte'
 import { mount_scene } from '../scene/mount'
 import { bind_props, doc_query } from '../setup'
 import { image_options, make_crystal, make_srtio3 } from '../test-fixtures'
@@ -55,6 +58,7 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   type Object3D,
   OrthographicCamera,
   Raycaster,
@@ -414,13 +418,18 @@ test.each([
 )
 
 // From the focused viewer root, arrows walk the atoms in site order (KeyWalk), starting from a
-// hovered atom, with the hover tooltip a pointer would show, and Enter selects like a click
+// hovered atom, with the hover tooltip a pointer would show, and Enter selects like a click.
+// The walk's targets are listed on key presses only, not on every rebuild of the drawn atoms.
 test(`keyboard walks the atoms in site order and Enter selects`, () => {
-  const state = $state<SceneProps>({ hovered_idx: null, selected_sites: [] })
+  const state = $state<SceneProps>({ hovered_idx: null, selected_sites: [], atom_radius: 1 })
   const sites = ([`C`, `N`] as const).map((element, idx) =>
     make_site(element, [0, 0, 0], [2 * idx, 0, 0], element),
   )
   const { keys } = mount_structure({ structure: { sites }, show_bonds: `never` }, state)
+  const image_checks = vi.spyOn(site_module, `is_image_site`)
+  onTestFinished(() => image_checks.mockRestore())
+  flush_set(state, { atom_radius: 0.5 })
+  expect(image_checks).not.toHaveBeenCalled()
   expect([`ArrowRight`, `ArrowRight`].map((key) => keys.press(key))).toEqual([true, true])
   expect([state.hovered_idx, keys.message]).toEqual([1, `Site 2: N`])
   expect(document.querySelectorAll(`[role="tooltip"]`)).toHaveLength(1)
@@ -786,6 +795,31 @@ test(`site label buttons select on press and on keyboard or assistive activation
   expect(state.selected_sites).toEqual([0, 1])
 })
 
+// Every label promoted to its own compositor layer froze the tab for 13 s on hiding 47k labels:
+// past 1000 labels they share the overlay's. Label text follows the label toggles.
+test.each([
+  { n_atoms: 3, layered: true },
+  { n_atoms: 1001, layered: false },
+])(`$n_atoms site labels get own layers: $layered`, ({ n_atoms, layered }) => {
+  const state = $state({ show_site_indices: false })
+  const x_coords = Array.from({ length: n_atoms }, (_unused, idx) => idx * 5)
+  mount_structure(
+    {
+      structure: { sites: carbons_at(...x_coords) },
+      show_bonds: `never`,
+      show_site_labels: true,
+    },
+    state,
+  )
+  const overlay = document.querySelector(`.site-labels-overlay`)
+  expect(overlay?.classList.contains(`layered`)).toBe(layered)
+  const labels = document.querySelectorAll(`.atom-label`)
+  expect([labels.length, labels[1].textContent.trim()]).toEqual([n_atoms, `C`])
+  state.show_site_indices = true
+  flushSync()
+  expect(labels[1].textContent.replaceAll(/\s/g, ``)).toBe(`C-2`)
+})
+
 // The order menu of a bond drawn to an image atom reads the bond's order by its canonical key
 // (base sites + cell shift, as edits store it): the rendered key (image index, no shift)
 // matched no edit, so a perceived bond set to triple still said order 1
@@ -878,6 +912,28 @@ test(`delete-mode hit cylinders follow bond thickness and bond moves`, () => {
   expect(state.added_bonds).toEqual([])
 })
 
+// Edit-bonds hit targets are one raycast target for all bonds and one for all atoms: a Threlte
+// mesh each took 9 s to enter the mode on a 5k-atom cell (each registration scans all others)
+test(`edit-bonds registers as many hit targets for 30 atoms as for 3`, () => {
+  const capture = vi.spyOn(extras, `interactivity`)
+  onTestFinished(() => capture.mockRestore())
+  const targets = (n_atoms: number, bond_edit_mode: `add` | `delete`) => {
+    mount_structure({
+      structure: {
+        sites: carbons_at(...Array.from({ length: n_atoms }, (_, idx) => idx * 1.4)),
+      },
+      show_bonds: `always`,
+      measure_mode: `edit-bonds`,
+      bond_edit_mode,
+    })
+    const result = capture.mock.results.at(-1)
+    if (result?.type !== `return`) throw new Error(`Missing scene interactivity`)
+    return result.value.interactiveObjects.length
+  }
+  for (const mode of [`add`, `delete`] as const)
+    expect(targets(30, mode)).toBe(targets(3, mode))
+})
+
 // The hover highlight is a keyed cylinder too: it must follow the bond thickness (a new
 // structure, the other way its bond could move, clears the hover)
 test(`edit-bonds hover highlight follows bond thickness`, () => {
@@ -913,6 +969,12 @@ test(`edit-bonds hover highlight follows bond thickness`, () => {
   bond_thickness = 0.2
   flushSync()
   expect([radius(), center_x()]).toEqual([expect.closeTo(0.22, 6), expect.closeTo(1.5, 6)])
+  // the highlight's material is disposed with it when the pointer leaves the bond
+  const dispose_spy = vi.spyOn(MeshBasicMaterial.prototype, `dispose`)
+  onTestFinished(() => dispose_spy.mockRestore())
+  const material = highlight().material
+  pointer_at(interactivity(), 1.5, 0, [`pointerleave`])
+  expect(dispose_spy.mock.contexts).toContain(material)
 })
 
 // Open cylinders halve the bond triangles; scene bonds close their ends only where one could
@@ -1015,6 +1077,71 @@ test.each<[string, number[], BondOrder, SceneProps, number]>([
     expect(document.querySelector(`.measure-label`)?.textContent?.trim()).toMatch(/\d.*Å$/)
   },
 )
+
+// Hiding an element drops its bonds, reading the visibility props once per change rather than
+// per bond endpoint (each read crosses three components: 140 ms on a 48k-atom supercell)
+test(`hidden elements drop their bonds, read once per change`, () => {
+  const sites = carbons_at(...Array.from({ length: 30 }, (_unused, idx) => idx * 1.4))
+  sites[15] = make_site(`N`, [0, 0, 0], sites[15].xyz, `N`)
+  let hidden = $state.raw(new Set<ElementSymbol>())
+  let hidden_reads = 0
+  const { scene } = mount_structure({
+    structure: { sites },
+    show_bonds: `always`,
+    show_polyhedra: `never`,
+    get hidden_elements() {
+      hidden_reads += 1
+      return hidden
+    },
+  })
+  const bond_count = () =>
+    meshes_of(scene, BondMesh).reduce((sum, mesh) => sum + mesh.count, 0)
+  expect(bond_count()).toBe(29)
+  hidden_reads = 0
+  hidden = new Set([`N`])
+  flushSync()
+  expect(bond_count()).toBe(27)
+  expect(hidden_reads).toBeLessThan(10) // 118 when read per bond endpoint
+})
+
+// Finding a measured pair's bond reads the bonds prop once: its getter crosses three components
+// and read per bond took 35 ms to scan a 48k-atom supercell's 110k bonds
+test(`a measured pair's bond lookup reads the bonds prop once`, () => {
+  const sites = carbons_at(...Array.from({ length: 41 }, (_unused, idx) => idx * 1.3))
+  const bond = (idx_1: number, idx_2: number): BondPair => ({
+    site_idx_1: idx_1,
+    site_idx_2: idx_2,
+    pos_1: sites[idx_1].xyz,
+    pos_2: sites[idx_2].xyz,
+    bond_length: 1.3,
+  })
+  // the chain's other bonds first, the measured pair's last
+  const bonds = [...[...sites.keys()].slice(2).map((idx) => bond(idx - 1, idx)), bond(0, 1)]
+  let bond_reads = 0
+  const { scene, unmount_scene } = mount_scene((anchor) =>
+    MeasurementOverlays(anchor, {
+      sites,
+      measured_sites: [0, 1],
+      measure_mode: `distance`,
+      lattice: null,
+      label_offset: [0, 0.5, 0],
+      line_color: `gray`,
+      get bonds() {
+        bond_reads += 1
+        return bonds
+      },
+      bond_thickness: 0.1,
+      pulse_opacity: 0.1,
+      site_radius: () => 0.5,
+    }),
+  )
+  onTestFinished(unmount_scene)
+  flushSync()
+  expect([measure_cylinders(scene)[0]?.material, bond_reads]).toEqual([
+    expect.objectContaining({ transparent: true }), // a tinted bond strand, not a line
+    1,
+  ])
+})
 
 // Angle mode labels every angle of the picked triangle, not just the second pick's, and marks
 // each with an arc between its two edges so the number can't be read against the wrong pair. A
@@ -1777,6 +1904,22 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
     }
   },
 )
+
+// Polyhedra settings are kept by value: an equal element list (a host's new settings object,
+// which the viewer re-proxies) keeps the hulls, a changed one recomputes them
+test(`equal polyhedra settings keep the hulls`, () => {
+  const state = $state<SceneProps>({ polyhedra_excluded_elements: [] })
+  const { scene } = mount_structure({ structure: sio4(), show_polyhedra: `always` }, state)
+  const hulls = vi.spyOn(polyhedra_module, `compute_polyhedra`)
+  onTestFinished(() => hulls.mockRestore())
+  const faces = polyhedra_faces(scene)
+  expect(faces).toBeDefined()
+  flush_set(state, { polyhedra_excluded_elements: [] })
+  expect(hulls).not.toHaveBeenCalled()
+  expect(polyhedra_faces(scene)).toBe(faces)
+  flush_set(state, { polyhedra_excluded_elements: [`Si`] })
+  expect([hulls.mock.calls.length, polyhedra_faces(scene)]).toEqual([1, undefined])
+})
 
 // Whole-atom mode selects sites instead of clipping their atoms, bonds and polyhedra, but
 // per-site overlays (force arrows here) must keep the slice's surface clip, and every kept

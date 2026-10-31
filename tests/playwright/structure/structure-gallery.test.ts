@@ -76,7 +76,14 @@ test(`gallery scrolls and centres vertical cards while tooltips cross horizontal
             force: true,
             position: { x: box.width * x_fraction, y: box.height * y_fraction },
           })
-          await page.waitForTimeout(50)
+          // the hover raycast runs on the move or threlte's coalescing rAF, and Svelte shows
+          // the tooltip right after, so two frames on a miss means no atom under the pointer
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+              }),
+          )
           if (!(await tooltip.isVisible())) continue
           const layout = await tooltip
             .evaluate((element) => {

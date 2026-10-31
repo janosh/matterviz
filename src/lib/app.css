@@ -489,7 +489,8 @@
   :is(.style-row, .flow)
   > :is(label, .setting):has(input[type='range']) {
   display: grid;
-  grid-template-columns: 7em var(--ctrl-value-w, 3.2em) minmax(0, 1fr);
+  /* the label column gives way before the slider does, so narrow panes keep it draggable */
+  grid-template-columns: minmax(4.5em, 7em) var(--ctrl-value-w, 3.2em) minmax(3.5em, 1fr);
   align-items: center;
   column-gap: 6pt;
   flex: none;

@@ -8,7 +8,7 @@ import {
   expect_combined_fullscreen,
   IS_CI,
   require_bbox,
-  sweep_gizmo_handles,
+  settled_gizmo_handles,
   test_without_errors as test,
   wait_for_3d_canvas,
   webgl_on_ci_for_tagged,
@@ -242,18 +242,8 @@ test(
     )
     const drag_structure = () => drag_canvas(structure_canvas, { dx: 120, dy: 40, steps: 8 })
     // the Fermi gizmo's handle cells once two sweeps in a row agree (damped orbits glide on)
-    const settled_handles = async () => {
-      let previous: string[] | undefined
-      let current: string[] = []
-      await expect
-        .poll(async () => {
-          previous = current
-          current = (await sweep_gizmo_handles(fermi_canvas)).map((hit) => hit.key)
-          return current.length > 0 && current.join(`;`) === previous.join(`;`)
-        })
-        .toBe(true)
-      return current
-    }
+    const settled_handles = async () =>
+      (await settled_gizmo_handles(fermi_canvas)).map((hit) => hit.key)
     const initial = await settled_handles()
     await drag_structure()
     const turned = await settled_handles()
@@ -382,12 +372,13 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
   await expect(markers).toHaveCount(12)
 
   // comparing the stiffer equation of state splits the frame panes into two labelled sides,
-  // the compared one at its frame nearest in pressure
+  // the compared one at its frame nearest in pressure. Each side's column is then too narrow
+  // for bands beside their DOS, so the viewer stacks and labels each side over its scenes and
+  // again over its plots.
   await page.getByLabel(`Compare with the stiffer equation of state`).check()
-  await expect(viewer.locator(`.side-label`)).toHaveText([
-    /^fcc Cu · 19\.2 GPa/,
-    /^fcc Cu \(B₀ = 180 GPa\) · 24\.7 GPa/,
-  ])
+  await expect(viewer).toHaveClass(/\bstacked\b/)
+  const side_labels = [/^fcc Cu · 19\.2 GPa/, /^fcc Cu \(B₀ = 180 GPa\) · 24\.7 GPa/]
+  await expect(viewer.locator(`.side-label`)).toHaveText([...side_labels, ...side_labels])
   await expect(viewer.locator(`[data-pane="bands"]`)).toHaveCount(2)
   await expect(viewer.locator(`[data-pane="trends"]`)).toHaveCount(1)
   await expect(phonon).toHaveCount(2)
@@ -445,7 +436,7 @@ test(`electronic-structure sweep: both DOS share one column, the bar the viewer'
 
 // The stacked sweep viewer's panes, one column each its own height: none overlaps another and
 // every plot keeps its axis titles inside it
-const expect_panes_apart = async (page: Page, viewer: Locator): Promise<void> => {
+const expect_panes_apart = async (viewer: Locator): Promise<void> => {
   await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
     timeout: LOAD_TIMEOUT,
   })
@@ -478,14 +469,12 @@ const expect_panes_apart = async (page: Page, viewer: Locator): Promise<void> =>
   )
   expect(overlaps).toEqual([])
   // each axis title within its plot's SVG, measured on screen (plots off screen hold their
-  // last layout until scrolled into view)
+  // last layout until scrolled into view, so poll each until its relayout lands)
   const plots = viewer.locator(`.scatter > svg`)
-  const outside: string[] = []
-  for (const plot of await plots.all()) {
+  for (const [plot_idx, plot] of (await plots.all()).entries()) {
     await plot.scrollIntoViewIfNeeded()
-    await page.waitForTimeout(300)
-    outside.push(
-      ...(await plot.evaluate((svg) => {
+    const labels_outside = () =>
+      plot.evaluate((svg) => {
         const frame = svg.getBoundingClientRect()
         return [...svg.querySelectorAll(`.axis-label`)].flatMap((label) => {
           const box = label.getBoundingClientRect()
@@ -496,10 +485,9 @@ const expect_panes_apart = async (page: Page, viewer: Locator): Promise<void> =>
             box.bottom <= frame.bottom + 1
           return inside || box.width === 0 ? [] : [label.textContent?.trim() ?? ``]
         })
-      })),
-    )
+      })
+    await expect.poll(labels_outside, `axis labels outside plot ${plot_idx}`).toEqual([])
   }
-  expect(outside).toEqual([])
 }
 
 test(`electronic-structure sweep: a narrow viewer stacks its panes without overlap`, async ({
@@ -514,7 +502,12 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
   const panes_scroll = () =>
     viewer.locator(`.panes`).evaluate((node) => node.scrollHeight - node.clientHeight)
   await expect.poll(panes_scroll).toBe(0)
-  await expect_panes_apart(page, viewer)
+  await expect_panes_apart(viewer)
+  // the λ_qν colour bar sits over the empty top of the 400px-wide phonon bands, not above them
+  const mode_bar = viewer.locator(
+    `[data-pane="phonon"] [data-decoration-location]:has(.colorbar)`,
+  )
+  await expect(mode_bar).toHaveAttribute(`data-decoration-location`, `interior`)
   // a 1px rule tops every pane below the first, drawn by it or a wrapper starting there
   const unruled = await viewer.locator(`[data-pane]`).evaluateAll((nodes) => {
     const first_top = nodes[0].getBoundingClientRect().top
@@ -583,5 +576,5 @@ test(`electronic-structure sweep: a short wide viewer stacks its panes in its bo
     }
   })
   expect(size).toEqual({ width: 830, height: 500, scrolls: true })
-  await expect_panes_apart(page, viewer)
+  await expect_panes_apart(viewer)
 })

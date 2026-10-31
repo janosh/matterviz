@@ -34,6 +34,7 @@
     settings = DEFAULT_ISOSURFACE_SETTINGS,
     tiling = [1, 1, 1],
     on_error,
+    building = $bindable(false),
   }: {
     volumes?: VolumetricData[]
     settings?: IsosurfaceSettings
@@ -41,6 +42,9 @@
     tiling?: Vec3
     // Geometry worker failures; defaults to the host's set_isosurface_error_handler
     on_error?: IsosurfaceErrorHandler
+    // (output) true from a geometry rebuild's request until its surfaces are swapped in,
+    // so a scene snapshot can wait for them (large grids mesh in a worker)
+    building?: boolean
   } = $props()
 
   // Context is read once at init: Structure registers its handler before the scene mounts
@@ -157,6 +161,7 @@
     rebuild_generation++
     cancelAnimationFrame(raf_id)
     raf_id = 0
+    building = false
     cancel_geometry_worker()
     for (const entry of active_entries) entry.geometry.dispose()
     active_entries = []
@@ -409,6 +414,7 @@
   // work that also prepares the grid.
   function request_rebuild(): void {
     if (raf_id) return
+    building = true
     raf_id = requestAnimationFrame(() => {
       raf_id = 0
       if (rebuild_in_flight) {
@@ -419,9 +425,16 @@
         })
         return
       }
-      rebuild_in_flight = rebuild_geometries(resolved_layers, rebuild_generation).finally(
-        () => (rebuild_in_flight = null),
-      )
+      const generation = rebuild_generation
+      rebuild_in_flight = rebuild_geometries(resolved_layers, generation).finally(() => {
+        rebuild_in_flight = null
+        // a reset (unmount, all volumes removed) already cleared the flag; a rebuild
+        // requested meanwhile has yet to run
+        if (generation !== rebuild_generation || raf_id) return
+        building = false
+        // a frame after the swap (or a failed rebuild) lets a snapshot waiting on it finish
+        threlte.invalidate()
+      })
     })
   }
 

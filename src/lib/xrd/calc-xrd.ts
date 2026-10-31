@@ -429,30 +429,35 @@ export function structure_factors_squared(
   const { cos_table: cos_h, sin_table: sin_h } = phase_table(0, h_max, occus)
   const { cos_table: cos_k, sin_table: sin_k } = phase_table(1, k_max)
   const { cos_table: cos_l, sin_table: sin_l } = phase_table(2, l_max)
+  const l_span = 2 * l_max + 1
+
+  // Reflections by (h, k) row. A row's per-element sums S_e(l) = Σ occu·exp(2πi·hkl·r) take the
+  // hk factor once per species instead of once per reflection, and serve its Friedel partner
+  // row (−h, −k) too: its sums are the conjugates at −l (cos even, sin odd, so bit for bit),
+  // and |F|² ignores the sign of Im F. Sums per l still add species in order, so every
+  // reflection's |F|² matches summing it on its own.
+  const k_span = 2 * k_max + 1
+  const row_key = (h_idx: number, k_idx: number): number =>
+    (h_idx + h_max) * k_span + k_idx + k_max
+  const rows = new Map<number, number[]>()
+  for (const [point_idx, { hkl }] of reflections.entries()) {
+    const key = row_key(hkl[0], hkl[1])
+    const row = rows.get(key)
+    if (row) row.push(point_idx)
+    else rows.set(key, [point_idx])
+  }
+  const sums_real = new Float64Array(n_elements * l_span)
+  const sums_imag = new Float64Array(n_elements * l_span)
+  // the current row's hk factor per species
+  const row_real = new Float64Array(n_species)
+  const row_imag = new Float64Array(n_species)
 
   const intensities = new Float64Array(reflections.length)
-  // Real f and isotropic damping give Friedel mates identical |F|². Reuse only on equal g_norm
-  // (callers may pass custom reflections); below 64 species the lookup costs more than the sum.
-  const friedel_intensities =
-    n_species >= 64 ? new Map<string, { g_norm: number; intensity: number }>() : undefined
-
-  for (let point_idx = 0; point_idx < reflections.length; point_idx++) {
+  // |F|² of a reflection from the current row sums, `l_sign` −1 reading the partner row's
+  const evaluate = (point_idx: number, l_sign: number): void => {
     const { hkl, g_norm } = reflections[point_idx]
-    let reflection_key = ``
-    if (friedel_intensities) {
-      const friedel_sign = (hkl[0] || hkl[1] || hkl[2]) < 0 ? -1 : 1
-      reflection_key = `${hkl[0] * friedel_sign},${hkl[1] * friedel_sign},${hkl[2] * friedel_sign}`
-      const previous = friedel_intensities.get(reflection_key)
-      if (previous?.g_norm === g_norm) {
-        intensities[point_idx] = previous.intensity
-        continue
-      }
-    }
-    const h_offset = (hkl[0] + h_max) * n_species
-    const k_offset = (hkl[1] + k_max) * n_species
-    const l_offset = (hkl[2] + l_max) * n_species
+    const l_at = l_sign * hkl[2] + l_max
     const s_sq_point = (g_norm / 2) ** 2
-
     let f_real = 0
     let f_imag = 0
     for (let elem = 0; elem < n_elements; elem++) {
@@ -475,24 +480,55 @@ export function structure_factors_squared(
       }
       // Thermal damping is geometric, so it applies to every radiation
       if (has_debye_waller) factor *= Math.exp(-debye_waller * s_sq_point)
-
-      // S_e = Σ occu·exp(2πi·hkl·r) over this element's species
-      let sum_real = 0
-      let sum_imag = 0
-      for (let idx = elem_start[elem]; idx < elem_start[elem + 1]; idx++) {
-        const h_at = h_offset + idx
-        const k_at = k_offset + idx
-        const l_at = l_offset + idx
-        const re_hk = cos_h[h_at] * cos_k[k_at] - sin_h[h_at] * sin_k[k_at]
-        const im_hk = cos_h[h_at] * sin_k[k_at] + sin_h[h_at] * cos_k[k_at]
-        sum_real += re_hk * cos_l[l_at] - im_hk * sin_l[l_at]
-        sum_imag += re_hk * sin_l[l_at] + im_hk * cos_l[l_at]
-      }
-      f_real += factor * sum_real
-      f_imag += factor * sum_imag
+      f_real += factor * sums_real[elem * l_span + l_at]
+      f_imag += factor * sums_imag[elem * l_span + l_at]
     }
     intensities[point_idx] = f_real * f_real + f_imag * f_imag
-    friedel_intensities?.set(reflection_key, { g_norm, intensity: intensities[point_idx] })
+  }
+
+  for (const [key, row] of rows) {
+    const [h_idx, k_idx] = reflections[row[0]].hkl
+    const partner_key = row_key(-h_idx, -k_idx)
+    const partner = partner_key === key ? undefined : rows.get(partner_key)
+    if (partner && partner_key < key) continue // evaluated with its partner
+    // l range of this row and the partner's mirrored l
+    let [l_lo, l_hi] = [Infinity, -Infinity]
+    for (const [sign, points] of [
+      [1, row],
+      [-1, partner ?? []],
+    ] as const) {
+      for (const point_idx of points) {
+        l_lo = Math.min(l_lo, sign * reflections[point_idx].hkl[2])
+        l_hi = Math.max(l_hi, sign * reflections[point_idx].hkl[2])
+      }
+    }
+    const h_offset = (h_idx + h_max) * n_species
+    const k_offset = (k_idx + k_max) * n_species
+    for (let idx = 0; idx < n_species; idx++) {
+      const h_at = h_offset + idx
+      const k_at = k_offset + idx
+      row_real[idx] = cos_h[h_at] * cos_k[k_at] - sin_h[h_at] * sin_k[k_at]
+      row_imag[idx] = cos_h[h_at] * sin_k[k_at] + sin_h[h_at] * cos_k[k_at]
+    }
+    for (let l_idx = l_lo; l_idx <= l_hi; l_idx++) {
+      const l_offset = (l_idx + l_max) * n_species
+      for (let elem = 0; elem < n_elements; elem++) {
+        let sum_real = 0
+        let sum_imag = 0
+        for (let idx = elem_start[elem]; idx < elem_start[elem + 1]; idx++) {
+          const re_hk = row_real[idx]
+          const im_hk = row_imag[idx]
+          const cos_at = cos_l[l_offset + idx]
+          const sin_at = sin_l[l_offset + idx]
+          sum_real += re_hk * cos_at - im_hk * sin_at
+          sum_imag += re_hk * sin_at + im_hk * cos_at
+        }
+        sums_real[elem * l_span + l_idx + l_max] = sum_real
+        sums_imag[elem * l_span + l_idx + l_max] = sum_imag
+      }
+    }
+    for (const point_idx of row) evaluate(point_idx, 1)
+    for (const point_idx of partner ?? []) evaluate(point_idx, -1)
   }
 
   return intensities

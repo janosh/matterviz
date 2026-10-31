@@ -197,6 +197,29 @@ describe(`hull_at and assign_e_above_hull`, () => {
       pymatgen_reference.stable_formulas,
     )
   })
+
+  // one quickhull up to five elements, an LP per phase past them; gases at firing conditions
+  test.each([
+    [ba_ti_c_o, false],
+    [li_co_c_o, false],
+    [[...ba_ti_c_o, ...li_co_c_o], true],
+  ])(`matches the per-phase hull_at LP %#`, (entries, uses_lp) => {
+    const { phases } = prepare_phase_set(entries, {
+      open_species: [`O2`, `CO2`],
+      temperature: 1000,
+    })
+    const solver = vi.spyOn(math, `solve_linear_program`)
+    assign_e_above_hull(phases)
+    expect(solver.mock.calls.length > 0).toBe(uses_lp)
+    solver.mockRestore()
+    const errs = phases.map((phase) => {
+      const hull_energy = hull_at(phase.fractions, phases)?.energy ?? NaN
+      return Math.abs(phase.e_above_hull - Math.max(0, phase.energy_per_atom - hull_energy))
+    })
+    // measured max |diff| ~1e-15 eV/atom: both solve the same hull
+    expect(Math.max(...errs)).toBeLessThan(1e-9)
+    expect(phases.filter((phase) => phase.e_above_hull > 0.05).length).toBeGreaterThan(10)
+  })
 })
 
 describe(`balance_reaction`, () => {

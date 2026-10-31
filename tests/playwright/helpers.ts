@@ -783,6 +783,25 @@ export async function sweep_gizmo_handles(
   )
 }
 
+// The gizmo's handles once two consecutive sweeps agree on a non-empty set: until then the
+// gizmo may not have drawn or taken pointer events yet (software rendering on CI finds none on
+// a first sweep), or a camera move is still settling.
+export async function settled_gizmo_handles(
+  canvas: Locator,
+  options: Parameters<typeof sweep_gizmo_handles>[1] = {},
+): Promise<GizmoHandleHit[]> {
+  let hits: GizmoHandleHit[] = []
+  let keys: string | undefined
+  await expect(async () => {
+    const previous = keys
+    hits = await sweep_gizmo_handles(canvas, options)
+    keys = hits.map((hit) => hit.key).join(`;`)
+    expect(hits.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+    expect(keys, `gizmo handles still moving`).toBe(previous)
+  }).toPass() // unbounded: one sweep can outlast the expect timeout on CI
+  return hits
+}
+
 // Click the first handle a sweep finds and assert the camera flew there. Handles are fixed in
 // gizmo space, so their screen positions shift only if the camera moved — unlike canvas pixels,
 // which hover alone disturbs. The re-sweep must find handles too, else a gizmo that stopped
@@ -791,8 +810,7 @@ export async function expect_gizmo_click_flies_camera(
   canvas: Locator,
   options: Parameters<typeof sweep_gizmo_handles>[1] = {},
 ): Promise<void> {
-  const before = await sweep_gizmo_handles(canvas, options)
-  expect(before.length, `gizmo handles under the pointer`).toBeGreaterThan(0)
+  const before = await settled_gizmo_handles(canvas, options)
   const before_keys = before.map((hit) => hit.key)
 
   await canvas.page().mouse.click(before[0].x, before[0].y)

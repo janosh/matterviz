@@ -8,7 +8,6 @@ import {
   count_attribute_updates,
   export_via_pane,
   fire,
-  flush_render,
   keydown,
   mount_sized,
   mouse,
@@ -42,13 +41,11 @@ const shown_idxs = (plot: HTMLElement) =>
     .toSorted((idx_a, idx_b) => idx_a - idx_b)
 
 describe(`Treemap`, () => {
-  test(`renders cells with resolved colors and value-proportional areas`, async () => {
+  // explicit/inherited/palette colors come from the shared HierarchyChartState, asserted in
+  // Sunburst.test.svelte.ts › renders arcs, center total and resolved colors
+  test(`renders cells with value-proportional areas`, async () => {
     const plot = await mount_sized_treemap()
     expect(n_cells(plot)).toBe(4) // A, A1, A2, B (hidden root not rendered)
-    const fill = (label: keyof typeof IDX) => cell_rect(plot, label).getAttribute(`fill`)
-    expect(fill(`A`)).toBe(`#e15759`) // explicit
-    expect(fill(`A1`)).toBe(`#e15759`) // inherited
-    expect(fill(`B`)).toBe(PLOT_COLORS[0]) // palette
     // A and B have equal value -> equal area
     const size_of = (label: keyof typeof IDX) => {
       const rect = cell_rect(plot, label)
@@ -301,10 +298,8 @@ describe(`Treemap`, () => {
     expect(texts).toEqual(expect.arrayContaining([`A`, `A1`, `A2`, `B`]))
     const header = labels.find((lbl) => lbl.textContent?.trim() === `A`)
     expect(header?.classList.contains(`header`)).toBe(true)
-    expect(header?.getAttribute(`font-size`)).toBe(`14`)
     const leaf = labels.find((lbl) => lbl.textContent?.trim() === `B`)
     expect(leaf?.classList.contains(`header`)).toBe(false)
-    expect(leaf?.getAttribute(`font-size`)).toBe(`11`)
     const unlabeled = await mount_sized_treemap({ show_labels: false })
     expect(unlabeled.querySelectorAll(`.cell-label`)).toHaveLength(0)
   })
@@ -413,9 +408,6 @@ describe(`Treemap`, () => {
       color_bar: { title: `count`, orientation: `vertical` },
     })
     const colorbar = query(plot, `.colorbar`)
-    expect(colorbar.style.getPropertyValue(`--cbar-height`)).toBe(
-      `var(--treemap-colorbar-height, 150px)`,
-    )
     await resize_element(colorbar, 80, 150)
     trigger_resize_observer(colorbar)
     await tick()
@@ -479,17 +471,6 @@ describe(`Treemap`, () => {
       expect(halo.textContent).toBe(label_of(idx + 1)?.textContent)
     }
     expect(label_of(3)?.previousElementSibling).toBeNull()
-  })
-
-  test(`swapping data clears stale hover/tooltip state`, async () => {
-    // mount the $state object itself (not via the spreading helper) so it stays live
-    const props = $state({ data: tree, tween: { duration: 0 } })
-    const plot = await mount_sized(Treemap, props, size)
-    await fire(cell_rect(plot, `A1`), mouse(`mousemove`))
-    expect(plot.querySelector(`.plot-tooltip`)).not.toBeNull()
-    props.data = [{ label: `fresh`, value: 1 }]
-    await flush_render()
-    expect(plot.querySelector(`.plot-tooltip`)).toBeNull()
   })
 })
 

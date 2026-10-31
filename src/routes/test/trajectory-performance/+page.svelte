@@ -10,6 +10,8 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
+  import TestSection from '../TestSection.svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   // url.searchParams is off-limits during prerender (it would 500 the static build) and the
   // run is only meaningful in a browser anyway, so the defaults stand until the client runs
@@ -71,20 +73,31 @@
   })
 </script>
 
-{#if run}
-  <Trajectory
-    trajectory={run}
-    bind:current_step_idx
-    auto_play
-    fps={30}
-    show_controls="always"
-  />
-{/if}
+<h1>Trajectory performance test page</h1>
 
-<pre data-testid="perf-metrics">{JSON.stringify({
-    frames: n_frames,
-    atoms: n_atoms,
-    build_ms,
-    mount_ms,
-    current_step_idx,
-  })}</pre>
+<TestSection
+  title="Synthetic run"
+  description="{n_frames} frames × {n_atoms} atoms, auto-playing"
+>
+  {#if run}
+    <Trajectory
+      trajectory={run}
+      bind:current_step_idx
+      auto_play
+      fps={30}
+      show_controls="always"
+    />
+  {/if}
+</TestSection>
+
+<TestStatus
+  values={{
+    'perf-metrics': JSON.stringify({
+      frames: n_frames,
+      atoms: n_atoms,
+      build_ms,
+      mount_ms,
+      current_step_idx,
+    }),
+  }}
+/>

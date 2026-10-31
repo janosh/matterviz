@@ -60,16 +60,10 @@ test.describe(`Isosurface page`, () => {
       expect(trigger.y + trigger.height).toBeLessThanOrEqual(header.y)
     })
 
-    await test.step(`halo and neg. lobe controls`, async () => {
-      // periodic volumes get a halo slider
+    await test.step(`periodic volumes get a halo slider`, async () => {
       const halo_slider = pane.locator(`label:has-text("Halo") input[type="range"]`)
       await expect(halo_slider).toBeVisible()
       await expect(halo_slider).toHaveValue(`0`)
-      const neg_cb = pane.locator(`label:has-text("Neg. lobe") input[type="checkbox"]`)
-      await neg_cb.check()
-      await expect(neg_cb).toBeChecked()
-      await neg_cb.uncheck()
-      await expect(neg_cb).not.toBeChecked()
     })
 
     await test.step(`dragging exposes reset and close`, async () => {

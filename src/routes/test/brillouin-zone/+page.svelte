@@ -3,24 +3,15 @@
   import type { IrreducibleBZData } from '#lib/brillouin/types.js'
   import mp1_struct from '#site/structures/mp-1.json' with { type: 'json' }
   import { type Camera, OrthographicCamera } from 'three/webgpu'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   let controls_open = $state(false)
-  let info_pane_open = $state(false)
-  let bz_order = $state(1)
-  let surface_color = $state(`#4488ff`)
-  let surface_opacity = $state(0.3)
-  let edge_color = $state(`#000000`)
-  let edge_width = $state(0.05)
-  let show_vectors = $state(true)
-  let vector_scale = $state(1.0)
   let camera_projection = $state<`perspective` | `orthographic`>(`perspective`)
-  let show_controls = $state<`always` | `hover` | `never`>(`hover`)
-  let png_dpi = $state(150)
-  let fullscreen = $state(false)
-  // IBZ state
+  // non-default so the controls pane test has an edge reset to click
+  let edge_width = $state(0.05)
   let show_ibz = $state(false)
-  let ibz_color = $state(`#ff8844`)
-  let ibz_opacity = $state(0.5)
   let ibz_data = $state<IrreducibleBZData | null>(null)
 
   let structure = $state<Crystal | undefined>(mp1_struct as unknown as Crystal)
@@ -49,129 +40,66 @@
     if (params.has(`show_ibz`)) show_ibz = params.get(`show_ibz`) === `true`
   })
   // separate from the URL effect above, which re-applied the URL params (resetting e.g. a
-  // bz_order changed since) after every logged event when it read event_calls
+  // show_ibz toggled since) after every logged event when it read event_calls
   $effect(() => {
     ;(globalThis as Record<string, unknown>).event_calls = event_calls
   })
 </script>
 
-<h1 id="brillouinzone-component-test-page">BrillouinZone Component Test Page</h1>
+<h1>BrillouinZone test page</h1>
 
-<section>
-  <h2 id="controls">Controls</h2>
-  <label
-    >Controls Open: <input
-      id="controls-open"
-      type="checkbox"
-      bind:checked={controls_open}
-    /></label
-  ><br />
-  <label
-    >Info Pane Open: <input
-      id="info-pane-open"
-      type="checkbox"
-      bind:checked={info_pane_open}
-    /></label
-  ><br />
-  <label
-    >BZ Order: <input
-      id="bz-order"
-      type="number"
-      bind:value={bz_order}
-      min="1"
-      max="5"
-    /></label
-  ><br />
-  <label
-    >Show Controls: <select id="show-controls" bind:value={show_controls}>
-      <option value="always">always</option>
-      <option value="hover">hover</option>
-      <option value="never">never</option>
-    </select></label
-  ><br />
-  <label
-    >Camera Projection: <select id="camera-projection" bind:value={camera_projection}>
-      <option value="perspective">perspective</option>
-      <option value="orthographic">orthographic</option>
-    </select></label
-  ><br />
-  <label
-    >Fullscreen: <input
-      data-testid="fullscreen-checkbox"
-      type="checkbox"
-      bind:checked={fullscreen}
-    /></label
-  ><br />
-  <label
-    >Show IBZ: <input
-      id="show-ibz"
-      data-testid="show-ibz-checkbox"
-      type="checkbox"
-      bind:checked={show_ibz}
-    /></label
-  ><br />
-  <label>IBZ Color: <input id="ibz-color" type="color" bind:value={ibz_color} /></label><br />
-  <label
-    >IBZ Opacity: <input
-      id="ibz-opacity"
-      type="range"
-      min="0"
-      max="1"
-      step="0.1"
-      bind:value={ibz_opacity}
-    /></label
-  >
-</section>
+<TestSection title="Controls">
+  <TestControls>
+    <label
+      >Controls open <input
+        id="controls-open"
+        type="checkbox"
+        bind:checked={controls_open}
+      /></label
+    >
+    <label
+      >Camera projection
+      <select id="camera-projection" bind:value={camera_projection}>
+        <option value="perspective">perspective</option>
+        <option value="orthographic">orthographic</option>
+      </select>
+    </label>
+    <label
+      >Show IBZ
+      <input
+        id="show-ibz"
+        data-testid="show-ibz-checkbox"
+        type="checkbox"
+        bind:checked={show_ibz}
+      />
+    </label>
+  </TestControls>
+</TestSection>
 
-<section>
-  <h2 id="status">Status</h2>
-  <p data-testid="controls-open">{controls_open}</p>
-  <p data-testid="info-pane-open">{info_pane_open}</p>
-  <p data-testid="bz-order">{bz_order}</p>
-  <p data-testid="show-controls">{show_controls}</p>
-  <p data-testid="camera-projection">{camera_projection}</p>
-  <p data-testid="fullscreen-status">{fullscreen}</p>
-  <p data-testid="show-ibz">{show_ibz}</p>
-  <p data-testid="ibz-color">{ibz_color}</p>
-  <p data-testid="ibz-opacity">{ibz_opacity}</p>
-  <p data-testid="ibz-data-status">{ibz_data ? `loaded` : `null`}</p>
-  <p data-testid="ibz-vertices-count">{ibz_data?.vertices?.length ?? 0}</p>
-  <p data-testid="events">{event_calls.map((event_call) => event_call.event).join(`, `)}</p>
-</section>
-
-<BrillouinZone
-  id="test-brillouin-zone"
-  {structure}
-  {source}
-  bind:bz_order
-  bind:controls_open
-  bind:info_pane_open
-  bind:surface_color
-  bind:surface_opacity
-  bind:edge_color
-  bind:edge_width
-  bind:show_vectors
-  bind:vector_scale
-  bind:camera_projection
-  bind:png_dpi
-  bind:fullscreen
-  bind:show_ibz
-  bind:ibz_color
-  bind:ibz_opacity
-  bind:ibz_data
-  bind:camera
-  {show_controls}
-  on_file_load={log_event(`on_file_load`)}
-  on_error={log_event(`on_error`)}
-  on_fullscreen_change={log_event(`on_fullscreen_change`)}
-  style="--bz-height: 500px; --bz-width: 800px; margin-top: 2em"
+<TestStatus
+  values={{
+    'controls-open': controls_open,
+    'camera-projection': camera_projection,
+    'show-ibz': show_ibz,
+    'ibz-data-status': ibz_data ? `loaded` : `null`,
+    'ibz-vertices-count': ibz_data?.vertices?.length ?? 0,
+    events: event_calls.map((event_call) => event_call.event).join(`, `),
+  }}
 />
 
-<style>
-  section {
-    margin-bottom: 2em;
-    padding: 1em;
-    border: 1px solid var(--sms-border);
-    border-radius: var(--border-radius);
-  }
-</style>
+<TestSection title="Viewer">
+  <BrillouinZone
+    id="test-brillouin-zone"
+    {structure}
+    {source}
+    bind:controls_open
+    bind:camera_projection
+    bind:edge_width
+    bind:show_ibz
+    bind:ibz_data
+    bind:camera
+    on_file_load={log_event(`on_file_load`)}
+    on_error={log_event(`on_error`)}
+    style="--bz-height: 500px; --bz-width: 800px"
+  />
+</TestSection>

@@ -173,11 +173,16 @@ test(`adaptive demo stays readable after fonts and narrow/wide resizes`, async (
   // Wait for Svelte to attach the slider handler, otherwise only the DOM input moves. Bail on the
   // first error instead of polling to the timeout, which would blame the missing tick element.
   const tick_labels = x_axis.locator(`.tick text`)
-  const tick_deadline = Date.now() + 45_000
-  while (Date.now() < tick_deadline && (await tick_labels.count()) === 0) {
-    assert_no_page_errors()
-    await page.waitForTimeout(100)
-  }
+  // assert_no_page_errors throws out of expect.poll at once rather than being retried
+  await expect
+    .poll(
+      () => {
+        assert_no_page_errors()
+        return tick_labels.count()
+      },
+      { timeout: 45_000 },
+    )
+    .toBeGreaterThan(0)
   await expect(tick_labels.first()).toBeVisible()
   await page.evaluate(async () => void (await document.fonts.ready))
 

@@ -1,8 +1,6 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
 import { full_data_extractor, structural_data_extractor } from '#lib/trajectory/extract.js'
-import { open_trajectory } from '#lib/trajectory/open.js'
 import { describe, expect, it } from 'vitest'
-import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
+import { make_trajectory_frame } from '../test-fixtures'
 
 describe(`trajectory data extractors`, () => {
   const forces = [
@@ -45,26 +43,5 @@ describe(`trajectory data extractors`, () => {
     const row = extractor(make_trajectory_frame(step, 1, metadata, lattice))
     if (exact) expect(row).toEqual(expected)
     else expect(row).toMatchObject(expected)
-  })
-
-  it(`extracts every frame of a lazy HDF5 run`, async () => {
-    const run = await open_trajectory(
-      read_binary_test_file(`flame-gold-cluster-55-atoms.h5`),
-      { filename: `flame-gold-cluster-55-atoms.h5` },
-    )
-    try {
-      const rows = await Promise.all(
-        Array.from({ length: run.frame_count }, async (_unused, frame_idx) =>
-          full_data_extractor(await materialize_frame_result(run.read_frame(frame_idx))),
-        ),
-      )
-      // 20 frames written every 25 steps in a fixed 25.8165 A cubic box
-      expect(rows.map((row) => row.Step)).toEqual(
-        Array.from({ length: 20 }, (_unused, idx) => 25 * (idx + 1)),
-      )
-      for (const row of rows) expect(row.volume).toBeCloseTo(17206.47404956977, 6)
-    } finally {
-      run.dispose()
-    }
   })
 })

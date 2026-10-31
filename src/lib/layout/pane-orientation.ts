@@ -6,7 +6,7 @@
 const MAX_PANE_TALLNESS = 1.4
 // Smallest readable pane for a structure, plot or Fermi surface: a scatter spends ~80px on its
 // y-axis labels plus ~10em of legend, and below ~180px height the x-axis labels eat the data.
-const MIN_PANE_SIZE = { width: 320, height: 180 }
+export const MIN_PANE_SIZE = { width: 320, height: 180 }
 
 // Which way to split a container into two equal panes. When only one split clears
 // MIN_PANE_SIZE it wins regardless of shape (stacking a 490x500 chat sidebar card whose

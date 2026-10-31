@@ -242,7 +242,8 @@ export function create_worker_client<
           report_progress(request, progress)
           return
         }
-        if (error || result === undefined) {
+        // serve_worker sends `error: null` on success; an empty message is still an error
+        if (error != null || result === undefined) {
           request.reject(
             new Error(error ?? `${label} worker returned no result for request ${identifier}`),
           )

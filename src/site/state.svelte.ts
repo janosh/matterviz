@@ -186,6 +186,7 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/structure/multi-volume': [`Structure`],
   '/structure/polyhedra': [`Structure`],
   '/structure/rdf': [`RdfPlot`],
+  '/structure/render': [`Structure`],
   '/structure/slab': [`SlabBuilder`],
   '/structure/symmetry': [`SymmetryStats`, `WyckoffTable`],
   '/structure/vectors': [`Structure`],

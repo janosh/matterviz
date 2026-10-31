@@ -1,5 +1,7 @@
 import {
-  type CanvasMarker,
+  create_marker_batch,
+  type MarkerStyle,
+  push_marker,
   draw_markers,
   MAX_SPRITE_RUNS,
   MAX_SPRITE_SIDE,
@@ -43,18 +45,24 @@ const fake_ctx = () => {
   }
   return ctx as unknown as CanvasRenderingContext2D & { calls: Call[] }
 }
-const marker = (overrides: Partial<CanvasMarker> = {}): CanvasMarker => ({
-  cx: 10,
-  cy: 20,
-  radius: 3,
-  fill: `red`,
-  fill_opacity: 1,
-  stroke: `#000`,
-  stroke_width: 1,
-  stroke_opacity: 1,
-  opacity: 1,
-  ...overrides,
-})
+// One marker as the tests write it, flat: position, opacity and its style fields
+type CanvasMarker = { cx: number; cy: number; opacity: number; style: MarkerStyle }
+type FlatMarker = Omit<CanvasMarker, `style`> & MarkerStyle
+const marker = (overrides: Partial<FlatMarker> = {}): CanvasMarker => {
+  const { cx, cy, opacity, ...style }: FlatMarker = {
+    cx: 10,
+    cy: 20,
+    radius: 3,
+    fill: `red`,
+    fill_opacity: 1,
+    stroke: `#000`,
+    stroke_width: 1,
+    stroke_opacity: 1,
+    opacity: 1,
+    ...overrides,
+  }
+  return { cx, cy, opacity, style }
+}
 const ops = (ctx: { calls: Call[] }, operation: string) =>
   ctx.calls.filter((call) => call.op === operation)
 const filled_path = (ctx: { calls: Call[] }) => ops(ctx, `fill`)[0].args[0] as StubPath2D
@@ -63,14 +71,15 @@ const draw = (
   options: Parameters<typeof draw_markers>[2] = { width: 100, height: 100 },
 ) => {
   const ctx = fake_ctx()
-  draw_markers(ctx, markers, options)
+  const batch = create_marker_batch(markers.length)
+  for (const { cx, cy, opacity, style } of markers) push_marker(batch, cx, cy, opacity, style)
+  draw_markers(ctx, batch, options)
   return ctx
 }
-const batch = (n_markers: number, overrides: Partial<CanvasMarker> = {}) =>
+const batch = (n_markers: number, overrides: Partial<FlatMarker> = {}) =>
   Array.from({ length: n_markers }, (_, idx) => marker({ cx: idx, cy: idx, ...overrides }))
 // Symbol markers accumulate into one Path2D; these are the stamped entries.
-const stamps = (overrides: Partial<CanvasMarker>) =>
-  filled_path(draw([marker(overrides)])).added
+const stamps = (overrides: Partial<FlatMarker>) => filled_path(draw([marker(overrides)])).added
 
 describe(`canvas markers`, () => {
   test.each([

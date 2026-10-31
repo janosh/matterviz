@@ -8,6 +8,7 @@
   import { calc_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
   import type { Pbc } from '#lib/structure/index.js'
   import Structure from '#lib/structure/Structure.svelte'
+  import TestSection from '../TestSection.svelte'
 
   let viewer_count = $state(24)
   let grid: HTMLDivElement | undefined = $state()
@@ -91,15 +92,20 @@
   })
 </script>
 
-<h1 id="viewer-grid-canvases">Viewer Grid ({viewer_count} canvases)</h1>
+<h1>Viewer grid test page</h1>
 
-<div class="grid" data-testid="viewer-grid" data-backend={backend} bind:this={grid}>
-  {#each structures as structure, idx (idx)}
-    <div class="cell" data-testid="viewer-{idx}">
-      <Structure {structure} style="height: 160px" />
-    </div>
-  {/each}
-</div>
+<TestSection
+  title="{viewer_count} simultaneous Structure viewers"
+  description="Each canvas must stay drawn: browsers evict the oldest WebGL context past ~16."
+>
+  <div class="grid" data-testid="viewer-grid" data-backend={backend} bind:this={grid}>
+    {#each structures as structure, idx (idx)}
+      <div class="cell" data-testid="viewer-{idx}">
+        <Structure {structure} style="height: 160px" />
+      </div>
+    {/each}
+  </div>
+</TestSection>
 
 <style>
   .grid {
@@ -108,7 +114,7 @@
     gap: 8px;
   }
   .cell {
-    border: 1px solid rgba(128, 128, 128, 0.35);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     overflow: hidden;
   }

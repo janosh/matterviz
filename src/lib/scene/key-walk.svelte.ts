@@ -20,7 +20,11 @@ import { Vector3 } from 'three/webgpu'
 import type { ThreltePointerEvent } from './props.svelte'
 
 export type KeyWalkOptions<T> = {
-  targets: () => readonly T[] // in walk order
+  // in walk order; any array-like, so a million-marker scene can walk its key column as is
+  targets: () => ArrayLike<T>
+  // whether there is anything to walk, when that is cheaper to tell than listing the targets
+  // (read on every change of its inputs; targets only on key presses)
+  active?: () => boolean
   hover: (target: T) => void // what the pointer entering the target does
   leave: (target: T) => void // and leaving it
   click?: (target: T) => void // Enter/Space, where a click on the target does something
@@ -52,7 +56,7 @@ export class KeyWalk<T> {
     if (event.defaultPrevented || event.isComposing || is_modifier_chord(event)) return false
     const { targets, hovered, hover, leave, click, unpin } = this.#options
     const items = targets()
-    const pointer_idx = hovered ? items.findIndex(hovered) : -1
+    const pointer_idx = hovered ? Array.prototype.findIndex.call(items, hovered) : -1
     const idx = pointer_idx === -1 ? this.idx : pointer_idx
     const current = idx === null ? null : (items[idx] ?? null)
     if (event.key === `Escape`) {
@@ -122,8 +126,9 @@ export const key_walk_root = (): KeyWalkRoot => setContext(KEY_WALK, new KeyWalk
 export function scene_key_walk<T>(options: KeyWalkOptions<T>): KeyWalk<T> {
   const walk = new KeyWalk(options)
   const root = getContext<KeyWalkRoot | undefined>(KEY_WALK)
+  const { active = () => options.targets().length > 0 } = options
   $effect(() => {
-    if (!root || options.targets().length === 0) return undefined
+    if (!root || !active()) return undefined
     root.walk = walk
     return () => {
       if (root.walk === walk) root.walk = null

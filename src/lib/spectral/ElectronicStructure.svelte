@@ -32,7 +32,7 @@
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { union_ranges } from '#lib/plot/core/shared-axes.js'
   import { observe_size } from '#lib/plot/core/utils.js'
-  import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
+  import { MIN_PANE_SIZE, pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import {
     create_sequence_player,
     is_sequence_key_target,
@@ -127,10 +127,12 @@
   // Below this width (px) the panes stack in one column, each at its own height, rather than
   // share the viewer's height (a chat card's 650x560 squeezed the bands to a strip)
   const STACK_WIDTH = 800
-  // Below this height (px) per pane the side-by-side layout's plots have no room for their axis
-  // titles, which then overlap the pane below (a dashboard cell's 830x500 holding a sweep), so
-  // the panes stack too
-  const MIN_PANE_HEIGHT = 200
+  // Shorter than this (px), a plot's axes and colour bar leave its data a sliver (an 880x850
+  // dashboard cell gave the phonon bands 20px, 185px still only 50px), so the side-by-side
+  // layout stacks before any plot or scene gets less
+  const MIN_PLOT_HEIGHT = 200
+  // the DOS's share of the electronic spectra's height under their bands (see .row.stacked)
+  const STACKED_DOS_SHARE = 2 / 5
   const SWEEP_FPS_RANGE = [0.25, 5] as const // frames per second while playing a sweep
   // The structure is in the Fermi data's frame when a_i · b_j / 2π is an integer matrix (its
   // cell a supercell of the zone's) or the inverse of one (the zone's cell a supercell of its).
@@ -587,15 +589,46 @@
   const lower_split = $derived(show_trends && show_column)
   const scenes_split = $derived(shown.has(`structure`) && shown.has(`fermi`))
   const spectra_split = $derived(shown.has(`bands`) && shown.has(`dos`))
-  // Narrow, or too short to give each pane of the side-by-side layout's tallest column (scenes
-  // over spectra over phonons) MIN_PANE_HEIGHT, the panes stack in one column, each at its own
-  // height. A narrow viewer grows to fit them, a short one keeps its height and scrolls them, so
-  // the height measured is the same either way and stacking can't flip it.
+  // Narrow, or too short to give each plot of the side-by-side layout MIN_PLOT_HEIGHT, the panes
+  // stack in one column, each at its own height. A narrow viewer grows to fit them, a short one
+  // keeps its height and scrolls them, so the height measured is the same either way and
+  // stacking can't flip it.
   const narrow = $derived(viewer_width > 0 && viewer_width < STACK_WIDTH)
-  const pane_levels = $derived(Number(show_scenes) + (column_split ? 2 : Number(show_lower)))
-  const stacked = $derived(
-    narrow || (panes_height > 0 && panes_height < pane_levels * MIN_PANE_HEIGHT),
+  // Narrower than MIN_SIDE_BY_SIDE_WIDTH, the electronic and the phonon bands each stack over
+  // their DOS. The column's width comes from the viewer's rather than a measurement, which
+  // stacking would widen and so flip back.
+  const bands_over_dos = $derived(
+    (viewer_width * (lower_split ? 1 - trends_ratio : 1)) / (compared ? 2 : 1) <
+      MIN_SIDE_BY_SIDE_WIDTH,
   )
+  // the heights (px) the panes need for each of their plots to get MIN_PLOT_HEIGHT, which the
+  // dividers also keep them at. A DOS strip under the electronic bands has one x-axis band and
+  // no title above, so the bands' share decides (the strip's 2/5 is then 133px). Comparing, the
+  // first row of each side also holds its label.
+  let side_label_height = $state(0)
+  const label_height = $derived(compared ? side_label_height : 0)
+  const scenes_min = $derived(MIN_PLOT_HEIGHT + label_height)
+  const spectra_min = $derived(
+    MIN_PLOT_HEIGHT / (spectra_split && bands_over_dos ? 1 - STACKED_DOS_SHARE : 1),
+  )
+  const phonon_min = $derived(MIN_PLOT_HEIGHT * (bands_over_dos ? 2 : 1))
+  const lower_min = $derived(
+    (column_split
+      ? Math.max(spectra_min / phonon_ratio, phonon_min / (1 - phonon_ratio))
+      : show_spectra
+        ? spectra_min
+        : show_phonon
+          ? phonon_min
+          : MIN_PLOT_HEIGHT) + (show_scenes ? 0 : label_height),
+  )
+  const panes_min = $derived(
+    show_scenes && show_lower
+      ? Math.max(scenes_min / row_ratio, lower_min / (1 - row_ratio))
+      : show_scenes
+        ? scenes_min
+        : lower_min,
+  )
+  const stacked = $derived(narrow || (panes_height > 0 && panes_height < panes_min))
   // The pane in the viewer's top-right corner (on the compared side while comparing) lines its
   // own controls up left of the viewer's
   const corner_pane = $derived.by((): ElectronicPane => {
@@ -681,14 +714,19 @@
       return !integral(overlap) && !integral(matrix_inverse_3x3(overlap))
     })
     scenes_size = $state({ width: 0, height: 0 })
+    // stacked, the scenes share their row while each keeps a readable width (each row is one
+    // pane high, so stacking them too only doubles the scroll)
     scene_orientation = $derived(
       layout !== `auto`
         ? layout
         : stacked
-          ? `vertical`
+          ? this.scenes_size.width / 2 >= MIN_PANE_SIZE.width
+            ? `horizontal`
+            : `vertical`
           : pick_pane_orientation(this.scenes_size.width, this.scenes_size.height),
     )
     spectra_width = $state(0)
+    spectra_height = $state(0)
     spectra_side = $derived(spectra_split && this.spectra_width >= MIN_SIDE_BY_SIDE_WIDTH)
     // Left padding the DOS settled on beside the bands (its tick labels and their margin),
     // which the bands mirror on their right (room for the E_F label), centring the divider
@@ -714,6 +752,7 @@
       bands_props: () => bands_props,
       dos_props: () => dos_props,
       side_by_side: () => this.spectra_side,
+      size: () => [this.spectra_width, this.spectra_height],
       data_range: () => union_ranges(electronic_spans.current),
       base_padding: DEFAULT_PLOT_PADDING,
     })
@@ -995,6 +1034,8 @@
       <SplitPane
         orientation="vertical"
         bind:ratio={row_ratio}
+        min_px={scenes_min}
+        second_min_px={lower_min}
         aria-label="Resize 3D scenes and the plots below"
       />
     {/if}
@@ -1076,7 +1117,7 @@
       {#each sides as side (side)}
         <div class="side">
           {#if compared && labelled}
-            <div class="side-label">
+            <div class="side-label" bind:clientHeight={side_label_height}>
               {side.label}
               {#if side === compare_side && compare_far && frame}
                 <small class="far" role="status">
@@ -1170,6 +1211,7 @@
             spectra_split ? (side.spectra_side ? `side` : `stacked`) : `single`,
           ]}
           bind:clientWidth={side.spectra_width}
+          bind:clientHeight={side.spectra_height}
         >
           {#if shown.has(`bands`)}
             <div class="pane" data-pane="bands" style={pane_style(`bands`, side)}>
@@ -1279,6 +1321,8 @@
         <SplitPane
           orientation="vertical"
           bind:ratio={phonon_ratio}
+          min_px={spectra_min}
+          second_min_px={phonon_min}
           aria-label="Resize electronic and phonon spectra"
         />
       {/if}
@@ -1388,6 +1432,16 @@
       }
       .row.side > .pane {
         height: auto;
+      }
+      .row.scenes.horizontal {
+        flex-direction: row;
+        > .pane {
+          flex: 1;
+        }
+        > * + * {
+          border-top: none;
+          border-left: var(--pane-rule);
+        }
       }
     }
     /* below MIN_SIDE_BY_SIDE_WIDTH the phonon pane stacks its DOS under its bands */

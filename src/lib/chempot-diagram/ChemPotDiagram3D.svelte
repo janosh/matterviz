@@ -1248,7 +1248,7 @@
       />
     {/if}
     <div class={[`scene`, { stale: recomputing.current }]}>
-      <Canvas createRenderer={create_renderer}>
+      <Canvas createRenderer={create_renderer} shadows={false}>
         <ChemPotScene3D
           bind:orbit_controls={orbit_controls_ref}
           {render_domains}

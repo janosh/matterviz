@@ -46,20 +46,12 @@ test.describe(`DOS Component Tests`, () => {
     await page.goto(`/test/dos`, { waitUntil: `networkidle` })
   })
 
-  test(`renders single DOS with axes, hides configured legend and resizes`, async ({
-    page,
-  }) => {
+  test(`renders single DOS with axes and hides a configured legend`, async ({ page }) => {
     const plot = page.locator(`[data-testid="dos-single"]`)
     await expect(curves(plot.locator(`svg`)).first()).toBeVisible()
     await expect(plot.locator(`g.x-axis .tick`).first()).toBeVisible()
     await expect(plot.locator(`g.y-axis .tick`).first()).toBeVisible()
     await expect(page.locator(`[data-testid="dos-no-legend"] .legend`)).toBeHidden()
-
-    const initial_box = await require_bbox(plot, `plot`)
-    await page.setViewportSize({ width: 800, height: 600 })
-    await expect
-      .poll(async () => (await plot.boundingBox())?.width)
-      .not.toBe(initial_box.width)
   })
 
   test(`multiple DOS get a toggleable legend and series-labelled tooltips`, async ({
@@ -81,14 +73,13 @@ test.describe(`DOS Component Tests`, () => {
     await expect(svg_curves).toHaveCount(1, { timeout: 2000 })
   })
 
-  test(`applies max and sum normalization`, async ({ page }) => {
+  test(`applies max normalization`, async ({ page }) => {
     const max_plot = page.locator(`[data-testid="dos-max-norm"]`)
     await expect(curves(max_plot).first()).toBeVisible()
     const y_ticks = (await max_plot.locator(`g.y-axis text`).allTextContents())
       .map((tick) => Number(tick.replaceAll(/[^\d.\-+eE]/g, ``)))
       .filter(Number.isFinite)
     expect(Math.max(...y_ticks)).toBeLessThanOrEqual(1.01) // margin for tick rounding
-    await expect(curves(page.locator(`[data-testid="dos-sum-norm"]`)).first()).toBeVisible()
   })
 
   test(`renders stacked DOS and applies Gaussian smearing`, async ({ page }) => {
@@ -108,30 +99,7 @@ test.describe(`DOS Component Tests`, () => {
     expect((path_d.match(/[MLCQSTVHZ]/g) ?? []).length).toBeGreaterThan(5)
   })
 
-  test(`horizontal orientation swaps axes`, async ({ page }) => {
-    const plot = page.locator(`[data-testid="dos-horizontal"]`)
-    await expect(curves(plot).first()).toBeVisible()
-    for (const axis of [`x`, `y`]) {
-      const ticks = await plot.locator(`g.${axis}-axis text`).allTextContents()
-      expect(
-        ticks.some((tick) => !Number.isNaN(Number(tick))),
-        `${axis} ticks`,
-      ).toBe(true)
-    }
-    await expect(plot.locator(`.x-label`)).toContainText(/^(?:Phonon|Electron) DOS/)
-    await expect(plot.locator(`.y-label`)).toContainText(
-      /^(?:Phonon frequency|Electron energy)/,
-    )
-  })
-
-  test(`converts frequencies to different units`, async ({ page }) => {
-    for (const unit of [`eV`, `meV`]) {
-      await expect(
-        page.locator(`[data-testid="dos-${unit.toLowerCase()}"] .x-label`),
-      ).toContainText(unit)
-    }
-  })
-
+  // axis labels per orientation and unit conversion are pinned in tests/vitest/spectral/Dos.test.ts
   // the y-axis quantity leads the tooltip: density when vertical, frequency when horizontal
   for (const [orientation, test_id] of [
     [`vertical`, `dos-single`],

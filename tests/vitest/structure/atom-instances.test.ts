@@ -1,7 +1,7 @@
 import {
   AtomInstances,
   atom_sphere_segments,
-  enable_atom_sphere_picking,
+  raycast_atom_spheres,
   update_atom_coordinates,
   update_ordered_atom_positions,
 } from '#lib/structure/atom-instances.js'
@@ -42,6 +42,13 @@ const cell_point = (axis: StructureCutaway[`axis`], depth: number) =>
   new Vector3(0.5, 0.5, 0.5).setComponent(axis, depth).applyMatrix4(cell)
 // Hit records without the object, which differs between the compared meshes
 const strip_object = (hits: Intersection[]) => hits.map(({ object: _object, ...hit }) => hit)
+// An invisible edit target picking analytic spheres, as BondEditTargets uses for atoms
+const sphere_target = (position: [number, number, number], radius: number, hit_scale = 1) => {
+  const target = new Mesh()
+  target.raycast = (raycaster, hits) =>
+    raycast_atom_spheres(target, [{ position, radius }], hit_scale, raycaster, hits)
+  return target
+}
 
 // ...but keep their enlarged size for an atom the cutaway keeps (plane mode keeps z <= 0.5)
 test.each([
@@ -49,10 +56,7 @@ test.each([
   [`a cutaway keeping the atom`, `plane`],
 ] as const)(`enlarged atom target is hit beside the drawn atom with %s`, (_label, mode) => {
   const group = new StructureCutawayGroup()
-  const atom = new Mesh(new SphereGeometry(0.5), new MeshBasicMaterial())
-  atom.position.set(0, 0, 0.3)
-  atom.scale.setScalar(0.02 * 1.15) // drawn radius 0.01, target 0.0115
-  enable_atom_sphere_picking(atom, 1 / 1.15)
+  const atom = sphere_target([0, 0, 0.3], 0.02, 1.15) // drawn radius 0.01, target 0.0115
   group.add(atom)
   group.set_cutaway(
     mode && {
@@ -79,10 +83,7 @@ test.each([1, 2, 3] as const)(
       cartesian_to_fractional: new Matrix4(),
     }
     const raycaster = new Raycaster(new Vector3(0, 0, 0), new Vector3(0, 0, 1))
-    const atom = new Mesh(new SphereGeometry(0.5), new MeshBasicMaterial())
-    atom.position.set(0, 0, 0.5105)
-    atom.scale.setScalar(0.02 * 1.15)
-    enable_atom_sphere_picking(atom, 1 / 1.15)
+    const atom = sphere_target([0, 0, 0.5105], 0.02, 1.15)
     group.add(atom)
     group.set_cutaway(cutaway)
     expect(raycaster.intersectObject(atom)).toEqual([])
@@ -240,11 +241,11 @@ test.each(
     expect(mesh.positions.version).toBe(original_version)
     expect(mesh.count).toBe(3)
     // Native mesh targets and partial-occupancy analytic spheres share clipping behavior.
-    const target = new Mesh(geometry, material)
-    target.position.fromArray(atoms[2].position)
-    group.add(target)
-    for (const enable_picking of [enable_cutaway_picking, enable_atom_sphere_picking]) {
-      enable_picking(target)
+    const native = new Mesh(geometry, material)
+    native.position.fromArray(atoms[2].position)
+    enable_cutaway_picking(native)
+    for (const target of [native, sphere_target(atoms[2].position, 1)]) {
+      group.add(target)
       group.set_cutaway({ ...cutaway, mode: `plane`, position: 0.5 })
       expect(raycaster.intersectObject(target)).toEqual([])
       group.set_cutaway(undefined)
@@ -512,11 +513,10 @@ test.each([6.562, 14.659, 25.996])(
 )
 
 test(`invisible sphere targets remain pickable exactly at a rotated pole`, () => {
-  const mesh = new Mesh(new SphereGeometry(0.5, 12, 12), new MeshBasicMaterial())
+  const mesh = sphere_target([0, 0, 0], 1)
   mesh.visible = false
   mesh.rotation.x = -Math.PI / 2
   mesh.scale.setScalar(2.5)
-  enable_atom_sphere_picking(mesh)
   // OrbitControls represents an equatorial camera using cos(pi/2), not exact zero.
   const origin = new Vector3(0, Math.cos(Math.PI / 2) * 8, 8)
   const ray = new Raycaster(origin, origin.clone().normalize().negate())

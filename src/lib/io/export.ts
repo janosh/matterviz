@@ -55,8 +55,53 @@ async function with_timeout<Value>(
   }
 }
 
+// CRC-32 of PNG chunk types and data (ISO 3309, as zlib computes it)
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, byte) => {
+  let crc = byte
+  for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1
+  return crc
+})
+const crc32 = (bytes: Uint8Array): number => {
+  let crc = 0xffffffff
+  for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8)
+  return (crc ^ 0xffffffff) >>> 0
+}
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+// The PNG declaring `png_dpi` as its physical resolution (a pHYs chunk right after IHDR,
+// replacing one the encoder wrote): without it documents assume 72 or 96 DPI and place a
+// 300 DPI export at 3-4x its on-screen size
+export async function set_png_dpi(png: Blob, png_dpi: number): Promise<Blob> {
+  const bytes = new Uint8Array(await png.arrayBuffer())
+  const view = new DataView(bytes.buffer)
+  const chunk_type = (pos: number) => String.fromCharCode(...bytes.subarray(pos + 4, pos + 8))
+  if (!PNG_SIGNATURE.every((byte, idx) => bytes[idx] === byte) || chunk_type(8) !== `IHDR`)
+    throw new Error(`Canvas encoder returned no PNG (${bytes.length} bytes)`)
+  const phys = new Uint8Array(21)
+  const phys_view = new DataView(phys.buffer)
+  phys_view.setUint32(0, 9)
+  phys.set([0x70, 0x48, 0x59, 0x73], 4) // pHYs
+  const pixels_per_meter = Math.round(png_dpi / 0.0254)
+  phys_view.setUint32(8, pixels_per_meter)
+  phys_view.setUint32(12, pixels_per_meter)
+  phys[16] = 1 // unit: meter
+  phys_view.setUint32(17, crc32(phys.subarray(4, 17)))
+  const ihdr_end = 8 + 12 + view.getUint32(8)
+  const parts: Uint8Array[] = [bytes.subarray(0, ihdr_end), phys]
+  // pHYs must precede the image data, so only the chunks before IDAT can hold one
+  let pos = ihdr_end
+  while (pos < bytes.length && chunk_type(pos) !== `IDAT`) {
+    const end = pos + 12 + view.getUint32(pos)
+    if (chunk_type(pos) !== `pHYs`) parts.push(bytes.subarray(pos, end))
+    pos = end
+  }
+  parts.push(bytes.subarray(pos))
+  return new Blob(parts as Uint8Array<ArrayBuffer>[], { type: `image/png` })
+}
+
 const canvas_to_blob = (
   canvas: HTMLCanvasElement,
+  png_dpi: number,
   failure_message = `Failed to generate PNG blob`,
 ): Promise<Blob> =>
   with_timeout(
@@ -69,7 +114,7 @@ const canvas_to_blob = (
       }),
     export_timeout_ms((canvas.width * canvas.height * 4) / 1e6),
     `${failure_message}: toBlob`,
-  )
+  ).then((blob) => set_png_dpi(blob, png_dpi))
 
 // Wait for the GPU device, but never indefinitely: an unfulfilled device request would leave
 // the export promise pending forever, giving the user neither a file nor an error.
@@ -110,14 +155,21 @@ export async function canvas_to_png_blob(
   png_dpi = DEFAULT_PNG_DPI,
 ): Promise<Blob> {
   const scale = dpi_to_scale(png_dpi)
+  // the DPI the scale realizes, after dpi_to_scale's clamping
+  const export_dpi = scale * 72
   const renderer = renderer_registry.get(canvas)
 
   if (!renderer) {
     const width = Math.max(1, Math.round((canvas.clientWidth || canvas.width) * scale))
     const height = Math.max(1, Math.round((canvas.clientHeight || canvas.height) * scale))
-    if (width === canvas.width && height === canvas.height) return canvas_to_blob(canvas)
-    return paint_png_blob(width, height, 1, (ctx) =>
-      ctx.drawImage(canvas, 0, 0, width, height),
+    if (width === canvas.width && height === canvas.height)
+      return canvas_to_blob(canvas, export_dpi)
+    return paint_png_blob(
+      width,
+      height,
+      1,
+      (ctx) => ctx.drawImage(canvas, 0, 0, width, height),
+      export_dpi,
     )
   }
 
@@ -131,7 +183,7 @@ export async function canvas_to_png_blob(
   try {
     if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
     if (view) renderer.render(view.scene, view.camera)
-    return await canvas_to_blob(canvas)
+    return await canvas_to_blob(canvas, export_dpi)
   } finally {
     if (resize)
       renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
@@ -139,12 +191,14 @@ export async function canvas_to_png_blob(
 }
 
 // PNG of a scene drawn in CSS pixels: `paint` runs on a fresh canvas pre-scaled by `scale`,
-// so canvas-drawn marks come out crisp instead of as an upscaled screen bitmap
+// so canvas-drawn marks come out crisp instead of as an upscaled screen bitmap. `png_dpi` is
+// the resolution the file declares, by default the one `scale` realizes (see dpi_to_scale).
 export function paint_png_blob(
   width: number,
   height: number,
   scale: number,
   paint: (ctx: CanvasRenderingContext2D) => void,
+  png_dpi = scale * 72,
 ): Promise<Blob> {
   const canvas = document.createElement(`canvas`)
   canvas.width = Math.max(1, Math.round(width * scale))
@@ -153,7 +207,7 @@ export function paint_png_blob(
   if (!ctx) throw new Error(`Canvas 2D context not available`)
   ctx.scale(scale, scale)
   paint(ctx)
-  return canvas_to_blob(canvas, `Failed to generate high-resolution PNG`)
+  return canvas_to_blob(canvas, png_dpi, `Failed to generate high-resolution PNG`)
 }
 
 // Export a canvas as PNG named `<basename>-<dpi>dpi.png` (triggers browser download)
@@ -556,7 +610,13 @@ export async function svg_to_png_blob(
   if (!size) throw new Error(`Invalid SVG dimensions for PNG export`)
   const [width, height] = size
   return with_svg_image(markup, width * height, (img) =>
-    paint_png_blob(width, height, 1, (ctx) => ctx.drawImage(img, 0, 0, width, height)),
+    paint_png_blob(
+      width,
+      height,
+      1,
+      (ctx) => ctx.drawImage(img, 0, 0, width, height),
+      dpi_to_scale(png_dpi) * 72,
+    ),
   )
 }
 

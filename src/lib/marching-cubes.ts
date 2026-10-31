@@ -298,13 +298,104 @@ interface MarchingCubesOptions {
 type GrowableArray = Float32Array | Uint32Array
 
 // Double the capacity of a typed array until `needed` entries fit
-const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
+export const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
   if (needed <= array.length) return array
   let capacity = Math.max(2 * array.length, 1024)
   while (capacity < needed) capacity *= 2
   const bigger = new (array.constructor as new (length: number) => Arr)(capacity)
   bigger.set(array)
   return bigger
+}
+
+// Cubes per block edge for the empty-block skip: a level set crosses few blocks, so the cube
+// loop visits only those (~10% of a 101³ band grid's cubes) after one read per grid point
+const BLOCK_SIZE = 4
+
+// OR rows of `row_len` flags, one row per corner point along an axis (n_points per outer
+// slab), into one row per block along it: block b spans points b·BLOCK_SIZE through
+// b·BLOCK_SIZE + BLOCK_SIZE, so neighbouring blocks share their boundary row
+function reduce_blocks(
+  flags: Uint8Array,
+  n_outer: number,
+  n_points: number,
+  n_blocks: number,
+  row_len: number,
+): Uint8Array {
+  const reduced = new Uint8Array(n_outer * n_blocks * row_len)
+  for (let outer = 0; outer < n_outer; outer++) {
+    for (let block = 0; block < n_blocks; block++) {
+      const dst = (outer * n_blocks + block) * row_len
+      const last = Math.min(block * BLOCK_SIZE + BLOCK_SIZE, n_points - 1)
+      for (let point = block * BLOCK_SIZE; point <= last; point++) {
+        const src = (outer * n_points + point) * row_len
+        // oxlint-disable-next-line oxc/bad-bitwise-operator -- flags are bit sets
+        for (let idx = 0; idx < row_len; idx++) reduced[dst + idx] |= flags[src + idx]
+      }
+    }
+  }
+  return reduced
+}
+
+// Per block of BLOCK_SIZE³ cubes, whether its corners straddle `isovalue` (some below, some
+// not, exactly the cube_index test), so blocks without any crossing cube skip the cube loop.
+// Separable: flags (1 below, 2 not) OR-reduced along z while reading, then along y and x.
+function crossing_blocks(
+  values: ArrayLike<number>,
+  isovalue: number,
+  sizes: Vec3,
+  strides: Vec3,
+  periodic: boolean,
+): Uint8Array {
+  // each axis's grid offsets of cube corner indices 0..max (periodic: max wraps to 0)
+  const [offsets_x, offsets_y, offsets_z] = sizes.map((size, axis) =>
+    Int32Array.from(
+      { length: periodic ? size + 1 : size },
+      (_, idx) => (idx % size) * strides[axis],
+    ),
+  )
+  const [points_x, points_y, points_z] = [offsets_x, offsets_y, offsets_z].map(
+    (offsets) => offsets.length,
+  )
+  const [blocks_x, blocks_y, blocks_z] = [points_x, points_y, points_z].map((n_points) =>
+    Math.ceil((n_points - 1) / BLOCK_SIZE),
+  )
+  const z_blocks = new Uint8Array(points_x * points_y * blocks_z)
+  let flat_idx = 0
+  for (let idx_x = 0; idx_x < points_x; idx_x++) {
+    for (let idx_y = 0; idx_y < points_y; idx_y++) {
+      const row = offsets_x[idx_x] + offsets_y[idx_y]
+      for (let block = 0; block < blocks_z; block++) {
+        const first = block * BLOCK_SIZE
+        const last = Math.min(first + BLOCK_SIZE, points_z - 1)
+        let flags = 0
+        if (last === first + BLOCK_SIZE) {
+          // A full segment (5 points, unrolled for BLOCK_SIZE 4): branch-free min/max beat a
+          // flag per point
+          const val_0 = values[row + offsets_z[first]]
+          const val_1 = values[row + offsets_z[first + 1]]
+          const val_2 = values[row + offsets_z[first + 2]]
+          const val_3 = values[row + offsets_z[first + 3]]
+          const val_4 = values[row + offsets_z[first + 4]]
+          const lowest = Math.min(val_0, val_1, val_2, val_3, val_4)
+          const highest = Math.max(val_0, val_1, val_2, val_3, val_4)
+          flags = (lowest < isovalue ? 1 : 0) | (highest >= isovalue ? 2 : 0)
+        }
+        // A NaN point poisons min and max to leave no flag (it counts as not below), so its
+        // segment takes the per-point loop
+        if (flags === 0) {
+          for (let idx_z = first; idx_z <= last; idx_z++) {
+            // oxlint-disable-next-line oxc/bad-bitwise-operator -- flags are bit sets
+            flags |= values[row + offsets_z[idx_z]] < isovalue ? 1 : 2
+          }
+        }
+        z_blocks[flat_idx++] = flags
+      }
+    }
+  }
+  const y_blocks = reduce_blocks(z_blocks, points_x, points_y, blocks_y, blocks_z)
+  const blocks = reduce_blocks(y_blocks, 1, points_x, blocks_x, blocks_y * blocks_z)
+  for (let idx = 0; idx < blocks.length; idx++) blocks[idx] = blocks[idx] === 3 ? 1 : 0
+  return blocks
 }
 
 // Extract the isosurface of a scalar grid as renderer-ready Float32 positions/normals and a
@@ -514,12 +605,31 @@ export function marching_cubes(
     return vert_idx
   }
 
+  const crossing = crossing_blocks(
+    values,
+    isovalue,
+    [size_x, size_y, size_z],
+    [stride_x, stride_y, stride_z],
+    periodic,
+  )
+  const blocks_y = Math.ceil(max_y / BLOCK_SIZE)
+  const blocks_z = Math.ceil(max_z / BLOCK_SIZE)
+
+  // Edge caches need clearing only after a slab that created vertices: a sparse level set
+  // leaves most slabs empty, and clearing 3 planes per slab outcost their cubes. The recycled
+  // `next` planes hold vertices on the plane between the last two slabs, and a crossed edge
+  // there makes the previous slab's cube on it cross an x edge, so that slab created one too.
+  let prev_slab_wrote = false
   for (let idx_x = 0; idx_x < max_x; idx_x++) {
-    x_edge_cache.fill(-1)
-    y_edge_next.fill(-1)
-    z_edge_next.fill(-1)
+    if (prev_slab_wrote) {
+      x_edge_cache.fill(-1)
+      y_edge_next.fill(-1)
+      z_edge_next.fill(-1)
+    }
+    const slab_vertices = n_vertices
     const x_offset = idx_x * stride_x
     const x1_offset = ((idx_x + 1) % size_x) * stride_x
+    const block_x_base = Math.floor(idx_x / BLOCK_SIZE) * blocks_y
 
     for (let idx_y = 0; idx_y < max_y; idx_y++) {
       const y_offset = idx_y * stride_y
@@ -528,8 +638,14 @@ export function marching_cubes(
       const offset_10 = x1_offset + y_offset
       const offset_11 = x1_offset + y1_offset
       const offset_01 = x_offset + y1_offset
+      const block_row = (block_x_base + Math.floor(idx_y / BLOCK_SIZE)) * blocks_z
 
       for (let idx_z = 0; idx_z < max_z; idx_z++) {
+        // a block with no crossing cube emits nothing (blocks are entered at their first cube)
+        if (crossing[block_row + Math.floor(idx_z / BLOCK_SIZE)] === 0) {
+          idx_z += BLOCK_SIZE - 1
+          continue
+        }
         const z_offset = idx_z * stride_z
         const z1_offset = ((idx_z + 1) % size_z) * stride_z
         cube_values[0] = values[offset_00 + z_offset]
@@ -565,6 +681,7 @@ export function marching_cubes(
         }
       }
     }
+    prev_slab_wrote = n_vertices > slab_vertices
     ;[y_edge_current, y_edge_next] = [y_edge_next, y_edge_current]
     ;[z_edge_current, z_edge_next] = [z_edge_next, z_edge_current]
   }

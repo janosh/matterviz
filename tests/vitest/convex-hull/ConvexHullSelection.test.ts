@@ -19,7 +19,7 @@ import {
   mock_parse_worker,
   mount_sized,
 } from '../setup'
-import { make_phase } from '../test-fixtures'
+import { make_phase, png_blob } from '../test-fixtures'
 import ConvexHullSelectionHarness from './ConvexHullSelectionHarness.svelte'
 
 beforeEach(mock_parse_worker)
@@ -320,7 +320,7 @@ describe(`convex hull replacement state`, () => {
       callback: BlobCallback,
     ) {
       sizes.push([this.width, this.height])
-      callback(new Blob([`png`], { type: `image/png` }))
+      callback(png_blob())
     })
     on_export.mockClear()
     await click_export(`PNG`, target)
@@ -478,25 +478,22 @@ describe(`convex hull replacement state`, () => {
     expect(state.max_hull_dist_show_phases === 0.01).toBe(keeps_threshold)
   })
 
-  test.each([
-    [`spin + oxidation`, { 'Fe2+,spin=5': 1, 'Fe3+,spin=-5': 2, 'O2-': 4 }, [`Fe`, `O`]],
-    [`fractional oxidation`, { 'Fe2.5+': 2, 'O2-': 5 }, [`Fe`, `O`]],
-    [`isotopes`, { D: 2, 'O2-': 1 }, [`H`, `O`]],
-  ] as const)(
-    `pymatgen %s species keys in the entries prop render a binary hull`,
-    async (_name, composition, elements) => {
-      const entries = [
-        ...elements.map((element) => make_phase({ [element]: 1 }, 0, { entry_id: element })),
-        make_phase({ ...composition }, -10, { entry_id: `compound` }),
-      ]
-      const target = await mount_hull({ entries })
-      flushSync()
+  // the key forms themselves are covered by normalize_hull_composition_keys' tests; this pins
+  // that the prop is normalized before arity is counted (raw keys would count as elements)
+  test(`pymatgen species keys in the entries prop render a binary hull`, async () => {
+    const entries = [
+      ...[`Fe`, `O`].map((element) => make_phase({ [element]: 1 }, 0, { entry_id: element })),
+      make_phase({ 'Fe2+,spin=5': 1, 'Fe3+,spin=-5': 2, 'O2-': 4 }, -10, {
+        entry_id: `compound`,
+      }),
+    ]
+    const target = await mount_hull({ entries })
+    flushSync()
 
-      expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
-      expect(target.querySelector(`.empty-state`)).toBeNull()
-      expect(model_entries()?.map((entry) => entry.entry_id)).toContain(`compound`)
-    },
-  )
+    expect(target.querySelector(`.convex-hull-2d`)).not.toBeNull()
+    expect(target.querySelector(`.empty-state`)).toBeNull()
+    expect(model_entries()?.map((entry) => entry.entry_id)).toContain(`compound`)
+  })
 
   // the info pane ends with the shortcuts of the hull's dimension
   test.each([
@@ -699,13 +696,19 @@ describe(`convex hull replacement state`, () => {
 
   // A pulse tick used to rerun render_frame: every hull face, point and label rebuilt 60x/s
   // to animate one ring. The rings now live on a transparent canvas stacked over the hull.
+  // Selecting (like hovering) re-projected and re-sorted every point while selected_entry and
+  // the hover overlay rode in the renderer's prop spread (250 ms per hover at 50k entries).
   test.each([`3d`, `4d`] as const)(
     `pulse ticks repaint only the overlay canvas (%s)`,
     async (dim) => {
       const clears = count_canvas_clears()
       await mount_harness({ dim })
+      await let_frames_run()
+      const strategy = canvas_draw.HULL_CANVAS_STRATEGIES[dim === `3d` ? 3 : 4]
+      const rotation = vi.spyOn(strategy, `rotation`)
       button(`select-entry`).click()
       await let_frames_run()
+      expect(rotation).not.toHaveBeenCalled()
       expect(clears.overlay).toBeGreaterThan(0) // the pulse is actually running
 
       const settled = { ...clears }

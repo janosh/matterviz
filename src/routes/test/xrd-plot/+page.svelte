@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PatternEntry, XrdPattern } from '#lib/xrd/index.js'
   import { XrdPlot } from '#lib/xrd/index.js'
+  import TestSection from '../TestSection.svelte'
 
   // Deterministic synthetic XRD-like patterns (angles in degrees, intensities arbitrary)
   const pattern_a: XrdPattern = {
@@ -31,37 +32,28 @@
   const single_entries: PatternEntry[] = [{ label: `Material A`, pattern: pattern_a }]
 
   const multi_entries: PatternEntry[] = [
-    { label: `Material A`, pattern: pattern_a },
+    ...single_entries,
     { label: `Material B`, pattern: pattern_b },
   ]
+
+  const shared_props = {
+    x_axis: { label: `2θ (degrees)` },
+    y_axis: { label: `Intensity (a.u.)` },
+    style: `height: 360px`,
+  }
 </script>
 
-<svelte:head>
-  <title>XrdPlot Test Page</title>
-</svelte:head>
+<h1>XrdPlot test page</h1>
 
-<h1 id="xrdplot-component-playwright-tests">XrdPlot Component Playwright Tests</h1>
-
-<section id="single-pattern">
-  <h2 id="single-series">Single Series</h2>
+<TestSection id="single-pattern" title="Single series">
   <XrdPlot
     patterns={single_entries}
     annotate_peaks={3}
     hkl_format="compact"
-    x_axis={{ label: `2θ (degrees)` }}
-    y_axis={{ label: `Intensity (a.u.)` }}
-    style="height: 360px"
+    {...shared_props}
   />
-</section>
+</TestSection>
 
-<section id="multi-pattern">
-  <h2 id="multiple-series-with-legend">Multiple Series with Legend</h2>
-  <XrdPlot
-    patterns={multi_entries}
-    annotate_peaks={0.5}
-    hkl_format="full"
-    x_axis={{ label: `2θ (degrees)` }}
-    y_axis={{ label: `Intensity (a.u.)` }}
-    style="height: 360px"
-  />
-</section>
+<TestSection id="multi-pattern" title="Multiple series with legend">
+  <XrdPlot patterns={multi_entries} annotate_peaks={0.5} hkl_format="full" {...shared_props} />
+</TestSection>

@@ -30,7 +30,14 @@ const find_tooltip_hit_point = async (
   await target_surface.scrollIntoViewIfNeeded()
   const shows_tooltip = async (x: number, y: number): Promise<boolean> => {
     await page.mouse.move(x, y)
-    await page.waitForTimeout(80)
+    // hover handlers run on the move (or threlte's coalescing rAF in 3D) and Svelte renders the
+    // tooltip right after, so it shows within two frames or not at all
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        }),
+    )
     return tooltip.isVisible()
   }
   const candidates = target_surface.locator(`path.marker, path[fill="transparent"]`)

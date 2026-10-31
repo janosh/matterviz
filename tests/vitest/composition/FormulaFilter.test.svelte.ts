@@ -222,19 +222,6 @@ describe(`FormulaFilter`, () => {
     expect(state.search_mode).toBe(`elements`) // re-inferred from the new value format
   })
 
-  test(`placeholders show wildcard examples`, async () => {
-    const state = await mount_bound(``)
-    expect(get_input().placeholder).toBe(`Li,Fe,O or Li,*,*`)
-
-    state.search_mode = `chemsys`
-    await tick()
-    expect(get_input().placeholder).toBe(`Li-Fe-O or Li-*-*`)
-
-    state.search_mode = `exact`
-    await tick()
-    expect(get_input().placeholder).toBe(`LiFePO4 or LiFe*2*`)
-  })
-
   describe(`examples dropdown`, () => {
     const example_tags = () =>
       Array.from(document.querySelectorAll<HTMLButtonElement>(`.example-tag`))

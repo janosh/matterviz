@@ -36,13 +36,14 @@ export const parse_float_token = (token: string | undefined): number => {
 // records token bounds and values in reusable typed arrays and decodes numbers straight off
 // the char codes, so a 20 MB XYZ/LAMMPS file allocates nothing per coordinate. One instance
 // per parse call.
-const CH_0 = 48
-const CH_9 = 57
 const grow = <T extends Int32Array | Float64Array>(old: T): T => {
   const next = new (old.constructor as new (length: number) => T)(old.length * 2)
   next.set(old)
   return next
 }
+// Every integer below 2^53 and every power of ten up to 1e22 is an exact double
+const MAX_EXACT_MANTISSA = 2 ** 53
+const POW10 = Float64Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
 export class LineScanner {
   private starts = new Int32Array(64)
   private ends = new Int32Array(64)
@@ -50,60 +51,88 @@ export class LineScanner {
   private line = ``
   count = 0
 
-  // Tokenizes `line[from, to)` on ASCII whitespace and returns the token count. Each token's numeric
-  // value is decoded in the same pass: a plain decimal with at most 15 significant digits is
-  // an exact integer mantissa scaled by one exact power of ten, which rounds exactly like
-  // Number(); anything else (exponents, long mantissas, `1.0D-3`, symbols) is marked for the
-  // slow path that num() takes on demand.
+  // Tokenizes `line[from, to)` on ASCII whitespace and returns the token count. Each token's
+  // numeric value is decoded in the same pass (Clinger's fast path): `[+-]digits[.digits]
+  // [(e|E)[+-]digits]` whose digits form an integer mantissa below 2^53 and whose decimal
+  // exponent is within ±22 is that exact mantissa times or divided by one exact power of ten,
+  // a single correctly rounded operation, so it rounds exactly like Number(). Anything else
+  // (longer mantissas, `1.0D-3`, hex, symbols) is marked NaN for the slow path num() takes.
   scan(line: string, from = 0, to = line.length): number {
     this.line = line
     let { starts, ends, values } = this
     let count = 0
     let idx = from
-    while (idx < to) {
-      let code = line.charCodeAt(idx)
-      if (code <= 32) {
-        idx++
-        continue
-      }
-      const start = idx
-      let negative = false
-      if (code === 45 /* - */ || code === 43 /* + */) {
-        negative = code === 45
-        idx++
-        code = idx < to ? line.charCodeAt(idx) : 0
-      }
-      let mantissa = 0
-      let digits = 0 // significant digits, leading zeros excluded
-      let any_digit = false
-      let scale = 0
-      let seen_dot = false
-      while (idx < to) {
-        if (code >= CH_0 && code <= CH_9) {
-          any_digit = true
-          if (digits > 0 || code !== CH_0) digits++
-          mantissa = mantissa * 10 + (code - CH_0)
-          if (seen_dot) scale--
-        } else if (code === 46 /* . */ && !seen_dot) seen_dot = true
-        else break
-        idx++
-        code = idx < to ? line.charCodeAt(idx) : 0
-      }
-      let value = NaN
-      if (any_digit && digits <= 15 && scale >= -22 && (idx >= to || code <= 32)) {
-        value = scale === 0 ? mantissa : mantissa / POW10[-scale]
-        if (negative) value = -value
-      } else while (idx < to && line.charCodeAt(idx) > 32) idx++
+    let code = 0
+    for (;;) {
+      while (idx < to && (code = line.charCodeAt(idx)) <= 32) idx++
+      if (idx >= to) break
       if (count === starts.length) {
         this.starts = grow(starts)
         this.ends = grow(ends)
         this.values = grow(values)
         ;({ starts, ends, values } = this)
       }
-      starts[count] = start
+      starts[count] = idx
+      let value = NaN
+      let negative = false
+      if (code === 45 /* - */ || code === 43 /* + */) {
+        negative = code === 45
+        code = ++idx < to ? line.charCodeAt(idx) : 0
+      }
+      // `code` is always the char at `idx`, or 0 (a separator) once `idx` reaches `to`
+      let mantissa = 0
+      let n_digits = idx
+      while (code >= 48 && code <= 57) {
+        mantissa = mantissa * 10 + (code - 48)
+        code = ++idx < to ? line.charCodeAt(idx) : 0
+      }
+      n_digits = idx - n_digits
+      let exponent = 0
+      if (code === 46 /* . */) {
+        // the fraction loop runs most digits, and this shape of it measured ~10% faster
+        const frac_start = ++idx
+        code = 0
+        while (idx < to) {
+          const digit = line.charCodeAt(idx) - 48
+          if (digit >>> 0 > 9) {
+            code = digit + 48
+            break
+          }
+          mantissa = mantissa * 10 + digit
+          idx++
+        }
+        exponent = frac_start - idx
+        n_digits -= exponent
+      }
+      if (n_digits > 0) {
+        if (code === 101 /* e */ || code === 69 /* E */) {
+          code = ++idx < to ? line.charCodeAt(idx) : 0
+          let exp_negative = false
+          if (code === 45 || code === 43) {
+            exp_negative = code === 45
+            code = ++idx < to ? line.charCodeAt(idx) : 0
+          }
+          let written = 0
+          const exp_start = idx
+          // a huge exponent may round or reach Infinity, either way out of the fast range
+          while (code >= 48 && code <= 57) {
+            written = written * 10 + (code - 48)
+            code = ++idx < to ? line.charCodeAt(idx) : 0
+          }
+          if (idx === exp_start) code = 33 // `1e` / `1e+` without digits: not a separator
+          exponent += exp_negative ? -written : written
+        }
+        // the running mantissa only grows and 2^53 is exact, so below it no digit was rounded
+        if (code <= 32 && mantissa < MAX_EXACT_MANTISSA && exponent >= -22 && exponent <= 22) {
+          value = exponent < 0 ? mantissa / POW10[-exponent] : mantissa * POW10[exponent]
+          if (negative) value = -value
+        }
+      }
+      if (Number.isNaN(value)) while (idx < to && line.charCodeAt(idx) > 32) idx++
       ends[count] = idx
       values[count] = value
       count++
+      idx++ // past the separator ending the token (or past `to`)
     }
     this.count = count
     return count
@@ -125,7 +154,6 @@ export class LineScanner {
     return Number.isNaN(value) ? parse_float_token(this.str(token_idx)) : value
   }
 }
-const POW10 = Array.from({ length: 23 }, (_unused, exp) => 10 ** exp)
 
 // A coordinate token: like parse_float_token, but a blank, non-numeric or non-finite
 // value is an error rather than NaN/Infinity for the caller to trip over later

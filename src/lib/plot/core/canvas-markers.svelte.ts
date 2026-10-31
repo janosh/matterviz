@@ -23,9 +23,9 @@ export const canvas_safe_color = (color: string): boolean => {
   return safe
 }
 
-export interface CanvasMarker {
-  cx: number
-  cy: number
+// A marker's look apart from its position, so charts build it once per data change and share
+// one object across every marker drawn alike (whose runs then batch by identity)
+export interface MarkerStyle {
   radius: number
   // Explicit d3 symbol area; defaults to π·radius² (same as ScatterPoint)
   symbol_size?: number
@@ -35,7 +35,37 @@ export interface CanvasMarker {
   stroke: string
   stroke_width: number
   stroke_opacity: number
-  opacity: number // legend-hover dimming, 1 when not dimmed
+}
+
+// Markers as parallel arrays: a frame of a million points fills three typed arrays and one
+// array of shared style references rather than a million objects for the GC to trace.
+// `opacity` is legend-hover dimming, 1 when not dimmed.
+export type MarkerBatch = {
+  cx: Float64Array
+  cy: Float64Array
+  opacity: Float64Array
+  style: MarkerStyle[]
+  length: number
+}
+export const create_marker_batch = (capacity: number): MarkerBatch => ({
+  cx: new Float64Array(capacity),
+  cy: new Float64Array(capacity),
+  opacity: new Float64Array(capacity),
+  style: [],
+  length: 0,
+})
+export const push_marker = (
+  batch: MarkerBatch,
+  cx: number,
+  cy: number,
+  opacity: number,
+  style: MarkerStyle,
+): void => {
+  const idx = batch.length++
+  batch.cx[idx] = cx
+  batch.cy[idx] = cy
+  batch.opacity[idx] = opacity
+  batch.style[idx] = style
 }
 
 // Reuse position-independent d3 outlines by symbol and size.
@@ -68,21 +98,19 @@ const symbol_path = (
 
 // Canvas paint state of a marker style: SVG semantics (fill, then stroke, each with its own alpha; `none` and
 // fully transparent colours paint nothing). Shared by the batched path and the sprite renderer.
-const marker_paint = (marker: CanvasMarker) => {
-  const fill_color_opacity = color_opacity(marker.fill)
-  const stroke_color_opacity = color_opacity(marker.stroke)
-  const has_fill = marker.fill !== `none` && fill_color_opacity > 0
-  const has_stroke = marker.stroke !== `none` && stroke_color_opacity > 0
-  const line_width = Number.isFinite(marker.stroke_width)
-    ? Math.max(0, marker.stroke_width)
-    : 0
-  const fill_alpha = normalize_alpha(has_fill ? marker.opacity * marker.fill_opacity : 0)
+const marker_paint = (opacity: number, style: MarkerStyle) => {
+  const fill_color_opacity = color_opacity(style.fill)
+  const stroke_color_opacity = color_opacity(style.stroke)
+  const has_fill = style.fill !== `none` && fill_color_opacity > 0
+  const has_stroke = style.stroke !== `none` && stroke_color_opacity > 0
+  const line_width = Number.isFinite(style.stroke_width) ? Math.max(0, style.stroke_width) : 0
+  const fill_alpha = normalize_alpha(has_fill ? opacity * style.fill_opacity : 0)
   const stroke_alpha = normalize_alpha(
-    line_width > 0 && has_stroke ? marker.opacity * marker.stroke_opacity : 0,
+    line_width > 0 && has_stroke ? opacity * style.stroke_opacity : 0,
   )
   return {
-    fill_style: has_fill ? marker.fill : `#000`, // canvas rejects CSS `none`
-    stroke_style: has_stroke ? marker.stroke : `#000`,
+    fill_style: has_fill ? style.fill : `#000`, // canvas rejects CSS `none`
+    stroke_style: has_stroke ? style.stroke : `#000`,
     line_width,
     fill_alpha,
     stroke_alpha,
@@ -96,22 +124,30 @@ const marker_paint = (marker: CanvasMarker) => {
 
 type MarkerPaint = ReturnType<typeof marker_paint>
 
-const same_style = (marker: CanvasMarker, other: CanvasMarker | null): boolean =>
-  other !== null &&
-  marker.fill === other.fill &&
-  marker.stroke === other.stroke &&
-  marker.fill_opacity === other.fill_opacity &&
-  marker.stroke_width === other.stroke_width &&
-  marker.stroke_opacity === other.stroke_opacity &&
-  marker.opacity === other.opacity
+// Whether marker `idx` paints like marker `other` (-1: none), shape aside; a shared style
+// object answers without comparing fields
+const same_style = (batch: MarkerBatch, idx: number, other: number): boolean => {
+  if (other < 0 || batch.opacity[idx] !== batch.opacity[other]) return false
+  const style = batch.style[idx]
+  const other_style = batch.style[other]
+  return (
+    style === other_style ||
+    (style.fill === other_style.fill &&
+      style.stroke === other_style.stroke &&
+      style.fill_opacity === other_style.fill_opacity &&
+      style.stroke_width === other_style.stroke_width &&
+      style.stroke_opacity === other_style.stroke_opacity)
+  )
+}
 
-const is_circle = (marker: CanvasMarker): boolean =>
-  (marker.symbol_type === undefined || marker.symbol_type === `Circle`) &&
-  marker.symbol_size == null
+const is_circle = ({ symbol_type, symbol_size }: MarkerStyle): boolean =>
+  (symbol_type === undefined || symbol_type === `Circle`) && symbol_size == null
 
-const valid_marker = ({ cx, cy, radius, symbol_size }: CanvasMarker): boolean => {
-  const size = symbol_size ?? radius
-  return Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(size) && size > 0
+const valid_marker = ({ cx, cy, style }: MarkerBatch, idx: number): boolean => {
+  const size = style[idx].symbol_size ?? style[idx].radius
+  return (
+    Number.isFinite(cx[idx]) && Number.isFinite(cy[idx]) && Number.isFinite(size) && size > 0
+  )
 }
 
 // === Sprites ===
@@ -131,16 +167,21 @@ type Sprite = { image: OffscreenCanvas; half: number } // half: CSS px from corn
 const sprite_cache = new Map<string, Sprite>()
 
 // The sprite for a marker style, or null when it exceeds MAX_SPRITE_SIDE or no offscreen 2D context exists
-const sprite_for = (marker: CanvasMarker, paint: MarkerPaint, pixel_ratio: number) => {
-  const key = `${marker.fill}|${marker.stroke}|${marker.fill_opacity}|${marker.stroke_width}|${marker.stroke_opacity}|${marker.opacity}|${marker.symbol_type}|${marker.symbol_size}|${marker.radius}|${pixel_ratio}`
+const sprite_for = (
+  opacity: number,
+  style: MarkerStyle,
+  paint: MarkerPaint,
+  pixel_ratio: number,
+) => {
+  const key = `${style.fill}|${style.stroke}|${style.fill_opacity}|${style.stroke_width}|${style.stroke_opacity}|${opacity}|${style.symbol_type}|${style.symbol_size}|${style.radius}|${pixel_ratio}`
   const cached = sprite_cache.get(key)
   if (cached) return cached
   // half-extent: circle radius, or a symbol's bounding radius (d3 sizes are areas), plus the stroke's reach (round
   // for circles, up to a miter at symbol vertices) and an antialias pixel
-  const circle = is_circle(marker)
+  const circle = is_circle(style)
   const shape_radius = circle
-    ? marker.radius
-    : Math.sqrt(marker.symbol_size ?? Math.PI * marker.radius ** 2)
+    ? style.radius
+    : Math.sqrt(style.symbol_size ?? Math.PI * style.radius ** 2)
   const stroke_reach =
     paint.stroke_alpha > 0 ? (paint.line_width / 2) * (circle ? 1 : MITER_LIMIT) : 0
   const half = shape_radius + stroke_reach + 1
@@ -150,7 +191,9 @@ const sprite_for = (marker: CanvasMarker, paint: MarkerPaint, pixel_ratio: numbe
   const sprite_ctx = image.getContext(`2d`)
   if (!sprite_ctx) return null
   // a single marker always takes the path renderer, so sprites paint exactly like it
-  draw_markers(sprite_ctx, [{ ...marker, cx: half, cy: half }], {
+  const single = create_marker_batch(1)
+  push_marker(single, half, half, opacity, style)
+  draw_markers(sprite_ctx, single, {
     width: 2 * half,
     height: 2 * half,
     pixel_ratio,
@@ -161,26 +204,33 @@ const sprite_for = (marker: CanvasMarker, paint: MarkerPaint, pixel_ratio: numbe
   return sprite
 }
 
-const same_sprite = (marker: CanvasMarker, other: CanvasMarker | null): boolean =>
-  same_style(marker, other) &&
-  marker.radius === other?.radius &&
-  marker.symbol_type === other.symbol_type &&
-  marker.symbol_size === other.symbol_size
+const same_sprite = (batch: MarkerBatch, idx: number, other: number): boolean => {
+  if (!same_style(batch, idx, other)) return false
+  const style = batch.style[idx]
+  const other_style = batch.style[other]
+  return (
+    style === other_style ||
+    (style.radius === other_style.radius &&
+      style.symbol_type === other_style.symbol_type &&
+      style.symbol_size === other_style.symbol_size)
+  )
+}
 
 // Sprites by the index of the valid marker opening each style run (null: the style paints nothing), or null when
 // paths are the better renderer: too many runs, an oversized marker or no offscreen 2D context. Decided before
 // anything is drawn, so the fallback never repaints.
-const plan_sprites = (markers: readonly CanvasMarker[], pixel_ratio: number) => {
+const plan_sprites = (markers: MarkerBatch, pixel_ratio: number) => {
   const runs = new Map<number, Sprite | null>()
-  let open_marker: CanvasMarker | null = null
-  for (const [idx, marker] of markers.entries()) {
-    if (!valid_marker(marker) || same_sprite(marker, open_marker)) continue
+  let open_marker = -1
+  for (let idx = 0; idx < markers.length; idx++) {
+    if (!valid_marker(markers, idx) || same_sprite(markers, idx, open_marker)) continue
     if (runs.size === MAX_SPRITE_RUNS) return null
-    open_marker = marker
-    const paint = marker_paint(marker)
+    open_marker = idx
+    const [opacity, style] = [markers.opacity[idx], markers.style[idx]]
+    const paint = marker_paint(opacity, style)
     if (paint.fill_alpha === 0 && paint.stroke_alpha === 0) runs.set(idx, null)
     else {
-      const sprite = sprite_for(marker, paint, pixel_ratio)
+      const sprite = sprite_for(opacity, style, paint, pixel_ratio)
       if (!sprite) return null
       runs.set(idx, sprite)
     }
@@ -191,7 +241,7 @@ const plan_sprites = (markers: readonly CanvasMarker[], pixel_ratio: number) => 
 // Clear and draw markers. The backing store uses CSS size * pixel_ratio.
 export function draw_markers(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  markers: readonly CanvasMarker[],
+  markers: MarkerBatch,
   options: { width: number; height: number; pixel_ratio?: number },
 ): void {
   const { width, height, pixel_ratio = 1 } = options
@@ -205,14 +255,14 @@ export function draw_markers(
       : null
   if (runs) {
     let sprite: Sprite | null = null
-    for (const [idx, marker] of markers.entries()) {
-      if (!valid_marker(marker)) continue
+    for (let idx = 0; idx < markers.length; idx++) {
+      if (!valid_marker(markers, idx)) continue
       const run_sprite = runs.get(idx) // set where a style run opens
       if (run_sprite !== undefined) sprite = run_sprite
       if (!sprite) continue
       // device-pixel snapped top-left corner, in the identity transform
-      const left = Math.round((marker.cx - sprite.half) * pixel_ratio)
-      const top = Math.round((marker.cy - sprite.half) * pixel_ratio)
+      const left = Math.round((markers.cx[idx] - sprite.half) * pixel_ratio)
+      const top = Math.round((markers.cy[idx] - sprite.half) * pixel_ratio)
       ctx.drawImage(sprite.image, left, top)
     }
   }
@@ -223,7 +273,7 @@ export function draw_markers(
 
   ctx.scale(pixel_ratio, pixel_ratio)
 
-  let open_marker: CanvasMarker | null = null
+  let open_marker = -1
   let paint_state: MarkerPaint | null = null
   // Circles use the current path; translated symbols accumulate in one Path2D.
   let open_symbols: Path2D | null = null
@@ -251,33 +301,36 @@ export function draw_markers(
     open_symbols = null
   }
 
-  for (const marker of markers) {
-    if (!valid_marker(marker)) continue
+  for (let idx = 0; idx < markers.length; idx++) {
+    if (!valid_marker(markers, idx)) continue
     // Styles usually repeat across a series: normalize and assign canvas state only when the style changes
-    const style_changed = !same_style(marker, open_marker)
+    const style_changed = !same_style(markers, idx, open_marker)
     if (style_changed || paint_state?.isolate) {
       flush()
       ctx.beginPath()
     }
+    const cx = markers.cx[idx]
+    const cy = markers.cy[idx]
+    const style = markers.style[idx]
     if (style_changed) {
-      paint_state = marker_paint(marker)
+      paint_state = marker_paint(markers.opacity[idx], style)
       ctx.fillStyle = paint_state.fill_style
       ctx.strokeStyle = paint_state.stroke_style
       ctx.lineWidth = paint_state.line_width
-      open_marker = marker
+      open_marker = idx
     }
 
-    if (is_circle(marker)) {
-      ctx.moveTo(marker.cx + marker.radius, marker.cy) // break path so adjacent arcs don't connect
-      ctx.arc(marker.cx, marker.cy, marker.radius, 0, Math.PI * 2)
+    if (is_circle(style)) {
+      ctx.moveTo(cx + style.radius, cy) // break path so adjacent arcs don't connect
+      ctx.arc(cx, cy, style.radius, 0, Math.PI * 2)
       has_circles = true
     } else {
       open_symbols ??= new Path2D()
       symbol_transform ??= new DOMMatrix()
-      symbol_transform.e = marker.cx
-      symbol_transform.f = marker.cy
+      symbol_transform.e = cx
+      symbol_transform.f = cy
       open_symbols.addPath(
-        symbol_path(marker.symbol_type, marker.radius, marker.symbol_size),
+        symbol_path(style.symbol_type, style.radius, style.symbol_size),
         symbol_transform,
       )
     }
@@ -290,7 +343,7 @@ export function draw_markers(
 // order for export) plus an effect painting `layer()` on it, also registered as its export
 // painter so exports redraw at the export pixel ratio. Creates an $effect: call during init.
 export function create_marker_canvas(
-  layer: () => { markers: readonly CanvasMarker[]; width: number; height: number },
+  layer: () => { markers: MarkerBatch; width: number; height: number },
 ) {
   let canvas = $state<HTMLCanvasElement>()
   const paint = (target?: HTMLCanvasElement, pixel_ratio?: number) => {

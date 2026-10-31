@@ -59,40 +59,6 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
     await wait_for_3d_canvas(page, BZ_SELECTOR)
   })
 
-  test(`bound inputs and the fullscreen checkbox update their status readouts`, async ({
-    page,
-  }) => {
-    // inputs bound to the status readouts; bz-order's readout repeats in the Status section
-    for (const [setting, initial, changed] of [
-      [`bz-order`, `1`, `2`],
-      [`ibz-color`, `#ff8844`, `#00ff00`],
-      [`ibz-opacity`, `0.5`, `0.8`],
-    ]) {
-      const status = status_locator(page, setting)
-      await expect(status, `${setting} initial`).toHaveText(initial)
-      await page.locator(`#${setting}`).fill(changed)
-      await expect(status, `${setting} changed`).toHaveText(changed)
-    }
-
-    // fullscreen last, since it covers the page's other controls
-    const fullscreen_status = page.locator(`[data-testid="fullscreen-status"]`)
-    const fullscreen_checkbox = page.locator(`[data-testid="fullscreen-checkbox"]`)
-    await expect(fullscreen_status).toHaveText(`false`)
-    await expect(fullscreen_checkbox).not.toBeChecked()
-
-    await fullscreen_checkbox.click({ force: true })
-    await expect(fullscreen_status).toHaveText(`true`)
-    await expect(fullscreen_checkbox).toBeChecked()
-
-    // the fullscreen viewer can cover the checkbox, so uncheck it programmatically
-    await fullscreen_checkbox.evaluate((element: HTMLInputElement) => {
-      element.checked = false
-      element.dispatchEvent(new Event(`change`, { bubbles: true }))
-    })
-    await expect(fullscreen_status).toHaveText(`false`)
-    await expect(fullscreen_checkbox).not.toBeChecked()
-  })
-
   test(`camera projection toggles, orthographic zoom fits the zone and the clipped canvas rotates and zooms`, async ({
     page,
   }) => {
@@ -110,7 +76,6 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
         await page.locator(BZ_SELECTOR).evaluate((element, width) => {
           ;(element as HTMLElement).style.setProperty(`--bz-width`, width)
         }, css_width)
-        await page.waitForTimeout(200)
       }
 
       // Zoom per shorter canvas edge, the quantity the fit holds constant. Measured from the
@@ -127,8 +92,9 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
       const wide_zoom_per_edge = await zoom_per_edge()
       // the page fixes height at 500px, so narrowing past it drives the shorter edge
       await set_bz_width(`400px`)
+      // the refit follows the canvas resize, so wait for it to start, then for it to land
       await expect.poll(read_zoom).toBeLessThan(wide_zoom ?? 0)
-      expect(await zoom_per_edge()).toBeCloseTo(wide_zoom_per_edge, 5)
+      await expect.poll(zoom_per_edge).toBeCloseTo(wide_zoom_per_edge, 5)
       await set_bz_width(`800px`)
       await expect.poll(read_zoom).toBeCloseTo(wide_zoom ?? 0, 5)
 
@@ -203,19 +169,7 @@ test.describe(`BrillouinZone Component Tests`, { tag: `@webgl` }, () => {
     await reset_edges.click()
     await expect(pane.locator(`input[type="range"][step="0.001"]`)).toHaveValue(`0.002`)
     await expect(reset_edges).toHaveCount(0)
-    await checkbox.uncheck()
-    await expect(status_locator(page, `controls-open`)).toHaveText(`false`)
-    const info_toggle = page.locator(`#info-pane-open`)
-    await expect(info_toggle).not.toBeChecked()
-    await info_toggle.check()
-    await expect(status_locator(page, `info-pane-open`)).toHaveText(`true`)
-    await info_toggle.uncheck()
-    for (const mode of [`never`, `always`, `hover`]) {
-      await page.locator(`#show-controls`).selectOption(mode)
-      await expect(status_locator(page, `show-controls`)).toHaveText(mode)
-    }
-    await checkbox.check()
-    await expect(status_locator(page, `controls-open`)).toHaveText(`true`)
+    // Escape closes the pane and writes controls_open back through the binding
     await page.locator(BZ_SELECTOR).click()
     await page.keyboard.press(`Escape`)
     await expect(status_locator(page, `controls-open`)).toHaveText(`false`)

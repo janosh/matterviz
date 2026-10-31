@@ -288,6 +288,36 @@ describe(`gas-thermodynamics: apply_gas_corrections`, () => {
     }
   })
 
+  // A tabulated O polymorph only gets the pressure term, a 0 K one all of Δμ_O, so the O
+  // reference swaps; E_form-only Li2O was re-referenced to the pre-shift one (-2 kept instead
+  // of -1.8334 eV/atom)
+  test(`E_form-only entries follow the reference picked after shifting`, () => {
+    const entries: PhaseData[] = [
+      make_phase({ Li: 1 }, -2),
+      make_phase({ O: 1 }, -5.5, { temperatures: [1000], free_energies: [-5.5] }),
+      make_phase({ O: 1 }, -4.9),
+      { composition: { Li: 2, O: 1 }, energy: 0, e_form_per_atom: -2, entry_id: `Li2O` },
+    ]
+    const config: GasThermodynamicsConfig = { enabled_gases: [`O2`], pressures: { O2: 1 } }
+    const delta_mu_o = compute_element_mu_shift(
+      `O`,
+      config,
+      1000,
+      get_effective_pressures(config),
+    )
+    const corrected = apply_gas_corrections(entries, config, 1000)
+    expect(corrected.map(({ energy_per_atom }) => energy_per_atom)).toEqual([
+      -2,
+      -5.5,
+      -4.9 + delta_mu_o,
+      undefined,
+    ])
+    const model = compute_hull_model(corrected, { energy_source_mode: `on-the-fly` })
+    const li2o = model.entries.find(({ entry_id }) => entry_id === `Li2O`)
+    // the O reference level moves from -5.5 (tabulated) to -4.9 + Δμ_O = -5.9997
+    expect(li2o?.e_form_per_atom).toBeCloseTo(-2 - (-4.9 + delta_mu_o + 5.5) / 3, 12)
+  })
+
   test(`per-atom correction scales total energy by atom count for O2-style refs`, () => {
     // {O: 2} entry: 2 atoms, energy_per_atom = energy / 2
     const entry: PhaseData = { composition: { O: 2 }, energy: -9.86, energy_per_atom: -4.93 }

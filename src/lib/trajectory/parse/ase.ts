@@ -19,6 +19,7 @@ import { to_error } from 'svelte-widgets/utils'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
+import { encode_frame, type NumericFrame } from '../frame'
 
 // A frame JSON header this large can only be a corrupt offsets table pointing into payload
 // bytes (a real header is a few KB)
@@ -330,6 +331,9 @@ export function decode_ase_frame(
 // read_atoms keeps alive in its run (a text source's payload goes with the source).
 export interface AseFrames {
   frame_count: number
+  // The run's frame read: decode's frame as encode_frame would make it, which text formats
+  // build directly instead of through Site records
+  read: (frame_idx: number) => NumericFrame
   decode: (frame_idx: number) => TrajectoryFrame
   plot_row_frame: (frame_idx: number) => TrajectoryFrame
   release?: () => void
@@ -527,6 +531,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       mass_unit: `amu`,
       ...(Boolean(initial_header[`momenta.`]) && { velocity_unit: `A/fs` }),
     },
+    read: (frame_idx) => encode_frame(decode_frame(frame_idx, false)),
     decode: (frame_idx) => decode_frame(frame_idx, false),
     plot_row_frame: (frame_idx) => decode_frame(frame_idx, true),
     release: () => {

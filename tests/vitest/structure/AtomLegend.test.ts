@@ -121,7 +121,6 @@ describe(`AtomLegend Component`, () => {
     const shown = mapped ?? elem
 
     const color_input = doc_query<HTMLInputElement>(`input[type="color"]`)
-    expect(color_input.title).toBe(`Double click to reset color`)
     // reachable by keyboard: visibility: hidden took it out of the tab order
     expect(color_input.getAttribute(`aria-label`)).toBe(`${shown} color`)
     expect(getComputedStyle(color_input).visibility).not.toBe(`hidden`)
@@ -496,7 +495,6 @@ describe(`AtomLegend Component`, () => {
       expect(document.querySelector(`.remap-dropdown`)).toBeNull()
 
       const search_input = await open_remap_menu()
-      expect(search_input.placeholder).toBe(`Search elements...`)
       // unfiltered: one option per element, no reset row while Fe is still displayed as Fe
       expect(document.querySelectorAll(`.remap-option`)).toHaveLength(ELEM_SYMBOLS.length)
       // Enter on an empty query must not pick the first listed element (H)

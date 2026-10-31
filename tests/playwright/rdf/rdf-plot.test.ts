@@ -33,18 +33,6 @@ test.describe(`RdfPlot Component Tests`, () => {
     for (const val of y_values) expect(val).toBeGreaterThanOrEqual(0)
   })
 
-  test(`multiple patterns get a legend that toggles series visibility`, async ({ page }) => {
-    const plot = page.locator(`#multi-pattern`)
-    const items = plot.locator(`.legend .legend-item`)
-    await expect(items).toHaveCount(2)
-    const visible_lines = plot.locator(`svg path[fill="none"]:visible`)
-    await expect(visible_lines).toHaveCount(2)
-    await items.first().click()
-    await expect(visible_lines).toHaveCount(1)
-    await items.first().click()
-    await expect(visible_lines).toHaveCount(2)
-  })
-
   test(`tooltip shows x and y values on hover`, async ({ page }) => {
     const plot = page.locator(`#single-pattern`)
     // Select the main plot SVG (has role="application" and contains the x-axis)

@@ -202,28 +202,8 @@ test.describe(`ConvexHullCanvas dim=4 (Quaternary)`, { tag: `@webgl` }, () => {
 
 // Standalone: the performance page avoids the slow quaternary-grid data loading above
 test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
-  test(
-    `enable_click_selection=false prevents entry selection`,
-    { tag: `@webgl` },
-    async ({ page }) => {
-      const diagram = await goto_perf_page(page, `4d`, `count=100&click_selection=false`)
-      await expect(diagram).toBeVisible({ timeout: 15000 })
-      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-      const canvas = hull_canvas(diagram)
-      await expect(canvas).toBeVisible({ timeout: 10000 })
-      const box = await require_bbox(canvas, `canvas`)
-      // click a grid of positions to be sure one lands on an entry
-      for (const x_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-        for (const y_off of [-0.3, -0.15, 0, 0.15, 0.3]) {
-          await canvas.click({
-            position: { x: box.width * (0.5 + x_off), y: box.height * (0.5 + y_off) },
-          })
-        }
-      }
-      await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
-    },
-  )
-
+  // enable_click_selection is one gate in the shared create_hull_selection, covered with
+  // verified entry hits in convex-hull-2d.test.ts and convex-hull-3d.test.ts
   test(
     `computes hull distances on-the-fly when data is incomplete`,
     { tag: `@webgl` },
@@ -257,12 +237,10 @@ test.describe(`ConvexHullCanvas dim=4 on the performance page`, () => {
       await page.mouse.down()
       await page.mouse.move(center_x + delta_x, center_y + delta_y, { steps: 5 })
       await page.mouse.up()
-      await page.waitForTimeout(50)
 
-      const rot_after = await rotation()
       const msg = `drag-${direction} ${expect_increase ? `increases` : `decreases`} rotation_${axis}`
-      if (expect_increase) expect(rot_after, msg).toBeGreaterThan(rot_before)
-      else expect(rot_after, msg).toBeLessThan(rot_before)
+      if (expect_increase) await expect.poll(rotation, msg).toBeGreaterThan(rot_before)
+      else await expect.poll(rotation, msg).toBeLessThan(rot_before)
     }
   })
 })

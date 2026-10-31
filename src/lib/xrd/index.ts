@@ -57,8 +57,13 @@ export function decimate_pattern(pattern: XrdPattern, max_points: number): XrdPa
   const threshold = 0.05 * array_max(y_vals)
   const peaks: number[] = []
   for (let idx = 1; idx < num_points - 1; idx++) {
-    const [prev, val, next] = [y_vals[idx - 1], y_vals[idx], y_vals[idx + 1]]
-    if (val > prev && val > next && val > threshold) peaks.push(idx)
+    const val = y_vals[idx]
+    if (!(val > y_vals[idx - 1])) continue
+    // a flat top of equal (integer) counts is one peak, kept at its first sample
+    let end = idx
+    while (end + 1 < num_points && y_vals[end + 1] === val) end++
+    if (end + 1 < num_points && val > y_vals[end + 1] && val > threshold) peaks.push(idx)
+    idx = end
   }
   const peak_slots = Math.min(peaks.length, Math.floor(max_points * 0.3))
   const uniform_slots = max_points - peak_slots

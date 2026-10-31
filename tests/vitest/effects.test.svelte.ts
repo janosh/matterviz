@@ -147,10 +147,12 @@ describe(`reduced motion`, () => {
     void unmount(component)
   })
 
-  // Default 400 ms tween: after the (always snapped) first placement, a move glides unless
-  // reduce motion is on
+  // Default 400 ms tween: moves snap until the element was painted at its first placement (its
+  // re-solve from the measured size slid decorations across the plot on every load), then
+  // glide unless reduce motion is on
   test.each([false, true])(`create_placed_tween snaps moves when reduced=%s`, (reduced) => {
     stub_reduced_motion(() => reduced)
+    install_animation_frame_mock()
     const state = $state({ x: 10 })
     let placed_tween: ReturnType<typeof create_placed_tween> | undefined
     const dispose = $effect.root(() => {
@@ -163,6 +165,9 @@ describe(`reduced motion`, () => {
     })
     flushSync()
     expect(placed_tween?.coords.current).toEqual({ x: 10, y: 20 })
+    flushSync(() => (state.x = 30))
+    expect(placed_tween?.coords.current).toEqual({ x: 30, y: 20 })
+    run_frame(1) // first paint
     flushSync(() => (state.x = 50))
     expect(placed_tween?.coords.target).toEqual({ x: 50, y: 20 })
     expect(placed_tween?.coords.current.x === 50).toBe(reduced)
@@ -353,6 +358,7 @@ test(`create_prop_state mirrors a prop both ways`, () => {
   const written: number[] = []
   let mirror: { current: number } | undefined
   let doubled = () => NaN
+  const seen: number[] = [] // what an effect below the state saw, once per change
   const dispose = $effect.root(() => {
     const state = create_prop_state(
       () => prop.value,
@@ -364,6 +370,9 @@ test(`create_prop_state mirrors a prop both ways`, () => {
     const twice = $derived(state.current * 2)
     mirror = state
     doubled = () => twice
+    $effect(() => {
+      seen.push(twice)
+    })
   })
   flushSync()
   if (!mirror) throw new Error(`create_prop_state returned nothing`)
@@ -373,7 +382,7 @@ test(`create_prop_state mirrors a prop both ways`, () => {
   expect([mirror.current, doubled(), prop.value, written]).toEqual([3, 6, 3, [3]])
   prop.value = 5 // the caller's
   flushSync()
-  expect([mirror.current, doubled(), written]).toEqual([5, 10, [3]])
+  expect([mirror.current, doubled(), written, seen]).toEqual([5, 10, [3], [2, 6, 10]])
   dispose()
 })
 

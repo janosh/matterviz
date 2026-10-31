@@ -164,7 +164,13 @@ export function create_shortcut_flash<T extends string>() {
 export function create_prop_state<T>(get: () => T, set: (value: T) => void): { current: T } {
   let value = $state.raw(untrack(get))
   $effect.pre(() => {
-    value = get()
+    const next = get()
+    // Written from a throwaway root: Svelte re-walks every derived below a state an effect
+    // writes, looking for that effect (self-invalidation), which this one never reads. That
+    // second walk was ~4 ms of each caller-driven ElectronicStructure sweep step.
+    $effect.root(() => {
+      value = next
+    })()
   })
   return {
     get current() {

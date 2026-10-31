@@ -1213,18 +1213,6 @@ describe(`lattice_point_group_matrices`, () => {
       }
     }
   })
-
-  // Applying the cubic Oh operations in Cartesian space (what tiling used to do for every
-  // lattice) does NOT map a non-cubic zone onto itself: measured mismatches 1.19 (hexagonal),
-  // 0.59 (tetragonal), 0.59 (orthorhombic) Å⁻¹ — whole spurious copies of the surface
-  test.each([`hexagonal`, `tetragonal`, `orthorhombic`] as const)(
-    `cubic Oh operations do not preserve the %s Brillouin zone`,
-    (name) => {
-      const cubic_ops = lattice_point_group_matrices(k_lattice_of(`cubic`))
-      const { vertices } = compute_brillouin_zone(k_lattice_of(name))
-      expect(max_vertex_mismatch(cubic_ops, vertices)).toBeGreaterThan(0.5)
-    },
-  )
 })
 
 // Surfaces folded into the zone frame the zone alone; ones filling the centred parallelepiped

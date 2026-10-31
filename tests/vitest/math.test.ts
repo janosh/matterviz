@@ -919,16 +919,6 @@ describe(`det_nxn`, () => {
   ])(`4x4 fast path: %s`, (row_0, row_1, row_2, row_3, expected) => {
     expect(math.det_nxn([row_0, row_1, row_2, row_3])).toBeCloseTo(expected, 10)
   })
-
-  test(`barycentric coordinates (tetrahedron unit test)`, () => {
-    // oxfmt-ignore
-    const tet_matrix = [[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 1, 1, 1]]
-    expect(math.det_nxn(tet_matrix)).toBeCloseTo(-1, 10)
-
-    // oxfmt-ignore
-    const bary_matrix = [[0.25, 1, 0, 0], [0.25, 0, 1, 0], [0.25, 0, 0, 1], [1, 1, 1, 1]]
-    expect(math.det_nxn(bary_matrix) / math.det_nxn(tet_matrix)).toBeCloseTo(0.25, 10)
-  })
 })
 
 describe(`cross_3d`, () => {

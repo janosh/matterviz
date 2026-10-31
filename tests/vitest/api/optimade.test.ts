@@ -16,22 +16,11 @@ vi.mock(`#lib/structure/Structure.svelte`, async () => ({
 }))
 
 describe(`OPTIMADE API utilities`, () => {
+  // encodeURIComponent does the rest; these cover the dot escaping and its interplay
   test.each([
-    [`mp-123`],
     [`odbx.9`],
-    [`odbx/9`],
-    [`odbx-9.1/2`],
-    [`odbx 9`],
     [`odbx-9-αβγ`],
-    [`odbx-9?param=value`],
-    [`odbx-9#fragment`],
-    [`odbx.9/1.2`],
-    [`odbx.9.1.2.3`],
-    [`mp-1226325`],
-    [`odbx+9`],
     [`odbx%25`],
-    [`me:42`],
-    [`user@id`],
     [`odbx.9/1.2-3_4?param=value#fragment`],
     [``],
   ])(`round-trips encode/decode: %s`, (identifier) => {
@@ -45,8 +34,6 @@ describe(`OPTIMADE API utilities`, () => {
   test.each([
     [`odbx-9.1`, `odbx`],
     [`mp-123`, `mp`],
-    [`cod-456`, `cod`],
-    [`odbx-9.1/2`, `odbx`],
     [`mp-100%`, `mp`],
     [`mp-%2F`, `mp`], // The literal ID must not be decoded again
     [`MP-149`, `mp`],

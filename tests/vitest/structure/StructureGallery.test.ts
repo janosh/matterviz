@@ -109,7 +109,6 @@ describe(`StructureGallery`, () => {
     expect(live_cards()).toBe(5)
     // Four titlebar-safe cards fit the 800px host: (800 - 3*8) / 4 = 194.
     expect(gallery.getAttribute(`style`)).toContain(`inline-size: min(100%, 1002px)`)
-    expect(style_of(`.structure-gallery-track`)).toContain(`overflow-x: auto`)
     expect(style_of(`.structure-card`)).toContain(`translate3d(0px`)
     expect(doc_query(`.structure-card strong`).textContent).toBe(`Structure 0`)
     expect(doc_query(`.structure-card .card-info`).getAttribute(`role`)).toBeNull()

@@ -6,19 +6,25 @@ import { IS_CI } from '../helpers'
 const VIEWER_COUNT = 24
 
 // A GPU canvas reads back blank via drawImage once presented, so go through the compositor
-// with an element screenshot (a blank one compresses to a tiny PNG). Retry since a viewport
-// rebuilds its <Canvas> after device loss, detaching the element mid-capture.
-const is_painted = async (canvas: Locator): Promise<boolean> => {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      if ((await canvas.screenshot({ timeout: 15_000 })).byteLength > 2000) return true
-    } catch {
-      // element detached mid-capture — fall through and retry
-    }
-    await canvas.page().waitForTimeout(500)
+// with an element screenshot (a blank one compresses to a tiny PNG, painted ones exceed this)
+const PAINTED_MIN_BYTES = 2000
+// 0 when a viewport rebuilds its <Canvas> after device loss, detaching the element mid-capture
+const screenshot_bytes = async (canvas: Locator): Promise<number> => {
+  try {
+    return (await canvas.screenshot({ timeout: 15_000 })).byteLength
+  } catch {
+    return 0 // element detached mid-capture — the caller's poll retries on the rebuilt one
   }
-  return false
 }
+// Poll rather than capture once: a rebuilt canvas paints a frame or more after it mounts
+const is_painted = (canvas: Locator): Promise<boolean> =>
+  expect
+    .poll(() => screenshot_bytes(canvas), { timeout: 15_000 })
+    .toBeGreaterThan(PAINTED_MIN_BYTES)
+    .then(
+      () => true,
+      () => false,
+    )
 
 // navigator.gpu exists in any secure context, but headless Chromium only hands out an adapter
 // with the WebGPU flags in playwright.config — so probe for a real one.
@@ -68,7 +74,9 @@ test.describe(`Viewer grid`, () => {
 
     // Wait on the last viewer: eviction spares the newest canvases, so the earlier ones
     // checked afterwards are what actually detects it.
-    await expect.poll(() => is_painted(canvases.last()), { timeout: 90_000 }).toBe(true)
+    await expect
+      .poll(() => screenshot_bytes(canvases.last()), { timeout: 90_000 })
+      .toBeGreaterThan(PAINTED_MIN_BYTES)
 
     const unpainted: number[] = []
     for (let idx = 0; idx < VIEWER_COUNT; idx++) {

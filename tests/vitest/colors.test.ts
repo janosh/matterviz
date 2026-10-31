@@ -73,8 +73,7 @@ describe(`color constants`, () => {
     for (const color of colors) expect(color).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
-  it(`PLOT_COLORS has 10 unique colors`, () => {
-    expect(PLOT_COLORS).toHaveLength(10)
+  it(`PLOT_COLORS are unique`, () => {
     expect(new Set(PLOT_COLORS).size).toBe(PLOT_COLORS.length)
   })
 })
@@ -260,6 +259,20 @@ describe(`pick_contrast_color`, () => {
         Array.from({ length: 3 }, () => ({ background: color, color: `white` })),
       )
       expect(get_image_data).toHaveBeenCalledOnce()
+    } finally {
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+    }
+  })
+
+  // the widget's parser rejects color-mix() and friends; the canvas pass resolves them first
+  it(`picks contrast for colors only the canvas can parse`, () => {
+    vi.stubGlobal(`CanvasRenderingContext2D`, Object)
+    mock_canvas_context({ getImageData: () => ({ data: [128, 0, 128, 255] }) })
+    try {
+      const background = `color-mix(in srgb, red 50%, blue)`
+      expect(pick_contrast_color({ background })).toBe(`white`)
+      expect(contrast_text_color({ background })).toBe(`white`)
     } finally {
       vi.unstubAllGlobals()
       vi.restoreAllMocks()

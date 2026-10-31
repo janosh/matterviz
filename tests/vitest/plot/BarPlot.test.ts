@@ -337,36 +337,19 @@ describe(`BarPlot`, () => {
     )
   })
 
+  // explicit and partial display overrides are covered by display.test.svelte.ts
   test.each([
-    [`value-axis zero line by default`, [1.1, 1.4, 3.4], undefined, `y`, `vertical`],
-    [
-      `explicitly enabled category zero line`,
-      [-1.1, 1.4, 3.4],
-      { x_zero_line: true, y_zero_line: false },
-      `x`,
-      `vertical`,
-    ],
-    [
-      `value-axis zero with partial display props`,
-      [-1.1, 1.4, 3.4],
-      { x_grid: false },
-      `y`,
-      `vertical`,
-    ],
-    [`value-axis zero when horizontal`, [-1.1, 1.4, 3.4], undefined, `x`, `horizontal`],
-  ] as const)(
-    `categorical bars render the %s`,
-    async (_name, coord_y, display, axis, orientation) => {
-      const plot = await mount_sized_bar_plot({
-        series: [{ x: [`Si`, `GaAs`, `GaN`], y: [...coord_y] }],
-        orientation,
-        ...(display ? { display } : {}),
-      })
-      const lines = plot.querySelectorAll(`.zero-line`)
-      expect(lines).toHaveLength(1)
-      expect(lines[0].getAttribute(`${axis}1`)).toBe(lines[0].getAttribute(`${axis}2`))
-    },
-  )
+    [`value-axis zero line by default`, [1.1, 1.4, 3.4], `y`, `vertical`],
+    [`value-axis zero when horizontal`, [-1.1, 1.4, 3.4], `x`, `horizontal`],
+  ] as const)(`categorical bars render the %s`, async (_name, coord_y, axis, orientation) => {
+    const plot = await mount_sized_bar_plot({
+      series: [{ x: [`Si`, `GaAs`, `GaN`], y: [...coord_y] }],
+      orientation,
+    })
+    const lines = plot.querySelectorAll(`.zero-line`)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].getAttribute(`${axis}1`)).toBe(lines[0].getAttribute(`${axis}2`))
+  })
 
   test.each([`vertical`, `horizontal`] as const)(
     `rounds corners on the free end of %s bars`,
@@ -396,8 +379,8 @@ describe(`BarPlot`, () => {
     },
   )
 
+  // all-non-finite x2 categories are covered for every chart in cartesian-frame.test.svelte.ts
   test.each([
-    [`vertical`, `invalid categories`, { x: [NaN, Infinity], y: [1, 2] }],
     [`vertical`, `unpaired coordinates`, { x: [1, NaN], y: [NaN, 2] }],
     [`horizontal`, `invalid values`, { x: [1, 2], y: [NaN, Infinity] }],
   ] as const)(
@@ -719,13 +702,9 @@ describe(`BarPlot`, () => {
       { x: [`B`, `C`, `D`], y: [5, 15, 25], label: `S2`, color: `red` },
     ]
 
-    test.each([
-      [`overlay mode`, { mode: `overlay` }],
-      [`stacked mode`, { mode: `stacked` }],
-      [`grouped mode`, { mode: `grouped` }],
-      [`horizontal orientation`, { orientation: `horizontal` }],
-    ] as const)(`renders misaligned categories in %s`, async (_name, props) => {
-      const plot = await mount_sized_bar_plot({ series: cat_series, ...props })
+    // alignment itself is covered by normalize_categorical in bar-data.test.ts
+    test(`renders misaligned categories stacked`, async () => {
+      const plot = await mount_sized_bar_plot({ series: cat_series, mode: `stacked` })
       expect(plot.querySelectorAll(`.bar-series`)).toHaveLength(2)
       expect(plot.querySelectorAll(`path[role="button"]`)).toHaveLength(6)
     })

@@ -1,33 +1,8 @@
 <script lang="ts">
   import Bands from '#lib/spectral/Bands.svelte'
   import type { BaseBandStructure } from '#lib/spectral/types.js'
-
-  const mock_band_structure: BaseBandStructure = {
-    type: `phonon`,
-    qpoints: [
-      { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
-      { label: null, frac_coords: [0.25, 0.0, 0.0], distance: 0.5 },
-      { label: `X`, frac_coords: [0.5, 0.0, 0.0], distance: 1.0 },
-      { label: `M`, frac_coords: [0.5, 0.5, 0.0], distance: 1.707 },
-    ],
-    branches: [
-      { start_index: 0, end_index: 2, name: `GAMMA-X` },
-      { start_index: 2, end_index: 3, name: `X-M` },
-    ],
-    labels_dict: {
-      GAMMA: [0.0, 0.0, 0.0],
-      X: [0.5, 0.0, 0.0],
-      M: [0.5, 0.5, 0.0],
-    },
-    distance: [0.0, 0.5, 1.0, 1.707],
-    nb_bands: 4,
-    bands: [
-      [0.0, 1.0, 2.0, 2.5],
-      [1.0, 2.0, 3.0, 3.5],
-      [2.0, 3.0, 4.0, 4.5],
-      [3.0, 4.0, 5.0, 5.5],
-    ],
-  }
+  import { mock_band_structure_gxm as mock_band_structure } from '#site/spectral-mocks.js'
+  import TestSection from '../TestSection.svelte'
 
   const bs2: BaseBandStructure = {
     ...mock_band_structure,
@@ -117,99 +92,78 @@
       [1.3, 1.9, 2.5, 3.1],
     ],
   }
+
+  const single = { '': mock_band_structure }
+  const two_structs = { BS1: mock_band_structure, BS2: bs2 }
+  const mismatched_paths = { canonical: mock_band_structure, alt_path: bs_alt_path }
+  const electronic = { '': electronic_bands_with_fermi }
 </script>
 
-<h1 id="bands-component-test-page">Bands Component Test Page</h1>
+<h1>Bands test page</h1>
 
-<h2 id="single-bands">Single Band Structure</h2>
-<Bands band_structs={{ '': mock_band_structure }} data-testid="single-bands-plot" />
+<TestSection title="Single band structure">
+  <Bands band_structs={single} data-testid="single-bands-plot" />
+</TestSection>
 
-<h2 id="multiple-bands">Multiple Band Structures</h2>
-<Bands
-  band_structs={{ BS1: mock_band_structure, BS2: bs2 }}
-  data-testid="multiple-bands-plot"
-/>
+<TestSection title="Multiple band structures">
+  <Bands band_structs={two_structs} data-testid="multiple-bands-plot" />
+</TestSection>
 
-<h2 id="custom-styling">Custom Line Styling</h2>
-<Bands
-  band_structs={{ '': mock_band_structure }}
-  line_kwargs={{ acoustic: { stroke: `red` }, optical: { stroke: `blue` } }}
-  data-testid="custom-styling-plot"
-/>
+<TestSection title="Union path mode">
+  <Bands band_structs={single} path_mode="union" data-testid="union-path-plot" />
+</TestSection>
 
-<h2 id="union-path">Union Path Mode</h2>
-<Bands
-  band_structs={{ '': mock_band_structure }}
-  path_mode="union"
-  data-testid="union-path-plot"
-/>
+<TestSection title="Intersection path mode">
+  <Bands band_structs={single} path_mode="intersection" data-testid="intersection-path-plot" />
+</TestSection>
 
-<h2 id="intersection-path">Intersection Path Mode</h2>
-<Bands
-  band_structs={{ '': mock_band_structure }}
-  path_mode="intersection"
-  data-testid="intersection-path-plot"
-/>
+<TestSection title="No legend">
+  <Bands band_structs={two_structs} show_legend={false} data-testid="no-legend-plot" />
+</TestSection>
 
-<h2 id="no-legend">No Legend</h2>
-<Bands
-  band_structs={{ BS1: mock_band_structure, BS2: bs2 }}
-  show_legend={false}
-  data-testid="no-legend-plot"
-/>
+<TestSection title="Union mode with non-canonical segments">
+  <Bands
+    band_structs={mismatched_paths}
+    path_mode="union"
+    data-testid="union-non-canonical-plot"
+  />
+</TestSection>
 
-<h2 id="union-non-canonical">Union Mode with Non-Canonical Segments</h2>
-<Bands
-  band_structs={{ canonical: mock_band_structure, alt_path: bs_alt_path }}
-  path_mode="union"
-  data-testid="union-non-canonical-plot"
-/>
+<TestSection title="Strict mode path mismatch error state">
+  <Bands
+    band_structs={mismatched_paths}
+    path_mode="strict"
+    data-testid="strict-mismatch-plot"
+  />
+</TestSection>
 
-<h2 id="strict-mismatch">Strict Mode Path Mismatch Error State</h2>
-<Bands
-  band_structs={{ canonical: mock_band_structure, alt_path: bs_alt_path }}
-  path_mode="strict"
-  data-testid="strict-mismatch-plot"
-/>
+<TestSection title="Band structure with discontinuities">
+  <Bands band_structs={{ '': bs_with_discontinuity }} data-testid="discontinuity-plot" />
+</TestSection>
 
-<h2 id="discontinuity">Band Structure with Discontinuities</h2>
-<Bands band_structs={{ '': bs_with_discontinuity }} data-testid="discontinuity-plot" />
+<TestSection title="Phonon units and highlight regions">
+  <Bands
+    band_structs={single}
+    units="cm^-1"
+    highlight_regions={[
+      { y_min: 40, y_max: 90, color: `rgba(255, 193, 7, 0.35)`, label: `Target window` },
+    ]}
+    data-testid="phonon-units-highlight-plot"
+  />
+</TestSection>
 
-<h2 id="phonon-units-and-shading">Phonon Units and Highlight Regions</h2>
-<Bands
-  band_structs={{ '': mock_band_structure }}
-  units="cm^-1"
-  highlight_regions={[
-    {
-      y_min: 40,
-      y_max: 90,
-      color: `rgba(255, 193, 7, 0.35)`,
-      label: `Target window`,
-    },
-  ]}
-  data-testid="phonon-units-highlight-plot"
-/>
+<TestSection title="Electronic spin overlay and gap annotation">
+  <Bands
+    band_structs={electronic}
+    band_spin_mode="overlay"
+    data-testid="electronic-spin-overlay-plot"
+  />
+</TestSection>
 
-<h2 id="electronic-spin-overlay">Electronic Spin Overlay and Gap Annotation</h2>
-<Bands
-  band_structs={{ '': electronic_bands_with_fermi }}
-  band_spin_mode="overlay"
-  data-testid="electronic-spin-overlay-plot"
-/>
-
-<h2 id="electronic-spin-down-only">Electronic Spin Down Only</h2>
-<Bands
-  band_structs={{ '': electronic_bands_with_fermi }}
-  band_spin_mode="down_only"
-  data-testid="electronic-spin-down-only-plot"
-/>
-
-<style>
-  h1 {
-    margin-bottom: 2rem;
-  }
-  h2 {
-    margin-top: 2rem;
-    margin-bottom: 1rem;
-  }
-</style>
+<TestSection title="Electronic spin down only">
+  <Bands
+    band_structs={electronic}
+    band_spin_mode="down_only"
+    data-testid="electronic-spin-down-only-plot"
+  />
+</TestSection>

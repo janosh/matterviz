@@ -58,10 +58,17 @@ test.describe(`custom-element bundle`, () => {
 
     const element = page.locator(`mv-structure`)
     await expect(element.locator(`canvas`)).toBeVisible()
-    // `structure` is bindable: the component writes the parsed file back through the accessor
+    // `structure` is bindable: the component writes the parsed file back through the accessor,
+    // as the plain object (structuredClone throws on a $state proxy, whose every read of a
+    // 30k-site structure went through proxy traps)
     await expect
       .poll(() => element.evaluate((node) => Reflect.get(node, `structure`)?.sites?.length))
       .toBe(28)
+    expect(
+      await element.evaluate(
+        (node) => structuredClone(Reflect.get(node, `structure`)).sites.length,
+      ),
+    ).toBe(28)
     // JSON attribute values arrive parsed, other strings verbatim, a removed attribute unsets
     expect(await element.evaluate((node) => Reflect.get(node, `show_controls`))).toBe(false)
     expect(await element.evaluate((node) => Reflect.get(node, `source`))).toBe(

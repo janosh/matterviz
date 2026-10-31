@@ -111,9 +111,7 @@ describe(`FloatingPopup`, () => {
 
     expect(doc_query(`.floating-popup-content .popup-body`).textContent).toBe(`body`)
     expect(getComputedStyle(doc_query(`.floating-popup`)).overflow).toBe(`visible`)
-    const content_style = getComputedStyle(doc_query(`.floating-popup-content`))
-    expect(content_style.overflow).toBe(`hidden`)
-    expect(content_style.borderRadius).toBe(`8px`)
+    expect(getComputedStyle(doc_query(`.floating-popup-content`)).overflow).toBe(`hidden`)
   })
 
   test(`reuses draggable pane handle for dragging`, () => {

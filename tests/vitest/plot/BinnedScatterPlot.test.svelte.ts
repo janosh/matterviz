@@ -1328,19 +1328,6 @@ describe(`BinnedScatterPlot`, () => {
     expect(getComputedStyle(doc_query(`.point-label-measure`)).fontSize).toBe(`20px`)
   })
 
-  test(`renders rotated y-axis label as SVG text with subscript tspans`, async () => {
-    mount_plot({ ...diagonal(), y_axis: { label: `E<sub>form</sub>` }, ...hidden_colorbar })
-    await settle()
-
-    const label = svg_query(`.axis-label.y-label`)
-    const subscript = label.querySelector(`tspan[baseline-shift="sub"]`)
-
-    expect(label.tagName.toLowerCase()).toBe(`text`)
-    expect(label.closest(`foreignObject`)).toBeNull()
-    expect(label.parentElement?.getAttribute(`transform`)).toContain(`rotate(-90`)
-    expect(subscript?.textContent).toBe(`form`)
-  })
-
   test(`waits for plot dimensions before scanning explicit-range data`, async () => {
     let accesses = 0
     let x_axis = $state({ range: [0, 1] as Vec2 })

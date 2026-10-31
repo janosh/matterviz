@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LegendItem } from '#lib/plot/index.js'
   import { PlotLegend } from '#lib/plot/index.js'
+  import TestSection from '../TestSection.svelte'
 
   let series_data: LegendItem[] = $state([
     {
@@ -66,20 +67,18 @@
   }
 </script>
 
-<h1 id="plotlegend-integration-test-page">PlotLegend Integration Test Page</h1>
+<h1>PlotLegend test page</h1>
 
-<h2 id="legend-component">Legend Component</h2>
-<PlotLegend
-  id="main-legend"
-  {series_data}
-  on_toggle={handle_toggle}
-  on_double_click={handle_double_click}
-/>
+<TestSection title="Legend">
+  <PlotLegend
+    id="main-legend"
+    {series_data}
+    on_toggle={handle_toggle}
+    on_double_click={handle_double_click}
+  />
+</TestSection>
 
-<h2 id="state-trackers">State Trackers</h2>
-<p data-testid="last-toggled">
-  Last Toggled Index: {last_toggled_idx ?? `null`}
-</p>
-<p data-testid="last-isolated">
-  Last Isolated Index: {last_isolated_idx ?? `null`}
-</p>
+<TestSection title="State trackers">
+  <p data-testid="last-toggled">Last Toggled Index: {last_toggled_idx ?? `null`}</p>
+  <p data-testid="last-isolated">Last Isolated Index: {last_isolated_idx ?? `null`}</p>
+</TestSection>

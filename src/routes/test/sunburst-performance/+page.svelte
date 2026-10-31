@@ -8,6 +8,7 @@
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import { onMount } from 'svelte'
+  import TestStatus from '../TestStatus.svelte'
 
   // url.searchParams is off-limits during prerender (it would 500 the static build) and the
   // run is only meaningful in a browser anyway, so the defaults stand until the client runs
@@ -49,6 +50,8 @@
   })
 </script>
 
+<!-- Chart first, unwrapped: the spec's hover sweep reaches 0.8 r below the chart center, which
+     only stays inside the 720 px viewport while the chart sits at the top of the page -->
 {#if browser}
   <Sunburst
     {data}
@@ -59,9 +62,8 @@
   />
 {/if}
 
-<pre data-testid="perf-metrics">{JSON.stringify({
-    n_nodes,
-    build_ms,
-    mount_ms,
-    zoom_root_id,
-  })}</pre>
+<h1>Sunburst performance test page</h1>
+
+<TestStatus
+  values={{ 'perf-metrics': JSON.stringify({ n_nodes, build_ms, mount_ms, zoom_root_id }) }}
+/>

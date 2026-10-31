@@ -1,160 +1,77 @@
 <script lang="ts">
-  import { calc_lattice_params, type Matrix3x3 } from '#lib/math.js'
+  import { calc_lattice_params, type Matrix3x3, type Vec3 } from '#lib/math.js'
   import { BandsAndDos } from '#lib/spectral/index.js'
-  import type { BaseBandStructure, PhononDos } from '#lib/spectral/types.js'
-  import type { Crystal } from '#lib/structure/index.js'
+  import type { Crystal, Site } from '#lib/structure/index.js'
+  import {
+    custom_overlay_style,
+    mock_band_structure_gxmg as mock_band_structure,
+    mock_dos_gxmg as mock_dos,
+  } from '#site/spectral-mocks.js'
+  import TestSection from '../TestSection.svelte'
 
   const matrix: Matrix3x3 = [
     [4.0, 0.0, 0.0],
     [0.0, 4.0, 0.0],
     [0.0, 0.0, 4.0],
   ]
+  const si_site = (abc: Vec3): Site => ({
+    species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
+    abc,
+    xyz: [abc[0] * 4, abc[1] * 4, abc[2] * 4],
+    label: `Si`,
+    properties: {},
+  })
   const mock_structure: Crystal = {
     lattice: { matrix, pbc: [true, true, true], ...calc_lattice_params(matrix) },
-    sites: [
-      {
-        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-        abc: [0.0, 0.0, 0.0],
-        xyz: [0.0, 0.0, 0.0],
-        label: `Si`,
-        properties: {},
-      },
-      {
-        species: [{ element: `Si`, occu: 1, oxidation_state: 0 }],
-        abc: [0.5, 0.5, 0.5],
-        xyz: [2.0, 2.0, 2.0],
-        label: `Si`,
-        properties: {},
-      },
-    ],
+    sites: [si_site([0.0, 0.0, 0.0]), si_site([0.5, 0.5, 0.5])],
   }
 
-  const mock_band_structure: BaseBandStructure = {
-    type: `phonon`,
-    qpoints: [
-      { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 0.0 },
-      { label: null, frac_coords: [0.1, 0.0, 0.0], distance: 0.2 },
-      { label: null, frac_coords: [0.2, 0.0, 0.0], distance: 0.4 },
-      { label: null, frac_coords: [0.3, 0.0, 0.0], distance: 0.6 },
-      { label: null, frac_coords: [0.4, 0.0, 0.0], distance: 0.8 },
-      { label: `X`, frac_coords: [0.5, 0.0, 0.0], distance: 1.0 },
-      { label: null, frac_coords: [0.5, 0.1, 0.0], distance: 1.2 },
-      { label: null, frac_coords: [0.5, 0.2, 0.0], distance: 1.4 },
-      { label: null, frac_coords: [0.5, 0.3, 0.0], distance: 1.6 },
-      { label: null, frac_coords: [0.5, 0.4, 0.0], distance: 1.8 },
-      { label: `M`, frac_coords: [0.5, 0.5, 0.0], distance: 2.0 },
-      { label: null, frac_coords: [0.4, 0.4, 0.0], distance: 2.2 },
-      { label: null, frac_coords: [0.3, 0.3, 0.0], distance: 2.4 },
-      { label: null, frac_coords: [0.2, 0.2, 0.0], distance: 2.6 },
-      { label: null, frac_coords: [0.1, 0.1, 0.0], distance: 2.8 },
-      { label: `GAMMA`, frac_coords: [0.0, 0.0, 0.0], distance: 3.0 },
-    ],
-    branches: [
-      { start_index: 0, end_index: 5, name: `GAMMA-X` },
-      { start_index: 5, end_index: 10, name: `X-M` },
-      { start_index: 10, end_index: 15, name: `M-GAMMA` },
-    ],
-    labels_dict: {
-      GAMMA: [0.0, 0.0, 0.0],
-      X: [0.5, 0.0, 0.0],
-      M: [0.5, 0.5, 0.0],
-    },
-    // oxfmt-ignore
-    distance: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0],
-    nb_bands: 3,
-    bands: [
-      // oxfmt-ignore
-      [0.0, 0.5, 0.8, 1.0, 0.8, 0.5, 0.8, 1.2, 1.5, 1.8, 2.0, 1.8, 1.5, 1.0, 0.5, 0.0], // oxfmt-ignore
-      [1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 2.8, 2.6, 2.4, 2.2, 1.0], // oxfmt-ignore
-      [2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 3.8, 3.6, 3.2, 2.8, 2.0],
-    ],
-  }
-
-  const mock_dos: PhononDos = {
-    type: `phonon`,
-    frequencies: [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5],
-    densities: [0.0, 1.0, 2.0, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5, 0.0],
-  }
-
-  const high_freq_dos: PhononDos = {
-    type: `phonon`,
-    frequencies: [10, 15, 20, 25, 30],
-    densities: [1, 2, 1.5, 0.5, 0],
+  const shared_props = {
+    structure: mock_structure,
+    band_structs: { '': mock_band_structure },
+    doses: { '': mock_dos },
+    style: `min-height: 600px; position: relative`, // relative anchors the custom overlay
   }
 </script>
 
-<h1 id="bands-and-dos-bz-test-page">BandsAndDos with Brillouin Zone Test Page</h1>
+<h1>BandsAndDos with Brillouin zone test page</h1>
 
-<h2 id="default">Default (Shared Y-axis)</h2>
-<BandsAndDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': mock_dos }}
-  data-testid="bz-bands-dos-default"
-/>
+<TestSection title="Default (shared y-axis)">
+  <BandsAndDos {...shared_props} data-testid="bz-bands-dos-default" />
+</TestSection>
 
-<h2 id="bands-custom-styling">Custom Bands Styling</h2>
-<BandsAndDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': mock_dos }}
-  bands_props={{ line_kwargs: { stroke: `red`, stroke_width: 3 } }}
-  data-testid="bz-bands-dos-bands-styling"
-/>
+<TestSection title="Custom bands styling">
+  <BandsAndDos
+    {...shared_props}
+    bands_props={{ line_kwargs: { stroke: `red`, stroke_width: 3 } }}
+    data-testid="bz-bands-dos-bands-styling"
+  />
+</TestSection>
 
-<h2 id="independent-axes">Independent Y-axes (Mismatched Ranges)</h2>
-<BandsAndDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': high_freq_dos }}
-  data-testid="bz-bands-dos-independent-axes"
-/>
+<TestSection title="With Brillouin zone controls">
+  <BandsAndDos
+    {...shared_props}
+    bz_props={{ show_controls: true }}
+    data-testid="bz-bands-dos-with-controls"
+  />
+</TestSection>
 
-<h2 id="with-bz-controls">With Brillouin Zone Controls</h2>
-<BandsAndDos
-  structure={mock_structure}
-  band_structs={{ '': mock_band_structure }}
-  doses={{ '': mock_dos }}
-  bz_props={{ show_controls: true }}
-  data-testid="bz-bands-dos-with-controls"
-/>
-
-<h2 id="multiple-structures">Multiple Band Structures and DOS</h2>
-<BandsAndDos
-  structure={mock_structure}
-  band_structs={{
-    DFT: mock_band_structure,
-    Model: {
-      ...mock_band_structure,
-      bands: mock_band_structure.bands.map((band) => band.map((freq) => freq * 1.1)),
-    },
-  }}
-  doses={{
-    DFT: mock_dos,
-    Model: {
-      ...mock_dos,
-      densities: mock_dos.densities.map((dens) => dens * 1.2),
-    },
-  }}
-  data-testid="bz-bands-dos-multiple"
->
-  <div
-    class="custom-overlay"
-    style="position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.9); padding: 8px; border-radius: var(--border-radius); font-size: 12px; pointer-events: none; z-index: 10"
+<TestSection title="Multiple band structures and DOS" id="multiple-structures">
+  <BandsAndDos
+    {...shared_props}
+    band_structs={{
+      DFT: mock_band_structure,
+      Model: {
+        ...mock_band_structure,
+        bands: mock_band_structure.bands.map((band) => band.map((freq) => freq * 1.1)),
+      },
+    }}
+    doses={{
+      DFT: mock_dos,
+      Model: { ...mock_dos, densities: mock_dos.densities.map((dens) => dens * 1.2) },
+    }}
+    data-testid="bz-bands-dos-multiple"
   >
-    Custom Overlay
-  </div>
-</BandsAndDos>
-
-<style>
-  h1 {
-    margin-bottom: 2rem;
-  }
-  h2 {
-    margin-top: 2rem;
-    margin-bottom: 1rem;
-  }
-  :global(.bands-and-dos[data-testid]) {
-    min-height: 600px;
-  }
-</style>
+    <div class="custom-overlay" style={custom_overlay_style}>Custom Overlay</div>
+  </BandsAndDos>
+</TestSection>

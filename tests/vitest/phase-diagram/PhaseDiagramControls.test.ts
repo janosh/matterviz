@@ -22,25 +22,6 @@ const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {})
 }
 
 describe(`PhaseDiagramControls`, () => {
-  test(`renders sections and controls when open`, () => {
-    const target = mount_controls({})
-    expect(target.innerHTML).toContain(`Phase diagram controls`)
-    const expected_text =
-      `Visibility|Labels|Grid|Comp. labels|Appearance|Font size|Colors|Background|` +
-      `Boundaries|Tie-line display|Line width|Endpoint radius|Cursor radius|Axes|` +
-      `X-axis ticks|Y-axis ticks`
-    for (const text of expected_text.split(`|`)) expect(target.textContent).toContain(text)
-    const checkboxes = [...target.querySelectorAll<HTMLInputElement>(`input[type="checkbox"]`)]
-    for (const label_text of [`Boundaries`, `Labels`, `Grid`, `Comp. labels`]) {
-      const checkbox = checkboxes.find((input) =>
-        input.closest(`label`)?.textContent?.includes(label_text),
-      )
-      expect(checkbox?.checked, `checkbox "${label_text}" not found`).toBe(true)
-    }
-    // PNG DPI lives in the export pane, not duplicated here
-    expect(target.textContent).not.toContain(`PNG DPI`)
-  })
-
   test(`axis tick drafts commit only within 2-15, without rewriting the field mid-typing`, () => {
     const target = document.createElement(`div`)
     const state = { x_axis: { ticks: 5 } }

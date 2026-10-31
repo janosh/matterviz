@@ -308,6 +308,8 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     await hover(wrapper, 50, 1000)
     await fire(plot_svg(wrapper), mouse(`click`))
     expect(wrapper.querySelector(`.pin-marker`)).not.toBeNull()
+    // the pin hands back the hovered snapshot itself (was a deep $state proxy of it)
+    expect(on_pin.mock.lastCall?.[0]).toBe(on_phase_hover.mock.lastCall?.[0])
     change(state)
     await tick()
     expect(wrapper.querySelector(`.pin-marker`)).toBeNull()
@@ -387,13 +389,12 @@ describe(`PressureTemperaturePhaseDiagram`, () => {
     expect(gamma()).not.toBeNull()
   })
 
+  // a display_pressure_unit's label, swapped or not, is pinned in the pressure_axis test below
   // oxfmt-ignore
   test.each([
     [{}, `Pressure (GPa)`, `Temperature (K)`],
     [{ swap_axes: true }, `Temperature (K)`, `Pressure (GPa)`],
-    [{ display_pressure_unit: `kbar` as const }, `Pressure (kbar)`, `Temperature (K)`],
     [{ display_temp_unit: `°C` as const }, `Pressure (GPa)`, `Temperature (°C)`],
-    [{ swap_axes: true, display_pressure_unit: `bar` as const }, `Temperature (K)`, `Pressure (bar)`],
   ])(`axis labels for %j`, async (props, x_label, y_label) => {
     const wrapper = await mount_diagram(props)
     expect(axis_text(wrapper, `x`)).toContain(x_label)

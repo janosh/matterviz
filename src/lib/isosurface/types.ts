@@ -318,8 +318,10 @@ export function isovalue_histogram(
   const span = high - low
   if (span > 0) {
     const scale = n_bins / span
-    for (const raw of volume.values) {
-      const value = mirror ? Math.abs(raw) : raw
+    const { values } = volume
+    // oxlint-disable-next-line typescript/prefer-for-of -- for-of took 4x as long (45 vs 11 ms at 200³)
+    for (let idx = 0; idx < values.length; idx++) {
+      const value = mirror ? Math.abs(values[idx]) : values[idx]
       if (!(value >= low && value <= high)) continue // also drops NaN
       counts[Math.min(n_bins - 1, Math.floor((value - low) * scale))]++
     }

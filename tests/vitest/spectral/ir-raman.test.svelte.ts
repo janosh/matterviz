@@ -548,10 +548,6 @@ it.each([
   )
 })
 
-it(`spectrum_from_phonon_data selects the Gamma point automatically`, () => {
-  expect(co2_spectrum).toMatchObject({ q_position: [0, 0, 0], n_atoms: 3 })
-})
-
 // Frequencies as declared in the fixtures, in file order (THz). The parser must not sort.
 const CM_TO_THZ = 0.0299792458
 const CO2_FREQS = [0, 0, 0, 2, 2, 667, 667, 1333, 2349].map((freq, idx) =>

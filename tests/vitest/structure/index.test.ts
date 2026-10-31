@@ -187,8 +187,6 @@ describe(`get_center_of_mass`, () => {
     const actual = struct_utils.get_center_of_mass(structure)
     assert(actual && expected)
     expect(actual).toEqual(expected)
-    expect(max_abs_error(actual, expected)).toBe(0)
-    expect(max_rel_error(actual, expected)).toBe(0)
   })
 
   // [element, occupancy, xyz] per site
@@ -265,7 +263,6 @@ describe(`structure_fit_frame`, () => {
   })
 
   test(`molecule / cell framing`, () => {
-    expect(DEFAULT_FIT_PADDING).toBeCloseTo(1 / 0.92, 10)
     const diatomic = { sites: [site(`H`, [-1, 0, 0]), site(`H`, [1, 0, 0])] }
     const { center, extent: fit } = structure_fit_frame(diatomic)
     center.forEach((coord) => expect(coord).toBeCloseTo(0, 10))

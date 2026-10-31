@@ -443,7 +443,7 @@ test(`info tab carries the info pane's file, timing and property statistics`, as
   )
   expect(rows).toMatchObject({
     Name: `md.extxyz`,
-    'File Size': `2.00 KiB`,
+    'File Size': `2 KiB`,
     Format: `xyz`,
     'Total Frames': `4 (current: 2)`,
     'Time Step': `2 fs`,

@@ -19,9 +19,17 @@ export const sides_equal = (left: Required<Sides>, right: Required<Sides>): bool
 export const LABEL_GAP_DEFAULT = 20
 // Single-line axis title height (the title font's line height)
 export const AXIS_LABEL_HEIGHT = 20
-// Wrapping span for axis titles whose available extent the caller doesn't know (vertical
-// titles, whose plot height PlotAxis does not forward) and the floor for horizontal ones
+// Wrapping span for axis titles: the floor for horizontal ones, the cap for vertical ones
 export const AXIS_TITLE_WRAP_WIDTH = 200
+// Narrowest span a vertical title wraps to, so a sliver of a plot doesn't stack it word by word
+const MIN_Y_TITLE_WRAP_WIDTH = 80
+// Span an axis title wraps at: an x title's the plot width (at least AXIS_TITLE_WRAP_WIDTH), a
+// y title's the plot height (at most that), so a short plot's title (a DOS strip under bands)
+// wraps instead of overflowing into the panes above and below
+export const axis_title_wrap_width = (horizontal: boolean, plot_extent: number): number =>
+  horizontal
+    ? Math.max(plot_extent, AXIS_TITLE_WRAP_WIDTH)
+    : Math.min(AXIS_TITLE_WRAP_WIDTH, Math.max(plot_extent, MIN_Y_TITLE_WRAP_WIDTH))
 // Distance from an x/x2 axis baseline to the title center.
 export const AXIS_TITLE_OFFSET = TICK_LABEL_HEIGHT + LABEL_GAP_DEFAULT
 // Clearance between an x/x2 title's outer edge and the SVG edge, so a title doesn't touch
@@ -228,11 +236,14 @@ export function y_axis_label_x(
   axis: AxisConfig,
   pad_l: number,
   max_tick_width: number,
+  plot_height: number,
 ): number {
   const inside = axis.tick_label?.inside ?? false
   const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0)
   const tick_extent = inside ? 0 : max_tick_width + 8 - tick_shift
-  const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
+  const title_height =
+    resolve_axis_title_layout(axis, axis_title_wrap_width(false, plot_height)).height ||
+    AXIS_LABEL_HEIGHT
   return Math.max(
     title_height / 2,
     pad_l - tick_extent - LABEL_GAP_DEFAULT - title_height / 2 + (axis.label_shift?.x ?? 0),
@@ -245,10 +256,13 @@ export function y2_axis_label_x(
   width: number,
   pad_r: number,
   max_tick_width: number,
+  plot_height: number,
 ): number {
   const inside = axis.tick_label?.inside ?? false
   const tick_shift = inside ? 0 : (axis.tick_label?.shift?.x ?? 0) + 8
-  const title_height = resolve_axis_title_layout(axis).height || AXIS_LABEL_HEIGHT
+  const title_height =
+    resolve_axis_title_layout(axis, axis_title_wrap_width(false, plot_height)).height ||
+    AXIS_LABEL_HEIGHT
   const label_offset =
     (inside ? 0 : max_tick_width) +
     LABEL_GAP_DEFAULT +
@@ -387,17 +401,19 @@ export const calc_auto_padding = ({
           0,
           height - (padding.t ?? default_padding.t) - (padding.b ?? default_padding.b),
         )
-  const y_title_layout = resolve_axis_title_layout(y_axis)
-  const y2_title_layout = resolve_axis_title_layout(y2_axis)
   // Padding for a y/y2 side: outside tick offsets, widest tick, title gap, rotated title
   // width and outer air. Titles need their band even when an axis has no ticks.
   const side_pad = (
     axis: MeasuredAxis,
-    title_layout: AxisTitleLayout,
     default_side: number,
     side: `left` | `right`,
     available_height: number,
   ): number => {
+    // an unknown height (no height given) leaves the title its default span
+    const title_layout = resolve_axis_title_layout(
+      axis,
+      axis_title_wrap_width(false, height == null ? Infinity : available_height),
+    )
     const ticks = axis.tick_values ?? []
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return default_side
@@ -424,9 +440,8 @@ export const calc_auto_padding = ({
     )
   }
   const vertical_pads = (available_height: number): [number, number] => [
-    padding.l ?? side_pad(y_axis, y_title_layout, default_padding.l, `left`, available_height),
-    padding.r ??
-      side_pad(y2_axis, y2_title_layout, default_padding.r, `right`, available_height),
+    padding.l ?? side_pad(y_axis, default_padding.l, `left`, available_height),
+    padding.r ?? side_pad(y2_axis, default_padding.r, `right`, available_height),
   ]
   let [pad_l, pad_r] = vertical_pads(initial_plot_height)
   // Horizontal labels can use side padding; score endpoints against the full SVG width.
@@ -452,7 +467,10 @@ export const calc_auto_padding = ({
     controls_row && y2_outside_ticks ? CONTROLS_ROW_HEIGHT + TICK_LABEL_HEIGHT : 0
   const top_pad = (available_width: number): number => {
     const ticks = x2_axis.tick_values ?? []
-    const title_layout = resolve_axis_title_layout(x2_axis, available_width)
+    const title_layout = resolve_axis_title_layout(
+      x2_axis,
+      axis_title_wrap_width(true, available_width),
+    )
     const has_title = title_layout.height > 0
     if (ticks.length === 0 && !has_title) return Math.max(controls_floor, default_padding.t)
     const inside = x2_axis.tick_label?.inside ?? false
@@ -480,7 +498,10 @@ export const calc_auto_padding = ({
     const inside = x_axis.tick_label?.inside ?? false
     const tick_values = x_axis.tick_values ?? []
     const has_outside_ticks = tick_values.length > 0 && !inside
-    const title_layout = resolve_axis_title_layout(x_axis, available_width)
+    const title_layout = resolve_axis_title_layout(
+      x_axis,
+      axis_title_wrap_width(true, available_width),
+    )
     const title_height = title_layout.height
     if (!has_outside_ticks && title_height === 0) return default_padding.b
     const band = has_outside_ticks

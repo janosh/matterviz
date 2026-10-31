@@ -19,6 +19,15 @@ const SPECIES_KEY_REGEX = /^(?<symbol>[A-Z][a-z]?)(?:\d*\.?\d*[+-])?(?:,spin=[-+
 // Hydrogen isotopes pymatgen treats as their own species
 const ISOTOPE_TO_ELEMENT: Record<string, ElementSymbol> = { D: `H`, T: `H` }
 
+// Element of a pymatgen species key ("Fe2+,spin=5" -> "Fe", "D" -> "H"), else null
+export function species_key_element(key: string): ElementSymbol | null {
+  // Plain element keys (the common case) skip the regex
+  if (is_elem_symbol(key)) return key
+  const raw_symbol = SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``
+  const symbol = ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol
+  return is_elem_symbol(symbol) ? symbol : null
+}
+
 // Normalize hull composition keys: strip oxidation states and spins ("Fe2+,spin=5" -> "Fe"),
 // map D/T to H, merge amounts per element and drop non-positive ones. pymatgen DummySpecies
 // ("X0+", "Xa") are skipped with a warning. Throws on non-species keys ("Fe2O3"), which would
@@ -40,14 +49,10 @@ export function normalize_hull_composition_keys(
       normalized[key as ElementSymbol] = (normalized[key as ElementSymbol] ?? 0) + amount
       continue
     }
-    // Plain element keys (the common case) skip the regex
-    const raw_symbol = is_elem_symbol(key)
-      ? key
-      : (SPECIES_KEY_REGEX.exec(key)?.groups?.symbol ?? ``)
-    const symbol = ISOTOPE_TO_ELEMENT[raw_symbol] ?? raw_symbol
-    if (is_elem_symbol(symbol)) normalized[symbol] = (normalized[symbol] ?? 0) + amount
+    const symbol = species_key_element(key)
+    if (symbol) normalized[symbol] = (normalized[symbol] ?? 0) + amount
     // DummySpecies symbols start with X and are not real elements (Xe is)
-    else if (raw_symbol.startsWith(`X`)) {
+    else if (key.startsWith(`X`) && SPECIES_KEY_REGEX.test(key)) {
       console.warn(
         `Skipping pymatgen DummySpecies key "${key}" in ${JSON.stringify(composition)}: it carries no element`,
       )
@@ -164,18 +169,25 @@ export function compute_e_form_per_atom(
   return energy_per_atom - ref_sum
 }
 
+// Score a unary competes on for its element's reference: absolute energy per atom, else
+// e_form_per_atom for E_form-only unaries
+export const unary_ref_score = (entry: PhaseData): number =>
+  has_absolute_energy(entry) ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
+
 // Lowest-energy unary entry per element by absolute energy per atom. E_form-only unaries rank
 // by e_form_per_atom, and only for elements without absolute-energy unaries. exclude_from_hull
-// unaries are never references.
+// unaries are never references. `score_shifts` (per entry, eV/atom) ranks the unaries as if
+// their energies had moved by it.
 export function find_lowest_energy_unary_refs(
   entries: PhaseData[],
+  score_shifts?: readonly number[],
 ): Record<string, PhaseData> {
   type Ref = { entry: PhaseData; score: number; absolute: boolean }
   const refs: Record<string, Ref> = {}
-  for (const entry of entries) {
+  for (const [idx, entry] of entries.entries()) {
     if (!is_unary_entry(entry) || entry.exclude_from_hull) continue
     const absolute = has_absolute_energy(entry)
-    const score = absolute ? get_energy_per_atom(entry) : (entry.e_form_per_atom ?? NaN)
+    const score = unary_ref_score(entry) + (score_shifts?.[idx] ?? 0)
     if (!Number.isFinite(score)) continue
     const element = Object.keys(entry.composition).find(
       (key) => (entry.composition[key as ElementSymbol] ?? 0) > 0,
@@ -201,9 +213,11 @@ const id_of = (entry: PhaseData): string => {
 // Unclamped energy above hull (eV/atom) of `entries` against the hull of reference_entries.
 // E_form comes from e_form_per_atom, else the lowest-energy unary references; unreferenced
 // pure elements default to 0. Unplaceable entries (missing reference, zero atoms) get NaN.
+// `components` as in normalize_hull_composition_keys, for pseudo-component hulls.
 export function e_above_hull_distances(
   entries: PhaseData[],
   reference_entries: PhaseData[],
+  components?: readonly string[],
 ): number[] {
   if (reference_entries.length === 0) {
     throw new Error(`Reference entries cannot be empty`)
@@ -211,7 +225,7 @@ export function e_above_hull_distances(
   // Normalized copies so "Fe3+" keys match the references; zero-atom entries stay (NaN below)
   const normalize = (entry: PhaseData): PhaseData => ({
     ...entry,
-    composition: normalize_hull_composition_keys(entry.composition),
+    composition: normalize_hull_composition_keys(entry.composition, components),
   })
   const entries_of_interest = entries.map(normalize)
   // Hull distances of a set against itself are the common call: normalize and place once
@@ -493,24 +507,34 @@ function initial_simplex(points: number[][]): number[] | null {
   if (best_dist < HULL_EPS) return null
 
   const chosen = [first, second]
+  const is_chosen = new Uint8Array(points.length)
+  is_chosen[first] = 1
+  is_chosen[second] = 1
   const origin = points[first]
   const basis = [math.normalize_vec(math.subtract(points[second], origin))]
+  // Component of (point - origin) orthogonal to the span of the chosen points, in one reused
+  // array (allocating three per point and basis vector was most of a 50k-point hull build)
+  const residual: number[] = Array(dim).fill(0)
+  const project_residual = (point: number[]): number[] => {
+    for (let axis = 0; axis < dim; axis++) residual[axis] = point[axis] - origin[axis]
+    for (const vec of basis) {
+      let proj = 0
+      for (let axis = 0; axis < dim; axis++) proj += residual[axis] * vec[axis]
+      for (let axis = 0; axis < dim; axis++) residual[axis] -= vec[axis] * proj
+    }
+    return residual
+  }
   while (chosen.length < dim + 1) {
     let [best_idx, best_norm] = [-1, HULL_EPS]
-    let best_residual: number[] = []
     for (let idx = 0; idx < points.length; idx++) {
-      if (chosen.includes(idx)) continue
-      // Component of (point - origin) orthogonal to the span of the chosen points
-      let residual = math.subtract(points[idx], origin)
-      for (const vec of basis) {
-        residual = math.subtract(residual, math.scale(vec, math.dot(residual, vec)))
-      }
-      const norm = Math.hypot(...residual)
-      if (norm > best_norm) [best_idx, best_norm, best_residual] = [idx, norm, residual]
+      if (is_chosen[idx]) continue
+      const norm = Math.hypot(...project_residual(points[idx]))
+      if (norm > best_norm) [best_idx, best_norm] = [idx, norm]
     }
     if (best_idx === -1) return null
     chosen.push(best_idx)
-    basis.push(math.scale(best_residual, 1 / best_norm))
+    is_chosen[best_idx] = 1
+    basis.push(project_residual(points[best_idx]).map((val) => val * (1 / best_norm)))
   }
   return chosen
 }
@@ -633,8 +657,7 @@ export function compute_e_above_hull_nd(
       1 - lambda.reduce((sum, val) => sum + val, 0) >= -HULL_EPS,
     )
   }
-  return query_points.map((query) => {
-    if (!query.every(Number.isFinite)) return NaN
+  const hull_energy = (query: number[]): number => {
     const energies = facets.map((facet) => facet_energy(facet, query))
     const covers = (idx: number) =>
       Number.isFinite(energies[idx]) && contains(facets[idx], query)
@@ -649,7 +672,17 @@ export function compute_e_above_hull_nd(
             .map((_, idx) => idx)
             .toSorted((idx_a, idx_b) => energies[idx_b] - energies[idx_a])
             .find(covers)
-    return covering === undefined ? NaN : query[spatial_dim] - energies[covering]
+    return covering === undefined ? NaN : energies[covering]
+  }
+  // The hull energy depends only on the composition coordinates: polymorphs and repeated
+  // compositions share one facet scan
+  const hull_energies = new Map<string, number>()
+  return query_points.map((query) => {
+    if (!query.every(Number.isFinite)) return NaN
+    const key = query.slice(0, spatial_dim).join(`,`)
+    const energy = hull_energies.get(key) ?? hull_energy(query)
+    hull_energies.set(key, energy)
+    return query[spatial_dim] - energy
   })
 }
 

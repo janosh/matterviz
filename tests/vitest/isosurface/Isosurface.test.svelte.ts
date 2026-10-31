@@ -57,6 +57,7 @@ type Props = {
   volumes: VolumetricData[]
   settings: IsosurfaceSettings
   on_error?: (message: string) => void
+  building?: boolean
 }
 let teardown: (() => void) | undefined
 
@@ -295,6 +296,43 @@ describe(`Isosurface`, () => {
     props.volumes = [big_volume()]
     flushSync()
     expect(pending[1].signal.aborted).toBe(true)
+  })
+
+  // StructureScene holds a scene snapshot's render acknowledgement while this is true, so
+  // exports of large grids used to capture the atoms without their surfaces
+  test(`building stays true until a worker rebuild and its queued rerun swap in`, async () => {
+    const pending = hold_worker_jobs()
+    // a bindable writes back only to a prop the parent passes
+    const props = mount_isosurface({ volumes: [big_volume()], building: false })
+    flushSync()
+    expect(props.building).toBe(true) // requested on mount, before its frame runs it
+    await settle()
+    props.settings.layers[0].isovalue = 0.4
+    await settle()
+    pending[0].resolve({ volumes: [] })
+    await settle()
+    expect(props.building).toBe(true) // the rerun at 0.4 is in flight
+    invalidate.mockClear()
+    pending[1].resolve({ volumes: [] })
+    await settle()
+    expect(props.building).toBe(false)
+    expect(invalidate).toHaveBeenCalled() // a fresh frame for whoever waits on the flag
+  })
+
+  // A rebuild requested while a worker job runs is queued for the next frame; the job's end
+  // must not clear the flag before that rerun starts
+  test(`building stays true for a rebuild requested before a worker job ends`, async () => {
+    const pending = hold_worker_jobs()
+    const props = mount_isosurface({ volumes: [big_volume()], building: false })
+    await settle()
+    props.settings.layers[0].isovalue = 0.4
+    flushSync() // queues a frame for the rebuild, which has not run yet
+    pending[0].resolve({ volumes: [] })
+    await vi.advanceTimersByTimeAsync(0) // microtasks only, no frame
+    expect(props.building).toBe(true)
+    await settle()
+    expect(pending).toHaveLength(2)
+    expect(props.building).toBe(true)
   })
 
   // The rerun queued behind an in-flight worker rebuild used to fire after unmount, starting

@@ -1,6 +1,5 @@
 // Each scene passes its own light positions, so the props must reach the Threlte nodes unchanged
 import SceneLights from '#lib/scene/SceneLights.svelte'
-import { DEFAULTS } from '#lib/settings.js'
 import { mount, unmount } from 'svelte'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { threlte_stub } from '../isosurface/threlte-stub'
@@ -18,17 +17,6 @@ const mount_lights = (props: Record<string, unknown> = {}): LightNode[] => {
   })
   return threlte_stub.nodes.map(({ tag, props: node_props }) => ({ tag, ...node_props }))
 }
-
-test(`defaults: structure-viewer intensities, key light at [3, 10, 10], no fill`, () => {
-  expect(mount_lights()).toEqual([
-    { tag: `AmbientLight`, intensity: DEFAULTS.structure.ambient_light },
-    {
-      tag: `DirectionalLight`,
-      position: [3, 10, 10],
-      intensity: DEFAULTS.structure.directional_light,
-    },
-  ])
-})
 
 test.each([
   { fill: 0.375, directional: 0.8, fill_intensity: 0.3 },

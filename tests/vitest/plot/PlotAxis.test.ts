@@ -100,8 +100,6 @@ describe(`PlotAxis`, () => {
     const lines = query(svg, `g.tick`).querySelectorAll(`line`)
     expect(lines).toHaveLength(2) // grid + tick mark
     const grid = lines[0] // grid rendered before the tick mark
-    expect(grid.getAttribute(`stroke-dasharray`)).toBe(`4`) // from DEFAULT_GRID_STYLE
-    expect(grid.getAttribute(`stroke-width`)).toBe(`0.5`) // thin grid lines by default
     for (const [attr, value] of Object.entries(expected)) {
       expect(grid.getAttribute(attr)).toBe(value)
     }

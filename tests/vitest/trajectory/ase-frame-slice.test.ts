@@ -60,21 +60,13 @@ describe(`ASE frame slicing`, () => {
   }
 
   test(`frame spans tile the data region and contain their own header`, () => {
-    expect(spans).toHaveLength(2)
-    // Golden values for this fixture, cross-checked against a native indexer
+    // Golden values for this fixture, cross-checked against a native indexer: the spans
+    // tile from the ULM header on (48 + 1490 = 1538), and each header sits inside its span
+    // but past its start, because the payloads it references were written first.
     expect(spans).toEqual([
-      { byte_offset: 48, size: 1490, header_offset: 760 },
+      { byte_offset: ULM_HEADER_BYTES, size: 1490, header_offset: 760 },
       { byte_offset: 1538, size: 1340, header_offset: 2184 },
     ])
-    let expected_start = ULM_HEADER_BYTES
-    for (const span of spans) {
-      expect(span.byte_offset).toBe(expected_start)
-      // The header sits inside the span but past its start, because the payloads
-      // it references were written first.
-      expect(span.header_offset).toBeGreaterThan(span.byte_offset)
-      expect(span.header_offset).toBeLessThan(span.byte_offset + span.size)
-      expected_start = span.byte_offset + span.size
-    }
   })
 
   test(`a frame decoded from its slice equals the whole-file parse exactly`, () => {
@@ -102,20 +94,13 @@ describe(`ASE frame slicing`, () => {
     const base_offset = second_span.byte_offset
     expect(() => decode_span(second_span, 1, { base_offset })).toThrow(/missing numbers/)
 
-    const { numbers, pbc } = decode_span(first_span, 0, {
+    const { numbers } = decode_span(first_span, 0, {
       base_offset: first_span.byte_offset,
     })
     expect(() =>
       decode_span(second_span, 1, { base_offset, fallback_numbers: numbers }),
     ).toThrow(/missing pbc/)
-    // with both fallbacks it decodes exactly (see the whole-file comparison above)
-    expect(() =>
-      decode_span(second_span, 1, {
-        base_offset,
-        fallback_numbers: numbers,
-        fallback_pbc: pbc,
-      }),
-    ).not.toThrow()
+    // with both fallbacks it decodes exactly: see the whole-file comparison above
   })
 
   // Mutation check on base_offset: dropping it leaves the ULM absolute offsets

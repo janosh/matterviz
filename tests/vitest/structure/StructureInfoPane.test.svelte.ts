@@ -1,6 +1,5 @@
 import StructureInfoPane from '#lib/structure/StructureInfoPane.svelte'
 import type { AnyStructure } from '#lib'
-import { info_pane_icon } from '#lib/overlays/index.js'
 import * as rdf from '#lib/rdf/calc-rdf.js'
 import * as coordination from '#lib/coordination/calc-coordination.js'
 import * as angles from '#lib/bond-angles/calc-bond-angles.js'
@@ -119,9 +118,6 @@ describe(`StructureInfoPane`, () => {
     expect(document.querySelectorAll(`.site-card`)).toHaveLength(0)
     expect(document.body.textContent).toContain(
       `Press f for fullscreen, i to toggle this pane, g for multi-view, r to reset the view`,
-    )
-    expect(document.querySelector(`.structure-info-toggle path`)?.getAttribute(`d`)).toBe(
-      info_pane_icon.d,
     )
   })
 

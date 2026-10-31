@@ -19,6 +19,17 @@ const self_contained_worker: PluginOption = {
   },
 }
 
+// The symmetry worker loads moyo's WASM as a sibling asset, which a webview worker can neither
+// carry nor fetch. The webview registers its WASM URL, which keeps symmetry analysis on the
+// main thread (see symmetry/analyze.ts), so its worker entry is never started: stub it.
+const stub_moyo_worker: PluginOption = {
+  name: `stub-moyo-worker`,
+  load: (identifier: string) =>
+    identifier.replace(/\?.*$/, ``).endsWith(`/symmetry/moyo-worker.ts`)
+      ? `throw new Error('symmetry analysis runs on the main thread in the VS Code webview')`
+      : null,
+}
+
 export default defineConfig(({ mode }) => ({
   // Relative asset URLs: the webview loads dist/webview.js from a vscode-resource URL, so the
   // default absolute `/assets/<worker>.js` would resolve against that origin's root and 404.
@@ -45,7 +56,12 @@ export default defineConfig(({ mode }) => ({
   // worker ~5 MB.
   worker: {
     format: `es`,
-    plugins: () => [...json_gz_worker_plugins()(), self_contained_worker] as PluginOption[],
+    plugins: () =>
+      [
+        ...json_gz_worker_plugins()(),
+        stub_moyo_worker,
+        self_contained_worker,
+      ] as PluginOption[],
     rolldownOptions: { output: { codeSplitting: false } },
   },
   build: {

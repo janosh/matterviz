@@ -8,6 +8,8 @@
     generate_power_law,
     generate_uniform,
   } from '#site/histogram-data.js'
+  import TestControls from '../TestControls.svelte'
+  import TestSection from '../TestSection.svelte'
 
   let bin_count = $state(20)
   let sample_size = $state(1000)
@@ -45,17 +47,40 @@
     series(generate_normal(500, 10, 2), `Small Scale (Y1)`, `#059669`),
     series(generate_normal(500, 1000, 200), `Large Scale (Y2)`, `#f59e0b`, { y_axis: `y2` }),
   ]
+
+  const y2_cases = [
+    {
+      id: `y2-axis-histogram`,
+      title: `Y2 axis`,
+      data: y2_axis_data,
+      bins: 25,
+      y_label: `Y1 Count`,
+      y2_label: `Y2 Count`,
+    },
+    {
+      id: `y2-different-scale`,
+      title: `Y2 different scale`,
+      data: y2_different_scale_data,
+      bins: 30,
+      y_label: `Small Count`,
+      y2_label: `Large Count`,
+    },
+  ]
 </script>
 
-<section data-testid="basic-single-series-section">
-  <label
-    >Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} />
-    {bin_count}</label
-  >
-  <label
-    >Sample Size: <input type="range" min="100" max="5000" bind:value={sample_size} />
-    {sample_size}</label
-  >
+<h1>Histogram test page</h1>
+
+<TestSection title="Basic single series" data-testid="basic-single-series-section">
+  <TestControls>
+    <label
+      >Bin Count: <input type="range" min="5" max="50" bind:value={bin_count} />
+      {bin_count}</label
+    >
+    <label
+      >Sample Size: <input type="range" min="100" max="5000" bind:value={sample_size} />
+      {sample_size}</label
+    >
+  </TestControls>
   <Histogram
     id="basic-single-series"
     series={basic_data}
@@ -64,28 +89,32 @@
     x_axis={{ label: `Value` }}
     y_axis={{ label: `Frequency` }}
   />
-</section>
+</TestSection>
 
-<Histogram
-  id="multiple-series-overlay"
-  series={multiple_series_data}
-  bins={30}
-  mode="overlay"
-  show_legend
-  bar={{ opacity: 0.7, stroke_width: 1.5 }}
-/>
+<TestSection title="Multiple series overlay">
+  <Histogram
+    id="multiple-series-overlay"
+    series={multiple_series_data}
+    bins={30}
+    mode="overlay"
+    show_legend
+    bar={{ opacity: 0.7, stroke_width: 1.5 }}
+  />
+</TestSection>
 
-<section data-testid="logarithmic-scales-section">
-  <label
-    >X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
-    Linear <input type="radio" name="x-scale" value="log" bind:group={x_scale} />
-    Log</label
-  >
-  <label
-    >Y-axis: <input type="radio" name="y-scale" value="linear" bind:group={y_scale} />
-    Linear <input type="radio" name="y-scale" value="log" bind:group={y_scale} />
-    Log</label
-  >
+<TestSection title="Logarithmic scales" data-testid="logarithmic-scales-section">
+  <TestControls>
+    <label
+      >X-axis: <input type="radio" name="x-scale" value="linear" bind:group={x_scale} />
+      Linear <input type="radio" name="x-scale" value="log" bind:group={x_scale} />
+      Log</label
+    >
+    <label
+      >Y-axis: <input type="radio" name="y-scale" value="linear" bind:group={y_scale} />
+      Linear <input type="radio" name="y-scale" value="log" bind:group={y_scale} />
+      Log</label
+    >
+  </TestControls>
   <Histogram
     id="logarithmic-scales"
     series={log_data}
@@ -94,30 +123,18 @@
     x_axis={{ scale_type: x_scale }}
     y_axis={{ scale_type: y_scale }}
   />
-</section>
+</TestSection>
 
-<section id="y2-axis-histogram">
-  <h2 id="y2-axis-histogram-1">Y2 Axis Histogram</h2>
-  <Histogram
-    series={y2_axis_data}
-    bins={25}
-    mode="overlay"
-    show_legend
-    x_axis={{ label: `Value` }}
-    y_axis={{ label: `Y1 Count` }}
-    y2_axis={{ label: `Y2 Count` }}
-  />
-</section>
-
-<section id="y2-different-scale">
-  <h2 id="y2-different-scale-histogram">Y2 Different Scale Histogram</h2>
-  <Histogram
-    series={y2_different_scale_data}
-    bins={30}
-    mode="overlay"
-    show_legend
-    x_axis={{ label: `Value` }}
-    y_axis={{ label: `Small Count` }}
-    y2_axis={{ label: `Large Count` }}
-  />
-</section>
+{#each y2_cases as { id, title, data, bins, y_label, y2_label } (id)}
+  <TestSection {id} {title}>
+    <Histogram
+      series={data}
+      {bins}
+      mode="overlay"
+      show_legend
+      x_axis={{ label: `Value` }}
+      y_axis={{ label: y_label }}
+      y2_axis={{ label: y2_label }}
+    />
+  </TestSection>
+{/each}

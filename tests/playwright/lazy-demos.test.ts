@@ -114,15 +114,8 @@ test(`element pages use local photos and keep the miniature table within a phone
   ).toBe(0)
 })
 
-test(`galleries reserve space and defer lower examples`, async ({ page }) => {
-  await page.goto(`/reciprocal/brillouin-zone`)
-  const examples = page.locator(`.lazy-demo`)
-  // the final Brillouin example is an empty drop target, so check the one before it
-  const last = examples.nth((await examples.count()) - 2)
-  await expect(examples.first().locator(`canvas`).first()).toBeVisible()
-  await expect(last.locator(`.placeholder`)).toHaveCount(1)
-  await last.scrollIntoViewIfNeeded()
-  await expect(last.locator(`canvas`).first()).toBeVisible()
+// deferral itself is covered by the on-demand loop above
+test(`galleries reserve space for deferred examples`, async ({ page }) => {
   await page.goto(`/periodic-table`)
   const quadrant = page.getByRole(`region`, { name: `4-fold Split`, exact: true })
   await expect(quadrant.locator(`.placeholder`)).toHaveCount(1)

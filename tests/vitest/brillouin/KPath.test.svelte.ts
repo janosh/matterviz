@@ -24,9 +24,10 @@ vi.mock(`@threlte/extras`, async () =>
 
 // A segment hover reports its nearer endpoint's q-point, and the proxy's pick_rank lets it win
 // over the zone or IBZ wedge it is drawn through (front_hit). Segments touching the hovered q-point
-// tint over the highlighted range, and a new path frees the old meshes. Threlte drops an
-// unregistered mesh's handlers without a pointerleave, so a rebuild or unmount while hovered
-// must clear the hover itself. Props spread from a fresh object per hover must keep an
+// tint over the highlighted range. A new path or marker set reuses the instanced meshes (a new
+// one compiles new shaders), replacing them only to grow. Threlte drops an unregistered mesh's
+// handlers without a pointerleave, so a new path or unmount while hovered must clear the
+// hover itself. Props spread from a fresh object per hover must keep an
 // unchanged path's meshes (their teardown cleared that hover) and sphere args.
 // Markers are one instanced mesh, sharing a material, as they change on every band hover.
 test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async () => {
@@ -35,7 +36,7 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
   const k_path_points: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 0, 0]]
   const path = (points: Vec3[]) => ({
     points,
-    labels: [`Γ`, null, `X`, `Γ`].slice(0, points.length),
+    labels: [`Γ`, null, `X`, `Γ`, null].slice(0, points.length),
     branches: [[0, points.length - 1] as Vec2],
   })
   let props: ComponentProps<typeof KPath> = $state.raw({
@@ -108,6 +109,17 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
     ])
     if (k_markers.length) expect(marker_mesh()?.material).toBe(material)
   }
+  // fewer markers than before keep the mesh, more grow a new one
+  props = { ...props, k_markers: new_markers }
+  flushSync()
+  const two_marker_mesh = marker_mesh()
+  props = { ...props, k_markers: new_markers.slice(1) }
+  flushSync()
+  expect(marker_mesh()).toBe(two_marker_mesh)
+  props = { ...props, k_markers: [...new_markers, ...new_markers] }
+  flushSync()
+  expect(marker_mesh()).not.toBe(two_marker_mesh)
+  expect(marker_mesh()?.count).toBe(4)
   props = { ...props, k_markers: [{ position: [0.5, 0.5, 0], color: `#e74c3c` }] }
   flushSync()
 
@@ -125,12 +137,23 @@ test(`k-path hover, tints, label chips, mesh disposal and hover reset`, async ()
   const disposed: string[] = []
   for (const [name, mesh] of Object.entries({ line, proxy }))
     mesh.addEventListener(`dispose`, () => disposed.push(name))
+  // a shorter path draws fewer instances of the same meshes, moved to its segments
   props = { ...props, path: path(k_path_points.slice(0, 3)) }
   flushSync()
-  expect(disposed.toSorted()).toEqual([`line`, `proxy`])
+  expect(disposed).toEqual([])
+  expect(meshes().map((node_props) => node_props.is)).toEqual([line, proxy, marker_mesh()])
   expect(meshes().map((node_props) => (node_props.is as InstancedMesh).count)).toEqual([
     2, 2, 1,
   ])
+  const segment_end = new Vector3().setFromMatrixPosition(line.getMatrixAt(1, new Matrix4()))
+  expect(segment_end.toArray()).toEqual([1, 0.5, 0]) // the middle of X→(1, 1, 0)
+  expect(proxy.boundingSphere).toBeNull() // refit to the moved instances on the next raycast
+  // a longer one grows new meshes and frees the old
+  props = { ...props, path: path([...k_path_points, [0, 1, 0]]) }
+  flushSync()
+  expect(disposed.toSorted()).toEqual([`line`, `proxy`])
+  props = { ...props, path: path(k_path_points.slice(0, 3)) }
+  flushSync()
 
   // chips tint at a highlighted k-point and report their q-point with the pointer position
   const chips = [...document.querySelectorAll<HTMLElement>(`.sym-label`)]

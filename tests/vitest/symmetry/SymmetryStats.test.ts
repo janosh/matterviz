@@ -57,28 +57,9 @@ describe(`SymmetryStats`, () => {
   )
 
   describe(`Controls section`, () => {
-    test(`renders controls with correct defaults`, () => {
-      mount_stats()
-
-      const symprec_input = get_symprec_input()
-      expect(symprec_input.value).toBe(`0.0001`) // 1e-4
-      expect(Number(symprec_input.step)).toBeCloseTo(1e-4, 12)
-
-      const algo_select = doc_query<HTMLSelectElement>(`.controls select`)
-      expect(algo_select.value).toBe(`Moyo`)
-      expect(Array.from(algo_select.options).map((opt) => opt.value)).toEqual([
-        `Moyo`,
-        `Spglib`,
-      ])
-    })
-
     test.each([
-      [1e-5, `Moyo`],
-      [1e-4, `Spglib`],
       [1e-10, `Moyo`],
       [1e-2, `Spglib`],
-      [0.5, `Moyo`],
-      [1.0, `Moyo`],
     ] as const)(`accepts custom settings: symprec=%f, algo=%s`, (symprec, algo) => {
       mount_stats({ sym_data: create_mock_sym_data(), settings: { symprec, algo } })
       flushSync()

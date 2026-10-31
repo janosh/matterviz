@@ -7,7 +7,7 @@ import {
   set_pan_offset,
 } from '#lib/scene/pan.js'
 import { Camera, MOUSE, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test } from 'vitest'
 
 const make_cameras = () =>
   [
@@ -188,19 +188,14 @@ describe(`attach_pan_gesture`, () => {
 
   test(`cleanup removes listeners and ends an in-flight gesture`, () => {
     const { element, controls } = setup()
-    const remove_spy = vi.spyOn(window, `removeEventListener`)
     element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button: 2 }))
     window.dispatchEvent(pointer(`pointermove`, { x: 5, y: 5 }))
     detach?.()
     detach = undefined
     expect(controls.events).toEqual([`start`, `change`, `end`])
-    expect(remove_spy.mock.calls.map(([type]) => type)).toEqual(
-      expect.arrayContaining([`pointermove`, `pointerup`, `pointercancel`]),
-    )
     element.dispatchEvent(pointer(`pointerdown`, { x: 0, y: 0, button: 2 }))
     window.dispatchEvent(pointer(`pointermove`, { x: 50, y: 50 }))
     expect(read_pan_offset(controls.object)).toEqual([5, 5])
     expect(controls.events).toEqual([`start`, `change`, `end`])
-    remove_spy.mockRestore()
   })
 })

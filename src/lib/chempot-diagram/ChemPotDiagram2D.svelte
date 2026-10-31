@@ -226,14 +226,13 @@
 
 {#snippet domain_labels(props: UserContentProps)}
   {#each annotations as { formula, data_x, data_y } (formula)}
-    <text
-      x={props.x_scale_fn(data_x)}
-      y={props.y_scale_fn(data_y)}
-      text-anchor="middle"
-      class="domain-label"
-    >
-      {domain_formula_text(formula)}
-    </text>
+    {@const [x, y] = [props.x_scale_fn(data_x), props.y_scale_fn(data_y)]}
+    <!-- chemical potentials are <= 0, so a log axis maps them to NaN: drop such labels -->
+    {#if Number.isFinite(x) && Number.isFinite(y)}
+      <text {x} {y} text-anchor="middle" class="domain-label">
+        {domain_formula_text(formula)}
+      </text>
+    {/if}
   {/each}
 {/snippet}
 

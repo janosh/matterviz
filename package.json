@@ -293,6 +293,7 @@
   },
   "scripts": {
     "movie": "node src/scripts/movie.mjs",
+    "snapshot": "node src/scripts/snapshot.mjs",
     "build:site": "vp build && pagefind --site build",
     "test": "vitest run && playwright test",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning",

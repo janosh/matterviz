@@ -210,6 +210,9 @@ jobs:
         env:
           MATTERVIZ_E2E_MODE: source
           DEBUG: pw:browser
+          # the 333k-atom hotspot test takes ~10 min on CPU rendering: main, releases and
+          # manual runs only, so it doesn't sit on every PR's critical path
+          MATTERVIZ_PERF: ${{ github.event_name != 'pull_request' && '1' || '' }}
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -218,14 +221,14 @@ jobs:
           retention-days: 7
 
   e2e-test-shards:
-    name: E2E production (shard ${{ matrix.shard }}/6)
+    name: E2E production (shard ${{ matrix.shard }}/8)
     needs: build-site
     runs-on: ubuntu-latest
-    timeout-minutes: 40 # the slowest shard takes ~20 min
+    timeout-minutes: 40 # the slowest shard takes ~5-7 min; retries of 90 s tests need headroom
     strategy:
       fail-fast: false # let every shard finish so we see all failures, not just the first
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -256,7 +259,7 @@ jobs:
           name: browser-test-site
           path: .svelte-kit/output/
       - name: Run E2E tests
-        run: xvfb-run -a pnpm exec playwright test --headed --shard=${{ matrix.shard }}/6
+        run: xvfb-run -a pnpm exec playwright test --headed --shard=${{ matrix.shard }}/8
         env:
           MATTERVIZ_E2E_MODE: preview
           DEBUG: pw:browser

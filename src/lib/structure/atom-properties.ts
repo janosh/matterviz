@@ -133,11 +133,15 @@ export function get_coordination_colors(
   strategy: BondingStrategy = `electroneg_ratio`,
   color_scale: ColorScale = DEFAULT_COLOR_SCALE,
   type: ColorScaleType = `continuous`,
+  bonding_options: Record<string, unknown> = {},
 ): AtomPropertyColors {
-  const coord_nums = calc_coordination_nums(structure, { strategy }).coordination_nums
+  const { coordination_nums } = calc_coordination_nums(structure, {
+    strategy,
+    bonding_options,
+  })
 
-  const { colors, unique_values } = apply_color_scale(coord_nums, color_scale, type)
-  return build_prop_colors(coord_nums, colors, unique_values)
+  const { colors, unique_values } = apply_color_scale(coordination_nums, color_scale, type)
+  return build_prop_colors(coordination_nums, colors, unique_values)
 }
 
 // Color sites by Wyckoff orbit. `wyckoff_rows` must already be mapped onto `structure`'s site
@@ -444,6 +448,8 @@ export type AtomColorSources = {
   // StructureSession.to_base_site_idx).
   to_base_idx?: (site: Site, site_idx: number) => number
   bonding_strategy?: BondingStrategy
+  // The scene's bonding_options, so coordination colors count the bonds it draws
+  bonding_options?: Record<string, unknown>
   // Wyckoff rows whose site_indices already index the DISPLAYED structure
   wyckoff_rows?: readonly WyckoffPos[]
 }
@@ -474,6 +480,7 @@ export function get_atom_colors(
     base = structure,
     to_base_idx = get_orig_site_idx,
     bonding_strategy = `electroneg_ratio`,
+    bonding_options = {},
     wyckoff_rows = [],
   }: AtomColorSources = {},
 ): AtomPropertyColors {
@@ -481,7 +488,13 @@ export function get_atom_colors(
   const { mode, color_scale, scale_type } = normalized_config
 
   if (mode === `coordination`) {
-    const on_base = get_coordination_colors(base, bonding_strategy, color_scale, scale_type)
+    const on_base = get_coordination_colors(
+      base,
+      bonding_strategy,
+      color_scale,
+      scale_type,
+      bonding_options,
+    )
     return base === structure ? on_base : expand_to_displayed(on_base, structure, to_base_idx)
   }
   if (mode === `wyckoff`) return get_wyckoff_colors(structure, wyckoff_rows, color_scale)

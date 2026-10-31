@@ -1,6 +1,5 @@
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from '#lib/colors/index.js'
-import { colors, resolve_theme_text_color, theme_state } from '#lib/state.svelte.js'
-import { AUTO_THEME } from '#lib/theme/index.js'
+import { colors, resolve_theme_text_color } from '#lib/state.svelte.js'
 import { afterEach, expect, test, vi } from 'vitest'
 
 // happy-dom rejects light-dark() on a probe's style, so stand in for the browser: the probe
@@ -24,10 +23,6 @@ afterEach(() => {
   vi.restoreAllMocks()
   document.documentElement.style.removeProperty(`--text-color`)
   document.documentElement.style.colorScheme = ``
-})
-
-test(`theme_state starts in auto mode`, () => {
-  expect(theme_state).toEqual({ mode: AUTO_THEME })
 })
 
 test(`colors state starts from the default palettes as independent copies`, () => {

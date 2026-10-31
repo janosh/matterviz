@@ -144,17 +144,22 @@ test(`warmth follows the grids the worker holds, and a lost grid is re-sent once
   expect(fermi_extraction_warm(grids[4])).toBe(false) // every other grid is sent afresh
 })
 
-test(`extracts on the main thread where workers are disabled`, async () => {
-  const main_thread_module = await import_without_workers(
-    () => import(`#lib/fermi-surface/extract-async.js`),
-  )
-  const grid = load_cu()
-  const options = { mu: -2.5, interpolation_factor: 0, wigner_seitz: true }
-  const result = await main_thread_module.extract_fermi_surface_async(grid, options)
-  expect(result).toEqual(extract_fermi_surface(grid, options))
-  expect(result.isosurfaces.length).toBeGreaterThan(0)
-  expect(stub.posted).toHaveLength(0)
-})
+// The fresh module graph it imports takes seconds on shared CI runners
+test(
+  `extracts on the main thread where workers are disabled`,
+  { timeout: 20_000 },
+  async () => {
+    const main_thread_module = await import_without_workers(
+      () => import(`#lib/fermi-surface/extract-async.js`),
+    )
+    const grid = load_cu()
+    const options = { mu: -2.5, interpolation_factor: 0, wigner_seitz: true }
+    const result = await main_thread_module.extract_fermi_surface_async(grid, options)
+    expect(result).toEqual(extract_fermi_surface(grid, options))
+    expect(result.isosurfaces.length).toBeGreaterThan(0)
+    expect(stub.posted).toHaveLength(0)
+  },
+)
 
 test(`grid store keeps the newest grids sent and names a missing one`, () => {
   const grid_of = create_grid_store(2)

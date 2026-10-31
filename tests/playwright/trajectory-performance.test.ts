@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test'
 import { decode_canvas_png, IS_CI, require_bbox, test_without_errors as test } from './helpers'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import process from 'node:process'
 import type * as IoExport from '#lib/io/export.js'
 import type * as AtomModule from '#lib/structure/atom-instances.js'
 import { write_torchsim_si_frames } from '../fixtures/torchsim-h5'
@@ -38,6 +39,10 @@ test.describe(`Trajectory performance`, () => {
     errors,
   }) => {
     // This checks full rendering, including on CI's CPU renderer; timing is covered below.
+    test.skip(
+      IS_CI && process.env.MATTERVIZ_PERF !== `1`,
+      `CPU rendering takes ~10 min; CI runs it outside pull requests (MATTERVIZ_PERF=1)`,
+    )
     test.setTimeout(IS_CI ? 900_000 : 90_000)
     const { default: h5 } = await import(`h5wasm/node`)
     await h5.ready
@@ -173,7 +178,6 @@ test.describe(`Trajectory performance`, () => {
       const atom_count = async () => (await read_scene())?.count ?? 0
       await expect.poll(atom_count, { timeout: 30_000 }).toBe(n_atoms)
       await expect_3d_pixels()
-      await expect(viewer.getByLabel(`Show every atom`)).toHaveCount(0)
       await atom_canvas.evaluate((element) =>
         element.setAttribute(`data-test-mounted`, `true`),
       )

@@ -1,52 +1,31 @@
 <script lang="ts">
   import type { BarSeries } from '#lib/plot/index.js'
   import { BarPlot } from '#lib/plot/index.js'
+  import type { ComponentProps } from 'svelte'
+  import TestSection from '../TestSection.svelte'
 
-  const basic_series: BarSeries[] = [
-    {
-      x: [1, 2, 3, 4],
-      y: [10, 30, 20, 40],
-      label: `Series 1`,
-      color: `steelblue`,
-      bar_width: 0.6,
-    },
+  // Most series share x positions and a bar width; only label, color and y vary
+  const make_bars =
+    (x: number[], bar_width: number) =>
+    (
+      label: string,
+      color: string,
+      y: number[],
+      extra: Partial<BarSeries> = {},
+    ): BarSeries => ({ x, y, label, color, bar_width, ...extra })
+  const bars_4 = make_bars([1, 2, 3, 4], 0.6)
+  const bars_3 = make_bars([1, 2, 3], 0.8)
+
+  const basic_series = [bars_4(`Series 1`, `steelblue`, [10, 30, 20, 40])]
+  const legend_series = [
+    bars_4(`Alpha`, `#4e79a7`, [10, 30, 20, 40]),
+    bars_4(`Beta`, `#e15759`, [20, 10, 35, 25]),
   ]
-
-  const legend_series: BarSeries[] = [
-    {
-      x: [1, 2, 3, 4],
-      y: [10, 30, 20, 40],
-      label: `Alpha`,
-      color: `#4e79a7`,
-      bar_width: 0.6,
-    },
-    {
-      x: [1, 2, 3, 4],
-      y: [20, 10, 35, 25],
-      label: `Beta`,
-      color: `#e15759`,
-      bar_width: 0.6,
-    },
-  ]
-
   // Mixed positive/negative values for stacked-mode testing
-  const stacked_mixed_series: BarSeries[] = [
-    {
-      x: [1, 2, 3],
-      y: [2, -3, 4],
-      label: `Sposneg`,
-      color: `#8cd17d`,
-      bar_width: 0.8,
-    },
-    {
-      x: [1, 2, 3],
-      y: [3, -2, -1],
-      label: `Snegpos`,
-      color: `#76b7b2`,
-      bar_width: 0.8,
-    },
+  const stacked_mixed_series = [
+    bars_3(`Sposneg`, `#8cd17d`, [2, -3, 4]),
+    bars_3(`Snegpos`, `#76b7b2`, [3, -2, -1]),
   ]
-
   const width_array_series: BarSeries[] = [
     {
       x: [1, 2, 3, 4],
@@ -56,104 +35,62 @@
       bar_width: [0.3, 0.6, 1.0, 0.4],
     },
   ]
-
-  const handlers_series: BarSeries[] = [
-    {
-      x: [1, 2, 3, 4],
-      y: [12, 25, 18, 32],
-      label: `With Handlers`,
-      color: `#9467bd`,
-      bar_width: 0.6,
-    },
-  ]
+  const handlers_series = [bars_4(`With Handlers`, `#9467bd`, [12, 25, 18, 32])]
 
   let hover_msg = $state(`Hover over a bar`)
   let click_msg = $state(`Click on a bar`)
 
-  const y2_axis_series: BarSeries[] = [
+  const y2 = { y_axis: `y2` } as const
+  const y2_cases: (ComponentProps<typeof BarPlot> & { id: string; title: string })[] = [
     {
-      x: [1, 2, 3, 4],
-      y: [10, 20, 15, 25],
-      label: `Y1 Series`,
-      color: `#4e79a7`,
-      bar_width: 0.6,
+      id: `y2-axis-bar`,
+      title: `Y2 axis`,
+      series: [
+        bars_4(`Y1 Series`, `#4e79a7`, [10, 20, 15, 25]),
+        bars_4(`Y2 Series`, `#e15759`, [100, 200, 150, 250], y2),
+      ],
+      y_axis: { label: `Y1` },
+      y2_axis: { label: `Y2` },
     },
     {
-      x: [1, 2, 3, 4],
-      y: [100, 200, 150, 250],
-      label: `Y2 Series`,
-      color: `#e15759`,
-      bar_width: 0.6,
-      y_axis: `y2`,
-    },
-  ]
-
-  const y2_different_scale_series: BarSeries[] = [
-    {
-      x: [1, 2, 3, 4],
-      y: [5, 10, 8, 12],
-      label: `Small Scale`,
-      color: `#59a14f`,
-      bar_width: 0.6,
+      id: `y2-different-scale`,
+      title: `Y2 different scale`,
+      series: [
+        bars_4(`Small Scale`, `#59a14f`, [5, 10, 8, 12]),
+        bars_4(`Large Scale`, `#f28e2b`, [500, 1000, 800, 1200], y2),
+      ],
+      y_axis: { label: `Small` },
+      y2_axis: { label: `Large` },
     },
     {
-      x: [1, 2, 3, 4],
-      y: [500, 1000, 800, 1200],
-      label: `Large Scale`,
-      color: `#f28e2b`,
-      bar_width: 0.6,
-      y_axis: `y2`,
-    },
-  ]
-
-  const y2_stacked_series: BarSeries[] = [
-    {
-      x: [1, 2, 3],
-      y: [3, 5, 4],
-      label: `Y1-A`,
-      color: `#edc948`,
-      bar_width: 0.8,
+      id: `y2-stacked`,
+      title: `Y2 stacked mode`,
+      series: [
+        bars_3(`Y1-A`, `#edc948`, [3, 5, 4]),
+        bars_3(`Y1-B`, `#b07aa1`, [2, 3, 3]),
+        bars_3(`Y2-A`, `#76b7b2`, [30, 50, 40], y2),
+        bars_3(`Y2-B`, `#ff9da7`, [20, 30, 30], y2),
+      ],
+      y_axis: { label: `Y1` },
+      y2_axis: { label: `Y2` },
+      mode: `stacked`,
     },
     {
-      x: [1, 2, 3],
-      y: [2, 3, 3],
-      label: `Y1-B`,
-      color: `#b07aa1`,
-      bar_width: 0.8,
-    },
-    {
-      x: [1, 2, 3],
-      y: [30, 50, 40],
-      label: `Y2-A`,
-      color: `#76b7b2`,
-      bar_width: 0.8,
-      y_axis: `y2`,
-    },
-    {
-      x: [1, 2, 3],
-      y: [20, 30, 30],
-      label: `Y2-B`,
-      color: `#ff9da7`,
-      bar_width: 0.8,
-      y_axis: `y2`,
-    },
-  ]
-
-  const y2_line_series: BarSeries[] = [
-    {
-      x: [1, 2, 3, 4],
-      y: [10, 20, 15, 25],
-      label: `Bar Series`,
-      color: `#4e79a7`,
-      bar_width: 0.6,
-    },
-    {
-      x: [1, 2, 3, 4],
-      y: [100, 200, 150, 250],
-      label: `Line Series`,
-      color: `#e15759`,
-      y_axis: `y2`,
-      render_mode: `line`,
+      id: `y2-line-series`,
+      title: `Y2 line series`,
+      series: [
+        bars_4(`Bar Series`, `#4e79a7`, [10, 20, 15, 25]),
+        {
+          x: [1, 2, 3, 4],
+          y: [100, 200, 150, 250],
+          label: `Line Series`,
+          color: `#e15759`,
+          y_axis: `y2`,
+          render_mode: `line`,
+        },
+      ],
+      y_axis: { label: `Bars` },
+      y2_axis: { label: `Line` },
     },
   ]
 
@@ -178,6 +115,23 @@
       color: `#59a14f`,
     },
   ]
+  const categorical_cases: (ComponentProps<typeof BarPlot> & { id: string; title: string })[] =
+    [
+      { id: `categorical-bar`, title: `Categorical bar chart`, mode: `grouped` },
+      { id: `categorical-stacked`, title: `Categorical stacked`, mode: `stacked` },
+      {
+        id: `categorical-horizontal`,
+        title: `Categorical horizontal`,
+        mode: `grouped`,
+        orientation: `horizontal`,
+      },
+      {
+        id: `categorical-custom-order`,
+        title: `Categorical custom order`,
+        mode: `grouped`,
+        x_axis: { label: `Material`, categories: [`Diamond`, `GaN`, `Si`, `GaAs`] },
+      },
+    ]
 
   const categorical_single_series: BarSeries[] = [
     {
@@ -189,56 +143,42 @@
   ]
   let cat_hover_msg = $state(`Hover over a bar`)
   let cat_click_msg = $state(`Click on a bar`)
+
+  const xy_axes = { x_axis: { label: `X` }, y_axis: { label: `Y` } }
+  const tall = { style: `height: 360px` }
+  const short = { style: `height: 300px` }
 </script>
 
-<svelte:head>
-  <title>BarPlot Test Page</title>
-</svelte:head>
+<h1>BarPlot test page</h1>
 
-<h1 id="barplot-component-playwright-tests">BarPlot Component Playwright Tests</h1>
-
-<section id="basic-bar">
-  <h2 id="basic">Basic</h2>
+<TestSection id="basic-bar" title="Basic">
   <BarPlot
     series={basic_series}
     x_axis={{ label: `X` }}
     y_axis={{ label: `Y`, range: [0, 50] }}
     controls_open={false}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
+    {...tall}
   />
-</section>
+</TestSection>
 
-<section id="legend-bar">
-  <h2 id="legend-and-overlay">Legend and Overlay</h2>
+<TestSection id="legend-bar" title="Legend and overlay">
   <BarPlot
     series={legend_series}
     x_axis={{ label: `Category` }}
     y_axis={{ label: `Value` }}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
+    {...tall}
   />
-</section>
+</TestSection>
 
-<section id="modes-bar">
-  <h2 id="modes-and-orientation">Modes and Orientation</h2>
+<TestSection id="modes-bar" title="Modes and orientation">
   <BarPlot
     id="stacked-mixed"
     series={stacked_mixed_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
     mode="stacked"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
+    {...xy_axes}
+    {...short}
   />
-  <BarPlot
-    id="width-array"
-    series={width_array_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
-  />
+  <BarPlot id="width-array" series={width_array_series} {...xy_axes} {...short} />
   <BarPlot
     id="stacked-mixed-horizontal"
     series={stacked_mixed_series}
@@ -246,132 +186,47 @@
     y_axis={{ label: `X` }}
     mode="stacked"
     orientation="horizontal"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 300px"
+    {...short}
   />
-</section>
+</TestSection>
 
-<section id="handlers-bar">
-  <h2 id="with-handlers">With Handlers</h2>
+<TestSection id="handlers-bar" title="With handlers">
   <BarPlot
     series={handlers_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y` }}
     on_bar_hover={(data) =>
       (hover_msg = data
         ? `Hovering: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`
         : `Hover over a bar`)}
     on_bar_click={(data) =>
       (click_msg = `Clicked: bar ${data.bar_idx + 1} (x=${data.x}, y=${data.y})`)}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
+    {...xy_axes}
+    {...tall}
   />
   <div class="handler-info">
     <p>{hover_msg}</p>
     <p>{click_msg}</p>
   </div>
-</section>
+</TestSection>
 
-<section id="y2-axis-bar">
-  <h2 id="y2-axis">Y2 Axis</h2>
-  <BarPlot
-    series={y2_axis_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y1` }}
-    y2_axis={{ label: `Y2` }}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
+{#each y2_cases as { id, title, ...props } (id)}
+  <TestSection {id} {title}>
+    <BarPlot x_axis={{ label: `X` }} {...props} {...tall} />
+  </TestSection>
+{/each}
 
-<section id="y2-different-scale">
-  <h2 id="y2-different-scale-1">Y2 Different Scale</h2>
-  <BarPlot
-    series={y2_different_scale_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Small` }}
-    y2_axis={{ label: `Large` }}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
+{#each categorical_cases as { id, title, ...props } (id)}
+  <TestSection {id} {title}>
+    <BarPlot
+      series={categorical_series}
+      x_axis={{ label: `Material` }}
+      y_axis={{ label: `Band Gap (eV)` }}
+      {...props}
+      {...tall}
+    />
+  </TestSection>
+{/each}
 
-<section id="y2-stacked">
-  <h2 id="y2-stacked-mode">Y2 Stacked Mode</h2>
-  <BarPlot
-    series={y2_stacked_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Y1` }}
-    y2_axis={{ label: `Y2` }}
-    mode="stacked"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="y2-line-series">
-  <h2 id="y2-line-series-1">Y2 Line Series</h2>
-  <BarPlot
-    series={y2_line_series}
-    x_axis={{ label: `X` }}
-    y_axis={{ label: `Bars` }}
-    y2_axis={{ label: `Line` }}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="categorical-bar">
-  <h2 id="categorical-bar-charts">Categorical Bar Charts</h2>
-  <BarPlot
-    series={categorical_series}
-    x_axis={{ label: `Material` }}
-    y_axis={{ label: `Band Gap (eV)` }}
-    mode="grouped"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="categorical-stacked">
-  <h2 id="categorical-stacked-1">Categorical Stacked</h2>
-  <BarPlot
-    series={categorical_series}
-    x_axis={{ label: `Material` }}
-    y_axis={{ label: `Band Gap (eV)` }}
-    mode="stacked"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="categorical-horizontal">
-  <h2 id="categorical-horizontal-1">Categorical Horizontal</h2>
-  <BarPlot
-    series={categorical_series}
-    x_axis={{ label: `Material` }}
-    y_axis={{ label: `Band Gap (eV)` }}
-    mode="grouped"
-    orientation="horizontal"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="categorical-custom-order">
-  <h2 id="categorical-custom-order-1">Categorical Custom Order</h2>
-  <BarPlot
-    series={categorical_series}
-    x_axis={{ label: `Material`, categories: [`Diamond`, `GaN`, `Si`, `GaAs`] }}
-    y_axis={{ label: `Band Gap (eV)` }}
-    mode="grouped"
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
-  />
-</section>
-
-<section id="categorical-handlers">
-  <h2 id="categorical-with-handlers">Categorical With Handlers</h2>
+<TestSection id="categorical-handlers" title="Categorical with handlers">
   <BarPlot
     series={categorical_single_series}
     x_axis={{ label: `Element` }}
@@ -381,11 +236,10 @@
         ? `Hovering: ${data.category_label} (y=${data.y})`
         : `Hover over a bar`)}
     on_bar_click={(data) => (cat_click_msg = `Clicked: ${data.category_label} (y=${data.y})`)}
-    controls_toggle_props={{ class: `bar-controls-toggle` }}
-    style="height: 360px"
+    {...tall}
   />
   <div class="handler-info categorical-handler-info">
     <p>{cat_hover_msg}</p>
     <p>{cat_click_msg}</p>
   </div>
-</section>
+</TestSection>

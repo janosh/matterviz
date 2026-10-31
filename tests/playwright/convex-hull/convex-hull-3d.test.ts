@@ -1,7 +1,8 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import { MAGNETIC_ORDERING_CATEGORY } from '#lib/convex-hull/types.js'
 import { opacity_of, require_bbox, test_without_errors as test } from '../helpers'
 import {
+  after_frames,
   dom_click,
   expect_face_color_modes,
   get_canvas_hash,
@@ -27,6 +28,24 @@ const scan_for_entry = async (
   throw new Error(
     `No matching entry found in canvas scan: step=${step}, box=${JSON.stringify(box)}`,
   )
+}
+
+// Wait until the canvas bitmap is stable for 3 consecutive samples (late label/font/resize
+// passes drift pixels for a few seconds after first paint); resolves to the settled hash
+const wait_for_stable_canvas = async (canvas: Locator): Promise<string> => {
+  let [hash, consecutive_equal] = [await get_canvas_hash(canvas), 0]
+  await expect
+    .poll(
+      async () => {
+        const next_hash = await get_canvas_hash(canvas)
+        consecutive_equal = next_hash === hash ? consecutive_equal + 1 : 0
+        hash = next_hash
+        return consecutive_equal
+      },
+      { timeout: 20000, intervals: [500] },
+    )
+    .toBeGreaterThanOrEqual(3)
+  return hash
 }
 
 // Reproducible synthetic entries, including five structures for popup tests.
@@ -71,7 +90,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     for (const overlay of overlays) await expect.poll(() => opacity_of(overlay)).toBe(1)
 
     // info pane stats show chemical system and counts
-    const info = await open_info_pane(page, diagram)
+    const info = await open_info_pane(diagram)
     await expect(info).toBeVisible()
     await expect(info.getByText(`Total entries in`, { exact: false })).toBeVisible()
     // the heading, not the shortcut list's "Toggle stability / energy coloring" below it
@@ -87,7 +106,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     page,
   }) => {
     const diagram = ternary_diagram(page)
-    const controls = await open_controls_pane(page, diagram)
+    const controls = await open_controls_pane(diagram)
     await expect(controls).toBeVisible({ timeout: 10_000 })
 
     // Short viewports keep all controls reachable through scrolling.
@@ -171,22 +190,22 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     // Find an entry by scanning - selection indicates we hit one
     const entry_pos = await scan_for_entry(box, 0.04, async (coord_x, coord_y) => {
       await page.mouse.click(coord_x, coord_y)
-      await page.waitForTimeout(30)
+      await after_frames(page) // the click handler ran and its attribute update flushed
       return (await diagram.getAttribute(`data-has-selection`)) === `true`
     })
 
     // Clear selection by clicking corner
     await page.mouse.click(box.x + 5, box.y + 5)
-    await page.waitForTimeout(50)
     await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
 
-    // Drag operation should not trigger selection
+    // Drag operation should not trigger selection: once the trailing click has been handled
+    // and flushed, a selection it made would show, so read the attribute once, not retrying
     await page.mouse.move(entry_pos.x, entry_pos.y)
     await page.mouse.down()
     await page.mouse.move(entry_pos.x + 30, entry_pos.y + 30, { steps: 3 })
     await page.mouse.up()
-    await page.waitForTimeout(50)
-    await expect(diagram).toHaveAttribute(`data-has-selection`, `false`)
+    await after_frames(page)
+    expect(await diagram.getAttribute(`data-has-selection`)).toBe(`false`)
   })
 
   test(`plain wheel over the idle hull scrolls the page; modifier wheel or a click first zooms`, async ({
@@ -283,8 +302,7 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
     await expect(canvas).toBeVisible()
     const box = await require_bbox(canvas, `canvas`)
 
-    await page.waitForTimeout(1000)
-    const initial = (await canvas.screenshot()).toString(`base64`)
+    const initial = await wait_for_stable_canvas(canvas)
 
     // Drag to rotate
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -293,16 +311,16 @@ test.describe(`ConvexHullCanvas dim=3 (Ternary)`, () => {
       steps: 8,
     })
     await page.mouse.up()
-    await page.waitForTimeout(300)
-
-    const dragged = (await canvas.screenshot()).toString(`base64`)
+    // the camera moved synchronously; the scene redraws in the next frame
+    await after_frames(page)
+    const dragged = await get_canvas_hash(canvas)
     expect(dragged).not.toBe(initial)
 
     // Press t for top-down — should change view again
     await canvas.focus()
     await canvas.press(`t`)
-    await page.waitForTimeout(300)
-    expect((await canvas.screenshot()).toString(`base64`)).not.toBe(dragged)
+    await after_frames(page)
+    expect(await get_canvas_hash(canvas)).not.toBe(dragged)
   })
 })
 
@@ -333,26 +351,9 @@ test.describe(`ConvexHullCanvas dim=3 on the performance page`, () => {
     const canvas = diagram.locator(`canvas`).first()
     await expect(canvas).toBeVisible()
 
-    // Wait until the canvas bitmap is stable for 3 consecutive samples (late label/
-    // font/resize passes drift pixels for a few seconds after first paint)
-    const wait_for_stable_canvas = async (): Promise<string> => {
-      let [hash, consecutive_equal] = [await get_canvas_hash(canvas), 0]
-      await expect
-        .poll(
-          async () => {
-            const next_hash = await get_canvas_hash(canvas)
-            consecutive_equal = next_hash === hash ? consecutive_equal + 1 : 0
-            hash = next_hash
-            return consecutive_equal
-          },
-          { timeout: 20000, intervals: [500] },
-        )
-        .toBeGreaterThanOrEqual(3)
-      return hash
-    }
-    await wait_for_stable_canvas()
+    await wait_for_stable_canvas(canvas)
 
-    const controls = await open_controls_pane(page, diagram)
+    const controls = await open_controls_pane(diagram)
     await expect(controls.getByText(`Magnetic`, { exact: true })).toBeVisible()
     const toggles = controls.locator(`.category-filters .legend-item`)
     await expect(toggles).toHaveCount(Object.keys(MAGNETIC_ORDERING_CATEGORY.markers).length)
@@ -363,7 +364,7 @@ test.describe(`ConvexHullCanvas dim=3 on the performance page`, () => {
     await dom_click(fm_toggle)
     await dom_click(fm_toggle)
     await expect(fm_toggle).toHaveAttribute(`aria-pressed`, `true`)
-    const hash_before = await wait_for_stable_canvas()
+    const hash_before = await wait_for_stable_canvas(canvas)
 
     // Hide FM -> canvas must redraw with fewer points. get_canvas_hash reads the canvas
     // bitmap directly, so the opened controls pane overlay cannot pollute the comparison.

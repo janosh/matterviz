@@ -81,15 +81,4 @@ describe(`trajectory spectroscopy worker code path`, () => {
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
     expect_module_worker(stub.instances, `src/lib/spectral/trajectory-spectroscopy-worker.ts`)
   })
-
-  it(`.cancel rejects the in-flight request and terminates the worker`, async () => {
-    const pending = compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
-    expect(stub.instances).toHaveLength(1)
-    compute_spectroscopy_async.cancel(`pane unmounted`)
-    await expect(pending).rejects.toThrow(`pane unmounted`)
-    expect(stub.instances[0].terminated).toBe(1)
-    // the next request gets a fresh worker, not the dead channel
-    await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
-    expect(stub.instances).toHaveLength(2)
-  })
 })

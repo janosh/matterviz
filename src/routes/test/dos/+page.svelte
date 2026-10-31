@@ -2,6 +2,7 @@
   import Dos from '#lib/spectral/Dos.svelte'
   import type { PhononDos } from '#lib/spectral/types.js'
   import { mock_dos } from '#site/spectral-mocks.js'
+  import TestSection from '../TestSection.svelte'
 
   const dos2: PhononDos = {
     ...mock_dos,
@@ -9,44 +10,36 @@
   }
 </script>
 
-<h1 id="dos-component-test-page">DOS Component Test Page</h1>
+<h1>Dos test page</h1>
 
-<h2 id="single-dos">Single DOS</h2>
-<Dos doses={{ '': mock_dos }} data-testid="dos-single" />
+<TestSection title="Single DOS">
+  <Dos doses={{ '': mock_dos }} data-testid="dos-single" />
+</TestSection>
 
-<h2 id="multiple-dos">Multiple DOS</h2>
-<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} data-testid="dos-multiple" />
+<TestSection title="Multiple DOS">
+  <Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} data-testid="dos-multiple" />
+</TestSection>
 
-<h2 id="max-normalization">Max Normalization</h2>
-<Dos doses={{ '': mock_dos }} normalize="max" data-testid="dos-max-norm" />
+<TestSection title="Max normalization">
+  <Dos doses={{ '': mock_dos }} normalize="max" data-testid="dos-max-norm" />
+</TestSection>
 
-<h2 id="sum-normalization">Sum Normalization</h2>
-<Dos doses={{ '': mock_dos }} normalize="sum" data-testid="dos-sum-norm" />
+<TestSection title="Stacked DOS">
+  <Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} stack data-testid="dos-stacked" />
+</TestSection>
 
-<h2 id="stacked-dos">Stacked DOS</h2>
-<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} stack data-testid="dos-stacked" />
+<TestSection title="Gaussian smearing (sigma=0.2)">
+  <Dos doses={{ '': mock_dos }} sigma={0.2} data-testid="dos-smeared" />
+</TestSection>
 
-<h2 id="gaussian-smearing">Gaussian Smearing (sigma=0.2)</h2>
-<Dos doses={{ '': mock_dos }} sigma={0.2} data-testid="dos-smeared" />
+<TestSection title="Horizontal orientation">
+  <Dos doses={{ '': mock_dos }} orientation="horizontal" data-testid="dos-horizontal" />
+</TestSection>
 
-<h2 id="horizontal-dos">Horizontal Orientation</h2>
-<Dos doses={{ '': mock_dos }} orientation="horizontal" data-testid="dos-horizontal" />
-
-<h2 id="ev-units">eV Units</h2>
-<Dos doses={{ '': mock_dos }} units="eV" data-testid="dos-ev" />
-
-<h2 id="mev-units">meV Units</h2>
-<Dos doses={{ '': mock_dos }} units="meV" data-testid="dos-mev" />
-
-<h2 id="no-legend">No Legend (Multiple DOS)</h2>
-<Dos doses={{ DOS1: mock_dos, DOS2: dos2 }} show_legend={false} data-testid="dos-no-legend" />
-
-<style>
-  h1 {
-    margin-bottom: 2rem;
-  }
-  h2 {
-    margin-top: 2rem;
-    margin-bottom: 1rem;
-  }
-</style>
+<TestSection title="No legend (multiple DOS)">
+  <Dos
+    doses={{ DOS1: mock_dos, DOS2: dos2 }}
+    show_legend={false}
+    data-testid="dos-no-legend"
+  />
+</TestSection>
