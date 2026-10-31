@@ -3,7 +3,12 @@ import { display_idx } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { get_orig_site_idx, make_site } from '#lib/structure/site.js'
+import {
+  get_orig_site_idx,
+  make_site,
+  site_stride,
+  vector_offset,
+} from '#lib/structure/site.js'
 import { get_pbc_image_sites, wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import {
   polyhedra_options_from,
@@ -12,7 +17,8 @@ import {
 import { make_supercell, parse_supercell_scaling } from '#lib/structure/supercell.js'
 import { compute_bonds, normalize_structure_bond } from '#lib/structure/bonding.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { trajectory_from_frame_source } from '#lib/trajectory/runs/memory.js'
+import type { NumericFrame } from '#lib/trajectory/frame.js'
+import { trajectory_from_numeric_source } from '#lib/trajectory/runs/memory.js'
 import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import { acoustic_mode_indices } from './ir-raman'
 import type {
@@ -453,45 +459,49 @@ export function phonon_mode_run(
     math.matrix_inverse_3x3(equilibrium.lattice.matrix)
   const phase_of = (frame_idx: number) => (2 * Math.PI * frame_idx) / n_frames
 
+  // Every frame shares the equilibrium cell and site records (frames are immutable snapshots);
+  // only the packed [xyz, abc, displacement] columns are written per read
+  const { sites, ...cell } = equilibrium
+  const records = sites.map(({ xyz: _xyz, abc: _abc, ...site }) => site)
+  const vector_keys = [PHONON_VECTOR_KEY]
+  const width = site_stride(vector_keys)
+  const vector_start = vector_offset(0)
+
   // Phonon eigenvectors conventionally evolve as exp(-iωt): u(φ) = Re(u) cos φ + Im(u) sin φ.
-  // Hot loop for large supercells: every site allocates one object and three vectors, nothing
-  // else, so a 10k-site frame synthesises in about a millisecond.
-  const read_frame = (frame_idx: number) => {
+  const read_frame = (frame_idx: number): NumericFrame => {
     const phase = phase_of(frame_idx)
     const cos_phase = amplitude * Math.cos(phase)
     const sin_phase = amplitude * Math.sin(phase)
-    const sites = equilibrium.sites.map((site, site_idx) => {
+    const coordinates = new Float64Array(sites.length * width)
+    for (let site_idx = 0; site_idx < sites.length; site_idx++) {
       const offset = site_idx * 6
       const delta_x = displacements[offset] * cos_phase + displacements[offset + 1] * sin_phase
       const delta_y =
         displacements[offset + 2] * cos_phase + displacements[offset + 3] * sin_phase
       const delta_z =
         displacements[offset + 4] * cos_phase + displacements[offset + 5] * sin_phase
-      const { xyz, abc, properties } = site
-      return {
-        species: site.species,
-        label: site.label,
-        provenance: site.provenance,
-        xyz: [xyz[0] + delta_x, xyz[1] + delta_y, xyz[2] + delta_z] as Vec3,
-        abc: [
-          abc[0] + delta_x * inv_xa + delta_y * inv_ya + delta_z * inv_za,
-          abc[1] + delta_x * inv_xb + delta_y * inv_yb + delta_z * inv_zb,
-          abc[2] + delta_x * inv_xc + delta_y * inv_yc + delta_z * inv_zc,
-        ] as Vec3,
-        properties: {
-          ...properties,
-          [PHONON_VECTOR_KEY]: [delta_x, delta_y, delta_z] as Vec3,
-        },
-      }
-    })
+      const { xyz, abc } = sites[site_idx]
+      const target = site_idx * width
+      coordinates[target] = xyz[0] + delta_x
+      coordinates[target + 1] = xyz[1] + delta_y
+      coordinates[target + 2] = xyz[2] + delta_z
+      coordinates[target + 3] = abc[0] + delta_x * inv_xa + delta_y * inv_ya + delta_z * inv_za
+      coordinates[target + 4] = abc[1] + delta_x * inv_xb + delta_y * inv_yb + delta_z * inv_zb
+      coordinates[target + 5] = abc[2] + delta_x * inv_xc + delta_y * inv_yc + delta_z * inv_zc
+      coordinates[target + vector_start] = delta_x
+      coordinates[target + vector_start + 1] = delta_y
+      coordinates[target + vector_start + 2] = delta_z
+    }
     return {
-      structure: { ...equilibrium, sites },
-      step: frame_idx,
-      metadata: { phase, frequency, q_position },
+      header: { step: frame_idx, metadata: { phase, frequency, q_position } },
+      structure: cell,
+      sites: records,
+      vector_keys,
+      coordinates,
     }
   }
 
-  return trajectory_from_frame_source(n_frames, read_frame, {
+  return trajectory_from_numeric_source(n_frames, read_frame, {
     properties: Array.from({ length: n_frames }, (_unused, frame_idx) => ({
       frame_number: frame_idx,
       step: frame_idx,

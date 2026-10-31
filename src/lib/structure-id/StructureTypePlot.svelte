@@ -61,7 +61,9 @@
     on_type_hover?: (type: CnaTypeName | null) => void
   } = $props()
 
-  let dropped_entries = $state<StructureEntry[]>([])
+  // Raw: a deep proxy routed every site read through proxy traps and can't be posted to the
+  // worker (structuredClone rejects it); drops replace the list, never mutate it
+  let dropped_entries = $state.raw<StructureEntry[]>([])
   const entries = $derived([...to_structure_entries(structures), ...dropped_entries])
   // Labels of the entries id_results are computed from (use_async_result drops results that
   // outlive their entries); empty when the results came in through the prop instead

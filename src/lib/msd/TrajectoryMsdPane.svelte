@@ -31,7 +31,9 @@
   let max_lag_fraction = $state(0.5)
   let fit_start_fraction = $state(0.2)
   let fit_end_fraction = $state(0.8)
-  let positions = $state<TrajectoryPositionStream | undefined>(undefined)
+  // Raw: a deep proxy of the stream's frame steps and cells made each worker payload
+  // snapshot 10x slower (31 vs 3 ms at 3k frames)
+  let positions = $state.raw<TrajectoryPositionStream | undefined>(undefined)
   let plotting = $state(false)
   let error_msg = $state<string | undefined>(undefined)
 

@@ -267,11 +267,12 @@
     x_positions = internal_x_positions
   })
 
-  // Band-line series, fat-band ribbons and, per series, its structure's max |slope| (the
-  // tooltip's dispersion label judges a band against its own structure's steepest, not another
-  // material's) in one pass over the plotted branch segments
-  let { series_data, ribbon_data, slope_scales } = $derived.by(() => {
-    const all_series: DataSeries[] = []
+  // Band-line series (unstyled, with the line their style derives from), fat-band ribbons and,
+  // per series, its structure's max |slope| (the tooltip's dispersion label judges a band
+  // against its own structure's steepest, not another material's) in one pass over the plotted
+  // branch segments
+  let { series_geometry, ribbon_data, slope_scales } = $derived.by(() => {
+    const all_series: { series: DataSeries; color: string; line: helpers.BandLine }[] = []
     const all_ribbons: RibbonData[] = []
     const scales: number[] = [] // aligned with all_series
     const markers = rest.on_point_click ? `line+points` : `line`
@@ -310,40 +311,26 @@
 
       for (let band_idx = 0; band_idx < band_structure.nb_bands; band_idx++) {
         const is_acoustic = helpers.classify_acoustic(band_structure, band_idx, gamma_indices)
-        const style_of = (spin: `up` | `down`) =>
-          get_line_style(color, band_idx, spin, is_acoustic === true, structure_label)
         const spin_down_band =
           band_type === `electronic` ? band_structure.spin_down_bands?.[band_idx] : undefined
 
         // Spin channels to draw, each with its energies over the whole path
-        const channels: {
-          spin: `up` | `down`
-          series_label: string
-          line_style: DataSeries[`line_style`]
-          values: number[]
-        }[] = []
+        const channels: { spin: `up` | `down`; series_label: string; values: number[] }[] = []
         if (spin_mode !== `down_only`) {
           channels.push({
             spin: `up`,
             series_label: spin_down_band ? `${structure_label} (↑)` : structure_label,
-            line_style: style_of(`up`),
             values: band_structure.bands[band_idx],
           })
         }
         if (spin_down_band && spin_mode !== `up_only`) {
-          const { stroke, stroke_width } = style_of(`down`)
           channels.push({
             spin: `down`,
             series_label: `${structure_label} (↓)`,
-            line_style: {
-              stroke,
-              line_dash: `4,2`,
-              stroke_width: Math.max(1, stroke_width - 0.1),
-            },
             values: spin_down_band,
           })
         }
-        for (const { spin, series_label, line_style, values } of channels) {
+        for (const { spin, series_label, values } of channels) {
           const [x, y, metadata, line_breaks] = [[], [], [], []] as [
             number[],
             number[],
@@ -376,15 +363,18 @@
           }
           if (x.length === 0) continue
           all_series.push({
-            id: JSON.stringify([label, band_idx, spin]),
-            legend_id: JSON.stringify([label, spin]),
-            x,
-            y,
-            line_breaks,
-            markers,
-            label: series_label,
-            line_style,
-            metadata,
+            series: {
+              id: JSON.stringify([label, band_idx, spin]),
+              legend_id: JSON.stringify([label, spin]),
+              x,
+              y,
+              line_breaks,
+              markers,
+              label: series_label,
+              metadata,
+            },
+            color,
+            line: [band_idx, spin, is_acoustic === true, structure_label],
           })
         }
       }
@@ -412,8 +402,38 @@
       }
       scales.push(...Array(all_series.length - first_series).fill(max_slope || 1))
     }
-    return { series_data: all_series, ribbon_data: all_ribbons, slope_scales: scales }
+    return { series_geometry: all_series, ribbon_data: all_ribbons, slope_scales: scales }
   })
+
+  // A spin-down line is dashed and a hair thinner than its spin-up twin
+  type SeriesLineStyle = { stroke: string; stroke_width: number; line_dash?: string }
+  function series_line_style(color: string, line: helpers.BandLine): SeriesLineStyle {
+    const { stroke, stroke_width } = get_line_style(color, ...line)
+    if (line[1] === `up`) return { stroke, stroke_width }
+    return { stroke, line_dash: `4,2`, stroke_width: Math.max(1, stroke_width - 0.1) }
+  }
+  // Each band series with its style. A band hover restyles only the lines it emphasises or
+  // mutes: every other series keeps its object (and its points), so ScatterPlot sees them as
+  // unchanged. Non-reactive bookkeeping keyed by the geometry entries, dropped with them.
+  const styled_series = new WeakMap<(typeof series_geometry)[number], DataSeries>()
+  let series_data = $derived(
+    series_geometry.map((entry) => {
+      const line_style = series_line_style(entry.color, entry.line)
+      const prev = styled_series.get(entry)
+      const { stroke, stroke_width, line_dash } = prev?.line_style ?? {}
+      if (
+        prev &&
+        stroke === line_style.stroke &&
+        stroke_width === line_style.stroke_width &&
+        line_dash === line_style.line_dash
+      ) {
+        return prev
+      }
+      const series = { ...entry.series, line_style }
+      styled_series.set(entry, series)
+      return series
+    }),
+  )
 
   // Labeled symmetry points keyed by x position (several meet at one x at a discontinuity),
   // from the first structure plotting each segment, with their q-point index in it

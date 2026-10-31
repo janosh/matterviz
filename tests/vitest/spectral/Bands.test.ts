@@ -1,6 +1,8 @@
 import type { Vec2, Vec3 } from '#lib/math.js'
 import type { AxisRanges } from '#lib/plot/core/types.js'
 import Bands from '#lib/spectral/Bands.svelte'
+import type * as helpers from '#lib/spectral/helpers.js'
+import { build_point_metadata } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spectral/types.js'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
@@ -22,6 +24,12 @@ import {
   expect_axis_titles_placed,
 } from '../setup'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
+
+// spied on to count the per-point work that builds a band series, which a restyle skips
+vi.mock(`#lib/spectral/helpers.js`, async (import_original) => {
+  const actual = await import_original<typeof helpers>()
+  return { ...actual, build_point_metadata: vi.fn(actual.build_point_metadata) }
+})
 
 const base_band_structure: BaseBandStructure = {
   type: `phonon`,
@@ -524,19 +532,27 @@ describe(`Bands component`, () => {
   })
 
   // a per-band, per-spin style (ElectronicStructure's sheet colours) replaces the structure colour
-  // and an emphasised band keeps its own
+  // and an emphasised band keeps its own; moving the highlight (a band hover) only restyles the
+  // series, never rebuilds their points
   it.each([null, 2])(
-    `line_kwargs callback strokes, highlighted band %s`,
+    `line_kwargs callback strokes, highlight moved from band 1 to %s`,
     async (highlighted) => {
       const own_stroke = (band: number, spin: string) =>
         `#${spin === `up` ? `a` : `b`}0${band}`
+      const highlight = fromStore(writable<number | null>(1))
       await mount_bands({
         band_structs: { '': spin_polarized_electronic },
         line_kwargs: (band_idx: number, spin: string) => ({
           stroke: own_stroke(band_idx, spin),
         }),
-        highlighted_band_index: highlighted,
+        get highlighted_band_index() {
+          return highlight.current
+        },
       })
+      const metadata_calls = vi.mocked(build_point_metadata).mock.calls.length
+      highlight.current = highlighted
+      flushSync()
+      expect(vi.mocked(build_point_metadata).mock.calls).toHaveLength(metadata_calls)
       const series = [...document.querySelectorAll(`g[data-series-id]`)].map((group) => {
         const [, band, spin] = JSON.parse(group.getAttribute(`data-series-id`) ?? `[]`)
         return { band, spin, stroke: group.querySelector(`path`)?.getAttribute(`stroke`) }

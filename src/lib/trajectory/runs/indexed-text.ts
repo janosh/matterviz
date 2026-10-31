@@ -7,15 +7,20 @@
 import { display_idx } from '#lib/labels.js'
 import { yield_turn } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
-import { encode_frame } from '../frame'
-import { TextLines } from '../helpers'
-import type { AtomTypeMapping, TrajectoryFrame, TrajectoryMetadata } from '../index'
+import { encode_frame, type NumericFrame } from '../frame'
+import { create_plot_row_frame, TextLines } from '../helpers'
+import type { AtomTypeMapping, TrajectoryMetadata } from '../index'
 import { type AseFrames, open_ase_frames } from '../parse/ase'
 import { open_lammps_frames } from '../parse/lammps'
 import type { WarnFn, WarningCollector } from '../parse/shared'
 import { open_xdatcar_frames } from '../parse/vasp'
 import { frame_property_row } from '../extract'
-import { build_xyz_frame, extxyz_run_metadata, index_xyz_frames } from '../parse/xyz'
+import {
+  build_xyz_frame,
+  extxyz_run_metadata,
+  index_xyz_frames,
+  read_xyz_frame,
+} from '../parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from '../run'
 import { sync_run, TrajectoryProperties } from '../run'
 import { accumulate_positions } from './accumulate'
@@ -30,18 +35,34 @@ const xyz_source = (lines: TextLines, collector: WarningCollector): AseFrames =>
   // Line indices, never an array of line strings (see iter_xyz_frames); a torn tail is
   // dropped now so frame_count excludes it, rather than failing on the seek
   const frames = index_xyz_frames(lines, collector.warn)
-  const decode = (frame_idx: number): TrajectoryFrame =>
-    build_xyz_frame(
-      lines,
-      frames[frame_idx],
-      { frame_label: `indexed frame ${display_idx(frame_idx)}`, default_step: frame_idx },
-      collector,
-    )
-  // XYZ rows need the atom lines' forces, so a reduced decode saves little over a full one
+  const opts = (frame_idx: number) => ({
+    frame_label: `indexed frame ${display_idx(frame_idx)}`,
+    default_step: frame_idx,
+  })
+  const read_plain = (frame_idx: number): (NumericFrame & { sites: Uint8Array }) | null =>
+    read_xyz_frame(lines, frames[frame_idx], opts(frame_idx), collector)
+  const decode = (frame_idx: number) =>
+    build_xyz_frame(lines, frames[frame_idx], opts(frame_idx), collector)
   return {
     frame_count: frames.length,
+    read: (frame_idx) => read_plain(frame_idx) ?? encode_frame(decode(frame_idx)),
     decode,
-    plot_row_frame: decode,
+    // A row needs the forces' statistics, so it reads the numeric frame and drops its atoms;
+    // a frame the numeric reader leaves to build_xyz_frame serves as its own row
+    plot_row_frame: (frame_idx) => {
+      const numeric = read_plain(frame_idx)
+      if (!numeric) return decode(frame_idx)
+      const { header, structure, sites } = numeric
+      const { lattice } = structure
+      return create_plot_row_frame(
+        sites,
+        lattice?.matrix,
+        lattice?.pbc,
+        header.step,
+        header.metadata ?? {},
+        collector.warn,
+      )
+    },
     metadata: extxyz_run_metadata(frames[0]?.comment),
   }
 }
@@ -75,22 +96,22 @@ export const indexed_text_run = (
     else source = open_lammps_frames(lines, warn_once, atom_type_mapping)
   }
   const { frame_count } = source
-  const decode = (frame_idx: number): TrajectoryFrame => {
+  const read = (frame_idx: number): NumericFrame => {
     if (!source) throw new Error(`Indexed ${format} trajectory was released`)
-    return source.decode(frame_idx)
+    return source.read(frame_idx)
   }
   const properties = new TrajectoryProperties()
   const run = sync_run({
     label: `Indexed ${format} trajectory`,
     frame_count,
-    read: (frame_idx) => encode_frame(decode(frame_idx)),
+    read,
     read_atoms: source.read_atoms,
     atom_masses: source.atom_masses,
     provenance: { ...provenance, format },
     properties,
     metadata: source.metadata ?? {},
     warnings: collector.warnings,
-    collect_positions: (options) => accumulate_positions(frame_count, decode, options),
+    collect_positions: (options) => accumulate_positions(frame_count, read, options),
     release: () => {
       source?.release?.()
       source = null

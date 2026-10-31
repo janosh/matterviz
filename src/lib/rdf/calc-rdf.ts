@@ -145,6 +145,64 @@ export function rdf_bin_sites(
   }
 }
 
+export type RdfBinSites = ReturnType<typeof rdf_bin_sites>
+
+// Past this the bitsets would outweigh the search they save (10k sites on 100k bins: 250 MB),
+// so each bin is answered by its own search instead
+const MAX_RDF_BIN_INDEX_BYTES = 32 * 1024 ** 2
+
+// rdf_bin_sites for every bin from one full-cutoff neighbour search, for hovering bin after
+// bin: each bin's centres and partners are kept as bitsets (n_bins · n_sites / 4 bytes, 38 KB
+// for 2048 sites on 75 bins) with its contact count, and a bin reads back in O(n_sites / 32).
+export function rdf_bin_site_index(
+  structure: AnyStructure,
+  options: Omit<RdfOptions, `center_species` | `neighbor_species`> & {
+    element_pair?: readonly [string, string]
+  },
+): (bin_idx: number) => RdfBinSites {
+  const { element_pair } = options
+  const prepared = prepare_rdf(structure, options)
+  const { n_bins } = prepared
+  const n_words = Math.ceil(structure.sites.length / 32)
+  if (2 * Int32Array.BYTES_PER_ELEMENT * n_bins * n_words > MAX_RDF_BIN_INDEX_BYTES)
+    return (bin_idx) => rdf_bin_sites(structure, { ...options, bin_idx })
+  const [centers, neighbors] = [0, 1].map(() => new Int32Array(n_bins * n_words))
+  const n_pairs = new Float64Array(n_bins)
+  const center_weights = species_weights(structure.sites, element_pair?.[0])
+  const neighbor_weights = species_weights(structure.sites, element_pair?.[1])
+  visit_neighbor_distances(structure, prepared, (center, neighbor, dist) => {
+    if (!center_weights[center] || !neighbor_weights[neighbor]) return
+    const bin = prepared.bin_of(dist)
+    if (bin < 0) return
+    n_pairs[bin]++
+    centers[bin * n_words + (center >>> 5)] |= 1 << (center & 31)
+    neighbors[bin * n_words + (neighbor >>> 5)] |= 1 << (neighbor & 31)
+  })
+  // set bits of one bin's words in ascending site order
+  const sites_of = (bits: Int32Array, bin_idx: number): number[] => {
+    const sites: number[] = []
+    for (let word_idx = 0; word_idx < n_words; word_idx++) {
+      let word = bits[bin_idx * n_words + word_idx]
+      while (word !== 0) {
+        const low_bit = word & -word
+        sites.push(word_idx * 32 + 31 - Math.clz32(low_bit))
+        word ^= low_bit
+      }
+    }
+    return sites
+  }
+  return (bin_idx) => {
+    if (!is_valid_index(bin_idx, n_bins)) {
+      throw new Error(`bin_idx must be an integer in [0, ${n_bins}), got ${bin_idx}`)
+    }
+    return {
+      site_indices: sites_of(centers, bin_idx),
+      neighbor_indices: sites_of(neighbors, bin_idx),
+      n_pairs: n_pairs[bin_idx],
+    }
+  }
+}
+
 // What the trajectory RDF worker computes per MD frame (calculate_all_pair_rdfs)
 export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>
 

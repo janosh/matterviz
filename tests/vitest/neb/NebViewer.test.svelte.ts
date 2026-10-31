@@ -80,6 +80,22 @@ describe(`NebPlot`, () => {
     const plot = await mount_plot({ paths })
     expect(plot.querySelector(`svg[role="application"]`)).toBeInstanceOf(SVGSVGElement)
     expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`eV`)
+    // a unitless spline took y and pushed its own images onto an independently scaled y2
+    expect(plot.querySelector(`g.y2-axis`)).toBeNull()
+  })
+
+  test(`gives each energy unit its own axis and labels each path with its own unit`, async () => {
+    // ScatterPlot binds y2_axis into its controls: forwarding NebPlot's own unbound prop when
+    // one unit leaves y2 empty warned ownership_invalid_binding
+    const warn = vi.spyOn(console, `warn`)
+    await mount_plot({ paths: { A: direct_path }, show_controls: true })
+    expect(warn.mock.calls.flat().join(` `)).not.toContain(`ownership_invalid_binding`)
+    const mev = { ...direct_path, energy_unit: `meV` }
+    const plot = await mount_plot({ paths: { A: direct_path, B: mev }, active_path_key: `B` })
+    expect(plot.querySelector(`.y-axis .axis-label`)?.textContent).toContain(`(eV)`)
+    expect(plot.querySelector(`.y2-axis .axis-label`)?.textContent).toContain(`(meV)`)
+    // the active meV path's barrier is annotated in its own unit
+    expect(squash(plot.textContent)).toMatch(/Eact = [\d.]+ meV/)
   })
 
   // oxfmt-ignore

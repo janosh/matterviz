@@ -11,6 +11,7 @@ import type {
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import * as plotting from '#lib/trajectory/plotting.js'
+import * as calc_rdf from '#lib/rdf/calc-rdf.js'
 import type { Site } from '#lib/structure/index.js'
 import * as structure_component from '#lib/structure/Structure.svelte'
 import * as msd_pane_module from '#lib/msd/TrajectoryMsdPane.svelte'
@@ -680,6 +681,7 @@ describe(`controls`, () => {
       [`structure type`, () => atoms_hover([1, 7]), [1]],
       [`structure type left`, () => atoms_hover(null), []],
     ]
+    const index_rdf_bins = vi.spyOn(calc_rdf, `rdf_bin_site_index`)
     for (const [name, hover, expected] of hovers) {
       hover()
       await tick()
@@ -689,6 +691,11 @@ describe(`controls`, () => {
       hover()
       expect(structure_props().highlighted_sites, name).toBe(sites)
     }
+    // one neighbour search indexes every bin of the frame, not one per bin hovered
+    expect(index_rdf_bins).toHaveBeenCalledOnce()
+    rdf().on_shell_hover?.({ element_pair: [`H`, `H`], cutoff: 2, n_bins: 8, bin_idx: 4 })
+    expect(index_rdf_bins).toHaveBeenCalledTimes(2)
+    expect(structure_props().highlighted_sites).toEqual([0, 1])
 
     // the structure-type plot seeks like the time-series plot and follows the playhead; a
     // highlight belongs to the frame it was found in, the same hover re-finds it in the next
@@ -896,6 +903,7 @@ describe(`controls`, () => {
     [`count above frames`, 50, [`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `11`], 11],
     [`spacing`, -4, [`1`, `4`, `8`, `11`], 11],
     [`explicit (out of range dropped)`, [0, 7, 10, 99], [`1`, `8`, `11`], 11],
+    [`explicit with repeats, unsorted`, [10, 0, 0, 7], [`1`, `8`, `11`], 11],
     [`disabled`, 0, [], 11],
     [`single frame`, 5, [], 1],
   ])(`step_labels %s`, (_kind, step_labels, expected, frame_count) => {

@@ -11,6 +11,7 @@ import type {
 } from '#lib/table/index.js'
 import DateTimeFormatMenu from '#lib/table/DateTimeFormatMenu.svelte'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
+import * as table_data from '#lib/table/data.js'
 import * as table_index from '#lib/table/index.js'
 import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
@@ -1105,6 +1106,45 @@ describe(`HeatmapTable`, () => {
       state.search.keys.push(`When`)
       await tick()
       expect(col_values(`Model`)).toHaveLength(1)
+    })
+
+    // A live refresh with a query active re-read every cell's text (50k x 30: 90 ms); kept
+    // rows keep theirs. Filters reach each row as plain objects, not column_prefs proxies.
+    it(`re-reads only replaced rows' search text and filters on plain objects`, async () => {
+      fake_search_timers()
+      const text_spy = vi.spyOn(table_data, `cell_text`)
+      const filter_spy = vi.spyOn(table_data, `cell_matches_filter`)
+      onTestFinished(() => void [text_spy, filter_spy].map((spy) => spy.mockRestore()))
+      const rows = [`A`, `B`, `C`].map((letter, idx) => ({ Model: letter, Score: idx }))
+      const column_prefs: Record<string, ColumnPrefs> = {}
+      const state = $state({ search_query: ``, column_prefs })
+      // raw, as the data prop asks: a deep proxy re-wraps every row object on reassignment
+      let data = $state.raw<RowData[]>(rows)
+      const columns = plain_columns(`Model`, `Score`)
+      mount_table(
+        bind_props(
+          {
+            get data() {
+              return data
+            },
+            columns,
+            search: true,
+          },
+          state,
+        ),
+      )
+      await settle_search(state, `z`)
+      expect(text_spy).toHaveBeenCalledTimes(6) // every searched cell once
+      text_spy.mockClear()
+      data = [rows[0], { Model: `Z`, Score: 1 }, rows[2]]
+      await tick()
+      expect(text_spy.mock.calls.map(([val]) => val)).toEqual([`Z`]) // matched, Score unread
+      expect(col_values(`Model`)).toEqual([`Z`])
+      state.column_prefs = { Score: { filter: { kind: `numeric`, min: 1 } } }
+      await tick()
+      expect(filter_spy).toHaveBeenCalled()
+      for (const [, filter] of filter_spy.mock.calls)
+        expect(structuredClone(filter)).toEqual({ kind: `numeric`, min: 1 })
     })
 
     it.each([
@@ -2313,8 +2353,9 @@ describe(`HeatmapTable`, () => {
         summary: [`mean`],
       })
       await tick()
-      // one pass per column: writing back the resolved column_order re-scans none
-      expect(stats_spy).toHaveBeenCalledTimes(3)
+      // one pass per column holding numbers (not the text-only Model): writing back the
+      // resolved column_order re-scans none
+      expect(stats_spy).toHaveBeenCalledTimes(2)
       const cells = [...document.querySelectorAll(`tfoot .summary-row td`)].map((cell) =>
         cell.textContent?.trim(),
       )
@@ -2581,14 +2622,15 @@ describe(`HeatmapTable`, () => {
 
     // Two ways the color control used to vanish from a column that still paints: gating the
     // list on "every value parses" dropped a mixed column, and gating it on column_stats
-    // (derived from the FILTERED rows) dropped it mid-typing
+    // (derived from the FILTERED rows) dropped it mid-typing. A keystroke also re-parsed every
+    // filtered cell for the column statistics (~290 ms at 50k x 30); cells now parse once.
     it(`keeps the color control for a mixed column the search empties of numbers`, async () => {
       fake_search_timers()
       const state = $state({
         search_query: ``,
         column_prefs: {} satisfies Record<string, ColumnPrefs>,
       })
-      let model_reads = 0
+      let [model_reads, cell_reads] = [0, 0]
       const data = [
         { Model: `alpha 1`, Score: 1 },
         { Model: `alpha 2`, Score: 2 },
@@ -2598,6 +2640,7 @@ describe(`HeatmapTable`, () => {
           new Proxy(row, {
             get: (target, key) => {
               if (key === `Model`) model_reads++
+              if (key === `Model` || key === `Score`) cell_reads++
               return Reflect.get(target, key)
             },
           }),
@@ -2620,7 +2663,9 @@ describe(`HeatmapTable`, () => {
       expect(model_reads).toBe(0)
       expect(color_labels()).toEqual(score_labels)
 
+      cell_reads = 0
       await settle_search(state, `beta`) // filters away every numeric Score
+      expect(cell_reads).toBe(0)
       expect(col_values(`Model`)).toEqual([`beta`])
       expect(color_labels()).toEqual(score_labels)
     })
@@ -2941,25 +2986,37 @@ describe(`HeatmapTable`, () => {
     })
 
     // Clickable rows step by absolute index, not DOM sibling: the element after the last
-    // rendered row is a spacer, so sibling-walking stranded keyboard users at the window edge.
-    it(`arrow keys walk clickable rows across the virtual window boundary`, async () => {
-      mount_virtual({ on_row_click: () => {} })
-      await tick() // let bind:this resolve the scroll container
-      const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
-      const row_at = (abs_idx: number) =>
-        document.querySelector(`td[data-row-idx="${abs_idx}"]`)?.closest(`tr`)
+    // rendered row is a spacer (or, paged, nothing), so keyboard users were stranded at the
+    // window or page edge.
+    it.each([`virtual`, `paged`])(
+      `arrow keys walk clickable rows across the %s window boundary`,
+      async (mode) => {
+        if (mode === `virtual`) mount_virtual({ on_row_click: () => {} })
+        else {
+          mount_table({
+            data: many_rows,
+            columns: two_cols,
+            pagination: { page_size: min_window },
+            on_row_click: () => {},
+          })
+        }
+        await tick() // let bind:this resolve the scroll container
+        const scroller = doc_query<HTMLDivElement>(`.table-scroll`)
+        const row_at = (abs_idx: number) =>
+          document.querySelector(`td[data-row-idx="${abs_idx}"]`)?.closest(`tr`)
 
-      const last_rendered = row_at(min_window - 1)
-      assert(last_rendered)
-      await fire(last_rendered, keydown(`ArrowDown`))
+        const last_rendered = row_at(min_window - 1)
+        assert(last_rendered)
+        await fire(last_rendered, keydown(`ArrowDown`))
 
-      expect(scroller.scrollTop).toBeGreaterThan(0) // pulled the next row into the window
-      expect(document.activeElement).toBe(row_at(min_window))
+        if (mode === `virtual`) expect(scroller.scrollTop).toBeGreaterThan(0)
+        else expect(doc_query<HTMLInputElement>(`.page-input`).value).toBe(`2`)
+        expect(document.activeElement).toBe(row_at(min_window))
 
-      row_at(min_window)?.dispatchEvent(keydown(`ArrowUp`))
-      await tick()
-      expect(document.activeElement).toBe(row_at(min_window - 1))
-    })
+        await fire(row_at(min_window), keydown(`ArrowUp`))
+        expect(document.activeElement).toBe(row_at(min_window - 1))
+      },
+    )
 
     it(`clamps the rendered window when data shrinks below the scroll position`, async () => {
       const state = $state({ data: many_rows })

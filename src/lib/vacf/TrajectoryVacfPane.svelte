@@ -39,7 +39,8 @@
   let window_type = $state<WindowType>(`hann`)
   let frequency_unit = $state<VacfFrequencyUnit>(`THz`)
   let panel = $state<`vacf` | `vdos` | `both`>(`both`)
-  let input = $state<VacfInput | undefined>(undefined)
+  // Raw, not a deep proxy of the stream's frame steps and cells (see TrajectoryMsdPane)
+  let input = $state.raw<VacfInput | undefined>(undefined)
   let plotting = $state(false)
   let error_msg = $state<string | undefined>(undefined)
 

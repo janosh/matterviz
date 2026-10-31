@@ -237,8 +237,6 @@ describe(`JSON runs`, () => {
     // complete frames fail with their own error, not as a truncated one
     [`invalid XYZ coordinate`, `1\ncomment\nHe invalid 0 0`, `broken.xyz`,
       /as XYZ: XYZ frame 1 .*non-numeric coordinates/],
-    [`numeric XYZ species`, `2\ncomment\n1 0 0 0\n1 0 0 1`, `broken.xyz`,
-      /as XYZ: XYZ frame 1 .*no atom with a recognised element/],
     [`unrecognized text`, `1\ncomment\nHe invalid 0 0`, `blob-id`, /Unsupported text format/],
     // bytes that are neither ASE nor HDF5 read as text, unless they look binary
     [`binary bytes under a text name`, new Blob([new Uint8Array([0, 1, 2, 0])]), `data.xyz`,

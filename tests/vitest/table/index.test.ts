@@ -279,6 +279,14 @@ it.each([
   expect(cell_text(input)).toBe(expected)
 })
 
+// numbers skip the markup decode, which must not change their text
+it.each([1.5, -0, 1e21, -2.5e-7, Infinity, 42])(
+  `cell_text(%s) is its decoded string`,
+  (num) => {
+    expect(cell_text(num)).toBe(html_to_text(String(num)).trim())
+  },
+)
+
 it.each<[CellVal, number | null]>([
   [42, 42],
   [Infinity, null],
@@ -294,6 +302,8 @@ it.each<[CellVal, number | null]>([
   [`<span data-sort-value="zulu">9</span>`, null], // non-numeric sort value wins
   [`<span data-sort-value="">42</span>`, null], // blank: not Number('') = 0, nor the text
   [`<span data-sort-value="0">n/a</span>`, 0], // an explicit zero still counts
+  [`<span data-sort-value='7'>seven</span>`, 7], // single-quoted attribute
+  [`<span data-sort-value=''>42</span>`, null],
   [`abc`, null],
   // only decimal notation: Number() would read these literals as 16, 3 and 7
   [`0x10`, null],
@@ -356,6 +366,9 @@ describe(`compare_rows`, () => {
   it(`puts numbers before strings and compares strings in natural order`, () => {
     const mixed = order([`10`, `abc`, `9`, `a2`, `a10`, 2])
     expect(mixed).toEqual([2, `9`, `10`, `a2`, `a10`, `abc`])
+    // ±Infinity are numbers at the ends, not text after them
+    expect(order([3, Infinity, `x`, -Infinity, 1])).toEqual([-Infinity, 1, 3, Infinity, `x`])
+    expect(order([3, Infinity, -Infinity, 1], false)).toEqual([Infinity, 3, 1, -Infinity])
     expect(order([`b`, `B`, `a`])).toEqual([`a`, `b`, `B`]) // case-insensitive keeps input order for ties
   })
 
@@ -372,6 +385,20 @@ describe(`compare_rows`, () => {
     // oxfmt-ignore
     expect(order([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`]))
       .toEqual([`<b data-sort-value="aaa">Zulu</b>`, `Alpha`])
+  })
+
+  // as text the collator compared digit runs as integers: 1.5 eV after 1.25 eV, -1 before -3
+  // oxfmt-ignore
+  it.each<[CellVal[], CellVal[]]>([
+    [[`1.5 eV`, `1.25 eV`, `0.9 eV`], [`0.9 eV`, `1.25 eV`, `1.5 eV`]],
+    [[`-1 GPa`, `-3 GPa`, `2 GPa`], [`-3 GPa`, `-1 GPa`, `2 GPa`]],
+    // equal numbers: a bare number first, then by text
+    [[`2 meV`, `abc`, `2 eV`, 2, `1e3 K`], [2, `2 eV`, `2 meV`, `1e3 K`, `abc`]],
+    [[`3.10.0`, `3.9.0`], [`3.9.0`, `3.10.0`]], // versions keep natural text order
+    [[`0x1f`, `1 eV`, `0x0a`], [`1 eV`, `0x0a`, `0x1f`]], // so do hex IDs
+  ])(`sorts unit-suffixed numbers %j by their number`, (vals, expected) => {
+    expect(order(vals)).toEqual(expected)
+    expect(order(vals, false)).toEqual(expected.toReversed())
   })
 
   // the type-mismatch branch answered "the other one first" both ways: not a total order
@@ -397,8 +424,9 @@ describe(`compare_rows`, () => {
     expect(results[0]).toEqual([5, `abc`, false, true, `zed`]) // numbers first, then text
   })
 
-  it(`reads each object once per sort and refreshes mutated sort values`, () => {
-    let reads = 0
+  // cells were re-read on each of the O(n log n) comparisons (67 ms for 50k rows, now 15 ms)
+  it(`reads each cell and object once per sort and refreshes mutated sort values`, () => {
+    let [reads, cell_reads] = [0, 0]
     const values = Array.from({ length: 40 }, (_, idx) => ({
       rank: 39 - idx,
       toJSON() {
@@ -412,6 +440,15 @@ describe(`compare_rows`, () => {
       Array.from({ length: 40 }, (_, idx) => idx),
     )
     expect(reads).toBe(40)
+    const counted = values.map((_, idx) => ({
+      get val() {
+        cell_reads++
+        return 39 - idx
+      },
+    }))
+    const sorted = sort_table_rows(counted, criteria)
+    expect(cell_reads).toBe(40)
+    expect(sorted.map(({ val }) => val)).toEqual(Array.from({ length: 40 }, (_, idx) => idx))
     values[0].rank = -1
     expect(sort_table_rows(data, criteria)[0]).toBe(data[0])
     expect(reads).toBe(80)
@@ -464,7 +501,12 @@ describe(`search and filters`, () => {
     const few = [{ Tag: `b` }, { Tag: `<i>a</i>` }, { Tag: null }, { Tag: `b` }]
     expect(column_filter_panel(column, few, `Tag`, false)).toEqual({
       kind: `category`,
-      options: [`a`, `b`], // distinct, markup-stripped, sorted; invalid cells skipped
+      options: [``, `a`, `b`], // distinct, markup-stripped, sorted; missing cells as (blank)
+    })
+    // unchecking `a` keeps the null row: before, no option could ever allow a missing cell
+    expect(with_category_toggled(undefined, `a`, [``, `a`, `b`])).toEqual({
+      kind: `category`,
+      values: [``, `b`],
     })
     expect(column_filter_panel(column, tags, `Tag`, false)).toEqual({
       kind: `text`,
@@ -479,6 +521,16 @@ describe(`search and filters`, () => {
       `text`,
     )
     expect(column_filter_panel(column, [], `Tag`, false).kind).toBe(`text`)
+    // blanks join real values but neither make a checklist alone nor count toward the cap
+    const blanks = [{ Tag: null }, { Tag: `` }, { Tag: NaN }]
+    expect(column_filter_panel(column, blanks, `Tag`, false)).toEqual({
+      kind: `text`,
+      options: [],
+    })
+    const at_cap = [...tags.slice(0, CATEGORY_LIMIT), ...blanks]
+    expect(column_filter_panel(column, at_cap, `Tag`, false).options).toHaveLength(
+      CATEGORY_LIMIT + 1,
+    )
   })
 
   it(`collapses no-op filters to undefined when editing bounds and checklists`, () => {

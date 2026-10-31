@@ -101,19 +101,23 @@ export function trajectory_from_frames(
 ): TrajectoryRun {
   validate_frames(frames, extras)
   const snapshots = frames.map(encode_frame)
-  return numeric_run(snapshots.length, (frame_idx) => snapshots[frame_idx], {
-    ...extras,
-    read_atoms: (options, signal) => {
-      signal?.throwIfAborted()
-      return frame_atom_batch(
-        snapshots[options.frame_idx],
-        options,
-        extras.atom_masses,
-        extras.signals,
-      )
+  return trajectory_from_numeric_source(
+    snapshots.length,
+    (frame_idx) => snapshots[frame_idx],
+    {
+      ...extras,
+      read_atoms: (options, signal) => {
+        signal?.throwIfAborted()
+        return frame_atom_batch(
+          snapshots[options.frame_idx],
+          options,
+          extras.atom_masses,
+          extras.signals,
+        )
+      },
+      properties: extras.properties ?? frames.map(frame_property_row),
     },
-    properties: extras.properties ?? frames.map(frame_property_row),
-  })
+  )
 }
 
 type NumericRunExtras = MemoryRunExtras & {
@@ -129,9 +133,16 @@ export const trajectory_from_frame_source = (
   read: (frame_idx: number) => TrajectoryFrame,
   extras: NumericRunExtras,
 ): TrajectoryRun =>
-  numeric_run(frame_count, (frame_idx) => encode_frame(read(frame_idx)), extras)
+  trajectory_from_numeric_source(
+    frame_count,
+    (frame_idx) => encode_frame(read(frame_idx)),
+    extras,
+  )
 
-function numeric_run(
+// Same, for sources that write each frame's columns directly (phonon modes). Frames are
+// immutable snapshots, so a source may hand every frame the same cell and site records;
+// FrameView then clones those once instead of per frame.
+export function trajectory_from_numeric_source(
   frame_count: number,
   read: (frame_idx: number) => NumericFrame,
   extras: NumericRunExtras,

@@ -1,4 +1,8 @@
-import { materialize_frame_result } from '#lib/trajectory/frame.js'
+import {
+  FrameView,
+  materialize_frame,
+  materialize_frame_result,
+} from '#lib/trajectory/frame.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
 import type { Complex, PhononModeData } from '#lib/spectral/index.js'
@@ -387,6 +391,31 @@ describe(`staged phonon runs`, () => {
       ),
     ).toBeLessThanOrEqual(0.5 + 1e-12)
     expect(() => materialize_frame_result(short_run.read_frame(4))).toThrow(RangeError)
+
+    // Frames share the cell and site records; the viewer clones those once and copies only
+    // per-site shells, decoding exactly what a full materialization gives
+    const view = new FrameView()
+    const [first, second] = [0, 1].map((frame_idx) => {
+      const numeric = short_run.read_frame(frame_idx)
+      if (numeric instanceof Promise) throw new Error(`sync`)
+      const decoded = view.update(numeric)
+      expect(decoded).toStrictEqual(materialize_frame(numeric))
+      return { numeric, decoded }
+    })
+    expect(second.numeric.sites).toBe(first.numeric.sites)
+    expect(second.numeric.structure).toBe(first.numeric.structure)
+    const [site_a, site_b] = [first, second].map(({ decoded }) => decoded.structure.sites[0])
+    expect(site_b.species).toBe(site_a.species)
+    expect(site_b.species).not.toBe(cell.structure.sites[0].species)
+    const lattices = [first, second].map(({ decoded }) =>
+      `lattice` in decoded.structure ? decoded.structure.lattice : undefined,
+    )
+    expect(lattices[0]).toEqual(cell.structure.lattice)
+    // each frame owns its lattice: editing one frame's cell must not move the next frame's
+    expect(lattices[1]).toEqual(lattices[0])
+    expect(lattices[1]).not.toBe(lattices[0])
+    expect(site_b.properties).not.toBe(site_a.properties)
+    expect(site_b.xyz).not.toEqual(site_a.xyz)
   })
 
   it(`reports mass-weighted mode character per element`, () => {

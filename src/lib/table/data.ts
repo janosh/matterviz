@@ -45,11 +45,14 @@ export const is_html_str = (val: unknown): val is string =>
 // quantifiers in O(n²) ways, so a 30k-digit cell ending in a letter took over a second.
 const NUMERIC_WITH_ERROR_RE =
   /^\s*(?<numeric>[-+−]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+−]?\d+)?)\s*(?:(?:±|\+[-−]|\().*)?$/s
-const DATA_SORT_VALUE_RE = /data-sort-value="(?<value>[^"]*)"/
+// Either attribute quote: a single-quoted value was read as absent and sorted by the text
+const DATA_SORT_VALUE_RE = /data-sort-value=(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/
 
 // Plain text of a cell: markup stripped and decoded, dates as ISO, objects as JSON, invalid ``
 export const cell_text = (val: CellVal): string => {
   if (is_invalid(val)) return ``
+  // a number's text has no markup or padding, so skip the decode (2x for numeric searches)
+  if (typeof val === `number`) return String(val)
   if (val instanceof Date) return val.toISOString()
   if (typeof val === `object`) return JSON.stringify(val)
   return html_to_text(String(val)).trim()
@@ -58,7 +61,8 @@ export const cell_text = (val: CellVal): string => {
 // undefined without a data-sort-value, null for a blank one (Number('') is 0, which would
 // sort and color the cell as zero)
 const get_data_sort_value = (val: string): string | null | undefined => {
-  const captured = DATA_SORT_VALUE_RE.exec(val)?.groups?.value
+  const groups = DATA_SORT_VALUE_RE.exec(val)?.groups
+  const captured = groups?.double ?? groups?.single
   return captured?.trim() === `` ? null : captured
 }
 
@@ -85,74 +89,109 @@ export function parse_numeric_val(val: CellVal): number | null {
   return text === null ? null : parse_numeric_string(text)
 }
 
+// A number with a unit or other suffix ("1.5 eV", "-3 GPa"). A suffix starting with `.` or `,`
+// (versions, IPs, thousands separators) is no unit, nor is a radix prefix (0x1f, 0b101), so
+// those cells keep the text order.
+const LEADING_NUMBER_RE =
+  /^\s*(?![-+−]?0[xXbBoO])(?<numeric>[-+−]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+−]?\d+)?)\s*[^\d\s.,]/
+
+// Sort key only ([number, full text]; colors and filters still read these cells as text): the
+// collator compared digit runs as integers, so 1.5 eV sorted after 1.25 eV, -1 GPa before -3 GPa
+const leading_number_key = (text: string): [number, string] | null => {
+  const numeric_str = LEADING_NUMBER_RE.exec(text)?.groups?.numeric
+  const num = numeric_str === undefined ? NaN : Number(normalize_unicode_minus(numeric_str))
+  return Number.isFinite(num) ? [num, text] : null
+}
+
+type SortVal = string | number | [number, string] | null
+
 // Sorts on the same rendered text search/filters/export use: raw values sorted `<b>Mango</b>`
 // under `<`, and booleans/objects broke the total order. A data-sort-value that isn't a number
 // still overrides the visible text. ISO date/time text sorts by its instant: as text, `T09:00`
 // and ` 10:00` or two UTC offsets ordered wrongly. null marks a missing sort key.
-const get_sort_val = (val: CellVal): string | number | null => {
+const get_sort_val = (val: CellVal): SortVal => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
+  // ±Infinity sort as numbers at the ends: as text "-Infinity" landed after every number
+  if (typeof val === `number`) return val
   if (typeof val !== `string`) return parse_numeric_val(val) ?? cell_text(val)
   const text = sort_text(val)
   if (text === null) return null
-  return parse_numeric_string(text) ?? parse_datetime_text(text) ?? text
+  return (
+    parse_numeric_string(text) ?? parse_datetime_text(text) ?? leading_number_key(text) ?? text
+  )
 }
 
 export type SortCriterion = { key: string; ascending: boolean }
 const sort_collator = new Intl.Collator(undefined, { numeric: true, sensitivity: `base` })
 
-// Comparator over row keys: missing sort keys sink to the bottom regardless of direction,
-// numbers sort before strings, strings compare natural-order and case-insensitively.
-function compare_row_values(
-  row1: RowData,
-  row2: RowData,
-  criteria: SortCriterion[],
-  sort_value: (val: CellVal) => string | number | null,
+// Comparator over one criterion's sort keys: missing sort keys sink to the bottom regardless
+// of direction, numbers sort before strings, strings compare natural-order and
+// case-insensitively. Unit-suffixed cells rank by their number, ties going to a bare number,
+// then their text. 0 lets the next criterion decide.
+function compare_sort_vals(
+  sort_val1: SortVal,
+  sort_val2: SortVal,
+  ascending: boolean,
 ): number {
+  // both missing ranks them equally low, so let the next criterion break the tie
+  if (sort_val1 === null && sort_val2 === null) return 0
+  if (sort_val1 === null || sort_val2 === null) return sort_val1 === null ? 1 : -1
+  const modifier = ascending ? 1 : -1
+  const key1 = typeof sort_val1 === `object` ? sort_val1[0] : sort_val1
+  const key2 = typeof sort_val2 === `object` ? sort_val2[0] : sort_val2
+  if (typeof key1 === `string` && typeof key2 === `string`) {
+    return sort_collator.compare(key1, key2) * modifier
+  }
+  if (typeof key1 !== typeof key2) {
+    // number<string is false both ways, breaking the comparator: numbers sort first
+    return (typeof key1 === `number` ? -1 : 1) * modifier
+  }
+  if (key1 !== key2) return key1 < key2 ? -modifier : modifier
+  const text1 = typeof sort_val1 === `object` ? sort_val1[1] : ``
+  const text2 = typeof sort_val2 === `object` ? sort_val2[1] : ``
+  return sort_collator.compare(text1, text2) * modifier
+}
+
+export function compare_rows(row1: RowData, row2: RowData, criteria: SortCriterion[]): number {
   for (const { key, ascending } of criteria) {
-    const val1 = row1[key]
-    const val2 = row2[key]
+    const [val1, val2] = [row1[key], row2[key]]
+    // `val1 === val2` never catches two missing keys (NaN !== NaN, null !== undefined)
     if (val1 === val2) continue
-    const sort_val1 = sort_value(val1)
-    const sort_val2 = sort_value(val2)
-    // both missing ranks them equally low, so let the next criterion break the tie —
-    // `val1 === val2` above never catches it, since NaN !== NaN and null !== undefined
-    if (sort_val1 === null && sort_val2 === null) continue
-    if (sort_val1 === null || sort_val2 === null) return sort_val1 === null ? 1 : -1
-    const modifier = ascending ? 1 : -1
-    if (typeof sort_val1 === `string` && typeof sort_val2 === `string`) {
-      const cmp = sort_collator.compare(sort_val1, sort_val2)
-      if (cmp !== 0) return cmp * modifier
-    } else if (typeof sort_val1 !== typeof sort_val2) {
-      // number<string is false both ways, breaking the comparator: numbers sort first
-      return (typeof sort_val1 === `number` ? -1 : 1) * modifier
-    } else if (sort_val1 !== sort_val2) {
-      return sort_val1 < sort_val2 ? -modifier : modifier
-    }
+    const cmp = compare_sort_vals(get_sort_val(val1), get_sort_val(val2), ascending)
+    if (cmp !== 0) return cmp
   }
   return 0
 }
 
-export const compare_rows = (
-  row1: RowData,
-  row2: RowData,
-  criteria: SortCriterion[],
-): number => compare_row_values(row1, row2, criteria, get_sort_val)
-
-// Parse each distinct cell once per sort, not on every O(n log n) comparison. The cache is
-// local to this operation, so edits to rows, objects and Dates are read on the next sort.
+// Parse each distinct cell once per sort, not on every O(n log n) comparison, and read each
+// row's keys up front so comparisons index arrays rather than re-reading cells (a 50k-row sort
+// went 67 -> 15 ms). The cache is local to this operation, so edits to rows, objects and
+// Dates are read on the next sort.
 export function sort_table_rows<Row extends RowData>(
   rows: Row[],
   criteria: SortCriterion[],
 ): Row[] {
-  const values = new Map<CellVal, string | number | null>()
-  const sort_value = (val: CellVal): string | number | null => {
+  const values = new Map<CellVal, SortVal>()
+  const sort_value = (val: CellVal): SortVal => {
     if (typeof val === `number`) return get_sort_val(val)
     let parsed = values.get(val)
     if (parsed === undefined) values.set(val, (parsed = get_sort_val(val)))
     return parsed
   }
-  return rows.toSorted((row1, row2) => compare_row_values(row1, row2, criteria, sort_value))
+  const keys = criteria.map(({ key }) => rows.map((row) => sort_value(row[key])))
+  const order = rows.map((_, idx) => idx)
+  // in place on a fresh index array, sort is as stable as toSorted
+  // oxlint-disable-next-line eslint-plugin-unicorn/no-array-sort
+  order.sort((idx_a, idx_b) => {
+    for (const [crit_idx, { ascending }] of criteria.entries()) {
+      const crit_keys = keys[crit_idx]
+      const cmp = compare_sort_vals(crit_keys[idx_a], crit_keys[idx_b], ascending)
+      if (cmp !== 0) return cmp
+    }
+    return 0
+  })
+  return order.map((idx) => rows[idx])
 }
 
 // === Search and per-column filters ===
@@ -188,15 +227,18 @@ export function column_filter_panel(
 ): FilterPanel {
   const capped = col.filter !== `category`
   const seen = new Set<string>()
+  // missing and empty cells share one (blank) option, offered beside real values only
+  let has_blank = false
   for (const row of rows) {
-    const val = row[row_key]
-    if (!is_invalid(val)) seen.add(cell_text(val))
+    const text = cell_text(row[row_key])
+    if (text === ``) has_blank = true
+    else seen.add(text)
     if (capped && seen.size > CATEGORY_LIMIT) {
       seen.clear() // too many to pick from: fall back to a substring box
       break
     }
   }
-  const options = [...seen].toSorted()
+  const options = [...(has_blank && seen.size > 0 ? [``] : []), ...[...seen].toSorted()]
   const configured = col.filter && col.filter !== `auto` ? col.filter : null
   const detected = is_numeric ? `numeric` : options.length > 0 ? `category` : `text`
   return { options, kind: configured ?? detected }
