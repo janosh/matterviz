@@ -648,7 +648,10 @@ interface IFermiIsosurface {
 
 // IFermi keys isosurfaces by spin (str(Spin.up) = "1", str(Spin.down) = "-1"); the band lives
 // in each surface's band_idx
-const IFERMI_SPIN_KEYS: Record<string, SpinChannel> = { '1': `up`, '-1': `down` }
+const IFERMI_SPIN_KEYS = new Map<string, SpinChannel>([
+  [`1`, `up`],
+  [`-1`, `down`],
+])
 
 // Face values (vectors by magnitude) averaged onto each face's vertices for vertex colouring
 function ifermi_vertex_properties(
@@ -699,7 +702,7 @@ function parse_ifermi_surface(data: Record<string, unknown>): FermiSurfaceData {
   const band_indices = new Set<number>()
 
   for (const [spin_key, iso_list] of Object.entries(isosurfaces_obj)) {
-    const spin = IFERMI_SPIN_KEYS[spin_key]
+    const spin = IFERMI_SPIN_KEYS.get(spin_key)
     if (!spin)
       throw new Error(`IFermi isosurfaces must be keyed by spin "1"/"-1", got "${spin_key}"`)
     for (const [iso_idx, ifermi_iso] of iso_list.entries()) {

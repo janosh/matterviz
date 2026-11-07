@@ -137,8 +137,9 @@ describe(`computed descriptors`, () => {
     [`the last point`, 2, 3],
     [`below the range`, -0.1, undefined],
     [`above the range`, 2.1, undefined],
-  ])(`dos_at_energy at %s`, (_desc, energy, expected) => {
+  ])(`dos_at_energy at %s, on ascending and descending grids`, (_desc, energy, expected) => {
     expect(dos_at_energy(dos([0, 1, 2], [1, 2, 3]), energy)).toBe(expected)
+    expect(dos_at_energy(dos([2, 1, 0], [3, 2, 1]), energy)).toBe(expected)
   })
 
   test(`dos_at_energy adds both spins (spin down stored either sign) and skips phonons`, () => {
