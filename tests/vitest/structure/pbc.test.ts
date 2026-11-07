@@ -225,6 +225,38 @@ test.each(
       expect(completion_problems(structure, completion, options)).toEqual(NO_PROBLEMS)
 })
 
+// Regression: a heavily sheared basis of cubic SrTiO3 bonds Ti to O two cells out, past a
+// fixed -1..1 neighbor shell, so completion drew no octahedron at all
+test.each([`polyhedra`, `boundary`] as const)(
+  `sheared SrTiO3 cell completes octahedra (%s)`,
+  (completion) => {
+    const cubic = make_srtio3(`corner`)
+    const matrix: Matrix3x3 = [
+      [SRTIO3_A, 0, 0],
+      [2 * SRTIO3_A, SRTIO3_A, 0],
+      [-SRTIO3_A, SRTIO3_A, SRTIO3_A],
+    ]
+    const to_frac = math.create_cart_to_frac(matrix)
+    const structure = make_crystal(
+      matrix,
+      cubic.sites.map((site) => ({
+        element: site.species[0].element,
+        abc: wrap_to_unit_cell(to_frac(site.xyz)),
+      })),
+    )
+    const imaged = get_pbc_image_sites(structure, image_options(completion))
+    const polyhedra = compute_polyhedra(
+      imaged,
+      get_bond_data(imaged, `electroneg_ratio`),
+      polyhedra_options_from({}),
+    )
+    expect(polyhedra.map(({ vertex_site_idxs }) => vertex_site_idxs.length)).toEqual(
+      Array(8).fill(6),
+    )
+    expect(completion_problems(structure, completion)).toEqual(NO_PROBLEMS)
+  },
+)
+
 test(`completion images carry provenance, phase-1 face images do not`, () => {
   const structure = make_srtio3(`corner`)
   const image_atoms = find_image_atoms(structure, image_options())

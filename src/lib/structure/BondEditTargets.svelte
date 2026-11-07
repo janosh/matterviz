@@ -30,6 +30,7 @@
     bond_endpoint_hit_site_idx,
     bond_menu_position,
     disable_raycast,
+    is_primary_press,
   } from './scene-picking.svelte'
 
   // Threlte wraps the DOM event and adds the intersection (hit object, world point, instance)
@@ -157,7 +158,7 @@
 
   function on_bond_press(event: ThrelteEvent<PointerEvent>): void {
     const bond = event_bond(event)
-    if (!bond || event.nativeEvent?.button === 2) return
+    if (!bond || !is_primary_press(event)) return
     if (is_delete_mode) {
       on_delete_bond(bond)
       hovered_bond_key = null

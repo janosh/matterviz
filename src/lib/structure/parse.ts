@@ -43,6 +43,7 @@ import {
   parse_float_token,
   read_cell_params,
   split_cif_tokens,
+  split_cif_values,
   vec3_from_values,
 } from '#lib/structure/parsers/shared.js'
 import {
@@ -579,27 +580,41 @@ const cif_symbol_group = (raw_symbol = ``): ElementSymbol | undefined => {
   return is_ion ? undefined : CIF_SYMBOL_GROUPS[group]
 }
 
+// Memo for the per-row type symbol readers below: a file repeats a handful of symbols over
+// every atom row, and their regexes were a third of reading a 100k-row P1 CIF. Capped since
+// the keys come from the file.
+const memo_by_symbol = <Value>(read: (raw_symbol: string) => Value) => {
+  const cache = new Map<string, Value>()
+  return (raw_symbol = ``): Value => {
+    if (cache.has(raw_symbol)) return cache.get(raw_symbol) as Value
+    if (cache.size >= 1024) cache.clear()
+    const value = read(raw_symbol)
+    cache.set(raw_symbol, value)
+    return value
+  }
+}
+
 // The element a CIF type symbol (`Fe2+`, `FE2+`, `O2-`, `NO3`) names: a group, then its
 // leading letters read two-then-one case-normalized; undefined when it names nothing
-const cif_type_symbol_element = (raw_symbol = ``): ElementSymbol | undefined => {
+const cif_type_symbol_element = memo_by_symbol((raw_symbol): ElementSymbol | undefined => {
   const letters = leading_letters(raw_symbol)
   return (
     cif_symbol_group(raw_symbol) ??
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 2))) ??
     coerce_elem_symbol(capitalize_symbol(letters.slice(0, 1)))
   )
-}
+})
 
 // The oxidation state a charged CIF type symbol carries (`Fe2+` 2, `O2-` -2, `Ag+` 1,
 // `Fe2.5+` 2.5), else 0; a group symbol's (`NO3-`) belongs to no element. Unlike pymatgen,
 // this decorates without an _atom_type_oxidation_number loop. Sign-first symbols (`O-2`,
 // `Fe+2`) are not the CIF convention and read 0 without a loop, as in pymatgen.
-const cif_type_symbol_oxidation = (raw_symbol = ``): number => {
+const cif_type_symbol_oxidation = memo_by_symbol((raw_symbol): number => {
   if (cif_symbol_group(raw_symbol)) return 0
   const { magnitude = `1`, sign } =
     /^[A-Za-z]{1,2}(?<magnitude>\d+(?:\.\d+)?)?(?<sign>[+-])$/.exec(raw_symbol)?.groups ?? {}
   return sign ? Number(`${sign}${magnitude}`) : 0
-}
+})
 
 // The element a CIF atom-site row names, read in priority order. _atom_site_type_symbol is an
 // element symbol plus an optional charge (`Fe2+`, `O2-`, sometimes uppercase `FE2+`): a group
@@ -618,9 +633,9 @@ const cif_row_element = (
   atom_idx: number,
   pdb_names = false,
 ): { element: ElementSymbol; ambiguity?: string } => {
-  const symbol_letters = leading_letters(raw_symbol)
   const element = cif_type_symbol_element(raw_symbol) ?? cif_group_element(raw_label)
   if (element) return { element }
+  const symbol_letters = leading_letters(raw_symbol)
   // an all-caps label reads two letters first; `label_letters` is then its one-letter reading
   const { all_caps = ``, letters: label_letters = all_caps[0] ?? `` } =
     /(?<all_caps>[A-Z]{2})|(?<letters>[A-Z][a-z]*)/.exec(raw_label ?? ``)?.groups ?? {}
@@ -642,7 +657,7 @@ const cif_row_element = (
 
 // One atom-site row as a CifAtom; throws on an unreadable coordinate (the caller drops the row)
 const parse_cif_atom_data = (
-  raw_data: string[],
+  raw_data: (string | undefined)[],
   indices: Record<string, number>,
   coord_indices: number[],
   atom_idx: number,
@@ -666,19 +681,18 @@ const parse_cif_atom_data = (
       ? parse_cif_uncertain_number(raw_data[occu_idx])
       : null) ?? 1
 
-  // Only a real label column names the site; `.`/`?` are CIF's unset placeholders
+  // Only a real label column names the site; unset placeholders (unquoted `.`/`?`) are
+  // undefined (split_cif_values), so an unset type symbol leaves the element read from the
+  // label to key the _atom_type oxidation lookup
   const raw_label = label === undefined ? undefined : raw_data[label]
-  // an unset type symbol (`?`/`.`) is missing, so the element read from the label keys the
-  // _atom_type oxidation lookup
-  const type_symbol =
-    symbol >= 0 && !is_cif_unset(raw_data[symbol]) ? raw_data[symbol] : undefined
+  const type_symbol = symbol >= 0 ? raw_data[symbol] : undefined
   const { element, ambiguity } = cif_row_element(
     type_symbol,
     raw_label,
     atom_idx,
     indices.residue !== undefined,
   )
-  const id = raw_label && !is_cif_unset(raw_label) ? raw_label : undefined
+  const id = raw_label === `` ? undefined : raw_label
   const oxidation_state = cif_type_symbol_oxidation(type_symbol)
   return { id, element, ambiguity, coords, occupancy, type_symbol, oxidation_state }
 }
@@ -758,9 +772,15 @@ const cif_loop_lines = (lines: readonly string[], data_start: number): string[] 
 // lines and one line may hold several rows, so the values are dealt out `n_columns` at a time.
 // A count that is not a multiple of n_columns has no unambiguous row split (which row is
 // short?), so it throws rather than guess and silently drop or misplace atoms.
-const cif_loop_rows = (lines: readonly string[], headers: readonly string[]): string[][] => {
+const cif_loop_rows = (
+  lines: readonly string[],
+  headers: readonly string[],
+): (string | undefined)[][] => {
   const n_columns = headers.length
-  const tokens = lines.flatMap((line) => split_cif_tokens(line))
+  const line_values = lines.map(split_cif_values)
+  // the common one-row-per-line loop needs no re-dealing
+  if (line_values.every((values) => values.length === n_columns)) return line_values
+  const tokens = line_values.flat()
   if (tokens.length % n_columns !== 0) {
     throw new Error(
       `CIF loop (${headers.join(`, `)}) has ${tokens.length} values, not a multiple of its ${n_columns} columns`,
@@ -776,15 +796,14 @@ const cif_loop_rows = (lines: readonly string[], headers: readonly string[]): st
 // others; rows without a group (`.`, `?`, blank) are always kept, rows without an assembly
 // (no column, `.` or `?`) share one
 const keep_one_disorder_group = (
-  rows: string[][],
+  rows: (string | undefined)[][],
   { disorder, assembly }: Record<string, number>,
-): string[][] => {
+): (string | undefined)[][] => {
   if (disorder === undefined) return rows
-  const group_of = (row: string[]): number => Math.abs(parse_float_token(row[disorder]))
-  const assembly_of = (row: string[]): string | undefined => {
-    const value = assembly === undefined ? undefined : row[assembly]
-    return is_cif_unset(value) ? undefined : value
-  }
+  const group_of = (row: (string | undefined)[]): number =>
+    Math.abs(parse_float_token(row[disorder] ?? ``))
+  const assembly_of = (row: (string | undefined)[]): string | undefined =>
+    assembly === undefined ? undefined : row[assembly]
   const kept = new Map<string | undefined, number>()
   for (const row of rows) {
     const [group, key] = [group_of(row), assembly_of(row)]

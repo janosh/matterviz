@@ -2,6 +2,7 @@ import TrajectoryLines from '#lib/structure/TrajectoryLines.svelte'
 import type { TrajectoryLinesStats } from '#lib/structure/trajectory-lines.js'
 import { TrajectoryTrail } from '#lib/structure/trajectory-lines.js'
 import { mount_scene } from '../scene/mount'
+import { bind_props } from '../setup'
 import { make_position_stream } from '../test-fixtures'
 import { flushSync } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
@@ -31,30 +32,10 @@ test(`playback moves the window in place, re-uploading only the window ends and 
     anchor_positions: anchors_at(10),
     frame_stride: 3,
     trail_frames: 5,
+    build_result: null as TrajectoryLinesStats | null,
   })
-  const bound: { stats: TrajectoryLinesStats | null } = { stats: null }
   const { scene, unmount_scene } = mount_scene((anchor) =>
-    TrajectoryLines(anchor, {
-      position_stream: stream,
-      get trail_frames() {
-        return props.trail_frames
-      },
-      get frame_stride() {
-        return props.frame_stride
-      },
-      get end_frame() {
-        return props.end_frame
-      },
-      get anchor_positions() {
-        return props.anchor_positions
-      },
-      get build_result() {
-        return bound.stats
-      },
-      set build_result(value) {
-        bound.stats = value
-      },
-    }),
+    TrajectoryLines(anchor, bind_props({ position_stream: stream }, props)),
   )
   flushSync()
   const lines = () => {
@@ -85,7 +66,7 @@ test(`playback moves the window in place, re-uploading only the window ends and 
       trail_frames: 5,
       anchor_positions: anchors_at(end_frame),
     })
-    expect(bound.stats).toEqual(expected.stats)
+    expect(props.build_result).toEqual(expected.stats)
     // Grid segments and off-grid ends are the two index ranges drawn, each only if non-empty
     const ranges = [
       [expected.grid_start, expected.grid_count],
@@ -117,15 +98,15 @@ test(`playback moves the window in place, re-uploading only the window ends and 
   const [rebuilt] = lines()
   expect(lines()).toEqual([rebuilt])
   expect(disposed).toEqual([geometry])
-  expect(bound.stats?.frame_idxs).toEqual([12, 14, 16])
+  expect(props.build_result?.frame_idxs).toEqual([12, 14, 16])
   // The slider's 0 end stop draws the whole run: frames 0, 2, …, 16 of all three atoms
   props.trail_frames = 0
   flushSync()
-  expect(bound.stats?.segment_count).toBe(3 * 8)
+  expect(props.build_result?.segment_count).toBe(3 * 8)
   // Unmounting clears the bound stats and disposes the buffers
   rebuilt.geometry.addEventListener(`dispose`, on_dispose)
   await unmount_scene()
-  expect(bound.stats).toBeNull()
+  expect(props.build_result).toBeNull()
   expect(disposed).toEqual([geometry, rebuilt.geometry])
 })
 
@@ -135,15 +116,7 @@ test(`playback moves the window in place, re-uploading only the window ends and 
 test(`emphasis draws the window's segments as fat lines over the atoms`, async () => {
   const props = $state({ emphasis: true, position_stream: stream })
   const { scene, unmount_scene } = mount_scene((anchor) =>
-    TrajectoryLines(anchor, {
-      get position_stream() {
-        return props.position_stream
-      },
-      get emphasis() {
-        return props.emphasis
-      },
-      end_frame: 10,
-    }),
+    TrajectoryLines(anchor, bind_props({ end_frame: 10 }, props)),
   )
   flushSync()
   const drawn = () => {

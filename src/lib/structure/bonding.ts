@@ -1639,8 +1639,12 @@ export function get_bond_data(
     const valid = Object.keys(BONDING_STRATEGIES).join(`, `)
     throw new Error(`Unknown bonding strategy '${strategy}', expected one of ${valid}`)
   }
-  const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
-  const bonds = strategy_fn(structure, options)
+  // Perceived bonds stay packed: materializing 285k records cost ~17 ms per search, and most
+  // consumers (rendering, polyhedra, image completion) read the columns
+  const bonds =
+    strategy === `electroneg_ratio`
+      ? electroneg_ratio_frame(structure, options)
+      : explicit_only(structure)
   cache_prepared_bonds(structure, strategy, options, bonds)
   return bonds
 }
@@ -1673,12 +1677,18 @@ export function electroneg_ratio(
   structure: AnyStructure,
   options: Parameters<typeof perceive_bonds>[1] = {},
 ): BondPair[] {
-  if (!site_count(structure)) return []
-  return new BondFrame(
-    structure,
-    bond_columns(structure, perceive_bonds(structure, options)),
-  ).materialize()
+  return electroneg_ratio_frame(structure, options).materialize()
 }
+const electroneg_ratio_frame = (
+  structure: AnyStructure,
+  options: Parameters<typeof perceive_bonds>[1] = {},
+): BondFrame =>
+  new BondFrame(
+    structure,
+    site_count(structure)
+      ? bond_columns(structure, perceive_bonds(structure, options))
+      : pack_bonds([]),
+  )
 
 // Both public records and worker columns consume the same accepted contacts in discovery order.
 function bond_columns(

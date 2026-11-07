@@ -29,7 +29,10 @@
       action()
     }
     return {
-      onpointerdown: run,
+      // primary button only: a right-click on Remove must not remove the bond
+      onpointerdown: (event: PointerEvent) => {
+        if (event.button === 0) run(event)
+      },
       onclick: (event: MouseEvent) => {
         if (event.detail === 0) run(event)
       },

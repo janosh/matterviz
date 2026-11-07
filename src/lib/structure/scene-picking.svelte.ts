@@ -185,12 +185,18 @@ export function next_site_selection(
   }
 }
 
-// Shift state of a click: threlte dispatches plain objects wrapping the DOM event, so read it
-// from the native event (the wrapper itself is never a MouseEvent for 3D hits)
-export const is_shift_click = (event?: Event | TapEvent): boolean => {
+// Threlte dispatches plain objects wrapping the DOM event, so modifier and button state is
+// read from the native event (the wrapper itself is never a MouseEvent for 3D hits)
+const native_mouse_event = (event?: Event | TapEvent): MouseEvent | undefined => {
   const native_event = (event as { nativeEvent?: unknown } | undefined)?.nativeEvent ?? event
-  return native_event instanceof MouseEvent && native_event.shiftKey
+  return native_event instanceof MouseEvent ? native_event : undefined
 }
+export const is_shift_click = (event?: Event | TapEvent): boolean =>
+  native_mouse_event(event)?.shiftKey ?? false
+// A press with the primary button (touch and pen included): right- and middle-button presses
+// start an orbit-controls pan or dolly and must not pick, add or delete anything
+export const is_primary_press = (event?: Event | TapEvent): boolean =>
+  (native_mouse_event(event)?.button ?? 0) === 0
 
 // Canvas cursor for the current mode and hover
 export function scene_cursor(state: PickState): string {
