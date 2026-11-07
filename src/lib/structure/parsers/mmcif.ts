@@ -98,10 +98,19 @@ export const parse_mmcif = (content: string): AnyStructure => {
     atom_block_id = block_ids[loop.data_start]
     for (let row_idx = loop.data_start; row_idx < lines.length; row_idx++) {
       const line = lines[row_idx].trim()
+      // CIF whitespace is free-form: a blank line inside the loop is not its end
+      if (!line) continue
       // mmCIF terminates a loop with `#`, a new tag, a new loop or a new data block
-      if (!line || line === `#` || line.startsWith(`_`)) break
+      if (line === `#` || line.startsWith(`_`)) break
+      if (line.startsWith(`#`)) continue // a comment inside the loop, not a row
       if (is_cif_loop_header(line) || is_cif_data_header(line)) break
-      data_rows.push(split_cif_tokens(line))
+      const tokens = split_cif_tokens(line)
+      // Loop values are a token stream: one line may hold several whole rows
+      const n_columns = headers.length
+      if (tokens.length > n_columns && tokens.length % n_columns === 0) {
+        for (let start = 0; start < tokens.length; start += n_columns)
+          data_rows.push(tokens.slice(start, start + n_columns))
+      } else data_rows.push(tokens)
     }
     break
   }

@@ -609,6 +609,26 @@ describe(`edit-atoms`, () => {
     expect(session.history.undo_stack).toHaveLength(0)
   })
 
+  it(`highlight and hover follow their atoms through a delete and drop on its undo`, () => {
+    const { host, session } = make_session({
+      measure_mode: `edit-atoms`,
+      structure: crystal(4),
+    })
+    const atom_x = (idx: number) => host.structure?.sites[idx].xyz
+    const second_atom = atom_x(1)
+    flush_set(host, { selected_sites: [0], highlighted_sites: [1, 3], hovered_site_idx: 1 })
+    expect(session.delete_selected()).toBe(true)
+    flushSync()
+    expect(host.highlighted_sites).toEqual([0, 2])
+    expect(host.hovered_site_idx).toBe(0)
+    expect(atom_x(host.hovered_site_idx ?? -1)).toEqual(second_atom)
+    // undoing re-inserts site 0 in front, so the old indices would name other atoms
+    expect(session.undo()).toBe(true)
+    flushSync()
+    expect(host.highlighted_sites).toEqual([])
+    expect(host.hovered_site_idx).toBeNull()
+  })
+
   it(`duplicates into a new selection, changes elements and adds atoms with fractional coords`, () => {
     const { host, session, notices } = make_session({ measure_mode: `edit-atoms` })
     flush_set(host, { selected_sites: [1] })
@@ -834,6 +854,42 @@ describe(`edit-bonds`, () => {
     flush_set(host, { structure: out_of_cell(1, 2) })
     expect(host.bonds).toEqual([{ site_idx_1: 1, site_idx_2: 2, order: 1 }])
   })
+
+  // an undone bond edit hands the source back out as the session's own set; an atom delete or
+  // undo rewriting it must keep it recognizable, or the next file draws the previous one's bonds
+  it.each([`delete`, `undo`] as const)(
+    `the next load replaces the session's own bonds after an atom %s`,
+    (how) => {
+      const with_bonds = (atoms: number, bonds: StructureBond[]) => ({
+        ...crystal(atoms),
+        properties: { bonds },
+      })
+      const { host, session } = make_session({
+        measure_mode: `edit-bonds`,
+        structure: with_bonds(4, [
+          ...structuredClone(source),
+          { site_idx_1: 1, site_idx_2: 2, order: 1 },
+        ]),
+      })
+      flushSync()
+      remove_source_bond(session)
+      expect(session.undo_bond_edit()).toBe(true)
+      flush_set(host, { measure_mode: `edit-atoms` })
+      if (how === `delete`) {
+        flush_set(host, { selected_sites: [3] })
+        expect(session.delete_selected()).toBe(true)
+      } else {
+        session.add_atom([1, 1, 1], `H`)
+        flushSync()
+        expect(session.undo()).toBe(true)
+      }
+      flushSync()
+      const next_bonds: StructureBond[] = [{ site_idx_1: 3, site_idx_2: 4, order: 2 }]
+      flush_set(host, { structure: with_bonds(5, next_bonds) })
+      expect(host.bonds).toEqual(next_bonds)
+      expect(session.base_structure?.properties?.bonds).toEqual(next_bonds)
+    },
+  )
 
   it(`a caller swapping the source bonds after an undo clears the redo history too`, () => {
     // undo leaves has_bond_edits false and the undo stack empty, with the undone edit on the

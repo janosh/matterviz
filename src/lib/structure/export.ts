@@ -276,9 +276,14 @@ function get_cif_block_name(structure: AnyStructure): string {
     : `structure`
 }
 
-// Quote a CIF value that whitespace would split or whose first char reads as syntax
+// Quote a CIF value that whitespace would split, whose first char reads as syntax or that
+// starts with a reserved word (an unquoted `data_1` label opens a new data block)
 const cif_token = (value: string): string =>
-  !/\s|^[_#$'";[\]]/.test(value) ? value : value.includes(`'`) ? `"${value}"` : `'${value}'`
+  !/\s|^[_#$'";[\]]|^(?:data|loop|save|global|stop)_/i.test(value)
+    ? value
+    : value.includes(`'`)
+      ? `"${value}"`
+      : `'${value}'`
 
 // CIF type symbol of a species: the element plus its charge when decorated (`Fe2+`, `O2-`,
 // `Ag+`, `Fe2.5+`), the form pymatgen's CifWriter writes and parse_cif reads back
@@ -397,8 +402,10 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
 
   // Title line: the id, else the plain-text formula; scale factor 1.0 since coordinates are
   // written as Direct (fractional)
+  // a line break in the id would push the scale factor down a line
   const title =
-    [structure.id, plain_formula(structure)].find(Boolean) ?? `Generated from structure`
+    [structure.id?.replaceAll(/\s+/g, ` `).trim(), plain_formula(structure)].find(Boolean) ??
+    `Generated from structure`
   const lines = [
     title,
     `1.0`,

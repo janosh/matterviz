@@ -402,10 +402,23 @@ describe(`Export functionality`, () => {
     })
 
     // unquoted, whitespace split the row and a leading `#` commented it out; `'` needs `"`
-    it.each([`#1`, `C1' A`])(`quotes CIF label %j`, (label) => {
+    // an unquoted reserved word opened a new data block, so the reader found no atoms
+    it.each([`#1`, `C1' A`, `data_1`, `LOOP_x`])(`quotes CIF label %j`, (label) => {
       const sites = [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5], label)]
       const [site] = parse_cif(structure_to_cif_str({ sites, lattice: diag_lattice(5) })).sites
       expect([site.label, site.species[0].element]).toEqual([label, `Fe`])
+    })
+
+    // a line break in the id pushed the scale factor down a line, so the export did not parse
+    it(`writes a multi-line id as a one-line POSCAR title`, () => {
+      const sites = [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5])]
+      const poscar = structure_to_poscar_str({
+        id: `line1\nline2`,
+        sites,
+        lattice: diag_lattice(5),
+      })
+      expect(poscar.split(`\n`).slice(0, 2)).toEqual([`line1 line2`, `1.0`])
+      expect(parse_poscar(poscar).sites).toHaveLength(1)
     })
 
     // CIF keeps only cell parameters, which readers rebuild as a right-handed cell, so a
