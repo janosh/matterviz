@@ -536,8 +536,9 @@
   }
 
   // active_cell is deferred to rAF so a dense matrix doesn't restyle its cells per pointer
-  // move; the tooltip, one component, follows each cell entered at once
-  let tooltip_hover = $state<{ context: CellContext; cell: Rect } | null>(null)
+  // move; the tooltip, one component, follows each cell entered at once. It holds the cell's
+  // position, not its context, so new values or colors reach a tooltip already open.
+  let tooltip_hover = $state<{ pos: CellPos; cell: Rect } | null>(null)
   let active_cell_raf = 0
   let last_hover = { x_idx: -1, y_idx: -1 }
   const cancel_raf = () => {
@@ -560,10 +561,10 @@
       }
     }
 
-  function show_tooltip(cell_el: HTMLElement, context: CellContext): void {
+  function show_tooltip(cell_el: HTMLElement, { x_idx, y_idx }: CellContext): void {
     if (tooltip === false) return
     const { left, top, width, height } = cell_el.getBoundingClientRect()
-    tooltip_hover = { context, cell: { x: left, y: top, width, height } }
+    tooltip_hover = { pos: { x_idx, y_idx }, cell: { x: left, y: top, width, height } }
   }
   const hide_tooltip = () => (tooltip_hover = null)
 
@@ -863,8 +864,8 @@
     class={[`grid`, rest.class]}
     role={has_interaction_handlers ? `grid` : `table`}
     style={[rest.style, column_vars].filter(Boolean).join(`; `)}
-    style:--n-cols={col_count + (show_row_summaries && !gaps_mode ? 1 : 0)}
-    style:--n-rows={row_count + (show_col_summaries && !gaps_mode ? 1 : 0)}
+    style:--n-cols={col_count + (show_row_summaries ? 1 : 0)}
+    style:--n-rows={row_count + (show_col_summaries ? 1 : 0)}
     style:--extra-right-y={right_y_labels ? 1 : 0}
     style:--extra-bottom-x={split_labels.x ? 1 : 0}
     style:--right-y-track={right_y_labels ? `max-content` : `0`}
@@ -969,7 +970,8 @@
     {/if}
 
     {#if tooltip !== false && tooltip_hover}
-      {@const { context, cell } = tooltip_hover}
+      {@const { pos, cell } = tooltip_hover}
+      {@const context = build_cell_context(pos.x_idx, pos.y_idx)}
       {@const { value, x_item, y_item } = context}
       {@const value_str =
         value == null ? `` : typeof value === `number` ? format_num(value) : String(value)}

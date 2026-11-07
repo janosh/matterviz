@@ -1440,6 +1440,14 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.pagination`)).toBeNull()
     })
 
+    // a default page size missing from page_sizes showed as the first option instead
+    it(`lists the current page size among page_sizes`, () => {
+      mount_sample({ data: large_data, pagination: { page_sizes: [10, 50] } })
+      const select = doc_query<HTMLSelectElement>(`.page-size-select`)
+      expect([...select.options].map((option) => option.value)).toEqual([`10`, `25`, `50`])
+      expect(select.value).toBe(`25`)
+    })
+
     it.each([`parent`, `select`])(`applies page-size changes from %s`, async (origin) => {
       const on_page_size_change = vi.fn()
       const state = $state({
@@ -1549,6 +1557,14 @@ describe(`HeatmapTable`, () => {
       )
     })
 
+    // one object listed twice was a duplicate each-block key, which crashed the table
+    it(`renders and sorts a row object listed more than once`, async () => {
+      const shared = { Name: `B`, Value: 2 }
+      mount_table({ data: [shared, { Name: `A`, Value: 1 }, shared] })
+      await click(document.querySelectorAll<HTMLElement>(`th`)[1])
+      expect(col_values(`Name`)).toEqual([`B`, `B`, `A`])
+    })
+
     // Two columns share the label `Value`: the header click must sort by its own group
     it(`correctly matches grouped columns for sorting`, async () => {
       const grouped_columns: Column[] = [
@@ -1612,8 +1628,13 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Mass`).at(-1)).toBe(`55.9`)
     })
 
-    // Right-aligned digits are what make a column scannable; text and dates stay left.
+    // Right-aligned digits are what make a column scannable; text and dates stay left. Every
+    // row is scanned: sampling the leading 50 right-aligned Late, whose only text is row 60's.
     it(`right-aligns only all-numeric columns`, () => {
+      const late_rows = Array.from({ length: 58 }, (_, idx) => ({
+        Name: `row-${idx}`,
+        Late: idx === 57 ? `unknown` : idx,
+      }))
       mount_table({
         data: [
           { Name: `A`, Mass: 55.85, Mixed: 1, When: `2026-06-21`, Marked: `<b>1.5</b>` },
@@ -1624,8 +1645,9 @@ describe(`HeatmapTable`, () => {
             When: `2026-06-22`,
             Marked: `<b data-sort-value="2.5">2.5 eV</b>`,
           },
+          ...late_rows,
         ],
-        columns: plain_columns(`Name`, `Mass`, `Mixed`, `When`, `Marked`),
+        columns: plain_columns(`Name`, `Mass`, `Mixed`, `When`, `Marked`, `Late`),
       })
       // Text, mixed columns and dates stay left; numeric markup aligns with numbers.
       for (const selector of [`tbody tr:first-child td`, `thead th`]) {
@@ -1633,23 +1655,8 @@ describe(`HeatmapTable`, () => {
           [...document.querySelectorAll(selector)].map((cell) =>
             cell.classList.contains(`numeric-col`),
           ),
-        ).toEqual([false, true, false, false, true])
+        ).toEqual([false, true, false, false, true, false])
       }
-    })
-
-    // A sampled scan of the leading rows would right-align this column and offer it a
-    // range filter, then render text in it.
-    it(`disqualifies a column whose only text value is past the first 50 rows`, () => {
-      mount_table({
-        data: Array.from({ length: 60 }, (_, idx) => ({
-          Name: `row-${idx}`,
-          Mass: idx === 59 ? `unknown` : idx,
-        })),
-        columns: plain_columns(`Name`, `Mass`),
-      })
-      expect(
-        document.querySelector(`td[data-col="Mass"]`)?.classList.contains(`numeric-col`),
-      ).toBe(false)
     })
 
     // aria-grabbed follows the drag state reactively rather than being poked onto the DOM

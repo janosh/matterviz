@@ -119,13 +119,17 @@ export const viewer_keydown =
   }
 
 // Plain-key shortcuts of one viewer (see viewer_keydown). Chords stay the browser's (Cmd/Ctrl+R
-// reloads), typing and autorepeat are ignored. Keys are matched lowercased for letters and by
-// `event.key` otherwise (`Escape`, `+`). An action returning false had nothing to do, which
-// leaves the key to the host.
+// reloads), typing and autorepeat are ignored. Keys are matched lowercased for letters (so Caps
+// Lock still works) and by `event.key` otherwise (`Escape`, `+`). Shift+letter is a different
+// shortcut (Shift+V, Shift+A), never the plain letter's. An action returning false had nothing
+// to do, which leaves the key to the host.
 export const viewer_keys = (bindings: () => Partial<Record<string, () => unknown>>) =>
   viewer_keydown((event) => {
     if (event.repeat || is_modifier_chord(event) || is_editable_event_target(event.target))
       return false
-    const action = bindings()[event.key.length === 1 ? event.key.toLowerCase() : event.key]
+    const { key, shiftKey } = event
+    const letter = key.length === 1 && key.toLowerCase() !== key.toUpperCase()
+    if (letter && shiftKey) return false
+    const action = bindings()[letter ? key.toLowerCase() : key]
     return action !== undefined && action() !== false
   })

@@ -758,9 +758,9 @@ test.each([
   { values: [5, 5, 5, 5], expected: 0, desc: `constant values` },
   { values: [10, 20], expected: 1 / 3, desc: `simple case` }, // std=5, mean=15, CoV=5/15=1/3
   { values: [1, 2, 3, 4, 5], expected: Math.sqrt(2) / 3, desc: `sequential values` }, // std=sqrt(2), mean=3
-  { values: [-2, -1, 0, 1, 2], expected: Math.sqrt(2), desc: `zero mean returns std` }, // returns sqrt(variance)
-  // mean=2e-11 < 1e-10, returns sqrt(variance)
-  { values: [1e-11, 2e-11, 3e-11], expected: Math.sqrt(2 / 3) * 1e-11, desc: `near-zero mean` },
+  { values: [-2, -1, 0, 1, 2], expected: Infinity, desc: `zero mean varying` },
+  // scale-free: the same spread as [1, 2, 3], not its bare std of 8e-12
+  { values: [1e-11, 2e-11, 3e-11], expected: Math.sqrt(2 / 3) / 2, desc: `tiny values` },
   // std=sqrt(20000/3), mean=200
   { values: [100, 200, 300], expected: Math.sqrt(20000 / 3) / 200, desc: `large values` },
 ])(`$desc: get_coefficient_of_variation($values) = $expected`, ({ values, expected }) => {
@@ -1256,7 +1256,7 @@ test.each([
 )
 
 // oxfmt-ignore
-test.each([
+test.each(([
   [`rectangle`, [[0, 0], [4, 0], [4, 2], [0, 2]], [2, 1]],
   // zero signed area, so the shoelace formula falls back to the vertex average
   [`degenerate collinear polygon`, [[0, 0], [1, 0], [2, 0]], [1, 0]],
@@ -1264,11 +1264,17 @@ test.each([
   [`single vertex`, [[5, 10]], [5, 10]],
   [`two vertices`, [[0, 0], [10, 10]], [5, 5]],
   [`empty polygon (must not throw)`, [], [0, 0]],
-] as [string, Vec2[], Vec2][])(`polygon_centroid: %s`, (_name, vertices, expected) => {
-  expect(math.polygon_centroid(vertices)).toEqual(
-    expected.map((val) => expect.closeTo(val, 6)),
-  )
-})
+  // the collinear (1, 0) pulls the vertex average to y = 0.8
+  [`pentagon with a collinear vertex`, [[0, 0], [1, 0], [2, 0], [2, 2], [0, 2]], [1, 1]],
+] as [string, Vec2[], Vec2][]).flatMap(([name, ...row]) => [1, 1e-6].map((scale) => [name, scale, ...row] as const)))(
+  `polygon_centroid: %s at scale %s`,
+  (_name, scale, vertices, expected) => {
+    const scaled = vertices.map(([x_val, y_val]): Vec2 => [x_val * scale, y_val * scale])
+    expect(math.polygon_centroid(scaled)).toEqual(
+      expected.map((val) => expect.closeTo(val * scale, 6 - Math.log10(scale))),
+    )
+  },
+)
 
 describe(`polygon_signed_area and polygon_label_point`, () => {
   const square = (x_min: number, y_min: number, size: number): Vec2[] => [

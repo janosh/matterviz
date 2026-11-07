@@ -249,11 +249,13 @@ const structure_energy = (structure: AnyStructure, filename: string): number =>
 
 // Assemble whatever was dropped into named reaction paths. Reaction-path JSON and
 // multi-frame XYZ each contribute their own path(s); loose structure files are collected
-// into one path in drop order. Recoverable parser issues go to parse_warn.
+// into one path, in natural filename order when every name carries an index (`image_2`
+// before `image_10`, whatever order the OS hands them over in), else in drop order.
+// Recoverable parser issues go to parse_warn.
 export function parse_dropped_paths(files: DroppedFile[]): Record<string, ReactionPath> {
   if (files.length === 0) throw new Error(`parse_dropped_paths got no files`)
   const paths: Record<string, ReactionPath> = {}
-  const loose: NebImage[] = []
+  const loose: { filename: string; image: NebImage }[] = []
   // a shared key (e.g. two files with the same JSON `label`) would silently drop a path
   const add_path = (key: string, path: ReactionPath, source: string): void => {
     if (Object.hasOwn(paths, key))
@@ -275,19 +277,27 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
     }
     const structure = parse_structure_file(content, filename)
     loose.push({
-      structure,
-      // trimmed, else a leading blank line pushes the comment out of index 1 and the energy
-      // reads as missing
-      energy: is_xyz(filename)
-        ? xyz_comment_energy(content.trim().split(/\r?\n/)[1] ?? ``, filename)
-        : structure_energy(structure, filename),
-      label: filename,
-      ...site_forces(structure),
+      filename,
+      image: {
+        structure,
+        // trimmed, else a leading blank line pushes the comment out of index 1 and the energy
+        // reads as missing
+        energy: is_xyz(filename)
+          ? xyz_comment_energy(content.trim().split(/\r?\n/)[1] ?? ``, filename)
+          : structure_energy(structure, filename),
+        label: filename,
+        ...site_forces(structure),
+      },
     })
   }
 
   if (loose.length > 0) {
-    const path: ReactionPath = { images: loose, label: `dropped images` }
+    if (loose.every(({ filename }) => /\d/.test(filename))) {
+      const { compare } = new Intl.Collator(undefined, { numeric: true })
+      loose.sort((file_a, file_b) => compare(file_a.filename, file_b.filename))
+    }
+    const images = loose.map(({ image }) => image)
+    const path: ReactionPath = { images, label: `dropped images` }
     assert_path(path, `dropped structure files`)
     add_path(`dropped images`, path, `dropped structure files`)
   }

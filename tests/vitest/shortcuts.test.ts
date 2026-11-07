@@ -86,6 +86,8 @@ describe(`viewer_keys`, () => {
     [`hovered plain key`, `x`, {}, `hover`, true],
     [`focused plain key`, `x`, {}, `focus`, true],
     [`uppercase letter`, `X`, {}, `hover`, true],
+    [`Shift+letter`, `X`, { shiftKey: true }, `hover`, false],
+    [`Shift+letter under Caps Lock`, `x`, { shiftKey: true }, `hover`, false],
     [`unhovered viewer`, `x`, {}, `none`, false],
     [`Ctrl chord`, `x`, { ctrlKey: true }, `hover`, false],
     [`autorepeat`, `x`, { repeat: true }, `hover`, false],

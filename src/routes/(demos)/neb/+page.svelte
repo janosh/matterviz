@@ -49,7 +49,8 @@
     <code>ase.io.write("neb.xyz", images)</code>, or loose single-structure files onto the
     viewer above. Extended XYZ uses <code>energy=</code> and
     <code>Properties=...:forces:...</code>; loose structures are assembled into one path in
-    drop order and each requires a numeric <code>properties.energy</code>.
+    natural filename order (drop order when names carry no index) and each requires a numeric
+    <code>properties.energy</code>.
   </p>
   <div class="code-fence"><InputFormat /></div>
   <p>

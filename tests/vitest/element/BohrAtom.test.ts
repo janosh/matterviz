@@ -5,9 +5,10 @@ import { doc_query } from '../setup'
 
 describe(`BohrAtom`, () => {
   test.each([
-    [`H`, `Hydrogen`, [1]],
-    [`O`, `Oxygen`, [2, 6]],
-  ])(`renders %s with custom styles and properties`, (symbol, name, shells) => {
+    // nucleus_props accept strings, so r = `25` must not concatenate into the shell radii
+    [`H`, `Hydrogen`, [1], 25],
+    [`O`, `Oxygen`, [2, 6], `25`],
+  ])(`renders %s with custom styles and properties`, (symbol, name, shells, nucleus_r) => {
     mount(BohrAtom, {
       target: document.body,
       props: {
@@ -16,7 +17,7 @@ describe(`BohrAtom`, () => {
         shells,
         adapt_size: true,
         shell_width: 15,
-        nucleus_props: { r: 25, fill: `red` },
+        nucleus_props: { r: nucleus_r, fill: `red` },
         electron_props: { r: 4, fill: `green` },
         style: `width: 300px;`,
       },
@@ -34,6 +35,10 @@ describe(`BohrAtom`, () => {
 
     const electron = document.querySelectorAll(`.electron`)
     expect(electron).toHaveLength(shells.reduce((sum, count) => sum + count, 0))
+    const shell_radii = [...document.querySelectorAll(`g.shell > circle:not(.electron)`)]
+    expect(shell_radii.map((circle) => circle.getAttribute(`r`))).toEqual(
+      shells.map((_count, idx) => String(25 + (idx + 1) * 15)),
+    )
     expect(svg.getAttribute(`aria-label`)).toBe(name)
   })
 

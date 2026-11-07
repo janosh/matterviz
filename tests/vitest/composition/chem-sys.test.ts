@@ -27,7 +27,7 @@ describe(`chem_sys_sunburst_data`, () => {
     expect(data[0].children?.map((node) => [node.label, node.value])).toEqual([[`Fe-O`, 6]])
   })
 
-  test(`skips invalid entries with a single warning`, () => {
+  test(`skips invalid entries with a single warning, returns [] for no entries`, () => {
     const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
     const data = chem_sys_sunburst_data([`Fe-O`, `Xx-Yy`, `not a formula!`, ``, `Fe0`])
     expect(data).toHaveLength(1)
@@ -36,9 +36,6 @@ describe(`chem_sys_sunburst_data`, () => {
       expect.stringMatching(/skipped 4 invalid entries/),
     )
     warn.mockRestore()
-  })
-
-  test(`returns empty array for empty input`, () => {
     expect(chem_sys_sunburst_data([])).toEqual([])
   })
 })

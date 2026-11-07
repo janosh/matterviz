@@ -721,10 +721,14 @@
   let total_pages = $derived(Math.max(1, Math.ceil(sorted_data.length / page_size)))
   let page = $derived(Math.min(current_page, total_pages))
   // The size picker stays while some size (or the current one) splits the rows, so picking a
-  // size that fits them all can be undone; once every size fits, no pick would change anything
+  // size that fits them all can be undone; once every size fits, no pick would change anything.
+  // The current size is always an option: else the select showed a size the table didn't use.
   let page_sizes = $derived.by(() => {
     const sizes = pagination_config?.page_sizes
-    return sizes && sorted_data.length > Math.min(page_size, ...sizes) ? sizes : null
+    if (!sizes || sorted_data.length <= Math.min(page_size, ...sizes)) return null
+    return sizes.includes(page_size)
+      ? sizes
+      : [...sizes, page_size].toSorted((size_a, size_b) => size_a - size_b)
   })
 
   let scroll_el = $state<HTMLDivElement>()
@@ -1375,6 +1379,12 @@
       ids.add(identifier)
     }
   })
+  // Rows render keyed by id, else by object identity. One object listed twice (rows built with
+  // Array(n).fill(row)) would be a duplicate key, which crashed the table: such data is keyed
+  // by position instead.
+  let has_repeated_rows = $derived(row_key === undefined && new Set(data).size < data.length)
+  const row_each_key = (row: Row, abs_idx: number): unknown =>
+    row_key !== undefined ? get_row_id(row) : has_repeated_rows ? abs_idx : row
   let selected_id_set = $derived(new Set(selected_ids))
   const is_row_selected = (row: Row): boolean => selected_id_set.has(get_row_id(row))
   // Shared by the animated and static row loops
@@ -2042,7 +2052,7 @@
         {#if display_rows.length === 0}
           <tr class="empty-row"><td colspan={body_colspan}>No data</td></tr>
         {:else if motion_duration(row_animation_ms) > 0 && !virtual_config}
-          {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
+          {#each display_rows as row, row_idx (row_each_key(row, display_range.start + row_idx))}
             {@const abs_idx = display_range.start + row_idx}
             <tr
               animate:flip={{ duration: row_animation_ms }}
@@ -2053,7 +2063,7 @@
             </tr>
           {/each}
         {:else}
-          {#each display_rows as row, row_idx (row_key !== undefined ? get_row_id(row) : row)}
+          {#each display_rows as row, row_idx (row_each_key(row, display_range.start + row_idx))}
             {@const abs_idx = display_range.start + row_idx}
             <tr {...row_attrs(row, abs_idx)} class:hovered={is_highlighted(row)}>
               {@render row_cells(row, abs_idx)}

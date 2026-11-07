@@ -207,6 +207,9 @@ describe.each<[string, Formatter, [string, string][]]>([
       // a leading coefficient scales the whole formula like a hydrate's (was ₂H₂O)
       [`2H2O`, `2H<sub>2</sub>O`],
       [`0.5Fe2O3`, `0.5Fe<sub>2</sub>O<sub>3</sub>`],
+      // a signed number after a plain word is an entry id, not a charge (was mp<sup>-1234</sup>)
+      [`mp-1234`, `mp-1234`],
+      [`Cl-2`, `Cl<sup>-2</sup>`],
     ],
   ],
   [

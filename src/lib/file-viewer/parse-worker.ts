@@ -16,16 +16,18 @@ const prepare_parse_result = (
   identifier: number,
   result: ParseResult,
 ): { response: ParseWorkerResponse; transfer: Transferable[] } => {
-  if (result.type !== `trajectory`)
-    return {
-      response: { id: identifier, result },
-      transfer:
-        result.type === `structure`
-          ? (result.prediction?.volumes ?? []).map(
-              ({ values }) => values.buffer as ArrayBuffer,
-            )
-          : [],
-    }
+  if (result.type !== `trajectory`) {
+    // Moved, not copied: a CHGCAR grid is tens of MB, which a copy holds twice until GC.
+    // A Set, since a buffer listed twice makes postMessage throw DataCloneError.
+    const volumes =
+      result.type === `isosurface`
+        ? result.data.volumes
+        : result.type === `structure`
+          ? (result.prediction?.volumes ?? [])
+          : []
+    const buffers = new Set(volumes.map(({ values }) => values.buffer as ArrayBuffer))
+    return { response: { id: identifier, result }, transfer: [...buffers] }
+  }
   const run = result.data
   const run_port = serve_run_over_port(run)
   return {

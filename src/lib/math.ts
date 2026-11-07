@@ -897,11 +897,14 @@ export function median(values: readonly number[]): number {
   return quantile_unordered([...values], 0.5)
 }
 
+// Population std / |mean|, scale-free (Infinity for a varying zero-mean series): a bare-std
+// fallback under |mean| 1e-10 scored [1e-11, 2e-11, 3e-11] 8e-12, hiding it as constant
 export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0
   const avg = mean(values)
   const variance = values.reduce((sum, val) => sum + (val - avg) ** 2, 0) / values.length
-  return Math.abs(avg) > 1e-10 ? Math.sqrt(variance) / Math.abs(avg) : Math.sqrt(variance)
+  if (variance === 0) return 0
+  return Math.sqrt(variance) / Math.abs(avg)
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)
@@ -1375,7 +1378,8 @@ export function compute_bounding_box_2d(vertices: readonly Vec2[]): {
 }
 
 // Calculate true geometric centroid of a polygon using shoelace formula
-// Falls back to vertex average for degenerate cases (< 3 vertices or zero area)
+// Falls back to vertex average for < 3 vertices or zero area relative to the bounding box
+// (an absolute cutoff called every polygon under 1e-5 wide degenerate)
 export function polygon_centroid(vertices: readonly Vec2[]): Vec2 {
   if (vertices.length === 0) return [0, 0]
   const vertex_average = (): Vec2 => [
@@ -1384,7 +1388,8 @@ export function polygon_centroid(vertices: readonly Vec2[]): Vec2 {
   ]
   if (vertices.length < 3) return vertex_average()
   const signed_area = polygon_signed_area(vertices)
-  if (Math.abs(signed_area) < EPS) return vertex_average()
+  const { width, height } = compute_bounding_box_2d(vertices)
+  if (Math.abs(signed_area) <= EPS * width * height) return vertex_average()
 
   let [center_x, center_y] = [0, 0]
   for (let idx = 0; idx < vertices.length; idx++) {

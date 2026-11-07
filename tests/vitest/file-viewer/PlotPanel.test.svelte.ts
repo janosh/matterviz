@@ -54,3 +54,20 @@ test(`row-based table tolerates non-object rows past the sampled first two`, () 
     `45`,
   ])
 })
+
+test.each([`scatter`, `histogram`])(
+  `switching bar to %s moves the string x axis to a numeric column`,
+  (plot_type) => {
+    // the bar chart's x_name stayed mapped, so the scatter/histogram plotted nothing
+    mount(PlotPanel, {
+      target: document.body,
+      props: { data: rows(`x`), initial_type: `bar` },
+    })
+    flushSync()
+    const select = doc_query<HTMLSelectElement>(`.toolbar > select[aria-label='Plot type']`)
+    select.value = plot_type
+    select.dispatchEvent(new Event(`change`))
+    flushSync()
+    expect(doc_query<HTMLSelectElement>(`.toolbar label select`).value).toBe(`x_b`)
+  },
+)

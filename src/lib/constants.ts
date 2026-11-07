@@ -129,8 +129,9 @@ export const filename_token_regex = (filenames: readonly string[]): RegExp =>
     `i`,
   )
 
-// File extensions for different file types
-export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.xtc`, `.lammpstrj`])
+// File extensions for different file types. No `.xtc`: nothing decodes it, so claiming it
+// only auto-opened a viewer that failed with `Binary format not supported`
+export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.lammpstrj`])
 export const TRAJ_EXTENSIONS_REGEX = ext_regex(TRAJ_EXTENSIONS)
 // oxfmt-ignore
 export const STRUCTURE_EXTENSIONS = Object.freeze([
@@ -177,7 +178,7 @@ export const FERMI_FILE_EXTENSIONS = Object.freeze([`.bxsf`, `.frmsf`])
 // and with each other. Listed without a leading dot, the form hosts want.
 
 // Formats a UTF-8 decode can hand straight to a parser.
-// .lammpstrj is the one text member of TRAJ_EXTENSIONS; .traj and .xtc are binary.
+// .lammpstrj is the one text member of TRAJ_EXTENSIONS; .traj is binary.
 export const TEXT_VIEWER_EXTENSIONS = Object.freeze(
   [...STRUCTURE_EXTENSIONS, ...XYZ_EXTENSIONS, `.lammpstrj`, ...FERMI_FILE_EXTENSIONS].map(
     (ext) => ext.slice(1),

@@ -483,7 +483,12 @@ describe(`hide_empty`, () => {
   test.each([`compact`, `gaps`, false] as const)(
     `mode=%s filters rows and columns`,
     (hide_empty) => {
-      mount_matrix({ ...sparse, hide_empty })
+      mount_matrix({
+        ...sparse,
+        hide_empty,
+        show_row_summaries: true,
+        show_col_summaries: true,
+      })
       expect(get_x_labels().map((label) => label.textContent?.trim())).toEqual(
         hide_empty ? [`A`, `C`] : [`A`, `B`, `C`],
       )
@@ -494,8 +499,10 @@ describe(`hide_empty`, () => {
       expect(cells).toHaveLength(hide_empty ? 4 : 9)
       if (hide_empty === `gaps`) {
         const grid = doc_query(`.grid`)
-        expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`3`)
-        expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`3`)
+        // a track per item plus the summary track (summaries sat in the 0-width label track)
+        expect(grid.style.getPropertyValue(`--n-cols`)).toBe(`4`)
+        expect(grid.style.getPropertyValue(`--n-rows`)).toBe(`4`)
+        expect(doc_query(`.summary-row`).style.gridColumn).toBe(`5`)
         // Gaps retain the ordered A/X and C/Z tracks despite missing B/Y.
         expect(cell_track(cells[0])).toEqual([2, 2])
         expect(cell_track(cells[3])).toEqual([4, 4])
@@ -772,7 +779,17 @@ describe(`milestone feature props`, () => {
     vi.stubGlobal(`innerHeight`, 300)
     onTestFinished(() => void vi.unstubAllGlobals())
     vi.spyOn(HTMLElement.prototype, `offsetHeight`, `get`).mockReturnValue(20)
-    mount_matrix({ x: [`A`, `Longer label`], y: [`X`], values: [[1, 2]] })
+    const values = fromStore(writable([[1, 2]]))
+    mount(HeatmapMatrix, {
+      target: document.body,
+      props: {
+        x_items: make_items([`A`, `Longer label`]),
+        y_items: make_items([`X`]),
+        get values() {
+          return values.current
+        },
+      },
+    })
     await Promise.resolve()
     const [top_cell, bottom_cell] = get_data_cells()
     top_cell.getBoundingClientRect = () => new DOMRect(40, 10, 20, 20)
@@ -787,6 +804,10 @@ describe(`milestone feature props`, () => {
       expect(tooltip_el.textContent?.trim()).toBe(text)
       expect([tooltip_el.style.left, tooltip_el.style.top]).toEqual([`50px`, top])
     }
+    // an open tooltip shows new values (it kept the hover-time snapshot)
+    values.current = [[1, 5]]
+    flushSync()
+    expect(doc_query(`.plot-tooltip`).textContent?.trim()).toBe(`Longer label - X: 5`)
   })
 
   // tooltip, color bar and controls toggle default on like the charts; false/null opt out

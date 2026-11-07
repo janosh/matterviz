@@ -37,7 +37,7 @@
     const { plot_type: suggested } = suggestion
     return initial_type ?? suggested
   })
-  let mapping = $derived(suggestion.mapping)
+  let chosen_mapping = $derived(suggestion.mapping)
   // Pinch-to-zoom level (trackpad pinch fires wheel events with ctrlKey=true); reading
   // `suggestion` only re-derives it, resetting the zoom whenever new columns arrive
   let zoom_level = $derived.by(() => {
@@ -49,6 +49,13 @@
   let string_keys = $derived(col_keys(columns, `string`))
   // X options: numeric for scatter/histogram, numeric + string for bar
   let x_keys = $derived(plot_type === `bar` ? [...string_keys, ...numeric_keys] : numeric_keys)
+  // A bar chart's string x can't feed a scatter or histogram: after a type switch it plotted
+  // nothing, so x moves to the first numeric column y doesn't use
+  let mapping = $derived(
+    chosen_mapping.x === undefined || x_keys.includes(chosen_mapping.x)
+      ? chosen_mapping
+      : { ...chosen_mapping, x: numeric_keys.find((key) => key !== chosen_mapping.y) },
+  )
 
   let scatter_series = $derived(
     plot_type === `scatter` ? [build_scatter_series(columns, mapping)] : [],
@@ -139,7 +146,9 @@
         <label>
           {label}
           <select
-            bind:value={() => mapping[axis], (key) => (mapping = { ...mapping, [axis]: key })}
+            bind:value={
+              () => mapping[axis], (key) => (chosen_mapping = { ...mapping, [axis]: key })
+            }
           >
             <option value={undefined}>--</option>
             {#each keys as key (key)}

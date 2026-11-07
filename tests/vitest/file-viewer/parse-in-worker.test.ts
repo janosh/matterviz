@@ -789,6 +789,17 @@ describe(`parse worker handler`, () => {
     )
   })
 
+  it(`transfers a parsed volumetric grid instead of copying it`, async () => {
+    // isosurface grids (tens of MB for a CHGCAR) were cloned, not moved
+    const cube = [`comment`, `comment`, `1 0 0 0`, `2 1 0 0`, `2 0 1 0`, `2 0 0 1`]
+    const content = [...cube, `1 0 0 0 0`, `1 2 3 4 5 6 7 8`].join(`\n`)
+    const request = { id: 9, filename: `rho.cube`, is_base64: false, content }
+    const { response, transfer } = await handle_parse_worker_request(request)
+    if (response.result?.type !== `isosurface`) throw new Error(`Expected isosurface result`)
+    expect(transfer).toEqual(response.result.data.volumes.map(({ values }) => values.buffer))
+    expect(transfer).toHaveLength(1)
+  })
+
   it(`keeps a parsed trajectory behind a transferred run port`, async () => {
     const { response, transfer } = await handle_parse_worker_request({
       id: 7,

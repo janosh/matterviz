@@ -452,10 +452,13 @@ describe(`slab geometry`, () => {
     expect(make_slab(charged, [1, 1, 1]).charge).toBeUndefined()
   })
 
-  test(`termination_idx out of range throws with the available count`, () => {
-    expect(() => make_slab(fcc(), [1, 1, 1], { termination_idx: 5 })).toThrow(
-      /termination_idx 5 is out of range/,
-    )
+  test.each([
+    [{ termination_idx: 5 }, /termination_idx 5 is out of range/],
+    [{ min_slab_thickness: -1 }, /min_slab_thickness must be a non-negative/],
+    [{ layer_tolerance: Number.NaN }, /layer_tolerance must be a non-negative.*got NaN/],
+    [{ layer_tolerance: -0.1 }, /layer_tolerance must be a non-negative.*got -0.1/],
+  ])(`invalid option %o throws`, (options, pattern) => {
+    expect(() => make_slab(fcc(), [1, 1, 1], options)).toThrow(pattern)
   })
 
   test(`slab sites carry no viewer provenance and the slab carries no bonds`, () => {

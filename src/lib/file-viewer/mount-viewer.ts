@@ -120,10 +120,17 @@ export function mount_viewer(
     return mount_spectral(target, { bands, dos }, VIEWER_COMMON_PROPS)
   }
   if (type === `brillouin_zone`) {
-    const record = data as Record<string, unknown>
-    const bz_props: Record<string, unknown> = { ...no_file_drop }
-    if (record.structure) bz_props.structure = record.structure
-    if (record.vertices && record.faces) bz_props.bz_data = data
+    const { structure, k_lattice, reciprocal_lattice, bz_order, vertices, faces } =
+      data as Record<string, unknown>
+    // detect_view_type accepts a bare {k_lattice | reciprocal_lattice, ...} document, which
+    // without its lattice handed over showed the empty "Drop Structure File" state
+    const bz_props: Record<string, unknown> = {
+      ...no_file_drop,
+      structure,
+      k_lattice: k_lattice ?? reciprocal_lattice,
+      ...(typeof bz_order === `number` && { bz_order }),
+    }
+    if (vertices && faces) bz_props.bz_data = data
     return mount(BrillouinZone, { target, props: bz_props })
   }
   if (type === `xrd`) {

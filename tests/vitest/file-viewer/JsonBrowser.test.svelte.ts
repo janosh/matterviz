@@ -1,5 +1,6 @@
 import JsonBrowser from '#lib/file-viewer/JsonBrowser.svelte'
 import { mount_viewer } from '#lib/file-viewer/mount-viewer.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { flushSync, mount, unmount } from 'svelte'
 import type * as SvelteModule from 'svelte'
 import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
@@ -376,4 +377,20 @@ test(`a structure panel shows its conversion warnings`, async () => {
   await vi.waitFor(() =>
     expect(doc_query(`.parse-warnings`).textContent).toMatch(/1 parse warning: Singular/),
   )
+})
+
+// A bare lattice document mounted BrillouinZone without its lattice ("Drop Structure File")
+test.each([`k_lattice`, `reciprocal_lattice`])(`a bare %s renders its zone`, (key) => {
+  const data = {
+    [key]: [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    k_path: [],
+  }
+  const app = mount_viewer(document.body, `brillouin_zone`, data, { defaults: DEFAULTS })
+  onTestFinished(() => unmount(app))
+  flushSync()
+  expect(document.body.textContent).not.toContain(`Drop Structure File`)
 })
