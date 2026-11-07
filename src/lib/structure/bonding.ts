@@ -1641,10 +1641,11 @@ export function get_bond_data(
   }
   // Perceived bonds stay packed: materializing 285k records cost ~17 ms per search, and most
   // consumers (rendering, polyhedra, image completion) read the columns
+  const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
   const bonds =
     strategy === `electroneg_ratio`
       ? electroneg_ratio_frame(structure, options)
-      : explicit_only(structure)
+      : strategy_fn(structure, options)
   cache_prepared_bonds(structure, strategy, options, bonds)
   return bonds
 }

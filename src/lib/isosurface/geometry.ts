@@ -1,7 +1,6 @@
 // Isosurface geometry extraction shared by the main-thread fallback and geometry-worker.ts:
-// marching cubes for every requested isovalue on each volume's prepared finite grid. Grids are
-// prepared (prepare_geometry_grid) by the caller on the main thread, so a worker receives at
-// most MAX_GRID_POINTS values instead of a structured clone of the whole source volume.
+// marching cubes for every requested isovalue on each volume's finite grid, prepared by the
+// caller (prepare_geometry_grid) so a worker receives at most MAX_GRID_POINTS values.
 import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { ScalarGrid3D } from './grid'

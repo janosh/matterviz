@@ -581,8 +581,7 @@ const cif_symbol_group = (raw_symbol = ``): ElementSymbol | undefined => {
 }
 
 // Memo for the per-row type symbol readers below: a file repeats a handful of symbols over
-// every atom row, and their regexes were a third of reading a 100k-row P1 CIF. Capped since
-// the keys come from the file.
+// every atom row (~15% of reading a 100k-row P1 CIF). Capped since the keys come from the file.
 const memo_by_symbol = <Value>(read: (raw_symbol: string) => Value) => {
   const cache = new Map<string, Value>()
   return (raw_symbol = ``): Value => {

@@ -164,6 +164,8 @@ test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
       [1280, 720, 1],
       [800, 600, 1],
     ])
+    // the capture lock is released whatever the outcome
+    await expect(canvas_to_png_blob(canvas, 72)).resolves.toBeInstanceOf(Blob)
   },
 )
 
@@ -468,6 +470,7 @@ describe(`canvas_to_png_blob`, () => {
       await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`${failure_stage} failed`)
       expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
       expect(canvas.toBlob).toHaveBeenCalledTimes(failure_stage === `toBlob` ? 1 : 0)
+      await expect(canvas_to_png_blob(canvas, 72)).resolves.toBeInstanceOf(Blob)
     },
   )
 

@@ -389,6 +389,46 @@ function wigner_seitz_planes(k_lattice: math.Matrix3x3): ZoneBounds {
   return bounds
 }
 
+// A clipped polygon's vertex: key (input index, or plane(edge end keys) of a cut), pos, attrs
+type ClipVertex = { key: string; pos: Vec3; attrs: number[] }
+
+// Sutherland-Hodgman: the part of a convex polygon inside one plane, cut points interpolated
+// linearly and keyed by plane and sorted edge ends, so neighbouring triangles share them
+function clip_polygon(
+  polygon: ClipVertex[],
+  { normal, dist }: ZonePlane,
+  plane_idx: number,
+  tol: number,
+): ClipVertex[] {
+  // scalar loop: runs per plane for every candidate shift of every straddling triangle
+  const offsets: number[] = []
+  let all_inside = true
+  for (const { pos } of polygon) {
+    const offset = pos[0] * normal[0] + pos[1] * normal[1] + pos[2] * normal[2] - dist
+    offsets.push(offset)
+    all_inside &&= offset <= tol
+  }
+  if (all_inside) return polygon
+  const clipped: ClipVertex[] = []
+  for (const [idx, current] of polygon.entries()) {
+    const next_idx = (idx + 1) % polygon.length
+    const [next, d_cur, d_next] = [polygon[next_idx], offsets[idx], offsets[next_idx]]
+    if (d_cur <= tol) clipped.push(current)
+    // a cut strictly between the ends (an end within tol of the plane is the cut itself)
+    if (d_cur <= tol !== d_next <= tol && Math.abs(d_cur) > tol && Math.abs(d_next) > tol) {
+      const frac = d_cur / (d_cur - d_next)
+      const lerp = (from: readonly number[], to: readonly number[]) =>
+        from.map((val, axis) => val + frac * (to[axis] - val))
+      const attrs = lerp(current.attrs, next.attrs)
+      const inv_normal_len = 1 / (Math.hypot(attrs[0], attrs[1], attrs[2]) || 1)
+      for (let axis = 0; axis < 3; axis++) attrs[axis] *= inv_normal_len
+      const key = `${plane_idx}(${[current.key, next.key].toSorted().join(`|`)})`
+      clipped.push({ key, pos: lerp(current.pos, next.pos) as Vec3, attrs })
+    }
+  }
+  return clipped
+}
+
 // Move a band-grid surface from the Γ-centred cell into the Wigner-Seitz zone to line up with
 // k-paths: each triangle shifts by the lattice vector G nearest its centroid (exact for sheared
 // bases too), and one still crossing a zone face is clipped there, each piece shifting by the
@@ -431,10 +471,21 @@ export function fold_to_wigner_seitz(
     out_indices[n_out_indices++] = idx_1
     out_indices[n_out_indices++] = idx_2
   }
+  const append = (pos: Vec3, attrs: number[]): number => {
+    out_positions.push(...pos)
+    out_normals.push(attrs[0], attrs[1], attrs[2])
+    for (const [prop_idx, { extra }] of props.entries()) extra.push(attrs[3 + prop_idx])
+    return n_vertices + out_positions.length / 3 - 1
+  }
   const vec_at = (arr: ArrayLike<number>, idx: number): Vec3 => [
     arr[3 * idx],
     arr[3 * idx + 1],
     arr[3 * idx + 2],
+  ]
+  // normal then properties; missing normals read as undefined, and out_normals is dropped then
+  const vertex_attrs = (idx: number) => [
+    ...vec_at(normals, idx),
+    ...props.map(({ values }) => values[idx]),
   ]
   // output index of each input vertex per shift id (−1 until emitted)
   const shifted_vertex: Int32Array[] = []
@@ -457,105 +508,7 @@ export function fold_to_wigner_seitz(
     }
     return out_ids[idx]
   }
-  // Clip polygons live in two typed buffers swapped per plane, each vertex [pos, normal,
-  // properties] (missing normals read as NaN, and out_normals is dropped then) under an id: the
-  // input index, or n_vertices + the cut id of (plane, edge-end ids), so neighbouring
-  // triangles share cut vertices
-  const stride = 6 + props.length
-  const max_poly = 3 + planes.length
-  let [poly, next_poly] = [0, 1].map(() => new Float64Array(max_poly * stride))
-  let [poly_ids, next_ids] = [0, 1].map(() => new Int32Array(max_poly))
-  const offsets = new Float64Array(max_poly)
-  const corner_attrs = new Float64Array(3 * stride)
-  const out_ids = new Uint32Array(max_poly)
-  const cut_ids = planes.map(() => new Map<number, number>()) // edge-end ids → cut vertex id
-  let n_cut_ids = 0
-  const cut_id_of = (plane_idx: number, id_a: number, id_b: number): number => {
-    const low = Math.min(id_a, id_b)
-    const high = Math.max(id_a, id_b)
-    if (high >= 2 ** 26) throw new Error(`fold_to_wigner_seitz: ${high} clip ids exceed 2^26`)
-    const key = low * 2 ** 26 + high
-    let cut_id = cut_ids[plane_idx].get(key)
-    if (cut_id === undefined) cut_ids[plane_idx].set(key, (cut_id = n_vertices + n_cut_ids++))
-    return cut_id
-  }
-  // Sutherland-Hodgman: the part of the convex polygon inside one zone face, cut points
-  // interpolated linearly with renormalised normals. Returns the new vertex count.
-  const clip_to_face = (n_poly: number, plane_idx: number): number => {
-    const at_face = 4 * plane_idx
-    const normal_x = faces[at_face]
-    const normal_y = faces[at_face + 1]
-    const normal_z = faces[at_face + 2]
-    const dist = faces[at_face + 3]
-    let all_inside = true
-    for (let vert = 0; vert < n_poly; vert++) {
-      const at = vert * stride
-      const offset =
-        poly[at] * normal_x + poly[at + 1] * normal_y + poly[at + 2] * normal_z - dist
-      offsets[vert] = offset
-      all_inside &&= offset <= tol
-    }
-    if (all_inside) return n_poly
-    let n_clipped = 0
-    for (let vert = 0; vert < n_poly; vert++) {
-      const next = vert + 1 === n_poly ? 0 : vert + 1
-      const d_cur = offsets[vert]
-      const d_next = offsets[next]
-      const at = vert * stride
-      const at_next = next * stride
-      if (d_cur <= tol) {
-        const at_out = n_clipped * stride
-        for (let comp = 0; comp < stride; comp++) next_poly[at_out + comp] = poly[at + comp]
-        next_ids[n_clipped++] = poly_ids[vert]
-      }
-      // a cut strictly between the ends (an end within tol of the plane is the cut itself)
-      if (d_cur <= tol !== d_next <= tol && Math.abs(d_cur) > tol && Math.abs(d_next) > tol) {
-        const frac = d_cur / (d_cur - d_next)
-        const at_out = n_clipped * stride
-        for (let comp = 0; comp < stride; comp++) {
-          const val = poly[at + comp]
-          next_poly[at_out + comp] = val + frac * (poly[at_next + comp] - val)
-        }
-        const normal_at = at_out + 3
-        const inv_normal_len =
-          1 /
-          (Math.hypot(
-            next_poly[normal_at],
-            next_poly[normal_at + 1],
-            next_poly[normal_at + 2],
-          ) || 1)
-        for (let axis = 0; axis < 3; axis++) next_poly[normal_at + axis] *= inv_normal_len
-        next_ids[n_clipped++] = cut_id_of(plane_idx, poly_ids[vert], poly_ids[next])
-      }
-    }
-    ;[poly, next_poly, poly_ids, next_ids] = [next_poly, poly, next_ids, poly_ids]
-    return n_clipped
-  }
-  const cut_vertex: Map<number, number>[] = [] // per shift id: cut vertex id → output index
-  const emit_cut = (vert: number, shift_id: number): number => {
-    cut_vertex[shift_id] ??= new Map()
-    const per_shift = cut_vertex[shift_id]
-    let out_idx = per_shift.get(poly_ids[vert])
-    if (out_idx === undefined) {
-      const at = vert * stride
-      out_positions.push(poly[at], poly[at + 1], poly[at + 2])
-      out_normals.push(poly[at + 3], poly[at + 4], poly[at + 5])
-      for (const [prop_idx, { extra }] of props.entries()) extra.push(poly[at + 6 + prop_idx])
-      out_idx = n_vertices + out_positions.length / 3 - 1
-      per_shift.set(poly_ids[vert], out_idx)
-    }
-    return out_idx
-  }
-  // |a - b| of polygon vertices, summed as math.euclidean_dist does (bit for bit)
-  const poly_dist = (vert_a: number, vert_b: number): number => {
-    const at_a = vert_a * stride
-    const at_b = vert_b * stride
-    const d_x = poly[at_a] - poly[at_b]
-    const d_y = poly[at_a + 1] - poly[at_b + 1]
-    const d_z = poly[at_a + 2] - poly[at_b + 2]
-    // oxlint-disable-next-line eslint-plugin-unicorn/prefer-modern-math-apis -- matches euclidean_dist bit for bit
-    return Math.sqrt(d_x * d_x + d_y * d_y + d_z * d_z)
-  }
+  const cut_vertex = new Map<string, number>() // `shift id|cut key` → output index
   // whether a point lies more than margin past a zone face; if so, worst_plane is the face it
   // is furthest past (points within the inradius skip the plane loop)
   let worst_plane = 0
@@ -575,11 +528,7 @@ export function fold_to_wigner_seitz(
   // minimum image and nothing needs clipping.
   const own_shift = new Int32Array(n_vertices).fill(-1)
   for (let idx = 0; idx < n_vertices; idx++) {
-    const [pos_x, pos_y, pos_z] = [
-      positions[3 * idx],
-      positions[3 * idx + 1],
-      positions[3 * idx + 2],
-    ]
+    const [pos_x, pos_y, pos_z] = vec_at(positions, idx)
     if (!past_face(pos_x, pos_y, pos_z, -2 * tol)) own_shift[idx] = zero_shift
     else {
       const shift_id = shift_id_of(planes[worst_plane].indices)
@@ -592,10 +541,6 @@ export function fold_to_wigner_seitz(
   // Clip candidates H, rebuilt whenever a triangle reaches further: a point within r of a
   // centroid inside the zone lies in the zone of some H with |H| ≤ 2·radius + r
   let [neighbors, max_reach] = [[] as { cart: Vec3; indices: Vec3 }[], -1]
-  const [centroid, image_out]: Vec3[] = [
-    [0, 0, 0],
-    [0, 0, 0],
-  ]
   for (let tri = 0; tri < indices.length; tri += 3) {
     const [idx_0, idx_1, idx_2] = [indices[tri], indices[tri + 1], indices[tri + 2]]
     const tri_shift = own_shift[idx_0]
@@ -607,61 +552,35 @@ export function fold_to_wigner_seitz(
     }
     const corner_ids = [idx_0, idx_1, idx_2]
     const [at_0, at_1, at_2] = [3 * idx_0, 3 * idx_1, 3 * idx_2]
-    for (let axis = 0; axis < 3; axis++) {
-      centroid[axis] =
-        (positions[at_0 + axis] + positions[at_1 + axis] + positions[at_2 + axis]) / 3
-    }
-    const centroid_len = Math.hypot(centroid[0], centroid[1], centroid[2])
+    const centroid = [0, 1, 2].map(
+      (axis) => (positions[at_0 + axis] + positions[at_1 + axis] + positions[at_2 + axis]) / 3,
+    ) as Vec3
     // a shared G ≠ 0 must also beat Γ by the 1e-6 tie margin below by more than rounding
-    if (shared) {
-      const [shift_x, shift_y, shift_z] = shift_carts[tri_shift]
-      const shifted_len = Math.hypot(
-        centroid[0] - shift_x,
-        centroid[1] - shift_y,
-        centroid[2] - shift_z,
+    if (
+      shared &&
+      Math.hypot(...centroid) -
+        Math.hypot(...math.subtract(centroid, shift_carts[tri_shift])) >
+        1e-6 + tol
+    ) {
+      push_triangle(
+        emit_original(idx_0, tri_shift),
+        emit_original(idx_1, tri_shift),
+        emit_original(idx_2, tri_shift),
       )
-      if (centroid_len - shifted_len > 1e-6 + tol) {
-        push_triangle(
-          emit_original(idx_0, tri_shift),
-          emit_original(idx_1, tri_shift),
-          emit_original(idx_2, tri_shift),
-        )
-        continue
-      }
+      continue
     }
-    const image = math.min_image_displacement_into(
-      zero,
-      centroid,
-      k_lattice,
-      converters,
-      [true, true, true],
-      image_out,
-    )
+    const image = math.min_image_displacement([0, 0, 0], centroid, k_lattice, converters)
     // ties stay at G = 0
     const base_shift: Vec3 =
-      Math.hypot(image[0], image[1], image[2]) >= centroid_len - 1e-6
+      Math.hypot(...image) >= Math.hypot(...centroid) - 1e-6
         ? zero
         : (converters.cart_to_frac(math.subtract(centroid, image)).map(Math.round) as Vec3)
     const base_id = shift_id_of(base_shift)
-    const [base_x, base_y, base_z] = shift_carts[base_id]
+    const base_cart = shift_carts[base_id]
+    const corner_pos = corner_ids.map((idx) => vec_at(positions, idx))
     if (
-      !past_face(
-        positions[at_0] - base_x,
-        positions[at_0 + 1] - base_y,
-        positions[at_0 + 2] - base_z,
-        tol,
-      ) &&
-      !past_face(
-        positions[at_1] - base_x,
-        positions[at_1 + 1] - base_y,
-        positions[at_1 + 2] - base_z,
-        tol,
-      ) &&
-      !past_face(
-        positions[at_2] - base_x,
-        positions[at_2 + 1] - base_y,
-        positions[at_2 + 2] - base_z,
-        tol,
+      !corner_pos.some(([pos_x, pos_y, pos_z]) =>
+        past_face(pos_x - base_cart[0], pos_y - base_cart[1], pos_z - base_cart[2], tol),
       )
     ) {
       push_triangle(
@@ -671,16 +590,11 @@ export function fold_to_wigner_seitz(
       )
       continue
     }
-    const base_cart = shift_carts[base_id]
-    const corner_pos = corner_ids.map((idx) => vec_at(positions, idx))
-    for (const [corner, idx] of corner_ids.entries()) {
-      const at = corner * stride
-      for (let axis = 0; axis < 3; axis++)
-        corner_attrs[at + 3 + axis] = normals[3 * idx + axis]
-      for (const [prop_idx, { values }] of props.entries()) {
-        corner_attrs[at + 6 + prop_idx] = values[idx]
-      }
-    }
+    const corners: ClipVertex[] = corner_ids.map((idx, corner) => ({
+      key: String(idx),
+      pos: corner_pos[corner],
+      attrs: vertex_attrs(idx),
+    }))
     const tri_radius = Math.max(...corner_pos.map((pos) => math.euclidean_dist(pos, centroid)))
     const reach = radius + tri_radius + tol
     if (reach + radius > max_reach) {
@@ -694,47 +608,35 @@ export function fold_to_wigner_seitz(
       const shift = math.add(base_shift, neighbor)
       const shift_cart = converters.frac_to_cart(shift)
       if (math.euclidean_dist(centroid, shift_cart) > reach) continue
-      for (const [corner, idx] of corner_ids.entries()) {
-        const at = corner * stride
-        for (let comp = 3; comp < stride; comp++) poly[at + comp] = corner_attrs[at + comp]
-        for (let axis = 0; axis < 3; axis++) {
-          poly[at + axis] = corner_pos[corner][axis] - shift_cart[axis]
-        }
-        poly_ids[corner] = idx
+      let polygon = corners.map((corner) => ({
+        ...corner,
+        pos: math.subtract(corner.pos, shift_cart),
+      }))
+      for (const [plane_idx, plane] of planes.entries()) {
+        polygon = clip_polygon(polygon, plane, plane_idx, tol)
+        if (polygon.length < 3) break
       }
-      let n_poly = 3
-      for (let plane_idx = 0; plane_idx < planes.length && n_poly >= 3; plane_idx++) {
-        n_poly = clip_to_face(n_poly, plane_idx)
-      }
-      if (n_poly < 3) continue
+      if (polygon.length < 3) continue
       const shift_id = shift_id_of(shift)
-      for (let vert = 0; vert < n_poly; vert++) {
-        const vert_id = poly_ids[vert]
-        out_ids[vert] =
-          vert_id < n_vertices ? emit_original(vert_id, shift_id) : emit_cut(vert, shift_id)
-      }
+      const ids = polygon.map(({ key, pos, attrs }) => {
+        if (!key.includes(`(`)) return emit_original(Number(key), shift_id)
+        const cut_key = `${shift_id}|${key}`
+        let out_idx = cut_vertex.get(cut_key)
+        if (out_idx === undefined) cut_vertex.set(cut_key, (out_idx = append(pos, attrs)))
+        return out_idx
+      })
       // fan triangulation keeps the winding; slivers (height ≤ tol, below Float32 resolution) drop
-      for (let fan = 1; fan + 1 < n_poly; fan++) {
-        const at_b = fan * stride
-        const at_c = at_b + stride
-        const ab_x = poly[at_b] - poly[0]
-        const ab_y = poly[at_b + 1] - poly[1]
-        const ab_z = poly[at_b + 2] - poly[2]
-        const ac_x = poly[at_c] - poly[0]
-        const ac_y = poly[at_c + 1] - poly[1]
-        const ac_z = poly[at_c + 2] - poly[2]
+      for (let fan = 1; fan + 1 < polygon.length; fan++) {
+        const [pos_a, pos_b, pos_c] = [polygon[0].pos, polygon[fan].pos, polygon[fan + 1].pos]
         const twice_area = Math.hypot(
-          ab_y * ac_z - ab_z * ac_y,
-          ab_z * ac_x - ab_x * ac_z,
-          ab_x * ac_y - ab_y * ac_x,
+          ...math.cross_3d(math.subtract(pos_b, pos_a), math.subtract(pos_c, pos_a)),
         )
         const longest = Math.max(
-          poly_dist(0, fan),
-          poly_dist(fan, fan + 1),
-          poly_dist(fan + 1, 0),
+          math.euclidean_dist(pos_a, pos_b),
+          math.euclidean_dist(pos_b, pos_c),
+          math.euclidean_dist(pos_c, pos_a),
         )
-        if (twice_area > tol * longest)
-          push_triangle(out_ids[0], out_ids[fan], out_ids[fan + 1])
+        if (twice_area > tol * longest) push_triangle(ids[0], ids[fan], ids[fan + 1])
       }
     }
   }

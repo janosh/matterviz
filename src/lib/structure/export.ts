@@ -135,7 +135,7 @@ export const poscar_export_unavailable_reason = (
   (structure && site_export_reason(structure, true))
 export const xyz_export_unavailable_reason = (structure?: AnyStructure): string | undefined =>
   coordinate_export_unavailable_reason(structure, false) ??
-  (structure && site_export_reason(structure, true))
+  (structure && (site_export_reason(structure, true) ?? xyz_column_clash(structure)))
 
 // Fractional coordinates from abc, else converted from xyz. Invalid present abc must not
 // silently switch the authoritative coordinate source or write NaN into the exported file.
@@ -170,8 +170,7 @@ const move_flag_columns = (site: Site): string[] => {
   return [0, 1, 2].map((axis) => (Array.isArray(flags) && flags[axis] === false ? `F` : `T`))
 }
 
-// Columns written by name elsewhere in the extXYZ header, or reserved by the format. Readers
-// match Properties names case-insensitively (and reject a repeat), so these are lowercase.
+// Columns written by name elsewhere in the extXYZ header, or reserved by the format
 const XYZ_RESERVED_PROPERTIES = new Set([
   `species`,
   `pos`,
@@ -185,9 +184,8 @@ const XYZ_RESERVED_PROPERTIES = new Set([
 // site (velocities, charges, magmoms, LAMMPS ids), so an export keeps the file's per-atom data
 function numeric_site_columns(structure: AnyStructure): { key: string; ncols: 1 | 3 }[] {
   const first = structure.sites[0]?.properties ?? {}
-  const taken = new Set(XYZ_RESERVED_PROPERTIES) // lowercased names, `Z` and `z` are one
   return Object.keys(first).flatMap((key) => {
-    if (taken.has(key.toLowerCase()) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return []
+    if (XYZ_RESERVED_PROPERTIES.has(key) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return []
     const ncols = typeof first[key] === `number` ? 1 : 3
     const fits = structure.sites.every(({ properties }) => {
       const value = properties?.[key]
@@ -195,10 +193,20 @@ function numeric_site_columns(structure: AnyStructure): { key: string; ncols: 1 
         ? typeof value === `number` && Number.isFinite(value)
         : Array.isArray(value) && math.is_finite_vec3_like(value)
     })
-    if (!fits) return []
-    taken.add(key.toLowerCase())
-    return [{ key, ncols }]
+    return fits ? [{ key, ncols }] : []
   })
+}
+
+// A written column the extXYZ readers would take for another: they match names
+// case-insensitively and reject a repeat, so `magmom` and `MAGMOM` make the file unreadable
+function xyz_column_clash(structure: AnyStructure): string | undefined {
+  const taken = new Set(XYZ_RESERVED_PROPERTIES)
+  for (const { key } of numeric_site_columns(structure)) {
+    if (taken.has(key.toLowerCase()))
+      return `Site property '${key}' clashes with another extXYZ column (names are case-insensitive); rename it`
+    taken.add(key.toLowerCase())
+  }
+  return undefined
 }
 
 // Bare words in an extXYZ comment are read as valueless flags, and an `=` or `"` inside one

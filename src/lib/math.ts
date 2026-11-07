@@ -903,8 +903,7 @@ export function get_coefficient_of_variation(values: number[]): number {
   if (values.length <= 1) return 0
   const avg = mean(values)
   const variance = values.reduce((sum, val) => sum + (val - avg) ** 2, 0) / values.length
-  if (variance === 0) return 0
-  return Math.sqrt(variance) / Math.abs(avg)
+  return variance === 0 ? 0 : Math.sqrt(variance) / Math.abs(avg)
 }
 
 // Compute 4x4 determinant (used for 4D barycentric coordinates)

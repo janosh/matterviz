@@ -251,8 +251,7 @@
 
   // Missing SvelteSet members subscribe to the whole set. Indexed state gives every
   // mark its own dependency, so moving between targets only updates their adjacency.
-  // has_active is state set here, not derived from `active`: every mark reads it, and a
-  // derived would mark all of them maybe-dirty (O(marks)) on every pointer move.
+  // has_active is state, not derived from `active`: a derived re-checks every mark per move
   const active_nodes = $state<boolean[]>([])
   const active_links = $state<boolean[]>([])
   let has_active = $state(false)

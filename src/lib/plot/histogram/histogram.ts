@@ -192,7 +192,7 @@ export function bin_values(
     if (!(val >= lower && val <= upper)) continue
     // The clamp covers val === hi (goes in the last bin), then a snap to the materialized
     // edges keeps a value sitting exactly on one in the upper bin even when fwd() rounds down
-    // (log10(1000) < 3). Clamped inline: a clamp() call per sample costs ~2x on 1e6 samples.
+    // (log10(1000) < 3). Clamped inline: clamp() calls make 1e6 samples ~1.8x slower.
     let bin_idx = Math.floor(((is_linear ? val : fwd(val)) - pos_lo) * scale)
     if (bin_idx > last_bin) bin_idx = last_bin
     else if (bin_idx < 0) bin_idx = 0

@@ -224,9 +224,8 @@ export function reactive_widget(
   for (const [key, value] of Object.entries(extra)) store(key, value)
   for (const spec of driven) store(spec.prop, value_of(spec))
 
-  // Re-apply one prop after a relevant trait changed. Data props compare by identity: their
-  // change event already means a new payload, and stringifying both sides of a 30k-site
-  // structure cost 10 ms per update.
+  // Re-apply one prop after a relevant trait changed. Data props compare by identity (their
+  // change event means a new payload; stringifying a 30k-site structure took 12 ms)
   const apply = (spec: DrivenProp): void => {
     const [value, prev] = [value_of(spec), values.get(spec.prop)]
     const changed = DATA_PROPS.has(spec.prop) ? prev !== value : !equal(prev, value)

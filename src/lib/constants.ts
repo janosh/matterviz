@@ -129,8 +129,7 @@ export const filename_token_regex = (filenames: readonly string[]): RegExp =>
     `i`,
   )
 
-// File extensions for different file types. No `.xtc`: nothing decodes it, so claiming it
-// only auto-opened a viewer that failed with `Binary format not supported`
+// File extensions for different file types (no .xtc: see the binary decoders note below)
 export const TRAJ_EXTENSIONS = Object.freeze([`.traj`, `.lammpstrj`])
 export const TRAJ_EXTENSIONS_REGEX = ext_regex(TRAJ_EXTENSIONS)
 // oxfmt-ignore

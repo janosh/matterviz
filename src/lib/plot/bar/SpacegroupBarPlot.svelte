@@ -76,9 +76,8 @@
   // annotation rows depend on pixel spacing, which the data alone can't tell us.
   let plot_width = $state(0)
   const observe_width = observe_size(({ width }) => (plot_width = width))
-  // Pixel extent of the spacegroup axis. Starts from the default frame padding, then
-  // user_content reports the frame's real (auto-padded) scale, so tick thinning and count
-  // label rows match what renders.
+  // Pixel extent of the spacegroup axis: estimated from the default padding until
+  // user_content reports the frame's real (auto-padded) scale
   let sg_axis_px = $derived<Vec2>([
     padding.l ?? DEFAULT_PLOT_PADDING.l,
     plot_width - (padding.r ?? DEFAULT_PLOT_PADDING.r),
@@ -140,8 +139,7 @@
   })
 
   const total_count = $derived(normalized_data.length)
-  // Calculate crystal system region boundaries using full theoretical ranges, with each
-  // system's count annotation and its estimated half width
+  // Crystal system bands over their full theoretical ranges, with count labels
   const crystal_system_regions = $derived(
     symmetry.CRYSTAL_SYSTEMS.map((system) => {
       const [sg_start, sg_end] = symmetry.CRYSTAL_SYSTEM_RANGES[system]
@@ -179,7 +177,7 @@
     return rows
   })
   const extra_count_rows = $derived(Math.max(0, ...count_label_rows.values()))
-  // Horizontal plots write the counts right of the plot area, which needs room for the widest
+  // horizontal plots write the counts in the right padding, which must fit the widest
   const count_label_gutter = $derived(
     orientation === `horizontal` && show_counts && total_count > 0
       ? COUNT_LABEL_GAP_PX +
@@ -324,7 +322,6 @@
       padding.t ?? 0,
       DEFAULT_PLOT_PADDING.t + (show_counts ? COUNT_LABEL_ROW_PX * extra_count_rows : 0),
     ),
-    // likewise a floor: the horizontal count labels sit in the right padding
     ...(count_label_gutter && {
       r: Math.max(padding.r ?? DEFAULT_PLOT_PADDING.r, count_label_gutter),
     }),

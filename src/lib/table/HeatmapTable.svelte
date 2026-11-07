@@ -1379,9 +1379,8 @@
       ids.add(identifier)
     }
   })
-  // Rows render keyed by id, else by object identity. One object listed twice (rows built with
-  // Array(n).fill(row)) would be a duplicate key, which crashed the table: such data is keyed
-  // by position instead.
+  // Rows render keyed by id, else by object identity, else (one object listed twice, a
+  // duplicate key that crashed the each block) by position
   let has_repeated_rows = $derived(row_key === undefined && new Set(data).size < data.length)
   const row_each_key = (row: Row, abs_idx: number): unknown =>
     row_key !== undefined ? get_row_id(row) : has_repeated_rows ? abs_idx : row

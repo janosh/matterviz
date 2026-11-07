@@ -157,16 +157,17 @@ describe(`dropped files`, () => {
   })
 
   // indexed names sort naturally (image_2 before image_10) whatever the drop order; names
-  // without indices keep the drop order
+  // without distinct indices keep the drop order
   test.each([
     [
       [`image_10`, `image_2`, `image_1`],
       [0.5, 0.3, 0.1],
     ],
-    [
+    ...[
       [`IS`, `TS`, `FS`],
-      [0.1, 0.3, 0.5],
-    ],
+      [`IS`, `01`, `FS`],
+      [`v2_is`, `v2_ts`, `v2_fs`],
+    ].map((names): [string[], number[]] => [names, [0.1, 0.3, 0.5]]),
   ])(`loose structure files %j are assembled into one ordered path`, (names, x_fracs) => {
     const energies: Record<number, number> = { 0.1: -10, 0.3: -9.2, 0.5: -9.7 }
     const paths = parse_dropped_paths(

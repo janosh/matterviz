@@ -1081,17 +1081,14 @@ test.each([
   },
 )
 
-test(`create_placed_tween re-places when a descendant is added after setup`, async () => {
-  let resize_callback: ResizeObserverCallback | undefined
+test(`create_placed_tween re-places and re-observes as descendants come and go`, async () => {
   const observed = new Set<Element>()
   onTestFinished(() => void vi.unstubAllGlobals())
   vi.stubGlobal(
     `ResizeObserver`,
     class {
-      constructor(callback: ResizeObserverCallback) {
-        resize_callback = callback
-      }
       observe = (target: Element): void => void observed.add(target)
+      unobserve = (target: Element): void => void observed.delete(target)
       disconnect(): void {}
     },
   )
@@ -1109,16 +1106,16 @@ test(`create_placed_tween re-places when a descendant is added after setup`, asy
   })
   flushSync()
   const tick_label = document.createElement(`span`)
-  decoration.append(tick_label)
-  await vi.waitFor(() => expect(observed).toContain(tick_label))
-  placement_x = 30
-  // its initial observation is a footprint change: the label was not there at placement
-  flushSync(() =>
-    resize_callback?.(
-      [{ target: tick_label } as unknown as ResizeObserverEntry],
-      {} as ResizeObserver,
-    ),
-  )
-  expect(placed_tween?.coords.target).toEqual({ x: 30, y: 0 })
+  // a label appearing or leaving (without resizing the wrapper) changes the footprint
+  for (const [x_pos, mutate, is_observed] of [
+    [30, () => decoration.append(tick_label), true],
+    [50, () => tick_label.remove(), false],
+  ] as const) {
+    placement_x = x_pos
+    mutate()
+    await vi.waitFor(() => expect(observed.has(tick_label)).toBe(is_observed))
+    flushSync()
+    expect(placed_tween?.coords.target).toEqual({ x: x_pos, y: 0 })
+  }
   dispose()
 })

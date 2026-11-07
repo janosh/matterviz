@@ -98,9 +98,8 @@
   const range_key = (vol: VolumetricData): string =>
     effective_range(vol)?.flat().join(`,`) ?? ``
 
-  // Prepared here rather than in the worker: posting the source volume structured-cloned all
-  // of it on the main thread (216 MB in ~70 ms at 300³) only for the worker to resample it to
-  // MAX_GRID_POINTS (~8 ms), which the worker now receives instead
+  // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
+  // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
   const prepared_grid = (vol: VolumetricData): PreparedGrid => {
     const key = range_key(vol)
     const cached = prepared_cache.get(vol)
@@ -205,15 +204,10 @@
 
   // One job per volume on its prepared grid
   const geometry_jobs = (pending: PendingSurface[]): GeometryInput[`volumes`] =>
-    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => {
-      const { grid, lattice, origin } = prepared_grid(vol)
-      return {
-        grid,
-        lattice,
-        origin,
-        surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
-      }
-    })
+    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
+      ...prepared_grid(vol),
+      surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
+    }))
 
   // Large grids go to the geometry worker; small ones are cheaper on the main thread than a
   // round trip

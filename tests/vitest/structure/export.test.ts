@@ -75,16 +75,16 @@ describe(`Export functionality`, () => {
 
     // Everything past `species x y z` used to vanish on export: no Properties= line was
     // written at all, so a re-read saw only positions. Readers match column names
-    // case-insensitively and reject a repeat, so of `magmom` and `MAGMOM` only the first is
-    // written (both made the file unreadable).
+    // case-insensitively and reject a repeat, so a case clash refuses the export.
     it.each([
       [`forces`, { force: [-0.125, 0.25, 0.5] }],
       [`selective dynamics`, { selective_dynamics: [true, false, true] }],
       [`both`, { force: [1, -2, 3], selective_dynamics: [false, false, false] }],
-      [`case-clashing names`, { magmom: 1.5, MAGMOM: 2, Force: [1, 2, 3] }, { magmom: 1.5 }],
-    ] as [string, Record<string, unknown>, Record<string, unknown>?][])(
+      [`clashing magmom`, { magmom: 1.5, MAGMOM: 2 }, `'MAGMOM' clashes`],
+      [`clashing Force`, { Force: [1, 2, 3] }, `'Force' clashes`],
+    ] as [string, Record<string, unknown>, string?][])(
       `round-trips %s through extended XYZ`,
-      (_name, properties, expected = properties) => {
+      (_name, properties, clash) => {
         const structure = {
           sites: [
             { ...make_site(`Si`), properties },
@@ -92,8 +92,13 @@ describe(`Export functionality`, () => {
           ],
           lattice: diag_lattice(2),
         } as AnyStructure
-        const reparsed = parse_xyz(structure_to_xyz_str(structure))
-        for (const site of reparsed.sites) expect(site.properties).toEqual(expected)
+        if (clash) {
+          expect(xyz_export_unavailable_reason(structure)).toContain(clash)
+          expect(() => structure_to_xyz_str(structure)).toThrow(clash)
+        } else {
+          const reparsed = parse_xyz(structure_to_xyz_str(structure))
+          for (const site of reparsed.sites) expect(site.properties).toEqual(properties)
+        }
       },
     )
 

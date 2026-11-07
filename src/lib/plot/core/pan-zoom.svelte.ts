@@ -206,8 +206,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
     evt.preventDefault()
     mark_wheel_panning()
-    // Firefox reports mouse wheels in lines (deltaMode 1), pages are deltaMode 2: scale both to
-    // pixels, else a notch there pans 3 px where Chrome pans 100
+    // scale line (Firefox, deltaMode 1) and page (2) deltas to pixels
     const { width, height } = opts.plot_bounds()
     const [x_unit, y_unit] =
       evt.deltaMode === 1 ? [16, 16] : evt.deltaMode === 2 ? [width, height] : [1, 1]

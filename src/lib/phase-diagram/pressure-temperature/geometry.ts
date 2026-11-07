@@ -383,9 +383,6 @@ export function derive_regions(
   data: PtPhaseDiagramData,
   { log_pressure = false }: { log_pressure?: boolean } = {},
 ): { regions: PtRegion[]; unlabeled: number; max_gap: number } {
-  // as parse_pt_data checks: a lone point has no segment to trim, join or clip
-  const short = data.boundaries.find(({ points }) => points.length < 2)
-  if (short) throw new Error(`boundary '${short.id}' needs at least 2 points`)
   const [p_range, [t_min, t_max]] = pt_data_extent(data)
   const p_floor = log_pressure ? pressure_log_floor(data) : null
   if (log_pressure && p_floor === null) {

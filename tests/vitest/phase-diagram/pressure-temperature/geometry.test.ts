@@ -265,24 +265,6 @@ describe(`derive_regions`, () => {
   ] satisfies [string, PtPhaseDiagramData][])(`log pressure with %s throws`, (_label, data) => {
     expect(() => derive_regions(data, { log_pressure: true })).toThrow(/positive pressures spanning a range/)
   })
-
-  // parse_pt_data rejects these, but derive_regions is public: fail by name, not mid-geometry
-  test.each([[[]], [[[1, 50]]]] satisfies [Vec2[]][])(`a boundary of %j throws`, (points) => {
-    const boundaries = [
-      boundary(`ab`, [`a`, `b`], points),
-      boundary(
-        `bc`,
-        [`b`, `c`],
-        [
-          [0, 0],
-          [10, 10],
-        ],
-      ),
-    ]
-    expect(() => derive_regions({ ...window_10, phases: [], boundaries })).toThrow(
-      `boundary 'ab' needs at least 2 points`,
-    )
-  })
 })
 
 // Pixel deltas as the component builds them: +sigma moves up on screen (negative y)

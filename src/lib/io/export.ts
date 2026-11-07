@@ -196,9 +196,8 @@ export async function canvas_to_png_blob(
   }
 }
 
-// Captures resize the shared drawing buffer and restore what they found: one starting while
-// another holds the export size would "restore" that, leaving the live viewer stuck at it.
-// So captures of one renderer take turns, in call order; the returned function ends a turn.
+// Captures of one renderer take turns: each restores the drawing buffer size it found, so one
+// starting mid-capture would "restore" the export size and leave the live viewer stuck at it
 const capture_queues = new WeakMap<WebGPURenderer, Promise<undefined>>()
 async function lock_capture(renderer: WebGPURenderer): Promise<() => void> {
   const previous = capture_queues.get(renderer)
@@ -525,13 +524,15 @@ function prepare_clone(
 const NUMBER_TOKEN = /url\([^)]*\)|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi
 const LONG_DECIMAL = /\.\d{3}|e-/i
 const round_decimals = (text: string): string =>
-  text.replaceAll(NUMBER_TOKEN, (match, offset: number) => {
-    if (match.startsWith(`url(`) || !LONG_DECIMAL.test(match)) return match
-    const rounded = String(Math.round(Number(match) * 100) / 100 || 0)
-    const merges_before = /[\d.]/.test(text[offset - 1] ?? ``) && /^\d/.test(rounded)
-    const merges_after = text[offset + match.length] === `.` && !rounded.includes(`.`)
-    return `${merges_before ? ` ` : ``}${rounded}${merges_after ? ` ` : ``}`
-  })
+  !LONG_DECIMAL.test(text)
+    ? text
+    : text.replaceAll(NUMBER_TOKEN, (match, offset: number) => {
+        if (match.startsWith(`url(`) || !LONG_DECIMAL.test(match)) return match
+        const rounded = String(Math.round(Number(match) * 100) / 100 || 0)
+        const merges_before = /[\d.]/.test(text[offset - 1] ?? ``) && /^\d/.test(rounded)
+        const merges_after = text[offset + match.length] === `.` && !rounded.includes(`.`)
+        return `${merges_before ? ` ` : ``}${rounded}${merges_after ? ` ` : ``}`
+      })
 // Markup the standalone file has no use for: interaction and test hooks and event routing.
 // Classes stay as layer names for editing the figure in vector tools, minus Svelte's
 // scoping hashes, which only meant something to the page stylesheet.

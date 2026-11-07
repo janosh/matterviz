@@ -368,9 +368,7 @@ describe(`Isosurface`, () => {
     expect(compute_geometries_async).toHaveBeenCalledOnce()
   })
 
-  // The prepared grid was filed under the range read after the worker await, so a halo change
-  // mid-job cached the old window under the new key and the rerun kept drawing it. Grids are
-  // prepared before posting, so the worker receives the window, never the source volume.
+  // the rerun posts the new (halo-widened) window, and the worker never receives the source volume
   test(`a range change during a worker job re-extracts the new window`, async () => {
     const pending = hold_worker_jobs()
     const props = mount_isosurface({ volumes: [big_volume()] })

@@ -88,21 +88,15 @@ function parse_lammps_box(
   }
 }
 
-// Only the final frame of a dump may be incomplete (the writer is still appending); the
-// same damage anywhere else is corruption and must not silently drop a frame.
-class TornLammpsFrameError extends Error {
-  constructor(message: string) {
+// A frame read_run drops with a warning instead of failing the dump: a torn final frame (the
+// writer is still appending; the same damage anywhere else is corruption), or with `torn`
+// false one whose coordinates LAMMPS printed as `nan`/`inf` after an MD blow-up (as XYZ skips)
+class SkippedLammpsFrameError extends Error {
+  torn: boolean
+  constructor(message: string, torn = true) {
     super(message)
-    this.name = 'TornLammpsFrameError'
-  }
-}
-// A frame whose coordinates LAMMPS printed as `nan`/`inf` (an MD run that blew up). It is
-// skipped with a warning, as the XYZ reader skips such frames: rejecting the whole dump hid
-// every frame written before the blow-up. A garbled coordinate is still corruption.
-class NonFiniteLammpsFrameError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'NonFiniteLammpsFrameError'
+    this.name = 'SkippedLammpsFrameError'
+    this.torn = torn
   }
 }
 const NON_FINITE_TOKEN = /^[+-]?(?:nan|inf(?:inity)?)$/i
@@ -250,7 +244,7 @@ function create_lammps_reader(
       idx++
     }
     if (idx < lines.count) return
-    throw new TornLammpsFrameError(
+    throw new SkippedLammpsFrameError(
       `LAMMPS frame${timestep === null ? `` : ` at timestep ${timestep}`} ends before "${prefix}"`,
     )
   }
@@ -284,7 +278,7 @@ function create_lammps_reader(
     const num_atoms = Math.trunc(Number(num_atoms_text))
     if (!(num_atoms > 0)) {
       if (idx > lines.count) {
-        throw new TornLammpsFrameError(
+        throw new SkippedLammpsFrameError(
           `LAMMPS frame at timestep ${timestep} ends after "ITEM: NUMBER OF ATOMS"`,
         )
       }
@@ -315,7 +309,7 @@ function create_lammps_reader(
     const parsed_box = parse_lammps_box(box_lines, box_kind)
     if (!parsed_box) {
       if (idx >= lines.count) {
-        throw new TornLammpsFrameError(
+        throw new SkippedLammpsFrameError(
           `LAMMPS frame at timestep ${timestep} ends inside BOX BOUNDS`,
         )
       }
@@ -330,7 +324,7 @@ function create_lammps_reader(
     // A header with no atom line after it is a torn tail, possibly cut inside its own column
     // list, so it is not validated as a frame that declares too few columns
     if (idx >= lines.count) {
-      throw new TornLammpsFrameError(
+      throw new SkippedLammpsFrameError(
         `LAMMPS frame at timestep ${timestep} ends after its "ITEM: ATOMS" header`,
       )
     }
@@ -399,7 +393,7 @@ function create_lammps_reader(
 
     for (let atom = 0; atom < num_atoms; atom++) {
       if (idx >= lines.count) {
-        throw new TornLammpsFrameError(
+        throw new SkippedLammpsFrameError(
           `LAMMPS frame at timestep ${timestep} ends after ${atom} of ${num_atoms} atoms`,
         )
       }
@@ -410,7 +404,7 @@ function create_lammps_reader(
       const torn_tail = idx >= lines.count && has_previous_frame
       if (n_cols < cols.length) {
         const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has ${n_cols} columns, expected ${cols.length}`
-        throw torn_tail ? new TornLammpsFrameError(message) : new Error(message)
+        throw torn_tail ? new SkippedLammpsFrameError(message) : new Error(message)
       }
       const coords: math.Vec3 = [scanner.num(x_col), scanner.num(y_col), scanner.num(z_col)]
       if (
@@ -419,17 +413,18 @@ function create_lammps_reader(
         !Number.isFinite(coords[2])
       ) {
         const line = lines.line(idx - 1)
-        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${line}"`
         const literal = [x_col, y_col, z_col].every(
           (col_idx) =>
             Number.isFinite(scanner.num(col_idx)) ||
             NON_FINITE_TOKEN.test(scanner.str(col_idx)),
         )
-        if (!literal)
-          throw torn_tail ? new TornLammpsFrameError(message) : new TypeError(message)
-        throw new NonFiniteLammpsFrameError(
-          `Skipping LAMMPS frame at timestep ${timestep}: atom line ${line_number} has non-finite coordinates "${line}"`,
-        )
+        if (literal)
+          throw new SkippedLammpsFrameError(
+            `at timestep ${timestep}: line ${line_number} "${line}"`,
+            false,
+          )
+        const message = `LAMMPS atom line ${line_number} (timestep ${timestep}) has non-numeric coordinates: "${line}"`
+        throw torn_tail ? new SkippedLammpsFrameError(message) : new TypeError(message)
       }
       let atom_type: number | undefined
       if (type_col !== undefined) {
@@ -562,6 +557,8 @@ function create_lammps_reader(
     on_frame: (read: LammpsFrameRead, start: number) => void,
   ): Record<string, unknown> => {
     const steps: number[] = []
+    // a blow-up leaves every later frame non-finite, so they share one warning
+    const non_finite = { count: 0, first: `` }
     idx = 0
     for (;;) {
       while (idx < lines.count && !peek_line().startsWith(`ITEM: TIME`)) idx++
@@ -569,18 +566,28 @@ function create_lammps_reader(
       try {
         const start = idx
         const read = read_frame(start, steps.length > 0, sites)
-        on_frame(read, start)
-        steps.push(read.header.timestep)
-      } catch (error) {
-        if (error instanceof NonFiniteLammpsFrameError) {
-          warn(error.message)
+        const { timestep } = read.header
+        // A restarted run appending to its dump writes the restart step again: keep the first
+        if (timestep === steps.at(-1)) {
+          warn(`Skipping LAMMPS frame at line ${start + 1} repeating timestep ${timestep}`)
           continue
         }
-        if (!(error instanceof TornLammpsFrameError)) throw error
-        warn(`Dropping truncated final LAMMPS frame`, error)
-        break
+        on_frame(read, start)
+        steps.push(timestep)
+      } catch (error) {
+        if (!(error instanceof SkippedLammpsFrameError)) throw error
+        if (error.torn) {
+          warn(`Dropping truncated final LAMMPS frame`, error)
+          break
+        }
+        non_finite.first ||= error.message
+        non_finite.count++
       }
     }
+    if (non_finite.count > 0)
+      warn(
+        `Skipping ${non_finite.count} LAMMPS frame(s) with non-finite coordinates, the first ${non_finite.first}`,
+      )
     if (steps.length === 0) {
       throw new Error(`No valid frames found in LAMMPS trajectory`)
     }

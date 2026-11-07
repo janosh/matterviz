@@ -96,20 +96,20 @@ export function create_placed_tween(opts: {
       for (const { target } of entries) observed_elements.add(target)
       if (size_changed) element_size_revision += 1
     })
-    const observe_tree = (root: Element): void => {
-      for (const target of [root, ...root.querySelectorAll(`*`)]) observer.observe(target)
+    const observe_tree = (root: Node, method: `observe` | `unobserve`): void => {
+      if (root instanceof Element)
+        for (const target of [root, ...root.querySelectorAll(`*`)]) observer[method](target)
     }
-    observe_tree(element)
-    // Descendants added later (e.g. a ColorBar's absolutely positioned tick labels after a
-    // range change) can change the footprint without resizing `element`. Pre-mark them seen
-    // so their initial observation counts as a size change.
+    observe_tree(element, `observe`)
+    // Descendants added or removed later (e.g. a ColorBar's absolutely positioned tick labels
+    // after a range change) change the footprint without resizing `element`. Unobserving
+    // removed ones keeps detached nodes from piling up in the ResizeObserver.
     const mutation_observer = new MutationObserver((records) => {
-      for (const node of records.flatMap((record) => [...record.addedNodes])) {
-        if (!(node instanceof Element)) continue
-        for (const target of [node, ...node.querySelectorAll(`*`)])
-          observed_elements.add(target)
-        observe_tree(node)
+      for (const { addedNodes, removedNodes } of records) {
+        for (const node of addedNodes) observe_tree(node, `observe`)
+        for (const node of removedNodes) observe_tree(node, `unobserve`)
       }
+      element_size_revision += 1
     })
     mutation_observer.observe(element, { childList: true, subtree: true })
     return () => {

@@ -249,8 +249,9 @@ const structure_energy = (structure: AnyStructure, filename: string): number =>
 
 // Assemble whatever was dropped into named reaction paths. Reaction-path JSON and
 // multi-frame XYZ each contribute their own path(s); loose structure files are collected
-// into one path, in natural filename order when every name carries an index (`image_2`
-// before `image_10`, whatever order the OS hands them over in), else in drop order.
+// into one path, in natural filename order when every name carries a distinct index
+// (`image_2` before `image_10`, whatever order the OS hands them over in), else in drop
+// order (`IS`, `01`, `TS` or `v2_is`, `v2_ts` have no index to order by).
 // Recoverable parser issues go to parse_warn.
 export function parse_dropped_paths(files: DroppedFile[]): Record<string, ReactionPath> {
   if (files.length === 0) throw new Error(`parse_dropped_paths got no files`)
@@ -292,7 +293,8 @@ export function parse_dropped_paths(files: DroppedFile[]): Record<string, Reacti
   }
 
   if (loose.length > 0) {
-    if (loose.every(({ filename }) => /\d/.test(filename))) {
+    const indices = loose.map(({ filename }) => filename.match(/\d+/g)?.join(`,`))
+    if (!indices.includes(undefined) && new Set(indices).size === loose.length) {
       const { compare } = new Intl.Collator(undefined, { numeric: true })
       loose.sort((file_a, file_b) => compare(file_a.filename, file_b.filename))
     }

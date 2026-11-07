@@ -499,9 +499,8 @@ function is_anion_vertex(
 // proximity-perceived bonds (boundary shells are completed upstream by
 // bond-completing image atoms - see find_image_atoms in pbc.ts); explicit bonds
 // carrying a cell_shift put the corner at the lattice image the bond points to.
-// `skip_hull` centers are returned without a hull (faces [], volume 0, every vertex
-// candidate): image completion only asks which interior centers form a polyhedron, and their
-// hulls were a third of completing a 100k-atom cell.
+// `skip_hull` centers come back hull-less (faces [], volume 0, all candidate vertices): image
+// completion only asks which interior centers qualify, and their hulls cost ~half its time.
 export function compute_polyhedra(
   structure: AnyStructure,
   bond_data: BondData,
