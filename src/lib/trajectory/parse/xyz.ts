@@ -572,6 +572,42 @@ export function read_xyz_frame(
   return numeric
 }
 
+// The frame walk steps over lines that form no frame it can sample, e.g. a frame whose first
+// atom lines read `nan` after an MD blow-up: every such frame vanished from the run without a
+// word, and one mid-file shifted every later frame number. Blank lines and empty (`0` atom)
+// frames are not content; anything else between, before or after the frames (up to `end`, a
+// torn tail's start) is reported once per gap.
+function warn_skipped_xyz_lines(
+  lines: TextLines,
+  specs: readonly XyzFrameSpec[],
+  end: number,
+  warn: WarnFn,
+): void {
+  const report = (from: number, to: number, where: string) => {
+    let [first, last] = [-1, -1]
+    for (let idx = from; idx < to; idx++) {
+      const line = lines.line(idx) ?? ``
+      if (!line.trim()) continue
+      if (line.trim() === `0`) {
+        idx++ // an empty frame's comment line
+        continue
+      }
+      if (first === -1) first = idx
+      last = idx
+    }
+    if (first === -1) return
+    warn(
+      `Skipping XYZ lines ${first + 1}-${last + 1} ${where}: they form no complete frame (an atom count, a comment and one "symbol x y z" line per atom), so any frame written there is missing`,
+    )
+  }
+  report(0, specs[0].start, `before frame 1`)
+  for (let frame_idx = 1; frame_idx < specs.length; frame_idx++) {
+    const between = `between frames ${frame_idx} and ${display_idx(frame_idx)}`
+    report(specs[frame_idx - 1].end, specs[frame_idx].start, between)
+  }
+  report(specs[specs.length - 1].end, end, `after frame ${specs.length}`)
+}
+
 // Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
 // a frame whose atom block runs past the end of the file (iter_xyz_frames returns its header
 // instead of yielding it) or a final frame whose last atom line, the file's last line, is
@@ -583,6 +619,7 @@ export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[]
   let next = frames.next()
   for (; !next.done; next = frames.next()) specs.push(next.value)
   const torn = next.value
+  if (specs.length > 0) warn_skipped_xyz_lines(lines, specs, torn?.start ?? lines.count, warn)
   const drop = (spec: XyzFrameSpec, reason: string) =>
     warn(
       `Dropping truncated final XYZ frame ${display_idx(specs.length)} (line ${spec.start + 1}): ${reason}`,

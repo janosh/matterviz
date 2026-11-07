@@ -85,41 +85,89 @@ export function boundary_edges(
 ): Float32Array {
   const source = geometry.getAttribute(`position`)
   const face_count = faces?.length ?? (geometry.index?.count ?? source.count) / 3
+  const n_corners = 3 * face_count
+  // Both lookups are open-addressing hash tables over typed arrays: string-keyed (position)
+  // and number-keyed (edge) Maps took 0.45 s for a 260k-vertex sheet, a stall on every hover
+  const weld_mask = hash_capacity(Math.min(source.count, n_corners)) - 1
+  const weld_ids = new Int32Array(weld_mask + 1).fill(-1)
+  const weld_keys = new Float64Array(3 * (weld_mask + 1)) // rounded xyz per occupied slot
+  let n_welded = 0
   const welded_of_vertex = new Int32Array(source.count).fill(-1)
-  const welded_ids = new Map<string, number>()
-  const corners = new Int32Array(3 * face_count) // source vertex per corner
-  const welded = new Int32Array(3 * face_count) // welded vertex per corner
+  const corners = new Int32Array(n_corners) // source vertex per corner
+  const welded = new Int32Array(n_corners) // welded vertex per corner
   for (let face_pos = 0; face_pos < face_count; face_pos++) {
     for (let corner = 0; corner < 3; corner++) {
       const vertex = corner_vertex(geometry, faces?.[face_pos] ?? face_pos, corner)
       if (welded_of_vertex[vertex] === -1) {
-        const key = [source.getX(vertex), source.getY(vertex), source.getZ(vertex)]
-          .map((coord) => Math.round(coord * 1e4))
-          .join(`,`)
-        let id = welded_ids.get(key)
-        if (id === undefined) welded_ids.set(key, (id = welded_ids.size))
-        welded_of_vertex[vertex] = id
+        const key_x = Math.round(source.getX(vertex) * 1e4)
+        const key_y = Math.round(source.getY(vertex) * 1e4)
+        const key_z = Math.round(source.getZ(vertex) * 1e4)
+        let slot = hash_ints(key_x, key_y, key_z) & weld_mask
+        while (
+          weld_ids[slot] !== -1 &&
+          (weld_keys[3 * slot] !== key_x ||
+            weld_keys[3 * slot + 1] !== key_y ||
+            weld_keys[3 * slot + 2] !== key_z)
+        )
+          slot = (slot + 1) & weld_mask
+        if (weld_ids[slot] === -1) {
+          weld_ids[slot] = n_welded++
+          weld_keys[3 * slot] = key_x
+          weld_keys[3 * slot + 1] = key_y
+          weld_keys[3 * slot + 2] = key_z
+        }
+        welded_of_vertex[vertex] = weld_ids[slot]
       }
       corners[3 * face_pos + corner] = vertex
       welded[3 * face_pos + corner] = welded_of_vertex[vertex]
     }
   }
   const next_corner = (slot: number) => (slot % 3 === 2 ? slot - 2 : slot + 1)
-  // edge key -> the corner starting its only use, or -1 once a second triangle shares it
-  const first_use = new Map<number, number>()
-  for (let slot = 0; slot < corners.length; slot++) {
+  // per edge (welded id pair): the corner starting its only use, -1 once a second triangle
+  // shares it, -2 for an empty slot; `edge_order` lists the edges in first-use order
+  const edge_mask = hash_capacity(n_corners) - 1
+  const edge_use = new Int32Array(edge_mask + 1).fill(-2)
+  const edge_low = new Int32Array(edge_mask + 1)
+  const edge_high = new Int32Array(edge_mask + 1)
+  const edge_order = new Int32Array(n_corners)
+  let n_edges = 0
+  for (let slot = 0; slot < n_corners; slot++) {
     const [id_a, id_b] = [welded[slot], welded[next_corner(slot)]]
     if (id_a === id_b) continue // collapsed edge of a degenerate triangle
-    const key = Math.min(id_a, id_b) * welded_ids.size + Math.max(id_a, id_b)
-    first_use.set(key, first_use.has(key) ? -1 : slot)
+    const [low, high] = id_a < id_b ? [id_a, id_b] : [id_b, id_a]
+    let entry = hash_ints(low, high, 0) & edge_mask
+    while (edge_use[entry] !== -2 && (edge_low[entry] !== low || edge_high[entry] !== high))
+      entry = (entry + 1) & edge_mask
+    if (edge_use[entry] === -2) {
+      edge_low[entry] = low
+      edge_high[entry] = high
+      edge_use[entry] = slot
+      edge_order[n_edges++] = entry
+    } else edge_use[entry] = -1
   }
   const edges: number[] = []
-  for (const slot of first_use.values()) {
+  for (let edge_idx = 0; edge_idx < n_edges; edge_idx++) {
+    const slot = edge_use[edge_order[edge_idx]]
     if (slot === -1) continue
     for (const vertex of [corners[slot], corners[next_corner(slot)]])
       edges.push(source.getX(vertex), source.getY(vertex), source.getZ(vertex))
   }
   return Float32Array.from(edges)
+}
+
+// Power-of-two table size at most half full for `count` keys
+const hash_capacity = (count: number): number =>
+  2 ** Math.ceil(Math.log2(Math.max(16, 2 * count)))
+
+// 32-bit mix of three integers (murmur3 finalizer), for the linear-probing tables above.
+// Math.imul wraps each argument to int32 itself; equality is checked on the full keys.
+const hash_ints = (first: number, second: number, third: number): number => {
+  let hash =
+    Math.imul(first, 0x9e3779b1) ^ Math.imul(second, 0x85ebca77) ^ Math.imul(third, 0xc2b2ae3d)
+  hash ^= hash >>> 16
+  hash = Math.imul(hash, 0x85ebca6b)
+  hash ^= hash >>> 13
+  return hash >>> 0
 }
 
 // Line segments (flat xyz vertex pairs) at a fixed screen width: GPU APIs ignore `linewidth`
