@@ -111,6 +111,16 @@ export function trapezoid_weights(grid: readonly number[]): number[] {
   const last = grid.length - 1
   const weights = Array(grid.length).fill(0)
   if (last < 1) return weights
+  // An ascending grid (nearly every DOS) is its own order: skipping the index sort gives the
+  // same weights bit for bit, several times faster on a 1e6-point grid
+  let ascending = true
+  for (let idx = 1; idx <= last && ascending; idx++) ascending = grid[idx] >= grid[idx - 1]
+  if (ascending) {
+    weights[0] = (grid[1] - grid[0]) / 2
+    for (let idx = 1; idx < last; idx++) weights[idx] = (grid[idx + 1] - grid[idx - 1]) / 2
+    weights[last] = (grid[last] - grid[last - 1]) / 2
+    return weights
+  }
   const order = grid.map((_, idx) => idx).toSorted((a_idx, b_idx) => grid[a_idx] - grid[b_idx])
   for (const [pos, idx] of order.entries()) {
     const lower = grid[order[Math.max(pos - 1, 0)]]

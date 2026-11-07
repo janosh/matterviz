@@ -131,6 +131,8 @@ describe(`convert_frequencies`, () => {
     // both sides default to THz, so the one-arg form is a no-op
     expect(convert_frequencies(input)).toBe(input)
     expect(() => convert_frequencies([1], `GHz` as never)).toThrow(/Invalid unit: GHz/)
+    // an inherited key is no unit either: `constructor` returned Object as the factor (NaN)
+    expect(() => convert_frequencies([1], `constructor` as never)).toThrow(/Invalid unit/)
   })
 })
 
@@ -171,6 +173,24 @@ describe(`density_divisor`, () => {
     const large = Array.from({ length: 300_000 }, (_, idx) => (idx % 97) + 1)
     expect(density_divisor([large], large, `max`)).toBe(97)
   })
+})
+
+// The ascending fast path and the index-sorting path must give the same measure bit for bit:
+// a shuffled or reversed grid gets the ascending grid's weights, permuted with it
+it.each([
+  [`uniform`, [0, 0.5, 1, 1.5, 2]],
+  [`clustered`, [0, 0.1, 0.2, 3, 10]],
+  [`negative`, [-7, -3.5, -3, 0.25, 4]],
+])(`trapezoid_weights on a %s grid is order-independent`, (_label, ascending) => {
+  const weights = trapezoid_weights(ascending)
+  expect(weights.reduce((sum, weight) => sum + weight, 0)).toBeCloseTo(
+    ascending[ascending.length - 1] - ascending[0],
+    14,
+  )
+  expect(trapezoid_weights(ascending.toReversed())).toEqual(weights.toReversed())
+  const order = [3, 0, 4, 1, 2]
+  const shuffled = order.map((idx) => ascending[idx])
+  expect(trapezoid_weights(shuffled)).toEqual(order.map((idx) => weights[idx]))
 })
 
 // display_smoother draws a spectral density at a width's resolution: a dense comb of mode
@@ -1036,6 +1056,8 @@ describe(`normalize_dos`, () => {
     [`a length mismatch`, { frequencies: [1, 2, 3], densities: [0, 1] }],
     [`an empty spin record`, { energies: [0, 1], densities: {} }],
     [`an unknown frequency unit`, { frequencies: [1], densities: [1], unit: `GHz` }],
+    // an inherited Object.prototype key is no unit alias (it threw Invalid unit instead)
+    [`a prototype-key unit`, { frequencies: [1], densities: [1], unit: `constructor` }],
     [`pymatgen input without an axis`, { '@class': `PhononDos`, densities: [0, 1] }],
   ])(`returns null for %s`, (_label, input) => {
     const spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
