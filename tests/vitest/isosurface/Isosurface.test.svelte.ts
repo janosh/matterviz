@@ -537,3 +537,18 @@ describe(`Isosurface`, () => {
     },
   )
 })
+
+test(`budget changes refuse a rebuild without discarding old geometry and permit retry`, async () => {
+  const on_error = vi.fn()
+  const props = mount_isosurface({ on_error })
+  await settle()
+  const original = geometry_of(meshes()[0])
+  expect(original).toBeDefined()
+  props.settings.geometry_memory_budget_bytes = 1
+  await settle()
+  expect(on_error).toHaveBeenCalledWith(expect.stringContaining(`budget`))
+  expect(geometry_of(meshes()[0])).toBe(original)
+  props.settings.geometry_memory_budget_bytes = 1_000_000
+  await settle()
+  expect(geometry_of(meshes()[0])).not.toBe(original)
+})

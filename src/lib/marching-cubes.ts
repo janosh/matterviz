@@ -1,5 +1,6 @@
 // Marching Cubes algorithm for isosurface extraction
 // Based on the classic algorithm by Lorensen & Cline (1987)
+import type { GeometryMemoryBudget } from '#lib/isosurface/memory.js'
 import { grid_dimensions, scalar_grid_strides } from '#lib/isosurface/grid.js'
 import type { ScalarGrid3D } from '#lib/isosurface/grid.js'
 import { det_3x3, matrix_inverse_3x3, type Matrix3x3, type Vec3 } from '#lib/math.js'
@@ -283,6 +284,8 @@ export interface MarchingCubesBuffers {
 }
 
 interface MarchingCubesOptions {
+  // Optional shared admission ledger for scratch, growing buffers and returned arrays.
+  memory_budget?: GeometryMemoryBudget
   // Whether to apply periodic boundary conditions (wrap around grid edges)
   periodic?: boolean
   // A non-periodic grid whose last point repeats its first (BXSF k-meshes): boundary normals
@@ -298,13 +301,26 @@ interface MarchingCubesOptions {
 type GrowableArray = Float32Array | Uint32Array
 
 // Double the capacity of a typed array until `needed` entries fit
-export const grow = <Arr extends GrowableArray>(array: Arr, needed: number): Arr => {
+export const grow = <Arr extends GrowableArray>(
+  array: Arr,
+  needed: number,
+  memory?: GeometryMemoryBudget,
+): Arr => {
   if (needed <= array.length) return array
   let capacity = Math.max(2 * array.length, 1024)
   while (capacity < needed) capacity *= 2
-  const bigger = new (array.constructor as new (length: number) => Arr)(capacity)
-  bigger.set(array)
-  return bigger
+  const bytes = capacity * array.BYTES_PER_ELEMENT
+  // The old buffer stays live while its replacement is allocated and populated.
+  memory?.reserve(bytes)
+  try {
+    const bigger = new (array.constructor as new (length: number) => Arr)(capacity)
+    bigger.set(array)
+    memory?.release(array.byteLength)
+    return bigger
+  } catch (error) {
+    memory?.release(bytes)
+    throw error
+  }
 }
 
 // Cubes per block edge for the empty-block skip: a level set crosses few blocks, so the cube
@@ -453,243 +469,269 @@ export function marching_cubes(
     }
   }
 
+  const memory = options.memory_budget
+  const points = [size_x, size_y, size_z].map((size) => size + (periodic ? 1 : 0))
+  const blocks = points.map((count) => Math.ceil((count - 1) / BLOCK_SIZE))
+  // Five rolling edge planes, cube values, axis offsets and all three block reductions.
+  const scratch_bytes =
+    5 * (max_y + 1) * (max_z + 1) * 4 +
+    8 * 8 +
+    4 * (points[0] + points[1] + points[2]) +
+    points[0] * points[1] * blocks[2] +
+    points[0] * blocks[1] * blocks[2] +
+    blocks[0] * blocks[1] * blocks[2]
+  memory?.reserve(scratch_bytes)
   let positions = new Float32Array(0)
   let normals = new Float32Array(0)
   let indices = new Uint32Array(0)
   let n_vertices = 0
   let n_indices = 0
 
-  // Rolling typed edge caches retain only the current x slab. Coordinates stay
-  // UNWRAPPED (reach n in periodic mode), so opposite cell faces remain distinct
-  // and never create cell-spanning triangles.
-  const edge_stride = max_z + 1
-  const edge_plane_size = (max_y + 1) * edge_stride
-  const x_edge_cache = new Int32Array(edge_plane_size).fill(-1)
-  let y_edge_current = new Int32Array(edge_plane_size).fill(-1)
-  let y_edge_next = new Int32Array(edge_plane_size).fill(-1)
-  let z_edge_current = new Int32Array(edge_plane_size).fill(-1)
-  let z_edge_next = new Int32Array(edge_plane_size).fill(-1)
+  try {
+    // Rolling typed edge caches retain only the current x slab. Coordinates stay
+    // UNWRAPPED (reach n in periodic mode), so opposite cell faces remain distinct
+    // and never create cell-spanning triangles.
+    const edge_stride = max_z + 1
+    const edge_plane_size = (max_y + 1) * edge_stride
+    const x_edge_cache = new Int32Array(edge_plane_size).fill(-1)
+    let y_edge_current = new Int32Array(edge_plane_size).fill(-1)
+    let y_edge_next = new Int32Array(edge_plane_size).fill(-1)
+    let z_edge_current = new Int32Array(edge_plane_size).fill(-1)
+    let z_edge_next = new Int32Array(edge_plane_size).fill(-1)
 
-  // Central-difference gradient component along one axis at a grid point: wraps for
-  // periodic grids, falls back to a one-sided difference at open boundaries. The sign is
-  // flipped so normals point toward decreasing values (outward for a density blob,
-  // inward for E < E_F pockets).
-  const axis_gradient = (
-    base_offset: number,
-    idx: number,
-    dim: number,
-    stride: number,
-  ): number => {
-    let lo_idx = idx - 1
-    let hi_idx = idx + 1
-    const wraps_endpoint = endpoint_wrap && dim > 2
-    if (periodic) {
-      lo_idx = (lo_idx + dim) % dim
-      hi_idx %= dim
-    } else if (wraps_endpoint) {
-      if (lo_idx < 0) lo_idx = dim - 2
-      if (hi_idx > dim - 1) hi_idx = 1
-    } else {
-      lo_idx = Math.max(lo_idx, 0)
-      hi_idx = Math.min(hi_idx, dim - 1)
-    }
-    const span = periodic || wraps_endpoint ? 2 : hi_idx - lo_idx
-    const lo_val = values[base_offset + lo_idx * stride]
-    const hi_val = values[base_offset + hi_idx * stride]
-    return -(hi_val - lo_val) / span
-  }
-  // Scratch for the gradient at grid point (ix, iy, iz), in index space scaled to
-  // fractional units. Periodic cubes reach index n on their far face (= grid point 0);
-  // non-periodic cubes never exceed n - 1, so the modulo is a no-op there.
-  let grad_x = 0
-  let grad_y = 0
-  let grad_z = 0
-  const gradient_at = (idx_x: number, idx_y: number, idx_z: number): void => {
-    const wrapped_x = idx_x % size_x
-    const wrapped_y = idx_y % size_y
-    const wrapped_z = idx_z % size_z
-    const x_off = wrapped_x * stride_x
-    const y_off = wrapped_y * stride_y
-    const z_off = wrapped_z * stride_z
-    grad_x = axis_gradient(y_off + z_off, wrapped_x, size_x, stride_x) * max_x
-    grad_y = axis_gradient(x_off + z_off, wrapped_y, size_y, stride_y) * max_y
-    grad_z = axis_gradient(x_off + y_off, wrapped_z, size_z, stride_z) * max_z
-  }
-
-  const cube_values = new Float64Array(8)
-
-  // Get or create the vertex on edge `edge_idx` of the cube at (ix, iy, iz)
-  const get_vertex_on_edge = (
-    idx_x: number,
-    idx_y: number,
-    idx_z: number,
-    edge_idx: number,
-  ): number => {
-    const v1_idx = EDGE_V1[edge_idx]
-    const v2_idx = EDGE_V2[edge_idx]
-    const ox1 = CUBE_VERTS_X[v1_idx]
-    const oy1 = CUBE_VERTS_Y[v1_idx]
-    const oz1 = CUBE_VERTS_Z[v1_idx]
-    const ox2 = CUBE_VERTS_X[v2_idx]
-    const oy2 = CUBE_VERTS_Y[v2_idx]
-    const oz2 = CUBE_VERTS_Z[v2_idx]
-
-    // Key the edge's lower endpoint. For x-edges, x is the rolling slab and
-    // y/z are equal; y- and z-edges normalize their sole varying key coordinate.
-    let cache: Int32Array
-    let cache_idx: number
-    if (ox1 !== ox2) {
-      cache = x_edge_cache
-      cache_idx = (idx_y + oy1) * edge_stride + idx_z + oz1
-    } else if (oy1 !== oy2) {
-      cache = ox1 === 0 ? y_edge_current : y_edge_next
-      cache_idx = (idx_y + Math.min(oy1, oy2)) * edge_stride + idx_z + oz1
-    } else {
-      cache = ox1 === 0 ? z_edge_current : z_edge_next
-      cache_idx = (idx_y + oy1) * edge_stride + idx_z + Math.min(oz1, oz2)
-    }
-    const cached = cache[cache_idx]
-    if (cached >= 0) return cached
-
-    const val_1 = cube_values[v1_idx]
-    const val_2 = cube_values[v2_idx]
-    const value_delta = val_2 - val_1
-    // TRI_TABLE only uses crossed edges (one end < isovalue <= the other), so value_delta is
-    // never 0; an absolute cutoff here only made tiny-valued fields snap to grid points
-    const frac = (isovalue - val_1) / value_delta
-    const frac_x = (idx_x + ox1 + frac * (ox2 - ox1)) * inv_nx
-    const frac_y = (idx_y + oy1 + frac * (oy2 - oy1)) * inv_ny
-    const frac_z = (idx_z + oz1 + frac * (oz2 - oz1)) * inv_nz
-
-    const vert_idx = n_vertices++
-    positions = grow(positions, 3 * n_vertices)
-    positions[3 * vert_idx] = frac_x * kx0 + frac_y * ky0 + frac_z * kz0 + offset_x
-    positions[3 * vert_idx + 1] = frac_x * kx1 + frac_y * ky1 + frac_z * kz1 + offset_y
-    positions[3 * vert_idx + 2] = frac_x * kx2 + frac_y * ky2 + frac_z * kz2 + offset_z
-
-    if (compute_norms) {
-      // Gradient interpolated along the edge with the same fraction as the position, so
-      // shading is smooth rather than constant per lower endpoint
-      gradient_at(idx_x + ox1, idx_y + oy1, idx_z + oz1)
-      let gradient_x = grad_x
-      let gradient_y = grad_y
-      let gradient_z = grad_z
-      if (frac > 0) {
-        gradient_at(idx_x + ox2, idx_y + oy2, idx_z + oz2)
-        gradient_x += frac * (grad_x - gradient_x)
-        gradient_y += frac * (grad_y - gradient_y)
-        gradient_z += frac * (grad_z - gradient_z)
-      }
-      if (normal_transform) {
-        const [[t00, t01, t02], [t10, t11, t12], [t20, t21, t22]] = normal_transform
-        const cart_x = t00 * gradient_x + t01 * gradient_y + t02 * gradient_z
-        const cart_y = t10 * gradient_x + t11 * gradient_y + t12 * gradient_z
-        gradient_z = t20 * gradient_x + t21 * gradient_y + t22 * gradient_z
-        gradient_x = cart_x
-        gradient_y = cart_y
-      }
-      const length = Math.hypot(gradient_x, gradient_y, gradient_z)
-      normals = grow(normals, 3 * n_vertices)
-      if (length > 0) {
-        normals[3 * vert_idx] = gradient_x / length
-        normals[3 * vert_idx + 1] = gradient_y / length
-        normals[3 * vert_idx + 2] = gradient_z / length
+    // Central-difference gradient component along one axis at a grid point: wraps for
+    // periodic grids, falls back to a one-sided difference at open boundaries. The sign is
+    // flipped so normals point toward decreasing values (outward for a density blob,
+    // inward for E < E_F pockets).
+    const axis_gradient = (
+      base_offset: number,
+      idx: number,
+      dim: number,
+      stride: number,
+    ): number => {
+      let lo_idx = idx - 1
+      let hi_idx = idx + 1
+      const wraps_endpoint = endpoint_wrap && dim > 2
+      if (periodic) {
+        lo_idx = (lo_idx + dim) % dim
+        hi_idx %= dim
+      } else if (wraps_endpoint) {
+        if (lo_idx < 0) lo_idx = dim - 2
+        if (hi_idx > dim - 1) hi_idx = 1
       } else {
-        normals[3 * vert_idx] = 0
-        normals[3 * vert_idx + 1] = 0
-        normals[3 * vert_idx + 2] = 1
+        lo_idx = Math.max(lo_idx, 0)
+        hi_idx = Math.min(hi_idx, dim - 1)
       }
+      const span = periodic || wraps_endpoint ? 2 : hi_idx - lo_idx
+      const lo_val = values[base_offset + lo_idx * stride]
+      const hi_val = values[base_offset + hi_idx * stride]
+      return -(hi_val - lo_val) / span
+    }
+    // Scratch for the gradient at grid point (ix, iy, iz), in index space scaled to
+    // fractional units. Periodic cubes reach index n on their far face (= grid point 0);
+    // non-periodic cubes never exceed n - 1, so the modulo is a no-op there.
+    let grad_x = 0
+    let grad_y = 0
+    let grad_z = 0
+    const gradient_at = (idx_x: number, idx_y: number, idx_z: number): void => {
+      const wrapped_x = idx_x % size_x
+      const wrapped_y = idx_y % size_y
+      const wrapped_z = idx_z % size_z
+      const x_off = wrapped_x * stride_x
+      const y_off = wrapped_y * stride_y
+      const z_off = wrapped_z * stride_z
+      grad_x = axis_gradient(y_off + z_off, wrapped_x, size_x, stride_x) * max_x
+      grad_y = axis_gradient(x_off + z_off, wrapped_y, size_y, stride_y) * max_y
+      grad_z = axis_gradient(x_off + y_off, wrapped_z, size_z, stride_z) * max_z
     }
 
-    cache[cache_idx] = vert_idx
-    return vert_idx
-  }
+    const cube_values = new Float64Array(8)
 
-  const crossing = crossing_blocks(
-    values,
-    isovalue,
-    [size_x, size_y, size_z],
-    [stride_x, stride_y, stride_z],
-    periodic,
-  )
-  const blocks_y = Math.ceil(max_y / BLOCK_SIZE)
-  const blocks_z = Math.ceil(max_z / BLOCK_SIZE)
+    // Get or create the vertex on edge `edge_idx` of the cube at (ix, iy, iz)
+    const get_vertex_on_edge = (
+      idx_x: number,
+      idx_y: number,
+      idx_z: number,
+      edge_idx: number,
+    ): number => {
+      const v1_idx = EDGE_V1[edge_idx]
+      const v2_idx = EDGE_V2[edge_idx]
+      const ox1 = CUBE_VERTS_X[v1_idx]
+      const oy1 = CUBE_VERTS_Y[v1_idx]
+      const oz1 = CUBE_VERTS_Z[v1_idx]
+      const ox2 = CUBE_VERTS_X[v2_idx]
+      const oy2 = CUBE_VERTS_Y[v2_idx]
+      const oz2 = CUBE_VERTS_Z[v2_idx]
 
-  // Edge caches need clearing only after a slab that created vertices: a sparse level set
-  // leaves most slabs empty, and clearing 3 planes per slab outcost their cubes. The recycled
-  // `next` planes hold vertices on the plane between the last two slabs, and a crossed edge
-  // there makes the previous slab's cube on it cross an x edge, so that slab created one too.
-  let prev_slab_wrote = false
-  for (let idx_x = 0; idx_x < max_x; idx_x++) {
-    if (prev_slab_wrote) {
-      x_edge_cache.fill(-1)
-      y_edge_next.fill(-1)
-      z_edge_next.fill(-1)
-    }
-    const slab_vertices = n_vertices
-    const x_offset = idx_x * stride_x
-    const x1_offset = ((idx_x + 1) % size_x) * stride_x
-    const block_x_base = Math.floor(idx_x / BLOCK_SIZE) * blocks_y
+      // Key the edge's lower endpoint. For x-edges, x is the rolling slab and
+      // y/z are equal; y- and z-edges normalize their sole varying key coordinate.
+      let cache: Int32Array
+      let cache_idx: number
+      if (ox1 !== ox2) {
+        cache = x_edge_cache
+        cache_idx = (idx_y + oy1) * edge_stride + idx_z + oz1
+      } else if (oy1 !== oy2) {
+        cache = ox1 === 0 ? y_edge_current : y_edge_next
+        cache_idx = (idx_y + Math.min(oy1, oy2)) * edge_stride + idx_z + oz1
+      } else {
+        cache = ox1 === 0 ? z_edge_current : z_edge_next
+        cache_idx = (idx_y + oy1) * edge_stride + idx_z + Math.min(oz1, oz2)
+      }
+      const cached = cache[cache_idx]
+      if (cached >= 0) return cached
 
-    for (let idx_y = 0; idx_y < max_y; idx_y++) {
-      const y_offset = idx_y * stride_y
-      const y1_offset = ((idx_y + 1) % size_y) * stride_y
-      const offset_00 = x_offset + y_offset
-      const offset_10 = x1_offset + y_offset
-      const offset_11 = x1_offset + y1_offset
-      const offset_01 = x_offset + y1_offset
-      const block_row = (block_x_base + Math.floor(idx_y / BLOCK_SIZE)) * blocks_z
+      const val_1 = cube_values[v1_idx]
+      const val_2 = cube_values[v2_idx]
+      const value_delta = val_2 - val_1
+      // TRI_TABLE only uses crossed edges (one end < isovalue <= the other), so value_delta is
+      // never 0; an absolute cutoff here only made tiny-valued fields snap to grid points
+      const frac = (isovalue - val_1) / value_delta
+      const frac_x = (idx_x + ox1 + frac * (ox2 - ox1)) * inv_nx
+      const frac_y = (idx_y + oy1 + frac * (oy2 - oy1)) * inv_ny
+      const frac_z = (idx_z + oz1 + frac * (oz2 - oz1)) * inv_nz
 
-      for (let idx_z = 0; idx_z < max_z; idx_z++) {
-        // a block with no crossing cube emits nothing (blocks are entered at their first cube)
-        if (crossing[block_row + Math.floor(idx_z / BLOCK_SIZE)] === 0) {
-          idx_z += BLOCK_SIZE - 1
-          continue
+      const vert_idx = n_vertices++
+      positions = grow(positions, 3 * n_vertices, memory)
+      positions[3 * vert_idx] = frac_x * kx0 + frac_y * ky0 + frac_z * kz0 + offset_x
+      positions[3 * vert_idx + 1] = frac_x * kx1 + frac_y * ky1 + frac_z * kz1 + offset_y
+      positions[3 * vert_idx + 2] = frac_x * kx2 + frac_y * ky2 + frac_z * kz2 + offset_z
+
+      if (compute_norms) {
+        // Gradient interpolated along the edge with the same fraction as the position, so
+        // shading is smooth rather than constant per lower endpoint
+        gradient_at(idx_x + ox1, idx_y + oy1, idx_z + oz1)
+        let gradient_x = grad_x
+        let gradient_y = grad_y
+        let gradient_z = grad_z
+        if (frac > 0) {
+          gradient_at(idx_x + ox2, idx_y + oy2, idx_z + oz2)
+          gradient_x += frac * (grad_x - gradient_x)
+          gradient_y += frac * (grad_y - gradient_y)
+          gradient_z += frac * (grad_z - gradient_z)
         }
-        const z_offset = idx_z * stride_z
-        const z1_offset = ((idx_z + 1) % size_z) * stride_z
-        cube_values[0] = values[offset_00 + z_offset]
-        cube_values[1] = values[offset_10 + z_offset]
-        cube_values[2] = values[offset_11 + z_offset]
-        cube_values[3] = values[offset_01 + z_offset]
-        cube_values[4] = values[offset_00 + z1_offset]
-        cube_values[5] = values[offset_10 + z1_offset]
-        cube_values[6] = values[offset_11 + z1_offset]
-        cube_values[7] = values[offset_01 + z1_offset]
-
-        let cube_index = 0
-        if (cube_values[0] < isovalue) cube_index |= 1
-        if (cube_values[1] < isovalue) cube_index |= 2
-        if (cube_values[2] < isovalue) cube_index |= 4
-        if (cube_values[3] < isovalue) cube_index |= 8
-        if (cube_values[4] < isovalue) cube_index |= 16
-        if (cube_values[5] < isovalue) cube_index |= 32
-        if (cube_values[6] < isovalue) cube_index |= 64
-        if (cube_values[7] < isovalue) cube_index |= 128
-
-        // Empty for a cube entirely inside or outside. Each triangle spans 3 distinct edges,
-        // each with its own cache slot, so none is degenerate.
-        const tri_list = TRI_TABLE[cube_index]
-        for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
-          const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
-          const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
-          const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
-          indices = grow(indices, n_indices + 3)
-          indices[n_indices++] = vector_0
-          indices[n_indices++] = flip_winding ? vector_2 : vector_1
-          indices[n_indices++] = flip_winding ? vector_1 : vector_2
+        if (normal_transform) {
+          const [[t00, t01, t02], [t10, t11, t12], [t20, t21, t22]] = normal_transform
+          const cart_x = t00 * gradient_x + t01 * gradient_y + t02 * gradient_z
+          const cart_y = t10 * gradient_x + t11 * gradient_y + t12 * gradient_z
+          gradient_z = t20 * gradient_x + t21 * gradient_y + t22 * gradient_z
+          gradient_x = cart_x
+          gradient_y = cart_y
+        }
+        const length = Math.hypot(gradient_x, gradient_y, gradient_z)
+        normals = grow(normals, 3 * n_vertices, memory)
+        if (length > 0) {
+          normals[3 * vert_idx] = gradient_x / length
+          normals[3 * vert_idx + 1] = gradient_y / length
+          normals[3 * vert_idx + 2] = gradient_z / length
+        } else {
+          normals[3 * vert_idx] = 0
+          normals[3 * vert_idx + 1] = 0
+          normals[3 * vert_idx + 2] = 1
         }
       }
-    }
-    prev_slab_wrote = n_vertices > slab_vertices
-    ;[y_edge_current, y_edge_next] = [y_edge_next, y_edge_current]
-    ;[z_edge_current, z_edge_next] = [z_edge_next, z_edge_current]
-  }
 
-  return {
-    positions: positions.slice(0, 3 * n_vertices),
-    indices: indices.slice(0, n_indices),
-    normals: normals.slice(0, 3 * n_vertices), // empty when normals are off
+      cache[cache_idx] = vert_idx
+      return vert_idx
+    }
+
+    const crossing = crossing_blocks(
+      values,
+      isovalue,
+      [size_x, size_y, size_z],
+      [stride_x, stride_y, stride_z],
+      periodic,
+    )
+    const blocks_y = Math.ceil(max_y / BLOCK_SIZE)
+    const blocks_z = Math.ceil(max_z / BLOCK_SIZE)
+
+    // Edge caches need clearing only after a slab that created vertices: a sparse level set
+    // leaves most slabs empty, and clearing 3 planes per slab outcost their cubes. The recycled
+    // `next` planes hold vertices on the plane between the last two slabs, and a crossed edge
+    // there makes the previous slab's cube on it cross an x edge, so that slab created one too.
+    let prev_slab_wrote = false
+    for (let idx_x = 0; idx_x < max_x; idx_x++) {
+      if (prev_slab_wrote) {
+        x_edge_cache.fill(-1)
+        y_edge_next.fill(-1)
+        z_edge_next.fill(-1)
+      }
+      const slab_vertices = n_vertices
+      const x_offset = idx_x * stride_x
+      const x1_offset = ((idx_x + 1) % size_x) * stride_x
+      const block_x_base = Math.floor(idx_x / BLOCK_SIZE) * blocks_y
+
+      for (let idx_y = 0; idx_y < max_y; idx_y++) {
+        const y_offset = idx_y * stride_y
+        const y1_offset = ((idx_y + 1) % size_y) * stride_y
+        const offset_00 = x_offset + y_offset
+        const offset_10 = x1_offset + y_offset
+        const offset_11 = x1_offset + y1_offset
+        const offset_01 = x_offset + y1_offset
+        const block_row = (block_x_base + Math.floor(idx_y / BLOCK_SIZE)) * blocks_z
+
+        for (let idx_z = 0; idx_z < max_z; idx_z++) {
+          // a block with no crossing cube emits nothing (blocks are entered at their first cube)
+          if (crossing[block_row + Math.floor(idx_z / BLOCK_SIZE)] === 0) {
+            idx_z += BLOCK_SIZE - 1
+            continue
+          }
+          const z_offset = idx_z * stride_z
+          const z1_offset = ((idx_z + 1) % size_z) * stride_z
+          cube_values[0] = values[offset_00 + z_offset]
+          cube_values[1] = values[offset_10 + z_offset]
+          cube_values[2] = values[offset_11 + z_offset]
+          cube_values[3] = values[offset_01 + z_offset]
+          cube_values[4] = values[offset_00 + z1_offset]
+          cube_values[5] = values[offset_10 + z1_offset]
+          cube_values[6] = values[offset_11 + z1_offset]
+          cube_values[7] = values[offset_01 + z1_offset]
+
+          let cube_index = 0
+          if (cube_values[0] < isovalue) cube_index |= 1
+          if (cube_values[1] < isovalue) cube_index |= 2
+          if (cube_values[2] < isovalue) cube_index |= 4
+          if (cube_values[3] < isovalue) cube_index |= 8
+          if (cube_values[4] < isovalue) cube_index |= 16
+          if (cube_values[5] < isovalue) cube_index |= 32
+          if (cube_values[6] < isovalue) cube_index |= 64
+          if (cube_values[7] < isovalue) cube_index |= 128
+
+          // Empty for a cube entirely inside or outside. Each triangle spans 3 distinct edges,
+          // each with its own cache slot, so none is degenerate.
+          const tri_list = TRI_TABLE[cube_index]
+          for (let tri_idx = 0; tri_idx < tri_list.length; tri_idx += 3) {
+            const vector_0 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx])
+            const vector_1 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 1])
+            const vector_2 = get_vertex_on_edge(idx_x, idx_y, idx_z, tri_list[tri_idx + 2])
+            indices = grow(indices, n_indices + 3, memory)
+            indices[n_indices++] = vector_0
+            indices[n_indices++] = flip_winding ? vector_2 : vector_1
+            indices[n_indices++] = flip_winding ? vector_1 : vector_2
+          }
+        }
+      }
+      prev_slab_wrote = n_vertices > slab_vertices
+      ;[y_edge_current, y_edge_next] = [y_edge_next, y_edge_current]
+      ;[z_edge_current, z_edge_next] = [z_edge_next, z_edge_current]
+    }
+
+    const output_bytes = 4 * (3 * n_vertices * (compute_norms ? 2 : 1) + n_indices)
+    // Trimming allocates while all growing buffers are still live.
+    memory?.reserve(output_bytes)
+    try {
+      return {
+        positions: positions.slice(0, 3 * n_vertices),
+        indices: indices.slice(0, n_indices),
+        normals: normals.slice(0, 3 * n_vertices),
+      }
+    } catch (error) {
+      memory?.release(output_bytes)
+      throw error
+    }
+  } finally {
+    memory?.release(
+      scratch_bytes + positions.byteLength + normals.byteLength + indices.byteLength,
+    )
   }
 }
 

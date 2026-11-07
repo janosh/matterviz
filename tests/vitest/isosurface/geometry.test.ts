@@ -203,3 +203,16 @@ test(`compute_geometries_async posts a cloneable payload and returns the worker 
     sync.volumes[0].surfaces[0].positions,
   )
 })
+
+test(`worker input admission rejects before posting and leaves the source reusable`, async () => {
+  const input = blob_input()
+  const original = input.volumes[0].volume.values.slice()
+  await expect(
+    compute_geometries_async({ ...input, memory_budget_bytes: 1 }, {}),
+  ).rejects.toThrow(/budget/)
+  expect(stub.posted).toHaveLength(0)
+  expect(input.volumes[0].volume.values).toEqual(original)
+  await expect(
+    compute_geometries_async({ ...input, memory_budget_bytes: 10_000_000 }, {}),
+  ).resolves.toHaveProperty(`volumes`)
+})
