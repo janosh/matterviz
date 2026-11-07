@@ -987,6 +987,25 @@ describe(`LAMMPS`, () => {
     expect(run.warnings).toEqual([`Dropping truncated final LAMMPS frame: ${detail}`])
   })
 
+  // An MD run that blew up prints `nan`/`inf` coordinates: those frames are skipped with a
+  // warning (as XYZ does) instead of failing the whole dump, the frames before them intact
+  it(`skips frames with nan or inf coordinates and keeps the rest`, async () => {
+    const blown_up = (timestep: number, coord: string) =>
+      lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 ${coord} 0 0`], { timestep })
+    const content = [frame_0, blown_up(1, `nan`), blown_up(2, `3`), blown_up(3, `-inf`)].join(
+      `\n`,
+    )
+    const warning = (timestep: number, line: number, coord: string) =>
+      `Skipping LAMMPS frame at timestep ${timestep}: atom line ${line} has non-finite coordinates "2 1 ${coord} 0 0"`
+    for (const index_above_bytes of [Infinity, 0]) {
+      const run = await open(content, `nan.lammpstrj`, { index_above_bytes })
+      expect(await steps_of(run)).toEqual([0, 2])
+      await run.properties.done
+      expect(run.properties.rows.map(({ step }) => step)).toEqual([0, 2])
+      expect(run.warnings).toEqual([warning(1, 22, `nan`), warning(3, 44, `-inf`)])
+    }
+  })
+
   // Issue #449: a GCMC/deposition dump whose atom set changes is still a browsable
   // trajectory; only displacement analysis needs a constant atom set and says so itself
   it(`sorts every frame by atom ID and keeps frames whose atom set changed (GCMC)`, async () => {
@@ -1307,8 +1326,8 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
   })
 
   // Reads and position sweeps of the common layouts build no Site records to encode
-  // (2-3.5x per frame)
-  it.each<[string, () => string]>([
+  // (2-3.5x per frame; ASE 20k atoms: 4x)
+  it.each<[string, () => string | ArrayBuffer]>([
     [`md.extxyz`, () => synthetic_extxyz(4, 5)],
     [`XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
     [
@@ -1319,6 +1338,7 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
           `1 2 0.5 0.5 0.5 1 1 1 0 0 0 -0.5`,
         ]),
     ],
+    [`md.traj`, () => make_ase_md_buffer(5)],
   ])(`%s reads numeric frames without Site records`, async (filename, make_text) => {
     const run = await open(make_text(), filename, { index_above_bytes: 0 })
     await run.properties.done
@@ -1682,34 +1702,18 @@ describe(`XYZ`, () => {
   })
 
   // One warning per unknown symbol, not per atom: Wannier centres (`X`) flooded the list
-  it(`normalises symbol casing and skips unknown symbols with a warning`, async () => {
-    const frame = xyz_frame([
-      `FE 0 0 0`,
-      `si 1 0 0`,
-      `X 2 0 0`,
-      `O 3 0 0`,
-      `X 4 0 0`,
-      `Q 5 0 0`,
-    ])
-    const run = await open(`${frame}\n${frame}`, `ghost.xyz`)
-    expect((await frames_of(run)).map(elements_of)).toEqual([
-      [`Fe`, `Si`, `O`],
-      [`Fe`, `Si`, `O`],
-    ])
-    expect(run.warnings).toEqual([
-      `Skipping XYZ atoms with unknown element symbol "X", first in frame 1 (line 1) at line 5`,
-      `Skipping XYZ atoms with unknown element symbol "Q", first in frame 1 (line 1) at line 8`,
-    ])
-  })
-
   // An indexed frame decodes for its plot row and again on every read: each warning once
-  it(`warns once per unknown symbol in an indexed run however often frames are read`, async () => {
-    const frame = xyz_frame([`X 0 0 0`, `O 3 0 0`])
-    const run = await open(`${frame}\n${frame}`, `ghost.xyz`, { index_above_bytes: 0 })
+  // oxfmt-ignore
+  it.each([[Infinity, `frame 1 (line 1)`], [0, `indexed frame 1`]])(
+    `normalises symbol casing and warns once per unknown symbol (index above %d bytes)`, async (index_above_bytes, label) => {
+    const frame = xyz_frame([`FE 0 0 0`, `si 1 0 0`, `X 2 0 0`, `O 3 0 0`, `X 4 0 0`, `Q 5 0 0`])
+    const run = await open(`${frame}\n${frame}`, `ghost.xyz`, { index_above_bytes })
     await run.properties.done
-    for (let read = 0; read < 3; read++) await frames_of(run)
+    for (let read = 0; read < 3; read++)
+      expect((await frames_of(run)).map(elements_of)).toEqual([[`Fe`, `Si`, `O`], [`Fe`, `Si`, `O`]])
     expect(run.warnings).toEqual([
-      `Skipping XYZ atoms with unknown element symbol "X", first in indexed frame 1 at line 3`,
+      `Skipping XYZ atoms with unknown element symbol "X", first in ${label} at line 5`,
+      `Skipping XYZ atoms with unknown element symbol "Q", first in ${label} at line 8`,
     ])
   })
 
