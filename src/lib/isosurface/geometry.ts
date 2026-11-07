@@ -5,7 +5,7 @@ import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { ScalarGrid3D } from './grid'
 
-export interface GeometryVolumeJob {
+interface GeometryVolumeJob {
   grid: ScalarGrid3D<Float64Array>
   lattice: Matrix3x3
   origin: Vec3
