@@ -15,11 +15,14 @@ import { set_pan_offset } from '#lib/scene/pan.js'
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
 export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGPURenderer>()
 
+// Return a cleanup that restores any temporary quality settings, including after failure.
+export type PrepareSceneCapture = (signal: AbortSignal) => Promise<() => void>
+
 // Companion scene+camera mapping: the drawing buffer is cleared after present, so any
 // capture of a live canvas must re-render it first — which needs the scene and active camera.
 export const scene_registry = new WeakMap<
   HTMLCanvasElement,
-  { scene: Scene; camera: Camera }
+  { scene: Scene; camera: Camera; prepare_capture?: PrepareSceneCapture }
 >()
 
 // PNG DPI -> render scale relative to the 72 DPI baseline, capped at 10x. DPI floors
@@ -180,13 +183,33 @@ export async function canvas_to_png_blob(
   const resize = Math.abs(scale - orig_pixel_ratio) > 1e-6
   validate_capture_size(renderer, orig_size, scale)
 
+  const abort = new AbortController()
+  let restore_scene: (() => void) | undefined
+  let resize_attempted = false
   try {
-    if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
-    if (view) renderer.render(view.scene, view.camera)
+    const prepare_capture = view?.prepare_capture
+    if (prepare_capture)
+      restore_scene = await with_timeout(
+        () => prepare_capture(abort.signal),
+        60_000,
+        `Scene preparation`,
+      )
+    if (resize) {
+      resize_attempted = true
+      renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
+    }
+    // Preparation may change the active camera; use its latest registered value.
+    const prepared_view = scene_registry.get(canvas)
+    if (prepared_view) renderer.render(prepared_view.scene, prepared_view.camera)
     return await canvas_to_blob(canvas, export_dpi)
   } finally {
-    if (resize)
-      renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
+    abort.abort()
+    try {
+      if (resize_attempted)
+        renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
+    } finally {
+      restore_scene?.()
+    }
   }
 }
 

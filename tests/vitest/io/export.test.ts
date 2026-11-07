@@ -88,6 +88,62 @@ function make_canvas_with_renderer(toBlob_impl?: (callback_fn: BlobCallback) => 
   return { canvas, renderer }
 }
 
+test(`PNG waits for scene preparation and restores quality after encoding`, async () => {
+  const { canvas, renderer } = make_canvas_with_renderer()
+  const restore = vi.fn()
+  const ready = Promise.withResolvers<() => void>()
+  const prepare_capture = vi.fn(() => ready.promise)
+  const scene = {} as Scene
+  scene_registry.set(canvas, { scene, camera: {} as Camera, prepare_capture })
+  const capture = canvas_to_png_blob(canvas, 144)
+  await vi.waitUntil(() => prepare_capture.mock.calls.length > 0)
+  expect(renderer.render).not.toHaveBeenCalled()
+  expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
+  expect(canvas.toBlob).not.toHaveBeenCalled()
+  const camera = new PerspectiveCamera()
+  scene_registry.set(canvas, { scene, camera, prepare_capture })
+  ready.resolve(restore)
+  await capture
+  expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera)
+  expect(restore).toHaveBeenCalledOnce()
+  expect(vi.mocked(canvas.toBlob).mock.invocationCallOrder[0]).toBeLessThan(
+    restore.mock.invocationCallOrder[0],
+  )
+})
+
+test(`PNG aborts timed-out scene preparation without capturing stale surfaces`, async () => {
+  vi.useFakeTimers()
+  const { canvas, renderer } = make_canvas_with_renderer()
+  const cancelled = vi.fn()
+  const prepare_capture = vi.fn((signal: AbortSignal) => {
+    signal.addEventListener(`abort`, cancelled, { once: true })
+    return new Promise<() => void>(() => {})
+  })
+  scene_registry.set(canvas, { scene: {} as Scene, camera: {} as Camera, prepare_capture })
+  const pending = canvas_to_png_blob(canvas, 72).catch((error: unknown) => error)
+  await vi.advanceTimersByTimeAsync(60_001)
+  expect(await pending).toMatchObject({ message: `Scene preparation timed out after 60000ms` })
+  expect(cancelled).toHaveBeenCalledOnce()
+  expect(renderer.render).not.toHaveBeenCalled()
+  expect(canvas.toBlob).not.toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
+})
+
+test(`PNG rejects a failed preparation before rendering or encoding`, async () => {
+  const { canvas, renderer } = make_canvas_with_renderer()
+  scene_registry.set(canvas, {
+    scene: {} as Scene,
+    camera: {} as Camera,
+    prepare_capture: async () => {
+      throw new Error(`geometry budget exceeded`)
+    },
+  })
+  await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`geometry budget exceeded`)
+  expect(renderer.render).not.toHaveBeenCalled()
+  expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
+  expect(canvas.toBlob).not.toHaveBeenCalled()
+})
+
 test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
   `offline video awaits slow frames and restores dimensions on %s`,
   async (outcome) => {
@@ -403,7 +459,12 @@ describe(`canvas_to_png_blob`, () => {
     `restores the renderer and rejects when high-DPI %s fails`,
     async (failure_stage) => {
       const { canvas, renderer } = make_canvas_with_renderer()
-      scene_registry.set(canvas, { scene: {} as Scene, camera: {} as Camera })
+      const restore = vi.fn()
+      scene_registry.set(canvas, {
+        scene: {} as Scene,
+        camera: {} as Camera,
+        prepare_capture: async () => restore,
+      })
       const method = failure_stage === `toBlob` ? canvas.toBlob : renderer[failure_stage]
       vi.mocked(method).mockImplementationOnce(() => {
         throw new Error(`${failure_stage} failed`)
@@ -412,6 +473,7 @@ describe(`canvas_to_png_blob`, () => {
       await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`${failure_stage} failed`)
       expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
       expect(canvas.toBlob).toHaveBeenCalledTimes(failure_stage === `toBlob` ? 1 : 0)
+      expect(restore).toHaveBeenCalledOnce()
     },
   )
 
