@@ -48,6 +48,17 @@ const bar_rects = (root: ParentNode) =>
     }
   })
 
+// SpacegroupBarPlot count annotations as row + x extent, at its 6.4 px estimated glyph width
+const count_label_boxes = (plot: HTMLElement, centered: boolean) =>
+  [...plot.querySelectorAll(`.crystal-system-overlays text[font-size="12"]`)].map((text) => {
+    const [x_pos, label_width] = [
+      Number(text.getAttribute(`x`)),
+      (text.textContent?.trim().length ?? 0) * 6.4,
+    ]
+    const left = x_pos - (centered ? label_width / 2 : 0)
+    return { row: text.getAttribute(`y`), left, right: left + label_width }
+  })
+
 const mount_sized_bar_plot = (
   props: Partial<ComponentProps<typeof BarPlot>>,
   size: { width?: number; height?: number } = {},
@@ -78,6 +89,39 @@ describe(`BarPlot`, () => {
       expect(plot.querySelector(`.${count_side}-axis .axis-label`)?.textContent).toContain(
         `Counts`,
       )
+      // horizontal count labels sit in the right padding, which must fit the widest
+      const labels = count_label_boxes(plot, orientation === `vertical`)
+      expect(labels).toHaveLength(7)
+      for (const { left, right } of labels)
+        expect([left >= 0, right <= 400]).toEqual([true, true])
+    },
+  )
+
+  // Count annotations stack into rows by their rendered x: the auto-padded frame scale
+  // and the edge clamp, not the default-padding estimate (labels then overlapped)
+  test.each([
+    [200, [1, 1, 1, 1, 1, 1, 1]],
+    [200, [123456, 1, 1, 1, 1, 22, 123456]],
+    [250, [1, 1, 1, 1, 1, 1, 1]],
+    [350, [123456, 1, 1, 1, 1, 22, 123456]],
+    [600, [1, 123456, 1, 1, 1, 123456, 1]],
+  ])(
+    `count labels never overlap within a row at width %i, counts %j`,
+    async (width, counts) => {
+      const data = [1, 3, 16, 75, 143, 168, 195].flatMap((sg, idx) =>
+        Array(counts[idx]).fill(sg),
+      )
+      const plot = await mount_sized(
+        SpacegroupBarPlot,
+        { data },
+        { selector: `.bar-plot`, width },
+      )
+      const labels = count_label_boxes(plot, true)
+      expect(labels.length).toBeGreaterThan(4)
+      for (const [idx, { row, left, right }] of labels.entries()) {
+        for (const other of labels.slice(idx + 1))
+          if (row === other.row) expect(right <= other.left || other.right <= left).toBe(true)
+      }
     },
   )
 

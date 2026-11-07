@@ -17,11 +17,12 @@ import {
 } from '#lib/plot/core/layout.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
+import { create_placed_tween } from '#lib/plot/core/placed-tween.svelte.js'
 import type { PaneToggleProps } from '#lib/overlays/index.js'
 import type * as decorations from '#lib/plot/core/decorations/index.js'
 import { solve_decorations } from '#lib/plot/core/decorations/index.js'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import {
   axis_label_pivot_y,
   bind_props,
@@ -1079,3 +1080,45 @@ test.each([
     ]).toEqual(expected)
   },
 )
+
+test(`create_placed_tween re-places when a descendant is added after setup`, async () => {
+  let resize_callback: ResizeObserverCallback | undefined
+  const observed = new Set<Element>()
+  onTestFinished(() => void vi.unstubAllGlobals())
+  vi.stubGlobal(
+    `ResizeObserver`,
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        resize_callback = callback
+      }
+      observe = (target: Element): void => void observed.add(target)
+      disconnect(): void {}
+    },
+  )
+  const decoration = document.createElement(`div`)
+  let placement_x = 10
+  let placed_tween: ReturnType<typeof create_placed_tween> | undefined
+  const dispose = $effect.root(() => {
+    placed_tween = create_placed_tween({
+      placement: () => ({ x: placement_x, y: 0 }),
+      dims: () => ({ width: 100, height: 100 }),
+      responsive: () => false,
+      element: () => decoration,
+      tween: () => ({ duration: 0 }),
+    })
+  })
+  flushSync()
+  const tick_label = document.createElement(`span`)
+  decoration.append(tick_label)
+  await vi.waitFor(() => expect(observed).toContain(tick_label))
+  placement_x = 30
+  // its initial observation is a footprint change: the label was not there at placement
+  flushSync(() =>
+    resize_callback?.(
+      [{ target: tick_label } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    ),
+  )
+  expect(placed_tween?.coords.target).toEqual({ x: 30, y: 0 })
+  dispose()
+})

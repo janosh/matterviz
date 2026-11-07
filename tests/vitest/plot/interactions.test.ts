@@ -107,6 +107,36 @@ it.each([`wheel_x`, `wheel_y`, `drag`, `touch_pan`, `pinch`] as const)(
   },
 )
 
+// Firefox wheels report lines (deltaMode 1), page scrolls whole pages (2): both pan by pixels
+it.each([
+  [0, 48, [2.4, 12.4]],
+  [1, 3, [2.4, 12.4]],
+  [2, 1, [10, 20]],
+] as const)(
+  `shift+wheel with deltaMode %i and deltaX %i pans x to %j`,
+  (mode, delta, expected) => {
+    const ranges: AxisRanges = { x: [0, 10], x2: [0, 10], y: [0, 10], y2: [0, 10] }
+    const controller = create_pan_zoom({
+      axes: () => [`x`, `y`],
+      ranges: () => ranges,
+      scale_type: () => `linear`,
+      plot_bounds: () => ({ x: 0, y: 0, width: 200, height: 200 }),
+      pan: () => ({}),
+      set_range: (axis, range) => (ranges[axis] = range),
+      svg: () => null,
+      on_rect_zoom: vi.fn(),
+      on_reset: vi.fn(),
+    })
+    onTestFinished(() => controller.destroy())
+    controller.set_focused(true)
+    controller.on_window_key_down(new KeyboardEvent(`keydown`, { key: `Shift` }))
+    controller.on_wheel(new WheelEvent(`wheel`, { deltaX: delta, deltaMode: mode }))
+    expect(ranges.x[0]).toBeCloseTo(expected[0], 12)
+    expect(ranges.x[1]).toBeCloseTo(expected[1], 12)
+    expect(ranges.y).toEqual([0, 10])
+  },
+)
+
 describe(`pan_range_by_pixels`, () => {
   // pan must be uniform in *screen* space: constant shift on linear axes,
   // constant factor on log axes (never crossing zero), asinh-shift on arcsinh
@@ -271,6 +301,10 @@ describe(`sync_y2_range`, () => {
     ...align_cases,
     [`symmetric expand`, [-20, 20], [60, 140], [-140, 140]],
     [`zero span fallback`, [0, 0], [0, 50], [0, 50]],
+    // a descending y2 base keeps its full extent and follows y1's direction
+    [`descending y2 base, 0 at bottom`, [0, 100], [50, 0], [0, 50]],
+    [`descending y2 base, 0 at 25%`, [-25, 75], [40, 0], [-40 / 3, 40]],
+    [`descending y1 and y2 base`, [100, 0], [50, 0], [50, 0]],
     ...descending_cases,
   ])(`align: %s`, (_desc, coord_y_1, y2_base, expected, align_value) => {
     expect(sync_y2_range(coord_y_1, y2_base, { mode: `align`, align_value })).toEqual(expected)

@@ -97,18 +97,19 @@ describe(`dodge`, () => {
     },
   )
 
-  test(`returns offsets in input order, packing in position order`, () => {
+  test.each([
     // Sorted: idx 1 (0), idx 0 (5), idx 2 (5, ties keep input order) -> idx 2 dodges idx 0
-    expect([...dodge([5, 0, 5], 1, { padding: 0 })]).toEqual([0, 0, -2])
-  })
-
-  test(`isolated circles stay on the center line`, () => {
-    expect([...dodge([0, 10, 20, 30], 2, { padding: 1 })]).toEqual([0, 0, 0, 0])
-  })
-
-  test(`non-finite positions get NaN and block nothing`, () => {
-    const offsets = dodge([3, NaN, 3, Infinity], 1, { padding: 0 })
-    expect([...offsets]).toEqual([0, NaN, -2, NaN])
+    [`offsets in input order, packed in position order`, [5, 0, 5], 1, 0, [0, 0, -2]],
+    [`isolated circles stay on the center line`, [0, 10, 20, 30], 2, 1, [0, 0, 0, 0]],
+    [
+      `non-finite positions get NaN, block nothing`,
+      [3, NaN, 3, Infinity],
+      1,
+      0,
+      [0, NaN, -2, NaN],
+    ],
+  ])(`%s`, (_desc, positions, radius, padding, expected) => {
+    expect([...dodge(positions, radius, { padding })]).toEqual(expected)
   })
 
   test.each([

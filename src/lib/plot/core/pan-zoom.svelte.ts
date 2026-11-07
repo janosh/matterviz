@@ -206,13 +206,18 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
     evt.preventDefault()
     mark_wheel_panning()
+    // Firefox reports mouse wheels in lines (deltaMode 1), pages are deltaMode 2: scale both to
+    // pixels, else a notch there pans 3 px where Chrome pans 100
+    const { width, height } = opts.plot_bounds()
+    const [x_unit, y_unit] =
+      evt.deltaMode === 1 ? [16, 16] : evt.deltaMode === 2 ? [width, height] : [1, 1]
     const sensitivity = pan_cfg?.wheel_sensitivity ?? 1
     // Pan along the dominant wheel direction
     const direction = Math.abs(evt.deltaX) > Math.abs(evt.deltaY) ? `x` : `y`
     pan_axes(
       opts.ranges(),
-      evt.deltaX * sensitivity,
-      evt.deltaY * sensitivity,
+      evt.deltaX * x_unit * sensitivity,
+      evt.deltaY * y_unit * sensitivity,
       opts.axes().filter((axis) => axis.startsWith(direction)),
     )
   }

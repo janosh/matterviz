@@ -3,7 +3,7 @@
 // into typed arrays, so a million samples bin in a few milliseconds.
 
 import { zero_if_negligible } from '#lib/labels.js'
-import { clamp, type Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math.js'
 import type { FillPattern } from '#lib/plot/core/patterns.js'
 import {
   accumulate_extent,
@@ -184,18 +184,19 @@ export function bin_values(
     }
     return { edges, counts: weights ? Float64Array.of(count) : Uint32Array.of(count) }
   }
-  const bin_count = edges.length - 1
-  const counts = weights ? new Float64Array(bin_count) : new Uint32Array(bin_count)
+  const last_bin = edges.length - 2
+  const counts = weights ? new Float64Array(last_bin + 1) : new Uint32Array(last_bin + 1)
   for (let idx = 0; idx < n_values; idx++) {
     const val = values[idx]
     // NaN fails both comparisons, so this also filters non-finite input
     if (!(val >= lower && val <= upper)) continue
     // The clamp covers val === hi (goes in the last bin), then a snap to the materialized
     // edges keeps a value sitting exactly on one in the upper bin even when fwd() rounds down
-    // (log10(1000) < 3).
-    const pos = is_linear ? val : fwd(val)
-    let bin_idx = clamp(Math.floor((pos - pos_lo) * scale), 0, bin_count - 1)
-    if (val >= edges[bin_idx + 1] && bin_idx < bin_count - 1) bin_idx++
+    // (log10(1000) < 3). Clamped inline: a clamp() call per sample costs ~2x on 1e6 samples.
+    let bin_idx = Math.floor(((is_linear ? val : fwd(val)) - pos_lo) * scale)
+    if (bin_idx > last_bin) bin_idx = last_bin
+    else if (bin_idx < 0) bin_idx = 0
+    if (val >= edges[bin_idx + 1] && bin_idx < last_bin) bin_idx++
     else if (val < edges[bin_idx] && bin_idx > 0) bin_idx--
     if (!weights) counts[bin_idx] += 1
     else if (Number.isFinite(weights[idx])) counts[bin_idx] += weights[idx]

@@ -20,6 +20,7 @@
   const COUNT_LABEL_CHAR_PX = 6.4 // mean glyph advance of the 12px count annotation
   const COUNT_LABEL_ROW_PX = 14
   const COUNT_LABEL_MAX_ROWS = 3
+  const COUNT_LABEL_GAP_PX = 8 // between the plot area's right edge and horizontal count labels
   let {
     data,
     show_counts = true,
@@ -75,18 +76,21 @@
   // annotation rows depend on pixel spacing, which the data alone can't tell us.
   let plot_width = $state(0)
   const observe_width = observe_size(({ width }) => (plot_width = width))
-  // Approximate data-space width of one px along the spacegroup axis, from the default
-  // frame padding; the real scale only enters in user_content. Worst case the estimate
-  // is off by a few px per label, which the collision gap absorbs.
+  // Pixel extent of the spacegroup axis. Starts from the default frame padding, then
+  // user_content reports the frame's real (auto-padded) scale, so tick thinning and count
+  // label rows match what renders.
+  let sg_axis_px = $derived<Vec2>([
+    padding.l ?? DEFAULT_PLOT_PADDING.l,
+    plot_width - (padding.r ?? DEFAULT_PLOT_PADDING.r),
+  ])
   const sg_per_px = $derived(
-    MAX_SPACEGROUP /
-      Math.max(
-        plot_width -
-          (padding.l ?? DEFAULT_PLOT_PADDING.l) -
-          (padding.r ?? DEFAULT_PLOT_PADDING.r),
-        1,
-      ),
+    (x_range[1] - x_range[0]) / Math.max(sg_axis_px[1] - sg_axis_px[0], 1),
   )
+  const report_sg_axis_px = (x_scale_fn: (value: number) => number) => () => {
+    const [start, end] = [x_scale_fn(x_range[0]), x_scale_fn(x_range[1])]
+    // assigning an equal extent would re-layout the frame and re-run this, forever
+    if (start !== sg_axis_px[0] || end !== sg_axis_px[1]) sg_axis_px = [start, end]
+  }
 
   // Smart tick selection: thin out ticks for dense data
   const x_axis_ticks = $derived.by(() => {
@@ -135,19 +139,22 @@
     })
   })
 
-  // Calculate crystal system region boundaries using full theoretical ranges
+  const total_count = $derived(normalized_data.length)
+  // Calculate crystal system region boundaries using full theoretical ranges, with each
+  // system's count annotation and its estimated half width
   const crystal_system_regions = $derived(
     symmetry.CRYSTAL_SYSTEMS.map((system) => {
       const [sg_start, sg_end] = symmetry.CRYSTAL_SYSTEM_RANGES[system]
       const count = crystal_system_counts.get(system) ?? 0
       const color = symmetry.CRYSTAL_SYSTEM_COLORS[system]
-      return { system, sg_start, sg_end, count, color }
+      const label = `${format_num(count, `,~`)} (${format_num(count / total_count, `.1~%`)})`
+      const half_width = (label.length * COUNT_LABEL_CHAR_PX) / 2
+      return { system, sg_start, sg_end, count, color, label, half_width }
     }),
   )
-
-  const total_count = $derived(normalized_data.length)
-  const count_label = (count: number) =>
-    `${format_num(count, `,~`)} (${format_num(count / total_count, `.1~%`)})`
+  // keep the centered label inside the plot's [0, width] box
+  const clamp_label_x = (center: number, half_width: number, width: number) =>
+    Math.min(Math.max(center, half_width), width - half_width)
 
   // Count annotations sit above their crystal-system band. Narrow bands (triclinic is
   // 2 of 230 spacegroups) and narrow plots make neighbouring labels overlap, so each
@@ -157,18 +164,28 @@
     const rows = new Map<CrystalSystem, number>()
     if (orientation !== `vertical`) return rows
     const row_right_edges: number[] = Array(COUNT_LABEL_MAX_ROWS).fill(-Infinity)
-    for (const region of crystal_system_regions) {
-      const label = count_label(region.count)
-      const half_width = (label.length * COUNT_LABEL_CHAR_PX) / 2
-      const center = (region.sg_start + region.sg_end) / 2 / sg_per_px
+    for (const { sg_start, sg_end, half_width, system } of crystal_system_regions) {
+      // same edge clamp as at render time, or a clamped edge label lands on its neighbour
+      const center = clamp_label_x(
+        sg_axis_px[0] + ((sg_start + sg_end) / 2 - x_range[0]) / sg_per_px,
+        half_width,
+        plot_width,
+      )
       const row = row_right_edges.findIndex((right) => center - half_width > right)
       if (row === -1) continue
       row_right_edges[row] = center + half_width
-      rows.set(region.system, row)
+      rows.set(system, row)
     }
     return rows
   })
   const extra_count_rows = $derived(Math.max(0, ...count_label_rows.values()))
+  // Horizontal plots write the counts right of the plot area, which needs room for the widest
+  const count_label_gutter = $derived(
+    orientation === `horizontal` && show_counts && total_count > 0
+      ? COUNT_LABEL_GAP_PX +
+          2 * Math.max(...crystal_system_regions.map(({ half_width }) => half_width))
+      : 0,
+  )
 
   // Axis configs by orientation: user settings win over the defaults merged in here
   const count_axis = (axis: AxisConfig): AxisConfig => ({
@@ -204,7 +221,11 @@
 {/snippet}
 
 {#snippet user_content({ width, height, x_scale_fn, y_scale_fn, pad }: UserContentProps)}
-  <g class="crystal-system-overlays" pointer-events="none">
+  <g
+    class="crystal-system-overlays"
+    pointer-events="none"
+    {@attach orientation === `vertical` && report_sg_axis_px(x_scale_fn)}
+  >
     {#each crystal_system_regions as region (region.system)}
       <!-- the system's band of spacegroups across the plot area: columns when vertical, rows
         (spacegroups ascending upwards) when horizontal -->
@@ -245,16 +266,14 @@
         </text>
         <!-- Count annotation at top, stacked into rows where neighbours would overlap -->
         {#if show_counts && total_count > 0 && count_label_rows.has(region.system)}
-          {@const label = count_label(region.count)}
-          {@const half_width = (label.length * COUNT_LABEL_CHAR_PX) / 2}
           <text
-            x={Math.min(Math.max(x_center, half_width), width - half_width)}
+            x={clamp_label_x(x_center, region.half_width, width)}
             y={pad.t - 5 - COUNT_LABEL_ROW_PX * (count_label_rows.get(region.system) ?? 0)}
             text-anchor="middle"
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {label}
+            {region.label}
           </text>
         {/if}
       {:else}
@@ -275,14 +294,14 @@
         <!-- Count annotation at right -->
         {#if show_counts && total_count > 0}
           <text
-            x={width - pad.r + 5}
+            x={width - pad.r + COUNT_LABEL_GAP_PX / 2}
             y={y_center}
             text-anchor="start"
             dominant-baseline="central"
             font-size="12"
             fill="var(--text-color, black)"
           >
-            {count_label(region.count)}
+            {region.label}
           </text>
         {/if}
       {/if}
@@ -305,6 +324,10 @@
       padding.t ?? 0,
       DEFAULT_PLOT_PADDING.t + (show_counts ? COUNT_LABEL_ROW_PX * extra_count_rows : 0),
     ),
+    // likewise a floor: the horizontal count labels sit in the right padding
+    ...(count_label_gutter && {
+      r: Math.max(padding.r ?? DEFAULT_PLOT_PADDING.r, count_label_gutter),
+    }),
   }}
   x_axis={x_axis_config}
   y_axis={y_axis_config}

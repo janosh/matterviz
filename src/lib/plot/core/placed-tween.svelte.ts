@@ -96,8 +96,26 @@ export function create_placed_tween(opts: {
       for (const { target } of entries) observed_elements.add(target)
       if (size_changed) element_size_revision += 1
     })
-    for (const target of [element, ...element.querySelectorAll(`*`)]) observer.observe(target)
-    return () => observer.disconnect()
+    const observe_tree = (root: Element): void => {
+      for (const target of [root, ...root.querySelectorAll(`*`)]) observer.observe(target)
+    }
+    observe_tree(element)
+    // Descendants added later (e.g. a ColorBar's absolutely positioned tick labels after a
+    // range change) can change the footprint without resizing `element`. Pre-mark them seen
+    // so their initial observation counts as a size change.
+    const mutation_observer = new MutationObserver((records) => {
+      for (const node of records.flatMap((record) => [...record.addedNodes])) {
+        if (!(node instanceof Element)) continue
+        for (const target of [node, ...node.querySelectorAll(`*`)])
+          observed_elements.add(target)
+        observe_tree(node)
+      }
+    })
+    mutation_observer.observe(element, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      mutation_observer.disconnect()
+    }
   })
 
   // Update position with stability checks
