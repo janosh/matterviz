@@ -176,20 +176,36 @@ export async function canvas_to_png_blob(
 
   await wait_for_renderer(renderer)
   await scene_registry.get(canvas)?.ready?.()
-  const view = scene_registry.get(canvas)
-  const orig_pixel_ratio = renderer.getPixelRatio()
-  const orig_size = renderer.getSize(new Vector2())
-  const resize = Math.abs(scale - orig_pixel_ratio) > 1e-6
-  validate_capture_size(renderer, orig_size, scale)
-
+  const release = await lock_capture(renderer)
   try {
-    if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
-    if (view) renderer.render(view.scene, view.camera)
-    return await canvas_to_blob(canvas, export_dpi)
+    const view = scene_registry.get(canvas)
+    const orig_pixel_ratio = renderer.getPixelRatio()
+    const orig_size = renderer.getSize(new Vector2())
+    const resize = Math.abs(scale - orig_pixel_ratio) > 1e-6
+    validate_capture_size(renderer, orig_size, scale)
+    try {
+      if (resize) renderer.setDrawingBufferSize(orig_size.width, orig_size.height, scale)
+      if (view) renderer.render(view.scene, view.camera)
+      return await canvas_to_blob(canvas, export_dpi)
+    } finally {
+      if (resize)
+        renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
+    }
   } finally {
-    if (resize)
-      renderer.setDrawingBufferSize(orig_size.width, orig_size.height, orig_pixel_ratio)
+    release()
   }
+}
+
+// Captures resize the shared drawing buffer and restore what they found: one starting while
+// another holds the export size would "restore" that, leaving the live viewer stuck at it.
+// So captures of one renderer take turns, in call order; the returned function ends a turn.
+const capture_queues = new WeakMap<WebGPURenderer, Promise<undefined>>()
+async function lock_capture(renderer: WebGPURenderer): Promise<() => void> {
+  const previous = capture_queues.get(renderer)
+  const turn = Promise.withResolvers<undefined>()
+  capture_queues.set(renderer, turn.promise)
+  await previous
+  return () => turn.resolve(undefined)
 }
 
 // PNG of a scene drawn in CSS pixels: `paint` runs on a fresh canvas pre-scaled by `scale`,
@@ -501,14 +517,21 @@ function prepare_clone(
   })
 }
 
-// Matches decimals with 3+ fraction digits (optionally in exponent form), rounded to 2 places:
-// 0.01 user units is far below a pixel, and long floats dominate chart file sizes. url(#…)
-// references match first and stay verbatim: ids are UUIDs, whose `3e-1234` reads as a number.
-const LONG_DECIMAL = /url\([^)]*\)|-?\d*\.\d{3,}(?:e[-+]?\d+)?|-?\d+(?:\.\d+)?e-\d+/gi
+// Rounds decimals with 3+ fraction digits (or a negative exponent) to 2 places: 0.01 user units
+// is far below a pixel, and long floats dominate chart file sizes. url(#…) references match
+// first and stay verbatim: ids are UUIDs, whose `3e-1234` reads as a number. Whole number tokens
+// match, never a tail like `99.9999` in compact path data `0.99.9999`, and a rounded number that
+// lost the dot or sign separating it from a neighbor (`0.99.9999`, `1-0.001`) gets a space.
+const NUMBER_TOKEN = /url\([^)]*\)|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi
+const LONG_DECIMAL = /\.\d{3}|e-/i
 const round_decimals = (text: string): string =>
-  text.replaceAll(LONG_DECIMAL, (match) =>
-    match.startsWith(`url(`) ? match : String(Math.round(Number(match) * 100) / 100 || 0),
-  )
+  text.replaceAll(NUMBER_TOKEN, (match, offset: number) => {
+    if (match.startsWith(`url(`) || !LONG_DECIMAL.test(match)) return match
+    const rounded = String(Math.round(Number(match) * 100) / 100 || 0)
+    const merges_before = /[\d.]/.test(text[offset - 1] ?? ``) && /^\d/.test(rounded)
+    const merges_after = text[offset + match.length] === `.` && !rounded.includes(`.`)
+    return `${merges_before ? ` ` : ``}${rounded}${merges_after ? ` ` : ``}`
+  })
 // Markup the standalone file has no use for: interaction and test hooks and event routing.
 // Classes stay as layer names for editing the figure in vector tools, minus Svelte's
 // scoping hashes, which only meant something to the page stylesheet.
@@ -1003,6 +1026,8 @@ export async function render_video_frames(
   const renderer = renderer_registry.get(canvas)
   if (renderer) await wait_for_renderer(renderer)
   signal.throwIfAborted()
+  // the drawing buffer stays at the video size for the whole recording
+  const release = renderer && (await lock_capture(renderer))
   let restore_renderer: (() => void) | undefined
   try {
     const prepare = async (idx: number) => {
@@ -1095,6 +1120,7 @@ export async function render_video_frames(
     await abortable(() => sink.finish?.(), signal)
   } finally {
     restore_renderer?.()
+    release?.()
   }
 }
 

@@ -101,7 +101,7 @@
           type="number"
           min={lower}
           max={upper}
-          step="0.01"
+          step="any"
           value={Number(value.toFixed(3))}
           onchange={(event) => {
             commit(element, event.currentTarget.valueAsNumber)
