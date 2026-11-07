@@ -1,7 +1,6 @@
 // Volume sampling utilities: trilinear interpolation, world-coordinate volume
 // samplers for cross-volume isosurface coloring, grid compatibility checks, and
 // fractional display-range extraction for VESTA-style non-integer supercells.
-import type { GeometryMemoryBudget } from './memory'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { reciprocal_lattice, scale_lattice_matrix } from '#lib/math.js'
 import { clamp01 } from '#lib/utils.js'
@@ -338,7 +337,6 @@ export function extract_volume_range(
   volume: VolumeGrid & Partial<Pick<VolumetricData, `label` | `source` | `source_filename`>>,
   range: DisplayRange,
   max_points: number = MAX_GRID_POINTS,
-  memory?: GeometryMemoryBudget,
 ): Omit<VolumetricData, `id`> {
   const sanitized = sanitize_display_range(range, volume.periodic)
   const [range_x, range_y, range_z] = sanitized
@@ -361,89 +359,71 @@ export function extract_volume_range(
   const [src_nx, src_ny, src_nz] = volume.dims
   const src_stride_x = src_ny * src_nz
   const src = volume.values
-  const axis_bytes = (size_x + size_y + size_z) * 16 // two Int32 indices and Float64 weights
-  memory?.reserve(size_x * size_y * size_z * 8 + axis_bytes)
-  try {
-    const x_samples = precompute_axis_interpolation(range_x, size_x, src_nx, volume.periodic)
-    const y_samples = precompute_axis_interpolation(range_y, size_y, src_ny, volume.periodic)
-    const z_samples = precompute_axis_interpolation(range_z, size_z, src_nz, volume.periodic)
-    const values = new Float64Array(size_x * size_y * size_z)
-    let out_idx = 0
-    if (x_samples.direct && y_samples.direct && z_samples.direct) {
-      // Sample points coincide with source voxels: copy without blending
-      const nearest = ({ lower, upper, weight }: AxisInterpolation, idx: number) =>
-        weight[idx] > 0.5 ? upper[idx] : lower[idx]
-      for (let x_idx = 0; x_idx < size_x; x_idx++) {
-        const x_offset = nearest(x_samples, x_idx) * src_stride_x
-        for (let y_idx = 0; y_idx < size_y; y_idx++) {
-          const row_offset = x_offset + nearest(y_samples, y_idx) * src_nz
-          for (let z_idx = 0; z_idx < size_z; z_idx++) {
-            values[out_idx++] = src[row_offset + nearest(z_samples, z_idx)]
-          }
-        }
-      }
-    } else {
-      for (let x_idx = 0; x_idx < size_x; x_idx++) {
-        const x_lower = x_samples.lower[x_idx]
-        const x_upper = x_samples.upper[x_idx]
-        const x_weight = x_samples.weight[x_idx]
-        for (let y_idx = 0; y_idx < size_y; y_idx++) {
-          const y_lower = y_samples.lower[y_idx]
-          const y_upper = y_samples.upper[y_idx]
-          const y_weight = y_samples.weight[y_idx]
-          for (let z_idx = 0; z_idx < size_z; z_idx++) {
-            values[out_idx++] = interpolate_cell(
-              src,
-              src_stride_x,
-              src_nz,
-              1,
-              x_lower,
-              x_upper,
-              y_lower,
-              y_upper,
-              z_samples.lower[z_idx],
-              z_samples.upper[z_idx],
-              x_weight,
-              y_weight,
-              z_samples.weight[z_idx],
-            )
-          }
+  const x_samples = precompute_axis_interpolation(range_x, size_x, src_nx, volume.periodic)
+  const y_samples = precompute_axis_interpolation(range_y, size_y, src_ny, volume.periodic)
+  const z_samples = precompute_axis_interpolation(range_z, size_z, src_nz, volume.periodic)
+  const values = new Float64Array(size_x * size_y * size_z)
+  let out_idx = 0
+  if (x_samples.direct && y_samples.direct && z_samples.direct) {
+    // Sample points coincide with source voxels: copy without blending
+    const nearest = ({ lower, upper, weight }: AxisInterpolation, idx: number) =>
+      weight[idx] > 0.5 ? upper[idx] : lower[idx]
+    for (let x_idx = 0; x_idx < size_x; x_idx++) {
+      const x_offset = nearest(x_samples, x_idx) * src_stride_x
+      for (let y_idx = 0; y_idx < size_y; y_idx++) {
+        const row_offset = x_offset + nearest(y_samples, y_idx) * src_nz
+        for (let z_idx = 0; z_idx < size_z; z_idx++) {
+          values[out_idx++] = src[row_offset + nearest(z_samples, z_idx)]
         }
       }
     }
+  } else {
+    for (let x_idx = 0; x_idx < size_x; x_idx++) {
+      const x_lower = x_samples.lower[x_idx]
+      const x_upper = x_samples.upper[x_idx]
+      const x_weight = x_samples.weight[x_idx]
+      for (let y_idx = 0; y_idx < size_y; y_idx++) {
+        const y_lower = y_samples.lower[y_idx]
+        const y_upper = y_samples.upper[y_idx]
+        const y_weight = y_samples.weight[y_idx]
+        for (let z_idx = 0; z_idx < size_z; z_idx++) {
+          values[out_idx++] = interpolate_cell(
+            src,
+            src_stride_x,
+            src_nz,
+            1,
+            x_lower,
+            x_upper,
+            y_lower,
+            y_upper,
+            z_samples.lower[z_idx],
+            z_samples.upper[z_idx],
+            x_weight,
+            y_weight,
+            z_samples.weight[z_idx],
+          )
+        }
+      }
+    }
+  }
 
-    const [row_a, row_b, row_c] = volume.lattice
-    const { label, source, source_filename } = volume
-    return {
-      values,
-      dims: counts,
-      order: `z_fastest`,
-      data_range: grid_data_range(values),
-      label,
-      source,
-      source_filename,
-      lattice: scale_lattice_matrix(volume.lattice, widths),
-      origin: [
-        volume.origin[0] +
-          range_x[0] * row_a[0] +
-          range_y[0] * row_b[0] +
-          range_z[0] * row_c[0],
-        volume.origin[1] +
-          range_x[0] * row_a[1] +
-          range_y[0] * row_b[1] +
-          range_z[0] * row_c[1],
-        volume.origin[2] +
-          range_x[0] * row_a[2] +
-          range_y[0] * row_b[2] +
-          range_z[0] * row_c[2],
-      ],
-      periodic: false, // the extracted block is a finite window; endpoints included
-    }
-  } catch (error) {
-    memory?.release(size_x * size_y * size_z * 8)
-    throw error
-  } finally {
-    memory?.release(axis_bytes)
+  const [row_a, row_b, row_c] = volume.lattice
+  const { label, source, source_filename } = volume
+  return {
+    values,
+    dims: counts,
+    order: `z_fastest`,
+    data_range: grid_data_range(values),
+    label,
+    source,
+    source_filename,
+    lattice: scale_lattice_matrix(volume.lattice, widths),
+    origin: [
+      volume.origin[0] + range_x[0] * row_a[0] + range_y[0] * row_b[0] + range_z[0] * row_c[0],
+      volume.origin[1] + range_x[0] * row_a[1] + range_y[0] * row_b[1] + range_z[0] * row_c[1],
+      volume.origin[2] + range_x[0] * row_a[2] + range_y[0] * row_b[2] + range_z[0] * row_c[2],
+    ],
+    periodic: false, // the extracted block is a finite window; endpoints included
   }
 }
 
@@ -461,16 +441,10 @@ export const UNIT_CELL_RANGE: DisplayRange = [
 export function prepare_geometry_grid(
   volume: VolumeGrid,
   range: DisplayRange | null,
-  memory?: GeometryMemoryBudget,
 ): { grid: ScalarGrid3D<Float64Array>; lattice: Matrix3x3; origin: Vec3 } {
   const { values, dims, lattice, origin, periodic } = volume
   if (!range && !periodic && values.length <= MAX_GRID_POINTS && dims.every((dim) => dim >= 2))
     return { grid: volume, lattice, origin }
-  const extracted = extract_volume_range(
-    volume,
-    range ?? UNIT_CELL_RANGE,
-    MAX_GRID_POINTS,
-    memory,
-  )
+  const extracted = extract_volume_range(volume, range ?? UNIT_CELL_RANGE)
   return { grid: extracted, lattice: extracted.lattice, origin: extracted.origin }
 }

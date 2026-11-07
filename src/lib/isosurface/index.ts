@@ -8,7 +8,6 @@ export { default as VolumeSliceView } from './VolumeSliceView.svelte'
 export { flatten_grid, grid_dimensions, scalar_grid_strides } from './grid'
 export type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from './grid'
 
-export { GeometryMemoryBudget, GeometryMemoryError } from './memory'
 export * from './coloring'
 export * from './context'
 export * from './parse'

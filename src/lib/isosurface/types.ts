@@ -165,9 +165,6 @@ export interface IsosurfaceLayer {
 
 // Every rendered surface is an explicit layer (none renders nothing), plus shared options
 export interface IsosurfaceSettings {
-  // Optional admission limit for retained geometry plus an extraction's CPU typed buffers.
-  // Source arrays owned by the application and GPU allocations are outside this limit.
-  geometry_memory_budget_bytes?: number
   layers: IsosurfaceLayer[]
   wireframe: boolean
   halo: number // fraction of cell to extend isosurface beyond boundaries (0 = clip at cell edge, 0.5 = half cell)

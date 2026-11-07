@@ -3,7 +3,6 @@
   // volume and optionally a color volume sampled at the vertices through a colormap (e.g.
   // density colored by ESP). Geometry and sampled scalars are cached, so colormap changes
   // only remap through the LUT and never rerun marching cubes.
-  import { GeometryMemoryBudget } from './memory'
   import { value_key } from '#lib/utils.js'
   import type { Matrix3x3, Vec3 } from '../math'
   import { to_error } from 'svelte-widgets/utils'
@@ -186,13 +185,7 @@
 
   // range_key covers halo + tiling, so the geometry identity needs no other inputs
   const geometry_key = ({ volume_id, volume, isovalue }: ResolvedLayer, sign: 1 | -1) =>
-    value_key([
-      volume_id,
-      vol_id(volume),
-      sign * isovalue,
-      range_key(volume),
-      settings.geometry_memory_budget_bytes,
-    ])
+    value_key([volume_id, vol_id(volume), sign * isovalue, range_key(volume)])
 
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
@@ -318,41 +311,30 @@
 
     let geometries = new Map<string, BufferGeometry>()
     const jobs = geometry_jobs(pending)
-    const memory = new GeometryMemoryBudget(settings.geometry_memory_budget_bytes)
-    const resident = new Set<ArrayBufferLike>()
-    for (const entry of active_entries) {
-      const positions = entry.geometry.getAttribute(`position`)
-      // Also retain room for colors/scalars added later without a geometry rebuild.
-      const vertices = positions.count
-      memory.reserve(vertices * (3 + 3 + 1) * 4)
-      resident.add(positions.array.buffer)
-      const index = entry.geometry.getIndex()
-      if (index) resident.add(index.array.buffer)
-    }
-    for (const volume of volumes) {
-      const prepared = prepared_cache.get(volume)
-      if (prepared && prepared.grid.values.buffer !== volume.values.buffer)
-        resident.add(prepared.grid.values.buffer)
-    }
-    memory.reserve([...resident].reduce((total, buffer) => total + buffer.byteLength, 0))
-    const input = { volumes: jobs, memory_budget_bytes: memory.limit - memory.used }
     if (use_geometry_worker(pending)) {
       const abort = new AbortController()
       geometry_job = { abort, volumes: new Set(pending.map(({ volume }) => volume)) }
       try {
-        const response = await compute_geometries_async(input, {}, { signal: abort.signal })
+        const response = await compute_geometries_async(
+          { volumes: jobs },
+          {},
+          { signal: abort.signal },
+        )
         if (generation !== rebuild_generation) return
         geometries = ingest_geometry_result(response, pending, true)
       } catch (error) {
+        // a superseded or aborted job fails silently; real failures reach request_rebuild
         if (generation !== rebuild_generation || abort.signal.aborted) return
-        console.error(`Isosurface geometry worker failed; keeping previous surfaces`, error)
-        report_error(`Isosurface geometry failed: ${to_error(error).message}`)
-        return
+        throw error
       } finally {
         if (geometry_job?.abort === abort) geometry_job = undefined
       }
     } else if (jobs.length > 0) {
-      geometries = ingest_geometry_result(compute_isosurface_geometries(input), pending, false)
+      geometries = ingest_geometry_result(
+        compute_isosurface_geometries({ volumes: jobs }),
+        pending,
+        false,
+      )
     }
 
     if (generation !== rebuild_generation) {
@@ -444,9 +426,11 @@
       }
       const generation = rebuild_generation
       rebuild_in_flight = rebuild_geometries(resolved_layers, generation)
+        // Worker or main-thread failure (e.g. a typed array too large to allocate)
         .catch((error) => {
-          if (generation === rebuild_generation)
-            report_error(`Isosurface geometry failed: ${to_error(error).message}`)
+          if (generation !== rebuild_generation) return
+          console.error(`Isosurface geometry failed; keeping previous surfaces`, error)
+          report_error(`Isosurface geometry failed: ${to_error(error).message}`)
         })
         .finally(() => {
           rebuild_in_flight = null
