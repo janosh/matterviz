@@ -48,7 +48,16 @@ import InstancedAtoms from '#lib/structure/InstancedAtoms.svelte'
 import MeasurementOverlays from '#lib/structure/MeasurementOverlays.svelte'
 import { mount_scene } from '../scene/mount'
 import { bind_props, doc_query } from '../setup'
-import { image_options, make_crystal, make_srtio3 } from '../test-fixtures'
+import {
+  image_options,
+  make_crystal,
+  make_grid,
+  make_srtio3,
+  make_volume,
+} from '../test-fixtures'
+import { scene_registry } from '#lib/io/export.js'
+import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
+import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
 import { get_pbc_image_sites } from '#lib/structure/pbc.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, untrack } from 'svelte'
@@ -1647,6 +1656,60 @@ test(`property-colored Scene frames refresh reused atoms and restore element col
     })
   }
 })
+
+// Isosurfaces rebuild a frame (or a worker round trip) after their settings change, so a PNG
+// export awaits the scene's `ready` hook until a frame shows the requested surfaces.
+test.each([`render`, `unmount`] as const)(
+  `PNG export readiness waits for requested isosurfaces, settling on %s`,
+  async (outcome) => {
+    vi.useFakeTimers({ toFake: [`requestAnimationFrame`, `cancelAnimationFrame`] })
+    onTestFinished(() => void vi.useRealTimers())
+    const blob = (...idx: number[]) =>
+      Math.exp(-idx.reduce((sum, coord) => sum + (coord - 4) ** 2, 0) / 4)
+    const surface = (isovalue: number): IsosurfaceSettings => ({
+      ...DEFAULT_ISOSURFACE_SETTINGS,
+      layers: [
+        {
+          volume_id: `0`,
+          isovalue,
+          color: `#3b82f6`,
+          negative_color: `#ef4444`,
+          show_negative: false,
+          opacity: 1,
+          visible: true,
+        },
+      ],
+    })
+    const state = $state<SceneProps>({
+      volumetric_data: [make_volume(make_grid(8, 8, 8, blob))],
+      isosurface_settings: surface(0.3),
+      atom_opacity: 1,
+    })
+    const { canvas, render_frame, unmount_scene } = mount_structure(
+      { structure: lone_c, show_bonds: `never`, show_polyhedra: `never` },
+      state,
+    )
+    await vi.advanceTimersByTimeAsync(50)
+    const ready = scene_registry.get(canvas)?.ready
+    if (!ready) throw new Error(`StructureScene registered no PNG readiness hook`)
+    // the opacity change repaints the scene before the new surface exists
+    flush_set(state, { isosurface_settings: surface(0.5), atom_opacity: 0.5 })
+    const pending = ready()
+    const settled = vi.fn()
+    void pending.then(settled, settled)
+    await vi.advanceTimersByTimeAsync(0) // past ready()'s tick, before the rebuild frame
+    expect(render_frame()).toBe(true) // drawn before the rebuild: the previous surface
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settled).not.toHaveBeenCalled()
+    if (outcome === `unmount`) await unmount_scene()
+    else {
+      await vi.advanceTimersByTimeAsync(50) // the rebuild's animation frame
+      render_frame()
+    }
+    if (outcome === `render`) await expect(pending).resolves.toBeUndefined()
+    else await expect(pending).rejects.toThrow(`Structure viewer unmounted before`)
+  },
+)
 
 test(`numeric polyhedra reuse outlines and resolve colors without decoding atom records`, async () => {
   // oxfmt-ignore

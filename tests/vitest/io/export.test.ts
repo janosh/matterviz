@@ -399,6 +399,34 @@ describe(`canvas_to_png_blob`, () => {
     await expect(canvas_to_png_blob(make_mock_canvas(to_blob), 72)).rejects.toThrow(message)
   })
 
+  // A scene still preparing what its props request (isosurfaces meshing) must not be encoded
+  test.each([`resolves`, `rejects`] as const)(
+    `waits for the scene's ready hook before rendering, which then %s`,
+    async (outcome) => {
+      const { canvas, renderer } = make_canvas_with_renderer()
+      const ready = Promise.withResolvers<undefined>()
+      const scene = {} as Scene
+      scene_registry.set(canvas, { scene, camera: {} as Camera, ready: () => ready.promise })
+      const capture = canvas_to_png_blob(canvas, 144)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(renderer.setDrawingBufferSize).not.toHaveBeenCalled()
+      expect(renderer.render).not.toHaveBeenCalled()
+      // the camera may change while waiting: the capture uses the latest registration
+      const camera = new PerspectiveCamera()
+      scene_registry.set(canvas, { scene, camera })
+      if (outcome === `resolves`) {
+        ready.resolve(undefined)
+        await capture
+        expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera)
+      } else {
+        ready.reject(new Error(`viewer unmounted`))
+        await expect(capture).rejects.toThrow(`viewer unmounted`)
+        expect(renderer.render).not.toHaveBeenCalled()
+        expect(canvas.toBlob).not.toHaveBeenCalled()
+      }
+    },
+  )
+
   test.each([`setDrawingBufferSize`, `render`, `toBlob`] as const)(
     `restores the renderer and rejects when high-DPI %s fails`,
     async (failure_stage) => {

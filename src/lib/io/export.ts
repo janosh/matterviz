@@ -17,9 +17,10 @@ export const renderer_registry = new WeakMap<HTMLCanvasElement, WebGPURenderer>(
 
 // Companion scene+camera mapping: the drawing buffer is cleared after present, so any
 // capture of a live canvas must re-render it first — which needs the scene and active camera.
+// `ready` resolves once the scene shows what was requested (e.g. isosurfaces still meshing).
 export const scene_registry = new WeakMap<
   HTMLCanvasElement,
-  { scene: Scene; camera: Camera }
+  { scene: Scene; camera: Camera; ready?: () => Promise<void> }
 >()
 
 // PNG DPI -> render scale relative to the 72 DPI baseline, capped at 10x. DPI floors
@@ -174,6 +175,7 @@ export async function canvas_to_png_blob(
   }
 
   await wait_for_renderer(renderer)
+  await scene_registry.get(canvas)?.ready?.()
   const view = scene_registry.get(canvas)
   const orig_pixel_ratio = renderer.getPixelRatio()
   const orig_size = renderer.getSize(new Vector2())
