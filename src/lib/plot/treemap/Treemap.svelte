@@ -183,7 +183,11 @@
   let header_height = $derived(header_strip(padding_top, padding_outer))
   // Rects travel with their arcs: a zoom can change the arc set (bucketing is relative
   // to the zoom root), so tilings must be matched by id rather than by position
-  let tiling = $derived<Tiling>({ rects: target_rects, arcs: chart_state.arcs })
+  let tiling = $derived<Tiling>({
+    rects: target_rects,
+    arcs: chart_state.arcs,
+    root_idx: zoom_idx,
+  })
   // Animate only zoom transitions; resizes, data swaps and padding tweaks snap (a lerp
   // would chase a drag-resize). Keyed on the zoom root's id, not node_idx, which shifts
   // whenever bucketing changes the arc set. untrack reads the options once at init.
@@ -197,10 +201,12 @@
       ...tween,
       interpolate: (from: Tiling, target: Tiling) => {
         // Realigned once per transition, not per frame
-        const start = align_tiling(from, target)
+        const { start, end } = align_tiling(from, target)
         return (fraction: number) => ({
-          rects: lerp_rects(start, target.rects, fraction),
+          // the camera's end rects are only waypoints: the tween settles on the tiling itself
+          rects: fraction >= 1 ? target.rects : lerp_rects(start, end, fraction),
           arcs: target.arcs,
+          root_idx: target.root_idx,
         })
       },
     })),

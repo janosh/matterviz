@@ -16,15 +16,37 @@ export const element_by_symbol: ReadonlyMap<ElementSymbol, ChemicalElement> = ne
   element_data.map((element) => [element.symbol, element]),
 )
 
+// Elements by ascending atomic weight (ties by atomic number), for a binary-search lookup:
+// a LAMMPS dump with a per-atom mass column resolves every atom of every frame, where a
+// linear scan of all 118 elements cost 650 ns per atom
+const by_mass = element_data.toSorted(
+  (elem_a, elem_b) => elem_a.atomic_mass - elem_b.atomic_mass || elem_a.number - elem_b.number,
+)
+const sorted_masses = Float64Array.from(by_mass, (element) => element.atomic_mass)
+
 // Element whose standard atomic weight lies within 0.5 u of `mass` (LAMMPS Masses sections and
-// per-atom mass dump columns); null for coarse-grained beads and other non-element masses
+// per-atom mass dump columns); null for coarse-grained beads and other non-element masses.
+// Equidistant weights go to the lower atomic number.
 export const element_for_mass = (mass: number): ElementSymbol | null => {
-  let best: { symbol: ElementSymbol; diff: number } | null = null
-  for (const { symbol, atomic_mass } of element_data) {
-    const diff = Math.abs(atomic_mass - mass)
-    if (!best || diff < best.diff) best = { symbol, diff }
+  if (!Number.isFinite(mass)) return null
+  let [lower, upper] = [0, sorted_masses.length]
+  while (lower < upper) {
+    const middle = (lower + upper) >> 1
+    if (sorted_masses[middle] < mass) lower = middle + 1
+    else upper = middle
   }
-  return best && best.diff <= 0.5 ? best.symbol : null
+  // the nearest weights sit just below `lower` and at it; walk back to the first of a run of
+  // equal weights below so its lowest atomic number wins
+  let below = lower - 1
+  while (below > 0 && sorted_masses[below - 1] === sorted_masses[below]) below--
+  const diff_below = below >= 0 ? mass - sorted_masses[below] : Infinity
+  const diff_above = lower < sorted_masses.length ? sorted_masses[lower] - mass : Infinity
+  const best =
+    diff_below < diff_above ||
+    (diff_below === diff_above && by_mass[below].number < by_mass[lower].number)
+      ? below
+      : lower
+  return Math.min(diff_below, diff_above) <= 0.5 ? by_mass[best].symbol : null
 }
 
 export { default } from './data.json.gz'

@@ -224,6 +224,24 @@ describe(`convex_hull_3d`, () => {
     expect(hull.volume).toBe(0)
   })
 
+  // Split partial sites a rounding apart (here 1e-4 Å) double a corner: the sliver faces between
+  // the copies broke the horizon, giving hulls of 13.3 A^3 for a 10.7 A^3 octahedron
+  test(`near-duplicate corners keep the octahedron's volume`, () => {
+    let seed = 7
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff - 0.5
+    }
+    const corners = octahedron_points.map((point) => point.map((coord) => 2 * coord) as Vec3)
+    for (let trial = 0; trial < 200; trial++) {
+      const jitter = (point: Vec3) => point.map((coord) => coord + 1e-4 * rand()) as Vec3
+      const points = [...corners.map(jitter), ...corners.slice(0, 3).map(jitter)]
+      const hull = convex_hull_3d(points)
+      expect(hull.volume).toBeCloseTo(32 / 3, 2)
+      expect(hull.faces).toHaveLength(8)
+    }
+  })
+
   test(`random point clouds satisfy Euler formula and outward normals`, () => {
     // Deterministic pseudo-random points (LCG, glibc parameters)
     let seed = 42

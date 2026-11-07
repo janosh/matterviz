@@ -25,7 +25,7 @@ import {
   SCALE_DEFAULTS,
 } from '#lib/plot/core/types.js'
 import { clamp01 } from '#lib/utils.js'
-import { range } from 'd3-array'
+import { range, ticks as d3_ticks } from 'd3-array'
 import type { ScaleContinuousNumeric, ScaleTime } from 'd3-scale'
 import {
   scaleLinear,
@@ -178,6 +178,12 @@ export function generate_arcsinh_ticks(
       .toReversed()
   }
 
+  // Mixed range inside the near-linear zone: one shared nice step, so both sides of zero match
+  // (per-side steps gave -0.2 spacing below zero and 0.5 above on [-1.3, 1.7])
+  if (Math.max(upper, -lower) <= threshold * 2) {
+    return count > 0 ? dedupe_sort(d3_ticks(lower, upper, count)) : []
+  }
+
   // Mixed range: symmetric ticks around zero, budget split across both sides so count=4
   // yields ~5 ticks (0, ±a, ±b) like linear/log colorbars rather than collapsing to 3
   const half_count = Math.floor(count / 2)
@@ -196,12 +202,9 @@ function generate_positive_arcsinh_ticks(
   if (count <= 0 || max <= min) return []
   const in_range = (val: number): boolean => val >= min && val <= max
 
-  // Small range near threshold: use linear-like spacing
-  if (max <= threshold * 2) {
-    const step = (max - min) / count
-    const ticks = range(Math.floor(count) + 1).map((idx) => min + step * idx)
-    return dedupe_sort(ticks.filter(in_range))
-  }
+  // Small range near threshold: arcsinh is near-linear there, so use linear nice ticks.
+  // Raw (max - min) / count steps put ticks at unrounded values like 0.676 and 1.288.
+  if (max <= threshold * 2) return dedupe_sort(d3_ticks(min, max, count).filter(in_range))
 
   // Large range: threshold plus powers of 10 (and 2x/5x), never raw (unrounded) domain ends.
   // Powers start at the threshold, below which arcsinh is near-linear and ticks pile onto 0.

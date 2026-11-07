@@ -1,7 +1,7 @@
 // Element data structure plus physicality checks that properties follow periodic trends
 import type { ElementSymbol } from '#lib/element/index.js'
 import { element_data } from '#lib/element/index.js'
-import { element_by_symbol } from '#lib/element/data.js'
+import { element_by_symbol, element_for_mass } from '#lib/element/data.js'
 import { element_groups } from '#lib/element/groups.js'
 import { element_from_lammps_type } from '#lib/element/helpers.js'
 import { expect, test } from 'vitest'
@@ -234,6 +234,42 @@ test(`semantic electron configurations separate every subshell with a space`, ()
     )
     .map(({ symbol }) => symbol)
   expect(unspaced).toEqual([])
+})
+
+// Equal weights (Cm/Bk 247, Fl/Mc 289, Ts/Og 294) go to the lower Z; beads and junk are null
+test.each([
+  [1.008, `H`],
+  [55.845, `Fe`],
+  [39.95, `Ar`],
+  [39.098, `K`],
+  [247, `Cm`],
+  [289, `Fl`],
+  [294, `Ts`],
+  [0.4, null],
+  [500, null],
+  [Number.NaN, null],
+  [Infinity, null],
+])(`element_for_mass(%d) -> %s`, (mass, expected) => {
+  expect(element_for_mass(mass)).toBe(expected)
+})
+
+test(`element_for_mass matches the nearest weight of a full scan on a dense mass grid`, () => {
+  const nearest = (mass: number): ElementSymbol | null => {
+    let best: { symbol: ElementSymbol; diff: number } | null = null
+    for (const { symbol, atomic_mass } of element_data) {
+      const diff = Math.abs(atomic_mass - mass)
+      if (!best || diff < best.diff) best = { symbol, diff }
+    }
+    return best && best.diff <= 0.5 ? best.symbol : null
+  }
+  const weights = element_data.map(({ atomic_mass }) => atomic_mass).toSorted((a, b) => a - b)
+  const masses = [
+    ...Array.from({ length: 64_000 }, (_unused, idx) => -1 + idx * 0.005),
+    ...weights.flatMap((weight) => [-0.5, -1e-9, 0, 1e-9, 0.5].map((delta) => weight + delta)),
+    ...weights.slice(1).map((weight, idx) => (weight + weights[idx]) / 2),
+  ]
+  const mismatches = masses.filter((mass) => element_for_mass(mass) !== nearest(mass))
+  expect(mismatches).toEqual([])
 })
 
 // LAMMPS types read as atomic numbers, wrapping past Og and clamping below 1 to H

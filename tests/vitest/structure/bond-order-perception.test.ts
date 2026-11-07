@@ -186,11 +186,20 @@ describe(`aromaticity`, () => {
     [0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 2],
   )
 
+  // p-benzoquinone: ring 0-5 with C0=O6 and C3=O7, cross-conjugated so not aromatic (the
+  // exocyclic C=O once counted as a ring pi electron, flagging all six ring bonds)
+  const benzoquinone = with_hydrogens(
+    [...carbons(6), `O`, `O`],
+    [...ring(0, 6), [0, 6], [3, 7]],
+    [0, 1, 1, 0, 1, 1, 0, 0],
+  )
+
   // Kekulé orders of shared fused-ring bonds must saturate every atom, whatever the atom order
   test.each([
     { name: `naphthalene`, molecule: naphthalene, n_aromatic: 11 },
     { name: `indane`, molecule: indane, n_aromatic: 6 },
     { name: `fluorene`, molecule: fluorene, n_aromatic: 12 },
+    { name: `p-benzoquinone`, molecule: benzoquinone, n_aromatic: 0 },
   ])(`$name is perceived alike for every atom and bond order`, ({ molecule, n_aromatic }) => {
     const rng = make_rng(7)
     const n_atoms = molecule.elements.length
@@ -214,7 +223,8 @@ describe(`aromaticity`, () => {
         valence[site_idx_1] += Number(kekule_order ?? bond_order)
         valence[site_idx_2] += Number(kekule_order ?? bond_order)
       }
-      expect(valence).toEqual(elements.map((element) => (element === `C` ? 4 : 1)))
+      const valences: Partial<Record<ElementSymbol, number>> = { C: 4, O: 2, H: 1 }
+      expect(valence).toEqual(elements.map((element) => valences[element]))
     }
   })
 

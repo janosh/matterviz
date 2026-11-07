@@ -228,7 +228,7 @@ export const normalize_cif_names = (lines: readonly string[]): string[] =>
   lines.map((line) => line.replace(/^(?<name>[ \t]*_[^\s.]+)\./, `$<name>_`))
 
 // A blank or `#` comment line, which CIF allows anywhere whitespace is
-const is_cif_blank_or_comment = (trimmed: string): boolean =>
+export const is_cif_blank_or_comment = (trimmed: string): boolean =>
   trimmed === `` || trimmed.startsWith(`#`)
 
 // Key-value cell parameters (`_cell_length_a 5.43(2)`, from normalize_cif_names lines); no

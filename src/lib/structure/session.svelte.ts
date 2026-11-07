@@ -107,6 +107,8 @@ export interface StructureSessionInputs {
 type EditSnapshot = {
   structure: AnyStructure
   bonds: StructureBond[] | undefined
+  // whether `bonds` was the session's own set (a caller's set stays the caller's on undo)
+  own: boolean
   prediction?: StructureToolPrediction
 }
 type BondEditSnapshot = {
@@ -817,7 +819,11 @@ export class StructureSession {
   // $state.snapshot: a caller-bound structure may be a deep proxy; history keeps plain copies
   private snapshot_edit_state(structure: AnyStructure): EditSnapshot {
     const bonds = this.inputs.bonds()
-    return { structure: $state.snapshot(structure), bonds: bonds && $state.snapshot(bonds) }
+    return {
+      structure: $state.snapshot(structure),
+      bonds: bonds && $state.snapshot(bonds),
+      own: bonds !== undefined && bonds === this.own_bonds,
+    }
   }
   push_undo = (): void => {
     const structure = this.inputs.structure()
@@ -831,11 +837,15 @@ export class StructureSession {
       prediction: this.inputs.tool_prediction?.() ?? undefined,
     }))
     if (!restored) return false
-    // Unlike an append, undoing a deletion inserts sites anywhere: no per-site radius holds
-    if (site_count(restored.structure) !== site_count(structure))
+    // Unlike an append, undoing a deletion inserts sites anywhere: no per-site state holds
+    if (site_count(restored.structure) !== site_count(structure)) {
       this.site_radius_overrides.clear()
+      if (this.inputs.highlighted_sites().length > 0) this.inputs.set_highlighted_sites([])
+      if (this.inputs.hovered_site_idx() !== null) this.inputs.set_hovered_site_idx(null)
+    }
     this.write_structure(restored.structure)
-    this.inputs.set_bonds(restored.bonds)
+    // via emit_bonds: the next load must still recognize (and replace) the session's own set
+    this.emit_bonds(restored.bonds, restored.own)
     this.clear_selection()
     if (restored.prediction) this.inputs.restore_tool_prediction?.(restored.prediction)
     return true
@@ -924,10 +934,24 @@ export class StructureSession {
     const { structure, indices: to_delete } = edit
     const { inputs } = this
     this.clear_selection()
-    // Explicit bonds (the binding and the structure's own) follow the shifted indices
+    // Highlight and hover follow their atoms to the shifted indices (copies past the base
+    // sites renumber, so they drop)
+    const base_count = structure.sites.length
+    const sorted_deleted = [...to_delete].toSorted((left, right) => left - right)
+    this.remap_site_state((idx) => {
+      if (idx >= base_count || to_delete.has(idx)) return undefined
+      let n_below = 0
+      while (n_below < sorted_deleted.length && sorted_deleted[n_below] < idx) n_below++
+      return idx - n_below
+    })
+    // Explicit bonds (the binding and the structure's own) follow the shifted indices. Via
+    // emit_bonds, so the next load still recognizes (and replaces) the session's own set.
     const bound_bonds = inputs.bonds()
     if (bound_bonds !== undefined) {
-      inputs.set_bonds(remap_bonds_after_deletion(bound_bonds, to_delete))
+      this.emit_bonds(
+        remap_bonds_after_deletion(bound_bonds, to_delete),
+        bound_bonds === this.own_bonds,
+      )
     }
     const old_bonds = structure.properties?.bonds
     this.write_structure({

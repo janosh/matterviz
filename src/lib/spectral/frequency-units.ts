@@ -28,7 +28,7 @@ const FREQUENCY_UNIT_PER_THZ: Record<FrequencyUnit, number> = {
 }
 
 export const frequency_unit_per_thz = (unit: FrequencyUnit): number => {
-  const factor = FREQUENCY_UNIT_PER_THZ[unit]
+  const factor = Object.hasOwn(FREQUENCY_UNIT_PER_THZ, unit) && FREQUENCY_UNIT_PER_THZ[unit]
   if (!factor) {
     throw new Error(`Invalid unit: ${unit}. Must be one of ${FREQUENCY_UNITS.join(`, `)}`)
   }
@@ -57,8 +57,12 @@ const UNIT_ALIASES: Record<string, FrequencyUnit> = {
   'cm^-1': `cm^-1`,
   'cm⁻¹': `cm^-1`,
 }
-export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null =>
-  typeof unit === `string` ? (UNIT_ALIASES[unit.trim().toLowerCase()] ?? null) : null
+// Own keys only: an inherited one (`constructor`, `toString`) would come back as a function
+export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null => {
+  if (typeof unit !== `string`) return null
+  const key = unit.trim().toLowerCase()
+  return Object.hasOwn(UNIT_ALIASES, key) ? UNIT_ALIASES[key] : null
+}
 
 // How a unit reads on an axis label or in HTML: a <sup>, as fonts set the ⁻ of ⁻¹ lower than
 // the 1. Plain text that can't hold markup (<option>, aria-label) uses frequency_unit_text.

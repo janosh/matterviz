@@ -170,7 +170,10 @@ const dist_to_face = (face: HullFace, point: Vec3): number =>
 // matching VESTA behavior). Supports up to 65535 input points (edge keys are
 // packed into 32-bit integers) - far beyond any coordination shell.
 export function convex_hull_3d(points: readonly Vec3[]): ConvexHullResult {
-  // Dedup points (coordination shells are tiny, O(n^2) is fine)
+  // Dedup points within 1e-3 Å (coordination shells are tiny, O(n^2) is fine): split partial
+  // sites whose coordinates were rounded apart double a corner, and the sliver faces between
+  // such near-copies broke quickhull's horizon (wrong, unclosed hulls). No two real neighbors
+  // sit that close.
   const unique: Vec3[] = []
   const unique_input_idx: number[] = []
   for (let p_idx = 0; p_idx < points.length; p_idx++) {
@@ -180,7 +183,7 @@ export function convex_hull_3d(points: readonly Vec3[]): ConvexHullResult {
       const delta_x = pixel_x - other[0]
       const delta_y = pixel_y - other[1]
       const delta_z = pixel_z - other[2]
-      if (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z < 1e-12) {
+      if (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z < 1e-6) {
         is_dup = true
         break
       }
