@@ -328,6 +328,7 @@ describe(`align_tiling`, () => {
   const tiling = (ids: string[], x_coords: number[]) => ({
     rects: x_coords.map(rect),
     arcs: arcs(ids),
+    root_idx: 0,
   })
 
   test.each([
@@ -368,7 +369,46 @@ describe(`align_tiling`, () => {
       [0],
     ],
   ])(`%s`, (_name, prev_ids, prev_x, next_ids, next_x, expected_x) => {
-    const aligned = align_tiling(tiling(prev_ids, prev_x), tiling(next_ids, next_x))
-    expect(aligned).toEqual(expected_x.map(rect))
+    const next = tiling(next_ids, next_x)
+    const { start, end } = align_tiling(tiling(prev_ids, prev_x), next)
+    expect(start).toEqual(expected_x.map(rect))
+    expect(end).toEqual(next.rects) // no zoom between these, so no camera waypoints
+  })
+
+  // Cells outside a zoom root's subtree tile to zero rects at the origin. Morphing to or from
+  // those dragged every other cell into the top-left corner; they follow the camera instead.
+  // Root R (400x300) has children A (left half) and B (right half), B a child B/c.
+  const [view, left, right] = [
+    { x: 0, y: 0, width: 400, height: 300 },
+    { x: 0, y: 0, width: 200, height: 300 },
+    { x: 200, y: 0, width: 200, height: 300 },
+  ]
+  const zero = { x: 0, y: 0, width: 0, height: 0 }
+  const tree_arcs = [
+    { id: `R`, parent_idx: null },
+    { id: `A`, parent_idx: 0 },
+    { id: `B`, parent_idx: 0 },
+    { id: `B/c`, parent_idx: 2 },
+  ]
+  const root_view = { arcs: tree_arcs, rects: [view, left, right, right], root_idx: 0 }
+  // zoomed into B: it fills the view, R and A lie outside its subtree
+  const b_view = { arcs: tree_arcs, rects: [zero, zero, view, view], root_idx: 2 }
+
+  test(`zooming in, cells leaving the view slide out past its edge, not into a corner`, () => {
+    const { start, end } = align_tiling(root_view, b_view)
+    expect(start).toEqual([view, left, right, right])
+    // the camera doubles x about B's left edge: A's span [0, 200] maps to [-400, 0], clipped
+    // to a zero-width sliver on the left edge, full height; R maps to [-400, 400] -> the view
+    expect(end).toEqual([view, { x: 0, y: 0, width: 0, height: 300 }, view, view])
+    const mid = lerp_rects(start, end, 0.5)
+    expect(mid[1]).toEqual({ x: 0, y: 0, width: 100, height: 300 }) // still full height
+  })
+
+  test(`zooming out, cells entering the view slide in from its edge, not out of a corner`, () => {
+    const { start, end } = align_tiling(b_view, root_view)
+    // B's rect in the new tiling is the right half: the camera maps it onto the old view,
+    // so A (left half) starts squashed against the left edge rather than at (0, 0, 0, 0)
+    expect(start).toEqual([view, { x: 0, y: 0, width: 0, height: 300 }, view, view])
+    expect(end).toEqual(root_view.rects)
   })
 })

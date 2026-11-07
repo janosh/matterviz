@@ -168,6 +168,24 @@ describe(`gaussian_kde`, () => {
     },
   )
 
+  // A long outlier tail over a narrow bulk is too spread out to bin, so density sums each grid
+  // point's kernels within 6 bandwidths only: skipped ones are below exp(-18) of their peak
+  test(`outlier tail too wide to bin matches the exact KDE within the 6-sigma cutoff`, () => {
+    const samples = [
+      ...normal_samples(3000, 3),
+      ...Array.from({ length: 30 }, (_, idx) => 10 + 33 * idx),
+    ]
+    const kde = gaussian_kde(samples, { ...VIOLIN_KDE_OPTS, max_samples: samples.length })
+    expect(kde.grid).toHaveLength(2000)
+    const reference = ref_density(samples, kde.grid, kde.bandwidth)
+    const peak = Math.max(...reference)
+    for (const [idx, value] of kde.density.entries()) {
+      expect(Math.abs(value - reference[idx])).toBeLessThanOrEqual(
+        Math.exp(-18) * peak + 4 * Number.EPSILON * reference[idx],
+      )
+    }
+  })
+
   test(`empty input yields an empty result`, () => {
     expect(gaussian_kde([])).toEqual({ grid: [], density: [], bandwidth: 0 })
   })
