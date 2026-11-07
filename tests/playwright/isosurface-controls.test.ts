@@ -288,3 +288,57 @@ test(
     expect(alpha_values.some(Boolean)).toBe(true)
   },
 )
+
+// Isosurfaces rebuild a frame (or a worker round trip) after their settings change. A PNG
+// export started right after an isovalue edit used to encode the previous surfaces.
+test(`PNG export waits for the surface of a just-changed isovalue @source`, async ({
+  page,
+}) => {
+  await wait_for_isosurface(page)
+  await open_settings_pane(page)
+  const surface_ids = () =>
+    page.evaluate(() => (Reflect.get(globalThis, `surface_ids`) as () => string[])())
+  await page.evaluate(async () => {
+    const module_path = `/src/lib/io/export.ts`
+    const { scene_registry } = await import(/* @vite-ignore */ module_path)
+    const canvas = document.querySelector(`.structure-fullscreen-root canvas`)
+    Reflect.set(globalThis, `surface_ids`, () => {
+      const ids: string[] = []
+      scene_registry
+        .get(canvas)
+        ?.scene.traverse(
+          (node: { isMesh?: boolean; geometry?: { type: string; uuid: string } }) => {
+            if (node.isMesh && node.geometry?.type === `BufferGeometry`)
+              ids.push(node.geometry.uuid)
+          },
+        )
+      return ids
+    })
+  })
+  await expect.poll(async () => (await surface_ids()).length).toBeGreaterThan(0)
+  const { before, encoded } = await page.evaluate(async () => {
+    const module_path = `/src/lib/io/export.ts`
+    const { canvas_to_png_blob } = await import(/* @vite-ignore */ module_path)
+    const canvas = document.querySelector<HTMLCanvasElement>(
+      `.structure-fullscreen-root canvas`,
+    )
+    const slider = document.querySelector<HTMLInputElement>(`input[aria-label="Isovalue"]`)
+    if (!canvas || !slider) throw new Error(`Missing structure canvas or isovalue slider`)
+    const ids = Reflect.get(globalThis, `surface_ids`) as () => string[]
+    let encoded_ids: string[] = []
+    const to_blob = canvas.toBlob.bind(canvas)
+    canvas.toBlob = (...args) => {
+      encoded_ids = ids()
+      to_blob(...args)
+    }
+    const previous_ids = ids()
+    const [value, max] = [Number(slider.value), Number(slider.max)]
+    slider.value = String(value + (max - value) / 4)
+    slider.dispatchEvent(new Event(`input`, { bubbles: true }))
+    await canvas_to_png_blob(canvas, 72)
+    return { before: previous_ids, encoded: encoded_ids }
+  })
+  expect(encoded.length).toBeGreaterThan(0)
+  expect(encoded).not.toEqual(before)
+  expect(encoded).toEqual(await surface_ids())
+})

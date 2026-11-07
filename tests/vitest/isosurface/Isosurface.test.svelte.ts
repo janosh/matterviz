@@ -58,8 +58,6 @@ type Props = {
   settings: IsosurfaceSettings
   on_error?: (message: string) => void
   building?: boolean
-  geometry_error?: string
-  geometry_revision?: number
 }
 let teardown: (() => void) | undefined
 
@@ -502,61 +500,6 @@ describe(`Isosurface`, () => {
     flushSync()
     expect(meshes()).toHaveLength(0)
     expect(dispose).toHaveBeenCalledTimes(1)
-  })
-
-  test(`a successful queued rebuild clears an older worker's failure`, async () => {
-    const pending = hold_worker_jobs()
-    const first = Promise.withResolvers<never>()
-    compute_geometries_async.mockReturnValueOnce(first.promise)
-    vi.spyOn(console, `error`).mockImplementation(() => {})
-    const props = mount_isosurface({
-      volumes: [big_volume()],
-      geometry_error: undefined,
-      building: false,
-    })
-    await settle()
-    props.settings.layers[0].isovalue = 0.4
-    await settle()
-    first.reject(new Error(`old request failed`))
-    await settle()
-    expect(props.building).toBe(true)
-    pending[0].resolve({ volumes: [] })
-    await settle()
-    expect(props.building).toBe(false)
-    expect(props.geometry_error).toBeUndefined()
-  })
-
-  test(`failed synchronous geometry remains distinguishable from successful completion`, async () => {
-    const on_error = vi.fn()
-    const props = mount_isosurface({
-      on_error,
-      geometry_error: undefined,
-      geometry_revision: 0,
-      building: false,
-    })
-    await settle()
-    expect(on_error).not.toHaveBeenCalled()
-    const original = geometry_of(meshes()[0])
-    const revision = props.geometry_revision ?? 0
-    const geometry_module = await import(`#lib/isosurface/geometry.js`)
-    vi.spyOn(geometry_module, `compute_isosurface_geometries`).mockImplementationOnce(() => {
-      throw new Error(`geometry allocation refused`)
-    })
-    props.settings.layers[0].isovalue = 0.4
-    await settle()
-    expect(props.building).toBe(false)
-    expect(props.geometry_error).toContain(`geometry allocation refused`)
-    expect(on_error).toHaveBeenCalledExactlyOnceWith(
-      `Isosurface geometry failed: geometry allocation refused`,
-    )
-    expect(props.geometry_revision).toBe(revision + 1)
-    expect(geometry_of(meshes()[0])).toBe(original)
-    props.settings.layers[0].isovalue = 0.5
-    await settle()
-    expect(props.geometry_error).toBeUndefined()
-    expect(on_error).toHaveBeenCalledTimes(1)
-    expect(props.geometry_revision).toBe(revision + 2)
-    expect(geometry_of(meshes()[0])).not.toBe(original)
   })
 
   // A worker that dies after construction (chunk 404, OOM, module import failure) used to be

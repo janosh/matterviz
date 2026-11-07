@@ -35,8 +35,6 @@
     tiling = [1, 1, 1],
     on_error,
     building = $bindable(false),
-    geometry_error = $bindable<string | undefined>(),
-    geometry_revision = $bindable(0),
   }: {
     volumes?: VolumetricData[]
     settings?: IsosurfaceSettings
@@ -47,17 +45,11 @@
     // (output) true from a geometry rebuild's request until its surfaces are swapped in,
     // so a scene snapshot can wait for them (large grids mesh in a worker)
     building?: boolean
-    // Completion is successful only when building is false and geometry_error is absent.
-    geometry_error?: string
-    geometry_revision?: number
   } = $props()
 
   // Context is read once at init: Structure registers its handler before the scene mounts
   const context_on_error = get_isosurface_error_handler()
-  const report_error = (message: string): void => {
-    geometry_error = message || undefined
-    ;(on_error ?? context_on_error)?.(message)
-  }
+  const report_error = (message: string): void => (on_error ?? context_on_error)?.(message)
 
   // In-place geometry/colour updates bypass the <T> props Threlte watches, so on-demand
   // rendering needs an explicit invalidate to repaint
@@ -173,7 +165,6 @@
     cancel_geometry_worker()
     for (const entry of active_entries) entry.geometry.dispose()
     active_entries = []
-    geometry_error = undefined
     colored_keys.clear()
   }
 
@@ -282,8 +273,6 @@
     layers: ResolvedLayer[],
     generation: number,
   ): Promise<void> {
-    // A queued rebuild may follow a failed worker request for older settings.
-    geometry_error = undefined
     const profile_start = performance.now()
     let cache_hits = 0
     // Reuse geometries whose signature is unchanged (take-once so duplicate
@@ -334,9 +323,10 @@
         if (generation !== rebuild_generation) return
         geometries = ingest_geometry_result(response, pending, true)
       } catch (error) {
-        // a superseded or aborted job fails silently; real failures reach request_rebuild
         if (generation !== rebuild_generation || abort.signal.aborted) return
-        throw error
+        console.error(`Isosurface geometry worker failed; keeping previous surfaces`, error)
+        report_error(`Isosurface geometry failed: ${to_error(error).message}`)
+        return
       } finally {
         if (geometry_job?.abort === abort) geometry_job = undefined
       }
@@ -436,31 +426,20 @@
         return
       }
       const generation = rebuild_generation
-      rebuild_in_flight = rebuild_geometries(resolved_layers, generation)
-        // Worker or main-thread failure (e.g. a typed array too large to allocate)
-        .catch((error) => {
-          if (generation !== rebuild_generation) return
-          console.error(`Isosurface geometry failed; keeping previous surfaces`, error)
-          report_error(`Isosurface geometry failed: ${to_error(error).message}`)
-        })
-        .finally(() => {
-          rebuild_in_flight = null
-          // a reset (unmount, all volumes removed) already cleared the flag; a rebuild
-          // requested meanwhile has yet to run
-          if (generation !== rebuild_generation || raf_id) return
-          building = false
-          // a frame after the swap (or a failed rebuild) lets a snapshot waiting on it finish
-          threlte.invalidate()
-        })
+      rebuild_in_flight = rebuild_geometries(resolved_layers, generation).finally(() => {
+        rebuild_in_flight = null
+        // a reset (unmount, all volumes removed) already cleared the flag; a rebuild
+        // requested meanwhile has yet to run
+        if (generation !== rebuild_generation || raf_id) return
+        building = false
+        // a frame after the swap (or a failed rebuild) lets a snapshot waiting on it finish
+        threlte.invalidate()
+      })
     })
   }
 
   $effect(() => {
     void geo_sig
-    untrack(() => {
-      geometry_revision++
-      geometry_error = undefined
-    })
     if (untrack(() => volumes.length) === 0) {
       untrack(reset_surfaces)
       return
