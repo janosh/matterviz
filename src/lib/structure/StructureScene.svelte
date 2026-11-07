@@ -94,7 +94,7 @@
   } from './scene-picking.svelte'
   import { T, useTask, useThrelte } from '@threlte/core'
   import * as extras from '@threlte/extras'
-  import { type ComponentProps, type Snippet, untrack } from 'svelte'
+  import { type ComponentProps, type Snippet, tick, untrack } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Euler, OrthographicCamera, Quaternion, Vector3 } from 'three/webgpu'
@@ -450,23 +450,41 @@
   let render_calls = renderer.info.render.calls
   // Isosurface geometry still meshing: its frames show the scene without the surfaces
   let isosurfaces_building = $state(false)
+  const isosurfaces_pending = () =>
+    Boolean(volumetric_data && isosurface_settings && isosurfaces_building)
+  // PNG exports waiting for the first frame drawn with the requested isosurfaces
+  const frame_waiters: PromiseWithResolvers<undefined>[] = []
   useTask(
     () => {
       const calls = renderer.info.render.calls
       if (calls === render_calls) return
       render_calls = calls
-      if (!renderer.initialized || !render_token || submitted_token === render_token) return
-      if (volumetric_data && isosurface_settings && isosurfaces_building) return
+      if (!renderer.initialized || isosurfaces_pending()) return
+      for (const waiter of frame_waiters.splice(0)) waiter.resolve(undefined)
+      if (!render_token || submitted_token === render_token) return
       submitted_token = render_token
       on_rendered?.(render_token)
     },
     { after: autoRenderTask, autoInvalidate: false },
   )
+  $effect(() => () => {
+    const error = new Error(`Structure viewer unmounted before its PNG export finished`)
+    for (const waiter of frame_waiters.splice(0)) waiter.reject(error)
+  })
+  // Resolves once the scene shows what its props request, e.g. after a large isosurface
+  // grid finishes meshing in the worker, so a PNG export never captures stale surfaces
+  async function scene_ready(): Promise<void> {
+    await tick() // a just-changed setting requests its rebuild during this flush
+    if (!isosurfaces_pending()) return
+    const waiter = Promise.withResolvers<undefined>()
+    frame_waiters.push(waiter)
+    return waiter.promise
+  }
 
   const threlte = bind_renderer((threlte_scene, threlte_camera) => {
     scene = threlte_scene
     camera = threlte_camera
-  })
+  }, scene_ready)
   // Each tick animates a highlight material's opacity, which invalidates the whole scene, so
   // gate on the renderer canvas: a selection left standing would otherwise re-render an
   // off-screen viewport every frame — once per pane in the 2x2 multi-side view.
