@@ -78,12 +78,16 @@ export function watch_theme(
     clearTimeout(timer)
     timer = setTimeout(notify, 10)
   }
-  // its ancestor chain covers <html>, <body> and the shadow host (marimo cells)
-  const stop_observing = watch_theme_changes(target_element, schedule)
+  // its ancestor chain covers <html>, <body> and the shadow host (marimo cells). <body> (and
+  // through it <html>) is watched directly too: a host may render into a still-detached element
+  // (Jupyter attaches the output after render), whose chain then ends at itself.
+  const stops = [target_element, document.body].map((node) =>
+    watch_theme_changes(node, schedule),
+  )
   // notify on subscribe: callers have no other way to read the host theme
   notify()
   return () => {
     clearTimeout(timer)
-    stop_observing()
+    for (const stop of stops) stop()
   }
 }

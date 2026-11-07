@@ -7,6 +7,7 @@ import {
   bond_menu_position,
   EDIT_BONDS_CLICK_DEDUPE_MS,
   instance_handlers,
+  is_primary_press,
   is_shift_click,
   next_site_selection,
   type PickState,
@@ -91,16 +92,22 @@ describe(`next_site_selection`, () => {
   })
 })
 
+// A PointerEvent from another realm (an iframe, as in notebooks) is no instance of this
+// realm's Event or MouseEvent: a bare object with its fields stands in for one
+const foreign_press = { type: `pointerdown`, button: 2, shiftKey: true }
 // oxfmt-ignore
 test.each([
-  [`threlte-wrapped shift click`, { nativeEvent: new MouseEvent(`click`, { shiftKey: true }) }, true],
-  [`plain shift click`, new MouseEvent(`click`, { shiftKey: true }), true],
-  [`shift pointerdown (site labels)`, new PointerEvent(`pointerdown`, { shiftKey: true }), true],
-  [`unshifted click`, { nativeEvent: new MouseEvent(`click`) }, false],
-  [`keyboard event`, new KeyboardEvent(`keydown`, { shiftKey: true }), false],
-  [`no event`, undefined, false],
-])(`is_shift_click: %s`, (_label, event, expected) => {
-  expect(is_shift_click(event as Event | TapEvent | undefined)).toBe(expected)
+  [`threlte-wrapped shift click`, { nativeEvent: new MouseEvent(`click`, { shiftKey: true }) }, [true, true]],
+  [`plain shift click`, new MouseEvent(`click`, { shiftKey: true }), [true, true]],
+  [`shift pointerdown (site labels)`, new PointerEvent(`pointerdown`, { shiftKey: true }), [true, true]],
+  [`unshifted click`, { nativeEvent: new MouseEvent(`click`) }, [false, true]],
+  [`right-button press`, { nativeEvent: new PointerEvent(`pointerdown`, { button: 2 }) }, [false, false]],
+  [`cross-realm right-button shift press`, { nativeEvent: foreign_press }, [true, false]],
+  [`keyboard event`, new KeyboardEvent(`keydown`, { shiftKey: true }), [false, true]],
+  [`no event`, undefined, [false, true]],
+])(`is_shift_click, is_primary_press: %s`, (_label, event, expected) => {
+  const evt = event as Event | TapEvent | undefined
+  expect([is_shift_click(evt), is_primary_press(evt)]).toEqual(expected)
 })
 
 // oxfmt-ignore

@@ -559,7 +559,8 @@ export const leading_letters = (text = ``): string => /^[A-Za-z]+/.exec(text)?.[
 
 // Parse a CIF numeric token, stripping a trailing uncertainty like "1.234(5)"
 export const parse_cif_uncertain_number = (token: string): number | null => {
-  const value = parse_float_token(token.split(`(`)[0])
+  const paren = token.indexOf(`(`)
+  const value = parse_float_token(paren === -1 ? token : token.slice(0, paren))
   return Number.isNaN(value) ? null : value
 }
 
@@ -627,13 +628,12 @@ const cif_quote_end = (line: string, quote: string, from: number): number => {
   return -1
 }
 
-// Split a CIF data line into whitespace-separated tokens, keeping a quoted multi-word value
+// Walk a CIF data line's whitespace-separated tokens, keeping a quoted multi-word value
 // as one token and dropping only its enclosing delimiters. Stripping every quote in the token
 // instead corrupted primed labels (`C1'` -> `C1`, and `H2'`/`H2''` both -> `H2`, though those
 // are different atoms), and letting `'[^']*'` span two unrelated apostrophes swallowed a whole
 // row into one token, which the short-row filter then dropped without a word.
-export const split_cif_tokens = (line: string): string[] => {
-  const tokens: string[] = []
+function scan_cif_tokens(line: string, on_token: (token: string, quoted: boolean) => void) {
   let pos = 0
   while (pos < line.length) {
     if (is_cif_space(line[pos])) {
@@ -644,15 +644,30 @@ export const split_cif_tokens = (line: string): string[] => {
     const quote = line[pos]
     const close = quote === `'` || quote === `"` ? cif_quote_end(line, quote, pos + 1) : -1
     if (close !== -1) {
-      tokens.push(line.slice(pos + 1, close))
+      on_token(line.slice(pos + 1, close), true)
       pos = close + 1
       continue
     }
     // no closing delimiter: read it as an ordinary token rather than eating the rest of the line
     let end = pos
     while (end < line.length && !is_cif_space(line[end])) end++
-    tokens.push(line.slice(pos, end))
+    on_token(line.slice(pos, end), false)
     pos = end
   }
+}
+
+export const split_cif_tokens = (line: string): string[] => {
+  const tokens: string[] = []
+  scan_cif_tokens(line, (token) => tokens.push(token))
   return tokens
+}
+
+// Loop values of a CIF data line: an unquoted `.`/`?` is the unset placeholder (undefined),
+// a quoted one (`'?'`) the literal text, so a site labelled `?` keeps its label
+export const split_cif_values = (line: string): (string | undefined)[] => {
+  const values: (string | undefined)[] = []
+  scan_cif_tokens(line, (token, quoted) =>
+    values.push(!quoted && is_cif_unset(token) ? undefined : token),
+  )
+  return values
 }

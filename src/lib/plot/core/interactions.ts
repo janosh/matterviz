@@ -116,13 +116,15 @@ export function sync_y2_range(y1_range: Vec2, y2_base_range: Vec2, sync: Y2SyncC
   if (y1_span === 0) return y2_base_range
 
   // align_val's fraction from y1's LOW end; solve ascending, then hand the pair back pointing
-  // y1's way (descending y1 [10, 0] against y2 data [0, 5] gives [5, 0])
+  // y1's way (descending y1 [10, 0] against y2 data [0, 5] gives [5, 0]). y2 always follows
+  // y1's direction (an inverted y2 could not keep e.g. 0 at the bottom over positive data),
+  // so a descending y2 base only contributes its extent.
   const descending = y1_span < 0
   const frac = (align_val - Math.min(y1_range[0], y1_range[1])) / Math.abs(y1_span)
 
-  // Ensure Y2 range includes both align_val and all data
-  const y2_min_data = Math.min(y2_base_range[0], align_val)
-  const y2_max_data = Math.max(y2_base_range[1], align_val)
+  // Ensure Y2 range includes both align_val and all data (either base order)
+  const y2_min_data = Math.min(...y2_base_range, align_val)
+  const y2_max_data = Math.max(...y2_base_range, align_val)
 
   // Calculate minimum span needed to fit all data while keeping align_val at frac
   // Constraints: y2_min <= y2_min_data AND y2_max >= y2_max_data

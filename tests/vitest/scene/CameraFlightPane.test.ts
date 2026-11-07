@@ -35,4 +35,10 @@ test(`numbers the MD frame caption from 1`, async () => {
     expect(document.querySelectorAll(`.waypoint`).length).toBeGreaterThan(1),
   )
   expect(doc_query(`.playhead`).textContent).toContain(`MD frame 5 (1–10)`)
+  // the default 10 s and other round durations are no step mismatch against min 0.1
+  const duration = doc_query<HTMLInputElement>(`input[aria-label="Flight duration"]`)
+  for (const typed of [`10`, `2`, `0.25`]) {
+    duration.value = typed
+    expect(duration.validity.stepMismatch, typed).toBe(false)
+  }
 })

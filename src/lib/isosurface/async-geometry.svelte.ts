@@ -15,22 +15,15 @@ export const compute_geometries_async = create_worker_client<
   create_worker: () =>
     new Worker(new URL(`./geometry-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: compute_isosurface_geometries,
-  // Volumes arrive as Svelte $state proxies from the viewer; rebuild the cloneable
-  // subset field by field (typed arrays read back raw through the proxy, so the
-  // megabyte value buffers are not copied here — structured clone copies them once).
+  // Prepared grids may sit behind Svelte $state proxies; rebuild the cloneable subset field
+  // by field (typed arrays read back raw through the proxy, so the value buffers are not
+  // copied here — structured clone copies them once)
   build_payload: (input) => ({
-    volumes: input.volumes.map((job) => ({
-      token: job.token,
-      volume: {
-        values: job.volume.values,
-        dims: [...job.volume.dims],
-        order: job.volume.order,
-        lattice: job.volume.lattice.map((row) => [...row]),
-        origin: [...job.volume.origin],
-        periodic: job.volume.periodic,
-      },
-      range: job.range ? job.range.map((bounds) => [...bounds]) : null,
-      surfaces: job.surfaces.map(({ token, isovalue }) => ({ token, isovalue })),
+    volumes: input.volumes.map(({ grid, lattice, origin, surfaces }) => ({
+      grid: { values: grid.values, dims: [...grid.dims], order: grid.order },
+      lattice: lattice.map((row) => [...row]),
+      origin: [...origin],
+      surfaces: surfaces.map(({ token, isovalue }) => ({ token, isovalue })),
     })),
   }),
 })

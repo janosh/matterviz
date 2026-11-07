@@ -86,6 +86,7 @@
   import {
     bond_menu_position,
     instance_handlers,
+    is_primary_press,
     is_shift_click,
     next_site_selection,
     scene_cursor,
@@ -553,6 +554,7 @@
   let transform_object = $state<Mesh | undefined>(undefined)
   // Plain variable — only used imperatively in TransformControls drag handlers
   let drag_start_centroid: Vec3 | null = null
+  let drag_moved = false // whether the current drag pushed its undo point
   // Frozen centroid set on drag start. While non-null, the TransformControls mesh
   // position stays at this fixed value so Svelte's reactive centroid updates (from
   // PBC wrapping) don't fight TransformControls. Cleared on mouseUp so the mesh
@@ -693,6 +695,7 @@
     )
 
   function select_edit_bonds_site(site_idx: number, event: Event | TapEvent): void {
+    if (!is_primary_press(event)) return
     toggle_selection(site_idx, event)
     pointer.remember_press(site_idx)
   }
@@ -1794,6 +1797,11 @@
               if (!transform_object?.position || !drag_start_centroid) return
               const position = transform_object.position.toArray()
               const delta = math.subtract(position, drag_start_centroid)
+              if (delta.every((component) => component === 0)) return
+              // Push the undo point on the first actual move: a press without a drag must
+              // not clear the redo stack
+              if (!drag_moved) on_operation_start?.()
+              drag_moved = true
               // Update reference point so deltas are incremental, not cumulative.
               // Without this, each frame compounds: sites already moved by previous
               // delta get the full cumulative delta re-applied.
@@ -1804,7 +1812,7 @@
               dragging_atoms = true
               pointer.drop_hover()
               drag_start_centroid = frozen_centroid = [...centroid] as Vec3
-              on_operation_start?.()
+              drag_moved = false
             }}
             onmouseUp={() => {
               dragging_atoms = false

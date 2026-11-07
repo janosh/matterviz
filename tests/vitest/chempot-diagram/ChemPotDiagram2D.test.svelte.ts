@@ -1,5 +1,6 @@
 import ChemPotDiagram from '#lib/chempot-diagram/ChemPotDiagram.svelte'
 import ChemPotLegend from '#lib/chempot-diagram/ChemPotLegend.svelte'
+import ChemPotSlices from '#lib/chempot-diagram/ChemPotSlices.svelte'
 import {
   compute_chempot_system,
   section_measure_curves,
@@ -445,4 +446,26 @@ test.each<[ChemPotColorMode, ChemPotDiagramConfig[`color_bar`], string[], string
   const arity_rows = [...target.querySelectorAll(`.arity-legend > span`)]
   expect(arity_rows.map((row) => row.textContent)).toEqual(rows ?? [])
   expect(target.querySelector(`.chempot-legend .colorbar`) !== null).toBe(rows === null)
+})
+
+// The exact input's range starts at an arbitrary float, so a fixed step would mark the shown
+// value and every round typed one as a step mismatch
+test(`chempot slice exact input accepts off-grid values`, () => {
+  const target = mount_in_test(ChemPotSlices, {
+    elements: [`F`],
+    slices: { F: -2.3456 },
+    ranges: { F: [-3.1234, 0] },
+    curves: { F: null },
+    set_slice: () => {},
+    measure_label: `length`,
+    formal_chempots: true,
+    colors: () => undefined,
+  })
+  const input = target.querySelector<HTMLInputElement>(`input[type="number"]`)
+  if (!input) throw new Error(`exact input not rendered`)
+  expect(input.value).toBe(`-2.3456`) // shows the stored slice, not a 3-decimal rounding
+  for (const typed of [`-2.346`, `-2`, `-1.5`]) {
+    input.value = typed
+    expect(input.validity.stepMismatch, typed).toBe(false)
+  }
 })

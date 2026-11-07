@@ -5,6 +5,8 @@ import {
   type WireFrame,
 } from '#lib/file-viewer/host-protocol.js'
 import { create_display } from '#lib/file-viewer/main.js'
+import { mount_viewer } from '#lib/file-viewer/mount-viewer.js'
+import { DEFAULTS } from '#lib/settings.js'
 import { host } from '#lib/host.js'
 import { parse_file_content } from '#lib/file-viewer/parse.js'
 import { base64_to_array_buffer } from '#lib/utils.js'
@@ -328,6 +330,21 @@ test.each([``, `\uFEFF`])(`hull JSON named *convex* renders (prefix %j)`, async 
   await expect(
     parse_file_content(prefix + JSON.stringify(hull_entries), filename),
   ).resolves.toMatchObject({ type: `convex_hull`, data: hull_entries, filename })
+})
+
+// A fractional (or NaN) order built a bogus zone, and one outside 1-3 matched no option of the
+// order <select>: only 1, 2 or 3 reach BrillouinZone
+test.each([
+  [2, 2],
+  [1.5, undefined],
+  [Number.NaN, undefined],
+  [0, undefined],
+  [4, undefined],
+  [-1, undefined],
+])(`mount_viewer forwards bz_order %s as %s`, (bz_order, expected) => {
+  const data = { k_lattice: IDENTITY_MATRIX3, bz_order }
+  mount_viewer(make_container(), `brillouin_zone`, data, { defaults: DEFAULTS })
+  expect(last_mount_props().bz_order).toBe(expected)
 })
 
 test(`parse_file_content converts IFermi JSON to typed Fermi surface data`, async () => {

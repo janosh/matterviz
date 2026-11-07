@@ -367,43 +367,26 @@ describe(`analytic binary A-B-AB`, () => {
     },
   )
 
-  test(`per-element limits clip the element domains (AB untouched)`, () => {
-    const { domains, lims } = compute_chempot_diagram(ab_binary_entries, {
-      default_min_limit: -20,
-      formal_chempots: true,
-      limits: { B: [-10, 0] },
-    })
-    expect(lims).toEqual(chunk(2, [-20, 0, -10, 0]))
-    expect_vertices(domains.A, chunk(2, [0, -7, 0, -10]))
-    expect_vertices(domains.B, chunk(2, [-7, 0, -20, 0]))
-    expect_vertices(domains.AB, chunk(2, [0, -7, -7, 0]))
-  })
-
-  // The interior point used to seed the halfspace intersection is the Chebyshev centre; a
-  // centre-of-box heuristic that assumed equal-width limits declared this region empty
-  test(`narrow per-element limit next to a wide default limit (100:1) still yields a diagram`, () => {
-    // mu_A <= 0, mu_B <= 0, (1/3) mu_A + (2/3) mu_B <= -50 within A ∈ [-1, 0], B ∈ [-100, 0]
-    const { domains, lims } = compute_chempot_diagram(
-      [make_phase({ A: 1 }, 0), make_phase({ B: 1 }, 0), make_phase({ A: 1, B: 2 }, -50)],
-      { default_min_limit: -100, formal_chempots: true, limits: { A: [-1, 0] } },
-    )
-    expect(lims).toEqual(chunk(2, [-1, 0, -100, 0]))
-    // B is never stable inside the box (mu_B = 0 needs mu_A <= -150), so it has no domain
-    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB2`])
-    expect_vertices(domains.A, chunk(2, [0, -75, 0, -100]))
-    expect_vertices(domains.AB2, chunk(2, [0, -75, -1, -74.5]))
-  })
-
-  test(`asymmetric limits (12:1) clip every domain vertex to the custom range`, () => {
-    const { domains } = compute_chempot_diagram(ab_binary_entries, {
-      default_min_limit: -60,
-      formal_chempots: false,
-      limits: { A: [-5, 0] },
-    })
+  // The 100:1 case: the interior point seeding the halfspace intersection is the Chebyshev
+  // centre; a centre-of-box heuristic that assumed equal-width limits declared it empty
+  // oxfmt-ignore
+  test.each([
+    // formal, B limited: element domains clipped, AB untouched
+    [`per-element limit`, ab_binary_entries, { default_min_limit: -20, formal_chempots: true, limits: { B: [-10, 0] as Vec2 } },
+      [-20, 0, -10, 0], { A: [0, -7, 0, -10], AB: [0, -7, -7, 0], B: [-7, 0, -20, 0] }],
+    // mu_A <= 0, mu_B <= 0, (1/3) mu_A + (2/3) mu_B <= -50: B needs mu_A <= -150, so no B domain
+    [`narrow limit beside a wide default (100:1)`, [make_phase({ A: 1 }, 0), make_phase({ B: 1 }, 0), make_phase({ A: 1, B: 2 }, -50)],
+      { default_min_limit: -100, formal_chempots: true, limits: { A: [-1, 0] as Vec2 } },
+      [-1, 0, -100, 0], { A: [0, -75, 0, -100], AB2: [0, -75, -1, -74.5] }],
     // mu_B = -3 needs mu_A <= -9 for AB to be unstable, outside A's range: no B domain
-    expect(Object.keys(domains).toSorted()).toEqual([`A`, `AB`])
-    expect_vertices(domains.A, chunk(2, [-2, -10, -2, -60]))
-    expect_vertices(domains.AB, chunk(2, [-2, -10, -5, -7]))
+    [`asymmetric limits (12:1)`, ab_binary_entries, { default_min_limit: -60, formal_chempots: false, limits: { A: [-5, 0] as Vec2 } },
+      [-5, 0, -60, 0], { A: [-2, -10, -2, -60], AB: [-2, -10, -5, -7] }],
+  ])(`%s clips the domains to the custom range`, (_label, phases, config, lims, expected) => {
+    const result = compute_chempot_diagram(phases, config)
+    expect(result.lims).toEqual(chunk(2, lims))
+    expect(Object.keys(result.domains).toSorted()).toEqual(Object.keys(expected))
+    for (const [formula, verts] of Object.entries(expected))
+      expect_vertices(result.domains[formula], chunk(2, verts))
   })
 
   test.each([

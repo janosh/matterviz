@@ -32,6 +32,7 @@ test.each([
   [`simulation/params.out`, false],
   [`relax/data.json`, false],
   [`notes.txt`, false],
+  [`md_run.xtc`, false],
   // a VASP name in a source, notebook, image or archive file names its subject, not its
   // format; VS Code auto-render used to pop a failing viewer for these
   [`write_poscar.py`, false],
@@ -59,7 +60,6 @@ test.each([
   [`atoms.extxyz.gz`, true],
   [`crystal.poscar`, true],
   [`movie.traj`, true],
-  [`run.xtc`, true],
   [`POSCAR`, true],
   [`XDATCAR`, true],
   [`OUTCAR`, true],
@@ -86,6 +86,7 @@ test.each([
   [`si_md.log`, false],
   [`data.hdf5`, false],
   [`simulation.trr`, false],
+  [`run.xtc`, false], // no decoder: auto-opening only showed an error
   [`README.md`, false],
   [`package.json`, false],
   ...non_filenames,

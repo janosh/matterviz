@@ -9,6 +9,7 @@ import {
 } from '#lib/isosurface/geometry.js'
 import {
   create_volume_sampler,
+  type DisplayRange,
   extract_volume_range,
   prepare_geometry_grid,
   UNIT_CELL_RANGE,
@@ -30,33 +31,30 @@ const blob_volume = (n_pts = 16) =>
     { lattice: cubic_matrix(10), periodic: true },
   )
 
-const blob_input = (volume = blob_volume()): GeometryInput => ({
-  volumes: [
-    {
-      token: 7,
-      volume,
-      range: [
-        [0, 2],
-        [0, 1],
-        [0, 1],
-      ],
-      surfaces: [
-        { token: `0:1`, isovalue: 0.5 },
-        { token: `1:1`, isovalue: 0.2 },
-      ],
-    },
+const two_cells: DisplayRange = [
+  [0, 2],
+  [0, 1],
+  [0, 1],
+]
+const blob_input = (
+  volume = blob_volume(),
+  surfaces = [
+    { token: `0:1`, isovalue: 0.5 },
+    { token: `1:1`, isovalue: 0.2 },
   ],
-})
+  range: DisplayRange | null = two_cells,
+): GeometryInput => ({ volumes: [{ ...prepare_geometry_grid(volume, range), surfaces }] })
 
 describe(`compute_isosurface_geometries`, () => {
   test(`extracts a display window and one mesh per isovalue in the scene frame`, () => {
     const volume = { ...blob_volume(), origin: [1, 2, 3] as Vec3 }
-    const [result] = compute_isosurface_geometries(blob_input(volume)).volumes
-    expect(result.token).toBe(7)
+    const input = blob_input(volume)
+    const [{ grid, lattice, origin }] = input.volumes
     // 2x1x1 window at source density, endpoint inclusive
-    expect(result.grid.dims).toEqual([33, 17, 17])
-    expect(result.lattice[0][0]).toBeCloseTo(20, 12)
-    expect(result.origin).toEqual(volume.origin)
+    expect(grid.dims).toEqual([33, 17, 17])
+    expect(lattice[0][0]).toBeCloseTo(20, 12)
+    expect(origin).toEqual(volume.origin)
+    const result = compute_isosurface_geometries(input)
     expect(result.surfaces.map((surface) => surface.token)).toEqual([`0:1`, `1:1`])
 
     const sample = create_volume_sampler(volume)
@@ -81,13 +79,10 @@ describe(`compute_isosurface_geometries`, () => {
     // a periodic [0, 1] window is endpoint-inclusive: an 8-point axis becomes 9 samples whose
     // last repeats the first, so no value is blended
     const volume = blob_volume(8)
-    const input: GeometryInput = {
-      volumes: [{ ...blob_input(volume).volumes[0], range: null }],
-    }
-    const [result] = compute_isosurface_geometries(input).volumes
-    expect(result.grid.dims).toEqual([9, 9, 9])
-    expect(result.lattice).toEqual(volume.lattice)
-    for (const [idx, val] of result.grid.values.entries()) {
+    const { grid, lattice } = prepare_geometry_grid(volume, null)
+    expect(grid.dims).toEqual([9, 9, 9])
+    expect(lattice).toEqual(volume.lattice)
+    for (const [idx, val] of grid.values.entries()) {
       // oxfmt-ignore
       const [idx_x, idx_y, idx_z] = [Math.floor(idx / 81) % 8, (Math.floor(idx / 9) % 9) % 8, (idx % 9) % 8]
       expect(val).toBe(volume.values[(idx_x * 8 + idx_y) * 8 + idx_z])
@@ -149,9 +144,8 @@ describe(`compute_isosurface_geometries`, () => {
   test.each([1, -1])(`lobe of sign %i gets outward-facing triangles`, (sign) => {
     const blob = blob_volume()
     const volume = { ...blob, values: blob.values.map((val) => sign * val) }
-    const surfaces = [{ token: `s`, isovalue: sign * 0.5 }]
-    const input = { volumes: [{ ...blob_input(volume).volumes[0], range: null, surfaces }] }
-    const [{ positions, indices }] = compute_isosurface_geometries(input).volumes[0].surfaces
+    const input = blob_input(volume, [{ token: `s`, isovalue: sign * 0.5 }], null)
+    const [{ positions, indices }] = compute_isosurface_geometries(input).surfaces
     const vertex = (idx: number) => [...positions.subarray(3 * idx, 3 * idx + 3)] as Vec3
     expect(indices.length).toBeGreaterThan(300)
     for (let tri = 0; tri < indices.length; tri += 3) {
@@ -164,10 +158,15 @@ describe(`compute_isosurface_geometries`, () => {
   test(`transferables list every output buffer exactly once`, () => {
     const result = compute_isosurface_geometries(blob_input())
     const buffers = geometry_result_transferables(result)
-    const [volume] = result.volumes
-    expect(buffers).toHaveLength(1 + 2 * volume.surfaces.length)
-    expect(new Set(buffers).size).toBe(buffers.length)
-    expect(buffers[0]).toBe(volume.grid.values.buffer)
+    expect(buffers).toHaveLength(2 * result.surfaces.length)
+    expect(new Set(buffers)).toEqual(
+      new Set(
+        result.surfaces.flatMap(({ positions, indices }) => [
+          positions.buffer,
+          indices.buffer,
+        ]),
+      ),
+    )
   })
 })
 
@@ -184,22 +183,24 @@ beforeAll(async () => {
 })
 afterEach(stub.reset)
 
-test(`compute_geometries_async posts a cloneable payload and returns the worker result`, async () => {
+test(`compute_geometries_async posts the prepared grid and returns the worker result`, async () => {
   const volume = { ...blob_volume(), origin: [1, 2, 3] as Vec3 }
-  const result = await compute_geometries_async(blob_input(volume))
+  const input = blob_input(volume)
+  const [job] = input.volumes
+  const result = await compute_geometries_async(input)
   expect(stub.posted).toHaveLength(1)
   const payload = stub.posted[0].message.input.volumes[0]
-  expect(payload.volume.values).toBeInstanceOf(Float64Array)
-  expect(payload.volume.values).toHaveLength(volume.values.length)
-  expect(payload.volume.lattice).toEqual(volume.lattice)
-  expect(payload.volume.origin).toEqual(volume.origin)
+  // only the prepared window's values, not the source volume
+  expect(payload.grid).toEqual({
+    values: job.grid.values,
+    dims: [33, 17, 17],
+    order: `z_fastest`,
+  })
+  expect([payload.lattice, payload.origin]).toEqual([job.lattice, volume.origin])
   // Value buffers stay owned by the caller (copied, not transferred)
   expect(stub.posted[0].transfer).toEqual([])
-  expect(volume.values).toHaveLength(16 ** 3)
+  expect(job.grid.values).toHaveLength(33 * 17 * 17)
 
-  const sync = compute_isosurface_geometries(blob_input(volume))
-  expect(result.volumes[0].grid.dims).toEqual(sync.volumes[0].grid.dims)
-  expect(result.volumes[0].surfaces[0].positions).toEqual(
-    sync.volumes[0].surfaces[0].positions,
-  )
+  const sync = compute_isosurface_geometries(input)
+  expect(result.surfaces[0].positions).toEqual(sync.surfaces[0].positions)
 })

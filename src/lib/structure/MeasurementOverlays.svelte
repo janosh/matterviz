@@ -45,25 +45,36 @@
   const fmt_deg = (value: number) => format_num(value, `.1~f`)
   const LINE_THICKNESS = 0.035
   type PairEnd = { site_idx: number; position: Vec3 }
-  // the drawn bond joining exactly these two sites at these points, either way round: a periodic
-  // bond runs to an image of its partner, and small cells hold several bonds per site pair.
-  // Site indices first, so a trajectory frame's bonds aren't all expanded into records. The
-  // prop is read once: its getter crosses three components, 35 ms per scan of 110k bonds.
-  const pair_bond = (end_i: PairEnd, end_j: PairEnd): BondPair | undefined => {
+  // Drawn bonds joining two picked sites, by unordered site pair, collected in one scan per
+  // bonds or picks change instead of one scan per pair (28 for 8 picks). Site indices first,
+  // so a trajectory frame's bonds aren't all expanded into records. The prop is read once: its
+  // getter crosses three components, 35 ms per scan of 110k bonds.
+  const pair_key = (site_a: number, site_b: number) =>
+    site_a < site_b ? `${site_a}-${site_b}` : `${site_b}-${site_a}`
+  // Lazy: read only by the pair links, so edit modes (drags) never scan
+  let picked_bonds = $derived.by(() => {
+    const picked = new Set(measured_sites)
+    const by_pair = new Map<string, BondPair[]>()
     const drawn = bonds
+    if (picked.size < 2) return by_pair
     for (let idx = 0; idx < drawn.length; idx++) {
       const [site_1, site_2] = [bond_site_1(drawn, idx), bond_site_2(drawn, idx)]
-      const forward = site_1 === end_i.site_idx && site_2 === end_j.site_idx
-      if (!forward && !(site_1 === end_j.site_idx && site_2 === end_i.site_idx)) continue
-      const bond = bond_at(drawn, idx)
-      const [start, end] = forward ? [end_i, end_j] : [end_j, end_i]
-      if (
+      if (!picked.has(site_1) || !picked.has(site_2)) continue
+      const key = pair_key(site_1, site_2)
+      by_pair.set(key, [...(by_pair.get(key) ?? []), bond_at(drawn, idx)])
+    }
+    return by_pair
+  })
+  // the drawn bond joining exactly these two sites at these points, either way round: a periodic
+  // bond runs to an image of its partner, and small cells hold several bonds per site pair
+  const pair_bond = (end_i: PairEnd, end_j: PairEnd): BondPair | undefined =>
+    picked_bonds.get(pair_key(end_i.site_idx, end_j.site_idx))?.find((bond) => {
+      const [start, end] = bond.site_idx_1 === end_i.site_idx ? [end_i, end_j] : [end_j, end_i]
+      return (
         math.same_position(bond.pos_1, start.position) &&
         math.same_position(bond.pos_2, end.position)
       )
-        return bond
-    }
-  }
+    })
   // A measured bond's strands (1-3 by order) as drawn, as threlte transform props
   const strand_poses = (bond: BondPair) =>
     bond_strand_matrices(bond, bond_thickness).map((matrix) => {

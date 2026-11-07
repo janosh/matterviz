@@ -429,17 +429,18 @@ const parse_count_line = (line: string): number => {
 const atom_line_scanner = new LineScanner()
 
 // Whether the scanned line reads `symbol x y z`: a symbol (<= 3 chars, non-numeric) followed by
-// three numeric coordinates. Coordinates go through the same strict parser as the frame reader
-// so a Fortran `1.0D-3` token counts. With `atom_types`, a positive integer stands in for the
-// symbol: LAMMPS `dump xyz` writes atom types there unless dump_modify element names them.
+// three finite coordinates (an `Infinity` line, like a `nan` one, forms no frame). Coordinates
+// go through the same strict parser as the frame reader so a Fortran `1.0D-3` token counts.
+// With `atom_types`, a positive integer stands in for the symbol: LAMMPS `dump xyz` writes
+// atom types there unless dump_modify element names them.
 const is_scanned_xyz_atom_line = (scanner: LineScanner, atom_types = false): boolean =>
   scanner.count >= 4 &&
   scanner.token_length(0) <= 3 &&
   (Number.isNaN(scanner.num(0)) ||
     (atom_types && Number.isInteger(scanner.num(0)) && scanner.num(0) > 0)) &&
-  !Number.isNaN(scanner.num(1)) &&
-  !Number.isNaN(scanner.num(2)) &&
-  !Number.isNaN(scanner.num(3))
+  Number.isFinite(scanner.num(1)) &&
+  Number.isFinite(scanner.num(2)) &&
+  Number.isFinite(scanner.num(3))
 
 export const is_xyz_atom_line = (line: string): boolean => {
   atom_line_scanner.scan(line)
@@ -448,6 +449,11 @@ export const is_xyz_atom_line = (line: string): boolean => {
 
 // One column group of an extXYZ `Properties=` spec, e.g. `pos:R:3` -> 3 columns of type `r`
 export type ExtxyzColumn = { offset: number; ncols: number; type: string }
+
+// Columns the readers interpret by name, matched case-insensitively (`Z`, `Pos`). Every other
+// name keeps its case, so a site property `Mass` round-trips as `Mass`.
+const EXTXYZ_NAMED_COLUMN =
+  /^(?:species|pos|forces?|z|move_mask|selective_dynamics|velocities|momenta|charges|masses)$/
 
 // Column layout an extXYZ comment line declares. Without a `Properties=` spec (plain XYZ)
 // `layout` is null and the caller falls back to the `symbol x y z` shape.
@@ -475,7 +481,8 @@ export function parse_extxyz_columns(comment: string): {
   const spec = spec_match?.groups?.properties.replaceAll(/^["']|["']$/gu, ``)
   const fields = spec?.split(`:`) ?? []
   // Every third field is a name. A repeat silently overwrote the first entry and moved its
-  // offset, so `species:S:1:pos:R:3:pos:R:3` read the coordinates from columns 4-6.
+  // offset, so `species:S:1:pos:R:3:pos:R:3` read the coordinates from columns 4-6. Repeats
+  // are found case-insensitively (the structure exporter refuses `magmom` beside `MAGMOM`).
   const names = fields.filter((_field, idx) => idx % 3 === 0).map((name) => name.toLowerCase())
   const duplicate = names.find((name, idx) => names.indexOf(name) !== idx)
   let layout: Record<string, ExtxyzColumn> | null = fields.length % 3 === 0 ? {} : null
@@ -484,7 +491,8 @@ export function parse_extxyz_columns(comment: string): {
     // became 3 columns and every offset after it silently shifted by the rounding
     const ncols = Number(fields[idx + 2])
     if (Number.isInteger(ncols) && ncols > 0) {
-      layout[fields[idx].toLowerCase()] = {
+      const name = fields[idx].toLowerCase()
+      layout[EXTXYZ_NAMED_COLUMN.test(name) ? name : fields[idx]] = {
         offset,
         ncols,
         type: fields[idx + 1].toLowerCase(),
@@ -540,9 +548,9 @@ function make_xyz_atom_line_test(comment: string): (scanner: LineScanner) => boo
     )
       return false
     return (
-      !Number.isNaN(scanner.num(pos_col)) &&
-      !Number.isNaN(scanner.num(pos_col + 1)) &&
-      !Number.isNaN(scanner.num(pos_col + 2))
+      Number.isFinite(scanner.num(pos_col)) &&
+      Number.isFinite(scanner.num(pos_col + 1)) &&
+      Number.isFinite(scanner.num(pos_col + 2))
     )
   }
 }

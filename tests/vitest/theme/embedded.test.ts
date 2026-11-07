@@ -210,11 +210,13 @@ describe(`watch_theme lifecycle`, () => {
     try {
       const el_a = document.createElement(`div`)
       const el_b = document.createElement(`div`)
-      document.body.append(el_a, el_b)
+      document.body.append(el_a)
       const seen_a: string[] = []
       const seen_b: string[] = []
       const dispose_a = watch_theme(el_a, (theme) => seen_a.push(theme))
+      // B is still detached when subscribed, as a Jupyter output is during render
       const dispose_b = watch_theme(el_b, (theme) => seen_b.push(theme))
+      document.body.append(el_b)
       expect(seen_a).toEqual([`light`]) // the initial theme arrives synchronously
       expect(vi.getTimerCount()).toBe(0)
 

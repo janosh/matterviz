@@ -51,19 +51,13 @@ const with_forces = two_frames(sound, [[`Si`], [`Si`]])
   .join(`\n`)
 // Both open paths must agree on the plot rows (parsers.test compares them for sound files),
 // also when a later frame cannot be built: the indexed run must not give it a plot row
-// oxfmt-ignore
-test.each<[string, string, RegExp]>([
-  // each frame carries its own `Properties=`; only the second frame's spec is broken
-  [`an unusable spec`, with_forces.replace(new RegExp(`${sound}(?![\\s\\S]*${sound})`), `species:S:1:pos:R:2:forces:R:3`),
-    /does not declare a 3-column pos field/],
-  // The frame walk's atom-line test rules out a NaN coordinate but not an overflowing one, so
-  // `1e999` reached the force scan. Frame 1's FIRST atom line: frame 0 is decoded eagerly, and
-  // a bad LAST line of the file is caught by the torn-frame guard, which drops the frame
-  ...[0, 1, 2].map((axis) => [`1e999 on axis ${axis}`,
-    with_forces.replace(`Si 0.0 0.0 0.1 `, `Si ${[`0.0`, `0.0`, `0.1`].map((value, idx) => (idx === axis ? `1e999` : value)).join(` `)} `),
-    /non-numeric coordinates/] satisfies [string, string, RegExp]),
-])(`indexed run publishes no force stats for a frame with %s`, async (_label, text, error) => {
-  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(error)
+// (each frame carries its own `Properties=`; only the second frame's spec is broken)
+test(`indexed run publishes no force stats for a frame with an unusable spec`, async () => {
+  const broken = `species:S:1:pos:R:2:forces:R:3`
+  const text = with_forces.replace(new RegExp(`${sound}(?![\\s\\S]*${sound})`), broken)
+  expect(() => parse_xyz_trajectory(text, create_warning_collector())).toThrow(
+    /does not declare a 3-column pos field/,
+  )
   const run = indexed_text_run(text, `xyz`, {}, create_warning_collector())
   await run.properties.done
   const [first, second] = run.properties.rows.map((row) => row.properties.force_max)

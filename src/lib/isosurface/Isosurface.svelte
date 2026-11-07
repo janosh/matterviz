@@ -15,19 +15,19 @@
   import { BackSide, type BufferGeometry, DoubleSide, FrontSide } from 'three/webgpu'
   import { compute_scalar_range, is_signed_range, set_vertex_colors } from './coloring'
   import { compute_geometries_async } from './async-geometry.svelte'
-  import type { GeometryResult, GeometryVolumeJob } from './geometry'
+  import type { GeometryInput, GeometryResult } from './geometry'
   import { compute_isosurface_geometries } from './geometry'
   import type { ScalarGrid3D } from './grid'
   import { get_isosurface_error_handler, type IsosurfaceErrorHandler } from './context'
   import { record_stage, time_stage } from './profile'
   import type { DisplayRange } from './sampling'
   import {
-    range_sample_counts,
+    prepare_geometry_grid,
     resolve_volume_display_range,
     sample_volume_at_positions,
   } from './sampling'
   import type { IsosurfaceLayer, IsosurfaceSettings, VolumetricData } from './types'
-  import { DEFAULT_ISOSURFACE_SETTINGS, MAX_GRID_POINTS, index_volumes } from './types'
+  import { DEFAULT_ISOSURFACE_SETTINGS, index_volumes } from './types'
 
   let {
     volumes = [],
@@ -98,9 +98,19 @@
   const range_key = (vol: VolumetricData): string =>
     effective_range(vol)?.flat().join(`,`) ?? ``
 
-  const current_prepared = (vol: VolumetricData): PreparedGrid | undefined => {
+  // Prepared on the main thread (~4 ms at 300³): posting the source volume to the worker
+  // instead structured-cloned all of it (216 MB, ~70 ms) just to be resampled there
+  const prepared_grid = (vol: VolumetricData): PreparedGrid => {
+    const key = range_key(vol)
     const cached = prepared_cache.get(vol)
-    return cached?.key === range_key(vol) ? cached : undefined
+    if (cached?.key === key) return cached
+    const prepared = time_stage(
+      `prepare_geometry`,
+      () => ({ key, ...prepare_geometry_grid(vol, effective_range(vol)) }),
+      ({ grid }) => ({ output_points: grid.values.length }),
+    )
+    prepared_cache.set(vol, prepared)
+    return prepared
   }
 
   const geometry_buffer_bytes = (geometry: BufferGeometry): number =>
@@ -190,81 +200,35 @@
   type PendingSurface = Pick<MeshEntry, `key` | `geo_key` | `layer_idx` | `sign`> & {
     isovalue: number
     volume: VolumetricData
-    // range_key at request time: a range change during a worker job must not file the old
-    // window's grid under the new key
-    prepared_key: string
   }
 
-  const estimated_prepared_points = (vol: VolumetricData): number => {
-    const range = effective_range(vol)
-    const points = range
-      ? range_sample_counts(vol, range).reduce((total, count) => total * count, 1)
-      : vol.values.length
-    return Math.min(points, MAX_GRID_POINTS)
-  }
+  // One job per volume on its prepared grid
+  const geometry_jobs = (pending: PendingSurface[]): GeometryInput[`volumes`] =>
+    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => ({
+      ...prepared_grid(vol),
+      surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
+    }))
 
-  // Large grids that still need preparing go to the geometry worker; small ones and
-  // already-prepared grids are cheaper on the main thread than a round trip
-  const use_geometry_worker = (pending: PendingSurface[]): boolean =>
+  // Large grids go to the geometry worker; small ones are cheaper on the main thread than a
+  // round trip
+  const use_geometry_worker = (jobs: GeometryInput[`volumes`]): boolean =>
     typeof window !== `undefined` &&
     can_create_worker() &&
-    pending.some(
-      (surface) =>
-        !current_prepared(surface.volume) &&
-        estimated_prepared_points(surface.volume) >= 200_000,
-    )
+    jobs.some(({ grid }) => grid.values.length >= 200_000)
 
-  // One job per volume. A still-valid prepared grid is posted as that finite grid with no
-  // range, so only new or invalidated volumes are re-extracted.
-  const geometry_jobs = (pending: PendingSurface[]): GeometryVolumeJob[] =>
-    [...Map.groupBy(pending, (surface) => surface.volume)].map(([vol, surfaces]) => {
-      const prepared = current_prepared(vol)
-      return {
-        token: vol_id(vol),
-        volume: prepared
-          ? {
-              values: prepared.grid.values,
-              dims: prepared.grid.dims,
-              order: `z_fastest`,
-              lattice: prepared.lattice,
-              origin: prepared.origin,
-              periodic: false,
-            }
-          : vol,
-        range: prepared ? null : effective_range(vol),
-        surfaces: surfaces.map(({ key, isovalue }) => ({ token: key, isovalue })),
-      }
-    })
-
-  // Cache prepared grids and build geometries from one geometry result (worker or sync)
+  // Build geometries from one geometry result (worker or sync)
   function ingest_geometry_result(
     response: GeometryResult,
-    pending: PendingSurface[],
     worker: boolean,
   ): Map<string, BufferGeometry> {
     const geometries = new Map<string, BufferGeometry>()
-    for (const volume_result of response.volumes) {
-      const source = pending.find((surface) => vol_id(surface.volume) === volume_result.token)
-      if (source) {
-        prepared_cache.set(source.volume, {
-          key: source.prepared_key,
-          grid: volume_result.grid,
-          lattice: volume_result.lattice,
-          origin: volume_result.origin,
-        })
-      }
-      record_stage(`prepare_geometry`, volume_result.prepare_geometry_ms, {
+    for (const surface_result of response.surfaces) {
+      record_stage(`marching_cubes`, surface_result.marching_cubes_ms, {
         worker,
-        output_points: volume_result.grid.values.length,
+        vertices: surface_result.positions.length / 3,
       })
-      for (const surface_result of volume_result.surfaces) {
-        record_stage(`marching_cubes`, surface_result.marching_cubes_ms, {
-          worker,
-          vertices: surface_result.positions.length / 3,
-        })
-        const geometry = build_geometry(surface_result.positions, surface_result.indices)
-        if (geometry) geometries.set(surface_result.token, geometry)
-      }
+      const geometry = build_geometry(surface_result.positions, surface_result.indices)
+      if (geometry) geometries.set(surface_result.token, geometry)
     }
     return geometries
   }
@@ -301,7 +265,6 @@
             sign,
             isovalue: sign * layer.isovalue,
             volume: layer.volume,
-            prepared_key: range_key(layer.volume),
           }
           pending.push(surface)
           plans.push(surface)
@@ -311,7 +274,7 @@
 
     let geometries = new Map<string, BufferGeometry>()
     const jobs = geometry_jobs(pending)
-    if (use_geometry_worker(pending)) {
+    if (use_geometry_worker(jobs)) {
       const abort = new AbortController()
       geometry_job = { abort, volumes: new Set(pending.map(({ volume }) => volume)) }
       try {
@@ -321,7 +284,7 @@
           { signal: abort.signal },
         )
         if (generation !== rebuild_generation) return
-        geometries = ingest_geometry_result(response, pending, true)
+        geometries = ingest_geometry_result(response, true)
       } catch (error) {
         // a superseded or aborted job fails silently; real failures reach request_rebuild
         if (generation !== rebuild_generation || abort.signal.aborted) return
@@ -332,7 +295,6 @@
     } else if (jobs.length > 0) {
       geometries = ingest_geometry_result(
         compute_isosurface_geometries({ volumes: jobs }),
-        pending,
         false,
       )
     }
@@ -409,8 +371,8 @@
   )
 
   // At most one rebuild per frame and one in flight: the frame callback reads the freshest
-  // layers, and a request during a (worker) rebuild queues one rerun instead of aborting
-  // work that also prepares the grid.
+  // layers, and a request during a (worker) rebuild queues one rerun instead of aborting it,
+  // so a slider drag still lands surfaces.
   function request_rebuild(): void {
     if (raf_id) return
     building = true

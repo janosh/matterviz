@@ -448,7 +448,7 @@
             ><input
               type="number"
               min="0.1"
-              step="0.5"
+              step="any"
               aria-label="Flight duration"
               aria-invalid={Boolean(duration_error)}
               value={draft.duration}

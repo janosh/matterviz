@@ -39,6 +39,11 @@ export function create_camera_flight_editor() {
       ...view,
       time: views.length < 2 ? 0 : (idx / (views.length - 1)) * duration,
     }))
+  // the pane's min: shorter flights squeeze interior markers past their 0.01 s drag gap
+  const check_duration = (duration: number) => {
+    if (!Number.isFinite(duration) || duration < 0.1)
+      throw new Error(`Duration must be at least 0.1 s, got ${duration}`)
+  }
   const set_views = (views: FlightDraft[`views`]) =>
     commit({
       views: draft.automatic ? space_evenly(views, draft.duration) : views,
@@ -98,9 +103,8 @@ export function create_camera_flight_editor() {
       selected = to
     },
     set_duration(duration: number) {
-      if (!Number.isFinite(duration) || duration <= 0)
-        throw new Error(`Duration must be greater than zero`)
       if (duration === draft.duration) return
+      check_duration(duration)
       commit({
         duration,
         views: draft.automatic
@@ -121,6 +125,7 @@ export function create_camera_flight_editor() {
       )
         throw new Error(`View ${idx + 1} must come after view ${idx} and before the next view`)
       if (time === views[idx].time) return
+      if (idx === views.length - 1) check_duration(time)
       commit({
         automatic: false,
         duration: idx === views.length - 1 ? time : draft.duration,
@@ -138,6 +143,7 @@ export function create_camera_flight_editor() {
     },
     load(path: CameraFlight, thumbnails: string[], automatic = false) {
       validate_camera_flight(path)
+      check_duration(path.keyframes[path.keyframes.length - 1].time)
       commit({
         views: structuredClone(path.keyframes).map((frame, idx) => ({
           ...frame,

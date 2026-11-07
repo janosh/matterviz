@@ -74,27 +74,33 @@ describe(`Export functionality`, () => {
     })
 
     // Everything past `species x y z` used to vanish on export: no Properties= line was
-    // written at all, so a re-read saw only positions.
+    // written at all, so a re-read saw only positions. Readers match column names
+    // case-insensitively and reject a repeat, so a case clash refuses the export.
     it.each([
       [`forces`, { force: [-0.125, 0.25, 0.5] }],
       [`selective dynamics`, { selective_dynamics: [true, false, true] }],
       [`both`, { force: [1, -2, 3], selective_dynamics: [false, false, false] }],
-    ])(`round-trips %s through extended XYZ`, (_name, properties) => {
-      const structure = {
-        sites: [
-          { ...make_site(`Si`), properties },
-          { ...make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1]), properties },
-        ],
-        lattice: diag_lattice(2),
-      } as AnyStructure
-      const reparsed = parse_xyz(structure_to_xyz_str(structure))
-      assert(reparsed, `failed to reparse exported XYZ`)
-      for (const site of reparsed.sites) {
-        for (const [key, value] of Object.entries(properties)) {
-          expect(site.properties[key]).toEqual(value)
+      [`clashing magmom`, { magmom: 1.5, MAGMOM: 2 }, `'MAGMOM' clashes`],
+      [`clashing Force`, { Force: [1, 2, 3] }, `'Force' clashes`],
+    ] as [string, Record<string, unknown>, string?][])(
+      `round-trips %s through extended XYZ`,
+      (_name, properties, clash) => {
+        const structure = {
+          sites: [
+            { ...make_site(`Si`), properties },
+            { ...make_site(`O`, [0.5, 0.5, 0.5], [1, 1, 1]), properties },
+          ],
+          lattice: diag_lattice(2),
+        } as AnyStructure
+        if (clash) {
+          expect(xyz_export_unavailable_reason(structure)).toContain(clash)
+          expect(() => structure_to_xyz_str(structure)).toThrow(clash)
+        } else {
+          const reparsed = parse_xyz(structure_to_xyz_str(structure))
+          for (const site of reparsed.sites) expect(site.properties).toEqual(properties)
         }
-      }
-    })
+      },
+    )
 
     it(`omits the forces column unless every site has one`, () => {
       const structure = {
@@ -263,24 +269,32 @@ describe(`Export functionality`, () => {
       expect(() => serialize(structure)).toThrow(error_msg)
     })
 
+    // The `X` dummy written for a site naming no element is read back by no reader (CIF even
+    // read it as Fe), so every format refuses such a site, as JSON does
     // oxfmt-ignore
     it.each([
-      { name: `species without element`,
-        species: [{ element: undefined, occu: 1, oxidation_state: 0 }] },
-      { name: `empty species array`, species: [] },
-    ] as const)(`handles $name gracefully`, ({ species }) => {
-      const site = {
-        species, // deliberately invalid: missing element / empty array
-        xyz: [0.0, 0.0, 0.0],
-        abc: [0.0, 0.0, 0.0],
-        label: `H`,
-        properties: {},
-      }
-      const structure = { sites: [site] } as unknown as AnyStructure
-      expect(structure_to_xyz_str(structure).split(`\n`)[2]).toBe(
-        `X 0.000000 0.000000 0.000000`,
-      )
-    })
+      [[{ element: undefined, occu: 1, oxidation_state: 0 }], `a species with no element`],
+      [[], `no species`],
+      // a mixed site whose later species lacks an element (CIF would write `undefined`)
+      [[{ element: `Fe`, occu: 0.5, oxidation_state: 0 }, { element: undefined, occu: 0.5, oxidation_state: 0 }], `a species with no element`],
+    ])(
+      `refuses a site with species %j in every format`,
+      (species, problem) => {
+        const site = { ...make_site(`H`), species } as unknown as Site
+        const structure: AnyStructure = {
+          sites: [make_site(`H`), site],
+          lattice: diag_lattice(2),
+        }
+        for (const [serialize, reason] of [
+          [structure_to_cif_str, fractional_export_unavailable_reason],
+          [structure_to_poscar_str, poscar_export_unavailable_reason],
+          [structure_to_xyz_str, xyz_export_unavailable_reason],
+        ] as const) {
+          expect(reason(structure)).toBe(`Site 2 has ${problem}`)
+          expect(() => serialize(structure)).toThrow(`Site 2 has ${problem}`)
+        }
+      },
+    )
 
     const cell_writers = [structure_to_cif_str, structure_to_poscar_str, structure_to_xyz_str]
     // oxfmt-ignore
@@ -298,34 +312,31 @@ describe(`Export functionality`, () => {
 
     // An extXYZ `Lattice="... 0 0 0"` parses (axis-length fallback) but has no cart->frac
     // inverse; sites already carry abc, so the inverse must not be built unless one needs it
-    // POSCAR checks poscar_export_unavailable_reason up front; CIF fails on inverting
-    // oxfmt-ignore
+    // and both check their eligibility reason up front
     it.each([
-      [`CIF`, structure_to_cif_str, `singular or ill-conditioned`],
-      [`POSCAR`, structure_to_poscar_str, `POSCAR export: A nonsingular unit cell with finite volume is required`],
-    ] as const)(
-      `%s export of a singular lattice uses the sites' abc`,
-      (format, serialize, error) => {
-        // oxfmt-ignore
-        const matrix: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 0]]
-        const structure: AnyStructure = {
-          sites: [make_site(`H`, [0.2, 0.4, 0], [1, 2, 0])],
-          lattice: { ...diag_lattice(5), matrix },
-        }
-        const content = serialize(structure)
-        expect(content).toContain(`0.20000000 0.40000000 0.00000000`)
-        expect(fractional_export_unavailable_reason(structure)).toBeUndefined()
-        const without_abc = {
-          ...structure,
-          sites: structure.sites.map(({ abc: _abc, ...site }) => site),
-        } as AnyStructure
-        expect(fractional_export_unavailable_reason(without_abc)).toContain(
-          `nonsingular unit cell`,
-        )
-        expect(() => serialize(without_abc)).toThrow(error)
-        if (format === `CIF`) expect(content).toContain(`_cell_length_c 0.000000`)
-      },
-    )
+      [`CIF`, structure_to_cif_str],
+      [`POSCAR`, structure_to_poscar_str],
+    ] as const)(`%s export of a singular lattice uses the sites' abc`, (format, serialize) => {
+      const error = `${format} export: A nonsingular unit cell with finite volume is required`
+      // oxfmt-ignore
+      const matrix: Matrix3x3 = [[5, 0, 0], [0, 5, 0], [0, 0, 0]]
+      const structure: AnyStructure = {
+        sites: [make_site(`H`, [0.2, 0.4, 0], [1, 2, 0])],
+        lattice: { ...diag_lattice(5), matrix },
+      }
+      const content = serialize(structure)
+      expect(content).toContain(`0.20000000 0.40000000 0.00000000`)
+      expect(fractional_export_unavailable_reason(structure)).toBeUndefined()
+      const without_abc = {
+        ...structure,
+        sites: structure.sites.map(({ abc: _abc, ...site }) => site),
+      } as AnyStructure
+      expect(fractional_export_unavailable_reason(without_abc)).toContain(
+        `nonsingular unit cell`,
+      )
+      expect(() => serialize(without_abc)).toThrow(error)
+      if (format === `CIF`) expect(content).toContain(`_cell_length_c 0.000000`)
+    })
 
     // The data block header is required by pymatgen: the alphabetical formula with
     // occupancies rounded to integers (Fe 0.3 -> 0 is left out), else the sanitized id
@@ -402,8 +413,9 @@ describe(`Export functionality`, () => {
     })
 
     // unquoted, whitespace split the row and a leading `#` commented it out; `'` needs `"`
-    // an unquoted reserved word opened a new data block, so the reader found no atoms
-    it.each([`#1`, `C1' A`, `data_1`, `LOOP_x`])(`quotes CIF label %j`, (label) => {
+    // an unquoted reserved word opened a new data block, so the reader found no atoms; an
+    // unquoted `?`/`.` is CIF's unset placeholder, and the reader took a quoted one for it too
+    it.each([`#1`, `C1' A`, `data_1`, `LOOP_x`, `?`, `.`])(`quotes CIF label %j`, (label) => {
       const sites = [make_site(`Fe`, [0.1, 0.2, 0.3], [0.5, 1, 1.5], label)]
       const [site] = parse_cif(structure_to_cif_str({ sites, lattice: diag_lattice(5) })).sites
       expect([site.label, site.species[0].element]).toEqual([label, `Fe`])

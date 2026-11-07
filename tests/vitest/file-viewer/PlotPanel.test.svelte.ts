@@ -1,7 +1,7 @@
 import PlotPanel from '#lib/file-viewer/PlotPanel.svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { expect, test } from 'vitest'
-import { doc_query } from '../setup'
+import { doc_query, set_select } from '../setup'
 
 // one string + two numeric columns: both `bar` and `scatter` are offered
 const rows = (prefix: string) =>
@@ -54,3 +54,25 @@ test(`row-based table tolerates non-object rows past the sampled first two`, () 
     `45`,
   ])
 })
+
+test.each([`scatter`, `histogram`])(
+  `switching bar to %s moves the string x axis to a numeric column`,
+  (plot_type) => {
+    // the bar chart's x_name stayed mapped, so the scatter/histogram plotted nothing
+    mount(PlotPanel, {
+      target: document.body,
+      props: { data: rows(`x`), initial_type: `bar` },
+    })
+    flushSync()
+    const select = doc_query<HTMLSelectElement>(`.toolbar > select[aria-label='Plot type']`)
+    const axis_selects = () =>
+      document.querySelectorAll<HTMLSelectElement>(`.toolbar label select`)
+    set_select(select, plot_type)
+    expect(axis_selects()[0].value).toBe(`x_b`)
+    // editing another axis (scatter's Y) must not save the substituted numeric x over x_name
+    const y_select = axis_selects()[1]
+    if (y_select) set_select(y_select, `x_a`)
+    set_select(select, `bar`)
+    expect(axis_selects()[0].value).toBe(`x_name`)
+  },
+)

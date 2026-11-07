@@ -82,7 +82,7 @@
   <!-- electron orbitals -->
   {#each shells as electrons, shell_idx (`${shell_idx}-${electrons}`)}
     {@const shell_number = shell_idx + 1}
-    {@const shell_radius = nucleus_svg_props.r + shell_number * shell_width}
+    {@const shell_radius = Number(nucleus_svg_props.r) + shell_number * shell_width}
     {@const active = shell_number === highlight_shell}
     <g class="shell" style:animation-duration="{orbital_period * shell_number ** 1.5}s">
       <circle

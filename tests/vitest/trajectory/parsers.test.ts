@@ -32,6 +32,8 @@ import {
   is_trajectory_file,
 } from '#lib/trajectory/format-detect.js'
 import { get_unsupported_format_message } from '#lib/trajectory/parse/index.js'
+import { open_lammps_frames } from '#lib/trajectory/parse/lammps.js'
+import { snapshot_topologies } from '#lib/structure/site.js'
 import {
   ase_calculator_data,
   parse_ase_trajectory,
@@ -882,6 +884,8 @@ describe(`LAMMPS`, () => {
     ).join(`\n`)
   }
   const frame_0 = lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`])
+  // three type-1 atoms, the middle one (which an indexed open skips past frame 0) as `middle`
+  const three_atoms = (middle = `2 1 2 0 0`) => [`1 1 1 0 0`, middle, `3 1 3 0 0`]
 
   // The last three tokens of the BOX BOUNDS line are boundary flags only when they read as
   // flags. A triclinic header with none appended puts `xy xz yz` there, none of which starts
@@ -949,16 +953,78 @@ describe(`LAMMPS`, () => {
     [`a frame that loses the ID column`, `${frame_0}\n${lammps_frame(`type x y z`, [`1 1 0 0`, `1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS frame at timestep 1 lost the atom ID column`],
     // An interior frame shorter than its atom count runs into the next header
+    // frame 0 is read in full, alone or followed by frames sampled past their middle atom
+    ...[``, `\n${lammps_frame(`id type x y z`, three_atoms(), { timestep: 1 })}`].map((rest) => [
+      `a middle atom line of frame 0${rest && ` before another frame`}`, `${lammps_frame(`id type x y z`, three_atoms(`2 0 2 0 0`))}${rest}`,
+      `LAMMPS atom line 11 (timestep 0) has invalid type "0"`,
+    ]),
     [`an interior frame missing atoms`, `${lammps_frame(`id type x y z`, [`1 1 1 0 0`], { n_atoms: 2 })}\n${lammps_frame(`id type x y z`, [`1 1 1 0 0`, `2 1 8 0 0`], { timestep: 1 })}`,
       `LAMMPS atom line 11 (timestep 0) has 2 columns, expected 5`],
+    // an indexed open skipping its body by count would land on the next frame's first atom line
+    [`an interior frame whose count runs into the next frame`, [frame_0, lammps_frame(`id type x y z`, three_atoms(), { timestep: 1, n_atoms: 13 }), lammps_frame(`id type x y z`, three_atoms(), { timestep: 2 })].join(`\n`),
+      `LAMMPS atom line 24 (timestep 1) has 2 columns, expected 5`],
+    [`an interior frame whose count ends on the next frame's atom count`, [frame_0, lammps_frame(`id type x y z`, three_atoms(), { timestep: 1, n_atoms: 5 }), lammps_frame(`id type x y z`, three_atoms(), { timestep: 2 })].join(`\n`),
+      `LAMMPS atom line 24 (timestep 1) has 2 columns, expected 5`],
     [`an interior frame missing BOX BOUNDS`, `${frame_0}\nITEM: TIMESTEP\n1\nITEM: NUMBER OF ATOMS\n1\n${lammps_frame(`id type x y z`, [`1 1 2 0 0`], { timestep: 2 })}`,
       `LAMMPS frame at timestep 1 is missing "ITEM: BOX BOUNDS" before line`],
     [`descending timesteps`, [lammps_frame(`id type x y z`, [`1 1 1 0 0`], { timestep: 1 }), lammps_frame(`id type x y z`, [`1 1 2 0 0`])].join(`\n`),
       `LAMMPS timestep 0 at frame 2 must be greater than 1 at frame 1`],
   ])(`rejects %s with line/frame context`, async (_label, content, error) => {
-    // the indexed open's scan makes every check the eager parse does
+    // the indexed open makes every header and framing check the eager parse does, and reads
+    // every atom line of these frames
     for (const index_above_bytes of [Infinity, 0])
       await expect(open(content, `bad.lammpstrj`, { index_above_bytes })).rejects.toThrow(error)
+  })
+
+  // The indexed open reads atom lines only of the first frame and the first and last of the
+  // others: a defect between them fails that frame's read and plot row (as XDATCAR's indexed
+  // run does) and leaves the other frames readable, where the eager parse rejects the dump or
+  // skips the frame with a warning
+  // oxfmt-ignore
+  it.each([
+    [`invalid type`, `2 0 2 0 0`, `LAMMPS atom line 23 (timestep 10) has invalid type "0"`],
+    [`non-numeric coordinate`, `2 1 2 xx 0`, `LAMMPS atom line 23 (timestep 10) has non-numeric coordinates: "2 1 2 xx 0"`],
+    [`short atom line`, `2 1 2 0`, `LAMMPS atom line 23 (timestep 10) has 4 columns, expected 5`],
+    [`duplicate atom ID`, `1 1 2 0 0`, `LAMMPS frame at timestep 10 has duplicate atom IDs`],
+    [`non-finite coordinate`, `2 1 nan 0 0`, `Non-finite LAMMPS coordinates at timestep 10: line 23 "2 1 nan 0 0"`,
+      `Skipping 1 LAMMPS frame(s) with non-finite coordinates, the first at timestep 10: line 23 "2 1 nan 0 0"`],
+  ])(`reports a %s between an indexed frame's samples when it is read`, async (_label, bad_line, error, eager_warning?: string) => {
+    // `dump_modify units yes` heads each frame with ITEM: UNITS, which must delimit frame 10 too
+    for (const units of [``, `ITEM: UNITS\nmetal\n`]) {
+      const content = [0, 10, 20]
+        .map((timestep) => `${timestep === 20 ? units : ``}${lammps_frame(`id type x y z`, three_atoms(timestep === 10 ? bad_line : undefined), { timestep })}`)
+        .join(`\n`)
+      const eager = open(content, `body.lammpstrj`, { index_above_bytes: Infinity })
+      if (eager_warning) expect((await eager).warnings).toEqual([eager_warning])
+      else await expect(eager).rejects.toThrow(error)
+      const indexed = await open(content, `body.lammpstrj`, { index_above_bytes: 0 })
+      expect(indexed.frame_count).toBe(3)
+      expect(() => indexed.read_frame(1)).toThrow(error)
+      for (const frame_idx of [0, 2])
+        expect((await materialize_frame_result(indexed.read_frame(frame_idx))).step).toBe(frame_idx * 10)
+      await indexed.properties.done
+      expect(indexed.properties.rows.map(({ step }) => step)).toEqual([0, 20])
+      expect(indexed.warnings).toEqual([`Skipping plot data of frame 2: ${error}`])
+    }
+  })
+
+  // An unmapped type first met past the open's samples warns when its frame is read
+  it(`warns about a type first met by an indexed read`, async () => {
+    // frame 0 is read in full, so its middle atom's type 2 is known at open
+    const content = `${lammps_frame(`id type x y z`, three_atoms(`2 2 2 0 0`))}\n${lammps_frame(`id type x y z`, three_atoms(`2 3 2 0 0`), { timestep: 10 })}\n${lammps_frame(`id type x y z`, three_atoms(), { timestep: 20 })}`
+    const indexed = await open(content, `gcmc.lammpstrj`, {
+      index_above_bytes: 0,
+      atom_type_mapping: undefined,
+    })
+    const guess = (types: string) =>
+      `LAMMPS dump names no element for some atom types; read them as atomic numbers (${types}). Pass atom_type_mapping (e.g. { 1: 'Si', 2: 'O' }) to name them.`
+    expect([indexed.metadata, indexed.warnings]).toEqual([
+      { atom_types: [1, 2] },
+      [guess(`1→H, 2→He`)],
+    ])
+    const frame = await materialize_frame_result(indexed.read_frame(1))
+    expect(elements_of(frame)).toEqual([`H`, `Li`, `H`])
+    expect(indexed.warnings).toEqual([guess(`1→H, 2→He`), guess(`3→Li`)])
   })
 
   // Only the final frame of a dump may be incomplete: the writer is still appending
@@ -985,6 +1051,68 @@ describe(`LAMMPS`, () => {
     const run = await open(`${frame_0}\n${torn_frame}`, `torn.lammpstrj`)
     expect(await steps_of(run)).toEqual([0])
     expect(run.warnings).toEqual([`Dropping truncated final LAMMPS frame: ${detail}`])
+  })
+
+  // An MD run that blew up prints `nan`/`inf` coordinates: those frames are skipped with one
+  // warning (as XYZ does) instead of failing the whole dump. A restarted run appending to its
+  // dump repeats the restart step, which is skipped too, not rejected as non-ascending.
+  it(`skips non-finite frames and a repeated restart timestep, keeping the rest`, async () => {
+    // type 3 sits only in skipped frames, before their non-finite line: it must not reach
+    // atom_types nor be guessed (type 1 is mapped), also from onset frames an indexed open only
+    // drops after sampling past their non-finite middle atom
+    const frame = (timestep: number, coord: string, middle = `5`) =>
+      lammps_frame(
+        `id type x y z`,
+        [
+          `1 ${coord === `nan` || middle !== `5` ? 3 : 1} 1 0 0`,
+          `2 1 ${middle} 0 0`,
+          `3 1 ${coord} 0 0`,
+        ],
+        { timestep },
+      )
+    const content = [
+      [0, `8`],
+      [1, `nan`],
+      [2, `3`],
+      [2, `4`],
+      [3, `-inf`],
+      [4, `Infinity`],
+      [5, `5`],
+      [6, `6`, `nan`], // repeated by a restart: eager keeps the second copy
+      [6, `7`],
+      [7, `7`, `nan`],
+      [8, `8`, `inf`],
+      [9, `nan`],
+    ]
+      .map(([timestep, coord, middle]) =>
+        frame(Number(timestep), String(coord), middle as string | undefined),
+      )
+      .join(`\n`)
+    for (const index_above_bytes of [Infinity, 0]) {
+      const run = await open(content, `nan.lammpstrj`, {
+        index_above_bytes,
+        atom_type_mapping: { 1: `H` },
+      })
+      expect(run.metadata).toEqual({ atom_types: [1] })
+      const frames = await frames_of(run)
+      expect(frames.map(({ step }) => step)).toEqual([0, 2, 5, 6])
+      expect(frames[1].structure.sites[2].xyz).toEqual([3, 0, 0]) // the first copy of step 2
+      expect(frames[3].structure.sites[2].xyz).toEqual([7, 0, 0]) // the finite copy of step 6
+      await run.properties.done
+      expect(run.properties.rows.map(({ step }) => step)).toEqual([0, 2, 5, 6])
+      expect(run.warnings).toEqual([
+        `Skipping LAMMPS frame at line 37 repeating timestep 2`,
+        `Skipping 7 LAMMPS frame(s) with non-finite coordinates, the first at timestep 1: line 24 "3 1 nan 0 0"`,
+      ])
+    }
+    // the warning names the onset frame an indexed open finds last, not the all-NaN one after it
+    const onset = [frame(0, `8`), frame(7, `7`, `nan`), frame(9, `nan`)].join(`\n`)
+    for (const index_above_bytes of [Infinity, 0]) {
+      const run = await open(onset, `nan.lammpstrj`, { index_above_bytes })
+      expect(run.warnings.at(-1)).toMatch(
+        /^Skipping 2 .* at timestep 7: line 23 "2 1 nan 0 0"$/,
+      )
+    }
   })
 
   // Issue #449: a GCMC/deposition dump whose atom set changes is still a browsable
@@ -1016,6 +1144,17 @@ describe(`LAMMPS`, () => {
     await expect(run.collect_positions?.({ frame_stride: 3 })).rejects.toThrow(
       `Atom count changed at frame 4: expected 2 atoms, got 3`,
     )
+    // plot rows of frames repeating the previous species share one array (counted once)
+    const source = open_lammps_frames(
+      new TextLines(content),
+      expect.unreachable,
+      TEST_ATOM_TYPES,
+    )
+    const [first, second, third, fourth] = [0, 1, 2, 3].map((frame_idx) =>
+      snapshot_topologies.get(source.plot_row_frame(frame_idx).structure),
+    )
+    expect([second, third].every((numbers) => numbers === first)).toBe(true)
+    expect(fourth).not.toBe(first)
   })
 
   it(`warns instead of rejecting a multi-frame dump without an ID column`, async () => {
@@ -1307,8 +1446,8 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
   })
 
   // Reads and position sweeps of the common layouts build no Site records to encode
-  // (2-3.5x per frame)
-  it.each<[string, () => string]>([
+  // (2-3.5x per frame; ASE 20k atoms: 4x)
+  it.each<[string, () => string | ArrayBuffer]>([
     [`md.extxyz`, () => synthetic_extxyz(4, 5)],
     [`XDATCAR`, site_text(`trajectories/vasp-XDATCAR.MD.gz`)],
     [
@@ -1319,6 +1458,7 @@ describe(`indexed and byte-sourced XYZ, XDATCAR and LAMMPS`, () => {
           `1 2 0.5 0.5 0.5 1 1 1 0 0 0 -0.5`,
         ]),
     ],
+    [`md.traj`, () => make_ase_md_buffer(5)],
   ])(`%s reads numeric frames without Site records`, async (filename, make_text) => {
     const run = await open(make_text(), filename, { index_above_bytes: 0 })
     await run.properties.done
@@ -1556,6 +1696,8 @@ describe(`XYZ`, () => {
     // Source metadata must not masquerade as viewer-generated image/supercell provenance.
     [`orig_site_idx:I:1:orig_unit_cell_idx:I:1:completion_image:L:1`, `H 0 0 0 7 2 T`,
       { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }],
+    // names the reader interprets match in any case; any other column keeps its own
+    [`Mass:R:1:Charges:R:1`, `H 0 0 0 1.5 -0.5`, { Mass: 1.5, charge: -0.5 }],
     // A column too short on the line is dropped for that atom rather than stored as NaN
     [`charge:R:1:extra:R:1`, `H 0 0 0 0.5`, { charge: 0.5 }],
     // Non-finite numeric tokens are dropped the same way
@@ -1682,34 +1824,18 @@ describe(`XYZ`, () => {
   })
 
   // One warning per unknown symbol, not per atom: Wannier centres (`X`) flooded the list
-  it(`normalises symbol casing and skips unknown symbols with a warning`, async () => {
-    const frame = xyz_frame([
-      `FE 0 0 0`,
-      `si 1 0 0`,
-      `X 2 0 0`,
-      `O 3 0 0`,
-      `X 4 0 0`,
-      `Q 5 0 0`,
-    ])
-    const run = await open(`${frame}\n${frame}`, `ghost.xyz`)
-    expect((await frames_of(run)).map(elements_of)).toEqual([
-      [`Fe`, `Si`, `O`],
-      [`Fe`, `Si`, `O`],
-    ])
-    expect(run.warnings).toEqual([
-      `Skipping XYZ atoms with unknown element symbol "X", first in frame 1 (line 1) at line 5`,
-      `Skipping XYZ atoms with unknown element symbol "Q", first in frame 1 (line 1) at line 8`,
-    ])
-  })
-
   // An indexed frame decodes for its plot row and again on every read: each warning once
-  it(`warns once per unknown symbol in an indexed run however often frames are read`, async () => {
-    const frame = xyz_frame([`X 0 0 0`, `O 3 0 0`])
-    const run = await open(`${frame}\n${frame}`, `ghost.xyz`, { index_above_bytes: 0 })
+  // oxfmt-ignore
+  it.each([[Infinity, `frame 1 (line 1)`], [0, `indexed frame 1`]])(
+    `normalises symbol casing and warns once per unknown symbol (index above %d bytes)`, async (index_above_bytes, label) => {
+    const frame = xyz_frame([`FE 0 0 0`, `si 1 0 0`, `X 2 0 0`, `O 3 0 0`, `X 4 0 0`, `Q 5 0 0`])
+    const run = await open(`${frame}\n${frame}`, `ghost.xyz`, { index_above_bytes })
     await run.properties.done
-    for (let read = 0; read < 3; read++) await frames_of(run)
+    for (let read = 0; read < 3; read++)
+      expect((await frames_of(run)).map(elements_of)).toEqual([[`Fe`, `Si`, `O`], [`Fe`, `Si`, `O`]])
     expect(run.warnings).toEqual([
-      `Skipping XYZ atoms with unknown element symbol "X", first in indexed frame 1 at line 3`,
+      `Skipping XYZ atoms with unknown element symbol "X", first in ${label} at line 5`,
+      `Skipping XYZ atoms with unknown element symbol "Q", first in ${label} at line 8`,
     ])
   })
 
@@ -1784,6 +1910,7 @@ describe(`XYZ`, () => {
   // oxfmt-ignore
   it.each([
     [`a nan frame between two`, [xyz_frame(four_atoms()), nan_frame, xyz_frame(four_atoms(`H 2 2 2`))], [0, 1], `Skipping XYZ lines 7-12 between frames 1 and 2`],
+    [`an Infinity frame between two`, [xyz_frame(four_atoms()), xyz_frame([`H Infinity 0 0`, ...four_atoms().slice(1)]), xyz_frame(four_atoms())], [0, 1], `Skipping XYZ lines 7-12 between frames 1 and 2`],
     [`nan frames at the end`, [xyz_frame(four_atoms()), xyz_frame(four_atoms()), nan_frame, nan_frame], [0, 1], `Skipping XYZ lines 13-24 after frame 2`],
     [`a title before the first frame`, [`water box`, xyz_frame(four_atoms()), xyz_frame(four_atoms())], [0, 1], `Skipping XYZ lines 1-1 before frame 1`],
   ])(`warns about lines holding no frame: %s`, async (_label, parts, steps, warning) => {

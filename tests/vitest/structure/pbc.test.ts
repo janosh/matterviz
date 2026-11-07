@@ -28,7 +28,7 @@ import lifemn_cif from '#site/structures/Li4Fe3Mn1(PO4)4.cif?raw'
 import nacl_poscar from '#site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '#site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import {
   fcc_primitive_matrix,
   image_options,
@@ -224,6 +224,38 @@ test.each(
     for (const completion of [`polyhedra`, `boundary`] as const)
       expect(completion_problems(structure, completion, options)).toEqual(NO_PROBLEMS)
 })
+
+// Regression: a heavily sheared basis of cubic SrTiO3 bonds Ti to O two cells out, past a
+// fixed -1..1 neighbor shell, so completion drew no octahedron at all
+test.each([`polyhedra`, `boundary`] as const)(
+  `sheared SrTiO3 cell completes octahedra (%s)`,
+  (completion) => {
+    const cubic = make_srtio3(`corner`)
+    const matrix: Matrix3x3 = [
+      [SRTIO3_A, 0, 0],
+      [2 * SRTIO3_A, SRTIO3_A, 0],
+      [-SRTIO3_A, SRTIO3_A, SRTIO3_A],
+    ]
+    const to_frac = math.create_cart_to_frac(matrix)
+    const structure = make_crystal(
+      matrix,
+      cubic.sites.map((site) => ({
+        element: site.species[0].element,
+        abc: wrap_to_unit_cell(to_frac(site.xyz)),
+      })),
+    )
+    const imaged = get_pbc_image_sites(structure, image_options(completion))
+    const polyhedra = compute_polyhedra(
+      imaged,
+      get_bond_data(imaged, `electroneg_ratio`),
+      polyhedra_options_from({}),
+    )
+    expect(polyhedra.map(({ vertex_site_idxs }) => vertex_site_idxs.length)).toEqual(
+      Array(8).fill(6),
+    )
+    expect(completion_problems(structure, completion)).toEqual(NO_PROBLEMS)
+  },
+)
 
 test(`completion images carry provenance, phase-1 face images do not`, () => {
   const structure = make_srtio3(`corner`)
@@ -709,3 +741,23 @@ test.each([
     }
   },
 )
+
+// Image keys pack site and shift into one integer: a bond spanning ~1e5 cells would push
+// them past 2^53, where distinct copies collided: such a reach skips completion with a warning
+// oxfmt-ignore
+test.each([
+  [2, 8],
+  [1e5, 0],
+])(`explicit bonds shifted %s cells along c add %s completion images`, (shift, n_completed) => {
+  const structure = make_crystal(3, [[`Fe`, [0, 0, 0]], [`O`, [0.5, 0.5, 0.5]]])
+  structure.properties = {
+    bonds: [shift, shift - 1].map((shift_c) => ({ site_idx_1: 0, site_idx_2: 1, order: 1, cell_shift: [0, 0, shift_c] })),
+  }
+  const options = { completion: `boundary`, bonding_strategy: `explicit_only`, bonding_options: {} } as const
+  const warn_spy = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  const completed = find_image_atoms(structure, options).filter(([site_idx, , , completion]) => site_idx === 1 && completion)
+  expect(completed).toHaveLength(n_completed)
+  expect(warn_spy).toHaveBeenCalledTimes(n_completed ? 0 : 1)
+  if (!n_completed) expect(warn_spy).toHaveBeenCalledWith(`Bond cell shifts reach 100000 cells, too far to complete periodic images`)
+  warn_spy.mockRestore()
+})

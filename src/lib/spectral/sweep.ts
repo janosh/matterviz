@@ -255,8 +255,11 @@ export function dos_at_energy(dos: DosData, energy: number): number | undefined 
   if (dos.type !== `electronic`) return undefined
   const { energies, densities, spin_down_densities } = dos
   const total = (idx: number) => densities[idx] + Math.abs(spin_down_densities?.[idx] ?? 0)
-  if (!(energy >= energies[0] && energy <= energies[energies.length - 1])) return undefined
-  const upper = energies.findIndex((value) => value >= energy)
+  // DOS grids may run either way (see helpers' sorted-grid smearing)
+  const [first, last] = [energies[0], energies[energies.length - 1]]
+  const ascending = last >= first
+  if (!(energy >= Math.min(first, last) && energy <= Math.max(first, last))) return undefined
+  const upper = energies.findIndex((value) => (ascending ? value >= energy : value <= energy))
   if (energies[upper] === energy || upper === 0) return total(upper)
   const frac = (energy - energies[upper - 1]) / (energies[upper] - energies[upper - 1])
   return total(upper - 1) + frac * (total(upper) - total(upper - 1))

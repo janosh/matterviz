@@ -68,14 +68,20 @@ const disordered_site_error = (site: Site, idx: number): string =>
   `Site ${display_idx(idx)} has partial or mixed occupancy (${site.species
     .map(({ element, occu }) => `${element}:${occu}`)
     .join(`, `)}); export as CIF or JSON to keep it`
-const disordered_site_reason = (structure: AnyStructure): string | undefined => {
-  const idx = structure.sites.findIndex(is_disordered_site)
-  return idx === -1 ? undefined : disordered_site_error(structure.sites[idx], idx)
+// The first site a text format cannot write: one naming no element (the `X` written for it
+// is a dummy no reader accepts back) or, for the one-element-per-site formats, a disordered one
+const site_export_reason = (
+  structure: AnyStructure,
+  ordered_only: boolean,
+): string | undefined => {
+  for (const [idx, site] of structure.sites.entries()) {
+    if (!site.species.length) return `Site ${display_idx(idx)} has no species`
+    if (site.species.some((spec) => !spec?.element))
+      return `Site ${display_idx(idx)} has a species with no element`
+    if (ordered_only && is_disordered_site(site)) return disordered_site_error(site, idx)
+  }
+  return undefined
 }
-
-// The element of an ordered site (callers refuse disordered ones up front), or `X` when it
-// has no species
-const site_element = (site: Site): string => site.species[0]?.element || `X`
 
 // cart→frac converter built on first use: a singular lattice (extXYZ `Lattice="... 0 0 0"`)
 // has no inverse, and a site that already carries abc never needs one
@@ -121,15 +127,17 @@ function coordinate_export_unavailable_reason(
 // Existing fractional coordinates allow exporting a singular cell without inverting it.
 export const fractional_export_unavailable_reason = (
   structure?: AnyStructure,
-): string | undefined => coordinate_export_unavailable_reason(structure, true)
+): string | undefined =>
+  coordinate_export_unavailable_reason(structure, true) ??
+  (structure && site_export_reason(structure, false))
 export const poscar_export_unavailable_reason = (
   structure?: AnyStructure,
 ): string | undefined =>
   fractional_export_unavailable_reason(structure) ??
-  (structure && disordered_site_reason(structure))
+  (structure && site_export_reason(structure, true))
 export const xyz_export_unavailable_reason = (structure?: AnyStructure): string | undefined =>
   coordinate_export_unavailable_reason(structure, false) ??
-  (structure && disordered_site_reason(structure))
+  (structure && (site_export_reason(structure, true) ?? xyz_column_clash(structure)))
 
 // Fractional coordinates from abc, else converted from xyz. Invalid present abc must not
 // silently switch the authoritative coordinate source or write NaN into the exported file.
@@ -189,6 +197,18 @@ function numeric_site_columns(structure: AnyStructure): { key: string; ncols: 1 
     })
     return fits ? [{ key, ncols }] : []
   })
+}
+
+// A written column the extXYZ readers would take for another: they match names
+// case-insensitively and reject a repeat, so `magmom` and `MAGMOM` make the file unreadable
+function xyz_column_clash(structure: AnyStructure): string | undefined {
+  const taken = new Set(XYZ_RESERVED_PROPERTIES)
+  for (const { key } of numeric_site_columns(structure)) {
+    if (taken.has(key.toLowerCase()))
+      return `Site property '${key}' clashes with another extXYZ column (names are case-insensitive); rename it`
+    taken.add(key.toLowerCase())
+  }
+  return undefined
 }
 
 // Bare words in an extXYZ comment are read as valueless flags, and an `=` or `"` inside one
@@ -254,7 +274,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
     // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
-    lines.push(`${site_element(site)} ${columns.join(` `)}`)
+    lines.push(`${site.species[0].element} ${columns.join(` `)}`)
   }
   return lines.join(`\n`)
 }
@@ -276,10 +296,11 @@ function get_cif_block_name(structure: AnyStructure): string {
     : `structure`
 }
 
-// Quote a CIF value that whitespace would split, whose first char reads as syntax or that
-// starts with a reserved word (an unquoted `data_1` label opens a new data block)
+// Quote a CIF value that whitespace would split, whose first char reads as syntax, that
+// starts with a reserved word (an unquoted `data_1` label opens a new data block) or that is
+// an unset placeholder (an unquoted `?` label reads back as no label)
 const cif_token = (value: string): string =>
-  !/\s|^[_#$'";[\]]|^(?:data|loop|save|global|stop)_/i.test(value)
+  !/\s|^[_#$'";[\]]|^(?:data|loop|save|global|stop)_|^[.?]$/i.test(value)
     ? value
     : value.includes(`'`)
       ? `"${value}"`
@@ -301,6 +322,8 @@ function require_lattice(structure: AnyStructure | undefined, format: string): C
 
 export function structure_to_cif_str(input?: AnyStructure): string {
   const structure = require_lattice(input, `CIF`)
+  const reason = fractional_export_unavailable_reason(structure)
+  if (reason) throw new Error(`CIF export: ${reason}`)
   const { lattice } = structure
   const params = math.calc_lattice_params(lattice.matrix)
   // The data block header is required by the CIF spec (and pymatgen)
@@ -378,12 +401,9 @@ export function structure_to_cif_str(input?: AnyStructure): string {
     const coords_str = get_frac_coords(site, cart_to_frac, idx)
       .map((coord) => (left_handed ? wrap_frac_coord(-coord) : coord).toFixed(8))
       .join(` `)
-    const species_list = site.species.length
-      ? site.species
-      : [{ element: `X`, occu: 1, oxidation_state: 0 }]
     // parse_cif names a merged site after its first row, so that row keeps the site label
-    const site_label = site.label || `${species_list[0]?.element || `X`}${idx + 1}`
-    for (const [spec_idx, species] of species_list.entries()) {
+    const site_label = site.label || `${site.species[0].element}${idx + 1}`
+    for (const [spec_idx, species] of site.species.entries()) {
       const symbol = cif_type_symbol(species.element, species.oxidation_state)
       const label = cif_token(spec_idx === 0 ? site_label : `${site_label}_${spec_idx}`)
       lines.push(`${label} ${symbol} ${coords_str} ${(species.occu ?? 1).toFixed(8)}`)
@@ -416,7 +436,7 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
   // VASP wants one block per species: site indices grouped by element in first-appearance order
   const sites_by_element = new Map<string, number[]>()
   for (const [idx, site] of structure.sites.entries()) {
-    const element = site_element(site)
+    const { element } = site.species[0]
     const group = sites_by_element.get(element)
     if (group) group.push(idx)
     else sites_by_element.set(element, [idx])

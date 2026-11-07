@@ -19,8 +19,10 @@ export type OxiComposition = Partial<
 >
 
 // Float noise from multiplying fractional counts ((H0.1)3 -> 0.30000000000000004) would
-// leak into labels; 12 significant digits is far beyond any stoichiometric precision
-const round_amount = (amount: number): number => Number(amount.toPrecision(12))
+// leak into labels; 12 significant digits is far beyond any stoichiometric precision.
+// Integers (nearly every count) are exact already, which skips two string conversions.
+const round_amount = (amount: number): number =>
+  Number.isInteger(amount) ? amount : Number(amount.toPrecision(12))
 
 const SUBSCRIPT_DIGITS = `₀₁₂₃₄₅₆₇₈₉`
 const SUPERSCRIPT_CHARS = `⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻`
@@ -74,6 +76,14 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
     if (match) pos = regex.lastIndex
     return match
   }
+  // Most count/charge reads miss: a first-character check skips the sticky exec
+  const read_number = (): string | undefined =>
+    /[\d.]/.test(src[pos] ?? ``) ? read(NUMBER_RE)?.[0] : undefined
+  const read_charge = (): string | undefined => {
+    if (src[pos] !== `^` && src[pos] !== `[`) return undefined
+    const groups = read(CHARGE_RE)?.groups
+    return groups?.caret ?? groups?.bracket
+  }
   const fail = (reason: string): never => {
     throw new Error(`${reason} at position ${pos} in formula "${formula}"`)
   }
@@ -93,7 +103,7 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
         pos++
         const inner = parse_group(char === `(` ? `)` : `]`)
         if (inner.length === 0) fail(`Empty parentheses`)
-        const multiplier = Number(read(NUMBER_RE)?.[0] ?? 1)
+        const multiplier = Number(read_number() ?? 1)
         for (const token of inner) tokens.push({ ...token, amount: token.amount * multiplier })
         continue
       }
@@ -103,10 +113,9 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
       const symbol = read_symbol === `D` || read_symbol === `T` ? `H` : read_symbol
       if (symbol !== `*` && !is_elem_symbol(symbol)) fail(`Invalid element symbol: ${symbol}`)
       // count and charge in either order: Fe2^3+ or Fe^3+2
-      let count = read(NUMBER_RE)?.[0]
-      const charge = read(CHARGE_RE)?.groups
-      count ??= read(NUMBER_RE)?.[0]
-      const charge_str = charge?.caret ?? charge?.bracket
+      let count = read_number()
+      const charge_str = read_charge()
+      count ??= read_number()
       tokens.push({
         element: is_elem_symbol(symbol) ? symbol : null,
         amount: Number(count ?? 1),
@@ -123,7 +132,7 @@ function tokenize_formula(formula: string, allow_wildcards = false): RawToken[] 
       pos++
       continue
     }
-    const coefficient = Number(read(NUMBER_RE)?.[0] ?? 1)
+    const coefficient = Number(read_number() ?? 1)
     const segment = parse_group(null)
     if (segment.length === 0) fail(`Empty formula segment`)
     for (const token of segment) {

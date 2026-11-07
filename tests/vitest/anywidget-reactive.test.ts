@@ -70,6 +70,10 @@ describe(`reactive_widget`, () => {
     const moved = { sites: [{ xyz: [1, 0, 0] }] }
     model.push_from_python(`structure`, moved)
     expect(props.structure).toBe(moved)
+    // by identity, not a deep compare (10 ms for a 30k-site structure)
+    const copy = structuredClone(moved)
+    model.push_from_python(`structure`, copy)
+    expect(props.structure).toBe(copy)
   })
 
   test(`derived: recomputes when any dep trait changes`, () => {

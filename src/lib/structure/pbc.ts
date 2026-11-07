@@ -23,10 +23,25 @@ const shifted = (vec: Shift, shift: Shift): Vec3 => [
   vec[1] + shift[1],
   vec[2] + shift[2],
 ]
-// Pack a site index and its lattice shift (-1/0/1 per axis) into one integer key, so the
-// image dedupe in find_image_atoms builds no string per candidate
-const pack_image_key = (site_idx: number, shift: Shift): number =>
-  site_idx * 27 + (shift[0] + 1) * 9 + (shift[1] + 1) * 3 + shift[2] + 1
+// Pack a site index and its lattice shift (within -reach..reach per axis) into one integer
+// key, so the image dedupe in find_image_atoms builds no string per candidate
+const pack_image_key = (site_idx: number, shift: Shift, reach: number): number => {
+  const radix = 2 * reach + 1
+  return (
+    ((site_idx * radix + shift[0] + reach) * radix + shift[1] + reach) * radix +
+    shift[2] +
+    reach
+  )
+}
+// The integer lattice shift from a site's fractional coords to those of its image
+const shift_of = (image_abc: Vec3, abc: Vec3): Vec3 => [
+  Math.round(image_abc[0] - abc[0]),
+  Math.round(image_abc[1] - abc[1]),
+  Math.round(image_abc[2] - abc[2]),
+]
+// in-cell bonds carry no cell_shift: the bond normalizers drop zero shifts
+const bond_cell_shift = (bonds: BondData, bond_idx: number): Shift | undefined =>
+  bonds instanceof BondFrame ? bonds.cell_shift(bond_idx) : bonds[bond_idx].cell_shift
 const FACE_TOLERANCE = 0.1 // Å from a cell face that still counts as on it (see phase 1)
 const ZERO_SHIFT: Shift = [0, 0, 0]
 // The displayed copies of an interior site: just the base atom
@@ -89,25 +104,20 @@ export const find_image_atoms = (
 ): ImageAtom[] => image_atoms(structure, options).images
 
 // Image atoms plus, once completion read the periodic polyhedra, the image keys
-// (pack_image_key) of the displayed copies whose polyhedron it completed whole
+// (pack_image_key with `reach`) of the displayed copies whose polyhedron it completed whole
 function image_atoms(
   structure: AnyStructure,
   options: ImageAtomOptions,
-): { images: ImageAtom[]; complete_centers?: Set<number> } {
-  if (!(`lattice` in structure) || structure.sites.length === 0) return { images: [] }
+): { images: ImageAtom[]; complete_centers?: Set<number>; reach: number } {
+  if (!(`lattice` in structure) || structure.sites.length === 0)
+    return { images: [], reach: 1 }
   const { matrix, pbc } = structure.lattice // pbc: no images across vacuum
-  if (is_scattered_trajectory(structure.sites, pbc)) return { images: [] }
+  if (is_scattered_trajectory(structure.sites, pbc)) return { images: [], reach: 1 }
   const frac_to_cart = math.create_frac_to_cart(matrix)
   const heights = math.cell_heights(matrix) // all Infinity for a zero-volume cell
 
   const images: ImageAtom[] = []
-  const seen_images = new Set<number>()
-  // Add the copy of a site shifted by whole cells, at most once
-  const add_copy = (site_idx: number, shift: Shift, is_completion: boolean): void => {
-    if (shift[0] === 0 && shift[1] === 0 && shift[2] === 0) return // the base atom
-    const key = pack_image_key(site_idx, shift)
-    if (seen_images.has(key)) return
-    seen_images.add(key)
+  const push_copy = (site_idx: number, shift: Shift, is_completion: boolean): void => {
     const img_abc = shifted(structure.sites[site_idx].abc, shift)
     images.push([site_idx, frac_to_cart(img_abc), img_abc, is_completion])
   }
@@ -136,7 +146,9 @@ function image_atoms(
     )
   })
   for (const [idx, shifts] of copy_shifts.entries())
-    for (const shift of shifts) add_copy(idx, shift, false)
+    // distinct shifts, base atom first
+    for (let shift_idx = 1; shift_idx < shifts.length; shift_idx++)
+      push_copy(idx, shifts[shift_idx], false)
 
   // Phase 2: copies beyond the faces, read off the renderer's bonding on the periodic bond
   // graph, so a copy only appears as the bonded partner of a displayed atom. The modes nest:
@@ -146,7 +158,7 @@ function image_atoms(
   // - none: nothing beyond the phase-1 face copies
   // A zero-volume cell has no periodic bond graph (infinite cell heights).
   if (options.completion === `none` || !pbc.some(Boolean) || heights.includes(Infinity))
-    return { images }
+    return { images, reach: 1 }
   const { completion, polyhedra: polyhedra_options } = options
   const { symbols, site_elem_ids, elem_data } = intern_site_elements(structure.sites)
   // Polyhedra mode skips the bond search (and with no polyhedra to judge, stamps nothing)
@@ -155,13 +167,49 @@ function image_atoms(
   const no_polyhedra =
     !polyhedra_options ||
     (polyhedra_options.neighbor_mode === `anion` && elem_data.every((elem) => elem?.metal))
-  if (completion === `polyhedra` && no_polyhedra) return { images }
+  if (completion === `polyhedra` && no_polyhedra) return { images, reach: 1 }
   const { bonding_strategy, bonding_options } = options
   const bonds = get_bond_data(structure, bonding_strategy, { ...bonding_options, pbc })
-  // Copies stay in the cell's neighbor shell (shifts of -1/0/1): completing the shells of
-  // copies further out (bonds of a corner image pointing away from the cell) grows a cluster,
-  // e.g. 36 instead of 12 completion images for a 1-atom fcc cell
-  const in_shell = (shift: Shift) => shift.every((val) => Math.abs(val) <= 1)
+  // Copies stay in the cell's neighbor shell: the cells holding the bond partners of the
+  // base cell (shifts of -1/0/1 unless a sheared cell bonds further, e.g. cubic SrTiO3 in
+  // basis [[1,0,0],[2,1,0],[-1,1,1]] has Ti-O bonds 2 cells out). Completing the shells of
+  // copies further out (bonds of a corner image pointing away from the cell) grows a
+  // cluster, e.g. 36 instead of 12 completion images for a 1-atom fcc cell.
+  const shell: Vec3 = [1, 1, 1]
+  // Sites bonded across a face: with the face sites, the only polyhedron centers that can
+  // need corners beyond the cell
+  const bonds_out = new Uint8Array(structure.sites.length)
+  for (let bond_idx = 0; bond_idx < bonds.length; bond_idx++) {
+    const bond_shift = bond_cell_shift(bonds, bond_idx)
+    if (!bond_shift) continue
+    bonds_out[bond_site_1(bonds, bond_idx)] = 1
+    bonds_out[bond_site_2(bonds, bond_idx)] = 1
+    for (const axis of AXES) shell[axis] = Math.max(shell[axis], Math.abs(bond_shift[axis]))
+  }
+  // An interior center's polyhedron lies in the cell: it is complete, its corners are base atoms
+  const is_interior = (site_idx: number): boolean =>
+    copy_shifts[site_idx] === BASE_ONLY && !bonds_out[site_idx]
+  const in_shell = (shift: Shift) => AXES.every((axis) => Math.abs(shift[axis]) <= shell[axis])
+  const reach = Math.max(...shell) // the largest |shift| of any image
+  // Explicit file bonds can span absurdly many cells; past 2^53 distinct image keys would
+  // collide, so skip completion (keeping the face copies) rather than crash the viewer
+  if (structure.sites.length * (2 * reach + 1) ** 3 > Number.MAX_SAFE_INTEGER) {
+    console.warn(`Bond cell shifts reach ${reach} cells, too far to complete periodic images`)
+    return { images, reach: 1 }
+  }
+  const seen_images = new Set(
+    images.map(([site_idx, , abc]) =>
+      pack_image_key(site_idx, shift_of(abc, structure.sites[site_idx].abc), reach),
+    ),
+  )
+  // Add the copy of a site shifted by whole cells, at most once
+  const add_copy = (site_idx: number, shift: Shift): void => {
+    if (shift[0] === 0 && shift[1] === 0 && shift[2] === 0) return // the base atom
+    const key = pack_image_key(site_idx, shift, reach)
+    if (seen_images.has(key)) return
+    seen_images.add(key)
+    push_copy(site_idx, shift, true)
+  }
 
   // Each displayed copy of a polyhedron center gets all its corners or none: a copy truncated
   // at the shell's edge is left out of complete_centers, so compute_polyhedra keeps it undrawn
@@ -169,9 +217,13 @@ function image_atoms(
   const complete_centers = polyhedra_options && new Set<number>()
   const cart_to_frac = math.create_cart_to_frac(matrix)
   const polyhedra = polyhedra_options
-    ? compute_polyhedra(structure, bonds, polyhedra_options)
+    ? compute_polyhedra(structure, bonds, polyhedra_options, is_interior)
     : []
   for (const { center_site_idx, vertex_site_idxs, vertices } of polyhedra) {
+    if (is_interior(center_site_idx)) {
+      complete_centers?.add(pack_image_key(center_site_idx, ZERO_SHIFT, reach))
+      continue
+    }
     const corner_shifts = vertex_site_idxs.map((site_idx, vertex_idx) => {
       const { abc } = structure.sites[site_idx]
       const frac = cart_to_frac(vertices[vertex_idx])
@@ -180,12 +232,12 @@ function image_atoms(
     for (const copy_shift of copy_shifts[center_site_idx]) {
       const shifts = corner_shifts.map((shift) => shifted(shift, copy_shift))
       if (!shifts.every(in_shell)) continue
-      complete_centers?.add(pack_image_key(center_site_idx, copy_shift))
+      complete_centers?.add(pack_image_key(center_site_idx, copy_shift, reach))
       for (const [vertex_idx, shift] of shifts.entries())
-        add_copy(vertex_site_idxs[vertex_idx], shift, true)
+        add_copy(vertex_site_idxs[vertex_idx], shift)
     }
   }
-  if (completion === `polyhedra`) return { images, complete_centers }
+  if (completion === `polyhedra`) return { images, complete_centers, reach }
 
   // Boundary mode: every bond of a face atom (one with phase-1 copies), in both directions.
   // Spectator A-site cations (Li/Na, heavy alkaline earths) stay out when a framework cation
@@ -201,7 +253,7 @@ function image_atoms(
     if (copy_shifts[near] === BASE_ONLY) return // interior atom
     for (const copy_shift of copy_shifts[near]) {
       for (const axis of AXES) shift[axis] = copy_shift[axis] + sign * bond_shift[axis]
-      if (in_shell(shift)) add_copy(far, shift, true)
+      if (in_shell(shift)) add_copy(far, shift)
     }
   }
   for (let bond_idx = 0; bond_idx < bonds.length; bond_idx++) {
@@ -209,14 +261,11 @@ function image_atoms(
     const site_2 = bond_site_2(bonds, bond_idx)
     if (copy_shifts[site_1] === BASE_ONLY && copy_shifts[site_2] === BASE_ONLY) continue
     if (elem_skipped[site_elem_ids[site_1]] || elem_skipped[site_elem_ids[site_2]]) continue
-    // in-cell bonds carry no cell_shift: the bond normalizers drop zero shifts
-    const bond_shift =
-      (bonds instanceof BondFrame ? bonds.cell_shift(bond_idx) : bonds[bond_idx].cell_shift) ??
-      ZERO_SHIFT
+    const bond_shift = bond_cell_shift(bonds, bond_idx) ?? ZERO_SHIFT
     complete_bond(site_1, site_2, bond_shift, 1)
     complete_bond(site_2, site_1, bond_shift, -1)
   }
-  return { images, complete_centers }
+  return { images, complete_centers, reach }
 }
 
 // Return structure with image atoms added (unchanged when none are generated, e.g. for
@@ -226,7 +275,7 @@ export function get_pbc_image_sites(
   structure: AnyStructure,
   options: ImageAtomOptions,
 ): AnyStructure {
-  const { images, complete_centers } = image_atoms(structure, options)
+  const { images, complete_centers, reach } = image_atoms(structure, options)
   if (images.length === 0 && !complete_centers) return structure
   const stamp = (site: Site, site_idx: number, shift: Shift): Site =>
     complete_centers
@@ -234,7 +283,7 @@ export function get_pbc_image_sites(
           ...site,
           provenance: {
             ...site.provenance,
-            polyhedron_center: complete_centers.has(pack_image_key(site_idx, shift)),
+            polyhedron_center: complete_centers.has(pack_image_key(site_idx, shift, reach)),
           },
         }
       : site
@@ -253,8 +302,7 @@ export function get_pbc_image_sites(
         ...(is_completion ? { completion: true } : {}),
       },
     }
-    const shift = abc.map((coord, axis) => Math.round(coord - orig_site.abc[axis])) as Vec3
-    sites.push(stamp(image, site_idx, shift))
+    sites.push(stamp(image, site_idx, shift_of(abc, orig_site.abc)))
   }
   return { ...structure, sites }
 }

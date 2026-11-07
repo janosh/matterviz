@@ -156,15 +156,27 @@ describe(`dropped files`, () => {
     expect(Object.keys(paths)).toEqual([`vacancy`])
   })
 
-  test(`loose structure files are assembled into one path in drop order`, () => {
+  // indexed names sort naturally (image_2 before image_10) whatever the drop order; names
+  // without distinct indices keep the drop order
+  test.each([
+    [
+      [`image_10`, `image_2`, `image_1`],
+      [0.5, 0.3, 0.1],
+    ],
+    ...[
+      [`IS`, `TS`, `FS`],
+      [`IS`, `01`, `FS`],
+      [`v2_is`, `v2_ts`, `v2_fs`],
+    ].map((names): [string[], number[]] => [names, [0.1, 0.3, 0.5]]),
+  ])(`loose structure files %j are assembled into one ordered path`, (names, x_fracs) => {
+    const energies: Record<number, number> = { 0.1: -10, 0.3: -9.2, 0.5: -9.7 }
     const paths = parse_dropped_paths(
-      [
-        [0.1, -10],
-        [0.3, -9.2],
-        [0.5, -9.7],
-      ].map(([x_frac, energy], idx) => ({
-        content: JSON.stringify({ ...cubic_structure(x_frac), properties: { energy } }),
-        filename: `0${idx}.json`,
+      x_fracs.map((x_frac, idx) => ({
+        content: JSON.stringify({
+          ...cubic_structure(x_frac),
+          properties: { energy: energies[x_frac] },
+        }),
+        filename: `${names[idx]}.json`,
       })),
     )
     expect(Object.keys(paths)).toEqual([`dropped images`])

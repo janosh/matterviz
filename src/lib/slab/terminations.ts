@@ -25,6 +25,8 @@ export function detect_layers(
   bulk: OrientedBulk,
   layer_tolerance = SLAB_LAYER_TOLERANCE,
 ): SlabLayer[] {
+  // NaN or a negative tolerance would silently split every site into its own layer
+  math.assert_non_negative(layer_tolerance, `layer_tolerance`)
   const { sites, lattice } = bulk.crystal
   const height_c = math.cell_heights(lattice.matrix)[2]
   const order = sites

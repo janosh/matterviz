@@ -157,10 +157,16 @@ export function tokenize_formula_markup(formula: string): FormulaMarkupToken[] {
   if (/[α-ωΑ-Ω]/.test(formula) || /\s\+\s/.test(formula)) return [{ text: formula }]
 
   const tokens: FormulaMarkupToken[] = []
+  // whether the last match was a non-element word (`mp`): a signed number after one is an
+  // entry id (`mp-1234`), not a charge
+  let after_word = false
   for (const { groups } of formula.matchAll(FORMULA_TOKEN_RE)) {
     const { coeff, caret, sub, sup, element, other } = groups ?? {}
     const prev = tokens.at(-1)
-    if (coeff) {
+    const was_after_word = after_word
+    after_word = other !== undefined && /[a-z]$/i.test(other)
+    if (sup && was_after_word && prev?.text !== undefined) prev.text += sup
+    else if (coeff) {
       if (prev?.text !== undefined) prev.text += coeff
       else tokens.push({ text: coeff })
     } else if (caret) tokens.push({ sup: caret })

@@ -251,13 +251,15 @@
 
   // Missing SvelteSet members subscribe to the whole set. Indexed state gives every
   // mark its own dependency, so moving between targets only updates their adjacency.
+  // has_active is state, not derived from `active`: a derived re-checks every mark per move
   const active_nodes = $state<boolean[]>([])
   const active_links = $state<boolean[]>([])
-  const has_active = $derived(active !== null)
+  let has_active = $state(false)
   let previous_active: typeof active = null
   $effect.pre(() => {
     const next_active = active
     untrack(() => {
+      has_active = next_active !== null
       for (const [key, flags] of [
         [`nodes`, active_nodes],
         [`links`, active_links],

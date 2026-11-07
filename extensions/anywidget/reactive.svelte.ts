@@ -224,11 +224,13 @@ export function reactive_widget(
   for (const [key, value] of Object.entries(extra)) store(key, value)
   for (const spec of driven) store(spec.prop, value_of(spec))
 
-  // Re-apply one prop after a relevant trait changed.
+  // Re-apply one prop after a relevant trait changed. Data props compare by identity (their
+  // change event means a new payload; stringifying a 30k-site structure took 12 ms)
   const apply = (spec: DrivenProp): void => {
-    const value = value_of(spec)
+    const [value, prev] = [value_of(spec), values.get(spec.prop)]
+    const changed = DATA_PROPS.has(spec.prop) ? prev !== value : !equal(prev, value)
     // drive-only trait cleared (None): store drops the key so the component falls back
-    if (value === undefined || !equal(values.get(spec.prop), value)) store(spec.prop, value)
+    if (value === undefined || changed) store(spec.prop, value)
   }
 
   // Map each trait to the props that depend on it (a trait may feed several props,

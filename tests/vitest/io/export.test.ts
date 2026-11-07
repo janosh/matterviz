@@ -164,6 +164,8 @@ test.each([`success`, `sink-error`, `cancel`, `blocked-sink`] as const)(
       [1280, 720, 1],
       [800, 600, 1],
     ])
+    // the capture lock is released whatever the outcome
+    await expect(canvas_to_png_blob(canvas, 72)).resolves.toBeInstanceOf(Blob)
   },
 )
 
@@ -427,6 +429,34 @@ describe(`canvas_to_png_blob`, () => {
     },
   )
 
+  // a second capture starting mid-encode read the export ratio as the one to restore
+  test(`overlapping captures take turns and leave the live pixel ratio`, async () => {
+    const pending: BlobCallback[] = []
+    const { canvas, renderer } = make_canvas_with_renderer((callback_fn) =>
+      pending.push(callback_fn),
+    )
+    let ratio = 1
+    renderer.getPixelRatio.mockImplementation(() => ratio)
+    renderer.setDrawingBufferSize.mockImplementation(
+      (_w: number, _h: number, next: number) => {
+        ratio = next
+      },
+    )
+    scene_registry.set(canvas, { scene: {} as Scene, camera: {} as Camera })
+    const captures = [canvas_to_png_blob(canvas, 300), canvas_to_png_blob(canvas, 144)]
+    await vi.waitFor(() => expect(pending).toHaveLength(1))
+    pending[0](png_blob())
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    pending[1](png_blob())
+    await Promise.all(captures)
+    expect(renderer.setDrawingBufferSize.mock.calls.map((call) => call[2])).toEqual([
+      300 / 72,
+      1,
+      2,
+      1,
+    ])
+  })
+
   test.each([`setDrawingBufferSize`, `render`, `toBlob`] as const)(
     `restores the renderer and rejects when high-DPI %s fails`,
     async (failure_stage) => {
@@ -440,6 +470,7 @@ describe(`canvas_to_png_blob`, () => {
       await expect(canvas_to_png_blob(canvas, 300)).rejects.toThrow(`${failure_stage} failed`)
       expect(renderer.setDrawingBufferSize).toHaveBeenLastCalledWith(800, 600, 1)
       expect(canvas.toBlob).toHaveBeenCalledTimes(failure_stage === `toBlob` ? 1 : 0)
+      await expect(canvas_to_png_blob(canvas, 72)).resolves.toBeInstanceOf(Blob)
     },
   )
 
@@ -571,6 +602,20 @@ describe(`svg_to_string`, () => {
     expect(exported.querySelector(`text`)?.getAttribute(`x`)).toBe(`10.99`)
     expect(exported.querySelector(`text`)?.textContent).toBe(`0.123456`)
     expect(exported.getAttribute(`viewBox`)).toBe(`-0.5 -0.5 101.12 51`)
+  })
+
+  // compact path data: rounding must not merge numbers split by a second dot or a sign
+  test.each([
+    [`M0.99.9999`, `M0.99 1`],
+    [`M0.9999.5`, `M1 .5`],
+    [`M1-0.001`, `M1 0`],
+    [`M0.123.456`, `M0.12 0.46`],
+    [`M1.23456-2.5`, `M1.23-2.5`],
+  ])(`rounding keeps compact path numbers apart: %s -> %s`, (d_in, d_out) => {
+    document.body.innerHTML = `<svg viewBox="0 0 10 10"><path d="${d_in}"/></svg>`
+    const svg = document.querySelector(`svg`)
+    if (!svg) throw new Error(`svg not mounted`)
+    expect(parse_svg(svg_to_string(svg)).querySelector(`path`)?.getAttribute(`d`)).toBe(d_out)
   })
 
   test(`a 1000-point chart exports at under a third of its raw markup`, () => {

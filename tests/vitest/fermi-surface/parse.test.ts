@@ -486,6 +486,7 @@ END_BLOCK_BANDGRID_3D
     // oxfmt-ignore
     test.each([
       [`a non-spin key`, { 5: [{ ...triangle_mesh, band_idx: 5 }] }, /keyed by spin/],
+      [`an Object.prototype key`, { toString: [{ ...triangle_mesh, band_idx: 0 }] }, /keyed by spin "1"\/"-1", got "toString"/],
       [`a missing band_idx`, { 1: [triangle_mesh] }, /band_idx must be a non-negative integer/],
       [`per-vertex properties`, band_0({ properties: [1, 2, 3] }), /one value per face \(1\), got 3/],
       [`a string face property`, band_0({ properties: [`fast`] }), /face 0 has non-numeric property "fast"/],

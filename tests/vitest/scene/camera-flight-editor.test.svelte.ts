@@ -62,7 +62,7 @@ describe(`camera flight editing`, () => {
     expect(editor.flight.interpolation).toBe(`smooth`)
   })
 
-  it.each([0, -1, NaN, Infinity])(
+  it.each([0, 0.001, -1, NaN, Infinity])(
     `rejects invalid duration %s without changing history`,
     (duration) => {
       const editor = populated_editor()
@@ -74,6 +74,20 @@ describe(`camera flight editing`, () => {
       expect(editor.draft).toBe(draft)
     },
   )
+
+  it(`floors the duration at 0.1 s for last-view drags and imports, not unchanged values`, () => {
+    const editor = populated_editor()
+    editor.set_time(1, 0.02)
+    expect(() => editor.set_time(2, 0.03)).toThrow(`Duration must be at least 0.1 s, got 0.03`)
+    const flight = orbit_camera_flight(pose, 0.05)
+    expect(() => editor.load(flight, [])).toThrow(`Duration must be at least 0.1 s`)
+    editor.set_time(1, 9.95)
+    editor.remove(0) // leaves views at 0 and ~0.05 s
+    const { duration } = editor.draft
+    expect(duration).toBeCloseTo(0.05, 12)
+    editor.set_duration(duration) // re-setting the unchanged sub-floor value is a no-op
+    expect(editor.draft.duration).toBe(duration)
+  })
 
   it.each([0, 10, NaN, Infinity])(
     `rejects invalid interior time %s without committing it`,

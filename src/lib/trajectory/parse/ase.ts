@@ -11,7 +11,6 @@ import {
   checked_site_forces,
   convert_atomic_numbers,
   create_plot_row_frame,
-  create_trajectory_frame,
   values_per_sample,
 } from '#lib/trajectory/helpers.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
@@ -19,7 +18,12 @@ import { to_error } from 'svelte-widgets/utils'
 import { ase_stress_metadata } from './shared'
 import type { ParsedTrajectory, WarnFn } from './shared'
 import { atom_range, type AtomBatch, type ReadAtoms } from '../atom-batches'
-import { encode_frame, type NumericFrame } from '../frame'
+import {
+  create_numeric_md_frame,
+  materialize_frame,
+  type NumericFrame,
+  write_frame_vector,
+} from '../frame'
 
 // A frame JSON header this large can only be a corrupt offsets table pointing into payload
 // bytes (a real header is a few KB)
@@ -194,40 +198,24 @@ const ase_pbc = (value: unknown): Pbc => {
 
 const plot_row_numbers = new WeakMap<number[], Uint8Array>()
 
-// `plot_row: true` skips reading positions and building sites but keeps every check, the
-// metadata and the lattice, so its plot row equals the full decode's
-export function decode_ase_frame(
+type AseDecodeOptions = AseFrameOptions & { warn: WarnFn }
+
+// What every decode mode reads off a frame's header: topology, cell, calculator metadata and
+// forces, with every check. Positions and momenta stay unread until a mode asks for them.
+function read_ase_frame_header(
   view: DataView,
   buffer: ArrayBuffer,
   frame_offset: number,
   step: number,
-  {
-    fallback_numbers,
-    fallback_pbc,
-    fallback_masses,
-    inherit,
-    base_offset = 0,
-    plot_row = false,
-    warn,
-  }: AseFrameOptions & { plot_row?: boolean; warn: WarnFn },
-): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
+  { fallback_numbers, fallback_pbc, inherit, base_offset = 0, warn }: AseDecodeOptions,
+) {
   const frame_data = JSON.parse(read_frame_json(view, buffer, frame_offset, base_offset))
-
   const read_ndarray = (ref: { ndarray: unknown[] }): number[][] =>
     read_ndarray_from_view(view, ref, base_offset)
-
   const positions_ref: unknown = frame_data[`positions.`] ?? frame_data.positions
-  const positions = is_ndarray_ref(positions_ref)
-    ? plot_row
-      ? undefined
-      : read_ndarray(positions_ref)
-    : (positions_ref as number[][] | undefined)
-  // a plot row takes the atom count from the ndarray shape
-  const n_atoms =
-    positions?.length ??
-    (is_ndarray_ref(positions_ref)
-      ? ndarray_reader(view, positions_ref, base_offset).shape[0]
-      : undefined)
+  const n_atoms = is_ndarray_ref(positions_ref)
+    ? ndarray_reader(view, positions_ref, base_offset).shape[0]
+    : (positions_ref as number[][] | undefined)?.length
 
   // ASE's reader: a frame with its own numbers carries its whole topology header (numbers and
   // pbc); one without takes frame 0's, ignoring any pbc of its own (as read_atoms does)
@@ -264,56 +252,34 @@ export function decode_ase_frame(
     ...frame_data.info,
   }
   const cell = ase_cell(frame_data)
-  if (!plot_row) {
-    const elements = convert_atomic_numbers(numbers)
-    const momenta_ref: unknown = frame_data[`momenta.`] ?? frame_data.momenta
-    let velocities: number[][] | undefined
-    if (momenta_ref !== undefined) {
-      const momenta = is_ndarray_ref(momenta_ref)
-        ? read_ndarray(momenta_ref)
-        : (momenta_ref as number[][])
-      const masses_ref: unknown =
-        own_numbers === undefined
-          ? fallback_masses
-          : (frame_data[`masses.`] ?? frame_data.masses)
-      const masses = is_ndarray_ref(masses_ref)
-        ? read_ndarray(masses_ref).flat()
-        : (masses_ref as readonly number[] | undefined)
-      if (
-        momenta.length !== n_atoms ||
-        momenta.some((momentum) => momentum.length !== 3) ||
-        (masses && masses.length !== n_atoms)
-      )
-        throw new Error(
-          `ASE frame has ${n_atoms} atoms but momenta of shape [${momenta.length}, ${momenta[0]?.length}] and ${masses?.length ?? `no`} masses`,
-        )
-      velocities = momenta.map((momentum, atom_idx) => {
-        const mass = ase_momentum_mass(
-          elements[atom_idx],
-          masses?.[atom_idx],
-          `ASE atom ${display_idx(atom_idx)}`,
-        )
-        return momentum.map((component) => ase_velocity(component, mass))
-      })
-    }
-    const site_properties =
-      forces || velocities
-        ? elements.map((_element, atom_idx) => ({
-            ...(forces && { force: forces[atom_idx] }),
-            ...(velocities && { velocity: velocities[atom_idx] }),
-          }))
-        : undefined
-    const frame = create_trajectory_frame(
-      positions ?? [],
-      elements,
-      cell,
-      pbc,
-      step,
-      metadata,
-      site_properties,
-    )
-    return { frame, numbers, pbc }
+  return {
+    frame_data,
+    read_ndarray,
+    positions_ref,
+    n_atoms,
+    own_numbers,
+    numbers,
+    pbc,
+    forces,
+    metadata,
+    cell,
   }
+}
+// `plot_row: true` skips reading positions and building sites but keeps every check, the
+// metadata and the lattice, so its plot row equals the full decode's
+export function decode_ase_frame(
+  view: DataView,
+  buffer: ArrayBuffer,
+  frame_offset: number,
+  step: number,
+  options: AseDecodeOptions & { plot_row?: boolean },
+): { frame: TrajectoryFrame; numbers: number[]; pbc: Pbc } {
+  const args = [view, buffer, frame_offset, step, options] as const
+  if (!options.plot_row) {
+    const { numeric, numbers, pbc } = decode_ase_numeric_frame(...args)
+    return { frame: materialize_frame(numeric), numbers, pbc }
+  }
+  const { numbers, pbc, metadata, cell } = read_ase_frame_header(...args)
   // get_density counts a plot row's atoms from numeric atomic numbers, validated and counted
   // once per numbers array (frames without their own share frame 0's)
   let atomic_numbers = plot_row_numbers.get(numbers)
@@ -322,8 +288,81 @@ export function decode_ase_frame(
     atomic_numbers = Uint8Array.from(numbers)
     plot_row_numbers.set(numbers, atomic_numbers)
   }
-  const frame = create_plot_row_frame(atomic_numbers, cell, pbc, step, metadata)
+  const frame = create_plot_row_frame(atomic_numbers, cell, pbc, step, metadata, options.warn)
   return { frame, numbers, pbc }
+}
+
+// A frame as the run reads it, without Site records: positions go straight from the ndarray
+// into the packed coordinates (20k atoms: 10.3 -> 2.9 ms per read). decode_ase_frame
+// materializes it, so both see one frame.
+function decode_ase_numeric_frame(
+  view: DataView,
+  buffer: ArrayBuffer,
+  frame_offset: number,
+  step: number,
+  options: AseDecodeOptions,
+): { numeric: NumericFrame; numbers: number[]; pbc: Pbc } {
+  const header = read_ase_frame_header(view, buffer, frame_offset, step, options)
+  const { frame_data, read_ndarray, positions_ref, n_atoms, own_numbers } = header
+  const { numbers, pbc, forces, metadata, cell } = header
+  const elements = convert_atomic_numbers(numbers)
+  const positions = new Float64Array(n_atoms * 3)
+  if (is_ndarray_ref(positions_ref)) {
+    const { shape, value } = ndarray_reader(view, positions_ref, options.base_offset)
+    if (shape.length !== 2 || shape[1] !== 3)
+      throw new Error(`Invalid position at site 1: expected 3 finite coordinates`)
+    for (let idx = 0; idx < positions.length; idx++) positions[idx] = value(idx)
+  } else {
+    ;(positions_ref as number[][]).forEach((xyz, atom_idx) => {
+      if (!math.is_finite_vec3_like(xyz))
+        throw new Error(
+          `Invalid position at site ${display_idx(atom_idx)}: expected 3 finite coordinates`,
+        )
+      positions.set(xyz, atom_idx * 3)
+    })
+  }
+  // Velocities (Å/fs) from ASE momenta, divided by the frame's masses or the standard ones
+  const momenta_ref: unknown = frame_data[`momenta.`] ?? frame_data.momenta
+  const momenta = is_ndarray_ref(momenta_ref)
+    ? read_ndarray(momenta_ref)
+    : (momenta_ref as number[][] | undefined)
+  const masses_ref: unknown =
+    own_numbers === undefined
+      ? options.fallback_masses
+      : (frame_data[`masses.`] ?? frame_data.masses)
+  const masses = is_ndarray_ref(masses_ref)
+    ? read_ndarray(masses_ref).flat()
+    : (masses_ref as readonly number[] | undefined)
+  if (
+    momenta &&
+    (momenta.length !== n_atoms ||
+      momenta.some((momentum) => momentum.length !== 3) ||
+      (masses && masses.length !== n_atoms))
+  )
+    throw new Error(
+      `ASE frame has ${n_atoms} atoms but momenta of shape [${momenta.length}, ${momenta[0]?.length}] and ${masses?.length ?? `no`} masses`,
+    )
+  const velocities = momenta?.map((momentum, atom_idx) => {
+    const label = `ASE atom ${display_idx(atom_idx)}`
+    const mass = ase_momentum_mass(elements[atom_idx], masses?.[atom_idx], label)
+    return momentum.map((component) => ase_velocity(component, mass))
+  })
+  const vectors = [forces && [`force`, forces], velocities && [`velocity`, velocities]].filter(
+    (entry): entry is [string, number[][]] => Boolean(entry),
+  )
+  const numeric = create_numeric_md_frame(
+    positions,
+    Uint8Array.from(numbers),
+    cell,
+    pbc,
+    step,
+    metadata,
+    vectors.map(([key]) => key),
+    { fixed_order: false, warn: options.warn },
+  )
+  for (const [column, [, values]] of vectors.entries())
+    write_frame_vector(numeric, column, values.flat())
+  return { numeric, numbers, pbc }
 }
 
 // The ULM container of an ASE .traj, validated and indexed: frames decode on demand;
@@ -372,11 +411,14 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
   // takes frame 0's. ASE's writer repeats the header in every frame once one changes, so no
   // file it writes inherits a later header. Frame 0's decode supplies it, read once.
   let initial_topology: { numbers: number[]; pbc: Pbc } | undefined
-  const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame => {
+  const decode_with = <Result extends { numbers: number[]; pbc: Pbc }>(
+    frame_idx: number,
+    decode: (...args: Parameters<typeof decode_ase_numeric_frame>) => Result,
+  ): Result => {
     const offset = frame_offset(frame_idx)
     try {
       const { buffer, view } = live()
-      const { frame, numbers, pbc } = decode_ase_frame(view, buffer, offset, frame_idx, {
+      const result = decode(view, buffer, offset, frame_idx, {
         // frame 0 inherits from nothing (and must not recurse into its own decode)
         inherit:
           frame_idx === 0
@@ -386,15 +428,18 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
                 return initial_topology ?? {}
               },
         fallback_masses: atom_masses,
-        plot_row,
         warn,
       })
-      if (frame_idx === 0) initial_topology ??= { numbers, pbc }
-      return frame
+      if (frame_idx === 0) initial_topology ??= { numbers: result.numbers, pbc: result.pbc }
+      return result
     } catch (error) {
       throw frame_error(frame_idx, offset, error)
     }
   }
+  const decode_frame = (frame_idx: number, plot_row: boolean): TrajectoryFrame =>
+    decode_with(frame_idx, (view, buffer, offset, step, options) =>
+      decode_ase_frame(view, buffer, offset, step, { ...options, plot_row }),
+    ).frame
   const frame_header = (frame_idx: number): Record<string, unknown> => {
     const offset = frame_offset(frame_idx)
     try {
@@ -531,7 +576,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
       mass_unit: `amu`,
       ...(Boolean(initial_header[`momenta.`]) && { velocity_unit: `A/fs` }),
     },
-    read: (frame_idx) => encode_frame(decode_frame(frame_idx, false)),
+    read: (frame_idx) => decode_with(frame_idx, decode_ase_numeric_frame).numeric,
     decode: (frame_idx) => decode_frame(frame_idx, false),
     plot_row_frame: (frame_idx) => decode_frame(frame_idx, true),
     release: () => {

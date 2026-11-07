@@ -26,10 +26,9 @@ const mount_and_open = async (props: CellSelectProps): Promise<void> => {
 
 describe(`CellSelect`, () => {
   describe(`rendering`, () => {
+    // original and primitive labels at 1x1x1 are covered by the external-props test below
     test.each([
       [`2x2x2`, `original`, `2x2x2`],
-      [`1x1x1`, `primitive`, `Prim 1x1x1`],
-      [`1x1x1`, `original`, `1x1x1`],
       [`3x3x3`, `conventional`, `Conv 3x3x3`],
     ] as const)(`displays "%s" with cell_type=%s as "%s"`, (scaling, cell_type, expected) => {
       mount_select({ supercell_scaling: scaling, cell_type })

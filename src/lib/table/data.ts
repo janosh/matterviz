@@ -101,7 +101,8 @@ type SortVal = string | number | [number, string] | null
 // Sorts on the same rendered text search/filters/export use: raw values sorted `<b>Mango</b>`
 // under `<`, and booleans/objects broke the total order. A data-sort-value that isn't a number
 // still overrides the visible text. ISO date/time text sorts by its instant: as text, `T09:00`
-// and ` 10:00` or two UTC offsets ordered wrongly. null marks a missing sort key.
+// and ` 10:00` or two UTC offsets ordered wrongly. null marks a missing sort key, as does
+// blank text: as `` it rose above every number in a descending numeric column.
 const get_sort_val = (val: CellVal): SortVal => {
   if (is_invalid(val)) return null
   if (val instanceof Date) return val.getTime()
@@ -109,7 +110,7 @@ const get_sort_val = (val: CellVal): SortVal => {
   if (typeof val === `number`) return val
   if (typeof val !== `string`) return parse_numeric_val(val) ?? cell_text(val)
   const text = sort_text(val)
-  if (text === null) return null
+  if (!text) return null
   return (
     parse_numeric_string(text) ?? parse_datetime_text(text) ?? leading_number_key(text) ?? text
   )

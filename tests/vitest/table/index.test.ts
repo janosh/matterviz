@@ -323,14 +323,17 @@ describe(`sort_table_rows`, () => {
     const invalid_date = new Date(NaN)
     expect(cell_text(invalid_date)).toBe(``)
     const blank_key = `<span data-sort-value="">42</span>` // not sorted by its numeric text
-    const vals = [null, 3, undefined, `a`, 1, NaN, 2, blank_key, invalid_date]
+    // blank text (`` rose above every number when descending) sinks too
+    const vals = [null, 3, ``, undefined, `a`, 1, NaN, 2, blank_key, invalid_date, ` <b></b>`]
     expect(order(vals, ascending)).toEqual([
       ...(ascending ? [1, 2, 3, `a`] : [`a`, 3, 2, 1]),
       null,
+      ``,
       undefined,
       NaN,
       blank_key,
       invalid_date,
+      ` <b></b>`,
     ])
   })
 
