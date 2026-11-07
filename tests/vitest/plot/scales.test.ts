@@ -868,7 +868,10 @@ describe(`scales`, () => {
       [`positive range: decades plus 2x/5x fill to reach count`, 0, 1000, 1, 10, [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]],
       [`negative range mirrors the positive path`, -1000, 0, 1, 10, [-1000, -500, -200, -100, -50, -20, -10, -5, -2, -1]],
       [`range within 2x threshold is spaced linearly`, 0, 1, 1, 5, [0, 0.2, 0.4, 0.6, 0.8, 1]],
-      [`large threshold keeps the whole range linear`, 0, 100, 100, 8, [0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100]],
+      [`large threshold keeps the whole range linear`, 0, 100, 100, 8, [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]],
+      // near-linear ticks land on round values, not raw (max - min) / count steps
+      [`non-round domain within 2x threshold gets nice ticks`, 0.37, 1.9, 1, 5, [0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8]],
+      [`mixed range near zero shares one nice step across zero`, -1.3, 1.7, 1, 5, [-1, -0.5, 0, 0.5, 1, 1.5]],
       // a low count over a wide mixed range keeps the outermost decades, not every one
       [`small count keeps spread-out outer ticks`, -100, 100, 1, 4, [-100, -10, 0, 10, 100]],
     ])(`%s`, (_name, min, max, threshold, count, expected) => {

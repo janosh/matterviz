@@ -28,6 +28,7 @@ import {
   complete_lattice_matrix,
   count_elements,
   element_from_candidates,
+  is_cif_blank_or_comment,
   is_cif_data_header,
   is_cif_loop_header,
   is_cif_unset,
@@ -188,11 +189,23 @@ const cif_space_group = (
 ): { symbol: string | null; number: number | null } => {
   let symbol: string | null = null
   let number: number | null = null
-  for (const line of lines) {
-    const { tag, value = `` } =
-      /^_(?<tag>symmetry_space_group_name_h-m|space_group_name_h-m(?:_alt)?|symmetry_int_tables_number|space_group_it_number)\s+(?<value>.+)/i.exec(
+  for (const [line_idx, line] of lines.entries()) {
+    const { tag, value: inline_value } =
+      /^_(?<tag>symmetry_space_group_name_h-m|space_group_name_h-m(?:_alt)?|symmetry_int_tables_number|space_group_it_number)(?:\s+(?<value>.+)|\s*$)/i.exec(
         line.trim(),
       )?.groups ?? {}
+    // a bare tag takes its value from the next non-comment line, unless that line opens
+    // another data name, loop or block (then the value is missing)
+    let value = inline_value ?? ``
+    if (tag && inline_value === undefined) {
+      const next = lines
+        .slice(line_idx + 1)
+        .map((candidate) => candidate.trim())
+        .find((candidate) => !is_cif_blank_or_comment(candidate))
+      const opens_item =
+        !next || next.startsWith(`_`) || is_cif_loop_header(next) || is_cif_data_header(next)
+      value = opens_item ? `` : next
+    }
     // a trailing `# comment` is not part of the value (`'P 1' # triclinic` is P1)
     const text = value.replace(/(?:^|\s)#.*$/, ``).replaceAll(/['"\s]/g, ``)
     if (!tag || is_cif_unset(text) || !text) continue

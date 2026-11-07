@@ -323,10 +323,9 @@
         if (generation !== rebuild_generation) return
         geometries = ingest_geometry_result(response, pending, true)
       } catch (error) {
+        // a superseded or aborted job fails silently; real failures reach request_rebuild
         if (generation !== rebuild_generation || abort.signal.aborted) return
-        console.error(`Isosurface geometry worker failed; keeping previous surfaces`, error)
-        report_error(`Isosurface geometry failed: ${to_error(error).message}`)
-        return
+        throw error
       } finally {
         if (geometry_job?.abort === abort) geometry_job = undefined
       }
@@ -426,15 +425,22 @@
         return
       }
       const generation = rebuild_generation
-      rebuild_in_flight = rebuild_geometries(resolved_layers, generation).finally(() => {
-        rebuild_in_flight = null
-        // a reset (unmount, all volumes removed) already cleared the flag; a rebuild
-        // requested meanwhile has yet to run
-        if (generation !== rebuild_generation || raf_id) return
-        building = false
-        // a frame after the swap (or a failed rebuild) lets a snapshot waiting on it finish
-        threlte.invalidate()
-      })
+      rebuild_in_flight = rebuild_geometries(resolved_layers, generation)
+        // Worker or main-thread failure (e.g. a typed array too large to allocate)
+        .catch((error) => {
+          if (generation !== rebuild_generation) return
+          console.error(`Isosurface geometry failed; keeping previous surfaces`, error)
+          report_error(`Isosurface geometry failed: ${to_error(error).message}`)
+        })
+        .finally(() => {
+          rebuild_in_flight = null
+          // a reset (unmount, all volumes removed) already cleared the flag; a rebuild
+          // requested meanwhile has yet to run
+          if (generation !== rebuild_generation || raf_id) return
+          building = false
+          // a frame after the swap (or a failed rebuild) lets a snapshot waiting on it finish
+          threlte.invalidate()
+        })
     })
   }
 

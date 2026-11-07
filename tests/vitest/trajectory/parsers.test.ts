@@ -1777,6 +1777,24 @@ describe(`XYZ`, () => {
     }
   })
 
+  // Frames the walk cannot sample (`nan` coordinates after an MD blow-up, a stray title) are
+  // stepped over; they vanished silently, which mid-file also renumbered every later frame.
+  // Frames are 6 lines (count, comment, 4 atoms), so frame 2 spans lines 7-12.
+  const nan_frame = xyz_frame([`H nan nan nan`, ...four_atoms().slice(1)])
+  // oxfmt-ignore
+  it.each([
+    [`a nan frame between two`, [xyz_frame(four_atoms()), nan_frame, xyz_frame(four_atoms(`H 2 2 2`))], [0, 1], `Skipping XYZ lines 7-12 between frames 1 and 2`],
+    [`nan frames at the end`, [xyz_frame(four_atoms()), xyz_frame(four_atoms()), nan_frame, nan_frame], [0, 1], `Skipping XYZ lines 13-24 after frame 2`],
+    [`a title before the first frame`, [`water box`, xyz_frame(four_atoms()), xyz_frame(four_atoms())], [0, 1], `Skipping XYZ lines 1-1 before frame 1`],
+  ])(`warns about lines holding no frame: %s`, async (_label, parts, steps, warning) => {
+    const content = parts.join(`\n`)
+    for (const options of [{}, { index_above_bytes: 0 }]) {
+      const run = await open(content, `blowup.xyz`, options)
+      expect(await steps_of(run)).toEqual(steps)
+      expect(run.warnings).toEqual([expect.stringContaining(warning)])
+    }
+  })
+
   // A complete final frame with a defect is corruption, not truncation: both readers throw
   // the same error as for any other frame instead of dropping it with a "truncated" warning
   // oxfmt-ignore

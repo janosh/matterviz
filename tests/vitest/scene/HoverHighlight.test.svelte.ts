@@ -1,10 +1,10 @@
 import { brighten_hex, highlight_edge_color } from '#lib/scene/colors.js'
-import { positions_geometry } from '#lib/scene/geometry.svelte.js'
+import { boundary_edges, positions_geometry } from '#lib/scene/geometry.svelte.js'
 import HoverHighlight from '#lib/scene/HoverHighlight.svelte'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import type { BufferGeometry, InterleavedBufferAttribute } from 'three/webgpu'
-import { BufferAttribute } from 'three/webgpu'
+import { BoxGeometry, BufferAttribute, PlaneGeometry, SphereGeometry } from 'three/webgpu'
 import { afterEach, expect, test, vi } from 'vitest'
 import { hover_highlight, threlte_stub } from '../isosurface/threlte-stub'
 
@@ -123,4 +123,24 @@ test.each([
   expect(n_calls(before_unmount)).toEqual([faces ? 1 : null, 1, 1])
   expect(n_calls(callers)).toEqual([geometry ? 0 : null, edges_geometry ? 0 : null])
   expect(threlte_stub.nodes).toEqual([])
+})
+
+// Large meshes, indexed and as soups, fill the welding and edge hash tables enough for probes
+// to collide: closed surfaces have no boundary, an open grid exactly its perimeter (segments
+// per side, as vertex pairs of 3 floats each)
+// oxfmt-ignore
+test.each([
+  [`sphere`, new SphereGeometry(1, 96, 64), 0],
+  [`sphere soup`, new SphereGeometry(1, 96, 64).toNonIndexed(), 0],
+  [`box soup`, new BoxGeometry(1, 2, 3, 7, 5, 3).toNonIndexed(), 0],
+  [`grid`, new PlaneGeometry(3, 2, 120, 80), 2 * (120 + 80)],
+  [`grid soup`, new PlaneGeometry(3, 2, 120, 80).toNonIndexed(), 2 * (120 + 80)],
+])(`boundary_edges of %s`, (_label, geometry, n_segments) => {
+  const edges = boundary_edges(geometry)
+  expect(edges).toHaveLength(6 * n_segments)
+  // every boundary point of the grid lies on its rim
+  for (let idx = 0; idx < edges.length; idx += 3) {
+    const [x_val, y_val] = [Math.abs(edges[idx]), Math.abs(edges[idx + 1])]
+    expect(Math.abs(x_val - 1.5) < 1e-6 || Math.abs(y_val - 1) < 1e-6).toBe(true)
+  }
 })

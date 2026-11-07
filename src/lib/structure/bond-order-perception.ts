@@ -504,6 +504,12 @@ export function perceive_bond_orders(
       from !== target && is_sp2(from) && is_sp2(target) ? [[from, target]] : [],
     )
     const rings = find_rings(frag.length, ring_bonds)
+    // Edges inside some ring: a fused ring's junction carbon gets its pi electron from the
+    // neighbouring ring's double bond, but an exocyclic C=O or C=CH2 (quinones) gives none
+    const ring_sets = rings.map((ring) => new Set(ring))
+    const in_any_ring = local_edges.map(({ from, to: target }) =>
+      ring_sets.some((members) => members.has(from) && members.has(target)),
+    )
     for (const ring of rings) {
       const global_ring = ring.map((local_atom_idx) => frag[local_atom_idx])
       if (!ring_is_planar(global_ring, sites)) continue
@@ -520,7 +526,7 @@ export function perceive_bond_orders(
           (edge_idx) => ring_edge_idxs.has(edge_idx) && orders[edge_idx] > 1,
         )
       const has_any_multiple_bond = (atom_idx: number): boolean =>
-        incident[atom_idx].some((edge_idx) => orders[edge_idx] > 1)
+        incident[atom_idx].some((edge_idx) => in_any_ring[edge_idx] && orders[edge_idx] > 1)
       const has_non_ring_neighbor = (atom_idx: number): boolean =>
         incident[atom_idx].some((edge_idx) => {
           const { from, to: target } = local_edges[edge_idx]

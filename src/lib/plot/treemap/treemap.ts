@@ -128,14 +128,34 @@ export function treemap_hover_veil<Metadata>(
   return paths.join(``)
 }
 
-// A tiling plus the arcs it was computed from, so the two can be realigned when the
-// arc set changes between them.
+// A tiling plus the arcs it was computed from (and the index of the zoom root it tiles into
+// the viewport), so the two can be realigned when the arc set changes between them.
 export interface Tiling {
   rects: readonly Rect[]
   arcs: readonly { id: string | number; parent_idx: number | null }[]
+  root_idx: number
 }
 
-// Re-express `prev`'s rects in `next`'s index space, matching arcs by id.
+const has_area = (rect: Rect | undefined): rect is Rect =>
+  rect !== undefined && rect.width > 0 && rect.height > 0
+
+// The camera move of a zoom: maps rects so `from` lands on `onto`, clipped to `onto` (the
+// viewport, which the zoom root fills), so cells pushed past it squash against its edges
+const zoom_camera =
+  (from: Rect, onto: Rect) =>
+  (rect: Rect): Rect => {
+    const [scale_x, scale_y] = [onto.width / from.width, onto.height / from.height]
+    const at_x = (coord_x: number) =>
+      clamp(onto.x + (coord_x - from.x) * scale_x, onto.x, onto.x + onto.width)
+    const at_y = (coord_y: number) =>
+      clamp(onto.y + (coord_y - from.y) * scale_y, onto.y, onto.y + onto.height)
+    const [x0, y0] = [at_x(rect.x), at_y(rect.y)]
+    const [x1, y1] = [at_x(rect.x + rect.width), at_y(rect.y + rect.height)]
+    return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+  }
+
+// Start and end rects of a transition from `prev` to `next`, in `next`'s index space, matching
+// arcs by id.
 //
 // Position is not a stable identity across a zoom: bucketing measures its threshold
 // against the zoom root, so drilling in can dissolve an 'Other' cell into the nodes it
@@ -145,27 +165,54 @@ export interface Tiling {
 //
 // A cell with no counterpart in `prev` starts from its nearest ancestor that had one, so
 // nodes revealed by a dissolved bucket unfold out of the region that bucket occupied
-// rather than appearing from nowhere. Cells that vanish simply aren't in the new space.
-export function align_tiling(prev: Tiling, next: Tiling): Rect[] {
-  const by_id = new Map<string | number, Rect>()
+// rather than appearing from nowhere. Cells outside a zoom root's subtree tile to zero
+// rects at the origin, and morphing to or from those collapsed every other cell into the
+// top-left corner: zooming in, cells leaving the view instead follow the camera out past
+// the viewport edges (end rects), and zooming out, cells entering it follow the camera in
+// (start rects). `end` differs from next.rects only there and is for interpolation alone.
+export function align_tiling(prev: Tiling, next: Tiling): { start: Rect[]; end: Rect[] } {
+  const prev_by_id = new Map<string | number, Rect>()
   prev.arcs.forEach((arc, idx) => {
     const rect = prev.rects[idx]
-    if (rect) by_id.set(arc.id, rect)
+    if (has_area(rect)) prev_by_id.set(arc.id, rect)
   })
-  return next.arcs.map((arc, idx) => {
-    const own = by_id.get(arc.id)
+  const next_idx_by_id = new Map(next.arcs.map((arc, idx) => [arc.id, idx]))
+  const [prev_view, next_view] = [prev.rects[prev.root_idx], next.rects[next.root_idx]]
+  // Zoom out: the old root sits somewhere in the new tiling, which the camera pulls back from
+  const old_root_id = prev.arcs[prev.root_idx]?.id
+  const old_root_idx = old_root_id === undefined ? undefined : next_idx_by_id.get(old_root_id)
+  const zoom_out_from = old_root_idx === undefined ? undefined : next.rects[old_root_idx]
+  const enter_camera =
+    has_area(zoom_out_from) && has_area(prev_view)
+      ? zoom_camera(zoom_out_from, prev_view)
+      : null
+  // Zoom in: the new root sat somewhere in the old tiling, which the camera dives into
+  const new_root_id = next.arcs[next.root_idx]?.id
+  const zoom_in_to = new_root_id === undefined ? undefined : prev_by_id.get(new_root_id)
+  const leave_camera =
+    has_area(zoom_in_to) && has_area(next_view) ? zoom_camera(zoom_in_to, next_view) : null
+
+  const start = next.arcs.map((arc, idx) => {
+    const own = prev_by_id.get(arc.id)
     if (own) return own
     // Walk `next`'s parent chain; parents precede children in pre-order, so this
     // terminates without a visited set
     let parent_idx = arc.parent_idx
     while (parent_idx != null) {
       const ancestor = next.arcs[parent_idx]
-      const ancestor_rect = by_id.get(ancestor.id)
+      const ancestor_rect = prev_by_id.get(ancestor.id)
       if (ancestor_rect) return ancestor_rect
       parent_idx = ancestor.parent_idx
     }
-    return next.rects[idx] // nothing to animate from: start where it lands
+    // nothing to animate from: follow the camera in, else start where it lands
+    return enter_camera ? enter_camera(next.rects[idx]) : next.rects[idx]
   })
+  const end = next.arcs.map((arc, idx) => {
+    const own = prev_by_id.get(arc.id)
+    const target = next.rects[idx]
+    return leave_camera && own && !has_area(target) ? leave_camera(own) : target
+  })
+  return { start, end }
 }
 
 // Interpolate between two tilings (zoom animation). Rects are aligned by node_idx (align_tiling

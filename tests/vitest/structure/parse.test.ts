@@ -747,6 +747,18 @@ O2   O   0.410  0.140  0.880  1.000`
       expect(sorted_coords(result.sites)).toEqual(expected)
     })
 
+    // CIF lets a value sit on the line after its tag; a following data name means it is missing
+    test.each([
+      [`on the next line`, `_symmetry_space_group_name_H-M\n# comment\n'I m -3 m'`, 2],
+      [`missing before another tag`, `_symmetry_space_group_name_H-M\n_cell_volume 125`, 1],
+    ])(`reads a space-group symbol %s`, (_name, tag_lines, n_sites) => {
+      const content = make_cif(`P 1`, { atom_types: [`Fe 2`] }).replace(
+        `_symmetry_space_group_name_H-M 'P 1'`,
+        tag_lines,
+      )
+      expect(parse_cif(content).sites).toHaveLength(n_sites)
+    })
+
     // oxfmt-ignore
     test.each([
       [`hexagonal axes apply R centering`, `R -3`, `90 90 120`, [`Fe 3`], 3],
@@ -2625,6 +2637,12 @@ describe(`molecular and LAMMPS structure formats`, () => {
   test.each([
     [`a wrapped row`, mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `Si 2.0`, `Si 3.0 0.0 0.0`])],
     [`a missing trailing column`, `data_x\nloop_\n${occupancy_tags}\nSi 1.0 0.0 0.0 1.0\nSi 3.0 0.0 0.0`],
+    // CIF whitespace is free-form: a blank line inside the loop must not end it
+    [`a blank line inside the loop`, mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, ``, `Si 3.0 0.0 0.0`, `#`])],
+    // loop values are a token stream: one line may hold several whole rows
+    [`two rows on one line`, mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0 Si 3.0 0.0 0.0`])],
+    // only a bare `#` separator ends the loop, a comment line inside it is skipped
+    [`a comment inside the loop`, mmcif_cell(5.0, `Cartn`, [`Si 1.0 0.0 0.0`, `# chain B`, `Si 3.0 0.0 0.0`, `#`])],
   ])(`mmCIF keeps only rows reaching the coordinate columns with %s`, (_name, content) => {
     const result = parse_structure_file(content, `rows.mmcif`)
     expect(result.sites.map((site) => site.xyz[0])).toEqual([1, 3])
