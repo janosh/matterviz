@@ -1,6 +1,7 @@
 // Mounts Isosurface.svelte against a recording Threlte stub: layer resolution, geometry
 // rebuild/reuse, lobe signs, render ordering and cross-volume vertex coloring.
 import { ISOSURFACE_ERROR_CONTEXT } from '#lib/isosurface/context.js'
+import type * as geometry_module from '#lib/isosurface/geometry.js'
 import Isosurface from '#lib/isosurface/Isosurface.svelte'
 import type {
   IsosurfaceLayer,
@@ -33,6 +34,20 @@ vi.mock(`#lib/worker-client.svelte.js`, async (import_original) => {
   return {
     ...original,
     can_create_worker: () => !worker_gate.workers_disabled && original.can_create_worker(),
+  }
+})
+
+// Throws from the main-thread extraction (e.g. a RangeError when a typed array can't be
+// allocated) while set
+const sync_failure = vi.hoisted(() => ({ error: null as Error | null }))
+vi.mock(`#lib/isosurface/geometry.js`, async (import_original) => {
+  const original = await import_original<typeof geometry_module>()
+  return {
+    ...original,
+    compute_isosurface_geometries: (input: geometry_module.GeometryInput) => {
+      if (sync_failure.error) throw sync_failure.error
+      return original.compute_isosurface_geometries(input)
+    },
   }
 })
 
@@ -503,37 +518,55 @@ describe(`Isosurface`, () => {
   })
 
   // A worker that dies after construction (chunk 404, OOM, module import failure) used to be
-  // console.error'd only, leaving the user staring at an unchanged scene with no explanation.
-  // Standalone usage reports through the on_error prop; inside a host (Structure) the handler
-  // comes from context, and an explicit prop still wins over it
+  // console.error'd only, leaving the user staring at an unchanged scene with no explanation,
+  // and a main-thread extraction that threw (e.g. typed-array allocation failure) was an
+  // unhandled rejection. Standalone usage reports through the on_error prop; inside a host
+  // (Structure) the handler comes from context, and an explicit prop still wins over it
   test.each([
-    [`on_error prop`, true, false],
-    [`context handler`, false, true],
-    [`prop over context`, true, true],
-  ])(
-    `worker failure after construction reports through %s`,
-    async (_label, with_prop, with_context) => {
+    [`worker`, `on_error prop`, true, false],
+    [`worker`, `context handler`, false, true],
+    [`worker`, `prop over context`, true, true],
+    [`main thread`, `on_error prop`, true, false],
+    [`main thread`, `context handler`, false, true],
+  ])(`%s failure reports through %s`, async (path, _label, with_prop, with_context) => {
+    const error_text =
+      path === `worker`
+        ? `Failed to fetch dynamically imported module`
+        : `Array buffer allocation failed`
+    if (path === `worker`) {
       hold_worker_jobs()
-      compute_geometries_async.mockRejectedValueOnce(
-        new Error(`Failed to fetch dynamically imported module`),
-      )
-      const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
-      const prop_handler = vi.fn()
-      const context_handler = vi.fn()
-      mount_isosurface(
-        { volumes: [big_volume()], on_error: with_prop ? prop_handler : undefined },
-        with_context ? new Map([[ISOSURFACE_ERROR_CONTEXT, context_handler]]) : undefined,
-      )
+      compute_geometries_async.mockRejectedValueOnce(new Error(error_text))
+    } else sync_failure.error = new RangeError(error_text)
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const prop_handler = vi.fn()
+    const context_handler = vi.fn()
+    const props = mount_isosurface(
+      {
+        volumes: [path === `worker` ? big_volume() : positive_volume()],
+        on_error: with_prop ? prop_handler : undefined,
+        building: false,
+      },
+      with_context ? new Map([[ISOSURFACE_ERROR_CONTEXT, context_handler]]) : undefined,
+    )
+    try {
       await settle()
-      expect(compute_geometries_async).toHaveBeenCalledTimes(1)
-      const message = `Isosurface geometry failed: Failed to fetch dynamically imported module`
-      const [winner, loser] = with_prop
-        ? [prop_handler, context_handler]
-        : [context_handler, prop_handler]
-      expect(winner).toHaveBeenCalledWith(message)
-      expect(loser).not.toHaveBeenCalled()
-      expect(meshes()).toHaveLength(0)
-      expect(error_spy).toHaveBeenCalled()
-    },
-  )
+    } finally {
+      sync_failure.error = null
+    }
+    expect(compute_geometries_async).toHaveBeenCalledTimes(path === `worker` ? 1 : 0)
+    const [winner, loser] = with_prop
+      ? [prop_handler, context_handler]
+      : [context_handler, prop_handler]
+    expect(winner).toHaveBeenCalledExactlyOnceWith(`Isosurface geometry failed: ${error_text}`)
+    expect(loser).not.toHaveBeenCalled()
+    expect(meshes()).toHaveLength(0)
+    expect(error_spy).toHaveBeenCalled()
+    expect(props.building).toBe(false)
+    if (path === `main thread`) {
+      // the failed rebuild left no stale state: the next geometry change extracts again
+      props.settings = with_layers([layer(0.4)])
+      await settle()
+      expect(meshes()).toHaveLength(2) // back + front pass of the translucent surface
+    }
+  })
 })
