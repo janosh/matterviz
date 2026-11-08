@@ -54,7 +54,6 @@ const controller_fixture = (
     () => state.owner,
     on_prediction,
     on_view,
-    () => JSON.stringify(state.structure),
     on_replace_input,
   )
   onTestFinished(() => controller.dispose())
@@ -91,7 +90,6 @@ describe(`host prediction ownership`, () => {
     `disabled`,
     `unmount`,
     `cancel`,
-    `mutated input`,
     `owner change`,
   ] as const)(`rejects stale updates and cleanup after %s`, (cause) => {
     const { state, controller, on_prediction, on_view, on_replace_input } =
@@ -105,10 +103,7 @@ describe(`host prediction ownership`, () => {
     } else if (cause === `input change`) state.structure = { ...state.structure }
     else if (cause === `disabled`) state.owner = null
     else if (cause === `owner change`) state.owner = {}
-    else if (cause === `mutated input`) {
-      state.structure.sites[0].xyz[0] = 9
-      expect(old_run.structure.sites[0].xyz[0]).toBe(0)
-    } else if (cause === `unmount`) {
+    else if (cause === `unmount`) {
       const calls = [on_prediction.mock.calls.length, on_view.mock.calls.length]
       controller.dispose()
       // Teardown only aborts: clearing would write state and read props while unmounting

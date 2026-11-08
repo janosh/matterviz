@@ -6,6 +6,7 @@ import {
   has_framework_potential,
   intern_site_elements,
   is_spectator_center,
+  lattice_shift,
   type BondingStrategy,
 } from './bonding'
 import { BondFrame, bond_site_1, bond_site_2, type BondData } from './bond-rendering'
@@ -33,12 +34,6 @@ const pack_image_key = (site_idx: number, shift: Shift, reach: number): number =
     reach
   )
 }
-// The integer lattice shift from a site's fractional coords to those of its image
-const shift_of = (image_abc: Vec3, abc: Vec3): Vec3 => [
-  Math.round(image_abc[0] - abc[0]),
-  Math.round(image_abc[1] - abc[1]),
-  Math.round(image_abc[2] - abc[2]),
-]
 // in-cell bonds carry no cell_shift: the bond normalizers drop zero shifts
 const bond_cell_shift = (bonds: BondData, bond_idx: number): Shift | undefined =>
   bonds instanceof BondFrame ? bonds.cell_shift(bond_idx) : bonds[bond_idx].cell_shift
@@ -199,7 +194,7 @@ function image_atoms(
   }
   const seen_images = new Set(
     images.map(([site_idx, , abc]) =>
-      pack_image_key(site_idx, shift_of(abc, structure.sites[site_idx].abc), reach),
+      pack_image_key(site_idx, lattice_shift(abc, structure.sites[site_idx].abc), reach),
     ),
   )
   // Add the copy of a site shifted by whole cells, at most once
@@ -226,8 +221,7 @@ function image_atoms(
     }
     const corner_shifts = vertex_site_idxs.map((site_idx, vertex_idx) => {
       const { abc } = structure.sites[site_idx]
-      const frac = cart_to_frac(vertices[vertex_idx])
-      return frac.map((coord, axis) => Math.round(coord - abc[axis])) as Vec3
+      return lattice_shift(cart_to_frac(vertices[vertex_idx]), abc)
     })
     for (const copy_shift of copy_shifts[center_site_idx]) {
       const shifts = corner_shifts.map((shift) => shifted(shift, copy_shift))
@@ -302,7 +296,7 @@ export function get_pbc_image_sites(
         ...(is_completion ? { completion: true } : {}),
       },
     }
-    sites.push(stamp(image, site_idx, shift_of(abc, orig_site.abc)))
+    sites.push(stamp(image, site_idx, lattice_shift(abc, orig_site.abc)))
   }
   return { ...structure, sites }
 }
@@ -312,7 +306,7 @@ export const site_token = ({ sites }: AnyStructure, site_idx: number): string =>
   const { abc, provenance } = sites[site_idx]
   const base_idx = provenance?.image_of
   if (base_idx === undefined) return `${site_idx}`
-  return `${base_idx}:${abc.map((coord, axis) => Math.round(coord - sites[base_idx].abc[axis]))}`
+  return `${base_idx}:${lattice_shift(abc, sites[base_idx].abc)}`
 }
 
 const NO_SITES: ReadonlySet<number> = new Set()
@@ -335,8 +329,7 @@ export function find_drawn_completion_sites(
     drawn.add(site_idx)
     if (math.same_position(xyz, sites[site_idx].xyz)) return
     const base_idx = sites[site_idx].provenance?.image_of ?? site_idx
-    const { abc } = sites[base_idx]
-    const shift = cart_to_frac(xyz).map((coord, axis) => Math.round(coord - abc[axis]))
+    const shift = lattice_shift(cart_to_frac(xyz), sites[base_idx].abc)
     copy_at ??= new Map(
       sites.flatMap((site, idx) =>
         site.provenance?.completion ? [[site_token(structure, idx), idx] as const] : [],

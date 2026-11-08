@@ -266,24 +266,19 @@ const plain_structure = (structure: AnyStructure | undefined): AnyStructure | un
 
 export class StructureSession {
   // === display pipeline ===
-  // A drag frame's write, read back through the binding's proxy, and the plain structure it was
-  // built as. Releasing forgets it: plain_input then copies the input once more, which is what
-  // subscribes it to in-place edits of the caller's structure again.
-  #dragging_atoms = $state(false)
-  private drag_write = $state.raw<{ written: AnyStructure; plain: AnyStructure }>()
-  get dragging_atoms(): boolean {
-    return this.#dragging_atoms
-  }
-  set dragging_atoms(dragging: boolean) {
-    if (!dragging) this.drag_write = undefined
-    this.#dragging_atoms = dragging
-  }
-  // The input without proxies (also what symmetry analysis posts to its worker). Drag frames
-  // skip the copy: reading 100k sites through the proxy takes ~1 s.
+  dragging_atoms = $state(false)
+  // The session's last write as the binding reads it back (a caller's $state proxies it) and
+  // the plain structure it was built as, so no edit, drag frame or release copies it back
+  private last_write: { written: AnyStructure; plain: AnyStructure } | undefined
+  // The input without proxies (also what symmetry analysis posts to its worker). Inputs are
+  // immutable: a new object is a new input, in-place edits are not tracked (untrack), and
+  // reading 100k sites through a proxy takes ~1 s, so that copy runs once per input.
   readonly plain_input = $derived.by((): AnyStructure | undefined => {
     const structure = this.inputs.structure()
-    const own = this.drag_write
-    return own && own.written === structure ? own.plain : plain_structure(structure)
+    const own = this.last_write
+    if (own && own.written === structure) return own.plain
+    this.last_write = undefined
+    return untrack(() => plain_structure(structure))
   })
   // Periodic fractional coordinates wrap into the cell; non-periodic axes keep out-of-cell
   // values (unwrapped trajectories). The bonds binding addresses these wrapped sites.
@@ -453,8 +448,8 @@ export class StructureSession {
     })
   })
   // Site-indexed UI state is only valid while atom count, order and species are unchanged.
-  // Keep an owned snapshot: callers can mutate labels/species in place. Equal trajectory
-  // frames reuse it, so invalidation needs neither serialization nor per-frame allocations.
+  // Keep an owned snapshot of what was shown. Equal trajectory frames reuse it, so invalidation
+  // needs neither serialization nor per-frame allocations.
   private last_topology: readonly SiteTopology[] | undefined
   private readonly topology = $derived.by(() => {
     const structure = this.inputs.structure()
@@ -509,6 +504,8 @@ export class StructureSession {
   private emitted_bonds: StructureBond[] | undefined
   // emitted_bonds unless they are a caller's set handed back by an undo
   private own_bonds: StructureBond[] | undefined
+  // emitted_bonds as the session built them, so history copies none of its own sets back
+  private emitted_plain: StructureBond[] | undefined
   has_bond_edits = $derived(
     this.added_bonds.length > 0 ||
       this.removed_bonds.length > 0 ||
@@ -672,9 +669,9 @@ export class StructureSession {
             this.push_undo()
             // The viewer's camera pre-effect runs before this one re-runs on the written
             // structure, so own_write is set here rather than on that re-run
-            this.is_internal_edit = true
             this.own_write = true
-            inputs.set_structure($state.snapshot(base))
+            // plain_copy: bonds from a caller-bound set may be proxied
+            this.write_structure(plain_copy(base))
           }
           inputs.set_cell_type(`original`)
         }
@@ -775,6 +772,7 @@ export class StructureSession {
   private emit_bonds(bonds: StructureBond[] | undefined, own = true): void {
     this.inputs.set_bonds(bonds)
     this.emitted_bonds = this.inputs.bonds()
+    this.emitted_plain = bonds
     this.own_bonds = own ? this.emitted_bonds : undefined
   }
   // Hand the captured source back out (a caller's set stays the caller's) and forget it
@@ -832,16 +830,12 @@ export class StructureSession {
   redo_bond_edit = (): boolean => this.step_bond_history(`redo`)
 
   // === edit-atoms history ===
-  // History keeps plain structures nothing mutates: plain_input's own copy of a proxied input
-  // (or a drag frame's write) is shared, a caller's plain object is copied. bonds: $state.snapshot
-  // since a caller-bound set may be a deep proxy.
-  private snapshot_edit_state(plain: AnyStructure): EditSnapshot {
+  // History shares the immutable plain input and the session's own bond sets as built; a
+  // caller's set is copied since it may be a deep proxy
+  private snapshot_edit_state(structure: AnyStructure): EditSnapshot {
     const bonds = this.inputs.bonds()
-    return {
-      structure: plain === this.inputs.structure() ? plain_copy(plain) : plain,
-      bonds: bonds && $state.snapshot(bonds),
-      own: bonds !== undefined && bonds === this.own_bonds,
-    }
+    const own = bonds !== undefined && bonds === this.own_bonds
+    return { structure, bonds: own ? this.emitted_plain : bonds && plain_copy(bonds), own }
   }
   push_undo = (): void => {
     const plain = this.plain_input
@@ -884,7 +878,7 @@ export class StructureSession {
     this.is_internal_edit = true
     this.inputs.set_structure(next)
     const written = this.inputs.structure()
-    this.drag_write = this.#dragging_atoms && written ? { written, plain: next } : undefined
+    this.last_write = written && { written, plain: next }
   }
 
   // Index into base_structure of a displayed site: image atoms name the site they mirror and
@@ -920,7 +914,7 @@ export class StructureSession {
   // loaded structure (the flag resets in the invalidation effect).
   private singular_lattice_notified = false
   private cart_to_frac(): ((xyz: Vec3) => Vec3) | undefined {
-    const structure = this.inputs.structure()
+    const structure = this.plain_input
     if (!structure || !(`lattice` in structure)) return undefined
     try {
       return create_cart_to_frac(structure.lattice.matrix)
@@ -939,7 +933,7 @@ export class StructureSession {
   private edit_selection(
     skip_image_atoms = false,
   ): { structure: AnyStructure; indices: Set<number> } | null {
-    const structure = this.inputs.structure()
+    const structure = this.plain_input
     const selected = this.inputs.selected_sites()
     if (selected.length === 0 || !structure?.sites) return null
     const indices = this.scene_to_structure_indices(selected, skip_image_atoms)
@@ -1035,7 +1029,7 @@ export class StructureSession {
 
   // Click-to-place from the scene
   add_atom = (xyz: Vec3, symbol: ElementSymbol): void => {
-    const structure = this.inputs.structure()
+    const structure = this.plain_input
     if (!structure) return
     const element = normalize_element(symbol)
     if (!element) return console.warn(`Invalid element symbol "${symbol}", ignoring add-atom`)
@@ -1058,7 +1052,6 @@ export class StructureSession {
   // coordinates inline so normalize_fractional_coords hits its fast path; explicit bonds of a
   // site wrapped across a face gain a cell_shift
   move_sites = (scene_indices: number[], delta: Vec3): void => {
-    // plain: a write holding the binding's proxies would be copied through them again
     const structure = this.plain_input
     const normalized_sites = this.normalized_structure?.sites
     if (!structure?.sites || !normalized_sites) return

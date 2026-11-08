@@ -80,6 +80,12 @@ describe(`display pipeline`, () => {
       ).toBe(true)
     }
     expect(session.normalized_structure).toEqual($state.snapshot(host.structure))
+    // the copy subscribes to the input's identity only, not to every site it read
+    const copy = session.plain_input
+    const site = host.structure?.sites[0]
+    if (site) site.label = `edited`
+    flushSync()
+    expect(session.plain_input).toBe(copy)
     const plain = crystal()
     expect(make_session({}, () => plain).session.normalized_structure).toBe(plain)
   })
@@ -511,10 +517,13 @@ describe(`selection validity`, () => {
       flushSync()
       expect(host.selected_sites).toEqual([])
       flush_set(host, { selected_sites: [0] })
-      const site = host.structure.sites[0]
+      // A frame changing only this field of one site is a different topology too
+      const next = structuredClone(session.plain_input ?? base)
+      const [site] = next.sites
       if (field === `label`) site.label = `changed`
       else if (field === `element`) site.species[0].element = `Ne`
       else site.species[0][field] = 0.5
+      host.structure = next
       flushSync()
       expect(host.selected_sites).toEqual([])
       flush_set(host, { selected_sites: [0] })
@@ -724,7 +733,7 @@ describe(`edit-atoms`, () => {
     expect(session.history.undo_stack).toHaveLength(MAX_HISTORY)
   })
 
-  it(`shares a drag's own writes and tracks the caller's edits outside them`, () => {
+  it(`reads its own writes back as built and the caller's replacements, not in-place edits`, () => {
     const { host, session } = make_session({ measure_mode: `edit-atoms` })
     const before = session.plain_input
     session.dragging_atoms = true
@@ -740,18 +749,21 @@ describe(`edit-atoms`, () => {
     expect(dragged?.sites[0].xyz[0]).toBeCloseTo((before?.sites[0].xyz[0] ?? 0) + 0.2, 12)
     session.dragging_atoms = false
     flushSync()
-    // the release copies once more, so in-place caller edits are tracked again
-    expect(session.plain_input).toEqual(dragged)
-    expect(session.plain_input).not.toBe(dragged)
-    // as after a write outside a drag
-    for (const label of [`edited`, `moved then edited`]) {
-      const site = host.structure?.sites[1]
-      if (site) site.label = label
-      flushSync()
-      expect(session.plain_input?.sites[1].label).toBe(label)
-      session.move_sites([0], [0.1, 0, 0])
-      flushSync()
-    }
+    // nor does the release or a later edit: every write is read back as built
+    expect(session.plain_input).toBe(dragged)
+    session.move_sites([0], [0.1, 0, 0])
+    session.add_atom([1, 1, 1], `He`)
+    flushSync()
+    expect(session.plain_input?.sites[1]).toBe(before?.sites[1])
+    expect(() => structuredClone(session.plain_input)).not.toThrow()
+    // Inputs are immutable: an in-place edit goes unseen, a replacement is read (copied once)
+    const site = host.structure?.sites[1]
+    if (site) site.label = `edited`
+    flushSync()
+    expect(session.plain_input?.sites[1].label).toBe(before?.sites[1].label)
+    if (host.structure) host.structure = { ...host.structure }
+    flushSync()
+    expect(session.plain_input?.sites[1].label).toBe(`edited`)
     // a structure the caller swaps in mid-drag is the input at once, before its effects end the
     // drag, not the session's last write
     session.dragging_atoms = true
@@ -921,7 +933,10 @@ describe(`edit-bonds`, () => {
         flush_set(host, { selected_sites: [3] })
         expect(session.delete_selected()).toBe(true)
       } else {
+        const own_bonds = session.normalized_structure?.properties?.bonds
         session.add_atom([1, 1, 1], `H`)
+        // history keeps the session's own set as built, not a copy read back through the binding
+        expect(session.history.undo_stack.at(-1)?.bonds).toBe(own_bonds)
         flushSync()
         expect(session.undo()).toBe(true)
       }

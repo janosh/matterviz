@@ -333,8 +333,9 @@ describe(`calc_structure_id plumbing`, () => {
   test(`writes both per-site properties and keeps them consistent with the result`, () => {
     const crystal = make_fcc([2, 2, 2])
     const result = calc_structure_id(crystal)
-    apply_structure_id(crystal, result)
-    for (const [site_idx, site] of crystal.sites.entries()) {
+    const labeled = apply_structure_id(crystal, result)
+    expect(crystal.sites[0].properties).not.toHaveProperty(CNA_TYPE_PROPERTY)
+    for (const [site_idx, site] of labeled.sites.entries()) {
       expect(site.properties[CNA_TYPE_PROPERTY]).toBe(CNA_TYPES.fcc)
       expect(site.properties[CENTROSYMMETRY_PROPERTY]).toBe(result.centrosymmetry?.[site_idx])
     }

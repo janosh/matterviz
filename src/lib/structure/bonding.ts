@@ -258,17 +258,17 @@ export const BOND_ORDER_OPTIONS: { order: BondOrder; label: string }[] = [
   { order: `aromatic`, label: `Aromatic` },
 ]
 
+// The integer lattice shift from fractional coords `abc` to those of its image `image_abc`
+export const lattice_shift = (image_abc: readonly number[], abc: Vec3): Vec3 =>
+  abc.map((coord, axis) => Math.round(image_abc[axis] - coord)) as Vec3
+
 const site_image_shift = (sites: Site[] | undefined, site_idx: number): Vec3 => {
   const site = sites?.[site_idx]
   const orig_site_idx = site?.provenance?.image_of
   if (orig_site_idx === undefined) return [0, 0, 0]
   const orig_site = sites?.[orig_site_idx]
   if (!site?.abc || !orig_site?.abc) return [0, 0, 0]
-  return [
-    Math.round(site.abc[0] - orig_site.abc[0]),
-    Math.round(site.abc[1] - orig_site.abc[1]),
-    Math.round(site.abc[2] - orig_site.abc[2]),
-  ]
+  return lattice_shift(site.abc, orig_site.abc)
 }
 
 export const canonicalize_bond_target = (
@@ -278,11 +278,9 @@ export const canonicalize_bond_target = (
   const shift_1 = site_image_shift(sites, bond.site_idx_1)
   const shift_2 = site_image_shift(sites, bond.site_idx_2)
   const base_shift = bond.cell_shift ?? [0, 0, 0]
-  const cell_shift: Vec3 = [
-    base_shift[0] + shift_2[0] - shift_1[0],
-    base_shift[1] + shift_2[1] - shift_1[1],
-    base_shift[2] + shift_2[2] - shift_1[2],
-  ]
+  const cell_shift = base_shift.map(
+    (shift, axis) => shift + shift_2[axis] - shift_1[axis],
+  ) as Vec3
   return normalize_bond_endpoints(
     get_image_source_idx(sites?.[bond.site_idx_1], bond.site_idx_1),
     get_image_source_idx(sites?.[bond.site_idx_2], bond.site_idx_2),
@@ -297,10 +295,10 @@ export const rendered_bond_key_for = (bond: BondKeyTarget): string =>
 const matches_bond_key = (bond: BondKeyTarget, key: string): boolean =>
   rendered_bond_key_for(bond) === key
 
-const replace_bond = (bonds: StructureBond[], next_bond: StructureBond): StructureBond[] => {
-  const key = rendered_bond_key_for(next_bond)
-  return [...bonds.filter((bond) => !matches_bond_key(bond, key)), next_bond]
-}
+const replace_bond = (bonds: StructureBond[], next_bond: StructureBond): StructureBond[] => [
+  ...remove_bond_key(bonds, rendered_bond_key_for(next_bond)),
+  next_bond,
+]
 
 const remove_bond_key = (bonds: StructureBond[], key: string): StructureBond[] =>
   bonds.filter((bond) => !matches_bond_key(bond, key))
@@ -786,6 +784,52 @@ type CutoffQuery = {
   band?: PairBand
 }
 
+const bounding_box = (pos: Float64Array, n_points: number): [mins: Vec3, maxs: Vec3] => {
+  const mins: Vec3 = [Infinity, Infinity, Infinity]
+  const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (let point = 0; point < n_points; point++) {
+    for (let axis = 0; axis < 3; axis++) {
+      const coord = pos[point * 3 + axis]
+      if (coord < mins[axis]) mins[axis] = coord
+      if (coord > maxs[axis]) maxs[axis] = coord
+    }
+  }
+  return [mins, maxs]
+}
+const bins_along = (span: number, width: number) => Math.floor(span / width) + 1
+
+// Dense bins over a bounding box, filled by counting sort so bin `bin` is the contiguous slice
+// bin_items[bin_start[bin]..bin_start[bin + 1]) in ascending point order. `widths` doubles in
+// place along the most-binned axis until at most MAX_BINS_PER_POSITION bins per point remain.
+// A cloud with one far-flung atom (an MD blow-up) spans ~10 A in two axes and 1e9+ A in the
+// third: widening that axis alone keeps the cluster spread over the other two instead of
+// collapsing it into a single O(n^2) bin, as one shared width (cubic bins) would. An isotropic
+// sparse cloud ends within 2x of the ideal width, which holds under 0.5 atoms per cutoff-bin.
+function bin_points(pos: Float64Array, n_points: number, [mins, maxs]: Vec3[], widths: Vec3) {
+  const spans = mins.map((min, axis) => maxs[axis] - min)
+  const n_axis = spans.map((span, axis) => bins_along(span, widths[axis])) as Vec3
+  while (n_axis[0] * n_axis[1] * n_axis[2] > MAX_BINS_PER_POSITION * n_points + 1) {
+    const widest = n_axis.indexOf(Math.max(...n_axis))
+    widths[widest] *= 2
+    n_axis[widest] = bins_along(spans[widest], widths[widest])
+  }
+  const [n_x, n_y, n_z] = n_axis
+  const bin_of = new Int32Array(n_points)
+  const bin_start = new Int32Array(n_x * n_y * n_z + 1)
+  for (let point = 0; point < n_points; point++) {
+    const idx_x = Math.floor((pos[point * 3] - mins[0]) / widths[0])
+    const idx_y = Math.floor((pos[point * 3 + 1] - mins[1]) / widths[1])
+    const idx_z = Math.floor((pos[point * 3 + 2] - mins[2]) / widths[2])
+    bin_of[point] = idx_x + n_x * (idx_y + n_y * idx_z)
+    bin_start[bin_of[point] + 1]++
+  }
+  for (let bin = 1; bin < bin_start.length; bin++) bin_start[bin] += bin_start[bin - 1]
+  const bin_items = new Int32Array(n_points)
+  const cursor = bin_start.slice(0, -1)
+  for (let point = 0; point < n_points; point++) bin_items[cursor[bin_of[point]]++] = point
+  return { n_axis, bin_of, bin_start, bin_items }
+}
+
 // Fixed-radius query. Base positions are wrapped into the cell on periodic axes (a
 // trajectory frame may sit far outside it) and only images that can reach within `cutoff`
 // of the cell are generated, so the cloud grows with the boundary shell, not 27x. Image
@@ -957,81 +1001,38 @@ function neighbor_query_cutoff(
     }
   }
 
-  // Dense bins over the cloud's bounding box, filled by counting sort so each bin is one
-  // contiguous slice of `bin_items` (ascending slot, so base sites precede images).
-  // Fine bins reduce candidate pairs in dense clouds; sparse grids widen to fit the cloud.
-  // The selected forward stencil spans at least the cutoff along every axis.
-  const mins: Vec3 = [Infinity, Infinity, Infinity]
-  const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
-  for (let slot = 0; slot < n_cloud; slot++) {
-    for (let axis = 0; axis < 3; axis++) {
-      const coord = cloud_pos[slot * 3 + axis]
-      if (coord < mins[axis]) mins[axis] = coord
-      if (coord > maxs[axis]) maxs[axis] = coord
-    }
-  }
-  const bins_along = (width: number, axis: number) =>
-    Math.floor((maxs[axis] - mins[axis]) / width) + 1
-  const max_bins = MAX_BINS_PER_POSITION * n_cloud + 1
-  // One width per axis, doubling the most-binned axis until the grid fits. A cloud with one
-  // far-flung atom (an MD blow-up) spans ~10 A in two axes and 1e9+ A in the third: widening
-  // that axis alone keeps the cluster spread over the other two instead of collapsing it
-  // into a single O(n^2) bin, as one shared width (cubic bins) would. An isotropic sparse
-  // cloud ends within 2x of the ideal width, which holds under 0.5 atoms per cutoff-bin.
-  const bin: Vec3 = [cutoff, cutoff, cutoff]
-  const n_axis: Vec3 = [bins_along(cutoff, 0), bins_along(cutoff, 1), bins_along(cutoff, 2)]
+  // Bins over the cloud (ascending slot within a bin, so base sites precede images). The
+  // selected forward stencil spans at least the cutoff along every axis.
+  const bounds = bounding_box(cloud_pos, n_cloud)
+  const [mins, maxs] = bounds
   // Dense RDF queries spend most of their time rejecting pairs outside the cutoff.
   // Finer bins reduce these candidates; sparse clouds and small cells keep cheap setup.
+  const coarse = mins.map((min, axis) => bins_along(maxs[axis] - min, cutoff))
   const fine_bins =
     Boolean(visit) &&
     n_sites >= 2000 &&
     normal_cutoff &&
-    n_cloud / (n_axis[0] * n_axis[1] * n_axis[2]) >= 32
-  if (fine_bins) {
-    for (let axis = 0; axis < 3; axis++) {
-      // Subtracting the origin and dividing into bins each round both endpoints. Include
-      // their span-scaled errors and the rounded distance comparison, so a cutoff pair
-      // cannot straddle three half-width bins. Distance and cutoff arithmetic is unchanged.
-      bin[axis] = cutoff / 2 + 4 * Number.EPSILON * (maxs[axis] - mins[axis] + cutoff)
-      n_axis[axis] = bins_along(bin[axis], axis)
-    }
-  }
+    n_cloud / (coarse[0] * coarse[1] * coarse[2]) >= 32
+  // Subtracting the origin and dividing into bins each round both endpoints. Fine bins include
+  // their span-scaled errors and the rounded distance comparison, so a cutoff pair cannot
+  // straddle three half-width bins. Distance and cutoff arithmetic is unchanged.
+  const bin = mins.map((min, axis) =>
+    fine_bins ? cutoff / 2 + 4 * Number.EPSILON * (maxs[axis] - min + cutoff) : cutoff,
+  ) as Vec3
   const forward_offsets = fine_bins ? FINE_BIN_OFFSETS : FORWARD_BIN_OFFSETS
-  while (n_axis[0] * n_axis[1] * n_axis[2] > max_bins) {
-    const widest = n_axis.indexOf(Math.max(...n_axis))
-    bin[widest] *= 2
-    n_axis[widest] = bins_along(bin[widest], widest)
-  }
+  const { n_axis, bin_of, bin_start, bin_items } = bin_points(cloud_pos, n_cloud, bounds, bin)
   const [n_x, n_y, n_z] = n_axis
   const n_bins = n_x * n_y * n_z
-  const bin_of = new Int32Array(n_cloud)
-  const bin_start = new Int32Array(n_bins + 1)
-  for (let slot = 0; slot < n_cloud; slot++) {
-    const idx_x = Math.floor((cloud_pos[slot * 3] - mins[0]) / bin[0])
-    const idx_y = Math.floor((cloud_pos[slot * 3 + 1] - mins[1]) / bin[1])
-    const idx_z = Math.floor((cloud_pos[slot * 3 + 2] - mins[2]) / bin[2])
-    const bin_idx = idx_x + n_x * (idx_y + n_y * idx_z)
-    bin_of[slot] = bin_idx
-    bin_start[bin_idx + 1]++
-  }
   const boundary_masks =
     !fine_bins && normal_cutoff
       ? coarse_boundary_masks(cloud_pos, bin_of, bin, n_axis, mins, maxs, cutoff)
       : undefined
-  for (let bin_idx = 0; bin_idx < n_bins; bin_idx++)
-    bin_start[bin_idx + 1] += bin_start[bin_idx]
   // Counting sort keeps base sites before images. Remember their boundary in each bin so
   // image centers scan only base endpoints, without testing the boundary for every pair.
   const bin_base_end = bin_start.slice(0, n_bins)
   for (let slot = 0; slot < n_sites; slot++) bin_base_end[bin_of[slot]]++
-  const bin_items = new Int32Array(n_cloud)
   const item_of = new Int32Array(visit ? 0 : n_cloud)
-  const bin_cursor = bin_start.slice(0, n_bins)
-  for (let slot = 0; slot < n_cloud; slot++) {
-    const item = bin_cursor[bin_of[slot]]++
-    bin_items[item] = slot
-    if (!visit) item_of[slot] = item
-  }
+  if (!visit) for (let item = 0; item < n_cloud; item++) item_of[bin_items[item]] = item
 
   // Whether `partner` is listed under base slot `center` (see CutoffQuery.unique_pairs)
   const listed = (center: number, partner: number): boolean => {
@@ -1444,13 +1445,151 @@ type BondNeighborQuery = (
 
 const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) => {
   const periodic = pbc.some(Boolean)
+  if (!periodic) return finite_bond_neighbors(structure, cutoff, band)
   const list = neighbor_query_cutoff(structure, cutoff, {
     pbc,
     unique_pairs: true,
-    image_geometry: periodic,
+    image_geometry: true,
     band,
   })
-  return periodic ? { ...list, image_geometry: list } : list
+  return { ...list, image_geometry: list }
+}
+
+// === Incremental finite bond search ===
+// Atom drags re-bond the finite displayed structure on every pointer move, few sites moved.
+// Contacts between unmoved sites keep their distances bit for bit, so only moved sites'
+// contacts are searched again, with the full query's arithmetic and filters (same contacts,
+// another order within a center's block). Perception still runs on the whole list: its shells
+// pool every copy of a unit-cell atom. Two searches are kept so two bonding settings coexist.
+const MIN_INCREMENTAL_SITES = 1000
+const MAX_MOVED_FRACTION = 1 / 8
+type FiniteSearch = { band: PairBand; coords: Float64Array; list: BondNeighborList }
+const finite_searches: FiniteSearch[] = [] // most recent first
+
+// Equal bands imply equal sites (elem_ids) and cutoff (the longest reach in band.hi)
+const same_band = (left: PairBand, right: PairBand): boolean =>
+  math.same_values(left.elem_ids, right.elem_ids) &&
+  math.same_values(left.lo, right.lo) &&
+  math.same_values(left.hi, right.hi)
+
+// Site positions as packed xyz triples, written into `out` when its length fits
+const packed_positions = (structure: AnyStructure, out?: Float64Array): Float64Array => {
+  const { sites, n_sites, coordinates, stride } = site_positions(structure)
+  const xyz = out?.length === n_sites * 3 ? out : new Float64Array(n_sites * 3)
+  for (let idx = 0; idx < n_sites; idx++)
+    for (let axis = 0; axis < 3; axis++)
+      xyz[idx * 3 + axis] = coordinates
+        ? coordinates[idx * stride + axis]
+        : sites[idx].xyz[axis]
+  return xyz
+}
+
+function finite_bond_neighbors(
+  structure: AnyStructure,
+  cutoff: number,
+  band: PairBand,
+): BondNeighborList {
+  const query = () =>
+    neighbor_query_cutoff(structure, cutoff, { pbc: NO_PBC, unique_pairs: true, band })
+  if (site_count(structure) < MIN_INCREMENTAL_SITES) return query()
+  const coords = packed_positions(structure)
+  const match = finite_searches.findIndex((search) => same_band(search.band, band))
+  const search = match === -1 ? undefined : finite_searches.splice(match, 1)[0]
+  const list = search && moved_site_contacts(search, coords, cutoff)
+  finite_searches.unshift(search && list ? search : { band, coords, list: query() })
+  finite_searches.length = Math.min(finite_searches.length, 2)
+  return list ?? finite_searches[0].list
+}
+
+// The search's contacts at `coords`, or undefined when too many sites moved. Non-finite
+// positions and pair-budget overruns are left to the full query, which reports them.
+function moved_site_contacts(
+  { band, coords: reference, list }: FiniteSearch,
+  coords: Float64Array,
+  cutoff: number,
+): BondNeighborList | undefined {
+  const n_sites = coords.length / 3
+  const is_moved = new Uint8Array(n_sites)
+  const moved: number[] = []
+  for (let idx = 0; idx < n_sites; idx++) {
+    const offset = idx * 3
+    if (
+      coords[offset] === reference[offset] &&
+      coords[offset + 1] === reference[offset + 1] &&
+      coords[offset + 2] === reference[offset + 2]
+    )
+      continue
+    if (moved.length >= n_sites * MAX_MOVED_FRACTION) return undefined
+    if (!coords.subarray(offset, offset + 3).every(Number.isFinite)) return undefined
+    is_moved[idx] = 1
+    moved.push(idx)
+  }
+  if (!moved.length) return list
+  // Bins wider than `cutoff` plus the binning round-off put a site's partners within one bin
+  // of it per axis
+  const bounds = bounding_box(coords, n_sites)
+  const [mins, maxs] = bounds
+  const widths = mins.map(
+    (min, axis) => cutoff + 8 * Number.EPSILON * (maxs[axis] - min + cutoff),
+  ) as Vec3
+  const { n_axis, bin_of, bin_start, bin_items } = bin_points(coords, n_sites, bounds, widths)
+  const [n_x, n_y, n_z] = n_axis
+  // Contacts of moved sites, each once: [lower site, higher site, distance] triples
+  const found: number[] = []
+  const cutoff_sq = cutoff * cutoff
+  const { elem_ids, n_elem } = band
+  for (const site of moved) {
+    const bin = bin_of[site]
+    const cell_x = bin % n_x
+    const cell_y = Math.floor(bin / n_x) % n_y
+    const cell_z = Math.floor(bin / (n_x * n_y))
+    for (let bin_z = cell_z - 1; bin_z <= cell_z + 1; bin_z++) {
+      for (let bin_y = cell_y - 1; bin_y <= cell_y + 1; bin_y++) {
+        if (bin_z < 0 || bin_z >= n_z || bin_y < 0 || bin_y >= n_y) continue
+        const row = n_x * (bin_y + n_y * bin_z)
+        const item_end = bin_start[row + Math.min(cell_x + 1, n_x - 1) + 1]
+        for (let item = bin_start[row + Math.max(cell_x - 1, 0)]; item < item_end; item++) {
+          const partner = bin_items[item]
+          if (is_moved[partner] && partner <= site) continue
+          // neighbor_query_cutoff's arithmetic and filters (a delta's sign leaves its square)
+          const delta_x = coords[partner * 3] - coords[site * 3]
+          const delta_y = coords[partner * 3 + 1] - coords[site * 3 + 1]
+          const delta_z = coords[partner * 3 + 2] - coords[site * 3 + 2]
+          const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+          if (dist_sq > cutoff_sq) continue
+          const distance = Math.sqrt(dist_sq)
+          const pair = elem_ids[site] * n_elem + elem_ids[partner]
+          if (distance > band.hi[pair] || distance < band.lo[pair]) continue
+          found.push(Math.min(site, partner), Math.max(site, partner), distance)
+        }
+      }
+    }
+  }
+  // Unmoved contacts keep their slots' order, then the moved ones follow per center
+  const { offsets: old_offsets, neighbors: old_neighbors, distances: old_distances } = list
+  const offsets = new Int32Array(n_sites + 1)
+  const kept = (center: number, slot: number) =>
+    !is_moved[center] && !is_moved[old_neighbors[slot]]
+  for (let center = 0; center < n_sites; center++)
+    for (let slot = old_offsets[center]; slot < old_offsets[center + 1]; slot++)
+      if (kept(center, slot)) offsets[center + 1]++
+  for (let idx = 0; idx < found.length; idx += 3) offsets[found[idx] + 1]++
+  for (let center = 0; center < n_sites; center++) offsets[center + 1] += offsets[center]
+  if (offsets[n_sites] > Math.max(MAX_NEIGHBOR_PAIRS, MAX_PAIRS_PER_SITE * n_sites))
+    return undefined
+  const neighbors = new Int32Array(offsets[n_sites])
+  const distances = new Float64Array(offsets[n_sites])
+  const cursor = offsets.slice(0, n_sites)
+  const append = (center: number, partner: number, distance: number) => {
+    neighbors[cursor[center]] = partner
+    distances[cursor[center]++] = distance
+  }
+  for (let center = 0; center < n_sites; center++)
+    for (let slot = old_offsets[center]; slot < old_offsets[center + 1]; slot++)
+      if (kept(center, slot)) append(center, old_neighbors[slot], old_distances[slot])
+  for (let idx = 0; idx < found.length; idx += 3)
+    append(found[idx], found[idx + 1], found[idx + 2])
+  return { offsets, neighbors, distances }
 }
 
 // Verlet skin (A) of trajectory candidate lists. On a 186k-atom fcc frame a plain search takes
@@ -1467,10 +1606,9 @@ const MIN_REUSES = 2
 // plain until per-frame motion falls below skin / (2 * MIN_REUSES), where even steady drift
 // lets a list survive MIN_REUSES frames.
 export class BondSearch {
-  private readonly scratch = create_bond_scratch()
   private candidates: BondNeighborList | undefined
   // Positions at the last candidate build, or of the previous frame after a plain search
-  private reference = new Float64Array(0)
+  private reference: Float64Array = new Float64Array(0)
   private reuses = 0 // frames the current candidates served after their build
   private cell_key = ``
   private band: PairBand | undefined
@@ -1515,7 +1653,6 @@ export class BondSearch {
 
   private readonly query: BondNeighborQuery = (structure, cutoff, pbc, band) => {
     if (pbc.some(Boolean)) return query_bond_neighbors(structure, cutoff, pbc, band)
-    const { sites, n_sites, coordinates, stride } = site_positions(structure)
     const lattice = `lattice` in structure ? structure.lattice : undefined
     // Validated here since finite queries never reach lattice_pbc_or_throw
     const lattice_pbc = lattice_pbc_or_throw(structure)
@@ -1530,14 +1667,9 @@ export class BondSearch {
         .every((height, axis) => !lattice_pbc[axis] || height > 2 * (cutoff + BOND_SKIN))
         ? lattice
         : undefined
-    // Equal bands imply equal sites (elem_ids) and cutoff (the longest reach in band.hi)
     const { band: last, candidates } = this
     const same_inputs =
-      cell_key === this.cell_key &&
-      last !== undefined &&
-      math.same_values(last.elem_ids, band.elem_ids) &&
-      math.same_values(last.lo, band.lo) &&
-      math.same_values(last.hi, band.hi)
+      cell_key === this.cell_key && last !== undefined && same_band(last, band)
     // Compare against the build frame, not the last frame; cumulative drift counts.
     if (same_inputs && candidates && !this.moved_beyond(structure, BOND_SKIN / 2, periodic)) {
       this.reuses++
@@ -1552,12 +1684,7 @@ export class BondSearch {
     this.cell_key = cell_key
     this.band = band // perceive_bonds allocates fresh tables per call
     this.reuses = 0
-    if (this.reference.length !== n_sites * 3) this.reference = new Float64Array(n_sites * 3)
-    for (let idx = 0; idx < n_sites; idx++)
-      for (let axis = 0; axis < 3; axis++)
-        this.reference[idx * 3 + axis] = coordinates
-          ? coordinates[idx * stride + axis]
-          : sites[idx].xyz[axis]
+    this.reference = packed_positions(structure, this.reference)
     if (plain) {
       this.candidates = undefined
       return query_bond_neighbors(structure, cutoff, pbc, band)
@@ -1611,10 +1738,7 @@ export class BondSearch {
     options: Parameters<typeof electroneg_ratio>[1] = {},
   ): BondColumns {
     if (!site_count(structure)) return pack_bonds([])
-    return bond_columns(
-      structure,
-      perceive_bonds(structure, options, this.query, this.scratch),
-    )
+    return bond_columns(structure, perceive_bonds(structure, options, this.query))
   }
 }
 
@@ -1790,6 +1914,9 @@ const create_bond_scratch = (capacity = 0): BondScratch => ({
   metallic: new Int32Array(capacity),
   strengths: new Float64Array(capacity),
 })
+// Shared by every perception (bond_columns copies out before the next can run): reallocating
+// 28 B x 4 per site on every drag frame of a 100k-atom structure kept the GC busy
+const scratch = create_bond_scratch()
 
 function perceive_bonds(
   structure: AnyStructure,
@@ -1816,7 +1943,6 @@ function perceive_bonds(
     pbc = NO_PBC,
   } = {},
   query: BondNeighborQuery = query_bond_neighbors,
-  scratch = create_bond_scratch(),
 ): PerceivedBonds {
   const columns = numeric_sites.get(structure)
   const sites = columns ?? structure.sites
