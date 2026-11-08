@@ -33,6 +33,7 @@ import {
 } from '#lib/trajectory/format-detect.js'
 import { get_unsupported_format_message } from '#lib/trajectory/parse/index.js'
 import { open_lammps_frames } from '#lib/trajectory/parse/lammps.js'
+import { parse_vasp_xdatcar } from '#lib/trajectory/parse/vasp.js'
 import { snapshot_topologies } from '#lib/structure/site.js'
 import {
   ase_calculator_data,
@@ -458,6 +459,36 @@ describe(`XDATCAR`, () => {
     expect(second.structure.lattice?.matrix[0][0]).toBe(5)
     expect(second.structure.lattice?.pbc).not.toBe(lattice.pbc)
     expect(second.sites[0]).toBe(1)
+  })
+
+  // The eager open reads numeric frames directly: frames, preview, plot rows and warnings must
+  // equal those of parse_vasp_xdatcar's Site records as trajectory_from_frames encodes them
+  const xdatcar_md_path = join(process.cwd(), `src/site/trajectories/vasp-XDATCAR.MD.gz`)
+  it.each([
+    [`vasp-XDATCAR.MD`, read_maybe_gz(xdatcar_md_path)],
+    [`a variable cell`, `${variable_cell(10, 1)}\n${variable_cell(20, 2)}`],
+    [
+      `a mid-run non-finite frame`,
+      xdatcar(`H\n2`, [ok(1), config(2, `nan 0 0`, `0 0 0`), ok(3)]),
+    ],
+    [
+      `a singular cell`,
+      xdatcar(`H\n2`, [ok(1), ok(2)]).replace(`5 0 0\n0 5 0\n0 0 5`, `0 0 0\n0 0 0\n0 0 0`),
+    ],
+  ])(`eager open equals the encoded parse_vasp_xdatcar frames: %s`, async (_label, text) => {
+    const collector = create_warning_collector(() => {})
+    const { frames } = parse_vasp_xdatcar(text, collector.warn)
+    const expected = trajectory_from_frames(frames, { warnings: collector.warnings })
+    const run = await open(text, `XDATCAR`)
+    expect(run.frame_count).toBe(expected.frame_count)
+    for (let frame_idx = 0; frame_idx < run.frame_count; frame_idx++)
+      expect(run.read_frame(frame_idx)).toStrictEqual(expected.read_frame(frame_idx))
+    const facts = ({ preview, properties, warnings }: TrajectoryRun) => [
+      preview,
+      properties.rows,
+      warnings,
+    ]
+    expect(facts(run)).toStrictEqual(facts(expected))
   })
 })
 

@@ -193,12 +193,20 @@ describe(`accumulate_positions validation`, () => {
 
 describe.each([false, true])(`step plausibility (numeric: %s)`, (numeric) => {
   // 10 A cubic cell, four atoms; `shift` moves every atom by the same vector between frames
-  const frames_with_shift = (shift: number, coords_unwrapped?: boolean) => {
+  const frames_with_shift = (
+    shift: number | readonly number[],
+    coords_unwrapped?: boolean,
+    pbc?: Pbc,
+  ) => {
+    const step_vec = typeof shift === `number` ? [shift, shift, shift] : shift
     const start = [1, 2, 3, 4].map((val) => [val, val, val])
-    const moved = start.map((xyz) => xyz.map((coord) => coord + shift))
-    return [start, moved, moved.map((xyz) => xyz.map((coord) => coord + shift))].map(
-      (xyz_list, step) => make_frame(step, xyz_list, { box_length: 10, coords_unwrapped }),
-    )
+    const moved = start.map((xyz) => xyz.map((coord, axis) => coord + step_vec[axis]))
+    const last = moved.map((xyz) => xyz.map((coord, axis) => coord + step_vec[axis]))
+    return [start, moved, last].map((xyz_list, step) => {
+      const frame = make_frame(step, xyz_list, { box_length: 10, coords_unwrapped })
+      if (pbc && `lattice` in frame.structure) frame.structure.lattice.pbc = pbc
+      return frame
+    })
   }
   const collect = (frames: ReturnType<typeof make_frame>[], frame_stride = 1) =>
     accumulate_positions(
@@ -217,10 +225,13 @@ describe.each([false, true])(`step plausibility (numeric: %s)`, (numeric) => {
     [`wrap-around of wrapped coords`, 9, false, 1, true],
     // a stride weakens the bound, so unwrapped coordinates skip the check
     [`strided unwrapped coords`, 5, true, 2, true],
+    // only periodic axes count, each against its own reciprocal row
+    [`half-cell jump along the open axis of a slab`, [0, 0, 5], false, 1, true, [true, true, false]],
+    [`half-cell jump along the one periodic axis`, [0, 5, 0], false, 1, false, [false, true, false]],
   ] as const)(
     `%s (shift %s, unwrapped %s, stride %s): accepted=%s`,
-    async (_label, shift, unwrapped, stride, accepted) => {
-      const collecting = collect(frames_with_shift(shift, unwrapped), stride)
+    async (_label, shift, unwrapped, stride, accepted, pbc?: Pbc) => {
+      const collecting = collect(frames_with_shift(shift, unwrapped, pbc), stride)
       if (accepted) expect((await collecting).n_frames).toBe(Math.ceil(3 / stride))
       else await expect(collecting).rejects.toThrow(/moved more than a quarter of the cell/)
     },

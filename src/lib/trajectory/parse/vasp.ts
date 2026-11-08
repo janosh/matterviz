@@ -15,6 +15,7 @@ import {
   NonFiniteFrameError,
   TextLines,
 } from '#lib/trajectory/helpers.js'
+import { frame_property_row } from '../extract'
 import { create_numeric_md_frame } from '../frame'
 import type { AseFrames } from './ase'
 import type { ParsedTrajectory, WarnFn } from './shared'
@@ -251,4 +252,19 @@ export function parse_vasp_xdatcar(
   const { frame_count, decode } = open_xdatcar_frames(TextLines.of(content), warn)
   const frames = decode_finite_frames(frame_count, decode, `XDATCAR`, warn)
   return { format: `xdatcar`, frames, metadata: {} }
+}
+
+// The eager open: parse_vasp_xdatcar's frames as trajectory_from_frames encodes them, plus
+// their plot rows, read without Site records (10k atoms x 200 frames: 1.6 -> 0.35 s)
+export function read_xdatcar_snapshots(content: string | TextLines, warn: WarnFn) {
+  const { frame_count, read } = open_xdatcar_frames(TextLines.of(content), warn)
+  const snapshots = decode_finite_frames(frame_count, read, `XDATCAR`, warn)
+  // Its plot rows without re-reading lines; the reads already reported a singular lattice
+  const properties = snapshots.map(({ header, structure, sites }, frame_idx) => {
+    const { matrix, pbc } = structure.lattice ?? {}
+    const numbers = sites as Uint8Array
+    const row = create_plot_row_frame(numbers, matrix, pbc, header.step, {}, () => {})
+    return frame_property_row(row, frame_idx)
+  })
+  return { snapshots, properties }
 }

@@ -448,13 +448,13 @@ export class NonFiniteFrameError extends Error {
 }
 
 // Eager decode skipping non-finite frames (ASE's cause) with one warning; a lone frame throws
-export function decode_finite_frames(
+export function decode_finite_frames<Frame>(
   frame_count: number,
-  decode: (frame_idx: number) => TrajectoryFrame,
+  decode: (frame_idx: number) => Frame,
   format: string,
   warn: WarnFn,
-): TrajectoryFrame[] {
-  const frames: TrajectoryFrame[] = []
+): Frame[] {
+  const frames: Frame[] = []
   const skipped: string[] = []
   for (let frame_idx = 0; frame_idx < frame_count; frame_idx++) {
     try {
