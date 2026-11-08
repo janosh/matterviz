@@ -21,8 +21,8 @@
   import {
     all_phase_diagram_files,
     binary_diagrams,
+    binary_observations,
     find_precomputed_diagram,
-    observations_for,
   } from '#site/phase-diagrams.js'
   import {
     file_param,
@@ -43,7 +43,6 @@
 
   // Comparison: a hand-built Ag-Cu reference vs a synthetic model diagram of the same system
   const { 'Ag-Cu': ag_cu, 'Ag-Cu-model': ag_cu_model } = binary_diagrams
-  const ag_cu_observations = observations_for(ag_cu.components)
   // Side by side: one cursor and one pair of axes bound to both diagrams
   let cursor = $state<DiagramCursor | null>(null)
   let x_axis = $state<AxisConfig>({})
@@ -155,8 +154,8 @@
   </p>
   <p>
     Dropped TDB files are parsed but not solved; matching precomputed diagrams are available
-    for Al-Fe, Al-Mg, and Pb-Sn. Diagrams use the <code>binary-phase-diagram/2</code> JSON format:
-    temperatures in K, compositions as mole fractions, phases referenced by id.
+    for Al-Mg and Pb-Sn. Diagrams use the <code>binary-phase-diagram/2</code> JSON format: temperatures
+    in K, compositions as mole fractions, phases referenced by id.
   </p>
 </details>
 
@@ -191,7 +190,7 @@
     {/if}
     <IsobaricBinaryPhaseDiagram
       data={current_data}
-      observations={observations_for(current_data.components ?? [])}
+      observations={binary_observations}
       bind:temp_unit
       bind:comp_unit
       style="height: 600px"
@@ -221,7 +220,7 @@
 <IsobaricBinaryPhaseDiagram
   data={ag_cu}
   overlay={ag_cu_model}
-  observations={ag_cu_observations}
+  observations={binary_observations}
   bind:temp_unit
   bind:comp_unit
   style="height: 550px"
@@ -237,7 +236,7 @@
   {#each [ag_cu, ag_cu_model] as data, idx (idx)}
     <IsobaricBinaryPhaseDiagram
       {data}
-      observations={ag_cu_observations}
+      observations={binary_observations}
       bind:cursor
       bind:x_axis
       bind:y_axis

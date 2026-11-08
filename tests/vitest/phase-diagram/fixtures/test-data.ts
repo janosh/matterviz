@@ -92,6 +92,7 @@ export const observations: PhaseObservation[] = [
   // not drawn: no temperature, or a phase without composition
   {
     id: `no-T`,
+    system: `Al-Cu`,
     kind: `liquidus`,
     T_K: null,
     sigma_T_K: null,
@@ -101,6 +102,7 @@ export const observations: PhaseObservation[] = [
   },
   {
     id: `no-x`,
+    system: `Al-Cu`,
     kind: `critical_point`,
     T_K: 700,
     sigma_T_K: 5,
@@ -118,7 +120,6 @@ export const create_hover_info = (
   composition: 0.5,
   temperature: 850,
   position: { x: 100, y: 100 },
-  overlay: null,
   point: null,
   observation: null,
   ...overrides,

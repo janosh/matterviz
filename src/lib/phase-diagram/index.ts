@@ -2,15 +2,17 @@ export {
   boundary_description,
   BOUNDARY_STYLES,
   diagram_errors,
+  diagram_hit,
   diagram_name,
   diagram_points,
-  diagram_regions,
-  OBSERVATION_STATUS_COLORS,
+  format_hover_info_text,
   observation_markers,
   phase_colors,
   phase_labeler,
   provenance_caption,
   region_label,
+  status_color,
+  status_label,
   temperature_extent,
 } from './diagram'
 export { default as IsobaricBinaryPhaseDiagram } from './IsobaricBinaryPhaseDiagram.svelte'
@@ -30,8 +32,6 @@ export {
   convert_temp,
   find_region_at,
   format_composition,
-  format_hover_info_text,
   format_temperature,
-  type HoverTextOptions,
   PHASE_DIAGRAM_DEFAULTS,
 } from './utils'

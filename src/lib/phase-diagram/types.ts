@@ -34,9 +34,11 @@ export type BoundaryKind =
   | `transus`
   | `invariant`
   | `miscibility_gap`
+  | `magnetic`
 
 // One edge of a two-phase region (phases in composition order, `side` the phase whose
-// composition the edge traces, e.g. LIQUID for a liquidus), or an invariant line (3 phases)
+// composition the edge traces, e.g. LIQUID for a liquidus), an invariant line (3 phases, no
+// side), or a magnetic (Curie/Néel) line inside one phase (`phases: [id]`, no side)
 export interface DiagramBoundary {
   kind: BoundaryKind
   phases: string[]
@@ -142,7 +144,7 @@ export interface PhaseObservation {
   status: ObservationStatus
   phases?: ObservedPhase[]
   source: ObservationSource
-  system?: string
+  system: string // `A-B` for a binary row, one component for a pure-component row
   reaction?: string | null
 }
 
@@ -182,12 +184,13 @@ export interface ObservationMarker {
   temperature: number
 }
 
-// Hover state in data units (x mole fraction, T in K)
+// Hover state in data units (x mole fraction, T in K). An overlay diagram's phase set at the
+// same point is diagram_hit(overlay, composition, temperature), derived where it is shown so a
+// pinned snapshot never outlives an overlay change.
 export interface PhaseHoverInfo extends DiagramHit {
   composition: number
   temperature: number
   position: Point2D // client coordinates
-  overlay: DiagramHit | null // null without an overlay diagram
   point: DiagramPoint | null
   observation: ObservationMarker | null
 }

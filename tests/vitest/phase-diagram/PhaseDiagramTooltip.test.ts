@@ -19,7 +19,6 @@ import {
   observations,
   pts,
   shifted_eutectic,
-  shifted_regions,
 } from './fixtures/test-data'
 
 const mount_tooltip = (
@@ -45,17 +44,17 @@ describe(`PhaseDiagramTooltip`, () => {
     const hover_info = create_hover_info({
       region: { phases: [`A`], vertices: pts(0, 500, 0.3, 800, 0.2, 600) },
     })
-    mount_tooltip({ hover_info, temperature_unit: `K` })
+    mount_tooltip({ hover_info, temp_unit: `K` })
     expect(document.querySelector(`header strong`)?.textContent).toBe(`α`)
     expect(tooltip_text()).toContain(`Stable 500 – 800 K`)
     expect(document.querySelector(`.lever`)).toBeNull()
   })
 
   // hover temperatures are K; per-unit formatting is format_temperature's (utils.test.ts)
-  test(`converts the K temperature to temperature_unit`, () => {
+  test(`converts the K temperature to temp_unit`, () => {
     mount_tooltip({
       hover_info: create_hover_info({ temperature: 298.15 }),
-      temperature_unit: `°C`,
+      temp_unit: `°C`,
     })
     expect(tooltip_text()).toContain(`25 °C`)
     expect(document.querySelector(`dd small`)?.textContent).toBe(`°C`)
@@ -89,7 +88,7 @@ describe(`PhaseDiagramTooltip`, () => {
       mount_tooltip({
         hover_info: create_hover_info({ composition }),
         data: { ...eutectic, components },
-        composition_unit: unit,
+        comp_unit: unit,
       })
       for (const part of contains ?? []) expect(tooltip_text()).toContain(part)
       for (const part of absent ?? []) expect(tooltip_text()).not.toContain(part)
@@ -119,7 +118,7 @@ describe(`PhaseDiagramTooltip`, () => {
   test(`lever rule displays labelled phase fractions and bars sized by fraction`, () => {
     mount_tooltip({
       hover_info: create_hover_info({ region: eutectic_regions[1], lever_rule }),
-      composition_unit: `at%`,
+      comp_unit: `at%`,
     })
     expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
     for (const part of [`α: 60 %`, `at 20 at%`, `β: 40 %`, `at 80 at%`]) {
@@ -128,16 +127,20 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
   })
 
-  test(`shows the overlay diagram's phase set and lever rule`, () => {
+  // the overlay's phase set is derived from the hovered (x, T), never from a hover snapshot,
+  // so a pinned tooltip follows overlay changes
+  test(`shows the overlay diagram's phase set and lever rule at the hovered point`, () => {
+    // 550 K: liquid in the main diagram (eutectic 500 K), α + β in the overlay (600 K)
     const hover_info = create_hover_info({
       region: eutectic_regions[0],
-      overlay: { region: shifted_regions[1], lever_rule },
+      composition: 0.2,
+      temperature: 550,
     })
     mount_tooltip({ hover_info, overlay: shifted_eutectic })
     expect(document.querySelector(`.overlay-phase`)?.textContent?.trim()).toBe(`α + β`)
     const overlay_lever = document.querySelector(`.overlay-lever`)?.textContent
     expect(overlay_lever?.replaceAll(/\s+/g, ` `).trim()).toBe(
-      `Overlay lever rule: α 60% at 20 at% / β 40% at 80 at%`,
+      `Overlay lever rule: α 80% at 0 at% / β 20% at 100 at%`,
     )
   })
 
@@ -178,7 +181,7 @@ describe(`PhaseDiagramTooltip`, () => {
       (composition, temperature, kind, points, unit, direction, delta) => {
         const hover_info = create_hover_info({ composition, temperature })
         const data = { ...eutectic, boundaries: [{ kind, phases: [], points }] }
-        mount_tooltip({ hover_info, data, temperature_unit: unit })
+        mount_tooltip({ hover_info, data, temp_unit: unit })
         const text = document.querySelector(`.boundary-info`)?.textContent ?? ``
         expect(text.replaceAll(/\s+/g, ` `).trim()).toBe(
           `${delta} ${unit} ${direction} ${kind}`,
@@ -223,7 +226,7 @@ describe(`PhaseDiagramTooltip`, () => {
       redistribution: `not_cleared` as const,
     }
     mount_tooltip({
-      hover_info: create_hover_info({ overlay: { region: null, lever_rule: null } }),
+      hover_info: create_hover_info(),
       data: { ...eutectic, provenance },
       overlay: shifted_eutectic,
     })

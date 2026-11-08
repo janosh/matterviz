@@ -1,21 +1,32 @@
 // Semantics of the binary-phase-diagram/2 format: validation, phase labels and colors, marked
 // points, boundary styles, and the observation layer drawn on top of a diagram
 
-import { add_alpha } from '#lib/colors/index.js'
-import { humanize } from '#lib/labels.js'
+import { format_num, humanize } from '#lib/labels.js'
 import type { Vec2 } from '#lib/math.js'
 import {
   BINARY_DIAGRAM_FORMAT,
   type BinaryPhaseDiagram,
   type BoundaryKind,
+  type CompUnit,
   type DiagramBoundary,
+  type DiagramHit,
   type DiagramPoint,
   type DiagramRegion,
+  type LeverRuleResult,
   type ObservationMarker,
   type ObservationStatus,
+  type PhaseHoverInfo,
   type PhaseObservation,
+  type TempUnit,
 } from './types'
-import { LIQUID_COLOR, SOLID_PHASE_PALETTE } from './utils'
+import {
+  calculate_lever_rule,
+  find_region_at,
+  format_composition,
+  format_temperature,
+  LIQUID_COLOR,
+  SOLID_PHASE_PALETTE,
+} from './utils'
 
 // Stroke style of each boundary kind
 export const BOUNDARY_STYLES: Readonly<
@@ -27,6 +38,7 @@ export const BOUNDARY_STYLES: Readonly<
   transus: { color: `#ef6c00`, width: 1.5, dash: `2,3` },
   invariant: { color: `#d32f2f`, width: 2 },
   miscibility_gap: { color: `#6d4c41`, width: 2, dash: `6,3` },
+  magnetic: { color: `#455a64`, width: 1.5, dash: `8,3,2,3` },
 }
 // Every boundary of an overlay diagram shares one dashed stroke in the overlay color
 export const OVERLAY_DASH = `7,4`
@@ -42,75 +54,136 @@ const INVARIANT_LABELS: Readonly<Record<string, string>> = {
   syntectic: `S`,
 }
 
+const PHASE_KINDS: readonly string[] = [`liquid`, `solid`, `gas`]
+const PROVENANCE_KINDS: readonly string[] = [`assessment`, `model`, `sketch`]
+const finite = (val: unknown): val is number => Number.isFinite(val)
+const is_point = (point: unknown): boolean =>
+  Array.isArray(point) && point.length === 2 && point.every(finite)
+const length = (list: unknown): number => (Array.isArray(list) ? list.length : 0)
+
 // Problems that keep a value from rendering as a binary-phase-diagram/2 (empty when valid).
-// Phase ids are checked everywhere they are referenced, so lookups by id never miss.
-export function diagram_errors(data: BinaryPhaseDiagram): string[] {
+// Takes untrusted JSON and never throws: element shapes are checked before their fields are
+// read, phase ids everywhere they are referenced (so lookups by id never miss), and every
+// coordinate the renderer scales is a finite number.
+export function diagram_errors(value: unknown): string[] {
+  if (typeof value !== `object` || value === null || Array.isArray(value)) {
+    return [`a diagram is a JSON object, got ${JSON.stringify(value)}`]
+  }
+  // fields are read through checks that accept any value, so this cast never trusts them
+  const data = value as BinaryPhaseDiagram & { error?: unknown }
+  if (typeof data.error === `string`) return [`emitter failure record: ${data.error}`]
   if (data.format !== BINARY_DIAGRAM_FORMAT) {
     return [`format is ${JSON.stringify(data.format)}, expected "${BINARY_DIAGRAM_FORMAT}"`]
   }
   const errors: string[] = []
-  const { components, temperature_range, phases } = data
-  if (components?.length !== 2 || !components.every((comp) => typeof comp === `string`)) {
+  const { components, temperature_range, phases, provenance } = data
+  if (
+    !Array.isArray(components) ||
+    components.length !== 2 ||
+    !components.every((comp) => typeof comp === `string`)
+  ) {
     errors.push(`components must be two strings, got ${JSON.stringify(components)}`)
   }
-  const [t_min, t_max] = temperature_range ?? []
-  if (!(Number.isFinite(t_min) && Number.isFinite(t_max) && t_min < t_max)) {
+  if (!is_point(temperature_range) || !(temperature_range[0] < temperature_range[1])) {
     errors.push(
       `temperature_range must be [min, max] K, got ${JSON.stringify(temperature_range)}`,
     )
   }
-  if (data.regions !== undefined && !Array.isArray(data.regions)) {
-    errors.push(`regions must be an array when present`)
+  if (!PROVENANCE_KINDS.includes(provenance?.kind)) {
+    errors.push(`provenance must be an object with kind ${PROVENANCE_KINDS.join(` | `)}`)
   }
-  for (const key of [
+  const lists = [
     `phases`,
     `boundaries`,
     `invariants`,
     `congruent_points`,
     `critical_points`,
     `unary_transitions`,
-  ] as const) {
-    if (!Array.isArray(data[key])) errors.push(`${key} must be an array`)
+    ...(data.regions === undefined ? [] : [`regions` as const]),
+  ] as const
+  for (const key of lists) {
+    const list: unknown = data[key]
+    if (!Array.isArray(list)) errors.push(`${key} must be an array`)
+    else if (list.some((item) => typeof item !== `object` || item === null)) {
+      errors.push(`${key} must hold objects`)
+    }
   }
   if (errors.length) return errors
 
+  phases.forEach(({ id, label, model_phase, kind }, idx) => {
+    if (![id, label, model_phase].every((field) => typeof field === `string`)) {
+      errors.push(`phases[${idx}] needs string id, label and model_phase`)
+    }
+    if (!PHASE_KINDS.includes(kind)) {
+      errors.push(`phases[${idx}] kind must be ${PHASE_KINDS.join(` | `)}, got "${kind}"`)
+    }
+  })
   const ids = phases.map(({ id }) => id)
   const repeat = ids.find((id, idx) => ids.indexOf(id) !== idx)
   if (repeat !== undefined) errors.push(`duplicate phase id "${repeat}"`)
-  const known = new Set(ids)
-  const check_ids = (where: string, refs: readonly string[]) => {
-    const unknown = refs.filter((ref) => !known.has(ref))
-    if (unknown.length) errors.push(`${where} references unknown phase ${unknown.join(`, `)}`)
+  const known = new Set<unknown>(ids)
+  const check_ids = (where: string, refs: unknown) => {
+    if (!Array.isArray(refs)) errors.push(`${where} phases must be an array of ids`)
+    else if (refs.some((ref) => !known.has(ref))) {
+      const unknown = refs.filter((ref) => !known.has(ref))
+      errors.push(`${where} references unknown phase ${unknown.join(`, `)}`)
+    }
   }
-  diagram_regions(data).forEach(({ phases: refs, vertices }, idx) => {
+  const check_points = (where: string, points: unknown, min: number, noun: string) => {
+    if (length(points) < min) errors.push(`${where} has ${length(points)} ${noun}`)
+    else if (!(points as unknown[]).every(is_point)) {
+      errors.push(`${where} ${noun} must be [x, T] number pairs`)
+    }
+  }
+  // marked points sit at a finite (x, T)
+  const check_position = (where: string, temperature: unknown, compositions: unknown[]) => {
+    if (!finite(temperature) || !compositions.every(finite)) {
+      errors.push(`${where} needs a finite temperature and composition`)
+    }
+  }
+  data.regions?.forEach(({ phases: refs, vertices }, idx) => {
     check_ids(`regions[${idx}]`, refs)
-    if (vertices.length < 3) errors.push(`regions[${idx}] has ${vertices.length} vertices`)
+    check_points(`regions[${idx}]`, vertices, 3, `vertices`)
   })
   data.boundaries.forEach(({ kind, phases: refs, side, points }, idx) => {
-    check_ids(`boundaries[${idx}]`, refs)
-    if (side != null && !refs.includes(side)) {
-      errors.push(`boundaries[${idx}] side "${side}" is not one of its phases`)
+    const where = `boundaries[${idx}]`
+    check_ids(where, refs)
+    if (side != null && !(Array.isArray(refs) && refs.includes(side))) {
+      errors.push(`${where} side "${side}" is not one of its phases`)
     }
-    if (!(kind in BOUNDARY_STYLES))
-      errors.push(`boundaries[${idx}] has unknown kind "${kind}"`)
-    if (points.length < 2) errors.push(`boundaries[${idx}] has ${points.length} points`)
-  })
-  data.invariants.forEach(({ phases: refs, compositions, reaction }, idx) => {
-    check_ids(`invariants[${idx}]`, [...refs, ...reaction_phase_ids(reaction)])
-    if (compositions.length !== refs.length) {
-      errors.push(
-        `invariants[${idx}] has ${refs.length} phases but ${compositions.length} compositions`,
-      )
+    if (!Object.hasOwn(BOUNDARY_STYLES, kind))
+      errors.push(`${where} has unknown kind "${kind}"`)
+    if (kind === `magnetic` && (length(refs) !== 1 || side != null)) {
+      errors.push(`${where} is magnetic: one phase and no side`)
     }
+    check_points(where, points, 2, `points`)
   })
-  data.congruent_points.forEach(({ phases: refs }, idx) =>
-    check_ids(`congruent_points[${idx}]`, refs),
+  data.invariants.forEach(
+    ({ kind, temperature, phases: refs, compositions, reaction }, idx) => {
+      const where = `invariants[${idx}]`
+      if (!Object.hasOwn(INVARIANT_LABELS, kind))
+        errors.push(`${where} has unknown kind "${kind}"`)
+      if (typeof reaction !== `string`) errors.push(`${where} reaction must be a string`)
+      else check_ids(`${where} reaction`, reaction_phase_ids(reaction))
+      check_ids(where, refs)
+      if (length(compositions) !== length(refs)) {
+        errors.push(
+          `${where} has ${length(refs)} phases but ${length(compositions)} compositions`,
+        )
+      } else check_position(where, temperature, compositions)
+    },
   )
-  data.critical_points.forEach(({ phase }, idx) =>
-    check_ids(`critical_points[${idx}]`, [phase]),
-  )
-  data.unary_transitions.forEach(({ component, above, below }, idx) => {
+  data.congruent_points.forEach(({ phases: refs, temperature, composition }, idx) => {
+    check_ids(`congruent_points[${idx}]`, refs)
+    check_position(`congruent_points[${idx}]`, temperature, [composition])
+  })
+  data.critical_points.forEach(({ phase, temperature, composition }, idx) => {
+    check_ids(`critical_points[${idx}]`, [phase])
+    check_position(`critical_points[${idx}]`, temperature, [composition])
+  })
+  data.unary_transitions.forEach(({ component, temperature, above, below }, idx) => {
     check_ids(`unary_transitions[${idx}]`, [above, below])
+    check_position(`unary_transitions[${idx}]`, temperature, [])
     if (!components.includes(component)) {
       errors.push(
         `unary_transitions[${idx}] component "${component}" is not a diagram component`,
@@ -119,10 +192,6 @@ export function diagram_errors(data: BinaryPhaseDiagram): string[] {
   })
   return errors
 }
-
-// Regions of a diagram (none until the emitter derives them)
-export const diagram_regions = ({ regions }: BinaryPhaseDiagram): DiagramRegion[] =>
-  regions ?? []
 
 // Description of a boundary edge from its side and phases, e.g. `L edge of (Ag) + L`
 export function boundary_description(
@@ -218,9 +287,6 @@ export function phase_colors(phases: BinaryPhaseDiagram[`phases`]): Map<string, 
   return colors
 }
 
-// Translucent fill of a single-phase region
-export const region_fill_color = (hex: string): string => add_alpha(hex, 0.55)
-
 // Invariant, congruent, critical and pure-component points with labels and descriptions
 export function diagram_points(data: BinaryPhaseDiagram): DiagramPoint[] {
   const label_of = phase_labeler(data)
@@ -287,32 +353,100 @@ export function temperature_extent(diagrams: readonly BinaryPhaseDiagram[]): Vec
   ]
 }
 
-// Marker color of each observation status
-export const OBSERVATION_STATUS_COLORS: Readonly<Record<ObservationStatus, string>> = {
-  ok: `#2e7d32`,
-  needs_verification: `#ef6c00`,
-  needs_value: `#757575`,
+// Marker color and legend label of each observation status
+const OBSERVATION_STATUS: Readonly<
+  Record<ObservationStatus, { color: string; label: string }>
+> = {
+  ok: { color: `#2e7d32`, label: `Observed` },
+  needs_verification: { color: `#ef6c00`, label: `Observed (unverified)` },
+  needs_value: { color: `#757575`, label: `Observed (incomplete)` },
 }
+// Observation rows are untyped JSON: a status outside the known ones is drawn gray
+export const status_color = (status: string): string =>
+  OBSERVATION_STATUS[status as ObservationStatus]?.color ?? `#757575`
+export const status_label = (status: string): string =>
+  OBSERVATION_STATUS[status as ObservationStatus]?.label ?? `Observed (${status})`
 
-// Drawable markers of observation rows: one per phase with a composition, at the row's
-// temperature (so an invariant's phases share one isotherm). A row without phases whose system
-// is one of the components (a pure-component melting point) sits on that composition edge.
-// Rows without a temperature or composition are not drawn.
+// Drawable markers of the observation rows of this binary: one per phase with a composition,
+// at the row's temperature (so an invariant's phases share one isotherm). Rows of the reversed
+// system (B-A on an A-B diagram) have their compositions mirrored; a row without phases whose
+// system is one component (a pure-component melting point) sits on that composition edge.
+// Rows of other systems, and rows without a temperature or composition, are not drawn.
 export function observation_markers(
   rows: readonly PhaseObservation[],
-  components: readonly string[],
+  [comp_a, comp_b]: readonly string[],
 ): ObservationMarker[] {
   return rows.flatMap((row): ObservationMarker[] => {
     const { T_K: temperature, phases = [], system } = row
     if (temperature == null || !Number.isFinite(temperature)) return []
     if (phases.length === 0) {
-      const edge = system === undefined ? -1 : components.indexOf(system)
+      const edge = [comp_a, comp_b].indexOf(system)
       return edge === -1 ? [] : [{ row, phase: null, composition: edge, temperature }]
     }
+    const mirrored = system === `${comp_b}-${comp_a}`
+    if (!mirrored && system !== `${comp_a}-${comp_b}`) return []
     return phases.flatMap((phase) =>
       phase.x == null || !Number.isFinite(phase.x)
         ? []
-        : [{ row, phase, composition: phase.x, temperature }],
+        : [{ row, phase, composition: mirrored ? 1 - phase.x : phase.x, temperature }],
     )
   })
+}
+
+// Region and lever rule of a diagram at (composition, temperature)
+export function diagram_hit(
+  { regions = [] }: BinaryPhaseDiagram,
+  composition: number,
+  temperature: number,
+): DiagramHit {
+  const region = find_region_at(regions, composition, temperature)
+  return {
+    region,
+    lever_rule: region && calculate_lever_rule(region, composition, temperature),
+  }
+}
+
+// Lever rule as one [phase label, phase fraction, tie-line end composition] row per end
+export function lever_rule_rows(
+  lever_rule: LeverRuleResult,
+  label_of: (id: string) => string,
+): [string, number, number][] {
+  const { left_phase, right_phase, fraction_left, fraction_right } = lever_rule
+  return [
+    [label_of(left_phase), fraction_left, lever_rule.left_composition],
+    [label_of(right_phase), fraction_right, lever_rule.right_composition],
+  ]
+}
+
+// Hover info as copyable text for the clipboard, with the overlay diagram's phase set at the
+// same (x, T) when one is shown
+export function format_hover_info_text(
+  info: PhaseHoverInfo,
+  data: BinaryPhaseDiagram,
+  {
+    overlay = null,
+    temp_unit = `K`,
+    comp_unit = `at%`,
+  }: { overlay?: BinaryPhaseDiagram | null; temp_unit?: TempUnit; comp_unit?: CompUnit } = {},
+): string {
+  const label_of = phase_labeler(data)
+  const [component_a, component_b] = data.components
+  const { composition, temperature } = info
+  const comp = (value: number) => format_composition(value, comp_unit)
+  const overlay_region = overlay && diagram_hit(overlay, composition, temperature).region
+  const lines: string[] = [
+    `Phase: ${region_label(info.region, label_of)}`,
+    ...(overlay
+      ? [`Overlay phase: ${region_label(overlay_region, phase_labeler(overlay))}`]
+      : []),
+    `Temperature: ${format_temperature(temperature, temp_unit)}`,
+    `Composition: ${comp(composition)} ${component_b} (${comp(1 - composition)} ${component_a})`,
+  ]
+  if (info.lever_rule) {
+    lines.push(``, `Lever Rule:`)
+    for (const [phase, fraction, location] of lever_rule_rows(info.lever_rule, label_of)) {
+      lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${comp(location)})`)
+    }
+  }
+  return lines.join(`\n`)
 }

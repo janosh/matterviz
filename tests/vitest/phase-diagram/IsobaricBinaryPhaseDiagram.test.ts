@@ -1,5 +1,5 @@
 import { point_in_polygon, type Vec2 } from '#lib/math.js'
-import { format_hover_info_text, LIQUID_COLOR } from '#lib/phase-diagram/utils.js'
+import { LIQUID_COLOR } from '#lib/phase-diagram/utils.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
 import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
@@ -14,19 +14,18 @@ import {
   mount_sized,
   mouse,
   plot_svg,
+  resize_element,
 } from '../setup'
 import {
-  create_hover_info,
   eutectic,
   eutectic_regions,
-  lever_rule,
   observations,
   pts,
   rect,
   shifted_eutectic,
-  shifted_regions,
 } from './fixtures/test-data'
 import IsobaricBinaryPhaseDiagramHarness from './IsobaricBinaryPhaseDiagramHarness.svelte'
+import SyncedDiagramsHarness from './SyncedDiagramsHarness.svelte'
 
 // With a 500x400 mount and default margins (l=60 r=25 t=25 b=50) the plot area spans
 // x: [60, 475], y: [25, 350]; to_client converts (composition, temperature) -> client coords
@@ -180,7 +179,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelectorAll(`.special-point-marker`)).toHaveLength(1)
     await hover_at(wrapper, 0.3, 750)
     expect(on_phase_hover.mock.lastCall?.[0]).toMatchObject({ region: null, lever_rule: null })
-    expect(tooltip_text(wrapper)).toMatch(/^– Temperature 750 K/)
+    // no regions, so no phase set to name in the header
+    expect(tooltip_text(wrapper)).toMatch(/^Temperature 750 K/)
   })
 
   // every point category gets its own marker: filled circle (invariant, unary), diamond
@@ -246,7 +246,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(info?.region).toBe(eutectic_regions[0]) // the data's own region, not a proxy of it
     expect(info?.composition).toBeCloseTo(0.5, 9)
     expect(info?.temperature).toBeCloseTo(750, 9)
-    expect([info?.lever_rule, info?.overlay, info?.observation]).toEqual([null, null, null])
+    expect([info?.lever_rule, info?.point, info?.observation]).toEqual([null, null, null])
     expect(tooltip_text(wrapper)).toMatch(/^L /)
     expect(wrapper.querySelector(`g.tie-line`)).toBeNull()
     // a single-phase region's tooltip wears its opaque phase color; a two-phase gradient keeps
@@ -392,6 +392,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const overlay: BinaryPhaseDiagram = {
       ...shifted_eutectic,
       temperature_range: [0, 1200],
+      boundaries: [
+        ...shifted_eutectic.boundaries,
+        { kind: `magnetic`, phases: [`A`], points: pts(0, 400, 0.2, 380) },
+      ],
     }
     const on_phase_hover = vi.fn()
     const wrapper = await mount_diagram({
@@ -399,10 +403,16 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       on_phase_hover,
       config: { colors: { overlay: `#123456` } },
     })
-    const overlay_paths = wrapper.querySelectorAll(`.overlay-boundaries path`)
-    expect(overlay_paths).toHaveLength(1)
-    expect(overlay_paths[0].getAttribute(`stroke`)).toBe(`#123456`)
-    expect(overlay_paths[0].getAttribute(`stroke-dasharray`)).toBe(`7,4`)
+    const overlay_paths = [...wrapper.querySelectorAll(`.overlay-boundaries path`)]
+    expect(overlay_paths.map((el) => el.getAttribute(`stroke`))).toEqual([
+      `#123456`,
+      `#123456`,
+    ])
+    // phase boundaries share the overlay dash, a magnetic line keeps its dash-dot
+    expect(overlay_paths.map((el) => el.getAttribute(`stroke-dasharray`))).toEqual([
+      `7,4`,
+      `8,3,2,3`,
+    ])
     expect(wrapper.querySelectorAll(`.phase-regions path`)).toHaveLength(2) // main only
     expect(wrapper.querySelector(`.y-axis`)?.textContent).toContain(`1200`)
 
@@ -414,19 +424,25 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     }
     svg.dispatchEvent(new PointerEvent(`pointermove`, { clientX, clientY, bubbles: true }))
     await tick()
-    const info = on_phase_hover.mock.lastCall?.[0]
-    expect(info?.region).toBe(eutectic_regions[0])
-    expect(info?.overlay?.region).toBe(shifted_regions[1])
-    expect(info?.overlay?.lever_rule?.fraction_right).toBeCloseTo(0.5, 9)
+    expect(on_phase_hover.mock.lastCall?.[0]?.region).toBe(eutectic_regions[0])
     expect(tooltip_text(wrapper)).toContain(`Overlay α + β`)
+    expect(tooltip_text(wrapper)).toContain(
+      `Overlay lever rule: α 50% at 0 at% / β 50% at 100 at%`,
+    )
 
     const legend = [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)]
     expect(legend.map((item) => item.textContent?.trim())).toEqual([
       `Assessment`,
       `Model: test-model`,
     ])
+    // a pinned tooltip drops the overlay's phase set with the overlay (it used to keep a stale
+    // snapshot and throw looking up the overlay's ids in the main diagram)
+    svg.dispatchEvent(mouse(`click`))
+    await tick()
     await legend_click(wrapper, `Model`)
     expect(wrapper.querySelector(`.overlay-boundaries`)).toBeNull()
+    expect(wrapper.querySelector(`.plot-tooltip.pinned`)).not.toBeNull()
+    expect(tooltip_text(wrapper)).not.toContain(`Overlay`)
   })
 
   test(`observations draw status-colored markers, error bars and one isotherm per row`, async () => {
@@ -462,7 +478,12 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     // hovering a marker cites its source; legend entries toggle statuses
     await hover_at(wrapper, 0.45, 520)
     expect(tooltip_text(wrapper)).toContain(`Doe et al., J. Test. 1 (2020) 1`)
-    await legend_click(wrapper, `Observed (Ok)`)
+    expect(
+      [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)].map((item) =>
+        item.textContent?.trim(),
+      ),
+    ).toEqual([`Assessment`, `Observed`, `Observed (unverified)`])
+    await legend_click(wrapper, `Observed`)
     expect(wrapper.querySelectorAll(`.observation-marker`)).toHaveLength(1)
   })
 
@@ -483,6 +504,12 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(source.querySelector(`.remote-cursor`)).toBeNull() // own pointer: tooltip, no crosshair
     svg.dispatchEvent(new PointerEvent(`pointerleave`))
     expect(state.cursor).toBeNull()
+    // moving into the margin clears it too
+    await hover_at(source, 0.25, 750)
+    svg.dispatchEvent(
+      new PointerEvent(`pointermove`, { clientX: 10, clientY: 100, bubbles: true }),
+    )
+    expect(state.cursor).toBeNull()
 
     document.body.innerHTML = ``
     const follower = await mount_diagram({ cursor: { composition: 0.25, temperature: 250 } })
@@ -493,6 +520,37 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       el.classList.contains(`hovered`),
     )
     expect(lit).toEqual([false, true])
+
+    // a boundaries-only diagram follows with the crosshair but has no phase set to name
+    document.body.innerHTML = ``
+    const { regions: _regions, ...boundaries_only } = eutectic
+    const bare = await mount_diagram({
+      data: boundaries_only,
+      cursor: { composition: 0.25, temperature: 250 },
+    })
+    expect(bare.querySelector(`.remote-cursor`)).not.toBeNull()
+    expect(bare.querySelector(`.remote-cursor-label`)).toBeNull()
+  })
+
+  // two live instances bound to one cursor: hovering one draws the crosshair in the other only,
+  // and unmounting the hovered one mid-hover releases the cursor
+  test(`two diagrams bound to one cursor stay in sync`, async () => {
+    const harness = await mount_sized(
+      SyncedDiagramsHarness,
+      { diagrams: [eutectic, shifted_eutectic] },
+      { selector: `.binary-phase-diagram.first`, width, height },
+    )
+    const second = doc_query(`.binary-phase-diagram.second`)
+    await resize_element(second, width, height)
+    await hover_at(harness, 0.25, 550)
+    expect(harness.querySelector(`.remote-cursor`)).toBeNull()
+    expect(second.querySelector(`.remote-cursor`)).not.toBeNull()
+    // 550 K is liquid in the first diagram, α + β under the second's 600 K eutectic
+    expect(second.querySelector(`.remote-cursor-label`)?.textContent?.trim()).toBe(`α + β`)
+    doc_query<HTMLButtonElement>(`[data-testid="hide-first"]`).click()
+    await tick()
+    expect(doc_query(`[data-testid="cursor"]`).textContent).toBe(`none`)
+    expect(second.querySelector(`.remote-cursor`)).toBeNull()
   })
 
   const empty_svg_text = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`
@@ -556,13 +614,14 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
   })
 
   // Invalid data is reported, not half-rendered: unknown phase references would crash the label
-  // and color lookups, a wrong format string means another shape entirely
+  // and color lookups, a wrong format string means another shape entirely. Malformed elements
+  // (a boundary that is not an object) are reported too, never thrown from validation.
   test.each([
     [
       `unknown phase id`,
       { data: { ...eutectic, regions: [{ phases: [`GAS`], vertices: rect(0, 0, 1, 1) }] } },
       /Invalid phase diagram data: regions\[0\] references unknown phase GAS/,
-      true,
+      false,
     ],
     [
       `old format`,
@@ -573,80 +632,44 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
         } as unknown as BinaryPhaseDiagram,
       },
       /format is "binary-phase-diagram\/1"/,
-      true,
+      false,
+    ],
+    [
+      `malformed boundary`,
+      { data: { ...eutectic, boundaries: [null] } as unknown as BinaryPhaseDiagram },
+      /boundaries must hold objects/,
+      false,
+    ],
+    [
+      `boundary without phases or points`,
+      {
+        data: {
+          ...eutectic,
+          boundaries: [{ kind: `liquidus` }],
+        } as unknown as BinaryPhaseDiagram,
+      },
+      /boundaries\[0\] phases must be an array of ids; boundaries\[0\] has 0 points/,
+      false,
     ],
     [
       `overlay of other components`,
       { overlay: { ...shifted_eutectic, components: [`Ag`, `Cu`] as [string, string] } },
       /Invalid overlay diagram: components Ag-Cu differ from Al-Cu/,
-      false,
+      true,
     ],
-  ])(`error banner for %s`, async (_label, props, error, data_missing) => {
+    [
+      `malformed overlay`,
+      { overlay: { format: `x` } as unknown as BinaryPhaseDiagram },
+      /Invalid overlay diagram: format is "x"/,
+      true,
+    ],
+  ])(`error banner for %s`, async (_label, props, error, data_drawn) => {
     const wrapper = await mount_diagram(props)
     await tick()
     expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent ?? ``).toMatch(error)
-    expect(wrapper.textContent?.includes(`Missing phase diagram data`)).toBe(data_missing)
+    // the banner explains bad data: no 'missing data' placeholder on top of it
+    expect(wrapper.textContent).not.toContain(`Missing phase diagram data`)
+    expect(wrapper.querySelector(`svg.binary-phase-diagram`) !== null).toBe(data_drawn)
     expect(wrapper.querySelector(`.overlay-boundaries`)).toBeNull()
-  })
-})
-
-describe(`format_hover_info_text`, () => {
-  const opts = { components: [`Al`, `Cu`] as [string, string] }
-  test.each([
-    { composition: 0.35, unit: `at%`, expected: `Composition: 35 at% Cu (65 at% Al)` },
-    { composition: 0.456, unit: `fraction`, expected: `Composition: 0.456 Cu (0.544 Al)` },
-    { composition: 0, unit: `at%`, expected: `Composition: 0 at% Cu (100 at% Al)` },
-    { composition: 0.333, unit: `at%`, expected: `Composition: 33.3 at% Cu (66.7 at% Al)` },
-  ] as const)(`composition $composition as $unit`, ({ composition, unit, expected }) => {
-    const info = create_hover_info({ composition })
-    expect(format_hover_info_text(info, { ...opts, comp_unit: unit })).toContain(expected)
-  })
-
-  test.each([
-    { temperature: 273.15, unit: `K`, expected: `Temperature: 273 K` },
-    { temperature: 2500.7, unit: `K`, expected: `Temperature: 2501 K` },
-    // hover temperatures are K: 1200 K = 926.85 °C
-    { temperature: 1200, unit: `°C`, expected: `Temperature: 927 °C` },
-  ] as const)(
-    `temperature $temperature K shown in $unit`,
-    ({ temperature, unit, expected }) => {
-      const info = create_hover_info({ temperature })
-      expect(format_hover_info_text(info, { temp_unit: unit })).toContain(expected)
-    },
-  )
-
-  test.each([
-    { unit: `at%`, expected: [`  α: 60.0% (at 20 at%)`, `  β: 40.0% (at 80 at%)`] },
-    { unit: `fraction`, expected: [`  α: 60.0% (at 0.2)`, `  β: 40.0% (at 0.8)`] },
-  ] as const)(`lever rule in $unit`, ({ unit, expected }) => {
-    const info = create_hover_info({ region: eutectic_regions[1], lever_rule })
-    const label_of = (id: string) => ({ A: `α`, B: `β` })[id] ?? id
-    const lines = format_hover_info_text(info, { comp_unit: unit, label_of }).split(`\n`)
-    expect(lines).toContain(`Lever Rule:`)
-    for (const line of expected) expect(lines).toContain(line)
-  })
-
-  test(`line structure: header order, overlay line, blank line before lever rule`, () => {
-    const info = create_hover_info({
-      region: eutectic_regions[1],
-      composition: 0.5,
-      temperature: 1000,
-      lever_rule,
-      overlay: { region: null, lever_rule: null },
-    })
-    const lines = format_hover_info_text(info).split(`\n`)
-    expect(lines.slice(0, 4)).toEqual([
-      `Phase: A + B`, // default labels are the ids
-      `Overlay phase: none`,
-      `Temperature: 1000 K`,
-      `Composition: 50 at% B (50 at% A)`, // default component names
-    ])
-    const lever_idx = lines.indexOf(`Lever Rule:`)
-    expect(lever_idx).toBeGreaterThan(3)
-    expect(lines[lever_idx - 1]).toBe(``)
-    // single-phase hover (no lever_rule) -> no lever rule section, no overlay without one
-    const single = format_hover_info_text(create_hover_info())
-    expect(single).not.toContain(`Lever Rule`)
-    expect(single).not.toContain(`Overlay`)
   })
 })

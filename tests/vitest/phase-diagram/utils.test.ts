@@ -9,7 +9,6 @@ import {
   format_temperature,
   generate_boundary_path,
   generate_region_path,
-  get_phase_stability_range,
   merge_phase_diagram_config,
   named_phase_color,
   PHASE_DIAGRAM_DEFAULTS,
@@ -291,18 +290,3 @@ describe(`convert_temp`, () => {
     },
   )
 })
-
-// oxfmt-ignore
-test.each([
-  [`rectangle`, rect(0, 400, 1, 800), { t_min: 400, t_max: 800 }],
-  [`single vertex`, pts(0.5, 600), { t_min: 600, t_max: 600 }],
-  [`irregular polygon`, pts(0.2, 400, 0.8, 450, 0.7, 650, 0.3, 600), { t_min: 400, t_max: 650 }],
-  [`no vertices`, [], null],
-] as [string, Vec2[], { t_min: number; t_max: number } | null][])(
-  `get_phase_stability_range: %s → %o`,
-  (_desc, vertices, expected) => {
-    expect(get_phase_stability_range({ phases: [`A`], vertices })).toEqual(expected)
-  },
-)
-
-// format_hover_info_text is covered in IsobaricBinaryPhaseDiagram.test.ts

@@ -1,5 +1,5 @@
 import { format_num } from '#lib/labels.js'
-import { array_extent, point_in_polygon, type Vec2 } from '#lib/math.js'
+import { point_in_polygon, type Vec2 } from '#lib/math.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import { line } from 'd3-shape'
 import type {
@@ -7,7 +7,6 @@ import type {
   DiagramRegion,
   LeverRuleResult,
   PhaseDiagramConfig,
-  PhaseHoverInfo,
   TempUnit,
 } from './types'
 
@@ -22,6 +21,10 @@ export function convert_temp(value: number, from: TempUnit, target: TempUnit): n
       ? kelvin - 273.15
       : (kelvin - 273.15) * (9 / 5) + 32
 }
+
+// A temperature difference in K expressed in `unit`: the same in K and °C, 9/5 larger in °F
+export const temp_delta = (kelvin_delta: number, unit: TempUnit): number =>
+  unit === `°F` ? kelvin_delta * (9 / 5) : kelvin_delta
 
 // Defaults for phase diagram configuration
 export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
@@ -295,72 +298,4 @@ export function calculate_lever_rule(
     fraction_left: 1 - fraction_right,
     fraction_right,
   }
-}
-
-// Lever rule as one [phase label, fraction, composition] row per tie-line end
-export function lever_rule_rows(
-  lever_rule: LeverRuleResult,
-  comp_unit: CompUnit,
-  label_of: (id: string) => string,
-): [string, number, string][] {
-  const { left_phase, right_phase, fraction_left, fraction_right } = lever_rule
-  const comp = (val: number) => format_composition(val, comp_unit)
-  return [
-    [label_of(left_phase), fraction_left, comp(lever_rule.left_composition)],
-    [label_of(right_phase), fraction_right, comp(lever_rule.right_composition)],
-  ]
-}
-
-export interface HoverTextOptions {
-  temp_unit?: TempUnit
-  comp_unit?: CompUnit
-  components?: [string, string]
-  region_label?: (region: DiagramRegion | null) => string // main diagram
-  overlay_region_label?: (region: DiagramRegion | null) => string
-  label_of?: (id: string) => string // phase id -> label, for lever-rule rows
-}
-
-// Format hover info as copyable text for clipboard
-export function format_hover_info_text(
-  info: PhaseHoverInfo,
-  options: HoverTextOptions = {},
-): string {
-  const {
-    temp_unit = `K`,
-    comp_unit = `at%`,
-    components: [component_a, component_b] = [`A`, `B`],
-    region_label = (region) => region?.phases.join(` + `) ?? `none`,
-    overlay_region_label = region_label,
-    label_of = (id) => id,
-  } = options
-  const comp = (value: number) => format_composition(value, comp_unit)
-
-  const lines: string[] = [
-    `Phase: ${region_label(info.region)}`,
-    ...(info.overlay ? [`Overlay phase: ${overlay_region_label(info.overlay.region)}`] : []),
-    `Temperature: ${format_temperature(info.temperature, temp_unit)}`,
-    `Composition: ${comp(info.composition)} ${component_b} (${comp(1 - info.composition)} ${component_a})`,
-  ]
-
-  if (info.lever_rule) {
-    lines.push(``, `Lever Rule:`)
-    for (const [phase, fraction, location] of lever_rule_rows(
-      info.lever_rule,
-      comp_unit,
-      label_of,
-    )) {
-      lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`)
-    }
-  }
-
-  return lines.join(`\n`)
-}
-
-// Temperature span of a phase region: its lowest and highest vertex temperatures
-export function get_phase_stability_range(
-  region: DiagramRegion,
-): { t_min: number; t_max: number } | null {
-  if (region.vertices.length === 0) return null
-  const [t_min, t_max] = array_extent(region.vertices.map(([, temp]) => temp))
-  return { t_min, t_max }
 }

@@ -1,13 +1,13 @@
 <script lang="ts">
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
   import { format_num, humanize } from '#lib/labels.js'
+  import { array_extent } from '#lib/math.js'
   import { sanitize_formula, sanitize_html } from '#lib/sanitize.js'
   import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
   import type {
     BinaryPhaseDiagram,
     CompUnit,
     DiagramBoundary,
-    LeverRuleResult,
     PhaseDiagramTooltipProp,
     PhaseHoverInfo,
     TempUnit,
@@ -15,52 +15,49 @@
   import { format_label_html } from '#lib/composition/format.js'
   import {
     boundary_description,
-    OBSERVATION_STATUS_COLORS,
+    diagram_hit,
+    lever_rule_rows,
     phase_colors,
     phase_labeler,
     point_badge,
     provenance_caption,
     region_label,
+    status_color,
   } from './diagram'
-  import {
-    convert_temp,
-    format_composition,
-    get_phase_stability_range,
-    lever_rule_rows,
-  } from './utils'
+  import { convert_temp, format_composition, temp_delta } from './utils'
 
   let {
     hover_info,
     data,
     overlay = null,
-    temperature_unit = `K`,
-    composition_unit = `at%`,
-    colors: colors_prop,
+    temp_unit = `K`,
+    comp_unit = `at%`,
     tooltip,
   }: {
     hover_info: PhaseHoverInfo
     data: BinaryPhaseDiagram
-    // Overlay diagram whose phase set at the cursor is in hover_info.overlay
+    // Overlay diagram whose phase set at the hovered (x, T) is listed too
     overlay?: BinaryPhaseDiagram | null
-    temperature_unit?: TempUnit
-    composition_unit?: CompUnit
-    colors?: Map<string, string> // phase id -> color of the main diagram
+    temp_unit?: TempUnit
+    comp_unit?: CompUnit
     tooltip?: PhaseDiagramTooltipProp
   } = $props()
 
-  const colors = $derived(colors_prop ?? phase_colors(data.phases))
+  const colors = $derived(phase_colors(data.phases))
   const [component_a, component_b] = $derived(data.components)
   const label_of = $derived(phase_labeler(data))
-  const overlay_label_of = $derived(overlay ? phase_labeler(overlay) : label_of)
+  const overlay_hit = $derived(
+    overlay && diagram_hit(overlay, hover_info.composition, hover_info.temperature),
+  )
   const html_label = (label: string) => sanitize_html(format_label_html(label, true))
   const safe_formula = (comp: string) => sanitize_formula(comp, true)
 
   // Temperatures arrive in K; shown in the display unit (or `unit`)
-  const fmt_temp = (kelvin: number, unit: TempUnit = temperature_unit): string =>
+  const fmt_temp = (kelvin: number, unit: TempUnit = temp_unit): string =>
     format_num(convert_temp(kelvin, `K`, unit), `.0f`)
-  const fmt_comp = (value: number) => format_composition(value, composition_unit, false)
+  const fmt_comp = (value: number) => format_composition(value, comp_unit, false)
   // TooltipValue unit of a composition (bare fractions have none)
-  const comp_unit_label = $derived(composition_unit === `fraction` ? `` : composition_unit)
+  const comp_unit_label = $derived(comp_unit === `fraction` ? `` : comp_unit)
 
   // Weight fraction of components[1] from its mole fraction; null without atomic masses
   //   w_B = (x_B M_B) / (x_A M_A + x_B M_B)
@@ -73,7 +70,10 @@
     return denom > 0 ? (frac_b * mass_b) / denom : null
   })
 
-  const stability = $derived(hover_info.region && get_phase_stability_range(hover_info.region))
+  // Temperature span of the hovered region: its lowest and highest vertex temperatures
+  const stability = $derived(
+    hover_info.region && array_extent(hover_info.region.vertices.map(([, temp]) => temp)),
+  )
 
   // Temperatures where a boundary crosses `composition`: interpolated on each segment that
   // spans it (vertices are often far apart)
@@ -101,11 +101,13 @@
     return nearest && { ...nearest, text: boundary_description(nearest.boundary, label_of) }
   })
 
-  const rows_of = (lever_rule: LeverRuleResult | null, labels: (id: string) => string) =>
-    lever_rule && lever_rule_rows(lever_rule, composition_unit, labels)
-  const lever_rows = $derived(rows_of(hover_info.lever_rule, label_of))
+  const lever_rows = $derived(
+    hover_info.lever_rule && lever_rule_rows(hover_info.lever_rule, label_of),
+  )
   const overlay_lever_rows = $derived(
-    rows_of(hover_info.overlay?.lever_rule ?? null, overlay_label_of),
+    overlay &&
+      overlay_hit?.lever_rule &&
+      lever_rule_rows(overlay_hit.lever_rule, phase_labeler(overlay)),
   )
   const lever_colors = $derived(
     hover_info.lever_rule
@@ -120,33 +122,37 @@
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
-    <header>
-      <strong>{@html html_label(region_label(hover_info.region, label_of))}</strong>
-      {#if hover_info.point}
-        <span class="badge">{point_badge(hover_info.point)}</span>
-      {/if}
-    </header>
+    <!-- a boundaries-only diagram has no phase set to name in the header -->
+    {#if data.regions?.length || hover_info.point}
+      <header>
+        {#if data.regions?.length}
+          <strong>{@html html_label(region_label(hover_info.region, label_of))}</strong>
+        {/if}
+        {#if hover_info.point}
+          <span class="badge">{point_badge(hover_info.point)}</span>
+        {/if}
+      </header>
+    {/if}
 
     {#if hover_info.point}
       {@const { description, temperature } = hover_info.point}
       <div class="point-description">
         {@html html_label(description)} at
-        <TooltipValue value={fmt_temp(temperature)} unit={temperature_unit} />
+        <TooltipValue value={fmt_temp(temperature)} unit={temp_unit} />
       </div>
     {/if}
 
     {#if observation}
       {@const { row, phase, composition, temperature } = observation}
       <section class="observation">
-        <span
-          class="status"
-          style:background={OBSERVATION_STATUS_COLORS[row.status] ?? `#757575`}
+        <span class="status" style:background={status_color(row.status)}
           >{humanize(row.status)}</span
         >
         <strong>{row.reaction ?? humanize(row.kind)}</strong>
         <div>
-          T = <TooltipValue value={fmt_temp(temperature)} unit={temperature_unit} />
-          {#if row.sigma_T_K}± {format_num(row.sigma_T_K, `.3~`)} K{/if}
+          T = <TooltipValue value={fmt_temp(temperature)} unit={temp_unit} />
+          {#if row.sigma_T_K}± {format_num(temp_delta(row.sigma_T_K, temp_unit), `.3~`)}
+            {temp_unit}{/if}
         </div>
         {#if phase}
           {@const { name, sigma_x } = phase}
@@ -169,8 +175,8 @@
     <dl>
       <dt>Temperature</dt>
       <dd>
-        <TooltipValue value={fmt_temp(hover_info.temperature)} unit={temperature_unit} />
-        {#if temperature_unit !== `°C`}
+        <TooltipValue value={fmt_temp(hover_info.temperature)} unit={temp_unit} />
+        {#if temp_unit !== `°C`}
           <small
             >(<TooltipValue value={fmt_temp(hover_info.temperature, `°C`)} unit="°C" />)</small
           >
@@ -198,14 +204,14 @@
       {#if stability}
         <dt>Stable</dt>
         <dd>
-          {fmt_temp(stability.t_min)} – {fmt_temp(stability.t_max)}
-          <small>{temperature_unit}</small>
+          {fmt_temp(stability[0])} – {fmt_temp(stability[1])}
+          <small>{temp_unit}</small>
         </dd>
       {/if}
-      {#if hover_info.overlay}
+      {#if overlay && overlay_hit}
         <dt>Overlay</dt>
         <dd class="overlay-phase">
-          {@html html_label(region_label(hover_info.overlay.region, overlay_label_of))}
+          {@html html_label(region_label(overlay_hit.region, phase_labeler(overlay)))}
         </dd>
       {/if}
     </dl>
@@ -225,11 +231,11 @@
         </div>
         <div class="phase-info">
           {#each lever_rows as [phase, fraction, location], idx (idx)}
-            {@const [value, unit] = location.split(` `)}
             <span
               >{@html html_label(phase)}: {format_num(fraction * 100, `.0f`)}
               <small>%</small>
-              <span>at <TooltipValue {value} {unit} /></span></span
+              <span>at <TooltipValue value={fmt_comp(location)} unit={comp_unit_label} /></span
+              ></span
             >
           {/each}
         </div>
@@ -240,21 +246,17 @@
         Overlay lever rule:
         {#each overlay_lever_rows as [phase, fraction, location], idx (idx)}
           {idx ? ` / ` : ``}{@html html_label(phase)}
-          {format_num(fraction * 100, `.0f`)}% at {location}
+          {format_num(fraction * 100, `.0f`)}% at {format_composition(location, comp_unit)}
         {/each}
       </div>
     {/if}
 
     {#if boundary_distance}
       {@const { text, delta_t } = boundary_distance}
-      <!-- a temperature difference is the same in K and °C (°F scales it by 9/5) -->
-      {@const display_delta = Math.abs(
-        convert_temp(hover_info.temperature, `K`, temperature_unit) -
-          convert_temp(hover_info.temperature - delta_t, `K`, temperature_unit),
-      )}
+      {@const display_delta = Math.abs(temp_delta(delta_t, temp_unit))}
       <div class="boundary-info">
         {Math.round(display_delta)}
-        <small>{temperature_unit}</small>
+        <small>{temp_unit}</small>
         {delta_t > 0 ? `above` : `below`}
         {@html html_label(text)}
       </div>

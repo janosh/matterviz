@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { add_alpha } from '#lib/colors/index.js'
   import { create_flash } from '#lib/effects.svelte.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
@@ -7,7 +8,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { format_num, humanize } from '#lib/labels.js'
+  import { format_num } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
@@ -34,15 +35,16 @@
     BOUNDARY_STYLES,
     diagram_errors,
     diagram_name,
+    diagram_hit,
     diagram_points,
-    diagram_regions,
-    OBSERVATION_STATUS_COLORS,
+    format_hover_info_text,
     observation_markers,
     OVERLAY_DASH,
     phase_colors,
     phase_labeler,
-    region_fill_color,
     region_label,
+    status_color,
+    status_label,
     temperature_extent,
   } from './diagram'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
@@ -55,7 +57,6 @@
     type BinaryPhaseDiagram,
     type CompUnit,
     type DiagramCursor,
-    type DiagramHit,
     type DiagramRegion,
     type ObservationMarker,
     type ObservationStatus,
@@ -71,12 +72,10 @@
     format_label_svg,
   } from '#lib/composition/format.js'
   import {
-    calculate_lever_rule,
     compute_label_properties,
     convert_temp,
     find_region_at,
     format_composition,
-    format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
     merge_phase_diagram_config,
@@ -155,7 +154,7 @@
       allow_file_drop?: boolean
       // Takes each dropped file raw instead of the built-in parsing
       on_file_drop?: FileLoadCallback
-      // Called with each dropped file's diagram once it is shown
+      // Called with each dropped file's parsed diagram (invalid ones show the error banner)
       on_file_load?: (data: FileLoadData & { diagram: BinaryPhaseDiagram }) => void
       // range in data units: mole fraction (x) and K (y)
       x_axis?: AxisConfig
@@ -198,9 +197,9 @@
   const overlay_errors = $derived.by(() => {
     if (!overlay) return []
     const errors = diagram_errors(overlay)
-    const [own, other] = [overlay.components?.join(`-`), data.components.join(`-`)]
-    if (valid_data && own !== other) errors.push(`components ${own} differ from ${other}`)
-    return errors
+    if (errors.length || !valid_data) return errors
+    const [own, other] = [overlay, data].map(({ components }) => components.join(`-`))
+    return own === other ? [] : [`components ${own} differ from ${other}`]
   })
   const valid_overlay = $derived(overlay && !overlay_errors.length ? overlay : null)
   const shown_overlay = $derived(show_overlay ? valid_overlay : null)
@@ -230,6 +229,8 @@
   })
 
   const merged_config = $derived(merge_phase_diagram_config(config))
+  // Opacity of region fills, so boundaries and the grid show through
+  const REGION_ALPHA = 0.55
   const overlay_color = $derived(merged_config.colors.overlay)
 
   // Dimensions - use container size directly, no fallback to avoid layout shift
@@ -267,9 +268,8 @@
     y_scale_display.ticks(tick_count(y_axis, PHASE_DIAGRAM_DEFAULTS.y_ticks)),
   )
 
-  const regions = $derived(diagram_regions(data))
+  const regions = $derived(data.regions ?? [])
   const label_of = $derived(phase_labeler(data))
-  const overlay_label_of = $derived(valid_overlay ? phase_labeler(valid_overlay) : label_of)
   const colors = $derived(phase_colors(data.phases))
   const color_of = (id: string): string => colors.get(id) ?? `#b4b4b4`
 
@@ -300,7 +300,7 @@
                 color: color_of(id),
               }))
             : null,
-        fill: phases.length === 1 ? region_fill_color(color_of(phases[0])) : `#c8c8c880`,
+        fill: phases.length === 1 ? add_alpha(color_of(phases[0]), REGION_ALPHA) : `#c8c8c880`,
         x_min,
         x_max,
       }
@@ -336,7 +336,7 @@
             marker,
             svg_x: x_scale(marker.composition),
             svg_y: y_scale(marker.temperature),
-            color: OBSERVATION_STATUS_COLORS[marker.row.status] ?? `#757575`,
+            color: status_color(marker.row.status),
           }))
       : [],
   )
@@ -371,12 +371,12 @@
     }
     marker_statuses.forEach((status, idx) =>
       items.push({
-        label: `Observed (${humanize(status)})`,
+        label: status_label(status),
         visible: show_observations && !hidden_statuses.has(status),
         series_idx: 2 + idx,
         display_style: {
           symbol_type: `Circle`,
-          symbol_color: OBSERVATION_STATUS_COLORS[status] ?? `#757575`,
+          symbol_color: status_color(status),
         },
       }),
     )
@@ -475,7 +475,9 @@
     const svg_y = y_scale(cursor.temperature)
     if (!in_plot(svg_x, svg_y)) return null
     const region = find_region_at(regions, cursor.composition, cursor.temperature)
-    return { svg_x, svg_y, region, label: region_label(region, label_of) }
+    // a boundaries-only diagram has no phase set to name, just the crosshair
+    const label = regions.length ? region_label(region, label_of) : null
+    return { svg_x, svg_y, region, label }
   })
   const remote_region = $derived(remote_cursor?.region ?? null)
 
@@ -488,14 +490,7 @@
     if (!info) return
     try {
       await navigator.clipboard.writeText(
-        format_hover_info_text(info, {
-          temp_unit,
-          comp_unit,
-          components: data.components,
-          region_label: (region) => region_label(region, label_of),
-          overlay_region_label: (region) => region_label(region, overlay_label_of),
-          label_of,
-        }),
+        format_hover_info_text(info, data, { overlay: shown_overlay, temp_unit, comp_unit }),
       )
       copy_feedback_pos.show({ x: event.clientX, y: event.clientY })
     } catch (error) {
@@ -518,16 +513,6 @@
     return best
   }
 
-  const diagram_hit = (
-    diagram: BinaryPhaseDiagram,
-    composition: number,
-    temperature: number,
-  ): DiagramHit => {
-    const region = find_region_at(diagram_regions(diagram), composition, temperature)
-    const lever_rule = region && calculate_lever_rule(region, composition, temperature)
-    return { region, lever_rule }
-  }
-
   function handle_pointer_move(event: PointerEvent & { currentTarget: SVGElement }) {
     const rect = event.currentTarget.getBoundingClientRect()
     const svg_x = event.clientX - rect.left
@@ -539,15 +524,14 @@
     cursor = { composition, temperature }
 
     const hit = diagram_hit(data, composition, temperature)
-    const overlay_hit = shown_overlay
-      ? diagram_hit(shown_overlay, composition, temperature)
-      : null
+    const overlay_region =
+      shown_overlay && diagram_hit(shown_overlay, composition, temperature).region
     const point = show_special_points ? nearest(transformed_points, svg_x, svg_y, 12) : null
     const observation: ObservationMarker | null =
       nearest(shown_markers, svg_x, svg_y, 8)?.marker ?? null
     // a diagram with regions shows no tooltip in a gap; one without (boundaries only) always
     // reports the cursor's (x, T)
-    const nothing_hit = !hit.region && !overlay_hit?.region && !point && !observation
+    const nothing_hit = !hit.region && !overlay_region && !point && !observation
     if (nothing_hit && regions.length > 0) {
       hover_info = null
       hovered_region = null
@@ -560,7 +544,6 @@
       composition,
       temperature,
       position: { x: event.clientX, y: event.clientY },
-      overlay: overlay_hit,
       point,
       observation,
     }
@@ -572,6 +555,10 @@
     if (event.pointerType === `touch`) return
     clear_hover()
   }
+  // A diagram unmounted mid-hover must not leave its synced partners a stuck crosshair
+  $effect(() => () => {
+    if (pointer_inside) cursor = null
+  })
 
   // `e` toggles the export pane, Escape unpins the tooltip
   const keys = viewer_keys(() => ({
@@ -621,20 +608,22 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
-  aria-label={valid_data === undefined
+  aria-label={!source_data
     ? `Missing phase diagram data. Provide diagram data through the data prop.`
-    : `${component_a}-${component_b} binary phase diagram`}
+    : valid_data
+      ? `${component_a}-${component_b} binary phase diagram`
+      : `Invalid phase diagram data`}
   {@attach drop_zone}
 >
   <ViewerNotices>
     {#if input_error}<StatusMessage message={input_error} type="error" />{/if}
   </ViewerNotices>
-  {#if valid_data === undefined}
+  {#if !source_data}
     <EmptyState>
       <h3>Missing phase diagram data</h3>
       <p>Provide diagram data through the <code>data</code> prop.</p>
     </EmptyState>
-  {:else if plot_width > 0 && plot_height > 0}
+  {:else if valid_data && plot_width > 0 && plot_height > 0}
     <ViewerChrome
       {controls_config}
       bind:fullscreen
@@ -721,7 +710,7 @@
                 <stop
                   offset="{stop.offset * 100}%"
                   stop-color={stop.color}
-                  stop-opacity="0.55"
+                  stop-opacity={REGION_ALPHA}
                 />
               {/each}
             </linearGradient>
@@ -776,12 +765,15 @@
       {#if shown_overlay}
         <g class="overlay-boundaries" clip-path={plot_clip} style="pointer-events: none">
           {#each shown_overlay.boundaries as { kind, points }, idx (idx)}
+            <!-- magnetic lines keep their dash-dot so they never read as phase boundaries -->
             <path
               d={boundary_path(points)}
               fill="none"
               stroke={overlay_color}
-              stroke-width={2}
-              stroke-dasharray={OVERLAY_DASH}
+              stroke-width={kind === `magnetic` ? 1.5 : 2}
+              stroke-dasharray={kind === `magnetic`
+                ? BOUNDARY_STYLES.magnetic.dash
+                : OVERLAY_DASH}
               stroke-linecap="round"
               stroke-linejoin="round"
               data-kind={kind}
@@ -1099,7 +1091,7 @@
       />
     {/if}
 
-    {#if remote_cursor}
+    {#if remote_cursor?.label}
       <div
         class="remote-cursor-label"
         style:left="{remote_cursor.svg_x + 8}px"
@@ -1124,9 +1116,8 @@
           hover_info={effective_hover_info}
           {data}
           overlay={shown_overlay}
-          temperature_unit={temp_unit}
-          composition_unit={comp_unit}
-          {colors}
+          {temp_unit}
+          {comp_unit}
           {tooltip}
         />
       </PlotTooltip>

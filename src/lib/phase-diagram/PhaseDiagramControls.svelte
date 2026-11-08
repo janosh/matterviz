@@ -83,7 +83,7 @@
         data.unary_transitions.length,
     ),
   )
-  const temp_units: TempUnit[] = [`K`, `°C`]
+  const temp_units: TempUnit[] = [`K`, `°C`, `°F`]
   const comp_units: [CompUnit, string][] = [
     [`at%`, `at.%`],
     [`fraction`, `mole fraction`],

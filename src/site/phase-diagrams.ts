@@ -46,8 +46,5 @@ const precomputed_map = new Map(
 export const find_precomputed_diagram = (system: string): BinaryPhaseDiagram | undefined =>
   precomputed_map.get(normalize_system_name(system))
 
-// Experimental observations of a binary system: its own rows plus its pure components' ones
-export const observations_for = ([comp_a, comp_b]: readonly string[]): PhaseObservation[] =>
-  (observations as PhaseObservation[]).filter(({ system }) =>
-    [`${comp_a}-${comp_b}`, comp_a, comp_b].includes(system ?? ``),
-  )
+// Experimental observations of every demo system: observation_markers keeps a diagram's own
+export const binary_observations = observations as PhaseObservation[]
