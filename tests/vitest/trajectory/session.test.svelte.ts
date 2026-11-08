@@ -803,11 +803,13 @@ describe(`controller and playback`, () => {
     expect(session.current_frame?.step).toBe(10)
   })
 
-  it(`advances only after read and render, rejects stale acknowledgements and pauses on failure`, async () => {
+  it(`advances only after read and render, rejects stale acknowledgements and skips failures`, async () => {
     const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
     const { run, pending, reads, resolve_next } = make_async_run(frames(4))
     const { host, session, errors } = make_session({ run, fps: 30, wait_for_render: true })
+    const skipped = `Playback skipped unreadable frame 3: Read failed`
+    const state = () => [...errors, ...session.skip_warnings, session.player.is_playing]
     const tick = (time: number) => {
       raf_callbacks.at(-1)?.(time)
       flushSync()
@@ -851,13 +853,70 @@ describe(`controller and playback`, () => {
     await expect(session.wait_for_frame(2, new AbortController().signal)).rejects.toThrow(
       `Read failed`,
     )
-    expect(errors).toEqual([`2:Read failed`])
-    expect(session.player.is_playing).toBe(false)
+    expect(state()).toEqual([skipped, true]) // stepped past it, no render to wait for
+    tick(568)
+    expect([host.index, reads]).toEqual([3, [1, 2, 3]])
+    host.index = 2 // a seek to it, even during playback, pauses on the error instead
+    flushSync()
+    pending[0].reject(new Error(`Read failed`))
+    await resolve_next()
+    expect(state()).toEqual([`2:Read failed`, skipped, false])
+  })
+
+  const steps = (count: number) => Array.from({ length: count }, (_unused, idx) => idx + 1)
+  it.each([
+    { bad: [2], visited: [1, 2, 3, 0, 1, 2, 3, 0], shown: [1, 1, 3, 0, 1, 1, 3, 0] },
+    // A readable frame between skips resets the cap
+    {
+      bad: steps(11).map((idx) => 2 * idx - 1),
+      visited: steps(22),
+      shown: steps(22).map((idx) => idx - (idx % 2)),
+    },
+    // Unreadable frames in a row past the cap suggest a failing source: pause on the error
+    { bad: steps(11), visited: [...steps(11), 11], shown: Array(12).fill(0), capped: true },
+  ])(`playback skips unreadable frames once each: $bad`, ({ bad, visited, shown, capped }) => {
+    const raf_callbacks = stub_raf()
+    vi.spyOn(performance, `now`).mockReturnValue(0)
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {}) // failed prefetches
+    const run = trajectory_from_frames(frames(Math.max(...bad) + 2))
+    const { read_frame } = run
+    run.read_frame = (idx, ...args) => {
+      if (bad.includes(idx)) throw new Error(`non-finite ${idx}`)
+      return read_frame(idx, ...args)
+    }
+    const { host, session, errors } = make_session({ run, fps: 10 })
+    const trace: [number, number | undefined][] = []
+    const tick = () => {
+      raf_callbacks.at(-1)?.((trace.length + 1) * 100)
+      flushSync()
+      trace.push([host.index, session.scene_frame?.idx])
+    }
     session.player.play()
     flushSync()
-    expect(reads).toEqual([1, 2, 2])
-    await resolve_next()
-    expect(session.current_frame?.step).toBe(20)
+    for (const _step of visited) tick()
+    // Skipped frames keep showing the last readable one; looping passes them without repeats
+    expect(trace).toEqual(visited.map((idx, step) => [idx, shown[step]]))
+    expect(session.skip_warnings).toEqual(
+      bad
+        .slice(0, capped ? 10 : undefined)
+        .map((idx) => `Playback skipped unreadable frame ${idx + 1}: non-finite ${idx}`),
+    )
+    // Failed prefetches log until playback skips the frame (a capped streak only logs its first)
+    expect(warn.mock.calls.map(([message]) => message)).toEqual(
+      bad.slice(0, capped ? 1 : undefined).map((idx) => `Prefetch of frame ${idx} failed:`),
+    )
+    expect(errors).toEqual(capped ? [`11:non-finite 11`] : [])
+    expect(session.player.is_playing).toBe(!capped)
+    if (capped) {
+      session.player.play() // resuming retries the frame and steps past it with a fresh cap
+      flushSync()
+      tick()
+      expect(trace.at(-1)).toEqual([12, 12])
+      expect([session.skip_warnings.length, session.player.is_playing]).toEqual([11, true])
+    }
+    host.run = trajectory_from_frames(frames(2)) // a new run starts without them
+    flushSync()
+    expect(session.skip_warnings).toEqual([])
   })
 
   it.each([`abort`, `seek`, `replace`, `dispose`, `settings`] as const)(

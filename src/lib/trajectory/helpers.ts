@@ -447,6 +447,31 @@ export class NonFiniteFrameError extends Error {
   }
 }
 
+// Eager decode skipping non-finite frames (ASE's cause) with one warning; a lone frame throws
+export function decode_finite_frames(
+  frame_count: number,
+  decode: (frame_idx: number) => TrajectoryFrame,
+  format: string,
+  warn: WarnFn,
+): TrajectoryFrame[] {
+  const frames: TrajectoryFrame[] = []
+  const skipped: string[] = []
+  for (let frame_idx = 0; frame_idx < frame_count; frame_idx++) {
+    try {
+      frames.push(decode(frame_idx))
+    } catch (error) {
+      if (!(error instanceof Error) || frame_count === 1) throw error
+      if (
+        !(error instanceof NonFiniteFrameError || error.cause instanceof NonFiniteFrameError)
+      )
+        throw error
+      skipped.push(error.message)
+    }
+  }
+  if (skipped.length > 0) warn(`Skipping ${skipped.length} ${format} frame(s): ${skipped[0]}`)
+  return frames
+}
+
 // Whether the scanned line reads `symbol x y z`: a symbol (<= 3 chars, non-numeric) followed by
 // three finite coordinates (an `Infinity` line, like a `nan` one, forms no frame). Coordinates
 // go through the same strict parser as the frame reader so a Fortran `1.0D-3` token counts.

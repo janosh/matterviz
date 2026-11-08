@@ -3,7 +3,6 @@
 import type { ElementSymbol } from '#lib/element/types.js'
 import { symbol_to_atomic_number } from '#lib/element/helpers.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import * as math from '#lib/math.js'
 import { LineScanner } from '#lib/structure/parsers/shared.js'
 import { parse_vasp_header } from '#lib/structure/parsers/vasp-header.js'
@@ -11,6 +10,7 @@ import {
   create_plot_row_frame,
   create_trajectory_frame,
   expand_ion_types,
+  decode_finite_frames,
   holds_numbers,
   NonFiniteFrameError,
   TextLines,
@@ -100,7 +100,7 @@ function read_positions(
 // last frames'. A frame cut off by the end of the file (missing lines, or a half-written final
 // line) is a writer still appending: it is dropped with a warning, as are the trailing frames
 // of an MD blow-up (`nan`/`inf` from its onset on; the first frame is kept, failing its read).
-// A malformed coordinate line anywhere else is corruption and fails that frame's read.
+// A malformed coordinate line anywhere else (the last frame's too) fails that frame's read.
 function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[] {
   // title, scale, 3 lattice rows, symbols, counts, one config marker and one ion = 9 lines
   if (lines.count < 9) throw new Error(`XDATCAR file too short`)
@@ -168,8 +168,7 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
         `Dropping truncated final XDATCAR frame ${last.step}: partial coordinate line ${lines.count} "${lines.line(lines.count - 1)}"`,
       )
     } catch (error) {
-      if (!(error instanceof NonFiniteFrameError)) throw error
-      if (frames.length === 1) break
+      if (!(error instanceof NonFiniteFrameError) || frames.length === 1) break
       ;[n_non_finite, onset] = [n_non_finite + 1, error.message]
     }
     frames.pop()
@@ -250,17 +249,6 @@ export function parse_vasp_xdatcar(
   warn: WarnFn,
 ): ParsedTrajectory {
   const { frame_count, decode } = open_xdatcar_frames(TextLines.of(content), warn)
-  const frames: TrajectoryFrame[] = []
-  const non_finite: string[] = []
-  for (let frame_idx = 0; frame_idx < frame_count; frame_idx++) {
-    try {
-      frames.push(decode(frame_idx))
-    } catch (error) {
-      if (!(error instanceof NonFiniteFrameError) || frame_count === 1) throw error
-      non_finite.push(error.message)
-    }
-  }
-  if (non_finite.length > 0)
-    warn(`Skipping ${non_finite.length} XDATCAR frame(s): ${non_finite[0]}`)
+  const frames = decode_finite_frames(frame_count, decode, `XDATCAR`, warn)
   return { format: `xdatcar`, frames, metadata: {} }
 }

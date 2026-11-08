@@ -452,16 +452,18 @@ describe(`MatterViz Extension`, () => {
     // every summary field must survive structured cloning into the webview
     expect(() => structuredClone(response.run_summary)).not.toThrow()
     await run?.properties.done
-    type StreamMessage = { command: string; file_path: string; rows: Row[]; complete: boolean }
+    type Streamed = { command: string; request_id: string; rows: Row[]; complete: boolean }
     // each panel gets every row exactly once: the summary's rows, then its own stream
     for (const webview of [mock_webview, webview_b]) {
       const messages = webview.postMessage.mock.calls.map(([message]) => message)
-      const stream_calls = (messages as StreamMessage[]).filter(
+      const stream_calls = (messages as Streamed[]).filter(
         (message) => message.command === `plot_metadata_stream`,
       )
       expect(stream_calls.length).toBeGreaterThan(webview === mock_webview ? 1 : 0)
-      expect(stream_calls.at(-1)).toMatchObject({ file_path, complete: true })
-      expect(stream_calls.every((message) => message.file_path === file_path)).toBe(true)
+      // stamped with the request that opened the run, which the webview matches on
+      const request_id = webview === mock_webview ? `large-request` : `request-b`
+      expect(stream_calls.at(-1)).toMatchObject({ request_id, complete: true })
+      expect(stream_calls.every((message) => message.request_id === request_id)).toBe(true)
       expect(
         stream_calls.slice(0, -1).every(({ rows, complete }) => rows.length > 0 && !complete),
       ).toBe(true)
@@ -530,7 +532,8 @@ describe(`MatterViz Extension`, () => {
   })
 
   // Simultaneous opens share one read. A file change while it loads evicts the load, so the
-  // re-request after fileUpdated indexes the new bytes instead of receiving the stale run
+  // re-request after fileUpdated indexes the new bytes instead of receiving the stale run. A
+  // stale load landing after the re-request's, or after its panel closed, installs no forwarder
   test(`concurrent large-file requests share one load that a file change evicts`, async () => {
     const file_path = `/test/live.extxyz`
     const frames = (count: number) =>
@@ -538,6 +541,7 @@ describe(`MatterViz Extension`, () => {
     const size = LARGE_FILE_THRESHOLD + 1 // so the fileUpdated re-read only sends a marker
     mock_vscode.workspace.fs.stat.mockResolvedValue({ size, type: 1 })
     const panels = [await render_file(file_path), await render_file(file_path)]
+    panels.push(await render_file(file_path))
     const loads: ((bytes: Uint8Array) => void)[] = []
     mock_vscode.workspace.fs.readFile.mockImplementation(
       () => new Promise((resolve) => loads.push(resolve)),
@@ -549,15 +553,27 @@ describe(`MatterViz Extension`, () => {
     fire_event(mock_file_system_watcher.onDidChange) // evicts the load before fileUpdated goes out
     const new_request = handle_msg(large_file_msg(file_path, `new`), panels[0].webview)
     await vi.waitFor(() => expect(loads).toHaveLength(2))
-    loads[0](frames(1))
+    fire_event(panels[2].onDidDispose)
     loads[1](frames(2))
-    await Promise.all([...old_requests, new_request])
-    const frame_count_of = (request_id: string) =>
-      panels[0].webview.postMessage.mock.calls
+    await new_request
+    loads[0](frames(1))
+    await Promise.all(old_requests)
+    const replies_of = ({ webview }: (typeof panels)[number]) =>
+      webview.postMessage.mock.calls
         .map(([message]) => message)
-        .find((message) => message.request_id === request_id && message.run_summary)
-        ?.run_summary.frame_count
-    expect([frame_count_of(`old`), frame_count_of(`new`)]).toEqual([2, 4])
+        .filter(({ command }) => command === `large_file_response`)
+        .map(({ request_id, run_summary, error }) => [
+          request_id,
+          run_summary?.frame_count ?? error,
+        ])
+    const superseded = `Large-file request old was superseded or its panel closed`
+    expect(replies_of(panels[0])).toEqual([
+      [`new`, 4],
+      [`old`, superseded],
+    ])
+    expect(replies_of(panels[1])).toEqual([[`old`, 2]])
+    expect(replies_of(panels[2])).toEqual([[`old`, superseded]])
+    expect(webview_run_streams.has(panels[2].webview)).toBe(false)
     expect(mock_vscode.workspace.fs.readFile).toHaveBeenCalledTimes(2)
     await handle_msg(frame_msg(file_path, 3), panels[1].webview)
     expect(panels[1].webview.postMessage).toHaveBeenLastCalledWith(

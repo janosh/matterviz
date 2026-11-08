@@ -212,22 +212,15 @@ export const decode_text_chunks = async (
   return chunks.length > 0 ? chunks : [``]
 }
 
-// A text payload as one string, or the Blob itself when it is past the string limit and the
-// caller reads large text in chunks (the trajectory loaders, see decode_text_chunks)
-export const text_or_blob = async (
-  blob: Blob,
-  keep_large: boolean,
-): Promise<string | Blob> => {
-  if (blob.size <= MAX_STRING_CHARS) {
-    const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
-    return text_encoding_of(head) === `utf-8`
-      ? blob.text()
-      : (await decode_text_chunks(blob))[0]
+// Text of `blob` (UTF-8, or UTF-16 by its BOM) as one string
+const blob_text = async (blob: Blob): Promise<string> => {
+  if (blob.size > MAX_STRING_CHARS) {
+    throw new Error(
+      `Text payload of ${blob.size} bytes exceeds the ${MAX_STRING_CHARS}-character JS string limit; only XYZ/EXTXYZ, LAMMPS dump and XDATCAR trajectories open past it`,
+    )
   }
-  if (keep_large) return blob
-  throw new Error(
-    `Text payload of ${blob.size} bytes exceeds the ${MAX_STRING_CHARS}-character JS string limit; only XYZ/EXTXYZ, LAMMPS dump and XDATCAR trajectories open past it`,
-  )
+  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
+  return text_encoding_of(head) === `utf-8` ? blob.text() : (await decode_text_chunks(blob))[0]
 }
 
 // Byte size of loaded content, for the file-size readout in info panes. Strings are measured
@@ -259,10 +252,10 @@ export const hdf5_compression_format = (filename: string): CompressionFormat | n
 }
 
 interface ClassifyPayloadOptions {
-  // Keep HDF5 payloads (by name or magic bytes) as a Blob so h5wasm can read them lazily
-  // instead of materializing the whole file, and likewise text past one JS string, which the
-  // indexed text readers decode in chunks (trajectory viewers)
-  hdf5_as_blob?: boolean
+  // Keep HDF5 (by name or magic bytes) and text payloads as a Blob for readers that take one
+  // (trajectory viewers, the parse worker): h5wasm reads HDF5 lazily, text decodes where it is
+  // parsed (off the main thread) and past one JS string in chunks (see decode_text_chunks)
+  keep_blob?: boolean
   // Fetch can remove named gzip/deflate wrappers, even when CORS hides Content-Encoding, so
   // HTTP payloads skip a named layer their bytes no longer carry; dropped files must hold the
   // wrappers they declare. Either way gzip bytes inflate whatever the name says.
@@ -281,8 +274,8 @@ export const MAX_WRAPPER_LAYERS = 8
 
 // Every loader funnels here: inflate each browser-decompressible wrapper (the compressed bytes
 // stream straight out of the Blob, never buffered), then classify the payload the way parsers
-// expect: HDF5 as a Blob when asked, known binary formats as ArrayBuffer so a lossy UTF-8
-// decode cannot corrupt them, everything else as text. `names` are candidate filenames
+// expect: HDF5 and text as a Blob when asked, known binary formats as ArrayBuffer so a lossy
+// UTF-8 decode cannot corrupt them, everything else as text. `names` are candidate filenames
 // (dropped/header name first, URL basename after); the first, stripped of its wrapper
 // extension, names the result.
 export async function classify_payload(
@@ -290,7 +283,7 @@ export async function classify_payload(
   names: string[],
   options: ClassifyPayloadOptions = {},
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob>> {
-  const { hdf5_as_blob = false, wrappers_may_be_decoded = false, source, signal } = options
+  const { keep_blob = false, wrappers_may_be_decoded = false, source, signal } = options
   const head = (count: number) => blob.slice(0, count).arrayBuffer()
   let payload_names = [...names]
   let wrappers_optional = wrappers_may_be_decoded
@@ -333,7 +326,7 @@ export async function classify_payload(
   signal?.throwIfAborted()
   const magic = await head(8)
   if (
-    hdf5_as_blob &&
+    keep_blob &&
     (payload_names.some(is_hdf5_filename) || has_hdf5_magic(new Uint8Array(magic)))
   ) {
     const filename =
@@ -344,7 +337,7 @@ export async function classify_payload(
   // dropped name): matching any candidate let a URL basename force a text entry to ArrayBuffer
   const is_binary = is_binary_payload(payload_names[0] ?? ``, magic)
   return {
-    content: is_binary ? await blob.arrayBuffer() : await text_or_blob(blob, hdf5_as_blob),
+    content: is_binary ? await blob.arrayBuffer() : keep_blob ? blob : await blob_text(blob),
     filename: payload_names[0],
     byte_size: blob.size,
   }
@@ -354,9 +347,9 @@ export async function classify_payload(
 export const decompress_file = (file: File): Promise<LoadedPayload<string | ArrayBuffer>> =>
   classify_payload(file, [file.name]) as Promise<LoadedPayload<string | ArrayBuffer>>
 
-// Like decompress_file, but HDF5 payloads stay Blob-backed for h5wasm
+// Like decompress_file, but HDF5 and text payloads stay Blob-backed (see keep_blob)
 export const decompress_trajectory_file = (
   file: File,
   signal?: AbortSignal,
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob>> =>
-  classify_payload(file, [file.name], { hdf5_as_blob: true, signal })
+  classify_payload(file, [file.name], { keep_blob: true, signal })

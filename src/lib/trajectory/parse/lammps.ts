@@ -596,8 +596,8 @@ function create_lammps_reader(
       if (start < non_finite.start) Object.assign(non_finite, { first: error.message, start })
       non_finite.count++
     }
-    // A sampled frame may hide a non-finite line eager skips it for (the partial frame that
-    // starts a blow-up), so the last kept frame is read in full where the run's shape hinges on it
+    // A sampled frame may hide a non-finite line eager skips it for (a blow-up's partial frame),
+    // so the last kept frame is read in full; other corruption there fails only its own read
     const last_hides_non_finite = (): SkippedLammpsFrameError | null => {
       if (sites !== `sample` || starts.length < 2) return null
       const resume = idx
@@ -605,8 +605,7 @@ function create_lammps_reader(
         read_frame(starts[starts.length - 1], true, `none`)
         return null
       } catch (error) {
-        if (!(error instanceof SkippedLammpsFrameError)) throw error
-        return error
+        return error instanceof SkippedLammpsFrameError ? error : null
       } finally {
         idx = resume
       }

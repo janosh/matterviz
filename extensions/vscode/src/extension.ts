@@ -69,8 +69,8 @@ export const active_watcher_subscribers = new Map<string, Set<WebviewLike>>()
 // Stored as the loading promise, so concurrent requests share one read of the file and a file
 // change (dispose_run) evicts a load still in flight instead of letting its stale run land.
 export const active_runs = new Map<string, Promise<TrajectoryRun>>()
-// Per webview, what stops forwarding its host-served run's plot rows and warnings: replaced
-// when the webview requests a run again (it reloaded or reopened the file), called on panel close
+// Per webview, what stops forwarding its host-served run's rows and warnings (or cancels its
+// load in flight): replaced when the webview requests a run again, called on panel close
 export const webview_run_streams = new Map<WebviewLike, () => void>()
 // Track auto-render timers to clear them on deactivate
 export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -352,10 +352,18 @@ export const handle_msg = async (
     try {
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
+      // A newer request or panel close cancels this load: a stale run must not take its place
+      webview_run_streams.get(webview)?.()
+      let cancelled = false
+      webview_run_streams.set(webview, () => (cancelled = true))
       // Panels on one file share its load (see active_runs)
       const run = await (active_runs.get(file_path) ?? load_run(file_path))
-      webview_run_streams.get(webview)?.()
-      webview_run_streams.set(webview, stream_run_updates(run, file_path, webview))
+      if (cancelled) {
+        const error = `Large-file request ${request_id} was superseded or its panel closed`
+        webview.postMessage({ command, request_id, error })
+        return
+      }
+      webview_run_streams.set(webview, stream_run_updates(run, request_id, webview))
       webview.postMessage({ command, request_id, run_summary: summarize_run(run) })
     } catch (error) {
       const error_message = to_error(error).message
@@ -413,19 +421,19 @@ export const handle_msg = async (
 // the warnings its later frame reads add. Returns what stops both.
 function stream_run_updates(
   run: TrajectoryRun,
-  file_path: string,
+  request_id: string,
   webview: WebviewLike,
 ): () => void {
   const post = (rows: TrajectoryRun[`properties`][`rows`], complete: boolean): void =>
     post_to_webview(
       webview,
-      { command: `plot_metadata_stream`, file_path, rows: [...rows], complete },
+      { command: `plot_metadata_stream`, request_id, rows: [...rows], complete },
       `plot_metadata_stream`,
     )
   const unsubscribe_warnings = post_new_warnings(run, (warnings) =>
     post_to_webview(
       webview,
-      { command: `trajectory_warnings`, file_path, warnings },
+      { command: `trajectory_warnings`, request_id, warnings },
       `trajectory_warnings`,
     ),
   )

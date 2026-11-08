@@ -129,18 +129,19 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     )
   })
 
+  // Text stays a Blob too (the parse worker decodes it); only decompress_file decodes it here
   test.each([
     [`plain`, `structure.xyz`, false],
     [`gzipped`, `structure.xyz.gz`, true],
-  ])(`decodes a %s non-HDF5 trajectory File to text`, async (_label, filename, gzipped) => {
+  ])(`keeps a %s non-HDF5 trajectory File Blob-backed`, async (_label, filename, gzipped) => {
     const text = `2\ncomment\nH 0 0 0\nH 1 0 0`
     const bytes = encode(text)
     const file = new File([gzipped ? await compress(bytes) : bytes], filename)
-    expect(await decompress_trajectory_file(file)).toEqual({
-      content: text,
-      filename: `structure.xyz`,
-      byte_size: bytes.length,
-    })
+    const { content, ...rest } = await decompress_trajectory_file(file)
+    expect(rest).toEqual({ filename: `structure.xyz`, byte_size: bytes.length })
+    if (!gzipped) expect(content).toBe(file)
+    expect(await (content as Blob).text()).toBe(text)
+    expect((await decompress_file(file)).content).toBe(text)
   })
 
   // Text past one JS string stays a Blob for chunked trajectory readers; other loaders refuse it
@@ -254,11 +255,13 @@ describe(`decompress_file / decompress_trajectory_file`, () => {
     expect(await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`])).toEqual(
       entry,
     )
-    expect(
-      await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`], {
-        hdf5_as_blob: true,
-      }),
-    ).toEqual(entry)
+    const kept = await classify_payload(new Blob([zip]), [`bundle.zip`, `download.h5`], {
+      keep_blob: true,
+    })
+    expect([kept.filename, await (kept.content as Blob).text()]).toEqual([
+      `a.cif`,
+      `data_zipped`,
+    ])
     // and a payload whose own name IS binary still comes back as bytes
     const traj = await classify_payload(new Blob([encode(`x`)]), [`run.traj`, `page.cif`])
     expect(traj.content).toBeInstanceOf(ArrayBuffer)

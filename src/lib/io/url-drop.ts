@@ -66,10 +66,10 @@ export const load_trajectory_from_url = (
 async function load_url_content(
   url: string,
   callback: TrajectoryFileLoadCallback,
-  hdf5_as_blob: boolean,
+  keep_blob: boolean,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { content, filename, source_filename } = await fetch_payload(url, hdf5_as_blob, signal)
+  const { content, filename, source_filename } = await fetch_payload(url, keep_blob, signal)
   return callback(content, filename, { source_filename, source_url: url })
 }
 
@@ -77,7 +77,7 @@ async function load_url_content(
 // classify_payload); compressed payloads are inflated by their bytes, not their name.
 export async function fetch_payload(
   url: string,
-  hdf5_as_blob: boolean,
+  keep_blob: boolean,
   signal?: AbortSignal,
 ): Promise<LoadedPayload<string | ArrayBuffer | Blob> & FileLoadMeta> {
   // Strip query string/hash before basename/extension detection so pre-signed
@@ -95,7 +95,7 @@ export async function fetch_payload(
   // Classified from one Blob so binary payloads never need a second fetch, and like a dropped
   // file a gzip body behind a text name (POSCAR, run.xyz) inflates by its magic bytes
   const payload = await classify_payload(await resp.blob(), [source_filename, url_basename], {
-    hdf5_as_blob,
+    keep_blob,
     wrappers_may_be_decoded: true,
     source: url,
     signal,

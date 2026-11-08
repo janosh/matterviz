@@ -11,6 +11,7 @@ import {
   checked_site_forces,
   convert_atomic_numbers,
   create_plot_row_frame,
+  decode_finite_frames,
   NonFiniteFrameError,
   values_per_sample,
 } from '#lib/trajectory/helpers.js'
@@ -618,18 +619,6 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
 // A mid-run frame with non-finite positions is skipped with a warning, like trailing ones.
 export function parse_ase_trajectory(buffer: ArrayBuffer, warn: WarnFn): ParsedTrajectory {
   const { frame_count, decode } = open_ase_frames(buffer, warn)
-  const frames: TrajectoryFrame[] = []
-  const non_finite: string[] = []
-  for (let frame_idx = 0; frame_idx < frame_count; frame_idx++) {
-    try {
-      frames.push(decode(frame_idx))
-    } catch (error) {
-      const skip = error instanceof Error && error.cause instanceof NonFiniteFrameError
-      if (!skip || frame_count === 1) throw error
-      non_finite.push(error.message)
-    }
-  }
-  if (non_finite.length > 0)
-    warn(`Skipping ${non_finite.length} ASE frame(s): ${non_finite[0]}`)
+  const frames = decode_finite_frames(frame_count, decode, `ASE`, warn)
   return { format: `ase`, frames, metadata: {} }
 }

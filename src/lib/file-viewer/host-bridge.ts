@@ -100,19 +100,15 @@ export async function request_large_file_content(
       `Cannot stream ${filename}: no host bridge is available (acquireVsCodeApi returned nothing).`,
     )
   }
-  // Plot rows and grown warnings arrive after the summary; they are routed to THIS run
-  // instance (matched by the file path the host stamps on them) until it is disposed
+  // Plot rows and grown warnings arrive after the summary, stamped with its request_id; they
+  // are routed to THIS run instance until it is disposed
   let stop_host_stream = (): void => {}
-  const bind_host_stream = (run: HostRun): TrajectoryRun => {
-    const handler = (event: MessageEvent<HostToWebviewMessage | undefined>): void => {
+  const bind_host_stream = (run: HostRun, request_id: string): TrajectoryRun => {
+    const handler = (event: MessageEvent<HostReply | undefined>): void => {
       const message = event.data
-      if (message?.command === `trajectory_warnings` && message.file_path === file_path)
-        run.receive_warnings(message.warnings)
-      else if (
-        message?.command === `plot_metadata_stream` &&
-        message.file_path === file_path &&
-        !run.properties.complete
-      )
+      if (message?.request_id !== request_id) return
+      if (message.command === `trajectory_warnings`) run.receive_warnings(message.warnings)
+      else if (message.command === `plot_metadata_stream` && !run.properties.complete)
         run.properties.deliver(message.rows, message.complete, `Host`)
     }
     globalThis.addEventListener(`message`, handler)
@@ -137,6 +133,7 @@ export async function request_large_file_content(
                 request_host_frame(file_path, filename, frame_idx, signal, channels),
               () => stop_host_stream(),
             ),
+            data.request_id,
           ),
         )
       } else reject(new TypeError(`Malformed large-file response`))

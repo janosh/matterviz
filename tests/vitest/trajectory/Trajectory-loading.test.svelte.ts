@@ -232,6 +232,17 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     },
   )
 
+  test(`a parse error after the payload was transferred to the worker keeps its message`, async () => {
+    stub_worker((data) => {
+      if (data instanceof ArrayBuffer) structuredClone(data, { transfer: [data] })
+      return Promise.reject(new Error(`unreadable frame table`))
+    })
+    const on_error = vi.fn<(data: TrajHandlerData) => void>()
+    mount_viewer({ source: { data: new ArrayBuffer(8), filename: `relax.traj` }, on_error })
+    await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
+    expect(on_error.mock.calls[0][0].error_msg).toContain(`unreadable frame table`)
+  })
+
   test(`parse errors render TrajectoryError with the on_error payload and dismiss`, async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]).buffer
     const on_error = vi.fn<(data: TrajHandlerData) => void>()

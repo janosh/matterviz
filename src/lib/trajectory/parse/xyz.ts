@@ -22,6 +22,7 @@ import {
   elem_symbol_from_token,
   holds_numbers,
   iter_xyz_frames,
+  decode_finite_frames,
   NonFiniteFrameError,
   parse_extxyz_columns,
   TextLines,
@@ -721,20 +722,11 @@ export function parse_xyz_trajectory(
     }
     specs.push({ start: 0, num_atoms, comment: lines.line(1) ?? ``, end: num_atoms + 2 })
   } else for (const message of dropped) collector.warn(message)
-  const frames: TrajectoryFrame[] = []
-  const non_finite: string[] = []
-  for (const [frame_idx, spec] of specs.entries()) {
+  const decode = (frame_idx: number): TrajectoryFrame => {
+    const spec = specs[frame_idx]
     const frame_label = `frame ${display_idx(frame_idx)} (line ${spec.start + 1})`
-    try {
-      frames.push(
-        build_xyz_frame(lines, spec, { frame_label, default_step: frame_idx }, collector),
-      )
-    } catch (error) {
-      if (!(error instanceof NonFiniteFrameError) || specs.length === 1) throw error
-      non_finite.push(error.message)
-    }
+    return build_xyz_frame(lines, spec, { frame_label, default_step: frame_idx }, collector)
   }
-  if (non_finite.length > 0)
-    collector.warn(`Skipping ${non_finite.length} XYZ frame(s): ${non_finite[0]}`)
+  const frames = decode_finite_frames(specs.length, decode, `XYZ`, collector.warn)
   return { format: `xyz`, frames, metadata: extxyz_run_metadata(specs[0]?.comment) }
 }

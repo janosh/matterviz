@@ -34,6 +34,7 @@ import {
   make_crystal,
   read_binary_test_file,
   read_maybe_gz,
+  utf16_bom,
 } from '../test-fixtures'
 
 // Spy defaulting to the real parser so a test can return a zero-atom structure (cell-only CIF)
@@ -221,12 +222,12 @@ test.each([
   expect(json_parse.mock.calls.filter(([text]) => text === content)).toHaveLength(1)
 })
 
-// .dat payloads stay bytes through classification (is_binary_payload), so the parser decodes
-// them itself: by their byte-order mark, as UTF-16 written by Windows PowerShell redirection
-test(`a UTF-16 text buffer under a binary-classified name decodes by its BOM`, async () => {
-  const text = `\uFEFF${JSON.stringify({ x: [1, 2, 3], y: [4, 5, 6] })}`
-  const utf16 = new Uint16Array(Array.from(text, (char) => char.charCodeAt(0)))
-  const result = await parse_file_content(utf16.buffer, `xy.dat`)
+// .dat payloads stay bytes through classification (is_binary_payload) and text reaches the
+// worker as a Blob, so the parser decodes both itself: by their byte-order mark
+test.each([`ArrayBuffer`, `Blob`])(`a UTF-16 text %s decodes by its BOM`, async (kind) => {
+  const { buffer } = utf16_bom(JSON.stringify({ x: [1, 2, 3], y: [4, 5, 6] }))
+  const data = kind === `Blob` ? new Blob([buffer]) : buffer
+  const result = await parse_file_content(data, `xy.dat`)
   expect(result.type === `json_browser` && result.data).toEqual({ x: [1, 2, 3], y: [4, 5, 6] })
 })
 
@@ -753,17 +754,19 @@ describe(`LARGE_FILE markers`, () => {
     // the run trims channels a host sent beyond those asked for
     expect(frame.structure.sites[0].properties).toEqual({})
 
-    // Plot rows stream in after the summary, keyed by the host file path
+    // Plot rows stream in after the summary, keyed by the id of the request that opened it, so a
+    // re-request of the same file (opened before the old display unmounts) can't feed this run
     expect(run.properties.complete).toBe(false)
     const rows = [...backing.properties.rows]
-    for (const [batch, complete, file_path] of [
-      [rows.slice(0, 2), false, `/data/movie.extxyz`],
-      [rows.slice(2), true, `/data/other.extxyz`], // another file's rows must not leak in
-      [rows.slice(2), true, `/data/movie.extxyz`],
+    const own_id = post_message.mock.calls[0][0].request_id
+    for (const [batch, complete, request_id] of [
+      [rows.slice(0, 2), false, own_id],
+      [rows.slice(2), true, `stale-request`], // another request's rows must not leak in
+      [rows.slice(2), true, own_id],
     ] as const) {
       message_bus.dispatchEvent(
         new MessageEvent(`message`, {
-          data: { command: `plot_metadata_stream`, file_path, rows: batch, complete },
+          data: { command: `plot_metadata_stream`, request_id, rows: batch, complete },
         }),
       )
     }
@@ -773,14 +776,14 @@ describe(`LARGE_FILE markers`, () => {
     // Warnings the host's later reads hit arrive as they are added
     const listener = vi.fn()
     run.subscribe_warnings?.(listener)
-    for (const [file_path, warnings] of [
-      [`/data/other.extxyz`, [`not ours`]],
-      [`/data/movie.extxyz`, [`frame 3 skipped`]],
-      [`/data/movie.extxyz`, [`frame 4 skipped`]],
+    for (const [request_id, warnings] of [
+      [`stale-request`, [`not ours`]],
+      [own_id, [`frame 3 skipped`]],
+      [own_id, [`frame 4 skipped`]],
     ] as const)
       message_bus.dispatchEvent(
         new MessageEvent(`message`, {
-          data: { command: `trajectory_warnings`, file_path, warnings },
+          data: { command: `trajectory_warnings`, request_id, warnings },
         }),
       )
     await Promise.resolve()
@@ -791,7 +794,7 @@ describe(`LARGE_FILE markers`, () => {
       new MessageEvent(`message`, {
         data: {
           command: `trajectory_warnings`,
-          file_path: `/data/movie.extxyz`,
+          request_id: own_id,
           warnings: [`after dispose`],
         },
       }),
@@ -816,7 +819,7 @@ describe(`LARGE_FILE markers`, () => {
   test.each([`batch`, `completion`, `both`] as const)(
     `finishes host metadata despite %s subscriber failures, detaching its listener on dispose`,
     async (phase) => {
-      with_host(summary_reply)
+      const { post_message } = with_host(summary_reply)
       const add_listener = vi.spyOn(globalThis, `addEventListener`)
       const remove_listener = vi.spyOn(globalThis, `removeEventListener`)
       const result = await (await fresh_parse())(marker, `movie.extxyz`)
@@ -840,7 +843,7 @@ describe(`LARGE_FILE markers`, () => {
           new MessageEvent(`message`, {
             data: {
               command: `plot_metadata_stream`,
-              file_path: `/data/movie.extxyz`,
+              request_id: post_message.mock.calls[0][0].request_id,
               rows: backing.properties.rows,
               complete: true,
             },

@@ -46,6 +46,8 @@ interface TrajectorySessionOptions {
 }
 
 const PROPERTY_MIRROR_MS = 250
+// More unreadable frames in a row than this suggest a failing source, not bad frames
+const MAX_PLAYBACK_SKIPS = 10
 
 const site_record_count = ({ frame }: DisplayFrame): number =>
   Array.isArray(frame.sites) ? frame.sites.length : 0
@@ -79,6 +81,10 @@ export function create_trajectory_session(
   const frame_view = new FrameView()
   let rendered: unknown
   let frame_failure: Error | undefined
+  // Latest request (and whether playback stepped past it), skip streak, one warning per frame
+  let last_request: { run: TrajectoryRun; idx: number; skipped?: boolean } | undefined
+  let skip_streak = 0
+  let skipped = $state.raw(new Map<number, string>())
   let disposed = false
   const render_waiters = new Set<{
     run: TrajectoryRun
@@ -153,6 +159,7 @@ export function create_trajectory_session(
   let cache_bytes = 0
   const clear_frames = (owner?: TrajectoryRun): void => {
     cache.clear()
+    if (skipped.size) skipped = new Map()
     frame_view.clear()
     loaded = null
     rendered = undefined
@@ -278,23 +285,41 @@ export function create_trajectory_session(
     }
   }
 
-  const settle = (run: TrajectoryRun, frame_idx: number, frame: SessionFrame): void => {
-    cache_put(run, frame_idx, frame)
+  const show = (run: TrajectoryRun, frame_idx: number, frame: SessionFrame): void => {
+    skip_streak = 0
     loaded = { run, idx: frame_idx, ...frame }
   }
-  const fail_frame = (frame_idx: number, error: unknown): void => {
-    player.pause()
+  const settle = (run: TrajectoryRun, frame_idx: number, frame: SessionFrame): void => {
+    cache_put(run, frame_idx, frame)
+    show(run, frame_idx, frame)
+  }
+  // Playback steps past an unreadable frame (e.g. MD blow-up), keeping the previous one shown
+  const fail_frame = (frame_idx: number, error: unknown, playback: boolean): void => {
     frame_failure = to_error(error)
     cancel_render_waiters(frame_failure)
+    if (playback && player.is_playing && last_request && skip_streak < MAX_PLAYBACK_SKIPS) {
+      skip_streak++
+      last_request.skipped = true
+      const { message } = frame_failure
+      const warning = `Playback skipped unreadable frame ${display_idx(frame_idx)}: ${message}`
+      if (!skipped.has(frame_idx)) skipped = new Map(skipped).set(frame_idx, warning)
+      return
+    }
+    player.pause()
     inputs.on_frame_error?.(frame_idx, frame_failure)
   }
 
-  function request_frame(run: TrajectoryRun | undefined, requested_idx: number): void {
+  // `playback`: on_play's request or the frame after the previous request, unlike a seek
+  function request_frame(run: TrajectoryRun | undefined, index: number, playback = false) {
     cancel_in_flight(
       run === cache_owner && Boolean(run?.read_concurrency) && in_flight_key === request_key,
     )
     frame_failure = undefined
-    const frame_idx = run ? normalize_idx(requested_idx, run.frame_count) : null
+    const frame_idx = run ? normalize_idx(index, run.frame_count) : null
+    const previous = last_request
+    last_request = run && frame_idx !== null ? { run, idx: frame_idx } : undefined
+    if (run && previous?.run === run)
+      playback ||= frame_idx === (previous.idx + 1) % run.frame_count
     for (const waiter of render_waiters) {
       // Initial mounting can refine geometry settings while the first frame is loading.
       // Keep waiting for that frame's current scene; only navigation supersedes the wait.
@@ -328,7 +353,7 @@ export function create_trajectory_session(
     claim_cache(run)
     if (cache_hit) {
       drop_trailing()
-      loaded = { run, idx: frame_idx, ...cached }
+      show(run, frame_idx, cached)
       schedule_prefetch(run, frame_idx)
       return
     }
@@ -352,7 +377,7 @@ export function create_trajectory_session(
       pending = result
     } catch (error) {
       drop_trailing()
-      return fail_frame(frame_idx, error)
+      return fail_frame(frame_idx, error, playback)
     }
     in_flight = controller
     in_flight_key = request_key
@@ -371,7 +396,7 @@ export function create_trajectory_session(
           supersede(trailing.splice(0, trail_idx))
           trailing.shift() // this read
         }
-        loaded = { run, idx: frame_idx, ...frame }
+        show(run, frame_idx, frame)
         if (!in_flight) schedule_prefetch(run, frame_idx)
       },
       (error: unknown) => {
@@ -380,7 +405,7 @@ export function create_trajectory_session(
         if (in_flight !== controller) return
         in_flight = undefined
         drop_trailing()
-        fail_frame(frame_idx, error)
+        fail_frame(frame_idx, error, playback)
       },
     )
   }
@@ -467,11 +492,11 @@ export function create_trajectory_session(
             .catch((error: unknown) => {
               if (prefetched.get(idx) !== request) return
               prefetched.delete(idx)
-              if (!controller.signal.aborted)
+              if (!controller.signal.aborted && !skipped.has(idx))
                 console.warn(`Prefetch of frame ${idx} failed:`, error)
             })
         } catch (error) {
-          console.warn(`Prefetch of frame ${idx} failed:`, error)
+          if (!skipped.has(idx)) console.warn(`Prefetch of frame ${idx} failed:`, error)
         }
         if (!player.is_playing) break
       }
@@ -650,14 +675,16 @@ export function create_trajectory_session(
     should_auto_play: () => inputs.should_auto_play() && inputs.run() !== undefined,
     can_advance: () =>
       inputs.can_advance?.() !== false &&
-      current_frame !== null &&
-      (!inputs.wait_for_render?.() || rendered === scene_frame),
+      // A skipped frame leaves the scene as it was, so there is no new render to wait for
+      ((last_request?.skipped === true && last_request.idx === inputs.index()) ||
+        (current_frame !== null && (!inputs.wait_for_render?.() || rendered === scene_frame))),
     on_play: () => {
       inputs.on_play?.()
       const run = inputs.run()
       if (!run) return
+      skip_streak = 0
       if (current_frame) schedule_prefetch(run, inputs.index())
-      else if (!in_flight) request_frame(run, inputs.index())
+      else if (!in_flight) request_frame(run, inputs.index(), true)
     },
     on_pause: () => {
       cancel_prefetch()
@@ -742,6 +769,9 @@ export function create_trajectory_session(
     },
     get scrubbing() {
       return scrubbing
+    },
+    get skip_warnings(): string[] {
+      return [...skipped.values()] // one per frame playback stepped past in this run
     },
     get property_rows() {
       return properties.rows

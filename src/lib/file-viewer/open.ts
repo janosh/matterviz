@@ -1,9 +1,4 @@
-import {
-  classify_payload,
-  content_byte_size,
-  decompress_trajectory_file,
-  is_empty_content,
-} from '#lib/io/decompress.js'
+import { classify_payload, content_byte_size, is_empty_content } from '#lib/io/decompress.js'
 import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
@@ -77,26 +72,32 @@ export const source_provenance = (source: MaterialSource): Partial<MaterialProve
   }
 }
 
-const load_url = async (url: string, signal?: AbortSignal): Promise<MaterialPayload> => {
-  const { content: data, ...payload } = await fetch_payload(url, true, signal)
-  return { data, ...payload }
-}
-
+// `keep_blob` (see classify_payload) hands HDF5 and text over as Blobs for the parse worker
 export const acquire_material = async (
   source: MaterialSource,
   signal?: AbortSignal,
+  keep_blob = true,
 ): Promise<MaterialPayload> => {
-  if (typeof source === `string` || source instanceof URL)
-    return load_url(String(source), signal)
+  if (typeof source === `string` || source instanceof URL) {
+    const { content: data, ...payload } = await fetch_payload(
+      String(source),
+      keep_blob,
+      signal,
+    )
+    return { data, ...payload }
+  }
   if (is_file(source)) {
-    const { content: data, ...payload } = await decompress_trajectory_file(source, signal)
+    const { content: data, ...payload } = await classify_payload(source, [source.name], {
+      keep_blob,
+      signal,
+    })
     return { data, ...payload, source_filename: source.name, file: source }
   }
   const { data, filename, is_base64, ...metadata } = source
   if (typeof data === `string` || is_base64) return source
   const blob = data instanceof Blob ? data : new Blob([data])
   const { content, ...classified } = await classify_payload(blob, [filename], {
-    hdf5_as_blob: true,
+    keep_blob,
     signal,
   })
   return { ...metadata, data: content, ...classified }
@@ -109,9 +110,11 @@ export const deliver_raw_file = async (
   on_file: FileLoadCallback,
   signal?: AbortSignal,
 ): Promise<void> => {
+  // raw readers take text or bytes, not the Blobs the parse worker reads
   const { data, filename, source_filename, source_url, file } = await acquire_material(
     source,
     signal,
+    false,
   )
   if (is_empty_content(data)) throw new Error(`file is empty`)
   const content = data instanceof Blob ? await data.arrayBuffer() : data
@@ -156,8 +159,8 @@ export async function open_material(
       signal,
       on_progress,
       load_options,
-      // acquire_material always hands back a buffer it allocated, and only Blob-backed HDF5
-      // is ever re-parsed (the group picker), so an ArrayBuffer here is ours to give away
+      // acquire_material always hands back a buffer it allocated, and only Blob payloads are
+      // ever re-parsed (the HDF5 group picker), so an ArrayBuffer here is ours to give away
       owns_content: true,
     })
   } catch (error) {

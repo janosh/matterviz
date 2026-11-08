@@ -4,12 +4,13 @@
 import type { ElementSymbol } from '#lib/element/index.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
 import { is_finite_vec3_like, type Matrix3x3, type Vec3 } from '#lib/math.js'
-import { parse_float_token } from '#lib/structure/parsers/shared.js'
+import { LineScanner, parse_float_token } from '#lib/structure/parsers/shared.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import {
   calc_force_stats,
   create_trajectory_frame,
   expand_ion_types,
+  holds_numbers,
   split_lines,
 } from '#lib/trajectory/helpers.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
@@ -34,6 +35,7 @@ const FRAME_ENERGY_RES: [RegExp, string][] = [
   [num_after(`total energy\\s+ETOTAL`), `total_energy`],
 ]
 
+const SEXTET = [0, 1, 2, 3, 4, 5]
 const numbers_of = (line: string): number[] => line.trim().split(/\s+/).map(parse_float_token)
 // The `value` capture group of `pattern` on every line that has one, in file order
 const captures = (lines: string[], pattern: RegExp): string[] =>
@@ -116,15 +118,19 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
   const last_line = lines.length - 1
   const drop_torn_tail = (step: number, line_idx: number): void =>
     warn(`Dropping truncated final OUTCAR frame ${step} (line ${line_idx + 1})`)
+  // frames of a blown-up run, skipped like other readers do; later frames keep their ionic step
+  const skipped: string[] = []
+  const next_step = (): number => frames.length + skipped.length + 1
+  const scanner = new LineScanner()
 
-  for (let line_idx = 0; line_idx < lines.length; line_idx++) {
+  scan: for (let line_idx = 0; line_idx < lines.length; line_idx++) {
     const line = lines[line_idx]
     if (line.includes(`direct lattice vectors`)) {
       // Skipping a corrupt block silently kept the PREVIOUS cell, wronging every volume and
       // fractional coordinate of the rest of an ISIF=3 run
       const parsed = parse_lattice(lines, line_idx)
       if (!parsed && line_idx + 3 >= last_line) {
-        drop_torn_tail(frames.length + 1, line_idx)
+        drop_torn_tail(next_step(), line_idx)
         break
       }
       if (!parsed) {
@@ -172,7 +178,7 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
           `OUTCAR line ${line_idx + 1}: position table before any lattice vectors`,
         )
       }
-      const step = frames.length + 1
+      const step = next_step()
       const first_row = line_idx + 2 // skip the dashed rule under the header
       if (first_row + n_atoms > lines.length) {
         warn(
@@ -186,6 +192,17 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
       for (let row = first_row; row < first_row + n_atoms; row++) {
         const values = numbers_of(lines[row])
         if (values.length !== 6 || values.some((val) => !Number.isFinite(val))) {
+          // a diverged run prints `NaN`, and a value too wide for its F13.5 / F14.6 field
+          // (|force| >= 1e6 eV/A as atoms collide) as 13 / 14 asterisks
+          const overflow = /\*{13}/.test(lines[row])
+          if (overflow || (scanner.scan(lines[row]) === 6 && holds_numbers(scanner, SEXTET))) {
+            skipped.push(
+              `Non-finite or overflowed OUTCAR values in frame ${step} line ${row + 1} "${lines[row]}"`,
+            )
+            // nothing of the skipped step (its stress, SCF count, energies) lands on another frame
+            ;[pending, n_scf_steps, current, line_idx] = [{}, 0, null, first_row + n_atoms - 1]
+            continue scan
+          }
           torn = row >= last_line
           if (torn) break
           throw new Error(
@@ -225,7 +242,9 @@ export function parse_vasp_outcar(content: string, warn: WarnFn): ParsedTrajecto
       if (match) current[key] = parse_float_token(match.groups?.value)
     }
   }
-  if (frames.length === 0) throw new Error(`OUTCAR contains no POSITION / TOTAL-FORCE table`)
+  if (frames.length === 0)
+    throw new Error(skipped[0] ?? `OUTCAR contains no POSITION / TOTAL-FORCE table`)
+  if (skipped.length > 0) warn(`Skipping ${skipped.length} OUTCAR frame(s): ${skipped[0]}`)
 
   return vasp_run(`outcar`, frames, atom_masses, { ibrion, potim, version })
 }
