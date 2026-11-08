@@ -2108,8 +2108,9 @@
     /* Else a tall inspector table grows the row past the viewer's clipped bottom, cutting
        off the plot's axis title and the atom legend */
     contain: size;
-    /* the data inspector's width until dragged */
-    --docked-sidebar-max-share: calc(100% / 3);
+    /* the data inspector's width until dragged: a third left the structure and plot
+       panes ~300px each in a 1000px window */
+    --docked-sidebar-max-share: 25%;
     &:not(.docked-sidebar-row) {
       display: grid;
       position: relative;

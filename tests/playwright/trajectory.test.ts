@@ -46,7 +46,7 @@ test(`homepage keeps the compressed trajectory source URL after loading`, async 
 // A tall inspector table grew the row past the viewer's clipped bottom (Ag run: +149px); the
 // sticky column showed the page's background instead of the sidebar's; the undragged inspector
 // is capped at a third of the row
-test(`demo viewers keep a data inspector within its box, a third wide, evenly shaded`, async ({
+test(`demo viewers keep a data inspector within its box, a quarter wide, evenly shaded`, async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1000, height: 1200 })
@@ -80,7 +80,8 @@ test(`demo viewers keep a data inspector within its box, a third wide, evenly sh
       },
     )
     expect(overflow).toBeLessThanOrEqual(1)
-    expect(width_share).toBeLessThanOrEqual(1 / 3 + 0.002)
+    // wider, it squashes the structure and plot panes in a 1000px window
+    expect(width_share).toBeLessThanOrEqual(0.25 + 0.002)
     expect(sticky_bgs).toEqual([
       [sidebar_bg, `linear-gradient`],
       [sidebar_bg, `none`],

@@ -40,7 +40,8 @@
     padding: var(--sequence-controls-padding, clamp(2pt, 0.5cqw, 1ex) clamp(4pt, 1cqw, 1.2ex));
     box-sizing: border-box;
     z-index: var(--sequence-controls-z-index, var(--z-index-viewer-pane, 10));
-    border-radius: var(--sequence-controls-border-radius, 4px);
+    /* docked on the viewer's top edge: the content below meets its bottom edge square */
+    border-radius: var(--sequence-controls-border-radius, 4px 4px 0 0);
     background: var(
       --sequence-controls-bg,
       var(--surface-bg-hover, light-dark(#f4f4f5, #2a2c33))
