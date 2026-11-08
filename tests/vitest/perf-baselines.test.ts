@@ -27,7 +27,12 @@ import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import { bin_points } from '#lib/plot/scatter/adaptive-density.js'
 import { compute_label_positions } from '#lib/plot/core/utils/label-placement.js'
 import { get_coordination_colors } from '#lib/structure/atom-properties.js'
-import { electroneg_ratio, neighbor_query } from '#lib/structure/bonding.js'
+import {
+  type BondNeighborQuery,
+  create_bond_query,
+  electroneg_ratio,
+  neighbor_query,
+} from '#lib/structure/bonding.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 import { merge_polyhedra_buffers } from '#lib/structure/polyhedra-render.js'
 import { make_supercell } from '#lib/structure/supercell.js'
@@ -63,6 +68,7 @@ import {
 } from './test-fixtures'
 import { make_fcc, with_random_displacements } from './structure-id/lattices'
 import { thousand_site_crystal } from './structure/geometry-fixtures'
+import { make_session } from './structure/session-harness.svelte'
 
 // Medians over 5 suite runs on the baseline machine: Apple M3 Max, macOS 26.5, Node 24.19,
 // vitest 4.1.11, happy-dom 20.11 (2026-08-21), with other vitest workers sharing the CPU
@@ -113,6 +119,11 @@ const BASELINES = {
   // 2026-10-30: M5 Max/Node 26.13/Vitest 5; median of 3 runs (reference 32.0 ms). 614 ms with
   // per-candidate allocations in the glide reduction.
   'symmetry elements 41472 ops': (182 * REFERENCE_MS) / 32.0,
+  // 2026-11-08: M4 Pro/Node 26.13/Vitest 5 under load; median of 3 runs (reference 82.4 ms). A
+  // release took ~4 s copying the session's write back through the host's $state proxy. The
+  // neighbor query takes the slower of 2 runs (reference 72.9 ms); a full search takes ~9x.
+  'Structure 97k-atom drag frame + release': (38.7 * REFERENCE_MS) / 82.4,
+  'drag bond neighbor query 97k atoms': (13.9 * REFERENCE_MS) / 72.9,
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
@@ -709,6 +720,45 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
       // cubic grid at 1.1 A: 3 edge^2 (edge - 1) axis-adjacent pairs, each listed from both ends
       expect(list.neighbors).toHaveLength(6 * edge ** 2 * (edge - 1))
     })
+  })
+
+  // A drag frame and its release at 97k atoms read the session's own write back as built: copying
+  // it back through the host's $state proxy took ~4 s per release
+  test(`Structure 97k-atom drag frame + release`, async () => {
+    const { session } = make_session({
+      structure: make_molecule(cubic_grid(46, 1.5).map((xyz) => [`C`, xyz])),
+      measure_mode: `edit-atoms`,
+    })
+    await measure(`Structure 97k-atom drag frame + release`, () => {
+      session.dragging_atoms = true
+      session.move_sites([0], [0.1, 0, 0])
+      flushSync()
+      session.dragging_atoms = false
+      flushSync()
+      expect(session.displayed_structure?.sites).toHaveLength(46 ** 3)
+    })
+  })
+
+  // A drag step re-queries only pairs touching the moved site. Only the neighbor search is
+  // timed: perception reruns in full, which halves the gap to a full search in the total.
+  test(`drag bond neighbor query 97k atoms`, () => {
+    const base = make_molecule(cubic_grid(46, 1.5).map((xyz) => [`C`, xyz]))
+    const query = create_bond_query()
+    const timings: number[] = []
+    const timed: BondNeighborQuery = (...args) => {
+      const start = performance.now()
+      const list = query(...args)
+      timings.push(performance.now() - start)
+      return list
+    }
+    electroneg_ratio(base, {}, query) // the drag's first frame runs the full search
+    for (let step = 0; step < 15; step++) {
+      const sites = base.sites.slice()
+      const [x, y, z] = sites[0].xyz
+      sites[0] = { ...sites[0], xyz: [x + (step % 2 ? 0 : 0.1), y, z] }
+      expect(electroneg_ratio({ ...base, sites }, {}, timed).length).toBeGreaterThan(1e5)
+    }
+    assert_within_band(`drag bond neighbor query 97k atoms`, timings)
   })
 
   // 1000 atoms took 60 s before the coordination rewrite and ~0.4 ms after, too little to
