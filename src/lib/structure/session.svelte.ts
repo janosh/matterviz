@@ -253,7 +253,10 @@ const plain_copy = <Value>(value: Value): Value => {
   }
   if (Object.getPrototypeOf(value) !== Object.prototype) return value
   const copy: Record<string, unknown> = {}
-  for (const key of Object.keys(value)) copy[key] = plain_copy(Reflect.get(value, key))
+  // Not Object.keys: it runs a proxy's getOwnPropertyDescriptor trap per key (~11% slower)
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === `string`) copy[key] = plain_copy(Reflect.get(value, key))
+  }
   return copy as Value
 }
 
@@ -876,9 +879,15 @@ export class StructureSession {
     if (next.sites.length !== count)
       this.keep_base_selection(Math.min(count, next.sites.length))
     this.is_internal_edit = true
+    this.adopt_structure(next)
+  }
+  // Write a new input through the binding, keeping the plain object it is: the binding (a
+  // bindable prop or a caller's $state) proxies what it stores, and copying a loaded 47k-atom
+  // file back out of that proxy took over a second
+  adopt_structure = (next: AnyStructure | undefined): void => {
     this.inputs.set_structure(next)
     const written = this.inputs.structure()
-    this.last_write = written && { written, plain: next }
+    this.last_write = written && next && { written, plain: next }
   }
 
   // Index into base_structure of a displayed site: image atoms name the site they mirror and

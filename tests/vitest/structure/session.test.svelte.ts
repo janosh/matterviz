@@ -86,8 +86,21 @@ describe(`display pipeline`, () => {
     if (site) site.label = `edited`
     flushSync()
     expect(session.plain_input).toBe(copy)
+    // keys added and deleted through the proxy (not on its target) are what the copy holds
+    host.structure = { ...crystal(), properties: { kept: 1, dropped: 2 } }
+    if (host.structure.properties) {
+      host.structure.properties.added = 3
+      delete host.structure.properties.dropped
+    }
+    flushSync()
+    expect(session.plain_input?.properties).toEqual({ kept: 1, added: 3 })
     const plain = crystal()
     expect(make_session({}, () => plain).session.normalized_structure).toBe(plain)
+    // a structure the viewer loads itself is proxied by the binding but read as it is
+    session.adopt_structure(plain)
+    flushSync()
+    expect(() => structuredClone(host.structure?.sites[0].xyz)).toThrow(/could not be cloned/)
+    expect(session.plain_input).toBe(plain)
   })
 
   // A large supercell builds in the same update as its input, as each trajectory frame's must

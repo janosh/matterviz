@@ -360,7 +360,7 @@
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
-        structure = prediction.input
+        session.adopt_structure(prediction.input)
         loaded_structure = structure
       } else {
         const { document, notice } = apply_structure_material(
@@ -369,7 +369,7 @@
         )
         loaded_structure = document.structure
         // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
-        if (loaded_structure !== structure) structure = loaded_structure
+        if (loaded_structure !== structure) session.adopt_structure(loaded_structure)
         ;({ volumetric_data, isosurface_settings, active_volume_id } = document)
         if (notice) show_toast(notice)
       }
@@ -719,7 +719,7 @@
   })
   function load_prediction(incoming: StructureToolPrediction): void {
     const snapshot = copy_prediction(incoming)
-    structure = snapshot.input
+    session.adopt_structure(snapshot.input)
     session.element_mapping = undefined
     cell_type = `original`
     supercell_scaling = `1x1x1`
