@@ -80,7 +80,7 @@ export function place_outside_decorations(
   // (costs no plot width)
   const too_wide =
     legend_width > LEGEND_MAX_RIGHT_WIDTH_FRACTION * base_w &&
-    axis_pad.r + legend_width + gap > base_pad.r
+    axis_pad.r + legend_width + 2 * gap > base_pad.r
   const too_big =
     legend_width * legend_height > LEGEND_MAX_INTERIOR_AREA_FRACTION * base_w * base_h
 
@@ -101,11 +101,12 @@ export function place_outside_decorations(
     !too_wide &&
     !colorbar_takes_right &&
     legend_height * base_w > legend_width * base_h
-  // Every outside reservation sits just past the axis band (a right legend would otherwise
-  // cover y2 tick labels); a caller's larger padding absorbs them rather than growing
-  // further (see DecorationScene.axis_pad)
+  // Every outside reservation sits a gap past the axis band (a right legend would otherwise
+  // cover y2 tick labels, and touch a y2 title whose sub/superscripts overhang its measured
+  // band); a caller's larger padding absorbs them rather than growing further (see
+  // DecorationScene.axis_pad)
   const past_axis = (side: keyof Sides, size: number) =>
-    Math.max(base_pad[side], axis_pad[side] + size + gap)
+    Math.max(base_pad[side], axis_pad[side] + gap + size + gap)
   const strip = legend?.strip_footprint ?? box
   const strip_height = Math.min(strip.height, LEGEND_STRIP_MAX_FRACTION * height)
   const strip_pad = past_axis(`b`, strip_height)

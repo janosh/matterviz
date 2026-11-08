@@ -261,8 +261,8 @@ describe(`decoration solver`, () => {
     ])
     expect(solution.pad).toEqual({
       ...base_pad,
-      b: base_pad.b + 200 + 8,
-      r: base_pad.r + 56 + 8,
+      b: base_pad.b + 200 + 16,
+      r: base_pad.r + 56 + 16,
     })
   })
 
@@ -321,7 +321,7 @@ describe(`decoration solver`, () => {
         side: `bottom`,
         y: 600 - 300 - 8,
       })
-      expect(pad.b).toBe(base_pad.b + 300 + 8)
+      expect(pad.b).toBe(base_pad.b + 300 + 16)
     },
   )
 

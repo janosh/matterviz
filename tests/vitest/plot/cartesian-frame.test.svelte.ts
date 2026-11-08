@@ -14,6 +14,7 @@ import {
   DEFAULT_PLOT_PADDING,
   rect_within_rect,
   rects_overlap,
+  Y_TITLE_EDGE_AIR,
 } from '#lib/plot/core/layout.js'
 import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ChartHeaderControls from '#lib/plot/core/components/ChartHeaderControls.svelte'
@@ -517,6 +518,7 @@ describe(`cartesian frame`, () => {
         const plot = await mount_chart(chart, {
           ...chart.props(),
           x_axis: { ticks, tick_label: { rotation: 45 } },
+          legend: null, // else a legend moving outside changes the bottom band too
         })
         const transform = plot.querySelector(`g.x-axis g.tick`)?.getAttribute(`transform`)
         return Number(/,\s*(?<axis_y>[\d.]+)\)/.exec(transform ?? ``)?.groups?.axis_y)
@@ -654,7 +656,8 @@ describe(`cartesian frame`, () => {
       ] as const) {
         const clip = clip_rect(plot)
         expect(legend_px(plot, `top`)).toBe(height - 44 - 8)
-        expect(legend_px(plot, `left`)).toBe(clip.x + (clip.width - 180) / 2)
+        // to 1e-9 px: the pads summed in another order differ in the last ulp
+        expect(legend_px(plot, `left`)).toBeCloseTo(clip.x + (clip.width - 180) / 2, 9)
       }
       expect(legend_px(wide, `left`)).toBeGreaterThan(legend_px(small, `left`))
       expect(clip_rect(repeated)).toEqual(clip_rect(wide))
@@ -810,7 +813,7 @@ describe(`cartesian frame`, () => {
     )
     // a title with no ticks still reserves its own band, past the shared default
     const clip = clip_rect(plot)
-    expect(400 - clip.x - clip.width).toBe(AXIS_LABEL_HEIGHT)
+    expect(400 - clip.x - clip.width).toBe(AXIS_LABEL_HEIGHT + Y_TITLE_EDGE_AIR)
     expect(AXIS_LABEL_HEIGHT).toBeGreaterThan(DEFAULT_PLOT_PADDING.r)
   })
 

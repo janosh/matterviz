@@ -17,6 +17,13 @@ export const sides_equal = (left: Required<Sides>, right: Required<Sides>): bool
 
 // Default gap between tick labels and axis labels
 export const LABEL_GAP_DEFAULT = 20
+// Gap between y/y2 tick labels and their rotated title, tighter than an x title's: a rotated
+// title's band is its line height, which already holds some air around the glyphs
+export const Y_LABEL_GAP = 12
+// Clearance between a y/y2 title and the SVG edge (a pane divider, the sidebar beside the
+// plot), wider than an x title's TITLE_EDGE_AIR: a rotated title's sub/superscripts overhang
+// its measured band sideways
+export const Y_TITLE_EDGE_AIR = 8
 // Single-line axis title height (the title font's line height)
 export const AXIS_LABEL_HEIGHT = 20
 // Wrapping span for axis titles: the floor for horizontal ones, the cap for vertical ones
@@ -245,8 +252,8 @@ export function y_axis_label_x(
     resolve_axis_title_layout(axis, axis_title_wrap_width(false, plot_height)).height ||
     AXIS_LABEL_HEIGHT
   return Math.max(
-    title_height / 2,
-    pad_l - tick_extent - LABEL_GAP_DEFAULT - title_height / 2 + (axis.label_shift?.x ?? 0),
+    title_height / 2 + Y_TITLE_EDGE_AIR,
+    pad_l - tick_extent - Y_LABEL_GAP - title_height / 2 + (axis.label_shift?.x ?? 0),
   )
 }
 
@@ -264,11 +271,11 @@ export function y2_axis_label_x(
     resolve_axis_title_layout(axis, axis_title_wrap_width(false, plot_height)).height ||
     AXIS_LABEL_HEIGHT
   const label_offset =
-    (inside ? 0 : max_tick_width) +
-    LABEL_GAP_DEFAULT +
-    title_height / 2 +
-    (axis.label_shift?.x ?? 0)
-  return Math.min(width - title_height / 2, width - pad_r + tick_shift + label_offset)
+    (inside ? 0 : max_tick_width) + Y_LABEL_GAP + title_height / 2 + (axis.label_shift?.x ?? 0)
+  return Math.min(
+    width - title_height / 2 - Y_TITLE_EDGE_AIR,
+    width - pad_r + tick_shift + label_offset,
+  )
 }
 
 // Line spanning the plot area at pixel `pos`: across it (horizontal) or from top to bottom
@@ -431,12 +438,17 @@ export const calc_auto_padding = ({
       ? 0
       : 8 + Math.max(0, side === `left` ? -tick_shift : tick_shift)
     const title_band = has_title ? title_layout.height : 0
-    const title_gap = has_title && has_outside_ticks ? LABEL_GAP_DEFAULT : 0
+    const title_gap = has_title && has_outside_ticks ? Y_LABEL_GAP : 0
     const title_shift = axis.label_shift?.x ?? 0
     const title_shift_outward = Math.max(0, side === `left` ? -title_shift : title_shift)
     return Math.max(
       default_side,
-      tick_width + title_gap + title_band + tick_offset + title_shift_outward,
+      tick_width +
+        title_gap +
+        title_band +
+        (has_title ? Y_TITLE_EDGE_AIR : 0) +
+        tick_offset +
+        title_shift_outward,
     )
   }
   const vertical_pads = (available_height: number): [number, number] => [

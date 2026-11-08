@@ -111,7 +111,7 @@ describe(`Cartesian plot titles`, () => {
     expect(axis_pad.t).toBeGreaterThan(0)
     expect(base_pad.t - axis_pad.t).toBe(title_layout.block_height)
     expect(decorated.colorbar_outside).toBe(true)
-    expect(decorated.pad.t - base_pad.t).toBe(40)
+    expect(decorated.pad.t - base_pad.t).toBe(8 + 32 + 8) // a gap off the axis band and the frame edge
   })
 
   test(`wrapped horizontal and vertical axis titles preserve sub/sup markup`, async () => {

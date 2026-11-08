@@ -73,6 +73,11 @@ console.warn = (...args: unknown[]) => {
   original_warn(...args)
 }
 
+// Tick labels scale with their plot frame via cqmin, which happy-dom (no container sizes)
+// cannot resolve and computes as the inherited 16px. Pinning the authored size keeps it an
+// unresolved em, so tick layouts measure the default font as they would at full size.
+document.documentElement.style.setProperty(`--tick-font-size`, `0.8em`)
+
 beforeEach(() => {
   document.body.innerHTML = ``
   localStorage.clear()

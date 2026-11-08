@@ -118,6 +118,26 @@ describe(`PlotLegend`, () => {
     },
   )
 
+  // Hidden series past the first fold away (a column or wrapped row, not a grid); 1, 3, 5 hidden
+  test.each([
+    [`a column`, {}, [false, true, false, true, false, true]],
+    [`opted out`, { collapse_hidden: false }, Array(6).fill(false)],
+    [`a wrapped row`, { wrap: true }, [false, true, false, true, false, true]],
+    [`a grid`, { layout: `horizontal`, layout_tracks: 2 }, Array(6).fill(false)],
+  ] as const)(`folds hidden series past the first in %s`, (_desc, props, hidden) => {
+    const series_data = [0, 1, 2, 3, 4, 5].map((idx) =>
+      legend_item(`S${idx}`, idx, {}, { visible: ![1, 3, 5].includes(idx) }),
+    )
+    mount_legend({ series_data, ...props })
+    const items = [...document.querySelectorAll(`.legend-item`)]
+    expect(items.map((item) => item.classList.contains(`hidden`))).toEqual(
+      [0, 1, 2, 3, 4, 5].map((idx) => [1, 3, 5].includes(idx)),
+    )
+    // the first hidden one (S1) stays out as a hint that more are folded away
+    const tucked = hidden.map((is_hidden, idx) => is_hidden && idx !== 1)
+    expect(items.map((item) => item.classList.contains(`tucked`))).toEqual(tucked)
+  })
+
   test.each([
     [`horizontal`, 3, undefined, `repeat(3, auto)`, ``, ``],
     // Vertical tracks are rows in one column, filled column-first.

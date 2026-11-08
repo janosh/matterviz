@@ -19,6 +19,7 @@ import {
   TITLE_EDGE_AIR,
   y_axis_label_x,
   y2_axis_label_x,
+  Y_TITLE_EDGE_AIR,
 } from '#lib/plot/core/layout.js'
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import type { MeasuredAxis } from '#lib/plot/core/tick-layout.js'
@@ -983,7 +984,7 @@ describe(`layout utility functions`, () => {
     it(`reserves a title band for interactive options without a literal label`, () => {
       const axis = slot_axis([], { options: [{ key: `energy`, label: `Energy` }] })
       expect(calc_auto_padding({ ...no_padding, y2_axis: axis }).r).toBe(
-        resolve_axis_title_layout(axis).height,
+        resolve_axis_title_layout(axis).height + Y_TITLE_EDGE_AIR,
       )
     })
 
@@ -1072,19 +1073,21 @@ describe(`layout utility functions`, () => {
   })
 
   describe(`y_axis_label_x / y2_axis_label_x`, () => {
-    const title_center = AXIS_LABEL_HEIGHT / 2
+    // a title band plus its air off the SVG edge
+    const title_center = AXIS_LABEL_HEIGHT / 2 + Y_TITLE_EDGE_AIR
+    // ticks 30 wide + 8 offset, then a 12px gap to the title band's near edge
     test.each([
-      [`left auto-padding`, () => y_axis_label_x({}, 90, 30, 300), 22],
-      [`left explicit padding`, () => y_axis_label_x({}, 120, 30, 300), 52],
+      [`left auto-padding`, () => y_axis_label_x({}, 90, 30, 300), 30],
+      [`left explicit padding`, () => y_axis_label_x({}, 120, 30, 300), 60],
       // a pad too tight to seat the tick band clamps the title to its own band
       [`left clamped to the title band`, () => y_axis_label_x({}, 40, 30, 300), title_center],
       [
         `left inside ticks`,
         () => y_axis_label_x({ tick_label: { inside: true } }, 60, 30, 300),
-        30,
+        38,
       ],
-      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30, 300), 378],
-      [`right explicit padding`, () => y2_axis_label_x({}, 400, 120, 30, 300), 348],
+      [`right auto-padding`, () => y2_axis_label_x({}, 400, 90, 30, 300), 370],
+      [`right explicit padding`, () => y2_axis_label_x({}, 400, 120, 30, 300), 340],
       [
         `right clamped to the title band`,
         () => y2_axis_label_x({}, 400, 40, 30, 300),
@@ -1093,7 +1096,7 @@ describe(`layout utility functions`, () => {
       [
         `right inside ticks`,
         () => y2_axis_label_x({ tick_label: { inside: true } }, 400, 60, 30, 300),
-        370,
+        362,
       ],
     ])(`positions %s`, (_, get_position, expected) => {
       expect(get_position()).toBe(expected)
