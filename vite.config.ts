@@ -253,6 +253,8 @@ export default defineConfig({
   // so those two run as thunks that ignore the names. No shell: one command per entry.
   // `pnpm typecheck` passes svelte-check --config: without it svelte-check crawls the whole
   // workspace and loads every nested vite/svelte config (e.g. scratch checkouts in tmp/).
+  // It also installs extensions/anywidget's deps when missing (CI installs them up front): tests
+  // import reactive.svelte.ts, whose `anywidget/types` import only that install provides.
   staged: {
     '*.{ts,js,mjs,svelte,css,json,md,yml,yaml}': `vp fmt`,
     '*.{ts,js,mjs,svelte}': [

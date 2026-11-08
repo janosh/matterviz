@@ -29,9 +29,9 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
-      # install extension deps too: vscode is type-aware linted by root oxlint
-      # (needs e.g. @types/vscode), anywidget is checked by root svelte-check
-      # (needs its matterviz/* subpath imports to resolve, else TS2882)
+      # install extension deps too: each extension is type-checked and tested in its own package
+      # below, and root svelte-check reaches extensions/anywidget/reactive.svelte.ts through a test
+      # import (needs its `anywidget/types`)
       - name: Install dependencies
         uses: ./.github/actions/setup
         with:
