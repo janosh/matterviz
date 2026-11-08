@@ -21,6 +21,7 @@ import type {
   SpectraRecords,
 } from '#lib/spectral/types.js'
 import type { Site } from '#lib/structure/index.js'
+import { types } from 'node:util'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Vector3 } from 'three/webgpu'
@@ -737,6 +738,7 @@ test(`one drop zone fills the panes each file has data for and rejects the rest`
   await drop(JSON.stringify({ frequencies: [0, 4, 8], densities: [0, 1, 0] }), `ph.json`)
   expect(on_file_load).toHaveBeenCalledWith({ filename: `ph.json`, panes: [`phonon`] })
   expect(props.phonon?.doses?.[`ph.json`]).toMatchObject({ type: `phonon` })
+  expect(types.isProxy(props.phonon?.doses)).toBe(false)
   expect(Object.keys(props.doses ?? {})).toEqual([`dos.json`])
   expect(shown_panes(root)).toEqual([`structure`, `fermi`, `bands`, `dos`, `phonon`])
 
@@ -779,6 +781,10 @@ test(`a { band_structure, dos } JSON (BandsAndDos' format) fills both spectra`, 
   expect(loaded).toEqual({ filename: `bands_dos.json`, panes: [`bands`, `dos`] })
   expect(props.band_structs?.[`bands_dos.json`]?.bands).toEqual(band_struct.bands)
   expect(props.doses?.[`bands_dos.json`]?.densities).toEqual(dos.densities)
+  // frozen records, so the $state the bindables land in leaves the spectra unproxied
+  expect(
+    [props.band_structs, props.doses].map((rec) => types.isProxy(Object.values(rec ?? {})[0])),
+  ).toEqual([false, false])
 })
 
 test(`a vaspout.h5 trajectory fills the structure from its final frame and its DOS`, async () => {
@@ -792,6 +798,7 @@ test(`a vaspout.h5 trajectory fills the structure from its final frame and its D
     new Set(props.structure?.sites.map(({ species }: Site) => species[0].element)),
   ).toEqual(new Set([`Si`]))
   expect(props.doses?.[`vaspout.h5`]?.densities).toHaveLength(25)
+  expect(types.isProxy(props.doses?.[`vaspout.h5`])).toBe(false)
   expect(props.band_structs).toEqual({}) // trajectories carry no bands
 })
 
@@ -1343,6 +1350,7 @@ test(`a dropped sweep JSON replaces the viewer's data, which then takes only swe
   const sweep_file = new File([JSON.stringify(sweep_json)], `sweep.json`)
   root.dispatchEvent(create_drop_event(sweep_file))
   await vi.waitFor(() => expect(props.sweep?.series[0].frames).toHaveLength(2))
+  expect(types.isProxy(props.sweep?.series)).toBe(false)
   flushSync()
   expect(status(root)).toBe(`0 GPa`)
   expect(shown_panes(root)).toContain(`trends`)

@@ -28,6 +28,7 @@ import {
   pattern_id_of,
   pin_cycle,
   plot_svg,
+  reset_section,
   roving_tabindexes,
   set_input,
   svg_mark_driver,
@@ -693,10 +694,7 @@ describe(`Histogram`, () => {
       expect(legend_checkbox.checked).toBe(checked)
       expect(document.querySelector(`.legend`) !== null).toBe(checked)
     }
-    const reset_selector = `button[title="Reset histogram to defaults"]`
-    doc_query(reset_selector).click()
-    await tick()
-    expect(document.querySelector(reset_selector)).toBeNull()
+    await reset_section(`histogram`)
     expect(legend_checkbox.checked).toBe(true)
   })
 

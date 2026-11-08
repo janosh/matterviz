@@ -15,11 +15,11 @@ export type FileDropOptions = {
   on_error?: (msg: string) => void
   set_loading?: (loading: boolean) => void
 } & (
-  | { hdf5_as_blob?: false; on_drop: FileLoadCallback }
+  | { keep_blob?: false; on_drop: FileLoadCallback }
   // All files of one drop in one call, for files that only mean something together
-  | { hdf5_as_blob?: false; on_batch: (files: DroppedFile[]) => Promise<void> | void }
-  // Trajectory viewers keep HDF5 payloads as a Blob so h5wasm can read them lazily
-  | { hdf5_as_blob: true; on_drop: TrajectoryFileLoadCallback }
+  | { keep_blob?: false; on_batch: (files: DroppedFile[]) => Promise<void> | void }
+  // Trajectory viewers keep HDF5 and text payloads as Blobs (see classify_payload's keep_blob)
+  | { keep_blob: true; on_drop: TrajectoryFileLoadCallback }
 )
 
 // Drag-over visual-state handlers for file-drop zones; spread onto the drop target
@@ -129,8 +129,8 @@ const create_drop_batch_handler = <Handled = void>(
 export const create_file_drop_handler = (
   opts: FileDropOptions,
 ): ((event: DragEvent) => Promise<void>) => {
-  const load_url = opts.hdf5_as_blob ? load_trajectory_from_url : load_from_url
-  const read_file = opts.hdf5_as_blob ? decompress_trajectory_file : decompress_file
+  const load_url = opts.keep_blob ? load_trajectory_from_url : load_from_url
+  const read_file = opts.keep_blob ? decompress_trajectory_file : decompress_file
   const read = async (source: DropSource, on_file: TrajectoryFileLoadCallback) => {
     // byte size, not truthiness: an empty binary payload is a 0-byte ArrayBuffer or Blob
     const emit: TrajectoryFileLoadCallback = (content, filename, metadata) => {
@@ -150,7 +150,7 @@ export const create_file_drop_handler = (
     ...opts,
     handle: async (source) => {
       const files: DroppedFile[] = []
-      // content is never a Blob here: on_batch excludes hdf5_as_blob
+      // content is never a Blob here: on_batch excludes keep_blob
       await read(source, (content, filename, metadata) => {
         files.push({ content: content as string | ArrayBuffer, filename, metadata })
       })

@@ -97,8 +97,8 @@ run.on_overlay({
   the run's prediction.
 </p>
 <p>
-  Set <code>structure_host_tool.input_key</code> to select calculation inputs, including atom order.
-  Unrelated annotations can then change without cancelling runs; replacing the document always cancels.
+  A run belongs to the structure object it started on: assigning a new <code>structure</code>
+  cancels it, while in-place edits are not observed.
 </p>
 <p>
   Use the export pane to download the prediction JSON, including the captured input,

@@ -25,6 +25,7 @@ import { AUTO_THEME, COLOR_THEMES, is_valid_theme_mode, THEME_TYPE } from '#lib/
 // Deep imports: the #lib/trajectory barrel re-exports Svelte components and worker-backed
 // modules, none of which belong in the Node host bundle
 import { open_trajectory } from '#lib/trajectory/open.js'
+import { post_new_warnings } from '#lib/trajectory/parse/shared.js'
 import { summarize_run, type TrajectoryRun } from '#lib/trajectory/run.js'
 import { Buffer } from 'node:buffer'
 import * as file_system from 'node:fs'
@@ -68,6 +69,9 @@ export const active_watcher_subscribers = new Map<string, Set<WebviewLike>>()
 // Stored as the loading promise, so concurrent requests share one read of the file and a file
 // change (dispose_run) evicts a load still in flight instead of letting its stale run land.
 export const active_runs = new Map<string, Promise<TrajectoryRun>>()
+// Per webview, what stops forwarding its host-served run's rows and warnings (or cancels its
+// load in flight): replaced when the webview requests a run again, called on panel close
+export const webview_run_streams = new Map<WebviewLike, () => void>()
 // Track auto-render timers to clear them on deactivate
 export const auto_render_timers = new Map<string, ReturnType<typeof setTimeout>>()
 // Track active panels by URI to prevent duplicate opens
@@ -348,9 +352,18 @@ export const handle_msg = async (
     try {
       const { request_id, file_path } = msg
       if (typeof request_id !== `string` || !request_id) throw new Error(`Invalid request_id`)
+      // A newer request or panel close cancels this load: a stale run must not take its place
+      webview_run_streams.get(webview)?.()
+      let cancelled = false
+      webview_run_streams.set(webview, () => (cancelled = true))
       // Panels on one file share its load (see active_runs)
       const run = await (active_runs.get(file_path) ?? load_run(file_path))
-      stream_plot_rows(run, file_path, webview)
+      if (cancelled) {
+        const error = `Large-file request ${request_id} was superseded or its panel closed`
+        webview.postMessage({ command, request_id, error })
+        return
+      }
+      webview_run_streams.set(webview, stream_run_updates(run, request_id, webview))
       webview.postMessage({ command, request_id, run_summary: summarize_run(run) })
     } catch (error) {
       const error_message = to_error(error).message
@@ -403,24 +416,41 @@ export const handle_msg = async (
   }
 }
 
-// Forward the run's plot rows to the webview in batches: rows extracted before the summary
-// went out are in the summary itself, later ones arrive as plot_metadata_stream messages
-function stream_plot_rows(run: TrajectoryRun, file_path: string, webview: WebviewLike): void {
+// Forward the run's plot rows to the webview in batches (rows extracted before the summary
+// went out are in the summary itself, later ones arrive as plot_metadata_stream messages) and
+// the warnings its later frame reads add. Returns what stops both.
+function stream_run_updates(
+  run: TrajectoryRun,
+  request_id: string,
+  webview: WebviewLike,
+): () => void {
   const post = (rows: TrajectoryRun[`properties`][`rows`], complete: boolean): void =>
     post_to_webview(
       webview,
-      { command: `plot_metadata_stream`, file_path, rows: [...rows], complete },
+      { command: `plot_metadata_stream`, request_id, rows: [...rows], complete },
       `plot_metadata_stream`,
     )
-  if (run.properties.complete) return
+  const unsubscribe_warnings = post_new_warnings(run, (warnings) =>
+    post_to_webview(
+      webview,
+      { command: `trajectory_warnings`, request_id, warnings },
+      `trajectory_warnings`,
+    ),
+  )
   let pending: TrajectoryRun[`properties`][`rows`] = []
-  const unsubscribe = run.properties.subscribe((batch, complete) => {
-    pending = [...pending, ...batch]
-    if (!complete && pending.length < PLOT_ROWS_PER_MESSAGE) return
-    post(pending, complete)
-    pending = []
-    if (complete) unsubscribe()
-  })
+  const unsubscribe_rows = run.properties.complete
+    ? () => {}
+    : run.properties.subscribe((batch, complete) => {
+        pending = [...pending, ...batch]
+        if (!complete && pending.length < PLOT_ROWS_PER_MESSAGE) return
+        post(pending, complete)
+        pending = []
+        if (complete) unsubscribe_rows()
+      })
+  return () => {
+    unsubscribe_rows()
+    unsubscribe_warnings?.()
+  }
 }
 
 // Start watching a file using VS Code's built-in file system watcher
@@ -585,6 +615,8 @@ function setup_webview_panel(
     message_listener.dispose()
     theme_listener.dispose()
     config_listener.dispose()
+    webview_run_streams.get(panel.webview)?.()
+    webview_run_streams.delete(panel.webview)
     if (file_path) stop_watching_file(file_path, panel.webview)
   })
 }
@@ -843,6 +875,8 @@ export const deactivate = (): void => {
   active_watchers.forEach((watcher) => watcher.dispose())
   active_watchers.clear()
   active_watcher_subscribers.clear()
+  webview_run_streams.forEach((stop) => stop())
+  webview_run_streams.clear()
   for (const file_path of [...active_runs.keys()]) dispose_run(file_path)
   active_auto_render_panels.clear()
   output_channel?.dispose()

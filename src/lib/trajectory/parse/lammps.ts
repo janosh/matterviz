@@ -10,6 +10,7 @@ import {
   create_plot_row_frame,
   create_trajectory_frame,
   elem_symbol_from_token,
+  holds_numbers,
   TextLines,
 } from '#lib/trajectory/helpers.js'
 import type { AseFrames } from './ase'
@@ -99,7 +100,6 @@ class SkippedLammpsFrameError extends Error {
     this.torn = torn
   }
 }
-const NON_FINITE_TOKEN = /^[+-]?(?:nan|inf(?:inity)?)$/i
 
 type LammpsFrameHeader = {
   timestep: number
@@ -131,8 +131,8 @@ type LammpsFrameRead = {
   positions: math.Vec3[]
   site_properties: Record<string, unknown>[]
   columns?: LammpsColumns
-  // merges the frame's atom types and guesses into the run's (deferred for sampled reads)
-  merge_types: () => void
+  // deferred for sampled reads
+  merge_guesses: () => void
 }
 
 // Frame order: by atom id when the dump has ids, so every frame lists atoms in one order.
@@ -222,7 +222,6 @@ function create_lammps_reader(
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
 ) {
-  const atom_types_found = new Set<number>()
   // LAMMPS atom types are bare integers whose meaning lives in the input script, not the
   // dump. An element per atom resolves as: the caller's atom_type_mapping (explicit intent),
   // then an `element` column (`dump_modify element Si O`), then atomic number N like ASE's
@@ -408,8 +407,7 @@ function create_lammps_reader(
           }
         : undefined
     const scratch: math.Vec3 = [0, 0, 0]
-    // merged only once the frame passes, so a skipped or failed frame adds no type or guess
-    const frame_types = new Set<number>()
+    // merged only once the frame passes, so a skipped or failed frame adds no guess
     const frame_guesses = new Set<number>()
     // Skipping atom lines by count is safe only when the next frame (or the end) follows them;
     // a miscounted frame is read through to fail at the eager parse's line
@@ -446,12 +444,7 @@ function create_lammps_reader(
         !Number.isFinite(coords[2])
       ) {
         const line = lines.line(idx - 1)
-        const literal = [x_col, y_col, z_col].every(
-          (col_idx) =>
-            Number.isFinite(scanner.num(col_idx)) ||
-            NON_FINITE_TOKEN.test(scanner.str(col_idx)),
-        )
-        if (literal)
+        if (holds_numbers(scanner, [x_col, y_col, z_col]))
           throw new SkippedLammpsFrameError(
             `at timestep ${timestep}: line ${line_number} "${line}"`,
             false,
@@ -467,7 +460,6 @@ function create_lammps_reader(
             `LAMMPS atom line ${line_number} (timestep ${timestep}) has invalid type "${scanner.str(type_col)}"`,
           )
         }
-        frame_types.add(atom_type)
       }
       // Some tools fill `element` with type labels (`Type1`, `2`), and coarse-grained or
       // isotope masses miss every standard atomic weight, so each source may come up empty
@@ -573,28 +565,27 @@ function create_lammps_reader(
       throw new Error(`LAMMPS frame at timestep ${timestep} has duplicate atom IDs`)
     }
     identity_uses_ids ??= frame_uses_ids
-    const merge_types = (): void => {
-      for (const atom_type of frame_types) atom_types_found.add(atom_type)
+    const merge_guesses = (): void => {
       for (const atom_type of frame_guesses) guessed_types.add(atom_type)
     }
     // a sampled frame merges only once it survives the run's last-frame checks
-    if (sites !== `sample`) merge_types()
+    if (sites !== `sample`) merge_guesses()
     const metadata = {
       coords_unwrapped: pos_variant.unwrapped || use_images,
       box_origin,
       ...(time === null ? {} : { time }),
     }
     const header = { timestep, pbc, lattice_matrix, metadata }
-    return { header, elements, ids, positions, site_properties, columns, merge_types }
+    return { header, elements, ids, positions, site_properties, columns, merge_guesses }
   }
 
   // Hands each frame, from the top of the dump, to `on_frame` (a torn final frame is dropped
   // with a warning), then makes the run-level checks and warnings in the eager order and
-  // returns the run metadata
+  // returns the kept frames' starts
   const read_run = (
     sites: LammpsSites,
     on_frame?: (read: LammpsFrameRead, start: number) => void,
-  ): { metadata: Record<string, unknown>; starts: number[] } => {
+  ): number[] => {
     const steps: number[] = []
     const starts: number[] = []
     const merges: (() => void)[] = []
@@ -605,8 +596,8 @@ function create_lammps_reader(
       if (start < non_finite.start) Object.assign(non_finite, { first: error.message, start })
       non_finite.count++
     }
-    // A sampled frame may hide a non-finite line eager skips it for (the partial frame that
-    // starts a blow-up), so the last kept frame is read in full where the run's shape hinges on it
+    // A sampled frame may hide a non-finite line eager skips it for (a blow-up's partial frame),
+    // so the last kept frame is read in full; other corruption there fails only its own read
     const last_hides_non_finite = (): SkippedLammpsFrameError | null => {
       if (sites !== `sample` || starts.length < 2) return null
       const resume = idx
@@ -614,8 +605,7 @@ function create_lammps_reader(
         read_frame(starts[starts.length - 1], true, `none`)
         return null
       } catch (error) {
-        if (!(error instanceof SkippedLammpsFrameError)) throw error
-        return error
+        return error instanceof SkippedLammpsFrameError ? error : null
       } finally {
         idx = resume
       }
@@ -635,7 +625,7 @@ function create_lammps_reader(
           if (error) {
             skip_non_finite(error, starts[starts.length - 1])
             starts[starts.length - 1] = start
-            merges[merges.length - 1] = read.merge_types
+            merges[merges.length - 1] = read.merge_guesses
           } else
             warn(`Skipping LAMMPS frame at line ${start + 1} repeating timestep ${timestep}`)
           continue
@@ -643,7 +633,7 @@ function create_lammps_reader(
         on_frame?.(read, start)
         steps.push(timestep)
         starts.push(start)
-        merges.push(read.merge_types)
+        merges.push(read.merge_guesses)
       } catch (error) {
         if (!(error instanceof SkippedLammpsFrameError)) throw error
         if (error.torn) {
@@ -682,7 +672,7 @@ function create_lammps_reader(
         )
       }
     }
-    return { metadata: { atom_types: math.sorted_numbers(atom_types_found) }, starts }
+    return starts
   }
 
   return { read_frame, read_run, warn_guesses }
@@ -695,28 +685,25 @@ export function parse_lammps_trajectory(
 ): ParsedTrajectory {
   const frames: TrajectoryFrame[] = []
   const reader = create_lammps_reader(TextLines.of(content), warn, atom_type_mapping)
-  const { metadata } = reader.read_run(`records`, (read) =>
-    frames.push(lammps_frame(read, warn)),
-  )
-  return { format: `lammps`, frames, metadata }
+  reader.read_run(`records`, (read) => frames.push(lammps_frame(read, warn)))
+  return { format: `lammps`, frames, metadata: {} }
 }
 
 // Indexed LAMMPS dump: open makes the eager parser's header, framing and run-level checks but
 // reads atom lines only of the first frame and the first and last of the rest (all of the last
 // kept frame and of a frame a restart repeats, so a blow-up's partial frames are skipped as
 // eager does, and its other defects fail the open), keeping each frame's start. A defect in
-// any other atom line (including
-// non-finite coordinates eager skips the frame for) fails that frame's read and plot row;
-// `atom_types` covers the lines the open read. Read-time warnings (type guesses first met,
-// skipped plot rows) reach `warnings` only after the open, not the open-time banner. An atom
-// count overshooting by exactly one following frame drops that frame where eager rejects.
+// any other atom line (including non-finite coordinates eager skips the frame for) fails that
+// frame's read and plot row. Read-time warnings (type guesses first met, skipped plot rows)
+// reach `warnings` only after the open, not the open-time banner. An atom count overshooting
+// by exactly one following frame drops that frame where eager rejects.
 export function open_lammps_frames(
   lines: TextLines,
   warn: WarnFn,
   atom_type_mapping?: AtomTypeMapping,
 ): AseFrames {
   const reader = create_lammps_reader(lines, warn, atom_type_mapping)
-  const { metadata: run_metadata, starts } = reader.read_run(`sample`)
+  const starts = reader.read_run(`sample`)
   const read_frame = (frame_idx: number, sites: LammpsSites): LammpsFrameRead => {
     try {
       return reader.read_frame(starts[frame_idx], frame_idx > 0, sites)
@@ -736,7 +723,6 @@ export function open_lammps_frames(
   let previous: Uint8Array | null = null
   return {
     frame_count: starts.length,
-    metadata: run_metadata,
     read: (frame_idx) =>
       lammps_numeric_frame(read_frame(frame_idx, `columns`), warn) ??
       encode_frame(decode(frame_idx)),

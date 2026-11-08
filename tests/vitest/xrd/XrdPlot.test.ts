@@ -12,6 +12,7 @@ import {
   create_drop_event,
   expect_plot_controls,
   query,
+  reset_section,
   resize_element,
   set_input,
 } from '../setup'
@@ -564,12 +565,8 @@ describe(`XrdPlot`, () => {
     expect(target.querySelector(`.scatter`)).toBeInstanceOf(HTMLElement)
     // and it CLEARS on the next valid W, profile and all - a thrown error could not come back
     expect(await set_w(`0.02`)).toEqual([``, 1])
-    for (const section of [`dropped structure files`, `broadening`]) {
-      const selector = `button[aria-label="Reset ${section} to defaults"]`
-      query<HTMLButtonElement>(target, selector).click()
-      await tick()
-      expect(target.querySelector(selector)).toBeNull()
-    }
+    for (const section of [`dropped structure files`, `broadening`])
+      await reset_section(section, target)
     expect(query<HTMLSelectElement>(target, `.toggle select`).value).toBe(`xray`)
     expect(profile_paths(target)).toHaveLength(0)
   })

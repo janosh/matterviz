@@ -10,8 +10,12 @@ import {
   create_plot_row_frame,
   create_trajectory_frame,
   expand_ion_types,
+  decode_finite_frames,
+  holds_numbers,
+  NonFiniteFrameError,
   TextLines,
 } from '#lib/trajectory/helpers.js'
+import { frame_property_row } from '../extract'
 import { create_numeric_md_frame } from '../frame'
 import type { AseFrames } from './ase'
 import type { ParsedTrajectory, WarnFn } from './shared'
@@ -76,6 +80,10 @@ function read_positions(
     frac[1] = scanner.num(1)
     frac[2] = scanner.num(2)
     if (!Number.isFinite(frac[0]) || !Number.isFinite(frac[1]) || !Number.isFinite(frac[2])) {
+      if (holds_numbers(scanner, [0, 1, 2]))
+        throw new NonFiniteFrameError(
+          `Non-finite XDATCAR coordinates in frame ${step} line ${line_idx + 1} "${lines.line(line_idx)}"`,
+        )
       if (line_idx === lines.count - 1) return null
       throw new Error(
         `XDATCAR frame ${step} line ${line_idx + 1} is not a fractional coordinate triple: "${lines.line(line_idx) ?? ``}"`,
@@ -90,9 +98,10 @@ function read_positions(
 }
 
 // Locate every frame by walking frame markers and headers, reading no coordinate line but the
-// last frame's. A frame cut off by the end of the file (missing lines, or a half-written final
-// line) is a writer still appending: it is dropped with a warning. A malformed coordinate line
-// anywhere else is corruption and fails that frame's read.
+// last frames'. A frame cut off by the end of the file (missing lines, or a half-written final
+// line) is a writer still appending: it is dropped with a warning, as are the trailing frames
+// of an MD blow-up (`nan`/`inf` from its onset on; the first frame is kept, failing its read).
+// A malformed coordinate line anywhere else (the last frame's too) fails that frame's read.
 function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[] {
   // title, scale, 3 lattice rows, symbols, counts, one config marker and one ion = 9 lines
   if (lines.count < 9) throw new Error(`XDATCAR file too short`)
@@ -152,13 +161,21 @@ function index_xdatcar_frames(lines: TextLines, warn: WarnFn): XdatcarFrameSpec[
     frames.push({ line: line_idx, step, cell })
     line_idx += n_ions
   }
-  const last = frames.at(-1)
-  if (last && !read_positions(lines, last)) {
-    warn(
-      `Dropping truncated final XDATCAR frame ${last.step}: partial coordinate line ${lines.count} "${lines.line(lines.count - 1)}"`,
-    )
+  let [n_non_finite, onset] = [0, ``]
+  for (let last = frames.at(-1); last; last = frames.at(-1)) {
+    try {
+      if (read_positions(lines, last)) break
+      warn(
+        `Dropping truncated final XDATCAR frame ${last.step}: partial coordinate line ${lines.count} "${lines.line(lines.count - 1)}"`,
+      )
+    } catch (error) {
+      if (!(error instanceof NonFiniteFrameError) || frames.length === 1) break
+      ;[n_non_finite, onset] = [n_non_finite + 1, error.message]
+    }
     frames.pop()
   }
+  if (n_non_finite > 0)
+    warn(`Skipping ${n_non_finite} trailing XDATCAR frame(s) after an MD blow-up: ${onset}`)
   if (frames.length === 0) throw new Error(`XDATCAR contains no complete frame`)
   return frames
 }
@@ -233,6 +250,21 @@ export function parse_vasp_xdatcar(
   warn: WarnFn,
 ): ParsedTrajectory {
   const { frame_count, decode } = open_xdatcar_frames(TextLines.of(content), warn)
-  const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => decode(frame_idx))
+  const frames = decode_finite_frames(frame_count, decode, `XDATCAR`, warn)
   return { format: `xdatcar`, frames, metadata: {} }
+}
+
+// The eager open: parse_vasp_xdatcar's frames as trajectory_from_frames encodes them, plus
+// their plot rows, read without Site records (10k atoms x 200 frames: 1.6 -> 0.35 s)
+export function read_xdatcar_snapshots(content: string | TextLines, warn: WarnFn) {
+  const { frame_count, read } = open_xdatcar_frames(TextLines.of(content), warn)
+  const snapshots = decode_finite_frames(frame_count, read, `XDATCAR`, warn)
+  // Its plot rows without re-reading lines; the reads already reported a singular lattice
+  const properties = snapshots.map(({ header, structure, sites }, frame_idx) => {
+    const { matrix, pbc } = structure.lattice ?? {}
+    const numbers = sites as Uint8Array
+    const row = create_plot_row_frame(numbers, matrix, pbc, header.step, {}, () => {})
+    return frame_property_row(row, frame_idx)
+  })
+  return { snapshots, properties }
 }

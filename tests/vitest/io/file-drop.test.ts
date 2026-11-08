@@ -11,7 +11,7 @@ import type { FileLoadCallback, TrajectoryFileLoadCallback } from '#lib/io/types
 import { dropped_file_url, load_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-// decompress_trajectory_file stays real so the hdf5_as_blob mode is exercised end to end
+// decompress_trajectory_file stays real so the keep_blob mode is exercised end to end
 vi.mock(`#lib/io/decompress.js`, async (import_original) => ({
   ...(await import_original<typeof DecompressModule>()),
   decompress_file: vi.fn(),
@@ -343,9 +343,9 @@ describe(`create_file_drop_handler`, () => {
     },
   )
 
-  // Trajectory viewers keep HDF5 payloads Blob-backed so h5wasm reads them lazily instead of
-  // materialising the whole file; everything else still arrives the way parsers expect
-  test(`hdf5_as_blob hands .h5 drops over as Blobs, text files as text, URLs to the trajectory loader`, async () => {
+  // Trajectory viewers keep HDF5 and text payloads Blob-backed: h5wasm reads HDF5 lazily
+  // instead of materialising the whole file, and text decodes in the parse worker
+  test(`keep_blob hands .h5 and text drops over as Blobs, URLs to the trajectory loader`, async () => {
     vi.mocked(dropped_file_url).mockReturnValue(`https://example.com/run.h5`)
     const trajectory_drop = vi.fn<TrajectoryFileLoadCallback>()
     const hdf5_signature = [0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
@@ -356,7 +356,7 @@ describe(`create_file_drop_handler`, () => {
     const xyz_text = `2\nstep=0\nH 0 0 0\nH 0 0 0.74\n`
     const handler = create_file_drop_handler({
       allow: () => true,
-      hdf5_as_blob: true,
+      keep_blob: true,
       on_drop: trajectory_drop,
       on_error,
     })
@@ -375,7 +375,8 @@ describe(`create_file_drop_handler`, () => {
     expect((h5_content as Blob).size).toBe(h5_file.size)
     expect(h5_name).toBe(`run.h5`)
     expect(h5_meta).toEqual({ source_filename: `run.h5`, file: h5_file })
-    expect([xyz_content, xyz_name]).toEqual([xyz_text, `h2.xyz`])
+    expect(xyz_name).toBe(`h2.xyz`)
+    expect(await (xyz_content as Blob).text()).toBe(xyz_text)
   })
 })
 

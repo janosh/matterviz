@@ -22,9 +22,13 @@ configured in `vite.config.ts`:
   to a stub (`h5wasm-stub.ts`). Hosts that drive this widget (e.g. pymatviz) parse
   trajectories on the Python side and pass structured data, so the in-browser HDF5
   path is never hit; it throws a clear error if it ever is.
-- **moyo** (~1.9 MB spglib symmetry WASM, inlined twice) is loaded from jsDelivr on demand by a small build plugin, only when spacegroup/symmetry analysis runs. For offline use, set `globalThis.matterviz_moyo_wasm_url` to a locally served URL or a WASM data URL before symmetry analysis starts. Rendering never needs it.
+- **moyo** (~1.9 MB spglib symmetry WASM, inlined twice) is loaded from jsDelivr on demand by a small build plugin, only when spacegroup/symmetry analysis runs. For offline use, set `globalThis.matterviz_moyo_wasm_url` to a locally served URL or a WASM data URL before the widget renders; symmetry then runs on the main thread, since workers can't read that global. Rendering never needs it.
 
 The publish workflow's size gate fails if either WASM creeps back in.
+
+## Web Workers
+
+The bundle has no URL of its own to load worker files from (anywidget imports it from a `blob:`, CDN or `file://` URL), so the `inline_workers` plugin in `vite.config.ts` ships every MatterViz worker (file parsing, MSD, VACF, RDF, structure ID, spectroscopy, chempot, ternary hulls, isosurfaces, Fermi surfaces, symmetry) as a string in `matterviz.js` (~0.8 MB of 6.1 MB) and starts it from a `blob:` URL. That keeps parsing and analysis off the notebook's UI thread: RDF over 100 frames of a 10k-atom run froze the page for 10 s before, and now runs in 2 s across parallel workers with no frame longer than ~50 ms. A page CSP whose `worker-src` (or its `child-src`/`script-src` fallback) leaves out `blob:` refuses these workers; the bundle tests that once at load and then logs a warning and computes on the main thread.
 
 ## Consumers
 
@@ -41,9 +45,8 @@ The publish workflow's size gate fails if either WASM creeps back in.
 # (bundling its dist/) and the svelte-widgets the root installed
 pnpm install && pnpm package:dist
 
-cd extensions/anywidget
-pnpm install
-pnpm build        # -> build/matterviz.js + build/matterviz.css
+pnpm install:anywidget             # standalone install, no lockfile or pnpm-workspace.yaml
+pnpm -C extensions/anywidget build # -> build/matterviz.js + build/matterviz.css
 ```
 
 ### Building from a matterviz checkout in downstream CI

@@ -145,9 +145,12 @@ export function calc_structure_id(
   }
 }
 
-// Write per-site results into site.properties. Kept separate from calc_structure_id so the
-// worker can ship plain buffers back and the caller decides whether to mutate the structure.
-export function apply_structure_id(structure: AnyStructure, result: StructureIdResult): void {
+// A copy of `structure` with the per-site results in site.properties: structures are immutable
+// data (viewers only see a new object), and the worker ships plain buffers back
+export function apply_structure_id<Struct extends AnyStructure>(
+  structure: Struct,
+  result: StructureIdResult,
+): Struct {
   const { sites } = structure
   if (sites.length !== result.n_atoms) {
     throw new Error(
@@ -155,11 +158,17 @@ export function apply_structure_id(structure: AnyStructure, result: StructureIdR
         `${sites.length} sites; the result belongs to a different structure or frame`,
     )
   }
-  for (const [site_idx, site] of sites.entries()) {
-    if (result.cna_types) site.properties[CNA_TYPE_PROPERTY] = result.cna_types[site_idx]
-    if (result.centrosymmetry) {
-      site.properties[CENTROSYMMETRY_PROPERTY] = result.centrosymmetry[site_idx]
-    }
+  const { cna_types, centrosymmetry } = result
+  return {
+    ...structure,
+    sites: sites.map((site, site_idx) => ({
+      ...site,
+      properties: {
+        ...site.properties,
+        ...(cna_types && { [CNA_TYPE_PROPERTY]: cna_types[site_idx] }),
+        ...(centrosymmetry && { [CENTROSYMMETRY_PROPERTY]: centrosymmetry[site_idx] }),
+      },
+    })),
   }
 }
 

@@ -23,6 +23,7 @@ import {
   expect_plot_controls,
   mount_sized,
   plot_svg,
+  reset_section,
   translate_of,
 } from '../setup'
 import { convert_frequencies } from '#lib/spectral/frequency-units.js'
@@ -189,12 +190,7 @@ describe(`Dos component`, () => {
     select.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
     expect(document.body.textContent).toContain(`Phonon frequency (meV)`)
-    for (const section of [`dos`, `smearing`]) {
-      const selector = `button[title="Reset ${section} to defaults"]`
-      doc_query<HTMLButtonElement>(selector).click()
-      await tick()
-      expect(document.querySelector(selector)).toBeNull()
-    }
+    for (const section of [`dos`, `smearing`]) await reset_section(section)
     expect(select.value).toBe(`THz`)
   })
 

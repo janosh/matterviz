@@ -6,11 +6,12 @@ import { extract_prop_docs } from '../../src/scripts/prop-docs'
 import { flushSync } from 'svelte'
 import { globSync } from 'node:fs'
 import { describe, expect, test, vi } from 'vitest'
+import { inline_workers } from '../../extensions/anywidget/vite.config'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
-const { disable_workers, spectral_doc, WIDGET_COMPONENTS } = vi.hoisted(() => ({
-  disable_workers: vi.fn(),
+const { check_blob_workers, spectral_doc, WIDGET_COMPONENTS } = vi.hoisted(() => ({
+  check_blob_workers: vi.fn(),
   WIDGET_COMPONENTS: `Bands BandsAndDos BarPlot BrillouinZone ChemPotDiagram Composition
     ConvexHull Dos FermiSurface HeatmapMatrix Histogram IsobaricBinaryPhaseDiagram PeriodicTable
     RdfPlot ScatterPlot ScatterPlot3D SpacegroupBarPlot Structure Trajectory Treemap XrdPlot`
@@ -22,6 +23,7 @@ const { disable_workers, spectral_doc, WIDGET_COMPONENTS } = vi.hoisted(() => ({
       ? { normalized: doc }
       : null,
 }))
+const set_moyo_wasm_source = vi.hoisted(() => vi.fn())
 // Swap matterviz components for a recording stub to exercise the real widget wiring
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
@@ -30,7 +32,8 @@ vi.mock(`matterviz`, async () => {
     ...Object.fromEntries(WIDGET_COMPONENTS.map((name) => [name, stub_module.default])),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
-    disable_workers,
+    check_blob_workers,
+    set_moyo_wasm_source,
     // the real one builds a run and throws on malformed payloads (covered in open.test.ts)
     trajectory_from_json: (value: unknown) => {
       if (value === `malformed`) throw new Error(`malformed trajectory`)
@@ -52,11 +55,25 @@ vi.mock(`matterviz/theme/embedded`, () => ({
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
 // read now: mock call records don't survive into the tests
-const disable_workers_calls = disable_workers.mock.calls.length
+const check_blob_workers_calls = [...check_blob_workers.mock.calls]
 
-// blob:/CDN/file:// bundle URLs can't host same-origin workers
-test(`importing the widget bundle forces main-thread compute once`, () => {
-  expect(disable_workers_calls).toBe(1)
+test(`importing the widget bundle probes blob: workers once`, () => {
+  expect(check_blob_workers_calls).toEqual([[`MatterViz`]])
+})
+
+// inline_workers' transform as Vite calls it (it reads nothing from the plugin context)
+const transform_inline_workers = inline_workers.transform as (
+  code: string,
+  identifier: string,
+) => { code: string } | null
+test(`anywidget inline_workers rewrites new Worker(new URL(...), options) to an inline import`, () => {
+  const code = `new Worker(\n  new URL('./b.js', import.meta.url),\n  opts,\n)`
+  expect(transform_inline_workers(code, `/x.js`)?.code).toBe(
+    `import __inline_worker_0 from "./b.js?worker&inline"\nnew __inline_worker_0(\n  opts,\n)`,
+  )
+  expect(() =>
+    transform_inline_workers(`new Worker(new URL(\`./a.js\`, import.meta.url))`, `/x.js`),
+  ).toThrow(/unmatched new Worker/)
 })
 
 const as_model = (mock: MockModel) => mock as unknown as Parameters<typeof mount_spec>[0]
@@ -413,16 +430,20 @@ describe(`writeback wiring`, () => {
 
 describe(`render() lifecycle`, () => {
   // via the real entry point, so cleanup_element + cleanups wiring is covered too
+  // and hands a host-served moyo WASM to the main thread, which inline workers can't see
   test(`the render() disposer unregisters all model listeners`, () => {
     const model = new MockModel({ widget_type: `structure` })
     const element = document.createElement(`div`)
     document.body.append(element)
+    vi.stubGlobal(`matterviz_moyo_wasm_url`, `http://localhost/moyo.wasm`)
     // as never: RenderProps also wants signal/host/experimental, unused here
     // oxlint-disable-next-line no-unnecessary-type-assertion -- svelte-check needs it
     const dispose = anywidget_module.default.render({
       model: as_model(model),
       el: element,
     } as never) as () => void
+    vi.unstubAllGlobals()
+    expect(set_moyo_wasm_source).toHaveBeenCalledExactlyOnceWith(`http://localhost/moyo.wasm`)
     flushSync()
     expect(listener_count(model)).toBeGreaterThan(0)
     dispose()

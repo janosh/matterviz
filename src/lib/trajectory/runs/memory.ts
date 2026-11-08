@@ -100,7 +100,22 @@ export function trajectory_from_frames(
   extras: MemoryRunExtras = {},
 ): TrajectoryRun {
   validate_frames(frames, extras)
-  const snapshots = frames.map(encode_frame)
+  return trajectory_from_snapshots(frames.map(encode_frame), {
+    ...extras,
+    properties: extras.properties ?? frames.map(frame_property_row),
+  })
+}
+
+// Frames already encoded by a reader that checked validate_frames' other invariants
+export function trajectory_from_snapshots(
+  snapshots: NumericFrame[],
+  extras: NumericRunExtras,
+): TrajectoryRun {
+  const bad_idx = snapshots.findIndex(({ header }) => !is_finite_number(header.step))
+  if (bad_idx !== -1)
+    throw new TypeError(
+      `Frame ${display_idx(bad_idx)} has invalid step ${snapshots[bad_idx].header.step}`,
+    )
   return numeric_run(snapshots.length, (frame_idx) => snapshots[frame_idx], {
     ...extras,
     read_atoms: (options, signal) => {
@@ -112,7 +127,6 @@ export function trajectory_from_frames(
         extras.signals,
       )
     },
-    properties: extras.properties ?? frames.map(frame_property_row),
   })
 }
 

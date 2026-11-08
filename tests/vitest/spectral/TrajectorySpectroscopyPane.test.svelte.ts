@@ -7,6 +7,7 @@ import type * as spectroscopy_collect from '#lib/spectral/spectroscopy-collect.j
 import TrajectorySpectroscopyPane from '#lib/spectral/TrajectorySpectroscopyPane.svelte'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
+import { types } from 'node:util'
 import { mount, tick, unmount } from 'svelte'
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest'
 import {
@@ -296,6 +297,8 @@ test.each([`collect`, `compute`] as const)(
     await set_timing(target, `timestep`, `2`)
     calculation_button(target, `Compute spectroscopy`).click()
     await vi.waitFor(() => expect(props.result?.metadata.name).toBe(`retry`))
+    // frozen, so the $state it lands in leaves its curves unproxied for the plots
+    expect(types.isProxy(props.result?.vdos)).toBe(false)
     expect(mocks.compute.mock.lastCall?.[0]).toMatchObject({ time_step: 2 })
     expect(mocks.collect).toHaveBeenCalledTimes(2)
     expect(target.textContent).not.toContain(`Invalid analysis settings`)

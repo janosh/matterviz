@@ -35,7 +35,7 @@ import {
   is_time_scale,
 } from '#lib/plot/core/types.js'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 type Limits = [number | null, number | null]
 const sample_values = [1, 2, 3, 4, 5]
@@ -707,10 +707,10 @@ describe(`scales`, () => {
       )
     })
 
-    // as d3's timeMonth: a 1st with no midnight ticks at 01:00, the next months at 00:00 again
+    // as d3's timeMonth: a 1st with no midnight ticks at 01:00, the next months at 00:00 again.
+    // Needs the suite's TZ (America/Asuncion, pinned in vite.config.ts), whose clocks jumped
+    // from 00:00 to 01:00 on 2017-10-01
     test(`month ticks return to local midnight after a DST change on the 1st`, () => {
-      vi.stubEnv(`TZ`, `America/Asuncion`) // clocks jumped from 00:00 to 01:00 on 2017-10-01
-      onTestFinished(() => void vi.unstubAllEnvs())
       const domain: Vec2 = [new Date(2017, 8, 15).getTime(), new Date(2018, 1, 15).getTime()]
       const ticks = generate_ticks(domain, `time`, `month`, scaleTime().domain(domain))
       expect(

@@ -1203,13 +1203,15 @@ test.describe(`Element Visibility Toggle`, () => {
       }
     })
 
-    await test.step(`element badge tooltip uses light theme colors`, async () => {
+    await test.step(`element badge tooltip sits above its badge in light theme colors`, async () => {
       await page.emulateMedia({ colorScheme: `light` })
       await page.locator(`#test-structure`).hover()
       const label = legend_item(page).locator(`label`)
       await label.hover({ force: true })
       const tooltip = page.locator(`.custom-tooltip`)
       await expect(tooltip).toBeVisible()
+      // beside the badge it would cover the neighboring legend items
+      await expect(tooltip).toHaveAttribute(`data-placement`, `top`)
 
       const { background_color, text_color } = await tooltip.evaluate((element) => {
         const style = getComputedStyle(element)

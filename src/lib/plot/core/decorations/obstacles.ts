@@ -48,9 +48,12 @@ export function legend_cell_sizes(element: HTMLElement): LegendCellSizes | null 
     const box = px(style.flexGrow) > 0 ? range : child
     return box.getBoundingClientRect().width + edges(style, `x`, [`margin`])
   }
-  const laid_out = [...element.children].some((cell) => cell.getBoundingClientRect().width > 0)
+  // Folded-away series claim no room: the legend expands over the plot on hover instead of
+  // re-solving the layout (see PlotLegend's tucked_items)
+  const shown = [...element.children].filter((cell) => !cell.classList.contains(`tucked`))
+  const laid_out = shown.some((cell) => cell.getBoundingClientRect().width > 0)
   if (!laid_out) return null // margins alone would read as a size
-  const cells = [...element.children].map((cell) => {
+  const cells = shown.map((cell) => {
     const style = getComputedStyle(cell)
     const children = [...cell.children]
     const content = cell.classList.contains(`legend-filter`)

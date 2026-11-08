@@ -20,7 +20,10 @@ import {
   calc_force_stats,
   create_trajectory_frame,
   elem_symbol_from_token,
+  holds_numbers,
   iter_xyz_frames,
+  decode_finite_frames,
+  NonFiniteFrameError,
   parse_extxyz_columns,
   TextLines,
 } from '#lib/trajectory/helpers.js'
@@ -354,6 +357,10 @@ function parse_xyz_atom_lines(
     }
     const pos = [scanner.num(pos_col), scanner.num(pos_col + 1), scanner.num(pos_col + 2)]
     if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1]) || !Number.isFinite(pos[2])) {
+      if (holds_numbers(scanner, [pos_col, pos_col + 1, pos_col + 2]))
+        throw new NonFiniteFrameError(
+          `Non-finite XYZ coordinates in ${frame_label} line ${line_number} "${quoted()}"`,
+        )
       throw new TypeError(
         `XYZ ${frame_label} line ${line_number} has non-numeric coordinates: "${quoted()}"`,
       )
@@ -608,47 +615,89 @@ function warn_skipped_xyz_lines(
   report(specs[specs.length - 1].end, end, `after frame ${specs.length}`)
 }
 
-// Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
-// a frame whose atom block runs past the end of the file (iter_xyz_frames returns its header
-// instead of yielding it) or a final frame whose last atom line, the file's last line, is
-// half-written. Either is dropped with a warning. Any other defect in a complete final frame
-// is corruption and throws like in every other frame.
-export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[] {
-  const specs: XyzFrameSpec[] = []
-  const frames = iter_xyz_frames(lines)
-  let next = frames.next()
-  for (; !next.done; next = frames.next()) specs.push(next.value)
-  const torn = next.value
-  if (specs.length > 0) warn_skipped_xyz_lines(lines, specs, torn?.start ?? lines.count, warn)
-  const drop = (spec: XyzFrameSpec, reason: string) =>
-    warn(
-      `Dropping truncated final XYZ frame ${display_idx(specs.length)} (line ${spec.start + 1}): ${reason}`,
-    )
-  if (torn) {
-    const atom_lines = Math.max(torn.end - torn.start - 2, 0)
-    drop(torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
-    return specs
-  }
-  const last = specs.at(-1)
-  // only a frame that reaches the end of the text can have a half-written last line
-  if (!last || last.end < lines.count) return specs
+// Whether the last atom line of `last`, a frame reaching the end of the text, is half-written
+function ends_in_partial_line(
+  lines: TextLines,
+  last: XyzFrameSpec,
+  scanner: LineScanner,
+): boolean {
   const { pos_col, min_cols, layout } = parse_extxyz_columns(last.comment)
   // Every declared column, not just through pos: a line cut inside its forces dropped the
   // whole frame's forces instead of the torn frame. Capped by the frame's first atom line, so
   // a writer that omits a declared column on every line keeps its last frame.
-  const scanner = new LineScanner()
   const first_line_cols = last.num_atoms > 1 ? lines.scan(scanner, last.start + 2) : Infinity
   const declared_end = Math.max(
     0,
     ...Object.values(layout ?? {}).map(({ offset, ncols }) => offset + ncols),
   )
   const declared_cols = Math.max(min_cols, Math.min(first_line_cols, declared_end))
-  const complete =
-    lines.scan(scanner, last.end - 1) >= declared_cols &&
-    [0, 1, 2].every((axis) => Number.isFinite(scanner.num(pos_col + axis)))
-  if (complete) return specs
-  specs.pop()
-  drop(last, `partial atom line ${last.end} "${lines.line(last.end - 1)}"`)
+  return (
+    lines.scan(scanner, last.end - 1) < declared_cols ||
+    !holds_numbers(scanner, [pos_col, pos_col + 1, pos_col + 2])
+  )
+}
+
+// Index of the first atom line of `frame` holding `nan`/`inf` coordinates, or -1
+function find_non_finite_line(
+  lines: TextLines,
+  frame: XyzFrameSpec,
+  scanner: LineScanner,
+): number {
+  const { pos_col } = parse_extxyz_columns(frame.comment)
+  const pos_cols = [pos_col, pos_col + 1, pos_col + 2]
+  for (let idx = frame.start + 2; idx < frame.end; idx++) {
+    lines.scan(scanner, idx)
+    const finite =
+      Number.isFinite(scanner.num(pos_col)) &&
+      Number.isFinite(scanner.num(pos_col + 1)) &&
+      Number.isFinite(scanner.num(pos_col + 2))
+    if (!finite && holds_numbers(scanner, pos_cols)) return idx
+  }
+  return -1
+}
+
+// Every complete frame of a split XYZ file. A writer still appending leaves one of two tails:
+// a frame whose atom block runs past the end of the file (iter_xyz_frames returns its header
+// instead of yielding it) or a final frame whose last atom line, the file's last line, is
+// half-written. Either is dropped with a warning. Any other defect in a complete final frame
+// is corruption and throws like in every other frame. An MD blow-up's frames hold `nan`/`inf`
+// coordinates to the end of the run; its onset frame passes the walk's samples (its first
+// atoms are still finite) and would end the run unreadable, so like the LAMMPS reader the last
+// frame is read in full and skipped while it holds any (eager parsing also skips one mid-run).
+export function index_xyz_frames(lines: TextLines, warn: WarnFn): XyzFrameSpec[] {
+  const specs: XyzFrameSpec[] = []
+  const frames = iter_xyz_frames(lines)
+  let next = frames.next()
+  for (; !next.done; next = frames.next()) specs.push(next.value)
+  const torn = next.value
+  let end = torn?.start ?? lines.count // past the last line a dropped tail does not hold
+  const drop = (spec: XyzFrameSpec, reason: string) =>
+    `Dropping truncated final XYZ frame ${display_idx(specs.length)} (line ${spec.start + 1}): ${reason}`
+  const scanner = new LineScanner()
+  let truncated: string | null = null
+  const last = specs.at(-1)
+  if (torn) {
+    const atom_lines = Math.max(torn.end - torn.start - 2, 0)
+    truncated = drop(torn, `${atom_lines} of ${torn.num_atoms} atom lines`)
+  } else if (last && last.end === lines.count && ends_in_partial_line(lines, last, scanner)) {
+    specs.pop()
+    end = last.start
+    truncated = drop(last, `partial atom line ${last.end} "${lines.line(last.end - 1)}"`)
+  }
+  let [blowup_start, first_non_finite] = [end, -1]
+  while (specs.length > 1) {
+    const frame = specs[specs.length - 1]
+    const line_idx = find_non_finite_line(lines, frame, scanner)
+    if (line_idx < 0) break
+    specs.pop()
+    ;[blowup_start, first_non_finite] = [frame.start, line_idx]
+  }
+  if (specs.length > 0) warn_skipped_xyz_lines(lines, specs, blowup_start, warn)
+  if (first_non_finite >= 0)
+    warn(
+      `Skipping XYZ lines ${blowup_start + 1}-${end} after frame ${specs.length}: non-finite coordinates from line ${first_non_finite + 1} "${lines.line(first_non_finite)}" on, as after an MD blow-up`,
+    )
+  if (truncated) warn(truncated)
   return specs
 }
 
@@ -673,16 +722,11 @@ export function parse_xyz_trajectory(
     }
     specs.push({ start: 0, num_atoms, comment: lines.line(1) ?? ``, end: num_atoms + 2 })
   } else for (const message of dropped) collector.warn(message)
-  const frames = specs.map((spec, frame_idx) =>
-    build_xyz_frame(
-      lines,
-      spec,
-      {
-        frame_label: `frame ${display_idx(frame_idx)} (line ${spec.start + 1})`,
-        default_step: frame_idx,
-      },
-      collector,
-    ),
-  )
+  const decode = (frame_idx: number): TrajectoryFrame => {
+    const spec = specs[frame_idx]
+    const frame_label = `frame ${display_idx(frame_idx)} (line ${spec.start + 1})`
+    return build_xyz_frame(lines, spec, { frame_label, default_step: frame_idx }, collector)
+  }
+  const frames = decode_finite_frames(specs.length, decode, `XYZ`, collector.warn)
   return { format: `xyz`, frames, metadata: extxyz_run_metadata(specs[0]?.comment) }
 }

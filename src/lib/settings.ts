@@ -2,7 +2,14 @@
 // Used by both main package and VSCode extension
 
 import type { ColorSchemeName } from '#lib/constants.js'
-import { DEFAULT_FPS_RANGE, ELEMENT_COLOR_SCHEME_NAMES, FPS_STEP } from '#lib/constants.js'
+import {
+  DEFAULT_FPS_RANGE,
+  ELEMENT_COLOR_SCHEME_NAMES,
+  FERMI_COLOR_PROPERTY,
+  FPS_STEP,
+  INDEX_ABOVE_BYTES,
+  POLYHEDRA_DEFAULTS,
+} from '#lib/constants.js'
 import type { HullFaceColorMode } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/types.js'
 import { capitalize, symbol_names } from '#lib/labels.js'
@@ -389,7 +396,7 @@ export const SETTINGS_CONFIG = define_settings({
       enum: SHOW_BONDS_ENUM,
     },
     polyhedra_neighbor_mode: {
-      value: `anion`,
+      value: POLYHEDRA_DEFAULTS.neighbor_mode,
       description: `Use more electronegative anion neighbors or every bonded neighbor as polyhedron vertices`,
       enum: {
         anion: `Anion neighbors`,
@@ -415,13 +422,13 @@ export const SETTINGS_CONFIG = define_settings({
       description: `Hide the central atom of each rendered polyhedron`,
     },
     polyhedra_min_neighbors: {
-      value: 4,
+      value: POLYHEDRA_DEFAULTS.min_neighbors,
       description: `Minimum number of bonded neighbors (coordination number) to form a polyhedron`,
       minimum: 4, // hulls of <4 points are degenerate and render nothing
       maximum: 12,
     },
     polyhedra_max_neighbors: {
-      value: 8,
+      value: POLYHEDRA_DEFAULTS.max_neighbors,
       description: `Maximum number of bonded neighbors for a polyhedron (skips e.g. CN-12 cuboctahedra around large A-site cations)`,
       minimum: 4,
       maximum: 16,
@@ -697,7 +704,7 @@ export const SETTINGS_CONFIG = define_settings({
   fermi: {
     mu: { value: 0, description: `Chemical potential offset from the Fermi level (eV)` },
     color_property: {
-      value: `band`,
+      value: FERMI_COLOR_PROPERTY,
       description: `Quantity mapped onto the Fermi surface color scale when the data has no per-state properties (with them, the first property colors the surface unless one is chosen)`,
       enum: { band: `Band`, spin: `Spin`, property: `Property` },
     },
@@ -797,7 +804,7 @@ export const SETTINGS_CONFIG = define_settings({
     // File handling and loading
     allow_file_drop: { value: true, description: `Allow drag-and-drop of trajectory files` },
     index_above_bytes: {
-      value: 25000000,
+      value: INDEX_ABOVE_BYTES,
       description: `Trajectory files (XYZ, EXTXYZ, LAMMPS dump, XDATCAR) larger than this many bytes are parsed in a Web Worker and decoded frame by frame on demand instead of all at once (ASE .traj always is)`,
       minimum: 1000000,
       maximum: 2000000000,

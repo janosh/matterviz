@@ -149,7 +149,6 @@
         prediction = value
       },
       () => {},
-      () => `benchmark`,
       () => {},
     )
     const run = controller.start_run({

@@ -749,6 +749,42 @@ describe(`remap_bonds_after_deletion`, () => {
 })
 
 describe(`compute_bonds memo`, () => {
+  const cluster_rand = make_rng(3)
+  const cluster_atoms = Array.from({ length: 1500 }, (_, idx): [string, Vec3] => [
+    [`C`, `H`, `N`, `O`][idx % 4],
+    [0, 1, 2].map(() => 30 * cluster_rand()) as Vec3,
+  ])
+  const copper_cell = make_crystal(3.61, fcc(`Cu`))
+  // Drag-like edits (a few sites move per call) re-search only the moved sites' contacts. Each
+  // step must equal a full search without a query cache (bit-identical lengths, any order): a
+  // supercell whose shells pool all copies of a unit-cell atom, a metal, an organic cluster.
+  test.each([
+    [`rocksalt supercell`, make_supercell(make_rocksalt(), 6)],
+    [`fcc Cu supercell`, make_supercell(copper_cell, 7)],
+    [`C/H/N/O cluster`, make_molecule(cluster_atoms)],
+  ])(`incremental search after site moves matches a full search: %s`, (_, base) => {
+    const rand = make_rng(5)
+    let { sites } = base
+    const query = bonding.create_bond_query()
+    const bonds_of = (struct: AnyStructure, with_query?: bonding.BondNeighborQuery) =>
+      sort_bonds(bonding.electroneg_ratio(struct, {}, with_query))
+    bonds_of(base, query)
+    // Shift random sites up to 0.25 A per axis per draw, none, or one onto another's position;
+    // 250 draws exceed the moved-site share and run a full search the next step reuses
+    for (const n_moved of [1, 1, 3, 30, 0, 2, 250, 1]) {
+      sites = sites.slice()
+      for (let draw = 0; draw < n_moved; draw++) {
+        const site_idx = Math.floor(rand() * sites.length)
+        const xyz = sites[site_idx].xyz.map((coord) => coord + 0.5 * (rand() - 0.5)) as Vec3
+        sites[site_idx] = { ...sites[site_idx], xyz }
+      }
+      if (n_moved === 2) sites[0] = { ...sites[0], xyz: [...sites[1].xyz] }
+      const structure = { ...base, sites }
+      const actual = bonds_of(structure, query)
+      expect(actual).toEqual(bonds_of(structure))
+      expect(actual.length).toBeGreaterThan(100)
+    }
+  })
   test.each([false, true])(
     `rebuilds after cumulative diagonal motion exceeds the skin (numeric: %s)`,
     (numeric) => {

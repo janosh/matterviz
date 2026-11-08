@@ -17,6 +17,7 @@ import {
   doc_query,
   expect_labelled_settings_grid,
   option_texts,
+  reset_section,
   set_input,
 } from '../setup'
 import { make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
@@ -185,7 +186,7 @@ describe(`IsosurfaceControls`, () => {
   // further volumes stay available as colour sources or for manually added surfaces
   test.each([`initial`, `layer edit`, `new volume`])(
     `reset restores auto settings after %s`,
-    (scenario) => {
+    async (scenario) => {
       const volumes = two_volumes()
       const settings = auto_isosurface_settings(volumes[0])
       if (scenario === `initial`) settings.layers[0].opacity = 0.2
@@ -194,15 +195,12 @@ describe(`IsosurfaceControls`, () => {
       else if (scenario === `layer edit`)
         props.settings = { ...props.settings, layers: [make_layer(`0`, { opacity: 0.2 })] }
       flushSync()
-      const selector = `button[aria-label="Reset isosurface to defaults"]`
-      doc_query<HTMLButtonElement>(selector).click()
-      flushSync()
+      await reset_section(`isosurface`)
       expect(props.settings).toEqual(auto_isosurface_settings(props.volumes[0]))
-      expect(document.querySelector(selector)).toBeNull()
     },
   )
 
-  test(`cross-section reset restores the first volume and authored nondefault settings`, () => {
+  test(`cross-section reset restores the first volume and authored nondefault settings`, async () => {
     const props = $state({
       volumes: two_volumes(),
       active_volume_id: `1`,
@@ -210,12 +208,9 @@ describe(`IsosurfaceControls`, () => {
     })
     mount(VolumeSliceControls, { target: document.body, props: bind_props({}, props) })
     flushSync()
-    const selector = `button[aria-label="Reset cross-section to defaults"]`
-    doc_query<HTMLButtonElement>(selector).click()
-    flushSync()
+    await reset_section(`cross-section`)
     expect(props.active_volume_id).toBe(`0`)
     expect(props.settings).toEqual(create_volume_slice_settings())
-    expect(document.querySelector(selector)).toBeNull()
   })
 
   test(`cross-section range edits keep the RdBu default of a scheme-less color_scale`, () => {

@@ -34,6 +34,16 @@ export const THZ_TO_INVERSE_CM = 1e12 / (SPEED_OF_LIGHT_M_S * 100)
 export const DEFAULT_FPS_RANGE = [0, 300] as const
 export const FPS_STEP = 0.1
 
+// Setting defaults that worker code reads. The settings schema takes its values from here,
+// so worker bundles leave the schema out (and d3-scale-chromatic with it).
+export const INDEX_ABOVE_BYTES = 25_000_000
+export const POLYHEDRA_DEFAULTS = {
+  neighbor_mode: `anion`,
+  min_neighbors: 4,
+  max_neighbors: 8,
+} as const
+export const FERMI_COLOR_PROPERTY = `band`
+
 // Shared by trajectory extraction, lazy parsers and energy-reference plotting.
 export const TRAJECTORY_ENERGY_KEYS = [
   `energy`,

@@ -69,14 +69,38 @@ describe(`display pipeline`, () => {
     const { host, session } = make_session({ show_image_atoms: true })
     const not_proxied = (value: unknown) => structuredClone(value) !== undefined
     expect(() => structuredClone(host.structure?.sites[0].xyz)).toThrow(/could not be cloned/)
-    for (const view of [session.normalized_structure, session.displayed_structure]) {
+    const views = [
+      session.normalized_structure,
+      session.displayed_structure,
+      session.tool_input,
+    ]
+    for (const view of views) {
       expect(
         view?.sites.every((site) => not_proxied(site.xyz) && not_proxied(site.species)),
       ).toBe(true)
     }
     expect(session.normalized_structure).toEqual($state.snapshot(host.structure))
+    // the copy subscribes to the input's identity only, not to every site it read
+    const copy = session.plain_input
+    const site = host.structure?.sites[0]
+    if (site) site.label = `edited`
+    flushSync()
+    expect(session.plain_input).toBe(copy)
+    // keys added and deleted through the proxy (not on its target) are what the copy holds
+    host.structure = { ...crystal(), properties: { kept: 1, dropped: 2 } }
+    if (host.structure.properties) {
+      host.structure.properties.added = 3
+      delete host.structure.properties.dropped
+    }
+    flushSync()
+    expect(session.plain_input?.properties).toEqual({ kept: 1, added: 3 })
     const plain = crystal()
     expect(make_session({}, () => plain).session.normalized_structure).toBe(plain)
+    // a structure the viewer loads itself is proxied by the binding but read as it is
+    session.adopt_structure(plain)
+    flushSync()
+    expect(() => structuredClone(host.structure?.sites[0].xyz)).toThrow(/could not be cloned/)
+    expect(session.plain_input).toBe(plain)
   })
 
   // A large supercell builds in the same update as its input, as each trajectory frame's must
@@ -506,10 +530,13 @@ describe(`selection validity`, () => {
       flushSync()
       expect(host.selected_sites).toEqual([])
       flush_set(host, { selected_sites: [0] })
-      const site = host.structure.sites[0]
+      // A frame changing only this field of one site is a different topology too
+      const next = structuredClone(session.plain_input ?? base)
+      const [site] = next.sites
       if (field === `label`) site.label = `changed`
       else if (field === `element`) site.species[0].element = `Ne`
       else site.species[0][field] = 0.5
+      host.structure = next
       flushSync()
       expect(host.selected_sites).toEqual([])
       flush_set(host, { selected_sites: [0] })
@@ -719,6 +746,46 @@ describe(`edit-atoms`, () => {
     expect(session.history.undo_stack).toHaveLength(MAX_HISTORY)
   })
 
+  it(`reads its own writes back as built and the caller's replacements, not in-place edits`, () => {
+    const { host, session } = make_session({ measure_mode: `edit-atoms` })
+    const before = session.plain_input
+    session.dragging_atoms = true
+    session.push_undo()
+    for (const _step of [1, 2]) {
+      session.move_sites([0], [0.1, 0, 0])
+      flushSync()
+    }
+    // no copy per frame: the write is read back as built and undo shares the session's copy
+    const dragged = session.plain_input
+    expect(session.history.undo_stack.at(-1)?.structure).toBe(before)
+    expect(dragged?.sites[1]).toBe(before?.sites[1])
+    expect(dragged?.sites[0].xyz[0]).toBeCloseTo((before?.sites[0].xyz[0] ?? 0) + 0.2, 12)
+    session.dragging_atoms = false
+    flushSync()
+    // nor does the release or a later edit: every write is read back as built
+    expect(session.plain_input).toBe(dragged)
+    session.move_sites([0], [0.1, 0, 0])
+    session.add_atom([1, 1, 1], `He`)
+    flushSync()
+    expect(session.plain_input?.sites[1]).toBe(before?.sites[1])
+    expect(() => structuredClone(session.plain_input)).not.toThrow()
+    // Inputs are immutable: an in-place edit goes unseen, a replacement is read (copied once)
+    const site = host.structure?.sites[1]
+    if (site) site.label = `edited`
+    flushSync()
+    expect(session.plain_input?.sites[1].label).toBe(before?.sites[1].label)
+    if (host.structure) host.structure = { ...host.structure }
+    flushSync()
+    expect(session.plain_input?.sites[1].label).toBe(`edited`)
+    // a structure the caller swaps in mid-drag is the input at once, before its effects end the
+    // drag, not the session's last write
+    session.dragging_atoms = true
+    session.move_sites([0], [0.1, 0, 0])
+    flushSync()
+    host.structure = crystal(4)
+    expect(session.plain_input?.sites).toHaveLength(4)
+  })
+
   // a slab's vacuum axis is aperiodic: a dragged atom stays where dropped, not folded back in
   it(`wraps only the periodic axes when moving sites of a slab`, () => {
     const slab = make_crystal(5, [{ element: `H`, abc: [0.5, 0.5, 0.9] }], {
@@ -879,7 +946,10 @@ describe(`edit-bonds`, () => {
         flush_set(host, { selected_sites: [3] })
         expect(session.delete_selected()).toBe(true)
       } else {
+        const own_bonds = session.normalized_structure?.properties?.bonds
         session.add_atom([1, 1, 1], `H`)
+        // history keeps the session's own set as built, not a copy read back through the binding
+        expect(session.history.undo_stack.at(-1)?.bonds).toBe(own_bonds)
         flushSync()
         expect(session.undo()).toBe(true)
       }

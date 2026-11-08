@@ -2,7 +2,7 @@
 // element mounts its MatterViz component into its own light DOM, so tooltips the components
 // portal to <body> keep their styles. Bundled into dist/elements/ by ./vite.config.ts.
 import { watch_theme } from '#lib/theme/embedded'
-import { disable_workers } from '#lib/worker-client.svelte'
+import { check_blob_workers, disable_workers } from '#lib/worker-client.svelte'
 import { mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import elements, { css } from 'virtual:matterviz-elements'
@@ -13,10 +13,11 @@ if (defined.length) {
   throw new Error(`MatterViz elements loaded twice: ${defined.join(`, `)} already defined`)
 }
 
-// Bundled workers load relative to this file, which browsers refuse cross-origin (a CDN copy)
-// and from file:// (origin `null`), so jobs there run on the main thread
+// Bundled workers load relative to this file: never from file:// (origin `null`), and from
+// another origin (a CDN copy) via cross-origin-worker.ts's blob: shim, if the page's CSP allows
 const { origin } = new URL(import.meta.url)
-if (origin === `null` || origin !== location.origin) disable_workers()
+if (origin === `null`) disable_workers()
+else if (origin !== location.origin) await check_blob_workers(`MatterViz elements`)
 
 // First in <head>, so the page's own stylesheets win where they set the same tokens
 const style = document.createElement(`style`)

@@ -177,9 +177,9 @@ export const parse_file_content = async (
     filename = payload.filename
   }
 
-  // Raw binary payloads come from open_material after decompression/classification. HDF5
-  // stays Blob-backed for lazy reads, as does text past one JS string, which only the indexed
-  // trajectory readers take (in chunks); all other formats continue as decoded text.
+  // Raw payloads come from open_material after decompression/classification: HDF5 and text as
+  // Blobs. HDF5 is read lazily, as is text past one JS string, which only the indexed
+  // trajectory readers take (in chunks); other text decodes here, off the main thread.
   if (typeof source !== `string`) {
     if (is_vaspwave_filename(filename)) {
       const buffer = source instanceof Blob ? await source.arrayBuffer() : source
@@ -192,7 +192,7 @@ export const parse_file_content = async (
     ) {
       return trajectory_result(source, filename, load_options, on_progress)
     }
-    // UTF-16 by its byte-order mark, like every other text payload (see text_or_blob)
+    // UTF-16 by its byte-order mark, like every other text payload (see blob_text)
     source = as_text(source instanceof Blob ? await source.arrayBuffer() : source)
   }
   // A host that decodes the file itself may keep a UTF-8 BOM (Node's Buffer.toString does), which

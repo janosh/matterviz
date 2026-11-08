@@ -18,6 +18,7 @@ import type {
 } from '../index'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
+import { mirror_warning_collector, post_new_warnings } from '../parse/shared'
 import type { HotspotProgress, HotspotRequest, HotspotResult } from '../hotspots'
 
 type RunPortMethod =
@@ -38,8 +39,9 @@ interface RunPortRequest {
 type RunPortReply =
   | { id: number; result?: unknown; error?: string; progress?: ParseProgress }
   | { id: number; hotspot: { kind: `preview` | `partial`; result: HotspotResult } }
-  // Unsolicited: progressive property rows from the served run
+  // Unsolicited: progressive property rows and new warnings of the served run
   | { properties: TrajectoryMetadata[]; complete: boolean }
+  | { warnings: readonly string[] }
 
 const abort_error = (): DOMException => new DOMException(`Request aborted`, `AbortError`)
 const hotspot_transfers = ({ energy, population, dof, occupied_frames }: HotspotResult) =>
@@ -60,8 +62,10 @@ export const serve_run_over_port = (run: TrajectoryRun): MessagePort => {
   const unsubscribe = run.properties.subscribe((batch, complete) =>
     post({ properties: batch, complete }),
   )
+  const unsubscribe_warnings = post_new_warnings(run, (warnings) => post({ warnings }))
   const dispose = (): void => {
     unsubscribe()
+    unsubscribe_warnings?.()
     for (const controller of controllers.values()) controller.abort(abort_error())
     controllers.clear()
     try {
@@ -219,6 +223,7 @@ export const worker_run = (
 ): WorkerRun => {
   const fields = run_fields_from_summary(summary)
   const { properties } = fields
+  const warnings = mirror_warning_collector(summary.warnings)
   let next_id = 0
   let disposed_reason: Error | null = null
   type Pending = {
@@ -252,6 +257,7 @@ export const worker_run = (
       properties.deliver(reply.properties, reply.complete, `Worker`)
       return
     }
+    if (`warnings` in reply) return warnings.receive(reply.warnings)
     const request = pending.get(reply.id)
     if (!request) return
     try {
@@ -340,6 +346,7 @@ export const worker_run = (
     get preview() {
       return summary.preview
     },
+    subscribe_warnings: warnings.subscribe,
     read_frame: (frame_idx, signal, channels) => {
       assert_frame_idx(summary, frame_idx)
       return rpc<NumericFrame>(`read_frame`, [frame_idx, channels], signal)

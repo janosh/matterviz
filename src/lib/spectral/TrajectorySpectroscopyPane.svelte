@@ -168,7 +168,8 @@
         { signal },
       )
       if (request_is_current()) {
-        result = calculation_result
+        // frozen so the $bindable's proxy leaves its curves raw (see ElectronicStructure fill)
+        result = Object.freeze(calculation_result)
         completed_settings_key = value_key(request_settings)
       }
     } catch (error) {

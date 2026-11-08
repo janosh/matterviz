@@ -106,6 +106,7 @@
   import {
     add_or_restore_bond,
     canonicalize_bond_target,
+    create_bond_query,
     get_bond_data,
     delete_bond as apply_delete_bond,
     get_explicit_bond_metadata,
@@ -560,6 +561,10 @@
   // PBC wrapping) don't fight TransformControls. Cleared on mouseUp so the mesh
   // snaps to the new wrapped centroid.
   let frozen_centroid = $state<Vec3 | null>(null)
+  const end_atom_drag = () => {
+    dragging_atoms = false
+    ;[frozen_centroid, drag_start_centroid] = [null, null]
+  }
 
   let bond_context_menu = $state<BondMenuTarget | null>(null)
   // Threlte/HTML pointer events can close the visible menu before a button
@@ -1077,11 +1082,12 @@
   // bonds_to_render, but tooltips + manually added bonds still need the data),
   // while EFFECTIVE show_polyhedra skips computing bonds whose only consumer —
   // the polyhedra $derived below, gated on the same effective value — won't run.
+  const bond_query = create_bond_query() // incremental drag re-bonding, freed with the scene
   let bond_pairs: BondData = $derived.by(() => {
     const want_bonds = applies_to_structure(show_bonds, Boolean(lattice))
     const want_polyhedra = applies_to_structure(effective_show_polyhedra, Boolean(lattice))
     return structure && (want_bonds || want_polyhedra)
-      ? get_bond_data(structure, bonding_strategy, bonding_options)
+      ? get_bond_data(structure, bonding_strategy, bonding_options, bond_query)
       : []
   })
 
@@ -1783,8 +1789,13 @@
             .map((sum) => sum / selected_atoms.length) as Vec3}
           <!-- Invisible mesh at centroid for TransformControls to manipulate.
                During drag, use frozen_centroid so Svelte doesn't override TransformControls
-               with the wrapped centroid (which jumps on PBC boundary crossings). -->
-          <T.Mesh position={frozen_centroid ?? centroid} bind:ref={transform_object}>
+               with the wrapped centroid (which jumps on PBC boundary crossings).
+               Unmounting mid-drag (deselect, mode switch) gets no mouseUp: end the drag here. -->
+          <T.Mesh
+            position={frozen_centroid ?? centroid}
+            bind:ref={transform_object}
+            oncreate={() => () => dragging_atoms && end_atom_drag()}
+          >
             <T.SphereGeometry args={[0.01, 4, 4]} />
             <T.MeshBasicMaterial transparent opacity={0} />
           </T.Mesh>
@@ -1808,17 +1819,20 @@
               drag_start_centroid = position
               on_sites_moved?.(selected_sites, delta)
             }}
-            onmouseDown={() => {
+            onmouseDown={({ target: controls }) => {
               dragging_atoms = true
               pointer.drop_hover()
               drag_start_centroid = frozen_centroid = [...centroid] as Vec3
               drag_moved = false
+              // pointercancel (touch scroll, OS gesture) drops the capture without a pointerup:
+              // three then keeps dragging on hover and never sends mouseUp
+              controls.domElement?.addEventListener(
+                `lostpointercapture`,
+                () => controls.pointerUp(null),
+                { once: true },
+              )
             }}
-            onmouseUp={() => {
-              dragging_atoms = false
-              frozen_centroid = null
-              drag_start_centroid = null
-            }}
+            onmouseUp={end_atom_drag}
           />
         {/if}
       {/if}

@@ -7,7 +7,7 @@
   import { element_from_atomic_number } from '#lib/element/helpers.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import type { HoverHandlers } from '#lib/scene/index.js'
-  import type { AnyStructure } from '#lib/structure/index.js'
+  import type { AnyStructure, Site } from '#lib/structure/index.js'
   import { T, useThrelte } from '@threlte/core'
   import { untrack } from 'svelte'
   import { type BufferGeometry, DoubleSide } from 'three/webgpu'
@@ -98,21 +98,33 @@
   })
   $effect(() => () => partial_atoms.dispose())
 
+  // What the colors were resolved from: a snapshot's topology identity, else the site records
+  // (never materialized from columns), whose species arrays coordinate-only edits such as drag
+  // moves carry over
   let previous_bond_colors:
     | { topology: object; appearance: string; colors: string[] }
     | undefined
+  const same_topology = (topology: object, previous: object): boolean =>
+    topology === previous ||
+    (Array.isArray(topology) &&
+      Array.isArray(previous) &&
+      topology.length === previous.length &&
+      topology.every((site: Site, idx) => site.species === previous[idx].species))
   const bond_appearance = $derived(JSON.stringify([palette, bond_color]))
   let bond_site_colors = $derived.by(() => {
     if (!structure || bonds.length === 0) return []
 
-    const topology = snapshot_topologies.get(structure)
+    const topology =
+      snapshot_topologies.get(structure) ??
+      (numeric_sites.has(structure) ? undefined : structure.sites)
     const appearance = bond_appearance
+    const previous = previous_bond_colors
     if (
       topology &&
-      previous_bond_colors?.topology === topology &&
-      previous_bond_colors.appearance === appearance
+      previous?.appearance === appearance &&
+      same_topology(topology, previous.topology)
     )
-      return previous_bond_colors.colors
+      return previous.colors
 
     // Resolve once per site, not once per bond endpoint. Bond writes these values directly
     // into its persistent instance-color buffers without allocating per-cylinder objects.
@@ -124,9 +136,7 @@
       { length: site_count(structure) },
       (_unused, site_idx) => color_of(element_of(site_idx)),
     )
-    previous_bond_colors = topology
-      ? { topology, appearance, colors: resolved_colors }
-      : undefined
+    previous_bond_colors = topology && { topology, appearance, colors: resolved_colors }
     return resolved_colors
   })
 

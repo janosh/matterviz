@@ -267,6 +267,7 @@
   }
 
   function handle_pointer_leave() {
+    pressed = null // a release outside never reaches us, so a later stray release must not fly
     if (hovered === null) return
     hovered = null
     invalidate()

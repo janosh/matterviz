@@ -16,7 +16,7 @@ import {
 } from '#lib/plot/core/decorations/outside.js'
 import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
 import type { Vec2 } from '#lib/math.js'
-import { dense_unit_grid } from '../../setup'
+import { dense_unit_grid, index_read_counter } from '../../setup'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
@@ -92,7 +92,7 @@ test(`a wrapped legend is placed by its column, strip and box footprints`, () =>
   const empty_plot = { obstacles_norm: [], width: 360 }
   const legend = { footprint: row, column_footprint: column, strip_footprint: row }
   const below = place({ legend, ...empty_plot })
-  expect(below.pad.b).toBe(base_pad.b + row.height + 8)
+  expect(below.pad.b).toBe(base_pad.b + row.height + 16) // a gap past the axis band, and one past the strip
   expect(below.legend_pos).toEqual({ x: base_pad.l + (290 - row.width) / 2, y: height - 28 })
   const item: DecorationItem = { id: `legend`, kind: `legend`, ...legend }
   expect(get_outside_placement(item, below)).toMatchObject({ side: `bottom`, footprint: row })
@@ -101,12 +101,13 @@ test(`a wrapped legend is placed by its column, strip and box footprints`, () =>
   const right = place({
     legend: { footprint: box, column_footprint: { width: 80, height: 260 } },
   })
-  expect([right.pad.r, right.legend_pos.y]).toEqual([108, base_pad.t + (245 - 150) / 2])
+  expect([right.pad.r, right.legend_pos.y]).toEqual([116, base_pad.t + (245 - 150) / 2])
 })
 
 // Each cell at its natural size, whatever the legend's layout: an item by its children (not
 // its stretched 300px box), a header's growing label by its text (Range: 60px), the filter by
-// its min-width, margins included. Null while no cell has a layout box.
+// its min-width, margins included, a folded-away (tucked) item not at all. Null while no cell
+// has a layout box.
 test(`legend_cell_sizes reads each cell's natural size`, () => {
   // jsdom computes no box edges; the inline declarations stand in for the cascade
   vi.spyOn(window, `getComputedStyle`).mockImplementation((element) =>
@@ -149,7 +150,15 @@ test(`legend_cell_sizes reads each cell's natural size`, () => {
     node(`span`, ``, [20, 12]),
     node(`span`, ``, [80, 14]),
   )
-  legend.replaceChildren(filter, header, item)
+  // a folded-away series claims no room, even mid-expansion on hover
+  const tucked = node(
+    `div`,
+    `padding: 1px 8px 1px 3px`,
+    [300, 20],
+    node(`span`, ``, [500, 14]),
+  )
+  tucked.className = `legend-item tucked`
+  legend.replaceChildren(filter, header, item, tucked)
   expect(legend_cell_sizes(legend)).toEqual({
     cells: [
       { width: 136 + 6, height: 25 + 6, own_line: false },
@@ -199,8 +208,8 @@ describe(`place_outside_decorations`, () => {
   )
 
   test.each([
-    [`wide/short`, { width: 120, height: 60 }, { b: 118, r: 20 }, { x: 155, y: 232 }],
-    [`narrow/tall`, { width: 80, height: 200 }, { b: 50, r: 108 }, { x: 312 }],
+    [`wide/short`, { width: 120, height: 60 }, { b: 126, r: 20 }, { x: 155, y: 232 }],
+    [`narrow/tall`, { width: 80, height: 200 }, { b: 50, r: 116 }, { x: 312 }],
   ])(`crowded %s legend reserves its cheaper margin`, (_name, footprint, pad, legend_pos) => {
     const layout = place({ legend: { footprint } })
     expect(layout).toMatchObject({ legend_outside: true, pad, legend_pos })
@@ -211,7 +220,7 @@ describe(`place_outside_decorations`, () => {
   test(`a bottom legend fits inside caller padding that already clears the axis band`, () => {
     const legend = { footprint: { width: 120, height: 60 } }
     const stacked = place({ legend })
-    expect(stacked.pad.b).toBe(base_pad.b + 60 + 8)
+    expect(stacked.pad.b).toBe(base_pad.b + 60 + 16)
     const roomy = place({
       legend,
       base_pad: { ...base_pad, b: stacked.pad.b },
@@ -386,27 +395,22 @@ describe(`build_obstacles_norm`, () => {
   // A mark handed back unchanged (a series beside a legend toggle) reuses its cells for the same
   // plot box, its points unread, merged with the other marks exactly as a fresh walk would be
   test(`reuses an unchanged mark's cells for the same plot box`, () => {
-    let reads = 0
+    const counter = index_read_counter()
     const raw = Array.from({ length: 50 }, (_, idx) => ({ x: idx / 49, y: (idx % 5) / 4 }))
-    const points = new Proxy(raw, {
-      get(target, prop, receiver) {
-        if (typeof prop === `string` && /^\d+$/.test(prop)) reads++
-        return Reflect.get(target, prop, receiver)
-      },
-    })
+    const points = counter.wrap(raw)
     const mark = { points, draws_line: true }
     // oxfmt-ignore
     const other = { points: [{ x: 0.5, y: 0.5 }, { x: 0.6, y: 0.1 }], draws_line: true }
     const first = build_obstacles_norm([other, mark], 300, 200)
-    const first_reads = reads
+    const first_reads = counter.reads
     expect(first_reads).toBeGreaterThan(0)
     expect(build_obstacles_norm([other, mark], 300, 200)).toEqual(first)
     expect(build_obstacles_norm([mark], 300, 200)).toEqual(
       build_obstacles_norm([{ points: raw, draws_line: true }], 300, 200),
     )
-    expect(reads).toBe(first_reads)
+    expect(counter.reads).toBe(first_reads)
     build_obstacles_norm([mark], 200, 300)
-    expect(reads).toBeGreaterThan(first_reads)
+    expect(counter.reads).toBeGreaterThan(first_reads)
   })
 
   // a non-finite vertex breaks the line: its two neighbours stay lone points, not a segment

@@ -11,6 +11,8 @@ import {
   checked_site_forces,
   convert_atomic_numbers,
   create_plot_row_frame,
+  decode_finite_frames,
+  NonFiniteFrameError,
   values_per_sample,
 } from '#lib/trajectory/helpers.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
@@ -311,7 +313,13 @@ function decode_ase_numeric_frame(
     const { shape, value } = ndarray_reader(view, positions_ref, options.base_offset)
     if (shape.length !== 2 || shape[1] !== 3)
       throw new Error(`Invalid position at site 1: expected 3 finite coordinates`)
-    for (let idx = 0; idx < positions.length; idx++) positions[idx] = value(idx)
+    for (let idx = 0; idx < positions.length; idx++) {
+      positions[idx] = value(idx)
+      if (!Number.isFinite(positions[idx]))
+        throw new NonFiniteFrameError(
+          `Non-finite position at site ${display_idx(Math.floor(idx / 3))}`,
+        )
+    }
   } else {
     ;(positions_ref as number[][]).forEach((xyz, atom_idx) => {
       if (!math.is_finite_vec3_like(xyz))
@@ -469,6 +477,26 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
   const atom_masses =
     first_masses &&
     Array.from({ length: first_masses.shape[0] }, (_, idx) => first_masses.value(idx))
+  // An MD blow-up writes non-finite positions from its onset to the end of the run: skip those
+  // trailing frames at open (keeping the first, whose read then fails), as the text readers do.
+  // A frame that cannot be read here counts as finite: it fails its own read, breaking only itself.
+  const finite_positions = (frame_idx: number): boolean => {
+    try {
+      const header = frame_header(frame_idx)
+      const ref = header[`positions.`] ?? header.positions
+      if (!is_ndarray_ref(ref)) return true
+      const { shape, value } = ndarray_reader(live().view, ref)
+      for (let idx = 0; idx < values_per_sample(shape); idx++)
+        if (!Number.isFinite(value(idx))) return false
+    } catch {}
+    return true
+  }
+  let frame_count = n_items
+  while (frame_count > 1 && !finite_positions(frame_count - 1)) frame_count--
+  if (frame_count < n_items)
+    warn(
+      `Skipping ASE frames ${frame_count + 1}-${n_items} of ${n_items}: non-finite positions, as after an MD blow-up`,
+    )
   const read_atoms: ReadAtoms = (options, signal) => {
     signal?.throwIfAborted()
     const { frame_idx, velocity_key, energy_key, selection_key, mass_source } = options
@@ -569,7 +597,7 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
     }
   }
   return {
-    frame_count: n_items,
+    frame_count,
     read_atoms,
     atom_masses,
     metadata: {
@@ -588,8 +616,9 @@ export function open_ase_frames(data: ArrayBuffer, warn: WarnFn): AseFrames {
 // Every frame materialised. ASE rewrites the ULM header only after a frame is fully written,
 // so every frame the offsets table points at should decode; one that does not is
 // corruption, not a torn tail.
+// A mid-run frame with non-finite positions is skipped with a warning, like trailing ones.
 export function parse_ase_trajectory(buffer: ArrayBuffer, warn: WarnFn): ParsedTrajectory {
   const { frame_count, decode } = open_ase_frames(buffer, warn)
-  const frames = Array.from({ length: frame_count }, (_unused, frame_idx) => decode(frame_idx))
+  const frames = decode_finite_frames(frame_count, decode, `ASE`, warn)
   return { format: `ase`, frames, metadata: {} }
 }

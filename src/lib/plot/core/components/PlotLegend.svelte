@@ -64,6 +64,7 @@
     filterable = true,
     filter_threshold = LEGEND_FILTER_THRESHOLD,
     filter_query = $bindable(``),
+    collapse_hidden = true,
     draggable = true,
     root_element = $bindable<HTMLDivElement | undefined>(undefined),
     ...rest
@@ -106,6 +107,8 @@
     filterable?: boolean
     filter_threshold?: number
     filter_query?: string
+    // Fold hidden series past the first away until the legend is hovered or focused
+    collapse_hidden?: boolean
     draggable?: boolean
     // Bindable reference to the root DOM element for size measurements
     root_element?: HTMLDivElement
@@ -148,6 +151,21 @@
         )
       : layout_tracks,
   )
+
+  // Hidden series past the first fold away, so a few shown series out of many keep the legend
+  // small; the first hidden one hints at the rest. A single column or wrapped row only: in a
+  // grid they would reflow, under a group or filter they have their own controls.
+  const tucked_items = $derived.by(() => {
+    if (
+      !collapse_hidden ||
+      has_groups ||
+      show_filter ||
+      (!wrap && resolved_layout_tracks !== 1)
+    )
+      return new Set<number>()
+    const hidden = series_data.flatMap((item, idx) => (item.visible ? [] : [idx]))
+    return new Set(hidden.slice(1))
+  })
 
   // Group header cells look up their members here instead of re-filtering series_data per cell
   const items_by_group = $derived.by(() => {
@@ -276,7 +294,7 @@
   }
 </script>
 
-{#snippet legend_item(series: LegendItem, indent: boolean = false)}
+{#snippet legend_item(series: LegendItem, indent: boolean = false, tucked = false)}
   {@const is_fill_item = series.item_type === `fill`}
   {@const is_active = is_fill_item
     ? active_fill_idx === series.fill_idx
@@ -284,6 +302,7 @@
   <div
     class="legend-item"
     class:hidden={!series.visible}
+    class:tucked
     class:active={is_active}
     class:indented={indent}
     class:fill-item={is_fill_item}
@@ -472,7 +491,11 @@
     {:else}
       {@const series = series_data[cell.item_idx]}
       {#if series}
-        {@render legend_item(series, series.legend_group != null)}
+        {@render legend_item(
+          series,
+          series.legend_group != null,
+          tucked_items.has(cell.item_idx),
+        )}
       {/if}
     {/if}
   {/each}
@@ -515,7 +538,13 @@
     white-space: nowrap;
     padding: var(--plot-legend-item-padding, 1px 8px 1px 3px);
     opacity: var(--plot-legend-item-opacity, 1);
-    transition: var(--plot-legend-item-transition, opacity 0.3s ease);
+    transition: var(
+      --plot-legend-item-transition,
+      opacity 0.3s ease,
+      max-height 0.3s ease,
+      max-width 0.3s ease,
+      margin 0.3s ease
+    );
     color: var(--plot-legend-item-color);
   }
   .legend-filter {
@@ -551,6 +580,29 @@
   }
   .legend-item.hidden {
     opacity: var(--plot-legend-item-hidden-opacity, 0.5);
+  }
+  /* folded away (tucked_items), its row gap cancelled, until the legend is hovered or focused */
+  .legend-item.tucked {
+    box-sizing: border-box;
+    max-height: 0;
+    margin-top: -1px;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* in a wrapped row it folds sideways instead, its column gap cancelled */
+  .legend.wrap > .legend-item.tucked {
+    max-width: 0;
+    max-height: none;
+    margin-top: 0;
+    margin-inline-start: -6px;
+  }
+  .legend:is(:hover, :focus-within) > .legend-item.tucked {
+    max-height: 3em;
+    max-width: 20em;
+    margin: 0;
+    opacity: var(--plot-legend-item-hidden-opacity, 0.5);
+    pointer-events: auto;
   }
   /* ~21px rows are hard to tap; taller rows cost legend height, which the solver measures */
   @media (pointer: coarse) {

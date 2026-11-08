@@ -84,22 +84,33 @@
   const plot_h = $derived(Math.max(0, height - pad.b - pad.t))
   let axis_group: SVGGElement | undefined = $state()
   let tick_font = $state({ ...DEFAULT_FONT_SPEC })
+  let mounted = false
+  let reported_font: string | undefined // the last font sent to on_tick_font, as JSON
+  const resolve_rendered_font = async (): Promise<void> => {
+    await svelte_tick()
+    if (!mounted) return
+    const tick_text_element = axis_group?.querySelector<SVGTextElement>(`.tick text`)
+    const computed_size = tick_text_element?.ownerDocument.defaultView
+      ?.getComputedStyle(tick_text_element)
+      .fontSize.trim()
+    // Browsers resolve computed font sizes to px. jsdom can return the authored `em` value;
+    // treating that number as pixels would make every label appear to fit.
+    const font = computed_size?.endsWith(`px`)
+      ? resolve_font_spec(tick_text_element)
+      : { ...DEFAULT_FONT_SPEC }
+    const key = JSON.stringify(font)
+    if (key === reported_font) return
+    reported_font = key
+    tick_font = font
+    on_tick_font?.(tick_font)
+  }
+  // Tick labels scale with the plot frame (cqmin), so a resize can change their font
+  $effect(() => {
+    void [width, height]
+    void resolve_rendered_font()
+  })
   onMount(() => {
-    let mounted = true
-    const resolve_rendered_font = async (): Promise<void> => {
-      await svelte_tick()
-      if (!mounted) return
-      const tick_text_element = axis_group?.querySelector<SVGTextElement>(`.tick text`)
-      const computed_size = tick_text_element?.ownerDocument.defaultView
-        ?.getComputedStyle(tick_text_element)
-        .fontSize.trim()
-      // Browsers resolve computed font sizes to px. jsdom can return the authored `em` value;
-      // treating that number as pixels would make every label appear to fit.
-      tick_font = computed_size?.endsWith(`px`)
-        ? resolve_font_spec(tick_text_element)
-        : { ...DEFAULT_FONT_SPEC }
-      on_tick_font?.(tick_font)
-    }
+    mounted = true
     void resolve_rendered_font()
     // Re-resolve once web fonts land; the shared invalidation bumps the metrics revision the
     // tick-layout memo is keyed on. Fonts that never resolve keep the fallback measurements.
@@ -291,8 +302,10 @@
 </g>
 
 <style>
+  /* shrinks with the plot frame (its size container) down to 9px, so small panes keep room for
+     data; full size from a ~430px frame up */
   .tick text {
-    font-size: var(--tick-font-size, 0.8em);
+    font-size: var(--tick-font-size, clamp(9px, 3cqmin, 0.8em));
   }
   /* No focus ring: the popup a click opens is the feedback (Safari draws one on click); the
   underline keeps keyboard focus visible */

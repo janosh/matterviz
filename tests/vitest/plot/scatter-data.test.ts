@@ -19,6 +19,7 @@ import {
   scatter_line_style,
 } from '#lib/plot/scatter/scatter-data.js'
 import { describe, expect, test } from 'vitest'
+import { index_read_counter } from '../setup'
 
 const color_scale = (val: number) => `scale(${val})`
 const ranges: AxisRanges = { x: [0, 10], x2: [100, 200], y: [0, 10], y2: [-50, 50] }
@@ -534,15 +535,9 @@ describe(`viewport line projection`, () => {
   test.each([[1, 2, 2, 3], [3, 1, 2], [1, NaN, 3], [1, Infinity], [], [1]])(
     `keeps full paths for non-strict x order %j`,
     (...values) => {
-      let reads = 0
-      const counted = new Proxy(values, {
-        get(target, prop, receiver) {
-          if (typeof prop === `string` && /^\d+$/.test(prop)) reads++
-          return Reflect.get(target, prop, receiver)
-        },
-      })
-      expect(strict_x_direction(counted)).toBe(0)
-      expect(reads).toBeLessThanOrEqual(values.length + 1)
+      const counter = index_read_counter()
+      expect(strict_x_direction(counter.wrap(values))).toBe(0)
+      expect(counter.reads).toBeLessThanOrEqual(values.length + 1)
       const data = { x: values, y: values.map(() => 1) }
       const identity = (value: number) => value
       expect(project_line_points(data, identity, identity, [1, 2], 0)).toEqual({

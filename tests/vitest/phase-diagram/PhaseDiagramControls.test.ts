@@ -2,7 +2,7 @@ import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
 import PhaseDiagramControls from '#lib/phase-diagram/PhaseDiagramControls.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, query, set_input } from '../setup'
+import { bind_props, query, reset_section, set_input } from '../setup'
 import { PHASE_DIAGRAM_DEFAULTS } from '#lib/phase-diagram/utils.js'
 
 const sample_data: PhaseDiagramData = {
@@ -93,12 +93,8 @@ describe(`PhaseDiagramControls`, () => {
     expect(
       target.querySelector(`button[aria-label="Reset appearance to defaults"]`),
     ).toBeNull()
-    for (const section of [`visibility`, `colors`, `tie-line display`, `axes`]) {
-      const selector = `button[aria-label="Reset ${section} to defaults"]`
-      query<HTMLButtonElement>(target, selector).click()
-      await tick()
-      expect(target.querySelector(selector)).toBeNull()
-    }
+    for (const section of [`visibility`, `colors`, `tie-line display`, `axes`])
+      await reset_section(section, target)
     expect(boundary_hex.value).toBe(`#333333`) // default #333 is normalized for editing
   })
 

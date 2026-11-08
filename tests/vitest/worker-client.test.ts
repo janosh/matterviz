@@ -195,7 +195,7 @@ test.each([
       return { create_worker_client, can_create_worker }
     },
   ],
-  // anywidget's CDN/file:// bundle: the URL resolves but the worker would be cross-origin
+  // a file:// custom-elements page, or one whose CSP refuses blob: workers
   [
     `a host called disable_workers`,
     async () => {
@@ -252,6 +252,64 @@ test(`worker construction failures reject without moving work onto the main thre
   await expect(run({ tag: `b` }, {})).rejects.toThrow(`cannot be accessed from origin`)
   expect(create_worker).toHaveBeenCalledTimes(2)
   expect(compute_sync).not.toHaveBeenCalled()
+})
+
+// A CSP-refused blob: worker fires `error` instead of throwing (Chrome), so the probe reads
+// both, releases its worker and blob URL either way, and moves jobs off workers only if refused
+test.each([
+  [`message`, null],
+  [`error`, `refused by CSP`],
+  [`throw`, `Worker is not a constructor`],
+  [`silence`, `no answer within 2 s`],
+])(`check_blob_workers when the probe worker answers with %s`, async (outcome, refusal) => {
+  vi.resetModules()
+  const fresh = await import(`#lib/worker-client.svelte.js`)
+  // `new` on an arrow throws, as a worker constructor refusing outright would
+  if (outcome === `throw`) vi.stubGlobal(`Worker`, () => {})
+  const revoke = vi.spyOn(URL, `revokeObjectURL`)
+  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  vi.useFakeTimers()
+  const checked = fresh.check_blob_workers(`Host`)
+  if (outcome === `silence`) vi.advanceTimersByTime(2000)
+  else workers()[0]?.emit(outcome, { message: refusal })
+  await checked
+  vi.useRealTimers()
+  const [revoked, warned] = [[...revoke.mock.calls], [...warn.mock.calls]]
+  revoke.mockRestore()
+  warn.mockRestore()
+  expect(revoked).toEqual([[expect.stringMatching(/^blob:/)]])
+  expect(workers().map(({ url, terminated }) => [url, terminated])).toEqual(
+    outcome === `throw` ? [] : [[revoked[0][0], 1]],
+  )
+  expect(warned).toEqual(
+    refusal
+      ? [[`Host: running analyses on the main thread, blob: workers refused (${refusal})`]]
+      : [],
+  )
+  expect(fresh.can_create_worker()).toBe(refusal === null)
+})
+
+// The custom elements' Worker: a script on another origin (the CDN copy) starts from a
+// same-origin blob: module importing it; same-origin and blob: URLs pass straight through
+const cdn_worker = `https://cdn.jsdelivr.net/npm/matterviz/dist/elements/assets/rdf-worker.js`
+test.each([
+  [`/assets/msd-worker.js`, `${location.origin}/assets/msd-worker.js`],
+  [`blob:${location.origin}/abc`, `blob:${location.origin}/abc`],
+  [cdn_worker, `blob:shim`],
+])(`CrossOriginWorker starts %s from %s`, async (url, expected_url) => {
+  vi.resetModules() // its class extends whichever Worker was global at import
+  const { CrossOriginWorker } = await import(`../../src/elements/cross-origin-worker`)
+  const create_url = vi.spyOn(URL, `createObjectURL`).mockReturnValue(`blob:shim`)
+  void new CrossOriginWorker(url, { name: `x` })
+  const blobs = create_url.mock.calls.map(([blob]) => blob as Blob)
+  create_url.mockRestore()
+  const shim = expected_url === `blob:shim`
+  expect(workers().map((worker) => [worker.url, worker.options])).toEqual([
+    [expected_url, shim ? { name: `x`, type: `module` } : { name: `x` }],
+  ])
+  expect(await Promise.all(blobs.map((blob) => blob.text()))).toEqual(
+    shim ? [`import ${JSON.stringify(cdn_worker)}\nURL.revokeObjectURL(import.meta.url)`] : [],
+  )
 })
 
 test(`a failed post frees the key before an immediate retry`, async () => {

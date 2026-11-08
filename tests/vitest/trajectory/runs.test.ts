@@ -40,7 +40,7 @@ import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import type { SyncRunSource, TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, post_new_warnings } from '#lib/trajectory/parse/shared.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
@@ -1053,6 +1053,40 @@ describe(`worker-served run lifecycle`, () => {
       await expect(Promise.resolve(run.read_frame(2))).rejects.toThrow(/disposed/)
     },
   )
+
+  test.each([`sync`, `worker`])(
+    `%s indexed run announces warnings added after open`,
+    async (kind) => {
+      const warnings = create_warning_collector(() => {}, [`at open`])
+      const indexed = indexed_text_run(XYZ_TEXT, `xyz`, {}, warnings)
+      const run = kind === `sync` ? indexed : make_worker_run(indexed)
+      const listener = vi.fn()
+      const unsubscribe = run.subscribe_warnings?.(listener)
+      // e.g. a frame read and a plot-row batch in one turn: one announce per microtask
+      warnings.warn(`late`)
+      warnings.warn(`later`)
+      await next_tick()
+      expect(listener.mock.calls).toEqual([[[`at open`, `late`, `later`]]])
+      expect(run.warnings).toEqual([`at open`, `late`, `later`])
+      unsubscribe?.()
+      warnings.warn(`unheard`)
+      await next_tick()
+      expect(listener).toHaveBeenCalledOnce()
+    },
+  )
+
+  test(`post_new_warnings forwards only warnings added after it subscribed`, async () => {
+    const warnings = create_warning_collector(() => {})
+    const run = { warnings: warnings.warnings, subscribe_warnings: warnings.subscribe }
+    warnings.warn(`before`) // its announce is still queued when the far side subscribes
+    const post = vi.fn()
+    post_new_warnings(run, post)
+    await next_tick()
+    expect(post).not.toHaveBeenCalled()
+    warnings.warn(`after`)
+    await next_tick()
+    expect(post.mock.calls).toEqual([[[`after`]]])
+  })
 
   it.each([`dispose`, `messageerror`, `close failure`])(
     `rejects pending reads and releases the worker despite observer/port failure during %s`,

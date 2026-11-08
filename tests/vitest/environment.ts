@@ -62,6 +62,11 @@ console.warn = (...args: unknown[]) => {
   original_warn(...args)
 }
 
+// Tick labels scale with their plot frame via cqmin, which happy-dom (no container sizes)
+// cannot resolve and computes as the inherited 16px. Pinning the authored size keeps it an
+// unresolved em, so tick layouts measure the default font as they would at full size.
+document.documentElement.style.setProperty(`--tick-font-size`, `0.8em`)
+
 beforeEach(() => {
   document.body.innerHTML = ``
   localStorage.clear()
@@ -166,8 +171,7 @@ globalThis.IntersectionObserver = class {
   }
 } as unknown as typeof IntersectionObserver
 
-// Mock Web Animations API for Svelte transitions (not available in jsdom)
-// The mock immediately triggers onfinish to complete transitions synchronously
+// Web Animations mocks for Svelte transitions (onfinish fires a microtask later) and animate:flip
 Element.prototype.animate = vi.fn().mockImplementation(() => {
   const animation = {
     onfinish: null as (() => void) | null,
@@ -182,12 +186,9 @@ Element.prototype.animate = vi.fn().mockImplementation(() => {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }
-  // Call onfinish in next microtask to simulate animation completion
   queueMicrotask(() => animation.onfinish?.())
   return animation
 })
-
-// Mock getAnimations for Svelte's animate:flip directive (not available in happy-dom)
 Element.prototype.getAnimations = vi.fn().mockReturnValue([])
 
 globalThis.matchMedia = vi.fn().mockImplementation((media_query) => ({
@@ -199,7 +200,6 @@ globalThis.matchMedia = vi.fn().mockImplementation((media_query) => ({
   dispatchEvent: vi.fn(),
 }))
 
-// Mock clipboard API for testing
 Object.defineProperty(navigator, `clipboard`, {
   value: { writeText: vi.fn().mockResolvedValue(undefined) },
   writable: true,

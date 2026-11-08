@@ -568,7 +568,7 @@
   }
   const hide_tooltip = () => (tooltip_hover = null)
 
-  const handle_mouseover = on_cell((context, _event, cell_el) => {
+  const handle_mouseover = on_cell((context, event, cell_el) => {
     const { x_idx, y_idx } = context
     // Ignore redundant enters on the same cell (nested children)
     if (last_hover.x_idx === x_idx && last_hover.y_idx === y_idx) return
@@ -577,6 +577,8 @@
     active_cell_raf = globalThis.requestAnimationFrame(() => {
       active_cell = { x_idx, y_idx }
     })
+    // a release outside the window never reaches the window mouseup: drop the brush unreported
+    if (brush_start && event.buttons === 0) [brush_start, brush_end] = [null, null]
     if (enable_brush && brush_start) brush_end = { x_idx, y_idx }
     if (tooltip_mode !== `pinned`) show_tooltip(cell_el, context)
   })

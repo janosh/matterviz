@@ -19,6 +19,7 @@ import {
   mouse,
   plot_svg,
   query,
+  reset_section,
   resize_element,
   set_input,
   set_select,
@@ -122,12 +123,10 @@ describe(`NebPlot`, () => {
       show_spline: false,
       controls_open: true,
     })
-    doc_query<HTMLButtonElement>(`button[title="Reset profile to defaults"]`).click()
-    await tick()
+    await reset_section(`profile`)
     expect(query<HTMLSelectElement>(plot, `#neb-coord-mode`).value).toBe(`arc_length`)
     expect(query<HTMLSelectElement>(plot, `#neb-energy-reference`).value).toBe(`initial`)
     expect(query<HTMLInputElement>(plot, `#neb-show-spline`).checked).toBe(true)
-    expect(plot.querySelector(`button[title="Reset profile to defaults"]`)).toBeNull()
   })
 
   test(`annotates the fitted saddle of the active path unless annotate_barrier=false`, async () => {

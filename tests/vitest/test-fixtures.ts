@@ -148,11 +148,18 @@ export const make_phase = (
 export const load_json = <T = unknown>(file_path: string): T =>
   JSON.parse(read_maybe_gz(file_path)) as T
 
-// Gzip a string to the ArrayBuffer a File/fetch response would carry.
-export const gzip_bytes = (content: string): Promise<ArrayBuffer> =>
+// Gzip text or bytes to the ArrayBuffer a File/fetch response would carry.
+export const gzip_bytes = (content: BlobPart): Promise<ArrayBuffer> =>
   new Response(
     new Blob([content]).stream().pipeThrough(new CompressionStream(`gzip`)),
   ).arrayBuffer()
+
+// Text as UTF-16LE with its BOM (little-endian hosts), as Windows PowerShell 5.1 writes it
+// (indexed by code unit: iterating the string by code point would drop low surrogates)
+export const utf16_bom = (text: string): Uint16Array<ArrayBuffer> => {
+  const with_bom = `\uFEFF${text}`
+  return Uint16Array.from({ length: with_bom.length }, (_, idx) => with_bom.charCodeAt(idx))
+}
 
 // Two-frame XYZ, the smallest input that exercises multi-frame parsing
 // Cubic CIF whose atom-site loop holds `rows`; BAD_ROW_CIF's row with a non-numeric coordinate

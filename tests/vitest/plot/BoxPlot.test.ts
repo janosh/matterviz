@@ -19,6 +19,7 @@ import {
   pattern_id_of,
   plot_svg,
   query,
+  reset_section,
   roving_tabindexes,
   svg_mark_driver,
   svg_rect,
@@ -860,13 +861,9 @@ describe(`BoxPlot`, () => {
       kde_calls,
       summary_calls,
     ])
-    query(plot, `button[aria-label="Reset box / violin to defaults"]`).click()
-    await tick()
+    await reset_section(`box / violin`, plot)
     expect([mean.checked, outliers.checked]).toEqual([false, true])
     expect(plot.querySelectorAll(`.box-series line[stroke-dasharray="3 2"]`)).toHaveLength(0)
-    expect(
-      plot.querySelector(`button[aria-label="Reset box / violin to defaults"]`),
-    ).toBeNull()
   })
 })
 

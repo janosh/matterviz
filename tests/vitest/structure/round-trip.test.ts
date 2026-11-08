@@ -136,7 +136,10 @@ mixed_valence.sites[0].species = [2, 3].map((oxidation_state) => ({
 const FIXTURE_DIR = `src/site/structures`
 const fixtures: { name: string; structure: AnyStructure }[] = [
   ...readdirSync(FIXTURE_DIR, { recursive: true, encoding: `utf8` })
-    .filter((name) => statSync(`${FIXTURE_DIR}/${name}`).isFile())
+    // skip dotfiles such as Finder's .DS_Store
+    .filter(
+      (name) => !/(?:^|[/\\])\./.test(name) && statSync(`${FIXTURE_DIR}/${name}`).isFile(),
+    )
     .toSorted()
     .map((name) => ({
       name,

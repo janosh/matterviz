@@ -1,7 +1,7 @@
 import BrillouinZoneControls from '#lib/brillouin/BrillouinZoneControls.svelte'
 import { mount, tick } from 'svelte'
 import { DEFAULTS } from '#lib/settings.js'
-import { doc_query, set_input } from '../setup'
+import { doc_query, reset_section, set_input } from '../setup'
 import { expect, test } from 'vitest'
 
 test(`Brillouin zone controls preserve slider precision, edit hex colors and reset values`, async () => {
@@ -12,10 +12,8 @@ test(`Brillouin zone controls preserve slider precision, edit hex colors and res
 
   const width_input = doc_query<HTMLInputElement>(`input[type="range"][step="0.001"]`)
   expect(width_input.previousElementSibling?.textContent).toBe(`0.019`)
-  doc_query<HTMLButtonElement>(`button[aria-label="Reset edges to defaults"]`).click()
-  await tick()
+  await reset_section(`edges`)
   expect(width_input.value).toBe(String(DEFAULTS.brillouin.edge_width))
-  expect(document.querySelector(`button[aria-label="Reset edges to defaults"]`)).toBeNull()
   for (const label of [`Surface color`, `Edge color`, `IBZ color`]) {
     const hex = doc_query<HTMLInputElement>(`input[aria-label="${label} hex"]`)
     const picker = doc_query<HTMLInputElement>(`input[aria-label="${label}"]`)

@@ -29,6 +29,7 @@ import {
   form_controls,
   mount_in_test,
   query,
+  reset_section,
   set_input,
 } from '../setup'
 
@@ -344,11 +345,8 @@ describe(`PlotControls`, () => {
       expect(
         document.querySelectorAll(`[data-testid="scale-type-section"] select`),
       ).toHaveLength(1)
-      const reset_btn = `button[title="Reset scale type to defaults"]`
-      doc_query<HTMLButtonElement>(reset_btn).click()
-      await tick()
+      await reset_section(`scale type`)
       expect([state.x_axis.scale_type, state.y_axis.scale_type]).toEqual([`time`, `linear`])
-      expect(document.querySelector(reset_btn)).toBeNull()
     },
   )
 
@@ -404,12 +402,10 @@ test.each([
 ])(
   `$title reset clears authored deviations from defaults`,
   async ({ title, mount_controls }) => {
+    expect.hasAssertions()
     mount_controls()
     await tick()
-    const selector = `button[title="Reset ${title} to defaults"]`
-    doc_query<HTMLButtonElement>(selector).click()
-    await tick()
-    expect(document.querySelector(selector)).toBeNull()
+    await reset_section(title)
   },
 )
 

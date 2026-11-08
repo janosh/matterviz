@@ -129,6 +129,7 @@
   } from '#lib/file-viewer/open.js'
   import { open_material, MaterialOpenError } from '#lib/file-viewer/open.js'
   import * as file_io from '../io'
+  import { HDF5_EXT_REGEX } from '../constants'
   import { Hdf5GroupSelectionRequiredError, type OpenTrajectoryOptions } from './open'
   import { get_unsupported_format_message } from './parse'
   import TrajectoryError from './TrajectoryError.svelte'
@@ -432,14 +433,22 @@
         return
       }
       const name = source_name(pending)
-      // Enough of the payload for the binary sniff behind get_unsupported_format_message
-      const acquired = pending.payload?.data ?? pending.input
+      // Payload head for get_unsupported_format_message's binary sniff. Buffers transferred to
+      // the parse worker are detached (byteLength 0); HDF5 Blobs are binary by design
+      const { data: acquired = pending.input, filename = `` } = pending.payload ?? {}
       const head =
-        acquired instanceof ArrayBuffer
+        acquired instanceof ArrayBuffer && acquired.byteLength
           ? new TextDecoder().decode(acquired.slice(0, 8192))
           : typeof acquired === `string`
             ? acquired
-            : ``
+            : pending.payload && acquired instanceof Blob && !HDF5_EXT_REGEX.test(filename)
+              ? // the sniff only refines the message: an unreadable Blob still reports `error`
+                await acquired
+                  .slice(0, 8192)
+                  .text()
+                  .catch(() => ``)
+              : ``
+      if (load_controller !== controller || controller.signal.aborted) return // newer load
       const unsupported = get_unsupported_format_message(name, head)
       const prefix =
         error instanceof MaterialOpenError && error.stage === `acquire`
@@ -880,9 +889,15 @@
   let structure_pane = $state<Exclude<StructurePane, `controls`> | null>(null)
   let scatter_controls_open = $derived(scatter_props.controls_open ?? false)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
-  // Writable so the banner can be dismissed
+  // Lazy runs append warnings as later reads hit them
+  let parse_warnings = $derived(trajectory?.warnings ?? [])
+  $effect(() => trajectory?.subscribe_warnings?.((warnings) => (parse_warnings = warnings)))
+  // A dismissal holds for the rest of this run: warnings its later reads add don't re-raise it
+  let warnings_dismissed_for = $state.raw<TrajectoryRun>()
   let warning_msg = $derived(
-    trajectory ? parse_warnings_notice(trajectory.warnings) : undefined,
+    warnings_dismissed_for === trajectory
+      ? undefined
+      : parse_warnings_notice([...parse_warnings, ...session.skip_warnings]),
   )
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
@@ -1406,7 +1421,11 @@
     <!-- top-center, clear of the structure viewer's AtomLegend on the bottom edge -->
     <ViewerNotices>
       {#if warning_msg}
-        <StatusMessage bind:message={warning_msg} type="warning" dismissible />
+        <StatusMessage
+          bind:message={() => warning_msg, () => (warnings_dismissed_for = trajectory)}
+          type="warning"
+          dismissible
+        />
       {/if}
       {#if frame_error_msg}
         <StatusMessage bind:message={frame_error_msg} type="error" dismissible />
@@ -2089,8 +2108,9 @@
     /* Else a tall inspector table grows the row past the viewer's clipped bottom, cutting
        off the plot's axis title and the atom legend */
     contain: size;
-    /* the data inspector's width until dragged */
-    --docked-sidebar-max-share: calc(100% / 3);
+    /* the data inspector's width until dragged: a third left the structure and plot
+       panes ~300px each in a 1000px window */
+    --docked-sidebar-max-share: 25%;
     &:not(.docked-sidebar-row) {
       display: grid;
       position: relative;

@@ -80,13 +80,16 @@ export type HostToWebviewMessage =
       frame?: WireFrame | null
       error?: string
     }
-  // Progressive per-frame plot rows of a host-served run, batched after large_file_response
+  // Progressive per-frame plot rows, batched after large_file_response under its request_id
+  // (not file_path: a re-request of the same file opens its run before the old one is disposed)
   | {
       command: `plot_metadata_stream`
-      file_path: string
+      request_id: string
       rows: TrajectoryMetadata[]
       complete: boolean
     }
+  // Parse warnings the run's later reads added since its summary or last such message
+  | { command: `trajectory_warnings`; request_id: string; warnings: readonly string[] }
 
 // A numeric frame as hosts post it, its typed arrays as ArrayBuffers: VS Code's webview
 // postMessage recreates ArrayBuffers (engines >= 1.57) but turns typed arrays into plain

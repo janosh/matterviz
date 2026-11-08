@@ -111,6 +111,7 @@ export const indexed_text_run = (
     properties,
     metadata: source.metadata ?? {},
     warnings: collector.warnings,
+    subscribe_warnings: collector.subscribe,
     collect_positions: (options) => accumulate_positions(frame_count, read, options),
     release: () => {
       source?.release?.()

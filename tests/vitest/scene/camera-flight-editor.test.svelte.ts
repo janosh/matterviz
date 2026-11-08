@@ -81,13 +81,26 @@ describe(`camera flight editing`, () => {
     expect(() => editor.set_time(2, 0.03)).toThrow(`Duration must be at least 0.1 s, got 0.03`)
     const flight = orbit_camera_flight(pose, 0.05)
     expect(() => editor.load(flight, [])).toThrow(`Duration must be at least 0.1 s`)
-    editor.set_time(1, 9.95)
-    editor.remove(0) // leaves views at 0 and ~0.05 s
-    const { duration } = editor.draft
-    expect(duration).toBeCloseTo(0.05, 12)
-    editor.set_duration(duration) // re-setting the unchanged sub-floor value is a no-op
-    expect(editor.draft.duration).toBe(duration)
   })
+
+  // manual views [0, time, 10] plus an inserted midpoint view, then one deleted
+  it.each([
+    { time: 9.95, insert_after: 1, remove: 0, expected: [0, 5, 10] },
+    { time: 0.02, insert_after: 0, remove: 3, expected: [0, 5, 10] },
+    { time: 2, insert_after: 0, remove: 0, expected: [0, 1, 9] },
+    { time: 2, insert_after: 1, remove: 3, expected: [0, 2, 6] },
+  ])(
+    `deleting view index $remove after timing view 2 at $time keeps the 0.1 s floor`,
+    ({ time, insert_after, remove, expected }) => {
+      const editor = populated_editor()
+      editor.set_time(1, time)
+      editor.add(pose, `inserted`, insert_after)
+      editor.remove(remove)
+      expect(editor.draft.automatic).toBe(false)
+      expect(times(editor)).toEqual(expected)
+      expect(editor.draft.duration).toBe(expected.at(-1))
+    },
+  )
 
   it.each([0, 10, NaN, Infinity])(
     `rejects invalid interior time %s without committing it`,

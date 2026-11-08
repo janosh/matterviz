@@ -5,10 +5,9 @@
 // Decompression and HDF5 group choice belong to the caller (the file viewer): an ambiguous
 // HDF5 file throws Hdf5GroupSelectionRequiredError.
 import { display_idx } from '#lib/labels.js'
-import { HDF5_EXT_REGEX } from '#lib/constants.js'
+import { HDF5_EXT_REGEX, INDEX_ABOVE_BYTES } from '#lib/constants.js'
 import { decode_text_chunks, MAX_STRING_CHARS, text_encoding_of } from '#lib/io/decompress.js'
 import { is_binary } from '#lib/io/is-binary.js'
-import { DEFAULTS } from '#lib/settings.js'
 import { is_plain_object } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 import type { AnyStructure } from '#lib/structure/index.js'
@@ -27,13 +26,13 @@ import { parse_vasp_outcar } from './parse/outcar'
 import { parse_pymatgen_trajectory } from './parse/pymatgen'
 import type { ParsedTrajectory, WarningCollector } from './parse/shared'
 import { collect_parse_warnings, create_warning_collector } from './parse/shared'
-import { parse_vasp_xdatcar } from './parse/vasp'
+import { read_xdatcar_snapshots } from './parse/vasp'
 import { parse_vasprun_xml } from './parse/vasprun'
 import { parse_xyz_trajectory } from './parse/xyz'
 import type { TrajectoryProvenance, TrajectoryRun } from './run'
 import { hdf5_run } from './runs/hdf5'
 import { indexed_text_run } from './runs/indexed-text'
-import { trajectory_from_frames } from './runs/memory'
+import { trajectory_from_frames, trajectory_from_snapshots } from './runs/memory'
 
 export { Hdf5GroupSelectionRequiredError } from './parse/h5-utils'
 export { VaspoutElectronicOnlyError } from './parse/vaspout-h5'
@@ -47,7 +46,7 @@ export interface OpenTrajectoryOptions {
   // Map LAMMPS atom types to element symbols, e.g. { 1: 'Na', 2: 'Cl' }
   atom_type_mapping?: AtomTypeMapping
   // Index (decode on demand) XYZ, XDATCAR and LAMMPS payloads above this many bytes instead
-  // of parsing every frame up front. Defaults to DEFAULTS.trajectory.index_above_bytes.
+  // of parsing every frame up front. Defaults to INDEX_ABOVE_BYTES.
   index_above_bytes?: number
 }
 
@@ -176,7 +175,13 @@ const parse_text = (
   }
   const head = typeof text === `string` ? text.slice(0, SNIFF_BYTES) : text.head(SNIFF_BYTES)
   if (FORMAT_PATTERNS.vasp(head, filename)) {
-    return index ? indexed(`xdatcar`) : parsed(parse_vasp_xdatcar(text, collector.warn))
+    if (index) return indexed(`xdatcar`)
+    const { snapshots, properties } = read_xdatcar_snapshots(text, collector.warn)
+    return trajectory_from_snapshots(snapshots, {
+      provenance: { ...provenance, format: `xdatcar` },
+      warnings: collector.warnings,
+      properties,
+    })
   }
   if (FORMAT_PATTERNS.vasprun(head, filename)) {
     return parsed(parse_vasprun_xml(whole(), collector.warn))
@@ -223,7 +228,7 @@ export async function open_trajectory(
     signal,
     on_progress,
     hdf5_group_path,
-    index_above_bytes = DEFAULTS.trajectory.index_above_bytes,
+    index_above_bytes = INDEX_ABOVE_BYTES,
   } = options
   signal?.throwIfAborted()
   // TextLines keeps a BOM, which hid a lone XYZ frame and frame 1 of a longer file

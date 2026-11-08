@@ -120,7 +120,14 @@ test.each([0, 200])(
         clientX: rect.x + ((point.x + 1) * rect.width) / 2,
         clientY: rect.y + ((1 - point.y) * rect.height) / 2,
       }
-      for (const type of [`pointerdown`, `pointerup`]) {
+      // a press that left the canvas was released elsewhere: a later release must not fly
+      for (const type of [
+        `pointerdown`,
+        `pointerleave`,
+        `pointerup`,
+        `pointerdown`,
+        `pointerup`,
+      ]) {
         renderer.domElement.dispatchEvent(new PointerEvent(type, click_position))
       }
       expect(on_start).toHaveBeenCalledOnce()

@@ -65,7 +65,6 @@ export function create_structure_tool_controller(
   get_owner: () => unknown,
   on_prediction: (prediction: StructureToolPrediction | null) => void,
   on_view: (view: StructureToolView | null) => void,
-  get_revision: () => string,
   // Synchronously writes validated geometry into the input and rebases `run_id`'s output.
   on_replace_input: (geometry: StructureToolGeometry, run_id: number) => void,
 ) {
@@ -87,7 +86,6 @@ export function create_structure_tool_controller(
       // Reassigned when the run replaces its own input, so it stays current.
       let structure = get_structure()
       const owner = get_owner()
-      let revision = get_revision()
       if (disposed || !owner || !structure)
         throw new Error(`Cannot start a host run without a mounted, enabled structure viewer`)
       let input = copy_prediction_input(structure)
@@ -102,8 +100,7 @@ export function create_structure_tool_controller(
         !signal.aborted &&
         current?.abort === abort &&
         get_owner() === owner &&
-        get_structure() === structure &&
-        get_revision() === revision
+        get_structure() === structure
       current = { abort, is_current }
       // A same-turn input/tool change may precede the invalidation effect. Only retain
       // previous output (and its appearance) when it still belongs to this input and tool.
@@ -136,7 +133,6 @@ export function create_structure_tool_controller(
           if (!copied) throw new TypeError(`geometry: expected positions, one per input site`)
           on_replace_input(copied, identifier)
           structure = get_structure()
-          revision = get_revision()
           input = copy_prediction_input(structure)
           run.structure = structuredClone(input)
         },
@@ -167,8 +163,6 @@ export function create_structure_tool_controller(
 }
 
 // Register before mounting; this also reaches independently mounted file viewers.
-export const structure_host_tool = $state<{
-  component: Component<StructureToolProps> | null
-  // Select all calculation inputs, preserving atom order. Omit for full-document identity.
-  input_key?: (structure: AnyStructure) => string
-}>({ component: null })
+export const structure_host_tool = $state<{ component: Component<StructureToolProps> | null }>(
+  { component: null },
+)

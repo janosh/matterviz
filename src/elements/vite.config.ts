@@ -122,6 +122,19 @@ const elements_plugin: PluginOption = {
   },
 }
 
+// Pages on another origin than this bundle (a CDN) can't start its worker files directly, so
+// `Worker` is CrossOriginWorker wherever one is constructed (Vite still emits them by syntax)
+const cross_origin_worker = resolve(import.meta.dirname, `cross-origin-worker.ts`)
+const cross_origin_workers: Plugin = {
+  name: `cross-origin-workers`,
+  enforce: `pre`,
+  transform(code, identifier) {
+    if (identifier === cross_origin_worker || !/\bnew Worker\(/.test(code)) return null
+    const binding = `import { CrossOriginWorker as Worker } from ${JSON.stringify(cross_origin_worker)}`
+    return { code: `${binding}\n${code}`, map: null }
+  },
+}
+
 // three's DRACO and KTX2 loaders name their decoders via `new URL(..., import.meta.url)`, so
 // those files (1.9 MB) are emitted even after tree-shaking drops the loaders: drop every asset
 // no other output file names, repeating as dropping one can orphan the files it named
@@ -154,6 +167,7 @@ export default defineConfig({
   plugins: [
     vite_plugin_json_gz(),
     elements_plugin,
+    cross_origin_workers,
     drop_orphan_assets,
     // No stylesheet for hosts to link: each component injects its CSS when first mounted
     svelte({ compilerOptions: { css: `injected` } }),

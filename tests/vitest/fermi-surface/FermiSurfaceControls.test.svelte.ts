@@ -7,7 +7,14 @@ import type {
 import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test } from 'vitest'
-import { bind_props, doc_query, option_texts, set_input, set_select } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  option_texts,
+  reset_section,
+  set_input,
+  set_select,
+} from '../setup'
 import { IDENTITY_MATRIX3, make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // One single-vertex sheet per band, optionally carrying a per-vertex property
@@ -31,12 +38,6 @@ const render_controls = async (state: ComponentProps<typeof FermiSurfaceControls
 }
 // the "Color by" select, the pane's first
 const color_by = () => doc_query<HTMLSelectElement>(`.fermi-controls select`)
-const reset_section = async (section: string) => {
-  const selector = `button[aria-label="Reset ${section} to defaults"]`
-  doc_query<HTMLButtonElement>(selector).click()
-  await tick()
-  expect(document.querySelector(selector)).toBeNull()
-}
 
 describe(`FermiSurfaceControls`, () => {
   test.each([false, true])(

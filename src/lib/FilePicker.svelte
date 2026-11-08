@@ -114,6 +114,7 @@
     aria-pressed={is_active}
     {@attach tooltip({
       content: `Filter to show only ${label}${kind === `type` ? ` files` : ``}`,
+      placement: `top`,
     })}
   >
     {#if kind === `type`}
@@ -141,7 +142,7 @@
           class="clear-filter"
           aria-label="Clear file filter"
           onclick={() => (active_filter = null)}
-          {@attach tooltip({ content: `Clear all filters` })}
+          {@attach tooltip({ content: `Clear all filters`, placement: `top` })}
         >
           ✕
         </button>

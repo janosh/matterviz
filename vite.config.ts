@@ -173,6 +173,11 @@ const plugins = [
   docs.plugin,
 ]
 
+// Test files run in worker threads, which ignore TZ changes (Node applies them on the main thread
+// only), so pin a zone with DST before Vitest spawns them: dates resolve the same on every
+// machine, and CI's UTC no longer hides DST bugs
+if (process.env.VITEST) process.env.TZ = `America/Asuncion`
+
 const config = make_config()
 
 export default defineConfig({
@@ -230,6 +235,9 @@ export default defineConfig({
 
   test: {
     environment: `happy-dom`,
+    // threads die with a killed vitest; forks workers stuck in a sync loop outlive it
+    // (https://github.com/vitest-dev/vitest/issues/11915), and threads run the suite ~13% faster
+    pool: `threads`,
     css: true,
     coverage: {
       reporter: [`text`, `json-summary`],
@@ -253,6 +261,8 @@ export default defineConfig({
   // so those two run as thunks that ignore the names. No shell: one command per entry.
   // `pnpm typecheck` passes svelte-check --config: without it svelte-check crawls the whole
   // workspace and loads every nested vite/svelte config (e.g. scratch checkouts in tmp/).
+  // It also installs extensions/anywidget's deps when missing (CI installs them up front): tests
+  // import reactive.svelte.ts, whose `anywidget/types` import only that install provides.
   staged: {
     '*.{ts,js,mjs,svelte,css,json,md,yml,yaml}': `vp fmt`,
     '*.{ts,js,mjs,svelte}': [

@@ -242,7 +242,9 @@
     // `auto` docks it when the sites carry numbers worth reading (forces, magnetic moments,
     // charges, velocities) and the viewer is wide enough; its header button closes it.
     site_sidebar?: boolean | `auto`
-    // bindable: the structure on display. Edit-atoms writes edited copies back.
+    // bindable: the structure on display. Edit-atoms writes edited copies back. Read as
+    // immutable data: assign a new object to update it, in-place edits go unseen. A deep $state
+    // costs one copy per new object (~1 s at 100k atoms), which $state.raw or a plain object skip.
     structure?: AnyStructure
     // Stable identity for coordinate-only updates (trajectory playback): camera and selection
     // persist while it is unchanged and the topology is the same
@@ -358,19 +360,18 @@
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
-        structure = prediction.input
-        loaded_structure = structure
+        loaded_structure = prediction.input
       } else {
         const { document, notice } = apply_structure_material(
           { structure, volumetric_data, isosurface_settings, active_volume_id },
           opened,
         )
         loaded_structure = document.structure
-        // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
-        if (loaded_structure !== structure) structure = loaded_structure
         ;({ volumetric_data, isosurface_settings, active_volume_id } = document)
         if (notice) show_toast(notice)
       }
+      // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
+      if (loaded_structure !== structure) session.adopt_structure(loaded_structure)
       on_file_load?.({
         structure: loaded_structure,
         ...opened.provenance,
@@ -460,8 +461,7 @@
       scene_props.bonding_strategy ?? DEFAULTS.structure.bonding_strategy,
     bonding_options: () => scene_props.bonding_options ?? {},
     on_notice: show_toast,
-    tool_prediction: () =>
-      tool_source_revision === tool_input_revision ? saved_prediction : null,
+    tool_prediction: () => saved_prediction,
     // No run computes a restored result: end any run on the replaced input first, so that run's
     // invalidation cannot clear it, then show it on the restored input
     restore_tool_prediction: (restored) => {
@@ -471,7 +471,6 @@
   })
 
   let tool_source = $state.raw<AnyStructure | undefined>()
-  let tool_source_revision = ``
   let tool_view = $state.raw<StructureToolView | null>(null)
   const active_tool_view = $derived(tool_source === session.tool_input ? tool_view : null)
   // the scene's own warnings only make sense while it is on screen
@@ -573,11 +572,6 @@
       [atom_color_config, inactive_tool_color] = [inactive_tool_color, atom_color_config]
     tool_overlay_visible = visible
   }
-  // The shown output now belongs to the current input (and its revision while one is shown)
-  const adopt_tool_source = (): void => {
-    tool_source = session.tool_input
-    tool_source_revision = tool_overlay ? tool_input_revision : ``
-  }
   const apply_tool_overlay = (
     published: StructureToolPrediction | null,
     adopt_source = true,
@@ -628,7 +622,8 @@
       for (const identifier of owned_volume_ids)
         if (!volume_by_id.has(identifier)) removed_tool_fields.add(identifier)
     tool_overlay = overlay
-    if (adopt_source) adopt_tool_source()
+    // The shown output now belongs to the current input
+    if (adopt_source) tool_source = session.tool_input
     const restore_active =
       active_volume_id !== undefined && owned_volume_set.has(active_volume_id)
     const preserve_active = restore_active || (same_run && owned_volume_ids.length > 0)
@@ -667,21 +662,14 @@
       volumetric_data,
     )
   }
-  // Cached until an input property changes; catches in-place edits without rescanning per callback.
-  const tool_input_revision = $derived.by(() => {
-    if (!(show_host_tool && structure_host_tool.component) && !tool_overlay) return ``
-    const input = session.tool_input
-    return input && structure_host_tool.input_key
-      ? structure_host_tool.input_key(input)
-      : JSON.stringify(input)
-  })
   // A run adopts its result's geometry as the input: one undoable edit of the raw structure
   // (site order, labels, species and properties kept). The run's shown output is rebased onto
   // the new input, so neither invalidation path drops it; its volumes, layers, site properties
   // and colors stay as they are.
   const replace_tool_input = (geometry: StructureToolGeometry, run_id: number): void => {
-    if (!structure) throw new Error(`Host run ${run_id} has no structure to replace`)
-    session.replace_structure(apply_tool_geometry($state.snapshot(structure), geometry))
+    const current = session.plain_input
+    if (!current) throw new Error(`Host run ${run_id} has no structure to replace`)
+    session.replace_structure(apply_tool_geometry(current, geometry))
     if (tool_overlay && tool_overlay.run_id !== run_id) apply_tool_overlay(null)
     else {
       const input = copy_prediction_input(session.tool_input)
@@ -693,7 +681,7 @@
       tool_overlay = rebase(tool_overlay)
       tool_result = rebase(tool_result)
     }
-    adopt_tool_source()
+    tool_source = session.tool_input
     show_toast(`Applied the result geometry to the structure; undo in edit-atoms mode`)
   }
   const tool_controller = create_structure_tool_controller(
@@ -704,18 +692,11 @@
       tool_view = view
       if (view) tool_source = session.tool_input
     },
-    () => tool_input_revision,
     replace_tool_input,
   )
   $effect(() => {
     // Subscribe only to ownership/input changes, not the output mutations in cleanup.
-    void [
-      tool_input_revision,
-      session.tool_input,
-      show_host_tool,
-      structure_host_tool.component,
-      structure_host_tool.input_key,
-    ]
+    void [session.tool_input, show_host_tool, structure_host_tool.component]
     untrack(() => {
       tool_controller.invalidate_if_changed()
       clear_stale_prediction()
@@ -723,11 +704,7 @@
   })
   // Imported output has no running computation. Clearing it must not abort a newer run.
   function clear_stale_prediction(): void {
-    if (
-      tool_overlay &&
-      (tool_source !== session.tool_input || tool_source_revision !== tool_input_revision)
-    )
-      apply_tool_overlay(null)
+    if (tool_overlay && tool_source !== session.tool_input) apply_tool_overlay(null)
   }
   function start_tool_run(provenance: StructureToolProvenance) {
     clear_stale_prediction()
@@ -741,7 +718,7 @@
   })
   function load_prediction(incoming: StructureToolPrediction): void {
     const snapshot = copy_prediction(incoming)
-    structure = snapshot.input
+    session.adopt_structure(snapshot.input)
     session.element_mapping = undefined
     cell_type = `original`
     supercell_scaling = `1x1x1`
@@ -1285,9 +1262,13 @@
   })
   // === site sidebar ===
   // The structure's own sites: image atoms drawn at cell faces repeat them. get_pbc_image_sites
-  // appends images after the sites it copies, so a row's index stays its scene index.
+  // appends images after the sites it copies, so a row's index stays its scene index and the
+  // rows end where that suffix starts (found without a pass over every site).
   let scene_sites = $derived(session.render_structure?.sites ?? [])
-  let sidebar_sites = $derived(scene_sites.filter((site) => !is_image_site(site)))
+  let sidebar_sites = $derived.by(() => {
+    const end = scene_sites.findLastIndex((site) => !is_image_site(site)) + 1
+    return end === scene_sites.length ? scene_sites : scene_sites.slice(0, end)
+  })
   // The source atom (table row) of the hovered site: an image atom points at the site it copies
   let hovered_atom = $derived(
     hovered_site_idx === null
@@ -1299,11 +1280,15 @@
   // Fullscreen takes the row around the viewer, so sidebars docked beside it (the site table, a
   // host's tool panel) stay in view and take width from the scene instead of covering it
   let fullscreen_root = $state<HTMLDivElement>()
-  // A host that turns the table off and hides its button (Trajectory) never pays for the scan
-  let site_data_available = $derived(
-    (site_sidebar !== false || controls_config.visible(`site-table`)) &&
-      has_site_data(sidebar_sites),
-  )
+  // A host that turns the table off and hides its button (Trajectory) never pays for the scan,
+  // and a drag (which only moves atoms) keeps the last result until its release
+  let site_data_seen = false
+  let site_data_available = $derived.by(() => {
+    if (session.dragging_atoms) return site_data_seen
+    return (site_data_seen =
+      (site_sidebar !== false || controls_config.visible(`site-table`)) &&
+      has_site_data(sidebar_sites))
+  })
   // Measured with the sidebar included (0 once it unmounts), so docking it cannot shrink the
   // viewer below the bar
   let site_sidebar_shown = $derived(

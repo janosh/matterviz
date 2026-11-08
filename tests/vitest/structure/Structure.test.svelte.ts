@@ -1367,10 +1367,9 @@ test.each([
 )
 
 test.each([
-  [`mutate input`, false],
+  [`replace input`, false],
   [`replace tool`, false],
   [`unmount`, false],
-  [`mutate input`, true],
   [`replace input`, true],
   [`replace tool`, true],
 ] as const)(
@@ -1406,9 +1405,7 @@ test.each([
     } else {
       flushSync(() => {
         if (cause === `replace tool`) structure_host_tool.component = () => ({})
-        else if (cause === `replace input` && state.structure)
-          state.structure = { ...state.structure }
-        else if (state.structure) state.structure.sites[0].xyz[0] = 9
+        else if (state.structure) state.structure = { ...state.structure }
         // Run guards must reject same-turn stale completions before effects clean up.
         run.on_overlay({ volumes: volumetric_data })
         if (restart) {
@@ -3215,7 +3212,7 @@ const mock_prediction_export = () => {
   }
 }
 
-test.each([`replace`, `mutate`, `restart`] as const)(
+test.each([`replace`, `restart`] as const)(
   `imported prediction ownership after %s`,
   async (action) => {
     const check_export = mock_prediction_export()
@@ -3254,9 +3251,7 @@ test.each([`replace`, `mutate`, `restart`] as const)(
     expect(state.volumetric_data).toHaveLength(1)
     expect([state.cell_type, state.supercell_scaling]).toEqual([`original`, `1x1x1`])
     await check_export(state.prediction, 1)
-    if (action === `mutate` && state.structure)
-      state.structure.sites[0].species[0].element = `H`
-    else state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
+    state.structure = make_crystal(2, [{ element: `H`, abc: [0, 0, 0] }])
     const run = host?.start_run({ model: `new`, version: `1`, units: {}, settings: {} })
     if (run) expect(state.volumetric_data).toEqual([])
     await tick()
@@ -3486,7 +3481,7 @@ test(`content-fit divider follows the row's width`, async () => {
 
 // PBC image atoms repeat the sites they copy: one row per site of the structure
 test(`lists each site once, not its periodic images`, async () => {
-  const corner_atom = {
+  const corner_atom: AnyStructure = {
     lattice: structure.lattice,
     sites: [
       {
@@ -3499,11 +3494,24 @@ test(`lists each site once, not its periodic images`, async () => {
   }
   // the corner atom has 7 images, so the filter is what keeps the table at one row
   expect(get_pbc_image_sites(corner_atom, image_options()).sites).toHaveLength(8)
-  await mount_settled({ structure: corner_atom, site_sidebar: true, show_image_atoms: true })
+  mock_gpu()
+  const state = $state<StructureProps>({ structure: corner_atom })
+  // a series key, so the next frame keeps the drag going
+  const props = { site_sidebar: true, show_image_atoms: true, structure_series_key: `run` }
+  await mount_settled(bind_props(props, state))
   expect(
     document.querySelectorAll(`.structure-site-sidebar tbody tr[data-row-idx]`),
   ).toHaveLength(1)
   expect(sidebar()?.textContent).toContain(`Sites (1)`)
+  // A drag only moves atoms: the table keeps its site-data check until the release rescans
+  const scene = scene_stub.props
+  if (!scene) throw new Error(`Missing scene`)
+  flush_set(scene, { dragging_atoms: true })
+  const [site] = corner_atom.sites
+  flush_set(state, { structure: { ...corner_atom, sites: [{ ...site, properties: {} }] } })
+  expect(sidebar()).not.toBeNull()
+  flush_set(scene, { dragging_atoms: false })
+  expect(sidebar()).toBeNull()
 })
 
 test(`closes from its header, reopens from the controls, and links rows to sites`, async () => {
