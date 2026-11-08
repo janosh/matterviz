@@ -53,6 +53,7 @@ const INVARIANT_LABELS: Readonly<Record<string, string>> = {
   peritectic: `P`,
   peritectoid: `Pd`,
   syntectic: `S`,
+  inverse_melting: `IM`,
 }
 
 const PHASE_KINDS: readonly string[] = [`liquid`, `solid`, `gas`]

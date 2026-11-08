@@ -138,6 +138,11 @@ describe(`diagram_errors`, () => {
   ])(`reports a bad %s`, (_label, patch, message) => {
     expect(diagram_errors({ ...eutectic, ...patch }).join(`; `)).toContain(message)
   })
+  test.each([`syntectic`, `inverse_melting`] as const)(`accepts invariant kind %s`, (kind) => {
+    expect(
+      diagram_errors({ ...eutectic, invariants: [{ ...eutectic.invariants[0], kind }] }),
+    ).toEqual([])
+  })
 
   // untrusted JSON never makes validation throw, and emitter failure records say why
   test.each<[unknown, string]>([

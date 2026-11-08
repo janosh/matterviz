@@ -56,6 +56,8 @@ export type InvariantKind =
   | `peritectic`
   | `peritectoid`
   | `syntectic`
+  // a liquid forms from two condensed phases on cooling (some emitters produce it, rare in metals)
+  | `inverse_melting`
 
 // Three-phase reaction on cooling; phases and compositions in order of increasing x
 export interface InvariantReaction {
