@@ -1054,6 +1054,27 @@ describe(`worker-served run lifecycle`, () => {
     },
   )
 
+  test.each([`sync`, `worker`])(
+    `%s indexed run announces warnings added after open`,
+    async (kind) => {
+      const warnings = create_warning_collector(() => {}, [`at open`])
+      const indexed = indexed_text_run(XYZ_TEXT, `xyz`, {}, warnings)
+      const run = kind === `sync` ? indexed : make_worker_run(indexed)
+      const listener = vi.fn()
+      const unsubscribe = run.subscribe_warnings?.(listener)
+      // e.g. a frame read and a plot-row batch in one turn: one announce per microtask
+      warnings.warn(`late`)
+      warnings.warn(`later`)
+      await next_tick()
+      expect(listener.mock.calls).toEqual([[[`at open`, `late`, `later`]]])
+      expect(run.warnings).toEqual([`at open`, `late`, `later`])
+      unsubscribe?.()
+      warnings.warn(`unheard`)
+      await next_tick()
+      expect(listener).toHaveBeenCalledOnce()
+    },
+  )
+
   it.each([`dispose`, `messageerror`, `close failure`])(
     `rejects pending reads and releases the worker despite observer/port failure during %s`,
     async (phase) => {

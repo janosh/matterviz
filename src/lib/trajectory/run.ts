@@ -24,6 +24,7 @@ import type {
 } from './index'
 import { ATOM_BATCH_SIZE, frame_atom_batch, type ReadAtoms } from './atom-batches'
 import type { HotspotRequest, HotspotResult } from './hotspots'
+import type { WarningCollector } from './parse/shared'
 
 // `values` is what separates a signal held in memory from one the run streams on request
 export const is_loaded_signal = (signal: TrajectoryRunSignal): signal is TrajectorySignal =>
@@ -185,8 +186,10 @@ export interface TrajectoryRun {
   readonly signals?: Record<string, TrajectoryRunSignal>
   // Free-form file metadata (electronic results, units, discovered dataset paths, …)
   readonly metadata: Record<string, unknown>
-  // Non-fatal parse warnings, returned on the run rather than collected globally
+  // Non-fatal parse warnings, returned on the run rather than collected globally. A lazy run
+  // appends the ones its later reads hit and tells subscribers (see WarningCollector)
   readonly warnings: readonly string[]
+  subscribe_warnings?: WarningCollector[`subscribe`]
   // The only frame-access path. Sync for in-memory and same-thread indexed runs so scrubbing
   // needs no microtask; a Promise for worker/host runs. Rejects with the signal's reason when
   // aborted and throws/rejects after dispose(), including frame 0. The in-memory `preview`
@@ -254,6 +257,7 @@ type SharedRunFields = Pick<
   | `signals`
   | `metadata`
   | `warnings`
+  | `subscribe_warnings`
 >
 
 export const run_fields_from_summary = (

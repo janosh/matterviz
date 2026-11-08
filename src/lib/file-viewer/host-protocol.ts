@@ -87,6 +87,8 @@ export type HostToWebviewMessage =
       rows: TrajectoryMetadata[]
       complete: boolean
     }
+  // Parse warnings a host-served run's later reads added since its summary or last such message
+  | { command: `trajectory_warnings`; file_path: string; warnings: readonly string[] }
 
 // A numeric frame as hosts post it, its typed arrays as ArrayBuffers: VS Code's webview
 // postMessage recreates ArrayBuffers (engines >= 1.57) but turns typed arrays into plain

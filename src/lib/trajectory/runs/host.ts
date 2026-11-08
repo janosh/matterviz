@@ -1,12 +1,18 @@
 // Run whose frames live with an embedding host (the VS Code extension process): the host
 // indexed the file, sent a summary, and answers one frame per request (several pipelined,
 // each a round trip away over Remote SSH, see read_concurrency). Progressive plot
-// rows arrive through `properties.push()` from whoever owns the host channel.
+// rows arrive through `properties.deliver()` and the host's new warnings through
+// `receive_warnings()`, both from whoever owns the host channel.
 import { encode_frame, select_frame_channels } from '../frame'
 import type { FrameChannels, NumericFrame } from '../frame'
 import { to_error } from 'svelte-widgets/utils'
 import type { TrajectoryRun, TrajectoryRunSummary } from '../run'
 import { assert_frame_idx, disposed_error, run_fields_from_summary } from '../run'
+import { mirror_warning_collector } from '../parse/shared'
+
+export type HostRun = TrajectoryRun & {
+  receive_warnings: (warnings: readonly string[]) => void
+}
 
 export const host_run = (
   summary: TrajectoryRunSummary,
@@ -16,8 +22,9 @@ export const host_run = (
     channels?: FrameChannels,
   ) => Promise<NumericFrame>,
   release: () => void = () => {},
-): TrajectoryRun => {
+): HostRun => {
   const fields = run_fields_from_summary(summary)
+  const warnings = mirror_warning_collector(summary.warnings)
   let disposed = false
   return {
     ...fields,
@@ -27,6 +34,8 @@ export const host_run = (
     },
     provenance: { ...summary.provenance, format: summary.provenance.format ?? `host` },
     read_concurrency: 8,
+    subscribe_warnings: warnings.subscribe,
+    receive_warnings: warnings.receive,
     read_frame: (frame_idx, signal, channels) => {
       assert_frame_idx(summary, frame_idx)
       if (disposed) return Promise.reject(disposed_error(`Host-served trajectory`))

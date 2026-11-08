@@ -880,9 +880,13 @@
   let structure_pane = $state<Exclude<StructurePane, `controls`> | null>(null)
   let scatter_controls_open = $derived(scatter_props.controls_open ?? false)
   let hidden_elements = $state(new SvelteSet<ElementSymbol>())
-  // Writable so the banner can be dismissed
+  // Lazy runs append warnings as later reads hit them
+  let parse_warnings = $derived(trajectory?.warnings ?? [])
+  $effect(() => trajectory?.subscribe_warnings?.((warnings) => (parse_warnings = warnings)))
+  // A dismissal holds for the rest of this run: warnings its later reads add don't re-raise it
+  let warnings_dismissed_for = $state.raw<TrajectoryRun>()
   let warning_msg = $derived(
-    trajectory ? parse_warnings_notice(trajectory.warnings) : undefined,
+    warnings_dismissed_for === trajectory ? undefined : parse_warnings_notice(parse_warnings),
   )
 
   const set_pane_open = (pane: TrajectoryPane, open: boolean): void => {
@@ -1406,7 +1410,11 @@
     <!-- top-center, clear of the structure viewer's AtomLegend on the bottom edge -->
     <ViewerNotices>
       {#if warning_msg}
-        <StatusMessage bind:message={warning_msg} type="warning" dismissible />
+        <StatusMessage
+          bind:message={() => warning_msg, () => (warnings_dismissed_for = trajectory)}
+          type="warning"
+          dismissible
+        />
       {/if}
       {#if frame_error_msg}
         <StatusMessage bind:message={frame_error_msg} type="error" dismissible />

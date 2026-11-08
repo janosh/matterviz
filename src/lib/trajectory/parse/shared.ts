@@ -8,6 +8,7 @@ import type {
   TrajectoryFrame,
   TrajectoryMetadata,
   TrajectoryPositionStream,
+  TrajectoryRun,
   TrajectoryRunSignal,
   TrajectorySignal,
 } from '#lib/trajectory/index.js'
@@ -19,6 +20,8 @@ export interface WarningCollector {
   // Emit a message at most once per key (e.g. one "invalid pbc" warning per file)
   warn_once: (key: string, message: string) => void
   readonly warnings: string[]
+  // Hear a copy of every warning so far, at most once per microtask that added some
+  subscribe: (listener: (warnings: readonly string[]) => void) => () => void
 }
 
 const log_to_console: WarnFn = (message, error) => {
@@ -31,13 +34,25 @@ const log_to_console: WarnFn = (message, error) => {
 // `log` also sees every warning: the console by default, since a lazy run's later frame reads
 // warn after its summary has crossed to the UI, or an enclosing collector (a structure parser
 // reading XYZ through the trajectory reader forwards into the file's own collector)
-export const create_warning_collector = (log: WarnFn = log_to_console): WarningCollector => {
-  const warnings: string[] = []
+export const create_warning_collector = (
+  log: WarnFn = log_to_console,
+  warnings: string[] = [],
+): WarningCollector => {
   const seen_keys = new Set<string>()
+  const listeners = new Set<(warnings: readonly string[]) => void>()
+  let flush_queued = false
+  const flush = (): void => {
+    flush_queued = false
+    for (const listener of listeners) listener([...warnings])
+  }
   const warn: WarnFn = (message, error) => {
     const detail = error === undefined ? `` : `: ${to_error(error).message}`
     warnings.push(`${message}${detail}`)
     log(message, error)
+    if (!flush_queued) {
+      flush_queued = true
+      queueMicrotask(flush)
+    }
   }
   return {
     warn,
@@ -47,6 +62,37 @@ export const create_warning_collector = (log: WarnFn = log_to_console): WarningC
       warn(message)
     },
     warnings,
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+}
+
+// The two ends of a run's warnings served across a boundary (worker port, embedding host).
+// The far side posts only what was added since it subscribed: it subscribes in the same tick
+// it snapshots the run summary, which carries the earlier ones. The near side's mirror appends
+// them to `warnings` silently, since the far side already logged each one.
+export const post_new_warnings = (
+  run: Pick<TrajectoryRun, `warnings` | `subscribe_warnings`>,
+  post: (added: readonly string[]) => void,
+): (() => void) | undefined => {
+  let sent = run.warnings.length
+  return run.subscribe_warnings?.((warnings) => {
+    post(warnings.slice(sent))
+    sent = warnings.length
+  })
+}
+
+export const mirror_warning_collector = (
+  warnings: string[],
+): Pick<WarningCollector, `subscribe`> & { receive: (added: readonly string[]) => void } => {
+  const { warn, subscribe } = create_warning_collector(() => {}, warnings)
+  return {
+    subscribe,
+    receive: (added) => {
+      for (const message of added) warn(message)
+    },
   }
 }
 

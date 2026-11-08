@@ -20,6 +20,7 @@ import * as structure_id_pane_module from '#lib/structure-id/TrajectoryStructure
 import { Matrix4 } from 'three/webgpu'
 import { summarize_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { FrameView } from '#lib/trajectory/frame.js'
 import { FramePreparer, type DisplayFrame } from '#lib/trajectory/prepare.js'
 import {
@@ -1234,9 +1235,12 @@ describe(`banners`, () => {
     ] as const
 
   test(`parse warnings render as a dismissible banner`, async () => {
-    const target = mount_trajectory(
-      default_props({ trajectory: make_run({ warnings: [`odd header`, `missing cell`] }) }),
-    )
+    const collector = create_warning_collector(() => {}, [`odd header`, `missing cell`])
+    const run = Object.assign(make_run({ warnings: collector.warnings }), {
+      subscribe_warnings: collector.subscribe,
+    })
+    const props = $state(default_props({ trajectory: run }))
+    const target = mount_trajectory(props)
     // scoped by content: analysis panes render warnings of their own (an RDF pane tells a
     // lattice-less run why g(r) is unavailable) and those are not this banner
     const find_parse_banner = (root: ParentNode) =>
@@ -1252,6 +1256,16 @@ describe(`banners`, () => {
     expect(find_parse_banner(target)).toBeUndefined()
     const fresh_viewer = mount_trajectory(default_props())
     expect(find_parse_banner(fresh_viewer)).toBeUndefined()
+    // a lazy read's warning after the open keeps the banner dismissed for this run
+    collector.warn(`frame 2 skipped`)
+    await Promise.resolve()
+    await tick()
+    expect(find_parse_banner(target)).toBeUndefined()
+    expect(run.warnings).toHaveLength(3)
+    // a new trajectory resets the dismissal
+    props.trajectory = make_run({ warnings: [`bad cell`] })
+    flushSync()
+    expect(find_parse_banner(target)?.textContent).toContain(`1 parse warning: bad cell`)
   })
 
   test.each(failing(`disk on fire`))(

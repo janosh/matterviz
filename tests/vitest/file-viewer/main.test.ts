@@ -769,7 +769,34 @@ describe(`LARGE_FILE markers`, () => {
     }
     await run.properties.done
     expect(run.properties.rows.map((row) => row.frame_number)).toEqual([0, 1, 2])
+
+    // Warnings the host's later reads hit arrive as they are added
+    const listener = vi.fn()
+    run.subscribe_warnings?.(listener)
+    for (const [file_path, warnings] of [
+      [`/data/other.extxyz`, [`not ours`]],
+      [`/data/movie.extxyz`, [`frame 3 skipped`]],
+      [`/data/movie.extxyz`, [`frame 4 skipped`]],
+    ] as const)
+      message_bus.dispatchEvent(
+        new MessageEvent(`message`, {
+          data: { command: `trajectory_warnings`, file_path, warnings },
+        }),
+      )
+    await Promise.resolve()
+    expect(run.warnings).toEqual([`frame 3 skipped`, `frame 4 skipped`])
+    expect(listener.mock.calls).toEqual([[[`frame 3 skipped`, `frame 4 skipped`]]])
     run.dispose()
+    message_bus.dispatchEvent(
+      new MessageEvent(`message`, {
+        data: {
+          command: `trajectory_warnings`,
+          file_path: `/data/movie.extxyz`,
+          warnings: [`after dispose`],
+        },
+      }),
+    )
+    expect(run.warnings).toHaveLength(2)
     await expect(
       Promise.resolve().then(() => materialize_frame_result(run.read_frame(1))),
     ).rejects.toThrow(/disposed/)
@@ -787,7 +814,7 @@ describe(`LARGE_FILE markers`, () => {
   })
 
   test.each([`batch`, `completion`, `both`] as const)(
-    `finishes host metadata and detaches its listener after %s subscriber failures`,
+    `finishes host metadata despite %s subscriber failures, detaching its listener on dispose`,
     async (phase) => {
       with_host(summary_reply)
       const add_listener = vi.spyOn(globalThis, `addEventListener`)
@@ -834,8 +861,10 @@ describe(`LARGE_FILE markers`, () => {
         [backing.properties.rows, false],
         [[], true],
       ])
-      expect(remove_listener).toHaveBeenCalledWith(`message`, handler)
+      // the listener outlives completion: later warnings arrive through it too
+      expect(remove_listener).not.toHaveBeenCalledWith(`message`, handler)
       result.data.dispose()
+      expect(remove_listener).toHaveBeenCalledWith(`message`, handler)
     },
   )
 

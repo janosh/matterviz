@@ -15,6 +15,8 @@ import type { ExtensionContext, Tab, TextEditor, Uri, WebviewOptions } from 'vsc
 import pkg_json from '../package.json' with { type: 'json' }
 import type { WebviewToHostMessage } from '#lib/file-viewer/host-protocol.js'
 import type { FrameChannels } from '#lib/trajectory/frame.js'
+import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import {
   activate,
   active_auto_render_panels,
@@ -31,6 +33,7 @@ import {
   LARGE_FILE_THRESHOLD,
   read_file,
   render,
+  webview_run_streams,
 } from '../src/extension'
 
 // Mock modules (extension.ts only touches fs.existsSync + fs.readdirSync;
@@ -165,6 +168,7 @@ describe(`MatterViz Extension`, () => {
       active_runs,
       auto_render_timers,
       active_auto_render_panels,
+      webview_run_streams,
     ])
       state.clear()
 
@@ -496,6 +500,33 @@ describe(`MatterViz Extension`, () => {
         error: expect.stringContaining(`outside 0..${n_frames - 1}`),
       }),
     )
+  })
+
+  // A lazy run's frame reads warn after its summary went out: each panel hears the new ones
+  // until it reloads (its re-request replaces the old forwarder) or closes
+  test(`late run warnings reach each open panel until it reloads or closes`, async () => {
+    const file_path = `/test/warned.xyz`
+    const warnings = create_warning_collector(() => {}, [`at open`])
+    const text = `1\nframe=0\nH 0 0 0\n1\nframe=1\nH 1 0 0\n`
+    active_runs.set(file_path, Promise.resolve(indexed_text_run(text, `xyz`, {}, warnings)))
+    const panels = [await render_file(file_path), await render_file(file_path)]
+    for (const { webview } of panels) await handle_msg(large_file_msg(file_path, `a`), webview)
+    await handle_msg(large_file_msg(file_path, `reload`), panels[0].webview)
+    const warning_posts = (webview: ReturnType<typeof make_webview>) =>
+      webview.postMessage.mock.calls
+        .map(([message]) => message as { command: string; warnings?: string[] })
+        .filter(({ command }) => command === `trajectory_warnings`)
+        .map((message) => message.warnings)
+    warnings.warn(`frame 2 skipped`)
+    await Promise.resolve()
+    for (const { webview } of panels)
+      expect(warning_posts(webview)).toEqual([[`frame 2 skipped`]])
+    fire_event(panels[0].onDidDispose)
+    warnings.warn(`frame 3 skipped`)
+    await Promise.resolve()
+    expect(warning_posts(panels[0].webview)).toHaveLength(1)
+    expect(warning_posts(panels[1].webview)).toHaveLength(2)
+    expect(webview_run_streams.has(panels[0].webview)).toBe(false)
   })
 
   // Simultaneous opens share one read. A file change while it loads evicts the load, so the

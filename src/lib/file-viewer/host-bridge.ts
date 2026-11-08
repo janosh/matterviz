@@ -13,7 +13,7 @@
 import { display_idx } from '#lib/labels.js'
 import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { host_run } from '#lib/trajectory/runs/host.js'
+import { host_run, type HostRun } from '#lib/trajectory/runs/host.js'
 import { to_error } from 'svelte-widgets/utils'
 import { frame_from_wire } from './host-protocol'
 import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
@@ -100,22 +100,23 @@ export async function request_large_file_content(
       `Cannot stream ${filename}: no host bridge is available (acquireVsCodeApi returned nothing).`,
     )
   }
-  // Plot rows arrive in batches after the summary; they are routed to THIS run instance
-  // (matched by the file path the host stamps on them) until it completes or is disposed
-  let stop_property_stream = (): void => {}
-  const bind_host_properties = (run: TrajectoryRun): TrajectoryRun => {
-    if (run.properties.complete) return run
+  // Plot rows and grown warnings arrive after the summary; they are routed to THIS run
+  // instance (matched by the file path the host stamps on them) until it is disposed
+  let stop_host_stream = (): void => {}
+  const bind_host_stream = (run: HostRun): TrajectoryRun => {
     const handler = (event: MessageEvent<HostToWebviewMessage | undefined>): void => {
       const message = event.data
-      if (message?.command !== `plot_metadata_stream` || message.file_path !== file_path)
-        return
-      if (run.properties.complete) return stop_property_stream()
-      // Detach before notifying final rows: subscribers may throw or dispose the run.
-      if (message.complete) stop_property_stream()
-      run.properties.deliver(message.rows, message.complete, `Host`)
+      if (message?.command === `trajectory_warnings` && message.file_path === file_path)
+        run.receive_warnings(message.warnings)
+      else if (
+        message?.command === `plot_metadata_stream` &&
+        message.file_path === file_path &&
+        !run.properties.complete
+      )
+        run.properties.deliver(message.rows, message.complete, `Host`)
     }
     globalThis.addEventListener(`message`, handler)
-    stop_property_stream = () => globalThis.removeEventListener(`message`, handler)
+    stop_host_stream = () => globalThis.removeEventListener(`message`, handler)
     return run
   }
 
@@ -129,12 +130,12 @@ export async function request_large_file_content(
       if (data.error) reject(new Error(data.error))
       else if (data.run_summary && typeof data.run_summary === `object`) {
         resolve(
-          bind_host_properties(
+          bind_host_stream(
             host_run(
               data.run_summary,
               (frame_idx, signal, channels) =>
                 request_host_frame(file_path, filename, frame_idx, signal, channels),
-              () => stop_property_stream(),
+              () => stop_host_stream(),
             ),
           ),
         )
