@@ -126,6 +126,20 @@ describe(`diagram_errors`, () => {
       `boundaries[0] is magnetic: one phase and no side`,
     ],
     [
+      `polymorphic phases`,
+      { boundaries: [{ kind: `polymorphic`, phases: [`A`, `B`], points: pts(0, 0, 1, 1) }] },
+      `boundaries[0] is polymorphic: three phases and no side`,
+    ],
+    [
+      `polymorphic transition`,
+      {
+        polymorphic_transitions: [
+          { temperature: 450, composition: Number.NaN, above: `A`, below: `C` },
+        ],
+      },
+      `polymorphic_transitions[0] references unknown phase C; polymorphic_transitions[0] needs a finite`,
+    ],
+    [
       `invariant kind`,
       { invariants: [{ ...eutectic.invariants[0], kind: `catatectic` as `eutectic` }] },
       `invariants[0] has unknown kind "catatectic"`,
@@ -161,6 +175,20 @@ describe(`diagram_errors`, () => {
       points: pts(0, 400, 0.2, 380),
     }
     expect(diagram_errors({ ...eutectic, boundaries: [magnetic] })).toEqual([])
+  })
+
+  test(`a polymorphic line with its transition is valid`, () => {
+    const polymorphic = {
+      kind: `polymorphic` as const,
+      phases: [`A`, `LIQUID`, `B`],
+      points: pts(0.1, 450, 0.5, 450),
+    }
+    const polymorphic_transitions = [
+      { temperature: 450, composition: 0.5, above: `LIQUID`, below: `B` },
+    ]
+    expect(
+      diagram_errors({ ...eutectic, boundaries: [polymorphic], polymorphic_transitions }),
+    ).toEqual([])
   })
 })
 
@@ -237,7 +265,7 @@ describe(`phase_colors`, () => {
   })
 })
 
-test(`diagram_points describes invariant, congruent, critical and unary points`, () => {
+test(`diagram_points describes invariant, congruent, critical, unary and polymorphic points`, () => {
   const points = diagram_points({
     ...eutectic,
     congruent_points: [{ temperature: 800, composition: 0.4, phases: [`LIQUID`, `A`] }],
@@ -246,6 +274,7 @@ test(`diagram_points describes invariant, congruent, critical and unary points`,
       { component: `Al`, temperature: 933, above: `LIQUID`, below: `A` },
       { component: `Cu`, temperature: 700, above: `A`, below: `B` },
     ],
+    polymorphic_transitions: [{ temperature: 450, composition: 0.3, above: `A`, below: `B` }],
   })
   expect(
     points.map(({ category, kind, composition, marker_label, description }) => [
@@ -261,6 +290,7 @@ test(`diagram_points describes invariant, congruent, critical and unary points`,
     [`critical`, `critical`, 0.6, ``, `β miscibility gap closes`],
     [`unary`, `melting`, 0, `Tₘ(Al)`, `Al: L → α`],
     [`unary`, `transition`, 1, ``, `Cu: α → β`],
+    [`polymorphic`, `polymorphic`, 0.3, ``, `α → β at fixed composition`],
   ])
 })
 

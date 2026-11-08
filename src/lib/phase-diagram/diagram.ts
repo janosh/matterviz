@@ -40,6 +40,7 @@ export const BOUNDARY_STYLES: Readonly<
   invariant: { color: `#d32f2f`, width: 2 },
   miscibility_gap: { color: `#6d4c41`, width: 2, dash: `6,3` },
   magnetic: { color: `#455a64`, width: 1.5, dash: `8,3,2,3` },
+  polymorphic: { color: `#00838f`, width: 1.5, dash: `1,3` },
 }
 // Every boundary of an overlay diagram shares one dashed stroke in the overlay color
 export const OVERLAY_DASH = `7,4`
@@ -102,6 +103,9 @@ export function diagram_errors(value: unknown): string[] {
     `critical_points`,
     `unary_transitions`,
     ...(data.regions === undefined ? [] : [`regions` as const]),
+    ...(data.polymorphic_transitions === undefined
+      ? []
+      : [`polymorphic_transitions` as const]),
   ] as const
   for (const key of lists) {
     const list: unknown = data[key]
@@ -158,6 +162,9 @@ export function diagram_errors(value: unknown): string[] {
     if (kind === `magnetic` && (length(refs) !== 1 || side != null)) {
       errors.push(`${where} is magnetic: one phase and no side`)
     }
+    if (kind === `polymorphic` && (length(refs) !== 3 || side != null)) {
+      errors.push(`${where} is polymorphic: three phases and no side`)
+    }
     check_points(where, points, 2, `points`)
   })
   data.invariants.forEach(
@@ -191,6 +198,10 @@ export function diagram_errors(value: unknown): string[] {
         `unary_transitions[${idx}] component "${component}" is not a diagram component`,
       )
     }
+  })
+  data.polymorphic_transitions?.forEach(({ temperature, composition, above, below }, idx) => {
+    check_ids(`polymorphic_transitions[${idx}]`, [above, below])
+    check_position(`polymorphic_transitions[${idx}]`, temperature, [composition])
   })
   return errors
 }
@@ -313,7 +324,7 @@ export function phase_colors(
   )
 }
 
-// Invariant, congruent, critical and pure-component points with labels and descriptions
+// Invariant, congruent, critical, pure-component and polymorphic points with labels and descriptions
 export function diagram_points(data: BinaryPhaseDiagram): DiagramPoint[] {
   const label_of = phase_labeler(data)
   const is_liquid = new Set(
@@ -357,6 +368,16 @@ export function diagram_points(data: BinaryPhaseDiagram): DiagramPoint[] {
         description: `${component}: ${label_of(above)} → ${label_of(below)}`,
       }
     }),
+    ...(data.polymorphic_transitions ?? []).map(
+      ({ temperature, composition, above, below }): DiagramPoint => ({
+        category: `polymorphic`,
+        kind: `polymorphic`,
+        composition,
+        temperature,
+        marker_label: ``,
+        description: `${label_of(above)} → ${label_of(below)} at fixed composition`,
+      }),
+    ),
   ]
 }
 

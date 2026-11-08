@@ -37,10 +37,13 @@ export type BoundaryKind =
   | `invariant`
   | `miscibility_gap`
   | `magnetic`
+  | `polymorphic`
 
 // One edge of a two-phase region (phases in composition order, `side` the phase whose
 // composition the edge traces, e.g. LIQUID for a liquidus), an invariant line (3 phases, no
-// side), or a magnetic (Curie/Néel) line inside one phase (`phases: [id]`, no side)
+// side), a magnetic (Curie/Néel) line inside one phase (`phases: [id]`, no side), or a
+// polymorphic line from a neighbor's tie-line end to a line compound changing form
+// (`[neighbor, above, below]` or `[above, below, neighbor]`, no side)
 export interface DiagramBoundary {
   kind: BoundaryKind
   phases: string[]
@@ -90,6 +93,14 @@ export interface UnaryTransition {
   below: string
 }
 
+// A line compound of fixed composition changing from one form to another
+export interface PolymorphicTransition {
+  temperature: number
+  composition: number
+  above: string
+  below: string
+}
+
 export interface DiagramProvenance {
   kind: `assessment` | `model` | `sketch`
   source?: string
@@ -118,6 +129,7 @@ export interface BinaryPhaseDiagram {
   congruent_points: CongruentPoint[]
   critical_points: CriticalPoint[]
   unary_transitions: UnaryTransition[]
+  polymorphic_transitions?: PolymorphicTransition[]
   provenance: DiagramProvenance
 }
 
@@ -157,8 +169,8 @@ export interface PhaseObservation {
 
 // Marked point of a diagram (invariant, congruent, critical or pure-component transition)
 export interface DiagramPoint {
-  category: `invariant` | `congruent` | `critical` | `unary`
-  kind: string // invariant kind, `congruent`, `critical`, or `melting`/`transition`
+  category: `invariant` | `congruent` | `critical` | `unary` | `polymorphic`
+  kind: string // invariant kind, `congruent`, `critical`, `polymorphic`, or `melting`/`transition`
   composition: number
   temperature: number
   marker_label: string // short label next to the marker (E, P, Tm(Ag)), may be empty
