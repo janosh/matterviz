@@ -75,6 +75,7 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { SvelteSet } from 'svelte/reactivity'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { flush_set } from './session-harness.svelte'
@@ -636,8 +637,9 @@ test(`clicks drive measurement, edit-atoms and edit-bonds selections`, () => {
 })
 
 // The move gizmo pushes its undo point on the first actual move, not on the press: a click
-// on the gizmo without dragging used to push one and so clear the redo stack
-test(`move gizmo pushes one undo point per drag that moves atoms`, () => {
+// on the gizmo without dragging used to push one and so clear the redo stack. A drag that ends
+// without a mouseUp (pointercancel, gizmo unmounted) used to leave dragging_atoms stuck on.
+test(`move gizmo pushes one undo point per drag and releases on every drag end`, () => {
   let gizmo_props: Partial<ComponentProps<typeof extras.TransformControls>> = {}
   const capture = vi
     .spyOn(extras, `TransformControls`)
@@ -645,18 +647,24 @@ test(`move gizmo pushes one undo point per drag that moves atoms`, () => {
   onTestFinished(() => capture.mockRestore())
   const on_operation_start = vi.fn()
   const on_sites_moved = vi.fn()
-  mount_structure({
-    structure: { sites: carbons_at(0, 2) },
-    show_bonds: `never`,
-    measure_mode: `edit-atoms`,
-    selected_sites: [0, 1],
-    on_operation_start,
-    on_sites_moved,
-  })
+  const state = $state<SceneProps>({ dragging_atoms: false, selected_sites: [0, 1] })
+  mount_structure(
+    {
+      structure: { sites: carbons_at(0, 2) },
+      show_bonds: `never`,
+      measure_mode: `edit-atoms`,
+      on_operation_start,
+      on_sites_moved,
+    },
+    state,
+  )
   const { object, onmouseDown, onmouseUp, onobjectChange } = gizmo_props
   if (!object || !onmouseDown || !onmouseUp || !onobjectChange)
     throw new Error(`Missing move gizmo`)
-  const gizmo_event = {} as Parameters<typeof onmouseDown>[0]
+  const dom = document.createElement(`div`)
+  const controls = new TransformControls(new OrthographicCamera(), dom)
+  controls.addEventListener(`mouseUp`, () => onmouseUp(gizmo_event))
+  const gizmo_event = { target: controls } as Parameters<typeof onmouseDown>[0]
   // press and release in place, with a snapped zero move in between
   onmouseDown(gizmo_event)
   onobjectChange(gizmo_event)
@@ -675,6 +683,24 @@ test(`move gizmo pushes one undo point per drag that moves atoms`, () => {
     [0.5, 0, 0],
   ]
   expect(on_sites_moved.mock.calls).toEqual([move, move])
+  // pointercancel drops the pointer capture without a pointerup
+  onmouseDown(gizmo_event)
+  Object.assign(controls, { dragging: true, axis: `X` })
+  flushSync()
+  expect(state.dragging_atoms).toBe(true)
+  dom.dispatchEvent(new PointerEvent(`lostpointercapture`))
+  flushSync()
+  expect([state.dragging_atoms, controls.dragging]).toEqual([false, false])
+  // deselecting mid-drag unmounts the gizmo, which gets no mouseUp; the drag's move pushed
+  // its one undo point and the unmount pushes none
+  onmouseDown(gizmo_event)
+  object.position.set(3, 0, 0)
+  onobjectChange(gizmo_event)
+  flushSync()
+  expect(state.dragging_atoms).toBe(true)
+  flush_set(state, { selected_sites: [] })
+  expect(state.dragging_atoms).toBe(false)
+  expect(on_operation_start).toHaveBeenCalledTimes(2)
 })
 
 // The add-atom plane sits inside the manual-rotation groups: its hit point is in world space
@@ -1372,7 +1398,7 @@ test.each([
   },
 )
 
-test(`Scene reuses bond colors only for an explicit matching topology and appearance`, () => {
+test(`Scene reuses bond colors only for a matching topology and appearance`, () => {
   // Vitest's TS loader sees the legacy *.svelte declaration; this is a Svelte 5 component.
   const component_module = bond_component as unknown as {
     default: Component<ComponentProps<typeof Bond>>
@@ -1436,6 +1462,30 @@ test(`Scene reuses bond colors only for an explicit matching topology and appear
   flushSync()
   expect(received_colors).toHaveLength(4)
   expect(received_colors[3]).not.toBe(received_colors[2])
+  // Editable sites match by species array: a coordinate-only write (a drag move) keeps the
+  // colors, a changed species resolves them anew
+  const editable = (sites: Site[]) => {
+    const next = { sites }
+    const columns = pack_bonds([
+      { pos_1: [0, 0, 0], pos_2: [1, 0, 0], site_idx_1: 0, site_idx_2: 1, bond_length: 1 },
+    ])
+    cache_prepared_bonds(next, `electroneg_ratio`, {}, new BondFrame(next, columns))
+    return next
+  }
+  const sites = [
+    make_site(`C`, [0, 0, 0], [0, 0, 0], `C`),
+    make_site(`O`, [0, 0, 0], [1, 0, 0], `O`),
+  ]
+  structure = editable(sites)
+  flushSync()
+  expect(received_colors).toHaveLength(5)
+  structure = editable([{ ...sites[0], xyz: [0.1, 0, 0] }, sites[1]])
+  flushSync()
+  expect(received_colors).toHaveLength(5)
+  structure = editable([sites[0], make_site(`N`, [0, 0, 0], [1, 0, 0], `N`)])
+  flushSync()
+  expect(received_colors).toHaveLength(6)
+  expect(received_colors[5][1]).toBe(colors.element.N)
 })
 
 test(`prepared bonds reuse placements and uniform colors across topology and appearance changes`, () => {

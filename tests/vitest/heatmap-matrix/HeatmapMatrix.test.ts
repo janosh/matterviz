@@ -698,7 +698,7 @@ describe(`milestone feature props`, () => {
     })
     // drag from bottom-right to top-left so the ranges have to be sorted
     cell_at(0, 1).dispatchEvent(mouse(`mousedown`))
-    cell_at(2, 0).dispatchEvent(mouse(`mouseover`))
+    cell_at(2, 0).dispatchEvent(mouse(`mouseover`, { buttons: 1 }))
     window.dispatchEvent(new MouseEvent(`mouseup`))
     expect(brush_handler).toHaveBeenCalledOnce()
     const payload = brush_handler.mock.calls[0][0]
@@ -706,6 +706,12 @@ describe(`milestone feature props`, () => {
     expect(payload.y_range).toEqual([0, 1])
     expect(payload.cells.map((ctx: { value: number }) => ctx.value)).toEqual([3, 1, 6, 4])
     // a second mouseup without a new drag reports nothing
+    window.dispatchEvent(new MouseEvent(`mouseup`))
+    expect(brush_handler).toHaveBeenCalledOnce()
+    // a release outside the window is lost: the next buttonless hover drops the brush
+    cell_at(0, 0).dispatchEvent(mouse(`mousedown`))
+    cell_at(1, 0).dispatchEvent(mouse(`mouseover`))
+    cell_at(2, 1).dispatchEvent(mouse(`mouseover`))
     window.dispatchEvent(new MouseEvent(`mouseup`))
     expect(brush_handler).toHaveBeenCalledOnce()
   })

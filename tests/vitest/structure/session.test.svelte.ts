@@ -69,7 +69,12 @@ describe(`display pipeline`, () => {
     const { host, session } = make_session({ show_image_atoms: true })
     const not_proxied = (value: unknown) => structuredClone(value) !== undefined
     expect(() => structuredClone(host.structure?.sites[0].xyz)).toThrow(/could not be cloned/)
-    for (const view of [session.normalized_structure, session.displayed_structure]) {
+    const views = [
+      session.normalized_structure,
+      session.displayed_structure,
+      session.tool_input,
+    ]
+    for (const view of views) {
       expect(
         view?.sites.every((site) => not_proxied(site.xyz) && not_proxied(site.species)),
       ).toBe(true)
@@ -717,6 +722,43 @@ describe(`edit-atoms`, () => {
     expect(host.structure?.sites[0].xyz[0]).toBeCloseTo(0.5, 12)
     for (let step = 0; step < MAX_HISTORY + 5; step++) session.push_undo()
     expect(session.history.undo_stack).toHaveLength(MAX_HISTORY)
+  })
+
+  it(`shares a drag's own writes and tracks the caller's edits outside them`, () => {
+    const { host, session } = make_session({ measure_mode: `edit-atoms` })
+    const before = session.plain_input
+    session.dragging_atoms = true
+    session.push_undo()
+    for (const _step of [1, 2]) {
+      session.move_sites([0], [0.1, 0, 0])
+      flushSync()
+    }
+    // no copy per frame: the write is read back as built and undo shares the session's copy
+    const dragged = session.plain_input
+    expect(session.history.undo_stack.at(-1)?.structure).toBe(before)
+    expect(dragged?.sites[1]).toBe(before?.sites[1])
+    expect(dragged?.sites[0].xyz[0]).toBeCloseTo((before?.sites[0].xyz[0] ?? 0) + 0.2, 12)
+    session.dragging_atoms = false
+    flushSync()
+    // the release copies once more, so in-place caller edits are tracked again
+    expect(session.plain_input).toEqual(dragged)
+    expect(session.plain_input).not.toBe(dragged)
+    // as after a write outside a drag
+    for (const label of [`edited`, `moved then edited`]) {
+      const site = host.structure?.sites[1]
+      if (site) site.label = label
+      flushSync()
+      expect(session.plain_input?.sites[1].label).toBe(label)
+      session.move_sites([0], [0.1, 0, 0])
+      flushSync()
+    }
+    // a structure the caller swaps in mid-drag is the input at once, before its effects end the
+    // drag, not the session's last write
+    session.dragging_atoms = true
+    session.move_sites([0], [0.1, 0, 0])
+    flushSync()
+    host.structure = crystal(4)
+    expect(session.plain_input?.sites).toHaveLength(4)
   })
 
   // a slab's vacuum axis is aperiodic: a dragged atom stays where dropped, not folded back in

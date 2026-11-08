@@ -266,8 +266,25 @@ const plain_structure = (structure: AnyStructure | undefined): AnyStructure | un
 
 export class StructureSession {
   // === display pipeline ===
-  // the input without proxies (also what symmetry analysis posts to its worker)
-  readonly plain_input = $derived.by(() => plain_structure(this.inputs.structure()))
+  // A drag frame's write, read back through the binding's proxy, and the plain structure it was
+  // built as. Releasing forgets it: plain_input then copies the input once more, which is what
+  // subscribes it to in-place edits of the caller's structure again.
+  #dragging_atoms = $state(false)
+  private drag_write = $state.raw<{ written: AnyStructure; plain: AnyStructure }>()
+  get dragging_atoms(): boolean {
+    return this.#dragging_atoms
+  }
+  set dragging_atoms(dragging: boolean) {
+    if (!dragging) this.drag_write = undefined
+    this.#dragging_atoms = dragging
+  }
+  // The input without proxies (also what symmetry analysis posts to its worker). Drag frames
+  // skip the copy: reading 100k sites through the proxy takes ~1 s.
+  readonly plain_input = $derived.by((): AnyStructure | undefined => {
+    const structure = this.inputs.structure()
+    const own = this.drag_write
+    return own && own.written === structure ? own.plain : plain_structure(structure)
+  })
   // Periodic fractional coordinates wrap into the cell; non-periodic axes keep out-of-cell
   // values (unwrapped trajectories). The bonds binding addresses these wrapped sites.
   normalized_structure = $derived.by(() => {
@@ -344,10 +361,9 @@ export class StructureSession {
   )
   // Remap element symbols for display (LAMMPS type placeholders → real elements)
   element_mapping = $state<Partial<Record<ElementSymbol, ElementSymbol>> | undefined>()
-  dragging_atoms = $state(false)
-  // Host computations see mapped elements in the borrowed input cell, without display
-  // tiling, images or cell standardization. Mapping changes therefore change input identity.
-  tool_input = $derived.by(() => this.map_elements(this.inputs.structure()))
+  // Host computations see mapped elements in the plain input cell, without display tiling,
+  // images or cell standardization. Mapping changes therefore change input identity.
+  tool_input = $derived.by(() => this.map_elements(this.plain_input))
   // The analyzed cell and the wrapped input with mapped elements, for what describes or saves
   // the atoms the legend shows: the info pane's formula and density, the text exports
   mapped_base_structure = $derived.by(() => this.map_elements(this.base_structure))
@@ -816,29 +832,31 @@ export class StructureSession {
   redo_bond_edit = (): boolean => this.step_bond_history(`redo`)
 
   // === edit-atoms history ===
-  // $state.snapshot: a caller-bound structure may be a deep proxy; history keeps plain copies
-  private snapshot_edit_state(structure: AnyStructure): EditSnapshot {
+  // History keeps plain structures nothing mutates: plain_input's own copy of a proxied input
+  // (or a drag frame's write) is shared, a caller's plain object is copied. bonds: $state.snapshot
+  // since a caller-bound set may be a deep proxy.
+  private snapshot_edit_state(plain: AnyStructure): EditSnapshot {
     const bonds = this.inputs.bonds()
     return {
-      structure: $state.snapshot(structure),
+      structure: plain === this.inputs.structure() ? plain_copy(plain) : plain,
       bonds: bonds && $state.snapshot(bonds),
       own: bonds !== undefined && bonds === this.own_bonds,
     }
   }
   push_undo = (): void => {
-    const structure = this.inputs.structure()
-    if (structure) this.history.push(this.snapshot_edit_state(structure))
+    const plain = this.plain_input
+    if (plain) this.history.push(this.snapshot_edit_state(plain))
   }
   private step_history(direction: `undo` | `redo`): boolean {
-    const structure = this.inputs.structure()
-    if (!structure) return false
+    const plain = this.plain_input
+    if (!plain) return false
     const restored = this.history.step(direction, () => ({
-      ...this.snapshot_edit_state(structure),
+      ...this.snapshot_edit_state(plain),
       prediction: this.inputs.tool_prediction?.() ?? undefined,
     }))
     if (!restored) return false
     // Unlike an append, undoing a deletion inserts sites anywhere: no per-site state holds
-    if (site_count(restored.structure) !== site_count(structure)) {
+    if (site_count(restored.structure) !== site_count(plain)) {
       this.site_radius_overrides.clear()
       if (this.inputs.highlighted_sites().length > 0) this.inputs.set_highlighted_sites([])
       if (this.inputs.hovered_site_idx() !== null) this.inputs.set_hovered_site_idx(null)
@@ -865,6 +883,8 @@ export class StructureSession {
       this.keep_base_selection(Math.min(count, next.sites.length))
     this.is_internal_edit = true
     this.inputs.set_structure(next)
+    const written = this.inputs.structure()
+    this.drag_write = this.#dragging_atoms && written ? { written, plain: next } : undefined
   }
 
   // Index into base_structure of a displayed site: image atoms name the site they mirror and
@@ -1038,7 +1058,8 @@ export class StructureSession {
   // coordinates inline so normalize_fractional_coords hits its fast path; explicit bonds of a
   // site wrapped across a face gain a cell_shift
   move_sites = (scene_indices: number[], delta: Vec3): void => {
-    const structure = this.inputs.structure()
+    // plain: a write holding the binding's proxies would be copied through them again
+    const structure = this.plain_input
     const normalized_sites = this.normalized_structure?.sites
     if (!structure?.sites || !normalized_sites) return
     const targets = this.scene_to_structure_indices(scene_indices)

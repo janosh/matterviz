@@ -343,6 +343,8 @@ export function create_canvas_interactions(inputs: CanvasInteractionInputs) {
   }
 
   const handle_mouse_move = (event: MouseEvent) => {
+    // a release outside the window never reaches the document mouseup
+    if (event.buttons === 0) is_dragging = false
     if (!is_dragging) return
     const [delta_x, delta_y] = [event.clientX - last_mouse.x, event.clientY - last_mouse.y]
     if (delta_x !== 0 || delta_y !== 0) drag_started = true

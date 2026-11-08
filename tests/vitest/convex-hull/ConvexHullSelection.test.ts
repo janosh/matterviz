@@ -562,6 +562,31 @@ describe(`convex hull replacement state`, () => {
     },
   )
 
+  // the drag ended only on a document mouseup, so a release outside the window left later
+  // buttonless mousemoves rotating the hull
+  test.each([`3d`, `4d`] as const)(
+    `a buttonless mousemove ends a %s drag whose release was lost`,
+    async (dim) => {
+      await mount_harness({ dim })
+      const plot = doc_query(`.convex-hull-${dim}`)
+      const camera = () => plot.getAttribute(dim === `3d` ? `data-azimuth` : `data-rotation-y`)
+      const move = (clientX: number, buttons: number) => {
+        document.dispatchEvent(new MouseEvent(`mousemove`, { clientX, clientY: 0, buttons }))
+        flushSync()
+      }
+      plot
+        .querySelector(`canvas`)
+        ?.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true }))
+      const initial = camera()
+      move(20, 1)
+      const dragged = camera()
+      expect(dragged).not.toBe(initial)
+      expect(plot.dataset.isDragging).toBe(`true`)
+      move(60, 0)
+      expect([plot.dataset.isDragging, camera()]).toEqual([`false`, dragged])
+    },
+  )
+
   test.each([
     [{ dim: `2d` }, `none`],
     [{ dim: `3d` }, `none`],
