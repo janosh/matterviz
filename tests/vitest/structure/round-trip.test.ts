@@ -137,7 +137,9 @@ const FIXTURE_DIR = `src/site/structures`
 const fixtures: { name: string; structure: AnyStructure }[] = [
   ...readdirSync(FIXTURE_DIR, { recursive: true, encoding: `utf8` })
     // skip dotfiles such as Finder's .DS_Store
-    .filter((name) => !/(?:^|\/)\./.test(name) && statSync(`${FIXTURE_DIR}/${name}`).isFile())
+    .filter(
+      (name) => !/(?:^|[/\\])\./.test(name) && statSync(`${FIXTURE_DIR}/${name}`).isFile(),
+    )
     .toSorted()
     .map((name) => ({
       name,

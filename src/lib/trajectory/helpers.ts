@@ -433,7 +433,9 @@ const atom_line_scanner = new LineScanner()
 const NON_FINITE_TOKEN = /^[+-]?(?:nan|inf(?:inity)?)$/i
 export const holds_numbers = (scanner: LineScanner, cols: readonly number[]): boolean =>
   cols.every(
-    (col) => Number.isFinite(scanner.num(col)) || NON_FINITE_TOKEN.test(scanner.str(col)),
+    (col) =>
+      col < scanner.count &&
+      (Number.isFinite(scanner.num(col)) || NON_FINITE_TOKEN.test(scanner.str(col))),
   )
 
 // A frame holding `nan`/`inf` positions, as an MD run writes once it blew up: eager parsing

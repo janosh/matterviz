@@ -6,6 +6,7 @@ import {
   convert_atomic_numbers,
   create_sampled_frame,
   create_structure,
+  holds_numbers,
   split_lines,
   TextLines,
 } from '#lib/trajectory/helpers.js'
@@ -14,6 +15,19 @@ import { describe, expect, it } from 'vitest'
 import { make_rng } from '../numeric-helpers'
 
 describe(`trajectory helpers`, () => {
+  it.each([
+    [`0.1 nan inf`, true],
+    [`0.1 2 3`, true],
+    [`0.1 x 3`, false],
+    // a short line must not reuse token offsets left over from the longer line before it
+    [`0.12345 nan`, false],
+  ])(`holds_numbers(%j, [0, 1, 2]) is %s`, (line, expected) => {
+    const scanner = new LineScanner()
+    scanner.scan(`nan nan nan nan`)
+    scanner.scan(line)
+    expect(holds_numbers(scanner, [0, 1, 2])).toBe(expected)
+  })
+
   it(`columns_to_csv writes one row per index, quotes delimiter/quote/newline keys and pads short columns`, () => {
     const csv = columns_to_csv({
       lag: [1, 2, 3],
