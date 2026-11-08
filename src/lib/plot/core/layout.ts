@@ -19,7 +19,7 @@ export const sides_equal = (left: Required<Sides>, right: Required<Sides>): bool
 export const LABEL_GAP_DEFAULT = 20
 // Gap between y/y2 tick labels and their rotated title, tighter than an x title's: a rotated
 // title's band is its line height, which already holds some air around the glyphs
-export const Y_LABEL_GAP = 12
+const Y_LABEL_GAP = 12
 // Clearance between a y/y2 title and the SVG edge (a pane divider, the sidebar beside the
 // plot), wider than an x title's TITLE_EDGE_AIR: a rotated title's sub/superscripts overhang
 // its measured band sideways
