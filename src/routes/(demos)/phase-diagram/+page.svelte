@@ -9,6 +9,7 @@
   } from '#lib/phase-diagram/index.js'
   import {
     IsobaricBinaryPhaseDiagram,
+    model_phase_keys,
     parse_phase_diagram_svg,
     provenance_caption,
     temperature_extent,
@@ -43,6 +44,8 @@
 
   // Comparison: a hand-built Ag-Cu reference vs a synthetic model diagram of the same system
   const { 'Ag-Cu': ag_cu, 'Ag-Cu-model': ag_cu_model } = binary_diagrams
+  // Both diagrams' model phases, so a phase gets one color in every diagram compared
+  const phase_color_keys = model_phase_keys([ag_cu, ag_cu_model])
   // Side by side: one cursor and one pair of axes bound to both diagrams
   let cursor = $state<DiagramCursor | null>(null)
   let x_axis = $state<AxisConfig>({})
@@ -220,6 +223,7 @@
 <IsobaricBinaryPhaseDiagram
   data={ag_cu}
   overlay={ag_cu_model}
+  {phase_color_keys}
   observations={binary_observations}
   bind:temp_unit
   bind:comp_unit
@@ -236,6 +240,7 @@
   {#each [ag_cu, ag_cu_model] as data, idx (idx)}
     <IsobaricBinaryPhaseDiagram
       {data}
+      {phase_color_keys}
       observations={binary_observations}
       bind:cursor
       bind:x_axis

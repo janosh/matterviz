@@ -12,7 +12,9 @@ export type CompUnit = `fraction` | `at%`
 
 export const BINARY_DIAGRAM_FORMAT = `binary-phase-diagram/2`
 
-// A composition set: a miscibility gap gives two ids (FCC_A1#1, FCC_A1#2) for one model phase
+// A composition set: a miscibility gap gives two ids (FCC_A1#1, FCC_A1#2) for one model phase.
+// A single-phase field wrapping around the gap's critical point takes the bare id (FCC_A1).
+// Colors follow model_phase, so all ids of one model phase share a hue.
 export interface BinaryPhase {
   id: string
   model_phase: string
@@ -70,7 +72,8 @@ export interface CongruentPoint {
   phases: string[]
 }
 
-// Where a miscibility gap closes; `phase` is the id of one of the merging composition sets
+// Where a miscibility gap closes; `phase` is the bare id (FCC_A1) of the field its two
+// composition sets merge into
 export interface CriticalPoint {
   temperature: number
   composition: number

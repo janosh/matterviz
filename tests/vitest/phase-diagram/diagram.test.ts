@@ -1,9 +1,11 @@
 import {
   diagram_errors,
+  diagram_hit,
   diagram_name,
   diagram_points,
   format_hover_info_text,
   format_reaction,
+  model_phase_keys,
   observation_markers,
   phase_colors,
   phase_labeler,
@@ -19,6 +21,7 @@ import {
   SOLID_PHASE_PALETTE,
 } from '#lib/phase-diagram/utils.js'
 import { binary_diagrams, binary_observations } from '#site/phase-diagrams.js'
+import { hsl } from 'd3-color'
 import { describe, expect, test } from 'vitest'
 import {
   create_hover_info,
@@ -172,29 +175,60 @@ describe(`phase_colors`, () => {
     label: id,
     kind,
   })
-  const ag_cu = [
-    phase(`LIQUID`, `LIQUID`, `liquid`),
+  const liquid = phase(`LIQUID`, `LIQUID`, `liquid`)
+  // Au-Ni style: a wrapping fcc field (bare id) around a gap of two composition sets
+  const au_ni = [
+    liquid,
+    phase(`FCC_A1`),
     phase(`FCC_A1#1`, `FCC_A1`),
     phase(`FCC_A1#2`, `FCC_A1`),
   ]
+  const hue_light = (color = ``) => {
+    const { h, l } = hsl(color)
+    return [Math.round(h), l]
+  }
 
-  test(`liquid is sky blue, composition sets of one phase get distinct palette slots`, () => {
-    const colors = phase_colors(ag_cu)
+  test(`liquid is sky blue, composition sets share their model phase's hue, darker per set`, () => {
+    const colors = phase_colors(au_ni)
     expect(colors.get(`LIQUID`)).toBe(LIQUID_COLOR)
-    const [fcc_1, fcc_2] = [colors.get(`FCC_A1#1`), colors.get(`FCC_A1#2`)]
-    expect(SOLID_PHASE_PALETTE).toContain(fcc_1)
-    expect(SOLID_PHASE_PALETTE).toContain(fcc_2)
-    expect(fcc_1).not.toBe(fcc_2)
+    const [bare, set_1, set_2] = [`FCC_A1`, `FCC_A1#1`, `FCC_A1#2`].map((id) =>
+      hue_light(colors.get(id)),
+    )
+    expect(SOLID_PHASE_PALETTE).toContain(colors.get(`FCC_A1`))
+    expect([set_1[0], set_2[0]]).toEqual([bare[0], bare[0]])
+    // 0.09 lightness steps; hex rounding (1/255 per channel) moves HSL lightness < 0.004
+    expect(bare[1] - set_1[1]).toBeCloseTo(0.09, 2)
+    expect(set_1[1] - set_2[1]).toBeCloseTo(0.09, 2)
   })
 
-  // stable across diagrams: a pure function of the phase list, independent of its order
   test(`does not depend on phase order`, () => {
-    expect(phase_colors(ag_cu.toReversed())).toEqual(phase_colors(ag_cu))
+    expect(phase_colors(au_ni.toReversed())).toEqual(phase_colors(au_ni))
   })
 
-  test(`many phases all get distinct colors up to the palette size`, () => {
+  test(`many model phases all get distinct colors up to the palette size`, () => {
     const phases = SOLID_PHASE_PALETTE.map((_, idx) => phase(`P${idx}`))
     expect(new Set(phase_colors(phases).values()).size).toBe(SOLID_PHASE_PALETTE.length)
+  })
+
+  // B2_BCC and BCC_A2 hash to one palette slot: on its own, the model diagram's BCC_A2 takes
+  // the slot that B2_BCC holds in the reference, so only shared keys make the colors agree
+  test(`diagrams with different phase sets match on shared model phases given shared keys`, () => {
+    const reference = [liquid, phase(`B2_BCC`), phase(`BCC_A2`), phase(`BCC_A2#1`, `BCC_A2`)]
+    const model = [liquid, phase(`BCC_A2`), phase(`HCP_A3`)]
+    expect(phase_colors(model).get(`BCC_A2`)).toBe(phase_colors(reference).get(`B2_BCC`))
+    const keys = model_phase_keys(
+      [reference, model].map((phases) => ({ ...eutectic, phases })),
+    )
+    expect(keys).toEqual([`B2_BCC`, `BCC_A2`, `HCP_A3`, `LIQUID`])
+    const [ref_colors, model_colors] = [reference, model].map((phases) =>
+      phase_colors(phases, keys),
+    )
+    for (const id of [`LIQUID`, `BCC_A2`])
+      expect(model_colors.get(id)).toBe(ref_colors.get(id))
+    expect(model_colors.get(`BCC_A2`)).not.toBe(ref_colors.get(`B2_BCC`))
+    expect(hue_light(ref_colors.get(`BCC_A2#1`))[0]).toBe(
+      hue_light(model_colors.get(`BCC_A2`))[0],
+    )
   })
 })
 
@@ -345,12 +379,16 @@ describe(`site demo diagrams`, () => {
   )
 
   // two-phase regions list their phases in composition order: just beyond each end of the
-  // isothermal tie line lies a region of that end's phase. Au-Ni's single fcc field keeps id
-  // FCC_A1#1 on both flanks of its miscibility gap (which id the right flank takes is open).
-  test.each(Object.keys(binary_diagrams).filter((name) => name !== `Au-Ni`))(
+  // isothermal tie line lies a region of that end's phase, or of the bare-id field a
+  // composition set wraps into (Au-Ni's FCC_A1 flanks both ends of its FCC_A1#1 + FCC_A1#2 gap)
+  test.each(Object.keys(binary_diagrams))(
     `%s two-phase regions are in composition order`,
     (name) => {
-      const { temperature_range, regions = [] } = binary_diagrams[name]
+      const { temperature_range, regions = [], phases } = binary_diagrams[name]
+      const ids = new Set(phases.map(({ id }) => id))
+      const wrapping_field = new Map(
+        phases.map(({ id, model_phase }) => [id, ids.has(model_phase) ? model_phase : id]),
+      )
       const step = 1e-3
       for (const [x_val, temp] of grid(temperature_range, 60)) {
         const region = find_region_at(regions, x_val, temp)
@@ -364,15 +402,34 @@ describe(`site demo diagrams`, () => {
         for (const [end, offset, phase] of ends) {
           const beyond = end + offset
           if (beyond <= 0 || beyond >= 1) continue
-          const neighbor = find_region_at(regions, beyond, temp)
+          const neighbor = find_region_at(regions, beyond, temp)?.phases ?? []
           expect(
-            neighbor?.phases,
-            `${name} ${region.phases} at (${x_val}, ${temp})`,
-          ).toContain(phase)
+            [phase, wrapping_field.get(phase)].some((id) => id && neighbor.includes(id)),
+            `${name} ${region.phases} at (${x_val}, ${temp}) next to ${neighbor}`,
+          ).toBe(true)
         }
       }
     },
   )
+
+  // Au-Ni wrap rule: the fcc field above and around the gap is the bare id, the gap its sets
+  test.each([
+    [0.3, 1100, `α`],
+    [0.706, 1100, `α`],
+    [0.7, 800, `α₁ + α₂`],
+    [0.5, 1500, `L`],
+  ])(`Au-Ni at x=%s, T=%s K is %s`, (x_val, temp, label) => {
+    const au_ni = binary_diagrams[`Au-Ni`]
+    expect(region_label(diagram_hit(au_ni, x_val, temp).region, phase_labeler(au_ni))).toBe(
+      label,
+    )
+  })
+
+  test(`Au-Ni critical point names the wrapping field`, () => {
+    const points = diagram_points(binary_diagrams[`Au-Ni`])
+    const critical = points.find(({ category }) => category === `critical`)
+    expect(critical?.description).toBe(`α miscibility gap closes`)
+  })
 
   test(`Ag-Cu markers draw its eutectic and both melting points, not other systems' rows`, () => {
     const ids = observation_markers(

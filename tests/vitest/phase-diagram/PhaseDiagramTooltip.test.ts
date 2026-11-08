@@ -1,5 +1,5 @@
 import type { Vec2 } from '#lib/math.js'
-import { diagram_points } from '#lib/phase-diagram/diagram.js'
+import { diagram_hit, diagram_points, phase_colors } from '#lib/phase-diagram/diagram.js'
 import type {
   BinaryPhaseDiagram,
   BoundaryKind,
@@ -8,6 +8,8 @@ import type {
   TempUnit,
 } from '#lib/phase-diagram/index.js'
 import PhaseDiagramTooltip from '#lib/phase-diagram/PhaseDiagramTooltip.svelte'
+import { binary_diagrams } from '#site/phase-diagrams.js'
+import { rgb } from 'd3-color'
 import type { ComponentProps, Snippet } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
@@ -125,6 +127,29 @@ describe(`PhaseDiagramTooltip`, () => {
       expect(lever_text()).toContain(part)
     }
     expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
+  })
+
+  // Au-Ni wrap rule: the gap's composition sets are labelled and colored as two shades of fcc
+  test(`miscibility gap shows its composition sets' labels and shared-key colors`, () => {
+    const au_ni = binary_diagrams[`Au-Ni`]
+    const phase_color_keys = [`BCC_A2`, `FCC_A1`, `LIQUID`]
+    const [composition, temperature] = [0.7, 800]
+    mount_tooltip({
+      data: au_ni,
+      phase_color_keys,
+      hover_info: create_hover_info({
+        ...diagram_hit(au_ni, composition, temperature),
+        composition,
+        temperature,
+      }),
+    })
+    expect(document.querySelector(`header strong`)?.textContent).toBe(`α₁ + α₂`)
+    expect(lever_text()).toMatch(/α₁: \d+ %.*α₂: \d+ %/)
+    const colors = phase_colors(au_ni.phases, phase_color_keys)
+    const swatches = Array.from(document.querySelectorAll<HTMLElement>(`.bar > div`), (bar) =>
+      rgb(bar.style.background).formatHex(),
+    )
+    expect(swatches).toEqual([colors.get(`FCC_A1#1`), colors.get(`FCC_A1#2`)])
   })
 
   // the overlay's phase set is derived from the hovered (x, T), never from a hover snapshot,

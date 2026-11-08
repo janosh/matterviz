@@ -6,6 +6,7 @@ export {
   diagram_name,
   diagram_points,
   format_hover_info_text,
+  model_phase_keys,
   observation_markers,
   phase_colors,
   phase_labeler,

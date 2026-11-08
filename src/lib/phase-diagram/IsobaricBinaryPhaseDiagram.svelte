@@ -87,6 +87,7 @@
   let {
     data: data_prop,
     overlay = null,
+    phase_color_keys = [],
     observations = [],
     cursor = $bindable(null),
     temp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.temp_unit),
@@ -125,6 +126,10 @@
       data?: BinaryPhaseDiagram
       // Second diagram of the same components, drawn as dashed boundaries only
       overlay?: BinaryPhaseDiagram | null
+      // Model phases that take palette slots besides this diagram's own: give every diagram
+      // of a comparison the same keys (model_phase_keys of all of them) so shared phases
+      // match in color
+      phase_color_keys?: readonly string[]
       // Experimental points with T and x error bars, colored by status
       observations?: readonly PhaseObservation[]
       // Hovered (x, T) in data units; bind one $state to several diagrams to sync their hover
@@ -270,7 +275,7 @@
 
   const regions = $derived(data.regions ?? [])
   const label_of = $derived(phase_labeler(data))
-  const colors = $derived(phase_colors(data.phases))
+  const colors = $derived(phase_colors(data.phases, phase_color_keys))
   const color_of = (id: string): string => colors.get(id) ?? `#b4b4b4`
 
   const transformed_regions = $derived(
@@ -1116,6 +1121,7 @@
           hover_info={effective_hover_info}
           {data}
           overlay={shown_overlay}
+          {phase_color_keys}
           {temp_unit}
           {comp_unit}
           {tooltip}

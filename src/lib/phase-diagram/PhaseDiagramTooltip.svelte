@@ -30,6 +30,7 @@
     hover_info,
     data,
     overlay = null,
+    phase_color_keys = [],
     temp_unit = `K`,
     comp_unit = `at%`,
     tooltip,
@@ -38,12 +39,14 @@
     data: BinaryPhaseDiagram
     // Overlay diagram whose phase set at the hovered (x, T) is listed too
     overlay?: BinaryPhaseDiagram | null
+    // Color keys of the diagram (see IsobaricBinaryPhaseDiagram), so swatches match its fills
+    phase_color_keys?: readonly string[]
     temp_unit?: TempUnit
     comp_unit?: CompUnit
     tooltip?: PhaseDiagramTooltipProp
   } = $props()
 
-  const colors = $derived(phase_colors(data.phases))
+  const colors = $derived(phase_colors(data.phases, phase_color_keys))
   const [component_a, component_b] = $derived(data.components)
   const label_of = $derived(phase_labeler(data))
   const overlay_hit = $derived(

@@ -1,6 +1,7 @@
 // Semantics of the binary-phase-diagram/2 format: validation, phase labels and colors, marked
 // points, boundary styles, and the observation layer drawn on top of a diagram
 
+import { hsl } from 'd3-color'
 import { format_num, humanize } from '#lib/labels.js'
 import type { Vec2 } from '#lib/math.js'
 import {
@@ -263,28 +264,52 @@ function hash_string(text: string): number {
   return hash >>> 0
 }
 
-// Opaque color per phase id, a pure function of the phase list: the first liquid is sky blue,
-// every other phase takes the palette slot its model phase hashes to (the next free slot on a
-// collision, visiting phases in id order). The same phases give the same colors in every
-// diagram, and a miscibility gap's composition sets get distinct neighboring slots.
-export function phase_colors(phases: BinaryPhaseDiagram[`phases`]): Map<string, string> {
-  const colors = new Map<string, string>()
-  const taken = new Set<number>()
-  let liquid_taken = false
+// Sorted unique model phases of the given diagrams: pass the same list as `phase_color_keys`
+// to every diagram of a comparison so a shared model phase gets one color in all of them
+export const model_phase_keys = (diagrams: readonly BinaryPhaseDiagram[]): string[] =>
+  [
+    ...new Set(diagrams.flatMap(({ phases }) => phases.map(({ model_phase }) => model_phase))),
+  ].toSorted()
+
+// Lightness (HSL) drop per composition-set index: FCC_A1 keeps the base color, FCC_A1#1 and
+// FCC_A1#2 get progressively darker shades of the same hue, so (Ag) | (Ag) + (Cu) | (Cu) and
+// a gap inside a wrapping fcc field stay distinguishable while reading as one phase.
+// Shades go darker, not lighter, since the palette's pastels already sit near white.
+const COMPOSITION_SET_SHADE = 0.09
+
+// Opaque color per phase id, a function of model_phase and the color keys only: the color keys
+// (the diagram's own model phases plus any `color_keys`, sorted) each take the palette slot
+// they hash to, the next free slot on a collision. Liquid phases are sky blue (their keys
+// still take a slot, so no slot depends on which diagram knows a key's kind). Ids sharing a
+// model phase share its hue, a `#n` composition set shaded n steps darker. Diagrams given the
+// same `color_keys` (e.g. model_phase_keys of all compared diagrams) color shared model phases
+// identically, whatever phases only one of them has.
+export function phase_colors(
+  phases: BinaryPhaseDiagram[`phases`],
+  color_keys: readonly string[] = [],
+): Map<string, string> {
+  const keys = new Set([...color_keys, ...phases.map(({ model_phase }) => model_phase)])
   const n_slots = SOLID_PHASE_PALETTE.length
-  for (const { id, kind, model_phase } of phases.toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
-    if (kind === `liquid` && !liquid_taken) {
-      liquid_taken = true
-      colors.set(id, LIQUID_COLOR)
-      continue
-    }
-    let slot = hash_string(model_phase) % n_slots
+  const taken = new Set<number>()
+  const key_colors = new Map<string, string>()
+  for (const key of [...keys].toSorted()) {
+    let slot = hash_string(key) % n_slots
     for (let tries = 0; taken.has(slot) && tries < n_slots; tries++)
       slot = (slot + 1) % n_slots
     taken.add(slot)
-    colors.set(id, SOLID_PHASE_PALETTE[slot])
+    key_colors.set(key, SOLID_PHASE_PALETTE[slot])
   }
-  return colors
+  return new Map(
+    phases.map(({ id, kind, model_phase }) => {
+      const base = kind === `liquid` ? LIQUID_COLOR : key_colors.get(model_phase)
+      if (base === undefined) throw new Error(`No color key for model phase "${model_phase}"`)
+      const set_idx = Number(/#(?<set>\d+)$/.exec(id)?.groups?.set ?? 0)
+      if (!set_idx) return [id, base]
+      const shade = hsl(base)
+      shade.l = Math.max(0, shade.l - COMPOSITION_SET_SHADE * set_idx)
+      return [id, shade.formatHex()]
+    }),
+  )
 }
 
 // Invariant, congruent, critical and pure-component points with labels and descriptions

@@ -5,8 +5,9 @@
   "temperature_range": [600.0, 1800.0],
   "phases": [
     {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
-    {"id": "FCC_A1#1", "model_phase": "FCC_A1", "label": "α", "kind": "solid"},
-    {"id": "FCC_A1#2", "model_phase": "FCC_A1", "label": "α′", "kind": "solid"}
+    {"id": "FCC_A1", "model_phase": "FCC_A1", "label": "α", "kind": "solid"},
+    {"id": "FCC_A1#1", "model_phase": "FCC_A1", "label": "α₁", "kind": "solid"},
+    {"id": "FCC_A1#2", "model_phase": "FCC_A1", "label": "α₂", "kind": "solid"}
   ],
   "regions": [
     {
@@ -40,7 +41,7 @@
       ]
     },
     {
-      "phases": ["FCC_A1#1", "LIQUID"],
+      "phases": ["FCC_A1", "LIQUID"],
       "vertices": [
         [0.0, 1337.33],
         [0.038182, 1299.100405],
@@ -67,7 +68,7 @@
       ]
     },
     {
-      "phases": ["LIQUID", "FCC_A1#1"],
+      "phases": ["LIQUID", "FCC_A1"],
       "vertices": [
         [0.42, 1228.0],
         [0.472727, 1230.559568],
@@ -94,7 +95,7 @@
       ]
     },
     {
-      "phases": ["FCC_A1#1"],
+      "phases": ["FCC_A1"],
       "vertices": [
         [0, 600.0],
         [0.04, 600.0],
@@ -186,7 +187,7 @@
   "boundaries": [
     {
       "kind": "liquidus",
-      "phases": ["FCC_A1#1", "LIQUID"],
+      "phases": ["FCC_A1", "LIQUID"],
       "side": "LIQUID",
       "points": [
         [0.0, 1337.33],
@@ -205,7 +206,7 @@
     },
     {
       "kind": "liquidus",
-      "phases": ["LIQUID", "FCC_A1#1"],
+      "phases": ["LIQUID", "FCC_A1"],
       "side": "LIQUID",
       "points": [
         [0.42, 1228.0],
@@ -224,8 +225,8 @@
     },
     {
       "kind": "solidus",
-      "phases": ["FCC_A1#1", "LIQUID"],
-      "side": "FCC_A1#1",
+      "phases": ["FCC_A1", "LIQUID"],
+      "side": "FCC_A1",
       "points": [
         [0.0, 1337.33],
         [0.038182, 1299.100405],
@@ -243,8 +244,8 @@
     },
     {
       "kind": "solidus",
-      "phases": ["LIQUID", "FCC_A1#1"],
-      "side": "FCC_A1#1",
+      "phases": ["LIQUID", "FCC_A1"],
+      "side": "FCC_A1",
       "points": [
         [0.42, 1228.0],
         [0.472727, 1230.559568],
@@ -308,15 +309,15 @@
     {
       "temperature": 1228.0,
       "composition": 0.42,
-      "phases": ["LIQUID", "FCC_A1#1"]
+      "phases": ["LIQUID", "FCC_A1"]
     }
   ],
   "critical_points": [
-    {"temperature": 1083.0, "composition": 0.706, "phase": "FCC_A1#1"}
+    {"temperature": 1083.0, "composition": 0.706, "phase": "FCC_A1"}
   ],
   "unary_transitions": [
-    {"component": "Au", "temperature": 1337.33, "above": "LIQUID", "below": "FCC_A1#1"},
-    {"component": "Ni", "temperature": 1728.3, "above": "LIQUID", "below": "FCC_A1#1"}
+    {"component": "Au", "temperature": 1337.33, "above": "LIQUID", "below": "FCC_A1"},
+    {"component": "Ni", "temperature": 1728.3, "above": "LIQUID", "below": "FCC_A1"}
   ],
   "provenance": {"kind": "sketch", "source": "Au-Ni built from approximate assessed minimum and gap critical point (demo fixture, not a CALPHAD calculation)"}
 }
