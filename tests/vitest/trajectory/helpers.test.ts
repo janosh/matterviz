@@ -18,6 +18,7 @@ describe(`trajectory helpers`, () => {
   it.each([
     [`0.1 nan inf`, true],
     [`0.1 2 3`, true],
+    [`nan 1e309 0`, true], // overflows to Infinity
     [`0.1 x 3`, false],
     // a short line must not reuse token offsets left over from the longer line before it
     [`0.12345 nan`, false],

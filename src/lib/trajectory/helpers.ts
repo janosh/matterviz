@@ -435,7 +435,7 @@ export const holds_numbers = (scanner: LineScanner, cols: readonly number[]): bo
   cols.every(
     (col) =>
       col < scanner.count &&
-      (Number.isFinite(scanner.num(col)) || NON_FINITE_TOKEN.test(scanner.str(col))),
+      (!Number.isNaN(scanner.num(col)) || NON_FINITE_TOKEN.test(scanner.str(col))),
   )
 
 // A frame holding `nan`/`inf` positions, as an MD run writes once it blew up: eager parsing

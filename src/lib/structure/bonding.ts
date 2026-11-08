@@ -1444,13 +1444,229 @@ type BondNeighborQuery = (
 
 const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) => {
   const periodic = pbc.some(Boolean)
+  if (!periodic) return finite_bond_neighbors(structure, cutoff, band)
   const list = neighbor_query_cutoff(structure, cutoff, {
     pbc,
     unique_pairs: true,
-    image_geometry: periodic,
+    image_geometry: true,
     band,
   })
-  return periodic ? { ...list, image_geometry: list } : list
+  return { ...list, image_geometry: list }
+}
+
+// === Incremental finite bond search ===
+// An atom drag re-bonds the whole displayed structure (finite: image atoms are skipped during
+// drags) on every pointer move, with only the dragged sites moved. A contact between two
+// unmoved sites keeps its distance bit for bit, so only contacts of moved sites are searched
+// again, against a grid of the reference positions, with the full query's arithmetic and
+// filters: the same contacts and distances, in a different order within a center's block (sweep
+// order is arbitrary anyway, it follows the bin grid). Perception then runs on the whole list:
+// its shells pool every copy of a unit-cell atom, so no verdict is local to the moved sites.
+const MIN_INCREMENTAL_SITES = 1000
+const MAX_MOVED_FRACTION = 1 / 8
+const MAX_FINITE_SEARCHES = 2
+type SiteGrid = {
+  mins: Vec3
+  widths: Vec3
+  shape: Vec3
+  bin_start: Int32Array
+  bin_items: Int32Array
+}
+type FiniteSearch = {
+  cutoff: number
+  band: PairBand
+  coords: Float64Array // positions of the full search, 3 per site
+  list: BondNeighborList
+  grid?: SiteGrid // of `coords`, built on the first incremental query
+}
+const finite_searches: FiniteSearch[] = [] // most recent first
+
+// Bins wider than `cutoff` (plus the binning round-off) along every axis, so any partner of a
+// point lies within one bin of it per axis; sparse items widen the most-binned axis instead
+function build_site_grid(coords: Float64Array, items: Int32Array, cutoff: number): SiteGrid {
+  const mins: Vec3 = [Infinity, Infinity, Infinity]
+  const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const item of items) {
+    for (let axis = 0; axis < 3; axis++) {
+      const coord = coords[item * 3 + axis]
+      if (coord < mins[axis]) mins[axis] = coord
+      if (coord > maxs[axis]) maxs[axis] = coord
+    }
+  }
+  const widths = mins.map(
+    (min, axis) => cutoff + 8 * Number.EPSILON * (maxs[axis] - min + cutoff),
+  ) as Vec3
+  const bins_along = (axis: number) => Math.floor((maxs[axis] - mins[axis]) / widths[axis]) + 1
+  const shape: Vec3 = [bins_along(0), bins_along(1), bins_along(2)]
+  while (shape[0] * shape[1] * shape[2] > 2 * items.length + 1) {
+    const widest = shape.indexOf(Math.max(...shape))
+    widths[widest] *= 2
+    shape[widest] = bins_along(widest)
+  }
+  const bin_of = new Int32Array(items.length)
+  const bin_start = new Int32Array(shape[0] * shape[1] * shape[2] + 1)
+  for (const [rank, item] of items.entries()) {
+    let bin = 0
+    for (let axis = 2; axis >= 0; axis--) {
+      const idx = Math.floor((coords[item * 3 + axis] - mins[axis]) / widths[axis])
+      bin = bin * shape[axis] + idx
+    }
+    bin_of[rank] = bin
+    bin_start[bin + 1]++
+  }
+  for (let bin = 0; bin < bin_start.length - 1; bin++) bin_start[bin + 1] += bin_start[bin]
+  const cursor = bin_start.slice(0, -1)
+  const bin_items = new Int32Array(items.length)
+  for (const [rank, item] of items.entries()) bin_items[cursor[bin_of[rank]]++] = item
+  return { mins, widths, shape, bin_start, bin_items }
+}
+
+// Every grid item in the bins within one of the point's bin along each axis
+function visit_grid(grid: SiteGrid, point: Vec3, visit: (item: number) => void): void {
+  const { mins, widths, shape, bin_start, bin_items } = grid
+  const [lo, hi] = [
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  for (let axis = 0; axis < 3; axis++) {
+    const idx = Math.floor((point[axis] - mins[axis]) / widths[axis])
+    lo[axis] = Math.max(idx - 1, 0)
+    hi[axis] = Math.min(idx + 1, shape[axis] - 1)
+  }
+  for (let idx_z = lo[2]; idx_z <= hi[2]; idx_z++) {
+    for (let idx_y = lo[1]; idx_y <= hi[1]; idx_y++) {
+      const row = shape[0] * (idx_y + shape[1] * idx_z)
+      for (let bin = row + lo[0]; bin <= row + hi[0]; bin++) {
+        for (let slot = bin_start[bin]; slot < bin_start[bin + 1]; slot++)
+          visit(bin_items[slot])
+      }
+    }
+  }
+}
+
+const same_band = (left: PairBand, right: PairBand): boolean =>
+  left.n_elem === right.n_elem &&
+  math.same_values(left.elem_ids, right.elem_ids) &&
+  math.same_values(left.lo, right.lo) &&
+  math.same_values(left.hi, right.hi)
+
+function finite_bond_neighbors(
+  structure: AnyStructure,
+  cutoff: number,
+  band: PairBand,
+): BondNeighborList {
+  const query = () =>
+    neighbor_query_cutoff(structure, cutoff, { pbc: NO_PBC, unique_pairs: true, band })
+  const { sites, n_sites, coordinates, stride } = site_positions(structure)
+  if (n_sites < MIN_INCREMENTAL_SITES) return query()
+  const coords = new Float64Array(n_sites * 3)
+  for (let idx = 0; idx < n_sites; idx++) {
+    for (let axis = 0; axis < 3; axis++)
+      coords[idx * 3 + axis] = coordinates
+        ? coordinates[idx * stride + axis]
+        : sites[idx].xyz[axis]
+  }
+  const match = finite_searches.findIndex(
+    (search) =>
+      search.cutoff === cutoff &&
+      search.coords.length === coords.length &&
+      same_band(search.band, band),
+  )
+  if (match >= 0) {
+    const [search] = finite_searches.splice(match, 1)
+    const list = moved_site_contacts(search, coords)
+    if (list) {
+      finite_searches.unshift(search)
+      return list
+    }
+  }
+  const full = query()
+  finite_searches.unshift({ cutoff, band, coords, list: full })
+  finite_searches.length = Math.min(finite_searches.length, MAX_FINITE_SEARCHES)
+  return full
+}
+
+// The search's contacts at `coords`, or undefined when too many sites moved (or one moved to a
+// non-finite position, which the full query reports)
+function moved_site_contacts(
+  search: FiniteSearch,
+  coords: Float64Array,
+): BondNeighborList | undefined {
+  const { cutoff, band, list } = search
+  const n_sites = coords.length / 3
+  const is_moved = new Uint8Array(n_sites)
+  const moved: number[] = []
+  for (let idx = 0; idx < n_sites; idx++) {
+    const offset = idx * 3
+    if (
+      coords[offset] === search.coords[offset] &&
+      coords[offset + 1] === search.coords[offset + 1] &&
+      coords[offset + 2] === search.coords[offset + 2]
+    )
+      continue
+    if (moved.length >= n_sites * MAX_MOVED_FRACTION) return undefined
+    if (![0, 1, 2].every((axis) => Number.isFinite(coords[offset + axis]))) return undefined
+    is_moved[idx] = 1
+    moved.push(idx)
+  }
+  if (!moved.length) return list
+  search.grid ??= build_site_grid(
+    search.coords,
+    Int32Array.from({ length: n_sites }, (_, idx) => idx),
+    cutoff,
+  )
+  const moved_grid = build_site_grid(coords, Int32Array.from(moved), cutoff)
+  // Contacts of moved sites, each once: [lower site, higher site, distance] triples
+  const found: number[] = []
+  const cutoff_sq = cutoff * cutoff
+  const { elem_ids, n_elem } = band
+  const point: Vec3 = [0, 0, 0]
+  for (const site of moved) {
+    for (let axis = 0; axis < 3; axis++) point[axis] = coords[site * 3 + axis]
+    const pair_row = elem_ids[site] * n_elem
+    // Same arithmetic and filters as neighbor_query_cutoff's sweep (a delta's sign does not
+    // change its square)
+    const test = (partner: number) => {
+      const delta_x = coords[partner * 3] - point[0]
+      const delta_y = coords[partner * 3 + 1] - point[1]
+      const delta_z = coords[partner * 3 + 2] - point[2]
+      const dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z
+      if (dist_sq > cutoff_sq) return
+      const distance = Math.sqrt(dist_sq)
+      const pair = pair_row + elem_ids[partner]
+      if (distance > band.hi[pair] || distance < band.lo[pair]) return
+      found.push(Math.min(site, partner), Math.max(site, partner), distance)
+    }
+    visit_grid(search.grid, point, (partner) => is_moved[partner] || test(partner))
+    visit_grid(moved_grid, point, (partner) => partner > site && test(partner))
+  }
+  // Unmoved contacts keep their slots' order, then the moved ones follow per center
+  const { offsets: old_offsets, neighbors: old_neighbors, distances: old_distances } = list
+  const offsets = new Int32Array(n_sites + 1)
+  for (let center = 0; center < n_sites; center++) {
+    if (is_moved[center]) continue
+    for (let slot = old_offsets[center]; slot < old_offsets[center + 1]; slot++)
+      if (!is_moved[old_neighbors[slot]]) offsets[center + 1]++
+  }
+  for (let idx = 0; idx < found.length; idx += 3) offsets[found[idx] + 1]++
+  for (let center = 0; center < n_sites; center++) offsets[center + 1] += offsets[center]
+  const neighbors = new Int32Array(offsets[n_sites])
+  const distances = new Float64Array(offsets[n_sites])
+  const cursor = offsets.slice(0, n_sites)
+  for (let center = 0; center < n_sites; center++) {
+    if (is_moved[center]) continue
+    for (let slot = old_offsets[center]; slot < old_offsets[center + 1]; slot++) {
+      if (is_moved[old_neighbors[slot]]) continue
+      neighbors[cursor[center]] = old_neighbors[slot]
+      distances[cursor[center]++] = old_distances[slot]
+    }
+  }
+  for (let idx = 0; idx < found.length; idx += 3) {
+    const center = found[idx]
+    neighbors[cursor[center]] = found[idx + 1]
+    distances[cursor[center]++] = found[idx + 2]
+  }
+  return { offsets, neighbors, distances }
 }
 
 // Verlet skin (A) of trajectory candidate lists. On a 186k-atom fcc frame a plain search takes

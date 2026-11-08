@@ -1297,6 +1297,26 @@ describe(`banners`, () => {
     },
   )
 
+  test(`playback steps past an unreadable frame and lists it with the parse warnings`, async () => {
+    vi.spyOn(console, `warn`).mockImplementation(() => {}) // its failed prefetch
+    const base = make_run({ steps: [0, 10, 20, 30] })
+    const run = host_run(summarize_run(base), (idx) =>
+      idx === 2 ? Promise.reject(new Error(`non-finite positions`)) : base.read_frame(idx),
+    )
+    const props = $state(
+      default_props({ trajectory: run, auto_play: true, fps: 30, current_step_idx: 0 }),
+    )
+    const target = mount_trajectory(props)
+    await vi.waitFor(() =>
+      expect(target.querySelector(`.status-message.warning`)?.textContent).toContain(
+        `1 parse warning: Playback skipped unreadable frame 3: non-finite positions`,
+      ),
+    )
+    await vi.waitFor(() => expect(props.current_step_idx).toBe(3))
+    expect(target.querySelector(`.status-message.error`)).toBeNull()
+    expect(doc_query(`.play-button`).getAttribute(`aria-label`)).toBe(`Pause`)
+  })
+
   test.each(failing(`no full pass`))(
     `a %s trail collection is logged and the viewer keeps rendering`,
     async (_kind, collect) => {
