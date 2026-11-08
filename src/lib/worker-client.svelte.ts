@@ -80,6 +80,7 @@ export const check_blob_workers = async (host: string): Promise<void> => {
     worker = new Worker(url, { type: `module` })
     worker.addEventListener(`message`, () => resolve(null))
     worker.addEventListener(`error`, (event) => resolve(event.message || `start failed`))
+    setTimeout(resolve, 2000, `no answer within 2 s`) // a host that neither starts nor fails it
   }).catch((error: unknown) => to_error(error).message)
   worker?.terminate()
   URL.revokeObjectURL(url)

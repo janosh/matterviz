@@ -260,6 +260,7 @@ test.each([
   [`message`, null],
   [`error`, `refused by CSP`],
   [`throw`, `Worker is not a constructor`],
+  [`silence`, `no answer within 2 s`],
 ])(`check_blob_workers when the probe worker answers with %s`, async (outcome, refusal) => {
   vi.resetModules()
   const fresh = await import(`#lib/worker-client.svelte.js`)
@@ -267,9 +268,12 @@ test.each([
   if (outcome === `throw`) vi.stubGlobal(`Worker`, () => {})
   const revoke = vi.spyOn(URL, `revokeObjectURL`)
   const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  vi.useFakeTimers()
   const checked = fresh.check_blob_workers(`Host`)
-  workers()[0]?.emit(outcome, { message: refusal })
+  if (outcome === `silence`) vi.advanceTimersByTime(2000)
+  else workers()[0]?.emit(outcome, { message: refusal })
   await checked
+  vi.useRealTimers()
   const [revoked, warned] = [[...revoke.mock.calls], [...warn.mock.calls]]
   revoke.mockRestore()
   warn.mockRestore()

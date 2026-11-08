@@ -442,7 +442,11 @@
           : typeof acquired === `string`
             ? acquired
             : pending.payload && acquired instanceof Blob && !HDF5_EXT_REGEX.test(filename)
-              ? await acquired.slice(0, 8192).text()
+              ? // the sniff only refines the message: an unreadable Blob still reports `error`
+                await acquired
+                  .slice(0, 8192)
+                  .text()
+                  .catch(() => ``)
               : ``
       if (load_controller !== controller || controller.signal.aborted) return // newer load
       const unsupported = get_unsupported_format_message(name, head)

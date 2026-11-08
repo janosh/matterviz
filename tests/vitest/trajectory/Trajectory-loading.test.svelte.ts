@@ -232,13 +232,22 @@ ITEM: ATOMS id type x y z\n1 1 0 0 0\n2 2 1 1 1\n3 2 2 2 2`
     },
   )
 
-  test(`a parse error after the payload was transferred to the worker keeps its message`, async () => {
-    stub_worker((data) => {
-      if (data instanceof ArrayBuffer) structuredClone(data, { transfer: [data] })
+  // the sniff of a transferred (detached) ArrayBuffer or an unreadable Blob must not mask the error
+  test.each([
+    [`transferred buffer`, new ArrayBuffer(8), `relax.traj`],
+    [`unreadable Blob`, new Blob([`garbage`]), `run.xyz`],
+  ])(`a parse error with a %s payload keeps its message`, async (_label, data, filename) => {
+    stub_worker((input) => {
+      if (input instanceof ArrayBuffer) structuredClone(input, { transfer: [input] })
+      else if (input instanceof Blob) {
+        const unreadable = new Blob()
+        vi.spyOn(unreadable, `text`).mockRejectedValue(new Error(`NotReadableError`))
+        vi.spyOn(input, `slice`).mockReturnValue(unreadable)
+      }
       return Promise.reject(new Error(`unreadable frame table`))
     })
     const on_error = vi.fn<(data: TrajHandlerData) => void>()
-    mount_viewer({ source: { data: new ArrayBuffer(8), filename: `relax.traj` }, on_error })
+    mount_viewer({ source: { data, filename }, on_error })
     await vi.waitFor(() => expect(on_error).toHaveBeenCalledOnce())
     expect(on_error.mock.calls[0][0].error_msg).toContain(`unreadable frame table`)
   })
