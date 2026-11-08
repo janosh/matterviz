@@ -93,7 +93,14 @@ export function create_camera_flight_editor() {
     remove(idx: number) {
       const views = draft.views.filter((_view, view_idx) => view_idx !== idx)
       const start = views[0]?.time ?? 0
-      set_views(views.map((view) => ({ ...view, time: view.time - start })))
+      const span = (views.at(-1)?.time ?? 0) - start
+      // deleting an endpoint next to a close view must not leave a manual flight under the
+      // 0.1 s floor, so re-space the remaining views over the old duration
+      set_views(
+        !draft.automatic && span < 0.1
+          ? space_evenly(views, draft.duration)
+          : views.map((view) => ({ ...view, time: view.time - start })),
+      )
     },
     move(from: number, to: number) {
       if (from === to || to < 0 || to >= draft.views.length) return
