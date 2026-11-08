@@ -755,7 +755,8 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     for (let step = 0; step < 15; step++) {
       const sites = base.sites.slice()
       const [x, y, z] = sites[0].xyz
-      sites[0] = { ...sites[0], xyz: [x + (step % 2 ? 0 : 0.1), y, z] }
+      // every step moves on: a step back onto the full search's positions re-queries nothing
+      sites[0] = { ...sites[0], xyz: [x + 0.01 * (step + 1), y, z] }
       expect(electroneg_ratio({ ...base, sites }, {}, timed).length).toBeGreaterThan(1e5)
     }
     assert_within_band(`drag bond neighbor query 97k atoms`, timings)

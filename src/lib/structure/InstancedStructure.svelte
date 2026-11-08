@@ -102,16 +102,14 @@
   // (never materialized from columns), whose species arrays coordinate-only edits such as drag
   // moves carry over
   let previous_bond_colors:
-    | { topology: object | readonly Site[]; appearance: string; colors: string[] }
+    | { topology: object; appearance: string; colors: string[] }
     | undefined
-  const same_topology = (topology: object | readonly Site[], previous: object): boolean => {
-    if (topology === previous) return true
-    if (!Array.isArray(topology) || !Array.isArray(previous)) return false
-    if (topology.length !== previous.length) return false
-    for (let idx = 0; idx < topology.length; idx++)
-      if (topology[idx].species !== previous[idx].species) return false
-    return true
-  }
+  const same_topology = (topology: object, previous: object): boolean =>
+    topology === previous ||
+    (Array.isArray(topology) &&
+      Array.isArray(previous) &&
+      topology.length === previous.length &&
+      topology.every((site: Site, idx) => site.species === previous[idx].species))
   const bond_appearance = $derived(JSON.stringify([palette, bond_color]))
   let bond_site_colors = $derived.by(() => {
     if (!structure || bonds.length === 0) return []

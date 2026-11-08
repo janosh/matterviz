@@ -13,7 +13,7 @@
 import { display_idx } from '#lib/labels.js'
 import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
-import { host_run, type HostRun } from '#lib/trajectory/runs/host.js'
+import { host_run } from '#lib/trajectory/runs/host.js'
 import { to_error } from 'svelte-widgets/utils'
 import { frame_from_wire } from './host-protocol'
 import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
@@ -100,22 +100,6 @@ export async function request_large_file_content(
       `Cannot stream ${filename}: no host bridge is available (acquireVsCodeApi returned nothing).`,
     )
   }
-  // Plot rows and grown warnings arrive after the summary, stamped with its request_id; they
-  // are routed to THIS run instance until it is disposed
-  let stop_host_stream = (): void => {}
-  const bind_host_stream = (run: HostRun, request_id: string): TrajectoryRun => {
-    const handler = (event: MessageEvent<HostReply | undefined>): void => {
-      const message = event.data
-      if (message?.request_id !== request_id) return
-      if (message.command === `trajectory_warnings`) run.receive_warnings(message.warnings)
-      else if (message.command === `plot_metadata_stream` && !run.properties.complete)
-        run.properties.deliver(message.rows, message.complete, `Host`)
-    }
-    globalThis.addEventListener(`message`, handler)
-    stop_host_stream = () => globalThis.removeEventListener(`message`, handler)
-    return run
-  }
-
   return post_request(
     host_api,
     { command: `request_large_file`, file_path, filename },
@@ -125,17 +109,23 @@ export async function request_large_file_content(
       if (data.command !== `large_file_response`) return false
       if (data.error) reject(new Error(data.error))
       else if (data.run_summary && typeof data.run_summary === `object`) {
-        resolve(
-          bind_host_stream(
-            host_run(
-              data.run_summary,
-              (frame_idx, signal, channels) =>
-                request_host_frame(file_path, filename, frame_idx, signal, channels),
-              () => stop_host_stream(),
-            ),
-            data.request_id,
-          ),
+        // Plot rows and grown warnings arrive after the summary, stamped with its request_id;
+        // they are routed to THIS run instance until it is disposed
+        const handler = (event: MessageEvent<HostReply | undefined>): void => {
+          const message = event.data
+          if (message?.request_id !== data.request_id) return
+          if (message.command === `trajectory_warnings`) run.receive_warnings(message.warnings)
+          else if (message.command === `plot_metadata_stream` && !run.properties.complete)
+            run.properties.deliver(message.rows, message.complete, `Host`)
+        }
+        const run = host_run(
+          data.run_summary,
+          (frame_idx, signal, channels) =>
+            request_host_frame(file_path, filename, frame_idx, signal, channels),
+          () => globalThis.removeEventListener(`message`, handler),
         )
+        globalThis.addEventListener(`message`, handler)
+        resolve(run)
       } else reject(new TypeError(`Malformed large-file response`))
       return true
     },

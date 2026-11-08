@@ -360,19 +360,18 @@
       let loaded_structure: AnyStructure | undefined
       if (opened.type === `structure` && opened.prediction) {
         prediction = opened.prediction
-        session.adopt_structure(prediction.input)
-        loaded_structure = structure
+        loaded_structure = prediction.input
       } else {
         const { document, notice } = apply_structure_material(
           { structure, volumetric_data, isosurface_settings, active_volume_id },
           opened,
         )
         loaded_structure = document.structure
-        // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
-        if (loaded_structure !== structure) session.adopt_structure(loaded_structure)
         ;({ volumetric_data, isosurface_settings, active_volume_id } = document)
         if (notice) show_toast(notice)
       }
+      // Avoid wrapping an unchanged plain input in a proxy during a same-geometry volume import.
+      if (loaded_structure !== structure) session.adopt_structure(loaded_structure)
       on_file_load?.({
         structure: loaded_structure,
         ...opened.provenance,
