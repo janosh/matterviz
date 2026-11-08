@@ -339,7 +339,7 @@ export function create_trajectory_session(
       !player.is_playing ||
       !loaded ||
       loaded.run !== run ||
-      frame_idx !== (loaded.idx + 1) % (run?.frame_count ?? 1)
+      !playback
     )
       cancel_prefetch()
     if (!run || frame_idx === null) {

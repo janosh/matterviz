@@ -79,7 +79,8 @@ export const post_new_warnings = (
 ): (() => void) | undefined => {
   let sent = run.warnings.length
   return run.subscribe_warnings?.((warnings) => {
-    post(warnings.slice(sent))
+    // a warning added the tick it subscribed is in the summary already, not new
+    if (warnings.length > sent) post(warnings.slice(sent))
     sent = warnings.length
   })
 }

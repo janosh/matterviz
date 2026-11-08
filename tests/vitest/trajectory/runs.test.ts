@@ -40,7 +40,7 @@ import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import type { SyncRunSource, TrajectoryRun } from '#lib/trajectory/run.js'
 import { summarize_run, sync_run, TrajectoryProperties } from '#lib/trajectory/run.js'
 import { parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
-import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
+import { create_warning_collector, post_new_warnings } from '#lib/trajectory/parse/shared.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
@@ -1074,6 +1074,19 @@ describe(`worker-served run lifecycle`, () => {
       expect(listener).toHaveBeenCalledOnce()
     },
   )
+
+  test(`post_new_warnings forwards only warnings added after it subscribed`, async () => {
+    const warnings = create_warning_collector(() => {})
+    const run = { warnings: warnings.warnings, subscribe_warnings: warnings.subscribe }
+    warnings.warn(`before`) // its announce is still queued when the far side subscribes
+    const post = vi.fn()
+    post_new_warnings(run, post)
+    await next_tick()
+    expect(post).not.toHaveBeenCalled()
+    warnings.warn(`after`)
+    await next_tick()
+    expect(post.mock.calls).toEqual([[[`after`]]])
+  })
 
   it.each([`dispose`, `messageerror`, `close failure`])(
     `rejects pending reads and releases the worker despite observer/port failure during %s`,

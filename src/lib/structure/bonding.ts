@@ -2041,9 +2041,13 @@ function perceive_bonds(
   // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, normalized
   // distance, metallic-pair flag, strength): no per-candidate object in the hot loop, and
   // passes 2-4 read the pair's class and normalized distance instead of recomputing them
-  let scratch = scratches.get(query)
-  if (!scratch || scratch.slots.length < n_sites * 4)
-    scratches.set(query, (scratch = create_bond_scratch(Math.max(256, n_sites * 4))))
+  // Only a viewer's own query keeps its scratch: the module-level default would pin one
+  // sized to the largest structure ever perceived for the page's lifetime
+  let scratch = query === query_bond_neighbors ? undefined : scratches.get(query)
+  if (!scratch || scratch.slots.length < n_sites * 4) {
+    scratch = create_bond_scratch(Math.max(256, n_sites * 4))
+    if (query !== query_bond_neighbors) scratches.set(query, scratch)
+  }
   let {
     slots: cand_slot,
     centers: cand_center,

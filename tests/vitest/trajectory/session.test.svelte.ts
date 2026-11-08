@@ -778,6 +778,28 @@ describe(`controller and playback`, () => {
     },
   )
 
+  it(`keeps the read-ahead pipeline when playback skips an unreadable frame`, async () => {
+    const raf_callbacks = stub_raf()
+    vi.spyOn(performance, `now`).mockReturnValue(0)
+    vi.spyOn(console, `warn`).mockImplementation(() => {}) // the failed prefetch
+    const { run, pending, reads } = make_async_run(frames(20), 4)
+    const { host, session } = make_session({ run, fps: 30 })
+    session.player.play()
+    flushSync()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reads).toEqual([1, 2, 3])
+    raf_callbacks.at(-1)?.(34)
+    flushSync()
+    pending.shift()?.reject(new Error(`Read failed`))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(session.skip_warnings).toEqual([`Playback skipped unreadable frame 2: Read failed`])
+    raf_callbacks.at(-1)?.(68)
+    flushSync()
+    await vi.advanceTimersByTimeAsync(0)
+    // Frame 3's read-ahead stays in flight instead of being aborted and re-issued
+    expect([host.index, reads, pending.map(({ idx }) => idx)]).toEqual([2, [1, 2, 3], [2, 3]])
+  })
+
   it(`adopts large-frame read-ahead without duplicate reads or evicting the display`, async () => {
     const raf_callbacks = stub_raf()
     vi.spyOn(performance, `now`).mockReturnValue(0)
