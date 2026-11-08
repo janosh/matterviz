@@ -13,6 +13,7 @@ import {
 import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
 import type { DensePointSeries } from '#lib/plot/scatter/adaptive-density.js'
 import { describe, expect, it } from 'vitest'
+import { index_read_counter } from '../setup'
 
 describe(`adaptive density utilities`, () => {
   const series = [
@@ -236,24 +237,18 @@ describe(`adaptive density utilities`, () => {
   })
 
   it(`retrieves singleton-bin points without rescanning the series`, () => {
-    let accesses = 0
-    const counted = (values: number[]) =>
-      new Proxy(values, {
-        get(target, prop, receiver) {
-          if (typeof prop === `string` && /^\d+$/.test(prop)) accesses++
-          return Reflect.get(target, prop, receiver)
-        },
-      })
-    const counted_series = [{ ...series[0], x: counted(series[0].x), y: counted(series[0].y) }]
+    const counter = index_read_counter()
+    const { wrap } = counter
+    const counted_series = [{ ...series[0], x: wrap(series[0].x), y: wrap(series[0].y) }]
     const density = bin_points(counted_series, [0, 2], [0, 2], 2, 2)
-    accesses = 0
+    counter.reads = 0
 
     const bin = { x_bin: 1, y_bin: 1 }
     const picked = first_point_in_bin(counted_series, density, bin, pixel_scale, pixel_scale)
 
     expect(picked?.point_id).toBe(`d`)
     expect(picked?.metadata).toEqual({ id: `d` })
-    expect(accesses).toBe(2)
+    expect(counter.reads).toBe(2)
   })
 
   describe(`log-scale binning`, () => {

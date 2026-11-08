@@ -136,6 +136,22 @@ export const count_attribute_updates = (elements: Element[]): number[] => {
   return counts
 }
 
+// Counts index reads (`arr[idx]`) on every array passed through `wrap`, so tests can bound how
+// often a hot path touches point data. Reset with `counter.reads = 0`.
+export const index_read_counter = () => {
+  const counter = {
+    reads: 0,
+    wrap: <T extends object>(target: T): T =>
+      new Proxy(target, {
+        get(obj, prop, receiver) {
+          if (typeof prop === `string` && /^\d+$/.test(prop)) counter.reads++
+          return Reflect.get(obj, prop, receiver)
+        },
+      }),
+  }
+  return counter
+}
+
 // querySelector that throws instead of returning null, so a stale selector fails loudly
 export function query<T extends Element = HTMLElement>(
   root: ParentNode,
@@ -297,6 +313,14 @@ export const click_when_ready = async (
   button.click()
   await tick()
   return button
+}
+
+// Click a settings section's reset button, which must hide once the section is at its defaults
+export const reset_section = async (section: string, root: ParentNode = document) => {
+  const selector = `button[aria-label="Reset ${section} to defaults"]`
+  query<HTMLButtonElement>(root, selector).click()
+  await tick()
+  expect(root.querySelector(selector)).toBeNull()
 }
 
 // Close a native popover as the browser's light dismiss or Escape would: happy-dom has no
@@ -963,7 +987,7 @@ export const install_stub_worker = <Message extends { id: number } = StubWorkerM
   }
 }
 
-// Re-imports a module graph with workers disabled, as anywidget runs matterviz's bundle
+// Re-imports a module graph with workers disabled, as on a file:// or blob:-refusing page
 export const import_without_workers = async <Module>(
   load: () => Promise<Module>,
 ): Promise<Module> => {

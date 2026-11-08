@@ -16,7 +16,7 @@ import {
 } from '#lib/plot/core/decorations/outside.js'
 import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
 import type { Vec2 } from '#lib/math.js'
-import { dense_unit_grid } from '../../setup'
+import { dense_unit_grid, index_read_counter } from '../../setup'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
@@ -386,27 +386,22 @@ describe(`build_obstacles_norm`, () => {
   // A mark handed back unchanged (a series beside a legend toggle) reuses its cells for the same
   // plot box, its points unread, merged with the other marks exactly as a fresh walk would be
   test(`reuses an unchanged mark's cells for the same plot box`, () => {
-    let reads = 0
+    const counter = index_read_counter()
     const raw = Array.from({ length: 50 }, (_, idx) => ({ x: idx / 49, y: (idx % 5) / 4 }))
-    const points = new Proxy(raw, {
-      get(target, prop, receiver) {
-        if (typeof prop === `string` && /^\d+$/.test(prop)) reads++
-        return Reflect.get(target, prop, receiver)
-      },
-    })
+    const points = counter.wrap(raw)
     const mark = { points, draws_line: true }
     // oxfmt-ignore
     const other = { points: [{ x: 0.5, y: 0.5 }, { x: 0.6, y: 0.1 }], draws_line: true }
     const first = build_obstacles_norm([other, mark], 300, 200)
-    const first_reads = reads
+    const first_reads = counter.reads
     expect(first_reads).toBeGreaterThan(0)
     expect(build_obstacles_norm([other, mark], 300, 200)).toEqual(first)
     expect(build_obstacles_norm([mark], 300, 200)).toEqual(
       build_obstacles_norm([{ points: raw, draws_line: true }], 300, 200),
     )
-    expect(reads).toBe(first_reads)
+    expect(counter.reads).toBe(first_reads)
     build_obstacles_norm([mark], 200, 300)
-    expect(reads).toBeGreaterThan(first_reads)
+    expect(counter.reads).toBeGreaterThan(first_reads)
   })
 
   // a non-finite vertex breaks the line: its two neighbours stay lone points, not a segment

@@ -25,7 +25,7 @@ import { unzipSync } from 'fflate'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { doc_query, set_input } from '../setup'
+import { doc_query, reset_section, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
 vi.mock(`svelte-widgets/download`, async (import_original) => ({
@@ -536,10 +536,7 @@ describe(`TrajectoryExportPane property export`, () => {
         expect(styles.flexDirection).toBe(`column`)
         expect(styles.gap).toBe(`6pt`)
       }
-      const reset_selector = `button[aria-label="Reset video settings to defaults"]`
-      doc_query<HTMLButtonElement>(reset_selector).click()
-      await tick()
-      expect(document.querySelector(reset_selector)).toBeNull()
+      await reset_section(`video settings`)
       const number_inputs = document.querySelectorAll<HTMLInputElement>(
         `.settings-section input[type="number"]`,
       )

@@ -19,6 +19,7 @@ import {
   mount_sized,
   mouse,
   plot_svg,
+  reset_section,
   svg_rect,
   translate_of,
   expect_axis_titles_placed,
@@ -397,13 +398,8 @@ describe(`Bands component`, () => {
       // sync mirrored into the y_axis prop
       expect(max_y_tick()).toBeGreaterThan(10)
       expect(max_y_tick()).toBeLessThan(20)
-      const selector = `button[title="Reset path to defaults"]`
-      await fire(
-        doc_query<HTMLButtonElement>(selector),
-        new MouseEvent(`click`, { bubbles: true }),
-      )
+      await reset_section(`path`)
       expect(select.value).toBe(`THz`)
-      expect(document.querySelector(selector)).toBeNull()
     },
   )
 

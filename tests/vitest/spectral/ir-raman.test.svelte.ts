@@ -43,7 +43,13 @@ import sio2_raman_json from '#site/phonons/ir-raman/SiO2-raman-tensors.json.gz'
 import sio2_yaml from '#site/phonons/ir-raman/SiO2-gamma.yaml.gz?raw'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, it, vi } from 'vitest'
-import { bind_props, doc_query, expect_plot_controls, set_input } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  expect_plot_controls,
+  reset_section,
+  set_input,
+} from '../setup'
 
 const co2_data = parse_phonon_modes(co2_yaml)
 const co2_born_data = parse_born(co2_born)
@@ -817,12 +823,6 @@ describe(`IrRamanSpectrum component`, () => {
       })
       await tick()
       expect(document.querySelectorAll(`line.mode-stick`)).toHaveLength(0)
-      const reset_section = async (section: string) => {
-        const selector = `button[title="Reset ${section} to defaults"]`
-        doc_query<HTMLButtonElement>(selector).click()
-        await tick()
-        expect(document.querySelector(selector)).toBeNull()
-      }
       await reset_section(`spectrum`)
       expect(doc_query<HTMLSelectElement>(`#ir-raman-units`).value).toBe(`cm^-1`)
       expect(doc_query<HTMLInputElement>(`#ir-raman-sticks`).checked).toBe(true)

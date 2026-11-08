@@ -19,6 +19,7 @@ import {
   clip_rect,
   doc_query,
   expect_tooltip_paint,
+  index_read_counter,
   mock_canvas_context,
   query,
   resize_element,
@@ -1329,17 +1330,11 @@ describe(`BinnedScatterPlot`, () => {
   })
 
   test(`waits for plot dimensions before scanning explicit-range data`, async () => {
-    let accesses = 0
+    const counter = index_read_counter()
     let x_axis = $state({ range: [0, 1] as Vec2 })
-    const counted = (values: number[]) =>
-      new Proxy(values, {
-        get(target, prop, receiver) {
-          if (typeof prop === `string` && /^\d+$/.test(prop)) accesses++
-          return Reflect.get(target, prop, receiver)
-        },
-      })
     const n_points = 1000
-    const ramp = () => counted(Array.from({ length: n_points }, (_, idx) => idx / n_points))
+    const ramp = () =>
+      counter.wrap(Array.from({ length: n_points }, (_, idx) => idx / n_points))
 
     mount_plot({
       series: [{ x: ramp(), y: ramp() }],
@@ -1353,15 +1348,17 @@ describe(`BinnedScatterPlot`, () => {
 
     expect(render_mode()).toBe(`density`)
     // One x-order scan, one x/y binning scan, and two binary boundary searches.
-    expect(accesses).toBeGreaterThanOrEqual(n_points * 3)
-    expect(accesses).toBeLessThanOrEqual(n_points * 3 + 2 * Math.ceil(Math.log2(n_points)))
+    expect(counter.reads).toBeGreaterThanOrEqual(n_points * 3)
+    expect(counter.reads).toBeLessThanOrEqual(
+      n_points * 3 + 2 * Math.ceil(Math.log2(n_points)),
+    )
 
-    accesses = 0
+    counter.reads = 0
     hover_plot(420, 280)
-    expect(accesses).toBe(0)
+    expect(counter.reads).toBe(0)
     x_axis = { range: [0.4, 0.41] }
     await settle()
-    expect(accesses).toBeLessThan(100)
+    expect(counter.reads).toBeLessThan(100)
   })
 
   test(`mounts and bins one million auto-ranged points`, async () => {
