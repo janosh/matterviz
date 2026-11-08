@@ -111,7 +111,9 @@ export function use_async_result<Input, Options, Result>(
     // Nothing computed yet, or a failure whose error only a new compute clears
     if (!computed) return
     try {
-      binding.set_result(binding.revise ? binding.revise(computed) : computed)
+      // Frozen: a $bindable deep-proxies what it's assigned, but a proxy must return a frozen
+      // object's fields as-is (Proxy invariant), so the plots read the curves raw
+      binding.set_result(Object.freeze(binding.revise ? binding.revise(computed) : computed))
       binding.set_error(undefined) // a corrected revise-only edit starts no compute to clear it
     } catch (exc) {
       binding.set_error(to_error(exc).message)

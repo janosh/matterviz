@@ -7,6 +7,7 @@ import { calc_vacf } from '#lib/vacf/calc-vacf.js'
 import type { VacfInput, VacfOptions, VacfResult } from '#lib/vacf/index.js'
 import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '#lib/vacf/VacfPlot.svelte'
+import { types } from 'node:util'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
 import { format_bytes } from 'svelte-widgets/format'
@@ -210,6 +211,8 @@ describe(`VacfPlot`, () => {
         await settle(6)
         expect(compute).toHaveBeenCalledTimes(1)
         expect(await edit(edited)).toEqual([calc_vacf(input, edited), undefined, 1])
+        // frozen, so the $state it lands in leaves its curves unproxied for the plots
+        expect(types.isProxy(state.result?.curves)).toBe(false)
         // an invalid timestep is reported in place of the curves, and correcting it restores
         // them and clears the message, both without recomputing; a lag-range edit recomputes
         expect(await edit({ dt: 2 })).toEqual(invalid)

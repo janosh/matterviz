@@ -95,7 +95,8 @@
     selected_peak?: XrdPeak | null // pinned (and labelled) by a click, unpinned by another
   } = $props()
 
-  let dropped_entries = $state<PatternEntry[]>([])
+  // Raw: only reassigned, and a deep proxy over a dropped scan made every profile read trap
+  let dropped_entries = $state.raw<PatternEntry[]>([])
 
   const is_profile = (pattern: XrdPattern): boolean => pattern.kind === `profile`
 
