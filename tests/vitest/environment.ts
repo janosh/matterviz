@@ -2,6 +2,17 @@
 // loaded by tests that explicitly import them.
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import { beforeEach, vi } from 'vitest'
+import { Worker } from 'node:worker_threads'
+
+// A forks worker outlives a killed vitest until its next IPC send, which a sync loop never reaches
+// (nor testTimeout), so a thread polls the parent pid and SIGKILLs the orphan, once per process.
+const orphan_guard = Symbol.for(`matterviz.orphan_guard`)
+if (process.send && !Reflect.get(process, orphan_guard)) {
+  Reflect.set(process, orphan_guard, true)
+  const watchdog = `const ppid = process.ppid
+setInterval(() => process.ppid !== ppid && process.kill(process.pid, 'SIGKILL'), 1000)`
+  new Worker(watchdog, { eval: true }).unref()
+}
 
 // happy-dom implements `nodeName` per subclass and its base Node.prototype getter returns ''.
 // DOMPurify >= 3.4.13 reads nodeName through that base getter (so a clobbering child named
@@ -166,8 +177,7 @@ globalThis.IntersectionObserver = class {
   }
 } as unknown as typeof IntersectionObserver
 
-// Mock Web Animations API for Svelte transitions (not available in jsdom)
-// The mock immediately triggers onfinish to complete transitions synchronously
+// Web Animations mocks for Svelte transitions (onfinish fires a microtask later) and animate:flip
 Element.prototype.animate = vi.fn().mockImplementation(() => {
   const animation = {
     onfinish: null as (() => void) | null,
@@ -182,12 +192,9 @@ Element.prototype.animate = vi.fn().mockImplementation(() => {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }
-  // Call onfinish in next microtask to simulate animation completion
   queueMicrotask(() => animation.onfinish?.())
   return animation
 })
-
-// Mock getAnimations for Svelte's animate:flip directive (not available in happy-dom)
 Element.prototype.getAnimations = vi.fn().mockReturnValue([])
 
 globalThis.matchMedia = vi.fn().mockImplementation((media_query) => ({
@@ -199,7 +206,6 @@ globalThis.matchMedia = vi.fn().mockImplementation((media_query) => ({
   dispatchEvent: vi.fn(),
 }))
 
-// Mock clipboard API for testing
 Object.defineProperty(navigator, `clipboard`, {
   value: { writeText: vi.fn().mockResolvedValue(undefined) },
   writable: true,

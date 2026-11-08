@@ -756,18 +756,19 @@ describe(`compute_bonds memo`, () => {
   ])
   const copper_cell = make_crystal(3.61, fcc(`Cu`))
   // Drag-like edits (a few sites move per call) re-search only the moved sites' contacts. Each
-  // step must equal a full search in a fresh module (bit-identical lengths, any order): a
+  // step must equal a full search without a query cache (bit-identical lengths, any order): a
   // supercell whose shells pool all copies of a unit-cell atom, a metal, an organic cluster.
   test.each([
     [`rocksalt supercell`, make_supercell(make_rocksalt(), 6)],
     [`fcc Cu supercell`, make_supercell(copper_cell, 7)],
     [`C/H/N/O cluster`, make_molecule(cluster_atoms)],
-  ])(`incremental search after site moves matches a full search: %s`, async (_, base) => {
+  ])(`incremental search after site moves matches a full search: %s`, (_, base) => {
     const rand = make_rng(5)
     let { sites } = base
-    const bonds_of = (module: typeof bonding, struct: AnyStructure) =>
-      sort_bonds(module.compute_bonds(struct, `electroneg_ratio`))
-    bonding.compute_bonds(base, `electroneg_ratio`)
+    const query = bonding.create_bond_query()
+    const bonds_of = (struct: AnyStructure, with_query?: bonding.BondNeighborQuery) =>
+      sort_bonds(bonding.electroneg_ratio(struct, {}, with_query))
+    bonds_of(base, query)
     // Shift random sites up to 0.25 A per axis per draw, none, or one onto another's position;
     // 250 draws exceed the moved-site share and run a full search the next step reuses
     for (const n_moved of [1, 1, 3, 30, 0, 2, 250, 1]) {
@@ -779,10 +780,8 @@ describe(`compute_bonds memo`, () => {
       }
       if (n_moved === 2) sites[0] = { ...sites[0], xyz: [...sites[1].xyz] }
       const structure = { ...base, sites }
-      const actual = bonds_of(bonding, structure)
-      vi.resetModules()
-      const fresh: typeof bonding = await import(`#lib/structure/bonding.js`)
-      expect(actual).toEqual(bonds_of(fresh, structure))
+      const actual = bonds_of(structure, query)
+      expect(actual).toEqual(bonds_of(structure))
       expect(actual.length).toBeGreaterThan(100)
     }
   })

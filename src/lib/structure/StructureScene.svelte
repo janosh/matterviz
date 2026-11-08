@@ -106,6 +106,7 @@
   import {
     add_or_restore_bond,
     canonicalize_bond_target,
+    create_bond_query,
     get_bond_data,
     delete_bond as apply_delete_bond,
     get_explicit_bond_metadata,
@@ -1081,11 +1082,12 @@
   // bonds_to_render, but tooltips + manually added bonds still need the data),
   // while EFFECTIVE show_polyhedra skips computing bonds whose only consumer —
   // the polyhedra $derived below, gated on the same effective value — won't run.
+  const bond_query = create_bond_query() // incremental drag re-bonding, freed with the scene
   let bond_pairs: BondData = $derived.by(() => {
     const want_bonds = applies_to_structure(show_bonds, Boolean(lattice))
     const want_polyhedra = applies_to_structure(effective_show_polyhedra, Boolean(lattice))
     return structure && (want_bonds || want_polyhedra)
-      ? get_bond_data(structure, bonding_strategy, bonding_options)
+      ? get_bond_data(structure, bonding_strategy, bonding_options, bond_query)
       : []
   })
 

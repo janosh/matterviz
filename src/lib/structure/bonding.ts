@@ -1436,7 +1436,7 @@ type BondNeighborList = Pick<NeighborList, 'offsets' | 'neighbors' | 'distances'
 }
 // Every contact within `cutoff` whose distance lies in its element pair's band, listed once
 // from its lower site index (a site's own periodic image under its canonical shift only).
-type BondNeighborQuery = (
+export type BondNeighborQuery = (
   structure: AnyStructure,
   cutoff: number,
   pbc: Pbc,
@@ -1444,15 +1444,14 @@ type BondNeighborQuery = (
 ) => BondNeighborList
 
 const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) => {
-  const periodic = pbc.some(Boolean)
-  if (!periodic) return finite_bond_neighbors(structure, cutoff, band)
+  const image_geometry = pbc.some(Boolean)
   const list = neighbor_query_cutoff(structure, cutoff, {
     pbc,
     unique_pairs: true,
-    image_geometry: true,
+    image_geometry,
     band,
   })
-  return { ...list, image_geometry: list }
+  return image_geometry ? { ...list, image_geometry: list } : list
 }
 
 // === Incremental finite bond search ===
@@ -1464,7 +1463,14 @@ const query_bond_neighbors: BondNeighborQuery = (structure, cutoff, pbc, band) =
 const MIN_INCREMENTAL_SITES = 1000
 const MAX_MOVED_FRACTION = 1 / 8
 type FiniteSearch = { band: PairBand; coords: Float64Array; list: BondNeighborList }
-const finite_searches: FiniteSearch[] = [] // most recent first
+// A viewer's own query, so its cached searches and perception scratch go with it
+export function create_bond_query(): BondNeighborQuery {
+  const searches: FiniteSearch[] = [] // most recent first
+  return (structure, cutoff, pbc, band) =>
+    pbc.some(Boolean)
+      ? query_bond_neighbors(structure, cutoff, pbc, band)
+      : finite_bond_neighbors(structure, cutoff, band, searches)
+}
 
 // Equal bands imply equal sites (elem_ids) and cutoff (the longest reach in band.hi)
 const same_band = (left: PairBand, right: PairBand): boolean =>
@@ -1488,9 +1494,9 @@ function finite_bond_neighbors(
   structure: AnyStructure,
   cutoff: number,
   band: PairBand,
+  finite_searches: FiniteSearch[],
 ): BondNeighborList {
-  const query = () =>
-    neighbor_query_cutoff(structure, cutoff, { pbc: NO_PBC, unique_pairs: true, band })
+  const query = () => query_bond_neighbors(structure, cutoff, NO_PBC, band)
   if (site_count(structure) < MIN_INCREMENTAL_SITES) return query()
   const coords = packed_positions(structure)
   const match = finite_searches.findIndex((search) => same_band(search.band, band))
@@ -1755,6 +1761,7 @@ export function get_bond_data(
   structure: AnyStructure,
   strategy: BondingStrategy,
   options: Record<string, unknown> = {},
+  query?: BondNeighborQuery, // electroneg_ratio's neighbor search
 ): BondPair[] | BondFrame {
   const cached = bond_memo.get(structure)?.get(bond_sig(strategy, options))
   if (cached) return cached
@@ -1768,7 +1775,7 @@ export function get_bond_data(
   const strategy_fn: BondingStrategyFn = BONDING_STRATEGIES[strategy]
   const bonds =
     strategy === `electroneg_ratio`
-      ? electroneg_ratio_frame(structure, options)
+      ? electroneg_ratio_frame(structure, options, query)
       : strategy_fn(structure, options)
   cache_prepared_bonds(structure, strategy, options, bonds)
   return bonds
@@ -1801,17 +1808,19 @@ type PerceivedBonds = Omit<BondNeighborList, 'offsets'> & {
 export function electroneg_ratio(
   structure: AnyStructure,
   options: Parameters<typeof perceive_bonds>[1] = {},
+  query?: BondNeighborQuery,
 ): BondPair[] {
-  return electroneg_ratio_frame(structure, options).materialize()
+  return electroneg_ratio_frame(structure, options, query).materialize()
 }
 const electroneg_ratio_frame = (
   structure: AnyStructure,
   options: Parameters<typeof perceive_bonds>[1] = {},
+  query?: BondNeighborQuery,
 ): BondFrame =>
   new BondFrame(
     structure,
     site_count(structure)
-      ? bond_columns(structure, perceive_bonds(structure, options))
+      ? bond_columns(structure, perceive_bonds(structure, options, query))
       : pack_bonds([]),
   )
 
@@ -1914,9 +1923,9 @@ const create_bond_scratch = (capacity = 0): BondScratch => ({
   metallic: new Int32Array(capacity),
   strengths: new Float64Array(capacity),
 })
-// Shared by every perception (bond_columns copies out before the next can run): reallocating
-// 28 B x 4 per site on every drag frame of a 100k-atom structure kept the GC busy
-const scratch = create_bond_scratch()
+// One per query, shared by its perceptions (bond_columns copies out before the next can run):
+// reallocating 28 B x 4 per site on every drag frame of a 100k-atom structure kept the GC busy
+const scratches = new WeakMap<BondNeighborQuery, BondScratch>()
 
 function perceive_bonds(
   structure: AnyStructure,
@@ -2032,8 +2041,9 @@ function perceive_bonds(
   // Candidate bonds as struct-of-arrays typed buffers (neighbor slot, center, normalized
   // distance, metallic-pair flag, strength): no per-candidate object in the hot loop, and
   // passes 2-4 read the pair's class and normalized distance instead of recomputing them
-  if (scratch.slots.length < n_sites * 4)
-    Object.assign(scratch, create_bond_scratch(Math.max(256, n_sites * 4)))
+  let scratch = scratches.get(query)
+  if (!scratch || scratch.slots.length < n_sites * 4)
+    scratches.set(query, (scratch = create_bond_scratch(Math.max(256, n_sites * 4))))
   let {
     slots: cand_slot,
     centers: cand_center,
