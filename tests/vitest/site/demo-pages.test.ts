@@ -412,11 +412,11 @@ test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () 
 test(`a file dropped on the binary phase diagram leaves ?file= out of the URL`, async () => {
   mount(PhaseDiagramPage, { target: document.body })
   flushSync()
-  const json = JSON.stringify({ title: `mine` })
+  const json = JSON.stringify({ format: `binary-phase-diagram/2`, components: [`Mi`, `Ne`] })
   doc_query(`.diagram-container`).dispatchEvent(
     create_drop_event(new File([json], `mine.json`)),
   )
-  await vi.waitFor(() => expect(doc_query(`.diagram-title`).textContent).toBe(`mine`))
+  await vi.waitFor(() => expect(doc_query(`.diagram-title`).textContent).toBe(`Mi-Ne`))
   expect(String(vi.mocked(goto).mock.lastCall?.[0])).not.toContain(`file=`)
 })
 

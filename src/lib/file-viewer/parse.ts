@@ -34,7 +34,7 @@ import type {
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import type { VolumetricFileData } from '#lib/isosurface/types.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
-import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
+import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electronic.js'
 import {
@@ -76,7 +76,7 @@ export type ParseResult =
   | Result<`fermi_surface`, BandGridData | FermiSurfaceData>
   | Result<`isosurface`, VolumetricFileData>
   | Result<`convex_hull`, PhaseData[]>
-  | Result<`phase_diagram`, PhaseDiagramData>
+  | Result<`phase_diagram`, BinaryPhaseDiagram>
   | Result<`json_browser`, unknown>
   | Result<`vaspout_electronic`, VaspoutElectronicData>
 

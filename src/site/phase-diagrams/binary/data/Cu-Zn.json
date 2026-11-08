@@ -1,50 +1,55 @@
 {
-  "meta": {
-    "components": ["Cu", "Zn"],
-    "temp_range": [300, 1400],
-    "temp_unit": "K",
-    "comp_unit": "mol%",
-    "title": "Cu-Zn Binary Phase Diagram"
-  },
-  "curves": {
-    "liquidus": [
-      [0, 1358],
-      [0.15, 1200],
-      [0.3, 1050],
-      [0.37, 903],
-      [0.5, 850],
-      [0.7, 750],
-      [0.85, 710],
-      [1, 693]
-    ],
-    "solidus_alpha": [[0.35, 903], [0.32, 700], [0.28, 300]],
-    "solidus_eta": [[0.7, 903], [0.72, 700], [0.97, 693]],
-    "peritectic_line": [[0.35, 903], [0.7, 903]]
-  },
+  "format": "binary-phase-diagram/2",
+  "components": ["Cu", "Zn"],
+  "pressure_pa": 101325,
+  "temperature_range": [300, 1400],
+  "phases": [
+    {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
+    {"id": "ALPHA_BRASS_FCC", "model_phase": "ALPHA_BRASS_FCC", "label": "α brass (FCC)", "kind": "solid"},
+    {"id": "BETA_GAMMA_BRASS", "model_phase": "BETA_GAMMA_BRASS", "label": "β/γ brass", "kind": "solid"},
+    {"id": "ETA_HCP_ZN_RICH", "model_phase": "ETA_HCP_ZN_RICH", "label": "η (HCP Zn-rich)", "kind": "solid"},
+    {"id": "ZN", "model_phase": "ZN", "label": "Zn", "kind": "solid"}
+  ],
   "regions": [
     {
-      "id": "liquid",
-      "name": "Liquid",
-      "color": "rgba(135, 206, 250, 0.6)",
-      "bounds": [[0, 1400], [1, 1400], [1, 693], "~liquidus"]
+      "phases": ["LIQUID"],
+      "vertices": [
+        [0, 1358],
+        [0.15, 1200],
+        [0.3, 1050],
+        [0.37, 903],
+        [0.5, 850],
+        [0.7, 750],
+        [0.85, 710],
+        [1, 693],
+        [1, 1400],
+        [0, 1400]
+      ]
     },
     {
-      "id": "alpha",
-      "name": "α brass (FCC)",
-      "color": "rgba(144, 238, 144, 0.6)",
-      "bounds": [[0, 1358], "solidus_alpha", [0, 300]]
+      "phases": ["ALPHA_BRASS_FCC"],
+      "vertices": [
+        [0, 300],
+        [0.28, 300],
+        [0.32, 700],
+        [0.35, 903],
+        [0, 1358]
+      ]
     },
     {
-      "id": "alpha_beta",
-      "name": "α + β",
-      "color": "rgba(255, 235, 156, 0.5)",
-      "bounds": ["solidus_alpha", [0.28, 300], [0.35, 300], [0.38, 700], [0.4, 903]]
+      "phases": ["ALPHA_BRASS_FCC", "BETA_GAMMA_BRASS"],
+      "vertices": [
+        [0.35, 903],
+        [0.32, 700],
+        [0.28, 300],
+        [0.35, 300],
+        [0.38, 700],
+        [0.4, 903]
+      ]
     },
     {
-      "id": "beta",
-      "name": "β/γ brass",
-      "color": "rgba(255, 182, 193, 0.6)",
-      "bounds": [
+      "phases": ["BETA_GAMMA_BRASS"],
+      "vertices": [
         [0.4, 903],
         [0.38, 700],
         [0.35, 300],
@@ -54,10 +59,8 @@
       ]
     },
     {
-      "id": "beta_eta",
-      "name": "β + η",
-      "color": "rgba(220, 200, 240, 0.5)",
-      "bounds": [
+      "phases": ["BETA_GAMMA_BRASS", "ETA_HCP_ZN_RICH"],
+      "vertices": [
         [0.65, 903],
         [0.63, 700],
         [0.6, 300],
@@ -67,37 +70,104 @@
       ]
     },
     {
-      "id": "eta",
-      "name": "η (HCP Zn-rich)",
-      "color": "rgba(221, 160, 221, 0.6)",
-      "bounds": ["solidus_eta[:-1]", [0.75, 300], [0.99, 300], [0.98, 500], [0.97, 693]]
+      "phases": ["ETA_HCP_ZN_RICH"],
+      "vertices": [
+        [0.7, 903],
+        [0.72, 700],
+        [0.75, 300],
+        [0.99, 300],
+        [0.98, 500],
+        [0.97, 693]
+      ]
     },
     {
-      "id": "eta_zn",
-      "name": "η + Zn",
-      "color": "rgba(230, 200, 230, 0.5)",
-      "bounds": [[0.97, 693], [0.98, 500], [0.99, 300], [1, 300], [1, 693]]
+      "phases": ["ETA_HCP_ZN_RICH", "ZN"],
+      "vertices": [
+        [0.97, 693],
+        [0.98, 500],
+        [0.99, 300],
+        [1, 300],
+        [1, 693]
+      ]
     },
     {
-      "id": "alpha_liquid",
-      "name": "α + L",
-      "color": "rgba(180, 230, 180, 0.5)",
-      "bounds": [[0, 1358], [0.15, 1200], [0.3, 1050], [0.37, 903], [0.35, 903]]
+      "phases": ["ALPHA_BRASS_FCC", "LIQUID"],
+      "vertices": [
+        [0.35, 903],
+        [0.37, 903],
+        [0.3, 1050],
+        [0.15, 1200],
+        [0, 1358]
+      ]
     },
     {
-      "id": "beta_liquid",
-      "name": "β + L",
-      "color": "rgba(255, 200, 200, 0.5)",
-      "bounds": [[0.37, 903], [0.5, 850], [0.7, 750], [0.7, 903], [0.4, 903]]
+      "phases": ["BETA_GAMMA_BRASS", "LIQUID"],
+      "vertices": [
+        [0.37, 903],
+        [0.5, 850],
+        [0.7, 750],
+        [0.7, 903],
+        [0.4, 903]
+      ]
     },
     {
-      "id": "eta_liquid",
-      "name": "η + L",
-      "color": "rgba(200, 180, 230, 0.5)",
-      "bounds": [[0.7, 750], [0.85, 710], [1, 693], "~solidus_eta"]
+      "phases": ["LIQUID", "ETA_HCP_ZN_RICH"],
+      "vertices": [
+        [0.7, 903],
+        [0.72, 700],
+        [0.97, 693],
+        [1, 693],
+        [0.85, 710],
+        [0.7, 750]
+      ]
     }
   ],
-  "special_points": [
-    { "id": "peritectic", "type": "peritectic", "position": [0.37, 903], "label": "P" }
-  ]
+  "boundaries": [
+    {
+      "kind": "liquidus",
+      "phases": ["ALPHA_BRASS_FCC", "LIQUID", "BETA_GAMMA_BRASS", "ETA_HCP_ZN_RICH"],
+      "points": [
+        [0, 1358],
+        [0.15, 1200],
+        [0.3, 1050],
+        [0.37, 903],
+        [0.5, 850],
+        [0.7, 750],
+        [0.85, 710],
+        [1, 693]
+      ]
+    },
+    {
+      "kind": "solidus",
+      "phases": ["ALPHA_BRASS_FCC", "BETA_GAMMA_BRASS"],
+      "points": [
+        [0.35, 903],
+        [0.32, 700],
+        [0.28, 300]
+      ]
+    },
+    {
+      "kind": "solidus",
+      "phases": ["LIQUID", "ETA_HCP_ZN_RICH"],
+      "points": [
+        [0.7, 903],
+        [0.72, 700],
+        [0.97, 693]
+      ],
+      "side": "ETA_HCP_ZN_RICH"
+    },
+    {
+      "kind": "invariant",
+      "phases": ["BETA_GAMMA_BRASS", "LIQUID"],
+      "points": [
+        [0.35, 903],
+        [0.7, 903]
+      ]
+    }
+  ],
+  "invariants": [],
+  "congruent_points": [],
+  "critical_points": [],
+  "unary_transitions": [],
+  "provenance": {"kind": "sketch", "source": "Cu-Zn Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

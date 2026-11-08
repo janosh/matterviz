@@ -2,6 +2,7 @@
 // Used by JsonBrowser and the file renderer to select visualization components.
 
 import { type VolumetricFileData, volume_from_json } from '#lib/isosurface/types.js'
+import { BINARY_DIAGRAM_FORMAT } from '#lib/phase-diagram/types.js'
 import { build_path } from 'svelte-widgets/json-tree/path'
 import { is_structure_like, optimade_structure_from_raw } from '#lib/structure/parse.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
@@ -125,18 +126,10 @@ const is_volumetric = record_guard((data) => {
   )
 })
 
-// PhaseDiagramData: binary phase diagram with components, regions, boundaries
-const is_phase_diagram = record_guard((data) => {
-  if (!has_array(data, `components`, 2)) return false
-  const [comp_a, comp_b] = data.components as unknown[]
-  return (
-    typeof comp_a === `string` &&
-    typeof comp_b === `string` &&
-    has_array(data, `regions`) &&
-    has_array(data, `boundaries`) &&
-    has_array(data, `temperature_range`, 2)
-  )
-})
+// Binary phase diagram in the binary-phase-diagram/2 exchange format
+const is_phase_diagram = record_guard(
+  (data) => data.format === BINARY_DIAGRAM_FORMAT && has_array(data, `components`, 2),
+)
 
 // BandStructure: normalized format (qpoints, branches, bands, nb_bands), pymatgen electronic
 // format (kpoints, branches, bands with spin keys, labels_dict) or pymatgen phonon format

@@ -1,59 +1,42 @@
 import type { Vec2 } from '#lib/math.js'
-import type {
-  CompUnit,
-  PhaseDiagramData,
-  PhaseRegion,
-  TempUnit,
-} from '#lib/phase-diagram/index.js'
+import type { CompUnit, DiagramRegion, TempUnit } from '#lib/phase-diagram/index.js'
 import {
   calculate_lever_rule,
   compute_label_properties,
-  compute_x_domain,
   convert_temp,
-  find_phase_at_point,
+  find_region_at,
   format_composition,
   format_temperature,
   generate_boundary_path,
   generate_region_path,
-  get_multi_phase_gradient,
-  get_phase_color,
   get_phase_stability_range,
   merge_phase_diagram_config,
+  named_phase_color,
   PHASE_DIAGRAM_DEFAULTS,
   transform_vertices,
 } from '#lib/phase-diagram/utils.js'
 import { describe, expect, test } from 'vitest'
 import { pts, rect } from './fixtures/test-data'
 
-describe(`find_phase_at_point`, () => {
-  const test_data: PhaseDiagramData = {
-    components: [`A`, `B`],
-    temperature_range: [300, 900],
-    regions: [
-      { id: `liquid`, name: `Liquid`, vertices: rect(0, 700, 1, 900) },
-      { id: `solid`, name: `Solid`, vertices: rect(0, 300, 1, 700) },
-    ],
-    boundaries: [],
-  }
-
+describe(`find_region_at`, () => {
+  const regions: DiagramRegion[] = [
+    { phases: [`LIQUID`], vertices: rect(0, 700, 1, 900) },
+    { phases: [`FCC`], vertices: rect(0, 300, 1, 700) },
+  ]
   test.each([
-    { comp: 0.5, temp: 800, expected: `Liquid`, desc: `high temp → Liquid` },
-    { comp: 0.5, temp: 500, expected: `Solid`, desc: `low temp → Solid` },
+    { comp: 0.5, temp: 800, expected: `LIQUID`, desc: `high temp → liquid` },
+    { comp: 0.5, temp: 500, expected: `FCC`, desc: `low temp → solid` },
     { comp: 0.5, temp: 1000, expected: null, desc: `outside regions → null` },
   ])(`$desc`, ({ comp, temp, expected }) => {
-    const result = find_phase_at_point(comp, temp, test_data)
-    expect(result?.name ?? null).toBe(expected)
+    expect(find_region_at(regions, comp, temp)?.phases[0] ?? null).toBe(expected)
   })
 
-  test(`later-defined regions take precedence (overlapping)`, () => {
-    const overlapping_data: PhaseDiagramData = {
-      ...test_data,
-      regions: [
-        { id: `first`, name: `First`, vertices: rect(0, 0, 1, 1) },
-        { id: `second`, name: `Second`, vertices: rect(0.25, 0.25, 0.75, 0.75) },
-      ],
-    }
-    expect(find_phase_at_point(0.5, 0.5, overlapping_data)?.name).toBe(`Second`)
+  test(`later regions take precedence (overlapping)`, () => {
+    const overlapping = [
+      { phases: [`first`], vertices: rect(0, 0, 1, 1) },
+      { phases: [`second`], vertices: rect(0.25, 0.25, 0.75, 0.75) },
+    ]
+    expect(find_region_at(overlapping, 0.5, 0.5)?.phases).toEqual([`second`])
   })
 })
 
@@ -74,99 +57,34 @@ test.each([
   expect(generate_boundary_path(points)).toBe(expected)
 })
 
-// Palette by key (hex); get_phase_color returns these opaque (`hex`) or with alpha (`rgba`)
-const HEX = {
-  liquid: `#87cefc`,
-  alpha: `#90ee90`,
-  beta: `#ffb6c1`,
-  gamma: `#ffdab9`,
-  delta: `#dda0dd`,
-  epsilon: `#f0e68c`,
-  zeta: `#fa8072`,
-  eta: `#e6e6fa`,
-  theta: `#f5deb3`,
-  iota: `#20b2aa`,
-  kappa: `#deb887`,
-  lambda: `#bc8f8f`,
-  two_phase: `#c8c8c8`,
-  default: `#b4b4b4`,
-}
-
-describe(`get_phase_color`, () => {
+// named_phase_color serves the pressure-temperature diagram's phase palette
+describe(`named_phase_color`, () => {
   test.each([
-    // Greek letters and Latin names map to the same key, case-insensitively
-    [`α`, HEX.alpha],
-    [`alpha`, HEX.alpha],
-    [`ALPHA`, HEX.alpha],
-    [`β`, HEX.beta],
-    [`beta`, HEX.beta],
-    [`γ`, HEX.gamma],
-    [`gamma`, HEX.gamma],
-    [`δ`, HEX.delta],
-    [`ε`, HEX.epsilon],
-    [`ζ`, HEX.zeta],
-    [`η`, HEX.eta],
-    [`ETA`, HEX.eta],
+    // Greek letters and Latin names map to the same color, case-insensitively
+    [`α`, `#90ee90`],
+    [`ALPHA`, `#90ee90`],
+    [`β`, `#ffb6c1`],
+    [`γ`, `#ffdab9`],
     // "theta" contains "eta": must win over the eta rule
-    [`θ`, HEX.theta],
-    [`THETA`, HEX.theta],
-    [`ι`, HEX.iota],
-    [`κ`, HEX.kappa],
-    [`λ`, HEX.lambda],
-    // Liquid + shorthand, and structure prefixes map to alpha/beta/gamma
-    [`Liquid`, HEX.liquid],
-    [`L`, HEX.liquid],
-    [`FCC_A1`, HEX.alpha],
-    [`bcc`, HEX.beta],
-    [`HCP_A3`, HEX.gamma],
-    // multi-phase and unknown
-    [`α + β`, HEX.two_phase],
-    [`Liquid + FCC`, HEX.two_phase],
-    [`Unknown`, HEX.default],
-    [``, HEX.default],
-  ] as [string, string][])(`%s → %s`, (phase_name, hex) => {
-    expect(get_phase_color(phase_name, `hex`)).toBe(hex)
-  })
-
-  test.each([
-    // single phases: alpha 0.6; two-phase and unknown: 0.5
-    [`Liquid`, `rgba(135, 206, 252, 0.6)`],
-    [`α`, `rgba(144, 238, 144, 0.6)`],
-    [`α + β`, `rgba(200, 200, 200, 0.5)`],
-    [`Unknown`, `rgba(180, 180, 180, 0.5)`],
-  ])(`rgba fill for %s is %s`, (phase_name, rgba) => {
-    expect(get_phase_color(phase_name)).toBe(rgba)
-  })
-})
-
-describe(`get_multi_phase_gradient`, () => {
-  test.each([`Liquid`, `α`, `Unknown`, ``, `FCC`, `+`, ` + `])(
-    `returns null without two phases: %j`,
-    (name) => {
-      expect(get_multi_phase_gradient(name)).toBeNull()
-    },
-  )
-
-  test.each([
-    [`α + β`, [HEX.alpha, HEX.beta]],
-    [`α + β + γ`, [HEX.alpha, HEX.beta, HEX.gamma]],
-    [`  α   +   β   +   γ  `, [HEX.alpha, HEX.beta, HEX.gamma]],
-    // empty middle phase is dropped
-    [`α + + β`, [HEX.alpha, HEX.beta]],
-    [`Unknown1 + Unknown2 + α`, [HEX.default, HEX.default, HEX.alpha]],
-    [`Liquid + FCC + BCC`, [HEX.liquid, HEX.alpha, HEX.beta]],
-  ])(`%s → evenly spaced stops`, (name, colors) => {
-    const n_stops = colors.length
-    expect(get_multi_phase_gradient(name)).toEqual(
-      colors.map((color, idx) => ({ offset: idx / (n_stops - 1), color })),
-    )
+    [`θ`, `#f5deb3`],
+    [`THETA`, `#f5deb3`],
+    [`ETA`, `#e6e6fa`],
+    [`Liquid`, `#87cefc`],
+    [`L`, `#87cefc`],
+    // structure prefixes map to alpha/beta/gamma
+    [`FCC_A1`, `#90ee90`],
+    [`bcc`, `#ffb6c1`],
+    [`HCP_A3`, `#ffdab9`],
+    [`Unknown`, null],
+    [``, null],
+  ])(`%s → %s`, (name, hex) => {
+    expect(named_phase_color(name)).toBe(hex)
   })
 })
 
 describe(`format_composition`, () => {
   test.each([
     [0.5, `at%`, `50 at%`],
-    [0.25, `wt%`, `25 wt%`],
     [0.333, `fraction`, `0.333`],
     [0, `at%`, `0 at%`],
     [1, `at%`, `100 at%`],
@@ -178,12 +96,13 @@ describe(`format_composition`, () => {
   })
 })
 
+// temperatures are K, converted to the display unit
 describe(`format_temperature`, () => {
   test.each<[number, TempUnit, string]>([
     [499.6, `K`, `500 K`], // rounds to whole degrees
-    [25, `°C`, `25 °C`],
-    [77, `°F`, `77 °F`],
-  ])(`%d with %s → %s`, (value, unit, expected) => {
+    [298.15, `°C`, `25 °C`],
+    [298.15, `°F`, `77 °F`],
+  ])(`%d K in %s → %s`, (value, unit, expected) => {
     expect(format_temperature(value, unit)).toBe(expected)
   })
 })
@@ -199,17 +118,12 @@ test(`transform_vertices maps every vertex through the x and y scales`, () => {
 
 // Shared test fixtures for lever rule tests
 const trapezoid = pts(0.2, 400, 0.8, 400, 0.7, 600, 0.3, 600)
-const two_phase_region: PhaseRegion = { id: `alpha-beta`, name: `α + β`, vertices: trapezoid }
-const single_phase_region: PhaseRegion = {
-  id: `liquid`,
-  name: `Liquid`,
-  vertices: rect(0, 700, 1, 900),
-}
-const three_phase_region: PhaseRegion = { ...two_phase_region, name: `α + β + γ` }
-const empty_plus_region: PhaseRegion = { ...two_phase_region, name: `+` }
-const split_region_horizontal: PhaseRegion = {
-  id: `alpha-beta-split`,
-  name: `α + β`,
+const two_phase_region: DiagramRegion = { phases: [`A`, `B`], vertices: trapezoid }
+const single_phase_region: DiagramRegion = { phases: [`L`], vertices: rect(0, 700, 1, 900) }
+const three_phase_region: DiagramRegion = { ...two_phase_region, phases: [`A`, `B`, `C`] }
+const no_phase_region: DiagramRegion = { ...two_phase_region, phases: [] }
+const split_region_horizontal: DiagramRegion = {
+  phases: [`A`, `B`],
   vertices: [
     ...pts(0.1, 400, 0.9, 400, 0.9, 600, 0.6, 600),
     ...pts(0.6, 450, 0.4, 450, 0.4, 600, 0.1, 600),
@@ -233,7 +147,7 @@ describe(`calculate_lever_rule`, () => {
     { region: two_phase_region, comp: 0.5, temp: 300, desc: `temp outside region` },
     { region: two_phase_region, comp: 0.1, temp: 500, desc: `comp outside region` },
     { region: three_phase_region, comp: 0.5, temp: 500, desc: `3+ phase region` },
-    { region: empty_plus_region, comp: 0.5, temp: 500, desc: `"+" (empty phases)` },
+    { region: no_phase_region, comp: 0.5, temp: 500, desc: `no phases` },
   ])(`returns null for $desc`, ({ region, comp, temp }) => {
     expect(calculate_lever_rule(region, comp, temp)).toBeNull()
   })
@@ -250,8 +164,8 @@ describe(`calculate_lever_rule`, () => {
     const [x_left, x_right] = [x_left_at(temp), x_right_at(temp)]
     const fraction_right = (comp - x_left) / (x_right - x_left)
     expect(result).toEqual({
-      left_phase: `α`,
-      right_phase: `β`,
+      left_phase: `A`,
+      right_phase: `B`,
       left_composition: expect.closeTo(x_left, 9),
       right_composition: expect.closeTo(x_right, 9),
       fraction_left: expect.closeTo(1 - fraction_right, 9),
@@ -259,16 +173,9 @@ describe(`calculate_lever_rule`, () => {
     })
   })
 
-  test(`parses complex phase names like "Liquid + FCC_A1"`, () => {
-    const region: PhaseRegion = { ...two_phase_region, name: `Liquid + FCC_A1` }
-    const result = calculate_lever_rule(region, 0.5, 500)
-    expect(result?.left_phase).toBe(`Liquid`)
-    expect(result?.right_phase).toBe(`FCC_A1`)
-  })
-
   // V-notch whose tip (0.5, 450) touches the isotherm: two crossings at one point, which a
   // dedup merged into one, shifting the pairing to [0.1, 0.5] and leaving 0.7 unbracketed
-  const notched_region: PhaseRegion = {
+  const notched_region: DiagramRegion = {
     ...two_phase_region,
     vertices: pts(0.1, 400, 0.9, 400, 0.9, 600, 0.5, 450, 0.1, 600),
   }
@@ -287,31 +194,12 @@ describe(`calculate_lever_rule`, () => {
     },
   )
 
-  // The name lists β first but β's single-phase field sits on the right, so the tie-line ends
-  // must be assigned from the neighbouring regions, not from the name order
-  const misordered_region: PhaseRegion = { ...two_phase_region, name: `β + α` }
-  const alpha_field: PhaseRegion = {
-    id: `alpha`,
-    name: `α`,
-    vertices: pts(0, 400, 0.2, 400, 0.3, 600, 0, 600),
-  }
-  const beta_field: PhaseRegion = {
-    id: `beta`,
-    name: `β`,
-    vertices: pts(0.8, 400, 1, 400, 1, 600, 0.7, 600),
-  }
-
-  // oxfmt-ignore
-  test.each([
-    { desc: `no neighbours: name order stands`, regions: [], left: `β`, right: `α` },
-    { desc: `neighbouring single-phase fields override name order`,
-      regions: [misordered_region, alpha_field, beta_field], left: `α`, right: `β` },
-    { desc: `left neighbour alone is enough`, regions: [misordered_region, alpha_field], left: `α`, right: `β` },
-    { desc: `right neighbour alone is enough`, regions: [misordered_region, beta_field], left: `α`, right: `β` },
-  ])(`$desc`, ({ regions, left, right }) => {
-    const result = expect_non_null(calculate_lever_rule(misordered_region, 0.5, 500, regions))
-    expect([result.left_phase, result.right_phase]).toEqual([left, right])
-    // fractions follow the geometry either way
+  // the format lists a two-phase region's phases left to right: phases[0] is the low-x end
+  test(`tie-line ends follow the region's phase order`, () => {
+    const result = expect_non_null(
+      calculate_lever_rule({ ...two_phase_region, phases: [`B`, `A`] }, 0.5, 500),
+    )
+    expect([result.left_phase, result.right_phase]).toEqual([`B`, `A`])
     expect(result.fraction_right).toBeCloseTo(0.5, 9)
   })
 })
@@ -413,57 +301,8 @@ test.each([
 ] as [string, Vec2[], { t_min: number; t_max: number } | null][])(
   `get_phase_stability_range: %s → %o`,
   (_desc, vertices, expected) => {
-    expect(get_phase_stability_range({ id: `test`, name: `α`, vertices })).toEqual(expected)
+    expect(get_phase_stability_range({ phases: [`A`], vertices })).toEqual(expected)
   },
 )
 
 // format_hover_info_text is covered in IsobaricBinaryPhaseDiagram.test.ts
-
-describe(`compute_x_domain`, () => {
-  const make_region = (name: string, x_lo: number, x_hi: number): PhaseRegion => ({
-    id: name,
-    name,
-    vertices: rect(x_lo, 300, x_hi, 600),
-  })
-
-  const make_data = (regions: PhaseRegion[]): PhaseDiagramData => ({
-    components: [`Al`, `Cu`],
-    temperature_range: [300, 1200],
-    regions,
-    boundaries: [],
-  })
-
-  // Al near 0 boundary, Cu near 1 boundary — triggers auto-extend
-  const edge_data = make_data([make_region(`Al`, 0.02, 0.3), make_region(`Cu`, 0.7, 0.98)])
-
-  // section: data far from both boundaries; non-matching: region names aren't components
-  const section = make_data([make_region(`Al`, 0.3, 0.5), make_region(`Cu`, 0.5, 0.7)])
-  const non_matching = make_data([make_region(`Liquid`, 0.1, 0.9)])
-  // oxfmt-ignore
-  test.each([
-    [`explicit range returned as-is`, [0.2, 0.8], null, [0.2, 0.8]],
-    [`no range + no data defaults to [0, 1]`, undefined, null, [0, 1]],
-    [`undefined range auto-extends both edges`, undefined, edge_data, [0, 1]],
-    [`null range auto-extends both edges`, [null, null], edge_data, [0, 1]],
-    [`explicit lo preserved, hi auto-extends`, [0.1, null], edge_data, [0.1, 1]],
-    [`lo auto-extends, explicit hi preserved`, [null, 0.9], edge_data, [0, 0.9]],
-    [`no auto-extend far from the boundaries (section diagram)`, undefined, section, [0.3, 0.7]],
-    [`data extent when region names don't match components`, undefined, non_matching, [0.1, 0.9]],
-  ] as [string, Parameters<typeof compute_x_domain>[0], PhaseDiagramData | null, Vec2][])(
-    `%s`,
-    (_desc, range, data, expected) => {
-      expect(compute_x_domain(range, data)).toEqual(expected)
-    },
-  )
-
-  // components must match as whole words: Fe3C/SiC are compounds, α(Fe) and "Liquid + C" are
-  // the pure components
-  test.each([
-    [`Fe3C`, `SiC`, [0.02, 0.98]],
-    [`α(Fe)`, `Liquid + C`, [0, 1]],
-  ])(`edge regions %s / %s in the Fe-C system → %j`, (left, right, expected) => {
-    const regions = [make_region(left, 0.02, 0.3), make_region(right, 0.7, 0.98)]
-    const data = { ...make_data(regions), components: [`Fe`, `C`] as [string, string] }
-    expect(compute_x_domain(undefined, data)).toEqual(expected)
-  })
-})

@@ -1,94 +1,209 @@
 import type { Point2D, Vec2 } from '#lib/math.js'
-import type { LineStyle } from '#lib/plot/index.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 
 export type TempUnit = `K` | `°C` | `°F`
-export type CompUnit = `at%` | `wt%` | `mol%` | `fraction`
+// Display unit of compositions: mole fraction or at.% (data is always mole fraction)
+export type CompUnit = `fraction` | `at%`
 
-// Phase region with polygon vertices and metadata
-export interface PhaseRegion {
+// === binary-phase-diagram/2 exchange format ===
+// One isobaric binary T-x diagram in physical units: T in K, x = mole fraction of components[1].
+// Phases are referenced by id everywhere, labels are presentation only.
+
+export const BINARY_DIAGRAM_FORMAT = `binary-phase-diagram/2`
+
+// A composition set: a miscibility gap gives two ids (FCC_A1#1, FCC_A1#2) for one model phase
+export interface BinaryPhase {
   id: string
-  name: string // e.g., "Liquid", "α + β", "α"
-  vertices: Vec2[] // [composition, temperature] pairs defining the polygon
-  color?: string
-  // Optional text label position override (defaults to centroid)
-  label_position?: Vec2
+  model_phase: string
+  label: string
+  kind: `liquid` | `solid` | `gas`
 }
 
-// Boundary curve types
-export type BoundaryType =
+// Closed counterclockwise polygon of [x, T] vertices (closing vertex not repeated). A
+// two-phase region lists its phases left to right (the tie line's low-x end first).
+export interface DiagramRegion {
+  phases: string[]
+  vertices: Vec2[]
+}
+
+export type BoundaryKind =
   | `liquidus`
   | `solidus`
   | `solvus`
+  | `transus`
+  | `invariant`
+  | `miscibility_gap`
+
+// One edge of a two-phase region (phases in composition order, `side` the phase whose
+// composition the edge traces, e.g. LIQUID for a liquidus), or an invariant line (3 phases)
+export interface DiagramBoundary {
+  kind: BoundaryKind
+  phases: string[]
+  side?: string | null
+  points: Vec2[] // polyline of [x, T]
+}
+
+export type InvariantKind =
   | `eutectic`
+  | `eutectoid`
+  | `monotectic`
+  | `metatectic`
   | `peritectic`
-  | `tie-line`
-  | `custom`
+  | `peritectoid`
+  | `syntectic`
 
-// Boundary curve between phases
-export interface PhaseBoundary {
-  id: string
-  type: BoundaryType
-  points: Vec2[] // [composition, temperature] pairs defining the curve
-  style?: LineStyle
-  label?: string
+// Three-phase reaction on cooling; phases and compositions in order of increasing x
+export interface InvariantReaction {
+  kind: InvariantKind
+  temperature: number
+  phases: string[]
+  compositions: number[]
+  reaction: string // phase ids, e.g. `LIQUID -> FCC_A1#1 + FCC_A1#2`
 }
 
-// Special point types (invariant reactions)
-type SpecialPointType =
-  | `eutectic` // liquid → two solids (lowest melting point)
-  | `peritectic` // liquid + solid → different solid
-  | `eutectoid` // solid → two different solids
-  | `peritectoid` // two solids → different solid
-  | `congruent` // phase change without composition change
-  | `melting_point` // pure element melting point at diagram edge
-  | `custom`
-
-// Special points (eutectic, peritectic, etc.)
-export interface SpecialPoint {
-  id: string
-  type: SpecialPointType
-  position: Vec2 // [composition, temperature]
-  label?: string
+export interface CongruentPoint {
+  temperature: number
+  composition: number
+  phases: string[]
 }
 
-// Metadata for pseudo-binary phase diagrams (vertical sections through ternary/higher systems)
-export interface PseudoBinaryMetadata {
-  // The full system being sectioned (e.g., ["Fe", "C", "Mn"] for Fe-Fe3C section)
-  parent_system?: string[]
-  // Description of the section (e.g., "Fe corner to Fe3C")
-  section_description?: string
-  // Whether to render chemical formulas with subscripts (default: true)
-  use_subscripts?: boolean
+// Where a miscibility gap closes; `phase` is the id of one of the merging composition sets
+export interface CriticalPoint {
+  temperature: number
+  composition: number
+  phase: string
 }
 
-// Complete diagram data structure
-export interface PhaseDiagramData {
-  // Components can be elements or compounds (e.g., ["Fe", "Fe3C"] for pseudo-binary)
+// Phase transition of a pure component at x = 0 (components[0]) or x = 1 (components[1])
+export interface UnaryTransition {
+  component: string
+  temperature: number
+  above: string
+  below: string
+}
+
+export interface DiagramProvenance {
+  kind: `assessment` | `model` | `sketch`
+  source?: string
+  assessment?: string // the assessment publication behind the database
+  license?: string
+  // `not_cleared` diagrams must not be published
+  redistribution?: `permitted_with_attribution` | `not_cleared`
+  source_url?: string
+  source_sha256?: string
+  binary_tdb_sha256?: string
+  emitter_build?: string
+  model?: string
+  head?: string
+  checkpoint_sha256?: string
+}
+
+export interface BinaryPhaseDiagram {
+  format: typeof BINARY_DIAGRAM_FORMAT
   components: [string, string]
-  temperature_range: Vec2 // [min, max] in Kelvin or Celsius
-  temperature_unit?: TempUnit
-  composition_unit?: CompUnit
-  regions: PhaseRegion[]
-  boundaries: PhaseBoundary[]
-  special_points?: SpecialPoint[]
-  title?: string
-  // Pseudo-binary metadata - presence indicates this is a section through a higher-order system
-  pseudo_binary?: PseudoBinaryMetadata
-  // Custom axis labels (useful for pseudo-binary context or non-standard units)
-  x_axis_label?: string
-  y_axis_label?: string
+  pressure_pa: number
+  temperature_range: Vec2 // K, the computed window
+  phases: BinaryPhase[]
+  regions?: DiagramRegion[] // absent until the emitter derives them: boundaries and points still render
+  boundaries: DiagramBoundary[]
+  invariants: InvariantReaction[]
+  congruent_points: CongruentPoint[]
+  critical_points: CriticalPoint[]
+  unary_transitions: UnaryTransition[]
+  provenance: DiagramProvenance
 }
 
-// Tie-line display configuration
+// === Experimental observations ===
+// Rows of a phase-equilibria table. Phase names are free text (not diagram phase ids). A row
+// without phases whose `system` is one pure component (a melting point) sits on that edge.
+
+export type ObservationStatus = `ok` | `needs_value` | `needs_verification`
+
+export interface ObservedPhase {
+  name: string
+  x: number | null
+  sigma_x?: number | null
+}
+
+export interface ObservationSource {
+  kind?: string
+  citation: string
+  doi?: string
+  url?: string
+  license?: string
+}
+
+export interface PhaseObservation {
+  id: string
+  kind: string
+  T_K: number | null
+  sigma_T_K: number | null
+  status: ObservationStatus
+  phases?: ObservedPhase[]
+  source: ObservationSource
+  system?: string
+  reaction?: string | null
+}
+
+// === Rendering ===
+
+// Marked point of a diagram (invariant, congruent, critical or pure-component transition)
+export interface DiagramPoint {
+  category: `invariant` | `congruent` | `critical` | `unary`
+  kind: string // invariant kind, `congruent`, `critical`, or `melting`/`transition`
+  composition: number
+  temperature: number
+  marker_label: string // short label next to the marker (E, P, Tm(Ag)), may be empty
+  description: string // human-readable reaction with phase labels
+}
+
+// Lever rule along the isothermal tie line of a two-phase region (phase ids)
+export interface LeverRuleResult {
+  left_phase: string
+  right_phase: string
+  left_composition: number
+  right_composition: number
+  fraction_left: number
+  fraction_right: number
+}
+
+// Phase set of one diagram at the cursor
+export interface DiagramHit {
+  region: DiagramRegion | null
+  lever_rule: LeverRuleResult | null
+}
+
+// Observation marker: one observed phase composition of a row at its temperature
+export interface ObservationMarker {
+  row: PhaseObservation
+  phase: ObservedPhase | null // null for a pure-component row on the composition edge
+  composition: number
+  temperature: number
+}
+
+// Hover state in data units (x mole fraction, T in K)
+export interface PhaseHoverInfo extends DiagramHit {
+  composition: number
+  temperature: number
+  position: Point2D // client coordinates
+  overlay: DiagramHit | null // null without an overlay diagram
+  point: DiagramPoint | null
+  observation: ObservationMarker | null
+}
+
+// Shared cursor of synchronized diagrams, in data units
+export interface DiagramCursor {
+  composition: number
+  temperature: number
+}
+
 interface TieLineConfig {
   stroke_width?: number
   endpoint_radius?: number
   cursor_radius?: number
 }
 
-// Configuration for phase diagram display
 export interface PhaseDiagramConfig {
   margin?: Sides
   font_size?: number
@@ -99,29 +214,9 @@ export interface PhaseDiagramConfig {
     grid?: string
     axis?: string
     text?: string
-    boundary?: string
     special_point?: string
+    overlay?: string
   }
-}
-
-// Lever rule calculation result for two-phase regions
-export interface LeverRuleResult {
-  left_phase: string // Name of phase on left side (lower composition)
-  right_phase: string // Name of phase on right side (higher composition)
-  left_composition: number // Composition at left phase boundary
-  right_composition: number // Composition at right phase boundary
-  fraction_left: number // Fraction of left phase (0-1)
-  fraction_right: number // Fraction of right phase (0-1)
-}
-
-// Hover information returned when mouse is over a phase region
-export interface PhaseHoverInfo {
-  region: PhaseRegion
-  composition: number
-  temperature: number
-  position: Point2D // screen coordinates
-  lever_rule?: LeverRuleResult // Only populated for two-phase regions
-  special_point?: SpecialPoint // Populated when hovering near a special point
 }
 
 export type PhaseDiagramTooltipProp = TooltipProp<

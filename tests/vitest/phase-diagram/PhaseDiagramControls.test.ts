@@ -1,19 +1,12 @@
-import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
+import type { BinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
 import PhaseDiagramControls from '#lib/phase-diagram/PhaseDiagramControls.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { bind_props, query, reset_section, set_input } from '../setup'
+import { bind_props, query, reset_section, set_input, set_select } from '../setup'
 import { PHASE_DIAGRAM_DEFAULTS } from '#lib/phase-diagram/utils.js'
+import { eutectic } from './fixtures/test-data'
 
-const sample_data: PhaseDiagramData = {
-  components: [`Cu`, `Ni`],
-  temperature_range: [300, 1800],
-  temperature_unit: `K`,
-  composition_unit: `at%`,
-  regions: [],
-  boundaries: [],
-  special_points: [{ id: `test-point`, type: `eutectic`, position: [0.5, 1350], label: `E` }],
-}
+const sample_data: BinaryPhaseDiagram = { ...eutectic, components: [`Cu`, `Ni`] }
 
 const mount_controls = (props: ComponentProps<typeof PhaseDiagramControls> = {}) => {
   const target = document.createElement(`div`)
@@ -47,8 +40,8 @@ describe(`PhaseDiagramControls`, () => {
   })
 
   test.each([
-    { data: sample_data, expected: true, desc: `with special_points` },
-    { data: { ...sample_data, special_points: [] }, expected: false, desc: `without` },
+    { data: sample_data, expected: true, desc: `with an invariant` },
+    { data: { ...sample_data, invariants: [] }, expected: false, desc: `without` },
   ])(`Special pts toggle shown=$expected $desc`, ({ data, expected }) => {
     const target = mount_controls({ data })
     expect(target.innerHTML).toContain(`Cu-Ni`)
@@ -65,7 +58,7 @@ describe(`PhaseDiagramControls`, () => {
       config: {
         font_size: 16,
         special_point_radius: 8,
-        colors: { boundary: `#ff00ff` },
+        colors: { overlay: `#ff00ff` },
         tie_line: { stroke_width: 4 },
       },
     })
@@ -75,12 +68,12 @@ describe(`PhaseDiagramControls`, () => {
       )?.value
     expect(number_value(8, 20)).toBe(`16`) // font size
     expect(number_value(2, 12)).toBe(`8`) // special point radius
-    const boundary_hex = query<HTMLInputElement>(target, `input[aria-label="Boundaries hex"]`)
-    expect(boundary_hex.value).toBe(`#ff00ff`)
-    boundary_hex.value = `#abc`
-    boundary_hex.dispatchEvent(new Event(`change`, { bubbles: true }))
+    const overlay_hex = query<HTMLInputElement>(target, `input[aria-label="Overlay hex"]`)
+    expect(overlay_hex.value).toBe(`#ff00ff`)
+    overlay_hex.value = `#abc`
+    overlay_hex.dispatchEvent(new Event(`change`, { bubbles: true }))
     await tick()
-    expect(query<HTMLInputElement>(target, `input[aria-label="Boundaries"]`).value).toBe(
+    expect(query<HTMLInputElement>(target, `input[aria-label="Overlay"]`).value).toBe(
       `#aabbcc`,
     )
     query<HTMLButtonElement>(
@@ -95,7 +88,45 @@ describe(`PhaseDiagramControls`, () => {
     ).toBeNull()
     for (const section of [`visibility`, `colors`, `tie-line display`, `axes`])
       await reset_section(section, target)
-    expect(boundary_hex.value).toBe(`#333333`) // default #333 is normalized for editing
+    expect(overlay_hex.value).toBe(PHASE_DIAGRAM_DEFAULTS.colors.overlay)
+  })
+
+  // unit selects write the bound display units; the units reset restores K and at.%
+  test(`unit selects drive temp_unit/comp_unit, the units reset restores defaults`, () => {
+    const mount_units = (state: Record<string, string>) => {
+      const target = document.createElement(`div`)
+      mount(PhaseDiagramControls, {
+        target,
+        props: bind_props({ controls_open: true }, state),
+      })
+      return target
+    }
+    const picked = { temp_unit: `K`, comp_unit: `at%` }
+    const target = mount_units(picked)
+    expect(target.querySelector(`button[aria-label="Reset units to defaults"]`)).toBeNull()
+    set_select(query<HTMLSelectElement>(target, `[data-testid="temp-unit"]`), `°C`)
+    set_select(query<HTMLSelectElement>(target, `[data-testid="comp-unit"]`), `fraction`)
+    expect(picked).toEqual({ temp_unit: `°C`, comp_unit: `fraction` })
+
+    const changed = { temp_unit: `°C`, comp_unit: `fraction` }
+    query<HTMLButtonElement>(
+      mount_units(changed),
+      `button[aria-label="Reset units to defaults"]`,
+    ).click()
+    expect(changed).toEqual({ temp_unit: `K`, comp_unit: `at%` })
+  })
+
+  test.each([
+    [{}, []],
+    [{ has_overlay: true, has_observations: true }, [`Overlay`, `Observations`]],
+  ])(`layer toggles for %o: %o`, (props, expected) => {
+    const grid = query(mount_controls(props), `.visibility-grid`)
+    const labels = [...grid.querySelectorAll(`label`)].map((label) =>
+      label.textContent?.trim(),
+    )
+    expect(
+      labels.filter((label) => [`Overlay`, `Observations`].includes(label ?? ``)),
+    ).toEqual(expected)
   })
 
   test.each([

@@ -4,7 +4,7 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { json_source, svg_sources, type ExportProps } from '#lib/io/export.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { PhaseDiagramData } from './types'
+  import type { BinaryPhaseDiagram } from './types'
 
   let {
     export_pane_open = $bindable(false),
@@ -20,7 +20,7 @@
   }: HTMLAttributes<HTMLDivElement> &
     Omit<ExportProps, `export_filename`> & {
       export_pane_open?: boolean
-      data?: PhaseDiagramData
+      data?: BinaryPhaseDiagram
       wrapper?: HTMLDivElement
       filename?: string
       png_dpi?: number

@@ -7,53 +7,78 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { format_num } from '#lib/labels.js'
+  import { format_num, humanize } from '#lib/labels.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
-  import { sanitize_svg } from '#lib/sanitize.js'
+  import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
   import {
     array_extent,
     compute_bounding_box_2d,
     polygon_centroid,
     polygon_label_point,
+    type Vec2,
   } from '#lib/math.js'
   import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
+  import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
+  import type { LegendItem } from '#lib/plot/core/types.js'
+  import { error_bar_path } from '#lib/plot/core/error-bars.js'
   import { unique_id } from '#lib/plot/core/utils.js'
-  import { to_error } from 'svelte-widgets/utils'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import { scaleLinear } from 'd3-scale'
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { SvelteSet } from 'svelte/reactivity'
   import type { ExportProps } from '#lib/io/export.js'
-  import { build_diagram, find_duplicate_id } from './build-diagram'
-  import type { DiagramInput } from './diagram-input'
+  import {
+    BOUNDARY_STYLES,
+    diagram_errors,
+    diagram_name,
+    diagram_points,
+    diagram_regions,
+    OBSERVATION_STATUS_COLORS,
+    observation_markers,
+    OVERLAY_DASH,
+    phase_colors,
+    phase_labeler,
+    region_fill_color,
+    region_label,
+    temperature_extent,
+  } from './diagram'
   import PhaseDiagramControls from './PhaseDiagramControls.svelte'
   import PhaseDiagramEditorPane from './PhaseDiagramEditorPane.svelte'
   import PhaseDiagramExportPane from './PhaseDiagramExportPane.svelte'
   import PhaseDiagramTooltip from './PhaseDiagramTooltip.svelte'
   import { parse_phase_diagram_svg } from './svg-to-diagram'
-  import type {
-    PhaseDiagramConfig,
-    PhaseDiagramData,
-    PhaseDiagramTooltipProp,
-    PhaseHoverInfo,
-    PhaseRegion,
-    TempUnit,
+  import {
+    BINARY_DIAGRAM_FORMAT,
+    type BinaryPhaseDiagram,
+    type CompUnit,
+    type DiagramCursor,
+    type DiagramHit,
+    type DiagramRegion,
+    type ObservationMarker,
+    type ObservationStatus,
+    type PhaseDiagramConfig,
+    type PhaseDiagramTooltipProp,
+    type PhaseHoverInfo,
+    type PhaseObservation,
+    type TempUnit,
   } from './types'
-  import { format_formula_svg, format_label_svg } from '#lib/composition/format.js'
+  import {
+    format_formula_svg,
+    format_label_html,
+    format_label_svg,
+  } from '#lib/composition/format.js'
   import {
     calculate_lever_rule,
     compute_label_properties,
-    compute_x_domain,
     convert_temp,
-    find_phase_at_point,
+    find_region_at,
     format_composition,
     format_hover_info_text,
     generate_boundary_path,
     generate_region_path,
-    get_multi_phase_gradient,
-    get_phase_color,
     merge_phase_diagram_config,
     PHASE_DIAGRAM_DEFAULTS,
     TIE_LINE_COLOR,
@@ -62,6 +87,11 @@
 
   let {
     data: data_prop,
+    overlay = null,
+    observations = [],
+    cursor = $bindable(null),
+    temp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.temp_unit),
+    comp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.comp_unit),
     config = $bindable({}),
     on_phase_hover,
     fullscreen = $bindable(false),
@@ -72,16 +102,16 @@
     show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
     show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
+    show_overlay = $bindable(PHASE_DIAGRAM_DEFAULTS.show_overlay),
+    show_observations = $bindable(PHASE_DIAGRAM_DEFAULTS.show_observations),
     fullscreen_toggle = true,
     show_controls,
-    display_temp_unit = $bindable(),
     controls_open = $bindable(false),
     export_pane_open = $bindable(false),
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     export_filename = `phase-diagram`,
     export_formats,
     on_export,
-    diagram_input = $bindable<DiagramInput | null>(null),
     editor_open = $bindable(false),
     allow_file_drop = true,
     on_file_drop,
@@ -93,33 +123,41 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
     ExportProps & {
-      data?: PhaseDiagramData
+      data?: BinaryPhaseDiagram
+      // Second diagram of the same components, drawn as dashed boundaries only
+      overlay?: BinaryPhaseDiagram | null
+      // Experimental points with T and x error bars, colored by status
+      observations?: readonly PhaseObservation[]
+      // Hovered (x, T) in data units; bind one $state to several diagrams to sync their hover
+      cursor?: DiagramCursor | null
+      // Display units only: data stays in K and mole fraction
+      temp_unit?: TempUnit
+      comp_unit?: CompUnit
       config?: Partial<PhaseDiagramConfig>
       on_phase_hover?: (info: PhaseHoverInfo | null) => void
       fullscreen?: boolean
       wrapper?: HTMLDivElement
-      hovered_region?: PhaseRegion | null
+      hovered_region?: DiagramRegion | null
       show_boundaries?: boolean
       show_labels?: boolean
       show_special_points?: boolean
       show_grid?: boolean
       show_component_labels?: boolean
+      show_overlay?: boolean
+      show_observations?: boolean
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
-      // Temperature display unit (can differ from data.temperature_unit)
-      display_temp_unit?: TempUnit
       controls_open?: boolean
       export_pane_open?: boolean
       png_dpi?: number
-      // Diagram input editor (for SVG drop editing)
-      diagram_input?: DiagramInput | null
       editor_open?: boolean
-      // Dropped phase-diagram SVGs replace the diagram (through diagram_input)
+      // Dropped phase-diagram SVGs (parsed) and v2 JSON files replace the diagram
       allow_file_drop?: boolean
-      // Takes each dropped file raw instead of the built-in SVG parsing
+      // Takes each dropped file raw instead of the built-in parsing
       on_file_drop?: FileLoadCallback
-      // Called with each dropped SVG's diagram input once it is shown
-      on_file_load?: (data: FileLoadData & { diagram_input: DiagramInput }) => void
+      // Called with each dropped file's diagram once it is shown
+      on_file_load?: (data: FileLoadData & { diagram: BinaryPhaseDiagram }) => void
+      // range in data units: mole fraction (x) and K (y)
       x_axis?: AxisConfig
       y_axis?: AxisConfig
       // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
@@ -127,60 +165,64 @@
       children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
     } = $props()
 
-  // Keep calculations safe while the template renders the missing-data state.
-  const missing_data_placeholder: PhaseDiagramData = {
+  // Keep calculations safe while the template renders the missing-data state
+  const placeholder: BinaryPhaseDiagram = {
+    format: BINARY_DIAGRAM_FORMAT,
     components: [``, ``],
+    pressure_pa: 101325,
     temperature_range: [0, 1],
+    phases: [],
     regions: [],
     boundaries: [],
+    invariants: [],
+    congruent_points: [],
+    critical_points: [],
+    unary_transitions: [],
+    provenance: { kind: `sketch` },
   }
 
   // `always` by default: the editor and export toggles are how users discover those features
   const controls_config = $derived(normalize_show_controls(show_controls))
-  // Instance-unique prefix for gradient ids: region ids come from user data (e.g.
-  // 'liquid'), so two diagrams on one page would otherwise cross-reference each
-  // other's gradients (first-in-document wins, with that instance's pixel coords)
+  // Instance-unique prefix for gradient ids, so two diagrams on one page never
+  // cross-reference each other's gradients (first-in-document wins, with that instance's
+  // pixel coords)
   const gradient_uid = unique_id(`pd-gradient`)
   const plot_clip = `url(#${gradient_uid}-plot-area)`
 
-  // A diagram_input that fails to build is surfaced as an error banner rather than silently
-  // falling back to the data prop.
-  const rebuilt = $derived.by((): { data: PhaseDiagramData | null; error: string | null } => {
-    if (!diagram_input) return { data: null, error: null }
-    try {
-      return { data: build_diagram(diagram_input), error: null }
-    } catch (error) {
-      return { data: null, error: `Invalid phase diagram input: ${to_error(error).message}` }
-    }
-  })
-  // The data prop gets build_diagram's id check unless a built diagram_input replaces it
-  const duplicate_id = $derived(
-    rebuilt.data || !data_prop ? null : find_duplicate_id(data_prop),
-  )
+  // Editor edits and dropped files override the data prop until it changes
+  let source_data = $derived(data_prop)
   let drop_error = $state<string | null>(null)
+  const data_errors = $derived(source_data ? diagram_errors(source_data) : [])
+  const valid_data = $derived(data_errors.length ? undefined : source_data)
+  const data = $derived(valid_data ?? placeholder)
+  const overlay_errors = $derived.by(() => {
+    if (!overlay) return []
+    const errors = diagram_errors(overlay)
+    const [own, other] = [overlay.components?.join(`-`), data.components.join(`-`)]
+    if (valid_data && own !== other) errors.push(`components ${own} differ from ${other}`)
+    return errors
+  })
+  const valid_overlay = $derived(overlay && !overlay_errors.length ? overlay : null)
+  const shown_overlay = $derived(show_overlay ? valid_overlay : null)
   const input_error = $derived(
     drop_error ??
-      rebuilt.error ??
-      (duplicate_id && `Invalid phase diagram data: ${duplicate_id}`),
+      (data_errors.length ? `Invalid phase diagram data: ${data_errors.join(`; `)}` : null) ??
+      (overlay_errors.length ? `Invalid overlay diagram: ${overlay_errors.join(`; `)}` : null),
   )
 
-  // Direct editor edits can override this value until either source changes.
-  let source_data = $derived(rebuilt.data ?? (duplicate_id ? undefined : data_prop))
-  const effective_data = $derived(source_data ?? missing_data_placeholder)
-
-  // Handle SVG file drop directly on the component. The shared handler reads the file,
-  // expands dropped folders and serializes overlapping drops; only the SVG filter and the
-  // parse are specific to this diagram.
   const drop_zone = file_drop_zone({
     allow: () => allow_file_drop,
     on_drop: (content, filename, metadata) => {
       if (on_file_drop) return on_file_drop(content, filename, metadata)
-      if (!filename.endsWith(`.svg`) && metadata.file?.type !== `image/svg+xml`) return
       if (typeof content !== `string`) return
-      const parsed = parse_phase_diagram_svg(content)
+      const is_svg = filename.endsWith(`.svg`) || metadata.file?.type === `image/svg+xml`
+      if (!is_svg && !filename.endsWith(`.json`)) return
+      const diagram: BinaryPhaseDiagram = is_svg
+        ? parse_phase_diagram_svg(content)
+        : JSON.parse(content)
       drop_error = null
-      diagram_input = parsed
-      on_file_load?.({ diagram_input: parsed, filename, ...metadata })
+      source_data = diagram
+      on_file_load?.({ diagram, filename, ...metadata })
     },
     // covers reading, decompressing and the parse above, since on_drop is awaited inside
     // the handler's per-file try — hence the generic wording
@@ -188,13 +230,12 @@
   })
 
   const merged_config = $derived(merge_phase_diagram_config(config))
+  const overlay_color = $derived(merged_config.colors.overlay)
 
   // Dimensions - use container size directly, no fallback to avoid layout shift
   let width = $state(0)
   let height = $state(0)
-
   const margin = $derived(merged_config.margin)
-
   const left = $derived(margin.l)
   const right = $derived(width - margin.r)
   const top = $derived(margin.t)
@@ -202,33 +243,22 @@
   const plot_width = $derived(right - left)
   const plot_height = $derived(bottom - top)
 
-  const x_domain = $derived(compute_x_domain(x_axis.range, effective_data))
-
+  // Axis windows in data units: each set range end overrides the default, [0, 1] in x and the
+  // union of both diagrams' computed temperature windows in T
+  const x_domain = $derived<Vec2>([x_axis.range?.[0] ?? 0, x_axis.range?.[1] ?? 1])
+  const t_extent = $derived(temperature_extent(valid_overlay ? [data, valid_overlay] : [data]))
+  const t_domain = $derived<Vec2>([
+    y_axis.range?.[0] ?? t_extent[0],
+    y_axis.range?.[1] ?? t_extent[1],
+  ])
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
-
-  const data_temp_unit = $derived<TempUnit>(effective_data.temperature_unit ?? `K`)
-  const temp_unit = $derived<TempUnit>(display_temp_unit ?? data_temp_unit)
-  const temp_range = $derived(effective_data.temperature_range)
-
-  // Visible temperature window in display units: each set y_axis.range end overrides the
-  // data's temperature_range
-  const y_domain_display = $derived(
-    temp_range.map(
-      (temp, idx) => y_axis.range?.[idx] ?? convert_temp(temp, data_temp_unit, temp_unit),
-    ),
-  )
-
-  // y_scale maps data temperatures to SVG coordinates
-  // We keep this in data units so region vertices render correctly
-  const y_scale = $derived(
+  const y_scale = $derived(scaleLinear().domain(t_domain).range([bottom, top]))
+  // Display-unit twin of y_scale for the axis ticks
+  const y_scale_display = $derived(
     scaleLinear()
-      .domain(y_domain_display.map((temp) => convert_temp(temp, temp_unit, data_temp_unit)))
+      .domain(t_domain.map((kelvin) => convert_temp(kelvin, `K`, temp_unit)))
       .range([bottom, top]),
   )
-
-  // y_scale_display maps display temperatures (after unit conversion) to SVG
-  // Used for axis labels and ticks
-  const y_scale_display = $derived(scaleLinear().domain(y_domain_display).range([bottom, top]))
 
   const tick_count = (axis: AxisConfig, fallback: number): number =>
     typeof axis.ticks === `number` ? axis.ticks : fallback
@@ -237,67 +267,162 @@
     y_scale_display.ticks(tick_count(y_axis, PHASE_DIAGRAM_DEFAULTS.y_ticks)),
   )
 
+  const regions = $derived(diagram_regions(data))
+  const label_of = $derived(phase_labeler(data))
+  const overlay_label_of = $derived(valid_overlay ? phase_labeler(valid_overlay) : label_of)
+  const colors = $derived(phase_colors(data.phases))
+  const color_of = (id: string): string => colors.get(id) ?? `#b4b4b4`
+
   const transformed_regions = $derived(
-    effective_data.regions.map((region) => {
+    regions.map((region) => {
       const svg_vertices = transform_vertices(region.vertices, x_scale, y_scale)
+      const label = region_label(region, label_of)
       // Not the area centroid, which lies outside concave (L-shaped) fields; the room at the
       // label point, not the bounding box, then sizes the label
       const anchor = polygon_label_point(svg_vertices)
       const label_props = compute_label_properties(
-        region.name,
+        label,
         anchor ?? compute_bounding_box_2d(svg_vertices),
         merged_config.font_size,
       )
       const [x_min, x_max] = array_extent(svg_vertices.map(([svg_x]) => svg_x))
+      const { phases } = region
       return {
-        ...region,
+        region,
         svg_path: generate_region_path(svg_vertices),
-        label_pos: region.label_position
-          ? [x_scale(region.label_position[0]), y_scale(region.label_position[1])]
-          : (anchor?.at ?? polygon_centroid(svg_vertices)),
-        label_rotation: label_props.rotation,
-        label_lines: label_props.lines,
-        label_scale: label_props.scale,
-        gradient: get_multi_phase_gradient(region.name),
+        label_pos: anchor?.at ?? polygon_centroid(svg_vertices),
+        label_props,
+        // multi-phase regions blend their phases' colors left to right
+        gradient:
+          phases.length > 1
+            ? phases.map((id, idx) => ({
+                offset: idx / (phases.length - 1),
+                color: color_of(id),
+              }))
+            : null,
+        fill: phases.length === 1 ? region_fill_color(color_of(phases[0])) : `#c8c8c880`,
         x_min,
         x_max,
       }
     }),
   )
 
-  const transformed_boundaries = $derived(
-    effective_data.boundaries.map((boundary) => ({
-      ...boundary,
-      svg_path: generate_boundary_path(transform_vertices(boundary.points, x_scale, y_scale)),
-    })),
-  )
+  const boundary_path = (points: Vec2[]) =>
+    generate_boundary_path(transform_vertices(points, x_scale, y_scale))
+
+  const in_plot = (svg_x: number, svg_y: number) =>
+    svg_x >= left - 0.5 && svg_x <= right + 0.5 && svg_y >= top - 0.5 && svg_y <= bottom + 0.5
 
   // Points outside a zoomed x/y window would sit on the axes or margins
-  const transformed_special_points = $derived(
-    (effective_data.special_points ?? [])
+  const transformed_points = $derived(
+    diagram_points(data)
       .map((point) => ({
         ...point,
-        svg_x: x_scale(point.position[0]),
-        svg_y: y_scale(point.position[1]),
+        svg_x: x_scale(point.composition),
+        svg_y: y_scale(point.temperature),
       }))
-      .filter(
-        ({ svg_x, svg_y }) =>
-          svg_x >= left - 0.5 &&
-          svg_x <= right + 0.5 &&
-          svg_y >= top - 0.5 &&
-          svg_y <= bottom + 0.5,
-      ),
+      .filter(({ svg_x, svg_y }) => in_plot(svg_x, svg_y)),
   )
 
-  let hover_info = $state.raw<PhaseHoverInfo | null>(null)
-  // A click pins the hovered snapshot; its region names the mark, so a click in it unpins
-  const pin = new TooltipPin<PhaseHoverInfo, Pick<PhaseHoverInfo, `region`>>({
-    key: ({ region }) => region.id,
+  // Observation statuses the legend toggled off
+  const hidden_statuses = new SvelteSet<ObservationStatus>()
+  const all_markers = $derived(observation_markers(observations, data.components))
+  const marker_statuses = $derived([...new Set(all_markers.map(({ row }) => row.status))])
+  const shown_markers = $derived(
+    show_observations
+      ? all_markers
+          .filter(({ row }) => !hidden_statuses.has(row.status))
+          .map((marker) => ({
+            marker,
+            svg_x: x_scale(marker.composition),
+            svg_y: y_scale(marker.temperature),
+            color: OBSERVATION_STATUS_COLORS[marker.row.status] ?? `#757575`,
+          }))
+      : [],
+  )
+  // An invariant's phases share one isotherm: join them with a thin line
+  const observation_isotherms = $derived(
+    [...Map.groupBy(shown_markers, ({ marker }) => marker.row.id)].flatMap(([id, group]) => {
+      if (group.length < 2) return []
+      const [x_min, x_max] = array_extent(group.map(({ svg_x }) => svg_x))
+      const { svg_y, color } = group[0]
+      return [{ id, x_min, x_max, svg_y, color }]
+    }),
+  )
+  const error_bar_cap = 3
+
+  const legend_items = $derived.by((): LegendItem[] => {
+    if (!valid_overlay && all_markers.length === 0) return []
+    const items: LegendItem[] = [
+      {
+        label: diagram_name(data),
+        visible: show_boundaries,
+        series_idx: 0,
+        display_style: { line_color: BOUNDARY_STYLES.liquidus.color },
+      },
+    ]
+    if (valid_overlay) {
+      items.push({
+        label: diagram_name(valid_overlay),
+        visible: show_overlay,
+        series_idx: 1,
+        display_style: { line_color: overlay_color, line_dash: OVERLAY_DASH },
+      })
+    }
+    marker_statuses.forEach((status, idx) =>
+      items.push({
+        label: `Observed (${humanize(status)})`,
+        visible: show_observations && !hidden_statuses.has(status),
+        series_idx: 2 + idx,
+        display_style: {
+          symbol_type: `Circle`,
+          symbol_color: OBSERVATION_STATUS_COLORS[status] ?? `#757575`,
+        },
+      }),
+    )
+    return items
   })
+  // The legend avoids marked points, observations and (sampled) boundary vertices
+  const legend_obstacles = $derived(
+    legend_items.length
+      ? [
+          ...transformed_points.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
+          ...shown_markers.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
+          ...[...data.boundaries, ...(shown_overlay?.boundaries ?? [])].flatMap(({ points }) =>
+            points
+              .filter((_, idx) => idx % 4 === 0)
+              .map(([comp, temp]) => ({ x: x_scale(comp), y: y_scale(temp) })),
+          ),
+        ]
+      : [],
+  )
+  function toggle_legend_item(series_idx: number) {
+    if (series_idx === 0) show_boundaries = !show_boundaries
+    else if (series_idx === 1) show_overlay = !show_overlay
+    else {
+      const status = marker_statuses[series_idx - 2]
+      show_observations = true
+      if (hidden_statuses.has(status)) hidden_statuses.delete(status)
+      else hidden_statuses.add(status)
+    }
+  }
+
+  let hover_info = $state.raw<PhaseHoverInfo | null>(null)
+  // Whether this diagram's own pointer drives `cursor` (else a synced diagram does)
+  let pointer_inside = $state(false)
+  // A click pins the hovered snapshot; its observation or region names the mark
+  type HoverMark = Pick<PhaseHoverInfo, `region` | `observation`>
+  const pin = new TooltipPin<PhaseHoverInfo, HoverMark>({
+    key: ({ region, observation }) => observation ?? region,
+  })
+  const lit_region = (region: DiagramRegion) =>
+    pin.lit({ region, observation: null }, hover_info) || region === remote_region
 
   function clear_hover() {
     hover_info = null
     hovered_region = null
+    if (pointer_inside) cursor = null
+    pointer_inside = false
     on_phase_hover?.(null)
   }
 
@@ -314,12 +439,12 @@
   const handle_click = () => pin.toggle(hover_info)
 
   const effective_hover_info = $derived(pin.shown(hover_info))
-  // The tooltip wears the hovered region's hue (PlotTooltip flattens a translucent one, so
-  // labels never show through); gradient regions keep the neutral card
+  // The tooltip wears the hovered single-phase region's hue; multi-phase regions and
+  // observations keep the neutral card
   const tooltip_region_color = $derived.by(() => {
-    const region = effective_hover_info?.region
-    if (!region || get_multi_phase_gradient(region.name)) return undefined
-    return region.color || get_phase_color(region.name, `hex`)
+    const info = effective_hover_info
+    if (!info || info.observation || info.region?.phases.length !== 1) return undefined
+    return color_of(info.region.phases[0])
   })
 
   // Isothermal tie-line geometry (SVG px); null outside two-phase regions.
@@ -332,7 +457,7 @@
     const endpoint = (phase: string, composition: number) => ({
       cx: x_scale(composition),
       cy,
-      color: get_phase_color(phase, `hex`),
+      color: color_of(phase),
     })
     return {
       cursor: { cx: x_scale(info.composition), cy },
@@ -342,6 +467,17 @@
       ] as const,
     }
   })
+
+  // A synced diagram's cursor: crosshair and this diagram's phase set at the same (x, T)
+  const remote_cursor = $derived.by(() => {
+    if (pointer_inside || !cursor) return null
+    const svg_x = x_scale(cursor.composition)
+    const svg_y = y_scale(cursor.temperature)
+    if (!in_plot(svg_x, svg_y)) return null
+    const region = find_region_at(regions, cursor.composition, cursor.temperature)
+    return { svg_x, svg_y, region, label: region_label(region, label_of) }
+  })
+  const remote_region = $derived(remote_cursor?.region ?? null)
 
   // Copy feedback position; ClickFeedback's CSS animation fades it out and the template keys
   // on the position object so back-to-back copies each remount and restart the animation
@@ -355,9 +491,10 @@
         format_hover_info_text(info, {
           temp_unit,
           comp_unit,
-          component_a,
-          component_b,
-          data_temp_unit,
+          components: data.components,
+          region_label: (region) => region_label(region, label_of),
+          overlay_region_label: (region) => region_label(region, overlay_label_of),
+          label_of,
         }),
       )
       copy_feedback_pos.show({ x: event.clientX, y: event.clientY })
@@ -366,42 +503,66 @@
     }
   }
 
-  function find_nearby_special_point(svg_x: number, svg_y: number, threshold: number = 20) {
-    let nearest: (typeof transformed_special_points)[0] | null = null
-    let min_dist = threshold
-    for (const point of transformed_special_points) {
-      const dist = Math.hypot(point.svg_x - svg_x, point.svg_y - svg_y)
-      if (dist < min_dist) {
-        min_dist = dist
-        nearest = point
-      }
+  // Item of `items` nearest to (svg_x, svg_y) within `threshold` px, else null
+  function nearest<T extends { svg_x: number; svg_y: number }>(
+    items: readonly T[],
+    svg_x: number,
+    svg_y: number,
+    threshold: number,
+  ): T | null {
+    let [best, min_dist] = [null as T | null, threshold]
+    for (const item of items) {
+      const dist = Math.hypot(item.svg_x - svg_x, item.svg_y - svg_y)
+      if (dist < min_dist) [best, min_dist] = [item, dist]
     }
-    return nearest
+    return best
+  }
+
+  const diagram_hit = (
+    diagram: BinaryPhaseDiagram,
+    composition: number,
+    temperature: number,
+  ): DiagramHit => {
+    const region = find_region_at(diagram_regions(diagram), composition, temperature)
+    const lever_rule = region && calculate_lever_rule(region, composition, temperature)
+    return { region, lever_rule }
   }
 
   function handle_pointer_move(event: PointerEvent & { currentTarget: SVGElement }) {
     const rect = event.currentTarget.getBoundingClientRect()
     const svg_x = event.clientX - rect.left
     const svg_y = event.clientY - rect.top
-    const in_plot = svg_x >= left && svg_x <= right && svg_y >= top && svg_y <= bottom
+    if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) return clear_hover()
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
-    const region = in_plot
-      ? find_phase_at_point(composition, temperature, effective_data)
-      : null
-    if (!region) return clear_hover()
+    pointer_inside = true
+    cursor = { composition, temperature }
 
-    const nearby_special = show_special_points ? find_nearby_special_point(svg_x, svg_y) : null
-    hovered_region = region
+    const hit = diagram_hit(data, composition, temperature)
+    const overlay_hit = shown_overlay
+      ? diagram_hit(shown_overlay, composition, temperature)
+      : null
+    const point = show_special_points ? nearest(transformed_points, svg_x, svg_y, 12) : null
+    const observation: ObservationMarker | null =
+      nearest(shown_markers, svg_x, svg_y, 8)?.marker ?? null
+    // a diagram with regions shows no tooltip in a gap; one without (boundaries only) always
+    // reports the cursor's (x, T)
+    const nothing_hit = !hit.region && !overlay_hit?.region && !point && !observation
+    if (nothing_hit && regions.length > 0) {
+      hover_info = null
+      hovered_region = null
+      on_phase_hover?.(null)
+      return
+    }
+    hovered_region = hit.region
     hover_info = {
-      region,
+      ...hit,
       composition,
       temperature,
       position: { x: event.clientX, y: event.clientY },
-      lever_rule:
-        calculate_lever_rule(region, composition, temperature, effective_data.regions) ||
-        undefined,
-      special_point: nearby_special || undefined,
+      overlay: overlay_hit,
+      point,
+      observation,
     }
     on_phase_hover?.(hover_info)
   }
@@ -427,23 +588,16 @@
     }
   }
 
-  const component_a = $derived(effective_data.components[0])
-  const component_b = $derived(effective_data.components[1])
-  const comp_unit = $derived(effective_data.composition_unit ?? `at%`)
-
-  // Pseudo-binary support: format compound names with subscripts when enabled
-  const use_subscripts = $derived(effective_data.pseudo_binary?.use_subscripts ?? true)
-
+  const [component_a, component_b] = $derived(data.components)
   // Formatted component labels for SVG axis labels (with tspan subscripts if compound)
-  const component_a_svg = $derived(format_formula_svg(component_a, use_subscripts))
-  const component_b_svg = $derived(format_formula_svg(component_b, use_subscripts))
-
-  // Default x-axis label as a single string (avoids mixing plain text with {@html})
+  const component_a_svg = $derived(format_formula_svg(component_a, true))
+  const component_b_svg = $derived(format_formula_svg(component_b, true))
   const default_x_axis_label = $derived(
     comp_unit === `fraction`
       ? `x ${component_b_svg} (mole fraction)`
       : `${component_b_svg} (${comp_unit})`,
   )
+  const marker_radius = $derived(merged_config.special_point_radius)
 </script>
 
 {#snippet grid_lines(ticks: number[], vertical: boolean)}
@@ -467,7 +621,7 @@
   bind:clientWidth={width}
   bind:clientHeight={height}
   role="img"
-  aria-label={source_data === undefined
+  aria-label={valid_data === undefined
     ? `Missing phase diagram data. Provide diagram data through the data prop.`
     : `${component_a}-${component_b} binary phase diagram`}
   {@attach drop_zone}
@@ -475,7 +629,7 @@
   <ViewerNotices>
     {#if input_error}<StatusMessage message={input_error} type="error" />{/if}
   </ViewerNotices>
-  {#if source_data === undefined}
+  {#if valid_data === undefined}
     <EmptyState>
       <h3>Missing phase diagram data</h3>
       <p>Provide diagram data through the <code>data</code> prop.</p>
@@ -497,10 +651,16 @@
           bind:show_special_points
           bind:show_grid
           bind:show_component_labels
+          bind:show_overlay
+          bind:show_observations
+          bind:temp_unit
+          bind:comp_unit
           bind:config
           bind:x_axis
           bind:y_axis
-          data={effective_data}
+          {data}
+          has_overlay={valid_overlay !== null}
+          has_observations={all_markers.length > 0}
           shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
         />
       {/if}
@@ -508,7 +668,7 @@
         <PhaseDiagramExportPane
           bind:export_pane_open
           bind:png_dpi
-          data={effective_data}
+          {data}
           {wrapper}
           filename={export_filename}
           {export_formats}
@@ -518,8 +678,7 @@
       {#if controls_config.visible(`editor`)}
         <PhaseDiagramEditorPane
           bind:editor_open
-          bind:diagram_input
-          data={effective_data}
+          data={valid_data}
           on_data={(edited) => (source_data = edited)}
         />
       {/if}
@@ -543,27 +702,26 @@
       role="application"
       aria-label="Binary phase diagram. Use mouse to explore phases. Click to pin tooltip, double-click to copy data. Press E to export."
     >
-      <!-- Gradient definitions for multi-phase regions (2+ phases) -->
       <defs>
         <!-- zoomed axes (x_axis/y_axis.range) must not paint data over the axes and margins -->
         <clipPath id="{gradient_uid}-plot-area">
           <rect x={left} y={top} width={plot_width} height={plot_height} />
         </clipPath>
-        {#each transformed_regions as region (region.id)}
-          {#if region.gradient}
+        {#each transformed_regions as { gradient, x_min, x_max }, idx (idx)}
+          {#if gradient}
             <linearGradient
-              id="{gradient_uid}-{region.id}"
-              x1={region.x_min}
-              x2={region.x_max}
+              id="{gradient_uid}-{idx}"
+              x1={x_min}
+              x2={x_max}
               y1="0"
               y2="0"
               gradientUnits="userSpaceOnUse"
             >
-              {#each region.gradient as stop, idx (idx)}
+              {#each gradient as stop, stop_idx (stop_idx)}
                 <stop
                   offset="{stop.offset * 100}%"
                   stop-color={stop.color}
-                  stop-opacity="0.6"
+                  stop-opacity="0.55"
                 />
               {/each}
             </linearGradient>
@@ -587,29 +745,46 @@
       {/if}
 
       <g class="phase-regions" clip-path={plot_clip}>
-        {#each transformed_regions as region (region.id)}
+        {#each transformed_regions as { region, svg_path, gradient, fill }, idx (idx)}
           <path
-            d={region.svg_path}
-            fill={region.gradient
-              ? `url(#${gradient_uid}-${region.id})`
-              : region.color || get_phase_color(region.name)}
+            d={svg_path}
+            fill={gradient ? `url(#${gradient_uid}-${idx})` : fill}
             stroke="none"
-            class:hovered={pin.lit({ region }, hover_info)}
+            class:hovered={lit_region(region)}
           />
         {/each}
       </g>
 
       {#if show_boundaries}
         <g class="boundaries" clip-path={plot_clip}>
-          {#each transformed_boundaries as boundary (boundary.id)}
+          {#each data.boundaries as { kind, points }, idx (idx)}
+            {@const style = BOUNDARY_STYLES[kind]}
             <path
-              d={boundary.svg_path}
+              d={boundary_path(points)}
               fill="none"
-              stroke={boundary.style?.color ?? merged_config.colors.boundary}
-              stroke-width={boundary.style?.width ?? 2}
-              stroke-dasharray={boundary.style?.dash || ``}
+              stroke={style.color}
+              stroke-width={style.width}
+              stroke-dasharray={style.dash ?? ``}
               stroke-linecap="round"
               stroke-linejoin="round"
+              data-kind={kind}
+            />
+          {/each}
+        </g>
+      {/if}
+
+      {#if shown_overlay}
+        <g class="overlay-boundaries" clip-path={plot_clip} style="pointer-events: none">
+          {#each shown_overlay.boundaries as { kind, points }, idx (idx)}
+            <path
+              d={boundary_path(points)}
+              fill="none"
+              stroke={overlay_color}
+              stroke-width={2}
+              stroke-dasharray={OVERLAY_DASH}
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              data-kind={kind}
             />
           {/each}
         </g>
@@ -617,16 +792,15 @@
 
       {#if show_labels}
         <g class="region-labels" style="pointer-events: none" clip-path={plot_clip}>
-          {#each transformed_regions as region (region.id)}
+          {#each transformed_regions as { label_pos, label_props }, idx (idx)}
             {@const line_height = merged_config.font_size * 1.2}
             <g
-              transform="translate({region.label_pos[0]}, {region
-                .label_pos[1]}) rotate({region.label_rotation}) scale({region.label_scale})"
+              transform="translate({label_pos[0]}, {label_pos[1]}) rotate({label_props.rotation}) scale({label_props.scale})"
             >
-              {#each region.label_lines as line, line_idx (line_idx)}
+              {#each label_props.lines as line, line_idx (line_idx)}
                 <text
                   x={0}
-                  y={(line_idx - (region.label_lines.length - 1) / 2) * line_height}
+                  y={(line_idx - (label_props.lines.length - 1) / 2) * line_height}
                   text-anchor="middle"
                   dominant-baseline="middle"
                   fill={merged_config.colors.text}
@@ -634,7 +808,7 @@
                   font-weight="500"
                   class="region-label"
                 >
-                  {@html sanitize_svg(format_label_svg(line, use_subscripts))}
+                  {@html sanitize_svg(format_label_svg(line, true))}
                 </text>
               {/each}
             </g>
@@ -645,7 +819,7 @@
       <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
       {#if tie_line}
         {@const {
-          cursor,
+          cursor: tie_cursor,
           endpoints: [start, end],
         } = tie_line}
         {@const tie_style = merged_config.tie_line}
@@ -672,8 +846,8 @@
             />
           {/each}
           <circle
-            cx={cursor.cx}
-            cy={cursor.cy}
+            cx={tie_cursor.cx}
+            cy={tie_cursor.cy}
             r={tie_style.cursor_radius}
             fill={TIE_LINE_COLOR}
             stroke="white"
@@ -682,43 +856,147 @@
         </g>
       {/if}
 
-      <!-- Special points, drawn over regions, boundaries and the tie-line -->
+      <!-- Marked points, drawn over regions, boundaries and the tie-line -->
       {#if show_special_points}
+        {@const color = merged_config.colors.special_point}
         <g class="special-points">
-          {#each transformed_special_points as point (point.id)}
+          {#each transformed_points as point, idx (idx)}
+            {@const { svg_x, svg_y, category, marker_label } = point}
             <!-- Larger hit area for easier hovering (2x radius) -->
             <circle
-              cx={point.svg_x}
-              cy={point.svg_y}
-              r={merged_config.special_point_radius * 2}
+              cx={svg_x}
+              cy={svg_y}
+              r={marker_radius * 2}
               fill="transparent"
               class="special-point-hit-area"
             />
-            <circle
-              cx={point.svg_x}
-              cy={point.svg_y}
-              r={merged_config.special_point_radius}
-              fill={merged_config.colors.special_point}
-              stroke="white"
-              stroke-width={1.5}
-              class="special-point-marker"
-            />
-            {#if point.label}
+            {#if category === `congruent`}
+              {@const size = marker_radius * 1.3}
+              <path
+                d="M{svg_x},{svg_y - size}L{svg_x + size},{svg_y}L{svg_x},{svg_y +
+                  size}L{svg_x - size},{svg_y}Z"
+                fill={color}
+                stroke="white"
+                stroke-width={1.5}
+                class="special-point-marker"
+                data-category={category}
+              />
+            {:else}
+              <circle
+                cx={svg_x}
+                cy={svg_y}
+                r={marker_radius}
+                fill={category === `critical` ? `white` : color}
+                stroke={category === `critical` ? color : `white`}
+                stroke-width={category === `critical` ? 2 : 1.5}
+                class="special-point-marker"
+                data-category={category}
+              />
+            {/if}
+            {#if marker_label}
               <!-- labels at a composition edge run inwards (-1: left edge, 1: right edge) -->
               {@const edge =
-                point.position[0] <= 0.05 ? -1 : point.position[0] >= 0.95 ? 1 : 0}
+                point.composition <= 0.05 ? -1 : point.composition >= 0.95 ? 1 : 0}
               <text
-                x={point.svg_x - 4 * edge}
-                y={point.svg_y - merged_config.special_point_radius * 2}
+                x={svg_x - 4 * edge}
+                y={svg_y - marker_radius * 2}
                 text-anchor={[`start`, `middle`, `end`][edge + 1]}
                 fill={merged_config.colors.text}
                 font-size={merged_config.font_size}
                 font-weight="bold"
               >
-                {point.label}
+                {marker_label}
               </text>
             {/if}
           {/each}
+        </g>
+      {/if}
+
+      <!-- Observations: isotherm joining one row's phases, error bars, status-colored markers -->
+      {#if shown_markers.length}
+        <g class="observations" clip-path={plot_clip} style="pointer-events: none">
+          {#each observation_isotherms as { id, x_min, x_max, svg_y, color } (id)}
+            <line
+              x1={x_min}
+              x2={x_max}
+              y1={svg_y}
+              y2={svg_y}
+              stroke={color}
+              stroke-width={1}
+              stroke-dasharray="3,2"
+            />
+          {/each}
+          {#each shown_markers as { marker, svg_x, svg_y, color }, idx (idx)}
+            {@const { row, phase, composition, temperature } = marker}
+            {@const sigma_t = row.sigma_T_K ?? 0}
+            {@const sigma_x = phase?.sigma_x ?? 0}
+            {#if sigma_t > 0}
+              <path
+                class="error-bar"
+                d={error_bar_path(
+                  [y_scale(temperature - sigma_t), y_scale(temperature + sigma_t)],
+                  svg_x,
+                  true,
+                  error_bar_cap,
+                )}
+                stroke={color}
+                fill="none"
+              />
+            {/if}
+            {#if sigma_x > 0}
+              <path
+                class="error-bar"
+                d={error_bar_path(
+                  [x_scale(composition - sigma_x), x_scale(composition + sigma_x)],
+                  svg_y,
+                  false,
+                  error_bar_cap,
+                )}
+                stroke={color}
+                fill="none"
+              />
+            {/if}
+            <circle
+              cx={svg_x}
+              cy={svg_y}
+              r={4.5}
+              fill={color}
+              stroke="white"
+              stroke-width={1.5}
+              class="observation-marker"
+              class:hovered={effective_hover_info?.observation === marker}
+              data-status={row.status}
+            />
+          {/each}
+        </g>
+      {/if}
+
+      {#if remote_cursor}
+        <g class="remote-cursor" style="pointer-events: none">
+          <line
+            x1={remote_cursor.svg_x}
+            x2={remote_cursor.svg_x}
+            y1={top}
+            y2={bottom}
+            stroke={TIE_LINE_COLOR}
+            stroke-dasharray="4,3"
+          />
+          <line
+            x1={left}
+            x2={right}
+            y1={remote_cursor.svg_y}
+            y2={remote_cursor.svg_y}
+            stroke={TIE_LINE_COLOR}
+            stroke-dasharray="4,3"
+          />
+          <circle
+            cx={remote_cursor.svg_x}
+            cy={remote_cursor.svg_y}
+            r={4}
+            fill={TIE_LINE_COLOR}
+            stroke="white"
+            stroke-width={1.5}
+          />
         </g>
       {/if}
 
@@ -744,7 +1022,6 @@
             </text>
           </g>
         {/each}
-        <!-- X-axis label (supports custom labels from props, data, or auto-generated with subscripts) -->
         <text
           x={left + plot_width / 2}
           y={height - 10}
@@ -752,9 +1029,7 @@
           fill={merged_config.colors.text}
           font-size={merged_config.font_size + 2}
         >
-          {@html sanitize_svg(
-            x_axis.label || effective_data.x_axis_label || default_x_axis_label,
-          )}
+          {@html sanitize_svg(x_axis.label || default_x_axis_label)}
         </text>
       </g>
 
@@ -781,7 +1056,6 @@
             </text>
           </g>
         {/each}
-        <!-- Y-axis label (supports custom labels from props or data) -->
         <text
           transform="rotate(-90)"
           x={-(top + plot_height / 2)}
@@ -790,9 +1064,7 @@
           fill={merged_config.colors.text}
           font-size={merged_config.font_size + 2}
         >
-          {@html sanitize_svg(
-            y_axis.label || effective_data.y_axis_label || `Temperature (${temp_unit})`,
-          )}
+          {@html sanitize_svg(y_axis.label || `Temperature (${temp_unit})`)}
         </text>
       </g>
 
@@ -813,6 +1085,30 @@
       {/if}
     </svg>
 
+    {#if legend_items.length}
+      <InsetLegend
+        legend={null}
+        measured
+        plot_bounds={{ x: left, y: top, width: plot_width, height: plot_height }}
+        points={legend_obstacles}
+        series_data={legend_items}
+        on_toggle={toggle_legend_item}
+        draggable={false}
+        filterable={false}
+        class="phase-diagram-legend"
+      />
+    {/if}
+
+    {#if remote_cursor}
+      <div
+        class="remote-cursor-label"
+        style:left="{remote_cursor.svg_x + 8}px"
+        style:top="{remote_cursor.svg_y - 26}px"
+      >
+        {@html sanitize_html(format_label_html(remote_cursor.label, true))}
+      </div>
+    {/if}
+
     {#if effective_hover_info && tooltip !== false}
       <PlotTooltip
         x={effective_hover_info.position.x}
@@ -826,13 +1122,11 @@
       >
         <PhaseDiagramTooltip
           hover_info={effective_hover_info}
+          {data}
+          overlay={shown_overlay}
           temperature_unit={temp_unit}
-          data_temperature_unit={data_temp_unit}
           composition_unit={comp_unit}
-          {component_a}
-          {component_b}
-          boundaries={effective_data.boundaries}
-          {use_subscripts}
+          {colors}
           {tooltip}
         />
       </PlotTooltip>
@@ -857,7 +1151,6 @@
     aspect-ratio: 6 / 5; /* Default aspect ratio matching 600x500 */
     background: var(--pd-bg, transparent);
     container-type: inline-size;
-
     &.fullscreen {
       background: var(--phase-diagram-bg-fullscreen, var(--page-bg, #1a1a2e)) !important;
     }
@@ -867,7 +1160,6 @@
   }
   .phase-regions path {
     transition: opacity 0.15s ease;
-
     &.hovered {
       opacity: 0.85;
       filter: brightness(1.1);
@@ -883,6 +1175,10 @@
   .special-point-marker {
     pointer-events: none; /* Let hit-area handle events */
   }
+  .observation-marker.hovered {
+    stroke: var(--text-color, #333);
+    stroke-width: 2.5;
+  }
   .region-label {
     user-select: none;
   }
@@ -897,5 +1193,15 @@
     from {
       opacity: 0;
     }
+  }
+  .remote-cursor-label {
+    position: absolute;
+    pointer-events: none;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    background: var(--tooltip-bg, rgba(0, 0, 0, 0.75));
+    color: var(--tooltip-color, white);
   }
 </style>

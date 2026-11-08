@@ -3,61 +3,43 @@
   import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index.js'
   import { JsonTree } from 'svelte-widgets/json-tree'
   import { set_at_path } from 'svelte-widgets/json-tree/utils'
-  import { build_diagram, find_duplicate_id } from './build-diagram'
-  import type { DiagramInput } from './diagram-input'
-  import type { PhaseDiagramData } from './types'
+  import { diagram_errors } from './diagram'
+  import type { BinaryPhaseDiagram } from './types'
   import { create_flash } from '#lib/effects.svelte.js'
   import { to_error } from 'svelte-widgets/utils'
 
   let {
     editor_open = $bindable(false),
-    diagram_input = $bindable<DiagramInput | null>(null),
     data = null,
     on_data,
     icon_style = ``,
     toggle_props: caller_toggle_props = {},
   }: {
     editor_open?: boolean
-    diagram_input?: DiagramInput | null
-    data?: PhaseDiagramData | null
-    on_data?: (data: PhaseDiagramData) => void
+    data?: BinaryPhaseDiagram | null
+    // Receives each valid edit; without it the tree is read-only
+    on_data?: (data: BinaryPhaseDiagram) => void
     icon_style?: string
     toggle_props?: PaneToggleProps
   } = $props()
 
-  // The source object currently displayed (DiagramInput or PhaseDiagramData)
-  const display_source = $derived(diagram_input ?? data)
-
   const root_label = `diagram`
 
-  // Brief error flash when an edit is rejected by build_diagram
+  // Brief error flash when an edit is rejected by validation
   const rejection = create_flash<string | null>(null, 3000)
   // The flash div stays mounted across consecutive rejections, so its fade-out animation
   // would not replay. Keying on a counter (not the text, which can repeat) remounts it.
   let rejection_seq = $state(0)
 
-  // True if obj looks like a DiagramInput rather than PhaseDiagramData
-  function is_diagram_input(obj: Record<string, unknown>): boolean {
-    const meta = obj.meta as Record<string, unknown> | undefined
-    return Boolean(meta && Array.isArray(meta.components) && `curves` in obj)
-  }
-
-  // Inline value edits from JsonTree
+  // Inline value edits from JsonTree: an edit that breaks the format (e.g. renames a phase id
+  // that regions still reference) is rejected instead of rendered
   function handle_change(path: string, new_value: unknown) {
-    if (!display_source) return
+    if (!data) return
     try {
-      const updated = set_at_path(display_source, path, new_value, root_label)
-      if (is_diagram_input(updated as Record<string, unknown>)) {
-        build_diagram(updated as DiagramInput)
-        diagram_input = updated as DiagramInput
-      } else {
-        // ids key the rendered regions/boundaries/points: a repeat would crash the keyed each
-        const duplicate = find_duplicate_id(updated as PhaseDiagramData)
-        if (duplicate) throw new Error(duplicate)
-        // Clear diagram_input so the rebuilt diagram doesn't shadow the edited data.
-        diagram_input = null
-        on_data?.(updated as PhaseDiagramData)
-      }
+      const updated = set_at_path(data, path, new_value, root_label) as BinaryPhaseDiagram
+      const errors = diagram_errors(updated)
+      if (errors.length) throw new Error(errors.join(`; `))
+      on_data?.(updated)
     } catch (error) {
       rejection_seq += 1
       rejection.show(to_error(error).message)
@@ -80,17 +62,19 @@
       <div class="rejection-flash">{rejection.value}</div>
     {/key}
   {/if}
-  {#if display_source}
+  {#if data}
     <JsonTree
-      value={display_source}
+      value={data}
       {root_label}
       default_fold_level={2}
       download_filename="diagram-data.json"
-      editable={Boolean(diagram_input || on_data)}
+      editable={Boolean(on_data)}
       on_change={handle_change}
     />
   {:else}
-    <p class="placeholder">No diagram data loaded. Drop an SVG file onto the diagram.</p>
+    <p class="placeholder">
+      No diagram data loaded. Drop an SVG or JSON file onto the diagram.
+    </p>
   {/if}
 </ViewerPane>
 

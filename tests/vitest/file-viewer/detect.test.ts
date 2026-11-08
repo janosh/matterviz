@@ -47,8 +47,8 @@ const flat_volume = {
   periodic: true,
 }
 const binary_pd = {
+  format: `binary-phase-diagram/2`,
   components: [`A`, `B`],
-  regions: [],
   boundaries: [],
   temperature_range: [300, 1500],
 }

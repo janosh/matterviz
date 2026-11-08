@@ -1,119 +1,212 @@
 {
-  "meta": {
-    "components": ["Al", "Fe"],
-    "temp_range": [300, 1900],
-    "temp_unit": "K",
-    "comp_unit": "mol%",
-    "title": "Al-Fe Binary Phase Diagram"
-  },
-  "curves": {
-    "liquidus_left": [[0, 933], [0.01, 930], [0.02, 928]],
-    "liquidus_right": [
-      [0.02, 928],
-      [0.1, 1000],
-      [0.2, 1150],
-      [0.3, 1300],
-      [0.4, 1430],
-      [0.5, 1500],
-      [0.7, 1650],
-      [0.9, 1780],
-      [1, 1811]
-    ],
-    "solidus_al": [[0, 933], [0.01, 928]],
-    "solidus_fe": [[0.95, 1700], [1, 1811]],
-    "solvus_al": [[0.01, 928], [0.005, 700], [0.002, 300]],
-    "solvus_fe": [[0.95, 1700], [0.97, 1400], [0.98, 1000], [0.99, 300]]
-  },
+  "format": "binary-phase-diagram/2",
+  "components": ["Al", "Fe"],
+  "pressure_pa": 101325,
+  "temperature_range": [300, 1900],
+  "phases": [
+    {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
+    {"id": "ALPHA_FCC_AL", "model_phase": "ALPHA_FCC_AL", "label": "α (FCC Al)", "kind": "solid"},
+    {"id": "ALPHA_BCC_FE", "model_phase": "ALPHA_BCC_FE", "label": "α (BCC Fe)", "kind": "solid"},
+    {"id": "AL3FE", "model_phase": "AL3FE", "label": "Al₃Fe", "kind": "solid"},
+    {"id": "ALFE", "model_phase": "ALFE", "label": "AlFe", "kind": "solid"}
+  ],
   "regions": [
     {
-      "id": "liquid",
-      "name": "Liquid",
-      "color": "rgba(135, 206, 250, 0.6)",
-      "bounds": [
-        [0, 1900],
-        [1, 1900],
+      "phases": ["LIQUID"],
+      "vertices": [
+        [0, 933],
+        [0.01, 930],
+        [0.02, 928],
+        [0.1, 1000],
+        [0.2, 1150],
+        [0.3, 1300],
+        [0.4, 1430],
+        [0.5, 1500],
+        [0.7, 1650],
+        [0.9, 1780],
         [1, 1811],
-        "~liquidus_right",
-        "~liquidus_left",
+        [1, 1900],
+        [0, 1900]
+      ]
+    },
+    {
+      "phases": ["ALPHA_FCC_AL"],
+      "vertices": [
+        [0, 300],
+        [0.002, 300],
+        [0.005, 700],
+        [0.01, 928],
         [0, 933]
       ]
     },
     {
-      "id": "fcc_al",
-      "name": "α (FCC Al)",
-      "color": "rgba(144, 238, 144, 0.6)",
-      "bounds": [[0, 933], "solidus_al", "solvus_al", [0.002, 300], [0, 300]]
-    },
-    {
-      "id": "bcc_fe",
-      "name": "α (BCC Fe)",
-      "color": "rgba(255, 182, 193, 0.6)",
-      "bounds": [[1, 1811], "~solidus_fe[1:]", "solvus_fe[1:]", [1, 300]]
-    },
-    {
-      "id": "al_liquid",
-      "name": "FCC + L",
-      "color": "rgba(180, 230, 180, 0.5)",
-      "bounds": [[0, 933], "liquidus_left", [0.02, 928], [0.01, 928], "~solidus_al"]
-    },
-    {
-      "id": "fe_liquid",
-      "name": "BCC + L",
-      "color": "rgba(255, 200, 200, 0.5)",
-      "bounds": [[0.7, 1650], [0.9, 1780], [1, 1811], "~solidus_fe"]
-    },
-    {
-      "id": "al3fe",
-      "name": "Al₃Fe",
-      "color": "rgba(255, 200, 150, 0.6)",
-      "bounds": [[0.2, 928], [0.3, 928], [0.3, 300], [0.2, 300]]
-    },
-    {
-      "id": "alfe",
-      "name": "AlFe",
-      "color": "rgba(200, 180, 255, 0.6)",
-      "bounds": [[0.45, 1430], [0.55, 1430], [0.55, 300], [0.45, 300]]
-    },
-    {
-      "id": "al_al3fe",
-      "name": "FCC + Al₃Fe",
-      "color": "rgba(255, 235, 156, 0.5)",
-      "bounds": [[0.01, 928], [0.2, 928], [0.2, 300], [0.002, 300], "~solvus_al"]
-    },
-    {
-      "id": "al3fe_liquid",
-      "name": "Al₃Fe + L",
-      "color": "rgba(255, 220, 180, 0.5)",
-      "bounds": [[0.02, 928], "liquidus_right[1:4]", [0.3, 928], [0.2, 928]]
-    },
-    {
-      "id": "al3fe_alfe",
-      "name": "Al₃Fe + AlFe",
-      "color": "rgba(230, 200, 220, 0.5)",
-      "bounds": [[0.3, 928], [0.3, 1300], [0.45, 1430], [0.45, 300], [0.3, 300]]
-    },
-    {
-      "id": "alfe_fe",
-      "name": "AlFe + BCC",
-      "color": "rgba(230, 200, 200, 0.5)",
-      "bounds": [
-        [0.55, 1430],
-        [0.7, 1650],
+      "phases": ["ALPHA_BCC_FE"],
+      "vertices": [
+        [1, 1811],
         [0.95, 1700],
-        "solvus_fe",
+        [0.97, 1400],
+        [0.98, 1000],
         [0.99, 300],
-        [0.55, 300]
+        [1, 300]
       ]
     },
     {
-      "id": "alfe_liquid",
-      "name": "AlFe + L",
-      "color": "rgba(220, 200, 255, 0.5)",
-      "bounds": [[0.3, 1300], "liquidus_right[4:7]", [0.55, 1430], [0.45, 1430]]
+      "phases": ["ALPHA_FCC_AL", "LIQUID"],
+      "vertices": [
+        [0.01, 928],
+        [0.02, 928],
+        [0.01, 930],
+        [0, 933]
+      ]
+    },
+    {
+      "phases": ["LIQUID", "ALPHA_BCC_FE"],
+      "vertices": [
+        [0.95, 1700],
+        [1, 1811],
+        [0.9, 1780],
+        [0.7, 1650]
+      ]
+    },
+    {
+      "phases": ["AL3FE"],
+      "vertices": [
+        [0.2, 300],
+        [0.3, 300],
+        [0.3, 928],
+        [0.2, 928]
+      ]
+    },
+    {
+      "phases": ["ALFE"],
+      "vertices": [
+        [0.45, 300],
+        [0.55, 300],
+        [0.55, 1430],
+        [0.45, 1430]
+      ]
+    },
+    {
+      "phases": ["ALPHA_FCC_AL", "AL3FE"],
+      "vertices": [
+        [0.005, 700],
+        [0.002, 300],
+        [0.2, 300],
+        [0.2, 928],
+        [0.01, 928]
+      ]
+    },
+    {
+      "phases": ["LIQUID", "AL3FE"],
+      "vertices": [
+        [0.2, 928],
+        [0.3, 928],
+        [0.3, 1300],
+        [0.2, 1150],
+        [0.1, 1000],
+        [0.02, 928]
+      ]
+    },
+    {
+      "phases": ["AL3FE", "ALFE"],
+      "vertices": [
+        [0.3, 300],
+        [0.45, 300],
+        [0.45, 1430],
+        [0.3, 1300],
+        [0.3, 928]
+      ]
+    },
+    {
+      "phases": ["ALFE", "ALPHA_BCC_FE"],
+      "vertices": [
+        [0.55, 300],
+        [0.99, 300],
+        [0.98, 1000],
+        [0.97, 1400],
+        [0.95, 1700],
+        [0.7, 1650],
+        [0.55, 1430]
+      ]
+    },
+    {
+      "phases": ["LIQUID", "ALFE"],
+      "vertices": [
+        [0.45, 1430],
+        [0.55, 1430],
+        [0.7, 1650],
+        [0.5, 1500],
+        [0.4, 1430],
+        [0.3, 1300]
+      ]
     }
   ],
-  "special_points": [
-    { "id": "eutectic", "type": "eutectic", "position": [0.02, 928], "label": "E" },
-    { "id": "peritectic", "type": "peritectic", "position": [0.4, 1430], "label": "P" }
-  ]
+  "boundaries": [
+    {
+      "kind": "liquidus",
+      "phases": ["ALPHA_FCC_AL", "LIQUID", "AL3FE"],
+      "points": [
+        [0, 933],
+        [0.01, 930],
+        [0.02, 928]
+      ]
+    },
+    {
+      "kind": "liquidus",
+      "phases": ["LIQUID", "AL3FE", "ALFE", "ALPHA_BCC_FE"],
+      "points": [
+        [0.02, 928],
+        [0.1, 1000],
+        [0.2, 1150],
+        [0.3, 1300],
+        [0.4, 1430],
+        [0.5, 1500],
+        [0.7, 1650],
+        [0.9, 1780],
+        [1, 1811]
+      ]
+    },
+    {
+      "kind": "solidus",
+      "phases": ["ALPHA_FCC_AL", "LIQUID"],
+      "points": [
+        [0, 933],
+        [0.01, 928]
+      ],
+      "side": "ALPHA_FCC_AL"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["LIQUID", "ALPHA_BCC_FE"],
+      "points": [
+        [0.95, 1700],
+        [1, 1811]
+      ],
+      "side": "ALPHA_BCC_FE"
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALPHA_FCC_AL", "AL3FE"],
+      "points": [
+        [0.01, 928],
+        [0.005, 700],
+        [0.002, 300]
+      ]
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALFE", "ALPHA_BCC_FE"],
+      "points": [
+        [0.95, 1700],
+        [0.97, 1400],
+        [0.98, 1000],
+        [0.99, 300]
+      ]
+    }
+  ],
+  "invariants": [],
+  "congruent_points": [],
+  "critical_points": [],
+  "unary_transitions": [],
+  "provenance": {"kind": "sketch", "source": "Al-Fe Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

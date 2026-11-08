@@ -1,117 +1,236 @@
 {
-  "meta": {
-    "components": ["Fe", "Fe3C"],
-    "temp_range": [400, 1600],
-    "temp_unit": "°C",
-    "comp_unit": "wt%",
-    "title": "Fe-Fe₃C Pseudo-Binary Phase Diagram",
-    "pseudo_binary": {
-      "parent_system": ["Fe", "C"],
-      "section_description": "Metastable iron-cementite section (0 to 6.67 wt% C)",
-      "use_subscripts": true
-    },
-    "x_axis_label": "wt% C (as Fe<sub>3</sub>C)"
-  },
-  "curves": {
-    "liquidus_left": [[0, 1538], [0.077, 1495]],
-    "liquidus_right": [[0.077, 1495], [0.645, 1147]],
-    "liquidus_fe3c": [[0.645, 1147], [1, 1227]],
-    "solidus_delta": [[0, 1538], [0.015, 1495]],
-    "solidus_gamma": [[0.024, 1495], [0.32, 1147]],
-    "peritectic_line": [[0.015, 1495], [0.077, 1495]],
-    "eutectic_line": [[0.32, 1147], [1, 1147]],
-    "eutectoid_line": [[0.003, 727], [0.95, 727]],
-    "solvus_a3": [[0, 912], [0.003, 727]],
-    "solvus_alpha": [[0.003, 727], [0.001, 600], [0, 400]]
-  },
+  "format": "binary-phase-diagram/2",
+  "components": ["Fe", "Fe3C"],
+  "pressure_pa": 101325,
+  "temperature_range": [673.15, 1873.15],
+  "phases": [
+    {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
+    {"id": "DELTA_BCC", "model_phase": "DELTA_BCC", "label": "δ (BCC)", "kind": "solid"},
+    {"id": "GAMMA_FCC", "model_phase": "GAMMA_FCC", "label": "γ (FCC)", "kind": "solid"},
+    {"id": "ALPHA_BCC", "model_phase": "ALPHA_BCC", "label": "α (BCC)", "kind": "solid"},
+    {"id": "FE3C", "model_phase": "FE3C", "label": "Fe3C", "kind": "solid"}
+  ],
   "regions": [
     {
-      "id": "liquid",
-      "name": "Liquid",
-      "color": "rgba(135, 206, 250, 0.6)",
-      "bounds": [
-        [0, 1600],
-        [1, 1600],
-        [1, 1227],
-        "~liquidus_fe3c",
-        [0.077, 1495],
-        [0, 1538]
+      "phases": ["LIQUID"],
+      "vertices": [
+        [0.0, 1811.15],
+        [0.025291, 1768.15],
+        [0.361071, 1420.15],
+        [1.0, 1500.15],
+        [1.0, 1873.15],
+        [0.0, 1873.15]
       ]
     },
     {
-      "id": "delta",
-      "name": "δ (BCC)",
-      "color": "rgba(255, 182, 193, 0.6)",
-      "bounds": [[0, 1538], [0.015, 1495], [0, 1394]]
-    },
-    {
-      "id": "gamma",
-      "name": "γ (FCC)",
-      "color": "rgba(144, 238, 144, 0.6)",
-      "bounds": [
-        [0, 1394],
-        [0.015, 1495],
-        [0.024, 1495],
-        [0.32, 1147],
-        [0.115, 727],
-        [0.115, 832],
-        [0.003, 892],
-        [0, 912]
+      "phases": ["DELTA_BCC"],
+      "vertices": [
+        [0.0, 1667.15],
+        [0.004714, 1768.15],
+        [0.0, 1811.15]
       ]
     },
     {
-      "id": "alpha",
-      "name": "α (BCC)",
-      "color": "rgba(255, 200, 200, 0.6)",
-      "bounds": [[0, 912], [0.003, 892], [0.003, 727], [0, 400]]
+      "phases": ["GAMMA_FCC"],
+      "vertices": [
+        [0.0, 1185.15],
+        [0.000935, 1165.15],
+        [0.038847, 1105.15],
+        [0.038847, 1000.15],
+        [0.127681, 1420.15],
+        [0.00759, 1768.15],
+        [0.004714, 1768.15],
+        [0.0, 1667.15]
+      ]
     },
     {
-      "id": "fe3c",
-      "name": "Fe3C",
-      "color": "rgba(180, 180, 200, 0.6)",
-      "bounds": [[1, 1227], [1, 400], [0.95, 400], [0.95, 1227]]
+      "phases": ["ALPHA_BCC"],
+      "vertices": [
+        [0.0, 673.15],
+        [0.000935, 1000.15],
+        [0.000935, 1165.15],
+        [0.0, 1185.15]
+      ]
     },
     {
-      "id": "l_plus_delta",
-      "name": "L + δ",
-      "color": "rgba(255, 200, 200, 0.5)",
-      "bounds": [[0, 1538], [0.077, 1495], [0.015, 1495]]
+      "phases": ["FE3C"],
+      "vertices": [
+        [0.855275, 1500.15],
+        [0.855275, 673.15],
+        [1.0, 673.15],
+        [1.0, 1500.15]
+      ]
     },
     {
-      "id": "l_plus_gamma",
-      "name": "L + γ",
-      "color": "rgba(180, 230, 180, 0.5)",
-      "bounds": [[0.077, 1495], [0.645, 1147], [0.32, 1147], [0.024, 1495]]
+      "phases": ["DELTA_BCC", "LIQUID"],
+      "vertices": [
+        [0.004714, 1768.15],
+        [0.025291, 1768.15],
+        [0.0, 1811.15]
+      ]
     },
     {
-      "id": "l_plus_fe3c",
-      "name": "L + Fe3C",
-      "color": "rgba(255, 220, 180, 0.5)",
-      "bounds": [[0.645, 1147], [0.95, 1147], [0.95, 1227], [1, 1227]]
+      "phases": ["GAMMA_FCC", "LIQUID"],
+      "vertices": [
+        [0.00759, 1768.15],
+        [0.127681, 1420.15],
+        [0.361071, 1420.15],
+        [0.025291, 1768.15]
+      ]
     },
     {
-      "id": "gamma_plus_fe3c",
-      "name": "γ + Fe3C",
-      "color": "rgba(180, 200, 250, 0.5)",
-      "bounds": [[0.32, 1147], [0.95, 1147], [0.95, 727], [0.115, 727]]
+      "phases": ["LIQUID", "FE3C"],
+      "vertices": [
+        [0.361071, 1420.15],
+        [0.855275, 1420.15],
+        [0.855275, 1500.15],
+        [1.0, 1500.15]
+      ]
     },
     {
-      "id": "alpha_plus_gamma",
-      "name": "α + γ",
-      "color": "rgba(230, 200, 220, 0.5)",
-      "bounds": [[0.003, 892], [0.003, 727], [0.115, 727], [0.115, 832]]
+      "phases": ["GAMMA_FCC", "FE3C"],
+      "vertices": [
+        [0.038847, 1000.15],
+        [0.855275, 1000.15],
+        [0.855275, 1420.15],
+        [0.127681, 1420.15]
+      ]
     },
     {
-      "id": "alpha_plus_fe3c",
-      "name": "α + Fe3C",
-      "color": "rgba(220, 200, 240, 0.5)",
-      "bounds": [[0, 400], [0.95, 400], [0.95, 727], [0.115, 727], [0.003, 727]]
+      "phases": ["ALPHA_BCC", "GAMMA_FCC"],
+      "vertices": [
+        [0.000935, 1165.15],
+        [0.000935, 1000.15],
+        [0.038847, 1000.15],
+        [0.038847, 1105.15]
+      ]
+    },
+    {
+      "phases": ["ALPHA_BCC", "FE3C"],
+      "vertices": [
+        [0.0, 673.15],
+        [0.855275, 673.15],
+        [0.855275, 1000.15],
+        [0.038847, 1000.15],
+        [0.000935, 1000.15]
+      ]
     }
   ],
-  "special_points": [
-    { "id": "peritectic", "type": "peritectic", "position": [0.077, 1495], "label": "P" },
-    { "id": "eutectic", "type": "eutectic", "position": [0.645, 1147], "label": "E" },
-    { "id": "eutectoid", "type": "eutectoid", "position": [0.115, 727], "label": "S" },
-    { "id": "melting_fe", "type": "melting_point", "position": [0, 1538], "label": "Tₘ" }
-  ]
+  "boundaries": [
+    {
+      "kind": "liquidus",
+      "phases": ["DELTA_BCC", "LIQUID"],
+      "points": [
+        [0.0, 1811.15],
+        [0.025291, 1768.15]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "liquidus",
+      "phases": ["GAMMA_FCC", "LIQUID"],
+      "points": [
+        [0.025291, 1768.15],
+        [0.361071, 1420.15]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "liquidus",
+      "phases": ["LIQUID", "FE3C"],
+      "points": [
+        [0.361071, 1420.15],
+        [1.0, 1500.15]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["DELTA_BCC", "LIQUID"],
+      "points": [
+        [0.0, 1811.15],
+        [0.004714, 1768.15]
+      ],
+      "side": "DELTA_BCC"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["GAMMA_FCC", "LIQUID"],
+      "points": [
+        [0.00759, 1768.15],
+        [0.127681, 1420.15]
+      ],
+      "side": "GAMMA_FCC"
+    },
+    {
+      "kind": "invariant",
+      "phases": ["DELTA_BCC", "GAMMA_FCC", "LIQUID"],
+      "points": [
+        [0.004714, 1768.15],
+        [0.025291, 1768.15]
+      ]
+    },
+    {
+      "kind": "invariant",
+      "phases": ["GAMMA_FCC", "LIQUID", "FE3C"],
+      "points": [
+        [0.127681, 1420.15],
+        [1.0, 1420.15]
+      ]
+    },
+    {
+      "kind": "invariant",
+      "phases": ["ALPHA_BCC", "GAMMA_FCC", "FE3C"],
+      "points": [
+        [0.000935, 1000.15],
+        [0.855275, 1000.15]
+      ]
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALPHA_BCC", "GAMMA_FCC"],
+      "points": [
+        [0.0, 1185.15],
+        [0.000935, 1000.15]
+      ]
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALPHA_BCC", "FE3C"],
+      "points": [
+        [0.000935, 1000.15],
+        [0.000311, 873.15],
+        [0.0, 673.15]
+      ]
+    }
+  ],
+  "invariants": [
+    {
+      "kind": "peritectic",
+      "temperature": 1768.15,
+      "phases": ["DELTA_BCC", "GAMMA_FCC", "LIQUID"],
+      "compositions": [0.004714, 0.00759, 0.025291],
+      "reaction": "DELTA_BCC + LIQUID -> GAMMA_FCC"
+    },
+    {
+      "kind": "eutectic",
+      "temperature": 1420.15,
+      "phases": ["GAMMA_FCC", "LIQUID", "FE3C"],
+      "compositions": [0.127681, 0.361071, 1.0],
+      "reaction": "LIQUID -> GAMMA_FCC + FE3C"
+    },
+    {
+      "kind": "eutectoid",
+      "temperature": 1000.15,
+      "phases": ["ALPHA_BCC", "GAMMA_FCC", "FE3C"],
+      "compositions": [0.000935, 0.038847, 0.855275],
+      "reaction": "GAMMA_FCC -> ALPHA_BCC + FE3C"
+    }
+  ],
+  "congruent_points": [],
+  "critical_points": [],
+  "unary_transitions": [
+    {"component": "Fe", "temperature": 1811.15, "above": "LIQUID", "below": "DELTA_BCC"}
+  ],
+  "provenance": {"kind": "sketch", "source": "Fe-Fe₃C Pseudo-Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

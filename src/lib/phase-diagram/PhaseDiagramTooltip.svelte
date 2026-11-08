@@ -4,156 +4,166 @@
   import { sanitize_formula, sanitize_html } from '#lib/sanitize.js'
   import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
   import type {
+    BinaryPhaseDiagram,
     CompUnit,
-    PhaseBoundary,
+    DiagramBoundary,
+    LeverRuleResult,
     PhaseDiagramTooltipProp,
     PhaseHoverInfo,
     TempUnit,
   } from './types'
   import { format_label_html } from '#lib/composition/format.js'
   import {
+    boundary_description,
+    OBSERVATION_STATUS_COLORS,
+    phase_colors,
+    phase_labeler,
+    point_badge,
+    provenance_caption,
+    region_label,
+  } from './diagram'
+  import {
     convert_temp,
     format_composition,
-    get_phase_color,
     get_phase_stability_range,
     lever_rule_rows,
   } from './utils'
 
   let {
     hover_info,
+    data,
+    overlay = null,
     temperature_unit = `K`,
-    data_temperature_unit,
     composition_unit = `at%`,
-    component_a = `A`,
-    component_b = `B`,
-    boundaries = [],
-    use_subscripts = true,
+    colors: colors_prop,
     tooltip,
   }: {
     hover_info: PhaseHoverInfo
+    data: BinaryPhaseDiagram
+    // Overlay diagram whose phase set at the cursor is in hover_info.overlay
+    overlay?: BinaryPhaseDiagram | null
     temperature_unit?: TempUnit
-    // Original unit of hover_info.temperature (defaults to temperature_unit)
-    data_temperature_unit?: TempUnit
     composition_unit?: CompUnit
-    component_a?: string
-    component_b?: string
-    boundaries?: PhaseBoundary[]
-    use_subscripts?: boolean
+    colors?: Map<string, string> // phase id -> color of the main diagram
     tooltip?: PhaseDiagramTooltipProp
   } = $props()
 
-  // The unit that hover_info.temperature is actually in
-  const data_unit = $derived(data_temperature_unit ?? temperature_unit)
+  const colors = $derived(colors_prop ?? phase_colors(data.phases))
+  const [component_a, component_b] = $derived(data.components)
+  const label_of = $derived(phase_labeler(data))
+  const overlay_label_of = $derived(overlay ? phase_labeler(overlay) : label_of)
+  const html_label = (label: string) => sanitize_html(format_label_html(label, true))
+  const safe_formula = (comp: string) => sanitize_formula(comp, true)
 
-  const safe_formula = (comp: string) => sanitize_formula(comp, use_subscripts)
+  // Temperatures arrive in K; shown in the display unit (or `unit`)
+  const fmt_temp = (kelvin: number, unit: TempUnit = temperature_unit): string =>
+    format_num(convert_temp(kelvin, `K`, unit), `.0f`)
+  const fmt_comp = (value: number) => format_composition(value, composition_unit, false)
+  // TooltipValue unit of a composition (bare fractions have none)
+  const comp_unit_label = $derived(composition_unit === `fraction` ? `` : composition_unit)
 
-  // Convert a temperature from data unit to display unit (or `unit`), as a number or text
-  const to_display = (temp: number): number => convert_temp(temp, data_unit, temperature_unit)
-  const fmt_temp = (temp: number, unit: TempUnit = temperature_unit): string =>
-    format_num(convert_temp(temp, data_unit, unit), `.0f`)
-
-  // The complementary measure: hover_info.composition is a weight fraction under wt% and an
-  // atomic fraction otherwise, so each case converts the other way. Null without atomic masses.
-  //   wt_B = (x_B M_B) / (x_A M_A + x_B M_B),  x_B = (w_B / M_B) / (w_A / M_A + w_B / M_B)
-  const alt_composition = $derived.by(() => {
+  // Weight fraction of components[1] from its mole fraction; null without atomic masses
+  //   w_B = (x_B M_B) / (x_A M_A + x_B M_B)
+  const weight_fraction = $derived.by(() => {
     const mass_a = element_by_symbol.get(component_a as ElementSymbol)?.atomic_mass
     const mass_b = element_by_symbol.get(component_b as ElementSymbol)?.atomic_mass
     if (!mass_a || !mass_b) return null
     const { composition: frac_b } = hover_info
-    const weighted_a =
-      composition_unit === `wt%` ? (1 - frac_b) / mass_a : (1 - frac_b) * mass_a
-    const weighted_b = composition_unit === `wt%` ? frac_b / mass_b : frac_b * mass_b
-    const denom = weighted_a + weighted_b
-    if (!(denom > 0)) return null
-    return {
-      label: composition_unit === `wt%` ? `Atomic` : `Weight`,
-      fraction_b: weighted_b / denom,
-    }
+    const denom = (1 - frac_b) * mass_a + frac_b * mass_b
+    return denom > 0 ? (frac_b * mass_b) / denom : null
   })
 
-  const stability = $derived(get_phase_stability_range(hover_info.region))
-  // TooltipValue unit of a composition (bare fractions have none)
-  const comp_unit_label = $derived(composition_unit === `fraction` ? `` : composition_unit)
-
-  // Badge and description of a hovered special point; melting and congruent points at a
-  // composition edge name the pure component that melts there
-  const special_point_info = $derived.by(() => {
-    if (!hover_info.special_point) return null
-    const { type, position } = hover_info.special_point
-    const [x_pos, temp_raw] = position
-    const temperature = fmt_temp(temp_raw)
-
-    // Melting/congruent points at a composition edge belong to one pure component
-    const is_at_edge = x_pos <= 0.01 || x_pos >= 0.99
-    if ((type === `melting_point` || type === `congruent`) && is_at_edge) {
-      const element = x_pos <= 0.01 ? component_a : component_b
-      return { badge: `Melting Point`, description: `${element} melts at`, temperature }
-    }
-    const type_descriptions: Record<string, string> = {
-      eutectic: `Liquid → two solid phases at`,
-      peritectic: `Liquid + solid → different solid at`,
-      eutectoid: `Solid → two solid phases at`,
-      peritectoid: `Two solids → different solid at`,
-      congruent: `Congruent phase change at`,
-    }
-    const badge = humanize(type)
-    return { badge, description: type_descriptions[type] ?? null, temperature }
-  })
+  const stability = $derived(hover_info.region && get_phase_stability_range(hover_info.region))
 
   // Temperatures where a boundary crosses `composition`: interpolated on each segment that
-  // spans it (vertices are often far apart), or a lone point within 2% composition
-  const boundary_temps_at = (
-    points: PhaseBoundary[`points`],
-    composition: number,
-  ): number[] =>
-    points.length === 1
-      ? points.flatMap(([x_val, temp]) => (Math.abs(x_val - composition) < 0.02 ? [temp] : []))
-      : points.slice(1).flatMap(([x_end, t_end], idx) => {
-          const [x_start, t_start] = points[idx]
-          if (x_start === x_end) return []
-          const frac = (composition - x_start) / (x_end - x_start)
-          return frac >= 0 && frac <= 1 ? [t_start + frac * (t_end - t_start)] : []
-        })
+  // spans it (vertices are often far apart)
+  const boundary_temps_at = (points: DiagramBoundary[`points`], composition: number) =>
+    points.slice(1).flatMap(([x_end, t_end], idx) => {
+      const [x_start, t_start] = points[idx]
+      if (x_start === x_end) return []
+      const frac = (composition - x_start) / (x_end - x_start)
+      return frac >= 0 && frac <= 1 ? [t_start + frac * (t_end - t_start)] : []
+    })
 
   // Distance in temperature to the nearest liquidus/solidus/solvus at the cursor's composition
   const boundary_distance = $derived.by(() => {
-    if (boundaries.length === 0) return null
     const { composition, temperature } = hover_info
-    let min_dist: { type: string; delta_t: number } | null = null
-
-    for (const boundary of boundaries) {
-      if (![`liquidus`, `solidus`, `solvus`].includes(boundary.type)) continue
+    let nearest: { boundary: DiagramBoundary; delta_t: number } | null = null
+    for (const boundary of data.boundaries) {
+      if (![`liquidus`, `solidus`, `solvus`].includes(boundary.kind)) continue
       for (const boundary_temp of boundary_temps_at(boundary.points, composition)) {
-        const delta = temperature - boundary_temp
-        if (!min_dist || Math.abs(delta) < Math.abs(min_dist.delta_t)) {
-          min_dist = { type: boundary.type, delta_t: delta }
+        const delta_t = temperature - boundary_temp
+        if (!nearest || Math.abs(delta_t) < Math.abs(nearest.delta_t)) {
+          nearest = { boundary, delta_t }
         }
       }
     }
-    return min_dist
+    return nearest && { ...nearest, text: boundary_description(nearest.boundary, label_of) }
   })
 
-  const lever_rows = $derived(lever_rule_rows(hover_info, composition_unit))
+  const rows_of = (lever_rule: LeverRuleResult | null, labels: (id: string) => string) =>
+    lever_rule && lever_rule_rows(lever_rule, composition_unit, labels)
+  const lever_rows = $derived(rows_of(hover_info.lever_rule, label_of))
+  const overlay_lever_rows = $derived(
+    rows_of(hover_info.overlay?.lever_rule ?? null, overlay_label_of),
+  )
+  const lever_colors = $derived(
+    hover_info.lever_rule
+      ? [hover_info.lever_rule.left_phase, hover_info.lever_rule.right_phase].map(
+          (id) => colors.get(id) ?? `#b4b4b4`,
+        )
+      : [],
+  )
+
+  const observation = $derived(hover_info.observation)
 </script>
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
     <header>
-      <strong
-        >{@html sanitize_html(
-          format_label_html(hover_info.region.name, use_subscripts),
-        )}</strong
-      >
-      {#if special_point_info}<span class="special-point-badge"
-          >{special_point_info.badge}</span
-        >{/if}
+      <strong>{@html html_label(region_label(hover_info.region, label_of))}</strong>
+      {#if hover_info.point}
+        <span class="badge">{point_badge(hover_info.point)}</span>
+      {/if}
     </header>
 
-    {#if special_point_info?.description}
-      <div class="special-point-description">
-        {special_point_info.description}
-        <TooltipValue value={special_point_info.temperature} unit={temperature_unit} />
+    {#if hover_info.point}
+      {@const { description, temperature } = hover_info.point}
+      <div class="point-description">
+        {@html html_label(description)} at
+        <TooltipValue value={fmt_temp(temperature)} unit={temperature_unit} />
       </div>
+    {/if}
+
+    {#if observation}
+      {@const { row, phase, composition, temperature } = observation}
+      <section class="observation">
+        <span
+          class="status"
+          style:background={OBSERVATION_STATUS_COLORS[row.status] ?? `#757575`}
+          >{humanize(row.status)}</span
+        >
+        <strong>{row.reaction ?? humanize(row.kind)}</strong>
+        <div>
+          T = <TooltipValue value={fmt_temp(temperature)} unit={temperature_unit} />
+          {#if row.sigma_T_K}± {format_num(row.sigma_T_K, `.3~`)} K{/if}
+        </div>
+        {#if phase}
+          {@const { name, sigma_x } = phase}
+          <div>
+            {name}: x = <TooltipValue value={fmt_comp(composition)} unit={comp_unit_label} />
+            {#if sigma_x}± {fmt_comp(sigma_x)} {comp_unit_label}{/if}
+          </div>
+        {/if}
+        <cite>
+          {row.source.citation}
+          {#if row.source.doi}
+            <a href="https://doi.org/{row.source.doi}" target="_blank" rel="noreferrer"
+              >doi:{row.source.doi}</a
+            >
+          {/if}
+        </cite>
+      </section>
     {/if}
 
     <dl>
@@ -168,28 +178,21 @@
       </dd>
       <dt>Composition</dt>
       <dd>
-        <TooltipValue
-          value={format_composition(hover_info.composition, composition_unit, false)}
-          unit={comp_unit_label}
-        />
+        <TooltipValue value={fmt_comp(hover_info.composition)} unit={comp_unit_label} />
         {@html safe_formula(component_b)}
         <small
           >(<TooltipValue
-            value={format_composition(1 - hover_info.composition, composition_unit, false)}
+            value={fmt_comp(1 - hover_info.composition)}
             unit={comp_unit_label}
           />
           {@html safe_formula(component_a)})</small
         >
       </dd>
-      {#if alt_composition}
-        <dt>{alt_composition.label}</dt>
+      {#if weight_fraction !== null}
+        <dt>Weight</dt>
         <dd>
-          {format_num(alt_composition.fraction_b * 100, `.1f`)} <small>%</small>
+          {format_num(weight_fraction * 100, `.1f`)} <small>%</small>
           {@html safe_formula(component_b)}
-          <small
-            >({format_num((1 - alt_composition.fraction_b) * 100, `.1f`)} <small>%</small>
-            {@html safe_formula(component_a)})</small
-          >
         </dd>
       {/if}
       {#if stability}
@@ -197,12 +200,12 @@
         <dd>
           {fmt_temp(stability.t_min)} – {fmt_temp(stability.t_max)}
           <small>{temperature_unit}</small>
-          {#if temperature_unit !== `°C`}
-            <small
-              >({fmt_temp(stability.t_min, `°C`)} – {fmt_temp(stability.t_max, `°C`)}
-              <small>°C</small>)</small
-            >
-          {/if}
+        </dd>
+      {/if}
+      {#if hover_info.overlay}
+        <dt>Overlay</dt>
+        <dd class="overlay-phase">
+          {@html html_label(region_label(hover_info.overlay.region, overlay_label_of))}
         </dd>
       {/if}
     </dl>
@@ -214,7 +217,8 @@
           {#each lever_rows as [phase, fraction], idx (idx)}
             <div
               style:width="{fraction * 100}%"
-              style:background={get_phase_color(phase, `hex`)}
+              style:background={lever_colors[idx]}
+              title={phase}
             ></div>
           {/each}
           <i style:left="{lever_rows[0][1] * 100}%"></i>
@@ -223,7 +227,7 @@
           {#each lever_rows as [phase, fraction, location], idx (idx)}
             {@const [value, unit] = location.split(` `)}
             <span
-              >{@html safe_formula(phase)}: {format_num(fraction * 100, `.0f`)}
+              >{@html html_label(phase)}: {format_num(fraction * 100, `.0f`)}
               <small>%</small>
               <span>at <TooltipValue {value} {unit} /></span></span
             >
@@ -231,20 +235,40 @@
         </div>
       </div>
     {/if}
+    {#if overlay_lever_rows}
+      <div class="overlay-lever">
+        Overlay lever rule:
+        {#each overlay_lever_rows as [phase, fraction, location], idx (idx)}
+          {idx ? ` / ` : ``}{@html html_label(phase)}
+          {format_num(fraction * 100, `.0f`)}% at {location}
+        {/each}
+      </div>
+    {/if}
 
     {#if boundary_distance}
-      {@const { type, delta_t } = boundary_distance}
-      {@const label = delta_t > 0 ? `above` : `below`}
+      {@const { text, delta_t } = boundary_distance}
+      <!-- a temperature difference is the same in K and °C (°F scales it by 9/5) -->
       {@const display_delta = Math.abs(
-        to_display(hover_info.temperature) - to_display(hover_info.temperature - delta_t),
+        convert_temp(hover_info.temperature, `K`, temperature_unit) -
+          convert_temp(hover_info.temperature - delta_t, `K`, temperature_unit),
       )}
       <div class="boundary-info">
         {Math.round(display_delta)}
         <small>{temperature_unit}</small>
-        {label}
-        {type}
+        {delta_t > 0 ? `above` : `below`}
+        {@html html_label(text)}
       </div>
     {/if}
+
+    {#each [data, overlay].filter((diagram) => diagram !== null) as diagram, idx (idx)}
+      {@const caption = provenance_caption(diagram)}
+      {#if caption}
+        <footer class="provenance">
+          {#if overlay}<strong>{idx ? `Overlay` : `Main`}:</strong>{/if}
+          {caption}
+        </footer>
+      {/if}
+    {/each}
   </div>
 </TooltipContent>
 
@@ -252,6 +276,7 @@
   .phase-diagram-tooltip {
     --border: color-mix(in srgb, currentColor 18%, transparent);
     min-width: 130px;
+    max-width: 320px;
   }
   header {
     margin-bottom: 5px;
@@ -262,7 +287,7 @@
     align-items: center;
     gap: 6px;
   }
-  .special-point-badge {
+  .badge {
     font-size: 10px;
     font-weight: 500;
     background: light-dark(rgba(220, 38, 38, 0.15), rgba(239, 68, 68, 0.25));
@@ -270,13 +295,36 @@
     padding: 1px 5px;
     border-radius: 3px;
   }
-  .special-point-description {
+  .point-description {
     font-size: 11px;
     font-style: italic;
     opacity: 0.9;
     margin-bottom: 5px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
+  }
+  .observation {
+    font-size: 11px;
+    margin-bottom: 5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    gap: 2px;
+    .status {
+      justify-self: start;
+      color: white;
+      font-size: 10px;
+      padding: 0 5px;
+      border-radius: 3px;
+    }
+    cite {
+      font-size: 10px;
+      opacity: 0.8;
+      white-space: normal;
+    }
+    a {
+      color: inherit;
+    }
   }
   dl {
     display: grid;
@@ -343,12 +391,22 @@
       margin-left: 2px;
     }
   }
+  .provenance {
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    font-size: 9px;
+    opacity: 0.7;
+  }
+  .overlay-lever,
   .boundary-info {
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid var(--border);
     font-size: 10px;
     opacity: 0.85;
+  }
+  .boundary-info {
     font-style: italic;
   }
 </style>

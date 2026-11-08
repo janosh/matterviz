@@ -1,6 +1,6 @@
-import { build_diagram } from '#lib/phase-diagram/build-diagram.js'
-import { find_phase_at_point } from '#lib/phase-diagram/utils.js'
-import type { DiagramPoint } from '#lib/phase-diagram/diagram-input.js'
+import type { Vec2 } from '#lib/math.js'
+import { diagram_errors } from '#lib/phase-diagram/diagram.js'
+import { find_region_at } from '#lib/phase-diagram/utils.js'
 import {
   parse_phase_diagram_svg,
   trace_region_outline,
@@ -68,7 +68,7 @@ const matplotlib_svg = (boundary_paths: string[], extra = ``) =>
 
 const MPL_BOUNDARIES = [`M 300 500 L 300 300`, `M 100 300 L 300 300`]
 
-const expect_points_close = (actual: DiagramPoint[], expected: DiagramPoint[]) =>
+const expect_points_close = (actual: Vec2[], expected: Vec2[]) =>
   expect(actual).toEqual(
     expected.map(([exp_x, exp_y]) => [expect.closeTo(exp_x, 6), expect.closeTo(exp_y, 6)]),
   )
@@ -78,24 +78,29 @@ describe(`parse_phase_diagram_svg`, () => {
     { format: `simple`, svg: simple_svg(SIMPLE_BOUNDARIES) },
     { format: `matplotlib`, svg: matplotlib_svg(MPL_BOUNDARIES) },
   ])(`traces region outlines as polygons, not bounding boxes ($format)`, ({ svg }) => {
-    const input = parse_phase_diagram_svg(svg)
-    expect(input.meta.temp_range).toEqual([500, 1500])
-    expect(input.curves).toEqual({
-      vertical_0: pts(0.5, 500, 0.5, 1000),
-      horizontal_0: pts(0, 1000, 0.5, 1000),
-    })
-    expect(input.regions).toHaveLength(2)
-    const [rect_region, l_shape] = input.regions
-    // Regions are inline point polygons, so the bounds are the vertices
-    expect_points_close(rect_region.bounds as DiagramPoint[], RECT_REGION)
-    expect_points_close(l_shape.bounds as DiagramPoint[], L_REGION)
+    const data = parse_phase_diagram_svg(svg)
+    expect(diagram_errors(data)).toEqual([])
+    expect(data.temperature_range).toEqual([500, 1500])
+    // vertical lines are solvus-like, horizontal ones invariants; each names the phases of the
+    // regions on either side
+    expect(data.boundaries.map(({ kind, points }) => [kind, points])).toEqual([
+      [`solvus`, pts(0.5, 500, 0.5, 1000)],
+      [`invariant`, pts(0, 1000, 0.5, 1000)],
+    ])
+    const regions = data.regions ?? []
+    expect(regions).toHaveLength(2)
+    const [rect_region, l_shape] = regions
+    expect(new Set(data.boundaries[0].phases)).toEqual(
+      new Set([...rect_region.phases, ...l_shape.phases]),
+    )
+    expect_points_close(rect_region.vertices, RECT_REGION)
+    expect_points_close(l_shape.vertices, L_REGION)
 
     // The rectangle's centroid must resolve to the rectangle even though the L-shaped
     // region is defined later (a bounding box for the L would swallow it)
-    const data = build_diagram(input)
-    expect(find_phase_at_point(0.25, 750, data)?.id).toBe(rect_region.id)
-    expect(find_phase_at_point(0.75, 750, data)?.id).toBe(l_shape.id)
-    expect(find_phase_at_point(0.25, 1250, data)?.id).toBe(l_shape.id)
+    expect(find_region_at(regions, 0.25, 750)).toBe(rect_region)
+    expect(find_region_at(regions, 0.75, 750)).toBe(l_shape)
+    expect(find_region_at(regions, 0.25, 1250)).toBe(l_shape)
   })
 
   // Grid vertices at px 100/200/300/400/500 ↔ x 0/0.25/0.5/0.75/1 and T 500/750/1000/1250/1500
@@ -125,25 +130,36 @@ describe(`parse_phase_diagram_svg`, () => {
       n_regions: 2,
     },
   ])(`traces $label`, ({ boundaries, region_idx, expected, n_regions }) => {
-    const input = parse_phase_diagram_svg(simple_svg(boundaries))
-    expect(input.regions).toHaveLength(n_regions)
-    expect_points_close(input.regions[region_idx].bounds as DiagramPoint[], expected)
+    const regions = parse_phase_diagram_svg(simple_svg(boundaries)).regions ?? []
+    expect(regions).toHaveLength(n_regions)
+    expect_points_close(regions[region_idx].vertices, expected)
   })
 
-  it(`assigns labels and unique ids to regions, cleans matplotlib LaTeX subscripts`, () => {
+  // label tokens become phases (the token doubling as id and label); a two-phase region lists
+  // its phases left to right by where they occur, the inferred end components at the edges
+  it(`turns region labels into phases, cleans matplotlib LaTeX subscripts`, () => {
     const simple = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES))
-    expect(simple.regions.map((region) => region.name)).toEqual([`α + β`, `L + α`])
-    // Non-ASCII names slug to nothing, so ids fall back to region_N
-    expect(simple.regions.map((region) => region.id)).toEqual([`region_1`, `l`])
+    expect(simple.phases.map(({ id, label, kind }) => [id, label, kind])).toEqual([
+      [`α`, `α`, `solid`],
+      [`β`, `β`, `solid`],
+      [`L`, `L`, `liquid`],
+    ])
+    // each end's component is the phase its label has and the other end's lacks
+    expect(simple.components).toEqual([`β`, `L`])
+    expect(simple.regions?.map(({ phases }) => phases)).toEqual([
+      [`β`, `α`],
+      [`α`, `L`],
+    ])
 
     const mpl = parse_phase_diagram_svg(matplotlib_svg(MPL_BOUNDARIES))
-    expect(mpl.regions.map((region) => region.name)).toEqual([
-      `La2O3 + La2NiO4`,
-      `La2NiO4 + NiO`,
+    expect(mpl.phases.map(({ id }) => id)).toEqual([`La2O3`, `La2NiO4`, `NiO`])
+    expect(mpl.components).toEqual([`La2O3`, `NiO`])
+    expect(mpl.regions?.map(({ phases }) => phases)).toEqual([
+      [`La2O3`, `La2NiO4`],
+      [`La2NiO4`, `NiO`],
     ])
-    expect(mpl.regions.map((region) => region.id)).toEqual([`la2o3_la2nio4`, `la2nio4_nio`])
 
-    // separate fields sharing a label (or slugging alike) get suffixed ids
+    // separate fields sharing a label (or spacing it differently) share a phase set
     const shared_svg = simple_svg(
       `<line class="phase-boundary" x1="233" y1="500" x2="233" y2="100"/>
       <line class="phase-boundary" x1="366" y1="500" x2="366" y2="100"/>`,
@@ -154,53 +170,11 @@ describe(`parse_phase_diagram_svg`, () => {
         `x="300" y="300">L + B</text><text class="label-main" x="450" y="300">A+B`,
       )
     const shared = parse_phase_diagram_svg(shared_svg)
-    expect(shared.regions.map(({ id, name }) => [id, name])).toEqual([
-      [`a_b`, `A + B`],
-      [`l_b`, `L + B`],
-      [`a_b_2`, `A+B`],
+    expect(shared.regions?.map(({ phases }) => phases.toSorted())).toEqual([
+      [`A`, `B`],
+      [`B`, `L`],
+      [`A`, `B`],
     ])
-  })
-
-  it(`reads region colours from the filled SVG shape under each region centroid`, () => {
-    const simple = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES))
-    // Smallest fill containing the rectangle centroid (px 200,400) is the inner rect;
-    // the L-shape centroid (px ~333,267) only lies in the outer rect
-    const simple_colors = [`rgb(200, 100, 50)`, `#aabbcc`]
-    expect(simple.regions.map((region) => region.color)).toEqual(simple_colors)
-
-    const mpl = parse_phase_diagram_svg(matplotlib_svg(MPL_BOUNDARIES))
-    // White figure/axes patches are backgrounds, not region fills → no colour for the L
-    expect(mpl.regions.map((region) => region.color)).toEqual([`#ff0000`, undefined])
-    expect(`color` in mpl.regions[1]).toBe(false)
-
-    // matplotlib fill_between: polygon in <defs> with a y offset, fill on the <use>; a
-    // transformed shape has an unknown pixel bbox and must not be picked up
-    const fill_between = `<g id="FillBetweenPolyCollection_1">
-        <defs><path id="mfb1" d="M 100 -500 L 100 -100 L 500 -100 L 500 -500 z" style="stroke: #00ff00"/></defs>
-        <g clip-path="url(#p1)"><use xlink:href="#mfb1" x="0" y="600" style="fill: #00ff00; stroke: #00ff00"/></g>
-      </g>
-      <rect x="100" y="100" width="10" height="10" transform="scale(40)" fill="#0000ff"/>`
-    const mpl_fills = parse_phase_diagram_svg(matplotlib_svg(MPL_BOUNDARIES, fill_between))
-    expect(mpl_fills.regions.map((region) => region.color)).toEqual([`#ff0000`, `#00ff00`])
-
-    // A thin L tucked inside the rectangle region: its bbox, px (150,350)-(250,450), is a
-    // quarter the area of the rectangle's own fill and holds the probe at px 200,400, but the
-    // probe sits in the L's notch. Choosing by bounding box painted the rectangle the L's colour.
-    const thin_l = `<polygon points="150,350 250,350 250,360 160,360 160,450 150,450" fill="#ff00ff"/>`
-    const concave = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES, thin_l))
-    expect(concave.regions.map((region) => region.color)).toEqual(simple_colors)
-  })
-
-  it(`probes region colour inside the region even when its centroid falls outside`, () => {
-    // Thin L: arms 0.1 wide along the left and bottom edges. Its area centroid (~0.29, ~790 K)
-    // lies in the big square region, so a centroid probe would borrow that region's fill.
-    const boundaries = `<line class="phase-boundary" x1="140" y1="460" x2="140" y2="100"/>
-      <line class="phase-boundary" x1="140" y1="460" x2="500" y2="460"/>`
-    const fills = `<rect x="140" y="100" width="360" height="360" fill="#112233"/>`
-    const input = parse_phase_diagram_svg(simple_svg(boundaries, fills))
-    const thin_l = input.regions.find((region) => region.bounds.length === 6)
-    expect(thin_l?.color).toBe(`#aabbcc`)
-    expect(input.regions.find((region) => region.bounds.length === 4)?.color).toBe(`#112233`)
   })
 
   // Ticks at 500/1500 K (px 500/100) sit inside a plot area reaching 1600 K (px 60); the L + c
@@ -226,10 +200,10 @@ describe(`parse_phase_diagram_svg`, () => {
   ])(
     `takes the axis range from the plot area, not the outermost ticks ($format)`,
     ({ svg }) => {
-      const input = parse_phase_diagram_svg(svg)
-      expect(input.meta.temp_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1600, 9)])
-      const top = input.regions.find(({ name }) => name === `L + c`)
-      expect(top?.bounds).toEqual(rect(0, 1550, 1, 1600))
+      const data = parse_phase_diagram_svg(svg)
+      expect(data.temperature_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1600, 9)])
+      const top = data.regions?.find(({ phases }) => phases.includes(`c`))
+      expect(top?.vertices).toEqual(rect(0, 1550, 1, 1600))
     },
   )
 
@@ -237,8 +211,11 @@ describe(`parse_phase_diagram_svg`, () => {
     [`vertical`, `x2="300" y2="300"`, `x2="300" y2="300.3"`],
     [`horizontal`, `y1="300" x2="300"`, `y1="300" x2="299.7"`],
   ])(`snaps sub-pixel gaps between boundaries (%s ends 0.3 px short)`, (_label, from, to) => {
-    const input = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES.replace(from, to)))
-    expect(input.regions.map(({ name }) => name)).toEqual([`α + β`, `L + α`])
+    const data = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES.replace(from, to)))
+    expect(data.regions?.map(({ phases }) => phases.toSorted())).toEqual([
+      [`α`, `β`],
+      [`L`, `α`],
+    ])
   })
 
   it.each([
@@ -251,8 +228,8 @@ describe(`parse_phase_diagram_svg`, () => {
     // minified arc flags run into the endpoint: flags 0, 1 then x = 0, y = -200
     { label: `compact arc flags`, d_attr: `m300 500a1 1 0 010-200` },
   ])(`parses boundary path variant: $label`, ({ d_attr }) => {
-    const input = parse_phase_diagram_svg(matplotlib_svg([d_attr, MPL_BOUNDARIES[1]]))
-    expect(input.curves.vertical_0).toEqual(pts(0.5, 500, 0.5, 1000))
+    const data = parse_phase_diagram_svg(matplotlib_svg([d_attr, MPL_BOUNDARIES[1]]))
+    expect(data.boundaries[0].points).toEqual(pts(0.5, 500, 0.5, 1000))
   })
 
   it.each([
@@ -316,7 +293,7 @@ describe(`trace_region_outline`, () => {
   it.each([
     [`single cell`, [[0]], 1, rect(0, 0, 1, 1)],
     [`L of three cells`, pts(0, 0, 0, 1), 2, pts(0, 0, 2, 0, 2, 1, 1, 1, 1, 2, 0, 2)],
-  ] as [string, number[][], number, DiagramPoint[]][])(
+  ] as [string, number[][], number, Vec2[]][])(
     `traces a closed outline (%s)`,
     (_label, cells, size, expected) => {
       expect(trace_region_outline(cells, 0, size, size)).toEqual(expected)

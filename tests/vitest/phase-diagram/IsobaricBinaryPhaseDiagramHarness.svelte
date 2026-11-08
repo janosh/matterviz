@@ -1,10 +1,10 @@
 <script lang="ts">
   import { IsobaricBinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
-  import type { PhaseDiagramData, PhaseRegion } from '#lib/phase-diagram/types.js'
+  import type { BinaryPhaseDiagram, DiagramRegion } from '#lib/phase-diagram/types.js'
 
-  let { loaded_data }: { loaded_data: PhaseDiagramData } = $props()
-  let data = $state.raw<PhaseDiagramData | undefined>()
-  let hovered_region = $state.raw<PhaseRegion | null>(null)
+  let { loaded_data }: { loaded_data: BinaryPhaseDiagram } = $props()
+  let data = $state.raw<BinaryPhaseDiagram | undefined>()
+  let hovered_region = $state.raw<DiagramRegion | null>(null)
 </script>
 
 <button type="button" data-testid="load-phase-data" onclick={() => (data = loaded_data)}>
@@ -13,7 +13,7 @@
 <button type="button" data-testid="clear-phase-data" onclick={() => (data = undefined)}>
   Clear Data
 </button>
-<span data-testid="hovered-region">{hovered_region?.id ?? `none`}</span>
+<span data-testid="hovered-region">{hovered_region?.phases.join(`+`) ?? `none`}</span>
 <IsobaricBinaryPhaseDiagram
   {data}
   bind:hovered_region

@@ -7,7 +7,7 @@
   import type { AxisConfig } from '#lib/plot/index.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
-  import type { PhaseDiagramConfig, PhaseDiagramData } from './types'
+  import type { BinaryPhaseDiagram, CompUnit, PhaseDiagramConfig, TempUnit } from './types'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 
   let {
@@ -17,6 +17,12 @@
     show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
     show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
+    show_overlay = $bindable(PHASE_DIAGRAM_DEFAULTS.show_overlay),
+    show_observations = $bindable(PHASE_DIAGRAM_DEFAULTS.show_observations),
+    temp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.temp_unit),
+    comp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.comp_unit),
+    has_overlay = false,
+    has_observations = false,
     config = $bindable({}),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -29,11 +35,18 @@
     show_special_points?: boolean
     show_grid?: boolean
     show_component_labels?: boolean
+    show_overlay?: boolean
+    show_observations?: boolean
+    temp_unit?: TempUnit
+    comp_unit?: CompUnit
+    // Whether the diagram has an overlay / observations to toggle
+    has_overlay?: boolean
+    has_observations?: boolean
     config?: Partial<PhaseDiagramConfig>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
-    // Data for context (components, units, etc.)
-    data?: PhaseDiagramData
+    // Data for context (components, marked points)
+    data?: BinaryPhaseDiagram
     // Custom content rendered above the built-in sections
     children?: Snippet<[{ controls_open: boolean }]>
   } = $props()
@@ -61,9 +74,20 @@
       ? `${data.components[0]}-${data.components[1]} phase diagram`
       : `Phase diagram controls`,
   )
-  const temp_unit = $derived(data?.temperature_unit ?? `K`)
-  const comp_unit = $derived(data?.composition_unit ?? `at%`)
-  const has_special_points = $derived((data?.special_points?.length ?? 0) > 0)
+  const has_special_points = $derived(
+    Boolean(
+      data &&
+      data.invariants.length +
+        data.congruent_points.length +
+        data.critical_points.length +
+        data.unary_transitions.length,
+    ),
+  )
+  const temp_units: TempUnit[] = [`K`, `°C`]
+  const comp_units: [CompUnit, string][] = [
+    [`at%`, `at.%`],
+    [`fraction`, `mole fraction`],
+  ]
 
   // [tie_line config key, row label, tooltip, min, max, step]
   const tie_line_rows = [
@@ -86,7 +110,13 @@
       show_special_points,
       show_grid,
       show_component_labels,
+      show_overlay,
+      show_observations,
     }),
+    PHASE_DIAGRAM_DEFAULTS,
+  )
+  const units_settings = track_settings(
+    () => ({ temp_unit, comp_unit }),
     PHASE_DIAGRAM_DEFAULTS,
   )
   const appearance_settings = track_settings(
@@ -135,6 +165,8 @@
           show_special_points,
           show_grid,
           show_component_labels,
+          show_overlay,
+          show_observations,
         } = PHASE_DIAGRAM_DEFAULTS)}
       layout="grid"
       class="visibility-grid"
@@ -160,6 +192,39 @@
       <label {@attach tooltip({ content: `Show component labels at axes` })}>
         <span>Comp. labels</span>
         <input type="checkbox" bind:checked={show_component_labels} />
+      </label>
+      {#if has_overlay}
+        <label {@attach tooltip({ content: `Show the comparison diagram's boundaries` })}>
+          <span>Overlay</span>
+          <input type="checkbox" bind:checked={show_overlay} />
+        </label>
+      {/if}
+      {#if has_observations}
+        <label {@attach tooltip({ content: `Show experimental observations` })}>
+          <span>Observations</span>
+          <input type="checkbox" bind:checked={show_observations} />
+        </label>
+      {/if}
+    </SettingsSection>
+
+    <SettingsSection
+      title="Units"
+      changed_keys={units_settings.changed_keys}
+      on_reset={() => ({ temp_unit, comp_unit } = PHASE_DIAGRAM_DEFAULTS)}
+      layout="grid"
+    >
+      <label {@attach tooltip({ content: `Temperature display unit (data is in K)` })}>
+        <span>Temperature</span>
+        <select bind:value={temp_unit} data-testid="temp-unit">
+          {#each temp_units as unit (unit)}<option value={unit}>{unit}</option>{/each}
+        </select>
+      </label>
+      <label {@attach tooltip({ content: `Composition display (data is mole fraction)` })}>
+        <span>Composition</span>
+        <select bind:value={comp_unit} data-testid="comp-unit">
+          {#each comp_units as [unit, label] (unit)}<option value={unit}>{label}</option
+            >{/each}
+        </select>
       </label>
     </SettingsSection>
 
@@ -197,7 +262,7 @@
     {@const color_options = [
       [`background`, `#ffffff`, `Background`, `Background color of the plot area`],
       [`grid`, `#888888`, `Grid`, `Color of grid lines`],
-      [`boundary`, `#333333`, `Boundaries`, `Color of phase boundary lines`],
+      [`overlay`, `#e6007e`, `Overlay`, `Color of the comparison diagram's boundaries`],
       [`special_point`, `#d32f2f`, `Special pts`, `Color of special point markers`],
       [`axis`, `#333333`, `Axis`, `Color of axis lines`],
       [`text`, `#333333`, `Text`, `Color of text labels`],
