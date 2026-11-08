@@ -333,7 +333,7 @@
       extract()
       return
     }
-    // On the main thread (no workers, e.g. anywidget) extraction blocks: mu changes batch per
+    // On the main thread (no workers, e.g. a page refusing blob: workers) extraction blocks: mu changes batch per
     // frame, and a grid or factor still to upsample first gives the spinner a painted frame
     let frame = requestAnimationFrame(() => {
       if (cold) frame = requestAnimationFrame(extract)

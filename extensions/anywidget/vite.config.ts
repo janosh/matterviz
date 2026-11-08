@@ -2,8 +2,10 @@ import { make_config } from 'svelte-widgets/vite-config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
+import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 import {
+  json_gz_worker_plugins,
   three_compat_alias,
   vite_plugin_json_gz,
   vite_plugin_moyo_wasm_source,
@@ -15,9 +17,34 @@ const moyo_version = createRequire(import.meta.url)(`@spglib/moyo-wasm/package.j
 const moyo_wasm_cdn = `https://cdn.jsdelivr.net/npm/@spglib/moyo-wasm@${moyo_version}/moyo_wasm_bg.wasm`
 const moyo_wasm_source = `globalThis.matterviz_moyo_wasm_url ?? ${JSON.stringify(moyo_wasm_cdn)}`
 
+// The bundle loads from a blob:, CDN or file:// URL, against which emitted worker files can't
+// start, so each `new Worker(new URL('./x.js', import.meta.url), options)` becomes Vite's inline
+// worker: shipped as a string, run from a blob: URL (same-origin with the notebook page)
+const worker_url_re =
+  /new Worker\(\s*new URL\(\s*([`'"])(\.\/[\w.-]+)\1,\s*import\.meta\.url\s*\)\s*,/g
+export const inline_workers: Plugin = {
+  name: `inline-workers`,
+  enforce: `pre`,
+  transform(code, identifier) {
+    if (!code.includes(`new Worker(`)) return null
+    const imports: string[] = []
+    const inlined = code.replaceAll(worker_url_re, (_match, _quote, path: string) => {
+      const name = `__inline_worker_${imports.length}`
+      imports.push(`import ${name} from ${JSON.stringify(`${path}?worker&inline`)}`)
+      return `new ${name}(`
+    })
+    // any other new Worker(new URL(...)) would emit a worker file this bundle can't start
+    if (/new Worker\(\s*new URL\(/.test(inlined)) {
+      throw new Error(`inline-workers: unmatched new Worker(new URL(...)) in ${identifier}`)
+    }
+    return imports.length ? { code: `${imports.join(`\n`)}\n${inlined}`, map: null } : null
+  },
+}
+
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
+  inline_workers as unknown,
   vite_plugin_moyo_wasm_source(`moyo-wasm-cdn`, moyo_wasm_source) as unknown,
   vite_plugin_json_gz() as unknown,
   svelte() as unknown,
@@ -45,6 +72,16 @@ export default defineConfig({
     dedupe: [`three`],
   },
   plugins,
+  // One file per module worker (an inline worker has no URL to load chunks from). Workers can't
+  // read host globals, so theirs is the CDN moyo (anywidget.ts handles matterviz_moyo_wasm_url)
+  worker: {
+    format: `es`,
+    plugins: () => [
+      vite_plugin_moyo_wasm_source(`moyo-wasm-cdn`, JSON.stringify(moyo_wasm_cdn)),
+      ...json_gz_worker_plugins()(),
+    ],
+    rolldownOptions: { output: { codeSplitting: false } },
+  },
   build: {
     ...config.build, // keep shared cssTarget: esnext (for light-dark())
     outDir: `build`,

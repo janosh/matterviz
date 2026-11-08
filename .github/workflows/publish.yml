@@ -182,8 +182,8 @@ jobs:
           js_bytes=$(wc -c < build/matterviz.js)
           test "$js_bytes" -gt 1000000 || {
             echo "bundle too small ($js_bytes B)"; exit 1; }
-          # Fresh builds are ~5.37 MB; Moyo's base64 WASM adds ~0.98 MB.
-          test "$js_bytes" -lt 6000000 || {
+          # Fresh builds are ~6.19 MB (0.8 MB of it inline workers); Moyo's base64 WASM adds ~0.98 MB.
+          test "$js_bytes" -lt 6600000 || {
             echo "bundle too large ($js_bytes B) -- unexpected dependency bundled?"; exit 1; }
           mkdir -p release
           npm pack --ignore-scripts --pack-destination release

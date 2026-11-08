@@ -8,10 +8,10 @@ import {
   BandsAndDos,
   BarPlot,
   BrillouinZone,
+  check_blob_workers,
   ChemPotDiagram,
   Composition,
   ConvexHull,
-  disable_workers,
   Dos,
   FermiSurface,
   HeatmapMatrix,
@@ -24,6 +24,7 @@ import {
   RdfPlot,
   ScatterPlot,
   ScatterPlot3D,
+  set_moyo_wasm_source,
   SpacegroupBarPlot,
   Structure,
   trajectory_from_json,
@@ -50,9 +51,8 @@ import {
   writeback_prop,
 } from './reactive.svelte'
 
-// The bundle loads from a blob:, CDN or file:// URL, against which bundled worker files either
-// fail to resolve or resolve cross-origin (new Worker throws), so compute on the main thread
-disable_workers()
+// Workers ship inline and run from blob: URLs (see vite.config.ts), which a page CSP may refuse
+await check_blob_workers(`MatterViz`)
 
 const styled_shadow_roots = new WeakSet<ShadowRoot>()
 
@@ -755,6 +755,9 @@ const render: Render = (props) => {
 
   cleanup_element(element)
   inject_app_css(element)
+  // Workers fetch moyo from the CDN; a host-served WASM (offline use) keeps symmetry here
+  const { matterviz_moyo_wasm_url } = globalThis as { matterviz_moyo_wasm_url?: string }
+  if (matterviz_moyo_wasm_url) set_moyo_wasm_source(matterviz_moyo_wasm_url)
   // The widget's theme is its own color-scheme, now and as the host's changes: light-dark()
   // tokens, native form controls and svelte-widgets all resolve against it, and setting it on
   // the element (not the host page's root) leaves the notebook's own scheme alone. Started

@@ -61,14 +61,34 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
 // Where Worker is missing (SSR) or a host called disable_workers, jobs run on the main thread;
 // a worker that can be constructed but then fails still rejects its requests
 let workers_disabled = false
-// For hosts that can't load bundled worker files: anywidget imports matterviz's single-file
-// bundle from a blob:, CDN or file:// URL, against which worker URLs either fail to resolve or
-// resolve cross-origin. Call once at startup to run every job on the main thread.
+// For hosts that can't load bundled worker files (file://, a CSP refusing blob: workers):
+// call once at startup to run every job on the main thread
 export const disable_workers = (): void => {
   workers_disabled = true
 }
 export const can_create_worker = (): boolean =>
   !workers_disabled && typeof Worker !== `undefined`
+
+// For bundles starting workers from blob: URLs (anywidget's inline workers, the custom elements'
+// cross-origin shim): a CSP keeping blob: out of worker-src fails them with an error event, not
+// a throw, so every job would fail. Probe once and move jobs to the main thread if refused.
+export const check_blob_workers = async (host: string): Promise<void> => {
+  if (typeof Worker === `undefined`) return
+  const url = URL.createObjectURL(new Blob([`postMessage(0)`], { type: `text/javascript` }))
+  let worker: Worker | undefined
+  const refusal = await new Promise<string | null>((resolve) => {
+    worker = new Worker(url, { type: `module` })
+    worker.addEventListener(`message`, () => resolve(null))
+    worker.addEventListener(`error`, (event) => resolve(event.message || `start failed`))
+  }).catch((error: unknown) => to_error(error).message)
+  worker?.terminate()
+  URL.revokeObjectURL(url)
+  if (refusal === null) return
+  console.warn(
+    `${host}: running analyses on the main thread, blob: workers refused (${refusal})`,
+  )
+  disable_workers()
+}
 
 const abort_error = (signal: AbortSignal, label: string): Error => {
   const error = to_error(signal.reason ?? `${label} worker request aborted`)
