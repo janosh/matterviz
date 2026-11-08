@@ -527,7 +527,7 @@ describe(`Auto-detection & Error Handling`, () => {
     { parser: parse_xyz, content: `3\nonly\nHe 1 2 3\nHe 4 5 6\n`, error: /no complete frame \(Dropping truncated final XYZ frame 1\b/ },
     { parser: parse_xyz, content: `2\nTest\nC 0.0 0.0\nH 1.0 0.0 0.0`, error: `3 columns, expected at least 4` },
     { parser: parse_xyz, content: `invalid\nTest\nC 0.0 0.0 0.0`, error: `XYZ file has no complete frame` },
-    { parser: parse_xyz, content: `1\nTest\nC Infinity 0.0 0.0`, error: `non-numeric coordinates` },
+    { parser: parse_xyz, content: `1\nTest\nC Infinity 0.0 0.0`, error: `Non-finite XYZ coordinates` },
     { parser: parse_poscar, content: `Test\n1.0\n3.0 0.0 0.0\n0.0 3.0 0.0\n0.0 0.0 3.0\nTi\n1\nDirect\ninvalid 0.0 0.0`, error: `Invalid coordinate value: 'invalid'` },
     { parser: parse_xyz, content: `1\nTest\nC invalid 0.0 0.0`, error: `non-numeric coordinates` },
     { parser: parse_poscar, content: `Test\n1.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n0.0 0.0 1.0\nH\n1\nFoo\n0.0 0.0 0.0`, error: `Unknown coordinate mode in POSCAR` },
