@@ -13,7 +13,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { Vec3 } from '#lib/math.js'
 import { array_extent, array_max, same_position } from '#lib/math.js'
-import { DEFAULTS } from '#lib/settings.js'
+import { POLYHEDRA_DEFAULTS } from '#lib/constants.js'
 import type { DefaultSettings } from '#lib/settings.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { get_majority_element, has_framework_potential, is_spectator_center } from './bonding'
@@ -50,15 +50,13 @@ export type ResolvedPolyhedraOptions = Required<
 export const polyhedra_options_from = (
   settings: PolyhedraSettings,
 ): ResolvedPolyhedraOptions => {
-  const min_neighbors =
-    settings.polyhedra_min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors
+  const min_neighbors = settings.polyhedra_min_neighbors ?? POLYHEDRA_DEFAULTS.min_neighbors
   return {
-    neighbor_mode:
-      settings.polyhedra_neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
+    neighbor_mode: settings.polyhedra_neighbor_mode ?? POLYHEDRA_DEFAULTS.neighbor_mode,
     min_neighbors,
     max_neighbors: Math.max(
       min_neighbors,
-      settings.polyhedra_max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
+      settings.polyhedra_max_neighbors ?? POLYHEDRA_DEFAULTS.max_neighbors,
     ),
     excluded_center_elements: [...(settings.polyhedra_excluded_elements ?? [])],
     included_center_elements: [...(settings.polyhedra_included_elements ?? [])],
@@ -69,9 +67,9 @@ export const polyhedra_options_from = (
 // different graph; appearance changes leave this geometry reusable.
 const polyhedra_options_key = (options: PolyhedraOptions): string =>
   value_key([
-    options.neighbor_mode ?? DEFAULTS.structure.polyhedra_neighbor_mode,
-    options.min_neighbors ?? DEFAULTS.structure.polyhedra_min_neighbors,
-    options.max_neighbors ?? DEFAULTS.structure.polyhedra_max_neighbors,
+    options.neighbor_mode ?? POLYHEDRA_DEFAULTS.neighbor_mode,
+    options.min_neighbors ?? POLYHEDRA_DEFAULTS.min_neighbors,
+    options.max_neighbors ?? POLYHEDRA_DEFAULTS.max_neighbors,
     options.excluded_center_elements ?? [],
     options.included_center_elements ?? [],
     options.electronegativity_margin ?? 0,
@@ -508,11 +506,9 @@ export function compute_polyhedra(
   skip_hull?: (center_site_idx: number) => boolean,
 ): Polyhedron[] {
   const {
-    neighbor_mode = DEFAULTS.structure.polyhedra_neighbor_mode,
-    // Neighbor-count fallbacks derive from DEFAULTS.structure so they can't drift
-    // from the polyhedra_min/max_neighbors settings defaults
-    min_neighbors = DEFAULTS.structure.polyhedra_min_neighbors,
-    max_neighbors = DEFAULTS.structure.polyhedra_max_neighbors,
+    neighbor_mode = POLYHEDRA_DEFAULTS.neighbor_mode,
+    min_neighbors = POLYHEDRA_DEFAULTS.min_neighbors,
+    max_neighbors = POLYHEDRA_DEFAULTS.max_neighbors,
     excluded_center_elements = [],
     included_center_elements = [],
     electronegativity_margin = 0,

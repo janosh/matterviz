@@ -1,4 +1,4 @@
-import { DEFAULTS } from '#lib/settings.js'
+import { FERMI_COLOR_PROPERTY } from '#lib/constants.js'
 import type { ColorProperty, SpinChannel } from './types'
 
 // Band colors (ColorBrewer Set1 palette for categorical data)
@@ -40,7 +40,7 @@ export const resolve_color_property = (
     ? chosen
     : property_names.length > 0
       ? `property`
-      : DEFAULTS.fermi.color_property
+      : FERMI_COLOR_PROPERTY
 
 // Key of a per-vertex property its source leaves unnamed (an IFermi/JSON `properties` array,
 // a scalar FRMSF colour block). FermiSurface's custom_property_label relabels it for display.

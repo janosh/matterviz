@@ -2,8 +2,22 @@ import type { ChemicalElement } from '#lib/element/types.js'
 import type { Vec3 } from '#lib/math.js'
 import { normalize_unicode_minus } from '#lib/utils.js'
 import { format } from 'd3-format'
-import type { SymbolType } from 'd3-shape'
-import * as d3_symbols from 'd3-shape'
+import {
+  type SymbolType,
+  symbolAsterisk,
+  symbolCircle,
+  symbolCross,
+  symbolDiamond,
+  symbolDiamond2,
+  symbolPlus,
+  symbolSquare,
+  symbolSquare2,
+  symbolStar,
+  symbolTimes,
+  symbolTriangle,
+  symbolTriangle2,
+  symbolWye,
+} from 'd3-shape'
 import { timeFormat } from 'd3-time-format'
 
 export { ELEM_SYMBOLS } from '#lib/element/types.js'
@@ -82,28 +96,25 @@ export function parse_axis_label(label: string): { name: string; unit?: string }
 }
 
 // d3-shape symbol names (`Circle`, `Cross`, ...) in d3's fill-then-stroke order, and the
-// matching SymbolType for each. `symbolX` aliases `symbolTimes`, so the first export
-// naming a symbol object wins.
-type D3SymbolExport = Extract<keyof typeof d3_symbols, `symbol${Capitalize<string>}`>
-export type D3SymbolName = Exclude<
-  D3SymbolExport extends `symbol${infer Name}` ? Name : never,
-  ``
->
-const symbols_by_name = Object.fromEntries(
-  Object.entries(d3_symbols)
-    .filter(([key]) => /^symbol[A-Z]/.test(key))
-    .map(([key, symbol]) => [key.slice(6), symbol]),
-) as Record<D3SymbolName, SymbolType>
-const name_by_symbol = new Map<SymbolType, D3SymbolName>()
-for (const [name, symbol] of Object.entries(symbols_by_name) as [D3SymbolName, SymbolType][]) {
-  if (!name_by_symbol.has(symbol)) name_by_symbol.set(symbol, name)
-}
-export const symbol_names = [
-  ...new Set([...d3_symbols.symbolsFill, ...d3_symbols.symbolsStroke]),
-].flatMap((symbol) => name_by_symbol.get(symbol) ?? [])
-export const symbol_map: Partial<Record<D3SymbolName, SymbolType>> = Object.fromEntries(
-  symbol_names.map((name) => [name, symbols_by_name[name]]),
-)
+// matching SymbolType for each. A static map, not one built from the d3-shape namespace at
+// load, so bundles that import labels.ts drop d3-shape.
+export const symbol_map = {
+  Circle: symbolCircle,
+  Cross: symbolCross,
+  Diamond: symbolDiamond,
+  Square: symbolSquare,
+  Star: symbolStar,
+  Triangle: symbolTriangle,
+  Wye: symbolWye,
+  Plus: symbolPlus,
+  Times: symbolTimes,
+  Triangle2: symbolTriangle2,
+  Asterisk: symbolAsterisk,
+  Square2: symbolSquare2,
+  Diamond2: symbolDiamond2,
+} satisfies Record<string, SymbolType>
+export type D3SymbolName = keyof typeof symbol_map
+export const symbol_names = Object.keys(symbol_map) as D3SymbolName[]
 
 // Format a value for display with optional time formatting
 export function format_value(value: number, formatter?: string): string {
