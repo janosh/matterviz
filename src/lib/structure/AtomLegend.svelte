@@ -268,7 +268,7 @@
       aria-expanded={mode_menu_open}
       aria-hidden={mode_toggle_visible ? undefined : true}
       tabindex={mode_toggle_visible ? undefined : -1}
-      {@attach tooltip()}
+      {@attach tooltip({ placement: `top` })}
     >
       <Icon icon={mode_menu_open ? ChevronCollapse : ChevronExpand} />
     </button>
@@ -369,7 +369,7 @@
           title="{element_by_symbol.get(displayed_elem)?.name ?? ``}{displayed_elem !== elem
             ? ` (remapped from ${elem})`
             : ``}"
-          {@attach tooltip()}
+          {@attach tooltip({ placement: `top` })}
           style:background-color={color}
           style:color={element_text_color(color)}
           class:hidden={is_hidden}
