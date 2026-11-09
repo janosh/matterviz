@@ -47,17 +47,13 @@ export const read_text_line = (
   offset: number,
 ): { line: string; next: number } => {
   let end = offset
-  while (
-    end < text.length &&
-    (text.codePointAt(end) ?? NaN) !== 10 &&
-    (text.codePointAt(end) ?? NaN) !== 13
-  ) {
+  while (end < text.length && text.charCodeAt(end) !== 10 && text.charCodeAt(end) !== 13) {
     end++
   }
   const line = text.slice(offset, end)
   let next = end
-  if (next < text.length && (text.codePointAt(next) ?? NaN) === 13) next++ // skip \r
-  if (next < text.length && (text.codePointAt(next) ?? NaN) === 10) next++ // skip \n
+  if (next < text.length && text.charCodeAt(next) === 13) next++ // skip \r
+  if (next < text.length && text.charCodeAt(next) === 10) next++ // skip \n
   return { line, next }
 }
 

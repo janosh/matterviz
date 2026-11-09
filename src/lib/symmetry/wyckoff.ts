@@ -157,8 +157,7 @@ export function enrich_wyckoff_rows(
 }
 
 // Rank `A` (ITA's alpha, the letter AFTER z) above all lowercase letters
-const letter_rank = (letter: string): number =>
-  (letter.codePointAt(0) ?? NaN) + (letter < `a` ? 64 : 0)
+const letter_rank = (letter: string): number => letter.charCodeAt(0) + (letter < `a` ? 64 : 0)
 
 // Wyckoff sequence of the occupied orbits: letters in descending alphabetical order
 // (general position first, ICSD convention), each with a superscript count when more

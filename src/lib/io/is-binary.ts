@@ -17,7 +17,7 @@ export const is_binary = (content: string): boolean => {
 
   let binary_char_count = 0
   for (let char_idx = 0; char_idx < sample.length; char_idx += 1) {
-    const char_code = sample.codePointAt(char_idx) ?? NaN
+    const char_code = sample.charCodeAt(char_idx)
     if (
       char_code <= 8 ||
       (char_code >= 14 && char_code <= 31) ||

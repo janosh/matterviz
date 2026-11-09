@@ -74,8 +74,7 @@ export function bar_path(
 // Math.round(val * 1000) is an integer whose shortest decimal form, divided by 1000, is its own
 // digits with a point three places in (trailing zeros dropped), so integer arithmetic writes
 // the same characters; values past int32 (and NaN/Infinity) are formatted as d3 does.
-const ASCII = (text: string): number[] =>
-  Array.from(text, (char) => char.codePointAt(0) ?? NaN)
+const ASCII = (text: string): number[] => Array.from(text, (char) => char.charCodeAt(0))
 // `.001` ... `.999` without trailing zeros, empty for a whole number
 const FRACTION_BYTES = Array.from({ length: 1000 }, (_, frac) =>
   frac === 0 ? [] : ASCII(`.${String(frac).padStart(3, `0`).replace(/0+$/, ``)}`),

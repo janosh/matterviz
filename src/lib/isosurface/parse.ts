@@ -59,45 +59,45 @@ let token_end = 0
 // finding the token end first) read a 200^3 CHGCAR 1.7x faster.
 function scan_number(text: string, start: number): number {
   let pos = start
-  let code = text.codePointAt(pos) ?? NaN
+  let code = text.charCodeAt(pos)
   let negative = false
   if (code === 45 || code === 43) {
     // '-' / '+'
     negative = code === 45
-    code = text.codePointAt(++pos) ?? NaN
+    code = text.charCodeAt(++pos)
   }
   let mantissa = 0
   const digits_start = pos
   while (code >= 48 && code <= 57) {
     mantissa = mantissa * 10 + (code - 48)
-    code = text.codePointAt(++pos) ?? NaN
+    code = text.charCodeAt(++pos)
   }
   let n_digits = pos - digits_start
   let exponent = 0
   if (code === 46) {
     // '.': each fraction digit lowers the exponent by one
     const fraction_start = ++pos
-    code = text.codePointAt(pos) ?? NaN
+    code = text.charCodeAt(pos)
     while (code >= 48 && code <= 57) {
       mantissa = mantissa * 10 + (code - 48)
-      code = text.codePointAt(++pos) ?? NaN
+      code = text.charCodeAt(++pos)
     }
     exponent = fraction_start - pos
     n_digits -= exponent
   }
   if (code === 101 || code === 69 || code === 100 || code === 68) {
     // e E d D
-    code = text.codePointAt(++pos) ?? NaN
+    code = text.charCodeAt(++pos)
     let exp_negative = false
     if (code === 45 || code === 43) {
       exp_negative = code === 45
-      code = text.codePointAt(++pos) ?? NaN
+      code = text.charCodeAt(++pos)
     }
     let exp_value = 0
     const exp_start = pos
     while (code >= 48 && code <= 57) {
       exp_value = exp_value * 10 + (code - 48)
-      code = text.codePointAt(++pos) ?? NaN
+      code = text.charCodeAt(++pos)
     }
     if (pos === exp_start) n_digits = 0 // `1e`: no exponent digits
     exponent += exp_negative ? -exp_value : exp_value
@@ -110,7 +110,7 @@ function scan_number(text: string, start: number): number {
     exponent < -22 ||
     code > 32
   ) {
-    while (pos < text.length && (text.codePointAt(pos) ?? NaN) > 32) pos++
+    while (pos < text.length && text.charCodeAt(pos) > 32) pos++
     token_end = pos
     return parse_token_slow(text, start, pos)
   }
@@ -142,17 +142,17 @@ export function parse_float_block(
 
   while (idx < target && pos < len) {
     // Skip whitespace
-    let char_code = text.codePointAt(pos) ?? NaN
+    let char_code = text.charCodeAt(pos)
     while (pos < len && char_code <= 32) {
       // After a newline, check if the next non-space char is a letter (section break)
       if (char_code === 10 || char_code === 13) {
         let peek = pos + 1
         // Skip \r\n combo
-        if (char_code === 13 && peek < len && (text.codePointAt(peek) ?? NaN) === 10) peek++
+        if (char_code === 13 && peek < len && text.charCodeAt(peek) === 10) peek++
         // Skip leading spaces on the new line
-        while (peek < len && (text.codePointAt(peek) ?? NaN) === 32) peek++
+        while (peek < len && text.charCodeAt(peek) === 32) peek++
         if (peek < len) {
-          const next_char = text.codePointAt(peek) ?? NaN
+          const next_char = text.charCodeAt(peek)
           // Letter a-z or A-Z signals a non-numeric line (e.g. "augmentation")
           const is_letter =
             (next_char >= 65 && next_char <= 90) || (next_char >= 97 && next_char <= 122)
@@ -161,7 +161,7 @@ export function parse_float_block(
           }
         }
       }
-      char_code = text.codePointAt(++pos) ?? NaN
+      char_code = text.charCodeAt(++pos)
     }
     if (pos >= len) break
 
@@ -184,7 +184,7 @@ function find_line_offset(text: string, target_line: number): number {
   let line = 0
   let pos = 0
   while (line < target_line && pos < text.length) {
-    if ((text.codePointAt(pos) ?? NaN) === 10) line++
+    if (text.charCodeAt(pos) === 10) line++
     pos++
   }
   return pos
@@ -290,7 +290,7 @@ const infer_vasp_kind = (blocks: readonly { values: Float64Array }[]): VaspVolum
 // comes from the `filename` (see vasp_kind_from_name), else from the content (infer_vasp_kind).
 export function parse_chgcar(content: string, filename = ``): VolumetricFileData {
   let pos = 0 // skip leading whitespace
-  while (pos < content.length && (content.codePointAt(pos) ?? NaN) <= 32) pos++
+  while (pos < content.length && content.charCodeAt(pos) <= 32) pos++
 
   // Shared POSCAR-family header. `lenient` reads any mode line but C/K... as Direct, like VASP
   const cursor = text_cursor(content, pos)
@@ -409,7 +409,7 @@ export function parse_cube(
   // Quick line count check: need at least 7 lines (2 title + 1 header + 3 voxel + 1 atom)
   let line_count = 0
   for (let idx = 0; idx < content.length && line_count < 7; idx++) {
-    if ((content.codePointAt(idx) ?? NaN) === 10) line_count++
+    if (content.charCodeAt(idx) === 10) line_count++
   }
   if (line_count < 6) throw new Error(`.cube file too short (${line_count} lines)`)
 

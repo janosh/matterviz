@@ -64,12 +64,7 @@ import { Dataset as H5Dataset } from 'h5wasm'
 import type { File as H5File, Group as H5Group } from 'h5wasm'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { rejection_of } from '../setup'
-import {
-  make_crystal,
-  read_binary_test_file,
-  read_maybe_gz,
-  utf16_bom,
-} from '../test-fixtures'
+import { make_crystal, read_binary_test_file, read_maybe_gz } from '../test-fixtures'
 import type { H5Spec } from './fixtures'
 import {
   create_dataset,
@@ -248,8 +243,9 @@ describe(`site fixtures`, () => {
 // === Content sniffing without a filename hint (blob: URLs) ===
 
 const VALID_XYZ_FRAME = `3\nvalid frame\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\nH 0.0 1.0 0.0`
-// Text as UTF-16LE bytes with a BOM (little-endian hosts)
-const utf16le = (text: string): ArrayBuffer => utf16_bom(text).buffer
+// ASCII text as UTF-16LE bytes with a BOM (little-endian hosts)
+const utf16le = (text: string): ArrayBuffer =>
+  new Uint16Array([0xfeff, ...Array.from(text, (char) => char.charCodeAt(0))]).buffer
 // One LAMMPS dump frame in an orthogonal 10x10x10 box
 const lammps_frame = (
   columns: string,
@@ -2614,7 +2610,7 @@ describe(`unsupported format messages`, () => {
     [`trajectory.xyz.xz`, ``, `XZ decompression is not supported`],
     [`movie.xyz.Z`, ``, `LZW decompression is not supported`],
     [`data.json.zip`, ``, null], // single-file ZIPs inflate in the browser
-    [`unknown.bin`, String.fromCodePoint(0, 1, 2, 3), `Binary format not supported`],
+    [`unknown.bin`, String.fromCharCode(0, 1, 2, 3), `Binary format not supported`],
     [`md.dump`, `ITEM: TIMESTEP\n0\n`, null],
     [`test.xyz`, ``, null],
     [`XDATCAR`, ``, null],

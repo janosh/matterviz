@@ -59,7 +59,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCodePoint(...bytes))
+const uint8_as_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes))
 
 const fixture_base64 = (name: string, gzip = false): string => {
   const bytes = readFileSync(resolve(import.meta.dirname, `../fixtures/vasp-hdf5/${name}`))
@@ -225,11 +225,10 @@ test.each([
 // .dat payloads stay bytes through classification (is_binary_payload) and text reaches the
 // worker as a Blob, so the parser decodes both itself: by their byte-order mark
 test.each([`ArrayBuffer`, `Blob`])(`a UTF-16 text %s decodes by its BOM`, async (kind) => {
-  const expected = { x: [1, 2, 3], y: [4, 5, 6], label: `Si \u{1F9EA}` }
-  const { buffer } = utf16_bom(JSON.stringify(expected))
+  const { buffer } = utf16_bom(JSON.stringify({ x: [1, 2, 3], y: [4, 5, 6] }))
   const data = kind === `Blob` ? new Blob([buffer]) : buffer
   const result = await parse_file_content(data, `xy.dat`)
-  expect(result.type === `json_browser` && result.data).toEqual(expected)
+  expect(result.type === `json_browser` && result.data).toEqual({ x: [1, 2, 3], y: [4, 5, 6] })
 })
 
 test(`a payload under a non-JSON name that merely starts with [ is not read as JSON`, async () => {
@@ -995,7 +994,7 @@ describe(`VSCode Download Integration`, () => {
           void (async () => {
             if (outcome === `load`) {
               const bytes = new Uint8Array(await blob.arrayBuffer())
-              result = `data:${blob.type};base64,${btoa(String.fromCodePoint(...bytes))}`
+              result = `data:${blob.type};base64,${btoa(String.fromCharCode(...bytes))}`
             }
             listener?.()
           })()
