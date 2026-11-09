@@ -26,7 +26,7 @@
     TwoColumns,
   } from 'svelte-widgets/icons'
   import type SiteTable from './SiteTable.svelte'
-  import { DOCKED_SCROLL_STYLE, has_site_data } from './site-table'
+  import { DOCKED_SCROLL_STYLE, has_site_data, load_site_table } from './site-table'
   import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
@@ -1298,16 +1298,23 @@
   )
   // With a docked sidebar or in fullscreen the outer row takes the caller's size, the viewer fills it
   let row_sized = $derived(site_sidebar_shown || fullscreen)
-  // The site table (DataTable and its menus) is imported when the sidebar first shows, not with
-  // every Structure. A failed import (offline, a stale chunk after a deploy) closes the sidebar.
+  // The site table is imported when the sidebar first shows. A failed import (offline, a stale
+  // chunk after a deploy) closes the sidebar and reports why.
   let SiteTableComponent = $state.raw<typeof SiteTable>()
+  let site_table_loading = false // one import at a time, however often the sidebar toggles
+  let unmounted = false
+  $effect(() => () => (unmounted = true))
   $effect(() => {
-    if (!site_sidebar_shown || SiteTableComponent) return
-    import(`./SiteTable.svelte`).then(
-      (module) => (SiteTableComponent = module.default),
+    if (!site_sidebar_shown || SiteTableComponent || site_table_loading) return
+    site_table_loading = true
+    load_site_table().then(
+      (component) => (SiteTableComponent = component),
       (exc: unknown) => {
+        site_table_loading = false
+        if (unmounted) return
         site_sidebar = false
         error_msg = `Site table failed to load: ${to_error(exc).message}`
+        on_error?.({ error_msg })
       },
     )
   })

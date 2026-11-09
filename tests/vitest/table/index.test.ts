@@ -1,10 +1,19 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { CellVal } from '#lib/table/index.js'
-import { make_cell_color_scale } from '#lib/table/index.js'
+import { compute_column_stats, make_cell_color_scale } from '#lib/table/index.js'
 import { describe, expect, it } from 'vitest'
 
 // Row, sort, filter and stats helpers are tested with DataTable in svelte-widgets; these cover
 // HeatmapTable's color scales.
+// The stats DataTable hands the color hook: finite numbers only, and none for a column without
+const stats_of = (values: CellVal[]) => {
+  const finite = values.map((val) =>
+    typeof val === `number` && Number.isFinite(val) ? val : null,
+  )
+  const stats = compute_column_stats(finite)
+  if (!stats) throw new Error(`no finite numbers in ${JSON.stringify(values)}`)
+  return stats
+}
 // one-shot wrapper around the memoized factory, for the single-cell assertions below
 const calc_cell_color = (
   val: number | null | undefined,
@@ -12,37 +21,28 @@ const calc_cell_color = (
   better: `higher` | `lower` | undefined,
   scheme: D3InterpolateName | null = `interpolateViridis`,
   type: `linear` | `log` = `linear`,
-) => make_cell_color_scale(all_values, better, scheme && { scheme, type })(val)
+) => make_cell_color_scale(stats_of(all_values), better, scheme && { scheme, type })(val)
 
 describe(`column color scales`, () => {
   it(`treats non-finite values as uncolorable`, () => {
-    const scale = make_cell_color_scale([1, 2, Infinity], `higher`)
+    const scale = make_cell_color_scale(stats_of([1, 2, Infinity]), `higher`)
     expect(scale(Infinity).bg).toBeNull()
     expect(scale(2).bg).not.toBeNull()
   })
 
   it(`keeps log scaling when a supplied domain reaches zero`, () => {
     const bg_of_10 = (scale_type: `linear` | `log`, domain?: [number, number]) =>
-      make_cell_color_scale([1, 10, 100], `higher`, { type: scale_type }, domain)(10).bg
+      make_cell_color_scale(stats_of([1, 10, 100]), `higher`, { type: scale_type }, domain)(10)
+        .bg
     expect(bg_of_10(`log`, [0, 100])).not.toBe(bg_of_10(`linear`, [0, 100]))
     expect(bg_of_10(`log`, [0, 100])).toBe(bg_of_10(`log`))
   })
 
   it.each([`linear`, `log`] as const)(
-    `clamps %s colors without rescanning a supplied domain`,
+    `clamps %s colors to a supplied domain`,
     (scale_type) => {
-      const column_values = [0, 10, 10_000]
-      Object.defineProperty(column_values, 0, {
-        get: () => {
-          throw new Error(`explicit domain must not read column values`)
-        },
-      })
-      const scale = make_cell_color_scale(
-        column_values,
-        `higher`,
-        { type: scale_type },
-        [1, 10],
-      )
+      const column = stats_of([0, 10, 10_000])
+      const scale = make_cell_color_scale(column, `higher`, { type: scale_type }, [1, 10])
       expect(scale(10_000).bg).toBe(scale(10).bg)
       expect(scale(5).bg).not.toBe(scale(10).bg)
     },
@@ -50,9 +50,9 @@ describe(`column color scales`, () => {
 
   // color_scale.value_range ends override the data domain and clamp; palette_range clips
   it(`honors value_range and palette_range like the other color-mapped components`, () => {
-    const cell_values = [0, 50, 100]
+    const cell_values = stats_of([0, 50, 100])
     const fixed = make_cell_color_scale(cell_values, `higher`, { value_range: [null, 50] })
-    const full = make_cell_color_scale([0, 50], `higher`)
+    const full = make_cell_color_scale(stats_of([0, 50]), `higher`)
     for (const val of [0, 25, 50]) expect(fixed(val).bg).toBe(full(val).bg)
     expect(fixed(100).bg).toBe(full(50).bg) // clamped at the fixed max
     const clipped = make_cell_color_scale(cell_values, `higher`, { palette_range: [0.5, 1] })
@@ -74,9 +74,6 @@ describe(`make_cell_color_scale`, () => {
     [`undefined value`, undefined, [1, 2, 3]],
     [`NaN value`, NaN, [1, 50, 100]],
     [`null color_scale`, 5, [1, 5, 10], null],
-    [`empty column`, 5, []],
-    [`only non-numeric values`, 50, [null, `a`, undefined]],
-    [`all NaN values`, 50, [NaN, NaN]],
     [`negative with log scale`, -5, [-5, 50, 100], undefined, `log`],
     [`log column without nonnegative values`, 1, [-5, -1, Infinity], undefined, `log`],
   ])(`returns null colors for %s`, (_name, val, all_values, color_scale, scale_type) => {

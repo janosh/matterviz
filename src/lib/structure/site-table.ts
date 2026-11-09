@@ -44,6 +44,9 @@ export const property_config = (key: string): TrajPropertyConfig | undefined =>
 
 // Shared by the site table and the trajectory inspector's other tables: virtualized plain
 // tables (no heatmap) with column toggles, numbers to 6 significant digits
+// The site table (DataTable and its menus) loads on demand, not with every Structure
+export const load_site_table = async () => (await import(`./SiteTable.svelte`)).default
+
 export const DATA_TABLE_PROPS = {
   virtual: true,
   show_column_toggle: true,
@@ -112,21 +115,21 @@ export const property_column = (prop_name: string, axis?: string): Column => {
   return { id, key: id, label: unit ? `${label} (${unit})` : label, description: prop_name }
 }
 
-const coord_column = (id: string, label: string, visible = true): Column => ({
-  id,
-  key: id,
-  label,
-  format: `.4~f`,
-  visible,
-})
-
 export const site_columns = (specs: [string, SitePropertyShape][]): Column[] => [
   { id: `site`, label: `Site`, format: `d`, color_scale: null, pin: `left` },
   { id: `element`, label: `Element`, color_scale: null },
-  // Fractional coordinates start hidden (the column toggle shows them) so the per-site
-  // properties come right after the Cartesian ones in a narrow sidebar
-  ...FRAC_AXES.map((axis) => coord_column(`frac_${axis}`, `${axis}<sub>frac</sub>`, false)),
-  ...VEC3_AXES.map((axis) => coord_column(`cart_${axis}`, `${axis} (Å)`)),
+  ...[
+    ...FRAC_AXES.map((axis) => [`frac_${axis}`, `${axis}<sub>frac</sub>`]),
+    ...VEC3_AXES.map((axis) => [`cart_${axis}`, `${axis} (Å)`]),
+    // Fractional coordinates start hidden (the column toggle shows them) so the per-site
+    // properties come right after the Cartesian ones in a narrow sidebar
+  ].map(([id, label]) => ({
+    id,
+    key: id,
+    label,
+    format: `.4~f`,
+    visible: !id.startsWith(`frac_`),
+  })),
   ...specs.flatMap(([key, shape]) =>
     shape === `scalar`
       ? [property_column(key)]

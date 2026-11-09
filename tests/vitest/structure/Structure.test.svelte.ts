@@ -25,6 +25,7 @@ import type {
 import { get_element_counts } from '#lib/structure/density.js'
 import { OVERLAYS_INPUT_FRAME_NOTE } from '#lib/structure/lattice-planes.js'
 import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
+import * as site_table_module from '#lib/structure/site-table'
 import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type {
@@ -3479,11 +3480,24 @@ test(`content-fit divider follows the row's width`, async () => {
   }
 })
 
-// PBC image atoms repeat the sites they copy: one row per site of the structure
 // Structure imports the site table when its sidebar first shows
 const site_table_loaded = () =>
   vi.waitFor(() => expect(sidebar()?.querySelector(`table`)).not.toBeNull())
 
+// A failed import (offline, a stale chunk after a deploy) closes the sidebar and reports why
+test(`closes the site sidebar and reports the error when its table fails to load`, async () => {
+  vi.spyOn(site_table_module, `load_site_table`).mockRejectedValueOnce(new Error(`chunk gone`))
+  const on_error = vi.fn()
+  const props = $state<StructureProps>({ structure: with_forces, site_sidebar: true, on_error })
+  await mount_settled(props)
+  await vi.waitFor(() => expect(props.site_sidebar).toBe(false))
+  expect(sidebar()).toBeNull()
+  expect(on_error).toHaveBeenCalledExactlyOnceWith({
+    error_msg: `Site table failed to load: chunk gone`,
+  })
+})
+
+// PBC image atoms repeat the sites they copy: one row per site of the structure
 test(`lists each site once, not its periodic images`, async () => {
   const corner_atom: AnyStructure = {
     lattice: structure.lattice,

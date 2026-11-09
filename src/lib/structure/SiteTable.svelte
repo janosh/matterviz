@@ -15,8 +15,6 @@
     hovered_atom = $bindable(null),
     link_hover,
     export_filename = `sites`,
-    // undefined until the user toggles a column, so the `visible: false` defaults apply
-    hidden_columns = $bindable(),
     ...rest
   }: Omit<ComponentProps<typeof HeatmapTable<RowData>>, `data` | `columns`> & {
     sites: readonly Site[]
@@ -64,7 +62,6 @@
   highlighted_row_id={shown_atom === null ? null : display_idx(shown_atom)}
   show_row_select={selected_atoms !== undefined}
   row_key="site"
-  bind:hidden_columns
   bind:selected_ids={
     () => (selected_atoms ?? []).map(display_idx),
     (ids) => (selected_atoms = ids.map((id) => from_display_idx(Number(id))))

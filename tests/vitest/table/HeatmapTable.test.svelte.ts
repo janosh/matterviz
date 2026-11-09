@@ -12,7 +12,7 @@ import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
-import { bind_props, doc_query, fire, keydown, mouse } from '../setup'
+import { bind_props, doc_query, fire } from '../setup'
 
 // vp lint sees .svelte imports as nongeneric; specialize only row-dependent props for mount.
 type TableProps<Row extends object = RowData> = Omit<
@@ -141,76 +141,6 @@ describe(`HeatmapTable`, () => {
       expect(document.querySelector(`.sort-hint`)).toBeNull()
     },
   )
-
-  it(`preserves both ends, markup and links of long cells for middle ellipsis`, async () => {
-    const identifier = `prefix-middle-suffix`
-    // The flag must land wholly in the 8-grapheme suffix. Code-point slicing would retain
-    // only its second regional indicator and this exact assertion would fail.
-    const unicode_id = `long-prefix-value🇩🇪1234567`
-    const symbols = `research & development < threshold`
-    const row = $state({
-      ID: identifier,
-      Unicode: unicode_id,
-      Symbols: symbols,
-      Short: `🇩🇪`,
-      Rich: `<strong>rich-markup</strong>`,
-      Linked: `<span title="Full details" data-sort-value="42"><a href="/dataset">prefix &amp; ${unicode_id}</a></span>`,
-    })
-    mount_table({
-      data: [row],
-      columns: plain_columns(`ID`, `Unicode`, `Symbols`, `Short`, `Rich`, `Linked`),
-    })
-    await tick()
-
-    const id_cell = doc_query(`td[data-col="ID"]`)
-    const visual = doc_query(`td[data-col="ID"] .middle-ellipsis-visual`)
-    expect(id_cell.textContent?.trim()).toBe(identifier)
-    expect(visual.dataset.start).toBe(`prefix-middl`)
-    expect(visual.dataset.end).toBe(`e-suffix`)
-    expect(visual.getAttribute(`aria-hidden`)).toBe(`true`)
-    const unicode_visual = doc_query(`td[data-col="Unicode"] .middle-ellipsis-visual`)
-    expect(`${unicode_visual.dataset.start}${unicode_visual.dataset.end}`).toBe(unicode_id)
-    expect(unicode_visual.dataset.end).toBe(`🇩🇪1234567`)
-    const symbols_cell = doc_query(`td[data-col="Symbols"]`)
-    expect(symbols_cell.textContent?.trim()).toBe(symbols)
-    expect(symbols_cell.querySelector(`.middle-ellipsis`)).not.toBeNull()
-    // Short strings stay as one text node, avoiding needless wrappers and grapheme splitting.
-    expect(doc_query(`td[data-col="Short"]`).querySelector(`.middle-ellipsis`)).toBeNull()
-    // Rich cells retain their sanitized markup instead of being flattened for truncation.
-    expect(doc_query(`td[data-col="Rich"] strong`).textContent).toBe(`rich-markup`)
-    const linked_cell = doc_query(`td[data-col="Linked"]`)
-    // the link crossing the split clips inside itself: still one link (one hover state, name
-    // and tab stop), its wrappers marked to shrink with it
-    const clipped = doc_query(`td[data-col="Linked"] .middle-ellipsis-html`)
-    expect(clipped.tagName).toBe(`A`)
-    expect(linked_cell.querySelectorAll(`a`)).toHaveLength(1)
-    expect(clipped.getAttribute(`href`)).toBe(`/dataset`)
-    expect(clipped.textContent).toBe(`prefix & ${unicode_id}`)
-    expect(clipped.lastElementChild?.textContent).toBe(`🇩🇪1234567`)
-    const wrapper = doc_query(`td[data-col="Linked"] [title]`)
-    expect(wrapper.classList.contains(`middle-ellipsis-host`)).toBe(true)
-    expect(wrapper.getAttribute(`data-sort-value`)).toBe(`42`)
-    expect(wrapper.parentElement?.dataset.title).toBe(`prefix & ${unicode_id}`)
-    clipped.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
-    expect(doc_query(`.custom-tooltip .tooltip-content`).textContent).toBe(`Full details`)
-    // Auto-fit must measure the hidden prefix too, not just the clipped cell width.
-    Object.defineProperty(clipped.children[0], `scrollWidth`, { value: 250 })
-    Object.defineProperty(clipped.children[1], `scrollWidth`, { value: 50 })
-    Object.defineProperty(linked_cell, `offsetWidth`, { value: linked_cell.clientWidth })
-    await fire(doc_query(`th[data-col-id="Linked"] .resize-handle`), mouse(`dblclick`))
-    expect(doc_query(`th[data-col-id="Linked"]`).style.width).toBe(`308px`)
-    row.Linked = `<strong>short update</strong>`
-    await tick()
-    expect(linked_cell.querySelector(`.middle-ellipsis-html`)).toBeNull()
-    expect(linked_cell.textContent?.trim()).toBe(`short update`)
-    expect(linked_cell.querySelector(`strong`)?.textContent).toBe(`short update`)
-  })
-
-  it(`does not loop when data rows carry no discoverable column keys`, async () => {
-    mount_table({ data: [{ style: `color: red` }, {}], columns: [] })
-    await tick()
-    expect(document.querySelectorAll(`thead th`)).toHaveLength(0)
-  })
 
   describe(`Sorting and Data Updates`, () => {
     // Svelte already skips DOM writes of unchanged values, so beyond node identity and DOM
@@ -511,89 +441,19 @@ describe(`HeatmapTable`, () => {
     }
   })
 
-  it(`applies root, density, column, and row styles`, () => {
+  // DataTable applies root, density, column and row styles; HeatmapTable merges the host's
+  // style with its fill-opacity and selection-badge variables
+  it(`merges the host style with the heatmap's table variables`, () => {
     mount_table({
-      data: [
-        { Col1: `a`, Col2: `b`, style: `background-color: yellow;`, class: `custom-row` },
-        { Col1: `c`, Col2: `d` },
-      ],
-      columns: [
-        { id: `Col1`, label: `Col1`, style: `color: red; font-weight: lighter;` },
-        { id: `Col2`, label: `Col2` },
-      ],
-      density: `compact`,
-      root_style: `flex: 1`,
+      data: sample_data,
+      columns: sample_columns,
       style: `color: red`,
+      heatmap_opacity: 0.4,
     })
-    const container = doc_query(`.table-container`)
-    const root_style = container.getAttribute(`style`) ?? ``
+    const root_style = doc_query(`.table-container`).getAttribute(`style`) ?? ``
     expect(root_style).toContain(`color: red`)
-    // happy-dom normalizes `flex: 1` to longhand properties
-    expect(root_style).toMatch(/flex-grow:\s*1|flex:\s*1/)
-    expect(getComputedStyle(container).getPropertyValue(`--table-density-padding`)).toBe(
-      `0 4pt`,
-    )
-
-    const header_style = document.querySelector(`th`)?.getAttribute(`style`) ?? ``
-    expect(header_style).toContain(`color: red`)
-    expect(header_style).toContain(`font-weight: lighter`)
-    expect(document.querySelector(`td[data-col="Col1"]`)?.getAttribute(`style`)).toContain(
-      `font-weight: lighter`,
-    )
-    expect(document.querySelector(`tbody tr`)?.getAttribute(`style`)).toContain(
-      `background-color: yellow`,
-    )
-    const rows = document.querySelectorAll(`tbody tr`)
-    expect(rows[0].classList.contains(`custom-row`)).toBe(true)
-    for (const row of rows) expect(row.getAttribute(`class`)).not.toContain(`undefined`)
-  })
-
-  it(`row selection preserves IDs across row replacement, tracks full selection, then clears it`, async () => {
-    const state = $state({ data: sample_data, selected_ids: [] as string[] })
-    mount_table(
-      bind_props(
-        {
-          columns: sample_columns,
-          show_row_select: true,
-          row_key: `Model`,
-          style: `--accent-color: rgb(255 255 0)`,
-        },
-        state,
-      ),
-    )
-    const checkboxes = [
-      ...document.querySelectorAll<HTMLInputElement>(`td.select-col input[type="checkbox"]`),
-    ]
-    // every checkbox is named: a bare one reads as "checkbox" to a screen reader
-    const label = (box: HTMLInputElement) => box.getAttribute(`aria-label`)
-    expect(checkboxes.map(label)).toEqual([1, 2, 3].map((num) => `Select row ${num}`))
-    expect(checkboxes.every((checkbox) => !checkbox.checked)).toBe(true)
-
-    await click(checkboxes[0])
-    const select_all = doc_query<HTMLInputElement>(`th.select-col input[type="checkbox"]`)
-    expect([select_all.checked, label(select_all)]).toEqual([false, `Select all on this page`])
-    state.data = sample_data.map((row) => ({ ...row, Score: row.Score + 1 }))
-    await tick()
-    expect(checkboxes[0].checked).toBe(true)
-    expect(document.querySelectorAll(`tr.selected`)).toHaveLength(1)
-    expect(col_values(`Score`)[0]).toBe(`1.95`)
-    expect(document.querySelector(`.selection-badge .badge`)?.textContent).toBe(`1`)
-
-    for (const checkbox of checkboxes.slice(1)) await click(checkbox)
-
-    expect(checkboxes.every((checkbox) => checkbox.checked)).toBe(true)
-    expect([select_all.checked, label(select_all)]).toEqual([true, `Deselect all`])
-    expect(state.selected_ids).toEqual([`Model A`, `Model B`, `Model C`])
-    const badge = document.querySelector<HTMLElement>(`.selection-badge .badge`)
-    expect(badge?.textContent).toBe(`3`)
-    // contrasts with the yellow --accent-color
-    expect(doc_query(`.table-container`).style.getPropertyValue(`--table-badge-color`)).toBe(
-      `black`,
-    )
-
-    await click(doc_query<HTMLButtonElement>(`.selection-badge`))
-    expect(state.selected_ids).toEqual([])
-    expect(document.querySelectorAll(`tr.selected`)).toHaveLength(0)
+    expect(root_style).toContain(`--table-fill-opacity: 40%`)
+    expect(root_style).toMatch(/--table-badge-color: (?:black|white)/)
   })
 
   describe(`Regression tests for bug fixes`, () => {
@@ -656,44 +516,6 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Name`)).toEqual([`Fe`, `O`])
       for (const cell of document.querySelectorAll(`td[data-col="Mass"]`))
         expect(cell.getAttribute(`style`)).toContain(`--cell-bg:`)
-    })
-  })
-
-  describe(`Keyboard Navigation`, () => {
-    // A HeatmapTable nested in a cell (a per-row mini table) carries its own data-row-idx /
-    // data-col-idx attributes, so the outer lookups must stop at their own <tbody> instead of
-    // resolving the inner table's coordinates against the outer rows
-    it(`ignores the indices of a nested HeatmapTable when resolving rows and cells`, async () => {
-      const on_row_click = vi.fn()
-      const data = [{ A: 1 }, { A: 2 }, { A: 3 }]
-      // the inner markup mirrors what a nested HeatmapTable renders for its own first row
-      const cell = createRawSnippet((_args: () => CellSnippetArgs) => ({
-        render: () =>
-          `<table><tbody><tr data-row-idx="0"><td data-row-idx="0" data-col-idx="0" class="inner">x</td></tr></tbody></table>`,
-      }))
-      mount_table({
-        data,
-        columns: plain_columns(`A`),
-        on_row_click,
-        cell,
-        keyboard_cells: true,
-      })
-      await tick()
-      const inner = document.querySelectorAll<HTMLElement>(`td.inner`)[2]
-      inner.dispatchEvent(mouse(`click`))
-      expect(on_row_click.mock.calls.map((call) => call[1])).toEqual([data[2]])
-
-      // a drag started in the inner cell selects the outer cell it sits in, not (0, 0)
-      inner.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, button: 0 }))
-      await fire(globalThis, new PointerEvent(`pointerup`))
-      const selected = [...document.querySelectorAll<HTMLElement>(`td.cell-selected`)]
-      expect(selected.map((selected_cell) => selected_cell.dataset.rowIdx)).toEqual([`2`])
-      expect(selected[0].classList.contains(`inner`)).toBe(false)
-
-      // keyboard: ArrowUp from the outer row 2 cell lands on the outer row 1 cell
-      cell_at(2, 0).focus()
-      await fire(cell_at(2, 0), keydown(`ArrowUp`))
-      expect(document.activeElement).toBe(cell_at(1, 0))
     })
   })
 
@@ -1145,37 +967,32 @@ describe(`HeatmapTable`, () => {
       expect(col_values(`Model`)).toEqual([`beta`])
       expect(color_labels()).toEqual(score_labels)
     })
-  })
 
-  describe(`cell range selection and column copy`, () => {
-    const pointer = (type: string, init: MouseEventInit = {}) =>
-      mouse(type, { button: 0, ...init })
-    const mount_sample_table = async (props: Partial<TableProps> = {}) => {
-      mount_sample(props)
-      await tick()
-    }
-
-    it(`context menu on headers offers copy for non-heatmap columns`, async () => {
-      await mount_sample_table()
-
-      const header = document.querySelector(`th`)
-      header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
-      await tick()
-
-      const options = [...document.querySelectorAll(`.action-menu button`)].map((btn) =>
-        btn.textContent?.trim(),
-      )
-      expect(options.some((text) => text?.includes(`Copy column`))).toBe(true)
-      // Model holds no numbers -> no better-direction section
-      expect(options.some((text) => text?.includes(`Higher is better`))).toBe(false)
-
-      // right-clicking another column while the menu is open must retarget it, not
-      // leave it dismissed: the pointerdown of that right-click is an outside press
-      const score_header = document.querySelectorAll(`th`)[1]
-      score_header?.dispatchEvent(pointer(`pointerdown`, { button: 2 }))
-      score_header?.dispatchEvent(pointer(`contextmenu`, { button: 2 }))
-      await tick()
-      expect(document.querySelector(`.action-menu`)).not.toBeNull()
+    // DataTable discovers the columns of a table given none; the color controls ignored those,
+    // so a data-only table painted cells it offered no control for
+    it(`offers color controls on discovered columns and stores picked schemes as prefs`, async () => {
+      const state = $state({ column_prefs: {} satisfies Record<string, ColumnPrefs> })
+      const data = [
+        { Model: `a`, Score: 1 },
+        { Model: `b`, Score: 2 },
+      ]
+      mount_table(bind_props({ data, show_controls: true }, state))
+      await click(document.querySelector<HTMLButtonElement>(`.pane-toggle`))
+      const scheme = doc_query(`select[aria-label="Score color scheme"]`, HTMLSelectElement)
+      const bg = () => cell_at(0, 1).style.getPropertyValue(`--cell-bg`)
+      const viridis_bg = bg()
+      expect(viridis_bg).not.toBe(``)
+      for (const [picked, prefs] of [
+        [`interpolatePlasma`, { Score: { color_scale: `interpolatePlasma` } }],
+        // picking the default back clears the pref instead of storing it
+        [`interpolateViridis`, { Score: {} }],
+      ] as const) {
+        scheme.value = picked
+        scheme.dispatchEvent(new Event(`change`, { bubbles: true }))
+        await tick()
+        expect(state.column_prefs).toEqual(prefs)
+        expect(bg() === viridis_bg).toBe(picked === `interpolateViridis`)
+      }
     })
   })
 })

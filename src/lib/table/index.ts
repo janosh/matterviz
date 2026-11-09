@@ -12,7 +12,7 @@ import {
 import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
 import type {
   CellColor,
-  CellVal,
+  ColorStats,
   Column as TableColumn,
   ColumnPrefs as TableColumnPrefs,
   RowData,
@@ -82,43 +82,31 @@ export type ColumnPrefs = TableColumnPrefs & {
   color_scale?: D3InterpolateName | null
 }
 
-// Value→color mapper for one column: the column scan and d3 scale are built once here, so
-// the returned function is O(1) per cell.
+// Value→color mapper for one column from its numeric extrema (DataTable's ColorStats): the d3
+// scale is built once here, so the returned function is O(1) per cell.
 export function make_cell_color_scale(
-  all_values: CellVal[], // all values in the column
+  { min, max, min_positive }: Pick<ColorStats, `min` | `max` | `min_positive`>,
   better: `higher` | `lower` | undefined, // sort direction
   color_scale: ColorScale | null = `interpolateViridis`,
-  // Overrides the min/max taken from all_values (quantile clipping, a shared group). Values
-  // outside it (or color_scale.value_range) saturate at the end colors.
+  // Overrides min/max (quantile clipping, a shared group). Values outside it (or
+  // color_scale.value_range) saturate at the end colors.
   domain?: [number, number],
 ): (val: number | null | undefined) => CellColor {
   if (color_scale === null) return () => NULL_CELL_COLOR
   const config = to_color_scale_config(color_scale)
   const is_log = get_scale_type_name(config.type) === `log`
 
-  let range: [number, number] = domain ? [...domain] : [0, 1]
-  // Resolved domains need no column scan, except when a log lower bound needs lifting
-  // to the smallest positive value (quantile clipping or a shared-domain group).
-  if (!domain || (is_log && range[0] <= 0 && range[1] > 0)) {
-    let lowest = Infinity
-    let highest = -Infinity
-    let has_log_zero = false
-    for (const value of all_values) {
-      if (typeof value !== `number` || !Number.isFinite(value)) continue
-      if (is_log && value <= 0) {
-        has_log_zero ||= value === 0
-        continue
-      }
-      if (value < lowest) lowest = value
-      if (value > highest) highest = value
-    }
-    // A log column of nothing but zeros still colors them at the low end.
-    if (!domain && lowest === Infinity && !has_log_zero) return () => NULL_CELL_COLOR
-    if (!domain) {
-      range[0] = lowest === Infinity ? 0 : lowest
-      range[1] = highest === -Infinity ? 1 : highest
-    } else if (lowest !== Infinity) range[0] = lowest
-  }
+  // A log scale starts at the smallest positive value. Without one, a column whose maximum is
+  // zero still colors its zeros at the low end; an all-negative one can't be colored.
+  let range: [number, number]
+  if (domain) {
+    range = [...domain]
+    if (is_log && range[0] <= 0 && range[1] > 0 && min_positive !== null)
+      range[0] = min_positive
+  } else if (!is_log) range = [min, max]
+  else if (min_positive !== null) range = [min_positive, max]
+  else if (max === 0) range = [0, 1]
+  else return () => NULL_CELL_COLOR
   const value_range = resolve_value_range(config, range)
   if (better === `lower`) value_range.reverse()
   // value_range[0] takes the palette start; zero on a log scale takes the low-end color

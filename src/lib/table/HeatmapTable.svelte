@@ -21,12 +21,8 @@
   import type { ExportProps } from '#lib/io/export.js'
   import { format_num } from '#lib/labels.js'
   import { ControlPane } from '#lib/overlays/index.js'
-  import { scheme_name, to_color_scale_config, with_scheme } from '#lib/plot/core/scales.js'
-  import {
-    type ColorScale,
-    get_scale_type_name,
-    SCALE_DEFAULTS,
-  } from '#lib/plot/core/types.js'
+  import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
+  import { type ColorScale, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type { Column, ColumnPrefs, RowData } from '#lib/table/index.js'
   import { make_cell_color_scale } from '#lib/table/index.js'
@@ -39,6 +35,7 @@
     type Column as TableColumn,
     DataTable,
     type DataTableProps,
+    discover_columns,
     parse_numeric_val,
   } from 'svelte-widgets/table'
 
@@ -135,21 +132,19 @@
     const next = value === undefined ? kept : { ...kept, [key]: value }
     column_prefs = { ...column_prefs, [col_id]: next }
   }
-  let columns_by_id = $derived(new Map(columns.map((col) => [col.id, col])))
+  // DataTable discovers the columns of a table given none; the color controls need them too
+  let table_columns: Column<Row>[] = $derived(
+    columns.length ? columns : discover_columns(data),
+  )
   const better_of = (col: Column<Row>): `higher` | `lower` | undefined =>
     prefs_of(col.id).better ?? col.better
   // `null` is a meaningful pref here (heatmap off), so only a missing pref falls back. A
   // picked scheme keeps the column's scale type and ranges.
-  const color_scale_of = (
-    col: Column<Row>,
-    pref = prefs_of(col.id).color_scale,
-  ): ColorScale | null | undefined => {
+  const color_scale_of = (col: Column<Row>): ColorScale | null | undefined => {
+    const pref = prefs_of(col.id).color_scale
     if (pref === undefined) return col.color_scale
     return pref && col.color_scale ? with_scheme(col.color_scale, pref) : pref
   }
-  const is_log_scale = (color_scale: ColorScale | null | undefined): boolean =>
-    color_scale != null &&
-    get_scale_type_name(to_color_scale_config(color_scale).type) === `log`
   // Scheme name shown in a column's select (function schemes fall back to the default)
   const shown_scheme = (color_scale: ColorScale | null | undefined): D3InterpolateName =>
     (color_scale && scheme_name(color_scale)) || SCALE_DEFAULTS.scheme
@@ -165,22 +160,13 @@
     table_col: TableColumn<Row>,
     stats: ColorStats,
   ): ((num: number | null) => CellColor) | undefined {
-    const col = columns_by_id.get(table_col.id) ?? table_col
+    // DataTable hands back the column objects it was given, whose color_scale is optional
+    const col: Column<Row> = table_col
     const scale = color_scale_of(col)
     if (!show_heatmap || scale === null) return undefined
-    // Linear scales need only the extrema; logarithmic scales still need the smallest
-    // positive value, which may differ from the overall minimum
-    const log = is_log_scale(scale)
-    const { min, max, min_positive } = stats
-    const values = (log ? [min, min_positive, max] : [min, max]).filter((val) => val !== null)
     // Explicit domains clamp; plain minmax preserves its unclamped behavior
     const domain = col.normalize || col.domain_group ? stats.domain : undefined
-    const opaque = make_cell_color_scale(
-      values,
-      better_of(col),
-      scale ?? `interpolateViridis`,
-      domain,
-    )
+    const opaque = make_cell_color_scale(stats, better_of(col), scale, domain)
     return (num) => {
       const color = opaque(num)
       if (!color.bg || heatmap_opacity >= 1) return color
@@ -192,7 +178,7 @@
   // Apart from the prefs, so a width drag rescans no column.
   let any_numeric_ids = $derived(
     new Set(
-      columns
+      table_columns
         .filter((col) =>
           data.some((row) => parse_numeric_val((row as RowData)[col.key ?? col.id]) !== null),
         )
@@ -205,7 +191,7 @@
   // Columns the color controls apply to: the colored ones, plus any explicitly configured
   // (`color_scale: null` included, so turning a heatmap off can be undone)
   let colored_columns = $derived(
-    columns.filter((col) => is_colored(col) || color_scale_of(col) !== undefined),
+    table_columns.filter((col) => is_colored(col) || color_scale_of(col) !== undefined),
   )
   // === Controls pane ===
   // Separate color settings so resetting them preserves widths, pins, filters and formats
