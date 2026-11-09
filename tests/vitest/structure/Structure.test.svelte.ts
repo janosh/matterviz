@@ -3484,6 +3484,22 @@ test(`content-fit divider follows the row's width`, async () => {
 const site_table_loaded = () =>
   vi.waitFor(() => expect(sidebar()?.querySelector(`table`)).not.toBeNull())
 
+// until the import resolves, the sidebar says so instead of showing a count over nothing
+test(`shows a loading status in the site sidebar until its table arrives`, async () => {
+  let resolve_table: (
+    component: Awaited<ReturnType<typeof site_table_module.load_site_table>>,
+  ) => void = () => {}
+  const real_load = site_table_module.load_site_table
+  vi.spyOn(site_table_module, `load_site_table`).mockReturnValueOnce(
+    new Promise((resolve) => (resolve_table = resolve)),
+  )
+  await mount_settled({ structure: with_forces, site_sidebar: true })
+  expect(sidebar()?.textContent).toContain(`Loading site table`)
+  resolve_table(await real_load())
+  await site_table_loaded()
+  expect(sidebar()?.textContent).not.toContain(`Loading site table`)
+})
+
 // A failed import (offline, a stale chunk after a deploy) closes the sidebar and reports why
 test(`closes the site sidebar and reports the error when its table fails to load`, async () => {
   vi.spyOn(site_table_module, `load_site_table`).mockRejectedValueOnce(new Error(`chunk gone`))

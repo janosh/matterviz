@@ -1743,6 +1743,9 @@
           export_filename="structure-sites"
           scroll_style={DOCKED_SCROLL_STYLE}
         />
+        {#if !SiteTableComponent}
+          <StatusMessage message="Loading site table…" type="info" style="border: none" />
+        {/if}
       </DockedSidebar>
     {/if}
   </div>
