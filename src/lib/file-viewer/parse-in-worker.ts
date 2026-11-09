@@ -37,8 +37,8 @@ let next_request_id = 0
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
 // No worker could be constructed, the one serving this parse crashed, or its reply never
-// arrived or would not deserialize. None of these read the file, so a viewer must not
-// present them as a verdict on its contents or format.
+// arrived or would not deserialize. These failures do not establish whether parsing ran,
+// so a viewer must not present them as a verdict on the file's contents or format.
 export class ParseWorkerError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)

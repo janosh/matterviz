@@ -9,6 +9,7 @@ import {
   ParseWorkerError,
 } from '#lib/file-viewer/parse-in-worker.js'
 import { MaterialOpenError } from '#lib/file-viewer/open.js'
+import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -636,7 +637,7 @@ test.each([
         `Workers cannot load https://file+.vscode-resource.vscode-cdn.net/w.js here`,
       ),
     `Failed to Open File`,
-    `The parser never ran`,
+    `The parse worker failed or could not return a usable response`,
   ],
   [
     // the parse ran and succeeded, so neither the format list nor "never ran" is true
@@ -676,5 +677,45 @@ test(`error panel does not blame the format when the bytes never arrived`, async
   await vi.waitFor(() => expect(document.querySelector(`h2`)).not.toBeNull())
   const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
   expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Load File`)
+  expect(panel).not.toContain(`Supported formats`)
+})
+
+test(`error panel identifies an indexed trajectory host timeout`, async () => {
+  vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
+  try {
+    parse_in_worker.mockImplementationOnce(() =>
+      request_large_file_content(`/data/movie.xyz`, `movie.xyz`, 10),
+    )
+    const opening = boot(`LARGE_FILE:/data/movie.xyz:500000000`, `movie.xyz`)
+    await vi.advanceTimersByTimeAsync(10)
+    await opening
+    const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+    expect(document.querySelector(`h2`)?.textContent).toBe(`Host Request Timed Out`)
+    expect(panel).toContain(`Large file timeout`)
+    expect(panel).toContain(`The host did not respond in time`)
+    expect(panel).not.toContain(`Supported formats`)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test(`messageerror does not claim whether a parser ran`, async () => {
+  const real = await vi.importActual<typeof ParseWorkerModule>(
+    `#lib/file-viewer/parse-in-worker.js`,
+  )
+  const worker = new ShimmedWorker(`blob:parse-worker`)
+  parse_in_worker.mockImplementationOnce((content, filename) =>
+    real.parse_in_worker(content, filename, false, { worker_factory: () => worker }),
+  )
+  const opening = boot(`broken`)
+  await vi.waitFor(() => expect(test_mocks.native_workers[0].posted).toHaveLength(1))
+  test_mocks.native_workers[0].emit(new MessageEvent(`messageerror`))
+  await opening
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
+  expect(panel).toContain(`failed to deserialize`)
+  expect(panel).toContain(`The parse worker failed or could not return a usable response`)
+  expect(panel).not.toContain(`The parser never ran`)
+  expect(panel).not.toContain(`The file parsed`)
   expect(panel).not.toContain(`Supported formats`)
 })

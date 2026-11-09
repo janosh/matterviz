@@ -902,7 +902,11 @@ describe(`LARGE_FILE markers`, () => {
       .then(() => materialize_frame_result(result.data.read_frame(2)))
       .catch((exc: unknown) => exc)
     await vi.advanceTimersByTimeAsync(10_000)
-    expect(await error).toEqual(new Error(msg))
+    const failure = await error
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toHaveProperty(`message`, msg)
+    if (!(`command` in frame_reply))
+      expect(failure).toHaveProperty(`name`, `HostRequestTimeoutError`)
     result.data.dispose()
   })
 

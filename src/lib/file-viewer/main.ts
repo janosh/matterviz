@@ -19,7 +19,7 @@ import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electr
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import { get_vscode_api } from './host-bridge'
+import { get_vscode_api, HostRequestTimeoutError } from './host-bridge'
 import type {
   FileChangeMessage,
   FileData,
@@ -416,6 +416,11 @@ const describe_failure = (error: Error): { heading: string; hint: string } => {
   const from = (matches: (err: Error) => boolean): boolean => caused_by(error, matches)
   if (from((err) => err instanceof MaterialOpenError && err.stage === `acquire`))
     return { heading: `Failed to Load File`, hint: `The file's bytes could not be read.` }
+  if (from((err) => err instanceof HostRequestTimeoutError))
+    return {
+      heading: `Host Request Timed Out`,
+      hint: `The host did not respond in time. Reloading the file may help; the file itself may be fine.`,
+    }
   if (from((err) => err instanceof ParseResultTransferError))
     return {
       heading: `Failed to Open File`,
@@ -424,14 +429,16 @@ const describe_failure = (error: Error): { heading: string; hint: string } => {
   if (from((err) => err instanceof ParseWorkerError))
     return {
       heading: `Failed to Open File`,
-      hint: `The parser never ran: its worker could not be started or did not answer. `
-        + `Reloading the file may be enough; the file itself may be fine.`,
+      hint:
+        `The parse worker failed or could not return a usable response. ` +
+        `Reloading the file may help; the file itself may be fine.`,
     }
   if (from((err) => err instanceof MaterialOpenError && err.stage === `parse`))
     return {
       heading: `Failed to Parse File`,
-      hint: `Supported formats: XYZ, CIF, JSON, POSCAR, `
-        + `trajectory files (.traj, .h5, .extxyz), etc.`,
+      hint:
+        `Supported formats: XYZ, CIF, JSON, POSCAR, ` +
+        `trajectory files (.traj, .h5, .extxyz), etc.`,
     }
   return { heading: `Failed to Open File`, hint: `` }
 }
