@@ -49,6 +49,8 @@ export interface DiagramBoundary {
   phases: string[]
   side?: string | null
   points: Vec2[] // polyline of [x, T]
+  // 1σ temperature uncertainty (K) at each point, drawn as a band around the line
+  sigma_T?: number[]
 }
 
 export type InvariantKind =
@@ -69,12 +71,14 @@ export interface InvariantReaction {
   phases: string[]
   compositions: number[]
   reaction: string // phase ids, e.g. `LIQUID -> FCC_A1#1 + FCC_A1#2`
+  sigma_T?: number // 1σ temperature uncertainty (K)
 }
 
 export interface CongruentPoint {
   temperature: number
   composition: number
   phases: string[]
+  sigma_T?: number
 }
 
 // Where a miscibility gap closes; `phase` is the bare id (FCC_A1) of the field its two
@@ -91,6 +95,7 @@ export interface UnaryTransition {
   temperature: number
   above: string
   below: string
+  sigma_T?: number
 }
 
 // A line compound of fixed composition changing from one form to another
@@ -131,6 +136,18 @@ export interface BinaryPhaseDiagram {
   unary_transitions: UnaryTransition[]
   polymorphic_transitions: PolymorphicTransition[]
   provenance: DiagramProvenance
+  gibbs_energy?: GibbsEnergyGrid
+}
+
+// Molar Gibbs energies (J/mol of atoms, one reference state for all phases) on a (T, x)
+// grid, for the free-energy curves and their convex hull at a temperature
+export interface GibbsEnergyGrid {
+  temperatures: number[] // K, increasing
+  compositions: number[] // mole fraction, increasing
+  // One curve per model phase (a miscibility gap's composition sets share it).
+  // values[T idx][x idx], null where the phase has no value (a line compound is finite at
+  // one composition only)
+  phases: { model_phase: string; values: (number | null)[][] }[]
 }
 
 // === Experimental observations ===
@@ -165,6 +182,38 @@ export interface PhaseObservation {
   reaction?: string | null
 }
 
+// A diagram's prediction of one observation row, e.g. from a benchmark's scoring
+export interface ObservationPrediction {
+  id: string // PhaseObservation.id
+  T_K?: number | null
+  // predicted composition of each observed phase, in the row's phase order and system
+  // orientation (null where the diagram predicts none)
+  x?: readonly (number | null)[]
+  pass?: boolean | null // the check's verdict, null when unscored
+}
+
+// Marks to light up, e.g. from a hovered score-table row. The diagram sets it while the
+// pointer is on an observation or marked point, so a bound host can light its own rows.
+export interface DiagramHighlight {
+  observation?: string | null // PhaseObservation.id
+  // phase ids, model phases or phase_matches targets: their fields and boundary edges
+  phases?: readonly string[]
+  point?: PointRef | null
+}
+
+// A marked point by meaning: each diagram lights its own point of this category that best
+// shares its phases, then its kind, then lies nearest to `at`. So a model's eutectic 100 K
+// off still pairs with the reference's, a misjudged reaction type (peritectic for eutectic)
+// pairs through its phases, and of two eutectics the one with the same phases wins.
+export interface PointRef {
+  category: DiagramPoint[`category`]
+  kind: string // DiagramPoint.kind, e.g. `eutectic`, `melting`
+  at: Vec2 // [x, T]
+  // names of the phases meeting there: each phase's model phase and label (hosts may give
+  // either); a diagram also counts its phase_matches targets as its phases' names
+  phases?: readonly string[]
+}
+
 // === Rendering ===
 
 // Marked point of a diagram (invariant, congruent, critical or pure-component transition)
@@ -173,8 +222,10 @@ export interface DiagramPoint {
   kind: string // invariant kind, `congruent`, `critical`, `polymorphic`, or `melting`/`transition`
   composition: number
   temperature: number
+  phases: string[] // ids of the phases meeting there
   marker_label: string // short label next to the marker (E, P, Tm(Ag)), may be empty
   description: string // human-readable reaction with phase labels
+  sigma_T: number // 1σ in K, 0 when not given
 }
 
 // Lever rule along the isothermal tie line of a two-phase region (phase ids)
@@ -199,14 +250,19 @@ export interface ObservationMarker {
   phase: ObservedPhase | null // null for a pure-component row on the composition edge
   composition: number
   temperature: number
+  // the diagram's predicted composition and temperature of this point, null where it
+  // predicts none
+  predicted_x: number | null
+  predicted_t: number | null
+  pass: boolean | null // the prediction's verdict
 }
 
-// Hover state in data units (x mole fraction, T in K), with the shown overlay's phase set at
-// the same point (null without one). The diagram drops its hover and pin when the overlay
-// data changes, so a snapshot's overlay_hit always belongs to the current overlay. Toggling
-// the overlay's visibility keeps them: a pin taken while it was hidden names no overlay phase.
+// Hover state in data units (x mole fraction, T in K), with each overlay's phase set at the
+// same point (null for a hidden one). The diagram drops its hover and pin when the overlays
+// change, so a snapshot's overlay_hits always line up with the current overlays. Toggling an
+// overlay's visibility keeps them: a pin taken while it was hidden names no phase of it.
 export interface PhaseHoverInfo extends DiagramHit {
-  overlay_hit: DiagramHit | null
+  overlay_hits: (DiagramHit | null)[]
   composition: number
   temperature: number
   position: Point2D // client coordinates

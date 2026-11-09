@@ -5,9 +5,12 @@
     BinaryPhaseDiagram,
     CompUnit,
     DiagramCursor,
+    DiagramHighlight,
+    ObservationPrediction,
     TempUnit,
   } from '#lib/phase-diagram/index.js'
   import {
+    GibbsEnergyPlot,
     IsobaricBinaryPhaseDiagram,
     model_phase_keys,
     parse_diagram,
@@ -51,6 +54,22 @@
   let cursor = $state<DiagramCursor | null>(null)
   let x_axis = $state<AxisConfig>({})
   let y_axis = $state<AxisConfig>({ range: temperature_extent([ag_cu, ag_cu_model]) })
+
+  // The model's predictions of the Ag-Cu observations, as a benchmark would score them
+  // (verdicts at a 25 K tolerance); hovering a row lights its marks in both diagrams
+  const model_predictions: (ObservationPrediction & { label: string })[] = [
+    { id: `Ag:melting`, label: `Ag melting`, T_K: 1210, pass: true },
+    { id: `Cu:melting`, label: `Cu melting`, T_K: 1381, pass: true },
+    {
+      id: `Ag-Cu:eutectic`,
+      label: `Eutectic`,
+      T_K: 1021,
+      x: [0.43, 0.105, 0.962], // the row's phase order: liquid, (Ag), (Cu)
+      pass: false,
+    },
+  ]
+  let highlight = $state<DiagramHighlight | null>(null)
+  let isopleth = $state<number | null>(0.4)
 
   // Consolidated TDB file state
   interface TdbState {
@@ -225,7 +244,7 @@
 </p>
 <IsobaricBinaryPhaseDiagram
   data={ag_cu}
-  overlay={ag_cu_model}
+  overlays={[ag_cu_model]}
   {phase_color_keys}
   observations={binary_observations}
   bind:temp_unit
@@ -233,6 +252,51 @@
   style="height: 550px"
   class="bleed-1400"
 />
+
+<h2 id="benchmark-view">Scored predictions</h2>
+<p>
+  A model diagram with its <code>predictions</code> of the observations: arrows run from each
+  observed point to the predicted one, markers take the verdict's color, and ±1σ bands show the
+  model's <code>sigma_T</code>. Hover a row to light its marks (and the reverse), shift+click
+  to move the isopleth with its phase-fraction strip, press <kbd>m</kbd> for a magnifier. Below,
+  the model's Gibbs energies of mixing follow the hovered temperature.
+</p>
+<div class="benchmark bleed-1400">
+  <div>
+    <IsobaricBinaryPhaseDiagram
+      data={ag_cu_model}
+      overlays={[ag_cu]}
+      {phase_color_keys}
+      observations={binary_observations}
+      predictions={model_predictions}
+      bind:highlight
+      bind:isopleth
+      bind:cursor
+      bind:temp_unit
+      bind:comp_unit
+      style="height: 480px"
+    />
+    <GibbsEnergyPlot data={ag_cu_model} {cursor} {phase_color_keys} {temp_unit} {comp_unit} />
+  </div>
+  <table>
+    <thead><tr><th>Check</th><th>Observed</th><th>Model</th><th>Verdict</th></tr></thead>
+    <tbody>
+      {#each model_predictions as { id, label, T_K, pass } (id)}
+        {@const row = binary_observations.find((obs) => obs.id === id)}
+        <tr
+          class:lit={highlight?.observation === id}
+          onpointerenter={() => (highlight = { observation: id })}
+          onpointerleave={() => (highlight = null)}
+        >
+          <td>{label}</td>
+          <td>{row?.T_K} K</td>
+          <td>{T_K} K</td>
+          <td class:fail={!pass}>{pass ? `pass` : `fail`}</td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
 
 <h2 id="side-by-side">Side by side</h2>
 <p>
@@ -256,6 +320,31 @@
 </div>
 
 <style>
+  .benchmark {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1em;
+    align-items: start;
+    margin-block: 1em 2em;
+    @media (max-width: 800px) {
+      grid-template-columns: 1fr;
+    }
+    table {
+      border-collapse: collapse;
+      font-size: 0.9em;
+    }
+    td,
+    th {
+      padding: 3pt 8pt;
+      text-align: left;
+    }
+    tr.lit {
+      background: color-mix(in srgb, #ffb300 25%, transparent);
+    }
+    td.fail {
+      color: #d32f2f;
+    }
+  }
   .side-by-side {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));

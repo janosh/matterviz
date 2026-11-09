@@ -19,11 +19,15 @@
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
     show_overlay = $bindable(PHASE_DIAGRAM_DEFAULTS.show_overlay),
     show_observations = $bindable(PHASE_DIAGRAM_DEFAULTS.show_observations),
+    show_uncertainty = $bindable(PHASE_DIAGRAM_DEFAULTS.show_uncertainty),
+    show_disagreement = $bindable(PHASE_DIAGRAM_DEFAULTS.show_disagreement),
+    lens = $bindable(PHASE_DIAGRAM_DEFAULTS.lens),
     temp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.temp_unit),
     comp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.comp_unit),
     has_overlay = false,
     has_observations = false,
     has_special_points = false,
+    has_uncertainty = false,
     config = $bindable({}),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -38,12 +42,16 @@
     show_component_labels?: boolean
     show_overlay?: boolean
     show_observations?: boolean
+    show_uncertainty?: boolean
+    show_disagreement?: boolean
+    lens?: boolean
     temp_unit?: TempUnit
     comp_unit?: CompUnit
     // Whether the diagram has an overlay / observations / marked points to toggle
     has_overlay?: boolean
     has_observations?: boolean
     has_special_points?: boolean
+    has_uncertainty?: boolean
     config?: Partial<PhaseDiagramConfig>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
@@ -103,6 +111,9 @@
       show_component_labels,
       show_overlay,
       show_observations,
+      show_uncertainty,
+      show_disagreement,
+      lens,
     }),
     PHASE_DIAGRAM_DEFAULTS,
   )
@@ -158,6 +169,9 @@
           show_component_labels,
           show_overlay,
           show_observations,
+          show_uncertainty,
+          show_disagreement,
+          lens,
         } = PHASE_DIAGRAM_DEFAULTS)}
       layout="grid"
       class="visibility-grid"
@@ -189,7 +203,27 @@
           <span>Overlay</span>
           <input type="checkbox" bind:checked={show_overlay} />
         </label>
+        <label
+          {@attach tooltip({ content: `Hatch where the first overlay's phase set differs` })}
+        >
+          <span>Disagreement</span>
+          <input type="checkbox" bind:checked={show_disagreement} />
+        </label>
       {/if}
+      {#if has_uncertainty}
+        <label
+          {@attach tooltip({
+            content: `Show the diagram's ±1σ temperature bands and marked-point error bars`,
+          })}
+        >
+          <span>Uncertainty</span>
+          <input type="checkbox" bind:checked={show_uncertainty} />
+        </label>
+      {/if}
+      <label {@attach tooltip({ content: `Magnifier following the pointer (key m)` })}>
+        <span>Lens</span>
+        <input type="checkbox" bind:checked={lens} />
+      </label>
       {#if has_observations}
         <label {@attach tooltip({ content: `Show experimental observations` })}>
           <span>Observations</span>

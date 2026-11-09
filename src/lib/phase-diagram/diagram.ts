@@ -16,9 +16,12 @@ import {
   type InvariantKind,
   type LeverRuleResult,
   type ObservationMarker,
+  type ObservationPrediction,
+  type ObservedPhase,
   type ObservationStatus,
   type PhaseHoverInfo,
   type PhaseObservation,
+  type PointRef,
   type TempUnit,
 } from './types'
 import {
@@ -43,8 +46,26 @@ export const BOUNDARY_STYLES: Readonly<
   magnetic: { color: `#455a64`, width: 1.5, dash: `8,3,2,3` },
   polymorphic: { color: `#00838f`, width: 1.5, dash: `1,3` },
 }
-// Every boundary of an overlay diagram shares one dashed stroke in the overlay color
+// Every boundary of an overlay diagram shares one dashed stroke in that overlay's color: the
+// first overlay takes config.colors.overlay, later ones step through these
 export const OVERLAY_DASH = `7,4`
+const OVERLAY_STYLES = [
+  { color: `#e6007e`, dash: OVERLAY_DASH },
+  { color: `#ef6c00`, dash: `3,3` },
+  { color: `#00838f`, dash: `10,3,2,3` },
+  { color: `#6a1b9a`, dash: `5,2` },
+  { color: `#558b2f`, dash: `2,2,6,2` },
+] as const
+export const overlay_style = (idx: number, first_color: string) => {
+  const { color, dash } = OVERLAY_STYLES[idx % OVERLAY_STYLES.length]
+  return { color: idx ? color : first_color, dash }
+}
+
+// Marker color and legend label of a scored observation's verdict
+export const VERDICT_STYLES = {
+  pass: { color: `#2e7d32`, label: `Observed, model passes` },
+  fail: { color: `#d32f2f`, label: `Observed, model fails` },
+} as const
 
 // Marker label of each invariant kind
 const INVARIANT_LABELS: Readonly<Record<InvariantKind, string>> = {
@@ -65,6 +86,11 @@ const is_point = (point: unknown): boolean =>
   Array.isArray(point) && point.length === 2 && point.every(finite)
 const length = (list: unknown): number => (Array.isArray(list) ? list.length : 0)
 const in_unit = (val: unknown): boolean => finite(val) && val >= 0 && val <= 1
+const non_negative = (val: unknown): boolean => finite(val) && val >= 0
+const increasing = (list: unknown): boolean =>
+  Array.isArray(list) &&
+  list.length >= 2 &&
+  list.every((val, idx) => finite(val) && (!idx || list[idx - 1] < val))
 // region and boundary x may stray past [0, 1] by float noise, not by more
 const X_TOL = 1e-9
 const in_x_range = ([x_val]: Vec2): boolean => x_val >= -X_TOL && x_val <= 1 + X_TOL
@@ -182,7 +208,30 @@ export function diagram_errors(value: unknown): string[] {
       errors.push(`${where} is ${kind}: three phases and no side`)
     }
     check_points(where, points, 2, `points`)
+    const { sigma_T } = data.boundaries[idx]
+    if (
+      sigma_T !== undefined &&
+      !(
+        Array.isArray(sigma_T) &&
+        sigma_T.length === length(points) &&
+        sigma_T.every(non_negative)
+      )
+    ) {
+      errors.push(`${where} sigma_T needs one non-negative number per point`)
+    }
   })
+  const point_lists = [`invariants`, `congruent_points`, `unary_transitions`] as const
+  for (const key of point_lists) {
+    data[key].forEach(({ sigma_T }, idx) => {
+      if (sigma_T !== undefined && !non_negative(sigma_T)) {
+        errors.push(`${key}[${idx}] sigma_T must be a non-negative number`)
+      }
+    })
+  }
+  if (data.gibbs_energy !== undefined) {
+    const model_phases = new Set<unknown>(phases.map(({ model_phase }) => model_phase))
+    errors.push(...gibbs_errors(data.gibbs_energy, model_phases))
+  }
   data.invariants.forEach(
     ({ kind, temperature, phases: refs, compositions, reaction }, idx) => {
       const where = `invariants[${idx}]`
@@ -233,6 +282,47 @@ export function diagram_errors(value: unknown): string[] {
     check_position(`polymorphic_transitions[${idx}]`, temperature, [composition])
   })
   return errors
+}
+
+// Problems of an optional gibbs_energy grid: increasing axes, known model phases and one
+// finite-or-null value per grid node
+function gibbs_errors(grid: unknown, model_phases: Set<unknown>): string[] {
+  const where = `gibbs_energy`
+  if (typeof grid !== `object` || grid === null) return [`${where} must be an object`]
+  const { temperatures, compositions, phases } = grid as Record<string, unknown>
+  if (!increasing(temperatures) || !increasing(compositions)) {
+    return [`${where} temperatures and compositions must be increasing number arrays`]
+  }
+  // ΔG_mix subtracts the line joining the hull's ends, so the grid spans both pure components
+  const comps = compositions as number[]
+  if (comps[0] !== 0 || comps.at(-1) !== 1 || !comps.every(in_unit)) {
+    return [`${where} compositions must run from 0 to 1, got ${comps[0]} to ${comps.at(-1)}`]
+  }
+  if (!Array.isArray(phases)) return [`${where} phases must be an array`]
+  const names = phases.map(
+    (phase: unknown) => (phase as { model_phase?: unknown })?.model_phase,
+  )
+  const repeat = names.find((name, idx) => names.indexOf(name) !== idx)
+  if (repeat !== undefined) {
+    return [`${where} has duplicate model_phase ${JSON.stringify(repeat)}`]
+  }
+  const [n_temps, n_comps] = [length(temperatures), length(compositions)]
+  return phases.flatMap((phase: unknown, idx) => {
+    const { model_phase, values } = (phase ?? {}) as Record<string, unknown>
+    if (!model_phases.has(model_phase)) {
+      return [`${where}.phases[${idx}] references unknown model phase ${model_phase}`]
+    }
+    const shaped =
+      length(values) === n_temps &&
+      (values as unknown[]).every(
+        (row) =>
+          length(row) === n_comps &&
+          (row as unknown[]).every((val) => val === null || finite(val)),
+      )
+    return shaped
+      ? []
+      : [`${where}.phases[${idx}] values must be ${n_temps} x ${n_comps} numbers or nulls`]
+  })
 }
 
 // Value as a binary-phase-diagram/2, throwing its joined diagram_errors when invalid
@@ -363,54 +453,116 @@ export function diagram_points(data: BinaryPhaseDiagram): DiagramPoint[] {
     data.phases.filter(({ kind }) => kind === `liquid`).map(({ id }) => id),
   )
   return [
-    ...data.invariants.map(({ kind, temperature, compositions, reaction }): DiagramPoint => ({
-      category: `invariant`,
-      kind,
-      // phases are in order of increasing x: the middle one reacts (eutectic-type) or forms
-      // (peritectic-type)
-      composition: compositions[Math.floor(compositions.length / 2)],
-      temperature,
-      marker_label: INVARIANT_LABELS[kind],
-      description: format_reaction(reaction, label_of),
-    })),
-    ...data.congruent_points.map(({ temperature, composition, phases }): DiagramPoint => ({
-      category: `congruent`,
-      kind: `congruent`,
-      composition,
-      temperature,
-      marker_label: ``,
-      description: `${phases.map(label_of).join(` ⇌ `)} without composition change`,
-    })),
+    ...data.invariants.map(
+      ({ kind, temperature, compositions, reaction, phases, sigma_T = 0 }): DiagramPoint => ({
+        category: `invariant`,
+        phases,
+        kind,
+        // phases are in order of increasing x: the middle one reacts (eutectic-type) or forms
+        // (peritectic-type)
+        composition: compositions[Math.floor(compositions.length / 2)],
+        temperature,
+        marker_label: INVARIANT_LABELS[kind],
+        description: format_reaction(reaction, label_of),
+        sigma_T,
+      }),
+    ),
+    ...data.congruent_points.map(
+      ({ temperature, composition, phases, sigma_T = 0 }): DiagramPoint => ({
+        category: `congruent`,
+        phases,
+        kind: `congruent`,
+        composition,
+        temperature,
+        marker_label: ``,
+        description: `${phases.map(label_of).join(` ⇌ `)} without composition change`,
+        sigma_T,
+      }),
+    ),
     ...data.critical_points.map(({ temperature, composition, phase }): DiagramPoint => ({
       category: `critical`,
+      phases: [phase],
       kind: `critical`,
       composition,
       temperature,
       marker_label: ``,
       description: `${label_of(phase)} miscibility gap closes`,
+      sigma_T: 0,
     })),
-    ...data.unary_transitions.map(({ component, temperature, above, below }): DiagramPoint => {
-      const melting = is_liquid.has(above)
-      return {
-        category: `unary`,
-        kind: melting ? `melting` : `transition`,
-        composition: data.components.indexOf(component),
-        temperature,
-        marker_label: melting ? `Tₘ(${component})` : ``,
-        description: `${component}: ${label_of(above)} → ${label_of(below)}`,
-      }
-    }),
+    ...data.unary_transitions.map(
+      ({ component, temperature, above, below, sigma_T = 0 }): DiagramPoint => {
+        const melting = is_liquid.has(above)
+        return {
+          category: `unary`,
+          phases: [above, below],
+          kind: melting ? `melting` : `transition`,
+          composition: data.components.indexOf(component),
+          temperature,
+          marker_label: melting ? `Tₘ(${component})` : ``,
+          description: `${component}: ${label_of(above)} → ${label_of(below)}`,
+          sigma_T,
+        }
+      },
+    ),
     ...data.polymorphic_transitions.map(
       ({ temperature, composition, above, below }): DiagramPoint => ({
         category: `polymorphic`,
+        phases: [above, below],
         kind: `polymorphic`,
         composition,
         temperature,
         marker_label: ``,
         description: `${label_of(above)} → ${label_of(below)} at fixed composition`,
+        sigma_T: 0,
       }),
     ),
   ]
+}
+
+// The point a PointRef names among `points`: of its category, the one sharing the largest
+// share of its phases, then of its kind, then nearest by distance in x and in T scaled by
+// `t_span` (K), so the pairing doesn't depend on plot size or zoom. `names_of` gives a phase
+// id's names (model phase, label, stand-in target). Null when no point shares the category.
+export function match_point(
+  points: readonly DiagramPoint[],
+  { category, kind, at: [x_ref, t_ref], phases = [] }: PointRef,
+  t_span: number,
+  names_of: (id: string) => readonly string[],
+): DiagramPoint | null {
+  const wanted = new Set(phases)
+  // shared phases over the larger phase count, so extra or missing phases both cost
+  const overlap = (point: DiagramPoint) => {
+    if (!wanted.size) return 0
+    const shared = point.phases.filter((id) => names_of(id).some((name) => wanted.has(name)))
+    return shared.length / Math.max(point.phases.length, phases.length)
+  }
+  const ranked = points
+    .filter((point) => point.category === category)
+    .map((point) => ({
+      point,
+      overlap: overlap(point),
+      same_kind: point.kind === kind ? 1 : 0,
+      dist: Math.hypot(point.composition - x_ref, (point.temperature - t_ref) / t_span),
+    }))
+    .toSorted(
+      (rank_a, rank_b) =>
+        rank_b.overlap - rank_a.overlap ||
+        rank_b.same_kind - rank_a.same_kind ||
+        rank_a.dist - rank_b.dist,
+    )
+  return ranked[0]?.point ?? null
+}
+
+// A point's PointRef as a diagram writes it into the bound highlight, its phases named by
+// model phase and label
+export function point_ref(point: DiagramPoint, data: BinaryPhaseDiagram): PointRef {
+  const by_id = new Map(data.phases.map((phase) => [phase.id, phase]))
+  const { category, kind, composition, temperature } = point
+  const phases = point.phases.flatMap((id) => {
+    const phase = by_id.get(id)
+    return phase ? [phase.model_phase, phase.label] : [id]
+  })
+  return { category, kind, at: [composition, temperature], phases: [...new Set(phases)] }
 }
 
 // Legend name of a diagram from its provenance, e.g. `Assessment`, `Model: demo-model`
@@ -447,24 +599,44 @@ export const status_label = (status: string): string =>
 // system (B-A on an A-B diagram) have their compositions mirrored; a row without phases whose
 // system is one component (a pure-component melting point) sits on that composition edge.
 // Rows of other systems, and rows without a temperature or composition, are not drawn.
+// A prediction of a row (matched by id) gives each marker its predicted x and T (null where
+// it predicts none) and the verdict.
 export function observation_markers(
   rows: readonly PhaseObservation[],
   [comp_a, comp_b]: readonly string[],
+  predictions: readonly ObservationPrediction[] = [],
 ): ObservationMarker[] {
+  const by_id = new Map(predictions.map((prediction) => [prediction.id, prediction]))
   return rows.flatMap((row): ObservationMarker[] => {
     const { T_K: temperature, phases = [], system } = row
-    if (temperature == null || !Number.isFinite(temperature)) return []
+    if (!finite(temperature)) return []
+    const { T_K, x: predicted_xs = [], pass = null } = by_id.get(row.id) ?? {}
+    const predicted_t = finite(T_K) ? T_K : null
+    const marker = (
+      phase: ObservedPhase | null,
+      composition: number,
+      predicted_x: number | null,
+    ): ObservationMarker => ({
+      row,
+      phase,
+      composition,
+      temperature,
+      predicted_x,
+      predicted_t,
+      pass,
+    })
     if (phases.length === 0) {
       const edge = [comp_a, comp_b].indexOf(system)
-      return edge === -1 ? [] : [{ row, phase: null, composition: edge, temperature }]
+      return edge === -1 ? [] : [marker(null, edge, null)]
     }
     const mirrored = system === `${comp_b}-${comp_a}`
     if (!mirrored && system !== `${comp_a}-${comp_b}`) return []
-    return phases.flatMap((phase) =>
-      phase.x == null || !Number.isFinite(phase.x)
-        ? []
-        : [{ row, phase, composition: mirrored ? 1 - phase.x : phase.x, temperature }],
-    )
+    const orient = (x_val: number) => (mirrored ? 1 - x_val : x_val)
+    return phases.flatMap((phase, idx) => {
+      if (!finite(phase.x)) return []
+      const model_x = predicted_xs[idx]
+      return [marker(phase, orient(phase.x), finite(model_x) ? orient(model_x) : null)]
+    })
   })
 }
 
@@ -494,16 +666,21 @@ export function lever_rule_rows(
   ]
 }
 
-// Hover info as copyable text for the clipboard, with the shown overlay's phase set at the same
-// (x, T) (info.overlay_hit, so it matches the tooltip, pinned snapshots included)
+// Hover info as copyable text for the clipboard, with each shown overlay's phase set at the
+// same (x, T) (info.overlay_hits, so it matches the tooltip, pinned snapshots included)
 export function format_hover_info_text(
   info: PhaseHoverInfo,
   data: BinaryPhaseDiagram,
   {
-    overlay = null,
+    overlays = [],
     temp_unit = `K`,
     comp_unit = `at%`,
-  }: { overlay?: BinaryPhaseDiagram | null; temp_unit?: TempUnit; comp_unit?: CompUnit } = {},
+  }: {
+    // in info.overlay_hits order, null for a hidden one
+    overlays?: readonly (BinaryPhaseDiagram | null)[]
+    temp_unit?: TempUnit
+    comp_unit?: CompUnit
+  } = {},
 ): string {
   const label_of = phase_labeler(data)
   const [component_a, component_b] = data.components
@@ -511,9 +688,13 @@ export function format_hover_info_text(
   const comp = (value: number) => format_composition(value, comp_unit)
   const lines: string[] = [
     `Phase: ${region_label(info.region, label_of)}`,
-    ...(overlay && info.overlay_hit
-      ? [`Overlay phase: ${region_label(info.overlay_hit.region, phase_labeler(overlay))}`]
-      : []),
+    ...overlays.flatMap((overlay, idx) => {
+      const hit = info.overlay_hits[idx]
+      if (!overlay || !hit) return []
+      // named like the tooltip: `Overlay` alone, each overlay's name among several
+      const name = overlays.length > 1 ? diagram_name(overlay) : `Overlay`
+      return [`${name} phase: ${region_label(hit.region, phase_labeler(overlay))}`]
+    }),
     `Temperature: ${format_temperature(temperature, temp_unit)}`,
     `Composition: ${comp(composition)} ${component_b} (${comp(1 - composition)} ${component_a})`,
   ]

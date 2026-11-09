@@ -1,4 +1,18 @@
 export {
+  common_tangents,
+  compute_isopleth,
+  gibbs_curves,
+  lower_hull,
+  phase_disagreement,
+} from './analysis'
+export type {
+  GibbsCurve,
+  HullVertex,
+  Isopleth,
+  IsoplethStep,
+  IsoplethTransition,
+} from './analysis'
+export {
   boundary_description,
   BOUNDARY_STYLES,
   diagram_errors,
@@ -7,16 +21,20 @@ export {
   diagram_points,
   parse_diagram,
   format_hover_info_text,
+  match_point,
   model_phase_keys,
   observation_markers,
   phase_colors,
   phase_labeler,
+  point_ref,
   provenance_caption,
   region_label,
   status_color,
   status_label,
   temperature_extent,
+  VERDICT_STYLES,
 } from './diagram'
+export { default as GibbsEnergyPlot } from './GibbsEnergyPlot.svelte'
 export { default as IsobaricBinaryPhaseDiagram } from './IsobaricBinaryPhaseDiagram.svelte'
 export { default as PhaseDiagramControls } from './PhaseDiagramControls.svelte'
 export { default as PhaseDiagramEditorPane } from './PhaseDiagramEditorPane.svelte'

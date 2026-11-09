@@ -168,20 +168,45 @@ describe(`PhaseDiagramTooltip`, () => {
     // 550 K: liquid in the main diagram (eutectic 500 K), α + β in the overlay (600 K)
     const hover_info = create_hover_info({
       region: eutectic_regions[0],
-      overlay_hit: diagram_hit(shifted_eutectic, 0.2, 550),
+      overlay_hits: [diagram_hit(shifted_eutectic, 0.2, 550)],
       composition: 0.2,
       temperature: 550,
     })
-    mount_tooltip({ hover_info, overlay })
+    mount_tooltip({ hover_info, overlays: [overlay] })
     expect(document.querySelector(`.overlay-phase`)?.textContent?.trim()).toBe(phase)
     const overlay_lever = document.querySelector(`.overlay-lever`)?.textContent
     expect(overlay_lever?.replaceAll(/\s+/g, ` `).trim()).toBe(lever)
   })
 
+  // each predicted coordinate shows only when predicted; a verdict shows on its own too
+  test.each([
+    [{ predicted_x: null, predicted_t: null, pass: true }, `pass no predicted value`],
+    [{ predicted_x: 0.5, predicted_t: null, pass: null }, `Predicted x = 50 at% (+5 at%)`],
+    [{ predicted_x: null, predicted_t: 500, pass: false }, `fail Predicted T = 500 K (−20 K)`],
+  ])(`prediction line %#`, (prediction, expected) => {
+    const [row] = observations
+    const phase = row.phases?.[0] ?? null
+    const observation = { row, phase, composition: 0.45, temperature: 520, ...prediction }
+    mount_tooltip({ hover_info: create_hover_info({ observation }) })
+    const text = document
+      .querySelector(`.prediction`)
+      ?.textContent?.replaceAll(/\s+/g, ` `)
+      .trim()
+    expect(text?.replace(`-`, `−`)).toBe(expected)
+  })
+
   test(`observation block cites the source with T and x uncertainties`, () => {
     const [row] = observations
     const phase = row.phases?.[0] ?? null
-    const observation = { row, phase, composition: 0.45, temperature: 520 }
+    const observation = {
+      row,
+      phase,
+      composition: 0.45,
+      temperature: 520,
+      predicted_x: null,
+      predicted_t: null,
+      pass: null,
+    }
     mount_tooltip({ hover_info: create_hover_info({ observation }) })
     const block = document.querySelector(`.observation`)
     const text = block?.textContent?.replaceAll(/\s+/g, ` `)
@@ -270,7 +295,7 @@ describe(`PhaseDiagramTooltip`, () => {
     mount_tooltip({
       hover_info: create_hover_info(),
       data: { ...eutectic, provenance },
-      overlay: shifted_eutectic,
+      overlays: [shifted_eutectic],
     })
     const footers = [...document.querySelectorAll(`footer.provenance`)].map((el) =>
       el.textContent?.replaceAll(/\s+/g, ` `).trim(),
