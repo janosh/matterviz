@@ -409,6 +409,17 @@ test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () 
   expect(last_url()).not.toContain(`file=`)
 })
 
+// diagrams removed from the site (Al-Cu, Cu-Zn, ...) quietly showed the A-B example on old links
+test.each([
+  [`Al-Cu.json`, `A-B`, `No built-in phase diagram named Al-Cu.json, showing A-B.json`],
+  [`Pb-Sn.json`, `Pb-Sn`, null],
+])(`binary phase diagram ?file=%s shows %s`, async (file, title, error) => {
+  Object.assign(page, { url: new URL(`http://localhost/?file=${file}`) })
+  mount(PhaseDiagramPage, { target: document.body })
+  await vi.waitFor(() => expect(doc_query(`.diagram-title`).textContent).toBe(title))
+  expect(document.querySelector(`.demo-error-message`)?.textContent ?? null).toBe(error)
+})
+
 test(`a file dropped on the binary phase diagram leaves ?file= out of the URL`, async () => {
   mount(PhaseDiagramPage, { target: document.body })
   flushSync()

@@ -103,6 +103,21 @@ describe(`parse_phase_diagram_svg`, () => {
     expect(find_region_at(regions, 0.25, 1250)).toBe(l_shape)
   })
 
+  // An imported SVG stays valid when a field has no two-phase label or a horizontal line
+  // separates fields that don't add up to three phases
+  it(`leaves unlabelled fields uncovered and types non-three-phase lines as solvus`, () => {
+    // the third region (top right, above T=1000 K) gets no label; the horizontal line at
+    // 1000 K separates the labelled bottom-right field from it, one phase pair on one side
+    const boundaries = `${SIMPLE_BOUNDARIES}
+      <line class="phase-boundary" x1="300" y1="300" x2="500" y2="300"/>`
+    const data = parse_phase_diagram_svg(simple_svg(boundaries))
+    expect(diagram_errors(data)).toEqual([])
+    expect(data.regions.every(({ phases }) => [1, 2].includes(phases.length))).toBe(true)
+    const kinds = data.boundaries.map(({ kind, phases }) => [kind, phases.length])
+    expect(kinds.filter(([kind]) => kind === `invariant`).every(([, n]) => n === 3)).toBe(true)
+    expect(kinds).toContainEqual([`solvus`, 2])
+  })
+
   // Grid vertices at px 100/200/300/400/500 ↔ x 0/0.25/0.5/0.75/1 and T 500/750/1000/1250/1500
   it.each([
     {
@@ -115,6 +130,8 @@ describe(`parse_phase_diagram_svg`, () => {
         <line class="phase-boundary" x1="200" y1="300" x2="500" y2="300"/>
         <line class="phase-boundary" x1="200" y1="300" x2="200" y2="200"/>
         <line class="phase-boundary" x1="200" y1="200" x2="300" y2="200"/>`,
+      // a label in every region: an unlabelled one is left uncovered
+      labels: `<text class="label-main" x="150" y="450">α + β</text><text class="label-main" x="250" y="250">L + β</text><text class="label-main" x="450" y="150">L + α</text>`,
       region_idx: 1,
       expected: pts(0, 750, 0.5, 750, 0.5, 1000, 1, 1000, 1, 1500, 0, 1500),
       n_regions: 3,
@@ -125,12 +142,15 @@ describe(`parse_phase_diagram_svg`, () => {
         <line class="phase-boundary" x1="200" y1="200" x2="400" y2="200"/>
         <line class="phase-boundary" x1="200" y1="400" x2="200" y2="200"/>
         <line class="phase-boundary" x1="400" y1="400" x2="400" y2="200"/>`,
+      labels: `<text class="label-main" x="150" y="450">α + β</text><text class="label-main" x="300" y="300">L + α</text>`,
       region_idx: 0,
       expected: rect(0, 500, 1, 1500),
       n_regions: 2,
     },
-  ])(`traces $label`, ({ boundaries, region_idx, expected, n_regions }) => {
-    const regions = parse_phase_diagram_svg(simple_svg(boundaries)).regions
+  ])(`traces $label`, ({ boundaries, labels, region_idx, expected, n_regions }) => {
+    const data = parse_phase_diagram_svg(simple_svg(boundaries, labels))
+    expect(diagram_errors(data)).toEqual([])
+    const { regions } = data
     expect(regions).toHaveLength(n_regions)
     expect_points_close(regions[region_idx].vertices, expected)
   })

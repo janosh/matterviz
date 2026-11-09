@@ -613,12 +613,15 @@ function assemble_regions(
     label: id,
     kind: LIQUID_LABEL.test(id) ? `liquid` : `solid`,
   }))
-  const regions = traced.map(({ label, vertices }) => ({
-    phases: [...new Set(split_label(label ?? ``))].toSorted(
-      (id_a, id_b) => position(id_a) - position(id_b),
-    ),
-    vertices,
-  }))
+  // A region holds one or two phases, so an unlabelled field (or a 3-token label) stays
+  // uncovered rather than making the whole diagram invalid
+  const regions = traced.flatMap(({ label, vertices }) => {
+    const ids = [...new Set(split_label(label ?? ``))]
+    if (ids.length < 1 || ids.length > 2) return []
+    return [
+      { phases: ids.toSorted((id_a, id_b) => position(id_a) - position(id_b)), vertices },
+    ]
+  })
   return { phases, regions }
 }
 
@@ -647,7 +650,10 @@ function assemble_boundaries(
     const phases = sides.flatMap(
       ([x_val, y_val]) => find_region_at(regions, x_val, y_val)?.phases ?? [],
     )
-    return { kind: vertical ? `solvus` : `invariant`, phases: [...new Set(phases)], points }
+    const ids = [...new Set(phases)]
+    // an invariant line is three-phase by definition; any other line stays a plain solvus
+    const kind = !vertical && ids.length === 3 ? `invariant` : `solvus`
+    return { kind, phases: ids, points }
   })
 }
 

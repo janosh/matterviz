@@ -130,13 +130,16 @@
     void load_file(url, entry?.name ?? url)
   }
 
-  // ?file= deep link, else the example A-B eutectic diagram
+  // ?file= deep link, else the example A-B eutectic diagram. A link to a diagram that no longer
+  // exists says so instead of quietly showing the example.
   onMount(() => {
     const requested = file_param()
-    const target =
-      all_phase_diagram_files.find((file) => file.name === requested) ??
-      all_phase_diagram_files.find((file) => file.name === `A-B.json`)
+    const match = all_phase_diagram_files.find((file) => file.name === requested)
+    const target = match ?? all_phase_diagram_files.find((file) => file.name === `A-B.json`)
     if (target?.url) void load_file(target.url, target.name, false)
+    if (requested && !match) {
+      error_message = `No built-in phase diagram named ${requested}, showing ${target?.name ?? `none`}`
+    }
   })
 </script>
 
