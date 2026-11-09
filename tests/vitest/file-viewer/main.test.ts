@@ -902,7 +902,11 @@ describe(`LARGE_FILE markers`, () => {
       .then(() => materialize_frame_result(result.data.read_frame(2)))
       .catch((exc: unknown) => exc)
     await vi.advanceTimersByTimeAsync(10_000)
-    expect(await error).toEqual(new Error(msg))
+    const failure = await error
+    expect(failure).toHaveProperty(`message`, msg)
+    // a host that never answers is a load failure, not a parser's verdict on the file
+    // (fresh_parse reloads the modules, so compare the class by name)
+    expect(failure).toHaveProperty(`name`, msg.includes(`timeout`) ? `HostFileError` : `Error`)
     result.data.dispose()
   })
 

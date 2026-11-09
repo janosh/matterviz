@@ -65,7 +65,11 @@ function post_request<T>(
       cleanup()
       reject(to_error(error))
     }
-    const timer = setTimeout(() => fail(new Error(timeout_error)), timeout_ms)
+    // the host never delivered: a load failure, not a verdict on the file's format
+    const timer = setTimeout(
+      () => fail(new HostFileError(timeout_error, `acquire`)),
+      timeout_ms,
+    )
     const abort = (): void =>
       fail(signal?.reason ?? new DOMException(`Request aborted`, `AbortError`))
     const handler = (event: MessageEvent<HostReply | undefined>) => {

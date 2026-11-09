@@ -5,6 +5,7 @@ import type * as ParseModule from '#lib/file-viewer/parse.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
+import { HostFileError } from '#lib/file-viewer/host-protocol.js'
 import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
@@ -623,6 +624,12 @@ test.each([
   [
     `a parse worker failure`,
     new ParseWorkerError(`Parse worker failed`),
+    `x`,
+    `Failed to Open File`,
+  ],
+  [
+    `a large-file host timeout`,
+    new HostFileError(`Large file timeout`, `acquire`),
     `x`,
     `Failed to Open File`,
   ],
