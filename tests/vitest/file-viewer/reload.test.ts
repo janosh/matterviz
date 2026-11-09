@@ -4,7 +4,10 @@ import '#lib/file-viewer/main.js'
 import type * as ParseModule from '#lib/file-viewer/parse.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
-import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
+import {
+  ParseResultTransferError,
+  ParseWorkerError,
+} from '#lib/file-viewer/parse-in-worker.js'
 import { MaterialOpenError } from '#lib/file-viewer/open.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
@@ -632,8 +635,15 @@ test.each([
       new ParseWorkerError(
         `Workers cannot load https://file+.vscode-resource.vscode-cdn.net/w.js here`,
       ),
-    `Failed to Parse File`,
+    `Failed to Open File`,
     `The parser never ran`,
+  ],
+  [
+    // the parse ran and succeeded, so neither the format list nor "never ran" is true
+    `its result could not be cloned back`,
+    () => new ParseResultTransferError(`Failed to clone parse result: DataCloneError`),
+    `Failed to Open File`,
+    `its result could not be handed back`,
   ],
 ])(`error panel explains the failure where %s`, async (_label, make_error, heading, hint) => {
   parse_file_content.mockRejectedValueOnce(make_error())
@@ -643,9 +653,19 @@ test.each([
   expect(document.querySelector(`h2`)?.textContent).toBe(heading)
   expect(panel).toContain(hint)
   expect(panel).toContain(`broken.json`)
-  // the only hint shown is the one that applies
-  const other = hint.startsWith(`Supported`) ? `The parser never ran` : `Supported formats`
-  expect(panel).not.toContain(other)
+  // the format list is the one hint that must not appear anywhere else
+  if (!hint.startsWith(`Supported`)) expect(panel).not.toContain(`Supported formats`)
+})
+
+// VS Code opens an empty file through the same webview, where initialize() rejects it before
+// any parser sees it. Nothing is known about its format, so nothing is claimed about it.
+test(`error panel claims nothing where the webview never bootstrapped`, async () => {
+  expect(await boot(``, ``)).toBeNull()
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
+  expect(panel).toContain(`No data provided`)
+  expect(panel).not.toContain(`Supported formats`)
+  expect(panel).not.toContain(`The parser never ran`)
 })
 
 test(`error panel does not blame the format when the bytes never arrived`, async () => {

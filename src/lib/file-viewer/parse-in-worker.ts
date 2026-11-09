@@ -46,6 +46,15 @@ export class ParseWorkerError extends Error {
   }
 }
 
+// The parse itself succeeded; only handing its result back to the main thread failed. Kept
+// apart from its base so a viewer does not report a parse that ran as one that never did.
+export class ParseResultTransferError extends ParseWorkerError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = `ParseResultTransferError`
+  }
+}
+
 type WorkerParseResult =
   | Exclude<ParseResult, { type: `trajectory` }>
   | (Extract<ParseResult, { type: `trajectory` }> & { data: WorkerRun })
@@ -195,7 +204,8 @@ const parse_file_worker = async (
       settle(to_error(signal?.reason ?? parse_abort_error()))
     }
     const receive = (response: ParseWorkerResponse): void => {
-      const { result, error, progress, run_port, hdf5_group_paths } = response
+      const { result, error, progress, run_port, hdf5_group_paths, transfer_failure } =
+        response
       if (progress) {
         try {
           on_progress?.(progress)
@@ -205,10 +215,17 @@ const parse_file_worker = async (
         return
       }
       if (!result) {
-        // `error` is the worker's own verdict on the file. Its absence means the worker
-        // answered without one, which is the worker failing rather than the file.
+        // `error` is the worker's own verdict on the file, except where it flags itself as
+        // what failed. Its absence means the worker answered without one, which is the
+        // worker failing rather than the file.
         if (hdf5_group_paths)
           return settle(new Hdf5GroupSelectionRequiredError(hdf5_group_paths, error))
+        if (transfer_failure)
+          return settle(
+            new ParseResultTransferError(
+              error ?? `Parse worker could not return its result for ${filename}`,
+            ),
+          )
         return settle(
           error
             ? new Error(error)

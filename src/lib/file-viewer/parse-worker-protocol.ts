@@ -19,6 +19,10 @@ export interface ParseWorkerResponse {
   id: number
   result?: WireParseResult
   error?: string
+  // Set where `error` reports the worker failing rather than the file: a result the worker
+  // parsed but could not clone back. Without it the client cannot tell that message apart
+  // from a parser's verdict on the file's contents.
+  transfer_failure?: true
   progress?: ParseProgress
   hdf5_group_paths?: string[]
   // A trajectory result's data is a summary (see WireParseResult); the live run stays in

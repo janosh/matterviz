@@ -31,7 +31,7 @@ import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { MaterialOpenError, open_material, type OpenedMaterial } from './open'
-import { ParseWorkerError } from './parse-in-worker'
+import { ParseResultTransferError, ParseWorkerError } from './parse-in-worker'
 import { is_plain_object } from '#lib/utils.js'
 import { escape_html, to_error } from 'svelte-widgets/utils'
 
@@ -408,27 +408,32 @@ const caused_by = (error: unknown, matches: (err: Error) => boolean): boolean =>
 }
 
 // Only a parser that read the file and rejected it says anything about its format. Fetching
-// the bytes or the worker that would have parsed them failing says nothing, and offering the
-// supported formats there sends people to check a file that was never the problem (#451).
+// the bytes, starting the worker that would have parsed them, handing its result back, or
+// bootstrapping the webview at all can each fail with the file entirely in order, so the
+// format list is offered where it was earned and nowhere else (#451). An unrecognized
+// failure is left to speak for itself rather than guessing at the file.
 const describe_failure = (error: Error): { heading: string; hint: string } => {
-  const failed_to_acquire = caused_by(
-    error,
-    (err) => err instanceof MaterialOpenError && err.stage === `acquire`,
-  )
-  if (failed_to_acquire) {
+  const from = (matches: (err: Error) => boolean): boolean => caused_by(error, matches)
+  if (from((err) => err instanceof MaterialOpenError && err.stage === `acquire`))
     return { heading: `Failed to Load File`, hint: `The file's bytes could not be read.` }
-  }
-  if (caused_by(error, (err) => err instanceof ParseWorkerError))
+  if (from((err) => err instanceof ParseResultTransferError))
     return {
-      heading: `Failed to Parse File`,
+      heading: `Failed to Open File`,
+      hint: `The file parsed, but its result could not be handed back to the viewer.`,
+    }
+  if (from((err) => err instanceof ParseWorkerError))
+    return {
+      heading: `Failed to Open File`,
       hint: `The parser never ran: its worker could not be started or did not answer. `
         + `Reloading the file may be enough; the file itself may be fine.`,
     }
-  return {
-    heading: `Failed to Parse File`,
-    hint: `Supported formats: XYZ, CIF, JSON, POSCAR, `
-      + `trajectory files (.traj, .h5, .extxyz), etc.`,
-  }
+  if (from((err) => err instanceof MaterialOpenError && err.stage === `parse`))
+    return {
+      heading: `Failed to Parse File`,
+      hint: `Supported formats: XYZ, CIF, JSON, POSCAR, `
+        + `trajectory files (.traj, .h5, .extxyz), etc.`,
+    }
+  return { heading: `Failed to Open File`, hint: `` }
 }
 
 const create_error_display = (
@@ -437,6 +442,9 @@ const create_error_display = (
   filename: string,
 ): void => {
   const { heading, hint } = describe_failure(error)
+  const hint_html = hint
+    ? `<p style="margin: 0; font-size: 14px; opacity: 0.8;">${escape_html(hint)}</p>`
+    : ``
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
@@ -450,9 +458,7 @@ const create_error_display = (
       <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
-        <p style="margin: 0; font-size: 14px; opacity: 0.8;">
-          ${escape_html(hint)}
-        </p>
+        ${hint_html}
       </div>
     </div>`
 }
