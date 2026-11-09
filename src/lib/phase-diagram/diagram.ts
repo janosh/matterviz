@@ -382,11 +382,11 @@ export const region_label = (
   label_of: (id: string) => string,
 ): string => (region ? region.phases.map(label_of).join(` + `) : `–`)
 
-// 32-bit FNV-1a hash
+// 32-bit FNV-1a hash over UTF-16 code units, preserving existing phase colors
 function hash_string(text: string): number {
   let hash = 0x811c9dc5
   for (let idx = 0; idx < text.length; idx++) {
-    hash ^= text.charCodeAt(idx)
+    hash ^= text.slice(idx, idx + 1).codePointAt(0) ?? 0
     hash = Math.imul(hash, 0x01000193)
   }
   return hash >>> 0

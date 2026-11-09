@@ -149,7 +149,7 @@ export const yield_turn = (): Promise<void> =>
 export const base64_to_array_buffer = (base64: string): ArrayBuffer => {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
-  for (let idx = 0; idx < binary.length; idx++) bytes[idx] = binary.charCodeAt(idx)
+  for (let idx = 0; idx < binary.length; idx++) bytes[idx] = binary.codePointAt(idx) ?? NaN
   return bytes.buffer
 }
 

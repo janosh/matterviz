@@ -89,7 +89,7 @@ test.each([`success`, `empty`, `timeout`])(`composited PNG encoding: %s`, async 
     atob(
       `iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==`,
     ),
-    (char) => char.charCodeAt(0),
+    (char) => char.codePointAt(0) ?? NaN,
   )
   const frame_blob = new Blob([png_bytes], { type: `image/png` })
   canvas.toBlob = (callback: BlobCallback) => callback(frame_blob)

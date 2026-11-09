@@ -254,12 +254,12 @@ const dash_array = (dash: PatternDash, size: number): string | undefined => {
   return `0 ${num(size / 2)}`
 }
 
-// djb2 over the resolved fields -> short stable id suffix, so identical patterns within one
-// chart share a single <defs> entry
+// djb2 over the resolved fields' UTF-16 code units -> short stable id suffix, so identical
+// patterns within one chart share a single <defs> entry
 const hash_str = (str: string): string => {
   let hash = 5381
   for (let idx = 0; idx < str.length; idx++) {
-    hash = (Math.imul(hash, 33) + str.charCodeAt(idx)) >>> 0
+    hash = (Math.imul(hash, 33) + (str.slice(idx, idx + 1).codePointAt(0) ?? 0)) >>> 0
   }
   return hash.toString(36)
 }

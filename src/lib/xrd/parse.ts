@@ -307,7 +307,7 @@ export function parse_gsas_file(content: string): XrdPattern {
 // right after them. Ranges are concatenated in 2θ order.
 export function parse_bruker_raw_file(data: ArrayBuffer): XrdPattern {
   const bytes = new Uint8Array(data)
-  const magic = String.fromCharCode(...bytes.slice(0, 7))
+  const magic = String.fromCodePoint(...bytes.slice(0, 7))
   if (!magic.startsWith(`RAW`)) {
     throw new Error(`Bruker RAW: bad magic '${magic.slice(0, 4)}', expected 'RAW1.01'`)
   }

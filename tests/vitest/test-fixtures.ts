@@ -158,7 +158,10 @@ export const gzip_bytes = (content: BlobPart): Promise<ArrayBuffer> =>
 // (indexed by code unit: iterating the string by code point would drop low surrogates)
 export const utf16_bom = (text: string): Uint16Array<ArrayBuffer> => {
   const with_bom = `\uFEFF${text}`
-  return Uint16Array.from({ length: with_bom.length }, (_, idx) => with_bom.charCodeAt(idx))
+  return Uint16Array.from(
+    { length: with_bom.length },
+    (_, idx) => with_bom[idx].codePointAt(0) ?? 0,
+  )
 }
 
 // Two-frame XYZ, the smallest input that exercises multi-frame parsing

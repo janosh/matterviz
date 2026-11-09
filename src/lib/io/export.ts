@@ -75,7 +75,7 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 export async function set_png_dpi(png: Blob, png_dpi: number): Promise<Blob> {
   const bytes = new Uint8Array(await png.arrayBuffer())
   const view = new DataView(bytes.buffer)
-  const chunk_type = (pos: number) => String.fromCharCode(...bytes.subarray(pos + 4, pos + 8))
+  const chunk_type = (pos: number) => String.fromCodePoint(...bytes.subarray(pos + 4, pos + 8))
   if (!PNG_SIGNATURE.every((byte, idx) => bytes[idx] === byte) || chunk_type(8) !== `IHDR`)
     throw new Error(`Canvas encoder returned no PNG (${bytes.length} bytes)`)
   const phys = new Uint8Array(21)

@@ -64,7 +64,7 @@ export class LineScanner {
     let idx = from
     let code = 0
     for (;;) {
-      while (idx < to && (code = line.charCodeAt(idx)) <= 32) idx++
+      while (idx < to && (code = line.codePointAt(idx) ?? NaN) <= 32) idx++
       if (idx >= to) break
       if (count === starts.length) {
         this.starts = grow(starts)
@@ -77,14 +77,14 @@ export class LineScanner {
       let negative = false
       if (code === 45 /* - */ || code === 43 /* + */) {
         negative = code === 45
-        code = ++idx < to ? line.charCodeAt(idx) : 0
+        code = ++idx < to ? (line.codePointAt(idx) ?? NaN) : 0
       }
       // `code` is always the char at `idx`, or 0 (a separator) once `idx` reaches `to`
       let mantissa = 0
       let n_digits = idx
       while (code >= 48 && code <= 57) {
         mantissa = mantissa * 10 + (code - 48)
-        code = ++idx < to ? line.charCodeAt(idx) : 0
+        code = ++idx < to ? (line.codePointAt(idx) ?? NaN) : 0
       }
       n_digits = idx - n_digits
       let exponent = 0
@@ -93,7 +93,7 @@ export class LineScanner {
         const frac_start = ++idx
         code = 0
         while (idx < to) {
-          const digit = line.charCodeAt(idx) - 48
+          const digit = (line.codePointAt(idx) ?? NaN) - 48
           if (digit >>> 0 > 9) {
             code = digit + 48
             break
@@ -106,18 +106,18 @@ export class LineScanner {
       }
       if (n_digits > 0) {
         if (code === 101 /* e */ || code === 69 /* E */) {
-          code = ++idx < to ? line.charCodeAt(idx) : 0
+          code = ++idx < to ? (line.codePointAt(idx) ?? NaN) : 0
           let exp_negative = false
           if (code === 45 || code === 43) {
             exp_negative = code === 45
-            code = ++idx < to ? line.charCodeAt(idx) : 0
+            code = ++idx < to ? (line.codePointAt(idx) ?? NaN) : 0
           }
           let written = 0
           const exp_start = idx
           // a huge exponent may round or reach Infinity, either way out of the fast range
           while (code >= 48 && code <= 57) {
             written = written * 10 + (code - 48)
-            code = ++idx < to ? line.charCodeAt(idx) : 0
+            code = ++idx < to ? (line.codePointAt(idx) ?? NaN) : 0
           }
           if (idx === exp_start) code = 33 // `1e` / `1e+` without digits: not a separator
           exponent += exp_negative ? -written : written
@@ -128,7 +128,7 @@ export class LineScanner {
           if (negative) value = -value
         }
       }
-      if (Number.isNaN(value)) while (idx < to && line.charCodeAt(idx) > 32) idx++
+      if (Number.isNaN(value)) while (idx < to && (line.codePointAt(idx) ?? NaN) > 32) idx++
       ends[count] = idx
       values[count] = value
       count++
@@ -617,7 +617,7 @@ export function* iter_cif_loops(
 // token, and left a quoted value at the end of a line unterminated, so `'x, y, z'\r` split into
 // three broken pieces. Control characters below space count as separators too, which the `\s`
 // this replaced did not do, but a CIF carrying one in a data line is malformed either way.
-const is_cif_space = (char: string): boolean => char.charCodeAt(0) <= 32
+const is_cif_space = (char: string): boolean => (char.codePointAt(0) ?? NaN) <= 32
 
 // CIF closes a quoted value on a delimiter followed by whitespace or end of line, so an
 // apostrophe inside a token is ordinary content. Index of the closing delimiter, or -1.

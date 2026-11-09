@@ -283,7 +283,7 @@ export const split_lines = (content: string): string[] => {
 // End of the text with trailing whitespace removed, as `content.trimEnd()` would leave it
 const trimmed_end = (text: string): number => {
   let target = text.length
-  while (target > 0 && text.charCodeAt(target - 1) <= 32) target--
+  while (target > 0 && (text.codePointAt(target - 1) ?? NaN) <= 32) target--
   return target
 }
 
@@ -380,7 +380,7 @@ export class TextLines {
     // the `\n` closing the line: just before the next line, or the chunk's last char
     const eol =
       idx + 1 < this.chunk_lines[chunk_idx + 1] ? this.starts[idx + 1] - 1 : chunk.length - 1
-    return chunk.charCodeAt(eol - 1) === 13 ? eol - 1 : eol
+    return (chunk.codePointAt(eol - 1) ?? NaN) === 13 ? eol - 1 : eol
   }
   line(idx: number): string | undefined {
     if (idx < 0 || idx >= this.count) return undefined
@@ -413,16 +413,16 @@ export class TextLines {
 // Non-negative integer written alone on the line (whitespace around it allowed), else -1
 const parse_count_line = (line: string): number => {
   let idx = 0
-  while (idx < line.length && line.charCodeAt(idx) <= 32) idx++
+  while (idx < line.length && (line.codePointAt(idx) ?? NaN) <= 32) idx++
   let count = 0
   let digits = 0
   for (; idx < line.length; idx++) {
-    const code = line.charCodeAt(idx)
+    const code = line.codePointAt(idx) ?? NaN
     if (code < 48 || code > 57) break
     count = count * 10 + (code - 48)
     digits++
   }
-  while (idx < line.length && line.charCodeAt(idx) <= 32) idx++
+  while (idx < line.length && (line.codePointAt(idx) ?? NaN) <= 32) idx++
   return digits > 0 && idx === line.length ? count : -1
 }
 

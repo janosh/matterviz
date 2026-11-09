@@ -133,7 +133,7 @@
         (elem) => (entry.composition[elem as ElementSymbol] ?? 0) > 0,
       )
       const id_hash = [...(entry.entry_id ?? ``)].reduce(
-        (acc, char) => acc + char.charCodeAt(0),
+        (acc, char) => acc + (char.codePointAt(0) ?? NaN),
         0,
       )
       const magnetic_ordering: MagneticOrdering = has_magnetic_elem

@@ -228,7 +228,7 @@ export async function drag_canvas(
 // RGB of the four corner pixels. Callers must dispose the handle.
 export const decode_canvas_png = (page: Page, screenshot: Buffer) =>
   page.evaluateHandle(async (base64_png) => {
-    const bytes = Uint8Array.from(atob(base64_png), (char) => char.charCodeAt(0))
+    const bytes = Uint8Array.from(atob(base64_png), (char) => char.codePointAt(0) ?? NaN)
     const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/png` }))
     const offscreen = document.createElement(`canvas`)
     offscreen.width = bitmap.width

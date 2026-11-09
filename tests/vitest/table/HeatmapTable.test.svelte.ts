@@ -32,7 +32,7 @@ const mount_table = (props: TableProps): ReturnType<typeof mount> =>
 const plain_columns = (...labels: string[]): Column[] =>
   labels.map((label) => ({ id: label, label }))
 const value_rows = (values: readonly RowData[string][]): RowData[] =>
-  values.map((value, idx) => ({ Name: String.fromCharCode(65 + idx), Value: value }))
+  values.map((value, idx) => ({ Name: String.fromCodePoint(65 + idx), Value: value }))
 
 // Whitespace-collapsed text of every element matching the selector
 const texts = (selector: string): (string | undefined)[] =>
