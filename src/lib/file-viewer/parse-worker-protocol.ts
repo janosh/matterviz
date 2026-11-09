@@ -17,9 +17,7 @@ export interface ParseWorkerRequest {
 
 export interface ParseWorkerResponse {
   id: number
-  // posted once when the worker's module has loaded, so its host can tell a worker that
-  // never started from one that crashed mid-parse
-  ready?: true
+  ready?: true // posted once on load, so a crash can be told from a worker that never started
   result?: WireParseResult
   error?: string
   progress?: ParseProgress

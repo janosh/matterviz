@@ -19,7 +19,7 @@ import type { VaspoutElectronicData } from '#lib/trajectory/parse/vaspout-electr
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { mount, unmount } from 'svelte'
 import TrajectoryWithDos from './TrajectoryWithDos.svelte'
-import { get_vscode_api, HostRequestTimeoutError } from './host-bridge'
+import { get_vscode_api } from './host-bridge'
 import type {
   FileChangeMessage,
   FileData,
@@ -405,20 +405,9 @@ const create_error_display = (
   error: Error,
   filename: string,
 ): void => {
-  // The format list helps only where a parser read the file and rejected it, not where the
-  // parse worker crashed, the host timed out serving a large file, or the display failed
-  // after a successful parse
-  const parser_rejected =
-    error instanceof MaterialOpenError &&
-    error.stage === `parse` &&
-    !(
-      error.cause instanceof ParseWorkerError || error.cause instanceof HostRequestTimeoutError
-    )
-  const format_hint = parser_rejected
-    ? `<p style="margin: 0; font-size: 14px; opacity: 0.8;">
-          Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
-        </p>`
-    : ``
+  // Only a parser that read the file and rejected it earns the format list
+  const { stage, cause } = error instanceof MaterialOpenError ? error : {}
+  const rejected = stage === `parse` && !(cause instanceof ParseWorkerError)
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
@@ -428,11 +417,13 @@ const create_error_display = (
                 height: 100%;
                 display: flex; flex-direction: column; justify-content: center; align-items: center;">
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">${parser_rejected ? `Failed to Parse File` : `Failed to Open File`}</h2>
+      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">Failed to ${rejected ? `Parse` : `Open`} File</h2>
       <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
-        ${format_hint}
+        <p style="margin: 0; font-size: 14px; opacity: 0.8;">
+          ${rejected ? `Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.` : ``}
+        </p>
       </div>
     </div>`
 }

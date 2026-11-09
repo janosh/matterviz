@@ -22,15 +22,6 @@ export interface VSCodeAPI {
   postMessage(message: WebviewToHostMessage): void
 }
 
-// A host request can time out before any parser reads the file. Keep its identity through
-// open_material's cause chain so the viewer does not treat it as a format rejection.
-export class HostRequestTimeoutError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'HostRequestTimeoutError'
-  }
-}
-
 type HostReply = Extract<HostToWebviewMessage, { request_id: string }>
 
 declare global {
@@ -74,10 +65,7 @@ function post_request<T>(
       cleanup()
       reject(to_error(error))
     }
-    const timer = setTimeout(
-      () => fail(new HostRequestTimeoutError(timeout_error)),
-      timeout_ms,
-    )
+    const timer = setTimeout(() => fail(new Error(timeout_error)), timeout_ms)
     const abort = (): void =>
       fail(signal?.reason ?? new DOMException(`Request aborted`, `AbortError`))
     const handler = (event: MessageEvent<HostReply | undefined>) => {

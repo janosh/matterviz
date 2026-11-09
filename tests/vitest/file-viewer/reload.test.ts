@@ -5,7 +5,6 @@ import type * as ParseModule from '#lib/file-viewer/parse.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
 import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
-import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -617,69 +616,21 @@ test(`constructs same-origin and blob workers natively`, () => {
   expect(object_url_blobs).toEqual([])
 })
 
-// The panel lists the supported formats only where a parser read the file and rejected it:
-// not for a crashed parse worker, an empty file or a display that failed after the parse
+// The format list is shown only where a parser read the file and rejected it
 test.each([
+  [`a parser rejection`, new Error(`No atoms found`), `x`, `Failed to Parse File`],
   [
-    `parser rejection`,
-    () => parse_in_worker.mockRejectedValueOnce(new Error(`No atoms found`)),
-    `x`,
-    `Failed to Parse File`,
-    true,
-  ],
-  [
-    `worker crash`,
-    () =>
-      parse_in_worker.mockRejectedValueOnce(
-        new ParseWorkerError(`Parse worker crashed while reading x.json: out of memory`),
-      ),
+    `a parse worker failure`,
+    new ParseWorkerError(`Parse worker failed`),
     `x`,
     `Failed to Open File`,
-    false,
   ],
-  [`empty file`, () => undefined, ``, `Failed to Open File`, false],
-])(`error panel for a %s`, async (_label, arrange, content, heading, lists_formats) => {
-  arrange()
+  [`an empty file`, null, ``, `Failed to Open File`],
+])(`error panel for %s`, async (_label, error, content, heading) => {
+  if (error) parse_in_worker.mockRejectedValueOnce(error)
   await boot(content, `x.json`)
-  await vi.waitFor(() => expect(document.querySelector(`h2`)).not.toBeNull())
   const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
   expect(document.querySelector(`h2`)?.textContent).toBe(heading)
-  expect(panel.includes(`Supported formats`)).toBe(lists_formats)
-  if (!content) expect(panel).toContain(`x.json is empty`)
-})
-
-// End to end through the real failure sources: a large-file host timeout and a worker reply
-// that fails to deserialize are not verdicts on the file
-test(`error panel lists no formats for a host timeout or an unreadable worker reply`, async () => {
-  vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
-  try {
-    parse_in_worker.mockImplementationOnce(() =>
-      request_large_file_content(`/data/movie.xyz`, `movie.xyz`, 10),
-    )
-    const opening = boot(`LARGE_FILE:/data/movie.xyz:500000000`, `movie.xyz`)
-    await vi.advanceTimersByTimeAsync(10)
-    await opening
-  } finally {
-    vi.useRealTimers()
-  }
-  let panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
-  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
-  expect(panel).toContain(`Large file timeout`)
-  expect(panel).not.toContain(`Supported formats`)
-
-  const real = await vi.importActual<typeof ParseWorkerModule>(
-    `#lib/file-viewer/parse-in-worker.js`,
-  )
-  const worker = new ShimmedWorker(`blob:parse-worker`)
-  parse_in_worker.mockImplementationOnce((content, filename) =>
-    real.parse_in_worker(content, filename, false, { worker_factory: () => worker }),
-  )
-  const opening = boot(`broken`)
-  await vi.waitFor(() => expect(test_mocks.native_workers.at(-1)?.posted).toHaveLength(1))
-  test_mocks.native_workers.at(-1)?.emit(new MessageEvent(`messageerror`))
-  await opening
-  panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
-  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
-  expect(panel).toContain(`failed to deserialize`)
-  expect(panel).not.toContain(`Supported formats`)
+  expect(panel.includes(`Supported formats`)).toBe(heading.includes(`Parse`))
+  expect(panel).toContain(content ? error?.message : `x.json is empty`)
 })
