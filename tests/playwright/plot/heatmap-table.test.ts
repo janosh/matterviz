@@ -13,7 +13,7 @@ test(`sticky column hides cells scrolling beneath it at fractional row offsets`,
     .getByText(`ML model benchmark with a sticky first column`)
     .scrollIntoViewIfNeeded()
   const table = page.locator(`table`, { has: page.locator(`td`, { hasText: `MACE-MP-0` }) })
-  const sticky_cells = table.locator(`td.sticky-col`)
+  const sticky_cells = table.locator(`td.pinned`)
   await expect(sticky_cells.first()).toBeVisible()
 
   // the repaint layer mirrors the cell's background and selection shadow at its bounds
@@ -55,13 +55,13 @@ test(`sticky column hides cells scrolling beneath it at fractional row offsets`,
       scroller.scrollIntoView()
       scroller.scrollLeft = 37
       scroller.style.marginTop = `${margin_px}px` // shift rows off the device-pixel grid
-      for (const cell of element.querySelectorAll<HTMLElement>(`td:not(.sticky-col)`)) {
+      for (const cell of element.querySelectorAll<HTMLElement>(`td:not(.pinned)`)) {
         cell.style.setProperty(`background`, `#f0f`, `important`)
       }
       // sticky column inside the scroll viewport, below the header, clear of cell borders
       const view = scroller.getBoundingClientRect()
       const header = element.querySelector(`thead tr:last-child th`)?.getBoundingClientRect()
-      const cell = element.querySelector(`tbody td.sticky-col`)?.getBoundingClientRect()
+      const cell = element.querySelector(`tbody td.pinned`)?.getBoundingClientRect()
       if (!header || !cell) throw new Error(`demo table lacks a header or sticky cell`)
       const top = header.bottom + 1
       return { x: cell.x + 2, y: top, width: cell.width - 5, height: view.bottom - top - 12 }

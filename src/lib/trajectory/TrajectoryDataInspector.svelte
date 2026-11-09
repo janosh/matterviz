@@ -94,25 +94,28 @@
       return row
     })
     const columns: Column[] = [
-      { id: `step`, label: `Step`, format: `d`, color_scale: null, sticky: true },
+      { id: `step`, label: `Step`, format: `d`, color_scale: null, pin: `left` },
       ...[...property_keys].map((key) => property_column(key)),
     ]
     return { rows, columns }
   })
 
   // Columns with one value in every row (α, β, γ of a cubic cell) start hidden, judged once all
-  // rows are in. Writable: the column toggle overrides it.
+  // rows are in. The column toggle still shows them.
   let constant_columns = $derived.by(() => {
     const { rows, columns } = frame_table
     const [first] = rows
     if (rows.length < 2 || !frame_source.complete) return []
     return columns
-      .filter(
-        ({ id, sticky }) => !sticky && rows.every((row) => Object.is(row[id], first[id])),
-      )
+      .filter(({ id, pin }) => !pin && rows.every((row) => Object.is(row[id], first[id])))
       .map(({ id }) => id)
   })
-  let frame_hidden_columns = $derived(constant_columns)
+  let frame_columns = $derived.by(() => {
+    const hidden = new Set(constant_columns)
+    return frame_table.columns.map((col) =>
+      hidden.has(col.id) ? { ...col, visible: false } : col,
+    )
+  })
 
   // Never present a sample as the full run: say how many rows stand for how many frames.
   let frame_notice = $derived.by(() => {
@@ -237,7 +240,7 @@
     return rows
   })
   const global_columns: Column[] = [
-    { id: `attribute`, label: `Attribute`, color_scale: null, sticky: true },
+    { id: `attribute`, label: `Attribute`, color_scale: null, pin: `left` },
     { id: `value`, label: `Value`, color_scale: null, format: `.6~g`, cell: value_cell },
   ]
 
@@ -361,13 +364,11 @@ so a closed inspector builds no tables -->
           {/if}
           <HeatmapTable
             data={frame_table.rows}
-            columns={frame_table.columns}
+            columns={frame_columns}
             search={{ placeholder: `Filter frames`, fuzzy: true }}
             export_formats={[`csv`, `json`]}
             export_filename="trajectory-frames"
-            initial_sort={{ column: `step` }}
-            bind:hidden_columns={frame_hidden_columns}
-            default_hidden_columns={constant_columns}
+            sort={[{ column: `step`, dir: `asc` }]}
             on_row_click={on_step_change &&
               ((_event: MouseEvent | KeyboardEvent, row: RowData) => {
                 if (typeof row.frame_idx === `number`) on_step_change(row.frame_idx)
@@ -411,9 +412,9 @@ so a closed inspector builds no tables -->
   /* Clearer zebra stripes, layered over the opaque sticky column's background too */
   :global(.trajectory-data-inspector-sidebar) {
     --inspector-stripe: color-mix(in srgb, var(--text-color, CanvasText) 7%, transparent);
-    --heatmap-sticky-cell-odd-bg:
+    --table-sticky-cell-odd-bg:
       linear-gradient(var(--inspector-stripe), var(--inspector-stripe)),
-      var(--heatmap-sticky-cell-bg);
+      var(--table-sticky-cell-bg);
   }
   :global(.trajectory-data-inspector-sidebar tbody tr:nth-child(odd)) {
     background: var(--inspector-stripe);
@@ -469,11 +470,11 @@ so a closed inspector builds no tables -->
     border-radius: 0;
   }
   /* The tables span the inspector instead of hugging their content */
-  :global(.inspector-tabs .tabs-panel :is(.table-container, table.heatmap)) {
+  :global(.inspector-tabs .tabs-panel :is(.table-container, table.data-table)) {
     width: 100%;
   }
   /* The first column (attribute, frame or site) fits its content; the rest take the width */
-  :global(.inspector-tabs .tabs-panel table.heatmap :is(th, td):first-child) {
+  :global(.inspector-tabs .tabs-panel table.data-table :is(th, td):first-child) {
     width: 1%;
     white-space: nowrap;
   }

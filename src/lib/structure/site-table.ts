@@ -112,13 +112,21 @@ export const property_column = (prop_name: string, axis?: string): Column => {
   return { id, key: id, label: unit ? `${label} (${unit})` : label, description: prop_name }
 }
 
+const coord_column = (id: string, label: string, visible = true): Column => ({
+  id,
+  key: id,
+  label,
+  format: `.4~f`,
+  visible,
+})
+
 export const site_columns = (specs: [string, SitePropertyShape][]): Column[] => [
-  { id: `site`, label: `Site`, format: `d`, color_scale: null, sticky: true },
+  { id: `site`, label: `Site`, format: `d`, color_scale: null, pin: `left` },
   { id: `element`, label: `Element`, color_scale: null },
-  ...[
-    ...FRAC_AXES.map((axis) => [`frac_${axis}`, `${axis}<sub>frac</sub>`]),
-    ...VEC3_AXES.map((axis) => [`cart_${axis}`, `${axis} (Å)`]),
-  ].map(([id, label]) => ({ id, key: id, label, format: `.4~f` })),
+  // Fractional coordinates start hidden (the column toggle shows them) so the per-site
+  // properties come right after the Cartesian ones in a narrow sidebar
+  ...FRAC_AXES.map((axis) => coord_column(`frac_${axis}`, `${axis}<sub>frac</sub>`, false)),
+  ...VEC3_AXES.map((axis) => coord_column(`cart_${axis}`, `${axis} (Å)`)),
   ...specs.flatMap(([key, shape]) =>
     shape === `scalar`
       ? [property_column(key)]

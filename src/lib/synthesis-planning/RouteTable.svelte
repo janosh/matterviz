@@ -17,8 +17,8 @@
   } = $props()
 
   const columns: Column[] = [
-    { id: `rank`, label: `#`, key: `rank`, sticky: true, format: `d`, color_scale: null },
-    { id: `reaction`, label: `Reaction`, key: `reaction`, sticky: true, filter: `text` },
+    { id: `rank`, label: `#`, key: `rank`, pin: `left`, format: `d`, color_scale: null },
+    { id: `reaction`, label: `Reaction`, key: `reaction`, pin: `left`, filter: `text` },
     {
       id: `score`,
       label: `Score`,
@@ -117,7 +117,7 @@
     {columns}
     on_row_click={handle_row_click}
     row_key="route_id"
-    initial_sort={{ column: `rank`, direction: `asc` }}
+    sort={[{ column: `rank`, dir: `asc` }]}
     density="compact"
     pagination={{ page_size: 15, page_sizes: [15, 30, 100] }}
     search={{ placeholder: `Filter reactions…` }}

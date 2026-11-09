@@ -96,3 +96,25 @@ test(`table search, pagination, selection and export use the visible data`, asyn
   await clear_selection.click()
   await expect(rows.first().getByRole(`checkbox`)).not.toBeChecked()
 })
+
+// The column menu (a native auto popover) and the export pane overlap, so opening either one
+// must close the other: by light dismiss and the pane's outside-click close respectively
+// oxlint-disable-next-line vitest/prefer-each -- Playwright has no test.each.
+for (const first of [`columns`, `export`] as const) {
+  test(`opening the ${first} menu closes the other`, async ({ page }) => {
+    const table = page.locator(`#table-controls`)
+    const columns_btn = table.getByRole(`button`, { name: `Columns`, exact: true })
+    const export_btn = table.locator(`button.export-toggle`)
+    const column_menu = page.locator(`.column-menu:popover-open`)
+    const export_pane = table.getByRole(`textbox`, { name: `File name`, exact: true })
+    const [open_first, open_second] =
+      first === `columns` ? [columns_btn, export_btn] : [export_btn, columns_btn]
+    const [first_menu, second_menu] =
+      first === `columns` ? [column_menu, export_pane] : [export_pane, column_menu]
+    await open_first.click()
+    await expect(first_menu).toBeVisible()
+    await open_second.click()
+    await expect(second_menu).toBeVisible()
+    await expect(first_menu).toBeHidden()
+  })
+}

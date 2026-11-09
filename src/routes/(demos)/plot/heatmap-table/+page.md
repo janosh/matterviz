@@ -232,7 +232,7 @@ All 118 chemical elements with physical and chemical properties. Features column
     {
       id: `symbol`,
       label: `Symbol`,
-      sticky: true,
+      pin: `left`,
       style: `min-width: 75px; font-weight: 600;`,
     },
     {
@@ -564,7 +564,7 @@ ML model benchmark with a sticky first column. Scroll horizontally to compare mo
     {
       id: `Model`,
       label: `Model`,
-      sticky: true,
+      pin: `left`,
       style: `min-width: 120px; font-weight: 600;`,
     },
     { id: `Published Date`, label: `Published Date`, style: `min-width: 115px;` },
@@ -672,7 +672,12 @@ The table correctly handles numeric strings with uncertainty notation for both s
   uncertainty
 </p>
 
-<HeatmapTable {data} {columns} initial_sort="E<sub>gap</sub> (eV)" style="margin: 0 auto" />
+<HeatmapTable
+  {data}
+  {columns}
+  sort={[{ column: `E<sub>gap</sub> (eV)`, dir: `asc` }]}
+  style="margin: 0 auto"
+/>
 ```
 
 ## Color Scales
@@ -807,7 +812,7 @@ Combines per-column filters, filtered summaries, diverging normalization, quanti
   let density = $state(`cosy`)
 
   const columns = [
-    { id: `Material`, label: `Material`, sticky: true },
+    { id: `Material`, label: `Material`, pin: `left` },
     // diverging: zero sits at the scale's midpoint, so sign reads at a glance
     {
       id: `E_form`,

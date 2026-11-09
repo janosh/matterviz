@@ -187,7 +187,7 @@ const make_table = (n_rows: number, n_cols: number) => {
     id: `col_${idx}`,
     label: `col_${idx}`,
     color_scale: idx % 3 === 0 ? (`interpolateViridis` as const) : undefined,
-    sticky: idx === 0,
+    pin: idx === 0 ? (`left` as const) : undefined,
   }))
   const data: RowData[] = Array.from({ length: n_rows }, (_, row_idx) =>
     Object.fromEntries(
