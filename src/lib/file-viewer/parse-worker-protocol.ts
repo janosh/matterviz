@@ -20,8 +20,6 @@ export interface ParseWorkerResponse {
   ready?: true // posted once on load, so a crash can be told from a worker that never started
   result?: WireParseResult
   error?: string
-  // A transport failure after parsing, rather than a parser rejecting the file.
-  worker_error?: true
   progress?: ParseProgress
   hdf5_group_paths?: string[]
   // A trajectory result's data is a summary (see WireParseResult); the live run stays in

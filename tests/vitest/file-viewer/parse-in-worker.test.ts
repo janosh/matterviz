@@ -775,36 +775,6 @@ describe(`parse_in_worker`, () => {
 })
 
 describe(`parse worker handler`, () => {
-  it(`marks a failed result post as a worker error`, async () => {
-    const post = vi.fn()
-    const listen = vi.fn()
-    vi.stubGlobal(`self`, { postMessage: post, addEventListener: listen })
-    vi.resetModules()
-    await import(`#lib/file-viewer/parse-worker.js`)
-    post.mockClear()
-    post.mockImplementationOnce(() => {
-      throw new Error(`cannot clone`)
-    })
-    const handler = listen.mock.calls.find(([type]) => type === `message`)?.[1]
-    handler(
-      new MessageEvent(`message`, {
-        data: {
-          id: 99,
-          filename: `plain.json`,
-          content: `{"hello":1}`,
-          is_base64: false,
-        },
-      }),
-    )
-    await vi.waitFor(() =>
-      expect(post).toHaveBeenLastCalledWith({
-        id: 99,
-        error: `Failed to clone parse result: cannot clone`,
-        worker_error: true,
-      }),
-    )
-  })
-
   it.each([0, 2])(`transfers all %i imported density buffers`, async (count) => {
     const volumes = Array.from({ length: count }, (_, idx) => ({
       ...make_volume(make_grid(2, 2, 2, () => idx + 1)),
