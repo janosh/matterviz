@@ -4,6 +4,8 @@ import '#lib/file-viewer/main.js'
 import type * as ParseModule from '#lib/file-viewer/parse.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
+import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
+import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -613,4 +615,72 @@ test(`constructs same-origin and blob workers natively`, () => {
     { url: `blob:${location.origin}/already-a-blob`, options: undefined },
   ])
   expect(object_url_blobs).toEqual([])
+})
+
+// The format list is shown only where a parser read the file and rejected it
+test.each([
+  [`a parser rejection`, new Error(`No atoms found`), `x`, `Failed to Parse File`],
+  [
+    `a parse worker failure`,
+    new ParseWorkerError(`Parse worker failed`),
+    `x`,
+    `Failed to Open File`,
+  ],
+  [`an empty file`, null, ``, `Failed to Open File`],
+])(`error panel for %s`, async (_label, error, content, heading) => {
+  if (error) parse_in_worker.mockRejectedValueOnce(error)
+  await boot(content, `x.json`)
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(heading)
+  expect(panel.includes(`Supported formats`)).toBe(heading.includes(`Parse`))
+  expect(panel).toContain(content ? error?.message : `x.json is empty`)
+})
+
+test.each([false, true])(
+  `an empty update preserves an existing display: %s`,
+  async (mounted) => {
+    if (mounted) parse_file_content.mockResolvedValueOnce(result(`initial`))
+    else parse_file_content.mockRejectedValueOnce(new Error(`Invalid JSON`))
+    await boot(`initial`)
+    const parse_calls = parse_in_worker.mock.calls.length
+    update_file(``)
+    await vi.waitFor(() =>
+      expect(post_message).toHaveBeenLastCalledWith({
+        command: `error`,
+        text: expect.stringContaining(`.json is empty`),
+      }),
+    )
+    expect(parse_in_worker).toHaveBeenCalledTimes(parse_calls)
+    if (mounted) expect(unmount).not.toHaveBeenCalled()
+    else {
+      const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+      expect(panel).toContain(`.json is empty`)
+      expect(panel).not.toContain(`Supported formats`)
+    }
+  },
+)
+
+test.each([`acquire`, `parse`] as const)(`host %s failure keeps its stage`, async (stage) => {
+  parse_in_worker.mockImplementationOnce(() =>
+    request_large_file_content(`/data/movie.xyz`, `movie.xyz`),
+  )
+  const opening = boot(`LARGE_FILE:/data/movie.xyz:500000000`, `movie.xyz`)
+  await vi.waitFor(() =>
+    expect(post_message).toHaveBeenCalledWith(
+      expect.objectContaining({ command: `request_large_file` }),
+    ),
+  )
+  const request = post_message.mock.calls.find(
+    ([msg]) => msg.command === `request_large_file`,
+  )?.[0]
+  host_message({
+    command: `large_file_response`,
+    request_id: request.request_id,
+    error: `Host failure`,
+    error_stage: stage,
+  })
+  await opening
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(panel).toContain(`Host failure`)
+  expect(panel.includes(`Supported formats`)).toBe(stage === `parse`)
 })

@@ -11,7 +11,7 @@ import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { to_error } from 'svelte-widgets/utils'
-import { can_create_worker } from '#lib/worker-client.svelte.js'
+import { can_create_worker, disable_workers } from '#lib/worker-client.svelte.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
 import { parse_file_content } from './parse'
@@ -36,6 +36,18 @@ let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
+// The parse worker failed, not the file: it crashed, its reply was unreadable, or it never
+// started (constructor threw, script failed to load), in which case parses fall back
+export class ParseWorkerError extends Error {
+  constructor(
+    message: string,
+    readonly started = true,
+  ) {
+    super(message)
+    this.name = 'ParseWorkerError'
+  }
+}
+
 type WorkerParseResult =
   | Exclude<ParseResult, { type: `trajectory` }>
   | (Extract<ParseResult, { type: `trajectory` }> & { data: WorkerRun })
@@ -56,6 +68,8 @@ interface ParseWorkerHost {
   pending: Map<number, PendingParse>
   runs: Set<WorkerRun>
   terminated: boolean
+  started: boolean // set by its first message (the ready message or a reply)
+  queued: (() => void)[] // posts held until it starts, so a buffer never goes to a dead worker
   idle_timer?: ReturnType<typeof setTimeout>
 }
 
@@ -104,16 +118,23 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     pending: new Map(),
     runs: new Set(),
     terminated: false,
+    started: false,
+    queued: [],
   }
   host.worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
+    if (!host.started) {
+      host.started = true
+      for (const post of host.queued.splice(0)) post()
+    }
     const response: ParseWorkerResponse | undefined = event.data
     const pending = response && host.pending.get(response.id)
     // A late reply to a cancelled parse: release the run it may carry
     if (pending) pending.receive(response)
     else dispose_run_port(response?.run_port)
   }) as EventListener)
-  const fail_pending = (describe: (filename: string) => string): void => {
-    for (const { filename, fail } of host.pending.values()) fail(new Error(describe(filename)))
+  const fail_pending = (describe: (filename: string) => string, started = true): void => {
+    for (const { filename, fail } of host.pending.values())
+      fail(new ParseWorkerError(describe(filename), started))
   }
   // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
   // parse started synchronously from a disposed run's release spawns a fresh worker.
@@ -121,7 +142,7 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     event.preventDefault()
     const reason = event.message || `unknown worker error`
     terminate_host(host)
-    fail_pending((filename) => `Parse worker failed for ${filename}: ${reason}`)
+    fail_pending((filename) => `Parse worker failed for ${filename}: ${reason}`, host.started)
     for (const run of host.runs) run.dispose()
   })
   // A reply that failed to deserialize names no request, so every parse in flight fails; the
@@ -164,14 +185,14 @@ const parse_file_worker = async (
     load_options,
     replica,
   }
-  const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
   return new Promise<WorkerParseResult>((resolve, reject) => {
     let host: ParseWorkerHost
     try {
       host = open_host(worker_factory, dedicated)
     } catch (error) {
-      return reject(to_error(error))
+      return reject(new ParseWorkerError(to_error(error).message, false))
     }
+    const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
     const settle = (outcome: WorkerParseResult | Error): void => {
       if (!host.pending.delete(request.id)) return
       signal?.removeEventListener(`abort`, abort)
@@ -222,17 +243,24 @@ const parse_file_worker = async (
     }
     host.pending.set(request.id, { filename, receive, fail: settle })
     signal?.addEventListener(`abort`, abort, { once: true })
-    try {
-      host.worker.postMessage(request, { transfer })
-    } catch (error) {
-      settle(to_error(error))
+    // A worker can't read messages before its module loads anyway, so holding them until its
+    // ready message costs nothing, and one that never starts keeps the buffer for the retry
+    const post = (): void => {
+      if (!host.pending.has(request.id)) return // settled (aborted or failed) before the start
+      try {
+        host.worker.postMessage(request, { transfer })
+      } catch (error) {
+        settle(to_error(error))
+      }
     }
+    if (host.started) post()
+    else host.queued.push(post)
   })
 }
 
 // File cloning shares the immutable backing file; every replica mounts its own bounded
 // HDF5 reader. Byte buffers and rich sources never enter this pool.
-export const parse_in_worker = async (
+const parse_with_worker = async (
   content: TrajectorySource,
   filename: string,
   is_base64 = false,
@@ -464,3 +492,17 @@ export const parse_in_worker = async (
   primary.dispose = dispose_pool
   return result
 }
+
+// A worker that never started parses nothing on this page: parse here instead
+export const parse_in_worker = (
+  ...[content, filename, is_base64, options = {}]: Parameters<typeof parse_with_worker>
+): Promise<ParseResult> =>
+  parse_with_worker(content, filename, is_base64, options).catch((error: unknown) => {
+    if (!(error instanceof ParseWorkerError) || error.started) throw error
+    disable_workers()
+    console.warn(`${error.message}, parsing ${filename} on the main thread`)
+    return parse_with_worker(content, filename, is_base64, {
+      ...options,
+      worker_factory: undefined,
+    })
+  })

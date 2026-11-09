@@ -12,6 +12,17 @@ export interface FileData {
   is_base64: boolean
 }
 
+// Preserve which side of host file loading failed across the message boundary.
+export class HostFileError extends Error {
+  constructor(
+    message: string,
+    readonly stage: `acquire` | `parse`,
+  ) {
+    super(message)
+    this.name = 'HostFileError'
+  }
+}
+
 export interface WebviewBootstrapData {
   data: FileData
   theme: ThemeName
@@ -72,6 +83,7 @@ export type HostToWebviewMessage =
       // The host keeps the run; the webview streams frames with request_frame.
       run_summary?: TrajectoryRunSummary
       error?: string
+      error_stage?: `acquire` | `parse`
     }
   | {
       command: `frame_response`

@@ -15,30 +15,35 @@
   import { format_label_html } from '#lib/composition/format.js'
   import {
     boundary_description,
+    diagram_name,
     lever_rule_rows,
     phase_labeler,
     provenance_caption,
     region_label,
     status_color,
+    VERDICT_STYLES,
   } from './diagram'
   import { convert_temp, format_composition, temp_delta } from './utils'
 
   let {
     hover_info,
     data,
-    overlay = null,
+    overlays = [],
     color_of,
+    match_of = () => undefined,
     temp_unit = `K`,
     comp_unit = `at%`,
     tooltip,
   }: {
     hover_info: PhaseHoverInfo
     data: BinaryPhaseDiagram
-    // Shown overlay diagram: its phase set at the hovered point (hover_info.overlay_hit) is
-    // listed too
-    overlay?: BinaryPhaseDiagram | null
+    // Overlay diagrams in hover_info.overlay_hits order, null for a hidden one: each shown
+    // one's phase set at the hovered point is listed too
+    overlays?: readonly (BinaryPhaseDiagram | null)[]
     // Phase id -> the diagram's fill color, so lever-rule swatches match its regions
     color_of: (id: string) => string
+    // Phase id -> the reference phase it stands in for (the diagram's phase_matches)
+    match_of?: (id: string) => string | undefined
     temp_unit?: TempUnit
     comp_unit?: CompUnit
     tooltip?: PhaseDiagramTooltipProp
@@ -46,9 +51,30 @@
 
   const [component_a, component_b] = $derived(data.components)
   const label_of = $derived(phase_labeler(data))
-  // hidden overlays keep no phase set, even in a snapshot taken while one was shown
-  const overlay_hit = $derived(overlay && hover_info.overlay_hit)
-  const overlay_label_of = $derived(overlay && phase_labeler(overlay))
+  // Each shown overlay with its phase set and lever rule; hidden overlays keep none, even in
+  // a snapshot taken while one was shown
+  const overlay_rows = $derived(
+    overlays.flatMap((overlay, idx) => {
+      const hit = hover_info.overlay_hits[idx]
+      if (!overlay || !hit) return []
+      const overlay_label_of = phase_labeler(overlay)
+      return [
+        {
+          // named like the copied text: `Overlay` alone, each overlay's name among several
+          name: overlays.length > 1 ? diagram_name(overlay) : `Overlay`,
+          label: region_label(hit.region, overlay_label_of),
+          lever: hit.lever_rule && lever_rule_rows(hit.lever_rule, overlay_label_of),
+        },
+      ]
+    }),
+  )
+  // Reference phases the hovered field's phases stand in for
+  const matches = $derived(
+    (hover_info.region?.phases ?? []).flatMap((id) => {
+      const target = match_of(id)
+      return target ? [[label_of(id), target] as const] : []
+    }),
+  )
   const html_label = (label: string) => sanitize_html(format_label_html(label, true))
   const safe_formula = (comp: string) => sanitize_formula(comp, true)
 
@@ -106,18 +132,17 @@
   const lever_rows = $derived(
     hover_info.lever_rule && lever_rule_rows(hover_info.lever_rule, label_of),
   )
-  const overlay_lever_rows = $derived(
-    overlay_label_of &&
-      overlay_hit?.lever_rule &&
-      lever_rule_rows(overlay_hit.lever_rule, overlay_label_of),
-  )
   const lever_colors = $derived(
     hover_info.lever_rule
       ? [hover_info.lever_rule.left_phase, hover_info.lever_rule.right_phase].map(color_of)
       : [],
   )
 
+  const shown_overlays = $derived(overlays.filter((overlay) => overlay !== null))
   const observation = $derived(hover_info.observation)
+  // a composition difference in the display unit (at.% points or mole fraction)
+  const comp_scale = (delta: number) => (comp_unit === `fraction` ? delta : delta * 100)
+  const signed = (val: number, fmt: string) => `${val > 0 ? `+` : ``}${format_num(val, fmt)}`
 </script>
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
@@ -144,7 +169,8 @@
     {/if}
 
     {#if observation}
-      {@const { row, phase, composition, temperature } = observation}
+      {@const { row, phase, composition, temperature, predicted_x, predicted_t, pass } =
+        observation}
       <section class="observation">
         <span class="status" style:background={status_color(row.status)}
           >{humanize(row.status)}</span
@@ -160,6 +186,28 @@
           <div>
             {name}: x = <TooltipValue value={fmt_comp(composition)} unit={comp_unit_label} />
             {#if sigma_x}± {fmt_comp(sigma_x)} {comp_unit_label}{/if}
+          </div>
+        {/if}
+        {#if pass !== null || predicted_t !== null || predicted_x !== null}
+          <div class="prediction">
+            {#if pass !== null}
+              {@const verdict = pass ? `pass` : `fail`}
+              <span class="verdict" style:background={VERDICT_STYLES[verdict].color}
+                >{verdict}</span
+              >
+            {/if}
+            {#if predicted_t !== null}
+              Predicted T = <TooltipValue value={fmt_temp(predicted_t)} unit={temp_unit} />
+              ({signed(temp_delta(predicted_t - temperature, temp_unit), `.3~`)}
+              {temp_unit}){predicted_x === null ? `` : `,`}
+            {/if}
+            {#if predicted_x !== null}
+              {predicted_t === null ? `Predicted` : ``} x =
+              <TooltipValue value={fmt_comp(predicted_x)} unit={comp_unit_label} />
+              ({signed(comp_scale(predicted_x - composition), `.3~`)}
+              {comp_unit_label})
+            {/if}
+            {#if predicted_t === null && predicted_x === null}no predicted value{/if}
           </div>
         {/if}
         {#if row.source}
@@ -210,12 +258,14 @@
           <small>{temp_unit}</small>
         </dd>
       {/if}
-      {#if overlay_label_of && overlay_hit}
-        <dt>Overlay</dt>
-        <dd class="overlay-phase">
-          {@html html_label(region_label(overlay_hit.region, overlay_label_of))}
-        </dd>
-      {/if}
+      {#each overlay_rows as { name, label }, idx (idx)}
+        <dt>{name}</dt>
+        <dd class="overlay-phase">{@html html_label(label)}</dd>
+      {/each}
+      {#each matches as [phase, target], idx (idx)}
+        <dt>Stands in for</dt>
+        <dd>{@html html_label(target)} <small>({@html html_label(phase)})</small></dd>
+      {/each}
     </dl>
 
     {#if lever_rows}
@@ -243,15 +293,17 @@
         </div>
       </div>
     {/if}
-    {#if overlay_lever_rows}
-      <div class="overlay-lever">
-        Overlay lever rule:
-        {#each overlay_lever_rows as [phase, fraction, location], idx (idx)}
-          {idx ? ` / ` : ``}{@html html_label(phase)}
-          {format_num(fraction * 100, `.0f`)}% at {format_composition(location, comp_unit)}
-        {/each}
-      </div>
-    {/if}
+    {#each overlay_rows as { name, lever }, row_idx (row_idx)}
+      {#if lever}
+        <div class="overlay-lever">
+          {name} lever rule:
+          {#each lever as [phase, fraction, location], idx (idx)}
+            {idx ? ` / ` : ``}{@html html_label(phase)}
+            {format_num(fraction * 100, `.0f`)}% at {format_composition(location, comp_unit)}
+          {/each}
+        </div>
+      {/if}
+    {/each}
 
     {#if boundary_distance}
       {@const { text, delta_t } = boundary_distance}
@@ -264,11 +316,17 @@
       </div>
     {/if}
 
-    {#each [data, overlay].filter((diagram) => diagram !== null) as diagram, idx (idx)}
+    {#each [data, ...shown_overlays] as diagram, idx (idx)}
       {@const caption = provenance_caption(diagram)}
       {#if caption}
         <footer class="provenance">
-          {#if overlay}<strong>{idx ? `Overlay` : `Main`}:</strong>{/if}
+          {#if shown_overlays.length}<strong
+              >{idx
+                ? overlays.length > 1
+                  ? diagram_name(diagram)
+                  : `Overlay`
+                : `Main`}:</strong
+            >{/if}
           {caption}
         </footer>
       {/if}
@@ -328,6 +386,12 @@
     }
     a {
       color: inherit;
+    }
+    .verdict {
+      color: white;
+      font-size: 10px;
+      padding: 0 5px;
+      border-radius: 3px;
     }
   }
   dl {

@@ -15,7 +15,7 @@ import type { FrameChannels, NumericFrame } from '#lib/trajectory/frame.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { to_error } from 'svelte-widgets/utils'
-import { frame_from_wire } from './host-protocol'
+import { frame_from_wire, HostFileError } from './host-protocol'
 import type { HostRequest, HostToWebviewMessage, WebviewToHostMessage } from './host-protocol'
 
 export interface VSCodeAPI {
@@ -65,7 +65,11 @@ function post_request<T>(
       cleanup()
       reject(to_error(error))
     }
-    const timer = setTimeout(() => fail(new Error(timeout_error)), timeout_ms)
+    // the host never delivered: a load failure, not a verdict on the file's format
+    const timer = setTimeout(
+      () => fail(new HostFileError(timeout_error, `acquire`)),
+      timeout_ms,
+    )
     const abort = (): void =>
       fail(signal?.reason ?? new DOMException(`Request aborted`, `AbortError`))
     const handler = (event: MessageEvent<HostReply | undefined>) => {
@@ -107,7 +111,7 @@ export async function request_large_file_content(
     `Large file timeout`,
     (data, resolve, reject) => {
       if (data.command !== `large_file_response`) return false
-      if (data.error) reject(new Error(data.error))
+      if (data.error) reject(new HostFileError(data.error, data.error_stage ?? `acquire`))
       else if (data.run_summary && typeof data.run_summary === `object`) {
         // Plot rows and grown warnings arrive after the summary, stamped with its request_id;
         // they are routed to THIS run instance until it is disposed

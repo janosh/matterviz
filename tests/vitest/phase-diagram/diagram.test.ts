@@ -5,11 +5,13 @@ import {
   diagram_points,
   format_hover_info_text,
   format_reaction,
+  match_point,
   model_phase_keys,
   observation_markers,
   parse_diagram,
   phase_colors,
   phase_labeler,
+  point_ref,
   provenance_caption,
   region_label,
   temperature_extent,
@@ -34,6 +36,17 @@ import {
   rect,
   shifted_eutectic,
 } from './fixtures/test-data'
+
+// A diagram patch with a gibbs_energy grid (2 temperatures x 2 compositions by default)
+const gibbs = (
+  phases: { model_phase: string; values: (number | null)[][] }[],
+  temperatures = [500, 700],
+  compositions = [0, 1],
+): Partial<BinaryPhaseDiagram> => ({ gibbs_energy: { temperatures, compositions, phases } })
+const zeros = [
+  [0, 0],
+  [0, 0],
+]
 
 describe(`diagram_errors`, () => {
   // every phase reference is checked, so label/color lookups by id never miss
@@ -86,6 +99,44 @@ describe(`diagram_errors`, () => {
         invariants: [{ ...eutectic.invariants[0], phases: [`A`, `B`], compositions: [0, 1] }],
       },
       `invariants[0] needs 3 phases and 3 compositions, got 2 and 2`,
+    ],
+    [
+      `boundary sigma_T per point`,
+      { boundaries: [{ ...eutectic.boundaries[0], sigma_T: [5] }] },
+      `boundaries[0] sigma_T needs one non-negative number per point`,
+    ],
+    [
+      `negative point sigma_T`,
+      { invariants: [{ ...eutectic.invariants[0], sigma_T: -1 }] },
+      `invariants[0] sigma_T must be a non-negative number`,
+    ],
+    [
+      `gibbs axes not increasing`,
+      gibbs([], [700, 500]),
+      `gibbs_energy temperatures and compositions must be increasing number arrays`,
+    ],
+    [
+      `gibbs unknown model phase`,
+      gibbs([{ model_phase: `HCP_A3`, values: zeros }]),
+      `gibbs_energy.phases[0] references unknown model phase HCP_A3`,
+    ],
+    [
+      `gibbs compositions not spanning 0 to 1`,
+      gibbs([], [500, 700], [0.1, 1]),
+      `gibbs_energy compositions must run from 0 to 1, got 0.1 to 1`,
+    ],
+    [
+      `gibbs duplicate model phase`,
+      gibbs([
+        { model_phase: `LIQUID`, values: zeros },
+        { model_phase: `LIQUID`, values: zeros },
+      ]),
+      `gibbs_energy has duplicate model_phase "LIQUID"`,
+    ],
+    [
+      `gibbs values shape`,
+      gibbs([{ model_phase: `LIQUID`, values: [[0, 0]] }]),
+      `gibbs_energy.phases[0] values must be 2 x 2 numbers or nulls`,
     ],
     [
       `phaseless invariant`,
@@ -417,6 +468,118 @@ test(`observation_markers puts each phase on the row's isotherm and pure rows on
   expect(observation_markers(observations, [`Ag`, `Au`])).toEqual([])
 })
 
+// a prediction gives each marker the x and T it predicts, null where it predicts none; an x
+// in the row's own orientation is mirrored with the row
+test(`observation_markers attach predicted x, T and verdicts by row id`, () => {
+  const predictions = [
+    { id: `Al-Cu:eutectic`, T_K: 480, x: [0.5, null, 0.95], pass: false },
+    { id: `Cu:melting`, T_K: 905, pass: true },
+    { id: `no-x`, pass: false }, // predicts nothing drawable
+  ]
+  const markers = observation_markers(observations, eutectic.components, predictions)
+  expect(
+    markers.map(({ predicted_x, predicted_t, pass }) => [predicted_x, predicted_t, pass]),
+  ).toEqual([
+    [0.5, 480, false],
+    [null, 480, false],
+    [0.95, 480, false],
+    [null, 905, true],
+  ])
+  const mirrored = observation_markers(observations, [`Cu`, `Al`], predictions)
+  const predicted_x = mirrored.map((marker) => marker.predicted_x ?? NaN)
+  expect(predicted_x[0]).toBeCloseTo(0.5, 12)
+  expect(predicted_x[2]).toBeCloseTo(0.05, 12)
+  expect(Number.isNaN(predicted_x[1])).toBe(true)
+  // without a prediction a marker has none and no verdict
+  expect(observation_markers(observations, eutectic.components)[0]).toMatchObject({
+    predicted_x: null,
+    predicted_t: null,
+    pass: null,
+  })
+})
+
+// Pairing a point across diagrams: shared phases first, then the kind, then nearness
+describe(`match_point`, () => {
+  // a Pb-Sn-like reference eutectic and a model whose (Sn) is DIAMOND_A4, 113 K lower
+  const model: BinaryPhaseDiagram = {
+    ...eutectic,
+    phases: [
+      ...eutectic.phases,
+      { id: `D`, model_phase: `DIAMOND_A4`, label: `α-Sn`, kind: `solid` },
+    ],
+    invariants: [
+      // nearer the reference in (x, T) but with other phases
+      {
+        ...eutectic.invariants[0],
+        kind: `eutectic`,
+        temperature: 450,
+        phases: [`A`, `LIQUID`, `D`],
+        reaction: `LIQUID -> A + D`,
+      },
+      {
+        ...eutectic.invariants[0],
+        kind: `peritectic`,
+        temperature: 342,
+        phases: [`A`, `LIQUID`, `B`],
+      },
+    ],
+    unary_transitions: [{ component: `Cu`, temperature: 900, above: `LIQUID`, below: `B` }],
+  }
+  const points = diagram_points(model)
+  const names_of = (id: string) => {
+    const phase = model.phases.find((other) => other.id === id)
+    return phase ? [phase.model_phase, phase.label] : [id]
+  }
+  const ref = point_ref(diagram_points(eutectic)[0], eutectic) // eutectic L + α + β at 500 K
+  const match = (overrides: Partial<typeof ref>, names = names_of) =>
+    match_point(points, { ...ref, ...overrides }, 1000, names)
+
+  test.each([
+    // the same phases win over the kind and over nearness: the peritectic of L + α + β
+    [`shared phases`, {}, 342],
+    // without phases the kind decides, then nearness
+    [`kind`, { phases: [] }, 450],
+    // the model's DIAMOND_A4 stands in for β: now both share all phases, the kind decides
+    [`stand-in`, {}, 450, (id: string) => (id === `D` ? [`DIAMOND_A4`, `β`] : names_of(id))],
+  ])(`%s`, (_label, overrides, temperature, names = names_of) => {
+    expect(match(overrides, names)?.temperature).toBe(temperature)
+  })
+
+  // a ref names each phase twice (model phase and label), so ranking must count, not divide
+  test(`an extra phase loses to an exact match, however near`, () => {
+    const exact = points.find(({ temperature }) => temperature === 342)
+    if (!exact) throw new Error(`Expected the peritectic`)
+    const extra = { ...exact, temperature: 505, phases: [...exact.phases, `D`] }
+    expect(match_point([extra, exact], ref, 1000, names_of)).toBe(exact)
+  })
+
+  test(`a kind the diagram lacks falls back to its category, another category to null`, () => {
+    expect(match({ kind: `monotectic`, phases: [] })?.temperature).toBe(450)
+    expect(match({ category: `critical`, kind: `critical` })).toBeNull()
+    // a melting point pairs with the melting point, wherever it is
+    const melting = match({ category: `unary`, kind: `melting`, at: [1, 1357], phases: [] })
+    expect(melting).toMatchObject({ composition: 1, temperature: 900 })
+  })
+
+  test(`point_ref names phases by model phase and label`, () => {
+    expect(ref).toEqual({
+      category: `invariant`,
+      kind: `eutectic`,
+      at: [0.5, 500],
+      phases: [`FCC_A1`, `α`, `LIQUID`, `L`, `BCC_A2`, `β`],
+    })
+  })
+})
+
+test(`diagram_points carry sigma_T, 0 where not given`, () => {
+  const with_sigma = {
+    ...eutectic,
+    invariants: [{ ...eutectic.invariants[0], sigma_T: 7 }],
+    unary_transitions: [{ component: `Al`, temperature: 900, above: `LIQUID`, below: `A` }],
+  }
+  expect(diagram_points(with_sigma).map(({ sigma_T }) => sigma_T)).toEqual([7, 0])
+})
+
 test(`diagram_name, provenance_caption and temperature_extent`, () => {
   expect([diagram_name(eutectic), diagram_name(shifted_eutectic)]).toEqual([
     `Assessment`,
@@ -463,17 +626,17 @@ describe(`format_hover_info_text`, () => {
   })
 
   test(`line structure: header order, overlay line, blank line before lever rule`, () => {
-    // the overlay line names the hover's overlay_hit (liquid at 900 K), as the tooltip does
+    // the overlay line names the hover's overlay hit (liquid at 900 K), as the tooltip does
     const info = create_hover_info({
       region: eutectic_regions[1],
-      overlay_hit: diagram_hit(shifted_eutectic, 0.5, 900),
+      overlay_hits: [diagram_hit(shifted_eutectic, 0.5, 900)],
       composition: 0.5,
       temperature: 900,
       lever_rule,
     })
-    const lines = format_hover_info_text(info, eutectic, { overlay: shifted_eutectic }).split(
-      `\n`,
-    )
+    const lines = format_hover_info_text(info, eutectic, {
+      overlays: [shifted_eutectic],
+    }).split(`\n`)
     expect(lines.slice(0, 4)).toEqual([
       `Phase: α + β`,
       `Overlay phase: L`,
@@ -484,14 +647,15 @@ describe(`format_hover_info_text`, () => {
     expect(lever_idx).toBeGreaterThan(3)
     expect(lines[lever_idx - 1]).toBe(``)
     // single-phase hover (no lever_rule) -> no lever rule section; no overlay line without an
-    // overlay, nor for a snapshot taken while the overlay was hidden (overlay_hit null)
+    // overlay, nor for a snapshot taken while the overlay was hidden (its hit null)
     const single = format_hover_info_text(create_hover_info(), eutectic)
     expect(single).not.toContain(`Lever Rule`)
     expect(single).not.toContain(`Overlay`)
-    const hidden = { overlay: shifted_eutectic }
-    expect(format_hover_info_text(create_hover_info(), eutectic, hidden)).not.toContain(
-      `Overlay`,
-    )
+    const hidden = { overlays: [null] }
+    const snapshot = create_hover_info({
+      overlay_hits: [diagram_hit(shifted_eutectic, 0.5, 900)],
+    })
+    expect(format_hover_info_text(snapshot, eutectic, hidden)).not.toContain(`Overlay`)
   })
 })
 

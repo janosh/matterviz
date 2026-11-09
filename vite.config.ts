@@ -219,6 +219,9 @@ export default defineConfig({
       // Timer/animation callbacks return opaque handles that Promise ignores. The rule (still on
       // in vite-plus 1.0) mistakes those conventional executors for meaningful Promise returns.
       'no-promise-executor-return': `off`,
+      // Parsers, UTF-16 fixtures and stable hashes deliberately operate on code units;
+      // replacing these APIs with code points can change encodings and hash values.
+      'eslint-plugin-unicorn/prefer-code-point': `off`,
     },
     // src/scripts/** are standalone utility scripts excluded from tsconfig (so
     // type-aware rules can't resolve #lib/Deno-style imports there) — keep them unlinted.

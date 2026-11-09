@@ -30,7 +30,7 @@ import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
-import { open_material, type OpenedMaterial } from './open'
+import { MaterialOpenError, open_material, type OpenedMaterial } from './open'
 import { is_plain_object } from '#lib/utils.js'
 import { escape_html, to_error } from 'svelte-widgets/utils'
 
@@ -289,6 +289,7 @@ const display_file = async (
   current_file = file_data
   current_result = null // whatever is on screen is no longer the host's file
   try {
+    if (!file_data.content) throw new Error(`${file_data.filename} is empty`)
     const result = await parse_file_data(file_data, signal)
     if (!is_current(gen)) return result.dispose()
     await unmount_current_app()
@@ -404,6 +405,8 @@ const create_error_display = (
   error: Error,
   filename: string,
 ): void => {
+  // Only a parser that read the file and rejected it earns the format list
+  const rejected = error instanceof MaterialOpenError && error.stage === `parse`
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
@@ -413,12 +416,12 @@ const create_error_display = (
                 height: 100%;
                 display: flex; flex-direction: column; justify-content: center; align-items: center;">
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">Failed to Parse File</h2>
+      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">Failed to ${rejected ? `Parse` : `Open`} File</h2>
       <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
         <p style="margin: 0; font-size: 14px; opacity: 0.8;">
-          Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
+          ${rejected ? `Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.` : ``}
         </p>
       </div>
     </div>`
@@ -584,8 +587,7 @@ const listen_to_host = (): void => {
 async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
   const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
-  if (!file_data?.content || !file_data.filename)
-    throw new Error(`No data provided to MatterViz app`)
+  if (!file_data?.filename) throw new Error(`No data provided to MatterViz app`)
 
   // Where the extension serves the symmetry WASM; fetched only once an analysis needs it, so
   // the first render doesn't wait for it

@@ -36,6 +36,9 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   show_component_labels: true,
   show_overlay: true,
   show_observations: true,
+  show_uncertainty: true,
+  show_disagreement: true,
+  lens: false,
   // Display units (data is always K and mole fraction)
   temp_unit: `K`,
   comp_unit: `at%`,
@@ -243,7 +246,7 @@ export const format_temperature = (kelvin: number, unit: TempUnit = `K`): string
   `${format_num(convert_temp(kelvin, `K`, unit), `.0f`)} ${unit}`
 
 // Composition intersections of a polygon's edges with the isotherm T = temperature, sorted
-function find_isotherm_intersections(vertices: Vec2[], temperature: number): number[] {
+export function find_isotherm_intersections(vertices: Vec2[], temperature: number): number[] {
   const intersections: number[] = []
   for (let idx = 0; idx < vertices.length; idx++) {
     const [comp_1, temp_1] = vertices[idx]

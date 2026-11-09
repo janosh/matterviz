@@ -6,7 +6,7 @@ import type {
   ParseWorkerResponse,
   WorkerLike,
 } from '#lib/file-viewer/parse-in-worker.js'
-import { parse_in_worker } from '#lib/file-viewer/parse-in-worker.js'
+import { parse_in_worker, ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
 import { parse_file_content } from '#lib/file-viewer/parse.js'
 import { handle_parse_worker_request } from '#lib/file-viewer/parse-worker.js'
 import { prediction_to_json } from '#lib/structure/prediction.js'
@@ -82,6 +82,11 @@ const make_fake_worker = (
       queueMicrotask(() => emit(`message`, new MessageEvent(`message`, { data: cloned })))
     },
     addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
+      // Like the real worker, announce the start once its module has loaded
+      if (type === `message` && !listeners.has(type))
+        queueMicrotask(() =>
+          emit(`message`, new MessageEvent(`message`, { data: { id: -1 } })),
+        )
       listeners.set(type, [...(listeners.get(type) ?? []), listener as EventListener])
     },
     emit,
@@ -120,6 +125,8 @@ const expect_stops_after_grace = async (worker: FakeWorker): Promise<void> => {
   await vi.advanceTimersByTimeAsync(1000)
   expect(worker.terminate).toHaveBeenCalledOnce()
 }
+// Lets a fresh fake worker announce its start, which releases the parses queued for it
+const started = () => new Promise((resolve) => setImmediate(resolve))
 // A factory of workers that answer nothing on their own, each kept for the test to drive
 const silent_workers = () => {
   const workers: FakeWorker[] = []
@@ -507,33 +514,26 @@ describe(`parse_in_worker`, () => {
     await expect_stops_after_grace(worker)
   })
 
+  // A worker that never started (constructor threw, or errored before its first message)
+  // hands the parse to the main thread; it was never given the buffer, so that parses too
+  const xyz = `1\nH\nH 0 0 0\n`
   it.each([
-    [
-      `construction`,
-      () => {
-        throw new Error(`blocked`)
-      },
-    ],
-    [
-      `script load`,
-      () => {
-        const worker = make_fake_worker(() => null)
-        queueMicrotask(() => worker.emit(`error`, new ErrorEvent(`error`, { message: `404` })))
-        return worker
-      },
-    ],
-    [
-      `deserialization`,
-      () => {
-        const worker = make_fake_worker(() => null)
-        queueMicrotask(() => worker.emit(`messageerror`, new MessageEvent(`messageerror`)))
-        return worker
-      },
-    ],
-  ])(`rejects when worker %s fails`, async (_label, make_worker) => {
-    await expect(
-      parse_in_worker(`data`, `si.cif`, false, { worker_factory: make_worker }),
-    ).rejects.toThrow(/blocked|404|deserialize/)
+    [`constructor throws`, true, xyz],
+    [`errors before its first message`, false, xyz],
+    [`was sent a buffer and never started`, false, new TextEncoder().encode(xyz).buffer],
+  ])(`a worker that %s`, async (_label, throws, content) => {
+    vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const worker = make_fake_worker(() => null)
+    const worker_factory = () => {
+      if (throws) throw new Error(`refused`)
+      return worker
+    }
+    const parsing = parse_in_worker(content, `h.xyz`, false, {
+      worker_factory,
+      owns_content: true,
+    })
+    if (!throws) worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
+    expect(await parsing).toEqual(await parse_file_content(xyz, `h.xyz`))
   })
 
   it(`aborting terminates the worker`, async () => {
@@ -543,6 +543,29 @@ describe(`parse_in_worker`, () => {
     controller.abort()
     await expect(parsing).rejects.toMatchObject({ name: `AbortError` })
     expect(worker.terminate).toHaveBeenCalledOnce()
+  })
+
+  it(`a default worker that fails to start moves every later parse to the main thread`, async () => {
+    vi.resetModules()
+    vi.spyOn(console, `warn`).mockImplementation(() => {})
+    const worker = make_fake_worker(() => null)
+    // oxlint-disable-next-line prefer-arrow-callback -- Worker must be constructable with new
+    const factory = vi.fn(function () {
+      return worker
+    })
+    vi.stubGlobal(`Worker`, factory)
+    const module = await import(`#lib/file-viewer/parse-in-worker.js`)
+    const availability = await import(`#lib/worker-client.svelte.js`)
+    const content = new TextEncoder().encode(xyz).buffer
+    const parsing = module.parse_in_worker(content, `h.xyz`, false, { owns_content: true })
+    worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
+    await expect(parsing).resolves.toMatchObject({ type: `structure` })
+    expect(content.detached).toBe(false)
+    expect(availability.can_create_worker()).toBe(false)
+    await expect(module.parse_in_worker(xyz, `next.xyz`)).resolves.toMatchObject({
+      type: `structure`,
+    })
+    expect(factory).toHaveBeenCalledOnce()
   })
 
   it(`returns a live worker-backed run and stops its worker after dispose`, async () => {
@@ -577,7 +600,7 @@ describe(`parse_in_worker`, () => {
     },
   )
 
-  // Ownership alone decides whether bytes may be detached, independently of file size.
+  // Ownership alone decides whether bytes may be detached, independently of file size
   it.each([
     [`clones by default`, 4, undefined, 0],
     [`transfers a small payload the caller gave up`, 1024, true, 1],
@@ -602,6 +625,7 @@ describe(`parse_in_worker`, () => {
       parse_in_worker(`data`, filename, false, { worker_factory, on_progress: progress[idx] }),
     )
     expect(worker_factory).toHaveBeenCalledOnce()
+    await started()
     const requests = worker.posted.map(({ request }) => request)
     expect(requests.map(({ filename }) => filename)).toEqual(filenames)
     reply(worker, { id: requests[1].id, progress: { current: 1, total: 2, stage: `read` } })
@@ -634,6 +658,7 @@ describe(`parse_in_worker`, () => {
     const shared = parse_in_worker(`data`, `a.cif`, false, { worker_factory })
     const hdf5 = parse_in_worker(content, filename, false, { worker_factory })
     expect(worker_factory).toHaveBeenCalledTimes(2)
+    await started()
     reply(workers[1], { id: workers[1].posted[0].request.id, result: structure_result })
     await hdf5
     expect(workers[1].terminate).toHaveBeenCalledOnce() // at once, no grace period
@@ -653,6 +678,7 @@ describe(`parse_in_worker`, () => {
       signal: controller.signal,
     })
     const healthy = parse_in_worker(`data`, `good.cif`, false, { worker_factory })
+    await started()
     const [failing_request, healthy_request] = worker.posted.map(({ request }) => request)
     if (failure === `abort`) controller.abort()
     else reply(worker, { id: failing_request.id, error: `bad atoms` })
@@ -686,6 +712,7 @@ describe(`parse_in_worker`, () => {
     const crashes = event_type === `error`
     const { workers, worker_factory } = silent_workers()
     const opening = parse_in_worker(`text`, `movie.xyz`, false, { worker_factory })
+    await started()
     reply(workers[0], trajectory_response(workers[0].posted[0].request))
     const opened = await opening
     if (opened.type !== `trajectory`) throw new Error(`Expected trajectory`)
@@ -697,6 +724,7 @@ describe(`parse_in_worker`, () => {
     expect(worker_factory).toHaveBeenCalledOnce()
     workers[0].emit(event_type, event)
     for (const [idx, filename] of filenames.entries()) {
+      await expect(parses[idx]).rejects.toThrow(ParseWorkerError)
       await expect(parses[idx]).rejects.toThrow(message)
       await expect(parses[idx]).rejects.toThrow(filename)
     }
@@ -706,6 +734,7 @@ describe(`parse_in_worker`, () => {
     expect(workers[0].terminate).toHaveBeenCalledTimes(crashes ? 1 : 0)
     const next = parse_in_worker(`data`, `c.cif`, false, { worker_factory })
     expect(worker_factory).toHaveBeenCalledTimes(crashes ? 2 : 1)
+    await started()
     const [next_worker, post_idx] = crashes ? [workers[1], 0] : [workers[0], 3]
     reply(next_worker, {
       id: next_worker.posted[post_idx].request.id,

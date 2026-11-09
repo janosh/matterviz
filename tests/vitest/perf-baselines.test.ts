@@ -127,6 +127,9 @@ const BASELINES = {
 } as const
 type Case = keyof typeof BASELINES
 const BAND = 2
+// The 538 MB Blob open is GC and memory-bandwidth bound, which the CPU-bound reference doesn't
+// track: CI runners took 1.9-2.5x its scaled baseline (bb7ce983..c2837ef8) vs 0.9x locally.
+const CASE_BANDS: Partial<Record<Case, number>> = { 'XYZ Blob past the string limit open': 4 }
 
 const median = (values: number[]): number =>
   values.toSorted((left, right) => left - right)[Math.floor(values.length / 2)]
@@ -391,13 +394,14 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
 
   const assert_within_band = (name: Case, timings: number[]) => {
     const median_ms = median(timings)
-    const limit_ms = BAND * BASELINES[name] * machine_factor
+    const band = CASE_BANDS[name] ?? BAND
+    const limit_ms = band * BASELINES[name] * machine_factor
     results.push({ name, median_ms, limit_ms })
     expect(
       median_ms,
       `${name}: median ${median_ms.toFixed(1)} ms over ${timings.length} runs exceeds ${limit_ms.toFixed(
         0,
-      )} ms (${BAND}x baseline ${BASELINES[name]} ms x machine factor ${machine_factor.toFixed(
+      )} ms (${band}x baseline ${BASELINES[name]} ms x machine factor ${machine_factor.toFixed(
         2,
       )})`,
     ).toBeLessThanOrEqual(limit_ms)

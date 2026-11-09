@@ -237,12 +237,18 @@ jobs:
       - name: Install Chromium
         run: pnpm exec playwright install chromium --no-shell
       # FFmpeg's .deb files come from a cache: the runner's apt mirror stalls mid-download often
-      # enough to time out whole shards, and the first shard that fetches them saves them
+      # enough to time out whole shards, and the first shard that fetches them saves them.
+      # Keyed on the runner image, whose updates change the package versions apt wants; the
+      # prefix restore lets a new image download only the packages that changed.
+      - name: Read runner image version
+        id: runner-image
+        run: echo "version=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
       - name: Cache FFmpeg packages
         uses: actions/cache@v6
         with:
           path: ~/apt-archives
-          key: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-v1
+          key: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-image.outputs.version }}
+          restore-keys: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-
       # Bounded: an unresponsive apt mirror once hung shards 3 and 6 until the 6 h job limit
       - name: Install FFmpeg for movie export tests
         timeout-minutes: 5
@@ -252,6 +258,8 @@ jobs:
           sudo apt-get "${APT_OPTS[@]}" update
           sudo apt-get "${APT_OPTS[@]}" -o Dir::Cache::Archives="$HOME/apt-archives" \
             install --yes --no-install-recommends ffmpeg
+          # Drop debs the mirror no longer serves so the saved cache doesn't keep growing
+          sudo apt-get -o Dir::Cache::Archives="$HOME/apt-archives" autoclean
           # apt downloads as root; the cache step saves the archives as the runner user
           sudo chown -R "$USER" ~/apt-archives
       - uses: actions/download-artifact@v8

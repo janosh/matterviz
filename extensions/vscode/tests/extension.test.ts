@@ -588,8 +588,12 @@ describe(`MatterViz Extension`, () => {
     mock_vscode.workspace.fs.readFile.mockRejectedValueOnce(new Error(`disk hiccup`))
     await handle_msg(large_file_msg(file_path, `first`), mock_webview)
     expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
-      expect.objectContaining({ request_id: `first`, error: `disk hiccup` }),
+      expect.objectContaining({
+        request_id: `first`,
+        error: `disk hiccup`,
+      }),
     )
+    expect(mock_webview.postMessage.mock.lastCall?.[0]).not.toHaveProperty(`error_stage`)
     expect(active_runs.has(file_path)).toBe(false)
     mock_vscode.workspace.fs.readFile.mockResolvedValueOnce(
       new TextEncoder().encode(`1\n\nH 0 0 0\n`),
@@ -608,6 +612,19 @@ describe(`MatterViz Extension`, () => {
       request_id: ``,
       error: `Invalid request_id`,
     })
+  })
+
+  test(`a host parser rejection is reported with the parse stage`, async () => {
+    vi.spyOn(console, `error`).mockImplementation(() => {})
+    mock_vscode.workspace.fs.readFile.mockResolvedValueOnce(new Uint8Array())
+    await handle_msg(large_file_msg(`/test/empty.extxyz`, `parse-failure`), mock_webview)
+    expect(mock_webview.postMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        request_id: `parse-failure`,
+        error: expect.any(String),
+        error_stage: `parse`,
+      }),
+    )
   })
 
   test.each([
