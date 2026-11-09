@@ -30,7 +30,8 @@ import JsonBrowser from './JsonBrowser.svelte'
 import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
-import { open_material, type OpenedMaterial } from './open'
+import { MaterialOpenError, open_material, type OpenedMaterial } from './open'
+import { ParseWorkerError } from './parse-in-worker'
 import { is_plain_object } from '#lib/utils.js'
 import { escape_html, to_error } from 'svelte-widgets/utils'
 
@@ -399,11 +400,43 @@ const parse_file_data = (
   )
 }
 
+// Walks the cause chain open_material wraps around the failure it reports
+const caused_by = (error: unknown, matches: (err: Error) => boolean): boolean => {
+  for (let err: unknown = error; err instanceof Error; err = err.cause)
+    if (matches(err)) return true
+  return false
+}
+
+// Only a parser that read the file and rejected it says anything about its format. Fetching
+// the bytes or the worker that would have parsed them failing says nothing, and offering the
+// supported formats there sends people to check a file that was never the problem (#451).
+const describe_failure = (error: Error): { heading: string; hint: string } => {
+  const failed_to_acquire = caused_by(
+    error,
+    (err) => err instanceof MaterialOpenError && err.stage === `acquire`,
+  )
+  if (failed_to_acquire) {
+    return { heading: `Failed to Load File`, hint: `The file's bytes could not be read.` }
+  }
+  if (caused_by(error, (err) => err instanceof ParseWorkerError))
+    return {
+      heading: `Failed to Parse File`,
+      hint: `The parser never ran: its worker could not be started or did not answer. `
+        + `Reloading the file may be enough; the file itself may be fine.`,
+    }
+  return {
+    heading: `Failed to Parse File`,
+    hint: `Supported formats: XYZ, CIF, JSON, POSCAR, `
+      + `trajectory files (.traj, .h5, .extxyz), etc.`,
+  }
+}
+
 const create_error_display = (
   container: HTMLElement,
   error: Error,
   filename: string,
 ): void => {
+  const { heading, hint } = describe_failure(error)
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
@@ -413,12 +446,12 @@ const create_error_display = (
                 height: 100%;
                 display: flex; flex-direction: column; justify-content: center; align-items: center;">
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">Failed to Parse File</h2>
+      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">${heading}</h2>
       <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
         <p style="margin: 0; font-size: 14px; opacity: 0.8;">
-          Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
+          ${escape_html(hint)}
         </p>
       </div>
     </div>`

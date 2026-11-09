@@ -36,6 +36,16 @@ let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
+// No worker could be constructed, the one serving this parse crashed, or its reply never
+// arrived or would not deserialize. None of these read the file, so a viewer must not
+// present them as a verdict on its contents or format.
+export class ParseWorkerError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = `ParseWorkerError`
+  }
+}
+
 type WorkerParseResult =
   | Exclude<ParseResult, { type: `trajectory` }>
   | (Extract<ParseResult, { type: `trajectory` }> & { data: WorkerRun })
@@ -113,7 +123,8 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     else dispose_run_port(response?.run_port)
   }) as EventListener)
   const fail_pending = (describe: (filename: string) => string): void => {
-    for (const { filename, fail } of host.pending.values()) fail(new Error(describe(filename)))
+    for (const { filename, fail } of host.pending.values())
+      fail(new ParseWorkerError(describe(filename)))
   }
   // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
   // parse started synchronously from a disposed run's release spawns a fresh worker.
@@ -170,7 +181,7 @@ const parse_file_worker = async (
     try {
       host = open_host(worker_factory, dedicated)
     } catch (error) {
-      return reject(to_error(error))
+      return reject(new ParseWorkerError(to_error(error).message, { cause: error }))
     }
     const settle = (outcome: WorkerParseResult | Error): void => {
       if (!host.pending.delete(request.id)) return
@@ -194,10 +205,14 @@ const parse_file_worker = async (
         return
       }
       if (!result) {
+        // `error` is the worker's own verdict on the file. Its absence means the worker
+        // answered without one, which is the worker failing rather than the file.
+        if (hdf5_group_paths)
+          return settle(new Hdf5GroupSelectionRequiredError(hdf5_group_paths, error))
         return settle(
-          hdf5_group_paths
-            ? new Hdf5GroupSelectionRequiredError(hdf5_group_paths, error)
-            : new Error(error ?? `Parse worker returned no result for ${filename}`),
+          error
+            ? new Error(error)
+            : new ParseWorkerError(`Parse worker returned no result for ${filename}`),
         )
       }
       if (result.type !== `trajectory`) {
@@ -205,7 +220,9 @@ const parse_file_worker = async (
         return settle(result)
       }
       if (!run_port)
-        return settle(new Error(`Trajectory parse worker result is missing its run port`))
+        return settle(
+          new ParseWorkerError(`Trajectory parse worker result is missing its run port`),
+        )
       let run: WorkerRun | undefined
       try {
         run = worker_run(run_port, result.data, () => {

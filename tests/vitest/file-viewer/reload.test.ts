@@ -4,6 +4,8 @@ import '#lib/file-viewer/main.js'
 import type * as ParseModule from '#lib/file-viewer/parse.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
+import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
+import { MaterialOpenError } from '#lib/file-viewer/open.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -613,4 +615,46 @@ test(`constructs same-origin and blob workers natively`, () => {
     { url: `blob:${location.origin}/already-a-blob`, options: undefined },
   ])
   expect(object_url_blobs).toEqual([])
+})
+
+// The panel is all a user sees when a file will not open, so what it blames must be true:
+// a worker that never ran the parser is not a verdict on the file's format (#451).
+test.each([
+  [
+    `a parse rejects the file`,
+    () => new Error(`Unknown format in weird.json`),
+    `Failed to Parse File`,
+    `Supported formats: XYZ, CIF, JSON, POSCAR`,
+  ],
+  [
+    `its worker never ran`,
+    () =>
+      new ParseWorkerError(
+        `Workers cannot load https://file+.vscode-resource.vscode-cdn.net/w.js here`,
+      ),
+    `Failed to Parse File`,
+    `The parser never ran`,
+  ],
+])(`error panel explains the failure where %s`, async (_label, make_error, heading, hint) => {
+  parse_file_content.mockRejectedValueOnce(make_error())
+  await boot(`broken`)
+  await vi.waitFor(() => expect(document.querySelector(`h2`)).not.toBeNull())
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(heading)
+  expect(panel).toContain(hint)
+  expect(panel).toContain(`broken.json`)
+  // the only hint shown is the one that applies
+  const other = hint.startsWith(`Supported`) ? `The parser never ran` : `Supported formats`
+  expect(panel).not.toContain(other)
+})
+
+test(`error panel does not blame the format when the bytes never arrived`, async () => {
+  parse_in_worker.mockImplementationOnce(() => {
+    throw new MaterialOpenError(`No content returned for file.cif`, `acquire`, {})
+  })
+  await boot(`unread`)
+  await vi.waitFor(() => expect(document.querySelector(`h2`)).not.toBeNull())
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Load File`)
+  expect(panel).not.toContain(`Supported formats`)
 })
