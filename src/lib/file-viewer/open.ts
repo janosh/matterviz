@@ -4,6 +4,7 @@ import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
 import { basename_from_url, fetch_payload } from '#lib/io/url-drop.js'
 import { parse_in_worker } from './parse-in-worker'
+import { HostFileError } from './host-protocol'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { to_error } from 'svelte-widgets/utils'
 
@@ -165,9 +166,14 @@ export async function open_material(
     })
   } catch (error) {
     if (error instanceof Hdf5GroupSelectionRequiredError) throw error
-    throw new MaterialOpenError(to_error(error).message, `parse`, parse_provenance, {
-      cause: error,
-    })
+    throw new MaterialOpenError(
+      to_error(error).message,
+      error instanceof HostFileError ? error.stage : `parse`,
+      parse_provenance,
+      {
+        cause: error,
+      },
+    )
   }
   const provenance = Object.freeze({ ...parse_provenance, filename: result.filename })
   let disposed = false

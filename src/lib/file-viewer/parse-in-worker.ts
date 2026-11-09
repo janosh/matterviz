@@ -488,9 +488,10 @@ export const parse_in_worker = (
 ): Promise<ParseResult> =>
   parse_with_worker(content, filename, is_base64, options).catch((error: unknown) => {
     const detached = content instanceof ArrayBuffer && content.detached
-    if (!(error instanceof ParseWorkerError) || error.started || detached) throw error
-    console.warn(`${error.message}, parsing ${filename} on the main thread`)
+    if (!(error instanceof ParseWorkerError) || error.started) throw error
     disable_workers()
+    if (detached) throw error
+    console.warn(`${error.message}, parsing ${filename} on the main thread`)
     return parse_with_worker(content, filename, is_base64, {
       ...options,
       worker_factory: undefined,

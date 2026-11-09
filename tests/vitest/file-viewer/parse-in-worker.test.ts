@@ -537,6 +537,28 @@ describe(`parse_in_worker`, () => {
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
 
+  it(`disables default workers even when their first buffer was detached`, async () => {
+    vi.resetModules()
+    const worker = make_fake_worker(() => null)
+    // oxlint-disable-next-line prefer-arrow-callback -- Worker must be constructable with new
+    const factory = vi.fn(function () {
+      return worker
+    })
+    vi.stubGlobal(`Worker`, factory)
+    const module = await import(`#lib/file-viewer/parse-in-worker.js`)
+    const availability = await import(`#lib/worker-client.svelte.js`)
+    const content = new TextEncoder().encode(`1\nH\nH 0 0 0\n`).buffer
+    const parsing = module.parse_in_worker(content, `h.xyz`, false, { owns_content: true })
+    worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
+    await expect(parsing).rejects.toThrow(`404`)
+    expect(content.detached).toBe(true)
+    expect(availability.can_create_worker()).toBe(false)
+    await expect(module.parse_in_worker(`1\nH\nH 0 0 0\n`, `next.xyz`)).resolves.toMatchObject(
+      { type: `structure` },
+    )
+    expect(factory).toHaveBeenCalledOnce()
+  })
+
   it(`returns a live worker-backed run and stops its worker after dispose`, async () => {
     use_fake_timeouts()
     const worker = make_fake_worker(trajectory_response)

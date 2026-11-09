@@ -290,6 +290,7 @@ const display_file = async (
   current_file = file_data
   current_result = null // whatever is on screen is no longer the host's file
   try {
+    if (!file_data.content) throw new Error(`${file_data.filename} is empty`)
     const result = await parse_file_data(file_data, signal)
     if (!is_current(gen)) return result.dispose()
     await unmount_current_app()

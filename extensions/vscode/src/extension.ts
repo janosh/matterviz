@@ -14,7 +14,7 @@ import type {
   WebviewBootstrapData,
   WebviewToHostMessage,
 } from '#lib/file-viewer/host-protocol.js'
-import { frame_to_wire } from '#lib/file-viewer/host-protocol.js'
+import { frame_to_wire, HostFileError } from '#lib/file-viewer/host-protocol.js'
 import { is_plain_object } from '#lib/utils.js'
 import { format_bytes } from 'svelte-widgets/format'
 import { to_error } from 'svelte-widgets/utils'
@@ -368,7 +368,12 @@ export const handle_msg = async (
     } catch (error) {
       const error_message = to_error(error).message
       console.error(`Failed to setup indexed parsing:`, error_message)
-      webview.postMessage({ command, request_id: msg.request_id, error: error_message })
+      webview.postMessage({
+        command,
+        request_id: msg.request_id,
+        error: error_message,
+        ...(error instanceof HostFileError && { error_stage: error.stage }),
+      })
     }
   } else if (msg.command === `request_frame` && msg.file_path) {
     try {
@@ -552,9 +557,19 @@ const dispose_run = (file_path: string): void => {
 
 const load_run = (file_path: string): Promise<TrajectoryRun> => {
   const loading = (async () => {
-    const indexed = await read_indexed_trajectory_file(file_path, path.basename(file_path))
+    const indexed = await read_indexed_trajectory_file(
+      file_path,
+      path.basename(file_path),
+    ).catch((error: unknown) => {
+      throw new HostFileError(to_error(error).message, `acquire`)
+    })
     // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
-    return open_trajectory(indexed.data, { filename: indexed.filename, index_above_bytes: 0 })
+    return open_trajectory(indexed.data, {
+      filename: indexed.filename,
+      index_above_bytes: 0,
+    }).catch((error: unknown) => {
+      throw new HostFileError(to_error(error).message, `parse`)
+    })
   })()
   active_runs.set(file_path, loading)
   // Forget a failed load so the next request retries, unless a file change replaced it
