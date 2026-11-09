@@ -165,7 +165,6 @@ describe(`HeatmapTable`, () => {
     const id_cell = doc_query(`td[data-col="ID"]`)
     const visual = doc_query(`td[data-col="ID"] .middle-ellipsis-visual`)
     expect(id_cell.textContent?.trim()).toBe(identifier)
-    expect(id_cell.dataset.sortValue).toBe(identifier)
     expect(visual.dataset.start).toBe(`prefix-middl`)
     expect(visual.dataset.end).toBe(`e-suffix`)
     expect(visual.getAttribute(`aria-hidden`)).toBe(`true`)

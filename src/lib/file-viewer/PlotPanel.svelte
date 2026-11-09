@@ -70,12 +70,12 @@
 
   // Row-based data for HeatmapTable. Column-based data transposes the extracted columns
   // (equal-length, non-empty), so an empty or ragged array beside them can't zero the rows.
-  // Detection only samples the leading rows, so a null or scalar entry further down becomes
-  // an empty record (as in extract_columns) instead of crashing the table.
+  // Detection only samples the leading rows, so a null or scalar entry further down is
+  // dropped here instead of reaching (and crashing or padding) the table.
   let table_data = $derived.by<RowData[]>(() => {
     if (plot_type !== `table`) return []
     if (Array.isArray(data))
-      return data.map((row) => (row && typeof row === `object` ? row : {})) as RowData[]
+      return data.filter((row) => row !== null && typeof row === `object`) as RowData[]
     const entries = [...columns]
     return Array.from(
       { length: entries[0]?.[1].values.length ?? 0 },

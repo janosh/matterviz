@@ -2,6 +2,7 @@
 // pane and MatterViz's export pane. The table engine and its row helpers live upstream in
 // svelte-widgets/table and are re-exported here.
 import type { D3InterpolateName } from '#lib/colors/index.js'
+import type { ExportFormat } from '#lib/io/export.js'
 import { contrast_color_memo } from '#lib/colors/index.js'
 import {
   resolve_color_scale,
@@ -37,7 +38,6 @@ export {
   parse_numeric_val,
   resolve_domain,
   sort_table_rows,
-  TABLE_EXPORT_FORMATS,
   text_matches_query,
 } from 'svelte-widgets/table'
 export type {
@@ -61,6 +61,14 @@ export type {
   VirtualScroll,
 } from 'svelte-widgets/table'
 export { virtual_window } from 'svelte-widgets/virtual'
+
+// Formats HeatmapTable's export pane downloads. TSV is offered as a clipboard copy instead.
+export const TABLE_EXPORT_FORMATS = [
+  `csv`,
+  `json`,
+  `md`,
+  `tex`,
+] as const satisfies readonly ExportFormat[]
 
 // A DataTable column plus its heatmap color scale
 export type Column<Row extends object = RowData> = TableColumn<Row> & {

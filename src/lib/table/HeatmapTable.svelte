@@ -43,7 +43,7 @@
   } from 'svelte-widgets/table'
 
   let {
-    data = $bindable([]),
+    data = [],
     columns = [],
     show_heatmap = $bindable(true),
     heatmap_opacity = $bindable(1),
@@ -243,7 +243,7 @@
 
 <DataTable
   {...rest}
-  bind:data
+  {data}
   bind:sort
   bind:column_order
   bind:column_prefs
@@ -251,7 +251,7 @@
   bind:selected_ids
   bind:visible_rows
   bind:hidden_columns
-  bind:show_row_numbers
+  {show_row_numbers}
   bind:container_el
   {columns}
   style={root_style}

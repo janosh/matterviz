@@ -43,7 +43,7 @@ test(`column-based table rows come from the equal-length columns only`, () => {
 
 test(`row-based table tolerates non-object rows past the sampled first two`, () => {
   // detection samples only the leading rows, so a null record further down reached the table
-  // and crashed it; the table drops the empty row it becomes
+  // and crashed it; the panel drops it before the table sees it
   const data = [{ a: 1, b: 2 }, { a: 2, b: 3 }, null, { a: 4, b: 5 }]
   mount(PlotPanel, { target: document.body, props: { data, initial_type: `table` } })
   flushSync()
