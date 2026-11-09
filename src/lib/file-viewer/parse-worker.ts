@@ -104,7 +104,8 @@ self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
       self.postMessage({
         id: identifier,
         error: `Failed to clone parse result: ${to_error(error).message}`,
-      })
+        worker_error: true,
+      } satisfies ParseWorkerResponse)
     }
   })()
 })

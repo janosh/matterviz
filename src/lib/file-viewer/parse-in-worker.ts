@@ -200,7 +200,7 @@ const parse_file_worker = async (
       settle(to_error(signal?.reason ?? parse_abort_error()))
     }
     const receive = (response: ParseWorkerResponse): void => {
-      const { result, error, progress, run_port, hdf5_group_paths } = response
+      const { result, error, progress, run_port, hdf5_group_paths, worker_error } = response
       if (progress) {
         try {
           on_progress?.(progress)
@@ -210,6 +210,12 @@ const parse_file_worker = async (
         return
       }
       if (!result) {
+        if (worker_error)
+          return settle(
+            new ParseWorkerError(
+              error ?? `Parse worker could not return its result for ${filename}`,
+            ),
+          )
         return settle(
           hdf5_group_paths
             ? new Hdf5GroupSelectionRequiredError(hdf5_group_paths, error)

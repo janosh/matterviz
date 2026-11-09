@@ -48,7 +48,7 @@ export const BOUNDARY_STYLES: Readonly<
 }
 // Every boundary of an overlay diagram shares one dashed stroke in that overlay's color: the
 // first overlay takes config.colors.overlay, later ones step through these
-export const OVERLAY_DASH = `7,4`
+const OVERLAY_DASH = `7,4`
 const OVERLAY_STYLES = [
   { color: `#e6007e`, dash: OVERLAY_DASH },
   { color: `#ef6c00`, dash: `3,3` },

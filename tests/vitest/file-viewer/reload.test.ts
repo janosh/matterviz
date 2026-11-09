@@ -691,3 +691,32 @@ test.each([`acquire`, `parse`] as const)(`host %s failure keeps its stage`, asyn
   expect(panel).toContain(`Host failure`)
   expect(panel.includes(`Supported formats`)).toBe(stage === `parse`)
 })
+
+test(`a worker result transfer failure is not a parser rejection`, async () => {
+  const real = await vi.importActual<typeof ParseWorkerModule>(
+    `#lib/file-viewer/parse-in-worker.js`,
+  )
+  const worker = new ShimmedWorker(`blob:parse-worker`)
+  parse_in_worker.mockImplementationOnce((content, filename) =>
+    real.parse_in_worker(content, filename, false, { worker_factory: () => worker }),
+  )
+  const opening = boot(`broken`)
+  await vi.waitFor(() => expect(test_mocks.native_workers.at(-1)?.posted).toHaveLength(1))
+  const record = test_mocks.native_workers.at(-1)
+  if (!record) throw new Error(`Expected a parse worker`)
+  const request = record.posted[0].message as { id: number }
+  record.emit(
+    new MessageEvent(`message`, {
+      data: {
+        id: request.id,
+        error: `Failed to clone parse result: DataCloneError`,
+        worker_error: true,
+      },
+    }),
+  )
+  await opening
+  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
+  expect(panel).toContain(`Failed to clone parse result`)
+  expect(panel).not.toContain(`Supported formats`)
+})
