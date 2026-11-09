@@ -3488,7 +3488,11 @@ const site_table_loaded = () =>
 test(`closes the site sidebar and reports the error when its table fails to load`, async () => {
   vi.spyOn(site_table_module, `load_site_table`).mockRejectedValueOnce(new Error(`chunk gone`))
   const on_error = vi.fn()
-  const props = $state<StructureProps>({ structure: with_forces, site_sidebar: true, on_error })
+  const props = $state<StructureProps>({
+    structure: with_forces,
+    site_sidebar: true,
+    on_error,
+  })
   await mount_settled(props)
   await vi.waitFor(() => expect(props.site_sidebar).toBe(false))
   expect(sidebar()).toBeNull()
