@@ -20,7 +20,7 @@ const split_regions = (t_e: number): DiagramRegion[] => [
   { phases: [`A`, `B`], vertices: rect(0, 0, 1, t_e) },
 ]
 export const eutectic_regions = split_regions(500)
-export const shifted_regions = split_regions(600)
+const shifted_regions = split_regions(600)
 
 // Simple eutectic-style system: liquid on top of an α + β field, eutectic at (0.5, 500 K)
 export const eutectic: BinaryPhaseDiagram = {

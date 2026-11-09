@@ -3480,6 +3480,10 @@ test(`content-fit divider follows the row's width`, async () => {
 })
 
 // PBC image atoms repeat the sites they copy: one row per site of the structure
+// Structure imports the site table when its sidebar first shows
+const site_table_loaded = () =>
+  vi.waitFor(() => expect(sidebar()?.querySelector(`table`)).not.toBeNull())
+
 test(`lists each site once, not its periodic images`, async () => {
   const corner_atom: AnyStructure = {
     lattice: structure.lattice,
@@ -3499,6 +3503,7 @@ test(`lists each site once, not its periodic images`, async () => {
   // a series key, so the next frame keeps the drag going
   const props = { site_sidebar: true, show_image_atoms: true, structure_series_key: `run` }
   await mount_settled(bind_props(props, state))
+  await site_table_loaded()
   expect(
     document.querySelectorAll(`.structure-site-sidebar tbody tr[data-row-idx]`),
   ).toHaveLength(1)
@@ -3522,6 +3527,7 @@ test(`closes from its header, reopens from the controls, and links rows to sites
     hovered_site_idx: null,
   })
   await mount_settled(props)
+  await site_table_loaded()
   const rows = () => [
     ...(sidebar()?.querySelectorAll<HTMLElement>(`tbody tr[data-row-idx]`) ?? []),
   ]

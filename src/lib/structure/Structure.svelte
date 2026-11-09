@@ -25,7 +25,7 @@
     Reset,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import SiteTable from './SiteTable.svelte'
+  import type SiteTable from './SiteTable.svelte'
   import { DOCKED_SCROLL_STYLE, has_site_data } from './site-table'
   import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
@@ -36,7 +36,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { format_num, parse_warnings_notice } from '#lib/labels.js'
-  import { chain_handlers, is_editable_event_target } from 'svelte-widgets/utils'
+  import { chain_handlers, is_editable_event_target, to_error } from 'svelte-widgets/utils'
   import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
@@ -1298,6 +1298,19 @@
   )
   // With a docked sidebar or in fullscreen the outer row takes the caller's size, the viewer fills it
   let row_sized = $derived(site_sidebar_shown || fullscreen)
+  // The site table (DataTable and its menus) is imported when the sidebar first shows, not with
+  // every Structure. A failed import (offline, a stale chunk after a deploy) closes the sidebar.
+  let SiteTableComponent = $state.raw<typeof SiteTable>()
+  $effect(() => {
+    if (!site_sidebar_shown || SiteTableComponent) return
+    import(`./SiteTable.svelte`).then(
+      (module) => (SiteTableComponent = module.default),
+      (exc: unknown) => {
+        site_sidebar = false
+        error_msg = `Site table failed to load: ${to_error(exc).message}`
+      },
+    )
+  })
 </script>
 
 <div class="structure-fullscreen-root" bind:this={fullscreen_root}>
@@ -1714,7 +1727,7 @@
             <Icon icon={Close} />
           </button>
         {/snippet}
-        <SiteTable
+        <SiteTableComponent
           sites={sidebar_sites}
           bind:selected_atoms={selected_sites}
           bind:hovered_atom={
