@@ -65,11 +65,14 @@ const is_point = (point: unknown): boolean =>
   Array.isArray(point) && point.length === 2 && point.every(finite)
 const length = (list: unknown): number => (Array.isArray(list) ? list.length : 0)
 const in_unit = (val: unknown): boolean => finite(val) && val >= 0 && val <= 1
+// region and boundary x may stray past [0, 1] by float noise, not by more
+const X_TOL = 1e-9
+const in_x_range = ([x_val]: Vec2): boolean => x_val >= -X_TOL && x_val <= 1 + X_TOL
 
 // Problems that keep a value from rendering as a binary-phase-diagram/2 (empty when valid).
 // Takes untrusted JSON and never throws: element shapes are checked before their fields are
 // read, phase ids everywhere they are referenced (so lookups by id never miss), and every
-// coordinate the renderer scales is a finite number.
+// coordinate the renderer scales is a finite number (x a mole fraction in [0, 1]).
 export function diagram_errors(value: unknown): string[] {
   if (typeof value !== `object` || value === null || Array.isArray(value)) {
     return [`a diagram is a JSON object, got ${JSON.stringify(value)}`]
@@ -143,6 +146,8 @@ export function diagram_errors(value: unknown): string[] {
     if (length(points) < min) errors.push(`${where} has ${length(points)} ${noun}`)
     else if (!(points as unknown[]).every(is_point)) {
       errors.push(`${where} ${noun} must be [x, T] number pairs`)
+    } else if (!(points as Vec2[]).every(in_x_range)) {
+      errors.push(`${where} ${noun} need x in [0, 1]`)
     }
   }
   // marked points sit at a finite T and a mole fraction in [0, 1]
@@ -228,6 +233,13 @@ export function diagram_errors(value: unknown): string[] {
     check_position(`polymorphic_transitions[${idx}]`, temperature, [composition])
   })
   return errors
+}
+
+// Value as a binary-phase-diagram/2, throwing its joined diagram_errors when invalid
+export function parse_diagram(value: unknown): BinaryPhaseDiagram {
+  const errors = diagram_errors(value)
+  if (errors.length) throw new Error(`Invalid phase diagram: ${errors.join(`; `)}`)
+  return value as BinaryPhaseDiagram
 }
 
 // Description of a boundary edge from its side and phases, e.g. `L edge of (Ag) + L`
@@ -479,9 +491,10 @@ export function lever_rule_rows(
   label_of: (id: string) => string,
 ): [string, number, number][] {
   const { left_phase, right_phase, fraction_left, fraction_right } = lever_rule
+  const { left_composition, right_composition } = lever_rule
   return [
-    [label_of(left_phase), fraction_left, lever_rule.left_composition],
-    [label_of(right_phase), fraction_right, lever_rule.right_composition],
+    [label_of(left_phase), fraction_left, left_composition],
+    [label_of(right_phase), fraction_right, right_composition],
   ]
 }
 
@@ -500,7 +513,7 @@ export function format_hover_info_text(
   const [component_a, component_b] = data.components
   const { composition, temperature } = info
   const comp = (value: number) => format_composition(value, comp_unit)
-  const overlay_region = overlay && diagram_hit(overlay, composition, temperature).region
+  const overlay_region = overlay && find_region_at(overlay.regions, composition, temperature)
   const lines: string[] = [
     `Phase: ${region_label(info.region, label_of)}`,
     ...(overlay

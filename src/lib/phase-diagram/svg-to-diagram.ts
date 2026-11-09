@@ -21,7 +21,6 @@ type SvgFormat = `matplotlib` | `simple`
 
 interface LinearScale {
   to_data: (pixel: number) => number
-  to_px: (value: number) => number
   domain: Vec2 // [min_data, max_data] of the plot area
   // Data units spanned by 1 px: the snapping tolerance for coordinates drawn at pixel precision
   px_tol: number
@@ -30,6 +29,7 @@ interface LinearScale {
 interface Tick {
   px: number
   value: number
+  text: string // tick label, e.g. `1000 °C`
 }
 
 interface Boundary {
@@ -44,11 +44,6 @@ interface Label {
   text: string // plain text, e.g. "La2NiO4 + NiO"
   px_x: number // pixel position
   px_y: number
-}
-
-// A filled (non-background) SVG shape's pixel bbox: a plot-area candidate
-interface FilledShape {
-  bbox: Vec4 // [min_x, min_y, max_x, max_y] in px
 }
 
 // === Format Detection ===
@@ -73,10 +68,12 @@ const query_map = <T>(
 function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
   const ticks_of = (axis: `x` | `y`) =>
     query_map(doc, `[id^="${axis}tick_"]`, (group) => {
-      const value = extract_comment_number(group)
+      const text = comment_number_text(group)
       const use_el = group.querySelector(`use`)
       const pixel = use_el && parse_float_attr(use_el, axis)
-      return value !== null && pixel !== null ? { px: pixel, value } : null
+      return text !== null && pixel !== null
+        ? { px: pixel, value: leading_number(text), text }
+        : null
     })
   return [ticks_of(`x`), ticks_of(`y`)]
 }
@@ -86,9 +83,10 @@ function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
 // offset by the parent group's translate
 function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
   const tick_of = (text_el: Element, pixel: number | null, axis: 0 | 1): Tick | null => {
-    const value = leading_number(text_el.textContent)
+    const text = text_el.textContent ?? ``
+    const value = leading_number(text)
     if (isNaN(value) || pixel === null) return null
-    return { px: pixel + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
+    return { px: pixel + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value, text }
   }
   return [
     query_map(doc, `.tick-text-x`, (element) =>
@@ -127,11 +125,42 @@ function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): Linear
 
   return {
     to_data,
-    to_px: (value: number) => first.px + (value - first.value) * px_per_unit,
     domain: [Math.min(data_a, data_b), Math.max(data_a, data_b)],
     px_tol: 1 / Math.abs(px_per_unit),
   }
 }
+
+// Composition scale from x ticks in mole fraction, or in at% when the plot spans 0..100.
+// Values within 1 px outside [0, 1] snap onto its edge; a wider span throws.
+function composition_scale(ticks: Tick[], px_span: Vec2): LinearScale {
+  const raw = build_scale(`x`, ticks, px_span)
+  const [lower, upper] = raw.domain
+  const near = (val: number, target: number) => Math.abs(val - target) <= raw.px_tol
+  const percent = near(lower, 0) && near(upper, 100)
+  if (!percent && (lower < -raw.px_tol || upper > 1 + raw.px_tol)) {
+    throw new Error(
+      `x-axis spans ${lower}..${upper}: x ticks must be mole fractions in [0, 1] or at% spanning 0..100`,
+    )
+  }
+  const scale = percent
+    ? build_scale(
+        `x`,
+        ticks.map((tick) => ({ ...tick, value: tick.value / 100 })),
+        px_span,
+      )
+    : raw
+  const { to_data, domain, px_tol } = scale
+  const snap = (val: number) =>
+    val < 0 && val >= -px_tol ? 0 : val > 1 && val <= 1 + px_tol ? 1 : val
+  return {
+    to_data: (pixel) => snap(to_data(pixel)),
+    domain: [snap(domain[0]), snap(domain[1])],
+    px_tol,
+  }
+}
+
+// Tick label units of a temperature in °C, e.g. `25 °C` or `1000℃`
+const CELSIUS_REGEX = /°\s*C|℃/
 
 // [min_x, min_y, max_x, max_y] of pixel vertices
 const bbox_of = (verts: Vec2[]): Vec4 => {
@@ -141,13 +170,13 @@ const bbox_of = (verts: Vec2[]): Vec4 => {
 }
 
 // Pixel bbox of the plot area (the tick span alone crops past the outermost ticks):
-// matplotlib's axes patch, else the smallest filled shape enclosing all ticks and boundaries,
-// else their span.
+// matplotlib's axes patch, else the smallest filled shape (by bbox) enclosing all ticks and
+// boundaries, else their span.
 function plot_area_px(
   doc: Document,
   [x_ticks, y_ticks]: [Tick[], Tick[]],
   lines: Vec4[],
-  filled_shapes: FilledShape[],
+  filled_bboxes: Vec4[],
 ): Vec4 {
   const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
   const patch = doc.querySelector(`[id^="axes_"] > [id^="patch_"] > *`)
@@ -163,12 +192,10 @@ function plot_area_px(
     ...lines.flatMap(([, y_1, , y_2]) => [y_1, y_2]),
   ])
   // 1 px slack for strokes drawn on the plot edge
-  const enclosing = filled_shapes
-    .map(({ bbox }) => bbox)
-    .filter(
-      ([left, top, right, bottom]) =>
-        left <= min_x + 1 && right >= max_x - 1 && top <= min_y + 1 && bottom >= max_y - 1,
-    )
+  const enclosing = filled_bboxes.filter(
+    ([left, top, right, bottom]) =>
+      left <= min_x + 1 && right >= max_x - 1 && top <= min_y + 1 && bottom >= max_y - 1,
+  )
   const span: Vec4 = [min_x, min_y, max_x, max_y]
   return enclosing.toSorted((bbox_a, bbox_b) => area(bbox_a) - area(bbox_b))[0] ?? span
 }
@@ -346,18 +373,16 @@ function shape_rings(element: Element): Vec2[][] | null {
   return d_attr === null ? null : segments_to_rings(parse_path_segments(d_attr))
 }
 
-// Collect all non-background filled shapes (plot-area candidates). Transformed shapes are
-// skipped since shape_rings ignores transforms (their pixel coords would be wrong).
-function extract_filled_shapes(doc: Document): FilledShape[] {
-  const shapes: FilledShape[] = []
-  for (const element of Array.from(doc.querySelectorAll(`rect, polygon, path, use`))) {
-    if (element_fill(element) === null || element.hasAttribute(`transform`)) continue
+// Pixel bboxes [min_x, min_y, max_x, max_y] of all non-background filled shapes (plot-area
+// candidates). Transformed shapes are skipped since shape_rings ignores transforms (their
+// pixel coords would be wrong).
+const extract_filled_bboxes = (doc: Document): Vec4[] =>
+  query_map(doc, `rect, polygon, path, use`, (element) => {
+    if (element_fill(element) === null || element.hasAttribute(`transform`)) return null
     const verts = (shape_rings(element) ?? []).flat()
-    if (verts.length < 3) continue // fewer than 3 corners encloses no area
-    shapes.push({ bbox: bbox_of(verts) })
-  }
-  return shapes
-}
+    // fewer than 3 corners encloses no area
+    return verts.length < 3 ? null : bbox_of(verts)
+  })
 
 // === Component Inference ===
 
@@ -613,8 +638,8 @@ function assemble_regions(
     label: id,
     kind: LIQUID_LABEL.test(id) ? `liquid` : `solid`,
   }))
-  // A region holds one or two phases, so an unlabelled field (or a 3-token label) stays
-  // uncovered rather than making the whole diagram invalid
+  // Only labels with a `+` are extracted, so an unlabelled or single-name field stays
+  // uncovered, as does a 3-token label, rather than making the whole diagram invalid
   const regions = traced.flatMap(({ label, vertices }) => {
     const ids = [...new Set(split_label(label ?? ``))]
     if (ids.length < 1 || ids.length > 2) return []
@@ -659,8 +684,9 @@ function assemble_boundaries(
 
 // === Main Entry Point ===
 
-// Parse a phase diagram SVG string into binary-phase-diagram/2 data (T in the y-axis' tick
-// units, taken as K; x in the x-axis' tick units, taken as mole fraction)
+// Parse a phase diagram SVG string into binary-phase-diagram/2 data. T is read in K, or in °C
+// when the y tick labels carry a °C suffix; x in mole fraction, or in at% when the x ticks
+// span 0..100.
 export function parse_phase_diagram_svg(svg_string: string): BinaryPhaseDiagram {
   const doc = new DOMParser().parseFromString(svg_string, `image/svg+xml`)
   const parse_error = doc.querySelector(`parsererror`)
@@ -670,11 +696,20 @@ export function parse_phase_diagram_svg(svg_string: string): BinaryPhaseDiagram 
   const ticks: [Tick[], Tick[]] =
     format === `matplotlib` ? extract_matplotlib_ticks(doc) : extract_simple_ticks(doc)
   const lines = extract_boundary_lines(doc, format)
-  const filled_shapes = extract_filled_shapes(doc)
-  const [min_x, min_y, max_x, max_y] = plot_area_px(doc, ticks, lines, filled_shapes)
+  const filled_bboxes = extract_filled_bboxes(doc)
+  const [min_x, min_y, max_x, max_y] = plot_area_px(doc, ticks, lines, filled_bboxes)
+  const x_scale = composition_scale(ticks[0], [min_x, max_x])
   // y-axis inverted (SVG y down, temp up)
-  const x_scale = build_scale(`x`, ticks[0], [min_x, max_x])
-  const y_scale = build_scale(`y`, ticks[1], [min_y, max_y])
+  const celsius = ticks[1].some(({ text }) => CELSIUS_REGEX.test(text))
+  const y_ticks = celsius
+    ? ticks[1].map((tick) => ({ ...tick, value: tick.value + 273.15 }))
+    : ticks[1]
+  const y_scale = build_scale(`y`, y_ticks, [min_y, max_y])
+  if (y_scale.domain[0] < 0) {
+    throw new Error(
+      `y-axis reaches ${y_scale.domain[0]} K: y tick labels must be in K or °C (e.g. "25 °C")`,
+    )
+  }
   const boundaries = lines.flatMap((line) => to_boundary(line, x_scale, y_scale) ?? [])
   const labels = extract_labels(doc, format)
   if (boundaries.length === 0) throw new Error(`No phase boundaries found in SVG`)
@@ -724,12 +759,9 @@ function* comment_texts(group: Element): Generator<string> {
   }
 }
 
-// First number found in an XML comment inside a group element
-function extract_comment_number(group: Element): number | null {
-  for (const text of comment_texts(group)) {
-    const value = leading_number(text)
-    if (!isNaN(value)) return value
-  }
+// First XML comment inside a group element that starts with a number
+function comment_number_text(group: Element): string | null {
+  for (const text of comment_texts(group)) if (!isNaN(leading_number(text))) return text
   return null
 }
 

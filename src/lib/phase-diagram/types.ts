@@ -160,7 +160,7 @@ export interface PhaseObservation {
   sigma_T_K: number | null
   status: ObservationStatus
   phases?: ObservedPhase[]
-  source: ObservationSource
+  source?: ObservationSource // rows are unvalidated JSON, some cite nothing
   system: string // `A-B` for a binary row, one component for a pure-component row
   reaction?: string | null
 }
@@ -201,10 +201,11 @@ export interface ObservationMarker {
   temperature: number
 }
 
-// Hover state in data units (x mole fraction, T in K). An overlay diagram's phase set at the
-// same point is diagram_hit(overlay, composition, temperature), derived where it is shown so a
-// pinned snapshot never outlives an overlay change.
+// Hover state in data units (x mole fraction, T in K), with the shown overlay's phase set at
+// the same point (null without one). The diagram drops its hover and pin when the overlay
+// changes, so a snapshot's overlay_hit always belongs to the current overlay.
 export interface PhaseHoverInfo extends DiagramHit {
+  overlay_hit: DiagramHit | null
   composition: number
   temperature: number
   position: Point2D // client coordinates

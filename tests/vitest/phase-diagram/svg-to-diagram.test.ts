@@ -103,6 +103,42 @@ describe(`parse_phase_diagram_svg`, () => {
     expect(find_region_at(regions, 0.25, 1250)).toBe(l_shape)
   })
 
+  // x ticks in at% (0..100) scale to mole fraction; y ticks labelled °C shift to K
+  it.each([
+    {
+      label: `simple at% x ticks`,
+      svg: simple_svg(SIMPLE_BOUNDARIES).replace(`>1.0<`, `>100<`),
+      t_range: [500, 1500],
+    },
+    {
+      label: `matplotlib at% x ticks`,
+      svg: matplotlib_svg(MPL_BOUNDARIES).replace(`<!-- 1.0 -->`, `<!-- 100 -->`),
+      t_range: [500, 1500],
+    },
+    {
+      label: `simple °C y ticks`,
+      svg: simple_svg(SIMPLE_BOUNDARIES)
+        .replace(`>500<`, `>226.85 °C<`)
+        .replace(`>1500 K<`, `>1226.85°C<`),
+      t_range: [500, 1500],
+    },
+    {
+      label: `matplotlib °C y ticks`,
+      svg: matplotlib_svg(MPL_BOUNDARIES)
+        .replace(`<!-- 500 -->`, `<!-- 500 °C -->`)
+        .replace(`<!-- 1500 -->`, `<!-- 1500 °C -->`),
+      t_range: [773.15, 1773.15],
+    },
+  ])(`reads $label`, ({ svg, t_range }) => {
+    const data = parse_phase_diagram_svg(svg)
+    expect(diagram_errors(data)).toEqual([])
+    expect(data.temperature_range).toEqual(t_range.map((temp) => expect.closeTo(temp, 9)))
+    const [solvus] = data.boundaries
+    expect(solvus.points.map(([x_val]) => x_val)).toEqual([0.5, 0.5])
+    const x_values = data.regions.flatMap(({ vertices }) => vertices.map(([x_val]) => x_val))
+    expect([Math.min(...x_values), Math.max(...x_values)]).toEqual([0, 1])
+  })
+
   // An imported SVG stays valid when a field has no two-phase label or a horizontal line
   // separates fields that don't add up to three phases
   it(`leaves unlabelled fields uncovered and types non-three-phase lines as solvus`, () => {
@@ -299,6 +335,18 @@ describe(`parse_phase_diagram_svg`, () => {
       label: `zero-range y ticks`,
       svg: simple_svg(SIMPLE_BOUNDARIES).replace(`>1500 K<`, `>500<`),
       reason: /y-axis ticks span a zero range/,
+    },
+    {
+      // neither mole fraction nor at%: x ticks 0..2 would put the diagram past x = 1
+      label: `x ticks outside [0, 1] and 0..100`,
+      svg: simple_svg(SIMPLE_BOUNDARIES).replace(`>1.0<`, `>2<`),
+      reason: /x-axis spans 0\.\.2: x ticks must be mole fractions in \[0, 1\] or at% spanning 0\.\.100/,
+    },
+    {
+      // unlabelled ticks are read as K, so ticks in °C without the suffix go below 0 K
+      label: `y ticks below 0 K`,
+      svg: simple_svg(SIMPLE_BOUNDARIES).replace(`>500<`, `>-100<`),
+      reason: /y-axis reaches -100 K: y tick labels must be in K or °C/,
     },
     {
       label: `malformed filled path`,

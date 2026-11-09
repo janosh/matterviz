@@ -23,11 +23,19 @@ import {
   shifted_eutectic,
 } from './fixtures/test-data'
 
-const mount_tooltip = (
-  props: Omit<ComponentProps<typeof PhaseDiagramTooltip>, `data`> & {
-    data?: BinaryPhaseDiagram
-  },
-) => mount(PhaseDiagramTooltip, { target: document.body, props: { data: eutectic, ...props } })
+// swatch colors default to the diagram's own phase colors, as the parent passes them
+const color_lookup = (colors: Map<string, string>) => (id: string) => colors.get(id) ?? ``
+const mount_tooltip = ({
+  data = eutectic,
+  ...props
+}: Omit<ComponentProps<typeof PhaseDiagramTooltip>, `data` | `color_of`> & {
+  data?: BinaryPhaseDiagram
+  color_of?: (id: string) => string
+}) =>
+  mount(PhaseDiagramTooltip, {
+    target: document.body,
+    props: { data, color_of: color_lookup(phase_colors(data.phases)), ...props },
+  })
 const tooltip_text = () =>
   document.querySelector(`.phase-diagram-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `)
 const lever_text = () =>
@@ -132,11 +140,11 @@ describe(`PhaseDiagramTooltip`, () => {
   // Au-Ni wrap rule: the gap's composition sets are labelled and colored as two shades of fcc
   test(`miscibility gap shows its composition sets' labels and shared-key colors`, () => {
     const au_ni = binary_diagrams[`Au-Ni`]
-    const phase_color_keys = [`BCC_A2`, `FCC_A1`, `LIQUID`]
+    const colors = phase_colors(au_ni.phases, [`BCC_A2`, `FCC_A1`, `LIQUID`])
     const [composition, temperature] = [0.7, 800]
     mount_tooltip({
       data: au_ni,
-      phase_color_keys,
+      color_of: color_lookup(colors),
       hover_info: create_hover_info({
         ...diagram_hit(au_ni, composition, temperature),
         composition,
@@ -145,28 +153,29 @@ describe(`PhaseDiagramTooltip`, () => {
     })
     expect(document.querySelector(`header strong`)?.textContent).toBe(`α₁ + α₂`)
     expect(lever_text()).toMatch(/α₁: \d+ %.*α₂: \d+ %/)
-    const colors = phase_colors(au_ni.phases, phase_color_keys)
     const swatches = Array.from(document.querySelectorAll<HTMLElement>(`.bar > div`), (bar) =>
       rgb(bar.style.background).formatHex(),
     )
     expect(swatches).toEqual([colors.get(`FCC_A1#1`), colors.get(`FCC_A1#2`)])
   })
 
-  // the overlay's phase set is derived from the hovered (x, T), never from a hover snapshot,
-  // so a pinned tooltip follows overlay changes
-  test(`shows the overlay diagram's phase set and lever rule at the hovered point`, () => {
+  // the parent looks the overlay's phase set up once per move and carries it in the hover; a
+  // snapshot taken while the overlay was shown lists nothing once it is hidden
+  test.each([
+    [shifted_eutectic, `α + β`, `Overlay lever rule: α 80% at 0 at% / β 20% at 100 at%`],
+    [null, undefined, undefined],
+  ])(`overlay %# phase set and lever rule at the hovered point`, (overlay, phase, lever) => {
     // 550 K: liquid in the main diagram (eutectic 500 K), α + β in the overlay (600 K)
     const hover_info = create_hover_info({
       region: eutectic_regions[0],
+      overlay_hit: diagram_hit(shifted_eutectic, 0.2, 550),
       composition: 0.2,
       temperature: 550,
     })
-    mount_tooltip({ hover_info, overlay: shifted_eutectic })
-    expect(document.querySelector(`.overlay-phase`)?.textContent?.trim()).toBe(`α + β`)
+    mount_tooltip({ hover_info, overlay })
+    expect(document.querySelector(`.overlay-phase`)?.textContent?.trim()).toBe(phase)
     const overlay_lever = document.querySelector(`.overlay-lever`)?.textContent
-    expect(overlay_lever?.replaceAll(/\s+/g, ` `).trim()).toBe(
-      `Overlay lever rule: α 80% at 0 at% / β 20% at 100 at%`,
-    )
+    expect(overlay_lever?.replaceAll(/\s+/g, ` `).trim()).toBe(lever)
   })
 
   test(`observation block cites the source with T and x uncertainties`, () => {
@@ -186,6 +195,14 @@ describe(`PhaseDiagramTooltip`, () => {
     }
     expect(block?.querySelector(`cite`)?.textContent).toContain(`Doe et al.`)
     expect(block?.querySelector(`a`)?.getAttribute(`href`)).toBe(`https://doi.org/10.1/test`)
+    // observation rows are unvalidated JSON: one without a source renders without a citation
+    document.body.innerHTML = ``
+    const { source: _, ...unsourced } = row
+    mount_tooltip({
+      hover_info: create_hover_info({ observation: { ...observation, row: unsourced } }),
+    })
+    expect(document.querySelector(`.observation`)?.textContent).toContain(`T = 520 K`)
+    expect(document.querySelector(`.observation cite`)).toBeNull()
   })
 
   describe(`boundary distance`, () => {

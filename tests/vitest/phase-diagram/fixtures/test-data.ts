@@ -118,6 +118,7 @@ export const create_hover_info = (
 ): PhaseHoverInfo => ({
   region: eutectic_regions[0],
   lever_rule: null,
+  overlay_hit: null,
   composition: 0.5,
   temperature: 850,
   position: { x: 100, y: 100 },

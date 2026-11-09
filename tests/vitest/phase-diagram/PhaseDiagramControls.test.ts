@@ -39,31 +39,24 @@ describe(`PhaseDiagramControls`, () => {
     }
   })
 
-  test.each([
-    { data: sample_data, expected: true, desc: `with an invariant` },
-    { data: { ...sample_data, invariants: [] }, expected: false, desc: `without` },
-    {
-      data: {
-        ...sample_data,
-        invariants: [],
-        polymorphic_transitions: [
-          { temperature: 450, composition: 0.5, above: `A`, below: `B` },
-        ],
-      },
-      expected: true,
-      desc: `with only a polymorphic transition`,
-    },
-  ])(`Special pts toggle shown=$expected $desc`, ({ data, expected }) => {
-    const target = mount_controls({ data })
-    expect(target.innerHTML).toContain(`Cu-Ni`)
+  test.each([true, false])(`Special pts toggle shown=%s`, (has_special_points) => {
+    const target = mount_controls({ data: sample_data, has_special_points })
     const visibility_grid = target.querySelector(`.visibility-grid`)
     expect(visibility_grid).toBeInstanceOf(HTMLElement)
-    expect(visibility_grid?.innerHTML.includes(`Special pts`)).toBe(expected)
+    expect(visibility_grid?.innerHTML.includes(`Special pts`)).toBe(has_special_points)
+  })
+
+  test.each([
+    [sample_data, `Cu-Ni phase diagram`],
+    [undefined, `Phase diagram controls`],
+  ])(`heading names the components when data is given`, (data, heading) => {
+    expect(mount_controls({ data }).querySelector(`h4`)?.textContent).toBe(heading)
   })
 
   test(`renders and resets custom config values`, async () => {
     const target = mount_controls({
-      data: sample_data, // special points present → the radius input renders
+      data: sample_data,
+      has_special_points: true, // the radius input renders
       show_labels: false,
       x_axis: { ticks: 9 },
       config: {

@@ -7,6 +7,7 @@ import {
   format_reaction,
   model_phase_keys,
   observation_markers,
+  parse_diagram,
   phase_colors,
   phase_labeler,
   provenance_caption,
@@ -205,6 +206,23 @@ describe(`diagram_errors`, () => {
       { invariants: [{ ...eutectic.invariants[0], temperature: null as unknown as number }] },
       `invariants[0] needs a finite temperature and compositions`,
     ],
+    [`non-object region`, { regions: [null] as never }, `regions must hold objects`],
+    [
+      `non-finite vertex`,
+      { regions: [{ phases: [`A`], vertices: pts(0, 0, 1, 0, Number.NaN, 1) }] },
+      `regions[0] vertices must be [x, T] number pairs`,
+    ],
+    // the renderer's x window is fixed to [0, 1], so a vertex at x = 1.5 would sit off-plot
+    [
+      `off-plot vertex`,
+      { regions: [{ phases: [`A`], vertices: pts(0, 0, 1.5, 0, 0, 1) }] },
+      `regions[0] vertices need x in [0, 1]`,
+    ],
+    [
+      `off-plot boundary point`,
+      { boundaries: [{ kind: `solvus`, phases: [`A`, `B`], points: pts(-0.5, 0, 1, 1) }] },
+      `boundaries[0] points need x in [0, 1]`,
+    ],
     // a malformed reaction would otherwise pass and make diagram_points throw on an empty id
     ...[`LIQUID -> A +`, ` -> A + B`, `LIQUID A B`, `LIQUID -> A -> B`].map(
       (reaction): [string, Partial<BinaryPhaseDiagram>, string] => [
@@ -214,7 +232,20 @@ describe(`diagram_errors`, () => {
       ],
     ),
   ])(`reports a bad %s`, (_label, patch, message) => {
-    expect(diagram_errors({ ...eutectic, ...patch }).join(`; `)).toContain(message)
+    // exactly the listed errors fire (`; ` separates several), each matched by its prefix
+    expect(diagram_errors({ ...eutectic, ...patch })).toEqual(
+      message.split(`; `).map((part) => expect.stringContaining(part)),
+    )
+  })
+  test(`x within float noise of [0, 1] is accepted`, () => {
+    const vertices = pts(-1e-12, 0, 1 + 1e-12, 0, 0, 1)
+    expect(diagram_errors({ ...eutectic, regions: [{ phases: [`A`], vertices }] })).toEqual([])
+  })
+  test(`parse_diagram returns a valid diagram and throws the joined errors otherwise`, () => {
+    expect(parse_diagram(eutectic)).toBe(eutectic)
+    expect(() => parse_diagram({ ...eutectic, regions: [null], boundaries: 3 })).toThrow(
+      `Invalid phase diagram: boundaries must be an array; regions must hold objects`,
+    )
   })
   test.each([`syntectic`, `inverse_melting`] as const)(`accepts invariant kind %s`, (kind) => {
     expect(
@@ -227,9 +258,14 @@ describe(`diagram_errors`, () => {
     [null, `a diagram is a JSON object, got null`],
     [[1, 2], `a diagram is a JSON object, got [1,2]`],
     [{ error: `no convergence`, expected: true }, `emitter failure record: no convergence`],
-    [{ ...eutectic, regions: [{ phases: `A`, vertices: 3 }] }, `regions[0] phases must be`],
+    [
+      { ...eutectic, regions: [{ phases: `A`, vertices: 3 }] },
+      `regions[0] phases must be an array of ids; regions[0] needs one phase; regions[0] has 0 vertices`,
+    ],
   ])(`untrusted value %j`, (value, message) => {
-    expect(diagram_errors(value).join(`; `)).toContain(message)
+    expect(diagram_errors(value)).toEqual(
+      message.split(`; `).map((part) => expect.stringContaining(part)),
+    )
   })
 
   test(`a magnetic line inside one phase is valid`, () => {

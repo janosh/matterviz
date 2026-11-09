@@ -8,7 +8,6 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'
   import type { BinaryPhaseDiagram, CompUnit, PhaseDiagramConfig, TempUnit } from './types'
-  import { diagram_points } from './diagram'
   import { merge_phase_diagram_config, PHASE_DIAGRAM_DEFAULTS } from './utils'
 
   let {
@@ -24,6 +23,7 @@
     comp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.comp_unit),
     has_overlay = false,
     has_observations = false,
+    has_special_points = false,
     config = $bindable({}),
     x_axis = $bindable({}),
     y_axis = $bindable({}),
@@ -40,13 +40,14 @@
     show_observations?: boolean
     temp_unit?: TempUnit
     comp_unit?: CompUnit
-    // Whether the diagram has an overlay / observations to toggle
+    // Whether the diagram has an overlay / observations / marked points to toggle
     has_overlay?: boolean
     has_observations?: boolean
+    has_special_points?: boolean
     config?: Partial<PhaseDiagramConfig>
     x_axis?: AxisConfig
     y_axis?: AxisConfig
-    // Data for context (components, marked points)
+    // Data for context (components)
     data?: BinaryPhaseDiagram
     // Custom content rendered above the built-in sections
     children?: Snippet<[{ controls_open: boolean }]>
@@ -71,12 +72,8 @@
   }
 
   const title = $derived(
-    data?.components?.[0] && data.components[1]
-      ? `${data.components[0]}-${data.components[1]} phase diagram`
-      : `Phase diagram controls`,
+    data ? `${data.components.join(`-`)} phase diagram` : `Phase diagram controls`,
   )
-  // the same points the diagram marks, so every point kind (polymorphic too) counts
-  const has_special_points = $derived(Boolean(data && diagram_points(data).length))
   const temp_units: TempUnit[] = [`K`, `°C`, `°F`]
   const comp_units: [CompUnit, string][] = [
     [`at%`, `at.%`],

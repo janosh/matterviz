@@ -8,9 +8,9 @@
     TempUnit,
   } from '#lib/phase-diagram/index.js'
   import {
-    diagram_errors,
     IsobaricBinaryPhaseDiagram,
     model_phase_keys,
+    parse_diagram,
     parse_phase_diagram_svg,
     provenance_caption,
     temperature_extent,
@@ -79,14 +79,10 @@
       if (precomputed_data) current_data = precomputed_data
     } else {
       tdb = null
-      const parsed: unknown = has_ext(filename, `.svg`)
-        ? parse_phase_diagram_svg(text)
-        : JSON.parse(text)
       // the page's own title and caption read the diagram, so reject it before showing it
-      const errors = diagram_errors(parsed)
-      if (errors.length)
-        throw new Error(`Invalid phase diagram ${filename}: ${errors.join(`; `)}`)
-      current_data = parsed as BinaryPhaseDiagram
+      current_data = parse_diagram(
+        has_ext(filename, `.svg`) ? parse_phase_diagram_svg(text) : JSON.parse(text),
+      )
     }
     current_file = filename
     if (sync_url) set_file_param(filename)

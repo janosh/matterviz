@@ -1,4 +1,3 @@
-import type { BinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
 import PhaseDiagramExportPane from '#lib/phase-diagram/PhaseDiagramExportPane.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -39,11 +38,7 @@ describe(`PhaseDiagramExportPane`, () => {
 
   test.each([
     [`component filename`, {}, `phase-diagram-Al-Cu`],
-    [
-      `default filename without components`,
-      { data: { ...mock_phase_data, components: undefined } as unknown as BinaryPhaseDiagram },
-      `phase-diagram`,
-    ],
+    [`default filename without data`, { data: undefined }, `phase-diagram`],
     [`custom filename`, { filename: `custom-name` }, `custom-name-Al-Cu`],
   ])(`SVG export uses the %s`, async (_desc, props, filename) => {
     const on_export = vi.fn()

@@ -5,6 +5,7 @@ export {
   diagram_hit,
   diagram_name,
   diagram_points,
+  parse_diagram,
   format_hover_info_text,
   model_phase_keys,
   observation_markers,

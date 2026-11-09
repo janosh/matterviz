@@ -3,7 +3,7 @@
   import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index.js'
   import { JsonTree } from 'svelte-widgets/json-tree'
   import { set_at_path } from 'svelte-widgets/json-tree/utils'
-  import { diagram_errors } from './diagram'
+  import { parse_diagram } from './diagram'
   import type { BinaryPhaseDiagram } from './types'
   import { create_flash } from '#lib/effects.svelte.js'
   import { to_error } from 'svelte-widgets/utils'
@@ -36,10 +36,7 @@
   function handle_change(path: string, new_value: unknown) {
     if (!data) return
     try {
-      const updated = set_at_path(data, path, new_value, root_label) as BinaryPhaseDiagram
-      const errors = diagram_errors(updated)
-      if (errors.length) throw new Error(errors.join(`; `))
-      on_data?.(updated)
+      on_data?.(parse_diagram(set_at_path(data, path, new_value, root_label)))
     } catch (error) {
       rejection_seq += 1
       rejection.show(to_error(error).message)

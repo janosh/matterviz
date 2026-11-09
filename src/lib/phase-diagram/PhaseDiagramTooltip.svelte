@@ -15,9 +15,7 @@
   import { format_label_html } from '#lib/composition/format.js'
   import {
     boundary_description,
-    diagram_hit,
     lever_rule_rows,
-    phase_colors,
     phase_labeler,
     point_badge,
     provenance_caption,
@@ -30,28 +28,28 @@
     hover_info,
     data,
     overlay = null,
-    phase_color_keys = [],
+    color_of,
     temp_unit = `K`,
     comp_unit = `at%`,
     tooltip,
   }: {
     hover_info: PhaseHoverInfo
     data: BinaryPhaseDiagram
-    // Overlay diagram whose phase set at the hovered (x, T) is listed too
+    // Shown overlay diagram: its phase set at the hovered point (hover_info.overlay_hit) is
+    // listed too
     overlay?: BinaryPhaseDiagram | null
-    // Color keys of the diagram (see IsobaricBinaryPhaseDiagram), so swatches match its fills
-    phase_color_keys?: readonly string[]
+    // Phase id -> the diagram's fill color, so lever-rule swatches match its regions
+    color_of: (id: string) => string
     temp_unit?: TempUnit
     comp_unit?: CompUnit
     tooltip?: PhaseDiagramTooltipProp
   } = $props()
 
-  const colors = $derived(phase_colors(data.phases, phase_color_keys))
   const [component_a, component_b] = $derived(data.components)
   const label_of = $derived(phase_labeler(data))
-  const overlay_hit = $derived(
-    overlay && diagram_hit(overlay, hover_info.composition, hover_info.temperature),
-  )
+  // hidden overlays keep no phase set, even in a snapshot taken while one was shown
+  const overlay_hit = $derived(overlay && hover_info.overlay_hit)
+  const overlay_label_of = $derived(overlay && phase_labeler(overlay))
   const html_label = (label: string) => sanitize_html(format_label_html(label, true))
   const safe_formula = (comp: string) => sanitize_formula(comp, true)
 
@@ -90,16 +88,12 @@
 
   // Distance in temperature to the nearest phase boundary at the cursor's composition
   // (isotherms, magnetic and polymorphic lines bound no field the cursor could leave by T)
+  const FIELD_KINDS = new Set([`liquidus`, `solidus`, `solvus`, `transus`, `miscibility_gap`])
   const boundary_distance = $derived.by(() => {
     const { composition, temperature } = hover_info
     let nearest: { boundary: DiagramBoundary; delta_t: number } | null = null
     for (const boundary of data.boundaries) {
-      if (
-        ![`liquidus`, `solidus`, `solvus`, `transus`, `miscibility_gap`].includes(
-          boundary.kind,
-        )
-      )
-        continue
+      if (!FIELD_KINDS.has(boundary.kind)) continue
       for (const boundary_temp of boundary_temps_at(boundary.points, composition)) {
         const delta_t = temperature - boundary_temp
         if (!nearest || Math.abs(delta_t) < Math.abs(nearest.delta_t)) {
@@ -114,15 +108,13 @@
     hover_info.lever_rule && lever_rule_rows(hover_info.lever_rule, label_of),
   )
   const overlay_lever_rows = $derived(
-    overlay &&
+    overlay_label_of &&
       overlay_hit?.lever_rule &&
-      lever_rule_rows(overlay_hit.lever_rule, phase_labeler(overlay)),
+      lever_rule_rows(overlay_hit.lever_rule, overlay_label_of),
   )
   const lever_colors = $derived(
     hover_info.lever_rule
-      ? [hover_info.lever_rule.left_phase, hover_info.lever_rule.right_phase].map(
-          (id) => colors.get(id) ?? `#b4b4b4`,
-        )
+      ? [hover_info.lever_rule.left_phase, hover_info.lever_rule.right_phase].map(color_of)
       : [],
   )
 
@@ -170,14 +162,15 @@
             {#if sigma_x}± {fmt_comp(sigma_x)} {comp_unit_label}{/if}
           </div>
         {/if}
-        <cite>
-          {row.source.citation}
-          {#if row.source.doi}
-            <a href="https://doi.org/{row.source.doi}" target="_blank" rel="noreferrer"
-              >doi:{row.source.doi}</a
-            >
-          {/if}
-        </cite>
+        {#if row.source}
+          {@const { citation, doi } = row.source}
+          <cite>
+            {citation}
+            {#if doi}
+              <a href="https://doi.org/{doi}" target="_blank" rel="noreferrer">doi:{doi}</a>
+            {/if}
+          </cite>
+        {/if}
       </section>
     {/if}
 
@@ -217,10 +210,10 @@
           <small>{temp_unit}</small>
         </dd>
       {/if}
-      {#if overlay && overlay_hit}
+      {#if overlay_label_of && overlay_hit}
         <dt>Overlay</dt>
         <dd class="overlay-phase">
-          {@html html_label(region_label(overlay_hit.region, phase_labeler(overlay)))}
+          {@html html_label(region_label(overlay_hit.region, overlay_label_of))}
         </dd>
       {/if}
     </dl>

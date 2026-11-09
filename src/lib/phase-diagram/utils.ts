@@ -142,6 +142,10 @@ export const generate_region_path = (vertices: Vec2[]): string =>
 export const generate_boundary_path = (points: Vec2[]): string =>
   points.length < 2 ? `` : (path_line(points) ?? ``)
 
+// Approximate glyph width and line height of region labels, in units of the font size
+export const CHAR_WIDTH_EM = 0.6
+export const LINE_HEIGHT_EM = 1.2
+
 // Compute label properties (rotation, wrapping, scale) to fit within region bounds
 export function compute_label_properties(
   label: string,
@@ -154,8 +158,8 @@ export function compute_label_properties(
   // Handle whitespace-only labels that pass truthy check but have zero rendered width
   if (label.trim().length === 0) return { rotation: 0, lines: [], scale: 1 }
 
-  const char_width = font_size * 0.6 // approximate character width
-  const line_height = font_size * 1.2
+  const char_width = font_size * CHAR_WIDTH_EM
+  const line_height = font_size * LINE_HEIGHT_EM
   const padding = 0.8 // 20% margin
 
   const label_width = label.length * char_width

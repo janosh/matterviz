@@ -212,6 +212,25 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(tooltip_text(wrapper)).toMatch(/^Temperature 750 K/)
   })
 
+  // with regions, a gap between them drops the tooltip but keeps the shared cursor on it
+  test(`hovering a gap between regions clears the hover once and keeps the cursor`, async () => {
+    const state: { cursor: DiagramCursor | null } = { cursor: null }
+    const on_phase_hover = vi.fn()
+    const data = { ...eutectic, regions: [eutectic_regions[0]] } // liquid only, gap below
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagram,
+      bind_props({ data, on_phase_hover }, state),
+      { selector: `.binary-phase-diagram`, width, height },
+    )
+    await hover_at(wrapper, 0.25, 750)
+    expect(tooltip_text(wrapper)).toMatch(/^L /)
+    await hover_at(wrapper, 0.25, 250)
+    await hover_at(wrapper, 0.3, 200)
+    expect(on_phase_hover.mock.calls.map(([info]) => info === null)).toEqual([false, true])
+    expect(wrapper.querySelector(`.tooltip-container`)).toBeNull()
+    expect(state.cursor).toMatchObject({ composition: expect.closeTo(0.3, 9) })
+  })
+
   // every point category gets its own marker: filled circle (invariant, unary), diamond
   // (congruent), ring (critical); melting points are labelled Tm(component)
   test(`marks congruent, critical and pure-component points`, async () => {
@@ -643,6 +662,45 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(labels).toContain(`L`)
   })
 
+  // the controls offer the marked-points toggle exactly when the diagram marks a point, of
+  // any kind (a polymorphic transition alone counts)
+  test.each([
+    [`an invariant`, eutectic, true],
+    [`no points`, { ...eutectic, invariants: [] }, false],
+    [
+      `only a polymorphic transition`,
+      {
+        ...eutectic,
+        invariants: [],
+        polymorphic_transitions: [
+          { temperature: 450, composition: 0.5, above: `A`, below: `B` },
+        ],
+      },
+      true,
+    ],
+  ])(`Special pts toggle with %s: %s`, async (_label, data, expected) => {
+    const wrapper = await mount_diagram({ data, controls_open: true })
+    const grid = wrapper.querySelector(`.visibility-grid`)
+    expect(grid).toBeInstanceOf(HTMLElement)
+    expect(grid?.textContent?.includes(`Special pts`)).toBe(expected)
+  })
+
+  // a zoomed window clips the wide α strip's label (anchor at 20 K, below the 22 K edge):
+  // it must not block the β label just above the edge
+  test(`a label clipped by a zoomed window does not hide a visible one`, async () => {
+    const regions = [
+      { phases: [`A`], vertices: rect(0, 0, 1, 40) },
+      { phases: [`B`], vertices: rect(0.4, 40, 0.6, 70) },
+    ]
+    const wrapper = await mount_diagram({
+      data: { ...eutectic, regions },
+      y_axis: { range: [22, 1000] },
+      show_special_points: false,
+    })
+    const labels = [...wrapper.querySelectorAll(`.region-labels > g`)]
+    expect(labels.map((el) => el.textContent?.trim())).toEqual([`β`])
+  })
+
   const empty_svg_text = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`
   const empty_svg = () => new File([empty_svg_text], `pd.svg`, { type: `image/svg+xml` })
   // the SVG drop routes through the shared file-drop zone rather than a FileReader, so
@@ -676,6 +734,20 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent).toContain(`pd.svg`),
     )
     // the previously rendered diagram is kept behind the banner
+    expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
+    expect(on_file_load).not.toHaveBeenCalled()
+
+    // invalid JSON is validated before it reaches on_file_load or replaces the diagram
+    const bad = {
+      ...shifted_eutectic,
+      regions: [{ phases: [`A`], vertices: pts(0, 0, 1.5, 0, 0, 1) }],
+    }
+    await drop(new File([JSON.stringify(bad)], `bad.json`))
+    await vi.waitFor(() =>
+      expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent).toMatch(
+        /bad\.json.*Invalid phase diagram: regions\[0\] vertices need x in \[0, 1\]/,
+      ),
+    )
     expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
     expect(on_file_load).not.toHaveBeenCalled()
 

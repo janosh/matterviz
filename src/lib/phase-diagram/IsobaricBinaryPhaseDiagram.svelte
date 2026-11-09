@@ -17,6 +17,7 @@
     compute_bounding_box_2d,
     polygon_centroid,
     polygon_label_point,
+    polygon_signed_area,
     type Vec2,
   } from '#lib/math.js'
   import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
@@ -40,6 +41,7 @@
     format_hover_info_text,
     observation_markers,
     OVERLAY_DASH,
+    parse_diagram,
     phase_colors,
     phase_labeler,
     region_label,
@@ -72,12 +74,14 @@
     format_label_svg,
   } from '#lib/composition/format.js'
   import {
+    CHAR_WIDTH_EM,
     compute_label_properties,
     convert_temp,
     find_region_at,
     format_composition,
     generate_boundary_path,
     generate_region_path,
+    LINE_HEIGHT_EM,
     merge_phase_diagram_config,
     PHASE_DIAGRAM_DEFAULTS,
     TIE_LINE_COLOR,
@@ -223,9 +227,10 @@
       if (typeof content !== `string`) return
       const is_svg = filename.endsWith(`.svg`) || metadata.file?.type === `image/svg+xml`
       if (!is_svg && !filename.endsWith(`.json`)) return
-      const diagram: BinaryPhaseDiagram = is_svg
-        ? parse_phase_diagram_svg(content)
-        : JSON.parse(content)
+      // an invalid diagram throws to on_error, keeping the current one on screen
+      const diagram = parse_diagram(
+        is_svg ? parse_phase_diagram_svg(content) : JSON.parse(content),
+      )
       drop_error = null
       source_data = diagram
       on_file_load?.({ diagram, filename, ...metadata })
@@ -299,19 +304,13 @@
       )
       const [x_min, x_max] = array_extent(svg_vertices.map(([svg_x]) => svg_x))
       const { phases } = region
-      // shoelace area in px², which ranks regions for label placement
-      const area = Math.abs(
-        svg_vertices.reduce((sum, [x_0, y_0], idx) => {
-          const [x_1, y_1] = svg_vertices[(idx + 1) % svg_vertices.length]
-          return sum + x_0 * y_1 - x_1 * y_0
-        }, 0) / 2,
-      )
       return {
         region,
         svg_path: generate_region_path(svg_vertices),
         label_pos: anchor?.at ?? polygon_centroid(svg_vertices),
         label_props,
-        area,
+        // area in px² ranks regions for label placement
+        area: Math.abs(polygon_signed_area(svg_vertices)),
         // multi-phase regions blend their phases' colors left to right
         gradient:
           phases.length > 1
@@ -351,10 +350,11 @@
     for (const [idx] of order) {
       const { label_pos, label_props } = transformed_regions[idx]
       const { lines, scale, rotation } = label_props
-      if (!lines.length) continue
-      // same character metrics as compute_label_properties
-      const along = Math.max(...lines.map((line) => line.length)) * font_size * 0.6 * scale
-      const across = lines.length * font_size * 1.2 * scale
+      // a label clipped by a zoomed window must not block visible ones
+      if (!lines.length || !in_plot(...label_pos)) continue
+      const along =
+        Math.max(...lines.map((line) => line.length)) * font_size * CHAR_WIDTH_EM * scale
+      const across = lines.length * font_size * LINE_HEIGHT_EM * scale
       const [half_w, half_h] = rotation ? [across / 2, along / 2] : [along / 2, across / 2]
       const [cx, cy] = label_pos
       const box: Box = [cx - half_w, cy - half_h, cx + half_w, cy + half_h]
@@ -371,9 +371,10 @@
   const in_plot = (svg_x: number, svg_y: number) =>
     svg_x >= left - 0.5 && svg_x <= right + 0.5 && svg_y >= top - 0.5 && svg_y <= bottom + 0.5
 
+  const special_points = $derived(diagram_points(data))
   // Points outside a zoomed x/y window would sit on the axes or margins
   const transformed_points = $derived(
-    diagram_points(data)
+    special_points
       .map((point) => ({
         ...point,
         svg_x: x_scale(point.composition),
@@ -411,8 +412,9 @@
   )
   const error_bar_cap = 3
 
+  const has_legend = $derived(valid_overlay !== null || all_markers.length > 0)
   const legend_items = $derived.by((): LegendItem[] => {
-    if (!valid_overlay && all_markers.length === 0) return []
+    if (!has_legend) return []
     const items: LegendItem[] = [
       {
         label: diagram_name(data),
@@ -454,9 +456,10 @@
         y: y_0 + ((next[1] - y_0) * step) / n_steps,
       }))
     })
-  // The legend avoids marked points, observations and boundaries
+  // The legend avoids marked points, observations and boundaries (keyed on has_legend, not
+  // legend_items, so a legend toggle doesn't re-sample every boundary)
   const legend_obstacles = $derived(
-    legend_items.length
+    has_legend
       ? [
           ...transformed_points.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
           ...shown_markers.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
@@ -490,18 +493,22 @@
     pin.lit({ region, observation: null }, hover_info) || region === remote_region
 
   const own_cursor = () => cursor?.source === gradient_uid
-  // Drops this diagram's hover (reporting it once), and the shared cursor when it set it
-  function clear_hover() {
-    if (own_cursor()) cursor = null
+  // Drops this diagram's hover, reporting it once
+  function drop_hover() {
     if (!hover_info && !hovered_region) return
     hover_info = null
     hovered_region = null
     on_phase_hover?.(null)
   }
+  // Drops the hover and the shared cursor when this diagram set it
+  function clear_hover() {
+    if (own_cursor()) cursor = null
+    drop_hover()
+  }
 
-  // Hover and pin describe the previous data, so drop them when the data changes
+  // Hover and pin describe the previous data (and overlay), so drop them when it changes
   $effect(() => {
-    void source_data
+    void [source_data, valid_overlay]
     untrack(() => {
       if (!hover_info && !pin.value && !hovered_region) return
       pin.unpin()
@@ -602,24 +609,18 @@
     cursor = { composition, temperature, source: gradient_uid }
 
     const hit = diagram_hit(data, composition, temperature)
-    const overlay_region =
-      shown_overlay && diagram_hit(shown_overlay, composition, temperature).region
+    const overlay_hit = shown_overlay && diagram_hit(shown_overlay, composition, temperature)
     const point = show_special_points ? nearest(transformed_points, svg_x, svg_y, 12) : null
     const observation: ObservationMarker | null =
       nearest(shown_markers, svg_x, svg_y, 8)?.marker ?? null
     // a diagram with regions shows no tooltip in a gap; one without (boundaries only) always
     // reports the cursor's (x, T)
-    const nothing_hit = !hit.region && !overlay_region && !point && !observation
-    if (nothing_hit && regions.length > 0) {
-      if (!hover_info && !hovered_region) return
-      hover_info = null
-      hovered_region = null
-      on_phase_hover?.(null)
-      return
-    }
+    const nothing_hit = !hit.region && !overlay_hit?.region && !point && !observation
+    if (nothing_hit && regions.length > 0) return drop_hover()
     hovered_region = hit.region
     hover_info = {
       ...hit,
+      overlay_hit,
       composition,
       temperature,
       position: { x: event.clientX, y: event.clientY },
@@ -728,6 +729,7 @@
           bind:y_axis
           {data}
           has_overlay={valid_overlay !== null}
+          has_special_points={special_points.length > 0}
           has_observations={all_markers.length > 0}
           shortcut_scopes={[`viewer`, `binary-phase-diagram`]}
         />
@@ -864,7 +866,7 @@
       {#if show_labels}
         <g class="region-labels" style="pointer-events: none" clip-path={plot_clip}>
           {#each transformed_regions as { label_pos, label_props }, idx (idx)}
-            {@const line_height = merged_config.font_size * 1.2}
+            {@const line_height = merged_config.font_size * LINE_HEIGHT_EM}
             {#if shown_label_idxs.has(idx)}<g
                 transform="translate({label_pos[0]}, {label_pos[1]}) rotate({label_props.rotation}) scale({label_props.scale})"
               >
@@ -1198,7 +1200,7 @@
           hover_info={effective_hover_info}
           {data}
           overlay={shown_overlay}
-          {phase_color_keys}
+          {color_of}
           {temp_unit}
           {comp_unit}
           {tooltip}

@@ -28,11 +28,9 @@
       toggle_props?: PaneToggleProps
     } = $props()
 
-  // Generate filename with components if available (requires exactly 2 components)
+  // Filename with the diagram's components, e.g. phase-diagram-Al-Cu
   const full_filename = $derived(
-    data?.components?.length === 2
-      ? `${source_filename}-${data.components[0]}-${data.components[1]}`
-      : source_filename,
+    data ? `${source_filename}-${data.components.join(`-`)}` : source_filename,
   )
 
   // Looked up per action: the SVG mounts after this pane (a sibling further down the diagram
