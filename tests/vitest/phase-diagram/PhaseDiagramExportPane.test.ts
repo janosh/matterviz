@@ -1,13 +1,9 @@
-import type { PhaseDiagramData } from '#lib/phase-diagram/index.js'
 import PhaseDiagramExportPane from '#lib/phase-diagram/PhaseDiagramExportPane.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { click_export, doc_query, mock_object_url } from '../setup'
-// Real Al-Cu phase diagram data from pycalphad computation (subset of 5 boundaries)
-import al_cu_data from './fixtures/al-cu-sample.json' with { type: 'json' }
+import { eutectic as mock_phase_data } from './fixtures/test-data'
 
-// Cast through unknown since JSON arrays aren't inferred as tuples
-const mock_phase_data = al_cu_data as unknown as PhaseDiagramData
 const mount_pane = (props: ComponentProps<typeof PhaseDiagramExportPane>) =>
   mount(PhaseDiagramExportPane, {
     target: document.body,
@@ -41,13 +37,9 @@ describe(`PhaseDiagramExportPane`, () => {
   })
 
   test.each([
-    [`component filename`, {}, `phase-diagram-AL-CU`],
-    [
-      `default filename without components`,
-      { data: { ...mock_phase_data, components: undefined } as unknown as PhaseDiagramData },
-      `phase-diagram`,
-    ],
-    [`custom filename`, { filename: `custom-name` }, `custom-name-AL-CU`],
+    [`component filename`, {}, `phase-diagram-Al-Cu`],
+    [`default filename without data`, { data: undefined }, `phase-diagram`],
+    [`custom filename`, { filename: `custom-name` }, `custom-name-Al-Cu`],
   ])(`SVG export uses the %s`, async (_desc, props, filename) => {
     const on_export = vi.fn()
     mount_pane({ data: mock_phase_data, wrapper: wrapper_div, on_export, ...props })

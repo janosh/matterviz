@@ -9,7 +9,7 @@ import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js
 import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
 import type { VolumetricFileData } from '#lib/isosurface/types.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
-import type { PhaseDiagramData } from '#lib/phase-diagram/types.js'
+import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
 import { build_structure_props_from_settings, type DefaultSettings } from '#lib/settings.js'
 import Bands from '#lib/spectral/Bands.svelte'
 import BandsAndDos from '#lib/spectral/BandsAndDos.svelte'
@@ -107,7 +107,7 @@ export function mount_viewer(
   if (type === `phase_diagram`) {
     return mount(IsobaricBinaryPhaseDiagram, {
       target,
-      props: { data: data as PhaseDiagramData, ...VIEWER_COMMON_PROPS },
+      props: { data: data as BinaryPhaseDiagram, ...VIEWER_COMMON_PROPS },
     })
   }
   if (type === `bands_and_dos` || type === `band_structure` || type === `dos`) {

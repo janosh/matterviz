@@ -1,19 +1,43 @@
 import type { Vec2 } from '#lib/math.js'
+import { diagram_hit, diagram_points, phase_colors } from '#lib/phase-diagram/diagram.js'
 import type {
+  BinaryPhaseDiagram,
+  BoundaryKind,
   CompUnit,
-  PhaseBoundary,
   PhaseHoverInfo,
   TempUnit,
 } from '#lib/phase-diagram/index.js'
 import PhaseDiagramTooltip from '#lib/phase-diagram/PhaseDiagramTooltip.svelte'
-import type { ComponentProps, Snippet } from 'svelte'
+import { binary_diagrams } from '#site/phase-diagrams.js'
+import { rgb } from 'd3-color'
+import type { ComponentProps } from 'svelte'
 import { mount } from 'svelte'
 import { describe, expect, test } from 'vitest'
-import { create_hover_info, lever_rule, pts } from './fixtures/test-data'
+import {
+  create_hover_info,
+  eutectic,
+  eutectic_regions,
+  lever_rule,
+  observations,
+  pts,
+  shifted_eutectic,
+} from './fixtures/test-data'
 
-const mount_tooltip = (props: ComponentProps<typeof PhaseDiagramTooltip>) =>
-  mount(PhaseDiagramTooltip, { target: document.body, props })
-const tooltip_text = () => document.querySelector(`.phase-diagram-tooltip`)?.textContent
+// swatch colors default to the diagram's own phase colors, as the parent passes them
+const color_lookup = (colors: Map<string, string>) => (id: string) => colors.get(id) ?? ``
+const mount_tooltip = ({
+  data = eutectic,
+  ...props
+}: Omit<ComponentProps<typeof PhaseDiagramTooltip>, `data` | `color_of`> & {
+  data?: BinaryPhaseDiagram
+  color_of?: (id: string) => string
+}) =>
+  mount(PhaseDiagramTooltip, {
+    target: document.body,
+    props: { data, color_of: color_lookup(phase_colors(data.phases)), ...props },
+  })
+const tooltip_text = () =>
+  document.querySelector(`.phase-diagram-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `)
 const lever_text = () =>
   document.querySelector(`.phase-info`)?.textContent?.replaceAll(/\s+/g, ` `)
 // [left bar width, right bar width, marker position]
@@ -26,21 +50,22 @@ const lever_bars = () => [
 ]
 
 describe(`PhaseDiagramTooltip`, () => {
-  test(`header names the region, stability range spans its vertices, no lever rule for one phase`, () => {
+  test(`header names the region by phase labels, stability spans its vertices, no lever rule for one phase`, () => {
     const hover_info = create_hover_info({
-      region: { id: `alpha`, name: `α (FCC)`, vertices: pts(0, 500, 0.3, 800, 0.2, 600) },
+      region: { phases: [`A`], vertices: pts(0, 500, 0.3, 800, 0.2, 600) },
     })
-    mount_tooltip({ hover_info, temperature_unit: `K` })
-    expect(document.querySelector(`header strong`)?.textContent).toBe(`α (FCC)`)
-    expect(tooltip_text()).toContain(`Stable`)
-    expect(tooltip_text()).toMatch(/500.*800/)
+    mount_tooltip({ hover_info, temp_unit: `K` })
+    expect(document.querySelector(`header strong`)?.textContent).toBe(`α`)
+    expect(tooltip_text()).toContain(`Stable 500 – 800 K`)
     expect(document.querySelector(`.lever`)).toBeNull()
   })
 
-  // per-unit formatting is format_temperature's (utils.test.ts); this pins the prop's wiring
-  test(`displays the temperature in temperature_unit`, () => {
-    const hover_info = create_hover_info({ temperature: 25 })
-    mount_tooltip({ hover_info, temperature_unit: `°C` })
+  // hover temperatures are K; per-unit formatting is format_temperature's (utils.test.ts)
+  test(`converts the K temperature to temp_unit`, () => {
+    mount_tooltip({
+      hover_info: create_hover_info({ temperature: 298.15 }),
+      temp_unit: `°C`,
+    })
     expect(tooltip_text()).toContain(`25 °C`)
     expect(document.querySelector(`dd small`)?.textContent).toBe(`°C`)
   })
@@ -49,7 +74,7 @@ describe(`PhaseDiagramTooltip`, () => {
   test.each<{
     composition: number
     unit?: CompUnit
-    components: string[]
+    components: [string, string]
     contains?: string[]
     absent?: string[]
     matches?: RegExp
@@ -65,18 +90,15 @@ describe(`PhaseDiagramTooltip`, () => {
       composition: 0.456,
       unit: `fraction`,
       components: [`A`, `Zn`],
-      contains: [`0.456`, `Zn`],
+      contains: [`0.456`, `Zn`, `0.544`],
     },
-    { composition: 0.25, unit: `mol%`, components: [`A`, `Fe`], contains: [`25 mol%`, `Fe`] },
   ])(
     `composition $composition $unit of $components shows $contains`,
-    ({ composition, unit = `at%`, components: [component_a, component_b], ...expected }) => {
-      const { contains, absent, matches } = expected
+    ({ composition, unit = `at%`, components, contains, absent, matches }) => {
       mount_tooltip({
         hover_info: create_hover_info({ composition }),
-        composition_unit: unit,
-        component_a,
-        component_b,
+        data: { ...eutectic, components },
+        comp_unit: unit,
       })
       for (const part of contains ?? []) expect(tooltip_text()).toContain(part)
       for (const part of absent ?? []) expect(tooltip_text()).not.toContain(part)
@@ -84,34 +106,29 @@ describe(`PhaseDiagramTooltip`, () => {
     },
   )
 
-  // oxfmt-ignore
+  const marked: BinaryPhaseDiagram = {
+    ...eutectic,
+    congruent_points: [{ temperature: 800, composition: 0.4, phases: [`LIQUID`, `A`] }],
+    critical_points: [{ temperature: 400, composition: 0.6, phase: `B` }],
+    unary_transitions: [{ component: `Cu`, temperature: 933, above: `LIQUID`, below: `B` }],
+  }
   test.each([
-    // edge melting/congruent points name the pure component; other types get a generic badge
-    { type: `melting_point`, x: 0, badge: `Melting Point`, desc: `Al melts at 933 K` },
-    { type: `congruent`, x: 1, badge: `Melting Point`, desc: `Cu melts at 933 K` },
-    { type: `congruent`, x: 0.5, badge: `Congruent`, desc: `Congruent phase change at 933 K` },
-    { type: `eutectic`, x: 0.3, badge: `Eutectic`, desc: `Liquid → two solid phases at 933 K` },
-    { type: `melting_point`, x: 0.5, badge: `Melting point`, desc: null },
-    { type: `custom`, x: 0.5, badge: `Custom`, desc: null },
-  ] as const)(
-    `special point $type at x=$x → "$badge"`,
-    ({ type, x: coord_x, badge, desc }) => {
-      const hover_info = create_hover_info({
-        special_point: { id: `sp`, type, position: [coord_x, 933] },
-      })
-      mount_tooltip({ hover_info, component_a: `Al`, component_b: `Cu` })
-      expect(document.querySelector(`.special-point-badge`)?.textContent).toBe(badge)
-      expect(document.querySelector(`.special-point-description`)?.textContent ?? null).toBe(
-        desc,
-      )
-    },
-  )
+    [0, `Eutectic`, `L → α + β at 500 K`],
+    [1, `Congruent`, `L ⇌ α without composition change at 800 K`],
+    [2, `Critical`, `β miscibility gap closes at 400 K`],
+    [3, `Melting point`, `Cu: L → β at 933 K`],
+  ])(`marked point %i shows badge %s and "%s"`, (idx, badge, description) => {
+    const point = diagram_points(marked)[idx]
+    mount_tooltip({ hover_info: create_hover_info({ point }), data: marked })
+    expect(document.querySelector(`.badge`)?.textContent).toBe(badge)
+    const text = document.querySelector(`.point-description`)?.textContent
+    expect(text?.replaceAll(/\s+/g, ` `).trim()).toBe(description)
+  })
 
-  test(`lever rule displays phase fractions and bars sized by fraction`, () => {
-    const region = { id: `two_phase`, name: `α + L`, vertices: [] }
+  test(`lever rule displays labelled phase fractions and bars sized by fraction`, () => {
     mount_tooltip({
-      hover_info: create_hover_info({ region, lever_rule }),
-      composition_unit: `at%`,
+      hover_info: create_hover_info({ region: eutectic_regions[1], lever_rule }),
+      comp_unit: `at%`,
     })
     expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
     for (const part of [`α: 60 %`, `at 20 at%`, `β: 40 %`, `at 80 at%`]) {
@@ -120,13 +137,80 @@ describe(`PhaseDiagramTooltip`, () => {
     expect(lever_bars()).toEqual([`60%`, `40%`, `60%`])
   })
 
+  // Au-Ni wrap rule: the gap's composition sets are labelled and colored as two shades of fcc
+  test(`miscibility gap shows its composition sets' labels and shared-key colors`, () => {
+    const au_ni = binary_diagrams[`Au-Ni`]
+    const colors = phase_colors(au_ni.phases, [`BCC_A2`, `FCC_A1`, `LIQUID`])
+    const [composition, temperature] = [0.7, 800]
+    mount_tooltip({
+      data: au_ni,
+      color_of: color_lookup(colors),
+      hover_info: create_hover_info({
+        ...diagram_hit(au_ni, composition, temperature),
+        composition,
+        temperature,
+      }),
+    })
+    expect(document.querySelector(`header strong`)?.textContent).toBe(`α₁ + α₂`)
+    expect(lever_text()).toMatch(/α₁: \d+ %.*α₂: \d+ %/)
+    const swatches = Array.from(document.querySelectorAll<HTMLElement>(`.bar > div`), (bar) =>
+      rgb(bar.style.background).formatHex(),
+    )
+    expect(swatches).toEqual([colors.get(`FCC_A1#1`), colors.get(`FCC_A1#2`)])
+  })
+
+  // the parent looks the overlay's phase set up once per move and carries it in the hover; a
+  // snapshot taken while the overlay was shown lists nothing once it is hidden
+  test.each([
+    [shifted_eutectic, `α + β`, `Overlay lever rule: α 80% at 0 at% / β 20% at 100 at%`],
+    [null, undefined, undefined],
+  ])(`overlay %# phase set and lever rule at the hovered point`, (overlay, phase, lever) => {
+    // 550 K: liquid in the main diagram (eutectic 500 K), α + β in the overlay (600 K)
+    const hover_info = create_hover_info({
+      region: eutectic_regions[0],
+      overlay_hit: diagram_hit(shifted_eutectic, 0.2, 550),
+      composition: 0.2,
+      temperature: 550,
+    })
+    mount_tooltip({ hover_info, overlay })
+    expect(document.querySelector(`.overlay-phase`)?.textContent?.trim()).toBe(phase)
+    const overlay_lever = document.querySelector(`.overlay-lever`)?.textContent
+    expect(overlay_lever?.replaceAll(/\s+/g, ` `).trim()).toBe(lever)
+  })
+
+  test(`observation block cites the source with T and x uncertainties`, () => {
+    const [row] = observations
+    const phase = row.phases?.[0] ?? null
+    const observation = { row, phase, composition: 0.45, temperature: 520 }
+    mount_tooltip({ hover_info: create_hover_info({ observation }) })
+    const block = document.querySelector(`.observation`)
+    const text = block?.textContent?.replaceAll(/\s+/g, ` `)
+    for (const part of [
+      `Ok`,
+      `L -> (Al) + (Cu)`,
+      `T = 520 K ± 10 K`,
+      `liquid: x = 45 at% ± 2 at%`,
+    ]) {
+      expect(text).toContain(part)
+    }
+    expect(block?.querySelector(`cite`)?.textContent).toContain(`Doe et al.`)
+    expect(block?.querySelector(`a`)?.getAttribute(`href`)).toBe(`https://doi.org/10.1/test`)
+    // observation rows are unvalidated JSON: one without a source renders without a citation
+    document.body.innerHTML = ``
+    const { source: _, ...unsourced } = row
+    mount_tooltip({
+      hover_info: create_hover_info({ observation: { ...observation, row: unsourced } }),
+    })
+    expect(document.querySelector(`.observation`)?.textContent).toContain(`T = 520 K`)
+    expect(document.querySelector(`.observation cite`)).toBeNull()
+  })
+
   describe(`boundary distance`, () => {
     // Boundary temperatures interpolate on the segment spanning the composition: at x = 0.19
-    // the Cu-like liquidus sits at 1112.9 K, not at its 1100 K sample at x = 0.2. Vertices
-    // 0.5 apart used to give no reading (none within 2 at%) or the nearest vertex's temperature
+    // the Cu-like liquidus sits at 1112.9 K, not at its 1100 K sample at x = 0.2
     const liquidus = pts(0, 1358, 0.2, 1100, 0.4, 900)
     const sloped = pts(0, 1000, 1, 500)
-    test.each<[number, number, PhaseBoundary[`type`], Vec2[], TempUnit, string, number]>([
+    test.each<[number, number, BoundaryKind, Vec2[], TempUnit, string, number]>([
       [0.5, 1050, `liquidus`, pts(0, 1000, 1, 1000), `K`, `above`, 50], // temp > boundary
       [0.5, 750, `solidus`, pts(0, 800, 1, 800), `°C`, `below`, 50], // temp < boundary
       [0.5, 900, `solvus`, pts(0, 1100, 1, 900), `K`, `below`, 100],
@@ -136,38 +220,67 @@ describe(`PhaseDiagramTooltip`, () => {
       [0.1, 900, `liquidus`, sloped, `K`, `below`, 50], // boundary at 950 K, not 1000 K
     ])(
       `at x=%s, %s K vs a %s %o in %s shows "%s" by %s`,
-      (composition, temperature, type, points, unit, direction, delta) => {
+      (composition, temperature, kind, points, unit, direction, delta) => {
         const hover_info = create_hover_info({ composition, temperature })
-        mount_tooltip({
-          hover_info,
-          boundaries: [{ id: `b1`, type, points }],
-          temperature_unit: unit,
-        })
+        const data = { ...eutectic, boundaries: [{ kind, phases: [], points }] }
+        mount_tooltip({ hover_info, data, temp_unit: unit })
         const text = document.querySelector(`.boundary-info`)?.textContent ?? ``
         expect(text.replaceAll(/\s+/g, ` `).trim()).toBe(
-          `${delta} ${unit} ${direction} ${type}`,
+          `${delta} ${unit} ${direction} ${kind}`,
         )
       },
     )
 
+    // an edge's side names the phase whose composition it traces
+    test(`names the side and field of the nearest edge`, () => {
+      const edge = {
+        kind: `liquidus` as const,
+        phases: [`A`, `LIQUID`],
+        side: `LIQUID`,
+        points: pts(0, 800, 1, 800),
+      }
+      const hover_info = create_hover_info({ composition: 0.5, temperature: 850 })
+      mount_tooltip({ hover_info, data: { ...eutectic, boundaries: [edge] } })
+      const text = document
+        .querySelector(`.boundary-info`)
+        ?.textContent?.replaceAll(/\s+/g, ` `)
+      expect(text?.trim()).toBe(`50 K above liquidus (L edge of α + L)`)
+    })
+
+    // the fixture's only boundary is an invariant line, which is not a distance reference
     test.each([
       [`no boundaries`, []],
-      [`a non-relevant boundary type`, [{ id: `t1`, type: `tie-line`, points: [[0.5, 900]] }]],
-    ] as [string, PhaseBoundary[]][])(`not shown for %s`, (_desc, boundaries) => {
+      [`an invariant line`, eutectic.boundaries],
+    ])(`not shown for %s`, (_desc, boundaries) => {
       const hover_info = create_hover_info({ composition: 0.5, temperature: 900 })
-      mount_tooltip({ hover_info, boundaries })
+      mount_tooltip({ hover_info, data: { ...eutectic, boundaries } })
       expect(document.querySelector(`.boundary-info`)).toBeNull()
     })
   })
 
-  describe(`tooltip customization`, () => {
-    test(`snippet function hides default tooltip`, () => {
-      const hover_info = create_hover_info()
-      const mock_snippet = (() => {}) as unknown as Snippet<[PhaseHoverInfo]>
-      mount_tooltip({ hover_info, tooltip: mock_snippet })
-      expect(document.querySelector(`.phase-diagram-tooltip`)).toBeNull()
+  // attribution: source, assessment and license of each shown diagram, flagged when not cleared
+  test(`footer cites each diagram's provenance`, () => {
+    const provenance = {
+      kind: `assessment` as const,
+      source: `NIST SRD 139`,
+      assessment: `Hayes et al. 1986`,
+      license: `public domain`,
+      redistribution: `not_cleared` as const,
+    }
+    mount_tooltip({
+      hover_info: create_hover_info(),
+      data: { ...eutectic, provenance },
+      overlay: shifted_eutectic,
     })
+    const footers = [...document.querySelectorAll(`footer.provenance`)].map((el) =>
+      el.textContent?.replaceAll(/\s+/g, ` `).trim(),
+    )
+    expect(footers).toEqual([
+      `Main: NIST SRD 139; assessment: Hayes et al. 1986; license: public domain; not cleared for redistribution`,
+    ])
+  })
 
+  describe(`tooltip customization`, () => {
     // static HTML strings and functions of the hover info both render into their slot
     test.each([
       [`prefix`, `<strong>Header</strong>`, `<strong>Header</strong>`],

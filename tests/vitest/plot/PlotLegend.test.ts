@@ -19,7 +19,7 @@ import {
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
-import { doc_query, keydown, mouse, set_input } from '../setup'
+import { doc_query, keydown, mouse, set_input, trigger_resize_observer } from '../setup'
 
 const legend_item = (
   label: string,
@@ -368,6 +368,40 @@ describe(`PlotLegend`, () => {
     document.querySelectorAll<HTMLElement>(`.legend-item`)[1].click()
     expect([on_toggle.mock.calls, user_toggle.mock.calls]).toEqual([[[1]], [[1]]])
   })
+
+  // happy-dom has no layout: give the legend the width a browser would (its content's width,
+  // capped by its inline max-width), then report that resize as a ResizeObserver would. A
+  // legend wider than the plot used to be centered on it, poking out both sides and widening
+  // the page on phones; it also kept its first placement when only its own size changed.
+  test.each([100, 253, 520])(
+    `InsetLegend with %ipx of content stays inside a 253px-wide plot`,
+    (content_width) => {
+      const plot_bounds = { x: 60, y: 25, width: 253, height: 300 }
+      mount(InsetLegend, {
+        target: document.body,
+        props: { legend: null, measured: true, plot_bounds, points: [], series_data: [] },
+      })
+      flushSync() // placed while unmeasured, before it takes its laid-out size
+      const legend = doc_query(`.legend`)
+      const style_px = (pattern: RegExp) =>
+        Number(pattern.exec(legend.getAttribute(`style`) ?? ``)?.groups?.px ?? NaN)
+      const max_width = style_px(
+        /max-width: min\(var\(--plot-legend-max-width, (?<px>[\d.]+)px\)/,
+      )
+      expect(max_width).toBe(plot_bounds.width)
+      const [width, height] = [Math.min(content_width, max_width), 80]
+      for (const key of [`offsetWidth`, `clientWidth`] as const)
+        Object.defineProperty(legend, key, { value: width, configurable: true })
+      for (const key of [`offsetHeight`, `clientHeight`] as const)
+        Object.defineProperty(legend, key, { value: height, configurable: true })
+      legend.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width, height })
+      trigger_resize_observer(legend)
+      flushSync()
+      const left = style_px(/(?:^|; )left: (?<px>[-\d.]+)px/)
+      expect(left).toBeGreaterThanOrEqual(plot_bounds.x)
+      expect(left + width).toBeLessThanOrEqual(plot_bounds.x + plot_bounds.width)
+    },
+  )
 
   test.each([1, `auto`] as const)(
     `empty legends keep one CSS track with layout_tracks=%s`,

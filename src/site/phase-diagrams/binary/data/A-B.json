@@ -1,90 +1,195 @@
 {
-  "meta": {
-    "components": ["A", "B"],
-    "temp_range": [300, 900],
-    "temp_unit": "K",
-    "comp_unit": "at%",
-    "title": "Example A-B Eutectic Phase Diagram"
-  },
-  "curves": {
-    "liquidus_left": [[0, 800], [0.1, 700], [0.2, 600], [0.3, 530], [0.4, 500]],
-    "liquidus_right": [
-      [0.4, 500],
-      [0.5, 530],
-      [0.6, 580],
-      [0.7, 630],
-      [0.8, 680],
-      [0.9, 720],
-      [1, 750]
-    ],
-    "solidus_alpha": [[0, 800], [0.05, 700], [0.1, 600], [0.15, 500]],
-    "solidus_beta": [[0.7, 500], [0.8, 580], [0.9, 660], [1, 750]],
-    "solvus_alpha": [[0.15, 500], [0.12, 450], [0.1, 400], [0.08, 300]],
-    "solvus_beta": [[0.7, 500], [0.75, 450], [0.8, 400], [0.85, 300]],
-    "eutectic_line": [[0.15, 500], [0.7, 500]]
-  },
+  "format": "binary-phase-diagram/2",
+  "components": ["A", "B"],
+  "pressure_pa": 101325,
+  "temperature_range": [300, 900],
+  "phases": [
+    {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
+    {"id": "ALPHA", "model_phase": "ALPHA", "label": "α", "kind": "solid"},
+    {"id": "BETA", "model_phase": "BETA", "label": "β", "kind": "solid"}
+  ],
   "regions": [
     {
-      "id": "liquid",
-      "name": "Liquid",
-      "color": "rgba(100, 149, 237, 0.6)",
-      "bounds": [
-        [0, 900],
-        [1, 900],
+      "phases": ["LIQUID"],
+      "vertices": [
+        [0, 800],
+        [0.1, 700],
+        [0.2, 600],
+        [0.3, 530],
+        [0.4, 500],
+        [0.5, 530],
+        [0.6, 580],
+        [0.7, 630],
+        [0.8, 680],
+        [0.9, 720],
         [1, 750],
-        "~liquidus_right[1:]",
-        "~liquidus_left[1:]"
+        [1, 900],
+        [0, 900]
       ]
     },
     {
-      "id": "alpha",
-      "name": "α",
-      "color": "rgba(144, 238, 144, 0.7)",
-      "bounds": [[0, 800], "solidus_alpha[1:]", "solvus_alpha[1:]", [0, 300]]
-    },
-    {
-      "id": "beta",
-      "name": "β",
-      "color": "rgba(255, 182, 193, 0.7)",
-      "bounds": [[1, 750], "~solidus_beta[1:]", "solvus_beta[1:]", [1, 300]]
-    },
-    {
-      "id": "alpha_liquid",
-      "name": "α + L",
-      "color": "rgba(140, 200, 140, 0.5)",
-      "bounds": [[0, 800], "liquidus_left[1:]", [0.15, 500], "~solidus_alpha[1:-1]"],
-      "label_position": [0.12, 650]
-    },
-    {
-      "id": "beta_liquid",
-      "name": "β + L",
-      "color": "rgba(200, 140, 160, 0.5)",
-      "bounds": [[1, 750], "~liquidus_right[1:]", [0.7, 500], "solidus_beta[1:-1]"],
-      "label_position": [0.75, 620]
-    },
-    {
-      "id": "alpha_beta",
-      "name": "α + β",
-      "color": "rgba(200, 200, 200, 0.5)",
-      "bounds": [
-        [0.15, 500],
-        [0.7, 500],
-        "solvus_beta[1:]",
-        [1, 300],
+      "phases": ["ALPHA"],
+      "vertices": [
         [0, 300],
         [0.08, 300],
-        "~solvus_alpha[1:-1]"
+        [0.1, 400],
+        [0.12, 450],
+        [0.15, 500],
+        [0.1, 600],
+        [0.05, 700],
+        [0, 800]
+      ]
+    },
+    {
+      "phases": ["BETA"],
+      "vertices": [
+        [1, 750],
+        [0.9, 660],
+        [0.8, 580],
+        [0.7, 500],
+        [0.75, 450],
+        [0.8, 400],
+        [0.85, 300],
+        [1, 300]
+      ]
+    },
+    {
+      "phases": ["ALPHA", "LIQUID"],
+      "vertices": [
+        [0.05, 700],
+        [0.1, 600],
+        [0.15, 500],
+        [0.4, 500],
+        [0.3, 530],
+        [0.2, 600],
+        [0.1, 700],
+        [0, 800]
+      ]
+    },
+    {
+      "phases": ["LIQUID", "BETA"],
+      "vertices": [
+        [1, 750],
+        [0.9, 720],
+        [0.8, 680],
+        [0.7, 630],
+        [0.6, 580],
+        [0.5, 530],
+        [0.4, 500],
+        [0.7, 500],
+        [0.8, 580],
+        [0.9, 660]
+      ]
+    },
+    {
+      "phases": ["ALPHA", "BETA"],
+      "vertices": [
+        [0.12, 450],
+        [0.1, 400],
+        [0.08, 300],
+        [0, 300],
+        [1, 300],
+        [0.85, 300],
+        [0.8, 400],
+        [0.75, 450],
+        [0.7, 500],
+        [0.15, 500]
       ]
     }
   ],
-  "special_points": [
-    { "id": "eutectic", "type": "eutectic", "position": [0.4, 500], "label": "E" },
+  "boundaries": [
     {
-      "id": "melting_a",
-      "type": "melting_point",
-      "position": [0, 800],
-      "label": "Tₘ(A)"
+      "kind": "liquidus",
+      "phases": ["ALPHA", "LIQUID"],
+      "points": [
+        [0, 800],
+        [0.1, 700],
+        [0.2, 600],
+        [0.3, 530],
+        [0.4, 500]
+      ],
+      "side": "LIQUID"
     },
-    { "id": "melting_b", "type": "melting_point", "position": [1, 750], "label": "Tₘ(B)" }
-  ]
+    {
+      "kind": "liquidus",
+      "phases": ["LIQUID", "BETA"],
+      "points": [
+        [0.4, 500],
+        [0.5, 530],
+        [0.6, 580],
+        [0.7, 630],
+        [0.8, 680],
+        [0.9, 720],
+        [1, 750]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["ALPHA", "LIQUID"],
+      "points": [
+        [0, 800],
+        [0.05, 700],
+        [0.1, 600],
+        [0.15, 500]
+      ],
+      "side": "ALPHA"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["LIQUID", "BETA"],
+      "points": [
+        [0.7, 500],
+        [0.8, 580],
+        [0.9, 660],
+        [1, 750]
+      ],
+      "side": "BETA"
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALPHA", "BETA"],
+      "points": [
+        [0.15, 500],
+        [0.12, 450],
+        [0.1, 400],
+        [0.08, 300]
+      ]
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALPHA", "BETA"],
+      "points": [
+        [0.7, 500],
+        [0.75, 450],
+        [0.8, 400],
+        [0.85, 300]
+      ]
+    },
+    {
+      "kind": "invariant",
+      "phases": ["ALPHA", "LIQUID", "BETA"],
+      "points": [
+        [0.15, 500],
+        [0.7, 500]
+      ]
+    }
+  ],
+  "invariants": [
+    {
+      "kind": "eutectic",
+      "temperature": 500,
+      "phases": ["ALPHA", "LIQUID", "BETA"],
+      "compositions": [0.15, 0.4, 0.7],
+      "reaction": "LIQUID -> ALPHA + BETA"
+    }
+  ],
+  "congruent_points": [],
+  "critical_points": [],
+  "unary_transitions": [
+    {"component": "A", "temperature": 800, "above": "LIQUID", "below": "ALPHA"},
+    {"component": "B", "temperature": 750, "above": "LIQUID", "below": "BETA"}
+  ],
+  "polymorphic_transitions": [],
+  "provenance": {"kind": "sketch", "source": "Example A-B Eutectic Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

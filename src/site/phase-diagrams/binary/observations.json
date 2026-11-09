@@ -1,0 +1,138 @@
+[
+  {
+    "id": "Al:melting",
+    "system": "Al",
+    "kind": "melting",
+    "reaction": null,
+    "T_K": 933.473,
+    "sigma_T_K": 0.001,
+    "status": "ok",
+    "phases": [],
+    "source": {
+      "kind": "its90",
+      "citation": "Preston-Thomas, The International Temperature Scale of 1990, Metrologia 27(1) 3-10 (1990)"
+    }
+  },
+  {
+    "id": "Ag:melting",
+    "system": "Ag",
+    "kind": "melting",
+    "reaction": null,
+    "T_K": 1234.93,
+    "sigma_T_K": 0.001,
+    "status": "ok",
+    "phases": [],
+    "source": {
+      "kind": "its90",
+      "citation": "Preston-Thomas, The International Temperature Scale of 1990, Metrologia 27(1) 3-10 (1990)"
+    }
+  },
+  {
+    "id": "Cu:melting",
+    "system": "Cu",
+    "kind": "melting",
+    "reaction": null,
+    "T_K": 1357.77,
+    "sigma_T_K": 0.001,
+    "status": "ok",
+    "phases": [],
+    "source": {
+      "kind": "its90",
+      "citation": "Preston-Thomas, The International Temperature Scale of 1990, Metrologia 27(1) 3-10 (1990)"
+    }
+  },
+  {
+    "id": "Ag-Cu:eutectic",
+    "system": "Ag-Cu",
+    "kind": "invariant",
+    "reaction": "L -> (Ag) + (Cu)",
+    "T_K": 1052.25,
+    "sigma_T_K": 1.0,
+    "status": "ok",
+    "phases": [
+      { "name": "liquid", "x": 0.4025 },
+      { "name": "fcc_Ag", "x": 0.13273 },
+      { "name": "fcc_Cu", "x": 0.9546 }
+    ],
+    "source": {
+      "kind": "assessment",
+      "citation": "NIST SRD 139 (solder database), Ag-Cu, after Hayes, Lukas, Effenberg, Petzow, Z. Metallkde. 77 (1986) 749",
+      "url": "https://www.metallurgy.nist.gov/phase/solder/agcu.html"
+    }
+  },
+  {
+    "id": "Al-Cu:eutectic",
+    "system": "Al-Cu",
+    "kind": "invariant",
+    "reaction": "L -> (Al) + theta",
+    "T_K": 823.15,
+    "sigma_T_K": 1.0,
+    "status": "ok",
+    "phases": [
+      { "name": "liquid", "x": 0.17 },
+      { "name": "fcc_Al", "x": 0.025 },
+      { "name": "theta_Al2Cu", "x": 0.32 }
+    ],
+    "source": {
+      "kind": "primary",
+      "citation": "Ponweiser, Lengauer, Richter, Intermetallics 19 (2011) 1737, as tabulated in Zobac et al., Metall. Mater. Trans. A 50A (2019) 3805, Table IV",
+      "doi": "10.1007/s11661-019-05286-x",
+      "license": "CC BY 4.0"
+    }
+  },
+  {
+    "id": "Al-Cu:theta_peritectic",
+    "system": "Al-Cu",
+    "kind": "invariant",
+    "reaction": "L + eta -> theta",
+    "T_K": 862.15,
+    "sigma_T_K": 1.0,
+    "status": "ok",
+    "phases": [
+      { "name": "liquid", "x": 0.325 },
+      { "name": "eta_AlCu", "x": 0.515 },
+      { "name": "theta_Al2Cu", "x": 0.335 }
+    ],
+    "source": {
+      "kind": "primary",
+      "citation": "Zobac, Kroupa, Zemanova, Richter, Metall. Mater. Trans. A 50A (2019) 3805, Table IV reaction 12",
+      "doi": "10.1007/s11661-019-05286-x",
+      "license": "CC BY 4.0"
+    }
+  },
+  {
+    "id": "Al-Cu:theta_eta_prime_550C",
+    "system": "Al-Cu",
+    "kind": "tie_line",
+    "reaction": "theta + eta' at 550 C (long-term anneal, SEM-EDX)",
+    "T_K": 823.15,
+    "sigma_T_K": 1.0,
+    "status": "ok",
+    "phases": [
+      { "name": "theta_Al2Cu", "x": 0.336, "sigma_x": 0.004 },
+      { "name": "eta_prime_AlCu", "x": 0.514, "sigma_x": 0.004 }
+    ],
+    "source": {
+      "kind": "primary",
+      "citation": "Zobac et al., Metall. Mater. Trans. A 50A (2019) 3805, Table II sample 550_1",
+      "doi": "10.1007/s11661-019-05286-x",
+      "license": "CC BY 4.0"
+    }
+  },
+  {
+    "id": "Al-Cu:liquidus_41.9",
+    "system": "Al-Cu",
+    "kind": "liquidus",
+    "reaction": "liquidus of Al-41.9 at.% Cu (DSC heating)",
+    "T_K": 973.05,
+    "sigma_T_K": 3.0,
+    "status": "ok",
+    "phases": [{ "name": "liquid", "x": 0.419, "sigma_x": 0.009 }],
+    "source": {
+      "kind": "primary",
+      "citation": "Zobac et al., Metall. Mater. Trans. A 50A (2019) 3805, Table III sample 550_1",
+      "doi": "10.1007/s11661-019-05286-x",
+      "license": "CC BY 4.0"
+    }
+  }
+]

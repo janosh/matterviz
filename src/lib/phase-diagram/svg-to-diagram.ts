@@ -1,14 +1,16 @@
-// Parses phase diagram SVGs (matplotlib or simple/Gemini format) into DiagramInput JSON
-// for rendering by IsobaricBinaryPhaseDiagram
+// Parses phase diagram SVGs (matplotlib or simple/Gemini format) into binary-phase-diagram/2
+// data for rendering by IsobaricBinaryPhaseDiagram. Region labels ("A + B") name the phases;
+// axis-aligned boundaries become invariant (horizontal) or solvus (vertical) lines.
 
+import { array_extent, leading_number, type Vec2, type Vec4 } from '#lib/math.js'
 import {
-  array_extent,
-  leading_number,
-  point_in_polygon,
-  type Vec2,
-  type Vec4,
-} from '#lib/math.js'
-import type { DiagramInput, DiagramPoint, RegionInput } from './diagram-input'
+  BINARY_DIAGRAM_FORMAT,
+  type BinaryPhaseDiagram,
+  type DiagramBoundary,
+  type BinaryPhase,
+  type DiagramRegion,
+} from './types'
+import { find_region_at } from './utils'
 
 // Round to 6 decimal places for clean floating-point output
 const round = (val: number): number => Math.round(val * 1e6) / 1e6
@@ -19,7 +21,6 @@ type SvgFormat = `matplotlib` | `simple`
 
 interface LinearScale {
   to_data: (pixel: number) => number
-  to_px: (value: number) => number
   domain: Vec2 // [min_data, max_data] of the plot area
   // Data units spanned by 1 px: the snapping tolerance for coordinates drawn at pixel precision
   px_tol: number
@@ -28,10 +29,13 @@ interface LinearScale {
 interface Tick {
   px: number
   value: number
+  text: string // tick label, e.g. `1000 °C`
 }
 
+// Axis-aligned segment in data coordinates, x1 <= x2 and y1 <= y2 (x2 = x1 when vertical,
+// y2 = y1 when horizontal)
 interface Boundary {
-  x1: number // data coordinates
+  x1: number
   y1: number
   x2: number
   y2: number
@@ -42,13 +46,6 @@ interface Label {
   text: string // plain text, e.g. "La2NiO4 + NiO"
   px_x: number // pixel position
   px_y: number
-}
-
-// A filled SVG shape (region fill) with its pixel-space outline rings and bounding box
-interface FilledShape {
-  fill: string
-  bbox: Vec4 // [min_x, min_y, max_x, max_y] in px
-  rings: Vec2[][] // closed outline rings; the bbox alone cannot decide a concave shape
 }
 
 // === Format Detection ===
@@ -73,10 +70,12 @@ const query_map = <T>(
 function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
   const ticks_of = (axis: `x` | `y`) =>
     query_map(doc, `[id^="${axis}tick_"]`, (group) => {
-      const value = extract_comment_number(group)
+      const text = comment_number_text(group)
       const use_el = group.querySelector(`use`)
       const pixel = use_el && parse_float_attr(use_el, axis)
-      return value !== null && pixel !== null ? { px: pixel, value } : null
+      return text !== null && pixel !== null
+        ? { px: pixel, value: leading_number(text), text }
+        : null
     })
   return [ticks_of(`x`), ticks_of(`y`)]
 }
@@ -86,9 +85,10 @@ function extract_matplotlib_ticks(doc: Document): [Tick[], Tick[]] {
 // offset by the parent group's translate
 function extract_simple_ticks(doc: Document): [Tick[], Tick[]] {
   const tick_of = (text_el: Element, pixel: number | null, axis: 0 | 1): Tick | null => {
-    const value = leading_number(text_el.textContent)
+    const text = text_el.textContent ?? ``
+    const value = leading_number(text)
     if (isNaN(value) || pixel === null) return null
-    return { px: pixel + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value }
+    return { px: pixel + (parse_translate(text_el.parentElement)?.[axis] ?? 0), value, text }
   }
   return [
     query_map(doc, `.tick-text-x`, (element) =>
@@ -127,11 +127,42 @@ function build_scale(axis: `x` | `y`, ticks: Tick[], [px_a, px_b]: Vec2): Linear
 
   return {
     to_data,
-    to_px: (value: number) => first.px + (value - first.value) * px_per_unit,
     domain: [Math.min(data_a, data_b), Math.max(data_a, data_b)],
     px_tol: 1 / Math.abs(px_per_unit),
   }
 }
+
+// Composition scale from x ticks in mole fraction, or in at% when the plot spans 0..100.
+// Values within 1 px outside [0, 1] snap onto its edge; a wider span throws.
+function composition_scale(ticks: Tick[], px_span: Vec2): LinearScale {
+  const raw = build_scale(`x`, ticks, px_span)
+  const [lower, upper] = raw.domain
+  const near = (val: number, target: number) => Math.abs(val - target) <= raw.px_tol
+  const percent = near(lower, 0) && near(upper, 100)
+  if (!percent && (lower < -raw.px_tol || upper > 1 + raw.px_tol)) {
+    throw new Error(
+      `x-axis spans ${lower}..${upper}: x ticks must be mole fractions in [0, 1] or at% spanning 0..100`,
+    )
+  }
+  const scale = percent
+    ? build_scale(
+        `x`,
+        ticks.map((tick) => ({ ...tick, value: tick.value / 100 })),
+        px_span,
+      )
+    : raw
+  const { to_data, domain, px_tol } = scale
+  const snap = (val: number) =>
+    val < 0 && val >= -px_tol ? 0 : val > 1 && val <= 1 + px_tol ? 1 : val
+  return {
+    to_data: (pixel) => snap(to_data(pixel)),
+    domain: [snap(domain[0]), snap(domain[1])],
+    px_tol,
+  }
+}
+
+// Tick label units of a temperature in °C, e.g. `25 °C` or `1000℃`
+const CELSIUS_REGEX = /°\s*C|℃/
 
 // [min_x, min_y, max_x, max_y] of pixel vertices
 const bbox_of = (verts: Vec2[]): Vec4 => {
@@ -141,13 +172,13 @@ const bbox_of = (verts: Vec2[]): Vec4 => {
 }
 
 // Pixel bbox of the plot area (the tick span alone crops past the outermost ticks):
-// matplotlib's axes patch, else the smallest filled shape enclosing all ticks and boundaries,
-// else their span.
+// matplotlib's axes patch, else the smallest filled shape (by bbox) enclosing all ticks and
+// boundaries, else their span.
 function plot_area_px(
   doc: Document,
   [x_ticks, y_ticks]: [Tick[], Tick[]],
   lines: Vec4[],
-  filled_shapes: FilledShape[],
+  filled_bboxes: Vec4[],
 ): Vec4 {
   const area = ([min_x, min_y, max_x, max_y]: Vec4) => (max_x - min_x) * (max_y - min_y)
   const patch = doc.querySelector(`[id^="axes_"] > [id^="patch_"] > *`)
@@ -163,12 +194,10 @@ function plot_area_px(
     ...lines.flatMap(([, y_1, , y_2]) => [y_1, y_2]),
   ])
   // 1 px slack for strokes drawn on the plot edge
-  const enclosing = filled_shapes
-    .map(({ bbox }) => bbox)
-    .filter(
-      ([left, top, right, bottom]) =>
-        left <= min_x + 1 && right >= max_x - 1 && top <= min_y + 1 && bottom >= max_y - 1,
-    )
+  const enclosing = filled_bboxes.filter(
+    ([left, top, right, bottom]) =>
+      left <= min_x + 1 && right >= max_x - 1 && top <= min_y + 1 && bottom >= max_y - 1,
+  )
   const span: Vec4 = [min_x, min_y, max_x, max_y]
   return enclosing.toSorted((bbox_a, bbox_b) => area(bbox_a) - area(bbox_b))[0] ?? span
 }
@@ -217,11 +246,12 @@ function to_boundary(
   if (!is_vertical && !is_horizontal) return null
   const [data_x1, data_x2] = [x_scale.to_data(px_x1), x_scale.to_data(px_x2)]
   const [data_y1, data_y2] = [y_scale.to_data(px_y1), y_scale.to_data(px_y2)]
+  const [x1, y1] = [Math.min(data_x1, data_x2), Math.min(data_y1, data_y2)]
   return {
-    x1: Math.min(data_x1, data_x2),
-    y1: Math.min(data_y1, data_y2),
-    x2: Math.max(data_x1, data_x2),
-    y2: Math.max(data_y1, data_y2),
+    x1,
+    y1,
+    x2: is_vertical ? x1 : Math.max(data_x1, data_x2),
+    y2: is_vertical ? Math.max(data_y1, data_y2) : y1,
     orientation: is_vertical ? `vertical` : `horizontal`,
   }
 }
@@ -346,73 +376,59 @@ function shape_rings(element: Element): Vec2[][] | null {
   return d_attr === null ? null : segments_to_rings(parse_path_segments(d_attr))
 }
 
-// Collect all non-background filled shapes (candidate phase region fills). Transformed shapes
-// are skipped since shape_rings ignores transforms (their pixel coords would be wrong).
-function extract_filled_shapes(doc: Document): FilledShape[] {
-  const shapes: FilledShape[] = []
-  for (const element of Array.from(doc.querySelectorAll(`rect, polygon, path, use`))) {
-    const fill = element_fill(element)
-    if (fill === null || element.hasAttribute(`transform`)) continue
-    const rings = shape_rings(element) ?? []
-    const verts = rings.flat()
-    if (verts.length < 3) continue // fewer than 3 corners encloses no area
-    shapes.push({ fill, bbox: bbox_of(verts), rings })
-  }
-  return shapes
-}
-
-// Fill of the smallest filled shape actually containing the given pixel point. The bounding box
-// is only the cheap reject: a concave phase field's bbox covers its neighbours.
-function fill_at_px(shapes: FilledShape[], [px_x, px_y]: Vec2): string | undefined {
-  let best: FilledShape | undefined
-  let best_area = Infinity
-  for (const shape of shapes) {
-    const [min_x, min_y, max_x, max_y] = shape.bbox
-    if (px_x < min_x || px_x > max_x || px_y < min_y || px_y > max_y) continue
-    const area = (max_x - min_x) * (max_y - min_y)
-    if (area >= best_area) continue
-    // even-odd across subpaths, so a ring cut out of another reads as a hole
-    const inside = shape.rings.reduce(
-      (acc, ring) => acc !== point_in_polygon(px_x, px_y, ring),
-      false,
-    )
-    if (inside) [best, best_area] = [shape, area]
-  }
-  return best?.fill
-}
+// Pixel bboxes [min_x, min_y, max_x, max_y] of all non-background filled shapes (plot-area
+// candidates). Transformed shapes are skipped since shape_rings ignores transforms (their
+// pixel coords would be wrong).
+const extract_filled_bboxes = (doc: Document): Vec4[] =>
+  query_map(doc, `rect, polygon, path, use`, (element) => {
+    if (element_fill(element) === null || element.hasAttribute(`transform`)) return null
+    const verts = (shape_rings(element) ?? []).flat()
+    // fewer than 3 corners encloses no area
+    return verts.length < 3 ? null : bbox_of(verts)
+  })
 
 // === Component Inference ===
 
-const split_phase_label = (label: Label) => label.text.split(/\s*\+\s*/)
+const split_label = (label: string): string[] =>
+  label
+    .split(`+`)
+    .map((token) => token.trim())
+    .filter(Boolean)
+// L, Liq, Liquid, optionally numbered for a liquid miscibility gap (L1, L₂, Liquid 2)
+const LIQUID_LABEL = /^(?:l|liq|liquid)\s*[\d₀-₉]*$/i
 
 // Infer binary components from region labels sorted by x: each end's pure component is the
-// phase of its two-phase end region absent from the three regions at the other end (for
-// "La2NiO4 + La2O3" on the left, La2O3 is the pure A endpoint)
+// solid phase of its two-phase end region absent from the three regions at the other end (for
+// "La2NiO4 + La2O3" on the left, La2O3 is the pure A endpoint). A liquid is never a component:
+// an end without such a solid, or ends resolving to the same phase, fall back to A and B.
 function infer_components(labels: Label[]): [string, string] {
   const sorted = labels.toSorted((label_a, label_b) => label_a.px_x - label_b.px_x)
   if (sorted.length < 2) return [`A`, `B`]
   const end_component = (end: Label, other_end: Label[], fallback: string): string => {
-    const phases = split_phase_label(end)
+    const phases = split_label(end.text)
     if (phases.length !== 2) return fallback
-    const other_phases = new Set(other_end.flatMap(split_phase_label))
-    return phases.find((phase) => !other_phases.has(phase)) ?? phases[1]
+    const other_phases = new Set(other_end.flatMap(({ text }) => split_label(text)))
+    const solids = phases.filter((phase) => !LIQUID_LABEL.test(phase))
+    return solids.find((phase) => !other_phases.has(phase)) ?? fallback
   }
-  return [
-    end_component(sorted[0], sorted.slice(-3), `A`),
-    end_component(sorted[sorted.length - 1], sorted.slice(0, 3), `B`),
+  // the other end's labels exclude this end's own (with few labels the slices overlap)
+  const ends: [string, string] = [
+    end_component(sorted[0], sorted.slice(1).slice(-3), `A`),
+    end_component(sorted[sorted.length - 1], sorted.slice(0, -1).slice(0, 3), `B`),
   ]
+  return ends[0] === ends[1] ? [`A`, `B`] : ends
 }
 
 // === Region Inference ===
 
-// Infer phase regions from orthogonal boundaries using flood-fill on a cell grid
+// Infer labelled region polygons (data coords) from orthogonal boundaries using flood-fill on a
+// cell grid; a region without a label under it gets a null label
 function infer_regions(
   boundaries: Boundary[],
   labels: Label[],
-  filled_shapes: FilledShape[],
   x_scale: LinearScale,
   y_scale: LinearScale,
-): RegionInput[] {
+): { label: string | null; vertices: Vec2[] }[] {
   const verticals = boundaries.filter((boundary) => boundary.orientation === `vertical`)
   const horizontals = boundaries.filter((boundary) => boundary.orientation === `horizontal`)
 
@@ -474,48 +490,17 @@ function infer_regions(
   }
 
   // Build region polygons by tracing the outline of each region's merged cells
-  const regions: RegionInput[] = []
-  const slug_counts = new Map<string, number>()
-  for (let region_id = 0; region_id < next_region_id; region_id++) {
-    const name = region_labels.get(region_id) ?? `Region ${region_id + 1}`
-    // Slug can be empty for non-ASCII labels like "α + β" — fall back to region_N
-    const base_slug =
-      name
-        .toLowerCase()
-        .replaceAll(/[^a-z0-9]+/g, `_`)
-        .replaceAll(/^_|_$/g, ``) || `region_${region_id + 1}`
-    // Fields may share a label (miscibility gap) or slug (`A + B`, `A+B`): suffix a_b, a_b_2
-    const n_seen = (slug_counts.get(base_slug) ?? 0) + 1
-    slug_counts.set(base_slug, n_seen)
-    const slug = n_seen === 1 ? base_slug : `${base_slug}_${n_seen}`
-
-    const bounds: DiagramPoint[] = trace_region_outline(
+  return Array.from({ length: next_region_id }, (_, region_id) => {
+    const label = region_labels.get(region_id) ?? null
+    const vertices = trace_region_outline(
       cell_ids,
       region_id,
       n_cols,
       n_rows,
-      name,
-    ).map(([col, row]) => [round(x_coords[col]), round(y_coords[row])])
-
-    // Region colour: fill of the SVG shape under the centre of the region's largest cell (a
-    // point guaranteed inside the region, unlike the centroid of a thin L or U shape)
-    let [probe_col, probe_row, probe_area] = [-1, -1, -Infinity]
-    for (let col = 0; col < n_cols; col++) {
-      for (let row = 0; row < n_rows; row++) {
-        if (cell_ids[col][row] !== region_id) continue
-        const area = (x_coords[col + 1] - x_coords[col]) * (y_coords[row + 1] - y_coords[row])
-        if (area > probe_area) [probe_col, probe_row, probe_area] = [col, row, area]
-      }
-    }
-    const color = fill_at_px(filled_shapes, [
-      x_scale.to_px((x_coords[probe_col] + x_coords[probe_col + 1]) / 2),
-      y_scale.to_px((y_coords[probe_row] + y_coords[probe_row + 1]) / 2),
-    ])
-
-    regions.push({ id: slug, name, ...(color ? { color } : {}), bounds })
-  }
-
-  return regions
+      label ?? undefined,
+    ).map(([col, row]): Vec2 => [round(x_coords[col]), round(y_coords[row])])
+    return { label, vertices }
+  })
 }
 
 // Flood-fill connected cells that share an open edge
@@ -628,27 +613,84 @@ export function trace_region_outline(
   })
 }
 
-// === Curve Generation ===
+// === Diagram Assembly ===
 
-// Generate named curves from boundaries for the DiagramInput format
-function generate_curves(boundaries: Boundary[]): Record<string, DiagramPoint[]> {
-  const curves: Record<string, DiagramPoint[]> = {}
-  const counts = { vertical: 0, horizontal: 0 }
-  for (const bnd of boundaries) {
-    const is_vert = bnd.orientation === `vertical`
-    const name = `${bnd.orientation}_${counts[bnd.orientation]++}`
-    curves[name] = [
-      [round(bnd.x1), round(bnd.y1)],
-      [round(is_vert ? bnd.x1 : bnd.x2), round(is_vert ? bnd.y2 : bnd.y1)],
-    ]
+// Phases (one per distinct label token, the label doubling as id) and regions with their phases
+// ordered left to right: by the mean centre of the regions each phase occurs in, the end
+// components pinned to their edges
+function assemble_regions(
+  traced: { label: string | null; vertices: Vec2[] }[],
+  components: [string, string],
+): { phases: BinaryPhase[]; regions: DiagramRegion[] } {
+  const centres = new Map<string, number[]>()
+  for (const { label, vertices } of traced) {
+    const [x_min, x_max] = array_extent(vertices.map(([x_val]) => x_val))
+    for (const token of split_label(label ?? ``)) {
+      centres.set(token, [...(centres.get(token) ?? []), (x_min + x_max) / 2])
+    }
   }
-  return curves
+  const position = (token: string): number => {
+    if (token === components[0]) return -Infinity
+    if (token === components[1]) return Infinity
+    const xs = centres.get(token) ?? []
+    return xs.reduce((sum, x_val) => sum + x_val, 0) / xs.length
+  }
+  const phases = [...centres.keys()].map((id): BinaryPhase => ({
+    id,
+    model_phase: id,
+    label: id,
+    kind: LIQUID_LABEL.test(id) ? `liquid` : `solid`,
+  }))
+  // Only labels with a `+` are extracted, so an unlabelled or single-name field stays
+  // uncovered, as does a 3-token label, rather than making the whole diagram invalid
+  const regions = traced.flatMap(({ label, vertices }) => {
+    const ids = [...new Set(split_label(label ?? ``))]
+    if (ids.length < 1 || ids.length > 2) return []
+    return [
+      { phases: ids.toSorted((id_a, id_b) => position(id_a) - position(id_b)), vertices },
+    ]
+  })
+  return { phases, regions }
+}
+
+// Boundary lines with the phases of the regions on either side of their midpoint
+function assemble_boundaries(
+  boundaries: Boundary[],
+  regions: DiagramRegion[],
+  [x_tol, y_tol]: Vec2,
+): DiagramBoundary[] {
+  return boundaries.map(({ x1, y1, x2, y2, orientation }) => {
+    const vertical = orientation === `vertical`
+    const points: Vec2[] = [
+      [round(x1), round(y1)],
+      [round(x2), round(y2)],
+    ]
+    const [mid_x, mid_y] = [(x1 + x2) / 2, (y1 + y2) / 2]
+    const sides: Vec2[] = vertical
+      ? [
+          [mid_x - x_tol, mid_y],
+          [mid_x + x_tol, mid_y],
+        ]
+      : [
+          [mid_x, mid_y - y_tol],
+          [mid_x, mid_y + y_tol],
+        ]
+    const phases = sides.flatMap(
+      ([x_val, y_val]) => find_region_at(regions, x_val, y_val)?.phases ?? [],
+    )
+    const ids = [...new Set(phases)]
+    // an invariant line is three-phase by definition; any other line stays a plain solvus
+    const kind = !vertical && ids.length === 3 ? `invariant` : `solvus`
+    return { kind, phases: ids, points }
+  })
 }
 
 // === Main Entry Point ===
 
-// Parse a phase diagram SVG string and return a DiagramInput
-export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
+// Parse a phase diagram SVG string into binary-phase-diagram/2 data. T is read in K, or in °C
+// when the y tick labels carry a °C suffix; x in mole fraction, or in at% when the x ticks
+// span 0..100.
+export function parse_phase_diagram_svg(svg_string: string): BinaryPhaseDiagram {
   const doc = new DOMParser().parseFromString(svg_string, `image/svg+xml`)
   const parse_error = doc.querySelector(`parsererror`)
   if (parse_error) throw new Error(`Invalid SVG: ${parse_error.textContent}`)
@@ -657,25 +699,41 @@ export function parse_phase_diagram_svg(svg_string: string): DiagramInput {
   const ticks: [Tick[], Tick[]] =
     format === `matplotlib` ? extract_matplotlib_ticks(doc) : extract_simple_ticks(doc)
   const lines = extract_boundary_lines(doc, format)
-  const filled_shapes = extract_filled_shapes(doc)
-  const [min_x, min_y, max_x, max_y] = plot_area_px(doc, ticks, lines, filled_shapes)
+  const filled_bboxes = extract_filled_bboxes(doc)
+  const [min_x, min_y, max_x, max_y] = plot_area_px(doc, ticks, lines, filled_bboxes)
+  const x_scale = composition_scale(ticks[0], [min_x, max_x])
   // y-axis inverted (SVG y down, temp up)
-  const x_scale = build_scale(`x`, ticks[0], [min_x, max_x])
-  const y_scale = build_scale(`y`, ticks[1], [min_y, max_y])
+  const celsius = ticks[1].some(({ text }) => CELSIUS_REGEX.test(text))
+  const y_ticks = celsius
+    ? ticks[1].map((tick) => ({ ...tick, value: tick.value + 273.15 }))
+    : ticks[1]
+  const y_scale = build_scale(`y`, y_ticks, [min_y, max_y])
+  if (y_scale.domain[0] < 0) {
+    throw new Error(
+      `y-axis reaches ${y_scale.domain[0]} K: y tick labels must be in K or °C (e.g. "25 °C")`,
+    )
+  }
   const boundaries = lines.flatMap((line) => to_boundary(line, x_scale, y_scale) ?? [])
   const labels = extract_labels(doc, format)
   if (boundaries.length === 0) throw new Error(`No phase boundaries found in SVG`)
 
+  const components = infer_components(labels)
+  const traced = infer_regions(boundaries, labels, x_scale, y_scale)
+  const { phases, regions } = assemble_regions(traced, components)
   return {
-    meta: {
-      components: infer_components(labels),
-      temp_range: y_scale.domain,
-      temp_unit: `K`,
-      comp_unit: `fraction`,
-      title: `Imported Phase Diagram`,
-    },
-    curves: generate_curves(boundaries),
-    regions: infer_regions(boundaries, labels, filled_shapes, x_scale, y_scale),
+    format: BINARY_DIAGRAM_FORMAT,
+    components,
+    pressure_pa: 101325,
+    temperature_range: y_scale.domain,
+    phases,
+    regions,
+    boundaries: assemble_boundaries(boundaries, regions, [x_scale.px_tol, y_scale.px_tol]),
+    invariants: [],
+    congruent_points: [],
+    critical_points: [],
+    unary_transitions: [],
+    polymorphic_transitions: [],
+    provenance: { kind: `sketch`, source: `imported SVG` },
   }
 }
 
@@ -704,12 +762,9 @@ function* comment_texts(group: Element): Generator<string> {
   }
 }
 
-// First number found in an XML comment inside a group element
-function extract_comment_number(group: Element): number | null {
-  for (const text of comment_texts(group)) {
-    const value = leading_number(text)
-    if (!isNaN(value)) return value
-  }
+// First XML comment inside a group element that starts with a number
+function comment_number_text(group: Element): string | null {
+  for (const text of comment_texts(group)) if (!isNaN(leading_number(text))) return text
   return null
 }
 

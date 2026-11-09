@@ -42,6 +42,9 @@ const own = <Value>(record: Record<string, Value>, key: string): Value | undefin
 export const property_config = (key: string): TrajPropertyConfig | undefined =>
   own(trajectory_property_config, key) ?? own(trajectory_property_config, key.toLowerCase())
 
+// The site table (DataTable and its menus) loads on demand, not with every Structure
+export const load_site_table = async () => (await import(`./SiteTable.svelte`)).default
+
 // Shared by the site table and the trajectory inspector's other tables: virtualized plain
 // tables (no heatmap) with column toggles, numbers to 6 significant digits
 export const DATA_TABLE_PROPS = {
@@ -109,16 +112,21 @@ export const property_column = (prop_name: string, axis?: string): Column => {
         : (config?.label ?? prop_name)
   const unit = own(SITE_PROPERTY_UNITS, prop_name) ?? config?.unit
   const id = `${PROP_PREFIX}${prop_name}${axis ? `_${axis}` : ``}`
-  return { id, key: id, label: unit ? `${label} (${unit})` : label, description: prop_name }
+  return { id, label: unit ? `${label} (${unit})` : label, description: prop_name }
 }
 
 export const site_columns = (specs: [string, SitePropertyShape][]): Column[] => [
-  { id: `site`, label: `Site`, format: `d`, color_scale: null, sticky: true },
+  { id: `site`, label: `Site`, format: `d`, color_scale: null, pin: `left` },
   { id: `element`, label: `Element`, color_scale: null },
-  ...[
-    ...FRAC_AXES.map((axis) => [`frac_${axis}`, `${axis}<sub>frac</sub>`]),
-    ...VEC3_AXES.map((axis) => [`cart_${axis}`, `${axis} (Å)`]),
-  ].map(([id, label]) => ({ id, key: id, label, format: `.4~f` })),
+  // Fractional coordinates start hidden (the column toggle shows them) so the per-site
+  // properties come right after the Cartesian ones in a narrow sidebar
+  ...FRAC_AXES.map((axis) => ({
+    id: `frac_${axis}`,
+    label: `${axis}<sub>frac</sub>`,
+    format: `.4~f`,
+    visible: false,
+  })),
+  ...VEC3_AXES.map((axis) => ({ id: `cart_${axis}`, label: `${axis} (Å)`, format: `.4~f` })),
   ...specs.flatMap(([key, shape]) =>
     shape === `scalar`
       ? [property_column(key)]

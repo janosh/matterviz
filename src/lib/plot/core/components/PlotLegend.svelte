@@ -535,7 +535,7 @@
     display: flex;
     align-items: center;
     cursor: pointer;
-    white-space: nowrap;
+    white-space: var(--plot-legend-item-white-space, nowrap);
     padding: var(--plot-legend-item-padding, 1px 8px 1px 3px);
     opacity: var(--plot-legend-item-opacity, 1);
     transition: var(
@@ -638,7 +638,7 @@
     display: flex;
     align-items: center;
     cursor: pointer;
-    white-space: nowrap;
+    white-space: var(--plot-legend-item-white-space, nowrap);
     padding: var(--plot-legend-group-padding, 2px 8px 0 3px);
     font-weight: var(--plot-legend-group-font-weight, 600);
     color: var(--plot-legend-group-color, inherit);

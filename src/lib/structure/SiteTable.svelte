@@ -8,8 +8,6 @@
   import type { Site } from './index'
   import { DATA_TABLE_PROPS, site_columns, site_property_specs, site_rows } from './site-table'
 
-  const FRAC_COLUMNS = [`frac_a`, `frac_b`, `frac_c`] as const
-
   let {
     sites,
     source_indices,
@@ -17,9 +15,6 @@
     hovered_atom = $bindable(null),
     link_hover,
     export_filename = `sites`,
-    // Fractional coordinates start hidden (the column toggle shows them) so the per-site
-    // properties come right after the Cartesian ones in a narrow sidebar
-    hidden_columns = $bindable([...FRAC_COLUMNS]),
     ...rest
   }: Omit<ComponentProps<typeof HeatmapTable<RowData>>, `data` | `columns`> & {
     sites: readonly Site[]
@@ -60,15 +55,13 @@
   search={{ placeholder: `Filter sites`, fuzzy: true }}
   export_formats={[`csv`, `json`]}
   {export_filename}
-  initial_sort={{ column: `site` }}
+  sort={[{ column: `site`, dir: `asc` }]}
   on_row_click={selected_atoms ? toggle_atom : undefined}
   on_row_hover={(row: RowData | null) =>
     (hovered_atom = typeof row?.site === `number` ? from_display_idx(row.site) : null)}
   highlighted_row_id={shown_atom === null ? null : display_idx(shown_atom)}
   show_row_select={selected_atoms !== undefined}
   row_key="site"
-  bind:hidden_columns
-  default_hidden_columns={FRAC_COLUMNS}
   bind:selected_ids={
     () => (selected_atoms ?? []).map(display_idx),
     (ids) => (selected_atoms = ids.map((id) => from_display_idx(Number(id))))

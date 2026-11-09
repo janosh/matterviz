@@ -1,15 +1,12 @@
-import { add_alpha } from '#lib/colors/index.js'
 import { format_num } from '#lib/labels.js'
-import { array_extent, point_in_polygon, type Vec2 } from '#lib/math.js'
+import { point_in_polygon, type Vec2 } from '#lib/math.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import { line } from 'd3-shape'
 import type {
   CompUnit,
+  DiagramRegion,
   LeverRuleResult,
   PhaseDiagramConfig,
-  PhaseDiagramData,
-  PhaseHoverInfo,
-  PhaseRegion,
   TempUnit,
 } from './types'
 
@@ -25,6 +22,10 @@ export function convert_temp(value: number, from: TempUnit, target: TempUnit): n
       : (kelvin - 273.15) * (9 / 5) + 32
 }
 
+// A temperature difference in K expressed in `unit`: the same in K and °C, 9/5 larger in °F
+export const temp_delta = (kelvin_delta: number, unit: TempUnit): number =>
+  unit === `°F` ? kelvin_delta * (9 / 5) : kelvin_delta
+
 // Defaults for phase diagram configuration
 export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   // Visibility
@@ -33,6 +34,11 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   show_special_points: true,
   show_grid: true,
   show_component_labels: true,
+  show_overlay: true,
+  show_observations: true,
+  // Display units (data is always K and mole fraction)
+  temp_unit: `K`,
+  comp_unit: `at%`,
   // Appearance
   font_size: 12,
   special_point_radius: 5,
@@ -47,8 +53,8 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
     grid: `rgba(128, 128, 128, 0.3)`,
     axis: `var(--text-color, #333)`,
     text: `var(--text-color, #333)`,
-    boundary: `#333`,
     special_point: `#d32f2f`,
+    overlay: `#e6007e`,
   }),
   // Margins
   margin: Object.freeze({ t: 25, r: 25, b: 50, l: 60 } as Required<Sides>),
@@ -64,8 +70,8 @@ export const merge_phase_diagram_config = (config: Partial<PhaseDiagramConfig>) 
   colors: { ...PHASE_DIAGRAM_DEFAULTS.colors, ...config.colors },
 })
 
-// Phase colors as hex: liquid, Greek-letter phases α through λ, multi-phase and fallback
-const PHASE_COLOR_HEX = {
+// Phase colors as hex: liquid and Greek-letter phases α through λ
+const NAMED_PHASE_HEX = {
   liquid: `#87cefc`, // light sky blue
   alpha: `#90ee90`, // light green
   beta: `#ffb6c1`, // light pink
@@ -78,17 +84,17 @@ const PHASE_COLOR_HEX = {
   iota: `#20b2aa`, // light sea green
   kappa: `#deb887`, // burlywood
   lambda: `#bc8f8f`, // rosy brown
-  two_phase: `#c8c8c8`,
-  default: `#b4b4b4`,
 } as const
 
-type PhaseColorKey = keyof typeof PHASE_COLOR_HEX
+export const LIQUID_COLOR = NAMED_PHASE_HEX.liquid
+// Solid-phase palette (pastels, no liquid blue) for phase_colors
+export const SOLID_PHASE_PALETTE: readonly string[] = Object.values(NAMED_PHASE_HEX).slice(1)
 
 export const TIE_LINE_COLOR = `#ff6b6b`
 
 // Phase pattern matching rules: [substrings to match, color key, optional prefix check]
 // Order matters: theta before eta (since "theta" contains "eta" as substring)
-const PHASE_PATTERNS: [string[], PhaseColorKey, string?][] = [
+const PHASE_PATTERNS: [string[], keyof typeof NAMED_PHASE_HEX, string?][] = [
   [[`liquid`], `liquid`],
   [[`α`, `alpha`], `alpha`, `fcc`],
   [[`β`, `beta`], `beta`, `bcc`],
@@ -103,60 +109,26 @@ const PHASE_PATTERNS: [string[], PhaseColorKey, string?][] = [
   [[`λ`, `lambda`], `lambda`],
 ]
 
-// Get color key for a single phase name (supports Greek letters and common phase notation)
-function get_phase_color_key(name: string): PhaseColorKey {
-  const lower = name.toLowerCase().trim()
-  if (lower === `l`) return `liquid` // exact match for shorthand "L"
-  for (const [patterns, key, prefix] of PHASE_PATTERNS) {
-    if (patterns.some((pattern) => lower.includes(pattern))) return key
-    if (prefix && lower.startsWith(prefix)) return key
-  }
-  return `default`
-}
-
 // Opaque palette color of a phase name matching one of the patterns (liquid, Greek letters),
 // null for names the palette doesn't know
-export const named_phase_color = (name: string): string | null => {
-  const key = get_phase_color_key(name)
-  return key === `default` ? null : PHASE_COLOR_HEX[key]
+export function named_phase_color(name: string): string | null {
+  const lower = name.toLowerCase().trim()
+  if (lower === `l`) return NAMED_PHASE_HEX.liquid // exact match for shorthand "L"
+  for (const [patterns, key, prefix] of PHASE_PATTERNS) {
+    if (patterns.some((pattern) => lower.includes(pattern))) return NAMED_PHASE_HEX[key]
+    if (prefix && lower.startsWith(prefix)) return NAMED_PHASE_HEX[key]
+  }
+  return null
 }
 
-// Phase fill color: translucent rgba() for region fills (two-phase/unknown regions are
-// a bit more transparent), or the opaque hex for markers.
-export function get_phase_color(name: string, format: `rgba` | `hex` = `rgba`): string {
-  const key: PhaseColorKey = name.includes(`+`) ? `two_phase` : get_phase_color_key(name)
-  const hex = PHASE_COLOR_HEX[key]
-  if (format === `hex`) return hex
-  return add_alpha(hex, key === `two_phase` || key === `default` ? 0.5 : 0.6)
-}
-
-// Evenly spaced gradient stops (offset in [0, 1], hex color) for multi-phase region names
-// ('+'-separated), null for single-phase regions
-export function get_multi_phase_gradient(
-  name: string,
-): { offset: number; color: string }[] | null {
-  if (!name.includes(`+`)) return null
-  const phases = name
-    .split(`+`)
-    .map((phase) => phase.trim())
-    .filter(Boolean)
-  if (phases.length < 2) return null
-  return phases.map((phase, idx) => ({
-    offset: idx / (phases.length - 1),
-    color: PHASE_COLOR_HEX[get_phase_color_key(phase)],
-  }))
-}
-
-// Find which phase region contains the given composition and temperature
-// (later-defined regions take precedence)
-export const find_phase_at_point = (
+// Last region containing (composition, temperature): later regions take precedence
+export const find_region_at = (
+  regions: readonly DiagramRegion[],
   composition: number,
   temperature: number,
-  data: PhaseDiagramData,
-): PhaseRegion | null =>
-  data.regions.findLast((region) =>
-    point_in_polygon(composition, temperature, region.vertices),
-  ) ?? null
+): DiagramRegion | null =>
+  regions.findLast((region) => point_in_polygon(composition, temperature, region.vertices)) ??
+  null
 
 const path_line = line()
   .x((point) => point[0])
@@ -170,6 +142,10 @@ export const generate_region_path = (vertices: Vec2[]): string =>
 export const generate_boundary_path = (points: Vec2[]): string =>
   points.length < 2 ? `` : (path_line(points) ?? ``)
 
+// Approximate glyph width and line height of region labels, in units of the font size
+export const CHAR_WIDTH_EM = 0.6
+export const LINE_HEIGHT_EM = 1.2
+
 // Compute label properties (rotation, wrapping, scale) to fit within region bounds
 export function compute_label_properties(
   label: string,
@@ -182,8 +158,8 @@ export function compute_label_properties(
   // Handle whitespace-only labels that pass truthy check but have zero rendered width
   if (label.trim().length === 0) return { rotation: 0, lines: [], scale: 1 }
 
-  const char_width = font_size * 0.6 // approximate character width
-  const line_height = font_size * 1.2
+  const char_width = font_size * CHAR_WIDTH_EM
+  const line_height = font_size * LINE_HEIGHT_EM
   const padding = 0.8 // 20% margin
 
   const label_width = label.length * char_width
@@ -251,7 +227,7 @@ export const transform_vertices = (
   y_scale: (val: number) => number,
 ): Vec2[] => vertices.map(([comp, temp]) => [x_scale(comp), y_scale(temp)])
 
-// Format composition value for display
+// Format a mole fraction for display, as a fraction or in at.%
 export function format_composition(
   value: number,
   unit: CompUnit = `at%`,
@@ -262,9 +238,9 @@ export function format_composition(
   return include_unit ? `${formatted} ${unit}` : formatted
 }
 
-// Format temperature value for display
-export const format_temperature = (value: number, unit: TempUnit = `K`): string =>
-  `${format_num(value, `.0f`)} ${unit}`
+// Format a temperature in K for display in `unit`
+export const format_temperature = (kelvin: number, unit: TempUnit = `K`): string =>
+  `${format_num(convert_temp(kelvin, `K`, unit), `.0f`)} ${unit}`
 
 // Composition intersections of a polygon's edges with the isotherm T = temperature, sorted
 function find_isotherm_intersections(vertices: Vec2[], temperature: number): number[] {
@@ -301,58 +277,15 @@ function pick_bracketing_intersection_pair(
   return null
 }
 
-// Composition offsets (atomic fraction) probed outside a tie-line end to identify the adjacent
-// single-phase field. Widening steps cover narrow terminal solid solutions.
-const NEIGHBOR_PROBE_OFFSETS = [1e-4, 1e-3, 5e-3]
-
-// Order the two phases [left, right] along the tie line by probing the field past each end
-// (names list them in arbitrary order); the name order stands when neither neighbour matches
-function order_phases_along_tie_line(
-  region: PhaseRegion,
-  all_regions: readonly PhaseRegion[],
-  phases: [string, string],
-  temperature: number,
-  lower: number,
-  upper: number,
-): [string, string] {
-  const swapped: [string, string] = [phases[1], phases[0]]
-  const probe = (position: number, direction: -1 | 1): string | null => {
-    for (const offset of NEIGHBOR_PROBE_OFFSETS) {
-      const found = all_regions.findLast(
-        (cand) =>
-          cand !== region &&
-          point_in_polygon(position + direction * offset, temperature, cand.vertices),
-      )
-      const name = found?.name.trim()
-      if (name === phases[0] || name === phases[1]) return name
-    }
-    return null
-  }
-  const left_neighbor = probe(lower, -1)
-  if (left_neighbor) return left_neighbor === phases[0] ? phases : swapped
-  const right_neighbor = probe(upper, 1)
-  if (right_neighbor) return right_neighbor === phases[1] ? phases : swapped
-  return phases
-}
-
 // Lever rule along the isothermal tie line (the only direction it is defined in). Null unless
-// the region is exactly two-phase and the scan brackets the point. `all_regions` assigns the
-// phases to tie-line ends by geometry, not by name order.
+// the region is exactly two-phase and the scan brackets the point. The format lists a
+// two-phase region's phases left to right, so phases[0] sits at the tie line's low-x end.
 export function calculate_lever_rule(
-  region: PhaseRegion,
+  region: DiagramRegion,
   composition: number,
   temperature: number,
-  all_regions: readonly PhaseRegion[] = [],
 ): LeverRuleResult | null {
-  const phases = region.name.includes(`+`)
-    ? region.name
-        .trim()
-        .split(/\s*\+\s*/)
-        .filter(Boolean)
-    : []
-  if (phases.length !== 2) return null
-
-  // Horizontal scan: fixed temperature, find composition intersections
+  if (region.phases.length !== 2) return null
   const bounds = pick_bracketing_intersection_pair(
     find_isotherm_intersections(region.vertices, temperature),
     composition,
@@ -360,124 +293,13 @@ export function calculate_lever_rule(
   if (!bounds) return null
   const [lower, upper] = bounds
   if (upper - lower < 1e-10) return null
-
-  const [left_phase, right_phase] = order_phases_along_tie_line(
-    region,
-    all_regions,
-    [phases[0], phases[1]],
-    temperature,
-    lower,
-    upper,
-  )
   const fraction_right = (composition - lower) / (upper - lower)
-
   return {
-    left_phase,
-    right_phase,
+    left_phase: region.phases[0],
+    right_phase: region.phases[1],
     left_composition: lower,
     right_composition: upper,
     fraction_left: 1 - fraction_right,
     fraction_right,
   }
-}
-
-// Lever rule as one [phase, fraction, composition] row per tie-line end; null when the hover
-// info carries no lever rule
-export function lever_rule_rows(
-  info: PhaseHoverInfo,
-  comp_unit: CompUnit,
-): [string, number, string][] | null {
-  const { lever_rule } = info
-  if (!lever_rule) return null
-  const comp = (val: number) => format_composition(val, comp_unit)
-  return [
-    [lever_rule.left_phase, lever_rule.fraction_left, comp(lever_rule.left_composition)],
-    [lever_rule.right_phase, lever_rule.fraction_right, comp(lever_rule.right_composition)],
-  ]
-}
-
-export interface HoverTextOptions {
-  temp_unit?: TempUnit // display unit, default K
-  comp_unit?: CompUnit
-  component_a?: string
-  component_b?: string
-  data_temp_unit?: TempUnit // unit of info.temperature, defaults to temp_unit
-}
-
-// Format hover info as copyable text for clipboard
-export function format_hover_info_text(
-  info: PhaseHoverInfo,
-  options: HoverTextOptions = {},
-): string {
-  const {
-    temp_unit = `K`,
-    comp_unit = `at%`,
-    component_a = `A`,
-    component_b = `B`,
-    data_temp_unit = temp_unit,
-  } = options
-  const to_display = (temp: number) => convert_temp(temp, data_temp_unit, temp_unit)
-
-  const lines: string[] = [
-    `Phase: ${info.region.name}`,
-    `Temperature: ${format_temperature(to_display(info.temperature), temp_unit)}`,
-    `Composition: ${format_composition(info.composition, comp_unit)} ${component_b} (${format_composition(
-      1 - info.composition,
-      comp_unit,
-    )} ${component_a})`,
-  ]
-
-  const lever = lever_rule_rows(info, comp_unit)
-  if (lever) {
-    lines.push(``, `Lever Rule:`)
-    for (const [phase, fraction, location] of lever) {
-      lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${location})`)
-    }
-  }
-
-  return lines.join(`\n`)
-}
-
-// Temperature span of a phase region: its lowest and highest vertex temperatures
-export function get_phase_stability_range(
-  region: PhaseRegion,
-): { t_min: number; t_max: number } | null {
-  if (region.vertices.length === 0) return null
-  const [t_min, t_max] = array_extent(region.vertices.map(([, temp]) => temp))
-  return { t_min, t_max }
-}
-
-// x-axis domain of a binary phase diagram: the explicit range if fully specified, else the
-// data extent, extended to 0/1 when edge regions contain pure components
-export function compute_x_domain(
-  x_range: [number | null, number | null] | undefined,
-  data: PhaseDiagramData | null,
-): Vec2 {
-  const [lower, upper] = x_range ?? [null, null]
-  if (lower != null && upper != null) return [lower, upper]
-  if (!data) return [lower ?? 0, upper ?? 1]
-
-  const [data_min, data_max] = array_extent(
-    [
-      ...data.regions.flatMap((region) => region.vertices),
-      ...data.boundaries.flatMap((boundary) => boundary.points),
-      ...(data.special_points ?? []).map((point) => point.position),
-    ].map(([x_val]) => x_val),
-  )
-  if (data_min > data_max) return [lower ?? 0, upper ?? 1] // no finite data
-
-  // Auto-extend to 0/1 when an edge region is named after the pure component AND the
-  // data already nearly reaches that boundary
-  const comp_at_edge = (comp: string, x_val: number) => {
-    if (!comp) return false
-    const real = new RegExp(`\\b${comp.replaceAll(/[.*+?^${}()|[\]\\]/g, `\\$&`)}\\b`)
-    return data.regions.some(
-      (region) =>
-        real.test(region.name) &&
-        region.vertices.some((vertex) => Math.abs(vertex[0] - x_val) < 1e-6),
-    )
-  }
-  const x_min = data_min < 0.05 && comp_at_edge(data.components[0], data_min) ? 0 : data_min
-  const x_max = data_max > 0.95 && comp_at_edge(data.components[1], data_max) ? 1 : data_max
-  return [lower ?? x_min, upper ?? x_max]
 }

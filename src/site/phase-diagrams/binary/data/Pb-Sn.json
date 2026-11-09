@@ -1,73 +1,184 @@
 {
-  "meta": {
-    "components": ["Pb", "Sn"],
-    "temp_range": [300, 700],
-    "temp_unit": "K",
-    "comp_unit": "mol%",
-    "title": "Pb-Sn Binary Phase Diagram"
-  },
-  "curves": {
-    "liquidus_left": [[0, 600], [0.15, 570], [0.3, 520], [0.45, 480], [0.62, 456]],
-    "liquidus_right": [[0.62, 456], [0.75, 470], [0.85, 485], [0.95, 500], [1, 505]],
-    "solidus_pb": [[0, 600], [0.05, 550], [0.15, 480], [0.19, 456]],
-    "solidus_sn": [[0.97, 456], [0.98, 480], [0.99, 495], [1, 505]],
-    "solvus_pb": [[0.19, 456], [0.15, 400], [0.1, 350], [0.05, 300]],
-    "solvus_sn": [[0.97, 456], [0.98, 400], [0.99, 350], [0.995, 300]],
-    "eutectic_line": [[0.19, 456], [0.97, 456]]
-  },
+  "format": "binary-phase-diagram/2",
+  "components": ["Pb", "Sn"],
+  "pressure_pa": 101325,
+  "temperature_range": [300, 700],
+  "phases": [
+    {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
+    {"id": "FCC_PB", "model_phase": "FCC_PB", "label": "FCC (Pb)", "kind": "solid"},
+    {"id": "BCT_SN", "model_phase": "BCT_SN", "label": "BCT (Sn)", "kind": "solid"}
+  ],
   "regions": [
     {
-      "id": "liquid",
-      "name": "Liquid",
-      "color": "rgba(135, 206, 250, 0.6)",
-      "bounds": [
-        [0, 700],
-        [1, 700],
+      "phases": ["LIQUID"],
+      "vertices": [
+        [0, 600],
+        [0.2355, 570],
+        [0.4279, 520],
+        [0.5882, 480],
+        [0.7401, 456],
+        [0.8396, 470],
+        [0.9082, 485],
+        [0.9707, 500],
         [1, 505],
-        "~liquidus_right",
-        "~liquidus_left",
+        [1, 700],
+        [0, 700]
+      ]
+    },
+    {
+      "phases": ["FCC_PB"],
+      "vertices": [
+        [0, 300],
+        [0.0841, 300],
+        [0.1624, 350],
+        [0.2355, 400],
+        [0.2905, 456],
+        [0.2355, 480],
+        [0.0841, 550],
         [0, 600]
       ]
     },
     {
-      "id": "fcc_pb",
-      "name": "FCC (Pb)",
-      "color": "rgba(144, 238, 144, 0.6)",
-      "bounds": [[0, 600], "solidus_pb", "solvus_pb", [0.05, 300], [0, 300]]
+      "phases": ["BCT_SN"],
+      "vertices": [
+        [1, 505],
+        [0.9942, 495],
+        [0.9884, 480],
+        [0.9826, 456],
+        [0.9884, 400],
+        [0.9942, 350],
+        [0.9971, 300],
+        [1, 300]
+      ]
     },
     {
-      "id": "bct_sn",
-      "name": "BCT (Sn)",
-      "color": "rgba(221, 160, 221, 0.6)",
-      "bounds": [[1, 505], "~solidus_sn[1:]", "solvus_sn[1:]", [1, 300]]
+      "phases": ["FCC_PB", "LIQUID"],
+      "vertices": [
+        [0.0841, 550],
+        [0.2355, 480],
+        [0.2905, 456],
+        [0.7401, 456],
+        [0.5882, 480],
+        [0.4279, 520],
+        [0.2355, 570],
+        [0, 600]
+      ]
     },
     {
-      "id": "pb_liquid",
-      "name": "FCC + L",
-      "color": "rgba(180, 230, 180, 0.5)",
-      "bounds": [[0, 600], "liquidus_left", [0.62, 456], [0.19, 456], "~solidus_pb"]
+      "phases": ["LIQUID", "BCT_SN"],
+      "vertices": [
+        [1, 505],
+        [0.9707, 500],
+        [0.9082, 485],
+        [0.8396, 470],
+        [0.7401, 456],
+        [0.9826, 456],
+        [0.9884, 480],
+        [0.9942, 495]
+      ]
     },
     {
-      "id": "sn_liquid",
-      "name": "BCT + L",
-      "color": "rgba(230, 180, 230, 0.5)",
-      "bounds": [[1, 505], "~liquidus_right[1:]", [0.97, 456], "solidus_sn[1:-1]"]
-    },
-    {
-      "id": "pb_sn",
-      "name": "FCC + BCT",
-      "color": "rgba(255, 235, 156, 0.5)",
-      "bounds": [
-        [0.19, 456],
-        [0.97, 456],
-        "solvus_sn",
-        [0.995, 300],
-        [0.05, 300],
-        "~solvus_pb"
+      "phases": ["FCC_PB", "BCT_SN"],
+      "vertices": [
+        [0.2355, 400],
+        [0.1624, 350],
+        [0.0841, 300],
+        [0.9971, 300],
+        [0.9942, 350],
+        [0.9884, 400],
+        [0.9826, 456],
+        [0.2905, 456]
       ]
     }
   ],
-  "special_points": [
-    { "id": "eutectic", "type": "eutectic", "position": [0.62, 456], "label": "E" }
-  ]
+  "boundaries": [
+    {
+      "kind": "liquidus",
+      "phases": ["FCC_PB", "LIQUID"],
+      "points": [
+        [0, 600],
+        [0.2355, 570],
+        [0.4279, 520],
+        [0.5882, 480],
+        [0.7401, 456]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "liquidus",
+      "phases": ["LIQUID", "BCT_SN"],
+      "points": [
+        [0.7401, 456],
+        [0.8396, 470],
+        [0.9082, 485],
+        [0.9707, 500],
+        [1, 505]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["FCC_PB", "LIQUID"],
+      "points": [
+        [0, 600],
+        [0.0841, 550],
+        [0.2355, 480],
+        [0.2905, 456]
+      ],
+      "side": "FCC_PB"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["LIQUID", "BCT_SN"],
+      "points": [
+        [0.9826, 456],
+        [0.9884, 480],
+        [0.9942, 495],
+        [1, 505]
+      ],
+      "side": "BCT_SN"
+    },
+    {
+      "kind": "solvus",
+      "phases": ["FCC_PB", "BCT_SN"],
+      "points": [
+        [0.2905, 456],
+        [0.2355, 400],
+        [0.1624, 350],
+        [0.0841, 300]
+      ]
+    },
+    {
+      "kind": "solvus",
+      "phases": ["FCC_PB", "BCT_SN"],
+      "points": [
+        [0.9826, 456],
+        [0.9884, 400],
+        [0.9942, 350],
+        [0.9971, 300]
+      ]
+    },
+    {
+      "kind": "invariant",
+      "phases": ["FCC_PB", "LIQUID", "BCT_SN"],
+      "points": [
+        [0.2905, 456],
+        [0.9826, 456]
+      ]
+    }
+  ],
+  "invariants": [
+    {
+      "kind": "eutectic",
+      "temperature": 456,
+      "phases": ["FCC_PB", "LIQUID", "BCT_SN"],
+      "compositions": [0.2905, 0.7401, 0.9826],
+      "reaction": "LIQUID -> FCC_PB + BCT_SN"
+    }
+  ],
+  "congruent_points": [],
+  "critical_points": [],
+  "unary_transitions": [],
+  "polymorphic_transitions": [],
+  "provenance": {"kind": "sketch", "source": "Pb-Sn Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

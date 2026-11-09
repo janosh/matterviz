@@ -152,8 +152,8 @@
     padding: 6pt 8pt;
     background: var(--surface-bg, transparent);
     /* opaque sticky table cells match the sidebar, not the page */
-    --heatmap-sticky-cell-bg: var(--surface-bg, var(--page-bg, Canvas));
-    --heatmap-header-bg: var(--heatmap-sticky-cell-bg);
+    --table-sticky-cell-bg: var(--surface-bg, var(--page-bg, Canvas));
+    --table-header-bg: var(--table-sticky-cell-bg);
     h4 {
       display: flex;
       align-items: center;

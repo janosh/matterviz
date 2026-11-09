@@ -30,7 +30,7 @@ binplot(db, ["AL", "MG", "VA"], list(db.phases), {
 
 ## Pre-computed Phase Diagrams
 
-The `../binary/` directory contains pre-computed phase diagram JSON files. **These are simplified/approximate representations** created for UI demo purposes only. They illustrate typical phase diagram features but are not thermodynamically rigorous! They omit intermetallic phases (e.g., Al-Mg β/γ, Cu-Zn β/γ/δ/ε).
+The `../binary/` directory contains pre-computed phase diagram JSON files. **These are simplified/approximate representations** created for UI demo purposes only. They illustrate typical phase diagram features but are not thermodynamically rigorous! They omit intermetallic phases (e.g., Al-Mg β/γ).
 
 ## License
 

@@ -183,7 +183,7 @@ Selected computed quantities are available per mode, so the raw numbers can be t
     }
   })
   const mode_columns = [
-    { id: `mode`, label: `Mode`, key: `mode`, color_scale: null, sticky: true },
+    { id: `mode`, label: `Mode`, key: `mode`, color_scale: null, pin: `left` },
     { id: `frequency`, label: `ω (cm⁻¹)`, key: `frequency`, format: `.1f` },
     {
       id: `ir_intensity`,

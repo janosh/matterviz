@@ -1,71 +1,146 @@
 {
-  "meta": {
-    "components": ["Al", "Si"],
-    "temp_range": [300, 1700],
-    "temp_unit": "K",
-    "comp_unit": "mol%",
-    "title": "Al-Si Binary Phase Diagram"
-  },
-  "curves": {
-    "liquidus_left": [[0, 933], [0.05, 900], [0.12, 850]],
-    "liquidus_right": [
-      [0.12, 850],
-      [0.2, 1000],
-      [0.4, 1200],
-      [0.6, 1400],
-      [0.8, 1550],
-      [1, 1687]
-    ],
-    "solidus_al": [[0, 933], [0.01, 880], [0.015, 850]],
-    "solvus_al": [[0.015, 850], [0.01, 700], [0.005, 300]],
-    "eutectic_line": [[0.015, 850], [0.999, 850]]
-  },
+  "format": "binary-phase-diagram/2",
+  "components": ["Al", "Si"],
+  "pressure_pa": 101325,
+  "temperature_range": [300, 1700],
+  "phases": [
+    {"id": "LIQUID", "model_phase": "LIQUID", "label": "L", "kind": "liquid"},
+    {"id": "ALPHA_FCC_AL", "model_phase": "ALPHA_FCC_AL", "label": "α (FCC Al)", "kind": "solid"},
+    {"id": "SI_DIAMOND", "model_phase": "SI_DIAMOND", "label": "Si (diamond)", "kind": "solid"}
+  ],
   "regions": [
     {
-      "id": "liquid",
-      "name": "Liquid",
-      "color": "rgba(135, 206, 250, 0.6)",
-      "bounds": [
-        [0, 1700],
-        [1, 1700],
+      "phases": ["LIQUID"],
+      "vertices": [
+        [0, 933],
+        [0.05, 900],
+        [0.12, 850],
+        [0.2, 1000],
+        [0.4, 1200],
+        [0.6, 1400],
+        [0.8, 1550],
         [1, 1687],
-        "~liquidus_right",
-        "~liquidus_left",
+        [1, 1700],
+        [0, 1700]
+      ]
+    },
+    {
+      "phases": ["ALPHA_FCC_AL"],
+      "vertices": [
+        [0, 300],
+        [0.005, 300],
+        [0.01, 700],
+        [0.015, 850],
+        [0.01, 880],
         [0, 933]
       ]
     },
     {
-      "id": "fcc_al",
-      "name": "α (FCC Al)",
-      "color": "rgba(144, 238, 144, 0.6)",
-      "bounds": [[0, 933], "solidus_al", "solvus_al", [0.005, 300], [0, 300]]
+      "phases": ["SI_DIAMOND"],
+      "vertices": [
+        [0.999, 850],
+        [0.999, 300],
+        [1, 300],
+        [1, 1687]
+      ]
     },
     {
-      "id": "diamond_si",
-      "name": "Si (diamond)",
-      "color": "rgba(173, 216, 230, 0.6)",
-      "bounds": [[1, 1687], [1, 300], [0.999, 300], [0.999, 850], [1, 1687]]
+      "phases": ["ALPHA_FCC_AL", "LIQUID"],
+      "vertices": [
+        [0.01, 880],
+        [0.015, 850],
+        [0.12, 850],
+        [0.05, 900],
+        [0, 933]
+      ]
     },
     {
-      "id": "al_liquid",
-      "name": "FCC + L",
-      "color": "rgba(180, 230, 180, 0.5)",
-      "bounds": [[0, 933], "liquidus_left", [0.12, 850], [0.015, 850], "~solidus_al"]
+      "phases": ["LIQUID", "SI_DIAMOND"],
+      "vertices": [
+        [0.8, 1550],
+        [0.6, 1400],
+        [0.4, 1200],
+        [0.2, 1000],
+        [0.12, 850],
+        [0.999, 850],
+        [1, 1687]
+      ]
     },
     {
-      "id": "si_liquid",
-      "name": "Si + L",
-      "color": "rgba(180, 220, 250, 0.5)",
-      "bounds": [[1, 1687], [0.999, 850], [0.12, 850], "liquidus_right[1:]"]
-    },
-    {
-      "id": "al_si",
-      "name": "FCC + Si",
-      "color": "rgba(255, 235, 156, 0.5)",
-      "bounds": [[0.015, 850], [0.999, 850], [0.999, 300], [0.005, 300], "~solvus_al"]
+      "phases": ["ALPHA_FCC_AL", "SI_DIAMOND"],
+      "vertices": [
+        [0.01, 700],
+        [0.005, 300],
+        [0.999, 300],
+        [0.999, 850],
+        [0.015, 850]
+      ]
     }
   ],
-  "special_points": [
-    { "id": "eutectic", "type": "eutectic", "position": [0.12, 850], "label": "E" }
-  ]
+  "boundaries": [
+    {
+      "kind": "liquidus",
+      "phases": ["ALPHA_FCC_AL", "LIQUID"],
+      "points": [
+        [0, 933],
+        [0.05, 900],
+        [0.12, 850]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "liquidus",
+      "phases": ["LIQUID", "SI_DIAMOND"],
+      "points": [
+        [0.12, 850],
+        [0.2, 1000],
+        [0.4, 1200],
+        [0.6, 1400],
+        [0.8, 1550],
+        [1, 1687]
+      ],
+      "side": "LIQUID"
+    },
+    {
+      "kind": "solidus",
+      "phases": ["ALPHA_FCC_AL", "LIQUID"],
+      "points": [
+        [0, 933],
+        [0.01, 880],
+        [0.015, 850]
+      ],
+      "side": "ALPHA_FCC_AL"
+    },
+    {
+      "kind": "solvus",
+      "phases": ["ALPHA_FCC_AL", "SI_DIAMOND"],
+      "points": [
+        [0.015, 850],
+        [0.01, 700],
+        [0.005, 300]
+      ]
+    },
+    {
+      "kind": "invariant",
+      "phases": ["ALPHA_FCC_AL", "LIQUID", "SI_DIAMOND"],
+      "points": [
+        [0.015, 850],
+        [0.999, 850]
+      ]
+    }
+  ],
+  "invariants": [
+    {
+      "kind": "eutectic",
+      "temperature": 850,
+      "phases": ["ALPHA_FCC_AL", "LIQUID", "SI_DIAMOND"],
+      "compositions": [0.015, 0.12, 0.999],
+      "reaction": "LIQUID -> ALPHA_FCC_AL + SI_DIAMOND"
+    }
+  ],
+  "congruent_points": [],
+  "critical_points": [],
+  "unary_transitions": [],
+  "polymorphic_transitions": [],
+  "provenance": {"kind": "sketch", "source": "Al-Si Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

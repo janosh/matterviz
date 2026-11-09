@@ -49,6 +49,7 @@ const measured: Record<string, number> = {
   '/reciprocal/bands-and-dos': 1.42,
   '/reciprocal/brillouin-bands-dos': 1.5,
   '/reciprocal/brillouin-zone': 1.68,
+  '/reciprocal/electronic-structure': 1.51,
   '/reciprocal/fermi-surface': 1.09,
   '/reciprocal/ir-raman': 1.34,
   '/reciprocal/phonon-mode-explorer': 1.33,

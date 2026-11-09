@@ -25,8 +25,8 @@
     Reset,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import SiteTable from './SiteTable.svelte'
-  import { DOCKED_SCROLL_STYLE, has_site_data } from './site-table'
+  import type SiteTable from './SiteTable.svelte'
+  import { DOCKED_SCROLL_STYLE, has_site_data, load_site_table } from './site-table'
   import DockedSidebar, { SIDEBAR_DOCK_MIN_WIDTH } from '#lib/layout/DockedSidebar.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Toast from 'svelte-widgets/Toast.svelte'
@@ -36,7 +36,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
   import { format_num, parse_warnings_notice } from '#lib/labels.js'
-  import { chain_handlers, is_editable_event_target } from 'svelte-widgets/utils'
+  import { chain_handlers, is_editable_event_target, to_error } from 'svelte-widgets/utils'
   import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'
@@ -1298,6 +1298,26 @@
   )
   // With a docked sidebar or in fullscreen the outer row takes the caller's size, the viewer fills it
   let row_sized = $derived(site_sidebar_shown || fullscreen)
+  // The site table is imported when the sidebar first shows. A failed import (offline, a stale
+  // chunk after a deploy) closes the sidebar and reports why.
+  let SiteTableComponent = $state.raw<typeof SiteTable>()
+  let site_table_loading = false // one import at a time, however often the sidebar toggles
+  let unmounted = false
+  $effect(() => () => (unmounted = true))
+  $effect(() => {
+    if (!site_sidebar_shown || SiteTableComponent || site_table_loading) return
+    site_table_loading = true
+    load_site_table().then(
+      (component) => (SiteTableComponent = component),
+      (exc: unknown) => {
+        site_table_loading = false
+        if (unmounted) return
+        site_sidebar = false
+        error_msg = `Site table failed to load: ${to_error(exc).message}`
+        on_error?.({ error_msg })
+      },
+    )
+  })
 </script>
 
 <div class="structure-fullscreen-root" bind:this={fullscreen_root}>
@@ -1714,7 +1734,7 @@
             <Icon icon={Close} />
           </button>
         {/snippet}
-        <SiteTable
+        <SiteTableComponent
           sites={sidebar_sites}
           bind:selected_atoms={selected_sites}
           bind:hovered_atom={
@@ -1723,6 +1743,9 @@
           export_filename="structure-sites"
           scroll_style={DOCKED_SCROLL_STYLE}
         />
+        {#if !SiteTableComponent}
+          <StatusMessage message="Loading site table…" type="info" style="border: none" />
+        {/if}
       </DockedSidebar>
     {/if}
   </div>

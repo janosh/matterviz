@@ -391,7 +391,7 @@
   <HeatmapTable
     data={table_data}
     columns={table_columns}
-    initial_sort={{ column: `E<sub>hull</sub>`, direction: `asc` }}
+    sort={[{ column: `E<sub>hull</sub>`, dir: `asc` }]}
     virtual
     scroll_style="height: {table_height}; min-height: {table_height}; max-height: var(--hull-stats-max-height, 70vh); max-width: 100%; overflow: auto"
     style="width: 100%"
