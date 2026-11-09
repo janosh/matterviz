@@ -508,11 +508,12 @@ describe(`parse_in_worker`, () => {
   })
 
   // A worker that never started (constructor threw, or errored before its first message)
-  // hands the parse to the main thread, unless the buffer was already posted to it
+  // hands the parse to the main thread; it was never given the buffer, so that parses too
+  const xyz = `1\nH\nH 0 0 0\n`
   it.each([
-    [`constructor throws`, true, `1\nH\nH 0 0 0\n`],
-    [`errors before its first message`, false, `1\nH\nH 0 0 0\n`],
-    [`took the buffer and never started`, false, new TextEncoder().encode(`x`).buffer],
+    [`constructor throws`, true, xyz],
+    [`errors before its first message`, false, xyz],
+    [`was sent a buffer and never started`, false, new TextEncoder().encode(xyz).buffer],
   ])(`a worker that %s`, async (_label, throws, content) => {
     vi.spyOn(console, `warn`).mockImplementation(() => {})
     const worker = make_fake_worker(() => null)
@@ -520,12 +521,12 @@ describe(`parse_in_worker`, () => {
       if (throws) throw new Error(`refused`)
       return worker
     }
-    const options = { worker_factory, owns_content: true }
-    const parsing = parse_in_worker(content, `h.xyz`, false, options)
+    const parsing = parse_in_worker(content, `h.xyz`, false, {
+      worker_factory,
+      owns_content: true,
+    })
     if (!throws) worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
-    if (typeof content === `string`) {
-      expect(await parsing).toEqual(await parse_file_content(content, `h.xyz`))
-    } else await expect(parsing).rejects.toThrow(/Parse worker failed for h.xyz: 404/)
+    expect(await parsing).toEqual(await parse_file_content(xyz, `h.xyz`))
   })
 
   it(`aborting terminates the worker`, async () => {
@@ -537,8 +538,9 @@ describe(`parse_in_worker`, () => {
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
 
-  it(`disables default workers even when their first buffer was detached`, async () => {
+  it(`a default worker that fails to start moves every later parse to the main thread`, async () => {
     vi.resetModules()
+    vi.spyOn(console, `warn`).mockImplementation(() => {})
     const worker = make_fake_worker(() => null)
     // oxlint-disable-next-line prefer-arrow-callback -- Worker must be constructable with new
     const factory = vi.fn(function () {
@@ -547,15 +549,15 @@ describe(`parse_in_worker`, () => {
     vi.stubGlobal(`Worker`, factory)
     const module = await import(`#lib/file-viewer/parse-in-worker.js`)
     const availability = await import(`#lib/worker-client.svelte.js`)
-    const content = new TextEncoder().encode(`1\nH\nH 0 0 0\n`).buffer
+    const content = new TextEncoder().encode(xyz).buffer
     const parsing = module.parse_in_worker(content, `h.xyz`, false, { owns_content: true })
     worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
-    await expect(parsing).rejects.toThrow(`404`)
-    expect(content.detached).toBe(true)
+    await expect(parsing).resolves.toMatchObject({ type: `structure` })
+    expect(content.detached).toBe(false)
     expect(availability.can_create_worker()).toBe(false)
-    await expect(module.parse_in_worker(`1\nH\nH 0 0 0\n`, `next.xyz`)).resolves.toMatchObject(
-      { type: `structure` },
-    )
+    await expect(module.parse_in_worker(xyz, `next.xyz`)).resolves.toMatchObject({
+      type: `structure`,
+    })
     expect(factory).toHaveBeenCalledOnce()
   })
 
@@ -591,7 +593,8 @@ describe(`parse_in_worker`, () => {
     },
   )
 
-  // Ownership alone decides whether bytes may be detached, independently of file size.
+  // Ownership alone decides whether bytes may be detached, independently of file size, once
+  // the worker has started (a fresh one gets a copy, kept for a main-thread retry)
   it.each([
     [`clones by default`, 4, undefined, 0],
     [`transfers a small payload the caller gave up`, 1024, true, 1],
@@ -599,9 +602,12 @@ describe(`parse_in_worker`, () => {
     [`transfers an oversized payload the caller gave up`, 60 * 1024 * 1024, true, 1],
   ])(`%s`, async (_label, size, owns_content, expected_transfers) => {
     const worker = make_fake_worker()
+    const options = { owns_content, worker_factory: () => worker }
+    await parse_with(worker, options, new ArrayBuffer(size), `x.bin`)
+    expect(worker.posted[0].transfer).toHaveLength(0)
     const content = new ArrayBuffer(size)
-    await parse_with(worker, { owns_content }, content, `x.bin`)
-    expect(worker.posted[0].transfer).toHaveLength(expected_transfers)
+    await parse_with(worker, options, content, `x.bin`)
+    expect(worker.posted[1].transfer).toHaveLength(expected_transfers)
     // a cloned buffer stays readable here; a transferred one is detached
     expect(content.byteLength).toBe(expected_transfers === 0 ? size : 0)
   })

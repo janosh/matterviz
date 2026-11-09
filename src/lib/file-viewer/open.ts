@@ -3,7 +3,7 @@ import type { FileLoadCallback, FileLoadMeta } from '#lib/io/index.js'
 import type { ParseProgress, TrajectorySource } from '#lib/trajectory/index.js'
 import { Hdf5GroupSelectionRequiredError } from '#lib/trajectory/parse/h5-utils.js'
 import { basename_from_url, fetch_payload } from '#lib/io/url-drop.js'
-import { parse_in_worker } from './parse-in-worker'
+import { parse_in_worker, ParseWorkerError } from './parse-in-worker'
 import { HostFileError } from './host-protocol'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { to_error } from 'svelte-widgets/utils'
@@ -166,14 +166,17 @@ export async function open_material(
     })
   } catch (error) {
     if (error instanceof Hdf5GroupSelectionRequiredError) throw error
-    throw new MaterialOpenError(
-      to_error(error).message,
-      error instanceof HostFileError ? error.stage : `parse`,
-      parse_provenance,
-      {
-        cause: error,
-      },
-    )
+    // Only a parser rejecting the content is a `parse` failure; a host or parse worker that
+    // failed says nothing about the file
+    const stage =
+      error instanceof HostFileError
+        ? error.stage
+        : error instanceof ParseWorkerError
+          ? `acquire`
+          : `parse`
+    throw new MaterialOpenError(to_error(error).message, stage, parse_provenance, {
+      cause: error,
+    })
   }
   const provenance = Object.freeze({ ...parse_provenance, filename: result.filename })
   let disposed = false

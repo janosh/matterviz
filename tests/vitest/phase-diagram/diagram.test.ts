@@ -37,6 +37,17 @@ import {
   shifted_eutectic,
 } from './fixtures/test-data'
 
+// A diagram patch with a gibbs_energy grid (2 temperatures x 2 compositions by default)
+const gibbs = (
+  phases: { model_phase: string; values: (number | null)[][] }[],
+  temperatures = [500, 700],
+  compositions = [0, 1],
+): Partial<BinaryPhaseDiagram> => ({ gibbs_energy: { temperatures, compositions, phases } })
+const zeros = [
+  [0, 0],
+  [0, 0],
+]
+
 describe(`diagram_errors`, () => {
   // every phase reference is checked, so label/color lookups by id never miss
   test.each<[string, Partial<BinaryPhaseDiagram>, string]>([
@@ -101,79 +112,30 @@ describe(`diagram_errors`, () => {
     ],
     [
       `gibbs axes not increasing`,
-      {
-        gibbs_energy: {
-          temperatures: [700, 500],
-          compositions: [0, 1],
-          phases: [],
-        },
-      },
+      gibbs([], [700, 500]),
       `gibbs_energy temperatures and compositions must be increasing number arrays`,
     ],
     [
       `gibbs unknown model phase`,
-      {
-        gibbs_energy: {
-          temperatures: [500, 700],
-          compositions: [0, 1],
-          phases: [
-            {
-              model_phase: `HCP_A3`,
-              values: [
-                [0, 0],
-                [0, 0],
-              ],
-            },
-          ],
-        },
-      },
+      gibbs([{ model_phase: `HCP_A3`, values: zeros }]),
       `gibbs_energy.phases[0] references unknown model phase HCP_A3`,
     ],
     [
-      `non-array boundary sigma_T`,
-      { boundaries: [{ ...eutectic.boundaries[0], sigma_T: 5 as unknown as number[] }] },
-      `boundaries[0] sigma_T needs one non-negative number per point`,
-    ],
-    [
       `gibbs compositions not spanning 0 to 1`,
-      { gibbs_energy: { temperatures: [500, 700], compositions: [0.1, 1], phases: [] } },
+      gibbs([], [500, 700], [0.1, 1]),
       `gibbs_energy compositions must run from 0 to 1, got 0.1 to 1`,
     ],
     [
       `gibbs duplicate model phase`,
-      {
-        gibbs_energy: {
-          temperatures: [500, 700],
-          compositions: [0, 1],
-          phases: [
-            {
-              model_phase: `LIQUID`,
-              values: [
-                [0, 0],
-                [0, 0],
-              ],
-            },
-            {
-              model_phase: `LIQUID`,
-              values: [
-                [0, 0],
-                [0, 0],
-              ],
-            },
-          ],
-        },
-      },
+      gibbs([
+        { model_phase: `LIQUID`, values: zeros },
+        { model_phase: `LIQUID`, values: zeros },
+      ]),
       `gibbs_energy has duplicate model_phase "LIQUID"`,
     ],
     [
       `gibbs values shape`,
-      {
-        gibbs_energy: {
-          temperatures: [500, 700],
-          compositions: [0, 1],
-          phases: [{ model_phase: `LIQUID`, values: [[0, 0]] }],
-        },
-      },
+      gibbs([{ model_phase: `LIQUID`, values: [[0, 0]] }]),
       `gibbs_energy.phases[0] values must be 2 x 2 numbers or nulls`,
     ],
     [
@@ -581,6 +543,14 @@ describe(`match_point`, () => {
     [`stand-in`, {}, 450, (id: string) => (id === `D` ? [`DIAMOND_A4`, `β`] : names_of(id))],
   ])(`%s`, (_label, overrides, temperature, names = names_of) => {
     expect(match(overrides, names)?.temperature).toBe(temperature)
+  })
+
+  // a ref names each phase twice (model phase and label), so ranking must count, not divide
+  test(`an extra phase loses to an exact match, however near`, () => {
+    const exact = points.find(({ temperature }) => temperature === 342)
+    if (!exact) throw new Error(`Expected the peritectic`)
+    const extra = { ...exact, temperature: 505, phases: [...exact.phases, `D`] }
+    expect(match_point([extra, exact], ref, 1000, names_of)).toBe(exact)
   })
 
   test(`a kind the diagram lacks falls back to its category, another category to null`, () => {

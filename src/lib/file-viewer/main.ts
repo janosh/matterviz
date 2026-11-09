@@ -31,7 +31,6 @@ import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { MaterialOpenError, open_material, type OpenedMaterial } from './open'
-import { ParseWorkerError } from './parse-in-worker'
 import { is_plain_object } from '#lib/utils.js'
 import { escape_html, to_error } from 'svelte-widgets/utils'
 
@@ -407,8 +406,7 @@ const create_error_display = (
   filename: string,
 ): void => {
   // Only a parser that read the file and rejected it earns the format list
-  const { stage, cause } = error instanceof MaterialOpenError ? error : {}
-  const rejected = stage === `parse` && !(cause instanceof ParseWorkerError)
+  const rejected = error instanceof MaterialOpenError && error.stage === `parse`
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
   container.innerHTML = `
@@ -590,7 +588,6 @@ async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
   const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
   if (!file_data?.filename) throw new Error(`No data provided to MatterViz app`)
-  if (!file_data.content) throw new Error(`${file_data.filename} is empty`)
 
   // Where the extension serves the symmetry WASM; fetched only once an analysis needs it, so
   // the first render doesn't wait for it

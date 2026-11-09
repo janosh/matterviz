@@ -267,10 +267,11 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     const markers = [...wrapper.querySelectorAll(`.special-point-marker`)]
     expect(markers.map((el) => [el.tagName, el.getAttribute(`data-category`)])).toEqual([
       [`circle`, `invariant`],
-      [`path`, `congruent`],
-      [`circle`, `critical`],
+      [`path`, `congruent`], // diamond
+      [`path`, `critical`], // triangle, filled like the rest so its legend swatch shows
       [`circle`, `unary`],
     ])
+    expect(new Set(markers.map((el) => el.getAttribute(`fill`)))).toEqual(new Set([`#d32f2f`]))
     expect(wrapper.querySelector(`.special-points`)?.textContent).toContain(`Tₘ(Cu)`)
   })
 
@@ -870,7 +871,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 
 // === Benchmark views: predictions, highlight, marked-point legend, isopleth, lens, σ bands,
 // several overlays ===
-describe(`IsobaricBinaryPhaseDiagram benchmark views`, () => {
+describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
   const predictions = [
     { id: `Al-Cu:eutectic`, T_K: 450, x: [0.5, null, 0.95], pass: false },
     { id: `Cu:melting`, T_K: 905, pass: true }, // 5 K (1.6 px): shorter than a head, no arrow
@@ -1087,28 +1088,51 @@ describe(`IsobaricBinaryPhaseDiagram benchmark views`, () => {
     expect(line_x).toBeCloseTo(narrow_x(0.6), 9)
     await shift_click_at(0.6)
     expect(own.querySelector(`.isopleth`)).toBeNull()
+    // key i sets it at the cursor's composition (the plot still spans its full width here)
+    await hover_at(own, 0.3, 300)
+    own.dispatchEvent(keydown(`i`))
+    await tick()
+    expect(Number(own.querySelector(`.isopleth-line`)?.getAttribute(`x1`))).toBeCloseTo(
+      narrow_x(0.3),
+      9,
+    )
+    // a boundaries-only diagram has no fractions, so no strip takes room from its plot
+    document.body.innerHTML = ``
+    const bare = await mount_diagram({ data: { ...eutectic, regions: [] }, isopleth: 0.3 })
+    expect(bare.querySelector(`.isopleth`)).toBeNull()
+    expect(Number(bare.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(
+      right - left,
+    )
   })
 
-  test(`m toggles a lens that magnifies the plot layers around the pointer`, async () => {
-    const wrapper = await mount_diagram({ observations })
+  // m toggles a lens showing the plot layers 4x about the pointer; marks in it keep their size
+  // and shape at magnified positions, and hidden marked points stay hidden there
+  test.each([true, false])(`lens (marked points shown: %s)`, async (show_special_points) => {
+    const data = {
+      ...eutectic,
+      congruent_points: [{ temperature: 515, composition: 0.45, phases: [`LIQUID`, `A`] }],
+    }
+    const wrapper = await mount_diagram({ data, observations, show_special_points })
     wrapper.dispatchEvent(keydown(`m`))
     await tick()
-    await hover_at(wrapper, 0.45, 520)
-    const use = wrapper.querySelector(`.lens use`)
+    // 10 px left of the eutectic's liquid marker at (0.45, 520 K): it lands 40 px right
+    const marker = to_client(0.45, 520)
+    const pointer = { clientX: marker.clientX - 10, clientY: marker.clientY }
+    plot_svg(wrapper).dispatchEvent(
+      new PointerEvent(`pointermove`, { ...pointer, bubbles: true }),
+    )
+    await tick()
     const layers_id = wrapper.querySelector(`g[id$="-layers"]`)?.id
-    expect(use?.getAttribute(`href`)).toBe(`#${layers_id}`)
-    // markers in the lens keep their size at magnified positions: the hovered one is its centre
-    const lens_markers = [...wrapper.querySelectorAll(`.lens > g circle`)]
-    const { clientX, clientY } = to_client(0.45, 520)
-    expect(
-      lens_markers.some(
-        (el) =>
-          Math.hypot(
-            Number(el.getAttribute(`cx`)) - clientX,
-            Number(el.getAttribute(`cy`)) - clientY,
-          ) < 1e-9,
-      ),
-    ).toBe(true)
+    expect(wrapper.querySelector(`.lens use`)?.getAttribute(`href`)).toBe(`#${layers_id}`)
+    expect(wrapper.querySelector(`.lens [transform]`)?.getAttribute(`transform`)).toBe(
+      `translate(${pointer.clientX * -3}, ${pointer.clientY * -3}) scale(4)`,
+    )
+    const lens_markers = [...wrapper.querySelectorAll(`.lens .observation-marker`)]
+    expect(lens_markers).toHaveLength(4)
+    expect(Number(lens_markers[0].getAttribute(`cx`))).toBeCloseTo(pointer.clientX + 40, 9)
+    expect(lens_markers[0].getAttribute(`r`)).toBe(`4.5`)
+    const lens_point = wrapper.querySelector(`.lens [data-category="congruent"]`)
+    expect(lens_point?.tagName ?? null).toBe(show_special_points ? `path` : null)
     wrapper.dispatchEvent(keydown(`m`))
     await tick()
     expect(wrapper.querySelector(`.lens`)).toBeNull()
@@ -1149,25 +1173,26 @@ describe(`IsobaricBinaryPhaseDiagram benchmark views`, () => {
       [`#e6007e`, `7,4`],
       [`#ef6c00`, `3,3`],
     ])
-    // the tooltip names each overlay's phase set at the cursor (L below 600 K in both)
+    // the tooltip names each overlay's phase set at the cursor (α + β below 600 K in both)
     await hover_at(wrapper, 0.5, 550)
     expect(tooltip_text(wrapper)).toMatch(
       /Model: test-model α \+ β\s*Model: other-model α \+ β/,
     )
     await legend_click(wrapper, `other-model`)
     expect(strokes()).toEqual([[`#e6007e`, `7,4`]])
-    // the hatch compares with the first shown overlay only
     expect(wrapper.querySelector(`path.disagreement`)).not.toBeNull()
-  })
-})
-
-describe(`IsobaricBinaryPhaseDiagram review regressions`, () => {
-  test(`a boundaries-only diagram reserves no isopleth strip`, async () => {
-    const wrapper = await mount_diagram({ data: { ...eutectic, regions: [] }, isopleth: 0.3 })
-    expect(Number(wrapper.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(
-      right - left,
+    // the hatch compares with the first valid overlay, even while its lines are hidden; the
+    // tooltip then names only the shown one
+    await legend_click(wrapper, `other-model`)
+    await legend_click(wrapper, `Model: test-model`)
+    expect(strokes()).toEqual([[`#ef6c00`, `3,3`]])
+    const labels = [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)].map(
+      (item) => item.textContent?.trim(),
     )
-    expect(wrapper.querySelector(`.isopleth`)).toBeNull()
+    expect(labels).toContain(`Phases differ from Model: test-model (10% of area)`)
+    await hover_at(wrapper, 0.5, 550)
+    expect(tooltip_text(wrapper)).toMatch(/Model: other-model α \+ β/)
+    expect(tooltip_text(wrapper)).not.toMatch(/Model: test-model α/)
   })
 
   // a partner diagram's highlight survives this diagram dropping its own mark
@@ -1204,47 +1229,5 @@ describe(`IsobaricBinaryPhaseDiagram review regressions`, () => {
     const label = wrapper.querySelector(`.special-points text`)
     expect(label?.getAttribute(`text-anchor`)).toBe(`start`)
     expect(Number(label?.getAttribute(`x`))).toBeGreaterThanOrEqual(left)
-  })
-
-  test(`the lens magnifies marker positions about the pointer`, async () => {
-    const wrapper = await mount_diagram({ observations, lens: true })
-    // 10 px left of the eutectic's liquid marker at (0.45, 520 K): it lands 40 px right
-    const marker = to_client(0.45, 520)
-    const pointer = { clientX: marker.clientX - 10, clientY: marker.clientY }
-    plot_svg(wrapper).dispatchEvent(
-      new PointerEvent(`pointermove`, { ...pointer, bubbles: true }),
-    )
-    await tick()
-    expect(wrapper.querySelector(`.lens [transform]`)?.getAttribute(`transform`)).toBe(
-      `translate(${pointer.clientX * -3}, ${pointer.clientY * -3}) scale(4)`,
-    )
-    const lens_x = [...wrapper.querySelectorAll(`.lens > g circle`)].map((el) =>
-      Number(el.getAttribute(`cx`)),
-    )
-    expect(lens_x.some((x_val) => Math.abs(x_val - (pointer.clientX + 40)) < 1e-9)).toBe(true)
-  })
-
-  test(`the lens draws no marked points while they are hidden`, async () => {
-    const wrapper = await mount_diagram({ lens: true, show_special_points: false })
-    await hover_at(wrapper, 0.5, 505)
-    expect(wrapper.querySelectorAll(`.lens > g circle`)).toHaveLength(0)
-  })
-
-  // the hatch compares with the first overlay even while its lines are hidden
-  test(`hiding the first overlay keeps the hatch target`, async () => {
-    const second: BinaryPhaseDiagram = {
-      ...eutectic,
-      provenance: { kind: `model`, model: `other-model` },
-    }
-    const wrapper = await mount_diagram({ overlays: [shifted_eutectic, second] })
-    await legend_click(wrapper, `Model: test-model`)
-    const labels = [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)].map(
-      (item) => item.textContent?.trim(),
-    )
-    expect(labels).toContain(`Phases differ from Model: test-model (10% of area)`)
-    // the tooltip names the remaining overlay, not the hidden one
-    await hover_at(wrapper, 0.5, 550)
-    expect(tooltip_text(wrapper)).toMatch(/Model: other-model L/)
-    expect(tooltip_text(wrapper)).not.toMatch(/Model: test-model α/)
   })
 })

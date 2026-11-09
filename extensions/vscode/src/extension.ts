@@ -557,12 +557,8 @@ const dispose_run = (file_path: string): void => {
 
 const load_run = (file_path: string): Promise<TrajectoryRun> => {
   const loading = (async () => {
-    const indexed = await read_indexed_trajectory_file(
-      file_path,
-      path.basename(file_path),
-    ).catch((error: unknown) => {
-      throw new HostFileError(to_error(error).message, `acquire`)
-    })
+    // a read failure goes out without a stage, which the webview takes as `acquire`
+    const indexed = await read_indexed_trajectory_file(file_path, path.basename(file_path))
     // index_above_bytes: 0 forces the lazily decoded run regardless of the user setting
     return open_trajectory(indexed.data, {
       filename: indexed.filename,

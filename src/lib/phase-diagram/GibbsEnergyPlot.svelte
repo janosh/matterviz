@@ -12,7 +12,7 @@
   import type { BinaryPhaseDiagram, CompUnit, DiagramCursor, TempUnit } from './types'
   import { format_composition, format_temperature, generate_boundary_path } from './utils'
 
-  let {
+  const {
     data,
     cursor = null,
     temperature = null,
@@ -35,33 +35,22 @@
   const pad = { t: 22, r: 12, b: 34, l: 52 }
 
   const grid = $derived(data.gibbs_energy)
-  // Per model phase: the diagram's pastel fill of its first composition set, darkened to read
-  // as a line on a light background, and its name
-  const colors = $derived.by(() => {
+  // Per model phase: its first composition set's pastel fill, darkened to read as a line,
+  // and its label (the model phase's name where several composition sets share it)
+  const style_of = $derived.by(() => {
     const fills = phase_colors(data.phases, phase_color_keys)
-    const by_model = new Map<string, string>()
-    for (const { id, model_phase } of data.phases) {
-      if (!by_model.has(model_phase)) {
-        by_model.set(
-          model_phase,
-          hsl(fills.get(id) ?? `gray`)
+    const groups = Map.groupBy(data.phases, ({ model_phase }) => model_phase)
+    return new Map(
+      [...groups].map(([model_phase, [first, ...others]]) => [
+        model_phase,
+        {
+          color: hsl(fills.get(first.id) ?? ``)
             .darker(0.9)
             .formatHex(),
-        )
-      }
-    }
-    return by_model
-  })
-  // a model phase with one composition set is named by its label, else by the model phase
-  const label_of = $derived.by(() => {
-    const labels = new Map<string, string[]>()
-    for (const { model_phase, label } of data.phases) {
-      labels.set(model_phase, [...(labels.get(model_phase) ?? []), label])
-    }
-    return (model_phase: string) => {
-      const names = labels.get(model_phase) ?? []
-      return names.length === 1 ? names[0] : model_phase
-    }
+          label: others.length ? model_phase : first.label,
+        },
+      ]),
+    )
   })
   const t_value = $derived(cursor?.temperature ?? temperature)
 
@@ -155,7 +144,7 @@
       <g clip-path="url(#{clip_id})">
         <line x1={pad.l} x2={width - pad.r} y1={y_scale(0)} y2={y_scale(0)} class="zero" />
         {#each view.curves as { id, points } (id)}
-          {@const color = colors.get(id) ?? `gray`}
+          {@const { color, label } = style_of.get(id) ?? { color: ``, label: id }}
           {#if points.length === 1}
             <circle
               cx={x_scale(points[0][0])}
@@ -165,7 +154,7 @@
             />
           {:else}
             <path d={path_of(points)} stroke={color} class="curve">
-              <title>{label_of(id)}</title>
+              <title>{label}</title>
             </path>
           {/if}
         {/each}
@@ -215,10 +204,10 @@
             y={y_val - 4}
             width="12"
             height="3"
-            fill={colors.get(id)}
+            fill={style_of.get(id)?.color}
           />
           <text x={width - pad.r - 16} y={y_val} text-anchor="end" dominant-baseline="middle">
-            {label_of(id)}
+            {style_of.get(id)?.label}
           </text>
         {/each}
       </g>

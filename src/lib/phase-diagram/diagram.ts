@@ -295,7 +295,7 @@ function gibbs_errors(grid: unknown, model_phases: Set<unknown>): string[] {
   }
   // ΔG_mix subtracts the line joining the hull's ends, so the grid spans both pure components
   const comps = compositions as number[]
-  if (comps[0] !== 0 || comps.at(-1) !== 1 || !comps.every(in_unit)) {
+  if (comps[0] !== 0 || comps.at(-1) !== 1) {
     return [`${where} compositions must run from 0 to 1, got ${comps[0]} to ${comps.at(-1)}`]
   }
   if (!Array.isArray(phases)) return [`${where} phases must be an array`]
@@ -530,23 +530,26 @@ export function match_point(
   names_of: (id: string) => readonly string[],
 ): DiagramPoint | null {
   const wanted = new Set(phases)
-  // shared phases over the larger phase count, so extra or missing phases both cost
-  const overlap = (point: DiagramPoint) => {
-    if (!wanted.size) return 0
-    const shared = point.phases.filter((id) => names_of(id).some((name) => wanted.has(name)))
-    return shared.length / Math.max(point.phases.length, phases.length)
-  }
+  // most shared phases first, then fewest extra ones (counts, since a ref names each phase
+  // by model phase and label)
   const ranked = points
     .filter((point) => point.category === category)
-    .map((point) => ({
-      point,
-      overlap: overlap(point),
-      same_kind: point.kind === kind ? 1 : 0,
-      dist: Math.hypot(point.composition - x_ref, (point.temperature - t_ref) / t_span),
-    }))
+    .map((point) => {
+      const shared = point.phases.filter((id) =>
+        names_of(id).some((name) => wanted.has(name)),
+      ).length
+      return {
+        point,
+        shared,
+        extra: point.phases.length - shared,
+        same_kind: point.kind === kind ? 1 : 0,
+        dist: Math.hypot(point.composition - x_ref, (point.temperature - t_ref) / t_span),
+      }
+    })
     .toSorted(
       (rank_a, rank_b) =>
-        rank_b.overlap - rank_a.overlap ||
+        rank_b.shared - rank_a.shared ||
+        rank_a.extra - rank_b.extra ||
         rank_b.same_kind - rank_a.same_kind ||
         rank_a.dist - rank_b.dist,
     )

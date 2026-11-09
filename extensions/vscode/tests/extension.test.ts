@@ -591,9 +591,9 @@ describe(`MatterViz Extension`, () => {
       expect.objectContaining({
         request_id: `first`,
         error: `disk hiccup`,
-        error_stage: `acquire`,
       }),
     )
+    expect(mock_webview.postMessage.mock.lastCall?.[0]).not.toHaveProperty(`error_stage`)
     expect(active_runs.has(file_path)).toBe(false)
     mock_vscode.workspace.fs.readFile.mockResolvedValueOnce(
       new TextEncoder().encode(`1\n\nH 0 0 0\n`),

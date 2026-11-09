@@ -17,7 +17,6 @@ export interface ParseWorkerRequest {
 
 export interface ParseWorkerResponse {
   id: number
-  ready?: true // posted once on load, so a crash can be told from a worker that never started
   result?: WireParseResult
   error?: string
   progress?: ParseProgress

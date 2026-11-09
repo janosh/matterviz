@@ -201,10 +201,7 @@ export interface DiagramHighlight {
   point?: PointRef | null
 }
 
-// A marked point by meaning: each diagram lights its own point of this category that best
-// shares its phases, then its kind, then lies nearest to `at`. So a model's eutectic 100 K
-// off still pairs with the reference's, a misjudged reaction type (peritectic for eutectic)
-// pairs through its phases, and of two eutectics the one with the same phases wins.
+// A marked point by meaning, so each diagram can light its own counterpart (see match_point)
 export interface PointRef {
   category: DiagramPoint[`category`]
   kind: string // DiagramPoint.kind, e.g. `eutectic`, `melting`

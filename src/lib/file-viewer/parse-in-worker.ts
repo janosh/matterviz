@@ -180,7 +180,6 @@ const parse_file_worker = async (
     load_options,
     replica,
   }
-  const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
   return new Promise<WorkerParseResult>((resolve, reject) => {
     let host: ParseWorkerHost
     try {
@@ -188,6 +187,10 @@ const parse_file_worker = async (
     } catch (error) {
       return reject(new ParseWorkerError(to_error(error).message, false))
     }
+    // Only a started worker gets the buffer itself: one that fails to start must leave it for
+    // the main-thread retry
+    const transfer =
+      owns_content && host.started && content instanceof ArrayBuffer ? [content] : []
     const settle = (outcome: WorkerParseResult | Error): void => {
       if (!host.pending.delete(request.id)) return
       signal?.removeEventListener(`abort`, abort)
@@ -481,16 +484,13 @@ const parse_with_worker = async (
   return result
 }
 
-// A worker that never started parses nothing on this page: parse here instead, unless the
-// content was already handed to it
+// A worker that never started parses nothing on this page: parse here instead
 export const parse_in_worker = (
   ...[content, filename, is_base64, options = {}]: Parameters<typeof parse_with_worker>
 ): Promise<ParseResult> =>
   parse_with_worker(content, filename, is_base64, options).catch((error: unknown) => {
-    const detached = content instanceof ArrayBuffer && content.detached
     if (!(error instanceof ParseWorkerError) || error.started) throw error
     disable_workers()
-    if (detached) throw error
     console.warn(`${error.message}, parsing ${filename} on the main thread`)
     return parse_with_worker(content, filename, is_base64, {
       ...options,

@@ -89,7 +89,8 @@ export const handle_parse_worker_request = async (
   }
 }
 
-self.postMessage({ id: -1, ready: true } satisfies ParseWorkerResponse)
+// Any first message marks the worker started, so a later crash isn't taken for a load failure
+self.postMessage({ id: -1 } satisfies ParseWorkerResponse)
 
 self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
   const { id: identifier } = event.data

@@ -60,7 +60,8 @@
       const overlay_label_of = phase_labeler(overlay)
       return [
         {
-          name: diagram_name(overlay),
+          // named like the copied text: `Overlay` alone, each overlay's name among several
+          name: overlays.length > 1 ? diagram_name(overlay) : `Overlay`,
           label: region_label(hit.region, overlay_label_of),
           lever: hit.lever_rule && lever_rule_rows(hit.lever_rule, overlay_label_of),
         },
@@ -258,7 +259,7 @@
         </dd>
       {/if}
       {#each overlay_rows as { name, label }, idx (idx)}
-        <dt>{overlays.length > 1 ? name : `Overlay`}</dt>
+        <dt>{name}</dt>
         <dd class="overlay-phase">{@html html_label(label)}</dd>
       {/each}
       {#each matches as [phase, target], idx (idx)}
@@ -295,7 +296,7 @@
     {#each overlay_rows as { name, lever }, row_idx (row_idx)}
       {#if lever}
         <div class="overlay-lever">
-          {overlays.length > 1 ? name : `Overlay`} lever rule:
+          {name} lever rule:
           {#each lever as [phase, fraction, location], idx (idx)}
             {idx ? ` / ` : ``}{@html html_label(phase)}
             {format_num(fraction * 100, `.0f`)}% at {format_composition(location, comp_unit)}
@@ -319,7 +320,12 @@
       {@const caption = provenance_caption(diagram)}
       {#if caption}
         <footer class="provenance">
-          {#if shown_overlays.length}<strong>{idx ? diagram_name(diagram) : `Main`}:</strong
+          {#if shown_overlays.length}<strong
+              >{idx
+                ? overlays.length > 1
+                  ? diagram_name(diagram)
+                  : `Overlay`
+                : `Main`}:</strong
             >{/if}
           {caption}
         </footer>

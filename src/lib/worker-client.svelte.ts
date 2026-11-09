@@ -58,8 +58,9 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   release: () => void
 }
 
-// Where Worker is missing (SSR) or a host called disable_workers, jobs run on the main thread;
-// a worker that can be constructed but then fails still rejects its requests
+// Where Worker is missing (SSR) or a host called disable_workers (also done when the parse
+// worker fails to start), jobs run on the main thread; a worker that can be constructed but
+// then fails mid-job still rejects its requests
 let workers_disabled = false
 // For hosts that can't load bundled worker files (file://, a CSP refusing blob: workers):
 // call once at startup to run every job on the main thread

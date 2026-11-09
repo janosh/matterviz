@@ -8,7 +8,8 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { format_num, humanize } from '#lib/labels.js'
+  import { type D3SymbolName, format_num, humanize, symbol_map } from '#lib/labels.js'
+  import { symbol } from 'd3-shape'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import { sanitize_html, sanitize_svg } from '#lib/sanitize.js'
@@ -143,7 +144,7 @@
     ExportProps & {
       data?: BinaryPhaseDiagram
       // Diagrams of the same components drawn as dashed boundaries only, each in its own
-      // color and dash. Where the first shown one disagrees on the phase set is hatched.
+      // color and dash. Where the first valid one disagrees on the phase set is hatched.
       overlays?: readonly BinaryPhaseDiagram[]
       // Model phases that take palette slots besides this diagram's own: give every diagram
       // of a comparison the same keys (model_phase_keys of all of them) so shared phases
@@ -184,7 +185,7 @@
       show_observations?: boolean
       // Bands of boundary and marked-point sigma_T
       show_uncertainty?: boolean
-      // Hatching where the first shown overlay has a different phase set
+      // Hatching where the first valid overlay (even while hidden) has a different phase set
       show_disagreement?: boolean
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
@@ -255,7 +256,6 @@
       show_overlay && !hidden_overlays.has(overlay) ? overlay : null,
     ),
   )
-  const shown_overlays = $derived(overlay_slots.filter((overlay) => overlay !== null))
   const input_error = $derived.by(() => {
     if (drop_error) return drop_error
     if (data_errors.length) return `Invalid phase diagram data: ${data_errors.join(`; `)}`
@@ -398,18 +398,9 @@
   // would cover an already placed label or a marked point. Narrow strips in dense diagrams
   // (Fe-Fe3C's δ fields) lose their label this way; the tooltip still names every region.
   const shown_label_idxs = $derived.by(() => {
-    const { font_size, special_point_radius } = merged_config
-    const reach = special_point_radius + 4
+    const { font_size } = merged_config
     const placed: Box[] = show_special_points
-      ? [
-          ...transformed_points.map(({ svg_x, svg_y }): Box => [
-            svg_x - reach,
-            svg_y - reach,
-            svg_x + reach,
-            svg_y + reach,
-          ]),
-          ...point_labels.map(({ box }) => box),
-        ]
+      ? [...marker_boxes, ...point_labels.map(({ box }) => box)]
       : []
     const shown = new Set<number>()
     const order = transformed_regions
@@ -452,11 +443,22 @@
       .filter(({ category }) => !hidden_categories.has(category))
       .map((point) => ({
         ...point,
+        src: point, // the diagram_points entry, for identity checks (lit_point)
         svg_x: x_scale(point.composition),
         svg_y: y_scale(point.temperature),
       }))
       .filter(({ svg_x, svg_y }) => in_plot(svg_x, svg_y)),
   )
+  // Each drawn marker's box, which labels avoid
+  const marker_boxes = $derived.by(() => {
+    const reach = merged_config.special_point_radius + 2
+    return transformed_points.map(({ svg_x, svg_y }): Box => [
+      svg_x - reach,
+      svg_y - reach,
+      svg_x + reach,
+      svg_y + reach,
+    ])
+  })
   // The point highlight.point names: matched among all of this diagram's points (not just
   // the drawn ones), so zooming never re-pairs it
   const lit_point = $derived.by(() => {
@@ -478,12 +480,6 @@
   const point_labels = $derived.by(() => {
     const { font_size, special_point_radius: radius } = merged_config
     const reach = radius + 2
-    const markers: Box[] = transformed_points.map(({ svg_x, svg_y }) => [
-      svg_x - reach,
-      svg_y - reach,
-      svg_x + reach,
-      svg_y + reach,
-    ])
     const placed: Box[] = []
     return transformed_points.flatMap((point) => {
       const { svg_x, svg_y, marker_label } = point
@@ -516,7 +512,7 @@
       }
       const fits = (box: Box) =>
         box[0] >= left && box[2] <= right && box[1] >= top && box[3] <= bottom
-      const obstacles = [...markers, ...placed]
+      const obstacles = [...marker_boxes, ...placed]
       const spot =
         spots.find((candidate) => {
           const box = box_of(candidate)
@@ -539,11 +535,10 @@
   const hidden_groups = new SvelteSet<string>()
   const all_markers = $derived(observation_markers(observations, data.components, predictions))
   // fixed legend order: verdicts, then statuses as they first appear
-  const marker_groups = $derived(
-    [...new Set([`pass`, `fail`, ...all_markers.map(marker_group)])].filter((group) =>
-      all_markers.some((marker) => marker_group(marker) === group),
-    ),
-  )
+  const marker_groups = $derived.by(() => {
+    const present = new Set(all_markers.map(marker_group))
+    return [...new Set([`pass`, `fail`, ...present])].filter((group) => present.has(group))
+  })
   const shown_markers = $derived(
     show_observations
       ? all_markers.flatMap((marker) => {
@@ -601,10 +596,9 @@
       : [],
   )
 
-  // Hatched isotherm strips where the first overlay names other model phases, one row per
-  // 3 px of plot height (recomputed on zoom or resize, not on hover). Computed while hidden
-  // too, so the legend can still offer the toggle. The legend's share is taken on a fixed
-  // grid over both diagrams' T range, so it doesn't change with zoom or plot size.
+  // Hatched isotherm strips where the first valid overlay (even while its lines are hidden)
+  // names other model phases, one row per 3 px of plot height, recomputed on zoom or resize,
+  // not on hover. The legend's share uses a fixed T grid, so zoom and plot size don't move it.
   const DISAGREEMENT_ROW_PX = 3
   const disagreement_target = $derived(
     valid_overlays[0]?.regions.length && data.regions.length ? valid_overlays[0] : null,
@@ -618,27 +612,43 @@
     )
     return phase_disagreement(data, disagreement_target, temps).fraction
   })
-  const disagreement = $derived.by(() => {
+  const disagreement_path = $derived.by(() => {
     const other = disagreement_target
-    if (!other) return null
+    if (!show_disagreement || !other) return ``
     const n_rows = Math.max(1, Math.floor(plot_height / DISAGREEMENT_ROW_PX))
     const temps = Array.from({ length: n_rows }, (_, idx) =>
       y_scale.invert(bottom - (idx + 0.5) * DISAGREEMENT_ROW_PX),
     )
     const { segments } = phase_disagreement(data, other, temps)
     const half = DISAGREEMENT_ROW_PX / 2
-    const path = segments
+    return segments
       .map(([temp, x_start, x_end]) => {
         const [x_0, x_1] = [x_scale(x_start), x_scale(x_end)]
         return `M${x_0},${y_scale(temp) - half}h${x_1 - x_0}v${DISAGREEMENT_ROW_PX}h${x_0 - x_1}z`
       })
       .join(``)
-    return { path, other }
   })
 
   // Legend series: 0 the diagram, 1.. its overlays, then point categories, observation
   // groups and the disagreement hatch
   const UNLABELLED_CATEGORIES = [`congruent`, `critical`, `polymorphic`] as const
+  // d3 symbol paths (centred on 0, 0) of the non-circle point markers
+  const symbol_paths = $derived(
+    Object.fromEntries(
+      [`Diamond`, `Triangle`].map((name) => [
+        name,
+        symbol(symbol_map[name as D3SymbolName], 1.4 * Math.PI * marker_radius ** 2)(),
+      ]),
+    ),
+  )
+  // Marker shape per point category, in the plot, the lens and the legend
+  const POINT_SYMBOLS = {
+    invariant: `Circle`,
+    unary: `Circle`,
+    polymorphic: `Circle`,
+    congruent: `Diamond`,
+    critical: `Triangle`,
+  } as const satisfies Record<DiagramPoint[`category`], D3SymbolName>
   const legend_categories = $derived(
     UNLABELLED_CATEGORIES.filter((category) =>
       special_points.some((point) => point.category === category),
@@ -681,10 +691,7 @@
         {
           label: `${humanize(category)} point`,
           visible: show_special_points && !hidden_categories.has(category),
-          display_style: {
-            symbol_type: category === `congruent` ? `Diamond` : `Circle`,
-            symbol_color: category === `critical` ? `white` : point_color,
-          },
+          display_style: { symbol_type: POINT_SYMBOLS[category], symbol_color: point_color },
         },
         { kind: `category`, category },
       ]),
@@ -697,10 +704,10 @@
         { kind: `group`, group },
       ]),
     ]
-    if (disagreement) {
+    if (disagreement_target) {
       entries.push([
         {
-          label: `Phases differ from ${diagram_name(disagreement.other)} (${format_num(disagreement_share ?? 0, `.0%`)} of area)`,
+          label: `Phases differ from ${diagram_name(disagreement_target)} (${format_num(disagreement_share ?? 0, `.0%`)} of area)`,
           visible: show_disagreement,
           item_type: `fill`,
           display_style: { fill_color: DISAGREEMENT_COLOR, fill_opacity: 0.5 },
@@ -727,8 +734,8 @@
   // legend_items, so a legend toggle doesn't re-sample every boundary)
   const boundary_samples = $derived(
     has_legend
-      ? [data, ...shown_overlays].flatMap(({ boundaries }) =>
-          boundaries.flatMap(({ points }) => sample_boundary(points)),
+      ? [data, ...overlay_slots].flatMap((diagram) =>
+          (diagram?.boundaries ?? []).flatMap(({ points }) => sample_boundary(points)),
         )
       : [],
   )
@@ -837,13 +844,18 @@
 
   // Shift+click sets the isopleth at the pointer's composition, or clears it on the line
   // The strip's room rescales x, so the hover (tooltip, tie line) is dropped until the next move
+  function set_isopleth(composition: number | null) {
+    if (!regions.length) return
+    isopleth = composition
+    clear_hover()
+  }
+  // Shift+click sets the isopleth at the pointer's composition, or clears it on the line
   function handle_click(event: { shiftKey: boolean }) {
     if (!event.shiftKey) return pin.toggle(hover_info)
-    if (!hover_info || !regions.length) return
+    if (!hover_info) return
     const near_line =
       isopleth !== null && Math.abs(x_scale(isopleth) - x_scale(hover_info.composition)) < 4
-    isopleth = near_line ? null : hover_info.composition
-    clear_hover()
+    set_isopleth(near_line ? null : hover_info.composition)
   }
 
   const effective_hover_info = $derived(pin.shown(hover_info))
@@ -885,34 +897,15 @@
     if (!lens || !lens_center) return null
     const [cx, cy] = lens_center
     const { zoom, radius } = LENS
-    const magnify = (svg_x: number, svg_y: number): Vec2 | null => {
-      const [x_val, y_val] = [cx + (svg_x - cx) * zoom, cy + (svg_y - cy) * zoom]
-      return Math.hypot(x_val - cx, y_val - cy) < radius ? [x_val, y_val] : null
-    }
-    return {
-      cx,
-      cy,
-      radius,
-      transform: `translate(${cx * (1 - zoom)}, ${cy * (1 - zoom)}) scale(${zoom})`,
-      points: show_special_points
-        ? transformed_points.flatMap((point) => {
-            const at = magnify(point.svg_x, point.svg_y)
-            return at ? [{ at, category: point.category }] : []
-          })
-        : [],
-      // the tie line runs through the lens centre: redrawn there at magnified ends
-      tie: tie_line && {
-        ends: tie_line.endpoints.map(({ cx: x_val, cy: y_val, color }) => ({
-          at: [cx + (x_val - cx) * zoom, cy + (y_val - cy) * zoom] as Vec2,
-          color,
-        })),
-      },
-      markers: shown_markers.flatMap(({ svg_x, svg_y, color }) => {
-        const at = magnify(svg_x, svg_y)
-        return at ? [{ at, color }] : []
-      }),
-    }
+    // marks drawn in the lens keep their size at magnified positions; the clip hides the rest
+    const project = (svg_x: number, svg_y: number): Vec2 => [
+      cx + (svg_x - cx) * zoom,
+      cy + (svg_y - cy) * zoom,
+    ]
+    const transform = `translate(${cx * (1 - zoom)}, ${cy * (1 - zoom)}) scale(${zoom})`
+    return { cx, cy, radius, transform, project }
   })
+  const identity = (svg_x: number, svg_y: number): Vec2 => [svg_x, svg_y]
 
   // === Isopleth ===
   // Phase fractions at the isopleth's composition stacked left to right in a strip right of
@@ -1075,7 +1068,7 @@
       lens = !lens
     },
     i: () => {
-      if (regions.length) isopleth = isopleth === null && cursor ? cursor.composition : null
+      set_isopleth(isopleth === null && cursor ? cursor.composition : null)
     },
     Escape: pin.unpin,
   }))
@@ -1098,6 +1091,115 @@
   )
   const marker_radius = $derived(merged_config.special_point_radius)
 </script>
+
+{#snippet error_bar(low: number, high: number, at: number, vertical: boolean, color: string)}
+  {@const scale = vertical ? y_scale : x_scale}
+  <path
+    class="error-bar"
+    d={error_bar_path([scale(low), scale(high)], at, vertical, error_bar_cap)}
+    stroke={color}
+    fill="none"
+  />
+{/snippet}
+
+<!-- Marks redrawn in the lens at magnified positions: marked points, observations, tie line -->
+{#snippet point_marker(
+  category: DiagramPoint[`category`],
+  [x_val, y_val]: Vec2,
+  hovered = false,
+  lit = false,
+)}
+  {@const fill = merged_config.colors.special_point}
+  {@const shape = POINT_SYMBOLS[category]}
+  {#if shape === `Circle`}
+    <circle
+      cx={x_val}
+      cy={y_val}
+      r={marker_radius}
+      {fill}
+      stroke="white"
+      stroke-width={1.5}
+      class="special-point-marker"
+      class:hovered
+      class:lit
+      data-category={category}
+    />
+  {:else}
+    <path
+      d={symbol_paths[shape]}
+      transform="translate({x_val}, {y_val})"
+      {fill}
+      stroke="white"
+      stroke-width={1.5}
+      class="special-point-marker"
+      class:hovered
+      class:lit
+      data-category={category}
+    />
+  {/if}
+{/snippet}
+
+{#snippet observation_marker(
+  marker: ObservationMarker,
+  [x_val, y_val]: Vec2,
+  color: string,
+  hovered = false,
+)}
+  <circle
+    cx={x_val}
+    cy={y_val}
+    r={4.5}
+    fill={color}
+    stroke="white"
+    stroke-width={1.5}
+    class="observation-marker"
+    class:hovered
+    class:lit={!hovered && highlight?.observation === marker.row.id}
+    data-status={marker.row.status}
+    data-verdict={marker.pass === null ? undefined : marker.pass ? `pass` : `fail`}
+  />
+{/snippet}
+
+<!-- Tie line: white-outlined line, phase endpoints, cursor marker -->
+{#snippet tie_marks(project: (svg_x: number, svg_y: number) => Vec2)}
+  {#if tie_line}
+    {@const style = merged_config.tie_line}
+    {@const ends = tie_line.endpoints.map(({ cx, cy, color }) => ({
+      at: project(cx, cy),
+      color,
+    }))}
+    {@const [cursor_x, cursor_y] = project(tie_line.cursor.cx, tie_line.cursor.cy)}
+    {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
+      <line
+        x1={ends[0].at[0]}
+        y1={ends[0].at[1]}
+        x2={ends[1].at[0]}
+        y2={ends[1].at[1]}
+        {stroke}
+        stroke-width={style.stroke_width + (stroke === `white` ? 1 : 0)}
+        stroke-linecap="round"
+      />
+    {/each}
+    {#each ends as { at, color }, idx (idx)}
+      <circle
+        cx={at[0]}
+        cy={at[1]}
+        r={style.endpoint_radius}
+        fill={color}
+        stroke="white"
+        stroke-width={1.5}
+      />
+    {/each}
+    <circle
+      cx={cursor_x}
+      cy={cursor_y}
+      r={style.cursor_radius}
+      fill={TIE_LINE_COLOR}
+      stroke="white"
+      stroke-width={2}
+    />
+  {/if}
+{/snippet}
 
 {#snippet grid_lines(ticks: number[], vertical: boolean)}
   {#each ticks as tick (tick)}
@@ -1303,10 +1405,10 @@
           </g>
         {/if}
 
-        {#if show_disagreement && disagreement?.path}
+        {#if disagreement_path}
           <path
             class="disagreement"
-            d={disagreement.path}
+            d={disagreement_path}
             fill="url(#{gradient_uid}-hatch)"
             clip-path={plot_clip}
           />
@@ -1396,43 +1498,9 @@
         </g>
       {/if}
 
-      <!-- Tie-line for two-phase regions: white-outlined line, phase endpoints, cursor marker -->
       {#if tie_line}
-        {@const {
-          cursor: tie_cursor,
-          endpoints: [start, end],
-        } = tie_line}
-        {@const tie_style = merged_config.tie_line}
         <g class="tie-line" class:pinned={pin.value} clip-path={plot_clip}>
-          {#each [`white`, TIE_LINE_COLOR] as stroke (stroke)}
-            <line
-              x1={start.cx}
-              y1={start.cy}
-              x2={end.cx}
-              y2={end.cy}
-              {stroke}
-              stroke-width={tie_style.stroke_width + (stroke === `white` ? 1 : 0)}
-              stroke-linecap="round"
-            />
-          {/each}
-          {#each tie_line.endpoints as endpoint, idx (idx)}
-            <circle
-              cx={endpoint.cx}
-              cy={endpoint.cy}
-              r={tie_style.endpoint_radius}
-              fill={endpoint.color}
-              stroke="white"
-              stroke-width={1.5}
-            />
-          {/each}
-          <circle
-            cx={tie_cursor.cx}
-            cy={tie_cursor.cy}
-            r={tie_style.cursor_radius}
-            fill={TIE_LINE_COLOR}
-            stroke="white"
-            stroke-width={2}
-          />
+          {@render tie_marks(identity)}
         </g>
       {/if}
 
@@ -1441,6 +1509,7 @@
           isopleth_view}
         {@const { axis, text } = merged_config.colors}
         {@const small_font = merged_config.font_size - 2}
+        {@const middle = x_start + strip_width / 2}
         <g class="isopleth" style="pointer-events: none">
           {#each marks as { svg_y, labelled, text: label }, idx (idx)}
             <line
@@ -1473,35 +1542,12 @@
             fill="none"
             stroke={axis}
           />
-          <text
-            x={x_start + strip_width / 2}
-            y={top - 8}
-            text-anchor="middle"
-            fill={text}
-            font-size={small_font}
-          >
-            {format_composition(isopleth_view.composition, comp_unit)}
-          </text>
-          {#each [0, 1] as tick (tick)}
-            <text
-              x={x_start + tick * strip_width}
-              y={bottom + 14}
-              text-anchor="middle"
-              fill={text}
-              font-size={small_font}
-            >
-              {tick}
+          <!-- strip captions: its composition above, the 0..1 fraction axis below -->
+          {#each [[middle, top - 8, format_composition(isopleth_view.composition, comp_unit)], [x_start, bottom + 14, `0`], [x_start + strip_width, bottom + 14, `1`], [middle, bottom + 28, `fraction`]] as const as [x_val, y_val, caption] (caption)}
+            <text x={x_val} y={y_val} text-anchor="middle" fill={text} font-size={small_font}>
+              {caption}
             </text>
           {/each}
-          <text
-            x={x_start + strip_width / 2}
-            y={bottom + 28}
-            text-anchor="middle"
-            fill={text}
-            font-size={small_font}
-          >
-            fraction
-          </text>
         </g>
       {/if}
 
@@ -1511,52 +1557,21 @@
         <g class="special-points">
           {#each transformed_points as point, idx (idx)}
             {@const { svg_x, svg_y, category, sigma_T, temperature } = point}
-            {@const hovered = effective_hover_info?.point === point}
-            {@const lit =
-              lit_point !== null &&
-              lit_point.category === category &&
-              lit_point.composition === point.composition &&
-              lit_point.temperature === temperature}
             {#if show_uncertainty && sigma_T > 0}
-              <path
-                class="error-bar"
-                d={error_bar_path(
-                  [y_scale(temperature - sigma_T), y_scale(temperature + sigma_T)],
-                  svg_x,
-                  true,
-                  error_bar_cap,
-                )}
-                stroke={color}
-                fill="none"
-              />
+              {@render error_bar(
+                temperature - sigma_T,
+                temperature + sigma_T,
+                svg_x,
+                true,
+                color,
+              )}
             {/if}
-            {#if category === `congruent`}
-              {@const size = marker_radius * 1.3}
-              <path
-                d="M{svg_x},{svg_y - size}L{svg_x + size},{svg_y}L{svg_x},{svg_y +
-                  size}L{svg_x - size},{svg_y}Z"
-                fill={color}
-                stroke="white"
-                stroke-width={1.5}
-                class="special-point-marker"
-                class:hovered
-                class:lit
-                data-category={category}
-              />
-            {:else}
-              <circle
-                cx={svg_x}
-                cy={svg_y}
-                r={marker_radius}
-                fill={category === `critical` ? `white` : color}
-                stroke={category === `critical` ? color : `white`}
-                stroke-width={category === `critical` ? 2 : 1.5}
-                class="special-point-marker"
-                class:hovered
-                class:lit
-                data-category={category}
-              />
-            {/if}
+            {@render point_marker(
+              category,
+              [svg_x, svg_y],
+              effective_hover_info?.point === point,
+              point.src === lit_point,
+            )}
           {/each}
           {#each point_labels as { point, x, y, text_anchor } (point)}
             <text
@@ -1595,30 +1610,22 @@
             {@const sigma_t = row.sigma_T_K ?? 0}
             {@const sigma_x = phase?.sigma_x ?? 0}
             {#if sigma_t > 0}
-              <path
-                class="error-bar"
-                d={error_bar_path(
-                  [y_scale(temperature - sigma_t), y_scale(temperature + sigma_t)],
-                  svg_x,
-                  true,
-                  error_bar_cap,
-                )}
-                stroke={color}
-                fill="none"
-              />
+              {@render error_bar(
+                temperature - sigma_t,
+                temperature + sigma_t,
+                svg_x,
+                true,
+                color,
+              )}
             {/if}
             {#if sigma_x > 0}
-              <path
-                class="error-bar"
-                d={error_bar_path(
-                  [x_scale(composition - sigma_x), x_scale(composition + sigma_x)],
-                  svg_y,
-                  false,
-                  error_bar_cap,
-                )}
-                stroke={color}
-                fill="none"
-              />
+              {@render error_bar(
+                composition - sigma_x,
+                composition + sigma_x,
+                svg_y,
+                false,
+                color,
+              )}
             {/if}
             <!-- shorter arrows would be all head (9 px) reaching back over the marker -->
             {#if arrow && Math.hypot(arrow.x_end - svg_x, arrow.y_end - svg_y) > 14}
@@ -1638,20 +1645,12 @@
         <!-- unclipped, so markers on the x = 0 and x = 1 edges show whole like marked points -->
         <g class="observation-markers" style="pointer-events: none">
           {#each shown_markers as { marker, svg_x, svg_y, color }, idx (idx)}
-            {@const hovered = effective_hover_info?.observation === marker}
-            <circle
-              cx={svg_x}
-              cy={svg_y}
-              r={4.5}
-              fill={color}
-              stroke="white"
-              stroke-width={1.5}
-              class="observation-marker"
-              class:hovered
-              class:lit={!hovered && highlight?.observation === marker.row.id}
-              data-status={marker.row.status}
-              data-verdict={marker.pass === null ? undefined : marker.pass ? `pass` : `fail`}
-            />
+            {@render observation_marker(
+              marker,
+              [svg_x, svg_y],
+              color,
+              effective_hover_info?.observation === marker,
+            )}
           {/each}
         </g>
       {/if}
@@ -1686,54 +1685,20 @@
       {/if}
 
       {#if lens_view}
-        {@const { cx, cy, radius, transform, points, markers, tie } = lens_view}
+        {@const { cx, cy, radius, transform, project } = lens_view}
         <g class="lens" style="pointer-events: none">
           <circle {cx} {cy} r={radius} fill="var(--pd-lens-bg, var(--page-bg, white))" />
           <g clip-path="url(#{gradient_uid}-lens)">
             <g {transform}><use href="#{gradient_uid}-layers" /></g>
-            {#each markers as { at, color }, idx (idx)}
-              <circle
-                cx={at[0]}
-                cy={at[1]}
-                r={4.5}
-                fill={color}
-                stroke="white"
-                stroke-width={1.5}
-              />
-            {/each}
-            {#each points as { at, category }, idx (idx)}
-              {@const point_color = merged_config.colors.special_point}
-              <circle
-                cx={at[0]}
-                cy={at[1]}
-                r={marker_radius}
-                fill={category === `critical` ? `white` : point_color}
-                stroke={category === `critical` ? point_color : `white`}
-                stroke-width={1.5}
-              />
-            {/each}
-            {#if tie}
-              {@const [start, end] = tie.ends}
-              <line
-                x1={start.at[0]}
-                y1={start.at[1]}
-                x2={end.at[0]}
-                y2={end.at[1]}
-                stroke={TIE_LINE_COLOR}
-                stroke-width={merged_config.tie_line.stroke_width}
-              />
-              {#each tie.ends as { at, color }, idx (idx)}
-                <circle
-                  cx={at[0]}
-                  cy={at[1]}
-                  r={merged_config.tie_line.endpoint_radius}
-                  fill={color}
-                  stroke="white"
-                  stroke-width={1.5}
-                />
+            {@render tie_marks(project)}
+            {#if show_special_points}
+              {#each transformed_points as { category, svg_x, svg_y }, idx (idx)}
+                {@render point_marker(category, project(svg_x, svg_y))}
               {/each}
-              <circle {cx} {cy} r={3} fill={TIE_LINE_COLOR} stroke="white" />
             {/if}
+            {#each shown_markers as { marker, svg_x, svg_y, color }, idx (idx)}
+              {@render observation_marker(marker, project(svg_x, svg_y), color)}
+            {/each}
           </g>
           <circle
             {cx}

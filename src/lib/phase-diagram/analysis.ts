@@ -44,13 +44,10 @@ function phase_fractions(
   ]
 }
 
-// Equilibrium cooling path at `composition`: the centres of `n_steps` equal temperature bins
-// from t_max down to t_min (centres keep the window's own edges, where a field's polygon
-// often ends, from reading as phase changes), plus each change of phase set bisected to
-// `t_tol` between two centres. Between two centres every change is followed in turn, so a
-// field narrower than a bin but crossed by a bisection is reported with both its edges;
-// one missed by every probe goes unseen. Adjacent polygons with one phase set are no change.
-// Steps whose lever rule is degenerate (tie line shorter than 1e-10) have no fractions.
+// Equilibrium cooling path at `composition`: phase fractions at the centres of `n_steps` T bins
+// from t_max down (centres, so the window's own edges never read as phase changes), and every
+// change of phase set between two centres bisected to `t_tol`. Adjacent polygons of one phase
+// set are no change; a field missed by every probe goes unseen.
 export function compute_isopleth(
   { regions }: BinaryPhaseDiagram,
   composition: number,
