@@ -6,7 +6,8 @@ import type {
   ParseWorkerResponse,
   WorkerLike,
 } from '#lib/file-viewer/parse-in-worker.js'
-import { parse_in_worker } from '#lib/file-viewer/parse-in-worker.js'
+import { parse_in_worker, ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
+import { can_create_worker } from '#lib/worker-client.svelte.js'
 import { parse_file_content } from '#lib/file-viewer/parse.js'
 import { handle_parse_worker_request } from '#lib/file-viewer/parse-worker.js'
 import { prediction_to_json } from '#lib/structure/prediction.js'
@@ -507,21 +508,8 @@ describe(`parse_in_worker`, () => {
     await expect_stops_after_grace(worker)
   })
 
+  // a worker that never started falls back to the main thread instead (tested below)
   it.each([
-    [
-      `construction`,
-      () => {
-        throw new Error(`blocked`)
-      },
-    ],
-    [
-      `script load`,
-      () => {
-        const worker = make_fake_worker(() => null)
-        queueMicrotask(() => worker.emit(`error`, new ErrorEvent(`error`, { message: `404` })))
-        return worker
-      },
-    ],
     [
       `deserialization`,
       () => {
@@ -531,9 +519,9 @@ describe(`parse_in_worker`, () => {
       },
     ],
   ])(`rejects when worker %s fails`, async (_label, make_worker) => {
-    await expect(
-      parse_in_worker(`data`, `si.cif`, false, { worker_factory: make_worker }),
-    ).rejects.toThrow(/blocked|404|deserialize/)
+    const parsing = parse_in_worker(`data`, `si.cif`, false, { worker_factory: make_worker })
+    await expect(parsing).rejects.toThrow(ParseWorkerError)
+    await expect(parsing).rejects.toThrow(/deserialize/)
   })
 
   it(`aborting terminates the worker`, async () => {
@@ -679,7 +667,7 @@ describe(`parse_in_worker`, () => {
     [
       `error`,
       new ErrorEvent(`error`, { message: `out of memory` }),
-      /failed for .+: out of memory/,
+      /crashed while reading .+: out of memory/,
     ],
     [`messageerror`, new MessageEvent(`messageerror`), /failed to deserialize for/],
   ])(`a worker %s rejects every in-flight parse`, async (event_type, event, message) => {
@@ -712,6 +700,48 @@ describe(`parse_in_worker`, () => {
       result: structure_result,
     })
     await expect(next).resolves.toEqual(structure_result)
+  })
+
+  // A worker that never started (its constructor threw, or it errored before its first
+  // message) parses on the main thread instead; one that crashed after starting rejects
+  it.each([
+    [`constructor throws`, `throw`],
+    [`errors before its first message`, `error`],
+  ])(`a worker that %s falls back to the main thread`, async (_label, failure) => {
+    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+    vi.stubGlobal(`Worker`, EventTarget) // any constructor: the page could create workers
+    const worker = make_fake_worker(() => null)
+    const worker_factory = vi.fn(() => {
+      if (failure === `throw`) throw new Error(`refused by CSP`)
+      return worker
+    })
+    const content = `1\nH\nH 0 0 0\n`
+    const parsing = parse_in_worker(content, `h.xyz`, false, { worker_factory })
+    if (failure === `error`) worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
+    expect(await parsing).toEqual(await parse_file_content(content, `h.xyz`))
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/failed to start.*main thread/))
+    // a caller's own factory failing says nothing about the page's workers
+    expect(can_create_worker()).toBe(true)
+  })
+
+  it(`a buffer already posted to a worker that failed to start cannot fall back`, async () => {
+    const worker = make_fake_worker(() => null)
+    const content = new TextEncoder().encode(`1\nH\nH 0 0 0\n`).buffer
+    const parsing = parse_in_worker(content, `h.xyz`, false, {
+      worker_factory: () => worker,
+      owns_content: true,
+    })
+    worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
+    await expect(parsing).rejects.toThrow(ParseWorkerError)
+    await expect(parsing).rejects.toThrow(/already handed to it/)
+  })
+
+  it(`a worker that announced itself and then errors has crashed`, async () => {
+    const worker = make_fake_worker(() => null)
+    const parsing = parse_with(worker)
+    reply(worker, { id: -1, ready: true })
+    worker.emit(`error`, new ErrorEvent(`error`, { message: `out of memory` }))
+    await expect(parsing).rejects.toThrow(ParseWorkerError)
   })
 
   it(`surfaces an ambiguous HDF5 group choice as a typed error`, async () => {

@@ -27,7 +27,7 @@ export interface VSCodeAPI {
 export class HostRequestTimeoutError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = `HostRequestTimeoutError`
+    this.name = 'HostRequestTimeoutError'
   }
 }
 

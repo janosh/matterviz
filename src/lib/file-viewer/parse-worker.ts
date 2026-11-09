@@ -89,6 +89,8 @@ export const handle_parse_worker_request = async (
   }
 }
 
+self.postMessage({ id: -1, ready: true } satisfies ParseWorkerResponse)
+
 self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
   const { id: identifier } = event.data
   void (async () => {
@@ -102,8 +104,7 @@ self.addEventListener(`message`, (event: MessageEvent<ParseWorkerRequest>) => {
       self.postMessage({
         id: identifier,
         error: `Failed to clone parse result: ${to_error(error).message}`,
-        transfer_failure: true,
-      } satisfies ParseWorkerResponse)
+      })
     }
   })()
 })

@@ -4,11 +4,7 @@ import '#lib/file-viewer/main.js'
 import type * as ParseModule from '#lib/file-viewer/parse.js'
 import type { ParseResult } from '#lib/file-viewer/parse.js'
 import type * as ParseWorkerModule from '#lib/file-viewer/parse-in-worker.js'
-import {
-  ParseResultTransferError,
-  ParseWorkerError,
-} from '#lib/file-viewer/parse-in-worker.js'
-import { MaterialOpenError } from '#lib/file-viewer/open.js'
+import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
 import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
@@ -621,66 +617,40 @@ test(`constructs same-origin and blob workers natively`, () => {
   expect(object_url_blobs).toEqual([])
 })
 
-// The panel is all a user sees when a file will not open, so what it blames must be true:
-// a worker that never ran the parser is not a verdict on the file's format (#451).
+// The panel lists the supported formats only where a parser read the file and rejected it:
+// not for a crashed parse worker, an empty file or a display that failed after the parse
 test.each([
   [
-    `a parse rejects the file`,
-    () => new Error(`Unknown format in weird.json`),
+    `parser rejection`,
+    () => parse_in_worker.mockRejectedValueOnce(new Error(`No atoms found`)),
+    `x`,
     `Failed to Parse File`,
-    `Supported formats: XYZ, CIF, JSON, POSCAR`,
+    true,
   ],
   [
-    `its worker never ran`,
+    `worker crash`,
     () =>
-      new ParseWorkerError(
-        `Workers cannot load https://file+.vscode-resource.vscode-cdn.net/w.js here`,
+      parse_in_worker.mockRejectedValueOnce(
+        new ParseWorkerError(`Parse worker crashed while reading x.json: out of memory`),
       ),
+    `x`,
     `Failed to Open File`,
-    `The parse worker failed or could not return a usable response`,
+    false,
   ],
-  [
-    // the parse ran and succeeded, so neither the format list nor "never ran" is true
-    `its result could not be cloned back`,
-    () => new ParseResultTransferError(`Failed to clone parse result: DataCloneError`),
-    `Failed to Open File`,
-    `its result could not be handed back`,
-  ],
-])(`error panel explains the failure where %s`, async (_label, make_error, heading, hint) => {
-  parse_file_content.mockRejectedValueOnce(make_error())
-  await boot(`broken`)
+  [`empty file`, () => undefined, ``, `Failed to Open File`, false],
+])(`error panel for a %s`, async (_label, arrange, content, heading, lists_formats) => {
+  arrange()
+  await boot(content, `x.json`)
   await vi.waitFor(() => expect(document.querySelector(`h2`)).not.toBeNull())
   const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
   expect(document.querySelector(`h2`)?.textContent).toBe(heading)
-  expect(panel).toContain(hint)
-  expect(panel).toContain(`broken.json`)
-  // the format list is the one hint that must not appear anywhere else
-  if (!hint.startsWith(`Supported`)) expect(panel).not.toContain(`Supported formats`)
+  expect(panel.includes(`Supported formats`)).toBe(lists_formats)
+  if (!content) expect(panel).toContain(`x.json is empty`)
 })
 
-// VS Code opens an empty file through the same webview, where initialize() rejects it before
-// any parser sees it. Nothing is known about its format, so nothing is claimed about it.
-test(`error panel claims nothing where the webview never bootstrapped`, async () => {
-  expect(await boot(``, ``)).toBeNull()
-  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
-  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
-  expect(panel).toContain(`No data provided`)
-  expect(panel).not.toContain(`Supported formats`)
-  expect(panel).not.toContain(`The parser never ran`)
-})
-
-test(`error panel does not blame the format when the bytes never arrived`, async () => {
-  parse_in_worker.mockImplementationOnce(() => {
-    throw new MaterialOpenError(`No content returned for file.cif`, `acquire`, {})
-  })
-  await boot(`unread`)
-  await vi.waitFor(() => expect(document.querySelector(`h2`)).not.toBeNull())
-  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
-  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Load File`)
-  expect(panel).not.toContain(`Supported formats`)
-})
-
-test(`error panel identifies an indexed trajectory host timeout`, async () => {
+// End to end through the real failure sources: a large-file host timeout and a worker reply
+// that fails to deserialize are not verdicts on the file
+test(`error panel lists no formats for a host timeout or an unreadable worker reply`, async () => {
   vi.useFakeTimers({ toFake: [`setTimeout`, `clearTimeout`] })
   try {
     parse_in_worker.mockImplementationOnce(() =>
@@ -689,17 +659,14 @@ test(`error panel identifies an indexed trajectory host timeout`, async () => {
     const opening = boot(`LARGE_FILE:/data/movie.xyz:500000000`, `movie.xyz`)
     await vi.advanceTimersByTimeAsync(10)
     await opening
-    const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
-    expect(document.querySelector(`h2`)?.textContent).toBe(`Host Request Timed Out`)
-    expect(panel).toContain(`Large file timeout`)
-    expect(panel).toContain(`The host did not respond in time`)
-    expect(panel).not.toContain(`Supported formats`)
   } finally {
     vi.useRealTimers()
   }
-})
+  let panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
+  expect(panel).toContain(`Large file timeout`)
+  expect(panel).not.toContain(`Supported formats`)
 
-test(`messageerror does not claim whether a parser ran`, async () => {
   const real = await vi.importActual<typeof ParseWorkerModule>(
     `#lib/file-viewer/parse-in-worker.js`,
   )
@@ -708,14 +675,11 @@ test(`messageerror does not claim whether a parser ran`, async () => {
     real.parse_in_worker(content, filename, false, { worker_factory: () => worker }),
   )
   const opening = boot(`broken`)
-  await vi.waitFor(() => expect(test_mocks.native_workers[0].posted).toHaveLength(1))
-  test_mocks.native_workers[0].emit(new MessageEvent(`messageerror`))
+  await vi.waitFor(() => expect(test_mocks.native_workers.at(-1)?.posted).toHaveLength(1))
+  test_mocks.native_workers.at(-1)?.emit(new MessageEvent(`messageerror`))
   await opening
-  const panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
+  panel = document.querySelector(`#matterviz-app`)?.textContent ?? ``
   expect(document.querySelector(`h2`)?.textContent).toBe(`Failed to Open File`)
   expect(panel).toContain(`failed to deserialize`)
-  expect(panel).toContain(`The parse worker failed or could not return a usable response`)
-  expect(panel).not.toContain(`The parser never ran`)
-  expect(panel).not.toContain(`The file parsed`)
   expect(panel).not.toContain(`Supported formats`)
 })

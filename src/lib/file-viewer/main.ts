@@ -31,7 +31,7 @@ import { TYPE_LABELS } from './detect'
 import { mount_spectral, mount_viewer, VIEWER_COMMON_PROPS } from './mount-viewer'
 import type { ParseResult, TrajectoryLoadOptions } from './parse'
 import { MaterialOpenError, open_material, type OpenedMaterial } from './open'
-import { ParseResultTransferError, ParseWorkerError } from './parse-in-worker'
+import { ParseWorkerError } from './parse-in-worker'
 import { is_plain_object } from '#lib/utils.js'
 import { escape_html, to_error } from 'svelte-widgets/utils'
 
@@ -400,57 +400,24 @@ const parse_file_data = (
   )
 }
 
-// Walks the cause chain open_material wraps around the failure it reports
-const caused_by = (error: unknown, matches: (err: Error) => boolean): boolean => {
-  for (let err: unknown = error; err instanceof Error; err = err.cause)
-    if (matches(err)) return true
-  return false
-}
-
-// Only a parser that read the file and rejected it says anything about its format. Fetching
-// the bytes, starting the worker that would have parsed them, handing its result back, or
-// bootstrapping the webview at all can each fail with the file entirely in order, so the
-// format list is offered where it was earned and nowhere else (#451). An unrecognized
-// failure is left to speak for itself rather than guessing at the file.
-const describe_failure = (error: Error): { heading: string; hint: string } => {
-  const from = (matches: (err: Error) => boolean): boolean => caused_by(error, matches)
-  if (from((err) => err instanceof MaterialOpenError && err.stage === `acquire`))
-    return { heading: `Failed to Load File`, hint: `The file's bytes could not be read.` }
-  if (from((err) => err instanceof HostRequestTimeoutError))
-    return {
-      heading: `Host Request Timed Out`,
-      hint: `The host did not respond in time. Reloading the file may help; the file itself may be fine.`,
-    }
-  if (from((err) => err instanceof ParseResultTransferError))
-    return {
-      heading: `Failed to Open File`,
-      hint: `The file parsed, but its result could not be handed back to the viewer.`,
-    }
-  if (from((err) => err instanceof ParseWorkerError))
-    return {
-      heading: `Failed to Open File`,
-      hint:
-        `The parse worker failed or could not return a usable response. ` +
-        `Reloading the file may help; the file itself may be fine.`,
-    }
-  if (from((err) => err instanceof MaterialOpenError && err.stage === `parse`))
-    return {
-      heading: `Failed to Parse File`,
-      hint:
-        `Supported formats: XYZ, CIF, JSON, POSCAR, ` +
-        `trajectory files (.traj, .h5, .extxyz), etc.`,
-    }
-  return { heading: `Failed to Open File`, hint: `` }
-}
-
 const create_error_display = (
   container: HTMLElement,
   error: Error,
   filename: string,
 ): void => {
-  const { heading, hint } = describe_failure(error)
-  const hint_html = hint
-    ? `<p style="margin: 0; font-size: 14px; opacity: 0.8;">${escape_html(hint)}</p>`
+  // The format list helps only where a parser read the file and rejected it, not where the
+  // parse worker crashed, the host timed out serving a large file, or the display failed
+  // after a successful parse
+  const parser_rejected =
+    error instanceof MaterialOpenError &&
+    error.stage === `parse` &&
+    !(
+      error.cause instanceof ParseWorkerError || error.cause instanceof HostRequestTimeoutError
+    )
+  const format_hint = parser_rejected
+    ? `<p style="margin: 0; font-size: 14px; opacity: 0.8;">
+          Supported formats: XYZ, CIF, JSON, POSCAR, trajectory files (.traj, .h5, .extxyz), etc.
+        </p>`
     : ``
   // Fall back to MatterViz theme tokens (not VS Code dark hex): non-VS Code hosts apply
   // --page-bg/--text-color and leave --vscode-* unset.
@@ -461,11 +428,11 @@ const create_error_display = (
                 height: 100%;
                 display: flex; flex-direction: column; justify-content: center; align-items: center;">
       <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">${heading}</h2>
+      <h2 style="margin: 0 0 15px 0; color: var(--error-color, var(--vscode-errorForeground, #f85149));">${parser_rejected ? `Failed to Parse File` : `Failed to Open File`}</h2>
       <div style="background: color-mix(in srgb, currentColor 8%, transparent); padding: 20px; border-radius: 8px; max-width: 600px;">
         <p style="margin: 0 0 10px 0;"><strong>File:</strong> ${escape_html(filename)}</p>
         <p style="margin: 0 0 10px 0;"><strong>Error:</strong> ${escape_html(error.message)}</p>
-        ${hint_html}
+        ${format_hint}
       </div>
     </div>`
 }
@@ -630,8 +597,8 @@ const listen_to_host = (): void => {
 async function initialize(gen: number): Promise<MatterVizApp | null> {
   listen_to_host()
   const { data: file_data, theme, moyo_wasm_url } = globalThis.matterviz_data ?? {}
-  if (!file_data?.content || !file_data.filename)
-    throw new Error(`No data provided to MatterViz app`)
+  if (!file_data?.filename) throw new Error(`No data provided to MatterViz app`)
+  if (!file_data.content) throw new Error(`${file_data.filename} is empty`)
 
   // Where the extension serves the symmetry WASM; fetched only once an analysis needs it, so
   // the first render doesn't wait for it

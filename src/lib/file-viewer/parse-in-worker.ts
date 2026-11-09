@@ -11,7 +11,7 @@ import { dispose_run_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import type { WorkerRun } from '#lib/trajectory/runs/worker.js'
 import { summarize_run } from '#lib/trajectory/run.js'
 import { to_error } from 'svelte-widgets/utils'
-import { can_create_worker } from '#lib/worker-client.svelte.js'
+import { can_create_worker, disable_workers } from '#lib/worker-client.svelte.js'
 import type { DisplayFrame, FramePreparation } from '#lib/trajectory/prepare.js'
 import { display_frame_bytes, display_cache_budget } from '#lib/trajectory/prepare.js'
 import { parse_file_content } from './parse'
@@ -36,22 +36,19 @@ let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
-// No worker could be constructed, the one serving this parse crashed, or its reply never
-// arrived or would not deserialize. These failures do not establish whether parsing ran,
-// so a viewer must not present them as a verdict on the file's contents or format.
+// The worker parsing a file crashed or its reply could not be read: not a verdict on the file
 export class ParseWorkerError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options)
-    this.name = `ParseWorkerError`
+  constructor(message: string) {
+    super(message)
+    this.name = 'ParseWorkerError'
   }
 }
-
-// The parse itself succeeded; only handing its result back to the main thread failed. Kept
-// apart from its base so a viewer does not report a parse that ran as one that never did.
-export class ParseResultTransferError extends ParseWorkerError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options)
-    this.name = `ParseResultTransferError`
+// The worker never started (constructor threw, its script failed to fetch, load or evaluate),
+// so the parse falls back to the main thread
+class WorkerStartError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'WorkerStartError'
   }
 }
 
@@ -75,6 +72,8 @@ interface ParseWorkerHost {
   pending: Map<number, PendingParse>
   runs: Set<WorkerRun>
   terminated: boolean
+  // set by the worker's first message (its ready message, or any reply)
+  started: boolean
   idle_timer?: ReturnType<typeof setTimeout>
 }
 
@@ -123,31 +122,41 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     pending: new Map(),
     runs: new Set(),
     terminated: false,
+    started: false,
   }
   host.worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
+    host.started = true
     const response: ParseWorkerResponse | undefined = event.data
+    if (response?.ready) return
     const pending = response && host.pending.get(response.id)
     // A late reply to a cancelled parse: release the run it may carry
     if (pending) pending.receive(response)
     else dispose_run_port(response?.run_port)
   }) as EventListener)
-  const fail_pending = (describe: (filename: string) => string): void => {
-    for (const { filename, fail } of host.pending.values())
-      fail(new ParseWorkerError(describe(filename)))
+  const fail_pending = (make_error: (filename: string) => Error): void => {
+    for (const { filename, fail } of host.pending.values()) fail(make_error(filename))
   }
   // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
-  // parse started synchronously from a disposed run's release spawns a fresh worker.
+  // parse started synchronously from a disposed run's release spawns a fresh worker. One that
+  // errors before its first message never started: its parses move to the main thread.
   host.worker.addEventListener(`error`, (event) => {
     event.preventDefault()
     const reason = event.message || `unknown worker error`
     terminate_host(host)
-    fail_pending((filename) => `Parse worker failed for ${filename}: ${reason}`)
+    fail_pending((filename) =>
+      host.started
+        ? new ParseWorkerError(`Parse worker crashed while reading ${filename}: ${reason}`)
+        : new WorkerStartError(`Parse worker failed to start: ${reason}`),
+    )
     for (const run of host.runs) run.dispose()
   })
   // A reply that failed to deserialize names no request, so every parse in flight fails; the
   // worker stays up, and its runs talk over their own ports
   host.worker.addEventListener(`messageerror`, () =>
-    fail_pending((filename) => `Parse worker response failed to deserialize for ${filename}`),
+    fail_pending(
+      (filename) =>
+        new ParseWorkerError(`Parse worker response failed to deserialize for ${filename}`),
+    ),
   )
   if (!dedicated) shared_hosts.set(factory, host)
   return host
@@ -190,7 +199,9 @@ const parse_file_worker = async (
     try {
       host = open_host(worker_factory, dedicated)
     } catch (error) {
-      return reject(new ParseWorkerError(to_error(error).message, { cause: error }))
+      return reject(
+        new WorkerStartError(`Parse worker failed to start: ${to_error(error).message}`),
+      )
     }
     const settle = (outcome: WorkerParseResult | Error): void => {
       if (!host.pending.delete(request.id)) return
@@ -204,8 +215,7 @@ const parse_file_worker = async (
       settle(to_error(signal?.reason ?? parse_abort_error()))
     }
     const receive = (response: ParseWorkerResponse): void => {
-      const { result, error, progress, run_port, hdf5_group_paths, transfer_failure } =
-        response
+      const { result, error, progress, run_port, hdf5_group_paths } = response
       if (progress) {
         try {
           on_progress?.(progress)
@@ -215,21 +225,10 @@ const parse_file_worker = async (
         return
       }
       if (!result) {
-        // `error` is the worker's own verdict on the file, except where it flags itself as
-        // what failed. Its absence means the worker answered without one, which is the
-        // worker failing rather than the file.
-        if (hdf5_group_paths)
-          return settle(new Hdf5GroupSelectionRequiredError(hdf5_group_paths, error))
-        if (transfer_failure)
-          return settle(
-            new ParseResultTransferError(
-              error ?? `Parse worker could not return its result for ${filename}`,
-            ),
-          )
         return settle(
-          error
-            ? new Error(error)
-            : new ParseWorkerError(`Parse worker returned no result for ${filename}`),
+          hdf5_group_paths
+            ? new Hdf5GroupSelectionRequiredError(hdf5_group_paths, error)
+            : new Error(error ?? `Parse worker returned no result for ${filename}`),
         )
       }
       if (result.type !== `trajectory`) {
@@ -237,9 +236,7 @@ const parse_file_worker = async (
         return settle(result)
       }
       if (!run_port)
-        return settle(
-          new ParseWorkerError(`Trajectory parse worker result is missing its run port`),
-        )
+        return settle(new Error(`Trajectory parse worker result is missing its run port`))
       let run: WorkerRun | undefined
       try {
         run = worker_run(run_port, result.data, () => {
@@ -276,7 +273,7 @@ export const parse_in_worker = async (
   // Host markers require the main-thread host bridge; they contain no file bytes to parse.
   // Where no worker can be created (see can_create_worker), files parse there too.
   const host_marker = typeof content === `string` && content.startsWith(`LARGE_FILE:`)
-  if (host_marker || (!options.worker_factory && !can_create_worker())) {
+  const parse_on_main_thread = async (): Promise<ParseResult> => {
     options.signal?.throwIfAborted()
     const result = await parse_file_content(
       content,
@@ -293,17 +290,34 @@ export const parse_in_worker = async (
     }
     return result
   }
+  if (host_marker || (!options.worker_factory && !can_create_worker())) {
+    return parse_on_main_thread()
+  }
   let dispose_pool: (() => void) | undefined
   const is_hdf5 =
     HDF5_EXT_REGEX.test(filename) ||
     (content instanceof ArrayBuffer && has_hdf5_magic(magic_head(content)))
-  const result = await parse_file_worker(
-    content,
-    filename,
-    is_base64,
-    { ...options, load_options, dedicated: is_hdf5 },
-    () => dispose_pool?.(),
-  )
+  let result: WorkerParseResult
+  try {
+    result = await parse_file_worker(
+      content,
+      filename,
+      is_base64,
+      { ...options, load_options, dedicated: is_hdf5 },
+      () => dispose_pool?.(),
+    )
+  } catch (error) {
+    if (!(error instanceof WorkerStartError)) throw error
+    // A buffer posted to a worker that then failed to start is gone with it
+    if (content instanceof ArrayBuffer && content.detached) {
+      throw new ParseWorkerError(`${error.message}; ${filename} was already handed to it`)
+    }
+    // The page's own workers fail alike, so later parses (and other jobs) skip them; a
+    // caller's own worker_factory says nothing about those
+    if (!options.worker_factory) disable_workers()
+    console.warn(`${error.message}, parsing ${filename} on the main thread`)
+    return parse_on_main_thread()
+  }
   if (
     result.type !== `trajectory` ||
     !(content instanceof File) ||
