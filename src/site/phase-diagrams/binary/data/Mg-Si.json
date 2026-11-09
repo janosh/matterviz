@@ -337,5 +337,6 @@
     {"component": "Mg", "temperature": 923.0, "above": "LIQUID", "below": "HCP_A3"},
     {"component": "Si", "temperature": 1687.0, "above": "LIQUID", "below": "DIAMOND_A4"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Mg-Si built from approximate assessed invariants (demo fixture, not a CALPHAD calculation)"}
 }

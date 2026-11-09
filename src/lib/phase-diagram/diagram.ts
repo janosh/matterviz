@@ -13,6 +13,7 @@ import {
   type DiagramHit,
   type DiagramPoint,
   type DiagramRegion,
+  type InvariantKind,
   type LeverRuleResult,
   type ObservationMarker,
   type ObservationStatus,
@@ -46,7 +47,7 @@ export const BOUNDARY_STYLES: Readonly<
 export const OVERLAY_DASH = `7,4`
 
 // Marker label of each invariant kind
-const INVARIANT_LABELS: Readonly<Record<string, string>> = {
+const INVARIANT_LABELS: Readonly<Record<InvariantKind, string>> = {
   eutectic: `E`,
   eutectoid: `Ed`,
   monotectic: `M`,
@@ -63,6 +64,7 @@ const finite = (val: unknown): val is number => Number.isFinite(val)
 const is_point = (point: unknown): boolean =>
   Array.isArray(point) && point.length === 2 && point.every(finite)
 const length = (list: unknown): number => (Array.isArray(list) ? list.length : 0)
+const in_unit = (val: unknown): boolean => finite(val) && val >= 0 && val <= 1
 
 // Problems that keep a value from rendering as a binary-phase-diagram/2 (empty when valid).
 // Takes untrusted JSON and never throws: element shapes are checked before their fields are
@@ -83,11 +85,15 @@ export function diagram_errors(value: unknown): string[] {
   if (
     !Array.isArray(components) ||
     components.length !== 2 ||
-    !components.every((comp) => typeof comp === `string`)
+    !components.every((comp) => typeof comp === `string`) ||
+    components[0] === components[1]
   ) {
-    errors.push(`components must be two strings, got ${JSON.stringify(components)}`)
+    errors.push(`components must be two distinct strings, got ${JSON.stringify(components)}`)
   }
-  if (!is_point(temperature_range) || !(temperature_range[0] < temperature_range[1])) {
+  if (
+    !is_point(temperature_range) ||
+    !(0 <= temperature_range[0] && temperature_range[0] < temperature_range[1])
+  ) {
     errors.push(
       `temperature_range must be [min, max] K, got ${JSON.stringify(temperature_range)}`,
     )
@@ -102,10 +108,8 @@ export function diagram_errors(value: unknown): string[] {
     `congruent_points`,
     `critical_points`,
     `unary_transitions`,
-    ...(data.regions === undefined ? [] : [`regions` as const]),
-    ...(data.polymorphic_transitions === undefined
-      ? []
-      : [`polymorphic_transitions` as const]),
+    `regions`,
+    `polymorphic_transitions`,
   ] as const
   for (const key of lists) {
     const list: unknown = data[key]
@@ -141,15 +145,19 @@ export function diagram_errors(value: unknown): string[] {
       errors.push(`${where} ${noun} must be [x, T] number pairs`)
     }
   }
-  // marked points sit at a finite (x, T)
+  // marked points sit at a finite T and a mole fraction in [0, 1]
   const check_position = (where: string, temperature: unknown, compositions: unknown[]) => {
-    if (!finite(temperature) || !compositions.every(finite)) {
-      errors.push(`${where} needs a finite temperature and composition`)
+    if (!finite(temperature) || !compositions.every(in_unit)) {
+      errors.push(`${where} needs a finite temperature and compositions in [0, 1]`)
     }
   }
-  data.regions?.forEach(({ phases: refs, vertices }, idx) => {
-    check_ids(`regions[${idx}]`, refs)
-    check_points(`regions[${idx}]`, vertices, 3, `vertices`)
+  data.regions.forEach(({ phases: refs, vertices }, idx) => {
+    const where = `regions[${idx}]`
+    check_ids(where, refs)
+    if (![1, 2].includes(length(refs)) || new Set(refs).size !== length(refs)) {
+      errors.push(`${where} needs one phase or two distinct phases`)
+    }
+    check_points(where, vertices, 3, `vertices`)
   })
   data.boundaries.forEach(({ kind, phases: refs, side, points }, idx) => {
     const where = `boundaries[${idx}]`
@@ -162,8 +170,11 @@ export function diagram_errors(value: unknown): string[] {
     if (kind === `magnetic` && (length(refs) !== 1 || side != null)) {
       errors.push(`${where} is magnetic: one phase and no side`)
     }
-    if (kind === `polymorphic` && (length(refs) !== 3 || side != null)) {
-      errors.push(`${where} is polymorphic: three phases and no side`)
+    if (
+      (kind === `polymorphic` || kind === `invariant`) &&
+      (length(refs) !== 3 || side != null)
+    ) {
+      errors.push(`${where} is ${kind}: three phases and no side`)
     }
     check_points(where, points, 2, `points`)
   })
@@ -172,14 +183,27 @@ export function diagram_errors(value: unknown): string[] {
       const where = `invariants[${idx}]`
       if (!Object.hasOwn(INVARIANT_LABELS, kind))
         errors.push(`${where} has unknown kind "${kind}"`)
-      if (typeof reaction !== `string`) errors.push(`${where} reaction must be a string`)
-      else check_ids(`${where} reaction`, reaction_phase_ids(reaction))
-      check_ids(where, refs)
-      if (length(compositions) !== length(refs)) {
+      const sides = typeof reaction === `string` ? reaction_sides(reaction) : []
+      if (sides.length !== 2 || sides.flat().some((token) => !token)) {
         errors.push(
-          `${where} has ${length(refs)} phases but ${length(compositions)} compositions`,
+          `${where} reaction must read "A [+ B] -> C [+ D]", got ${JSON.stringify(reaction)}`,
         )
-      } else check_position(where, temperature, compositions)
+      } else check_ids(`${where} reaction`, sides.flat())
+      check_ids(where, refs)
+      if (length(refs) !== 3 || length(compositions) !== 3) {
+        errors.push(
+          `${where} needs 3 phases and 3 compositions, got ${length(refs)} and ${length(compositions)}`,
+        )
+      } else {
+        check_position(where, temperature, compositions)
+        if (
+          !compositions.every(
+            (comp, comp_idx) => !comp_idx || compositions[comp_idx - 1] <= comp,
+          )
+        ) {
+          errors.push(`${where} compositions must increase with x`)
+        }
+      }
     },
   )
   data.congruent_points.forEach(({ phases: refs, temperature, composition }, idx) => {
@@ -199,7 +223,7 @@ export function diagram_errors(value: unknown): string[] {
       )
     }
   })
-  data.polymorphic_transitions?.forEach(({ temperature, composition, above, below }, idx) => {
+  data.polymorphic_transitions.forEach(({ temperature, composition, above, below }, idx) => {
     check_ids(`polymorphic_transitions[${idx}]`, [above, below])
     check_position(`polymorphic_transitions[${idx}]`, temperature, [composition])
   })
@@ -230,24 +254,14 @@ export function provenance_caption({ provenance }: BinaryPhaseDiagram): string {
     .join(`; `)
 }
 
-// Phase ids of a reaction string like `LIQUID -> FCC_A1#1 + FCC_A1#2`
-const reaction_phase_ids = (reaction: string): string[] =>
-  reaction
-    .split(`->`)
-    .flatMap((side) => side.split(`+`))
-    .map((token) => token.trim())
-    .filter(Boolean)
+// Phase ids on each side of a reaction string like `LIQUID -> FCC_A1#1 + FCC_A1#2`
+const reaction_sides = (reaction: string): string[][] =>
+  reaction.split(`->`).map((side) => side.split(`+`).map((token) => token.trim()))
 
 // Reaction with phase labels instead of ids, e.g. `L → (Ag) + (Cu)`
 export const format_reaction = (reaction: string, label_of: (id: string) => string): string =>
-  reaction
-    .split(`->`)
-    .map((side) =>
-      side
-        .split(`+`)
-        .map((token) => label_of(token.trim()))
-        .join(` + `),
-    )
+  reaction_sides(reaction)
+    .map((side) => side.map(label_of).join(` + `))
     .join(` → `)
 
 // Phase id -> label lookup (ids are validated, so a miss is a caller bug)
@@ -288,6 +302,7 @@ export const model_phase_keys = (diagrams: readonly BinaryPhaseDiagram[]): strin
 // a gap inside a wrapping fcc field stay distinguishable while reading as one phase.
 // Shades go darker, not lighter, since the palette's pastels already sit near white.
 const COMPOSITION_SET_SHADE = 0.09
+const GOLDEN_ANGLE_DEG = 137.508
 
 // Opaque color per phase id, a function of model_phase and the color keys only: the color keys
 // (the diagram's own model phases plus any `color_keys`, sorted) each take the palette slot
@@ -304,10 +319,15 @@ export function phase_colors(
   const n_slots = SOLID_PHASE_PALETTE.length
   const taken = new Set<number>()
   const key_colors = new Map<string, string>()
-  for (const key of [...keys].toSorted()) {
+  for (const [key_idx, key] of [...keys].toSorted().entries()) {
+    // past the palette, further keys step around the hue circle by the golden angle
+    if (key_idx >= n_slots) {
+      const hue = ((key_idx - n_slots) * GOLDEN_ANGLE_DEG) % 360
+      key_colors.set(key, hsl(hue, 0.5, 0.78).formatHex())
+      continue
+    }
     let slot = hash_string(key) % n_slots
-    for (let tries = 0; taken.has(slot) && tries < n_slots; tries++)
-      slot = (slot + 1) % n_slots
+    while (taken.has(slot)) slot = (slot + 1) % n_slots
     taken.add(slot)
     key_colors.set(key, SOLID_PHASE_PALETTE[slot])
   }
@@ -338,7 +358,7 @@ export function diagram_points(data: BinaryPhaseDiagram): DiagramPoint[] {
       // (peritectic-type)
       composition: compositions[Math.floor(compositions.length / 2)],
       temperature,
-      marker_label: INVARIANT_LABELS[kind] ?? ``,
+      marker_label: INVARIANT_LABELS[kind],
       description: format_reaction(reaction, label_of),
     })),
     ...data.congruent_points.map(({ temperature, composition, phases }): DiagramPoint => ({
@@ -368,7 +388,7 @@ export function diagram_points(data: BinaryPhaseDiagram): DiagramPoint[] {
         description: `${component}: ${label_of(above)} → ${label_of(below)}`,
       }
     }),
-    ...(data.polymorphic_transitions ?? []).map(
+    ...data.polymorphic_transitions.map(
       ({ temperature, composition, above, below }): DiagramPoint => ({
         category: `polymorphic`,
         kind: `polymorphic`,
@@ -442,7 +462,7 @@ export function observation_markers(
 
 // Region and lever rule of a diagram at (composition, temperature)
 export function diagram_hit(
-  { regions = [] }: BinaryPhaseDiagram,
+  { regions }: BinaryPhaseDiagram,
   composition: number,
   temperature: number,
 ): DiagramHit {

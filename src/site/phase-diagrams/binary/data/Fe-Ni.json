@@ -178,5 +178,6 @@
   "congruent_points": [],
   "critical_points": [],
   "unary_transitions": [],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Fe-Ni Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

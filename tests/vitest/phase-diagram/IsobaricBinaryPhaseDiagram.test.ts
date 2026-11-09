@@ -1,7 +1,8 @@
 import { point_in_polygon, type Vec2 } from '#lib/math.js'
 import { LIQUID_COLOR } from '#lib/phase-diagram/utils.js'
 import IsobaricBinaryPhaseDiagram from '#lib/phase-diagram/IsobaricBinaryPhaseDiagram.svelte'
-import type { BinaryPhaseDiagram } from '#lib/phase-diagram/types.js'
+import type { BinaryPhaseDiagram, DiagramCursor } from '#lib/phase-diagram/types.js'
+import { binary_diagrams } from '#site/phase-diagrams.js'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -97,6 +98,34 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`svg`)).toBeNull()
   })
 
+  // a failed drop's banner is about the dropped file: new data from the parent clears it
+  test(`a new data prop clears a failed drop's error`, async () => {
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagramHarness,
+      { loaded_data: eutectic },
+      { selector: `.binary-phase-diagram`, width, height },
+    )
+    const click = async (test_id: string) => {
+      doc_query<HTMLButtonElement>(`[data-testid="${test_id}"]`).click()
+      await tick()
+    }
+    await click(`load-phase-data`)
+    wrapper.dispatchEvent(
+      create_drop_event(
+        new File([`<svg xmlns="http://www.w3.org/2000/svg"></svg>`], `pd.svg`, {
+          type: `image/svg+xml`,
+        }),
+      ),
+    )
+    await vi.waitFor(() =>
+      expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent).toContain(`pd.svg`),
+    )
+    await click(`clear-phase-data`)
+    await click(`load-phase-data`)
+    expect(wrapper.querySelector(`[role="alert"] .error`)).toBeNull()
+    expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
+  })
+
   test(`recovers across missing, loaded, cleared, and reloaded data`, async () => {
     const wrapper = await mount_sized(
       IsobaricBinaryPhaseDiagramHarness,
@@ -167,10 +196,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`.phase-diagram-legend`)).toBeNull()
   })
 
-  // assessment diagrams arrive without regions until the emitter derives them: boundaries and
-  // points still render, and the hover reports (x, T) with no phase set
+  // a diagram with an empty regions list (e.g. an SVG import that traced none) still draws
+  // boundaries and points, and the hover reports (x, T) with no phase set
   test(`a diagram without regions draws boundaries and points and still reports the cursor`, async () => {
-    const { regions: _regions, ...boundaries_only } = eutectic
+    const boundaries_only = { ...eutectic, regions: [] }
     const on_phase_hover = vi.fn()
     const wrapper = await mount_diagram({ data: boundaries_only, on_phase_hover })
     expect(wrapper.querySelector(`[role="alert"] .error`)).toBeNull()
@@ -485,14 +514,27 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     ).toEqual([`Assessment`, `Observed`, `Observed (unverified)`])
     await legend_click(wrapper, `Observed`)
     expect(wrapper.querySelectorAll(`.observation-marker`)).toHaveLength(1)
+    // markers on the x = 1 edge are drawn whole: their layer is not clipped to the plot
+    expect(wrapper.querySelector(`.observation-markers`)?.hasAttribute(`clip-path`)).toBe(
+      false,
+    )
+  })
+
+  // with observations off, a status click shows that status, not every other one
+  test(`a legend status click with observations off shows the clicked status`, async () => {
+    const wrapper = await mount_diagram({ observations, show_observations: false })
+    expect(wrapper.querySelectorAll(`.observation-marker`)).toHaveLength(0)
+    await legend_click(wrapper, `Observed (unverified)`)
+    const statuses = [...wrapper.querySelectorAll(`.observation-marker`)].map((el) =>
+      el.getAttribute(`data-status`),
+    )
+    expect(statuses).toEqual([`ok`, `ok`, `ok`, `needs_verification`])
   })
 
   // the hovering diagram writes the bound cursor in data units and clears it on leave; a
   // diagram given someone else's cursor draws a crosshair and its own phase set there
   test(`cursor syncs hover between diagrams`, async () => {
-    const state: { cursor: { composition: number; temperature: number } | null } = {
-      cursor: null,
-    }
+    const state: { cursor: DiagramCursor | null } = { cursor: null }
     const source = await mount_sized(
       IsobaricBinaryPhaseDiagram,
       bind_props({ data: eutectic }, state),
@@ -512,7 +554,9 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(state.cursor).toBeNull()
 
     document.body.innerHTML = ``
-    const follower = await mount_diagram({ cursor: { composition: 0.25, temperature: 250 } })
+    const follower = await mount_diagram({
+      cursor: { composition: 0.25, temperature: 250, source: `partner` },
+    })
     const [vertical] = follower.querySelectorAll(`.remote-cursor line`)
     expect(Number(vertical.getAttribute(`x1`))).toBeCloseTo(to_client(0.25, 0).clientX, 9)
     expect(follower.querySelector(`.remote-cursor-label`)?.textContent?.trim()).toBe(`α + β`)
@@ -523,10 +567,9 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     // a boundaries-only diagram follows with the crosshair but has no phase set to name
     document.body.innerHTML = ``
-    const { regions: _regions, ...boundaries_only } = eutectic
     const bare = await mount_diagram({
-      data: boundaries_only,
-      cursor: { composition: 0.25, temperature: 250 },
+      data: { ...eutectic, regions: [] },
+      cursor: { composition: 0.25, temperature: 250, source: `partner` },
     })
     expect(bare.querySelector(`.remote-cursor`)).not.toBeNull()
     expect(bare.querySelector(`.remote-cursor-label`)).toBeNull()
@@ -551,6 +594,53 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     await tick()
     expect(doc_query(`[data-testid="cursor"]`).textContent).toBe(`none`)
     expect(second.querySelector(`.remote-cursor`)).toBeNull()
+  })
+
+  // touch sends no pointerleave: a tap on the second diagram must still hand it the cursor,
+  // dropping the first's stale tooltip and drawing the crosshair there instead
+  test(`a touch tap on the partner takes over the shared cursor`, async () => {
+    const harness = await mount_sized(
+      SyncedDiagramsHarness,
+      { diagrams: [eutectic, shifted_eutectic] },
+      { selector: `.binary-phase-diagram.first`, width, height },
+    )
+    const second = doc_query(`.binary-phase-diagram.second`)
+    await resize_element(second, width, height)
+    const tap = async (wrapper: HTMLElement, composition: number, temperature: number) => {
+      const svg = plot_svg(wrapper)
+      const init = {
+        ...to_client(composition, temperature),
+        bubbles: true,
+        pointerType: `touch`,
+      }
+      svg.dispatchEvent(new PointerEvent(`pointermove`, init))
+      svg.dispatchEvent(new PointerEvent(`pointerleave`, init))
+      await tick()
+    }
+    await tap(harness, 0.25, 550)
+    expect(harness.querySelector(`.tooltip-container`)).not.toBeNull()
+    expect(second.querySelector(`.remote-cursor`)).not.toBeNull()
+    await tap(second, 0.75, 300)
+    expect(harness.querySelector(`.remote-cursor`)).not.toBeNull()
+    expect(second.querySelector(`.remote-cursor`)).toBeNull()
+    expect(harness.querySelector(`.tooltip-container`)).toBeNull()
+  })
+
+  // dense diagrams drop labels that would overlap another label or a marked point, largest
+  // regions keep theirs; the tooltip still names every region
+  test(`region labels never overlap each other or marked points`, async () => {
+    const wrapper = await mount_sized(
+      IsobaricBinaryPhaseDiagram,
+      { data: binary_diagrams[`Fe-Fe3C`] },
+      { selector: `.binary-phase-diagram`, width: 600, height: 500 },
+    )
+    const labels = [...wrapper.querySelectorAll(`.region-labels > g`)].map((el) =>
+      el.textContent?.trim(),
+    )
+    expect(labels.length).toBeGreaterThan(0)
+    expect(labels.length).toBeLessThan(binary_diagrams[`Fe-Fe3C`].regions.length)
+    // the liquid, the largest field, always keeps its label
+    expect(labels).toContain(`L`)
   })
 
   const empty_svg_text = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`

@@ -35,10 +35,8 @@ import {
 } from './fixtures/test-data'
 
 describe(`diagram_errors`, () => {
-  test(`a valid diagram, with or without regions, has none`, () => {
+  test(`a valid diagram has none`, () => {
     expect(diagram_errors(eutectic)).toEqual([])
-    const { regions: _regions, ...boundaries_only } = eutectic
-    expect(diagram_errors(boundaries_only)).toEqual([])
   })
 
   // every phase reference is checked, so label/color lookups by id never miss
@@ -47,7 +45,65 @@ describe(`diagram_errors`, () => {
     [
       `components`,
       { components: [`A`] as unknown as [string, string] },
-      `components must be two strings`,
+      `components must be two distinct strings`,
+    ],
+    [
+      `duplicate components`,
+      { components: [`Ag`, `Ag`] },
+      `components must be two distinct strings, got ["Ag","Ag"]`,
+    ],
+    [`negative temperature`, { temperature_range: [-50, 1200] }, `temperature_range must be`],
+    [`missing regions`, { regions: undefined }, `regions must be an array`],
+    [
+      `missing polymorphic transitions`,
+      { polymorphic_transitions: undefined },
+      `polymorphic_transitions must be an array`,
+    ],
+    [
+      `three-phase region`,
+      { regions: [{ phases: [`A`, `B`, `LIQUID`], vertices: pts(0, 0, 1, 0, 1, 1) }] },
+      `regions[0] needs one phase or two distinct phases`,
+    ],
+    [
+      `repeated region phase`,
+      { regions: [{ phases: [`A`, `A`], vertices: pts(0, 0, 1, 0, 1, 1) }] },
+      `regions[0] needs one phase or two distinct phases`,
+    ],
+    [
+      `invariant line side`,
+      {
+        boundaries: [
+          {
+            kind: `invariant`,
+            phases: [`A`, `LIQUID`, `B`],
+            side: `A`,
+            points: pts(0, 500, 1, 500),
+          },
+        ],
+      },
+      `boundaries[0] is invariant: three phases and no side`,
+    ],
+    [
+      `two-phase invariant`,
+      {
+        invariants: [{ ...eutectic.invariants[0], phases: [`A`, `B`], compositions: [0, 1] }],
+      },
+      `invariants[0] needs 3 phases and 3 compositions, got 2 and 2`,
+    ],
+    [
+      `phaseless invariant`,
+      { invariants: [{ ...eutectic.invariants[0], phases: [], compositions: [] }] },
+      `invariants[0] needs 3 phases and 3 compositions, got 0 and 0`,
+    ],
+    [
+      `unordered invariant compositions`,
+      { invariants: [{ ...eutectic.invariants[0], compositions: [0.5, 0, 1] }] },
+      `invariants[0] compositions must increase with x`,
+    ],
+    [
+      `composition outside [0, 1]`,
+      { congruent_points: [{ temperature: 600, composition: 5, phases: [`LIQUID`, `A`] }] },
+      `congruent_points[0] needs a finite temperature and compositions in [0, 1]`,
     ],
     [`temperature range`, { temperature_range: [900, 300] }, `temperature_range must be`],
     [`missing array`, { invariants: undefined }, `invariants must be an array`],
@@ -88,7 +144,7 @@ describe(`diagram_errors`, () => {
     [
       `invariant compositions`,
       { invariants: [{ ...eutectic.invariants[0], compositions: [0.5] }] },
-      `invariants[0] has 3 phases but 1 compositions`,
+      `invariants[0] needs 3 phases and 3 compositions, got 3 and 1`,
     ],
     [
       `critical phase`,
@@ -147,8 +203,16 @@ describe(`diagram_errors`, () => {
     [
       `invariant temperature`,
       { invariants: [{ ...eutectic.invariants[0], temperature: null as unknown as number }] },
-      `invariants[0] needs a finite temperature and composition`,
+      `invariants[0] needs a finite temperature and compositions`,
     ],
+    // a malformed reaction would otherwise pass and make diagram_points throw on an empty id
+    ...[`LIQUID -> A +`, ` -> A + B`, `LIQUID A B`, `LIQUID -> A -> B`].map(
+      (reaction): [string, Partial<BinaryPhaseDiagram>, string] => [
+        `reaction ${JSON.stringify(reaction)}`,
+        { invariants: [{ ...eutectic.invariants[0], reaction }] },
+        `invariants[0] reaction must read "A [+ B] -> C [+ D]"`,
+      ],
+    ),
   ])(`reports a bad %s`, (_label, patch, message) => {
     expect(diagram_errors({ ...eutectic, ...patch }).join(`; `)).toContain(message)
   })
@@ -196,7 +260,7 @@ test(`format_reaction, region_label and phase_labeler use phase labels`, () => {
   const label_of = phase_labeler(eutectic)
   expect(format_reaction(`LIQUID -> A + B`, label_of)).toBe(`L → α + β`)
   expect(format_reaction(`LIQUID + A -> B`, label_of)).toBe(`L + α → β`)
-  expect(region_label(eutectic.regions?.[1] ?? null, label_of)).toBe(`α + β`)
+  expect(region_label(eutectic.regions[1], label_of)).toBe(`α + β`)
   expect(region_label(null, label_of)).toBe(`–`)
   expect(() => label_of(`GAS`)).toThrow(`Unknown phase id "GAS"`)
 })
@@ -238,9 +302,12 @@ describe(`phase_colors`, () => {
     expect(phase_colors(au_ni.toReversed())).toEqual(phase_colors(au_ni))
   })
 
-  test(`many model phases all get distinct colors up to the palette size`, () => {
-    const phases = SOLID_PHASE_PALETTE.map((_, idx) => phase(`P${idx}`))
-    expect(new Set(phase_colors(phases).values()).size).toBe(SOLID_PHASE_PALETTE.length)
+  // real CALPHAD systems exceed the palette: extra keys get golden-angle hues, never a reuse
+  test.each([0, 1, 7])(`palette size + %i model phases all get distinct colors`, (n_extra) => {
+    const phases = Array.from({ length: SOLID_PHASE_PALETTE.length + n_extra }, (_, idx) =>
+      phase(`P${String(idx).padStart(2, `0`)}`),
+    )
+    expect(new Set(phase_colors(phases).values()).size).toBe(phases.length)
   })
 
   // B2_BCC and BCC_A2 hash to one palette slot: on its own, the model diagram's BCC_A2 takes
@@ -394,24 +461,22 @@ describe(`site demo diagrams`, () => {
     expect(diagram_errors(diagram)).toEqual([])
   })
 
-  // sample points at bin centres of the composition-temperature window
+  // sample points just off bin centres of the composition-temperature window, so none lands
+  // exactly on a hand-drawn edge (e.g. x = 0.5, where an on-edge point counts for both sides)
   const grid = ([t_min, t_max]: [number, number], n_bins = 40): [number, number][] =>
     Array.from({ length: n_bins * n_bins }, (_, idx) => [
-      (Math.floor(idx / n_bins) + 0.5) / n_bins,
-      t_min + (((idx % n_bins) + 0.5) / n_bins) * (t_max - t_min),
+      (Math.floor(idx / n_bins) + 0.5 + 1e-7) / n_bins,
+      t_min + (((idx % n_bins) + 0.5 + 1e-7) / n_bins) * (t_max - t_min),
     ])
 
-  // script-built fixtures tile the window: every sample point lies in exactly one region
-  test.each([`Ag-Cu`, `Ag-Cu-model`, `Mg-Si`, `Au-Ni`])(
-    `%s regions tile the plane`,
-    (name) => {
-      const { temperature_range, regions = [] } = binary_diagrams[name]
-      for (const [x_val, temp] of grid(temperature_range)) {
-        const hits = regions.filter(({ vertices }) => point_in(x_val, temp, vertices))
-        expect(hits, `${name} at (${x_val}, ${temp})`).toHaveLength(1)
-      }
-    },
-  )
+  // every fixture tiles its window: each sample point lies in exactly one region
+  test.each(Object.keys(binary_diagrams))(`%s regions tile the plane`, (name) => {
+    const { temperature_range, regions } = binary_diagrams[name]
+    for (const [x_val, temp] of grid(temperature_range)) {
+      const hits = regions.filter(({ vertices }) => point_in(x_val, temp, vertices))
+      expect(hits, `${name} at (${x_val}, ${temp})`).toHaveLength(1)
+    }
+  })
 
   // two-phase regions list their phases in composition order: just beyond each end of the
   // isothermal tie line lies a region of that end's phase, or of the bare-id field a
@@ -419,7 +484,7 @@ describe(`site demo diagrams`, () => {
   test.each(Object.keys(binary_diagrams))(
     `%s two-phase regions are in composition order`,
     (name) => {
-      const { temperature_range, regions = [], phases } = binary_diagrams[name]
+      const { temperature_range, regions, phases } = binary_diagrams[name]
       const ids = new Set(phases.map(({ id }) => id))
       const wrapping_field = new Map(
         phases.map(({ id, model_phase }) => [id, ids.has(model_phase) ? model_phase : id]),

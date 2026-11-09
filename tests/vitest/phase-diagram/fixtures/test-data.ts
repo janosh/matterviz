@@ -49,6 +49,7 @@ export const eutectic: BinaryPhaseDiagram = {
   congruent_points: [],
   critical_points: [],
   unary_transitions: [],
+  polymorphic_transitions: [],
   provenance: { kind: `assessment`, source: `test fixture` },
 }
 

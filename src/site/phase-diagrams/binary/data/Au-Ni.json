@@ -319,5 +319,6 @@
     {"component": "Au", "temperature": 1337.33, "above": "LIQUID", "below": "FCC_A1"},
     {"component": "Ni", "temperature": 1728.3, "above": "LIQUID", "below": "FCC_A1"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Au-Ni built from approximate assessed minimum and gap critical point (demo fixture, not a CALPHAD calculation)"}
 }

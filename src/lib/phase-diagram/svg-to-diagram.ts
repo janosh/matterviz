@@ -361,25 +361,34 @@ function extract_filled_shapes(doc: Document): FilledShape[] {
 
 // === Component Inference ===
 
-const split_phase_label = (label: Label) => label.text.split(/\s*\+\s*/)
+const split_label = (label: string): string[] =>
+  label
+    .split(`+`)
+    .map((token) => token.trim())
+    .filter(Boolean)
+// L, Liq, Liquid, optionally numbered for a liquid miscibility gap (L1, L₂, Liquid 2)
+const LIQUID_LABEL = /^(?:l|liq|liquid)\s*[\d₀-₉]*$/i
 
 // Infer binary components from region labels sorted by x: each end's pure component is the
-// phase of its two-phase end region absent from the three regions at the other end (for
-// "La2NiO4 + La2O3" on the left, La2O3 is the pure A endpoint)
+// solid phase of its two-phase end region absent from the three regions at the other end (for
+// "La2NiO4 + La2O3" on the left, La2O3 is the pure A endpoint). A liquid is never a component:
+// an end without such a solid, or ends resolving to the same phase, fall back to A and B.
 function infer_components(labels: Label[]): [string, string] {
   const sorted = labels.toSorted((label_a, label_b) => label_a.px_x - label_b.px_x)
   if (sorted.length < 2) return [`A`, `B`]
   const end_component = (end: Label, other_end: Label[], fallback: string): string => {
-    const phases = split_phase_label(end)
+    const phases = split_label(end.text)
     if (phases.length !== 2) return fallback
-    const other_phases = new Set(other_end.flatMap(split_phase_label))
-    return phases.find((phase) => !other_phases.has(phase)) ?? phases[1]
+    const other_phases = new Set(other_end.flatMap(({ text }) => split_label(text)))
+    const solids = phases.filter((phase) => !LIQUID_LABEL.test(phase))
+    return solids.find((phase) => !other_phases.has(phase)) ?? fallback
   }
   // the other end's labels exclude this end's own (with few labels the slices overlap)
-  return [
+  const ends: [string, string] = [
     end_component(sorted[0], sorted.slice(1).slice(-3), `A`),
     end_component(sorted[sorted.length - 1], sorted.slice(0, -1).slice(0, 3), `B`),
   ]
+  return ends[0] === ends[1] ? [`A`, `B`] : ends
 }
 
 // === Region Inference ===
@@ -578,13 +587,6 @@ export function trace_region_outline(
 
 // === Diagram Assembly ===
 
-const split_label = (label: string): string[] =>
-  label
-    .split(`+`)
-    .map((token) => token.trim())
-    .filter(Boolean)
-const LIQUID_LABEL = /^(?:l|liq|liquid)$/i
-
 // Phases (one per distinct label token, the label doubling as id) and regions with their phases
 // ordered left to right: by the mean centre of the regions each phase occurs in, the end
 // components pinned to their edges
@@ -686,6 +688,7 @@ export function parse_phase_diagram_svg(svg_string: string): BinaryPhaseDiagram 
     congruent_points: [],
     critical_points: [],
     unary_transitions: [],
+    polymorphic_transitions: [],
     provenance: { kind: `sketch`, source: `imported SVG` },
   }
 }

@@ -88,12 +88,18 @@
       return frac >= 0 && frac <= 1 ? [t_start + frac * (t_end - t_start)] : []
     })
 
-  // Distance in temperature to the nearest liquidus/solidus/solvus at the cursor's composition
+  // Distance in temperature to the nearest phase boundary at the cursor's composition
+  // (isotherms, magnetic and polymorphic lines bound no field the cursor could leave by T)
   const boundary_distance = $derived.by(() => {
     const { composition, temperature } = hover_info
     let nearest: { boundary: DiagramBoundary; delta_t: number } | null = null
     for (const boundary of data.boundaries) {
-      if (![`liquidus`, `solidus`, `solvus`].includes(boundary.kind)) continue
+      if (
+        ![`liquidus`, `solidus`, `solvus`, `transus`, `miscibility_gap`].includes(
+          boundary.kind,
+        )
+      )
+        continue
       for (const boundary_temp of boundary_temps_at(boundary.points, composition)) {
         const delta_t = temperature - boundary_temp
         if (!nearest || Math.abs(delta_t) < Math.abs(nearest.delta_t)) {
@@ -126,9 +132,9 @@
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
     <!-- a boundaries-only diagram has no phase set to name in the header -->
-    {#if data.regions?.length || hover_info.point}
+    {#if data.regions.length || hover_info.point}
       <header>
-        {#if data.regions?.length}
+        {#if data.regions.length}
           <strong>{@html html_label(region_label(hover_info.region, label_of))}</strong>
         {/if}
         {#if hover_info.point}

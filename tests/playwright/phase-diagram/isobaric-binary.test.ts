@@ -179,7 +179,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
       const [first, second] = element.querySelectorAll(
         `.visibility-grid input[type="checkbox"]`,
       )
-      const swatch = element.querySelector(`input[type="color"][aria-label="Boundaries"]`)
+      const swatch = element.querySelector(`input[type="color"][aria-label="Grid"]`)
       return [
         center_y(first),
         center_y(second),
@@ -201,13 +201,11 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
     await expect(boundaries).toBeVisible()
     await expect(reset_visibility).toHaveCount(0)
 
-    const hex = pane.getByRole(`textbox`, { name: `Boundaries hex`, exact: true })
+    const hex = pane.getByRole(`textbox`, { name: `Grid hex`, exact: true })
     await hex.fill(`#abc`)
     await hex.press(`Tab`)
     await expect(hex).toHaveValue(`#aabbcc`)
-    await expect(pane.locator(`input[type="color"][aria-label="Boundaries"]`)).toHaveValue(
-      `#aabbcc`,
-    )
+    await expect(pane.locator(`input[type="color"][aria-label="Grid"]`)).toHaveValue(`#aabbcc`)
     const field_width = await hex.evaluate((input) => input.getBoundingClientRect().width)
     const pane_width = await pane.evaluate((element) => element.getBoundingClientRect().width)
     expect(field_width).toBeLessThan(pane_width / 2)

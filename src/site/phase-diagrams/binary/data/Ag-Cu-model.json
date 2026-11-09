@@ -298,5 +298,6 @@
     {"component": "Ag", "temperature": 1210.0, "above": "LIQUID", "below": "FCC_A1#1"},
     {"component": "Cu", "temperature": 1381.0, "above": "LIQUID", "below": "FCC_A1#2"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "model", "source": "synthetic perturbation of the Ag-Cu demo fixture", "model": "demo-model"}
 }

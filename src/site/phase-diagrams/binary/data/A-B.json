@@ -190,5 +190,6 @@
     {"component": "A", "temperature": 800, "above": "LIQUID", "below": "ALPHA"},
     {"component": "B", "temperature": 750, "above": "LIQUID", "below": "BETA"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Example A-B Eutectic Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

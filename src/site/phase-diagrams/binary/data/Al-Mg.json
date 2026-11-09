@@ -187,5 +187,6 @@
     {"component": "Al", "temperature": 933, "above": "LIQUID", "below": "ALPHA_FCC_AL"},
     {"component": "Mg", "temperature": 923, "above": "LIQUID", "below": "BETA_HCP_MG"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Al-Mg Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

@@ -53,15 +53,6 @@
       ]
     },
     {
-      "phases": ["FE3C"],
-      "vertices": [
-        [0.855275, 1500.15],
-        [0.855275, 673.15],
-        [1.0, 673.15],
-        [1.0, 1500.15]
-      ]
-    },
-    {
       "phases": ["DELTA_BCC", "LIQUID"],
       "vertices": [
         [0.004714, 1768.15],
@@ -82,8 +73,7 @@
       "phases": ["LIQUID", "FE3C"],
       "vertices": [
         [0.361071, 1420.15],
-        [0.855275, 1420.15],
-        [0.855275, 1500.15],
+        [1.0, 1420.15],
         [1.0, 1500.15]
       ]
     },
@@ -91,8 +81,8 @@
       "phases": ["GAMMA_FCC", "FE3C"],
       "vertices": [
         [0.038847, 1000.15],
-        [0.855275, 1000.15],
-        [0.855275, 1420.15],
+        [1.0, 1000.15],
+        [1.0, 1420.15],
         [0.127681, 1420.15]
       ]
     },
@@ -109,8 +99,8 @@
       "phases": ["ALPHA_BCC", "FE3C"],
       "vertices": [
         [0.0, 673.15],
-        [0.855275, 673.15],
-        [0.855275, 1000.15],
+        [1.0, 673.15],
+        [1.0, 1000.15],
         [0.038847, 1000.15],
         [0.000935, 1000.15]
       ]
@@ -183,7 +173,7 @@
       "phases": ["ALPHA_BCC", "GAMMA_FCC", "FE3C"],
       "points": [
         [0.000935, 1000.15],
-        [0.855275, 1000.15]
+        [1.0, 1000.15]
       ]
     },
     {
@@ -223,7 +213,7 @@
       "kind": "eutectoid",
       "temperature": 1000.15,
       "phases": ["ALPHA_BCC", "GAMMA_FCC", "FE3C"],
-      "compositions": [0.000935, 0.038847, 0.855275],
+      "compositions": [0.000935, 0.038847, 1.0],
       "reaction": "GAMMA_FCC -> ALPHA_BCC + FE3C"
     }
   ],
@@ -232,5 +222,6 @@
   "unary_transitions": [
     {"component": "Fe", "temperature": 1811.15, "above": "LIQUID", "below": "DELTA_BCC"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Fe-Fe₃C Pseudo-Binary Phase Diagram (approximate demo sketch, not thermodynamically accurate)"}
 }

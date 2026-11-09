@@ -42,6 +42,17 @@ describe(`PhaseDiagramControls`, () => {
   test.each([
     { data: sample_data, expected: true, desc: `with an invariant` },
     { data: { ...sample_data, invariants: [] }, expected: false, desc: `without` },
+    {
+      data: {
+        ...sample_data,
+        invariants: [],
+        polymorphic_transitions: [
+          { temperature: 450, composition: 0.5, above: `A`, below: `B` },
+        ],
+      },
+      expected: true,
+      desc: `with only a polymorphic transition`,
+    },
   ])(`Special pts toggle shown=$expected $desc`, ({ data, expected }) => {
     const target = mount_controls({ data })
     expect(target.innerHTML).toContain(`Cu-Ni`)

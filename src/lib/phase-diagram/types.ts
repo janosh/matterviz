@@ -123,13 +123,13 @@ export interface BinaryPhaseDiagram {
   pressure_pa: number
   temperature_range: Vec2 // K, the computed window
   phases: BinaryPhase[]
-  regions?: DiagramRegion[] // absent until the emitter derives them: boundaries and points still render
+  regions: DiagramRegion[]
   boundaries: DiagramBoundary[]
   invariants: InvariantReaction[]
   congruent_points: CongruentPoint[]
   critical_points: CriticalPoint[]
   unary_transitions: UnaryTransition[]
-  polymorphic_transitions?: PolymorphicTransition[]
+  polymorphic_transitions: PolymorphicTransition[]
   provenance: DiagramProvenance
 }
 
@@ -212,10 +212,13 @@ export interface PhaseHoverInfo extends DiagramHit {
   observation: ObservationMarker | null
 }
 
-// Shared cursor of synchronized diagrams, in data units
+// Shared cursor of synchronized diagrams, in data units. `source` names the diagram whose
+// pointer set it, so each diagram tells its own cursor from a partner's without tracking
+// pointer enter/leave (touch never sends a leave)
 export interface DiagramCursor {
   composition: number
   temperature: number
+  source: string
 }
 
 interface TieLineConfig {

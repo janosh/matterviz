@@ -87,7 +87,7 @@ describe(`parse_phase_diagram_svg`, () => {
       [`solvus`, pts(0.5, 500, 0.5, 1000)],
       [`invariant`, pts(0, 1000, 0.5, 1000)],
     ])
-    const regions = data.regions ?? []
+    const regions = data.regions
     expect(regions).toHaveLength(2)
     const [rect_region, l_shape] = regions
     expect(new Set(data.boundaries[0].phases)).toEqual(
@@ -130,7 +130,7 @@ describe(`parse_phase_diagram_svg`, () => {
       n_regions: 2,
     },
   ])(`traces $label`, ({ boundaries, region_idx, expected, n_regions }) => {
-    const regions = parse_phase_diagram_svg(simple_svg(boundaries)).regions ?? []
+    const regions = parse_phase_diagram_svg(simple_svg(boundaries)).regions
     expect(regions).toHaveLength(n_regions)
     expect_points_close(regions[region_idx].vertices, expected)
   })
@@ -144,9 +144,10 @@ describe(`parse_phase_diagram_svg`, () => {
       [`β`, `β`, `solid`],
       [`L`, `L`, `liquid`],
     ])
-    // each end's component is the phase its label has and the other end's lacks
-    expect(simple.components).toEqual([`β`, `L`])
-    expect(simple.regions?.map(({ phases }) => phases)).toEqual([
+    // each end's component is the solid its label has and the other end's lacks; the liquid
+    // never is one, and α + L's only solid also lies left, so that end is the generic B
+    expect(simple.components).toEqual([`β`, `B`])
+    expect(simple.regions.map(({ phases }) => phases)).toEqual([
       [`β`, `α`],
       [`α`, `L`],
     ])
@@ -154,7 +155,7 @@ describe(`parse_phase_diagram_svg`, () => {
     const mpl = parse_phase_diagram_svg(matplotlib_svg(MPL_BOUNDARIES))
     expect(mpl.phases.map(({ id }) => id)).toEqual([`La2O3`, `La2NiO4`, `NiO`])
     expect(mpl.components).toEqual([`La2O3`, `NiO`])
-    expect(mpl.regions?.map(({ phases }) => phases)).toEqual([
+    expect(mpl.regions.map(({ phases }) => phases)).toEqual([
       [`La2O3`, `La2NiO4`],
       [`La2NiO4`, `NiO`],
     ])
@@ -170,7 +171,7 @@ describe(`parse_phase_diagram_svg`, () => {
         `x="300" y="300">L + B</text><text class="label-main" x="450" y="300">A+B`,
       )
     const shared = parse_phase_diagram_svg(shared_svg)
-    expect(shared.regions?.map(({ phases }) => phases.toSorted())).toEqual([
+    expect(shared.regions.map(({ phases }) => phases.toSorted())).toEqual([
       [`A`, `B`],
       [`B`, `L`],
       [`A`, `B`],
@@ -202,7 +203,7 @@ describe(`parse_phase_diagram_svg`, () => {
     ({ svg }) => {
       const data = parse_phase_diagram_svg(svg)
       expect(data.temperature_range).toEqual([expect.closeTo(500, 9), expect.closeTo(1600, 9)])
-      const top = data.regions?.find(({ phases }) => phases.includes(`c`))
+      const top = data.regions.find(({ phases }) => phases.includes(`c`))
       expect(top?.vertices).toEqual(rect(0, 1550, 1, 1600))
     },
   )
@@ -212,7 +213,7 @@ describe(`parse_phase_diagram_svg`, () => {
     [`horizontal`, `y1="300" x2="300"`, `y1="300" x2="299.7"`],
   ])(`snaps sub-pixel gaps between boundaries (%s ends 0.3 px short)`, (_label, from, to) => {
     const data = parse_phase_diagram_svg(simple_svg(SIMPLE_BOUNDARIES.replace(from, to)))
-    expect(data.regions?.map(({ phases }) => phases.toSorted())).toEqual([
+    expect(data.regions.map(({ phases }) => phases.toSorted())).toEqual([
       [`α`, `β`],
       [`L`, `α`],
     ])

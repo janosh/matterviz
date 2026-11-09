@@ -182,6 +182,7 @@
     congruent_points: [],
     critical_points: [],
     unary_transitions: [],
+    polymorphic_transitions: [],
     provenance: { kind: `sketch` },
   }
 
@@ -193,9 +194,10 @@
   const gradient_uid = unique_id(`pd-gradient`)
   const plot_clip = `url(#${gradient_uid}-plot-area)`
 
-  // Editor edits and dropped files override the data prop until it changes
+  // Editor edits and dropped files override the data prop until it changes, which also
+  // clears a failed drop's error
   let source_data = $derived(data_prop)
-  let drop_error = $state<string | null>(null)
+  let drop_error = $derived<string | null>((void data_prop, null))
   const data_errors = $derived(source_data ? diagram_errors(source_data) : [])
   const valid_data = $derived(data_errors.length ? undefined : source_data)
   const data = $derived(valid_data ?? placeholder)
@@ -273,10 +275,15 @@
     y_scale_display.ticks(tick_count(y_axis, PHASE_DIAGRAM_DEFAULTS.y_ticks)),
   )
 
-  const regions = $derived(data.regions ?? [])
+  const regions = $derived(data.regions)
   const label_of = $derived(phase_labeler(data))
   const colors = $derived(phase_colors(data.phases, phase_color_keys))
-  const color_of = (id: string): string => colors.get(id) ?? `#b4b4b4`
+  // phase ids are validated, so a miss is a caller bug
+  const color_of = (id: string): string => {
+    const color = colors.get(id)
+    if (color === undefined) throw new Error(`No color for phase id "${id}"`)
+    return color
+  }
 
   const transformed_regions = $derived(
     regions.map((region) => {
@@ -292,11 +299,19 @@
       )
       const [x_min, x_max] = array_extent(svg_vertices.map(([svg_x]) => svg_x))
       const { phases } = region
+      // shoelace area in px², which ranks regions for label placement
+      const area = Math.abs(
+        svg_vertices.reduce((sum, [x_0, y_0], idx) => {
+          const [x_1, y_1] = svg_vertices[(idx + 1) % svg_vertices.length]
+          return sum + x_0 * y_1 - x_1 * y_0
+        }, 0) / 2,
+      )
       return {
         region,
         svg_path: generate_region_path(svg_vertices),
         label_pos: anchor?.at ?? polygon_centroid(svg_vertices),
         label_props,
+        area,
         // multi-phase regions blend their phases' colors left to right
         gradient:
           phases.length > 1
@@ -311,6 +326,44 @@
       }
     }),
   )
+
+  // Indices of the region labels drawn: largest regions first, each skipped where its box
+  // would cover an already placed label or a marked point. Narrow strips in dense diagrams
+  // (Fe-Fe3C's δ fields) lose their label this way; the tooltip still names every region.
+  const shown_label_idxs = $derived.by(() => {
+    const { font_size, special_point_radius } = merged_config
+    type Box = [number, number, number, number] // x_min, y_min, x_max, y_max
+    const overlaps = (box_a: Box, box_b: Box) =>
+      box_a[0] < box_b[2] && box_b[0] < box_a[2] && box_a[1] < box_b[3] && box_b[1] < box_a[3]
+    const reach = special_point_radius + 4
+    const placed: Box[] = show_special_points
+      ? transformed_points.map(({ svg_x, svg_y }) => [
+          svg_x - reach,
+          svg_y - reach,
+          svg_x + reach,
+          svg_y + reach,
+        ])
+      : []
+    const shown = new Set<number>()
+    const order = transformed_regions
+      .map((region, idx) => [idx, region.area] as const)
+      .toSorted(([, area_a], [, area_b]) => area_b - area_a)
+    for (const [idx] of order) {
+      const { label_pos, label_props } = transformed_regions[idx]
+      const { lines, scale, rotation } = label_props
+      if (!lines.length) continue
+      // same character metrics as compute_label_properties
+      const along = Math.max(...lines.map((line) => line.length)) * font_size * 0.6 * scale
+      const across = lines.length * font_size * 1.2 * scale
+      const [half_w, half_h] = rotation ? [across / 2, along / 2] : [along / 2, across / 2]
+      const [cx, cy] = label_pos
+      const box: Box = [cx - half_w, cy - half_h, cx + half_w, cy + half_h]
+      if (placed.some((other) => overlaps(box, other))) continue
+      placed.push(box)
+      shown.add(idx)
+    }
+    return shown
+  })
 
   const boundary_path = (points: Vec2[]) =>
     generate_boundary_path(transform_vertices(points, x_scale, y_scale))
@@ -343,6 +396,8 @@
             svg_y: y_scale(marker.temperature),
             color: status_color(marker.row.status),
           }))
+          // outside a zoomed window a marker is neither drawn nor hoverable
+          .filter(({ svg_x, svg_y }) => in_plot(svg_x, svg_y))
       : [],
   )
   // An invariant's phases share one isotherm: join them with a thin line
@@ -387,16 +442,26 @@
     )
     return items
   })
-  // The legend avoids marked points, observations and (sampled) boundary vertices
+  // Points every ~16 px along a boundary polyline (its vertices alone leave a 2-point
+  // invariant isotherm free for the legend to cover)
+  const sample_boundary = (points: Vec2[]): { x: number; y: number }[] =>
+    transform_vertices(points, x_scale, y_scale).flatMap(([x_0, y_0], idx, svg_points) => {
+      const next = svg_points[idx + 1]
+      if (!next) return [{ x: x_0, y: y_0 }]
+      const n_steps = Math.max(1, Math.ceil(Math.hypot(next[0] - x_0, next[1] - y_0) / 16))
+      return Array.from({ length: n_steps }, (_, step) => ({
+        x: x_0 + ((next[0] - x_0) * step) / n_steps,
+        y: y_0 + ((next[1] - y_0) * step) / n_steps,
+      }))
+    })
+  // The legend avoids marked points, observations and boundaries
   const legend_obstacles = $derived(
     legend_items.length
       ? [
           ...transformed_points.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
           ...shown_markers.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
           ...[...data.boundaries, ...(shown_overlay?.boundaries ?? [])].flatMap(({ points }) =>
-            points
-              .filter((_, idx) => idx % 4 === 0)
-              .map(([comp, temp]) => ({ x: x_scale(comp), y: y_scale(temp) })),
+            sample_boundary(points),
           ),
         ]
       : [],
@@ -405,16 +470,17 @@
     if (series_idx === 0) show_boundaries = !show_boundaries
     else if (series_idx === 1) show_overlay = !show_overlay
     else {
+      // with observations off, a click shows the clicked status rather than toggling it
       const status = marker_statuses[series_idx - 2]
-      show_observations = true
-      if (hidden_statuses.has(status)) hidden_statuses.delete(status)
+      if (!show_observations) {
+        show_observations = true
+        hidden_statuses.delete(status)
+      } else if (hidden_statuses.has(status)) hidden_statuses.delete(status)
       else hidden_statuses.add(status)
     }
   }
 
   let hover_info = $state.raw<PhaseHoverInfo | null>(null)
-  // Whether this diagram's own pointer drives `cursor` (else a synced diagram does)
-  let pointer_inside = $state(false)
   // A click pins the hovered snapshot; its observation or region names the mark
   type HoverMark = Pick<PhaseHoverInfo, `region` | `observation`>
   const pin = new TooltipPin<PhaseHoverInfo, HoverMark>({
@@ -423,11 +489,13 @@
   const lit_region = (region: DiagramRegion) =>
     pin.lit({ region, observation: null }, hover_info) || region === remote_region
 
+  const own_cursor = () => cursor?.source === gradient_uid
+  // Drops this diagram's hover (reporting it once), and the shared cursor when it set it
   function clear_hover() {
+    if (own_cursor()) cursor = null
+    if (!hover_info && !hovered_region) return
     hover_info = null
     hovered_region = null
-    if (pointer_inside) cursor = null
-    pointer_inside = false
     on_phase_hover?.(null)
   }
 
@@ -473,9 +541,15 @@
     }
   })
 
+  // A partner taking over the shared cursor (e.g. a tap there, where touch sent this diagram
+  // no leave) ends this diagram's own live hover; a pinned tooltip stays
+  $effect(() => {
+    if (cursor && !own_cursor()) untrack(clear_hover)
+  })
+
   // A synced diagram's cursor: crosshair and this diagram's phase set at the same (x, T)
   const remote_cursor = $derived.by(() => {
-    if (pointer_inside || !cursor) return null
+    if (!cursor || own_cursor()) return null
     const svg_x = x_scale(cursor.composition)
     const svg_y = y_scale(cursor.temperature)
     if (!in_plot(svg_x, svg_y)) return null
@@ -525,8 +599,7 @@
     if (svg_x < left || svg_x > right || svg_y < top || svg_y > bottom) return clear_hover()
     const composition = x_scale.invert(svg_x)
     const temperature = y_scale.invert(svg_y)
-    pointer_inside = true
-    cursor = { composition, temperature }
+    cursor = { composition, temperature, source: gradient_uid }
 
     const hit = diagram_hit(data, composition, temperature)
     const overlay_region =
@@ -538,6 +611,7 @@
     // reports the cursor's (x, T)
     const nothing_hit = !hit.region && !overlay_region && !point && !observation
     if (nothing_hit && regions.length > 0) {
+      if (!hover_info && !hovered_region) return
       hover_info = null
       hovered_region = null
       on_phase_hover?.(null)
@@ -562,7 +636,7 @@
   }
   // A diagram unmounted mid-hover must not leave its synced partners a stuck crosshair
   $effect(() => () => {
-    if (pointer_inside) cursor = null
+    if (own_cursor()) cursor = null
   })
 
   // `e` toggles the export pane, Escape unpins the tooltip
@@ -791,24 +865,24 @@
         <g class="region-labels" style="pointer-events: none" clip-path={plot_clip}>
           {#each transformed_regions as { label_pos, label_props }, idx (idx)}
             {@const line_height = merged_config.font_size * 1.2}
-            <g
-              transform="translate({label_pos[0]}, {label_pos[1]}) rotate({label_props.rotation}) scale({label_props.scale})"
-            >
-              {#each label_props.lines as line, line_idx (line_idx)}
-                <text
-                  x={0}
-                  y={(line_idx - (label_props.lines.length - 1) / 2) * line_height}
-                  text-anchor="middle"
-                  dominant-baseline="middle"
-                  fill={merged_config.colors.text}
-                  font-size={merged_config.font_size}
-                  font-weight="500"
-                  class="region-label"
-                >
-                  {@html sanitize_svg(format_label_svg(line, true))}
-                </text>
-              {/each}
-            </g>
+            {#if shown_label_idxs.has(idx)}<g
+                transform="translate({label_pos[0]}, {label_pos[1]}) rotate({label_props.rotation}) scale({label_props.scale})"
+              >
+                {#each label_props.lines as line, line_idx (line_idx)}
+                  <text
+                    x={0}
+                    y={(line_idx - (label_props.lines.length - 1) / 2) * line_height}
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    fill={merged_config.colors.text}
+                    font-size={merged_config.font_size}
+                    font-weight="500"
+                    class="region-label"
+                  >
+                    {@html sanitize_svg(format_label_svg(line, true))}
+                  </text>
+                {/each}
+              </g>{/if}
           {/each}
         </g>
       {/if}
@@ -859,14 +933,7 @@
         <g class="special-points">
           {#each transformed_points as point, idx (idx)}
             {@const { svg_x, svg_y, category, marker_label } = point}
-            <!-- Larger hit area for easier hovering (2x radius) -->
-            <circle
-              cx={svg_x}
-              cy={svg_y}
-              r={marker_radius * 2}
-              fill="transparent"
-              class="special-point-hit-area"
-            />
+            {@const hovered = effective_hover_info?.point === point}
             {#if category === `congruent`}
               {@const size = marker_radius * 1.3}
               <path
@@ -876,6 +943,7 @@
                 stroke="white"
                 stroke-width={1.5}
                 class="special-point-marker"
+                class:hovered
                 data-category={category}
               />
             {:else}
@@ -887,6 +955,7 @@
                 stroke={category === `critical` ? color : `white`}
                 stroke-width={category === `critical` ? 2 : 1.5}
                 class="special-point-marker"
+                class:hovered
                 data-category={category}
               />
             {/if}
@@ -953,6 +1022,11 @@
                 fill="none"
               />
             {/if}
+          {/each}
+        </g>
+        <!-- unclipped, so markers on the x = 0 and x = 1 edges show whole like marked points -->
+        <g class="observation-markers" style="pointer-events: none">
+          {#each shown_markers as { marker, svg_x, svg_y, color }, idx (idx)}
             <circle
               cx={svg_x}
               cy={svg_y}
@@ -962,7 +1036,7 @@
               stroke-width={1.5}
               class="observation-marker"
               class:hovered={effective_hover_info?.observation === marker}
-              data-status={row.status}
+              data-status={marker.row.status}
             />
           {/each}
         </g>
@@ -1101,6 +1175,9 @@
         class="remote-cursor-label"
         style:left="{remote_cursor.svg_x + 8}px"
         style:top="{remote_cursor.svg_y - 26}px"
+        style:transform={remote_cursor.svg_x > left + plot_width / 2
+          ? `translateX(calc(-100% - 16px))`
+          : undefined}
       >
         {@html sanitize_html(format_label_html(remote_cursor.label, true))}
       </div>
@@ -1162,15 +1239,12 @@
       filter: brightness(1.1);
     }
   }
-  .special-point-hit-area {
-    cursor: pointer;
-    pointer-events: auto;
-  }
-  .special-point-hit-area:hover + .special-point-marker {
-    filter: brightness(1.3) drop-shadow(0 0 4px currentColor);
-  }
+  /* hover is decided by distance in handle_pointer_move, not by the marker's own box */
   .special-point-marker {
-    pointer-events: none; /* Let hit-area handle events */
+    pointer-events: none;
+    &.hovered {
+      filter: brightness(1.3) drop-shadow(0 0 4px currentColor);
+    }
   }
   .observation-marker.hovered {
     stroke: var(--text-color, #333);

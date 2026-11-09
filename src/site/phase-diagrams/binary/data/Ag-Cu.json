@@ -298,5 +298,6 @@
     {"component": "Ag", "temperature": 1234.93, "above": "LIQUID", "below": "FCC_A1#1"},
     {"component": "Cu", "temperature": 1357.77, "above": "LIQUID", "below": "FCC_A1#2"}
   ],
+  "polymorphic_transitions": [],
   "provenance": {"kind": "sketch", "source": "Ag-Cu shaped after the assessed invariants (demo fixture, not a CALPHAD calculation)"}
 }

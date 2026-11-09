@@ -21,7 +21,7 @@ import IsosurfacePage from '#root/src/routes/(demos)/structure/isosurface/+page.
 import MultiVolumePage from '#root/src/routes/(demos)/structure/multi-volume/+page.svelte'
 import type { IsosurfaceSettings } from '#lib/isosurface/types.js'
 import { volumetric_files } from '#site/isosurfaces.js'
-import { all_phase_diagram_files } from '#site/phase-diagrams.js'
+import { all_phase_diagram_files, find_precomputed_diagram } from '#site/phase-diagrams.js'
 import { ternary_system_files } from '#site/phase-diagrams/ternary/index.js'
 import { synthesis_demo_systems } from '#site/synthesis-planning/index.js'
 import CompositionDemo from '#site/CompositionDemo.svelte'
@@ -412,11 +412,21 @@ test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () 
 test(`a file dropped on the binary phase diagram leaves ?file= out of the URL`, async () => {
   mount(PhaseDiagramPage, { target: document.body })
   flushSync()
-  const json = JSON.stringify({ format: `binary-phase-diagram/2`, components: [`Mi`, `Ne`] })
-  doc_query(`.diagram-container`).dispatchEvent(
-    create_drop_event(new File([json], `mine.json`)),
+  const drop = (diagram: object) => {
+    const file = new File([JSON.stringify(diagram)], `mine.json`)
+    doc_query(`.diagram-container`).dispatchEvent(create_drop_event(file))
+  }
+  // an incomplete diagram is reported instead of crashing the page's caption
+  drop({ format: `binary-phase-diagram/2`, components: [`Mi`, `Ne`] })
+  await vi.waitFor(() =>
+    expect(doc_query(`.demo-error-message`).textContent).toContain(`Invalid phase diagram`),
   )
-  await vi.waitFor(() => expect(doc_query(`.diagram-title`).textContent).toBe(`Mi-Ne`))
+  expect(doc_query(`.diagram-title`).textContent).toBe(`A-B`)
+  const pb_sn = find_precomputed_diagram(`Pb-Sn`)
+  if (!pb_sn) throw new Error(`Pb-Sn demo diagram missing`)
+  drop(pb_sn)
+  await vi.waitFor(() => expect(doc_query(`.diagram-title`).textContent).toBe(`Pb-Sn`))
+  expect(document.querySelector(`.demo-error-message`)).toBeNull()
   expect(String(vi.mocked(goto).mock.lastCall?.[0])).not.toContain(`file=`)
 })
 
