@@ -21,14 +21,14 @@
 
 ## 🧰 &thinsp; Use it where you work
 
-|                      |                                                                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **VS Code / Cursor** | Right-click any structure or trajectory file → _Render with MatterViz_. Install from the [VS Code Marketplace] or [Open VSX]. Works over Remote SSH. [Settings and file formats](extensions/vscode/readme.md) |
-| **JupyterLab**       | Double-click files in the JupyterLab file browser: `pip install matterviz-jupyterlab`. [Details](extensions/jupyterlab/readme.md)                                                                             |
-| **Jupyter / Marimo** | Notebook widgets for pymatgen and ASE objects via [`pymatviz`](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets)                                                                    |
-| **Svelte apps**      | `npm add matterviz` and import components (quick start below)                                                                                                                                                 |
-| **React, Vue, HTML** | Prebuilt custom elements like `<mv-structure>` and `<mv-trajectory>`, no build step needed. [Guide](https://matterviz.janosh.dev/how-to/use-without-svelte)                                                   |
-| **Command line**     | `pnpm snapshot` renders structure images in batch; `pnpm movie` scripts camera flights through MD trajectories into MP4/WebM. Run either with `--help` from a repo checkout                                   |
+|                      |                                                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **VS Code / Cursor** | Right-click any structure or trajectory file → _MatterViz: Open_. Install from the [VS Code Marketplace] or [Open VSX]. Works over Remote SSH. [Settings and file formats](extensions/vscode/readme.md) |
+| **JupyterLab**       | Double-click files in the JupyterLab file browser: `pip install matterviz-jupyterlab`. [Details](extensions/jupyterlab/readme.md)                                                                       |
+| **Jupyter / Marimo** | Notebook widgets for pymatgen and ASE objects via [`pymatviz`](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets)                                                              |
+| **Svelte apps**      | `npm add matterviz` and import components (quick start below)                                                                                                                                           |
+| **React, Vue, HTML** | Prebuilt custom elements like `<mv-structure>` and `<mv-trajectory>`, no build step needed. [Guide](https://matterviz.janosh.dev/how-to/use-without-svelte)                                             |
+| **Command line**     | `pnpm snapshot` renders structure images in batch; `pnpm movie` scripts camera flights through MD trajectories into MP4/WebM. Run either with `--help` from a repo checkout                             |
 
 [VS Code Marketplace]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
 [Open VSX]: https://open-vsx.org/extension/janosh/matterviz
@@ -39,7 +39,7 @@
   <tr>
     <td width="50%">
       <a href="https://matterviz.janosh.dev/trajectory"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/trajectory-viewer.webp" alt="MD trajectory viewer with energy and force plots"></a>
-      <b>Trajectories</b>: step through MD runs and relaxations with linked energy, force and volume plots. Streams multi-GB HDF5 and ASE trajectories frame by frame, plus MSD, VACF, RDF and thermal-hotspot analysis.
+      <b>Trajectories</b>: step through MD runs and relaxations with linked energy, force and volume plots. Reads multi-GB HDF5 files on demand without loading them into memory, plus MSD, VACF, RDF and thermal-hotspot analysis.
     </td>
     <td width="50%">
       <a href="https://matterviz.janosh.dev/structure/isosurface"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/isosurface.webp" alt="Fe3O4 charge density isosurfaces with coordination polyhedra"></a>
