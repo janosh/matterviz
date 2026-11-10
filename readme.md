@@ -39,7 +39,7 @@
   <tr>
     <td width="50%">
       <a href="https://matterviz.janosh.dev/trajectory"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/trajectory-viewer.webp" alt="MD trajectory viewer with energy and force plots"></a>
-      <b>Trajectories</b>: step through MD runs and relaxations with linked energy, force and volume plots. Streams multi-GB HDF5 and extXYZ files, plus MSD, VACF, RDF and thermal-hotspot analysis.
+      <b>Trajectories</b>: step through MD runs and relaxations with linked energy, force and volume plots. Streams multi-GB HDF5 and ASE trajectories frame by frame, plus MSD, VACF, RDF and thermal-hotspot analysis.
     </td>
     <td width="50%">
       <a href="https://matterviz.janosh.dev/structure/isosurface"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/isosurface.webp" alt="Fe3O4 charge density isosurfaces with coordination polyhedra"></a>
@@ -128,12 +128,12 @@ Use [`citation.cff`](citation.cff) or cite the [Zenodo record](https://doi.org/1
 @software{riebesell_matterviz_2022,
   title = {matterviz: visualization toolkit for materials informatics},
   author = {Riebesell, Janosh and Evans, Matthew},
-  date = {2026-08-11},
+  date = {2026-11-10},
   year = {2026},
   doi = {10.5281/zenodo.17094509},
   url = {https://github.com/janosh/matterviz},
   note = {10.5281/zenodo.17094509 - https://github.com/janosh/matterviz},
-  urldate = {2026-08-11}, % optional, replace with your date of access
+  urldate = {2026-11-10}, % optional, replace with your date of access
   version = {0.9.0}, % replace with the version you use
 }
 ```
