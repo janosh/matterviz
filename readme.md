@@ -39,7 +39,7 @@
   <tr>
     <td width="50%">
       <a href="https://matterviz.janosh.dev/trajectory"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/trajectory-viewer.webp" alt="MD trajectory viewer with energy and force plots"></a>
-      <b>Trajectories</b>: step through MD runs and relaxations with linked energy, force and volume plots. Reads multi-GB MD HDF5 trajectories (md-trajectory-v1, TorchSim) on demand without loading them into memory, plus MSD, VACF, RDF and thermal-hotspot analysis.
+      <b>Trajectories</b>: step through MD runs and relaxations with linked energy, force and volume plots. In the browser, reads multi-GB MD HDF5 trajectories (md-trajectory-v1, TorchSim) on demand without loading them into memory (the VS Code and JupyterLab extensions cap HDF5 at 400 MiB and 100 MiB), plus MSD, VACF, RDF and thermal-hotspot analysis.
     </td>
     <td width="50%">
       <a href="https://matterviz.janosh.dev/structure/isosurface"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/isosurface.webp" alt="Fe3O4 charge density isosurfaces with coordination polyhedra"></a>
