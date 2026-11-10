@@ -12,6 +12,11 @@ const nacl_poscar = `NaCl\n1.0\n0 2.8 2.8\n2.8 0 2.8\n2.8 2.8 0\nNa Cl\n1 1\nDir
 const h2_xyz = `2\n\nH 0 0 0\nH 0.74 0 0\n2\n\nH 0 0 0\nH 1.6 0 0\n`
 // PNG width and height from the IHDR chunk
 const png_size = (png: Buffer) => [png.readUInt32BE(16), png.readUInt32BE(20)]
+// pHYs pixels per metre in x, as DPI (undefined without the chunk)
+const png_dpi = (png: Buffer) => {
+  const idx = png.indexOf(`pHYs`)
+  return idx === -1 ? undefined : Math.round(png.readUInt32BE(idx + 4) * 0.0254)
+}
 // The JSON lines the CLI prints, one per rendered file
 const results = (stdout: string): { input: string; output: string; sites: number }[] =>
   stdout
@@ -70,6 +75,8 @@ test.describe(`snapshot CLI`, () => {
       (await read(`red`, `Cu`)).toString(`base64`),
     )
     expect(corner).toEqual([255, 0, 0, 255])
+    // compositing the background re-encodes the PNG, which must keep the requested DPI
+    expect(png_dpi(await read(`red`, `Cu`))).toBe(144)
 
     await expect(batch(`low-dpi`, `--dpi`, `72`)).rejects.toMatchObject({
       code: 1,

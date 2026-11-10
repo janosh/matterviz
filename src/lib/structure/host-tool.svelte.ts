@@ -43,7 +43,8 @@ export interface StructureToolRun {
   structure: AnyStructure
   signal: AbortSignal
   // Publish the run's output (null clears it). Republished volume IDs keep their surfaces; the
-  // first field gets a default surface only while no published field has one.
+  // first new field (an ID not published before) gets a default surface only while no
+  // published field has one.
   on_overlay: (overlay: StructureToolOverlay | null) => void
   on_view: (view: StructureToolView | null) => void
   // Adopt `geometry` as the viewer's input in one undoable edit (undo clears this run's

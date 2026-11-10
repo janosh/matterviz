@@ -727,7 +727,7 @@ export interface BasePlotProps extends ExportProps {
   hovered?: boolean
   // Controls
   show_controls?: ShowControlsProp<`controls` | `fullscreen`> // false hides all chart chrome
-  controls_open?: boolean // settings pane open, independent of show_controls
+  controls_open?: boolean // settings pane open; kept but not shown while show_controls hides it
   controls_toggle_props?: PaneToggleProps
   controls_pane_props?: PaneProps
   // Fullscreen

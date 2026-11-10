@@ -13,7 +13,8 @@ export type MovieRenderOptions = {
 }
 
 // Handed out by Trajectory's on_controller and the /trajectory/render page (as
-// window.matterviz_movie, plus configure(structure_props)). Every method is awaitable.
+// window.matterviz_movie, plus configure(structure_props)). cancel_movie() only signals the
+// abort: await the active render's promise before starting another.
 export interface TrajectoryViewerController extends TrajectoryController {
   // Resolves once the first scene has rendered
   load: (

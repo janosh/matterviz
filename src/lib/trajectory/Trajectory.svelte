@@ -279,8 +279,9 @@
     // recorded in the file) or 'time' (step x the file's timestep). Unset picks the most
     // informative one the data supports; the resolved choice is written back.
     x_quantity?: TrajectoryXQuantity
-    // Bindable exact property keys (independent of display labels); [] hides every series.
-    // One selection shared by scatter and histogram modes, legend clicks and isolation.
+    // Bindable exact property keys (independent of display labels) of the time-series plot;
+    // [] hides every series. Legend clicks and isolation edit it; histograms use
+    // distribution_property instead.
     visible_properties?: string[]
     // Plot each energy relative to its first finite recorded value; source data is unchanged.
     relative_energy?: boolean

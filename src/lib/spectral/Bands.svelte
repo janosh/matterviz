@@ -92,7 +92,8 @@
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
     // Keyed by legend label (`""` for an unlabelled series); parse raw input once with
-    // normalize_band_structure. hidden_series keys are JSON.stringify([key, 'up' | 'down']).
+    // normalize_band_structure. hidden_series keys are JSON.stringify([key, 'up' | 'down']),
+    // plus `mode-values` for the mode_values markers.
     band_structs: Record<string, BaseBandStructure>
     wrapper?: HTMLDivElement // the plot's root, as ScatterPlot binds it
     // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the

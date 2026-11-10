@@ -43,8 +43,9 @@ export interface StructureToolOverlay {
   color_property?: string
   // A live preview (e.g. an unconverged density): drawn like a prediction, under the same
   // volume IDs as the final result, but never given to hosts, exported or reopened. Published
-  // after its run's result, it replaces only the fields or geometry it carries; result fields
-  // it omits are hidden, and their surfaces return with their settings when republished.
+  // after its run's result, it replaces only the fields or geometry it carries. With a
+  // `volumes` array, result fields it omits are hidden (their surfaces return with their
+  // settings when republished); without one, the result's fields stay shown.
   // Publishing a non-transient overlay again ends the preview.
   transient?: boolean
   // Complete, versioned calculation metadata. Hosts define the schema; the viewer validates

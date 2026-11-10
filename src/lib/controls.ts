@@ -18,9 +18,9 @@ export type ShowControlsConfig<ControlName extends string = string> = {
 }
 
 // `show_controls` of every viewer, plot, table and heatmap: true = `always`, false = `never`
-// (hides all chrome), or `{ mode, hidden, style }` where `hidden` drops named controls, e.g.
+// (hides the toolbar chrome; in-scene inputs like a hull's temperature slider stay), or `{ mode, hidden, style }` where `hidden` drops named controls, e.g.
 // `{ mode: 'hover', hidden: ['controls'] }` keeps the fullscreen button but not the settings
-// pane. Independent of `controls_open`, which only sets whether the settings pane is open.
+// pane. `controls_open` keeps its own state but can't show the pane while controls are hidden.
 export type ShowControlsProp<ControlName extends string = string> =
   | ControlsVisibility
   | ShowControlsConfig<ControlName>

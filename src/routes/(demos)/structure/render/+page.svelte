@@ -2,7 +2,7 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { open_material, type MaterialSource } from '#lib/file-viewer/open.js'
   import { DEFAULT_ISOSURFACE_SETTINGS } from '#lib/isosurface/types.js'
-  import { canvas_to_png_blob } from '#lib/io/export.js'
+  import { canvas_to_png_blob, set_png_dpi } from '#lib/io/export.js'
   import {
     apply_structure_material,
     Structure,
@@ -105,7 +105,15 @@
   // The canvas is transparent (Structure paints its background in CSS), so a background is
   // composited here; JPEG has no alpha, so it starts from white. A browser that cannot
   // encode a type returns PNG instead, which throws rather than mislabels the file.
-  async function encode(png: Blob, format: ImageFormat, quality: number, background?: string) {
+  async function encode(
+    png: Blob,
+    format: ImageFormat,
+    {
+      quality,
+      png_dpi,
+      background,
+    }: { quality: number; png_dpi: number; background?: string },
+  ) {
     const fills = [format === `jpeg` && `#ffffff`, background].filter(Boolean)
     if (format === `png` && !fills.length) return png
     const bitmap = await createImageBitmap(png)
@@ -121,7 +129,8 @@
     const blob = await canvas.convertToBlob({ type: MIME_TYPES[format], quality })
     if (blob.type !== MIME_TYPES[format])
       throw new Error(`This browser cannot encode ${format}`)
-    return blob
+    // convertToBlob drops the pHYs chunk; restore the requested DPI on a composited PNG
+    return format === `png` ? set_png_dpi(blob, png_dpi) : blob
   }
 
   // Automation entry point for `pnpm snapshot`: open a source (a File, URL or `{ data,
@@ -171,7 +180,7 @@
     const background = options.background_color
       ? getComputedStyle(wrapper).backgroundColor
       : undefined
-    const blob = await encode(png, format, quality, background)
+    const blob = await encode(png, format, { quality, png_dpi, background })
     const data_url = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.addEventListener(`load`, () => resolve(String(reader.result)))

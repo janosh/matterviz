@@ -285,16 +285,17 @@
     height?: number // output: wrapper height in CSS px
     color_scheme?: ColorSchemeName
     atom_color_config?: AtomColorConfig
-    // File to open: a URL, File or { data, filename } payload (any format open_material()
-    // reads, compressed or not, incl. volumetric and prediction JSON files). Pass parsed data
-    // via `structure` instead.
+    // File to open: a URL, File or { data, filename } payload holding a structure, volumetric
+    // data or prediction JSON, compressed or not (trajectories and other results throw). Pass
+    // parsed data via `structure` instead.
     source?: MaterialSource
     // False when a parent owns loading
     allow_file_drop?: boolean
     // Takes over loading: receives the raw content of every drop and `source` load instead of
     // the viewer parsing it
     on_file_drop?: FileLoadCallback
-    // Reports what the viewer loaded (structure, provenance, atom count) after it is shown
+    // Reports what loaded (structure, provenance, atom count) before it renders; use
+    // on_rendered to wait for the drawn scene
     on_file_load?: EventHandler
     on_error?: EventHandler
     loading?: boolean
@@ -341,8 +342,9 @@
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
     hidden_elements?: Set<ElementSymbol>
     symmetry_settings?: Partial<SymmetrySettings>
-    // bindable: scalar fields keyed by unique `id`; removing one drops its surfaces and clears
-    // color references to it. A volumetric file import adds its fields only when the ordered
+    // bindable: scalar fields keyed by unique `id`; removing one in the controls drops its
+    // surfaces and color references, while a parent replacing fields updates
+    // isosurface_settings itself. A volumetric file import adds its fields only when the ordered
     // atoms, species and lattice match the current structure, else replaces scene and fields.
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
