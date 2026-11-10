@@ -95,6 +95,7 @@ function validate_frames(
   }
 }
 
+// In-memory run over already-parsed frames, e.g. for Trajectory's `trajectory` prop
 export function trajectory_from_frames(
   frames: TrajectoryFrame[],
   extras: MemoryRunExtras = {},

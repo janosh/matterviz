@@ -3,6 +3,7 @@
   // Shell shared by the bar plots that histogram one-or-many structures (#lib/bond-angles,
   // #lib/coordination): file-drop wiring, the empty state and the orientation-dependent axis
   // merge. Callers own the maths and hand back finished series plus a tooltip snippet.
+  // Internal: apps use BondAnglePlot, CoordinationBarPlot or StructureTypePlot.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import type { FileLoadCallback } from '#lib/io/index.js'

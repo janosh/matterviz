@@ -60,8 +60,12 @@
     a2f_range?: Vec2 // the α²F axis's extent to span instead of its data's
     a2f_extent?: Vec2 // read only: the drawn α²F's extent
     structure?: Crystal // adds its Brillouin zone with the bands' k-path
+    // Phonon units of both plots (electronic always eV); a change resets frequency zoom to
+    // the converted shared range
     units?: FrequencyUnit
-    fermi_level?: number // Shared electronic reference; omitted uses dataset metadata
+    // Shared electronic reference, zero allowed; omitted uses dataset metadata (input untouched)
+    fermi_level?: number
+    // Presentation only: data, units and view sync stay with this parent
     bands_props?: BandsOptions
     dos_props?: DosOptions
     bz_props?: BrillouinZoneOptions

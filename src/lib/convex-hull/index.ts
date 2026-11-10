@@ -97,7 +97,7 @@ type ConvexHullControlName = `reset` | `info-pane` | `export-pane` | `fullscreen
 // Base props shared across all convex hull components (2D, 3D, 4D)
 export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   extends Omit<HTMLAttributes<HTMLDivElement>, `entries` | `children`>, ExportProps {
-  entries?: PhaseData[]
+  entries?: PhaseData[] // their arity picks the binary, ternary or quaternary renderer
   // Treat these strings as the composition keys instead of element symbols, e.g. precursor
   // formulas for a pseudo-binary/ternary reaction hull. Entries then hold pseudo-compositions
   // such as { BaO: 0.4, TiO2: 0.6 } and the corners are the components.
@@ -161,7 +161,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   selected_entry?: AnyDimEntry | null
   // Compositions marked by a linked view (lines between compositions, ringed compositions)
   annotations?: HullAnnotations
-  children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]>
+  children?: Snippet<[BaseConvexHullChildrenProps<AnyDimEntry>]> // `model` as from get_model()
   // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
   tooltip?: ConvexHullTooltipProp<AnyDimEntry>
   // Temperature for temperature-dependent free energy G(T) data

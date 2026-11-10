@@ -219,6 +219,8 @@ const parse_text = (
 // Leading bytes of a binary source, enough for is_binary's sniff
 const BINARY_SNIFF_BYTES = 8192
 
+// Parse on the calling thread (Trajectory's `source` prop uses a worker). The caller owns the
+// returned run and must dispose() it.
 export async function open_trajectory(
   source: TrajectorySource,
   options: OpenTrajectoryOptions = {},

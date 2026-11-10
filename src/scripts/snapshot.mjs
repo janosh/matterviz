@@ -13,17 +13,23 @@ Options:
   --props <json|file.json>  Structure props, e.g. '{"cell_type":"conventional",
                             "supercell_scaling":"2x2x2","background_color":"#ffffff",
                             "scene_props":{"show_bonds":"never"}}'. PNG and WebP
-                            are transparent unless background_color is set.
+                            are transparent unless background_color is set (JPEG
+                            falls back to white).
   --format png|webp|jpeg    image format (default png)
   --quality 0.9             webp/jpeg quality in [0, 1]
   --frame 0                 trajectory frame to render
   --hdf5-group <path>       trajectory group of an HDF5 file holding several
   --width 900 --height 700  viewer size in CSS px
-  --dpi 144                 resolution, 72 to 720 (72 = one pixel per CSS px)
+  --dpi 144                 resolution, 72 to 720 (72 = one pixel per CSS px);
+                            only PNG records it
   --overwrite               replace existing images
   --url <http://...>        use a running dev server instead of starting one
   --headed                  show the browser
-One JSON line per file on stdout ({input, output, sites}); errors on stderr.`
+Only the 3D canvas is captured: no DOM overlays (site labels, legend, panes) and no 2D
+cross-section. Paths resolve against the caller's directory, also when run from elsewhere
+as node /path/to/matterviz/src/scripts/snapshot.mjs. Needs Playwright Chromium.
+One JSON line per file on stdout ({input, output, sites}, sites = drawn cell's site count);
+errors on stderr.`
 
 // `pnpm snapshot` runs in the package root and records the caller's directory in INIT_CWD,
 // which a plain `node` call inherits stale from any pnpm script that launched it

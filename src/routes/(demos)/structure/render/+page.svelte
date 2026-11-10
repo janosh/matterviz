@@ -128,6 +128,8 @@
   // filename }` payload), show it with the given Structure props, wait for that exact scene
   // to render, then export the canvas at `png_dpi` through the export pane's own path (a
   // re-render at that pixel ratio). Returns the image and the drawn cell's site count.
+  // Exposed as window.matterviz_snapshot.render(source, snapshot_options, structure_props) for
+  // other automation; the render_token wait also covers isosurfaces meshed in a worker.
   async function render(
     source: MaterialSource,
     snapshot: SnapshotOptions = {},
