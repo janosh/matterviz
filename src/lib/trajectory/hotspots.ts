@@ -26,24 +26,35 @@ export interface HotspotGrid {
   cell: Matrix3x3
   pbc: readonly [boolean, boolean, boolean]
 }
+// Kinetic energy from velocities + masses, or from a stored per-atom energy (energy_key).
+// The map is an atom-exposure average (integrated energy / integrated population), weighted
+// trapezoidally by recorded time, else MD steps.
 export interface HotspotOptions extends FrameRange {
   frame_stride?: number
   grid?: HotspotGrid
   bins?: number
+  // 'device': fixed grid; 'cell': follows the (triclinic) cell with its per-axis pbc
   coordinates?: `device` | `cell`
+  // 'device': stationary frame; 'translation': subtract the COM velocity of selected atoms
+  // inside the grid; 'local': subtract each bin's COM velocity. Velocities only.
   motion?: `device` | `translation` | `local`
   velocity_key?: string
   velocity_unit?: keyof typeof VELOCITY_UNITS
   energy_key?: string
   energy_unit?: keyof typeof ENERGY_UNITS
+  // Required with energy_key: what the stored energy is relative to (free text, not applied)
   energy_reference?: string
+  // 'recorded' needs mass_unit (see infer_mass_unit); 'standard' uses elemental masses
   mass_source?: `recorded` | `standard`
   mass_unit?: `amu` | `kg`
+  // Per-atom 0/1 property selecting mobile atoms, e.g. to exclude fixed ones
   selection_key?: string
   dimensions?: 2 | 3
   // Effective translational DOF before velocity correction, or AFTER the declared reference
   // correction for stored energies. Stored energies without explicit DOF cannot show Kelvin.
   dof_per_atom?: number
+  // Default 128 MiB, reserving analysis, retained-map, decoder and display buffers. Not a
+  // total browser/GPU memory limit.
   max_bytes?: number
   batch_size?: number
 }

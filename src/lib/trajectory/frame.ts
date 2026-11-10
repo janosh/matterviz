@@ -31,7 +31,9 @@ const has_exact_fields = (record: object, fields: ReadonlySet<string>): boolean 
 
 // Transfer coordinates and dense vector properties in one buffer instead of cloning
 // millions of small arrays. Sparse/mixed properties and other metadata stay in the packet.
+// Read via TrajectoryRun.read_frame(); materialize_frame() turns one into an editable TrajectoryFrame.
 export type NumericFrame = {
+  // step, time and per-frame metadata
   header: Omit<TrajectoryFrame, 'structure'>
   structure: Omit<AnyStructure, 'sites'> & { lattice?: LatticeType }
   // Standard ordered MD sites need only atomic numbers; preserve arbitrary site metadata

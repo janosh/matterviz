@@ -263,8 +263,10 @@ test(`a system switched away from cannot report its load failure`, async () => {
   await vi.waitFor(() => expect(document.body.textContent).not.toContain(`Loading`))
 })
 
-// panels' x/y series were handed to Histogram, which bins `values` and threw on undefined
-test(`the facet grid renders every plot type`, () => {
+// panels' x/y series were handed to Histogram, which bins `values` and threw on undefined.
+// Mounts 4 panels per plot type: ~0.7 s locally but 3.3-4.8 s on CI runners (timed out at
+// the 5 s default), hence the explicit 15 s budget.
+test(`the facet grid renders every plot type`, { timeout: 15_000 }, () => {
   mount(FacetGridPage, { target: document.body })
   const select = doc_query<HTMLSelectElement>(`.demo-controls select`)
   expect(select.options.length).toBeGreaterThan(4)

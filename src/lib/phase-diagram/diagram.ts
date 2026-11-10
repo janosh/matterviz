@@ -63,8 +63,8 @@ export const overlay_style = (idx: number, first_color: string) => {
 
 // Marker color and legend label of a scored observation's verdict
 export const VERDICT_STYLES = {
-  pass: { color: `#00897b`, label: `Observed, prediction passes` },
-  fail: { color: `#d32f2f`, label: `Observed, prediction fails` },
+  pass: { color: `#00897b`, label: `Prediction passes` },
+  fail: { color: `#d32f2f`, label: `Prediction fails` },
 } as const
 
 // Marker label of each invariant kind
@@ -557,22 +557,27 @@ export function match_point(
 }
 
 // A point's PointRef as a diagram writes it into the bound highlight, its phases named by
-// model phase and label
+// model phase and label (diagram_errors guarantees every point phase id is a known phase)
 export function point_ref(point: DiagramPoint, data: BinaryPhaseDiagram): PointRef {
-  const by_id = new Map(data.phases.map((phase) => [phase.id, phase]))
   const { category, kind, composition, temperature } = point
-  const phases = point.phases.flatMap((id) => {
-    const phase = by_id.get(id)
-    return phase ? [phase.model_phase, phase.label] : [id]
-  })
+  const phases = point.phases.flatMap((id) =>
+    data.phases
+      .filter((phase) => phase.id === id)
+      .flatMap(({ model_phase, label }) => [model_phase, label]),
+  )
   return { category, kind, at: [composition, temperature], phases: [...new Set(phases)] }
 }
 
-// Legend name of a diagram from its provenance, e.g. `Assessment`, `Model: demo-model`
+// Legend name of a diagram from its provenance: its model's name when it has one (e.g.
+// `mace-mh-1`), else its kind (e.g. `Assessment`). Hosts wanting both relabel via map_legend.
 export const diagram_name = ({ provenance }: BinaryPhaseDiagram): string =>
-  provenance.model
-    ? `${humanize(provenance.kind)}: ${provenance.model}`
-    : humanize(provenance.kind)
+  // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- an empty model name counts as none
+  provenance.model || humanize(provenance.kind)
+
+// Name of an overlay in the legend, tooltip and copied text: `Overlay` when it's the only one,
+// its diagram_name among several
+export const overlay_name = (overlay: BinaryPhaseDiagram, n_overlays: number): string =>
+  n_overlays > 1 ? diagram_name(overlay) : `Overlay`
 
 // Temperature window (K) spanning every given diagram's computed range
 export function temperature_extent(diagrams: readonly BinaryPhaseDiagram[]): Vec2 {
@@ -694,9 +699,9 @@ export function format_hover_info_text(
     ...overlays.flatMap((overlay, idx) => {
       const hit = info.overlay_hits[idx]
       if (!overlay || !hit) return []
-      // named like the tooltip: `Overlay` alone, each overlay's name among several
-      const name = overlays.length > 1 ? diagram_name(overlay) : `Overlay`
-      return [`${name} phase: ${region_label(hit.region, phase_labeler(overlay))}`]
+      return [
+        `${overlay_name(overlay, overlays.length)} phase: ${region_label(hit.region, phase_labeler(overlay))}`,
+      ]
     }),
     `Temperature: ${format_temperature(temperature, temp_unit)}`,
     `Composition: ${comp(composition)} ${component_b} (${comp(1 - composition)} ${component_a})`,

@@ -583,8 +583,14 @@ test(`diagram_points carry sigma_T, 0 where not given`, () => {
 test(`diagram_name, provenance_caption and temperature_extent`, () => {
   expect([diagram_name(eutectic), diagram_name(shifted_eutectic)]).toEqual([
     `Assessment`,
-    `Model: test-model`,
+    `test-model`,
   ])
+  // an empty model name (e.g. from an emitter) falls back to the kind, not a blank label
+  const unnamed = {
+    ...shifted_eutectic,
+    provenance: { ...shifted_eutectic.provenance, model: `` },
+  }
+  expect(diagram_name(unnamed)).toBe(`Model`)
   expect(provenance_caption(eutectic)).toBe(`test fixture`)
   expect(provenance_caption(shifted_eutectic)).toBe(``)
   const wide = { ...shifted_eutectic, temperature_range: [-50, 1200] as [number, number] }

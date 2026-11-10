@@ -78,6 +78,9 @@
   > &
     // Unlike charts, tables opt in to export: export_formats defaults to []
     ExportProps & {
+      // Stable `id`s key sort, prefs and visibility; optional `key` accessor and `cell` snippet;
+      // `label` only sets the heading. Selectable tables need `row_key` (bind `selected_ids`)
+      // so replacing rows with fresh objects keeps the selection.
       columns?: Column<Row>[]
       show_heatmap?: boolean
       // Heatmap cell background opacity (0–1). Fades fills through CSS color-mix() and

@@ -239,28 +239,17 @@ describe(`gibbs_curves`, () => {
         [1, -200],
       ],
     ],
-    // outside the grid's T range the nearest row is used
-    [
-      300,
-      [
-        [0, 0],
-        [0.5, -1000],
-        [1, 0],
-      ],
-    ],
-    [
-      900,
-      [
-        [0, -200],
-        [0.5, -1400],
-        [1, -200],
-      ],
-    ],
   ])(`interpolates between grid rows at T = %s K`, (temperature, liquid) => {
     const [liq, fcc] = gibbs_curves(grid, temperature)
     expect(liq).toEqual({ id: `LIQUID`, points: liquid })
     // a null node is left out
     expect(fcc.points.map(([x_val]) => x_val)).toEqual([0, 1])
+  })
+
+  test.each([300, 900, Number.NaN])(`throws for T = %s K outside the grid`, (temperature) => {
+    expect(() => gibbs_curves(grid, temperature)).toThrow(
+      `outside the Gibbs grid [500, 700] K`,
+    )
   })
 })
 

@@ -34,10 +34,9 @@ export const PHASE_DIAGRAM_DEFAULTS = Object.freeze({
   show_special_points: true,
   show_grid: true,
   show_component_labels: true,
-  show_overlay: true,
   show_observations: true,
   show_uncertainty: true,
-  show_disagreement: true,
+  show_disagreement: false,
   lens: false,
   // Display units (data is always K and mole fraction)
   temp_unit: `K`,

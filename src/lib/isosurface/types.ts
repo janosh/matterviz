@@ -20,11 +20,16 @@ export const format_data_value = (
 // (index = (ix * ny + iy) * nz + iz), so the volume itself is a ScalarGrid3D marching cubes
 // and the geometry worker consume without copying. Parsers transpose Fortran (VASP) order.
 export interface VolumetricData extends ScalarGrid3D<Float64Array> {
-  id: string // Stable field identity; independent of array order and display label
+  // Stable field identity, nonempty and unique per viewer, independent of array order and
+  // display label: keep it when replacing or reordering fields so selection and surfaces follow.
+  // File loads derive it from the source filename and field.
+  id: string
   order: `z_fastest`
   dims: Vec3 // [nx, ny, nz]
   lattice: Matrix3x3 // real-space lattice vectors (rows are a, b, c)
-  origin: Vec3 // grid origin in the structure's Cartesian coordinate frame
+  // Grid origin offset in the structure's Cartesian frame (cube parsing shifts atoms and grid
+  // together by the file's origin, leaving [0, 0, 0])
+  origin: Vec3
   data_range: DataRange // precomputed min/max/mean statistics
   // Periodic grids (CHGCAR) span [0,1) with spacing 1/N; finite ones (molecular .cube) span
   // [0,1] with spacing 1/(N-1)

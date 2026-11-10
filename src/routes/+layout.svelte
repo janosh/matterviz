@@ -170,6 +170,10 @@
 <Footer />
 
 <style>
+  /* The library keeps viewers square; the docs site rounds them (render pages reset it to 0) */
+  :global(:root) {
+    --struct-border-radius: 8pt;
+  }
   .site-search-btn {
     background: transparent;
   }

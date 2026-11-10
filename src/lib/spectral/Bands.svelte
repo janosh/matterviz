@@ -91,6 +91,9 @@
     children: user_children,
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
+    // Keyed by legend label (`""` for an unlabelled series); parse raw input once with
+    // normalize_band_structure. hidden_series keys are JSON.stringify([key, 'up' | 'down']),
+    // plus `mode-values` for the mode_values markers.
     band_structs: Record<string, BaseBandStructure>
     wrapper?: HTMLDivElement // the plot's root, as ScatterPlot binds it
     // Symmetry-point tick labels become buttons that pop up a small Brillouin zone marking the
@@ -124,7 +127,7 @@
     // marks its line and branch here, and the hovered band point's q-point there
     link_hover?: string
     ribbon_config?: RibbonConfig
-    fermi_level?: number // Fermi level for electronic bands (auto-detected if not provided)
+    fermi_level?: number // electronic reference, zero allowed; omitted uses the data's efermi
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
     band_spin_mode?: BandsSpinMode // Electronic spin display: overlay (default), up_only, down_only
     highlight_regions?: {

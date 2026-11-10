@@ -171,6 +171,10 @@ type FrameResult = NumericFrame | Promise<NumericFrame>
 
 export interface TrajectoryRun {
   readonly atom_count: number
+  // Regional kinetic-energy map (see HotspotOptions). Present when the reader yields bounded
+  // numeric atom batches (md-trajectory-v1 and TorchSim HDF5, ASE ULM) or, for any other
+  // synchronous run (in-memory, indexed text), when atom_count <= ATOM_BATCH_SIZE (65,536).
+  // HDF5 storage chunks above 8 MiB must be rechunked.
   compute_hotspots?: (options: HotspotRequest) => Promise<HotspotResult>
   // Mandatory and >= 1: an electronic-only vaspout.h5 is a spectral result, never a run
   readonly frame_count: number

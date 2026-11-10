@@ -31,6 +31,8 @@ export interface StructureToolGeometry {
 }
 export interface StructureToolOverlay {
   site_properties?: Record<string, unknown>[]
+  // Moves the drawn atoms and cell (e.g. along a relaxation); volumes keep their own frame.
+  // A result's geometry is exported and reopened with the prediction.
   geometry?: StructureToolGeometry
   // The path the input sites took (e.g. a relaxation's ionic steps, oldest first), each frame
   // continuous from the previous one rather than wrapped into the cell. Publishing it asks the
@@ -40,9 +42,14 @@ export interface StructureToolOverlay {
   volumes?: StructureToolVolume[]
   color_property?: string
   // A live preview (e.g. an unconverged density): drawn like a prediction, under the same
-  // volume IDs as the final result, but never given to hosts, exported or reopened.
+  // volume IDs as the final result, but never given to hosts, exported or reopened. Published
+  // after its run's result, it replaces only the fields or geometry it carries. With a
+  // `volumes` array, result fields it omits are hidden (their surfaces return with their
+  // settings when republished); without one, the result's fields stay shown.
+  // Publishing a non-transient overlay again ends the preview.
   transient?: boolean
-  // Hosts define the calculation schema; the viewer validates JSON and preserves it on export.
+  // Complete, versioned calculation metadata. Hosts define the schema; the viewer validates
+  // it is JSON-safe and preserves it on export.
   result?: Record<string, unknown> & { schema: string }
 }
 export interface StructureToolProvenance {

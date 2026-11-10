@@ -29,9 +29,7 @@ export const symbol_to_atomic_number = (symbol: string): number | undefined =>
   ATOMIC_NUMBER_BY_SYMBOL.get(symbol)
 
 // Atomic number -> symbol (1 = H); undefined for a non-integer or out-of-table number
-export const element_from_atomic_number = (
-  atomic_number: number,
-): ElementSymbol | undefined =>
+export const element_from_atomic_number = (atomic_number: number): ElementSymbol | undefined =>
   Number.isInteger(atomic_number) ? ELEM_SYMBOLS[atomic_number - 1] : undefined
 
 // LAMMPS atom type -> element by atomic number (type 1 = H), the convention of ASE's

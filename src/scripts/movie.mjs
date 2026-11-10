@@ -27,12 +27,45 @@ const { values, positionals } = parseArgs({
   },
 })
 const [command, input] = positionals
+const usage = `Usage: pnpm movie inspect <trajectory>               frame/atom counts, bounds, camera
+       pnpm movie preview <movie.json> --output <storyboard.png>
+       pnpm movie render <movie.json> --output <movie.mp4>
+From another directory: node /path/to/matterviz/src/scripts/movie.mjs ... (input and output
+paths stay relative to the current directory). Needs Playwright Chromium and FFmpeg.
+Options:
+  --output, -o <path>       never overwritten: it, <output>.json and <output>.review/
+                            must not exist
+  --samples 6               storyboard / review sample count, 2 to 36
+  --url <http://...>        use a running dev server instead of a private viewer
+  --headed                  show the browser
+movie.json (source and video required):
+  source    {path} relative to the JSON file, or {url}; optional hdf5_group_path
+  frames    {start, end}, zero-based, end exclusive (default: all). Source frames are held or
+            skipped to fit duration_s; coordinates are never interpolated
+  source_frames  explicit schedule for irregular timestamps: one source index per video
+            frame, length round(duration_s * fps), indices inside frames
+  camera    omit to hold the fitted view; orbit {preset: "orbit", turns: 1, elevation_deg:
+            25, azimuth_deg: 35, distance_scale: 1, up: [0, 1, 0]} (defaults), fitted to the
+            initial frame (check the storyboard for expanding cells); or a CameraFlight
+            {interpolation: "smooth"|"linear", keyframes: [{time, position, quaternion, ...}]}
+            whose times are rescaled to duration_s
+  visuals   {color_scheme, scene_props, cutaway} as Structure props. cutaway.whole_atoms: true
+            selects atoms by center and keeps their whole bonds/polyhedra. For covalent shells:
+            scene_props {polyhedra_neighbor_mode: "bonded", show_polyhedra: "always",
+            show_bonds: "always"} (default "anion" picks electronegative neighbors)
+  video     width, height (even px), duration_s, fps (required); background, codec
+            h264|vp9|av1 (default h264), crf (default 18) or bitrate (bits/s), preset
+            (h264 only, default medium)
+Example: {"source": {"path": "./md.h5"}, "camera": {"preset": "orbit", "turns": 0.75},
+  "visuals": {"color_scheme": "Jmol", "scene_props": {"show_bonds": "never"}},
+  "video": {"width": 1920, "height": 1080, "duration_s": 12, "fps": 30, "crf": 18}}
+Both write <output>.json, the resolved plan: edit its fps/duration_s and render it again to
+keep the camera framing. render also writes <output>.review/ with plan.json, latest.png
+(sampled encoder input, replaced while rendering) and storyboard.png (decoded from the
+video, then validated for frame count, size and duration). Review files survive failures.
+Results are JSON on stdout; progress events (JSON lines) and errors on stderr. Ctrl+C cancels.`
 if (values.help || ![`inspect`, `preview`, `render`].includes(command) || !input) {
-  console.log(`Usage: pnpm movie inspect trajectory.h5
-       pnpm movie preview movie.json --output storyboard.png
-       pnpm movie render movie.json --output movie.mp4
-Options: --url http://localhost:3000  --headed  --samples 6
-Without --url, starts a private local viewer. Progress is JSON on stderr; results are JSON on stdout.`)
+  console.log(usage)
   process.exit(values.help ? 0 : 1)
 }
 
@@ -102,6 +135,8 @@ try {
   if (spec.visuals)
     await page.evaluate((options) => window.matterviz_movie.configure(options), spec.visuals)
   progress({ stage: `loading`, source: spec.source })
+  // A File from the input element stays disk-backed, so indexed HDF5 loading does not copy
+  // the whole file into JavaScript memory
   if (spec.source?.path) {
     await page.locator(`#movie-source`).setInputFiles(spec.source.path)
   }

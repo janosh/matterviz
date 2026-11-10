@@ -1,5 +1,6 @@
 import type { Point2D, Vec2 } from '#lib/math.js'
 import type { Sides } from '#lib/plot/core/layout.js'
+import type { LegendItem } from '#lib/plot/core/types.js'
 import type { TooltipConfig, TooltipProp } from '#lib/tooltip/index.js'
 
 export type TempUnit = `K` | `°C` | `°F`
@@ -301,3 +302,19 @@ export type PhaseDiagramTooltipProp = TooltipProp<
   PhaseHoverInfo,
   TooltipConfig<PhaseHoverInfo>
 >
+
+// What a binary phase diagram's legend entry toggles: the main diagram's boundaries, one overlay
+// (by index into `overlays`), a marked-point category, an observation group (a verdict, `pass`
+// or `fail`, or `status:<status>`, e.g. `status:ok`) or the disagreement hatching
+export type PhaseLegendTarget =
+  | { kind: `main` }
+  | { kind: `overlay`; overlay_idx: number }
+  | { kind: `category`; category: DiagramPoint[`category`] }
+  | { kind: `group`; group: string }
+  | { kind: `disagreement` }
+
+// One legend row: what it shows (label, visibility, swatch) and what a click on it toggles
+export interface PhaseLegendEntry {
+  item: Omit<LegendItem, `series_idx`>
+  target: PhaseLegendTarget
+}

@@ -15,8 +15,8 @@
   import { format_label_html } from '#lib/composition/format.js'
   import {
     boundary_description,
-    diagram_name,
     lever_rule_rows,
+    overlay_name,
     phase_labeler,
     provenance_caption,
     region_label,
@@ -60,8 +60,7 @@
       const overlay_label_of = phase_labeler(overlay)
       return [
         {
-          // named like the copied text: `Overlay` alone, each overlay's name among several
-          name: overlays.length > 1 ? diagram_name(overlay) : `Overlay`,
+          name: overlay_name(overlay, overlays.length),
           label: region_label(hit.region, overlay_label_of),
           lever: hit.lever_rule && lever_rule_rows(hit.lever_rule, overlay_label_of),
         },
@@ -321,11 +320,7 @@
       {#if caption}
         <footer class="provenance">
           {#if shown_overlays.length}<strong
-              >{idx
-                ? overlays.length > 1
-                  ? diagram_name(diagram)
-                  : `Overlay`
-                : `Main`}:</strong
+              >{idx ? overlay_name(diagram, overlays.length) : `Main`}:</strong
             >{/if}
           {caption}
         </footer>

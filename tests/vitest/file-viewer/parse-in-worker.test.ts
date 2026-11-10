@@ -59,6 +59,8 @@ const make_fake_worker = (
     id: request.id,
     result: structure_result,
   }),
+  // false: the worker never posts its ready message, as one that hangs while loading
+  announce = true,
 ): FakeWorker => {
   const listeners = new Map<string, EventListener[]>()
   const emit = (type: string, event: Event): void => {
@@ -83,7 +85,7 @@ const make_fake_worker = (
     },
     addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
       // Like the real worker, announce the start once its module has loaded
-      if (type === `message` && !listeners.has(type))
+      if (announce && type === `message` && !listeners.has(type))
         queueMicrotask(() =>
           emit(`message`, new MessageEvent(`message`, { data: { id: -1 } })),
         )
@@ -545,28 +547,73 @@ describe(`parse_in_worker`, () => {
     expect(worker.terminate).toHaveBeenCalledOnce()
   })
 
-  it(`a default worker that fails to start moves every later parse to the main thread`, async () => {
-    vi.resetModules()
-    vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const worker = make_fake_worker(() => null)
-    // oxlint-disable-next-line prefer-arrow-callback -- Worker must be constructable with new
-    const factory = vi.fn(function () {
-      return worker
-    })
-    vi.stubGlobal(`Worker`, factory)
-    const module = await import(`#lib/file-viewer/parse-in-worker.js`)
-    const availability = await import(`#lib/worker-client.svelte.js`)
-    const content = new TextEncoder().encode(xyz).buffer
-    const parsing = module.parse_in_worker(content, `h.xyz`, false, { owns_content: true })
-    worker.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
-    await expect(parsing).resolves.toMatchObject({ type: `structure` })
-    expect(content.detached).toBe(false)
-    expect(availability.can_create_worker()).toBe(false)
-    await expect(module.parse_in_worker(xyz, `next.xyz`)).resolves.toMatchObject({
-      type: `structure`,
-    })
-    expect(factory).toHaveBeenCalledOnce()
-  })
+  // Only failures meaning this page can't run workers move later parses to the main thread:
+  // a throwing constructor, no start within the timeout, or start failures in a row. A one-off
+  // start failure or a crash after starting leaves the next parse a fresh worker.
+  it.each([
+    [`constructor throws`, true, [`throw`]],
+    [`hangs without starting`, true, [`hang`]],
+    [`fails to start once`, false, [`error`]],
+    [`fails to start twice in a row`, true, [`error`, `error`]],
+    [`fails to start, starts, fails to start`, false, [`error`, `crash`, `error`]],
+    [`crashes after starting`, false, [`crash`]],
+  ] as const)(
+    `a default worker that %s disables workers: %s`,
+    async (_label, disabled, failures) => {
+      vi.resetModules()
+      use_fake_timeouts()
+      const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+      const workers: FakeWorker[] = []
+      // oxlint-disable-next-line prefer-arrow-callback -- Worker must be constructable with new
+      const factory = vi.fn(function () {
+        const failure = failures[workers.length] ?? `none`
+        if (failure === `throw`) throw new DOMException(`cross-origin`, `SecurityError`)
+        const worker = make_fake_worker(
+          failure === `crash` ? () => null : undefined,
+          failure !== `hang` && failure !== `error`,
+        )
+        workers.push(worker)
+        return worker
+      })
+      vi.stubGlobal(`Worker`, factory)
+      const module = await import(`#lib/file-viewer/parse-in-worker.js`)
+      const availability = await import(`#lib/worker-client.svelte.js`)
+      for (const [idx, failure] of failures.entries()) {
+        const content = new TextEncoder().encode(xyz).buffer
+        const parsing = module.parse_in_worker(content, `h${idx}.xyz`, false, {
+          owns_content: true,
+        })
+        if (failure === `crash`) {
+          await started()
+          workers.at(-1)?.emit(`error`, new ErrorEvent(`error`, { message: `out of memory` }))
+          await expect(parsing).rejects.toMatchObject({ failure: `crashed` })
+          continue
+        }
+        if (failure === `error`)
+          workers.at(-1)?.emit(`error`, new ErrorEvent(`error`, { message: `404` }))
+        // a worker that never starts can't hold the parse: it falls back after the timeout
+        if (failure === `hang`)
+          await vi.advanceTimersByTimeAsync(module.WORKER_START_TIMEOUT_MS)
+        await expect(parsing).resolves.toEqual(await parse_file_content(xyz, `h${idx}.xyz`))
+        // the worker never started, so it was never given the buffer the retry parsed
+        expect(content.detached).toBe(false)
+        if (failure !== `throw`) expect(workers.at(-1)?.terminate).toHaveBeenCalledOnce()
+      }
+      // each fallback says it happened, and whether it disabled workers
+      const warnings = warn.mock.calls.map(([message]) => String(message))
+      expect(warnings).toHaveLength(failures.filter((kind) => kind !== `crash`).length)
+      for (const [idx, message] of warnings.entries()) {
+        expect(message).toContain(`on the main thread`)
+        expect(message.includes(`disabled`)).toBe(disabled && idx === warnings.length - 1)
+      }
+      expect(availability.can_create_worker()).toBe(!disabled)
+      await expect(module.parse_in_worker(xyz, `next.xyz`)).resolves.toMatchObject({
+        type: `structure`,
+      })
+      // a later parse constructs a fresh worker unless workers were disabled
+      expect(factory).toHaveBeenCalledTimes(failures.length + (disabled ? 0 : 1))
+    },
+  )
 
   it(`returns a live worker-backed run and stops its worker after dispose`, async () => {
     use_fake_timeouts()

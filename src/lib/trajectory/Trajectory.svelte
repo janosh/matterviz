@@ -233,13 +233,17 @@
     on_controller,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
-    // Caller-supplied runs are borrowed; runs opened from source or drops are owned here.
+    // Caller-supplied runs are borrowed (dispose them yourself); runs opened from source or
+    // drops are owned and disposed here. Build one with trajectory_from_frames() or open_trajectory().
     trajectory?: TrajectoryRun
+    // URL, File or { data, filename }: parsed in a worker where available, with an HDF5 group
+    // picker for multi-group files
     source?: MaterialSource
     loading_options?: Pick<
       OpenTrajectoryOptions,
       'hdf5_group_path' | 'atom_type_mapping' | 'index_above_bytes'
     >
+    // Set false when the parent owns loading
     allow_file_drop?: boolean
     spinner_props?: ComponentProps<typeof Spinner>
     on_file_load?: EventHandler
@@ -275,7 +279,9 @@
     // recorded in the file) or 'time' (step x the file's timestep). Unset picks the most
     // informative one the data supports; the resolved choice is written back.
     x_quantity?: TrajectoryXQuantity
-    // Bindable exact property keys (independent of display labels); [] hides every series.
+    // Bindable exact property keys (independent of display labels) of the time-series plot;
+    // [] hides every series. Legend clicks and isolation edit it; histograms use
+    // distribution_property instead.
     visible_properties?: string[]
     // Plot each energy relative to its first finite recorded value; source data is unchanged.
     relative_energy?: boolean
@@ -307,6 +313,8 @@
     on_frame_rate_change?: EventHandler
     on_display_mode_change?: EventHandler
     on_fullscreen_change?: EventHandler
+    // Scripted playback and movies (see TrajectoryViewerController); null on unmount.
+    // Keep a display mode that shows the structure while driving it.
     on_controller?: (controller: TrajectoryViewerController | null) => void
   } = $props()
 

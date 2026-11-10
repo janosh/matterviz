@@ -140,9 +140,12 @@
     png_dpi?: number
     hovered?: boolean
     dragover?: boolean
-    allow_file_drop?: boolean
+    allow_file_drop?: boolean // false when a parent owns loading
     fullscreen_toggle?: boolean
+    // Structure file to compute the zone from: a URL, File or { data, filename } payload
     source?: MaterialSource
+    // Takes over loading: receives the raw content of every drop and `source` load instead of
+    // the viewer parsing it
     on_file_drop?: FileLoadCallback
     spinner_props?: ComponentProps<typeof Spinner>
     loading?: boolean

@@ -12,12 +12,17 @@ export type MovieRenderOptions = {
   on_progress?: (progress: number) => void
 }
 
+// Handed out by Trajectory's on_controller and the /trajectory/render page (as
+// window.matterviz_movie, plus configure(structure_props)). cancel_movie() only signals the
+// abort: await the active render's promise before starting another.
 export interface TrajectoryViewerController extends TrajectoryController {
+  // Resolves once the first scene has rendered
   load: (
     source: MaterialSource,
     options?: { hdf5_group_path?: string; signal?: AbortSignal },
   ) => Promise<void>
   prepare_frame: (idx: number, signal?: AbortSignal) => Promise<void>
+  // camera is the interactive camera, separate from the export camera; bounds cover displayed atoms
   inspect: () => Promise<{
     frame_count: number
     atom_count: number
@@ -28,12 +33,17 @@ export interface TrajectoryViewerController extends TrajectoryController {
     warnings: readonly string[]
   }>
   plan_movie: (request: MovieRequest) => Promise<MoviePlan>
-  // The same canvas is reused; finish consuming each frame before resolving the callback.
+  // The same canvas is reused; finish consuming each frame before resolving the callback and
+  // stop once its signal aborts. Cancellation releases the viewer even if on_frame is still
+  // pending. Every render (also cancelled ones) restores the original frame and playback state.
   render_movie: (
     plan: MoviePlan,
     on_frame: (canvas: HTMLCanvasElement, idx: number, signal: AbortSignal) => Promise<void>,
     options?: MovieRenderOptions,
   ) => Promise<void>
+  // Browser export (as in the export pane): same frame producer, AV1 MediaRecorder encoding,
+  // so elapsed duration grows with slow frame reads. Use the movie CLI for exact timing.
+  // Captures only the 3D canvas, not DOM legends, plots or controls.
   export_movie: (
     plan: MoviePlan,
     options?: MovieRenderOptions & {
@@ -211,6 +221,8 @@ export function plan_movie(
   }
 }
 
+// Source-frame index, camera time and microsecond timestamp of video frame idx. Source frames
+// are held or skipped to fit the duration; coordinates are never interpolated.
 // Include both endpoints in the picture sequence; timestamps remain idx / fps. This also
 // makes a one-frame source useful for a full camera flight without synthesizing atom motion.
 export const movie_frame = (plan: MoviePlan, idx: number) => {

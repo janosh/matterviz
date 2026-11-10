@@ -23,7 +23,7 @@
   } from '#lib/math.js'
   import { type AxisConfig, PlotTooltip } from '#lib/plot/index.js'
   import InsetLegend from '#lib/plot/core/components/InsetLegend.svelte'
-  import type { LegendItem } from '#lib/plot/core/types.js'
+  import type { LegendConfig, LegendItem } from '#lib/plot/core/types.js'
   import { error_bar_path } from '#lib/plot/core/error-bars.js'
   import { unique_id } from '#lib/plot/core/utils.js'
   import { viewer_keys } from '#lib/shortcuts.js'
@@ -72,6 +72,7 @@
     type PhaseDiagramConfig,
     type PhaseDiagramTooltipProp,
     type PhaseHoverInfo,
+    type PhaseLegendEntry,
     type PhaseObservation,
     type TempUnit,
   } from './types'
@@ -119,10 +120,12 @@
     show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
     show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
-    show_overlay = $bindable(PHASE_DIAGRAM_DEFAULTS.show_overlay),
+    hidden_overlays = $bindable(new Set<number>()),
     show_observations = $bindable(PHASE_DIAGRAM_DEFAULTS.show_observations),
     show_uncertainty = $bindable(PHASE_DIAGRAM_DEFAULTS.show_uncertainty),
     show_disagreement = $bindable(PHASE_DIAGRAM_DEFAULTS.show_disagreement),
+    legend = {},
+    map_legend,
     fullscreen_toggle = true,
     show_controls,
     controls_open = $bindable(false),
@@ -144,7 +147,8 @@
     ExportProps & {
       data?: BinaryPhaseDiagram
       // Diagrams of the same components drawn as dashed boundaries only, each in its own
-      // color and dash. Where the first valid one disagrees on the phase set is hatched.
+      // color and dash. With show_disagreement, where the first shown one disagrees on the
+      // phase set is hatched.
       overlays?: readonly BinaryPhaseDiagram[]
       // Model phases that take palette slots besides this diagram's own: give every diagram
       // of a comparison the same keys (model_phase_keys of all of them) so shared phases
@@ -181,12 +185,20 @@
       show_special_points?: boolean
       show_grid?: boolean
       show_component_labels?: boolean
-      show_overlay?: boolean
+      // Indices into `overlays` of the ones not drawn (no boundaries, tooltip rows or
+      // disagreement hatching). The legend and the controls' Overlays checkbox write a new set.
+      hidden_overlays?: ReadonlySet<number>
       show_observations?: boolean
       // Bands of boundary and marked-point sigma_T
       show_uncertainty?: boolean
-      // Hatching where the first valid overlay (even while hidden) has a different phase set
+      // Hatching where the first shown overlay has a different phase set (off by default)
       show_disagreement?: boolean
+      // Legend props (placement, styling, filtering, ...) over the defaults; null hides it
+      legend?: LegendConfig | null
+      // Maps the default legend rows to the drawn ones: relabel, restyle, reorder or drop
+      // them. Each keeps its target, so a click still toggles what it names; an item's
+      // `visible` mirrors that target's state, and legend.on_toggle gets the drawn position.
+      map_legend?: (entries: PhaseLegendEntry[]) => PhaseLegendEntry[]
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
       controls_open?: boolean
@@ -247,13 +259,15 @@
       return own === other ? [] : [`components ${own} differ from ${other}`]
     }),
   )
-  const valid_overlays = $derived(overlays.filter((_, idx) => !overlay_errors[idx].length))
-  // Overlays the legend toggled off (show_overlay hides them all)
-  const hidden_overlays = new SvelteSet<BinaryPhaseDiagram>()
+  // Indices into `overlays` of the valid ones (the keys of hidden_overlays)
+  const valid_overlay_idxs = $derived(
+    overlays.flatMap((_, idx) => (overlay_errors[idx].length ? [] : [idx])),
+  )
+  const valid_overlays = $derived(valid_overlay_idxs.map((idx) => overlays[idx]))
   // valid_overlays order, null for a hidden one, so hover hits and styles keep their index
   const overlay_slots = $derived(
-    valid_overlays.map((overlay) =>
-      show_overlay && !hidden_overlays.has(overlay) ? overlay : null,
+    valid_overlays.map((overlay, slot) =>
+      hidden_overlays.has(valid_overlay_idxs[slot]) ? null : overlay,
     ),
   )
   const input_error = $derived.by(() => {
@@ -599,13 +613,13 @@
       : [],
   )
 
-  // Hatched isotherm strips where the first valid overlay (even while its lines are hidden)
-  // names other model phases, one row per 3 px of plot height, recomputed on zoom or resize,
+  // Hatched isotherm strips where the first shown overlay names other model phases, one row per 3 px of plot height, recomputed on zoom or resize,
   // not on hover. The legend's share uses a fixed T grid, so zoom and plot size don't move it.
   const DISAGREEMENT_ROW_PX = 3
-  const disagreement_target = $derived(
-    valid_overlays[0]?.regions.length && data.regions.length ? valid_overlays[0] : null,
-  )
+  const disagreement_target = $derived.by(() => {
+    const first_shown = overlay_slots.find((overlay) => overlay !== null)
+    return first_shown?.regions.length && data.regions.length ? first_shown : null
+  })
   // A phase standing in for a reference phase (phase_matches) counts as that phase's model phase
   const disagreement_name_of = $derived.by(() => {
     const model_phase_by_name = new Map(
@@ -670,29 +684,24 @@
     ),
   )
   const has_legend = $derived(
-    valid_overlays.length > 0 || all_markers.length > 0 || legend_categories.length > 0,
+    legend !== null &&
+      (valid_overlays.length > 0 || all_markers.length > 0 || legend_categories.length > 0),
   )
-  type LegendTarget =
-    | { kind: `main` }
-    | { kind: `overlay`; overlay: BinaryPhaseDiagram }
-    | { kind: `category`; category: DiagramPoint[`category`] }
-    | { kind: `group`; group: string }
-    | { kind: `disagreement` }
-  type LegendEntry = [Omit<LegendItem, `series_idx`>, LegendTarget]
-  const legend_entries = $derived.by((): [LegendItem, LegendTarget][] => {
+  // The drawn legend rows: the defaults below, mapped through the host's map_legend
+  const legend_entries = $derived.by((): PhaseLegendEntry[] => {
     if (!has_legend) return []
     const point_color = merged_config.colors.special_point
-    const entries: LegendEntry[] = [
-      [
-        {
+    const entries: PhaseLegendEntry[] = [
+      {
+        item: {
           label: diagram_name(data),
           visible: show_boundaries,
           display_style: { line_color: BOUNDARY_STYLES.liquidus.color },
         },
-        { kind: `main` },
-      ],
-      ...valid_overlays.map((overlay, idx): LegendEntry => [
-        {
+        target: { kind: `main` },
+      },
+      ...valid_overlays.map((overlay, idx): PhaseLegendEntry => ({
+        item: {
           label: diagram_name(overlay),
           visible: overlay_slots[idx] !== null,
           display_style: {
@@ -700,39 +709,45 @@
             line_dash: overlay_styles[idx].dash,
           },
         },
-        { kind: `overlay`, overlay },
-      ]),
-      ...legend_categories.map((category): LegendEntry => [
-        {
+        target: { kind: `overlay`, overlay_idx: valid_overlay_idxs[idx] },
+      })),
+      ...legend_categories.map((category): PhaseLegendEntry => ({
+        item: {
           label: `${humanize(category)} point`,
           visible: show_special_points && !hidden_categories.has(category),
           display_style: { symbol_type: POINT_SYMBOLS[category], symbol_color: point_color },
         },
-        { kind: `category`, category },
-      ]),
-      ...marker_groups.map((group): LegendEntry => [
-        {
+        target: { kind: `category`, category },
+      })),
+      ...marker_groups.map((group): PhaseLegendEntry => ({
+        item: {
           label: group_style(group).label,
           visible: show_observations && !hidden_groups.has(group),
           display_style: { symbol_type: `Circle`, symbol_color: group_style(group).color },
         },
-        { kind: `group`, group },
-      ]),
+        target: { kind: `group`, group },
+      })),
     ]
     if (disagreement_target) {
-      entries.push([
-        {
-          label: `Phases differ from ${diagram_name(disagreement_target)} (${format_num(disagreement_share, `.0%`)} of area)`,
+      // name the compared diagram only when several overlays are shown, else its row says it
+      const shown_overlays = overlay_slots.filter((overlay) => overlay !== null).length
+      const compared = shown_overlays > 1 ? ` from ${diagram_name(disagreement_target)}` : ``
+      entries.push({
+        item: {
+          label: `Phases differ${compared} (${format_num(disagreement_share, `.0%`)})`,
           visible: show_disagreement,
           item_type: `fill`,
           display_style: { fill_color: DISAGREEMENT_COLOR, fill_opacity: 0.5 },
         },
-        { kind: `disagreement` },
-      ])
+        target: { kind: `disagreement` },
+      })
     }
-    return entries.map(([item, target], series_idx) => [{ ...item, series_idx }, target])
+    return map_legend ? map_legend(entries) : entries
   })
-  const legend_items = $derived(legend_entries.map(([item]) => item))
+  // a row's series_idx is its drawn position, which toggle_legend_item maps back to its target
+  const legend_series = $derived(
+    legend_entries.map(({ item }, series_idx): LegendItem => ({ ...item, series_idx })),
+  )
   // Points every ~16 px along a boundary polyline (its vertices alone leave a 2-point
   // invariant isotherm free for the legend to cover)
   const sample_boundary = (points: Vec2[]): { x: number; y: number }[] =>
@@ -746,7 +761,7 @@
       }))
     })
   // The legend avoids marked points, observations and boundaries (keyed on has_legend, not
-  // legend_items, so a legend toggle doesn't re-sample every boundary)
+  // legend_series, so a legend toggle doesn't re-sample every boundary)
   const boundary_samples = $derived(
     has_legend
       ? [data, ...overlay_slots].flatMap((diagram) =>
@@ -763,23 +778,21 @@
         ]
       : [],
   )
-  // Toggles one sub-layer (an overlay, point category or observation group); while its
-  // whole layer is off, a click unhides the item and turns the layer back on
+  // Toggles one sub-layer (a point category or observation group); while its whole layer is
+  // off, a click unhides the item and turns the layer back on
   function toggle_in<T>(set: SvelteSet<T>, item: T, layer_on: boolean): void {
     if (layer_on && !set.has(item)) set.add(item)
     else set.delete(item)
   }
   function toggle_legend_item(series_idx: number) {
-    const target = legend_entries[series_idx]?.[1]
+    const target = legend_entries[series_idx]?.target
     if (!target) return
     if (target.kind === `main`) show_boundaries = !show_boundaries
     else if (target.kind === `disagreement`) show_disagreement = !show_disagreement
     else if (target.kind === `overlay`) {
-      toggle_in(hidden_overlays, target.overlay, show_overlay)
-      // all hidden is the layer off, so a bound show_overlay checkbox stays truthful
-      const all_hidden = valid_overlays.every((overlay) => hidden_overlays.has(overlay))
-      if (all_hidden) hidden_overlays.clear()
-      show_overlay = !all_hidden
+      const next = new Set(hidden_overlays)
+      if (!next.delete(target.overlay_idx)) next.add(target.overlay_idx)
+      hidden_overlays = next
     } else if (target.kind === `category`) {
       toggle_in(hidden_categories, target.category, show_special_points)
       show_special_points = true
@@ -848,9 +861,6 @@
   $effect(() => {
     void [source_data, valid_overlays, all_markers]
     untrack(() => {
-      for (const overlay of hidden_overlays) {
-        if (!valid_overlays.includes(overlay)) hidden_overlays.delete(overlay)
-      }
       if (!hover_info && !pin.value && !hovered_region) return
       pin.unpin()
       clear_hover()
@@ -1268,7 +1278,7 @@
           bind:show_special_points
           bind:show_grid
           bind:show_component_labels
-          bind:show_overlay
+          bind:hidden_overlays
           bind:show_observations
           bind:show_uncertainty
           bind:show_disagreement
@@ -1279,7 +1289,7 @@
           bind:x_axis
           bind:y_axis
           {data}
-          has_overlay={valid_overlays.length > 0}
+          overlay_idxs={valid_overlay_idxs}
           has_special_points={special_points.length > 0}
           has_observations={all_markers.length > 0}
           {has_uncertainty}
@@ -1815,13 +1825,13 @@
       {/if}
     </svg>
 
-    {#if legend_items.length}
+    {#if legend_series.length}
       <InsetLegend
-        legend={null}
+        {legend}
         measured
         plot_bounds={{ x: left, y: top, width: plot_width, height: plot_height }}
         points={legend_obstacles}
-        series_data={legend_items}
+        series_data={legend_series}
         on_toggle={toggle_legend_item}
         draggable={false}
         filterable={false}

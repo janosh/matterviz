@@ -259,6 +259,8 @@
     reference_structure?: AnyStructure
     // bindable: explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
     bonds?: StructureBond[]
+    // `camera_position` unset fits the structure; any tuple, [0, 0, 0] included, is an explicit
+    // position. Reset it to undefined to request a fresh fit.
     scene_props?: StructureSettings
     // bindable: the one floating pane that is open
     active_pane?: StructurePane | null
@@ -283,18 +285,27 @@
     height?: number // output: wrapper height in CSS px
     color_scheme?: ColorSchemeName
     atom_color_config?: AtomColorConfig
-    // URL or named file contents; parsed structures can be supplied directly via structure.
+    // File to open: a URL, File or { data, filename } payload holding a structure, volumetric
+    // data or prediction JSON, compressed or not (trajectories and other results throw). Pass
+    // parsed data via `structure` instead.
     source?: MaterialSource
+    // False when a parent owns loading
     allow_file_drop?: boolean
+    // Takes over loading: receives the raw content of every drop and `source` load instead of
+    // the viewer parsing it
     on_file_drop?: FileLoadCallback
+    // Reports what loaded (structure, provenance, atom count) before it renders; use
+    // on_rendered to wait for the drawn scene
     on_file_load?: EventHandler
     on_error?: EventHandler
     loading?: boolean
     error_msg?: string
-    // bindable: recoverable issues the parser reported for the loaded file (skipped rows,
-    // guessed elements), shown as one dismissible notice
+    // bindable: recoverable issues the parser reported for the loaded file (skipped CIF rows,
+    // guessed elements, placeholder cells), shown as one dismissible notice
     parse_warnings?: string[]
     dragover?: boolean
+    // Host-tool result to open, e.g. prediction_from_json(content): replaces the structure with
+    // its input and draws its properties, geometry and fields (as dropped prediction JSON does)
     prediction?: StructureToolPrediction
     atom_color_field?: AtomColorField
     // Hovered-atom tooltip: false hides it, a snippet adds rows below the built-in site info
@@ -331,10 +342,16 @@
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
     hidden_elements?: Set<ElementSymbol>
     symmetry_settings?: Partial<SymmetrySettings>
+    // bindable: scalar fields keyed by unique `id`; removing one in the controls drops its
+    // surfaces and color references, while a parent replacing fields updates
+    // isosurface_settings itself. A volumetric file import adds its fields only when the ordered
+    // atoms, species and lattice match the current structure, else replaces scene and fields.
     volumetric_data?: VolumetricData[]
     isosurface_settings?: IsosurfaceSettings
     slice_settings?: Partial<VolumeSliceSettings>
     display_mode?: StructureDisplayMode // 3D structure/isosurface, 2D cross-section or both side by side
+    // bindable: field shown by the 2D cross-section; follows its ID through replacement and
+    // reordering, falls back to the first field once removed
     active_volume_id?: string
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
     top_right_controls?: Snippet // rendered at the end of the control buttons row

@@ -74,6 +74,8 @@
     resolved_padding = $bindable(),
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
+    // Keyed by legend label (`""` for an unlabelled series); parse raw input once with
+    // normalize_dos, projections with extract_pdos(raw, 'atom' | 'orbital', filter)
     doses: Record<string, DosData>
     // Eliashberg functions α²F(ω), dimensionless: dashed on their own density axis (top beside
     // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
@@ -90,7 +92,7 @@
     orientation?: `vertical` | `horizontal`
     hovered_frequency?: number | null
     reference_frequency?: number | null
-    fermi_level?: number // Fermi level for electronic DOS (auto-detected if not provided)
+    fermi_level?: number // electronic reference, zero allowed; omitted uses the data's efermi
     spin_mode?: SpinMode // How to display spin-polarized DOS: mirror (default), overlay, up_only, down_only, or null (auto)
     show_normalize_control?: boolean // Show normalization selector
     show_units_control?: boolean // Show units selector (phonon DOS only)

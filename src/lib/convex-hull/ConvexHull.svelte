@@ -142,6 +142,9 @@
       show_unstable_labels = false
     },
   })
+  // Numerical hull snapshot (undefined on error), e.g. for <ConvexHullStats {model} />;
+  // compute_hull_model builds the same one headlessly from entries that already carry any
+  // temperature or gas corrections (it applies neither)
   export const get_model = (): HullModel | undefined =>
     hull_data.error ? undefined : hull_data.model
   const element_count = $derived(hull_data.elements.length)

@@ -6,6 +6,7 @@ import type {
   BinaryPhaseDiagram,
   DiagramCursor,
   DiagramHighlight,
+  PhaseLegendEntry,
 } from '#lib/phase-diagram/types.js'
 import { binary_diagrams } from '#site/phase-diagrams.js'
 import { type ComponentProps, createRawSnippet, tick } from 'svelte'
@@ -509,10 +510,13 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     // eutectics, as a share of the commonly covered isotherm length
     expect(legend.map((item) => item.textContent?.trim())).toEqual([
       `Assessment`,
-      `Model: test-model`,
-      // 100 K of the 1000 K window differ, at every x
-      `Phases differ from Model: test-model (10% of area)`,
+      `test-model`,
+      // 100 K of the 1000 K window differ, at every x; a lone overlay's row already names it
+      `Phases differ (10%)`,
     ])
+    // the hatch is opt-in: off by default, its legend entry turns it on and off
+    expect(wrapper.querySelector(`path.disagreement`)).toBeNull()
+    await legend_click(wrapper, `Phases differ`)
     expect(wrapper.querySelector(`path.disagreement`)?.getAttribute(`d`)).toMatch(/^M[\d.]+,/)
     await legend_click(wrapper, `Phases differ`)
     expect(wrapper.querySelector(`path.disagreement`)).toBeNull()
@@ -520,10 +524,69 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     // snapshot and throw looking up the overlay's ids in the main diagram)
     svg.dispatchEvent(mouse(`click`))
     await tick()
-    await legend_click(wrapper, `Model`)
+    await legend_click(wrapper, `test-model`)
     expect(wrapper.querySelector(`.overlay-boundaries`)).toBeNull()
     expect(wrapper.querySelector(`.plot-tooltip.pinned`)).not.toBeNull()
     expect(tooltip_text(wrapper)).not.toContain(`Overlay`)
+  })
+
+  // map_legend maps the default rows (relabel, reorder, drop) while each keeps its target;
+  // legend passes props through, and null (or mapping every row away) hides the legend
+  test(`map_legend relabels, reorders and drops rows that still toggle their targets`, async () => {
+    const legend_texts = (wrapper: HTMLElement) =>
+      [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)].map((item) =>
+        item.textContent?.trim(),
+      )
+    let seen: PhaseLegendEntry[`target`][] = []
+    const wrapper = await mount_diagram({
+      overlays: [shifted_eutectic],
+      observations,
+      legend: { style: `opacity: 0.8` },
+      map_legend: (entries: PhaseLegendEntry[]) => {
+        seen = entries.map(({ target }) => target)
+        return entries
+          .filter(({ target }) => target.kind !== `disagreement` && target.kind !== `main`)
+          .map((entry) => {
+            const { target } = entry
+            if (target.kind === `overlay`)
+              return { ...entry, item: { ...entry.item, label: `MACE` } }
+            if (target.kind === `group`)
+              return { ...entry, item: { ...entry.item, label: `[${target.group}]` } }
+            return entry
+          })
+          .toReversed()
+      },
+    })
+    // the callback sees every default row in order, each with its full target
+    expect(seen).toEqual([
+      { kind: `main` },
+      { kind: `overlay`, overlay_idx: 0 },
+      // statuses with a drawn marker (needs_value rows have no T or x), keyed `status:<status>`
+      { kind: `group`, group: `status:ok` },
+      { kind: `group`, group: `status:needs_verification` },
+      { kind: `disagreement` },
+    ])
+    expect(legend_texts(wrapper)).toEqual([
+      `[status:needs_verification]`,
+      `[status:ok]`,
+      `MACE`,
+    ])
+    expect(wrapper.querySelector<HTMLElement>(`.phase-diagram-legend`)?.style.opacity).toBe(
+      `0.8`,
+    )
+    // with main dropped and the rest reversed, each row still toggles its own target
+    const n_markers = wrapper.querySelectorAll(`.observation-marker`).length
+    await legend_click(wrapper, `[status:needs_verification]`)
+    expect(wrapper.querySelectorAll(`.observation-marker`).length).toBeLessThan(n_markers)
+    expect(wrapper.querySelector(`.overlay-boundaries`)).not.toBeNull()
+    await legend_click(wrapper, `MACE`)
+    expect(wrapper.querySelector(`.overlay-boundaries`)).toBeNull()
+    expect(wrapper.querySelectorAll(`.phase-regions path`).length).toBeGreaterThan(0)
+
+    for (const props of [{ legend: null }, { map_legend: () => [] }]) {
+      const hidden = await mount_diagram({ overlays: [shifted_eutectic], ...props })
+      expect(hidden.querySelector(`.phase-diagram-legend`)).toBeNull()
+    }
   })
 
   test(`observations draw status-colored markers, error bars and one isotherm per row`, async () => {
@@ -904,17 +967,13 @@ describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
       (item) => item.textContent?.trim(),
     )
     // verdicts list in a fixed order (pass, fail), whatever order the markers come in
-    expect(legend).toEqual([
-      `Assessment`,
-      `Observed, prediction passes`,
-      `Observed, prediction fails`,
-    ])
+    expect(legend).toEqual([`Assessment`, `Prediction passes`, `Prediction fails`])
     // the tooltip gives the prediction and its error per observed point
     await hover_at(wrapper, 0.45, 520)
     expect(tooltip_text(wrapper)).toMatch(
       /fail Predicted T = 450 K \([−-]70 K\), x = 50 at% \(\+5 at%\)/,
     )
-    await legend_click(wrapper, `prediction fails`)
+    await legend_click(wrapper, `Prediction fails`)
     expect(wrapper.querySelectorAll(`.observation-marker`)).toHaveLength(1)
     expect(wrapper.querySelectorAll(`line.residual`)).toHaveLength(0)
   })
@@ -1167,36 +1226,79 @@ describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
       ...shifted_eutectic,
       provenance: { kind: `model`, model: `other-model` },
     }
-    const wrapper = await mount_diagram({ overlays: [shifted_eutectic, second] })
+    const wrapper = await mount_diagram({
+      overlays: [shifted_eutectic, second],
+      show_disagreement: true,
+    })
     const strokes = () =>
       [...wrapper.querySelectorAll(`.overlay-boundaries path`)].map((el) => [
         el.getAttribute(`stroke`),
         el.getAttribute(`stroke-dasharray`),
       ])
+    const hatch_label = () =>
+      [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)]
+        .map((item) => item.textContent?.trim())
+        .filter((label) => label?.startsWith(`Phases differ`))
     expect(strokes()).toEqual([
       [`#e6007e`, `7,4`],
       [`#ef6c00`, `3,3`],
     ])
     // the tooltip names each overlay's phase set at the cursor (α + β below 600 K in both)
     await hover_at(wrapper, 0.5, 550)
-    expect(tooltip_text(wrapper)).toMatch(
-      /Model: test-model α \+ β\s*Model: other-model α \+ β/,
-    )
+    expect(tooltip_text(wrapper)).toMatch(/test-model α \+ β\s*other-model α \+ β/)
+    // with several overlays shown, the label names the one it compares against
+    expect(hatch_label()).toEqual([`Phases differ from test-model (10%)`])
     await legend_click(wrapper, `other-model`)
     expect(strokes()).toEqual([[`#e6007e`, `7,4`]])
+    expect(hatch_label()).toEqual([`Phases differ (10%)`])
     expect(wrapper.querySelector(`path.disagreement`)).not.toBeNull()
-    // the hatch compares with the first valid overlay, even while its lines are hidden; the
-    // tooltip then names only the shown one
+    // the hatch follows the first shown overlay; the tooltip names only the shown one
     await legend_click(wrapper, `other-model`)
-    await legend_click(wrapper, `Model: test-model`)
+    await legend_click(wrapper, `test-model`)
     expect(strokes()).toEqual([[`#ef6c00`, `3,3`]])
+    expect(hatch_label()).toEqual([`Phases differ (10%)`])
+    await hover_at(wrapper, 0.5, 550)
+    expect(tooltip_text(wrapper)).toMatch(/other-model α \+ β/)
+    expect(tooltip_text(wrapper)).not.toMatch(/test-model α/)
+    // with every overlay hidden there is nothing to compare: no hatch, no share in the legend
+    await legend_click(wrapper, `other-model`)
+    expect(strokes()).toEqual([])
+    expect(hatch_label()).toEqual([])
+    expect(wrapper.querySelector(`path.disagreement`)).toBeNull()
+  })
+
+  // hidden_overlays keys are indices into `overlays` (invalid ones included); the legend writes
+  // a new set to the binding
+  test(`hidden_overlays hides overlays by index and is written by the legend`, async () => {
+    const second: BinaryPhaseDiagram = {
+      ...shifted_eutectic,
+      provenance: { kind: `model`, model: `other-model` },
+    }
+    const bad = { format: `x` } as unknown as BinaryPhaseDiagram
+    const wrapper = await mount_diagram({
+      overlays: [bad, shifted_eutectic, second],
+      hidden_overlays: new Set([1]),
+      show_disagreement: true,
+    })
+    const strokes = [...wrapper.querySelectorAll(`.overlay-boundaries path`)].map((el) =>
+      el.getAttribute(`stroke-dasharray`),
+    )
+    expect(strokes).toEqual([`3,3`]) // second valid overlay's dash
     const labels = [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)].map(
       (item) => item.textContent?.trim(),
     )
-    expect(labels).toContain(`Phases differ from Model: test-model (10% of area)`)
-    await hover_at(wrapper, 0.5, 550)
-    expect(tooltip_text(wrapper)).toMatch(/Model: other-model α \+ β/)
-    expect(tooltip_text(wrapper)).not.toMatch(/Model: test-model α/)
+    expect(labels).toContain(`Phases differ (10%)`)
+
+    const state = { hidden_overlays: new Set([1]) }
+    const bound = await mount_sized(
+      IsobaricBinaryPhaseDiagram,
+      bind_props({ data: eutectic, overlays: [bad, shifted_eutectic, second] }, state),
+      { selector: `.binary-phase-diagram`, width, height },
+    )
+    await legend_click(bound, `other-model`)
+    expect(state.hidden_overlays).toEqual(new Set([1, 2]))
+    await legend_click(bound, `test-model`)
+    expect(state.hidden_overlays).toEqual(new Set([2]))
   })
 
   // a partner diagram's highlight survives this diagram dropping its own mark

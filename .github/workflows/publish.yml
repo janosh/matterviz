@@ -102,14 +102,72 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  # A release commit landed on main, whose push already ran ci.yml: reuse that result (waiting
+  # for it if still running) instead of repeating ~15 min of CI. Only a commit without a main
+  # push run (e.g. a dispatch rehearsal on another ref) runs CI here. A failed run fails publish.
+  ci_status:
+    name: Check CI on the release commit
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # main's full CI takes ~15 min
+    permissions:
+      actions: read
+    outputs:
+      passed: ${{ steps.check.outputs.passed }}
+    steps:
+      - name: Find main's CI run for this commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&branch=main&event=push&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then
+            echo "::notice::no main push CI run for $GITHUB_SHA; running CI here"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --interval 30 > /dev/null
+          # judge the jobs the release gate runs: main's run adds Performance baselines, which
+          # isn't a release gate yet (skipped jobs, e.g. a gated-off E2E, count as passing)
+          conclusions=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.name != "Performance baselines") | .conclusion] | unique | join(",")')
+          if [ "$conclusions" = success ] || [ "$conclusions" = skipped,success ]; then
+            echo "::notice::reusing CI run $run_id, which passed on $GITHUB_SHA"
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          elif [[ ",$conclusions," == *,cancelled,* ]] && [[ ",$conclusions," != *,failure,* ]]; then
+            # a newer push to main cancels the older run (ci.yml's concurrency group)
+            echo "::notice::CI run $run_id was cancelled; running CI here"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::CI run $run_id on $GITHUB_SHA has job conclusions: $conclusions"; exit 1
+          fi
+
   ci:
     name: Lint, type-check and test
-    needs: prepare
+    needs: ci_status
+    if: needs.ci_status.outputs.passed != 'true'
     # a called workflow's jobs can't exceed these: ci.yml's e2e-gate reads past runs
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/ci.yml
+
+  # Passes only if CI passed, either reused from main (ci skipped) or run here. Publishers need
+  # this instead of ci: a job-level !failure() can't tell a skipped ci from a cancelled one
+  # (e.g. ci_status timing out), so gating on ci directly could publish without CI.
+  ci_gate:
+    name: Require passing CI
+    needs: [ci_status, ci]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI result
+        env:
+          PASSED: ${{ needs.ci_status.result == 'success' && (needs.ci.result == 'success' || (needs.ci.result == 'skipped' && needs.ci_status.outputs.passed == 'true')) }}
+          RESULTS: ci_status=${{ needs.ci_status.result }} ci=${{ needs.ci.result }}
+        run: |
+          [ "$PASSED" = true ] || { echo "::error::CI didn't pass: $RESULTS"; exit 1; }
 
   # Build alongside CI; every publisher below requires both CI and all artifacts.
   package_matterviz:
@@ -245,7 +303,14 @@ jobs:
   publish_npm:
     name: Publish ${{ matrix.package_name }} to npm
     needs:
-      [prepare, ci, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
+      [
+        prepare,
+        ci_gate,
+        package_matterviz,
+        package_anywidget,
+        package_vscode,
+        package_jupyterlab,
+      ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -292,7 +357,14 @@ jobs:
   publish_pypi:
     name: Publish JupyterLab extension to PyPI
     needs:
-      [prepare, ci, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
+      [
+        prepare,
+        ci_gate,
+        package_matterviz,
+        package_anywidget,
+        package_vscode,
+        package_jupyterlab,
+      ]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -330,7 +402,14 @@ jobs:
   publish_open_vsx:
     name: Publish VS Code extension to Open VSX
     needs:
-      [prepare, ci, package_matterviz, package_anywidget, package_vscode, package_jupyterlab]
+      [
+        prepare,
+        ci_gate,
+        package_matterviz,
+        package_anywidget,
+        package_vscode,
+        package_jupyterlab,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Download VSIX

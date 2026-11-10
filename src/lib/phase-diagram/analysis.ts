@@ -170,21 +170,23 @@ export interface GibbsCurve {
   points: Vec2[] // [x, G in J/mol], finite values only
 }
 
-// Each phase's G(x) at `temperature`, linear between the two bracketing grid rows (clamped
-// to the grid's T range). On a grid row only that row's values count; between rows a node
-// null in either is left out.
+// Each phase's G(x) at `temperature`, linear between the two bracketing grid rows. On a grid
+// row only that row's values count; between rows a node null in either is left out. Throws
+// for a temperature outside the grid's T range (callers check it first).
 export function gibbs_curves(grid: GibbsEnergyGrid, temperature: number): GibbsCurve[] {
   const { temperatures, compositions } = grid
-  const t_clamped = Math.min(
-    Math.max(temperature, temperatures[0]),
-    temperatures[temperatures.length - 1],
-  )
+  const [t_min, t_max] = [temperatures[0], temperatures[temperatures.length - 1]]
+  if (!(temperature >= t_min && temperature <= t_max)) {
+    throw new RangeError(
+      `T = ${temperature} K is outside the Gibbs grid [${t_min}, ${t_max}] K`,
+    )
+  }
   const hi = Math.max(
     1,
-    temperatures.findIndex((t_val) => t_val >= t_clamped),
+    temperatures.findIndex((t_val) => t_val >= temperature),
   )
   const lo = hi - 1
-  const weight = (t_clamped - temperatures[lo]) / (temperatures[hi] - temperatures[lo])
+  const weight = (temperature - temperatures[lo]) / (temperatures[hi] - temperatures[lo])
   return grid.phases.map(({ model_phase: id, values }) => {
     const [row_lo, row_hi] = [values[lo], values[hi]]
     const points: Vec2[] = []

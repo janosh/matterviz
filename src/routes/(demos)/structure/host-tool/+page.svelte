@@ -98,7 +98,8 @@ run.on_overlay({
 </p>
 <p>
   A run belongs to the structure object it started on: assigning a new <code>structure</code>
-  cancels it, while in-place edits are not observed.
+  (other than through <code>run.replace_input</code>) cancels it, while in-place edits are not
+  observed.
 </p>
 <p>
   Use the export pane to download the prediction JSON, including the captured input,

@@ -3,6 +3,8 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/index.js'
 
+// Discriminator of bands and DOS alike: phonon data is in THz (DOS `frequencies`), electronic
+// in eV (DOS `energies`). One plot cannot mix the two (spectral_type throws).
 export type BandStructureType = `phonon` | `electronic`
 export type PathMode = `union` | `intersection` | `strict`
 export type { FrequencyUnit } from './frequency-units'

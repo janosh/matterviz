@@ -36,17 +36,31 @@ let next_request_id = 0
 
 const parse_abort_error = (): DOMException => new DOMException(`Parse cancelled`, `AbortError`)
 
-// The parse worker failed, not the file: it crashed, its reply was unreadable, or it never
-// started (constructor threw, script failed to load), in which case parses fall back
+// How a parse worker failed. `crashed`: it started, then errored or sent an unreadable reply.
+// `not_started`: it errored before its first message (e.g. its script failed to load once).
+// `blocked`: this page can't run it (constructor threw, as for a cross-origin URL; no start
+// within WORKER_START_TIMEOUT_MS; or MAX_START_FAILURES start failures in a row, as a CSP
+// refusing worker-src gives).
+export type ParseWorkerFailure = `crashed` | `not_started` | `blocked`
+
+// The parse worker failed, not the file. A worker that never started was never given the
+// content, so parse_in_worker retries those parses on the main thread.
 export class ParseWorkerError extends Error {
   constructor(
     message: string,
-    readonly started = true,
+    readonly failure: ParseWorkerFailure = `crashed`,
   ) {
     super(message)
     this.name = 'ParseWorkerError'
   }
 }
+
+// The worker posts its ready message once its module graph (h5wasm included) has loaded, which
+// over a slow network takes far longer than a trivial probe worker, so allow 10 s
+export const WORKER_START_TIMEOUT_MS = 10_000
+// One start failure can be a flaky script fetch; repeated ones mean the page refuses workers
+const MAX_START_FAILURES = 2
+let consecutive_start_failures = 0
 
 type WorkerParseResult =
   | Exclude<ParseResult, { type: `trajectory` }>
@@ -71,6 +85,7 @@ interface ParseWorkerHost {
   started: boolean // set by its first message (the ready message or a reply)
   queued: (() => void)[] // posts held until it starts, so a buffer never goes to a dead worker
   idle_timer?: ReturnType<typeof setTimeout>
+  start_timer?: ReturnType<typeof setTimeout>
 }
 
 // One host per factory, so the default factory gives one worker (one script fetch) per page.
@@ -88,6 +103,7 @@ const terminate_host = (host: ParseWorkerHost): void => {
   if (host.terminated) return
   host.terminated = true
   clearTimeout(host.idle_timer)
+  clearTimeout(host.start_timer)
   retire_host(host)
   host.worker.terminate()
 }
@@ -122,29 +138,51 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
     queued: [],
   }
   host.worker.addEventListener(`message`, ((event: MessageEvent<ParseWorkerResponse>) => {
+    const response: ParseWorkerResponse | undefined = event.data
+    // A worker given up on (start timeout, error) may still deliver what it had queued
+    if (host.terminated) return dispose_run_port(response?.run_port)
     if (!host.started) {
       host.started = true
+      consecutive_start_failures = 0
+      clearTimeout(host.start_timer)
       for (const post of host.queued.splice(0)) post()
     }
-    const response: ParseWorkerResponse | undefined = event.data
     const pending = response && host.pending.get(response.id)
     // A late reply to a cancelled parse: release the run it may carry
     if (pending) pending.receive(response)
     else dispose_run_port(response?.run_port)
   }) as EventListener)
-  const fail_pending = (describe: (filename: string) => string, started = true): void => {
+  const fail_pending = (
+    describe: (filename: string) => string,
+    failure: ParseWorkerFailure = `crashed`,
+  ): void => {
     for (const { filename, fail } of host.pending.values())
-      fail(new ParseWorkerError(describe(filename), started))
+      fail(new ParseWorkerError(describe(filename), failure))
   }
   // A crashed worker takes every parse and run it holds down with it. Unregister it first so a
   // parse started synchronously from a disposed run's release spawns a fresh worker.
   host.worker.addEventListener(`error`, (event) => {
     event.preventDefault()
+    if (host.terminated) return
     const reason = event.message || `unknown worker error`
+    let failure: ParseWorkerFailure = `crashed`
+    if (!host.started) {
+      consecutive_start_failures += 1
+      failure = consecutive_start_failures >= MAX_START_FAILURES ? `blocked` : `not_started`
+    }
     terminate_host(host)
-    fail_pending((filename) => `Parse worker failed for ${filename}: ${reason}`, host.started)
+    fail_pending((filename) => `Parse worker failed for ${filename}: ${reason}`, failure)
     for (const run of host.runs) run.dispose()
   })
+  // A worker that neither starts nor errors would hold its queued parses forever
+  host.start_timer = setTimeout(() => {
+    terminate_host(host)
+    fail_pending(
+      (filename) =>
+        `Parse worker for ${filename} did not start within ${WORKER_START_TIMEOUT_MS} ms`,
+      `blocked`,
+    )
+  }, WORKER_START_TIMEOUT_MS)
   // A reply that failed to deserialize names no request, so every parse in flight fails; the
   // worker stays up, and its runs talk over their own ports
   host.worker.addEventListener(`messageerror`, () =>
@@ -190,7 +228,7 @@ const parse_file_worker = async (
     try {
       host = open_host(worker_factory, dedicated)
     } catch (error) {
-      return reject(new ParseWorkerError(to_error(error).message, false))
+      return reject(new ParseWorkerError(to_error(error).message, `blocked`))
     }
     const transfer = owns_content && content instanceof ArrayBuffer ? [content] : []
     const settle = (outcome: WorkerParseResult | Error): void => {
@@ -258,6 +296,29 @@ const parse_file_worker = async (
   })
 }
 
+const parse_on_main_thread = async (
+  content: TrajectorySource,
+  filename: string,
+  is_base64: boolean | undefined,
+  { signal, load_options, on_progress }: ParseInWorkerOptions,
+): Promise<ParseResult> => {
+  signal?.throwIfAborted()
+  const result = await parse_file_content(
+    content,
+    filename,
+    is_base64,
+    load_options,
+    on_progress,
+  )
+  // the parse can't be interrupted, but an abort during it still rejects like the worker path,
+  // releasing the run nobody will receive (a host run's stream listener, a file's reader)
+  if (signal?.aborted) {
+    if (result.type === `trajectory`) result.data.dispose()
+    signal.throwIfAborted()
+  }
+  return result
+}
+
 // File cloning shares the immutable backing file; every replica mounts its own bounded
 // HDF5 reader. Byte buffers and rich sources never enter this pool.
 const parse_with_worker = async (
@@ -270,23 +331,8 @@ const parse_with_worker = async (
   // Host markers require the main-thread host bridge; they contain no file bytes to parse.
   // Where no worker can be created (see can_create_worker), files parse there too.
   const host_marker = typeof content === `string` && content.startsWith(`LARGE_FILE:`)
-  if (host_marker || (!options.worker_factory && !can_create_worker())) {
-    options.signal?.throwIfAborted()
-    const result = await parse_file_content(
-      content,
-      filename,
-      is_base64,
-      load_options,
-      options.on_progress,
-    )
-    // the parse can't be interrupted, but an abort during it still rejects like the worker path,
-    // releasing the run nobody will receive (a host run's stream listener, a file's reader)
-    if (options.signal?.aborted) {
-      if (result.type === `trajectory`) result.data.dispose()
-      options.signal.throwIfAborted()
-    }
-    return result
-  }
+  if (host_marker || (!options.worker_factory && !can_create_worker()))
+    return parse_on_main_thread(content, filename, is_base64, { ...options, load_options })
   let dispose_pool: (() => void) | undefined
   const is_hdf5 =
     HDF5_EXT_REGEX.test(filename) ||
@@ -493,16 +539,20 @@ const parse_with_worker = async (
   return result
 }
 
-// A worker that never started parses nothing on this page: parse here instead
+// A parse whose worker never started is retried here on the main thread (it still holds its
+// content). Only a `blocked` failure, meaning this page can't run workers at all, disables
+// workers for every later parse; after a one-off start failure the next parse tries a fresh
+// worker. A worker that crashed after starting may have been given the content, and the parse
+// may well crash the main thread too, so that rejects without retry or disabling.
 export const parse_in_worker = (
   ...[content, filename, is_base64, options = {}]: Parameters<typeof parse_with_worker>
 ): Promise<ParseResult> =>
   parse_with_worker(content, filename, is_base64, options).catch((error: unknown) => {
-    if (!(error instanceof ParseWorkerError) || error.started) throw error
-    disable_workers()
-    console.warn(`${error.message}, parsing ${filename} on the main thread`)
-    return parse_with_worker(content, filename, is_base64, {
-      ...options,
-      worker_factory: undefined,
-    })
+    if (!(error instanceof ParseWorkerError) || error.failure === `crashed`) throw error
+    const blocked = error.failure === `blocked`
+    if (blocked) disable_workers()
+    console.warn(
+      `${error.message}, parsing ${filename} on the main thread${blocked ? `; parse workers disabled for this page` : ``}`,
+    )
+    return parse_on_main_thread(content, filename, is_base64, options)
   })

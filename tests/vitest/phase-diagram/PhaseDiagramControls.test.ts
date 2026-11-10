@@ -113,16 +113,48 @@ describe(`PhaseDiagramControls`, () => {
     [{}, []],
     [{ has_special_points: true }, [`Special pts`]],
     [
-      { has_special_points: true, has_overlay: true, has_observations: true },
-      [`Special pts`, `Overlay`, `Observations`],
+      { has_special_points: true, overlay_idxs: [0], has_observations: true },
+      [`Special pts`, `Overlays`, `Disagreement`, `Observations`],
     ],
   ])(`layer toggles for %o: %o`, (props, expected) => {
     const grid = query(mount_controls({ data: sample_data, ...props }), `.visibility-grid`)
     const labels = [...grid.querySelectorAll(`label`)].map((label) =>
       label.textContent?.trim(),
     )
-    const optional = new Set([`Special pts`, `Overlay`, `Observations`])
+    const optional = new Set([`Special pts`, `Overlays`, `Disagreement`, `Observations`])
     expect(labels.filter((label) => optional.has(label ?? ``))).toEqual(expected)
+  })
+
+  // the Overlays checkbox hides or shows every valid overlay through the bound index set,
+  // and the visibility reset shows them all again; the disagreement hatch starts off
+  test(`Overlays checkbox writes hidden_overlays, visibility reset clears it`, () => {
+    const state = { hidden_overlays: new Set<number>([2]) }
+    const target = mount_controls({ data: sample_data, overlay_idxs: [0, 2] }, state)
+    const checkbox = (name: string) => {
+      const label = [...target.querySelectorAll(`.visibility-grid label`)].find(
+        (element) => element.textContent?.trim() === name,
+      )
+      if (!label) throw new Error(`No visibility checkbox "${name}"`)
+      return query<HTMLInputElement>(label, `input[type="checkbox"]`)
+    }
+    expect(PHASE_DIAGRAM_DEFAULTS.show_disagreement).toBe(false)
+    expect(checkbox(`Disagreement`).checked).toBe(false)
+    // one of two overlays shown: checked, and a hidden one counts as a visibility change
+    const overlays_box = checkbox(`Overlays`)
+    expect(overlays_box.checked).toBe(true)
+    const reset = query<HTMLButtonElement>(
+      target,
+      `button[aria-label="Reset visibility to defaults"]`,
+    )
+    overlays_box.checked = false
+    overlays_box.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(state.hidden_overlays).toEqual(new Set([0, 2]))
+    overlays_box.checked = true
+    overlays_box.dispatchEvent(new Event(`change`, { bubbles: true }))
+    expect(state.hidden_overlays).toEqual(new Set())
+    state.hidden_overlays = new Set([0])
+    reset.click()
+    expect(state.hidden_overlays).toEqual(new Set())
   })
 
   test.each([
