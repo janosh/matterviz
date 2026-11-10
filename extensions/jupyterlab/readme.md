@@ -33,7 +33,7 @@ A `.dump` file with several `ITEM: TIMESTEP` frames opens as a trajectory. `.xtc
 
 ## Limits
 
-Files above 100 MB refuse to parse (transfer already happened; parse in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`). Below that, parsing runs in a Web Worker so the Lab UI stays responsive; XYZ/EXTXYZ, XDATCAR and LAMMPS dump trajectories above `DEFAULTS.trajectory.index_above_bytes` (25 MB) are indexed there and decoded frame by frame on demand (ASE `.traj` always is), and the worker is terminated when the viewer closes. Worker failures show an error; parsing requires a working Web Worker. No host-side streaming like the VS Code extension, so the 100 MB ceiling is hard. Open viewers also don't auto-refresh on external writes — JupyterLab has no filesystem watcher; use **File → Reload from Disk**.
+Files above 100 MB refuse to parse (transfer already happened; parse in the kernel instead, e.g. with [pymatviz](https://github.com/janosh/pymatviz)'s `TrajectoryWidget`). Below that, parsing runs in a Web Worker so the Lab UI stays responsive; XYZ/EXTXYZ, XDATCAR and LAMMPS dump trajectories above `DEFAULTS.trajectory.index_above_bytes` (25 MB) are indexed there and decoded frame by frame on demand (ASE `.traj` always is), and the worker is terminated when the viewer closes. If the worker fails to start, or hasn't started within 10 s, the file parses on the main thread instead, which can freeze the Lab UI while it runs; a worker that crashes after starting shows an error. No host-side streaming like the VS Code extension, so the 100 MB ceiling is hard. Open viewers also don't auto-refresh on external writes — JupyterLab has no filesystem watcher; use **File → Reload from Disk**.
 
 ## Development
 
