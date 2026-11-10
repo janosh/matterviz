@@ -32,7 +32,7 @@
 - More signatures: `classify_payload` `compression_by_magic` → `wrappers_may_be_decoded`; `band_carriers`/`slice_shading_rgba` keyed by `sheet_key(band, spin)`; `SpatialIndex` holds typed arrays; `project_line_points` returns `{ points, cropped }`; `site_label_offsets` takes `BondData`; `create_bands_dos_sync` takes `size`; `y_axis_label_x`/`y2_axis_label_x` take the plot height; `HullCanvasStrategy.rotate_point` → `rotation(camera, energy_range)`; `create_canvas_interactions` exposes getters and `screen` instead of `to_screen`
 - Props dropped: `Cylinder` `opacity` and rest props, `ThemeControl` `on_change` (use `bind:theme_mode`), `RefLine3DBase` `annotation`/`hover_style`/`on_click`/`on_hover`, `StructureTypePlot` `on_sites_hover`, `CellSelect` `loading`; `ConvexHullEntry.size` no longer sets marker radius; `SynthesisPlanner` `weights` is not bindable; synthesis callbacks are `on_conditions_change`/`on_assumptions_change`; `GasThermodynamicsProvider` only requires `get_standard_chemical_potential`
 - ChemPot: `ChemPotHoverInfo3D.touches_limits` is `{ element, side }[]`; `ChemPotDiagramData` requires `shadow_elements`
-- Binary phase diagrams: `overlay` → `overlays: readonly BinaryPhaseDiagram[]`; `PhaseHoverInfo.overlay_hit` → `overlay_hits`; `format_hover_info_text` takes `overlays`; `PhaseDiagramTooltip` takes `color_of` instead of `phase_color_keys`; `PhaseDiagramControls` takes `has_special_points`; `GibbsEnergyGrid.compositions` must span 0 to 1; x outside [0, 1] is rejected; `parse_diagram` is the validating entry point
+- Binary phase diagrams: `overlay` → `overlays: readonly BinaryPhaseDiagram[]`; `PhaseHoverInfo.overlay_hit` → `overlay_hits`; `format_hover_info_text` takes `overlays`; `PhaseDiagramTooltip` takes `color_of` instead of `phase_color_keys`; `PhaseDiagramControls` takes `has_special_points` and `overlay_idxs` (replaces `has_overlay`); `show_overlay` → bindable `hidden_overlays: ReadonlySet<number>` (indices into `overlays`); `show_disagreement` defaults to `false`; `gibbs_curves` throws for T outside the grid; `GibbsEnergyGrid.compositions` must span 0 to 1; x outside [0, 1] is rejected; `parse_diagram` is the validating entry point
 - `parse_pt_data` requires `phases` on critical points and rejects unknown keys; `derive_regions` also returns `max_gap`
 - Throw instead of guess: `clean_multi_series`/`clean_xyz` on mismatched lengths, unknown curve names, POSCAR/XYZ export of multi-element or under-occupied sites, CIF/POSCAR/XYZ export of species-less sites, JSON species with bad `occu`/`oxidation_state` or DummySpecies, `cell_to_lattice_matrix` on NaN/negative/out-of-range inputs, `range_padding` < 0, Sankey id clashes, untyped-host `y_axis`/`y2` sync modes/3D ref types, `link_hover` without `hover_links()`
 - Data behavior: PDB/mmCIF species occupancy is 1 (refinement occupancy in `site.properties.occupancy`) and alt-locs are picked per residue; CIF export writes charged type symbols; pymatgen JSON export drops `oxidation_state` 0; gas chemical potentials include the JANAF H(T) − H(0 K) increment, shifting finite-temperature hulls; `Histogram` no longer draws empty bins; `solve_linear_system` returns `null` on non-finite input
@@ -60,14 +60,14 @@
 - `BondAngles`, svelte-widgets `ToggleMenu`/table helpers, `SHORTCUTS` scopes, `raycast_atom_spheres` [#505](https://github.com/janosh/matterviz/pull/505)
 - Immutable `Structure` input, `keep_blob`, `request_id`-keyed host messages [#508](https://github.com/janosh/matterviz/pull/508)
 - HeatmapTable API on DataTable (`sort`, `pin`, `visible`, `--table-*`); phase diagram tooltip/controls props [#509](https://github.com/janosh/matterviz/pull/509)
-- Binary phase diagram `overlay` → `overlays`, `overlay_hits` [#510](https://github.com/janosh/matterviz/pull/510)
+- Binary phase diagram `overlay` → `overlays`, `overlay_hits`, `show_overlay` → `hidden_overlays`, opt-in `show_disagreement` [#510](https://github.com/janosh/matterviz/pull/510)
 
 ### 🚀 New Features
 
 - `ElectronicStructure`: structure, Fermi surface, bands, DOS and phonons in one linked viewer with pressure sweeps and a trends pane [#499](https://github.com/janosh/matterviz/pull/499)
 - `PressureTemperaturePhaseDiagram` with error bands and region tracing from coexistence lines [#499](https://github.com/janosh/matterviz/pull/499)
 - Compare two sweep series side by side in `ElectronicStructure`; Fermi surfaces colored by per-state properties [#501](https://github.com/janosh/matterviz/pull/501)
-- Compare binary phase diagrams: overlays, disagreement shading, linked highlighting, residual arrows, lens, isopleth, `GibbsEnergyPlot` [#510](https://github.com/janosh/matterviz/pull/510)
+- Compare binary phase diagrams: overlays (toggled via bindable `hidden_overlays`), opt-in `show_disagreement` shading against the first shown overlay, linked highlighting, residual arrows, lens, isopleth, `GibbsEnergyPlot` [#510](https://github.com/janosh/matterviz/pull/510)
 - `binary-phase-diagram/2` format with experimental observations and a synced side-by-side view [#509](https://github.com/janosh/matterviz/pull/509)
 - ScatterPlot `density_contours` and `size_legend`; BoxPlot `points` (`strip` | `swarm`) [#484](https://github.com/janosh/matterviz/pull/484)
 - Pin any tooltip, touch-tap tooltips, keyboard hover walks and linked hover between viewers in 3D [#493](https://github.com/janosh/matterviz/pull/493)
@@ -91,6 +91,7 @@
 - Sheared-cell polyhedra, LAMMPS `nan`/restart frames, SVG path rounding, Firefox shift+wheel pan [#507](https://github.com/janosh/matterviz/pull/507)
 - MD blow-ups: non-finite frames are skipped with warnings across XYZ, ASE, XDATCAR, OUTCAR and LAMMPS [#508](https://github.com/janosh/matterviz/pull/508)
 - File viewer falls back to the main thread when the parse worker never starts; error panel separates open from parse failures [#510](https://github.com/janosh/matterviz/pull/510)
+- Parse worker that never starts falls back to the main thread after 10 s instead of hanging; only a blocked worker (constructor throws, start timeout, two start failures in a row) disables workers page-wide, a one-off start failure or crash leaves the next parse a fresh worker [#511](https://github.com/janosh/matterviz/pull/511)
 - Lattice arrows start outside cells with negative vector components [#486](https://github.com/janosh/matterviz/pull/486)
 - Single-frame sweeps hide playback; electronic and phonon DOS columns align; markers on a zero axis end draw whole [#502](https://github.com/janosh/matterviz/pull/502)
 - HeatmapTable SSR stack overflow from a recursive `controls` snippet [#509](https://github.com/janosh/matterviz/pull/509)

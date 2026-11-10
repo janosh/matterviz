@@ -119,7 +119,7 @@
     show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
     show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
-    show_overlay = $bindable(PHASE_DIAGRAM_DEFAULTS.show_overlay),
+    hidden_overlays = $bindable(new Set<number>()),
     show_observations = $bindable(PHASE_DIAGRAM_DEFAULTS.show_observations),
     show_uncertainty = $bindable(PHASE_DIAGRAM_DEFAULTS.show_uncertainty),
     show_disagreement = $bindable(PHASE_DIAGRAM_DEFAULTS.show_disagreement),
@@ -144,7 +144,8 @@
     ExportProps & {
       data?: BinaryPhaseDiagram
       // Diagrams of the same components drawn as dashed boundaries only, each in its own
-      // color and dash. Where the first valid one disagrees on the phase set is hatched.
+      // color and dash. With show_disagreement, where the first shown one disagrees on the
+      // phase set is hatched.
       overlays?: readonly BinaryPhaseDiagram[]
       // Model phases that take palette slots besides this diagram's own: give every diagram
       // of a comparison the same keys (model_phase_keys of all of them) so shared phases
@@ -181,11 +182,13 @@
       show_special_points?: boolean
       show_grid?: boolean
       show_component_labels?: boolean
-      show_overlay?: boolean
+      // Indices into `overlays` of the ones not drawn (no boundaries, tooltip rows or
+      // disagreement hatching). The legend and the controls' Overlays checkbox write a new set.
+      hidden_overlays?: ReadonlySet<number>
       show_observations?: boolean
       // Bands of boundary and marked-point sigma_T
       show_uncertainty?: boolean
-      // Hatching where the first valid overlay (even while hidden) has a different phase set
+      // Hatching where the first shown overlay has a different phase set (off by default)
       show_disagreement?: boolean
       fullscreen_toggle?: boolean
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
@@ -247,13 +250,15 @@
       return own === other ? [] : [`components ${own} differ from ${other}`]
     }),
   )
-  const valid_overlays = $derived(overlays.filter((_, idx) => !overlay_errors[idx].length))
-  // Overlays the legend toggled off (show_overlay hides them all)
-  const hidden_overlays = new SvelteSet<BinaryPhaseDiagram>()
+  // Indices into `overlays` of the valid ones (the keys of hidden_overlays)
+  const valid_overlay_idxs = $derived(
+    overlays.flatMap((_, idx) => (overlay_errors[idx].length ? [] : [idx])),
+  )
+  const valid_overlays = $derived(valid_overlay_idxs.map((idx) => overlays[idx]))
   // valid_overlays order, null for a hidden one, so hover hits and styles keep their index
   const overlay_slots = $derived(
-    valid_overlays.map((overlay) =>
-      show_overlay && !hidden_overlays.has(overlay) ? overlay : null,
+    valid_overlays.map((overlay, slot) =>
+      hidden_overlays.has(valid_overlay_idxs[slot]) ? null : overlay,
     ),
   )
   const input_error = $derived.by(() => {
@@ -599,13 +604,13 @@
       : [],
   )
 
-  // Hatched isotherm strips where the first valid overlay (even while its lines are hidden)
-  // names other model phases, one row per 3 px of plot height, recomputed on zoom or resize,
+  // Hatched isotherm strips where the first shown overlay names other model phases, one row per 3 px of plot height, recomputed on zoom or resize,
   // not on hover. The legend's share uses a fixed T grid, so zoom and plot size don't move it.
   const DISAGREEMENT_ROW_PX = 3
-  const disagreement_target = $derived(
-    valid_overlays[0]?.regions.length && data.regions.length ? valid_overlays[0] : null,
-  )
+  const disagreement_target = $derived.by(() => {
+    const first_shown = overlay_slots.find((overlay) => overlay !== null)
+    return first_shown?.regions.length && data.regions.length ? first_shown : null
+  })
   // A phase standing in for a reference phase (phase_matches) counts as that phase's model phase
   const disagreement_name_of = $derived.by(() => {
     const model_phase_by_name = new Map(
@@ -674,7 +679,7 @@
   )
   type LegendTarget =
     | { kind: `main` }
-    | { kind: `overlay`; overlay: BinaryPhaseDiagram }
+    | { kind: `overlay`; overlay_idx: number }
     | { kind: `category`; category: DiagramPoint[`category`] }
     | { kind: `group`; group: string }
     | { kind: `disagreement` }
@@ -700,7 +705,7 @@
             line_dash: overlay_styles[idx].dash,
           },
         },
-        { kind: `overlay`, overlay },
+        { kind: `overlay`, overlay_idx: valid_overlay_idxs[idx] },
       ]),
       ...legend_categories.map((category): LegendEntry => [
         {
@@ -763,8 +768,8 @@
         ]
       : [],
   )
-  // Toggles one sub-layer (an overlay, point category or observation group); while its
-  // whole layer is off, a click unhides the item and turns the layer back on
+  // Toggles one sub-layer (a point category or observation group); while its whole layer is
+  // off, a click unhides the item and turns the layer back on
   function toggle_in<T>(set: SvelteSet<T>, item: T, layer_on: boolean): void {
     if (layer_on && !set.has(item)) set.add(item)
     else set.delete(item)
@@ -775,11 +780,9 @@
     if (target.kind === `main`) show_boundaries = !show_boundaries
     else if (target.kind === `disagreement`) show_disagreement = !show_disagreement
     else if (target.kind === `overlay`) {
-      toggle_in(hidden_overlays, target.overlay, show_overlay)
-      // all hidden is the layer off, so a bound show_overlay checkbox stays truthful
-      const all_hidden = valid_overlays.every((overlay) => hidden_overlays.has(overlay))
-      if (all_hidden) hidden_overlays.clear()
-      show_overlay = !all_hidden
+      const next = new Set(hidden_overlays)
+      if (!next.delete(target.overlay_idx)) next.add(target.overlay_idx)
+      hidden_overlays = next
     } else if (target.kind === `category`) {
       toggle_in(hidden_categories, target.category, show_special_points)
       show_special_points = true
@@ -848,9 +851,6 @@
   $effect(() => {
     void [source_data, valid_overlays, all_markers]
     untrack(() => {
-      for (const overlay of hidden_overlays) {
-        if (!valid_overlays.includes(overlay)) hidden_overlays.delete(overlay)
-      }
       if (!hover_info && !pin.value && !hovered_region) return
       pin.unpin()
       clear_hover()
@@ -1268,7 +1268,7 @@
           bind:show_special_points
           bind:show_grid
           bind:show_component_labels
-          bind:show_overlay
+          bind:hidden_overlays
           bind:show_observations
           bind:show_uncertainty
           bind:show_disagreement
@@ -1279,7 +1279,7 @@
           bind:x_axis
           bind:y_axis
           {data}
-          has_overlay={valid_overlays.length > 0}
+          overlay_idxs={valid_overlay_idxs}
           has_special_points={special_points.length > 0}
           has_observations={all_markers.length > 0}
           {has_uncertainty}

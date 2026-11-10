@@ -17,14 +17,14 @@
     show_special_points = $bindable(PHASE_DIAGRAM_DEFAULTS.show_special_points),
     show_grid = $bindable(PHASE_DIAGRAM_DEFAULTS.show_grid),
     show_component_labels = $bindable(PHASE_DIAGRAM_DEFAULTS.show_component_labels),
-    show_overlay = $bindable(PHASE_DIAGRAM_DEFAULTS.show_overlay),
+    hidden_overlays = $bindable(new Set<number>()),
     show_observations = $bindable(PHASE_DIAGRAM_DEFAULTS.show_observations),
     show_uncertainty = $bindable(PHASE_DIAGRAM_DEFAULTS.show_uncertainty),
     show_disagreement = $bindable(PHASE_DIAGRAM_DEFAULTS.show_disagreement),
     lens = $bindable(PHASE_DIAGRAM_DEFAULTS.lens),
     temp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.temp_unit),
     comp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.comp_unit),
-    has_overlay = false,
+    overlay_idxs = [],
     has_observations = false,
     has_special_points = false,
     has_uncertainty = false,
@@ -40,15 +40,17 @@
     show_special_points?: boolean
     show_grid?: boolean
     show_component_labels?: boolean
-    show_overlay?: boolean
+    // Indices of the diagram's overlays not drawn (see IsobaricBinaryPhaseDiagram)
+    hidden_overlays?: ReadonlySet<number>
     show_observations?: boolean
     show_uncertainty?: boolean
     show_disagreement?: boolean
     lens?: boolean
     temp_unit?: TempUnit
     comp_unit?: CompUnit
-    // Whether the diagram has an overlay / observations / marked points to toggle
-    has_overlay?: boolean
+    // Indices of the diagram's valid overlays, toggled together by the Overlays checkbox
+    overlay_idxs?: readonly number[]
+    // Whether the diagram has observations / marked points to toggle
     has_observations?: boolean
     has_special_points?: boolean
     has_uncertainty?: boolean
@@ -102,6 +104,8 @@
     [`cursor_radius`, `Cursor radius`, `Radius of the cursor position marker`, 2, 10, 1],
   ] as const
 
+  // Checked while any overlay is drawn: unchecking hides them all, checking shows them all
+  const overlays_shown = $derived(overlay_idxs.some((idx) => !hidden_overlays.has(idx)))
   const visibility_settings = track_settings(
     () => ({
       show_boundaries,
@@ -109,7 +113,6 @@
       show_special_points,
       show_grid,
       show_component_labels,
-      show_overlay,
       show_observations,
       show_uncertainty,
       show_disagreement,
@@ -159,20 +162,24 @@
   <SettingsGroup title="Diagram" open>
     <SettingsSection
       title="Visibility"
-      changed_keys={visibility_settings.changed_keys}
-      on_reset={() =>
-        ({
+      changed_keys={[
+        ...visibility_settings.changed_keys,
+        ...(overlay_idxs.some((idx) => hidden_overlays.has(idx)) ? [`hidden_overlays`] : []),
+      ]}
+      on_reset={() => {
+        hidden_overlays = new Set()
+        ;({
           show_boundaries,
           show_labels,
           show_special_points,
           show_grid,
           show_component_labels,
-          show_overlay,
           show_observations,
           show_uncertainty,
           show_disagreement,
           lens,
-        } = PHASE_DIAGRAM_DEFAULTS)}
+        } = PHASE_DIAGRAM_DEFAULTS)
+      }}
       layout="grid"
       class="visibility-grid"
     >
@@ -198,13 +205,20 @@
         <span>Comp. labels</span>
         <input type="checkbox" bind:checked={show_component_labels} />
       </label>
-      {#if has_overlay}
-        <label {@attach tooltip({ content: `Show the comparison diagram's boundaries` })}>
-          <span>Overlay</span>
-          <input type="checkbox" bind:checked={show_overlay} />
+      {#if overlay_idxs.length}
+        <label {@attach tooltip({ content: `Show the comparison diagrams' boundaries` })}>
+          <span>Overlays</span>
+          <input
+            type="checkbox"
+            checked={overlays_shown}
+            onchange={(event) =>
+              (hidden_overlays = new Set(event.currentTarget.checked ? [] : overlay_idxs))}
+          />
         </label>
         <label
-          {@attach tooltip({ content: `Hatch where the first overlay's phase set differs` })}
+          {@attach tooltip({
+            content: `Hatch where the first shown overlay's phase set differs`,
+          })}
         >
           <span>Disagreement</span>
           <input type="checkbox" bind:checked={show_disagreement} />

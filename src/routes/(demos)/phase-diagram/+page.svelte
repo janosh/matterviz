@@ -243,10 +243,13 @@
   A second diagram of the same components draws as dashed boundaries over the first, with
   experimental observations (error bars in T and x, colored by status) on top. Hover to see
   both diagrams' phase sets and lever rules at the cursor; legend entries toggle each layer.
+  <code>show_disagreement</code> hatches where the first shown overlay has a different phase
+  set, and <code>bind:hidden_overlays</code> holds the indices of the overlays toggled off.
 </p>
 <IsobaricBinaryPhaseDiagram
   data={ag_cu}
   overlays={[ag_cu_model]}
+  show_disagreement
   {phase_color_keys}
   observations={binary_observations}
   bind:temp_unit
