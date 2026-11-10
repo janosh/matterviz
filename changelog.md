@@ -109,7 +109,7 @@
 - Shared `ViewerError`/`ViewerNotices` overlays; EOS fit params in curve tooltips [#487](https://github.com/janosh/matterviz/pull/487)
 - Tooltips take their element's color; SVG exports ~3× smaller; 2× PNG [#490](https://github.com/janosh/matterviz/pull/490)
 - Dependencies: three 0.187, @spglib/moyo-wasm 0.22, @threlte/core 8.7 / extras 9.23, vite-plus 1.5.1 (vite → @voidzero-dev/vite-plus-core 1.5.1), vitest 5.1.0, svelte 5.57.3, @jupyterlab/* 4.6.6; TypeScript stays 6.0.3 and @types/vscode ~1.105; three 0.187 removes OrbitControls' keydown listener from the document itself, so the internal `release_orbit_root` workaround is gone
-- README overhaul and a new [Component API](https://matterviz.janosh.dev/how-to/component-api) guide
+- README overhaul: its API-contract prose moves into prop and type comments (shown in each demo's props table) and the `pnpm snapshot`/`pnpm movie` `--help` text
 
 ### 💡 Refactoring
 

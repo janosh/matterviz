@@ -21,14 +21,14 @@
 
 ## 🧰 &thinsp; Use it where you work
 
-|                      |                                                                                                                                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **VS Code / Cursor** | Right-click any structure or trajectory file → _Render with MatterViz_. Install from the [VS Code Marketplace] or [Open VSX]. Works over Remote SSH. [Settings and file formats](extensions/vscode/readme.md)                   |
-| **JupyterLab**       | Double-click files in the JupyterLab file browser: `pip install matterviz-jupyterlab`. [Details](extensions/jupyterlab/readme.md)                                                                                               |
-| **Jupyter / Marimo** | Notebook widgets for pymatgen and ASE objects via [`pymatviz`](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets)                                                                                      |
-| **Svelte apps**      | `npm add matterviz` and import components (quick start below)                                                                                                                                                                   |
-| **React, Vue, HTML** | Prebuilt custom elements like `<mv-structure>` and `<mv-trajectory>`, no build step needed. [Guide](https://matterviz.janosh.dev/how-to/use-without-svelte)                                                                     |
-| **Command line**     | `pnpm snapshot` renders structure images in batch; `pnpm movie` scripts camera flights through MD trajectories into MP4/WebM. [Guide](https://matterviz.janosh.dev/how-to/component-api#structure-images-from-the-command-line) |
+|                      |                                                                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **VS Code / Cursor** | Right-click any structure or trajectory file → _Render with MatterViz_. Install from the [VS Code Marketplace] or [Open VSX]. Works over Remote SSH. [Settings and file formats](extensions/vscode/readme.md) |
+| **JupyterLab**       | Double-click files in the JupyterLab file browser: `pip install matterviz-jupyterlab`. [Details](extensions/jupyterlab/readme.md)                                                                             |
+| **Jupyter / Marimo** | Notebook widgets for pymatgen and ASE objects via [`pymatviz`](https://github.com/janosh/pymatviz/blob/main/readme.md#interactive-widgets)                                                                    |
+| **Svelte apps**      | `npm add matterviz` and import components (quick start below)                                                                                                                                                 |
+| **React, Vue, HTML** | Prebuilt custom elements like `<mv-structure>` and `<mv-trajectory>`, no build step needed. [Guide](https://matterviz.janosh.dev/how-to/use-without-svelte)                                                   |
+| **Command line**     | `pnpm snapshot` renders structure images in batch; `pnpm movie` scripts camera flights through MD trajectories into MP4/WebM. Run either with `--help` from a repo checkout                                   |
 
 [VS Code Marketplace]: https://marketplace.visualstudio.com/items?itemName=janosh.matterviz
 [Open VSX]: https://open-vsx.org/extension/janosh/matterviz
@@ -111,8 +111,7 @@ Not using Svelte? The same components ship as custom elements:
 
 ## 📚 &thinsp; Learn more
 
-- **[Live demos](https://matterviz.janosh.dev)**: every component, each with its source code and full props
-- **[Component API guide](https://matterviz.janosh.dev/how-to/component-api)**: shared conventions for controls, file sources, plot series and volumes, plus the image and movie CLIs
+- **[Live demos](https://matterviz.janosh.dev)**: every component with its source code and a documented props table
 - **[Use without Svelte](https://matterviz.janosh.dev/how-to/use-without-svelte)**: React, Vue and plain HTML
 - **[Connect to external APIs](https://matterviz.janosh.dev/how-to/hook-up-to-external-api)**: fetch structures from OPTIMADE databases
 - **[Changelog](changelog.md)**: breaking changes and migration notes for each release

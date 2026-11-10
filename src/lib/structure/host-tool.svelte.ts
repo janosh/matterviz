@@ -34,16 +34,22 @@ export interface StructureToolView {
   // Transient visuals that replace the viewer without exporting them.
   content?: Snippet<[StructureToolViewProps]>
 }
+// One computation over a captured copy of the viewer's input. A run belongs to the structure
+// object it started on: assigning a new `structure` (other than via replace_input), starting
+// another run or unmounting aborts `signal`, after which every callback is a silent no-op.
+// In-place edits of the input are not observed.
 export interface StructureToolRun {
   id: number
   structure: AnyStructure
   signal: AbortSignal
+  // Publish the run's output (null clears it). Republished volume IDs keep their surfaces; the
+  // first field gets a default surface only while no published field has one.
   on_overlay: (overlay: StructureToolOverlay | null) => void
   on_view: (view: StructureToolView | null) => void
   // Adopt `geometry` as the viewer's input in one undoable edit (undo clears this run's
-  // output). The run stays current with `structure` updated and its prediction rebased onto
-  // the new input, minus `geometry`. Invalid geometry throws a TypeError without writing.
-  // A no-op once the run is no longer current.
+  // output, redo restores it). The run stays current with `structure` updated and its
+  // prediction rebased onto the new input, minus `geometry`. Invalid geometry throws a
+  // TypeError without writing. A no-op once the run is no longer current.
   replace_input: (geometry: StructureToolGeometry) => void
   // Clear just the result/view, or cancel the computation and clear both.
   clear: () => void
@@ -51,9 +57,12 @@ export interface StructureToolRun {
 }
 export type StructureToolProps = {
   structure: AnyStructure
-  // Includes imported results; hiding visual output never removes this snapshot.
+  // Accepted (non-transient) results and reopened prediction files; hiding visual output
+  // never removes this snapshot.
   prediction: StructureToolPrediction | null
   overlay_visible: boolean
+  // Toggle drawing predicted properties, geometry and fields without discarding the result or
+  // its edited surfaces
   set_overlay_visible: (visible: boolean) => void
   start_run: (provenance: StructureToolProvenance) => StructureToolRun
 }
@@ -162,7 +171,9 @@ export function create_structure_tool_controller(
   }
 }
 
-// Register before mounting; this also reaches independently mounted file viewers.
+// Host computations plug into every Structure viewer by setting `component`, which the viewer
+// mounts with StructureToolProps. Register before mounting; this also reaches independently
+// mounted file viewers. See the /structure/host-tool demo.
 export const structure_host_tool = $state<{ component: Component<StructureToolProps> | null }>(
   { component: null },
 )

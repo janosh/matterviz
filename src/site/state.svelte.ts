@@ -41,7 +41,6 @@ export const open_element_page = ({ name }: ChemicalElement): void =>
   void goto(`/${name.toLowerCase()}`)
 
 const ROUTE_LABELS: Record<string, string> = {
-  '/how-to/component-api': `Component API guide`,
   '/how-to/hook-up-to-external-api': `Hook up to external API`,
   '/how-to/use-without-svelte': `Use without Svelte`,
   '/neb': `NEB`,
@@ -157,7 +156,6 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/convex-hull/chempot-diagram': [`ChemPotDiagram`],
   '/convex-hull/synthesis-planning': [`SynthesisPlanner`],
   '/guides': [],
-  '/how-to/component-api': [],
   '/how-to/hook-up-to-external-api': [],
   '/how-to/use-without-svelte': [`Structure`],
   '/icon': [],

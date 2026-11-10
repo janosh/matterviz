@@ -127,6 +127,8 @@ export const deliver_raw_file = async (
   })
 }
 
+// The loading runtime behind every viewer's `source` and file drops, for hosts without a
+// component too: fetch, decompression, format detection, workers, provenance and disposal
 export async function open_material(
   source: MaterialSource,
   options: OpenMaterialOptions = {},

@@ -152,13 +152,16 @@
       wrapper?: HTMLDivElement
       hovered?: boolean
       dragover?: boolean
-      allow_file_drop?: boolean
+      allow_file_drop?: boolean // false when a parent owns loading
       fullscreen_toggle?: boolean
+      // Fermi-surface or band-grid file (e.g. BXSF, FRMSF): a URL, File or { data, filename }
       source?: MaterialSource
       spinner_props?: ComponentProps<typeof Spinner>
       loading?: boolean
       error_msg?: string
       children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
+      // Takes over loading: receives the raw content of every drop and `source` load instead of
+      // the viewer parsing it
       on_file_drop?: FileLoadCallback
       on_file_load?: (data: FermiFileLoadData) => void
       on_error?: (data: FermiErrorData) => void

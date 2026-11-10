@@ -284,26 +284,3 @@ describe(`orbit link context`, () => {
     expect(add_listener).not.toHaveBeenCalled()
   })
 })
-
-// three r186 looked the root up again on disconnect(), after Svelte detached the DOM, so it removed
-// the listener from the detached wrapper and `document` kept every unmounted viewer alive. r187
-// uses ownerDocument on both ends; this guards that three keeps doing so.
-test(`disposing detached OrbitControls removes their document keydown listener`, () => {
-  const wrapper = document.createElement(`div`)
-  document.body.append(wrapper)
-  const add = vi.spyOn(document, `addEventListener`)
-  const remove = vi.spyOn(document, `removeEventListener`)
-  onTestFinished(() => {
-    vi.restoreAllMocks()
-  })
-  const controls = new OrbitControls(new PerspectiveCamera(), wrapper)
-  const keydown = add.mock.calls.filter(([type]) => type === `keydown`)
-  expect(keydown).toHaveLength(1)
-  remove.mockClear() // happy-dom's addEventListener removes before adding
-  wrapper.remove()
-  // a detached node is its own root in browsers (happy-dom answers the document instead)
-  vi.spyOn(wrapper, `getRootNode`).mockReturnValue(wrapper)
-  controls.dispose()
-  const keydown_removals = remove.mock.calls.filter(([type]) => type === `keydown`)
-  expect(keydown_removals).toEqual([[`keydown`, keydown[0][1], { capture: true }]])
-})

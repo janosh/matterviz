@@ -1,15 +1,9 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte'
   import SubpageGrid from 'svelte-widgets/SubpageGrid.svelte'
-  import { BookOpen, Code, Globe, Heart } from 'svelte-widgets/icons'
+  import { Code, Globe, Heart } from 'svelte-widgets/icons'
 
   const subpages: ComponentProps<typeof SubpageGrid>[`subpages`] = [
-    {
-      label: `Component API Guide`,
-      href: `/how-to/component-api`,
-      description: `Shared conventions for controls, sources, series and volumes, plus the image and movie CLIs.`,
-      icon: BookOpen,
-    },
     {
       label: `Use Without Svelte`,
       href: `/how-to/use-without-svelte`,

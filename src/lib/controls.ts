@@ -17,7 +17,10 @@ export type ShowControlsConfig<ControlName extends string = string> = {
   style?: string
 }
 
-// Prop type: boolean shorthand, mode string, or full config
+// `show_controls` of every viewer, plot, table and heatmap: true = `always`, false = `never`
+// (hides all chrome), or `{ mode, hidden, style }` where `hidden` drops named controls, e.g.
+// `{ mode: 'hover', hidden: ['controls'] }` keeps the fullscreen button but not the settings
+// pane. Independent of `controls_open`, which only sets whether the settings pane is open.
 export type ShowControlsProp<ControlName extends string = string> =
   | ControlsVisibility
   | ShowControlsConfig<ControlName>
