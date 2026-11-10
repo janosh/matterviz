@@ -2,7 +2,7 @@
 
 Open crystal structures, MD trajectories, band structures and volumetric data directly from the JupyterLab file browser — double-click a `.cif`, or right-click → **Open With** → **MatterViz**. The counterpart to the [MatterViz VS Code extension](https://marketplace.visualstudio.com/items?itemName=janosh.matterviz), for people whose file browser lives inside JupyterHub.
 
-![Li10GeP2S12.cif opened from the JupyterLab file browser](https://github.com/janosh/matterviz/releases/download/v0.4.4/2026-08-01-jupyterlab-file-viewer.png)
+![Li10GeP2S12.cif opened from the JupyterLab file browser](https://github.com/janosh/matterviz/releases/download/v0.9.0/jupyterlab-file-viewer.webp)
 
 ## Install
 
