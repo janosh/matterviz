@@ -13,7 +13,6 @@
     wheel_zoom_gate,
     wheel_zoom_surface,
   } from '#lib/scene/index.js'
-  import { release_orbit_root } from '#lib/scene/orbit-link.svelte.js'
   import { Canvas, T } from '@threlte/core'
   import { dpi_to_scale, paint_png_blob } from '#lib/io/export.js'
   import * as extras from '@threlte/extras'
@@ -229,7 +228,6 @@
   // === Gizmo: Three.js camera ↔ strategy camera angles (3D only) ===
   let gizmo_cam_ref = $state<PerspectiveCamera>()
   let gizmo_orbit_ref = $state<OrbitControls | undefined>(undefined)
-  $effect(() => gizmo_orbit_ref && release_orbit_root(gizmo_orbit_ref))
   let gizmo_active = $state(false)
   const gizmo_cam_state = $derived(strategy.gizmo?.to_three(camera))
 

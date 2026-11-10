@@ -6,7 +6,6 @@ import {
   create_orbit_link,
   join_orbit_link,
   link_orbits,
-  release_orbit_root,
   scope_orbit_link,
 } from '#lib/scene/orbit-link.svelte.js'
 import { build_orbit_props, SCENE_CONTROL_DEFAULTS } from '#lib/scene/props.svelte.js'
@@ -286,9 +285,10 @@ describe(`orbit link context`, () => {
   })
 })
 
-// three's disconnect() looks the root up again after Svelte detached the DOM, so it removed
-// the listener from the detached wrapper and `document` kept every unmounted viewer alive
-test(`release_orbit_root removes the keydown listener from the root it was added to`, () => {
+// three r186 looked the root up again on disconnect(), after Svelte detached the DOM, so it removed
+// the listener from the detached wrapper and `document` kept every unmounted viewer alive. r187
+// uses ownerDocument on both ends; this guards that three keeps doing so.
+test(`disposing detached OrbitControls removes their document keydown listener`, () => {
   const wrapper = document.createElement(`div`)
   document.body.append(wrapper)
   const add = vi.spyOn(document, `addEventListener`)
@@ -297,16 +297,13 @@ test(`release_orbit_root removes the keydown listener from the root it was added
     vi.restoreAllMocks()
   })
   const controls = new OrbitControls(new PerspectiveCamera(), wrapper)
-  const release = release_orbit_root(controls)
   const keydown = add.mock.calls.filter(([type]) => type === `keydown`)
   expect(keydown).toHaveLength(1)
-  const keydown_removals = () => remove.mock.calls.filter(([type]) => type === `keydown`)
   remove.mockClear() // happy-dom's addEventListener removes before adding
   wrapper.remove()
   // a detached node is its own root in browsers (happy-dom answers the document instead)
   vi.spyOn(wrapper, `getRootNode`).mockReturnValue(wrapper)
   controls.dispose()
-  expect(keydown_removals()).toEqual([])
-  release()
-  expect(keydown_removals()).toEqual([[`keydown`, keydown[0][1], { capture: true }]])
+  const keydown_removals = remove.mock.calls.filter(([type]) => type === `keydown`)
+  expect(keydown_removals).toEqual([[`keydown`, keydown[0][1], { capture: true }]])
 })

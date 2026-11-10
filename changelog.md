@@ -1,5 +1,125 @@
 # Changelog
 
+## [v0.9.0](https://github.com/janosh/matterviz/compare/v0.8.0...v0.9.0)
+
+> 10 November 2026
+
+### Migration to 0.9
+
+- Color scales: every color-mapped component takes `color_scale` (scheme name or `{ type, scheme, value_range, palette_range }`) and `color_bar` (`null` hides). Removed: `color_scale_range`, `log`, `normalize`, `show_color_bar`/`show_colorbar`, `color_bar_props`, flat `color_bar_position`/`color_bar_label`/`color_bar_format`, `colormap`, `color_range` (`ColorScaleConfig.color_range` → `palette_range`), ColorBar `scale`/`range`/`scale_type`, ChemPot `reverse_color_scale`, `ColorBarScale`, `create_color_scale`, `resolve_color_ramp`, `BinnedColorScaleConfig`, `ColorBarPosition`, `HeatmapNormalizeMode`. `AtomColorConfig.scale` → `color_scale`; function scales go in `{ scheme: fn }`; a descending `value_range` maps `value_range[0]` to the palette start everywhere
+- Tooltips: one `tooltip` prop (snippet, config object or `false`) replaces `tooltip_config`, `atom_tooltip`, `hover_config.show_tooltip`, ChemPot `config.show_tooltip`/`tooltip_detail_level` and SymmetryStats `show_tooltips`; `hover_tooltip` takes a color getter; `hover_marker_geometry` → `hover_halo_radius`; `CanvasTooltip` moves to `matterviz/scene` and its `children` no longer get `{ position }`
+- Tooltip CSS: `--tooltip-{bg,color,font-size,border-radius,padding,line-height,text-align,max-width,shadow,z-index}`, the `--canvas-tooltip-*` chip vars and `--formula-tooltip-{padding,font-size,bg,color,border-radius,box-shadow}` → `--plot-tooltip-*`; `--bz-tooltip-max-width`, `--tooltip-max-width`, `--scatter3d-tooltip-bg`/`-color` removed; measure labels' `--canvas-tooltip-font-size` → `--measure-label-font-size`; `.tooltip` → `.plot-tooltip`, `.plot-tooltip-wrap` removed; PlotTooltip sets no inline `max-width` (use `--plot-tooltip-max-width`, default 16rem)
+- Export: one `ExportPane` with `export_formats`, `export_filename`, `on_export(format, ctx)`. Removed `ExportButtons.svelte`, Sunburst/Treemap `export_buttons`, HeatmapTable `export_data`, IsobaricBinaryPhaseDiagram `enable_export`, HeatmapMatrix's 3-arg `on_export`, `export_svg_as_svg`, `export_svg_as_png`, `svg_to_svg_string`, `export_chart_image`, `create_chart_exporter`, `export_structure_as`; `export_canvas_as_png` takes a filename (no scene/camera); default PNG DPI is 144
+- Combined views: `BrillouinBandsDos` → `<BandsAndDos {structure} />`; `FermiSurfaceBands` removed (use `ElectronicStructure`, `/reciprocal/fermi-surface-bands` redirects); `--fermi-bands-fullscreen-bg`, `--bands-dos-fullscreen-bg`, `--bz-bands-dos-fullscreen-bg` → `--fullscreen-bg`; child panels no longer render fullscreen buttons
+- k-paths: `BrillouinZone`/`BrillouinZoneScene`/`BrillouinZonePopup` take `k_path: KPathData` instead of `k_path_points` + `k_path_labels`; `KPath` takes `path` and drops `edge_width`; `KPathLabel` → `KPathData`; `k_path_labels()` → `band_k_path(bs, recip)`; band branches drop `is_discontinuity`; `KPATH_COLORS` lives in `brillouin/geometry.ts`
+- `BrillouinZoneScene`/`FermiSurfaceScene` take `bind:hovered` and an optional `pin` instead of `hover_data`/`kpath_hover_data`; BZ and Fermi roots are `role="application"`
+- Controls and shortcuts: `show_controls` defaults to `hover` everywhere and is not `$bindable`; `ShortcutsHelp`, `ViewerChrome.shortcut_scopes` and the `?` key are removed (shortcuts list in info/settings panes via `shortcut_scopes`); `SHORTCUTS.add_mode` → `add_atoms`/`add_bonds`; SequenceControls drops `previous_title`/`next_title`/`keyboard_hints`
+- File drops: post-parse `on_file_drop` → `on_file_load({ entries, ... })` (ConvexHull, ternary PD); parsers no longer take a `warn` argument (`collect_parse_warnings`); `file_drop_zone`/`create_file_drop_handler` `hdf5_as_blob` → `keep_blob` and text also arrives as a `Blob`; `text_or_blob` removed
+- `Structure`'s `structure` prop is immutable: assign a new object, in-place edits are not observed; `analyze_symmetry` defaults to `'on-demand'` (pass `true` to read `analysis.sym_data`/`wyckoff_positions` without interaction); `camera_target` is no longer cleared on supercell/image-atom/cell-type changes
+- Structure APIs: `StructureSession.supercell_loading` and StructureControls' `supercell_loading` removed (supercells build synchronously); `StructureScene` `bond_edit_mode`, `hidden_prop_vals`, `element_radius_overrides`, `site_radius_overrides`, `add_atom_mode`, `add_element` are not bindable; `structure_host_tool.input_key` removed; `apply_structure_id` returns a copy; `create_structure_tool_controller` drops `get_revision`
+- Image atoms: `find_image_atoms`/`get_pbc_image_sites` require `ImageAtomOptions`; only atoms within 0.1 A of a face are imaged (was 0.5 A), with `image_atom_completion` (`polyhedra` default, `boundary`, `none`) for copies beyond faces
+- Trajectory: `data_inspector_docked` → bindable `data_inspector_open` (default `true`); `TrajectoryDataInspectorPane` → `TrajectoryDataInspector`; `Trajectory` drops `on_frame_rendered` and `error_snippet`; `TrajectoryRunSummary.has_compute_hotspots` is required; MSD/VACF `bytes_per_atom_frame` → `position_buffers`; LAMMPS run metadata drops `atom_types` (use `site.properties.type`)
+- Embedding hosts: `frame_response.frame` is a `WireFrame` (post `frame_to_wire(encode_frame(frame))`); host messages `plot_metadata_stream`/`trajectory_warnings` are keyed by `request_id` instead of `file_path`
+- 1-based numbering for user-facing frames, images, modes and sites (`display_idx`/`from_display_idx`), incl. exported trajectory filenames and frame columns; bound props and internal indices stay 0-based
+- HeatmapTable (now on svelte-widgets `DataTable`): bindable `sort: { column, dir }[]` replaces `initial_sort`/`multi_sort`/single-object `sort`; column `sticky: true` → `pin: 'left' | 'right'`; `default_hidden_columns` → column `visible: false`; `controls_class`/`controls_style` → `controls_props`; `columns_open` removed; `data` is not bindable; `--heatmap-*` → `--table-*`, class `data-table`, pinned cells `.pinned`; `InitialSort`/`SortCriterion` removed; `make_cell_color_scale` takes `ColorStats`
+- `ToggleMenu`, table `ColumnFilter`, cell selection and table export helpers are removed (svelte-widgets versions); `pick_contrast_color` delegates to svelte-widgets and picks by WCAG ratio (white when it passes AA)
+- From svelte-widgets instead of `matterviz/utils`/`matterviz/io`: `to_error`, `strip_html`, `escape_html`, `HTML_TAG_SRC` (`svelte-widgets/utils`), `download`, `blob_to_data_url` (`svelte-widgets/download`); `LoadingStatus` → `TaskStatus`
+- HeatmapMatrix: `domain_mode: 'fixed'` removed; `virtualize`/`overscan` → `virtual: VirtualScroll`
+- BoxPlot `outlier_style` → `sample_style`; settings `box.outlier.*` → `box.sample.*` (rename VS Code `matterviz.box.outlier.*` keys)
+- Removed exports: `energy_data_extractor`, `force_stress_data_extractor`, `make_metadata_extractor` (use `full_data_extractor`), `PlanSynthesisAsync`, `HullPoint`, `formula_of`, `merge_domains`, `is_band_grid_data` (use `is_fermi_surface_data`), `sample_hkl_slice`, `get_all_site_vectors`, `is_atom_color_mode_available`, `json-path` shim (use `svelte-widgets/json-tree/path`), periodic-table default export, `extract_point_group_from_operations`, `calc_frame_rdfs`, `band_grids_prepared`, `BrillouinZoneExportPane`, `BrillouinZoneInfoPane`, `HOVER_THROTTLE_MS`, `scale_segment_distances`, `decompress_data`/`decompress_data_binary`, `expected_bond_length`, `HYDROGEN_RADIUS`, `SUBSCRIPT_MAP` (use `subscript_digits`), `atomic_radii`, `parse_decimal_token`, `compare_rows` (use `sort_table_rows`), `is_known_text_file`; no longer exported: `looks_like_volumetric`, `create_drop_batch_handler`, `estimate_video_bitrate`
+- Moved/renamed: `base64_to_array_buffer` → package root; `pick_pane_orientation` → `matterviz/layout`; `eos` subpath exports are named; `first_point_style` → `shown_point_style`; `toggle_site` → `toggle_item`; `enable_atom_sphere_picking` → `raycast_atom_spheres`; `AxisAssignmentOptions` → `AxisGroupingOptions`; `colorbar-decoration.svelte.ts` → `placed-decoration.svelte.ts`
+- Signatures: `angle_between_vectors`/`dihedral_angle` return degrees; `compare_volume_grids` returns a reason or `null`; `compute_hull_stability` drops `tol`; `MarginalAxes` requires `x2`/`y2`; `calc_bond_angles` returns `BondAngles` columns; `get_coordination_colors` takes `bonding_options` last; `transform_cell` takes a `SymmetryDataset`; `parse_cube` returns several volumes for multi-orbital cubes; `bind_error_report` returns `{ message }`; `observe_canvas_presence` passes the canvas or `null`
+- More signatures: `classify_payload` `compression_by_magic` → `wrappers_may_be_decoded`; `band_carriers`/`slice_shading_rgba` keyed by `sheet_key(band, spin)`; `SpatialIndex` holds typed arrays; `project_line_points` returns `{ points, cropped }`; `site_label_offsets` takes `BondData`; `create_bands_dos_sync` takes `size`; `y_axis_label_x`/`y2_axis_label_x` take the plot height; `HullCanvasStrategy.rotate_point` → `rotation(camera, energy_range)`; `create_canvas_interactions` exposes getters and `screen` instead of `to_screen`
+- Props dropped: `Cylinder` `opacity` and rest props, `ThemeControl` `on_change` (use `bind:theme_mode`), `RefLine3DBase` `annotation`/`hover_style`/`on_click`/`on_hover`, `StructureTypePlot` `on_sites_hover`, `CellSelect` `loading`; `ConvexHullEntry.size` no longer sets marker radius; `SynthesisPlanner` `weights` is not bindable; synthesis callbacks are `on_conditions_change`/`on_assumptions_change`; `GasThermodynamicsProvider` only requires `get_standard_chemical_potential`
+- ChemPot: `ChemPotHoverInfo3D.touches_limits` is `{ element, side }[]`; `ChemPotDiagramData` requires `shadow_elements`
+- Binary phase diagrams: `overlay` → `overlays: readonly BinaryPhaseDiagram[]`; `PhaseHoverInfo.overlay_hit` → `overlay_hits`; `format_hover_info_text` takes `overlays`; `PhaseDiagramTooltip` takes `color_of` instead of `phase_color_keys`; `PhaseDiagramControls` takes `has_special_points`; `GibbsEnergyGrid.compositions` must span 0 to 1; x outside [0, 1] is rejected; `parse_diagram` is the validating entry point
+- `parse_pt_data` requires `phases` on critical points and rejects unknown keys; `derive_regions` also returns `max_gap`
+- Throw instead of guess: `clean_multi_series`/`clean_xyz` on mismatched lengths, unknown curve names, POSCAR/XYZ export of multi-element or under-occupied sites, CIF/POSCAR/XYZ export of species-less sites, JSON species with bad `occu`/`oxidation_state` or DummySpecies, `cell_to_lattice_matrix` on NaN/negative/out-of-range inputs, `range_padding` < 0, Sankey id clashes, untyped-host `y_axis`/`y2` sync modes/3D ref types, `link_hover` without `hover_links()`
+- Data behavior: PDB/mmCIF species occupancy is 1 (refinement occupancy in `site.properties.occupancy`) and alt-locs are picked per residue; CIF export writes charged type symbols; pymatgen JSON export drops `oxidation_state` 0; gas chemical potentials include the JANAF H(T) − H(0 K) increment, shifting finite-temperature hulls; `Histogram` no longer draws empty bins; `solve_linear_system` returns `null` on non-finite input
+- Interaction: a plain wheel over an idle embedded 3D viewer scrolls the page (⌘/Ctrl + wheel, pinch, or click/focus to zoom; `host.wheel_zoom = 'always'` restores it); ⌘/Ctrl-drag rotates, shift-drag pans; fullscreen toggles follow `host.fullscreen`; Sankey/Sunburst/Treemap `legend.on_toggle` observes rather than replaces muting
+- `frequency_unit_label('cm^-1')` returns `cm<sup>−1</sup>` (use `frequency_unit_text` for plain text); `D3SymbolName` drops d3's `X` alias
+- pymatviz: `widgets/periodic_table.py` and `widgets/heatmap_matrix.py` move to `color_scale`/`color_bar`, `widgets/treemap.py` `export_buttons` → `export_formats` (done in [janosh/pymatviz#366](https://github.com/janosh/pymatviz/pull/366))
+
+### ⚠️ Breaking Changes
+
+- BoxPlot `outlier_style` → `sample_style`, settings `box.outlier.*` → `box.sample.*` [#484](https://github.com/janosh/matterviz/pull/484)
+- Stale-code sweep removes unused exports and props, `angle_between_vectors` returns degrees [#487](https://github.com/janosh/matterviz/pull/487)
+- `Structure` keeps `camera_target` across cell changes; molecule trajectories follow their center of mass [#488](https://github.com/janosh/matterviz/pull/488)
+- `k_path: KPathData`, no `is_discontinuity`, 1-based frames, PDB occupancy and export refusals [#489](https://github.com/janosh/matterviz/pull/489)
+- One color-scale and export API, `--fullscreen-bg`, WCAG `pick_contrast_color`, stricter JSON species [#490](https://github.com/janosh/matterviz/pull/490)
+- One `tooltip` prop, `show_controls` defaults to `hover`, `on_file_load`, `BrillouinBandsDos` removed [#491](https://github.com/janosh/matterviz/pull/491)
+- `ChemPotDiagramData.shadow_elements`, `touches_limits` objects, no inline PlotTooltip `max-width` [#492](https://github.com/janosh/matterviz/pull/492)
+- `--tooltip-*` → `--plot-tooltip-*`, `.plot-tooltip`, `bind:hovered` on BZ/Fermi scenes, `ShortcutsHelp` removed [#493](https://github.com/janosh/matterviz/pull/493)
+- `data_inspector_docked` → `data_inspector_open`, `TrajectoryDataInspector` [#494](https://github.com/janosh/matterviz/pull/494)
+- `analyze_symmetry` defaults to `on-demand`; `toggle_site` → `toggle_item` [#496](https://github.com/janosh/matterviz/pull/496)
+- Plain wheel no longer zooms embedded 3D viewers until activated; ⌘/Ctrl-drag rotates [#497](https://github.com/janosh/matterviz/pull/497)
+- `to_error`, `strip_html`, `escape_html`, `download`, `blob_to_data_url` come from svelte-widgets; `LoadingStatus` → `TaskStatus` [#498](https://github.com/janosh/matterviz/pull/498)
+- `pick_pane_orientation` → `matterviz/layout`, required `ImageAtomOptions`, `FermiSurfaceBands` removed [#499](https://github.com/janosh/matterviz/pull/499)
+- `wrappers_may_be_decoded`, `sheet_key` carriers, non-bindable `StructureScene` props, stricter lattice/Sankey inputs [#500](https://github.com/janosh/matterviz/pull/500)
+- `WireFrame` host frames, `shown_point_style`, `supercell_loading` removed [#503](https://github.com/janosh/matterviz/pull/503) [#504](https://github.com/janosh/matterviz/pull/504)
+- `BondAngles`, svelte-widgets `ToggleMenu`/table helpers, `SHORTCUTS` scopes, `raycast_atom_spheres` [#505](https://github.com/janosh/matterviz/pull/505)
+- Immutable `Structure` input, `keep_blob`, `request_id`-keyed host messages [#508](https://github.com/janosh/matterviz/pull/508)
+- HeatmapTable API on DataTable (`sort`, `pin`, `visible`, `--table-*`); phase diagram tooltip/controls props [#509](https://github.com/janosh/matterviz/pull/509)
+- Binary phase diagram `overlay` → `overlays`, `overlay_hits` [#510](https://github.com/janosh/matterviz/pull/510)
+
+### 🚀 New Features
+
+- `ElectronicStructure`: structure, Fermi surface, bands, DOS and phonons in one linked viewer with pressure sweeps and a trends pane [#499](https://github.com/janosh/matterviz/pull/499)
+- `PressureTemperaturePhaseDiagram` with error bands and region tracing from coexistence lines [#499](https://github.com/janosh/matterviz/pull/499)
+- Compare two sweep series side by side in `ElectronicStructure`; Fermi surfaces colored by per-state properties [#501](https://github.com/janosh/matterviz/pull/501)
+- Compare binary phase diagrams: overlays, disagreement shading, linked highlighting, residual arrows, lens, isopleth, `GibbsEnergyPlot` [#510](https://github.com/janosh/matterviz/pull/510)
+- `binary-phase-diagram/2` format with experimental observations and a synced side-by-side view [#509](https://github.com/janosh/matterviz/pull/509)
+- ScatterPlot `density_contours` and `size_legend`; BoxPlot `points` (`strip` | `swarm`) [#484](https://github.com/janosh/matterviz/pull/484)
+- Pin any tooltip, touch-tap tooltips, keyboard hover walks and linked hover between viewers in 3D [#493](https://github.com/janosh/matterviz/pull/493)
+- Trajectory data inspector Global tab, docked inspector sidebar, row-based atom selection and Structure `SiteTable` [#492](https://github.com/janosh/matterviz/pull/492)
+- Cooperative wheel zoom and three labelled arcs per angle measurement [#497](https://github.com/janosh/matterviz/pull/497)
+- Fermi sheets linked to k-paths and bands: E_F crossings, sheet-colored bands, smooth zone-boundary clipping [#490](https://github.com/janosh/matterviz/pull/490)
+- CIF oxidation states read and written, mixed-valence sites [#490](https://github.com/janosh/matterviz/pull/490)
+- Parse warnings shown in viewers, `SHORTCUTS` registry, keyboard navigation in ScatterPlot3D and TernaryPlot [#491](https://github.com/janosh/matterviz/pull/491)
+- Trajectory camera follows each frame's center; `host.fullscreen` gate [#488](https://github.com/janosh/matterviz/pull/488)
+- `Bands` `mode_values` overlay (e.g. λ_qν) and abortable sweep frame loads [#499](https://github.com/janosh/matterviz/pull/499)
+
+### 🐛 Bug Fixes
+
+- VS Code parses files again via blob workers; ASE `.traj` and HDF5 open in MatterViz by default [#485](https://github.com/janosh/matterviz/pull/485)
+- Physics audit: JANAF gas enthalpies, MSD with LAMMPS image flags, RDF shell volumes, XRD families by point group, signed VASP fields [#485](https://github.com/janosh/matterviz/pull/485)
+- ~150 bugs: BZ k-paths from band branches, BZ hull corners, PDB alt-locs, `.z` compress files [#489](https://github.com/janosh/matterviz/pull/489)
+- Tooltip alignment, chempot 3D hover picks the face under the cursor, 3D labels pass hovers through [#492](https://github.com/janosh/matterviz/pull/492)
+- ~80 bugs: gas-corrected formation energies, OUTCAR stress, bonds to image atoms, eV bands converted to THz [#500](https://github.com/janosh/matterviz/pull/500)
+- 45 bugs: XRDML attenuation, BXSF `D` exponents, i-PI XYZ cells, CIF `CN+`/`NO3+` type symbols, LAMMPS masses [#502](https://github.com/janosh/matterviz/pull/502)
+- Isosurface main-thread failures reach `on_error`; PNG export waits for pending surfaces; mmCIF loops, bond orders, polyhedra slivers [#506](https://github.com/janosh/matterviz/pull/506)
+- Sheared-cell polyhedra, LAMMPS `nan`/restart frames, SVG path rounding, Firefox shift+wheel pan [#507](https://github.com/janosh/matterviz/pull/507)
+- MD blow-ups: non-finite frames are skipped with warnings across XYZ, ASE, XDATCAR, OUTCAR and LAMMPS [#508](https://github.com/janosh/matterviz/pull/508)
+- File viewer falls back to the main thread when the parse worker never starts; error panel separates open from parse failures [#510](https://github.com/janosh/matterviz/pull/510)
+- Lattice arrows start outside cells with negative vector components [#486](https://github.com/janosh/matterviz/pull/486)
+- Single-frame sweeps hide playback; electronic and phonon DOS columns align; markers on a zero axis end draw whole [#502](https://github.com/janosh/matterviz/pull/502)
+- HeatmapTable SSR stack overflow from a recursive `controls` snippet [#509](https://github.com/janosh/matterviz/pull/509)
+
+### 🛠 Enhancements
+
+- Sprite-stamped canvas markers, canvas past 1000 points, lazy control panes, instanced BZ k-paths [#486](https://github.com/janosh/matterviz/pull/486)
+- Remote trajectory playback pipelines host reads and sends numeric buffers: 49 → 119 of 120 frames at 80 ms RTT (by [henk789](https://github.com/henk789)) [#504](https://github.com/janosh/matterviz/pull/504)
+- Sweep steps without re-layout; plots re-render only changed marks on hover; `value_key` cache keys [#503](https://github.com/janosh/matterviz/pull/503)
+- Line paths from byte buffers (400×2k mount 1448 → 605 ms), symmetry in a worker, freed unmounted 3D viewers [#505](https://github.com/janosh/matterviz/pull/505)
+- Workers in notebooks and custom elements; 97k-atom drag release 4 s → 10 ms [#508](https://github.com/janosh/matterviz/pull/508)
+- Exact legend/colorbar placement on a 4 px grid; faster binned scatter (1M points 434 → 76 ms) and sanitizer [#498](https://github.com/janosh/matterviz/pull/498)
+- Isosurface grids prepared before posting to the worker (~72 → 8 ms), faster ASE/LAMMPS decode [#507](https://github.com/janosh/matterviz/pull/507)
+- Payload budget E2E check; `/structure` demos 2.3 → 1.2 MB; shared `parse_in_worker` worker [#496](https://github.com/janosh/matterviz/pull/496)
+- Side-by-side demo pairs, fixed LazyDemo gaps, compact hull datasets (`/convex-hull` 192 → 52 MB in dev) [#494](https://github.com/janosh/matterviz/pull/494)
+- Shared `ViewerError`/`ViewerNotices` overlays; EOS fit params in curve tooltips [#487](https://github.com/janosh/matterviz/pull/487)
+- Tooltips take their element's color; SVG exports ~3× smaller; 2× PNG [#490](https://github.com/janosh/matterviz/pull/490)
+- Dependencies: three 0.187, @spglib/moyo-wasm 0.22, @threlte/core 8.7 / extras 9.23, vite-plus 1.5.1 (vite → @voidzero-dev/vite-plus-core 1.5.1), vitest 5.1.0, svelte 5.57.3, @jupyterlab/* 4.6.6; TypeScript stays 6.0.3 and @types/vscode ~1.105; three 0.187 removes OrbitControls' keydown listener from the document itself, so the internal `release_orbit_root` workaround is gone
+- README overhaul and a new [Component API](https://matterviz.janosh.dev/how-to/component-api) guide
+
+### 💡 Refactoring
+
+- Repo-wide cleanup, net about −2200 lines across 441 files [#485](https://github.com/janosh/matterviz/pull/485)
+- One tooltip, color-scale, file-drop and controls prop shape; ~1,800 fewer source lines than before [#489](https://github.com/janosh/matterviz/pull/489) [#491](https://github.com/janosh/matterviz/pull/491)
+- Shared 3D pick (`front_hit`), `SceneLabel`, `HoverHighlight` and `HIGHLIGHT` colors [#493](https://github.com/janosh/matterviz/pull/493)
+- `StructureScene` split into focused components [#497](https://github.com/janosh/matterviz/pull/497)
+- HeatmapTable is a ~400-line wrapper over svelte-widgets `DataTable` (was 2,700) [#509](https://github.com/janosh/matterviz/pull/509)
+- jscpd-guided deduplication, net −680 lines; ~60 3D E2E specs run on CI over WebGL [#496](https://github.com/janosh/matterviz/pull/496)
+
 ## [v0.8.0](https://github.com/janosh/matterviz/compare/v0.7.0...v0.8.0)
 
 > 4 October 2026
