@@ -80,7 +80,7 @@
     format_formula_svg,
     format_label_html,
     format_label_svg,
-  } from '#lib/composition/format.js'
+  } from '#lib/composition/formula-markup.js'
   import {
     CHAR_WIDTH_EM,
     compute_label_properties,

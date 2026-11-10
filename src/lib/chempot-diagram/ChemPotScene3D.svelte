@@ -1,6 +1,6 @@
 <script lang="ts">
   // Everything the 3D chemical potential diagram draws inside its <Canvas>.
-  import type { FormulaLabelSegment } from '#lib/composition/format.js'
+  import type { FormulaLabelSegment } from '#lib/composition/formula-markup.js'
   import { format_num } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import { array_extent } from '#lib/math.js'

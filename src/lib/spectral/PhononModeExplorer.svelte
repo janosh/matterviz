@@ -21,6 +21,7 @@
   } from '#lib/structure/polyhedra.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
   import { to_error } from 'svelte-widgets/utils'
+  import { tooltip } from 'svelte-widgets/attachments'
   import type { ComponentProps } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { band_point_meta, create_band_path_link } from './band-path-link.svelte'
@@ -197,6 +198,12 @@
     ),
   )
   let commensurate = $derived(pattern_result.value?.is_commensurate ?? true)
+  let warning_copied = $state(false)
+  const copy_warning = async (text: string) => {
+    await navigator.clipboard.writeText(text)
+    warning_copied = true
+    setTimeout(() => (warning_copied = false), 1500)
+  }
   let character = $derived(
     selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
   )
@@ -498,12 +505,6 @@ under its open panes -->
   {#if band_result.error}<StatusMessage message={band_result.error} type="error" />{/if}
   {#if generation_error}<StatusMessage message={generation_error} type="error" />{/if}
   {#if bz_inset.error}<StatusMessage message={bz_inset.error} type="error" />{/if}
-  {#if !commensurate}
-    <StatusMessage
-      message="This q-point is not commensurate with the selected supercell, so opposite box faces do not repeat periodically."
-      type="warning"
-    />
-  {/if}
   <div class="explorer-header">
     {#if selected_mode && selection && selected_qpoint}
       <div class="mode-summary" data-testid="phonon-mode-summary">
@@ -533,6 +534,18 @@ under its open panes -->
         {#if is_imaginary_frequency(selected_mode.frequency)}<span class="unstable"
             >Unstable mode · periodic mode-shape preview</span
           >{/if}
+        {#if !commensurate}
+          {@const cell = supercell.join(`×`)}
+          {@const warning = `This q-point is not commensurate with the ${cell} supercell, so opposite box faces do not repeat periodically`}
+          <button
+            type="button"
+            class="incommensurate"
+            {@attach tooltip({
+              content: warning_copied ? `Copied` : `${warning}. Click to copy.`,
+            })}
+            onclick={() => copy_warning(warning)}>⚠ not periodic in {cell}</button
+          >
+        {/if}
         {#if n_animatable_qpoints < mode_data.qpoints.length}
           <span
             class="sparse"
@@ -687,6 +700,9 @@ under its open panes -->
 
 <style>
   .phonon-mode-explorer {
+    /* own stacking context: the pane divider and viewer overlays (z-index up to 4) must
+       not paint over page content such as a dropdown opened above the explorer */
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     gap: 0.4em;
@@ -710,8 +726,17 @@ under its open panes -->
       /* the label reads as a prefix of the q-vector it names */
       margin-right: -0.3em;
     }
-    .unstable {
+    .unstable,
+    .incommensurate {
       color: var(--warning-color, #b45309);
+    }
+    .incommensurate {
+      padding: 0;
+      border: 0;
+      background: none;
+      font: inherit;
+      font-size: 0.9em;
+      cursor: pointer;
     }
     .character,
     .sparse {

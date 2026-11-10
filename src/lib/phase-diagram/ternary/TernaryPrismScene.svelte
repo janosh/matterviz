@@ -6,7 +6,7 @@
   // assemblage on the plane; a click on the plane without dragging pins one.
   // Nothing is rebuilt while dragging: rods/sheets are static and split at the plane by GPU
   // clipping planes; the section geometry is memoized on the (interval-constant) topology.
-  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
   import { TRIANGLE_VERTICES } from '#lib/convex-hull/barycentric-coords.js'
   import { format_num } from '#lib/labels.js'
   import { clamp, type Vec2, type Vec3 } from '#lib/math.js'

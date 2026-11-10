@@ -6,10 +6,11 @@ import { clamp } from '#lib/math.js'
 import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
 import { abortable } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
-import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
-import { Vector2, PerspectiveCamera, OrthographicCamera } from 'three/webgpu'
-import { create_camera_flight_sampler, type CameraFlight } from '#lib/scene/camera-flight.js'
-import { set_pan_offset } from '#lib/scene/pan.js'
+// three.js and the scene camera helpers are imported dynamically where GPU canvases need
+// them: every 2D plot imports this module for SVG/PNG export, and static imports put
+// three.js in each plot page's initial bundle
+import type { Camera, Scene, Vector2, WebGPURenderer } from 'three/webgpu'
+import type { CameraFlight } from '#lib/scene/camera-flight.js'
 
 // Maps a Threlte canvas to its renderer so PNG export can look up the renderer for a
 // given canvas without mutating the DOM element. Populated by bind_renderer (scene/).
@@ -174,7 +175,10 @@ export async function canvas_to_png_blob(
     )
   }
 
-  await wait_for_renderer(renderer)
+  const [{ Vector2 }] = await Promise.all([
+    import('three/webgpu'),
+    wait_for_renderer(renderer),
+  ])
   await scene_registry.get(canvas)?.ready?.()
   const release = await lock_capture(renderer)
   try {
@@ -1023,6 +1027,15 @@ export async function render_video_frames(
     throw new RangeError(`Invalid video dimensions: ${width}×${height}`)
   if (!Number.isFinite(resolution_multiplier) || resolution_multiplier <= 0)
     throw new RangeError(`Invalid resolution multiplier: ${resolution_multiplier}`)
+  const [
+    { Vector2, PerspectiveCamera, OrthographicCamera },
+    { create_camera_flight_sampler },
+    { set_pan_offset },
+  ] = await Promise.all([
+    import('three/webgpu'),
+    import('#lib/scene/camera-flight.js'),
+    import('#lib/scene/pan.js'),
+  ])
   const sample = camera_flight && create_camera_flight_sampler(camera_flight)
   const renderer = renderer_registry.get(canvas)
   if (renderer) await wait_for_renderer(renderer)

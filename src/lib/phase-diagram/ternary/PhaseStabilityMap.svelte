@@ -5,7 +5,7 @@
   // cursor and row highlights is rendered once into an offscreen layer and blitted per frame.
   import { add_alpha } from '#lib/colors/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
-  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
   import { clamp } from '#lib/math.js'
   import { is_modifier_chord } from 'svelte-widgets/utils'
   import { ticks as d3_ticks } from 'd3-array'

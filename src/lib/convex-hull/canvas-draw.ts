@@ -1,9 +1,9 @@
 // Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
 import { add_alpha, HIGHLIGHT, plot_color } from '#lib/colors/index.js'
-import { get_formula_label_segments } from '#lib/composition/format.js'
+import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
-import type { FormulaLabelSegment } from '#lib/composition/format.js'
+import type { FormulaLabelSegment } from '#lib/composition/formula-markup.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
 import { array_extent, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'

@@ -167,6 +167,37 @@ test(`renders a typed phonon dataset`, async () => {
   })
 })
 
+test.each([
+  [`zone-edge q-point in a 1x1x1 cell`, -1, true],
+  [`Γ point`, 0, false],
+])(
+  `flags incommensurate supercells inline in the summary: %s`,
+  async (_desc, qpoint_idx, flagged) => {
+    const qpoint = modes.qpoints.at(qpoint_idx)
+    if (!qpoint) throw new Error(`fixture has no q-point ${qpoint_idx}`)
+    const target = render({
+      dataset: { ...dataset, modes: { ...modes, qpoints: [qpoint], path_segments: [] } },
+    })
+    await vi.waitFor(() => expect(summary_text(target)).toContain(`Mode`))
+    const chip = target.querySelector(`[data-testid="phonon-mode-summary"] .incommensurate`)
+    expect(Boolean(chip)).toBe(flagged)
+    if (chip) {
+      expect(chip.tagName).toBe(`BUTTON`)
+      expect(chip.textContent).toContain(`not periodic in 1×1×1`)
+      expect(chip.hasAttribute(`title`)).toBe(false) // widget tooltip, not a native one
+      const write_text = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
+      ;(chip as HTMLButtonElement).click()
+      await vi.waitFor(() =>
+        expect(write_text).toHaveBeenCalledWith(
+          expect.stringContaining(`not commensurate with the 1×1×1 supercell`),
+        ),
+      )
+    }
+    // compact: no full-width status banner above the panes
+    expect(target.querySelector(`.phonon-mode-explorer > .status-message`)).toBeNull()
+  },
+)
+
 // Γ→X stretched to Γ→1.5·X leaves the zone: its branch (midpoint inside) is not folded,
 // while the end point folded alone jumps elsewhere. The inset marks the drawn path's point.
 test(`marks the selected q-point on the drawn k-path in the inset`, async () => {

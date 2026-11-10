@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-  import { format_label_html, format_label_svg } from '#lib/composition/format.js'
+  import { format_label_html, format_label_svg } from '#lib/composition/formula-markup.js'
   import { track_settings } from '#lib/controls.js'
   import { format_num, symbol_map } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'

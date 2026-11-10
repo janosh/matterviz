@@ -222,7 +222,11 @@
   .step-slider {
     position: relative;
     z-index: 3; /* Keep the thumb above analysis progress overlays. */
+    /* border-box and no UA margin: page styles that pad inputs must not push the track
+       past its container (it overflowed narrow panes by its padding + 2px margin) */
+    box-sizing: border-box;
     width: 100%;
+    margin: 0;
   }
   .step-labels {
     position: absolute;

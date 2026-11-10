@@ -2,7 +2,7 @@
   import { create_delayed_flag } from '#lib/effects.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
-  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'

@@ -2,7 +2,7 @@
   // Hover tooltip shared by ChemPotDiagram2D and ChemPotDiagram3D.
   // Placed with PlotTooltip inside the diagram container at `pointer`, container-relative (see
   // container_pointer in controls-state.svelte.ts): hover_info's, held still while pinned.
-  import { get_formula_label_segments } from '#lib/composition/format.js'
+  import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
   import { format_num } from '#lib/labels.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { domain_formula_text } from './controls-state.svelte'
