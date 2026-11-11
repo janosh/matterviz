@@ -23,6 +23,8 @@
     SphereGeometry,
   } from 'three/webgpu'
   import type { KPathData } from './types'
+  import type { Attachment } from 'svelte/attachments'
+  import { on } from 'svelte/events'
   import { bz_mark_sizes, k_path_segments, k_path_sym_points, KPATH_COLORS } from './geometry'
 
   let {
@@ -33,6 +35,7 @@
     hovered_qpoint_index = null,
     highlighted_qpoint_range = null,
     on_kpath_hover,
+    on_kpath_click,
     touch_hover,
     size,
   }: {
@@ -44,6 +47,8 @@
     hovered_qpoint_index?: number | null
     highlighted_qpoint_range?: Vec2 | null
     on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
+    // a click on the path or a symmetry label, with the q-point it hit (e.g. to select it)
+    on_kpath_click?: (qpoint_index: number) => void
     // the host scene's scene_interactivity().touch_hover, so a tap on the path shows its tooltip
     touch_hover: (handlers: HoverHandlers) => TouchHoverProps
     size: number // characteristic reciprocal-space size (k_space_size) the marks scale with
@@ -171,14 +176,40 @@
     invalidate()
   })
 
-  // K-path hover: report the nearer endpoint's q-point index of the hovered segment
-  function handle_kpath_hover({ point, instanceId, nativeEvent }: ThreltePointerEvent): void {
+  // Label chips are portaled into the canvas wrapper, so their pointer events stop at the chip:
+  // past it, the orbit controls would capture a press and retarget its click, and threlte would
+  // raycast chip-relative offsetX/Y (the canvas's top-left corner), hovering or clicking
+  // whatever sits there. Direct listeners, as Svelte's delegated ones run only once an event
+  // has passed the wrapper; the click calls back here for the same reason.
+  const label_events =
+    (qpoint_idx: number): Attachment<HTMLElement> =>
+    (node) => {
+      const stop = (event: Event) => event.stopPropagation()
+      const offs = [
+        on(node, `pointerdown`, stop),
+        on(node, `pointermove`, stop),
+        on(node, `click`, (event) => {
+          stop(event)
+          on_kpath_click?.(qpoint_idx)
+        }),
+      ]
+      return () => offs.forEach((off) => off())
+    }
+  // the q-point index of the pointed-at segment's nearer endpoint
+  const nearer_qpoint = ({ point, instanceId }: ThreltePointerEvent): number | null => {
     const segment = k_path_segs[instanceId ?? -1]
-    if (!segment) return
+    if (!segment) return null
     const { idx, from, to } = segment
     const cursor: Vec3 = [point.x, point.y, point.z]
-    const nearer_from = math.euclidean_dist(cursor, from) <= math.euclidean_dist(cursor, to)
-    report_hover(nearer_from ? idx : idx + 1, nativeEvent)
+    return math.euclidean_dist(cursor, from) <= math.euclidean_dist(cursor, to) ? idx : idx + 1
+  }
+  function handle_kpath_hover(event: ThreltePointerEvent): void {
+    const qpoint_idx = nearer_qpoint(event)
+    if (qpoint_idx !== null) report_hover(qpoint_idx, event.nativeEvent)
+  }
+  function handle_kpath_click(event: ThreltePointerEvent): void {
+    const qpoint_idx = nearer_qpoint(event)
+    if (qpoint_idx !== null) on_kpath_click?.(qpoint_idx)
   }
 </script>
 
@@ -190,6 +221,7 @@
     {...touch_hover({
       onpointermove: handle_kpath_hover,
       onpointerleave: () => report_hover(null),
+      onclick: handle_kpath_click,
     })}
   />
 {/if}
@@ -197,8 +229,9 @@
 <!-- Symmetry point spheres + labels, one per distinct labeled k-point -->
 {#each sym_points as { position, labels, qpoint_idx } (qpoint_idx)}
   <!-- Label chips are HTML over the canvas and cover their sphere, so a highlighted point
-  tints its chip, and hovering one reports its q-point like hovering the path there. Otherwise
-  light, so as not to blot out the surface behind, with a text shadow for legibility. -->
+  tints its chip, and hovering one reports its q-point like hovering the path there; a click
+  reports it to on_kpath_click. Otherwise light, so as not to blot out the surface behind,
+  with a text shadow for legibility. -->
   {@const highlighted = highlighted_k_points.some((point) => same_point(point, position))}
   <T.Mesh {position}>
     <T.SphereGeometry args={[mark_sizes.sym_point, 16, 16]} />
@@ -213,6 +246,7 @@
       style="padding: 0 3px; border-radius: 2px; color: white; text-shadow: 0 0 2px rgba(0, 0, 0, 0.8)"
       onpointerenter={(event) => report_hover(qpoint_idx, event)}
       onpointerleave={() => report_hover(null)}
+      {@attach label_events(qpoint_idx)}
     >
       {labels.join(` | `)}
     </span>

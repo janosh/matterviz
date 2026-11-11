@@ -49,6 +49,7 @@
     hovered = $bindable<BZHover | null>(null),
     pin = mark_pin<BZHover>(),
     on_kpath_hover,
+    on_kpath_click,
     width = 0,
     height = 0,
     ...scene_controls // camera/lighting/interaction props, handed to KSpaceCamera
@@ -67,13 +68,17 @@
       hovered?: BZHover | null // the mark under the pointer
       pin?: TooltipPin<BZHover> // the host's, whose tooltip a click pins (else the scene's own)
       on_kpath_hover?: (qpoint_index: number | null, screen_position?: Point2D) => void
+      on_kpath_click?: (qpoint_index: number) => void // see KPath
     } = $props()
 
   // One target per pointer event: the k-path wins over the IBZ wedge inside the zone, which
   // wins over the zone (their pick_rank), else the front-most. A click on a mark pins its
-  // tooltip, one on empty space unpins.
+  // tooltip, one on empty space unpins. A k-path click a host handles (e.g. selecting that
+  // q-point) only does that, as a click on its label chips does.
   const { set_hover_enabled, touch_hover } = scene_interactivity({
-    on_click: () => pin.toggle(hovered),
+    on_click: () => {
+      if (!(on_kpath_click && hovered?.mark.startsWith(`k-path`))) pin.toggle(hovered)
+    },
     on_empty_click: () => pin.unpin(),
   })
 
@@ -229,6 +234,7 @@
       {hovered_qpoint_index}
       {highlighted_qpoint_range}
       on_kpath_hover={handle_kpath_hover}
+      {on_kpath_click}
       {touch_hover}
       size={bz_size}
     />

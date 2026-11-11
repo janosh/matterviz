@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShowControlsState } from '#lib/controls.js'
   import type { Snippet } from 'svelte'
+  import type { Attachment } from 'svelte/attachments'
   import type { ClassValue } from 'svelte/elements'
 
   let {
@@ -16,11 +17,62 @@
     class?: ClassValue
     children: Snippet
   } = $props()
+
+  // flex: 1 shrinks the step slider to nothing instead of wrapping, so it gets its own row once
+  // the controls beside it leave it narrower than its flex-basis (--sequence-slider-min-width).
+  // The wrap follows what the bar holds, not a fixed width. Siblings are measured as laid out:
+  // they only shrink while sharing the slider's row, so both layouts are stable (no flip-flop).
+  let stack_step = $state(false)
+  // computed lengths resolve to px; keywords such as a `normal` gap count as 0, so the slider's
+  // flex-basis must be a length
+  const px = (value: string): number => Number(value.replace(/px$/, ``)) || 0
+  // the elements' summed widths plus one gap after each that takes up space. Margins don't
+  // count: an auto margin (e.g. pushing buttons to the bar's end) resolves to the free space,
+  // which would keep a stacked bar stacked however wide it grew.
+  const row_width = (elements: Element[], gap: string): number =>
+    elements.reduce((sum, el) => {
+      const out_of_flow = [`absolute`, `fixed`].includes(getComputedStyle(el).position)
+      const width = out_of_flow ? 0 : el.getBoundingClientRect().width
+      return width ? sum + width + px(gap) : sum
+    }, 0)
+  const fit_step_row: Attachment<HTMLElement> = (bar) => {
+    const update = () => {
+      const step = bar.querySelector(`:scope > .step-section`)
+      const slider = step?.querySelector(`.slider-container`)
+      if (!step || !slider) return (stack_step = false)
+      const { paddingInlineStart, paddingInlineEnd, columnGap } = getComputedStyle(bar)
+      const others = [...bar.children].filter((child) => child !== step)
+      const step_labels = [...step.children].filter((child) => child !== slider)
+      const room =
+        bar.clientWidth -
+        px(paddingInlineStart) -
+        px(paddingInlineEnd) -
+        row_width(others, columnGap) -
+        row_width(step_labels, getComputedStyle(step).columnGap)
+      stack_step = room < px(getComputedStyle(slider).flexBasis)
+    }
+    const resize = new ResizeObserver(update)
+    // re-observe as controls mount and unmount (panes, menus, the step section itself)
+    const observe = () => {
+      resize.disconnect()
+      const step = bar.querySelector(`:scope > .step-section`)
+      for (const element of [bar, ...bar.children, ...(step?.children ?? [])])
+        resize.observe(element)
+    }
+    const mutations = new MutationObserver(observe)
+    mutations.observe(bar, { childList: true })
+    observe()
+    return () => {
+      resize.disconnect()
+      mutations.disconnect()
+    }
+  }
 </script>
 
 {#if controls_config.mode !== `never` || fullscreen}
   <section
-    class={[`sequence-control-bar`, controls_config.class, class_name]}
+    class={[`sequence-control-bar`, controls_config.class, class_name, { stack_step }]}
+    {@attach fit_step_row}
     bind:clientHeight={height}
     style={controls_config.mode === `never` ? `display: none` : controls_config.style}
   >
@@ -33,7 +85,8 @@
     position: relative;
     display: flex;
     align-items: center;
-    flex-wrap: var(--sequence-controls-wrap, nowrap);
+    /* items wrap only once they overflow; fit_step_row gives the slider its own row */
+    flex-wrap: var(--sequence-controls-wrap, wrap);
     gap: var(--sequence-controls-gap, clamp(4pt, 1.6cqw, 1.5ex));
     width: 100%;
     min-width: 0;
@@ -72,8 +125,9 @@
       --fullscreen-btn-padding: 0;
       --fullscreen-btn-bg: transparent;
     }
-    @container (max-width: 520px) {
-      flex-wrap: wrap;
+    &.stack_step > :global(.step-section) {
+      flex-basis: 100%;
+      order: 1;
     }
   }
   :global(:is(:hover, :focus-within)) > .sequence-control-bar.hover-visible {

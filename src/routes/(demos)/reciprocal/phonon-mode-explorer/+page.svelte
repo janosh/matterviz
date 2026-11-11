@@ -8,6 +8,7 @@
   import type { Vec3 } from '#lib/math.js'
   import type {
     IrRamanOptions,
+    PhononBandColoring,
     PhononModeDataset,
     PhononModeSelection,
     SpectrumKind,
@@ -18,6 +19,7 @@
     DEFAULT_PHONON_SHOW_VECTORS,
     DEFAULT_PHONON_SUPERCELL,
     default_phonon_mode_selection,
+    is_phonon_band_coloring,
     parse_born,
     parse_phonon_modes,
     PhononModeExplorer,
@@ -210,6 +212,8 @@
     supercell: Vec3
     fps: number
     show_vectors: boolean
+    band_coloring: PhononBandColoring | null
+    bz_inset_enlarged: boolean
   }
   const initial_state = (dataset: PhononModeDataset): ExplorerState => ({
     selection: default_phonon_mode_selection(dataset.modes),
@@ -218,6 +222,8 @@
     supercell: [...DEFAULT_PHONON_SUPERCELL],
     fps: DEFAULT_PHONON_FPS,
     show_vectors: DEFAULT_PHONON_SHOW_VECTORS,
+    band_coloring: null,
+    bz_inset_enlarged: false,
   })
 
   // shared by the explorer and the spinner that stands in for it so the page never reflows
@@ -232,6 +238,8 @@
   let supercell = $state<Vec3>([...DEFAULT_PHONON_SUPERCELL])
   let fps = $state(DEFAULT_PHONON_FPS)
   let show_vectors = $state(DEFAULT_PHONON_SHOW_VECTORS)
+  let band_coloring = $state<PhononBandColoring | null>(null)
+  let bz_inset_enlarged = $state(false)
   let uploaded_dataset = $state.raw<PhononModeDataset>()
   let load_error = $state<string>()
   let upload_loading = $state(false)
@@ -294,7 +302,16 @@
   const index_value = (index?: number): string =>
     index === undefined ? `` : String(index + 1)
   const apply_explorer_state = (next_state: ExplorerState): void => {
-    ;({ selection, spectrum_kind, amplitude, supercell, fps, show_vectors } = next_state)
+    ;({
+      selection,
+      spectrum_kind,
+      amplitude,
+      supercell,
+      fps,
+      show_vectors,
+      band_coloring,
+      bz_inset_enlarged,
+    } = next_state)
   }
 
   const apply_url_state = async (params: QueryParams): Promise<void> => {
@@ -323,6 +340,9 @@
     }
     next_state.fps = number_param(params, `fps`, DEFAULT_PHONON_FPS, 0, 300)
     next_state.show_vectors = bool_from_param(params, `vectors`, DEFAULT_PHONON_SHOW_VECTORS)
+    const coloring = params.get(`color_by`) ?? ``
+    next_state.band_coloring = is_phonon_band_coloring(coloring) ? coloring : null
+    next_state.bz_inset_enlarged = bool_from_param(params, `bz_large`, false)
     apply_explorer_state(next_state)
     url_initialized = true
   }
@@ -377,6 +397,8 @@
       [`supercell`, supercell.join(`x`), DEFAULT_PHONON_SUPERCELL.join(`x`)],
       [`fps`, String(fps), String(DEFAULT_PHONON_FPS)],
       bool_url_entry(`vectors`, show_vectors, DEFAULT_PHONON_SHOW_VECTORS),
+      [`color_by`, band_coloring ?? ``, ``],
+      bool_url_entry(`bz_large`, bz_inset_enlarged, false),
     ]
   }
 
@@ -462,6 +484,8 @@
       bind:supercell
       bind:fps
       bind:show_vectors
+      bind:band_coloring
+      bind:bz_inset_enlarged
       style={explorer_height}
     />
   {:else if !load_error}

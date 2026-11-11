@@ -669,6 +669,9 @@
         fill:
           region.color ?? `var(--bands-highlight-region-color, light-dark(#f6e8c3, #4d3f20))`,
         fill_opacity: region.opacity ?? 0.2,
+        // background shading keeps its color under the pointer: a fill region brightens on
+        // hover by default, which lit the whole imaginary half-plane up
+        hover_style: null,
         label: region.label,
         show_in_legend: Boolean(region.label),
         z_index: `below-lines` as const,
@@ -679,6 +682,7 @@
         upper: 0,
         fill: `var(--bands-imaginary-region-color, light-dark(#f8d7da, #5a1a1f))`,
         fill_opacity: 0.2,
+        hover_style: null,
         label: `Imaginary modes`,
         show_in_legend: false,
         z_index: `below-lines`,

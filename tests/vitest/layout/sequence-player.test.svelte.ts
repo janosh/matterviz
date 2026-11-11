@@ -4,7 +4,14 @@ import SequenceControls from '#lib/layout/SequenceControls.svelte'
 import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { describe, expect, onTestFinished, test, vi } from 'vitest'
-import { bind_props, doc_query, mount_in_test, set_input } from '../setup'
+import {
+  bind_props,
+  doc_query,
+  mount_in_test,
+  query,
+  set_input,
+  trigger_resize_observer,
+} from '../setup'
 
 const flashed_controls = (player: Player) =>
   ([`play`, `previous`, `next`, `step`, `fps`] as const).filter((control) =>
@@ -359,5 +366,51 @@ test.each([
     expect(state.height).toBe(expected === `absent` ? 0 : 600)
   },
 )
+
+// The slider row stacks only when the controls beside it leave the slider under its flex-basis
+// and returns once they fit: a bar_width bar minus a button (10), the step input (50) and count
+// (30) leaves bar_width - 90 against the slider's 100px. The button's margin doesn't count (an
+// auto margin resolves to all the free space once stacked, so counting it would never unstack).
+test.each([
+  [200, false],
+  [190, false],
+  [185, true],
+])(`a %ipx SequenceControlBar stacks the slider row: %s`, (bar_width, stacked) => {
+  // happy-dom has no layout: elements report the width their data-width names
+  vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
+    this: Element,
+  ) {
+    return { width: Number(this.getAttribute(`data-width`) ?? 0) } as DOMRect
+  })
+  onTestFinished(() => {
+    vi.restoreAllMocks()
+  })
+  const children = createRawSnippet(() => ({
+    render: () => `<div class="step-section">
+      <input data-width="50" /><span data-width="30"></span>
+      <div class="slider-container" style="flex-basis: 100px"></div>
+    </div>`,
+  }))
+  const target = mount_in_test(SequenceControlBar, {
+    controls_config: normalize_show_controls(`always`),
+    children,
+  })
+  flushSync()
+  const bar = query(target, `.sequence-control-bar`)
+  // a control mounting later (picked up by the bar's MutationObserver)
+  bar.insertAdjacentHTML(
+    `afterbegin`,
+    `<button data-width="10" style="margin-inline-start: 60px"></button>`,
+  )
+  const resize_to = (width: number) => {
+    Object.defineProperty(bar, `clientWidth`, { value: width, configurable: true })
+    trigger_resize_observer(bar)
+    flushSync()
+  }
+  resize_to(bar_width)
+  expect(bar.classList.contains(`stack_step`)).toBe(stacked)
+  resize_to(200) // widening to a fitting width unstacks the row
+  expect(bar.classList.contains(`stack_step`)).toBe(false)
+})
 
 type Player = ReturnType<typeof create_sequence_player>

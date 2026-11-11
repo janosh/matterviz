@@ -207,6 +207,14 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     get shared_padding() {
       return shared_padding
     },
+    // One --tick-font-size for both panels: PlotAxis sizes ticks by each plot's own cqmin, so a
+    // narrow side DOS fell to the 9px floor beside the bands' 0.8em, which also put its taller
+    // or shorter tick row (and x-axis title) out of line. Same formula, the panels' joint size.
+    get tick_font_size() {
+      const [width, height] = inputs.size()
+      if (!width || !height) return undefined // unmeasured: PlotAxis's own default until then
+      return `clamp(9px, ${Math.round(0.3 * Math.min(width, height)) / 10}px, 0.8em)`
+    },
     // bind:resolved_padding setter for both panels. Only side-by-side reports count: stacked
     // panels share no padding, and their (larger) margins would otherwise stay in the floor
     // and shrink both plots once they sit side by side again.

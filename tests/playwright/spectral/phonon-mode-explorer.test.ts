@@ -190,6 +190,98 @@ test.describe(`PhononModeExplorer`, () => {
     expect(symmetry_errors).toEqual([])
   })
 
+  // The inset's tooltip is position: fixed at the pointer, so no ancestor may become the
+  // containing block of fixed descendants (Trajectory's `contain: layout` pinned it to the
+  // viewer's corner, hundreds of px from the cursor)
+  test(`the Brillouin zone inset's tooltip opens at the pointer`, async ({ page }) => {
+    await open_explorer(page)
+    const inset = page.locator(`#phonon-mode-explorer .bz-inset`)
+    const canvas = inset.locator(`canvas`)
+    await expect(canvas).toHaveAttribute(`width`, /^[1-9]\d*$/)
+    await inset.scrollIntoViewIfNeeded()
+    // on the Γ chip of the selected q-point: HTML over the canvas, whose pointer moves must not
+    // reach the scene's raycast (which hovered the zone behind it and dropped the tooltip)
+    const box = await require_bbox(
+      inset.locator(`.sym-label`, { hasText: /^\s*Γ\s*$/ }),
+      `Γ label`,
+    )
+    const pointer = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const tooltip = inset.locator(`.plot-tooltip`)
+    // glide in (the scene raycasts on pointermove), again until its first frames are drawn
+    await expect(async () => {
+      await page.mouse.move(pointer.x - 10, pointer.y - 10)
+      await page.mouse.move(pointer.x, pointer.y, { steps: 5 })
+      await expect(tooltip).toBeVisible({ timeout: 1000 })
+    }).toPass({ timeout: 10_000 })
+    await expect(tooltip).toContainText(`(0, 0, 0)`) // the chip's k-point, not a face's
+    await page.mouse.move(pointer.x + 1, pointer.y + 1) // still there after another move
+    await expect(tooltip).toContainText(`(0, 0, 0)`)
+    const tip = await require_bbox(tooltip, `BZ inset tooltip`)
+    const gap_x = Math.max(tip.x - pointer.x, pointer.x - (tip.x + tip.width), 0)
+    const gap_y = Math.max(tip.y - pointer.y, pointer.y - (tip.y + tip.height), 0)
+    // placed beside the cursor glyph, so within a few dozen px of the pointer on both axes
+    expect(Math.hypot(gap_x, gap_y)).toBeLessThan(40)
+  })
+
+  // The inset's hover button grows it to about half the viewer and back; a symmetry chip
+  // (or the path) clicked there selects its q-point, as a band click does
+  test(`the Brillouin zone inset enlarges and selects q-points on click`, async ({ page }) => {
+    await open_explorer(page)
+    const explorer = page.locator(`#phonon-mode-explorer`)
+    const inset = explorer.locator(`.bz-inset`)
+    await expect(inset.locator(`canvas`)).toHaveAttribute(`width`, /^[1-9]\d*$/)
+    await inset.scrollIntoViewIfNeeded()
+    const structure_box = await require_bbox(
+      explorer.locator(`.trajectory-pane .structure`),
+      `viewer`,
+    )
+    const small = await require_bbox(inset, `inset`)
+    await inset.hover()
+    const toggle = inset.getByRole(`button`, { name: `Enlarge Brillouin zone` })
+    await toggle.click()
+    await expect(inset.getByRole(`button`, { name: `Shrink Brillouin zone` })).toHaveAttribute(
+      `aria-pressed`,
+      `true`,
+    )
+    await expect
+      .poll(async () => (await require_bbox(inset, `inset`)).width)
+      .toBeCloseTo(Math.min(structure_box.width * 0.5, structure_box.height * 0.7), 0)
+    expect((await require_bbox(inset, `inset`)).width).toBeGreaterThan(small.width * 1.5)
+
+    const summary = explorer.getByTestId(`phonon-mode-summary`)
+    await expect(summary).toContainText(`q = [0, 0, 0]`)
+    await inset.locator(`.sym-label`, { hasText: /^\s*X\s*$/ }).click()
+    await expect(summary).toContainText(`q = [0.5, 0, 0.5]`)
+
+    await inset.getByRole(`button`, { name: `Shrink Brillouin zone` }).click()
+    await expect
+      .poll(async () => (await require_bbox(inset, `inset`)).width)
+      .toBeCloseTo(small.width, 0)
+  })
+
+  // The bar's fullscreen takes the whole explorer, its panes edge to edge below the title row
+  test(`fullscreen fills the screen with both panes`, async ({ page }) => {
+    await open_explorer(page)
+    const explorer = page.locator(`#phonon-mode-explorer`)
+    await explorer.locator(`.trajectory`).hover()
+    await explorer.locator(`.trajectory-controls .fullscreen-button`).click()
+    await expect
+      .poll(() => page.evaluate(() => document.fullscreenElement?.id ?? null))
+      .toBe(`phonon-mode-explorer`)
+    const layout = await page.evaluate(() => {
+      const panes = document.querySelector(`#phonon-mode-explorer .panes`)
+      if (!panes) throw new Error(`no panes`)
+      const { left, right, bottom } = panes.getBoundingClientRect()
+      return {
+        edges: [left, right, bottom].map(Math.round),
+        screen: [0, innerWidth, innerHeight],
+        bottom_rule: getComputedStyle(panes).borderBottomWidth,
+      }
+    })
+    expect(layout.edges).toEqual(layout.screen)
+    expect(layout.bottom_rule).toBe(`0px`)
+  })
+
   test(`plays every frame across the loop boundary`, async ({ page }) => {
     // Mock time only here: advance every frame explicitly, even on slow software GPUs.
     await page.clock.install({ time: 0 })
@@ -338,8 +430,12 @@ test.describe(`PhononModeExplorer`, () => {
     await explorer.getByLabel(`Mode`, { exact: true }).selectOption(`4`)
     await explorer.locator(`.amplitude-control input`).fill(`0.42`)
     await explorer.getByLabel(`Eigenvectors`).check()
-    await explorer.locator(`.fps-section input`).fill(`18`)
+    await explorer.getByLabel(`Frame rate`).fill(`18`) // in the settings menu, not the bar
+    await explorer.getByLabel(`Band coloring`).selectOption({ label: `Na share` })
     await select_supercell(explorer, 2)
+    const inset = explorer.locator(`.bz-inset`)
+    await inset.hover()
+    await inset.getByRole(`button`, { name: `Enlarge Brillouin zone` }).click()
 
     await expect
       .poll(() => url_params(page))
@@ -351,6 +447,8 @@ test.describe(`PhononModeExplorer`, () => {
         supercell: `2x2x2`,
         fps: `18`,
         vectors: `1`,
+        color_by: `element:Na`,
+        bz_large: `1`,
       })
 
     await page.reload({ waitUntil: `networkidle` })
@@ -362,9 +460,50 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(restored_summary).toContainText(`q = [0.375, 0, 0.375]`)
     await open_menu(restored, `Phonon settings`)
     await expect(restored.locator(`.amplitude-control input`)).toHaveValue(`0.42`)
-    await expect(restored.locator(`.fps-section input`)).toHaveValue(`18`)
+    await expect(restored.getByLabel(`Frame rate`)).toHaveValue(`18`)
     await expect(restored.getByLabel(`Eigenvectors`)).toBeChecked()
     await expect(restored.locator(`.cell-select .toggle-btn`)).toContainText(`2`)
+    await expect(restored.getByLabel(`Band coloring`)).toHaveValue(`2`) // its Na share option
+    await expect(restored.locator(`.plot-pane .colorbar .label`)).toHaveText(`Na share`)
+    await expect(
+      restored.locator(`.bz-inset`).getByRole(`button`, { name: `Shrink Brillouin zone` }),
+    ).toHaveAttribute(`aria-pressed`, `true`)
+  })
+
+  // Shift+arrows walk the dispersion from the hovered explorer, before the viewer inside, whose
+  // plain arrows (frames) would otherwise take them with Shift held
+  test(`Shift+arrows step the q-point and mode, not the animation frame`, async ({ page }) => {
+    await open_explorer(page)
+    const explorer = page.locator(`#phonon-mode-explorer`)
+    const summary = explorer.getByTestId(`phonon-mode-summary`)
+    await expect(summary).toContainText(`q = [0, 0, 0]`)
+    await explorer.locator(`.trajectory-pane .structure`).hover()
+    await page.keyboard.press(`Space`) // pause, so the frame only moves by key
+    const step_input = explorer.locator(`.trajectory-controls .step-input`)
+    const frame = await step_input.inputValue()
+    // at the path's start there is no earlier q-point, and the key steps no frame either
+    await page.keyboard.press(`Shift+ArrowLeft`)
+    await expect(summary).toContainText(`q = [0, 0, 0]`)
+    await expect(step_input).toHaveValue(frame)
+    await page.keyboard.press(`ArrowLeft`) // plain arrows still step frames
+    await expect(step_input).not.toHaveValue(frame)
+    await page.keyboard.press(`Shift+ArrowRight`)
+    await expect(summary).toContainText(`q = [0.125, 0, 0.125]`)
+    await page.keyboard.press(`Shift+ArrowUp`)
+    await expect(summary).toContainText(`Mode 5`)
+    await page.keyboard.press(`Shift+ArrowDown`)
+    await expect(summary).toContainText(`Mode 4`)
+  })
+
+  // the bar's export pane records the mode's animation, named after file, mode and q-point
+  test(`exports the animation under the mode's name`, async ({ page }) => {
+    await open_explorer(page)
+    const explorer = page.locator(`#phonon-mode-explorer`)
+    await explorer.locator(`.trajectory-pane .structure`).hover()
+    await explorer.locator(`.trajectory-export-toggle`).click()
+    await expect(explorer.getByLabel(`File name`).first()).toHaveValue(
+      `NaCl-Gamma-X-band-mode-4-q1`,
+    )
   })
 })
 

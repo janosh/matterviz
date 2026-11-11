@@ -46,6 +46,7 @@
   import { to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
+  import type { SceneControlProps } from '#lib/scene/props.svelte.js'
   import type {
     BrillouinZoneData,
     BrillouinZoneSettings,
@@ -114,6 +115,7 @@
     hovered_qpoint_index = null,
     highlighted_qpoint_range = null,
     on_kpath_hover,
+    on_kpath_click,
     link_hover,
     children,
     tooltip,
@@ -121,6 +123,7 @@
     on_error,
     on_fullscreen_change,
     on_point_hover,
+    scene_props = {},
     ...rest
   }: Partial<BrillouinZoneSettings> & {
     structure?: Crystal
@@ -131,6 +134,9 @@
     info_pane_open?: boolean
     ibz_data?: IrreducibleBZData | null
     show_controls?: ShowControlsProp<BrillouinControlName>
+    // camera, lighting and interaction options for the 3D scene, e.g. { gizmo: false }; not the
+    // scene, camera or projection this component binds or sets itself
+    scene_props?: Omit<SceneControlProps, `scene` | `camera` | `camera_projection`>
     fullscreen?: boolean
     width?: number
     height?: number
@@ -164,6 +170,8 @@
     highlighted_qpoint_range?: Vec2 | null
     // Called with the q-point index on hovering the k-path or a symmetry label (null on leave)
     on_kpath_hover?: (qpoint_index: number | null) => void
+    // a click on the k-path or a symmetry label, with the q-point it hit (e.g. to select it)
+    on_kpath_click?: (qpoint_index: number) => void
     // Channel of an enclosing hover_links() the k-path's hover joins by q-point index, e.g. the
     // Bands plotting the band structure k_path came from: a q-point hovered there marks its
     // k-point and branch here, and the hovered k-path q-point there
@@ -456,6 +464,7 @@
     {#if webgpu_available()}
       <Canvas createRenderer={create_renderer} shadows={false}>
         <BrillouinZoneScene
+          {...scene_props}
           bz_data={zone}
           {surface_color}
           {surface_opacity}
@@ -470,6 +479,7 @@
           hovered_qpoint_index={hovered_qpoint_index ?? linked?.qpoint_idx ?? null}
           highlighted_qpoint_range={highlighted_qpoint_range ?? linked?.range ?? null}
           on_kpath_hover={handle_kpath_hover}
+          {on_kpath_click}
           {show_ibz}
           {ibz_data}
           {ibz_color}

@@ -1212,6 +1212,7 @@
             `row spectra`,
             spectra_split ? (side.spectra_side ? `side` : `stacked`) : `single`,
           ]}
+          style:--tick-font-size={side.sync.tick_font_size}
           bind:clientWidth={side.spectra_width}
           bind:clientHeight={side.spectra_height}
         >

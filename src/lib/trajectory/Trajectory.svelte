@@ -216,6 +216,7 @@
     show_controls,
     fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
     fullscreen = $bindable(false),
+    fullscreen_target,
     hovered = $bindable(false),
     wrapper = $bindable(),
     trajectory_controls,
@@ -293,6 +294,9 @@
     show_controls?: ShowControlsProp<TrajectoryControlName>
     fullscreen_toggle?: boolean
     fullscreen?: boolean
+    // element the fullscreen button and `f` key fullscreen, e.g. a host component wrapping this
+    // viewer with its own panes (default: this viewer)
+    fullscreen_target?: HTMLElement
     // bindable: pointer is over the viewer (drives hover-scoped shortcuts)
     hovered?: boolean
     wrapper?: HTMLDivElement
@@ -1285,7 +1289,8 @@
   // The data inspector is a sidebar with its own open state, the other analyses floating panes
   const analysis_open = (pane: (typeof ANALYSES)[number][`pane`]): boolean =>
     pane === `data-inspector` ? data_inspector_open : active_pane === pane
-  let any_analysis_open = $derived(ANALYSES.some((entry) => analysis_open(entry.pane)))
+  // hidden analyses don't count: the data inspector defaults to open even where it's hidden
+  let any_analysis_open = $derived(visible_analyses.some((entry) => analysis_open(entry.pane)))
 </script>
 
 {#snippet energy_controls(has_energy: boolean)}
@@ -1733,7 +1738,7 @@
             <FullscreenButton
               bind:fullscreen
               hidden={!show_toggle}
-              {wrapper}
+              wrapper={fullscreen_target ?? wrapper}
               bg_css_var="--traj-bg-fullscreen"
               on_change={() => on_fullscreen_change?.(event_data())}
               class="fullscreen-button"
@@ -2078,7 +2083,8 @@
     background: var(--traj-surface-bg);
     color: var(--traj-color, var(--text-color, CanvasText));
     box-sizing: border-box;
-    contain: layout;
+    /* no layout containment: it would make this the containing block of fixed descendants,
+       pinning viewport-positioned tooltips (BZ inset, plots) to the viewer's corner */
     z-index: var(--traj-z-index, 1);
     container: trajectory / size; /* cqw/cqh for chrome and panes */
     &:global(.dragover) {

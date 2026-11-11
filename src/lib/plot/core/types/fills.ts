@@ -114,7 +114,8 @@ export interface FillRegion {
   visible?: boolean
 
   // Interactions
-  hover_style?: FillHoverStyle
+  // null: the region keeps its look under the pointer (background shading); events still fire
+  hover_style?: FillHoverStyle | null
   on_click?: (event: FillHandlerEvent) => void
   on_hover?: (event: FillHandlerEvent | null) => void
 

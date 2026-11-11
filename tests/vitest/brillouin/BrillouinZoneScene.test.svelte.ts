@@ -4,6 +4,7 @@ import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import BrillouinZoneScene from '#lib/brillouin/BrillouinZoneScene.svelte'
 import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
 import { face_anchors } from '#lib/brillouin/geometry.js'
+import { mark_pin } from '#lib/tooltip/pin.svelte.js'
 import type { BZHover, KPathData } from '#lib/brillouin/index.js'
 import { euclidean_dist, reciprocal_lattice } from '#lib/math.js'
 import { brighten_hex, faces_centroid } from '#lib/scene/index.js'
@@ -176,4 +177,42 @@ test(`a face click pins its tooltip; it again, empty space or Escape unpin`, asy
   touch_tap(zone, hit(1), { clientX: 9, clientY: 9 })
   flushSync()
   expect([document.querySelector(`.plot-tooltip`), hover_highlight()]).toEqual([null, null])
+})
+
+// A k-path click a host handles only selects (as a label chip click does); unhandled, it pins
+test.each([
+  [`handled`, true],
+  [`unhandled`, false],
+])(`a %s k-path click pins its tooltip: %s`, (_label, handled) => {
+  const bz_data = compute_brillouin_zone(reciprocal_lattice(cubic_matrix(4), { two_pi: true }))
+  const k_path: KPathData = {
+    points: [
+      [0, 0, 0],
+      [0.5, 0, 0],
+    ],
+    labels: [`Γ`, `X`],
+    branches: [[0, 1]],
+  }
+  const on_kpath_click = vi.fn()
+  const pin = mark_pin<BZHover>()
+  const mounted = mount(BrillouinZoneScene, {
+    target: document.body,
+    props: { bz_data, k_path, gizmo: false, pin, ...(handled && { on_kpath_click }) },
+  })
+  onTestFinished(() => unmount(mounted))
+  flushSync()
+  const path = threlte_stub.nodes.findLast(({ props }) => props.onpointermove)?.props as {
+    onpointermove: (event: unknown) => void
+    onclick: (event: unknown) => void
+  }
+  const event = {
+    point: new Vector3(0.4, 0, 0),
+    instanceId: 0,
+    nativeEvent: new PointerEvent(`click`, { clientX: 5, clientY: 6 }),
+  }
+  path.onpointermove(event)
+  path.onclick(event)
+  flushSync()
+  expect(on_kpath_click.mock.calls).toEqual(handled ? [[1]] : [])
+  expect(pin.value?.mark.startsWith(`k-path`) ?? false).toBe(!handled)
 })

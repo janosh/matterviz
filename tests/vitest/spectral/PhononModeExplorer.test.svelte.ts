@@ -1,4 +1,5 @@
 import type * as brillouin_module from '#lib/brillouin/index.js'
+import type * as trajectory_component from '#lib/trajectory/Trajectory.svelte'
 import type * as phonon_modes_module from '#lib/spectral/phonon-modes.js'
 import { reciprocal_lattice, type Vec3 } from '#lib/math.js'
 import { frac_k_to_cartesian } from '#lib/spectral/helpers.js'
@@ -13,6 +14,7 @@ import { expect, test, vi } from 'vitest'
 import {
   click_when_ready,
   fire,
+  mock_fullscreen,
   mount_in_test,
   mouse,
   plot_svg,
@@ -35,6 +37,18 @@ vi.mock(`#lib/brillouin/index.js`, async (import_original) => {
     return original.BrillouinZone(...args)
   }
   return { ...original, BrillouinZone }
+})
+// Pass-through spy on the atomic-motion viewer's props (its nested structure chrome needs
+// the WebGPU scene, so its buttons don't render here)
+type TrajectoryProps = ComponentProps<typeof trajectory_component.default>
+const trajectory_spy = vi.hoisted(() => ({ props: undefined as TrajectoryProps | undefined }))
+vi.mock(`#lib/trajectory/Trajectory.svelte`, async (import_original) => {
+  const original = await import_original<typeof trajectory_component>()
+  const Trajectory = (...args: Parameters<typeof original.default>) => {
+    trajectory_spy.props = args[1]
+    return original.default(...args)
+  }
+  return { default: Trajectory }
 })
 // Pass-through spy on the supercell builds, recording the polyhedra settings each completed
 const supercell_spy = vi.hoisted(() => ({ calls: [] as unknown[][] }))
@@ -79,11 +93,25 @@ const summary_text = (target: HTMLElement) =>
 const open_structure_controls = (target: HTMLElement) =>
   click_when_ready(target, `button.structure-controls-toggle`)
 
+// The bar's fullscreen button takes the plots along, not just the atomic-motion viewer
+test(`fullscreen covers the whole explorer`, async () => {
+  mock_fullscreen()
+  const target = render()
+  await click_when_ready(target, `.trajectory-controls .fullscreen-button`)
+  // the nested structure viewer offers no second, structure-only fullscreen
+  expect(trajectory_spy.props?.structure_props?.fullscreen_toggle).toBe(false)
+  await vi.waitFor(() =>
+    expect(document.fullscreenElement).toBe(query(target, `.phonon-mode-explorer`)),
+  )
+})
+
 test(`renders a typed phonon dataset`, async () => {
   const props = $state<ExplorerProps>({
     ...explorer_defaults,
     vector_thickness: 1,
     vector_color: null,
+    fps: 24,
+    bz_inset_enlarged: false,
   })
   const target = mount_explorer(props)
   expect(target.querySelector(`.toolbar`)).toBeNull()
@@ -113,9 +141,37 @@ test(`renders a typed phonon dataset`, async () => {
   expect(target.querySelector(`.phonon-modes-pane .control-tab`)).toBeNull()
   expect(target.querySelector(`.phonon-modes-pane .resize-handle`)).toBeNull()
   expect(target.querySelector(`.trajectory-controls .toolbar`)).not.toBeNull()
-  // the Brillouin zone inset is a passive view: no file drop target, controls or fullscreen
+  // frame rate lives in the settings menu, which keeps the hover bar on one row
+  expect(target.querySelector(`.trajectory-controls .fps-section`)).toBeNull()
+  // bands and spectrum share one tick size, so their tick rows and axis titles line up
+  expect(query(target, `.plot-pane`).style.getPropertyValue(`--tick-font-size`)).toMatch(
+    /^clamp\(9px, [\d.]+px, 0\.8em\)$/,
+  )
+  // a generated single-mode cycle has nothing the trajectory analyses could use
+  expect(target.querySelector(`.trajectory-controls .analysis-button`)).toBeNull()
+  const fps_input = query<HTMLInputElement>(target, `input[aria-label="Frame rate"]`)
+  expect([fps_input.min, fps_input.max, fps_input.step]).toEqual([`0`, `300`, `0.1`])
+  set_input(fps_input, 12)
+  await tick()
+  expect(props.fps).toBe(12)
+  // clearing the field mid-edit keeps the rate rather than stopping playback at 0
+  set_input(fps_input, ``)
+  await tick()
+  expect(props.fps).toBe(12)
+  // the Brillouin zone inset has no file drop target, controls or fullscreen...
   const inset = await vi.waitFor(() => query(target, `.trajectory-pane .bz-inset`))
-  expect(inset.querySelector(`button`)).toBeNull()
+  // ...its one button grows it and back
+  expect(
+    [...inset.querySelectorAll(`button`)].map((btn) => btn.getAttribute(`aria-label`)),
+  ).toEqual([`Enlarge Brillouin zone`])
+  query<HTMLButtonElement>(inset, `button`).click()
+  await tick()
+  expect(props.bz_inset_enlarged).toBe(true) // bindable, so a host can remember it
+  expect(bz_spy.props?.style).toBe(`--phonon-bz-inset-size: min(50cqi, 70cqb)`)
+  props.bz_inset_enlarged = false
+  await tick()
+  expect(bz_spy.props?.style).toBeUndefined()
+  expect(bz_spy.props?.scene_props).toEqual({ gizmo: false }) // too small for an axes gizmo
   props.show_bz_inset = false
   await vi.waitFor(() => expect(target.querySelector(`.bz-inset`)).toBeNull())
   await open_structure_controls(target)
@@ -182,16 +238,10 @@ test.each([
     const chip = target.querySelector(`[data-testid="phonon-mode-summary"] .incommensurate`)
     expect(Boolean(chip)).toBe(flagged)
     if (chip) {
-      expect(chip.tagName).toBe(`BUTTON`)
+      // a passive label: the full explanation is its tooltip
+      expect(chip.tagName).toBe(`SPAN`)
       expect(chip.textContent).toContain(`not periodic in 1×1×1`)
       expect(chip.hasAttribute(`title`)).toBe(false) // widget tooltip, not a native one
-      const write_text = vi.spyOn(navigator.clipboard, `writeText`).mockResolvedValue()
-      ;(chip as HTMLButtonElement).click()
-      await vi.waitFor(() =>
-        expect(write_text).toHaveBeenCalledWith(
-          expect.stringContaining(`not commensurate with the 1×1×1 supercell`),
-        ),
-      )
     }
     // compact: no full-width status banner above the panes
     expect(target.querySelector(`.phonon-mode-explorer > .status-message`)).toBeNull()
@@ -318,6 +368,97 @@ test(`offers the spectrum type only with Raman data and follows the dataset`, as
     expect(summary_text(target)).toContain(`modes-only.yaml`)
     expect(target.querySelector(`[aria-label="q-point"]`)).toBeNull()
   })
+})
+
+// Shift+arrows walk the dispersion from inside the explorer and stop there: the viewers inside
+// take plain arrows (frames, the tooltip walk) with Shift held too
+test(`Shift+arrows step the q-point along the path and the mode`, async () => {
+  const props = $state<ExplorerProps>({
+    ...explorer_defaults,
+    selection: { qpoint_idx: 0, mode_idx: 3 },
+  })
+  const target = mount_explorer(props)
+  const pane = await vi.waitFor(() => query(target, `.plot-pane`))
+  const reached = vi.fn()
+  pane.addEventListener(`keydown`, reached)
+  const press = (
+    key: string,
+    init: KeyboardEventInit = { shiftKey: true },
+    at: Element = pane,
+  ) => {
+    at.dispatchEvent(
+      new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true, ...init }),
+    )
+    flushSync()
+    return props.selection
+  }
+  expect(press(`ArrowLeft`)).toEqual({ qpoint_idx: 0, mode_idx: 3 }) // the path's start
+  expect(press(`ArrowRight`)).toEqual({ qpoint_idx: 1, mode_idx: 3 })
+  expect(press(`ArrowUp`)).toEqual({ qpoint_idx: 1, mode_idx: 4 })
+  expect(press(`ArrowDown`)).toEqual({ qpoint_idx: 1, mode_idx: 3 })
+  for (let step = 0; step < 6; step++) press(`ArrowRight`)
+  expect(props.selection).toEqual({ qpoint_idx: 4, mode_idx: 3 }) // stops at the path's end
+  expect(reached).not.toHaveBeenCalled()
+  // plain arrows, chords, typing and keys from outside the explorer are left to others
+  const field = document.createElement(`input`)
+  pane.append(field)
+  const outside = document.createElement(`div`)
+  document.body.append(outside)
+  press(`ArrowLeft`, {})
+  press(`ArrowLeft`, { shiftKey: true, altKey: true })
+  press(`ArrowLeft`, { shiftKey: true }, field)
+  press(`ArrowLeft`, { shiftKey: true }, outside)
+  outside.remove()
+  expect(props.selection).toEqual({ qpoint_idx: 4, mode_idx: 3 })
+  expect(reached).toHaveBeenCalledTimes(3)
+  // ...but with the pointer over it, the idle page's keys are the explorer's
+  const root = query(target, `.phonon-mode-explorer`)
+  root.dispatchEvent(new PointerEvent(`pointerenter`))
+  expect(press(`ArrowLeft`, { shiftKey: true }, document.body)).toEqual({
+    qpoint_idx: 3,
+    mode_idx: 3,
+  })
+  root.dispatchEvent(new PointerEvent(`pointerleave`))
+  expect(press(`ArrowLeft`, { shiftKey: true }, document.body)).toEqual({
+    qpoint_idx: 3,
+    mode_idx: 3,
+  })
+  // the summary announces each change, and the controls name their keys
+  expect(query(target, `[data-testid="phonon-mode-summary"]`).getAttribute(`aria-live`)).toBe(
+    `polite`,
+  )
+})
+
+test(`colors bands by an element's share, the participation ratio or IR intensity`, async () => {
+  const props = $state<ExplorerProps>({ ...explorer_defaults, band_coloring: null })
+  const target = mount_explorer(props)
+  await open_menu(target, `Phonon settings`)
+  const select = await vi.waitFor(() =>
+    query<HTMLSelectElement>(target, `select[aria-label="Band coloring"]`),
+  )
+  expect([...select.options].map(({ text }) => text)).toEqual([
+    `None`,
+    `Participation ratio`,
+    `Na share`,
+    `Cl share`,
+    `IR intensity (Γ)`, // NaCl has no polarizability data, so no Raman
+  ])
+  const colorbar_title = () =>
+    target.querySelector(`.plot-pane .colorbar .label`)?.textContent ?? null
+  expect(colorbar_title()).toBeNull()
+  set_select(select, `2`)
+  await tick()
+  expect(props.band_coloring).toBe(`element:Na`)
+  await vi.waitFor(() => expect(colorbar_title()).toBe(`Na share`))
+  for (const [coloring, title] of [
+    [`participation`, `Participation ratio`],
+    [`ir`, `IR intensity`],
+  ] as const) {
+    props.band_coloring = coloring
+    await vi.waitFor(() => expect(colorbar_title()).toBe(title))
+  }
+  props.band_coloring = null
+  await vi.waitFor(() => expect(colorbar_title()).toBeNull())
 })
 
 test(`reinitializes an invalid selection when the dataset changes`, async () => {

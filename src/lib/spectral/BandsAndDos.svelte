@@ -144,6 +144,7 @@
   {...rest}
   class={[`bands-and-dos mv-panels`, layout, rest.class]}
   style:--side-dos-width="{SIDE_DOS_WIDTH}px"
+  style:--tick-font-size={sync.tick_font_size}
   bind:clientWidth
   bind:clientHeight
   bind:this={wrapper}

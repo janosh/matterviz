@@ -45,6 +45,7 @@
       show_controls={false}
       fullscreen_toggle={false}
       allow_file_drop={false}
+      scene_props={{ gizmo: false, ...bz_props.scene_props }}
       style="--bz-width: {width}px; --bz-height: {height}px; --bz-min-width: 0; {bz_props.style ??
         ``}"
     >

@@ -1,9 +1,22 @@
+import type * as bz_component from '#lib/brillouin/BrillouinZone.svelte'
 import BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
 import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
 import type { Matrix3x3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
 import { doc_query } from '../setup'
+
+// Pass-through spy recording the zone's props (its WebGPU scene does not render here)
+type BZProps = ComponentProps<typeof bz_component.default>
+const bz_spy = vi.hoisted(() => ({ props: undefined as BZProps | undefined }))
+vi.mock(`#lib/brillouin/BrillouinZone.svelte`, async (import_original) => {
+  const original = await import_original<typeof bz_component>()
+  const BrillouinZone = (...args: Parameters<typeof original.default>) => {
+    bz_spy.props = args[1]
+    return original.default(...args)
+  }
+  return { default: BrillouinZone }
+})
 
 // The dismissal/drag shell is covered by tests/vitest/overlays/FloatingPopup.test.ts
 // cubic reciprocal lattice, |b| = 1: the zone is a unit cube
@@ -51,6 +64,16 @@ test(`lists every marked point and closes from its own button`, () => {
 
   doc_query<HTMLButtonElement>(`.bz-popup-close .close-btn`).click()
   expect(on_close).toHaveBeenCalledOnce()
+})
+
+// a 70px gizmo would crowd the small popup zone; bz_props can still ask for one
+test.each([
+  [{}, { gizmo: false }],
+  [{ scene_props: { gizmo: true, fov: 30 } }, { gizmo: true, fov: 30 }],
+])(`bz_props %o gives the zone scene_props %o`, (bz_props, expected) => {
+  mount(BrillouinZonePopup, { target: document.body, props: { k_lattice, points, bz_props } })
+  flushSync()
+  expect(bz_spy.props?.scene_props).toEqual(expected)
 })
 
 test(`a singular reciprocal lattice shows the error where the zone would be`, () => {
