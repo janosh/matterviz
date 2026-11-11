@@ -144,9 +144,9 @@ test(`renders a typed phonon dataset`, async () => {
   // frame rate lives in the settings menu, which keeps the hover bar on one row
   expect(target.querySelector(`.trajectory-controls .fps-section`)).toBeNull()
   // bands and spectrum share one tick size, so their tick rows and axis titles line up
-  expect(query(target, `.plot-pane`).style.getPropertyValue(`--tick-font-size`)).toMatch(
-    /^clamp\(9px, [\d.]+px, 0\.8em\)$/,
-  )
+  expect(
+    query(target, `.plot-pane`).style.getPropertyValue(`--linked-tick-font-size`),
+  ).toMatch(/^clamp\(9px, [\d.]+px, 0\.8em\)$/)
   // a generated single-mode cycle has nothing the trajectory analyses could use
   expect(target.querySelector(`.trajectory-controls .analysis-button`)).toBeNull()
   const fps_input = query<HTMLInputElement>(target, `input[aria-label="Frame rate"]`)
@@ -457,8 +457,24 @@ test(`colors bands by an element's share, the participation ratio or IR intensit
     props.band_coloring = coloring
     await vi.waitFor(() => expect(colorbar_title()).toBe(title))
   }
+  // one this data can't provide (e.g. from a shared URL) shows as what the plot draws: none
+  props.band_coloring = `element:Fe`
+  await vi.waitFor(() => expect(colorbar_title()).toBeNull())
+  expect(select.value).toBe(`0`)
   props.band_coloring = null
   await vi.waitFor(() => expect(colorbar_title()).toBeNull())
+})
+
+// exported videos are named after the file without its extensions, then mode and q-point
+test.each([
+  [`NaCl-band.yaml`, `NaCl-band-mode-4-q1`],
+  [`BaTiO3-cubic-band.yaml.gz`, `BaTiO3-cubic-band-mode-4-q1`],
+  [undefined, `phonon-mode-4-q1`],
+])(`dataset %s names the animation %s`, async (filename, expected) => {
+  render({ dataset: { ...dataset, filename } })
+  await vi.waitFor(() =>
+    expect(trajectory_spy.props?.trajectory?.provenance.filename).toBe(expected),
+  )
 })
 
 test(`reinitializes an invalid selection when the dataset changes`, async () => {

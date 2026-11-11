@@ -207,7 +207,7 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     get shared_padding() {
       return shared_padding
     },
-    // One --tick-font-size for both panels: PlotAxis sizes ticks by each plot's own cqmin, so a
+    // One --linked-tick-font-size for both panels (a host's --tick-font-size still wins): PlotAxis sizes ticks by each plot's own cqmin, so a
     // narrow side DOS fell to the 9px floor beside the bands' 0.8em, which also put its taller
     // or shorter tick row (and x-axis title) out of line. Same formula, the panels' joint size.
     get tick_font_size() {

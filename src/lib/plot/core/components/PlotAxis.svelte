@@ -305,7 +305,8 @@
   /* shrinks with the plot frame (its size container) down to 9px, so small panes keep room for
      data; full size from a ~430px frame up */
   .tick text {
-    font-size: var(--tick-font-size, clamp(9px, 3cqmin, 0.8em));
+    /* a host's --tick-font-size, else one linked panels share (synced-axes), else per plot */
+    font-size: var(--tick-font-size, var(--linked-tick-font-size, clamp(9px, 3cqmin, 0.8em)));
   }
   /* No focus ring: the popup a click opens is the feedback (Safari draws one on click); the
   underline keeps keyboard focus visible */

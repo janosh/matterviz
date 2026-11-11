@@ -5,6 +5,7 @@
   import Icon from 'svelte-widgets/Icon.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
+  import { strip_compression_extensions } from '#lib/io/decompress.js'
   import { ArrowCollapse, ArrowExpand, Settings } from 'svelte-widgets/icons'
   import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
   import { format_num } from '#lib/labels.js'
@@ -197,7 +198,13 @@
     const pattern = pattern_result.value
     if (!pattern) return no_result
     // exported videos are named after the file, mode and q-point
-    const filename_stem = dataset.filename?.replace(/\.[^.]*$/, ``) || undefined
+    const filename_stem =
+      (dataset.filename &&
+        strip_compression_extensions(dataset.filename, { lowercase: false }).replace(
+          /\.[^.]*$/,
+          ``,
+        )) ||
+      undefined
     return try_generate(() => phonon_mode_run(pattern, { amplitude, n_frames, filename_stem }))
   })
   let generation_error = $derived(
@@ -218,10 +225,10 @@
     selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
   )
   // === Band coloring ===
-  let shown_mode_values = $derived(
-    (band_coloring && phonon_mode_values(mode_data, band_coloring, active_spectrum)) ||
-      mode_values,
+  let coloring_values = $derived(
+    band_coloring && phonon_mode_values(mode_data, band_coloring, active_spectrum),
   )
+  let shown_mode_values = $derived(coloring_values || mode_values)
   let coloring_options = $derived.by(() => {
     const elements = [...new Set(mode_data.atoms.map(({ symbol }) => symbol))]
     const options: { value: PhononBandColoring | null; label: string }[] = [
@@ -567,11 +574,15 @@ under its open panes -->
           >Color bands
           <select
             aria-label="Band coloring"
-            value={coloring_options.findIndex(({ value }) => value === band_coloring)}
+            value={coloring_values
+              ? coloring_options.findIndex(({ value }) => value === band_coloring)
+              : 0}
             onchange={(event) =>
               (band_coloring =
                 coloring_options[Number(event.currentTarget.value)]?.value ?? null)}
           >
+            <!-- a coloring this data can't provide (e.g. a shared URL's element:Fe) shows as
+            the fallback the plot draws -->
             {#each coloring_options as { label }, idx (label)}
               <option value={idx}>{label}</option>
             {/each}
@@ -773,7 +784,7 @@ under its open panes -->
       />
       <section
         class="plot-pane"
-        style:--tick-font-size={plot_sync.tick_font_size}
+        style:--linked-tick-font-size={plot_sync.tick_font_size}
         class:side_by_side
         class:spectrum_stacked={both_plots && !side_by_side}
         aria-label="Phonon mode plot"
