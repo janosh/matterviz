@@ -146,7 +146,7 @@ test(`renders a typed phonon dataset`, async () => {
   // bands and spectrum share one tick size, so their tick rows and axis titles line up
   expect(
     query(target, `.plot-pane`).style.getPropertyValue(`--linked-tick-font-size`),
-  ).toMatch(/^clamp\(9px, [\d.]+px, 0\.8em\)$/)
+  ).toMatch(/^clamp\(9px, calc\(0\.03 \* [\d.]+px\), 0\.8em\)$/)
   // a generated single-mode cycle has nothing the trajectory analyses could use
   expect(target.querySelector(`.trajectory-controls .analysis-button`)).toBeNull()
   const fps_input = query<HTMLInputElement>(target, `input[aria-label="Frame rate"]`)

@@ -19,6 +19,7 @@
     centers_tick_lines,
     resolve_tick_layout,
     TICK_LABEL_HEIGHT,
+    tick_font_size,
   } from '#lib/plot/core/tick-layout.js'
   import type { AxisConfig } from '#lib/plot/core/types.js'
   import { DEFAULT_GRID_STYLE } from '#lib/plot/core/types.js'
@@ -201,7 +202,11 @@
   )
 </script>
 
-<g class="{side}-axis" bind:this={axis_group}>
+<g
+  class="{side}-axis"
+  bind:this={axis_group}
+  style:--tick-font-default={tick_font_size(`100cqmin`)}
+>
   {#if show_baseline}
     <line
       x1={is_x ? pad.l : axis_x}
@@ -302,11 +307,9 @@
 </g>
 
 <style>
-  /* shrinks with the plot frame (its size container) down to 9px, so small panes keep room for
-     data; full size from a ~430px frame up */
   .tick text {
     /* a host's --tick-font-size, else one linked panels share (synced-axes), else per plot */
-    font-size: var(--tick-font-size, var(--linked-tick-font-size, clamp(9px, 3cqmin, 0.8em)));
+    font-size: var(--tick-font-size, var(--linked-tick-font-size, var(--tick-font-default)));
   }
   /* No focus ring: the popup a click opens is the feedback (Safari draws one on click); the
   underline keeps keyboard focus visible */
