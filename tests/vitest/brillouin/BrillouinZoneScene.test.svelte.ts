@@ -214,5 +214,6 @@ test.each([
   path.onclick(event)
   flushSync()
   expect(on_kpath_click.mock.calls).toEqual(handled ? [[1]] : [])
-  expect(pin.value?.mark.startsWith(`k-path`) ?? false).toBe(!handled)
+  // an unhandled k-path click pins that q-point's tooltip
+  expect(pin.value?.qpoint_idx).toBe(handled ? undefined : 1)
 })
