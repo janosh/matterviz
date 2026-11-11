@@ -1,6 +1,6 @@
 // Generated API reference: prop extraction from component scripts and its demo-page wiring
 import { extract_prop_docs, prop_docs_plugin } from '#root/src/scripts/prop-docs.ts'
-import type { PropDoc } from '#root/src/scripts/prop-docs.ts'
+import type { ComponentDoc, PropDoc } from '#root/src/scripts/prop-docs.ts'
 import PropsTable from '#site/PropsTable.svelte'
 import { PAGE_COMPONENTS, page_components } from '#site/state.svelte.js'
 import prop_docs from 'virtual:prop-docs'
@@ -21,10 +21,11 @@ describe(`extract_prop_docs`, () => {
       `layout/InfoTag`,
       `xrd/XrdPlot`,
       `spectral/PhononModeExplorer`,
+      `trajectory/Trajectory`,
     ].map((path) => `${repo_root}/src/lib/${path}.svelte`),
   )
   const prop = (component: string, name: string): PropDoc | undefined =>
-    docs[component]?.find((doc) => doc.name === name)
+    docs[component]?.props.find((doc) => doc.name === name)
 
   test.each<[string, string, PropDoc]>([
     // leading `//` line, renamed binding default
@@ -39,7 +40,7 @@ describe(`extract_prop_docs`, () => {
         description: `Component names at the right, top and left corner (the order of every triple)`,
       },
     ],
-    // trailing comment, $bindable(...) unwrapped
+    // trailing comment (capitalized), $bindable(...) unwrapped, a constant's value resolved
     [
       `TernaryPlot`,
       `grid_step`,
@@ -47,15 +48,23 @@ describe(`extract_prop_docs`, () => {
         name: `grid_step`,
         type: `number`,
         default: `GRID_DEFAULTS.grid_step`,
-        description: `fraction between grid lines / ticks; 0 disables both`,
+        default_value: `0.1`,
+        description: `Fraction between grid lines / ticks; 0 disables both`,
         bindable: true,
       },
     ],
-    // inherited from BasePlotProps under a `// State` section header, which is no description
+    // inherited from BasePlotProps under a `// State` section header, which is no description:
+    // only its trailing comment is
     [
       `TernaryPlot`,
       `hovered`,
-      { name: `hovered`, type: `boolean`, default: `false`, bindable: true },
+      {
+        name: `hovered`,
+        type: `boolean`,
+        default: `false`,
+        description: `Bindable, true while the pointer is over the plot`,
+        bindable: true,
+      },
     ],
     // BasePlotProps.children wins over HTMLAttributes.children in the intersection
     [
@@ -64,6 +73,7 @@ describe(`extract_prop_docs`, () => {
       {
         name: `children`,
         type: `Snippet<[{ height: number; width: number; fullscreen?: boolean }]>`,
+        description: `Rendered over the chart, receives its measured size`,
       },
     ],
     // multi-line type on one line
@@ -93,12 +103,33 @@ describe(`extract_prop_docs`, () => {
       {
         name: `patterns`,
         type: `XrdPattern | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }> | PatternEntry[]`,
+        description: `Pattern(s) to plot: one pattern, a \`{ label: pattern }\` record (values may be \`{ pattern, color }\`), or a list of entries. Several are overlaid.`,
         required: true,
       },
     ],
     // typed through Pick<ComponentProps<typeof ScatterPlot>, ...>, i.e. another component's
-    // props; PlotConfig's comment over x_axis heads all its uncommented members, no description
-    [`XrdPlot`, `x_axis`, { name: `x_axis`, type: `AxisConfig`, default: `{}` }],
+    // props, whose PlotConfig member carries the description
+    [
+      `XrdPlot`,
+      `x_axis`,
+      {
+        name: `x_axis`,
+        type: `AxisConfig`,
+        default: `{}`,
+        description: `Primary horizontal axis (bottom): label, ticks, scale type, range`,
+      },
+    ],
+    // a `// Component-specific props` group heading above the prop's own comment is dropped
+    [
+      `XrdPlot`,
+      `orientation`,
+      {
+        name: `orientation`,
+        type: `Orientation`,
+        default: `'vertical'`,
+        description: `\`vertical\` draws bars upward from the x axis, \`horizontal\` rightward from the y axis`,
+      },
+    ],
     // a multi-line Pick<...> on one line: no padding inside <>, no union operator leading
     // the second type argument, literals in single quotes
     [
@@ -108,7 +139,7 @@ describe(`extract_prop_docs`, () => {
         name: `trajectory_props`,
         type: `Pick<ComponentProps<typeof Trajectory>, 'class' | 'style' | 'fps_range' | 'step_labels' | 'fullscreen_toggle' | 'on_play' | 'on_pause' | 'on_end' | 'on_loop' | 'on_controller'>`,
         default: `{}`,
-        description: `passed on to the atomic-motion Trajectory viewer: styling, frame-rate range, step labels and playback callbacks (the explorer sets the rest itself)`,
+        description: `Passed on to the atomic-motion Trajectory viewer: styling, frame-rate range, step labels and playback callbacks (the explorer sets the rest itself)`,
       },
     ],
     [
@@ -126,8 +157,27 @@ describe(`extract_prop_docs`, () => {
     expect(prop(component, name)).toEqual(expected)
   })
 
+  // a constant or setting default also gives the literal it stands for; casts are dropped
+  test.each([
+    [`PhononModeExplorer`, `fps`, `DEFAULT_PHONON_FPS`, `24`],
+    [`PhononModeExplorer`, `supercell`, `[...DEFAULT_PHONON_SUPERCELL]`, undefined],
+    [`PhononModeExplorer`, `spectrum_kind`, `'ir'`, undefined],
+    [`Trajectory`, `fps`, `DEFAULTS.trajectory.fps`, `10`],
+  ])(`%s.%s defaults to %s (value %s)`, (component, name, fallback, value) => {
+    const doc = prop(component, name)
+    expect([doc?.default, doc?.default_value]).toEqual([fallback, value])
+  })
+
+  // the element a ...rest binding passes HTML attributes on to
+  test.each([
+    [`InfoTag`, `<span>`],
+    [`PhononModeExplorer`, `<div>`],
+  ])(`%s takes %s attributes`, (component, element) => {
+    expect(docs[component]?.rest_attributes).toBe(element)
+  })
+
   test(`skips the ...rest binding`, () => {
-    expect(docs.TernaryPlot.map(({ name }) => name)).not.toContain(`rest`)
+    expect(docs.TernaryPlot.props.map(({ name }) => name)).not.toContain(`rest`)
   })
 })
 
@@ -181,8 +231,8 @@ test(
     )
     expect(index).not.toContain(`trajectory_props`) // no docs in the index itself
     const component = source(`\0virtual:prop-docs/InfoTag`)
-    const docs = JSON.parse(component.replace(/^export default /, ``)) as PropDoc[]
-    expect(docs.map(({ name }) => name)).toContain(`label`)
+    const { props } = JSON.parse(component.replace(/^export default /, ``)) as ComponentDoc
+    expect(props.map(({ name }) => name)).toContain(`label`)
     expect(component.length).toBeLessThan(5000)
     expect(() => load.call({} as never, `\0virtual:prop-docs/NoSuchThing`)).toThrow(
       `No component named NoSuchThing`,
@@ -219,20 +269,24 @@ test.each([
   expect(hotUpdate.call(context as never, { file, modules: [] } as never)).toBeUndefined()
 })
 
-test(`PropsTable loads the page component's props when opened`, async () => {
-  mount(PropsTable, { target: document.body })
-  const details = doc_query<HTMLDetailsElement>(`details`)
-  expect(details.querySelector(`summary`)?.textContent).toBe(`Props of InfoTag`)
-  expect(details.querySelector(`table`)).toBeNull() // nothing loaded while closed
-  details.open = true
-  details.dispatchEvent(new Event(`toggle`))
-  flushSync()
-  expect(details.textContent).toContain(`Loading props...`)
-  await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(11), {
-    timeout: 30_000,
-  })
-  const label_cells = [...(details.querySelector(`tbody tr`)?.children ?? [])].map((cell) =>
-    cell.textContent?.replaceAll(/\s+/g, ` `).trim(),
-  )
-  expect(label_cells).toEqual([`label required`, `string`, ``, `Label text (supports HTML)`])
-})
+test(
+  `PropsTable loads the page component's props when opened`,
+  { timeout: 60_000 },
+  async () => {
+    mount(PropsTable, { target: document.body })
+    const details = doc_query<HTMLDetailsElement>(`details`)
+    expect(details.querySelector(`summary`)?.textContent).toBe(`Props of InfoTag`)
+    expect(details.querySelector(`table`)).toBeNull() // nothing loaded while closed
+    details.open = true
+    details.dispatchEvent(new Event(`toggle`))
+    flushSync()
+    expect(details.textContent).toContain(`Loading props...`)
+    await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(11), {
+      timeout: 30_000,
+    })
+    const label_cells = [...(details.querySelector(`tbody tr`)?.children ?? [])].map((cell) =>
+      cell.textContent?.replaceAll(/\s+/g, ` `).trim(),
+    )
+    expect(label_cells).toEqual([`label required`, `string`, ``, `Label text (supports HTML)`])
+  },
+)

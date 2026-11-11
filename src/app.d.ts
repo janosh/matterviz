@@ -3,17 +3,17 @@
 
 // Served by prop_docs_plugin (src/scripts/prop-docs.ts)
 declare module 'virtual:prop-docs' {
-  import type { PropDoc } from '#root/src/scripts/prop-docs.ts'
+  import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
 
   // one lazy loader per component name
-  const loaders: Record<string, () => Promise<{ default: PropDoc[] }>>
+  const loaders: Record<string, () => Promise<{ default: ComponentDoc }>>
   export default loaders
 }
 declare module 'virtual:prop-docs/*' {
-  import type { PropDoc } from '#root/src/scripts/prop-docs.ts'
+  import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
 
-  const docs: PropDoc[]
-  export default docs
+  const doc: ComponentDoc
+  export default doc
 }
 
 // Served by src/elements/vite.config.ts: each custom element's lazy component, settable prop

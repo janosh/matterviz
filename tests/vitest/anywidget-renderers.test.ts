@@ -116,10 +116,13 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 test(`no widget component binds a data prop with a default`, { timeout: 30_000 }, () => {
   const files = WIDGET_COMPONENTS.flatMap((name) => globSync(`src/lib/**/${name}.svelte`))
   expect(files).toHaveLength(WIDGET_COMPONENTS.length)
-  const defaulted = Object.entries(extract_prop_docs(files)).flatMap(([component, docs]) =>
-    docs
-      .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
-      .map(({ name, default: init }) => `${component}.${name} = ${init}`),
+  const defaulted = Object.entries(extract_prop_docs(files)).flatMap(
+    ([component, { props: docs }]) =>
+      docs
+        .filter(
+          ({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init,
+        )
+        .map(({ name, default: init }) => `${component}.${name} = ${init}`),
   )
   expect(defaulted).toEqual([])
 })
