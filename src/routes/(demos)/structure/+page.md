@@ -71,7 +71,7 @@
 <details>
 <summary>What the component owns</summary>
 
-Acquisition, decompression, format detection, worker parsing, provenance, and disposal go through the same `open_material()` runtime used by other hosts. Recoverable parser issues (skipped CIF rows, guessed elements, placeholder cells) arrive on structure results of `open_material()` as `warnings` and show as a dismissible notice (bindable `parse_warnings`). Set `allow_file_drop={false}` when a parent owns loading; across viewers, `on_file_drop(content, filename, meta)` takes over the raw dropped file and `on_file_load` reports what the viewer loaded.
+Acquisition, decompression, format detection, worker parsing, provenance, and disposal go through the same `open_material()` runtime used by other hosts.
 
 The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
 
@@ -210,7 +210,7 @@ Pass a `reference_structure` alongside `structure` to overlay per-atom displacem
 
 Displacements use the minimum image convention, so an atom that relaxed across a cell face draws a short arrow rather than one spanning the whole box. Sites pair up by index, so a mismatched atom count or a reordered species list fails loudly instead of reporting a confident RMSD for atoms that were never the same atom.
 
-Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows (pass `analyze_symmetry` to get the last two without user interaction).
+Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows.
 
 </details>
 

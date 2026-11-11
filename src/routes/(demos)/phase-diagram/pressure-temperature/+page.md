@@ -114,7 +114,7 @@ interface PtPhaseDiagramData {
 }
 ```
 
-`parse_pt_data(data).errors` lists every problem (unknown keys, unknown phase ids, duplicate ids, sigma arrays that don't match their points, non-finite coordinates, inverted ranges, mistyped fields). The component shows the first one and draws nothing rather than a half-valid diagram.
+`parse_pt_data(data).errors` lists every problem (unknown keys, unknown phase ids, duplicate ids, sigma arrays that don't match their points, non-finite coordinates, inverted ranges, mistyped fields). The component shows the first one and draws nothing rather than a half-valid diagram. `null` values in `data` (Python's `None`) count as omitted.
 
 </details>
 
@@ -160,8 +160,6 @@ A minimal two-phase diagram. A single line doesn't say which side is which phase
 Without `regions`, `derive_regions(data)` joins the coexistence lines and the plotted window into a planar map. Separately computed boundaries rarely meet at exactly the same triple point or reach exactly the window edge, so their ends are joined without any distance tolerance: a line's end at its `critical` special point stays. Any other end is cut back past every crossing with another line on its half of the line (an overshoot, and the tangle where noisy lines cross repeatedly near a triple point); an end not on the window edge then joins the ends of the two other lines of its phase triangle (a|b, a|c and b|c meet at the one a-b-c triple point, all three moving to their mean), else runs on along its last segment to the first line or window edge it hits, so a window wider than the data still splits into fields. None of this depends on the order of the boundaries. When joining moves an end by more than 5% of the plot, the component warns that the boundaries don't meet. Each face takes the phase shared by every boundary around it, or failing that the phase across a boundary from an already named neighbor. On a log pressure axis the tracing runs in log P, so lines run on straight as drawn. Naming needs at least one face whose boundaries share a single phase, as around a triple point: a lone two-phase line leaves both sides unnamed.
 
 Every boundary must then separate exactly its two phases, so a face named against that (when a missing or `metastable` line merges two fields) loses its name. A face that a coexistence line ends inside, or that holds a line or closed loop touching nothing (liquid and vapor joined around a critical point, an island phase), contains two phases and stays unfilled too. The component then shows a notice. Pass explicit regions for diagrams like that, as in the water example.
-
-Axis settings are by quantity: `pressure_axis` and `temperature_axis` (label, ticks, format, `scale_type`, `range` in display units) follow their quantity when `swap_axes` flips the sides, and a pinned range converts along when the display unit changes. `null` values in `data` (Python's `None`) count as omitted.
 
 </details>
 

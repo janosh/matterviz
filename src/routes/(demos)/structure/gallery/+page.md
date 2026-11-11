@@ -5,7 +5,7 @@ A scrollable gallery of 3D structure viewers, laid out as a grid by default, or 
 <details>
 <summary>Virtualization, scrolling and navigation</summary>
 
-Only cards near the viewport exist at all (the visible page plus `overscan` cards per side, rounded up to whole rows in a grid, and bounded by `max_live_cards`), while spacer-based virtualization keeps scroll geometry correct for any item count. The overscan doubles as a prefetch: any scroll shorter than it reveals structures that are already rendered.
+Only cards near the viewport exist at all, while spacer-based virtualization keeps scroll geometry correct for any item count. The overscan doubles as a prefetch: any scroll shorter than it reveals structures that are already rendered.
 
 Bringing up a canvas costs enough GPU setup to stall a fling, so cards that enter the viewport mid-scroll show their label chip alone and gain their structure once the scroll settles. Pager and keyboard jumps skip that delay, and the mounted cards always keep up enough that the viewport never goes entirely blank. Mouse wheel, trackpad and the pager (‹ 1–3 / 40 ›) all page through the cards. The track is keyboard-navigable too: when focused, main-axis arrow keys move one card, <kbd>PageUp</kbd>/<kbd>PageDown</kbd> one page, and <kbd>Home</kbd>/<kbd>End</kbd> jump to the ends. At the first/last card, wheel and arrow events pass through to the surrounding page. The examples below cap `max_live_cards` well under its default, since several galleries on one page would otherwise ask for more simultaneous WebGPU contexts than a browser will hand out.
 
@@ -16,13 +16,13 @@ Bringing up a canvas costs enough GPU setup to stall a fling, so cards that ente
 The default layout fills its host in both axes and scrolls vertically through as many columns as `min_card_width` allows. Give the host a definite height, and drag the corner grip to re-flow columns. `on_prefetch_more` appends the next batch as the end nears.
 
 <details>
-<summary>Live-card budget, grip and prefetch details</summary>
+<summary>Row virtualization and prefetch</summary>
 
-Virtualization works in whole rows, so a collection of any size costs the same. Because every live card owns its own WebGPU canvas and device, `max_live_cards` budgets how many run at once. It is spent on whole rows around the visible page and outranks `overscan`, yielding to one thing only: a viewport holding more cards than it allows still fills, because a permanently blank card on screen is worse than a few viewers over budget.
+Virtualization works in whole rows, so a collection of any size costs the same.
 
-Without a definite height the track falls back to a two-row floor rather than laying out the whole collection (`visible_rows` is vertical-only). Dragging the grip narrower adds columns: the width it moves is the per-card minimum the column count derives from, so the layout re-flows as a drag crosses each boundary.
+Without a definite height the track falls back to a two-row floor rather than laying out the whole collection.
 
-`on_prefetch_more` fires once fewer than a page of items trail the render window (on mount and resize as well as while scrolling). It asks once per item count: a host that appends is asked again straight away and keeps being asked until the window is full, while one that has nothing left to give is not asked again until its count moves. Batch generously, or a host handing back one item at a time will be called once per item.
+`on_prefetch_more` also fires on mount and resize, not only while scrolling. A host that appends is asked again straight away until the window is full, while one that has nothing left to give is not asked again until its count moves. Batch generously, or a host handing back one item at a time will be called once per item.
 
 </details>
 
@@ -82,11 +82,11 @@ Give an item `properties` and the gallery captions its viewer with them. `proper
 <details>
 <summary>Caption layout and color ranking</summary>
 
-The caption is a strip along the bottom of the card, keys muted, values tabular. Cards wide enough for two key/value pairs per line get them, narrow ones stack; either way the pairs borrow the card's own grid columns through a CSS subgrid, so keys and values line up across every row of a card. `property_keys` picks and orders a subset.
+The caption is a strip along the bottom of the card, keys muted, values tabular. Cards wide enough for two key/value pairs per line get them, narrow ones stack; either way the pairs borrow the card's own grid columns through a CSS subgrid, so keys and values line up across every row of a card.
 
-`property_color_scheme` ranks each numeric value between the smallest and largest for that key across the whole collection — not just the cards on screen, so a card keeps its colour as it scrolls — and tints the whole key/value pair in that scheme, picking a text colour against each tint. `property_color_reverse` flips which end of the scheme the smallest value takes; here it makes the lowest energy blue and the highest red. Non-numeric values, and any key whose values are all identical, are left untinted rather than implying a ranking that isn't there.
+Color ranks span the whole collection, not just the cards on screen, so a card keeps its colour as it scrolls; here `property_color_reverse` makes the lowest energy blue and the highest red. Non-numeric values, and any key whose values are all identical, are left untinted rather than implying a ranking that isn't there.
 
-`property_units` renders the unit after the value in a lighter face rather than as a bracketed suffix on the key. An underscore in a key marks a subscript, so `E_hull` captions the way the quantity is written.
+An underscore in a key marks a subscript, so `E_hull` captions the way the quantity is written.
 
 </details>
 
@@ -135,7 +135,7 @@ Each item pairs a `structure` with a `label`/`subtitle` chip. `resizable` adds a
 <details>
 <summary>Grip and pager details</summary>
 
-The grip is visible on hover and scales cards on both axes in one drag; arrow keys do the same when it has focus. Horizontally, the width it moves is the per-card minimum: widen the cards and fewer fit, so the ones that remain stretch to divide the strip. With a `header`, there is one border around the title bar and the cards; `pager_target` is the escape hatch for a pager that belongs in some other element entirely.
+The grip is visible on hover and scales cards on both axes in one drag; arrow keys do the same when it has focus. Horizontally, the width it moves is the per-card minimum: widen the cards and fewer fit, so the ones that remain stretch to divide the strip, and the layout re-flows as a drag crosses each column boundary.
 
 </details>
 
