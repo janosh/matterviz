@@ -53,50 +53,52 @@
         <p>Loading props...</p>
       {:then { props, rest_attributes }}
         <!-- page-wide (up to 1400px) like the demos, so long types and descriptions wrap in
-        their columns instead of scrolling the table sideways -->
-        <table class="bleed-1400">
-          <thead>
-            <tr><th>Prop</th><th>Type</th><th>Default</th><th>Description</th></tr>
-          </thead>
-          <tbody>
-            {#each props as { name: prop, type, default: fallback, default_value, description, bindable, required } (prop)}
-              {@const key = `${name}.${prop}`}
-              <tr>
-                <td>
-                  <code>{prop}</code>
-                  {#if required}<small>required</small>{/if}
-                  {#if bindable}<small>bindable</small>{/if}
-                </td>
-                <td>
-                  {#if type && type.length > LONG_TYPE}
-                    <button
-                      type="button"
-                      class="long-type"
-                      class:expanded={expanded[key]}
-                      aria-expanded={Boolean(expanded[key])}
-                      title={expanded[key] ? `Collapse type` : `Show full type`}
-                      onclick={() => (expanded[key] = !expanded[key])}
-                    >
-                      <code>{type}</code>
-                    </button>
-                  {:else if type}<code>{type}</code>{/if}
-                </td>
-                <td>
-                  <!-- a constant or setting shows its value, the name beneath -->
-                  {#if default_value}
-                    <code>{default_value}</code><small>{fallback}</small>
-                  {:else if fallback}<code>{fallback}</code>{/if}
-                </td>
-                <!-- `code` spans in the source comment render as code (odd parts of the split) -->
-                <td
-                  >{#each description?.split(/`([^`]+)`/) ?? [] as part, idx (idx)}{#if idx % 2}<code
-                        >{part}</code
-                      >{:else}{part}{/if}{/each}</td
-                >
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        their columns; the wrapper scrolls on screens too narrow for the table's minimum -->
+        <div class="bleed-1400 table-scroll">
+          <table>
+            <thead>
+              <tr><th>Prop</th><th>Type</th><th>Default</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              {#each props as { name: prop, type, default: fallback, default_value, description, bindable, required } (prop)}
+                {@const key = `${name}.${prop}`}
+                <tr>
+                  <td>
+                    <code>{prop}</code>
+                    {#if required}<small>required</small>{/if}
+                    {#if bindable}<small>bindable</small>{/if}
+                  </td>
+                  <td>
+                    {#if type && type.length > LONG_TYPE}
+                      <button
+                        type="button"
+                        class="long-type"
+                        class:expanded={expanded[key]}
+                        aria-expanded={Boolean(expanded[key])}
+                        title={expanded[key] ? `Collapse type` : `Show full type`}
+                        onclick={() => (expanded[key] = !expanded[key])}
+                      >
+                        <code>{type}</code>
+                      </button>
+                    {:else if type}<code>{type}</code>{/if}
+                  </td>
+                  <td>
+                    <!-- a constant or setting shows its value, the name beneath -->
+                    {#if default_value}
+                      <code>{default_value}</code><small>{fallback}</small>
+                    {:else if fallback}<code>{fallback}</code>{/if}
+                  </td>
+                  <!-- `code` spans in the source comment render as code (odd parts of the split) -->
+                  <td
+                    >{#each description?.split(/`([^`]+)`/) ?? [] as part, idx (idx)}{#if idx % 2}<code
+                          >{part}</code
+                        >{:else}{part}{/if}{/each}</td
+                  >
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
         {#if rest_attributes}
           <p class="rest-attributes">
             Also takes any {rest_attributes} attribute (class, style, aria-*, event handlers, ...),
@@ -121,15 +123,30 @@
   .component-name {
     font-family: monospace;
   }
-  /* reference detail, not page prose: a step below the body text. Descriptions get the room
-     long types would otherwise take */
+  .table-scroll {
+    overflow-x: auto;
+  }
+  /* reference detail, not page prose: a step below the body text. Fixed layout with set column
+     shares, descriptions the largest: auto layout handed spare width out by each column's longest
+     unwrapped cell, so a few long types or defaults widened their whole column. A real table
+     (the site styles tables display: block), or the shares resolve against content width. */
   table {
+    display: table;
+    width: 100%;
+    min-width: 760px;
+    table-layout: fixed;
     font-size: 0.85em;
-    td:nth-child(2) {
-      max-width: 28em;
+    th:nth-child(1) {
+      width: 15%;
     }
-    :is(td, th):nth-child(4) {
-      min-width: 22em;
+    th:nth-child(2) {
+      width: 22%;
+    }
+    th:nth-child(3) {
+      width: 11%;
+    }
+    td:not(:last-child) {
+      overflow-wrap: anywhere; /* long names and types wrap inside their share */
     }
   }
   td small {
