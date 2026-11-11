@@ -229,8 +229,7 @@ const rest_attributes = (
   const named = /\b(?:HTML|SVG)Attributes<(?:HTML|SVG)(\w*?)Element>/.exec(
     type_node?.getText() ?? ``,
   )
-  if (named)
-    return `<${{ Anchor: `a`, SVG: `svg`, '': `element` }[named[1]] ?? named[1].toLowerCase()}>`
+  if (named) return `<${{ SVG: `svg`, '': `element` }[named[1]] ?? named[1].toLowerCase()}>`
   const onclick = props_type && find_prop(checker, props_type, `onclick`)
   const from_svelte = onclick?.declarations?.some((decl) =>
     decl.getSourceFile().fileName.includes(`/svelte/elements`),

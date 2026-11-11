@@ -12,7 +12,7 @@
   import { DEFAULTS } from '#lib/settings.js'
   import { FPS_STEP } from '#lib/constants.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { in_range, reciprocal_lattice } from '#lib/math.js'
+  import { clamp, in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
   import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
@@ -206,17 +206,18 @@
     if (!cell || !selected) return no_result
     return try_generate(() => phonon_mode_pattern(cell, mode_data, selected))
   })
+  // exported videos are named after the file, mode and q-point
+  let filename_stem = $derived(
+    dataset.filename
+      ? strip_compression_extensions(dataset.filename, { lowercase: false }).replace(
+          /\.[^.]*$/,
+          ``,
+        ) || undefined
+      : undefined,
+  )
   let trajectory_result = $derived.by(() => {
     const pattern = pattern_result.value
     if (!pattern) return no_result
-    // exported videos are named after the file, mode and q-point
-    const filename_stem =
-      (dataset.filename &&
-        strip_compression_extensions(dataset.filename, { lowercase: false }).replace(
-          /\.[^.]*$/,
-          ``,
-        )) ||
-      undefined
     return try_generate(() => phonon_mode_run(pattern, { amplitude, n_frames, filename_stem }))
   })
   let generation_error = $derived(
@@ -464,7 +465,7 @@ under its open panes -->
 {#snippet structure_overlays()}
   {#if bz_inset.value}
     <BrillouinZone
-      class="bz-inset"
+      class={[`bz-inset`, { enlarged: bz_inset_enlarged }]}
       aria-label="Selected q-point in the Brillouin zone"
       bz_data={bz_inset.value.bz_data}
       k_path={path_link.k_path}
@@ -477,13 +478,11 @@ under its open panes -->
       allow_file_drop={false}
       scene_props={{ gizmo: false }}
       on_kpath_click={(qpoint_idx) => select_on_path(qpoint_idx, selection?.mode_idx ?? 0)}
-      style={bz_inset_enlarged ? `--phonon-bz-inset-size: min(50cqi, 70cqb)` : undefined}
     >
       <button
         type="button"
         class="bz-inset-toggle"
         aria-label={bz_inset_enlarged ? `Shrink Brillouin zone` : `Enlarge Brillouin zone`}
-        aria-pressed={bz_inset_enlarged}
         onclick={() => (bz_inset_enlarged = !bz_inset_enlarged)}
         {@attach tooltip()}
       >
@@ -595,7 +594,7 @@ under its open panes -->
           >
             <!-- a coloring this data can't provide (e.g. a shared URL's element:Fe) shows as
             the fallback the plot draws -->
-            {#each coloring_options as { label }, idx (label)}
+            {#each coloring_options as { label }, idx (idx)}
               <option value={idx}>{label}</option>
             {/each}
           </select>
@@ -608,20 +607,19 @@ under its open panes -->
       </label>
       <!-- a number field like the bar's: a slider across the default 0-300 fps range would
       squeeze the useful 1-60 into its first fifth. A cleared field keeps the current rate. -->
-      <label class="fps-control">
+      <label>
         Speed
         <input
           type="number"
+          style="width: 5em"
           aria-label="Frame rate"
           min={fps_range[0]}
           max={fps_range[1]}
           step={FPS_STEP}
-          bind:value={
-            () => fps,
-            (value) => {
-              if (Number.isFinite(value)) fps = value
-            }
-          }
+          value={fps}
+          oninput={({ currentTarget: { valueAsNumber } }) => {
+            if (Number.isFinite(valueAsNumber)) fps = clamp(valueAsNumber, ...fps_range)
+          }}
           onchange={({ currentTarget }) => (currentTarget.value = String(fps))}
         />
         fps
@@ -708,6 +706,7 @@ under its open panes -->
           {@const cell = supercell.join(`×`)}
           <span
             class="incommensurate"
+            style="font-size: 0.9em"
             {@attach tooltip({
               content: `This q-point is not commensurate with the ${cell} supercell, so opposite box faces do not repeat periodically`,
             })}>⚠ not periodic in {cell}</span
@@ -918,9 +917,6 @@ under its open panes -->
     .incommensurate {
       color: var(--warning-color, #b45309);
     }
-    .incommensurate {
-      font-size: 0.9em;
-    }
     .character,
     .sparse {
       color: var(--text-muted, #6b7280);
@@ -995,6 +991,10 @@ under its open panes -->
       --bz-min-width: 0;
       --bz-bg: color-mix(in srgb, var(--surface-bg, #fff) 70%, transparent);
       --bz-border-radius: var(--border-radius, 3pt);
+      &.enlarged {
+        --bz-width: min(50cqi, 70cqb);
+        --bz-height: min(50cqi, 70cqb);
+      }
       /* revealed on hover or focus; always shown where nothing hovers (touch) */
       .bz-inset-toggle {
         position: absolute;
@@ -1078,9 +1078,6 @@ under its open panes -->
       line-height: 1.4;
       font-size: 1.1em;
     }
-  }
-  .fps-control input {
-    width: 5em;
   }
   .amplitude-control,
   .vector-thickness-control {

@@ -36,7 +36,7 @@
       return width ? sum + width + px(gap) : sum
     }, 0)
   const fit_step_row: Attachment<HTMLElement> = (bar) => {
-    const update = () => {
+    const measure = () => {
       const step = bar.querySelector(`:scope > .step-section`)
       const slider = step?.querySelector(`.slider-container`)
       if (!step || !slider) return (stack_step = false)
@@ -51,7 +51,13 @@
         row_width(step_labels, getComputedStyle(step).columnGap)
       stack_step = room < px(getComputedStyle(slider).flexBasis)
     }
-    const resize = new ResizeObserver(update)
+    // a frame later: flipping the layout inside the observer's callback resizes the observed bar
+    // again in the same frame, which the browser reports as a ResizeObserver loop error
+    let frame = 0
+    const resize = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(measure)
+    })
     // re-observe as controls mount and unmount (panes, menus, the step section itself)
     const observe = () => {
       resize.disconnect()
@@ -63,6 +69,7 @@
     mutations.observe(bar, { childList: true })
     observe()
     return () => {
+      cancelAnimationFrame(frame)
       resize.disconnect()
       mutations.disconnect()
     }

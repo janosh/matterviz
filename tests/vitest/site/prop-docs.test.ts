@@ -1,5 +1,9 @@
 // Generated API reference: prop extraction from component scripts and its demo-page wiring
-import { extract_prop_docs, prop_docs_plugin } from '#root/src/scripts/prop-docs.ts'
+import {
+  extract_prop_docs,
+  prop_docs_plugin,
+  sentence_case,
+} from '#root/src/scripts/prop-docs.ts'
 import type { ComponentDoc, PropDoc } from '#root/src/scripts/prop-docs.ts'
 import PropsTable from '#site/PropsTable.svelte'
 import { PAGE_COMPONENTS, page_components } from '#site/state.svelte.js'
@@ -299,3 +303,15 @@ test(
     ])
   },
 )
+
+test.each([
+  [`label text`, `Label text`],
+  [`x_axis config`, `x_axis config`], // an identifier keeps its case
+  [`on_click(event) fires`, `on_click(event) fires`],
+  [`null uses element colors`, `null uses element colors`], // a JS literal too
+  [`e.g. a list`, `e.g. a list`],
+  [`Already capitalized`, `Already capitalized`],
+  [`λ_qν values`, `λ_qν values`],
+])(`sentence_case(%j) is %j`, (text, expected) => {
+  expect(sentence_case(text)).toBe(expected)
+})

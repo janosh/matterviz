@@ -158,6 +158,10 @@ test(`renders a typed phonon dataset`, async () => {
   set_input(fps_input, ``)
   await tick()
   expect(props.fps).toBe(12)
+  // out-of-range rates clamp to the bar's range, as its own input does
+  set_input(fps_input, 1000)
+  await tick()
+  expect(props.fps).toBe(300)
   // the Brillouin zone inset has no file drop target, controls or fullscreen...
   const inset = await vi.waitFor(() => query(target, `.trajectory-pane .bz-inset`))
   // ...its one button grows it and back
@@ -167,10 +171,10 @@ test(`renders a typed phonon dataset`, async () => {
   query<HTMLButtonElement>(inset, `button`).click()
   await tick()
   expect(props.bz_inset_enlarged).toBe(true) // bindable, so a host can remember it
-  expect(bz_spy.props?.style).toBe(`--phonon-bz-inset-size: min(50cqi, 70cqb)`)
+  expect(bz_spy.props?.class).toEqual([`bz-inset`, { enlarged: true }])
   props.bz_inset_enlarged = false
   await tick()
-  expect(bz_spy.props?.style).toBeUndefined()
+  expect(bz_spy.props?.class).toEqual([`bz-inset`, { enlarged: false }])
   expect(bz_spy.props?.scene_props).toEqual({ gizmo: false }) // too small for an axes gizmo
   props.show_bz_inset = false
   await vi.waitFor(() => expect(target.querySelector(`.bz-inset`)).toBeNull())

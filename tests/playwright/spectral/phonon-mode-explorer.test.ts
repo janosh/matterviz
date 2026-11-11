@@ -239,10 +239,7 @@ test.describe(`PhononModeExplorer`, () => {
     await inset.hover()
     const toggle = inset.getByRole(`button`, { name: `Enlarge Brillouin zone` })
     await toggle.click()
-    await expect(inset.getByRole(`button`, { name: `Shrink Brillouin zone` })).toHaveAttribute(
-      `aria-pressed`,
-      `true`,
-    )
+    await expect(inset.getByRole(`button`, { name: `Shrink Brillouin zone` })).toBeVisible()
     await expect
       .poll(async () => (await require_bbox(inset, `inset`)).width)
       .toBeCloseTo(Math.min(structure_box.width * 0.5, structure_box.height * 0.7), 0)

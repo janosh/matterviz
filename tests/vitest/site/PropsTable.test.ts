@@ -1,6 +1,5 @@
 // PropsTable: rendering of the extracted docs, and a failed load retried on reopen
 import PropsTable from '#site/PropsTable.svelte'
-import { sentence_case } from '#root/src/scripts/prop-docs.ts'
 import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
 import { flushSync, mount } from 'svelte'
 import { expect, test, vi } from 'vitest'
@@ -93,16 +92,4 @@ test(`renders the docs, retrying a failed load when the table is reopened`, asyn
   expect(details.querySelector(`.rest-attributes`)?.textContent).toContain(
     `Also takes any <span> attribute`,
   )
-})
-
-test.each([
-  [`label text`, `Label text`],
-  [`x_axis config`, `x_axis config`], // an identifier keeps its case
-  [`on_click(event) fires`, `on_click(event) fires`],
-  [`null uses element colors`, `null uses element colors`], // a JS literal too
-  [`e.g. a list`, `e.g. a list`],
-  [`Already capitalized`, `Already capitalized`],
-  [`λ_qν values`, `λ_qν values`],
-])(`sentence_case(%j) is %j`, (text, expected) => {
-  expect(sentence_case(text)).toBe(expected)
 })

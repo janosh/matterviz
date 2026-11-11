@@ -41,8 +41,12 @@
     const pending = names // read here, so a new page's components prefetch too
     // a failed prefetch surfaces when the table is opened (the {:catch} below), not here
     const prefetch = () => pending.forEach((name) => load_props(name).catch(() => {}))
-    if (`requestIdleCallback` in globalThis) requestIdleCallback(prefetch)
-    else setTimeout(prefetch, 500) // Safari has no requestIdleCallback
+    if (`requestIdleCallback` in globalThis) {
+      const id = requestIdleCallback(prefetch)
+      return () => cancelIdleCallback(id)
+    }
+    const id = setTimeout(prefetch, 500) // Safari has no requestIdleCallback
+    return () => clearTimeout(id)
   })
 </script>
 

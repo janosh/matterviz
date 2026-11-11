@@ -3,7 +3,7 @@
 // the importing code path never runs (element/data.ts builds lookup tables at load time,
 // so bundlers cannot drop it), which put three.js and the full element dataset into
 // every 2D plot page.
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
@@ -13,8 +13,7 @@ const HEAVY_PACKAGES = [`three`, `@threlte/`]
 
 // Runtime import specifiers of a module, parsed (not regex-matched): `import type`,
 // `export type` and all-type named imports are erased; dynamic import() is lazy.
-function runtime_imports(file: string): string[] {
-  const text = readFileSync(file, `utf8`)
+function runtime_imports(file: string, text = readFileSync(file, `utf8`)): string[] {
   const scripts = file.endsWith(`.svelte`)
     ? [...text.matchAll(/<script\b[^>]*>(?<body>[\s\S]*?)<\/script>/gu)].map(
         (match) => match.groups?.body ?? ``,
@@ -55,8 +54,8 @@ function resolve_local(spec: string, from_file: string): string | null {
     ? resolve(lib_dir, spec.slice(5))
     : resolve(dirname(from_file), spec)
   const stem = base.replace(/\.js$/u, ``)
-  const found = [base, `${stem}.ts`, `${stem}.svelte.ts`, `${stem}/index.ts`].find(
-    (path) => existsSync(path) && statSync(path).isFile(),
+  const found = [base, `${stem}.ts`, `${stem}.svelte.ts`, `${stem}/index.ts`].find((path) =>
+    statSync(path, { throwIfNoEntry: false })?.isFile(),
   )
   if (!found) throw new Error(`${from_file}: cannot resolve ${spec}`)
   return found
@@ -102,10 +101,17 @@ describe(`static import graph`, () => {
       resolve(lib_dir, `element/data.ts`),
     )
     expect(static_closure(`scene/pan.ts`).packages).toContain(`three/webgpu`)
-    // export.ts keeps `import type … from 'three/webgpu'` and dynamic import('three/webgpu')
-    expect(runtime_imports(resolve(lib_dir, `io/export.ts`))).not.toContain(`three/webgpu`)
-    expect(readFileSync(resolve(lib_dir, `io/export.ts`), `utf8`)).toContain(
-      `import type { Camera, Scene, Vector2, WebGPURenderer } from 'three/webgpu'`,
-    )
+  })
+
+  it.each([
+    [`import type { A } from 'x'`, []],
+    [`import { type A } from 'x'`, []],
+    [`export type { A } from 'x'`, []],
+    [`const mod = await import('x')`, []],
+    [`import { type A, B } from 'x'`, [`x`]],
+    [`import 'x'`, [`x`]],
+    [`export { B } from 'x'`, [`x`]],
+  ])(`runtime_imports(%j) is %j`, (text, expected) => {
+    expect(runtime_imports(`fixture.ts`, text)).toEqual(expected)
   })
 })

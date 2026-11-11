@@ -377,6 +377,7 @@ test.each([
   [185, true],
 ])(`a %ipx SequenceControlBar stacks the slider row: %s`, (bar_width, stacked) => {
   // happy-dom has no layout: elements report the width their data-width names
+  const { run_frame } = stub_animation_frames()
   vi.spyOn(Element.prototype, `getBoundingClientRect`).mockImplementation(function (
     this: Element,
   ) {
@@ -406,6 +407,7 @@ test.each([
     Object.defineProperty(bar, `clientWidth`, { value: width, configurable: true })
     trigger_resize_observer(bar)
     flushSync()
+    run_frame(0) // measured a frame later, outside the observer's callback
   }
   resize_to(bar_width)
   expect(bar.classList.contains(`stack_step`)).toBe(stacked)
