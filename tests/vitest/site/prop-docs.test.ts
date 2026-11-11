@@ -66,7 +66,7 @@ describe(`extract_prop_docs`, () => {
         name: `hovered`,
         type: `boolean`,
         default: `false`,
-        description: `Bindable, true while the pointer is over the plot`,
+        description: `True while the pointer is over the plot`,
         bindable: true,
       },
     ],
@@ -182,6 +182,13 @@ describe(`extract_prop_docs`, () => {
 
   test(`skips the ...rest binding`, () => {
     expect(docs.TernaryPlot.props.map(({ name }) => name)).not.toContain(`rest`)
+  })
+
+  test(`throws when two components share a file name`, () => {
+    const files = [`${repo_root}/src/lib/a/X.svelte`, `${repo_root}/src/lib/b/X.svelte`]
+    expect(() => extract_prop_docs(files)).toThrow(
+      `Components share a name: ${files.join(`,`)}`,
+    )
   })
 })
 

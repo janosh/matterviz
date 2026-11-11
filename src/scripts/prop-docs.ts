@@ -292,6 +292,10 @@ let last_program: ts.Program | undefined
 // Prop docs keyed by component name (file basename) for the given .svelte files. Components
 // they import are loaded too (lazily, as virtual TS files) to resolve inherited prop types.
 export const extract_prop_docs = (files: readonly string[]): Record<string, ComponentDoc> => {
+  // docs are keyed by file name, so a second X.svelte would silently replace the first's
+  const by_name = Map.groupBy(files, (file) => basename(file, `.svelte`))
+  const clashes = [...by_name.values()].filter((paths) => paths.length > 1)
+  if (clashes.length) throw new Error(`Components share a name: ${clashes.join(`; `)}`)
   const virtual_files = new Map<string, string>()
   const virtual_text = (name: string): string => {
     let text = virtual_files.get(name)
@@ -362,11 +366,10 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Comp
 const VIRTUAL_ID = `virtual:prop-docs`
 const LIB_DIR = `${repo_root}/src/lib/`
 
-// `virtual:prop-docs` default-exports a loader per src/lib component name, each importing
-// `virtual:prop-docs/<name>`, whose default export is that component's ComponentDoc. A page then
-// fetches only its own components' docs (~2 KB, not all ~330 KB), and the index needs no
-// extraction. The extraction (one TS program over every component, ~2.5 s cold, ~0.4 s after
-// an edit thanks to parsed_files) runs on the first per-component import and is shared by all.
+// `virtual:prop-docs` default-exports a loader per src/lib component name importing
+// `virtual:prop-docs/<name>` (that component's ComponentDoc), so a page fetches only its own
+// components' docs (~2 KB of ~330 KB). One shared extraction (~2.5 s cold, ~0.4 s after an edit)
+// runs on the first per-component import.
 export const prop_docs_plugin = (): Plugin => {
   const component_files = () =>
     globSync(`**/*.svelte`, { cwd: LIB_DIR })
