@@ -991,7 +991,7 @@ under its open panes -->
       --bz-min-width: 0;
       --bz-bg: color-mix(in srgb, var(--surface-bg, #fff) 70%, transparent);
       --bz-border-radius: var(--border-radius, 3pt);
-      &.enlarged {
+      &:global(.enlarged) {
         --bz-width: min(50cqi, 70cqb);
         --bz-height: min(50cqi, 70cqb);
       }
