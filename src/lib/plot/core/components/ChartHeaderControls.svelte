@@ -83,7 +83,8 @@
 
 <style>
   .header-controls {
-    --icon-size: var(--ctrl-btn-icon-size, 1rem);
+    /* a step below the 3D viewers' chrome: 16px icons dwarfed the 12px tick labels */
+    --icon-size: var(--chart-chrome-icon-size, calc(0.8 * var(--ctrl-btn-icon-size, 1rem)));
     position: absolute;
     top: var(--viewer-buttons-top, var(--ctrl-btn-top, 1ex));
     right: var(--fullscreen-btn-right, 4px);
