@@ -512,6 +512,12 @@ describe(`Bands component`, () => {
       on_point_click,
     })
     expect(document.querySelectorAll(`g.fill-region path[fill-opacity]`)).toHaveLength(1)
+    // background bands (highlights, the imaginary half-plane) keep their look under the pointer
+    const region = document.querySelector(`g.fill-region`)
+    region?.dispatchEvent(mouse(`mouseenter`))
+    flushSync()
+    expect(region?.classList.contains(`hovered`)).toBe(false)
+    expect(region?.querySelector(`path`)?.getAttribute(`fill-opacity`)).toBe(`0.2`)
     expect(
       document.querySelectorAll(`svg path[fill="none"][stroke*="--bands-selected-color"]`),
     ).toHaveLength(1)

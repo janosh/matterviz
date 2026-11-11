@@ -20,15 +20,24 @@
   import { type BondAngleMetadata, to_angle_bar_series } from './series'
 
   let {
+    // Structure(s) to analyze: one, a list or a `{ label: structure }` record. Dropped files are added to these.
     structures,
+    // Bonding strategy deciding which atom pairs count as neighbors (`electroneg_ratio` or `explicit_only`).
     strategy = `electroneg_ratio`,
+    // Series split: `by_triplet` (neighbor-center-neighbor elements), `by_structure`, or `none` for one combined histogram.
     split_mode = `by_triplet`,
+    // `counts` plots raw angle counts, `density` divides by bin width and total so structures of different size compare.
     normalize = `counts`,
+    // Histogram bin width in degrees (must be in (0, 180]).
     bin_width = BOND_ANGLE_DEFAULT_BIN_WIDTH,
+    // Only these elements may be the central atom of an angle. Unset allows any.
     center_elements,
+    // Only these elements may be the two outer atoms of an angle. Unset allows any.
     neighbor_elements,
     mode = $bindable(`grouped`),
+    // True while a dropped file is being read; shows the loading message in the empty state.
     loading = $bindable(false),
+    // Error text shown in a dismissible notice, e.g. a failed file drop or a structure the neighbor search rejected.
     error_msg = $bindable(),
     show_controls,
     controls_open = $bindable(false),

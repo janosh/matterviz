@@ -63,6 +63,7 @@
     backdrop: backdrop_color,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Label shown beside the bar; with property or color scale options it becomes a dropdown trigger
     title?: string
     // Discrete label → color swatches replace the continuous gradient and ticks.
     categories?: Record<string, string>
@@ -73,26 +74,33 @@
     color_scale?: ColorScale
     // Defaults to the side opposite the ticks (left of a vertical bar with inside ticks)
     title_side?: `left` | `right` | `top` | `bottom`
+    // Inline CSS appended to the gradient bar's style
     bar_style?: string
+    // Inline CSS appended to the title row's style
     title_style?: string
+    // Inline CSS appended to the outer wrapper's style (e.g. to set its size)
     wrapper_style?: string
     tick_labels?: (string | number)[] | number // explicit tick values, or how many to generate
     tick_format?: string // d3-format spec, or d3-time-format spec when it starts with `%`
     // 'primary' = bottom (horizontal) / right (vertical), 'secondary' = the opposite edge,
     // 'inside' = centered within the bar, hiding the first/last tick
     tick_side?: `primary` | `secondary` | `inside`
+    // `horizontal` (default) or `vertical` bar; vertical runs from low (bottom) to high (top)
     orientation?: Orientation
     snap_ticks?: boolean // extend value_range to nice bounds; log/arcsinh ticks are always pretty
     steps?: number // number of gradient color stops sampled from the scale
     nice_range?: Vec2 // read-only binding: the niced range when snapping ticks, else value_range
     // Property selection (makes the title an interactive dropdown)
     property_options?: AxisOption[]
+    // Key of the currently selected entry in `property_options`
     selected_property_key?: string
     // The caller owns loading and commits selected_property_key/color_scale/title together.
     loading?: boolean
+    // Called with the key picked from `property_options`
     on_property_change?: (key: string) => void
     // Dropdown labels only; the caller supplies the committed mapping through `color_scale`.
     color_scale_options?: ColorScaleOption[]
+    // Key of the currently selected entry in `color_scale_options`
     selected_color_scale_key?: string
     // The caller commits the selected key and `color_scale` together.
     on_color_scale_change?: (key: string) => void

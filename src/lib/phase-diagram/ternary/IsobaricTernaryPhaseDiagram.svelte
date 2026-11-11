@@ -89,6 +89,7 @@
     children,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
+    // Convex-hull entries (ternary compositions with energies) the diagram is computed from; replaced by dropped files.
     entries?: PhaseData[]
     // Extra compute options (corner order, event_tolerance, explicit temperatures, ...); the
     // bindable compute props below override matching fields
@@ -98,16 +99,25 @@
     pinned_composition?: Vec2 | null // composition probe (Gibbs-triangle xy) shared by views
     diagram?: TernaryPhaseDiagram | null // computed result (read-only binding)
     display?: Partial<TernaryDisplay> // view settings, merged over TERNARY_DISPLAY_DEFAULTS
+    // Free-energy source per entry: `tabulated`, `sisso`, `static` (0 K), or `auto` to pick the best available.
     free_energy_mode?: FreeEnergyMode
+    // Temperature sweep [min, max] in K; defaults to the range the entries support.
     t_range?: Vec2
+    // Number of evenly spaced temperatures sampled over t_range.
     n_samples?: number
     // Treat O/N/H/F as diatomic gases at gas_pressures (bar)
     gas_enabled?: boolean
+    // Partial pressure in bar per gas species (O, N, H, F); used when gas_enabled.
     gas_pressures?: Partial<Record<GasSpecies, number>>
+    // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, fullscreen) appear.
     show_controls?: ShowControlsProp<`controls` | `fullscreen`>
+    // Whether the controls pane is open.
     controls_open?: boolean
+    // Whether the diagram fills the screen.
     fullscreen?: boolean
+    // Show the fullscreen button in the controls.
     fullscreen_toggle?: boolean
+    // The root element. Read-only.
     wrapper?: HTMLDivElement
     // Dropped JSON arrays of convex-hull entries replace `entries`
     allow_file_drop?: boolean
@@ -115,9 +125,11 @@
     on_file_drop?: FileLoadCallback
     // Called with each dropped file's entries once they are shown
     on_file_load?: (data: PhaseEntriesLoadData) => void
+    // Heading shown above the diagram; HTML is sanitized.
     title?: string
     // false hides the hover tooltip, a snippet replaces its content
     tooltip?: TooltipProp<TernaryPhaseHover>
+    // Extra content rendered after the diagram, given the computed diagram and current temperature in K.
     children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
   } = $props()
 

@@ -39,7 +39,9 @@
     | `controls_pane_props`
     | `user_content`
   > & {
+    // Space groups to count, as numbers (1-230), Hermann-Mauguin symbols or numeric strings; unparsable entries are dropped
     data: (number | string)[]
+    // Annotates each crystal system region with its total count
     show_counts?: boolean
   } = $props()
 

@@ -4,6 +4,7 @@
 import type { Sides } from '#lib/plot/core/layout.js'
 import type { Vec2 } from '#lib/math.js'
 import { vec2_equal } from '#lib/plot/core/interactions.js'
+import { tick_font_size } from '#lib/plot/core/tick-layout.js'
 import {
   axis_with_range,
   is_valid_range,
@@ -206,6 +207,13 @@ export function create_bands_dos_sync(inputs: BandsDosSyncInputs) {
     },
     get shared_padding() {
       return shared_padding
+    },
+    // One --linked-tick-font-size for both panels, from their joint size: sized per plot, a
+    // narrow side DOS fell to the 9px floor beside the bands' 0.8em, putting its tick row (and
+    // x-axis title) out of line. Undefined until measured, leaving PlotAxis's own default.
+    get tick_font_size() {
+      const [width, height] = inputs.size()
+      return width && height ? tick_font_size(`${Math.min(width, height)}px`) : undefined
     },
     // bind:resolved_padding setter for both panels. Only side-by-side reports count: stacked
     // panels share no padding, and their (larger) margins would otherwise stay in the floor

@@ -80,42 +80,64 @@
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
     Omit<BasePlotProps, `range_padding` | `title`> & {
+      // Nodes and the links between them (source, target, value); cycles and unknown node refs show an error message
       data?: SankeyData<Metadata>
+      // `horizontal` flows left to right, `vertical` top to bottom
       orientation?: Orientation
+      // Node thickness in px across the flow direction
       node_width?: number
+      // Gap in px between nodes in the same column
       node_padding?: number
+      // Column assignment of nodes: `left`, `right`, `center` or `justify` (d3-sankey alignments)
       node_align?: SankeyNodeAlign
       // Fold each node's small outgoing links into one 'Other' link; see bucket_sankey_data
       min_fraction?: number
+      // Most outgoing links kept per node before the rest fold into 'Other' (0 = unlimited); not a hard cap, links onward to other nodes are kept
       max_links?: number
+      // Number of d3-sankey layout relaxation passes
       iterations?: number
+      // Opacity of link ribbons from 0 to 1
       link_opacity?: number
+      // Ribbon color: `source` or `target` node color, a `gradient` between them, or `static` neutral; a link's own color wins
       link_color_mode?: SankeyLinkColorMode
+      // Draws each node's label beside it
       show_node_labels?: boolean
+      // Custom label text per node; unset uses the node's label or id
       node_label?: (node: PositionedNode) => string
+      // d3-format specifier for node and link values in tooltips (default `,`)
       value_format?: string
       padding?: Sides
+      // Legend placement and styling; null hides it
       legend?: LegendConfig | null
+      // Shows one legend entry per node; off unless set, since nodes are labelled in place
       show_legend?: boolean
+      // Snippet that replaces the hover tooltip content, or false to hide it
       tooltip?: TooltipProp<SankeyHandlerProps<Metadata>>
       // Fully replace the default node rect / link ribbon. NOTE: this also replaces the
       // built-in hover/focus/click + tooltip wiring, so re-implement any interactivity
       // you need inside the snippet.
       node_content?: Snippet<[{ node: PositionedNode; color: string }]>
+      // Same as `node_content` but for link ribbons, given the link and its resolved color
       link_content?: Snippet<[{ link: PositionedLink; color: string }]>
+      // Called when a node is clicked or activated by keyboard
       on_node_click?: (
         data: SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called with the hovered node, or null when the pointer or focus leaves it
       on_node_hover?: (
         data: (SankeyNodeHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
+      // Called when a link is clicked or activated by keyboard
       on_link_click?: (
         data: SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called with the hovered link, or null when the pointer or focus leaves it
       on_link_hover?: (
         data: (SankeyLinkHandlerProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
       ) => void
+      // Extra header buttons rendered next to the built-in fullscreen and controls toggles
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      // Snippet rendered at the end of the settings pane, given the current orientation
       controls_extra?: Snippet<[{ orientation: Orientation }]>
     } = $props()
 

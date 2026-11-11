@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify'
-import { format_formula_html } from './composition/format'
+import { format_formula_html } from './composition/formula-markup'
 import { evict_oldest } from './labels'
 import { html_to_text } from './utils'
 import { escape_html } from 'svelte-widgets/utils'

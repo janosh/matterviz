@@ -32,17 +32,25 @@
   }: {
     // Slabs whose lattice rows a and b span the surface, e.g. from make_slab
     substrate: Crystal
+    // Film slab stacked on the substrate, same surface-frame convention as the substrate.
     film: Crystal
     // Index into the matches (smallest cell first); clamped when the list shrinks
     match_idx?: number
+    // Distance in Å between the substrate top and the film bottom.
     gap?: number
+    // Empty distance in Å above the film along the surface normal.
     vacuum?: number
+    // In-plane registry offset of the film in fractional coordinates of the interface cell.
     shift?: Vec2
+    // Largest coincidence-cell area in Å^2 searched on either side.
     max_area?: number
+    // Max relative mismatch of the two super-lattice vector lengths.
     length_tol?: number
+    // Max relative mismatch of the angle between the super-lattice vectors.
     angle_tol?: number
     // The stacked heterostructure, or null while there is no match or the inputs fail
     interface?: Heterostructure | null
+    // Message of the failed lattice match or stacking, null while the inputs produce an interface.
     error?: string | null
   } & HTMLAttributes<HTMLDivElement> = $props()
 

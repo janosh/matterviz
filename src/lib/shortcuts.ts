@@ -63,6 +63,8 @@ export const SHORTCUTS = {
   temperature_step: { keys: `ArrowLeft ArrowRight`, description: `Lower / raise temperature`, scopes: [`ternary-phase-diagram`] },
   temperature_jump: { keys: `Shift+ArrowLeft Shift+ArrowRight`, description: `Previous / next phase transition`, scopes: [`ternary-phase-diagram`] },
   temperature_play: { keys: `Space`, description: `Play / pause temperature sweep`, scopes: [`ternary-phase-diagram`] },
+  phonon_qpoint: { keys: `Shift+ArrowLeft Shift+ArrowRight`, description: `Previous / next q-point along the path`, scopes: [`phonon-explorer`] },
+  phonon_mode: { keys: `Shift+ArrowDown Shift+ArrowUp`, description: `Lower / higher mode`, scopes: [`phonon-explorer`] },
 } as const satisfies Record<string, Shortcut>
 
 export type ShortcutId = keyof typeof SHORTCUTS

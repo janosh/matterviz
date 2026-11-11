@@ -62,13 +62,17 @@
     inset,
     tooltip,
     on_activate,
+    // Keydown handler on the table, run before arrow-key tile navigation; call preventDefault() to skip navigation.
     onkeydown: on_table_keydown,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Props spread onto every ElementTile (e.g. show_name, symbol_style); the per-tile active, backdrop, element, href, label, segments and split_layout are set by the table.
+    // Its own onmouseenter, onmouseleave, onfocus, onblur and onpointerdown replace yours (as onclick and onkeydown do on interactive tiles, where tile_props.onclick still runs on activation).
     tile_props?: Omit<
       Partial<ComponentProps<typeof ElementTile>>,
       `active` | `backdrop` | `element` | `href` | `label` | `segments` | `split_layout`
     >
+    // Show a photo of the active element in the empty area left of the f-block rows.
     show_photo?: boolean
     disabled?: boolean // disable hover and click events from updating active_element
     // array (positional by atomic number, can be partial) or object keyed by element symbol.
@@ -78,8 +82,11 @@
     // links is either string with element property (name, symbol, number, ...) to use as link,
     // or object with mapping element symbols to link
     links?: keyof ChemicalElement | Partial<Record<ElementSymbol, string>> | null
+    // Color scale mapping heatmap_values to tile colors: a d3 interpolator name, function or scale config.
     color_scale?: ColorScale
+    // Hovered or keyboard-focused element, null when none. Bindable; writes are ignored while disabled.
     active_element?: ChemicalElement | null
+    // Element category currently highlighted (e.g. by hovering a lanthanide/actinide inset tile); tiles of this category show as active.
     active_category?: ElementCategory | null
     // array of element symbols or ChemicalElement objects to highlight
     active_elements?: (ElementSymbol | ChemicalElement)[]
@@ -93,14 +100,18 @@
       number: string
       category: ElementCategory
     }[]
+    // Per-element tile color keyed by symbol; wins over the heatmap color scale and exempts the tile from missing styling.
     color_overrides?: Partial<Record<ElementSymbol, string>>
+    // Per-element text keyed by symbol, shown instead of the element name (hidden when the tile shows value labels).
     labels?: Partial<Record<ElementSymbol, string>>
     missing?: MissingCellStyle // styling for tiles with no heatmap value
     // control the layout of multi-value splits for all tiles
     split_layout?: SplitLayout
     // auto color bar shown when heatmap_values is provided; null hides it
     color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
+    // Content for the empty grid area above the d-block (columns 3-12, top rows); replaces the auto color bar. Receives the active element.
     inset?: Snippet<[{ active_element: ChemicalElement | null }]>
+    // Hover tooltip: a snippet replaces the default, false disables it. Clicking a tile without link or on_activate pins it.
     tooltip?: TooltipProp<{
       element: ChemicalElement
       value: HeatValue | null
@@ -108,6 +119,7 @@
       bg_color: string | null
       scale_context: ScaleContext
     }>
+    // Called with the element when an unlinked tile is clicked or activated by keyboard; makes tiles focusable buttons.
     on_activate?: (element: ChemicalElement) => void
   } = $props()
 

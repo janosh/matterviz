@@ -145,7 +145,7 @@
     atom_radius = DEFAULTS.structure.atom_radius,
     atom_opacity = 1,
     same_size_atoms = false,
-    // bindable: the auto-placement effect below assigns the position it computes, which a
+    // The auto-placement effect below assigns the position it computes, which a
     // plain prop would strand here, leaving the parent to re-push its stale value
     camera_position = $bindable(undefined),
     camera_target = $bindable(undefined),
@@ -366,7 +366,7 @@
     site_label_bg_color?: string
     site_label_color?: string
     site_label_padding?: number
-    camera_is_moving?: boolean // bindable: true while orbit controls are active
+    camera_is_moving?: boolean // True while orbit controls are active
     series_key?: unknown // changes with a new series (file); frames within one share it
     width?: number // Viewer dimensions for responsive zoom
     height?: number

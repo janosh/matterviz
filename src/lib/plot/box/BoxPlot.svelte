@@ -168,35 +168,56 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     CartesianPlotProps & {
+      // One box or violin per series, each summarizing the raw samples in its `y`
       series?: readonly BoxPlotSeries<Metadata>[]
+      // `vertical` puts categories on x and values on y; `horizontal` swaps them
       orientation?: Orientation
+      // Box fill and outline overrides (color, opacity, stroke, corner radius)
       box?: BoxStyle
+      // Whisker line width, color and cap length (fraction of box width)
       whisker?: WhiskerStyle
+      // Median line width and color
       median_style?: BoxLineStyle
       // Sample dots: the outliers, or every sample when `points` draws them
       sample_style?: SampleStyle
+      // How whiskers are computed: `tukey` (IQR multiple), `minmax`, `percentile` or `std`; per-series `whisker_mode` wins
       whisker_mode?: WhiskerMode
+      // Multiple of the IQR (`tukey`) or of the standard deviation (`std`) at which whiskers end (default 1.5)
       whisker_range?: number
+      // Lower and upper percentile for `percentile` whiskers (default [5, 95])
       whisker_percentiles?: Vec2
+      // Draws samples beyond the whiskers as dots
       show_outliers?: boolean
+      // Draws a marker at each distribution's mean
       show_mean?: boolean
       // Every sample over its box/violin: jittered `strip` or non-overlapping `swarm`. Drawn
       // samples include the outliers, so the separate outlier markers are dropped.
       points?: BoxPointMode
+      // Prints a statistic above each box (right of it when horizontal)
       show_value_labels?: boolean
+      // Statistic printed by `show_value_labels`
       value_label_stat?: `median` | `mean`
+      // d3-format specifier for those labels; empty uses adaptive number formatting
       value_label_format?: string
+      // Glyph per series: `box`, `violin` (KDE density) or `violin+box`; per-series `kind` wins
       kind?: ViolinKind
+      // Which half of its slot a violin fills: `both`, `positive` or `negative` (split violins)
       side?: ViolinSide
       bandwidth?: BandwidthOption // violin KDE; a number is in decades on a log value axis
+      // Violin width as a fraction of its category slot
       violin_width?: number
+      // Violin fill opacity and outline width
       violin_style?: ViolinStyle
       kde_clip?: [number | null, number | null] // hard KDE bounds for every series (e.g. [0, null])
+      // Snippet that replaces the hover tooltip content, or false to hide it
       tooltip?: TooltipProp<BoxHandlerProps<Metadata>>
+      // Snippet rendered at the end of the settings pane, given the orientation and axis configs
       controls_extra?: Snippet<[{ orientation: Orientation } & Required<PlotConfig>]>
+      // Called when a box is clicked or activated by keyboard
       on_box_click?: (
         data: BoxHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called with the hovered box, or null when the pointer or focus leaves it
       on_box_hover?: (
         data:
           | (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })

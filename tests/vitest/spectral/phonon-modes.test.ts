@@ -5,10 +5,11 @@ import {
 } from '#lib/trajectory/frame.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { create_cart_to_frac, create_frac_to_cart, dot } from '#lib/math.js'
-import type { Complex, PhononModeData } from '#lib/spectral/index.js'
+import type { Complex, PhononModeData, VibrationalSpectrum } from '#lib/spectral/index.js'
 import {
   is_commensurate_phonon_supercell,
   is_imaginary_frequency,
+  is_phonon_band_coloring,
   nearest_qpoint_with_eigenvector,
   PHONON_VECTOR_KEY,
   phonon_band_structure_from_modes,
@@ -16,6 +17,7 @@ import {
   phonon_mode_pattern,
   phonon_mode_run,
   phonon_mode_trajectory as create_phonon_mode_run,
+  phonon_mode_values,
   phonon_qpoint_labels,
   phonon_supercell,
   qpoint_has_eigenvectors,
@@ -372,6 +374,12 @@ describe(`staged phonon runs`, () => {
     const short_run = phonon_mode_run(pattern_a, { amplitude: 0.5, n_frames: 4 })
     const long_run = phonon_mode_run(pattern_a, { amplitude: 0.5, n_frames: 4000 })
     expect(long_run.frame_count).toBe(4000)
+    // named for exports by mode and q-point (1-based), under a caller's stem
+    expect(short_run.provenance.filename).toBe(
+      `phonon-mode-${pattern_a.selection.mode_idx + 1}-q${pattern_a.selection.qpoint_idx + 1}`,
+    )
+    const named = phonon_mode_run(pattern_a, { n_frames: 4, filename_stem: `NaCl` })
+    expect(named.provenance.filename).toMatch(/^NaCl-mode-\d+-q\d+$/)
     expect(long_run.properties.rows).toHaveLength(4000)
     // Frame 1000 of 4000 is a quarter cycle, like frame 1 of 4.
     const quarter_a = materialize_frame_result(short_run.read_frame(1))
@@ -426,6 +434,104 @@ describe(`staged phonon runs`, () => {
     expect(participation_ratio).toBeLessThanOrEqual(1)
     const lone = phonon_mode_character(make_mode_data(real_x), real_x)
     expect(lone).toEqual({ element_weights: [[`H`, 1]], participation_ratio: 1 })
+  })
+})
+
+describe(`phonon_mode_values`, () => {
+  // every q-point of the NaCl fixture carries eigenvectors for all 6 modes
+  it(`gives each element's share and the participation ratio of every mode`, () => {
+    const [na, cl, participation] = (
+      [`element:Na`, `element:Cl`, `participation`] as const
+    ).map((coloring) => phonon_mode_values(nacl_data, coloring))
+    expect([na?.label, cl?.label, participation?.label]).toEqual([
+      `Na share`,
+      `Cl share`,
+      `Participation ratio`,
+    ])
+    expect(na?.qpoints).toEqual(nacl_data.qpoints.map(({ q_position }) => q_position))
+    expect(na?.frequencies).toEqual(
+      nacl_data.qpoints.map(({ modes }) => modes.map(({ frequency }) => frequency)),
+    )
+    // the two shares of each mode sum to 1 (to f64 round-off over 6 summed squares)
+    const sums = na?.values.flatMap((row, q_idx) =>
+      row.map((share, mode_idx) => share + (cl?.values[q_idx][mode_idx] ?? NaN)),
+    )
+    expect(sums).toHaveLength(30)
+    for (const sum of sums ?? []) expect(Math.abs(sum - 1)).toBeLessThan(1e-14)
+    const optical = nacl_data.qpoints[0].modes[3].eigenvector
+    if (!optical) throw new Error(`fixture mode has no eigenvector`)
+    expect(participation?.values[0][3]).toBe(
+      phonon_mode_character(nacl_data, optical).participation_ratio,
+    )
+  })
+
+  it(`skips q-points without eigenvectors and marks modes without one NaN`, () => {
+    const data = make_mode_data(real_x)
+    const blank = { q_position: [0.5, 0, 0] as Vec3, distance: 0.5, modes: [] }
+    data.qpoints = [
+      {
+        ...data.qpoints[0],
+        modes: [...data.qpoints[0].modes, { frequency: 2, eigenvector: null }],
+      },
+      {
+        ...blank,
+        modes: [
+          { frequency: 1, eigenvector: null },
+          { frequency: 3, eigenvector: null },
+        ],
+      },
+    ]
+    const values = phonon_mode_values(data, `participation`)
+    expect(values?.qpoints).toEqual([[0, 0, 0]])
+    expect(values?.values).toEqual([[1, NaN]])
+  })
+
+  const spectrum: VibrationalSpectrum = {
+    n_atoms: 2,
+    q_position: [0, 0, 0],
+    has_raman: true,
+    // out of mode order, as a spectrum's modes need not be sorted
+    modes: [
+      { mode_idx: 1, frequency: 5, ir_intensity: 0.2, raman_activity: null },
+      { mode_idx: 0, frequency: 0, ir_intensity: 0, raman_activity: 3 },
+    ].map((mode) => ({
+      ...mode,
+      depolarization_ratio: null,
+      is_acoustic: false,
+      is_imaginary: false,
+    })),
+  }
+  it.each([
+    [`ir`, `IR intensity`, [0, 0.2]],
+    [`raman`, `Raman activity`, [3, NaN]],
+  ] as const)(`draws the spectrum's %s activity at its q-point`, (coloring, label, row) => {
+    expect(phonon_mode_values(nacl_data, coloring, spectrum)).toEqual({
+      label,
+      qpoints: [[0, 0, 0]],
+      frequencies: [[0, 5]],
+      values: [row],
+    })
+  })
+
+  it.each([
+    [`ir`, undefined],
+    [`raman`, { ...spectrum, has_raman: false }],
+    [`element:Fe`, spectrum],
+  ] as const)(`is null for %s when the data lacks it`, (coloring, maybe_spectrum) => {
+    expect(phonon_mode_values(nacl_data, coloring, maybe_spectrum)).toBeNull()
+  })
+
+  it.each([
+    [`participation`, true],
+    [`ir`, true],
+    [`raman`, true],
+    [`element:Na`, true],
+    [`element:`, false],
+    [`element:N a`, false],
+    [`fat`, false],
+    [``, false],
+  ])(`is_phonon_band_coloring(%j) is %s`, (value, expected) => {
+    expect(is_phonon_band_coloring(value)).toBe(expected)
   })
 })
 

@@ -329,6 +329,8 @@ describe(`Settings`, () => {
       },
       'spectral/PhononModeExplorer': {
         vector_color: `null uses element colors for eigenvectors instead of the structure viewer's uniform red`,
+        fps: `DEFAULT_PHONON_FPS paces one generated vibration cycle, not a recorded MD trajectory`,
+        auto_play: `a picked mode animates at once: the motion is the point of the viewer`,
       },
     }
 

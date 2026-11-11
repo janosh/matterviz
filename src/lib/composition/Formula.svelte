@@ -31,13 +31,19 @@
     on_click,
     ...rest
   }: HTMLAttributes<HTMLElement> & {
+    // Formula string (e.g. `Fe2O3`, with optional oxidation states) or record of element -> amount and oxidation state.
     formula: string | OxiComposition
+    // Element color scheme used to tint the element symbols.
     color_scheme?: ColorSchemeName
+    // Element order: `original` as written, `electronegativity`, `alphabetical` or `hill`.
     ordering?: FormulaOrdering
+    // HTML tag name of the root element (default `span`).
     as?: string
+    // format_num spec for stoichiometric amounts; the default shows up to 3 decimals, with 3 significant digits below 1.
     amount_format?: string
     tooltip_side?: TooltipSide // preferred side; flips to the opposite one at the viewport edge
     tooltip_offset?: number // gap between the hovered symbol and the tooltip in px
+    // Called when an element symbol is clicked or activated by keyboard; makes the symbols focusable buttons.
     on_click?: (element: ElementSymbol, event: MouseEvent | KeyboardEvent) => void
   } = $props()
 

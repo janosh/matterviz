@@ -141,28 +141,48 @@
       `padding` | `range_padding` | `title` | `hovered` | `fullscreen` | `fullscreen_toggle`
     > &
     ExportProps & {
+      // Point series with x and y arrays (typed arrays welcome), binned into a density map
       series: DensePointSeries<Metadata>[]
+      // X axis label, ticks, scale type and range
       x_axis?: AxisConfig
+      // Y axis label, ticks, scale type and range
       y_axis?: AxisConfig
+      // How per-point size values map to marker radius in points mode, plus the hit-test radius
       size_scale?: BinnedSizeScaleConfig
+      // Color bar props for the density scale in density mode; null hides it
       color_bar?: ColorBarDecorationProps | null
+      // Density bin size in px, color scale, the visible-point limits for switching to points, and what a bin click does
       density?: BinnedDensityConfig
+      // Extra geometry drawn over the plot, e.g. reference lines (style only, no annotations or events)
       overlays?: BinnedOverlaysConfig
+      // Snippet that replaces the hover tooltip content, or false to hide it
       tooltip?: TooltipProp<BinnedPointPayload<Metadata, PointData>>
+      // Computes extra data per point, passed to the tooltip and label snippets as `point_data`
       point_data?: BinnedPointDataFn<Metadata, PointData>
+      // Labels beside individual points in points mode, with a count limit, font and placement
       point_labels?: BinnedPointLabelsConfig<Metadata, PointData>
+      // Id (from a series' `point_ids`) of the point to highlight in points mode
       selected_point_id?: string | number | null
+      // Called when a point is clicked in points mode
       on_point_click?: (payload: ScatterHandlerProps<Metadata> & DensePointEvent) => void
+      // Called when a density bin is clicked with `density.bin_click` set to `zoom`
       on_density_zoom?: (payload: { bin: DensityBin; event: MouseEvent }) => void
+      // `density` bins or individual `points`; switches automatically per `density.auto_point_mode`
       render_mode?: RenderMode
+      // The outer container element
       wrapper?: HTMLDivElement
+      // Wheel, drag and touch panning/zooming options; `{ enabled: false }` turns it off
       pan?: PanConfig
+      // Rendered over the plot, receives its measured size
       children?: Snippet<[OverlayContext]>
+      // Extra header buttons rendered next to the fullscreen toggle
       header_controls?: Snippet<[OverlayContext]>
       // auto-placed badge (e.g. MAE/R² stats): rendered inside the plot area wherever it
       // overlaps the least data, while also avoiding the auto-placed colorbar
       annotation?: Snippet<[OverlayContext]>
+      // Marginal distribution plots along the plot edges: true, a type, or a per-side map
       marginals?: MarginalsProp
+      // Layout context a FacetGrid passes to a child plot so panels share padding and axis ranges
       facet_layout?: FacetLayoutContext
     } = $props()
 

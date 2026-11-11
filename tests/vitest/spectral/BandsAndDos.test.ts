@@ -172,6 +172,9 @@ describe(`bands/DOS wrappers`, () => {
       plot.querySelector(`line[stroke*="--${panel}-reference-line-color"]`)
     const svg = plot_svg(bands_plot)
     svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
+    // the axes re-measure their (shared) tick font after mount, which moves the padding
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    flushSync()
     const point = marker_position(bands_plot, 1) // band 1 at the middle q-point: 1 THz
     svg.dispatchEvent(mouse(`mousemove`, { clientX: point.x, clientY: point.y }))
     await new Promise((resolve) => requestAnimationFrame(resolve))

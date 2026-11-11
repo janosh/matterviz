@@ -26,11 +26,15 @@
     data_label = `E(V) data`,
     ...rest
   }: {
+    // Cell volumes of the scan in Å³, same length as `energies`.
     volumes: number[]
+    // Total energies in eV, one per volume.
     energies: number[]
+    // Equations of state to fit and draw: `birch_murnaghan`, `murnaghan` and/or `vinet`, one curve each.
     kinds?: EosKind[]
     fits?: EosFit[] // read-only output: the successful fits, in `kinds` order
     show_fit_params?: boolean // E0, V0, B0, B0', RMSE in a fit curve's hover tooltip
+    // Legend label of the scanned (volume, energy) points.
     data_label?: string
   } & ScatterPlotOptions = $props()
 

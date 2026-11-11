@@ -12,7 +12,7 @@
     PhaseHoverInfo,
     TempUnit,
   } from './types'
-  import { format_label_html } from '#lib/composition/format.js'
+  import { format_label_html } from '#lib/composition/formula-markup.js'
   import {
     boundary_description,
     lever_rule_rows,

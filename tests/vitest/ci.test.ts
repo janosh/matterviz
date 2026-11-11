@@ -268,9 +268,14 @@ test(`release builds overlap CI while every publisher waits for CI and all artif
   for (const name of packages) expect(release_jobs[name].needs).toBe(`prepare`)
   const publishers = Object.keys(release_jobs).filter((name) => name.startsWith(`publish_`))
   expect(publishers).toHaveLength(3)
+  // publishers wait on ci_gate, which fails unless CI passed (reused from main or run here):
+  // gating on ci directly would publish when ci is skipped by a cancelled ci_status
   for (const name of publishers) {
-    expect(new Set(release_jobs[name].needs)).toEqual(new Set([`prepare`, `ci`, ...packages]))
+    expect(new Set(release_jobs[name].needs)).toEqual(
+      new Set([`prepare`, `ci_gate`, ...packages]),
+    )
   }
+  expect(new Set(release_jobs.ci_gate.needs)).toEqual(new Set([`ci_status`, `ci`]))
   expect(new Set(release_jobs.finalize.needs)).toEqual(new Set([`prepare`, ...publishers]))
 })
 

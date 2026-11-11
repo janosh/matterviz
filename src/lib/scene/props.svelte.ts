@@ -35,22 +35,22 @@ export type ThreltePointerEvent = {
 
 // Camera/lighting/interaction props shared by all Threlte scene components (BrillouinZoneScene, FermiSurfaceScene, StructureScene, ...)
 export type SceneControlProps = {
-  camera_projection?: CameraProjection
+  camera_projection?: CameraProjection // perspective or orthographic camera
   rotation_damping?: number // how quickly rotation comes to rest after mouse release
-  max_zoom?: number
-  min_zoom?: number
+  max_zoom?: number // zoom-in limit in px per Å; unset or 0 = unlimited (never below the fitted zoom)
+  min_zoom?: number // zoom-out limit in px per Å; unset stops at the zoom that fits the scene, lower zooms out further
   rotate_speed?: number // set to 0 to disable rotation
   zoom_speed?: number // set to 0 to disable zooming
   pan_speed?: number // set to 0 to disable panning
   zoom_to_cursor?: boolean // zoom toward cursor position instead of scene center
   fov?: number // perspective camera field of view
   initial_zoom?: number // initial orthographic camera zoom
-  ambient_light?: number
-  directional_light?: number
-  gizmo?: boolean | GizmoOptions
+  ambient_light?: number // intensity of the uniform fill light
+  directional_light?: number // intensity of the directional key light, which shades the surfaces
+  gizmo?: boolean | GizmoOptions // corner axes widget; clicking an axis flies the camera to it
   auto_rotate?: number // speed; 0 disables auto-rotation
-  scene?: Scene // bindable: Threlte scene for external use (e.g. export pane)
-  camera?: Camera // bindable: active camera for external use
+  scene?: Scene // Threlte scene for external use (e.g. export pane)
+  camera?: Camera // Active camera for external use
 }
 
 // The camera/lighting/interaction props above minus the bindables and the projection (whose

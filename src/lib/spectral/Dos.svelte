@@ -81,16 +81,22 @@
     // bands, else right) over the DOS frequencies, never rescaled with units, normalized or
     // stacked
     a2f?: Record<string, PhononDos>
+    // Stack the curves cumulatively as filled areas instead of overlaying them.
     stack?: boolean
     // sigma, sigma_range and both frequencies are in the data unit (THz or eV) whatever
     // `units` displays, so they pass unchanged between Bands, Dos and PhononModeExplorer.
     // Every curve (α²F too) is smoothed by sigma or, if wider, the display width that only
     // removes detail finer than the plot draws (see display_smoother), so 0 draws that.
     sigma?: number
+    // Frequency unit displayed for phonon DOS (data stays in THz); electronic energies are never converted.
     units?: FrequencyUnit
+    // Density scaling: `max` (peak = 1), `sum`, `integral` (area = 1) or null for raw values.
     normalize?: NormalizationMode
+    // `horizontal` puts frequency or energy on y and density on x, to sit beside a band structure.
     orientation?: `vertical` | `horizontal`
+    // Output: frequency under the pointer in the data unit (THz or eV), null when none.
     hovered_frequency?: number | null
+    // Frequency in the data unit (THz or eV) at which a dashed reference line is drawn; null draws none.
     reference_frequency?: number | null
     fermi_level?: number // electronic reference, zero allowed; omitted uses the data's efermi
     spin_mode?: SpinMode // How to display spin-polarized DOS: mirror (default), overlay, up_only, down_only, or null (auto)

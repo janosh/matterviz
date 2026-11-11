@@ -536,17 +536,20 @@ describe(`controls`, () => {
   // A render sample shows every n-th atom: inspector rows name source atoms, the scene numbers
   // its sites, so selection and hover map between the two in both directions
   // Open by default, except where its menu entry is hidden: there nothing could close it.
-  // Its Info tab shows the info pane's cards, so the info button hides while it shows.
+  // Its Info tab shows the info pane's cards, so the info button hides while it shows. The
+  // analysis button lights up for it only where its menu entry shows (null: no button).
   // oxfmt-ignore
   test.each([
-    [`default props`, {}, true, false],
-    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true],
-    [`no controls`, { show_controls: `never` as const }, false, false],
-    [`data_inspector_open=false`, { data_inspector_open: false }, false, true],
+    [`default props`, {}, true, false, true],
+    [`a hidden menu entry`, { show_controls: { hidden: [`data-inspector-pane` as const] } }, false, true, false],
+    [`no controls`, { show_controls: `never` as const }, false, false, null],
+    [`data_inspector_open=false`, { data_inspector_open: false }, false, true, false],
   ])(
-    `with %s the inspector sidebar shows: %s, the info button: %s`,
-    (_name, overrides, shown, info_button) => {
+    `with %s the inspector sidebar shows: %s, the info button: %s, analysis active: %s`,
+    (_name, overrides, shown, info_button, analysis_active) => {
       const target = mount_trajectory(default_props(overrides))
+      const analysis_button = target.querySelector(`.analysis-button`)
+      expect(analysis_button?.classList.contains(`active`) ?? null).toBe(analysis_active)
       expect(target.querySelector(`.trajectory-data-inspector-sidebar`) !== null).toBe(shown)
       expect(query(target, `.viewer-row`).classList.contains(`docked-sidebar-row`)).toBe(shown)
       expect(target.querySelector(`.trajectory-info-toggle`) !== null).toBe(info_button)

@@ -181,10 +181,12 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     structure?: Crystal // must share the Fermi data's Cartesian frame (same calculation)
+    // Extracted Fermi surface (typed arrays or the JSON form). Set alone, or by dropping a Fermi surface file; `band_data` is the alternative source.
     fermi_data?: FermiSurfaceData | FermiSurfaceJson
     band_data?: BandGridData | BandGridJson // band grid: energy previews and band colours
     // the first band structure's k-path is drawn through the Fermi surface's zone
     band_structs?: Record<string, BaseBandStructure>
+    // Densities of states keyed by label. Dropped DOS files replace them.
     doses?: Record<string, DosData>
     phonon?: PhononSpectra // phonon bands and DOS, on their own frequency axis
     // a sweep along one axis: while set, the panes show its selected frame, not the props above
@@ -214,19 +216,29 @@
     show_controls?: ShowControlsProp<
       `panes` | `sync-rotation` | `fullscreen` | `series` | `compare` | `nav` | `step` | `fps`
     >
+    // True while the viewer is fullscreen.
     fullscreen?: boolean
+    // Show the fullscreen button (also needs `show_controls` to show it).
     fullscreen_toggle?: boolean
     allow_file_drop?: boolean // one drop zone for all panes: theirs are off
+    // True while a dropped file is being read.
     loading?: boolean
+    // Error text of the last failed drop or invalid data, shown in a dismissible notice.
     error_msg?: string
     on_file_load?: (data: { filename: string; panes: ElectronicPane[] }) => void // panes filled
+    // Called with `error_msg` (and the filename for a dropped file) when loading fails.
     on_error?: (data: { error_msg: string; filename?: string }) => void
     // per-pane extras; the fused props (data, links, drop, fullscreen) override them
     structure_props?: Partial<ComponentProps<typeof Structure>>
+    // Extra props for the Fermi surface pane; the props this viewer links or fuses (data, drop, fullscreen) override them.
     fermi_props?: Partial<ComponentProps<typeof FermiSurface>>
+    // Extra props for the band structure pane; the props this viewer links or fuses (data, hover links, fullscreen) override them.
     bands_props?: Partial<ComponentProps<typeof Bands>>
+    // Extra props for the electronic DOS pane; the props this viewer links or fuses (data, units, drop) override them.
     dos_props?: Partial<ComponentProps<typeof Dos>>
+    // Extra props for the phonon bands-and-DOS pane, e.g. `{ dos_props: { normalize } }`.
     phonon_props?: Partial<ComponentProps<typeof BandsAndDos>>
+    // Extra props for the sweep trends pane; the props this viewer links or fuses (data, fullscreen) override them.
     trends_props?: Partial<ComponentProps<typeof SweepTrends>>
   } = $props()
 
@@ -1212,6 +1224,7 @@
             `row spectra`,
             spectra_split ? (side.spectra_side ? `side` : `stacked`) : `single`,
           ]}
+          style:--linked-tick-font-size={side.sync.tick_font_size}
           bind:clientWidth={side.spectra_width}
           bind:clientHeight={side.spectra_height}
         >

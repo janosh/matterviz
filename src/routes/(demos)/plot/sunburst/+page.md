@@ -184,7 +184,14 @@ Nodes accept a `pattern` (shape name, plotly-style shorthand like `/`, `x`, `.`,
 
 ## Plotly-trace input and value modes
 
-`sunburst_from_labels_parents` consumes plotly trace arrays (`labels`/`parents`/`values` plus optional `ids`), the format produced by pymatviz sunburst exports. `value_mode` controls how those values are interpreted (plotly's `branchvalues`): `total` treats every value as authoritative (children summing to less than their parent leave a visible gap), while `leaf-sum` (default) ignores parent values and `remainder` adds a parent's own value on top of its children. Toggle the mode to see the gaps appear and disappear. `sort="descending"` orders siblings by value, and the legend lists depth-1 categories (clicking an entry mutes that subtree).
+`sunburst_from_labels_parents` consumes plotly trace arrays (`labels`/`parents`/`values` plus optional `ids`), the format produced by pymatviz sunburst exports. Toggle `value_mode` to see gaps appear and disappear.
+
+<details>
+<summary>What each value mode means</summary>
+
+`value_mode` mirrors plotly's `branchvalues`; under `total`, children summing to less than their parent leave a visible gap. Clicking a legend entry mutes that subtree.
+
+</details>
 
 ```svelte example
 <script lang="ts">
@@ -214,7 +221,14 @@ Nodes accept a `pattern` (shape name, plotly-style shorthand like `/`, `x`, `.`,
 
 ## Icicle charts with value gaps
 
-Passing `shape="icicle"` renders the same partition as stacked horizontal rows, which suits deep hierarchies where outer sunburst rings get too thin to label. Rows don't have to be fully filled: with `value_mode="total"` each node's value is authoritative, so a parent whose children don't add up to its own value leaves a gap (the uncatalogued remainder). Here every level carries such a remainder, so the chart is a ragged staircase rather than a solid block. All interactions are shared (click a row to zoom in, breadcrumbs or <kbd>Escape</kbd> to zoom out, hover for tooltips, plus the controls pane).
+`shape="icicle"` renders the same partition as stacked horizontal rows, which suits deep hierarchies where outer sunburst rings get too thin to label. With `value_mode="total"`, a parent whose children don't add up to its own value leaves a gap, so every level here is a ragged staircase rather than a solid block.
+
+<details>
+<summary>Interactions shared with the sunburst</summary>
+
+Click a row to zoom in, use breadcrumbs or <kbd>Escape</kbd> to zoom out, hover for tooltips, and open the controls pane for more options.
+
+</details>
 
 ```svelte example
 <script lang="ts">
@@ -313,14 +327,19 @@ Pass `color_values` to color arcs by a numeric metric on a continuous d3 colorma
 
 ## Spacegroup sunburst
 
-`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from a list of spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), using the same colors and `"system/number"` ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real spacegroup distributions have long tails, so this is where the grouping options earn their keep:
+`spacegroup_sunburst_data` builds the crystal-system &rarr; spacegroup hierarchy from spacegroup numbers or Hermann-Mauguin symbols (one entry per structure), with the same colors and ids as pymatviz's `spacegroup_sunburst` (as seen in [matbench-discovery's symmetry statistics](https://matbench-discovery.materialsproject.org/data#symmetry-statistics)). Real distributions have long tails, so try the grouping controls below.
 
-- **`min_fraction`** folds every sibling below that share into one "Other" slice per parent (only when at least two qualify — a bucket of one is just that child under a worse name). An arc's angular width _is_ its fraction of the view, so this reads directly as "hide slices thinner than this". The share is measured against whatever the view is currently rooted at, so zooming into a parent re-measures its children against it — which is how a bucket dissolves into the nodes it stood for. Clicking an "Other" slice zooms to its parent and does exactly that. Rings outside the zoomed subtree keep measuring against the root, so drilling in never adds empty levels.
-- **`max_children`** keeps the largest _n_ children per parent and groups the rest. A threshold cannot promise that anything survives it — a parent whose children split evenly fails it all at once, leaving a ring of nothing but "Other". Ranking siblings against each other instead of measuring each alone is what guarantees a populated ring. Combine the two and a child has to clear both.
-- **`keep: true`** on a `SunburstNode` exempts that one node from both rules: it never folds into its parent's bucket, takes no `max_children` slot and ignores `min_fraction`, while its siblings rank and bucket as before (the bucket-of-one rule then counts only them). If its parent folds, it moves into that bucket along with it and stays exempt there. Use it for a branch the chart exists to show however small, e.g. a cluster's idle capacity next to many large users. `expanded_parents` does the same for every child of a parent.
-- **`other_label`** names the grouped slice. Pass a function to name what it swallowed: it receives `{ count, value, depth, parent_label }` once per bucket. The generated text is display-only — the bucket's id stays `"Other"` so `zoom_root_id` and legend muting survive a data update.
+<details>
+<summary>How grouping into "Other" works</summary>
 
-Hovering a grouped slice reports how many siblings it folded in, which its own label has no room to say.
+Ids follow the `"system/number"` pattern. Hovering a grouped slice reports how many siblings it folded in, which its own label has no room to say.
+
+- **`min_fraction`**: an arc's angular width _is_ its fraction of the view, so this reads directly as "hide slices thinner than this". The share is measured against whatever the view is currently rooted at, so zooming into a parent re-measures its children against it — which is how a bucket dissolves into the nodes it stood for. Clicking an "Other" slice zooms to its parent and does exactly that. Rings outside the zoomed subtree keep measuring against the root, so drilling in never adds empty levels.
+- **`max_children`**: a threshold cannot promise that anything survives it — a parent whose children split evenly fails it all at once, leaving a ring of nothing but "Other". Ranking siblings against each other instead of measuring each alone is what guarantees a populated ring. Combine the two and a child has to clear both.
+- **`keep: true`** on a `SunburstNode` exempts that one node from both rules: it never folds into its parent's bucket, takes no `max_children` slot and ignores `min_fraction`, while its siblings rank and bucket as before (the two-sibling minimum for a bucket then counts only them). If its parent folds, it moves into that bucket along with it and stays exempt there. Use it for a branch the chart exists to show however small, e.g. a cluster's idle capacity next to many large users. `expanded_parents` does the same for every child of a parent.
+- **`other_label`** as a function receives `{ count, value, depth, parent_label }` once per bucket. The generated text is display-only — the bucket's id stays `"Other"` so `zoom_root_id` and legend muting survive a data update.
+
+</details>
 
 ```svelte example
 <script lang="ts">

@@ -55,15 +55,15 @@
   // On hover (without an explicit hover_style), noticeably raise opacity. A faint fill (e.g. a
   // low-alpha rgba color at the default 0.3 fill-opacity) is otherwise nearly invisible, so a mere
   // brightness filter reads as "no change". An explicit hover_style.fill_opacity always wins.
+  // hover_style: null opts out of every hover emphasis (opacity, fill, outline, brightness)
+  let lit = $derived(is_hovered && region.hover_style !== null)
   let effective_opacity = $derived(
-    is_hovered
+    lit
       ? (region.hover_style?.fill_opacity ?? Math.min(1, (region.fill_opacity ?? 0.3) + 0.4))
       : (region.fill_opacity ?? 0.3),
   )
   let effective_fill = $derived(
-    is_hovered && region.hover_style?.fill
-      ? region.hover_style.fill
-      : (region.fill ?? `steelblue`),
+    lit && region.hover_style?.fill ? region.hover_style.fill : (region.fill ?? `steelblue`),
   )
   // Hatch/texture over a solid fill color; a gradient fill has no single color to texture.
   // The fill opacity is baked into the tile backdrop instead of applied to the mark: a 0.3
@@ -86,7 +86,7 @@
       : (pattern?.url ?? effective_fill),
   )
   // outline drawn only on hover when the user opted in via hover_style.stroke
-  let hover_stroke = $derived(is_hovered ? region.hover_style?.stroke : undefined)
+  let hover_stroke = $derived(lit ? region.hover_style?.stroke : undefined)
   let is_clickable = $derived(Boolean(on_click || region.on_click))
   // Reachable whenever the region reports anything, not only when it is clickable
   let is_interactive = $derived(is_clickable || Boolean(on_hover || region.on_hover))
@@ -166,7 +166,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <g
-  class={[`fill-region`, { hovered: is_hovered }]}
+  class={[`fill-region`, { hovered: lit }]}
   clip-path={`url(#${clip_path_id})`}
   style="cursor: {cursor_style}; pointer-events: all"
   onmouseenter={(event) => emit_hover(mouse_event(event))}

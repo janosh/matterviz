@@ -88,16 +88,23 @@ describe(`FillArea`, () => {
   test.each([
     [{ fill: `tomato` }, false, `tomato`, `0.3`],
     [{ fill: undefined }, false, `steelblue`, `0.3`],
-    [{ hover_style: { fill: `red`, fill_opacity: 0.8 } }, true, `red`, `0.8`],
-  ])(`renders %j (hovered=%s) with clip and label`, (props, is_hovered, fill, opacity) => {
-    mount_fill({ region: { ...base_region, ...props }, is_hovered })
-    const group = doc_query(`.fill-region`)
-    expect(group.getAttribute(`clip-path`)).toBe(`url(#clip-0)`)
-    expect(group.getAttribute(`aria-label`)).toBe(`Test Fill Region`)
-    const path = doc_query(`.fill-region path`)
-    expect(path.getAttribute(`fill`)).toBe(fill)
-    expect(path.getAttribute(`fill-opacity`)).toBe(opacity)
-  })
+    [{ hover_style: { fill: `red`, fill_opacity: 0.8 } }, true, `red`, `0.8`, true],
+    [{}, true, `tomato`, `0.7`, true], // default emphasis: +0.4 opacity and the brightness class
+    // background shading opts out: same fill and opacity, no brightness filter
+    [{ hover_style: null }, true, `tomato`, `0.3`, false],
+  ] as const)(
+    `renders %j (hovered=%s) with clip and label`,
+    (props, is_hovered, fill, opacity, lit = false) => {
+      mount_fill({ region: { ...base_region, ...props }, is_hovered })
+      const group = doc_query(`.fill-region`)
+      expect(group.classList.contains(`hovered`)).toBe(lit)
+      expect(group.getAttribute(`clip-path`)).toBe(`url(#clip-0)`)
+      expect(group.getAttribute(`aria-label`)).toBe(`Test Fill Region`)
+      const path = doc_query(`.fill-region path`)
+      expect(path.getAttribute(`fill`)).toBe(fill)
+      expect(path.getAttribute(`fill-opacity`)).toBe(opacity)
+    },
+  )
 
   test(`pattern bakes the fill opacity into the tile so the texture stays legible`, () => {
     mount_fill({

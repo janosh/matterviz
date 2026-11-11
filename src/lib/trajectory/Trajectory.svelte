@@ -216,6 +216,7 @@
     show_controls,
     fullscreen_toggle = DEFAULTS.trajectory.fullscreen_toggle,
     fullscreen = $bindable(false),
+    fullscreen_target,
     hovered = $bindable(false),
     wrapper = $bindable(),
     trajectory_controls,
@@ -239,36 +240,49 @@
     // URL, File or { data, filename }: parsed in a worker where available, with an HDF5 group
     // picker for multi-group files
     source?: MaterialSource
+    // Parse options for `source` and dropped files: HDF5 group, atom type to element map, byte threshold for lazy frame indexing.
     loading_options?: Pick<
       OpenTrajectoryOptions,
       'hdf5_group_path' | 'atom_type_mapping' | 'index_above_bytes'
     >
     // Set false when the parent owns loading
     allow_file_drop?: boolean
+    // Props for the spinner shown while a trajectory loads.
     spinner_props?: ComponentProps<typeof Spinner>
+    // Called after a trajectory is loaded from `source` or a dropped file.
     on_file_load?: EventHandler
+    // Called when loading a trajectory fails.
     on_error?: EventHandler
     // Stable identity when a host regenerates frames within the same displayed structure
     structure_series_key?: unknown
-    // bindable: frame on display
+    // Frame on display
     current_step_idx?: number
+    // Playback speed in frames per second.
     fps?: number
+    // Allowed [min, max] of the playback speed.
     fps_range?: Readonly<Vec2>
+    // Start playing when a trajectory is shown. Paused while the spectroscopy pane is open.
     auto_play?: boolean
     // Automatic prefers structure-only for missing or visually flat plot data.
     display_mode?: TrajectoryDisplayMode
+    // Plot properties as a `time-series` over the run or as a `distribution` histogram.
     plot_type?: TrajectoryPlotType
     // Independent of time-series visibility; uses the highest-priority property if unset.
     distribution_property?: string | null
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
+    // Fraction of the space given to the structure pane, the plot gets the rest.
     pane_ratio?: number
+    // Props forwarded to the structure viewer.
     structure_props?: Omit<StructureOptions, `active_pane` | `hidden_elements`>
     // Bind-only: the structure viewer's live scene settings, structure_props.scene_props plus
     // the user's edits in its controls (edited in place, so reads of its fields stay reactive)
     live_scene_props?: StructureSettings
+    // Supercell of the shown frame as repeats along a, b and c, e.g. `2x2x2`. Starts from `structure_props.supercell_scaling`.
     supercell_scaling?: string
+    // Props forwarded to the time-series scatter plot. Axes and hidden series are managed here.
     scatter_props?: Omit<ScatterPlotOptions, `x_axis` | `y_axis` | `y2_axis` | `hidden_series`>
+    // Props forwarded to the distribution histogram. Series, mode and secondary axes are managed here.
     histogram_props?: Omit<
       HistogramOptions,
       `series` | `hidden_series` | `mode` | `selected_series_idx` | `x2_axis` | `y2_axis`
@@ -291,27 +305,42 @@
     plot_skimming?: boolean
     // 'always' | 'hover' | 'never' | { mode, hidden: TrajectoryControlName[], style }
     show_controls?: ShowControlsProp<TrajectoryControlName>
+    // Show the fullscreen button in the controls.
     fullscreen_toggle?: boolean
+    // Whether the viewer fills the screen.
     fullscreen?: boolean
-    // bindable: pointer is over the viewer (drives hover-scoped shortcuts)
+    // element the fullscreen button and `f` key fullscreen, e.g. a host component wrapping this
+    // viewer with its own panes (default: this viewer)
+    fullscreen_target?: HTMLElement
+    // Pointer is over the viewer (drives hover-scoped shortcuts)
     hovered?: boolean
+    // The viewer's root element.
     wrapper?: HTMLDivElement
+    // Replaces the default playback controls. Receives the run, current frame, frame count and a step setter.
     trajectory_controls?: Snippet<[ControlsProps]>
     // Extra actions beside the default playback controls.
     extra_controls?: Snippet
-    // bindable: the one floating pane that is open (structure controls, info, analyses, export)
+    // The one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
-    // bindable: the data inspector, a resizable sidebar beside the structure and plot. Not a
+    // The data inspector, a resizable sidebar beside the structure and plot. Not a
     // floating pane, so it stays open beside whichever pane is active. Hiding its
     // `data-inspector-pane` control (or all controls) hides the sidebar too.
     data_inspector_open?: boolean
+    // Called after every change of the shown frame (slider, keys, playback, plot click).
     on_step_change?: EventHandler
+    // Called when playback starts.
     on_play?: EventHandler
+    // Called when playback pauses.
     on_pause?: EventHandler
+    // Called when playback reaches the last frame, before it wraps around.
     on_end?: EventHandler
+    // Called when playback wraps from the last frame back to the first.
     on_loop?: EventHandler
+    // Called when `fps` changes.
     on_frame_rate_change?: EventHandler
+    // Called when the user picks a display mode from the view-mode menu.
     on_display_mode_change?: EventHandler
+    // Called when fullscreen is toggled.
     on_fullscreen_change?: EventHandler
     // Scripted playback and movies (see TrajectoryViewerController); null on unmount.
     // Keep a display mode that shows the structure while driving it.
@@ -1285,7 +1314,8 @@
   // The data inspector is a sidebar with its own open state, the other analyses floating panes
   const analysis_open = (pane: (typeof ANALYSES)[number][`pane`]): boolean =>
     pane === `data-inspector` ? data_inspector_open : active_pane === pane
-  let any_analysis_open = $derived(ANALYSES.some((entry) => analysis_open(entry.pane)))
+  // hidden analyses don't count: the data inspector defaults to open even where it's hidden
+  let any_analysis_open = $derived(visible_analyses.some((entry) => analysis_open(entry.pane)))
 </script>
 
 {#snippet energy_controls(has_energy: boolean)}
@@ -1733,7 +1763,7 @@
             <FullscreenButton
               bind:fullscreen
               hidden={!show_toggle}
-              {wrapper}
+              wrapper={fullscreen_target ?? wrapper}
               bg_css_var="--traj-bg-fullscreen"
               on_change={() => on_fullscreen_change?.(event_data())}
               class="fullscreen-button"
@@ -2078,7 +2108,8 @@
     background: var(--traj-surface-bg);
     color: var(--traj-color, var(--text-color, CanvasText));
     box-sizing: border-box;
-    contain: layout;
+    /* no layout containment: it would make this the containing block of fixed descendants,
+       pinning viewport-positioned tooltips (BZ inset, plots) to the viewer's corner */
     z-index: var(--traj-z-index, 1);
     container: trajectory / size; /* cqw/cqh for chrome and panes */
     &:global(.dragover) {

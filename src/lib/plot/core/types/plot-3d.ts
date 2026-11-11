@@ -10,7 +10,6 @@ import type {
   HandlerProps,
   Point,
   PointStyle,
-  StyleOverrides,
 } from '../types'
 
 // 3D point extending base Point with z coordinate (prefixed to avoid conflict with convex-hull)
@@ -117,5 +116,6 @@ export type Scatter3DHandlerEvent<Metadata = Record<string, unknown>> =
 // Camera projection types for 3D
 export type { CameraProjection as CameraProjection3D } from '#lib/settings.js'
 
-// 3D style overrides (sphere detail is the component's `sphere_segments` prop)
-export type StyleOverrides3D = StyleOverrides
+// 3D style overrides: the base point size, the one style the scene reads (sphere detail is the
+// component's `sphere_segments` prop)
+export type StyleOverrides3D = { point?: { size?: number } }

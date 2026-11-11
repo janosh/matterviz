@@ -182,12 +182,6 @@
     align-items: center;
     gap: clamp(0.25rem, 1.5cqw, 0.5rem);
     min-width: 0;
-    /* SequenceControlBar wraps at this width, but flex: 1 shrinks the slider to nothing
-       instead of wrapping, so claim a whole row below the nav/fps/pane buttons */
-    @container (max-width: 520px) {
-      flex-basis: 100%;
-      order: 1;
-    }
     > span {
       opacity: 0.75;
       font-variant-numeric: tabular-nums;
@@ -222,7 +216,11 @@
   .step-slider {
     position: relative;
     z-index: 3; /* Keep the thumb above analysis progress overlays. */
+    /* border-box and no UA margin: page styles that pad inputs must not push the track
+       past its container (it overflowed narrow panes by its padding + 2px margin) */
+    box-sizing: border-box;
     width: 100%;
+    margin: 0;
   }
   .step-labels {
     position: absolute;

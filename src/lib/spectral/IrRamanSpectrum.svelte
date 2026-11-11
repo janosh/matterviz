@@ -62,20 +62,26 @@
     resolved_padding = $bindable(), // to align the plot with a band plot beside it
     ...rest
   }: Omit<ScatterPlotOptions, `controls_extra`> & {
+    // Modes with frequencies (THz) and IR/Raman activities at one q-point, broadened into the curve.
     spectrum: VibrationalSpectrum
+    // Activity to plot: `ir` or `raman`. Raman needs `spectrum.has_raman`, else the empty state shows.
     kind?: SpectrumKind
     units?: FrequencyUnit // defaults to cm^-1, the vibrational spectroscopy convention
     fwhm?: number // peak width in cm^-1 whatever `units` displays
     shape_factor?: number // pseudo-Voigt mixing: 0 = Gaussian, 1 = Lorentzian
+    // Intensity scaling: `max` (peak = 1), `sum`, `integral` (area = 1) or null for raw activities.
     normalize?: NormalizationMode
     presentation?: SpectrumPresentation // transmittance flips IR spectra to point downwards
+    // Draw one clickable stick per mode at its frequency, scaled to the curve.
     show_sticks?: boolean
     orientation?: Orientation // horizontal: frequency on y, to sit beside a band structure
     hovered_frequency?: number | null // THz, like every frequency the spectral module passes
     hovered_mode_indices?: number[] // modes behind the hovered peak (read-only output)
     reference_frequency?: number | null // THz, dashed line across the frequency axis
     highlighted_mode_indices?: number[] // sticks to emphasize, e.g. a band hovered at Γ
+    // Index of the mode whose stick is highlighted, set by clicking or pressing Enter on a stick.
     selected_mode_idx?: number | null
+    // Called with the mode index when a stick is clicked or activated by keyboard.
     on_mode_select?: (mode_idx: number) => void
   } = $props()
 
@@ -140,7 +146,8 @@
     kind === `ir` ? (is_transmittance ? `Transmittance` : `IR absorbance`) : `Raman activity`,
   )
 
-  const line_style = { stroke: `var(--ir-raman-line-color, #4c78a8)`, stroke_width: 1.6 }
+  // 1.5 like Dos curves and acoustic bands, the plots it shares a pane with
+  const line_style = { stroke: `var(--ir-raman-line-color, #4c78a8)`, stroke_width: 1.5 }
   let series_data = $derived.by((): DataSeries[] => {
     if (curve_y.length === 0) return []
     const label = `${kind_label} spectrum`

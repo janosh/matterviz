@@ -23,17 +23,21 @@ import { ACOUSTIC_FREQ_THRESHOLD, is_gamma_point } from './helpers'
 import { acoustic_mode_indices } from './ir-raman'
 import type {
   Complex,
+  ModeValues,
   PhononBandStructure,
   PhononModeData,
   PhononModeSelection,
   PhononQPointModes,
   QPoint,
+  VibrationalSpectrum,
 } from './types'
 
 interface PhononModeTrajectoryOptions {
   amplitude?: number
   supercell?: Vec3
   n_frames?: number
+  // names the run, e.g. for exported videos: `<stem>-mode-<n>-q<n>`
+  filename_stem?: string
 }
 
 // The real-space cell one or more modes animate in: the tiled unit cell with boundary
@@ -262,6 +266,54 @@ export function phonon_mode_character(
   return { element_weights, participation_ratio }
 }
 
+// What the dispersion's mode markers show: an element's share of each mode (its fat bands), the
+// participation ratio (how evenly the atoms move), or the IR / Raman activity of the spectrum's
+// modes, drawn where its q-point (usually Γ) lies on the path
+export type PhononBandColoring = `participation` | `ir` | `raman` | `element:${string}`
+
+export const is_phonon_band_coloring = (value: string): value is PhononBandColoring =>
+  [`participation`, `ir`, `raman`].includes(value) || /^element:\S+$/.test(value)
+
+// The ModeValues Bands draws for a coloring: eigenvector-derived ones at every q-point with
+// eigenvectors (NaN for modes without), activities at the spectrum's q-point. Null when the
+// data can't provide it (no spectrum, no Raman, an element absent from the cell).
+export function phonon_mode_values(
+  data: PhononModeData,
+  coloring: PhononBandColoring,
+  spectrum?: VibrationalSpectrum,
+): ModeValues | null {
+  if (coloring === `ir` || coloring === `raman`) {
+    if (!spectrum || (coloring === `raman` && !spectrum.has_raman)) return null
+    const modes = spectrum.modes.toSorted((left, right) => left.mode_idx - right.mode_idx)
+    return {
+      label: coloring === `ir` ? `IR intensity` : `Raman activity`,
+      qpoints: [spectrum.q_position],
+      frequencies: [modes.map(({ frequency }) => frequency)],
+      values: [
+        modes.map(
+          (mode) => (coloring === `ir` ? mode.ir_intensity : mode.raman_activity) ?? NaN,
+        ),
+      ],
+    }
+  }
+  const symbol = coloring.startsWith(`element:`) ? coloring.slice(`element:`.length) : null
+  if (symbol !== null && !data.atoms.some((atom) => atom.symbol === symbol)) return null
+  const qpoints = data.qpoints.filter(qpoint_has_eigenvectors)
+  const value_of = (eigenvector: Complex[][]): number => {
+    const { element_weights, participation_ratio } = phonon_mode_character(data, eigenvector)
+    if (symbol === null) return participation_ratio
+    return element_weights.find(([element]) => element === symbol)?.[1] ?? 0
+  }
+  return {
+    label: symbol === null ? `Participation ratio` : `${symbol} share`,
+    qpoints: qpoints.map(({ q_position }) => q_position),
+    frequencies: qpoints.map(({ modes }) => modes.map(({ frequency }) => frequency)),
+    values: qpoints.map(({ modes }) =>
+      modes.map(({ eigenvector }) => (eigenvector ? value_of(eigenvector) : NaN)),
+    ),
+  }
+}
+
 // Build the displayed supercell once per (data, scaling, polyhedra settings): tiling, image
 // atoms and bonding are the expensive steps and none of them depends on which mode is animated.
 // Only the unit cell, so viewers snapshot it without the q-points' thousands of eigenvectors.
@@ -444,7 +496,11 @@ export function phonon_mode_run(
   pattern: PhononModePattern,
   options: Omit<PhononModeTrajectoryOptions, `supercell`> = {},
 ): TrajectoryRun {
-  const { amplitude = DEFAULT_PHONON_AMPLITUDE, n_frames = DEFAULT_PHONON_FRAMES } = options
+  const {
+    amplitude = DEFAULT_PHONON_AMPLITUDE,
+    n_frames = DEFAULT_PHONON_FRAMES,
+    filename_stem = `phonon`,
+  } = options
   if (!Number.isFinite(amplitude) || amplitude <= 0) {
     throw new Error(`Phonon amplitude must be a positive finite number, got ${amplitude}`)
   }
@@ -502,6 +558,9 @@ export function phonon_mode_run(
   }
 
   return numeric_run(n_frames, read_frame, {
+    provenance: {
+      filename: `${filename_stem}-mode-${selection.mode_idx + 1}-q${selection.qpoint_idx + 1}`,
+    },
     properties: Array.from({ length: n_frames }, (_unused, frame_idx) => ({
       frame_number: frame_idx,
       step: frame_idx,

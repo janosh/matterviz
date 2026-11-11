@@ -29,7 +29,14 @@ Lattice parameters across materials. Gear controls cover orientation, modes, and
 
 ## Categorical Bar Charts
 
-Pass string categories directly as `x` values instead of numeric indices. Categories are automatically detected, positioned, and labeled on the axis. Multiple series with different categories are aligned correctly for stacking and grouping. Use `x_axis.categories` to control category order:
+Pass string categories directly as `x` values and they are detected, positioned and labeled automatically.
+
+<details>
+<summary>Category ordering and alignment</summary>
+
+Multiple series with different categories are aligned correctly for stacking and grouping. Use `x_axis.categories` to control category order.
+
+</details>
 
 ```svelte example
 <script lang="ts">
@@ -97,12 +104,19 @@ Series can have **different categories**: DFT (PBE) includes CdTe while GW only 
 
 ## Pattern Fills
 
-Every bar series (and `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nodes and the composition charts) accepts a `pattern` that hatches or textures the fill so series stay distinguishable in grayscale print or for color-blind readers. Below, one bar per shape in `PATTERN_SHAPES`, each tuned via the controls. Pass a shape name, a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a `PatternOptions` object:
+Every bar series accepts a `pattern` that hatches the fill so series stay distinguishable in grayscale print or for color-blind readers. Below, one bar per shape in `PATTERN_SHAPES`, each tuned via the controls.
+
+<details>
+<summary>Pattern options and where patterns apply</summary>
+
+Besides bar series, `Histogram`, `BoxPlot`, fill regions, treemap/sunburst nodes and the composition charts accept a `pattern` too. Pass a shape name, a plotly-style shorthand (`/`, `\`, `x`, `-`, `|`, `+`, `.`, `o`) or a `PatternOptions` object:
 
 - `size`: tile period in px (default 8), `solidity`: fraction of the tile the texture covers (default 0.25), which sets the line width of stroked shapes and the marker size of filled ones
 - `angle`: extra rotation on top of the shape's own orientation, `dash`: `solid` | `dashed` | `dotted` for line shapes
 - `mode: 'overlay'` (default) draws the texture in an auto-contrasting color over the bar color; `mode: 'replace'` draws it in the bar color on a transparent background (plotly's `fillmode`)
 - `fg`, `bg` override the texture and backdrop colors
+
+</details>
 
 ```svelte example
 <script lang="ts">
@@ -200,9 +214,16 @@ Patterns are the natural way to mark measured vs. predicted values within one co
 
 ## Automatic Tick Label Layout
 
-`x`/`x2` tick labels default to `rotation: 'auto'`, so long category names neither collide nor waste the chart on a deep rotated-label gutter: it balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
+`x`/`x2` tick labels default to `rotation: 'auto'`, so long category names wrap and tilt only as much as needed instead of colliding or wasting the chart on a deep rotated-label gutter.
 
-Automatic wrapping uses at most three lines by default; set `tick_label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely:
+<details>
+<summary>How the automatic layout decides</summary>
+
+It balances lines at semantic boundaries (spaces, separators, and camel case), tilts them only when needed (30°, 45°, 60°, then 90°), and prefers wrapping when it avoids a steeper tilt or substantially reduces the label band. Padding follows the chosen layout as the plot resizes.
+
+Automatic wrapping uses at most three lines by default; set `tick_label.max_lines` to another limit or to `1` to disable wrapping. Labels that still need rotation trail up-and-to-the-**left** of their tick, so the last one can't run off the right edge. Which sign achieves that depends on the side of the baseline the labels sit on: tick **Labels inside** to move them above it and watch the tilt mirror. Set `rotation: 0` to force labels upright and unwrapped, or pass an explicit angle to override the automatic layout entirely.
+
+</details>
 
 ```svelte example
 <script lang="ts">
@@ -1102,7 +1123,14 @@ Reference lines support hover effects and click handlers for interactivity:
 
 ## Legend Grouping
 
-When comparing results from different computational methods or experimental techniques, you can organize legend items into collapsible groups using the `legend_group` property. Click the group label to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group. Set `legend.group_click: 'collapse'` to make the whole header an expand/collapse toggle instead (what `create_collapsible_legend` does):
+Set `legend_group` on series to organize legend items into collapsible groups, e.g. one group per computational method.
+
+<details>
+<summary>Group click behavior</summary>
+
+Click the group label to toggle visibility of all series in that group, or click the chevron (▶) to collapse/expand the group. Set `legend.group_click: 'collapse'` to make the whole header an expand/collapse toggle instead (what `create_collapsible_legend` does).
+
+</details>
 
 ```svelte example
 <script lang="ts">

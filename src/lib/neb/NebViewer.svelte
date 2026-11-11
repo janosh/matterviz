@@ -72,30 +72,48 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
     ExportProps & {
+      // Reaction path(s) to show: an image array, a single path or a record of named paths. Files dropped on the viewer are added to these.
       paths?: ReactionPathInput
+      // Reaction coordinate on the x axis: cumulative displacement in Å (`arc_length`) or image number (`image_index`).
       coord_mode?: ReactionCoordMode
+      // Plot energies relative to each path's first image (`initial`) or as stored (`absolute`).
       energy_reference?: EnergyReference
       // Path metric, pbc, spline sampling and force usage; the x-axis mode is `coord_mode`
       coord_options?: Omit<PathSplineOptions, `mode`>
+      // Draw the interpolated energy curve through the images. When off, the images are joined by straight lines.
       show_spline?: boolean
+      // Key of the selected path. Falls back to the first path when it matches none.
       active_path_key?: string
+      // Index of the shown image along the active path. Clamped to the path's length.
       active_image_idx?: number
+      // Accept reaction-path JSON or multi-frame XYZ files dropped on the viewer.
       allow_file_drop?: boolean
+      // Playback speed in images per second.
       fps?: number
+      // Allowed [min, max] of the playback speed slider.
       fps_range?: readonly [number, number]
+      // Start playing along the path as soon as a path is shown.
       auto_play?: boolean
       // 'always' | 'hover' | 'never' | { mode, hidden: NebControlName[], style }
       show_controls?: ShowControlsProp<NebControlName>
+      // Fraction of the width given to the energy plot, the structure gets the rest.
       pane_ratio?: number
+      // Show the fullscreen button in the control bar.
       fullscreen_toggle?: boolean
+      // Whether the viewer fills the screen.
       fullscreen?: boolean
+      // The viewer's root element.
       wrapper?: HTMLDivElement
+      // Error from the latest failed file drop, shown dismissibly. Set it to undefined to clear.
       error_msg?: string
+      // Extra props for the energy plot (NebPlot), e.g. axis settings or style.
       plot_props?: Omit<
         ScatterPlotOptions,
         `controls_extra` | `on_point_hover` | `on_point_click`
       >
+      // Extra props for the structure viewer showing the selected image.
       structure_props?: StructureOptions
+      // Called with the new state when fullscreen is toggled.
       on_fullscreen_change?: (fullscreen: boolean) => void
     } = $props()
 

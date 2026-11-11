@@ -110,7 +110,7 @@ const elements_plugin: PluginOption = {
     const prop_docs = extract_prop_docs(components)
     const tags = components.map((file) => tag_name(basename(file, `.svelte`)))
     const entries = components.map((file, idx) => {
-      const docs = prop_docs[basename(file, `.svelte`)].filter(is_settable)
+      const docs = prop_docs[basename(file, `.svelte`)].props.filter(is_settable)
       const props = docs.map((doc) => doc.name)
       const bindable = docs.filter((doc) => doc.bindable).map((doc) => doc.name)
       const seeded = docs.filter(is_bindable_without_default).map((doc) => doc.name)

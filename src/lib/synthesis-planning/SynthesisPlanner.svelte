@@ -64,26 +64,41 @@
     comparison_options,
     ...rest
   }: {
+    // Thermodynamic entries covering the target's chemical system; precursor-only elements like C or H are needed for carbonate or hydroxide precursors.
     entries?: PhaseData[]
     // Target formula or entry id; defaults to the most stable multi-element phase
     target?: string
+    // Synthesis temperature (K), open gas species and their partial pressures. Bindable, also updated from the opportunity map.
     conditions?: SynthesisConditions
+    // Precursor pool filters: allow and block lists, max e_above_hull, only_common and max_elements.
     precursors?: PrecursorPoolOptions
+    // Largest precursor set to enumerate (1-4); 1 covers decomposition routes.
     max_precursors?: number
+    // Also search two-step routes through an intermediate phase.
     two_step?: boolean
+    // Target mass in grams the recipes are scaled to; must be a finite number above 0.
     target_mass_g?: number
+    // Relative weights of the route scoring terms (selectivity, inverse_hull, driving_force, competition, practicality, simplicity); 0 ignores a term.
     weights?: ScoreWeights
+    // Number of ranked routes returned in full detail.
     max_routes?: number
+    // Id of the route highlighted in the tables and plots, null when none.
     selected_route_id?: string | null
+    // Ids of routes pinned for side-by-side comparison; defaults to the two top-ranked routes of a new target.
     shortlist_ids?: string[]
     // Bindable output: the full plan for the current inputs
     plan?: SynthesisPlan | null
     // Bindable async state for host applications embedding the planner
     planning?: boolean
+    // Stage and step counts of the running plan computation, null when idle.
     progress?: SynthesisPlanProgress | null
+    // Offer the expandable chemical-system hull (shown for 2-4 element systems).
     show_hull?: boolean
+    // Show the opportunity map of routes over temperature and gas conditions.
     show_opportunity_map?: boolean
+    // Show the target, conditions and search controls panel.
     show_controls?: boolean
+    // Options for the route comparison table (e.g. max_cell_lines).
     comparison_options?: RouteComparisonOptions
     [key: string]: unknown
   } = $props()

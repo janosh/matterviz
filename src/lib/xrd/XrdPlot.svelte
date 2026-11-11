@@ -69,25 +69,35 @@
   }: Omit<BarPlotOptions & ScatterPlotOptions, `tooltip`> & {
     // the snippet receives the profile point (broadened) or the peak's bar (sticks)
     tooltip?: TooltipProp<ScatterHandlerProps | BarHandlerProps<PeakMeta>>
+    // Pattern(s) to plot: one pattern, a `{ label: pattern }` record (values may be `{ pattern, color }`), or a list of entries. Several are overlaid.
     patterns:
       | XrdPattern
       | Record<string, XrdPattern | { pattern: XrdPattern; color?: string }>
       | PatternEntry[]
     peak_width?: number // stick width in degrees 2θ
     annotate_peaks?: number // per pattern: int => its top k, float in (0,1) => fraction of its max
+    // Peak label style: `compact` overbars negative indices (1̄10), `full` writes (h, k, l), null hides Miller indices.
     hkl_format?: HklFormat
+    // Append the 2θ angle to peak labels. null shows it only when at most two patterns are plotted.
     show_angles?: boolean | null
+    // Wavelength in Å for patterns computed from a dropped structure file. null uses the default anode for X-rays.
     wavelength?: number | null
     // Probe used when recomputing a pattern from a dropped structure file. Neutron and
     // electron both require an explicit `wavelength` (no anode default exists for them).
     radiation?: RadiationType
+    // Accept dropped structure files (pattern is computed) or measured XRD data files (added as an extra pattern).
     allow_file_drop?: boolean
+    // Takes over dropped files (raw content, filename, metadata): the built-in pattern parsing is skipped.
     on_file_drop?: file_io.FileLoadCallback
+    // True while a dropped file is being read; shows `loading_message` in the empty state.
     loading?: boolean
     // Empty-state text while `loading`
     loading_message?: string
+    // Error text shown in a dismissible notice, e.g. from a failed file drop. Cleared when dismissed.
     error_msg?: string
+    // Replace sticks with a profile broadened by the Caglioti instrumental widths in `broadening_params`.
     broadening_enabled?: boolean
+    // Caglioti U, V, W (FWHM² = U·tan²θ + V·tanθ + W, degrees 2θ) and pseudo-Voigt `shape_factor` (0 Gaussian, 1 Lorentzian).
     broadening_params?: BroadeningParams
     // Stick under the pointer or keyboard focus (e.g. to draw diffraction_planes(peak.hkls) in a
     // Structure); profiles and the broadened view report none

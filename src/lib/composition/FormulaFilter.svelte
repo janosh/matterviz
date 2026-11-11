@@ -115,13 +115,14 @@
     mode_locked?: boolean // Prevent auto mode inference and mode cycling
     max_history?: number // Max recent inputs to remember; 0 disables history dropdown
     history_key?: string // localStorage key for persisting history
+    // Custom validator run after parsing; return a validation to override the built-in one, or null to keep it
     validate?: (
       value: string,
       search_mode: FormulaSearchMode,
       parsed: FormulaFilterParseResult,
     ) => FormulaFilterValidation | null
-    on_parse?: (parsed: FormulaFilterParseResult) => void
-    on_validation?: (validation: FormulaFilterValidation) => void
+    on_parse?: (parsed: FormulaFilterParseResult) => void // Called with the parsed query on every validation run
+    on_validation?: (validation: FormulaFilterValidation) => void // Called with the final validation state, custom or built-in
     on_change?: (value: string, search_mode: FormulaSearchMode) => void // Callback when value changes
     on_clear?: () => void // Callback when clear button is clicked
   } & HTMLAttributes<HTMLDivElement> = $props()

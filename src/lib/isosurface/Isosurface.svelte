@@ -36,7 +36,9 @@
     on_error,
     building = $bindable(false),
   }: {
+    // Volumetric fields (charge density, ESP, ...) that layers pick their geometry and color sources from, matched by volume id.
     volumes?: VolumetricData[]
+    // Layers (isovalue, color, opacity, source volumes), wireframe toggle, halo and display range; defaults to DEFAULT_ISOSURFACE_SETTINGS.
     settings?: IsosurfaceSettings
     // Supercell tiling of geometry volumes (color sampling wraps the original volume)
     tiling?: Vec3

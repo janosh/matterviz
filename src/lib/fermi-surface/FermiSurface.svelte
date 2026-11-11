@@ -70,9 +70,11 @@
     band_data = $bindable(),
     structure,
     bz_data = $bindable(),
+    // Chemical potential offset from the Fermi level in eV; changing it re-extracts the surface from `band_data`.
     mu: mean = $bindable(DEFAULTS.fermi.mu),
     controls_open = $bindable(false),
     color_property = $bindable(), // a choice; unset follows the data (see resolve_color_property)
+    // Color scale for colored properties: a d3 scheme name (e.g. interpolatePlasma) or a { type, scheme, value_range, palette_range } config.
     color_scale = $bindable(DEFAULTS.fermi.color_scale),
     property_name = $bindable(),
     color_bar = {},
@@ -82,20 +84,32 @@
     wigner_seitz = false,
     previewing = false,
     custom_property_label,
+    // Surface rendering: `solid`, `wireframe` or `transparent`.
     representation = $bindable(DEFAULTS.fermi.representation),
+    // Opacity of the Fermi surface sheets (0 to 1).
     surface_opacity = $bindable(DEFAULTS.fermi.surface_opacity),
     selected_bands = $bindable(),
     isolated_band = $bindable(null),
     selected_spins,
+    // Draw the Brillouin zone around the surface.
     show_bz = $bindable(DEFAULTS.fermi.show_bz),
+    // Opacity of the Brillouin zone faces (0 to 1).
     bz_opacity = $bindable(DEFAULTS.fermi.bz_opacity),
+    // Draw the reciprocal lattice vectors.
     show_vectors = $bindable(DEFAULTS.fermi.show_vectors),
+    // Tile an irreducible surface across the full Brillouin zone (skipped for very dense meshes). Switched on automatically for irreducible data.
     tile_bz = $bindable(DEFAULTS.fermi.tile_bz),
+    // Cut the surface with a plane to reveal its interior.
     clip_enabled = $bindable(DEFAULTS.fermi.clip_enabled),
+    // Axis (`x`, `y` or `z`) the clipping plane is normal to.
     clip_axis = $bindable(DEFAULTS.fermi.clip_axis),
+    // Clipping plane offset along `clip_axis`, from -1 to 1 as a fraction of the zone extent.
     clip_position = $bindable(DEFAULTS.fermi.clip_position),
+    // Keep the other side of the clipping plane.
     clip_flip = $bindable(DEFAULTS.fermi.clip_flip),
+    // Band-grid upsampling factor (0 to 5): higher is smoother but slower, 0 refines coarse k-meshes automatically to about 48 points per axis.
     interpolation_factor = $bindable(DEFAULTS.fermi.interpolation_factor),
+    // Camera projection: `perspective` or `orthographic`.
     camera_projection = $bindable(DEFAULTS.fermi.camera_projection),
     show_controls,
     fullscreen = $bindable(false),
@@ -126,9 +140,13 @@
       // Both accept the typed-array form `parse_fermi_file` returns and the JSON form (plain
       // `vertices`/`faces` rows, nested energies) that pymatviz/anywidget traits can carry
       fermi_data?: FermiSurfaceData | FermiSurfaceJson
+      // Band energies on a k-mesh. The surface is extracted from it at `mu` and `interpolation_factor` (in a worker) and written to `fermi_data`.
       band_data?: BandGridData | BandGridJson
+      // Crystal whose reciprocal lattice defines the Brillouin zone when neither `fermi_data` nor `band_data` carries one.
       structure?: Crystal
+      // Brillouin zone drawn around the surface, computed from the available reciprocal lattice (output).
       bz_data?: BrillouinZoneData
+      // Whether the settings pane is open.
       controls_open?: boolean
       property_name?: string // coloured by in `property` mode (default: the first present)
       // property color bar, shown in `property` mode; null hides it
@@ -141,36 +159,54 @@
       previewing?: boolean
       // Label of the unnamed per-vertex property, e.g. "Fermi velocity", "λ(k)", "DOS"
       custom_property_label?: string
+      // Indices of the bands whose sheets are shown. Unset shows all (and resets when a new file loads).
       selected_bands?: number[]
       // shown alone over selected_bands (e.g. a clicked band line) until a controls band edit
       isolated_band?: number | null
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
+      // Toolbar visibility: `always`, `hover`, `never` (or a boolean), or `{ mode, hidden, style }` to hide named controls.
       show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>
+      // True while the viewer is fullscreen.
       fullscreen?: boolean
+      // Output: wrapper width in CSS px.
       width?: number
+      // Output: wrapper height in CSS px.
       height?: number
+      // The viewer's root element.
       wrapper?: HTMLDivElement
+      // Output: true while the pointer is over the viewer.
       hovered?: boolean
+      // Output: true while a file is dragged over the viewer.
       dragover?: boolean
       allow_file_drop?: boolean // false when a parent owns loading
+      // Show the fullscreen button in the controls.
       fullscreen_toggle?: boolean
       // Fermi-surface or band-grid file (e.g. BXSF, FRMSF): a URL, File or { data, filename }
       source?: MaterialSource
+      // Props for the spinner shown while loading or extracting.
       spinner_props?: ComponentProps<typeof Spinner>
+      // True while a file is being loaded; shows a spinner overlay.
       loading?: boolean
+      // Error text of the last failed load, parse or extraction, shown in a dismissible notice.
       error_msg?: string
+      // Content rendered inside the viewer, receiving the shown surface and the Brillouin zone.
       children?: Snippet<[{ fermi_data?: FermiSurfaceData; bz_data?: BrillouinZoneData }]>
       // Takes over loading: receives the raw content of every drop and `source` load instead of
       // the viewer parsing it
       on_file_drop?: FileLoadCallback
+      // Called with the loaded surface or band grid after a dropped or `source` file is parsed.
       on_file_load?: (data: FermiFileLoadData) => void
+      // Called with `error_msg` when loading or extracting fails.
       on_error?: (data: FermiErrorData) => void
+      // Called with the surface, zone and new `fullscreen` state when fullscreen is toggled.
       on_fullscreen_change?: (data: {
         fermi_data?: FermiSurfaceData
         bz_data?: BrillouinZoneData
         fullscreen: boolean
       }) => void
+      // Hover tooltip: a snippet replaces its content, a { prefix, suffix } config customizes it, false hides it.
       tooltip?: FermiTooltipProp
+      // Called with the hovered band, spin and k-point position (or null when the pointer leaves).
       on_point_hover?: (data: FermiHoverData | null) => void
     } & HTMLAttributes<HTMLDivElement> = $props()
 

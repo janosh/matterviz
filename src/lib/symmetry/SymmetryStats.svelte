@@ -31,10 +31,14 @@
     label = `Symmetry`,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Symmetry analysis result to summarize (space group, Wyckoff positions, ...). Nothing is listed when empty.
     sym_data?: SymmetryDataset | null
+    // Analysis settings (symprec, algorithm) shown as editable controls above the stats.
     settings?: SymmetrySettings
     tooltip?: false // false drops the explanatory hover titles
+    // Extra content rendered between the controls and the stat tiles.
     children?: SymmetrySnippet
+    // Heading at the start of the controls row, as plain text or a snippet.
     label?: SymmetrySnippet | string
   } = $props()
 

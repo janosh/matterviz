@@ -11,6 +11,7 @@
     fmt: default_fmt = `.2f`,
     ...rest
   }: HTMLAttributes<HTMLElement> & {
+    // Rows to show as title/value pairs. Rows without a value or with a falsy `condition` are hidden.
     data?: {
       title: string
       value?: string | number | number[] | null
@@ -19,8 +20,11 @@
       condition?: boolean | number | null
       tooltip?: string
     }[]
+    // Heading above the rows (HTML allowed, sanitized). Omitted when empty.
     title?: string
+    // Text shown when no rows are visible.
     fallback?: string
+    // Default number format (d3-style) for numeric values. A row's own `fmt` overrides it.
     fmt?: string
   } = $props()
 

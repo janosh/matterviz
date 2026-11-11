@@ -235,6 +235,7 @@
     on_camera_move,
     on_camera_reset,
     site_sidebar = $bindable(`auto`),
+    // Inline CSS for the viewer's outer element, e.g. `height: 400px`.
     style: outer_style,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
@@ -242,48 +243,61 @@
     // `auto` docks it when the sites carry numbers worth reading (forces, magnetic moments,
     // charges, velocities) and the viewer is wide enough; its header button closes it.
     site_sidebar?: boolean | `auto`
-    // bindable: the structure on display. Edit-atoms writes edited copies back. Read as
+    // The structure on display. Edit-atoms writes edited copies back. Read as
     // immutable data: assign a new object to update it, in-place edits go unseen. A deep $state
     // costs one copy per new object (~1 s at 100k atoms), which $state.raw or a plain object skip.
     structure?: AnyStructure
     // Stable identity for coordinate-only updates (trajectory playback): camera and selection
     // persist while it is unchanged and the topology is the same
     structure_series_key?: unknown
-    // Identifies a complete scene snapshot; acknowledged after its render submission.
+    // Identifies a complete scene snapshot; acknowledged after its render submission. Use a new,
+    // truthy token per acknowledgement: a falsy one (e.g. 0) or a repeat is never acknowledged.
     render_token?: unknown
+    // Called with `render_token` once the scene for that token has been submitted to the renderer.
     on_rendered?: (token: unknown) => void
     // Disable nested host tools in a host-owned preview.
     show_host_tool?: boolean
     // Comparison overlay: per-atom displacement arrows from this geometry to `structure`
     // (same atom count and order)
     reference_structure?: AnyStructure
-    // bindable: explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
+    // Explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
     bonds?: StructureBond[]
     // `camera_position` unset fits the structure; any tuple, [0, 0, 0] included, is an explicit
     // position. Reset it to undefined to request a fresh fit.
     scene_props?: StructureSettings
-    // bindable: the one floating pane that is open
+    // The one floating pane that is open
     active_pane?: StructurePane | null
     // Ovito-style 2x2 grid; collapses to one pane while the viewer is too small for it
     multi_view?: boolean
     // Pane definitions for multi_view (one perspective + three orthographic axis views by default)
     views?: StructureView[]
+    // Offer the measure-mode control (distances, angles, dihedrals, bond and atom editing).
     enable_measure_mode?: boolean
+    // What clicking atoms does, measure distance/angle/dihedral or edit bonds/atoms.
     measure_mode?: MeasureMode
+    // Whether edit-bonds mode adds or deletes bonds.
     bond_edit_mode?: BondEditMode
+    // Order given to bonds added in edit-bonds mode (1, 1.5, 2, 3 or `aromatic`).
     bond_edit_order?: BondOrder
+    // Any CSS color for the viewer background. Unset uses the themed default.
     background_color?: string
+    // Opacity 0-1 applied to `background_color`.
     background_opacity?: number
     // 'always' | 'hover' | 'never' | { mode, hidden: StructureControlName[], style }
     show_controls?: ShowControlsProp<StructureControlName>
     // Opt-in browser persistence of the controls pane settings
     persist_settings?: boolean
+    // Whether the viewer fills the screen.
     fullscreen?: boolean
+    // Show the fullscreen button in the controls.
     fullscreen_toggle?: boolean
+    // The viewer's root element.
     wrapper?: HTMLDivElement
     width?: number // output: wrapper width in CSS px
     height?: number // output: wrapper height in CSS px
+    // Element color scheme (palette) used for atoms and legend.
     color_scheme?: ColorSchemeName
+    // How atoms are colored (by element, or a property, custom function or analysis result) and the color scale used.
     atom_color_config?: AtomColorConfig
     // File to open: a URL, File or { data, filename } payload holding a structure, volumetric
     // data or prediction JSON, compressed or not (trajectories and other results throw). Pass
@@ -297,66 +311,93 @@
     // Reports what loaded (structure, provenance, atom count) before it renders; use
     // on_rendered to wait for the drawn scene
     on_file_load?: EventHandler
+    // Called with `error_msg` when loading a file fails.
     on_error?: EventHandler
+    // True while a dropped or `source` file is loading.
     loading?: boolean
+    // Message of the latest failed load, shown dismissibly. Set it to undefined to clear.
     error_msg?: string
-    // bindable: recoverable issues the parser reported for the loaded file (skipped CIF rows,
+    // Recoverable issues the parser reported for the loaded file (skipped CIF rows,
     // guessed elements, placeholder cells), shown as one dismissible notice
     parse_warnings?: string[]
+    // True while a file is dragged over the viewer.
     dragover?: boolean
     // Host-tool result to open, e.g. prediction_from_json(content): replaces the structure with
     // its input and draws its properties, geometry and fields (as dropped prediction JSON does)
     prediction?: StructureToolPrediction
+    // Volumetric RGBA color field (e.g. from an analysis) that colors atoms by their position in the cell.
     atom_color_field?: AtomColorField
     // Hovered-atom tooltip: false hides it, a snippet adds rows below the built-in site info
     tooltip?: TooltipProp<{ site: Site; site_idx: number }>
+    // Opacity 0-1 of all atoms. Below 1, bonds are drawn capped rather than as full-length cylinders.
     atom_opacity?: number
+    // Color field drawn as a translucent cloud (e.g. a density) filling the cell.
     volume_color_field?: AtomColorField
+    // Opacity 0-1 of the `volume_color_field` cloud.
     volume_opacity?: number
+    // Clips the scene to a plane or slab in fractional cell coordinates, hiding atoms, bonds and polyhedra outside it.
     cutaway?: CutawayInput
+    // Positions of all frames of a trajectory, drawn as trails when show_trajectory_lines is on.
     trajectory_position_stream?: TrajectoryPositionStream | null
+    // Newest frame the trajectory trails reach. Drive it from a playhead for a comet tail. Unset draws up to the last frame.
     trajectory_line_end_frame?: number
+    // Keep the last computed polyhedra instead of recomputing them, e.g. while scrubbing a trajectory.
     defer_expensive_geometry?: boolean
+    // Offer the structure info pane (keyboard shortcut `i`).
     enable_info_pane?: boolean
     // `on-demand` (default) loads the ~0.75 MB symmetry WASM only once the viewer is touched
     // (press, focus, an open pane) or the display needs it (a conventional/primitive cell,
     // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
     // `analysis.wyckoff_positions`; `false` never, for rapidly changing structures.
     analyze_symmetry?: boolean | `on-demand`
+    // Resolution in dots per inch of PNG exports.
     png_dpi?: number
     // 'speed' caps sphere tessellation for large structures
     performance_mode?: `quality` | `speed`
+    // Draw periodic image atoms on and beyond the cell faces that are not part of the primitive basis.
     show_image_atoms?: boolean
     // Which bonds crossing a cell face get their far atom drawn (see find_image_atoms)
     image_atom_completion?: ImageAtomCompletion
+    // Supercell as repeats along a, b and c, e.g. `2x2x2`, or a single number for all three.
     supercell_scaling?: string
     // False when `structure` is already expanded to `supercell_scaling`
     apply_supercell_scaling?: boolean
     cell_type?: CellType // original, conventional or primitive (needs symmetry analysis)
+    // Indices of the selected sites. Selection drives atom and bond editing.
     selected_sites?: number[]
+    // Indices of sites highlighted from outside the 3D view, e.g. by hovering a Wyckoff table row.
     highlighted_sites?: number[]
+    // Index of the site under the pointer, or null.
     hovered_site_idx?: number | null
     // Channel of an enclosing hover_links() the site hover joins by source atom (0-based), e.g.
     // a SiteTable's: a site hovered there is hovered here, and an atom hovered here there
     link_hover?: string
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
+    // Elements whose atoms are hidden (toggled in the legend).
     hidden_elements?: Set<ElementSymbol>
+    // Symmetry analysis settings, symprec and algorithm.
     symmetry_settings?: Partial<SymmetrySettings>
-    // bindable: scalar fields keyed by unique `id`; removing one in the controls drops its
+    // Scalar fields keyed by unique `id`; removing one in the controls drops its
     // surfaces and color references, while a parent replacing fields updates
     // isosurface_settings itself. A volumetric file import adds its fields only when the ordered
     // atoms, species and lattice match the current structure, else replaces scene and fields.
     volumetric_data?: VolumetricData[]
+    // Isosurface rendering settings (iso value, opacity, ...) for `volumetric_data`.
     isosurface_settings?: IsosurfaceSettings
+    // Sampling and rendering settings of the 2D cross-section of `volumetric_data`.
     slice_settings?: Partial<VolumeSliceSettings>
     display_mode?: StructureDisplayMode // 3D structure/isosurface, 2D cross-section or both side by side
-    // bindable: field shown by the 2D cross-section; follows its ID through replacement and
+    // Field shown by the 2D cross-section; follows its ID through replacement and
     // reordering, falls back to the first field once removed
     active_volume_id?: string
+    // Content rendered inside the viewer, given the current structure and fullscreen state.
     children?: Snippet<[{ structure?: AnyStructure; fullscreen: boolean }]>
     top_right_controls?: Snippet // rendered at the end of the control buttons row
+    // Called with the structure and the new `fullscreen` state when fullscreen is toggled.
     on_fullscreen_change?: EventHandler
+    // Called with camera position, target, zoom and `camera_has_moved` when the camera is moved.
     on_camera_move?: EventHandler
+    // Called with the reset camera pose when the camera is reset to fit the structure.
     on_camera_reset?: EventHandler
   } = $props()
 

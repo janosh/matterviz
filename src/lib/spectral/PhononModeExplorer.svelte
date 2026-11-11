@@ -1,16 +1,18 @@
 <script lang="ts">
-  import { same_while_equal } from '#lib/utils.js'
+  import { html_to_text, same_while_equal } from '#lib/utils.js'
   import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index.js'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
-  import { Settings } from 'svelte-widgets/icons'
+  import { strip_compression_extensions } from '#lib/io/decompress.js'
+  import { ArrowCollapse, ArrowExpand, Settings } from 'svelte-widgets/icons'
   import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
   import { format_num } from '#lib/labels.js'
   import { DEFAULTS } from '#lib/settings.js'
+  import { FPS_STEP } from '#lib/constants.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { in_range, reciprocal_lattice } from '#lib/math.js'
+  import { clamp, in_range, reciprocal_lattice } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
   import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
@@ -20,8 +22,12 @@
     type ResolvedPolyhedraOptions,
   } from '#lib/structure/polyhedra.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
-  import { to_error } from 'svelte-widgets/utils'
+  import { is_editable_event_target, is_modifier_chord, to_error } from 'svelte-widgets/utils'
+  import { tooltip } from 'svelte-widgets/attachments'
+  import { shortcut_attrs } from '#lib/shortcuts.js'
   import type { ComponentProps } from 'svelte'
+  import type { Attachment } from 'svelte/attachments'
+  import { on } from 'svelte/events'
   import type { HTMLAttributes } from 'svelte/elements'
   import { band_point_meta, create_band_path_link } from './band-path-link.svelte'
   import Bands from './Bands.svelte'
@@ -44,6 +50,8 @@
     default_phonon_mode_selection,
     is_imaginary_frequency,
     nearest_qpoint_with_eigenvector,
+    phonon_mode_values,
+    type PhononBandColoring,
     phonon_band_structure_from_modes,
     phonon_mode_character,
     phonon_mode_pattern,
@@ -79,29 +87,47 @@
     auto_play = true,
     pane_ratio = $bindable(1.15 / 2.1),
     show_bz_inset = true,
+    bz_inset_enlarged = $bindable(false),
+    band_coloring = $bindable(null),
     mode_values,
     trajectory_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Phonon modes (atoms, lattice, q-points with frequencies and eigenvectors, band path), optionally with an IR/Raman spectrum and filename.
     dataset: PhononModeDataset
+    // Animated mode as `{ qpoint_idx, mode_idx }`. Defaults to the first mode with an eigenvector; follows clicks on the dispersion and spectrum.
     selection?: PhononModeSelection
     // Activity the spectrum beside the dispersion shows; Raman needs polarizability data
     spectrum_kind?: SpectrumKind
+    // Maximum atomic displacement in Å of the animated mode.
     amplitude?: number
+    // Supercell scaling [a, b, c] the mode is animated in; q-points incommensurate with it do not repeat periodically across box faces.
     supercell?: Vec3
+    // Frames per vibration period (integer, at least 2).
     n_frames?: number
+    // Animation frames per second.
     fps?: number
+    // Draw each atom's eigenvector as an arrow.
     show_vectors?: boolean
     // Multiplier for arrow shaft and head radii; null color uses element colors.
     vector_thickness?: number
+    // CSS color of the eigenvector arrows. null colors each arrow by its element.
     vector_color?: string | null
+    // Start animating as soon as a mode is shown.
     auto_play?: boolean
+    // Share (0.15 to 0.85) of the viewer taken by the atomic-motion pane. The dispersion and spectrum pane gets the rest.
     pane_ratio?: number
     // Brillouin zone in a corner of the atomic-motion pane marking the selected and hovered
     // q-points on the path; needs a lattice and more than one q-point
     show_bz_inset?: boolean
+    // the inset grown to about half the viewer, big enough to read the path and its labels
+    bz_inset_enlarged?: boolean
+    // What the dispersion's mode markers show (see PhononBandColoring), null: mode_values
+    band_coloring?: PhononBandColoring | null
     // Per-mode values (e.g. λ_qν) drawn over the dispersion, see Bands
     mode_values?: ModeValues
+    // passed on to the atomic-motion Trajectory viewer: styling, frame-rate range, step labels
+    // and playback callbacks (the explorer sets the rest itself)
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
       | `class`
@@ -118,6 +144,8 @@
   } = $props()
 
   let error_msg = $state<string>()
+  let root = $state<HTMLDivElement>()
+  let fps_range = $derived(trajectory_props.fps_range ?? DEFAULTS.trajectory.fps_range)
   let current_step_idx = $state(0)
   let mode_data = $derived(dataset.modes)
   let active_spectrum = $derived(dataset.spectrum)
@@ -178,10 +206,19 @@
     if (!cell || !selected) return no_result
     return try_generate(() => phonon_mode_pattern(cell, mode_data, selected))
   })
+  // exported videos are named after the file, mode and q-point
+  let filename_stem = $derived(
+    dataset.filename
+      ? strip_compression_extensions(dataset.filename, { lowercase: false }).replace(
+          /\.[^.]*$/,
+          ``,
+        ) || undefined
+      : undefined,
+  )
   let trajectory_result = $derived.by(() => {
     const pattern = pattern_result.value
     if (!pattern) return no_result
-    return try_generate(() => phonon_mode_run(pattern, { amplitude, n_frames }))
+    return try_generate(() => phonon_mode_run(pattern, { amplitude, n_frames, filename_stem }))
   })
   let generation_error = $derived(
     supercell_result.error ?? pattern_result.error ?? trajectory_result.error,
@@ -200,6 +237,29 @@
   let character = $derived(
     selected_mode?.eigenvector && phonon_mode_character(mode_data, selected_mode.eigenvector),
   )
+  // === Band coloring ===
+  let coloring_values = $derived(
+    band_coloring && phonon_mode_values(mode_data, band_coloring, active_spectrum),
+  )
+  let shown_mode_values = $derived(coloring_values || mode_values)
+  let coloring_options = $derived.by(() => {
+    const elements = [...new Set(mode_data.atoms.map(({ symbol }) => symbol))]
+    const options: { value: PhononBandColoring | null; label: string }[] = [
+      { value: null, label: mode_values ? html_to_text(mode_values.label) : `None` },
+      { value: `participation`, label: `Participation ratio` },
+      // a one-element cell's share is 100% everywhere
+      ...(elements.length > 1
+        ? elements.map((symbol) => ({
+            value: `element:${symbol}` as const,
+            label: `${symbol} share`,
+          }))
+        : []),
+    ]
+    if (active_spectrum) options.push({ value: `ir`, label: `IR intensity (Γ)` })
+    if (active_spectrum?.has_raman)
+      options.push({ value: `raman`, label: `Raman activity (Γ)` })
+    return options
+  })
   // === Brillouin zone inset ===
   let bz_inset = $derived.by(() => {
     const { lattice, qpoints } = mode_data
@@ -305,12 +365,9 @@
     if (mode_idx !== -1) set_selection({ qpoint_idx, mode_idx })
   }
 
-  // Band files may carry eigenvectors at only some q-points; a click elsewhere snaps to the
-  // nearest one along the path that can animate this band. Wired to both the markers and the
-  // plot background: markers are a few px wide, so a near miss selects the point under the tooltip
-  const handle_band_click = (event: ScatterHandlerEvent): void => {
-    const { band_idx, qpoint_idx } = event.metadata ?? {}
-    if (typeof band_idx !== `number` || typeof qpoint_idx !== `number`) return
+  // Band files may carry eigenvectors at only some q-points; a q-point picked elsewhere on the
+  // path snaps to the nearest one along it that can animate this band
+  const select_on_path = (qpoint_idx: number, band_idx: number): void => {
     const snapped_idx = nearest_qpoint_with_eigenvector(mode_data, qpoint_idx, band_idx)
     if (snapped_idx === -1) {
       report_error(`Band ${band_idx + 1} has no eigenvector at any q-point`)
@@ -318,12 +375,72 @@
     }
     set_selection({ qpoint_idx: snapped_idx, mode_idx: band_idx })
   }
+  // Wired to both the markers and the plot background: markers are a few px wide, so a near
+  // miss selects the point under the tooltip
+  const handle_band_click = (event: ScatterHandlerEvent): void => {
+    const { band_idx, qpoint_idx } = event.metadata ?? {}
+    if (typeof band_idx === `number` && typeof qpoint_idx === `number`)
+      select_on_path(qpoint_idx, band_idx)
+  }
 
   const step_mode = (direction: 1 | -1): void => {
     if (!selection) return
     const position = animatable_mode_indices.indexOf(selection.mode_idx)
     const mode_idx = animatable_mode_indices[position + direction]
     if (mode_idx !== undefined) set_selection({ ...selection, mode_idx })
+  }
+
+  // the next q-point along the path where the selected band can animate, skipping a branch's
+  // repeated end point (same q, so the same mode)
+  const step_qpoint = (direction: 1 | -1): void => {
+    if (!selection) return
+    const { qpoint_idx, mode_idx } = selection
+    const { qpoints } = mode_data
+    const here = qpoints[qpoint_idx]?.q_position
+    for (
+      let idx = qpoint_idx + direction;
+      idx >= 0 && idx < qpoints.length;
+      idx += direction
+    ) {
+      const { q_position, modes } = qpoints[idx]
+      if (here && are_qpoints_equivalent(q_position, here)) continue
+      if (modes[mode_idx]?.eigenvector) return set_selection({ qpoint_idx: idx, mode_idx })
+    }
+  }
+  const step_keys: Record<string, () => void> = {
+    ArrowLeft: () => step_qpoint(-1),
+    ArrowRight: () => step_qpoint(1),
+    ArrowDown: () => step_mode(-1),
+    ArrowUp: () => step_mode(1),
+  }
+  // Shift+arrows walk the dispersion (see SHORTCUTS.phonon_*) from focus inside the explorer,
+  // or the idle page while the pointer is over it, as the viewers' own keys do. On the window's
+  // capture phase: the viewers inside take plain arrows (frames, the tooltip walk) with Shift
+  // held too, so the key must not reach them.
+  const dispersion_keys: Attachment<HTMLElement> = (node) => {
+    let hovered = node.matches(`:hover`)
+    const offs = [
+      on(node, `pointerenter`, () => (hovered = true)),
+      on(node, `pointerleave`, () => (hovered = false)),
+      on(
+        window,
+        `keydown`,
+        (event) => {
+          const { key, target, shiftKey, defaultPrevented, isComposing } = event
+          const step = step_keys[key]
+          if (!step || !shiftKey || defaultPrevented || isComposing) return
+          if (is_modifier_chord(event) || is_editable_event_target(target)) return
+          const { body, documentElement } = node.ownerDocument
+          const idle = target === body || target === documentElement
+          if (!(target instanceof Node && node.contains(target)) && !(hovered && idle)) return
+          event.preventDefault()
+          event.stopPropagation()
+          step()
+        },
+        { capture: true },
+      ),
+    ]
+    return () => offs.forEach((off) => off())
   }
 
   const select_spectrum_mode = (mode_idx: number): void => {
@@ -348,7 +465,7 @@ under its open panes -->
 {#snippet structure_overlays()}
   {#if bz_inset.value}
     <BrillouinZone
-      class="bz-inset"
+      class={[`bz-inset`, { enlarged: bz_inset_enlarged }]}
       aria-label="Selected q-point in the Brillouin zone"
       bz_data={bz_inset.value.bz_data}
       k_path={path_link.k_path}
@@ -359,7 +476,19 @@ under its open panes -->
       show_controls={false}
       fullscreen_toggle={false}
       allow_file_drop={false}
-    />
+      scene_props={{ gizmo: false }}
+      on_kpath_click={(qpoint_idx) => select_on_path(qpoint_idx, selection?.mode_idx ?? 0)}
+    >
+      <button
+        type="button"
+        class="bz-inset-toggle"
+        aria-label={bz_inset_enlarged ? `Shrink Brillouin zone` : `Enlarge Brillouin zone`}
+        onclick={() => (bz_inset_enlarged = !bz_inset_enlarged)}
+        {@attach tooltip()}
+      >
+        <Icon icon={bz_inset_enlarged ? ArrowCollapse : ArrowExpand} />
+      </button>
+    </BrillouinZone>
   {/if}
   <div class="mode-picker">
     <ToolbarMenu
@@ -405,6 +534,7 @@ under its open panes -->
           >q-point
           <select
             aria-label="q-point"
+            {...shortcut_attrs(`phonon_qpoint`, `q-point`)}
             value={selection?.qpoint_idx ?? 0}
             onchange={(event) => select_qpoint(Number(event.currentTarget.value))}
           >
@@ -424,7 +554,7 @@ under its open panes -->
           type="button"
           class="step-mode"
           aria-label="Previous mode"
-          title="Previous mode with an eigenvector"
+          {...shortcut_attrs(`phonon_mode`, `Previous mode with an eigenvector`)}
           disabled={!selection || animatable_mode_indices[0] === selection.mode_idx}
           onclick={() => step_mode(-1)}>‹</button
         >
@@ -445,15 +575,54 @@ under its open panes -->
           type="button"
           class="step-mode"
           aria-label="Next mode"
-          title="Next mode with an eigenvector"
+          {...shortcut_attrs(`phonon_mode`, `Next mode with an eigenvector`)}
           disabled={!selection || animatable_mode_indices.at(-1) === selection.mode_idx}
           onclick={() => step_mode(1)}>›</button
         >
       </div>
+      {#if band_structure}
+        <label
+          >Color bands
+          <select
+            aria-label="Band coloring"
+            value={coloring_values
+              ? coloring_options.findIndex(({ value }) => value === band_coloring)
+              : 0}
+            onchange={(event) =>
+              (band_coloring =
+                coloring_options[Number(event.currentTarget.value)]?.value ?? null)}
+          >
+            <!-- a coloring this data can't provide (e.g. a shared URL's element:Fe) shows as
+            the fallback the plot draws -->
+            {#each coloring_options as { label }, idx (idx)}
+              <option value={idx}>{label}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <label class="amplitude-control">
         Amplitude
         <input type="range" min="0.02" max="1" step="0.02" bind:value={amplitude} />
         <output>{format_num(amplitude, `.3~`)} Å</output>
+      </label>
+      <!-- a number field like the bar's: a slider across the default 0-300 fps range would
+      squeeze the useful 1-60 into its first fifth. A cleared field keeps the current rate. -->
+      <label>
+        Speed
+        <input
+          type="number"
+          style="width: 5em"
+          aria-label="Frame rate"
+          min={fps_range[0]}
+          max={fps_range[1]}
+          step={FPS_STEP}
+          value={fps}
+          oninput={({ currentTarget: { valueAsNumber } }) => {
+            if (Number.isFinite(valueAsNumber)) fps = clamp(valueAsNumber, ...fps_range)
+          }}
+          onchange={({ currentTarget }) => (currentTarget.value = String(fps))}
+        />
+        fps
       </label>
       <label class="checkbox"
         ><input type="checkbox" bind:checked={show_vectors} />Eigenvectors</label
@@ -493,20 +662,20 @@ under its open panes -->
   </ToolbarMenu>
 {/snippet}
 
-<div {...rest} class={[`phonon-mode-explorer`, rest.class]}>
+<div
+  {...rest}
+  bind:this={root}
+  class={[`phonon-mode-explorer`, rest.class]}
+  {@attach dispersion_keys}
+>
   {#if error_msg}<StatusMessage bind:message={error_msg} type="error" dismissible />{/if}
   {#if band_result.error}<StatusMessage message={band_result.error} type="error" />{/if}
   {#if generation_error}<StatusMessage message={generation_error} type="error" />{/if}
   {#if bz_inset.error}<StatusMessage message={bz_inset.error} type="error" />{/if}
-  {#if !commensurate}
-    <StatusMessage
-      message="This q-point is not commensurate with the selected supercell, so opposite box faces do not repeat periodically."
-      type="warning"
-    />
-  {/if}
   <div class="explorer-header">
     {#if selected_mode && selection && selected_qpoint}
-      <div class="mode-summary" data-testid="phonon-mode-summary">
+      <!-- announced as keys or clicks change the selection -->
+      <div class="mode-summary" data-testid="phonon-mode-summary" aria-live="polite">
         <strong>Mode {selection.mode_idx + 1}</strong>
         <span
           >{format_num(selected_mode.frequency, `.5~`)} THz
@@ -533,6 +702,16 @@ under its open panes -->
         {#if is_imaginary_frequency(selected_mode.frequency)}<span class="unstable"
             >Unstable mode · periodic mode-shape preview</span
           >{/if}
+        {#if !commensurate}
+          {@const cell = supercell.join(`×`)}
+          <span
+            class="incommensurate"
+            style="font-size: 0.9em"
+            {@attach tooltip({
+              content: `This q-point is not commensurate with the ${cell} supercell, so opposite box faces do not repeat periodically`,
+            })}>⚠ not periodic in {cell}</span
+          >
+        {/if}
         {#if n_animatable_qpoints < mode_data.qpoints.length}
           <span
             class="sparse"
@@ -554,6 +733,7 @@ under its open panes -->
           allow_file_drop={false}
           bind:current_step_idx
           bind:fps
+          fullscreen_target={root}
           bind:supercell_scaling={
             () => supercell.join(`x`),
             (scaling) => (supercell = parse_supercell_scaling(scaling))
@@ -564,10 +744,14 @@ under its open panes -->
             mode: `hover`,
             hidden: [
               `filename`,
+              `fps`, // in the phonon settings menu, so the bar fits on one row
               `info-pane`,
               `msd-pane`,
               `vacf-pane`,
               `rdf-pane`,
+              // a generated single-mode cycle has no time step, velocities, energies or dipoles
+              `spectroscopy-pane`,
+              `hotspots-pane`,
               `structure-id-pane`,
               `data-inspector-pane`,
               `x-axis`,
@@ -581,6 +765,9 @@ under its open panes -->
             children: structure_overlays,
             analyze_symmetry: false,
             apply_supercell_scaling: false,
+            // the bar's fullscreen button takes the whole explorer; a second one for just the
+            // atomic-motion viewer would leave the plots behind
+            fullscreen_toggle: false,
             show_image_atoms: false,
             scene_props: {
               bonding_strategy: `explicit_only`,
@@ -608,6 +795,7 @@ under its open panes -->
       />
       <section
         class="plot-pane"
+        style:--linked-tick-font-size={plot_sync.tick_font_size}
         class:side_by_side
         class:spectrum_stacked={both_plots && !side_by_side}
         aria-label="Phonon mode plot"
@@ -617,7 +805,7 @@ under its open panes -->
         {#if band_structure}
           <Bands
             {band_structs}
-            {mode_values}
+            mode_values={shown_mode_values}
             y_axis={plot_sync.y_axes[0]}
             bind:view={plot_sync.views[0]}
             bind:resolved_padding={() => undefined, plot_sync.raise_padding}
@@ -686,7 +874,22 @@ under its open panes -->
 </div>
 
 <style>
+  /* fullscreen: the panes reach the screen's edges; only the title row keeps a gutter, and
+     the rule under the panes (separating them from page content) has nothing to separate */
+  .phonon-mode-explorer:fullscreen {
+    box-sizing: border-box;
+    background: var(--page-bg, var(--surface-bg, Canvas));
+    .explorer-header {
+      padding: 0.4em 0.6em 0;
+    }
+    .panes {
+      border-bottom: 0;
+    }
+  }
   .phonon-mode-explorer {
+    /* own stacking context: the pane divider and viewer overlays (z-index up to 4) must
+       not paint over page content such as a dropdown opened above the explorer */
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     gap: 0.4em;
@@ -710,7 +913,8 @@ under its open panes -->
       /* the label reads as a prefix of the q-vector it names */
       margin-right: -0.3em;
     }
-    .unstable {
+    .unstable,
+    .incommensurate {
       color: var(--warning-color, #b45309);
     }
     .character,
@@ -787,6 +991,33 @@ under its open panes -->
       --bz-min-width: 0;
       --bz-bg: color-mix(in srgb, var(--surface-bg, #fff) 70%, transparent);
       --bz-border-radius: var(--border-radius, 3pt);
+      &:global(.enlarged) {
+        --bz-width: min(50cqi, 70cqb);
+        --bz-height: min(50cqi, 70cqb);
+      }
+      /* revealed on hover or focus; always shown where nothing hovers (touch) */
+      .bz-inset-toggle {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        z-index: 1;
+        display: flex;
+        padding: 2px;
+        border: 0;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--surface-bg, #fff) 70%, transparent);
+        color: inherit;
+        opacity: 0;
+        transition: opacity 0.15s;
+        --icon-size: 14px;
+        @media (hover: none) {
+          opacity: 1;
+        }
+      }
+      &:hover .bz-inset-toggle,
+      .bz-inset-toggle:focus-visible {
+        opacity: 1;
+      }
     }
   }
   /* the bar stays open while its step input has focus; hovering the plot pane hides it anyway

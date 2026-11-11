@@ -109,48 +109,71 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `onclick` | `ondblclick` | `oncontextmenu`> &
     ExportProps & {
+      // Column items in input order (display order is set by x_order). Index into each values row.
       x_items: AxisItem[]
+      // Row items in input order (display order is set by y_order). Index into values.
       y_items: AxisItem[]
+      // Cell values: values[y_idx][x_idx], or nested records keyed by item key (y then x). Missing entries render as missing cells.
       values?: HeatmapValues
       // value_range overrides the data-derived color domain per end (null keeps that bound)
       color_scale?: ColorScale
       // CSS colors for single cells, nested like the record form of `values` (y key, then x key)
       color_overrides?: Record<string, Record<string, string>>
+      // Styling for cells with no value (null, non-finite, or non-positive on log scales).
       missing?: MissingCellStyle
       // Opaque color painted behind the matrix, used to composite translucent cell fills
       // before picking label contrast. Defaults to the --page-bg token on the matrix.
       backdrop?: string
+      // How the color domain is fitted to the data where value_range leaves an end unset: auto uses min/max, robust the 2nd-98th percentile.
       domain_mode?: HeatmapDomainMode
       // null hides the bar; orientation `vertical` places it right of the matrix, else below
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
+      // Hovered cell position, null when none.
       active_cell?: CellPos | null
+      // Selected cell positions, updated by clicks per selection_mode.
       selected_cells?: CellPos[]
       // single: click replaces; multi: Cmd/Ctrl+click toggles; range: Shift+click spans
       selection_mode?: SelectionMode
+      // Cell whose tooltip is pinned open, null when none; set by clicks unless tooltip_mode is hover.
       pinned_cell?: CellPos | null
       // hover: tooltip follows the pointer; pinned: click pins it; both
       tooltip_mode?: `hover` | `pinned` | `both`
+      // Ignore all pointer interaction (hover, click, selection, tooltips).
       disabled?: boolean
+      // Called with the clicked cell; delayed briefly when on_double_click is also set to tell the two apart.
       on_click?: (cell: CellContext) => void
+      // Called with the double-clicked cell.
       on_double_click?: (cell: CellContext) => void
+      // Called with the full selection after each click changes selected_cells.
       on_select?: (cells: CellPos[]) => void
+      // Called on right-click of a cell; the browser's context menu is suppressed when set.
       on_context_menu?: (cell: CellContext, event: MouseEvent) => void
       // Drag a cell rectangle for on_brush; x/y_range are its end item indices in rendered order
       enable_brush?: boolean
+      // Called with the brushed rectangle and its cells; needs enable_brush.
       on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
+      // Width and height of each cell as a CSS length (e.g. `6px`). Virtual scrolling sizes its
+      // window in px, so give px (other units count as 12px there) or disable `virtual`.
       tile_size?: string
+      // Gap between cells as a CSS length (e.g. `1px`); px only under virtual scrolling, like tile_size.
       gap?: string
       // 'compact' removes all-null rows/cols, 'gaps' hides them but keeps their grid positions
       hide_empty?: false | `compact` | `gaps`
+      // Show column labels along the top.
       show_x_labels?: boolean
+      // Show row labels along the left.
       show_y_labels?: boolean
       // Alternate labels between the two edges so dense axes stay legible (auto: >= 24 items)
       stagger_axis_labels?: boolean | `auto`
+      // For square matrices, render only the `lower` or `upper` triangle (false shows all cells).
       symmetric?: SymmetricMode
       // In symmetric mode, keep labels on the outer edges or hug the diagonal
       symmetric_label_position?: `diagonal` | `edge`
+      // Inline CSS applied to every axis label.
       label_style?: string
+      // Column order: sort by `label`, `key` or `sort_value`, or a comparator over AxisItems. Unset keeps x_items order.
       x_order?: AxisOrder
+      // Row order: sort by `label`, `key` or `sort_value`, or a comparator over AxisItems. Unset keeps y_items order.
       y_order?: AxisOrder
       // Case-insensitive substring filter on item keys/labels of both axes
       search_query?: string
@@ -160,21 +183,28 @@
       virtual?: VirtualScroll
       // Mean of each visible row/column in an extra track
       show_row_summaries?: boolean
+      // Show the mean of each column in an extra row below the grid.
       show_col_summaries?: boolean
       // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
       show_values?: boolean | string
       // Controls pane (HeatmapMatrixControls inside the shell)
       show_controls?: ShowControlsProp<`controls`>
+      // Whether the controls pane is open.
       controls_open?: boolean
+      // Props forwarded to the controls pane: pane_props, toggle_props and extra children.
       controls_props?: Pick<
         ComponentProps<typeof HeatmapMatrixControls>,
         `pane_props` | `toggle_props` | `children`
       >
       // Axis config (label used as axis title)
       x_axis?: AxisConfig
+      // Row axis config; its label is used as the axis title.
       y_axis?: AxisConfig
+      // Hover tooltip: a snippet replaces the default, false disables it.
       tooltip?: TooltipProp<CellContext>
+      // Custom cell content rendered inside each cell (replaces show_values text).
       cell?: Snippet<[CellContext]>
+      // Extra content rendered inside the matrix container.
       children?: Snippet
     } = $props()
 

@@ -80,7 +80,7 @@
     format_formula_svg,
     format_label_html,
     format_label_svg,
-  } from '#lib/composition/format.js'
+  } from '#lib/composition/formula-markup.js'
   import {
     CHAR_WIDTH_EM,
     compute_label_properties,
@@ -145,6 +145,7 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> &
     ExportProps & {
+      // The binary T-x diagram to draw (binary-phase-diagram/2 format); an empty state shows when unset.
       data?: BinaryPhaseDiagram
       // Diagrams of the same components drawn as dashed boundaries only, each in its own
       // color and dash. With show_disagreement, where the first shown one disagrees on the
@@ -174,20 +175,32 @@
       cursor?: DiagramCursor | null
       // Display units only: data stays in K and mole fraction
       temp_unit?: TempUnit
+      // Display unit of the composition axis, `fraction` or `at%`. Data stays in mole fraction.
       comp_unit?: CompUnit
+      // Layout and styling overrides (margin, font_size, special_point_radius, tie_line, colors) merged over the defaults.
       config?: Partial<PhaseDiagramConfig>
+      // Called with the hovered region, point or boundary details, or null when the pointer leaves.
       on_phase_hover?: (info: PhaseHoverInfo | null) => void
+      // Whether the diagram fills the screen.
       fullscreen?: boolean
+      // The root element. Read-only.
       wrapper?: HTMLDivElement
+      // Phase region under the pointer, null when none.
       hovered_region?: DiagramRegion | null
+      // Draw the phase boundary lines.
       show_boundaries?: boolean
+      // Draw phase names inside the regions.
       show_labels?: boolean
+      // Mark invariant, congruent, critical and transition points.
       show_special_points?: boolean
+      // Draw grid lines at the axis ticks.
       show_grid?: boolean
+      // Label the two end-member components at the left and right edges.
       show_component_labels?: boolean
       // Indices into `overlays` of the ones not drawn (no boundaries, tooltip rows or
       // disagreement hatching). The legend and the controls' Overlays checkbox write a new set.
       hidden_overlays?: ReadonlySet<number>
+      // Draw the experimental observations.
       show_observations?: boolean
       // Bands of boundary and marked-point sigma_T
       show_uncertainty?: boolean
@@ -199,11 +212,17 @@
       // them. Each keeps its target, so a click still toggles what it names; an item's
       // `visible` mirrors that target's state, and legend.on_toggle gets the drawn position.
       map_legend?: (entries: PhaseLegendEntry[]) => PhaseLegendEntry[]
+      // Show the fullscreen button in the controls.
       fullscreen_toggle?: boolean
+      // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, editor, fullscreen) appear.
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
+      // Whether the display controls pane is open.
       controls_open?: boolean
+      // Whether the export pane is open (shortcut `e`).
       export_pane_open?: boolean
+      // Resolution of PNG exports in dots per inch.
       png_dpi?: number
+      // Whether the diagram editor pane is open.
       editor_open?: boolean
       // Dropped phase-diagram SVGs (parsed) and v2 JSON files replace the diagram
       allow_file_drop?: boolean
@@ -213,9 +232,11 @@
       on_file_load?: (data: FileLoadData & { diagram: BinaryPhaseDiagram }) => void
       // range in data units: mole fraction (x) and K (y)
       x_axis?: AxisConfig
+      // Temperature axis config; range in K (data units).
       y_axis?: AxisConfig
       // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
       tooltip?: PhaseDiagramTooltipProp
+      // Extra content rendered over the diagram, given its pixel size and fullscreen state.
       children?: Snippet<[{ width: number; height: number; fullscreen: boolean }]>
     } = $props()
 

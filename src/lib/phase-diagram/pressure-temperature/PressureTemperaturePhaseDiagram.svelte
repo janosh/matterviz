@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-  import { format_label_html, format_label_svg } from '#lib/composition/format.js'
+  import { format_label_html, format_label_svg } from '#lib/composition/formula-markup.js'
   import { track_settings } from '#lib/controls.js'
   import { format_num, symbol_map } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
@@ -120,37 +120,53 @@
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     Omit<BasePlotProps, `range_padding` | `hovered`> & {
+      // Pressure-temperature diagram to draw: phases, boundaries and special points with optional uncertainties.
       data?: PtPhaseDiagramData
       // Axis configs by quantity, whichever side swap_axes puts them on (label, ticks, format,
       // scale_type, range in display units). `scale_type: 'log'` gives a log pressure axis.
       // A pinned range follows unit changes.
       pressure_axis?: AxisConfig
+      // Temperature axis config (label, ticks, format, range in display units).
       temperature_axis?: AxisConfig
       // false: pressure on x and temperature on y; true: the other way round
       swap_axes?: boolean
       // Units shown on axes and in the tooltip, default to the data's own
       display_pressure_unit?: PressureUnit
+      // Temperature unit for axes and tooltip (`K`, `°C`, `°F`); defaults to the data's own.
       display_temp_unit?: TempUnit
+      // How boundary uncertainty is drawn: shaded `band`, error `bars`, `both` or `none`.
       uncertainty?: PtUncertaintyMode
       // Error bars and bands span ±n_sigma standard errors (1: 68%, 2: 95%, 3: 99.7%)
       n_sigma?: number
+      // Fill the phase regions with their colors.
       show_regions?: boolean
+      // Draw the phase boundary lines.
       show_boundaries?: boolean
+      // Draw phase names inside the regions (needs show_regions).
       show_labels?: boolean
+      // Mark triple, critical and other special points.
       show_special_points?: boolean
+      // Show the legend of phases and special-point types (combined with legend not being null).
       show_legend?: boolean
+      // Toggles for grid lines and zero lines on each axis.
       display?: DisplayConfig
       // Phase ids and special-point types hidden from the plot (toggled from the legend)
       hidden_phases?: string[]
+      // Special-point types hidden from the plot (toggled from the legend).
       hidden_special_types?: PtSpecialPointType[]
+      // Legend placement and styling over the defaults; null hides it.
       legend?: LegendConfig | null
+      // Wheel, drag and touch panning/zooming options; `{ enabled: false }` turns it off.
       pan?: PanConfig
       // false hides the tooltip, a snippet replaces it, a config object adds prefix/suffix
       tooltip?: PtPhaseDiagramTooltipProp
+      // Called with the hovered phase, boundary or point details, or null when the pointer leaves.
       on_phase_hover?: (info: PtHoverInfo | null) => void
       // A click pins the hovered point's tooltip (null when unpinned)
       on_pin?: (info: PtHoverInfo | null) => void
+      // The root element. Read-only.
       wrapper?: HTMLDivElement
+      // Extra header buttons next to the built-in fullscreen and controls toggles.
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
       // Extra controls-pane content above the built-in sections
       controls_extra?: Snippet

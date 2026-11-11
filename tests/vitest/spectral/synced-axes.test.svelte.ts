@@ -183,3 +183,29 @@ test(`padding floor only rises at one size, ignores sub-pixel creep and undefine
   size = [400, 500]
   expect(floor.value).toEqual({})
 })
+
+// Both panels get PlotAxis' tick-size formula evaluated once for the pair's smaller side: each
+// plot's own cqmin put a narrow side DOS at the 9px floor beside 0.8em bands ticks
+test.each([
+  [[800, 600], `clamp(9px, calc(0.03 * 600px), 0.8em)`],
+  [[1000, 250], `clamp(9px, calc(0.03 * 250px), 0.8em)`],
+  [[0, 900], undefined], // unmeasured: PlotAxis's own default
+] satisfies [Vec2, string | undefined][])(
+  `a %j pair shares tick_font_size %s`,
+  (size, expected) => {
+    let sync: ReturnType<typeof create_bands_dos_sync> | undefined
+    roots.push(
+      $effect.root(() => {
+        sync = create_bands_dos_sync({
+          band_structs: () => ({ '': band_structs }),
+          doses: () => ({ '': doses }),
+          units: () => `THz`,
+          side_by_side: () => true,
+          size: () => size,
+          base_padding: DEFAULT_PLOT_PADDING,
+        })
+      }),
+    )
+    expect(sync?.tick_font_size).toBe(expected)
+  },
+)

@@ -32,8 +32,9 @@ export type BZHoverData = {
 }
 
 // A hovered zone or IBZ face or k-path point and the tooltip it shows. `mark` names it, so a
-// TooltipPin tells marks apart; `face` is a face's hit triangle, whose polygon lights up.
-export type BZHover = { mark: string; data: BZHoverData; face?: number }
+// TooltipPin tells marks apart; `face` is a face's hit triangle, whose polygon lights up;
+// `qpoint_idx` is set on k-path points only.
+export type BZHover = { mark: string; data: BZHoverData; face?: number; qpoint_idx?: number }
 
 export type BZTooltipProp = TooltipProp<
   { hover_data: BZHoverData },

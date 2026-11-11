@@ -12,10 +12,19 @@ import type { Plugin } from 'vite'
 export type PropDoc = {
   name: string
   type?: string // as written in the declaring type, on one line
-  default?: string // destructuring initializer, $bindable(...) unwrapped
+  default?: string // destructuring initializer, $bindable(...) and type assertions unwrapped
+  // the literal a constant or setting default stands for (`DEFAULT_FPS` -> `24`)
+  default_value?: string
   description?: string
   bindable?: true
   required?: true
+}
+
+export type ComponentDoc = {
+  props: PropDoc[]
+  // what a `...rest` binding passes on, e.g. `<div>`: the element whose HTML attributes the
+  // component also accepts (`HTML` when the element can't be told from the type)
+  rest_attributes?: string
 }
 
 const repo_root = resolve(import.meta.dirname, `../..`)
@@ -34,6 +43,28 @@ const one_line = (text: string): string =>
     .replace(/, \}/g, ` }`)
     .trim()
     .replace(/^[|&] /, ``)
+
+// Plain string literals as '...': the repo writes them in backticks, which read as nested code
+// in the rendered table. Template literals with ${...} (template literal types) keep theirs.
+const quote_literals = (text: string): string => text.replaceAll(/`([^`$\\']*)`/g, `'$1'`)
+
+// A type on one line, also without the padding inside <...> and the union operator its line
+// breaks left leading a type argument: `Pick< T, | 'a' | 'b' >` -> `Pick<T, 'a' | 'b'>`
+const type_line = (text: string): string =>
+  quote_literals(
+    one_line(text)
+      .replaceAll(/< /g, `<`)
+      .replaceAll(/ >/g, `>`)
+      .replaceAll(/([<([]|, ) ?[|&] /g, `$1`),
+  )
+
+// Source comments are often lowercase fragments: capitalize a leading plain word for the table,
+// but not an identifier (`x_axis`, `on_click(...)`) or a JS literal whose case is meaningful
+const KEEP_CASE = new Set([`null`, `undefined`, `true`, `false`])
+export const sentence_case = (text: string): string => {
+  const word = /^[a-z]+(?![\w.(])/.exec(text)?.[0]
+  return word && !KEEP_CASE.has(word) ? text[0].toUpperCase() + text.slice(1) : text
+}
 
 const comment_lines = (text: string, ranges: readonly ts.CommentRange[]): string[] =>
   ranges
@@ -60,13 +91,15 @@ const comment_parts = (node: ts.Node): { above: string[]; trailing: string[] } =
   }
 }
 
-// A node's description from comment_parts, minus a lone leading line of at most three
-// unpunctuated words, which heads a group of props rather than describing this one
+// A node's description from comment_parts, minus a leading line of at most three unpunctuated
+// words, which heads a group of props rather than describing this one
 // (`// Controls`, `// Axis configuration`)
 const node_comment = (node: ts.Node): string | undefined => {
   const { above, trailing } = comment_parts(node)
-  const heads_group = above.length === 1 && /^[A-Z][\w-]*(?: [\w-]+){0,2}$/.test(above[0])
-  const lines = [...(heads_group ? [] : above), ...trailing]
+  // also when the prop's own description follows it (`// Component-specific props` then
+  // `// Bars grow upward...`): the heading belongs to the group, not this prop
+  const heads_group = /^[A-Z][\w-]*(?: [\w-]+){0,2}$/.test(above[0] ?? ``)
+  const lines = [...(heads_group ? above.slice(1) : above), ...trailing]
   return lines.length ? lines.join(` `) : undefined
 }
 
@@ -132,11 +165,85 @@ const find_prop = (checker: ts.TypeChecker, type: ts.Type, name: string) =>
     ? type.types.map((member) => checker.getPropertyOfType(member, name)).find(Boolean)
     : checker.getPropertyOfType(type, name)
 
-const component_props = (source: ts.SourceFile, checker: ts.TypeChecker): PropDoc[] => {
+// `x as T`, `x satisfies T` and `(x)` without the wrapper: the cast says nothing about the value
+const unwrap = (node: ts.Expression): ts.Expression =>
+  ts.isAsExpression(node) ||
+  ts.isSatisfiesExpression(node) ||
+  ts.isParenthesizedExpression(node)
+    ? unwrap(node.expression)
+    : node
+
+const LITERAL_KINDS = new Set([
+  ts.SyntaxKind.NumericLiteral,
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TrueKeyword,
+  ts.SyntaxKind.FalseKeyword,
+  ts.SyntaxKind.NullKeyword,
+])
+const is_literal = (node: ts.Expression): boolean =>
+  LITERAL_KINDS.has(node.kind) ||
+  (ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(node.operand)) ||
+  (ts.isArrayLiteralExpression(node) && node.elements.every((el) => is_literal(unwrap(el))))
+
+// The literal a constant (`DEFAULT_FPS`) or setting (`DEFAULTS.trajectory.fps`) default stands
+// for: its declaration's initializer, a settings entry's `value` (DEFAULTS maps SETTINGS_CONFIG
+// entries, whose declarations it keeps), followed through further constants. Undefined for
+// anything else (calls, objects, arithmetic), which the table shows as written.
+const resolve_literal = (
+  node: ts.Expression,
+  checker: ts.TypeChecker,
+  depth = 0,
+): string | undefined => {
+  const expr = unwrap(node)
+  if (is_literal(expr)) return quote_literals(one_line(expr.getText()))
+  if (depth > 4 || !(ts.isIdentifier(expr) || ts.isPropertyAccessExpression(expr))) return
+  let symbol = checker.getSymbolAtLocation(
+    ts.isPropertyAccessExpression(expr) ? expr.name : expr,
+  )
+  if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol)
+  const decl = symbol?.valueDeclaration ?? symbol?.declarations?.[0]
+  const init =
+    decl && (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl))
+      ? decl.initializer && unwrap(decl.initializer)
+      : undefined
+  if (!init || !ts.isObjectLiteralExpression(init))
+    return init && resolve_literal(init, checker, depth + 1)
+  const entry = init.properties.find(
+    (prop) => ts.isPropertyAssignment(prop) && prop.name.getText() === `value`,
+  )
+  return entry && ts.isPropertyAssignment(entry)
+    ? resolve_literal(entry.initializer, checker, depth + 1)
+    : undefined
+}
+
+// `<div>` for a props type naming HTMLAttributes<HTMLDivElement> (or SVGAttributes<...>), else
+// `HTML` when it takes svelte/elements' attributes through some other type
+const rest_attributes = (
+  type_node: ts.TypeNode | undefined,
+  props_type: ts.Type | undefined,
+  checker: ts.TypeChecker,
+): string | undefined => {
+  const named = /\b(?:HTML|SVG)Attributes<(?:HTML|SVG)(\w*?)Element>/.exec(
+    type_node?.getText() ?? ``,
+  )
+  if (named) return `<${{ SVG: `svg`, '': `element` }[named[1]] ?? named[1].toLowerCase()}>`
+  const onclick = props_type && find_prop(checker, props_type, `onclick`)
+  const from_svelte = onclick?.declarations?.some((decl) =>
+    decl.getSourceFile().fileName.includes(`/svelte/elements`),
+  )
+  return from_svelte ? `HTML` : undefined
+}
+
+const component_props = (source: ts.SourceFile, checker: ts.TypeChecker): ComponentDoc => {
   const { declaration, type_node } = find_props(source) ?? {}
-  if (!declaration || !ts.isObjectBindingPattern(declaration.name)) return []
+  if (!declaration || !ts.isObjectBindingPattern(declaration.name)) return { props: [] }
   const props_type = type_node && checker.getTypeFromTypeNode(type_node)
-  return declaration.name.elements
+  const has_rest = declaration.name.elements.some((element) => element.dotDotDotToken)
+  const rest = has_rest ? rest_attributes(type_node, props_type, checker) : undefined
+  const props = declaration.name.elements
     .filter((element) => !element.dotDotDotToken)
     .map((element) => {
       const name = (element.propertyName ?? element.name)
@@ -160,20 +267,35 @@ const component_props = (source: ts.SourceFile, checker: ts.TypeChecker): PropDo
         written_type ?? (symbol && checker.typeToString(checker.getTypeOfSymbol(symbol)))
       const description = commented?.comment ?? node_comment(element)
       const bindable = is_call_to(element.initializer, `$bindable`)
-      const init = bindable ? element.initializer.arguments[0] : element.initializer
+      const written_init = bindable ? element.initializer.arguments[0] : element.initializer
+      const init = written_init && unwrap(written_init)
       const doc: PropDoc = { name }
-      if (type) doc.type = one_line(type)
-      if (init) doc.default = one_line(init.getText())
-      if (description) doc.description = description
+      if (type) doc.type = type_line(type)
+      if (init) {
+        doc.default = quote_literals(one_line(init.getText()))
+        const value = resolve_literal(init, checker)
+        if (value !== undefined && value !== doc.default) doc.default_value = value
+      }
+      if (description) doc.description = sentence_case(description)
       if (bindable) doc.bindable = true
       if (symbol && !(symbol.flags & ts.SymbolFlags.Optional)) doc.required = true
       return doc
     })
+  return rest ? { props, rest_attributes: rest } : { props }
 }
+
+// Parsed files by path, reused while their text is unchanged: re-extracting after an edit (dev
+// server) re-parses only what changed rather than every reachable file, TS's libs included
+const parsed_files = new Map<string, ts.SourceFile>()
+let last_program: ts.Program | undefined
 
 // Prop docs keyed by component name (file basename) for the given .svelte files. Components
 // they import are loaded too (lazily, as virtual TS files) to resolve inherited prop types.
-export const extract_prop_docs = (files: readonly string[]): Record<string, PropDoc[]> => {
+export const extract_prop_docs = (files: readonly string[]): Record<string, ComponentDoc> => {
+  // docs are keyed by file name, so a second X.svelte would silently replace the first's
+  const by_name = Map.groupBy(files, (file) => basename(file, `.svelte`))
+  const clashes = [...by_name.values()].filter((paths) => paths.length > 1)
+  if (clashes.length) throw new Error(`Components share a name: ${clashes.join(`; `)}`)
   const virtual_files = new Map<string, string>()
   const virtual_text = (name: string): string => {
     let text = virtual_files.get(name)
@@ -194,16 +316,23 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
     types: [],
   }
   const host = ts.createCompilerHost(options, true)
-  const { fileExists, getSourceFile, readFile } = host
+  const { fileExists, readFile } = host
   const is_virtual = (name: string): boolean =>
     name.endsWith(`.svelte${VIRTUAL_SUFFIX}`) &&
     fileExists(name.slice(0, -VIRTUAL_SUFFIX.length))
   host.fileExists = (name) => is_virtual(name) || fileExists(name)
   host.readFile = (name) => (is_virtual(name) ? virtual_text(name) : readFile(name))
-  host.getSourceFile = (name, language, ...rest) =>
-    is_virtual(name)
-      ? ts.createSourceFile(name, virtual_text(name), language, true, ts.ScriptKind.TS)
-      : getSourceFile(name, language, ...rest)
+  host.getSourceFile = (name, language) => {
+    const virtual = is_virtual(name)
+    const text = virtual ? virtual_text(name) : readFile(name)
+    if (text === undefined) return undefined
+    const cached = parsed_files.get(name)
+    if (cached?.text === text) return cached
+    const kind = virtual ? ts.ScriptKind.TS : undefined
+    const source = ts.createSourceFile(name, text, language, true, kind)
+    parsed_files.set(name, source)
+    return source
+  }
   // `./X.svelte` and `#lib/.../X.svelte` resolve to X's virtual TS file
   host.resolveModuleNameLiterals = (literals, containing_file, redirected, compiler_options) =>
     literals.map(({ text }) => {
@@ -222,7 +351,8 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
       return virtual?.resolvedModule ? virtual : resolve_name(text)
     })
   const roots = files.map((file) => `${file}${VIRTUAL_SUFFIX}`)
-  const program = ts.createProgram(roots, options, host)
+  const program = ts.createProgram(roots, options, host, last_program)
+  last_program = program
   const checker = program.getTypeChecker()
   return Object.fromEntries(
     roots.map((root) => {
@@ -236,23 +366,61 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
 const VIRTUAL_ID = `virtual:prop-docs`
 const LIB_DIR = `${repo_root}/src/lib/`
 
-// `virtual:prop-docs` default-exports every src/lib component's PropDoc[] keyed by name. Pages
-// import it lazily, so the extraction (one TS program, a few seconds) only runs on first use.
-export const prop_docs_plugin = (): Plugin => ({
-  name: `prop-docs`,
-  resolveId: (id) => (id === VIRTUAL_ID ? `\0${id}` : null),
-  load(id) {
-    if (id !== `\0${VIRTUAL_ID}`) return null
-    const files = globSync(`**/*.svelte`, { cwd: LIB_DIR })
+// `virtual:prop-docs` default-exports a loader per src/lib component name importing
+// `virtual:prop-docs/<name>` (that component's ComponentDoc), so a page fetches only its own
+// components' docs (~2 KB of ~330 KB). One shared extraction (~2.5 s cold, ~0.4 s after an edit)
+// runs on the first per-component import.
+export const prop_docs_plugin = (): Plugin => {
+  const component_files = () =>
+    globSync(`**/*.svelte`, { cwd: LIB_DIR })
       .map((path) => `${LIB_DIR}${path}`)
       .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
-    return `export default ${JSON.stringify(extract_prop_docs(files))}`
-  },
-  // A component or a type it imports changed: returning the loaded virtual module too makes
-  // Vite invalidate it and update its importers, so the next import re-extracts the props
-  hotUpdate({ file, modules }) {
-    if (!file.startsWith(LIB_DIR) || !/\.(svelte|ts)$/.test(file)) return
-    const prop_docs_module = this.environment.moduleGraph.getModuleById(`\0${VIRTUAL_ID}`)
-    return prop_docs_module ? [...modules, prop_docs_module] : undefined
-  },
-})
+  let docs: Record<string, ComponentDoc> | undefined
+  return {
+    name: `prop-docs`,
+    // Dev server: extract once it is up rather than on the first page's prefetch, so that one
+    // doesn't wait (~2.5 s, blocking, while nothing else is being served yet)
+    configureServer(server) {
+      server.httpServer?.once(`listening`, () => {
+        setTimeout(() => {
+          // a failure here (e.g. a file mid-edit) must not crash the server: the first
+          // per-component load extracts again and reports it there
+          try {
+            docs ??= extract_prop_docs(component_files())
+          } catch (error) {
+            server.config.logger.warn(`prop-docs prewarm failed: ${error}`)
+          }
+        }, 500)
+      })
+    },
+    resolveId: (id) =>
+      id === VIRTUAL_ID || id.startsWith(`${VIRTUAL_ID}/`) ? `\0${id}` : null,
+    load(id) {
+      if (id === `\0${VIRTUAL_ID}`) {
+        const names = component_files().map((file) => basename(file, `.svelte`))
+        const loaders = names.map(
+          (name) =>
+            `${JSON.stringify(name)}: () => import(${JSON.stringify(`${VIRTUAL_ID}/${name}`)})`,
+        )
+        return `export default {${loaders.join(`,`)}}`
+      }
+      if (!id.startsWith(`\0${VIRTUAL_ID}/`)) return null
+      const name = id.slice(`\0${VIRTUAL_ID}/`.length)
+      docs ??= extract_prop_docs(component_files())
+      const component_docs = docs[name]
+      if (!component_docs)
+        throw new Error(`No component named ${name} in src/lib has $props()`)
+      return `export default ${JSON.stringify(component_docs)}`
+    },
+    // A component or a type it imports changed: drop the extraction and return the loaded
+    // virtual modules too, so Vite invalidates them and the next import re-extracts the props
+    hotUpdate({ file, modules }) {
+      if (!file.startsWith(LIB_DIR) || !/\.(svelte|ts)$/.test(file)) return
+      docs = undefined
+      const loaded = [...this.environment.moduleGraph.idToModuleMap.values()].filter(
+        ({ id }) => id?.startsWith(`\0${VIRTUAL_ID}`),
+      )
+      return loaded.length ? [...modules, ...loaded] : undefined
+    },
+  }
+}

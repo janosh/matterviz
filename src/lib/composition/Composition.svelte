@@ -31,8 +31,11 @@
     color_scheme = $bindable(`Vesta`),
     ...rest
   }: Omit<CompositionChartProps, `composition` | `svg_node`> & {
+    // Chemical formula string (parsed) or element -> amount record to chart.
     composition: string | CompositionType
+    // Chart type: `pie`, `bubble` or `bar`. Bindable, also changed from the context menu.
     mode?: CompositionChartMode
+    // Called with the parsed composition whenever it changes.
     on_parse?: (composition: CompositionType) => void
   } = $props()
 

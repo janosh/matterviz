@@ -21,19 +21,28 @@
     // https://svelte.dev/repl/17d71b590f554b5a9eba6e04023dd41c
     symbol?: string // usually H, He, etc. but can be anything
     name?: string // usually Hydrogen, Helium, etc. but can be anything
+    // Electrons per shell from the innermost out, e.g. [2, 8, 1] for sodium.
     shells: number[]
+    // Derive the default size from the shell count so every shell fits; false uses a fixed 270.
     adapt_size?: boolean
+    // Radial spacing between shells in SVG units.
     shell_width?: number
+    // Width and height of the SVG viewBox; defaults per adapt_size.
     size?: number
+    // Default color of shell outlines, electron outlines and the nucleus; a CSS color or var.
     base_fill?: string
     orbital_period?: number // time for inner-most electron orbit in seconds, 0 for no motion
     // set properties like size, fill, stroke, stroke-width, for nucleus and electrons here
     nucleus_props?: Record<string, string | number>
+    // SVG attributes overriding the shell circles' defaults (stroke, fill, ...).
     shell_props?: Record<string, string | number>
+    // SVG attributes overriding the electron circles' defaults (r, stroke, fill, ...).
     electron_props?: Record<string, string | number>
+    // Number (counted from 1) of the shell drawn emphasized, null for none.
     highlight_shell?: number | null
     // if function, it'll be called with electron index and should return a string
     number_electrons?: boolean | `hierarchical` | `sequential` | ((idx: number) => string)
+    // SVG attributes for the electron number labels, shown when number_electrons is set.
     electron_label_props?: Record<string, string | number>
   } = $props()
 
