@@ -11,6 +11,9 @@
         if (!loader) throw new Error(`No props extracted for ${name}`)
         return (await loader()).default
       })
+      // a failure (e.g. an extraction error mid-edit on the dev server) is not cached: the
+      // next open retries
+      load.catch(() => loads.delete(name))
       loads.set(name, load)
     }
     return load
