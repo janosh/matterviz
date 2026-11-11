@@ -67,6 +67,7 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     // Props spread onto every ElementTile (e.g. show_name, symbol_style); the per-tile active, backdrop, element, href, label, segments and split_layout are set by the table.
+    // Its own onmouseenter, onmouseleave, onfocus, onblur and onpointerdown replace yours (as onclick and onkeydown do on interactive tiles, where tile_props.onclick still runs on activation).
     tile_props?: Omit<
       Partial<ComponentProps<typeof ElementTile>>,
       `active` | `backdrop` | `element` | `href` | `label` | `segments` | `split_layout`

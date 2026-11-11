@@ -249,7 +249,8 @@
       series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
       children?: Snippet<[UserContentProps]>
-      // Bindable overrides for point size, color and opacity and for showing points or lines, applied over series styles
+      // Bindable settings-pane overrides: show_points/show_lines for every series; point and line
+      // styles for the selected series only, where a color or size scale still wins for points with values
       styles?: StyleOverrides
       // Draws a dashed vertical guide at this x value (e.g. the current frame), null hides it
       current_x_value?: number | null

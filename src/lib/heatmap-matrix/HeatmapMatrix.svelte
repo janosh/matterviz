@@ -152,9 +152,10 @@
       enable_brush?: boolean
       // Called with the brushed rectangle and its cells; needs enable_brush.
       on_brush?: (payload: { x_range: Vec2; y_range: Vec2; cells: CellContext[] }) => void
-      // Width and height of each cell as a CSS length (e.g. `6px`).
+      // Width and height of each cell as a CSS length (e.g. `6px`). Virtual scrolling sizes its
+      // window in px, so give px (other units count as 12px there) or disable `virtual`.
       tile_size?: string
-      // Gap between cells as a CSS length (e.g. `1px`).
+      // Gap between cells as a CSS length (e.g. `1px`); px only under virtual scrolling, like tile_size.
       gap?: string
       // 'compact' removes all-null rows/cols, 'gaps' hides them but keeps their grid positions
       hide_empty?: false | `compact` | `gaps`

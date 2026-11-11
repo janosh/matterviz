@@ -37,8 +37,8 @@ export type ThreltePointerEvent = {
 export type SceneControlProps = {
   camera_projection?: CameraProjection // perspective or orthographic camera
   rotation_damping?: number // how quickly rotation comes to rest after mouse release
-  max_zoom?: number // zoom-in limit; unset or 0 = unlimited (fitting the scene stays reachable)
-  min_zoom?: number // zoom-out limit; unset = unlimited (fitting the scene stays reachable)
+  max_zoom?: number // zoom-in limit in px per Å; unset or 0 = unlimited (never below the fitted zoom)
+  min_zoom?: number // zoom-out limit in px per Å; unset stops at the zoom that fits the scene, lower zooms out further
   rotate_speed?: number // set to 0 to disable rotation
   zoom_speed?: number // set to 0 to disable zooming
   pan_speed?: number // set to 0 to disable panning

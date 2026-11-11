@@ -380,7 +380,15 @@ export const prop_docs_plugin = (): Plugin => {
     // doesn't wait (~2.5 s, blocking, while nothing else is being served yet)
     configureServer(server) {
       server.httpServer?.once(`listening`, () => {
-        setTimeout(() => (docs ??= extract_prop_docs(component_files())), 500)
+        setTimeout(() => {
+          // a failure here (e.g. a file mid-edit) must not crash the server: the first
+          // per-component load extracts again and reports it there
+          try {
+            docs ??= extract_prop_docs(component_files())
+          } catch (error) {
+            server.config.logger.warn(`prop-docs prewarm failed: ${error}`)
+          }
+        }, 500)
       })
     },
     resolveId: (id) =>

@@ -250,7 +250,8 @@
     // Stable identity for coordinate-only updates (trajectory playback): camera and selection
     // persist while it is unchanged and the topology is the same
     structure_series_key?: unknown
-    // Identifies a complete scene snapshot; acknowledged after its render submission.
+    // Identifies a complete scene snapshot; acknowledged after its render submission. Use a new,
+    // truthy token per acknowledgement: a falsy one (e.g. 0) or a repeat is never acknowledged.
     render_token?: unknown
     // Called with `render_token` once the scene for that token has been submitted to the renderer.
     on_rendered?: (token: unknown) => void
