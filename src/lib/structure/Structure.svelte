@@ -243,7 +243,7 @@
     // `auto` docks it when the sites carry numbers worth reading (forces, magnetic moments,
     // charges, velocities) and the viewer is wide enough; its header button closes it.
     site_sidebar?: boolean | `auto`
-    // bindable: the structure on display. Edit-atoms writes edited copies back. Read as
+    // The structure on display. Edit-atoms writes edited copies back. Read as
     // immutable data: assign a new object to update it, in-place edits go unseen. A deep $state
     // costs one copy per new object (~1 s at 100k atoms), which $state.raw or a plain object skip.
     structure?: AnyStructure
@@ -260,12 +260,12 @@
     // Comparison overlay: per-atom displacement arrows from this geometry to `structure`
     // (same atom count and order)
     reference_structure?: AnyStructure
-    // bindable: explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
+    // Explicit bonds. Source for the edit-bonds layer, which writes merged bonds back.
     bonds?: StructureBond[]
     // `camera_position` unset fits the structure; any tuple, [0, 0, 0] included, is an explicit
     // position. Reset it to undefined to request a fresh fit.
     scene_props?: StructureSettings
-    // bindable: the one floating pane that is open
+    // The one floating pane that is open
     active_pane?: StructurePane | null
     // Ovito-style 2x2 grid; collapses to one pane while the viewer is too small for it
     multi_view?: boolean
@@ -273,31 +273,31 @@
     views?: StructureView[]
     // Offer the measure-mode control (distances, angles, dihedrals, bond and atom editing).
     enable_measure_mode?: boolean
-    // bindable: what clicking atoms does, measure distance/angle/dihedral or edit bonds/atoms.
+    // What clicking atoms does, measure distance/angle/dihedral or edit bonds/atoms.
     measure_mode?: MeasureMode
-    // bindable: whether edit-bonds mode adds or deletes bonds.
+    // Whether edit-bonds mode adds or deletes bonds.
     bond_edit_mode?: BondEditMode
-    // bindable: order given to bonds added in edit-bonds mode (1, 1.5, 2, 3 or `aromatic`).
+    // Order given to bonds added in edit-bonds mode (1, 1.5, 2, 3 or `aromatic`).
     bond_edit_order?: BondOrder
-    // bindable: any CSS color for the viewer background. Unset uses the themed default.
+    // Any CSS color for the viewer background. Unset uses the themed default.
     background_color?: string
-    // bindable: opacity 0-1 applied to `background_color`.
+    // Opacity 0-1 applied to `background_color`.
     background_opacity?: number
     // 'always' | 'hover' | 'never' | { mode, hidden: StructureControlName[], style }
     show_controls?: ShowControlsProp<StructureControlName>
     // Opt-in browser persistence of the controls pane settings
     persist_settings?: boolean
-    // bindable: whether the viewer fills the screen.
+    // Whether the viewer fills the screen.
     fullscreen?: boolean
     // Show the fullscreen button in the controls.
     fullscreen_toggle?: boolean
-    // bindable: the viewer's root element.
+    // The viewer's root element.
     wrapper?: HTMLDivElement
     width?: number // output: wrapper width in CSS px
     height?: number // output: wrapper height in CSS px
-    // bindable: element color scheme (palette) used for atoms and legend.
+    // Element color scheme (palette) used for atoms and legend.
     color_scheme?: ColorSchemeName
-    // bindable: how atoms are colored (by element, or a property, custom function or analysis result) and the color scale used.
+    // How atoms are colored (by element, or a property, custom function or analysis result) and the color scale used.
     atom_color_config?: AtomColorConfig
     // File to open: a URL, File or { data, filename } payload holding a structure, volumetric
     // data or prediction JSON, compressed or not (trajectories and other results throw). Pass
@@ -313,14 +313,14 @@
     on_file_load?: EventHandler
     // Called with `error_msg` when loading a file fails.
     on_error?: EventHandler
-    // bindable: true while a dropped or `source` file is loading.
+    // True while a dropped or `source` file is loading.
     loading?: boolean
-    // bindable: message of the latest failed load, shown dismissibly. Set it to undefined to clear.
+    // Message of the latest failed load, shown dismissibly. Set it to undefined to clear.
     error_msg?: string
-    // bindable: recoverable issues the parser reported for the loaded file (skipped CIF rows,
+    // Recoverable issues the parser reported for the loaded file (skipped CIF rows,
     // guessed elements, placeholder cells), shown as one dismissible notice
     parse_warnings?: string[]
-    // bindable: true while a file is dragged over the viewer.
+    // True while a file is dragged over the viewer.
     dragover?: boolean
     // Host-tool result to open, e.g. prediction_from_json(content): replaces the structure with
     // its input and draws its properties, geometry and fields (as dropped prediction JSON does)
@@ -350,44 +350,44 @@
     // Wyckoff coloring). `true` analyzes eagerly for hosts reading `analysis.sym_data` or
     // `analysis.wyckoff_positions`; `false` never, for rapidly changing structures.
     analyze_symmetry?: boolean | `on-demand`
-    // bindable: resolution in dots per inch of PNG exports.
+    // Resolution in dots per inch of PNG exports.
     png_dpi?: number
     // 'speed' caps sphere tessellation for large structures
     performance_mode?: `quality` | `speed`
-    // bindable: draw periodic image atoms on and beyond the cell faces that are not part of the primitive basis.
+    // Draw periodic image atoms on and beyond the cell faces that are not part of the primitive basis.
     show_image_atoms?: boolean
     // Which bonds crossing a cell face get their far atom drawn (see find_image_atoms)
     image_atom_completion?: ImageAtomCompletion
-    // bindable: supercell as repeats along a, b and c, e.g. `2x2x2`, or a single number for all three.
+    // Supercell as repeats along a, b and c, e.g. `2x2x2`, or a single number for all three.
     supercell_scaling?: string
     // False when `structure` is already expanded to `supercell_scaling`
     apply_supercell_scaling?: boolean
     cell_type?: CellType // original, conventional or primitive (needs symmetry analysis)
-    // bindable: indices of the selected sites. Selection drives atom and bond editing.
+    // Indices of the selected sites. Selection drives atom and bond editing.
     selected_sites?: number[]
-    // bindable: indices of sites highlighted from outside the 3D view, e.g. by hovering a Wyckoff table row.
+    // Indices of sites highlighted from outside the 3D view, e.g. by hovering a Wyckoff table row.
     highlighted_sites?: number[]
-    // bindable: index of the site under the pointer, or null.
+    // Index of the site under the pointer, or null.
     hovered_site_idx?: number | null
     // Channel of an enclosing hover_links() the site hover joins by source atom (0-based), e.g.
     // a SiteTable's: a site hovered there is hovered here, and an atom hovered here there
     link_hover?: string
     measured_sites?: number[] // ordered picks for distance/angle/dihedral overlays
-    // bindable: elements whose atoms are hidden (toggled in the legend).
+    // Elements whose atoms are hidden (toggled in the legend).
     hidden_elements?: Set<ElementSymbol>
-    // bindable: symmetry analysis settings, symprec and algorithm.
+    // Symmetry analysis settings, symprec and algorithm.
     symmetry_settings?: Partial<SymmetrySettings>
-    // bindable: scalar fields keyed by unique `id`; removing one in the controls drops its
+    // Scalar fields keyed by unique `id`; removing one in the controls drops its
     // surfaces and color references, while a parent replacing fields updates
     // isosurface_settings itself. A volumetric file import adds its fields only when the ordered
     // atoms, species and lattice match the current structure, else replaces scene and fields.
     volumetric_data?: VolumetricData[]
-    // bindable: isosurface rendering settings (iso value, opacity, ...) for `volumetric_data`.
+    // Isosurface rendering settings (iso value, opacity, ...) for `volumetric_data`.
     isosurface_settings?: IsosurfaceSettings
-    // bindable: sampling and rendering settings of the 2D cross-section of `volumetric_data`.
+    // Sampling and rendering settings of the 2D cross-section of `volumetric_data`.
     slice_settings?: Partial<VolumeSliceSettings>
     display_mode?: StructureDisplayMode // 3D structure/isosurface, 2D cross-section or both side by side
-    // bindable: field shown by the 2D cross-section; follows its ID through replacement and
+    // Field shown by the 2D cross-section; follows its ID through replacement and
     // reordering, falls back to the first field once removed
     active_volume_id?: string
     // Content rendered inside the viewer, given the current structure and fullscreen state.

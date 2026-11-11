@@ -167,9 +167,9 @@
       on_point_click?: (payload: ScatterHandlerProps<Metadata> & DensePointEvent) => void
       // Called when a density bin is clicked with `density.bin_click` set to `zoom`
       on_density_zoom?: (payload: { bin: DensityBin; event: MouseEvent }) => void
-      // Bindable, `density` bins or individual `points`; switches automatically per `density.auto_point_mode`
+      // `density` bins or individual `points`; switches automatically per `density.auto_point_mode`
       render_mode?: RenderMode
-      // Bindable, the outer container element
+      // The outer container element
       wrapper?: HTMLDivElement
       // Wheel, drag and touch panning/zooming options; `{ enabled: false }` turns it off
       pan?: PanConfig

@@ -153,15 +153,15 @@
     // camera, lighting and interaction options for the 3D scene, e.g. { gizmo: false }; not the
     // scene, camera or projection this component binds or sets itself
     scene_props?: Omit<SceneControlProps, `scene` | `camera` | `camera_projection`>
-    // Bindable: true while the viewer is fullscreen.
+    // True while the viewer is fullscreen.
     fullscreen?: boolean
     // Output: wrapper width in CSS px.
     width?: number
     // Output: wrapper height in CSS px.
     height?: number
-    scene?: Scene // bindable: Threlte scene, e.g. for custom exports
-    camera?: Camera // bindable: active camera, e.g. to read the live orthographic zoom
-    // Bindable: the viewer's root element.
+    scene?: Scene // Threlte scene, e.g. for custom exports
+    camera?: Camera // Active camera, e.g. to read the live orthographic zoom
+    // The viewer's root element.
     wrapper?: HTMLDivElement
     // Resolution in dots per inch of PNG exports.
     png_dpi?: number
@@ -179,7 +179,7 @@
     on_file_drop?: FileLoadCallback
     // Props for the spinner shown while loading.
     spinner_props?: ComponentProps<typeof Spinner>
-    // Bindable: true while a file is being loaded; shows a spinner overlay.
+    // True while a file is being loaded; shows a spinner overlay.
     loading?: boolean
     // Error text of the last failed load or zone computation, shown in a dismissible notice.
     error_msg?: string

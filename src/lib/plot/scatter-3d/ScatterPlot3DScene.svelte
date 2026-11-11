@@ -146,7 +146,7 @@
     // Snippet that replaces the hover tooltip content, or false to hide it
     tooltip?: TooltipProp<Scatter3DHandlerEvent<Metadata>>
     tooltip_portal?: HTMLElement
-    // Bindable, the Threlte OrbitControls instance, for programmatic camera moves
+    // The Threlte OrbitControls instance, for programmatic camera moves
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number
     height?: number

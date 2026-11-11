@@ -175,32 +175,32 @@
       cursor?: DiagramCursor | null
       // Display units only: data stays in K and mole fraction
       temp_unit?: TempUnit
-      // Display unit of the composition axis, `fraction` or `at%`. Data stays in mole fraction. Bindable.
+      // Display unit of the composition axis, `fraction` or `at%`. Data stays in mole fraction.
       comp_unit?: CompUnit
       // Layout and styling overrides (margin, font_size, special_point_radius, tie_line, colors) merged over the defaults.
       config?: Partial<PhaseDiagramConfig>
       // Called with the hovered region, point or boundary details, or null when the pointer leaves.
       on_phase_hover?: (info: PhaseHoverInfo | null) => void
-      // Whether the diagram fills the screen. Bindable.
+      // Whether the diagram fills the screen.
       fullscreen?: boolean
-      // The root element. Bindable, read-only.
+      // The root element. Read-only.
       wrapper?: HTMLDivElement
-      // Phase region under the pointer, null when none. Bindable.
+      // Phase region under the pointer, null when none.
       hovered_region?: DiagramRegion | null
-      // Draw the phase boundary lines. Bindable.
+      // Draw the phase boundary lines.
       show_boundaries?: boolean
-      // Draw phase names inside the regions. Bindable.
+      // Draw phase names inside the regions.
       show_labels?: boolean
-      // Mark invariant, congruent, critical and transition points. Bindable.
+      // Mark invariant, congruent, critical and transition points.
       show_special_points?: boolean
-      // Draw grid lines at the axis ticks. Bindable.
+      // Draw grid lines at the axis ticks.
       show_grid?: boolean
-      // Label the two end-member components at the left and right edges. Bindable.
+      // Label the two end-member components at the left and right edges.
       show_component_labels?: boolean
       // Indices into `overlays` of the ones not drawn (no boundaries, tooltip rows or
       // disagreement hatching). The legend and the controls' Overlays checkbox write a new set.
       hidden_overlays?: ReadonlySet<number>
-      // Draw the experimental observations. Bindable.
+      // Draw the experimental observations.
       show_observations?: boolean
       // Bands of boundary and marked-point sigma_T
       show_uncertainty?: boolean
@@ -216,13 +216,13 @@
       fullscreen_toggle?: boolean
       // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, editor, fullscreen) appear.
       show_controls?: ShowControlsProp<`controls` | `export` | `editor` | `fullscreen`>
-      // Whether the display controls pane is open. Bindable.
+      // Whether the display controls pane is open.
       controls_open?: boolean
-      // Whether the export pane is open (shortcut `e`). Bindable.
+      // Whether the export pane is open (shortcut `e`).
       export_pane_open?: boolean
-      // Resolution of PNG exports in dots per inch. Bindable.
+      // Resolution of PNG exports in dots per inch.
       png_dpi?: number
-      // Whether the diagram editor pane is open. Bindable.
+      // Whether the diagram editor pane is open.
       editor_open?: boolean
       // Dropped phase-diagram SVGs (parsed) and v2 JSON files replace the diagram
       allow_file_drop?: boolean

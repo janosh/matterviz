@@ -255,7 +255,7 @@
       styles?: StyleOverrides
       // Draws a dashed vertical guide at this x value (e.g. the current frame), null hides it
       current_x_value?: number | null
-      // Bindable, the point currently hovered or focused, null when none
+      // The point currently hovered or focused, null when none
       tooltip_point?: InternalPoint<Metadata> | null
       // Point drawn with the selection treatment, e.g. the current trajectory frame
       selected_point?: { series_idx: number; point_idx: number } | null
@@ -320,7 +320,7 @@
       on_fill_hover?: (event: FillHandlerEvent | null) => void
       // Bindable index of the series the settings pane edits
       selected_series_idx?: number
-      // Bindable, the outer container element
+      // The outer container element
       wrapper?: HTMLDivElement
       // Read-only: the padding the plot needs, so hosts laying out several plots (BandsAndDos)
       // can feed the maximum back as a shared `padding` to align their chart areas. It is the

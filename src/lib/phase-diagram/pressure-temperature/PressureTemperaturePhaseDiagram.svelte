@@ -132,27 +132,27 @@
       swap_axes?: boolean
       // Units shown on axes and in the tooltip, default to the data's own
       display_pressure_unit?: PressureUnit
-      // Temperature unit for axes and tooltip (`K`, `°C`, `°F`); defaults to the data's own. Bindable.
+      // Temperature unit for axes and tooltip (`K`, `°C`, `°F`); defaults to the data's own.
       display_temp_unit?: TempUnit
-      // How boundary uncertainty is drawn: shaded `band`, error `bars`, `both` or `none`. Bindable.
+      // How boundary uncertainty is drawn: shaded `band`, error `bars`, `both` or `none`.
       uncertainty?: PtUncertaintyMode
       // Error bars and bands span ±n_sigma standard errors (1: 68%, 2: 95%, 3: 99.7%)
       n_sigma?: number
-      // Fill the phase regions with their colors. Bindable.
+      // Fill the phase regions with their colors.
       show_regions?: boolean
-      // Draw the phase boundary lines. Bindable.
+      // Draw the phase boundary lines.
       show_boundaries?: boolean
-      // Draw phase names inside the regions (needs show_regions). Bindable.
+      // Draw phase names inside the regions (needs show_regions).
       show_labels?: boolean
-      // Mark triple, critical and other special points. Bindable.
+      // Mark triple, critical and other special points.
       show_special_points?: boolean
-      // Show the legend of phases and special-point types (combined with legend not being null). Bindable.
+      // Show the legend of phases and special-point types (combined with legend not being null).
       show_legend?: boolean
       // Toggles for grid lines and zero lines on each axis.
       display?: DisplayConfig
       // Phase ids and special-point types hidden from the plot (toggled from the legend)
       hidden_phases?: string[]
-      // Special-point types hidden from the plot (toggled from the legend). Bindable.
+      // Special-point types hidden from the plot (toggled from the legend).
       hidden_special_types?: PtSpecialPointType[]
       // Legend placement and styling over the defaults; null hides it.
       legend?: LegendConfig | null
@@ -164,7 +164,7 @@
       on_phase_hover?: (info: PtHoverInfo | null) => void
       // A click pins the hovered point's tooltip (null when unpinned)
       on_pin?: (info: PtHoverInfo | null) => void
-      // The root element. Bindable, read-only.
+      // The root element. Read-only.
       wrapper?: HTMLDivElement
       // Extra header buttons next to the built-in fullscreen and controls toggles.
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>

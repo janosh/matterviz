@@ -19,16 +19,13 @@
   } = $props()
 
   // flex: 1 shrinks the step slider to nothing instead of wrapping, so it gets its own row once
-  // the controls beside it leave it narrower than its flex-basis (--sequence-slider-min-width).
-  // The wrap follows what the bar holds, not a fixed width. Siblings are measured as laid out:
-  // they only shrink while sharing the slider's row, so both layouts are stable (no flip-flop).
+  // the controls beside it leave it under its flex-basis. Siblings only shrink while sharing the
+  // slider's row, so measuring them as laid out gives stable layouts (no flip-flop).
   let stack_step = $state(false)
-  // computed lengths resolve to px; keywords such as a `normal` gap count as 0, so the slider's
-  // flex-basis must be a length
+  // computed px lengths; keywords (a `normal` gap) count as 0, so the slider's basis must be a length
   const px = (value: string): number => Number(value.replace(/px$/, ``)) || 0
-  // the elements' summed widths plus one gap after each that takes up space. Margins don't
-  // count: an auto margin (e.g. pushing buttons to the bar's end) resolves to the free space,
-  // which would keep a stacked bar stacked however wide it grew.
+  // summed widths plus a gap after each in-flow element. Margins don't count: an auto margin
+  // resolves to the free space, which would keep a stacked bar stacked however wide it grew.
   const row_width = (elements: Element[], gap: string): number =>
     elements.reduce((sum, el) => {
       const out_of_flow = [`absolute`, `fixed`].includes(getComputedStyle(el).position)

@@ -177,10 +177,8 @@
   })
 
   // Label chips are portaled into the canvas wrapper, so their pointer events stop at the chip:
-  // past it, the orbit controls would capture a press and retarget its click, and threlte would
-  // raycast chip-relative offsetX/Y (the canvas's top-left corner), hovering or clicking
-  // whatever sits there. Direct listeners, as Svelte's delegated ones run only once an event
-  // has passed the wrapper; the click calls back here for the same reason.
+  // past it, orbit controls would retarget the click and threlte would raycast chip-relative
+  // offsetX/Y. Direct listeners, since Svelte's delegated ones run only after the wrapper.
   const label_events =
     (qpoint_idx: number): Attachment<HTMLElement> =>
     (node) => {

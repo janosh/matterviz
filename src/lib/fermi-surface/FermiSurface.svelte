@@ -166,13 +166,13 @@
       selected_spins?: SpinChannel[] // spin channels whose sheets are shown (all when unset)
       // Toolbar visibility: `always`, `hover`, `never` (or a boolean), or `{ mode, hidden, style }` to hide named controls.
       show_controls?: ShowControlsProp<`filename` | `fullscreen` | `controls` | `export-pane`>
-      // Bindable: true while the viewer is fullscreen.
+      // True while the viewer is fullscreen.
       fullscreen?: boolean
       // Output: wrapper width in CSS px.
       width?: number
       // Output: wrapper height in CSS px.
       height?: number
-      // Bindable: the viewer's root element.
+      // The viewer's root element.
       wrapper?: HTMLDivElement
       // Output: true while the pointer is over the viewer.
       hovered?: boolean
@@ -185,7 +185,7 @@
       source?: MaterialSource
       // Props for the spinner shown while loading or extracting.
       spinner_props?: ComponentProps<typeof Spinner>
-      // Bindable: true while a file is being loaded; shows a spinner overlay.
+      // True while a file is being loaded; shows a spinner overlay.
       loading?: boolean
       // Error text of the last failed load, parse or extraction, shown in a dismissible notice.
       error_msg?: string

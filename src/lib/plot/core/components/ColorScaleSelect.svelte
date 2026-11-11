@@ -20,7 +20,7 @@
     // Text shown while no scheme is selected
     placeholder = `Select a color scale`,
     color_bar = {},
-    // Bindable, whether the dropdown list is open
+    // Whether the dropdown list is open
     open = $bindable(false),
     ...rest
   }: Omit<

@@ -49,8 +49,8 @@ export type SceneControlProps = {
   directional_light?: number // intensity of the directional key light, which shades the surfaces
   gizmo?: boolean | GizmoOptions // corner axes widget; clicking an axis flies the camera to it
   auto_rotate?: number // speed; 0 disables auto-rotation
-  scene?: Scene // bindable: Threlte scene for external use (e.g. export pane)
-  camera?: Camera // bindable: active camera for external use
+  scene?: Scene // Threlte scene for external use (e.g. export pane)
+  camera?: Camera // Active camera for external use
 }
 
 // The camera/lighting/interaction props above minus the bindables and the projection (whose

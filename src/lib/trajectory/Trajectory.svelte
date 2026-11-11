@@ -255,9 +255,9 @@
     on_error?: EventHandler
     // Stable identity when a host regenerates frames within the same displayed structure
     structure_series_key?: unknown
-    // bindable: frame on display
+    // Frame on display
     current_step_idx?: number
-    // bindable: playback speed in frames per second.
+    // Playback speed in frames per second.
     fps?: number
     // Allowed [min, max] of the playback speed.
     fps_range?: Readonly<Vec2>
@@ -265,20 +265,20 @@
     auto_play?: boolean
     // Automatic prefers structure-only for missing or visually flat plot data.
     display_mode?: TrajectoryDisplayMode
-    // bindable: plot properties as a `time-series` over the run or as a `distribution` histogram.
+    // Plot properties as a `time-series` over the run or as a `distribution` histogram.
     plot_type?: TrajectoryPlotType
     // Independent of time-series visibility; uses the highest-priority property if unset.
     distribution_property?: string | null
     // 'auto' adapts to the element size, 'horizontal'/'vertical' force a split direction
     layout?: `auto` | Orientation
-    // bindable: fraction of the space given to the structure pane, the plot gets the rest.
+    // Fraction of the space given to the structure pane, the plot gets the rest.
     pane_ratio?: number
     // Props forwarded to the structure viewer.
     structure_props?: Omit<StructureOptions, `active_pane` | `hidden_elements`>
     // Bind-only: the structure viewer's live scene settings, structure_props.scene_props plus
     // the user's edits in its controls (edited in place, so reads of its fields stay reactive)
     live_scene_props?: StructureSettings
-    // bindable: supercell of the shown frame as repeats along a, b and c, e.g. `2x2x2`. Starts from `structure_props.supercell_scaling`.
+    // Supercell of the shown frame as repeats along a, b and c, e.g. `2x2x2`. Starts from `structure_props.supercell_scaling`.
     supercell_scaling?: string
     // Props forwarded to the time-series scatter plot. Axes and hidden series are managed here.
     scatter_props?: Omit<ScatterPlotOptions, `x_axis` | `y_axis` | `y2_axis` | `hidden_series`>
@@ -307,22 +307,22 @@
     show_controls?: ShowControlsProp<TrajectoryControlName>
     // Show the fullscreen button in the controls.
     fullscreen_toggle?: boolean
-    // bindable: whether the viewer fills the screen.
+    // Whether the viewer fills the screen.
     fullscreen?: boolean
     // element the fullscreen button and `f` key fullscreen, e.g. a host component wrapping this
     // viewer with its own panes (default: this viewer)
     fullscreen_target?: HTMLElement
-    // bindable: pointer is over the viewer (drives hover-scoped shortcuts)
+    // Pointer is over the viewer (drives hover-scoped shortcuts)
     hovered?: boolean
-    // bindable: the viewer's root element.
+    // The viewer's root element.
     wrapper?: HTMLDivElement
     // Replaces the default playback controls. Receives the run, current frame, frame count and a step setter.
     trajectory_controls?: Snippet<[ControlsProps]>
     // Extra actions beside the default playback controls.
     extra_controls?: Snippet
-    // bindable: the one floating pane that is open (structure controls, info, analyses, export)
+    // The one floating pane that is open (structure controls, info, analyses, export)
     active_pane?: TrajectoryPane | null
-    // bindable: the data inspector, a resizable sidebar beside the structure and plot. Not a
+    // The data inspector, a resizable sidebar beside the structure and plot. Not a
     // floating pane, so it stays open beside whichever pane is active. Hiding its
     // `data-inspector-pane` control (or all controls) hides the sidebar too.
     data_inspector_open?: boolean

@@ -127,9 +127,9 @@
     legend?: LegendConfig | null
     // Forces the legend on or off; unset shows it when there is more than one series
     show_legend?: boolean
-    // Bindable, the point currently hovered or focused, null when none
+    // The point currently hovered or focused, null when none
     tooltip_point?: InternalPoint3D<Metadata> | null
-    // Bindable, the outer container element
+    // The outer container element
     wrapper?: HTMLDivElement
     // Rendered over the 3D canvas, receives its measured size
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>

@@ -73,7 +73,6 @@
               </tr>
             </thead>
             <tbody>
-              <!-- alphabetical, so a prop is found by name; numbered to cite or count them -->
               {#each sort_by_name(props) as { name: prop, type, default: fallback, default_value, description, bindable, required }, idx (prop)}
                 {@const key = `${name}.${prop}`}
                 <tr>

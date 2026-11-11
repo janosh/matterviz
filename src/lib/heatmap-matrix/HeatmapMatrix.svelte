@@ -124,17 +124,17 @@
       // Opaque color painted behind the matrix, used to composite translucent cell fills
       // before picking label contrast. Defaults to the --page-bg token on the matrix.
       backdrop?: string
-      // How the color domain is fitted to the data where value_range leaves an end unset: auto uses min/max, robust the 2nd-98th percentile. Bindable.
+      // How the color domain is fitted to the data where value_range leaves an end unset: auto uses min/max, robust the 2nd-98th percentile.
       domain_mode?: HeatmapDomainMode
       // null hides the bar; orientation `vertical` places it right of the matrix, else below
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
-      // Hovered cell position, null when none. Bindable.
+      // Hovered cell position, null when none.
       active_cell?: CellPos | null
-      // Selected cell positions, updated by clicks per selection_mode. Bindable.
+      // Selected cell positions, updated by clicks per selection_mode.
       selected_cells?: CellPos[]
       // single: click replaces; multi: Cmd/Ctrl+click toggles; range: Shift+click spans
       selection_mode?: SelectionMode
-      // Cell whose tooltip is pinned open, null when none; set by clicks unless tooltip_mode is hover. Bindable.
+      // Cell whose tooltip is pinned open, null when none; set by clicks unless tooltip_mode is hover.
       pinned_cell?: CellPos | null
       // hover: tooltip follows the pointer; pinned: click pins it; both
       tooltip_mode?: `hover` | `pinned` | `both`
@@ -165,7 +165,7 @@
       show_y_labels?: boolean
       // Alternate labels between the two edges so dense axes stay legible (auto: >= 24 items)
       stagger_axis_labels?: boolean | `auto`
-      // For square matrices, render only the `lower` or `upper` triangle (false shows all cells). Bindable.
+      // For square matrices, render only the `lower` or `upper` triangle (false shows all cells).
       symmetric?: SymmetricMode
       // In symmetric mode, keep labels on the outer edges or hug the diagonal
       symmetric_label_position?: `diagonal` | `edge`
@@ -183,13 +183,13 @@
       virtual?: VirtualScroll
       // Mean of each visible row/column in an extra track
       show_row_summaries?: boolean
-      // Show the mean of each column in an extra row below the grid. Bindable.
+      // Show the mean of each column in an extra row below the grid.
       show_col_summaries?: boolean
       // true uses '.3~g', a string is a format_num spec; ignored when `cell` is set
       show_values?: boolean | string
       // Controls pane (HeatmapMatrixControls inside the shell)
       show_controls?: ShowControlsProp<`controls`>
-      // Whether the controls pane is open. Bindable.
+      // Whether the controls pane is open.
       controls_open?: boolean
       // Props forwarded to the controls pane: pane_props, toggle_props and extra children.
       controls_props?: Pick<

@@ -216,12 +216,12 @@
     show_controls?: ShowControlsProp<
       `panes` | `sync-rotation` | `fullscreen` | `series` | `compare` | `nav` | `step` | `fps`
     >
-    // Bindable: true while the viewer is fullscreen.
+    // True while the viewer is fullscreen.
     fullscreen?: boolean
     // Show the fullscreen button (also needs `show_controls` to show it).
     fullscreen_toggle?: boolean
     allow_file_drop?: boolean // one drop zone for all panes: theirs are off
-    // Bindable: true while a dropped file is being read.
+    // True while a dropped file is being read.
     loading?: boolean
     // Error text of the last failed drop or invalid data, shown in a dismissible notice.
     error_msg?: string

@@ -731,7 +731,7 @@ export interface BasePlotProps extends ExportProps {
   // Text drawn above the plot, or a config with subtitle, alignment and font overrides
   title?: string | PlotTitleConfig
   // State
-  hovered?: boolean // Bindable, true while the pointer is over the plot
+  hovered?: boolean // True while the pointer is over the plot
   // Controls
   show_controls?: ShowControlsProp<`controls` | `fullscreen`> // false hides all chart chrome
   controls_open?: boolean // settings pane open; kept but not shown while show_controls hides it
@@ -740,7 +740,7 @@ export interface BasePlotProps extends ExportProps {
   // Extra props for the settings pane itself, e.g. style or max_width
   controls_pane_props?: PaneProps
   // Fullscreen
-  fullscreen?: boolean // Bindable, true while the chart fills the viewport
+  fullscreen?: boolean // True while the chart fills the viewport
   fullscreen_toggle?: boolean // default: true
   // Children
   children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]> // Rendered over the chart, receives its measured size

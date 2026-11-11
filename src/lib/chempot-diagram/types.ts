@@ -133,7 +133,7 @@ export type ChemPotDiagramProps = {
   height?: number
   // Bound; views auto-correct it to a valid available temperature when needed
   temperature?: number
-  // Domain under the pointer (formula, view, axis ranges), null when none. Bindable.
+  // Domain under the pointer (formula, view, axis ranges), null when none.
   hover_info?: ChemPotHoverInfo | null
   // Shown while no domain is hovered, any formula spelling
   highlighted_formula?: string | null
