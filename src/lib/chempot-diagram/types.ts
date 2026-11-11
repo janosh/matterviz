@@ -123,12 +123,17 @@ export type ChemPotTooltipProp = TooltipProp<ChemPotHoverInfo, ChemPotTooltipCon
 
 // Props shared by ChemPotDiagram and its 2D and 3D views
 export type ChemPotDiagramProps = {
+  // Phase entries with compositions and formation energies; their elements set the diagram axes.
   entries: PhaseData[]
+  // Display and computation options: elements shown, projection_mode, color_mode, limits, temperature interpolation and more.
   config?: ChemPotDiagramConfig
+  // Diagram width in px.
   width?: number
+  // Diagram height in px.
   height?: number
   // Bound; views auto-correct it to a valid available temperature when needed
   temperature?: number
+  // Domain under the pointer (formula, view, axis ranges), null when none. Bindable.
   hover_info?: ChemPotHoverInfo | null
   // Shown while no domain is hovered, any formula spelling
   highlighted_formula?: string | null

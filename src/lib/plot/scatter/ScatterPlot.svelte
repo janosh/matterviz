@@ -245,12 +245,17 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title` | `children`> &
     Omit<BasePlotProps, `children`> &
     CartesianPlotProps & {
+      // Data series with x and y arrays plus per-series style, labels, error bars and axis assignment
       series?: readonly DataSeries<Metadata>[]
       // HTML overlays after the SVG, with the frame's scales so they can anchor to data coords
       children?: Snippet<[UserContentProps]>
+      // Bindable overrides for point size, color and opacity and for showing points or lines, applied over series styles
       styles?: StyleOverrides
+      // Draws a dashed vertical guide at this x value (e.g. the current frame), null hides it
       current_x_value?: number | null
+      // Bindable, the point currently hovered or focused, null when none
       tooltip_point?: InternalPoint<Metadata> | null
+      // Point drawn with the selection treatment, e.g. the current trajectory frame
       selected_point?: { series_idx: number; point_idx: number } | null
       // Points inside the last Alt+drag rect. Bindable so a host can drive linked views
       // (or clear it); the chart renders them with the same treatment as selected_point.
@@ -270,33 +275,50 @@
       // Serializers added to (or replacing) the built-in PNG/SVG/CSV export, e.g. a JSON of
       // the data a wrapping component plots
       export_sources?: ExportSources
+      // Snippet rendered at the end of the settings pane, given the style overrides, selected series and axis configs
       controls_extra?: Snippet<
         [{ styles: StyleOverrides; selected_series_idx: number } & Required<PlotConfig>]
       >
       // A host viewer's keyboard shortcuts (NebViewer), listed at the controls pane's bottom
       shortcut_scopes?: readonly ShortcutScope[]
+      // Colormap, scale type and value range for series `color_values`
       color_scale?: ColorScale
+      // How series `size_values` map to marker radius in px (type, radius range, value range)
       size_scale?: SizeScaleConfig
       // Reference circles for size_values, shown when the size scale maps 2+ legend values to
       // distinct marker radii (null hides)
       size_legend?: SizeLegendConfig | null
+      // Color bar props for the color_values scale; null hides it
       color_bar?: ColorBarDecorationProps | null
+      // Tuning for the simulated-annealing placement of point labels (iterations, weights, label cap)
       label_placement_config?: Partial<LabelPlacementConfig>
+      // Hover reach in px and mode: `nearest` point, or match only along `x` or `y`
       hover_config?: Partial<HoverConfig>
+      // Transition of point positions when data changes; `{ duration: 0 }` snaps
       point_tween?: TweenOptions<Point2D>
+      // Transition of line paths when data changes; `{ duration: 0 }` snaps
       line_tween?: TweenOptions<string>
+      // Per-point DOM event handlers keyed by name (`onclick`, `onmouseenter`, ...), called with the point and event
       point_events?: Record<
         string,
         (payload: { point: InternalPoint<Metadata>; event: Event }) => void
       >
+      // Called when a point is clicked or activated by keyboard
       on_point_click?: (data: ScatterHandlerEvent<Metadata>) => void
+      // Called with the hovered point, or null when the pointer or focus leaves it
       on_point_hover?: (data: ScatterHandlerEvent<Metadata> | null) => void
+      // Called when the plot surface is clicked, with the nearest point within the hover reach
       on_plot_click?: (data: ScatterHandlerEvent<Metadata>) => void
       fill_regions?: FillRegion[] // Bindable for legend toggle support
+      // Shaded bands of a series' error magnitude around its line
       error_bands?: ErrorBand[]
+      // Called when a fill region or error band is clicked
       on_fill_click?: (event: FillHandlerEvent) => void
+      // Called with the hovered fill region or error band, or null when the pointer leaves it
       on_fill_hover?: (event: FillHandlerEvent | null) => void
+      // Bindable index of the series the settings pane edits
       selected_series_idx?: number
+      // Bindable, the outer container element
       wrapper?: HTMLDivElement
       // Read-only: the padding the plot needs, so hosts laying out several plots (BandsAndDos)
       // can feed the maximum back as a shared `padding` to align their chart areas. It is the

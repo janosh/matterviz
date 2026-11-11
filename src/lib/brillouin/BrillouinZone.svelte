@@ -75,21 +75,32 @@
   }
   let {
     structure = $bindable(),
+    // Order of the Brillouin zone to render (1 = first zone; values above 3 are clamped to 3).
     bz_order = $bindable(DEFAULTS.brillouin.bz_order),
     // Pre-computed zone; wins over the one derived from `k_lattice` or `structure`
     bz_data,
     k_lattice,
     controls_open = $bindable(false),
     info_pane_open = $bindable(false),
+    // CSS color of the zone faces.
     surface_color = $bindable(DEFAULTS.brillouin.surface_color),
+    // Opacity of the zone faces (0 to 1).
     surface_opacity = $bindable(DEFAULTS.brillouin.surface_opacity),
+    // CSS color of the zone edges.
     edge_color = $bindable(DEFAULTS.brillouin.edge_color),
+    // Edge width as a fraction of the zone half-size (half the mean reciprocal vector length).
     edge_width = $bindable(DEFAULTS.brillouin.edge_width),
+    // Draw the reciprocal lattice vectors.
     show_vectors = $bindable(DEFAULTS.brillouin.show_vectors),
+    // Length multiplier for the reciprocal lattice vectors.
     vector_scale = $bindable(DEFAULTS.brillouin.vector_scale),
+    // Camera projection: `perspective` or `orthographic`.
     camera_projection = $bindable(DEFAULTS.brillouin.camera_projection),
+    // Draw the irreducible Brillouin zone (needs a structure to find its symmetry).
     show_ibz = $bindable(DEFAULTS.brillouin.show_ibz),
+    // CSS color of the irreducible zone faces.
     ibz_color = $bindable(DEFAULTS.brillouin.ibz_color),
+    // Opacity of the irreducible zone faces (0 to 1).
     ibz_opacity = $bindable(DEFAULTS.brillouin.ibz_opacity),
     ibz_data = $bindable<IrreducibleBZData | null>(null),
     show_controls,
@@ -126,35 +137,51 @@
     scene_props = {},
     ...rest
   }: Partial<BrillouinZoneSettings> & {
+    // Crystal the zone is computed from (its reciprocal lattice). Replaced when a file is loaded.
     structure?: Crystal
     bz_data?: BrillouinZoneData
     // reciprocal lattice (rows b_i, 2π included) to derive the zone from instead of `structure`
     k_lattice?: Matrix3x3
+    // Whether the settings pane is open.
     controls_open?: boolean
+    // Whether the info pane (zone order, volume, vertex and face counts, lattice, space group) is open.
     info_pane_open?: boolean
+    // Output: irreducible zone computed from the structure's symmetry while `show_ibz` is on, else null.
     ibz_data?: IrreducibleBZData | null
+    // Toolbar visibility: `always`, `hover`, `never` (or a boolean), or `{ mode, hidden, style }` to hide named controls.
     show_controls?: ShowControlsProp<BrillouinControlName>
     // camera, lighting and interaction options for the 3D scene, e.g. { gizmo: false }; not the
     // scene, camera or projection this component binds or sets itself
     scene_props?: Omit<SceneControlProps, `scene` | `camera` | `camera_projection`>
+    // Bindable: true while the viewer is fullscreen.
     fullscreen?: boolean
+    // Output: wrapper width in CSS px.
     width?: number
+    // Output: wrapper height in CSS px.
     height?: number
     scene?: Scene // bindable: Threlte scene, e.g. for custom exports
     camera?: Camera // bindable: active camera, e.g. to read the live orthographic zoom
+    // Bindable: the viewer's root element.
     wrapper?: HTMLDivElement
+    // Resolution in dots per inch of PNG exports.
     png_dpi?: number
+    // Output: true while the pointer is over the viewer.
     hovered?: boolean
+    // Output: true while a file is dragged over the viewer.
     dragover?: boolean
     allow_file_drop?: boolean // false when a parent owns loading
+    // Show the fullscreen button in the controls.
     fullscreen_toggle?: boolean
     // Structure file to compute the zone from: a URL, File or { data, filename } payload
     source?: MaterialSource
     // Takes over loading: receives the raw content of every drop and `source` load instead of
     // the viewer parsing it
     on_file_drop?: FileLoadCallback
+    // Props for the spinner shown while loading.
     spinner_props?: ComponentProps<typeof Spinner>
+    // Bindable: true while a file is being loaded; shows a spinner overlay.
     loading?: boolean
+    // Error text of the last failed load or zone computation, shown in a dismissible notice.
     error_msg?: string
     // Band-structure k-path to draw, in Cartesian reciprocal coordinates from the reciprocal
     // lattice incl. 2π (spectral's band_k_path builds it from a band structure)
@@ -176,11 +203,17 @@
     // Bands plotting the band structure k_path came from: a q-point hovered there marks its
     // k-point and branch here, and the hovered k-path q-point there
     link_hover?: string
+    // Content rendered inside the viewer, receiving the structure and the zone.
     children?: Snippet<[{ structure?: Crystal; bz_data?: BrillouinZoneData }]>
+    // Hover tooltip: a snippet replaces its content, a { prefix, suffix } config customizes it, false hides it.
     tooltip?: BZTooltipProp
+    // Called with the loaded structure and zone after a dropped or `source` file is parsed.
     on_file_load?: (data: BZHandlerData) => void
+    // Called with `error_msg` when loading or computing the zone fails.
     on_error?: (data: BZHandlerData) => void
+    // Called with the structure, zone and new `fullscreen` state when fullscreen is toggled.
     on_fullscreen_change?: (data: BZHandlerData) => void
+    // Called with the data of the hovered zone point or k-path point, or null when the pointer leaves.
     on_point_hover?: (data: BZHoverData | null) => void
   } & HTMLAttributes<HTMLDivElement> = $props()
 

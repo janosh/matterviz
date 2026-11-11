@@ -51,9 +51,13 @@ type NodeProps<Metadata extends Record<string, unknown>> = SunburstNodeHandlerPr
 
 // Shared public props; geometry options and content snippets stay on each component.
 export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
+  // Root node, or an array of top-level nodes, each with a label, value and optional children
   data?: SunburstNode<Metadata> | SunburstNode<Metadata>[]
+  // How node values combine: `leaf-sum` (default) sums leaves, `total` trusts each node's own value, `remainder` adds it on top of its children's sum
   value_mode?: SunburstValueMode
+  // Sibling order: `descending` or `ascending` by value, `none` keeps input order
   sort?: SunburstSort
+  // Brightens colors inherited from the top-level ancestor by this much per depth level (0 keeps them identical)
   level_lighten?: number
   // Aggregate sibling nodes below this fraction of the total into one 'Other'
   // node per parent (only when >= 2 qualify); 0 disables
@@ -61,10 +65,13 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   // Children kept per parent, largest first; 0 (default) is unlimited. Not a hard cap: a
   // parent one child over the limit keeps it rather than bucket a single sibling
   max_children?: number
+  // Label of the bucket created by `min_fraction` and `max_children` (default `Other`); a function receives the bucket's count and value
   other_label?: string | ((bucket: OtherBucketInfo) => string)
   max_depth?: number // levels shown below the current zoom root (0 = all)
+  // Whether arcs or cells show text labels at all
   show_labels?: boolean
   label_text?: SunburstLabelText // what labels display (plotly textinfo equivalent)
+  // Clicking a node with children zooms into it; off leaves clicks to `on_node_click`
   zoom_on_click?: boolean
   zoom_root_id?: string | number | null // id of the node the view is rooted on
   show_breadcrumbs?: boolean // clickable ancestor trail when zoomed
@@ -74,17 +81,27 @@ export interface HierarchyChartProps<Metadata extends Record<string, unknown>> {
   color_scale?: ColorScale // value_range defaults to the metric's [min, max]
   color_bar?: ComponentProps<typeof ColorBar> | null // null hides it
   color_bar_side?: ColorBarSide // side reserved for vertical color bars
+  // d3-format specifier for node values in labels and tooltips (default `,`)
   value_format?: string
+  // Space in px around the chart inside its container
   padding?: Sides
+  // Legend placement and styling; null hides it
   legend?: LegendConfig | null
+  // Shows one legend entry per top-level node; off unless set, since nodes are labelled in place
   show_legend?: boolean
+  // Snippet that replaces the hover tooltip content, or false to hide it
   tooltip?: TooltipProp<NodeProps<Metadata>>
+  // Called when a node is clicked or activated by keyboard
   on_node_click?: (data: NodeProps<Metadata> & { event: MouseEvent | KeyboardEvent }) => void
+  // Called with the hovered node, or null when the pointer or focus leaves it
   on_node_hover?: (
     data: (NodeProps<Metadata> & { event: MouseEvent | FocusEvent }) | null,
   ) => void
+  // Called after the view root changes by zooming, with the new root or null for the data root
   on_zoom?: (data: { root: NodeProps<Metadata> | null }) => void
+  // Extra header buttons rendered next to the built-in fullscreen and controls toggles
   header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+  // Snippet rendered at the end of the settings pane, given the current zoom root id
   controls_extra?: Snippet<[{ zoom_root_id: string | number | null }]>
 }
 

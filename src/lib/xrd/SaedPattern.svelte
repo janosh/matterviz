@@ -22,7 +22,9 @@
     selected_spot = $bindable(null),
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Zone-axis electron diffraction spots (with zone axis, wavelength and Laue zones) as computed for a structure.
     pattern: SaedPatternData
+    // Spot label style: `compact` overbars negative indices, `full` writes (h, k, l), null hides labels.
     hkl_format?: HklFormat
     // Number of strongest spots to label with their Miller indices
     annotate_spots?: number
@@ -31,7 +33,9 @@
     max_spots?: number
     // [min, max] drawn spot radius in px, mapped from sqrt(intensity)
     spot_radius_range?: [number, number]
+    // Draw a reciprocal-space scale bar (1/Å) in the bottom left corner.
     show_scale_bar?: boolean
+    // Padding in px between the plot edge and the outermost spot; also offsets the scale bar and zone label.
     margin?: number
     // Spot under the pointer or keyboard focus, e.g. for a host to draw its (hkl) planes in a
     // Structure looking down pattern.zone_axis (both refer to the input lattice)

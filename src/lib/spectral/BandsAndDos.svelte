@@ -51,7 +51,9 @@
     children,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Band structures keyed by legend label; the first one's k-path is drawn in the Brillouin zone when `structure` is set.
     band_structs: Record<string, BaseBandStructure>
+    // Densities of states keyed by legend label, drawn beside or below the bands.
     doses: Record<string, DosData>
     a2f?: Record<string, PhononDos> // Eliashberg functions, on the DOS's own α²F axis
     frequency_range?: Vec2 // the extent (data units) to span instead of the data's
@@ -68,12 +70,17 @@
     fermi_level?: number
     // Presentation only: data, units and view sync stay with this parent
     bands_props?: BandsOptions
+    // Extra props for the DOS panel (axis, padding, controls); data, units and view sync stay with this component.
     dos_props?: DosOptions
+    // Extra props for the Brillouin zone panel, shown when `structure` is set.
     bz_props?: BrillouinZoneOptions
+    // Share one frequency or energy range between bands and DOS. False keeps the two axes independent.
     shared_y_axis?: boolean
+    // Zoom or pan of the frequency axis in one panel is mirrored in the other (side by side only).
     sync_y_zoom?: boolean
     fullscreen?: boolean // all panels fullscreen together (one button, top-right plot's header)
     fullscreen_toggle?: boolean // also hidden by the top-right plot's show_controls
+    // Content rendered inside the wrapper, receiving the hovered frequency, band point and q-point index.
     children?: Snippet<[HoveredData]>
   } = $props()
 

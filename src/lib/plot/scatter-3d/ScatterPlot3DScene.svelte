@@ -119,23 +119,34 @@
     x_axis?: Omit<AxisConfig3D, `range`>
     y_axis?: Omit<AxisConfig3D, `range`>
     z_axis?: Omit<AxisConfig3D, `range`>
+    // Toggles for axes, labels, grid, bounding box and point projections onto the axis planes
     display?: DisplayConfig3D
+    // Overrides for point size, color and opacity and for showing points or lines on all series
     styles?: StyleOverrides3D
+    // Function, parametric or triangulated surfaces drawn with the points
     surfaces?: Surface3DConfig[]
+    // Lines through the scene, parallel to an axis or between two points
     ref_lines?: RefLine3D[]
+    // Planes at a fixed x, y or z, or through three points or a normal
     ref_planes?: RefPlane[]
     // Color scale function for color_values (computed once by the ScatterPlot3D wrapper)
     color_scale_fn?: (value: number) => string
+    // How per-point size values map to marker radius (type, radius range in scene units, value range)
     size_scale?: SizeScaleConfig
+    // Camera location in scene coordinates (the scene's vertical axis is Y)
     camera_position?: Vec3
     sphere_segments?: number // marker sphere detail; unset: smooth, coarser past 5000 points
     // Marker position, size and colour glide to new data or encodings; `{ duration: 0 }` snaps
     point_tween?: InstanceTween
     hovered_point?: InternalPoint3D<Metadata> | null
+    // Called when a point is clicked or activated by keyboard
     on_point_click?: (data: Scatter3DHandlerEvent<Metadata>) => void
+    // Called with the hovered point, or null when the pointer leaves it
     on_point_hover?: (data: Scatter3DHandlerEvent<Metadata> | null) => void
+    // Snippet that replaces the hover tooltip content, or false to hide it
     tooltip?: TooltipProp<Scatter3DHandlerEvent<Metadata>>
     tooltip_portal?: HTMLElement
+    // Bindable, the Threlte OrbitControls instance, for programmatic camera moves
     orbit_controls?: ComponentProps<typeof extras.OrbitControls>[`ref`]
     width?: number
     height?: number

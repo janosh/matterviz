@@ -32,25 +32,35 @@
     active_path_key = $bindable(``),
     active_image_idx = $bindable(0),
     on_image_change,
+    // Overrides merged over the default x axis (coordinate-mode label).
     x_axis = {},
+    // Overrides merged over the default y axis (energy label with unit).
     y_axis = {},
     show_controls,
     controls_open = $bindable(false),
     profiles: given_profiles,
     ...rest
   }: {
+    // Reaction path(s) to plot: an image array, a single path or a record of named paths.
     paths: ReactionPathInput
     coord_options?: PathSplineOptions
     // Profiles of `paths` under (coord_options, coord_mode), keyed like normalize_paths(paths).
     // A host that already measured them (NebViewer's barrier table) passes them in so each
     // path is profiled once; otherwise they are computed here.
     profiles?: Record<string, PathProfile>
+    // Reaction coordinate on the x axis: cumulative displacement in Å (`arc_length`) or image number (`image_index`).
     coord_mode?: ReactionCoordMode
+    // Plot energies relative to each path's first image (`initial`) or as stored (`absolute`).
     energy_reference?: EnergyReference
+    // Draw the interpolated energy curve through the images. When off, the images are joined by straight lines.
     show_spline?: boolean
+    // Mark the barrier on the active path: the fitted saddle with its height above the initial image.
     annotate_barrier?: boolean
+    // Key of the highlighted path. Falls back to the first path when it matches none.
     active_path_key?: string
+    // Index of the highlighted image along the active path.
     active_image_idx?: number
+    // Called with the path key and image index when an image point is hovered or clicked.
     on_image_change?: (payload: PointMeta) => void
     shortcut_scopes?: readonly ShortcutScope[] // NebViewer's, listed at the controls' bottom
   } & Omit<ScatterPlotOptions, `controls_extra`> = $props()

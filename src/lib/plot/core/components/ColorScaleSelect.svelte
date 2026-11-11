@@ -15,19 +15,24 @@
       key.startsWith(`interpolate`),
     ) as D3InterpolateName[],
     value = $bindable(options[0]),
+    // Fewest schemes that must stay selected, so 1 prevents clearing the choice
     min_select = 1,
+    // Text shown while no scheme is selected
     placeholder = `Select a color scale`,
     color_bar = {},
+    // Bindable, whether the dropdown list is open
     open = $bindable(false),
     ...rest
   }: Omit<
     Extract<MultiSelectProps<D3InterpolateName>, { mode: `single` }>,
     `options` | `mode` | `value`
   > & {
+    // d3-scale-chromatic interpolators to choose from (default: every `interpolate*` export)
     options?: D3InterpolateName[]
     // The color scale whose scheme is picked: a bare name stays a name, a config keeps its
     // other fields (type, ranges). A function scheme shows no selection.
     value?: ColorScale
+    // Props for the ColorBar preview drawn next to each scheme in the list
     color_bar?: ComponentProps<typeof ColorBar>
   } = $props()
 

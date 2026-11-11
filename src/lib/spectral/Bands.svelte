@@ -82,7 +82,9 @@
     display = $bindable({ x_grid: false, y_grid: true, y_zero_line: true }),
     show_controls,
     controls_open = $bindable(false),
+    // DOM id of the plot's root element.
     id: identifier,
+    // Test id set on the plot's root element.
     'data-testid': data_testid,
     point_hit_padding = 3,
     // the padding the plot settled on; BandsAndDos aligns both panels to it
@@ -100,11 +102,14 @@
     // clicked point whenever a reciprocal lattice is known: from the band data itself (pymatgen
     // and phonopy inputs carry one) or, overriding it, from this crystal's lattice
     structure?: Crystal
+    // Size, style and `bz_props` of the Brillouin zone popup opened by clicking a symmetry-point tick, plus an `on_close` callback.
     bz_popup_props?: Pick<
       ComponentProps<typeof BrillouinZonePopup>,
       `width` | `height` | `bz_props` | `style` | `class` | `on_close`
     >
+    // Band line style (stroke, stroke_width): one for all bands, `{ acoustic, optical }`, or a function of band index, spin and structure label.
     line_kwargs?: LineKwargs
+    // How to compare band structures with different q-point paths: `strict` errors, `union` plots every segment, `intersection` only the shared ones.
     path_mode?: PathMode
     // x length the plotted path spans, its segments keeping their proportions (default: its own
     // reciprocal-space distance). A sweep fixes it, so frames whose cell (and so path length)
@@ -126,10 +131,12 @@
     // band structure, e.g. a BrillouinZone's whose k_path it draws: a q-point hovered there
     // marks its line and branch here, and the hovered band point's q-point there
     link_hover?: string
+    // Fat-band ribbon style: `color`, `opacity` (default 0.3), `max_width` (half-width in px, default 6) and width `scale`.
     ribbon_config?: RibbonConfig
     fermi_level?: number // electronic reference, zero allowed; omitted uses the data's efermi
     units?: FrequencyUnit // Phonon frequency display units (electronic always eV)
     band_spin_mode?: BandsSpinMode // Electronic spin display: overlay (default), up_only, down_only
+    // Shaded horizontal bands as `{ y_min, y_max, color?, opacity?, label? }` in plotted units, e.g. a gap. A label adds a legend entry.
     highlight_regions?: {
       y_min: number
       y_max: number

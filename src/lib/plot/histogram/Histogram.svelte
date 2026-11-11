@@ -122,17 +122,25 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     CartesianPlotProps & {
+      // Distributions to bin, each a list of sample `values` with optional weights, label and color
       series: readonly HistogramSeries[]
       // Component-specific props
+      // Number of equal-width bins over the x domain (geometric on a log axis)
       bins?: number
+      // Bar height scaling: raw `count`, `probability` per bin or `density` (bars integrate to 1)
       normalize?: HistogramNormalize
+      // Bar fill, opacity and outline overrides; `color` fills only a lone series without its own color
       bar?: BarStyle
       // Index in `series` displayed in single mode; an unavailable index selects the first
       // visible series. Labels are display text and need not be unique or present.
       selected_series_idx?: number
+      // `single` draws one series at a time, `overlay` draws all visible series together
       mode?: `single` | `overlay`
+      // Snippet that replaces the hover tooltip content, or false to hide it
       tooltip?: TooltipProp<HistogramHandlerProps>
+      // Snippet rendered at the end of the settings pane, given the axis configs
       controls_extra?: Snippet<[Required<PlotConfig>]>
+      // Called when a bar is clicked or activated by keyboard
       on_bar_click?: (
         data: HistogramHandlerProps & { event: MouseEvent | KeyboardEvent },
       ) => void
@@ -140,6 +148,7 @@
       on_bar_hover?: (
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
+      // Called with the series index after a legend click toggles that series
       on_series_toggle?: (series_idx: number) => void
     } = $props()
 

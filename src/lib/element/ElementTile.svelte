@@ -22,23 +22,33 @@
     onclick,
     ...rest
   }: Omit<HTMLAttributes<HTMLElement>, `onclick`> & {
+    // Element whose number, symbol, name and category color the tile shows.
     element: ChemicalElement
     // 0 segments paints the category color, 1 paints a solid tile, 2-4 split it. Each
     // segment carries its own color and optional value label.
     segments?: TileSegment[]
+    // Show the element symbol.
     show_symbol?: boolean
     show_number?: boolean
+    // Show the element name (or label) when the tile has no value labels.
     show_name?: boolean
+    // Inline CSS applied to the symbol.
     symbol_style?: string
+    // Draw the tile highlighted, e.g. while it is hovered or selected.
     active?: boolean
+    // Render the tile as a link to this URL instead of a div.
     href?: string
+    // Text color for the tile; unset picks black or white per background for contrast.
     text_color?: string
     // Opaque surface behind the tile. Supplying it avoids a per-tile theme observer.
     backdrop?: string
+    // format_num spec for numeric segment values (e.g. `.2f`); unset uses format_num's default.
     float_fmt?: string
+    // Text shown instead of the element name; hidden when value labels are shown.
     label?: string
     // Which split to use. Invalid layouts fall back to the default for the segment count.
     split_layout?: SplitLayout
+    // Called with the element and click event.
     onclick?: (data: { element: ChemicalElement; event: MouseEvent }) => void
   } = $props()
 

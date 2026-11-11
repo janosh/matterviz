@@ -30,16 +30,25 @@
     children,
     ...rest
   }: {
+    // Bulk crystal to cut the slab from. Needs a lattice and at least one site.
     structure: Crystal
+    // Miller indices (h k l) of the surface plane.
     miller_indices?: Vec3
+    // Minimum distance in Å between the outermost atomic planes, grown in whole repeats of the oriented bulk cell.
     min_slab_thickness?: number
+    // Empty distance in Å between the slab top and its periodic image along the surface normal.
     min_vacuum_thickness?: number
+    // Index of the surface termination to expose. Reset to 0 when the structure or surface changes.
     termination_idx?: number
+    // Reduce the in-plane surface cell to its smallest primitive mesh instead of keeping the oriented bulk mesh.
     primitive_in_plane?: boolean
+    // Split the vacuum evenly above and below the slab. Otherwise all of it sits above.
     center_slab?: boolean
+    // Rotate the cell so a lies along x and the surface normal along z.
     reorient_lattice?: boolean
     // The most recently built slab, or null while the current inputs fail
     slab?: Slab | null
+    // Message of the failed slab build, null while the inputs produce a slab.
     error?: string | null
     // Render the summary table (d_hkl, layers, thickness, ...) below the controls
     show_info?: boolean

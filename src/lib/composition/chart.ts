@@ -31,6 +31,7 @@ export type CompositionChartProps = SVGAttributes<SVGSVGElement> & {
   show_labels?: boolean
   show_amounts?: boolean
   show_percentages?: boolean
+  // Element color scheme used for the segment colors
   color_scheme?: ColorSchemeName
   patterns?: ElementPatterns // hatch/texture fill per element symbol
   svg_node?: SVGSVGElement | null

@@ -28,16 +28,22 @@
     backdrop: backdrop_color = undefined,
     ...rest
   }: SVGAttributes<SVGSVGElement> & {
+    // Number of protons: sets the proton share of the circle and its count label.
     protons: number
+    // Number of neutrons: sets the neutron share of the circle and its count label.
     neutrons: number
+    // Diameter of the nucleus in px.
     size?: number
     // Per-part paints. Each nucleon owns its fill, label suffix and label color rather
     // than sharing one flat `text_color` across parts that sit on different backgrounds.
     proton?: NucleonPaint
+    // Paint of the neutron half (fill, label suffix, label color).
     neutron?: NucleonPaint
+    // Paint of the element symbol (text color, outline, outline width).
     symbol_paint?: SymbolPaint
     // Outline around the whole nucleus.
     stroke?: string
+    // Element symbol drawn across the middle of the nucleus; empty draws none.
     symbol?: string
     // Opaque surface behind the nucleus, used to resolve translucent nucleon fills.
     backdrop?: string

@@ -153,19 +153,28 @@
   }: Omit<HTMLAttributes<HTMLDivElement>, `title`> &
     BasePlotProps &
     CartesianPlotProps & {
+      // Bar (or line) series with x categories or positions and y values
       series?: readonly BarSeries<Metadata>[]
       // Component-specific props
+      // `vertical` draws bars upward from the x axis, `horizontal` rightward from the y axis
       orientation?: Orientation
+      // How series share a category: `overlay` on top of each other, `stacked` or `grouped` side by side
       mode?: BarMode
+      // Bar fill, opacity, outline and corner radius overrides
       bar?: BarStyle
+      // Line width, color and curve for series rendered as lines
       line?: LineStyle
+      // Snippet that replaces the hover tooltip content, or false to hide it
       tooltip?: TooltipProp<BarHandlerProps<Metadata>>
+      // Snippet rendered at the end of the settings pane, given the orientation, mode and axis configs
       controls_extra?: Snippet<
         [{ orientation: Orientation; mode: BarMode } & Required<PlotConfig>]
       >
+      // Called when a bar is clicked or activated by keyboard
       on_bar_click?: (
         data: BarHandlerProps<Metadata> & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called with the hovered bar, or null when the pointer or focus leaves it
       on_bar_hover?: (
         data:
           | (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
@@ -173,10 +182,13 @@
       ) => void
       // Line marker props (matching ScatterPlot)
       color_scale?: ColorScale
+      // How series `size_values` map to marker radius in px (type, radius range, value range)
       size_scale?: SizeScaleConfig
+      // Called when a line series marker is clicked or activated by keyboard
       on_point_click?: (
         data: LineMarkerHandlerProps & { event: MouseEvent | KeyboardEvent },
       ) => void
+      // Called with the hovered line series marker, or null when the pointer or focus leaves it
       on_point_hover?: (
         data:
           | (LineMarkerHandlerProps & {

@@ -28,11 +28,16 @@
   }
 
   let {
+    // Structure(s) to analyze: one, a list or a `{ label: structure }` record. Dropped files are added to these.
     structures,
+    // Bonding strategy deciding which atom pairs count as neighbors (`electroneg_ratio` or `explicit_only`).
     strategy = `electroneg_ratio`,
+    // Series split: `by_element` (summed over structures), `by_structure`, or `none` for all sites in one series.
     split_mode = `by_element`,
     mode = $bindable(`grouped`),
+    // True while a dropped file is being read; shows the loading message in the empty state.
     loading = $bindable(false),
+    // Error text shown in a dismissible notice, e.g. a failed file drop or a structure the neighbor search rejected.
     error_msg = $bindable(),
     show_controls,
     controls_open = $bindable(false),

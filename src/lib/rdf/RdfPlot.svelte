@@ -50,21 +50,33 @@
     on_sites_hover,
     ...rest
   }: {
+    // Precomputed RDFs, plotted before the curves computed from `structures`.
     patterns?: RdfEntry | RdfEntry[]
+    // Crystal(s) to compute RDFs for, as one, a list or a `{ label: crystal }` record. Dropped files are added to these.
     structures?: Crystal | Crystal[] | Record<string, Crystal>
+    // `element_pairs` plots one curve per element pair (only the first three start visible); `full` plots one all-atom RDF per structure.
     mode?: `element_pairs` | `full`
+    // Draw the g(r) = 1 line, the uncorrelated (ideal gas) baseline.
     show_reference_line?: boolean
+    // Maximum distance in Å; the range [0, cutoff) is split into `n_bins` bins.
     cutoff?: number
+    // Number of equal-width r bins between 0 and `cutoff`.
     n_bins?: number
+    // Periodic axes to image along when searching neighbors. Defaults to the lattice's own pbc flags.
     pbc?: Pbc
+    // Accept dropped structure files, which are added to the structures being plotted.
     allow_file_drop?: boolean
     // Replaces the built-in "parse as a crystal and plot it" handling of dropped files
     on_file_drop?: FileLoadCallback
+    // True while a dropped file is being read; shows `loading_message` in the empty state.
     loading?: boolean
     // Empty-state text while `loading`
     loading_message?: string
+    // Error text shown in a dismissible notice (failed file drop or structure the neighbor search rejected).
     error_msg?: string
+    // Extra content rendered inside the plot, receiving the structures dropped so far.
     children?: Snippet<[{ drag_dropped: Crystal[] }]>
+    // Crystals loaded by dropping files; plotted next to `structures`. Set to [] to clear them.
     drag_dropped?: Crystal[]
     // Hovered curve and r-grid bin (null for its legend entry); null once the pointer leaves
     on_bin_hover?: (hover: { entry: RdfEntry; bin_idx: number | null } | null) => void

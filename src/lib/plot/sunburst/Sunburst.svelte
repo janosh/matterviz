@@ -94,7 +94,9 @@
       shape?: SunburstShape // polar rings (sunburst) or stacked rows (icicle)
       inner_radius?: number // center hole as fraction of outer radius
       pad_angle?: number // degrees between sibling arcs
+      // Arc label orientation: `auto` picks radial or tangential per arc from the space available
       label_rotation?: SunburstLabelRotation
+      // Opens an angular gap between selected groups (e.g. one ring), shrinking each group and its subtree
       group_gap?: SunburstGroupGap<Metadata> | null
       tween?: TweenOptions<ViewWindow> // zoom transition timing
       // Fully replace the default arc path, including the built-in hover/focus/click +
@@ -102,6 +104,7 @@
       arc_content?: Snippet<
         [{ arc: PositionedArc<Metadata>; a0: number; a1: number; r0: number; r1: number }]
       >
+      // Replaces the default root label in the center hole; gets the zoom root, hole radius in px and zoom state
       center_content?: Snippet<
         [{ root: PositionedArc<Metadata> | null; radius: number; zoomed: boolean }]
       >

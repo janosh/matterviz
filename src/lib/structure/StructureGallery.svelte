@@ -17,9 +17,13 @@
   const default_live_cards = 24
 
   interface Props {
+    // Structures to show, one card each, with label, optional subtitle and property captions.
     items: StructureGalleryItem[]
+    // `grid` scrolls vertically through responsive columns, `horizontal` and `vertical` are single-lane strips.
     layout?: Layout
+    // Gallery height in px. A drag on the resize grip overrides it when `resizable`.
     height?: number
+    // Minimum card width in px. Grid and horizontal layouts fit as many columns as this allows, then stretch them.
     min_card_width?: number
     // vertical layout only: caps the track at this many cards tall
     visible_rows?: number
@@ -31,10 +35,15 @@
     // nothing renders beyond it. Only a viewport holding more cards than this
     // overrides it — a permanently blank on-screen card is worse.
     max_live_cards?: number
+    // Show a corner grip to drag-resize the gallery and its cards.
     resizable?: boolean
+    // Which controls each card's viewer shows, same values as Structure's `show_controls`.
     show_controls?: ComponentProps<typeof Structure>[`show_controls`]
+    // Text shown when `items` is empty.
     empty_message?: string
+    // Called when fewer than a page of items trail the rendered window, once per item count. Use it to load the next page.
     on_prefetch_more?: () => void
+    // Called with the item whose card is clicked or activated with Enter/Space. Cards become buttons when set.
     on_item_activate?: (item: StructureGalleryItem) => void
     // Title bar content. Given one, the gallery draws a panel: a header rule
     // above the cards holding this on the left and the pager on the right.

@@ -93,19 +93,29 @@
     trajectory_props = {},
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Phonon modes (atoms, lattice, q-points with frequencies and eigenvectors, band path), optionally with an IR/Raman spectrum and filename.
     dataset: PhononModeDataset
+    // Animated mode as `{ qpoint_idx, mode_idx }`. Defaults to the first mode with an eigenvector; follows clicks on the dispersion and spectrum.
     selection?: PhononModeSelection
     // Activity the spectrum beside the dispersion shows; Raman needs polarizability data
     spectrum_kind?: SpectrumKind
+    // Maximum atomic displacement in Å of the animated mode.
     amplitude?: number
+    // Supercell scaling [a, b, c] the mode is animated in; q-points incommensurate with it do not repeat periodically across box faces.
     supercell?: Vec3
+    // Frames per vibration period (integer, at least 2).
     n_frames?: number
+    // Animation frames per second.
     fps?: number
+    // Draw each atom's eigenvector as an arrow.
     show_vectors?: boolean
     // Multiplier for arrow shaft and head radii; null color uses element colors.
     vector_thickness?: number
+    // CSS color of the eigenvector arrows. null colors each arrow by its element.
     vector_color?: string | null
+    // Start animating as soon as a mode is shown.
     auto_play?: boolean
+    // Share (0.15 to 0.85) of the viewer taken by the atomic-motion pane. The dispersion and spectrum pane gets the rest.
     pane_ratio?: number
     // Brillouin zone in a corner of the atomic-motion pane marking the selected and hovered
     // q-points on the path; needs a lattice and more than one q-point

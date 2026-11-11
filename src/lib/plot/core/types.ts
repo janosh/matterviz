@@ -679,10 +679,15 @@ export interface StyleOverrides {
 export type AxisKey = `x` | `x2` | `y` | `y2`
 // Grouped configuration for plot axes and display settings
 export interface PlotConfig {
+  // Primary horizontal axis (bottom): label, ticks, scale type, range
   x_axis?: AxisConfig
+  // Secondary horizontal axis (top), drawn only when a series is assigned to it
   x2_axis?: AxisConfig
+  // Primary vertical axis (left): label, ticks, scale type, range
   y_axis?: AxisConfig
+  // Secondary vertical axis (right), drawn only when a series is assigned to it
   y2_axis?: AxisConfig
+  // Toggles for grid lines and zero lines on each axis
   display?: DisplayConfig
 }
 
@@ -721,20 +726,24 @@ export interface PlotControlsProps
 // The export props are consumed by the chart's frame/shell (export pane in the header row).
 export interface BasePlotProps extends ExportProps {
   range_padding?: number // Factor to pad auto-detected ranges before nicing (default 0)
+  // Space in px between the chart's edge and its plot area; Cartesian plots grow unset sides to fit tick labels and title
   padding?: Sides
+  // Text drawn above the plot, or a config with subtitle, alignment and font overrides
   title?: string | PlotTitleConfig
   // State
-  hovered?: boolean
+  hovered?: boolean // Bindable, true while the pointer is over the plot
   // Controls
   show_controls?: ShowControlsProp<`controls` | `fullscreen`> // false hides all chart chrome
   controls_open?: boolean // settings pane open; kept but not shown while show_controls hides it
+  // Extra props for the button that opens the settings pane, e.g. title or style
   controls_toggle_props?: PaneToggleProps
+  // Extra props for the settings pane itself, e.g. style or max_width
   controls_pane_props?: PaneProps
   // Fullscreen
-  fullscreen?: boolean
+  fullscreen?: boolean // Bindable, true while the chart fills the viewport
   fullscreen_toggle?: boolean // default: true
   // Children
-  children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]>
+  children?: Snippet<[{ height: number; width: number; fullscreen?: boolean }]> // Rendered over the chart, receives its measured size
 }
 
 // Props the CartesianFrame charts (ScatterPlot, BarPlot, BoxPlot, Histogram) share
@@ -744,18 +753,29 @@ export interface CartesianPlotProps extends PlotConfig {
   hidden_series?: readonly (string | number)[]
   // Fires after the chart applied a legend toggle, for wrappers controlling visibility
   on_hidden_series_change?: (hidden: readonly (string | number)[]) => void
+  // Legend placement, layout and styling; null hides the legend
   legend?: LegendConfig | null
+  // Forces the legend on or off; unset shows it when the plot has more than one series (BoxPlot: off)
   show_legend?: boolean
+  // Snippet drawn inside the SVG on top of the data, given the plot's scales and dimensions
   user_content?: Snippet<[UserContentProps]>
+  // Extra header buttons rendered next to the built-in fullscreen and controls toggles
   header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+  // Horizontal, vertical, diagonal or segment lines with optional annotations, drawn over the plot
   ref_lines?: RefLine[]
+  // Called when a reference line is clicked
   on_ref_line_click?: (event: RefLineEvent) => void
+  // Called with the hovered reference line, or null when the pointer leaves it
   on_ref_line_hover?: (event: RefLineEvent | null) => void
   // The host owns property selection, loading, and publishing the resulting data.
   axis_loading?: `x` | `x2` | `y` | `y2` | null
+  // Called with the axis and option key picked from an axis's `options`; the host swaps in the new data
   on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
+  // Wheel, drag and touch panning/zooming options; `{ enabled: false }` turns it off
   pan?: PanConfig
+  // Marginal distribution plots (histogram, KDE, ...) along the plot edges: true, a type, or a per-side map
   marginals?: MarginalsProp
+  // Layout context a FacetGrid passes to a child plot so panels share padding and axis ranges
   facet_layout?: FacetLayoutContext
 }
 // Default grid line style (SSOT for all plot components)

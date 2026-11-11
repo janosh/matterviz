@@ -18,10 +18,14 @@
     on_click,
     ...rest
   }: HTMLAttributes<HTMLTableElement> & {
+    // Occupied Wyckoff orbits (letter, element, site indices) to list as table rows.
     wyckoff_positions: WyckoffPos[]
     db_positions?: MoyoWyckoffPosition[]
+    // Also list Wyckoff positions of the space group that no atom occupies. Needs `db_positions`.
     show_unoccupied?: boolean
+    // Called with the hovered row's site indices, or null when the pointer leaves the row.
     on_hover?: (site_indices: number[] | null) => void
+    // Called with the clicked row's site indices, or null when the row is deselected.
     on_click?: (site_indices: number[] | null) => void
   } = $props()
   // Enclosing viewer's element colors (page-wide ones when standalone)

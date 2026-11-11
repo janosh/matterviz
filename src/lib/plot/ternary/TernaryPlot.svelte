@@ -101,18 +101,23 @@
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
     Omit<BasePlotProps, `range_padding` | `title`> & {
+      // Bindable legend choices, keyed by each series' legend_id ?? id ?? array index
       hidden_series?: readonly (string | number)[]
+      // Compositions to plot as points or lines, each series a list of amount triples
       series?: readonly TernarySeries<Metadata>[]
       // Component names at the right, top and left corner (the order of every triple)
       labels?: readonly [string, string, string]
       grid_step?: number // fraction between grid lines / ticks; 0 disables both
+      // Draws grid lines every `grid_step` across the triangle
       show_grid?: boolean
+      // Draws tick labels along the triangle edges every `grid_step`
       show_ticks?: boolean
       tick_format?: string // d3-format spec applied to fractions in [0, 1]
       color_scale?: ColorScale // value_range defaults to the extent of all color_values
       // ColorBar props for the color_values scale, shown below the triangle; null hides it
       color_bar?: Partial<ComponentProps<typeof ColorBar>> | null
       legend?: LegendConfig | null // series legend props; null hides it
+      // Forces the legend on or off; unset shows it when there is more than one series
       show_legend?: boolean
       // Hover tooltip: a snippet of the point replaces the default content, false hides it
       tooltip?: TooltipProp<TernaryPointProps<Metadata>>
@@ -126,7 +131,9 @@
           | (TernaryPointProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
           | null,
       ) => void
+      // Extra header buttons rendered next to the built-in fullscreen and controls toggles
       header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+      // Snippet rendered at the end of the settings pane
       controls_extra?: Snippet
     } = $props()
 

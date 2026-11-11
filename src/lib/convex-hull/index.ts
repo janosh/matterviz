@@ -102,6 +102,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // formulas for a pseudo-binary/ternary reaction hull. Entries then hold pseudo-compositions
   // such as { BaO: 0.4, TiO2: 0.6 } and the corners are the components.
   components?: readonly string[]
+  // Options for the controls pane: title, show_counts and show_label_controls.
   controls?: Partial<ConvexHullControlsType>
   config?: Partial<ConvexHullConfig>
   // Controls visibility configuration.
@@ -112,16 +113,21 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   //
   // Control names: 'reset', 'info-pane', 'fullscreen', 'controls'
   show_controls?: ShowControlsProp<ConvexHullControlName>
+  // Called with the entry whose point was clicked.
   on_point_click?: (entry: AnyDimEntry) => void
+  // Called with the hovered entry's details, or null when the pointer leaves.
   on_point_hover?: (data: HoverData3D<AnyDimEntry> | null) => void
   fullscreen?: boolean // bindable fullscreen state
   fullscreen_toggle?: boolean // show/hide the fullscreen button
+  // Allow the info pane (hull statistics) and its toggle button.
   enable_info_pane?: boolean
+  // The root element. Bindable, read-only.
   wrapper?: HTMLDivElement
   // Datasets larger than this start with labels hidden, unless label toggles are passed
   label_threshold?: number
   // Visibility
-  show_stable?: boolean
+  show_stable?: boolean // Draw entries on the hull (e_above_hull = 0)
+  // Draw entries above the hull, up to max_hull_dist_show_phases. Bindable.
   show_unstable?: boolean
   // Categorical classification rendered as marker shapes + controls-pane filter toggles.
   // Defaults to MAGNETIC_ORDERING_CATEGORY (entries with FM/FiM/AFM/NM data light up
@@ -130,15 +136,19 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   entry_category?: EntryCategoryConfig | null
   // Category values (e.g. ['FM', 'NM']) whose entries are hidden from the plot (bindable)
   hidden_categories?: string[]
+  // Point coloring: `stability` by hull distance, `energy` by formation energy via color_scale.
   color_mode?: `stability` | `energy`
   color_scale?: ColorScale // energy-mode point colors; unset value_range ends fit the data
+  // Whether the info pane (phase statistics) is open. Bindable.
   info_pane_open?: boolean
   // Controls (legend) pane open state
   controls_open?: boolean
   // Energy threshold for showing unstable entries (eV/atom above hull)
   max_hull_dist_show_phases?: number
+  // Largest energy above the hull in eV/atom at which unstable entries still get labels (needs show_unstable_labels).
   max_hull_dist_show_labels?: number
   show_stable_labels?: boolean
+  // Label unstable entries within max_hull_dist_show_labels; defaults to off, hidden for datasets above label_threshold. Bindable.
   show_unstable_labels?: boolean
   // Dropped JSON files (also .json.gz and FilePicker URL drops) are parsed as entries
   allow_file_drop?: boolean
@@ -149,6 +159,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   enable_click_selection?: boolean
   // Enable structure preview popup when clicking entries with structure data
   enable_structure_preview?: boolean
+  // Use the data's `precomputed` formation energies or recompute them `on-the-fly` from absolute energies; recomputing is forced when needed. Bindable.
   energy_source_mode?: EnergySourceMode
   // Display configuration for grid lines and other visual elements
   display?: { x_grid?: boolean; y_grid?: boolean }
@@ -158,6 +169,7 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
   // views on it (by entry_id) highlight here, and this hull's hovered entry there
   link_hover?: string
   highlight_style?: HighlightStyle
+  // Entry picked by clicking, null when none (also cleared when the data is empty). Bindable.
   selected_entry?: AnyDimEntry | null
   // Compositions marked by a linked view (lines between compositions, ringed compositions)
   annotations?: HullAnnotations
@@ -184,8 +196,11 @@ export interface BaseConvexHullProps<AnyDimEntry = PhaseData>
 
 // Additional props specific to 3D and 4D convex hulls
 export interface Hull3DProps {
+  // Draw the hull's facets (3D and 4D only). Bindable.
   show_hull_faces?: boolean
+  // Opacity (0-1) of the hull facets; unset uses a per-dimension default.
   hull_face_opacity?: number
+  // How hull facets are colored: `uniform`, `formation_energy`, `dominant_element` or `facet_index`.
   hull_face_color_mode?: HullFaceColorMode
   // Orientation gizmo: false to disable, true for defaults, object to customize
   // Supports placement plus the appearance options in GizmoOptions (#lib/scene)

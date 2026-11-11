@@ -110,19 +110,32 @@
     controls_extra,
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
+    // Bindable legend choices, keyed by each series' legend_id ?? id ?? array index
     hidden_series?: readonly (string | number)[]
+    // Point series with parallel x, y and z arrays and optional per-point color, size and style
     series?: readonly DataSeries3D<Metadata>[]
+    // X axis label, tick format, ticks and fixed range (linear scale only)
     x_axis?: AxisConfig3D
+    // Y axis label, tick format, ticks and fixed range (linear scale only)
     y_axis?: AxisConfig3D
+    // Z axis (vertical on screen) label, tick format, ticks and fixed range (linear scale only)
     z_axis?: AxisConfig3D
     color_scale?: ColorScale
+    // Props for the color bar shown when series carry color values; null hides it
     color_bar?: ComponentProps<typeof ColorBar> | null
+    // Legend placement and styling; null hides it
     legend?: LegendConfig | null
+    // Forces the legend on or off; unset shows it when there is more than one series
     show_legend?: boolean
+    // Bindable, the point currently hovered or focused, null when none
     tooltip_point?: InternalPoint3D<Metadata> | null
+    // Bindable, the outer container element
     wrapper?: HTMLDivElement
+    // Rendered over the 3D canvas, receives its measured size
     children?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    // Extra header buttons rendered next to the built-in fullscreen and controls toggles
     header_controls?: Snippet<[{ height: number; width: number; fullscreen: boolean }]>
+    // Snippet rendered at the end of the settings pane
     controls_extra?: Snippet
   } & Omit<
       SceneProps,

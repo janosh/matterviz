@@ -43,18 +43,31 @@
     color_bar,
     ...rest
   }: Omit<HTMLAttributes<HTMLDivElement>, `children` | `title`> & {
+    // Panels to lay out, each with a unique key, its data and optional explicit row, column and spans
     panels: readonly FacetPanel<Datum>[]
+    // Number of panel columns; panels without an explicit position fill rows left to right
     columns: number
+    // Number of rows; unset uses as many as the panels need
     rows?: number
+    // Space in px between neighboring panels, the default for `row_gap` and `column_gap`
     gap?: number
+    // Vertical space in px between rows (defaults to `gap`)
     row_gap?: number
+    // Horizontal space in px between columns (defaults to `gap`)
     column_gap?: number
+    // Sizes in px of the title band above and the legend and color bar bands beside the panels
     shared_bands?: FacetSharedBandSizes
+    // Per axis (x, x2, y, y2): `shared` range across all panels, `free` per panel, or shared per `row` or `col`
     axis_modes?: Partial<FacetAxisModes>
+    // Per axis: which panels draw it, `outer` edge only, `inner`, `all` or `none` (default `auto` follows axis_modes)
     axis_visibility?: FacetAxisVisibilityModes
+    // Snippet rendered once per panel, given its key, data, rect and `facet_layout` for a child plot
     children?: Snippet<[FacetPanelContext<Datum>]>
+    // Snippet filling the shared title band, which needs `shared_bands.title_height` above 0
     title?: Snippet<[FacetSharedBandContext]>
+    // Snippet filling the shared legend band beside the panels, which needs `shared_bands.legend_width` above 0
     legend?: Snippet<[FacetSharedBandContext]>
+    // Snippet filling the shared color bar band beside the panels, which needs `shared_bands.color_bar_width` above 0
     color_bar?: Snippet<[FacetSharedBandContext]>
   } = $props()
 

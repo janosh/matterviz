@@ -40,27 +40,40 @@
   } from 'svelte-widgets/table'
 
   let {
+    // Table rows: one object per row, keyed by column id.
     data = [],
     columns = [],
+    // Color numeric cells by their column's color scale; false renders a plain table.
     show_heatmap = $bindable(true),
     heatmap_opacity = $bindable(1),
     backdrop = undefined,
+    // Number format for numeric cells without a per-column format, applied via format_num (e.g. `.3` for 3 significant digits).
     default_num_format = `.3`,
     show_controls = { mode: DEFAULT_CONTROLS_MODE, hidden: [`controls`] },
+    // Whether the settings controls pane is open. Bindable.
     controls_open = $bindable(false),
     export_formats = [],
     export_filename = `table-export`,
     on_export,
+    // Snippet rendered at the end of the controls pane, receiving the export sources.
     controls: host_controls,
+    // Active sort as a list of column id and direction entries. Bindable.
     sort = $bindable([]),
+    // Column ids in display order; empty keeps the order of columns. Bindable.
     column_order = $bindable([]),
+    // Per-column user preferences keyed by column id (color scale, format, pinning, ...). Bindable.
     column_prefs = $bindable({}),
+    // Text filtering the rows across columns. Bindable.
     search_query = $bindable(``),
+    // Ids of selected rows; needs row_key for stable selection. Bindable.
     selected_ids = $bindable([]),
+    // Rows left after filtering and sorting, in display order. Read-only output, bindable.
     visible_rows = $bindable([]),
     // undefined until the user toggles a column, so `visible: false` defaults apply
     hidden_columns = $bindable(),
+    // Show a running row number column. Bindable.
     show_row_numbers = $bindable(false),
+    // Inline style for the table root; combined with the heatmap CSS variables.
     style,
     ...rest
   }: Omit<
