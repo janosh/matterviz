@@ -121,8 +121,7 @@
     z_axis?: Omit<AxisConfig3D, `range`>
     // Toggles for axes, labels, grid, bounding box and point projections onto the axis planes
     display?: DisplayConfig3D
-    // Style overrides shared with ScatterPlot; the 3D scene applies only styles.point.size (the
-    // base point size), the other fields are ignored here
+    // Base point size for points without their own (styles.point.size)
     styles?: StyleOverrides3D
     // Function, parametric or triangulated surfaces drawn with the points
     surfaces?: Surface3DConfig[]
