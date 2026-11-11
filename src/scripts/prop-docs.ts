@@ -35,6 +35,20 @@ const one_line = (text: string): string =>
     .trim()
     .replace(/^[|&] /, ``)
 
+// Plain string literals as '...': the repo writes them in backticks, which read as nested code
+// in the rendered table. Template literals with ${...} (template literal types) keep theirs.
+const quote_literals = (text: string): string => text.replaceAll(/`([^`$\\']*)`/g, `'$1'`)
+
+// A type on one line, also without the padding inside <...> and the union operator its line
+// breaks left leading a type argument: `Pick< T, | 'a' | 'b' >` -> `Pick<T, 'a' | 'b'>`
+const type_line = (text: string): string =>
+  quote_literals(
+    one_line(text)
+      .replaceAll(/< /g, `<`)
+      .replaceAll(/ >/g, `>`)
+      .replaceAll(/([<([]|, ) ?[|&] /g, `$1`),
+  )
+
 const comment_lines = (text: string, ranges: readonly ts.CommentRange[]): string[] =>
   ranges
     .filter(({ kind }) => kind === ts.SyntaxKind.SingleLineCommentTrivia)
@@ -162,14 +176,19 @@ const component_props = (source: ts.SourceFile, checker: ts.TypeChecker): PropDo
       const bindable = is_call_to(element.initializer, `$bindable`)
       const init = bindable ? element.initializer.arguments[0] : element.initializer
       const doc: PropDoc = { name }
-      if (type) doc.type = one_line(type)
-      if (init) doc.default = one_line(init.getText())
+      if (type) doc.type = type_line(type)
+      if (init) doc.default = quote_literals(one_line(init.getText()))
       if (description) doc.description = description
       if (bindable) doc.bindable = true
       if (symbol && !(symbol.flags & ts.SymbolFlags.Optional)) doc.required = true
       return doc
     })
 }
+
+// Parsed files by path, reused while their text is unchanged: re-extracting after an edit (dev
+// server) re-parses only what changed rather than every reachable file, TS's libs included
+const parsed_files = new Map<string, ts.SourceFile>()
+let last_program: ts.Program | undefined
 
 // Prop docs keyed by component name (file basename) for the given .svelte files. Components
 // they import are loaded too (lazily, as virtual TS files) to resolve inherited prop types.
@@ -194,16 +213,23 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
     types: [],
   }
   const host = ts.createCompilerHost(options, true)
-  const { fileExists, getSourceFile, readFile } = host
+  const { fileExists, readFile } = host
   const is_virtual = (name: string): boolean =>
     name.endsWith(`.svelte${VIRTUAL_SUFFIX}`) &&
     fileExists(name.slice(0, -VIRTUAL_SUFFIX.length))
   host.fileExists = (name) => is_virtual(name) || fileExists(name)
   host.readFile = (name) => (is_virtual(name) ? virtual_text(name) : readFile(name))
-  host.getSourceFile = (name, language, ...rest) =>
-    is_virtual(name)
-      ? ts.createSourceFile(name, virtual_text(name), language, true, ts.ScriptKind.TS)
-      : getSourceFile(name, language, ...rest)
+  host.getSourceFile = (name, language) => {
+    const virtual = is_virtual(name)
+    const text = virtual ? virtual_text(name) : readFile(name)
+    if (text === undefined) return undefined
+    const cached = parsed_files.get(name)
+    if (cached?.text === text) return cached
+    const kind = virtual ? ts.ScriptKind.TS : undefined
+    const source = ts.createSourceFile(name, text, language, true, kind)
+    parsed_files.set(name, source)
+    return source
+  }
   // `./X.svelte` and `#lib/.../X.svelte` resolve to X's virtual TS file
   host.resolveModuleNameLiterals = (literals, containing_file, redirected, compiler_options) =>
     literals.map(({ text }) => {
@@ -222,7 +248,8 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
       return virtual?.resolvedModule ? virtual : resolve_name(text)
     })
   const roots = files.map((file) => `${file}${VIRTUAL_SUFFIX}`)
-  const program = ts.createProgram(roots, options, host)
+  const program = ts.createProgram(roots, options, host, last_program)
+  last_program = program
   const checker = program.getTypeChecker()
   return Object.fromEntries(
     roots.map((root) => {
@@ -236,23 +263,47 @@ export const extract_prop_docs = (files: readonly string[]): Record<string, Prop
 const VIRTUAL_ID = `virtual:prop-docs`
 const LIB_DIR = `${repo_root}/src/lib/`
 
-// `virtual:prop-docs` default-exports every src/lib component's PropDoc[] keyed by name. Pages
-// import it lazily, so the extraction (one TS program, a few seconds) only runs on first use.
-export const prop_docs_plugin = (): Plugin => ({
-  name: `prop-docs`,
-  resolveId: (id) => (id === VIRTUAL_ID ? `\0${id}` : null),
-  load(id) {
-    if (id !== `\0${VIRTUAL_ID}`) return null
-    const files = globSync(`**/*.svelte`, { cwd: LIB_DIR })
+// `virtual:prop-docs` default-exports a loader per src/lib component name, each importing
+// `virtual:prop-docs/<name>`, whose default export is that component's PropDoc[]. A page then
+// fetches only its own components' docs (~2 KB, not all ~330 KB), and the index needs no
+// extraction. The extraction (one TS program over every component, ~2.5 s cold, ~0.4 s after
+// an edit thanks to parsed_files) runs on the first per-component import and is shared by all.
+export const prop_docs_plugin = (): Plugin => {
+  const component_files = () =>
+    globSync(`**/*.svelte`, { cwd: LIB_DIR })
       .map((path) => `${LIB_DIR}${path}`)
       .filter((file) => readFileSync(file, `utf8`).includes(`$props(`))
-    return `export default ${JSON.stringify(extract_prop_docs(files))}`
-  },
-  // A component or a type it imports changed: returning the loaded virtual module too makes
-  // Vite invalidate it and update its importers, so the next import re-extracts the props
-  hotUpdate({ file, modules }) {
-    if (!file.startsWith(LIB_DIR) || !/\.(svelte|ts)$/.test(file)) return
-    const prop_docs_module = this.environment.moduleGraph.getModuleById(`\0${VIRTUAL_ID}`)
-    return prop_docs_module ? [...modules, prop_docs_module] : undefined
-  },
-})
+  let docs: Record<string, PropDoc[]> | undefined
+  return {
+    name: `prop-docs`,
+    resolveId: (id) =>
+      id === VIRTUAL_ID || id.startsWith(`${VIRTUAL_ID}/`) ? `\0${id}` : null,
+    load(id) {
+      if (id === `\0${VIRTUAL_ID}`) {
+        const names = component_files().map((file) => basename(file, `.svelte`))
+        const loaders = names.map(
+          (name) =>
+            `${JSON.stringify(name)}: () => import(${JSON.stringify(`${VIRTUAL_ID}/${name}`)})`,
+        )
+        return `export default {${loaders.join(`,`)}}`
+      }
+      if (!id.startsWith(`\0${VIRTUAL_ID}/`)) return null
+      const name = id.slice(`\0${VIRTUAL_ID}/`.length)
+      docs ??= extract_prop_docs(component_files())
+      const component_docs = docs[name]
+      if (!component_docs)
+        throw new Error(`No component named ${name} in src/lib has $props()`)
+      return `export default ${JSON.stringify(component_docs)}`
+    },
+    // A component or a type it imports changed: drop the extraction and return the loaded
+    // virtual modules too, so Vite invalidates them and the next import re-extracts the props
+    hotUpdate({ file, modules }) {
+      if (!file.startsWith(LIB_DIR) || !/\.(svelte|ts)$/.test(file)) return
+      docs = undefined
+      const loaded = [...this.environment.moduleGraph.idToModuleMap.values()].filter(
+        ({ id }) => id?.startsWith(`\0${VIRTUAL_ID}`),
+      )
+      return loaded.length ? [...modules, ...loaded] : undefined
+    },
+  }
+}

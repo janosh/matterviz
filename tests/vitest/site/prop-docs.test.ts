@@ -16,9 +16,12 @@ const repo_root = `${import.meta.dirname}/../../..`
 
 describe(`extract_prop_docs`, () => {
   const docs = extract_prop_docs(
-    [`plot/ternary/TernaryPlot`, `layout/InfoTag`, `xrd/XrdPlot`].map(
-      (path) => `${repo_root}/src/lib/${path}.svelte`,
-    ),
+    [
+      `plot/ternary/TernaryPlot`,
+      `layout/InfoTag`,
+      `xrd/XrdPlot`,
+      `spectral/PhononModeExplorer`,
+    ].map((path) => `${repo_root}/src/lib/${path}.svelte`),
   )
   const prop = (component: string, name: string): PropDoc | undefined =>
     docs[component]?.find((doc) => doc.name === name)
@@ -31,7 +34,8 @@ describe(`extract_prop_docs`, () => {
       {
         name: `labels`,
         type: `readonly [string, string, string]`,
-        default: `[\`A\`, \`B\`, \`C\`]`,
+        default: `['A', 'B', 'C']`, // backtick string literals read as '...'
+
         description: `Component names at the right, top and left corner (the order of every triple)`,
       },
     ],
@@ -95,6 +99,29 @@ describe(`extract_prop_docs`, () => {
     // typed through Pick<ComponentProps<typeof ScatterPlot>, ...>, i.e. another component's
     // props; PlotConfig's comment over x_axis heads all its uncommented members, no description
     [`XrdPlot`, `x_axis`, { name: `x_axis`, type: `AxisConfig`, default: `{}` }],
+    // a multi-line Pick<...> on one line: no padding inside <>, no union operator leading
+    // the second type argument, literals in single quotes
+    [
+      `PhononModeExplorer`,
+      `trajectory_props`,
+      {
+        name: `trajectory_props`,
+        type: `Pick<ComponentProps<typeof Trajectory>, 'class' | 'style' | 'fps_range' | 'step_labels' | 'fullscreen_toggle' | 'on_play' | 'on_pause' | 'on_end' | 'on_loop' | 'on_controller'>`,
+        default: `{}`,
+        description: `passed on to the atomic-motion Trajectory viewer: styling, frame-rate range, step labels and playback callbacks (the explorer sets the rest itself)`,
+      },
+    ],
+    [
+      `PhononModeExplorer`,
+      `spectrum_kind`,
+      {
+        name: `spectrum_kind`,
+        type: `SpectrumKind`,
+        default: `'ir'`,
+        description: `Activity the spectrum beside the dispersion shows; Raman needs polarizability data`,
+        bindable: true,
+      },
+    ],
   ])(`%s.%s`, (component, name, expected) => {
     expect(prop(component, name)).toEqual(expected)
   })
@@ -129,6 +156,41 @@ describe(`PropsTable page mapping`, () => {
   })
 })
 
+// A page fetches only its own components' docs: the index holds one lazy loader per component
+// (no extraction needed), each per-component module that component's PropDoc[] alone
+test(
+  `virtual:prop-docs splits into a loader index and per-component modules`,
+  { timeout: 60_000 },
+  () => {
+    const { resolveId, load } = prop_docs_plugin()
+    if (typeof resolveId !== `function` || typeof load !== `function`)
+      throw new Error(`resolveId and load must be functions`)
+    const resolve_id = (id: string) => resolveId.call({} as never, id, undefined, {} as never)
+    // the generated module source (load returns a string for our ids, null for others)
+    const source = (id: string): string => {
+      const code = load.call({} as never, id)
+      if (typeof code !== `string`) throw new Error(`load(${id}) returned ${typeof code}`)
+      return code
+    }
+    expect(
+      [`virtual:prop-docs`, `virtual:prop-docs/InfoTag`, `virtual:other`].map(resolve_id),
+    ).toEqual([`\0virtual:prop-docs`, `\0virtual:prop-docs/InfoTag`, null])
+    const index = source(`\0virtual:prop-docs`)
+    expect(index).toContain(
+      `"PhononModeExplorer": () => import("virtual:prop-docs/PhononModeExplorer")`,
+    )
+    expect(index).not.toContain(`trajectory_props`) // no docs in the index itself
+    const component = source(`\0virtual:prop-docs/InfoTag`)
+    const docs = JSON.parse(component.replace(/^export default /, ``)) as PropDoc[]
+    expect(docs.map(({ name }) => name)).toContain(`label`)
+    expect(component.length).toBeLessThan(5000)
+    expect(() => load.call({} as never, `\0virtual:prop-docs/NoSuchThing`)).toThrow(
+      `No component named NoSuchThing`,
+    )
+    expect(load.call({} as never, `/src/other.ts`)).toBeNull()
+  },
+)
+
 // Dev server: editing a component re-extracts its props instead of serving the cached table
 test.each([
   [`src/lib/structure/Structure.svelte`, true],
@@ -139,17 +201,21 @@ test.each([
 ])(`hotUpdate for %s invalidates virtual:prop-docs: %s`, (path, invalidates) => {
   const { hotUpdate } = prop_docs_plugin()
   if (typeof hotUpdate !== `function`) throw new Error(`hotUpdate must be a function`)
-  const prop_docs_module = { id: `\0virtual:prop-docs` }
+  // the loader index and one component's docs are loaded, beside an unrelated module
+  const index_module = { id: `\0virtual:prop-docs` }
+  const docs_module = { id: `\0virtual:prop-docs/Structure` }
   const edited_module = { id: `${repo_root}/${path}` }
-  const get_module_by_id = vi.fn((id: string) =>
-    id === prop_docs_module.id ? prop_docs_module : undefined,
+  const id_to_module = new Map(
+    [index_module, docs_module, { id: `${repo_root}/src/routes/+page.svelte` }].map(
+      (module) => [module.id, module],
+    ),
   )
-  const context = { environment: { moduleGraph: { getModuleById: get_module_by_id } } }
+  const context = { environment: { moduleGraph: { idToModuleMap: id_to_module } } }
   const file = resolve(repo_root, path)
   const result = hotUpdate.call(context as never, { file, modules: [edited_module] } as never)
-  expect(result).toEqual(invalidates ? [edited_module, prop_docs_module] : undefined)
-  // virtual module not loaded yet (lazy import never ran): nothing to invalidate
-  get_module_by_id.mockReturnValue(undefined)
+  expect(result).toEqual(invalidates ? [edited_module, index_module, docs_module] : undefined)
+  // virtual modules not loaded yet (lazy import never ran): nothing to invalidate
+  id_to_module.clear()
   expect(hotUpdate.call(context as never, { file, modules: [] } as never)).toBeUndefined()
 })
 

@@ -5,7 +5,14 @@
 declare module 'virtual:prop-docs' {
   import type { PropDoc } from '#root/src/scripts/prop-docs.ts'
 
-  const docs: Record<string, PropDoc[]>
+  // one lazy loader per component name
+  const loaders: Record<string, () => Promise<{ default: PropDoc[] }>>
+  export default loaders
+}
+declare module 'virtual:prop-docs/*' {
+  import type { PropDoc } from '#root/src/scripts/prop-docs.ts'
+
+  const docs: PropDoc[]
   export default docs
 }
 

@@ -116,6 +116,8 @@
     band_coloring?: PhononBandColoring | null
     // Per-mode values (e.g. λ_qν) drawn over the dispersion, see Bands
     mode_values?: ModeValues
+    // passed on to the atomic-motion Trajectory viewer: styling, frame-rate range, step labels
+    // and playback callbacks (the explorer sets the rest itself)
     trajectory_props?: Pick<
       ComponentProps<typeof Trajectory>,
       | `class`
