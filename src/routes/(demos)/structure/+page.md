@@ -66,18 +66,27 @@
 
 ## Anatomy
 
-`Structure` accepts parsed data through `structure`, or a URL or `{ data, filename }` payload through `source`, and handles file drops. Set `allow_file_drop={false}` when a parent owns loading. Across viewers, `on_file_drop(content, filename, meta)` takes over the raw dropped file and `on_file_load` reports what the viewer loaded. Recoverable parser issues (skipped CIF rows, guessed elements, placeholder cells) arrive on structure results of `open_material()` as `warnings` and show as a dismissible notice (bindable `parse_warnings`). It delegates acquisition, decompression, format detection, worker parsing, provenance, and disposal to the same `open_material()` runtime used by other hosts. The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
+`Structure` takes parsed data via `structure` or a URL or `{ data, filename }` via `source`, and delegates loading to `open_material()` and display to a headless `StructureSession`.
+
+<details>
+<summary>What the component owns</summary>
+
+Acquisition, decompression, format detection, worker parsing, provenance, and disposal go through the same `open_material()` runtime used by other hosts. Recoverable parser issues (skipped CIF rows, guessed elements, placeholder cells) arrive on structure results of `open_material()` as `warnings` and show as a dismissible notice (bindable `parse_warnings`). Set `allow_file_drop={false}` when a parent owns loading; across viewers, `on_file_drop(content, filename, meta)` takes over the raw dropped file and `on_file_load` reports what the viewer loaded.
+
+The headless `StructureSession` (`session.svelte.ts`) owns the display pipeline (wrap → bonds → cell transform → supercell → element map → image atoms), selection, editing, undo/redo, and multi-pane camera bookkeeping; the component renders panes, toolbar, shortcuts, and the single or 2×2 viewport layout.
+
+</details>
 
 ## Explicit Bond Orders
 
-MatterViz accepts explicit bond metadata on `structure.properties.bonds`. The
-viewer still computes normal proximity bonds, but any matching explicit entries
-set the rendered order, and explicit-only entries are added to the scene.
+Explicit bond metadata on `structure.properties.bonds` sets the rendered order of matching proximity bonds and adds explicit-only bonds to the scene.
 
-In **Edit Bonds** mode, **Add** is the safe default: click two atoms to add or
-restore a bond without risking accidental deletion. Switch to **Delete** to remove
-existing bonds by clicking them. Use the order selector for new bonds, or open a
-bond's context menu to update an existing bond order interactively.
+<details>
+<summary>Editing bonds interactively</summary>
+
+In **Edit Bonds** mode, **Add** is the safe default: click two atoms to add or restore a bond without risking accidental deletion. Switch to **Delete** to remove existing bonds by clicking them. Use the order selector for new bonds, or open a bond's context menu to update an existing bond order interactively.
+
+</details>
 
 ```svelte example
 <script lang="ts">
@@ -149,63 +158,61 @@ bond's context menu to update an existing bond order interactively.
 />
 ```
 
-## Selective Dynamics
+## Viewer features
 
-POSCAR files with a `Selective dynamics` block record a per-axis `T`/`F` flag triple
-for every atom. Pick **Selective Dynamics** under _Appearance → Atoms → Color by_ to color
-atoms by how constrained they are. The flags are per-axis, so there are three real
-categories, not two: `free` (`T T T`), `partially fixed` (e.g. `T T F`, an atom pinned
-out of plane but free to slide within it) and `fixed` (`F F F`). Sites that never declare
-the property read as `unknown`; anything declared that is not three booleans throws rather
-than being read as unconstrained. The mode is disabled for structures where no site
-declares the property.
+Features reachable from the controls pane and measurement menu that need no code.
 
-Like the other property modes, this feeds the atom legend, so clicking a category hides
-those atoms. Handy for isolating the relaxing adlayer of a slab.
+<details>
+<summary>Selective dynamics coloring</summary>
 
-## Color Coding by Site Property
+Pick **Selective Dynamics** under _Appearance → Atoms → Color by_ to color atoms by how constrained they are, from the per-axis `T`/`F` flags of a POSCAR `Selective dynamics` block. The flags are per-axis, so there are three real categories: `free` (`T T T`), `partially fixed` (e.g. `T T F`, an atom pinned out of plane but free to slide within it) and `fixed` (`F F F`). Sites that never declare the property read as `unknown`; anything declared that is not three booleans throws rather than being read as unconstrained. The mode is disabled for structures where no site declares the property.
 
-Pick **Site Property** under _Appearance → Atoms → Color by_ to map any per-atom scalar onto the color scale (OVITO's Color Coding). The **Property** dropdown next to it lists the keys actually present on the current structure's sites: extXYZ writes every column its `Properties=` string declares (`charge`, `c_pe`, `velocities`, ...) and LAMMPS dumps write every column past the coordinates (`vx vy vz` as `velocity`, `fx fy fz` as `force`, `q` as `charge`, computes and variables under their dump names). Vec3 properties are colored by their magnitude, so `velocity` gives a speed map. Sites that don't declare the selected key stay gray and are left out of the min/max the color bar shows, and the mode is disabled entirely for structures with no numeric site properties.
+Like the other property modes, this feeds the atom legend, so clicking a category hides those atoms. Handy for isolating the relaxing adlayer of a slab.
+
+</details>
+
+<details>
+<summary>Color coding by site property</summary>
+
+Pick **Site Property** under _Appearance → Atoms → Color by_ to map any per-atom scalar onto the color scale (OVITO's Color Coding). The **Property** dropdown lists the keys actually present on the current structure's sites: extXYZ writes every column its `Properties=` string declares (`charge`, `c_pe`, `velocities`, ...) and LAMMPS dumps write every column past the coordinates (`vx vy vz` as `velocity`, `fx fy fz` as `force`, `q` as `charge`, computes and variables under their dump names). Vec3 properties are colored by their magnitude, so `velocity` gives a speed map. Sites that don't declare the selected key stay gray and are left out of the min/max the color bar shows, and the mode is disabled entirely for structures with no numeric site properties.
 
 `velocity`/`velocities` also count as site-vector keys, so a dump carrying `vx vy vz` gets a velocity arrow layer under _Appearance → Site vectors_ with no extra configuration, next to the usual force and magmom layers.
 
-## Dihedral (Torsion) Measurement
+</details>
 
-The measurement menu has a third mode next to Distance and Angle. Click exactly four
-atoms and the viewer draws the p1-p2-p3-p4 chain and labels the central bond with the
-**signed** torsion in (-180°, 180°]. The sign follows the IUPAC convention (viewed along
-p2→p3, positive means the front bond p2→p1 rotates clockwise to eclipse the rear bond
-p3→p4), so gauche+ and gauche- conformers, and a molecule versus its mirror image, are
-distinguishable.
+<details>
+<summary>Dihedral (torsion) measurement</summary>
 
-Displacements are chained through the minimum image convention, so a torsion whose atoms
-straddle a cell boundary measures the real bonded geometry instead of the angle to a
-distant periodic image. Three collinear consecutive atoms leave the torsion undefined and
-report 0 rather than NaN.
+The measurement menu has a third mode next to Distance and Angle. Click exactly four atoms and the viewer draws the p1-p2-p3-p4 chain and labels the central bond with the **signed** torsion in (-180°, 180°]. The sign follows the IUPAC convention (viewed along p2→p3, positive means the front bond p2→p1 rotates clockwise to eclipse the rear bond p3→p4), so gauche+ and gauche- conformers, and a molecule versus its mirror image, are distinguishable.
 
-## Zone-Axis Camera
+Displacements are chained through the minimum image convention, so a torsion whose atoms straddle a cell boundary measures the real bonded geometry instead of the angle to a distant periodic image. Three collinear consecutive atoms leave the torsion undefined and report 0 rather than NaN.
 
-_Camera → View → Look down_ points the camera along a crystallographic direction
-while keeping the current viewing distance. Two index conventions are offered because
-they only coincide for cubic cells:
+</details>
+
+<details>
+<summary>Zone-axis camera</summary>
+
+_Camera → View → Look down_ points the camera along a crystallographic direction while keeping the current viewing distance. Two index conventions are offered because they only coincide for cubic cells:
 
 - **Zone axis [uvw]** is a direct-lattice direction, `u·a + v·b + w·c`.
 - **Plane normal (hkl)** needs the reciprocal lattice, `h·b1 + k·b2 + l·b3`.
 
-For a triclinic cell the two can differ by tens of degrees for the same index triple.
-The control is disabled for molecules, which have no lattice. The flight reuses the same
-easing and pole handling as the orientation gizmo's axis handles.
+For a triclinic cell the two can differ by tens of degrees for the same index triple. The control is disabled for molecules, which have no lattice. The flight reuses the same easing and pole handling as the orientation gizmo's axis handles.
+
+</details>
 
 ## Comparing Two Structures
 
-Pass a `reference_structure` alongside `structure` to overlay per-atom displacement
-arrows showing what a relaxation moved. Displacements use the
-minimum image convention, so an atom that relaxed across a cell face draws a short arrow
-rather than one spanning the whole box. Sites pair up by index, so a mismatched atom count
-or a reordered species list fails loudly instead of reporting a confident RMSD for atoms
-that were never the same atom.
+Pass a `reference_structure` alongside `structure` to overlay per-atom displacement arrows showing what a relaxation moved.
+
+<details>
+<summary>How displacements are computed</summary>
+
+Displacements use the minimum image convention, so an atom that relaxed across a cell face draws a short arrow rather than one spanning the whole box. Sites pair up by index, so a mismatched atom count or a reordered species list fails loudly instead of reporting a confident RMSD for atoms that were never the same atom.
 
 Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction of the atom spacing. The controls pane reports the RMSD and largest displacement. Bind the component with `bind:this={viewer}` to read `viewer.analysis.displacement_rmsd`, alongside the displayed structure, symmetry dataset and mapped Wyckoff rows (pass `analyze_symmetry` to get the last two without user interaction).
+
+</details>
 
 ```svelte example
 <script lang="ts">

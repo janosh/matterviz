@@ -2,7 +2,8 @@
 
 The `IrRamanSpectrum` component renders vibrational spectra from phonon modes at Γ. Infrared intensities are computed here from Born effective charges and phonon eigenvectors. Raman activities are **not** computed from eigenvectors. They need polarizability derivatives that phonopy does not produce, so supply per-mode tensors or precomputed activities.
 
-## Where the data comes from
+<details>
+<summary>Where the data comes from</summary>
 
 Three inputs are needed:
 
@@ -20,11 +21,20 @@ Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dyna
 >
 > Every fixture rendered on this page is first-principles output. A synthetic CO₂ fixture serves as an analytic oracle in the test suite (a linear symmetric triatomic is the one case with a closed-form IR intensity check); it is not shown here, only in the Phonon Mode Explorer, labeled synthetic.
 
+</details>
+
 ## Explore bands, peaks, and atomic motion together
 
-`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. Away from Γ it applies the Bloch phase across a configurable diagonal supercell and renders the resulting coordinates without periodic wrapping. The trajectory controls provide playback, frame scrubbing, fullscreen, and video export.
+`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer).
 
-For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer). It bundles nine fixtures: seven phonopy calculations recomputed from published force constants (PhononDB and the phonopy example set), the α-quartz Phonopy-Spectroscopy example and the synthetic CO₂ oracle, ranging from the two-atom NaCl path shown below to the ferroelectric soft mode of cubic BaTiO₃, the 60 low-frequency branches of the 20-atom δ-CsPbI₃ cell, the flexural ZA branch of layered h-BN and the E₂g mode of MgB₂. The larger files store eigenvectors only at every second or third q-point; a band click between them snaps to the nearest q-point that can animate. The embedded example below exposes the same public component alongside its source.
+<details>
+<summary>Explorer details and bundled fixtures</summary>
+
+Away from Γ the explorer applies the Bloch phase across a configurable diagonal supercell and renders the resulting coordinates without periodic wrapping. The trajectory controls provide playback, frame scrubbing, fullscreen, and video export.
+
+The dedicated page bundles nine fixtures: seven phonopy calculations recomputed from published force constants (PhononDB and the phonopy example set), the α-quartz Phonopy-Spectroscopy example and the synthetic CO₂ oracle, ranging from the two-atom NaCl path shown below to the ferroelectric soft mode of cubic BaTiO₃, the 60 low-frequency branches of the 20-atom δ-CsPbI₃ cell, the flexural ZA branch of layered h-BN and the E₂g mode of MgB₂. The larger files store eigenvectors only at every second or third q-point; a band click between them snaps to the nearest q-point that can animate. The embedded example below exposes the same public component alongside its source.
+
+</details>
 
 This compact NaCl Γ→X path was generated from the same published PhononDB force constants as the Γ-only example below. Click a band, an IR stick, or a row in the mode list to change the animation.
 
@@ -206,7 +216,10 @@ Selected computed quantities are available per mode, so the raw numbers can be t
 <HeatmapTable data={mode_data} columns={mode_columns} />
 ```
 
-## Traps this component deliberately avoids
+<details>
+<summary>Traps this component deliberately avoids</summary>
 
 - IR/Raman data uses `VibrationalSpectrum` to represent discrete modes and intensities. DOS adapters represent sampled density curves and normalize explicitly declared frequency units to THz.
 - **`apply_gaussian_smearing` is not used.** It convolves a density already sampled on a grid (trapezoid-weighted, losing mass past the grid ends), which is not a stick-to-continuum broadening. Broadening goes through `broaden_peaks` from `#lib/lineshape.js` with an injected constant (or frequency-dependent) FWHM, so line shapes are area-normalised and the integrated intensity of each mode is preserved.
+
+</details>
