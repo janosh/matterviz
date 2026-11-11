@@ -60,20 +60,26 @@ test(`renders the docs, retrying a failed load when the table is reopened`, asyn
   // the idle prefetch may have made the failing first call; either way only one retry
   expect(loader.count()).toBe(2)
 
-  const cells = (row: number) =>
-    [...(details.querySelectorAll(`tbody tr`)[row]?.children ?? [])].map((cell) =>
-      cell.textContent?.replaceAll(/\s+/g, ` `).trim(),
-    )
+  const rows = [...details.querySelectorAll(`tbody tr`)].map((row) =>
+    [...row.children].map((cell) => cell.textContent?.replaceAll(/\s+/g, ` `).trim()),
+  )
+  // sorted by name (the docs list label, fps, trajectory_props) and numbered in that order
+  expect(rows.map(([number, prop]) => [number, prop?.split(` `)[0]])).toEqual([
+    [`1`, `fps`],
+    [`2`, `label`],
+    [`3`, `trajectory_props`],
+  ])
   // a constant default shows its value with the name beneath
-  expect(cells(0)).toEqual([`label required`, `string`, ``, `Label text (supports HTML)`])
-  expect(cells(1)).toEqual([
+  expect(rows[0]).toEqual([
+    `1`,
     `fps`,
     `number`,
     `24DEFAULT_FPS`,
     `Frames per second, see fps_range`,
   ])
+  expect(rows[1]).toEqual([`2`, `label required`, `string`, ``, `Label text (supports HTML)`])
   // a `code` span in the comment renders as code, without its backticks
-  expect(details.querySelector(`tbody tr:nth-child(2) td:last-child code`)?.textContent).toBe(
+  expect(details.querySelector(`tbody tr:first-child td:last-child code`)?.textContent).toBe(
     `fps_range`,
   )
   // a long type collapses to two lines until clicked

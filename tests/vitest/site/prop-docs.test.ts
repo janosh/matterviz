@@ -284,9 +284,18 @@ test(
     await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(11), {
       timeout: 30_000,
     })
-    const label_cells = [...(details.querySelector(`tbody tr`)?.children ?? [])].map((cell) =>
-      cell.textContent?.replaceAll(/\s+/g, ` `).trim(),
+    const rows = [...details.querySelectorAll(`tbody tr`)].map((row) =>
+      [...row.children].map((cell) => cell.textContent?.replaceAll(/\s+/g, ` `).trim()),
     )
-    expect(label_cells).toEqual([`label required`, `string`, ``, `Label text (supports HTML)`])
+    // numbered in alphabetical order
+    const names = rows.map(([, prop]) => prop?.split(` `)[0] ?? ``)
+    expect(names).toEqual(names.toSorted((left, right) => left.localeCompare(right, `en`)))
+    expect(rows.map(([number]) => number)).toEqual(rows.map((_row, idx) => String(idx + 1)))
+    expect(rows.find(([, prop]) => prop?.startsWith(`label `))?.slice(1)).toEqual([
+      `label required`,
+      `string`,
+      ``,
+      `Label text (supports HTML)`,
+    ])
   },
 )

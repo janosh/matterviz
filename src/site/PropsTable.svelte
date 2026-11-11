@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
+  import type { ComponentDoc, PropDoc } from '#root/src/scripts/prop-docs.ts'
 
   // One fetch per component for the page's lifetime, shared by the prefetch and the table
   const loads = new Map<string, Promise<ComponentDoc>>()
@@ -18,6 +18,9 @@
     }
     return load
   }
+
+  const sort_by_name = (props: readonly PropDoc[]): PropDoc[] =>
+    props.toSorted((left, right) => left.name.localeCompare(right.name, `en`))
 
   // Types past this many characters show their first two lines until clicked
   const LONG_TYPE = 80
@@ -57,12 +60,20 @@
         <div class="bleed-1400 table-scroll">
           <table>
             <thead>
-              <tr><th>Prop</th><th>Type</th><th>Default</th><th>Description</th></tr>
+              <tr>
+                <th aria-label="Number">#</th>
+                <th>Prop</th>
+                <th>Type</th>
+                <th>Default</th>
+                <th>Description</th>
+              </tr>
             </thead>
             <tbody>
-              {#each props as { name: prop, type, default: fallback, default_value, description, bindable, required } (prop)}
+              <!-- alphabetical, so a prop is found by name; numbered to cite or count them -->
+              {#each sort_by_name(props) as { name: prop, type, default: fallback, default_value, description, bindable, required }, idx (prop)}
                 {@const key = `${name}.${prop}`}
                 <tr>
+                  <td>{idx + 1}</td>
                   <td>
                     <code>{prop}</code>
                     {#if required}<small>required</small>{/if}
@@ -136,16 +147,29 @@
     min-width: 760px;
     table-layout: fixed;
     font-size: 0.85em;
-    th:nth-child(1) {
-      width: 15%;
+    /* just wide enough for three digits: the table's 12pt cell padding would triple it */
+    :is(td, th):first-child {
+      width: 1.8em;
+      padding-inline: 2pt 0;
+    }
+    :is(td, th):nth-child(2) {
+      padding-inline-start: 6pt;
     }
     th:nth-child(2) {
-      width: 22%;
+      width: 15%;
     }
     th:nth-child(3) {
+      width: 21%;
+    }
+    th:nth-child(4) {
       width: 11%;
     }
-    td:not(:last-child) {
+    td:first-child {
+      opacity: 0.6;
+      text-align: end;
+      font-variant-numeric: tabular-nums;
+    }
+    td:not(:first-child, :last-child) {
       overflow-wrap: anywhere; /* long names and types wrap inside their share */
     }
   }
