@@ -309,6 +309,10 @@ describe(`RdfPlot`, () => {
       ).toEqual([6, 6]),
     )
     await vi.waitFor(() => expect(shown_labels()).toContain(`Pd-Pd`))
+    // a structure taken off the list takes its curves with it, before any recompute settles
+    shown.set(`structures`, [nacl_structure])
+    flushSync()
+    expect(shown_labels()).not.toContain(`Pd-Pd`)
   })
 
   // Drops open through open_material, whose parse warnings reach a notice named by file

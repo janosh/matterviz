@@ -160,10 +160,13 @@
   // Explicitly supplied patterns come first, in the order they were given. Joined apart from
   // `computed` so new patterns don't re-run the structures' neighbour searches. Curves of
   // other options are hidden while theirs compute: a hover would search their bins with the
-  // new cutoff and bin count.
+  // new cutoff and bin count. Curves of a structure no longer listed leave at once too.
+  const listed = $derived(new Set(struct_list.map(({ struct }) => struct)))
   const entries = $derived<ComputedEntry[]>([
     ...(patterns ? [patterns].flat() : []),
-    ...(computed.key === key ? computed.curves : []),
+    ...(computed.key === key
+      ? computed.curves.filter(({ structure }) => structure && listed.has(structure))
+      : []),
   ])
   // a failure report clears once its structure is gone, a drop error on the next drop
   const error_report = bind_error_report(
