@@ -59,6 +59,12 @@
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
   })
+  // The worker retains its copy of the stream (and the unwrapped coordinates) between
+  // requests: end an idle one once this plot has no stream left to analyse or unmounts. After
+  // use_async_result, so a replaced stream's request is already in flight and keeps the worker.
+  $effect(() => {
+    if (input) return () => compute_vacf_async.release()
+  })
 
   const curve_series = (
     x_values: number[],

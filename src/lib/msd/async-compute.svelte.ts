@@ -17,4 +17,7 @@ export const compute_msd_async = create_worker_client<
     new Worker(new URL(`./msd-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: calc_msd,
   build_payload: plain_position_stream,
+  // The stream (hundreds of MB) crosses once; an options edit then posts the options alone
+  // and the worker's copy keeps its unwrapped coordinates (unwrapped_positions_of)
+  retained_inputs: 1,
 })

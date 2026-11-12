@@ -5,6 +5,7 @@ import type { RadiationType } from '#lib/scattering/index.js'
 import type { LatticePlane } from '#lib/structure/index.js'
 import type { RadiationKey } from './calc-xrd'
 
+export * from './async-compute.svelte'
 export * from './broadening'
 export * from './calc-xrd'
 export * from './parse'

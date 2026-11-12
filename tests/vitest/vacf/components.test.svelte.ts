@@ -7,6 +7,8 @@ import { calc_vacf } from '#lib/vacf/calc-vacf.js'
 import type { VacfInput, VacfOptions, VacfResult } from '#lib/vacf/index.js'
 import TrajectoryVacfPane from '#lib/vacf/TrajectoryVacfPane.svelte'
 import VacfPlot from '#lib/vacf/VacfPlot.svelte'
+import type { WorkerRequest } from '#lib/worker-serve.js'
+import { create_input_store } from '#lib/worker-serve.js'
 import { types } from 'node:util'
 import { type Component, type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
@@ -22,8 +24,9 @@ import {
 import { build_vacf_input, circular_motion, orbit_run } from './helpers'
 
 // Mirrors vacf-worker.ts: a thrown kernel error becomes an error reply instead of escaping
-const stub = install_stub_worker<{ id: number; input: VacfInput; options: VacfOptions }>(
-  ({ input, options }) => calc_vacf(input, options),
+const input_of = create_input_store<VacfInput>()
+const stub = install_stub_worker<WorkerRequest<VacfInput, VacfOptions>>((message) =>
+  calc_vacf(input_of(message), message.options),
 )
 
 let compute_vacf_async: typeof VacfAsyncModule.compute_vacf_async
@@ -58,12 +61,19 @@ describe(`worker code path`, () => {
       expect(stub.posted).toHaveLength(1)
       expect(result).toEqual(sync)
       const { input: payload } = stub.posted[0].message
-      expect(payload.velocities === null).toBe(!stored)
+      expect(payload?.velocities === null).toBe(!stored)
       // Transfers would detach the caller's buffers and break repeat requests.
       expect(stub.posted[0].transfer).toHaveLength(0)
       expect(input.positions).toHaveLength(n_frames * 3)
-      expect(payload.positions).toHaveLength(n_frames * 3)
-      if (stored) expect(payload.velocities).toHaveLength(n_frames * 3)
+      expect(payload?.positions).toHaveLength(n_frames * 3)
+      if (stored) expect(payload?.velocities).toHaveLength(n_frames * 3)
+      // other options on the same input post the options alone: the worker kept the streams
+      const options = { max_lag_fraction: 0.3 }
+      expect(await compute_vacf_async(input, options)).toEqual(calc_vacf(input, options))
+      expect(stub.posted.map(({ message }) => message.input === undefined)).toEqual([
+        false,
+        true,
+      ])
       expect_module_worker(stub.instances, `src/lib/vacf/vacf-worker.ts`)
     },
   )

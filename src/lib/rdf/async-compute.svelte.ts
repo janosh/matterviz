@@ -1,14 +1,15 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// One frame's partial RDFs via a small pool of persistent Web Workers (main-thread fallback
-// without Worker); the trajectory sweep in calc-trajectory-rdf.ts keeps one frame per worker.
+// One structure's partial RDFs via a small pool of persistent Web Workers (main-thread fallback
+// without Worker); the trajectory sweep in calc-trajectory-rdf.ts keeps one frame per worker
+// and RdfPlot one request per structure.
 import type { AnyStructure } from '#lib/structure/index.js'
 import { to_structure_id_payload } from '#lib/structure-id/worker-payload.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
-import { calculate_all_pair_rdfs, type FrameRdfOptions } from './calc-rdf'
+import { calculate_all_pair_rdfs, type PairRdfOptions } from './calc-rdf'
 import type { RdfPattern } from './index'
 
 const create_rdf_client = () =>
-  create_worker_client<AnyStructure, FrameRdfOptions, RdfPattern[]>({
+  create_worker_client<AnyStructure, PairRdfOptions, RdfPattern[]>({
     label: `RDF`,
     create_worker: () =>
       new Worker(new URL(`./rdf-worker.js`, import.meta.url), { type: `module` }),

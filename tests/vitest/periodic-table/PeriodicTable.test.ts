@@ -339,7 +339,8 @@ describe(`PeriodicTable`, () => {
     const tile = doc_query(`.element-tile`)
     tile.click()
     tile.dispatchEvent(keydown(`Enter`))
-    expect(onclick).toHaveBeenCalledOnce()
+    // Enter activates the tile's own onclick too: a clickable tile is keyboard-operable
+    expect(onclick).toHaveBeenCalledTimes(2)
     expect(onkeydown).toHaveBeenCalledOnce()
     expect(tile.getAttribute(`role`)).toBe(`checkbox`)
     expect(tile.getAttribute(`tabindex`)).toBe(`2`)

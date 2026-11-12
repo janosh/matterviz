@@ -49,4 +49,7 @@ export const compute_trajectory_spectroscopy_async = create_worker_client<
       ...(input.metadata ? { metadata: $state.snapshot(input.metadata) } : {}),
     }
   },
+  // The streams cross once per input object: recomputing it with other options (window,
+  // zero padding, Raman channel) posts the options alone
+  retained_inputs: 1,
 })

@@ -7,6 +7,25 @@ export const is_plain_object = (value: unknown): value is Record<string, unknown
   return prototype === Object.prototype || prototype === null
 }
 
+// Deep copy of the arrays and plain objects in `value`, the only things Svelte proxies (typed
+// arrays, maps and class instances are kept as they are). $state.snapshot does the same but
+// passes every number through structuredClone, which tripled the copy of 100k sites.
+export const plain_copy = <Value>(value: Value): Value => {
+  if (typeof value !== `object` || value === null) return value
+  if (Array.isArray(value)) {
+    const copy: unknown[] = Array(value.length)
+    for (let idx = 0; idx < value.length; idx++) copy[idx] = plain_copy(value[idx])
+    return copy as Value
+  }
+  if (!is_plain_object(value)) return value
+  const copy: Record<string, unknown> = {}
+  // Not Object.keys: it runs a proxy's getOwnPropertyDescriptor trap per key (~11% slower)
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === `string`) copy[key] = plain_copy(Reflect.get(value, key))
+  }
+  return copy as Value
+}
+
 // JSON value kinds for input validation: each kind's test and the phrase its errors use
 export const JSON_KINDS = {
   string: [(value: unknown) => typeof value === `string`, `a string`],
@@ -115,6 +134,30 @@ export function same_while_equal<T>(): (value: T) => T {
     const key = value_key(value)
     if (last?.key !== key) last = { key, value }
     return last.value
+  }
+}
+
+// Memo of a computation per input object and options key: the latest result is kept with
+// the object (a WeakMap, so it goes when the object does) and reused while `key` repeats, so
+// a list analysed entry by entry recomputes only its new members. By identity: an object
+// edited in place keeps its stale result, pass a new one. A rejected promise is not kept.
+export function memo_by_identity<Result>(): (
+  target: object,
+  key: string,
+  compute: () => Result,
+) => Result {
+  const cache = new WeakMap<object, { key: string; result: Result }>()
+  return (target, key, compute) => {
+    const cached = cache.get(target)
+    if (cached?.key === key) return cached.result
+    const result = compute()
+    cache.set(target, { key, result })
+    if (result instanceof Promise) {
+      result.catch(() => {
+        if (cache.get(target)?.result === result) cache.delete(target)
+      })
+    }
+    return result
   }
 }
 

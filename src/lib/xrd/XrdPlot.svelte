@@ -22,7 +22,7 @@
   import { array_extent, array_max, type Vec2 } from '#lib/math.js'
   import { BarPlot, ScatterPlot } from '#lib/plot/index.js'
   import { structure_drop_zone } from '#lib/plot/core/structure-input.js'
-  import { structure_xrd_pattern } from '#lib/xrd/calc-xrd.js'
+  import { structure_xrd_pattern } from '#lib/xrd/async-compute.svelte.js'
   import { is_xrd_data_file, parse_xrd_file } from './parse'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { BroadeningParams } from './broadening'

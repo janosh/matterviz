@@ -20,6 +20,7 @@
     label = undefined,
     split_layout = undefined, // auto-determined from segment count
     onclick,
+    onkeydown,
     ...rest
   }: Omit<HTMLAttributes<HTMLElement>, `onclick`> & {
     // Element whose number, symbol, name and category color the tile shows.
@@ -152,7 +153,11 @@
 <svelte:element
   this={href ? `a` : `div`}
   bind:this={node}
-  {...href ? { href, role: `link`, tabindex: 0 } : {}}
+  {...href
+    ? { href, role: `link`, tabindex: 0 }
+    : onclick
+      ? { role: `button`, tabindex: 0 }
+      : {}}
   class="element-tile"
   data-category={element.category}
   class:active
@@ -160,6 +165,14 @@
   style:background-color={fallback_bg_color}
   style:color={computed_text_color}
   onclick={(event: MouseEvent) => onclick?.({ element, event })}
+  onkeydown={(event: KeyboardEvent & { currentTarget: EventTarget & HTMLElement }) => {
+    onkeydown?.(event)
+    // Enter/Space activate a clickable tile as a real click; a link's Enter is the browser's
+    const activates = onclick && !href && (event.key === `Enter` || event.key === ` `)
+    if (!activates || event.defaultPrevented) return
+    event.preventDefault() // Space would scroll the page
+    event.currentTarget.click()
+  }}
   {...rest}
 >
   {#if should_show_number}

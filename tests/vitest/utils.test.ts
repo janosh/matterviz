@@ -2,13 +2,14 @@ import {
   decode_url_safe_base64,
   html_to_text,
   is_plain_object,
+  memo_by_identity,
   parse_leading_num,
   parse_num_token,
   same_while_equal,
   toggle_item,
   value_key,
 } from '#lib/utils.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 test.each([
   [{}, true],
@@ -118,6 +119,35 @@ test(`value_key tells values apart by type and content, and Maps by identity`, (
   expect(value_key({ a: 1, b: [Infinity], c: undefined })).toBe(
     value_key({ b: [Infinity], a: 1 }),
   )
+})
+
+test(`memo_by_identity recomputes per object only when its key changes`, async () => {
+  const memo = memo_by_identity<number>()
+  const [first, second] = [{}, {}]
+  const compute = vi.fn(() => compute.mock.calls.length)
+  const results = [
+    memo(first, `a`, compute),
+    memo(first, `a`, compute), // reused
+    memo(second, `a`, compute), // another object, however alike
+    memo(first, `b`, compute), // another key replaces the kept result
+    memo(first, `a`, compute),
+    memo(second, `a`, compute), // untouched by the other object's keys
+  ]
+  expect(results).toEqual([1, 1, 2, 3, 4, 2])
+  // a throwing compute caches nothing, and a rejected promise is dropped for a retry
+  expect(() =>
+    memo(first, `c`, () => {
+      throw new Error(`boom`)
+    }),
+  ).toThrow(`boom`)
+  expect(memo(first, `c`, () => 7)).toBe(7)
+  const async_memo = memo_by_identity<Promise<number>>()
+  const failed = async_memo(first, `a`, () => Promise.reject(new Error(`lost`)))
+  expect(async_memo(first, `a`, () => Promise.resolve(1))).toBe(failed)
+  await expect(failed).rejects.toThrow(`lost`)
+  const retried = async_memo(first, `a`, () => Promise.resolve(2))
+  await expect(retried).resolves.toBe(2)
+  expect(async_memo(first, `a`, () => Promise.resolve(3))).toBe(retried)
 })
 
 test(`same_while_equal keeps the first of a run of equal values`, () => {

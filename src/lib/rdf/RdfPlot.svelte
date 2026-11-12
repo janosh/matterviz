@@ -13,18 +13,13 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text, memo_by_identity, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
-  import type { Snippet } from 'svelte'
+  import { getAbortSignal, type Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
-  import {
-    calculate_all_pair_rdfs,
-    calculate_rdf,
-    label_structures,
-    rdf_baseline,
-    rdf_bin_site_index,
-  } from './index'
-  import type { RdfEntry } from './index'
+  import { calc_all_pair_rdfs_async } from './async-compute.svelte'
+  import { calculate_rdf, label_structures, rdf_baseline, rdf_bin_site_index } from './index'
+  import type { RdfEntry, RdfPattern } from './index'
   import { bind_error_report } from './error-report.svelte'
 
   let {
@@ -105,35 +100,62 @@
   // Computed entries keep the structure they came from, for the atoms behind a hover. A
   // structure the neighbour search rejects is reported, and the others still plot.
   type ComputedEntry = RdfEntry & { structure?: Crystal }
-  const computed = $derived.by((): { curves: ComputedEntry[]; failures: string[] } => {
-    // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
-    const struct_list = [
+  // Normalize structures prop (single, array, or dict) plus dropped files to labeled list
+  const struct_list = $derived(
+    [
       ...label_structures(structures),
       ...drag_dropped.map((struct, idx) => ({ struct, label: `Dropped ${idx + 1}` })),
     ].map(({ struct, label }) => {
       const formula = get_electro_neg_formula(struct)
       return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
-    })
-
-    const failures: string[] = []
-    const curves = struct_list.flatMap(({ struct, label }) => {
-      const options = { cutoff, n_bins, pbc }
-      try {
-        if (mode === `full`)
-          return [{ label, pattern: calculate_rdf(struct, options), structure: struct }]
-        return calculate_all_pair_rdfs(struct, options).map((pair) => ({
-          label: pair.element_pair?.join(`-`) ?? label,
-          legend_group: label, // Group by structure name for multi-structure plots
-          pattern: pair,
-          structure: struct,
-        }))
-      } catch (exc) {
+    }),
+  )
+  // One neighbour search per structure object and option set, so one more dropped file
+  // searches that file alone. The pair RDFs run in the RDF worker pool, one structure per
+  // worker; the single all-atom RDF has no worker entry and stays on the main thread.
+  const patterns_of = memo_by_identity<Promise<RdfPattern[]>>()
+  let computed = $state.raw<{ curves: ComputedEntry[]; failures: string[] }>({
+    curves: [],
+    failures: [],
+  })
+  let computing = $state(false)
+  $effect(() => {
+    const options = { cutoff, n_bins, pbc: $state.snapshot(pbc) }
+    const [pair_mode, options_key] = [mode !== `full`, value_key([mode, options])]
+    // aborted once the structures or options change: that answer is no longer wanted
+    const signal = getAbortSignal()
+    const requests = struct_list.map(({ struct, label }) =>
+      patterns_of(struct, options_key, async () =>
+        pair_mode
+          ? await calc_all_pair_rdfs_async(struct, options)
+          : [calculate_rdf(struct, options)],
+      ).then(
+        (found): { curves: ComputedEntry[]; failures: string[] } => ({
+          curves: found.map((pattern) => ({
+            label: pattern.element_pair?.join(`-`) ?? label,
+            // Group by structure name for multi-structure plots
+            ...(pair_mode ? { legend_group: label } : {}),
+            pattern,
+            structure: struct,
+          })),
+          failures: [],
+        }),
         // the label's formula is <sub> markup for the legend; the notice is plain text
-        failures.push(`${html_to_text(label)}: ${to_error(exc).message}`)
-        return []
+        (exc: unknown) => ({
+          curves: [],
+          failures: [`${html_to_text(label)}: ${to_error(exc).message}`],
+        }),
+      ),
+    )
+    computing = requests.length > 0
+    void Promise.all(requests).then((results) => {
+      if (signal.aborted) return
+      computed = {
+        curves: results.flatMap(({ curves }) => curves),
+        failures: results.flatMap(({ failures }) => failures),
       }
+      computing = false
     })
-    return { curves, failures }
   })
   // Explicitly supplied patterns come first, in the order they were given. Joined apart from
   // `computed` so new patterns don't re-run the structures' neighbour searches.
@@ -231,9 +253,11 @@
       <StatusMessage
         message={loading
           ? loading_message
-          : allow_file_drop
-            ? `Drag and drop structure files here to visualize RDFs`
-            : `No RDF data to display`}
+          : computing
+            ? `Computing RDF…`
+            : allow_file_drop
+              ? `Drag and drop structure files here to visualize RDFs`
+              : `No RDF data to display`}
         style="border: none"
       />
     </div>

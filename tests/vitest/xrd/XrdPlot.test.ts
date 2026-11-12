@@ -71,13 +71,14 @@ const [angle_label, intensity_label] = [`2θ (degrees)`, `Intensity (a.u.)`]
 const all_hkl_labels = [`100 @ 10°`, `110 @ 20°`, `111 @ 30°`, `200 @ 40°`, `210 @ 50°`]
 
 test(`XRD demos defer calculation, reuse cached patterns and display calculation errors`, async () => {
-  const compute = vi.spyOn(xrd, `compute_xrd_pattern`).mockReturnValue(pattern)
+  // the page computes in the XRD and SAED workers, through their async clients
+  const compute = vi.spyOn(xrd, `compute_xrd_pattern_async`).mockResolvedValue(pattern)
   // oxfmt-ignore
   const symmetry_rotations: Matrix3x3[] = [[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]
   const analyze = vi.spyOn(xrd, `xrd_symmetry_rotations`).mockResolvedValue(symmetry_rotations)
-  const saed = vi.spyOn(xrd, `compute_saed_pattern`).mockImplementation(() => {
-    throw new Error(`SAED unavailable`)
-  })
+  const saed = vi
+    .spyOn(xrd, `compute_saed_pattern_async`)
+    .mockRejectedValue(new Error(`SAED unavailable`))
   const component = mount(Page, { target: document.body })
   try {
     flushSync()
@@ -98,15 +99,19 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
     const main = await show(`xrd`)
     expect(analyze).toHaveBeenCalledOnce()
     await vi.waitFor(() => expect(compute).toHaveBeenCalledOnce())
-    expect(compute).toHaveBeenCalledWith(expect.anything(), { symmetry_rotations })
+    expect(compute).toHaveBeenCalledWith(
+      expect.anything(),
+      { symmetry_rotations },
+      { signal: undefined },
+    )
+    // each structure's point group is analyzed once, however many patterns it gets
+    expect(analyze).toHaveBeenCalledOnce()
     await show(`Overlay multiple structures`)
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(4))
     const buttons = document.querySelectorAll<HTMLButtonElement>(
       `.structure-picker:first-child button`,
     )
-    compute.mockImplementationOnce(() => {
-      throw new Error(`XRD unavailable`)
-    })
+    compute.mockRejectedValueOnce(new Error(`XRD unavailable`))
     buttons[4].click()
     await vi.waitFor(() =>
       expect(main.textContent).toContain(`Compute error: XRD unavailable`),
@@ -115,12 +120,38 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
     await tick()
     expect(main.textContent).not.toContain(`Compute error`)
     expect(compute).toHaveBeenCalledTimes(5)
+    const analyses = analyze.mock.calls.length
     await show(`X-ray vs neutron vs electron`)
-    expect(compute).toHaveBeenCalledTimes(7)
-    expect((await show(`Electron diffraction`)).textContent).toContain(
-      `SAED error: SAED unavailable`,
+    await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(7))
+    // both probes of the overlay reuse the selected structure's rotations
+    expect(analyze).toHaveBeenCalledTimes(analyses)
+    expect(compute.mock.calls.slice(5).map(([, options]) => options)).toEqual(
+      [`xray`, `neutron`].map((radiation) => ({
+        radiation,
+        wavelength: 1.54184,
+        two_theta_range: [0, 90],
+        symmetry_rotations,
+      })),
+    )
+    const saed_demo = await show(`Electron diffraction`)
+    await vi.waitFor(() =>
+      expect(saed_demo.textContent).toContain(`SAED error: SAED unavailable`),
     )
     expect(saed).toHaveBeenCalledOnce()
+    // every edit recomputes at once (no debounce): the worker keeps the page responsive
+    expect(saed.mock.calls[0][1]?.zone_axis).toEqual([0, 0, 1])
+    const preset = [...document.querySelectorAll(`button`)].find(
+      (button) => button.textContent === `[111]`,
+    )
+    preset?.click()
+    await tick()
+    expect(saed).toHaveBeenCalledTimes(2)
+    expect(saed.mock.calls[1][1]?.zone_axis).toEqual([1, 1, 1])
+    // the superseded request was aborted
+    expect(saed.mock.calls.map(([, , request]) => request?.signal?.aborted)).toEqual([
+      true,
+      false,
+    ])
   } finally {
     await unmount(component)
     compute.mockRestore()

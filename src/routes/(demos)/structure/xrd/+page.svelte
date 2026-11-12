@@ -9,10 +9,18 @@
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import type { LatticePlane } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
-  import type { SaedOptions, SaedSpot, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
+  import { memo_by_identity, value_key } from '#lib/utils.js'
+  import type {
+    SaedOptions,
+    SaedPatternData,
+    SaedSpot,
+    XrdOptions,
+    XrdPattern,
+    XrdPeak,
+  } from '#lib/xrd/index.js'
   import {
-    compute_saed_pattern,
-    compute_xrd_pattern,
+    compute_saed_pattern_async,
+    compute_xrd_pattern_async,
     diffraction_planes,
     electron_wavelength,
     format_hkl,
@@ -67,35 +75,63 @@
     return site_file_info(path, { type: ext, category, category_icon: icon })
   })
 
-  // Point-group rotations group each peak's hkls into symmetry-equivalent families. moyo-wasm
-  // analyzes asynchronously, so the first read of a structure requests them and returns null;
-  // patterns recompute once they land here. Requested on demand to keep the demos lazy.
-  const rotations_by_id = new SvelteMap<string, Matrix3x3[] | Error>()
-  const requested_ids = new Set<string>()
-  const rotations_for = (struct_id: string, struct: Crystal): Matrix3x3[] | null => {
-    const rotations = rotations_by_id.get(struct_id)
-    if (rotations instanceof Error) throw rotations
-    if (!rotations && !requested_ids.has(struct_id)) {
-      requested_ids.add(struct_id)
-      xrd_symmetry_rotations(struct).then(
-        (result) => rotations_by_id.set(struct_id, result),
-        (exc) => rotations_by_id.set(struct_id, to_error(exc)),
-      )
-    }
-    return rotations ?? null
+  // Point-group rotations group each peak's hkls into symmetry-equivalent families: analyzed
+  // (moyo-wasm) once per structure, then the pattern is computed in the XRD worker
+  const rotations_of = memo_by_identity<Promise<Matrix3x3[]>>()
+  const pattern_of = async (
+    struct: Crystal,
+    options: XrdOptions = {},
+    signal?: AbortSignal,
+  ): Promise<XrdPattern> => {
+    const symmetry_rotations = await rotations_of(struct, ``, () =>
+      xrd_symmetry_rotations(struct),
+    )
+    return compute_xrd_pattern_async(struct, { ...options, symmetry_rotations }, { signal })
   }
 
-  // Memoize fixture calculations; consumers stay lazy until their demo becomes visible.
-  const xrd_cache = new Map<string, XrdPattern>()
+  // Memoize fixture calculations; consumers stay lazy until their demo becomes visible: the
+  // first read of a structure requests its pattern and returns null, and consumers recompute
+  // once it (or its failure) lands here.
+  const patterns_by_id = new SvelteMap<string, XrdPattern | Error>()
+  const requested_ids = new Set<string>()
   const ensure_pattern = (struct_id: string): XrdPattern | null => {
-    const cached = xrd_cache.get(struct_id)
-    if (cached) return cached
     const struct = structure_map.get(struct_id)
-    const symmetry_rotations = struct && rotations_for(struct_id, struct)
-    if (!struct || !symmetry_rotations) return null
-    const pattern = compute_xrd_pattern(struct, { symmetry_rotations })
-    xrd_cache.set(struct_id, pattern)
-    return pattern
+    if (struct && !requested_ids.has(struct_id)) {
+      requested_ids.add(struct_id)
+      pattern_of(struct).then(
+        (pattern) => patterns_by_id.set(struct_id, pattern),
+        (exc: unknown) => patterns_by_id.set(struct_id, to_error(exc)),
+      )
+    }
+    const pattern = patterns_by_id.get(struct_id)
+    if (pattern instanceof Error) throw pattern
+    return pattern ?? null
+  }
+
+  // A worker result read like a $derived, since a $derived cannot await and a page-level
+  // $effect would compute before its demo scrolls into view: the first read for a new key
+  // (only a visible LazyDemo reads) starts the request and aborts the one it supersedes, and
+  // the previous value stays up until the new one lands. `run` must not reject.
+  function latest_async<Value>(
+    initial: Value,
+    request: () => { key: string; run: (signal: AbortSignal) => Promise<Value> },
+  ): () => Value {
+    let latest = $state.raw(initial)
+    let requested_key: string | undefined
+    let controller: AbortController | undefined
+    return () => {
+      const { key, run } = request()
+      if (key !== requested_key) {
+        controller?.abort()
+        controller = new AbortController()
+        requested_key = key
+        const { signal } = controller
+        void run(signal).then((value) => {
+          if (!signal.aborted) latest = value
+        })
+      }
+      return latest
+    }
   }
 
   // On-the-fly computed patterns
@@ -123,63 +159,74 @@
   let probe_wavelength = $state(1.54184) // Å, shared so peak positions line up exactly
   let show_neutron = $state(true)
   let show_electron = $state(false)
-  const radiation_overlay = $derived.by(() => {
-    const struct = computed_struct
-    const entries: { label: string; pattern: XrdPattern; color: string }[] = []
-    const errors: string[] = []
-    if (!struct) return { entries, errors }
-    let symmetry_rotations: Matrix3x3[] | null = null
-    try {
-      symmetry_rotations = rotations_for(compute_id, struct)
-    } catch (exc) {
-      errors.push(`Symmetry analysis: ${to_error(exc).message}`)
+  type RadiationOverlay = {
+    entries: { label: string; pattern: XrdPattern; color: string }[]
+    errors: string[]
+  }
+  const overlay_result = latest_async<RadiationOverlay>({ entries: [], errors: [] }, () => {
+    const [struct, wavelength] = [computed_struct, probe_wavelength]
+    const requested = (
+      [
+        [`xray`, `X-ray`, PLOT_COLORS[0], true],
+        [`neutron`, `Neutron`, PLOT_COLORS[1], show_neutron],
+        [`electron`, `Electron`, PLOT_COLORS[2], show_electron],
+      ] as const
+    ).filter(([, , , enabled]) => struct && enabled)
+    const radiations = requested.map(([radiation]) => radiation)
+    return {
+      key: value_key([compute_id, wavelength, radiations]),
+      run: async (signal) => {
+        const overlay: RadiationOverlay = { entries: [], errors: [] }
+        if (!struct) return overlay
+        // one request per probe, all in flight together, reported in the order listed
+        const settled = await Promise.allSettled(
+          radiations.map((radiation) =>
+            pattern_of(struct, { radiation, wavelength, two_theta_range: [0, 90] }, signal),
+          ),
+        )
+        for (const [idx, outcome] of settled.entries()) {
+          const [, label, color] = requested[idx]
+          if (outcome.status === `fulfilled`) {
+            const entry_label = `${label} (λ = ${wavelength} Å)`
+            overlay.entries.push({ label: entry_label, pattern: outcome.value, color })
+          } else overlay.errors.push(`${label}: ${to_error(outcome.reason).message}`)
+        }
+        return overlay
+      },
     }
-    if (!symmetry_rotations) return { entries, errors }
-
-    const requested = [
-      [`xray`, `X-ray`, PLOT_COLORS[0], true],
-      [`neutron`, `Neutron`, PLOT_COLORS[1], show_neutron],
-      [`electron`, `Electron`, PLOT_COLORS[2], show_electron],
-    ] as const
-    for (const [radiation, label, color, enabled] of requested) {
-      if (!enabled) continue
-      try {
-        const pattern = compute_xrd_pattern(struct, {
-          radiation,
-          wavelength: probe_wavelength,
-          two_theta_range: [0, 90],
-          symmetry_rotations,
-        })
-        entries.push({ label: `${label} (λ = ${probe_wavelength} Å)`, pattern, color })
-      } catch (exc) {
-        errors.push(`${label}: ${to_error(exc).message}`)
-      }
-    }
-    return { entries, errors }
   })
+  const radiation_overlay = $derived(overlay_result())
 
   // SAED: zone-axis electron diffraction for the currently selected structure
   let zone_axis = $state<Vec3>([0, 0, 1])
   let accelerating_voltage = $state(200)
   let max_g = $state(2)
   let crystal_thickness = $state(50)
-  // compute_saed_pattern is synchronous and runs on the main thread, so recomputing on every
-  // keystroke of these number inputs would freeze the page. Settle first, then compute.
-  let saed_options = $state<SaedOptions>({})
-  $effect(() => {
-    const next: SaedOptions = {
+  // Computed in the SAED worker, so every keystroke of these number inputs can recompute: a
+  // superseded request is aborted, which ends the worker still busy with it
+  type SaedResult = { pattern: SaedPatternData | null; error: string | null }
+  const saed_result = latest_async<SaedResult>({ pattern: null, error: null }, () => {
+    const struct = computed_struct
+    const options: SaedOptions = {
       zone_axis: [...zone_axis],
       accelerating_voltage,
       max_g,
       crystal_thickness,
     }
-    const timer = setTimeout(() => (saed_options = next), 250)
-    return () => clearTimeout(timer)
+    return {
+      key: value_key([compute_id, options]),
+      run: async (signal) => {
+        if (!struct) return { pattern: null, error: null }
+        try {
+          const pattern = await compute_saed_pattern_async(struct, options, { signal })
+          return { pattern, error: null }
+        } catch (exc) {
+          return { pattern: null, error: to_error(exc).message }
+        }
+      },
+    }
   })
-  const saed = $derived.by(() => {
-    const struct = computed_struct
-    return try_compute(() => struct && compute_saed_pattern(struct, saed_options))
-  })
+  const saed = $derived(saed_result())
   // Likewise for SAED spots, seen down the zone axis; a thickness or kV change keeps the pin
   let hovered_spot = $state<SaedSpot | null>(null)
   const saed_zone_key = $derived(`${compute_id} ${saed.pattern?.zone_axis.join(`,`)}`)

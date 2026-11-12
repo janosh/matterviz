@@ -284,6 +284,24 @@ describe(`symmetry-aware display`, () => {
     },
   )
 
+  // It used to log and keep the original cell while the selector still read the new cell type
+  it(`reports a failed cell transform and resets the cell type`, async () => {
+    await init_moyo_for_tests()
+    const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+    const structure = prim_fcc_cu()
+    const valid = await analyze_structure_symmetry(structure)
+    const sym_data = { ...valid, std_cell: { ...valid.std_cell, numbers: [999] } }
+    const { host, session, notices } = make_session({ structure, sym_data })
+    flush_set(host, { cell_type: `conventional` })
+    expect(notices).toEqual([
+      `Failed to transform cell to conventional: Unknown atomic number: 999`,
+    ])
+    expect(host.cell_type).toBe(`original`)
+    expect(session.base_structure?.sites).toHaveLength(1)
+    expect(error_spy).toHaveBeenCalledOnce()
+    error_spy.mockRestore()
+  })
+
   // An input already in the requested cell bakes to itself: no undo entry, the pick stays
   it(`skips the bake when the cell type leaves the cell unchanged`, async () => {
     await init_moyo_for_tests()

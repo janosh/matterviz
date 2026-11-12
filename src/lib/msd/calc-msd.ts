@@ -10,6 +10,7 @@
 // autocorrelation taken with the same Wiener–Khinchin kernel as the VACF. Each coordinate is
 // centred on its time average first, so the difference cancels on the scale of the motion
 // rather than of the absolute position.
+import { element_by_symbol } from '#lib/element/data.js'
 import { mean as mean_of } from '#lib/math.js'
 import { thz_per_inverse_time } from '#lib/spectral/frequency-units.js'
 import {
@@ -96,12 +97,48 @@ export function fit_einstein_diffusion(
   }
 }
 
+// Unwrapped coordinates relative to each frame's centre of mass, as a new buffer (the input
+// may be the stream's own positions or its cached unwrap). A thermostat or an unconstrained
+// run lets the whole cell translate, which every atom's MSD would otherwise count as
+// diffusion. Mass-weighted with standard atomic masses: a position stream carries element
+// symbols only, not the masses a run may record.
+function without_com_drift(
+  coords: Float64Array,
+  { n_frames, n_atoms, elements }: TrajectoryPositionStream,
+): Float64Array {
+  const masses = Float64Array.from(elements, (element, atom_idx) => {
+    const mass = element_by_symbol.get(element)?.atomic_mass
+    if (mass && mass > 0) return mass
+    throw new Error(
+      `calc_msd: remove_com_drift needs a standard atomic mass for every atom, found none ` +
+        `for atom index ${atom_idx} (${element})`,
+    )
+  })
+  const total_mass = masses.reduce((total, mass) => total + mass, 0)
+  const drift_free = new Float64Array(coords.length)
+  const frame_size = n_atoms * 3
+  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
+    const base = frame_idx * frame_size
+    for (let axis = 0; axis < 3; axis++) {
+      let weighted_sum = 0
+      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
+        weighted_sum += masses[atom_idx] * coords[base + atom_idx * 3 + axis]
+      }
+      const center = weighted_sum / total_mass
+      for (let comp = base + axis; comp < base + frame_size; comp += 3) {
+        drift_free[comp] = coords[comp] - center
+      }
+    }
+  }
+  return drift_free
+}
+
 export function calc_msd(
   input: TrajectoryPositionStream,
   options: MsdOptions = {},
 ): MsdResult {
   const { n_frames, n_atoms, elements } = input
-  const { max_lag_fraction = 0.5, max_lags = 200 } = options
+  const { max_lag_fraction = 0.5, max_lags = 200, remove_com_drift = false } = options
 
   validate_position_stream_layout(input, `calc_msd`, 2)
   // Up front so a bad dt/time_unit fails before the analysis; with_lag_time_axis applies them
@@ -110,7 +147,10 @@ export function calc_msd(
   // Honours the parser's already-unwrapped flag and the cell's own pbc flags: re-applying
   // the minimum image convention to LAMMPS xu/yu/zu coordinates silently truncates real
   // displacements, and folding a slab's free axis back into the box reports 16 A^2 for 36.
-  const { coords, unwrapped } = unwrapped_positions_of(input)
+  const { coords: unwrapped_coords, unwrapped } = unwrapped_positions_of(input)
+  const coords = remove_com_drift
+    ? without_com_drift(unwrapped_coords, input)
+    : unwrapped_coords
 
   const max_lag = lag_range(`calc_msd`, n_frames, max_lag_fraction)
   if (!Number.isInteger(max_lags) || max_lags < 1) {
@@ -192,6 +232,7 @@ export function calc_msd(
       n_frames,
       n_atoms,
       unwrapped,
+      com_drift_removed: remove_com_drift,
       lag_stride,
       frame_stride: input.frame_stride,
     },

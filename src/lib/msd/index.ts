@@ -51,6 +51,10 @@ export interface MsdOptions {
   // Cap on the number of lags reported; longer runs sub-sample lags evenly. Every lag is
   // still averaged over all of its time origins.
   max_lags?: number
+  // Subtract each frame's centre of mass (standard atomic masses of the stream's elements)
+  // before taking displacements, so a cell translating as a whole (thermostat momentum,
+  // unconstrained run) does not read as diffusion. Off by default.
+  remove_com_drift?: boolean
 }
 
 export interface MsdResult {
@@ -67,6 +71,8 @@ export interface MsdResult {
   n_atoms: number
   // False when the input was already unwrapped or had no lattice
   unwrapped: boolean
+  // Whether displacements were taken relative to the centre of mass (`remove_com_drift`)
+  com_drift_removed: boolean
   // Every `lag_stride`-th lag was reported (from `max_lags`)
   lag_stride: number
   frame_stride: number

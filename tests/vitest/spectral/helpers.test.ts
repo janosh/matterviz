@@ -1,6 +1,7 @@
 import { HARTREE_TO_EV, THZ_TO_INVERSE_CM } from '#lib/constants.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import {
+  canonical_frequency_unit,
   convert_frequencies,
   frequency_unit_label,
   frequency_unit_text,
@@ -35,6 +36,7 @@ import {
   pretty_sym_point,
   qpoint_x_position,
   resolve_spin_mode,
+  shift_bands_to_fermi,
   shift_to_fermi,
 } from '#lib/spectral/helpers.js'
 import type { BaseBandStructure, QPoint } from '#lib/spectral/types.js'
@@ -133,6 +135,9 @@ describe(`convert_frequencies`, () => {
     expect(() => convert_frequencies([1], `GHz` as never)).toThrow(/Invalid unit: GHz/)
     // an inherited key is no unit either: `constructor` returned Object as the factor (NaN)
     expect(() => convert_frequencies([1], `constructor` as never)).toThrow(/Invalid unit/)
+    // a component's `units` prop: aliases canonicalize, an unknown unit throws at the prop
+    expect(canonical_frequency_unit(` CM-1 `)).toBe(`cm^-1`)
+    expect(() => canonical_frequency_unit(`GHz`)).toThrow(/Invalid unit: GHz. Must be one of/)
   })
 })
 
@@ -709,10 +714,15 @@ describe(`normalize_band_structure`, () => {
     [`cm-1`, 1, null],
   ])(`keeps electronic bands declared in %s in eV`, (unit, input, expected_ev) => {
     const kpoints = { '@class': `BandStructureSymmLine`, ...identity_rec, kpoints: line(2) }
-    const result = normalize_band_structure({ ...kpoints, bands: { '1': [[0, input]] }, unit })
-    const energy = result?.bands[0][1] ?? null
-    if (expected_ev === null) expect(energy).toBeNull()
-    else expect(energy).toBeCloseTo(expected_ev, 12)
+    const bands = { '1': [[0, input]] }
+    const result = normalize_band_structure({ ...kpoints, bands, unit, efermi: 5 * input })
+    if (expected_ev === null) {
+      expect(result).toBeNull()
+      return
+    }
+    expect(result?.bands[0][1]).toBeCloseTo(expected_ev, 12)
+    // the Fermi energy shares the bands' unit: unconverted, meV bands sat 1000x off their E_F
+    expect(result?.efermi).toBeCloseTo(5 * expected_ev, 12)
   })
 
   // the matterviz shape read a declared unit as THz; converted once, `unit` is dropped so a
@@ -724,6 +734,13 @@ describe(`normalize_band_structure`, () => {
     expect(once && `unit` in once).toBe(false)
     expect(normalize_band_structure(once)?.bands).toEqual(once?.bands)
     expect(normalize_band_structure(one_qpt({ type: `electronic`, unit: `THz` }))).toBeNull()
+    const electronic = one_qpt({
+      type: `electronic`,
+      unit: `meV`,
+      bands: [[2000]],
+      efermi: 5000,
+    })
+    expect(normalize_band_structure(electronic)).toMatchObject({ bands: [[2]], efermi: 5 })
   })
 
   it(`transposes the frequencies_cm layout (q-points × branches, in cm^-1)`, () => {
@@ -1049,9 +1066,27 @@ describe(`normalize_dos`, () => {
     expect(result.densities[1]).toBeCloseTo(1 / thz_per_unit, 8)
   })
 
+  // the electronic branch ignored `unit`, so a meV or Ha DOS disagreed with its (converted)
+  // bands on the shared energy axis
+  it.each([
+    [undefined, 1],
+    [`eV`, 1],
+    [`meV`, 1e-3],
+    [`Ha`, HARTREE_TO_EV],
+  ])(`electronic DOS in %s is stored in eV, keeping ∫g dE`, (unit, ev_per_unit) => {
+    const densities = { '1': [0, 2], '-1': [0, 4] }
+    const result = normalize_dos({ energies: [0, 10], densities, efermi: 5, unit })
+    if (result?.type !== `electronic`) throw new Error(`expected an electronic DOS`)
+    expect(result.energies[1]).toBeCloseTo(10 * ev_per_unit, 12)
+    expect(result.efermi).toBeCloseTo(5 * ev_per_unit, 12)
+    expect(result.densities[1]).toBeCloseTo(2 / ev_per_unit, 9)
+    expect(result.spin_down_densities?.[1]).toBeCloseTo(4 / ev_per_unit, 9)
+  })
+
   it.each([
     [`null`, null],
     [`a string`, `dos`],
+    [`an electronic DOS in a frequency unit`, { energies: [1], densities: [1], unit: `THz` }],
     [`missing densities`, { frequencies: [1, 2] }],
     [`a length mismatch`, { frequencies: [1, 2, 3], densities: [0, 1] }],
     [`an empty spin record`, { energies: [0, 1], densities: {} }],
@@ -1110,6 +1145,31 @@ describe(`shift_to_fermi`, () => {
     for (const inner of [shifted.atom_dos?.Fe, shifted.spd_dos?.s]) {
       expect(inner).toEqual({ ...nested, efermi: 0, energies: [-5, 0, 5] })
     }
+  })
+
+  // each material shifts by its own E_F, so band structures with different Fermi energies align
+  it(`shift_bands_to_fermi puts both spin channels at E_F = 0 without mutating the input`, () => {
+    const input = make_bs([`Γ`, `X`], {
+      efermi: 5,
+      bands: [
+        [3, 4],
+        [6, 7],
+      ],
+      spin_down_bands: [[5, 5.5]],
+    })
+    expect(shift_bands_to_fermi(input)).toEqual({
+      ...input,
+      efermi: 0,
+      bands: [
+        [-2, -1],
+        [1, 2],
+      ],
+      spin_down_bands: [[0, 0.5]],
+    })
+    expect(input.bands[0]).toEqual([3, 4])
+    const { efermi: _efermi, spin_down_bands: _down, ...no_efermi } = input
+    expect(`spin_down_bands` in shift_bands_to_fermi({ ...no_efermi, efermi: 0 })).toBe(false)
+    expect(() => shift_bands_to_fermi(no_efermi)).toThrow(/no efermi/)
   })
 })
 

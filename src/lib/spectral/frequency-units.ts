@@ -27,11 +27,12 @@ const FREQUENCY_UNIT_PER_THZ: Record<FrequencyUnit, number> = {
   'cm^-1': THZ_TO_INVERSE_CM,
 }
 
+const invalid_unit_error = (unit: unknown): Error =>
+  new Error(`Invalid unit: ${String(unit)}. Must be one of ${FREQUENCY_UNITS.join(`, `)}`)
+
 export const frequency_unit_per_thz = (unit: FrequencyUnit): number => {
   const factor = Object.hasOwn(FREQUENCY_UNIT_PER_THZ, unit) && FREQUENCY_UNIT_PER_THZ[unit]
-  if (!factor) {
-    throw new Error(`Invalid unit: ${unit}. Must be one of ${FREQUENCY_UNITS.join(`, `)}`)
-  }
+  if (!factor) throw invalid_unit_error(unit)
   return factor
 }
 
@@ -62,6 +63,14 @@ export const parse_frequency_unit = (unit: unknown): FrequencyUnit | null => {
   if (typeof unit !== `string`) return null
   const key = unit.trim().toLowerCase()
   return Object.hasOwn(UNIT_ALIASES, key) ? UNIT_ALIASES[key] : null
+}
+
+// A component's `units` prop in its canonical spelling. An unknown unit throws here, at the
+// prop, not later from whichever $derived first converts with it.
+export const canonical_frequency_unit = (unit: unknown): FrequencyUnit => {
+  const parsed = parse_frequency_unit(unit)
+  if (!parsed) throw invalid_unit_error(unit)
+  return parsed
 }
 
 // How a unit reads on an axis label or in HTML: a <sup>, as fonts set the ⁻ of ⁻¹ lower than

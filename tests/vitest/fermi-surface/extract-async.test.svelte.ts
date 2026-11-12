@@ -2,13 +2,11 @@
 // extraction exactly, a band grid crosses once per worker, results are cached per grid and
 // options, and a viewer's requests are scheduled latest-wins
 import { extract_fermi_surface } from '#lib/fermi-surface/compute.js'
-import type { ExtractPayload } from '#lib/fermi-surface/extract-job.js'
-import {
-  create_grid_store,
-  fermi_surface_transferables,
-} from '#lib/fermi-surface/extract-job.js'
+import { fermi_surface_transferables } from '#lib/fermi-surface/extract-job.js'
 import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
 import type { BandGridData, FermiSurfaceOptions } from '#lib/fermi-surface/types.js'
+import type { WorkerRequest } from '#lib/worker-serve.js'
+import { create_input_store } from '#lib/worker-serve.js'
 import { afterEach, expect, test } from 'vitest'
 import {
   expect_module_worker,
@@ -18,12 +16,12 @@ import {
 } from '../setup'
 import { read_maybe_gz } from '../test-fixtures'
 
-// the stub plays the worker entry: its own grid store, extraction and transfer list
-const worker_grid_of = create_grid_store()
+// the stub plays the worker entry: serve_worker's input store, extraction and transfer list
+const worker_grid_of = create_input_store<BandGridData>()
 const transfers: ArrayBuffer[][] = []
-type Message = { id: number; input: ExtractPayload; options: FermiSurfaceOptions }
-const stub = install_stub_worker<Message>(({ input, options }) => {
-  const result = extract_fermi_surface(worker_grid_of(input), options)
+type Message = WorkerRequest<BandGridData, FermiSurfaceOptions>
+const stub = install_stub_worker<Message>((message) => {
+  const result = extract_fermi_surface(worker_grid_of(message), message.options)
   transfers.push(fermi_surface_transferables(result))
   return result
 })
@@ -38,7 +36,7 @@ afterEach(stub.reset)
 const cu_path = `src/site/fermi-surfaces/cu_fcc_bands.bxsf.gz`
 const load_cu = () => parse_fermi_file(read_maybe_gz(cu_path), `cu.bxsf`) as BandGridData
 // whether each post so far carried its grid, and the mu each asked for
-const sent_grids = () => stub.posted.map(({ message }) => message.input.grid !== undefined)
+const sent_grids = () => stub.posted.map(({ message }) => message.input !== undefined)
 const posted_mus = () => stub.posted.map(({ message }) => message.options.mu)
 const warm = (grid: BandGridData, factors: number[]) =>
   factors.map((factor) => fermi_extraction_warm(grid, factor))
@@ -77,9 +75,7 @@ test(`worker extraction matches the main thread, sends each grid once, caches re
   await extract_fermi_surface_async(grid, { mu: 0, interpolation_factor: 0 })
   await extract_fermi_surface_async(load_cu(), { mu: 0, interpolation_factor: 0 })
   expect(sent_grids()).toEqual([true, false, false, true])
-  expect(new Set(stub.posted.slice(0, 3).map(({ message }) => message.input.token)).size).toBe(
-    1,
-  )
+  expect(new Set(stub.posted.slice(0, 3).map(({ message }) => message.token)).size).toBe(1)
   // the auto factor resolves to the same grid whether requested as 0 or as its value
   expect(warm(grid, [0, 48 / 25, 3])).toEqual([true, true, false])
   // the worker keeps two upsampled grids per band, oldest out: a third factor evicts the auto one
@@ -112,7 +108,7 @@ test(`latest-wins: one extraction in flight, newer requests replace waiting ones
   expect(posted_mus()).toEqual([0.1, 0.4, 0.5, 0.7])
 })
 
-test(`warmth follows the grids the worker holds, and a lost grid is re-sent once`, async () => {
+test(`warmth follows the grids the worker holds, and an evicted grid is sent again`, async () => {
   const grids = [1, 2, 3, 4, 5].map(() => load_cu())
   // a viewer unmounting keeps the worker and its grids warm for the others still mounted
   const unregister = [register_fermi_viewer(), register_fermi_viewer()]
@@ -135,13 +131,14 @@ test(`warmth follows the grids the worker holds, and a lost grid is re-sent once
   stub.reset()
   await extract_fermi_surface_async(grids[0], { mu: 0.3 })
   expect(sent_grids()).toEqual([true])
-  // the worker evicts or loses the grid (e.g. a replacement worker): its error reply triggers
-  // one retry that carries the grid
-  stub.fail_next(`Fermi extraction worker holds no band grid`)
-  const result = await extract_fermi_surface_async(grids[0], { mu: 0.4 })
-  expect(result.isosurfaces.length).toBeGreaterThan(0)
-  expect(sent_grids()).toEqual([true, false, true])
-  expect(fermi_extraction_warm(grids[4])).toBe(false) // every other grid is sent afresh
+  // which evicted the second in turn, upsampled copies and all
+  expect(grids.map((grid) => Number(fermi_extraction_warm(grid)))).toEqual([1, 0, 1, 1, 1])
+  // a failed extraction is reported, not retried, and leaves the worker's grids alone
+  stub.fail_next(`marching cubes failed`)
+  await expect(extract_fermi_surface_async(grids[0], { mu: 0.4 })).rejects.toThrow(
+    `marching cubes failed`,
+  )
+  expect(sent_grids()).toEqual([true, false])
 })
 
 // The fresh module graph it imports takes seconds on shared CI runners
@@ -154,20 +151,13 @@ test(
     )
     const grid = load_cu()
     const options = { mu: -2.5, interpolation_factor: 0, wigner_seitz: true }
+    const is_warm = (factor: number) => main_thread_module.fermi_extraction_warm(grid, factor)
+    expect(is_warm(0)).toBe(false)
     const result = await main_thread_module.extract_fermi_surface_async(grid, options)
     expect(result).toEqual(extract_fermi_surface(grid, options))
     expect(result.isosurfaces.length).toBeGreaterThan(0)
     expect(stub.posted).toHaveLength(0)
+    // the upsampled grid stays with the grid object here, so another mu needs no spinner
+    expect([is_warm(0), is_warm(3)]).toEqual([true, false])
   },
 )
-
-test(`grid store keeps the newest grids sent and names a missing one`, () => {
-  const grid_of = create_grid_store(2)
-  const grids = [0, 1, 2, 3].map(() => load_cu())
-  for (const idx of [0, 1, 2, 1, 3]) {
-    expect(grid_of({ token: idx, grid: grids[idx] })).toBe(grids[idx])
-  }
-  // re-sending 1 made it newer than 2, which 3 then evicted
-  expect([grid_of({ token: 1 }), grid_of({ token: 3 })]).toEqual([grids[1], grids[3]])
-  expect(() => grid_of({ token: 2 })).toThrow(/holds no band grid 2 \(2 held\)/)
-})

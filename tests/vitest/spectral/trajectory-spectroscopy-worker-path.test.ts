@@ -6,6 +6,8 @@ import type {
   TrajectorySpectroscopyOptions,
 } from '#lib/spectral/trajectory-spectroscopy.js'
 import { calc_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
+import type { WorkerRequest } from '#lib/worker-serve.js'
+import { create_input_store } from '#lib/worker-serve.js'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_position_stream, make_signal } from '../test-fixtures'
@@ -46,11 +48,10 @@ const make_input = (): TrajectorySpectroscopyInput => {
   }
 }
 
-const stub = install_stub_worker<{
-  id: number
-  input: TrajectorySpectroscopyInput
-  options: TrajectorySpectroscopyOptions
-}>(({ input, options }) => calc_trajectory_spectroscopy(input, options))
+const input_of = create_input_store<TrajectorySpectroscopyInput>()
+const stub = install_stub_worker<
+  WorkerRequest<TrajectorySpectroscopyInput, TrajectorySpectroscopyOptions>
+>((message) => calc_trajectory_spectroscopy(input_of(message), message.options))
 let compute_spectroscopy_async: typeof compute_trajectory_spectroscopy_async
 
 beforeAll(async () => {
@@ -74,10 +75,19 @@ describe(`trajectory spectroscopy worker code path`, () => {
     expect(stub.posted).toHaveLength(1)
     expect(stub.posted[0].transfer).toHaveLength(0)
     const payload = stub.posted[0].message.input
-    expect(payload.positions.positions).toBeInstanceOf(Float64Array)
-    expect(payload.positions.positions).not.toBe(input.positions.positions)
-    expect(payload.raman_signal?.series.values).toBeInstanceOf(Float64Array)
-    expect(payload.raman_signal?.series.values).not.toBe(input.raman_signal?.series.values)
+    expect(payload?.positions.positions).toBeInstanceOf(Float64Array)
+    expect(payload?.positions.positions).not.toBe(input.positions.positions)
+    expect(payload?.raman_signal?.series.values).toBeInstanceOf(Float64Array)
+    expect(payload?.raman_signal?.series.values).not.toBe(input.raman_signal?.series.values)
+    // the same input with another window posts the options alone
+    const hann = { ...options, window: `hann` } as const
+    expect(await compute_spectroscopy_async(input, hann)).toEqual(
+      calc_trajectory_spectroscopy(input, hann),
+    )
+    expect(stub.posted.map(({ message }) => message.input === undefined)).toEqual([
+      false,
+      true,
+    ])
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
     expect_module_worker(stub.instances, `src/lib/spectral/trajectory-spectroscopy-worker.ts`)
   })

@@ -27,7 +27,7 @@
   import * as helpers from '#lib/spectral/helpers.js'
   import {
     convert_frequencies,
-    parse_frequency_unit,
+    canonical_frequency_unit,
     spectral_value_label,
   } from '#lib/spectral/frequency-units.js'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
@@ -206,9 +206,9 @@
   const structure_spin_mode = (band_structure: BaseBandStructure): BandsSpinMode =>
     band_structure.spin_down_bands?.length ? effective_spin_mode : null
 
-  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
-  // below uses the canonical unit so no $derived throws on an alias
-  let unit = $derived(parse_frequency_unit(units) ?? units)
+  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) and reject unknown units at the
+  // prop boundary; every read below uses the canonical unit
+  let unit = $derived(canonical_frequency_unit(units))
   const convert_band_values = (values: number[]): number[] =>
     band_type === `phonon` ? convert_frequencies(values, unit) : values
   // inverse of convert_band_values for one plotted value

@@ -1076,15 +1076,25 @@ const extract_displacements = (
   if (binned.length > 0) {
     const real = new Float64Array(n_fft)
     const imaginary = new Float64Array(n_fft)
-    for (let component_idx = 0; component_idx < n_components; component_idx++) {
+    // Two components a, b share one transform as z = a + i b (see one_sided_periodogram):
+    // A(k) = (Z(k) + conj(Z(-k))) / 2 and B(k) = (Z(k) - conj(Z(-k))) / 2i
+    for (let component_idx = 0; component_idx < n_components; component_idx += 2) {
+      const paired = component_idx + 1 < n_components
       real.fill(0)
       imaginary.fill(0)
       for (let frame_idx = 0; frame_idx < stream.n_frames; frame_idx++) {
         real[frame_idx] = windowed(frame_idx, component_idx)
+        if (paired) imaginary[frame_idx] = windowed(frame_idx, component_idx + 1)
       }
       fft_in_place(real, imaginary)
       for (const [freq_idx, bin] of binned) {
-        spectra[freq_idx][component_idx] = [real[bin], imaginary[bin]]
+        const mirror = bin === 0 ? 0 : n_fft - bin
+        const [re, im] = [real[bin], imaginary[bin]]
+        const [mirror_re, mirror_im] = [real[mirror], imaginary[mirror]]
+        spectra[freq_idx][component_idx] = [(re + mirror_re) / 2, (im - mirror_im) / 2]
+        if (paired) {
+          spectra[freq_idx][component_idx + 1] = [(im + mirror_im) / 2, (mirror_re - re) / 2]
+        }
       }
     }
   }
