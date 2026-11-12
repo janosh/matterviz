@@ -436,20 +436,23 @@ describe(`calculate_e_above_hull`, () => {
       ],
       fe_o_feo_refs,
     )
-    expect(results[`FeO-unstable`]).toBeCloseTo(1.0, 10)
-    expect(results.Fe3O).toBeCloseTo(0.5, 10)
-    expect(results[`Fe-test`]).toBeCloseTo(0, 10)
-    expect(results[`Fe-high`]).toBeCloseTo(0.5, 10)
-    // a repeated entry_id overwrites the earlier result; a pair of empty ids isn't a repeat
-    const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
-    const dupes = [``, ``, `x`, `x`].map((entry_id, idx) =>
-      make_phase({ [idx % 2 ? `O` : `Fe`]: 1 }, -1, { entry_id }),
-    )
-    calculate_e_above_hull(dupes, fe_o_feo_refs)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(
-      `calculate_e_above_hull: duplicate entry_id "x", last wins`,
-    )
-    warn.mockRestore()
+    expect(results).toHaveLength(4)
+    for (const [idx, expected] of [1.0, 0.5, 0, 0.5].entries())
+      expect(results[idx]).toBeCloseTo(expected, 10)
+  })
+
+  // results are positional, so entries that used to share a result key (same entry_id, or
+  // no id with equal composition, energy and structure) each keep their own distance
+  test(`returns one distance per entry in input order, duplicates included`, () => {
+    const structure = { sites: [] }
+    const twin = make_phase({ Fe: 1, O: 1 }, -6.5, { structure })
+    const entries = [
+      twin,
+      { ...twin },
+      make_phase({ Fe: 1 }, -3.5, { entry_id: `x` }),
+      make_phase({ Fe: 1, O: 1 }, -7.5, { entry_id: `x` }),
+    ]
+    expect(calculate_e_above_hull(entries, fe_o_feo_refs)).toEqual([1, 1, 0.5, 0])
   })
 
   // Near-coplanar entries leave quickhull sliver facets whose planes overshoot the covering
@@ -464,8 +467,9 @@ describe(`calculate_e_above_hull`, () => {
     ]
     const results = calculate_e_above_hull(entries, entries)
     // an LP reference puts every entry on the hull; the gaps are ~1e-9 eV/atom
-    for (const [id, dist] of Object.entries(results))
-      expect(Math.abs(dist), id).toBeLessThan(1e-8)
+    expect(results).toHaveLength(entries.length)
+    for (const [idx, dist] of results.entries())
+      expect(Math.abs(dist), entries[idx].entry_id).toBeLessThan(1e-8)
   })
 
   // All-zero elemental refs make the hull the tie-plane at 0; a compound below it shapes the
@@ -503,22 +507,22 @@ describe(`calculate_e_above_hull`, () => {
     expect(() => calculate_e_above_hull(entry, [...refs])).toThrow(err)
   })
 
-  test(`empty input → {} and unplaceable entries → NaN`, () => {
-    expect(calculate_e_above_hull([], fe_o_refs)).toEqual({})
+  test(`empty input → [] and unplaceable entries → NaN`, () => {
+    expect(calculate_e_above_hull([], fe_o_refs)).toEqual([])
     const no_atoms = make_phase({}, 0, { entry_id: `empty` })
-    expect(calculate_e_above_hull([no_atoms], fe_o_refs).empty).toBeNaN()
+    expect(calculate_e_above_hull([no_atoms], fe_o_refs)).toEqual([NaN])
     // an explicit e_form_per_atom must not turn the zero-atom case into a throw
     const no_atoms_with_e_form = make_phase({ Fe: 0 }, 0, {
       entry_id: `zero`,
       e_form_per_atom: -0.1,
     })
-    expect(calculate_e_above_hull([no_atoms_with_e_form], fe_o_refs).zero).toBeNaN()
+    expect(calculate_e_above_hull([no_atoms_with_e_form], fe_o_refs)).toEqual([NaN])
     expect(
       calculate_e_above_hull(
         [no_atoms_with_e_form],
         [...fe_o_refs, make_phase({ Li: 1 }, -2.0, { entry_id: `Li` })],
-      ).zero,
-    ).toBeNaN()
+      ),
+    ).toEqual([NaN])
   })
 })
 
@@ -573,13 +577,9 @@ describe(`pymatgen cross-validation`, () => {
       if (input === without_e_form && entries === quinary) continue // quinary has no raw energies
       const results = calculate_e_above_hull(input, input)
       let max_diff = 0
-      for (const entry of entries) {
-        const identifier = entry.entry_id as string
-        max_diff = Math.max(
-          max_diff,
-          Math.abs(results[identifier] - (entry.e_above_hull as number)),
-        )
-        expect(results[identifier] < 1e-6).toBe(entry.is_stable)
+      for (const [idx, entry] of entries.entries()) {
+        max_diff = Math.max(max_diff, Math.abs(results[idx] - (entry.e_above_hull as number)))
+        expect(results[idx] < 1e-6).toBe(entry.is_stable)
       }
       expect(max_diff).toBeLessThan(1e-10)
     }
@@ -587,9 +587,8 @@ describe(`pymatgen cross-validation`, () => {
 
   test(`single-entry mode matches batch mode`, () => {
     const batch = calculate_e_above_hull(quinary, quinary)
-    for (const entry of quinary) {
-      expect(calculate_e_above_hull(entry, quinary)).toBe(batch[entry.entry_id as string])
-    }
+    for (const [idx, entry] of quinary.entries())
+      expect(calculate_e_above_hull(entry, quinary)).toBe(batch[idx])
   })
 })
 
@@ -719,9 +718,7 @@ describe(`process_hull_for_stats`, () => {
         .filter((entry) => !entry.is_element)
         .toSorted((left_value, right_value) => left_value.energy - right_value.energy)
       expect(compounds.map((entry) => entry.e_above_hull)).toEqual([0, 0.5])
-      expect(Object.keys(calculate_e_above_hull(entries, entries))).toHaveLength(
-        entries.length,
-      )
+      expect(calculate_e_above_hull(entries, entries).slice(-2)).toEqual([0, 0.5])
     },
   )
 })

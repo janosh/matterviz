@@ -156,6 +156,7 @@ const as_state = <T>(value: T): T => {
 export const DATA_PROPS = new Set([
   ...`structure structures series surfaces entries patterns x_items y_items values`.split(` `),
   ...`band_structs doses fermi_data band_data bz_data trajectory volumetric_data`.split(` `),
+  ...`dataset paths`.split(` `),
 ])
 
 export interface ReactiveWidget {

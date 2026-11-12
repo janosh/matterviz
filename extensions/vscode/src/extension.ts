@@ -401,19 +401,14 @@ export const handle_msg = async (
         filters: { Files: [`*`] },
       })
       if (!uri) return
-      if (msg.is_binary) {
-        const base64_data = msg.content.replace(/^data:[^;]+;base64,/, ``)
-        if (!base64_data) throw new Error(`Invalid data URL: missing base64 data`)
-        await vscode.workspace.fs.writeFile(
-          uri,
-          Uint8Array.from(Buffer.from(base64_data, `base64`)),
-        )
-      } else {
-        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(msg.content))
-      }
+      const bytes =
+        typeof msg.content === `string`
+          ? new TextEncoder().encode(msg.content)
+          : new Uint8Array(msg.content)
+      await vscode.workspace.fs.writeFile(uri, bytes)
       vscode.window.showInformationMessage(`Saved: ${path.basename(uri.fsPath)}`)
     } catch (error: unknown) {
-      const error_type = msg.is_binary ? `binary data` : `text file`
+      const error_type = typeof msg.content === `string` ? `text file` : `binary data`
       vscode.window.showErrorMessage(
         `Failed to save ${error_type}: ${to_error(error).message}`,
       )

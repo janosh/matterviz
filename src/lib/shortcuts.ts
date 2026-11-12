@@ -59,7 +59,7 @@ export const SHORTCUTS = {
   hull_faces: { keys: `H`, description: `Toggle hull faces`, scopes: [`convex-hull-3d`] },
   hull_reset: { keys: `R`, description: `Reset view and settings`, scopes: [`convex-hull-2d`] },
   hull_top_view: { keys: `T`, description: `Top-down view`, scopes: [`convex-hull-ternary`] },
-  export_pane: { keys: `E`, description: `Toggle export pane`, scopes: [`binary-phase-diagram`] },
+  export_pane: { keys: `E`, description: `Toggle export pane`, scopes: [`binary-phase-diagram`, `ternary-phase-diagram`] },
   temperature_step: { keys: `ArrowLeft ArrowRight`, description: `Lower / raise temperature`, scopes: [`ternary-phase-diagram`] },
   temperature_jump: { keys: `Shift+ArrowLeft Shift+ArrowRight`, description: `Previous / next phase transition`, scopes: [`ternary-phase-diagram`] },
   temperature_play: { keys: `Space`, description: `Play / pause temperature sweep`, scopes: [`ternary-phase-diagram`] },

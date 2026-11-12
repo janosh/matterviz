@@ -1639,6 +1639,8 @@ unit_cell:
     [`AgI phonopy file`, `AgI-fq978185p-phono3py.yaml.gz`, 72],
     [`BeO phonopy file`, `BeO-zw12zc18p-phono3py.yaml.gz`, 64],
     [`simple phonopy YAML`, `phono3py_params.yaml`, 2, simple_phonopy_yaml],
+    // no phonopy header and a cell key the old sniffing pattern missed
+    [`headerless unit_cell`, `cell.yaml`, 1, `unit_cell:\n  lattice:\n  - [5, 0, 0]\n  - [0, 5, 0]\n  - [0, 0, 5]\n  points:\n  - symbol: Si\n    coordinates: [0, 0, 0]\n    mass: 28.0855\n`],
   ])(`should parse and detect %s`, (_name, filename, expected_sites, content = read_fixture(filename)) => {
     const direct_result = parse_phonopy_yaml(content)
     expect(direct_result.sites).toHaveLength(expected_sites)
@@ -2121,6 +2123,9 @@ describe(`Structure File Detection`, () => {
     // JSON: strict structure keyword required (so no generic `data`)
     [`structure.json`, true], [`crystal.json.gz`, true], [`phonopy.json`, true],
     [`test.json`, false], [`data.json.gz`, false], [`mp-756175.json`, false],
+    // Quantum ESPRESSO and FHI-aims inputs; a generic .in file is not a structure
+    [`si.pwi`, true], [`geometry.in`, true], [`Si_geometry.in.next_step`, true],
+    [`runs/geometry.in.gz`, true], [`control.in`, false], [`mygeometry.in`, false],
     // no or unknown extension
     [`random.txt`, false], [`test.xyz.backup`, false], [``, false], [`no.extension`, false],
     [`file.xyz.`, false],
@@ -2207,8 +2212,13 @@ describe(`detect_structure_type`, () => {
     [`POSCAR`, `any`, `crystal`],
     [`file.poscar`, `any`, `crystal`],
     [`Si.vasp`, `any`, `crystal`],
-    [`file.yaml`, `phonopy:\n  version: 2.0`, `crystal`],
-    [`file.yml`, `phono3py:\n  version: 2.0`, `crystal`],
+    // detection shares parse_phonopy_yaml's cell keys: a header without a cell is no structure,
+    // a cell without the header is one
+    [`file.yaml`, `phonopy:\n  version: 2.0`, `unknown`],
+    [`file.yml`, `phono3py:\n  version: 2.0`, `unknown`],
+    [`file.yaml`, `unit_cell:\n  lattice: []`, `crystal`],
+    [`file.yml`, `phonopy:\n  version: 2.0\nphonon_primitive_cell:\n  lattice: []`, `crystal`],
+    [`file.yaml`, `notes:\n  supercell: 2x2x2`, `unknown`],
     [`file.yaml`, `other: content`, `unknown`],
     [`file.xyz`, `3\nLattice="5.0 0.0 0.0"\nH 0.0 0.0 0.0`, `crystal`],
     [`file.xyz`, `3\nwater\nH 0.0 0.0 0.0`, `molecule`],

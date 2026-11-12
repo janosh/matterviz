@@ -239,12 +239,24 @@ describe(`FacetGrid + Cartesian plots`, () => {
       const svg = query<SVGSVGElement>(plot, `svg[role="application"]`)
       svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
       svg.dispatchEvent(
-        new MouseEvent(`mousedown`, { bubbles: true, button: 0, clientX: 180, clientY: 80 }),
+        new PointerEvent(`pointerdown`, {
+          bubbles: true,
+          button: 0,
+          clientX: 180,
+          clientY: 80,
+        }),
       )
-      window.dispatchEvent(
-        new MouseEvent(`mousemove`, { buttons: 1, clientX: 600, clientY: 420 }),
+      svg.dispatchEvent(
+        new PointerEvent(`pointermove`, {
+          bubbles: true,
+          buttons: 1,
+          clientX: 600,
+          clientY: 420,
+        }),
       )
-      window.dispatchEvent(new MouseEvent(`mouseup`, { clientX: 600, clientY: 420 }))
+      svg.dispatchEvent(
+        new PointerEvent(`pointerup`, { bubbles: true, clientX: 600, clientY: 420 }),
+      )
 
       await vi.waitFor(() => {
         const zoomed_x = context_for(`top-left`).ranges.x
@@ -266,9 +278,13 @@ describe(`FacetGrid + Cartesian plots`, () => {
         ([`x2`, `y2`] as const).map((axis) => context_for(`top-right`).ranges[axis])
       const initial_secondary = secondary()
       const pan = { buttons: 1, clientY: 80, shiftKey: true }
-      svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, clientX: 180, ...pan }))
-      window.dispatchEvent(new MouseEvent(`mousemove`, { clientX: 240, ...pan }))
-      window.dispatchEvent(new MouseEvent(`mouseup`))
+      svg.dispatchEvent(
+        new PointerEvent(`pointerdown`, { bubbles: true, clientX: 180, ...pan }),
+      )
+      svg.dispatchEvent(
+        new PointerEvent(`pointermove`, { bubbles: true, clientX: 240, ...pan }),
+      )
+      svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true }))
       await vi.waitFor(() => expect(context_for(`top-left`).ranges.x).not.toEqual(initial_x))
       expect(secondary()).toEqual(initial_secondary)
     },

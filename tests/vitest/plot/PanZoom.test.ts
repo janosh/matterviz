@@ -5,9 +5,8 @@ import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
 import * as svg_paths from '#lib/plot/core/svg.js'
-import type { Vec2 } from '#lib/math.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
-import { tick, type ComponentProps } from 'svelte'
+import { flushSync, tick, type ComponentProps } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'
 import {
   clip_rect,
@@ -64,16 +63,18 @@ async function drag(
     shiftKey: shift,
     altKey: alt,
   })
-  svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...event_init(start) }))
+  svg.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, ...event_init(start) }))
   for (let step = 1; step <= steps; step++) {
     const [delta_x, delta_y] = [(end.x - start.x) / steps, (end.y - start.y) / steps]
     const at = { x: start.x + delta_x * step, y: start.y + delta_y * step }
-    window.dispatchEvent(new MouseEvent(`mousemove`, event_init(at)))
+    svg.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true, ...event_init(at) }))
     await tick()
   }
   const active = svg.querySelector(`.zoom-rect`) instanceof SVGRectElement
   mid_drag?.()
-  window.dispatchEvent(new MouseEvent(`mouseup`, { ...event_init(end), buttons: 0 }))
+  svg.dispatchEvent(
+    new PointerEvent(`pointerup`, { bubbles: true, ...event_init(end), buttons: 0 }),
+  )
   await tick()
   return active
 }
@@ -126,14 +127,13 @@ describe(`alt+drag rect selection`, () => {
     expect(on_select).toHaveBeenCalledWith(expect.objectContaining({ points: [] }))
   })
 
-  // Scatter always offers selection (selected_points is bindable with or without a callback),
-  // so the rect's mode follows the modifier alone. A chart with no marks to enumerate (BarPlot)
-  // implements no on_rect_select, and there alt+drag must stay a zoom rather than be swallowed
-  test.each([
-    [`ScatterPlot`, () => mount_scatter(), true, true],
-    [`ScatterPlot`, () => mount_scatter(), false, false],
-    [`BarPlot`, mount_bar, true, false],
-  ])(`%s alt=%s drag draws a select rect: %s`, async (_name, mount_plot, alt, selects) => {
+  // Every mark chart offers selection (its selected_* prop is bindable with or without a
+  // callback), so the rect's mode follows the modifier alone
+  test.each(
+    plot_cases.flatMap(([name, mount_plot]) =>
+      [true, false].map((alt) => [name, mount_plot, alt] as const),
+    ),
+  )(`%s alt=%s drag draws a select rect`, async (_name, mount_plot, alt) => {
     const svg = await mount_plot()
     let seen = ``
     const mid_drag = () => {
@@ -141,48 +141,202 @@ describe(`alt+drag rect selection`, () => {
     }
     await drag(svg, { x: 60, y: 40 }, { x: 300, y: 200 }, { alt, mid_drag })
     expect(seen).toContain(`zoom-rect`)
-    expect(seen.includes(`select`)).toBe(selects)
+    expect(seen.includes(`select`)).toBe(alt)
+  })
+
+  // Bars, bins and boxes are selected by the rect touching them, reported like ScatterPlot's
+  // points; a rect over empty plot area reports an empty selection and nothing zooms
+  // y pinned for headroom above every mark
+  const y_axis = { range: [0, 10] as [number, number] }
+  type OnSelect = (selection: Record<string, unknown>) => void
+  test.each([
+    [
+      `BarPlot`,
+      (on_select: OnSelect) =>
+        mount_sized(
+          BarPlot,
+          { series: xy_series(), y_axis, on_select },
+          { selector: `.bar-plot` },
+        ),
+      `bars`,
+      3,
+    ],
+    [
+      `Histogram`,
+      (on_select: OnSelect) =>
+        mount_sized(
+          Histogram,
+          { series: [{ values: [1, 2, 3] }], bins: 3, y_axis, on_select },
+          { selector: `.histogram` },
+        ),
+      `bins`,
+      3,
+    ],
+    [
+      `BoxPlot`,
+      (on_select: OnSelect) =>
+        mount_sized(
+          BoxPlot,
+          { series: [{ y: [1, 2, 3] }, { y: [2, 3, 4] }], y_axis, on_select },
+          { selector: `.box-plot` },
+        ),
+      `boxes`,
+      2,
+    ],
+  ] as const)(
+    `%s alt+drag selects the marks the rect touches`,
+    async (_name, mount_plot, key, n_marks) => {
+      const on_select = vi.fn()
+      const root = await mount_plot(on_select)
+      const svg = plot_svg(root)
+      const clip = clip_rect(svg)
+      const ticks = () => [...svg.querySelectorAll(`.tick`)].map((label) => label.textContent)
+      const ticks_before = ticks()
+      const [right, bottom] = [clip.x + clip.width, clip.y + clip.height]
+      await drag(
+        svg,
+        { x: clip.x + 1, y: clip.y + 1 },
+        { x: right - 1, y: bottom - 1 },
+        { alt: true },
+      )
+      expect(on_select).toHaveBeenCalledOnce()
+      const [selection] = on_select.mock.calls[0]
+      expect(selection[key]).toHaveLength(n_marks)
+      expect(selection.rect).toEqual({
+        x: [clip.x + 1, right - 1],
+        y: [clip.y + 1, bottom - 1],
+      })
+      expect(svg.querySelectorAll(`.selected-mark`)).toHaveLength(n_marks)
+      expect(ticks()).toEqual(ticks_before)
+
+      // a sliver along the top edge, above every mark
+      await drag(
+        svg,
+        { x: clip.x + 1, y: clip.y },
+        { x: right - 1, y: clip.y + 6 },
+        { alt: true },
+      )
+      expect(on_select.mock.lastCall?.[0][key]).toEqual([])
+      expect(svg.querySelectorAll(`.selected-mark`)).toHaveLength(0)
+    },
+  )
+})
+
+// Pan/zoom input shared by every frame chart
+describe.each(plot_cases)(`%s pan/zoom input`, (_name, mount_plot) => {
+  // an axis' markup: its tick labels and where they sit
+  const y_ticks = (svg: SVGSVGElement) => svg.querySelector(`.y-axis`)?.innerHTML
+  const x_ticks = (svg: SVGSVGElement) => svg.querySelector(`.x-axis`)?.innerHTML
+
+  // A trackpad pinch arrives as ctrl+wheel, whose default zooms the whole page
+  test(`ctrl+wheel zooms the plot instead of the page, in the plot area only`, async () => {
+    const svg = await mount_plot()
+    const before = y_ticks(svg)
+    // happy-dom's WheelEvent carries no mouse fields, so they are assigned
+    const wheel = (clientY: number, ctrlKey = true) => {
+      const event = Object.assign(
+        new WheelEvent(`wheel`, { bubbles: true, cancelable: true, deltaY: -40 }),
+        { ctrlKey, clientX: 200, clientY },
+      )
+      svg.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    // the x-label margin and a plain wheel are the page's
+    expect([wheel(290), wheel(120, false)]).toEqual([false, false])
+    expect(y_ticks(svg)).toBe(before)
+    expect(wheel(120)).toBe(true)
+    await tick()
+    expect(y_ticks(svg)).not.toBe(before)
+  })
+
+  test(`keys zoom and pan the focused plot only, leaving browser combos alone`, async () => {
+    const svg = await mount_plot()
+    const press = (key: string, init: KeyboardEventInit = {}, target: Element = svg) => {
+      const event = new KeyboardEvent(`keydown`, {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      })
+      target.dispatchEvent(event)
+      flushSync()
+      return event.defaultPrevented
+    }
+    const before = [x_ticks(svg), y_ticks(svg)]
+    // Ctrl/Cmd +/- is page zoom, Alt+arrow history; a key from a focused mark is the mark's
+    const child = svg.querySelector(`[role="button"], .x-axis`) ?? svg
+    expect([
+      press(`+`, { ctrlKey: true }),
+      press(`-`, { metaKey: true }),
+      press(`ArrowLeft`, { altKey: true }),
+      child === svg ? false : press(`+`, {}, child),
+      press(`a`),
+    ]).toEqual([false, false, false, false, false])
+    expect([x_ticks(svg), y_ticks(svg)]).toEqual(before)
+
+    expect(press(`ArrowRight`)).toBe(true)
+    expect(x_ticks(svg)).not.toBe(before[0])
+    expect(press(`ArrowLeft`)).toBe(true)
+    expect(press(`ArrowUp`)).toBe(true)
+    expect(y_ticks(svg)).not.toBe(before[1])
+    expect(press(`ArrowDown`)).toBe(true)
+    const panned_back = [x_ticks(svg), y_ticks(svg)]
+    expect(press(`+`)).toBe(true)
+    expect([x_ticks(svg), y_ticks(svg)]).not.toEqual(panned_back)
+    expect(press(`Enter`)).toBe(true)
+    expect([x_ticks(svg), y_ticks(svg)]).toEqual(before)
+  })
+
+  // Touch drives the plot through pointer events, so the browser must not also scroll or
+  // zoom the page under it
+  test(`touch: one finger draws the zoom rect, a second turns it into a pinch`, async () => {
+    const svg = await mount_plot()
+    expect(svg.style.touchAction).toBe(`none`)
+    const touch = (type: string, pointerId: number, coord_x: number, coord_y = 120) =>
+      svg.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          pointerType: `touch`,
+          pointerId,
+          buttons: 1,
+          clientX: coord_x,
+          clientY: coord_y,
+        }),
+      )
+    // a pinch zooms about the view center, where a lone category tick stays put: read y
+    const before = y_ticks(svg)
+    touch(`pointerdown`, 1, 150)
+    touch(`pointermove`, 1, 180, 150)
+    await tick()
+    expect(svg.querySelector(`.zoom-rect`)).not.toBeNull()
+    touch(`pointerdown`, 2, 250)
+    await tick()
+    expect(svg.querySelector(`.zoom-rect`)).toBeNull()
+    touch(`pointermove`, 1, 120)
+    touch(`pointermove`, 2, 300)
+    await tick()
+    expect(y_ticks(svg)).not.toBe(before)
+    const pinched = y_ticks(svg)
+    // lifting one finger ends the gesture: the other no longer moves the view or arms a rect
+    touch(`pointerup`, 2, 300)
+    touch(`pointermove`, 1, 60, 200)
+    touch(`pointerup`, 1, 60, 200)
+    await tick()
+    expect(y_ticks(svg)).toBe(pinched)
   })
 })
 
-describe(`shared plot drag zoom bounds`, () => {
-  test.each(plot_cases)(
-    `%s cancels scrolling only during an active two-finger gesture`,
-    async (_name, mount_plot) => {
-      const svg = await mount_plot()
-      const bounds = svg.getBoundingClientRect()
-      // oxfmt-ignore
-      const gestures: [string, Vec2[], boolean][] = [
-        [`touchstart`, [[100, 100]], false],
-        [`touchmove`, [[120, 100]], false],
-        [`touchstart`, [[10, 100], [100, 100]], false],
-        [`touchmove`, [[100, 100], [200, 100]], false],
-        [`touchstart`, [[100, 100], [200, 100]], true],
-        [`touchmove`, [[80, 100], [220, 100]], true],
-        [`touchcancel`, [], false],
-        [`touchmove`, [[100, 100], [200, 100]], false],
-      ]
-      for (const [type, positions, prevented] of gestures) {
-        const event = new TouchEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          touches: positions.map(
-            ([coord_x, coord_y], identifier) =>
-              new Touch({
-                identifier,
-                target: svg,
-                clientX: bounds.left + coord_x,
-                clientY: bounds.top + coord_y,
-              }),
-          ),
-        })
-        svg.dispatchEvent(event)
-        expect(event.defaultPrevented).toBe(prevented)
-      }
-      await tick()
-    },
-  )
+test(`touch gestures off leave touches and the page's own scrolling alone`, async () => {
+  const svg = await mount_scatter({ pan: { touch_enabled: false } })
+  expect(svg.style.touchAction).toBe(`auto`)
+  const init = { bubbles: true, pointerType: `touch`, buttons: 1, clientY: 120 }
+  svg.dispatchEvent(new PointerEvent(`pointerdown`, { ...init, clientX: 150 }))
+  svg.dispatchEvent(new PointerEvent(`pointermove`, { ...init, clientX: 250, clientY: 200 }))
+  await tick()
+  expect(svg.querySelector(`.zoom-rect`)).toBeNull()
+})
 
+describe(`shared plot drag zoom bounds`, () => {
   test.each(plot_cases)(
     `%s rejects margin starts but allows the endpoint outside`,
     async (_name, mount_plot) => {
@@ -242,10 +396,10 @@ describe(`shared plot drag zoom bounds`, () => {
     expect(svg.style.cursor).toBe(`crosshair`)
   })
 
-  // A mouseup delivered outside the window never reaches the drag's own handler. A wedged pan
-  // kept panning on bare moves (and froze animation/hover gated on `is_panning`); a wedged rect
-  // zoomed on the next stray mouseup. Escape ends a rect drag too, though mousedown keeps
-  // focus off the SVG (an SVG-only listener never heard it).
+  // A release outside the SVG before the drag was captured never reaches the drag's own
+  // handler. A wedged pan kept panning on bare moves (and froze animation/hover gated on
+  // `is_panning`); a wedged rect zoomed on the next stray release. Escape ends a rect drag
+  // too, though mousedown keeps focus off the SVG (an SVG-only listener never heard it).
   test.each([
     [`a buttonless move ends a pan`, true, false],
     [`a buttonless move ends a rect drag`, false, false],
@@ -261,19 +415,22 @@ describe(`shared plot drag zoom bounds`, () => {
       shiftKey: shift,
     })
     const before = marker_xs(svg)
-    svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...position(200, 1) }))
-    window.dispatchEvent(new MouseEvent(`mousemove`, position(150, 1)))
+    svg.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, ...position(200, 1) }))
+    svg.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true, ...position(150, 1) }))
     await tick()
     expect(svg.querySelector(`.zoom-rect`) !== null).toBe(!shift)
 
     if (escape) window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Escape` }))
-    else window.dispatchEvent(new MouseEvent(`mousemove`, position(100, 0))) // released off-window
+    else
+      svg.dispatchEvent(
+        new PointerEvent(`pointermove`, { bubbles: true, ...position(100, 0) }),
+      ) // released off-window
     await tick()
     expect(svg.querySelector(`.zoom-rect`)).toBeNull()
     expect(document.body.style.cursor).toBe(``)
     const after_release = marker_xs(svg)
-    window.dispatchEvent(new MouseEvent(`mousemove`, position(20, 0)))
-    window.dispatchEvent(new MouseEvent(`mouseup`, position(20, 0)))
+    svg.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true, ...position(20, 0) }))
+    svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true, ...position(20, 0) }))
     await tick()
     // no later bare move pans, and the abandoned rect never zooms
     expect(marker_xs(svg)).toEqual(shift ? after_release : before)

@@ -2,7 +2,8 @@ name: CI
 
 # Lint, type-check and test. Also reused by publish.yml (workflow_call) as the release gate.
 # The docs site build/deploy stays in gh-pages.yml: it needs pages/id-token permissions that a
-# reusable-workflow call from publish.yml (contents: read) could not grant.
+# reusable-workflow call from publish.yml (contents: read) could not grant. It runs on main
+# only; build-site below is the PR's one site build.
 on:
   push:
     branches: [main]
@@ -44,7 +45,7 @@ jobs:
           pnpm exec vp check
           pnpm typecheck
       - name: Run prek checks
-        uses: j178/prek-action@main
+        uses: j178/prek-action@v3.1.0
 
       # The root tsconfig excludes extensions/, and `vp build` strips types without
       # checking them, so extensions/vscode/tsconfig.json never ran anywhere. The
@@ -204,6 +205,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      # a no-op when the cache restored this version's browser
       - run: pnpm exec playwright install chromium --no-shell
       # Linux headless WebGPU presents transparent canvases, including drawImage captures.
       - run: xvfb-run -a pnpm exec playwright test --headed
@@ -234,23 +242,43 @@ jobs:
         uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
-      - name: Install Chromium
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium # a no-op when the cache restored this version's browser
         run: pnpm exec playwright install chromium --no-shell
+      # Only the movie CLI test encodes with FFmpeg, and tests are sharded individually, so
+      # only the shard that drew it installs FFmpeg.
+      - name: Check whether this shard runs the movie CLI test
+        id: movie
+        run: |
+          tests=$(pnpm exec playwright test --list --shard=${{ matrix.shard }}/8)
+          if [[ "$tests" == *'movie CLI'* ]]; then echo "ffmpeg=true" >> "$GITHUB_OUTPUT"; fi
+        env:
+          MATTERVIZ_E2E_MODE: preview
       # FFmpeg's .deb files come from a cache: the runner's apt mirror stalls mid-download often
-      # enough to time out whole shards, and the first shard that fetches them saves them.
+      # enough to time out whole shards.
       # Keyed on the runner image, whose updates change the package versions apt wants; the
       # prefix restore lets a new image download only the packages that changed.
       - name: Read runner image version
         id: runner-image
+        if: steps.movie.outputs.ffmpeg
         run: echo "version=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
       - name: Cache FFmpeg packages
+        if: steps.movie.outputs.ffmpeg
         uses: actions/cache@v6
         with:
           path: ~/apt-archives
           key: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-image.outputs.version }}
           restore-keys: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-
       # Bounded: an unresponsive apt mirror once hung shards 3 and 6 until the 6 h job limit
-      - name: Install FFmpeg for movie export tests
+      - name: Install FFmpeg for the movie CLI test
+        if: steps.movie.outputs.ffmpeg
         timeout-minutes: 5
         run: |
           mkdir -p ~/apt-archives/partial

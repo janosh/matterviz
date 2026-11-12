@@ -871,13 +871,27 @@ describe(`Bands component`, () => {
     const pan = async (from_x: number, to_x: number) => {
       const coord_y = 100
       svg.dispatchEvent(
-        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: from_x, clientY: coord_y }),
+        new PointerEvent(`pointerdown`, {
+          bubbles: true,
+          button: 0,
+          shiftKey: true,
+          clientX: from_x,
+          clientY: coord_y,
+        }),
       )
-      window.dispatchEvent(
-        new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: coord_y }),
+      svg.dispatchEvent(
+        new PointerEvent(`pointermove`, {
+          bubbles: true,
+          buttons: 1,
+          clientX: to_x,
+          clientY: coord_y,
+        }),
       )
       await tick()
-      await fire(window, new MouseEvent(`mouseup`, { clientX: to_x, clientY: coord_y }))
+      await fire(
+        svg,
+        new PointerEvent(`pointerup`, { bubbles: true, clientX: to_x, clientY: coord_y }),
+      )
     }
     const mid = clip_x + clip_width / 2
     await pan(mid, mid - clip_width / 2)

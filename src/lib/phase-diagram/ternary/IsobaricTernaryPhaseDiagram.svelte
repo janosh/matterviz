@@ -3,9 +3,11 @@
   // over temperature. Linked views: the isothermal section (2D Gibbs triangle or 3D prism with a
   // draggable cutting plane), a phase × T stability map and the list of transitions with
   // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
-  // pin (its assemblage follows T), click the pin again or press Escape to drop it.
+  // pin (its assemblage follows T), click the pin again or press Escape to drop it. The export
+  // pane saves the shown section view as PNG and the computed diagram as JSON.
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
+  import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { canvas_text_color } from '#lib/canvas-surface.svelte.js'
@@ -18,6 +20,7 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import { as_text } from '#lib/io/decompress.js'
+  import { canvas_sources, type ExportProps } from '#lib/io/export.js'
   import type { FileLoadCallback } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -39,6 +42,7 @@
   import { getAbortSignal, onMount, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { tooltip as attach_tooltip } from 'svelte-widgets/attachments'
+  import PhaseDiagramExportPane from '../PhaseDiagramExportPane.svelte'
   import { compute_ternary_phase_diagram_async } from './async-compute.svelte'
   import {
     compute_section,
@@ -78,6 +82,12 @@
     gas_pressures = $bindable({}),
     show_controls,
     controls_open = $bindable(false),
+    export_pane_open = $bindable(false),
+    png_dpi = $bindable(DEFAULT_PNG_DPI),
+    export_filename = `ternary-phase-diagram`,
+    export_formats,
+    on_export,
+    on_phase_hover,
     fullscreen = $bindable(false),
     fullscreen_toggle = true,
     wrapper = $bindable(),
@@ -88,50 +98,58 @@
     tooltip,
     children,
     ...rest
-  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
-    // Convex-hull entries (ternary compositions with energies) the diagram is computed from; replaced by dropped files.
-    entries?: PhaseData[]
-    // Extra compute options (corner order, event_tolerance, explicit temperatures, ...); the
-    // bindable compute props below override matching fields
-    options?: TernaryPhaseDiagramOptions
-    temperature?: number // K; defaults to the start of the sweep
-    selected_phase?: number | null // index into diagram.phases
-    pinned_composition?: Vec2 | null // composition probe (Gibbs-triangle xy) shared by views
-    diagram?: TernaryPhaseDiagram | null // computed result (read-only binding)
-    display?: Partial<TernaryDisplay> // view settings, merged over TERNARY_DISPLAY_DEFAULTS
-    // Free-energy source per entry: `tabulated`, `sisso`, `static` (0 K), or `auto` to pick the best available.
-    free_energy_mode?: FreeEnergyMode
-    // Temperature sweep [min, max] in K; defaults to the range the entries support.
-    t_range?: Vec2
-    // Number of evenly spaced temperatures sampled over t_range.
-    n_samples?: number
-    // Treat O/N/H/F as diatomic gases at gas_pressures (bar)
-    gas_enabled?: boolean
-    // Partial pressure in bar per gas species (O, N, H, F); used when gas_enabled.
-    gas_pressures?: Partial<Record<GasSpecies, number>>
-    // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, fullscreen) appear.
-    show_controls?: ShowControlsProp<`controls` | `fullscreen`>
-    // Whether the controls pane is open.
-    controls_open?: boolean
-    // Whether the diagram fills the screen.
-    fullscreen?: boolean
-    // Show the fullscreen button in the controls.
-    fullscreen_toggle?: boolean
-    // The root element. Read-only.
-    wrapper?: HTMLDivElement
-    // Dropped JSON arrays of convex-hull entries replace `entries`
-    allow_file_drop?: boolean
-    // Takes each dropped file raw instead of the built-in entries parsing
-    on_file_drop?: FileLoadCallback
-    // Called with each dropped file's entries once they are shown
-    on_file_load?: (data: PhaseEntriesLoadData) => void
-    // Heading shown above the diagram; HTML is sanitized.
-    title?: string
-    // false hides the hover tooltip, a snippet replaces its content
-    tooltip?: TooltipProp<TernaryPhaseHover>
-    // Extra content rendered after the diagram, given the computed diagram and current temperature in K.
-    children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
-  } = $props()
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
+    ExportProps & {
+      // Convex-hull entries (ternary compositions with energies) the diagram is computed from; replaced by dropped files.
+      entries?: PhaseData[]
+      // Extra compute options (corner order, event_tolerance, explicit temperatures, ...); the
+      // bindable compute props below override matching fields
+      options?: TernaryPhaseDiagramOptions
+      temperature?: number // K; defaults to the start of the sweep
+      selected_phase?: number | null // index into diagram.phases
+      pinned_composition?: Vec2 | null // composition probe (Gibbs-triangle xy) shared by views
+      diagram?: TernaryPhaseDiagram | null // computed result (read-only binding)
+      display?: Partial<TernaryDisplay> // view settings, merged over TERNARY_DISPLAY_DEFAULTS
+      // Free-energy source per entry: `tabulated`, `sisso`, `static` (0 K), or `auto` to pick the best available.
+      free_energy_mode?: FreeEnergyMode
+      // Temperature sweep [min, max] in K; defaults to the range the entries support.
+      t_range?: Vec2
+      // Number of evenly spaced temperatures sampled over t_range.
+      n_samples?: number
+      // Treat O/N/H/F as diatomic gases at gas_pressures (bar)
+      gas_enabled?: boolean
+      // Partial pressure in bar per gas species (O, N, H, F); used when gas_enabled.
+      gas_pressures?: Partial<Record<GasSpecies, number>>
+      // Toolbar visibility: hover, always or never, or an object choosing which buttons (controls, export, fullscreen) appear.
+      show_controls?: ShowControlsProp<`controls` | `export` | `fullscreen`>
+      // Whether the controls pane is open.
+      controls_open?: boolean
+      // Whether the export pane is open (shortcut `e`).
+      export_pane_open?: boolean
+      // Resolution of PNG exports in dots per inch.
+      png_dpi?: number
+      // Called with what the tooltip describes (a section point, or a phase at a temperature on
+      // the stability map or a prism rod), or null when the pointer leaves.
+      on_phase_hover?: (hover: TernaryPhaseHover | null) => void
+      // Whether the diagram fills the screen.
+      fullscreen?: boolean
+      // Show the fullscreen button in the controls.
+      fullscreen_toggle?: boolean
+      // The root element. Read-only.
+      wrapper?: HTMLDivElement
+      // Dropped JSON arrays of convex-hull entries replace `entries`
+      allow_file_drop?: boolean
+      // Takes each dropped file raw instead of the built-in entries parsing
+      on_file_drop?: FileLoadCallback
+      // Called with each dropped file's entries once they are shown
+      on_file_load?: (data: PhaseEntriesLoadData) => void
+      // Heading shown above the diagram; HTML is sanitized.
+      title?: string
+      // false hides the hover tooltip, a snippet replaces its content
+      tooltip?: TooltipProp<TernaryPhaseHover>
+      // Extra content rendered after the diagram, given the computed diagram and current temperature in K.
+      children?: Snippet<[{ diagram: TernaryPhaseDiagram | null; temperature: number }]>
+    } = $props()
 
   const settings = $derived<TernaryDisplay>({ ...TERNARY_DISPLAY_DEFAULTS, ...display })
   const set_display = (patch: Partial<TernaryDisplay>) => (display = { ...display, ...patch })
@@ -153,6 +171,11 @@
   })
   let dropped_entries = $state.raw<PhaseData[] | null>(null)
   let hover = $state.raw<TernaryPhaseHover | null>(null)
+  const set_hover = (next: TernaryPhaseHover | null) => {
+    if (next === hover) return // leaving twice (pointerleave, then a view change) reports once
+    hover = next
+    on_phase_hover?.(next)
+  }
   let hovered_phase = $state<number | null>(null)
   $effect(() => {
     if (entries_prop) dropped_entries = null
@@ -164,7 +187,7 @@
   $effect(() => {
     void [settings.view, settings.show_map, settings.show_events]
     hovered_phase = null
-    hover = null
+    untrack(() => set_hover(null))
     if (last_entries !== null && entries !== last_entries) {
       selected_phase = null
       pinned_composition = null
@@ -341,6 +364,8 @@
       if (!event.shiftKey) set_temperature(current_t + dir * (t_max - t_min) * 0.01)
       else if (target) set_temperature(target.temperature + dir)
     } else if (event.key === ` `) toggle_play()
+    else if (!event.shiftKey && event.key.toLowerCase() === `e`)
+      export_pane_open = !export_pane_open
     // Escape clears the selection, then the pin; with neither the host keeps the key
     else if (event.key === `Escape` && selected_phase !== null) selected_phase = null
     else if (event.key === `Escape` && pinned_composition !== null) pinned_composition = null
@@ -363,6 +388,25 @@
   )
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
+  // === Export ===
+
+  // The shown section view: the 2D section's main canvas or the prism's GPU canvas, looked up
+  // per export since switching views re-mounts it
+  const image_sources = canvas_sources(() =>
+    wrapper?.querySelector<HTMLCanvasElement>(`.section-panel canvas:not(.pulse-overlay)`),
+  )
+  // Typed arrays as plain ones (JSON would write them as index-keyed objects)
+  const export_data = $derived(
+    diagram_raw && {
+      ...diagram_raw,
+      sections: diagram_raw.sections.map((sec) => ({
+        ...sec,
+        dg_form: [...sec.dg_form],
+        e_above_hull: [...sec.e_above_hull],
+      })),
+    },
+  )
+
   // === File drop ===
 
   let drop_error = $state<string | null>(null)
@@ -429,6 +473,18 @@
         shortcut_scopes={[`viewer`, `ternary-phase-diagram`]}
       />
     {/if}
+    {#if export_formats?.length !== 0 && controls_config.visible(`export`)}
+      <PhaseDiagramExportPane
+        bind:export_pane_open
+        bind:png_dpi
+        data={export_data}
+        components={model?.elements}
+        {image_sources}
+        filename={export_filename}
+        {export_formats}
+        {on_export}
+      />
+    {/if}
   </ViewerChrome>
 
   {#if title}<h3 class="diagram-title">{@html sanitize_html(title)}</h3>{/if}
@@ -461,7 +517,7 @@
             pin_color={pin_color.current}
             highlighted_phases={hovered_phase === null ? [] : [hovered_phase]}
             {emphasized_phases}
-            on_hover={(data) => (hover = data && { kind: `section`, data })}
+            on_hover={(data) => set_hover(data && { kind: `section`, data })}
           />
         {:else if !mounted || !webgpu_available()}
           <div class="prism-fallback">WebGPU is required for the 3D prism view.</div>
@@ -478,8 +534,8 @@
                 bind:pinned_composition
                 pin_color={pin_color.current}
                 text_color={canvas_text_color(wrapper, dark_mode)}
-                on_hover={(data) => (hover = data && { kind: `phase_t`, data })}
-                on_section_hover={(data) => (hover = data && { kind: `section`, data })}
+                on_hover={(data) => set_hover(data && { kind: `phase_t`, data })}
+                on_section_hover={(data) => set_hover(data && { kind: `section`, data })}
               />
             </Canvas>
           </div>
@@ -571,7 +627,7 @@
               bind:temperature={() => current_t, scrub_temperature}
               bind:selected_phase
               bind:hovered_phase
-              on_hover={(data) => (hover = data && { kind: `phase_t`, data })}
+              on_hover={(data) => set_hover(data && { kind: `phase_t`, data })}
             />
           {/if}
           {#if settings.show_events}

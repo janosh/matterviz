@@ -190,33 +190,22 @@ export function pan_range_by_pixels(
   return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
 }
 
-// Zoom a range about its screen-space center by `factor` (pinch: >1 zooms in).
-// On log axes the fixed point is the geometric mean - the visual center.
+// Zoom a range by `factor` (pinch: >1 zooms in) about the point `anchor` of the way along it
+// in screen space (default: its center, on log axes the geometric mean).
 export function zoom_range_by_factor(
   range: Vec2,
   factor: number,
   scale_type?: ScaleType,
+  anchor = 0.5,
 ): Vec2 {
   // Guard invalid factors (0/negative/NaN) that would emit Infinity/NaN into axis state
   if (!Number.isFinite(factor) || factor <= 0) return range
   const { forward, inverse } = axis_transform(scale_type)
   const [param_0, param_1] = [forward(range[0]), forward(range[1])]
-  const center = (param_0 + param_1) / 2
-  const half_span = (param_1 - param_0) / factor / 2
-  const next: Vec2 = [inverse(center - half_span), inverse(center + half_span)]
+  const fixed = param_0 + anchor * (param_1 - param_0)
+  const span = (param_1 - param_0) / factor
+  const next: Vec2 = [inverse(fixed - anchor * span), inverse(fixed + (1 - anchor) * span)]
   return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
-}
-
-// Remove window drag/pan listeners and reset the body cursor. Call from onDestroy, since
-// unmounting mid-drag otherwise leaks listeners and leaves the cursor stuck.
-export function remove_drag_listeners(
-  move_handlers: ((evt: MouseEvent) => void)[],
-  up_handlers: ((evt: MouseEvent) => void)[],
-): void {
-  if (typeof window === `undefined`) return
-  for (const handler of move_handlers) window.removeEventListener(`mousemove`, handler)
-  for (const handler of up_handlers) window.removeEventListener(`mouseup`, handler)
-  document.body.style.cursor = ``
 }
 
 // [min, max] of a pair in either order (an inverted axis stores its range high-to-low, a drag
@@ -243,6 +232,17 @@ export function invert_rect_range(
   const range = orient_range(inverted, current)
   return range.every(Number.isFinite) && range[0] !== range[1] ? range : null
 }
+
+// Drag rect in svg px, edges ascending whichever way it was dragged
+export type PixelRect = { x: Vec2; y: Vec2 }
+
+// Whether a mark spanning the px pairs (either order) overlaps a drag rect, i.e. an Alt+drag
+// selects it. False for non-finite geometry, which draws nothing.
+export const overlaps_rect = (rect: PixelRect, [x_a, x_b]: Vec2, [y_a, y_b]: Vec2): boolean =>
+  Math.min(x_a, x_b) <= rect.x[1] &&
+  Math.max(x_a, x_b) >= rect.x[0] &&
+  Math.min(y_a, y_b) <= rect.y[1] &&
+  Math.max(y_a, y_b) >= rect.y[0]
 
 // Strict per-bound equality of two [min, max] ranges
 export const vec2_equal = (value_a: Vec2, value_b: Vec2): boolean =>

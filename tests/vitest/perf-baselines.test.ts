@@ -522,8 +522,8 @@ describe(`perf baselines`, { timeout: 120_000 }, () => {
     const entries = make_entries(10_000)
     await measure(`e_above_hull 10k ternary entries`, () => {
       const distances = calculate_e_above_hull(entries, entries)
-      expect(Object.keys(distances)).toHaveLength(10_000)
-      expect(Object.values(distances).every((dist) => dist >= 0)).toBe(true)
+      expect(distances).toHaveLength(10_000)
+      expect(distances.every((dist) => dist >= 0)).toBe(true)
     })
   })
 

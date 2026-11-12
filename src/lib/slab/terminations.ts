@@ -81,16 +81,19 @@ export const layer_spacings = (
     return top - layers[idx].height
   })
 
-// The sites' images under every point operation that keeps the surface normal pointing
-// up and maps the oriented lattice onto itself: rotations about the normal and mirrors
-// through planes containing it. Composed with a translation these are what map e.g. the
-// A and B basal layers of hcp onto each other. Such an operation permutes the in-plane
+// The sites' images under every point operation that maps the oriented lattice onto itself
+// and sends the surface normal to `normal_sign` times itself. Keeping it (1): rotations
+// about the normal and mirrors through planes containing it. Composed with a translation
+// these are what map e.g. the A and B basal layers of hcp onto each other. Flipping it
+// (-1): inversion, the mirror parallel to the surface, 2-fold axes lying in it and
+// rotoinversions about the normal, the operations that swap a slab's two faces.
+// Such an operation permutes the in-plane
 // lattice vectors, so it is an integer 2x2 matrix on (a, b) that preserves their lengths
 // and angle; a and b are Gauss-reduced, which confines the entries to -1, 0, 1. It must
 // also send c to a lattice vector, otherwise no translation can complete it into a
 // symmetry of the crystal. The identity is left out: pure translations are searched
 // separately.
-function normal_preserving_images(bulk: OrientedBulk): Site[][] {
+function point_operation_images(bulk: OrientedBulk, normal_sign: 1 | -1): Site[][] {
   const { matrix } = bulk.crystal.lattice
   const [vec_a, vec_b, vec_c] = matrix
   const { normal } = bulk
@@ -113,13 +116,14 @@ function normal_preserving_images(bulk: OrientedBulk): Site[][] {
   const images: Site[][] = []
   for (const [m_aa, m_ab] of rows) {
     for (const [m_ba, m_bb] of rows) {
-      if (m_aa === 1 && m_bb === 1 && m_ab === 0 && m_ba === 0) continue
+      if (normal_sign === 1 && m_aa === 1 && m_bb === 1 && m_ab === 0 && m_ba === 0) continue
       if (Math.abs(m_aa * m_bb - m_ab * m_ba) !== 1) continue
       const image_a = math.add(math.scale(vec_a, m_aa), math.scale(vec_b, m_ab))
       const image_b = math.add(math.scale(vec_a, m_ba), math.scale(vec_b, m_bb))
       if (!same_length(image_a, len_a) || !same_length(image_b, len_b)) continue
       if (Math.abs(math.dot(image_a, image_b) - dot_ab) > tol * (len_a + len_b)) continue
-      const from_frame = math.create_frac_to_cart([image_a, image_b, normal])
+      const image_normal = math.scale(normal, normal_sign)
+      const from_frame = math.create_frac_to_cart([image_a, image_b, image_normal])
       const apply = (vec: Vec3): Vec3 => from_frame(to_frame(vec))
       const image_c = cart_to_frac(apply(vec_c))
       const nearest_lattice_vec = image_c.map(Math.round) as Vec3
@@ -135,12 +139,16 @@ function normal_preserving_images(bulk: OrientedBulk): Site[][] {
   return images
 }
 
-// Cyclic layer shifts realized by a symmetry of the oriented bulk that keeps the normal
-// pointing up: a lattice translation, or a normal-preserving point operation followed by
-// one. Layer idx and layer idx + shift then expose the same surface, so only one of them
-// is a distinct termination.
-function equivalent_layer_shifts(bulk: OrientedBulk, layers: SlabLayer[]): number[] {
-  if (layers.length < 2) return []
+// Layers the first site of layer `from_layer_idx` is mapped into by the symmetries of the
+// oriented bulk whose point part sends the normal to `normal_sign` times itself: for 1 a
+// lattice translation, or a normal-preserving point operation followed by one; for -1 a
+// normal-flipping point operation followed by a translation.
+function symmetry_layer_images(
+  bulk: OrientedBulk,
+  layers: SlabLayer[],
+  from_layer_idx: number,
+  normal_sign: 1 | -1,
+): Set<number> {
   const { sites, lattice } = bulk.crystal
   const keys = species_keys_of(sites)
   const grid = make_site_grid(lattice.matrix, sites, keys)
@@ -149,9 +157,10 @@ function equivalent_layer_shifts(bulk: OrientedBulk, layers: SlabLayer[]): numbe
     for (const site_idx of layer.site_idxs) layer_of_site[site_idx] = layer_idx
   }
 
-  const anchor_idx = layers[0].site_idxs[0]
-  const shifts = new Set<number>()
-  for (const images of [sites, ...normal_preserving_images(bulk)]) {
+  const anchor_idx = layers[from_layer_idx].site_idxs[0]
+  const layer_images = new Set<number>()
+  const operations = point_operation_images(bulk, normal_sign)
+  for (const images of normal_sign === 1 ? [sites, ...operations] : operations) {
     const translations = find_lattice_translations(sites, lattice.matrix, { images })
     for (const translation of translations) {
       const target = math.add(images[anchor_idx].abc, translation)
@@ -162,12 +171,33 @@ function equivalent_layer_shifts(bulk: OrientedBulk, layers: SlabLayer[]): numbe
             `${JSON.stringify(target)}, where no matching site was found`,
         )
       }
-      const shift = layer_of_site[image_idx]
-      if (shift > 0) shifts.add(shift)
+      layer_images.add(layer_of_site[image_idx])
     }
   }
-  return [...shifts]
+  return layer_images
 }
+
+// Cyclic layer shifts realized by a symmetry of the oriented bulk that keeps the normal
+// pointing up. Layer idx and layer idx + shift then expose the same surface, so only one
+// of them is a distinct termination.
+const equivalent_layer_shifts = (bulk: OrientedBulk, layers: SlabLayer[]): number[] =>
+  layers.length < 2
+    ? []
+    : [...symmetry_layer_images(bulk, layers, 0, 1)].filter((shift) => shift > 0)
+
+// Whether a slab of whole c repeats cleaved below `layer_idx` has equivalent faces: its
+// bottom layer is `layer_idx` and its top one the layer just below that, so the two faces
+// are related exactly when a normal-flipping symmetry of the bulk maps one onto the other
+// (pymatgen's Slab.is_symmetric: an inversion centre, or a mirror plane or 2-fold axis
+// parallel to the surface). The number of repeats does not matter.
+export const is_symmetric_termination = (
+  bulk: OrientedBulk,
+  layers: SlabLayer[],
+  layer_idx: number,
+): boolean =>
+  symmetry_layer_images(bulk, layers, layer_idx, -1).has(
+    (layer_idx + layers.length - 1) % layers.length,
+  )
 
 export type SlabTerminationOptions = Pick<
   SlabOptions,

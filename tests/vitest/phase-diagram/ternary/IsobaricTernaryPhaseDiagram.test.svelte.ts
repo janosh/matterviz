@@ -24,6 +24,7 @@ import { type Component, createRawSnippet, flushSync, mount, unmount } from 'sve
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
+  click_export,
   create_drop_event,
   doc_query,
   expect_shortcuts_in_pane,
@@ -247,6 +248,83 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     expect(document.querySelector(`.error`)).toBeNull()
   })
 
+  // Same callback as the binary diagram's: every hover the tooltip shows, null when it ends,
+  // once per change (a view switch after the pointer already left reports nothing more)
+  test(`on_phase_hover reports section hovers and null on leave`, async () => {
+    const reported: (TernaryPhaseHover | null)[] = []
+    const state = $state<{ display: Partial<TernaryDisplay> }>({ display: {} })
+    mount_it(
+      IsobaricTernaryPhaseDiagram,
+      bind_props(
+        {
+          entries: toy_entries,
+          options: { elements: toy_elements },
+          on_phase_hover: (hover: TernaryPhaseHover | null) => reported.push(hover),
+        },
+        state,
+      ),
+    )
+    await wait_for_events()
+    expect(reported).toEqual([]) // mounting is not a hover
+    move_to([1, 0])
+    move_to([0.45, 0.25])
+    pointer_at(`pointerleave`, [0.45, 0.25])
+    const what = (hover: TernaryPhaseHover | null) =>
+      hover && (hover.kind === `section` ? [hover.kind, hover.data.kind] : [hover.kind])
+    expect(reported.map(what)).toEqual([
+      [`section`, `phase`],
+      [`section`, `composition`],
+      null,
+    ])
+    state.display = { show_events: false }
+    flushSync()
+    expect(reported).toHaveLength(3)
+    // a view change ends a live hover, since the unmounting view fires no pointerleave
+    move_to([1, 0])
+    state.display = { show_events: true }
+    flushSync()
+    expect(reported.slice(3).map((hover) => hover?.kind ?? null)).toEqual([`section`, null])
+  })
+
+  // Shares the binary diagram's export pane: PNG of the canvas (no SVG to offer), the diagram
+  // as JSON with plain arrays, `e` toggles the pane
+  test(`export pane offers PNG and JSON of the computed diagram`, async () => {
+    const on_export = vi.fn()
+    mount_diagram({ on_export, export_filename: `toy` })
+    await wait_for_events()
+    expect(document.querySelector(`[aria-label="Download JSON"]`)).toBeNull() // pane closed
+    press(`e`)
+    expect(document.querySelector(`[aria-label="Download PNG"]`)).not.toBeNull()
+    expect(document.querySelector(`[aria-label="Download SVG"]`)).toBeNull()
+    await click_export(`JSON`)
+    await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
+    const [format, context] = on_export.mock.calls[0]
+    expect([format, context.filename]).toEqual([`json`, `toy-${toy_elements.join(`-`)}`])
+    const exported = JSON.parse(context.data) as TernaryPhaseDiagram
+    expect(exported.elements).toEqual(toy_elements)
+    expect(exported.events.map((event) => event.temperature)).toEqual(
+      diagram.events.map((event) => event.temperature),
+    )
+    expect(exported.sections).toHaveLength(diagram.sections.length)
+    // NaN (a phase undefined at T) is null in JSON
+    const as_json = (values: Float64Array) =>
+      [...values].map((val) => (Number.isNaN(val) ? null : val))
+    expect(exported.sections[0].e_above_hull).toEqual(
+      as_json(diagram.sections[0].e_above_hull),
+    )
+    expect(exported.sections[0].dg_form).toEqual(as_json(diagram.sections[0].dg_form))
+    press(`e`)
+    expect(document.querySelector(`[aria-label="Download PNG"]`)).toBeNull()
+    unmount_all()
+    for (const props of [{ show_controls: { hidden: [`export`] } }, { export_formats: [] }]) {
+      mount_diagram(props)
+      expect(document.querySelector(`.pd-export-toggle`), JSON.stringify(props)).toBeNull()
+      unmount_all()
+    }
+    mount_diagram()
+    doc_query(`.pd-export-toggle`)
+  })
+
   test(`view toggle, hidden panels, gated controls and the empty state`, () => {
     mount_diagram({
       display: { view: `prism`, show_map: false, show_events: false },
@@ -381,7 +459,13 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
         },
       })
     })
-  const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 40))
+  // resolves once the overlay's next frame has painted
+  const overlay_repaint = async (act: () => void) => {
+    const before = clears.overlay
+    act()
+    flushSync()
+    await vi.waitFor(() => expect(clears.overlay).toBeGreaterThan(before))
+  }
   try {
     const model = prepare_diagram(toy_entries, { elements: toy_elements })
     const state = $state({
@@ -393,23 +477,15 @@ test(`TernarySectionCanvas: hover and selection repaint the overlay, not the sec
       TernarySectionCanvas,
       bind_props({ model, settings: TERNARY_DISPLAY_DEFAULTS }, state),
     )
-    const update = async (patch: Partial<typeof state>) => {
-      Object.assign(state, patch)
-      flushSync()
-      await let_frames_run()
-    }
-    await let_frames_run()
+    const update = (patch: Partial<typeof state>) =>
+      overlay_repaint(() => Object.assign(state, patch))
+    await vi.waitFor(() => expect(clears.base).toBeGreaterThan(0))
     const painted = { ...clears }
-    expect(painted.base).toBeGreaterThan(0)
     expect(fills.base).toBeGreaterThan(0)
     // nothing is hovered yet, so the overlay has painted no text
     expect(fills.overlay).toBe(0)
     // 5 hovers over compositions inside the triangle
-    const hover = async (xy: Vec2) => {
-      move_to(xy)
-      flushSync()
-      await let_frames_run()
-    }
+    const hover = (xy: Vec2) => overlay_repaint(() => move_to(xy))
     for (const frac of [0.3, 0.35, 0.4, 0.45, 0.5]) await hover([frac, 0.2])
     // the hovered tie-triangle's vertex labels are repainted above the tint: some text per
     // hover, but less than the base's full label pass (5 hovers < 5 base passes)
@@ -596,8 +672,7 @@ describe(`PhaseStabilityMap`, () => {
       mount_it(PhaseStabilityMap, props)
       for (const fill of [`#000001`, `#000002`]) {
         props.settings = { ...props.settings, color_scale: { scheme: () => fill } }
-        await new Promise((resolve) => setTimeout(resolve, 40))
-        expect(fills).toContain(fill)
+        await vi.waitFor(() => expect(fills).toContain(fill))
       }
     } finally {
       vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore()
@@ -617,10 +692,14 @@ describe(`PhaseStabilityMap`, () => {
     const props = { diagram, settings: TERNARY_DISPLAY_DEFAULTS, row_height: 10 }
     try {
       mount_it(PhaseStabilityMap, props)
-      await new Promise((resolve) => setTimeout(resolve, 40))
-      const ticks = labels.filter(({ label }) => Number(label) >= 300) // not formula subscripts
-      expect(ticks.map(({ label }) => label)).toEqual(expect.arrayContaining([`300`, `1500`]))
-      for (const { label, x } of ticks) {
+      // not formula subscripts
+      const ticks = () => labels.filter(({ label }) => Number(label) >= 300)
+      await vi.waitFor(() =>
+        expect(ticks().map(({ label }) => label)).toEqual(
+          expect.arrayContaining([`300`, `1500`]),
+        ),
+      )
+      for (const { label, x } of ticks()) {
         const half = 4 * label.length
         expect([x - half, x + half], label).toSatisfy(
           ([left, right]: number[]) => left >= 96 && right <= 800,

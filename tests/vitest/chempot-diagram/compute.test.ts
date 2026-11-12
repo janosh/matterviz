@@ -919,11 +919,31 @@ describe(`dedup_points`, () => {
       [0, 2],
     ],
     [`multiple exact duplicates scattered`, [1, 2, 3, 4, 1, 2, 5, 6, 3, 4], 1e-4, [0, 1, 3]],
+    // 2e-11 apart but on either side of a half-integer multiple of tol, where keys of
+    // coordinates rounded to tol differ (-1000000 vs -1000001)
+    [
+      `pair straddling a rounding boundary`,
+      [-1.00000049999, -2, -1.00000050001, -2, -1.0000062, -2],
+      1e-6,
+      [0, 2],
+    ],
+    // either side of a binning cell boundary (64 tol), in one and in both coordinates
+    [
+      `pairs straddling a grid cell boundary`,
+      [64e-6 - 1e-9, 0.5, 64e-6 + 1e-9, 0.5, -128e-6 + 1e-9, 1e-9, -128e-6 - 1e-9, -1e-9],
+      1e-6,
+      [0, 2],
+    ],
+    [`points exactly tol apart are distinct`, [0, 0, 1e-6, 0, 3e-6, 0], 1e-6, [0, 1, 2]],
   ] as [string, number[], number, number[]][])(`%s`, (_label, flat_pts, tol, indices) => {
     const pts = chunk(2, flat_pts)
     const result = dedup_points(pts, tol)
     expect(result.orig_indices).toEqual(indices)
     expect(result.unique).toEqual(indices.map((idx) => pts[idx]))
+  })
+
+  test.each([0, -1e-6, NaN])(`rejects tolerance %s`, (tol) => {
+    expect(() => dedup_points([[0, 0]], tol)).toThrow(`positive tolerance, got ${tol}`)
   })
 })
 

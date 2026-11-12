@@ -142,13 +142,21 @@ const shift_pan = async (plot: HTMLElement, offsets: Vec2[]) => {
     clientY: clip.y + clip.height / 2 + dy,
   })
   plot_svg(plot).dispatchEvent(
-    mouse(`mousedown`, { button: 0, shiftKey: true, ...at([0, 0]) }),
+    new PointerEvent(`pointerdown`, {
+      bubbles: true,
+      button: 0,
+      shiftKey: true,
+      ...at([0, 0]),
+    }),
   )
   for (const offset of offsets) {
-    await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(offset) }))
+    await fire(
+      plot_svg(plot),
+      new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...at(offset) }),
+    )
   }
   const release = at(offsets.at(-1) ?? [0, 0])
-  await fire(window, new MouseEvent(`mouseup`, release))
+  await fire(plot_svg(plot), new PointerEvent(`pointerup`, { bubbles: true, ...release }))
 }
 const click_at = (element: Element, position: { x: number; y: number }) =>
   element.dispatchEvent(
@@ -221,6 +229,12 @@ describe(`ScatterPlot`, () => {
         else expect(announced(plot), key).toBe(``)
         expect(plot.querySelector(`.plot-tooltip.pinned`) !== null, key).toBe(pinned)
       }
+      // Shift+arrow is the frame's keyboard pan, not a cursor step
+      const x_axis = () => svg.querySelector(`.x-axis`)?.innerHTML
+      const x_axis_before = x_axis()
+      await fire(svg, keydown(`ArrowRight`, { shiftKey: true }))
+      expect(announced(plot)).toBe(``)
+      expect(x_axis()).not.toBe(x_axis_before)
     })
 
     // The cursor is one flat index across both series, so the series boundary is where an
@@ -1491,17 +1505,25 @@ describe(`ScatterPlot`, () => {
       const clip = clip_rect(plot)
       const at = (dx: number) => ({ clientX: clip.x + dx, clientY: clip.y + 10 })
       plot_svg(plot).dispatchEvent(
-        mouse(`mousedown`, { button: 0, shiftKey: true, ...at(10) }),
+        new PointerEvent(`pointerdown`, {
+          bubbles: true,
+          button: 0,
+          shiftKey: true,
+          ...at(10),
+        }),
       )
       await tick()
       check_vertices(duration === 0)
       const grabbed_paths = paths.map((path) => path.getAttribute(`d`))
-      await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
+      await fire(
+        plot_svg(plot),
+        new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...at(15) }),
+      )
       check_vertices(duration === 0)
       const dragged_paths = paths.map((path) => path.getAttribute(`d`))
       // anchored lines move by their transform alone, never rebuilding a path mid-pan
       if (duration === 0) expect(dragged_paths).toEqual(grabbed_paths)
-      await fire(window, new MouseEvent(`mouseup`))
+      await fire(plot_svg(plot), new PointerEvent(`pointerup`, { bubbles: true }))
       check_vertices()
       // morphing lines keep their vertices through the release, so nothing glides
       if (duration > 0) {
@@ -1850,10 +1872,15 @@ describe(`ScatterPlot`, () => {
     const clip = clip_rect(plot)
     const end = { clientX: clip.x + 80, clientY: clip.y + 80 }
     svg.dispatchEvent(
-      mouse(`mousedown`, { button: 0, clientX: clip.x + 10, clientY: clip.y + 10 }),
+      new PointerEvent(`pointerdown`, {
+        bubbles: true,
+        button: 0,
+        clientX: clip.x + 10,
+        clientY: clip.y + 10,
+      }),
     )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...end }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, end))
+    svg.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...end }))
+    svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true, ...end }))
     click_at(svg, { x: end.clientX, y: end.clientY })
     expect(on_plot_click).not.toHaveBeenCalled()
   })

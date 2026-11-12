@@ -1,7 +1,7 @@
 import { display_idx, plural } from '#lib/labels.js'
 import { numeric_sites } from './site'
 import type { OptimadeStructure } from '#lib/api/optimade.js'
-import { VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
+import { AIMS_GEOMETRY_REGEX, VASP_FILES_REGEX, XYZ_EXTXYZ_REGEX } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import { coerce_elem_symbol, is_elem_symbol, species_symbol } from '#lib/element/helpers.js'
@@ -14,6 +14,13 @@ import {
   is_lammps_data_content,
   is_lammps_dump_content,
 } from '#lib/structure/format-detect.js'
+import {
+  aims_has_lattice,
+  is_aims_content,
+  is_qe_content,
+  parse_aims,
+  parse_qe,
+} from '#lib/structure/parsers/dft-inputs.js'
 import { parse_lammps_data, parse_lammps_dump } from '#lib/structure/parsers/lammps.js'
 import { is_mmcif_content, parse_mmcif } from '#lib/structure/parsers/mmcif.js'
 import { parse_mol } from '#lib/structure/parsers/mol.js'
@@ -1102,6 +1109,10 @@ const PHONOPY_CELL_TYPES = [
   `primitive_cell`,
 ] as const
 
+// A top-level cell key is what parse_phonopy_yaml reads, so it is also what detects the
+// format: a `phonopy:` header alone has no structure, and cells without the header parse fine
+const PHONOPY_CELL_REGEX = new RegExp(`^(?:${PHONOPY_CELL_TYPES.join(`|`)}):`, `m`)
+
 // Phonopy YAML: the most detailed cell present (supercell before unit cell before primitive).
 export const parse_phonopy_yaml = (content: string): Crystal => {
   // Drop the phonon_displacements block (huge, and never read) before handing the
@@ -1340,6 +1351,7 @@ const PARSER_BY_EXTENSION = new Map<string, FormatParser>([
   [`yml`, parse_phonopy_yaml],
   [`poscar`, parse_poscar],
   [`vasp`, parse_poscar], // VESTA's POSCAR extension
+  [`pwi`, parse_qe],
 ])
 
 // The parser a file's name selects, or null when the name leaves the format open
@@ -1351,6 +1363,7 @@ function parser_for_filename(filename: string, content: string): FormatParser | 
   // `.data` is claimed by LAMMPS but also used by unrelated formats, so it only takes the
   // LAMMPS path when the content agrees; otherwise it falls through to sniffing
   if (ext === `data` && is_lammps_data_content(content)) return parse_lammps_data
+  if (AIMS_GEOMETRY_REGEX.test(base_filename)) return parse_aims
   // POSCAR/CONTCAR files may not have extensions or have various names (Si_POSCAR, CONTCAR.1)
   if (VASP_FILES_REGEX.test(base_filename)) return parse_poscar
   return null
@@ -1372,6 +1385,9 @@ function parser_for_content(content: string): FormatParser | null {
   // mmCIF would be swallowed by the CIF keyword check below.
   if (is_lammps_dump_content(content)) return parse_lammps_dump
   if (is_lammps_data_content(content)) return parse_lammps_data
+  // pw.x inputs are usually named `*.in`, like aims geometries outside their run directory
+  if (is_qe_content(content)) return parse_qe
+  if (is_aims_content(content)) return parse_aims
   // mmCIF must be tested before PDB: PDBx writers column-align _atom_site.group_PDB, so
   // their atom rows read `ATOM   1  N N   GLY ...` and match the PDB record test below.
   // `_atom_site.` never appears in a PDB, so this order is unambiguous.
@@ -1400,8 +1416,7 @@ function parser_for_content(content: string): FormatParser | null {
 
   const has_keyword = (pattern: RegExp) => lines.some((line) => pattern.test(line))
   if (has_keyword(/^data_|_cell_length_|_atom_site_|^\s*loop_\s*$/i)) return parse_cif
-  // `phonon_supercell:` and `phonon_primitive_cell:` are covered by the shorter keywords
-  if (has_keyword(/phono3py:|phonopy:|primitive_cell:|supercell:/)) return parse_phonopy_yaml
+  if (PHONOPY_CELL_REGEX.test(content)) return parse_phonopy_yaml
   return null
 }
 
@@ -1562,7 +1577,7 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
         ? `crystal`
         : `unknown`,
   ],
-  [/\.ya?ml$/i, (content) => (/phono3py:|phonopy:/i.test(content) ? `crystal` : `unknown`)],
+  [/\.ya?ml$/i, (content) => (PHONOPY_CELL_REGEX.test(content) ? `crystal` : `unknown`)],
   [
     XYZ_EXTXYZ_REGEX,
     // same shape parse_extxyz_lattice accepts; `includes('Lattice=')` called `lattice="..."` a
@@ -1573,6 +1588,16 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
         : `molecule`,
   ],
   [/\.vasp$/i, () => `crystal`],
+  [/\.pwi$/i, () => `crystal`],
+  // `.in` covers geometry.in and the usual pw.x input name; other codes' `.in` files are unknown
+  [
+    /\.in(?:\.next_step)?$/i,
+    (content) => {
+      if (is_qe_content(content)) return `crystal`
+      if (!is_aims_content(content)) return `unknown`
+      return aims_has_lattice(content) ? `crystal` : `molecule`
+    },
+  ],
   // last, so an explicit extension (POSCAR_to_water.xyz) decides first
   [VASP_FILES_REGEX, () => `crystal`],
 ]

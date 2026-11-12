@@ -766,7 +766,7 @@ Custom formatting, tick control, and **dual y-axes** showing both material count
 
 ## Spectroscopy Data with Zoom
 
-Zoom and pan on a larger dataset (drag to zoom, double-click to reset). Line markers use **color scaling** via `color_values` and `color_scale`:
+Zoom and pan on a larger dataset: drag (mouse or touch) to zoom, pinch or Ctrl+scroll to zoom about the pointer, Shift+drag to pan, Alt+drag to select bars, double-click to reset. With the plot focused, `+`/`-` zoom and the arrow keys pan. Line markers use **color scaling** via `color_values` and `color_scale`:
 
 ```svelte example
 <script lang="ts">

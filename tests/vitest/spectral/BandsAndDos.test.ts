@@ -241,9 +241,14 @@ describe(`bands/DOS wrappers`, () => {
       clientX: clip.x + clip.width * frac_x,
       clientY: clip.y + clip.height * frac_y,
     })
-    bands_svg.dispatchEvent(new MouseEvent(`mousedown`, position(0.1, 0.3)))
-    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...position(0.9, 0.6) }))
-    await fire(window, new MouseEvent(`mouseup`, position(0.9, 0.6)))
+    bands_svg.dispatchEvent(new PointerEvent(`pointerdown`, position(0.1, 0.3)))
+    bands_svg.dispatchEvent(
+      new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...position(0.9, 0.6) }),
+    )
+    await fire(
+      bands_svg,
+      new PointerEvent(`pointerup`, { bubbles: true, ...position(0.9, 0.6) }),
+    )
     const zoomed = y_ticks(bands_plot)
     expect(Math.max(...zoomed) - Math.min(...zoomed)).toBeLessThan(
       Math.max(...initial) - Math.min(...initial),

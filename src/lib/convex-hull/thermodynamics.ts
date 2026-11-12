@@ -3,7 +3,6 @@ import { is_elem_symbol } from '#lib/element/helpers.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import * as math from '#lib/math.js'
-import { first_duplicate } from '#lib/utils.js'
 import { composition_to_barycentric_nd } from './barycentric-coords'
 import {
   compute_hull_stability,
@@ -202,14 +201,6 @@ export function find_lowest_energy_unary_refs(
   )
 }
 
-// Result key of the batch calculate_e_above_hull: entry_id, else composition|energy|structure
-// (composition alone collides for polymorphs)
-const id_of = (entry: PhaseData): string => {
-  if (entry.entry_id) return entry.entry_id
-  const structure_hash = entry.structure ? JSON.stringify(entry.structure) : ``
-  return `${JSON.stringify(entry.composition)}|${entry.energy}|${structure_hash}`
-}
-
 // Unclamped energy above hull (eV/atom) of `entries` against the hull of reference_entries.
 // E_form comes from e_form_per_atom, else the lowest-energy unary references; unreferenced
 // pure elements default to 0. Unplaceable entries (missing reference, zero atoms) get NaN.
@@ -295,7 +286,7 @@ export function e_above_hull_distances(
   })
 }
 
-// Energy above hull (clamped to >= 0) of one entry, or of many keyed by id_of
+// Energy above hull (clamped to >= 0) of one entry, or of many in input order
 export function calculate_e_above_hull(
   entry: PhaseData,
   reference_entries: PhaseData[],
@@ -303,19 +294,16 @@ export function calculate_e_above_hull(
 export function calculate_e_above_hull(
   entries: PhaseData[],
   reference_entries: PhaseData[],
-): Record<string, number>
+): number[]
 export function calculate_e_above_hull(
   input: PhaseData | PhaseData[],
   reference_entries: PhaseData[],
-): number | Record<string, number> {
-  const clamped = (entries: PhaseData[]) =>
-    e_above_hull_distances(entries, reference_entries).map((dist) => Math.max(0, dist))
-  if (!Array.isArray(input)) return clamped([input])[0]
-  if (input.length === 0) return {} // Empty input → empty result (not an error)
-  const distances = clamped(input)
-  const repeat = first_duplicate(input.map(({ entry_id }) => entry_id).filter(Boolean))
-  if (repeat) console.warn(`calculate_e_above_hull: duplicate entry_id "${repeat}", last wins`)
-  return Object.fromEntries(input.map((entry, idx) => [id_of(entry), distances[idx]]))
+): number | number[] {
+  const entries = Array.isArray(input) ? input : [input]
+  const distances = e_above_hull_distances(entries, reference_entries).map((dist) =>
+    Math.max(0, dist),
+  )
+  return Array.isArray(input) ? distances : distances[0]
 }
 
 export function get_convex_hull_stats(

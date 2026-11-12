@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname } from 'node:path'
+import { COMPONENTS, tag_name } from '../../src/elements/components'
 import { open_settings_pane } from './helpers'
 
 // The prebuilt custom-element bundle (src/elements) on a plain HTML page: no Svelte, no bundler.
@@ -193,6 +194,7 @@ test.describe(`custom-element bundle`, () => {
         contentType: `text/html`,
         body: page_html(`
           <mv-periodic-table></mv-periodic-table>
+          <mv-box-plot series='[{"label": "alpha", "y": [1, 2, 3, 4, 9]}]' style="height: 300px"></mv-box-plot>
           <script>
             // a framework assigning props before the custom element is defined
             window.heatmap = { H: 1, He: 2, Fe: 3 }
@@ -217,6 +219,15 @@ test.describe(`custom-element bundle`, () => {
     // later assignments re-render: dropping the heatmap removes its color bar
     await table.evaluate((node) => Reflect.set(node, `heatmap_values`, undefined))
     await expect(table.locator(`div.colorbar`)).toHaveCount(0)
+
+    // every component of the registry shared with the anywidget is an element, and one
+    // without a dedicated test above renders the data of its JSON attribute
+    const tags = Object.values(COMPONENTS).map(tag_name)
+    expect(tags).toContain(`mv-phonon-mode-explorer`)
+    expect(
+      await page.evaluate((names) => names.filter((tag) => !customElements.get(tag)), tags),
+    ).toEqual([])
+    await expect(page.locator(`mv-box-plot`).getByText(`alpha`).first()).toBeVisible()
 
     // props that share a name with HTMLElement members (a plot's title) are the component's
     expect(

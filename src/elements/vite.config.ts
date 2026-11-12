@@ -2,82 +2,26 @@
 // `matterviz/elements`: Svelte, three.js and every other dependency inlined, each component
 // in its own lazily loaded chunk. Run by `pnpm package:dist` after svelte-package.
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { readFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import type { Plugin } from 'vite'
 import { defineConfig, type PluginOption } from 'vite-plus'
 import { extract_prop_docs, type PropDoc } from '../scripts/prop-docs.ts'
 import { json_gz_worker_plugins, lib_aliases, vite_plugin_json_gz } from '../vite-plugins.ts'
+import { COMPONENTS, tag_name } from './components.ts'
+import { scoped_app_css } from './scoped-css.ts'
 
 const lib_dir = resolve(import.meta.dirname, `../lib`)
-
 // Each becomes <mv-{kebab-case name}>, e.g. ScatterPlot3D -> mv-scatter-plot-3d
-const components = [
-  `structure/Structure`,
-  `trajectory/Trajectory`,
-  `periodic-table/PeriodicTable`,
-  `composition/Composition`,
-  `plot/scatter/ScatterPlot`,
-  `plot/scatter-3d/ScatterPlot3D`,
-  `plot/bar/BarPlot`,
-  `plot/bar/SpacegroupBarPlot`,
-  `plot/histogram/Histogram`,
-  `plot/treemap/Treemap`,
-  `heatmap-matrix/HeatmapMatrix`,
-  `spectral/Bands`,
-  `spectral/Dos`,
-  `spectral/BandsAndDos`,
-  `brillouin/BrillouinZone`,
-  `fermi-surface/FermiSurface`,
-  `convex-hull/ConvexHull`,
-  `phase-diagram/IsobaricBinaryPhaseDiagram`,
-  `chempot-diagram/ChemPotDiagram`,
-  `xrd/XrdPlot`,
-  `rdf/RdfPlot`,
-].map((path) => `${lib_dir}/${path}.svelte`)
+const components = Object.values(COMPONENTS).map((path) => `${lib_dir}/${path}.svelte`)
 
-const tag_name = (name: string): string =>
-  `mv-${(name.match(/[A-Z][a-z]*|\d+[A-Z]?/g) ?? []).join(`-`).toLowerCase()}`
-
-// app.css for a host page. Its theme tokens stay on :root at zero specificity (so any page rule
-// beats them) and without color-scheme, which each element sets from its :state(). The demo
-// site's matterviz-shell layer (body, links, headings) goes, and every other rule is scoped to
-// the elements, so bare button/input/table rules leave the page alone.
-const SHELL_LAYER = `@layer matterviz-shell {`
-const COLOR_SCHEME = `color-scheme: light dark;`
+// app.css scoped to the elements, which are blocks that take their color-scheme from the
+// :state() they set to the page theme
 const element_css = (tags: readonly string[]): string => {
-  const css = readFileSync(`${lib_dir}/app.css`, `utf8`).replaceAll(/\/\*[\s\S]*?\*\//g, ``)
-  const rules: string[] = []
-  let [depth, start] = [0, 0]
-  for (let idx = 0; idx < css.length; idx++) {
-    if (css[idx] === `{`) depth++
-    else if (css[idx] === `}` && --depth === 0) {
-      rules.push(css.slice(start, idx + 1).trim())
-      start = idx + 1
-    }
-  }
-  const is_token = (rule: string) => /^:(?:root|host)\b/.test(rule)
-  const tokens = rules.filter(is_token).join(`\n`)
-  if (depth !== 0 || css.slice(start).trim() || !tokens.includes(COLOR_SCHEME)) {
-    throw new Error(
-      `${lib_dir}/app.css: unbalanced braces or no ${COLOR_SCHEME} in its tokens`,
-    )
-  }
-  if (!rules.some((rule) => rule.startsWith(SHELL_LAYER))) {
-    throw new Error(`${lib_dir}/app.css: ${SHELL_LAYER} not found`)
-  }
-  const scoped = rules.filter((rule) => !is_token(rule) && !rule.startsWith(SHELL_LAYER))
   const tag_list = tags.join(`, `)
-  const zero_specificity = tokens
-    .replace(COLOR_SCHEME, ``)
-    .replaceAll(/^(?<selector>:(?:root|host)[^{]*?)\s*\{/gm, `:where($<selector>) {`)
-  return `${zero_specificity}
+  return `${scoped_app_css(tag_list)}
 :where(${tag_list}):not([hidden]) { display: block; }
 :where(${tag_list}):state(light) { color-scheme: light; }
-:where(${tag_list}):state(dark) { color-scheme: dark; }
-@scope (${tag_list}) {
-${scoped.join(`\n`)}
-}`
+:where(${tag_list}):state(dark) { color-scheme: dark; }`
 }
 
 // Props an element exposes: not snippets (markup can't come from outside), not hyphenated
@@ -108,7 +52,7 @@ const elements_plugin: PluginOption = {
   load(id: string) {
     if (id !== `\0${VIRTUAL_ID}`) return null
     const prop_docs = extract_prop_docs(components)
-    const tags = components.map((file) => tag_name(basename(file, `.svelte`)))
+    const tags = Object.values(COMPONENTS).map(tag_name)
     const entries = components.map((file, idx) => {
       const docs = prop_docs[basename(file, `.svelte`)].props.filter(is_settable)
       const props = docs.map((doc) => doc.name)

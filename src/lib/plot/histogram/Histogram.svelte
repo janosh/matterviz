@@ -54,15 +54,15 @@
   } from '#lib/plot/histogram/histogram.js'
   import ZeroLines from '#lib/plot/core/components/ZeroLines.svelte'
   import { DEFAULTS } from '#lib/settings.js'
-  import type { Snippet } from 'svelte'
-  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { untrack, type Snippet } from 'svelte'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { clamp, type Vec2 } from '#lib/math.js'
   import {
     chain_callbacks,
-    create_focus_exit,
     is_activation_key,
+    overlaps_rect,
+    type PixelRect,
     vec2_equal,
   } from '#lib/plot/core/interactions.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
@@ -100,6 +100,9 @@
     hovered = $bindable(false),
     on_bar_click,
     on_bar_hover,
+    selected_bins = $bindable([]),
+    on_select,
+    view = $bindable(),
     ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
@@ -148,6 +151,15 @@
       on_bar_hover?: (
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
+      // Bins overlapping the last Alt+drag rect. Bindable so a host can drive linked views
+      // (or clear it); the chart outlines them. Indices name bins of the current binning, so a
+      // re-bin (pan/zoom, new samples or bin count) empties it.
+      selected_bins?: { series_idx: number; bin_idx: number }[]
+      // Fires on every Alt+drag, including one that selected nothing
+      on_select?: (selection: {
+        bins: (HistogramHandlerProps & { bin_idx: number })[]
+        rect: PixelRect
+      }) => void
       // Called with the series index after a legend click toggles that series
       on_series_toggle?: (series_idx: number) => void
     } = $props()
@@ -231,14 +243,29 @@
 
   // === Binning ===
   // Pad-independent (no pixel scales) so the legend obstacle field and the count ranges reuse it
-  const count_over = (x_domain: Vec2, x2_domain: Vec2) =>
-    compute_histogram_counts(selected_series_entries, {
-      x_domain,
-      x2_domain,
-      x_scale_type: final_x_axis.scale_type,
-      x2_scale_type: final_x2_axis.scale_type,
-      bins,
-    })
+  const count_over = (
+    x_domain: Vec2,
+    x2_domain: Vec2,
+    sorted?: readonly (Float64Array | undefined)[],
+  ) =>
+    compute_histogram_counts(
+      selected_series_entries,
+      {
+        x_domain,
+        x2_domain,
+        x_scale_type: final_x_axis.scale_type,
+        x2_scale_type: final_x2_axis.scale_type,
+        bins,
+      },
+      sorted,
+    )
+  // Each unweighted series' samples in ascending order, sorted on the first pan/zoom frame
+  // (a view that never moves bins once, which a pass over the samples does faster)
+  const sorted_values = $derived(
+    selected_series_entries.map(({ series_data }) =>
+      series_data.weights ? undefined : Float64Array.from(series_data.values).toSorted(),
+    ),
+  )
   // Every view normalizes by the auto-domain totals, so zooming into a tail keeps its density
   const display_bins = (counted: ReturnType<typeof count_over>) =>
     compute_histogram_bins(counted, normalize, series_color, auto_counts)
@@ -327,8 +354,33 @@
     on_ref_line_hover: () => on_ref_line_hover,
     pan: () => pan,
     facet_layout: () => facet_layout,
+    // Alt+drag selects the drawn bins the rect touches
+    on_rect_select: (rect) => {
+      const { current } = frame.ranges
+      const picked = histogram_bins.flatMap((hist) => {
+        const x_scale = frame.scales[hist.x_axis ?? `x`]
+        const y_scale = frame.scales[hist.y_axis ?? `y`]
+        const baseline = y_scale(bar_foot(current[hist.y_axis ?? `y`]))
+        return hist.bins.flatMap((bin, bin_idx) =>
+          bin.count !== 0 &&
+          overlaps_rect(
+            rect,
+            [x_scale(bin.x0), x_scale(bin.x1)],
+            [baseline, y_scale(bin.value)],
+          )
+            ? [{ ...bar_data(hist, bin), bin_idx }]
+            : [],
+        )
+      })
+      selected_bins = picked.map(({ series_idx, bin_idx }) => ({ series_idx, bin_idx }))
+      on_select?.({ bins: picked, rect })
+    },
+    view: { get: () => view, set: (next) => (view = next) },
     clip_id_prefix: `histogram-clip`,
   })
+  const selected_keys = $derived(
+    new Set(selected_bins.map((sel) => roving_key(sel.series_idx, sel.bin_idx))),
+  )
 
   // Bars grow from zero, or from the range floor when zero is off-axis (log, pinned range)
   const bar_foot = ([lower, upper]: Vec2): number =>
@@ -376,9 +428,16 @@
     const { x: coord_x, x2: coord_x_2 } = frame.ranges.current
     if (vec2_equal(coord_x, auto_x_ranges.x) && vec2_equal(coord_x_2, auto_x_ranges.x2))
       return auto_counts
-    return count_over(coord_x, coord_x_2)
+    return count_over(coord_x, coord_x_2, sorted_values)
   })
   let histogram_bins = $derived(display_bins(current_counts))
+  // Selected bins are indices into one binning: another one names different bins
+  let selected_counts = untrack(() => current_counts)
+  $effect.pre(() => {
+    if (current_counts === selected_counts) return
+    selected_counts = current_counts
+    if (untrack(() => selected_bins.length)) selected_bins = []
+  })
 
   // One tab stop for all bins instead of one per bin: a 100-bin histogram would
   // otherwise take 100 presses to tab past. Arrow keys walk the bars.
@@ -448,35 +507,27 @@
   // Hover state is indices only: the tooltip follows rebinned data and closes once its bin is
   // gone. A click pins the hovered bin's tooltip unless on_bar_click takes the click.
   type BinKey = { series_idx: number; bin_idx: number }
-  let hover_key = $state<BinKey | null>(null)
-  const pin = new TooltipPin<BinKey>({
-    key: ({ series_idx, bin_idx }) => `${series_idx}:${bin_idx}`,
-    enabled: () => tooltip !== false && !on_bar_click,
-  })
-  const bin_info = (key: BinKey | null) => {
-    if (!key) return null
+  const bin_info = (key: BinKey) => {
     const hist = histogram_bins.find((binned) => binned.series_idx === key.series_idx)
     const bin = hist?.bins[key.bin_idx]
     // an empty bin draws no bar, so an emptied one's tooltip closes like a removed series'
     return hist && bin?.count ? bar_data(hist, bin) : null
   }
-  const hover_info = $derived(bin_info(pin.shown(hover_key)))
+  const hover = create_mark_hover({
+    key: ({ series_idx, bin_idx }: BinKey) => `${series_idx}:${bin_idx}`,
+    pinnable: () => tooltip !== false && !on_bar_click,
+    info: bin_info,
+    on_clear: () => on_bar_hover?.(null),
+    root: () => frame.svg_element,
+  })
+  const hover_info = $derived(hover.info)
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
   const handle_bar_hover =
     (hist: BinnedSeries, bin_idx: number) => (evt: MouseEvent | FocusEvent) => {
       hovered = true
-      const next = { series_idx: hist.series_idx, bin_idx }
-      if (!pin.same(next, hover_key)) hover_key = next
+      hover.set({ series_idx: hist.series_idx, bin_idx })
       on_bar_hover?.({ ...bar_data(hist, hist.bins[bin_idx]), event: evt })
     }
-  const clear_hover = () => {
-    hover_key = null
-    on_bar_hover?.(null)
-  }
-  clear_stale_hover(() => hover_key && !bin_info(hover_key), clear_hover)
-  clear_stale_hover(() => pin.value && !hover_info, pin.unpin)
-
-  const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
   const handle_bar_click =
     (hist: BinnedSeries, bin_idx: number) => (event: MouseEvent | KeyboardEvent) => {
       if (event instanceof KeyboardEvent) {
@@ -485,7 +536,8 @@
       }
       on_bar_click?.({ ...bar_data(hist, hist.bins[bin_idx]), event })
       // mouse clicks pin through the frame, which also sees clicks on empty space
-      if (event instanceof KeyboardEvent) pin.toggle({ series_idx: hist.series_idx, bin_idx })
+      if (event instanceof KeyboardEvent)
+        hover.pin.toggle({ series_idx: hist.series_idx, bin_idx })
     }
 
   // === Export ===
@@ -523,10 +575,10 @@
   on_mouse_enter={() => (hovered = true)}
   on_mouse_leave={() => {
     hovered = false
-    clear_hover()
+    hover.clear()
   }}
-  on_mouse_click={() => pin.toggle(hover_key)}
-  unpin={pin.unpin}
+  on_mouse_click={hover.toggle_pin}
+  unpin={hover.pin.unpin}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -578,23 +630,24 @@
                 value_px > baseline,
               )}
               fill={hist_patterns[hist.series_idx]?.url ?? hist.color}
-              opacity={pin.lit({ series_idx: hist.series_idx, bin_idx }, hover_key)
+              opacity={hover.lit({ series_idx: hist.series_idx, bin_idx })
                 ? 1
                 : resolved_bar.opacity}
               stroke={resolved_bar.stroke_color}
               stroke-opacity={resolved_bar.stroke_opacity}
               stroke-width={resolved_bar.stroke_width}
+              class:selected-mark={selected_keys.has(roving_key(hist.series_idx, bin_idx))}
               role="button"
               tabindex={roving.tabindex(roving_key(hist.series_idx, bin_idx))}
               data-roving-key={roving_key(hist.series_idx, bin_idx)}
               aria-label={bar_aria_label(hist, bin, bin_idx)}
               onmousemove={handle_bar_hover(hist, bin_idx)}
-              onmouseleave={clear_hover}
+              onmouseleave={hover.clear}
               onfocusin={(evt) => {
                 roving.focusin(evt)
                 handle_bar_hover(hist, bin_idx)(evt)
               }}
-              onfocusout={clear_hover_on_exit}
+              onfocusout={hover.clear_on_focus_exit}
               onclick={handle_bar_click(hist, bin_idx)}
               onkeydown={(evt) => {
                 if (roving.handle_keydown(evt)) return
@@ -637,7 +690,7 @@
   {/snippet}
 
   {#snippet overlays()}
-    {#if hover_info && (hovered || pin.value) && tooltip !== false}
+    {#if hover_info && (hovered || hover.pin.value) && tooltip !== false}
       {@const { value, count, y: coord_y } = hover_info}
       <!-- avoid_cursor off: the anchor snaps to the bin, not the pointer -->
       <PlotTooltip
@@ -649,7 +702,7 @@
         constrain_to={{ width: frame.width, height: frame.height }}
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 120, height: mode === `overlay` ? 60 : 40 }}
-        pinned={pin.value !== null}
+        pinned={hover.pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

@@ -8,7 +8,7 @@ import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import type { ShowControlsProp } from '#lib/controls.js'
 import type { Vec2 } from '#lib/math.js'
-import { type AxisConfig, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+import { type AxisConfig, type AxisRanges, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
 import {
   AXIS_LABEL_HEIGHT,
   DEFAULT_PLOT_PADDING,
@@ -359,11 +359,16 @@ describe(`cartesian frame`, () => {
     `$name rect zoom moves the view, not the bound axis props, and reset restores the pin`,
     async (chart) => {
       const pinned: Vec2 = [0, 400]
-      const bound = $state<Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig>>({
+      const bound = $state<
+        Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig> & {
+          view: Partial<AxisRanges> | undefined
+        }
+      >({
         x_axis: { range: pinned },
         x2_axis: { range: pinned },
         y_axis: { range: pinned },
         y2_axis: { range: pinned },
+        view: undefined,
       })
       const plot = await mount_chart(
         chart,
@@ -394,10 +399,15 @@ describe(`cartesian frame`, () => {
         clientY: clip.y + clip.height * frac_y,
       })
       doc_query(`svg[role="application"]`).dispatchEvent(
-        new MouseEvent(`mousedown`, position(0.25, 0.25)),
+        new PointerEvent(`pointerdown`, position(0.25, 0.25)),
       )
-      window.dispatchEvent(new MouseEvent(`mousemove`, position(0.75, 0.5)))
-      window.dispatchEvent(new MouseEvent(`mouseup`, position(0.75, 0.5)))
+      const svg = doc_query(`svg[role="application"]`)
+      svg.dispatchEvent(
+        new PointerEvent(`pointermove`, { bubbles: true, ...position(0.75, 0.5) }),
+      )
+      svg.dispatchEvent(
+        new PointerEvent(`pointerup`, { bubbles: true, ...position(0.75, 0.5) }),
+      )
       await tick()
 
       for (const axis of shown_axes) {
@@ -406,6 +416,10 @@ describe(`cartesian frame`, () => {
         const [lower, upper] = axis.startsWith(`x`) ? [100, 300] : [200, 300]
         expect(min, axis).toBeGreaterThanOrEqual(lower)
         expect(max, axis).toBeLessThanOrEqual(upper)
+        // the bindable `view` mirrors the zoom out
+        const [view_min, view_max] = bound.view?.[axis] ?? []
+        expect(view_min, axis).toBeCloseTo(lower, 6)
+        expect(view_max, axis).toBeCloseTo(upper, 6)
       }
       const props_unchanged = () => {
         for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
@@ -419,6 +433,16 @@ describe(`cartesian frame`, () => {
       )
       await tick()
       for (const axis of shown_axes) expect(tick_span(axis), axis).toEqual(initial[axis])
+      props_unchanged()
+
+      // a host writing `view` moves the plot without touching the axis props, and its
+      // write is not echoed back changed
+      bound.view = { y: [200, 300] }
+      flushSync()
+      await tick()
+      const [min, max] = tick_span(`y`)
+      expect([min >= 200, max <= 300]).toEqual([true, true])
+      expect(bound.view?.y).toEqual([200, 300])
       props_unchanged()
     },
   )
@@ -466,11 +490,13 @@ describe(`cartesian frame`, () => {
         clientX: 200 + step * 10,
         clientY: 150 + step * 5,
       })
-      svg.dispatchEvent(new MouseEvent(`mousedown`, pan_event(0)))
+      svg.dispatchEvent(new PointerEvent(`pointerdown`, pan_event(0)))
       solves.mockClear()
       const axis_before = svg.querySelector(`.x-axis`)?.innerHTML
       for (let step = 1; step <= 5; step++) {
-        window.dispatchEvent(new MouseEvent(`mousemove`, pan_event(step)))
+        svg.dispatchEvent(
+          new PointerEvent(`pointermove`, { bubbles: true, ...pan_event(step) }),
+        )
         flushSync()
       }
       // it panned, without solving the layout once
@@ -481,7 +507,7 @@ describe(`cartesian frame`, () => {
       flushSync()
       expect(solves.mock.calls.length).toBeGreaterThan(0)
       solves.mockClear()
-      window.dispatchEvent(new MouseEvent(`mouseup`, pan_event(5, 0)))
+      svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true, ...pan_event(5, 0) }))
       flushSync()
       expect(solves.mock.calls.length).toBeGreaterThan(0)
     },

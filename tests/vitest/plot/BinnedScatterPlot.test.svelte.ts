@@ -836,11 +836,19 @@ describe(`BinnedScatterPlot`, () => {
     const area = plot_rect()
     const drag = async (start: Vec2, end: Vec2, init: MouseEventInit = {}) => {
       const down = { bubbles: true, button: 0, clientX: start[0], clientY: start[1], ...init }
-      svg.dispatchEvent(new MouseEvent(`mousedown`, down))
-      window.dispatchEvent(
-        new MouseEvent(`mousemove`, { buttons: 1, clientX: end[0], clientY: end[1] }),
+      svg.dispatchEvent(new PointerEvent(`pointerdown`, down))
+      svg.dispatchEvent(
+        new PointerEvent(`pointermove`, {
+          bubbles: true,
+          buttons: 1,
+          clientX: end[0],
+          clientY: end[1],
+        }),
       )
-      await fire(window, new MouseEvent(`mouseup`, { clientX: end[0], clientY: end[1] }))
+      await fire(
+        svg,
+        new PointerEvent(`pointerup`, { bubbles: true, clientX: end[0], clientY: end[1] }),
+      )
     }
 
     // [min, max] of the numeric tick labels: the view the axis currently shows

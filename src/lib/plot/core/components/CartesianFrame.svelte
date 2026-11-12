@@ -243,6 +243,11 @@
       tabindex="0"
       onfocusin={() => pan_zoom.set_focused(true)}
       onfocusout={() => pan_zoom.set_focused(false)}
+      onpointerdown={pan_zoom.on_pointer_down}
+      onpointermove={pan_zoom.on_pointer_move}
+      onpointerup={pan_zoom.on_pointer_up}
+      onpointercancel={pan_zoom.on_pointer_cancel}
+      onlostpointercapture={pan_zoom.on_pointer_cancel}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
       onkeydown={(event) =>
@@ -257,14 +262,10 @@
         if (event.detail <= 1 && !suppress_click && !drag_start && !is_panning)
           on_mouse_click?.(event)
       }}
-      onwheel={pan_zoom.on_wheel}
       {@attach (svg: SVGSVGElement) =>
-        on(svg, `touchstart`, pan_zoom.on_touch_start as EventListener, { passive: false })}
-      {@attach (svg: SVGSVGElement) =>
-        on(svg, `touchmove`, pan_zoom.on_touch_move as EventListener, { passive: false })}
-      ontouchend={pan_zoom.on_touch_end}
-      ontouchcancel={pan_zoom.on_touch_end}
+        on(svg, `wheel`, pan_zoom.on_wheel as EventListener, { passive: false })}
       style:cursor={pan_zoom.cursor ?? idle_cursor}
+      style:touch-action={pan_zoom.touch_action}
     >
       <!-- An outer top marginal strip sits at the container edge, so the title moves below it -->
       <PlotTitle
@@ -365,5 +366,11 @@
     fill: var(--text-color);
     font-weight: var(--plot-frame-font-weight);
     font-size: var(--plot-frame-font-size);
+  }
+  /* Marks an Alt+drag rect selected (bars, bins, boxes) */
+  svg :global(:is(path.selected-mark, .selected-mark > :is(.iqr-box, .violin-area))) {
+    stroke: var(--plot-selected-stroke, currentColor);
+    stroke-width: var(--plot-selected-stroke-width, 2px);
+    stroke-opacity: 1;
   }
 </style>

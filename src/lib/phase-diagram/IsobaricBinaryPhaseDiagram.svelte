@@ -32,7 +32,7 @@
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { ExportProps } from '#lib/io/export.js'
+  import { svg_sources, type ExportProps } from '#lib/io/export.js'
   import { compute_isopleth, phase_disagreement } from './analysis'
   import {
     BOUNDARY_STYLES,
@@ -1322,7 +1322,11 @@
           bind:export_pane_open
           bind:png_dpi
           {data}
-          {wrapper}
+          components={data?.components}
+          image_sources={svg_sources(() =>
+            // looked up per export: the SVG re-mounts when the diagram is cleared and reloaded
+            wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`),
+          )}
           filename={export_filename}
           {export_formats}
           {on_export}

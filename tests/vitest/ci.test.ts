@@ -223,8 +223,9 @@ test.each([
       // The selected channel needs full Chromium, which --only-shell omits.
       expect(install_args).toContain(`chromium`)
       expect(install_args).not.toContain(`--only-shell`)
-      const test_command = jobs[job].steps.find(({ run }) =>
-        run?.includes(`playwright test`),
+      // not the `--list` step that only finds the shard needing FFmpeg
+      const test_command = jobs[job].steps.find(
+        ({ run }) => run?.includes(`playwright test`) && !run.includes(`--list`),
       )?.run
       expect(test_command).toMatch(/^xvfb-run -a /)
       expect(test_command?.split(/\s+/)).toContain(`--headed`)

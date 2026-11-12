@@ -33,6 +33,7 @@ import {
   expand_range_if_needed,
   invert_rect_range,
   normalize_y2_sync,
+  type PixelRect,
   resolve_axis_ranges,
   snapshot_ranges,
   sync_y2_range,
@@ -131,7 +132,10 @@ interface CartesianFrameOptions {
   on_drag_move?: (coords: { x: number; y: number }, inside_svg: boolean) => void
   // Alt+drag rect, in svg pixel space. Charts that can enumerate their marks implement
   // this to turn the gesture into a selection; omitting it leaves Alt+drag as a zoom.
-  on_rect_select?: (start: { x: number; y: number }, current: { x: number; y: number }) => void
+  on_rect_select?: (rect: PixelRect) => void
+  // The chart's bindable `view` prop: the range each axis shows, mirrored both ways so
+  // hosts can read a pan/zoom and write one (e.g. to sync two plots)
+  view?: { get: () => Partial<AxisRanges> | undefined; set: (view: AxisRanges) => void }
   // Replace a shown axis's generated ticks (e.g. one per category); empty arrays are ignored
   tick_override?: (axis: FacetAxis) => number[] | undefined
   // Axis configs used only when measuring tick labels (categorical axes measure their
@@ -760,6 +764,33 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       apply_y2_sync()
     },
   })
+
+  // Two-way `view` sync, compared by value on both legs so a host mirroring a write back
+  // isn't a new zoom. A differing `view` passed at mount beats the first auto-range mirror.
+  const { view } = opts
+  if (view) {
+    let host_view_pending = untrack(view.get) != null
+    $effect(() => {
+      const { current } = ranges
+      const shown = untrack(view.get)
+      const in_sync = (axis: FacetAxis) =>
+        shown?.[axis] && vec2_equal(shown[axis], current[axis])
+      const host_wins =
+        host_view_pending && FACET_AXES.some((axis) => shown?.[axis] && !in_sync(axis))
+      host_view_pending = false
+      if (!host_wins && !FACET_AXES.every(in_sync)) view.set(snapshot_ranges(current))
+    })
+    $effect(() => {
+      const shown = view.get()
+      if (!shown) return
+      for (const axis of FACET_AXES) {
+        const range = shown[axis]
+        const current = untrack(() => ranges.current[axis])
+        if (range && !vec2_equal(range, current))
+          synced_facet.update_range(axis, [...range] as Vec2)
+      }
+    })
+  }
 
   return {
     get width() {

@@ -13,7 +13,6 @@
   import { sanitize_html } from '#lib/sanitize.js'
   import { partition_point, type Point2D, type Vec2 } from '#lib/math.js'
   import type {
-    AxisRanges,
     BasePlotProps,
     CartesianPlotProps,
     ColorScale,
@@ -81,7 +80,6 @@
     level_densities,
   } from '#lib/plot/core/density-contours.js'
   import type { FacetAxis } from '#lib/plot/core/facets.js'
-  import { FACET_AXES } from '#lib/plot/core/facets.js'
   import type { ObstacleSeries } from '#lib/plot/core/decorations/index.js'
   import { with_obstacle_frame } from '#lib/plot/core/decorations/index.js'
   import SizeLegend from '#lib/plot/core/components/SizeLegend.svelte'
@@ -122,9 +120,8 @@
     axis_transform,
     get_relative_coords,
     is_activation_key,
-    range_bounds,
+    type PixelRect,
     step_point_cursor,
-    vec2_equal,
   } from '#lib/plot/core/interactions.js'
   import {
     create_cartesian_frame,
@@ -264,10 +261,7 @@
       selected_points?: { series_idx: number; point_idx: number }[]
       // Fires on every Alt+drag, including one that selected nothing - a host filtering
       // another view needs to hear "empty" as much as it needs to hear a list
-      on_select?: (selection: {
-        points: InternalPoint<Metadata>[]
-        rect: { x: Vec2; y: Vec2 }
-      }) => void
+      on_select?: (selection: { points: InternalPoint<Metadata>[]; rect: PixelRect }) => void
       // Linked highlighting by key: dims points whose series `point_ids` entry is not in this
       // collection. null turns it off; points without a point_id never dim.
       highlighted_ids?: ReadonlySet<string | number> | readonly (string | number)[] | null
@@ -327,9 +321,6 @@
       // padding in effect, except that an explicit top/bottom smaller than the axes need
       // (an explicit padding stops a plot measuring its titles) reports that need instead.
       resolved_padding?: Required<Sides>
-      // The range each axis shows after pan/zoom. Hosts writing it move the view without
-      // touching axis config, so linked panels share one zoom but keep their own reset target
-      view?: Partial<AxisRanges>
       // Iso-proportion KDE contours under each series' markers (true for the defaults)
       density_contours?: boolean | DensityContourConfig
       // `auto` switches to canvas past CANVAS_MARKER_THRESHOLD visible markers (labelled,
@@ -563,9 +554,8 @@
     facet_layout: () => facet_layout,
     // Alt+drag selects instead of zooming. Hit-tested in screen space so it works for any
     // scale type and a point's own offset counts (the user selects what they see).
-    on_rect_select: (start, current) => {
-      const [x_lo, x_hi] = range_bounds([start.x, current.x])
-      const [y_lo, y_hi] = range_bounds([start.y, current.y])
+    on_rect_select: (rect) => {
+      const [[x_lo, x_hi], [y_lo, y_hi]] = [rect.x, rect.y]
       const picked: InternalPoint<Metadata>[] = []
       for (const series_data of filtered_series) {
         if (!has_marker(series_data, `points`)) continue
@@ -577,8 +567,9 @@
         }
       }
       selected_points = picked.map(({ series_idx, point_idx }) => ({ series_idx, point_idx }))
-      on_select?.({ points: picked, rect: { x: [x_lo, x_hi], y: [y_lo, y_hi] } })
+      on_select?.({ points: picked, rect })
     },
+    view: { get: () => view, set: (next) => (view = next) },
     // Live tooltip while rect-dragging: update for the closest point inside the plot
     // bounds, clear when the cursor leaves the svg
     on_drag_move: (coords, inside_svg) => {
@@ -609,30 +600,6 @@
     // A fresh object per run would loop through a host that feeds it back into the plot
     if (!untrack(() => resolved_padding && sides_equal(resolved_padding, next))) {
       resolved_padding = next
-    }
-  })
-
-  // Two-way `view` sync, compared by value on both legs so a host mirroring a write back
-  // isn't a new zoom. A differing `view` passed at mount beats the first auto-range mirror.
-  let host_view_pending = untrack(() => view) != null
-  $effect(() => {
-    const current = frame.ranges.current
-    const shown = untrack(() => view)
-    const in_sync = (axis: FacetAxis) =>
-      shown?.[axis] && vec2_equal(shown[axis], current[axis])
-    const host_wins =
-      host_view_pending && FACET_AXES.some((axis) => shown?.[axis] && !in_sync(axis))
-    host_view_pending = false
-    if (host_wins || FACET_AXES.every(in_sync)) return
-    view = Object.fromEntries(FACET_AXES.map((axis) => [axis, [...current[axis]] as Vec2]))
-  })
-  $effect(() => {
-    if (!view) return
-    for (const axis of FACET_AXES) {
-      const range = view[axis]
-      const current = untrack(() => frame.ranges.current[axis])
-      if (range && !vec2_equal(range, current))
-        frame.facet.update_range(axis, [...range] as Vec2)
     }
   })
 
@@ -1441,6 +1408,7 @@
     let best_point: InternalPoint<Metadata> | null = null
     let best_axis_distance = Number.POSITIVE_INFINITY
     let best_cross_distance = Number.POSITIVE_INFINITY
+    const [axis_rel, cross_rel] = axis === `x` ? [x_rel, y_rel] : [y_rel, x_rel]
     for (const series_data of filtered_series) {
       const { filtered_data: points, x_direction: direction } = series_data
       if (points.length === 0 || (markers_only && !has_marker(series_data, `points`))) continue
@@ -1466,17 +1434,16 @@
           candidate_end++
         }
       }
+      // Runs per point on every pointer move in `y` mode: no pair allocated per point, and
+      // the cross coordinate projected only for points that tie or beat the best so far
+      const [axis_px, cross_px] =
+        axis === `x` ? [project.x_px, project.y_px] : [project.y_px, project.x_px]
       for (let point_idx = candidate_start; point_idx < candidate_end; point_idx++) {
         const point = points[point_idx]
-        const [cx, cy] = project.point(point)
-        const [axis_distance, cross_distance] =
-          axis === `x`
-            ? [Math.abs(cx - x_rel), Math.abs(cy - y_rel)]
-            : [Math.abs(cy - y_rel), Math.abs(cx - x_rel)]
-        if (
-          axis_distance < best_axis_distance ||
-          (axis_distance === best_axis_distance && cross_distance < best_cross_distance)
-        ) {
+        const axis_distance = Math.abs(axis_px(point) - axis_rel)
+        if (!(axis_distance <= best_axis_distance)) continue
+        const cross_distance = Math.abs(cross_px(point) - cross_rel)
+        if (axis_distance < best_axis_distance || cross_distance < best_cross_distance) {
           best_point = point
           best_axis_distance = axis_distance
           best_cross_distance = cross_distance
@@ -1817,7 +1784,9 @@
     })
   })
 
+  // Shift+arrow stays the frame's keyboard pan
   function move_kbd_cursor(event: KeyboardEvent): boolean {
+    if (event.shiftKey) return false
     const next = step_point_cursor(event.key, kbd_cursor_at?.nav_idx ?? null, kbd_nav.total)
     if (next === null) return false
     event.preventDefault()

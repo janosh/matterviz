@@ -1,10 +1,16 @@
+<script lang="ts">
+  import { COMPONENTS, tag_name } from '#root/src/elements/components.ts'
+
+  const [first_tag, ...other_tags] = Object.values(COMPONENTS).map(tag_name)
+</script>
+
 # Use MatterViz on non‑Svelte sites
 
 ## Custom elements
 
 MatterViz ships its main components prebuilt as [custom elements](https://developer.mozilla.org/docs/Web/API/Web_components/Using_custom_elements) in `matterviz/elements`. They work in plain HTML, React, Vue or any other framework, with Svelte, three.js and every other dependency bundled. Importing the bundle defines these tags:
 
-`mv-structure`, `mv-trajectory`, `mv-periodic-table`, `mv-composition`, `mv-scatter-plot`, `mv-scatter-plot-3d`, `mv-bar-plot`, `mv-spacegroup-bar-plot`, `mv-histogram`, `mv-treemap`, `mv-heatmap-matrix`, `mv-bands`, `mv-dos`, `mv-bands-and-dos`, `mv-brillouin-zone`, `mv-fermi-surface`, `mv-convex-hull`, `mv-isobaric-binary-phase-diagram`, `mv-chem-pot-diagram`, `mv-xrd-plot`, `mv-rdf-plot`
+<code>{first_tag}</code>{#each other_tags as tag (tag)}, <code>{tag}</code>{/each}
 
 Each takes the props of the component it wraps (`mv-structure` takes those of [`Structure`](https://github.com/janosh/matterviz/blob/main/src/lib/structure/Structure.svelte), listed at the bottom of this page) as element properties or attributes. Only the components a page uses are downloaded.
 

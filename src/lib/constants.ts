@@ -145,7 +145,7 @@ export const TRAJ_EXTENSIONS_REGEX = ext_regex(TRAJ_EXTENSIONS)
 // oxfmt-ignore
 export const STRUCTURE_EXTENSIONS = Object.freeze([
   `.cif`, `.mcif`, `.poscar`, `.vasp`, `.cube`, `.lmp`, `.data`, `.dump`, `.pdb`, `.mol`,
-  `.mol2`, `.sdf`, `.mmcif`,
+  `.mol2`, `.sdf`, `.mmcif`, `.pwi`,
 ])
 export const STRUCTURE_EXTENSIONS_REGEX = ext_regex(STRUCTURE_EXTENSIONS)
 export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
@@ -155,6 +155,9 @@ export const TRAJ_FALLBACK_EXTENSIONS_REGEX = ext_regex([
   `.out`,
   `.json`,
 ])
+
+// FHI-aims names its geometry file: geometry.in, Si_geometry.in, geometry.in.next_step
+export const AIMS_GEOMETRY_REGEX = /(?:^|[\\/_.-])geometry\.in(?:\.next_step)?$/i
 
 // Bare VASP filenames that the structure parser supports. INCAR, KPOINTS and POTCAR are
 // left out because advertising unparsable run inputs only earns the caller `Unable to

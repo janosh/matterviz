@@ -116,6 +116,7 @@ type PlotOptionKey =
   | 'legend'
   | 'show_legend'
   | 'pan'
+  | 'view'
   | 'marginals'
   | 'ref_lines'
   | 'on_ref_line_click'
@@ -147,7 +148,6 @@ export type ScatterPlotOptions = PlotElementOptions &
     | 'on_point_click'
     | 'on_point_hover'
     | 'on_plot_click'
-    | 'view'
     | 'resolved_padding'
     | 'marker_renderer'
     | 'error_bar_cap'
@@ -170,6 +170,7 @@ export type BarPlotOptions = PlotElementOptions &
     | 'on_bar_hover'
     | 'on_point_click'
     | 'on_point_hover'
+    | 'on_select'
   >
 
 export type HistogramOptions = PlotElementOptions &
@@ -183,6 +184,7 @@ export type HistogramOptions = PlotElementOptions &
     | 'on_bar_click'
     | 'on_bar_hover'
     | 'on_series_toggle'
+    | 'on_select'
   >
 
 export { create_axis_loader } from './core/axis-utils'

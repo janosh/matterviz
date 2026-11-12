@@ -101,6 +101,9 @@
     if (!result.slab || !info) return []
     const { lattice, sites } = result.slab
     const spacings = info.layer_spacings.map((val) => format_num(val, `.3~f`)).join(`, `)
+    const yes_no = (flag: boolean) => (flag ? `yes` : `no`)
+    const polar =
+      info.is_polar === undefined ? `unknown (no oxidation states)` : yes_no(info.is_polar)
     return [
       [`Miller indices`, `(${info.miller_indices.join(` `)})`],
       [`Interplanar spacing d`, `${format_num(info.d_hkl, `.4~f`)} Å`],
@@ -119,6 +122,8 @@
         `Terminations`,
         `${info.terminations.length} distinct, showing ${info.termination.formula || `empty`}`,
       ],
+      [`Symmetric faces`, yes_no(info.is_symmetric)],
+      [`Polar`, polar],
     ]
   })
 </script>

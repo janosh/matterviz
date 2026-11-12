@@ -900,8 +900,8 @@ test.describe(`ScatterPlot Component Tests`, () => {
       const svg_box = await require_bbox(svg, `svg`)
       await page.mouse.move(svg_box.x + 100, svg_box.y + 100)
       await page.mouse.down()
-      // Cursor is set on document.body during pan drag
-      await expect.poll(() => page.evaluate(() => document.body.style.cursor)).toBe(`grabbing`)
+      // the SVG carries the cursor during a pan drag (a captured pointer takes it from there)
+      await expect(svg).toHaveCSS(`cursor`, `grabbing`)
       await page.mouse.up()
       await page.keyboard.up(`Shift`)
       await expect(svg).toHaveCSS(`cursor`, `crosshair`)

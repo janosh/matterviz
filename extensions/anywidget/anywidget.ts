@@ -7,36 +7,46 @@ import {
   Bands,
   BandsAndDos,
   BarPlot,
+  BoxPlot,
   BrillouinZone,
   check_blob_workers,
   ChemPotDiagram,
   Composition,
   ConvexHull,
   Dos,
+  EosPlot,
   FermiSurface,
   HeatmapMatrix,
   Histogram,
   is_plain_object,
   IsobaricBinaryPhaseDiagram,
+  IsobaricTernaryPhaseDiagram,
+  NebPlot,
   normalize_band_structure,
   normalize_dos,
   PeriodicTable,
+  PhononModeExplorer,
   RdfPlot,
+  Sankey,
   ScatterPlot,
   ScatterPlot3D,
   set_moyo_wasm_source,
   SpacegroupBarPlot,
   Structure,
+  Sunburst,
+  TernaryPlot,
   trajectory_from_json,
   Trajectory,
   Treemap,
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
+// Not the file as is: vite.config.ts's scoped_app_css_plugin serves it scoped to the widgets
 import app_css from 'matterviz/app.css?raw'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
+import type { COMPONENTS } from '../../src/elements/components'
 import type { DrivenProp } from './reactive.svelte'
 import {
   derived_prop,
@@ -56,20 +66,13 @@ await check_blob_workers(`MatterViz`)
 
 const styled_shadow_roots = new WeakSet<ShadowRoot>()
 
-// Widget chrome + bundled app styles. Theme-independent: every token in app.css is
-// light-dark(), resolved against the widget element's own color-scheme (set in render).
-const widget_base_css = `
-    .cell-output-ipywidget-background { background: transparent !important; }
-    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select) {
-      background-color: var(--surface-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px;
-    }
-    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select):focus {
-      outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 25%, transparent);
-    }
-    :is(input, textarea)::placeholder { color: var(--text-color-muted); }
-    select option { background-color: var(--surface-bg); color: var(--text-color); }
-    ${app_css}
-  `
+// The bundled app styles, which reach only into elements of this class (every widget's root),
+// plus VS Code's opaque notebook output background cleared behind them. Theme-independent:
+// every token in app.css is light-dark(), resolved against the widget element's own
+// color-scheme (set in render).
+const WIDGET_CLASS = `matterviz-widget`
+const widget_base_css = `.cell-output-ipywidget-background:has(.${WIDGET_CLASS}) { background: transparent !important; }
+${app_css}`
 
 // Install the app styles once per root (document head, or the widget's shadow root)
 function inject_app_css(target_element: HTMLElement): void {
@@ -150,6 +153,35 @@ const with_plot_controls = (keys: readonly string[]): DrivenProp[] => [
 const cartesian_plot_drive = (keys: readonly string[]): DrivenProp[] => [
   ...plot_common_drive,
   ...with_plot_controls(keys),
+]
+
+// HierarchyChartProps traits Treemap and Sunburst share. Function/snippet props cannot cross
+// the JSON bridge; continuous color props requiring color_values stay local.
+const hierarchy_keys = [
+  `data`,
+  `value_mode`,
+  `sort`,
+  `level_lighten`,
+  `min_fraction`,
+  `max_children`,
+  `other_label`,
+  `max_depth`,
+  `show_labels`,
+  `label_text`,
+  `zoom_on_click`,
+  `show_breadcrumbs`,
+  `legend`,
+  `show_legend`,
+  `value_format`,
+  `padding`,
+  `export_formats`,
+  `export_filename`,
+  `fullscreen_toggle`,
+] as const
+// Two-way: click-zoom in the UI notifies Python; Python can re-root the view
+const hierarchy_drive = (keys: readonly string[]): DrivenProp[] => [
+  ...with_plot_controls([...hierarchy_keys, ...keys]),
+  writeback_prop(`zoom_root_id`),
 ]
 
 // Scene traits forwarded verbatim into scene_props via pick_props.
@@ -341,6 +373,7 @@ export const mount_spec = (
 }
 
 // === Widget registry ===
+// One spec per component of the registry shared with the custom elements, keyed by widget_type.
 // Exported so tests can exercise each widget's drive/writeback/derived wiring.
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
@@ -685,44 +718,177 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     drive: drive_props([`entries`, `config`, `temperature`, `width`, `height`]),
   },
   treemap: {
-    // Function/snippet props cannot cross the JSON bridge; continuous color props
-    // requiring color_values stay local.
     component: Treemap,
+    base_drive: style_base_drive,
+    drive: hierarchy_drive([
+      `padding_inner`,
+      `padding_top`,
+      `padding_outer`,
+      `label_fit`,
+      `label_min_font_size`,
+      `label_max_font_size`,
+      `parent_label_font_size`,
+    ]),
+  },
+  sunburst: {
+    component: Sunburst,
+    base_drive: style_base_drive,
+    drive: hierarchy_drive([`shape`, `inner_radius`, `pad_angle`, `label_rotation`]),
+  },
+  sankey: {
+    component: Sankey,
+    base_drive: style_base_drive,
+    drive: with_plot_controls([
+      `data`,
+      `orientation`,
+      `node_width`,
+      `node_padding`,
+      `node_align`,
+      `min_fraction`,
+      `max_links`,
+      `iterations`,
+      `link_opacity`,
+      `link_color_mode`,
+      `show_node_labels`,
+      `value_format`,
+      `padding`,
+      `legend`,
+      `show_legend`,
+      `fullscreen_toggle`,
+    ]),
+  },
+  box_plot: {
+    component: BoxPlot,
+    base_drive: style_base_drive,
+    drive: cartesian_plot_drive([
+      `show_legend`,
+      `orientation`,
+      `title`,
+      `box`,
+      `whisker`,
+      `median_style`,
+      `sample_style`,
+      `whisker_mode`,
+      `whisker_range`,
+      `whisker_percentiles`,
+      `show_outliers`,
+      `show_mean`,
+      `points`,
+      `show_value_labels`,
+      `value_label_stat`,
+      `value_label_format`,
+      `kind`,
+      `side`,
+      `bandwidth`,
+      `violin_width`,
+      `violin_style`,
+      `kde_clip`,
+    ]),
+  },
+  ternary_plot: {
+    component: TernaryPlot,
     base_drive: style_base_drive,
     drive: [
       ...with_plot_controls([
-        `data`,
-        `value_mode`,
-        `sort`,
-        `level_lighten`,
-        `min_fraction`,
-        `max_children`,
-        `other_label`,
-        `max_depth`,
-        `padding_inner`,
-        `padding_top`,
-        `padding_outer`,
-        `show_labels`,
-        `label_text`,
-        `label_fit`,
-        `label_min_font_size`,
-        `label_max_font_size`,
-        `parent_label_font_size`,
-        `zoom_on_click`,
-        `show_breadcrumbs`,
+        `series`,
+        `labels`,
+        `grid_step`,
+        `show_grid`,
+        `show_ticks`,
+        `tick_format`,
+        `color_scale`,
+        `padding`,
         `legend`,
         `show_legend`,
-        `value_format`,
-        `padding`,
-        `export_formats`,
-        `export_filename`,
         `fullscreen_toggle`,
       ]),
-      // Two-way: click-zoom in the UI notifies Python; Python can re-root the view
-      writeback_prop(`zoom_root_id`),
+      nullable_prop(`color_bar`),
     ],
   },
-}
+  ternary_phase_diagram: {
+    component: IsobaricTernaryPhaseDiagram,
+    static_props: no_file_drop,
+    drive: [
+      ...drive_props([
+        `entries`,
+        `options`,
+        `temperature`,
+        `display`,
+        `free_energy_mode`,
+        `t_range`,
+        `n_samples`,
+        `gas_enabled`,
+        `gas_pressures`,
+        `fullscreen_toggle`,
+        `title`,
+      ]),
+      // Clicked phase (index into the computed diagram's phases) and composition probe
+      writeback_prop(`selected_phase`),
+      writeback_prop(`pinned_composition`),
+    ],
+  },
+  neb_plot: {
+    component: NebPlot,
+    base_drive: style_base_drive,
+    drive: [
+      ...with_plot_controls([
+        `paths`,
+        `coord_options`,
+        `coord_mode`,
+        `energy_reference`,
+        `show_spline`,
+        `annotate_barrier`,
+        `x_axis`,
+        `y_axis`,
+      ]),
+      // The hovered or clicked image, to link e.g. a structure widget showing it
+      writeback_prop(`active_path_key`, ``),
+      writeback_prop(`active_image_idx`, 0),
+    ],
+  },
+  eos_plot: {
+    component: EosPlot,
+    base_drive: style_base_drive,
+    drive: [
+      ...with_plot_controls([
+        `volumes`,
+        `energies`,
+        `kinds`,
+        `show_fit_params`,
+        `data_label`,
+        `x_axis`,
+        `y_axis`,
+      ]),
+      // Output only: the fitted E0, V0, B0, B0' and RMSE per successful kind
+      writeback_prop(`fits`, []),
+    ],
+  },
+  phonon_mode_explorer: {
+    // No show_controls prop: the explorer's panes carry their own chrome
+    component: PhononModeExplorer,
+    base_drive: style_base_drive,
+    drive: [
+      ...drive_props([
+        `dataset`,
+        `spectrum_kind`,
+        `amplitude`,
+        `supercell`,
+        `n_frames`,
+        `fps`,
+        `show_vectors`,
+        `vector_thickness`,
+        `vector_color`,
+        `auto_play`,
+        `pane_ratio`,
+        `show_bz_inset`,
+        `band_coloring`,
+        `mode_values`,
+      ]),
+      // The animated mode { qpoint_idx, mode_idx }: follows clicks on the dispersion/spectrum
+      writeback_prop(`selection`),
+    ],
+  },
+} satisfies Record<keyof typeof COMPONENTS, WidgetSpec>
 
 // Machine-readable trait contract: for each widget_type, every model trait the JS
 // side reads (drive/derived/writeback deps + base drive) or writes (interaction
@@ -754,6 +920,7 @@ const render: Render = (props) => {
     widget_type && Object.hasOwn(WIDGETS, widget_type) ? WIDGETS[widget_type] : undefined
 
   cleanup_element(element)
+  element.classList.add(WIDGET_CLASS)
   inject_app_css(element)
   // Workers fetch moyo from the CDN; a host-served WASM (offline use) keeps symmetry here
   const { matterviz_moyo_wasm_url } = globalThis as { matterviz_moyo_wasm_url?: string }

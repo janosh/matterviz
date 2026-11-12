@@ -771,8 +771,11 @@ export interface CartesianPlotProps extends PlotConfig {
   axis_loading?: `x` | `x2` | `y` | `y2` | null
   // Called with the axis and option key picked from an axis's `options`; the host swaps in the new data
   on_axis_change?: (axis: `x` | `x2` | `y` | `y2`, key: string) => void
-  // Wheel, drag and touch panning/zooming options; `{ enabled: false }` turns it off
+  // Wheel, drag, touch and keyboard panning/zooming options; `{ enabled: false }` turns it off
   pan?: PanConfig
+  // Bindable: the range each axis shows after pan/zoom. Hosts writing it move the view
+  // without touching the axis props, e.g. to sync the zoom of two plots.
+  view?: Partial<AxisRanges>
   // Marginal distribution plots (histogram, KDE, ...) along the plot edges: true, a type, or a per-side map
   marginals?: MarginalsProp
   // Layout context a FacetGrid passes to a child plot so panels share padding and axis ranges

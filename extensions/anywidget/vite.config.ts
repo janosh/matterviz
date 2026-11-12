@@ -10,6 +10,7 @@ import {
   vite_plugin_json_gz,
   vite_plugin_moyo_wasm_source,
 } from '../../src/vite-plugins.ts'
+import { scoped_app_css } from '../../src/elements/scoped-css.ts'
 
 // Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
 // globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.
@@ -41,10 +42,29 @@ export const inline_workers: Plugin = {
   },
 }
 
+// anywidget.ts's `matterviz/app.css?raw` import gets app.css scoped to the widget elements (each
+// carries this class), not the file as is: its bare input/button rules and :root color-scheme
+// would restyle the whole notebook page
+export const widget_scope = `.matterviz-widget`
+let scoped_app_css_served = false
+const scoped_app_css_plugin: Plugin = {
+  name: `scoped-app-css`,
+  enforce: `pre`,
+  load(identifier) {
+    if (!/[\\/]app\.css\?raw$/.test(identifier)) return null
+    scoped_app_css_served = true
+    return `export default ${JSON.stringify(scoped_app_css(widget_scope))}`
+  },
+  buildEnd() {
+    if (!scoped_app_css_served) this.error(`scoped-app-css: no app.css?raw import to scope`)
+  },
+}
+
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
   inline_workers as unknown,
+  scoped_app_css_plugin as unknown,
   vite_plugin_moyo_wasm_source(`moyo-wasm-cdn`, moyo_wasm_source) as unknown,
   vite_plugin_json_gz() as unknown,
   svelte() as unknown,
