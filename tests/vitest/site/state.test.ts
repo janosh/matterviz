@@ -125,21 +125,25 @@ describe(`group_nav_routes`, () => {
     expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
     expect(new Set(all_children).size).toBe(all_children.length)
     expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
-    // shared electronic/phonon demos first, then electronic-only, then phonon-only
+    // shared electronic/phonon demos first, then electronic-only, then phonon-only, each
+    // run under its own dropdown heading
+    const shared = `Electronic & phonon`
     expect(
-      nav_routes.find(({ href }) => href === `/spectral`)?.children.map(({ href }) => href),
+      nav_routes
+        .find(({ href }) => href === `/spectral`)
+        ?.children.map(({ href, section }) => [href, section]),
     ).toEqual(
       [
-        `brillouin-zone`,
-        `bands`,
-        `dos`,
-        `bands-and-dos`,
-        `brillouin-bands-dos`,
-        `electronic-structure`,
-        `fermi-surface`,
-        `ir-raman`,
-        `phonon-mode-explorer`,
-      ].map((slug) => `/spectral/${slug}`),
+        [`brillouin-zone`, shared],
+        [`bands`, shared],
+        [`dos`, shared],
+        [`bands-and-dos`, shared],
+        [`brillouin-bands-dos`, shared],
+        [`electronic-structure`, `Electronic`],
+        [`fermi-surface`, `Electronic`],
+        [`ir-raman`, `Phonon`],
+        [`phonon-mode-explorer`, `Phonon`],
+      ].map(([slug, section]) => [`/spectral/${slug}`, section]),
     )
   })
 })

@@ -63,7 +63,14 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svelte,m
 
 if (routes.length === 0) console.error(`No routes found`)
 
-export type NavGroup = { label: string; href: string; prefixes: string[] }
+// `sections` maps a dropdown heading to the prefixes listed under it, in order, ahead of the
+// group's plain `prefixes`
+export type NavGroup = {
+  label: string
+  href: string
+  prefixes: string[]
+  sections?: Record<string, string[]>
+}
 
 // Top-level nav dropdowns in display order. A route belongs to the first group whose prefix
 // matches it exactly or as a parent path; children keep prefix order, then path order. Where
@@ -73,13 +80,13 @@ export type NavGroup = { label: string; href: string; prefixes: string[] }
 export const NAV_GROUPS: NavGroup[] = [
   { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`] },
   { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
-  // shared electronic/phonon pages, then electronic-only, then phonon-only; the trailing
-  // /spectral claims new demos (listed last) and the hub, which the label links to
-  { label: `Electronic & Phonons`, href: `/spectral`, prefixes: [
-    `/spectral/brillouin-zone`, `/spectral/bands`, `/spectral/dos`, `/spectral/bands-and-dos`,
-    `/spectral/brillouin-bands-dos`, `/spectral/electronic-structure`, `/spectral/fermi-surface`,
-    `/spectral/ir-raman`, `/spectral/phonon-mode-explorer`, `/spectral`,
-  ] },
+  // /spectral claims the hub (the label links to it) and new demos, listed last without a heading
+  { label: `Electronic & Phonons`, href: `/spectral`, prefixes: [`/spectral`], sections: {
+    'Electronic & phonon': [`/spectral/brillouin-zone`, `/spectral/bands`, `/spectral/dos`,
+      `/spectral/bands-and-dos`, `/spectral/brillouin-bands-dos`],
+    Electronic: [`/spectral/electronic-structure`, `/spectral/fermi-surface`],
+    Phonon: [`/spectral/ir-raman`, `/spectral/phonon-mode-explorer`],
+  } },
   { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
   { label: `Plots`, href: `/plot`, prefixes: [`/plot`] },
   { label: `Guides`, href: `/guides`, prefixes: [`/guides`, `/how-to`, `/acknowledgements`] },
@@ -98,8 +105,10 @@ export function group_nav_routes(
   nav_routes: string[],
   groups: NavGroup[] = NAV_GROUPS,
 ): WidgetNavGroup[] {
-  const prefix_idx = (route: string, { prefixes }: NavGroup) =>
-    prefixes.findIndex((prefix) => has_prefix(route, prefix))
+  const prefix_idx = (route: string, { prefixes, sections = {} }: NavGroup) =>
+    [...Object.values(sections).flat(), ...prefixes].findIndex((prefix) =>
+      has_prefix(route, prefix),
+    )
   const unclaimed = nav_routes.filter((route) =>
     groups.every((group) => prefix_idx(route, group) === -1),
   )
@@ -124,6 +133,9 @@ export function group_nav_routes(
           .filter((href) => href !== group.href)
           .map((href) => ({
             href,
+            section: Object.entries(group.sections ?? {}).find(([, prefixes]) =>
+              prefixes.some((prefix) => has_prefix(href, prefix)),
+            )?.[0],
             label:
               ROUTE_LABELS[href] ??
               href
