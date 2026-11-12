@@ -4,7 +4,11 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { is_plain_object } from '#lib/utils.js'
-import { has_lattice_matrix, lattice_unavailable_reason } from './validation'
+import {
+  has_lattice_matrix,
+  has_usable_lattice,
+  lattice_unavailable_reason,
+} from './validation'
 import { get_element_counts } from './density'
 import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
@@ -163,11 +167,17 @@ const site_force = (site: Site): number[] | null => {
   return vec.every(Number.isFinite) ? vec : null
 }
 
+// The 8 free/fixed triples of a site's three axes, indexed by their bits (axis 0 lowest)
+const FLAG_TRIPLES = Array.from({ length: 8 }, (_, bits) =>
+  [1, 2, 4].map((bit) => (bits & bit) > 0),
+)
+
 // Every site's per-axis motion flags (default free) in the basis asked for, or undefined when
 // no site has any. Flags are stored as their file gave them: per lattice vector (POSCAR), or
 // per Cartesian axis and marked `constraint_basis: 'cartesian'` (extXYZ move_mask, QE,
-// FHI-aims). Converting, a target vector is free (fixed) when every source axis it has a
-// component along is; a site with one mixing the two is `null`: that basis cannot express it.
+// FHI-aims). Converting, a target vector is free when it has no component along a fixed source
+// axis, and the free ones must span what the free source axes do (as many of each), else the
+// site is `null`: that basis cannot express its constraint. Converted once per triple.
 function site_move_flags(
   structure: AnyStructure,
   cartesian: boolean,
@@ -175,17 +185,33 @@ function site_move_flags(
   const flagged = (site: Site) => Array.isArray(site.properties?.selective_dynamics)
   if (!structure.sites.some(flagged)) return undefined
   const matrix = `lattice` in structure ? structure.lattice?.matrix : undefined
-  let rows: Matrix3x3 | undefined // the target basis vectors in source components
+  let converted: (boolean[] | null)[] | undefined
+  const convert = (lattice: Matrix3x3) => {
+    // The target basis vectors in source components. A singular cell gives the Cartesian axes
+    // none: NaN rows are free only under all-free flags, so just the mixed triples are null.
+    const rows = !cartesian
+      ? lattice
+      : has_usable_lattice(structure)
+        ? math.matrix_inverse_3x3(lattice)
+        : lattice.map((row) => row.map(() => NaN))
+    return FLAG_TRIPLES.map((flags) => {
+      const free = rows.map((vec) => {
+        const tol = 1e-8 * Math.hypot(...vec)
+        return flags.every((axis_free, axis) => axis_free || Math.abs(vec[axis]) <= tol)
+      })
+      return free.filter(Boolean).length === flags.filter(Boolean).length ? free : null
+    })
+  }
   return structure.sites.map((site) => {
     const stored: unknown = site.properties?.selective_dynamics
-    const flags = [0, 1, 2].map((axis) => !Array.isArray(stored) || stored[axis] !== false)
-    const in_basis = (site.properties?.constraint_basis === `cartesian`) === cartesian
-    if (in_basis || !flagged(site) || matrix?.length !== 3) return flags
-    rows ??= cartesian ? math.matrix_inverse_3x3(matrix) : matrix
-    const along = rows.map(
-      (vec) => new Set(flags.filter((_, axis) => Math.abs(vec[axis]) > 1e-8)),
+    if (!Array.isArray(stored)) return FLAG_TRIPLES[7]
+    const bits = [1, 2, 4].reduce(
+      (sum, bit, axis) => sum + (stored[axis] === false ? 0 : bit),
+      0,
     )
-    return along.every((set) => set.size === 1) ? along.map((set) => set.has(true)) : null
+    const in_basis = (site.properties?.constraint_basis === `cartesian`) === cartesian
+    if (in_basis || matrix?.length !== 3) return FLAG_TRIPLES[bits]
+    return (converted ??= convert(matrix))[bits]
   })
 }
 const constraint_reason = (

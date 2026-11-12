@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { memo_by_identity, value_key } from '#lib/utils.js'
+  import { value_key } from '#lib/utils.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
@@ -113,12 +113,16 @@
   let previous_run: TrajectoryRun | undefined
   let auto_calculation_attempted = false
   const requests = create_request_owner()
-  // One collect per run (whose data is fixed) and collection settings: a timing or preprocessing
-  // edit recomputes the same input object, which the worker retains, without a re-read or re-send
-  const collected_input_of = memo_by_identity<Promise<TrajectorySpectroscopyInput>>()
+  // The current run's collect (run data is fixed) for its collection settings: a timing or
+  // preprocessing edit recomputes the same input object, which the worker retains, without a
+  // re-read or re-send. One slot, dropped with the run: an input can be hundreds of MB.
+  let collected:
+    | { key: string; input: Promise<TrajectorySpectroscopyInput>; signal?: AbortSignal }
+    | undefined
   $effect(() => {
     if (run === previous_run) return
     previous_run = run
+    collected = undefined
     requests.cancel()
     result = undefined
     auto_calculation_attempted = false
@@ -157,11 +161,13 @@
     error_msg = undefined
     progress = null
     try {
-      const collected_input = await collected_input_of(
-        request_run,
-        value_key(collection),
-        () =>
-          collect_trajectory_spectroscopy_input(request_run, {
+      const key = value_key(collection)
+      // not a collect its own (since aborted) request doomed
+      if (collected?.key !== key || collected.signal?.aborted) {
+        const slot: NonNullable<typeof collected> = {
+          key,
+          signal,
+          input: collect_trajectory_spectroscopy_input(request_run, {
             ...collection_settings,
             frame_stride,
             preprocessing: options.preprocessing,
@@ -170,7 +176,14 @@
               if (request_is_current()) progress = next_progress
             },
           }),
-      )
+        }
+        collected = slot
+        slot.input.then(
+          () => (slot.signal = undefined), // collected: outlives its request's abort
+          () => collected === slot && (collected = undefined),
+        )
+      }
+      const collected_input = await collected.input
       if (!request_is_current()) return
       calculation_phase = `computing`
       const calculation_result = await compute_trajectory_spectroscopy_async(
@@ -196,11 +209,14 @@
     }
   }
 
-  // Unmount: abort this pane's request and release an idle worker. Other mounted panes'
-  // requests share the client and must survive.
-  $effect(() => () => {
-    requests.cancel()
-    compute_trajectory_spectroscopy_async.release()
+  // Unmount: abort this pane's request and release its claim on the worker, which other
+  // mounted panes share
+  $effect(() => {
+    const unmount = compute_trajectory_spectroscopy_async.mount()
+    return () => {
+      requests.cancel()
+      unmount()
+    }
   })
 
   // The inline trajectory analysis is ready on first entry. Attempt it once per run so

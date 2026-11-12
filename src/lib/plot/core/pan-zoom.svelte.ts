@@ -102,7 +102,8 @@ export function create_pan_zoom(opts: PanZoomOptions): {
 
   // Zoom `init` by `factor` about `anchor` (the fixed point as fractions of the plot from its
   // left and bottom edges), then pan it by px. Transforms the whole batch before writing: a
-  // rejected log range must leave every axis unchanged
+  // rejected log range (a RangeError no event handler's caller would catch) must leave every
+  // axis unchanged
   const move_view = (
     init: AxisRanges,
     [dx_px, dy_px]: Vec2,
@@ -111,15 +112,23 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     axes = opts.axes(),
   ) => {
     const { width, height } = opts.plot_bounds()
-    const ranges = axes.map((axis) => {
-      const [dim, delta, span] = axis.startsWith(`x`) ? [0, dx_px, width] : [1, dy_px, height]
-      const scale_type = opts.scale_type(axis)
-      const zoomed =
-        factor === 1
-          ? init[axis]
-          : zoom_range_by_factor(init[axis], factor, scale_type, anchor[dim])
-      return delta ? pan_range_by_pixels(zoomed, delta, span, scale_type) : zoomed
-    })
+    let ranges: Vec2[]
+    try {
+      ranges = axes.map((axis) => {
+        const [dim, delta, span] = axis.startsWith(`x`)
+          ? [0, dx_px, width]
+          : [1, dy_px, height]
+        const scale_type = opts.scale_type(axis)
+        const zoomed =
+          factor === 1
+            ? init[axis]
+            : zoom_range_by_factor(init[axis], factor, scale_type, anchor[dim])
+        return delta ? pan_range_by_pixels(zoomed, delta, span, scale_type) : zoomed
+      })
+    } catch (error) {
+      if (error instanceof RangeError) return
+      throw error
+    }
     ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
   }
 
@@ -256,8 +265,10 @@ export function create_pan_zoom(opts: PanZoomOptions): {
         else opts.on_rect_select?.({ x: x_span, y: y_span })
       }
     }
+    // A third finger never joined the pinch of the first two: lifting it ends nothing
+    const bystander = [...touches.keys()].indexOf(evt.pointerId) > 1
     touches.delete(evt.pointerId)
-    end_gestures()
+    if (!bystander) end_gestures()
   }
 
   // Wheel: ctrl zooms about the cursor (a trackpad pinch arrives as ctrl+wheel, which would

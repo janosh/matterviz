@@ -3,7 +3,7 @@
 // to leave every module's suite green.
 import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
 import { serve_worker } from '#lib/worker-serve.js'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 import type { StubWorkerInstance, StubWorkerMessage } from './setup'
 import { install_stub_worker } from './setup'
 
@@ -98,21 +98,57 @@ describe(`worker teardown`, () => {
     void second.catch(() => {})
   })
 
-  test(`release terminates an idle worker but leaves in-flight requests alone`, async () => {
-    const run = make_client()
-    const pending = run({ tag: `busy` }, {})
-    const [worker] = workers()
-    // Another pane unmounting must not reject this pane's request
-    run.release()
-    expect(worker.terminated).toBe(0)
-    reply(worker)
-    await expect(pending).resolves.toBe(`done`)
-    run.release()
-    expect(worker.terminated).toBe(1)
-    // the next request constructs a fresh worker
-    void run({ tag: `next` }, {}).catch(() => {})
-    expect(workers()).toHaveLength(2)
-  })
+  // `retained`: only a retaining worker outlives the abort of its request's last waiter
+  test.each([
+    [`resolves`, 0],
+    [`rejects`, 0],
+    [`is abandoned`, 1],
+  ] as const)(
+    `the worker ends with its last mount, once a request that %s has settled`,
+    async (outcome, retained) => {
+      const run = make_client(undefined, retained)
+      const input = { tag: `a` }
+      const answer = (worker: StubWorkerInstance, data: object = { result: `done` }) =>
+        worker.emit(`message`, { data: { id: worker.posted.at(-1)?.message.id, ...data } })
+      // a client nobody mounted (direct API use) keeps its idle worker
+      request(run, input)
+      const [worker] = workers()
+      const unmounts = [run.mount(), run.mount()]
+      unmounts[0]()
+      expect(worker.terminated).toBe(0) // still claimed by the other mount
+      const abort = new AbortController()
+      const pending = run(input, { step: 1 }, { signal: abort.signal })
+      // the last pane unmounting must not reject a request still in flight
+      unmounts[1]()
+      expect(worker.terminated).toBe(0)
+      if (outcome === `resolves`) {
+        answer(worker)
+        await expect(pending).resolves.toBe(`done`)
+      } else if (outcome === `rejects`) {
+        answer(worker, { error: `boom` })
+        await expect(pending).rejects.toThrow(`boom`)
+      } else {
+        abort.abort()
+        await expect(pending).rejects.toMatchObject({ name: `AbortError` })
+        expect(worker.terminated).toBe(0)
+        answer(worker, { result: `stale` })
+      }
+      expect(worker.terminated).toBe(1)
+      // a remount before the work settles cancels that end, until it unmounts in turn
+      const next = run(input, { step: 2 })
+      const replacement = workers()[1]
+      run.mount()()
+      const unmount = run.mount()
+      answer(replacement)
+      await expect(next).resolves.toBe(`done`)
+      expect(replacement.terminated).toBe(0)
+      unmount()
+      expect(replacement.terminated).toBe(1)
+      // unmounted again, the client is back to keeping the worker of a direct request
+      request(run, input, 3)
+      expect(workers().map(({ terminated }) => terminated)).toEqual([1, 1, 0])
+    },
+  )
 })
 
 describe(`request dedupe`, () => {
@@ -448,7 +484,7 @@ describe(`per-request options`, () => {
         worker.emit(`message`, { data: { id, result: `done`, error: null } })
       }
       await expect(retry).resolves.toBe(`done`)
-      run.release()
+      run.cancel()
     },
   )
 
@@ -671,10 +707,12 @@ test(`a retained input is sent once, named afterwards, and dropped once least re
 })
 
 // terminating the busy worker (as non-retaining clients do) would re-send the whole input on
-// every options edit made during a compute
-test.each([`release`, `cancel`] as const)(
-  `requests abandoned mid-compute keep the retaining worker, only the latest follows, and a worker replaced after %s is sent the input again`,
+// every options edit made during a compute, so it gets a grace of 1000 ms to finish
+test.each([`unmount`, `cancel`] as const)(
+  `requests abandoned mid-compute keep the retaining worker for a grace, only the latest follows, and a worker replaced after %s is sent the input again`,
   async (end_worker) => {
+    vi.useFakeTimers()
+    onTestFinished(() => void vi.useRealTimers())
     const run = make_client(undefined, 1)
     const input = { tag: `a` }
     const controllers = [0, 1, 2].map(() => new AbortController())
@@ -692,11 +730,54 @@ test.each([`release`, `cancel`] as const)(
     expect(options).toEqual({ step: 3 })
     worker.emit(`message`, { data: { id, result: `done` } })
     await expect(latest).resolves.toBe(`done`)
+    // the reply came within the grace, so nothing ends once that has passed
+    vi.advanceTimersByTime(2000)
+    expect([worker.terminated, run.holds(input)]).toEqual([0, true])
     // idle again, so an unmount ends the worker, and its replacement starts empty
-    run[end_worker]()
+    if (end_worker === `unmount`) run.mount()()
+    else run.cancel()
     expect([worker.terminated, run.holds(input)]).toEqual([1, false])
     for (const step of [4, 5]) request(run, input, step)
-    expect(posts(workers()[1])).toEqual([`+a`, `a`])
+    const replacement = workers()[1]
+    expect(posts(replacement)).toEqual([`+a`, `a`])
+    const answer = (to: StubWorkerInstance) =>
+      to.emit(`message`, { data: { id: to.posted.at(-1)?.message.id, result: `done` } })
+    // posts (or queues) a request for `abort` to take its only caller from
+    const abandoned = (step: number) => {
+      const controller = new AbortController()
+      void run(input, { step }, { signal: controller.signal }).catch(() => {})
+      return () => controller.abort()
+    }
+    // a request another caller still awaits is not abandoned: no grace runs out on it
+    const leave = abandoned(6)
+    const wanted = run(input, { step: 6 })
+    leave()
+    vi.advanceTimersByTime(1000)
+    expect(replacement.terminated).toBe(0)
+    answer(replacement)
+    await expect(wanted).resolves.toBe(`done`)
+    // a reply within the grace ends it: the request posted next has a full grace of its own
+    const [abandon_posted, abandon_next] = [abandoned(7), abandoned(8)]
+    abandon_posted()
+    vi.advanceTimersByTime(600)
+    answer(replacement) // posts the next, naming the input
+    abandon_next()
+    const queued = run(input, { step: 9 })
+    vi.advanceTimersByTime(999) // 599 ms past the first grace
+    expect([replacement.terminated, workers().length]).toEqual([0, 2])
+    expect(posts(replacement).slice(3)).toEqual([`a`, `a`])
+    // past it the worker is ended, and the waiting request goes to a new one with its input
+    vi.advanceTimersByTime(1)
+    const third = workers()[2]
+    expect([replacement.terminated, posts(third)]).toEqual([1, [`+a`]])
+    answer(third)
+    await expect(queued).resolves.toBe(`done`)
+    // with nothing waiting, a worker that never replies is still freed
+    abandoned(10)()
+    vi.advanceTimersByTime(999)
+    expect([third.terminated, run.holds(input)]).toEqual([0, true])
+    vi.advanceTimersByTime(1)
+    expect([third.terminated, run.holds(input), workers().length]).toEqual([1, false, 3])
   },
 )
 

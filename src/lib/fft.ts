@@ -263,10 +263,11 @@ export function one_sided_periodogram(
     if (component_weight > 0) weighted.push(component_idx)
   }
   // Each component enters scaled by the root of its weight, so its |X(k)|^2 carries the weight
+  const roots = component_means.map((_, idx) => Math.sqrt(component_weights?.[idx] ?? 1))
   const windowed = (sample_idx: number, component_idx: number): number =>
     (values[sample_idx * n_components + component_idx] - component_means[component_idx]) *
     weights[sample_idx] *
-    Math.sqrt(component_weights?.[component_idx] ?? 1)
+    roots[component_idx]
   const density_scale = sample_interval / window_energy / 2
   for (let pair_idx = 0; pair_idx < weighted.length; pair_idx += 2) {
     // Two real components packed as z = a + i b share one transform, halving the FFT count (as

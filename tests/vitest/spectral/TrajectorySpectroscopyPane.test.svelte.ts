@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
   const release = vi.fn()
   return {
     collect: vi.fn(),
-    compute: Object.assign(vi.fn(), { cancel, release }),
+    compute: Object.assign(vi.fn(), { cancel, mount: () => release }),
     cancel,
     release,
   }
@@ -192,14 +192,15 @@ test.each([
 )
 
 test.each([
-  [`IR response`, `current`, { infrared_key: `current`, infrared_kind: `current` }],
-  [`IR signal type`, `dipole`, { infrared_kind: `dipole` }],
-  [`Branch-continuous`, true, { polarization_branch_continuous: true }],
-  [`Raman tensor`, ``, { raman_key: null }],
-  [`Preprocessing`, `raw`, { preprocessing: `raw` }],
-])(
+  [`IR response`, `current`, { infrared_key: `current`, infrared_kind: `current` }, `collect`],
+  [`IR signal type`, `dipole`, { infrared_kind: `dipole` }, `collect`],
+  [`Branch-continuous`, true, { polarization_branch_continuous: true }, `collect`],
+  [`Raman tensor`, ``, { raman_key: null }, `collect`],
+  // unstrided signals need no body-frame alignment, so the preprocessing is the compute's alone
+  [`Preprocessing`, `raw`, { preprocessing: `raw` }, `compute`],
+] as const)(
   `recollects only what changing %s alongside timing affects`,
-  async (label, value, expected_options) => {
+  async (label, value, expected_options, stage) => {
     mocks.compute.mockResolvedValue(make_result(`computed`))
     const target = render_pane({
       run: {
@@ -225,10 +226,7 @@ test.each([
     await set_timing(target, `timestep`, `2`)
     calculation_button(target).click()
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
-    // unstrided signals need no body-frame alignment, so the preprocessing is the compute's alone
-    const [stage, n_collects] =
-      label === `Preprocessing` ? ([`compute`, 1] as const) : ([`collect`, 2] as const)
-    expect(mocks.collect).toHaveBeenCalledTimes(n_collects)
+    expect(mocks.collect).toHaveBeenCalledTimes(stage === `collect` ? 2 : 1)
     expect(mocks[stage].mock.lastCall?.[1]).toMatchObject(expected_options)
   },
 )
@@ -377,7 +375,7 @@ test.each([`collect`, `compute`] as const)(
     expect(mocks.release).not.toHaveBeenCalled()
     await unmount(component)
     expect(signal.aborted).toBe(true)
-    // Release an idle worker without rejecting another pane's in-flight request.
+    // Its claim on the worker is released without rejecting another pane's in-flight request.
     expect(mocks.release).toHaveBeenCalledOnce()
     expect(mocks.cancel).not.toHaveBeenCalled()
   },

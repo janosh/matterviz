@@ -28,6 +28,12 @@ const pool = Array.from({ length: RDF_WORKER_COUNT }, create_rdf_client)
 // early never queues behind a busy worker while another sits idle
 const in_flight = pool.map(() => 0)
 
+// A component's claim on the pool, returning its release: idle workers end with the last one
+export const mount_rdf_workers = (): (() => void) => {
+  const unmounts = pool.map((client) => client.mount())
+  return () => unmounts.forEach((unmount) => unmount())
+}
+
 export const calc_rdfs_async = async (
   ...args: Parameters<(typeof pool)[number]>
 ): Promise<RdfPattern[]> => {

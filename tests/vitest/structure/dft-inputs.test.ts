@@ -127,6 +127,9 @@ test.each([
   [`a missing nat`, parse_qe, qe_input(`ibrav = 0`, `${cubic_cell}\n${one_atom}`), /needs a numeric nat/],
   [`a non-element label`, parse_qe, qe_input(`ibrav = 0, nat = 1`, `${cubic_cell}\nATOMIC_POSITIONS crystal\nQq1 0 0 0`), /'Qq' is not an element symbol/],
   [`an expression coordinate`, parse_qe, qe_input(`ibrav = 0, nat = 1`, `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 1/3 0 0`), /row 1: expected 3 finite coordinates/],
+  [`an unknown constraint`, parse_aims, `atom 0 0 0 Si\nconstrain_relaxation foo`, /line 2: constrain_relaxation takes .true., .false., x, y or z, not 'foo'/],
+  ...[`0`, `0 0`, `0 0 0 0`, `0 2 0`, `0 0 T`].map((if_pos): [string, typeof parse_qe, string, RegExp] => [
+    `if_pos flags '${if_pos}'`, parse_qe, qe_input(`ibrav = 0, nat = 1`, `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 0 0 0 ${if_pos}`), /row 1: expected 3 coordinates and no or 3 if_pos flags \(0 or 1\)/]),
   [`no &SYSTEM namelist`, parse_qe, `ATOMIC_POSITIONS crystal\nSi 0 0 0`, /no &SYSTEM namelist/],
 ])(`rejects %s`, (_name, parse, content, error) => {
   expect(() => parse(content)).toThrow(error)
@@ -141,16 +144,20 @@ test(`fixed-atom flags are kept per Cartesian axis and converted on export`, () 
   // per-axis constraints accumulate; one under a lattice_vector constrains the cell, no atom
   const by_axis = `${cubic_aims}constrain_relaxation .true.\natom 0 0 0 Si\nconstrain_relaxation x\nconstrain_relaxation Z`
   expect(flags(parse_aims(by_axis))).toEqual([[false, true, false]])
+  // .false. constrains nothing: it must not mark the atom as carrying flags
+  const unconstrained = `atom 0 0 0 Si\nconstrain_relaxation .false.\natom 1 1 1 Si\nconstrain_relaxation y\nconstrain_relaxation .false.`
+  expect(flags(parse_aims(unconstrained))).toEqual([undefined, [true, false, true]])
   const hex = `ibrav = 4, celldm(1) = 6, celldm(3) = 1.5`
   const fcc = `ibrav = 2, celldm(1) = 10.2`
-  // a lattice vector is free (fixed) when every Cartesian axis it has a component along is:
-  // hexagonal a and b span xy; fcc vectors each span two axes, so only equal flags convert
+  // a lattice vector is free when it has no component along a fixed Cartesian axis, and the
+  // free ones must span what the free axes do: hexagonal a and c span xz, but only c lies in
+  // yz; fcc vectors each span two axes, so only equal flags convert
   // [&SYSTEM, if_pos, POSCAR flags or null when POSCAR cannot express them]
   // oxfmt-ignore
   const cases: [string, string, string | null][] = [
     [`ibrav = 0`, `0 0 1`, `F F T`], [`ibrav = 0`, `1 0 1`, `T F T`],
-    [hex, `0 0 1`, `F F T`], [hex, `1 1 0`, `T T F`], [hex, `1 0 1`, null],
-    [fcc, `0 0 1`, null], [fcc, `0 0 0`, `F F F`],
+    [hex, `0 0 1`, `F F T`], [hex, `1 1 0`, `T T F`], [hex, `1 0 1`, `T F T`],
+    [hex, `0 1 1`, null], [fcc, `0 0 1`, null], [fcc, `1 1 0`, null], [fcc, `0 0 0`, `F F F`],
   ]
   for (const [system, if_pos, poscar_flags] of cases) {
     const cards = `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 0 0 0 ${if_pos}`

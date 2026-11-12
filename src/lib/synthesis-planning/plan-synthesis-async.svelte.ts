@@ -24,5 +24,5 @@ export const plan_synthesis_async = Object.assign(
     request: SynthesisPlanRequest,
     options: WorkerRequestOptions<SynthesisPlanProgress> = {},
   ): Promise<SynthesisPlan> => run_plan(request, undefined, options),
-  { cancel: run_plan.cancel, release: run_plan.release },
+  { cancel: run_plan.cancel, mount: run_plan.mount },
 )

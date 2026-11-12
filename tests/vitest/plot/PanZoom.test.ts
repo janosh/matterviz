@@ -128,7 +128,11 @@ describe(`alt+drag rect selection`, () => {
   test.each([
     [`bars`, 3, mount_bar],
     [`bins`, 3, mount_hist],
-    [`boxes`, 1, mount_box],
+    [
+      `boxes`,
+      2,
+      (props: object) => mount_box({ series: [{ y: [1, 2, 3] }, { y: [2, 3, 4] }], ...props }),
+    ],
   ] as const)(`alt+drag selects the %s the rect touches`, async (key, n_marks, mount_plot) => {
     const on_select = vi.fn()
     // y pinned for headroom above every mark
@@ -139,9 +143,9 @@ describe(`alt+drag rect selection`, () => {
     const ticks_before = ticks()
     const [left, top] = [clip.x + 1, clip.y + 1]
     const [right, bottom] = [clip.x + clip.width - 1, clip.y + clip.height] // on the baseline
-    // selects from the top left down to `to_y`: [n marks reported, n marks outlined]
-    const select = async (to_y: number) => {
-      await drag(svg, { x: left, y: top }, { x: right, y: to_y }, { altKey: true })
+    // selects from the top left to `to_x`, `to_y`: [n marks reported, n marks outlined]
+    const select = async (to_y: number, to_x = right) => {
+      await drag(svg, { x: left, y: top }, { x: to_x, y: to_y }, { altKey: true })
       return [on_select.mock.lastCall?.[0][key].length, n_selected()]
     }
     expect(await select(bottom)).toEqual([n_marks, n_marks])
@@ -150,6 +154,8 @@ describe(`alt+drag rect selection`, () => {
     expect(ticks()).toEqual(ticks_before)
     // a sliver along the top edge, above every mark
     expect(await select(top + 6)).toEqual([0, 0])
+    // the full-height left 30% holds the first mark only: the rect's x extent counts too
+    expect(await select(bottom, left + 0.3 * clip.width)).toEqual([1, 1])
     // bin indices name bins of one binning: a zoom re-bins, which drops the selection
     if (key !== `bins`) return
     expect(await select(bottom)).toEqual([n_marks, n_marks])
@@ -226,6 +232,27 @@ test(`touch gestures off leave touches and the page's own scrolling alone`, asyn
   expect(svg.style.touchAction).toBe(`auto`)
   const touch = { pointerType: `touch` }
   expect(await drag(svg, { x: 150, y: 120 }, { x: 250, y: 200 }, touch)).toBeNull()
+})
+
+// Two-finger gestures that must not move the view: a pinch too tight to scale from (the ratio
+// to its ~0 start distance would blow the zoom up), one the browser took over mid-gesture, and
+// one whose first finger landed in the axis margin (the second alone only draws a rect)
+// oxfmt-ignore
+test.each<[string, [type: string, pointer_id: number, client_x: number][]]>([
+  [`a one-pixel pinch`, [[`pointerdown`, 1, 100], [`pointerdown`, 2, 101], [`pointermove`, 1, 80], [`pointermove`, 2, 250]]],
+  [`a cancelled then resumed pinch`, [[`pointerdown`, 1, 100], [`pointerdown`, 2, 200], [`pointercancel`, 1, 100], [`pointermove`, 1, 150], [`pointermove`, 2, 250]]],
+  [`a pinch whose first finger is in the margin`, [[`pointerdown`, 1, 10], [`pointerdown`, 2, 100], [`pointermove`, 1, 100], [`pointermove`, 2, 300]]],
+])(`%s leaves the view alone`, async (_name, events) => {
+  const svg = await mount_scatter()
+  const axes = () => [`.x-axis`, `.y-axis`].map((axis) => svg.querySelector(axis)?.innerHTML)
+  const before = axes()
+  expect(before.every((axis) => axis?.includes(`tick`))).toBe(true)
+  for (const [type, pointerId, clientX] of events) {
+    const init = { pointerType: `touch`, pointerId, buttons: 1, clientX, clientY: 120 }
+    svg.dispatchEvent(pointer(type, init))
+    await tick()
+  }
+  expect(axes()).toEqual(before)
 })
 
 describe(`shared plot drag zoom bounds`, () => {

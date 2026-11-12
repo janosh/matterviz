@@ -99,7 +99,7 @@
       .finally(() => {
         if (!signal.aborted) pending = false
       })
-    return () => compute_opportunity_map_async.release()
+    return compute_opportunity_map_async.mount()
   })
   const best_route = (cell: OpportunityCell) =>
     cell.routes

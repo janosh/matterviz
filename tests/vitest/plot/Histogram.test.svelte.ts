@@ -83,14 +83,6 @@ const y_ticks_after = async (props: Record<string, unknown>) => {
 const max_y_tick = async (props: Record<string, unknown>) =>
   Math.max(...(await y_ticks_after(props)))
 
-const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
-  const evt = new Event(type, { bubbles: true, cancelable: true })
-  Object.defineProperty(evt, `touches`, {
-    value: touches.map(([clientX, clientY]) => ({ clientX, clientY })),
-  })
-  return evt
-}
-
 // oxfmt-ignore
 const series_of = (values: number[], extra: Partial<HistogramSeries> = {}): HistogramSeries => ({ values, ...extra })
 // oxfmt-ignore
@@ -649,22 +641,6 @@ describe(`Histogram`, () => {
     const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
     expect(value).toBeCloseTo(Math.sqrt(10), 12)
     expect(x).toBe(value)
-  })
-
-  // oxfmt-ignore
-  test.each([
-    [`a one-pixel pinch`, [[`touchstart`, [[100, 100], [101, 100]]], [`touchmove`, [[50, 100], [250, 100]]]]],
-    [`a cancelled then resumed pinch`, [[`touchstart`, [[100, 100], [200, 100]]], [`touchcancel`, []], [`touchmove`, [[150, 150], [250, 150]]]]],
-    [`a pinch from the plot edge`, [[`touchstart`, [[10, 100], [100, 100]]], [`touchmove`, [[100, 100], [300, 100]]]]],
-  ] as const)(`%s keeps finite axis ranges`, async (_name, events) => {
-    await mount_histogram({ series: [{ values: [1, 2, 3, 4, 5], label: `A` }] })
-    const svg = plot_svg()
-    const ticks_before = { x: get_tick_numbers(`x`), y: get_tick_numbers(`y`) }
-    expect(ticks_before.x.length).toBeGreaterThan(0)
-    for (const [type, touches] of events) svg.dispatchEvent(touch_event(type, touches))
-    await tick()
-    expect(get_tick_numbers(`x`)).toEqual(ticks_before.x)
-    expect(get_tick_numbers(`y`)).toEqual(ticks_before.y)
   })
 
   test(`controls pane toggles the legend and reset restores the default`, async () => {

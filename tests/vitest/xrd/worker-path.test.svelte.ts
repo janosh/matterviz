@@ -4,6 +4,7 @@ import { compute_xrd_pattern } from '#lib/xrd/calc-xrd.js'
 import type { SaedOptions, XrdOptions } from '#lib/xrd/index.js'
 import { compute_saed_pattern } from '#lib/xrd/saed.js'
 import type { Crystal } from '#lib/structure/index.js'
+import { flushSync, mount, unmount } from 'svelte'
 import { expect, test } from 'vitest'
 import { expect_worker_safe_import_graph, install_stub_worker } from '../setup'
 import { make_rocksalt } from '../test-fixtures'
@@ -13,7 +14,7 @@ const stub = install_stub_worker<Request>(({ input, options }) =>
   (`zone_axis` in options ? compute_saed_pattern : compute_xrd_pattern)(input, options),
 )
 
-test(`XRD and SAED patterns computed in their workers equal the main-thread ones`, async () => {
+test(`XRD and SAED patterns computed in their workers equal the main-thread ones, and the XRD worker idles until the last XrdPlot unmounts`, async () => {
   const xrd = await import(`#lib/xrd/async-compute.svelte.js`) // once the stub is installed
   // a viewer's crystal: deeply proxied, with a site property structured clone rejects
   const crystal = $state(make_rocksalt())
@@ -36,4 +37,14 @@ test(`XRD and SAED patterns computed in their workers equal the main-thread ones
   expect(started).toEqual(entries.map((entry) => expect.stringMatching(`^module .*/${entry}`)))
   const forbidden = [`#lib/worker-client.svelte.js`, `#lib/symmetry/analyze.js`]
   expect_worker_safe_import_graph(entries, 6, forbidden)
+  const { default: XrdPlot } = await import(`#lib/xrd/XrdPlot.svelte`)
+  const plots = [0, 1].map(() =>
+    mount(XrdPlot, { target: document.body, props: { patterns: [] } }),
+  )
+  flushSync()
+  for (const [terminated, plot] of plots.entries()) {
+    await unmount(plot)
+    // the SAED worker is no XrdPlot's to end
+    expect(stub.instances.map((worker) => worker.terminated)).toEqual([terminated, 0])
+  }
 })

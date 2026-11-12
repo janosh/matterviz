@@ -7,6 +7,7 @@ import type { RadiationType } from '#lib/scattering/index.js'
 import type { AnyStructure, Crystal } from '#lib/structure/index.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
+import { plain_copy } from '#lib/utils.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { compute_xrd_pattern } from './calc-xrd'
 import type { XrdPattern } from './index'
@@ -14,7 +15,7 @@ import { compute_saed_pattern } from './saed'
 
 // Site properties can hold values structured clone rejects, and no diffraction kernel reads them
 const build_payload = ({ lattice, sites }: Crystal): Crystal =>
-  $state.snapshot({ lattice, sites: sites.map((site) => ({ ...site, properties: {} })) })
+  plain_copy({ lattice, sites: sites.map((site) => ({ ...site, properties: {} })) })
 
 export const compute_xrd_pattern_async = create_worker_client({
   label: `XRD`,

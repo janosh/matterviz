@@ -395,26 +395,89 @@ describe(`Export functionality`, () => {
       expect(coord_lines.map((line) => line.slice(-5))).toEqual([`T F T`, `F F F`])
     })
 
-    // POSCAR flags are per lattice vector, an extXYZ move_mask per Cartesian axis: on a
-    // skewed cell the export converts them, or refuses a constraint a move_mask cannot express
-    it.each([
-      [[false, false, true], `F F T`],
-      [[true, false, true], null],
-    ])(`converts lattice-vector flags %j to an extXYZ move_mask (%s)`, (flags, move_mask) => {
-      // oxfmt-ignore
-      const matrix: Matrix3x3 = [[2, 0, 0], [-1, Math.sqrt(3), 0], [0, 0, 4]]
-      const site = make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, { selective_dynamics: flags })
+    // POSCAR flags are per lattice vector, an extXYZ move_mask per Cartesian axis: an export
+    // converts them when the free target vectors span what the free source axes do, else
+    // refuses. `cartesian` flags go to POSCAR, lattice-vector ones to extXYZ.
+    // oxfmt-ignore
+    const cells: Record<string, Matrix3x3> = {
+      hex: [[2, 0, 0], [-1, Math.sqrt(3), 0], [0, 0, 4]],
+      sheared: [[1, 0, 0], [1, 1, 0], [0, 0, 1]],
+      fcc: [[0, 2, 2], [2, 0, 2], [2, 2, 0]],
+      triclinic: [[5, 0, 0], [1, 6, 0], [0.5, 0.7, 7]],
+      tilted_2e_8: [[5, 1e-7, 0], [0, 5, 0], [0, 0, 5]],
+      tilted_1e_9: [[5000, 5e-6, 0], [0, 5000, 0], [0, 0, 5000]],
+      singular: [[1, 0, 0], [2, 0, 0], [0, 0, 1]],
+    }
+    // The exported flags of a site carrying `flags`, null when the export refuses them
+    const convert_flags = (
+      matrix: Matrix3x3,
+      flags: boolean[],
+      cartesian: boolean,
+    ): string | null => {
+      const properties = cartesian
+        ? { selective_dynamics: flags, constraint_basis: `cartesian` }
+        : { selective_dynamics: flags }
       const structure = {
-        sites: [site],
+        sites: [make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, properties)],
         lattice: { ...diag_lattice(2), matrix },
       } as AnyStructure
-      if (move_mask)
-        expect(structure_to_xyz_str(structure).trim().endsWith(move_mask)).toBe(true)
-      else {
-        const reason = /Site 1 is constrained along lattice vectors/
-        expect(xyz_export_unavailable_reason(structure)).toMatch(reason)
-      }
-    })
+      const [serialize, reason_of] = cartesian
+        ? [structure_to_poscar_str, poscar_export_unavailable_reason]
+        : [structure_to_xyz_str, xyz_export_unavailable_reason]
+      const refused = reason_of(structure)?.startsWith(`Site 1 is constrained along`)
+      return refused ? null : serialize(structure).slice(-5)
+    }
+    // oxfmt-ignore
+    it.each<[keyof typeof cells, boolean[], boolean, string | null]>([
+      [`hex`, [false, false, true], false, `F F T`],
+      [`hex`, [true, false, true], false, `T F T`], // a and c span the xz plane
+      [`hex`, [false, true, true], false, null], // b and c span no Cartesian plane
+      [`hex`, [true, false, true], true, `T F T`],
+      [`hex`, [false, true, true], true, null],
+      [`sheared`, [true, false, true], true, `T F T`],
+      [`fcc`, [false, false, true], true, null], // no lattice vector lies along z
+      // the tolerance is relative, so both directions agree whatever the cell's size
+      [`tilted_2e_8`, [true, false, true], true, null],
+      [`tilted_2e_8`, [true, false, true], false, null],
+      [`tilted_1e_9`, [true, false, true], true, `T F T`],
+      [`tilted_1e_9`, [true, false, true], false, `T F T`],
+      // no Cartesian axis has lattice components: a reason, not a throw from the inverse
+      [`singular`, [true, false, true], false, null],
+      [`singular`, [true, true, true], false, `T T T`],
+    ])(`converts %s cell flags %j (cartesian: %s) to %s`, (cell, flags, cartesian, converted) =>
+      expect(convert_flags(cells[cell], flags, cartesian)).toBe(converted),
+    )
+
+    // Ground truth by geometry: a target vector is free iff it lies in the span of the free
+    // source vectors (a line or plane test), expressible iff as many are free as source axes
+    it.each([`hex`, `sheared`, `fcc`, `triclinic`] as const)(
+      `flag conversion on the %s cell matches the span criterion`,
+      (cell) => {
+        // oxfmt-ignore
+        const identity: Matrix3x3 = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        for (const cartesian of [true, false]) {
+          const [source, target] = cartesian
+            ? [identity, cells[cell]]
+            : [cells[cell], identity]
+          for (let bits = 0; bits < 8; bits++) {
+            const flags = [1, 2, 4].map((bit) => (bits & bit) > 0)
+            const [free_a, free_b] = source.filter((_, idx) => flags[idx])
+            const in_span = (vec: Vec3): boolean =>
+              bits === 7 ||
+              (free_b
+                ? Math.abs(math.dot(vec, math.cross_3d(free_a, free_b))) < 1e-9
+                : free_a !== undefined && Math.hypot(...math.cross_3d(vec, free_a)) < 1e-9)
+            const free = target.map(in_span)
+            const expressible = free.filter(Boolean).length === flags.filter(Boolean).length
+            const converted = free.map((flag) => (flag ? `T` : `F`)).join(` `)
+            const context = `${flags} cartesian=${cartesian}`
+            expect(convert_flags(cells[cell], flags, cartesian), context).toBe(
+              expressible ? converted : null,
+            )
+          }
+        }
+      },
+    )
 
     it(`exports CIF with quoted H-M symbol, IT number, and identity symmetry ops loop`, () => {
       const structure: AnyStructure = {

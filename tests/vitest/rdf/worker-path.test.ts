@@ -10,6 +10,7 @@ import {
 } from '#lib/rdf/calc-rdf.js'
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
+import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeAll, expect, test } from 'vitest'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_crystal } from '../test-fixtures'
@@ -51,7 +52,7 @@ test(`ships positions, lattice and species, and matches the sync per-pair and al
 
 // Each frame goes to the least-loaded worker of the pool: sequential requests keep reusing the
 // idle first worker, concurrent ones spread out
-test(`dispatches each request to the least-loaded pool worker`, async () => {
+test(`dispatches each request to the least-loaded pool worker, which idles until the last RdfPlot unmounts`, async () => {
   const crystal = make_crystal(4, [[`Na`, [0, 0, 0]]])
   const options = { cutoff: 4, n_bins: 10 }
   const posted_per_worker = () => stub.instances.map((worker) => worker.posted.length)
@@ -59,4 +60,11 @@ test(`dispatches each request to the least-loaded pool worker`, async () => {
   expect(posted_per_worker()).toEqual([3])
   await Promise.all([0, 1].map(() => calc_rdfs_async(crystal, options)))
   expect(posted_per_worker()).toEqual([4, 1])
+  const { default: RdfPlot } = await import(`#lib/rdf/RdfPlot.svelte`)
+  const plots = [0, 1].map(() => mount(RdfPlot, { target: document.body }))
+  flushSync()
+  for (const [terminated, plot] of plots.entries()) {
+    await unmount(plot)
+    expect(stub.instances.map((worker) => worker.terminated)).toEqual([terminated, terminated])
+  }
 })

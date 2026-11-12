@@ -44,7 +44,7 @@ vi.mock(`#lib/chempot-diagram/async-compute.svelte.js`, async () => {
     calls.list.push({ config, signal, resolve: () => gate.resolve(undefined) })
     return gate.promise.then(() => compute_module.compute_chempot_system(entries, config))
   }
-  return { compute_chempot_async: Object.assign(compute, { release: () => undefined }) }
+  return { compute_chempot_async: Object.assign(compute, { mount: () => () => undefined }) }
 })
 
 const temperatures = [300, 900]

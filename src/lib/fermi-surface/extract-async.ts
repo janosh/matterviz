@@ -35,7 +35,12 @@ const run_extraction = create_worker_client<
     new Worker(new URL(`./extract-worker.js`, import.meta.url), { type: `module` }),
   // on the main thread compute.ts caches its upsampling by the grid's own identity
   compute_sync: extract_fermi_surface,
-  build_payload: unproxied,
+  // a grid crossing to the worker (first use, evicted since, or a replacement worker) has no
+  // upsampled copies there yet
+  build_payload: (grid) => {
+    upsampled_factors.delete(grid)
+    return unproxied(grid)
+  },
   retained_inputs: 4,
 })
 
@@ -71,13 +76,7 @@ export async function extract_fermi_surface_async(
   const key = options_key(grid, options)
   const cached = cache.get(key)
   if (cached) return lru_set(cache, key, cached, RESULT_CACHE_SIZE)
-  // A worker that lost the grid (evicted, or a replacement worker) upsamples it afresh
-  if (!upsampling_kept(grid)) upsampled_factors.delete(grid)
-  n_in_flight++
-  const result = await run_extraction(grid, options).finally(() => {
-    n_in_flight--
-    if (release_deferred) release_if_unused()
-  })
+  const result = await run_extraction(grid, options)
   const factors = upsampled_factors.get(grid) ?? new Set<number>()
   upsampled_factors.set(grid, factors)
   factors.add(resolved_factor(grid, options.interpolation_factor ?? 1))
@@ -90,23 +89,7 @@ export async function extract_fermi_surface_async(
 
 // Mounted viewers share the worker and its upsampled grids (megabytes each): the last one to
 // unmount ends it, once the extractions still in flight have landed
-let n_viewers = 0
-let n_in_flight = 0
-let release_deferred = false
-const release_if_unused = (): void => {
-  release_deferred = n_viewers === 0 && n_in_flight > 0
-  if (n_viewers > 0 || release_deferred) return
-  run_extraction.release()
-}
-// A viewer's mount path, returning its unmount path
-export function register_fermi_viewer(): () => void {
-  n_viewers++
-  release_deferred = false
-  return () => {
-    n_viewers--
-    release_if_unused()
-  }
-}
+export const register_fermi_viewer = (): (() => void) => run_extraction.mount()
 
 // Latest-wins scheduling for one viewer: one extraction in flight and only the newest request
 // waiting, so a pointer sweep skips stale energies. Replaced requests resolve null; cached

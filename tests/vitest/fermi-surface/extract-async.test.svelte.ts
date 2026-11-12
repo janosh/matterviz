@@ -141,6 +141,13 @@ test(`warmth follows the grids the worker holds, and an evicted grid is sent aga
     `marching cubes failed`,
   )
   expect(sent_grids()).toEqual([true, false])
+  // a grid evicted while its request waited crosses again, losing the factor the worker held
+  const others = grids.slice(1).map((grid) => extract_fermi_surface_async(grid, { mu: 0.5 }))
+  const resent = extract_fermi_surface_async(grids[0], { mu: 0.5, interpolation_factor: 1.5 })
+  expect(warm(grids[0], [1, 1.5])).toEqual([true, false])
+  await Promise.all([...others, resent])
+  expect(sent_grids().slice(2)).toEqual([true, true, true, true, true]) // each evicts the next
+  expect(warm(grids[0], [1, 1.5])).toEqual([false, true])
 })
 
 // The fresh module graph it imports takes seconds on shared CI runners

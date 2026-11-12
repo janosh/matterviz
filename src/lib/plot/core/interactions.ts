@@ -154,8 +154,10 @@ export function axis_transform(scale_type?: ScaleType): {
 }
 
 // Underflow to zero is just as invalid for a log axis as overflow to Infinity.
+export const is_log_range = (range: Vec2): boolean =>
+  range.every((value) => Number.isFinite(value) && value > 0)
 export function validate_log_range(range: Vec2): Vec2 {
-  if (range.some((value) => !Number.isFinite(value) || value <= 0))
+  if (!is_log_range(range))
     throw new RangeError(`Cannot represent logarithmic range [${range.join(`, `)}]`)
   return range
 }

@@ -17,7 +17,7 @@
   import { to_error } from 'svelte-widgets/utils'
   import { getAbortSignal, type Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
-  import { calc_rdfs_async } from './async-compute.svelte'
+  import { calc_rdfs_async, mount_rdf_workers } from './async-compute.svelte'
   import { label_structures, rdf_baseline, rdf_bin_site_index } from './index'
   import type { RdfEntry, RdfPattern } from './index'
   import { bind_error_report } from './error-report.svelte'
@@ -118,19 +118,21 @@
     failures: [],
   })
   let computing = $state(false)
+  $effect(() => mount_rdf_workers())
   const options = $derived({ cutoff, n_bins, pbc: $state.snapshot(pbc), mode })
   const key = $derived(value_key(options))
   $effect(() => {
     // aborted once the structures or options change: a worker left with only such requests stops
     const signal = getAbortSignal()
+    const [request_key, request_mode] = [key, mode] // as requested, not as read after an await
     const requests = struct_list.map(async ({ struct, label }) => {
       try {
         const hit = computed_rdfs.get(struct)
-        const rdfs = hit?.[key] ?? (await calc_rdfs_async(struct, options, { signal }))
-        computed_rdfs.set(struct, { [key]: rdfs })
+        const rdfs = hit?.[request_key] ?? (await calc_rdfs_async(struct, options, { signal }))
+        computed_rdfs.set(struct, { [request_key]: rdfs })
         return rdfs.map((pattern): ComputedEntry => ({
           label: pattern.element_pair?.join(`-`) ?? label,
-          ...(mode === `full` ? {} : { legend_group: label }), // Group by structure name
+          ...(request_mode === `full` ? {} : { legend_group: label }), // Group by structure name
           pattern,
           structure: struct,
         }))
@@ -143,7 +145,7 @@
     void Promise.all(requests).then((results) => {
       if (signal.aborted) return
       computed = {
-        key,
+        key: request_key,
         curves: results.flatMap((result) => (typeof result === `string` ? [] : result)),
         failures: results.filter((result) => typeof result === `string`),
       }

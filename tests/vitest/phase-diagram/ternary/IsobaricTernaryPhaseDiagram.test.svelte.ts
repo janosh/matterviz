@@ -91,7 +91,8 @@ const move_to = (coords_xy: Vec2) => pointer_at(`pointermove`, coords_xy)
 
 describe(`IsobaricTernaryPhaseDiagram`, () => {
   test(`sweeps in the background, lists transitions, links them to the live section and releases the worker on unmount`, async () => {
-    const release = vi.spyOn(compute_ternary_phase_diagram_async, `release`)
+    const release = vi.fn()
+    vi.spyOn(compute_ternary_phase_diagram_async, `mount`).mockReturnValueOnce(release)
     mount_diagram()
     doc_query(`.ternary-section canvas`)
     expect_shortcuts_in_pane(document, `.ternary-phase-diagram-controls-pane`, [

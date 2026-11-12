@@ -62,7 +62,7 @@
   // The worker retains its copy of the stream: end an idle one once this plot has none left or
   // unmounts. After use_async_result, so a replaced stream's request already keeps the worker.
   $effect(() => {
-    if (input) return () => compute_vacf_async.release()
+    if (input) return compute_vacf_async.mount()
   })
 
   const curve_series = (

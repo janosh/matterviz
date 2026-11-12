@@ -1166,7 +1166,8 @@ describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
     expect(Number(bare.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(
       right - left,
     )
-    // an edge isopleth's fraction caption (`1`) repeats the strip axis' `1` caption
+    // an edge isopleth's fraction caption (`1`) repeats the strip axis' `1` caption, which
+    // threw each_key_duplicate while the captions were keyed by their text
     document.body.innerHTML = ``
     const edge = await mount_diagram({ isopleth: 1, comp_unit: `fraction` })
     const captions = [...edge.querySelectorAll(`.isopleth > text:not(.halo)`)]

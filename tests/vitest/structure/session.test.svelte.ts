@@ -95,7 +95,9 @@ describe(`display pipeline`, () => {
     flushSync()
     expect(session.plain_input?.properties).toEqual({ kept: 1, added: 3 })
     const plain = crystal()
-    expect(make_session({}, () => plain).session.normalized_structure).toBe(plain)
+    expect(make_session({}, { structure: () => plain }).session.normalized_structure).toBe(
+      plain,
+    )
     // a structure the viewer loads itself is proxied by the binding but read as it is
     session.adopt_structure(plain)
     flushSync()
@@ -295,6 +297,11 @@ describe(`symmetry-aware display`, () => {
     const notice = `Failed to transform cell to conventional: Unknown atomic number: 999`
     expect(notices).toEqual([notice])
     expect([host.cell_type, session.base_structure?.sites.length]).toEqual([`original`, 1])
+    // a host that keeps the failing cell type hears of it once, not on every update
+    const stuck = make_session({ structure, sym_data }, { set_cell_type: () => {} })
+    flush_set(stuck.host, { cell_type: `conventional` })
+    flush_set(stuck.host, { show_image_atoms: true })
+    expect([stuck.host.cell_type, stuck.notices]).toEqual([`conventional`, [notice]])
     error_spy.mockRestore()
   })
 
@@ -568,7 +575,7 @@ describe(`selection validity`, () => {
     const identity = {}
     snapshot_topologies.set(first, identity)
     let displayed = $state.raw(first)
-    const { host } = make_session({ series_key: {} }, () => displayed)
+    const { host } = make_session({ series_key: {} }, { structure: () => displayed })
     flush_set(host, { selected_sites: [0] })
     const next = structuredClone(first)
     const label_read = vi.fn(() => first.sites[0].label)

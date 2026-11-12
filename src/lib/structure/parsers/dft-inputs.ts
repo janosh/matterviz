@@ -57,7 +57,8 @@ export const is_aims_content = (content: string): boolean =>
 // `lattice_vector x y z` rows (Å; three for a crystal, none for a molecule), `atom x y z species`
 // (Cartesian Å), `atom_frac a b c species`, `#` comments. Species are element symbols, optionally
 // suffixed (`Si_light`). `constrain_relaxation` (`.true.` or an axis `x`/`y`/`z`) fixes the atom
-// above it. Other keywords are skipped, except `empty` and `pseudocore` sites (no atoms): errors.
+// above it (`.false.` nothing). Other keywords are skipped, except `empty` and `pseudocore`
+// sites (no atoms): errors.
 export function parse_aims(content: string): AnyStructure {
   const lattice_rows: math.Vec3[] = []
   const atoms: ParsedAtom[] = []
@@ -73,11 +74,16 @@ export function parse_aims(content: string): AnyStructure {
       last_atom = [element, numbers(args, where), keyword === `atom_frac`]
       atoms.push(last_atom)
     } else if (keyword === `constrain_relaxation` && last_atom) {
-      const fixed = args[0]?.toLowerCase()
+      const fixed = args[0]?.toLowerCase() ?? ``
+      if (![`.true.`, `.false.`, `x`, `y`, `z`].includes(fixed))
+        throw new Error(
+          `${where}: constrain_relaxation takes .true., .false., x, y or z, not '${fixed}'`,
+        )
       const free = last_atom[3] ?? [true, true, true]
       const still_free = (axis: string, idx: number): boolean =>
         free[idx] && fixed !== axis && fixed !== `.true.`
-      last_atom[3] = [still_free(`x`, 0), still_free(`y`, 1), still_free(`z`, 2)]
+      if (fixed !== `.false.`)
+        last_atom[3] = [still_free(`x`, 0), still_free(`y`, 1), still_free(`z`, 2)]
     } else if (keyword === `empty` || keyword === `pseudocore`)
       throw new Error(`${where}: unsupported keyword '${keyword}'`)
   }
@@ -163,11 +169,20 @@ export function parse_qe(content: string): AnyStructure {
   const fractional = positions.unit === `crystal`
   const scale = fractional ? 1 : unit_scale(positions.unit, `ATOMIC_POSITIONS`)
   // optional trailing if_pos flags: 0 fixes that coordinate
-  const atoms = positions.rows.map(([label, ...coords], idx): ParsedAtom => [
-    element_from_candidates([leading_letters(label)], idx),
-    math.scale(numbers(coords, `pw.x ATOMIC_POSITIONS row ${idx + 1}`), scale),
-    fractional,
-    coords.length >= 6 ? [coords[3] !== `0`, coords[4] !== `0`, coords[5] !== `0`] : undefined,
-  ])
+  const atoms = positions.rows.map(([label, ...coords], idx): ParsedAtom => {
+    const where = `pw.x ATOMIC_POSITIONS row ${idx + 1}`
+    const if_pos = coords.slice(3)
+    if (![0, 3].includes(if_pos.length) || if_pos.some((flag) => !/^[01]$/.test(flag)))
+      throw new Error(
+        `${where}: expected 3 coordinates and no or 3 if_pos flags (0 or 1), got '${coords.join(` `)}'`,
+      )
+    const [free_x, free_y, free_z] = if_pos.map((flag) => flag === `1`)
+    return [
+      element_from_candidates([leading_letters(label)], idx),
+      math.scale(numbers(coords, where), scale),
+      fractional,
+      if_pos.length ? [free_x, free_y, free_z] : undefined,
+    ]
+  })
   return build_structure(atoms, lattice_rows, `pw.x input`)
 }

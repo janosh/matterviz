@@ -64,7 +64,7 @@
   // The worker retains its copy of the stream: end an idle one once this plot has none left or
   // unmounts. After use_async_result, so a replaced stream's request already keeps the worker.
   $effect(() => {
-    if (positions) return () => compute_msd_async.release()
+    if (positions) return compute_msd_async.mount()
   })
 
   // Index-aligned with result.curves; null where the window holds fewer than 2 lags. An

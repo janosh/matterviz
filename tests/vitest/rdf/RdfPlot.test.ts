@@ -197,7 +197,14 @@ describe(`RdfPlot`, () => {
     ])
     const shown = new SvelteMap([[`structures`, [nacl_structure]]])
     const cutoffs = new SvelteMap([[`cutoff`, 15]])
+    const reported_errors: (string | undefined)[] = []
     const plot = await mount_sized_rdf_plot({
+      get error_msg() {
+        return reported_errors.at(-1)
+      },
+      set error_msg(message) {
+        reported_errors.push(message)
+      },
       get cutoff() {
         return cutoffs.get(`cutoff`)
       },
@@ -284,6 +291,8 @@ describe(`RdfPlot`, () => {
     expect(shown_labels()).toEqual([`Swapped`])
     await vi.waitFor(() => expect(shown_labels()).toContain(`Pd-Pd`))
     expect(searches().map(([, options]) => options?.cutoff)).toEqual([6, 6])
+    // and their aborts are not reported as failed computations
+    expect(reported_errors.filter(Boolean)).toEqual([])
     // a structure taken off the list takes its curves with it, before any recompute settles
     flushSync(() => shown.set(`structures`, [nacl_structure]))
     expect(shown_labels()).not.toContain(`Pd-Pd`)

@@ -19,36 +19,50 @@ import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
 import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
+const axes = [`x`, `x2`, `y`, `y2`] as const
+type Axis = (typeof axes)[number]
+// A pan/zoom controller writing into `ranges`, on a 200 x 200 px plot at the SVG's origin
+const pan_zoom_on = (ranges: AxisRanges, scale_type: (axis: Axis) => ScaleType) => {
+  const set_range = vi.fn((axis: Axis, range: Vec2) => {
+    ranges[axis] = range
+  })
+  const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
+  const controller = create_pan_zoom({
+    axes: () => axes,
+    ranges: () => ranges,
+    scale_type,
+    plot_bounds: () => ({ x: 0, y: 0, width: 200, height: 200 }),
+    pan: () => ({}),
+    set_range,
+    svg: () => svg,
+    on_rect_zoom: vi.fn(),
+    on_reset: vi.fn(),
+  })
+  onTestFinished(() => controller.destroy())
+  return { controller, set_range }
+}
+const pointer = (type: string, init: PointerEventInit): PointerEvent =>
+  new PointerEvent(type, { button: 0, buttons: 1, ...init })
+const touch = (type: string, pointerId: number, clientX: number, clientY = 100) =>
+  pointer(type, { pointerType: `touch`, pointerId, clientX, clientY })
+// happy-dom's WheelEvent carries no mouse fields, so they are assigned
+const wheel_at = (init: WheelEventInit, clientX: number, clientY: number): WheelEvent =>
+  Object.assign(new WheelEvent(`wheel`, init), { ctrlKey: true, clientX, clientY })
+
 it.each([`wheel_x`, `wheel_y`, `wheel_zoom`, `drag`, `touch_pan`, `pinch`] as const)(
   `%s validates every axis before writing ranges and can recover after rejection`,
   (gesture) => {
-    const axes = [`x`, `x2`, `y`, `y2`] as const
     const log_axis = gesture === `wheel_x` ? `x2` : `y2`
     // zooms keep the view center, pans shift it: y up by 0.05, x by the drag's 1 px the other way
     const zooms = gesture === `pinch` || gesture === `wheel_zoom`
     const ranges: AxisRanges = { x: [0, 10], x2: [0, 10], y: [0, 10], y2: [0, 10] }
     ranges[log_axis] = [1e-300, 1e300]
     const original = structuredClone(ranges)
-    const set_range = vi.fn((axis: keyof AxisRanges, range: Vec2) => {
-      ranges[axis] = range
-    })
-    const svg = document.createElementNS(`http://www.w3.org/2000/svg`, `svg`)
-    const controller = create_pan_zoom({
-      axes: () => axes,
-      ranges: () => ranges,
-      scale_type: (axis) => (axis === log_axis ? `log` : `linear`),
-      plot_bounds: () => ({ x: 0, y: 0, width: 200, height: 200 }),
-      pan: () => ({}),
-      set_range,
-      svg: () => svg,
-      on_rect_zoom: vi.fn(),
-      on_reset: vi.fn(),
-    })
-    onTestFinished(() => controller.destroy())
+    const { controller, set_range } = pan_zoom_on(ranges, (axis) =>
+      axis === log_axis ? `log` : `linear`,
+    )
     let move: (reject: boolean) => void
     const wheel = gesture === `wheel_x` || gesture === `wheel_y`
-    const pointer = (type: string, init: PointerEventInit): PointerEvent =>
-      new PointerEvent(type, { button: 0, buttons: 1, ...init })
     if (wheel) {
       controller.set_focused(true)
       controller.on_window_key_down(new KeyboardEvent(`keydown`, { key: `Shift` }))
@@ -60,21 +74,15 @@ it.each([`wheel_x`, `wheel_y`, `wheel_zoom`, `drag`, `touch_pan`, `pinch`] as co
         )
     } else if (gesture === `wheel_zoom`) {
       // ctrl+wheel (a trackpad pinch) at the plot center, no focus or shift needed: 10x out
-      // overflows the log axis, ln(2) px in doubles the scale. happy-dom's WheelEvent
-      // carries no mouse fields, so they are assigned.
-      const at_center = { ctrlKey: true, clientX: 100, clientY: 100 }
-      move = (reject) => {
-        const deltaY = reject ? 1e6 : -100 * Math.LN2
-        controller.on_wheel(Object.assign(new WheelEvent(`wheel`, { deltaY }), at_center))
-      }
+      // overflows the log axis, ln(2) px in doubles the scale
+      move = (reject) =>
+        controller.on_wheel(wheel_at({ deltaY: reject ? 1e6 : -100 * Math.LN2 }, 100, 100))
     } else if (gesture === `drag`) {
       const at = (clientY: number, clientX = 101) => ({ shiftKey: true, clientX, clientY })
       controller.on_pointer_down(pointer(`pointerdown`, at(100, 100)))
       move = (reject) =>
         controller.on_pointer_move(pointer(`pointermove`, at(reject ? 300 : 101)))
     } else {
-      const touch = (type: string, pointerId: number, clientX: number, clientY = 100) =>
-        pointer(type, { pointerType: `touch`, pointerId, clientX, clientY })
       controller.on_pointer_down(touch(`pointerdown`, 0, 50))
       controller.on_pointer_down(touch(`pointerdown`, 1, 150))
       // Fingers report one at a time. Pinch: the second closes to 2 px of the first (50x out)
@@ -87,7 +95,7 @@ it.each([`wheel_x`, `wheel_y`, `wheel_zoom`, `drag`, `touch_pan`, `pinch`] as co
             : touch(`pointermove`, 0, reject ? 50 : 52, reject ? 108 : 102),
         )
     }
-    expect(() => move(true)).toThrow(RangeError)
+    move(true) // handlers have no caller to catch a RangeError: the gesture is dropped
     expect(set_range).not.toHaveBeenCalled()
     expect(ranges).toEqual(original)
 
@@ -137,18 +145,7 @@ it.each([
   `shift+wheel with deltaMode %i and deltaX %i pans x to %j`,
   (mode, delta, expected) => {
     const ranges: AxisRanges = { x: [0, 10], x2: [0, 10], y: [0, 10], y2: [0, 10] }
-    const controller = create_pan_zoom({
-      axes: () => [`x`, `y`],
-      ranges: () => ranges,
-      scale_type: () => `linear`,
-      plot_bounds: () => ({ x: 0, y: 0, width: 200, height: 200 }),
-      pan: () => ({}),
-      set_range: (axis, range) => (ranges[axis] = range),
-      svg: () => null,
-      on_rect_zoom: vi.fn(),
-      on_reset: vi.fn(),
-    })
-    onTestFinished(() => controller.destroy())
+    const { controller } = pan_zoom_on(ranges, () => `linear`)
     controller.set_focused(true)
     controller.on_window_key_down(new KeyboardEvent(`keydown`, { key: `Shift` }))
     controller.on_wheel(new WheelEvent(`wheel`, { deltaX: delta, deltaMode: mode }))
@@ -157,6 +154,70 @@ it.each([
     expect(ranges.y).toEqual([0, 10])
   },
 )
+
+// Every gesture is a zoom by `factor` that moves the value at plot fraction `from` (from the
+// left, from the bottom) to fraction `to`, in each axis' screen metric: linear (x, y) and log
+// (x2, y2), ascending (x, y2) and inverted (x2, y)
+type PanZoom = ReturnType<typeof create_pan_zoom>
+const press = (key: string) => (controller: PanZoom) =>
+  controller.on_key_down(new KeyboardEvent(`keydown`, { key }))
+const shift_wheel = (init: WheelEventInit) => (controller: PanZoom) => {
+  controller.set_focused(true)
+  controller.on_window_key_down(new KeyboardEvent(`keydown`, { key: `Shift` }))
+  controller.on_wheel(new WheelEvent(`wheel`, init))
+}
+const ctrl_wheel = (deltaY: number) => (controller: PanZoom) =>
+  controller.on_wheel(wheel_at({ deltaY }, 130, 80))
+const shift_drag = (controller: PanZoom) => {
+  controller.on_pointer_down(
+    pointer(`pointerdown`, { shiftKey: true, clientX: 120, clientY: 80 }),
+  )
+  controller.on_pointer_move(pointer(`pointermove`, { clientX: 57, clientY: 141 }))
+}
+// oxfmt-ignore
+it.each<[string, (controller: PanZoom) => void, number, Vec2, Vec2]>([
+  [`shift+drag`, shift_drag, 1, [0.6, 0.6], [0.285, 0.295]],
+  [`ctrl+wheel in`, ctrl_wheel(-30), Math.exp(0.3), [0.65, 0.6], [0.65, 0.6]],
+  [`ctrl+wheel out`, ctrl_wheel(45), Math.exp(-0.45), [0.65, 0.6], [0.65, 0.6]],
+  [`+`, press(`+`), 1.25, [0.5, 0.5], [0.5, 0.5]],
+  [`-`, press(`-`), 0.8, [0.5, 0.5], [0.5, 0.5]],
+  [`ArrowRight`, press(`ArrowRight`), 1, [0.6, 0.5], [0.5, 0.5]],
+  [`ArrowDown`, press(`ArrowDown`), 1, [0.5, 0.4], [0.5, 0.5]],
+  [`shift+wheel x`, shift_wheel({ deltaX: 40, deltaY: 3 }), 1, [0.2, 0], [0, 0]],
+  [`shift+wheel y`, shift_wheel({ deltaX: 3, deltaY: 40 }), 1, [0, 0.2], [0, 0]],
+])(`%s moves every axis by the exact amount`, (_name, act, factor, from, to) => {
+  const ranges: AxisRanges = { x: [0, 100], x2: [1000, 1], y: [10, -30], y2: [1, 1e4] }
+  const before = structuredClone(ranges)
+  act(pan_zoom_on(ranges, (axis) => (axis.endsWith(`2`) ? `log` : `linear`)).controller)
+  for (const axis of axes) {
+    const dim = axis.startsWith(`x`) ? 0 : 1
+    // [metric value at plot fraction `at`, metric span] of a range
+    const metric = (range: Vec2, at: number) => {
+      const [start, end] = axis.endsWith(`2`) ? range.map(Math.log) : range
+      return [start + at * (end - start), end - start]
+    }
+    const [fixed, span] = metric(before[axis], from[dim])
+    const expected = [fixed, span / factor]
+    for (const [idx, value] of metric(ranges[axis], to[dim]).entries()) {
+      const tolerance = 1e-12 * Math.max(1, Math.abs(expected[idx]))
+      expect(Math.abs(value - expected[idx]), `${axis} ${idx}`).toBeLessThanOrEqual(tolerance)
+    }
+  }
+})
+
+// A third finger never joined the pinch: lifting it leaves the gesture to the first two,
+// lifting one of those ends it
+it.each([
+  [3, true],
+  [1, false],
+])(`lifting finger %i of three keeps the pinch: %s`, (lifted, pinching) => {
+  const ranges: AxisRanges = { x: [0, 10], x2: [0, 10], y: [0, 10], y2: [0, 10] }
+  const { controller } = pan_zoom_on(ranges, () => `linear`)
+  for (const [finger, client_x] of [50, 150, 180].entries())
+    controller.on_pointer_down(touch(`pointerdown`, finger + 1, client_x))
+  controller.on_pointer_up(touch(`pointerup`, lifted, 100))
+  expect(controller.is_panning).toBe(pinching)
+})
 
 describe(`pan_range_by_pixels`, () => {
   // pan must be uniform in *screen* space: constant shift on linear axes,

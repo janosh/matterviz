@@ -213,7 +213,7 @@ describe(`package.json exports`, () => {
     ]) {
       expect(client).toBeTypeOf(`function`)
       expect(client.cancel).toBeTypeOf(`function`)
-      expect(client.release).toBeTypeOf(`function`)
+      expect(client.mount).toBeTypeOf(`function`)
       expect(client.holds).toBeTypeOf(`function`)
     }
     expectTypeOf(lib.compute_vacf_async).toExtend<

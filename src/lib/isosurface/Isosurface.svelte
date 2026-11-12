@@ -180,10 +180,13 @@
     colored_keys.clear()
   }
 
-  // On unmount; release ends the shared worker once no other isosurface awaits it
-  $effect(() => () => {
-    reset_surfaces()
-    compute_geometries_async.release()
+  // The shared worker ends once no isosurface is mounted or awaits it
+  $effect(() => {
+    const unmount = compute_geometries_async.mount()
+    return () => {
+      reset_surfaces()
+      unmount()
+    }
   })
 
   // Any finite isovalue draws: 0 is a signed field's nodal surface and a negative value its
