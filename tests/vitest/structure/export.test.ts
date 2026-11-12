@@ -97,7 +97,10 @@ describe(`Export functionality`, () => {
           expect(() => structure_to_xyz_str(structure)).toThrow(clash)
         } else {
           const reparsed = parse_xyz(structure_to_xyz_str(structure))
-          for (const site of reparsed.sites) expect(site.properties).toEqual(properties)
+          // flags come back marked as the per-Cartesian-axis ones a move_mask holds
+          const basis = properties.selective_dynamics ? { constraint_basis: `cartesian` } : {}
+          for (const site of reparsed.sites)
+            expect(site.properties).toEqual({ ...properties, ...basis })
         }
       },
     )
@@ -390,6 +393,27 @@ describe(`Export functionality`, () => {
         /^0\.\d+ 0\.\d+ 0\.\d+ [TF] [TF] [TF]$/.exec(line),
       )
       expect(coord_lines.map((line) => line.slice(-5))).toEqual([`T F T`, `F F F`])
+    })
+
+    // POSCAR flags are per lattice vector, an extXYZ move_mask per Cartesian axis: on a
+    // skewed cell the export converts them, or refuses a constraint a move_mask cannot express
+    it.each([
+      [[false, false, true], `F F T`],
+      [[true, false, true], null],
+    ])(`converts lattice-vector flags %j to an extXYZ move_mask (%s)`, (flags, move_mask) => {
+      // oxfmt-ignore
+      const matrix: Matrix3x3 = [[2, 0, 0], [-1, Math.sqrt(3), 0], [0, 0, 4]]
+      const site = make_site(`H`, [0, 0, 0], [0, 0, 0], `H1`, { selective_dynamics: flags })
+      const structure = {
+        sites: [site],
+        lattice: { ...diag_lattice(2), matrix },
+      } as AnyStructure
+      if (move_mask)
+        expect(structure_to_xyz_str(structure).trim().endsWith(move_mask)).toBe(true)
+      else {
+        const reason = /Site 1 is constrained along lattice vectors/
+        expect(xyz_export_unavailable_reason(structure)).toMatch(reason)
+      }
     })
 
     it(`exports CIF with quoted H-M symbol, IT number, and identity symmetry ops loop`, () => {

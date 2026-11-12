@@ -414,8 +414,16 @@ C 1.23 0.7101408311032397 0.0`
   })
 
   it.each([
-    [`selective_dynamics:L:3`, `T F T`, { selective_dynamics: [true, false, true] }],
-    [`move_mask:L:1`, `F`, { selective_dynamics: [false, false, false] }],
+    [
+      `selective_dynamics:L:3`,
+      `T F T`,
+      { selective_dynamics: [true, false, true], constraint_basis: `cartesian` },
+    ],
+    [
+      `move_mask:L:1`,
+      `F`,
+      { selective_dynamics: [false, false, false], constraint_basis: `cartesian` },
+    ],
     [`forces:R:3`, `-0.1 0.2 0.3`, { force: [-0.1, 0.2, 0.3] }],
     [``, ``, {}], // no extra columns declared
   ])(`carries extra column '%s' onto site properties`, (declaration, tokens, expected) => {

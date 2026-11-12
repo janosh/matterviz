@@ -419,6 +419,7 @@ function parse_xyz_atom_lines(
       const flags = read_extxyz_move_flags(scanner, layout)
       if (flags) {
         props.selective_dynamics = flags
+        props.constraint_basis = `cartesian` // a move_mask is per Cartesian axis
         move_flag_count++
       }
     }
@@ -436,7 +437,10 @@ function parse_xyz_atom_lines(
     for (const props of site_properties) delete props.force
   }
   if (move_flag_count > 0 && move_flag_count !== positions.length) {
-    for (const props of site_properties) delete props.selective_dynamics
+    for (const props of site_properties) {
+      delete props.selective_dynamics
+      delete props.constraint_basis
+    }
   }
   return { elements, positions, forces, site_properties }
 }

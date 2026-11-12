@@ -825,9 +825,10 @@ export function html_to_svg(element: HTMLElement): SVGSVGElement {
   return svg
 }
 
-// PNG of a live canvas (re-rendered at `png_dpi`, see canvas_to_png_blob) with the HTML
-// `overlays` laid over it (legends, color bars) redrawn on top at their on-screen positions,
-// through the same overlay redraw as SVG chart exports
+// PNG of a live canvas (re-rendered at `png_dpi`, see canvas_to_png_blob) with `overlays` laid
+// over it: canvases stacked on it (annotation layers) are painted as they are, HTML (legends,
+// color bars, scene labels) is redrawn on top at its on-screen position, through the same
+// overlay redraw as SVG chart exports
 export async function canvas_overlay_png_blob(
   canvas: HTMLCanvasElement | null | undefined,
   overlays: readonly HTMLElement[],
@@ -848,14 +849,17 @@ export async function canvas_overlay_png_blob(
     height: Math.round(height * scale),
     viewBox: `0 0 ${width} ${height}`,
   })
-  for (const overlay of overlays) svg.append(overlay_to_svg(overlay, origin))
+  const layers = overlays.filter(
+    (overlay): overlay is HTMLCanvasElement => overlay instanceof HTMLCanvasElement,
+  )
+  for (const overlay of overlays)
+    if (!(overlay instanceof HTMLCanvasElement)) svg.append(overlay_to_svg(overlay, origin))
   const markup = new XMLSerializer().serializeToString(svg)
   const frame = await createImageBitmap(frame_blob)
   try {
     return await with_svg_image(markup, width * height * scale ** 2, (img) =>
       paint_png_blob(width, height, scale, (ctx) => {
-        ctx.drawImage(frame, 0, 0, width, height)
-        ctx.drawImage(img, 0, 0, width, height)
+        for (const layer of [frame, ...layers, img]) ctx.drawImage(layer, 0, 0, width, height)
       }),
     )
   } finally {

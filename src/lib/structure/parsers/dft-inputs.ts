@@ -6,7 +6,6 @@ import * as math from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
-import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import {
   element_from_candidates,
   leading_letters,
@@ -17,8 +16,8 @@ import {
   vec3_from_values,
 } from './shared'
 
-// [element, coords, is fractional, movable]: the last holds per-axis relaxation flags
-// (POSCAR's selective dynamics), unset when free
+// [element, coords, is fractional, movable]: the last holds per-Cartesian-axis relaxation
+// flags, unset when free
 type ParsedAtom = [ElementSymbol, math.Vec3, boolean, [boolean, boolean, boolean]?]
 
 // Structure from atoms in fractional or Cartesian (Å) coordinates and three `cell` rows (Å),
@@ -29,21 +28,12 @@ function build_structure(atoms: ParsedAtom[], cell: number[][], format: string):
   const lattice_matrix = cell.length ? matrix3x3_from_rows(cell, `${format} lattice`) : null
   const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
   const cart_to_frac = lattice_matrix && math.create_cart_to_frac(lattice_matrix)
-  // aims and QE constrain Cartesian axes, POSCAR-style selective_dynamics the lattice vectors: a
-  // vector is free (fixed) when every axis it has a component along is, else the flags are dropped
-  const vec_flags = (movable: ParsedAtom[3]) => {
-    const flags = (lattice_matrix ?? math.IDENTITY_3X3).map(
-      (vec) => new Set(movable?.filter((_, axis) => Math.abs(vec[axis]) > 1e-8)),
-    )
-    return flags.every((set) => set.size === 1) ? flags.map((set) => set.has(true)) : undefined
-  }
-  const n_dropped = atoms.filter(([, , , movable]) => movable && !vec_flags(movable)).length
-  if (n_dropped > 0)
-    parse_warn(`${format}: dropped constraints of ${n_dropped} atoms mixing lattice vectors`)
   const sites = atoms.map(([element, coords, fractional, movable], idx) => {
     const label = `${element}${idx + 1}`
-    const selective_dynamics = vec_flags(movable)
-    const properties = selective_dynamics ? { selective_dynamics } : {}
+    // aims and QE constrain Cartesian axes, not POSCAR's lattice vectors: exports convert
+    const properties = movable
+      ? { selective_dynamics: movable, constraint_basis: `cartesian` }
+      : {}
     if (frac_to_cart && cart_to_frac) {
       const abc = wrap_to_unit_cell(fractional ? coords : cart_to_frac(coords))
       return make_site(element, abc, frac_to_cart(abc), label, properties)

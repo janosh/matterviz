@@ -1,7 +1,11 @@
 import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
 import { detect_structure_type, parse_structure_file } from '#lib/structure/parse.js'
 import { parse_aims, parse_qe } from '#lib/structure/parsers/dft-inputs.js'
-import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
+import {
+  poscar_export_unavailable_reason,
+  structure_to_poscar_str,
+  structure_to_xyz_str,
+} from '#lib/structure/export.js'
 import { describe, expect, test } from 'vitest'
 
 // Parsed values are compared to hand-computed ones to 12 digits (5e-13 Å or fractional units):
@@ -128,8 +132,9 @@ test.each([
   expect(() => parse(content)).toThrow(error)
 })
 
-// dropped, a POSCAR or extXYZ export of the parsed structure would unfreeze the atoms
-test(`fixed-atom flags become selective_dynamics of the lattice vectors`, () => {
+// aims and QE constrain Cartesian axes, POSCAR the lattice vectors: the flags are kept as
+// given and converted on export, which refuses a constraint the target cannot express
+test(`fixed-atom flags are kept per Cartesian axis and converted on export`, () => {
   const flags = (structure: ReturnType<typeof parse_qe>) =>
     structure.sites.map((site) => site.properties?.selective_dynamics)
   expect(flags(parse_aims(gaas_geometry))).toEqual([undefined, [false, false, false]])
@@ -139,24 +144,32 @@ test(`fixed-atom flags become selective_dynamics of the lattice vectors`, () => 
   const hex = `ibrav = 4, celldm(1) = 6, celldm(3) = 1.5`
   const fcc = `ibrav = 2, celldm(1) = 10.2`
   // a lattice vector is free (fixed) when every Cartesian axis it has a component along is:
-  // hexagonal a and b span xy; fcc vectors each span two axes, so only equal flags carry over
+  // hexagonal a and b span xy; fcc vectors each span two axes, so only equal flags convert
+  // [&SYSTEM, if_pos, POSCAR flags or null when POSCAR cannot express them]
   // oxfmt-ignore
-  const cases: [string, string, boolean[] | undefined][] = [
-    [`ibrav = 0`, `0 0 1`, [false, false, true]], [`ibrav = 0`, `1 0 1`, [true, false, true]],
-    [hex, `0 0 1`, [false, false, true]], [hex, `1 1 0`, [true, true, false]], [hex, `1 0 1`, undefined],
-    [fcc, `0 0 1`, undefined], [fcc, `0 0 0`, [false, false, false]],
+  const cases: [string, string, string | null][] = [
+    [`ibrav = 0`, `0 0 1`, `F F T`], [`ibrav = 0`, `1 0 1`, `T F T`],
+    [hex, `0 0 1`, `F F T`], [hex, `1 1 0`, `T T F`], [hex, `1 0 1`, null],
+    [fcc, `0 0 1`, null], [fcc, `0 0 0`, `F F F`],
   ]
-  // one warning per file with dropped flags, collected like the file viewer does so the user
-  // sees an imported atom lost its constraint
-  const { warnings } = collect_parse_warnings(() => {
-    for (const [system, if_pos, expected] of cases) {
-      const cards = `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 0 0 0 ${if_pos}`
-      const [got] = flags(parse_qe(qe_input(`${system}, nat = 1`, cards)))
-      expect(got, `${system}: ${if_pos}`).toEqual(expected)
+  for (const [system, if_pos, poscar_flags] of cases) {
+    const cards = `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 0 0 0 ${if_pos}`
+    const structure = parse_qe(qe_input(`${system}, nat = 1`, cards))
+    const cartesian = if_pos.replaceAll(`1`, `T`).replaceAll(`0`, `F`)
+    expect(structure.sites[0].properties, `${system}: ${if_pos}`).toEqual({
+      selective_dynamics: if_pos.split(` `).map((flag) => flag === `1`),
+      constraint_basis: `cartesian`,
+    })
+    // an extXYZ move_mask is per Cartesian axis too, so always exact
+    expect(structure_to_xyz_str(structure).trim().endsWith(cartesian)).toBe(true)
+    if (poscar_flags)
+      expect(structure_to_poscar_str(structure).endsWith(poscar_flags)).toBe(true)
+    else {
+      const reason = /Site 1 is constrained along Cartesian axes/
+      expect(poscar_export_unavailable_reason(structure)).toMatch(reason)
+      expect(() => structure_to_poscar_str(structure)).toThrow(reason)
     }
-  })
-  const dropped = expect.stringMatching(/dropped constraints of 1 atoms/)
-  expect(warnings).toEqual([dropped, dropped])
+  }
 })
 
 describe(`format detection`, () => {

@@ -46,14 +46,20 @@ type Capability = {
 const is_column_value = (value: unknown): boolean =>
   (typeof value === `number` && Number.isFinite(value)) ||
   (Array.isArray(value) && value.length === 3 && value.every(Number.isFinite))
-const xyz_site_properties = (site: Site, { sites }: AnyStructure): Record<string, unknown> =>
-  Object.fromEntries(
+// a move_mask is per Cartesian axis, which the reader records beside the flags
+const xyz_site_properties = (
+  site: Site,
+  { sites }: AnyStructure,
+): Record<string, unknown> => ({
+  ...Object.fromEntries(
     Object.entries(as_text(site.properties)).filter(
       ([key]) =>
         key === `selective_dynamics` ||
         sites.every(({ properties }) => is_column_value(properties[key])),
     ),
-  )
+  ),
+  ...(`selective_dynamics` in site.properties && { constraint_basis: `cartesian` }),
+})
 
 const CAPABILITIES: Record<StructTextFormat, Capability> = {
   json: {

@@ -4,7 +4,14 @@
 // entries file recomputes the diagram. Every test fails on a console/page error, navigation
 // and first render included.
 import { expect } from '@playwright/test'
-import { drop_file, IS_CI, require_bbox, test_without_errors as test } from '../helpers'
+import { readFile } from 'node:fs/promises'
+import {
+  decode_canvas_png,
+  drop_file,
+  IS_CI,
+  require_bbox,
+  test_without_errors as test,
+} from '../helpers'
 
 const DIAGRAM = `.ternary-phase-diagram`
 const SECTION_CANVAS = `${DIAGRAM} .ternary-section canvas[aria-label]`
@@ -99,6 +106,53 @@ test.describe(`IsobaricTernaryPhaseDiagram smoke`, () => {
 
     await toggle.getByRole(`button`, { name: `2D section` }).click()
     await expect(page.locator(SECTION_CANVAS)).toBeVisible()
+  })
+
+  // The section's pinned probe sits on a second canvas and the prism's labels are HTML over
+  // the GPU canvas: a capture of the one main canvas lost both
+  test(`PNG export includes the pinned probe and the prism labels`, async ({ page }) => {
+    const toggle_pane = async () => {
+      await page.locator(`${DIAGRAM} .diagram-title`).hover() // header buttons reveal on hover
+      await page.locator(`${DIAGRAM} .pd-export-toggle`).click()
+    }
+    const export_png = async () => {
+      await toggle_pane()
+      const downloaded = page.waitForEvent(`download`)
+      await page.getByRole(`button`, { name: `Download PNG`, exact: true }).click()
+      const path = await (await downloaded).path()
+      if (!path) throw new Error(`No PNG downloaded`)
+      await toggle_pane()
+      return readFile(path)
+    }
+    const unpinned = await export_png()
+    const section = await require_bbox(page.locator(SECTION_CANVAS), `section canvas`)
+    await page.mouse.click(section.x + section.width / 2, section.y + section.height * 0.6)
+    expect((await export_png()).equals(unpinned)).toBe(false)
+
+    await page
+      .locator(`${DIAGRAM} .view-toggle`)
+      .getByRole(`button`, { name: `3D prism` })
+      .click()
+    const canvas = page.locator(`${DIAGRAM} .prism-canvas canvas`)
+    await expect(canvas).toBeVisible({ timeout: LOAD_TIMEOUT })
+    const label = page.locator(`${DIAGRAM} .prism-canvas .axis-label`).first()
+    await expect(label).toBeVisible({ timeout: LOAD_TIMEOUT })
+    const boxes = [await require_bbox(canvas, `prism`), await require_bbox(label, `label`)]
+    const png = await decode_canvas_png(page, await export_png())
+    // glyph edges antialias into many shades where the bare scene behind a label is flat
+    const shades = await png.evaluate(({ data, width }, [frame, text]) => {
+      const scale = width / frame.width
+      const [left, top] = [(text.x - frame.x) * scale, (text.y - frame.y) * scale]
+      const colors = new Set<number>()
+      for (let row = Math.floor(top); row < top + text.height * scale; row++)
+        for (let col = Math.floor(left); col < left + text.width * scale; col++) {
+          const idx = (row * width + col) * 4
+          colors.add((data[idx] << 16) | (data[idx + 1] << 8) | data[idx + 2])
+        }
+      return colors.size
+    }, boxes)
+    expect(shades).toBeGreaterThan(4)
+    await png.dispose()
   })
 
   test(`a dropped entries file recomputes the diagram`, async ({ page }) => {

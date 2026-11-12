@@ -19,7 +19,11 @@
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import { as_text } from '#lib/io/decompress.js'
-  import { canvas_sources, type ExportProps } from '#lib/io/export.js'
+  import {
+    canvas_overlay_png_blob,
+    type ExportProps,
+    type ExportSources,
+  } from '#lib/io/export.js'
   import type { FileLoadCallback } from '#lib/io/types.js'
   import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -388,10 +392,20 @@
   )
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
-  // The shown section view (2D canvas or the prism's), looked up per export: views re-mount it
-  const image_sources = canvas_sources(() =>
-    wrapper?.querySelector<HTMLCanvasElement>(`.section-panel canvas:not(.pulse-overlay)`),
-  )
+  // The shown section view, looked up per export (views re-mount it): the 2D section's canvas
+  // with its annotation layer (pinned probe, selection rings), or the prism's GPU canvas with
+  // its HTML tick, axis and phase labels
+  const image_sources: ExportSources = {
+    png: (dpi) => {
+      const panel = wrapper?.querySelector(`.section-panel`)
+      const overlays = `canvas.pulse-overlay, :is(.tick-label, .axis-label, .phase-label)`
+      return canvas_overlay_png_blob(
+        panel?.querySelector<HTMLCanvasElement>(`canvas:not(.pulse-overlay)`),
+        [...(panel?.querySelectorAll<HTMLElement>(overlays) ?? [])],
+        dpi,
+      )
+    },
+  }
 
   // === File drop ===
 

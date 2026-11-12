@@ -134,10 +134,13 @@ export const poscar_export_unavailable_reason = (
   structure?: AnyStructure,
 ): string | undefined =>
   fractional_export_unavailable_reason(structure) ??
-  (structure && site_export_reason(structure, true))
+  (structure && (site_export_reason(structure, true) ?? constraint_reason(structure, false)))
 export const xyz_export_unavailable_reason = (structure?: AnyStructure): string | undefined =>
   coordinate_export_unavailable_reason(structure, false) ??
-  (structure && (site_export_reason(structure, true) ?? xyz_column_clash(structure)))
+  (structure &&
+    (site_export_reason(structure, true) ??
+      xyz_column_clash(structure) ??
+      constraint_reason(structure, true)))
 
 // Fractional coordinates from abc, else converted from xyz. Invalid present abc must not
 // silently switch the authoritative coordinate source or write NaN into the exported file.
@@ -160,17 +163,44 @@ const site_force = (site: Site): number[] | null => {
   return vec.every(Number.isFinite) ? vec : null
 }
 
-// Whether any site carries per-axis motion flags. Keyed on Array.isArray, the same test
-// move_flag_columns reads them with, so the header and the columns can never disagree.
-const has_move_flags = (structure: AnyStructure): boolean =>
-  structure.sites.some((site) => Array.isArray(site.properties?.selective_dynamics))
-
-// Per-axis motion flags as POSCAR/extXYZ `T`/`F` columns, defaulting to free. Always exactly
-// three, so a truncated array can't emit a short line that both readers would mis-column.
-const move_flag_columns = (site: Site): string[] => {
-  const flags = site.properties?.selective_dynamics
-  return [0, 1, 2].map((axis) => (Array.isArray(flags) && flags[axis] === false ? `F` : `T`))
+// Every site's per-axis motion flags (default free) in the basis asked for, or undefined when
+// no site has any. Flags are stored as their file gave them: per lattice vector (POSCAR), or
+// per Cartesian axis and marked `constraint_basis: 'cartesian'` (extXYZ move_mask, QE,
+// FHI-aims). Converting, a target vector is free (fixed) when every source axis it has a
+// component along is; a site with one mixing the two is `null`: that basis cannot express it.
+function site_move_flags(
+  structure: AnyStructure,
+  cartesian: boolean,
+): (boolean[] | null)[] | undefined {
+  const flagged = (site: Site) => Array.isArray(site.properties?.selective_dynamics)
+  if (!structure.sites.some(flagged)) return undefined
+  const matrix = `lattice` in structure ? structure.lattice?.matrix : undefined
+  let rows: Matrix3x3 | undefined // the target basis vectors in source components
+  return structure.sites.map((site) => {
+    const stored: unknown = site.properties?.selective_dynamics
+    const flags = [0, 1, 2].map((axis) => !Array.isArray(stored) || stored[axis] !== false)
+    const in_basis = (site.properties?.constraint_basis === `cartesian`) === cartesian
+    if (in_basis || !flagged(site) || matrix?.length !== 3) return flags
+    rows ??= cartesian ? math.matrix_inverse_3x3(matrix) : matrix
+    const along = rows.map(
+      (vec) => new Set(flags.filter((_, axis) => Math.abs(vec[axis]) > 1e-8)),
+    )
+    return along.every((set) => set.size === 1) ? along.map((set) => set.has(true)) : null
+  })
 }
+const constraint_reason = (
+  structure: AnyStructure,
+  cartesian: boolean,
+): string | undefined => {
+  const idx = site_move_flags(structure, cartesian)?.indexOf(null) ?? -1
+  if (idx === -1) return undefined
+  const [stored, target] = cartesian
+    ? [`lattice vectors`, `Cartesian`]
+    : [`Cartesian axes`, `lattice-vector`]
+  return `Site ${display_idx(idx)} is constrained along ${stored} in a way ${target} flags cannot express`
+}
+const flag_columns = (flags?: boolean[] | null): string[] =>
+  (flags ?? []).map((free) => (free ? `T` : `F`))
 
 // Columns written by name elsewhere in the extXYZ header, or reserved by the format
 const XYZ_RESERVED_PROPERTIES = new Set([
@@ -231,7 +261,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // (free to move), which is the same assumption the POSCAR exporter makes.
   const forces = structure.sites.map(site_force)
   const has_forces = forces.length > 0 && forces.every((force) => force !== null)
-  const has_constraints = has_move_flags(structure)
+  const move_flags = site_move_flags(structure, true)
   const extra_columns = numeric_site_columns(structure)
 
   const comment_parts: string[] = []
@@ -247,7 +277,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // Per-axis `move_mask:L:3`, which is what ASE itself writes for a FixCartesian constraint
   // and reads back as one. The whole-atom `move_mask:L:1` cannot express a partial `T F T`:
   // ASE collapses it to "this atom may move" and yields FixAtoms([]), i.e. no constraint.
-  if (has_constraints) property_cols.push(`move_mask:L:3`)
+  if (move_flags) property_cols.push(`move_mask:L:3`)
   for (const { key, ncols } of extra_columns) property_cols.push(`${key}:R:${ncols}`)
   comment_parts.push(`Properties=${property_cols.join(`:`)}`)
   // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
@@ -270,7 +300,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
       throw new Error(coordinate_error(site_idx))
     const columns = coords.map((coord) => coord.toFixed(6))
     if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
-    if (has_constraints) columns.push(...move_flag_columns(site))
+    columns.push(...flag_columns(move_flags?.[site_idx]))
     // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
@@ -445,8 +475,8 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
     [...sites_by_element.keys()].join(` `),
     [...sites_by_element.values()].map((group) => group.length).join(` `),
   )
-  const has_selective_dynamics = has_move_flags(structure)
-  if (has_selective_dynamics) lines.push(`Selective dynamics`)
+  const move_flags = site_move_flags(structure, false)
+  if (move_flags) lines.push(`Selective dynamics`)
   lines.push(`Direct`)
 
   const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
@@ -454,7 +484,7 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
     for (const idx of group) {
       const site = structure.sites[idx]
       const columns = get_frac_coords(site, cart_to_frac, idx).map((coord) => coord.toFixed(8))
-      if (has_selective_dynamics) columns.push(...move_flag_columns(site))
+      columns.push(...flag_columns(move_flags?.[idx]))
       lines.push(columns.join(` `))
     }
   }
