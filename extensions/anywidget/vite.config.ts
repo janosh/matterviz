@@ -97,10 +97,11 @@ export default defineConfig({
       fileName: `matterviz`,
       cssFileName: `matterviz`,
     },
-    minify: true, // published to a CDN + parsed in browsers; halve size/parse cost
     rolldownOptions: {
-      // Disable code splitting -- widget asset loader expects a single JS file
-      output: { codeSplitting: false },
+      // Disable code splitting -- widget asset loader expects a single JS file. Vite's ES lib
+      // builds keep whitespace and pure annotations for the consumer's bundler to tree-shake
+      // with; nothing bundles this file again, so minify it fully
+      output: { codeSplitting: false, minify: true, comments: false },
     },
   },
 })

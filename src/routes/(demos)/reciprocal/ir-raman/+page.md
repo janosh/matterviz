@@ -50,10 +50,10 @@ This compact NaCl Γ→X path was generated from the same published PhononDB for
   import band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 
   const modes = parse_phonon_modes(band_yaml)
-  const dataset = { modes, spectrum: spectrum_from_phonon_data(modes, parse_born(born_file)) }
+  const phonons = { modes, spectrum: spectrum_from_phonon_data(modes, parse_born(born_file)) }
 </script>
 
-<PhononModeExplorer {dataset} style="height: 680px" />
+<PhononModeExplorer {phonons} style="height: 680px" />
 ```
 
 `PhononModeExplorer` is a typed renderer. Parse or fetch files at the application boundary, then pass the resulting modes and optional spectrum together as one dataset.

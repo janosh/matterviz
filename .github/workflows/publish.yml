@@ -184,12 +184,16 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           pnpm package:dist
-          # Development tracks svelte-widgets#main, but a published release must not: every
-          # consumer install would build whatever main is by then. Ship the commit this build
-          # installed. jq -e fails the job if pnpm reports no 40-hex commit for it.
+          # Development tracks svelte-widgets#main, but a git dependency makes every consumer
+          # clone and build it on install. Ship the npm release instead, which must be the
+          # commit this build installed. jq -e fails the job on a missing version or commit.
+          widgets_version=$(jq -er .version node_modules/svelte-widgets/package.json)
           widgets_sha=$(pnpm list svelte-widgets --json |
             jq -er '.[0].dependencies["svelte-widgets"].resolved | match("[0-9a-f]{40}").string')
-          npm pkg set "dependencies.svelte-widgets=github:janosh/svelte-widgets#$widgets_sha"
+          [ "$(npm view "svelte-widgets@$widgets_version" gitHead)" = "$widgets_sha" ] || {
+            echo "::error::svelte-widgets main ($widgets_sha) is ahead of npm $widgets_version; release svelte-widgets first"
+            exit 1; }
+          npm pkg set "dependencies.svelte-widgets=^$widgets_version"
           mkdir -p release
           npm pack --ignore-scripts --pack-destination release
           test -s "release/matterviz-$RELEASE_VERSION.tgz"
@@ -246,8 +250,8 @@ jobs:
           js_bytes=$(wc -c < build/matterviz.js)
           test "$js_bytes" -gt 1000000 || {
             echo "bundle too small ($js_bytes B)"; exit 1; }
-          # Fresh builds are ~7.35 MB (0.8 MB of it inline workers); Moyo's base64 WASM adds ~0.98 MB.
-          test "$js_bytes" -lt 7800000 || {
+          # Fresh builds are ~5.86 MB (1.56 MB of it inline workers); Moyo's base64 WASM adds ~0.98 MB.
+          test "$js_bytes" -lt 6150000 || {
             echo "bundle too large ($js_bytes B) -- unexpected dependency bundled?"; exit 1; }
           mkdir -p release
           npm pack --ignore-scripts --pack-destination release

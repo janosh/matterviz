@@ -34,7 +34,7 @@ The publish workflow's size gate fails if either WASM creeps back in.
 
 ## Web Workers
 
-The bundle has no URL of its own to load worker files from (anywidget imports it from a `blob:`, CDN or `file://` URL), so the `inline_workers` plugin in `vite.config.ts` ships every MatterViz worker (file parsing, MSD, VACF, RDF, structure ID, spectroscopy, chempot, ternary hulls, isosurfaces, Fermi surfaces, symmetry) as a string in `matterviz.js` (~0.8 MB of 7.3 MB) and starts it from a `blob:` URL. That keeps parsing and analysis off the notebook's UI thread: RDF over 100 frames of a 10k-atom run froze the page for 10 s before, and now runs in 2 s across parallel workers with no frame longer than ~50 ms. A page CSP whose `worker-src` (or its `child-src`/`script-src` fallback) leaves out `blob:` refuses these workers; the bundle tests that once at load and then logs a warning and computes on the main thread.
+The bundle has no URL of its own to load worker files from (anywidget imports it from a `blob:`, CDN or `file://` URL), so the `inline_workers` plugin in `vite.config.ts` ships every MatterViz worker (file parsing, MSD, VACF, RDF, structure ID, spectroscopy, chempot, ternary hulls, isosurfaces, Fermi surfaces, symmetry) as a string in `matterviz.js` (~1.6 MB of 5.9 MB) and starts it from a `blob:` URL. That keeps parsing and analysis off the notebook's UI thread: RDF over 100 frames of a 10k-atom run froze the page for 10 s before, and now runs in 2 s across parallel workers with no frame longer than ~50 ms. A page CSP whose `worker-src` (or its `child-src`/`script-src` fallback) leaves out `blob:` refuses these workers; the bundle tests that once at load and then logs a warning and computes on the main thread.
 
 ## Consumers
 

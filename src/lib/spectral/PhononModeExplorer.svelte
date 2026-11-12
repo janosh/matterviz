@@ -74,7 +74,7 @@
     q_position.map((coordinate) => format_num(coordinate, fmt)).join(`, `)
 
   let {
-    dataset,
+    phonons,
     selection = $bindable(),
     spectrum_kind = $bindable(`ir`),
     amplitude = $bindable(DEFAULT_PHONON_AMPLITUDE),
@@ -94,7 +94,7 @@
     ...rest
   }: HTMLAttributes<HTMLDivElement> & {
     // Phonon modes (atoms, lattice, q-points with frequencies and eigenvectors, band path), optionally with an IR/Raman spectrum and filename.
-    dataset: PhononModeDataset
+    phonons: PhononModeDataset
     // Animated mode as `{ qpoint_idx, mode_idx }`. Defaults to the first mode with an eigenvector; follows clicks on the dispersion and spectrum.
     selection?: PhononModeSelection
     // Activity the spectrum beside the dispersion shows; Raman needs polarizability data
@@ -147,8 +147,8 @@
   let root = $state<HTMLDivElement>()
   let fps_range = $derived(trajectory_props.fps_range ?? DEFAULTS.trajectory.fps_range)
   let current_step_idx = $state(0)
-  let mode_data = $derived(dataset.modes)
-  let active_spectrum = $derived(dataset.spectrum)
+  let mode_data = $derived(phonons.modes)
+  let active_spectrum = $derived(phonons.spectrum)
 
   const report_error = (error: unknown): void => {
     error_msg = to_error(error).message
@@ -208,8 +208,8 @@
   })
   // exported videos are named after the file, mode and q-point
   let filename_stem = $derived(
-    dataset.filename
-      ? strip_compression_extensions(dataset.filename, { lowercase: false }).replace(
+    phonons.filename
+      ? strip_compression_extensions(phonons.filename, { lowercase: false }).replace(
           /\.[^.]*$/,
           ``,
         ) || undefined
@@ -483,6 +483,7 @@ under its open panes -->
         type="button"
         class="bz-inset-toggle"
         aria-label={bz_inset_enlarged ? `Shrink Brillouin zone` : `Enlarge Brillouin zone`}
+        aria-pressed={bz_inset_enlarged}
         onclick={() => (bz_inset_enlarged = !bz_inset_enlarged)}
         {@attach tooltip()}
       >
@@ -720,7 +721,7 @@ under its open panes -->
             >eigenvectors at {n_animatable_qpoints}/{mode_data.qpoints.length} q-points</span
           >
         {/if}
-        {#if dataset.filename}<span>{dataset.filename}</span>{/if}
+        {#if phonons.filename}<span>{phonons.filename}</span>{/if}
       </div>
     {/if}
   </div>

@@ -595,7 +595,7 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // No show_controls prop: the explorer's panes carry their own chrome
     component: PhononModeExplorer,
     drive: [
-      ...drive_props(`dataset spectrum_kind amplitude supercell n_frames fps show_vectors
+      ...drive_props(`phonons spectrum_kind amplitude supercell n_frames fps show_vectors
         vector_thickness vector_color auto_play pane_ratio show_bz_inset band_coloring
         mode_values`),
       // The animated mode { qpoint_idx, mode_idx }: follows clicks on the dispersion/spectrum

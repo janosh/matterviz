@@ -1166,6 +1166,11 @@ describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
     expect(Number(bare.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(
       right - left,
     )
+    // an edge isopleth's fraction caption (`1`) repeats the strip axis' `1` caption
+    document.body.innerHTML = ``
+    const edge = await mount_diagram({ isopleth: 1, comp_unit: `fraction` })
+    const captions = [...edge.querySelectorAll(`.isopleth > text:not(.halo)`)]
+    expect(captions.map((el) => el.textContent?.trim())).toEqual([`1`, `0`, `1`, `fraction`])
   })
 
   // m toggles a lens showing the plot layers 4x about the pointer; marks in it keep their size

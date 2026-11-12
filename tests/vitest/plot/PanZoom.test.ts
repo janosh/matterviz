@@ -235,7 +235,7 @@ describe.each(plot_cases)(`%s pan/zoom input`, (_name, mount_plot) => {
   // zoom the page under it
   test(`touch: one finger draws the zoom rect, a second turns it into a pinch`, async () => {
     const svg = await mount_plot()
-    expect(svg.style.touchAction).toBe(`pan-y`)
+    expect(svg.style.touchAction).toBe(`none`)
     const touch = (type: string, pointerId: number, clientX: number, clientY = 120) =>
       svg.dispatchEvent(
         pointer(type, { pointerType: `touch`, pointerId, buttons: 1, clientX, clientY }),

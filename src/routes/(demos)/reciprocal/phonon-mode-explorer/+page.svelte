@@ -477,7 +477,7 @@
   {#if active_dataset}
     <PhononModeExplorer
       id="phonon-mode-explorer"
-      dataset={active_dataset}
+      phonons={active_dataset}
       bind:selection
       bind:spectrum_kind
       bind:amplitude

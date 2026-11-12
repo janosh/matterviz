@@ -63,9 +63,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   readonly is_panning: boolean
   // `grabbing`/`grab` during and before a pan; null when no gesture claims the cursor
   readonly cursor: string | null
-  // `pan-y` while touch gestures drive the plot: a vertical swipe still scrolls the page past
-  // it, sideways drags and pinches go to the plot. Else the page keeps its own scroll and zoom.
-  readonly touch_action: `pan-y` | `auto`
+  // `none` while touch gestures drive the plot (a one-finger zoom rect needs both axes, so the
+  // page cannot keep either), else the page keeps its own scroll and zoom
+  readonly touch_action: `none` | `auto`
   set_focused: (focused: boolean) => void
   on_pointer_down: (evt: PointerEvent) => void
   on_pointer_move: (evt: PointerEvent) => void
@@ -335,7 +335,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       return shift_held && opts.pan()?.enabled !== false ? `grab` : null
     },
     get touch_action() {
-      return touch_enabled() ? `pan-y` : `auto`
+      return touch_enabled() ? `none` : `auto`
     },
     set_focused: (focused: boolean) => {
       is_focused = focused

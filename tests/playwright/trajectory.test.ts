@@ -163,9 +163,10 @@ test.describe(`Trajectory Component`, () => {
       const check_icon_sizes = async () => {
         // the invisible analysis anchors (checked above) stretch over the Analysis button and
         // squeeze their icons, so only visible toggles count; the data inspector's table
-        // toolbar is deliberately compact, so only the viewer's own toolbars count
+        // toolbar and embedded plots' header controls are deliberately compact, so only the
+        // viewer's own toolbars count
         const icons = trajectory_viewer.locator(
-          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor, .docked-sidebar button) > svg`,
+          `button:is(.fullscreen-btn, .viewer-pane-toggle, .analysis-button, .view-mode-button):not(.analysis-toggle-anchor, .docked-sidebar button, .header-controls button) > svg`,
         )
         // Resizing can unmount panes: read the current icons and sizes in one DOM snapshot.
         await expect(async () => {

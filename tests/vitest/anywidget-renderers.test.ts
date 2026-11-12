@@ -61,7 +61,8 @@ vi.mock(`matterviz/theme/embedded`, () => ({
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
-const matterviz: Record<string, unknown> = await import(`matterviz`)
+// not `import()`: its types resolve through dist/, which a lint-only CI job never builds
+const matterviz = await vi.importMock<Record<string, unknown>>(`matterviz`)
 // read now: mock call records don't survive into the tests
 const check_blob_workers_calls = [...check_blob_workers.mock.calls]
 
@@ -121,16 +122,20 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
 // a TypeScript program over every widget component: seconds on shared CI runners
-test(`no widget component binds a data prop with a default`, { timeout: 30_000 }, () => {
-  const defaulted = Object.entries(extract_prop_docs(component_files)).flatMap(
-    ([component, { props: docs }]) =>
-      docs
-        .filter(
-          ({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init,
-        )
-        .map(({ name, default: init }) => `${component}.${name} = ${init}`),
+// the custom elements define an accessor per prop, so a prop named like an HTMLElement member
+// shadows it: `dataset` made el.dataset return phonon data instead of the DOMStringMap
+test(`no widget prop binds defaulted data or shadows the DOM`, { timeout: 30_000 }, () => {
+  const docs = Object.entries(extract_prop_docs(component_files))
+  const defaulted = docs.flatMap(([component, { props }]) =>
+    props
+      .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
+      .map(({ name, default: init }) => `${component}.${name} = ${init}`),
   )
   expect(defaulted).toEqual([])
+  const names = docs.flatMap(([, { props }]) => props.map(({ name }) => name))
+  expect(new Set(names.filter((name) => name in HTMLElement.prototype))).toEqual(
+    new Set([`children`, `id`, `normalize`, `onkeydown`, `style`, `title`]),
+  )
 })
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div

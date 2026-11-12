@@ -156,7 +156,7 @@ const as_state = <T>(value: T): T => {
 // proxy over a 30k-site structure put every read behind proxy traps and mounted the
 // Structure widget 10x slower
 export const DATA_PROPS = new Set(
-  words(`structure structures series surfaces entries patterns x_items y_items values dataset
+  words(`structure structures series surfaces entries patterns x_items y_items values phonons
     band_structs doses fermi_data band_data bz_data trajectory volumetric_data paths`),
 )
 
