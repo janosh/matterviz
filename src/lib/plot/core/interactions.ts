@@ -205,7 +205,8 @@ export function zoom_range_by_factor(
   const fixed = param_0 + anchor * (param_1 - param_0)
   const span = (param_1 - param_0) / factor
   const next: Vec2 = [inverse(fixed - anchor * span), inverse(fixed + (1 - anchor) * span)]
-  return get_scale_type_name(scale_type) === `log` ? validate_log_range(next) : next
+  if (get_scale_type_name(scale_type) === `log`) return validate_log_range(next)
+  return all_finite(next) ? next : range // a span that overflows must not reach axis state
 }
 
 // [min, max] of a pair in either order (an inverted axis stores its range high-to-low, a drag

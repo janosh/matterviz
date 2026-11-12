@@ -253,6 +253,14 @@ describe(`zoom_range_by_factor`, () => {
     [`log zoom out`, [10, 1000], 0.5, `log`, [1, 10_000]],
     [`log zoom preserves tiny bounds`, [1e-20, 1e-16], 2, `log`, [1e-19, 1e-17]],
     [`inverted linear stays inverted`, [10, 0], 2, undefined, [7.5, 2.5]],
+    // the zoomed span overflows to Infinity: the range is kept, not written as non-finite
+    [
+      `overflowing zoom out keeps the range`,
+      [1e308, 1.3e308],
+      0.1,
+      undefined,
+      [1e308, 1.3e308],
+    ],
   ])(`%s`, (_desc, range, factor, type, expected) => {
     const result = zoom_range_by_factor(range, factor, type)
     for (const [idx, value] of expected.entries()) {

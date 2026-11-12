@@ -37,9 +37,22 @@ function build_structure(
   if (atoms.length === 0) throw new Error(`${format} has no atoms`)
   const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
   const cart_to_frac = lattice_matrix && math.create_cart_to_frac(lattice_matrix)
+  // aims and QE constrain Cartesian axes, POSCAR-style selective_dynamics the lattice vectors:
+  // per-axis flags carry over only where the two coincide, an atom fixed on every axis always
+  const axis_aligned =
+    !lattice_matrix ||
+    lattice_matrix.every((row, row_idx) =>
+      row.every((val, col) => col === row_idx || val === 0),
+    )
+  const kept = (movable?: AxisFlags) => movable && (axis_aligned || !movable.includes(true))
+  const n_dropped = atoms.filter(([, , , movable]) => movable && !kept(movable)).length
+  if (n_dropped > 0)
+    console.warn(
+      `${format}: dropped per-axis constraints of ${n_dropped} atoms; Cartesian axes are not lattice vectors in this cell`,
+    )
   const sites = atoms.map(([element, coords, fractional, movable], idx) => {
     const label = `${element}${idx + 1}`
-    const properties = movable ? { selective_dynamics: movable } : {}
+    const properties = kept(movable) ? { selective_dynamics: movable } : {}
     if (frac_to_cart && cart_to_frac) {
       const abc = wrap_to_unit_cell(fractional ? coords : cart_to_frac(coords))
       return make_site(element, abc, frac_to_cart(abc), label, properties)

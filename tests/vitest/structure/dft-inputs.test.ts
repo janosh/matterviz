@@ -1,7 +1,7 @@
 import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
 import { detect_structure_type, parse_structure_file } from '#lib/structure/parse.js'
 import { parse_aims, parse_qe } from '#lib/structure/parsers/dft-inputs.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 // Parsed values are compared to hand-computed ones to 1e-12 Å (or 1e-12 in fractional
 // units): the parsers only scale and solve a 3x3 system, so anything larger is a real error
@@ -169,12 +169,19 @@ test.each([
 test(`fixed-atom flags become selective_dynamics`, () => {
   const flags = (structure: ReturnType<typeof parse_qe>) =>
     structure.sites.map((site) => site.properties?.selective_dynamics)
-  const qe = qe_input(`ibrav = 2, celldm(1) = 10.2, nat = 2`, si_alat_positions)
-  expect(flags(parse_qe(qe))).toEqual([undefined, [false, false, true]])
+  const cubic_positions = `ATOMIC_POSITIONS crystal\nSi 0 0 0\nSi 0.5 0.5 0.5 0 0 1`
+  const cubic_qe = qe_input(`ibrav = 0, nat = 2`, `${cubic_cell}\n${cubic_positions}`)
+  expect(flags(parse_qe(cubic_qe))).toEqual([undefined, [false, false, true]])
   expect(flags(parse_aims(gaas_geometry))).toEqual([undefined, [false, false, false]])
   // per-axis constraints accumulate; one under a lattice_vector constrains the cell, no atom
   const by_axis = `${cubic_aims}constrain_relaxation .true.\natom 0 0 0 Si\nconstrain_relaxation x\nconstrain_relaxation Z`
   expect(flags(parse_aims(by_axis))).toEqual([[false, true, false]])
+  // Cartesian z is no lattice vector of the fcc cell, so its per-axis flag cannot carry over
+  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
+  const fcc_qe = qe_input(`ibrav = 2, celldm(1) = 10.2, nat = 2`, si_alat_positions)
+  expect(flags(parse_qe(fcc_qe))).toEqual([undefined, undefined])
+  expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/dropped .* of 1 atoms/))
+  warn.mockRestore()
 })
 
 describe(`format detection`, () => {
