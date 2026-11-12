@@ -553,23 +553,29 @@ export function normalize_band_structure(
   } as unknown as types.BaseBandStructure
 }
 
-// Electronic DOS record. Spin-polarized when the input says so, else when a same-length
+// Electronic DOS record in eV from values in `unit` (null for a malformed unit, see
+// band_unit_converter). Spin-polarized when the input says so, else when a same-length
 // spin-down channel exists; the spin-down channel is only kept for spin-polarized data.
 const electronic_dos = (
   energies: number[],
   densities: number[],
-  spin_down: number[] | null,
-  { spin_polarized, efermi }: { spin_polarized?: boolean; efermi?: number } = {},
-): types.ElectronicDos => {
-  const is_spin_polarized =
-    spin_polarized ?? (spin_down !== null && spin_down.length === densities.length)
+  spin_down: unknown,
+  opts: { spin_polarized?: boolean; efermi?: number; unit?: unknown } = {},
+): types.ElectronicDos | null => {
+  const to_ev = band_unit_converter(opts.unit, `electronic`)
+  if (!to_ev) return null
+  // g(E) is per unit energy, so the Jacobian keeps ∫g dE through the conversion to eV
+  const [ev_per_unit] = to_ev([1])
+  const per_ev = (values: number[]) => values.map((density) => density / ev_per_unit)
+  const down = Array.isArray(spin_down) ? (spin_down as number[]) : null
+  const spin_polarized = opts.spin_polarized ?? down?.length === densities.length
   return {
     type: `electronic`,
-    energies,
-    densities,
-    spin_down_densities: is_spin_polarized ? (spin_down ?? undefined) : undefined,
-    spin_polarized: is_spin_polarized,
-    ...(efermi !== undefined && { efermi }),
+    energies: to_ev(energies),
+    densities: per_ev(densities),
+    spin_down_densities: spin_polarized && down ? per_ev(down) : undefined,
+    spin_polarized,
+    ...(opts.efermi !== undefined && { efermi: opts.efermi * ev_per_unit }),
   }
 }
 
@@ -608,20 +614,11 @@ export function normalize_dos(dos: unknown): types.DosData | null {
 
   if (Array.isArray(energies)) {
     if (energies.length !== densities.length) return null
-    const to_ev = band_unit_converter(dos.unit, `electronic`)
-    if (!to_ev) return null
-    // g(E) is per unit energy, so the Jacobian keeps ∫g dE through the conversion to eV
-    const [ev_per_unit] = to_ev([1])
-    const per_ev = (values: number[]) => values.map((density) => density / ev_per_unit)
-    return electronic_dos(
-      to_ev(energies),
-      per_ev(densities),
-      spin_down_densities && per_ev(spin_down_densities),
-      {
-        spin_polarized: spin_polarized as boolean | undefined,
-        efermi: typeof dos.efermi === `number` ? dos.efermi * ev_per_unit : undefined,
-      },
-    )
+    return electronic_dos(energies, densities, spin_down_densities, {
+      spin_polarized: spin_polarized as boolean | undefined,
+      efermi: typeof dos.efermi === `number` ? dos.efermi : undefined,
+      unit: dos.unit,
+    })
   }
 
   if (has_pymatgen_marker(dos)) {
@@ -974,7 +971,13 @@ export function extract_pdos(
     if (!spin_channels || !Array.isArray(energies)) continue
     const densities = spin_channels.up
     if (!Array.isArray(densities) || energies.length !== densities.length) continue
-    result[key] = electronic_dos(energies, densities, spin_channels.down, { efermi })
+    // projections share the total DOS's unit, so they convert like normalize_dos does
+    const projected = electronic_dos(energies, densities, spin_channels.down, {
+      efermi,
+      unit: dos.unit,
+    })
+    if (!projected) return null
+    result[key] = projected
   }
   return Object.keys(result).length > 0 ? result : null
 }

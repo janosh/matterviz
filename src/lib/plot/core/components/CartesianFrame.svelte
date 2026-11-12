@@ -244,6 +244,7 @@
       onfocusout={() => pan_zoom.set_focused(false)}
       onpointerdown={pan_zoom.on_pointer_down}
       onpointermove={pan_zoom.on_pointer_move}
+      onpointerleave={pan_zoom.on_pointer_move}
       onpointerup={pan_zoom.on_pointer_up}
       onpointercancel={pan_zoom.on_pointer_cancel}
       onmousedown={pan_zoom.on_mouse_down}

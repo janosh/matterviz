@@ -124,7 +124,7 @@ test.each([
   [`timestep`, `2`, { time_step: 2, time_unit: `fs` }],
   [`time unit`, `ps`, { time_step: 1, time_unit: `ps` }],
 ])(
-  `recomputes with changed %s and refreshes current sources`,
+  `recomputes with changed %s on the input already collected`,
   async (label, value, timing) => {
     const { collect_trajectory_spectroscopy_input } = await vi.importActual<
       typeof spectroscopy_collect
@@ -136,7 +136,6 @@ test.each([
       .mockReturnValueOnce(recomputation.promise)
       .mockResolvedValueOnce(make_result(`refresh`))
     const run = { ...make_run(), frame_count: 24_001 }
-    const collect_positions = vi.spyOn(run, `collect_positions`)
     const target = render_pane({ run })
 
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
@@ -156,11 +155,6 @@ test.each([
     expect(target.textContent).toContain(`24001 total frames · timestep 1 fs`)
     const fieldset = target.querySelector<HTMLFieldSetElement>(`.spectroscopy-controls`)
     expect(fieldset?.disabled).toBe(false)
-    // The run identity stays unchanged while its source returns a fresh position stream.
-    const refreshed = structuredClone(mocks.compute.mock.calls[0][0].positions)
-    refreshed.positions[0] = 9
-    collect_positions.mockResolvedValue(refreshed)
-    run.preview.structure.sites[0].properties.mass = 2
     await set_timing(target, label, value)
 
     await vi.waitFor(() =>
@@ -171,13 +165,14 @@ test.each([
     const button = calculation_button(target)
     button.click()
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
-    const [calculation_input, calculation_options] = mocks.compute.mock.calls[1]
-    expect(calculation_input).toMatchObject(timing)
-    expect(calculation_input.positions.positions[0]).toBe(9)
-    expect(calculation_input.masses[0]).toBe(2)
-    expect(mocks.collect).toHaveBeenCalledTimes(2)
-    expect(mocks.compute.mock.calls[0][0]).toMatchObject({ time_step: 1, time_unit: `fs` })
+    const [[first_input, first_options], [calculation_input, calculation_options]] =
+      mocks.compute.mock.calls
+    // Timing travels in the options, so the very input object the worker retains is reused:
+    // a new one would re-read the run and re-send its streams
+    expect(calculation_input).toBe(first_input)
+    expect(first_options).toMatchObject({ time_step: 1, time_unit: `fs` })
     expect(calculation_options).toMatchObject({
+      ...timing,
       frequency_unit: `cm^-1`,
       preprocessing: `body_fixed`,
     })
@@ -192,7 +187,7 @@ test.each([
     expect(target.querySelector(`.settings-dirty`)).toBeNull()
     button.click()
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(3))
-    expect(mocks.collect).toHaveBeenCalledTimes(3)
+    expect(mocks.collect).toHaveBeenCalledOnce()
   },
 )
 
@@ -202,35 +197,41 @@ test.each([
   [`Branch-continuous`, true, { polarization_branch_continuous: true }],
   [`Raman tensor`, ``, { raman_key: null }],
   [`Preprocessing`, `raw`, { preprocessing: `raw` }],
-])(`recollects after changing %s alongside timing`, async (label, value, expected_options) => {
-  mocks.compute.mockResolvedValue(make_result(`computed`))
-  const target = render_pane({
-    run: {
-      ...make_run(),
-      signals: {
-        polarization: { sample_shape: [3], sample_count: 2 },
-        current: { sample_shape: [3], sample_count: 2 },
-        polarizability: { sample_shape: [3, 3], sample_count: 2 },
+])(
+  `recollects only what changing %s alongside timing affects`,
+  async (label, value, expected_options) => {
+    mocks.compute.mockResolvedValue(make_result(`computed`))
+    const target = render_pane({
+      run: {
+        ...make_run(),
+        signals: {
+          polarization: { sample_shape: [3], sample_count: 2 },
+          current: { sample_shape: [3], sample_count: 2 },
+          polarizability: { sample_shape: [3, 3], sample_count: 2 },
+        },
       },
-    },
-  })
-  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
-  await open_settings(target)
-  const control = [...target.querySelectorAll(`.spectroscopy-controls label`)]
-    .find((element) => element.textContent?.trim().startsWith(label))
-    ?.querySelector(`select, input`)
-  if (typeof value === `boolean` && control instanceof HTMLInputElement) {
-    control.checked = value
-    control.dispatchEvent(new Event(`change`, { bubbles: true }))
-  } else if (typeof value === `string` && control instanceof HTMLSelectElement)
-    set_select(control, value)
-  else throw new Error(`Missing ${label} control`)
-  await set_timing(target, `timestep`, `2`)
-  calculation_button(target).click()
-  await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
-  expect(mocks.collect).toHaveBeenCalledTimes(2)
-  expect(mocks.collect.mock.lastCall?.[1]).toMatchObject(expected_options)
-})
+    })
+    await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledOnce())
+    await open_settings(target)
+    const control = [...target.querySelectorAll(`.spectroscopy-controls label`)]
+      .find((element) => element.textContent?.trim().startsWith(label))
+      ?.querySelector(`select, input`)
+    if (typeof value === `boolean` && control instanceof HTMLInputElement) {
+      control.checked = value
+      control.dispatchEvent(new Event(`change`, { bubbles: true }))
+    } else if (typeof value === `string` && control instanceof HTMLSelectElement)
+      set_select(control, value)
+    else throw new Error(`Missing ${label} control`)
+    await set_timing(target, `timestep`, `2`)
+    calculation_button(target).click()
+    await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
+    // unstrided signals need no body-frame alignment, so the preprocessing is the compute's alone
+    const [stage, n_collects] =
+      label === `Preprocessing` ? ([`compute`, 1] as const) : ([`collect`, 2] as const)
+    expect(mocks.collect).toHaveBeenCalledTimes(n_collects)
+    expect(mocks[stage].mock.lastCall?.[1]).toMatchObject(expected_options)
+  },
+)
 
 test(`picking an IR signal clears branch-continuous polarization`, async () => {
   mocks.compute.mockResolvedValue(make_result(`computed`))
@@ -256,7 +257,7 @@ test(`picking an IR signal clears branch-continuous polarization`, async () => {
 })
 
 test.each([`signal`, `frame_count`] as const)(
-  `recollects a changed %s on the same run`,
+  `a changed %s on the same run recollects only with a new stride`,
   async (field) => {
     mocks.compute.mockResolvedValue(make_result(`computed`))
     const props = $state({
@@ -270,7 +271,7 @@ test.each([`signal`, `frame_count`] as const)(
     await set_timing(target, `timestep`, `2`)
     calculation_button(target).click()
     await vi.waitFor(() => expect(mocks.compute).toHaveBeenCalledTimes(2))
-    expect(mocks.collect).toHaveBeenCalledTimes(2)
+    expect(mocks.collect).toHaveBeenCalledTimes(field === `frame_count` ? 2 : 1)
     if (field === `frame_count`) {
       expect(mocks.collect.mock.lastCall?.[1].frame_stride).toBeGreaterThan(1)
       // striding folds vibrations above the reduced Nyquist frequency back as fake peaks
@@ -299,8 +300,9 @@ test.each([`collect`, `compute`] as const)(
     await vi.waitFor(() => expect(props.result?.metadata.name).toBe(`retry`))
     // frozen, so the $state it lands in leaves its curves unproxied for the plots
     expect(types.isProxy(props.result?.vdos)).toBe(false)
-    expect(mocks.compute.mock.lastCall?.[0]).toMatchObject({ time_step: 2 })
-    expect(mocks.collect).toHaveBeenCalledTimes(2)
+    expect(mocks.compute.mock.lastCall?.[1]).toMatchObject({ time_step: 2 })
+    // a failed collect is not kept; a collected input outlives its failed compute
+    expect(mocks.collect).toHaveBeenCalledTimes(stage === `collect` ? 2 : 1)
     expect(target.textContent).not.toContain(`Invalid analysis settings`)
   },
 )

@@ -300,6 +300,7 @@ export function calculate_e_above_hull(
   reference_entries: PhaseData[],
 ): number | number[] {
   const entries = Array.isArray(input) ? input : [input]
+  if (entries.length === 0) return [] // before the reference hull, which empty references reject
   const distances = e_above_hull_distances(entries, reference_entries).map((dist) =>
     Math.max(0, dist),
   )

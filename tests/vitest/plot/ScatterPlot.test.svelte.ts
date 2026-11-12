@@ -3056,6 +3056,22 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `x`)).toContain(`0`)
     expect(axis_tick_labels(plot, `x`)).not.toContain(`120`)
     expect(state.x_axis.range).toEqual([0, 100])
+
+    // a two-finger spread that also travels zooms about where the fingers started and pans
+    // with them: x=30 under their center moves with it from 30% to 40% of the plot
+    const [clientY, buttons] = [clip.y + clip.height / 2, 1]
+    const touch = (type: string, pointerId: number, frac_x: number) => {
+      const clientX = clip.x + clip.width * frac_x
+      const init = { pointerType: `touch`, pointerId, buttons, clientX, clientY }
+      plot_svg().dispatchEvent(pointer(type, init))
+    }
+    touch(`pointerdown`, 1, 0.2)
+    touch(`pointerdown`, 2, 0.4)
+    touch(`pointermove`, 2, 0.6)
+    await tick()
+    const pinched = [state.view?.x, state.view?.y].flat()
+    for (const [idx, bound] of [10, 60, 2.5, 7.5].entries())
+      expect(pinched[idx]).toBeCloseTo(bound, 6)
   })
 
   // A grown auto range (more data, or a narrower plot: the padding is in px) moves an unzoomed
@@ -3125,6 +3141,16 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y`)).toContain(`5`)
     expect(axis_tick_labels(plot, `y`)).not.toContain(`10`)
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
+    expect(error_spy).not.toHaveBeenCalled()
+
+    // a write the plot cannot show (a derived y2, a non-finite bound) is corrected in `view`
+    const unshowable: Partial<AxisRanges>[] = [{ y: [NaN, 10] }, { y2: [3, 4] }]
+    for (const rejected of unshowable) {
+      state.view = rejected
+      await tick()
+      expect(state.view, JSON.stringify(rejected)).toMatchObject({ y: [0, 5], y2: [0, 5] })
+    }
+    expect(axis_tick_labels(plot, `y`)).toContain(`5`)
     expect(error_spy).not.toHaveBeenCalled()
 
     // y2 follows the linear y gesture; independently panning its log scale would overflow.

@@ -42,8 +42,6 @@ const make_input = (): TrajectorySpectroscopyInput => {
     velocities,
     infrared_signal: { kind: `dipole`, series: response },
     raman_signal: { kind: `polarizability`, series: polarizability },
-    time_step: 0.5,
-    time_unit: `fs`,
     metadata: { model: `synthetic` },
   }
 }
@@ -65,6 +63,8 @@ describe(`trajectory spectroscopy worker code path`, () => {
   it(`round-trips the full signal payload through one module worker`, async () => {
     const input = make_input()
     const options = {
+      time_step: 0.5,
+      time_unit: `fs`,
       preprocessing: `raw`,
       frequency_unit: `THz`,
       window: `none`,
@@ -79,8 +79,8 @@ describe(`trajectory spectroscopy worker code path`, () => {
     expect(payload?.positions.positions).not.toBe(input.positions.positions)
     expect(payload?.raman_signal?.series.values).toBeInstanceOf(Float64Array)
     expect(payload?.raman_signal?.series.values).not.toBe(input.raman_signal?.series.values)
-    // the same input with another window posts the options alone
-    const hann = { ...options, window: `hann` } as const
+    // the same input with another window and timestep posts the options alone
+    const hann = { ...options, window: `hann`, time_step: 1 } as const
     expect(await compute_spectroscopy_async(input, hann)).toEqual(
       calc_trajectory_spectroscopy(input, hann),
     )

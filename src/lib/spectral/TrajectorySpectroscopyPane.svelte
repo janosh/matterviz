@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { value_key } from '#lib/utils.js'
+  import { memo_by_identity, value_key } from '#lib/utils.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import { format_num } from '#lib/labels.js'
@@ -23,6 +23,7 @@
   import { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
   import type {
     SpectroscopyPreprocessing,
+    TrajectorySpectroscopyInput,
     TrajectorySpectroscopyOptions,
     TrajectorySpectroscopyResult,
   } from './trajectory-spectroscopy'
@@ -94,9 +95,9 @@
     infrared_kind,
     polarization_branch_continuous,
     raman_key: raman_key || null,
-    time_step: has_physical_time ? analysis_time_step : undefined,
-    time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
     options: {
+      time_step: has_physical_time ? analysis_time_step : undefined,
+      time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
       frequency_unit: has_physical_time ? `cm^-1` : `1/step`,
       preprocessing,
     } satisfies TrajectorySpectroscopyOptions,
@@ -112,6 +113,10 @@
   let previous_run: TrajectoryRun | undefined
   let auto_calculation_attempted = false
   const requests = create_request_owner()
+  // One collect per run and collection settings: a timing or preprocessing edit recomputes
+  // the same input object, which the worker retains, rather than re-reading and re-sending
+  // the streams. A run's data is fixed, so new data means a new run.
+  const collected_input_of = memo_by_identity<Promise<TrajectorySpectroscopyInput>>()
   $effect(() => {
     if (run === previous_run) return
     previous_run = run
@@ -143,27 +148,34 @@
     if (!run) return
     const request_run = run
     const request_settings = settings_snapshot()
-    const { options, time_step, time_unit, ...collection_settings } = request_settings
+    const { options, ...collection_settings } = request_settings
+    // the collect reads the preprocessing only to align strided signals to the body frame
+    const aligned = frame_stride > 1 && options.preprocessing === `body_fixed`
+    const collection = { ...collection_settings, frame_stride, aligned }
     const signal = requests.start()
     const request_is_current = () => run === request_run && !signal.aborted
     calculation_phase = `collecting`
     error_msg = undefined
     progress = null
     try {
-      // Nested run data can change in place, so each request needs fresh inputs.
-      const collected_input = await collect_trajectory_spectroscopy_input(request_run, {
-        ...collection_settings,
-        frame_stride,
-        preprocessing: options.preprocessing,
-        signal,
-        on_progress: (next_progress) => {
-          if (request_is_current()) progress = next_progress
-        },
-      })
+      const collected_input = await collected_input_of(
+        request_run,
+        value_key(collection),
+        () =>
+          collect_trajectory_spectroscopy_input(request_run, {
+            ...collection_settings,
+            frame_stride,
+            preprocessing: options.preprocessing,
+            signal,
+            on_progress: (next_progress) => {
+              if (request_is_current()) progress = next_progress
+            },
+          }),
+      )
       if (!request_is_current()) return
       calculation_phase = `computing`
       const calculation_result = await compute_trajectory_spectroscopy_async(
-        { ...collected_input, time_step, time_unit },
+        collected_input,
         options,
         { signal },
       )

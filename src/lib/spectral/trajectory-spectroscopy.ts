@@ -61,12 +61,14 @@ export interface TrajectorySpectroscopyInput {
   velocities?: TrajectorySignal | null
   infrared_signal?: InfraredSignal | null
   raman_signal?: RamanSignal | null
-  time_step?: number
-  time_unit?: string
   metadata?: Record<string, unknown>
 }
 
 export interface TrajectorySpectroscopyOptions {
+  // Simulation time per step, given together; physical frequency units need both. Options
+  // rather than input, so a retained input (see the async client) is re-timed without a re-send
+  time_step?: number
+  time_unit?: string
   frequency_unit?: TrajectoryFrequencyUnit
   preprocessing?: SpectroscopyPreprocessing
   // `auto` (default) uses stored velocities when the input carries them and differentiates
@@ -82,7 +84,8 @@ export interface TrajectorySpectroscopyOptions {
 // The resolved options every FFT path reads, as calc_trajectory_spectroscopy defaults them
 type SpectrumOptions = Required<
   Pick<TrajectorySpectroscopyOptions, `frequency_unit` | `window` | `zero_pad_factor`>
->
+> &
+  Pick<TrajectorySpectroscopyOptions, `time_step` | `time_unit`>
 
 // Peak detection: a local maximum of the normalized spectrum counts once it stands this far
 // above the surrounding minimum (within two Rayleigh widths)
@@ -831,7 +834,6 @@ const build_curve = (
   values: Float64Array,
   n_components: number,
   steps: number[],
-  input: TrajectorySpectroscopyInput,
   options: SpectrumOptions,
   label: string,
   // Scale of the raw data behind `values`, in their units. Only differs from max |values|
@@ -840,8 +842,8 @@ const build_curve = (
   component_weights?: Float64Array,
   frequency_squared = false,
 ): TrajectorySpectrumCurve => {
-  const interval = sample_interval(steps, options.frequency_unit, input.time_step, label)
-  const factor = frequency_factor(options.frequency_unit, input.time_unit)
+  const interval = sample_interval(steps, options.frequency_unit, options.time_step, label)
+  const factor = frequency_factor(options.frequency_unit, options.time_unit)
   const periodogram = one_sided_periodogram(values, n_components, interval, {
     window: options.window,
     zero_pad_factor: options.zero_pad_factor,
@@ -858,7 +860,7 @@ const build_curve = (
   }
   if (!frequency_squared) return curve
   const physical_factor =
-    options.frequency_unit === `1/step` ? 1 : frequency_factor(`THz`, input.time_unit)
+    options.frequency_unit === `1/step` ? 1 : frequency_factor(`THz`, options.time_unit)
   const power = curve.power.map((value, frequency_idx) => {
     const physical_frequency = periodogram.frequencies[frequency_idx] * physical_factor
     return value * (2 * Math.PI * physical_frequency) ** 2
@@ -921,7 +923,6 @@ const calculate_raman = (
       values,
       n_components,
       polarizability.steps,
-      input,
       options,
       label,
       max_abs(polarizability.values),
@@ -1169,10 +1170,10 @@ const detect_peaks = (
   const position_interval = sample_interval(
     input.positions.steps,
     options.frequency_unit,
-    input.time_step,
+    options.time_step,
     `positions`,
   )
-  const position_frequency_factor = frequency_factor(options.frequency_unit, input.time_unit)
+  const position_frequency_factor = frequency_factor(options.frequency_unit, options.time_unit)
   const position_nyquist = (0.5 * position_frequency_factor) / position_interval
   const frequencies_with_displacements = frequencies.filter(
     (frequency) => frequency <= position_nyquist,
@@ -1249,7 +1250,7 @@ export const calc_trajectory_spectroscopy = (
   }
   const pbc = stream.pbc ?? ([false, false, false] satisfies Pbc)
   const periodic = pbc.some(Boolean)
-  const { time_step, time_unit } = input
+  const { time_step, time_unit } = options
   if ((time_step === undefined) !== (time_unit === undefined)) {
     fail(`time_step and time_unit must be supplied together`)
   }
@@ -1305,6 +1306,8 @@ export const calc_trajectory_spectroscopy = (
     fail(`polarization must be explicitly marked branch_continuous`)
   }
   const calculation_options = {
+    time_step,
+    time_unit,
     frequency_unit,
     preprocessing,
     window: require_one_of(options.window ?? `hann`, WINDOW_TYPES, `window`),
@@ -1350,7 +1353,7 @@ export const calc_trajectory_spectroscopy = (
     const derivative_interval = sample_interval(
       stream.steps,
       frequency_unit,
-      input.time_step,
+      time_step,
       `positions`,
     )
     velocity_values = central_difference_velocities(
@@ -1371,7 +1374,6 @@ export const calc_trajectory_spectroscopy = (
     velocity_values,
     stream.n_atoms * 3,
     velocity_steps,
-    input,
     calculation_options,
     `velocities`,
     velocity_source_scale,
@@ -1396,7 +1398,6 @@ export const calc_trajectory_spectroscopy = (
       rotate_vector_signal(series.values, rotations),
       3,
       series.steps,
-      input,
       calculation_options,
       label,
       max_abs(series.values),

@@ -178,10 +178,10 @@ jobs:
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
+  # Not behind the E2E gate: this is the only site build a PR push gets (gh-pages.yml builds
+  # on main only), so a route or build-config error must fail here, not after merge
   build-site:
     name: Build browser test site
-    needs: e2e-gate
-    if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -230,7 +230,8 @@ jobs:
 
   e2e-test-shards:
     name: E2E production (shard ${{ matrix.shard }}/8)
-    needs: build-site
+    needs: [e2e-gate, build-site]
+    if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40 # the slowest shard takes ~5-7 min; retries of 90 s tests need headroom
     strategy:

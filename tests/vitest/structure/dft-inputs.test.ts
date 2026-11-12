@@ -165,6 +165,18 @@ test.each([
   expect(() => parse(content)).toThrow(error)
 })
 
+// dropped, a POSCAR or extXYZ export of the parsed structure would unfreeze the atoms
+test(`fixed-atom flags become selective_dynamics`, () => {
+  const flags = (structure: ReturnType<typeof parse_qe>) =>
+    structure.sites.map((site) => site.properties?.selective_dynamics)
+  const qe = qe_input(`ibrav = 2, celldm(1) = 10.2, nat = 2`, si_alat_positions)
+  expect(flags(parse_qe(qe))).toEqual([undefined, [false, false, true]])
+  expect(flags(parse_aims(gaas_geometry))).toEqual([undefined, [false, false, false]])
+  // per-axis constraints accumulate; one under a lattice_vector constrains the cell, no atom
+  const by_axis = `${cubic_aims}constrain_relaxation .true.\natom 0 0 0 Si\nconstrain_relaxation x\nconstrain_relaxation Z`
+  expect(flags(parse_aims(by_axis))).toEqual([[false, true, false]])
+})
+
 describe(`format detection`, () => {
   const si_qe = qe_input(`  ibrav = 2, celldm(1) = 10.2, nat = 2`, si_alat_positions)
   // oxfmt-ignore

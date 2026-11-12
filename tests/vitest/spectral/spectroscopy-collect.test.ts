@@ -72,8 +72,6 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     expect(window.positions.steps).toEqual([2, 3, 4, 5])
     expect(window.infrared_signal?.series.steps).toEqual([2, 3, 4, 5])
     expect(window.velocities?.steps).toEqual([2, 3, 4, 5])
-    expect(input.time_step).toBe(0.5)
-    expect(input.time_unit).toBe(`fs`)
     expect(input.metadata).toMatchObject({
       mass_source: `recorded`,
       signal_sources: {
@@ -125,22 +123,6 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
     })
     expect(input.infrared_signal?.kind).toBe(`polarization`)
   })
-
-  it.each([
-    [`no recorded timestep`, undefined, null],
-    [`a blank time unit`, { value: 0.5, unit: ` ` }, /time_unit must be a non-empty string/],
-  ])(
-    `forwards %s verbatim so the calculation decides`,
-    async (_label, time_step, calc_error) => {
-      const input = await collect_trajectory_spectroscopy_input(make_run({ time_step }))
-      expect(input.time_step).toBe(time_step?.value)
-      expect(input.time_unit).toBe(time_step?.unit)
-      const calculate = () =>
-        calc_trajectory_spectroscopy(input, { preprocessing: `raw`, frequency_unit: `1/step` })
-      if (calc_error) expect(calculate).toThrow(calc_error)
-      else expect(calculate().frequency_unit).toBe(`1/step`)
-    },
-  )
 
   const drop_site_masses = (frames: TrajectoryFrame[]) => {
     for (const frame of frames) delete frame.structure.sites[0].properties.mass
@@ -390,8 +372,6 @@ describe(`collect_trajectory_spectroscopy_input`, () => {
         expect(input.raman_signal.series.steps).toEqual([0, 2, 4])
       }
       expect(input.masses).toEqual(Float64Array.from([1.008, 15.999]))
-      expect(input.time_step).toBe(0.5)
-      expect(input.time_unit).toBe(`fs`)
       expect(input.metadata).toMatchObject({
         mass_source: `recorded`,
         model: `mace-mpa-0`,

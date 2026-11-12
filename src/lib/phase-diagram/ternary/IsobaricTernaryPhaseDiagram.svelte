@@ -176,6 +176,8 @@
     hover = next
     on_phase_hover?.(next)
   }
+  // a host highlighting from on_phase_hover must not keep it after the diagram is removed
+  $effect(() => () => set_hover(null))
   let hovered_phase = $state<number | null>(null)
   $effect(() => {
     if (entries_prop) dropped_entries = null

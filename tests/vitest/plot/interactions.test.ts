@@ -102,7 +102,10 @@ it.each([`wheel_x`, `wheel_y`, `wheel_zoom`, `drag`, `touch_pan`, `pinch`] as co
     expect(set_range.mock.calls.map(([axis]) => axis)).toEqual(updated_axes)
     for (const axis of updated_axes.filter((candidate) => candidate !== log_axis)) {
       const delta = !wheel && axis.startsWith(`x`) ? -0.05 : 0.05
-      const expected = zooms ? [2.5, 7.5] : [delta, 10 + delta]
+      // the pinch's one moving finger also carries the pair's center 50 px right, a quarter
+      // of the zoomed x span
+      const pinch_pan = gesture === `pinch` && axis.startsWith(`x`) ? -1.25 : 0
+      const expected = zooms ? [2.5 + pinch_pan, 7.5 + pinch_pan] : [delta, 10 + delta]
       // exact but for the wheel zoom, whose factor exp(ln 2) is 2 to within an ulp
       for (const [idx, bound] of ranges[axis].entries())
         expect(bound).toBeCloseTo(expected[idx], gesture === `wheel_zoom` ? 12 : 15)

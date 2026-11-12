@@ -94,7 +94,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Touch contacts inside the plot by pointer id (client px), and the two-finger gesture
   // they form once a second one lands
   const touches = new Map<number, Point2D>()
-  let pinch_state = $state<(AxisRanges & { start_touches: Point2D[] }) | null>(null)
+  let pinch_state = $state<
+    (AxisRanges & { start_touches: Point2D[]; bounds: DOMRect }) | null
+  >(null)
 
   const touch_enabled = () =>
     opts.pan()?.enabled !== false && opts.pan()?.touch_enabled !== false
@@ -115,13 +117,17 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
   }
   // `anchor`: the fixed point as fractions of the plot from its left and bottom edges
-  const zoom_all_axes = (init: AxisRanges, factor: number, anchor: Vec2 = [0.5, 0.5]) => {
-    const axes = opts.axes()
-    const ranges = axes.map((axis) => {
+  const zoomed = (init: AxisRanges, factor: number, anchor: Vec2 = [0.5, 0.5]) => {
+    const ranges: AxisRanges = { ...init }
+    for (const axis of opts.axes()) {
       const fixed = anchor[axis.startsWith(`x`) ? 0 : 1]
-      return zoom_range_by_factor(init[axis], factor, opts.scale_type(axis), fixed)
-    })
-    ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
+      ranges[axis] = zoom_range_by_factor(init[axis], factor, opts.scale_type(axis), fixed)
+    }
+    return ranges
+  }
+  const zoom_all_axes = (...args: Parameters<typeof zoomed>) => {
+    const ranges = zoomed(...args)
+    for (const axis of opts.axes()) opts.set_range(axis, ranges[axis])
   }
 
   // Wheel gestures have no end to listen for, so they report themselves as active for a
@@ -156,7 +162,11 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     // A second finger turns the first one's rect drag into a pinch/pan; further ones are ignored
     if (touches.size === 2) {
       drag_state = null
-      pinch_state = { start_touches: [...touches.values()], ...snapshot_ranges(opts.ranges()) }
+      pinch_state = {
+        start_touches: [...touches.values()],
+        bounds: hit.svg_bounds,
+        ...snapshot_ranges(opts.ranges()),
+      }
     }
     if (touches.size > 1) return
     press = [evt.clientX, evt.clientY]
@@ -188,7 +198,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     // Captured once the press turns into a drag, so it keeps reporting outside the SVG. Not at
     // the press: a click is dispatched to the capturing element instead of the mark under it.
     // Only a trusted event has a live pointer to capture (a scripted one's id throws).
-    dragged ||= is_drag(press, evt)
+    // Also bound to pointerleave: a flick whose first move lands outside the SVG never moves
+    // inside it, and uncaptured would lose its release too.
+    dragged ||= evt.type === `pointerleave` || is_drag(press, evt)
     if (dragged && evt.isTrusted) opts.svg()?.setPointerCapture(pointer_id)
     if (pan_drag_state) {
       // drag direction inverted on x for natural pan feel
@@ -206,14 +218,12 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     opts.on_drag_move?.(coords, point_in_rect(coords, { x: 0, y: 0, width, height }))
   }
 
-  // Two-finger pinch-zoom and pan
+  // Two-finger pinch-zoom and pan in one update: zoom about where the fingers started (once
+  // their spread changed significantly), then pan by how far their center moved
   const pinch_move = (pinch: NonNullable<typeof pinch_state>) => {
     const [touch_a, touch_b] = [...touches.values()]
     const [start_a, start_b] = pinch.start_touches
-
-    // Calculate center movement for pan
-    const delta_x = (touch_a.x + touch_b.x - start_a.x - start_b.x) / 2
-    const delta_y = (touch_a.y + touch_b.y - start_a.y - start_b.y) / 2
+    const [start_x, start_y] = [(start_a.x + start_b.x) / 2, (start_a.y + start_b.y) / 2]
 
     // Calculate pinch scale (curr/start so spread = zoom in, pinch = zoom out)
     const start_dist = Math.hypot(start_b.x - start_a.x, start_b.y - start_a.y)
@@ -221,10 +231,16 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (start_dist < MIN_TOUCH_DISTANCE_PIXELS) return
     const scale = Math.hypot(touch_b.x - touch_a.x, touch_b.y - touch_a.y) / start_dist
 
-    // Pinch zoom about the view center if scale changed significantly, else pan
-    if (Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD && scale > Number.EPSILON) {
-      zoom_all_axes(pinch, scale)
-    } else pan_axes(pinch, -delta_x, delta_y)
+    const { x: left, y: top, width, height } = opts.plot_bounds()
+    const anchor: Vec2 = [
+      (start_x - pinch.bounds.left - left) / width,
+      1 - (start_y - pinch.bounds.top - top) / height,
+    ]
+    pan_axes(
+      Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD ? zoomed(pinch, scale, anchor) : pinch,
+      start_x - (touch_a.x + touch_b.x) / 2,
+      (touch_a.y + touch_b.y) / 2 - start_y,
+    )
   }
 
   const end_gestures = () => {

@@ -110,30 +110,35 @@
   // A worker result read like a $derived, since a $derived cannot await and a page-level
   // $effect would compute before its demo scrolls into view: the first read for a new key
   // (only a visible LazyDemo reads) starts the request and aborts the one it supersedes, and
-  // the previous outcome stays up until the new one lands.
+  // the previous outcome stays up until the new one lands, as long as it is for the same
+  // structure (`scope`): a pattern must not show beside a structure it was not computed for.
   type Outcome<Pattern> = { pattern: Pattern | null; error: string | null }
-  function latest_async<Pattern>(
-    request: () => { key: string; run: (signal: AbortSignal) => Promise<Pattern | null> },
-  ): () => Outcome<Pattern> {
-    let latest = $state.raw<Outcome<Pattern>>({ pattern: null, error: null })
+  type Request<Pattern> = {
+    key: string
+    scope: string
+    run: (signal: AbortSignal) => Promise<Pattern | null>
+  }
+  const no_outcome = { pattern: null, error: null }
+  function latest_async<Pattern>(request: () => Request<Pattern>): () => Outcome<Pattern> {
+    let latest = $state.raw<Outcome<Pattern> & { scope?: string }>(no_outcome)
     let requested_key: string | undefined
     let controller: AbortController | undefined
     return () => {
-      const { key, run } = request()
+      const { key, scope, run } = request()
       if (key !== requested_key) {
         controller?.abort()
         controller = new AbortController()
         requested_key = key
         const { signal } = controller
         const land = (outcome: Outcome<Pattern>) => {
-          if (!signal.aborted) latest = outcome
+          if (!signal.aborted) latest = { ...outcome, scope }
         }
         run(signal).then(
           (pattern) => land({ pattern, error: null }),
           (exc: unknown) => land({ pattern: null, error: to_error(exc).message }),
         )
       }
-      return latest
+      return latest.scope === scope ? latest : no_outcome
     }
   }
 
@@ -172,6 +177,7 @@
     ).filter(([, , , enabled]) => struct && enabled)
     return {
       key: value_key([compute_id, wavelength, requested]),
+      scope: compute_id,
       run: async (signal) => {
         // one request per probe, all in flight together, reported in the order listed
         const settled = await Promise.allSettled(
@@ -217,6 +223,7 @@
     }
     return {
       key: value_key([compute_id, options]),
+      scope: compute_id,
       run: async (signal) => struct && compute_saed_pattern_async(struct, options, { signal }),
     }
   })

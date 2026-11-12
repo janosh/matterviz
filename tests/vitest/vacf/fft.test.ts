@@ -179,7 +179,19 @@ describe(`one_sided_periodogram`, () => {
       1,
       { window: `none`, zero_pad_factor: 1, component_weights: [2, 0] },
     )
-    expect(scaled.power[7]).toBe(base.power[7] * 18)
+    // a weight enters as its square root on the amplitudes, so sqrt(2)^2 costs a few ulp
+    expect(scaled.power[7] / (base.power[7] * 18)).toBeCloseTo(1, 14)
+  })
+
+  // components packed two per FFT once cancelled the smaller one: 2e16 +- 2 both round to 2e16
+  it(`keeps a small component packed beside one 1e16 times larger`, () => {
+    const values = Float64Array.of(0, 1e16, 1, 0, 0, -1e16, -1, 0)
+    const options = {
+      window: `none`,
+      zero_pad_factor: 1,
+      component_weights: [1, 1e-32],
+    } as const
+    expect(one_sided_periodogram(values, 2, 1, options).power[1]).toBeCloseTo(4, 12)
   })
 
   it.each([15, 16])(`conserves integrated one-sided power for %i samples`, (n_samples) => {

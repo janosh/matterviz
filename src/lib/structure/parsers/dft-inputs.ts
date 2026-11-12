@@ -17,7 +17,14 @@ import {
   vec3_from_values,
 } from './shared'
 
-type ParsedAtom = [element: ElementSymbol, coords: Vec3, fractional: boolean]
+// `movable` is the per-axis relaxation flag (POSCAR's selective dynamics), unset when free
+type AxisFlags = [boolean, boolean, boolean]
+type ParsedAtom = [
+  element: ElementSymbol,
+  coords: Vec3,
+  fractional: boolean,
+  movable?: AxisFlags,
+]
 
 // Structure from atoms in fractional or Cartesian (Å) coordinates. In a cell, fractional
 // coordinates wrap into [0, 1) and xyz is recomputed from them, as in parse_poscar (a cell
@@ -30,19 +37,20 @@ function build_structure(
   if (atoms.length === 0) throw new Error(`${format} has no atoms`)
   const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
   const cart_to_frac = lattice_matrix && math.create_cart_to_frac(lattice_matrix)
-  const sites = atoms.map(([element, coords, fractional], idx) => {
+  const sites = atoms.map(([element, coords, fractional, movable], idx) => {
     const label = `${element}${idx + 1}`
+    const properties = movable ? { selective_dynamics: movable } : {}
     if (frac_to_cart && cart_to_frac) {
       const abc = wrap_to_unit_cell(fractional ? coords : cart_to_frac(coords))
-      return make_site(element, abc, frac_to_cart(abc), label)
+      return make_site(element, abc, frac_to_cart(abc), label, properties)
     }
     if (fractional) throw new Error(`${format} has fractional atoms but no lattice`)
-    return make_site(element, [0, 0, 0], coords, label)
+    return make_site(element, [0, 0, 0], coords, label, properties)
   })
   return parsed_result(sites, [], lattice_matrix)
 }
 
-// The first three tokens as numbers (further ones are flags the geometry ignores)
+// The first three tokens as numbers (further ones are flags or a species)
 const numbers = (tokens: readonly string[], context: string): Vec3 =>
   vec3_from_values(tokens.slice(0, 3).map(parse_float_token), context)
 
@@ -59,18 +67,33 @@ export const aims_has_lattice = (content: string): boolean =>
 
 // FHI-aims geometry.in: `lattice_vector x y z` rows (Å; three for a crystal, none for a
 // molecule), `atom x y z species` (Cartesian Å), `atom_frac a b c species`, `#` comments.
-// Species are element symbols, optionally suffixed (`Si_light`). Other keywords leave the
-// geometry as written, except `empty` and `pseudocore` sites, which are no atoms: errors.
+// Species are element symbols, optionally suffixed (`Si_light`). `constrain_relaxation`
+// (`.true.` or an axis `x`/`y`/`z`) fixes the atom above it. Other keywords leave the geometry
+// as written, except `empty` and `pseudocore` sites, which are no atoms: errors.
 export function parse_aims(content: string): AnyStructure {
   const lattice_rows: Vec3[] = []
   const atoms: ParsedAtom[] = []
+  let last_atom: ParsedAtom | undefined // unset after a lattice_vector, whose constraints are no site's
   for (const [line_idx, line] of content.split(/\r?\n/).entries()) {
     const [keyword, ...args] = line.split(`#`)[0].trim().split(/\s+/)
     const where = `geometry.in line ${line_idx + 1}`
-    if (keyword === `lattice_vector`) lattice_rows.push(numbers(args, where))
-    else if (keyword === `atom` || keyword === `atom_frac`) {
+    if (keyword === `lattice_vector`) {
+      lattice_rows.push(numbers(args, where))
+      last_atom = undefined
+    } else if (keyword === `atom` || keyword === `atom_frac`) {
       const element = parse_element_symbol(args[3] ?? ``, where)
-      atoms.push([element, numbers(args, where), keyword === `atom_frac`])
+      last_atom = [element, numbers(args, where), keyword === `atom_frac`]
+      atoms.push(last_atom)
+    } else if (keyword === `constrain_relaxation` && last_atom) {
+      const fixed = args[0]?.toLowerCase()
+      const [x_free, y_free, z_free] = last_atom[3] ?? [true, true, true]
+      if (fixed === `.true.`) last_atom[3] = [false, false, false]
+      else
+        last_atom[3] = [
+          x_free && fixed !== `x`,
+          y_free && fixed !== `y`,
+          z_free && fixed !== `z`,
+        ]
     } else if (keyword === `empty` || keyword === `pseudocore`)
       throw new Error(`${where}: unsupported keyword '${keyword}'`)
   }
@@ -174,10 +197,12 @@ export function parse_qe(content: string): AnyStructure {
   const positions = qe_card(lines, `ATOMIC_POSITIONS`, required(`nat`))
   const fractional = positions.unit === `crystal`
   const scale = fractional ? 1 : unit_scale(positions.unit, `ATOMIC_POSITIONS`)
+  // optional trailing if_pos flags: 0 fixes that coordinate
   const atoms = positions.rows.map(([label, ...coords], idx): ParsedAtom => [
     element_from_candidates([leading_letters(label)], idx),
     math.scale(numbers(coords, `pw.x ATOMIC_POSITIONS row ${idx + 1}`), scale),
     fractional,
+    coords.length >= 6 ? [coords[3] !== `0`, coords[4] !== `0`, coords[5] !== `0`] : undefined,
   ])
   return build_structure(atoms, lattice_matrix, `pw.x input`)
 }

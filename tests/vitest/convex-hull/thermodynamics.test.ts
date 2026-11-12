@@ -509,6 +509,7 @@ describe(`calculate_e_above_hull`, () => {
 
   test(`empty input → [] and unplaceable entries → NaN`, () => {
     expect(calculate_e_above_hull([], fe_o_refs)).toEqual([])
+    expect(calculate_e_above_hull([], [])).toEqual([]) // nothing to place, so no hull needed
     const no_atoms = make_phase({}, 0, { entry_id: `empty` })
     expect(calculate_e_above_hull([no_atoms], fe_o_refs)).toEqual([NaN])
     // an explicit e_form_per_atom must not turn the zero-atom case into a throw

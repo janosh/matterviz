@@ -201,6 +201,17 @@ export function rdf_bin_site_index(
   }
 }
 
+// One structure's curves as RdfPlot draws them and the RDF workers compute them: the partial
+// g_ab(r) of every element pair, or the single all-atom g(r) with `mode: 'full'`
+export type RdfsOptions = PairRdfOptions & { mode?: `element_pairs` | `full` }
+export const calculate_rdfs = (
+  structure: AnyStructure,
+  { mode, ...options }: RdfsOptions = {},
+): RdfPattern[] =>
+  mode === `full`
+    ? [calculate_rdf(structure, options)]
+    : calculate_all_pair_rdfs(structure, options)
+
 // What the trajectory RDF worker computes per MD frame (calculate_all_pair_rdfs)
 export type FrameRdfOptions = Pick<RdfOptions, `cutoff` | `n_bins`>
 

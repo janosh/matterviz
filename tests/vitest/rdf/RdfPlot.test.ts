@@ -3,7 +3,14 @@ import RdfPlot from '#lib/rdf/RdfPlot.svelte'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import { structure_map } from '#site/structures.js'
-import { type Component, type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import {
+  type Component,
+  type ComponentProps,
+  createRawSnippet,
+  flushSync,
+  mount,
+  tick,
+} from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import {
@@ -19,6 +26,7 @@ import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
 import {
   calculate_all_pair_rdfs,
+  calculate_rdfs,
   rdf_bin_site_index,
   rdf_bin_sites,
 } from '#lib/rdf/calc-rdf.js'
@@ -30,6 +38,7 @@ vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
   return {
     ...actual,
     calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs),
+    calculate_rdfs: vi.fn(actual.calculate_rdfs),
     rdf_bin_site_index: vi.fn(actual.rdf_bin_site_index),
   }
 })
@@ -200,7 +209,11 @@ describe(`RdfPlot`, () => {
       [`patterns`, { label: `Test`, pattern: create_synthetic_pattern() }],
     ])
     const shown = new SvelteMap([[`structures`, [nacl_structure]]])
+    const cutoffs = new SvelteMap([[`cutoff`, 15]])
     const plot = await mount_sized_rdf_plot({
+      get cutoff() {
+        return cutoffs.get(`cutoff`)
+      },
       get patterns() {
         return supplied.get(`patterns`)
       },
@@ -259,7 +272,7 @@ describe(`RdfPlot`, () => {
     })
 
     // new patterns join the computed curves without re-running the neighbour search
-    vi.mocked(calculate_all_pair_rdfs).mockClear()
+    vi.mocked(calculate_rdfs).mockClear()
     supplied.set(`patterns`, { label: `Swapped`, pattern: create_synthetic_pattern() })
     await tick()
     const swapped = scatter.mock.lastCall?.[1].series ?? []
@@ -267,7 +280,7 @@ describe(`RdfPlot`, () => {
       `Swapped`,
       ...series.slice(1).map(({ label }) => label),
     ])
-    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
+    expect(calculate_rdfs).not.toHaveBeenCalled()
 
     // one more structure is searched alone: the first one's curves are memoized by identity
     shown.set(`structures`, [nacl_structure, pd_structure])
@@ -277,9 +290,25 @@ describe(`RdfPlot`, () => {
         `Pd-Pd`,
       ]),
     )
-    expect(
-      vi.mocked(calculate_all_pair_rdfs).mock.calls.map(([structure]) => structure),
-    ).toEqual([pd_structure])
+    expect(vi.mocked(calculate_rdfs).mock.calls.map(([structure]) => structure)).toEqual([
+      pd_structure,
+    ])
+
+    // a cutoff superseded before its searches started aborts them: only the latest one runs
+    vi.mocked(calculate_rdfs).mockClear()
+    for (const cutoff of [5, 6]) {
+      cutoffs.set(`cutoff`, cutoff)
+      flushSync()
+    }
+    // the curves of the previous cutoff leave at once rather than pose as the new one's
+    const shown_labels = () => scatter.mock.lastCall?.[1].series?.map(({ label }) => label)
+    expect(shown_labels()).toEqual([`Swapped`])
+    await vi.waitFor(() =>
+      expect(
+        vi.mocked(calculate_rdfs).mock.calls.map(([, options]) => options?.cutoff),
+      ).toEqual([6, 6]),
+    )
+    await vi.waitFor(() => expect(shown_labels()).toContain(`Pd-Pd`))
   })
 
   // Drops open through open_material, whose parse warnings reach a notice named by file
@@ -386,9 +415,9 @@ describe(`RdfPlot`, () => {
     // the alert live region stays mounted for the next error; only its message goes
     expect(target.querySelector(`[role="alert"] .status-message`)).toBeNull()
     // recomputing the same failure keeps it dismissed
-    vi.mocked(calculate_all_pair_rdfs).mockClear()
+    vi.mocked(calculate_rdfs).mockClear()
     target.querySelector<HTMLButtonElement>(`.change-cutoff`)?.click()
-    await vi.waitFor(() => expect(calculate_all_pair_rdfs).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(calculate_rdfs).toHaveBeenCalledTimes(2))
     await settle()
     expect(mirror()).toBe(`none`)
   })

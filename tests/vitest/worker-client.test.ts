@@ -654,8 +654,13 @@ describe(`retained inputs`, () => {
       return `${input ? `+` : ``}${held.map((token) => tags.get(token)).join(``)}`
     })
   }
-  const request = (run: Run, input: { tag: string }, step: number) =>
+  // a retaining client posts one request at a time, so each is answered before the next
+  const answer = (worker: StubWorkerInstance) =>
+    worker.emit(`message`, { data: { id: worker.posted.at(-1)?.message.id, result: `done` } })
+  const request = (run: Run, input: { tag: string }, step: number) => {
     void run(input, { step }).catch(() => {})
+    answer(workers().at(-1) ?? workers()[0])
+  }
 
   test(`an input is sent once, named afterwards, and dropped once least recently used`, () => {
     const run = make_client(undefined, 2)
@@ -705,6 +710,33 @@ describe(`retained inputs`, () => {
     Reflect.deleteProperty(input, `callback`)
     request(run, input, 1)
     expect(posts(workers()[0])).toEqual([`+a`])
+  })
+
+  // terminating the busy worker (as non-retaining clients do) would re-send the whole input
+  // and redo what the worker derived from it on every options edit made during a compute
+  test(`requests abandoned mid-compute keep the worker and its input, and only the latest one follows`, async () => {
+    const run = make_client(undefined, 1)
+    const input = { tag: `a` }
+    const controllers = [0, 1, 2].map(() => new AbortController())
+    const superseded = controllers.map(({ signal }, step) => run(input, { step }, { signal }))
+    for (const controller of controllers) controller.abort()
+    await expect(Promise.allSettled(superseded)).resolves.toMatchObject(
+      controllers.map(() => ({ reason: { name: `AbortError` } })),
+    )
+    const latest = run(input, { step: 3 })
+    const [worker] = workers()
+    expect([worker.terminated, run.holds(input), posts(worker)]).toEqual([0, true, [`+a`]])
+    // progress of the abandoned compute is dropped; its reply frees the worker
+    worker.emit(`message`, { data: { id: first_post(worker).id, progress: 0.5 } })
+    expect(worker.posted).toHaveLength(1)
+    reply(worker, `stale`)
+    expect(posts(worker)).toEqual([`+a`, `a`])
+    expect(worker.posted[1].message.options).toEqual({ step: 3 })
+    answer(worker)
+    await expect(latest).resolves.toBe(`done`)
+    // idle again, so an unmount still ends the worker
+    run.release()
+    expect(worker.terminated).toBe(1)
   })
 })
 

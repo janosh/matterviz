@@ -38,14 +38,15 @@ interface WorkerClientConfig<Input, Options, Result, Progress> {
   // an options-only change posts the options alone and the worker reuses whatever it derived
   // from the input. For inputs too heavy to clone per request (a position stream, a band
   // grid); the worker holds its own copy, so in-place edits of a retained input go unseen:
-  // pass a new object. 0 (default) sends the input with every request.
+  // pass a new object. 0 (default) sends the input with every request. A retaining client
+  // posts one request at a time and keeps its worker when a request is abandoned (see `join`).
   retained_inputs?: number
 }
 
 export interface WorkerRequestOptions<Progress = unknown> {
   // Rejects this caller's promise with the signal's reason (an AbortError by default). The
   // worker itself is only torn down when no other caller still awaits a request on it, since
-  // terminating it would lose their results too.
+  // terminating it would lose their results too, and never when it retains inputs.
   signal?: AbortSignal
   // Receives every progress report. Throwing rejects only this caller; other callers
   // keep receiving progress and the result, on both worker and main-thread paths.
@@ -131,6 +132,8 @@ export function create_worker_client<
     // postMessage id; null for sync fallbacks, which never enter `pending`
     id: number | null
     promise: Promise<Result>
+    // Sends the request to the worker; cleared once sent
+    post?: () => void
     resolve: (data: Result) => void
     reject: (err: Error) => void
     // Each caller owns one subscription, even when callbacks or options are shared.
@@ -146,11 +149,14 @@ export function create_worker_client<
   const pending_by_key = new Map<string, Request>()
   // Identity tokens of the inputs the live worker retains, least recently used first
   let held_tokens: number[] = []
+  // Retaining clients only: the worker has yet to answer the one request posted to it
+  let busy = false
 
   const terminate_worker = (): void => {
     worker?.terminate()
     worker = null
     held_tokens = [] // a replacement worker starts empty: every input is sent afresh
+    busy = false
   }
   // Also the teardown path for worker `error`/`messageerror` events and id-less error replies
   const cancel = (reason = `${label} worker request cancelled`): void => {
@@ -229,8 +235,11 @@ export function create_worker_client<
       if (!request.waiters.delete(waiter)) return
       if (request.waiters.size === 0) {
         // Drop abandoned work; construct the next worker on demand, without an idle replacement.
+        // A retaining worker instead finishes what it started: terminating it would drop its
+        // inputs, so an options edit mid-compute would send the whole input again. Requests
+        // abandoned before their turn are never posted, so only the latest one follows.
         request.reject(error)
-        release()
+        if (!retained_inputs) release()
       }
       reject(error)
     }
@@ -274,17 +283,19 @@ export function create_worker_client<
           return
         }
         const request = pending.get(identifier)
-        if (!request) return
         if (progress !== undefined) {
-          report_progress(request, progress)
+          if (request) report_progress(request, progress)
           return
         }
         // serve_worker sends `error: null` on success; an empty message is still an error
         if (error != null || result === undefined) {
-          request.reject(
+          request?.reject(
             new Error(error ?? `${label} worker returned no result for request ${identifier}`),
           )
-        } else request.resolve(result)
+        } else request?.resolve(result)
+        // The reply, even to an abandoned request, frees a retaining worker for the next one
+        busy = false
+        for (const queued of pending.values()) if (!busy) queued.post?.()
       },
     )
     // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
@@ -328,30 +339,37 @@ export function create_worker_client<
 
       const wkr = main_thread ? null : ensure_worker()
       const token = identity_token(input)
-      // What the worker retains once this request lands, this input last (nothing without
-      // `retained_inputs`, so every request then carries its input)
-      const held = [...held_tokens.filter((kept) => kept !== token), token]
-      held.splice(0, held.length - retained_inputs)
-      const send_input = wkr && !held_tokens.includes(token)
-      const payload = send_input ? (keyed_payload ?? build_payload(input)) : undefined
+      const posted_options = $state.snapshot(options)
       const request = track(request_key, wkr ? ++next_id : null)
       const promise = join(request, request_options)
       if (wkr) {
-        try {
-          // Copied, never transferred: the caller keeps using the input (a retained one is
-          // re-sent to a replacement worker, an unretained one with every request), and a
-          // transferred typed-array buffer would be detached by then.
-          wkr.postMessage({
-            id: request.id,
-            input: payload,
-            options: $state.snapshot(options),
-            held: retained_inputs > 0 ? held : undefined,
-          }) // oxlint-disable-line unicorn/require-post-message-target-origin
-          // Only once posted: a payload that failed to clone never reached the worker
-          held_tokens = held
-        } catch (err) {
-          request.reject(to_error(err))
+        request.post = () => {
+          request.post = undefined
+          // What the worker retains once this request lands, this input last (nothing without
+          // `retained_inputs`, so every request then carries its input)
+          const held = [...held_tokens.filter((kept) => kept !== token), token]
+          held.splice(0, held.length - retained_inputs)
+          const send_input = !held_tokens.includes(token)
+          try {
+            // Copied, never transferred: the caller keeps using the input (a retained one is
+            // re-sent to a replacement worker, an unretained one with every request), and a
+            // transferred typed-array buffer would be detached by then.
+            wkr.postMessage({
+              id: request.id,
+              input: send_input ? (keyed_payload ?? build_payload(input)) : undefined,
+              options: posted_options,
+              held: retained_inputs > 0 ? held : undefined,
+            }) // oxlint-disable-line unicorn/require-post-message-target-origin
+            // Only once posted: a payload that failed to clone never reached the worker
+            held_tokens = held
+            busy = retained_inputs > 0
+          } catch (err) {
+            request.reject(to_error(err))
+          }
         }
+        // Behind a busy retaining worker the request waits its turn, unsent: abandoned by
+        // then it costs nothing, and its input is cloned only once the worker can take it
+        if (!busy) request.post()
       } else {
         Promise.resolve()
           .then(() => {

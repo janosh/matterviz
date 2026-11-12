@@ -28,6 +28,7 @@ import {
 import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte.js'
 import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets.js'
 import {
+  all_finite,
   axis_ranges_equal,
   axis_transform,
   expand_range_if_needed,
@@ -783,12 +784,17 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     $effect(() => {
       const shown = view.get()
       if (!shown) return
+      // A write the plot cannot show (non-finite, or a y2 that derives from y) goes back
+      // corrected, not into the scales
+      let rejected = false
       for (const axis of FACET_AXES) {
         const range = shown[axis]
-        const current = untrack(() => ranges.current[axis])
-        if (range && !vec2_equal(range, current))
-          synced_facet.update_range(axis, [...range] as Vec2)
+        if (!range) continue
+        const differs = () => untrack(() => !vec2_equal(range, ranges.current[axis]))
+        if (differs() && all_finite(range)) synced_facet.update_range(axis, [...range] as Vec2)
+        rejected ||= differs()
       }
+      if (rejected) view.set(untrack(() => snapshot_ranges(ranges.current)))
     })
   }
 

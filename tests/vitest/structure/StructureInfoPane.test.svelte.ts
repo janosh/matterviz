@@ -11,6 +11,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { bind_props, doc_query, set_input } from '../setup'
 import { get_dummy_structure, make_wyckoff_dataset } from '../test-fixtures'
 
+// The RDF worker client binds its compute on import, before a spy could replace it
+vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
+  const actual = await import_original<typeof rdf>()
+  return { ...actual, calculate_rdfs: vi.fn(actual.calculate_rdfs) }
+})
+
 describe(`StructureInfoPane`, () => {
   beforeEach(() => {
     document.body.innerHTML = ``
@@ -266,7 +272,7 @@ describe(`StructureInfoPane`, () => {
     const crystal = get_dummy_structure(`H`, 2, true)
     const structure = periodic ? crystal : { sites: crystal.sites }
     const displayed_structure = get_dummy_structure(`O`, 10, periodic)
-    const rdf_spy = vi.spyOn(rdf, `calculate_rdf`)
+    const rdf_spy = vi.mocked(rdf.calculate_rdfs)
     const cn_spy = vi.spyOn(coordination, `calc_coordination_nums`)
     const angle_spy = vi.spyOn(angles, `calc_bond_angles`)
     const props = $state<{ structure: AnyStructure; pane_open: boolean }>({
@@ -285,11 +291,10 @@ describe(`StructureInfoPane`, () => {
     expect(selector.value).toBe(periodic ? `rdf` : `coordination`)
     expect([...selector.options].some((option) => option.value === `rdf`)).toBe(periodic)
     if (periodic) {
-      expect(rdf_spy).toHaveBeenCalledWith(structure, {
-        cutoff: 8,
-        n_bins: 80,
-        pbc: undefined,
-      })
+      expect(rdf_spy.mock.lastCall?.slice(0, 2)).toEqual([
+        structure,
+        { cutoff: 8, n_bins: 80, pbc: undefined, mode: `full` },
+      ])
       expect(cn_spy).not.toHaveBeenCalled()
     }
     selector.value = `coordination`

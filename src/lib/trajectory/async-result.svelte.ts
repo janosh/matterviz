@@ -1,8 +1,8 @@
 // Drives a worker-backed analysis from reactive inputs inside a component. An async compute
 // cannot be a $derived, so this owns the one effect every analysis plot shares: the
-// superseded job is aborted so the worker client stops tracking it (and terminates the busy
-// worker once nothing else is in flight), its settlement is ignored, and a failure clears the stale
-// curves so the plot's empty-state message can show the error.
+// superseded job is aborted so the worker client stops tracking it (and, unless the worker
+// retains the input, terminates it once nothing else is in flight), its settlement is ignored,
+// and a failure clears the stale curves so the plot's empty-state message can show the error.
 import { same_while_equal } from '#lib/utils.js'
 import { getAbortSignal } from 'svelte'
 import { to_error } from 'svelte-widgets/utils'

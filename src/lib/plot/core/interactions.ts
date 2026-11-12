@@ -98,7 +98,7 @@ export function normalize_y2_sync(sync: Y2SyncConfig | Y2SyncMode | undefined): 
   return config
 }
 
-const all_finite = (...ranges: Vec2[]) =>
+export const all_finite = (...ranges: Vec2[]) =>
   ranges.every(([value_a, value_b]) => Number.isFinite(value_a) && Number.isFinite(value_b))
 
 // Calculate synced y2 range based on sync mode

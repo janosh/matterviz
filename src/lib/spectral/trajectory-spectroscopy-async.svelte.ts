@@ -44,12 +44,10 @@ export const compute_trajectory_spectroscopy_async = create_worker_client<
       raman_signal: raman_signal
         ? { kind: raman_signal.kind, series: plain_signal(raman_signal.series) }
         : null,
-      ...(input.time_step !== undefined ? { time_step: input.time_step } : {}),
-      ...(input.time_unit !== undefined ? { time_unit: input.time_unit } : {}),
       ...(input.metadata ? { metadata: $state.snapshot(input.metadata) } : {}),
     }
   },
-  // The streams cross once per input object: recomputing it with other options (window,
-  // zero padding, Raman channel) posts the options alone
+  // The streams cross once per input object: recomputing it with other options (timestep,
+  // window, zero padding, Raman channel) posts the options alone
   retained_inputs: 1,
 })

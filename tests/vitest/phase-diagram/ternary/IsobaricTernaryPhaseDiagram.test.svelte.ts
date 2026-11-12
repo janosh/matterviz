@@ -284,6 +284,11 @@ describe(`IsobaricTernaryPhaseDiagram`, () => {
     state.display = { show_events: true }
     flushSync()
     expect(reported.slice(3).map((hover) => hover?.kind ?? null)).toEqual([`section`, null])
+    // removing the diagram mid-hover ends it too, so a host highlight does not outlive it
+    move_to([1, 0])
+    unmount_all()
+    flushSync()
+    expect(reported.slice(5).map((hover) => hover?.kind ?? null)).toEqual([`section`, null])
   })
 
   // Shares the binary diagram's export pane: PNG of the canvas (no SVG to offer), the diagram

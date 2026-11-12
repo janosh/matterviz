@@ -930,9 +930,21 @@ test.describe(`ScatterPlot Component Tests`, () => {
       expect(rect_outside.height).toBeGreaterThan(rect_inside.height)
       await page.mouse.up()
       await expect(zoom_rect).toBeHidden()
-      await expect
-        .poll(async () => (await get_tick_range(plot.locator(`g.x-axis`))).range)
-        .toBeGreaterThan(0)
+      const x_range = async () => (await get_tick_range(plot.locator(`g.x-axis`))).range
+      await expect.poll(x_range).toBeGreaterThan(0)
+
+      // a flick whose first move already lands outside the SVG still zooms on release
+      await svg.dblclick()
+      const full_range = await x_range()
+      await page.mouse.move(
+        svg_box.x + clip.x + clip.width / 2,
+        svg_box.y + clip.y + clip.height / 2,
+      )
+      await page.mouse.down()
+      await page.mouse.move(svg_box.x - 50, svg_box.y - 50)
+      await page.mouse.up()
+      await expect(zoom_rect).toBeHidden()
+      await expect.poll(x_range).toBeLessThan(full_range)
     })
 
     // A touch is captured by the mark it lands on. The drag moving that capture to the SVG

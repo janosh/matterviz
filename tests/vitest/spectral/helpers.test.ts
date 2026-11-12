@@ -22,6 +22,7 @@ import {
   compute_frequency_range,
   density_divisor,
   extract_k_path_points,
+  extract_pdos,
   find_gamma_indices,
   branch_qpoint_range,
   find_qpoint_at_rescaled_x,
@@ -1076,6 +1077,13 @@ describe(`normalize_dos`, () => {
     expect(result.efermi).toBeCloseTo(5 * ev_per_unit, 12)
     expect(result.densities[1]).toBeCloseTo(2 / ev_per_unit, 9)
     expect(result.spin_down_densities?.[1]).toBeCloseTo(4 / ev_per_unit, 9)
+    // a projection converts like the total DOS whose unit it shares
+    const atom_dos = { Fe: { energies: [0, 10], densities, efermi: 5 } }
+    expect(extract_pdos({ unit, atom_dos }, `atom`)).toEqual({ Fe: result })
+    // a malformed spin-down channel is dropped (it threw on .map), not converted
+    const flat = { energies: [0, 1], densities: [1, 2], unit }
+    const no_down = normalize_dos({ ...flat, spin_down_densities: {}, spin_polarized: false })
+    expect(no_down).toMatchObject({ spin_polarized: false, spin_down_densities: undefined })
   })
 
   it.each([

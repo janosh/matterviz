@@ -21,7 +21,17 @@ export const plain_copy = <Value>(value: Value): Value => {
   const copy: Record<string, unknown> = {}
   // Not Object.keys: it runs a proxy's getOwnPropertyDescriptor trap per key (~11% slower)
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key === `string`) copy[key] = plain_copy(Reflect.get(value, key))
+    if (typeof key !== `string`) continue
+    const nested = plain_copy(Reflect.get(value, key))
+    // assigning `__proto__` (an own key after JSON.parse) would set the copy's prototype
+    if (key === `__proto__`)
+      Object.defineProperty(copy, key, {
+        value: nested,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
+    else copy[key] = nested
   }
   return copy as Value
 }

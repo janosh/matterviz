@@ -92,13 +92,13 @@ test.each([
 
 test.each([`true`, `false`, ``])(`E2E jobs run only when e2e-gate outputs run=%j`, (run) => {
   const needs = { 'e2e-gate': { outputs: { run } } }
-  for (const job of [`build-site`, `e2e-source`]) {
-    expect(jobs[job].needs, job).toBe(`e2e-gate`)
+  for (const job of [`e2e-source`, `e2e-test-shards`]) {
+    expect([jobs[job].needs].flat(), job).toContain(`e2e-gate`)
     expect(eval_expr(jobs[job].if, { needs }), job).toBe(run === `true`)
   }
-  // Production shards inherit the skip from build-site.
-  expect(jobs[`e2e-test-shards`].if).toBeUndefined()
-  expect(jobs[`e2e-test-shards`].needs).toBe(`build-site`)
+  // Every PR push builds the site: gh-pages.yml no longer does, so the gate must not skip it
+  expect([jobs[`build-site`].needs, jobs[`build-site`].if]).toEqual([undefined, undefined])
+  expect(jobs[`e2e-test-shards`].needs).toContain(`build-site`)
 })
 
 // The 333k-atom hotspot E2E test takes ~10 min on CI's CPU renderer, so PRs skip it.

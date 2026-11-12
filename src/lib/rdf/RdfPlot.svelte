@@ -13,12 +13,12 @@
   import type { Crystal, Pbc } from '#lib/structure/index.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { element_site_indices } from '#lib/trajectory/linked-sites.js'
-  import { html_to_text, memo_by_identity, value_key } from '#lib/utils.js'
+  import { html_to_text, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import { getAbortSignal, type Snippet } from 'svelte'
   import { on_change, series_hover_props } from '#lib/plot/core/interactions.js'
-  import { calc_all_pair_rdfs_async } from './async-compute.svelte'
-  import { calculate_rdf, label_structures, rdf_baseline, rdf_bin_site_index } from './index'
+  import { calc_rdfs_async } from './async-compute.svelte'
+  import { label_structures, rdf_baseline, rdf_bin_site_index } from './index'
   import type { RdfEntry, RdfPattern } from './index'
   import { bind_error_report } from './error-report.svelte'
 
@@ -110,32 +110,34 @@
       return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
     }),
   )
-  // One neighbour search per structure object and option set, so one more dropped file
-  // searches that file alone. The pair RDFs run in the RDF worker pool, one structure per
-  // worker; the single all-atom RDF has no worker entry and stays on the main thread.
-  const patterns_of = memo_by_identity<Promise<RdfPattern[]>>()
-  let computed = $state.raw<{ curves: ComputedEntry[]; failures: string[] }>({
+  // Each structure's curves for the option set they were computed with, so one more dropped
+  // file searches that file alone. The searches run in the RDF worker pool, one structure
+  // per worker.
+  const computed_patterns = new WeakMap<Crystal, { key: string; found: RdfPattern[] }>()
+  let computed = $state.raw<{ key?: string; curves: ComputedEntry[]; failures: string[] }>({
     curves: [],
     failures: [],
   })
   let computing = $state(false)
+  const options = $derived({ cutoff, n_bins, pbc: $state.snapshot(pbc), mode })
+  const key = $derived(value_key(options))
   $effect(() => {
-    const options = { cutoff, n_bins, pbc: $state.snapshot(pbc) }
-    const [pair_mode, options_key] = [mode !== `full`, value_key([mode, options])]
-    // aborted once the structures or options change: that answer is no longer wanted
+    // aborted once the structures or options change: that answer is no longer wanted, and a
+    // worker left with only such requests is stopped
     const signal = getAbortSignal()
     // each structure's curves, or the failure of one the neighbour search rejects
     const requests = struct_list.map(async ({ struct, label }) => {
       try {
-        const found = await patterns_of(struct, options_key, async () =>
-          pair_mode
-            ? calc_all_pair_rdfs_async(struct, options)
-            : [calculate_rdf(struct, options)],
-        )
+        const cached = computed_patterns.get(struct)
+        const found =
+          cached?.key === key
+            ? cached.found
+            : await calc_rdfs_async(struct, options, { signal })
+        computed_patterns.set(struct, { key, found })
         return found.map((pattern): ComputedEntry => ({
           label: pattern.element_pair?.join(`-`) ?? label,
           // Group by structure name for multi-structure plots
-          ...(pair_mode ? { legend_group: label } : {}),
+          ...(mode === `full` ? {} : { legend_group: label }),
           pattern,
           structure: struct,
         }))
@@ -148,6 +150,7 @@
     void Promise.all(requests).then((results) => {
       if (signal.aborted) return
       computed = {
+        key,
         curves: results.flatMap((result) => (typeof result === `string` ? [] : result)),
         failures: results.filter((result) => typeof result === `string`),
       }
@@ -155,10 +158,12 @@
     })
   })
   // Explicitly supplied patterns come first, in the order they were given. Joined apart from
-  // `computed` so new patterns don't re-run the structures' neighbour searches.
+  // `computed` so new patterns don't re-run the structures' neighbour searches. Curves of
+  // other options are hidden while theirs compute: a hover would search their bins with the
+  // new cutoff and bin count.
   const entries = $derived<ComputedEntry[]>([
     ...(patterns ? [patterns].flat() : []),
-    ...computed.curves,
+    ...(computed.key === key ? computed.curves : []),
   ])
   // a failure report clears once its structure is gone, a drop error on the next drop
   const error_report = bind_error_report(

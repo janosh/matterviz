@@ -302,8 +302,6 @@ export async function collect_trajectory_spectroscopy_input(
     velocities,
     infrared_signal,
     raman_signal,
-    time_step: run.time_step?.value,
-    time_unit: run.time_step?.unit,
     metadata: {
       ...run.metadata,
       mass_source: mass_values ? `recorded` : `standard`,

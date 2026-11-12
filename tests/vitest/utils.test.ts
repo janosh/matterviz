@@ -8,6 +8,7 @@ import {
   same_while_equal,
   toggle_item,
   value_key,
+  plain_copy,
 } from '#lib/utils.js'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -157,4 +158,16 @@ test(`same_while_equal keeps the first of a run of equal values`, () => {
   expect(keep({ gap: Infinity })).toBe(first)
   const next = { gap: 500 }
   expect(keep(next)).toBe(next)
+})
+
+test(`plain_copy deep-copies plain data, keeps other objects and an own __proto__ key`, () => {
+  const typed = new Float64Array([1])
+  const input = { list: [{ num: 1 }], typed, ...JSON.parse(`{"__proto__":{"flag":true}}`) }
+  const copy = plain_copy(input)
+  expect(copy).toEqual(input)
+  expect(copy.list[0]).not.toBe(input.list[0])
+  expect(copy.typed).toBe(typed)
+  // assigning the key would have set the copy's prototype instead
+  expect(Object.hasOwn(copy, `__proto__`)).toBe(true)
+  expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
 })
