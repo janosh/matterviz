@@ -177,11 +177,10 @@ function symmetry_layer_images(
   return layer_images
 }
 
-// Whether a slab of whole c repeats cleaved below `layer_idx` has equivalent faces: its
-// bottom layer is `layer_idx` and its top one the layer just below that, so the two faces
-// are related exactly when a normal-flipping symmetry of the bulk maps one onto the other
-// (pymatgen's Slab.is_symmetric: an inversion centre, or a mirror plane or 2-fold axis
-// parallel to the surface). The number of repeats does not matter.
+// Whether a slab of whole c repeats cleaved below `layer_idx` has equivalent faces: its bottom
+// layer is `layer_idx` and its top one the layer just below that, so the faces are related
+// exactly when a normal-flipping symmetry of the bulk maps one onto the other (pymatgen's
+// Slab.is_symmetric), however many repeats.
 export const is_symmetric_termination = (
   bulk: OrientedBulk,
   layers: SlabLayer[],
@@ -204,10 +203,7 @@ export function terminations_of_oriented_bulk(
 ): SlabTermination[] {
   // Cyclic layer shifts realized by a normal-preserving symmetry: layer idx and layer
   // idx + shift expose the same surface, so only one of them is a distinct termination
-  const shifts =
-    layers.length < 2
-      ? []
-      : [...symmetry_layer_images(bulk, layers, 0, 1)].filter((shift) => shift > 0)
+  const shifts = [...symmetry_layer_images(bulk, layers, 0, 1)].filter((shift) => shift > 0)
   const terminations: SlabTermination[] = []
   const claimed = new Set<number>()
   for (const [layer_idx, layer] of layers.entries()) {

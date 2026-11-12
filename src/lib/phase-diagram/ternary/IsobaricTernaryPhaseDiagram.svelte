@@ -3,8 +3,7 @@
   // over temperature. Linked views: the isothermal section (2D Gibbs triangle or 3D prism with a
   // draggable cutting plane), a phase × T stability map and the list of transitions with
   // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
-  // pin (its assemblage follows T), click the pin again or press Escape to drop it. The export
-  // pane saves the shown section view as PNG and the computed diagram as JSON.
+  // pin (its assemblage follows T), click the pin again or press Escape to drop it.
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
@@ -128,8 +127,7 @@
       export_pane_open?: boolean
       // Resolution of PNG exports in dots per inch.
       png_dpi?: number
-      // Called with what the tooltip describes (a section point, or a phase at a temperature on
-      // the stability map or a prism rod), or null when the pointer leaves.
+      // Called with what the tooltip describes, or null when the pointer leaves or the diagram unmounts.
       on_phase_hover?: (hover: TernaryPhaseHover | null) => void
       // Whether the diagram fills the screen.
       fullscreen?: boolean
@@ -390,8 +388,7 @@
   )
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
-  // The exported figure is the shown section view: the 2D section's main canvas or the
-  // prism's GPU canvas, looked up per export since switching views re-mounts it
+  // The shown section view (2D canvas or the prism's), looked up per export: views re-mount it
   const image_sources = canvas_sources(() =>
     wrapper?.querySelector<HTMLCanvasElement>(`.section-panel canvas:not(.pulse-overlay)`),
   )

@@ -5,19 +5,13 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { click_export, doc_query, mock_object_url } from '../setup'
 import { eutectic as mock_phase_data } from './fixtures/test-data'
 
+type PaneProps = ComponentProps<typeof PhaseDiagramExportPane>
 // `wrapper` stands in for the viewer: its diagram SVG is what the image sources serialize
-const mount_pane = ({
-  wrapper,
-  ...props
-}: ComponentProps<typeof PhaseDiagramExportPane> & { wrapper?: HTMLDivElement }) =>
-  mount(PhaseDiagramExportPane, {
-    target: document.body,
-    props: {
-      export_pane_open: true,
-      image_sources: svg_sources(() => wrapper?.querySelector(`svg`)),
-      ...props,
-    },
-  })
+const mount_pane = ({ wrapper, ...rest }: PaneProps & { wrapper?: HTMLDivElement }) => {
+  const image_sources = svg_sources(() => wrapper?.querySelector(`svg`))
+  const props = { export_pane_open: true, image_sources, ...rest }
+  return mount(PhaseDiagramExportPane, { target: document.body, props })
+}
 const { components } = mock_phase_data
 
 describe(`PhaseDiagramExportPane`, () => {
@@ -81,22 +75,20 @@ describe(`PhaseDiagramExportPane`, () => {
 
   // each format is offered only when its source exists: no JSON without data, no SVG for a
   // canvas-rendered viewer (the ternary diagram)
-  test.each<[string, ComponentProps<typeof PhaseDiagramExportPane>, string[]]>([
+  test.each<[string, PaneProps, string[]]>([
     [`SVG figure without data`, { data: undefined }, [`PNG`, `SVG`]],
     [`SVG figure`, { data: mock_phase_data }, [`PNG`, `SVG`, `JSON`]],
     [
       `canvas figure`,
-      { data: { elements: [`Li`, `Fe`, `O`] }, image_sources: canvas_sources(() => null) },
+      { data: {}, image_sources: canvas_sources(() => null) },
       [`PNG`, `JSON`],
     ],
     [`no figure`, { data: null, image_sources: {} }, []],
   ])(`%s offers its own formats`, (_desc, props, formats) => {
     mount_pane({ wrapper: wrapper_div, ...props })
-    for (const format of [`PNG`, `SVG`, `JSON`])
-      expect(
-        document.querySelector(`[aria-label="Download ${format}"]`) !== null,
-        format,
-      ).toBe(formats.includes(format))
+    const offered = (format: string) =>
+      document.querySelector(`[aria-label="Download ${format}"]`)
+    expect([`PNG`, `SVG`, `JSON`].filter(offered)).toEqual(formats)
   })
 
   test.each([

@@ -18,6 +18,7 @@ import {
   doc_query,
   expect_tooltip_paint,
   export_via_pane,
+  drag,
   fire,
   form_controls,
   keydown,
@@ -28,7 +29,6 @@ import {
   pattern_id_of,
   pin_cycle,
   plot_svg,
-  pointer,
   reset_section,
   roving_tabindexes,
   set_input,
@@ -271,15 +271,7 @@ describe(`Histogram`, () => {
     await mount_histogram({ series: [{ values }], ...props })
     const svg = plot_svg()
     const { left, top } = svg.getBoundingClientRect()
-    const at = (px_x: number, px_y: number) => ({
-      clientX: left + px_x,
-      clientY: top + px_y,
-      button: 0,
-      buttons: 1,
-    })
-    svg.dispatchEvent(pointer(`pointerdown`, at(130, 40)))
-    svg.dispatchEvent(pointer(`pointermove`, at(250, 240)))
-    await fire(svg, pointer(`pointerup`, at(250, 240)))
+    await drag(svg, {}, [left + 130, top + 40], [left + 250, top + 240])
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
     bars[Math.floor(bars.length / 2)].dispatchEvent(mouse(`mousemove`))
     const { count, y } = on_bar_hover.mock.lastCall?.[0] ?? {}

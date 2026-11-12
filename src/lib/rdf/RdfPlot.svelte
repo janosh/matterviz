@@ -110,10 +110,9 @@
       return { struct, label: formula && label ? `${formula}: ${label}` : formula || label }
     }),
   )
-  // Each structure's curves for the option set they were computed with, so one more dropped
-  // file searches that file alone. The searches run in the RDF worker pool, one structure
-  // per worker.
-  const computed_patterns = new WeakMap<Crystal, { key: string; found: RdfPattern[] }>()
+  // Each structure's curves under the options key they were computed with, so one more dropped
+  // file searches that file alone (in the RDF worker pool, one structure per worker)
+  const computed_rdfs = new WeakMap<Crystal, Record<string, RdfPattern[]>>()
   let computed = $state.raw<{ key?: string; curves: ComputedEntry[]; failures: string[] }>({
     curves: [],
     failures: [],
@@ -122,22 +121,16 @@
   const options = $derived({ cutoff, n_bins, pbc: $state.snapshot(pbc), mode })
   const key = $derived(value_key(options))
   $effect(() => {
-    // aborted once the structures or options change: that answer is no longer wanted, and a
-    // worker left with only such requests is stopped
+    // aborted once the structures or options change: a worker left with only such requests stops
     const signal = getAbortSignal()
-    // each structure's curves, or the failure of one the neighbour search rejects
     const requests = struct_list.map(async ({ struct, label }) => {
       try {
-        const cached = computed_patterns.get(struct)
-        const found =
-          cached?.key === key
-            ? cached.found
-            : await calc_rdfs_async(struct, options, { signal })
-        computed_patterns.set(struct, { key, found })
-        return found.map((pattern): ComputedEntry => ({
+        const hit = computed_rdfs.get(struct)
+        const rdfs = hit?.[key] ?? (await calc_rdfs_async(struct, options, { signal }))
+        computed_rdfs.set(struct, { [key]: rdfs })
+        return rdfs.map((pattern): ComputedEntry => ({
           label: pattern.element_pair?.join(`-`) ?? label,
-          // Group by structure name for multi-structure plots
-          ...(mode === `full` ? {} : { legend_group: label }),
+          ...(mode === `full` ? {} : { legend_group: label }), // Group by structure name
           pattern,
           structure: struct,
         }))
@@ -158,9 +151,8 @@
     })
   })
   // Explicitly supplied patterns come first, in the order they were given. Joined apart from
-  // `computed` so new patterns don't re-run the structures' neighbour searches. Curves of
-  // other options are hidden while theirs compute: a hover would search their bins with the
-  // new cutoff and bin count. Curves of a structure no longer listed leave at once too.
+  // `computed` so new patterns don't re-run the structures' neighbour searches. Curves of other
+  // options (a hover would search their bins with the new ones) or a delisted structure hide.
   const listed = $derived(new Set(struct_list.map(({ struct }) => struct)))
   const entries = $derived<ComputedEntry[]>([
     ...(patterns ? [patterns].flat() : []),

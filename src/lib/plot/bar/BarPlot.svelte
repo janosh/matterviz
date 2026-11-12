@@ -572,10 +572,9 @@
   }
   const hover = create_mark_hover<MarkKey, BarHandlerProps<Metadata>, Omit<MarkKey, `color`>>({
     key: (mark) => `${mark.series_idx}:${mark.bar_idx}:${mark.line}`,
-    pinnable: (mark) => tooltip !== false && !(mark.line ? on_point_click : on_bar_click),
+    enabled: (mark) => tooltip !== false && !(mark.line ? on_point_click : on_bar_click),
     info: mark_info,
     on_clear: (mark) => (mark?.line ? on_point_hover : on_bar_hover)?.(null),
-    root: () => frame.svg_element,
   })
   const hover_info = $derived(hover.info)
 

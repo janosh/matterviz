@@ -27,16 +27,14 @@ const set_moyo_wasm_source = vi.hoisted(() => vi.fn())
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
   const stub_module = await import(`./reactive-renderer-stub.svelte`)
-  type Stub = typeof stub_module.default
+  // the registry's components only (a widget importing any other fails the import), each its
+  // own function so a spec mounting the wrong one is caught
+  const stubs = Object.values(COMPONENTS).map((path) => [
+    component_name(path),
+    stub_module.default.bind(null),
+  ])
   return {
-    // the registry's components only (a widget importing any other fails the import), each
-    // its own function so a spec mounting the wrong one is caught
-    ...Object.fromEntries(
-      Object.values(COMPONENTS).map((path) => [
-        component_name(path),
-        (...args: Parameters<Stub>): ReturnType<Stub> => stub_module.default(...args),
-      ]),
-    ),
+    ...Object.fromEntries(stubs),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
     check_blob_workers,
@@ -122,8 +120,7 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
 // a TypeScript program over every widget component: seconds on shared CI runners
-// the custom elements define an accessor per prop, so a prop named like an HTMLElement member
-// shadows it: `dataset` made el.dataset return phonon data instead of the DOMStringMap
+// the custom elements define an accessor per prop, which shadows an HTMLElement member of that name
 test(`no widget prop binds defaulted data or shadows the DOM`, { timeout: 30_000 }, () => {
   const docs = Object.entries(extract_prop_docs(component_files))
   const defaulted = docs.flatMap(([component, { props }]) =>
@@ -145,10 +142,9 @@ const drop_zone_widgets = new Set(drop_zones.split(/\s+/))
 
 // The stylesheet the bundle injects into the notebook page
 test(`scoped_app_css leaves only zero-specificity theme tokens outside the widget scope`, () => {
-  const [tokens, scoped, ...more] = scoped_app_css(widget_scope).split(
-    `@scope (${widget_scope}) {`,
-  )
-  expect(more).toEqual([])
+  const parts = scoped_app_css(widget_scope).split(`@scope (${widget_scope}) {`)
+  expect(parts).toHaveLength(2)
+  const [tokens, scoped] = parts
   const selectors = [...tokens.matchAll(/^[^{}\n][^{}]*(?=\{)/gm)].map(([selector]) =>
     selector.trim().replaceAll(/\s+/g, ` `),
   )

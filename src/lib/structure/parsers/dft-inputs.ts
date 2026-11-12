@@ -2,7 +2,6 @@
 // FHI-aims `geometry.in` and Quantum ESPRESSO `pw.x` input files.
 import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
@@ -17,42 +16,33 @@ import {
   vec3_from_values,
 } from './shared'
 
-// `movable` is the per-axis relaxation flag (POSCAR's selective dynamics), unset when free
-type AxisFlags = [boolean, boolean, boolean]
-type ParsedAtom = [
-  element: ElementSymbol,
-  coords: Vec3,
-  fractional: boolean,
-  movable?: AxisFlags,
-]
+// [element, coords, is fractional, movable]: the last holds per-axis relaxation flags
+// (POSCAR's selective dynamics), unset when free
+type ParsedAtom = [ElementSymbol, math.Vec3, boolean, [boolean, boolean, boolean]?]
 
-// Structure from atoms in fractional or Cartesian (Å) coordinates. In a cell, fractional
-// coordinates wrap into [0, 1) and xyz is recomputed from them, as in parse_poscar (a cell
-// without volume throws in create_cart_to_frac). Without one the atoms form a molecule.
-function build_structure(
-  atoms: readonly ParsedAtom[],
-  lattice_matrix: Matrix3x3 | null,
-  format: string,
-): AnyStructure {
+// Structure from atoms in fractional or Cartesian (Å) coordinates and three `cell` rows (Å),
+// or none for a molecule. In a cell, fractional coordinates wrap into [0, 1) and xyz is
+// recomputed from them, as in parse_poscar (a cell without volume throws).
+function build_structure(atoms: ParsedAtom[], cell: number[][], format: string): AnyStructure {
   if (atoms.length === 0) throw new Error(`${format} has no atoms`)
+  const lattice_matrix = cell.length ? matrix3x3_from_rows(cell, `${format} lattice`) : null
   const frac_to_cart = lattice_matrix && math.create_frac_to_cart(lattice_matrix)
   const cart_to_frac = lattice_matrix && math.create_cart_to_frac(lattice_matrix)
-  // aims and QE constrain Cartesian axes, POSCAR-style selective_dynamics the lattice vectors:
-  // per-axis flags carry over only where the two coincide, an atom fixed on every axis always
-  const axis_aligned =
-    !lattice_matrix ||
-    lattice_matrix.every((row, row_idx) =>
-      row.every((val, col) => col === row_idx || val === 0),
+  // aims and QE constrain Cartesian axes, POSCAR-style selective_dynamics the lattice vectors: a
+  // vector is free (fixed) when every axis it has a component along is, else the flags are dropped
+  const vec_flags = (movable: ParsedAtom[3]) => {
+    const flags = (lattice_matrix ?? math.IDENTITY_3X3).map(
+      (vec) => new Set(movable?.filter((_, axis) => Math.abs(vec[axis]) > 1e-8)),
     )
-  const kept = (movable?: AxisFlags) => movable && (axis_aligned || !movable.includes(true))
-  const n_dropped = atoms.filter(([, , , movable]) => movable && !kept(movable)).length
+    return flags.every((set) => set.size === 1) ? flags.map((set) => set.has(true)) : undefined
+  }
+  const n_dropped = atoms.filter(([, , , movable]) => movable && !vec_flags(movable)).length
   if (n_dropped > 0)
-    console.warn(
-      `${format}: dropped per-axis constraints of ${n_dropped} atoms; Cartesian axes are not lattice vectors in this cell`,
-    )
+    console.warn(`${format}: dropped constraints of ${n_dropped} atoms mixing lattice vectors`)
   const sites = atoms.map(([element, coords, fractional, movable], idx) => {
     const label = `${element}${idx + 1}`
-    const properties = kept(movable) ? { selective_dynamics: movable } : {}
+    const selective_dynamics = vec_flags(movable)
+    const properties = selective_dynamics ? { selective_dynamics } : {}
     if (frac_to_cart && cart_to_frac) {
       const abc = wrap_to_unit_cell(fractional ? coords : cart_to_frac(coords))
       return make_site(element, abc, frac_to_cart(abc), label, properties)
@@ -64,27 +54,21 @@ function build_structure(
 }
 
 // The first three tokens as numbers (further ones are flags or a species)
-const numbers = (tokens: readonly string[], context: string): Vec3 =>
+const numbers = (tokens: readonly string[], context: string): math.Vec3 =>
   vec3_from_values(tokens.slice(0, 3).map(parse_float_token), context)
 
 // === FHI-aims geometry.in ===
-
 // An `atom`/`atom_frac` row: three numbers and a species. Lowercase only (aims keywords are
-// case-sensitive), which also keeps PDB `ATOM` records out. Horizontal whitespace only, see
-// is_lammps_data_content.
+// case-sensitive), which keeps PDB `ATOM` out. Horizontal whitespace only, see is_lammps_data_content.
 export const is_aims_content = (content: string): boolean =>
   /^[ \t]*atom(?:_frac)?(?:[ \t]+[-+]?\.?\d[\w.+-]*){3}[ \t]+[A-Z]/m.test(content)
 
-export const aims_has_lattice = (content: string): boolean =>
-  /^[ \t]*lattice_vector[ \t]/m.test(content)
-
-// FHI-aims geometry.in: `lattice_vector x y z` rows (Å; three for a crystal, none for a
-// molecule), `atom x y z species` (Cartesian Å), `atom_frac a b c species`, `#` comments.
-// Species are element symbols, optionally suffixed (`Si_light`). `constrain_relaxation`
-// (`.true.` or an axis `x`/`y`/`z`) fixes the atom above it. Other keywords leave the geometry
-// as written, except `empty` and `pseudocore` sites, which are no atoms: errors.
+// `lattice_vector x y z` rows (Å; three for a crystal, none for a molecule), `atom x y z species`
+// (Cartesian Å), `atom_frac a b c species`, `#` comments. Species are element symbols, optionally
+// suffixed (`Si_light`). `constrain_relaxation` (`.true.` or an axis `x`/`y`/`z`) fixes the atom
+// above it. Other keywords are skipped, except `empty` and `pseudocore` sites (no atoms): errors.
 export function parse_aims(content: string): AnyStructure {
-  const lattice_rows: Vec3[] = []
+  const lattice_rows: math.Vec3[] = []
   const atoms: ParsedAtom[] = []
   let last_atom: ParsedAtom | undefined // unset after a lattice_vector, whose constraints are no site's
   for (const [line_idx, line] of content.split(/\r?\n/).entries()) {
@@ -99,42 +83,31 @@ export function parse_aims(content: string): AnyStructure {
       atoms.push(last_atom)
     } else if (keyword === `constrain_relaxation` && last_atom) {
       const fixed = args[0]?.toLowerCase()
-      const [x_free, y_free, z_free] = last_atom[3] ?? [true, true, true]
-      if (fixed === `.true.`) last_atom[3] = [false, false, false]
-      else
-        last_atom[3] = [
-          x_free && fixed !== `x`,
-          y_free && fixed !== `y`,
-          z_free && fixed !== `z`,
-        ]
+      const free = last_atom[3] ?? [true, true, true]
+      const still_free = (axis: string, idx: number): boolean =>
+        free[idx] && fixed !== axis && fixed !== `.true.`
+      last_atom[3] = [still_free(`x`, 0), still_free(`y`, 1), still_free(`z`, 2)]
     } else if (keyword === `empty` || keyword === `pseudocore`)
       throw new Error(`${where}: unsupported keyword '${keyword}'`)
   }
-  const lattice_matrix =
-    lattice_rows.length > 0 ? matrix3x3_from_rows(lattice_rows, `geometry.in lattice`) : null
-  return build_structure(atoms, lattice_matrix, `geometry.in`)
+  return build_structure(atoms, lattice_rows, `geometry.in`)
 }
 
 // === Quantum ESPRESSO pw.x input ===
-
-// Horizontal whitespace only, see is_lammps_data_content
 export const is_qe_content = (content: string): boolean =>
   /^[ \t]*&system\b/im.test(content) && /^[ \t]*ATOMIC_POSITIONS\b/im.test(content)
 
 // Lattice rows in units of alat per ibrav (INPUT_PW's `ibrav` table); rows 2 and 3 of the
 // cells with free b/a (8) and c/a (4, 6, 8) are scaled by those ratios
 // oxfmt-ignore
-const QE_BRAVAIS: Record<number, Matrix3x3> = {
-  1: math.IDENTITY_3X3, // simple cubic
+const QE_BRAVAIS: Record<number, math.Matrix3x3> = {
+  1: math.IDENTITY_3X3, 6: math.IDENTITY_3X3, 8: math.IDENTITY_3X3, // simple cubic, tetragonal, orthorhombic
   2: [[-0.5, 0, 0.5], [0, 0.5, 0.5], [-0.5, 0.5, 0]], // fcc
   3: [[0.5, 0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, -0.5, 0.5]], // bcc
   4: [[1, 0, 0], [-0.5, Math.sqrt(3) / 2, 0], [0, 0, 1]], // hexagonal
-  6: math.IDENTITY_3X3, // simple tetragonal
-  8: math.IDENTITY_3X3, // simple orthorhombic
 }
 
-// A card's unit option (`{alat}`, `(alat)` or bare `alat`, lowercased) and its `n_rows`
-// data rows as tokens
+// A card's lowercased unit option (`{alat}`, `(alat)` or `alat`) and its `n_rows` rows of tokens
 function qe_card(lines: readonly string[], name: string, n_rows: number) {
   const header_idx = lines.findIndex((line) => line.toUpperCase().startsWith(name))
   const rows = lines.slice(header_idx + 1, header_idx + 1 + n_rows)
@@ -144,11 +117,10 @@ function qe_card(lines: readonly string[], name: string, n_rows: number) {
   return { unit: unit.toLowerCase(), rows: rows.map((row) => row.split(/\s+/)) }
 }
 
-// Quantum ESPRESSO pw.x input: the cell from &SYSTEM (`ibrav` in QE_BRAVAIS with `celldm(i)`
-// in Bohr or `A`, `B`, `C` in Å) or, for ibrav = 0, from `CELL_PARAMETERS {alat|bohr|angstrom}`;
-// `nat` atoms from `ATOMIC_POSITIONS {alat|bohr|angstrom|crystal}`, labelled by an element
-// symbol plus an optional tag (`Fe1`, `O_h`). Card units must be written out (pw.x's implicit
-// ones are deprecated).
+// The cell from &SYSTEM (`ibrav` in QE_BRAVAIS with `celldm(i)` in Bohr or `A`, `B`, `C` in Å) or,
+// for ibrav = 0, from `CELL_PARAMETERS {alat|bohr|angstrom}`; `nat` atoms from `ATOMIC_POSITIONS
+// {alat|bohr|angstrom|crystal}`, labelled by an element symbol plus an optional tag (`Fe1`,
+// `O_h`). Card units must be written out (pw.x's implicit ones are deprecated).
 export function parse_qe(content: string): AnyStructure {
   // `!` and `#` start comments, blank lines carry nothing, &SYSTEM runs to the next `/`
   const text = content.replaceAll(/[!#].*/g, ``)
@@ -162,12 +134,10 @@ export function parse_qe(content: string): AnyStructure {
     system.set(key.toLowerCase(), parse_float_token(value))
   }
   const required = (key: string): number => {
-    const value = system.get(key)
-    if (value === undefined || !Number.isFinite(value))
-      throw new Error(`pw.x &SYSTEM needs a numeric ${key}`)
-    return value
+    const value = system.get(key) ?? NaN
+    if (Number.isFinite(value)) return value
+    throw new Error(`pw.x &SYSTEM needs a numeric ${key}`)
   }
-
   // alat (Å): celldm(1) in Bohr or A in Å, else the first vector of a cell in Bohr or Å
   const celldm_1 = system.get(`celldm(1)`)
   if (celldm_1 !== undefined && system.has(`a`))
@@ -179,34 +149,25 @@ export function parse_qe(content: string): AnyStructure {
     if (unit === `alat` && alat !== undefined && alat > 0) return alat
     throw new Error(`pw.x ${card} unit '${unit}' is not angstrom, bohr or a defined alat`)
   }
-
   const ibrav = required(`ibrav`)
-  let lattice_matrix: Matrix3x3
-  if (ibrav === 0) {
-    const cell = qe_card(lines, `CELL_PARAMETERS`, 3)
-    const scale = unit_scale(cell.unit, `CELL_PARAMETERS`)
-    lattice_matrix = matrix3x3_from_rows(
-      cell.rows.map((row) => row.map((token) => parse_float_token(token) * scale)),
-      `pw.x CELL_PARAMETERS`,
-    )
-    alat ??= Math.hypot(...lattice_matrix[0])
-  } else {
-    const rows = QE_BRAVAIS[ibrav]
-    if (!rows)
-      throw new Error(
-        `pw.x ibrav = ${ibrav} is unsupported, use ibrav = 0 and CELL_PARAMETERS`,
-      )
+  const bravais = QE_BRAVAIS[ibrav]
+  if (ibrav !== 0 && !bravais)
+    throw new Error(`pw.x ibrav = ${ibrav} is unsupported, use ibrav = 0 and CELL_PARAMETERS`)
+  let lattice_rows: number[][]
+  if (bravais) {
     const length_a = unit_scale(`alat`, `ibrav = ${ibrav}`)
     // b and c (Å): celldm(2) and celldm(3) are b/a and c/a; B and C are lengths in Å
     const length = (celldm_idx: number, key: string): number =>
       celldm_1 === undefined ? required(key) : length_a * required(`celldm(${celldm_idx})`)
-    lattice_matrix = math.scale_lattice_matrix(rows, [
-      length_a,
-      ibrav === 8 ? length(2, `b`) : length_a,
-      ibrav > 3 ? length(3, `c`) : length_a,
-    ])
+    const length_b = ibrav === 8 ? length(2, `b`) : length_a
+    const length_c = ibrav > 3 ? length(3, `c`) : length_a
+    lattice_rows = math.scale_lattice_matrix(bravais, [length_a, length_b, length_c])
+  } else {
+    const cell = qe_card(lines, `CELL_PARAMETERS`, 3)
+    const scale = unit_scale(cell.unit, `CELL_PARAMETERS`)
+    lattice_rows = cell.rows.map((row) => row.map((token) => parse_float_token(token) * scale))
+    alat ??= Math.hypot(...lattice_rows[0])
   }
-
   const positions = qe_card(lines, `ATOMIC_POSITIONS`, required(`nat`))
   const fractional = positions.unit === `crystal`
   const scale = fractional ? 1 : unit_scale(positions.unit, `ATOMIC_POSITIONS`)
@@ -217,5 +178,5 @@ export function parse_qe(content: string): AnyStructure {
     fractional,
     coords.length >= 6 ? [coords[3] !== `0`, coords[4] !== `0`, coords[5] !== `0`] : undefined,
   ])
-  return build_structure(atoms, lattice_matrix, `pw.x input`)
+  return build_structure(atoms, lattice_rows, `pw.x input`)
 }

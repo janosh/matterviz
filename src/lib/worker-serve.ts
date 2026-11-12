@@ -1,35 +1,26 @@
 // Worker-side half of the create_worker_client protocol (see worker-client.svelte.ts): each
 // request arrives as `{ id, input, options }`, any number of `{ id, progress }` messages may
-// follow, and exactly one `{ id, result, error }` reply ends it. Clients that retain inputs
-// add the `held` tokens: an input crosses with the first request only, later ones name it.
-// A request that cannot be deserialized never reaches `message`, so `messageerror` answers
-// with `{ id: null, error }` and the client fails every pending request rather than leaving
-// one awaiting forever. Kept apart from the client so worker bundles do not pull Svelte
-// runtime code.
+// follow, and exactly one `{ id, result, error }` reply ends it. A request that cannot be
+// deserialized never reaches `message`, so `messageerror` answers with `{ id: null, error }`
+// and the client fails every pending request rather than leaving one awaiting forever. Kept
+// apart from the client so worker bundles do not pull Svelte runtime code.
 // Dedicated workers' postMessage takes no targetOrigin (that is Window.postMessage), so
 // unicorn's require-post-message-target-origin is a false positive here.
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { to_error } from 'svelte-widgets/utils'
 
-// `held` (retaining clients only): identity tokens of the inputs to keep, this request's
-// last; `input` is absent when the worker already holds it
 export type WorkerRequest<Input, Options> = {
   id: number
   options: Options
-  input?: Input
-  held?: number[]
+  input?: Input // absent when the worker already holds it
+  held?: number[] // retaining clients only: tokens of the inputs to keep, this request's last
 }
 
-// The input a request carries or names. The client alone decides what is retained (see
-// `retained_inputs`), so this store only follows it. Handing back the same object for a
-// token keeps identity-keyed caches of derived state (unwrapped positions, upsampled grids)
-// alive between requests, and frees them with the input.
+// The input a request carries or names. Handing back the same object per token keeps identity-
+// keyed caches of derived state (unwrapped positions, upsampled grids) alive between requests.
 export function create_input_store<Input>() {
   const inputs = new Map<number, Input>()
-  return ({
-    input,
-    held = [],
-  }: Pick<WorkerRequest<Input, unknown>, `input` | `held`>): Input => {
+  return ({ input, held = [] }: { input?: Input; held?: number[] }): Input => {
     const token = held.at(-1)
     if (token !== undefined) {
       if (input !== undefined) inputs.set(token, input)

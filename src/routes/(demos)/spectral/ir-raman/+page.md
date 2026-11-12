@@ -25,7 +25,7 @@ Eigenvectors follow phonopy's convention: eigenvectors of the mass-weighted dyna
 
 ## Explore bands, peaks, and atomic motion together
 
-`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/reciprocal/phonon-mode-explorer).
+`PhononModeExplorer` connects every selectable band point or IR/Raman stick to a 3D animation of the corresponding complex eigenvector. For the visualization-first experience, open the dedicated [Phonon Mode Explorer](/spectral/phonon-mode-explorer).
 
 <details>
 <summary>Explorer details and bundled fixtures</summary>

@@ -6,12 +6,12 @@ import { fromStore, writable } from 'svelte/store'
 import { describe, expect, it, vi } from 'vitest'
 import {
   clip_rect,
+  drag,
   fire,
   marker_position,
   mount_sized,
   mouse,
   plot_svg,
-  pointer,
   translate_of,
 } from '../setup'
 import { make_crystal } from '../test-fixtures'
@@ -236,15 +236,9 @@ describe(`bands/DOS wrappers`, () => {
     expect(initial.length).toBeGreaterThan(2)
 
     const bands_svg = plot_svg(bands_plot)
-    const clip = clip_rect(bands_plot)
-    const position = (frac_x: number, frac_y: number): MouseEventInit => ({
-      bubbles: true,
-      clientX: clip.x + clip.width * frac_x,
-      clientY: clip.y + clip.height * frac_y,
-    })
-    bands_svg.dispatchEvent(pointer(`pointerdown`, position(0.1, 0.3)))
-    bands_svg.dispatchEvent(pointer(`pointermove`, { buttons: 1, ...position(0.9, 0.6) }))
-    await fire(bands_svg, pointer(`pointerup`, position(0.9, 0.6)))
+    const { x, y, width, height } = clip_rect(bands_plot)
+    const [from_y, to_y] = [y + height * 0.3, y + height * 0.6]
+    await drag(bands_svg, {}, [x + width * 0.1, from_y], [x + width * 0.9, to_y])
     const zoomed = y_ticks(bands_plot)
     expect(Math.max(...zoomed) - Math.min(...zoomed)).toBeLessThan(
       Math.max(...initial) - Math.min(...initial),

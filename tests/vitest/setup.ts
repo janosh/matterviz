@@ -403,6 +403,20 @@ export const fire = async (
   await tick()
 }
 
+// A primary-button pointer drag on `target` through client px `points`: pressed at the first,
+// moved to each next one, released at the last
+export const drag = async (
+  target: Element,
+  init: PointerEventInit,
+  ...points: [number, number][]
+): Promise<void> => {
+  const send = (type: string, [clientX, clientY] = points[0], buttons = 1) =>
+    fire(target, pointer(`pointer${type}`, { ...init, buttons, clientX, clientY }))
+  await send(`down`)
+  for (const point of points.slice(1)) await send(`move`, point)
+  await send(`up`, points.at(-1), 0)
+}
+
 // The interactive plot area: the frame's <svg role="application"> under `root`
 export const plot_svg = (root: ParentNode = document): SVGSVGElement =>
   query(root, `svg[role="application"]`)

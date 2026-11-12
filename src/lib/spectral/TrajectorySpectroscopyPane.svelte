@@ -113,9 +113,8 @@
   let previous_run: TrajectoryRun | undefined
   let auto_calculation_attempted = false
   const requests = create_request_owner()
-  // One collect per run and collection settings: a timing or preprocessing edit recomputes
-  // the same input object, which the worker retains, rather than re-reading and re-sending
-  // the streams. A run's data is fixed, so new data means a new run.
+  // One collect per run (whose data is fixed) and collection settings: a timing or preprocessing
+  // edit recomputes the same input object, which the worker retains, without a re-read or re-send
   const collected_input_of = memo_by_identity<Promise<TrajectorySpectroscopyInput>>()
   $effect(() => {
     if (run === previous_run) return

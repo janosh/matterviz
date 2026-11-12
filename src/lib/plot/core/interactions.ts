@@ -67,13 +67,6 @@ export function step_point_cursor(
 export const focus_left = (event: FocusEvent, root: Element | null | undefined): boolean =>
   !root || !(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)
 
-// Focus leaving the chart is the keyboard's mouseleave; focus moving to the next mark is not.
-export const create_focus_exit =
-  (root: () => Element | null | undefined, on_exit: () => void) =>
-  (event: FocusEvent): void => {
-    if (focus_left(event, root())) on_exit()
-  }
-
 // Integer value of the delegated event target's nearest `attr` ancestor within `root`,
 // or null when the event didn't hit an indexed element
 export function closest_data_idx(
@@ -98,7 +91,7 @@ export function normalize_y2_sync(sync: Y2SyncConfig | Y2SyncMode | undefined): 
   return config
 }
 
-export const all_finite = (...ranges: Vec2[]) =>
+const all_finite = (...ranges: Vec2[]) =>
   ranges.every(([value_a, value_b]) => Number.isFinite(value_a) && Number.isFinite(value_b))
 
 // Calculate synced y2 range based on sync mode

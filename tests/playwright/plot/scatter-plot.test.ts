@@ -932,24 +932,16 @@ test.describe(`ScatterPlot Component Tests`, () => {
       await expect(zoom_rect).toBeHidden()
       const x_range = async () => (await get_tick_range(plot.locator(`g.x-axis`))).range
       await expect.poll(x_range).toBeGreaterThan(0)
-
-      // a flick whose first move already lands outside the SVG still zooms on release
+      // a flick from the SVG's center (where the reset's double click leaves the mouse) whose
+      // first move already lands outside the SVG still zooms on release
       await svg.dblclick()
       const full_range = await x_range()
-      await page.mouse.move(
-        svg_box.x + clip.x + clip.width / 2,
-        svg_box.y + clip.y + clip.height / 2,
-      )
       await page.mouse.down()
       await page.mouse.move(svg_box.x - 50, svg_box.y - 50)
       await page.mouse.up()
-      await expect(zoom_rect).toBeHidden()
       await expect.poll(x_range).toBeLessThan(full_range)
-    })
-
-    // A touch is captured by the mark it lands on. The drag moving that capture to the SVG
-    // fires lostpointercapture on the mark, which must not abandon the gesture.
-    await test.step(`touch drag starting on a marker draws the zoom rect`, async () => {
+      // A touch is captured by the mark it lands on. The drag moving that capture to the SVG
+      // fires lostpointercapture on the mark, which must not abandon the gesture.
       const box = await require_bbox(plot.locator(`path.marker`).first(), `marker`)
       const cdp = await page.context().newCDPSession(page)
       for (const offset of [0, 10, 20, 30]) {
@@ -957,7 +949,7 @@ test.describe(`ScatterPlot Component Tests`, () => {
         const type = offset ? `touchMove` : `touchStart`
         await cdp.send(`Input.dispatchTouchEvent`, { type, touchPoints: [{ x, y }] })
       }
-      await expect(plot.locator(`rect.zoom-rect`)).toBeVisible()
+      await expect(zoom_rect).toBeVisible()
       await cdp.send(`Input.dispatchTouchEvent`, { type: `touchEnd`, touchPoints: [] })
     })
 

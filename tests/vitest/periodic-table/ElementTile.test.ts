@@ -30,25 +30,20 @@ describe(`ElementTile`, () => {
     expect(node.getAttribute(`role`)).toBeNull()
   })
 
-  // a tile with onclick was a mouse-only div; PeriodicTable patched role/tabindex/keys from outside
   test(`a tile with onclick is a keyboard-operable button`, () => {
-    const onclick = vi.fn()
-    const onkeydown = vi.fn()
+    const [onclick, onkeydown] = [vi.fn(), vi.fn()]
     mount_tile({ onclick, onkeydown })
     const node = doc_query(`.element-tile`)
     expect([node.getAttribute(`role`), node.getAttribute(`tabindex`)]).toEqual([`button`, `0`])
-    const press = (key: string) => {
-      const event = new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true })
-      node.dispatchEvent(event)
-      return event.defaultPrevented
-    }
+    // dispatchEvent returns false when the default was prevented
+    const press = (key: string) =>
+      !node.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true }),
+      )
     expect([press(`Enter`), press(` `), press(`a`)]).toEqual([true, true, false])
-    expect(onkeydown).toHaveBeenCalledTimes(3)
-    expect(onclick).toHaveBeenCalledTimes(2)
-    expect(onclick).toHaveBeenLastCalledWith({
-      element: rand_element,
-      event: expect.any(MouseEvent),
-    })
+    expect([onkeydown.mock.calls.length, onclick.mock.calls.length]).toEqual([3, 2])
+    const click = { element: rand_element, event: expect.any(MouseEvent) }
+    expect(onclick).toHaveBeenLastCalledWith(click)
   })
 
   test(`renders as anchor when href is provided`, () => {

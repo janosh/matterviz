@@ -11,6 +11,7 @@
 // centred on its time average first, so the difference cancels on the scale of the motion
 // rather than of the absolute position.
 import { element_by_symbol } from '#lib/element/data.js'
+import type { ElementSymbol } from '#lib/element/index.js'
 import { mean as mean_of } from '#lib/math.js'
 import { thz_per_inverse_time } from '#lib/spectral/frequency-units.js'
 import {
@@ -98,31 +99,23 @@ export function fit_einstein_diffusion(
 }
 
 // Coordinates relative to each frame's centre of mass, as a new buffer (the input may be the
-// stream's own positions or its cached unwrap). Weighted by standard atomic masses: a
-// position stream carries element symbols only, not the masses a run may record.
-function without_com_drift(
-  coords: Float64Array,
-  { n_frames, n_atoms, elements }: TrajectoryPositionStream,
-): Float64Array {
+// stream's cached unwrap). By standard atomic masses: a position stream carries symbols only.
+function without_com_drift(coords: Float64Array, elements: ElementSymbol[]): Float64Array {
   const masses = elements.map((element, atom_idx) => {
     const mass = element_by_symbol.get(element)?.atomic_mass
     if (mass) return mass
-    throw new Error(
-      `calc_msd: remove_com_drift found no atomic mass for atom index ${atom_idx} (${element})`,
-    )
+    throw new Error(`calc_msd: remove_com_drift: no mass for atom ${atom_idx} (${element})`)
   })
   const total_mass = masses.reduce((total, mass) => total + mass, 0)
   const drift_free = new Float64Array(coords.length)
-  const frame_size = n_atoms * 3
-  for (let frame_idx = 0; frame_idx < n_frames; frame_idx++) {
-    const base = frame_idx * frame_size
-    for (let axis = 0; axis < 3; axis++) {
-      let weighted_sum = 0
-      for (let atom_idx = 0; atom_idx < n_atoms; atom_idx++) {
-        weighted_sum += masses[atom_idx] * coords[base + atom_idx * 3 + axis]
+  const frame_size = masses.length * 3
+  for (let base = 0; base < coords.length; base += frame_size) {
+    for (let first = base; first < base + 3; first++) {
+      let center = 0 // of one axis, whose components sit 3 apart
+      for (let atom_idx = 0; atom_idx < masses.length; atom_idx++) {
+        center += (masses[atom_idx] / total_mass) * coords[first + atom_idx * 3]
       }
-      const center = weighted_sum / total_mass
-      for (let comp = base + axis; comp < base + frame_size; comp += 3) {
+      for (let comp = first; comp < base + frame_size; comp += 3) {
         drift_free[comp] = coords[comp] - center
       }
     }
@@ -144,10 +137,8 @@ export function calc_msd(
   // Honours the parser's already-unwrapped flag and the cell's own pbc flags: re-applying
   // the minimum image convention to LAMMPS xu/yu/zu coordinates silently truncates real
   // displacements, and folding a slab's free axis back into the box reports 16 A^2 for 36.
-  const { coords: unwrapped_coords, unwrapped } = unwrapped_positions_of(input)
-  const coords = remove_com_drift
-    ? without_com_drift(unwrapped_coords, input)
-    : unwrapped_coords
+  const { coords: raw_coords, unwrapped } = unwrapped_positions_of(input)
+  const coords = remove_com_drift ? without_com_drift(raw_coords, elements) : raw_coords
 
   const max_lag = lag_range(`calc_msd`, n_frames, max_lag_fraction)
   if (!Number.isInteger(max_lags) || max_lags < 1) {

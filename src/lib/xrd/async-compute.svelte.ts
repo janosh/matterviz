@@ -1,8 +1,7 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
-// compute_xrd_pattern and compute_saed_pattern via persistent Web Workers (main-thread
-// fallback without Worker); see create_worker_client for `.cancel` / `.release` semantics.
-// What needs the main thread's symmetry worker lives here too, keeping calc-xrd.ts free of
-// Svelte for the worker bundles.
+// compute_xrd_pattern and compute_saed_pattern via persistent Web Workers (main-thread fallback
+// without Worker), plus what needs the main thread's symmetry worker: calc-xrd.ts stays free
+// of Svelte for the worker bundles.
 import type { Matrix3x3 } from '#lib/math.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import type { AnyStructure, Crystal } from '#lib/structure/index.js'
@@ -10,39 +9,27 @@ import { is_crystal } from '#lib/structure/validation.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { compute_xrd_pattern } from './calc-xrd'
-import type { SaedOptions, SaedPatternData, XrdOptions, XrdPattern } from './index'
+import type { XrdPattern } from './index'
 import { compute_saed_pattern } from './saed'
 
-// All the diffraction kernels read; site properties can hold values structured clone rejects
-const plain_crystal = ({ lattice, sites }: Crystal): Crystal => ({
-  lattice: $state.snapshot(lattice),
-  sites: sites.map(({ species, abc, xyz, label }) => ({
-    ...$state.snapshot({ species, abc, xyz }),
-    label,
-    properties: {},
-  })),
+// Site properties can hold values structured clone rejects, and no diffraction kernel reads them
+const build_payload = ({ lattice, sites }: Crystal): Crystal =>
+  $state.snapshot({ lattice, sites: sites.map((site) => ({ ...site, properties: {} })) })
+
+export const compute_xrd_pattern_async = create_worker_client({
+  label: `XRD`,
+  create_worker: () =>
+    new Worker(new URL(`./xrd-worker.js`, import.meta.url), { type: `module` }),
+  compute_sync: compute_xrd_pattern,
+  build_payload,
 })
 
-export const compute_xrd_pattern_async = create_worker_client<Crystal, XrdOptions, XrdPattern>(
-  {
-    label: `XRD`,
-    create_worker: () =>
-      new Worker(new URL(`./xrd-worker.js`, import.meta.url), { type: `module` }),
-    compute_sync: compute_xrd_pattern,
-    build_payload: plain_crystal,
-  },
-)
-
-export const compute_saed_pattern_async = create_worker_client<
-  Crystal,
-  SaedOptions,
-  SaedPatternData
->({
+export const compute_saed_pattern_async = create_worker_client({
   label: `SAED`,
   create_worker: () =>
     new Worker(new URL(`./saed-worker.js`, import.meta.url), { type: `module` }),
   compute_sync: compute_saed_pattern,
-  build_payload: plain_crystal,
+  build_payload,
 })
 
 // symprec in Å. Tight on purpose: a loose one can merge reflections of different intensity,

@@ -269,12 +269,11 @@ export function one_sided_periodogram(
     Math.sqrt(component_weights?.[component_idx] ?? 1)
   const density_scale = sample_interval / window_energy / 2
   for (let pair_idx = 0; pair_idx < weighted.length; pair_idx += 2) {
-    // Two real components a, b packed as z = a + i b share one transform, halving the FFT
-    // count (as autocorrelation_sums does): with Z their joint spectrum,
-    // |A(k)|^2 + |B(k)|^2 = (|Z(k)|^2 + |Z(-k)|^2) / 2, a sum of squares with no cancellation
-    // however far the two components differ in scale. An unpaired last component leaves
-    // b = 0. One scratch pair serves every transform: a 2000-atom spectroscopy run has 6000
-    // components, and allocating 2 x n_fft for each dominated the FFT itself.
+    // Two real components packed as z = a + i b share one transform, halving the FFT count (as
+    // autocorrelation_sums does): |A(k)|^2 + |B(k)|^2 = (|Z(k)|^2 + |Z(-k)|^2) / 2, a sum of
+    // squares with no cancellation however far a and b differ in scale. An unpaired last one
+    // leaves b = 0. One scratch pair serves every transform: a 2000-atom spectroscopy run has
+    // 6000 components, and allocating 2 x n_fft for each dominated the FFT itself.
     const [first, second] = [weighted[pair_idx], weighted[pair_idx + 1]]
     real.fill(0)
     imaginary.fill(0)

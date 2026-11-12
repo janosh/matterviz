@@ -9,14 +9,8 @@
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import type { LatticePlane } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'
-  import { memo_by_identity, value_key } from '#lib/utils.js'
-  import type {
-    SaedOptions,
-    SaedSpot,
-    XrdOptions,
-    XrdPattern,
-    XrdPeak,
-  } from '#lib/xrd/index.js'
+  import { memo_by_identity } from '#lib/utils.js'
+  import type { SaedSpot, XrdOptions, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
   import {
     compute_saed_pattern_async,
     compute_xrd_pattern_async,
@@ -77,15 +71,10 @@
   // Point-group rotations group each peak's hkls into symmetry-equivalent families: analyzed
   // (moyo-wasm) once per structure, then the pattern is computed in the XRD worker
   const rotations_of = memo_by_identity<Promise<Matrix3x3[]>>()
-  const pattern_of = async (
-    struct: Crystal,
-    options: XrdOptions = {},
-    signal?: AbortSignal,
-  ): Promise<XrdPattern> => {
-    const symmetry_rotations = await rotations_of(struct, ``, () =>
-      xrd_symmetry_rotations(struct),
-    )
-    return compute_xrd_pattern_async(struct, { ...options, symmetry_rotations }, { signal })
+  const pattern_of = async (struct: Crystal, options?: XrdOptions, signal?: AbortSignal) => {
+    const rotations = rotations_of(struct, ``, () => xrd_symmetry_rotations(struct))
+    const xrd_options = { ...options, symmetry_rotations: await rotations }
+    return compute_xrd_pattern_async(struct, xrd_options, { signal })
   }
 
   // Memoize fixture calculations; consumers stay lazy until their demo becomes visible: the
@@ -107,39 +96,33 @@
     return pattern ?? null
   }
 
-  // A worker result read like a $derived, since a $derived cannot await and a page-level
-  // $effect would compute before its demo scrolls into view: the first read for a new key
-  // (only a visible LazyDemo reads) starts the request and aborts the one it supersedes, and
-  // the previous outcome stays up until the new one lands, as long as it is for the same
-  // structure (`scope`): a pattern must not show beside a structure it was not computed for.
+  // A worker result for the selected structure, read like a $derived (which cannot await, and
+  // a page-level $effect would compute before its demo scrolls into view): the first read after
+  // a change of what `run` reads before awaiting starts a request and aborts the one before. The
+  // last outcome stays up until the new one lands, unless it belongs to another structure.
   type Outcome<Pattern> = { pattern: Pattern | null; error: string | null }
-  type Request<Pattern> = {
-    key: string
-    scope: string
-    run: (signal: AbortSignal) => Promise<Pattern | null>
-  }
   const no_outcome = { pattern: null, error: null }
-  function latest_async<Pattern>(request: () => Request<Pattern>): () => Outcome<Pattern> {
+  function latest_async<Pattern>(
+    run: (struct: Crystal, signal: AbortSignal) => Promise<Pattern>,
+  ): () => Outcome<Pattern> {
     let latest = $state.raw<Outcome<Pattern> & { scope?: string }>(no_outcome)
-    let requested_key: string | undefined
     let controller: AbortController | undefined
-    return () => {
-      const { key, scope, run } = request()
-      if (key !== requested_key) {
-        controller?.abort()
-        controller = new AbortController()
-        requested_key = key
-        const { signal } = controller
-        const land = (outcome: Outcome<Pattern>) => {
-          if (!signal.aborted) latest = { ...outcome, scope }
-        }
-        run(signal).then(
+    const requested_for = $derived.by(() => {
+      controller?.abort()
+      controller = new AbortController()
+      const [{ signal }, scope] = [controller, compute_id]
+      const land = (outcome: Outcome<Pattern>) => {
+        if (!signal.aborted) latest = { ...outcome, scope }
+      }
+      if (computed_struct) {
+        run(computed_struct, signal).then(
           (pattern) => land({ pattern, error: null }),
           (exc: unknown) => land({ pattern: null, error: to_error(exc).message }),
         )
       }
-      return latest.scope === scope ? latest : no_outcome
-    }
+      return scope
+    })
+    return () => (latest.scope === requested_for ? latest : no_outcome)
   }
 
   // On-the-fly computed patterns
@@ -165,44 +148,26 @@
   let probe_wavelength = $state(1.54184) // Å, shared so peak positions line up exactly
   let show_neutron = $state(true)
   let show_electron = $state(false)
-  type OverlayEntry = { label: string; pattern: XrdPattern; color: string }
-  const overlay_result = latest_async(() => {
-    const [struct, wavelength] = [computed_struct, probe_wavelength]
-    const requested = (
-      [
-        [`xray`, `X-ray`, PLOT_COLORS[0], true],
-        [`neutron`, `Neutron`, PLOT_COLORS[1], show_neutron],
-        [`electron`, `Electron`, PLOT_COLORS[2], show_electron],
-      ] as const
-    ).filter(([, , , enabled]) => struct && enabled)
-    return {
-      key: value_key([compute_id, wavelength, requested]),
-      scope: compute_id,
-      run: async (signal) => {
-        // one request per probe, all in flight together, reported in the order listed
-        const settled = await Promise.allSettled(
-          requested.map(async ([radiation]) =>
-            struct
-              ? pattern_of(struct, { radiation, wavelength, two_theta_range: [0, 90] }, signal)
-              : null,
-          ),
-        )
-        const [entries, errors]: [OverlayEntry[], string[]] = [[], []]
-        for (const [idx, outcome] of settled.entries()) {
-          const [, label, color] = requested[idx]
-          if (outcome.status === `rejected`) {
-            errors.push(`${label}: ${to_error(outcome.reason).message}`)
-          } else if (outcome.value) {
-            entries.push({
-              label: `${label} (λ = ${wavelength} Å)`,
-              pattern: outcome.value,
-              color,
-            })
-          }
-        }
-        return { entries, errors }
-      },
+  const overlay_result = latest_async(async (struct, signal) => {
+    const entries: { label: string; pattern: XrdPattern; color: string }[] = []
+    const errors: string[] = []
+    const wavelength = probe_wavelength
+    const requested = [
+      [`xray`, `X-ray`, PLOT_COLORS[0], true],
+      [`neutron`, `Neutron`, PLOT_COLORS[1], show_neutron],
+      [`electron`, `Electron`, PLOT_COLORS[2], show_electron],
+    ] as const
+    for (const [radiation, label, color, enabled] of requested) {
+      if (!enabled) continue
+      try {
+        const options: XrdOptions = { radiation, wavelength, two_theta_range: [0, 90] }
+        const pattern = await pattern_of(struct, options, signal)
+        entries.push({ label: `${label} (λ = ${wavelength} Å)`, pattern, color })
+      } catch (exc) {
+        errors.push(`${label}: ${to_error(exc).message}`)
+      }
     }
+    return { entries, errors }
   })
   const radiation_overlay = $derived(overlay_result().pattern ?? { entries: [], errors: [] })
 
@@ -213,20 +178,13 @@
   let crystal_thickness = $state(50)
   // Computed in the SAED worker, so every keystroke of these number inputs can recompute: a
   // superseded request is aborted, which ends the worker still busy with it
-  const saed_result = latest_async(() => {
-    const struct = computed_struct
-    const options: SaedOptions = {
-      zone_axis: [...zone_axis],
-      accelerating_voltage,
-      max_g,
-      crystal_thickness,
-    }
-    return {
-      key: value_key([compute_id, options]),
-      scope: compute_id,
-      run: async (signal) => struct && compute_saed_pattern_async(struct, options, { signal }),
-    }
-  })
+  const saed_result = latest_async((struct, signal) =>
+    compute_saed_pattern_async(
+      struct,
+      { zone_axis: [...zone_axis], accelerating_voltage, max_g, crystal_thickness },
+      { signal },
+    ),
+  )
   const saed = $derived(saed_result())
   // Likewise for SAED spots, seen down the zone axis; a thickness or kV change keeps the pin
   let hovered_spot = $state<SaedSpot | null>(null)

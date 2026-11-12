@@ -3,24 +3,11 @@ import RdfPlot from '#lib/rdf/RdfPlot.svelte'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import { structure_map } from '#site/structures.js'
-import {
-  type Component,
-  type ComponentProps,
-  createRawSnippet,
-  flushSync,
-  mount,
-  tick,
-} from 'svelte'
+import type { Component, ComponentProps } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
-import {
-  create_drop_event,
-  mount_sized,
-  query,
-  resize_element,
-  set_input,
-  settle,
-} from '../setup'
+import { create_drop_event, mount_sized, query, resize_element, set_input } from '../setup'
 import { BAD_ROW_CIF, make_crystal } from '../test-fixtures'
 import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
@@ -283,35 +270,22 @@ describe(`RdfPlot`, () => {
     expect(calculate_rdfs).not.toHaveBeenCalled()
 
     // one more structure is searched alone: the first one's curves are memoized by identity
+    const shown_labels = () => scatter.mock.lastCall?.[1].series?.map(({ label }) => label)
+    const searches = () => vi.mocked(calculate_rdfs).mock.calls
     shown.set(`structures`, [nacl_structure, pd_structure])
-    await vi.waitFor(() =>
-      expect(scatter.mock.lastCall?.[1].series?.map(({ label }) => label)).toEqual([
-        ...swapped.map(({ label }) => label),
-        `Pd-Pd`,
-      ]),
-    )
-    expect(vi.mocked(calculate_rdfs).mock.calls.map(([structure]) => structure)).toEqual([
-      pd_structure,
-    ])
+    const with_pd = [...swapped.map(({ label }) => label), `Pd-Pd`]
+    await vi.waitFor(() => expect(shown_labels()).toEqual(with_pd))
+    expect(searches().map(([structure]) => structure)).toEqual([pd_structure])
 
     // a cutoff superseded before its searches started aborts them: only the latest one runs
     vi.mocked(calculate_rdfs).mockClear()
-    for (const cutoff of [5, 6]) {
-      cutoffs.set(`cutoff`, cutoff)
-      flushSync()
-    }
+    for (const cutoff of [5, 6]) flushSync(() => cutoffs.set(`cutoff`, cutoff))
     // the curves of the previous cutoff leave at once rather than pose as the new one's
-    const shown_labels = () => scatter.mock.lastCall?.[1].series?.map(({ label }) => label)
     expect(shown_labels()).toEqual([`Swapped`])
-    await vi.waitFor(() =>
-      expect(
-        vi.mocked(calculate_rdfs).mock.calls.map(([, options]) => options?.cutoff),
-      ).toEqual([6, 6]),
-    )
     await vi.waitFor(() => expect(shown_labels()).toContain(`Pd-Pd`))
+    expect(searches().map(([, options]) => options?.cutoff)).toEqual([6, 6])
     // a structure taken off the list takes its curves with it, before any recompute settles
-    shown.set(`structures`, [nacl_structure])
-    flushSync()
+    flushSync(() => shown.set(`structures`, [nacl_structure]))
     expect(shown_labels()).not.toContain(`Pd-Pd`)
   })
 
@@ -422,7 +396,7 @@ describe(`RdfPlot`, () => {
     vi.mocked(calculate_rdfs).mockClear()
     target.querySelector<HTMLButtonElement>(`.change-cutoff`)?.click()
     await vi.waitFor(() => expect(calculate_rdfs).toHaveBeenCalledTimes(2))
-    await settle()
+    for (let round = 0; round < 9; round++) await tick() // the recomputed failure lands
     expect(mirror()).toBe(`none`)
   })
 })

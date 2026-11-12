@@ -24,17 +24,16 @@ for (const [route, toolbar] of [
     }
     expect(await icons.count()).toBeGreaterThanOrEqual(2)
     // chart header icons sit a step below the root font size (ChartHeaderControls' --icon-size)
-    const root_size = await page.evaluate(() =>
-      Number(getComputedStyle(document.documentElement).fontSize.replace(`px`, ``)),
+    const px = (length: string) => Number(length.replace(`px`, ``))
+    const root = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)
+    const size = toolbar === `.header-controls` ? 0.8 * px(root) : px(root)
+    const sides = await icons.evaluateAll((elements) =>
+      elements.flatMap((icon) => [
+        getComputedStyle(icon).width,
+        getComputedStyle(icon).height,
+      ]),
     )
-    const size = toolbar === `.header-controls` ? 0.8 * root_size : root_size
-    const sizes = await icons.evaluateAll((elements) =>
-      elements.flatMap((icon) => {
-        const { width, height } = getComputedStyle(icon)
-        return [width, height].map((side) => Number(side.replace(`px`, ``)))
-      }),
-    )
-    for (const side of sizes) expect(side).toBeCloseTo(size, 1)
+    for (const side of sides) expect(px(side)).toBeCloseTo(size, 1)
     // A custom header control can make the row taller than its icon buttons.
     for (const height of [null, `48px`]) {
       if (height)

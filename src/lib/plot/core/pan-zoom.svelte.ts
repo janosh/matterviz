@@ -70,7 +70,6 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   on_pointer_down: (evt: PointerEvent) => void
   on_pointer_move: (evt: PointerEvent) => void
   on_pointer_up: (evt: PointerEvent) => void
-  on_pointer_cancel: (evt: PointerEvent) => void
   on_mouse_down: (evt: MouseEvent) => void
   on_wheel: (evt: WheelEvent) => void
   on_key_down: (evt: KeyboardEvent) => void
@@ -86,7 +85,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Pan state
   let is_focused = $state(false)
   let shift_held = $state(false)
-  let pan_drag_state = $state<(AxisRanges & { pointer_id: number }) | null>(null)
+  let pan_drag_state = $state.raw<(AxisRanges & { pointer_id: number }) | null>(null)
   // Where the pointer of a rect or pan drag went down (client px), and whether it has
   // strayed far enough since to be a drag rather than a click
   let press: Vec2 = [0, 0]
@@ -94,40 +93,34 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Touch contacts inside the plot by pointer id (client px), and the two-finger gesture
   // they form once a second one lands
   const touches = new Map<number, Point2D>()
-  let pinch_state = $state<
+  let pinch_state = $state.raw<
     (AxisRanges & { start_touches: Point2D[]; bounds: DOMRect }) | null
   >(null)
 
   const touch_enabled = () =>
     opts.pan()?.enabled !== false && opts.pan()?.touch_enabled !== false
 
-  // Transform the whole batch before writing: a rejected log range must leave every
-  // axis unchanged
-  const pan_axes = (init: AxisRanges, dx_px: number, dy_px: number, axes = opts.axes()) => {
-    const dims = opts.plot_bounds()
+  // Zoom `init` by `factor` about `anchor` (the fixed point as fractions of the plot from its
+  // left and bottom edges), then pan it by px. Transforms the whole batch before writing: a
+  // rejected log range must leave every axis unchanged
+  const move_view = (
+    init: AxisRanges,
+    [dx_px, dy_px]: Vec2,
+    factor = 1,
+    anchor: Vec2 = [0.5, 0.5],
+    axes = opts.axes(),
+  ) => {
+    const { width, height } = opts.plot_bounds()
     const ranges = axes.map((axis) => {
-      const horizontal = axis === `x` || axis === `x2`
-      return pan_range_by_pixels(
-        init[axis],
-        horizontal ? dx_px : dy_px,
-        horizontal ? dims.width : dims.height,
-        opts.scale_type(axis),
-      )
+      const [dim, delta, span] = axis.startsWith(`x`) ? [0, dx_px, width] : [1, dy_px, height]
+      const scale_type = opts.scale_type(axis)
+      const zoomed =
+        factor === 1
+          ? init[axis]
+          : zoom_range_by_factor(init[axis], factor, scale_type, anchor[dim])
+      return delta ? pan_range_by_pixels(zoomed, delta, span, scale_type) : zoomed
     })
     ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
-  }
-  // `anchor`: the fixed point as fractions of the plot from its left and bottom edges
-  const zoomed = (init: AxisRanges, factor: number, anchor: Vec2 = [0.5, 0.5]) => {
-    const ranges: AxisRanges = { ...init }
-    for (const axis of opts.axes()) {
-      const fixed = anchor[axis.startsWith(`x`) ? 0 : 1]
-      ranges[axis] = zoom_range_by_factor(init[axis], factor, opts.scale_type(axis), fixed)
-    }
-    return ranges
-  }
-  const zoom_all_axes = (...args: Parameters<typeof zoomed>) => {
-    const ranges = zoomed(...args)
-    for (const axis of opts.axes()) opts.set_range(axis, ranges[axis])
   }
 
   // Wheel gestures have no end to listen for, so they report themselves as active for a
@@ -195,21 +188,16 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     // A release outside the SVG before the drag was captured never reaches on_pointer_up,
     // leaving the plot panning (or a rect armed) on bare moves
     if (!(evt.buttons & 1)) return end_gestures()
-    // Captured once the press turns into a drag, so it keeps reporting outside the SVG. Not at
-    // the press: a click is dispatched to the capturing element instead of the mark under it.
+    // Captured once the press turns into a drag (at the press, its click would go to the SVG
+    // instead of the mark under it) or leaves the SVG, where a flick's first move may land.
     // Only a trusted event has a live pointer to capture (a scripted one's id throws).
-    // Also bound to pointerleave: a flick whose first move lands outside the SVG never moves
-    // inside it, and uncaptured would lose its release too.
     dragged ||= evt.type === `pointerleave` || is_drag(press, evt)
     if (dragged && evt.isTrusted) opts.svg()?.setPointerCapture(pointer_id)
     if (pan_drag_state) {
       // drag direction inverted on x for natural pan feel
       const sensitivity = opts.pan()?.drag_sensitivity ?? 1
-      return pan_axes(
-        pan_drag_state,
-        -(evt.clientX - press[0]) * sensitivity,
-        (evt.clientY - press[1]) * sensitivity,
-      )
+      const [delta_x, delta_y] = [press[0] - evt.clientX, evt.clientY - press[1]]
+      return move_view(pan_drag_state, [delta_x * sensitivity, delta_y * sensitivity])
     }
     if (!drag_state) return
     const { left, top, width, height } = drag_state.bounds
@@ -236,11 +224,11 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       (start_x - pinch.bounds.left - left) / width,
       1 - (start_y - pinch.bounds.top - top) / height,
     ]
-    pan_axes(
-      Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD ? zoomed(pinch, scale, anchor) : pinch,
+    const moved: Vec2 = [
       start_x - (touch_a.x + touch_b.x) / 2,
       (touch_a.y + touch_b.y) / 2 - start_y,
-    )
+    ]
+    move_view(pinch, moved, Math.abs(scale - 1) > PINCH_ZOOM_THRESHOLD ? scale : 1, anchor)
   }
 
   const end_gestures = () => {
@@ -250,13 +238,15 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     dragged = false
   }
 
+  // Also bound to pointercancel (the browser took the pointer: a native gesture, a dialog),
+  // which abandons the gesture rather than finish it
   const on_pointer_up = (evt: PointerEvent) => {
     // The click a drag ends with is no click on the plot
     if (dragged) {
       suppress_click = true
       setTimeout(() => (suppress_click = false), 0)
     }
-    if (drag_state?.pointer_id === evt.pointerId) {
+    if (evt.type === `pointerup` && drag_state?.pointer_id === evt.pointerId) {
       const { start, current, mode } = drag_state
       const x_span = range_bounds([start.x, current.x])
       const y_span = range_bounds([start.y, current.y])
@@ -266,11 +256,6 @@ export function create_pan_zoom(opts: PanZoomOptions): {
         else opts.on_rect_select?.({ x: x_span, y: y_span })
       }
     }
-    on_pointer_cancel(evt)
-  }
-
-  // The browser took the pointer (a native gesture, a dialog): abandon rather than finish
-  const on_pointer_cancel = (evt: PointerEvent) => {
     touches.delete(evt.pointerId)
     end_gestures()
   }
@@ -293,16 +278,13 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     if (at) {
       const factor = Math.exp(-evt.deltaY * y_unit * sensitivity * WHEEL_ZOOM_RATE)
       const anchor: Vec2 = [(at.x - left) / width, 1 - (at.y - top) / height]
-      return zoom_all_axes(opts.ranges(), clamp(factor, 0.1, 10), anchor)
+      return move_view(opts.ranges(), [0, 0], clamp(factor, 0.1, 10), anchor)
     }
     // Pan along the dominant wheel direction
     const direction = Math.abs(evt.deltaX) > Math.abs(evt.deltaY) ? `x` : `y`
-    pan_axes(
-      opts.ranges(),
-      evt.deltaX * x_unit * sensitivity,
-      evt.deltaY * y_unit * sensitivity,
-      opts.axes().filter((axis) => axis.startsWith(direction)),
-    )
+    const delta: Vec2 = [evt.deltaX * x_unit * sensitivity, evt.deltaY * y_unit * sensitivity]
+    const axes = opts.axes().filter((axis) => axis.startsWith(direction))
+    move_view(opts.ranges(), delta, 1, undefined, axes)
   }
 
   // SVG keydown: Enter/Space resets the view, +/- zoom about its center, arrows pan. The
@@ -317,10 +299,10 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     const [pan_x, pan_y] = [step(`ArrowRight`, `ArrowLeft`), step(`ArrowUp`, `ArrowDown`)]
     if (key === `Enter` || key === ` `) opts.on_reset()
     else if (opts.pan()?.enabled === false || !(zoom || pan_x || pan_y)) return
-    else if (zoom) zoom_all_axes(opts.ranges(), KEY_ZOOM_FACTOR ** zoom)
     else {
       const { width, height } = opts.plot_bounds()
-      pan_axes(opts.ranges(), pan_x * width * KEY_PAN_STEP, pan_y * height * KEY_PAN_STEP)
+      const step_px: Vec2 = [pan_x * width * KEY_PAN_STEP, pan_y * height * KEY_PAN_STEP]
+      move_view(opts.ranges(), step_px, KEY_ZOOM_FACTOR ** zoom)
     }
     evt.preventDefault()
   }
@@ -359,7 +341,6 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     on_pointer_down,
     on_pointer_move,
     on_pointer_up,
-    on_pointer_cancel,
     // pointerdown cannot cancel what the mousedown after it starts: a text selection dragged
     // along with the gesture, and focus moving to the SVG
     on_mouse_down: (evt: MouseEvent) => {

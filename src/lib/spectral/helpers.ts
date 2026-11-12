@@ -351,10 +351,9 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
 }
 
 // Converter of raw band values in their `declared` unit to the stored one: THz for phonons, eV
-// for electronic energies (the Fermi energy and a DOS's energies too). Null for an unrecognised
-// unit or electronic energies declared as a frequency (THz, cm^-1): a malformed input. `unit:
-// null` counts as undeclared; undeclared phonon bands are THz, or cm^-1 in the frequencies_cm
-// layout.
+// for electronic energies (E_F and DOS energies too). Null for an unrecognised unit or electronic
+// energies declared as a frequency (THz, cm^-1): a malformed input. `unit: null` counts as
+// undeclared; undeclared phonon bands are THz, or cm^-1 in the frequencies_cm layout.
 const band_unit_converter = (
   declared: unknown,
   type: types.BandStructureType,
@@ -553,9 +552,8 @@ export function normalize_band_structure(
   } as unknown as types.BaseBandStructure
 }
 
-// Electronic DOS record in eV from values in `unit` (null for a malformed unit, see
-// band_unit_converter). Spin-polarized when the input says so, else when a same-length
-// spin-down channel exists; the spin-down channel is only kept for spin-polarized data.
+// Electronic DOS in eV (null for a malformed `unit`). Spin-polarized when the input says so, else
+// when a same-length spin-down channel exists; that channel is only kept for spin-polarized data.
 const electronic_dos = (
   energies: number[],
   densities: number[],
@@ -969,15 +967,12 @@ export function extract_pdos(
     const { energies, efermi } = nested_dos
     const spin_channels = extract_spin_channels<number[]>(nested_dos.densities)
     if (!spin_channels || !Array.isArray(energies)) continue
-    const densities = spin_channels.up
+    const { up: densities, down } = spin_channels
     if (!Array.isArray(densities) || energies.length !== densities.length) continue
-    // projections share the total DOS's unit, so they convert like normalize_dos does
-    const projected = electronic_dos(energies, densities, spin_channels.down, {
-      efermi,
-      unit: dos.unit,
-    })
-    if (!projected) return null
-    result[key] = projected
+    // projections share the total DOS's unit
+    const pdos = electronic_dos(energies, densities, down, { efermi, unit: dos.unit })
+    if (!pdos) return null
+    result[key] = pdos
   }
   return Object.keys(result).length > 0 ? result : null
 }
@@ -1011,19 +1006,14 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
   }
 }
 
-// Band energies relative to the structure's own Fermi energy (E_F = 0), the band-structure
-// counterpart of shift_to_fermi: map it over `band_structs` to compare materials whose Fermi
-// energies differ on one axis. Throws without an efermi rather than leaving one unaligned.
+// Band energies relative to the structure's own E_F (the band counterpart of shift_to_fermi), to
+// compare materials whose Fermi energies differ on one axis. Throws without an efermi.
 export function shift_bands_to_fermi<T extends types.BaseBandStructure>(band_structure: T): T {
   const { efermi, bands, spin_down_bands } = band_structure
   if (efermi === undefined) throw new Error(`Band structure has no efermi to shift by`)
   const shift = (band: number[]) => band.map((energy) => energy - efermi)
-  return {
-    ...band_structure,
-    efermi: 0,
-    bands: bands.map(shift),
-    ...(spin_down_bands && { spin_down_bands: spin_down_bands.map(shift) }),
-  }
+  const spin_down = spin_down_bands && { spin_down_bands: spin_down_bands.map(shift) }
+  return { ...band_structure, efermi: 0, bands: bands.map(shift), ...spin_down }
 }
 
 // SVG path of a fat-band ribbon: the upper edge (y - half-width px, as SVG y grows downward)

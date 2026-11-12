@@ -340,21 +340,15 @@
     facet_layout: () => facet_layout,
     // Alt+drag selects the drawn bins the rect touches
     on_rect_select: (rect) => {
-      const { current } = frame.ranges
       const picked = histogram_bins.flatMap((hist) => {
         const x_scale = frame.scales[hist.x_axis ?? `x`]
         const y_scale = frame.scales[hist.y_axis ?? `y`]
-        const baseline = y_scale(bar_foot(current[hist.y_axis ?? `y`]))
-        return hist.bins.flatMap((bin, bin_idx) =>
-          bin.count !== 0 &&
-          overlaps_rect(
-            rect,
-            [x_scale(bin.x0), x_scale(bin.x1)],
-            [baseline, y_scale(bin.value)],
-          )
-            ? [{ ...bar_data(hist, bin), bin_idx }]
-            : [],
-        )
+        const baseline = y_scale(bar_foot(frame.ranges.current[hist.y_axis ?? `y`]))
+        return hist.bins.flatMap((bin, bin_idx) => {
+          const x_span: Vec2 = [x_scale(bin.x0), x_scale(bin.x1)]
+          const hit = bin.count && overlaps_rect(rect, x_span, [baseline, y_scale(bin.value)])
+          return hit ? [{ ...bar_data(hist, bin), bin_idx }] : []
+        })
       })
       selected_bins = picked.map(({ series_idx, bin_idx }) => ({ series_idx, bin_idx }))
       on_select?.({ bins: picked, rect })
@@ -415,8 +409,7 @@
     return count_over(coord_x, coord_x_2)
   })
   let histogram_bins = $derived(display_bins(current_counts))
-  // Selected bins are indices into one binning: another one names different bins
-  let selected_counts = untrack(() => current_counts)
+  let selected_counts = untrack(() => current_counts) // the binning selected_bins index
   $effect.pre(() => {
     if (current_counts !== selected_counts && untrack(() => selected_bins.length))
       selected_bins = []
@@ -499,10 +492,9 @@
   }
   const hover = create_mark_hover({
     key: ({ series_idx, bin_idx }: BinKey) => `${series_idx}:${bin_idx}`,
-    pinnable: () => tooltip !== false && !on_bar_click,
+    enabled: () => tooltip !== false && !on_bar_click,
     info: bin_info,
     on_clear: () => on_bar_hover?.(null),
-    root: () => frame.svg_element,
   })
   const hover_info = $derived(hover.info)
   // Accepts a FocusEvent too: keyboard focus is the keyboard's hover
@@ -520,8 +512,7 @@
       }
       on_bar_click?.({ ...bar_data(hist, hist.bins[bin_idx]), event })
       // mouse clicks pin through the frame, which also sees clicks on empty space
-      if (event instanceof KeyboardEvent)
-        hover.pin.toggle({ series_idx: hist.series_idx, bin_idx })
+      if (event instanceof KeyboardEvent) hover.toggle_pin() // focus is the keyboard's hover
     }
 
   // === Export ===

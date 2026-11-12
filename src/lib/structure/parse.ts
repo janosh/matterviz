@@ -14,13 +14,7 @@ import {
   is_lammps_data_content,
   is_lammps_dump_content,
 } from '#lib/structure/format-detect.js'
-import {
-  aims_has_lattice,
-  is_aims_content,
-  is_qe_content,
-  parse_aims,
-  parse_qe,
-} from '#lib/structure/parsers/dft-inputs.js'
+import { is_aims_content, is_qe_content, parse_aims, parse_qe } from './parsers/dft-inputs'
 import { parse_lammps_data, parse_lammps_dump } from '#lib/structure/parsers/lammps.js'
 import { is_mmcif_content, parse_mmcif } from '#lib/structure/parsers/mmcif.js'
 import { parse_mol } from '#lib/structure/parsers/mol.js'
@@ -1109,8 +1103,7 @@ const PHONOPY_CELL_TYPES = [
   `primitive_cell`,
 ] as const
 
-// A top-level cell key is what parse_phonopy_yaml reads, so it is also what detects the
-// format: a `phonopy:` header alone has no structure, and cells without the header parse fine
+// Detection shares parse_phonopy_yaml's top-level cell keys: a `phonopy:` header has no structure
 const PHONOPY_CELL_REGEX = new RegExp(`^(?:${PHONOPY_CELL_TYPES.join(`|`)}):`, `m`)
 
 // Phonopy YAML: the most detailed cell present (supercell before unit cell before primitive).
@@ -1595,7 +1588,7 @@ const STRUCTURE_TYPE_RULES: [RegExp, (content: string) => StructureKind][] = [
     (content) => {
       if (is_qe_content(content)) return `crystal`
       if (!is_aims_content(content)) return `unknown`
-      return aims_has_lattice(content) ? `crystal` : `molecule`
+      return /^[ \t]*lattice_vector[ \t]/m.test(content) ? `crystal` : `molecule`
     },
   ],
   // last, so an explicit extension (POSCAR_to_water.xyz) decides first

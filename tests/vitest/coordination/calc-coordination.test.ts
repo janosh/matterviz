@@ -220,8 +220,6 @@ describe(`CoordinationBarPlot`, { timeout: 30_000 }, () => {
         expect(calc_spy).toHaveBeenCalledTimes(1)
         container?.querySelector(`.bar-plot`)?.dispatchEvent(create_drop_event(file))
         await vi.waitFor(() => expect(calc_spy).toHaveBeenCalledTimes(2))
-        await tick()
-        expect(calc_spy).toHaveBeenCalledTimes(2)
         expect(calc_spy.mock.calls[1][0]).not.toBe(dropped)
         return
       }

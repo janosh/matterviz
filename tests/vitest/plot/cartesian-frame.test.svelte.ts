@@ -29,6 +29,7 @@ import {
   bind_props,
   clip_rect,
   doc_query,
+  drag,
   inside_clip_path,
   mock_fullscreen,
   mount_in_test,
@@ -389,17 +390,11 @@ describe(`cartesian frame`, () => {
       // jsdom reports a zero-origin bounding rect, so client coords are plot-local; drag the
       // middle half of the plot width and the second quarter of its height
       const clip = clip_rect(plot)
-      const position = (frac_x: number, frac_y: number): MouseEventInit => ({
-        bubbles: true,
-        buttons: 1, // a real drag holds the primary button down
-        clientX: clip.x + clip.width * frac_x,
-        clientY: clip.y + clip.height * frac_y,
-      })
-      const svg = doc_query(`svg[role="application"]`)
-      svg.dispatchEvent(new PointerEvent(`pointerdown`, position(0.25, 0.25)))
-      svg.dispatchEvent(new PointerEvent(`pointermove`, position(0.75, 0.5)))
-      svg.dispatchEvent(new PointerEvent(`pointerup`, position(0.75, 0.5)))
-      await tick()
+      const at = (frac_x: number, frac_y: number): Vec2 => [
+        clip.x + clip.width * frac_x,
+        clip.y + clip.height * frac_y,
+      ]
+      await drag(doc_query(`svg[role="application"]`), {}, at(0.25, 0.25), at(0.75, 0.5))
 
       for (const axis of shown_axes) {
         const [min, max] = tick_span(axis)
@@ -407,10 +402,9 @@ describe(`cartesian frame`, () => {
         const [lower, upper] = axis.startsWith(`x`) ? [100, 300] : [200, 300]
         expect(min, axis).toBeGreaterThanOrEqual(lower)
         expect(max, axis).toBeLessThanOrEqual(upper)
-        // the bindable `view` mirrors the zoom out
-        const [view_min, view_max] = bound.view?.[axis] ?? []
-        expect(view_min, axis).toBeCloseTo(lower, 6)
-        expect(view_max, axis).toBeCloseTo(upper, 6)
+        // the bindable `view` mirrors the zoom out (to 1e-6)
+        const view = bound.view?.[axis]?.map((bound_val) => Number(bound_val.toFixed(6)))
+        expect(view, axis).toEqual([lower, upper])
       }
       const props_unchanged = () => {
         for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
@@ -426,14 +420,11 @@ describe(`cartesian frame`, () => {
       for (const axis of shown_axes) expect(tick_span(axis), axis).toEqual(initial[axis])
       props_unchanged()
 
-      // a host writing `view` moves the plot without touching the axis props, and its
-      // write is not echoed back changed
+      // a host writing `view` moves the plot, not the axis props, and keeps its own values
       bound.view = { y: [200, 300] }
-      flushSync()
       await tick()
       const [min, max] = tick_span(`y`)
-      expect([min >= 200, max <= 300]).toEqual([true, true])
-      expect(bound.view?.y).toEqual([200, 300])
+      expect([min >= 200, max <= 300, bound.view?.y]).toEqual([true, true, [200, 300]])
       props_unchanged()
     },
   )

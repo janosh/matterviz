@@ -15,9 +15,8 @@ import { MAX_SLAB_SITES, SLAB_DEFAULT_THICKNESS, SLAB_DEFAULT_VACUUM } from './t
 import type { Slab, SlabOptions } from './types'
 
 // Whether the slab's dipole along the surface normal exceeds 1e-3 e/Å per surface area, as
-// pymatgen's Slab.is_polar: site charges are the occupancy-weighted oxidation states,
-// moments are taken about the centroid of the sites. Undefined when every oxidation state
-// is 0, which is what parsers store for files that declare none: the charges are unknown.
+// pymatgen's Slab.is_polar: occupancy-weighted oxidation states about the sites' centroid.
+// Undefined when every oxidation state is 0 (what parsers store for files declaring none).
 function is_polar_slab(sites: Site[], normal: Vec3, area: number): boolean | undefined {
   if (sites.every((site) => site.species.every((spec) => !spec.oxidation_state)))
     return undefined

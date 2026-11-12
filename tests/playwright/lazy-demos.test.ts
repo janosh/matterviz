@@ -5,7 +5,7 @@ import { test_without_errors as test } from './helpers'
 for (const [path, selector] of [
   [`/structure`, `.structure canvas`],
   [`/plot/scatter-plot`, `.scatter`],
-  [`/reciprocal/bands-and-dos`, `.bands-and-dos`],
+  [`/spectral/bands-and-dos`, `.bands-and-dos`],
 ] as const) {
   test(`${path} loads examples on demand and retains them when scrolling away`, async ({
     page,

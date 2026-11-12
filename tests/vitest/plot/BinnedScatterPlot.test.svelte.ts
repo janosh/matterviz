@@ -16,12 +16,11 @@ import {
   click_export,
   clip_rect,
   doc_query,
+  drag,
   expect_tooltip_paint,
-  fire,
   index_read_counter,
   mock_canvas_context,
   mock_fullscreen,
-  pointer,
   query,
   resize_element,
   svg_query,
@@ -835,14 +834,6 @@ describe(`BinnedScatterPlot`, () => {
     await settle()
     const svg = plot_svg()
     const area = plot_rect()
-    const drag = async (start: Vec2, end: Vec2, init: MouseEventInit = {}) => {
-      const down = { bubbles: true, button: 0, clientX: start[0], clientY: start[1], ...init }
-      svg.dispatchEvent(pointer(`pointerdown`, down))
-      svg.dispatchEvent(
-        pointer(`pointermove`, { buttons: 1, clientX: end[0], clientY: end[1] }),
-      )
-      await fire(svg, pointer(`pointerup`, { clientX: end[0], clientY: end[1] }))
-    }
 
     // [min, max] of the numeric tick labels: the view the axis currently shows
     const tick_span = (axis: `x` | `y`): Vec2 => {
@@ -863,13 +854,13 @@ describe(`BinnedScatterPlot`, () => {
     full_view()
 
     // A drag starting in the x-label margin below the plot area must not zoom
-    await drag([400, area.y + area.height + 20], [200, 200])
+    await drag(svg, {}, [400, area.y + area.height + 20], [200, 200])
     full_view()
 
     // A drag inside the plot area zooms both axes to the dragged fraction of the unit range
     const [coord_x_0, coord_x_1] = [area.x + 0.25 * area.width, area.x + 0.75 * area.width]
     const [coord_y_0, coord_y_1] = [area.y + 0.25 * area.height, area.y + 0.75 * area.height]
-    await drag([coord_x_0, coord_y_0], [coord_x_1, coord_y_1])
+    await drag(svg, {}, [coord_x_0, coord_y_0], [coord_x_1, coord_y_1])
     expect(within(tick_span(`x`), [0.25, 0.75])).toBe(true)
     expect(within(tick_span(`y`), [0.25, 0.75])).toBe(true)
     expect(tick_span(`x`)[1] - tick_span(`x`)[0]).toBeLessThan(0.5)
@@ -912,7 +903,7 @@ describe(`BinnedScatterPlot`, () => {
     // touching the axis props, as in ScatterPlot
     const panned = plot_rect()
     const [pan_x, pan_y] = [panned.x + panned.width / 2, panned.y + panned.height / 2]
-    await drag([pan_x, pan_y], [pan_x - panned.width / 2, pan_y], { shiftKey: true })
+    await drag(svg, { shiftKey: true }, [pan_x, pan_y], [pan_x - panned.width / 2, pan_y])
     await settle()
     expect(tick_labels(`x`)).toEqual(expect.arrayContaining([`3`, `4`, `5`]))
     expect(tick_labels(`x`)).not.toContain(`2`)

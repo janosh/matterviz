@@ -647,10 +647,9 @@
   }
   const hover = create_mark_hover({
     key: ({ idx }: BoxKey) => idx,
-    pinnable: () => tooltip !== false && !on_box_click,
+    enabled: () => tooltip !== false && !on_box_click,
     info: box_info,
     on_clear: () => on_box_hover?.(null),
-    root: () => frame.svg_element,
   })
   const tip_pointer = hover.pin.anchored(() => hover_pointer)
   const hover_info = $derived(hover.info)

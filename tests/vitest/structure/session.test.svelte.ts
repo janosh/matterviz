@@ -284,7 +284,6 @@ describe(`symmetry-aware display`, () => {
     },
   )
 
-  // It used to log and keep the original cell while the selector still read the new cell type
   it(`reports a failed cell transform and resets the cell type`, async () => {
     await init_moyo_for_tests()
     const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
@@ -293,11 +292,9 @@ describe(`symmetry-aware display`, () => {
     const sym_data = { ...valid, std_cell: { ...valid.std_cell, numbers: [999] } }
     const { host, session, notices } = make_session({ structure, sym_data })
     flush_set(host, { cell_type: `conventional` })
-    expect(notices).toEqual([
-      `Failed to transform cell to conventional: Unknown atomic number: 999`,
-    ])
-    expect(host.cell_type).toBe(`original`)
-    expect(session.base_structure?.sites).toHaveLength(1)
+    const notice = `Failed to transform cell to conventional: Unknown atomic number: 999`
+    expect(notices).toEqual([notice])
+    expect([host.cell_type, session.base_structure?.sites.length]).toEqual([`original`, 1])
     error_spy.mockRestore()
   })
 

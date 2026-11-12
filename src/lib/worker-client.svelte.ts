@@ -4,8 +4,7 @@
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
 // messages before that for callers that passed `on_progress`. With `retained_inputs` the
-// request also lists the `held` input tokens, and carries `input` only the first time its
-// token reaches a worker (see create_input_store in worker-serve.ts).
+// request names the `held` inputs, and carries `input` only the first time a worker sees it.
 import { identity_token, value_key } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 
@@ -34,12 +33,10 @@ interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Key requests by canonicalized payload + options, treating the top-level payload array
   // as a multiset. Nested arrays remain ordered.
   dedupe_by_payload?: `unordered`
-  // How many inputs (by identity, most recently used) the worker keeps between requests, so
-  // an options-only change posts the options alone and the worker reuses whatever it derived
-  // from the input. For inputs too heavy to clone per request (a position stream, a band
-  // grid); the worker holds its own copy, so in-place edits of a retained input go unseen:
-  // pass a new object. 0 (default) sends the input with every request. A retaining client
-  // posts one request at a time and keeps its worker when a request is abandoned (see `join`).
+  // How many inputs (by identity, most recently used) the worker keeps between requests, for
+  // inputs too heavy to clone per request: an options-only change posts the options alone and
+  // the worker reuses what it derived from the input. It holds its own copy, so in-place edits
+  // go unseen: pass a new object. Such a client posts one request at a time.
   retained_inputs?: number
 }
 
@@ -65,8 +62,7 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   cancel: (reason?: string) => void
   // Terminates the worker only when nothing is in flight (a component's unmount path)
   release: () => void
-  // Whether the live worker retains this input (see `retained_inputs`), so a request for it
-  // posts no payload and finds the worker's derived state warm
+  // Whether the live worker retains this input, so a request for it posts no payload
   holds: (input: Input) => boolean
 }
 
@@ -132,8 +128,7 @@ export function create_worker_client<
     // postMessage id; null for sync fallbacks, which never enter `pending`
     id: number | null
     promise: Promise<Result>
-    // Sends the request to the worker; cleared once sent
-    post?: () => void
+    post?: () => void // cleared once sent
     resolve: (data: Result) => void
     reject: (err: Error) => void
     // Each caller owns one subscription, even when callbacks or options are shared.
@@ -147,10 +142,8 @@ export function create_worker_client<
   let next_id = 0
   const pending = new Map<number, Request>()
   const pending_by_key = new Map<string, Request>()
-  // Identity tokens of the inputs the live worker retains, least recently used first
-  let held_tokens: number[] = []
-  // Retaining clients only: the worker has yet to answer the one request posted to it
-  let busy = false
+  let held_tokens: number[] = [] // inputs (by token) the live worker retains, oldest first
+  let busy = false // retaining clients only: the one posted request is still unanswered
 
   const terminate_worker = (): void => {
     worker?.terminate()
@@ -236,8 +229,7 @@ export function create_worker_client<
       if (request.waiters.size === 0) {
         // Drop abandoned work; construct the next worker on demand, without an idle replacement.
         // A retaining worker instead finishes what it started: terminating it would drop its
-        // inputs, so an options edit mid-compute would send the whole input again. Requests
-        // abandoned before their turn are never posted, so only the latest one follows.
+        // inputs, so an options edit mid-compute would send the whole input again.
         request.reject(error)
         if (!retained_inputs) release()
       }
@@ -345,15 +337,13 @@ export function create_worker_client<
       if (wkr) {
         request.post = () => {
           request.post = undefined
-          // What the worker retains once this request lands, this input last (nothing without
-          // `retained_inputs`, so every request then carries its input)
+          // What the worker retains once this request lands, this input last
           const held = [...held_tokens.filter((kept) => kept !== token), token]
           held.splice(0, held.length - retained_inputs)
           const send_input = !held_tokens.includes(token)
           try {
-            // Copied, never transferred: the caller keeps using the input (a retained one is
-            // re-sent to a replacement worker, an unretained one with every request), and a
-            // transferred typed-array buffer would be detached by then.
+            // Copied, never transferred: the same input is posted again later (to a replacement
+            // worker when retained), and a transferred typed-array buffer would be detached.
             wkr.postMessage({
               id: request.id,
               input: send_input ? (keyed_payload ?? build_payload(input)) : undefined,
@@ -367,8 +357,7 @@ export function create_worker_client<
             request.reject(to_error(err))
           }
         }
-        // Behind a busy retaining worker the request waits its turn, unsent: abandoned by
-        // then it costs nothing, and its input is cloned only once the worker can take it
+        // Behind a busy retaining worker it waits unsent: abandoned by then, it costs nothing
         if (!busy) request.post()
       } else {
         Promise.resolve()

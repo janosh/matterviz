@@ -28,7 +28,6 @@ import {
 import { create_facet_plot_adapter } from '#lib/plot/core/facet-layout.svelte.js'
 import { FACET_AXES, type FacetAxis, type FacetLayoutContext } from '#lib/plot/core/facets.js'
 import {
-  all_finite,
   axis_ranges_equal,
   axis_transform,
   expand_range_if_needed,
@@ -134,8 +133,7 @@ interface CartesianFrameOptions {
   // Alt+drag rect, in svg pixel space. Charts that can enumerate their marks implement
   // this to turn the gesture into a selection; omitting it leaves Alt+drag as a zoom.
   on_rect_select?: (rect: PixelRect) => void
-  // The chart's bindable `view` prop: the range each axis shows, mirrored both ways so
-  // hosts can read a pan/zoom and write one (e.g. to sync two plots)
+  // The chart's bindable `view` prop (the range each axis shows), mirrored both ways
   view?: { get: () => Partial<AxisRanges> | undefined; set: (view: AxisRanges) => void }
   // Replace a shown axis's generated ticks (e.g. one per category); empty arrays are ignored
   tick_override?: (axis: FacetAxis) => number[] | undefined
@@ -782,16 +780,15 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       if (!host_wins && !FACET_AXES.every(in_sync)) view.set(snapshot_ranges(current))
     })
     $effect(() => {
-      const shown = view.get()
-      if (!shown) return
-      // A write the plot cannot show (non-finite, or a y2 that derives from y) goes back
-      // corrected, not into the scales
+      const shown = view.get() ?? {}
+      // A write the plot cannot show (non-finite, a y2 derived from y) goes back corrected
       let rejected = false
       for (const axis of FACET_AXES) {
         const range = shown[axis]
         if (!range) continue
         const differs = () => untrack(() => !vec2_equal(range, ranges.current[axis]))
-        if (differs() && all_finite(range)) synced_facet.update_range(axis, [...range] as Vec2)
+        if (differs() && range.every(Number.isFinite))
+          synced_facet.update_range(axis, [...range] as Vec2)
         rejected ||= differs()
       }
       if (rejected) view.set(untrack(() => snapshot_ranges(ranges.current)))

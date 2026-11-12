@@ -65,7 +65,7 @@ const url_params = (page: Page): Record<string, string> =>
   Object.fromEntries(new URL(page.url()).searchParams)
 
 const open_explorer = async (page: Page): Promise<void> => {
-  await page.goto(`/reciprocal/phonon-mode-explorer`, { waitUntil: `networkidle` })
+  await page.goto(`/spectral/phonon-mode-explorer`, { waitUntil: `networkidle` })
   await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
 }
 
@@ -390,10 +390,7 @@ test.describe(`PhononModeExplorer`, () => {
     await expect(explorer.getByRole(`button`, { name: `Hide O atoms` })).toBeVisible()
     await expect.poll(() => url_params(page)).toEqual({})
 
-    await navigate_client_side(
-      page,
-      `/reciprocal/phonon-mode-explorer?file=SiO2-gamma.yaml.gz`,
-    )
+    await navigate_client_side(page, `/spectral/phonon-mode-explorer?file=SiO2-gamma.yaml.gz`)
     await wait_for_3d_canvas(page, `#phonon-mode-explorer`, 15_000)
     const restored_summary = page.getByTestId(`phonon-mode-summary`)
     await expect(restored_summary).toContainText(`q = [0, 0, 0]`)
@@ -515,7 +512,7 @@ test(
       await default_held
       await route.continue()
     })
-    await page.goto(`/reciprocal/phonon-mode-explorer`)
+    await page.goto(`/spectral/phonon-mode-explorer`)
     // the SSR picker is visible before hydration, so retry the click until it takes effect
     await expect(async () => {
       await page.getByRole(`button`, { name: /MgB2/ }).click()

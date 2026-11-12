@@ -642,11 +642,10 @@ export function orthonormal_2d(line_pts: number[][]): Vec2 {
 }
 
 // Deduplicate points within an L-inf ball of radius `tol`, returning unique points and index
-// mapping. Greedy (first point of a cluster wins). Unique points are binned on a grid of
-// cells much wider than tol and a point is compared against every cell its tol-ball
-// overlaps (one, unless it sits within tol of a cell boundary), so the scan is near-linear
-// and no pair is split by a rounding boundary, as keying on rounded coordinates would.
-// Cells are keyed by a hash of their indices: a collision only costs extra comparisons.
+// mapping. Greedy (first point of a cluster wins). Unique points are binned on a grid of cells
+// much wider than tol and a point is compared against every cell its tol-ball overlaps, so the
+// scan is near-linear and no pair is split by a rounding boundary. Cells are keyed by a hash of
+// their indices: a collision only costs extra comparisons.
 export function dedup_points(
   pts: number[][],
   tol: number = 1e-4,
@@ -655,8 +654,7 @@ export function dedup_points(
   orig_indices: number[] // for each unique point, the index in the original array
 } {
   const cell_size = 64 * tol
-  const mix = (hash: number, cell_idx: number): number =>
-    Math.imul(hash ^ cell_idx, 0x9e3779b1)
+  const mix = (hash: number, cell_idx: number) => Math.imul(hash ^ cell_idx, 0x9e3779b1)
   const cells = new Map<number, number[][]>()
   const unique: number[][] = []
   const orig_indices: number[] = []
@@ -674,12 +672,9 @@ export function dedup_points(
       }
       home = mix(home, Math.floor(val / cell_size))
     }
-    const is_dup = overlapped.some((hash) =>
-      cells
-        .get(hash)
-        ?.some((existing) => existing.every((val, dim) => Math.abs(val - point[dim]) < tol)),
-    )
-    if (is_dup) continue
+    const near = (other: number[]) =>
+      other.every((val, dim) => Math.abs(val - point[dim]) < tol)
+    if (overlapped.some((hash) => cells.get(hash)?.some(near))) continue
     unique.push(point)
     orig_indices.push(idx)
     const cell = cells.get(home)

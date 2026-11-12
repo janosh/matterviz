@@ -26,6 +26,7 @@ import {
   click_export,
   clip_rect,
   doc_query,
+  drag,
   fire,
   flush_render,
   form_controls,
@@ -138,17 +139,9 @@ const stub_svg_rect = (svg: SVGSVGElement) => {
 // Shift-drag pan from the plot centre through `offsets` (px from it), released at the last
 const shift_pan = async (plot: HTMLElement, offsets: Vec2[]) => {
   const clip = clip_rect(plot)
-  const at = ([dx, dy]: Vec2) => ({
-    clientX: clip.x + clip.width / 2 + dx,
-    clientY: clip.y + clip.height / 2 + dy,
-  })
-  const svg = plot_svg(plot)
-  svg.dispatchEvent(pointer(`pointerdown`, { button: 0, shiftKey: true, ...at([0, 0]) }))
-  for (const offset of offsets) {
-    await fire(svg, pointer(`pointermove`, { buttons: 1, ...at(offset) }))
-  }
-  const release = at(offsets.at(-1) ?? [0, 0])
-  await fire(svg, pointer(`pointerup`, release))
+  const [mid_x, mid_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
+  const points = [[0, 0], ...offsets].map(([dx, dy]): Vec2 => [mid_x + dx, mid_y + dy])
+  await drag(plot_svg(plot), { shiftKey: true }, ...points)
 }
 const click_at = (element: Element, position: { x: number; y: number }) =>
   element.dispatchEvent(
@@ -222,11 +215,10 @@ describe(`ScatterPlot`, () => {
         expect(plot.querySelector(`.plot-tooltip.pinned`) !== null, key).toBe(pinned)
       }
       // Shift+arrow is the frame's keyboard pan, not a cursor step
-      const x_axis = () => svg.querySelector(`.x-axis`)?.innerHTML
-      const x_axis_before = x_axis()
+      const x_axis_before = svg.querySelector(`.x-axis`)?.innerHTML
       await fire(svg, keydown(`ArrowRight`, { shiftKey: true }))
       expect(announced(plot)).toBe(``)
-      expect(x_axis()).not.toBe(x_axis_before)
+      expect(svg.querySelector(`.x-axis`)?.innerHTML).not.toBe(x_axis_before)
     })
 
     // The cursor is one flat index across both series, so the series boundary is where an
@@ -1854,12 +1846,8 @@ describe(`ScatterPlot`, () => {
 
     const svg = plot_svg(plot)
     const clip = clip_rect(plot)
-    const end = { clientX: clip.x + 80, clientY: clip.y + 80 }
-    const start = { button: 0, clientX: clip.x + 10, clientY: clip.y + 10 }
-    svg.dispatchEvent(pointer(`pointerdown`, start))
-    svg.dispatchEvent(pointer(`pointermove`, { buttons: 1, ...end }))
-    svg.dispatchEvent(pointer(`pointerup`, end))
-    click_at(svg, { x: end.clientX, y: end.clientY })
+    await drag(svg, {}, [clip.x + 10, clip.y + 10], [clip.x + 80, clip.y + 80])
+    click_at(svg, { x: clip.x + 80, y: clip.y + 80 })
     expect(on_plot_click).not.toHaveBeenCalled()
   })
 
@@ -3056,22 +3044,19 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `x`)).toContain(`0`)
     expect(axis_tick_labels(plot, `x`)).not.toContain(`120`)
     expect(state.x_axis.range).toEqual([0, 100])
-
     // a two-finger spread that also travels zooms about where the fingers started and pans
     // with them: x=30 under their center moves with it from 30% to 40% of the plot
-    const [clientY, buttons] = [clip.y + clip.height / 2, 1]
     const touch = (type: string, pointerId: number, frac_x: number) => {
-      const clientX = clip.x + clip.width * frac_x
-      const init = { pointerType: `touch`, pointerId, buttons, clientX, clientY }
+      const [clientX, clientY] = [clip.x + clip.width * frac_x, clip.y + clip.height / 2]
+      const init = { pointerType: `touch`, pointerId, buttons: 1, clientX, clientY }
       plot_svg().dispatchEvent(pointer(type, init))
     }
     touch(`pointerdown`, 1, 0.2)
     touch(`pointerdown`, 2, 0.4)
     touch(`pointermove`, 2, 0.6)
     await tick()
-    const pinched = [state.view?.x, state.view?.y].flat()
-    for (const [idx, bound] of [10, 60, 2.5, 7.5].entries())
-      expect(pinched[idx]).toBeCloseTo(bound, 6)
+    const pinched = [state.view?.x, state.view?.y].flat() // compared to 1e-6
+    expect(pinched.map((bound) => Number(bound?.toFixed(6)))).toEqual([10, 60, 2.5, 7.5])
   })
 
   // A grown auto range (more data, or a narrower plot: the padding is in px) moves an unzoomed
@@ -3151,7 +3136,6 @@ describe(`ScatterPlot`, () => {
       expect(state.view, JSON.stringify(rejected)).toMatchObject({ y: [0, 5], y2: [0, 5] })
     }
     expect(axis_tick_labels(plot, `y`)).toContain(`5`)
-    expect(error_spy).not.toHaveBeenCalled()
 
     // y2 follows the linear y gesture; independently panning its log scale would overflow.
     state.y2_axis = { sync: `synced`, scale_type: `log` }

@@ -116,7 +116,7 @@
     [`CO2-gamma.yaml.gz`]: {
       label: `CO2 molecule`,
       detail: `Synthetic analytic fixture: a linear molecule whose bending, symmetric and asymmetric stretch modes are either IR- or Raman-active (mutual exclusion rule)`,
-      source: { name: `synthetic`, href: `/reciprocal/ir-raman` },
+      source: { name: `synthetic`, href: `/spectral/ir-raman` },
       born: `CO2.BORN`,
       raman: `CO2-raman-tensors.json.gz`,
     },
@@ -530,7 +530,7 @@
   (BSD-3, VASP PBE). α-quartz data:
   <a href="https://github.com/skelton-group/Phonopy-Spectroscopy">Phonopy-Spectroscopy</a>; CO2
   is a synthetic fixture. Read the
-  <a href="/reciprocal/ir-raman">IR/Raman and phonon data guide</a> for parsing and physics details.
+  <a href="/spectral/ir-raman">IR/Raman and phonon data guide</a> for parsing and physics details.
 </p>
 
 <style>

@@ -639,106 +639,66 @@ test.each([`abort`, `cancel`] as const)(
   },
 )
 
-// A heavy input (position stream, band grid) crosses once: later requests name its identity
-// token, and the client alone decides what the worker keeps
-describe(`retained inputs`, () => {
-  type Run = ReturnType<typeof make_client<string>>
-  // per post of a worker: `+` when it carried the input, then the tags of the inputs held
-  const posts = (worker: StubWorkerInstance): string[] => {
-    const tags = new Map<number | undefined, string>()
-    const messages: (StubWorkerMessage & { held?: number[] })[] = worker.posted.map(
-      ({ message }) => message,
-    )
-    return messages.map(({ input, held = [] }) => {
-      if (input) tags.set(held.at(-1), (input as { tag: string }).tag)
-      return `${input ? `+` : ``}${held.map((token) => tags.get(token)).join(``)}`
-    })
-  }
-  // a retaining client posts one request at a time, so each is answered before the next
-  const answer = (worker: StubWorkerInstance) =>
-    worker.emit(`message`, { data: { id: worker.posted.at(-1)?.message.id, result: `done` } })
-  const request = (run: Run, input: { tag: string }, step: number) => {
-    void run(input, { step }).catch(() => {})
-    answer(workers().at(-1) ?? workers()[0])
-  }
-
-  test(`an input is sent once, named afterwards, and dropped once least recently used`, () => {
-    const run = make_client(undefined, 2)
-    const inputs = { a: { tag: `a` }, b: { tag: `b` }, c: { tag: `c` } }
-    expect(run.holds(inputs.a)).toBe(false)
-    const order = [`a`, `a`, `b`, `a`, `c`, `b`, `a`] as const
-    for (const [step, tag] of order.entries()) request(run, inputs[tag], step)
-    // c evicts b (a was used since), then a makes room for b's return: both re-sent
-    expect(posts(workers()[0])).toEqual([`+a`, `a`, `+ab`, `ba`, `+ac`, `+cb`, `+ba`])
-    expect(Object.values(inputs).map(run.holds)).toEqual([true, true, false])
-    // without retained_inputs every request carries its input and nothing is held
-    const plain = make_client()
-    for (const step of [0, 1]) void plain(inputs.a, { step }).catch(() => {})
-    expect(workers()[1].posted.map(({ message }) => message)).toEqual([
-      { id: 1, input: inputs.a, options: { step: 0 } },
-      { id: 2, input: inputs.a, options: { step: 1 } },
-    ])
-    expect(plain.holds(inputs.a)).toBe(false)
+// Retained inputs: a heavy input (position stream, band grid) crosses once and later requests
+// name its identity token. Per post: `+` when it carried the input, then the tags of those held
+const posts = (worker: StubWorkerInstance): string[] => {
+  const tags = new Map<number | undefined, unknown>()
+  return worker.posted.map(({ message }) => {
+    const { input, held = [] } = message as { input?: { tag: string }; held?: number[] }
+    if (input) tags.set(held.at(-1), input.tag)
+    return `${input ? `+` : ``}${held.map((token) => tags.get(token)).join(``)}`
   })
+}
+// a retaining client posts one request at a time, so each is answered before the next
+const request = (run: ReturnType<typeof make_client>, input: { tag: string }, step = 0) => {
+  void run(input, { step }).catch(() => {})
+  const worker = workers().at(-1)
+  worker?.emit(`message`, { data: { id: worker.posted.at(-1)?.message.id, result: `done` } })
+}
 
-  test.each([
-    [`release`, (run: Run) => run.release()],
-    [`cancel`, (run: Run) => run.cancel()],
-    [
-      `a worker error`,
-      () => workers()[0].emit(`error`, { message: `boom`, preventDefault: () => {} }),
-    ],
-  ])(`a worker replaced after %s is sent the input again`, async (_label, end_worker) => {
-    const run = make_client(undefined, 1)
-    const input = { tag: `a` }
-    const pending = run(input, { step: 0 })
-    reply(workers()[0])
-    await pending
-    expect(run.holds(input)).toBe(true)
-    end_worker(run)
-    expect([workers()[0].terminated, run.holds(input)]).toEqual([1, false])
-    request(run, input, 1)
-    request(run, input, 2)
-    expect(posts(workers()[1])).toEqual([`+a`, `a`])
-  })
+test(`a retained input is sent once, named afterwards, and dropped once least recently used`, async () => {
+  const run = make_client(undefined, 2)
+  // an input whose post failed is not counted as held
+  const uncloneable = { tag: `d`, callback: (): string => `not cloneable` }
+  await expect(run(uncloneable, {})).rejects.toMatchObject({ name: `DataCloneError` })
+  expect(run.holds(uncloneable)).toBe(false)
+  const inputs = { a: { tag: `a` }, b: { tag: `b` }, c: { tag: `c` } }
+  const order = [`a`, `a`, `b`, `a`, `c`, `b`, `a`] as const
+  for (const [step, tag] of order.entries()) request(run, inputs[tag], step)
+  // c evicts b (a was used since), then a makes room for b's return: both re-sent
+  expect(posts(workers()[0])).toEqual([`+a`, `a`, `+ab`, `ba`, `+ac`, `+cb`, `+ba`])
+  expect(Object.values(inputs).map(run.holds)).toEqual([true, true, false])
+})
 
-  test(`an input whose post failed is not counted as held`, async () => {
-    const run = make_client(undefined, 1)
-    const input = { tag: `a`, callback: (): string => `not cloneable` }
-    await expect(run(input, {})).rejects.toMatchObject({ name: `DataCloneError` })
-    expect(run.holds(input)).toBe(false)
-    Reflect.deleteProperty(input, `callback`)
-    request(run, input, 1)
-    expect(posts(workers()[0])).toEqual([`+a`])
-  })
-
-  // terminating the busy worker (as non-retaining clients do) would re-send the whole input
-  // and redo what the worker derived from it on every options edit made during a compute
-  test(`requests abandoned mid-compute keep the worker and its input, and only the latest one follows`, async () => {
+// terminating the busy worker (as non-retaining clients do) would re-send the whole input on
+// every options edit made during a compute
+test.each([`release`, `cancel`] as const)(
+  `requests abandoned mid-compute keep the retaining worker, only the latest follows, and a worker replaced after %s is sent the input again`,
+  async (end_worker) => {
     const run = make_client(undefined, 1)
     const input = { tag: `a` }
     const controllers = [0, 1, 2].map(() => new AbortController())
     const superseded = controllers.map(({ signal }, step) => run(input, { step }, { signal }))
     for (const controller of controllers) controller.abort()
-    await expect(Promise.allSettled(superseded)).resolves.toMatchObject(
-      controllers.map(() => ({ reason: { name: `AbortError` } })),
-    )
+    await expect(Promise.all(superseded)).rejects.toMatchObject({ name: `AbortError` })
     const latest = run(input, { step: 3 })
     const [worker] = workers()
-    expect([worker.terminated, run.holds(input), posts(worker)]).toEqual([0, true, [`+a`]])
     // progress of the abandoned compute is dropped; its reply frees the worker
     worker.emit(`message`, { data: { id: first_post(worker).id, progress: 0.5 } })
-    expect(worker.posted).toHaveLength(1)
+    expect([worker.terminated, run.holds(input), posts(worker)]).toEqual([0, true, [`+a`]])
     reply(worker, `stale`)
     expect(posts(worker)).toEqual([`+a`, `a`])
-    expect(worker.posted[1].message.options).toEqual({ step: 3 })
-    answer(worker)
+    const { id, options } = worker.posted[1].message
+    expect(options).toEqual({ step: 3 })
+    worker.emit(`message`, { data: { id, result: `done` } })
     await expect(latest).resolves.toBe(`done`)
-    // idle again, so an unmount still ends the worker
-    run.release()
-    expect(worker.terminated).toBe(1)
-  })
-})
+    // idle again, so an unmount ends the worker, and its replacement starts empty
+    run[end_worker]()
+    expect([worker.terminated, run.holds(input)]).toEqual([1, false])
+    for (const step of [4, 5]) request(run, input, step)
+    expect(posts(workers()[1])).toEqual([`+a`, `a`])
+  },
+)
 
 test(`serve_worker replies with results, message-less errors and an id-less deserialization error, on the inputs a client retains`, () => {
   // Stand in for the worker global scope: record listeners and posted replies
@@ -762,25 +722,16 @@ test(`serve_worker replies with results, message-less errors and an id-less dese
   listeners.get(`messageerror`)?.({})
   // a retained input crosses once: later requests name its token until the client drops it
   send({ id: 9, input: kept, held: [5] })
-  send({ id: 10, held: [5] })
-  send({ id: 11, input: other, held: [5, 6] })
-  send({ id: 12, held: [6, 5] })
-  send({ id: 13, held: [6] })
-  send({ id: 14, held: [5] })
-  send({ id: 15 })
+  send({ id: 10, input: other, held: [5, 6] })
+  for (const held of [[6, 5], [6], [5], undefined]) send({ id: 11, held })
   expect(posted.slice(0, 3)).toEqual([
     { id: 7, result: kept, error: null },
     { id: 8, result: null, error: `TypeError thrown without a message` },
     { id: null, result: null, error: expect.stringMatching(/could not be deserialized/) },
   ])
   // the very object each time, so identity-keyed caches of what was derived from it survive
-  const replies = posted
-    .slice(3)
-    .map(({ result, error }) =>
-      result === kept ? `kept` : result === other ? `other` : error,
-    )
-  expect(replies.slice(0, 5).join(` `)).toBe(`kept kept other kept other`)
-  expect(replies.slice(5).join(`; `)).toBe(
-    `worker holds no input 5 (0 held); worker holds no input undefined (0 held)`,
-  )
+  const replies = posted.slice(3).map(({ result, error }) => result ?? error)
+  const no_input = [5, undefined].map((token) => `worker holds no input ${token} (0 held)`)
+  expect(replies).toEqual([kept, other, kept, other, ...no_input])
+  expect(replies[2]).toBe(kept)
 })

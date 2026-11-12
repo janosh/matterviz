@@ -2,8 +2,7 @@ name: CI
 
 # Lint, type-check and test. Also reused by publish.yml (workflow_call) as the release gate.
 # The docs site build/deploy stays in gh-pages.yml: it needs pages/id-token permissions that a
-# reusable-workflow call from publish.yml (contents: read) could not grant. It runs on main
-# only; build-site below is the PR's one site build.
+# reusable-workflow call from publish.yml (contents: read) could not grant.
 on:
   push:
     branches: [main]
@@ -211,7 +210,6 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
-      # a no-op when the cache restored this version's browser
       - run: pnpm exec playwright install chromium --no-shell
       # Linux headless WebGPU presents transparent canvases, including drawImage captures.
       - run: xvfb-run -a pnpm exec playwright test --headed

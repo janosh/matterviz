@@ -309,79 +309,41 @@ describe(`centre-of-mass drift removal`, () => {
   const elements = [`Li`, `O`, `O`, `Si`] as ElementSymbol[]
   const rng = make_rng(7)
   const sites = elements.map(() => [rng(), rng(), rng()].map((value) => 4 * value))
-  const drift = [0.2, -0.05, 0.11]
-  // every atom rides the same uniform drift: nothing moves relative to the centre of mass
-  const rigid_frames = Array.from({ length: 60 }, (_unused, frame_idx) =>
-    sites.map((site) => site.map((value, axis) => value + drift[axis] * frame_idx)),
-  )
-  const removed_msd = (frames: number[][][], options = {}) =>
-    calc_msd(build_positions(frames, { elements, ...options }), { remove_com_drift: true })
+  const mass_of = (symbol: ElementSymbol) => element_by_symbol.get(symbol)?.atomic_mass ?? NaN
+  // Li and Si recoil along x in inverse proportion to their masses, so the centre of mass rests
+  // while the geometric centre drifts (an unweighted centre would change Li's MSD by 27%). On
+  // top, the whole system accelerates, ending 37 A from where it started
+  const steps = [mass_of(`Si`), 0, 0, -mass_of(`Li`)]
+  const recoil = (acceleration: number) =>
+    Array.from({ length: 80 }, (_unused, frame_idx) =>
+      sites.map(([x_coord, ...rest], atom_idx) =>
+        [x_coord + 0.01 * steps[atom_idx] * frame_idx, ...rest].map(
+          (value, axis) => value + acceleration * [0.2, -0.05, 0.11][axis] * frame_idx ** 2,
+        ),
+      ),
+    )
 
   it.each([
-    [`free`, rigid_frames, {}],
-    // the drift carries every atom through the box several times
-    [
-      `wrapped periodic`,
-      rigid_frames.map((frame) =>
-        frame.map((xyz) => xyz.map((value) => ((value % 5) + 5) % 5)),
-      ),
-      { lattice: cubic_matrix(5), pbc: [true, true, true] as Pbc },
-    ],
-  ])(`a rigidly translating %s system has no MSD once removed`, (_label, frames, options) => {
-    // off by default: the drift then reads as ballistic motion, 0.055 A^2 at lag 1
-    const kept = calc_msd(build_positions(frames, { elements, ...options }))
-    expect(kept.curves[0].msd[0]).toBeCloseTo(
-      drift[0] ** 2 + drift[1] ** 2 + drift[2] ** 2,
-      12,
-    )
-    const removed = removed_msd(frames, options)
+    [`free`, null],
+    [`wrapped periodic`, cubic_matrix(5)], // the drift carries every atom through the box
+  ])(`removes the mass-weighted drift of a %s system`, (_label, lattice) => {
+    const wrap = (value: number) => (lattice ? ((value % 5) + 5) % 5 : value)
+    const frames = recoil(0.03).map((frame) => frame.map((xyz) => xyz.map(wrap)))
+    const drifting = build_positions(frames, { elements, lattice })
+    const reference = calc_msd(build_positions(recoil(0), { elements })) // nothing to remove
+    const kept = calc_msd(drifting)
+    const removed = calc_msd(drifting, { remove_com_drift: true })
     expect([kept.com_drift_removed, removed.com_drift_removed]).toEqual([false, true])
     expect(removed.curves.map(({ label }) => label)).toEqual([`Total`, `Li`, `O`, `Si`])
-    // Coordinates reach 0.2 * 59 + 4 = 16 A, so each drift-free coordinate is off by a few
-    // ulp(16) = 3.6e-15 A and its squared displacement by ~1e-28 A^2; 1e-24 leaves four
-    // decades of slack and is 22 below the 0.055 A^2 the drift contributes at lag 1
-    for (const { msd } of removed.curves) expect(Math.max(...msd)).toBeLessThan(1e-24)
-  })
-
-  it(`leaves motion relative to the mass-weighted centre, whatever the drift`, () => {
-    // Li and Si recoil in inverse proportion to their masses: the centre of mass rests while
-    // the geometric centre drifts, so an unweighted centre would change Li's MSD by 27%
-    const [li_mass, si_mass] = [`Li`, `Si`].map(
-      (symbol) => element_by_symbol.get(symbol as ElementSymbol)?.atomic_mass ?? NaN,
-    )
-    const steps = [si_mass, 0, 0, -li_mass]
-    const recoil = Array.from({ length: 80 }, (_unused, frame_idx) =>
-      sites.map(([x_coord, ...rest], atom_idx) => [
-        x_coord + 0.01 * steps[atom_idx] * frame_idx,
-        ...rest,
-      ]),
-    )
-    const walk_rng = make_rng(11)
-    const offset = [0, 0, 0]
-    const drifting = recoil.map((frame) => {
-      for (const axis of [0, 1, 2]) offset[axis] += walk_rng() - 0.3 // a biased random walk
-      const shift = [...offset]
-      return frame.map((xyz) => xyz.map((value, axis) => value + shift[axis]))
-    })
-    const reference = calc_msd(build_positions(recoil, { elements })) // nothing to remove
-    const result = removed_msd(drifting)
-    // O stays put, so its curve has no scale to compare against
+    // O stays put: off by default its curve is the drift (0.41 A^2 at lag 1), removed it is the
+    // round-off of ~40 A coordinates, ulp(40)^2 = 5e-29 A^2 (measured 1.4e-29)
+    expect(kept.curves[2].msd[0]).toBeGreaterThan(0.4)
+    expect(Math.max(...removed.curves[2].msd)).toBeLessThan(1e-27)
     const errors = [0, 1, 3].map((curve_idx) =>
-      max_rel_error(result.curves[curve_idx].msd, reference.curves[curve_idx].msd),
+      max_rel_error(removed.curves[curve_idx].msd, reference.curves[curve_idx].msd),
     )
-    // the walk reaches ~40 A, whose ulp (7e-15 A) over Si's 0.07 A steps bounds the relative
-    // error near 1e-13 per displacement (measured 5.5e-13 at worst)
+    // ulp(40 A) = 7e-15 A over Si's 0.07 A steps: ~1e-13 per displacement (measured 4.5e-13)
     expect(Math.max(...errors)).toBeLessThan(1e-11)
-  })
-
-  it(`names an atom without a standard mass`, () => {
-    const positions = build_positions(rigid_frames, {
-      elements: [`Li`, `O`, `Xx` as ElementSymbol, `Si`],
-    })
-    expect(() => calc_msd(positions, { remove_com_drift: true })).toThrow(
-      `calc_msd: remove_com_drift found no atomic mass for atom index 2 (Xx)`,
-    )
-    expect(calc_msd(positions).curves).toHaveLength(5) // only the removal needs masses
   })
 })
 
@@ -498,6 +460,8 @@ describe(`input validation`, () => {
     [`fractional max_lags`, () => calc_msd(drifting(20), { max_lags: 1.5 }), /max_lags must be a positive integer/],
     // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
     [`dt without a time unit`, () => calc_msd(drifting(20), { dt: 0.5 }), /dt was supplied .* without time_unit/],
+    [`drift removal without a standard atomic mass`, () => calc_msd({ ...drift_positions(5), elements: [`H`, `Xx`] as ElementSymbol[] }, { remove_com_drift: true }),
+      /remove_com_drift: no mass for atom 1 \(Xx\)/],
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)
   })

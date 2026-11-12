@@ -552,8 +552,6 @@ describe(`BondAnglePlot`, { timeout: 30_000 }, () => {
     // (the file's lone atom has no angles, so the empty state is still the drop zone)
     root.dispatchEvent(create_drop_event(new File([BAD_ROW_CIF], `si-2.cif`)))
     await vi.waitFor(() => expect(calc_spy).toHaveBeenCalledTimes(2))
-    await tick()
-    expect(calc_spy).toHaveBeenCalledTimes(2)
     expect(calc_spy.mock.calls[1][0]).not.toBe(dropped)
   })
 

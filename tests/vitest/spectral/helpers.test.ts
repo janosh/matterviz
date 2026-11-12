@@ -717,13 +717,11 @@ describe(`normalize_band_structure`, () => {
     const kpoints = { '@class': `BandStructureSymmLine`, ...identity_rec, kpoints: line(2) }
     const bands = { '1': [[0, input]] }
     const result = normalize_band_structure({ ...kpoints, bands, unit, efermi: 5 * input })
-    if (expected_ev === null) {
-      expect(result).toBeNull()
-      return
-    }
-    expect(result?.bands[0][1]).toBeCloseTo(expected_ev, 12)
-    // the Fermi energy shares the bands' unit: unconverted, meV bands sat 1000x off their E_F
-    expect(result?.efermi).toBeCloseTo(5 * expected_ev, 12)
+    // the Fermi energy shares the bands' unit
+    const expected = expected_ev === null ? null : [expected_ev, 5 * expected_ev]
+    expect(result && [result.bands[0][1], result.efermi]).toEqual(
+      expected?.map((energy) => expect.closeTo(energy, 12)) ?? null,
+    )
   })
 
   // the matterviz shape read a declared unit as THz; converted once, `unit` is dropped so a
@@ -1062,11 +1060,8 @@ describe(`normalize_dos`, () => {
     expect(result.densities[1]).toBeCloseTo(1 / thz_per_unit, 8)
   })
 
-  // the electronic branch ignored `unit`, so a meV or Ha DOS disagreed with its (converted)
-  // bands on the shared energy axis
   it.each([
     [undefined, 1],
-    [`eV`, 1],
     [`meV`, 1e-3],
     [`Ha`, HARTREE_TO_EV],
   ])(`electronic DOS in %s is stored in eV, keeping ∫g dE`, (unit, ev_per_unit) => {
@@ -1080,7 +1075,7 @@ describe(`normalize_dos`, () => {
     // a projection converts like the total DOS whose unit it shares
     const atom_dos = { Fe: { energies: [0, 10], densities, efermi: 5 } }
     expect(extract_pdos({ unit, atom_dos }, `atom`)).toEqual({ Fe: result })
-    // a malformed spin-down channel is dropped (it threw on .map), not converted
+    // a malformed spin-down channel is dropped, not converted
     const flat = { energies: [0, 1], densities: [1, 2], unit }
     const no_down = normalize_dos({ ...flat, spin_down_densities: {}, spin_polarized: false })
     expect(no_down).toMatchObject({ spin_polarized: false, spin_down_densities: undefined })

@@ -125,6 +125,22 @@ describe(`group_nav_routes`, () => {
     expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
     expect(new Set(all_children).size).toBe(all_children.length)
     expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
+    // shared electronic/phonon demos first, then electronic-only, then phonon-only
+    expect(
+      nav_routes.find(({ href }) => href === `/spectral`)?.children.map(({ href }) => href),
+    ).toEqual(
+      [
+        `brillouin-zone`,
+        `bands`,
+        `dos`,
+        `bands-and-dos`,
+        `brillouin-bands-dos`,
+        `electronic-structure`,
+        `fermi-surface`,
+        `ir-raman`,
+        `phonon-mode-explorer`,
+      ].map((slug) => `/spectral/${slug}`),
+    )
   })
 })
 

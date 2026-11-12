@@ -46,11 +46,11 @@ const ROUTE_LABELS: Record<string, string> = {
   '/neb': `NEB`,
   '/structure/rdf': `RDF`,
   '/structure/xrd': `XRD`,
-  '/reciprocal/dos': `DOS`,
-  '/reciprocal/bands-and-dos': `Bands + DOS`,
-  '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
-  '/reciprocal/ir-raman': `IR + Raman`,
-  '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
+  '/spectral/dos': `DOS`,
+  '/spectral/bands-and-dos': `Bands + DOS`,
+  '/spectral/brillouin-bands-dos': `Brillouin + Bands + DOS`,
+  '/spectral/ir-raman': `IR + Raman`,
+  '/spectral/phonon-mode-explorer': `Phonon Mode Explorer`,
   '/phase-diagram/pressure-temperature': `Pressure–Temperature`,
 }
 
@@ -73,7 +73,13 @@ export type NavGroup = { label: string; href: string; prefixes: string[] }
 export const NAV_GROUPS: NavGroup[] = [
   { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`] },
   { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
-  { label: `Electronic & Phonons`, href: `/electronic`, prefixes: [`/reciprocal`] },
+  // shared electronic/phonon pages, then electronic-only, then phonon-only; the trailing
+  // /spectral claims new demos (listed last) and the hub, which the label links to
+  { label: `Electronic & Phonons`, href: `/spectral`, prefixes: [
+    `/spectral/brillouin-zone`, `/spectral/bands`, `/spectral/dos`, `/spectral/bands-and-dos`,
+    `/spectral/brillouin-bands-dos`, `/spectral/electronic-structure`, `/spectral/fermi-surface`,
+    `/spectral/ir-raman`, `/spectral/phonon-mode-explorer`, `/spectral`,
+  ] },
   { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
   { label: `Plots`, href: `/plot`, prefixes: [`/plot`] },
   { label: `Guides`, href: `/guides`, prefixes: [`/guides`, `/how-to`, `/acknowledgements`] },
@@ -175,9 +181,9 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/plot/scatter-plot-3d': [`ScatterPlot3D`],
   '/plot/ternary': [`TernaryPlot`],
   '/plot/violin': [`BoxPlot`],
-  '/reciprocal': [],
-  '/reciprocal/brillouin-bands-dos': [`BandsAndDos`],
-  '/reciprocal/ir-raman': [`IrRamanSpectrum`],
+  '/spectral': [],
+  '/spectral/brillouin-bands-dos': [`BandsAndDos`],
+  '/spectral/ir-raman': [`IrRamanSpectrum`],
   '/structure/bond-angles': [`BondAnglePlot`],
   '/structure/coordination': [`CoordinationBarPlot`],
   '/structure/gallery': [`StructureGallery`],

@@ -48,7 +48,7 @@
   </tr>
   <tr>
     <td>
-      <a href="https://matterviz.janosh.dev/reciprocal/brillouin-bands-dos"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/phonon-bz-bands-dos.webp" alt="Brillouin zone, phonon bands and DOS from three ML potentials vs DFT"></a>
+      <a href="https://matterviz.janosh.dev/spectral/brillouin-bands-dos"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/phonon-bz-bands-dos.webp" alt="Brillouin zone, phonon bands and DOS from three ML potentials vs DFT"></a>
       <b>Bands, DOS & Brillouin zones</b>: electronic and phonon band structures with linked k-paths and DOS. Overlay ML potentials against DFT, here CHGNet, M3GNet and MACE vs PBE.
     </td>
     <td>
@@ -62,7 +62,7 @@
       <b>Convex hulls</b>: binary to quaternary formation-energy hulls colored by energy above hull. Also chemical potential diagrams, temperature-dependent free energies and synthesis planning.
     </td>
     <td>
-      <a href="https://matterviz.janosh.dev/reciprocal/fermi-surface"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/fermi-surface.webp" alt="Fermi surface of BaFe2As2"></a>
+      <a href="https://matterviz.janosh.dev/spectral/fermi-surface"><img src="https://github.com/janosh/matterviz/releases/download/v0.9.0/fermi-surface.webp" alt="Fermi surface of BaFe2As2"></a>
       <b>Fermi surfaces</b> from BXSF, FRMSF and IFermi JSON files, with per-band colors, spin channels and reciprocal-lattice vectors.
     </td>
   </tr>

@@ -246,7 +246,7 @@
       onpointermove={pan_zoom.on_pointer_move}
       onpointerleave={pan_zoom.on_pointer_move}
       onpointerup={pan_zoom.on_pointer_up}
-      onpointercancel={pan_zoom.on_pointer_cancel}
+      onpointercancel={pan_zoom.on_pointer_up}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
       onkeydown={(event) =>

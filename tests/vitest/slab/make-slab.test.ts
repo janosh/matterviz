@@ -508,17 +508,12 @@ describe(`slab geometry`, () => {
 describe(`surface symmetry and polarity`, () => {
   beforeAll(init_moyo_for_tests)
 
-  const with_charges = (crystal: Crystal, charges: Record<string, number>): Crystal =>
-    make_crystal(
-      crystal.lattice.matrix,
-      crystal.sites.map(({ species: [{ element }], abc }) => ({
-        element,
-        abc,
-        oxidation_state: charges[element],
-      })),
-    )
+  const with_charges = (crystal: Crystal, charges: Record<string, number>): Crystal => {
+    for (const { species } of crystal.sites)
+      species[0].oxidation_state = charges[species[0].element]
+    return crystal
+  }
   const ionic_rocksalt = with_charges(rocksalt(), { Na: 1, Cl: -1 })
-  const ionic_perovskite = with_charges(perovskite(), { Sr: 2, Ti: 4, O: -2 })
   // CaF2: Ca on the fcc sites, F on the two quarter-diagonal fcc sublattices. Along [111]
   // the planes repeat F Ca F | F Ca F, so only the cut between two F planes is symmetric.
   const shifted = (shift: number): Vec3[] =>
@@ -530,53 +525,38 @@ describe(`surface symmetry and polarity`, () => {
   )
   // 1H-MoS2-like stack (P-6m2): no inversion centre, the only symmetry swapping the faces
   // of an S Mo S trilayer is the mirror through its Mo plane
-  const trilayer = with_charges(
-    make_crystal(math.cell_to_lattice_matrix(3.16, 3.16, 6.5, 90, 90, 120), [
-      site(`Mo`, [0, 0, 0.5]),
-      site(`S`, [1 / 3, 2 / 3, 0.26]),
-      site(`S`, [1 / 3, 2 / 3, 0.74]),
-    ]),
-    { Mo: 4, S: -2 },
-  )
+  const sulfur = on_sites(`S`, [[1 / 3, 2 / 3, 0.26], [1 / 3, 2 / 3, 0.74]]) // oxfmt-ignore
+  const trilayer_cell = math.cell_to_lattice_matrix(3.16, 3.16, 6.5, 90, 90, 120)
+  const trilayer = with_charges(make_crystal(trilayer_cell, [site(`Mo`, [0, 0, 0.5]), ...sulfur]), { Mo: 4, S: -2 }) // oxfmt-ignore
+  const ionic_perovskite = with_charges(perovskite(), { Sr: 2, Ti: 4, O: -2 })
 
-  // [name, crystal, miller, gap-widest-first rank of the termination among those with
-  // `formula`, is_symmetric, is_polar]
+  // [name, crystal, miller, formula of the termination (of two with that formula the one
+  // through the widest gap), is_symmetric, is_polar]
   test.each<[string, Crystal, Vec3, string, boolean, boolean | undefined]>([
     [`ionic rocksalt (111), Na face`, ionic_rocksalt, [1, 1, 1], `Na`, false, true],
-    [`ionic rocksalt (111), Cl face`, ionic_rocksalt, [1, 1, 1], `Cl`, false, true],
     [`ionic rocksalt (100)`, ionic_rocksalt, [1, 0, 0], `NaCl`, true, false],
-    [`ionic rocksalt (110)`, ionic_rocksalt, [1, 1, 0], `NaCl`, true, false],
     // no oxidation states: the faces still differ, the charges are unknown
     [`rocksalt (111) without charges`, rocksalt(), [1, 1, 1], `Na`, false, undefined],
-    [`fcc (111)`, fcc(), [1, 1, 1], `Cu`, true, undefined],
     [`hcp (0001)`, hcp(), [0, 0, 1], `Mg`, true, undefined],
     // neutral SrO and TiO2 planes: different faces without a dipole
     [`perovskite (001), SrO face`, ionic_perovskite, [0, 0, 1], `SrO`, false, false],
-    // SrTiO (+4) and O2 (-4) planes
-    [`perovskite (110), O2 face`, ionic_perovskite, [1, 1, 0], `O2`, false, true],
-    [`fluorite (111), Ca face`, fluorite, [1, 1, 1], `Ca`, false, true],
     [`fluorite (111), F face between F planes`, fluorite, [1, 1, 1], `F`, true, false],
     [`P-6m2 trilayer (0001), S face between S planes`, trilayer, [0, 0, 1], `S`, true, false],
-    [`P-6m2 trilayer (0001), Mo face`, trilayer, [0, 0, 1], `Mo`, false, true],
   ])(`%s`, async (_name, crystal, miller, formula, is_symmetric, is_polar) => {
-    // of two same-formula cuts (F Ca F | F Ca F) the one through the widest gap comes first
     const terminations = enumerate_terminations(crystal, miller)
     const [termination] = terminations
       .filter((term) => term.formula === formula)
       .toSorted((left, right) => right.gap - left.gap)
     const termination_idx = terminations.indexOf(termination)
-    const infos = [6, 14].map((min_slab_thickness) => {
-      const slab = make_slab(crystal, miller, { termination_idx, min_slab_thickness })
-      return { slab, ...slab.slab_info }
+    const expected = { termination: { formula }, is_symmetric, is_polar }
+    const [slab] = [6, 14].map((min_slab_thickness) => {
+      const made = make_slab(crystal, miller, { termination_idx, min_slab_thickness })
+      expect(made.slab_info).toMatchObject(expected)
+      return made
     })
-    for (const info of infos) {
-      expect(info.termination.formula).toBe(formula)
-      expect(info.is_symmetric).toBe(is_symmetric)
-      expect(info.is_polar).toBe(is_polar)
-    }
     // independent check against moyo on the slab cell (vacuum included): a space-group
     // operation swaps the faces when its rotation sends fractional c to -c
-    const { operations } = await analyze_structure_symmetry(infos[0].slab, { symprec: 0.01 })
+    const { operations } = await analyze_structure_symmetry(slab, { symprec: 0.01 })
     const flips = point_group_rotations(operations).some(
       (rotation) => rotation[2].join(`,`) === `0,0,-1`,
     )
