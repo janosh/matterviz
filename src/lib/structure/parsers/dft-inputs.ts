@@ -6,6 +6,7 @@ import * as math from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import { wrap_to_unit_cell } from '#lib/structure/pbc.js'
 import { make_site } from '#lib/structure/site.js'
+import { parse_warn } from '#lib/trajectory/parse/shared.js'
 import {
   element_from_candidates,
   leading_letters,
@@ -38,7 +39,7 @@ function build_structure(atoms: ParsedAtom[], cell: number[][], format: string):
   }
   const n_dropped = atoms.filter(([, , , movable]) => movable && !vec_flags(movable)).length
   if (n_dropped > 0)
-    console.warn(`${format}: dropped constraints of ${n_dropped} atoms mixing lattice vectors`)
+    parse_warn(`${format}: dropped constraints of ${n_dropped} atoms mixing lattice vectors`)
   const sites = atoms.map(([element, coords, fractional, movable], idx) => {
     const label = `${element}${idx + 1}`
     const selective_dynamics = vec_flags(movable)

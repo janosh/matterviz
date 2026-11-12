@@ -1,7 +1,8 @@
 import { BOHR_TO_ANGSTROM } from '#lib/constants.js'
 import { detect_structure_type, parse_structure_file } from '#lib/structure/parse.js'
 import { parse_aims, parse_qe } from '#lib/structure/parsers/dft-inputs.js'
-import { describe, expect, test, vi } from 'vitest'
+import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
+import { describe, expect, test } from 'vitest'
 
 // Parsed values are compared to hand-computed ones to 12 digits (5e-13 Å or fractional units):
 // the parsers only scale and solve a 3x3 system, so anything larger is a real error
@@ -135,7 +136,6 @@ test(`fixed-atom flags become selective_dynamics of the lattice vectors`, () => 
   // per-axis constraints accumulate; one under a lattice_vector constrains the cell, no atom
   const by_axis = `${cubic_aims}constrain_relaxation .true.\natom 0 0 0 Si\nconstrain_relaxation x\nconstrain_relaxation Z`
   expect(flags(parse_aims(by_axis))).toEqual([[false, true, false]])
-  const warn = vi.spyOn(console, `warn`).mockImplementation(() => {})
   const hex = `ibrav = 4, celldm(1) = 6, celldm(3) = 1.5`
   const fcc = `ibrav = 2, celldm(1) = 10.2`
   // a lattice vector is free (fixed) when every Cartesian axis it has a component along is:
@@ -146,15 +146,17 @@ test(`fixed-atom flags become selective_dynamics of the lattice vectors`, () => 
     [hex, `0 0 1`, [false, false, true]], [hex, `1 1 0`, [true, true, false]], [hex, `1 0 1`, undefined],
     [fcc, `0 0 1`, undefined], [fcc, `0 0 0`, [false, false, false]],
   ]
-  for (const [system, if_pos, expected] of cases) {
-    const cards = `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 0 0 0 ${if_pos}`
-    const [got] = flags(parse_qe(qe_input(`${system}, nat = 1`, cards)))
-    expect(got, `${system}: ${if_pos}`).toEqual(expected)
-  }
-  // one warning per file with dropped flags
+  // one warning per file with dropped flags, collected like the file viewer does so the user
+  // sees an imported atom lost its constraint
+  const { warnings } = collect_parse_warnings(() => {
+    for (const [system, if_pos, expected] of cases) {
+      const cards = `${cubic_cell}\nATOMIC_POSITIONS crystal\nSi 0 0 0 ${if_pos}`
+      const [got] = flags(parse_qe(qe_input(`${system}, nat = 1`, cards)))
+      expect(got, `${system}: ${if_pos}`).toEqual(expected)
+    }
+  })
   const dropped = expect.stringMatching(/dropped constraints of 1 atoms/)
-  expect(warn.mock.calls).toEqual([[dropped], [dropped]])
-  warn.mockRestore()
+  expect(warnings).toEqual([dropped, dropped])
 })
 
 describe(`format detection`, () => {
