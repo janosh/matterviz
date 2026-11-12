@@ -4,7 +4,6 @@ import { plot_color } from '#lib/colors/index.js'
 import * as marginal_utils from '#lib/plot/core/marginals.js'
 import type { HistogramSeries } from '#lib/plot/histogram/histogram.js'
 import {
-  bin_sorted_values,
   bin_values,
   compute_count_range,
   compute_histogram_bins,
@@ -29,12 +28,12 @@ import {
   pattern_id_of,
   pin_cycle,
   plot_svg,
+  pointer,
   reset_section,
   roving_tabindexes,
   set_input,
   svg_mark_driver,
 } from '../setup'
-import { make_rng } from '../numeric-helpers'
 
 // Controls and legend are off unless a test asks for them. Props are mutated in place (not
 // spread) so bind_props accessors survive.
@@ -116,19 +115,8 @@ const count_range = (
     histogram_bins(series.map((series_data, series_idx) => ({ series_data, series_idx }))),
     { scale_type, y_limit, range_padding: 0 },
   )
-// Unweighted cases also bin by bisection over the sorted samples (the pan/zoom path),
-// which must reproduce the per-sample pass exactly
-const counts_of = (...args: Parameters<typeof bin_values>) => {
-  const [values, domain, n_bins, scale_type, weights] = args
-  const direct = bin_values(...args)
-  if (!weights) {
-    const sorted = Float64Array.from(values).toSorted()
-    const bisected = bin_sorted_values(sorted, domain, n_bins, scale_type)
-    expect(Array.from(bisected.counts)).toEqual(Array.from(direct.counts))
-    expect(Array.from(bisected.edges)).toEqual(Array.from(direct.edges))
-  }
-  return Array.from(direct.counts)
-}
+const counts_of = (...args: Parameters<typeof bin_values>) =>
+  Array.from(bin_values(...args).counts)
 
 describe(`Histogram`, () => {
   afterEach(() => vi.restoreAllMocks())
@@ -289,9 +277,9 @@ describe(`Histogram`, () => {
       button: 0,
       buttons: 1,
     })
-    svg.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, ...at(130, 40) }))
-    svg.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true, ...at(250, 240) }))
-    await fire(svg, new PointerEvent(`pointerup`, { bubbles: true, ...at(250, 240) }))
+    svg.dispatchEvent(pointer(`pointerdown`, at(130, 40)))
+    svg.dispatchEvent(pointer(`pointermove`, at(250, 240)))
+    await fire(svg, pointer(`pointerup`, at(250, 240)))
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
     bars[Math.floor(bars.length / 2)].dispatchEvent(mouse(`mousemove`))
     const { count, y } = on_bar_hover.mock.lastCall?.[0] ?? {}
@@ -769,45 +757,6 @@ describe(`Histogram`, () => {
       `bin_geometry: n_bins must be finite and at most 1000000, got ${n_bins}`,
     )
   })
-
-  // Seeded samples (a tenth snapped to 3 decimals, so many sit exactly on bin edges)
-  // plus the degenerate inputs, each binned both ways by counts_of
-  test.each([
-    [`linear`, [-1.3, 2.1]],
-    [`linear`, [2.1, -1.3]], // reversed
-    [`linear`, [-50, 50]], // every sample inside
-    [`linear`, [0.25, 0.25]], // collapsed onto one value
-    [`linear`, [40, 50]], // no sample inside
-    [`log`, [0.2, 9]],
-    [`log`, [-1, 9]], // non-positive bound
-    [{ type: `arcsinh`, threshold: 0.5 }, [-2, 3]],
-  ] as const)(
-    `bin_sorted_values equals bin_values on a %j axis over %j`,
-    (scale_type, domain) => {
-      const rand = make_rng(0)
-      const normal = () =>
-        Math.sqrt(-2 * Math.log(rand() || 1e-12)) * Math.cos(2 * Math.PI * rand())
-      const random = Array.from({ length: 20_000 }, (_, idx) => {
-        const value = scale_type === `log` ? Math.exp(normal()) : normal()
-        return idx % 10 === 0 ? Math.round(value * 1000) / 1000 : value
-      })
-      const sample_sets = [
-        random,
-        [], // empty
-        [0.25, 0.25, 0.25, 0.25], // constant
-        [Number.NaN, 1, Infinity, -Infinity, Number.NaN, 0.25, -0, 0, -1, 2.1, -1.3, 9, 0.2],
-      ]
-      let n_counted = 0
-      for (const values of sample_sets) {
-        for (const n_bins of [1, 2, 7, 100, 1000]) {
-          const counts = counts_of(values, [...domain], n_bins, scale_type)
-          n_counted += counts.reduce((sum, count) => sum + count, 0)
-        }
-      }
-      // the comparison saw samples, except over the domain that holds none
-      expect(n_counted > 0).toBe(domain[0] !== 40)
-    },
-  )
 
   test(`bin_values: log and arcsinh bins are uniform in transformed space`, () => {
     const samples = [1, 9.99, 10, 99, 100, 999, 1000, 5000]

@@ -751,8 +751,8 @@ describe(`convex hull replacement state`, () => {
     async (dim) => {
       const builds = vi.spyOn(thermo, `compute_lower_hull_nd`)
       const clears = count_canvas_clears()
-      // it painted at all to begin with
       await mount_harness({ dim })
+      // it painted at all to begin with
       await vi.waitFor(() => expect(clears.base).toBeGreaterThan(0))
 
       const initial_builds = builds.mock.calls.length

@@ -4,11 +4,10 @@
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
 // messages before that for callers that passed `on_progress`. With `retained_inputs` the
-// request also carries the input's identity `token`, and `input` only the first time that
+// request also lists the `held` input tokens, and carries `input` only the first time its
 // token reaches a worker (see create_input_store in worker-serve.ts).
 import { identity_token, value_key } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
-import type { WorkerRequest } from './worker-serve'
 
 interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Names the module in error messages, e.g. `MSD`
@@ -126,16 +125,6 @@ export function create_worker_client<
     dedupe_by_payload = false,
     retained_inputs = 0,
   } = config
-  if (!Number.isInteger(retained_inputs) || retained_inputs < 0) {
-    throw new RangeError(
-      `${label} worker retained_inputs must be a non-negative integer, got ${retained_inputs}`,
-    )
-  }
-  if (retained_inputs > 0 && dedupe_by_payload) {
-    throw new TypeError(
-      `${label} worker retains inputs by identity, which payload dedupe does not track`,
-    )
-  }
 
   interface Request {
     key: string
@@ -338,29 +327,28 @@ export function create_worker_client<
       if (existing) return join(existing, request_options)
 
       const wkr = main_thread ? null : ensure_worker()
-      const token = retained_inputs > 0 ? identity_token(input) : undefined
-      const send_input = token === undefined || !held_tokens.includes(token)
-      const payload = !wkr || !send_input ? undefined : (keyed_payload ?? build_payload(input))
+      const token = identity_token(input)
+      // What the worker retains once this request lands, this input last (nothing without
+      // `retained_inputs`, so every request then carries its input)
+      const held = [...held_tokens.filter((kept) => kept !== token), token]
+      held.splice(0, held.length - retained_inputs)
+      const send_input = wkr && !held_tokens.includes(token)
+      const payload = send_input ? (keyed_payload ?? build_payload(input)) : undefined
       const request = track(request_key, wkr ? ++next_id : null)
       const promise = join(request, request_options)
-      if (wkr && request.id !== null) {
+      if (wkr) {
         try {
-          const message: WorkerRequest<unknown, unknown> = {
-            id: request.id,
-            options: $state.snapshot(options),
-          }
-          if (send_input) message.input = payload
-          const kept = held_tokens.filter((held) => held !== token)
-          if (token !== undefined) {
-            message.token = token
-            message.drop = kept.splice(0, Math.max(0, kept.length + 1 - retained_inputs))
-          }
           // Copied, never transferred: the caller keeps using the input (a retained one is
           // re-sent to a replacement worker, an unretained one with every request), and a
           // transferred typed-array buffer would be detached by then.
-          wkr.postMessage(message) // oxlint-disable-line unicorn/require-post-message-target-origin
+          wkr.postMessage({
+            id: request.id,
+            input: payload,
+            options: $state.snapshot(options),
+            held: retained_inputs > 0 ? held : undefined,
+          }) // oxlint-disable-line unicorn/require-post-message-target-origin
           // Only once posted: a payload that failed to clone never reached the worker
-          if (token !== undefined) held_tokens = [...kept, token]
+          held_tokens = held
         } catch (err) {
           request.reject(to_error(err))
         }

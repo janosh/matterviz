@@ -8,7 +8,6 @@
   } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps } from '#lib/plot/core/types.js'
-  import type { AnyStructure } from '#lib/structure/index.js'
   import { memo_by_identity, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import {
@@ -62,13 +61,13 @@
   // memoized per structure object, so one more dropped file searches that file alone.
   const opts = $derived({ strategy, center_elements, neighbor_elements })
   const angles_of = memo_by_identity<ReturnType<typeof calc_bond_angles>>()
-  const computed = $derived.by(() => {
-    const opts_key = value_key(opts)
-    return compute_structure_entries(
+  const computed = $derived(
+    compute_structure_entries(
       [...to_structure_entries(structures), ...dropped_entries],
-      (structure) => angles_of(structure, opts_key, () => calc_bond_angles(structure, opts)),
-    )
-  })
+      (structure) =>
+        angles_of(structure, value_key(opts), () => calc_bond_angles(structure, opts)),
+    ),
+  )
 
   // resolve_angle_bins throws for a bin_width outside (0, 180], and bin_width is public.
   // The failure rides back with the results because writing to a prop from inside a

@@ -387,6 +387,8 @@ export const stub_reduced_motion = (reduced: () => boolean): void => {
 
 export const mouse = (type: string, init: MouseEventInit = {}): MouseEvent =>
   new MouseEvent(type, { bubbles: true, ...init })
+export const pointer = (type: string, init: PointerEventInit = {}): PointerEvent =>
+  new PointerEvent(type, { bubbles: true, ...init })
 export const keydown = (key: string, init: KeyboardEventInit = {}): KeyboardEvent =>
   new KeyboardEvent(`keydown`, { key, bubbles: true, ...init })
 

@@ -4,7 +4,7 @@
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { json_source, type ExportProps, type ExportSources } from '#lib/io/export.js'
+  import type { ExportProps, ExportSources } from '#lib/io/export.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
   let {
@@ -35,9 +35,12 @@
     } = $props()
 
   const full_filename = $derived([source_filename, ...(components ?? [])].join(`-`))
+  // Float64Arrays are written as plain ones (JSON would make them index-keyed objects)
+  const to_json = () =>
+    JSON.stringify(data, (_key, val) => (val instanceof Float64Array ? [...val] : val), 2)
   const sources = $derived({
     ...image_sources,
-    ...(data !== undefined && data !== null && { json: json_source(() => data) }),
+    ...(data !== undefined && data !== null && { json: to_json }),
   })
 </script>
 

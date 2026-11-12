@@ -119,7 +119,9 @@ export const drive_prop = (key: string): DrivenProp => ({
   compute: (model) => get_prop(model, key),
 })
 
-export const drive_props = (keys: readonly string[]): DrivenProp[] => keys.map(drive_prop)
+// Trait/prop names are listed as whitespace-separated words
+export const words = (list: string): string[] => list.trim().split(/\s+/)
+export const drive_props = (keys: string): DrivenProp[] => words(keys).map(drive_prop)
 
 // Like drive_prop, but a trait set to None reaches the component as null instead of its
 // default, for props where null means off (e.g. color_bar=None hides the bar)
@@ -153,11 +155,10 @@ const as_state = <T>(value: T): T => {
 // Data props the components read but never mutate in place, so they stay unproxied: a deep
 // proxy over a 30k-site structure put every read behind proxy traps and mounted the
 // Structure widget 10x slower
-export const DATA_PROPS = new Set([
-  ...`structure structures series surfaces entries patterns x_items y_items values`.split(` `),
-  ...`band_structs doses fermi_data band_data bz_data trajectory volumetric_data`.split(` `),
-  ...`dataset paths`.split(` `),
-])
+export const DATA_PROPS = new Set(
+  words(`structure structures series surfaces entries patterns x_items y_items values dataset
+    band_structs doses fermi_data band_data bz_data trajectory volumetric_data paths`),
+)
 
 export interface ReactiveWidget {
   // Reactive props object to pass straight into Svelte's mount().

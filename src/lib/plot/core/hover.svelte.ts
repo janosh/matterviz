@@ -15,23 +15,20 @@ export function clear_stale_hover(is_stale: () => unknown, clear: () => void): v
 
 // Hover and pinned-tooltip state of a chart whose marks are DOM nodes (bars, bins, boxes). A
 // mark is named by indices only, so the tooltip follows new data and closes once its mark is
-// gone or hidden; `info` resolves a mark to what the tooltip shows, null when it isn't drawn.
-// A click pins the hovered mark's tooltip while `pinnable` (see TooltipPin). Creates
-// $effects, so call it during component init.
-export function create_mark_hover<Mark extends Named & object, Info, Named = Mark>(opts: {
-  // Names the mark: a fresher snapshot of the same one is no new hover and stays pinned
-  key: (mark: Named) => unknown
-  pinnable: (mark: Mark) => boolean
-  info: (mark: Mark) => Info | null
-  // Tells the host the hover ended; `mark` is the one left, null when none was hovered
-  on_clear: (mark: Mark | null) => void
-  // The chart's SVG: focus leaving it is the keyboard's mouseleave
-  root: () => Element | null | undefined
+// gone or hidden (`info` returns null). Creates $effects, so call it during component init.
+export function create_mark_hover<Mark extends Named, Info, Named = Mark>(opts: {
+  key: (mark: Named) => unknown // names the mark (see TooltipPin)
+  pinnable: (mark: Mark) => boolean // whether a click pins its tooltip
+  info: (mark: Mark) => Info | null // what the tooltip shows
+  on_clear: (left: Mark | null) => void // the hover ended; null when no mark was hovered
+  root: () => Element | null | undefined // the chart's SVG: focus leaving it ends the hover
 }) {
   let mark = $state.raw<Mark | null>(null)
   const pin = new TooltipPin<Mark, Named>({ key: opts.key, enabled: opts.pinnable })
-  const shown = $derived(pin.shown(mark))
-  const info = $derived(shown && opts.info(shown))
+  const info = $derived.by(() => {
+    const shown = pin.shown(mark)
+    return shown && opts.info(shown)
+  })
   const clear = (): void => {
     const left = mark
     mark = null
@@ -41,23 +38,16 @@ export function create_mark_hover<Mark extends Named & object, Info, Named = Mar
   clear_stale_hover(() => pin.value && !info, pin.unpin)
   return {
     pin,
-    // What the tooltip shows: the pinned mark's info, else the hovered one's
     get info() {
       return info
     },
     // Pointer moves within one mark keep its object, so its lit styles and tooltip don't re-run
     set: (next: Mark): void => {
-      const prev = mark
-      const same =
-        prev &&
-        Object.entries(next).every(([field, value]) => value === Reflect.get(prev, field))
-      if (!same) mark = next
+      if (JSON.stringify(next) !== JSON.stringify(mark)) mark = next
     },
     clear,
     clear_on_focus_exit: create_focus_exit(opts.root, clear),
-    // Whether `named` wears its hover look
     lit: (named: Named): boolean => pin.lit(named, mark),
-    // A click on the hovered mark, or on empty space when none is
     toggle_pin: (): void => pin.toggle(mark),
   }
 }

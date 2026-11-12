@@ -9,15 +9,16 @@ import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
-  fire,
-  pin_cycle,
   expect_plot_controls,
   export_via_pane,
+  fire,
   form_controls,
   mount_sized,
   one_tab_stop,
   pattern_id_of,
+  pin_cycle,
   plot_svg,
+  pointer,
   query,
   reset_section,
   roving_tabindexes,
@@ -388,10 +389,10 @@ describe(`BoxPlot`, () => {
       const [mid_x, mid_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
       const drag = async (init: MouseEventInit, [dx, dy]: Vec2) => {
         const at = { clientX: mid_x, clientY: mid_y }
-        svg.dispatchEvent(new PointerEvent(`pointerdown`, { bubbles: true, ...init, ...at }))
+        svg.dispatchEvent(pointer(`pointerdown`, { ...init, ...at }))
         const end = { clientX: mid_x + dx, clientY: mid_y + dy }
-        await fire(svg, new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...end }))
-        await fire(svg, new PointerEvent(`pointerup`, { bubbles: true, ...end }))
+        await fire(svg, pointer(`pointermove`, { buttons: 1, ...end }))
+        await fire(svg, pointer(`pointerup`, end))
       }
       for (const delta of [
         [-12, 0],

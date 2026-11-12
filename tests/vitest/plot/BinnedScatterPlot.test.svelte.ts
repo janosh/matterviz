@@ -11,16 +11,17 @@ import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
-  fire,
-  mock_fullscreen,
   bind_props,
-  click_export,
   CANVAS_NOOP_METHODS,
+  click_export,
   clip_rect,
   doc_query,
   expect_tooltip_paint,
+  fire,
   index_read_counter,
   mock_canvas_context,
+  mock_fullscreen,
+  pointer,
   query,
   resize_element,
   svg_query,
@@ -836,19 +837,11 @@ describe(`BinnedScatterPlot`, () => {
     const area = plot_rect()
     const drag = async (start: Vec2, end: Vec2, init: MouseEventInit = {}) => {
       const down = { bubbles: true, button: 0, clientX: start[0], clientY: start[1], ...init }
-      svg.dispatchEvent(new PointerEvent(`pointerdown`, down))
+      svg.dispatchEvent(pointer(`pointerdown`, down))
       svg.dispatchEvent(
-        new PointerEvent(`pointermove`, {
-          bubbles: true,
-          buttons: 1,
-          clientX: end[0],
-          clientY: end[1],
-        }),
+        pointer(`pointermove`, { buttons: 1, clientX: end[0], clientY: end[1] }),
       )
-      await fire(
-        svg,
-        new PointerEvent(`pointerup`, { bubbles: true, clientX: end[0], clientY: end[1] }),
-      )
+      await fire(svg, pointer(`pointerup`, { clientX: end[0], clientY: end[1] }))
     }
 
     // [min, max] of the numeric tick labels: the view the axis currently shows

@@ -388,23 +388,10 @@
   )
   const formula_html = (phase: number) =>
     sanitize_html(get_electro_neg_formula(model?.phases[phase].label ?? ``, { delim: `` }))
-  // === Export ===
-
-  // The shown section view: the 2D section's main canvas or the prism's GPU canvas, looked up
-  // per export since switching views re-mounts it
+  // The exported figure is the shown section view: the 2D section's main canvas or the
+  // prism's GPU canvas, looked up per export since switching views re-mounts it
   const image_sources = canvas_sources(() =>
     wrapper?.querySelector<HTMLCanvasElement>(`.section-panel canvas:not(.pulse-overlay)`),
-  )
-  // Typed arrays as plain ones (JSON would write them as index-keyed objects)
-  const export_data = $derived(
-    diagram_raw && {
-      ...diagram_raw,
-      sections: diagram_raw.sections.map((sec) => ({
-        ...sec,
-        dg_form: [...sec.dg_form],
-        e_above_hull: [...sec.e_above_hull],
-      })),
-    },
   )
 
   // === File drop ===
@@ -477,7 +464,7 @@
       <PhaseDiagramExportPane
         bind:export_pane_open
         bind:png_dpi
-        data={export_data}
+        data={diagram_raw}
         components={model?.elements}
         {image_sources}
         filename={export_filename}

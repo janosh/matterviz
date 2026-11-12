@@ -1,7 +1,7 @@
 // Worker-side half of the create_worker_client protocol (see worker-client.svelte.ts): each
 // request arrives as `{ id, input, options }`, any number of `{ id, progress }` messages may
 // follow, and exactly one `{ id, result, error }` reply ends it. Clients that retain inputs
-// add a `token` naming the input: it crosses with the first request only, later ones name it.
+// add the `held` tokens: an input crosses with the first request only, later ones name it.
 // A request that cannot be deserialized never reaches `message`, so `messageerror` answers
 // with `{ id: null, error }` and the client fails every pending request rather than leaving
 // one awaiting forever. Kept apart from the client so worker bundles do not pull Svelte
@@ -11,37 +11,33 @@
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { to_error } from 'svelte-widgets/utils'
 
-export interface WorkerRequest<Input, Options> {
+// `held` (retaining clients only): identity tokens of the inputs to keep, this request's
+// last; `input` is absent when the worker already holds it
+export type WorkerRequest<Input, Options> = {
   id: number
   options: Options
-  // Absent when `token` names an input this worker already holds
   input?: Input
-  // Retaining clients only: the input's identity on the main thread
-  token?: number
-  // Tokens the client stopped retaining, to free here
-  drop?: number[]
+  held?: number[]
 }
 
 // The input a request carries or names. The client alone decides what is retained (see
 // `retained_inputs`), so this store only follows it. Handing back the same object for a
 // token keeps identity-keyed caches of derived state (unwrapped positions, upsampled grids)
 // alive between requests, and frees them with the input.
-export function create_input_store<Input>(): (
-  request: Pick<WorkerRequest<Input, unknown>, `input` | `token` | `drop`>,
-) => Input {
+export function create_input_store<Input>() {
   const inputs = new Map<number, Input>()
-  return ({ input, token, drop = [] }) => {
-    if (token === undefined) {
-      if (input === undefined) throw new Error(`worker request carries no input`)
-      return input
+  return ({
+    input,
+    held = [],
+  }: Pick<WorkerRequest<Input, unknown>, `input` | `held`>): Input => {
+    const token = held.at(-1)
+    if (token !== undefined) {
+      if (input !== undefined) inputs.set(token, input)
+      for (const kept of inputs.keys()) if (!held.includes(kept)) inputs.delete(kept)
+      input = inputs.get(token)
     }
-    for (const dropped of drop) inputs.delete(dropped)
-    if (input !== undefined) inputs.set(token, input)
-    const stored = inputs.get(token)
-    if (stored === undefined) {
-      throw new Error(`worker holds no input ${token} (${inputs.size} held)`)
-    }
-    return stored
+    if (input !== undefined) return input
+    throw new Error(`worker holds no input ${token} (${inputs.size} held)`)
   }
 }
 

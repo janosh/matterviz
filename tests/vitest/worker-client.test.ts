@@ -2,13 +2,10 @@
 // tests that fail when the rule is removed - deleting `messageerror` or `terminate()` used
 // to leave every module's suite green.
 import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
-import { create_input_store, serve_worker } from '#lib/worker-serve.js'
-import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
-import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
+import { serve_worker } from '#lib/worker-serve.js'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { StubWorkerInstance, StubWorkerMessage } from './setup'
 import { install_stub_worker } from './setup'
-import { cubic_matrix, make_position_stream } from './test-fixtures'
 
 // Installed without a `compute`, so the stub records posts and never replies unless told to
 let stub: ReturnType<typeof install_stub_worker<StubWorkerMessage>>
@@ -23,12 +20,14 @@ const make_client = <Result = string>(
     options: Record<string, unknown> | undefined,
     on_progress?: (progress: unknown) => void,
   ) => Result = (() => `sync`) as () => Result,
+  retained_inputs = 0,
 ) =>
   create_worker_client<{ tag: string }, Record<string, unknown>, Result>({
     label: `Test`,
     create_worker: () => new Worker(`stub`),
     compute_sync,
     build_payload: (input) => input,
+    retained_inputs,
   })
 
 const make_progress_client = () =>
@@ -643,80 +642,49 @@ test.each([`abort`, `cancel`] as const)(
 // A heavy input (position stream, band grid) crosses once: later requests name its identity
 // token, and the client alone decides what the worker keeps
 describe(`retained inputs`, () => {
-  const make_retaining_client = (retained_inputs = 1) =>
-    create_worker_client<{ tag: string }, Record<string, unknown>, string>({
-      label: `Test`,
-      create_worker: () => new Worker(`stub`),
-      compute_sync: () => `sync`,
-      build_payload: (input) => input,
-      retained_inputs,
+  type Run = ReturnType<typeof make_client<string>>
+  // per post of a worker: `+` when it carried the input, then the tags of the inputs held
+  const posts = (worker: StubWorkerInstance): string[] => {
+    const tags = new Map<number | undefined, string>()
+    const messages: (StubWorkerMessage & { held?: number[] })[] = worker.posted.map(
+      ({ message }) => message,
+    )
+    return messages.map(({ input, held = [] }) => {
+      if (input) tags.set(held.at(-1), (input as { tag: string }).tag)
+      return `${input ? `+` : ``}${held.map((token) => tags.get(token)).join(``)}`
     })
-  // a retaining client's posts also name the input and list what the worker may free
-  const retained = (
-    worker: StubWorkerInstance,
-  ): (StubWorkerMessage & { token?: number; drop?: number[] })[] =>
-    worker.posted.map(({ message }) => message)
-  // [input sent or null, number of tokens dropped] per post of a worker
-  const posts = (worker: StubWorkerInstance) =>
-    retained(worker).map(({ input, drop }) => [input ?? null, drop?.length])
-  const tokens = (worker: StubWorkerInstance) => retained(worker).map(({ token }) => token)
-  const request = (
-    run: ReturnType<typeof make_retaining_client>,
-    input: { tag: string },
-    step: number,
-  ) => void run(input, { step }).catch(() => {})
+  }
+  const request = (run: Run, input: { tag: string }, step: number) =>
+    void run(input, { step }).catch(() => {})
 
   test(`an input is sent once, named afterwards, and dropped once least recently used`, () => {
-    const run = make_retaining_client(2)
-    const [first, second, third] = [`a`, `b`, `c`].map((tag) => ({ tag }))
-    expect(run.holds(first)).toBe(false)
-    for (const [step, input] of [
-      first,
-      first,
-      second,
-      first,
-      third,
-      second,
-      first,
-    ].entries()) {
-      request(run, input, step)
-    }
-    const [worker] = workers()
+    const run = make_client(undefined, 2)
+    const inputs = { a: { tag: `a` }, b: { tag: `b` }, c: { tag: `c` } }
+    expect(run.holds(inputs.a)).toBe(false)
+    const order = [`a`, `a`, `b`, `a`, `c`, `b`, `a`] as const
+    for (const [step, tag] of order.entries()) request(run, inputs[tag], step)
     // c evicts b (a was used since), then a makes room for b's return: both re-sent
-    expect(posts(worker)).toEqual([
-      [{ tag: `a` }, 0],
-      [null, 0],
-      [{ tag: `b` }, 0],
-      [null, 0],
-      [{ tag: `c` }, 1],
-      [{ tag: `b` }, 1],
-      [{ tag: `a` }, 1],
+    expect(posts(workers()[0])).toEqual([`+a`, `a`, `+ab`, `ba`, `+ac`, `+cb`, `+ba`])
+    expect(Object.values(inputs).map(run.holds)).toEqual([true, true, false])
+    // without retained_inputs every request carries its input and nothing is held
+    const plain = make_client()
+    for (const step of [0, 1]) void plain(inputs.a, { step }).catch(() => {})
+    expect(workers()[1].posted.map(({ message }) => message)).toEqual([
+      { id: 1, input: inputs.a, options: { step: 0 } },
+      { id: 2, input: inputs.a, options: { step: 1 } },
     ])
-    const [token_a, , token_b, , token_c] = tokens(worker)
-    expect(new Set([token_a, token_b, token_c]).size).toBe(3)
-    expect(tokens(worker)).toEqual([
-      token_a,
-      token_a,
-      token_b,
-      token_a,
-      token_c,
-      token_b,
-      token_a,
-    ])
-    const drops = retained(worker).map(({ drop }) => drop)
-    expect(drops.slice(4)).toEqual([[token_b], [token_a], [token_c]])
-    expect([first, second, third].map(run.holds)).toEqual([true, true, false])
+    expect(plain.holds(inputs.a)).toBe(false)
   })
 
   test.each([
-    [`release`, (run: ReturnType<typeof make_retaining_client>) => run.release()],
-    [`cancel`, (run: ReturnType<typeof make_retaining_client>) => run.cancel()],
+    [`release`, (run: Run) => run.release()],
+    [`cancel`, (run: Run) => run.cancel()],
     [
       `a worker error`,
       () => workers()[0].emit(`error`, { message: `boom`, preventDefault: () => {} }),
     ],
   ])(`a worker replaced after %s is sent the input again`, async (_label, end_worker) => {
-    const run = make_retaining_client()
+    const run = make_client(undefined, 1)
     const input = { tag: `a` }
     const pending = run(input, { step: 0 })
     reply(workers()[0])
@@ -726,114 +694,61 @@ describe(`retained inputs`, () => {
     expect([workers()[0].terminated, run.holds(input)]).toEqual([1, false])
     request(run, input, 1)
     request(run, input, 2)
-    expect(posts(workers()[1])).toEqual([
-      [{ tag: `a` }, 0],
-      [null, 0],
-    ])
+    expect(posts(workers()[1])).toEqual([`+a`, `a`])
   })
 
   test(`an input whose post failed is not counted as held`, async () => {
-    const run = make_retaining_client()
+    const run = make_client(undefined, 1)
     const input = { tag: `a`, callback: (): string => `not cloneable` }
     await expect(run(input, {})).rejects.toMatchObject({ name: `DataCloneError` })
     expect(run.holds(input)).toBe(false)
     Reflect.deleteProperty(input, `callback`)
     request(run, input, 1)
-    expect(posts(workers()[0])).toEqual([[{ tag: `a` }, 0]])
-  })
-
-  test(`without retained_inputs every request carries its input and no token`, () => {
-    const run = make_client()
-    const input = { tag: `a` }
-    for (const step of [0, 1]) void run(input, { step }).catch(() => {})
-    expect(workers()[0].posted.map(({ message }) => message)).toEqual([
-      { id: 1, input, options: { step: 0 } },
-      { id: 2, input, options: { step: 1 } },
-    ])
-    expect(run.holds(input)).toBe(false)
-  })
-
-  test.each([
-    [{ retained_inputs: -1 }, /non-negative integer, got -1/],
-    [{ retained_inputs: 1.5 }, /non-negative integer, got 1.5/],
-    [{ retained_inputs: 1, dedupe_by_payload: `unordered` as const }, /payload dedupe/],
-  ])(`rejects the config %j`, (config, expected) => {
-    expect(() =>
-      create_worker_client({
-        label: `Test`,
-        create_worker: () => new Worker(`stub`),
-        compute_sync: () => `sync`,
-        build_payload: (input: object) => input,
-        ...config,
-      }),
-    ).toThrow(expected)
-  })
-
-  // What makes retaining worthwhile: the worker's identity-keyed caches of derived state
-  // survive between requests, here the unwrapped copy of a wrapped periodic trajectory
-  test(`serve_worker computes on one retained object, so its unwrapped positions are reused`, () => {
-    const listeners = new Map<string, (event: unknown) => void>()
-    const replies: { id: number; result: Float64Array | null; error: string | null }[] = []
-    vi.stubGlobal(`self`, {
-      addEventListener: (type: string, handler: (event: unknown) => void) =>
-        listeners.set(type, handler),
-      postMessage: (message: (typeof replies)[number]) => replies.push(message),
-    })
-    serve_worker((stream: TrajectoryPositionStream) => unwrapped_positions_of(stream).coords)
-    // one atom hopping across the boundary of a 4 A box: unwrapping allocates a new buffer
-    const stream = (): TrajectoryPositionStream =>
-      make_position_stream([[[3.5, 0, 0]], [[0.5, 0, 0]], [[1.5, 0, 0]]], [`H`], {
-        lattice_matrices: [0, 1, 2].map(() => cubic_matrix(4)),
-      })
-    const send = (data: object) =>
-      listeners.get(`message`)?.({ data: { options: {}, ...data } })
-    send({ id: 1, token: 5, input: stream(), drop: [] })
-    send({ id: 2, token: 5, drop: [] })
-    send({ id: 3, token: 6, input: stream(), drop: [5] })
-    send({ id: 4, token: 5, drop: [] })
-    const [first, second, other, dropped] = replies
-    expect([...(first.result ?? [])].filter((_value, idx) => idx % 3 === 0)).toEqual([
-      3.5, 4.5, 5.5,
-    ])
-    expect(second.result).toBe(first.result) // not unwrapped again
-    expect(other.result).not.toBe(first.result)
-    expect(other.result).toEqual(first.result)
-    expect(dropped).toEqual({ id: 4, result: null, error: `worker holds no input 5 (1 held)` })
-  })
-
-  test(`the worker's store returns one object per token until the client drops it`, () => {
-    const input_of = create_input_store<{ tag: string }>()
-    const [first, second] = [{ tag: `a` }, { tag: `b` }]
-    expect(input_of({ input: first })).toBe(first) // unretained: passed straight through
-    expect(input_of({ token: 1, input: first, drop: [] })).toBe(first)
-    expect(input_of({ token: 1, drop: [] })).toBe(first)
-    expect(input_of({ token: 2, input: second, drop: [1] })).toBe(second)
-    expect(() => input_of({ token: 1, drop: [] })).toThrow(/holds no input 1 \(1 held\)/)
-    expect(() => input_of({})).toThrow(/carries no input/)
+    expect(posts(workers()[0])).toEqual([`+a`])
   })
 })
 
-test(`serve_worker replies with results, message-less errors and an id-less deserialization error`, () => {
+test(`serve_worker replies with results, message-less errors and an id-less deserialization error, on the inputs a client retains`, () => {
   // Stand in for the worker global scope: record listeners and posted replies
   const listeners = new Map<string, (event: unknown) => void>()
-  const posted: unknown[] = []
+  const posted: { result: number[] | null; error: string | null }[] = []
   vi.stubGlobal(`self`, {
     addEventListener: (type: string, handler: (event: unknown) => void) =>
       listeners.set(type, handler),
-    postMessage: (message: unknown) => posted.push(message),
+    postMessage: (message: (typeof posted)[number]) => posted.push(message),
   })
-  serve_worker((input: number) => {
+  serve_worker((input: number[]) => {
     // oxlint-disable-next-line eslint-plugin-unicorn/error-message -- message-less on purpose
-    if (input < 0) throw new TypeError()
-    return input * 2
+    if (input[0] < 0) throw new TypeError()
+    return input
   })
-  listeners.get(`message`)?.({ data: { id: 7, input: 21, options: {} } })
+  const send = (data: object) => listeners.get(`message`)?.({ data: { options: {}, ...data } })
+  const [kept, other] = [[21], [42]]
+  send({ id: 7, input: kept })
   // a message-less error still replies with a non-empty error
-  listeners.get(`message`)?.({ data: { id: 8, input: -1, options: {} } })
+  send({ id: 8, input: [-1] })
   listeners.get(`messageerror`)?.({})
-  expect(posted).toEqual([
-    { id: 7, result: 42, error: null },
+  // a retained input crosses once: later requests name its token until the client drops it
+  send({ id: 9, input: kept, held: [5] })
+  send({ id: 10, held: [5] })
+  send({ id: 11, input: other, held: [5, 6] })
+  send({ id: 12, held: [6, 5] })
+  send({ id: 13, held: [6] })
+  send({ id: 14, held: [5] })
+  send({ id: 15 })
+  expect(posted.slice(0, 3)).toEqual([
+    { id: 7, result: kept, error: null },
     { id: 8, result: null, error: `TypeError thrown without a message` },
     { id: null, result: null, error: expect.stringMatching(/could not be deserialized/) },
   ])
+  // the very object each time, so identity-keyed caches of what was derived from it survive
+  const replies = posted
+    .slice(3)
+    .map(({ result, error }) =>
+      result === kept ? `kept` : result === other ? `other` : error,
+    )
+  expect(replies.slice(0, 5).join(` `)).toBe(`kept kept other kept other`)
+  expect(replies.slice(5).join(`; `)).toBe(
+    `worker holds no input 5 (0 held); worker holds no input undefined (0 held)`,
+  )
 })

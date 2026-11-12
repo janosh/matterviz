@@ -54,10 +54,9 @@ for (const method of [`showPopover`, `hidePopover`] as const) {
   }
 }
 
-// vi.waitFor gives up after 1 s unless told otherwise and Vitest has no config for that default,
-// which a loaded full-suite run exceeds (e.g. a dynamic three.js import). It resolves as soon as
-// its callback passes, so a longer default only delays failures. Kept below the 5 s test
-// timeout so a failing wait still reports its last assertion error instead of a bare timeout.
+// vi.waitFor's 1 s default (Vitest has no config for it) is too short for a loaded full-suite
+// run, e.g. a dynamic three.js import. 4 s stays below the 5 s test timeout, so a failing wait
+// still reports its last assertion error instead of a bare timeout.
 const wait_for = vi.waitFor
 vi.waitFor = (callback, options = {}) =>
   wait_for(callback, typeof options === `number` ? options : { timeout: 4000, ...options })

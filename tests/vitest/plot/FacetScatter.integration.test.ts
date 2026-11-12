@@ -8,7 +8,7 @@ import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '#lib/plot/index.js'
 import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { clip_rect, query, trigger_resize_observer } from '../setup'
+import { clip_rect, pointer, query, trigger_resize_observer } from '../setup'
 
 interface PanelDatum {
   series: DataSeries[]
@@ -238,25 +238,9 @@ describe(`FacetGrid + Cartesian plots`, () => {
       if (!plot) throw new Error(`Top-left ${plot_case.name} not found`)
       const svg = query<SVGSVGElement>(plot, `svg[role="application"]`)
       svg.getBoundingClientRect = () => DOMRect.fromRect({ width: 800, height: 600 })
-      svg.dispatchEvent(
-        new PointerEvent(`pointerdown`, {
-          bubbles: true,
-          button: 0,
-          clientX: 180,
-          clientY: 80,
-        }),
-      )
-      svg.dispatchEvent(
-        new PointerEvent(`pointermove`, {
-          bubbles: true,
-          buttons: 1,
-          clientX: 600,
-          clientY: 420,
-        }),
-      )
-      svg.dispatchEvent(
-        new PointerEvent(`pointerup`, { bubbles: true, clientX: 600, clientY: 420 }),
-      )
+      svg.dispatchEvent(pointer(`pointerdown`, { button: 0, clientX: 180, clientY: 80 }))
+      svg.dispatchEvent(pointer(`pointermove`, { buttons: 1, clientX: 600, clientY: 420 }))
+      svg.dispatchEvent(pointer(`pointerup`, { clientX: 600, clientY: 420 }))
 
       await vi.waitFor(() => {
         const zoomed_x = context_for(`top-left`).ranges.x
@@ -278,13 +262,9 @@ describe(`FacetGrid + Cartesian plots`, () => {
         ([`x2`, `y2`] as const).map((axis) => context_for(`top-right`).ranges[axis])
       const initial_secondary = secondary()
       const pan = { buttons: 1, clientY: 80, shiftKey: true }
-      svg.dispatchEvent(
-        new PointerEvent(`pointerdown`, { bubbles: true, clientX: 180, ...pan }),
-      )
-      svg.dispatchEvent(
-        new PointerEvent(`pointermove`, { bubbles: true, clientX: 240, ...pan }),
-      )
-      svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true }))
+      svg.dispatchEvent(pointer(`pointerdown`, { clientX: 180, ...pan }))
+      svg.dispatchEvent(pointer(`pointermove`, { clientX: 240, ...pan }))
+      svg.dispatchEvent(pointer(`pointerup`))
       await vi.waitFor(() => expect(context_for(`top-left`).ranges.x).not.toEqual(initial_x))
       expect(secondary()).toEqual(initial_secondary)
     },

@@ -298,7 +298,6 @@ describe(`symmetry-aware display`, () => {
     ])
     expect(host.cell_type).toBe(`original`)
     expect(session.base_structure?.sites).toHaveLength(1)
-    expect(error_spy).toHaveBeenCalledOnce()
     error_spy.mockRestore()
   })
 

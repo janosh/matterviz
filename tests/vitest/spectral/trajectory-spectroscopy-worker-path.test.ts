@@ -84,10 +84,7 @@ describe(`trajectory spectroscopy worker code path`, () => {
     expect(await compute_spectroscopy_async(input, hann)).toEqual(
       calc_trajectory_spectroscopy(input, hann),
     )
-    expect(stub.posted.map(({ message }) => message.input === undefined)).toEqual([
-      false,
-      true,
-    ])
+    expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
     await compute_spectroscopy_async(make_input(), { preprocessing: `raw` })
     expect_module_worker(stub.instances, `src/lib/spectral/trajectory-spectroscopy-worker.ts`)
   })

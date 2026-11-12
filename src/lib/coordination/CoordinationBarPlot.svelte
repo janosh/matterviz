@@ -11,7 +11,6 @@
   } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps, BarSeries } from '#lib/plot/core/types.js'
-  import type { AnyStructure } from '#lib/structure/index.js'
   import { memo_by_identity } from '#lib/utils.js'
   import { calc_coordination_nums, coordination_bar_sites } from './calc-coordination'
   import type { CoordinationSplitMode } from './index'

@@ -252,13 +252,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       - name: Install Chromium # a no-op when the cache restored this version's browser
         run: pnpm exec playwright install chromium --no-shell
-      # Only the movie CLI test encodes with FFmpeg, and tests are sharded individually, so
-      # only the shard that drew it installs FFmpeg.
+      # Only the movie CLI test encodes with FFmpeg, so only the shard that drew it installs it
       - name: Check whether this shard runs the movie CLI test
         id: movie
-        run: |
-          tests=$(pnpm exec playwright test --list --shard=${{ matrix.shard }}/8)
-          if [[ "$tests" == *'movie CLI'* ]]; then echo "ffmpeg=true" >> "$GITHUB_OUTPUT"; fi
+        run: pnpm exec playwright test --list --shard=${{ matrix.shard }}/8 | grep 'movie CLI' && echo ffmpeg=true >> "$GITHUB_OUTPUT" || true
         env:
           MATTERVIZ_E2E_MODE: preview
       # FFmpeg's .deb files come from a cache: the runner's apt mirror stalls mid-download often

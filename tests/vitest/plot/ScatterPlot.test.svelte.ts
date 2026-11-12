@@ -28,7 +28,6 @@ import {
   doc_query,
   fire,
   flush_render,
-  pin_cycle,
   form_controls,
   keydown,
   marker_fill,
@@ -37,12 +36,14 @@ import {
   mount_sized,
   mouse,
   one_tab_stop,
+  pin_cycle,
   plot_svg,
+  pointer,
   query,
   resize_element,
   roving_tabindexes,
-  svg_query,
   set_input,
+  svg_query,
   translate_of,
   trigger_resize_observer,
   type PinStep,
@@ -141,22 +142,13 @@ const shift_pan = async (plot: HTMLElement, offsets: Vec2[]) => {
     clientX: clip.x + clip.width / 2 + dx,
     clientY: clip.y + clip.height / 2 + dy,
   })
-  plot_svg(plot).dispatchEvent(
-    new PointerEvent(`pointerdown`, {
-      bubbles: true,
-      button: 0,
-      shiftKey: true,
-      ...at([0, 0]),
-    }),
-  )
+  const svg = plot_svg(plot)
+  svg.dispatchEvent(pointer(`pointerdown`, { button: 0, shiftKey: true, ...at([0, 0]) }))
   for (const offset of offsets) {
-    await fire(
-      plot_svg(plot),
-      new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...at(offset) }),
-    )
+    await fire(svg, pointer(`pointermove`, { buttons: 1, ...at(offset) }))
   }
   const release = at(offsets.at(-1) ?? [0, 0])
-  await fire(plot_svg(plot), new PointerEvent(`pointerup`, { bubbles: true, ...release }))
+  await fire(svg, pointer(`pointerup`, release))
 }
 const click_at = (element: Element, position: { x: number; y: number }) =>
   element.dispatchEvent(
@@ -1505,25 +1497,17 @@ describe(`ScatterPlot`, () => {
       const clip = clip_rect(plot)
       const at = (dx: number) => ({ clientX: clip.x + dx, clientY: clip.y + 10 })
       plot_svg(plot).dispatchEvent(
-        new PointerEvent(`pointerdown`, {
-          bubbles: true,
-          button: 0,
-          shiftKey: true,
-          ...at(10),
-        }),
+        pointer(`pointerdown`, { button: 0, shiftKey: true, ...at(10) }),
       )
       await tick()
       check_vertices(duration === 0)
       const grabbed_paths = paths.map((path) => path.getAttribute(`d`))
-      await fire(
-        plot_svg(plot),
-        new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...at(15) }),
-      )
+      await fire(plot_svg(plot), pointer(`pointermove`, { buttons: 1, ...at(15) }))
       check_vertices(duration === 0)
       const dragged_paths = paths.map((path) => path.getAttribute(`d`))
       // anchored lines move by their transform alone, never rebuilding a path mid-pan
       if (duration === 0) expect(dragged_paths).toEqual(grabbed_paths)
-      await fire(plot_svg(plot), new PointerEvent(`pointerup`, { bubbles: true }))
+      await fire(plot_svg(plot), pointer(`pointerup`))
       check_vertices()
       // morphing lines keep their vertices through the release, so nothing glides
       if (duration > 0) {
@@ -1871,16 +1855,10 @@ describe(`ScatterPlot`, () => {
     const svg = plot_svg(plot)
     const clip = clip_rect(plot)
     const end = { clientX: clip.x + 80, clientY: clip.y + 80 }
-    svg.dispatchEvent(
-      new PointerEvent(`pointerdown`, {
-        bubbles: true,
-        button: 0,
-        clientX: clip.x + 10,
-        clientY: clip.y + 10,
-      }),
-    )
-    svg.dispatchEvent(new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...end }))
-    svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true, ...end }))
+    const start = { button: 0, clientX: clip.x + 10, clientY: clip.y + 10 }
+    svg.dispatchEvent(pointer(`pointerdown`, start))
+    svg.dispatchEvent(pointer(`pointermove`, { buttons: 1, ...end }))
+    svg.dispatchEvent(pointer(`pointerup`, end))
     click_at(svg, { x: end.clientX, y: end.clientY })
     expect(on_plot_click).not.toHaveBeenCalled()
   })

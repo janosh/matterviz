@@ -49,7 +49,7 @@ describe(`reactive_widget`, () => {
   test(`seeds props from driven specs, merges extra and follows Python changes`, () => {
     const model = new MockModel({ a: 1, b: `x` })
     const callback_fn = () => {}
-    const { props } = reactive_widget(as_model(model), drive_props([`a`, `b`]), {
+    const { props } = reactive_widget(as_model(model), drive_props(`a b`), {
       on_click: callback_fn,
     })
     expect(props).toEqual({ a: 1, b: `x`, on_click: callback_fn })
@@ -63,7 +63,7 @@ describe(`reactive_widget`, () => {
     const structure = { sites: [{ xyz: [0, 0, 0] }] }
     const display = { x_grid: true }
     const model = new MockModel({ structure, display })
-    const { props } = reactive_widget(as_model(model), drive_props([`structure`, `display`]))
+    const { props } = reactive_widget(as_model(model), drive_props(`structure display`))
     expect(props.structure).toBe(structure)
     expect(props.display).not.toBe(display)
     expect(props.display).toEqual(display)
@@ -90,7 +90,7 @@ describe(`reactive_widget`, () => {
     // null/missing traits must be omitted, else Svelte's props_invalid_value
     // fires for $bindable-with-fallback props passed undefined via $state.
     const model = new MockModel({ defined: { label: `E` }, missing: null })
-    const { props } = reactive_widget(as_model(model), drive_props([`defined`, `missing`]))
+    const { props } = reactive_widget(as_model(model), drive_props(`defined missing`))
     expect(props.defined).toEqual({ label: `E` })
     expect(`missing` in props).toBe(false)
     model.push_from_python(`defined`, null)

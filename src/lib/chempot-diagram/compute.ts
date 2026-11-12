@@ -654,7 +654,6 @@ export function dedup_points(
   unique: number[][]
   orig_indices: number[] // for each unique point, the index in the original array
 } {
-  if (!(tol > 0)) throw new Error(`dedup_points needs a positive tolerance, got ${tol}`)
   const cell_size = 64 * tol
   const mix = (hash: number, cell_idx: number): number =>
     Math.imul(hash ^ cell_idx, 0x9e3779b1)

@@ -81,9 +81,8 @@ it(`MsdPlot relabels dt edits without recomputing, and recomputes without re-sen
     expect(await edit(relabelled)).toEqual([expected, undefined, 1])
     const recomputed = { ...relabelled, max_lag_fraction: 0.3 }
     expect(await edit(recomputed)).toEqual([calc_msd(positions, recomputed), undefined, 2])
-    const [first_post, second_post] = stub.posted.map(({ message }) => message)
-    expect([first_post.input === undefined, second_post.input]).toEqual([false, undefined])
-    expect(second_post.token).toBe(first_post.token)
+    expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
+    expect(stub.posted[1].message.held).toEqual(stub.posted[0].message.held)
     expect(stub.instances.at(-1)?.terminated).toBe(0)
   } finally {
     await unmount(component)
@@ -127,18 +126,17 @@ it(`TrajectoryMsdPane computes on the collected stream, not a proxy of it`, asyn
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(1))
     expect(compute.mock.calls[0][0]).toBe(await collect.mock.results[0].value)
     // drift removal is off until ticked; ticking it recomputes on the stream the worker kept
-    expect(compute.mock.calls[0][1]?.remove_com_drift).toBe(false)
     document
-      .querySelector<HTMLInputElement>(`.trajectory-msd-controls input[type=checkbox]`)
+      .querySelector<HTMLInputElement>(`.trajectory-msd-controls [type=checkbox]`)
       ?.click()
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(2))
-    expect(compute.mock.calls[1][1]?.remove_com_drift).toBe(true)
-    expect(compute.mock.calls[1][0]).toBe(compute.mock.calls[0][0])
-    await vi.waitFor(() => expect(document.body.textContent).toContain(`drift removed`))
-    expect(stub.posted.map(({ message }) => message.input === undefined)).toEqual([
+    expect(compute.mock.calls.map(([, options]) => options?.remove_com_drift)).toEqual([
       false,
       true,
     ])
+    expect(compute.mock.calls[1][0]).toBe(compute.mock.calls[0][0])
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`drift removed`))
+    expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
   } finally {
     await unmount(component)
   }

@@ -124,35 +124,32 @@
     const [pair_mode, options_key] = [mode !== `full`, value_key([mode, options])]
     // aborted once the structures or options change: that answer is no longer wanted
     const signal = getAbortSignal()
-    const requests = struct_list.map(({ struct, label }) =>
-      patterns_of(struct, options_key, async () =>
-        pair_mode
-          ? await calc_all_pair_rdfs_async(struct, options)
-          : [calculate_rdf(struct, options)],
-      ).then(
-        (found): { curves: ComputedEntry[]; failures: string[] } => ({
-          curves: found.map((pattern) => ({
-            label: pattern.element_pair?.join(`-`) ?? label,
-            // Group by structure name for multi-structure plots
-            ...(pair_mode ? { legend_group: label } : {}),
-            pattern,
-            structure: struct,
-          })),
-          failures: [],
-        }),
+    // each structure's curves, or the failure of one the neighbour search rejects
+    const requests = struct_list.map(async ({ struct, label }) => {
+      try {
+        const found = await patterns_of(struct, options_key, async () =>
+          pair_mode
+            ? calc_all_pair_rdfs_async(struct, options)
+            : [calculate_rdf(struct, options)],
+        )
+        return found.map((pattern): ComputedEntry => ({
+          label: pattern.element_pair?.join(`-`) ?? label,
+          // Group by structure name for multi-structure plots
+          ...(pair_mode ? { legend_group: label } : {}),
+          pattern,
+          structure: struct,
+        }))
+      } catch (exc) {
         // the label's formula is <sub> markup for the legend; the notice is plain text
-        (exc: unknown) => ({
-          curves: [],
-          failures: [`${html_to_text(label)}: ${to_error(exc).message}`],
-        }),
-      ),
-    )
+        return `${html_to_text(label)}: ${to_error(exc).message}`
+      }
+    })
     computing = requests.length > 0
     void Promise.all(requests).then((results) => {
       if (signal.aborted) return
       computed = {
-        curves: results.flatMap(({ curves }) => curves),
-        failures: results.flatMap(({ failures }) => failures),
+        curves: results.flatMap((result) => (typeof result === `string` ? [] : result)),
+        failures: results.filter((result) => typeof result === `string`),
       }
       computing = false
     })

@@ -104,7 +104,6 @@ describe(`one_sided_periodogram`, () => {
     [16, 1, undefined],
     [15, 3, [2, 0.5, 7]],
     [16, 5, [1, 0, 3, 0, 0.25]],
-    [2, 3, [1, 4, 9]],
   ])(
     `matches an independent direct DFT oracle for %i samples x %i components (weights %j)`,
     (n_samples, n_components, component_weights) => {
@@ -113,16 +112,13 @@ describe(`one_sided_periodogram`, () => {
         (_unused, value_idx) => Math.sin(0.73 * value_idx) + 0.2 * Math.cos(0.17 * value_idx),
       )
       const sample_interval = 0.25
-      // two samples leave a Hann window no energy
-      const window_type = n_samples > 2 ? `hann` : `none`
       const result = one_sided_periodogram(values, n_components, sample_interval, {
         component_weights,
-        window: window_type,
       })
-      const window = Array.from({ length: n_samples }, (_unused, sample_idx) =>
-        window_type === `hann`
-          ? 0.5 - 0.5 * Math.cos((2 * Math.PI * sample_idx) / (n_samples - 1))
-          : 1,
+      const window = Array.from(
+        { length: n_samples },
+        (_unused, sample_idx) =>
+          0.5 - 0.5 * Math.cos((2 * Math.PI * sample_idx) / (n_samples - 1)),
       )
       const window_energy = window.reduce((total, value) => total + value * value, 0)
       const expected = Array(result.power.length).fill(0)

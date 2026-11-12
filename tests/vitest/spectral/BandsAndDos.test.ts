@@ -11,6 +11,7 @@ import {
   mount_sized,
   mouse,
   plot_svg,
+  pointer,
   translate_of,
 } from '../setup'
 import { make_crystal } from '../test-fixtures'
@@ -241,14 +242,9 @@ describe(`bands/DOS wrappers`, () => {
       clientX: clip.x + clip.width * frac_x,
       clientY: clip.y + clip.height * frac_y,
     })
-    bands_svg.dispatchEvent(new PointerEvent(`pointerdown`, position(0.1, 0.3)))
-    bands_svg.dispatchEvent(
-      new PointerEvent(`pointermove`, { bubbles: true, buttons: 1, ...position(0.9, 0.6) }),
-    )
-    await fire(
-      bands_svg,
-      new PointerEvent(`pointerup`, { bubbles: true, ...position(0.9, 0.6) }),
-    )
+    bands_svg.dispatchEvent(pointer(`pointerdown`, position(0.1, 0.3)))
+    bands_svg.dispatchEvent(pointer(`pointermove`, { buttons: 1, ...position(0.9, 0.6) }))
+    await fire(bands_svg, pointer(`pointerup`, position(0.9, 0.6)))
     const zoomed = y_ticks(bands_plot)
     expect(Math.max(...zoomed) - Math.min(...zoomed)).toBeLessThan(
       Math.max(...initial) - Math.min(...initial),

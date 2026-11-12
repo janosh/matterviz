@@ -151,9 +151,8 @@
       on_bar_hover?: (
         data: (HistogramHandlerProps & { event: MouseEvent | FocusEvent }) | null,
       ) => void
-      // Bins overlapping the last Alt+drag rect. Bindable so a host can drive linked views
-      // (or clear it); the chart outlines them. Indices name bins of the current binning, so a
-      // re-bin (pan/zoom, new samples or bin count) empties it.
+      // Bindable: the bins the last Alt+drag rect touched, which the chart outlines. Indices
+      // name bins of the current binning, so a re-bin (pan/zoom, new samples) empties it.
       selected_bins?: { series_idx: number; bin_idx: number }[]
       // Fires on every Alt+drag, including one that selected nothing
       on_select?: (selection: {
@@ -243,29 +242,14 @@
 
   // === Binning ===
   // Pad-independent (no pixel scales) so the legend obstacle field and the count ranges reuse it
-  const count_over = (
-    x_domain: Vec2,
-    x2_domain: Vec2,
-    sorted?: readonly (Float64Array | undefined)[],
-  ) =>
-    compute_histogram_counts(
-      selected_series_entries,
-      {
-        x_domain,
-        x2_domain,
-        x_scale_type: final_x_axis.scale_type,
-        x2_scale_type: final_x2_axis.scale_type,
-        bins,
-      },
-      sorted,
-    )
-  // Each unweighted series' samples in ascending order, sorted on the first pan/zoom frame
-  // (a view that never moves bins once, which a pass over the samples does faster)
-  const sorted_values = $derived(
-    selected_series_entries.map(({ series_data }) =>
-      series_data.weights ? undefined : Float64Array.from(series_data.values).toSorted(),
-    ),
-  )
+  const count_over = (x_domain: Vec2, x2_domain: Vec2) =>
+    compute_histogram_counts(selected_series_entries, {
+      x_domain,
+      x2_domain,
+      x_scale_type: final_x_axis.scale_type,
+      x2_scale_type: final_x2_axis.scale_type,
+      bins,
+    })
   // Every view normalizes by the auto-domain totals, so zooming into a tail keeps its density
   const display_bins = (counted: ReturnType<typeof count_over>) =>
     compute_histogram_bins(counted, normalize, series_color, auto_counts)
@@ -428,15 +412,15 @@
     const { x: coord_x, x2: coord_x_2 } = frame.ranges.current
     if (vec2_equal(coord_x, auto_x_ranges.x) && vec2_equal(coord_x_2, auto_x_ranges.x2))
       return auto_counts
-    return count_over(coord_x, coord_x_2, sorted_values)
+    return count_over(coord_x, coord_x_2)
   })
   let histogram_bins = $derived(display_bins(current_counts))
   // Selected bins are indices into one binning: another one names different bins
   let selected_counts = untrack(() => current_counts)
   $effect.pre(() => {
-    if (current_counts === selected_counts) return
+    if (current_counts !== selected_counts && untrack(() => selected_bins.length))
+      selected_bins = []
     selected_counts = current_counts
-    if (untrack(() => selected_bins.length)) selected_bins = []
   })
 
   // One tab stop for all bins instead of one per bin: a 100-bin histogram would

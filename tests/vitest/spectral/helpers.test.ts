@@ -734,13 +734,8 @@ describe(`normalize_band_structure`, () => {
     expect(once && `unit` in once).toBe(false)
     expect(normalize_band_structure(once)?.bands).toEqual(once?.bands)
     expect(normalize_band_structure(one_qpt({ type: `electronic`, unit: `THz` }))).toBeNull()
-    const electronic = one_qpt({
-      type: `electronic`,
-      unit: `meV`,
-      bands: [[2000]],
-      efermi: 5000,
-    })
-    expect(normalize_band_structure(electronic)).toMatchObject({ bands: [[2]], efermi: 5 })
+    const in_mev = one_qpt({ type: `electronic`, unit: `meV`, bands: [[2000]], efermi: 5000 })
+    expect(normalize_band_structure(in_mev)).toMatchObject({ bands: [[2]], efermi: 5 })
   })
 
   it(`transposes the frequencies_cm layout (q-points × branches, in cm^-1)`, () => {
@@ -1151,24 +1146,13 @@ describe(`shift_to_fermi`, () => {
   it(`shift_bands_to_fermi puts both spin channels at E_F = 0 without mutating the input`, () => {
     const input = make_bs([`Γ`, `X`], {
       efermi: 5,
-      bands: [
-        [3, 4],
-        [6, 7],
-      ],
+      bands: [[3, 6]],
       spin_down_bands: [[5, 5.5]],
     })
-    expect(shift_bands_to_fermi(input)).toEqual({
-      ...input,
-      efermi: 0,
-      bands: [
-        [-2, -1],
-        [1, 2],
-      ],
-      spin_down_bands: [[0, 0.5]],
-    })
-    expect(input.bands[0]).toEqual([3, 4])
-    const { efermi: _efermi, spin_down_bands: _down, ...no_efermi } = input
-    expect(`spin_down_bands` in shift_bands_to_fermi({ ...no_efermi, efermi: 0 })).toBe(false)
+    const shifted = { ...input, efermi: 0, bands: [[-2, 1]], spin_down_bands: [[0, 0.5]] }
+    expect(shift_bands_to_fermi(input)).toEqual(shifted)
+    expect(input.bands).toEqual([[3, 6]])
+    const { efermi: _efermi, ...no_efermi } = input
     expect(() => shift_bands_to_fermi(no_efermi)).toThrow(/no efermi/)
   })
 })

@@ -177,14 +177,6 @@ function symmetry_layer_images(
   return layer_images
 }
 
-// Cyclic layer shifts realized by a symmetry of the oriented bulk that keeps the normal
-// pointing up. Layer idx and layer idx + shift then expose the same surface, so only one
-// of them is a distinct termination.
-const equivalent_layer_shifts = (bulk: OrientedBulk, layers: SlabLayer[]): number[] =>
-  layers.length < 2
-    ? []
-    : [...symmetry_layer_images(bulk, layers, 0, 1)].filter((shift) => shift > 0)
-
 // Whether a slab of whole c repeats cleaved below `layer_idx` has equivalent faces: its
 // bottom layer is `layer_idx` and its top one the layer just below that, so the two faces
 // are related exactly when a normal-flipping symmetry of the bulk maps one onto the other
@@ -210,7 +202,12 @@ export function terminations_of_oriented_bulk(
   bulk: OrientedBulk,
   layers: SlabLayer[],
 ): SlabTermination[] {
-  const shifts = equivalent_layer_shifts(bulk, layers)
+  // Cyclic layer shifts realized by a normal-preserving symmetry: layer idx and layer
+  // idx + shift expose the same surface, so only one of them is a distinct termination
+  const shifts =
+    layers.length < 2
+      ? []
+      : [...symmetry_layer_images(bulk, layers, 0, 1)].filter((shift) => shift > 0)
   const terminations: SlabTermination[] = []
   const claimed = new Set<number>()
   for (const [layer_idx, layer] of layers.entries()) {

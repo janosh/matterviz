@@ -51,7 +51,7 @@ vi.mock(`matterviz`, async () => {
     normalize_dos: spectral_doc,
   }
 })
-vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
+vi.stubGlobal(`SCOPED_APP_CSS`, ``) // vite.config.ts defines it as the scoped app.css
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 const { stop_theme } = vi.hoisted(() => ({ stop_theme: vi.fn() }))
 vi.mock(`matterviz/theme/embedded`, () => ({
@@ -61,6 +61,7 @@ vi.mock(`matterviz/theme/embedded`, () => ({
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
+const matterviz: Record<string, unknown> = await import(`matterviz`)
 // read now: mock call records don't survive into the tests
 const check_blob_workers_calls = [...check_blob_workers.mock.calls]
 
@@ -137,23 +138,7 @@ const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zon
   ternary_phase_diagram xrd rdf_plot`
 const drop_zone_widgets = new Set(drop_zones.split(/\s+/))
 
-test(`every component of the registry shared with the custom elements has a widget spec mounting it`, async () => {
-  const matterviz: Record<string, unknown> = await import(`matterviz`)
-  const mounted = Object.entries(WIDGETS).map(([widget_type, spec]) => [
-    widget_type,
-    spec.component,
-  ])
-  expect(Object.fromEntries(mounted)).toEqual(
-    Object.fromEntries(
-      Object.entries(COMPONENTS).map(([widget_type, path]) => [
-        widget_type,
-        matterviz[component_name(path)],
-      ]),
-    ),
-  )
-})
-
-// The stylesheet the bundle injects into the notebook page (app.css?raw is mocked above)
+// The stylesheet the bundle injects into the notebook page
 test(`scoped_app_css leaves only zero-specificity theme tokens outside the widget scope`, () => {
   const [tokens, scoped, ...more] = scoped_app_css(widget_scope).split(
     `@scope (${widget_scope}) {`,
@@ -180,8 +165,10 @@ test(`scoped_app_css leaves only zero-specificity theme tokens outside the widge
 
 // Each spec's own compute is the oracle; writeback props are covered by the round-trip tests
 test.each(Object.entries(WIDGETS))(
-  `%s seeds, re-drives on every dep change and gets allow_file_drop iff it has a drop zone`,
+  `%s mounts its registry component, seeds, re-drives on every dep change and gets allow_file_drop iff it has a drop zone`,
   (widget_type, spec) => {
+    const path = COMPONENTS[widget_type as keyof typeof COMPONENTS]
+    expect(spec.component).toBe(matterviz[component_name(path)])
     const model = seeded_model(widget_type, spec)
     const stub = run_widget(widget_type, model)
     expect(stub.read().allow_file_drop).toBe(
@@ -253,6 +240,8 @@ describe(`structure wiring`, () => {
 
 describe(`WIDGET_MODEL_KEYS contract`, () => {
   test(`includes drive deps and interaction keys`, () => {
+    // one spec per component of the registry shared with the custom elements
+    expect(new Set(Object.keys(WIDGET_MODEL_KEYS))).toEqual(new Set(Object.keys(COMPONENTS)))
     expect(WIDGET_MODEL_KEYS.structure).toEqual(
       expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
     )
@@ -459,13 +448,7 @@ describe(`writeback wiring`, () => {
     [`neb_plot`, `active_path_key`, ``, `path_a`, `path_b`],
     [`neb_plot`, `active_image_idx`, 0, 3, 1],
     [`eos_plot`, `fits`, [], [{ kind: `vinet`, rmse: 0.01 }], [{ kind: `murnaghan` }]],
-    [
-      `phonon_mode_explorer`,
-      `selection`,
-      null,
-      { qpoint_idx: 1, mode_idx: 2 },
-      { qpoint_idx: 0, mode_idx: 5 },
-    ],
+    [`phonon_mode_explorer`, `selection`, null, { mode_idx: 2 }, { mode_idx: 5 }],
   ] as const)(
     `%s %s round-trips and falls back when cleared`,
     (widget_type, key, default_value, local_value, python_value) => {

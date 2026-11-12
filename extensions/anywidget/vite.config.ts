@@ -42,29 +42,14 @@ export const inline_workers: Plugin = {
   },
 }
 
-// anywidget.ts's `matterviz/app.css?raw` import gets app.css scoped to the widget elements (each
-// carries this class), not the file as is: its bare input/button rules and :root color-scheme
-// would restyle the whole notebook page
+// The class every widget element carries: anywidget.ts injects app.css scoped to it (as is, its
+// bare input/button rules and :root color-scheme would restyle the whole notebook page)
 export const widget_scope = `.matterviz-widget`
-let scoped_app_css_served = false
-const scoped_app_css_plugin: Plugin = {
-  name: `scoped-app-css`,
-  enforce: `pre`,
-  load(identifier) {
-    if (!/[\\/]app\.css\?raw$/.test(identifier)) return null
-    scoped_app_css_served = true
-    return `export default ${JSON.stringify(scoped_app_css(widget_scope))}`
-  },
-  buildEnd() {
-    if (!scoped_app_css_served) this.error(`scoped-app-css: no app.css?raw import to scope`)
-  },
-}
 
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
   inline_workers as unknown,
-  scoped_app_css_plugin as unknown,
   vite_plugin_moyo_wasm_source(`moyo-wasm-cdn`, moyo_wasm_source) as unknown,
   vite_plugin_json_gz() as unknown,
   svelte() as unknown,
@@ -76,6 +61,7 @@ const config = make_config({ fmt: { printWidth: 95 } })
 
 export default defineConfig({
   ...config, // shared lint/fmt/build
+  define: { SCOPED_APP_CSS: JSON.stringify(scoped_app_css(widget_scope)) },
   resolve: {
     // Array form so `three` matches exactly — a string alias prefix-matches and would
     // rewrite three/webgpu, three/tsl and three/examples/* too.

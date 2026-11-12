@@ -70,10 +70,7 @@ describe(`worker code path`, () => {
       // other options on the same input post the options alone: the worker kept the streams
       const options = { max_lag_fraction: 0.3 }
       expect(await compute_vacf_async(input, options)).toEqual(calc_vacf(input, options))
-      expect(stub.posted.map(({ message }) => message.input === undefined)).toEqual([
-        false,
-        true,
-      ])
+      expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
       expect_module_worker(stub.instances, `src/lib/vacf/vacf-worker.ts`)
     },
   )

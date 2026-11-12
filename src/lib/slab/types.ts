@@ -13,10 +13,6 @@ export const SLAB_POSITION_TOLERANCE = 0.01
 // reported layer height can sit from any of its members.
 export const SLAB_LAYER_TOLERANCE = 0.1
 
-// Dipole per surface area (e/Å) along the normal above which a slab counts as polar
-// (pymatgen's Slab.is_polar default)
-export const SLAB_DIPOLE_TOLERANCE = 1e-3
-
 // Defaults, not floors: make_slab accepts any non-negative thickness and vacuum
 export const SLAB_DEFAULT_THICKNESS = 10 // Å
 export const SLAB_DEFAULT_VACUUM = 10 // Å
@@ -110,13 +106,10 @@ export type SlabInfo = {
   normal: Vec3
   termination: SlabTermination
   terminations: SlabTermination[]
-  // Whether the two faces are related by a symmetry that flips the surface normal: an
-  // inversion centre, or a mirror plane or 2-fold axis parallel to the surface
-  // (pymatgen's Slab.is_symmetric)
+  // Whether a symmetry that flips the surface normal relates the two faces
   is_symmetric: boolean
-  // Whether the dipole along the normal per surface area, from the species' oxidation
-  // states, exceeds SLAB_DIPOLE_TOLERANCE (pymatgen's Slab.is_polar). Undefined when no
-  // species carries a non-zero oxidation state: the charges are then unknown, not zero.
+  // Whether the oxidation states give a dipole along the normal above 1e-3 e/Å per surface
+  // area. Undefined when no species carries a non-zero oxidation state (charges unknown).
   is_polar?: boolean
 }
 

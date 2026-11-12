@@ -359,11 +359,8 @@ describe(`cartesian frame`, () => {
     `$name rect zoom moves the view, not the bound axis props, and reset restores the pin`,
     async (chart) => {
       const pinned: Vec2 = [0, 400]
-      const bound = $state<
-        Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig> & {
-          view: Partial<AxisRanges> | undefined
-        }
-      >({
+      type Bound = Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig>
+      const bound = $state<Bound & { view?: Partial<AxisRanges> }>({
         x_axis: { range: pinned },
         x2_axis: { range: pinned },
         y_axis: { range: pinned },
@@ -398,16 +395,10 @@ describe(`cartesian frame`, () => {
         clientX: clip.x + clip.width * frac_x,
         clientY: clip.y + clip.height * frac_y,
       })
-      doc_query(`svg[role="application"]`).dispatchEvent(
-        new PointerEvent(`pointerdown`, position(0.25, 0.25)),
-      )
       const svg = doc_query(`svg[role="application"]`)
-      svg.dispatchEvent(
-        new PointerEvent(`pointermove`, { bubbles: true, ...position(0.75, 0.5) }),
-      )
-      svg.dispatchEvent(
-        new PointerEvent(`pointerup`, { bubbles: true, ...position(0.75, 0.5) }),
-      )
+      svg.dispatchEvent(new PointerEvent(`pointerdown`, position(0.25, 0.25)))
+      svg.dispatchEvent(new PointerEvent(`pointermove`, position(0.75, 0.5)))
+      svg.dispatchEvent(new PointerEvent(`pointerup`, position(0.75, 0.5)))
       await tick()
 
       for (const axis of shown_axes) {
@@ -494,9 +485,7 @@ describe(`cartesian frame`, () => {
       solves.mockClear()
       const axis_before = svg.querySelector(`.x-axis`)?.innerHTML
       for (let step = 1; step <= 5; step++) {
-        svg.dispatchEvent(
-          new PointerEvent(`pointermove`, { bubbles: true, ...pan_event(step) }),
-        )
+        svg.dispatchEvent(new PointerEvent(`pointermove`, pan_event(step)))
         flushSync()
       }
       // it panned, without solving the layout once
@@ -507,7 +496,7 @@ describe(`cartesian frame`, () => {
       flushSync()
       expect(solves.mock.calls.length).toBeGreaterThan(0)
       solves.mockClear()
-      svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true, ...pan_event(5, 0) }))
+      svg.dispatchEvent(new PointerEvent(`pointerup`, pan_event(5, 0)))
       flushSync()
       expect(solves.mock.calls.length).toBeGreaterThan(0)
     },

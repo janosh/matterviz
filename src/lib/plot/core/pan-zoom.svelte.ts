@@ -33,14 +33,7 @@ const WHEEL_PAN_IDLE_MS = 150
 // Zoom per wheel px of a ctrl+wheel (a trackpad pinch reports a few px per frame)
 const WHEEL_ZOOM_RATE = 0.01
 const KEY_ZOOM_FACTOR = 1.25
-// Fraction of the plot an arrow key pans by, as [x, y] directions of the view
-const KEY_PAN_FRACTION = 0.1
-const KEY_PAN_DIRECTIONS: Record<string, Vec2> = {
-  ArrowLeft: [-1, 0],
-  ArrowRight: [1, 0],
-  ArrowUp: [0, 1],
-  ArrowDown: [0, -1],
-}
+const KEY_PAN_STEP = 0.1 // of the plot, per arrow key
 
 interface PanZoomOptions {
   // ALL reactive inputs are getter thunks - read fresh per event, never captured values
@@ -70,8 +63,9 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   readonly is_panning: boolean
   // `grabbing`/`grab` during and before a pan; null when no gesture claims the cursor
   readonly cursor: string | null
-  // `none` while touch gestures drive the plot, else the page keeps its own scroll and zoom
-  readonly touch_action: `none` | `auto`
+  // `pan-y` while touch gestures drive the plot: a vertical swipe still scrolls the page past
+  // it, sideways drags and pinches go to the plot. Else the page keeps its own scroll and zoom.
+  readonly touch_action: `pan-y` | `auto`
   set_focused: (focused: boolean) => void
   on_pointer_down: (evt: PointerEvent) => void
   on_pointer_move: (evt: PointerEvent) => void
@@ -92,18 +86,18 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   // Pan state
   let is_focused = $state(false)
   let shift_held = $state(false)
-  let pan_drag_state = $state<(AxisRanges & { pointer_id: number; start: Point2D }) | null>(
-    null,
-  )
+  let pan_drag_state = $state<(AxisRanges & { pointer_id: number }) | null>(null)
+  // Where the pointer of a rect or pan drag went down (client px), and whether it has
+  // strayed far enough since to be a drag rather than a click
+  let press: Vec2 = [0, 0]
+  let dragged = false
   // Touch contacts inside the plot by pointer id (client px), and the two-finger gesture
   // they form once a second one lands
   const touches = new Map<number, Point2D>()
   let pinch_state = $state<(AxisRanges & { start_touches: Point2D[] }) | null>(null)
 
-  const touch_enabled = () => {
-    const pan_cfg = opts.pan()
-    return pan_cfg?.enabled !== false && pan_cfg?.touch_enabled !== false
-  }
+  const touch_enabled = () =>
+    opts.pan()?.enabled !== false && opts.pan()?.touch_enabled !== false
 
   // Transform the whole batch before writing: a rejected log range must leave every
   // axis unchanged
@@ -120,21 +114,13 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     })
     ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
   }
-  // `anchor`: the fixed point as a fraction of the plot from its left and bottom edges
-  const zoom_all_axes = (
-    init: AxisRanges,
-    factor: number,
-    anchor: Point2D = { x: 0.5, y: 0.5 },
-  ) => {
+  // `anchor`: the fixed point as fractions of the plot from its left and bottom edges
+  const zoom_all_axes = (init: AxisRanges, factor: number, anchor: Vec2 = [0.5, 0.5]) => {
     const axes = opts.axes()
-    const ranges = axes.map((axis) =>
-      zoom_range_by_factor(
-        init[axis],
-        factor,
-        opts.scale_type(axis),
-        axis === `x` || axis === `x2` ? anchor.x : anchor.y,
-      ),
-    )
+    const ranges = axes.map((axis) => {
+      const fixed = anchor[axis.startsWith(`x`) ? 0 : 1]
+      return zoom_range_by_factor(init[axis], factor, opts.scale_type(axis), fixed)
+    })
     ranges.forEach((range, idx) => opts.set_range(axes[idx], range))
   }
 
@@ -166,26 +152,17 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     const hit = plot_coords(evt)
     if (!hit) return
 
-    if (touch) {
-      touches.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
-      // A second finger turns the first one's rect drag into a pinch/pan; further ones are ignored
-      if (touches.size > 2) return
-      if (touches.size === 2) {
-        drag_state = null
-        pinch_state = {
-          start_touches: [...touches.values()],
-          ...snapshot_ranges(opts.ranges()),
-        }
-        return
-      }
+    if (touch) touches.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+    // A second finger turns the first one's rect drag into a pinch/pan; further ones are ignored
+    if (touches.size === 2) {
+      drag_state = null
+      pinch_state = { start_touches: [...touches.values()], ...snapshot_ranges(opts.ranges()) }
     }
+    if (touches.size > 1) return
+    press = [evt.clientX, evt.clientY]
     // Shift+drag pans (when enabled), Alt+drag selects, plain drag draws the zoom rect
     if (opts.pan()?.enabled !== false && evt.shiftKey) {
-      pan_drag_state = {
-        pointer_id: evt.pointerId,
-        start: { x: evt.clientX, y: evt.clientY },
-        ...snapshot_ranges(opts.ranges()),
-      }
+      pan_drag_state = { pointer_id: evt.pointerId, ...snapshot_ranges(opts.ranges()) }
       return
     }
     // Cache bounds at drag start so pointer moves can compute relative coords
@@ -198,15 +175,6 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     }
   }
 
-  // Captured once a press turns into a drag, so it keeps reporting outside the SVG. Not at
-  // the press: a click is dispatched to the capturing element instead of the mark under it.
-  // Only a trusted event has a live pointer to capture (a scripted one's id throws).
-  const capture_drag = (evt: PointerEvent, press: Point2D) => {
-    const svg = opts.svg()
-    if (!svg || !evt.isTrusted || svg.hasPointerCapture(evt.pointerId)) return
-    if (is_drag([press.x, press.y], evt)) svg.setPointerCapture(evt.pointerId)
-  }
-
   const on_pointer_move = (evt: PointerEvent) => {
     const { pointerId: pointer_id } = evt
     if (touches.has(pointer_id)) {
@@ -217,19 +185,22 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     // A release outside the SVG before the drag was captured never reaches on_pointer_up,
     // leaving the plot panning (or a rect armed) on bare moves
     if (!(evt.buttons & 1)) return end_gestures()
+    // Captured once the press turns into a drag, so it keeps reporting outside the SVG. Not at
+    // the press: a click is dispatched to the capturing element instead of the mark under it.
+    // Only a trusted event has a live pointer to capture (a scripted one's id throws).
+    dragged ||= is_drag(press, evt)
+    if (dragged && evt.isTrusted) opts.svg()?.setPointerCapture(pointer_id)
     if (pan_drag_state) {
-      capture_drag(evt, pan_drag_state.start)
       // drag direction inverted on x for natural pan feel
       const sensitivity = opts.pan()?.drag_sensitivity ?? 1
       return pan_axes(
         pan_drag_state,
-        -(evt.clientX - pan_drag_state.start.x) * sensitivity,
-        (evt.clientY - pan_drag_state.start.y) * sensitivity,
+        -(evt.clientX - press[0]) * sensitivity,
+        (evt.clientY - press[1]) * sensitivity,
       )
     }
     if (!drag_state) return
     const { left, top, width, height } = drag_state.bounds
-    capture_drag(evt, { x: drag_state.start.x + left, y: drag_state.start.y + top })
     const coords = { x: evt.clientX - left, y: evt.clientY - top }
     drag_state.current = coords
     opts.on_drag_move?.(coords, point_in_rect(coords, { x: 0, y: 0, width, height }))
@@ -260,26 +231,26 @@ export function create_pan_zoom(opts: PanZoomOptions): {
     drag_state = null
     pan_drag_state = null
     pinch_state = null
+    dragged = false
   }
 
   const on_pointer_up = (evt: PointerEvent) => {
-    touches.delete(evt.pointerId)
+    // The click a drag ends with is no click on the plot
+    if (dragged) {
+      suppress_click = true
+      setTimeout(() => (suppress_click = false), 0)
+    }
     if (drag_state?.pointer_id === evt.pointerId) {
       const { start, current, mode } = drag_state
+      const x_span = range_bounds([start.x, current.x])
+      const y_span = range_bounds([start.y, current.y])
       // Ignore minuscule drag rects (e.g. accidental clicks)
-      if (Math.abs(start.x - current.x) > 5 && Math.abs(start.y - current.y) > 5) {
-        suppress_click = true
+      if (x_span[1] - x_span[0] > 5 && y_span[1] - y_span[0] > 5) {
         if (mode === `zoom`) opts.on_rect_zoom(start, current)
-        else {
-          opts.on_rect_select?.({
-            x: range_bounds([start.x, current.x]),
-            y: range_bounds([start.y, current.y]),
-          })
-        }
-        setTimeout(() => (suppress_click = false), 0)
+        else opts.on_rect_select?.({ x: x_span, y: y_span })
       }
     }
-    end_gestures()
+    on_pointer_cancel(evt)
   }
 
   // The browser took the pointer (a native gesture, a dialog): abandon rather than finish
@@ -294,30 +265,20 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   const on_wheel = (evt: WheelEvent) => {
     const pan_cfg = opts.pan()
     if (pan_cfg?.enabled === false) return
-    const bounds = opts.plot_bounds()
+    const { x: left, y: top, width, height } = opts.plot_bounds()
     // scale line (Firefox, deltaMode 1) and page (2) deltas to pixels
     const [x_unit, y_unit] =
-      evt.deltaMode === 1
-        ? [16, 16]
-        : evt.deltaMode === 2
-          ? [bounds.width, bounds.height]
-          : [1, 1]
+      evt.deltaMode === 1 ? [16, 16] : evt.deltaMode === 2 ? [width, height] : [1, 1]
     const sensitivity = pan_cfg?.wheel_sensitivity ?? 1
-    if (evt.ctrlKey) {
-      const hit = plot_coords(evt)
-      if (!hit) return
-      evt.preventDefault()
-      mark_wheel_panning()
-      const factor = Math.exp(-evt.deltaY * y_unit * sensitivity * WHEEL_ZOOM_RATE)
-      return zoom_all_axes(opts.ranges(), clamp(factor, 0.1, 10), {
-        x: (hit.coords.x - bounds.x) / bounds.width,
-        y: 1 - (hit.coords.y - bounds.y) / bounds.height,
-      })
-    }
-    if (!is_focused || !shift_held) return
-
+    const at = evt.ctrlKey && plot_coords(evt)?.coords
+    if (!at && (evt.ctrlKey || !is_focused || !shift_held)) return
     evt.preventDefault()
     mark_wheel_panning()
+    if (at) {
+      const factor = Math.exp(-evt.deltaY * y_unit * sensitivity * WHEEL_ZOOM_RATE)
+      const anchor: Vec2 = [(at.x - left) / width, 1 - (at.y - top) / height]
+      return zoom_all_axes(opts.ranges(), clamp(factor, 0.1, 10), anchor)
+    }
     // Pan along the dominant wheel direction
     const direction = Math.abs(evt.deltaX) > Math.abs(evt.deltaY) ? `x` : `y`
     pan_axes(
@@ -334,21 +295,17 @@ export function create_pan_zoom(opts: PanZoomOptions): {
   const on_key_down = (evt: KeyboardEvent) => {
     if (evt.target !== evt.currentTarget || evt.ctrlKey || evt.metaKey || evt.altKey) return
     const { key } = evt
-    const enabled = opts.pan()?.enabled !== false
-    const pan_direction = KEY_PAN_DIRECTIONS[key]
+    // 1, -1 or 0 as the key is `plus`, `minus` or neither
+    const step = (plus: string, minus: string) => Number(key === plus) - Number(key === minus)
+    const zoom = step(`+`, `-`) || step(`=`, `_`)
+    const [pan_x, pan_y] = [step(`ArrowRight`, `ArrowLeft`), step(`ArrowUp`, `ArrowDown`)]
     if (key === `Enter` || key === ` `) opts.on_reset()
-    else if (enabled && (key === `+` || key === `=`))
-      zoom_all_axes(opts.ranges(), KEY_ZOOM_FACTOR)
-    else if (enabled && (key === `-` || key === `_`))
-      zoom_all_axes(opts.ranges(), 1 / KEY_ZOOM_FACTOR)
-    else if (enabled && pan_direction) {
+    else if (opts.pan()?.enabled === false || !(zoom || pan_x || pan_y)) return
+    else if (zoom) zoom_all_axes(opts.ranges(), KEY_ZOOM_FACTOR ** zoom)
+    else {
       const { width, height } = opts.plot_bounds()
-      pan_axes(
-        opts.ranges(),
-        pan_direction[0] * width * KEY_PAN_FRACTION,
-        pan_direction[1] * height * KEY_PAN_FRACTION,
-      )
-    } else return
+      pan_axes(opts.ranges(), pan_x * width * KEY_PAN_STEP, pan_y * height * KEY_PAN_STEP)
+    }
     evt.preventDefault()
   }
 
@@ -378,7 +335,7 @@ export function create_pan_zoom(opts: PanZoomOptions): {
       return shift_held && opts.pan()?.enabled !== false ? `grab` : null
     },
     get touch_action() {
-      return touch_enabled() ? `none` : `auto`
+      return touch_enabled() ? `pan-y` : `auto`
     },
     set_focused: (focused: boolean) => {
       is_focused = focused

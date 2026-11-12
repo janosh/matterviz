@@ -1,3 +1,4 @@
+import { element_by_symbol } from '#lib/element/data.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { calc_msd, fit_einstein_diffusion, fit_msd_curves } from '#lib/msd/calc-msd.js'
 import { compute_msd_async } from '#lib/msd/async-compute.svelte.js'
@@ -306,7 +307,6 @@ describe(`per-element decomposition`, () => {
 
 describe(`centre-of-mass drift removal`, () => {
   const elements = [`Li`, `O`, `O`, `Si`] as ElementSymbol[]
-  const masses = [6.94, 15.999, 15.999, 28.085] // only their ratios matter below
   const rng = make_rng(7)
   const sites = elements.map(() => [rng(), rng(), rng()].map((value) => 4 * value))
   const drift = [0.2, -0.05, 0.11]
@@ -314,91 +314,64 @@ describe(`centre-of-mass drift removal`, () => {
   const rigid_frames = Array.from({ length: 60 }, (_unused, frame_idx) =>
     sites.map((site) => site.map((value, axis) => value + drift[axis] * frame_idx)),
   )
-  const box = cubic_matrix(5)
-  const wrapped = (frames: number[][][]) =>
-    frames.map((frame) => frame.map((xyz) => xyz.map((value) => ((value % 5) + 5) % 5)))
+  const removed_msd = (frames: number[][][], options = {}) =>
+    calc_msd(build_positions(frames, { elements, ...options }), { remove_com_drift: true })
 
   it.each([
-    [`free`, build_positions(rigid_frames, { elements })],
+    [`free`, rigid_frames, {}],
     // the drift carries every atom through the box several times
     [
       `wrapped periodic`,
-      build_positions(wrapped(rigid_frames), {
-        elements,
-        lattice: box,
-        pbc: [true, true, true],
-      }),
+      rigid_frames.map((frame) =>
+        frame.map((xyz) => xyz.map((value) => ((value % 5) + 5) % 5)),
+      ),
+      { lattice: cubic_matrix(5), pbc: [true, true, true] as Pbc },
     ],
-  ])(`a rigidly translating %s system has no MSD once removed`, (_label, positions) => {
-    const kept = calc_msd(positions)
-    const drift_sq = drift.reduce((total, value) => total + value * value, 0)
-    expect(kept.com_drift_removed).toBe(false)
-    // off by default: the drift reads as ballistic motion of every curve
-    for (const { msd } of kept.curves) {
-      expect(
-        max_rel_error(
-          msd,
-          kept.lags.map((lag) => drift_sq * lag * lag),
-        ),
-      ).toBeLessThan(1e-10)
-    }
-    const removed = calc_msd(positions, { remove_com_drift: true })
-    expect(removed.com_drift_removed).toBe(true)
+  ])(`a rigidly translating %s system has no MSD once removed`, (_label, frames, options) => {
+    // off by default: the drift then reads as ballistic motion, 0.055 A^2 at lag 1
+    const kept = calc_msd(build_positions(frames, { elements, ...options }))
+    expect(kept.curves[0].msd[0]).toBeCloseTo(
+      drift[0] ** 2 + drift[1] ** 2 + drift[2] ** 2,
+      12,
+    )
+    const removed = removed_msd(frames, options)
+    expect([kept.com_drift_removed, removed.com_drift_removed]).toEqual([false, true])
     expect(removed.curves.map(({ label }) => label)).toEqual([`Total`, `Li`, `O`, `Si`])
     // Coordinates reach 0.2 * 59 + 4 = 16 A, so each drift-free coordinate is off by a few
     // ulp(16) = 3.6e-15 A and its squared displacement by ~1e-28 A^2; 1e-24 leaves four
     // decades of slack and is 22 below the 0.055 A^2 the drift contributes at lag 1
-    for (const { msd } of removed.curves) {
-      expect(Math.max(...msd)).toBeLessThan(1e-24)
-    }
+    for (const { msd } of removed.curves) expect(Math.max(...msd)).toBeLessThan(1e-24)
   })
 
-  it(`leaves motion relative to the centre of mass, whatever the drift`, () => {
-    const walk_rng = make_rng(11)
-    const n_frames = 80
-    const internal = Array.from({ length: n_frames }, () =>
-      sites.map((site) => site.map((value) => value + 0.3 * (walk_rng() - 0.5))),
+  it(`leaves motion relative to the mass-weighted centre, whatever the drift`, () => {
+    // Li and Si recoil in inverse proportion to their masses: the centre of mass rests while
+    // the geometric centre drifts, so an unweighted centre would change Li's MSD by 27%
+    const [li_mass, si_mass] = [`Li`, `Si`].map(
+      (symbol) => element_by_symbol.get(symbol as ElementSymbol)?.atomic_mass ?? NaN,
     )
+    const steps = [si_mass, 0, 0, -li_mass]
+    const recoil = Array.from({ length: 80 }, (_unused, frame_idx) =>
+      sites.map(([x_coord, ...rest], atom_idx) => [
+        x_coord + 0.01 * steps[atom_idx] * frame_idx,
+        ...rest,
+      ]),
+    )
+    const walk_rng = make_rng(11)
     const offset = [0, 0, 0]
-    const drifting = internal.map((frame) => {
+    const drifting = recoil.map((frame) => {
       for (const axis of [0, 1, 2]) offset[axis] += walk_rng() - 0.3 // a biased random walk
       const shift = [...offset]
       return frame.map((xyz) => xyz.map((value, axis) => value + shift[axis]))
     })
-    const options = { remove_com_drift: true }
-    const reference = calc_msd(build_positions(internal, { elements }), options)
-    const result = calc_msd(build_positions(drifting, { elements }), options)
-    // the walk reaches ~40 A against 0.3 A of internal motion: its ulp (7e-15 A) over the
-    // ~0.1 A displacements bounds the relative error near 1e-13
-    for (const [curve_idx, { msd }] of result.curves.entries()) {
-      expect(max_rel_error(msd, reference.curves[curve_idx].msd)).toBeLessThan(1e-11)
-    }
-    expect(Math.min(...reference.curves[0].msd)).toBeGreaterThan(1e-3)
-  })
-
-  it(`weights the centre by atomic mass`, () => {
-    // Li and Si recoil in inverse proportion to their masses: the centre of mass rests while
-    // the geometric centre drifts, so only an unweighted centre would change the curves
-    const [li_mass, , , si_mass] = masses
-    const frames = Array.from({ length: 40 }, (_unused, frame_idx) =>
-      sites.map((site, atom_idx) => {
-        const step = atom_idx === 0 ? si_mass : atom_idx === 3 ? -li_mass : 0
-        return [site[0] + 0.01 * step * frame_idx, site[1], site[2]]
-      }),
+    const reference = calc_msd(build_positions(recoil, { elements })) // nothing to remove
+    const result = removed_msd(drifting)
+    // O stays put, so its curve has no scale to compare against
+    const errors = [0, 1, 3].map((curve_idx) =>
+      max_rel_error(result.curves[curve_idx].msd, reference.curves[curve_idx].msd),
     )
-    const positions = build_positions(frames, { elements })
-    const [kept, removed] = [
-      calc_msd(positions),
-      calc_msd(positions, { remove_com_drift: true }),
-    ]
-    // tabulated masses differ from the rounded ones above by < 1e-3 relative, which moves the
-    // centre by that fraction of the motion; a geometric centre would change Li's MSD by 27%
-    // (O stays put, so its curve has no scale to compare against)
-    for (const [curve_idx, { label, msd }] of removed.curves.entries()) {
-      if (label === `O`) continue
-      expect(max_rel_error(msd, kept.curves[curve_idx].msd)).toBeLessThan(5e-3)
-    }
-    expect(removed.curves.map(({ label }) => label)).toEqual([`Total`, `Li`, `O`, `Si`])
+    // the walk reaches ~40 A, whose ulp (7e-15 A) over Si's 0.07 A steps bounds the relative
+    // error near 1e-13 per displacement (measured 5.5e-13 at worst)
+    expect(Math.max(...errors)).toBeLessThan(1e-11)
   })
 
   it(`names an atom without a standard mass`, () => {
@@ -406,8 +379,7 @@ describe(`centre-of-mass drift removal`, () => {
       elements: [`Li`, `O`, `Xx` as ElementSymbol, `Si`],
     })
     expect(() => calc_msd(positions, { remove_com_drift: true })).toThrow(
-      `calc_msd: remove_com_drift needs a standard atomic mass for every atom, found none ` +
-        `for atom index 2 (Xx)`,
+      `calc_msd: remove_com_drift found no atomic mass for atom index 2 (Xx)`,
     )
     expect(calc_msd(positions).curves).toHaveLength(5) // only the removal needs masses
   })

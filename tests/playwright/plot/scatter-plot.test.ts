@@ -935,6 +935,20 @@ test.describe(`ScatterPlot Component Tests`, () => {
         .toBeGreaterThan(0)
     })
 
+    // A touch is captured by the mark it lands on. The drag moving that capture to the SVG
+    // fires lostpointercapture on the mark, which must not abandon the gesture.
+    await test.step(`touch drag starting on a marker draws the zoom rect`, async () => {
+      const box = await require_bbox(plot.locator(`path.marker`).first(), `marker`)
+      const cdp = await page.context().newCDPSession(page)
+      for (const offset of [0, 10, 20, 30]) {
+        const [x, y] = [box.x + box.width / 2 + offset, box.y + box.height / 2 + offset]
+        const type = offset ? `touchMove` : `touchStart`
+        await cdp.send(`Input.dispatchTouchEvent`, { type, touchPoints: [{ x, y }] })
+      }
+      await expect(plot.locator(`rect.zoom-rect`)).toBeVisible()
+      await cdp.send(`Input.dispatchTouchEvent`, { type: `touchEnd`, touchPoints: [] })
+    })
+
     expect(page_errors).toHaveLength(0)
     expect(console_errors).toHaveLength(0)
   })

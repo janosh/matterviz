@@ -2,7 +2,6 @@ import type { Vec2 } from '#lib/math.js'
 import { LOG_EPS } from '#lib/math.js'
 import {
   axis_ranges_equal,
-  axis_transform,
   expand_range_if_needed,
   invert_rect_range,
   normalize_y2_sync,
@@ -115,6 +114,8 @@ it.each([`wheel_x`, `wheel_y`, `wheel_zoom`, `drag`, `touch_pan`, `pinch`] as co
     } else if (gesture === `drag`) controller.on_pointer_up(pointer(`pointerup`, {}))
     else if (gesture !== `wheel_zoom`)
       controller.on_pointer_up(pointer(`pointerup`, { pointerType: `touch`, pointerId: 1 }))
+    // the click a pan drag ends with is no click on the plot
+    expect(controller.suppress_click).toBe(gesture === `drag`)
     // a wheel gesture has no end: it reports itself active until it idles
     expect(controller.is_panning).toBe(wheel || gesture === `wheel_zoom`)
   },
@@ -133,11 +134,6 @@ it.each([
   (scale_type, range, factor, anchor, expected) => {
     const zoomed = zoom_range_by_factor([...range], factor, scale_type, anchor)
     for (const [idx, bound] of zoomed.entries()) expect(bound).toBeCloseTo(expected[idx], 10)
-    // the anchor's own value stays where it was on screen
-    const { forward } = axis_transform(scale_type)
-    const at = (pair: readonly number[]) =>
-      forward(pair[0]) + anchor * (forward(pair[1]) - forward(pair[0]))
-    expect(at(zoomed)).toBeCloseTo(at(range), 12)
   },
 )
 

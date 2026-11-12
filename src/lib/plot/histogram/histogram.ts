@@ -204,37 +204,6 @@ export function bin_values(
   return { edges, counts }
 }
 
-// bin_values over samples sorted ascending (`Float64Array.from(values).toSorted()`, which puts
-// NaN last): each bin's count is the distance between two bisections, so a pan/zoom frame
-// costs O(bins log n) rather than a pass over every sample. Counts equal bin_values' own.
-export function bin_sorted_values(
-  sorted: Float64Array,
-  domain: Vec2,
-  n_bins: number,
-  scale_type: ScaleType = `linear`,
-): { edges: Float64Array; counts: Uint32Array } {
-  const { hi: upper, edges } = bin_geometry(domain, n_bins, scale_type)
-  const counts = new Uint32Array(edges.length - 1)
-  // First index holding a value >= edge (> edge when `inclusive`: the upper bound is counted)
-  const bisect = (edge: number, inclusive: boolean): number => {
-    let [low, high] = [0, sorted.length]
-    while (low < high) {
-      const mid = (low + high) >>> 1
-      if (inclusive ? sorted[mid] <= edge : sorted[mid] < edge) low = mid + 1
-      else high = mid
-    }
-    return low
-  }
-  let start = bisect(edges[0], false)
-  for (let idx = 0; idx < counts.length; idx++) {
-    const last = idx === counts.length - 1
-    const end = Math.max(start, bisect(last ? upper : edges[idx + 1], last))
-    counts[idx] = end - start
-    start = end
-  }
-  return { edges, counts }
-}
-
 // `bar.color` fills only a lone series without its own color (shared with the controls'
 // fill picker)
 export const uses_bar_color = (series: readonly Pick<HistogramSeries, `color`>[]): boolean =>
@@ -282,21 +251,19 @@ interface HistogramBinConfig {
 }
 
 // Raw counts depend only on samples and the bin geometry, not normalization or styling.
-// `sorted` (aligned with `entries`) holds each unweighted series' samples in ascending order,
-// which bin by bisection (see bin_sorted_values); weighted sums keep the pass in input order.
 export function compute_histogram_counts(
   entries: readonly { series_data: HistogramSeries; series_idx: number }[],
   config: HistogramBinConfig,
-  sorted?: readonly (Float64Array | undefined)[],
 ) {
-  return entries.map(({ series_data, series_idx }, entry_idx) => {
+  return entries.map(({ series_data, series_idx }) => {
     const use_x2 = series_data.x_axis === `x2`
-    const domain = use_x2 ? config.x2_domain : config.x_domain
-    const scale_type = use_x2 ? config.x2_scale_type : config.x_scale_type
-    const samples = sorted?.[entry_idx]
-    const { edges, counts } = samples
-      ? bin_sorted_values(samples, domain, config.bins, scale_type)
-      : bin_values(series_data.values, domain, config.bins, scale_type, series_data.weights)
+    const { edges, counts } = bin_values(
+      series_data.values,
+      use_x2 ? config.x2_domain : config.x_domain,
+      config.bins,
+      use_x2 ? config.x2_scale_type : config.x_scale_type,
+      series_data.weights,
+    )
     return { series_data, series_idx, edges, counts }
   })
 }

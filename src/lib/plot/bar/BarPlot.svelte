@@ -183,8 +183,7 @@
           | (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
           | null,
       ) => void
-      // Bars overlapping the last Alt+drag rect. Bindable so a host can drive linked views
-      // (or clear it); the chart outlines them.
+      // Bindable: the bars the last Alt+drag rect touched, which the chart outlines
       selected_bars?: { series_idx: number; bar_idx: number }[]
       // Fires on every Alt+drag, including one that selected nothing
       on_select?: (selection: { bars: BarHandlerProps<Metadata>[]; rect: PixelRect }) => void

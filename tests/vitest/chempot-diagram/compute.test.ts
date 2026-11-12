@@ -941,10 +941,6 @@ describe(`dedup_points`, () => {
     expect(result.orig_indices).toEqual(indices)
     expect(result.unique).toEqual(indices.map((idx) => pts[idx]))
   })
-
-  test.each([0, -1e-6, NaN])(`rejects tolerance %s`, (tol) => {
-    expect(() => dedup_points([[0, 0]], tol)).toThrow(`positive tolerance, got ${tol}`)
-  })
 })
 
 describe(`fit_plane`, () => {

@@ -97,21 +97,18 @@ export function fit_einstein_diffusion(
   }
 }
 
-// Unwrapped coordinates relative to each frame's centre of mass, as a new buffer (the input
-// may be the stream's own positions or its cached unwrap). A thermostat or an unconstrained
-// run lets the whole cell translate, which every atom's MSD would otherwise count as
-// diffusion. Mass-weighted with standard atomic masses: a position stream carries element
-// symbols only, not the masses a run may record.
+// Coordinates relative to each frame's centre of mass, as a new buffer (the input may be the
+// stream's own positions or its cached unwrap). Weighted by standard atomic masses: a
+// position stream carries element symbols only, not the masses a run may record.
 function without_com_drift(
   coords: Float64Array,
   { n_frames, n_atoms, elements }: TrajectoryPositionStream,
 ): Float64Array {
-  const masses = Float64Array.from(elements, (element, atom_idx) => {
+  const masses = elements.map((element, atom_idx) => {
     const mass = element_by_symbol.get(element)?.atomic_mass
-    if (mass && mass > 0) return mass
+    if (mass) return mass
     throw new Error(
-      `calc_msd: remove_com_drift needs a standard atomic mass for every atom, found none ` +
-        `for atom index ${atom_idx} (${element})`,
+      `calc_msd: remove_com_drift found no atomic mass for atom index ${atom_idx} (${element})`,
     )
   })
   const total_mass = masses.reduce((total, mass) => total + mass, 0)

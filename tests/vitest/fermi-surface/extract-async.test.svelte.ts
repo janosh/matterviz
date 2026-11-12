@@ -75,7 +75,9 @@ test(`worker extraction matches the main thread, sends each grid once, caches re
   await extract_fermi_surface_async(grid, { mu: 0, interpolation_factor: 0 })
   await extract_fermi_surface_async(load_cu(), { mu: 0, interpolation_factor: 0 })
   expect(sent_grids()).toEqual([true, false, false, true])
-  expect(new Set(stub.posted.slice(0, 3).map(({ message }) => message.token)).size).toBe(1)
+  expect(
+    new Set(stub.posted.slice(0, 3).map(({ message }) => message.held?.at(-1))).size,
+  ).toBe(1)
   // the auto factor resolves to the same grid whether requested as 0 or as its value
   expect(warm(grid, [0, 48 / 25, 3])).toEqual([true, true, false])
   // the worker keeps two upsampled grids per band, oldest out: a third factor evicts the auto one

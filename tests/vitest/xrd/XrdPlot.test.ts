@@ -99,13 +99,7 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
     const main = await show(`xrd`)
     expect(analyze).toHaveBeenCalledOnce()
     await vi.waitFor(() => expect(compute).toHaveBeenCalledOnce())
-    expect(compute).toHaveBeenCalledWith(
-      expect.anything(),
-      { symmetry_rotations },
-      { signal: undefined },
-    )
-    // each structure's point group is analyzed once, however many patterns it gets
-    expect(analyze).toHaveBeenCalledOnce()
+    expect(compute.mock.calls[0][1]).toEqual({ symmetry_rotations })
     await show(`Overlay multiple structures`)
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(4))
     const buttons = document.querySelectorAll<HTMLButtonElement>(
@@ -123,7 +117,7 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
     const analyses = analyze.mock.calls.length
     await show(`X-ray vs neutron vs electron`)
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(7))
-    // both probes of the overlay reuse the selected structure's rotations
+    // a structure's point group is analyzed once: both probes reuse the selected one's
     expect(analyze).toHaveBeenCalledTimes(analyses)
     expect(compute.mock.calls.slice(5).map(([, options]) => options)).toEqual(
       [`xray`, `neutron`].map((radiation) => ({
@@ -139,19 +133,17 @@ test(`XRD demos defer calculation, reuse cached patterns and display calculation
     )
     expect(saed).toHaveBeenCalledOnce()
     // every edit recomputes at once (no debounce): the worker keeps the page responsive
-    expect(saed.mock.calls[0][1]?.zone_axis).toEqual([0, 0, 1])
     const preset = [...document.querySelectorAll(`button`)].find(
       (button) => button.textContent === `[111]`,
     )
     preset?.click()
     await tick()
-    expect(saed).toHaveBeenCalledTimes(2)
-    expect(saed.mock.calls[1][1]?.zone_axis).toEqual([1, 1, 1])
-    // the superseded request was aborted
-    expect(saed.mock.calls.map(([, , request]) => request?.signal?.aborted)).toEqual([
-      true,
-      false,
+    expect(saed.mock.calls.map(([, options]) => options?.zone_axis?.join(``))).toEqual([
+      `001`,
+      `111`,
     ])
+    const aborted = saed.mock.calls.map(([, , request]) => request?.signal?.aborted)
+    expect(aborted).toEqual([true, false]) // the superseded request
   } finally {
     await unmount(component)
     compute.mockRestore()

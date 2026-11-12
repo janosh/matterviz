@@ -27,7 +27,6 @@
   import { html_to_text } from '#lib/utils.js'
   import type { Snippet } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
-  import { on } from 'svelte/events'
   import { viewer_keys } from '#lib/shortcuts.js'
 
   // Public CSS knobs every Cartesian chart exposes (`--histogram-bg`, `--barplot-bg`, …),
@@ -247,7 +246,6 @@
       onpointermove={pan_zoom.on_pointer_move}
       onpointerup={pan_zoom.on_pointer_up}
       onpointercancel={pan_zoom.on_pointer_cancel}
-      onlostpointercapture={pan_zoom.on_pointer_cancel}
       onmousedown={pan_zoom.on_mouse_down}
       ondblclick={pan_zoom.reset_view}
       onkeydown={(event) =>
@@ -262,8 +260,7 @@
         if (event.detail <= 1 && !suppress_click && !drag_start && !is_panning)
           on_mouse_click?.(event)
       }}
-      {@attach (svg: SVGSVGElement) =>
-        on(svg, `wheel`, pan_zoom.on_wheel as EventListener, { passive: false })}
+      onwheel={pan_zoom.on_wheel}
       style:cursor={pan_zoom.cursor ?? idle_cursor}
       style:touch-action={pan_zoom.touch_action}
     >

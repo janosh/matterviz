@@ -1,9 +1,8 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // compute_xrd_pattern and compute_saed_pattern via persistent Web Workers (main-thread
-// fallback without Worker), so a large cell or a wide reciprocal sphere never blocks input;
-// see create_worker_client for `.cancel` / `.release` semantics. Everything that needs the
-// main thread's symmetry worker lives here too, which keeps calc-xrd.ts free of Svelte for
-// the worker bundles.
+// fallback without Worker); see create_worker_client for `.cancel` / `.release` semantics.
+// What needs the main thread's symmetry worker lives here too, keeping calc-xrd.ts free of
+// Svelte for the worker bundles.
 import type { Matrix3x3 } from '#lib/math.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import type { AnyStructure, Crystal } from '#lib/structure/index.js'
@@ -14,8 +13,7 @@ import { compute_xrd_pattern } from './calc-xrd'
 import type { SaedOptions, SaedPatternData, XrdOptions, XrdPattern } from './index'
 import { compute_saed_pattern } from './saed'
 
-// The lattice plus each site's species and coordinates, all the diffraction kernels read.
-// Site properties stay behind: they can hold values structured clone rejects.
+// All the diffraction kernels read; site properties can hold values structured clone rejects
 const plain_crystal = ({ lattice, sites }: Crystal): Crystal => ({
   lattice: $state.snapshot(lattice),
   sites: sites.map(({ species, abc, xyz, label }) => ({

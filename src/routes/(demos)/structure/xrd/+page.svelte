@@ -12,7 +12,6 @@
   import { memo_by_identity, value_key } from '#lib/utils.js'
   import type {
     SaedOptions,
-    SaedPatternData,
     SaedSpot,
     XrdOptions,
     XrdPattern,
@@ -111,12 +110,12 @@
   // A worker result read like a $derived, since a $derived cannot await and a page-level
   // $effect would compute before its demo scrolls into view: the first read for a new key
   // (only a visible LazyDemo reads) starts the request and aborts the one it supersedes, and
-  // the previous value stays up until the new one lands. `run` must not reject.
-  function latest_async<Value>(
-    initial: Value,
-    request: () => { key: string; run: (signal: AbortSignal) => Promise<Value> },
-  ): () => Value {
-    let latest = $state.raw(initial)
+  // the previous outcome stays up until the new one lands.
+  type Outcome<Pattern> = { pattern: Pattern | null; error: string | null }
+  function latest_async<Pattern>(
+    request: () => { key: string; run: (signal: AbortSignal) => Promise<Pattern | null> },
+  ): () => Outcome<Pattern> {
+    let latest = $state.raw<Outcome<Pattern>>({ pattern: null, error: null })
     let requested_key: string | undefined
     let controller: AbortController | undefined
     return () => {
@@ -126,9 +125,13 @@
         controller = new AbortController()
         requested_key = key
         const { signal } = controller
-        void run(signal).then((value) => {
-          if (!signal.aborted) latest = value
-        })
+        const land = (outcome: Outcome<Pattern>) => {
+          if (!signal.aborted) latest = outcome
+        }
+        run(signal).then(
+          (pattern) => land({ pattern, error: null }),
+          (exc: unknown) => land({ pattern: null, error: to_error(exc).message }),
+        )
       }
       return latest
     }
@@ -138,9 +141,7 @@
   const compute_ids = structures.map((struct) => struct.id ?? ``)
   let compute_id = $state<string>(compute_ids[0] || ``)
   const computed_struct = $derived<Crystal | null>(structure_map.get(compute_id) ?? null)
-  const try_compute = <Pattern>(
-    compute: () => Pattern | null,
-  ): { pattern: Pattern | null; error: string | null } => {
+  const try_compute = <Pattern>(compute: () => Pattern | null): Outcome<Pattern> => {
     try {
       return { pattern: compute(), error: null }
     } catch (exc) {
@@ -159,11 +160,8 @@
   let probe_wavelength = $state(1.54184) // Å, shared so peak positions line up exactly
   let show_neutron = $state(true)
   let show_electron = $state(false)
-  type RadiationOverlay = {
-    entries: { label: string; pattern: XrdPattern; color: string }[]
-    errors: string[]
-  }
-  const overlay_result = latest_async<RadiationOverlay>({ entries: [], errors: [] }, () => {
+  type OverlayEntry = { label: string; pattern: XrdPattern; color: string }
+  const overlay_result = latest_async(() => {
     const [struct, wavelength] = [computed_struct, probe_wavelength]
     const requested = (
       [
@@ -172,30 +170,35 @@
         [`electron`, `Electron`, PLOT_COLORS[2], show_electron],
       ] as const
     ).filter(([, , , enabled]) => struct && enabled)
-    const radiations = requested.map(([radiation]) => radiation)
     return {
-      key: value_key([compute_id, wavelength, radiations]),
+      key: value_key([compute_id, wavelength, requested]),
       run: async (signal) => {
-        const overlay: RadiationOverlay = { entries: [], errors: [] }
-        if (!struct) return overlay
         // one request per probe, all in flight together, reported in the order listed
         const settled = await Promise.allSettled(
-          radiations.map((radiation) =>
-            pattern_of(struct, { radiation, wavelength, two_theta_range: [0, 90] }, signal),
+          requested.map(async ([radiation]) =>
+            struct
+              ? pattern_of(struct, { radiation, wavelength, two_theta_range: [0, 90] }, signal)
+              : null,
           ),
         )
+        const [entries, errors]: [OverlayEntry[], string[]] = [[], []]
         for (const [idx, outcome] of settled.entries()) {
           const [, label, color] = requested[idx]
-          if (outcome.status === `fulfilled`) {
-            const entry_label = `${label} (λ = ${wavelength} Å)`
-            overlay.entries.push({ label: entry_label, pattern: outcome.value, color })
-          } else overlay.errors.push(`${label}: ${to_error(outcome.reason).message}`)
+          if (outcome.status === `rejected`) {
+            errors.push(`${label}: ${to_error(outcome.reason).message}`)
+          } else if (outcome.value) {
+            entries.push({
+              label: `${label} (λ = ${wavelength} Å)`,
+              pattern: outcome.value,
+              color,
+            })
+          }
         }
-        return overlay
+        return { entries, errors }
       },
     }
   })
-  const radiation_overlay = $derived(overlay_result())
+  const radiation_overlay = $derived(overlay_result().pattern ?? { entries: [], errors: [] })
 
   // SAED: zone-axis electron diffraction for the currently selected structure
   let zone_axis = $state<Vec3>([0, 0, 1])
@@ -204,8 +207,7 @@
   let crystal_thickness = $state(50)
   // Computed in the SAED worker, so every keystroke of these number inputs can recompute: a
   // superseded request is aborted, which ends the worker still busy with it
-  type SaedResult = { pattern: SaedPatternData | null; error: string | null }
-  const saed_result = latest_async<SaedResult>({ pattern: null, error: null }, () => {
+  const saed_result = latest_async(() => {
     const struct = computed_struct
     const options: SaedOptions = {
       zone_axis: [...zone_axis],
@@ -215,15 +217,7 @@
     }
     return {
       key: value_key([compute_id, options]),
-      run: async (signal) => {
-        if (!struct) return { pattern: null, error: null }
-        try {
-          const pattern = await compute_saed_pattern_async(struct, options, { signal })
-          return { pattern, error: null }
-        } catch (exc) {
-          return { pattern: null, error: to_error(exc).message }
-        }
-      },
+      run: async (signal) => struct && compute_saed_pattern_async(struct, options, { signal }),
     }
   })
   const saed = $derived(saed_result())
