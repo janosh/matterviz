@@ -1,3 +1,4 @@
+import { element_by_symbol } from '#lib/element/data.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { calc_msd, fit_einstein_diffusion, fit_msd_curves } from '#lib/msd/calc-msd.js'
 import { compute_msd_async } from '#lib/msd/async-compute.svelte.js'
@@ -304,6 +305,48 @@ describe(`per-element decomposition`, () => {
   })
 })
 
+describe(`centre-of-mass drift removal`, () => {
+  const elements = [`Li`, `O`, `O`, `Si`] as ElementSymbol[]
+  const rng = make_rng(7)
+  const sites = elements.map(() => [rng(), rng(), rng()].map((value) => 4 * value))
+  const mass_of = (symbol: ElementSymbol) => element_by_symbol.get(symbol)?.atomic_mass ?? NaN
+  // Li and Si recoil along x in inverse proportion to their masses, so the centre of mass rests
+  // while the geometric centre drifts (an unweighted centre would change Li's MSD by 27%). On
+  // top, the whole system accelerates, ending 37 A from where it started
+  const steps = [mass_of(`Si`), 0, 0, -mass_of(`Li`)]
+  const recoil = (acceleration: number) =>
+    Array.from({ length: 80 }, (_unused, frame_idx) =>
+      sites.map(([x_coord, ...rest], atom_idx) =>
+        [x_coord + 0.01 * steps[atom_idx] * frame_idx, ...rest].map(
+          (value, axis) => value + acceleration * [0.2, -0.05, 0.11][axis] * frame_idx ** 2,
+        ),
+      ),
+    )
+
+  it.each([
+    [`free`, null],
+    [`wrapped periodic`, cubic_matrix(5)], // the drift carries every atom through the box
+  ])(`removes the mass-weighted drift of a %s system`, (_label, lattice) => {
+    const wrap = (value: number) => (lattice ? ((value % 5) + 5) % 5 : value)
+    const frames = recoil(0.03).map((frame) => frame.map((xyz) => xyz.map(wrap)))
+    const drifting = build_positions(frames, { elements, lattice })
+    const reference = calc_msd(build_positions(recoil(0), { elements })) // nothing to remove
+    const kept = calc_msd(drifting)
+    const removed = calc_msd(drifting, { remove_com_drift: true })
+    expect([kept.com_drift_removed, removed.com_drift_removed]).toEqual([false, true])
+    expect(removed.curves.map(({ label }) => label)).toEqual([`Total`, `Li`, `O`, `Si`])
+    // O stays put: off by default its curve is the drift (0.41 A^2 at lag 1), removed it is the
+    // round-off of ~40 A coordinates, ulp(40)^2 = 5e-29 A^2 (measured 1.4e-29)
+    expect(kept.curves[2].msd[0]).toBeGreaterThan(0.4)
+    expect(Math.max(...removed.curves[2].msd)).toBeLessThan(1e-27)
+    const errors = [0, 1, 3].map((curve_idx) =>
+      max_rel_error(removed.curves[curve_idx].msd, reference.curves[curve_idx].msd),
+    )
+    // ulp(40 A) = 7e-15 A over Si's 0.07 A steps: ~1e-13 per displacement (measured 4.5e-13)
+    expect(Math.max(...errors)).toBeLessThan(1e-11)
+  })
+})
+
 describe(`Einstein fit`, () => {
   it(`recovers slope, intercept, R2 and D from an exact line`, () => {
     const expected_d = 0.0125
@@ -417,6 +460,8 @@ describe(`input validation`, () => {
     [`fractional max_lags`, () => calc_msd(drifting(20), { max_lags: 1.5 }), /max_lags must be a positive integer/],
     // the full dt/time_unit contract (resolve_lag_time_unit) is tested in trajectory/positions
     [`dt without a time unit`, () => calc_msd(drifting(20), { dt: 0.5 }), /dt was supplied .* without time_unit/],
+    [`drift removal without a standard atomic mass`, () => calc_msd({ ...drift_positions(5), elements: [`H`, `Xx`] as ElementSymbol[] }, { remove_com_drift: true }),
+      /remove_com_drift: no mass for atom 1 \(Xx\)/],
   ])(`throws on %s`, (_label, run, pattern) => {
     expect(run).toThrow(pattern)
   })

@@ -120,15 +120,17 @@ test.each([
 )
 
 test.each([`Vesta`, `Jmol`] as const)(
-  `Formula tooltip ElementTile uses same color scheme as symbol text (%s)`,
+  `Formula tooltip is one chip in the symbol's color scheme (%s)`,
   async (color_scheme) => {
     mount_formula({ formula: `Fe2O3`, color_scheme })
     doc_query(`.element-group`).dispatchEvent(new MouseEvent(`mouseenter`, { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 0))
-    const tile = doc_query(`.plot-tooltip .element-tile`)
-    expect(rgb(tile.style.backgroundColor).formatHex()).toBe(
+    const tooltip = doc_query(`.plot-tooltip`)
+    expect(rgb(tooltip.style.backgroundColor).formatHex()).toBe(
       ELEMENT_COLOR_SCHEMES[color_scheme].Fe.toLowerCase(),
     )
+    expect(tooltip.children).toHaveLength(1) // just the <strong> symbol, no nested tile
+    expect(tooltip.textContent?.replaceAll(/\s+/g, ` `).trim()).toBe(`Fe Iron`)
   },
 )
 

@@ -1,14 +1,18 @@
+import { canvas_sources, svg_sources } from '#lib/io/export.js'
 import PhaseDiagramExportPane from '#lib/phase-diagram/PhaseDiagramExportPane.svelte'
 import { type ComponentProps, mount } from 'svelte'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { click_export, doc_query, mock_object_url } from '../setup'
 import { eutectic as mock_phase_data } from './fixtures/test-data'
 
-const mount_pane = (props: ComponentProps<typeof PhaseDiagramExportPane>) =>
-  mount(PhaseDiagramExportPane, {
-    target: document.body,
-    props: { export_pane_open: true, ...props },
-  })
+type PaneProps = ComponentProps<typeof PhaseDiagramExportPane>
+// `wrapper` stands in for the viewer: its diagram SVG is what the image sources serialize
+const mount_pane = ({ wrapper, ...rest }: PaneProps & { wrapper?: HTMLDivElement }) => {
+  const image_sources = svg_sources(() => wrapper?.querySelector(`svg`))
+  const props = { export_pane_open: true, image_sources, ...rest }
+  return mount(PhaseDiagramExportPane, { target: document.body, props })
+}
+const { components } = mock_phase_data
 
 describe(`PhaseDiagramExportPane`, () => {
   let wrapper_div: HTMLDivElement
@@ -24,7 +28,7 @@ describe(`PhaseDiagramExportPane`, () => {
   })
 
   test(`offers PNG/SVG and JSON with the shared DPI input`, () => {
-    mount_pane({ data: mock_phase_data, wrapper: wrapper_div, png_dpi: 150 })
+    mount_pane({ data: mock_phase_data, components, wrapper: wrapper_div, png_dpi: 150 })
     const headings = Array.from(document.querySelectorAll(`h4`), (heading) =>
       heading.textContent?.trim(),
     )
@@ -38,11 +42,17 @@ describe(`PhaseDiagramExportPane`, () => {
 
   test.each([
     [`component filename`, {}, `phase-diagram-Al-Cu`],
-    [`default filename without data`, { data: undefined }, `phase-diagram`],
+    [`default filename without components`, { components: undefined }, `phase-diagram`],
     [`custom filename`, { filename: `custom-name` }, `custom-name-Al-Cu`],
   ])(`SVG export uses the %s`, async (_desc, props, filename) => {
     const on_export = vi.fn()
-    mount_pane({ data: mock_phase_data, wrapper: wrapper_div, on_export, ...props })
+    mount_pane({
+      data: mock_phase_data,
+      components,
+      wrapper: wrapper_div,
+      on_export,
+      ...props,
+    })
     await click_export(`SVG`)
     await vi.waitFor(() => expect(on_export).toHaveBeenCalledOnce())
     const [format, context] = on_export.mock.calls[0]
@@ -63,10 +73,22 @@ describe(`PhaseDiagramExportPane`, () => {
     })
   })
 
-  test(`JSON is not offered without data`, () => {
-    mount_pane({ data: undefined, wrapper: wrapper_div })
-    expect(document.querySelector(`[aria-label="Download JSON"]`)).toBeNull()
-    expect(document.querySelector(`[aria-label="Download SVG"]`)).not.toBeNull()
+  // each format is offered only when its source exists: no JSON without data, no SVG for a
+  // canvas-rendered viewer (the ternary diagram)
+  test.each<[string, PaneProps, string[]]>([
+    [`SVG figure without data`, { data: undefined }, [`PNG`, `SVG`]],
+    [`SVG figure`, { data: mock_phase_data }, [`PNG`, `SVG`, `JSON`]],
+    [
+      `canvas figure`,
+      { data: {}, image_sources: canvas_sources(() => null) },
+      [`PNG`, `JSON`],
+    ],
+    [`no figure`, { data: null, image_sources: {} }, []],
+  ])(`%s offers its own formats`, (_desc, props, formats) => {
+    mount_pane({ wrapper: wrapper_div, ...props })
+    const offered = (format: string) =>
+      document.querySelector(`[aria-label="Download ${format}"]`)
+    expect([`PNG`, `SVG`, `JSON`].filter(offered)).toEqual(formats)
   })
 
   test.each([

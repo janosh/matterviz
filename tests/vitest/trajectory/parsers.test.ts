@@ -1789,8 +1789,8 @@ describe(`XYZ`, () => {
       { force: [0.1, 0.2, 0.3], charge: -0.5, velocity: [1, 2, 3], momentum: [4, 5, 6], mass: 1.008, tag: `core`, frozen: true }],
     // move_mask stays owned by read_extxyz_move_flags: one `selective_dynamics` triple,
     // no second copy under the declared name
-    [`move_mask:L:3`, `H 0 0 0 T F T`, { selective_dynamics: [true, false, true] }],
-    [`move_mask:L:1`, `H 0 0 0 F`, { selective_dynamics: [false, false, false] }],
+    [`move_mask:L:3`, `H 0 0 0 T F T`, { selective_dynamics: [true, false, true], constraint_basis: `cartesian` }],
+    [`move_mask:L:1`, `H 0 0 0 F`, { selective_dynamics: [false, false, false], constraint_basis: `cartesian` }],
     // Source metadata must not masquerade as viewer-generated image/supercell provenance.
     [`orig_site_idx:I:1:orig_unit_cell_idx:I:1:completion_image:L:1`, `H 0 0 0 7 2 T`,
       { orig_site_idx: 7, orig_unit_cell_idx: 2, completion_image: true }],

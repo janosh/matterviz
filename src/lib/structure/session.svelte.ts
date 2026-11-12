@@ -3,7 +3,7 @@
 // what is on screen, edit-atoms and edit-bonds state with undo/redo, and the multi-pane camera
 // bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
 // exposes and StructureViewport binds the scene to it.
-import { same_while_equal } from '#lib/utils.js'
+import { plain_copy, same_while_equal } from '#lib/utils.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol } from '#lib/element/helpers.js'
 import { format_num, plural } from '#lib/labels.js'
@@ -241,25 +241,6 @@ const is_proxied = (structure: AnyStructure): boolean => {
   }
 }
 
-// Deep copy of the arrays and plain objects in `value`, the only things Svelte proxies (typed
-// arrays, maps and class instances are kept as they are). $state.snapshot does the same but
-// passes every number through structuredClone, which tripled the copy of 100k sites.
-const plain_copy = <Value>(value: Value): Value => {
-  if (typeof value !== `object` || value === null) return value
-  if (Array.isArray(value)) {
-    const copy: unknown[] = Array(value.length)
-    for (let idx = 0; idx < value.length; idx++) copy[idx] = plain_copy(value[idx])
-    return copy as Value
-  }
-  if (Object.getPrototypeOf(value) !== Object.prototype) return value
-  const copy: Record<string, unknown> = {}
-  // Not Object.keys: it runs a proxy's getOwnPropertyDescriptor trap per key (~11% slower)
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key === `string`) copy[key] = plain_copy(Reflect.get(value, key))
-  }
-  return copy as Value
-}
-
 // The input as plain objects. Svelte deep-proxies a structure held in a caller's $state and
 // one Structure assigns itself (a bindable prop written locally, e.g. a dropped file), and
 // every site read through a proxy trap was ~70% of mounting 47k atoms (bonds, polyhedra hulls
@@ -304,19 +285,23 @@ export class StructureSession {
     return { ...struct, properties: { ...struct.properties, bonds } }
   })
   // Conventional/primitive cell needs symmetry data; until it arrives the original cell shows
-  base_structure = $derived.by((): AnyStructure | undefined => {
-    const [cell_type, sym_data] = [this.inputs.cell_type(), this.inputs.sym_data()]
-    const struct = this.structure_with_bonds
-    if (!struct || !(`lattice` in struct) || cell_type === `original` || !sym_data) {
-      return struct
-    }
-    try {
-      return transform_cell(struct, cell_type, sym_data)
-    } catch (error) {
-      console.error(`Failed to transform cell to ${cell_type}:`, error)
-      return struct
-    }
-  })
+  private readonly cell_transform = $derived.by(
+    (): { structure: AnyStructure | undefined; error?: string } => {
+      const [cell_type, sym_data] = [this.inputs.cell_type(), this.inputs.sym_data()]
+      const struct = this.structure_with_bonds
+      if (!struct || !(`lattice` in struct) || cell_type === `original` || !sym_data) {
+        return { structure: struct }
+      }
+      try {
+        return { structure: transform_cell(struct, cell_type, sym_data) }
+      } catch (error) {
+        console.error(`Failed to transform cell to ${cell_type}:`, error)
+        const message = `Failed to transform cell to ${cell_type}: ${to_error(error).message}`
+        return { structure: struct, error: message }
+      }
+    },
+  )
+  base_structure = $derived(this.cell_transform.structure)
   private readonly supercell_factors = $derived.by((): Vec3 | undefined => {
     try {
       return parse_supercell_scaling(this.inputs.supercell_scaling())
@@ -546,7 +531,14 @@ export class StructureSession {
     // would let the scene draw a stale selection against a shrunken site list first; a throw
     // there aborts the whole flush, dropping the pending clear with it.
     const changed = create_change_tracker()
-    let previous_supercell_error: string | undefined
+    // An error the first time it shows. Not via `changed`: a build that already fails at
+    // mount must notify too, and one that keeps failing must not on every run.
+    const shown_errors: Record<string, string | undefined> = {}
+    const new_error = (key: string, error: string | undefined): string | undefined => {
+      const fresh = error === shown_errors[key] ? undefined : error
+      shown_errors[key] = error
+      return fresh
+    }
     let displayed_before: AnyStructure | undefined
     $effect.pre(() => {
       // Read every dependency up front; the guards below must not make tracking conditional
@@ -580,12 +572,15 @@ export class StructureSession {
       const bond_mode_changed = changed(`bond_edit_mode`, inputs.bond_edit_mode())
       const bonds_replaced = inputs.bonds() !== this.emitted_bonds
       const bonds_unavailable = measure_mode === `edit-bonds` && !this.bond_edits_enabled
-      // Not via `changed`: a build that already fails at mount must notify too
-      const { error: supercell_error } = this.supercell
-      const supercell_failed = supercell_error !== previous_supercell_error && supercell_error
-      previous_supercell_error = supercell_error
+      const supercell_failed = new_error(`supercell`, this.supercell.error)
+      // A failed cell transform draws the original cell: say so and reset the selector to match
+      const cell_failed = new_error(`cell`, this.cell_transform.error)
       untrack(() => {
         if (supercell_failed) this.notice(`Failed to create supercell: ${supercell_failed}`)
+        if (cell_failed) {
+          this.notice(cell_failed)
+          inputs.set_cell_type(`original`)
+        }
         const internal = this.is_internal_edit
         this.own_write = internal
         this.is_internal_edit = false

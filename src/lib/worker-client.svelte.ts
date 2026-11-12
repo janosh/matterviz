@@ -3,7 +3,8 @@
 //
 // Wire protocol (worker side): every request arrives as `{ id, input, options }`. The worker
 // replies with `{ id, result, error }` once, and may post any number of `{ id, progress }`
-// messages before that for callers that passed `on_progress`.
+// messages before that for callers that passed `on_progress`. With `retained_inputs` the
+// request names the `held` inputs, and carries `input` only the first time a worker sees it.
 import { identity_token, value_key } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'
 
@@ -32,12 +33,18 @@ interface WorkerClientConfig<Input, Options, Result, Progress> {
   // Key requests by canonicalized payload + options, treating the top-level payload array
   // as a multiset. Nested arrays remain ordered.
   dedupe_by_payload?: `unordered`
+  // How many inputs (by identity, most recently used) the worker keeps between requests, for
+  // inputs too heavy to clone per request: an options-only change posts the options alone and
+  // the worker reuses what it derived from the input. It holds its own copy, so in-place edits
+  // go unseen: pass a new object. Such a client posts one request at a time.
+  retained_inputs?: number
 }
 
 export interface WorkerRequestOptions<Progress = unknown> {
   // Rejects this caller's promise with the signal's reason (an AbortError by default). The
   // worker itself is only torn down when no other caller still awaits a request on it, since
-  // terminating it would lose their results too.
+  // terminating it would lose their results too. One that retains inputs first gets
+  // ABANDON_GRACE_MS to finish, so a short compute keeps its inputs.
   signal?: AbortSignal
   // Receives every progress report. Throwing rejects only this caller; other callers
   // keep receiving progress and the result, on both worker and main-thread paths.
@@ -45,7 +52,7 @@ export interface WorkerRequestOptions<Progress = unknown> {
 }
 
 // The module's async entry point: modules export the client itself (e.g. `compute_vacf_async`)
-// rather than wrapping it, so `.cancel` / `.release` travel with the function.
+// rather than wrapping it, so `.cancel` / `.mount` travel with the function.
 export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   (
     input: Input,
@@ -54,8 +61,11 @@ export type WorkerClient<Input, Options, Result, Progress = unknown> = {
   ): Promise<Result>
   // Rejects every in-flight request and terminates the worker
   cancel: (reason?: string) => void
-  // Terminates the worker only when nothing is in flight (a component's unmount path)
-  release: () => void
+  // A component's claim on the worker, returning its release (`$effect(() => client.mount())`):
+  // the worker ends once the last claim is released and nothing is in flight
+  mount: () => () => void
+  // Whether the live worker retains this input, so a request for it posts no payload
+  holds: (input: Input) => boolean
 }
 
 // Where Worker is missing (SSR) or a host called disable_workers (also done when the parse
@@ -97,6 +107,9 @@ const abort_error = (signal: AbortSignal, label: string): Error => {
   return error === signal.reason ? error : new DOMException(error.message, `AbortError`)
 }
 
+// How long a retaining worker may keep computing a request nobody awaits any more
+const ABANDON_GRACE_MS = 1000
+
 export function create_worker_client<
   Input extends object,
   Options,
@@ -112,6 +125,7 @@ export function create_worker_client<
     build_payload,
     requires_main_thread,
     dedupe_by_payload = false,
+    retained_inputs = 0,
   } = config
 
   interface Request {
@@ -119,6 +133,7 @@ export function create_worker_client<
     // postMessage id; null for sync fallbacks, which never enter `pending`
     id: number | null
     promise: Promise<Result>
+    post?: () => void // cleared once sent
     resolve: (data: Result) => void
     reject: (err: Error) => void
     // Each caller owns one subscription, even when callbacks or options are shared.
@@ -132,10 +147,32 @@ export function create_worker_client<
   let next_id = 0
   const pending = new Map<number, Request>()
   const pending_by_key = new Map<string, Request>()
+  let held_tokens: number[] = [] // inputs (by token) the live worker retains, oldest first
+  let busy = false // retaining clients only: the one posted request is still unanswered
+  let n_mounts = 0
+  let end_when_idle = false // the last mounted component left with work still in flight
+  let abandon_timer: ReturnType<typeof setTimeout> | undefined
 
   const terminate_worker = (): void => {
     worker?.terminate()
     worker = null
+    held_tokens = [] // a replacement worker starts empty: every input is sent afresh
+    busy = false
+    clearTimeout(abandon_timer)
+    abandon_timer = undefined
+    // that end has now happened: unmounted, the client keeps its next worker like an unmounted one
+    if (pending.size === 0) end_when_idle = false
+  }
+  const post_next = (): void => {
+    for (const queued of pending.values()) if (!busy) queued.post?.()
+  }
+  // Past the grace, restarting the worker (and sending the next input again) beats waiting on
+  // work nobody wants, and a compute that never returns cannot hold the client forever
+  const end_abandoned_work = (): void => {
+    abandon_timer = undefined
+    if (!busy || [...pending.values()].some((request) => !request.post)) return
+    terminate_worker()
+    post_next()
   }
   // Also the teardown path for worker `error`/`messageerror` events and id-less error replies
   const cancel = (reason = `${label} worker request cancelled`): void => {
@@ -195,10 +232,17 @@ export function create_worker_client<
     return request
   }
 
-  // Terminate the worker unless it still has requests in flight (a component's unmount path,
-  // which must not reject requests other mounted components of the same module still await)
-  const release = (): void => {
+  // Terminate the worker unless it still has requests in flight, which other callers await
+  const end_if_idle = (): void => {
     if (pending.size === 0) terminate_worker()
+  }
+  const mount = (): (() => void) => {
+    n_mounts++
+    end_when_idle = false
+    return () => {
+      end_when_idle = --n_mounts === 0
+      if (end_when_idle) end_if_idle()
+    }
   }
   // Hand one caller a view of a (possibly shared) request that honours its own signal and
   // progress callback without affecting the other callers
@@ -214,8 +258,11 @@ export function create_worker_client<
       if (!request.waiters.delete(waiter)) return
       if (request.waiters.size === 0) {
         // Drop abandoned work; construct the next worker on demand, without an idle replacement.
+        // A retaining worker instead gets a grace to finish what it started: terminating it
+        // drops its inputs, so an options edit mid-compute would send the whole input again.
         request.reject(error)
-        release()
+        if (!retained_inputs) end_if_idle()
+        else abandon_timer ??= setTimeout(end_abandoned_work, ABANDON_GRACE_MS)
       }
       reject(error)
     }
@@ -259,17 +306,22 @@ export function create_worker_client<
           return
         }
         const request = pending.get(identifier)
-        if (!request) return
         if (progress !== undefined) {
-          report_progress(request, progress)
+          if (request) report_progress(request, progress)
           return
         }
         // serve_worker sends `error: null` on success; an empty message is still an error
         if (error != null || result === undefined) {
-          request.reject(
+          request?.reject(
             new Error(error ?? `${label} worker returned no result for request ${identifier}`),
           )
-        } else request.resolve(result)
+        } else request?.resolve(result)
+        // The reply, even to an abandoned request, frees a retaining worker for the next one
+        busy = false
+        clearTimeout(abandon_timer)
+        abandon_timer = undefined
+        post_next()
+        if (end_when_idle) end_if_idle()
       },
     )
     // Both handlers must tear the worker down: an unsettled `pending` entry leaves every
@@ -312,25 +364,35 @@ export function create_worker_client<
       if (existing) return join(existing, request_options)
 
       const wkr = main_thread ? null : ensure_worker()
-      const payload = wkr
-        ? dedupe_by_payload
-          ? keyed_payload
-          : build_payload(input)
-        : undefined
+      const token = identity_token(input)
+      const posted_options = $state.snapshot(options)
       const request = track(request_key, wkr ? ++next_id : null)
       const promise = join(request, request_options)
       if (wkr) {
-        try {
-          // Copied, never transferred: identity dedupe re-posts the same input later, and a
-          // transferred typed-array buffer would be detached by then.
-          wkr.postMessage({
-            id: request.id,
-            input: payload,
-            options: $state.snapshot(options),
-          }) // oxlint-disable-line unicorn/require-post-message-target-origin
-        } catch (err) {
-          request.reject(to_error(err))
+        request.post = () => {
+          request.post = undefined
+          // What the worker retains once this request lands, this input last
+          const held = [...held_tokens.filter((kept) => kept !== token), token]
+          held.splice(0, held.length - retained_inputs)
+          const send_input = !held_tokens.includes(token)
+          try {
+            // Copied, never transferred: the same input is posted again later (to a replacement
+            // worker when retained), and a transferred typed-array buffer would be detached.
+            ensure_worker()?.postMessage({
+              id: request.id,
+              input: send_input ? (keyed_payload ?? build_payload(input)) : undefined,
+              options: posted_options,
+              held: retained_inputs > 0 ? held : undefined,
+            }) // oxlint-disable-line unicorn/require-post-message-target-origin
+            // Only once posted: a payload that failed to clone never reached the worker
+            held_tokens = held
+            busy = retained_inputs > 0
+          } catch (err) {
+            request.reject(to_error(err))
+          }
         }
+        // Behind a busy retaining worker it waits unsent: abandoned by then, it costs nothing
+        if (!busy) request.post()
       } else {
         Promise.resolve()
           .then(() => {
@@ -350,5 +412,6 @@ export function create_worker_client<
       return Promise.reject(to_error(err))
     }
   }
-  return Object.assign(client, { cancel, release })
+  const holds = (input: Input): boolean => held_tokens.includes(identity_token(input))
+  return Object.assign(client, { cancel, mount, holds })
 }

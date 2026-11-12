@@ -31,7 +31,7 @@
     convert_frequencies,
     dos_density_label,
     frequency_unit_per_thz,
-    parse_frequency_unit,
+    canonical_frequency_unit,
     spectral_value_label,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
@@ -112,9 +112,9 @@
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
-  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
-  // below uses the canonical unit so no $derived throws on an alias
-  let unit = $derived(parse_frequency_unit(units) ?? units)
+  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) and reject unknown units at the
+  // prop boundary; every read below uses the canonical unit
+  let unit = $derived(canonical_frequency_unit(units))
 
   const is_phonon = $derived(spectral_type(doses, a2f) === `phonon`)
   const has_a2f = $derived(Object.keys(a2f).length > 0)

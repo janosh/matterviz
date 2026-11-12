@@ -4,7 +4,11 @@ import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
 import { is_plain_object } from '#lib/utils.js'
-import { has_lattice_matrix, lattice_unavailable_reason } from './validation'
+import {
+  has_lattice_matrix,
+  has_usable_lattice,
+  lattice_unavailable_reason,
+} from './validation'
 import { get_element_counts } from './density'
 import { OCCUPANCY_TOL, single_element_occupancy } from './partial-occupancy'
 import { wrap_frac_coord } from './pbc'
@@ -134,10 +138,13 @@ export const poscar_export_unavailable_reason = (
   structure?: AnyStructure,
 ): string | undefined =>
   fractional_export_unavailable_reason(structure) ??
-  (structure && site_export_reason(structure, true))
+  (structure && (site_export_reason(structure, true) ?? constraint_reason(structure, false)))
 export const xyz_export_unavailable_reason = (structure?: AnyStructure): string | undefined =>
   coordinate_export_unavailable_reason(structure, false) ??
-  (structure && (site_export_reason(structure, true) ?? xyz_column_clash(structure)))
+  (structure &&
+    (site_export_reason(structure, true) ??
+      xyz_column_clash(structure) ??
+      constraint_reason(structure, true)))
 
 // Fractional coordinates from abc, else converted from xyz. Invalid present abc must not
 // silently switch the authoritative coordinate source or write NaN into the exported file.
@@ -160,17 +167,66 @@ const site_force = (site: Site): number[] | null => {
   return vec.every(Number.isFinite) ? vec : null
 }
 
-// Whether any site carries per-axis motion flags. Keyed on Array.isArray, the same test
-// move_flag_columns reads them with, so the header and the columns can never disagree.
-const has_move_flags = (structure: AnyStructure): boolean =>
-  structure.sites.some((site) => Array.isArray(site.properties?.selective_dynamics))
+// The 8 free/fixed triples of a site's three axes, indexed by their bits (axis 0 lowest)
+const FLAG_TRIPLES = Array.from({ length: 8 }, (_, bits) =>
+  [1, 2, 4].map((bit) => (bits & bit) > 0),
+)
 
-// Per-axis motion flags as POSCAR/extXYZ `T`/`F` columns, defaulting to free. Always exactly
-// three, so a truncated array can't emit a short line that both readers would mis-column.
-const move_flag_columns = (site: Site): string[] => {
-  const flags = site.properties?.selective_dynamics
-  return [0, 1, 2].map((axis) => (Array.isArray(flags) && flags[axis] === false ? `F` : `T`))
+// Every site's per-axis motion flags (default free) in the basis asked for, or undefined when
+// no site has any. Flags are stored as their file gave them: per lattice vector (POSCAR), or
+// per Cartesian axis and marked `constraint_basis: 'cartesian'` (extXYZ move_mask, QE,
+// FHI-aims). Converting, a target vector is free when it has no component along a fixed source
+// axis, and the free ones must span what the free source axes do (as many of each), else the
+// site is `null`: that basis cannot express its constraint. Converted once per triple.
+function site_move_flags(
+  structure: AnyStructure,
+  cartesian: boolean,
+): (boolean[] | null)[] | undefined {
+  const flagged = (site: Site) => Array.isArray(site.properties?.selective_dynamics)
+  if (!structure.sites.some(flagged)) return undefined
+  const matrix = `lattice` in structure ? structure.lattice?.matrix : undefined
+  let converted: (boolean[] | null)[] | undefined
+  const convert = (lattice: Matrix3x3) => {
+    // The target basis vectors in source components. A singular cell gives the Cartesian axes
+    // none: NaN rows are free only under all-free flags, so just the mixed triples are null.
+    const rows = !cartesian
+      ? lattice
+      : has_usable_lattice(structure)
+        ? math.matrix_inverse_3x3(lattice)
+        : lattice.map((row) => row.map(() => NaN))
+    return FLAG_TRIPLES.map((flags) => {
+      const free = rows.map((vec) => {
+        const tol = 1e-8 * Math.hypot(...vec)
+        return flags.every((axis_free, axis) => axis_free || Math.abs(vec[axis]) <= tol)
+      })
+      return free.filter(Boolean).length === flags.filter(Boolean).length ? free : null
+    })
+  }
+  return structure.sites.map((site) => {
+    const stored: unknown = site.properties?.selective_dynamics
+    if (!Array.isArray(stored)) return FLAG_TRIPLES[7]
+    const bits = [1, 2, 4].reduce(
+      (sum, bit, axis) => sum + (stored[axis] === false ? 0 : bit),
+      0,
+    )
+    const in_basis = (site.properties?.constraint_basis === `cartesian`) === cartesian
+    if (in_basis || matrix?.length !== 3) return FLAG_TRIPLES[bits]
+    return (converted ??= convert(matrix))[bits]
+  })
 }
+const constraint_reason = (
+  structure: AnyStructure,
+  cartesian: boolean,
+): string | undefined => {
+  const idx = site_move_flags(structure, cartesian)?.indexOf(null) ?? -1
+  if (idx === -1) return undefined
+  const [stored, target] = cartesian
+    ? [`lattice vectors`, `Cartesian`]
+    : [`Cartesian axes`, `lattice-vector`]
+  return `Site ${display_idx(idx)} is constrained along ${stored} in a way ${target} flags cannot express`
+}
+const flag_columns = (flags?: boolean[] | null): string[] =>
+  (flags ?? []).map((free) => (free ? `T` : `F`))
 
 // Columns written by name elsewhere in the extXYZ header, or reserved by the format
 const XYZ_RESERVED_PROPERTIES = new Set([
@@ -231,7 +287,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // (free to move), which is the same assumption the POSCAR exporter makes.
   const forces = structure.sites.map(site_force)
   const has_forces = forces.length > 0 && forces.every((force) => force !== null)
-  const has_constraints = has_move_flags(structure)
+  const move_flags = site_move_flags(structure, true)
   const extra_columns = numeric_site_columns(structure)
 
   const comment_parts: string[] = []
@@ -247,7 +303,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
   // Per-axis `move_mask:L:3`, which is what ASE itself writes for a FixCartesian constraint
   // and reads back as one. The whole-atom `move_mask:L:1` cannot express a partial `T F T`:
   // ASE collapses it to "this atom may move" and yields FixAtoms([]), i.e. no constraint.
-  if (has_constraints) property_cols.push(`move_mask:L:3`)
+  if (move_flags) property_cols.push(`move_mask:L:3`)
   for (const { key, ncols } of extra_columns) property_cols.push(`${key}:R:${ncols}`)
   comment_parts.push(`Properties=${property_cols.join(`:`)}`)
   // pbc rides along with the cell: an aperiodic axis is only meaningful when there is one
@@ -270,7 +326,7 @@ export function structure_to_xyz_str(structure?: AnyStructure): string {
       throw new Error(coordinate_error(site_idx))
     const columns = coords.map((coord) => coord.toFixed(6))
     if (has_forces) columns.push(...(forces[site_idx] ?? []).map((val) => val.toFixed(6)))
-    if (has_constraints) columns.push(...move_flag_columns(site))
+    columns.push(...flag_columns(move_flags?.[site_idx]))
     // full precision: arbitrary per-atom data, not coordinates on a 1e-6 grid
     for (const { key } of extra_columns)
       columns.push(...[site.properties[key]].flat().map(String))
@@ -445,8 +501,8 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
     [...sites_by_element.keys()].join(` `),
     [...sites_by_element.values()].map((group) => group.length).join(` `),
   )
-  const has_selective_dynamics = has_move_flags(structure)
-  if (has_selective_dynamics) lines.push(`Selective dynamics`)
+  const move_flags = site_move_flags(structure, false)
+  if (move_flags) lines.push(`Selective dynamics`)
   lines.push(`Direct`)
 
   const cart_to_frac = lazy_cart_to_frac(lattice.matrix)
@@ -454,7 +510,7 @@ export function structure_to_poscar_str(input?: AnyStructure): string {
     for (const idx of group) {
       const site = structure.sites[idx]
       const columns = get_frac_coords(site, cart_to_frac, idx).map((coord) => coord.toFixed(8))
-      if (has_selective_dynamics) columns.push(...move_flag_columns(site))
+      columns.push(...flag_columns(move_flags?.[idx]))
       lines.push(columns.join(` `))
     }
   }

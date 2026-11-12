@@ -23,6 +23,7 @@
   import { compute_trajectory_spectroscopy_async } from './trajectory-spectroscopy-async.svelte'
   import type {
     SpectroscopyPreprocessing,
+    TrajectorySpectroscopyInput,
     TrajectorySpectroscopyOptions,
     TrajectorySpectroscopyResult,
   } from './trajectory-spectroscopy'
@@ -94,9 +95,9 @@
     infrared_kind,
     polarization_branch_continuous,
     raman_key: raman_key || null,
-    time_step: has_physical_time ? analysis_time_step : undefined,
-    time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
     options: {
+      time_step: has_physical_time ? analysis_time_step : undefined,
+      time_unit: has_physical_time ? analysis_time_unit.trim() : undefined,
       frequency_unit: has_physical_time ? `cm^-1` : `1/step`,
       preprocessing,
     } satisfies TrajectorySpectroscopyOptions,
@@ -112,9 +113,16 @@
   let previous_run: TrajectoryRun | undefined
   let auto_calculation_attempted = false
   const requests = create_request_owner()
+  // The current run's collect (run data is fixed) for its collection settings: a timing or
+  // preprocessing edit recomputes the same input object, which the worker retains, without a
+  // re-read or re-send. One slot, dropped with the run: an input can be hundreds of MB.
+  let collected:
+    | { key: string; input: Promise<TrajectorySpectroscopyInput>; signal?: AbortSignal }
+    | undefined
   $effect(() => {
     if (run === previous_run) return
     previous_run = run
+    collected = undefined
     requests.cancel()
     result = undefined
     auto_calculation_attempted = false
@@ -143,27 +151,43 @@
     if (!run) return
     const request_run = run
     const request_settings = settings_snapshot()
-    const { options, time_step, time_unit, ...collection_settings } = request_settings
+    const { options, ...collection_settings } = request_settings
+    // the collect reads the preprocessing only to align strided signals to the body frame
+    const aligned = frame_stride > 1 && options.preprocessing === `body_fixed`
+    const collection = { ...collection_settings, frame_stride, aligned }
     const signal = requests.start()
     const request_is_current = () => run === request_run && !signal.aborted
     calculation_phase = `collecting`
     error_msg = undefined
     progress = null
     try {
-      // Nested run data can change in place, so each request needs fresh inputs.
-      const collected_input = await collect_trajectory_spectroscopy_input(request_run, {
-        ...collection_settings,
-        frame_stride,
-        preprocessing: options.preprocessing,
-        signal,
-        on_progress: (next_progress) => {
-          if (request_is_current()) progress = next_progress
-        },
-      })
+      const key = value_key(collection)
+      // not a collect its own (since aborted) request doomed
+      if (collected?.key !== key || collected.signal?.aborted) {
+        const slot: NonNullable<typeof collected> = {
+          key,
+          signal,
+          input: collect_trajectory_spectroscopy_input(request_run, {
+            ...collection_settings,
+            frame_stride,
+            preprocessing: options.preprocessing,
+            signal,
+            on_progress: (next_progress) => {
+              if (request_is_current()) progress = next_progress
+            },
+          }),
+        }
+        collected = slot
+        slot.input.then(
+          () => (slot.signal = undefined), // collected: outlives its request's abort
+          () => collected === slot && (collected = undefined),
+        )
+      }
+      const collected_input = await collected.input
       if (!request_is_current()) return
       calculation_phase = `computing`
       const calculation_result = await compute_trajectory_spectroscopy_async(
-        { ...collected_input, time_step, time_unit },
+        collected_input,
         options,
         { signal },
       )
@@ -185,11 +209,14 @@
     }
   }
 
-  // Unmount: abort this pane's request and release an idle worker. Other mounted panes'
-  // requests share the client and must survive.
-  $effect(() => () => {
-    requests.cancel()
-    compute_trajectory_spectroscopy_async.release()
+  // Unmount: abort this pane's request and release its claim on the worker, which other
+  // mounted panes share
+  $effect(() => {
+    const unmount = compute_trajectory_spectroscopy_async.mount()
+    return () => {
+      requests.cancel()
+      unmount()
+    }
   })
 
   // The inline trajectory analysis is ready on first entry. Attempt it once per run so

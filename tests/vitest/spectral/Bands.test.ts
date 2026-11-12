@@ -13,6 +13,7 @@ import {
   fire,
   clip_rect,
   doc_query,
+  drag,
   expect_plot_controls,
   keydown,
   marker_position,
@@ -868,17 +869,8 @@ describe(`Bands component`, () => {
     // scrolls Γ (x=0) out of the view, hiding the popup; panning back restores it in place
     const svg = plot_svg()
     const { x: clip_x, width: clip_width } = clip_rect()
-    const pan = async (from_x: number, to_x: number) => {
-      const coord_y = 100
-      svg.dispatchEvent(
-        mouse(`mousedown`, { button: 0, shiftKey: true, clientX: from_x, clientY: coord_y }),
-      )
-      window.dispatchEvent(
-        new MouseEvent(`mousemove`, { buttons: 1, clientX: to_x, clientY: coord_y }),
-      )
-      await tick()
-      await fire(window, new MouseEvent(`mouseup`, { clientX: to_x, clientY: coord_y }))
-    }
+    const pan = (from_x: number, to_x: number) =>
+      drag(svg, { shiftKey: true }, [from_x, 100], [to_x, 100])
     const mid = clip_x + clip_width / 2
     await pan(mid, mid - clip_width / 2)
     expect(document.querySelector(`.bz-popup`)).toBeNull()

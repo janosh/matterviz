@@ -67,7 +67,8 @@ describe(`PhaseDiagramTooltip`, () => {
       temp_unit: `°C`,
     })
     expect(tooltip_text()).toContain(`25 °C`)
-    expect(document.querySelector(`dd small`)?.textContent).toBe(`°C`)
+    // °C is the display unit, so the header shows no second (°C) reading
+    expect(document.querySelector(`header .temperature`)?.textContent?.trim()).toBe(`25 °C`)
   })
 
   // Weight percentages need real elements (Al-Cu), unknown components (A-B) get none

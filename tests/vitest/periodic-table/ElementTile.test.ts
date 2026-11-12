@@ -30,6 +30,22 @@ describe(`ElementTile`, () => {
     expect(node.getAttribute(`role`)).toBeNull()
   })
 
+  test(`a tile with onclick is a keyboard-operable button`, () => {
+    const [onclick, onkeydown] = [vi.fn(), vi.fn()]
+    mount_tile({ onclick, onkeydown })
+    const node = doc_query(`.element-tile`)
+    expect([node.getAttribute(`role`), node.getAttribute(`tabindex`)]).toEqual([`button`, `0`])
+    // dispatchEvent returns false when the default was prevented
+    const press = (key: string) =>
+      !node.dispatchEvent(
+        new KeyboardEvent(`keydown`, { key, bubbles: true, cancelable: true }),
+      )
+    expect([press(`Enter`), press(` `), press(`a`)]).toEqual([true, true, false])
+    expect([onkeydown.mock.calls.length, onclick.mock.calls.length]).toEqual([3, 2])
+    const click = { element: rand_element, event: expect.any(MouseEvent) }
+    expect(onclick).toHaveBeenLastCalledWith(click)
+  })
+
   test(`renders as anchor when href is provided`, () => {
     const href = `/element/${rand_element.symbol}`
     mount_tile({ href })

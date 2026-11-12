@@ -15,7 +15,7 @@ const cases = [
   },
   {
     name: `IR broadening`,
-    route: `/reciprocal/ir-raman`,
+    route: `/spectral/ir-raman`,
     plot: `#infrared-spectrum-of-nacl ~ .code-example`,
     section: `broadening`,
   },

@@ -26,9 +26,9 @@ import {
   click_export,
   clip_rect,
   doc_query,
+  drag,
   fire,
   flush_render,
-  pin_cycle,
   form_controls,
   keydown,
   marker_fill,
@@ -37,12 +37,14 @@ import {
   mount_sized,
   mouse,
   one_tab_stop,
+  pin_cycle,
   plot_svg,
+  pointer,
   query,
   resize_element,
   roving_tabindexes,
-  svg_query,
   set_input,
+  svg_query,
   translate_of,
   trigger_resize_observer,
   type PinStep,
@@ -137,18 +139,9 @@ const stub_svg_rect = (svg: SVGSVGElement) => {
 // Shift-drag pan from the plot centre through `offsets` (px from it), released at the last
 const shift_pan = async (plot: HTMLElement, offsets: Vec2[]) => {
   const clip = clip_rect(plot)
-  const at = ([dx, dy]: Vec2) => ({
-    clientX: clip.x + clip.width / 2 + dx,
-    clientY: clip.y + clip.height / 2 + dy,
-  })
-  plot_svg(plot).dispatchEvent(
-    mouse(`mousedown`, { button: 0, shiftKey: true, ...at([0, 0]) }),
-  )
-  for (const offset of offsets) {
-    await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(offset) }))
-  }
-  const release = at(offsets.at(-1) ?? [0, 0])
-  await fire(window, new MouseEvent(`mouseup`, release))
+  const [mid_x, mid_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
+  const points = [[0, 0], ...offsets].map(([dx, dy]): Vec2 => [mid_x + dx, mid_y + dy])
+  await drag(plot_svg(plot), { shiftKey: true }, ...points)
 }
 const click_at = (element: Element, position: { x: number; y: number }) =>
   element.dispatchEvent(
@@ -221,6 +214,11 @@ describe(`ScatterPlot`, () => {
         else expect(announced(plot), key).toBe(``)
         expect(plot.querySelector(`.plot-tooltip.pinned`) !== null, key).toBe(pinned)
       }
+      // Shift+arrow is the frame's keyboard pan, not a cursor step
+      const x_axis_before = svg.querySelector(`.x-axis`)?.innerHTML
+      await fire(svg, keydown(`ArrowRight`, { shiftKey: true }))
+      expect(announced(plot)).toBe(``)
+      expect(svg.querySelector(`.x-axis`)?.innerHTML).not.toBe(x_axis_before)
     })
 
     // The cursor is one flat index across both series, so the series boundary is where an
@@ -1491,17 +1489,17 @@ describe(`ScatterPlot`, () => {
       const clip = clip_rect(plot)
       const at = (dx: number) => ({ clientX: clip.x + dx, clientY: clip.y + 10 })
       plot_svg(plot).dispatchEvent(
-        mouse(`mousedown`, { button: 0, shiftKey: true, ...at(10) }),
+        pointer(`pointerdown`, { button: 0, shiftKey: true, ...at(10) }),
       )
       await tick()
       check_vertices(duration === 0)
       const grabbed_paths = paths.map((path) => path.getAttribute(`d`))
-      await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...at(15) }))
+      await fire(plot_svg(plot), pointer(`pointermove`, { buttons: 1, ...at(15) }))
       check_vertices(duration === 0)
       const dragged_paths = paths.map((path) => path.getAttribute(`d`))
       // anchored lines move by their transform alone, never rebuilding a path mid-pan
       if (duration === 0) expect(dragged_paths).toEqual(grabbed_paths)
-      await fire(window, new MouseEvent(`mouseup`))
+      await fire(plot_svg(plot), pointer(`pointerup`))
       check_vertices()
       // morphing lines keep their vertices through the release, so nothing glides
       if (duration > 0) {
@@ -1848,13 +1846,8 @@ describe(`ScatterPlot`, () => {
 
     const svg = plot_svg(plot)
     const clip = clip_rect(plot)
-    const end = { clientX: clip.x + 80, clientY: clip.y + 80 }
-    svg.dispatchEvent(
-      mouse(`mousedown`, { button: 0, clientX: clip.x + 10, clientY: clip.y + 10 }),
-    )
-    window.dispatchEvent(new MouseEvent(`mousemove`, { buttons: 1, ...end }))
-    window.dispatchEvent(new MouseEvent(`mouseup`, end))
-    click_at(svg, { x: end.clientX, y: end.clientY })
+    await drag(svg, {}, [clip.x + 10, clip.y + 10], [clip.x + 80, clip.y + 80])
+    click_at(svg, { x: clip.x + 80, y: clip.y + 80 })
     expect(on_plot_click).not.toHaveBeenCalled()
   })
 
@@ -2999,18 +2992,54 @@ describe(`ScatterPlot`, () => {
   )
 
   // a bound `view` mirrors the live ranges unless its mount value sets a differing range
-  test.each([
-    [undefined, [0, 100]],
-    [{}, [0, 100]],
-    [{ x: [0, 100] as Vec2 }, [0, 100]],
-    [{ x: [20, 30] as Vec2 }, [20, 30]],
-  ])(`bound view %j at mount ends with x %j`, async (view, expected_x) => {
+  // the axis can show (a log one no bound <= 0)
+  test.each<[Partial<AxisRanges> | undefined, Vec2, `log`?]>([
+    [undefined, [1, 100]],
+    [{}, [1, 100]],
+    [{ x: [1, 100] }, [1, 100]],
+    [{ x: [20, 30] }, [20, 30]],
+    [{ x: [-5, 50] }, [-5, 50]],
+    [{ x: [-5, 50] }, [1, 100], `log`],
+    [{ x: [0, 50] }, [1, 100], `log`],
+  ])(`bound view %j at mount ends with x %j`, async (view, expected_x, scale_type) => {
     const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view })
-    const [x_axis, y_axis] = [{ range: [0, 100] as Vec2 }, { range: [0, 10] as Vec2 }]
+    const x_axis = { range: [1, 100] as Vec2, scale_type }
+    const y_axis = { range: [0, 10] as Vec2 }
     const series = [{ x: [10, 50, 90], y: [1, 5, 9] }]
     await mount_sized_scatter_plot(bind_props({ series, x_axis, y_axis }, state))
     await tick()
     expect([state.view?.x, state.view?.y]).toEqual([expected_x, [0, 10]])
+  })
+
+  // Linked plots share one `view`, which carries only the axes a plot shows and can set. A y2
+  // derived from y differs per plot (each rejecting the other's looped forever), and a plot
+  // without y2 wrote its [0, 1] placeholder over the linked plot's real one on reset.
+  test.each([
+    [`a y2 aligned to y in both`, { sync: `align` } as const, [-300, 700]],
+    [`no y2 in the second`, {}, undefined],
+  ])(`two plots linked by one view, %s`, async (_name, y2_axis, y2_data) => {
+    const state = $state<{ view: Partial<AxisRanges> | undefined }>({ view: undefined })
+    const [x, y] = [
+      [0, 10],
+      [0, 10],
+    ]
+    const y2_series = (data: number[]) => ({ x, y: data, y_axis: `y2` as const })
+    const axes = { x_axis: { range: [0, 10] as Vec2 }, y2_axis }
+    const mount_linked = (series: DataSeries[]) =>
+      mount_sized_scatter_plot(bind_props({ series, ...axes, ...bare }, state))
+    const first = await mount_linked([{ x, y }, y2_series([5, 50])])
+    await tick()
+    // a derived y2 is no part of the view, a settable one is the first plot's throughout
+    const view_y2 = y2_data ? undefined : state.view?.y2
+    const second = await mount_linked([{ x, y }, ...(y2_data ? [y2_series(y2_data)] : [])])
+    const y2_ticks = axis_tick_labels(first, `y2`)
+    await shift_pan(first, [[-clip_rect(first).width / 4, 0]])
+    expect(state.view?.x).toEqual([2.5, 12.5])
+    expect(axis_tick_labels(second, `x`)).toEqual(axis_tick_labels(first, `x`))
+    await fire(plot_svg(second), keydown(`Enter`)) // resets the second plot's view
+    await tick()
+    expect([state.view?.x, state.view?.y2]).toEqual([[0, 10], view_y2])
+    expect(axis_tick_labels(first, `y2`)).toEqual(y2_ticks)
   })
 
   // Shift-drag pans by a constant data offset: moving the cursor by a quarter of the plot
@@ -3051,6 +3080,19 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `x`)).toContain(`0`)
     expect(axis_tick_labels(plot, `x`)).not.toContain(`120`)
     expect(state.x_axis.range).toEqual([0, 100])
+    // a two-finger spread that also travels zooms about where the fingers started and pans
+    // with them: x=30 under their center moves with it from 30% to 40% of the plot
+    const touch = (type: string, pointerId: number, frac_x: number) => {
+      const [clientX, clientY] = [clip.x + clip.width * frac_x, clip.y + clip.height / 2]
+      const init = { pointerType: `touch`, pointerId, buttons: 1, clientX, clientY }
+      plot_svg().dispatchEvent(pointer(type, init))
+    }
+    touch(`pointerdown`, 1, 0.2)
+    touch(`pointerdown`, 2, 0.4)
+    touch(`pointermove`, 2, 0.6)
+    await tick()
+    const pinched = [state.view?.x, state.view?.y].flat() // compared to 1e-6
+    expect(pinched.map((bound) => Number(bound?.toFixed(6)))).toEqual([10, 60, 2.5, 7.5])
   })
 
   // A grown auto range (more data, or a narrower plot: the padding is in px) moves an unzoomed
@@ -3122,12 +3164,21 @@ describe(`ScatterPlot`, () => {
     expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
     expect(error_spy).not.toHaveBeenCalled()
 
+    // a write the plot cannot show (a non-finite bound) is corrected in `view`; a derived y2
+    // is no part of it, so one written there stays and moves nothing
+    state.view = { y: [NaN, 10], y2: [3, 4] }
+    await tick()
+    expect(state.view).toMatchObject({ y: [0, 5], y2: [3, 4] })
+    expect(axis_tick_labels(plot, `y`)).toContain(`5`)
+    expect(axis_tick_labels(plot, `y2`)).toEqual(axis_tick_labels(plot, `y`))
+
     // y2 follows the linear y gesture; independently panning its log scale would overflow.
     state.y2_axis = { sync: `synced`, scale_type: `log` }
     await tick()
     state.view = { y: [1, 1e300] }
     await tick()
     const svg = plot_svg()
+    const y2_ticks = axis_tick_labels(plot, `y2`)
     svg.dispatchEvent(new FocusEvent(`focusin`, { bubbles: true }))
     window.dispatchEvent(new KeyboardEvent(`keydown`, { key: `Shift` }))
     svg.dispatchEvent(
@@ -3135,7 +3186,7 @@ describe(`ScatterPlot`, () => {
     )
     await tick()
     expect(state.view?.y).toEqual([1e299, 1.1e300])
-    expect(state.view?.y2).toEqual(state.view?.y)
+    expect(axis_tick_labels(plot, `y2`)).not.toEqual(y2_ticks)
     expect(error_spy).not.toHaveBeenCalled()
   })
 

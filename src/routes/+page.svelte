@@ -165,7 +165,7 @@
 />
 
 <h2 id="phonon-spectra-brillouin-zone-bands-dos">
-  <a href="/reciprocal/brillouin-bands-dos">Phonon Spectra: Brillouin Zone · Bands · DOS</a>
+  <a href="/spectral/brillouin-bands-dos">Phonon Spectra: Brillouin Zone · Bands · DOS</a>
 </h2>
 
 <p>
@@ -181,7 +181,7 @@
   props={{ class: `full-bleed`, style: `min-height: 480px; margin-block: 1em` }}
 />
 
-<h2 id="fermi-surface"><a href="/reciprocal/fermi-surface">Fermi Surface</a></h2>
+<h2 id="fermi-surface"><a href="/spectral/fermi-surface">Fermi Surface</a></h2>
 
 <p>
   Render Fermi surfaces from XCrySDen (<code>.bxsf</code>), FermiSurfer (<code>.frmsf</code>)

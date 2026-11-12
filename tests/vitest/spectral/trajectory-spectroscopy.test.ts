@@ -190,11 +190,11 @@ describe(`calc_trajectory_spectroscopy`, () => {
     const [n_frames, time_step_fs, frequency_thz] = [256, 2, 10]
     const cycles_per_frame = frequency_thz * time_step_fs * 1e-3 // THz · fs
     const input = make_input(cycles_per_frame, 1, n_frames)
-    input.time_step = time_step_fs
-    input.time_unit = `fs`
     const options = { window: `hann`, zero_pad_factor: 4 } as const
     const { vdos } = calc_trajectory_spectroscopy(input, {
       ...options,
+      time_step: time_step_fs,
+      time_unit: `fs`,
       preprocessing: `raw`,
       frequency_unit: `THz`,
     })
@@ -311,23 +311,22 @@ describe(`calc_trajectory_spectroscopy`, () => {
   )
 
   it(`returns the same physical raw IR spectrum for equivalent time units`, () => {
-    const make_timed_input = (time_step: number, time_unit: string) => {
-      const input = make_input()
-      input.time_step = time_step
-      input.time_unit = time_unit
-      input.infrared_signal = { kind: `dipole`, series: x_sinusoid(0.125) }
-      return input
-    }
-    const options = { ...RAW_SPECTRUM, frequency_unit: `THz` } as const
-    const femtoseconds = calc_trajectory_spectroscopy(make_timed_input(1, `fs`), options)
-    const picoseconds = calc_trajectory_spectroscopy(make_timed_input(0.001, `ps`), options)
+    const input = make_input()
+    input.infrared_signal = { kind: `dipole`, series: x_sinusoid(0.125) }
+    // one input re-timed through the options alone
+    const timed = (time_step: number, time_unit: string, frequency_unit: `THz` | `cm^-1`) =>
+      calc_trajectory_spectroscopy(input, {
+        ...RAW_SPECTRUM,
+        time_step,
+        time_unit,
+        frequency_unit,
+      })
+    const femtoseconds = timed(1, `fs`, `THz`)
+    const picoseconds = timed(0.001, `ps`, `THz`)
     expect(femtoseconds.ir?.frequencies).toEqual(picoseconds.ir?.frequencies)
     const reference = femtoseconds.ir?.power ?? []
     const tolerance = 10 * Number.EPSILON * Math.max(...reference)
-    const wavenumbers = calc_trajectory_spectroscopy(make_timed_input(1, `fs`), {
-      ...options,
-      frequency_unit: `cm^-1`,
-    })
+    const wavenumbers = timed(1, `fs`, `cm^-1`)
     // same physical spectrum in ps, and in cm^-1 once the per-unit density is converted back
     for (const power of [
       picoseconds.ir?.power ?? [],
@@ -344,9 +343,10 @@ describe(`calc_trajectory_spectroscopy`, () => {
     [{ time_step: 1 }, /time_step and time_unit must be supplied together/],
     [{ time_unit: `fs` }, /time_step and time_unit must be supplied together/],
     [{ time_step: 1, time_unit: ` ` }, /time_unit must be a non-empty string/],
-  ])(`validates supplied physical time metadata in 1/step mode`, (metadata, error) => {
-    const input = Object.assign(make_input(), metadata)
-    expect(() => calc_trajectory_spectroscopy(input, RAW)).toThrow(error)
+  ])(`validates supplied physical time options in 1/step mode`, (timing, error) => {
+    expect(() => calc_trajectory_spectroscopy(make_input(), { ...RAW, ...timing })).toThrow(
+      error,
+    )
   })
 
   it(`uses independent signal step spacing for 1/step frequencies`, () => {
@@ -586,8 +586,6 @@ describe(`calc_trajectory_spectroscopy`, () => {
       const [n_frames, time_step_fs] = [512, 400 / 1024]
       const [frequency_1_thz, frequency_2_thz, amplitude_1, amplitude_2] = [10, 40, 1, 2]
       const input = make_input(0.125, 1, n_frames)
-      input.time_step = time_step_fs
-      input.time_unit = `fs`
       const is_raman = kind === `polarizability`
       const series = make_signal(n_frames, is_raman ? [3, 3] : [3], (sample_idx) => {
         const time_fs = sample_idx * time_step_fs
@@ -599,6 +597,8 @@ describe(`calc_trajectory_spectroscopy`, () => {
       if (kind === `polarizability`) input.raman_signal = { kind, series }
       else input.infrared_signal = { kind, series }
       const result = calc_trajectory_spectroscopy(input, {
+        time_step: time_step_fs,
+        time_unit: `fs`,
         preprocessing: `raw`,
         frequency_unit: `THz`,
         window: `hann`,

@@ -8,7 +8,7 @@ import Histogram from '#lib/plot/histogram/Histogram.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import type { ShowControlsProp } from '#lib/controls.js'
 import type { Vec2 } from '#lib/math.js'
-import { type AxisConfig, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
+import { type AxisConfig, type AxisRanges, COLOR_BAR_DEFAULTS } from '#lib/plot/core/types.js'
 import {
   AXIS_LABEL_HEIGHT,
   DEFAULT_PLOT_PADDING,
@@ -29,6 +29,7 @@ import {
   bind_props,
   clip_rect,
   doc_query,
+  drag,
   inside_clip_path,
   mock_fullscreen,
   mount_in_test,
@@ -359,11 +360,13 @@ describe(`cartesian frame`, () => {
     `$name rect zoom moves the view, not the bound axis props, and reset restores the pin`,
     async (chart) => {
       const pinned: Vec2 = [0, 400]
-      const bound = $state<Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig>>({
+      type Bound = Record<`x_axis` | `x2_axis` | `y_axis` | `y2_axis`, AxisConfig>
+      const bound = $state<Bound & { view?: Partial<AxisRanges> }>({
         x_axis: { range: pinned },
         x2_axis: { range: pinned },
         y_axis: { range: pinned },
         y2_axis: { range: pinned },
+        view: undefined,
       })
       const plot = await mount_chart(
         chart,
@@ -387,18 +390,11 @@ describe(`cartesian frame`, () => {
       // jsdom reports a zero-origin bounding rect, so client coords are plot-local; drag the
       // middle half of the plot width and the second quarter of its height
       const clip = clip_rect(plot)
-      const position = (frac_x: number, frac_y: number): MouseEventInit => ({
-        bubbles: true,
-        buttons: 1, // a real drag holds the primary button down
-        clientX: clip.x + clip.width * frac_x,
-        clientY: clip.y + clip.height * frac_y,
-      })
-      doc_query(`svg[role="application"]`).dispatchEvent(
-        new MouseEvent(`mousedown`, position(0.25, 0.25)),
-      )
-      window.dispatchEvent(new MouseEvent(`mousemove`, position(0.75, 0.5)))
-      window.dispatchEvent(new MouseEvent(`mouseup`, position(0.75, 0.5)))
-      await tick()
+      const at = (frac_x: number, frac_y: number): Vec2 => [
+        clip.x + clip.width * frac_x,
+        clip.y + clip.height * frac_y,
+      ]
+      await drag(doc_query(`svg[role="application"]`), {}, at(0.25, 0.25), at(0.75, 0.5))
 
       for (const axis of shown_axes) {
         const [min, max] = tick_span(axis)
@@ -406,6 +402,9 @@ describe(`cartesian frame`, () => {
         const [lower, upper] = axis.startsWith(`x`) ? [100, 300] : [200, 300]
         expect(min, axis).toBeGreaterThanOrEqual(lower)
         expect(max, axis).toBeLessThanOrEqual(upper)
+        // the bindable `view` mirrors the zoom out (to 1e-6)
+        const view = bound.view?.[axis]?.map((bound_val) => Number(bound_val.toFixed(6)))
+        expect(view, axis).toEqual([lower, upper])
       }
       const props_unchanged = () => {
         for (const axis of [`x`, `x2`, `y`, `y2`] as const) {
@@ -419,6 +418,13 @@ describe(`cartesian frame`, () => {
       )
       await tick()
       for (const axis of shown_axes) expect(tick_span(axis), axis).toEqual(initial[axis])
+      props_unchanged()
+
+      // a host writing `view` moves the plot, not the axis props, and keeps its own values
+      bound.view = { y: [200, 300] }
+      await tick()
+      const [min, max] = tick_span(`y`)
+      expect([min >= 200, max <= 300, bound.view?.y]).toEqual([true, true, [200, 300]])
       props_unchanged()
     },
   )
@@ -466,11 +472,11 @@ describe(`cartesian frame`, () => {
         clientX: 200 + step * 10,
         clientY: 150 + step * 5,
       })
-      svg.dispatchEvent(new MouseEvent(`mousedown`, pan_event(0)))
+      svg.dispatchEvent(new PointerEvent(`pointerdown`, pan_event(0)))
       solves.mockClear()
       const axis_before = svg.querySelector(`.x-axis`)?.innerHTML
       for (let step = 1; step <= 5; step++) {
-        window.dispatchEvent(new MouseEvent(`mousemove`, pan_event(step)))
+        svg.dispatchEvent(new PointerEvent(`pointermove`, pan_event(step)))
         flushSync()
       }
       // it panned, without solving the layout once
@@ -481,7 +487,7 @@ describe(`cartesian frame`, () => {
       flushSync()
       expect(solves.mock.calls.length).toBeGreaterThan(0)
       solves.mockClear()
-      window.dispatchEvent(new MouseEvent(`mouseup`, pan_event(5, 0)))
+      svg.dispatchEvent(new PointerEvent(`pointerup`, pan_event(5, 0)))
       flushSync()
       expect(solves.mock.calls.length).toBeGreaterThan(0)
     },

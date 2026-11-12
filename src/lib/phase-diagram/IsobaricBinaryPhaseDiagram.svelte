@@ -32,7 +32,7 @@
   import { type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteSet } from 'svelte/reactivity'
-  import type { ExportProps } from '#lib/io/export.js'
+  import { svg_sources, type ExportProps } from '#lib/io/export.js'
   import { compute_isopleth, phase_disagreement } from './analysis'
   import {
     BOUNDARY_STYLES,
@@ -1322,7 +1322,11 @@
           bind:export_pane_open
           bind:png_dpi
           {data}
-          {wrapper}
+          components={data.components}
+          image_sources={svg_sources(() =>
+            // looked up per export: the SVG re-mounts when the diagram is cleared and reloaded
+            wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`),
+          )}
           filename={export_filename}
           {export_formats}
           {on_export}
@@ -1588,7 +1592,7 @@
             stroke={axis}
           />
           <!-- strip captions: its composition above, the 0..1 fraction axis below -->
-          {#each [[middle, top - 8, format_composition(isopleth_view.composition, comp_unit)], [x_start, bottom + 14, `0`], [x_start + strip_width, bottom + 14, `1`], [middle, bottom + 28, `fraction`]] as const as [x_val, y_val, caption] (caption)}
+          {#each [[middle, top - 8, format_composition(isopleth_view.composition, comp_unit)], [x_start, bottom + 14, `0`], [x_start + strip_width, bottom + 14, `1`], [middle, bottom + 28, `fraction`]] as const as [x_val, y_val, caption], idx (idx)}
             <text x={x_val} y={y_val} text-anchor="middle" fill={text} font-size={small_font}>
               {caption}
             </text>

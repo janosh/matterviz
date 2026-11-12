@@ -19,7 +19,7 @@ import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import { is_plain_object, JSON_KINDS } from '#lib/utils.js'
+import { is_plain_object, JSON_KINDS, plain_copy } from '#lib/utils.js'
 import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)
@@ -1210,22 +1210,12 @@ export const is_valid_setting_value = (value: unknown, setting: SettingType): bo
   return same_primitive_type(value, setting.value)
 }
 
-// Deep copy by hand rather than structuredClone: values arrive through Svelte $state proxies,
-// which structuredClone rejects with DataCloneError.
-const clone_value = <Value>(value: Value): Value => {
-  if (Array.isArray(value)) return value.map(clone_value) as Value
-  if (!is_plain_object(value)) return value
-  return Object.fromEntries(
-    Object.entries(value).map(([key, nested]) => [key, clone_value(nested)]),
-  ) as Value
-}
-
 // A copy of `value` when it is admissible for `setting`, else a copy of the schema default
 export const validate_setting_value = <Value>(
   value: unknown,
   setting: SettingType<Value>,
 ): Value =>
-  clone_value(is_valid_setting_value(value, setting) ? (value as Value) : setting.value)
+  plain_copy(is_valid_setting_value(value, setting) ? (value as Value) : setting.value)
 
 export const get_convex_hull_defaults = (element_count: 2 | 3 | 4) =>
   DEFAULTS.convex_hull[

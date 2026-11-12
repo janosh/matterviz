@@ -977,53 +977,27 @@ describe(`VSCode Download Integration`, () => {
       command: `saveAs`,
       content: `test content`,
       filename: `test.json`,
-      is_binary: false,
     })
   })
 
-  // Timer-driven FileReader stub firing `outcome`'s listener; `load` encodes the real Blob
-  const stub_file_reader = (outcome: `load` | `error`) => {
-    vi.useFakeTimers()
-    const FakeFileReader = vi.fn(function (this: FileReader) {
-      // Per instance so overlapping downloads don't clobber each other's result
-      let listener: (() => void) | undefined
-      let result: string | null = null
-
-      this.readAsDataURL = vi.fn((blob: Blob) => {
-        setTimeout(() => {
-          void (async () => {
-            if (outcome === `load`) {
-              const bytes = new Uint8Array(await blob.arrayBuffer())
-              result = `data:${blob.type};base64,${btoa(String.fromCharCode(...bytes))}`
-            }
-            listener?.()
-          })()
-        }, 0)
-      })
-      this.addEventListener = vi.fn((type: string, handler: EventListener) => {
-        if (type === outcome) listener = handler as () => void
-      })
-      Object.defineProperty(this, `result`, { get: () => result })
-    })
-    vi.stubGlobal(`FileReader`, FakeFileReader)
-  }
-
-  // STL/GLB exports pass an ArrayBuffer or view, which readAsDataURL (Blob-only) used to reject
+  // STL/GLB exports pass an ArrayBuffer or view, video and image exports a Blob: each reaches
+  // the host as an ArrayBuffer of exactly its bytes, not base64 text
+  const stl_bytes = new TextEncoder().encode(`fake stl data`)
   test.each([
-    [`a Blob`, () => new Blob([`fake stl data`], { type: `model/stl` })],
-    [`an ArrayBuffer`, () => new TextEncoder().encode(`fake stl data`).buffer],
-    [`a typed-array view`, () => new TextEncoder().encode(`fake stl data`)],
-  ])(`saves %s as base64 binary`, async (_case, make_data) => {
-    stub_file_reader(`load`)
+    [`a Blob`, () => new Blob([stl_bytes], { type: `model/stl` })],
+    [`an ArrayBuffer`, () => stl_bytes.slice().buffer],
+    [
+      `a typed-array view into a larger buffer`,
+      () => new Uint8Array([0, ...stl_bytes, 0]).subarray(1, -1),
+    ],
+  ])(`saves %s as raw bytes`, async (_case, make_data) => {
     const mock_post_message = await init_download()
     globalThis.download(make_data(), `structure.stl`, `model/stl`)
-    await vi.runAllTimersAsync()
-    expect(mock_post_message).toHaveBeenCalledWith({
-      command: `saveAs`,
-      content: `data:model/stl;base64,ZmFrZSBzdGwgZGF0YQ==`,
-      filename: `structure.stl`,
-      is_binary: true,
-    })
+    await vi.waitFor(() => expect(mock_post_message).toHaveBeenCalledOnce())
+    const [{ content, ...message }] = mock_post_message.mock.calls[0]
+    expect(message).toEqual({ command: `saveAs`, filename: `structure.stl` })
+    expect(content).toBeInstanceOf(ArrayBuffer)
+    expect([...new Uint8Array(content)]).toEqual([...stl_bytes])
   })
 
   test.each([``, `   `])(`rejects invalid filename: "%s"`, async (filename) => {
@@ -1032,15 +1006,16 @@ describe(`VSCode Download Integration`, () => {
     expect(mock_post_message).not.toHaveBeenCalled()
   })
 
-  test(`handles FileReader errors for binary data`, async () => {
-    stub_file_reader(`error`)
+  test(`reports binary data it cannot read`, async () => {
     const mock_post_message = await init_download()
+    vi.spyOn(Blob.prototype, `arrayBuffer`).mockRejectedValueOnce(new Error(`unreadable`))
     globalThis.download(new Blob([`data`]), `test.png`, `image/png`)
-    await vi.runAllTimersAsync()
-    expect(mock_post_message).toHaveBeenCalledWith({
-      command: `error`,
-      text: `Failed to read binary data for download`,
-    })
+    await vi.waitFor(() =>
+      expect(mock_post_message).toHaveBeenCalledExactlyOnceWith({
+        command: `error`,
+        text: `Failed to read binary data for download`,
+      }),
+    )
   })
 
   test(`handles general exceptions during download`, async () => {

@@ -37,6 +37,9 @@ describe(`SlabBuilder`, () => {
     const table = doc_query(`.slab-builder dl`).textContent
     expect(table).toContain(`Interplanar spacing d`)
     expect(table).toContain(`Terminations`)
+    // fcc (111) has an inversion centre between its faces; the file carries no charges
+    expect(table).toMatch(/Symmetric faces\s*yes/)
+    expect(table).toMatch(/Polar\s*unknown \(no oxidation states\)/)
     // fcc (111) ends on one kind of plane only: no termination choice to offer
     expect(document.querySelector(`.slab-builder select`)).toBeNull()
   })

@@ -146,18 +146,25 @@
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
-    <!-- a boundaries-only diagram has no phase set to name in the header -->
-    {#if data.regions.length || hover_info.point}
-      <header>
-        {#if data.regions.length}
-          <strong>{@html html_label(region_label(hover_info.region, label_of))}</strong>
+    <!-- phase name and temperature share the top line, so a short name doesn't leave it
+    mostly empty (a boundaries-only diagram has no phase set to name) -->
+    <header>
+      {#if data.regions.length}
+        <strong>{@html html_label(region_label(hover_info.region, label_of))}</strong>
+      {/if}
+      {#if hover_info.point}
+        {@const { category, kind } = hover_info.point}
+        <span class="badge">{humanize(category === `unary` ? `${kind}_point` : kind)}</span>
+      {/if}
+      <span class="temperature" title="Temperature">
+        <TooltipValue value={fmt_temp(hover_info.temperature)} unit={temp_unit} />
+        {#if temp_unit !== `°C`}
+          <small
+            >(<TooltipValue value={fmt_temp(hover_info.temperature, `°C`)} unit="°C" />)</small
+          >
         {/if}
-        {#if hover_info.point}
-          {@const { category, kind } = hover_info.point}
-          <span class="badge">{humanize(category === `unary` ? `${kind}_point` : kind)}</span>
-        {/if}
-      </header>
-    {/if}
+      </span>
+    </header>
 
     {#if hover_info.point}
       {@const { description, temperature } = hover_info.point}
@@ -222,15 +229,6 @@
     {/if}
 
     <dl>
-      <dt>Temperature</dt>
-      <dd>
-        <TooltipValue value={fmt_temp(hover_info.temperature)} unit={temp_unit} />
-        {#if temp_unit !== `°C`}
-          <small
-            >(<TooltipValue value={fmt_temp(hover_info.temperature, `°C`)} unit="°C" />)</small
-          >
-        {/if}
-      </dd>
       <dt>Composition</dt>
       <dd>
         <TooltipValue value={fmt_comp(hover_info.composition)} unit={comp_unit_label} />
@@ -344,6 +342,13 @@
     align-items: center;
     gap: 6px;
   }
+  .temperature {
+    white-space: nowrap;
+    /* right-aligned beside a phase name or badge, left on a boundaries-only diagram */
+    &:not(:first-child) {
+      margin-left: auto;
+    }
+  }
   .badge {
     font-size: 10px;
     font-weight: 500;
@@ -404,6 +409,8 @@
   }
   dd {
     margin: 0;
+  }
+  :is(dd, .temperature) {
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     small {

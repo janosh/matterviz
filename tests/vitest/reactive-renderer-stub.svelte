@@ -21,6 +21,12 @@
     selected_series_idx = $bindable(),
     active_pane = $bindable(),
     data_inspector_open = $bindable(),
+    selected_phase = $bindable(),
+    pinned_composition = $bindable(),
+    active_path_key = $bindable(),
+    active_image_idx = $bindable(),
+    fits = $bindable(),
+    selection = $bindable(),
     ...rest
   }: Record<string, unknown> = $props()
 
@@ -38,6 +44,12 @@
     else if (key === `selected_series_idx`) selected_series_idx = value
     else if (key === `active_pane`) active_pane = value
     else if (key === `data_inspector_open`) data_inspector_open = value
+    else if (key === `selected_phase`) selected_phase = value
+    else if (key === `pinned_composition`) pinned_composition = value
+    else if (key === `active_path_key`) active_path_key = value
+    else if (key === `active_image_idx`) active_image_idx = value
+    else if (key === `fits`) fits = value
+    else if (key === `selection`) selection = value
     else throw new Error(`reactive-renderer-stub has no $bindable for '${key}'`)
   }
   const read = (): Record<string, unknown> => ({
@@ -55,6 +67,12 @@
     selected_series_idx,
     active_pane,
     data_inspector_open,
+    selected_phase,
+    pinned_composition,
+    active_path_key,
+    active_image_idx,
+    fits,
+    selection,
   })
   register_stub({ read, write })
 </script>

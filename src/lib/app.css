@@ -295,6 +295,12 @@
   padding: 2px 4px;
   font-size: 0.8em;
 }
+/* Control panes scale with the viewer they float over (its container, else the viewport):
+   12px at phone widths up to 13.5px on wide viewers. Set on the pane itself so its em-based
+   width (DraggablePane's 28em), toolbar icons, text and fields all shrink together. */
+.draggable-pane.control-pane {
+  font-size: var(--control-pane-font-size, clamp(12px, 10px + 0.4cqi, 13.5px));
+}
 /* Flow sections need row spacing too; compact horizontal groups own their layout. */
 .draggable-pane :where(.settings-section.flow:not(.ctrl-line):not(.axis-fields)) {
   display: flex;
@@ -333,7 +339,7 @@
    while every other row still spans the section. A reset button keeps a row packed (no jump on
    toggle); shown descriptions need the width, so those rows span again. */
 .draggable-pane :where(.settings-section.grid) {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10em), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.5em), 1fr));
   column-gap: 8pt;
   > * {
     grid-column: 1 / -1;
@@ -364,6 +370,14 @@
     margin: 0;
     padding: 0;
   }
+  /* picker swatch and hex field as tall as the pane's other fields, not 2em of label text */
+  .controls > .swatch {
+    width: 1.6em;
+    height: 1.6em;
+  }
+  input[type='text'] {
+    font-size: var(--pane-input-font-size, 0.85em);
+  }
 }
 .draggable-pane .settings-section.grid > fieldset:has(> legend + .controls) {
   display: grid;
@@ -374,6 +388,20 @@
   column-gap: var(--ctrl-gap, 7pt);
   > :not(legend) {
     grid-column: 2 / -1;
+  }
+}
+/* Opt-in .color-grid sections pack their color pickers into columns where two fit side by
+   side, each with a short label track */
+.draggable-pane .settings-section.grid.color-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14em), 1fr));
+  > fieldset:has(> legend + .controls) {
+    grid-column: auto;
+    grid-template-columns: 5.9em minmax(0, 1fr);
+    > legend {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 }
 .draggable-pane .pane-row {
@@ -414,10 +442,6 @@
   --ctrl-value-w: 3.2em;
   --ctrl-gap: 6pt;
   --settings-row-gap: 4pt;
-}
-.draggable-pane.compact-settings .pane-content {
-  /* Touch toolbar icons grow independently of the pane's text. */
-  font-size: 0.9rem;
 }
 .draggable-pane.compact-settings .settings-section-heading {
   margin: 8pt 0 2pt;

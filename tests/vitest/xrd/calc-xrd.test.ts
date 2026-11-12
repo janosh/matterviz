@@ -7,13 +7,15 @@ import type { Crystal } from '#lib/structure/index.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
 import { apply_symmetry_operations } from '#lib/symmetry/wyckoff.js'
 import {
-  compute_xrd_pattern,
   structure_xrd_pattern,
+  xrd_symmetry_rotations,
+} from '#lib/xrd/async-compute.svelte.js'
+import {
+  compute_xrd_pattern,
   electron_wavelength,
   enumerate_reciprocal_points,
   structure_factors_squared,
   WAVELENGTHS,
-  xrd_symmetry_rotations,
 } from '#lib/xrd/calc-xrd.js'
 import type { HklObj, RecipPoint, XrdOptions, XrdPattern } from '#lib/xrd/index.js'
 import { operations_from_number } from '@spglib/moyo-wasm'

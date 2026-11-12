@@ -23,11 +23,17 @@ for (const [route, toolbar] of [
       await expect(button).toHaveCSS(`opacity`, `1`)
     }
     expect(await icons.count()).toBeGreaterThanOrEqual(2)
-    const size = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)
-    for (const icon of await icons.all()) {
-      await expect(icon).toHaveCSS(`width`, size)
-      await expect(icon).toHaveCSS(`height`, size)
-    }
+    // chart header icons sit a step below the root font size (ChartHeaderControls' --icon-size)
+    const px = (length: string) => Number(length.replace(`px`, ``))
+    const root = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)
+    const size = toolbar === `.header-controls` ? 0.8 * px(root) : px(root)
+    const sides = await icons.evaluateAll((elements) =>
+      elements.flatMap((icon) => [
+        getComputedStyle(icon).width,
+        getComputedStyle(icon).height,
+      ]),
+    )
+    for (const side of sides) expect(px(side)).toBeCloseTo(size, 1)
     // A custom header control can make the row taller than its icon buttons.
     for (const height of [null, `48px`]) {
       if (height)

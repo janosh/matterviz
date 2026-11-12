@@ -174,7 +174,7 @@ export function create_chempot_state<Extra extends keyof ChemPotDiagramConfig = 
         if (!signal.aborted) computing = false
       })
   })
-  $effect(() => () => compute_chempot_async.release())
+  $effect(() => compute_chempot_async.mount())
 
   // A system computed on other axes is stale (the worker is still on its replacement)
   const stale = $derived(system?.elements.join(`|`) !== axes.compute.join(`|`))

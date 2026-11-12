@@ -72,7 +72,6 @@ const count_canvas_clears = (): { base: number; overlay: number } => {
   })
   return clears
 }
-const let_frames_run = () => new Promise((resolve) => setTimeout(resolve, 60))
 const button = (test_id: string): HTMLButtonElement => doc_query(`[data-testid="${test_id}"]`)
 const test_text = (test_id: string): string =>
   doc_query(`[data-testid="${test_id}"]`).textContent ?? ``
@@ -728,17 +727,17 @@ describe(`convex hull replacement state`, () => {
     async (dim) => {
       const clears = count_canvas_clears()
       await mount_harness({ dim })
-      await let_frames_run()
+      await vi.waitFor(() => expect(clears.base).toBeGreaterThan(0))
       const strategy = canvas_draw.HULL_CANVAS_STRATEGIES[dim === `3d` ? 3 : 4]
       const rotation = vi.spyOn(strategy, `rotation`)
+      const mounted = clears.overlay
       button(`select-entry`).click()
-      await let_frames_run()
+      // the pulse is actually running
+      await vi.waitFor(() => expect(clears.overlay).toBeGreaterThan(mounted))
       expect(rotation).not.toHaveBeenCalled()
-      expect(clears.overlay).toBeGreaterThan(0) // the pulse is actually running
 
       const settled = { ...clears }
-      await let_frames_run()
-      expect(clears.overlay).toBeGreaterThan(settled.overlay)
+      await vi.waitFor(() => expect(clears.overlay).toBeGreaterThan(settled.overlay))
       expect(clears.base).toBe(settled.base)
     },
   )
@@ -753,8 +752,8 @@ describe(`convex hull replacement state`, () => {
       const builds = vi.spyOn(thermo, `compute_lower_hull_nd`)
       const clears = count_canvas_clears()
       await mount_harness({ dim })
-      await let_frames_run()
-      expect(clears.base).toBeGreaterThan(0) // it painted at all to begin with
+      // it painted at all to begin with
+      await vi.waitFor(() => expect(clears.base).toBeGreaterThan(0))
 
       const initial_builds = builds.mock.calls.length
       expect(initial_builds).toBeGreaterThan(0)
@@ -765,8 +764,7 @@ describe(`convex hull replacement state`, () => {
       ]) {
         const before = clears.base
         button(toggle).click()
-        await let_frames_run()
-        expect(clears.base).toBeGreaterThan(before)
+        await vi.waitFor(() => expect(clears.base).toBeGreaterThan(before))
         expect(builds).toHaveBeenCalledTimes(initial_builds)
       }
       button(`replace-convex-entries`).click()

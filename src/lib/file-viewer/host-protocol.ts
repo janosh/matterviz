@@ -66,12 +66,8 @@ export type SettingsChangedMessage = {
 export type WebviewToHostMessage =
   | { command: `info` | `error`; text: string }
   | (HostRequest & { request_id: string })
-  | {
-      command: `saveAs`
-      filename: string
-      content: string
-      is_binary: boolean
-    }
+  // Text as is, binary exports as their bytes (an ArrayBuffer, see WireFrame below)
+  | { command: `saveAs`; filename: string; content: string | ArrayBuffer }
 
 // Replies carry the request_id of the WebviewToHostMessage they answer
 export type HostToWebviewMessage =

@@ -10,6 +10,7 @@ import {
   vite_plugin_json_gz,
   vite_plugin_moyo_wasm_source,
 } from '../../src/vite-plugins.ts'
+import { scoped_app_css } from '../../src/elements/scoped-css.ts'
 
 // Load moyo (spglib) symmetry WASM from jsDelivr by default. Hosts can set
 // globalThis.matterviz_moyo_wasm_url to a local/data URL before symmetry analysis.
@@ -41,6 +42,10 @@ export const inline_workers: Plugin = {
   },
 }
 
+// The class every widget element carries: anywidget.ts injects app.css scoped to it (as is, its
+// bare input/button rules and :root color-scheme would restyle the whole notebook page)
+export const widget_scope = `.matterviz-widget`
+
 // svelte() ships its own copy of Vite's Plugin type; inferring the array element
 // type deep-compares them and exceeds TypeScript's instantiation depth.
 const plugins = [
@@ -56,6 +61,7 @@ const config = make_config({ fmt: { printWidth: 95 } })
 
 export default defineConfig({
   ...config, // shared lint/fmt/build
+  define: { SCOPED_APP_CSS: JSON.stringify(scoped_app_css(widget_scope)) },
   resolve: {
     // Array form so `three` matches exactly — a string alias prefix-matches and would
     // rewrite three/webgpu, three/tsl and three/examples/* too.
@@ -91,10 +97,11 @@ export default defineConfig({
       fileName: `matterviz`,
       cssFileName: `matterviz`,
     },
-    minify: true, // published to a CDN + parsed in browsers; halve size/parse cost
     rolldownOptions: {
-      // Disable code splitting -- widget asset loader expects a single JS file
-      output: { codeSplitting: false },
+      // Disable code splitting -- widget asset loader expects a single JS file. Vite's ES lib
+      // builds keep whitespace and pure annotations for the consumer's bundler to tree-shake
+      // with; nothing bundles this file again, so minify it fully
+      output: { codeSplitting: false, minify: true, comments: false },
     },
   },
 })

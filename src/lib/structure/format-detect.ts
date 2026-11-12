@@ -1,4 +1,5 @@
 import {
+  AIMS_GEOMETRY_REGEX,
   HDF5_EXT_REGEX,
   STRUCT_KEYWORDS_REGEX,
   STRUCT_KEYWORDS_STRICT_REGEX,
@@ -38,7 +39,11 @@ export function is_structure_file(filename: string): boolean {
   ) {
     return false
   }
-  if (STRUCTURE_EXTENSIONS_REGEX.test(name) || VASP_FILES_REGEX.test(name)) {
+  if (
+    STRUCTURE_EXTENSIONS_REGEX.test(name) ||
+    VASP_FILES_REGEX.test(name) ||
+    AIMS_GEOMETRY_REGEX.test(name)
+  ) {
     return true
   }
   if (XYZ_EXTXYZ_REGEX.test(name)) return !TRAJ_KEYWORDS_REGEX.test(name)

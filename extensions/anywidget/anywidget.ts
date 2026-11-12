@@ -7,36 +7,44 @@ import {
   Bands,
   BandsAndDos,
   BarPlot,
+  BoxPlot,
   BrillouinZone,
   check_blob_workers,
   ChemPotDiagram,
   Composition,
   ConvexHull,
   Dos,
+  EosPlot,
   FermiSurface,
   HeatmapMatrix,
   Histogram,
   is_plain_object,
   IsobaricBinaryPhaseDiagram,
+  IsobaricTernaryPhaseDiagram,
+  NebPlot,
   normalize_band_structure,
   normalize_dos,
   PeriodicTable,
+  PhononModeExplorer,
   RdfPlot,
+  Sankey,
   ScatterPlot,
   ScatterPlot3D,
   set_moyo_wasm_source,
   SpacegroupBarPlot,
   Structure,
+  Sunburst,
+  TernaryPlot,
   trajectory_from_json,
   Trajectory,
   Treemap,
   volume_from_json,
   XrdPlot,
 } from 'matterviz'
-import app_css from 'matterviz/app.css?raw'
 import { DEFAULTS } from 'matterviz/settings'
 import { watch_theme } from 'matterviz/theme/embedded'
 import { mount, unmount } from 'svelte'
+import type { COMPONENTS } from '../../src/elements/components'
 import type { DrivenProp } from './reactive.svelte'
 import {
   derived_prop,
@@ -48,6 +56,7 @@ import {
   reactive_widget,
   set_model,
   throttle,
+  words,
   writeback_prop,
 } from './reactive.svelte'
 
@@ -56,20 +65,15 @@ await check_blob_workers(`MatterViz`)
 
 const styled_shadow_roots = new WeakSet<ShadowRoot>()
 
-// Widget chrome + bundled app styles. Theme-independent: every token in app.css is
-// light-dark(), resolved against the widget element's own color-scheme (set in render).
-const widget_base_css = `
-    .cell-output-ipywidget-background { background: transparent !important; }
-    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select) {
-      background-color: var(--surface-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px;
-    }
-    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select):focus {
-      outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 25%, transparent);
-    }
-    :is(input, textarea)::placeholder { color: var(--text-color-muted); }
-    select option { background-color: var(--surface-bg); color: var(--text-color); }
-    ${app_css}
-  `
+// The bundled app styles, which reach only into elements of this class (every widget's root),
+// plus VS Code's opaque notebook output background cleared behind them. Theme-independent:
+// every token in app.css is light-dark(), resolved against the widget element's own
+// color-scheme (set in render).
+const WIDGET_CLASS = `matterviz-widget`
+// app.css scoped to WIDGET_CLASS, inlined by vite.config.ts's `define`
+declare const SCOPED_APP_CSS: string
+const widget_base_css = `.cell-output-ipywidget-background:has(.${WIDGET_CLASS}) { background: transparent !important; }
+${SCOPED_APP_CSS}`
 
 // Install the app styles once per root (document head, or the widget's shadow root)
 function inject_app_css(target_element: HTMLElement): void {
@@ -105,8 +109,8 @@ const pick_props = (model: AnyModel, keys: readonly string[]) =>
 
 // Derived prop bundling several traits into one object prop (deps == picked keys),
 // e.g. bands_props / dos_props.
-const picked_prop = (name: string, keys: readonly string[]): DrivenProp =>
-  derived_prop(name, keys, (model) => pick_props(model, keys))
+const picked_prop = (name: string, keys: string): DrivenProp =>
+  derived_prop(name, words(keys), (model) => pick_props(model, words(keys)))
 
 const merge_object_prop = (
   base: unknown,
@@ -126,73 +130,53 @@ const merged_prop = (target: string, sub_key: string, source: string): DrivenPro
   )
 
 const plot_common_drive: readonly DrivenProp[] = [
-  ...drive_props([`series`, `display`, `legend`, `ref_lines`, `padding`, `range_padding`]),
-  ...[`x`, `x2`, `y`, `y2`].map((axis) =>
-    merged_prop(`${axis}_axis`, `range`, `${axis}_range`),
-  ),
+  ...drive_props(`series display legend ref_lines padding range_padding`),
+  ...words(`x x2 y y2`).map((axis) => merged_prop(`${axis}_axis`, `range`, `${axis}_range`)),
 ]
 // Every plot component (the generic plots and the Bands/Dos/XrdPlot/RdfPlot wrappers alike)
 // declares these four controls props and forwards the pane attribute dicts to its PlotControls
-const plot_control_keys = [
-  `show_controls`,
-  `controls_open`,
-  `controls_toggle_props`,
-  `controls_pane_props`,
-] as const
-const plot_controls_drive = plot_control_keys.map((key) =>
+const plot_control_keys = `show_controls controls_open controls_toggle_props controls_pane_props`
+const plot_controls_drive = words(plot_control_keys).map((key) =>
   key === `controls_open` ? writeback_prop(key, false) : drive_prop(key),
 )
-const with_plot_controls = (keys: readonly string[]): DrivenProp[] => [
+const with_plot_controls = (keys: string): DrivenProp[] => [
   ...plot_controls_drive,
   ...drive_props(keys),
 ]
 // The 2D cartesian plots: the shared series/axis traits, the controls, and their own keys
-const cartesian_plot_drive = (keys: readonly string[]): DrivenProp[] => [
+const cartesian_plot_drive = (keys: string): DrivenProp[] => [
   ...plot_common_drive,
   ...with_plot_controls(keys),
 ]
+// Treemap and Sunburst: the HierarchyChartProps traits they share plus their own keys.
+// Function/snippet props cannot cross the JSON bridge; continuous color props requiring
+// color_values stay local. zoom_root_id is two-way: click-zoom in the UI notifies Python;
+// Python can re-root the view
+const hierarchy_drive = (keys: string): DrivenProp[] => [
+  ...with_plot_controls(`data value_mode sort level_lighten min_fraction max_children other_label
+    max_depth show_labels label_text zoom_on_click show_breadcrumbs legend show_legend
+    value_format padding export_formats export_filename fullscreen_toggle ${keys}`),
+  writeback_prop(`zoom_root_id`),
+]
 
-// Scene traits forwarded verbatim into scene_props via pick_props.
-const scene_pick_keys = [
-  `atom_radius`,
-  `show_atoms`,
-  `same_size_atoms`,
-  `show_bonds`,
-  `bond_thickness`,
-  `bond_color`,
-  `bonding_strategy`,
-  `vector_configs`,
-  `vector_scale`,
-  `vector_color`,
-  `vector_normalize`,
-  `vector_uniform_thickness`,
-  `vector_origin_gap`,
-  // label settings live in scene_props: Structure forwards them to StructureScene
-  // via {...scene_props}, not as top-level Structure props
-  `show_site_labels`,
-  `show_site_indices`,
-  // unit-cell rendering also lives in scene_props
-  `cell_edge_opacity`,
-  `cell_surface_opacity`,
-  `cell_edge_color`,
-  `cell_surface_color`,
-  `cell_edge_width`,
-  `show_cell_vectors`,
-] as const
+// Scene traits forwarded verbatim into scene_props via pick_props. Label settings and unit-cell
+// rendering live here too: Structure forwards them to StructureScene via {...scene_props}, not
+// as top-level Structure props
+const scene_pick_keys = words(`atom_radius show_atoms same_size_atoms show_bonds bond_thickness
+  bond_color bonding_strategy vector_configs vector_scale vector_color vector_normalize
+  vector_uniform_thickness vector_origin_gap show_site_labels show_site_indices
+  cell_edge_opacity cell_surface_opacity cell_edge_color cell_surface_color cell_edge_width
+  show_cell_vectors`)
 // All scene traits (deps for the reactive scene_props derived prop); auto_rotate and gizmo
 // are defaulted in get_scene_props rather than picked verbatim.
-const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`] as const
+const scene_prop_keys = [...scene_pick_keys, `auto_rotate`, `gizmo`]
 
 // Top-level Structure traits the trajectory forwards into its nested structure_props
-// (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props).
-const traj_structure_prop_keys = [
-  `show_image_atoms`,
-  `color_scheme`,
-  `background_color`,
-  `background_opacity`,
-  // JSON CutawaySettings, sliced in the displayed cell; a hotspots-pane cutaway overrides it
-  `cutaway`,
-] as const
+// (show_site_labels/show_site_indices are NOT here -- they ride inside scene_props). cutaway
+// is JSON CutawaySettings, sliced in the displayed cell; a hotspots-pane cutaway overrides it
+const traj_structure_prop_keys = words(
+  `show_image_atoms color_scheme background_color background_opacity cutaway`,
+)
 
 // Build scene/lattice props shared by structure and trajectory renderers. Unset traits fall
 // back to the same settings defaults the components use, so a notebook widget and a page
@@ -282,7 +266,8 @@ const scatter_interactions = (model: AnyModel) => {
 type WidgetSpec = {
   component: unknown
   drive: readonly DrivenProp[]
-  base_drive?: readonly DrivenProp[]
+  // style is the notebook wrapper, driven unless the component has nowhere to put it
+  no_style?: true
   // Fixed props the component declares; anything else would fall through ...rest onto its
   // wrapper element as an unknown HTML attribute
   static_props?: Record<string, unknown>
@@ -295,13 +280,9 @@ type WidgetSpec = {
   interaction_model_keys?: readonly string[]
 }
 
-// Base props every widget gets unless its spec sets base_drive. style is the notebook
-// wrapper; specs using style_base_drive drive show_controls explicitly.
-const top_level_base_drive: readonly DrivenProp[] = [
-  drive_prop(`show_controls`),
-  drive_prop(`style`),
-]
-const style_base_drive: readonly DrivenProp[] = [drive_prop(`style`)]
+// Every prop a spec drives
+const driven_props = ({ no_style, drive }: WidgetSpec): readonly DrivenProp[] =>
+  no_style ? drive : [drive_prop(`style`), ...drive]
 // Viewers with a drop zone: file drops are off in notebooks
 const no_file_drop = { allow_file_drop: false }
 
@@ -321,7 +302,7 @@ export const mount_spec = (
   const interaction = spec.interactions?.(model)
   const { props, dispose } = reactive_widget(
     model,
-    [...(spec.base_drive ?? top_level_base_drive), ...spec.drive],
+    driven_props(spec),
     { ...spec.static_props, ...interaction?.props },
     on_update_error,
   )
@@ -341,25 +322,19 @@ export const mount_spec = (
 }
 
 // === Widget registry ===
+// One spec per component of the registry shared with the custom elements, keyed by widget_type.
 // Exported so tests can exercise each widget's drive/writeback/derived wiring.
 export const WIDGETS: Record<string, WidgetSpec> = {
   structure: {
     component: Structure,
     static_props: no_file_drop,
     drive: [
-      ...drive_props([
-        `structure`,
-        // show_site_labels/show_site_indices are delivered via scene_props (see
-        // scene_pick_keys), not as top-level Structure props.
-        ...traj_structure_prop_keys,
-        `enable_info_pane`,
-        `fullscreen_toggle`,
-        `png_dpi`,
-        `isosurface_settings`,
-        // highlighted_sites stays drive-only: the component sets it from info-pane
-        // hover (high frequency), so writeback would flood the comm channel.
-        `highlighted_sites`,
-      ]),
+      // show_site_labels/show_site_indices are delivered via scene_props (see scene_pick_keys),
+      // not as top-level Structure props. highlighted_sites stays drive-only: the component
+      // sets it from info-pane hover (high frequency), so writeback would flood the comm channel.
+      ...drive_props(`show_controls structure enable_info_pane fullscreen_toggle png_dpi
+        isosurface_settings highlighted_sites`),
+      ...traj_structure_prop_keys.map(drive_prop),
       derived_prop(`source`, [`data_url`, `structure_string`], (model) => {
         const url = get_prop(model, `data_url`)
         const data = get_prop(model, `structure_string`)
@@ -385,13 +360,8 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: Trajectory,
     static_props: no_file_drop,
     drive: [
-      ...drive_props([
-        `layout`,
-        `fullscreen_toggle`,
-        `auto_play`,
-        `step_labels`,
-        `property_labels`,
-      ]),
+      ...drive_props(`show_controls layout fullscreen_toggle auto_play step_labels
+        property_labels`),
       // The JSON trait (pymatgen Trajectory, { frames }, array of structures) becomes an
       // in-memory run; data_url is fetched and parsed by the file viewer itself. A malformed
       // trait throws like a malformed spectral one, failing the mount with the parse error
@@ -429,23 +399,10 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     component: ScatterPlot,
     // selected_point drives the highlight from Python; active_point/hovered_point are
     // written back via the interaction callbacks.
-    base_drive: style_base_drive,
     drive: [
-      ...cartesian_plot_drive([
-        `styles`,
-        `show_legend`,
-        `marker_renderer`,
-        `color_scale`,
-        `size_scale`,
-        `density_contours`,
-        `fill_regions`,
-        `error_bands`,
-        `hover_config`,
-        `label_placement_config`,
-        `point_tween`,
-        `line_tween`,
-      ]),
-      drive_prop(`selected_point`),
+      ...cartesian_plot_drive(`styles show_legend marker_renderer color_scale size_scale
+        density_contours fill_regions error_bands hover_config label_placement_config
+        point_tween line_tween selected_point`),
       // None hides these, {} keeps the defaults
       nullable_prop(`color_bar`),
       nullable_prop(`size_legend`),
@@ -455,94 +412,46 @@ export const WIDGETS: Record<string, WidgetSpec> = {
   },
   scatter_plot_3d: {
     component: ScatterPlot3D,
-    base_drive: style_base_drive,
-    drive: with_plot_controls([
-      `series`,
-      `surfaces`,
-      `ref_lines`,
-      `ref_planes`,
-      `x_axis`,
-      `y_axis`,
-      `z_axis`,
-      `display`,
-      `styles`,
-      `show_legend`,
-      `color_scale`,
-      `size_scale`,
-      `legend`,
-      `camera_projection`,
-      `point_tween`,
-    ]),
+    drive:
+      with_plot_controls(`series surfaces ref_lines ref_planes x_axis y_axis z_axis display
+      styles show_legend color_scale size_scale legend camera_projection point_tween`),
   },
   bar_plot: {
     component: BarPlot,
-    base_drive: style_base_drive,
-    drive: cartesian_plot_drive([
-      `show_legend`,
-      `orientation`,
-      `mode`,
-      `bar`,
-      `line`,
-      `color_scale`,
-      `size_scale`,
-    ]),
+    drive: cartesian_plot_drive(
+      `show_legend orientation mode bar line color_scale size_scale`,
+    ),
   },
   histogram: {
     component: Histogram,
-    base_drive: style_base_drive,
     drive: [
-      ...cartesian_plot_drive([`show_legend`, `bins`, `mode`, `bar`]),
+      ...cartesian_plot_drive(`show_legend bins mode bar`),
       writeback_prop(`selected_series_idx`, 0),
     ],
   },
   composition: {
     component: Composition,
-    base_drive: style_base_drive,
-    drive: drive_props([
-      `composition`,
-      `mode`,
-      `show_percentages`,
-      `color_scheme`,
-      `patterns`,
-    ]),
+    drive: drive_props(`composition mode show_percentages color_scheme patterns`),
   },
   convex_hull: {
     component: ConvexHull,
     static_props: no_file_drop,
-    drive: drive_props([
-      `entries`,
-      `show_stable`,
-      `show_unstable`,
-      `show_hull_faces`,
-      `hull_face_opacity`,
-      `show_stable_labels`,
-      `show_unstable_labels`,
-      `max_hull_dist_show_labels`,
-      `max_hull_dist_show_phases`,
-      `temperature`,
-    ]),
+    drive: drive_props(`show_controls entries show_stable show_unstable show_hull_faces
+      hull_face_opacity show_stable_labels show_unstable_labels max_hull_dist_show_labels
+      max_hull_dist_show_phases temperature`),
   },
   band_structure: {
     component: Bands,
-    base_drive: style_base_drive,
     drive: [
       band_structs_prop,
-      ...with_plot_controls([`show_legend`, `fermi_level`, `reference_frequency`]),
+      ...with_plot_controls(`show_legend fermi_level reference_frequency`),
     ],
   },
   dos: {
     component: Dos,
-    base_drive: style_base_drive,
     drive: [
       doses_prop,
-      ...with_plot_controls([
-        `stack`,
-        `sigma`,
-        `normalize`,
-        `orientation`,
-        `show_legend`,
-        `spin_mode`,
-      ]),
+      ...with_plot_controls(`stack sigma normalize orientation show_legend spin_mode`),
     ],
   },
   bands_and_dos: {
@@ -550,188 +459,158 @@ export const WIDGETS: Record<string, WidgetSpec> = {
     // The parent owns the shared Fermi reference; hover frequency and DOS orientation
     // are controlled internally.
     component: BandsAndDos,
-    base_drive: style_base_drive,
     drive: [
       // structure adds its Brillouin zone beside the bands, configured by bz_props
       band_structs_prop,
       doses_prop,
-      ...drive_props([`fermi_level`, `structure`, `bz_props`]),
-      picked_prop(`bands_props`, [`show_legend`, ...plot_control_keys]),
-      picked_prop(`dos_props`, [
-        `stack`,
-        `sigma`,
-        `normalize`,
-        `show_legend`,
-        `spin_mode`,
-        ...plot_control_keys,
-      ]),
+      ...drive_props(`fermi_level structure bz_props`),
+      picked_prop(`bands_props`, `show_legend ${plot_control_keys}`),
+      picked_prop(
+        `dos_props`,
+        `stack sigma normalize show_legend spin_mode ${plot_control_keys}`,
+      ),
     ],
   },
   fermi_surface: {
     component: FermiSurface,
     static_props: no_file_drop,
     drive: [
-      ...drive_props([
-        `fermi_data`,
-        `band_data`,
-        `mu`,
-        `color_property`,
-        `color_scale`,
-        `property_name`,
-        `custom_property_label`,
-        `representation`,
-        `surface_opacity`,
-        `show_bz`,
-        `bz_opacity`,
-        `show_vectors`,
-        `camera_projection`,
-      ]),
+      ...drive_props(`show_controls fermi_data band_data mu color_property color_scale
+        property_name custom_property_label representation surface_opacity show_bz bz_opacity
+        show_vectors camera_projection`),
       nullable_prop(`color_bar`),
     ],
   },
   brillouin_zone: {
     component: BrillouinZone,
     static_props: no_file_drop,
-    drive: drive_props([
-      `structure`,
-      `bz_data`,
-      `surface_color`,
-      `surface_opacity`,
-      `edge_color`,
-      `edge_width`,
-      `show_vectors`,
-      `show_ibz`,
-      `ibz_color`,
-      `ibz_opacity`,
-      `camera_projection`,
-    ]),
+    drive:
+      drive_props(`show_controls structure bz_data surface_color surface_opacity edge_color
+      edge_width show_vectors show_ibz ibz_color ibz_opacity camera_projection`),
   },
   phase_diagram: {
     component: IsobaricBinaryPhaseDiagram,
     static_props: no_file_drop,
-    drive: drive_props([`data`]),
+    drive: drive_props(`show_controls data`),
   },
   xrd: {
     component: XrdPlot,
-    base_drive: style_base_drive,
     static_props: no_file_drop,
-    drive: with_plot_controls([`patterns`]),
+    drive: with_plot_controls(`patterns`),
   },
   periodic_table: {
     component: PeriodicTable,
-    base_drive: style_base_drive,
     drive: [
-      ...drive_props([
-        `heatmap_values`,
-        `color_scale`,
-        `color_overrides`,
-        `labels`,
-        `gap`,
-        `missing`,
-      ]),
+      ...drive_props(`heatmap_values color_scale color_overrides labels gap missing`),
       nullable_prop(`color_bar`),
     ],
   },
   rdf_plot: {
     component: RdfPlot,
-    base_drive: style_base_drive,
     static_props: no_file_drop,
-    drive: with_plot_controls([
-      `patterns`,
-      `structures`,
-      `mode`,
-      `show_reference_line`,
-      `cutoff`,
-      `n_bins`,
-      `x_axis`,
-      `y_axis`,
-    ]),
+    drive:
+      with_plot_controls(`patterns structures mode show_reference_line cutoff n_bins x_axis
+      y_axis`),
   },
   heatmap_matrix: {
     component: HeatmapMatrix,
     drive: [
-      ...drive_props([
-        `x_items`,
-        `y_items`,
-        `values`,
-        `color_scale`,
-        `missing`,
-        `x_axis`,
-        `y_axis`,
-        `tile_size`,
-        `gap`,
-        `show_values`,
-        `label_style`,
-      ]),
+      ...drive_props(`show_controls x_items y_items values color_scale missing x_axis y_axis
+        tile_size gap show_values label_style`),
       nullable_prop(`color_bar`),
     ],
   },
   spacegroup_bar: {
     component: SpacegroupBarPlot,
-    drive: drive_props([
-      `data`,
-      `show_counts`,
-      `show_legend`,
-      `orientation`,
-      `x_axis`,
-      `y_axis`,
-    ]),
+    drive: drive_props(`show_controls data show_counts show_legend orientation x_axis y_axis`),
   },
   chem_pot_diagram: {
     // ChemPotDiagram sizes itself through width/height and spreads no rest props, so the
     // notebook wrapper `style` has nowhere to go: size it with the width/height traits
     component: ChemPotDiagram,
-    base_drive: [],
-    drive: drive_props([`entries`, `config`, `temperature`, `width`, `height`]),
+    no_style: true,
+    drive: drive_props(`entries config temperature width height`),
   },
   treemap: {
-    // Function/snippet props cannot cross the JSON bridge; continuous color props
-    // requiring color_values stay local.
     component: Treemap,
-    base_drive: style_base_drive,
+    drive:
+      hierarchy_drive(`padding_inner padding_top padding_outer label_fit label_min_font_size
+      label_max_font_size parent_label_font_size`),
+  },
+  sunburst: {
+    component: Sunburst,
+    drive: hierarchy_drive(`shape inner_radius pad_angle label_rotation`),
+  },
+  sankey: {
+    component: Sankey,
+    drive: with_plot_controls(`data orientation node_width node_padding node_align min_fraction
+      max_links iterations link_opacity link_color_mode show_node_labels value_format padding
+      legend show_legend fullscreen_toggle`),
+  },
+  box_plot: {
+    component: BoxPlot,
+    drive: cartesian_plot_drive(`show_legend orientation title box whisker median_style
+      sample_style whisker_mode whisker_range whisker_percentiles show_outliers show_mean points
+      show_value_labels value_label_stat value_label_format kind side bandwidth violin_width
+      violin_style kde_clip`),
+  },
+  ternary_plot: {
+    component: TernaryPlot,
     drive: [
-      ...with_plot_controls([
-        `data`,
-        `value_mode`,
-        `sort`,
-        `level_lighten`,
-        `min_fraction`,
-        `max_children`,
-        `other_label`,
-        `max_depth`,
-        `padding_inner`,
-        `padding_top`,
-        `padding_outer`,
-        `show_labels`,
-        `label_text`,
-        `label_fit`,
-        `label_min_font_size`,
-        `label_max_font_size`,
-        `parent_label_font_size`,
-        `zoom_on_click`,
-        `show_breadcrumbs`,
-        `legend`,
-        `show_legend`,
-        `value_format`,
-        `padding`,
-        `export_formats`,
-        `export_filename`,
-        `fullscreen_toggle`,
-      ]),
-      // Two-way: click-zoom in the UI notifies Python; Python can re-root the view
-      writeback_prop(`zoom_root_id`),
+      ...with_plot_controls(`series labels grid_step show_grid show_ticks tick_format color_scale
+        padding legend show_legend fullscreen_toggle`),
+      nullable_prop(`color_bar`),
     ],
   },
-}
+  ternary_phase_diagram: {
+    component: IsobaricTernaryPhaseDiagram,
+    static_props: no_file_drop,
+    drive: [
+      ...drive_props(`show_controls entries options temperature display free_energy_mode t_range
+        n_samples gas_enabled gas_pressures fullscreen_toggle title`),
+      // Clicked phase (index into the computed diagram's phases) and composition probe
+      writeback_prop(`selected_phase`),
+      writeback_prop(`pinned_composition`),
+    ],
+  },
+  neb_plot: {
+    component: NebPlot,
+    drive: [
+      ...with_plot_controls(`paths coord_options coord_mode energy_reference show_spline
+        annotate_barrier x_axis y_axis`),
+      // The hovered or clicked image, to link e.g. a structure widget showing it
+      writeback_prop(`active_path_key`, ``),
+      writeback_prop(`active_image_idx`, 0),
+    ],
+  },
+  eos_plot: {
+    component: EosPlot,
+    drive: [
+      ...with_plot_controls(`volumes energies kinds show_fit_params data_label x_axis y_axis`),
+      // Output only: the fitted E0, V0, B0, B0' and RMSE per successful kind
+      writeback_prop(`fits`, []),
+    ],
+  },
+  phonon_mode_explorer: {
+    // No show_controls prop: the explorer's panes carry their own chrome
+    component: PhononModeExplorer,
+    drive: [
+      ...drive_props(`phonons spectrum_kind amplitude supercell n_frames fps show_vectors
+        vector_thickness vector_color auto_play pane_ratio show_bz_inset band_coloring
+        mode_values`),
+      // The animated mode { qpoint_idx, mode_idx }: follows clicks on the dispersion/spectrum
+      writeback_prop(`selection`),
+    ],
+  },
+} satisfies Record<keyof typeof COMPONENTS, WidgetSpec>
 
 // Machine-readable trait contract: for each widget_type, every model trait the JS
-// side reads (drive/derived/writeback deps + base drive) or writes (interaction
+// side reads (drive/derived/writeback deps + style) or writes (interaction
 // callbacks). Consumed by pymatviz's prop-parity test to flag Python widget traits
 // the frontend would silently ignore (and frontend props Python cannot set).
 export const WIDGET_MODEL_KEYS: Record<string, readonly string[]> = Object.fromEntries(
   Object.entries(WIDGETS).map(([widget_type, spec]) => {
-    const driven_props = [...(spec.base_drive ?? top_level_base_drive), ...spec.drive]
-    const model_keys = driven_props.flatMap(({ deps }) => deps)
+    const model_keys = driven_props(spec).flatMap(({ deps }) => deps)
     return [
       widget_type,
       [...new Set([...model_keys, ...(spec.interaction_model_keys ?? [])])].toSorted(),
@@ -754,6 +633,7 @@ const render: Render = (props) => {
     widget_type && Object.hasOwn(WIDGETS, widget_type) ? WIDGETS[widget_type] : undefined
 
   cleanup_element(element)
+  element.classList.add(WIDGET_CLASS)
   inject_app_css(element)
   // Workers fetch moyo from the CDN; a host-served WASM (offline use) keeps symmetry here
   const { matterviz_moyo_wasm_url } = globalThis as { matterviz_moyo_wasm_url?: string }

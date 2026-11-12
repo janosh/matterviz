@@ -6,6 +6,8 @@
   import { format_num } from '#lib/labels.js'
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
+  import { fade } from 'svelte/transition'
+  import { motion_duration } from '#lib/effects.svelte.js'
 
   const PHASE_ICONS = { Gas, Liquid, Solid } as const
 
@@ -32,46 +34,59 @@
   ]
 </script>
 
-{#if element}
-  <div {...rest}>
-    <ElementHeading {element} style="font-size: 6cqw; grid-column: 1/-1; margin: auto 0 0" />
-    {#each stats(element) as [label, icon, value, unit, unit_title] (label)}
-      <section>
-        <p>
-          {label}
-          {#if unit}<abbr title={unit_title}>{unit}</abbr>{/if}
-        </p>
-        <strong><Icon {icon} /> {value}</strong>
-      </section>
-    {/each}
-  </div>
-{:else}
-  <h3 style="text-align: center">Hover or tap an element!</h3>
-{/if}
+<!-- old and new element share one grid cell so they crossfade in place -->
+<div {...rest} class={[`element-stats`, rest.class]}>
+  {#key element?.number}
+    <div class="layer" transition:fade={{ duration: motion_duration(150) }}>
+      {#if element}
+        <ElementHeading
+          {element}
+          style="font-size: 6cqw; grid-column: 1/-1; margin: auto 0 0"
+        />
+        {#each stats(element) as [label, icon, value, unit, unit_title] (label)}
+          <section>
+            <p>
+              {label}
+              {#if unit}<abbr title={unit_title}>{unit}</abbr>{/if}
+            </p>
+            <strong><Icon {icon} /> {value}</strong>
+          </section>
+        {/each}
+      {:else}
+        <h3>Hover or tap an element!</h3>
+      {/if}
+    </div>
+  {/key}
+</div>
 
 <style>
-  div {
+  .element-stats {
+    display: grid;
+    container-type: inline-size;
+  }
+  .layer {
+    grid-area: 1 / 1;
     display: grid;
     grid-template: auto auto / repeat(4, 1fr);
     place-items: center;
     text-align: center;
-    container-type: inline-size;
   }
-  div > section > strong {
+  section > strong {
     display: block;
     margin-top: 1ex;
     font-size: 3.5cqw;
   }
-  div > section > p {
+  section > p {
     margin: 0;
     font-weight: lighter;
     font-size: 3cqw;
   }
-  div > section > p > abbr {
+  section > p > abbr {
     font-size: 2cqw;
     text-decoration: none;
   }
   h3 {
+    grid-column: 1 / -1;
     font-size: clamp(9pt, 3vw, 20pt);
     white-space: nowrap;
     align-self: center;

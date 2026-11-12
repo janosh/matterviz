@@ -48,8 +48,9 @@ runs:
         # explicitly where they need it, so skip the ~20 s svelte-package run on install.
         MATTERVIZ_SKIP_PREPARE: 1
       run: |
-        # Git dependencies need prepare; generate the allowlist in CI.
-        printf 'allowBuilds:\n  svelte-widgets: true\n' > pnpm-workspace.yaml
+        # Git dependencies need prepare; generate the allowlist in CI. Keyed by repository: a
+        # bare package name does not approve a git dependency's build (pnpm 12 rejects it).
+        printf "allowBuilds:\n  'svelte-widgets@git+https://github.com/janosh/svelte-widgets.git': true\n" > pnpm-workspace.yaml
         # Registry packages ship their generated artifacts, so their prepare scripts do not
         # need to run. Keep their skipped builds non-fatal.
         # Resolve moving Git branches afresh instead of reusing a previous lockfile's commit.

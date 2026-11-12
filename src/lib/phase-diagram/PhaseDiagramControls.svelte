@@ -311,6 +311,7 @@
       changed_keys={colors_settings.changed_keys}
       on_reset={() => (config = { ...config, colors: { ...PHASE_DIAGRAM_DEFAULTS.colors } })}
       layout="grid"
+      class="color-grid"
     >
       {#each color_options as [key, fallback, label, tip] (key)}
         <ColorInput
@@ -388,8 +389,7 @@
 
 <style>
   :global(.phase-diagram-controls-pane) {
-    font-size: 0.85em;
-    max-width: 320px;
+    --pane-width: 30.5em; /* room for two columns of colors */
     --ctrl-label-w: 8.5em;
     --ctrl-value-w: 5.5em;
   }

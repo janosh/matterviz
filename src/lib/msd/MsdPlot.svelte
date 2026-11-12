@@ -53,12 +53,18 @@
     options: (): MsdOptions => ({
       max_lag_fraction: msd_options.max_lag_fraction,
       max_lags: msd_options.max_lags,
+      remove_com_drift: msd_options.remove_com_drift,
     }),
     compute: (input, options, signal) => compute_msd_async(input, options, { signal }),
     revise: (computed) => with_lag_time_axis(computed, msd_options),
     set_result: (value) => (result = value),
     set_loading: (value) => (loading = value),
     set_error: (message) => (error_msg = message),
+  })
+  // The worker retains its copy of the stream: end an idle one once this plot has none left or
+  // unmounts. After use_async_result, so a replaced stream's request already keeps the worker.
+  $effect(() => {
+    if (positions) return compute_msd_async.mount()
   })
 
   // Index-aligned with result.curves; null where the window holds fewer than 2 lags. An
@@ -184,6 +190,7 @@
         {#if summary.frame_stride > 1}· 1 in {summary.frame_stride} frames{/if}
         {#if summary.lag_stride > 1}· 1 in {summary.lag_stride} lags{/if}
         · {summary.unwrapped ? `unwrapped across periodic images` : `no unwrapping applied`}
+        {#if summary.com_drift_removed}· centre-of-mass drift removed{/if}
       {/snippet}
     </AnalysisSummary>
   {/if}

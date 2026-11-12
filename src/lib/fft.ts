@@ -249,6 +249,8 @@ export function one_sided_periodogram(
       component_means[component_idx] += value
     }
   }
+  // Zero-weight components contribute nothing and are not transformed
+  const weighted: number[] = []
   for (let component_idx = 0; component_idx < n_components; component_idx++) {
     component_means[component_idx] /= n_samples
     const component_weight = component_weights?.[component_idx] ?? 1
@@ -258,25 +260,39 @@ export function one_sided_periodogram(
           `got ${component_weight}`,
       )
     }
-    if (component_weight === 0) continue
-    // One scratch pair for every component: a 2000-atom spectroscopy run transforms 6000
-    // components, and allocating 2 x n_fft per component dominated the FFT itself
+    if (component_weight > 0) weighted.push(component_idx)
+  }
+  // Each component enters scaled by the root of its weight, so its |X(k)|^2 carries the weight
+  const roots = component_means.map((_, idx) => Math.sqrt(component_weights?.[idx] ?? 1))
+  const windowed = (sample_idx: number, component_idx: number): number =>
+    (values[sample_idx * n_components + component_idx] - component_means[component_idx]) *
+    weights[sample_idx] *
+    roots[component_idx]
+  const density_scale = sample_interval / window_energy / 2
+  for (let pair_idx = 0; pair_idx < weighted.length; pair_idx += 2) {
+    // Two real components packed as z = a + i b share one transform, halving the FFT count (as
+    // autocorrelation_sums does): |A(k)|^2 + |B(k)|^2 = (|Z(k)|^2 + |Z(-k)|^2) / 2, a sum of
+    // squares with no cancellation however far a and b differ in scale. An unpaired last one
+    // leaves b = 0. One scratch pair serves every transform: a 2000-atom spectroscopy run has
+    // 6000 components, and allocating 2 x n_fft for each dominated the FFT itself.
+    const [first, second] = [weighted[pair_idx], weighted[pair_idx + 1]]
     real.fill(0)
     imaginary.fill(0)
     for (let sample_idx = 0; sample_idx < n_samples; sample_idx++) {
-      real[sample_idx] =
-        (values[sample_idx * n_components + component_idx] - component_means[component_idx]) *
-        weights[sample_idx]
+      real[sample_idx] = windowed(sample_idx, first)
+      if (second !== undefined) imaginary[sample_idx] = windowed(sample_idx, second)
     }
     fft_in_place(real, imaginary)
     for (let frequency_idx = 0; frequency_idx < n_frequencies; frequency_idx++) {
+      const mirror = frequency_idx === 0 ? 0 : n_fft - frequency_idx
       const one_sided_factor = frequency_idx === 0 || frequency_idx === n_fft / 2 ? 1 : 2
       power[frequency_idx] +=
-        (component_weight *
-          one_sided_factor *
-          (real[frequency_idx] ** 2 + imaginary[frequency_idx] ** 2) *
-          sample_interval) /
-        window_energy
+        one_sided_factor *
+        density_scale *
+        (real[frequency_idx] ** 2 +
+          imaginary[frequency_idx] ** 2 +
+          real[mirror] ** 2 +
+          imaginary[mirror] ** 2)
     }
   }
   const frequency_spacing = 1 / (n_fft * sample_interval)

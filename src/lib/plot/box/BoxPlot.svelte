@@ -51,8 +51,9 @@
   import { category_tick_labels, merge_secondary_axes } from '#lib/plot/core/axis-utils.js'
   import {
     axis_transform,
-    create_focus_exit,
     is_activation_key,
+    overlaps_rect,
+    type PixelRect,
     pointer_pos,
   } from '#lib/plot/core/interactions.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
@@ -68,8 +69,7 @@
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
   import { DEFAULTS } from '#lib/settings.js'
   import type { Snippet } from 'svelte'
-  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { violin_path } from '#lib/plot/core/svg.js'
@@ -147,6 +147,9 @@
     hovered = $bindable(false),
     on_box_click,
     on_box_hover,
+    selected_boxes = $bindable([]),
+    on_select,
+    view = $bindable(),
     ref_lines = [],
     on_ref_line_click,
     on_ref_line_hover,
@@ -223,6 +226,10 @@
           | (BoxHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
           | null,
       ) => void
+      // Bindable: the boxes the last Alt+drag rect touched, which the chart outlines
+      selected_boxes?: { box_idx: number }[]
+      // Fires on every Alt+drag, including one that selected nothing
+      on_select?: (selection: { boxes: BoxHandlerProps<Metadata>[]; rect: PixelRect }) => void
     } = $props()
 
   // Legend choices are separate from immutable series data.
@@ -275,6 +282,22 @@
     measured_axes: () => ({
       [cat_axis]: { ...plot_axes[cat_axis], ticks: effective_cat_ticks },
     }),
+    // Alt+drag selects the boxes whose whisker span (at box width) the rect touches
+    on_rect_select: (rect) => {
+      const boxes = visible_boxes.flatMap((box_item) => {
+        const { series: srs, idx, slot, stats } = box_item
+        if (!Number.isFinite(stats.median)) return []
+        const half_width = box_width_of(srs, idx) / 2
+        const cat_span: Vec2 = [cat_scale(slot - half_width), cat_scale(slot + half_width)]
+        const val_scale = box_val_scale(srs)
+        const val_span: Vec2 = [val_scale(stats.whisker_low), val_scale(stats.whisker_high)]
+        const [x_span, y_span] = vertical ? [cat_span, val_span] : [val_span, cat_span]
+        return overlaps_rect(rect, x_span, y_span) ? [get_box_data(box_item)] : []
+      })
+      selected_boxes = boxes.map(({ box_idx }) => ({ box_idx }))
+      on_select?.({ boxes, rect })
+    },
+    view: { get: () => view, set: (next) => (view = next) },
     clip_id_prefix: `box-clip`,
   })
 
@@ -616,20 +639,20 @@
   // whisker-tip anchor) only moves the tooltip. A click pins the hovered box's tooltip unless
   // on_box_click takes the click.
   type BoxKey = { idx: number }
-  let hover_key = $state<BoxKey | null>(null)
   let hover_pointer = $state<Point2D | null>(null)
-  const pin = new TooltipPin<BoxKey>({
-    key: ({ idx }) => idx,
-    enabled: () => tooltip !== false && !on_box_click,
-  })
-  const shown_key = $derived(pin.shown(hover_key))
-  const tip_pointer = pin.anchored(() => hover_pointer)
-  const box_info = (key: BoxKey | null): BoxHover | null => {
-    const box_item = key && visible_boxes.find((item) => item.idx === key.idx)
+  const box_info = (key: BoxKey): BoxHover | null => {
+    const box_item = visible_boxes.find((item) => item.idx === key.idx)
     if (!box_item || !Number.isFinite(box_item.stats.median)) return null
     return get_box_data(box_item)
   }
-  const hover_info = $derived(box_info(shown_key))
+  const hover = create_mark_hover({
+    key: ({ idx }: BoxKey) => idx,
+    enabled: () => tooltip !== false && !on_box_click,
+    info: box_info,
+    on_clear: () => on_box_hover?.(null),
+  })
+  const tip_pointer = hover.pin.anchored(() => hover_pointer)
+  const hover_info = $derived(hover.info)
 
   // Anchored at the pointer when there is one, else at the whisker tip
   function get_box_data(box_item: Box, pointer: Point2D | null = null): BoxHover {
@@ -668,19 +691,9 @@
   const handle_box_hover = (box_item: Box) => (event: MouseEvent | FocusEvent) => {
     hovered = true
     hover_pointer = pointer_pos(event, frame.svg_element)
-    const next = { idx: box_item.idx }
-    if (!pin.same(next, hover_key)) hover_key = next
+    hover.set({ idx: box_item.idx })
     on_box_hover?.({ ...get_box_data(box_item, hover_pointer), event })
   }
-
-  const clear_hover = () => {
-    hover_key = null
-    on_box_hover?.(null)
-  }
-  clear_stale_hover(() => hover_key && !box_info(hover_key), clear_hover)
-  clear_stale_hover(() => pin.value && !hover_info, pin.unpin)
-
-  const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
 
   const value_label_for = (stats: Box[`stats`]): string =>
     format_value_or_num(
@@ -746,10 +759,10 @@
   {marginal_series}
   on_mouse_leave={() => {
     hovered = false
-    clear_hover()
+    hover.clear()
   }}
-  on_mouse_click={() => pin.toggle(hover_key)}
-  unpin={pin.unpin}
+  on_mouse_click={hover.toggle_pin}
+  unpin={hover.pin.unpin}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -838,6 +851,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
           <g
             class="box-series"
+            class:selected-mark={selected_boxes.some((sel) => sel.box_idx === box_item.idx)}
             data-box-idx={box_item.idx}
             role="button"
             tabindex={roving.tabindex(roving_key(box_item.idx, 0))}
@@ -850,18 +864,18 @@
               roving.focusin(evt)
               handle_box_hover(box_item)(evt)
             }}
-            onfocusout={clear_hover_on_exit}
+            onfocusout={hover.clear_on_focus_exit}
             style:cursor={on_box_click ? `pointer` : undefined}
             opacity={frame.series_opacity(box_item.idx)}
             onmousemove={handle_box_hover(box_item)}
-            onmouseleave={clear_hover}
+            onmouseleave={hover.clear}
             onclick={(evt) => on_box_click?.({ ...get_box_data(box_item), event: evt })}
             onkeydown={(evt) => {
               if (roving.handle_keydown(evt)) return
               if (is_activation_key(evt)) {
                 evt.preventDefault()
                 on_box_click?.({ ...get_box_data(box_item), event: evt })
-                pin.toggle(hover_key) // focus is the keyboard's hover
+                hover.toggle_pin() // focus is the keyboard's hover
               }
             }}
           >
@@ -1013,7 +1027,7 @@
       on_double_click={legend_vis.on_double_click}
     />
 
-    {#if hover_info && (hovered || pin.value) && tooltip !== false}
+    {#if hover_info && (hovered || hover.pin.value) && tooltip !== false}
       <PlotTooltip
         x={tip_pointer.current?.x ?? hover_info.cx}
         y={tip_pointer.current?.y ?? hover_info.cy}
@@ -1023,7 +1037,7 @@
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
-        pinned={pin.value !== null}
+        pinned={hover.pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

@@ -12,9 +12,7 @@ import {
   scattering_length,
   XRAY_GAUSSIAN_PREFACTOR,
 } from '#lib/scattering/index.js'
-import type { AnyStructure, Crystal } from '#lib/structure/index.js'
-import { is_crystal } from '#lib/structure/validation.js'
-import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
+import type { Crystal } from '#lib/structure/index.js'
 import { to_error } from 'svelte-widgets/utils'
 import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
@@ -649,31 +647,4 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
 
   const family_grouping = symmetry_rotations ? `symmetry` : `friedel`
   return { x: x_values, y: y_values, hkls: hkls_out, d_hkls: d_out, family_grouping }
-}
-
-// symprec in Å. Tight on purpose: a loose one can merge reflections of different intensity,
-// a too tight one only splits families.
-const XRD_SYMPREC = 1e-5
-
-// Point-group rotations for options.symmetry_rotations (async: moyo-wasm init)
-export async function xrd_symmetry_rotations(structure: Crystal): Promise<math.Matrix3x3[]> {
-  const { operations } = await analyze_structure_symmetry(structure, { symprec: XRD_SYMPREC })
-  return point_group_rotations(operations)
-}
-
-// Pattern of a dropped structure, with its point group merging equivalent reflections.
-// Throws for anything without a lattice and sites.
-export async function structure_xrd_pattern(
-  structure: AnyStructure,
-  wavelength: number | null, // Probe wavelength in Angstrom, null for the radiation's default
-  radiation: RadiationType = `xray`,
-): Promise<XrdPattern> {
-  if (!is_crystal(structure)) {
-    throw new Error(`Cannot compute XRD: structure must have a lattice and atomic sites`)
-  }
-  return compute_xrd_pattern(structure, {
-    wavelength: wavelength ?? undefined,
-    radiation,
-    symmetry_rotations: await xrd_symmetry_rotations(structure),
-  })
 }

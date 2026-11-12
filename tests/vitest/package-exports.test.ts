@@ -208,10 +208,13 @@ describe(`package.json exports`, () => {
       lib.compute_msd_async,
       lib.compute_vacf_async,
       lib.compute_trajectory_spectroscopy_async,
+      lib.compute_xrd_pattern_async,
+      lib.compute_saed_pattern_async,
     ]) {
       expect(client).toBeTypeOf(`function`)
       expect(client.cancel).toBeTypeOf(`function`)
-      expect(client.release).toBeTypeOf(`function`)
+      expect(client.mount).toBeTypeOf(`function`)
+      expect(client.holds).toBeTypeOf(`function`)
     }
     expectTypeOf(lib.compute_vacf_async).toExtend<
       WorkerClient<VacfInput, VacfOptions, VacfResult>

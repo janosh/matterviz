@@ -5,7 +5,7 @@ import { create_worker_client } from '#lib/worker-client.svelte.js'
 import type { GeometryInput, GeometryResult } from './geometry'
 import { compute_isosurface_geometries } from './geometry'
 
-// The client itself, so `.release` travels with it for the component's unmount path
+// The client itself, so `.mount` travels with it for the component's lifetime
 export const compute_geometries_async = create_worker_client<
   GeometryInput,
   Record<string, never>,

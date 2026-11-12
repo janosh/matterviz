@@ -65,6 +65,11 @@
   let [y_label = ``, y_unit = ``] = $derived(
     heatmap_key ? ELEM_PROPERTY_LABELS[heatmap_key] : [],
   )
+
+  // The inset keeps the last hovered element when the pointer leaves a tile (crossing the gap
+  // to the next one or leaving the table), so it doesn't blink back to the placeholder
+  let last_element: ChemicalElement | null = null
+  const stats_element = $derived((last_element = selected.element ?? last_element))
 </script>
 
 <svelte:window bind:innerWidth={window_width} />
@@ -146,7 +151,7 @@
           style="min-height: initial"
         />
       {:else}
-        <ElementStats element={selected.element} />
+        <ElementStats element={stats_element} />
       {/if}
     </TableInset>
   {/snippet}

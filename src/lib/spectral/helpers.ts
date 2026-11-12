@@ -351,20 +351,20 @@ const read_recip_lattice = (pmg: Record<string, unknown>): Matrix3x3 => {
 }
 
 // Converter of raw band values in their `declared` unit to the stored one: THz for phonons, eV
-// for electronic energies. Null for an unrecognised unit or electronic energies declared as a
-// frequency (THz, cm^-1): a malformed input. `unit: null` counts as undeclared, as it does for
-// normalize_dos; undeclared phonon bands are THz, or cm^-1 in the frequencies_cm layout.
+// for electronic energies (E_F and DOS energies too). Null for an unrecognised unit or electronic
+// energies declared as a frequency (THz, cm^-1): a malformed input. `unit: null` counts as
+// undeclared; undeclared phonon bands are THz, or cm^-1 in the frequencies_cm layout.
 const band_unit_converter = (
   declared: unknown,
   type: types.BandStructureType,
   in_cm = false,
-): ((band: number[]) => number[]) | null => {
+): ((values: number[]) => number[]) | null => {
   const data_unit = type === `electronic` ? `eV` : `THz`
   const source_unit =
     declared == null ? (in_cm ? `cm^-1` : data_unit) : parse_frequency_unit(declared)
   if (!source_unit) return null
   if (type === `electronic` && (source_unit === `THz` || source_unit === `cm^-1`)) return null
-  return (band) => convert_frequencies(band, data_unit, source_unit)
+  return (values) => convert_frequencies(values, data_unit, source_unit)
 }
 
 // Convert pymatgen bands while retaining their physical type and reference energy.
@@ -477,7 +477,7 @@ function convert_pymatgen_band_structure(
 
   return {
     type,
-    ...(typeof pmg.efermi === `number` && { efermi: pmg.efermi }),
+    ...(typeof pmg.efermi === `number` && { efermi: to_data_unit([pmg.efermi])[0] }),
     qpoints,
     recip_lattice,
     branches,
@@ -540,6 +540,7 @@ export function normalize_band_structure(
   return {
     ...rest,
     type,
+    ...(typeof rest.efermi === `number` && { efermi: to_data_unit([rest.efermi])[0] }),
     bands: bands.map(to_data_unit),
     ...(Array.isArray(spin_down_bands) && {
       spin_down_bands: spin_down_bands.map((band) =>
@@ -551,23 +552,28 @@ export function normalize_band_structure(
   } as unknown as types.BaseBandStructure
 }
 
-// Electronic DOS record. Spin-polarized when the input says so, else when a same-length
-// spin-down channel exists; the spin-down channel is only kept for spin-polarized data.
+// Electronic DOS in eV (null for a malformed `unit`). Spin-polarized when the input says so, else
+// when a same-length spin-down channel exists; that channel is only kept for spin-polarized data.
 const electronic_dos = (
   energies: number[],
   densities: number[],
-  spin_down: number[] | null,
-  { spin_polarized, efermi }: { spin_polarized?: boolean; efermi?: number } = {},
-): types.ElectronicDos => {
-  const is_spin_polarized =
-    spin_polarized ?? (spin_down !== null && spin_down.length === densities.length)
+  spin_down: unknown,
+  opts: { spin_polarized?: boolean; efermi?: number; unit?: unknown } = {},
+): types.ElectronicDos | null => {
+  const to_ev = band_unit_converter(opts.unit, `electronic`)
+  if (!to_ev) return null
+  // g(E) is per unit energy, so the Jacobian keeps ∫g dE through the conversion to eV
+  const [ev_per_unit] = to_ev([1])
+  const per_ev = (values: number[]) => values.map((density) => density / ev_per_unit)
+  const down = Array.isArray(spin_down) ? (spin_down as number[]) : null
+  const spin_polarized = opts.spin_polarized ?? down?.length === densities.length
   return {
     type: `electronic`,
-    energies,
-    densities,
-    spin_down_densities: is_spin_polarized ? (spin_down ?? undefined) : undefined,
-    spin_polarized: is_spin_polarized,
-    ...(efermi !== undefined && { efermi }),
+    energies: to_ev(energies),
+    densities: per_ev(densities),
+    spin_down_densities: spin_polarized && down ? per_ev(down) : undefined,
+    spin_polarized,
+    ...(opts.efermi !== undefined && { efermi: opts.efermi * ev_per_unit }),
   }
 }
 
@@ -609,6 +615,7 @@ export function normalize_dos(dos: unknown): types.DosData | null {
     return electronic_dos(energies, densities, spin_down_densities, {
       spin_polarized: spin_polarized as boolean | undefined,
       efermi: typeof dos.efermi === `number` ? dos.efermi : undefined,
+      unit: dos.unit,
     })
   }
 
@@ -960,9 +967,12 @@ export function extract_pdos(
     const { energies, efermi } = nested_dos
     const spin_channels = extract_spin_channels<number[]>(nested_dos.densities)
     if (!spin_channels || !Array.isArray(energies)) continue
-    const densities = spin_channels.up
+    const { up: densities, down } = spin_channels
     if (!Array.isArray(densities) || energies.length !== densities.length) continue
-    result[key] = electronic_dos(energies, densities, spin_channels.down, { efermi })
+    // projections share the total DOS's unit
+    const pdos = electronic_dos(energies, densities, down, { efermi, unit: dos.unit })
+    if (!pdos) return null
+    result[key] = pdos
   }
   return Object.keys(result).length > 0 ? result : null
 }
@@ -994,6 +1004,16 @@ export function shift_to_fermi(dos: PymatgenCompleteDos): PymatgenCompleteDos {
     ...(atom_dos && { atom_dos }),
     ...(spd_dos && { spd_dos }),
   }
+}
+
+// Band energies relative to the structure's own E_F (the band counterpart of shift_to_fermi), to
+// compare materials whose Fermi energies differ on one axis. Throws without an efermi.
+export function shift_bands_to_fermi<T extends types.BaseBandStructure>(band_structure: T): T {
+  const { efermi, bands, spin_down_bands } = band_structure
+  if (efermi === undefined) throw new Error(`Band structure has no efermi to shift by`)
+  const shift = (band: number[]) => band.map((energy) => energy - efermi)
+  const spin_down = spin_down_bands && { spin_down_bands: spin_down_bands.map(shift) }
+  return { ...band_structure, efermi: 0, bands: bands.map(shift), ...spin_down }
 }
 
 // SVG path of a fat-band ribbon: the upper edge (y - half-width px, as SVG y grows downward)

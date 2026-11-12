@@ -7,8 +7,8 @@ webgl_on_ci_for_tagged()
 // page (unprevented) and flashes the hint, while ⌘ + wheel reaches its zoom handler (prevented)
 // and leaves the page put. Structure and the convex hull have their own specs.
 const VIEWERS: [string, (page: Page) => Promise<Locator>][] = [
-  [`/reciprocal/brillouin-zone`, gated_root],
-  [`/reciprocal/fermi-surface`, gated_root],
+  [`/spectral/brillouin-zone`, gated_root],
+  [`/spectral/fermi-surface`, gated_root],
   [`/plot/scatter-plot-3d`, gated_root],
   [`/convex-hull/chempot-diagram`, gated_root],
   [

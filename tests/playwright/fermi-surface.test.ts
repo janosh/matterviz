@@ -56,7 +56,7 @@ const open_controls = async (page: Page, scope: Page | Locator = page) => {
 
 test.describe(`FermiSurface smoke`, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/reciprocal/fermi-surface`, { waitUntil: `networkidle` })
+    await page.goto(`/spectral/fermi-surface`, { waitUntil: `networkidle` })
     await wait_for_3d_canvas(page, VIEWER, LOAD_TIMEOUT)
   })
 
@@ -162,8 +162,8 @@ test(`electronic-structure: k-path label hover marks the bands, band colours mat
   page,
 }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.goto(`/reciprocal/fermi-surface-bands`, { waitUntil: `networkidle` })
-  await expect(page).toHaveURL(/\/reciprocal\/electronic-structure$/)
+  await page.goto(`/spectral/fermi-surface-bands`, { waitUntil: `networkidle` })
+  await expect(page).toHaveURL(/\/spectral\/electronic-structure$/)
   const viewer = `.electronic-structure:not(.sweep-demo)`
   const canvas = await wait_for_3d_canvas(page, `${viewer} ${VIEWER}`, LOAD_TIMEOUT)
   const qpoint_line = page.locator(`${viewer} [data-pane="bands"] line.hovered-qpoint-line`)
@@ -232,7 +232,7 @@ test(
     // and bring the sweep demo's scenes below into view mid-test), and wide enough that its
     // fullscreen scenes still sit side by side (pick_pane_orientation)
     await page.setViewportSize({ width: 1600, height: 1000 })
-    await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+    await page.goto(`/spectral/electronic-structure`, { waitUntil: `networkidle` })
     const viewer = `.electronic-structure:not(.sweep-demo)`
     const container = page.locator(viewer)
     const [structure_canvas, fermi_canvas] = await Promise.all(
@@ -339,7 +339,7 @@ test(
 test(`electronic-structure sweep: control bar, lazy frames, trends selection`, async ({
   page,
 }) => {
-  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  await page.goto(`/spectral/electronic-structure`, { waitUntil: `networkidle` })
   const viewer = page.locator(`.sweep-demo`)
   await viewer.scrollIntoViewIfNeeded()
   const status = viewer.locator(`.frame-status`)
@@ -409,7 +409,7 @@ test(`electronic-structure sweep: control bar, lazy frames, trends selection`, a
 test(`electronic-structure sweep: both DOS share one column, the bar the viewer's top corners`, async ({
   page,
 }) => {
-  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  await page.goto(`/spectral/electronic-structure`, { waitUntil: `networkidle` })
   const viewer = page.locator(`.sweep-demo`)
   await viewer.scrollIntoViewIfNeeded()
   const dos = viewer.locator(`[data-pane="dos"]`)
@@ -494,7 +494,7 @@ test(`electronic-structure sweep: a narrow viewer stacks its panes without overl
   page,
 }) => {
   await page.setViewportSize({ width: 600, height: 900 })
-  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  await page.goto(`/spectral/electronic-structure`, { waitUntil: `networkidle` })
   const viewer = page.locator(`.sweep-demo`)
   await viewer.scrollIntoViewIfNeeded()
   await expect(viewer).toHaveClass(/\bstacked\b/, { timeout: LOAD_TIMEOUT })
@@ -556,7 +556,7 @@ test(`electronic-structure sweep: a short wide viewer stacks its panes in its bo
   page,
 }) => {
   await page.setViewportSize({ width: 1400, height: 900 })
-  await page.goto(`/reciprocal/electronic-structure`, { waitUntil: `networkidle` })
+  await page.goto(`/spectral/electronic-structure`, { waitUntil: `networkidle` })
   const viewer = page.locator(`.sweep-demo`)
   await expect(viewer.locator(`[data-pane="phonon"] .axis-label`).first()).toBeVisible({
     timeout: LOAD_TIMEOUT,

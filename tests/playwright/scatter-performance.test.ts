@@ -27,7 +27,7 @@ const sample = (page: Page, operation_name: Operation, sample_count: number) =>
       const bounds = svg.getBoundingClientRect()
       const center_x = bounds.x + bounds.width / 2
       const center_y = bounds.y + bounds.height / 2
-      const pointer = { buttons: 1, clientX: center_x, clientY: center_y }
+      const pointer = { bubbles: true, buttons: 1, clientX: center_x, clientY: center_y }
       const frame = () =>
         new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       const times: number[] = []
@@ -36,41 +36,32 @@ const sample = (page: Page, operation_name: Operation, sample_count: number) =>
         const direction = idx % 2 ? -1 : 1
         const start = performance.now()
         if (operation === `pan`) {
+          svg.dispatchEvent(new PointerEvent(`pointerdown`, { ...pointer, shiftKey: true }))
           svg.dispatchEvent(
-            new MouseEvent(`mousedown`, {
-              ...pointer,
-              bubbles: true,
-              shiftKey: true,
-            }),
-          )
-          window.dispatchEvent(
-            new MouseEvent(`mousemove`, {
+            new PointerEvent(`pointermove`, {
               ...pointer,
               clientX: center_x + direction * 40,
             }),
           )
-          window.dispatchEvent(new MouseEvent(`mouseup`))
+          svg.dispatchEvent(new PointerEvent(`pointerup`, { bubbles: true }))
         } else if (operation === `zoom`) {
-          const touch = (type: string, span = 0) =>
-            svg.dispatchEvent(
-              new TouchEvent(type, {
-                bubbles: true,
-                touches: span
-                  ? [-1, 1].map(
-                      (side, identifier) =>
-                        new Touch({
-                          identifier,
-                          target: svg,
-                          clientX: center_x + (side * span) / 2,
-                          clientY: center_y,
-                        }),
-                    )
-                  : [],
-              }),
-            )
-          touch(`touchstart`, 100)
-          touch(`touchmove`, direction === 1 ? 125 : 80)
-          touch(`touchend`)
+          // two touch pointers `span` px apart about the plot center
+          const touch = (type: string, span: number) => {
+            for (const [pointerId, side] of [-1, 1].entries()) {
+              const clientX = center_x + (side * span) / 2
+              svg.dispatchEvent(
+                new PointerEvent(type, {
+                  ...pointer,
+                  pointerType: `touch`,
+                  pointerId,
+                  clientX,
+                }),
+              )
+            }
+          }
+          touch(`pointerdown`, 100)
+          touch(`pointermove`, direction === 1 ? 125 : 80)
+          touch(`pointerup`, 0)
         } else {
           if (!button) throw new Error(`Missing ${operation} button`)
           button.click()

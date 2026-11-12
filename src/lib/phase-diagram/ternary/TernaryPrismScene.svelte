@@ -13,6 +13,7 @@
   import { is_drag } from '#lib/plot/core/interactions.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {
+    bind_renderer,
     build_orbit_props,
     dispose_on_change,
     HoverHighlight,
@@ -23,7 +24,7 @@
     SceneLabel,
     SceneLights,
   } from '#lib/scene/index.js'
-  import { T, useThrelte } from '@threlte/core'
+  import { T } from '@threlte/core'
   import type { ComponentProps } from 'svelte'
   import * as extras from '@threlte/extras'
   import { xy_to_ternary } from '#lib/plot/ternary/ternary.js'
@@ -187,7 +188,7 @@
   const split_y = $derived(settings.ghost_above_plane ? plane_y : y_of(t_max) + 1)
   const below_plane = new Plane(new Vector3(0, -1, 0), 0) // keeps y <= split_y
   const above_plane = new Plane(new Vector3(0, 1, 0), 0) // keeps y >= split_y
-  const { invalidate } = useThrelte()
+  const { invalidate } = bind_renderer() // registers the canvas so PNG export can re-render it
   $effect(() => {
     below_plane.constant = split_y
     above_plane.constant = -split_y

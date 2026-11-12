@@ -241,10 +241,8 @@
     if (active_controller) queued_request = request
     else start_plan(request)
   })
-  onDestroy(() => {
-    active_controller?.abort()
-    plan_synthesis_async.release()
-  })
+  onDestroy(() => active_controller?.abort())
+  $effect(() => plan_synthesis_async.mount())
   const routes = $derived(computed_plan?.routes ?? [])
   $effect(() => {
     const current_routes = routes

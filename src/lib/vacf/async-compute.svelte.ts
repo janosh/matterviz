@@ -1,6 +1,6 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // calc_vacf via a persistent Web Worker (main-thread fallback without Worker); see
-// create_worker_client for `.cancel` / `.release` semantics
+// create_worker_client for `.cancel` / `.mount` semantics
 import { plain_position_stream } from '#lib/trajectory/async-result.svelte.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
 import { calc_vacf } from './calc-vacf'
@@ -16,4 +16,7 @@ export const compute_vacf_async = create_worker_client<VacfInput, VacfOptions, V
     velocities: input.velocities ?? null,
     velocity_unit: input.velocity_unit ?? null,
   }),
+  // The stream (hundreds of MB) crosses once; an options edit then posts the options alone
+  // and the worker's copy keeps its unwrapped coordinates (unwrapped_positions_of)
+  retained_inputs: 1,
 })

@@ -46,11 +46,11 @@ const ROUTE_LABELS: Record<string, string> = {
   '/neb': `NEB`,
   '/structure/rdf': `RDF`,
   '/structure/xrd': `XRD`,
-  '/reciprocal/dos': `DOS`,
-  '/reciprocal/bands-and-dos': `Bands + DOS`,
-  '/reciprocal/brillouin-bands-dos': `Brillouin + Bands + DOS`,
-  '/reciprocal/ir-raman': `IR + Raman`,
-  '/reciprocal/phonon-mode-explorer': `Phonon Mode Explorer`,
+  '/spectral/dos': `DOS`,
+  '/spectral/bands-and-dos': `Bands + DOS`,
+  '/spectral/brillouin-bands-dos': `Brillouin + Bands + DOS`,
+  '/spectral/ir-raman': `IR + Raman`,
+  '/spectral/phonon-mode-explorer': `Phonon Mode Explorer`,
   '/phase-diagram/pressure-temperature': `Pressure–Temperature`,
 }
 
@@ -63,19 +63,48 @@ export const routes = Object.keys(import.meta.glob(`../routes/**/+page.{svelte,m
 
 if (routes.length === 0) console.error(`No routes found`)
 
-export type NavGroup = { label: string; href: string; prefixes: string[] }
+// `sections` maps a dropdown heading to the prefixes listed under it, in order, ahead of the
+// group's plain `prefixes`
+export type NavGroup = {
+  label: string
+  href: string
+  prefixes: string[]
+  sections?: Record<string, string[]>
+}
+
+// Routes under `base`, for listing a section's demos by slug
+const under = (base: string, slugs: string[]) => slugs.map((slug) => `${base}/${slug}`)
 
 // Top-level nav dropdowns in display order. A route belongs to the first group whose prefix
 // matches it exactly or as a parent path; children keep prefix order, then path order. Where
 // the href is itself a page (/structure, /plot) the group label links there, else it's a
-// plain heading.
+// plain heading. Section sizes are picked so two-column dropdowns break between sections.
 // oxfmt-ignore
 export const NAV_GROUPS: NavGroup[] = [
-  { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`] },
+  { label: `Structure`, href: `/structure`, prefixes: [`/structure`, `/trajectory`, `/neb`], sections: {
+    Viewing: under(`/structure`, [`render`, `gallery`, `vectors`, `polyhedra`, `isosurface`,
+      `multi-volume`, `host-tool`]),
+    Building: under(`/structure`, [`slab`, `interface`]),
+    Analysis: under(`/structure`, [`symmetry`, `bond-angles`, `coordination`, `rdf`, `xrd`]),
+    Dynamics: [`/trajectory`, `/neb`],
+  } },
   { label: `Thermodynamics`, href: `/thermodynamics`, prefixes: [`/convex-hull`, `/phase-diagram`] },
-  { label: `Electronic & Phonons`, href: `/electronic`, prefixes: [`/reciprocal`] },
+  // /spectral claims the hub (the label links to it) and new demos, listed last without a heading
+  { label: `Electronic & Phonons`, href: `/spectral`, prefixes: [`/spectral`], sections: {
+    'Electronic & phonon': under(`/spectral`, [`brillouin-zone`, `bands`, `dos`, `bands-and-dos`,
+      `brillouin-bands-dos`]),
+    Electronic: under(`/spectral`, [`electronic-structure`, `fermi-surface`]),
+    Phonon: under(`/spectral`, [`ir-raman`, `phonon-mode-explorer`]),
+  } },
   { label: `Elements`, href: `/elements`, prefixes: [`/periodic-table`, `/composition`] },
-  { label: `Plots`, href: `/plot`, prefixes: [`/plot`] },
+  { label: `Plots`, href: `/plot`, prefixes: [`/plot`], sections: {
+    Charts: under(`/plot`, [`scatter-plot`, `scatter-plot-3d`, `binned-scatter`, `ternary`,
+      `bar-plot`, `histogram`, `box-plot`, `violin`]),
+    'Matrices & grids': under(`/plot`, [`heatmap-matrix`, `heatmap-table`, `facet-grid`]),
+    'Hierarchies & flows': under(`/plot`, [`sunburst`, `treemap`, `sankey`]),
+    Color: under(`/plot`, [`color-bar`, `color-scales`]),
+    Recipes: under(`/plot`, [`linked-brushing`, `data-cleaning`, `eos`, `spacegroup-bar-plot`]),
+  } },
   { label: `Guides`, href: `/guides`, prefixes: [`/guides`, `/how-to`, `/acknowledgements`] },
 ]
 
@@ -92,8 +121,10 @@ export function group_nav_routes(
   nav_routes: string[],
   groups: NavGroup[] = NAV_GROUPS,
 ): WidgetNavGroup[] {
-  const prefix_idx = (route: string, { prefixes }: NavGroup) =>
-    prefixes.findIndex((prefix) => has_prefix(route, prefix))
+  const prefix_idx = (route: string, { prefixes, sections = {} }: NavGroup) =>
+    [...Object.values(sections).flat(), ...prefixes].findIndex((prefix) =>
+      has_prefix(route, prefix),
+    )
   const unclaimed = nav_routes.filter((route) =>
     groups.every((group) => prefix_idx(route, group) === -1),
   )
@@ -118,6 +149,9 @@ export function group_nav_routes(
           .filter((href) => href !== group.href)
           .map((href) => ({
             href,
+            section: Object.entries(group.sections ?? {}).find(([, prefixes]) =>
+              prefixes.some((prefix) => has_prefix(href, prefix)),
+            )?.[0],
             label:
               ROUTE_LABELS[href] ??
               href
@@ -175,9 +209,9 @@ export const PAGE_COMPONENTS: Record<string, string[]> = {
   '/plot/scatter-plot-3d': [`ScatterPlot3D`],
   '/plot/ternary': [`TernaryPlot`],
   '/plot/violin': [`BoxPlot`],
-  '/reciprocal': [],
-  '/reciprocal/brillouin-bands-dos': [`BandsAndDos`],
-  '/reciprocal/ir-raman': [`IrRamanSpectrum`],
+  '/spectral': [],
+  '/spectral/brillouin-bands-dos': [`BandsAndDos`],
+  '/spectral/ir-raman': [`IrRamanSpectrum`],
   '/structure/bond-angles': [`BondAnglePlot`],
   '/structure/coordination': [`CoordinationBarPlot`],
   '/structure/gallery': [`StructureGallery`],

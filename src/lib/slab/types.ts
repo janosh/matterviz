@@ -106,6 +106,11 @@ export type SlabInfo = {
   normal: Vec3
   termination: SlabTermination
   terminations: SlabTermination[]
+  // Whether a symmetry that flips the surface normal relates the two faces
+  is_symmetric: boolean
+  // Whether the oxidation states give a dipole along the normal above 1e-3 e/Å per surface
+  // area. Undefined when no species carries a non-zero oxidation state (charges unknown).
+  is_polar?: boolean
 }
 
 export type Slab = Crystal & { slab_info: SlabInfo }

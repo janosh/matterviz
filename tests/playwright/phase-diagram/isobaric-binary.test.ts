@@ -77,7 +77,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     await region.hover()
     await expect(tooltip).toBeVisible()
-    await expect(tooltip).toContainText(`Temperature`)
+    await expect(tooltip.locator(`header .temperature`)).toHaveText(/^\d[\d.,]* K\b/)
     await expect(tooltip).toContainText(`Composition`)
 
     await expect(svg.locator(`.phase-regions path.hovered`)).toBeVisible()

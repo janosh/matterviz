@@ -4,19 +4,18 @@ import { is_plain_object } from '../../src/lib/utils'
 import { DATA_PROPS } from '../../extensions/anywidget/reactive.svelte'
 import { extract_prop_docs } from '../../src/scripts/prop-docs'
 import { flushSync } from 'svelte'
-import { globSync } from 'node:fs'
 import { describe, expect, test, vi } from 'vitest'
-import { inline_workers } from '../../extensions/anywidget/vite.config'
+import { inline_workers, widget_scope } from '../../extensions/anywidget/vite.config'
+import { COMPONENTS } from '../../src/elements/components'
+import { scoped_app_css } from '../../src/elements/scoped-css'
 import { MockModel } from './anywidget-mock-model'
 import { latest_stub, reset_stub } from './reactive-renderer-registry'
 
-const { check_blob_workers, spectral_doc, WIDGET_COMPONENTS } = vi.hoisted(() => ({
+// The registry shared with the custom elements: src/lib paths by widget_type
+const component_files = Object.values(COMPONENTS).map((path) => `src/lib/${path}.svelte`)
+const component_name = (path: string): string => path.slice(path.lastIndexOf(`/`) + 1)
+const { check_blob_workers, spectral_doc } = vi.hoisted(() => ({
   check_blob_workers: vi.fn(),
-  WIDGET_COMPONENTS: `Bands BandsAndDos BarPlot BrillouinZone ChemPotDiagram Composition
-    ConvexHull Dos FermiSurface HeatmapMatrix Histogram IsobaricBinaryPhaseDiagram PeriodicTable
-    RdfPlot ScatterPlot ScatterPlot3D SpacegroupBarPlot Structure Trajectory Treemap XrdPlot`
-    .trim()
-    .split(/\s+/),
   // the generic wiring test's string seeds count as documents
   spectral_doc: (doc: unknown) =>
     typeof doc === `string` || (doc as { kind?: string } | null)?.kind === `doc`
@@ -28,8 +27,14 @@ const set_moyo_wasm_source = vi.hoisted(() => vi.fn())
 // without mounting WebGL/SVG components or pulling the built dist bundle
 vi.mock(`matterviz`, async () => {
   const stub_module = await import(`./reactive-renderer-stub.svelte`)
+  // the registry's components only (a widget importing any other fails the import), each its
+  // own function so a spec mounting the wrong one is caught
+  const stubs = Object.values(COMPONENTS).map((path) => [
+    component_name(path),
+    stub_module.default.bind(null),
+  ])
   return {
-    ...Object.fromEntries(WIDGET_COMPONENTS.map((name) => [name, stub_module.default])),
+    ...Object.fromEntries(stubs),
     volume_from_json: (raw: unknown) => raw,
     is_plain_object,
     check_blob_workers,
@@ -44,7 +49,7 @@ vi.mock(`matterviz`, async () => {
     normalize_dos: spectral_doc,
   }
 })
-vi.mock(`matterviz/app.css?raw`, () => ({ default: `` }))
+vi.stubGlobal(`SCOPED_APP_CSS`, ``) // vite.config.ts defines it as the scoped app.css
 vi.mock(`matterviz/theme`, () => ({ COLOR_THEMES: {} }))
 const { stop_theme } = vi.hoisted(() => ({ stop_theme: vi.fn() }))
 vi.mock(`matterviz/theme/embedded`, () => ({
@@ -54,6 +59,8 @@ vi.mock(`matterviz/theme/embedded`, () => ({
 
 const anywidget_module = await import(`../../extensions/anywidget/anywidget`)
 const { WIDGETS, WIDGET_MODEL_KEYS, mount_spec } = anywidget_module
+// not `import()`: its types resolve through dist/, which a lint-only CI job never builds
+const matterviz = await vi.importMock<Record<string, unknown>>(`matterviz`)
 // read now: mock call records don't survive into the tests
 const check_blob_workers_calls = [...check_blob_workers.mock.calls]
 
@@ -112,29 +119,57 @@ const pick = (props: Record<string, unknown>, expected: object) =>
 // reactive_widget keeps undefined DATA_PROPS keys, whose setter lets a component write data it
 // loads back unproxied, but Svelte throws props_invalid_value for an undefined $bindable with a
 // default: the widgets' real components must declare none
-// a TypeScript program over 21 components: seconds on shared CI runners
-test(`no widget component binds a data prop with a default`, { timeout: 30_000 }, () => {
-  const files = WIDGET_COMPONENTS.flatMap((name) => globSync(`src/lib/**/${name}.svelte`))
-  expect(files).toHaveLength(WIDGET_COMPONENTS.length)
-  const defaulted = Object.entries(extract_prop_docs(files)).flatMap(
-    ([component, { props: docs }]) =>
-      docs
-        .filter(
-          ({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init,
-        )
-        .map(({ name, default: init }) => `${component}.${name} = ${init}`),
+// a TypeScript program over every widget component: seconds on shared CI runners
+// the custom elements define an accessor per prop, which shadows an HTMLElement member of that name
+test(`no widget prop binds defaulted data or shadows the DOM`, { timeout: 30_000 }, () => {
+  const docs = Object.entries(extract_prop_docs(component_files))
+  const defaulted = docs.flatMap(([component, { props }]) =>
+    props
+      .filter(({ name, bindable, default: init }) => bindable && DATA_PROPS.has(name) && init)
+      .map(({ name, default: init }) => `${component}.${name} = ${init}`),
   )
   expect(defaulted).toEqual([])
+  const names = docs.flatMap(([, { props }]) => props.map(({ name }) => name))
+  expect(new Set(names.filter((name) => name in HTMLElement.prototype))).toEqual(
+    new Set([`children`, `id`, `normalize`, `onkeydown`, `style`, `title`]),
+  )
 })
 
 // allow_file_drop reaches only viewers that declare it; others would spread it onto a div
-const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram xrd rdf_plot`
-const drop_zone_widgets = new Set(drop_zones.split(` `))
+const drop_zones = `structure trajectory convex_hull fermi_surface brillouin_zone phase_diagram
+  ternary_phase_diagram xrd rdf_plot`
+const drop_zone_widgets = new Set(drop_zones.split(/\s+/))
+
+// The stylesheet the bundle injects into the notebook page
+test(`scoped_app_css leaves only zero-specificity theme tokens outside the widget scope`, () => {
+  const parts = scoped_app_css(widget_scope).split(`@scope (${widget_scope}) {`)
+  expect(parts).toHaveLength(2)
+  const [tokens, scoped] = parts
+  const selectors = [...tokens.matchAll(/^[^{}\n][^{}]*(?=\{)/gm)].map(([selector]) =>
+    selector.trim().replaceAll(/\s+/g, ` `),
+  )
+  expect(selectors).toEqual([
+    `:where(:root), :host`,
+    `:where(:root[data-theme='white']), :host([data-theme='white'])`,
+    `:where(:root[data-theme='black']), :host([data-theme='black'])`,
+    `:where(:root)`,
+  ])
+  // the host page keeps its own color-scheme and body/link/heading styles
+  expect(tokens).not.toContain(`color-scheme`)
+  expect(scoped).not.toContain(`matterviz-shell`)
+  // bare-element rules apply, but only inside a widget
+  for (const rule of [`button {`, `input[type='range'] {`, `table {`]) {
+    expect(tokens).not.toContain(rule)
+    expect(scoped).toContain(rule)
+  }
+})
 
 // Each spec's own compute is the oracle; writeback props are covered by the round-trip tests
 test.each(Object.entries(WIDGETS))(
-  `%s seeds, re-drives on every dep change and gets allow_file_drop iff it has a drop zone`,
+  `%s mounts its registry component, seeds, re-drives on every dep change and gets allow_file_drop iff it has a drop zone`,
   (widget_type, spec) => {
+    const path = COMPONENTS[widget_type as keyof typeof COMPONENTS]
+    expect(spec.component).toBe(matterviz[component_name(path)])
     const model = seeded_model(widget_type, spec)
     const stub = run_widget(widget_type, model)
     expect(stub.read().allow_file_drop).toBe(
@@ -206,6 +241,8 @@ describe(`structure wiring`, () => {
 
 describe(`WIDGET_MODEL_KEYS contract`, () => {
   test(`includes drive deps and interaction keys`, () => {
+    // one spec per component of the registry shared with the custom elements
+    expect(new Set(Object.keys(WIDGET_MODEL_KEYS))).toEqual(new Set(Object.keys(COMPONENTS)))
     expect(WIDGET_MODEL_KEYS.structure).toEqual(
       expect.arrayContaining([`atom_radius`, `selected_sites`, `show_controls`]),
     )
@@ -220,7 +257,7 @@ describe(`WIDGET_MODEL_KEYS contract`, () => {
     )
     expect(WIDGET_MODEL_KEYS.scatter_plot_3d).toContain(`show_legend`)
     const plot_widgets = `scatter_plot scatter_plot_3d bar_plot histogram treemap band_structure
-      dos rdf_plot xrd bands_and_dos`
+      dos rdf_plot xrd bands_and_dos sunburst sankey box_plot ternary_plot neb_plot eos_plot`
     for (const widget_type of plot_widgets.split(/\s+/)) {
       expect(WIDGET_MODEL_KEYS[widget_type], widget_type).toEqual(
         expect.arrayContaining(Object.keys(controls_traits)),
@@ -406,6 +443,13 @@ describe(`writeback wiring`, () => {
     [`scatter_plot`, `controls_open`, false, true, false],
     [`histogram`, `selected_series_idx`, 0, 2, 1],
     [`treemap`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
+    [`sunburst`, `zoom_root_id`, null, `root/child-a`, `root/child-b`],
+    [`ternary_phase_diagram`, `selected_phase`, null, 2, 0],
+    [`ternary_phase_diagram`, `pinned_composition`, null, [0.2, 0.3], [0.5, 0.1]],
+    [`neb_plot`, `active_path_key`, ``, `path_a`, `path_b`],
+    [`neb_plot`, `active_image_idx`, 0, 3, 1],
+    [`eos_plot`, `fits`, [], [{ kind: `vinet`, rmse: 0.01 }], [{ kind: `murnaghan` }]],
+    [`phonon_mode_explorer`, `selection`, null, { mode_idx: 2 }, { mode_idx: 5 }],
   ] as const)(
     `%s %s round-trips and falls back when cleared`,
     (widget_type, key, default_value, local_value, python_value) => {
@@ -449,6 +493,11 @@ describe(`render() lifecycle`, () => {
     expect(set_moyo_wasm_source).toHaveBeenCalledExactlyOnceWith(`http://localhost/moyo.wasm`)
     flushSync()
     expect(listener_count(model)).toBeGreaterThan(0)
+    // the app styles reach only into elements of the scope class, which render() gives the widget
+    expect(element.matches(widget_scope)).toBe(true)
+    expect(document.querySelector(`style#matterviz-widget-styles`)?.textContent).toBe(
+      `.cell-output-ipywidget-background:has(${widget_scope}) { background: transparent !important; }\n`,
+    )
     dispose()
     expect(listener_count(model)).toBe(0)
   })

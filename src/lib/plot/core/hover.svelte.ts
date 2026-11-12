@@ -1,5 +1,7 @@
-// Shared hover-state guard for chart components.
+// Shared hover state of chart components.
 
+import { focus_left } from '#lib/plot/core/interactions.js'
+import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
 import { untrack } from 'svelte'
 
 // A data swap or a hidden series fires no pointer event, so a hover whose item is gone would
@@ -9,4 +11,40 @@ export function clear_stale_hover(is_stale: () => unknown, clear: () => void): v
   $effect.pre(() => {
     if (is_stale()) untrack(clear)
   })
+}
+
+// Hover and pinned-tooltip state of a chart whose marks are DOM nodes (bars, bins, boxes). A
+// mark is named by indices only, so the tooltip follows new data and closes once its mark is
+// gone or hidden (`info` returns null). Creates $effects, so call it during component init.
+export function create_mark_hover<Mark extends Named, Info, Named = Mark>(opts: {
+  key: (mark: Named) => unknown // names the mark (see TooltipPin)
+  enabled: (mark: Mark) => boolean // whether a click pins its tooltip
+  info: (mark: Mark) => Info | null // what the tooltip shows
+  on_clear: (left: Mark | null) => void // the hover ended; null when no mark was hovered
+}) {
+  let mark = $state.raw<Mark | null>(null)
+  const pin = new TooltipPin<Mark, Named>(opts)
+  const shown = $derived(pin.shown(mark))
+  const info = $derived(shown && opts.info(shown))
+  const clear = (): void => {
+    opts.on_clear(mark)
+    mark = null
+  }
+  clear_stale_hover(() => mark && !opts.info(mark), clear)
+  clear_stale_hover(() => pin.value && !info, pin.unpin)
+  return {
+    pin,
+    get info() {
+      return info
+    },
+    // Pointer moves within one mark keep its object, so its lit styles and tooltip don't re-run
+    set: (next: Mark): void => {
+      if (JSON.stringify(next) !== JSON.stringify(mark)) mark = next
+    },
+    clear,
+    clear_on_focus_exit: (event: FocusEvent & { currentTarget: SVGElement }) =>
+      focus_left(event, event.currentTarget.ownerSVGElement) && clear(),
+    lit: (named: Named): boolean => pin.lit(named, mark),
+    toggle_pin: (): void => pin.toggle(mark),
+  }
 }

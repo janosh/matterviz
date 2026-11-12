@@ -50,7 +50,7 @@ export * from './trajectory'
 export * from './url-params'
 export * from './utils'
 export * from './vacf'
-// The shape every `compute_*_async` worker client shares (`.cancel` / `.release` and the
+// The shape every `compute_*_async` worker client shares (`.cancel` / `.mount` and the
 // per-request `signal` / `on_progress` options)
 export type { WorkerClient, WorkerRequestOptions } from './worker-client.svelte'
 export { check_blob_workers, disable_workers } from './worker-client.svelte'

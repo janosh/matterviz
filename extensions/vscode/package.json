@@ -65,10 +65,10 @@
         "displayName": "MatterViz Viewer",
         "selector": [
           {
-            "filenamePattern": "*.{bxsf,cif,cube,data,dcd,dump,extxyz,frmsf,h5,hdf5,lammpstrj,lmp,mcif,mmcif,mol,mol2,pdb,poscar,sdf,traj,trr,vasp,xtc,xyz}"
+            "filenamePattern": "*.{bxsf,cif,cube,data,dcd,dump,extxyz,frmsf,h5,hdf5,lammpstrj,lmp,mcif,mmcif,mol,mol2,pdb,poscar,pwi,sdf,traj,trr,vasp,xtc,xyz}"
           },
           {
-            "filenamePattern": "*.{bxsf,cif,cube,data,dcd,dump,extxyz,frmsf,h5,hdf5,lammpstrj,lmp,mcif,mmcif,mol,mol2,pdb,poscar,sdf,traj,trr,vasp,xtc,xyz}.gz"
+            "filenamePattern": "*.{bxsf,cif,cube,data,dcd,dump,extxyz,frmsf,h5,hdf5,lammpstrj,lmp,mcif,mmcif,mol,mol2,pdb,poscar,pwi,sdf,traj,trr,vasp,xtc,xyz}.gz"
           },
           {
             "filenamePattern": "*{structure,material,crystal,lattice,geometry}.{json,yaml,yml}.gz"

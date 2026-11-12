@@ -13,6 +13,12 @@ dependencies (matterviz components, Svelte runtime, three.js, ...) inlined.
 This is a peer of `extensions/vscode`: a framework adapter
 that wraps the MatterViz component library for a specific host runtime.
 
+The widgets are the components listed in `src/elements/components.ts`, the registry shared with the custom elements (`matterviz/elements`): its keys are the `widget_type` values. A component added there needs a spec in `anywidget.ts`' `WIDGETS` (the type check fails without one) naming the traits it reads and writes.
+
+## Styles
+
+The bundle injects MatterViz's base styles (`app.css`) into the notebook page, or into the shadow root a host renders the widget in. They are scoped (`@scope`) to the widget elements by the same build step as the custom elements' (`src/elements/scoped-css.ts`), so the page's own inputs, buttons and tables keep their styles. Outside that scope the sheet only defines the theme tokens (`--text-color`, `--surface-bg`, ...) on `:root` at zero specificity, where any page rule setting them wins.
+
 ## Bundle size
 
 Two large WASM dependencies are kept out of the inlined bundle (10.4 MB -> 3.4 MB),
@@ -28,7 +34,7 @@ The publish workflow's size gate fails if either WASM creeps back in.
 
 ## Web Workers
 
-The bundle has no URL of its own to load worker files from (anywidget imports it from a `blob:`, CDN or `file://` URL), so the `inline_workers` plugin in `vite.config.ts` ships every MatterViz worker (file parsing, MSD, VACF, RDF, structure ID, spectroscopy, chempot, ternary hulls, isosurfaces, Fermi surfaces, symmetry) as a string in `matterviz.js` (~0.8 MB of 6.1 MB) and starts it from a `blob:` URL. That keeps parsing and analysis off the notebook's UI thread: RDF over 100 frames of a 10k-atom run froze the page for 10 s before, and now runs in 2 s across parallel workers with no frame longer than ~50 ms. A page CSP whose `worker-src` (or its `child-src`/`script-src` fallback) leaves out `blob:` refuses these workers; the bundle tests that once at load and then logs a warning and computes on the main thread.
+The bundle has no URL of its own to load worker files from (anywidget imports it from a `blob:`, CDN or `file://` URL), so the `inline_workers` plugin in `vite.config.ts` ships every MatterViz worker (file parsing, MSD, VACF, RDF, structure ID, spectroscopy, chempot, ternary hulls, isosurfaces, Fermi surfaces, symmetry) as a string in `matterviz.js` (~1.6 MB of 5.9 MB) and starts it from a `blob:` URL. That keeps parsing and analysis off the notebook's UI thread: RDF over 100 frames of a 10k-atom run froze the page for 10 s before, and now runs in 2 s across parallel workers with no frame longer than ~50 ms. A page CSP whose `worker-src` (or its `child-src`/`script-src` fallback) leaves out `blob:` refuses these workers; the bundle tests that once at load and then logs a warning and computes on the main thread.
 
 ## Consumers
 

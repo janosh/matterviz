@@ -9,17 +9,18 @@ import type { MsdOptions, MsdResult } from '#lib/msd/index.js'
 import MsdPlot from '#lib/msd/MsdPlot.svelte'
 import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
+import { create_input_store, type WorkerRequest } from '#lib/worker-serve.js'
 import { mount, unmount } from 'svelte'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { bind_props, expect_module_worker, install_stub_worker, settle } from '../setup'
 import { drift_positions } from './helpers'
 import { orbit_run } from '../vacf/helpers'
 
-const stub = install_stub_worker<{
-  id: number
-  input: TrajectoryPositionStream
-  options: MsdOptions
-}>(({ input, options }) => calc_msd(input, options))
+// The stub plays msd-worker.ts, whose serve_worker keeps the stream a request names
+const input_of = create_input_store<TrajectoryPositionStream>()
+const stub = install_stub_worker<WorkerRequest<TrajectoryPositionStream, MsdOptions>>(
+  (message) => calc_msd(input_of(message), message.options),
+)
 let compute_msd_async: typeof ComputeMsdAsync
 
 beforeAll(async () => {
@@ -38,18 +39,18 @@ describe(`worker code path`, () => {
     expect(result.curves[0].msd).toEqual(calc_msd(positions).curves[0].msd)
     expect_module_worker(stub.instances, `src/lib/msd/msd-worker.ts`)
     const { input } = stub.posted[0].message
-    expect(input.positions).toBeInstanceOf(Float64Array)
-    expect(input.positions).toHaveLength(n_frames * 2 * 3)
-    expect(Array.isArray(input.elements)).toBe(true)
+    expect(input?.positions).toBeInstanceOf(Float64Array)
+    expect(input?.positions).toHaveLength(n_frames * 2 * 3)
+    expect(Array.isArray(input?.elements)).toBe(true)
     // Transferring would detach the caller's buffer and break repeat requests.
     expect(stub.posted[0].transfer).toHaveLength(0)
     expect(positions.positions).toHaveLength(n_frames * 2 * 3)
   })
 })
 
-// A timestep only relabels the lag axis, so editing it must not re-post the (possibly
-// hundreds of MB) position buffer and redo the analysis; a lag-range edit must
-it(`MsdPlot relabels dt edits without recomputing`, async () => {
+// A timestep only relabels the lag axis, so editing it must not redo the analysis; a lag-range
+// edit must, but without re-posting the (possibly hundreds of MB) buffer the worker kept
+it(`MsdPlot relabels dt edits without recomputing, and recomputes without re-sending`, async () => {
   const positions = drift_positions(30)
   const state = $state<{ msd_options: MsdOptions; result?: MsdResult; error_msg?: string }>({
     msd_options: { max_lag_fraction: 0.5 },
@@ -76,10 +77,14 @@ it(`MsdPlot relabels dt edits without recomputing`, async () => {
     // and clears the message, both without recomputing
     expect(await edit({ max_lag_fraction: 0.5, dt: 2 })).toEqual(invalid)
     expect(await edit(relabelled)).toEqual([expected, undefined, 1])
-    expect((await edit({ ...relabelled, max_lag_fraction: 0.3 }))[2]).toBe(2)
+    const recomputed = { ...relabelled, max_lag_fraction: 0.3 }
+    expect(await edit(recomputed)).toEqual([calc_msd(positions, recomputed), undefined, 2])
+    expect(stub.posted.map(({ message }) => Boolean(message.input))).toEqual([true, false])
   } finally {
     await unmount(component)
   }
+  // unmounting ends the idle worker, and with it the stream copy it retained
+  expect(stub.instances.at(-1)?.terminated).toBe(1)
 })
 
 // Fits belong to their curve: hovering `Li fit` in the legend reports Li like `Li` itself
@@ -116,6 +121,13 @@ it(`TrajectoryMsdPane computes on the collected stream, not a proxy of it`, asyn
     document.querySelector<HTMLButtonElement>(`.trajectory-msd-controls button`)?.click()
     await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(1))
     expect(compute.mock.calls[0][0]).toBe(await collect.mock.results[0].value)
+    // drift removal is off until ticked; ticking it recomputes on the stream the worker kept
+    document.querySelector<HTMLElement>(`.trajectory-msd-controls [type=checkbox]`)?.click()
+    await vi.waitFor(() => expect(compute).toHaveBeenCalledTimes(2))
+    const drift_options = compute.mock.calls.map(([, options]) => options?.remove_com_drift)
+    expect(drift_options).toEqual([false, true])
+    expect(compute.mock.calls[1][0]).toBe(compute.mock.calls[0][0])
+    await vi.waitFor(() => expect(document.body.textContent).toContain(`drift removed`))
   } finally {
     await unmount(component)
   }

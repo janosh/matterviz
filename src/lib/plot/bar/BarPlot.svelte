@@ -41,9 +41,10 @@
     resolve_legend_visibility,
   } from '#lib/plot/core/utils/series-visibility.js'
   import {
-    create_focus_exit,
     get_relative_coords,
     is_activation_key,
+    overlaps_rect,
+    type PixelRect,
   } from '#lib/plot/core/interactions.js'
   import { roving_key } from '#lib/plot/core/utils/roving-focus.js'
   import { create_roving_focus } from 'svelte-widgets/roving-focus'
@@ -71,8 +72,7 @@
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { create_category_display } from '#lib/plot/core/display.svelte.js'
-  import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
-  import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
+  import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import { bar_path } from '#lib/plot/core/svg.js'
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
@@ -127,6 +127,9 @@
     hovered = $bindable(false),
     on_bar_click,
     on_bar_hover,
+    selected_bars = $bindable([]),
+    on_select,
+    view = $bindable(),
     // Line marker props (matching ScatterPlot)
     color_scale = SCALE_DEFAULTS.color,
     size_scale = SCALE_DEFAULTS.size,
@@ -180,6 +183,10 @@
           | (BarHandlerProps<Metadata> & { event: MouseEvent | FocusEvent | KeyboardEvent })
           | null,
       ) => void
+      // Bindable: the bars the last Alt+drag rect touched, which the chart outlines
+      selected_bars?: { series_idx: number; bar_idx: number }[]
+      // Fires on every Alt+drag, including one that selected nothing
+      on_select?: (selection: { bars: BarHandlerProps<Metadata>[]; rect: PixelRect }) => void
       // Line marker props (matching ScatterPlot)
       color_scale?: ColorScale
       // How series `size_values` map to marker radius in px (type, radius range, value range)
@@ -252,8 +259,29 @@
           { ...plot_axes[axis], ticks: effective_cat_ticks ?? plot_axes[axis].ticks },
         ]),
       ),
+    // Alt+drag selects the drawn bars the rect touches (line series have none)
+    on_rect_select: (rect) => {
+      const bars = internal_series.flatMap((srs, series_idx) => {
+        if (srs.visible === false || srs.render_mode === `line`) return []
+        const rect_at = bar_geometry(srs, series_idx)
+        return srs.x.flatMap((_, bar_idx) => {
+          const { rect_x, rect_y, rect_w, rect_h } = rect_at(bar_idx)
+          const drawn = (vertical ? rect_h : rect_w) > 0
+          return drawn &&
+            overlaps_rect(rect, [rect_x, rect_x + rect_w], [rect_y, rect_y + rect_h])
+            ? [get_bar_data(series_idx, bar_idx, series_color(srs))]
+            : []
+        })
+      })
+      selected_bars = bars.map(({ series_idx, bar_idx }) => ({ series_idx, bar_idx }))
+      on_select?.({ bars, rect })
+    },
+    view: { get: () => view, set: (next) => (view = next) },
     clip_id_prefix: `chart-clip`,
   })
+  const selected_keys = $derived(
+    new Set(selected_bars.map((sel) => roving_key(sel.series_idx, sel.bar_idx))),
+  )
 
   // One tab stop for the whole mark group instead of one per bar/point: a 230-bar
   // spacegroup plot would otherwise take 230 presses to tab past.
@@ -532,13 +560,7 @@
   // or hidden. `line` marks a line-series point, whose hover callback is on_point_hover. A
   // click pins the hovered mark's tooltip unless on_bar_click/on_point_click takes the click.
   type MarkKey = { series_idx: number; bar_idx: number; color: string; line?: boolean }
-  let hover_key = $state<MarkKey | null>(null)
-  const pin = new TooltipPin<MarkKey, Omit<MarkKey, `color`>>({
-    key: (mark) => `${mark.series_idx}:${mark.bar_idx}:${mark.line}`,
-    enabled: (mark) => tooltip !== false && !(mark.line ? on_point_click : on_bar_click),
-  })
-  const mark_info = (key: MarkKey | null) => {
-    if (!key) return null
+  const mark_info = (key: MarkKey) => {
     const { series_idx, bar_idx, color, line: is_line } = key
     const srs = internal_series[series_idx]
     // A NaN value draws no mark and anchored the tooltip at NaN (an invalid geometry throw);
@@ -548,11 +570,13 @@
       Number.isFinite(coord_x) && Number.isFinite(coord_y) && (is_line || coord_y !== 0)
     return srs?.visible !== false && drawn ? get_bar_data(series_idx, bar_idx, color) : null
   }
-  const hover_info = $derived(mark_info(pin.shown(hover_key)))
-  // pointer moves within one mark keep its key, so its lit styles and tooltip don't re-run
-  const set_hover_key = (next: MarkKey) => {
-    if (!pin.same(next, hover_key) || next.color !== hover_key?.color) hover_key = next
-  }
+  const hover = create_mark_hover<MarkKey, BarHandlerProps<Metadata>, Omit<MarkKey, `color`>>({
+    key: (mark) => `${mark.series_idx}:${mark.bar_idx}:${mark.line}`,
+    enabled: (mark) => tooltip !== false && !(mark.line ? on_point_click : on_bar_click),
+    info: mark_info,
+    on_clear: (mark) => (mark?.line ? on_point_hover : on_bar_hover)?.(null),
+  })
+  const hover_info = $derived(hover.info)
 
   function get_bar_data(
     series_idx: number,
@@ -587,7 +611,7 @@
 
   // Line points anchor where drawn, bars at their drawn tip (group slot, stack base, log floor)
   const tooltip_anchor = $derived.by((): Vec2 | null => {
-    if (!hover_info || !(hovered || pin.value)) return null
+    if (!hover_info || !(hovered || hover.pin.value)) return null
     const { series_idx, bar_idx, orient_x, orient_y } = hover_info
     const srs = internal_series[series_idx]
     if (srs.render_mode === `line`) {
@@ -619,25 +643,9 @@
     (series_idx: number, bar_idx: number, color: string) =>
     (event: MouseEvent | FocusEvent) => {
       hovered = true
-      set_hover_key({ series_idx, bar_idx, color })
+      hover.set({ series_idx, bar_idx, color })
       on_bar_hover?.({ ...get_bar_data(series_idx, bar_idx, color), event })
     }
-
-  const clear_hover = () => {
-    hover_key = null
-    on_bar_hover?.(null)
-  }
-
-  const clear_hover_on_exit = create_focus_exit(() => frame.svg_element, clear_hover)
-  const clear_point_hover = () => {
-    hover_key = null
-    on_point_hover?.(null)
-  }
-  clear_stale_hover(
-    () => hover_key && !mark_info(hover_key),
-    () => (hover_key?.line ? clear_point_hover() : clear_hover()),
-  )
-  clear_stale_hover(() => pin.value && !hover_info, pin.unpin)
 
   let stacked_offsets = $derived(compute_stacked_offsets(internal_series, mode, orientation))
   let group_info = $derived(compute_group_info(internal_series, mode))
@@ -679,10 +687,10 @@
   }}
   on_mouse_leave={() => {
     hovered = false
-    clear_hover()
+    hover.clear()
   }}
-  on_mouse_click={() => pin.toggle(hover_key)}
-  unpin={pin.unpin}
+  on_mouse_click={hover.toggle_pin}
+  unpin={hover.pin.unpin}
   {header_controls}
   {controls_toggle_props}
   {user_content}
@@ -752,10 +760,10 @@
                 point: LineSeriesPoint | null,
                 evt: MouseEvent | FocusEvent,
               ) => {
-                if (!point) return clear_point_hover()
+                if (!point) return hover.clear()
                 hovered = true
                 const fill = line_point_fill(point, color)
-                set_hover_key({ series_idx, bar_idx: point.idx, color: fill, line: true })
+                hover.set({ series_idx, bar_idx: point.idx, color: fill, line: true })
                 const point_data = get_bar_data(series_idx, point.idx, fill)
                 on_point_hover?.({ ...point_data, event: evt, point })
               }}
@@ -790,7 +798,7 @@
                   style:cursor={on_point_click ? `pointer` : undefined}
                   onmousemove={(evt) =>
                     set_hover(find_closest_point(evt, points_in_view), evt)}
-                  onmouseleave={clear_point_hover}
+                  onmouseleave={hover.clear}
                   onclick={(evt) => {
                     const point = find_closest_point(evt, points_in_view)
                     if (point) do_click(point, evt)
@@ -812,7 +820,7 @@
                 }}
                 {@const leave = (evt: MouseEvent | FocusEvent) => {
                   const next = evt.relatedTarget instanceof Element ? evt.relatedTarget : null
-                  if (next?.closest(`.line-points`) !== evt.currentTarget) clear_point_hover()
+                  if (next?.closest(`.line-points`) !== evt.currentTarget) hover.clear()
                 }}
                 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_mouse_events_have_key_events -->
                 <g
@@ -835,7 +843,7 @@
                     if (point && is_activation_key(evt)) {
                       evt.preventDefault()
                       if (clickable) do_click(point, evt)
-                      pin.toggle(hover_key) // focus is the keyboard's hover
+                      hover.toggle_pin() // focus is the keyboard's hover
                     }
                   }}
                 >
@@ -849,10 +857,7 @@
                     <ScatterPoint
                       x={point.x}
                       y={point.y}
-                      is_hovered={pin.lit(
-                        { series_idx, bar_idx: point.idx, line: true },
-                        hover_key,
-                      )}
+                      is_hovered={hover.lit({ series_idx, bar_idx: point.idx, line: true })}
                       style={{
                         ...sty,
                         radius: rad,
@@ -928,6 +933,9 @@
                         stroke-opacity={bar_state.stroke_opacity}
                         stroke-width={bar_state.stroke_width}
                         clip-path={anchored ? undefined : bar_clip}
+                        class:selected-mark={selected_keys.has(
+                          roving_key(series_idx, bar_idx),
+                        )}
                         role="button"
                         tabindex={roving.tabindex(roving_key(series_idx, bar_idx))}
                         data-roving-key={roving_key(series_idx, bar_idx)}
@@ -941,17 +949,17 @@
                           // opens and on_bar_hover never fires for a keyboard user
                           handle_bar_hover(series_idx, bar_idx, color)(evt)
                         }}
-                        onfocusout={clear_hover_on_exit}
+                        onfocusout={hover.clear_on_focus_exit}
                         style:cursor={on_bar_click ? `pointer` : undefined}
                         onmousemove={handle_bar_hover(series_idx, bar_idx, color)}
-                        onmouseleave={clear_hover}
+                        onmouseleave={hover.clear}
                         onclick={click_bar}
                         onkeydown={(evt) => {
                           if (roving.handle_keydown(evt)) return
                           if (is_activation_key(evt)) {
                             evt.preventDefault()
                             click_bar(evt)
-                            pin.toggle(hover_key) // focus is the keyboard's hover
+                            hover.toggle_pin() // focus is the keyboard's hover
                           }
                         }}
                       />
@@ -1048,7 +1056,7 @@
         exclusion_rects={frame.exclusion_rects}
         fallback_size={{ width: 140, height: 50 }}
         bg_color={hover_info.color}
-        pinned={pin.value !== null}
+        pinned={hover.pin.value !== null}
       >
         {#if tooltip}
           {@render tooltip({ ...hover_info, fullscreen })}

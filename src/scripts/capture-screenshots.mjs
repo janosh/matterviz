@@ -68,7 +68,7 @@ const README_SHOTS = [
   },
   {
     name: `fermi-surface`,
-    url: `/reciprocal/fermi-surface`,
+    url: `/spectral/fermi-surface`,
     selector: `div.fermi-surface`,
     own_box: true, // its file picker overflows above the viewer
     crop_x: 0.5, // the zone sits mid-canvas with blank space either side

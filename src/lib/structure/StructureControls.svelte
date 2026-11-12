@@ -1702,7 +1702,6 @@
 <style>
   /* Value tracks grow with typed numbers; sliders use the remaining space. */
   :global(.controls-pane) {
-    font-size: 0.85em;
     --ctrl-label-w: 9.4em;
     --ctrl-value-w: minmax(6ch, max-content);
     --ctrl-cols: var(--ctrl-label-w) var(--ctrl-value-w) minmax(0, 1fr);

@@ -5,9 +5,30 @@ import * as math from '#lib/math.js'
 import type { Crystal, Site } from '#lib/structure/index.js'
 import { wrap_frac_coord } from '#lib/structure/pbc.js'
 import { assemble_crystal, make_oriented_bulk, shorten_in_plane } from './lattice-basis'
-import { detect_layers, layer_spacings, terminations_of_oriented_bulk } from './terminations'
+import {
+  detect_layers,
+  is_symmetric_termination,
+  layer_spacings,
+  terminations_of_oriented_bulk,
+} from './terminations'
 import { MAX_SLAB_SITES, SLAB_DEFAULT_THICKNESS, SLAB_DEFAULT_VACUUM } from './types'
 import type { Slab, SlabOptions } from './types'
+
+// Whether the slab's dipole along the surface normal exceeds 1e-3 e/Å per surface area, as
+// pymatgen's Slab.is_polar: occupancy-weighted oxidation states about the sites' centroid.
+// Undefined when every oxidation state is 0 (what parsers store for files declaring none).
+function is_polar_slab(sites: Site[], normal: Vec3, area: number): boolean | undefined {
+  if (sites.every((site) => site.species.every((spec) => !spec.oxidation_state)))
+    return undefined
+  const heights = sites.map((site) => math.dot(site.xyz, normal))
+  const centroid = math.mean(heights)
+  let dipole = 0
+  for (const [idx, { species }] of sites.entries()) {
+    for (const { oxidation_state, occu } of species)
+      dipole += oxidation_state * occu * (heights[idx] - centroid)
+  }
+  return Math.abs(dipole) / area > 1e-3
+}
 
 // Generate a surface slab of `crystal` cut along the (hkl) planes.
 //
@@ -151,6 +172,8 @@ export function make_slab(
       normal: final_normal,
       termination,
       terminations,
+      is_symmetric: is_symmetric_termination(bulk, layers, termination.layer_idx),
+      is_polar: is_polar_slab(sites, final_normal, surface_area),
     },
   }
 }

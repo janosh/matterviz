@@ -29,6 +29,8 @@
   } = $props()
 
   let max_lag_fraction = $state(0.5)
+  // Off by default: removing the drift changes the reported diffusion coefficients
+  let remove_com_drift = $state(false)
   let fit_start_fraction = $state(0.2)
   let fit_end_fraction = $state(0.8)
   // Raw: a deep proxy of the stream's frame steps and cells made each worker payload
@@ -42,6 +44,7 @@
   const msd_options = (ctx: AnalysisPaneContext<TrajectoryPositionStream>): MsdOptions => ({
     ...(ctx.has_valid_dt ? { dt: ctx.dt_collected, time_unit: ctx.time_unit } : {}),
     max_lag_fraction,
+    remove_com_drift,
   })
   // Kept out of msd_options: the fit window refits the shown result instead of re-running MSD
   const fit_options: EinsteinFitOptions = $derived({
@@ -76,6 +79,12 @@
       Max lag
       <input type="number" min="0.05" max="1" step="0.05" bind:value={max_lag_fraction} />
       <span>× length</span>
+    </label>
+    <label
+      title="Subtract each frame's centre of mass (standard atomic masses) so a cell translating as a whole does not count as diffusion"
+    >
+      <input type="checkbox" bind:checked={remove_com_drift} />
+      Remove COM drift
     </label>
     <label>
       Fit window

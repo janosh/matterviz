@@ -9,7 +9,28 @@
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin
 import { to_error } from 'svelte-widgets/utils'
 
-type WorkerRequest<Input, Options> = { id: number; input: Input; options: Options }
+export type WorkerRequest<Input, Options> = {
+  id: number
+  options: Options
+  input?: Input // absent when the worker already holds it
+  held?: number[] // retaining clients only: tokens of the inputs to keep, this request's last
+}
+
+// The input a request carries or names. Handing back the same object per token keeps identity-
+// keyed caches of derived state (unwrapped positions, upsampled grids) alive between requests.
+export function create_input_store<Input>() {
+  const inputs = new Map<number, Input>()
+  return ({ input, held = [] }: { input?: Input; held?: number[] }): Input => {
+    const token = held.at(-1)
+    if (token !== undefined) {
+      if (input !== undefined) inputs.set(token, input)
+      for (const kept of inputs.keys()) if (!held.includes(kept)) inputs.delete(kept)
+      input = inputs.get(token)
+    }
+    if (input !== undefined) return input
+    throw new Error(`worker holds no input ${token} (${inputs.size} held)`)
+  }
+}
 
 // The compute callback's own parameter types drive the request type; both `Input` and
 // `Options` are inferred from it, so they are not unnecessary despite appearing once.
@@ -25,27 +46,24 @@ export function serve_worker<Input, Options, Result>(
   // Buffers inside `result` to move rather than copy back to the main thread
   transferables: (result: Result) => Transferable[] = () => [],
 ): void {
-  self.addEventListener(
-    `message`,
-    ({
-      data: { id: identifier, input, options },
-    }: MessageEvent<WorkerRequest<Input, Options>>) => {
-      try {
-        const result = compute(input, options, (progress) =>
-          self.postMessage({ id: identifier, progress }),
-        )
-        self.postMessage(
-          { id: identifier, result, error: null },
-          { transfer: transferables(result) },
-        )
-      } catch (err) {
-        // never empty: `throw new Error()` must not read as success
-        const { name, message } = to_error(err)
-        const error = message || `${name} thrown without a message`
-        self.postMessage({ id: identifier, result: null, error })
-      }
-    },
-  )
+  const input_of = create_input_store<Input>()
+  self.addEventListener(`message`, ({ data }: MessageEvent<WorkerRequest<Input, Options>>) => {
+    const { id: identifier, options } = data
+    try {
+      const result = compute(input_of(data), options, (progress) =>
+        self.postMessage({ id: identifier, progress }),
+      )
+      self.postMessage(
+        { id: identifier, result, error: null },
+        { transfer: transferables(result) },
+      )
+    } catch (err) {
+      // never empty: `throw new Error()` must not read as success
+      const { name, message } = to_error(err)
+      const error = message || `${name} thrown without a message`
+      self.postMessage({ id: identifier, result: null, error })
+    }
+  })
   self.addEventListener(`messageerror`, () => {
     self.postMessage({
       id: null,

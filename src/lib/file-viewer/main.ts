@@ -11,7 +11,7 @@ import {
   build_structure_props_from_settings as structure_props,
 } from '#lib/settings.js'
 import type { DefaultSettings } from '#lib/settings.js'
-import { blob_to_data_url, type DownloadData } from 'svelte-widgets/download'
+import type { DownloadData } from 'svelte-widgets/download'
 import { set_moyo_wasm_source } from '#lib/symmetry/index.js'
 import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
 import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
@@ -207,27 +207,23 @@ const post_to_host = (command: `info` | `error`, text: string): void => {
 // Route `download` (svelte-widgets/download checks for this global override) through the host's save dialog
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
-  const download = (data: DownloadData, filename: string, type: string): void => {
+  const download = (data: DownloadData, filename: string): void => {
     if (!filename?.trim()) {
       console.error(`Invalid filename provided to download`)
       return
     }
-    const send_message = (content: string, is_binary: boolean) =>
-      vscode_api.postMessage({ command: `saveAs`, content, filename, is_binary })
+    const send_message = (content: string | ArrayBuffer) =>
+      vscode_api.postMessage({ command: `saveAs`, content, filename })
     try {
       if (typeof data === `string`) {
-        send_message(data, false)
+        send_message(data)
       } else {
-        // readAsDataURL takes a Blob only, and the shared `download` contract also admits an
-        // ArrayBuffer / view - which is exactly what the STL and GLB scene exports pass, so
-        // both failed in the extension with a raw "parameter 1 is not of type 'Blob'" toast.
-        blob_to_data_url(data instanceof Blob ? data : new Blob([data], { type })).then(
-          (url) => send_message(url, true),
-          () => {
-            console.error(`Failed to read binary data for download`)
-            post_to_host(`error`, `Failed to read binary data for download`)
-          },
-        )
+        // The shared `download` contract admits a Blob, an ArrayBuffer or a view (the STL and
+        // GLB scene exports pass the latter two): a Blob over any of them yields its own bytes
+        new Blob([data]).arrayBuffer().then(send_message, () => {
+          console.error(`Failed to read binary data for download`)
+          post_to_host(`error`, `Failed to read binary data for download`)
+        })
       }
     } catch (error) {
       console.error(`VSCode download failed:`, error)

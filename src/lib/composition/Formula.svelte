@@ -3,7 +3,6 @@
   import { ELEMENT_COLOR_SCHEMES, perceived_brightness } from '#lib/colors/index.js'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
-  import ElementTile from '#lib/element/ElementTile.svelte'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
   import type { TooltipSide } from '#lib/plot/core/decorations/tooltip.js'
   import { beside_rect } from '#lib/plot/core/decorations/tooltip.js'
@@ -170,17 +169,14 @@
 </svelte:element>
 
 {#if hovered && hovered_elem_data}
-  {@const tile_color = element_color(hovered_elem_data.symbol)}
-  <PlotTooltip {...beside_rect(hovered.rect, tooltip_side, tooltip_offset)} fixed>
-    <span class="tooltip-content">
-      <ElementTile
-        element={hovered_elem_data}
-        show_name={false}
-        segments={[{ color: tile_color, value: hovered_elem_data.atomic_mass }]}
-        style="width: var(--formula-tooltip-tile-size, 30px); height: var(--formula-tooltip-tile-size, 30px)"
-      />
-      {hovered_elem_data.name}
-    </span>
+  <!-- one chip in the element's color (PlotTooltip picks a contrasting text color) -->
+  <PlotTooltip
+    {...beside_rect(hovered.rect, tooltip_side, tooltip_offset)}
+    bg_color={element_color(hovered_elem_data.symbol)}
+    fixed
+  >
+    <strong>{hovered_elem_data.symbol}</strong>
+    {hovered_elem_data.name}
   </PlotTooltip>
 {/if}
 
@@ -212,11 +208,6 @@
       0.3px -0.3px 0 #fffc,
       -0.3px 0.3px 0 #fffc,
       0.3px 0.3px 0 #fffc;
-  }
-  .tooltip-content {
-    display: flex;
-    align-items: center;
-    gap: var(--formula-tooltip-gap, 4pt);
   }
   .script-wrapper {
     display: inline-flex;

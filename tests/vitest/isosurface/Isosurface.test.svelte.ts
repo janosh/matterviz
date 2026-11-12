@@ -24,7 +24,10 @@ vi.mock(`@threlte/core`, async () => ({
   useThrelte: () => ({ invalidate }),
 }))
 // Large volumes go through the geometry worker; tests swap it for a controllable stub
-const compute_geometries_async = vi.hoisted(() => Object.assign(vi.fn(), { release: vi.fn() }))
+const compute_geometries_async = vi.hoisted(() => {
+  const release = vi.fn()
+  return Object.assign(vi.fn(), { release, mount: () => release })
+})
 vi.mock(`#lib/isosurface/async-geometry.svelte.js`, () => ({ compute_geometries_async }))
 // Hosts that disable workers (anywidget) leave `Worker` defined, so the gate must be
 // can_create_worker rather than `typeof Worker`; flip `workers_disabled` to simulate one
@@ -361,7 +364,7 @@ describe(`Isosurface`, () => {
     expect(compute_geometries_async.release).not.toHaveBeenCalled()
     teardown?.()
     teardown = undefined
-    // an idle worker outlived every isosurface
+    // its claim released: an idle worker outlived every isosurface
     expect(compute_geometries_async.release).toHaveBeenCalledOnce()
     pending[0].resolve({ surfaces: [] })
     await settle()

@@ -9,9 +9,9 @@ import DemoHostTool from '#root/src/routes/(demos)/structure/host-tool/DemoHostT
 import GuidesHub from '#root/src/routes/(demos)/guides/+page.svelte'
 import PeriodicTablePage from '#root/src/routes/(demos)/periodic-table/+page.svelte'
 import PlotHub from '#root/src/routes/(demos)/plot/+page.svelte'
-import ReciprocalHub from '#root/src/routes/(demos)/reciprocal/+page.svelte'
+import SpectralHub from '#root/src/routes/(demos)/spectral/+page.svelte'
 import FacetGridPage from '#root/src/routes/(demos)/plot/facet-grid/+page.svelte'
-import BrillouinZonePage from '#root/src/routes/(demos)/reciprocal/brillouin-zone/+page.svelte'
+import BrillouinZonePage from '#root/src/routes/(demos)/spectral/brillouin-zone/+page.svelte'
 import RdfPage from '#root/src/routes/(demos)/structure/rdf/+page.svelte'
 import SymmetryPage from '#root/src/routes/(demos)/structure/symmetry/+page.svelte'
 import SynthesisPage from '#root/src/routes/(demos)/convex-hull/synthesis-planning/+page.svelte'
@@ -444,7 +444,7 @@ test(`a file dropped on the binary phase diagram leaves ?file= out of the URL`, 
 // the /plot hub never linked /plot/eos: each hub page links every route under its prefixes
 test.each([
   [PlotHub, [`/plot/`]],
-  [ReciprocalHub, [`/reciprocal/`]],
+  [SpectralHub, [`/spectral/`]],
   [GuidesHub, [`/how-to/`, `/acknowledgements`]],
 ])(`hub %# links all its pages`, (hub, prefixes) => {
   mount(hub, { target: document.body })

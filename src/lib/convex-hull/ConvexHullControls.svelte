@@ -489,7 +489,6 @@
     --ctrl-label-w: 8em;
     --ctrl-value-w: 4em;
     --settings-row-gap: 8pt;
-    font-size: 0.85em;
     pointer-events: auto;
   }
   .control-label {

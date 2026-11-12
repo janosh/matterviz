@@ -387,6 +387,8 @@ export const stub_reduced_motion = (reduced: () => boolean): void => {
 
 export const mouse = (type: string, init: MouseEventInit = {}): MouseEvent =>
   new MouseEvent(type, { bubbles: true, ...init })
+export const pointer = (type: string, init: PointerEventInit = {}): PointerEvent =>
+  new PointerEvent(type, { bubbles: true, ...init })
 export const keydown = (key: string, init: KeyboardEventInit = {}): KeyboardEvent =>
   new KeyboardEvent(`keydown`, { key, bubbles: true, ...init })
 
@@ -399,6 +401,20 @@ export const fire = async (
   if (!target) throw new Error(`event target for ${event.type} not found`)
   target.dispatchEvent(event)
   await tick()
+}
+
+// A primary-button pointer drag on `target` through client px `points`: pressed at the first,
+// moved to each next one, released at the last
+export const drag = async (
+  target: Element,
+  init: PointerEventInit,
+  ...points: [number, number][]
+): Promise<void> => {
+  const send = (type: string, [clientX, clientY] = points[0], buttons = 1) =>
+    fire(target, pointer(`pointer${type}`, { ...init, buttons, clientX, clientY }))
+  await send(`down`)
+  for (const point of points.slice(1)) await send(`move`, point)
+  await send(`up`, points.at(-1), 0)
 }
 
 // The interactive plot area: the frame's <svg role="application"> under `root`

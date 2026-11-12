@@ -295,7 +295,7 @@
       controls_name="table"
       position="fixed"
       toggle_style=""
-      pane_style="--pane-max-height: 60vh; overflow-y: auto; font-size: 0.85em"
+      pane_style="--pane-max-height: 60vh; overflow-y: auto"
     >
       <SettingsSection
         title="Heatmap"

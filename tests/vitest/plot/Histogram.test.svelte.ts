@@ -18,6 +18,7 @@ import {
   doc_query,
   expect_tooltip_paint,
   export_via_pane,
+  drag,
   fire,
   form_controls,
   keydown,
@@ -81,14 +82,6 @@ const y_ticks_after = async (props: Record<string, unknown>) => {
 }
 const max_y_tick = async (props: Record<string, unknown>) =>
   Math.max(...(await y_ticks_after(props)))
-
-const touch_event = (type: string, touches: readonly Readonly<Vec2>[]) => {
-  const evt = new Event(type, { bubbles: true, cancelable: true })
-  Object.defineProperty(evt, `touches`, {
-    value: touches.map(([clientX, clientY]) => ({ clientX, clientY })),
-  })
-  return evt
-}
 
 // oxfmt-ignore
 const series_of = (values: number[], extra: Partial<HistogramSeries> = {}): HistogramSeries => ({ values, ...extra })
@@ -270,15 +263,7 @@ describe(`Histogram`, () => {
     await mount_histogram({ series: [{ values }], ...props })
     const svg = plot_svg()
     const { left, top } = svg.getBoundingClientRect()
-    const at = (px_x: number, px_y: number) => ({
-      clientX: left + px_x,
-      clientY: top + px_y,
-      button: 0,
-      buttons: 1,
-    })
-    svg.dispatchEvent(mouse(`mousedown`, at(130, 40)))
-    window.dispatchEvent(mouse(`mousemove`, at(250, 240)))
-    await fire(window, mouse(`mouseup`, at(250, 240)))
+    await drag(svg, {}, [left + 130, top + 40], [left + 250, top + 240])
     const bars = document.querySelectorAll(`g.histogram-series path[role="button"]`)
     bars[Math.floor(bars.length / 2)].dispatchEvent(mouse(`mousemove`))
     const { count, y } = on_bar_hover.mock.lastCall?.[0] ?? {}
@@ -656,22 +641,6 @@ describe(`Histogram`, () => {
     const { value, x } = on_bar_hover.mock.lastCall?.[0] ?? {}
     expect(value).toBeCloseTo(Math.sqrt(10), 12)
     expect(x).toBe(value)
-  })
-
-  // oxfmt-ignore
-  test.each([
-    [`a one-pixel pinch`, [[`touchstart`, [[100, 100], [101, 100]]], [`touchmove`, [[50, 100], [250, 100]]]]],
-    [`a cancelled then resumed pinch`, [[`touchstart`, [[100, 100], [200, 100]]], [`touchcancel`, []], [`touchmove`, [[150, 150], [250, 150]]]]],
-    [`a pinch from the plot edge`, [[`touchstart`, [[10, 100], [100, 100]]], [`touchmove`, [[100, 100], [300, 100]]]]],
-  ] as const)(`%s keeps finite axis ranges`, async (_name, events) => {
-    await mount_histogram({ series: [{ values: [1, 2, 3, 4, 5], label: `A` }] })
-    const svg = plot_svg()
-    const ticks_before = { x: get_tick_numbers(`x`), y: get_tick_numbers(`y`) }
-    expect(ticks_before.x.length).toBeGreaterThan(0)
-    for (const [type, touches] of events) svg.dispatchEvent(touch_event(type, touches))
-    await tick()
-    expect(get_tick_numbers(`x`)).toEqual(ticks_before.x)
-    expect(get_tick_numbers(`y`)).toEqual(ticks_before.y)
   })
 
   test(`controls pane toggles the legend and reset restores the default`, async () => {

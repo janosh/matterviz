@@ -44,7 +44,7 @@ jobs:
           pnpm exec vp check
           pnpm typecheck
       - name: Run prek checks
-        uses: j178/prek-action@main
+        uses: j178/prek-action@v3.1.0
 
       # The root tsconfig excludes extensions/, and `vp build` strips types without
       # checking them, so extensions/vscode/tsconfig.json never ran anywhere. The
@@ -177,10 +177,10 @@ jobs:
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
+  # Not behind the E2E gate: this is the only site build a PR push gets (gh-pages.yml builds
+  # on main only), so a route or build-config error must fail here, not after merge
   build-site:
     name: Build browser test site
-    needs: e2e-gate
-    if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -204,6 +204,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
       - run: pnpm exec playwright install chromium --no-shell
       # Linux headless WebGPU presents transparent canvases, including drawImage captures.
       - run: xvfb-run -a pnpm exec playwright test --headed
@@ -222,7 +228,8 @@ jobs:
 
   e2e-test-shards:
     name: E2E production (shard ${{ matrix.shard }}/8)
-    needs: build-site
+    needs: [e2e-gate, build-site]
+    if: needs.e2e-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40 # the slowest shard takes ~5-7 min; retries of 90 s tests need headroom
     strategy:
@@ -234,23 +241,40 @@ jobs:
         uses: actions/checkout@v7
       - name: Install dependencies
         uses: ./.github/actions/setup
-      - name: Install Chromium
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium # a no-op when the cache restored this version's browser
         run: pnpm exec playwright install chromium --no-shell
+      # Only the movie CLI test encodes with FFmpeg, so only the shard that drew it installs it
+      - name: Check whether this shard runs the movie CLI test
+        id: movie
+        run: pnpm exec playwright test --list --shard=${{ matrix.shard }}/8 | grep 'movie CLI' && echo ffmpeg=true >> "$GITHUB_OUTPUT" || true
+        env:
+          MATTERVIZ_E2E_MODE: preview
       # FFmpeg's .deb files come from a cache: the runner's apt mirror stalls mid-download often
-      # enough to time out whole shards, and the first shard that fetches them saves them.
+      # enough to time out whole shards.
       # Keyed on the runner image, whose updates change the package versions apt wants; the
       # prefix restore lets a new image download only the packages that changed.
       - name: Read runner image version
         id: runner-image
+        if: steps.movie.outputs.ffmpeg
         run: echo "version=${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
       - name: Cache FFmpeg packages
+        if: steps.movie.outputs.ffmpeg
         uses: actions/cache@v6
         with:
           path: ~/apt-archives
           key: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-image.outputs.version }}
           restore-keys: ffmpeg-debs-${{ runner.os }}-${{ runner.arch }}-
       # Bounded: an unresponsive apt mirror once hung shards 3 and 6 until the 6 h job limit
-      - name: Install FFmpeg for movie export tests
+      - name: Install FFmpeg for the movie CLI test
+        if: steps.movie.outputs.ffmpeg
         timeout-minutes: 5
         run: |
           mkdir -p ~/apt-archives/partial

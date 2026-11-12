@@ -3,7 +3,8 @@ import RdfPlot from '#lib/rdf/RdfPlot.svelte'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { RadiationType } from '#lib/scattering/index.js'
 import { structure_map } from '#site/structures.js'
-import { type Component, type ComponentProps, createRawSnippet, mount, tick } from 'svelte'
+import type { Component, ComponentProps } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { describe, expect, test, vi } from 'vitest'
 import { create_drop_event, mount_sized, query, resize_element, set_input } from '../setup'
@@ -12,6 +13,7 @@ import RdfPlotHarness from './RdfPlotHarness.svelte'
 import type * as calc_rdf from '#lib/rdf/calc-rdf.js'
 import {
   calculate_all_pair_rdfs,
+  calculate_rdfs,
   rdf_bin_site_index,
   rdf_bin_sites,
 } from '#lib/rdf/calc-rdf.js'
@@ -23,6 +25,7 @@ vi.mock(`#lib/rdf/calc-rdf.js`, async (import_original) => {
   return {
     ...actual,
     calculate_all_pair_rdfs: vi.fn(actual.calculate_all_pair_rdfs),
+    calculate_rdfs: vi.fn(actual.calculate_rdfs),
     rdf_bin_site_index: vi.fn(actual.rdf_bin_site_index),
   }
 })
@@ -62,8 +65,15 @@ const good_and_broken = () => {
   return { good: nacl_structure, broken }
 }
 
-const mount_sized_rdf_plot = (props: ComponentProps<typeof RdfPlot>) =>
-  mount_sized(RdfPlot, props, { selector: `.scatter, .empty-drop` })
+// Structures are analysed off the render (the RDF worker pool, a promise per structure
+// here), so their plot replaces the `Computing RDF…` empty state a few microtasks later
+const mount_sized_rdf_plot = async (props: ComponentProps<typeof RdfPlot>) => {
+  const first = await mount_sized(RdfPlot, props, { selector: `.scatter, .empty-drop` })
+  if (!props.structures) return first
+  const plot = await vi.waitFor(() => query(first.parentElement ?? document.body, `.scatter`))
+  await resize_element(plot, 400, 300)
+  return plot
+}
 
 // Mounted un-sized: the harness wraps the plot in a binding parent, and the tests resize
 // whichever plot they care about themselves.
@@ -185,15 +195,31 @@ describe(`RdfPlot`, () => {
     const supplied = new SvelteMap([
       [`patterns`, { label: `Test`, pattern: create_synthetic_pattern() }],
     ])
+    const shown = new SvelteMap([[`structures`, [nacl_structure]]])
+    const cutoffs = new SvelteMap([[`cutoff`, 15]])
+    const reported_errors: (string | undefined)[] = []
     const plot = await mount_sized_rdf_plot({
+      get error_msg() {
+        return reported_errors.at(-1)
+      },
+      set error_msg(message) {
+        reported_errors.push(message)
+      },
+      get cutoff() {
+        return cutoffs.get(`cutoff`)
+      },
       get patterns() {
         return supplied.get(`patterns`)
       },
-      structures: nacl_structure,
+      get structures() {
+        return shown.get(`structures`)
+      },
       mode: `element_pairs`,
       on_bin_hover,
       on_sites_hover,
     })
+    // the supplied pattern plots at once, the structure's curves once they are computed
+    await vi.waitFor(() => expect(plot.textContent).toContain(`Lu-Lu`))
     for (const label of [`Test`, `Lu-Lu`]) {
       const item = [...plot.querySelectorAll(`.legend-item`)].find(
         (node) => node.textContent?.trim() === label,
@@ -240,7 +266,7 @@ describe(`RdfPlot`, () => {
     })
 
     // new patterns join the computed curves without re-running the neighbour search
-    vi.mocked(calculate_all_pair_rdfs).mockClear()
+    vi.mocked(calculate_rdfs).mockClear()
     supplied.set(`patterns`, { label: `Swapped`, pattern: create_synthetic_pattern() })
     await tick()
     const swapped = scatter.mock.lastCall?.[1].series ?? []
@@ -248,7 +274,28 @@ describe(`RdfPlot`, () => {
       `Swapped`,
       ...series.slice(1).map(({ label }) => label),
     ])
-    expect(calculate_all_pair_rdfs).not.toHaveBeenCalled()
+    expect(calculate_rdfs).not.toHaveBeenCalled()
+
+    // one more structure is searched alone: the first one's curves are memoized by identity
+    const shown_labels = () => scatter.mock.lastCall?.[1].series?.map(({ label }) => label)
+    const searches = () => vi.mocked(calculate_rdfs).mock.calls
+    shown.set(`structures`, [nacl_structure, pd_structure])
+    const with_pd = [...swapped.map(({ label }) => label), `Pd-Pd`]
+    await vi.waitFor(() => expect(shown_labels()).toEqual(with_pd))
+    expect(searches().map(([structure]) => structure)).toEqual([pd_structure])
+
+    // a cutoff superseded before its searches started aborts them: only the latest one runs
+    vi.mocked(calculate_rdfs).mockClear()
+    for (const cutoff of [5, 6]) flushSync(() => cutoffs.set(`cutoff`, cutoff))
+    // the curves of the previous cutoff leave at once rather than pose as the new one's
+    expect(shown_labels()).toEqual([`Swapped`])
+    await vi.waitFor(() => expect(shown_labels()).toContain(`Pd-Pd`))
+    expect(searches().map(([, options]) => options?.cutoff)).toEqual([6, 6])
+    // and their aborts are not reported as failed computations
+    expect(reported_errors.filter(Boolean)).toEqual([])
+    // a structure taken off the list takes its curves with it, before any recompute settles
+    flushSync(() => shown.set(`structures`, [nacl_structure]))
+    expect(shown_labels()).not.toContain(`Pd-Pd`)
   })
 
   // Drops open through open_material, whose parse warnings reach a notice named by file
@@ -336,8 +383,8 @@ describe(`RdfPlot`, () => {
     }
     await vi.waitFor(() => {
       for (const part of expected) expect(mirror()).toMatch(part)
+      if (!expected.includes(failure_re)) expect(mirror()).not.toMatch(failure_re)
     })
-    if (!expected.includes(failure_re)) expect(mirror()).not.toMatch(failure_re)
     // the bound error_msg and the rendered notice say the same thing
     expect(target.querySelector(`[role="alert"]`)?.textContent?.trim()).toContain(mirror())
   })
@@ -355,8 +402,10 @@ describe(`RdfPlot`, () => {
     // the alert live region stays mounted for the next error; only its message goes
     expect(target.querySelector(`[role="alert"] .status-message`)).toBeNull()
     // recomputing the same failure keeps it dismissed
+    vi.mocked(calculate_rdfs).mockClear()
     target.querySelector<HTMLButtonElement>(`.change-cutoff`)?.click()
-    await tick()
+    await vi.waitFor(() => expect(calculate_rdfs).toHaveBeenCalledTimes(2))
+    for (let round = 0; round < 9; round++) await tick() // the recomputed failure lands
     expect(mirror()).toBe(`none`)
   })
 })

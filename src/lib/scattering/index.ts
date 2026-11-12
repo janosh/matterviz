@@ -1,6 +1,6 @@
 // Shared scattering factors for neutron/electron diffraction and total-PDF G(r) weighting.
 // Kept free of Svelte imports so worker-side consumers (XRD, RDF) can pull it in cheaply.
-import { element_by_symbol } from '#lib/element/data.js'
+import { ELEM_SYMBOLS } from '#lib/element/types.js'
 // is_elem_symbol lives in the Svelte-free leaf module; #lib/element re-exports Svelte components
 import { is_elem_symbol } from '#lib/element/helpers.js'
 import type { ElementSymbol } from '#lib/element/index.js'
@@ -78,9 +78,10 @@ const gaussian_sum = (element: ScatteringSpecies, s_sq: number): number => {
 // Atomic number seen by the X-ray form factor. Deuterium has hydrogen's electronic structure,
 // so only neutrons, which see the nucleus, tell them apart.
 export function form_factor_z(element: ScatteringSpecies): number {
-  const entry = element_by_symbol.get(element === `D` ? `H` : element)
-  if (!entry) throw new Error(`No atomic number for ${element}.`)
-  return entry.number
+  // The symbol list, not the element table: that would put 175 KB into every XRD/SAED worker
+  const atomic_number = ELEM_SYMBOLS.indexOf(element === `D` ? `H` : element) + 1
+  if (!atomic_number) throw new Error(`No atomic number for ${element}.`)
+  return atomic_number
 }
 
 // Bound coherent neutron scattering length b_coh in femtometres (fm). Throws rather than

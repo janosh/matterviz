@@ -8,6 +8,7 @@
   } from '#lib/plot/core/structure-input.js'
   import type { StructureEntry } from '#lib/plot/core/structure-input.js'
   import type { BarHandlerProps } from '#lib/plot/core/types.js'
+  import { memo_by_identity, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import {
     bin_bond_angles,
@@ -56,12 +57,15 @@
 
   // Geometry and binning are separate deriveds so dragging the bin-width slider re-bins an
   // unchanged triplet list instead of re-running the whole periodic bond search. A structure
-  // the neighbor search rejects is reported, not thrown through the render.
+  // the neighbor search rejects is reported, not thrown through the render. The search is
+  // memoized per structure object, so one more dropped file searches that file alone.
   const opts = $derived({ strategy, center_elements, neighbor_elements })
+  const angles_of = memo_by_identity<ReturnType<typeof calc_bond_angles>>()
   const computed = $derived(
     compute_structure_entries(
       [...to_structure_entries(structures), ...dropped_entries],
-      (structure) => calc_bond_angles(structure, opts),
+      (structure) =>
+        angles_of(structure, value_key(opts), () => calc_bond_angles(structure, opts)),
     ),
   )
 

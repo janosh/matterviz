@@ -32,7 +32,9 @@ import {
   axis_transform,
   expand_range_if_needed,
   invert_rect_range,
+  is_log_range,
   normalize_y2_sync,
+  type PixelRect,
   resolve_axis_ranges,
   snapshot_ranges,
   sync_y2_range,
@@ -67,6 +69,7 @@ import type {
   RefLine,
   RefLineEvent,
 } from '#lib/plot/core/types.js'
+import { get_scale_type_name } from '#lib/plot/core/types.js'
 import { unique_id } from '#lib/plot/core/utils.js'
 import { untrack } from 'svelte'
 import { SvelteSet } from 'svelte/reactivity'
@@ -131,7 +134,12 @@ interface CartesianFrameOptions {
   on_drag_move?: (coords: { x: number; y: number }, inside_svg: boolean) => void
   // Alt+drag rect, in svg pixel space. Charts that can enumerate their marks implement
   // this to turn the gesture into a selection; omitting it leaves Alt+drag as a zoom.
-  on_rect_select?: (start: { x: number; y: number }, current: { x: number; y: number }) => void
+  on_rect_select?: (rect: PixelRect) => void
+  // The chart's bindable `view` prop (the range each axis shows), mirrored both ways
+  view?: {
+    get: () => Partial<AxisRanges> | undefined
+    set: (view: Partial<AxisRanges>) => void
+  }
   // Replace a shown axis's generated ticks (e.g. one per category); empty arrays are ignored
   tick_override?: (axis: FacetAxis) => number[] | undefined
   // Axis configs used only when measuring tick labels (categorical axes measure their
@@ -724,12 +732,13 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
     manual_position: () => legend_manual_position,
   })
 
+  // The axes a gesture or a `view` write may set: a data-less x2/y2 would pan its [0, 1]
+  // sentinel and share that phantom range with a grid or a linked plot, and a y2 derived from
+  // y follows y
+  const settable_axes = () =>
+    FACET_AXES.filter((axis) => axis_shown(axis) && (axis !== `y2` || y2_sync.mode === `none`))
   const pan_zoom = create_pan_zoom({
-    // A data-less x2/y2 would pan its [0, 1] sentinel and share that phantom range with a grid
-    axes: () =>
-      FACET_AXES.filter(
-        (axis) => axis_shown(axis) && (axis !== `y2` || y2_sync.mode === `none`),
-      ),
+    axes: settable_axes,
     ranges: () => ranges.current,
     scale_type: (axis) => opts.axes()[axis].scale_type,
     // Clamp to at least 1 to avoid Infinity deltas when padding equals container size
@@ -760,6 +769,46 @@ export function create_cartesian_frame(opts: CartesianFrameOptions) {
       apply_y2_sync()
     },
   })
+
+  // Two-way `view` sync, compared by value on both legs so a host mirroring a write back
+  // isn't a new zoom. A differing `view` passed at mount beats the first auto-range mirror.
+  // Only the settable axes take part, so plots linked by one `view` keep the others' axes
+  // (each derives its own y2, and a missing one is a [0, 1] placeholder) as they found them.
+  const { view } = opts
+  if (view) {
+    let host_view_pending = untrack(view.get) != null
+    // The host's view with this plot's settable axes at their live ranges
+    const own_view = (): Partial<AxisRanges> => {
+      const own = { ...untrack(view.get) }
+      for (const axis of settable_axes()) own[axis] = [...ranges.current[axis]] as Vec2
+      return own
+    }
+    $effect(() => {
+      const [own, shown] = [own_view(), untrack(view.get)]
+      const in_sync = (axis: FacetAxis) =>
+        shown?.[axis] && own[axis] && vec2_equal(shown[axis], own[axis])
+      const axes = settable_axes()
+      const host_wins =
+        host_view_pending && axes.some((axis) => shown?.[axis] && !in_sync(axis))
+      host_view_pending = false
+      if (!host_wins && !axes.every(in_sync)) view.set(own)
+    })
+    $effect(() => {
+      const shown = view.get() ?? {}
+      // A write the plot cannot show (non-finite, non-positive on a log axis) goes back corrected
+      let rejected = false
+      for (const axis of untrack(settable_axes)) {
+        const range = shown[axis]
+        if (!range) continue
+        const differs = () => untrack(() => !vec2_equal(range, ranges.current[axis]))
+        const log = untrack(() => get_scale_type_name(opts.axes()[axis].scale_type) === `log`)
+        if (differs() && (log ? is_log_range(range) : range.every(Number.isFinite)))
+          synced_facet.update_range(axis, [...range] as Vec2)
+        rejected ||= differs()
+      }
+      if (rejected) view.set(untrack(own_view))
+    })
+  }
 
   return {
     get width() {

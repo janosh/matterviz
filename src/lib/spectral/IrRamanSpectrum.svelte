@@ -18,7 +18,7 @@
     convert_frequencies,
     frequency_unit_label,
     frequency_unit_text,
-    parse_frequency_unit,
+    canonical_frequency_unit,
   } from './frequency-units'
   import FrequencyUnitSelect from './FrequencyUnitSelect.svelte'
   import { density_divisor, NORMALIZATION_MODES } from './helpers'
@@ -86,9 +86,9 @@
   } = $props()
 
   const is_horizontal = $derived(orientation === `horizontal`)
-  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) at the prop boundary; every read
-  // below uses the canonical unit so no $derived throws on an alias
-  let unit = $derived(parse_frequency_unit(units) ?? units)
+  // Accept the spellings found in the wild (`cm-1`, `cm⁻¹`) and reject unknown units at the
+  // prop boundary; every read below uses the canonical unit
+  let unit = $derived(canonical_frequency_unit(units))
 
   // Derived, not effect-synced, so a unit switch never broadens a stale width on the new grid
   let display_fwhm = $derived(convert_frequencies([fwhm], unit, `cm^-1`)[0])

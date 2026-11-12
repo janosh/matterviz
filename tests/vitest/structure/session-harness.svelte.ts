@@ -11,7 +11,10 @@ import type { AtomColorConfig } from '#lib/structure/atom-properties.js'
 import { DEFAULT_ATOM_COLOR_CONFIG } from '#lib/structure/atom-properties.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { ResolvedPolyhedraOptions } from '#lib/structure/polyhedra.js'
-import { StructureSession } from '#lib/structure/session.svelte.js'
+import {
+  StructureSession,
+  type StructureSessionInputs,
+} from '#lib/structure/session.svelte.js'
 import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
 import { flushSync } from 'svelte'
 import { onTestFinished } from 'vitest'
@@ -44,7 +47,7 @@ export const crystal = (atoms = 3): AnyStructure => get_dummy_structure(`H`, ato
 
 export function make_session(
   initial: Partial<SessionHost> = {},
-  read_structure?: () => AnyStructure,
+  overrides: Partial<StructureSessionInputs> = {}, // replace host-backed inputs
 ): { host: SessionHost; session: StructureSession; notices: string[] } {
   const host = $state<SessionHost>({
     structure: crystal(),
@@ -78,7 +81,7 @@ export function make_session(
   let session: StructureSession | undefined
   const destroy = $effect.root(() => {
     session = new StructureSession({
-      structure: read_structure ?? (() => host.structure),
+      structure: () => host.structure,
       site_properties: () => host.site_properties,
       set_structure: set(`structure`),
       bonds: () => host.bonds,
@@ -110,6 +113,7 @@ export function make_session(
       bonding_strategy: () => `electroneg_ratio`,
       bonding_options: () => host.bonding_options,
       on_notice: (message) => notices.push(message),
+      ...overrides,
     })
   })
   onTestFinished(destroy)

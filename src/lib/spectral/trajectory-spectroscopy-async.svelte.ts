@@ -1,7 +1,7 @@
 // oxlint-disable eslint-plugin-unicorn/relative-url-style -- Vite worker detection needs the `./` prefix
 // calc_trajectory_spectroscopy via a persistent Web Worker; see create_worker_client for
-// `.cancel` / `.release` semantics. The client is shared by every mounted pane, so a pane's
-// unmount path is `.release()` (terminates only when nothing is in flight), never `.cancel()`.
+// `.cancel` / `.mount` semantics. The client is shared by every mounted pane, so a pane holds
+// a `.mount()` claim for its lifetime (the worker ends with the last one), never `.cancel()`.
 import type { TrajectorySignal } from '#lib/trajectory/index.js'
 import { plain_position_stream } from '#lib/trajectory/async-result.svelte.js'
 import { create_worker_client } from '#lib/worker-client.svelte.js'
@@ -44,9 +44,10 @@ export const compute_trajectory_spectroscopy_async = create_worker_client<
       raman_signal: raman_signal
         ? { kind: raman_signal.kind, series: plain_signal(raman_signal.series) }
         : null,
-      ...(input.time_step !== undefined ? { time_step: input.time_step } : {}),
-      ...(input.time_unit !== undefined ? { time_unit: input.time_unit } : {}),
       ...(input.metadata ? { metadata: $state.snapshot(input.metadata) } : {}),
     }
   },
+  // The streams cross once per input object: recomputing it with other options (timestep,
+  // window, zero padding, Raman channel) posts the options alone
+  retained_inputs: 1,
 })

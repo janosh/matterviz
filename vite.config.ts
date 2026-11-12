@@ -193,6 +193,11 @@ export default defineConfig({
     include: [`svelte-widgets/source-links`],
     rolldownOptions: { plugins: [scan_virtual_relative_imports] },
   },
+  // The @threlte/extras barrel loads three-perf (for PerfMonitor, unused here), which imports
+  // troika-three-text. Left to Node, troika (no `exports` map) loads as UMD and require()s
+  // three, tripping three's THREE_CJS_DEPRECATED warning on every SSR start. Bundled, Vite
+  // uses troika's ESM build.
+  ssr: { noExternal: [`three-perf`, /^troika-/] },
   // ES workers keep lazily imported chunks (h5wasm, ~4 MB) separate: the default iife format
   // inlines them, so every file parse loaded HDF5 support
   worker: {

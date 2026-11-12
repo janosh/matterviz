@@ -6,11 +6,11 @@
   import {
     FREQUENCY_UNITS,
     frequency_unit_text,
-    parse_frequency_unit,
+    canonical_frequency_unit,
   } from './frequency-units'
 
   let { units = $bindable(), id: identifier }: { units: FrequencyUnit; id: string } = $props()
-  const unit = $derived(parse_frequency_unit(units) ?? units)
+  const unit = $derived(canonical_frequency_unit(units))
 </script>
 
 <label>
@@ -18,7 +18,7 @@
   <select
     id={identifier}
     value={unit}
-    onchange={(event) => (units = parse_frequency_unit(event.currentTarget.value) ?? unit)}
+    onchange={(event) => (units = canonical_frequency_unit(event.currentTarget.value))}
   >
     {#each FREQUENCY_UNITS as option (option)}
       <option value={option}>{frequency_unit_text(option)}</option>

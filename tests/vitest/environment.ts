@@ -54,6 +54,13 @@ for (const method of [`showPopover`, `hidePopover`] as const) {
   }
 }
 
+// vi.waitFor's 1 s default (Vitest has no config for it) is too short for a loaded full-suite
+// run, e.g. a dynamic three.js import. 4 s stays below the 5 s test timeout, so a failing wait
+// still reports its last assertion error instead of a bare timeout.
+const wait_for = vi.waitFor
+vi.waitFor = (callback, options = {}) =>
+  wait_for(callback, typeof options === `number` ? options : { timeout: 4000, ...options })
+
 // Suppress Three.js multiple instances warning in tests
 const original_warn = console.warn
 console.warn = (...args: unknown[]) => {

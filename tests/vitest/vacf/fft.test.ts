@@ -95,14 +95,21 @@ describe(`next_power_of_two`, () => {
 })
 
 describe(`one_sided_periodogram`, () => {
-  it.each([15, 16])(`matches an independent direct DFT oracle for %i samples`, (n_samples) => {
-    const n_components = 2
+  // Components are transformed two per FFT, so the oracle also runs an odd count (the last one
+  // unpaired), distinct weights (a pair's spectra must not mix) and zero weights (skipped)
+  it.each([
+    [15, 2, undefined],
+    [16, 2, undefined],
+    [15, 3, [2, 0.5, 7]],
+    [16, 5, [1, 0, 3, 0, 0.25]],
+  ])(`matches a DFT oracle for %i x %i, %j`, (n_samples, n_components, component_weights) => {
     const values = Float64Array.from(
       { length: n_samples * n_components },
       (_unused, value_idx) => Math.sin(0.73 * value_idx) + 0.2 * Math.cos(0.17 * value_idx),
     )
     const sample_interval = 0.25
-    const result = one_sided_periodogram(values, n_components, sample_interval)
+    const options = { component_weights }
+    const result = one_sided_periodogram(values, n_components, sample_interval, options)
     const window = Array.from(
       { length: n_samples },
       (_unused, sample_idx) =>
@@ -130,7 +137,10 @@ describe(`one_sided_periodogram`, () => {
         const one_sided_factor =
           frequency_idx === 0 || frequency_idx === result.n_fft / 2 ? 1 : 2
         expected[frequency_idx] +=
-          (one_sided_factor * (real * real + imaginary * imaginary) * sample_interval) /
+          ((component_weights?.[component_idx] ?? 1) *
+            one_sided_factor *
+            (real * real + imaginary * imaginary) *
+            sample_interval) /
           window_energy
       }
     }
@@ -148,22 +158,27 @@ describe(`one_sided_periodogram`, () => {
     expect(relative_error).toBeLessThan(bound)
   })
 
-  it(`preserves amplitude squared and mass-component scaling`, () => {
+  it(`preserves amplitude squared and mass-component scaling, also 1e16 apart`, () => {
     const values = Float64Array.from({ length: 64 * 2 }, (_unused, value_idx) =>
       Math.sin((2 * Math.PI * 7 * Math.floor(value_idx / 2)) / 64),
     )
-    const base = one_sided_periodogram(values, 2, 1, {
-      window: `none`,
-      zero_pad_factor: 1,
-      component_weights: [1, 0],
-    })
+    const plain = { window: `none`, zero_pad_factor: 1 } as const
+    const base = one_sided_periodogram(values, 2, 1, { ...plain, component_weights: [1, 0] })
     const scaled = one_sided_periodogram(
       Float64Array.from(values, (value) => 3 * value),
       2,
       1,
-      { window: `none`, zero_pad_factor: 1, component_weights: [2, 0] },
+      { ...plain, component_weights: [2, 0] },
     )
-    expect(scaled.power[7]).toBe(base.power[7] * 18)
+    // a weight enters as its square root on the amplitudes, so sqrt(2)^2 costs a few ulp
+    expect(scaled.power[7] / (base.power[7] * 18)).toBeCloseTo(1, 14)
+    // components packed two per FFT once cancelled the smaller one: 2e16 +- 2 both round to 2e16
+    const tiny = Float64Array.of(0, 1e16, 1, 0, 0, -1e16, -1, 0)
+    const packed = one_sided_periodogram(tiny, 2, 1, {
+      ...plain,
+      component_weights: [1, 1e-32],
+    })
+    expect(packed.power[1]).toBeCloseTo(4, 12)
   })
 
   it.each([15, 16])(`conserves integrated one-sided power for %i samples`, (n_samples) => {

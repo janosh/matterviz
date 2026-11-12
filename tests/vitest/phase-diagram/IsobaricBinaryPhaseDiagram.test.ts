@@ -232,8 +232,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelectorAll(`.special-point-marker`)).toHaveLength(1)
     await hover_at(wrapper, 0.3, 750)
     expect(on_phase_hover.mock.lastCall?.[0]).toMatchObject({ region: null, lever_rule: null })
-    // no regions, so no phase set to name in the header
-    expect(tooltip_text(wrapper)).toMatch(/^Temperature 750 K/)
+    // no regions, so the header holds only the temperature
+    expect(tooltip_text(wrapper)).toMatch(/^750 K \(477 °C\) Composition/)
   })
 
   // with regions, a gap between them drops the tooltip but keeps the shared cursor on it
@@ -385,7 +385,8 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
           svg.querySelectorAll(`.phase-regions path`)[idx].classList.contains(`hovered`),
       },
     )
-    expect(text).toMatch(/L\s*Temperature 750 K/)
+    // the phase name and temperature share the header line
+    expect(text).toMatch(/L\s*750 K/)
   })
 
   // data stays in K and mole fraction, the units only change what the axes print
@@ -1166,6 +1167,12 @@ describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
     expect(Number(bare.querySelector(`clipPath rect`)?.getAttribute(`width`))).toBe(
       right - left,
     )
+    // an edge isopleth's fraction caption (`1`) repeats the strip axis' `1` caption, which
+    // threw each_key_duplicate while the captions were keyed by their text
+    document.body.innerHTML = ``
+    const edge = await mount_diagram({ isopleth: 1, comp_unit: `fraction` })
+    const captions = [...edge.querySelectorAll(`.isopleth > text:not(.halo)`)]
+    expect(captions.map((el) => el.textContent?.trim())).toEqual([`1`, `0`, `1`, `fraction`])
   })
 
   // m toggles a lens showing the plot layers 4x about the pointer; marks in it keep their size

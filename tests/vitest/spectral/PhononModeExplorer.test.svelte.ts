@@ -64,10 +64,10 @@ vi.mock(`#lib/spectral/phonon-modes.js`, async (import_original) => {
 type ExplorerProps = ComponentProps<typeof PhononModeExplorer>
 const modes = parse_phonon_modes(band_yaml)
 const spectrum = spectrum_from_phonon_data(modes, parse_born(born_file))
-const dataset: PhononModeDataset = { modes, spectrum, filename: `NaCl-band.yaml` }
+const phonons: PhononModeDataset = { modes, spectrum, filename: `NaCl-band.yaml` }
 const gamma_modes = { ...modes, qpoints: modes.qpoints.slice(0, 1), path_segments: [] }
 const explorer_defaults = {
-  dataset,
+  phonons,
   auto_play: false,
   n_frames: 4,
   supercell: [1, 1, 1],
@@ -236,7 +236,7 @@ test.each([
     const qpoint = modes.qpoints.at(qpoint_idx)
     if (!qpoint) throw new Error(`fixture has no q-point ${qpoint_idx}`)
     const target = render({
-      dataset: { ...dataset, modes: { ...modes, qpoints: [qpoint], path_segments: [] } },
+      phonons: { ...phonons, modes: { ...modes, qpoints: [qpoint], path_segments: [] } },
     })
     await vi.waitFor(() => expect(summary_text(target)).toContain(`Mode`))
     const chip = target.querySelector(`[data-testid="phonon-mode-summary"] .incommensurate`)
@@ -263,7 +263,7 @@ test(`marks the selected q-point on the drawn k-path in the inset`, async () => 
     })),
   }
   const qpoint_idx = stretched.qpoints.length - 1
-  render({ dataset: { ...dataset, modes: stretched }, selection: { qpoint_idx, mode_idx: 3 } })
+  render({ phonons: { ...phonons, modes: stretched }, selection: { qpoint_idx, mode_idx: 3 } })
   if (!modes.lattice) throw new Error(`NaCl fixture lacks a lattice`)
   const k_lattice = reciprocal_lattice(modes.lattice, { two_pi: true })
   const folded_alone = frac_k_to_cartesian(stretched.qpoints[qpoint_idx].q_position, k_lattice)
@@ -338,7 +338,7 @@ test(`rebuilds the supercell when the viewer's polyhedra settings change`, async
 test(`offers the spectrum type only with Raman data and follows the dataset`, async () => {
   const props = $state<ExplorerProps>({
     ...explorer_defaults,
-    dataset: { ...dataset, spectrum: { ...spectrum, has_raman: true } },
+    phonons: { ...phonons, spectrum: { ...spectrum, has_raman: true } },
     spectrum_kind: `raman`,
   })
   const target = mount_explorer(props)
@@ -361,7 +361,7 @@ test(`offers the spectrum type only with Raman data and follows the dataset`, as
   expect(target.querySelector(`[aria-label="q-point"]`)).not.toBeNull()
 
   // a Γ-only file has nothing to pick between, so the q-point chooser disappears
-  props.dataset = { modes: gamma_modes, filename: `modes-only.yaml` }
+  props.phonons = { modes: gamma_modes, filename: `modes-only.yaml` }
   await vi.waitFor(() => {
     expect(kind_states()).toEqual([])
     expect(target.querySelector(`.bz-inset`)).toBeNull() // needs more than one q-point
@@ -475,7 +475,7 @@ test.each([
   [`BaTiO3-cubic-band.yaml.gz`, `BaTiO3-cubic-band-mode-4-q1`],
   [undefined, `phonon-mode-4-q1`],
 ])(`dataset %s names the animation %s`, async (filename, expected) => {
-  render({ dataset: { ...dataset, filename } })
+  render({ phonons: { ...phonons, filename } })
   await vi.waitFor(() =>
     expect(trajectory_spy.props?.trajectory?.provenance.filename).toBe(expected),
   )
@@ -490,7 +490,7 @@ test(`reinitializes an invalid selection when the dataset changes`, async () => 
   await vi.waitFor(() => expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 3 }))
 
   props.selection = { qpoint_idx: 99, mode_idx: 99 }
-  props.dataset = { ...dataset, modes: { ...modes } }
+  props.phonons = { ...phonons, modes: { ...modes } }
   await vi.waitFor(() => expect(props.selection).toEqual({ qpoint_idx: 0, mode_idx: 3 }))
 })
 
@@ -506,7 +506,7 @@ test(`steps through animatable modes and disables eigenvector-less q-points`, as
   }
   const props = $state<ExplorerProps>({
     ...explorer_defaults,
-    dataset: { modes: sparse_modes, filename: `sparse.yaml` },
+    phonons: { modes: sparse_modes, filename: `sparse.yaml` },
     // bindable props only write back when passed, so seed with an out-of-range selection
     selection: { qpoint_idx: 99, mode_idx: 99 },
   })
@@ -546,7 +546,7 @@ test(`steps through animatable modes and disables eigenvector-less q-points`, as
 test.each([
   [
     `missing lattice`,
-    { dataset: { modes: { ...modes, lattice: null } } },
+    { phonons: { modes: { ...modes, lattice: null } } },
     `animation needs a real-space lattice`,
   ],
   [`oversized supercell`, { supercell: [400, 400, 1] }, `exceeding the 200000 limit`],
@@ -565,7 +565,7 @@ test.each([
   { name: `below the bands when narrow`, width: 300, layout: `spectrum_stacked`, modes },
   { name: `alone for a Γ-only file`, width: 800, layout: null, modes: gamma_modes },
 ])(`draws the spectrum $name`, async ({ width, layout, modes: dataset_modes }) => {
-  const target = render({ dataset: { ...dataset, modes: dataset_modes } })
+  const target = render({ phonons: { ...phonons, modes: dataset_modes } })
   const plot_pane = await vi.waitFor(() => query(target, `.plot-pane`))
   await resize_element(plot_pane, width, 400)
   trigger_resize_observer(plot_pane)

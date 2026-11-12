@@ -9,14 +9,15 @@ import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   bind_props,
-  fire,
-  pin_cycle,
+  drag,
   expect_plot_controls,
   export_via_pane,
+  fire,
   form_controls,
   mount_sized,
   one_tab_stop,
   pattern_id_of,
+  pin_cycle,
   plot_svg,
   query,
   reset_section,
@@ -386,19 +387,14 @@ describe(`BoxPlot`, () => {
       const svg = plot_svg(plot)
       const clip = svg_rect(query(plot, `clipPath rect`))
       const [mid_x, mid_y] = [clip.x + clip.width / 2, clip.y + clip.height / 2]
-      const drag = async (init: MouseEventInit, [dx, dy]: Vec2) => {
-        const at = { clientX: mid_x, clientY: mid_y }
-        svg.dispatchEvent(new MouseEvent(`mousedown`, { bubbles: true, ...init, ...at }))
-        const end = { clientX: mid_x + dx, clientY: mid_y + dy }
-        await fire(window, new MouseEvent(`mousemove`, { buttons: 1, ...end }))
-        await fire(window, new MouseEvent(`mouseup`, end))
-      }
+      const drag_by = (init: PointerEventInit, [dx, dy]: Vec2) =>
+        drag(svg, init, [mid_x, mid_y], [mid_x + dx, mid_y + dy])
       for (const delta of [
         [-12, 0],
         [0, 9],
       ] as Vec2[]) {
         const before = sample_points(plot)
-        await drag({ shiftKey: true }, delta)
+        await drag_by({ shiftKey: true }, delta)
         const after = sample_points(plot)
         expect(after).toHaveLength(before.length)
         // every sample moves by the same px shift, along the dragged axis only
@@ -410,7 +406,7 @@ describe(`BoxPlot`, () => {
         }
       }
       expect(offsets_spy).not.toHaveBeenCalled()
-      await drag({}, [clip.width / 4, clip.height / 4])
+      await drag_by({}, [clip.width / 4, clip.height / 4])
       expect(offsets_spy).toHaveBeenCalledTimes(2)
     })
 

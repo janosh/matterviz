@@ -2,13 +2,15 @@ import {
   decode_url_safe_base64,
   html_to_text,
   is_plain_object,
+  memo_by_identity,
   parse_leading_num,
   parse_num_token,
   same_while_equal,
   toggle_item,
   value_key,
+  plain_copy,
 } from '#lib/utils.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 test.each([
   [{}, true],
@@ -120,6 +122,25 @@ test(`value_key tells values apart by type and content, and Maps by identity`, (
   )
 })
 
+test(`memo_by_identity recomputes per object only when its key changes`, async () => {
+  const memo = memo_by_identity<number>()
+  const [one, two] = [{}, {}]
+  const compute = vi.fn(() => compute.mock.calls.length)
+  // reused; another object, however alike; another key replaces the kept result, so the first
+  // key recomputes; the other object is untouched by those keys
+  const results = [one, one, two, one, one, two].map((target, idx) =>
+    memo(target, `aaabaa`[idx], compute),
+  )
+  expect(results).toEqual([1, 1, 2, 3, 4, 2])
+  // a throwing compute caches nothing, and a rejected promise is dropped for a retry
+  expect(() => memo(one, `c`, () => JSON.parse(`{`))).toThrow(SyntaxError)
+  expect(memo(one, `c`, () => 7)).toBe(7)
+  const async_memo = memo_by_identity<Promise<number>>()
+  const failed = async_memo(one, `a`, () => Promise.reject(new Error(`lost`)))
+  await expect(failed).rejects.toThrow(`lost`)
+  await expect(async_memo(one, `a`, () => Promise.resolve(2))).resolves.toBe(2)
+})
+
 test(`same_while_equal keeps the first of a run of equal values`, () => {
   const keep = same_while_equal<{ gap: number }>()
   const first = { gap: Infinity }
@@ -127,4 +148,14 @@ test(`same_while_equal keeps the first of a run of equal values`, () => {
   expect(keep({ gap: Infinity })).toBe(first)
   const next = { gap: 500 }
   expect(keep(next)).toBe(next)
+})
+
+test(`plain_copy deep-copies plain data, keeps other objects and an own __proto__ key`, () => {
+  const own_proto = JSON.parse(`{"__proto__":{"flag":true}}`)
+  const input = { list: [{ num: 1 }], typed: new Float64Array([1]), ...own_proto }
+  const copy = plain_copy(input)
+  expect(copy).toEqual(input)
+  expect([copy.list[0] === input.list[0], copy.typed === input.typed]).toEqual([false, true])
+  expect(Object.hasOwn(copy, `__proto__`)).toBe(true) // not assigned as the copy's prototype
+  expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
 })

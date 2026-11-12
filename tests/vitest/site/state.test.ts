@@ -125,6 +125,61 @@ describe(`group_nav_routes`, () => {
     expect(all_children.some((route) => route.startsWith(`/test`))).toBe(false)
     expect(new Set(all_children).size).toBe(all_children.length)
     expect(nav_routes.map(({ label }) => label)).toEqual(NAV_GROUPS.map(({ label }) => label))
+    // shared electronic/phonon demos first, then electronic-only, then phonon-only, each
+    // run under its own dropdown heading
+    const shared = `Electronic & phonon`
+    expect(
+      nav_routes
+        .find(({ href }) => href === `/spectral`)
+        ?.children.map(({ href, section }) => [href, section]),
+    ).toEqual(
+      [
+        [`brillouin-zone`, shared],
+        [`bands`, shared],
+        [`dos`, shared],
+        [`bands-and-dos`, shared],
+        [`brillouin-bands-dos`, shared],
+        [`electronic-structure`, `Electronic`],
+        [`fermi-surface`, `Electronic`],
+        [`ir-raman`, `Phonon`],
+        [`phonon-mode-explorer`, `Phonon`],
+      ].map(([slug, section]) => [`/spectral/${slug}`, section]),
+    )
+    // every Structure and Plots demo sits under a heading, each heading shown once, in order
+    const section_runs = (href: string) =>
+      nav_routes
+        .find((group) => group.href === href)
+        ?.children.map(({ section }) => section)
+        .filter((section, idx, sections) => section !== sections[idx - 1])
+    expect(section_runs(`/structure`)).toEqual([`Viewing`, `Building`, `Analysis`, `Dynamics`])
+    expect(section_runs(`/plot`)).toEqual([
+      `Charts`,
+      `Matrices & grids`,
+      `Hierarchies & flows`,
+      `Color`,
+      `Recipes`,
+    ])
+  })
+
+  test(`every section prefix is a real route and two-column dropdowns break between sections`, () => {
+    const all_hrefs = new Set(
+      nav_routes.flatMap(({ children }) => children.map(({ href }) => href)),
+    )
+    const section_prefixes = NAV_GROUPS.flatMap(({ sections = {} }) =>
+      Object.values(sections).flat(),
+    )
+    expect(section_prefixes.filter((prefix) => !all_hrefs.has(prefix))).toEqual([])
+    // svelte-widgets Nav fills columns top to bottom, ceil(items / 2) rows each, once a
+    // dropdown has more than 10 items (links plus one heading per section run)
+    for (const { label, children } of nav_routes) {
+      const items = children.flatMap((child, idx) =>
+        child.section && child.section !== children[idx - 1]?.section
+          ? [`heading`, `link`]
+          : [`link`],
+      )
+      if (items.length <= 10) continue
+      expect(items[Math.ceil(items.length / 2)], label).toBe(`heading`)
+    }
   })
 })
 

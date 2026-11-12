@@ -1,15 +1,17 @@
 <script lang="ts">
+  // Export pane shared by the phase diagram viewers: the figure through the `image_sources`
+  // its viewer renders with (SVG or canvas), the diagram itself as JSON
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import type { PaneToggleProps } from '#lib/overlays/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
-  import { json_source, svg_sources, type ExportProps } from '#lib/io/export.js'
+  import type { ExportProps, ExportSources } from '#lib/io/export.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import type { BinaryPhaseDiagram } from './types'
 
   let {
     export_pane_open = $bindable(false),
     data,
-    wrapper,
+    components,
+    image_sources = {},
     filename: source_filename = `phase-diagram`,
     png_dpi = $bindable(DEFAULT_PNG_DPI),
     icon_style = ``,
@@ -20,28 +22,25 @@
   }: HTMLAttributes<HTMLDivElement> &
     Omit<ExportProps, `export_filename`> & {
       export_pane_open?: boolean
-      data?: BinaryPhaseDiagram
-      wrapper?: HTMLDivElement
+      // The diagram, offered as JSON when set
+      data?: unknown
+      // Appended to the filename, e.g. phase-diagram-Al-Cu
+      components?: readonly string[]
+      // The live figure's serializers, see svg_sources and canvas_sources
+      image_sources?: ExportSources
       filename?: string
       png_dpi?: number
       icon_style?: string
       toggle_props?: PaneToggleProps
     } = $props()
 
-  // Filename with the diagram's components, e.g. phase-diagram-Al-Cu
-  const full_filename = $derived(
-    data ? `${source_filename}-${data.components.join(`-`)}` : source_filename,
-  )
-
-  // Looked up per action: the SVG mounts after this pane (a sibling further down the diagram
-  // template) and re-mounts when the diagram is cleared and reloaded, so a cached element
-  // would be stale or missing
-  const get_svg = (): SVGSVGElement | null =>
-    wrapper?.querySelector<SVGSVGElement>(`svg.binary-phase-diagram`) ?? null
-
+  const full_filename = $derived([source_filename, ...(components ?? [])].join(`-`))
+  // Float64Arrays are written as plain ones (JSON would make them index-keyed objects)
+  const to_json = () =>
+    JSON.stringify(data, (_key, val) => (val instanceof Float64Array ? [...val] : val), 2)
   const sources = $derived({
-    ...svg_sources(get_svg),
-    ...(data && { json: json_source(() => data) }),
+    ...image_sources,
+    ...(data !== undefined && data !== null && { json: to_json }),
   })
 </script>
 

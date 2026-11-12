@@ -337,7 +337,6 @@
 
 <style>
   :global(.ternary-phase-diagram-controls-pane) {
-    font-size: 0.85em;
     max-width: 340px;
     --ctrl-label-w: 8.5em;
     --ctrl-value-w: 5.5em;

@@ -768,21 +768,22 @@ describe(`MatterViz Extension`, () => {
     expect(mock_output_channel.dispose).toHaveBeenCalledTimes(1)
   })
 
+  // text is UTF-8 encoded, a binary export's ArrayBuffer is written byte for byte
   test.each([
-    [
-      `save.cif`,
-      `<script>alert("XSS")</script>`,
-      false,
-      (text: string) => new TextEncoder().encode(text),
-    ],
-    [`save.png`, `data:image/png;base64,/wCA`, true, () => Uint8Array.from([255, 0, 128])],
-  ])(`saveAs %s writes the decoded bytes`, async (filename, content, is_binary, to_bytes) => {
+    [`save.cif`, `<script>alert("XSS")</script>`],
+    [`save.png`, Uint8Array.from([255, 0, 128]).buffer],
+    [`empty.bin`, new ArrayBuffer(0)],
+  ])(`saveAs %s writes the content's bytes`, async (filename, content) => {
     mock_vscode.window.showSaveDialog.mockResolvedValue({ fsPath: `/test/${filename}` })
-    await handle_msg({ command: `saveAs`, content, filename, is_binary }, mock_webview)
-    expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledWith(
+    await handle_msg({ command: `saveAs`, content, filename }, mock_webview)
+    const expected =
+      typeof content === `string` ? new TextEncoder().encode(content) : new Uint8Array(content)
+    expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledExactlyOnceWith(
       { fsPath: `/test/${filename}` },
-      to_bytes(content),
+      expected,
     )
+    const [, written] = mock_vscode.workspace.fs.writeFile.mock.calls[0]
+    expect(written).toBeInstanceOf(Uint8Array)
     expect(mock_vscode.window.showInformationMessage).toHaveBeenCalledWith(
       `Saved: ${filename}`,
     )
@@ -794,22 +795,21 @@ describe(`MatterViz Extension`, () => {
       dialog: { fsPath: `/test/save.cif` },
       write_error: `Write failed`,
       content: `content`,
-      is_binary: false,
       error: `Failed to save text file: Write failed`,
     },
-    { label: `user cancellation`, dialog: undefined, content: `content`, is_binary: false },
     {
-      label: `empty base64`,
-      dialog: { fsPath: `/test/test.png` },
-      content: `data:image/png;base64,`,
-      is_binary: true,
-      error: `Failed to save binary data: Invalid data URL: missing base64 data`,
+      label: `binary write failure`,
+      dialog: { fsPath: `/test/save.png` },
+      write_error: `Disk full`,
+      content: new ArrayBuffer(3),
+      error: `Failed to save binary data: Disk full`,
     },
-  ])(`saveAs $label`, async ({ dialog, write_error, content, is_binary, error }) => {
+    { label: `user cancellation`, dialog: undefined, content: `content` },
+  ])(`saveAs $label`, async ({ dialog, write_error, content, error }) => {
     mock_vscode.window.showSaveDialog.mockResolvedValue(dialog)
     if (write_error)
       mock_vscode.workspace.fs.writeFile.mockRejectedValue(new Error(write_error))
-    await handle_msg({ command: `saveAs`, content, filename: `test`, is_binary }, mock_webview)
+    await handle_msg({ command: `saveAs`, content, filename: `test` }, mock_webview)
     if (error) expect(mock_vscode.window.showErrorMessage).toHaveBeenCalledWith(error)
     expect(mock_vscode.workspace.fs.writeFile).toHaveBeenCalledTimes(write_error ? 1 : 0)
   })
