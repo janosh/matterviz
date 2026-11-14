@@ -12,7 +12,7 @@ import { binary_diagrams } from '#site/phase-diagrams.js'
 import { rgb } from 'd3-color'
 import type { ComponentProps } from 'svelte'
 import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   create_hover_info,
   eutectic,
@@ -24,17 +24,15 @@ import {
 } from './fixtures/test-data'
 
 // swatch colors default to the diagram's own phase colors, as the parent passes them
-const color_lookup = (colors: Map<string, string>) => (id: string) => colors.get(id) ?? ``
 const mount_tooltip = ({
   data = eutectic,
   ...props
-}: Omit<ComponentProps<typeof PhaseDiagramTooltip>, `data` | `color_of`> & {
+}: Omit<ComponentProps<typeof PhaseDiagramTooltip>, `data`> & {
   data?: BinaryPhaseDiagram
-  color_of?: (id: string) => string
 }) =>
   mount(PhaseDiagramTooltip, {
     target: document.body,
-    props: { data, color_of: color_lookup(phase_colors(data.phases)), ...props },
+    props: { data, ...props },
   })
 const tooltip_text = () =>
   document.querySelector(`.phase-diagram-tooltip`)?.textContent?.replaceAll(/\s+/g, ` `)
@@ -131,7 +129,7 @@ describe(`PhaseDiagramTooltip`, () => {
       hover_info: create_hover_info({ region: eutectic_regions[1], lever_rule }),
       comp_unit: `at%`,
     })
-    expect(document.querySelector(`.lever > span`)?.textContent).toBe(`Lever Rule`)
+    expect(document.querySelector(`.lever .bar > span`)?.textContent).toBe(`Lever rule`)
     for (const part of [`α: 60 %`, `at 20 at%`, `β: 40 %`, `at 80 at%`]) {
       expect(lever_text()).toContain(part)
     }
@@ -141,11 +139,12 @@ describe(`PhaseDiagramTooltip`, () => {
   // Au-Ni wrap rule: the gap's composition sets are labelled and colored as two shades of fcc
   test(`miscibility gap shows its composition sets' labels and shared-key colors`, () => {
     const au_ni = binary_diagrams[`Au-Ni`]
-    const colors = phase_colors(au_ni.phases, [`BCC_A2`, `FCC_A1`, `LIQUID`])
+    const phase_color_keys = [`BCC_A2`, `FCC_A1`, `LIQUID`]
+    const colors = phase_colors(au_ni.phases, phase_color_keys)
     const [composition, temperature] = [0.7, 800]
     mount_tooltip({
       data: au_ni,
-      color_of: color_lookup(colors),
+      phase_color_keys,
       hover_info: create_hover_info({
         ...diagram_hit(au_ni, composition, temperature),
         composition,
@@ -163,7 +162,7 @@ describe(`PhaseDiagramTooltip`, () => {
   // the parent looks the overlay's phase set up once per move and carries it in the hover; a
   // snapshot taken while the overlay was shown lists nothing once it is hidden
   test.each([
-    [shifted_eutectic, `α + β`, `Overlay lever rule: α 80% at 0 at% / β 20% at 100 at%`],
+    [shifted_eutectic, `α + β`, `Overlay lever rule α: 80 % at 0 at%β: 20 % at 100 at%`],
     [null, undefined, undefined],
   ])(`overlay %# phase set and lever rule at the hovered point`, (overlay, phase, lever) => {
     // 550 K: liquid in the main diagram (eutectic 500 K), α + β in the overlay (600 K)
@@ -175,8 +174,20 @@ describe(`PhaseDiagramTooltip`, () => {
     })
     mount_tooltip({ hover_info, overlays: [overlay] })
     expect(document.querySelector(`.overlay-phase`)?.textContent?.trim()).toBe(phase)
-    const overlay_lever = document.querySelector(`.overlay-lever`)?.textContent
-    expect(overlay_lever?.replaceAll(/\s+/g, ` `).trim()).toBe(lever)
+    const overlay_lever = document.querySelector(`.overlay-lever`)
+    expect(overlay_lever?.textContent?.replaceAll(/\s+/g, ` `).trim()).toBe(lever)
+    // the overlay's bar is split by its own lever rule, in its own phases' colors
+    if (overlay) {
+      const widths = Array.from(
+        overlay_lever?.querySelectorAll<HTMLElement>(`.bar > div`) ?? [],
+        (bar) => [bar.style.width, rgb(bar.style.background).formatHex()],
+      )
+      const colors = phase_colors(overlay.phases)
+      expect(widths).toEqual([
+        [`80%`, colors.get(`A`)],
+        [`20%`, colors.get(`B`)],
+      ])
+    }
   })
 
   // each predicted coordinate shows only when predicted; a verdict shows on its own too

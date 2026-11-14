@@ -277,6 +277,13 @@ export interface DiagramCursor {
   source: string
 }
 
+// Where a diagram draws its composition axis: the pixel span from its own left edge and the
+// shown composition window, so a plot stacked under it (GibbsEnergyPlot) can share the axis
+export interface DiagramXFrame {
+  range: Vec2
+  domain: Vec2
+}
+
 interface TieLineConfig {
   stroke_width?: number
   endpoint_radius?: number

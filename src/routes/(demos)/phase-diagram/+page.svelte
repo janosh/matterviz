@@ -5,6 +5,7 @@
     BinaryPhaseDiagram,
     CompUnit,
     DiagramCursor,
+    DiagramXFrame,
     DiagramHighlight,
     ObservationPrediction,
     TempUnit,
@@ -54,6 +55,7 @@
   let cursor = $state<DiagramCursor | null>(null)
   // Scored predictions: its own cursor drives the Gibbs plot below it
   let benchmark_cursor = $state<DiagramCursor | null>(null)
+  let benchmark_x_frame = $state<DiagramXFrame | null>(null)
   let x_axis = $state<AxisConfig>({})
   let y_axis = $state<AxisConfig>({ range: temperature_extent([ag_cu, ag_cu_model]) })
 
@@ -264,7 +266,9 @@
   observed point to the predicted one, markers take the verdict's color, and ±1σ bands show the
   model's <code>sigma_T</code>. Hover a row to light its marks (and the reverse), shift+click
   to move the isopleth with its phase-fraction strip, press <kbd>m</kbd> for a magnifier. Below,
-  the model's Gibbs energies of mixing follow the hovered temperature.
+  the model's Gibbs energies of mixing follow the hovered temperature on the diagram's composition
+  axis: hovering them moves the diagram's cursor, and the dashed tangent at the cursor meets the
+  edges at each component's chemical potential.
 </p>
 <div class="benchmark bleed-1400">
   <div>
@@ -277,13 +281,15 @@
       bind:highlight
       bind:isopleth
       bind:cursor={benchmark_cursor}
+      bind:x_frame={benchmark_x_frame}
       bind:temp_unit
       bind:comp_unit
       style="height: 480px"
     />
     <GibbsEnergyPlot
       data={ag_cu_model}
-      cursor={benchmark_cursor}
+      bind:cursor={benchmark_cursor}
+      x_frame={benchmark_x_frame}
       {phase_color_keys}
       {temp_unit}
       {comp_unit}

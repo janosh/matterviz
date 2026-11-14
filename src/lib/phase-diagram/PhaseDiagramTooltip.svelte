@@ -8,6 +8,7 @@
     BinaryPhaseDiagram,
     CompUnit,
     DiagramBoundary,
+    LeverRuleResult,
     PhaseDiagramTooltipProp,
     PhaseHoverInfo,
     TempUnit,
@@ -17,6 +18,7 @@
     boundary_description,
     lever_rule_rows,
     overlay_name,
+    phase_colors,
     phase_labeler,
     provenance_caption,
     region_label,
@@ -29,7 +31,7 @@
     hover_info,
     data,
     overlays = [],
-    color_of,
+    phase_color_keys = [],
     match_of = () => undefined,
     temp_unit = `K`,
     comp_unit = `at%`,
@@ -40,8 +42,8 @@
     // Overlay diagrams in hover_info.overlay_hits order, null for a hidden one: each shown
     // one's phase set at the hovered point is listed too
     overlays?: readonly (BinaryPhaseDiagram | null)[]
-    // Phase id -> the diagram's fill color, so lever-rule swatches match its regions
-    color_of: (id: string) => string
+    // Color keys shared with the diagram, so lever-rule swatches match its region fills
+    phase_color_keys?: readonly string[]
     // Phase id -> the reference phase it stands in for (the diagram's phase_matches)
     match_of?: (id: string) => string | undefined
     temp_unit?: TempUnit
@@ -51,18 +53,34 @@
 
   const [component_a, component_b] = $derived(data.components)
   const label_of = $derived(phase_labeler(data))
+  const shown_overlays = $derived(overlays.filter((overlay) => overlay !== null))
+  // Each diagram's phase fills, computed once per diagram rather than per hover
+  const colors_of = $derived(
+    new Map(
+      [data, ...shown_overlays].map((diagram) => [
+        diagram,
+        phase_colors(diagram.phases, phase_color_keys),
+      ]),
+    ),
+  )
+  // A lever rule's two ends with their labels and the fill colors of `diagram`
+  const lever_parts = (lever: LeverRuleResult, diagram: BinaryPhaseDiagram) =>
+    lever_rule_rows(lever, phase_labeler(diagram)).map((row) => {
+      const color = colors_of.get(diagram)?.get(row.id)
+      if (!color) throw new Error(`No color for lever-rule phase "${row.id}"`)
+      return { ...row, color }
+    })
   // Each shown overlay with its phase set and lever rule; hidden overlays keep none, even in
   // a snapshot taken while one was shown
   const overlay_rows = $derived(
     overlays.flatMap((overlay, idx) => {
       const hit = hover_info.overlay_hits[idx]
       if (!overlay || !hit) return []
-      const overlay_label_of = phase_labeler(overlay)
       return [
         {
           name: overlay_name(overlay, overlays.length),
-          label: region_label(hit.region, overlay_label_of),
-          lever: hit.lever_rule && lever_rule_rows(hit.lever_rule, overlay_label_of),
+          label: region_label(hit.region, phase_labeler(overlay)),
+          lever: hit.lever_rule && lever_parts(hit.lever_rule, overlay),
         },
       ]
     }),
@@ -128,21 +146,35 @@
     return nearest && { ...nearest, text: boundary_description(nearest.boundary, label_of) }
   })
 
-  const lever_rows = $derived(
-    hover_info.lever_rule && lever_rule_rows(hover_info.lever_rule, label_of),
-  )
-  const lever_colors = $derived(
-    hover_info.lever_rule
-      ? [hover_info.lever_rule.left_phase, hover_info.lever_rule.right_phase].map(color_of)
-      : [],
-  )
+  const lever = $derived(hover_info.lever_rule && lever_parts(hover_info.lever_rule, data))
 
-  const shown_overlays = $derived(overlays.filter((overlay) => overlay !== null))
   const observation = $derived(hover_info.observation)
   // a composition difference in the display unit (at.% points or mole fraction)
   const comp_scale = (delta: number) => (comp_unit === `fraction` ? delta : delta * 100)
   const signed = (val: number, fmt: string) => `${val > 0 ? `+` : ``}${format_num(val, fmt)}`
 </script>
+
+{#snippet lever_bar(title: string, parts: ReturnType<typeof lever_parts>, overlay = false)}
+  <div class={[`lever`, overlay && `overlay-lever`]}>
+    <div class="bar">
+      <span {title}>{title}</span>
+      {#each parts as { label, fraction, color }, idx (idx)}
+        <div style:width="{fraction * 100}%" style:background={color} title={label}></div>
+      {/each}
+      <i style:left="{parts[0].fraction * 100}%"></i>
+    </div>
+    <div class="phase-info">
+      {#each parts as { label, fraction, location }, idx (idx)}
+        <span
+          >{@html html_label(label)}: {format_num(fraction * 100, `.0f`)}
+          <small>%</small>
+          <span>at <TooltipValue value={fmt_comp(location)} unit={comp_unit_label} /></span
+          ></span
+        >
+      {/each}
+    </div>
+  </div>
+{/snippet}
 
 <TooltipContent data={hover_info} snippet_arg={hover_info} {tooltip}>
   <div class="phase-diagram-tooltip">
@@ -265,40 +297,12 @@
       {/each}
     </dl>
 
-    {#if lever_rows}
-      <div class="lever">
-        <span>Lever Rule</span>
-        <div class="bar">
-          {#each lever_rows as [phase, fraction], idx (idx)}
-            <div
-              style:width="{fraction * 100}%"
-              style:background={lever_colors[idx]}
-              title={phase}
-            ></div>
-          {/each}
-          <i style:left="{lever_rows[0][1] * 100}%"></i>
-        </div>
-        <div class="phase-info">
-          {#each lever_rows as [phase, fraction, location], idx (idx)}
-            <span
-              >{@html html_label(phase)}: {format_num(fraction * 100, `.0f`)}
-              <small>%</small>
-              <span>at <TooltipValue value={fmt_comp(location)} unit={comp_unit_label} /></span
-              ></span
-            >
-          {/each}
-        </div>
-      </div>
+    {#if lever}
+      {@render lever_bar(`Lever rule`, lever)}
     {/if}
-    {#each overlay_rows as { name, lever }, row_idx (row_idx)}
-      {#if lever}
-        <div class="overlay-lever">
-          {name} lever rule:
-          {#each lever as [phase, fraction, location], idx (idx)}
-            {idx ? ` / ` : ``}{@html html_label(phase)}
-            {format_num(fraction * 100, `.0f`)}% at {format_composition(location, comp_unit)}
-          {/each}
-        </div>
+    {#each overlay_rows as { name, lever: overlay_lever }, row_idx (row_idx)}
+      {#if overlay_lever}
+        {@render lever_bar(`${name} lever rule`, overlay_lever, true)}
       {/if}
     {/each}
 
@@ -331,7 +335,7 @@
   .phase-diagram-tooltip {
     --border: color-mix(in srgb, currentColor 18%, transparent);
     min-width: 130px;
-    max-width: 320px;
+    max-width: 220px;
   }
   header {
     margin-bottom: 5px;
@@ -423,18 +427,13 @@
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid var(--border);
-    & > span {
-      font-size: 10px;
-      opacity: 0.7;
-    }
   }
   .bar {
     position: relative;
-    height: 10px;
+    height: 14px;
     border-radius: 3px;
     overflow: hidden;
     display: flex;
-    margin-top: 3px;
     background: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.15));
     & > div {
       height: 100%;
@@ -444,10 +443,31 @@
       position: absolute;
       top: -1px;
       width: 2px;
-      height: 12px;
+      height: 16px;
       background: light-dark(#1a1a1a, white);
       transform: translateX(-50%);
       border-radius: 1px;
+    }
+    /* label sits inside the bar instead of on its own line above it; z-index since the
+    translucent segments after it in the DOM would otherwise paint over it */
+    & > span {
+      position: absolute;
+      z-index: 1;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      text-shadow:
+        0 0 2px black,
+        0 0 1px black;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 12px;
+      white-space: nowrap;
+      /* a long overlay name ellipsizes instead of being clipped at both ends */
+      max-width: calc(100% - 8px);
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
   .phase-info {
@@ -468,7 +488,15 @@
     font-size: 9px;
     opacity: 0.7;
   }
-  .overlay-lever,
+  /* an overlay's bar follows the main lever rule's phase row, slimmer and without a rule */
+  .lever + .overlay-lever {
+    margin-top: 4px;
+    padding-top: 0;
+    border-top: none;
+  }
+  .overlay-lever .bar {
+    height: 12px;
+  }
   .boundary-info {
     margin-top: 6px;
     padding-top: 6px;

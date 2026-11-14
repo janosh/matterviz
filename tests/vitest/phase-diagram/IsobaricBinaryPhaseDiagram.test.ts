@@ -6,11 +6,12 @@ import type {
   BinaryPhaseDiagram,
   DiagramCursor,
   DiagramHighlight,
+  DiagramXFrame,
   PhaseLegendEntry,
 } from '#lib/phase-diagram/types.js'
 import { binary_diagrams } from '#site/phase-diagrams.js'
-import { type ComponentProps, createRawSnippet, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { type ComponentProps, createRawSnippet, type mount, tick, unmount } from 'svelte'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   create_drop_event,
@@ -503,7 +504,7 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(on_phase_hover.mock.lastCall?.[0]?.region).toBe(eutectic_regions[0])
     expect(tooltip_text(wrapper)).toContain(`Overlay α + β`)
     expect(tooltip_text(wrapper)).toContain(
-      `Overlay lever rule: α 50% at 0 at% / β 50% at 100 at%`,
+      `Overlay lever rule α: 50 % at 0 at%β: 50 % at 100 at%`,
     )
 
     const legend = [...wrapper.querySelectorAll(`.phase-diagram-legend .legend-item`)]
@@ -1098,6 +1099,31 @@ describe(`IsobaricBinaryPhaseDiagram comparison views`, () => {
         label_boxes.some((other, other_idx) => other_idx !== idx && hit(box, other)),
       ).toBe(false)
     }
+  })
+
+  // the composition axis a stacked GibbsEnergyPlot aligns to: narrowed by the isopleth strip
+  // (64 px + 14 px gap), windowed by a zoomed x axis, withdrawn on unmount
+  test.each([
+    [null, undefined, { range: [left, right], domain: [0, 1] }],
+    [0.3, { range: [0.2, 0.8] as Vec2 }, { range: [left, right - 78], domain: [0.2, 0.8] }],
+  ])(`x_frame with isopleth=%s`, async (isopleth, x_axis, expected) => {
+    const state: { x_frame: DiagramXFrame | null } = { x_frame: null }
+    let instance: ReturnType<typeof mount> | undefined
+    await mount_sized(
+      IsobaricBinaryPhaseDiagram,
+      bind_props({ data: eutectic, isopleth, x_axis }, state),
+      {
+        selector: `.binary-phase-diagram`,
+        width,
+        height,
+        on_mount: (mounted) => (instance = mounted),
+      },
+    )
+    await tick()
+    expect(state.x_frame).toEqual(expected)
+    if (!instance) throw new Error(`diagram did not mount`)
+    await unmount(instance)
+    expect(state.x_frame).toBeNull()
   })
 
   test(`isopleth draws a phase-fraction strip and marks its phase changes`, async () => {

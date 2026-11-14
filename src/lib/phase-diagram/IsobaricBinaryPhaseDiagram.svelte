@@ -67,6 +67,7 @@
     type DiagramHighlight,
     type DiagramPoint,
     type DiagramRegion,
+    type DiagramXFrame,
     type ObservationMarker,
     type ObservationPrediction,
     type PhaseDiagramConfig,
@@ -108,6 +109,7 @@
     isopleth = $bindable(null),
     lens = $bindable(PHASE_DIAGRAM_DEFAULTS.lens),
     cursor = $bindable(null),
+    x_frame = $bindable(null),
     temp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.temp_unit),
     comp_unit = $bindable(PHASE_DIAGRAM_DEFAULTS.comp_unit),
     config = $bindable({}),
@@ -173,6 +175,9 @@
       lens?: boolean
       // Hovered (x, T) in data units; bind one $state to several diagrams to sync their hover
       cursor?: DiagramCursor | null
+      // Read-only: the composition axis's pixel span (from this diagram's left edge) and window,
+      // to align a plot stacked under it with the same left edge and width (GibbsEnergyPlot)
+      x_frame?: DiagramXFrame | null
       // Display units only: data stays in K and mole fraction
       temp_unit?: TempUnit
       // Display unit of the composition axis, `fraction` or `at%`. Data stays in mole fraction.
@@ -354,6 +359,12 @@
     y_axis.range?.[1] ?? t_extent[1],
   ])
   const x_scale = $derived(scaleLinear().domain(x_domain).range([left, right]))
+  // published only while the plot renders, and withdrawn on unmount so a stacked plot never
+  // aligns to a diagram that is gone
+  $effect(() => {
+    x_frame = valid_data && plot_width > 0 ? { range: [left, right], domain: x_domain } : null
+    return () => (x_frame = null)
+  })
   const y_scale = $derived(scaleLinear().domain(t_domain).range([bottom, top]))
   // Display-unit twin of y_scale for the axis ticks
   const y_scale_display = $derived(
@@ -1892,7 +1903,7 @@
           hover_info={effective_hover_info}
           {data}
           overlays={overlay_slots}
-          {color_of}
+          {phase_color_keys}
           {match_of}
           {temp_unit}
           {comp_unit}

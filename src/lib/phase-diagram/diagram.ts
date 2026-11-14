@@ -661,16 +661,26 @@ export function diagram_hit(
   }
 }
 
-// Lever rule as one [phase label, phase fraction, tie-line end composition] row per end
+// Lever rule as one row per tie-line end: its phase, phase fraction and composition
 export function lever_rule_rows(
   lever_rule: LeverRuleResult,
   label_of: (id: string) => string,
-): [string, number, number][] {
+) {
   const { left_phase, right_phase, fraction_left, fraction_right } = lever_rule
   const { left_composition, right_composition } = lever_rule
   return [
-    [label_of(left_phase), fraction_left, left_composition],
-    [label_of(right_phase), fraction_right, right_composition],
+    {
+      id: left_phase,
+      label: label_of(left_phase),
+      fraction: fraction_left,
+      location: left_composition,
+    },
+    {
+      id: right_phase,
+      label: label_of(right_phase),
+      fraction: fraction_right,
+      location: right_composition,
+    },
   ]
 }
 
@@ -708,8 +718,8 @@ export function format_hover_info_text(
   ]
   if (info.lever_rule) {
     lines.push(``, `Lever Rule:`)
-    for (const [phase, fraction, location] of lever_rule_rows(info.lever_rule, label_of)) {
-      lines.push(`  ${phase}: ${format_num(fraction * 100, `.1f`)}% (at ${comp(location)})`)
+    for (const { label, fraction, location } of lever_rule_rows(info.lever_rule, label_of)) {
+      lines.push(`  ${label}: ${format_num(fraction * 100, `.1f`)}% (at ${comp(location)})`)
     }
   }
   return lines.join(`\n`)

@@ -330,7 +330,7 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
           const tooltip = diagram.locator(`.tooltip-container`)
           await expect(tooltip).toBeVisible()
           await expect(tooltip.locator(`.lever`)).toBeVisible()
-          await expect(tooltip).toContainText(`Lever Rule`)
+          await expect(tooltip).toContainText(`Lever rule`)
           return
         }
       }
