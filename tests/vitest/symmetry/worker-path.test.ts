@@ -7,7 +7,7 @@ import type * as MoyoWasm from '@spglib/moyo-wasm'
 import type { MoyoCell } from '@spglib/moyo-wasm'
 import { analyze_cell } from '@spglib/moyo-wasm'
 import { wyckoff_positions_from_moyo } from '#lib/symmetry/wyckoff.js'
-import { afterEach, beforeAll, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, expect, test, vi } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { init_moyo_for_tests, make_rocksalt } from '../test-fixtures'
 

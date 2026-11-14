@@ -1,6 +1,6 @@
 import { link_source_mentions, source_href, source_location } from '#site/source-links.js'
 import { ref } from 'virtual:source-symbols'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 const REPO = `https://github.com/janosh/matterviz/blob/${ref}`
 

@@ -11,7 +11,7 @@ import HeatmapTable from '#lib/table/HeatmapTable.svelte'
 import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick } from 'svelte'
-import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
+import { assert, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vite-plus/test'
 import { bind_props, doc_query, fire } from '../setup'
 
 // vp lint sees .svelte imports as nongeneric; specialize only row-dependent props for mount.

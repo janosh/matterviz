@@ -30,7 +30,7 @@ import * as math from '#lib/math.js'
 import type { Matrix3x3, Matrix4Tuple, Vec2, Vec3 } from '#lib/math.js'
 import { SphereGeometry } from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   BOX_TRI_FACES,
   BOX_VERTICES,

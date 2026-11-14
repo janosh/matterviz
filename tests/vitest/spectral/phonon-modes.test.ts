@@ -27,7 +27,7 @@ import { get_structure_vector_keys } from '#lib/structure/vectors.js'
 import { compute_bonds, explicit_only, get_bond_key } from '#lib/structure/bonding.js'
 import type { PolyhedraSettings } from '#lib/structure/polyhedra.js'
 import { compute_polyhedra, polyhedra_options_from } from '#lib/structure/polyhedra.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import cspbi3_band_yaml from '#site/phonons/ir-raman/CsPbI3-Pnma-band.yaml.gz?raw'
 import nacl_band_yaml from '#site/phonons/ir-raman/NaCl-Gamma-X-band.yaml?raw'
 import { fcc_primitive_matrix, IDENTITY_MATRIX3 } from '../test-fixtures'
@@ -38,7 +38,7 @@ const phonon_mode_trajectory = (...args: Parameters<typeof create_phonon_mode_ru
   const run = create_phonon_mode_run(...args)
   const frames = Array.from({ length: run.frame_count }, (_unused, frame_idx) => {
     const frame = materialize_frame_result(run.read_frame(frame_idx))
-    if (frame instanceof Promise) throw new Error(`Phonon mode runs must be synchronous`)
+    if (frame instanceof Promise) throw new TypeError(`Phonon mode runs must be synchronous`)
     return frame
   })
   return Object.assign(run, { frames })
@@ -384,7 +384,8 @@ describe(`staged phonon runs`, () => {
     // Frame 1000 of 4000 is a quarter cycle, like frame 1 of 4.
     const quarter_a = materialize_frame_result(short_run.read_frame(1))
     const quarter_b = materialize_frame_result(long_run.read_frame(1000))
-    if (quarter_a instanceof Promise || quarter_b instanceof Promise) throw new Error(`sync`)
+    if (quarter_a instanceof Promise || quarter_b instanceof Promise)
+      throw new TypeError(`sync`)
     for (const [site_idx, { xyz }] of quarter_b.structure.sites.entries()) {
       xyz.forEach((coord, axis) =>
         expect(coord).toBeCloseTo(quarter_a.structure.sites[site_idx].xyz[axis], 12),
@@ -404,7 +405,7 @@ describe(`staged phonon runs`, () => {
     const view = new FrameView()
     const [first, second] = [0, 1].map((frame_idx) => {
       const numeric = short_run.read_frame(frame_idx)
-      if (numeric instanceof Promise) throw new Error(`sync`)
+      if (numeric instanceof Promise) throw new TypeError(`sync`)
       const decoded = view.update(numeric)
       expect(decoded).toStrictEqual(materialize_frame(numeric))
       return { numeric, decoded }

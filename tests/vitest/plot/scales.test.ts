@@ -35,7 +35,7 @@ import {
   is_time_scale,
 } from '#lib/plot/core/types.js'
 import { scaleLinear, scaleLog, scaleTime } from 'd3-scale'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 type Limits = [number | null, number | null]
 const sample_values = [1, 2, 3, 4, 5]

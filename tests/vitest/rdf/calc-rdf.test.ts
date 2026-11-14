@@ -14,7 +14,7 @@ import { neighbor_query } from '#lib/structure/bonding.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { structure_map } from '#site/structures.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { max_abs_error } from '../numeric-helpers'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
 

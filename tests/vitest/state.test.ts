@@ -1,6 +1,6 @@
 import { DEFAULT_CATEGORY_COLORS, default_element_colors } from '#lib/colors/index.js'
 import { colors, resolve_theme_text_color } from '#lib/state.svelte.js'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 
 // happy-dom rejects light-dark() on a probe's style, so stand in for the browser: the probe
 // keeps any value and computes light-dark() to the branch for the root's color-scheme

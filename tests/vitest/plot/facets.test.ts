@@ -7,7 +7,7 @@ import {
   reconcile_facet_ranges,
   resolve_facet_axis_visibility,
 } from '#lib/plot/core/facets.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 const panels = (count: number): FacetPanel<string>[] =>
   Array.from({ length: count }, (_entry, panel_idx) => ({

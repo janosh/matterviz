@@ -6,7 +6,7 @@ import type {
 } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { mount, tick } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { doc_query, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 

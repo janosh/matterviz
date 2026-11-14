@@ -7,7 +7,7 @@ import type { AxisConfig } from '#lib/plot/core/types.js'
 import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'
 import type { BaseBandStructure, FrequencyUnit, PhononDos } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vite-plus/test'
 
 const roots: (() => void)[] = []
 afterEach(() => {

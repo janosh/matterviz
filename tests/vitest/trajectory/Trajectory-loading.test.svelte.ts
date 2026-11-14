@@ -13,7 +13,7 @@ import { summarize_run } from '#lib/trajectory/run.js'
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   mock_parse_worker,

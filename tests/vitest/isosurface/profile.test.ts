@@ -4,7 +4,7 @@ import {
   set_isosurface_profiling,
   time_stage,
 } from '#lib/isosurface/profile.js'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 
 afterEach(() => {
   set_isosurface_profiling(false)

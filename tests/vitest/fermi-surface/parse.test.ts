@@ -8,7 +8,7 @@ import {
 import { is_fermi_surface_data } from '#lib/fermi-surface/types.js'
 import type { BandGridData, FermiSurfaceData } from '#lib/fermi-surface/types.js'
 import { fermi_surface_files } from '#site/fermi-surfaces.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   IDENTITY_MATRIX3,
   make_bxsf,

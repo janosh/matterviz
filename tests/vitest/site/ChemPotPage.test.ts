@@ -3,7 +3,7 @@ import HullPage from '#root/src/routes/(demos)/convex-hull/+page.svelte'
 import type { PhaseData } from '#lib/convex-hull/index.js'
 import * as fixtures from '#site/convex-hull/index.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { trigger_intersection } from '../environment'
 
 test.each([

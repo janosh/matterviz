@@ -2,7 +2,7 @@ import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import { encode_frame, materialize_frame_result } from '#lib/trajectory/frame.js'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 import type {
   HotspotGrid,
   HotspotRequest,
@@ -652,7 +652,7 @@ describe(`spatial kinetic hotspots`, () => {
     expect(run.preview.metadata?.volume).toBe(2)
     const indices = run.preview.metadata?.source_atom_indices
     expect(indices).toHaveLength(2000)
-    if (!Array.isArray(indices)) throw new Error(`Missing sampled atom indices`)
+    if (!Array.isArray(indices)) throw new TypeError(`Missing sampled atom indices`)
     expect(indices[1]).toBe(Math.ceil(n_atoms / 2000))
     const tail = await opened.lazy.read_atoms({ frame_idx: 1, start: n_atoms - 5, count: 8 })
     expect(tail.positions).toEqual(

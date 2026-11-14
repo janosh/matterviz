@@ -10,7 +10,7 @@ import type {
   SynthesisPlanRequest,
 } from '#lib/synthesis-planning/types.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, install_stub_worker, set_input } from '../setup'
 import { load_json } from '../test-fixtures'
 

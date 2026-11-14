@@ -2,7 +2,7 @@ import { BOLTZMANN_EV_PER_K, EV_TO_KJ_PER_MOL } from '#lib/constants.js'
 import { frequency_unit_per_thz } from '#lib/spectral/frequency-units.js'
 import { thermal_properties } from '#lib/spectral/thermal.js'
 import type { PhononDos } from '#lib/spectral/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { load_json } from '../test-fixtures'
 
 // Reference F, U, S, C_v (J/mol and J/(K·mol) per primitive cell) stored alongside the DOS in

@@ -62,7 +62,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { Dataset as H5Dataset } from 'h5wasm'
 import type { File as H5File, Group as H5Group } from 'h5wasm'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 import { rejection_of } from '../setup'
 import { make_crystal, read_binary_test_file, read_maybe_gz } from '../test-fixtures'
 import type { H5Spec } from './fixtures'
@@ -2353,7 +2353,7 @@ describe(`ASE`, () => {
     [{ energy: -1.25, [`dipole.`]: { ndarray: [`not-a-shape`, `float64`, 0] } }, { energy: -1.25 }],
   ])(`ase_calculator_data reads %j`, (calculator, expected) => {
     const read_ndarray = ({ ndarray }: { ndarray: unknown[] }) => {
-      if (!Array.isArray(ndarray[0])) throw new Error(`malformed descriptors must not be read`)
+      if (!Array.isArray(ndarray[0])) throw new TypeError(`malformed descriptors must not be read`)
       return ndarray[0].length === 1 ? [[1, 2, 3]] : [[1, 0, 0], [0, 2, 0], [0, 0, 3]]
     }
     expect(ase_calculator_data({ [`calculator.`]: calculator }, read_ndarray)).toEqual(expected)

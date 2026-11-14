@@ -21,7 +21,7 @@ import {
 } from '#lib/spectral/sweep.js'
 import type { DescriptorSpec, Sweep } from '#lib/spectral/sweep.js'
 import type { DosData, ElectronicDos } from '#lib/spectral/types.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 // fcc primitive cell (a = 4 Å) with one atom: nearest neighbours at a/√2

@@ -12,7 +12,7 @@ import {
   set_file_param,
 } from '#site/state.svelte.js'
 import element_data from '#lib/element/data.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 vi.mock(`$app/navigation`, () => ({ goto: vi.fn() }))
 vi.mock(`$app/env`, () => ({ browser: true }))

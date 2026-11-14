@@ -4,7 +4,7 @@ import Formula from '#lib/composition/Formula.svelte'
 import { parse_formula_with_oxidation } from '#lib/composition/parse.js'
 import { rgb } from 'd3-color'
 import { type ComponentProps, mount } from 'svelte'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 // Mount Formula into document.body and return its rendered `.formula` root (or null)

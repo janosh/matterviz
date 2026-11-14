@@ -1,7 +1,7 @@
 import ElementPhoto from '#lib/element/ElementPhoto.svelte'
 import element_data from '#lib/element/data.js'
 import { mount, tick, unmount } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 test(`uses the requested image URL and retries when it changes`, async () => {

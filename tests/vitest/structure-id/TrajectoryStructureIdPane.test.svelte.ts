@@ -9,7 +9,7 @@ import type { StructureIdSweep } from '#lib/structure-id/collect.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, set_input } from '../setup'
 import { make_fcc } from './lattices'
 
@@ -181,7 +181,7 @@ test(`numbers plotted frames from 1 and seeks clicked frames 0-based`, async () 
   await settle()
   const { frame_labels, current_frame, on_frame_click } = plot_props.current ?? {}
   expect([frame_labels, current_frame]).toEqual([[1, 11], 4])
-  if (typeof on_frame_click !== `function`) throw new Error(`plot got no on_frame_click`)
+  if (typeof on_frame_click !== `function`) throw new TypeError(`plot got no on_frame_click`)
   on_frame_click(11)
   expect(on_frame_select).toHaveBeenCalledWith(10)
 })

@@ -19,7 +19,7 @@ import {
 } from '#lib/labels.js'
 import { tickStep, ticks } from 'd3-array'
 import * as d3_symbols from 'd3-shape'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 test.each([
   [`Energy (eV)`, { name: `Energy`, unit: `eV` }],

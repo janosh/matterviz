@@ -164,7 +164,7 @@ function symmetry_layer_images(
     const translations = find_lattice_translations(sites, lattice.matrix, { images })
     for (const translation of translations) {
       const target = math.add(images[anchor_idx].abc, translation)
-      const image_idx = grid.find(target, keys[anchor_idx])
+      const image_idx = grid.index_of(target, keys[anchor_idx])
       if (image_idx < 0) {
         throw new Error(
           `Symmetry translation ${JSON.stringify(translation)} maps site ${display_idx(anchor_idx)} to ` +

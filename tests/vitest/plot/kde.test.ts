@@ -4,7 +4,7 @@ import {
   silverman_bandwidth,
   VIOLIN_KDE_OPTS,
 } from '#lib/plot/box/kde.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Independent O(n*m) Gaussian-sum reference (no subsampling), used to verify gaussian_kde
 const ref_density = (samples: number[], grid: number[], bandwidth: number): number[] => {

@@ -17,7 +17,7 @@ import {
 import { solve_decorations } from '#lib/plot/core/decorations/solve.js'
 import type { Vec2 } from '#lib/math.js'
 import { dense_unit_grid, index_read_counter } from '../../setup'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 const base_pad = { t: 5, b: 50, l: 50, r: 20 }
 const width = 400

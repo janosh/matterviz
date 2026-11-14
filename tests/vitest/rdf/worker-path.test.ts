@@ -11,7 +11,7 @@ import {
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
 import { flushSync, mount, unmount } from 'svelte'
-import { afterEach, beforeAll, expect, test } from 'vitest'
+import { afterEach, beforeAll, expect, test } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_crystal } from '../test-fixtures'
 

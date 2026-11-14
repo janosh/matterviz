@@ -6,7 +6,7 @@ import type { Vec2, Vec3 } from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { flushSync } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, mount_in_test, mouse } from '../setup'
 import { make_crystal, fcc_cell } from '../test-fixtures'
 

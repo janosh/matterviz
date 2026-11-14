@@ -77,7 +77,7 @@ import {
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { SvelteSet } from 'svelte/reactivity'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { flush_set } from './session-harness.svelte'
 
 // Spy on Threlte's interactivity() and return a getter for the scene's interactivity state
@@ -548,7 +548,7 @@ test(`hover shell wraps the hovered atom at HOVER_SHELL_SCALE of its radius`, ()
   const atoms = scene
     .getObjectsByProperty(`type`, `Mesh`)
     .find((mesh) => mesh instanceof AtomInstances)
-  if (!(atoms instanceof AtomInstances)) throw new Error(`no atom instances`)
+  if (!(atoms instanceof AtomInstances)) throw new TypeError(`no atom instances`)
   const atom_matrix = new Matrix4()
   atoms.getMatrixAt(0, atom_matrix)
   const atom_scale = new Vector3().setFromMatrixScale(atom_matrix).x
@@ -1528,7 +1528,7 @@ test(`prepared bonds reuse placements and uniform colors across topology and app
   const colors_start = mesh.geometry.getAttribute(`instanceColorStart`)
   const colors_end = mesh.geometry.getAttribute(`instanceColorEnd`)
   if (!(colors_start instanceof InstancedBufferAttribute))
-    throw new Error(`Expected an instanced color attribute`)
+    throw new TypeError(`Expected an instanced color attribute`)
   for (const count of [1, 2, 3]) {
     bonds = make_frame(count)
     const order = vi.spyOn(bonds, `order`)
@@ -1995,7 +1995,7 @@ test.each([`atoms`, `arrows`, `bonds`] as const)(
         if (kind === `arrows`) {
           const [shafts, heads] = active
           if (!(shafts instanceof ArrowMesh) || !(heads instanceof ArrowMesh))
-            throw new Error(`Expected shaft and head meshes`)
+            throw new TypeError(`Expected shaft and head meshes`)
           expect(shafts.colors).toBe(heads.colors)
         }
         if (previous_active.length && count <= capacity(previous_active[0])) {
@@ -2475,6 +2475,6 @@ test.each([`full lattice params`, `matrix only`])(`camera far plane from a %s`, 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the malformed input under test
   const { camera } = mount_structure({ structure: structure as AnyStructure })
   if (!(camera.current instanceof OrthographicCamera))
-    throw new Error(`expected the default orthographic camera`)
+    throw new TypeError(`expected the default orthographic camera`)
   expect(camera.current.far).toBe(1500)
 })

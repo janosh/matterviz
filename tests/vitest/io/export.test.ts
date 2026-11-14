@@ -21,7 +21,15 @@ import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera } from 'three/webgpu'
 import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
 import { crc32 } from 'node:zlib'
-import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vite-plus/test'
 import { mock_object_url } from '../setup'
 import { png_blob } from '../test-fixtures'
 
@@ -1286,7 +1294,7 @@ describe(`export_trajectory_video`, () => {
       const blob = custom_save
         ? on_save.mock.calls[0][0]
         : vi.mocked(download).mock.calls[0][0]
-      if (!(blob instanceof Blob)) throw new Error(`Expected a video Blob`)
+      if (!(blob instanceof Blob)) throw new TypeError(`Expected a video Blob`)
       expect(blob.type).toBe(`video/${container}`)
       expect(await blob.text()).toBe(`encoded frame`)
     }

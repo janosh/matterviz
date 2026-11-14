@@ -4,7 +4,7 @@ import {
   mock_fullscreen,
   trigger_resize_observer,
 } from './setup'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 
 test.each([
   [0, 0],

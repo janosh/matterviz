@@ -9,7 +9,7 @@ import {
   CNA_TYPE_PROPERTY,
 } from '#lib/structure-id/calc-structure-id.js'
 import { CNA_TYPES } from '#lib/structure-id/calc-cna.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   BCC_LATTICE_CONST,
   FCC_LATTICE_CONST,

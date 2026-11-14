@@ -27,7 +27,7 @@ import {
   scale_crystal,
   symmetric_eigenvalues,
 } from '#site/electronic/cu-pressure-sweep.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, make_crystal } from '../test-fixtures'
 
 const structure = make_crystal(3.6, [[`Cu`, [0, 0, 0]]])

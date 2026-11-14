@@ -1,6 +1,6 @@
 import type { VacfResult } from '#lib/vacf/index.js'
 import { calc_vacf } from '#lib/vacf/calc-vacf.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { build_vacf_input, circular_motion, ideal_gas } from './helpers'
 
 // THz -> cm^-1, the same factor calc-vacf derives from the speed of light

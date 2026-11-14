@@ -3,7 +3,7 @@ import BrillouinZonePopup from '#lib/brillouin/BrillouinZonePopup.svelte'
 import BrillouinZoneTooltip from '#lib/brillouin/BrillouinZoneTooltip.svelte'
 import type { Matrix3x3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 // Pass-through spy recording the zone's props (its WebGPU scene does not render here)

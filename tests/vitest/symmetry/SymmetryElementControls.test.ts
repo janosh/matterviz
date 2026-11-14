@@ -11,7 +11,7 @@ import {
 } from '#lib/symmetry/symmetry-elements.js'
 import SymmetryElementControls from '#lib/symmetry/SymmetryElementControls.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 const make_elem = (
   kind: SymmetryElement[`kind`],

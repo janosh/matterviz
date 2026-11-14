@@ -7,7 +7,7 @@ import {
   one_sided_periodogram,
   time_series_window,
 } from '#lib/fft.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { make_rng, max_abs_error } from './helpers'
 
 // O(n^2) reference transform, same sign convention as fft_in_place

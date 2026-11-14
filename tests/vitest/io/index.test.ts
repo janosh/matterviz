@@ -6,7 +6,7 @@ import {
   load_trajectory_from_url,
 } from '#lib/io/index.js'
 import { gzipSync, zipSync, zlibSync } from 'fflate'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 globalThis.fetch = vi.fn()
 

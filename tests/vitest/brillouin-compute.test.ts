@@ -26,7 +26,7 @@ import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { point_group_rotations } from '#lib/symmetry/analyze.js'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   col_major,
   cubic_matrix,

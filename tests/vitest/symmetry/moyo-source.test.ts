@@ -2,7 +2,7 @@
 // analysis and survives a failed fetch. Isolated file: it mocks the wasm-bindgen init.
 import init from '@spglib/moyo-wasm'
 import { ensure_moyo_wasm_ready, set_moyo_wasm_source } from '#lib/symmetry/analyze.js'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 
 vi.mock(`@spglib/moyo-wasm`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),

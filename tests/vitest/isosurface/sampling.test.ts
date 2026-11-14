@@ -14,7 +14,7 @@ import type { VolumetricData } from '#lib/isosurface/types.js'
 import { marching_cubes } from '#lib/marching-cubes.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { create_frac_to_cart } from '#lib/math.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   cubic_matrix,
   grid_value,

@@ -1,5 +1,5 @@
 import * as constants from '#lib/constants.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`derived physical constants`, () => {
   // Pin derived constants to published values (CODATA 2018; ase.units.fs on ASE's CODATA 2014

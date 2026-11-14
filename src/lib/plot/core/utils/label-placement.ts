@@ -529,8 +529,8 @@ function cull_dense_labels(
   const grid: Record<string, number[]> = {}
   label_infos.forEach(({ anchor }, label_idx) => {
     const key = `${get_cell(anchor.x)},${get_cell(anchor.y)}`
-    const bucket = grid[key] ?? (grid[key] = [])
-    bucket.push(label_idx)
+    grid[key] ??= []
+    grid[key].push(label_idx)
   })
 
   return label_infos.filter(({ anchor }, label_idx) => {

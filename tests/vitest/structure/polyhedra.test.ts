@@ -34,7 +34,7 @@ import {
   InterleavedBufferAttribute,
   Vector3,
 } from 'three/webgpu'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   fcc_primitive_matrix,
   image_options,
@@ -103,7 +103,7 @@ test.each([`#222222`, `#ff8800`])(
         ] as const) {
           const attribute = edges.geometry.getAttribute(name)
           if (!(attribute instanceof InterleavedBufferAttribute))
-            throw new Error(`Expected interleaved outline buffer`)
+            throw new TypeError(`Expected interleaved outline buffer`)
           expect(attribute.data.array.slice(0, count * 6)).toEqual(expected)
           expect(attribute.data.updateRanges).toEqual([{ start: 0, count: count * 6 }])
         }
@@ -960,7 +960,7 @@ describe(`merge_polyhedra_buffers`, () => {
       [`color`, small.colors],
     ] as const) {
       const attribute = geometry.getAttribute(name)
-      if (!(attribute instanceof BufferAttribute)) throw new Error(`Expected ${name}`)
+      if (!(attribute instanceof BufferAttribute)) throw new TypeError(`Expected ${name}`)
       expect(attribute.array.slice(0, values.length)).toEqual(values)
       expect(attribute.updateRanges).toEqual([{ start: 0, count: values.length }])
     }

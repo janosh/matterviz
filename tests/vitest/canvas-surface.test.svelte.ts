@@ -1,6 +1,6 @@
 import { create_canvas_surface } from '#lib/canvas-surface.svelte.js'
 import { flushSync } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // A minimal matchMedia that reports whether the queried ratio still matches the live one, and
 // notifies its listeners when the live ratio changes. happy-dom has no implementation at all.

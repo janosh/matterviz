@@ -348,7 +348,7 @@ export function create_numeric_md_frame(
     xyz[1] = positions[idx * 3 + 1]
     xyz[2] = positions[idx * 3 + 2]
     if (!Number.isFinite(xyz[0]) || !Number.isFinite(xyz[1]) || !Number.isFinite(xyz[2]))
-      throw new Error(
+      throw new TypeError(
         `Invalid position at site ${display_idx(idx)}: expected 3 finite coordinates`,
       )
     coordinates[offset] = xyz[0]

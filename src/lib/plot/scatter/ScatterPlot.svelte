@@ -500,9 +500,9 @@
     axis: typeof final_x_axis,
     axis_px: number,
     time_scale = false,
-  ): Vec2 => {
+  ): Vec2 =>
     // edge padding widens the niced ends (a zero end past 0 too) just enough for the marks
-    return nice_range_from_extent(
+    nice_range_from_extent(
       data_extent,
       axis.range ?? [null, null],
       axis.scale_type ?? `linear`,
@@ -510,7 +510,7 @@
       time_scale,
       edge_range_padding(edge_px, axis_px),
     )
-  }
+
   // Data-driven ranges before user overrides and pan/zoom; also the controls' reset targets
   const intrinsic_ranges = $derived.by(() => {
     const x_px = frame.width - base_pad.l - base_pad.r

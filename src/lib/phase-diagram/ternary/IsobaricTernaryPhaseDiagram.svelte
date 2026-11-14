@@ -419,7 +419,7 @@
       if (on_file_drop) return on_file_drop(content, filename, metadata)
       const parsed: unknown = JSON.parse(as_text(content))
       if (!Array.isArray(parsed))
-        throw new Error(`Expected a JSON array of convex-hull entries`)
+        throw new TypeError(`Expected a JSON array of convex-hull entries`)
       drop_error = null
       selected_phase = null
       dropped_entries = parsed as PhaseData[]

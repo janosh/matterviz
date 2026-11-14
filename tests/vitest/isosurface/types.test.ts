@@ -17,7 +17,7 @@ import {
 } from '#lib/isosurface/types.js'
 import type { VolumetricData } from '#lib/isosurface/types.js'
 import { flatten_grid } from '#lib/isosurface/grid.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { grid_value, make_grid, make_volume as make_volume_fixture } from '../test-fixtures'
 
 test.each([

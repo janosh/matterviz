@@ -17,7 +17,7 @@ import { summarize_run } from '#lib/trajectory/run.js'
 import { Dataset, type File as H5File, type Group } from 'h5wasm'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 import { h5_bytes } from './fixtures'
 

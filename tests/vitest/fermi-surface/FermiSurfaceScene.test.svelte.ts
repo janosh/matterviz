@@ -16,7 +16,7 @@ import { centered_cell_edges } from '#lib/fermi-surface/compute.js'
 import { sheet_color } from '#lib/fermi-surface/constants.js'
 import { brighten_hex } from '#lib/scene/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   hover_highlight,
   scene_pin_driver,

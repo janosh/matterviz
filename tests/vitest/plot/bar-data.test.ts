@@ -14,7 +14,7 @@ import {
   visible_bar_indices,
 } from '#lib/plot/bar/geometry.js'
 import type { BarSeries } from '#lib/plot/index.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 const bar = (overrides: Partial<NumericBarSeries> = {}): NumericBarSeries => ({
   x: [0, 1],

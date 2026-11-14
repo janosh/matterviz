@@ -3,7 +3,7 @@ import { hull_style_css } from '#lib/convex-hull/helpers.js'
 import { default_controls } from '#lib/convex-hull/index.js'
 import type { ConvexHullEntry } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { bind_props, doc_query, set_input } from '../setup'
 
 const mag = (magnetic_ordering?: string): ConvexHullEntry => ({

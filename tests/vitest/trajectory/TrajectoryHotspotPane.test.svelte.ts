@@ -1,5 +1,5 @@
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vite-plus/test'
 import TrajectoryHotspotPane from '#lib/trajectory/TrajectoryHotspotPane.svelte'
 import { trajectory_from_frames, type MemoryRunExtras } from '#lib/trajectory/runs/memory.js'
 import { create_trajectory_frame } from '#lib/trajectory/helpers.js'

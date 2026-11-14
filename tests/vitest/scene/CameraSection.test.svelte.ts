@@ -1,7 +1,7 @@
 import type { CameraProjection } from '#lib/settings.js'
 import CameraSection from '#lib/scene/CameraSection.svelte'
 import { flushSync } from 'svelte'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { bind_props, mount_in_test } from '../setup'
 
 const reset_selector = `button[title="Reset camera to defaults"]`

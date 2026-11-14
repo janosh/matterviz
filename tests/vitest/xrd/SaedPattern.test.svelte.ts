@@ -2,7 +2,7 @@ import type { SaedOptions, SaedPatternData, SaedSpot } from '#lib/xrd/index.js'
 import { compute_saed_pattern } from '#lib/xrd/saed.js'
 import SaedPattern from '#lib/xrd/SaedPattern.svelte'
 import { mount, tick, unmount } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { bind_props, count_attribute_updates, query, resize_element } from '../setup'
 import { make_crystal } from '../test-fixtures'
 

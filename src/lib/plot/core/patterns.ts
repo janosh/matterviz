@@ -290,7 +290,8 @@ export function resolve_pattern(
   if (!(solidity >= 0 && solidity <= 1)) {
     throw new Error(`pattern solidity must be in [0, 1], got ${solidity}`)
   }
-  if (!Number.isFinite(angle)) throw new Error(`pattern angle must be finite, got ${angle}`)
+  if (!Number.isFinite(angle))
+    throw new TypeError(`pattern angle must be finite, got ${angle}`)
   const geometry = tile_geometry(shape, size, solidity)
   const replace = opts.mode === `replace`
   // Auto-contrast against the color the texture is painted over; translucent, CSS-variable

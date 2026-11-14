@@ -9,7 +9,7 @@ import type { MemoryRunExtras, TrajectoryFrame, TrajectoryRun } from '#lib/traje
 import { is_signal_descriptor } from '#lib/trajectory/run.js'
 import { open_trajectory } from '#lib/trajectory/open.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 import { make_torch_sim_signal_buffer } from '../trajectory/fixtures'
 

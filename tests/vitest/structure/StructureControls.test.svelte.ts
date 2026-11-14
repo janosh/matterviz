@@ -21,7 +21,7 @@ import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   click_when_ready,

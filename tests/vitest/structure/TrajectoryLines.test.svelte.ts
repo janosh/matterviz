@@ -8,7 +8,7 @@ import { flushSync } from 'svelte'
 import type { BufferGeometry } from 'three/webgpu'
 import { BufferAttribute, LineSegments } from 'three/webgpu'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 
 // Three atoms on straight lines through a 10 Å cell, never wrapping
 const stream = make_position_stream(

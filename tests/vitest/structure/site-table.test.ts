@@ -1,6 +1,6 @@
 import { has_site_data, property_column } from '#lib/structure/site-table.js'
 import { make_site } from '#lib/structure/site.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 const site = (properties: Record<string, unknown>) =>
   make_site(`Fe`, [0, 0, 0], [0, 0, 0], `Fe`, properties)

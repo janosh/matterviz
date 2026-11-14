@@ -10,7 +10,7 @@ import {
   saed_pattern_radius,
 } from '#lib/xrd/saed.js'
 import { electron_wavelength } from '#lib/xrd/calc-xrd.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 
 // Angle in degrees between two spots as seen from the direct beam

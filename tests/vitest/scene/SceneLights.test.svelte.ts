@@ -1,7 +1,7 @@
 // Each scene passes its own light positions, so the props must reach the Threlte nodes unchanged
 import SceneLights from '#lib/scene/SceneLights.svelte'
 import { mount, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
 vi.mock(`@threlte/core`, async () => ({

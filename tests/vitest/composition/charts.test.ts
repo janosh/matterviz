@@ -11,7 +11,7 @@ import {
 import PieChart from '#lib/composition/PieChart.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query, expect_tooltip_paint } from '../setup'
 
 const lfp: CompositionType = { Li: 1, Fe: 1, P: 1, O: 4 }

@@ -23,7 +23,7 @@ import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
 import type { MoyoDataset } from '@spglib/moyo-wasm'
 import { operations_from_number } from '@spglib/moyo-wasm'
 import { flushSync } from 'svelte'
-import { beforeAll, describe, expect, onTestFinished, test } from 'vitest'
+import { beforeAll, describe, expect, onTestFinished, test } from 'vite-plus/test'
 import { mount_scene } from '../scene/mount'
 import {
   col_major,

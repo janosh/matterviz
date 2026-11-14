@@ -2,7 +2,7 @@ import { mat3x3_vec3_multiply, subtract, transpose_3x3_matrix } from '#lib/math.
 import { compute_frequency_range } from '#lib/spectral/helpers.js'
 import { load_phonon_fixtures, phonon_fixture_groups } from '#site/phonons/fixtures.js'
 import { phonon_bands, phonon_data, phonon_dos } from '#site/phonons/index.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 describe(`Phonon Module Tests`, () => {
   const band_entries = Object.entries(phonon_bands)

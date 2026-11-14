@@ -1,7 +1,7 @@
 import FloatingPopup from '#lib/overlays/FloatingPopup.svelte'
 import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 // Unmounted after each test: a stale popup's window listener would take the next one's Escape

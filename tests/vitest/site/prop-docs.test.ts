@@ -11,7 +11,7 @@ import prop_docs from 'virtual:prop-docs'
 import { flushSync, mount } from 'svelte'
 import { globSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/info-tag` } } }))
@@ -225,12 +225,12 @@ test(
   () => {
     const { resolveId, load } = prop_docs_plugin()
     if (typeof resolveId !== `function` || typeof load !== `function`)
-      throw new Error(`resolveId and load must be functions`)
+      throw new TypeError(`resolveId and load must be functions`)
     const resolve_id = (id: string) => resolveId.call({} as never, id, undefined, {} as never)
     // the generated module source (load returns a string for our ids, null for others)
     const source = (id: string): string => {
       const code = load.call({} as never, id)
-      if (typeof code !== `string`) throw new Error(`load(${id}) returned ${typeof code}`)
+      if (typeof code !== `string`) throw new TypeError(`load(${id}) returned ${typeof code}`)
       return code
     }
     expect(
@@ -261,7 +261,7 @@ test.each([
   [`src/routes/+page.svelte`, false],
 ])(`hotUpdate for %s invalidates virtual:prop-docs: %s`, (path, invalidates) => {
   const { hotUpdate } = prop_docs_plugin()
-  if (typeof hotUpdate !== `function`) throw new Error(`hotUpdate must be a function`)
+  if (typeof hotUpdate !== `function`) throw new TypeError(`hotUpdate must be a function`)
   // the loader index and one component's docs are loaded, beside an unrelated module
   const index_module = { id: `\0virtual:prop-docs` }
   const docs_module = { id: `\0virtual:prop-docs/Structure` }

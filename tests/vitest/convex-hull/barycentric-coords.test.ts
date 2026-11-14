@@ -5,7 +5,7 @@ import {
   TRIANGLE_VERTICES,
 } from '#lib/convex-hull/barycentric-coords.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Rounded copies so toEqual compares tuples of nearby floats exactly
 const rounded = (values: readonly number[]): number[] =>

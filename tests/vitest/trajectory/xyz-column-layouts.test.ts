@@ -5,7 +5,7 @@ import { count_xyz_frames, TextLines } from '#lib/trajectory/helpers.js'
 import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { index_xyz_frames, parse_xyz_trajectory } from '#lib/trajectory/parse/xyz.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 // Two frames of Si2, written with `columns` prefixed to each atom line
 const two_frames = (properties: string, columns: string[][]): string =>

@@ -1,6 +1,6 @@
 import ToolbarMenu from '#lib/overlays/ToolbarMenu.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { dismiss_popover, doc_query } from '../setup'
 
 test.each([`light dismiss`, `Escape`, `unmount`, `state`] as const)(

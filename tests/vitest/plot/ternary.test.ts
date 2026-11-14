@@ -8,7 +8,7 @@ import {
   TRIANGLE_HEIGHT,
   xy_to_ternary,
 } from '#lib/plot/ternary/ternary.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Rounded to 12 places (+ 0 folds -0 into 0) so whole arrays compare with toEqual
 const round = (values: readonly number[]): number[] =>

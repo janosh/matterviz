@@ -1,6 +1,6 @@
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import { type MeasuredAxis, resolve_tick_layout } from '#lib/plot/core/tick-layout.js'
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { mock_canvas_context } from '../setup'
 
 const CI_MULTIPLIER = [`true`, `1`].includes(process.env.CI ?? ``) ? 5 : 1

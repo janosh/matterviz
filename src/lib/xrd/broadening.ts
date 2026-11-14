@@ -38,7 +38,7 @@ export const compute_broadened_pattern = (
   pattern: XrdPattern,
   params: BroadeningParams,
   range: Vec2, // [min, max] in degrees
-  step_size: number = 0.02, // degrees
+  step_size = 0.02, // degrees
 ): XrdPattern =>
   broaden_peaks(
     pattern,

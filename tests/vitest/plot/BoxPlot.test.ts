@@ -6,7 +6,7 @@ import type { BoxPlotSeries, Orientation } from '#lib/plot/index.js'
 import { type ComponentProps, flushSync, tick } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import { type Rect, rects_overlap } from '#lib/plot/core/layout.js'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   drag,

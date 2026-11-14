@@ -350,8 +350,8 @@ export const parse_reference_md_h5_file = (
     stride = 1,
     start_frame = 0,
     end_frame = n_frames,
-  ): Float64Array => {
-    return read_numeric_samples(
+  ): Float64Array =>
+    read_numeric_samples(
       manifest.dataset,
       manifest.path,
       n_frames,
@@ -364,7 +364,7 @@ export const parse_reference_md_h5_file = (
       start_frame,
       end_frame,
     )
-  }
+
   const velocity_manifest = signal_manifest.velocity
   const integrate_velocity_sample = (
     positions: Float64Array,

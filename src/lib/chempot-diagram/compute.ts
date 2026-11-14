@@ -648,7 +648,7 @@ export function orthonormal_2d(line_pts: number[][]): Vec2 {
 // their indices: a collision only costs extra comparisons.
 export function dedup_points(
   pts: number[][],
-  tol: number = 1e-4,
+  tol = 1e-4,
 ): {
   unique: number[][]
   orig_indices: number[] // for each unique point, the index in the original array
@@ -710,7 +710,7 @@ interface DomainPlane {
 // Plane a set of 3D points lies on, as unit `normal` and `offset` with normal . p = offset.
 // Null when they span a volume (projected quaternary+ domains are polyhedra), are collinear,
 // or number fewer than 3. `rel_tol` is relative to the bounding-box diagonal.
-export function fit_plane(points: number[][], rel_tol: number = 1e-6): DomainPlane | null {
+export function fit_plane(points: number[][], rel_tol = 1e-6): DomainPlane | null {
   const diag = bbox_diagonal(points)
   // dedup far below rel_tol (coarser merging is the collinearity check's job)
   const { unique } = dedup_points(points, 1e-9 * diag || EPS)
@@ -1240,7 +1240,7 @@ export function section_measure_curves(
   slices: ChemPotSliceValues,
   element: string,
   range: Vec2,
-  per_interval: number = 8,
+  per_interval = 8,
 ): Map<string, Vec2[]> | null {
   if (display.includes(element)) throw new Error(`Cannot sweep display axis ${element}`)
   const { sliced, axis } = slice_others(system, slices, element)

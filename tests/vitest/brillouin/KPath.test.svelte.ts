@@ -10,7 +10,7 @@ import {
   type MeshBasicMaterial,
   Vector3,
 } from 'three/webgpu'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
 type KMarker = { position: Vec3; color: string }

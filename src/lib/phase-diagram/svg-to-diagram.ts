@@ -538,7 +538,7 @@ export function trace_region_outline(
   region_id: number,
   n_cols: number,
   n_rows: number,
-  name: string = `Region ${region_id + 1}`,
+  name = `Region ${region_id + 1}`,
 ): Vec2[] {
   const in_region = (col: number, row: number): boolean =>
     col >= 0 && col < n_cols && row >= 0 && row < n_rows && cell_ids[col][row] === region_id

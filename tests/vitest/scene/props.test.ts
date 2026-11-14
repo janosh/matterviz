@@ -7,7 +7,7 @@ import {
 } from '#lib/scene/props.svelte.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 describe(`build_orbit_props`, () => {
   const opts: Parameters<typeof build_orbit_props>[0] = {

@@ -28,7 +28,7 @@ import lifemn_cif from '#site/structures/Li4Fe3Mn1(PO4)4.cif?raw'
 import nacl_poscar from '#site/structures/NaCl-cubic.poscar?raw'
 import quartz_cif from '#site/structures/quartz-alpha.cif?raw'
 import extended_xyz_quartz from '#site/structures/quartz.extxyz?raw'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   fcc_primitive_matrix,
   image_options,

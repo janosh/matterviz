@@ -25,7 +25,7 @@ import {
 } from '#lib/phase-diagram/utils.js'
 import { binary_diagrams, binary_observations } from '#site/phase-diagrams.js'
 import { hsl } from 'd3-color'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   create_hover_info,
   eutectic,

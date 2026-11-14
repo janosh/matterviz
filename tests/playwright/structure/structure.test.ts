@@ -39,7 +39,7 @@ type EventCall = { event: string; data?: unknown }
 const clear_events = (page: Page): Promise<void> =>
   page.evaluate(() => {
     const event_calls = Reflect.get(globalThis, `event_calls`)
-    if (!Array.isArray(event_calls)) throw new Error(`event_calls is unavailable`)
+    if (!Array.isArray(event_calls)) throw new TypeError(`event_calls is unavailable`)
     event_calls.length = 0
   })
 const events_named = async (page: Page, event_name: string): Promise<EventCall[]> =>
@@ -170,11 +170,14 @@ test.describe(`compressed source URL`, () => {
           await expect(loading.getByRole(`status`)).toHaveText(`Loading symmetry analysis...`)
           for (const width of [1200, 420]) {
             await page.setViewportSize({ width, height: 900 })
-            const slot = await require_bbox(loading)
-            const { status, spinner, label } = await expect_inline_spinner(loading)
-            expect_centered(status, slot)
-            expect(spinner.height).toBeLessThanOrEqual(label.height)
-            expect(slot.x + slot.width).toBeLessThanOrEqual(width)
+            // the slot and status can be read before the resize reflows, so retry until settled
+            await expect(async () => {
+              const slot = await require_bbox(loading)
+              const { status, spinner, label } = await expect_inline_spinner(loading)
+              expect_centered(status, slot)
+              expect(spinner.height).toBeLessThanOrEqual(label.height)
+              expect(slot.x + slot.width).toBeLessThanOrEqual(width)
+            }).toPass()
           }
         }
       } finally {
@@ -326,7 +329,7 @@ test.describe(`Structure Component Tests`, () => {
       const hover_surface_of = (): Promise<string> =>
         toggle.evaluate((element) => {
           const cell = element.closest(`.cell-select`)
-          if (!(cell instanceof HTMLElement)) throw new Error(`missing .cell-select`)
+          if (!(cell instanceof HTMLElement)) throw new TypeError(`missing .cell-select`)
           const probe = document.createElement(`div`)
           cell.append(probe)
           probe.style.backgroundColor = `var(--cell-select-hover-surface)`

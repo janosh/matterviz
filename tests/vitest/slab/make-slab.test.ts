@@ -12,7 +12,7 @@ import type { Slab } from '#lib/slab/index.js'
 import type { Crystal, Pbc, Site } from '#lib/structure/index.js'
 import { structure_map } from '#site/structures.js'
 import { analyze_structure_symmetry, point_group_rotations } from '#lib/symmetry/analyze.js'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vite-plus/test'
 import {
   FCC_FACE_CENTRES,
   make_crystal,

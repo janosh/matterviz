@@ -3,8 +3,7 @@
 // in its own lazily loaded chunk. Run by `pnpm package:dist` after svelte-package.
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { basename, resolve } from 'node:path'
-import type { Plugin } from 'vite'
-import { defineConfig, type PluginOption } from 'vite-plus'
+import { type Plugin, defineConfig, type PluginOption } from 'vite-plus'
 import { extract_prop_docs, type PropDoc } from '../scripts/prop-docs.ts'
 import { json_gz_worker_plugins, lib_aliases, vite_plugin_json_gz } from '../vite-plugins.ts'
 import { COMPONENTS, tag_name } from './components.ts'

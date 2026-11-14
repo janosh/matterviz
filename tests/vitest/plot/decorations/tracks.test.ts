@@ -5,7 +5,7 @@ import {
   suggest_legend_tracks,
 } from '#lib/plot/core/decorations/tracks.js'
 import { SvelteSet } from 'svelte/reactivity'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const item_extents = [
   { width: 70, height: 18 },

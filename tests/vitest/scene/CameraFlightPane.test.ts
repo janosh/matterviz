@@ -4,7 +4,7 @@ import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
 import { mount, tick, unmount } from 'svelte'
 import type { Scene, WebGPURenderer } from 'three/webgpu'
 import { PerspectiveCamera } from 'three/webgpu'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { doc_query, mock_canvas_context } from '../setup'
 import { flight_controller } from './mount'
 

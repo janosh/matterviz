@@ -1,6 +1,6 @@
 import * as utils from '#site/histogram-data.js'
 import type { Rng } from '#site/histogram-data.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // stochastic functions are tested with shape/invariants, not exact values
 describe(`histogram-data random generators`, () => {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   detect_view_type,
   is_plottable_data,

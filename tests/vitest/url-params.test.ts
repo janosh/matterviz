@@ -5,7 +5,7 @@ import {
   weights_to_param,
 } from '#lib/url-params.js'
 import type { WeightsConfig } from '#lib/url-params.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 const default_sort = { column: `force`, dir: `desc` } as const
 

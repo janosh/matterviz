@@ -159,7 +159,7 @@ export class LineScanner {
 // value is an error rather than NaN/Infinity for the caller to trip over later
 export const parse_coordinate = (token: string): number => {
   const value = parse_float_token(token)
-  if (!Number.isFinite(value)) throw new Error(`Invalid coordinate value: '${token}'`)
+  if (!Number.isFinite(value)) throw new TypeError(`Invalid coordinate value: '${token}'`)
   return value
 }
 

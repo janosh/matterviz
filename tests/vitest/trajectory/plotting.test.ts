@@ -16,7 +16,7 @@ import {
   summarize_properties,
 } from '#lib/trajectory/plotting.js'
 import type { PlotSeriesOptions } from '#lib/trajectory/plotting.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 const DEFAULT_PROPERTY_CONFIG = {
   energy: { label: `Energy`, unit: `eV` },

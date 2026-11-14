@@ -3,7 +3,7 @@ import { collect_trajectory_rdf, rdf_shell } from '#lib/rdf/calc-trajectory-rdf.
 import type { Crystal } from '#lib/structure/index.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
 import { make_crystal, make_rocksalt } from '../test-fixtures'
 

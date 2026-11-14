@@ -295,8 +295,8 @@
     "movie": "node src/scripts/movie.mjs",
     "snapshot": "node src/scripts/snapshot.mjs",
     "build:site": "vp build && pagefind --site build",
-    "test": "vitest run && playwright test",
-    "typecheck": "node -e \"process.exit(+!require('fs').existsSync('extensions/anywidget/node_modules/anywidget'))\" || pnpm install:anywidget && svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning",
+    "test": "vp test run && playwright test",
+    "typecheck": "node -e \"process.exit(+!require('fs').existsSync('extensions/anywidget/node_modules/anywidget'))\" || pnpm install:anywidget && svelte-check --tsconfig ./tsconfig.json --config ./vite.config.ts --threshold warning --tsgo",
     "knip": "knip --include files,dependencies,exports,types,nsExports",
     "publint": "publint",
     "package:dist": "svelte-package && node src/scripts/package-dist-assets.mjs && vp build --config src/elements/vite.config.ts && node src/scripts/check-dist-imports.mjs",
@@ -346,6 +346,7 @@
     "@types/d3-time-format": "^4.0.3",
     "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@vitest/coverage-v8": "5.1.0",
     "@wooorm/starry-night": "^3.11.0",
     "happy-dom": "^21.0.4",
@@ -355,8 +356,8 @@
     "svelte": "^5.57.3",
     "svelte-check": "^4.7.8",
     "typescript": "^6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1",
-    "vite-plus": "1.5.1",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0",
+    "vite-plus": "1.6.0",
     "vitest": "5.1.0"
   },
   "peerDependencies": {
@@ -380,6 +381,9 @@
         ],
         "ignore": [
           "extensions/anywidget/**"
+        ],
+        "ignoreDependencies": [
+          "@typescript/native"
         ]
       },
       "extensions/vscode": {},

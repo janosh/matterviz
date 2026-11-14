@@ -4,7 +4,7 @@ import type { PhaseData } from '#lib/convex-hull/index.js'
 import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisPlanRequest } from '#lib/synthesis-planning/types.js'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import {
   expect_module_worker,
   expect_worker_safe_import_graph,

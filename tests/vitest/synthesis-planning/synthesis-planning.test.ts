@@ -43,7 +43,7 @@ import { format_model_conditions } from '#lib/synthesis-planning/recipe.js'
 import { describe_atmosphere, describe_interface } from '#lib/synthesis-planning/scoring.js'
 import { get_default_gas_provider } from '#lib/convex-hull/gas-thermodynamics.js'
 import * as math from '#lib/math.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_phase, read_maybe_gz } from '../test-fixtures'
 import pymatgen_reference from './fixtures/ba_ti_o_pymatgen_reference.json' with { type: 'json' }
 
@@ -78,7 +78,7 @@ const balance = (
   gases: PlannerPhase[] = [],
 ) => {
   const balanced = balance_reaction(precursors, target, gases, true)
-  if (typeof balanced === `string`) throw new Error(balanced)
+  if (typeof balanced === `string`) throw new TypeError(balanced)
   return balanced
 }
 
@@ -321,10 +321,12 @@ describe(`analyze_selectivity`, () => {
     const balanced = balance(precursors, target)
     const target_force = balanced.energy_per_fu / balanced.reactant_atoms
     const selectivity = analyze_selectivity(precursors, target, [], phases, target_force)
-    const forces = new Map(
-      selectivity.competitors.map((comp) => [comp.phase.formula, comp.driving_force]),
-    )
-    forces.set(`BaTiO3`, target_force)
+    const forces = new Map([
+      ...selectivity.competitors.map(
+        (comp) => [comp.phase.formula, comp.driving_force] as const,
+      ),
+      [`BaTiO3`, target_force] as const,
+    ])
     const kinks = pymatgen_reference.bao_tio2_kinks.filter(
       (kink) => kink.reaction.includes(`->`) && !/^(?:TiO2|BaO) -> /.test(kink.reaction),
     )

@@ -6,7 +6,7 @@
 import { readFileSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import ts from 'typescript'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 const lib_dir = resolve(import.meta.dirname, `../../src/lib`)
 const HEAVY_PACKAGES = [`three`, `@threlte/`]

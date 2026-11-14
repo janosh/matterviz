@@ -5,7 +5,7 @@ import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { LineSegments2 } from 'three/examples/jsm/lines/webgpu/LineSegments2.js'
 import type { BufferGeometry, InterleavedBufferAttribute } from 'three/webgpu'
 import { BoxGeometry, BufferAttribute, PlaneGeometry, SphereGeometry } from 'three/webgpu'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { hover_highlight, threlte_stub } from '../isosurface/threlte-stub'
 
 vi.mock(`@threlte/core`, async (original) =>

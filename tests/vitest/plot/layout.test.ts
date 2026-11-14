@@ -24,7 +24,7 @@ import {
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
 import type { MeasuredAxis } from '#lib/plot/core/tick-layout.js'
 import { resolve_tick_layout, TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 
 const tick_layout = (

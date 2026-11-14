@@ -235,7 +235,7 @@ test.describe(`Periodic Table`, () => {
         if (!first_heatmap_key || !hydrogen) throw new Error(`Missing atomic mass test data`)
         const heatmap_value = hydrogen[first_heatmap_key]
         if (typeof heatmap_value !== `number`)
-          throw new Error(`Hydrogen atomic mass is not numeric`)
+          throw new TypeError(`Hydrogen atomic mass is not numeric`)
         await expect(get_element_tile(page, hydrogen.symbol)).toContainText(
           format_num(heatmap_value),
         )

@@ -4,7 +4,7 @@ import {
   get_tooltip_placement_candidates,
   place_tooltip,
 } from '#lib/plot/core/decorations/tooltip.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const base_config: TooltipPlacementConfig = {
   anchor: { x: 50, y: 50 },

@@ -157,7 +157,7 @@ const structure_result = (
 export const parse_file_content = async (
   source: TrajectorySource,
   filename: string,
-  is_base64: boolean = false,
+  is_base64 = false,
   load_options: TrajectoryLoadOptions = {},
   on_progress?: (progress: ParseProgress) => void,
 ): Promise<ParseResult> => {
@@ -169,7 +169,7 @@ export const parse_file_content = async (
   // Handle base64-encoded compressed/binary files by converting them first
   if (is_base64) {
     if (typeof source !== `string`)
-      throw new Error(`Base64 payload for ${filename} is not text`)
+      throw new TypeError(`Base64 payload for ${filename} is not text`)
     const payload = await classify_payload(new Blob([base64_to_array_buffer(source)]), [
       filename,
     ])

@@ -61,6 +61,8 @@ test(`condition selection preserves the sweep and experiment edits without mobil
   await expect(wrapped_popup).toBeVisible()
   expect(await wrapped_popup.textContent()).toBe(await wrapped.textContent())
   await page.keyboard.press(`Escape`)
+  // addStyleTag hands back a Node handle, and Node lacks ChildNode.remove()
+  // oxlint-disable-next-line prefer-dom-node-remove
   await compact_style.evaluate((element) => element.parentNode?.removeChild(element))
   await expect(wrapped).toHaveJSProperty(`tagName`, `SPAN`)
   const first_cell = await cells.first().elementHandle()

@@ -1,6 +1,6 @@
 import PropertyFilter from '#lib/layout/PropertyFilter.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, keydown, set_input } from '../setup'
 
 describe(`PropertyFilter`, () => {

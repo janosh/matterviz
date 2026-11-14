@@ -20,7 +20,7 @@ import type {
   LineCurve,
 } from '#lib/plot/core/types.js'
 import { curveMonotoneX, line } from 'd3-shape'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 const make_point = (x_value: number, y_value: number): Pt => ({ x: x_value, y: y_value })
 const zip_points = (x_values: number[], y_values: number[]): Pt[] =>

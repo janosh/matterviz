@@ -2,7 +2,7 @@ import { filter_entries_at_temperature } from '#lib/convex-hull/helpers.js'
 import type { HullModel } from '#lib/convex-hull/model.js'
 import { compute_energy_mode_info, compute_hull_model } from '#lib/convex-hull/model.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
-import { describe, expect, expectTypeOf, test } from 'vitest'
+import { describe, expect, expectTypeOf, test } from 'vite-plus/test'
 import { make_phase } from '../test-fixtures'
 
 const precomputed = { e_form_per_atom: -1, e_above_hull: 0 }

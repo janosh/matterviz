@@ -1,6 +1,6 @@
 import DockedSidebar from '#lib/layout/DockedSidebar.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, onTestFinished, test } from 'vite-plus/test'
 import { query, trigger_resize_observer } from '../setup'
 
 const snippet = (html: string) => createRawSnippet(() => ({ render: () => html }))

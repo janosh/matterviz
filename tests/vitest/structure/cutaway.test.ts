@@ -1,7 +1,7 @@
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { cell_to_fractional, resolve_cutaway } from '#lib/structure/cutaway.js'
 import { Matrix4, Vector3 } from 'three/webgpu'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Triclinic cell rows (lattice vectors a, b, c)
 const cell: Matrix3x3 = [

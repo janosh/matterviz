@@ -1,6 +1,7 @@
 <script lang="ts">
   import LazyDemo from '#site/LazyDemo.svelte'
   import MultiValueHeatmapDemo from '#site/MultiValueHeatmapDemo.svelte'
+  import type { StructureHandlerData } from '#lib/structure/index.js'
   import type { TrajHandlerData } from '#lib/trajectory/index.js'
   import { trajectory_files } from '#site/trajectories.js'
   import CopyButton from 'svelte-widgets/CopyButton.svelte'
@@ -92,7 +93,7 @@
         load={() => import('#lib/structure/Structure.svelte')}
         props={{
           source: `/structures/${file_name}`,
-          on_file_load: (data) => {
+          on_file_load: (data: StructureHandlerData) => {
             if (data.filename) structure_filenames[idx] = data.filename
           },
         }}

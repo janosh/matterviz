@@ -6,7 +6,7 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { interpolateReds } from 'd3-scale-chromatic'
 import { SvelteMap } from 'svelte/reactivity'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   click_export,

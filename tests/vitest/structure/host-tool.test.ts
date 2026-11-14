@@ -16,7 +16,7 @@ import {
 import { replace_tool_volumes } from '#lib/structure/host-tool-volumes.js'
 import { auto_volume_layer, type IsosurfaceLayer } from '#lib/isosurface/types.js'
 import { make_demo_trajectory } from '../../../src/routes/(demos)/structure/host-tool/demo'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { StructureToolGeometry } from '#lib/structure/prediction.js'
 import { structure_to_json_str } from '#lib/structure/export.js'

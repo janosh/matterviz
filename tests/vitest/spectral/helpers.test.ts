@@ -48,7 +48,7 @@ import vbr2_json from '#site/electronic/bands/vbr2-971787-bands.json.gz?raw'
 import mgb2_band_yaml from '#site/phonons/ir-raman/MgB2-band.yaml.gz?raw'
 import * as math from '#lib/math.js'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 
 // pymatgen input needs a reciprocal lattice to measure its k-path; the identity keeps the
 // hand-computed fractional distances valid

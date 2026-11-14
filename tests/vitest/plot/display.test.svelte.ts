@@ -6,7 +6,7 @@ import {
 import type { DisplayConfig } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { flushSync } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`resolve_plot_display`, () => {
   test.each([

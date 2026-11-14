@@ -6,7 +6,7 @@ import { parse_reaction_path_json } from '#lib/neb/parse.js'
 import { format_num } from '#lib/labels.js'
 import { reaction_paths } from '#site/neb/index.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   assertHoverScopedShortcut,
   mock_fullscreen,

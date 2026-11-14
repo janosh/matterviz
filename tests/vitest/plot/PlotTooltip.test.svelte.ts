@@ -17,7 +17,7 @@ import {
   mount,
   type ComponentProps,
 } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   doc_query,
   pin_cycle,
@@ -30,7 +30,7 @@ import {
   trigger_resize_observer,
 } from '../setup'
 
-const make_children = (text: string = `Test`) =>
+const make_children = (text = `Test`) =>
   createRawSnippet(() => ({
     render: () => `<span>${text}</span>`,
   }))

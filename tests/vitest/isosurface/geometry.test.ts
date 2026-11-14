@@ -16,7 +16,7 @@ import {
 } from '#lib/isosurface/sampling.js'
 import { make_volume as make_flat_volume, MAX_GRID_POINTS } from '#lib/isosurface/types.js'
 import { cross_3d, dot, subtract, type Vec3 } from '#lib/math.js'
-import { afterEach, beforeAll, describe, expect, test } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test } from 'vite-plus/test'
 import { install_stub_worker } from '../setup'
 import { cubic_matrix, make_grid, make_volume } from '../test-fixtures'
 

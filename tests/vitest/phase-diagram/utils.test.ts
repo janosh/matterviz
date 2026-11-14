@@ -14,7 +14,7 @@ import {
   PHASE_DIAGRAM_DEFAULTS,
   transform_vertices,
 } from '#lib/phase-diagram/utils.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { pts, rect } from './fixtures/test-data'
 
 describe(`find_region_at`, () => {

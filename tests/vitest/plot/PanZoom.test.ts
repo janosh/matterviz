@@ -7,7 +7,7 @@ import ZoomRect from '#lib/plot/core/components/ZoomRect.svelte'
 import * as svg_paths from '#lib/plot/core/svg.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
 import { flushSync, tick, type ComponentProps } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   clip_rect,
   keydown,

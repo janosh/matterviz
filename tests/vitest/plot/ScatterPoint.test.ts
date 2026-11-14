@@ -3,7 +3,7 @@ import type { PointStyle } from '#lib/plot/core/types.js'
 import ScatterPoint from '#lib/plot/scatter/ScatterPoint.svelte'
 import { symbol, symbolCircle } from 'd3-shape'
 import { flushSync, mount, tick, type ComponentProps } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query, expect_transition_properties, trigger_intersection } from '../setup'
 
 const mount_point = (props: Partial<ComponentProps<typeof ScatterPoint>> = {}) => {

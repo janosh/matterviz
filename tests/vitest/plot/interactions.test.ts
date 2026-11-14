@@ -17,7 +17,7 @@ import {
 import { create_scale } from '#lib/plot/core/scales.js'
 import { create_pan_zoom } from '#lib/plot/core/pan-zoom.svelte.js'
 import type { AxisRanges, ScaleType, Y2SyncConfig, Y2SyncMode } from '#lib/plot/core/types.js'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 
 const axes = [`x`, `x2`, `y`, `y2`] as const
 type Axis = (typeof axes)[number]
@@ -55,8 +55,13 @@ it.each([`wheel_x`, `wheel_y`, `wheel_zoom`, `drag`, `touch_pan`, `pinch`] as co
     const log_axis = gesture === `wheel_x` ? `x2` : `y2`
     // zooms keep the view center, pans shift it: y up by 0.05, x by the drag's 1 px the other way
     const zooms = gesture === `pinch` || gesture === `wheel_zoom`
-    const ranges: AxisRanges = { x: [0, 10], x2: [0, 10], y: [0, 10], y2: [0, 10] }
-    ranges[log_axis] = [1e-300, 1e300]
+    const ranges: AxisRanges = {
+      x: [0, 10],
+      x2: [0, 10],
+      y: [0, 10],
+      y2: [0, 10],
+      [log_axis]: [1e-300, 1e300],
+    }
     const original = structuredClone(ranges)
     const { controller, set_range } = pan_zoom_on(ranges, (axis) =>
       axis === log_axis ? `log` : `linear`,

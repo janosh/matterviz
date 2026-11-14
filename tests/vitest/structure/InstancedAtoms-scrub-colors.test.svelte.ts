@@ -23,7 +23,7 @@ import {
   RepeatWrapping,
   SphereGeometry,
 } from 'three/webgpu'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { flush_set } from './session-harness.svelte'
 
@@ -115,7 +115,8 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
   teardown = () => unmount(component)
   flushSync()
   const texture = update_texture.mock.contexts[0]
-  if (!(texture instanceof ColorFieldTexture)) throw new Error(`Expected color field texture`)
+  if (!(texture instanceof ColorFieldTexture))
+    throw new TypeError(`Expected color field texture`)
   const texels = texture.image.data
   const texture_version = texture.version
   expect(texture).toMatchObject({
@@ -127,7 +128,7 @@ test(`volume cloud tiles periodic axes and reuses its mesh and texture across up
     wrapR: RepeatWrapping,
   })
   const mesh = threlte_stub.nodes.at(-1)?.props.is
-  if (!(mesh instanceof Mesh)) throw new Error(`Expected cloud mesh`)
+  if (!(mesh instanceof Mesh)) throw new TypeError(`Expected cloud mesh`)
   expect(mesh.name).toBe(`ColorFieldVolume`)
   mesh.geometry.computeBoundingBox()
   expect(mesh.geometry.boundingBox?.min.toArray()).toEqual([0, 0, 0])
@@ -216,7 +217,7 @@ test(`heatmap updates and toggles preserve atom meshes, buffers, and geometry`, 
     !(controller instanceof AtomFieldMaterial) ||
     !(mesh.material instanceof MeshStandardNodeMaterial)
   )
-    throw new Error(`Expected atom field material`)
+    throw new TypeError(`Expected atom field material`)
   const texture = controller.texture
   expect(texture.type).toBe(FloatType)
   expect(texture.image.data).toBe(field.colors)
@@ -303,7 +304,7 @@ test(`uploads changed color slots and preserves pending ranges mid-scrub`, () =>
 
   // Opacity is a uniform: slider changes must not rebuild geometry, upload colors or
   // recompile an already-transparent material, including while edit-mode ghosting is on.
-  if (Array.isArray(mesh.material)) throw new Error(`Expected a single atom material`)
+  if (Array.isArray(mesh.material)) throw new TypeError(`Expected a single atom material`)
   const material_version = mesh.material.version
   const buffer_versions = [mesh.positions.version, mesh.colors.version]
   for (const opacity of [0.5, 0, 0.8, 1]) {
@@ -351,7 +352,7 @@ test.each([
       camera: { current: camera },
       size,
     } = useThrelte()
-    if (!(camera instanceof PerspectiveCamera)) throw new Error(`Expected perspective camera`)
+    if (!(camera instanceof PerspectiveCamera)) throw new TypeError(`Expected perspective camera`)
     camera.fov = fov
     camera.position.z = 100
     camera.updateProjectionMatrix()

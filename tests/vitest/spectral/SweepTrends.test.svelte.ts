@@ -8,7 +8,7 @@ import type { Sweep, SweepFrame, SweepSeries } from '#lib/spectral/sweep.js'
 import type { FrameLoadState } from '#lib/spectral/sweep-frames.svelte.js'
 import SweepTrends from '#lib/spectral/SweepTrends.svelte'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 
 // the plot's props as SweepTrends builds them

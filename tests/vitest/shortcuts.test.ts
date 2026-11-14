@@ -14,7 +14,7 @@ import {
 } from '#lib/shortcuts.js'
 import type { Shortcut, ShortcutScope } from '#lib/shortcuts.js'
 import { type Component, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { fire, keydown } from './setup'
 
 const { fullscreen: full, close, reset_camera, wheel_zoom, hover_walk, info_pane } = SHORTCUTS

@@ -11,7 +11,7 @@ import {
 import * as calc_module from '#lib/coordination/calc-coordination.js'
 import CoordinationBarPlot from '#lib/coordination/CoordinationBarPlot.svelte'
 import { tick } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { create_drop_event, mount_sized } from '../setup'
 import { BAD_ROW_CIF, make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 

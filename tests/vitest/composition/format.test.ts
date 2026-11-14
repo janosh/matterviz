@@ -5,7 +5,7 @@ import {
   get_electro_neg_formula,
 } from '#lib/composition/format.js'
 import { parse_formula } from '#lib/composition/parse.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`get_alphabetical_formula`, () => {
   test.each([

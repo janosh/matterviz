@@ -13,7 +13,7 @@ import type { CartesianPlane, PlaneSliceOptions } from '#lib/isosurface/slice.js
 import type { VolumetricData } from '#lib/isosurface/types.js'
 import { create_volume_slice_settings } from '#lib/isosurface/slice-settings.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { flatten_grid } from '#lib/isosurface/grid.js'
 import * as math from '#lib/math.js'
 import { cubic_matrix, make_grid, make_linear_volume, make_volume } from '../test-fixtures'

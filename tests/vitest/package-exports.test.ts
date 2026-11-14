@@ -28,7 +28,7 @@ import { join, resolve } from 'node:path'
 import type { HullModel } from 'matterviz/convex-hull'
 import type { StructureToolRun } from 'matterviz'
 import type { StructureSettings, StructureToolProps } from 'matterviz/structure'
-import { afterAll, describe, expect, expectTypeOf, test } from 'vitest'
+import { afterAll, describe, expect, expectTypeOf, test } from 'vite-plus/test'
 import { preprocess } from 'svelte/compiler'
 import { docs } from '../../vite.config'
 

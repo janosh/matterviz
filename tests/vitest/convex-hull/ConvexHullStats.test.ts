@@ -2,7 +2,7 @@ import ConvexHullStats from '#lib/convex-hull/ConvexHullStats.svelte'
 import ConvexHullInfoPane from '#lib/convex-hull/ConvexHullInfoPane.svelte'
 import type { ConvexHullEntry, PhaseStats } from '#lib/convex-hull/types.js'
 import { flushSync, mount, type ComponentProps } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { click_export, doc_query, mock_object_url, set_select } from '../setup'
 
 const mock_stats = (overrides: Partial<PhaseStats> = {}): PhaseStats => ({

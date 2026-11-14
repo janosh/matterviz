@@ -15,7 +15,7 @@ import { fromStore, writable } from 'svelte/store'
 import type { ComponentProps } from 'svelte'
 import type { Scene, WebGPURenderer } from 'three/webgpu'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, mock_canvas_context, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 

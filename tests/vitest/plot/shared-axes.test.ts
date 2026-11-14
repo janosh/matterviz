@@ -4,7 +4,7 @@ import {
   max_side_padding,
   union_ranges,
 } from '#lib/plot/core/shared-axes.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 describe(`shared range helpers`, () => {
   // oxfmt-ignore

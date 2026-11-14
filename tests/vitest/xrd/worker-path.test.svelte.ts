@@ -5,7 +5,7 @@ import type { SaedOptions, XrdOptions } from '#lib/xrd/index.js'
 import { compute_saed_pattern } from '#lib/xrd/saed.js'
 import type { Crystal } from '#lib/structure/index.js'
 import { flushSync, mount, unmount } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { expect_worker_safe_import_graph, install_stub_worker } from '../setup'
 import { make_rocksalt } from '../test-fixtures'
 

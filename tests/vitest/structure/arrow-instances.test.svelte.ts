@@ -23,7 +23,7 @@ import {
 } from '#lib/trajectory/frame.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { Matrix4, Quaternion, Vector3 } from 'three/webgpu'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { EPS } from '#lib/math.js'
 import * as d3_sc from 'd3-scale-chromatic'

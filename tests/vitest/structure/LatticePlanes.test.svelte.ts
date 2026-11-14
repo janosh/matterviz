@@ -9,7 +9,7 @@ import { SYM_ELEM_COLORS, tile_symmetry_elements } from '#lib/symmetry/symmetry-
 import type { LatticePlane } from '#lib/structure/lattice-planes.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { type BufferGeometry, Vector3 } from 'three/webgpu'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
 
 vi.mock(`@threlte/core`, async (original) =>

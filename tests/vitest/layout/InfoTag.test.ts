@@ -1,6 +1,6 @@
 import InfoTag from '#lib/layout/InfoTag.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, mock_clipboard_write } from '../setup'
 
 describe(`InfoTag`, () => {

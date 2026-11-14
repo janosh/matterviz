@@ -6,7 +6,7 @@ import {
   parse_tdb,
   summarize_models,
 } from '#site/phase-diagrams/tdb-parse.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 export const SAMPLE_TDB_CONTENT = `
 $ Al-Zn binary system test database

@@ -7,7 +7,7 @@ import type { ScalarGrid3D, ScalarGridArray, ScalarGridOrder } from '#lib/marchi
 import { flatten_grid } from '#lib/isosurface/grid.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import { add, create_frac_to_cart, cross_3d, dot, subtract } from '#lib/math.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix, make_grid } from './test-fixtures'
 
 const IDENTITY = cubic_matrix(1)

@@ -133,8 +133,8 @@ export function parse_float_block(
   pos: number,
   max_count: number,
   data: Float64Array,
-  data_offset: number = 0,
-  allow_nan: boolean = false,
+  data_offset = 0,
+  allow_nan = false,
 ): { count: number; end_pos: number } {
   let idx = data_offset
   const target = data_offset + max_count

@@ -16,7 +16,7 @@ import {
   Vector3,
 } from 'three/webgpu'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { flight_controller, pose } from './mount'
 
 const path = (): CameraFlight => ({

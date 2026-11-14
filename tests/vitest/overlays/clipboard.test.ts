@@ -1,5 +1,5 @@
 import { create_clipboard_feedback } from '#lib/overlays/index.js'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 describe(`create_clipboard_feedback`, () => {
   beforeEach(() => vi.useFakeTimers())

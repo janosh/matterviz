@@ -52,7 +52,7 @@ const axis_neighbours = (bucket_idx: number, count: number): number[] =>
 // query into a look at 27 buckets, whatever the cell holds.
 export type SiteGrid = {
   // Index registered for the site of `key` within tolerance of `abc`, or -1 if none
-  find: (abc: Vec3, key: string) => number
+  index_of: (abc: Vec3, key: string) => number
   add: (abc: Vec3, key: string, idx: number) => void
 }
 
@@ -93,7 +93,7 @@ export function make_site_grid(
       if (bucket) bucket.push({ idx, abc })
       else buckets.set(bucket_key, [{ idx, abc }])
     },
-    find(abc, key) {
+    index_of(abc, key) {
       const buckets = by_species.get(key)
       if (!buckets) return -1
       const [bin_a, bin_b, bin_c] = bucket_idxs(abc)
@@ -175,7 +175,7 @@ export function find_lattice_translations(
     // dropping the c component of a purely vertical offset also leaves the identity
     if (pure_translations && is_identity(shift)) continue
     const maps_onto_sites = images.every(
-      (image, image_idx) => grid.find(math.add(image.abc, shift), keys[image_idx]) >= 0,
+      (image, image_idx) => grid.index_of(math.add(image.abc, shift), keys[image_idx]) >= 0,
     )
     if (maps_onto_sites) translations.push(shift)
   }

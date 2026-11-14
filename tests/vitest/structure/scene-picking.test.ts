@@ -16,7 +16,7 @@ import {
 } from '#lib/structure/scene-picking.svelte.js'
 import { MAX_SELECTED_SITES } from '#lib/structure/measure.js'
 import { Group, Vector3 } from 'three/webgpu'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 const state = (overrides: Partial<PickState> = {}): PickState => ({
   measure_mode: `distance`,
@@ -64,6 +64,8 @@ describe(`next_site_selection`, () => {
       state({ measure_mode: `edit-bonds`, ...picks([3]) }), picks([])],
     [`edit-bonds second pick completes the bond pair`, 5,
       state({ measure_mode: `edit-bonds`, ...picks([3]) }), { ...picks([3, 5]), bond_pair: [3, 5] }],
+    // `as const` rows would narrow an unannotated `shift` to the literal `true`
+    // oxlint-disable-next-line no-inferrable-types
   ] as const)(`%s`, (_label, site_idx, input, expected, shift: boolean = false) => {
     // toEqual treats an absent bond_pair as undefined, but fails on an unexpected pair
     expect(next_site_selection(site_idx, input, shift)).toEqual(expected)

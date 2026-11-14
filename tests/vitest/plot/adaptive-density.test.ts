@@ -12,7 +12,7 @@ import {
 } from '#lib/plot/scatter/adaptive-density.js'
 import { build_spatial_index, query_nearest } from '#lib/plot/core/spatial-index.js'
 import type { DensePointSeries } from '#lib/plot/scatter/adaptive-density.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { index_read_counter } from '../setup'
 
 describe(`adaptive density utilities`, () => {

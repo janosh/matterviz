@@ -3,7 +3,7 @@ import type { Vec3 } from '#lib/math.js'
 import { clip_bounds } from '#lib/plot/core/decorations/tooltip.js'
 import { createRawSnippet, flushSync } from 'svelte'
 import { PerspectiveCamera } from 'three/webgpu'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { mount_scene } from './mount'
 
 vi.mock(`#lib/plot/core/decorations/tooltip.js`, async (import_original) => {
@@ -37,7 +37,8 @@ test.each<[string, Vec3, number]>([
   )
   onTestFinished(unmount_scene)
   const cam = camera.current
-  if (!(cam instanceof PerspectiveCamera)) throw new Error(`expected threlte's default camera`)
+  if (!(cam instanceof PerspectiveCamera))
+    throw new TypeError(`expected threlte's default camera`)
   Object.assign(cam, { fov: 50, aspect: 800 / 600 }).updateProjectionMatrix()
   cam.position.set(0, 0, 10)
   cam.lookAt(0, 0, 0)

@@ -17,7 +17,7 @@ import { zipSync } from 'fflate'
 import file_system from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Three points normalised to max = 100 (like compute_xrd_pattern, so measured and computed
 // patterns overlay at the same scale): 100/200/300 → 33.3/66.7/100. Every point is kept; only

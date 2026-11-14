@@ -1,7 +1,7 @@
 import type { D3InterpolateName } from '#lib/colors/index.js'
 import type { CellVal } from '#lib/table/index.js'
 import { compute_column_stats, make_cell_color_scale } from '#lib/table/index.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 // Row, sort, filter and stats helpers are tested with DataTable in svelte-widgets; these cover
 // HeatmapTable's color scales.

@@ -1,7 +1,7 @@
 import type { BinaryPhaseDiagram } from '#lib/phase-diagram/index.js'
 import PhaseDiagramControls from '#lib/phase-diagram/PhaseDiagramControls.svelte'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { bind_props, query, reset_section, set_input, set_select } from '../setup'
 import { PHASE_DIAGRAM_DEFAULTS } from '#lib/phase-diagram/utils.js'
 import { eutectic } from './fixtures/test-data'

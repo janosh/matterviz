@@ -7,7 +7,7 @@ import type { TrajectoryRdf } from '#lib/rdf/index.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, set_input } from '../setup'
 import { make_crystal } from '../test-fixtures'
 import { FCC_LATTICE_CONST, make_fcc } from '../structure-id/lattices'
@@ -124,7 +124,7 @@ test.each([
     await settle()
     const csv = vi.mocked(download).mock.calls.at(-1)
     expect(csv?.slice(1)).toEqual([`rdf.csv`, `text/csv`])
-    if (typeof csv?.[0] !== `string`) throw new Error(`Expected CSV text`)
+    if (typeof csv?.[0] !== `string`) throw new TypeError(`Expected CSV text`)
     const csv_rows = csv[0].trim().split(`\n`)
     expect(csv_rows[0]).toBe(`r_A,g_Cu-Cu`)
     expect(csv_rows.slice(1).map((row) => row.split(`,`).map(Number))).toEqual(
@@ -139,7 +139,7 @@ test.each([
     )
     const json = vi.mocked(download).mock.calls.at(-1)
     expect(json?.slice(1)).toEqual([`rdf.json`, `application/json`])
-    if (typeof json?.[0] !== `string`) throw new Error(`Expected JSON text`)
+    if (typeof json?.[0] !== `string`) throw new TypeError(`Expected JSON text`)
     const exported: unknown = JSON.parse(json[0])
     expect(exported).toEqual({
       schema_version: 1,

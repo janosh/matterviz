@@ -55,7 +55,7 @@ import { sanitize_html } from '#lib/sanitize.js'
 import { scaleLinear } from 'd3-scale'
 import process from 'node:process'
 import { type Component, flushSync, mount, tick, unmount } from 'svelte'
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from './numeric-helpers'
 import { mount_sized } from './setup'
 import {

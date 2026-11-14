@@ -1,6 +1,6 @@
 import PhononThermalPlot from '#lib/spectral/PhononThermalPlot.svelte'
 import type { PhononDos } from '#lib/spectral/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { flush_render, mount_in_test } from '../setup'
 
 // Einstein solid with 3 modes at 5 THz (see thermal.test.ts)

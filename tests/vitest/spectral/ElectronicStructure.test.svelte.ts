@@ -25,7 +25,7 @@ import { types } from 'node:util'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Vector3 } from 'three/webgpu'
-import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   create_drop_event,
   fire,

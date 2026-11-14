@@ -16,7 +16,7 @@ import { DEFAULTS } from '#lib/settings.js'
 import { read_pan_offset, set_pan_offset } from '#lib/scene/pan.js'
 import { type ComponentProps, flushSync } from 'svelte'
 import { type Camera, OrthographicCamera, PerspectiveCamera } from 'three/webgpu'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { mount_scene } from './mount'
 
 // SceneCamera with no position yet (as while a scene measures its bounds) unless given one
@@ -76,7 +76,7 @@ test.each([`orthographic`, `perspective`] as const)(
     if (!controls || !reset) throw new Error(`SceneCamera registered no reset`)
     const camera = camera_store.current
     if (!(camera instanceof OrthographicCamera || camera instanceof PerspectiveCamera))
-      throw new Error(`SceneCamera made no zoomable camera`)
+      throw new TypeError(`SceneCamera made no zoomable camera`)
     camera.position.set(9, 9, 9)
     controls.target.set(1, 1, 1)
     camera.zoom = 99

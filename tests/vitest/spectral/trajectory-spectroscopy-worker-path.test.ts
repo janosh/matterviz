@@ -7,7 +7,7 @@ import type {
 } from '#lib/spectral/trajectory-spectroscopy.js'
 import { calc_trajectory_spectroscopy } from '#lib/spectral/trajectory-spectroscopy.js'
 import { create_input_store, type WorkerRequest } from '#lib/worker-serve.js'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_position_stream, make_signal } from '../test-fixtures'
 

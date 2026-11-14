@@ -39,11 +39,7 @@ export const read_ase_header = (view: DataView): { n_items: number; offsets_pos:
 
 // Decode one ULM ndarray item `[shape, dtype, absolute byte offset]` out of the frame's view.
 // `base_offset` is the absolute offset `view` starts at when the caller holds only a slice.
-const ndarray_reader = (
-  view: DataView,
-  ref: { ndarray: unknown[] },
-  base_offset: number = 0,
-) => {
+const ndarray_reader = (view: DataView, ref: { ndarray: unknown[] }, base_offset = 0) => {
   const [shape, dtype, absolute_offset] = ref.ndarray as [number[], string, number]
   const array_offset = absolute_offset - base_offset
   const total = values_per_sample(shape)

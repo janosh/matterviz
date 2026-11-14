@@ -12,7 +12,7 @@ import {
   water_pt_diagram,
 } from '#site/phase-diagrams/pressure-temperature.js'
 import { type ComponentProps, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   clip_rect,

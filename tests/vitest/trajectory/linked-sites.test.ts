@@ -6,7 +6,7 @@ import {
   scene_site_indices,
   site_source_atoms,
 } from '#lib/trajectory/linked-sites.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { make_molecule } from '../test-fixtures'
 
 const structure = make_molecule(

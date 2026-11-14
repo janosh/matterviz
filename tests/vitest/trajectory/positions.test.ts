@@ -14,7 +14,7 @@ import { make_rng } from '../numeric-helpers'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { accumulate_positions } from '#lib/trajectory/runs/accumulate.js'
 import { encode_frame, materialize_frame, type NumericFrame } from '#lib/trajectory/frame.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, make_frame, make_position_stream } from '../test-fixtures'
 
 // Orthogonal cells take an inlined per-frame loop; it must reproduce the generic

@@ -1,7 +1,7 @@
 import type { SymmetryDataset } from '#lib/symmetry/index.js'
 import SymmetryStats from '#lib/symmetry/SymmetryStats.svelte'
 import { type ComponentProps, flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query, set_input } from '../setup'
 import { make_wyckoff_dataset } from '../test-fixtures'
 

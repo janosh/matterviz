@@ -1,6 +1,6 @@
 import BohrAtom from '#lib/element/BohrAtom.svelte'
 import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 describe(`BohrAtom`, () => {

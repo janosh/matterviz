@@ -10,7 +10,7 @@ import {
   SphereGeometry,
   Vector3,
 } from 'three/webgpu'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 
 // Raycaster hits come sorted nearest first; each hit is labelled by its distance along z

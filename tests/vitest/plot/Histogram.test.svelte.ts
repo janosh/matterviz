@@ -12,7 +12,7 @@ import {
   normalize_counts,
 } from '#lib/plot/histogram/histogram.js'
 import { flushSync, tick } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,
@@ -408,7 +408,8 @@ describe(`Histogram`, () => {
 
     const { control, set_value } = form_controls()
     const series_select = control(`Series`)
-    if (!(series_select instanceof HTMLSelectElement)) throw new Error(`Series is no select`)
+    if (!(series_select instanceof HTMLSelectElement))
+      throw new TypeError(`Series is no select`)
     // an option shows text, so an HTML label reads as it renders in the legend
     expect(option_texts(series_select)).toEqual([
       `Repeated`,
@@ -655,7 +656,8 @@ describe(`Histogram`, () => {
       bins: 10,
     })
     const legend_checkbox = form_controls().control(`Show legend`)
-    if (!(legend_checkbox instanceof HTMLInputElement)) throw new Error(`no legend checkbox`)
+    if (!(legend_checkbox instanceof HTMLInputElement))
+      throw new TypeError(`no legend checkbox`)
     expect(legend_checkbox.checked).toBe(true)
     for (const checked of [false, true]) {
       legend_checkbox.click()

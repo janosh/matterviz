@@ -6,7 +6,7 @@ import {
   series_to_csv_rows,
   to_csv,
 } from '#lib/plot/core/utils/chart-export.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`to_csv`, () => {
   test.each([

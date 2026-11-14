@@ -4,7 +4,7 @@ import type ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import Dos from '#lib/spectral/Dos.svelte'
 import type { PhononDos } from '#lib/spectral/types.js'
 import { type ComponentProps, flushSync, mount, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 // the plot's props as Dos builds them
 const plot = vi.hoisted(() => ({

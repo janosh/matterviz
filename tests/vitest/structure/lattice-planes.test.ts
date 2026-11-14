@@ -8,7 +8,7 @@ import {
   polygon_fan_vertices,
   tile_lattice_planes,
 } from '#lib/structure/lattice-planes.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // oxfmt-ignore
 const cubic: Matrix3x3 = [[4, 0, 0], [0, 4, 0], [0, 0, 4]]

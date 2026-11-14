@@ -226,7 +226,8 @@ export function assign_e_above_hull(phases: PlannerPhase[]): void {
   }))
   e_above_hull_distances(entries, entries).forEach((dist, idx) => {
     const phase = phases[idx]
-    if (!Number.isFinite(dist)) throw new Error(`No hull at composition of ${phase.formula}`)
+    if (!Number.isFinite(dist))
+      throw new TypeError(`No hull at composition of ${phase.formula}`)
     // round-off off the plane (~1e-15) is on the hull, as the LP's exact 0 for a vertex
     phase.e_above_hull = dist > ENERGY_TOL ? dist : 0
   })

@@ -5,7 +5,7 @@ import {
   resolve_pattern,
   unique_patterns,
 } from '#lib/plot/core/patterns.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const BLUE = `#336699` // dark -> auto fg is white
 const YELLOW = `#ffe0b3` // light -> auto fg is black

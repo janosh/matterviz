@@ -17,7 +17,7 @@ import { swizzle_to_render } from '#lib/chempot-diagram/compute.js'
 import type { Vec3 } from '#lib/math.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import * as THREE from 'three/webgpu'
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { threlte_stub } from '../isosurface/threlte-stub'
 import { mount_scene } from '../scene/mount'
 import {

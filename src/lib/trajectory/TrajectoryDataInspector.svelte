@@ -155,7 +155,7 @@
     if (!source_indices) return null
     const total_atoms = active_frame?.metadata?.total_atoms
     if (typeof total_atoms !== `number`)
-      throw new Error(`Render-sampled frame lacks total_atoms, got ${typeof total_atoms}`)
+      throw new TypeError(`Render-sampled frame lacks total_atoms, got ${typeof total_atoms}`)
     return { source_indices, total_atoms }
   })
 

@@ -3,7 +3,7 @@
 // to leave every module's suite green.
 import { can_create_worker, create_worker_client } from '#lib/worker-client.svelte.js'
 import { serve_worker } from '#lib/worker-serve.js'
-import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { beforeEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import type { StubWorkerInstance, StubWorkerMessage } from './setup'
 import { install_stub_worker } from './setup'
 

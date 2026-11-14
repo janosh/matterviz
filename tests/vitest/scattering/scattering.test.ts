@@ -8,7 +8,7 @@ import {
   xray_form_factor,
 } from '#lib/scattering/index.js'
 import NEUTRON_SCATTERING_LENGTHS from '#lib/scattering/neutron-scattering-lengths.json' with { type: 'json' }
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`neutron_scattering_length`, () => {
   // Reference b_coh in fm from the NIST NCNR table (Sears 1992 compilation). The table quotes

@@ -198,7 +198,7 @@ test.describe(`ScatterPlot3D`, { tag: `@webgl` }, () => {
     expect(
       await page.locator(CONTAINER_SELECTOR).evaluate((element) => {
         const canvas_host = element.querySelector(`canvas`)?.parentElement
-        if (!(canvas_host instanceof HTMLElement)) throw new Error(`Missing canvas host`)
+        if (!(canvas_host instanceof HTMLElement)) throw new TypeError(`Missing canvas host`)
         const probe = document.createElement(`span`)
         probe.style.cssText = `position:absolute;right:-40px;top:100px;width:80px;height:40px;z-index:1000`
         element.append(probe)

@@ -11,7 +11,7 @@ import type {
   VolumetricData,
 } from '#lib/isosurface/types.js'
 import { flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,

@@ -1,6 +1,6 @@
 import Nucleus from '#lib/element/Nucleus.svelte'
 import { mount } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 const mount_nucleus = (props: Record<string, unknown>) => {
   mount(Nucleus, {

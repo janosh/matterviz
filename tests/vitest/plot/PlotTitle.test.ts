@@ -2,7 +2,7 @@ import PlotTitle from '#lib/plot/core/components/PlotTitle.svelte'
 import type { PlotTitleConfig } from '#lib/plot/core/plot-title.js'
 import type { ComponentProps } from 'svelte'
 import { mount, unmount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { mock_canvas_context, mock_text_measurement } from '../setup'
 
 const mount_title = (

@@ -1,6 +1,6 @@
 // Fixtures shared by the Sunburst and Treemap tests
 import type { SunburstNode, SunburstNodeHandlerProps } from '#lib/plot/index.js'
-import { expect, type Mock } from 'vitest'
+import { expect, type Mock } from 'vite-plus/test'
 
 // A (explicit color) -> {A1: 4, A2: 6}, B: 10. Root total = 20.
 export const tree: SunburstNode[] = [

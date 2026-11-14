@@ -2,7 +2,7 @@
 import PropsTable from '#site/PropsTable.svelte'
 import type { ComponentDoc } from '#root/src/scripts/prop-docs.ts'
 import { flushSync, mount } from 'svelte'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/info-tag` } } }))

@@ -6,7 +6,7 @@ import type { Matrix3x3 } from '#lib/math.js'
 import type { Hkl, XrdPattern, XrdPeak } from '#lib/xrd/index.js'
 import * as xrd from '#lib/xrd/index.js'
 import { type ComponentProps, createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   create_drop_event,

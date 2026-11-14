@@ -2,7 +2,7 @@ import element_data from '#lib/element/data.js'
 import ElementStats from '#lib/element/ElementStats.svelte'
 import { format_num } from '#lib/labels.js'
 import { flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 describe(`ElementStats`, () => {

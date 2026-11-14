@@ -26,7 +26,7 @@ import { deflateSync as deflate_sync, gzipSync as gzip_sync } from 'node:zlib'
 import { zipSync } from 'fflate'
 import { mount } from 'svelte'
 import type * as svelte_module from 'svelte'
-import { afterEach, assert, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, assert, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   BAD_ROW_CIF,
   cif_with_rows,
@@ -665,13 +665,13 @@ describe(`LARGE_FILE markers`, () => {
   }
   const wire_frame = (frame_idx: number): unknown => {
     const frame = backing.read_frame(frame_idx)
-    if (frame instanceof Promise) throw new Error(`Memory runs read synchronously`)
+    if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
     return vscode_clone(frame_to_wire(frame))
   }
 
   test(`a wire frame posts only its views' own bytes and survives VS Code's transport`, () => {
     const frame = backing.read_frame(2)
-    if (frame instanceof Promise) throw new Error(`Memory runs read synchronously`)
+    if (frame instanceof Promise) throw new TypeError(`Memory runs read synchronously`)
     const padded = new Float64Array(frame.coordinates.length + 4)
     padded.set(frame.coordinates, 2)
     const input = {
@@ -836,7 +836,7 @@ describe(`LARGE_FILE markers`, () => {
       const observer = vi.fn()
       properties.subscribe(observer)
       const handler = add_listener.mock.calls.at(-1)?.[1]
-      if (typeof handler !== `function`) throw new Error(`Missing host metadata listener`)
+      if (typeof handler !== `function`) throw new TypeError(`Missing host metadata listener`)
       const notify = vi.fn(() =>
         handler.call(
           globalThis,

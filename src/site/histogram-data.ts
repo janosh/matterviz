@@ -217,11 +217,7 @@ export const generate_age_distribution = (count: number, rng: Rng = Math.random)
   })
 
 // Generate financial data (stock prices with trends)
-export const generate_financial_data = (
-  count: number,
-  price: number = 100,
-  rng: Rng = Math.random,
-) =>
+export const generate_financial_data = (count: number, price = 100, rng: Rng = Math.random) =>
   Array.from({ length: count }, () => {
     const change = (rng() - 0.5) * 10 // Random price change
     price = Math.max(1, price + change) // Ensure positive price

@@ -20,7 +20,7 @@ import type { GasSpecies, GasThermodynamicsConfig, PhaseData } from '#lib/convex
 import { DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { build_free_energy_model } from '#lib/phase-diagram/ternary/free-energy.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_phase } from '../test-fixtures'
 
 const provider = get_default_gas_provider()

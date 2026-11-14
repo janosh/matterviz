@@ -16,7 +16,7 @@ import * as math from '#lib/math.js'
 import { get_pbc_image_sites, type Pbc } from '#lib/structure/pbc.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { test_molecules } from '#site/molecules.js'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import {
   cubic_matrix,

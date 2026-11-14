@@ -9,7 +9,7 @@ import {
 import { get_text_metrics_revision } from '#lib/plot/core/text-metrics.js'
 import { TICK_LABEL_HEIGHT } from '#lib/plot/core/tick-layout.js'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { mock_text_measurement, query } from '../setup'
 
 // Plot geometry shared across cases: plot area is x∈[40,180], y∈[10,70]

@@ -5,7 +5,7 @@ import {
   parse_phase_diagram_svg,
   trace_region_outline,
 } from '#lib/phase-diagram/svg-to-diagram.js'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { pts, rect } from './fixtures/test-data'
 
 // Both fixtures draw the same diagram: plot area px x 100..500 ↔ composition 0..1,

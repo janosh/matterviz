@@ -3,7 +3,7 @@ import {
   is_lammps_dump_content,
 } from '#lib/structure/format-detect.js'
 import { is_mmcif_content } from '#lib/structure/parsers/mmcif.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const lammps_data = `LAMMPS data file
 

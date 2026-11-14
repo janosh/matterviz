@@ -1,5 +1,5 @@
 // The public parse-only entry stays worker-safe.
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { expect_worker_safe_import_graph } from '../setup'
 
 test(`worker-safe file-viewer entry graphs stay free of Svelte`, () => {

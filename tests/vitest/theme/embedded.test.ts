@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import type * as colors from '#lib/colors/index.js'
 import { detect_parent_theme, watch_theme } from '#lib/theme/embedded.js'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // Isolate watcher behavior from palette data and theme registration side effects, keeping
 // the real color parsers so an unparsable host colour fails as it would in a browser

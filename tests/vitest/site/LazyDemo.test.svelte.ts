@@ -1,7 +1,7 @@
 import LazyDemo from '#site/LazyDemo.svelte'
 import CodeExample from '#site/CodeExample.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
 import { trigger_intersection } from '../environment'
 import { doc_query } from '../setup'

@@ -9,7 +9,7 @@ import { element_radius } from '#lib/structure/index.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { afterEach, describe, expect, onTestFinished, test } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test } from 'vite-plus/test'
 import { bind_props, dismiss_popover, doc_query, set_input } from '../setup'
 import { simple_structure } from '../test-fixtures'
 

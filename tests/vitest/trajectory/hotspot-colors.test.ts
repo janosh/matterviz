@@ -11,7 +11,7 @@ import { hotspot_bin, hotspot_display_values } from '#lib/trajectory/hotspots.js
 import { encode_frame } from '#lib/trajectory/frame.js'
 import { make_trajectory_frame } from '../test-fixtures'
 import { Color, Vector3 } from 'three/webgpu'
-import { expect, it } from 'vitest'
+import { expect, it } from 'vite-plus/test'
 import type { Vec3 } from '#lib/math.js'
 import { make_lattice } from '#lib/structure/parsers/shared.js'
 import { parse_linear_rgb } from '#lib/scene/colors.js'

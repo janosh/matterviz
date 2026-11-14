@@ -3,7 +3,7 @@ import ControlPane from '#lib/overlays/ControlPane.svelte'
 import ViewerPane from '#lib/overlays/ViewerPane.svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
 import { Expand } from 'svelte-widgets/icons'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,

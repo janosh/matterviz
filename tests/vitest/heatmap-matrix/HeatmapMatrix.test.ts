@@ -7,7 +7,7 @@ import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,

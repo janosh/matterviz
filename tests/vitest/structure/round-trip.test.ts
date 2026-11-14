@@ -8,7 +8,7 @@ import type { AnyStructure, Site } from '#lib/structure/index.js'
 import type { StructTextFormat } from '#lib/structure/export.js'
 import { STRUCT_TEXT_FORMATS } from '#lib/structure/export.js'
 import { parse_structure_file } from '#lib/structure/parse.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import {
   complex_structure,
   make_crystal,

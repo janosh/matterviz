@@ -1,5 +1,5 @@
 import { dodge, type DodgeSide } from '#lib/plot/core/dodge.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 
 // Seeded normal positions (Box-Muller)

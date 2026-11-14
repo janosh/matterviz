@@ -1,6 +1,6 @@
 import InfoCard from '#lib/layout/InfoCard.svelte'
 import { type ComponentProps, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 type Item = NonNullable<ComponentProps<typeof InfoCard>[`data`]>[number]

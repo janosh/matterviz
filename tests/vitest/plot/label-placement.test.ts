@@ -15,7 +15,7 @@ import {
   segment_rect_intersects,
   segments_intersect,
 } from '#lib/plot/core/utils/label-placement.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { with_measured_text } from '../setup'
 
 const make_rect = (x_pos: number, y_pos: number, width: number, height: number) => ({

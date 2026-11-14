@@ -710,7 +710,7 @@ export function open_lammps_frames(
     } catch (error) {
       // the only skip a read can hit: a non-finite line between the open's samples
       if (error instanceof SkippedLammpsFrameError)
-        throw new Error(`Non-finite LAMMPS coordinates ${error.message}`, { cause: error })
+        throw new TypeError(`Non-finite LAMMPS coordinates ${error.message}`, { cause: error })
       throw error
     } finally {
       reader.warn_guesses()

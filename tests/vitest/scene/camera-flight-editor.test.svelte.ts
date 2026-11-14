@@ -1,6 +1,6 @@
 import { create_camera_flight_editor } from '#lib/scene/camera-flight-editor.svelte.js'
 import { orbit_camera_flight } from '#lib/scene/camera-flight.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { pose } from './mount'
 
 const populated_editor = () => {

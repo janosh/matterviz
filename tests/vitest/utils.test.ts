@@ -10,7 +10,7 @@ import {
   value_key,
   plain_copy,
 } from '#lib/utils.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 test.each([
   [{}, true],

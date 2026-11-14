@@ -8,7 +8,7 @@ import {
 } from '#lib/sanitize.js'
 import type * as Sanitize from '#lib/sanitize.js'
 import DOMPurify from 'dompurify'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 // XSS payloads that must never survive any sanitizer
 const XSS_PAYLOADS = [

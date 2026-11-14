@@ -24,7 +24,7 @@ import { ELEM_SYMBOLS } from '#lib/element/types.js'
 import { mock_canvas_context } from './setup'
 import { rgb as d3_rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
-import { beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
 
 test(`every d3-scale-chromatic interpolate* export is a registered interpolator`, () => {
   const names = Object.keys(d3_sc).filter((name) => name.startsWith(`interpolate`))

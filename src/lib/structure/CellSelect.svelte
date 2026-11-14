@@ -76,7 +76,7 @@
     if (leaves_group) close_menu()
   }
 
-  function handle_key_down(event: KeyboardEvent, submit_on_enter: boolean = false) {
+  function handle_key_down(event: KeyboardEvent, submit_on_enter = false) {
     if (event.key === `Escape`) close_menu()
     if (submit_on_enter && event.key === `Enter`) handle_input_submit()
   }

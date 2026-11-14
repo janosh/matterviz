@@ -32,7 +32,7 @@ import {
   Vector3,
   Vector2,
 } from 'three/webgpu'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { SphereInstances } from '#lib/scene/picking.js'
 import { make_rng } from '../numeric-helpers'
 

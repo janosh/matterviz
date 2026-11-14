@@ -1,7 +1,7 @@
 import { formula_key_from_composition } from '#lib/chempot-diagram/compute.js'
 import { get_temp_filter_payload } from '#lib/chempot-diagram/temperature.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_phase } from '../test-fixtures'
 
 const temp_entries_fixture = [

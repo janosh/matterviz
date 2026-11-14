@@ -15,7 +15,7 @@ import type {
   PhononDos,
 } from '#lib/spectral/types.js'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import {
   bind_props,
   clip_rect,

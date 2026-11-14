@@ -6,7 +6,7 @@ import {
 } from '#lib/neb/parse.js'
 import { analyze_barrier, path_spline, reaction_coordinate } from '#lib/neb/reaction-path.js'
 import { reaction_paths } from '#site/neb/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 
 const CELL = 4

@@ -20,7 +20,7 @@ import type {
 import { summarize_run } from '#lib/trajectory/run.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { dispose_run_port, serve_run_over_port } from '#lib/trajectory/runs/worker.js'
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { afterEach, describe, expect, it, type Mock, vi } from 'vite-plus/test'
 
 // MessagePort/Worker postMessage take no targetOrigin (that's window.postMessage)
 // oxlint-disable eslint-plugin-unicorn/require-post-message-target-origin

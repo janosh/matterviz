@@ -14,7 +14,7 @@ export const sampled_source_indices = (
   if (!metadata?.render_sample) return undefined
   const { source_atom_indices } = metadata
   if (!Array.isArray(source_atom_indices))
-    throw new Error(
+    throw new TypeError(
       `Render-sampled frame lacks its source_atom_indices array, got ${typeof source_atom_indices}`,
     )
   return source_atom_indices

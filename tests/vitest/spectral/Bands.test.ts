@@ -7,7 +7,7 @@ import type { BandsSpinMode, BaseBandStructure, FrequencyUnit } from '#lib/spect
 import type { ComponentProps } from 'svelte'
 import { flushSync, mount, tick } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import {
   bind_props,
   fire,

@@ -11,7 +11,7 @@ import * as atom_instances from '#lib/structure/atom-instances.js'
 import { merge_split_partial_sites } from '#lib/structure/partial-occupancy.js'
 import { make_site } from '#lib/structure/site.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 
 const palette = { C: `#111111`, O: `#222222`, Fe: `#333333`, Ni: `#444444` }
 

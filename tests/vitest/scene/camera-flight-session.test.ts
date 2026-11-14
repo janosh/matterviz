@@ -2,7 +2,7 @@ import type { CameraPose } from '#lib/scene/camera-flight.js'
 import type { FlightTimeline } from '#lib/scene/camera-flight-session.js'
 import { create_camera_flight_session } from '#lib/scene/camera-flight-session.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vite-plus/test'
 import { flight_controller } from './mount'
 
 // `blocked_idx`: preparing that MD frame hangs until `pending` resolves, ignoring cancellation

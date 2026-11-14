@@ -7,7 +7,7 @@ import {
   is_compound,
   tokenize_formula_markup,
 } from '#lib/composition/formula-markup.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`get_formula_label_segments`, () => {
   const plain = (text: string) => ({ text, subscript: false })

@@ -44,7 +44,7 @@ import { create_warning_collector, post_new_warnings } from '#lib/trajectory/par
 import { host_run } from '#lib/trajectory/runs/host.js'
 import { indexed_text_run } from '#lib/trajectory/runs/indexed-text.js'
 import { serve_run_over_port, worker_run } from '#lib/trajectory/runs/worker.js'
-import { describe, expect, it, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, test, vi } from 'vite-plus/test'
 import { max_abs_error, max_rel_error } from '../numeric-helpers'
 import { make_trajectory_frame, read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'
@@ -1026,7 +1026,8 @@ describe(`worker-served run lifecycle`, () => {
         const observer = vi.fn()
         run.properties.subscribe(observer)
         const handler = add_listener.mock.calls.find(([type]) => type === `message`)?.[1]
-        if (typeof handler !== `function`) throw new Error(`Missing worker message handler`)
+        if (typeof handler !== `function`)
+          throw new TypeError(`Missing worker message handler`)
         // Invoke directly so the test can assert errors normally reported by the event loop.
         expect_listener_errors(
           () =>
@@ -1113,7 +1114,7 @@ describe(`worker-served run lifecycle`, () => {
       const dispose = () => {
         if (phase !== `messageerror`) return run.dispose()
         const handler = add_listener.mock.calls.find(([type]) => type === `messageerror`)?.[1]
-        if (typeof handler !== `function`) throw new Error(`Missing messageerror handler`)
+        if (typeof handler !== `function`) throw new TypeError(`Missing messageerror handler`)
         handler.call(port, new MessageEvent(`messageerror`))
       }
       expect(dispose).toThrow(failure)

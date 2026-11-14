@@ -8,7 +8,7 @@ import type {
   FermiSurfaceData,
 } from '#lib/fermi-surface/types.js'
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
-import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { can_create_worker } from '#lib/worker-client.svelte.js'
 import {
   bind_props,

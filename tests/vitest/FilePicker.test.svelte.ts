@@ -4,7 +4,7 @@ import { DEFAULT_FILE_TYPE_PAINTS, file_type_paint } from '#lib/io/file-type-pai
 import { color as d3_color } from 'd3-color'
 import { flushSync, mount, unmount } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { doc_query } from './setup'
 
 describe(`FilePicker`, () => {

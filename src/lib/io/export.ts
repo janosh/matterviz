@@ -547,6 +547,8 @@ function minify_clone(root: Element): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT)
   const comments: Node[] = []
   while (walker.nextNode()) comments.push(walker.currentNode)
+  // a TreeWalker yields plain Nodes, which lack ChildNode.remove()
+  // oxlint-disable-next-line prefer-dom-node-remove
   for (const comment of comments) comment.parentNode?.removeChild(comment)
   for (const element of [root, ...root.querySelectorAll(`*`)]) {
     const style = (element as SVGElement).style
@@ -1090,7 +1092,9 @@ export async function render_video_frames(
             export_camera instanceof PerspectiveCamera !==
             (pose.projection === `perspective`)
           )
-            throw new Error(`Select ${pose.projection} projection before rendering this movie`)
+            throw new TypeError(
+              `Select ${pose.projection} projection before rendering this movie`,
+            )
           export_camera.position.set(...pose.position)
           export_camera.quaternion.set(...pose.quaternion)
           export_camera.zoom = pose.zoom

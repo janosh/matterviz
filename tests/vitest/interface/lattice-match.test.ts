@@ -11,7 +11,7 @@ import type { LatticeMatch, LatticeMatchOptions, Matrix2x2 } from '#lib/interfac
 import { INTERFACE_DEFAULTS } from '#lib/interface/types.js'
 import type { Matrix3x3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal } from '../test-fixtures'
 
 const SQRT3 = Math.sqrt(3)

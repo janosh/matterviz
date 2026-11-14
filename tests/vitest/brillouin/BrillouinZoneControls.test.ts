@@ -2,7 +2,7 @@ import BrillouinZoneControls from '#lib/brillouin/BrillouinZoneControls.svelte'
 import { mount, tick } from 'svelte'
 import { DEFAULTS } from '#lib/settings.js'
 import { doc_query, reset_section, set_input } from '../setup'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 test(`Brillouin zone controls preserve slider precision, edit hex colors and reset values`, async () => {
   mount(BrillouinZoneControls, {

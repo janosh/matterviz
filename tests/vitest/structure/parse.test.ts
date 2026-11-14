@@ -49,7 +49,7 @@ import scientific_notation_poscar from '#site/structures/scientific-notation.pos
 import selective_dynamics from '#site/structures/selective-dynamics.poscar?raw'
 import tio2_cif from '#site/structures/TiO2.cif?raw'
 import vasp4_format from '#site/structures/vasp4-format.poscar?raw'
-import { assert, describe, expect, it, onTestFinished, test, vi } from 'vitest'
+import { assert, describe, expect, it, onTestFinished, test, vi } from 'vite-plus/test'
 import { cubic_matrix, get_dummy_structure, read_maybe_gz } from '../test-fixtures'
 
 const TOL = 8

@@ -3,7 +3,7 @@ import {
   parse_large_file_marker,
   plan_host_file_transfer,
 } from '#lib/file-viewer/host-transfer.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 const plan = (filename: string, file_size: number) =>
   plan_host_file_transfer({

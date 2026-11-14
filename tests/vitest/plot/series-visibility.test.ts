@@ -5,7 +5,7 @@ import {
   legend_mode_to_prop,
   resolve_legend_visibility,
 } from '#lib/plot/core/utils/series-visibility.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const make_store = (initial: DataSeries[]) => {
   const store: { raw: DataSeries[]; hidden?: readonly (string | number)[] } = {

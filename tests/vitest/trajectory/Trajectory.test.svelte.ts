@@ -46,7 +46,7 @@ import {
 import { make_run as make_shared_run, make_trajectory_frame } from '../test-fixtures'
 import type { Component, ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 vi.mock(`$app/env`, () => ({ browser: false }))
 vi.mock(`$app/state`, () => ({

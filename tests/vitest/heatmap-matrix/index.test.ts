@@ -5,7 +5,7 @@ import {
   matrix_to_rows,
   ORDERING_LABELS,
 } from '#lib/heatmap-matrix/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`elements_to_axis`, () => {
   test(`returns all 118 elements with sequential sort_value and typed data`, () => {

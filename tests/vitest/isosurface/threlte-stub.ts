@@ -67,7 +67,7 @@ export function hover_highlight(): { geometry: BufferGeometry; color: string } |
   const { geometry } = stub_state.nodes[idx].props
   const { color } = stub_state.nodes[idx + 1].props
   if (!(geometry instanceof BufferGeometry) || typeof color !== `string`)
-    throw new Error(`hover-highlight mesh without a geometry and material colour`)
+    throw new TypeError(`hover-highlight mesh without a geometry and material colour`)
   return { geometry, color }
 }
 

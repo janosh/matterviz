@@ -1,6 +1,6 @@
 import PhaseDiagramEditorPane from '#lib/phase-diagram/PhaseDiagramEditorPane.svelte'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { eutectic } from './fixtures/test-data'
 import { set_input } from '../setup'
 

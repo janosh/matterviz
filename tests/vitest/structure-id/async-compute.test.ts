@@ -7,7 +7,7 @@ import {
   structure_from_payload,
   to_structure_id_payload,
 } from '#lib/structure-id/worker-payload.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_bcc, make_fcc } from './lattices'
 
 describe(`worker payload`, () => {

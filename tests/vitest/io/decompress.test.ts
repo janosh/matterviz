@@ -11,7 +11,7 @@ import {
   MAX_WRAPPER_LAYERS,
 } from '#lib/io/decompress.js'
 import { zipSync } from 'fflate'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 const compress = async (
   data: Uint8Array<ArrayBuffer>,

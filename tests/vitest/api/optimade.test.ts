@@ -6,7 +6,7 @@ import {
   fetch_optimade_structure,
   fetch_suggested_structures,
 } from '#lib/api/optimade.js'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { mount, tick, unmount } from 'svelte'
 import { MOCK_PROVIDERS, MOCK_STRUCTURES } from '../../fixtures/optimade-mocks'
 import { set_input } from '../setup'

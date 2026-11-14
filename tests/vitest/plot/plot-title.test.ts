@@ -1,6 +1,6 @@
 import { resolve_plot_title, type PlotTitleMeasure } from '#lib/plot/core/plot-title.js'
 import { clear_text_metrics_cache } from '#lib/plot/core/text-metrics.js'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mock_canvas_context } from '../setup'
 
 const fixed_width_measure =

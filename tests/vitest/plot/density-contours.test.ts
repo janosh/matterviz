@@ -7,7 +7,7 @@ import {
   multipolygon_path,
 } from '#lib/plot/core/density-contours.js'
 import { contourDensity, contours } from 'd3-contour'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // mulberry32: 2D samples need a generator without the lattice structure of a short LCG
 const rng = (seed: number) => () => {

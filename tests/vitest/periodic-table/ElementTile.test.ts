@@ -4,7 +4,7 @@ import type { SplitLayout } from '#lib/element/index.js'
 import { DEFAULT_CATEGORY_COLORS } from '#lib/colors/index.js'
 import { colors } from '#lib/state.svelte.js'
 import { type ComponentProps, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 const rand_element = element_data[0]

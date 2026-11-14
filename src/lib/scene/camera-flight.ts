@@ -84,7 +84,7 @@ export function create_camera_flight_sampler(
   }))
   const { interpolation } = flight
   return (time) => {
-    if (!Number.isFinite(time)) throw new Error(`Invalid camera flight time: ${time}`)
+    if (!Number.isFinite(time)) throw new TypeError(`Invalid camera flight time: ${time}`)
     const end_idx = keyframes.findIndex((frame) => frame.time > time)
     if (time <= 0) return copy_pose(keyframes[0])
     if (end_idx === -1) return copy_pose(keyframes[keyframes.length - 1])

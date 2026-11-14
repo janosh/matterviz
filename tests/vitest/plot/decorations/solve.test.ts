@@ -15,7 +15,7 @@ import {
   rect_within_rect,
   rects_overlap,
 } from '#lib/plot/core/layout.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { dense_unit_grid } from '../../setup'
 
 const base_pad = { t: 20, b: 40, l: 50, r: 20 }

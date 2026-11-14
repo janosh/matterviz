@@ -26,3 +26,4 @@ tmp
 
 # agent worktrees / local config
 .claude
+.vitest/

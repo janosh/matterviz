@@ -1,6 +1,6 @@
 import { use_async_result } from '#lib/trajectory/async-result.svelte.js'
 import { flushSync } from 'svelte'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 
 // Options reach compute as given (an Infinity limit stayed Infinity, not JSON's null) and
 // unproxied, and an equal but rebuilt options object starts no second compute

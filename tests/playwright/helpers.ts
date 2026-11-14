@@ -342,8 +342,8 @@ export async function wait_for_3d_canvas(
 // Navigate to structure test page and wait for 3D canvas to be ready
 export async function goto_structure_test(
   page: Page,
-  url: string = `/test/structure`,
-  container_selector: string = `#test-structure`,
+  url = `/test/structure`,
+  container_selector = `#test-structure`,
 ): Promise<Locator> {
   await page.goto(url, { waitUntil: `networkidle` })
   // A canvas can mount before a child throws during hydration; wait for the page hooks too.

@@ -12,7 +12,7 @@ import {
   reaction_coordinate,
 } from '#lib/neb/reaction-path.js'
 import type { AnyStructure, Crystal } from '#lib/structure/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal as build_crystal } from '../test-fixtures'
 
 const as_li = (xyz: Vec3) => ({ element: `Li`, xyz })

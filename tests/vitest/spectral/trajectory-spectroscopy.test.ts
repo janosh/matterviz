@@ -11,7 +11,7 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import { one_sided_periodogram } from '#lib/fft.js'
 import type { Pbc } from '#lib/structure/pbc.js'
 import type { TrajectoryPositionStream, TrajectorySignal } from '#lib/trajectory/index.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { IDENTITY_MATRIX3, cubic_matrix, make_signal } from '../test-fixtures'
 
 const position_stream = (

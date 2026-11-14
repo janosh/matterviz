@@ -12,11 +12,11 @@ import { to_angle_bar_series } from '#lib/bond-angles/series.js'
 import type { BondAngleOptions, BondAngleSplitMode } from '#lib/bond-angles/index.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import type { Vec3 } from '#lib/math.js'
-import type { Molecule } from '#lib/structure/index.js'
+import type { Crystal, Molecule } from '#lib/structure/index.js'
 import { calc_coordination_nums } from '#lib/coordination/calc-coordination.js'
 import { structure_map } from '#site/structures.js'
 import { tick } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, create_drop_event, expect_plot_controls, mount_sized } from '../setup'
 import { BAD_ROW_CIF, make_crystal, make_molecule, make_rocksalt } from '../test-fixtures'
 import { octahedron_points } from '../structure/geometry-fixtures'
@@ -327,9 +327,11 @@ describe(`explicit bonds`, () => {
   // 132 angles as { 0: 2, 90: 104, 180: 26 } instead of the correct 120.
   test(`a periodic explicit bond does not perturb the rocksalt histogram`, () => {
     // Na0 at the origin to the -x image of Cl4 at [0.5, 0, 0]: an existing 2.82 A contact
-    const with_explicit = { ...rocksalt }
-    with_explicit.properties = {
-      bonds: [{ site_idx_1: 0, site_idx_2: 4, order: 1, cell_shift: [-1, 0, 0] }],
+    const with_explicit: Crystal = {
+      ...rocksalt,
+      properties: {
+        bonds: [{ site_idx_1: 0, site_idx_2: 4, order: 1, cell_shift: [-1, 0, 0] }],
+      },
     }
     const expected = { '90.0000': 96, '180.0000': 24 }
     for (const structure of [rocksalt, with_explicit]) {

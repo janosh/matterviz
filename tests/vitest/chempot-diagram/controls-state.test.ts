@@ -11,7 +11,7 @@ import type { ChemPotDiagramConfig } from '#lib/chempot-diagram/types.js'
 import { CHEMPOT_DEFAULTS } from '#lib/chempot-diagram/types.js'
 import type { Vec2 } from '#lib/math.js'
 import { mount, tick, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { clip_rect, doc_query, fire, mouse, plot_svg, resize_element } from '../setup'
 
 describe(`create_chempot_overrides`, () => {

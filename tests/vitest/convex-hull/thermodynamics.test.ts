@@ -17,7 +17,7 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { matrix_inverse_3x3, mat3x3_vec3_multiply, solve_linear_system } from '#lib/math.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 import { load_json, make_phase } from '../test-fixtures'
 import pymatgen_quinary from './fixtures/quinary_pymatgen_reference.json' with { type: 'json' }

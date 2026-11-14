@@ -22,7 +22,7 @@ import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibilit
 import { legend_mode_to_prop } from '#lib/plot/core/utils/series-visibility.js'
 import { globSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vite-plus/test'
 
 const settings_module = join(`src`, `lib`, `settings.ts`)
 // Schema/DEFAULTS leaf: anything that is not a nested group object

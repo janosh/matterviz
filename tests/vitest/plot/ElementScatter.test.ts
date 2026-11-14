@@ -8,7 +8,7 @@ import { element_data } from '#lib/element/index.js'
 import type { InternalPoint } from '#lib/plot/core/types.js'
 import { selected } from '#lib/state.svelte.js'
 import { createRawSnippet, flushSync, mount, tick, type ComponentProps } from 'svelte'
-import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, expect_plot_controls, mount_sized } from '../setup'
 
 vi.mock(`$app/state`, () => ({

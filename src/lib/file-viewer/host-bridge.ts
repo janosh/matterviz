@@ -97,7 +97,7 @@ function post_request<T>(
 export async function request_large_file_content(
   file_path: string,
   filename: string,
-  timeout: number = 120_000, // large host-side indexing can take longer than eager reads
+  timeout = 120_000, // large host-side indexing can take longer than eager reads
 ): Promise<TrajectoryRun> {
   if (!host_api) {
     throw new Error(

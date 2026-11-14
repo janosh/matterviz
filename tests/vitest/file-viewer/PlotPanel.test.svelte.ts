@@ -1,6 +1,6 @@
 import PlotPanel from '#lib/file-viewer/PlotPanel.svelte'
 import { flushSync, mount, tick } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { doc_query, set_select } from '../setup'
 
 // one string + two numeric columns: both `bar` and `scatter` are offered

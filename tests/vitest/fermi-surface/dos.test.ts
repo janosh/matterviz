@@ -2,7 +2,7 @@
 import { band_grid_dos } from '#lib/fermi-surface/dos.js'
 import type { BandEnergyGrid, BandGridData } from '#lib/fermi-surface/types.js'
 import type { Vec3 } from '#lib/math.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 // energy of grid point (ix, iy, iz), stored in `order`

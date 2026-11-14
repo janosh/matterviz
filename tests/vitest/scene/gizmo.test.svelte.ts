@@ -5,7 +5,7 @@ import { createSchedulerContext, currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync, mount, unmount } from 'svelte'
 import { type Camera, Mesh, PerspectiveCamera, Scene, type Vector2 } from 'three/webgpu'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props } from '../setup'
 
 let make_threlte: () => unknown

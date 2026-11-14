@@ -11,7 +11,7 @@ import type {
   AxisValueSeries,
   OverflowAxisAssignment,
 } from '#lib/plot/core/axis-assignment.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const create_series = (
   label: string,

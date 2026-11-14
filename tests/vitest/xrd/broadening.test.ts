@@ -5,7 +5,7 @@ import {
   compute_broadened_pattern,
   DEFAULT_BROADENING,
 } from '#lib/xrd/broadening.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Linearly interpolated crossings of half the peak maximum, i.e. the observed FWHM of the
 // output grid. Measuring the grid (rather than trusting the requested width) is what makes

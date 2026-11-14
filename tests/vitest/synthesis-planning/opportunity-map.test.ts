@@ -3,7 +3,7 @@ import { compute_opportunity_map } from '#lib/synthesis-planning/opportunity-map
 import type { OpportunityRequest } from '#lib/synthesis-planning/opportunity-map.js'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import * as thermo from '#lib/synthesis-planning/thermo.js'
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { load_json } from '../test-fixtures'
 
 const entries = load_json<PhaseData[]>(`src/site/synthesis-planning/Ba-Ti-C-O.json.gz`)

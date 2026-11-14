@@ -5,7 +5,7 @@ import {
   slice_to_rgba,
 } from '#lib/isosurface/slice-rendering.js'
 import { contours } from 'd3-contour'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const make_slice = () => ({
   data: new Float64Array([Number.NaN, -2, 0, 2]),

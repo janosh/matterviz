@@ -162,7 +162,7 @@ const MAX_SUPERCELL_SITES = 1_000_000
 export function make_supercell(
   structure: Crystal,
   scaling: string | number | Vec3,
-  to_unit_cell: boolean = true,
+  to_unit_cell = true,
 ): Crystal {
   const supercell_scaling = parse_supercell_scaling(scaling)
   const [scale_x, scale_y, scale_z] = supercell_scaling

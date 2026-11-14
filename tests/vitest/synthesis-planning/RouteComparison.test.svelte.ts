@@ -5,7 +5,7 @@ import RouteTable from '#lib/synthesis-planning/RouteTable.svelte'
 import { plan_synthesis } from '#lib/synthesis-planning/plan.js'
 import type { SynthesisRoute } from '#lib/synthesis-planning/types.js'
 import { tick } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,

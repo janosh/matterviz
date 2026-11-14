@@ -1,6 +1,6 @@
 import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, dismiss_popover, doc_query, fire, keydown } from '../setup'
 
 type Option = { key: string; label: string; unit?: string }

@@ -1,7 +1,7 @@
 import type { InfoPaneCard } from '#lib/overlays/index.js'
 import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
 import { flushSync, mount, unmount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query, set_input } from '../setup'
 
 const card = (idx: number) => ({

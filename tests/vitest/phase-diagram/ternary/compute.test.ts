@@ -17,7 +17,7 @@ import type {
   TernaryPhaseDiagram,
   TernaryPhaseDiagramOptions,
 } from '#lib/phase-diagram/ternary/types.js'
-import { beforeAll, describe, expect, test, vi } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { load_json, make_phase } from '../../test-fixtures'
 import { toy_elements, toy_entries, toy_temps } from './fixtures'
 

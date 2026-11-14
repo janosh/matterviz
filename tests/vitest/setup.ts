@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { type Component, type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
 import { prefersReducedMotion } from 'svelte/motion'
-import { expect, onTestFinished, vi } from 'vitest'
+import { expect, onTestFinished, vi } from 'vite-plus/test'
 
 export {
   get_resize_observer_count,

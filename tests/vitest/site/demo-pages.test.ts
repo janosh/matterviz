@@ -30,7 +30,7 @@ import FermiSurfaceDemo from '#site/FermiSurfaceDemo.svelte'
 import OptimadeStructureViewer from '#site/OptimadeStructureViewer.svelte'
 import { routes } from '#site/state.svelte.js'
 import { type Component, flushSync, mount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { trigger_intersection } from '../environment'
 import { latest_stub, reset_stub } from '../reactive-renderer-registry'
 import { create_drop_event, doc_query, set_input, set_select, settle } from '../setup'
@@ -348,7 +348,8 @@ test(`fermi surface loads write ?file= only for site fixtures`, () => {
   mount(FermiSurfaceDemo, { target: document.body, props: { sync_url: true } })
   flushSync()
   const { on_file_load } = latest_stub().read()
-  if (typeof on_file_load !== `function`) throw new Error(`FermiSurface got no on_file_load`)
+  if (typeof on_file_load !== `function`)
+    throw new TypeError(`FermiSurface got no on_file_load`)
   on_file_load({ source_filename: `mine.bxsf`, file: new File([`x`], `mine.bxsf`) })
   expect(goto).toHaveBeenLastCalledWith(`http://localhost/`, expect.any(Object))
   on_file_load({ source_filename: `pb.bxsf.gz`, source_url: `/fermi-surfaces/pb.bxsf.gz` })
@@ -363,7 +364,7 @@ test(`a file dropped on the demo hull leaves the cached system intact`, async ()
   mount(ConvexHullDemo, { target: document.body })
   await vi.waitFor(() => expect(latest_stub().read().entries).not.toEqual([]))
   const { entries: fixture, on_file_load } = latest_stub().read()
-  if (typeof on_file_load !== `function`) throw new Error(`ConvexHull got no on_file_load`)
+  if (typeof on_file_load !== `function`) throw new TypeError(`ConvexHull got no on_file_load`)
   const dropped = [{ composition: { Li: 1 }, energy: 0 }]
   on_file_load({ entries: dropped, filename: `mine.json` })
   flushSync()
@@ -405,7 +406,7 @@ test(`a file dropped on the isosurface viewer leaves ?file= out of the URL`, () 
   const last_url = () => String(vi.mocked(goto).mock.lastCall?.[0])
   expect(last_url()).toContain(`file=`)
   const { on_file_load } = latest_stub().read()
-  if (typeof on_file_load !== `function`) throw new Error(`Structure got no on_file_load`)
+  if (typeof on_file_load !== `function`) throw new TypeError(`Structure got no on_file_load`)
   on_file_load({ source_filename: `mine.cube`, file: new File([`x`], `mine.cube`) })
   flushSync()
   expect(last_url()).not.toContain(`file=`)

@@ -2,7 +2,7 @@ import { line_curve_factory } from '#lib/plot/core/fill-utils.js'
 import { bar_path, line_path, violin_path } from '#lib/plot/core/svg.js'
 import type { LineCurve } from '#lib/plot/core/types.js'
 import { line } from 'd3-shape'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 
 describe(`bar_path`, () => {

@@ -18,7 +18,7 @@ import { get_bond_data } from '#lib/structure/bonding.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
 import { flushSync } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { make_trajectory_frame } from '../test-fixtures'
 
 const frames = (count: number, site_count = 3): TrajectoryFrame[] =>
@@ -146,7 +146,7 @@ describe(`frame loading`, () => {
       run.prepare_frame = (idx, preparation, signal) => {
         const request = Promise.withResolvers<DisplayFrame>()
         const frame = run.read_frame(idx)
-        if (frame instanceof Promise) throw new Error(`Expected memory frame`)
+        if (frame instanceof Promise) throw new TypeError(`Expected memory frame`)
         const settings = $state.snapshot(preparation)
         pending.push({
           idx,
@@ -303,7 +303,7 @@ describe(`frame loading`, () => {
     expect(events).toEqual([`step:4`])
     expect(session.current_frame?.step).toBe(40)
     const last_frame = materialize_frame_result(run.read_frame(4))
-    if (last_frame instanceof Promise) throw new Error(`Expected a synchronous memory run`)
+    if (last_frame instanceof Promise) throw new TypeError(`Expected a synchronous memory run`)
     expect(session.current_structure).toEqual(last_frame.structure)
     expect(session.loading).toBe(false)
     host.index = -3
@@ -456,6 +456,8 @@ describe(`frame loading`, () => {
       cache_max_site_records,
       cache_max_frames,
       expected_reads,
+      // `as const` rows would narrow an unannotated `byte_frames` to their literal
+      // oxlint-disable-next-line no-inferrable-types
       byte_frames: number = Infinity,
     ) => {
       const frame_list = frames(8)
@@ -677,7 +679,7 @@ describe(`controller and playback`, () => {
       run.prepare_frame = (idx, preparation, signal) => {
         const pending = Promise.withResolvers<DisplayFrame>()
         const frame = run.read_frame(idx)
-        if (frame instanceof Promise) throw new Error(`Expected memory frame`)
+        if (frame instanceof Promise) throw new TypeError(`Expected memory frame`)
         requests.set(idx, { signal, resolve: () => pending.resolve({ frame, preparation }) })
         signal?.addEventListener(`abort`, () => pending.reject(signal.reason), { once: true })
         return pending.promise

@@ -8,7 +8,7 @@ import { type D3InterpolateName, get_d3_interpolator } from '#lib/colors/index.j
 import type { AxisOption, ColorScaleOption, ScaleType } from '#lib/plot/core/types.js'
 import * as d3_sc from 'd3-scale-chromatic'
 import { mount, tick, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, mount_in_test, query, trigger_resize_observer } from '../setup'
 
 const mount_bar = (props: Record<string, unknown>) => {

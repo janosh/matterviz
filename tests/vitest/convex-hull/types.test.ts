@@ -7,7 +7,7 @@ import {
   is_unary_entry,
 } from '#lib/convex-hull/entry-stability.js'
 import { default_hull_config, merge_hull_config } from '#lib/convex-hull/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 test(`merge_hull_config overrides defaults and merges colors one level deep`, () => {
   expect(merge_hull_config({})).toEqual(default_hull_config)

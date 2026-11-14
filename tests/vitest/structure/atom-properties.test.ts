@@ -20,7 +20,7 @@ import { make_supercell } from '#lib/structure/supercell.js'
 import { CNA_TYPE_COLORS, CNA_TYPE_NAMES } from '#lib/structure-id/calc-cna.js'
 import { CNA_TYPE_PROPERTY } from '#lib/structure-id/calc-structure-id.js'
 import type { WyckoffPos } from '#lib/symmetry/index.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { rgb } from 'd3-color'
 import { image_options, make_crystal, make_rocksalt, make_struct } from '../test-fixtures'
 

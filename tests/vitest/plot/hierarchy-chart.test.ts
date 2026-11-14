@@ -17,7 +17,7 @@ import {
 } from '#lib/plot/core/utils/hierarchy-chart.js'
 import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
 import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // oxfmt-ignore
 const tree: SunburstNode = {

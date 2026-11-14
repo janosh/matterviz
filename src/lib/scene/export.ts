@@ -271,7 +271,7 @@ export async function export_scene_as(
         throw to_error(error)
       })
     if (!(buffer instanceof ArrayBuffer))
-      throw new Error(`GLB export returned ${typeof buffer} instead of ArrayBuffer`)
+      throw new TypeError(`GLB export returned ${typeof buffer} instead of ArrayBuffer`)
     await save(buffer, `${basename}.glb`, `model/gltf-binary`)
   } else throw new Error(`Unsupported scene export format: ${format}`)
 }

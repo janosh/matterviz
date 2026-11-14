@@ -10,7 +10,7 @@ import {
 import type { FrameRange, TrajectoryRun } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { sweep_frame_plan, sweep_frames, window_sweep_size } from '#lib/trajectory/analysis.js'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import { make_fcc, with_vacancy } from './lattices'
 
 const in_memory = (structures: AnyStructure[]): TrajectoryRun =>

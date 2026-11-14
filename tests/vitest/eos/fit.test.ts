@@ -7,7 +7,7 @@ import {
   fit_eos,
   PARAM_KEYS,
 } from '#lib/eos/fit.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Reference fits [E0, V0, B0, B0'] from pymatgen.analysis.eos.EOS(eos_name).fit(volumes,
 // energies) (v2025) for two scans: a 9-point Birch–Murnaghan curve with ~1 meV pseudo-noise

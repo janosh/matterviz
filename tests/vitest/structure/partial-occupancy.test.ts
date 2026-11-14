@@ -20,7 +20,7 @@ import {
   SphereGeometry,
   Vector3,
 } from 'three/webgpu'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 const make_site = (species: Site[`species`], xyz: Vec3, label: string): Site => ({
   species,

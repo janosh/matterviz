@@ -1,7 +1,7 @@
 import ElementPage from '#root/src/routes/(element)/[slug]/+page.svelte'
 import { selected } from '#lib/state.svelte.js'
 import { mount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 
 const { page } = vi.hoisted(() => ({
   page: { params: { slug: `hydrogen` }, url: new URL(`http://localhost/hydrogen`) },

@@ -3,7 +3,7 @@ import type { BaseBandStructure, ElectronicDos, PhononDos } from '#lib/spectral/
 import { mock_band_structure as band_structs } from '#site/spectral-mocks.js'
 import { createRawSnippet, flushSync } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vite-plus/test'
 import {
   clip_rect,
   drag,

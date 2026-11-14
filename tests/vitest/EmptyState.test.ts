@@ -10,7 +10,7 @@ import Sunburst from '#lib/plot/sunburst/Sunburst.svelte'
 import TernaryPlot from '#lib/plot/ternary/TernaryPlot.svelte'
 import Treemap from '#lib/plot/treemap/Treemap.svelte'
 import { type Component, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { mount_sized } from './setup'
 
 describe(`charts overlay the shared empty state exactly while they have no data`, () => {

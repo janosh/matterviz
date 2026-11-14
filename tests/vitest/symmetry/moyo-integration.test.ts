@@ -29,7 +29,7 @@ import {
   space_group_type,
   wyckoff_positions,
 } from '@spglib/moyo-wasm'
-import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 import { fcc_primitive_matrix, init_moyo_for_tests, make_crystal } from '../test-fixtures'
 
 beforeAll(init_moyo_for_tests)

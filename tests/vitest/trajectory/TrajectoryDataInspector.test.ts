@@ -6,7 +6,7 @@ import TrajectoryDataInspector from '#lib/trajectory/TrajectoryDataInspector.sve
 import { mount, tick, unmount } from 'svelte'
 import { derived, fromStore, writable } from 'svelte/store'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { doc_query, query, trigger_resize_observer } from '../setup'
 import { make_run as make_shared_run, with_property_rows } from '../test-fixtures'
 

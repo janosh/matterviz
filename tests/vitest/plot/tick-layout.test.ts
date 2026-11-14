@@ -18,7 +18,7 @@ import {
   TICK_STRATEGIES,
   tick_label_aabb,
 } from '#lib/plot/core/tick-layout.js'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
 
 const dimensions = (width: number, line_height = 10, line_count = 1): TickLabelDimensions => ({
   line_widths: Array.from({ length: line_count }, () => width),

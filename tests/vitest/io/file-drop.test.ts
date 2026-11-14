@@ -9,7 +9,7 @@ import type * as DecompressModule from '#lib/io/decompress.js'
 import { decompress_file } from '#lib/io/decompress.js'
 import type { FileLoadCallback, TrajectoryFileLoadCallback } from '#lib/io/types.js'
 import { dropped_file_url, load_from_url, load_trajectory_from_url } from '#lib/io/url-drop.js'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // decompress_trajectory_file stays real so the keep_blob mode is exercised end to end
 vi.mock(`#lib/io/decompress.js`, async (import_original) => ({

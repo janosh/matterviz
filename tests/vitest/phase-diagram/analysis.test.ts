@@ -6,7 +6,7 @@ import {
   phase_disagreement,
 } from '#lib/phase-diagram/analysis.js'
 import type { BinaryPhaseDiagram, GibbsEnergyGrid } from '#lib/phase-diagram/types.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { find_region_at } from '#lib/phase-diagram/utils.js'
 import { binary_diagrams } from '#site/phase-diagrams.js'
 import { eutectic, pts, shifted_eutectic } from './fixtures/test-data'

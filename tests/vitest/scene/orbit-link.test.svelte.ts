@@ -13,7 +13,7 @@ import SceneCamera from '#lib/scene/SceneCamera.svelte'
 import { type Component, type ComponentProps, flushSync, mount, unmount } from 'svelte'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three/webgpu'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { mount_scene, pose } from './mount'
 
 // Real controls on a camera at `position` orbiting `target`

@@ -11,7 +11,7 @@ import {
   TextLines,
 } from '#lib/trajectory/helpers.js'
 import { read_ndarray_from_view } from '#lib/trajectory/parse/ase.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 import { make_rng } from '../numeric-helpers'
 
 describe(`trajectory helpers`, () => {

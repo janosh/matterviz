@@ -7,7 +7,7 @@ import type { Vec3 } from '#lib/math.js'
 import type { SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'
 import type { ComponentProps } from 'svelte'
 import { mount, tick } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, set_input } from '../setup'
 import { get_dummy_structure, make_wyckoff_dataset } from '../test-fixtures'
 

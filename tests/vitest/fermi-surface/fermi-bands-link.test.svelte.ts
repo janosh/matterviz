@@ -8,7 +8,7 @@ import type { ScatterHandlerEvent } from '#lib/plot/core/types.js'
 import { band_crossings, band_k_path, BANDS_CSS_COLORS } from '#lib/spectral/helpers.js'
 import type { BandsSpinMode, BaseBandStructure, LineKwargs } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
-import { expect, onTestFinished, test } from 'vitest'
+import { expect, onTestFinished, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const grid_band = (values: number[]): BandEnergyGrid => ({

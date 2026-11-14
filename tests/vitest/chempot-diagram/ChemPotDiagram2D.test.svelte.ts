@@ -15,7 +15,7 @@ import type { PhaseData } from '#lib/convex-hull/types.js'
 import { mean } from '#lib/math.js'
 import type { WorkerRequestOptions } from '#lib/worker-client.svelte.js'
 import { type ComponentProps, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   doc_query,
   expect_tooltip_paint,

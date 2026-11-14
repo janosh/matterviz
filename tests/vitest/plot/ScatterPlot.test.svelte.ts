@@ -20,7 +20,7 @@ import { SvelteSet } from 'svelte/reactivity'
 import { rgb } from 'd3-color'
 import { scaleSequentialLog } from 'd3-scale'
 import { interpolateViridis } from 'd3-scale-chromatic'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   click_export,
@@ -1554,7 +1554,7 @@ describe(`ScatterPlot`, () => {
         expect(plot.querySelector(reset_style)).not.toBeNull()
         const toggle = control(`Show ${kind}s`)
         if (!(toggle instanceof HTMLInputElement))
-          throw new Error(`Show ${kind}s not a checkbox`)
+          throw new TypeError(`Show ${kind}s not a checkbox`)
         toggle.click()
         await tick()
         expect(toggle.checked).toBe(false)

@@ -133,6 +133,26 @@ export function create_renderer(
       on_device_lost(info)
     }
   }
+  // three floors the drawing buffer to whole device pixels but styles the canvas at the exact,
+  // usually fractional, size Threlte measures, so the browser resamples (blurs) every frame.
+  // Style it at the size actually drawn instead, at most one device pixel short of its box.
+  const fit_style = () => {
+    const ratio = renderer.getPixelRatio()
+    canvas.style.width = `${canvas.width / ratio}px`
+    canvas.style.height = `${canvas.height / ratio}px`
+  }
+  const set_size = renderer.setSize.bind(renderer)
+  renderer.setSize = (width: number, height: number, update_style = true) => {
+    set_size(width, height, false)
+    if (update_style) fit_style()
+    return renderer
+  }
+  const set_pixel_ratio = renderer.setPixelRatio.bind(renderer)
+  renderer.setPixelRatio = (ratio?: number) => {
+    set_pixel_ratio(ratio)
+    if (canvas.style.width) fit_style()
+    return renderer
+  }
   // Start device acquisition now rather than on Threlte's first frame. init() caches its own
   // promise, so this races nothing and is safe to call repeatedly.
   // init() creates the Textures manager; nothing uploads a texture before this continuation,

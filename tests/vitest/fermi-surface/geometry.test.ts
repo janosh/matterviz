@@ -15,7 +15,7 @@ import { css_to_linear_rgb } from '#lib/scene/colors.js'
 import { get_d3_interpolator } from '#lib/colors/index.js'
 import type { Vec3 } from '#lib/math.js'
 import type { BufferAttribute } from 'three/webgpu'
-import { describe, expect, onTestFinished, test } from 'vitest'
+import { describe, expect, onTestFinished, test } from 'vite-plus/test'
 import { make_fermi_isosurface, make_fermi_surface } from '../test-fixtures'
 
 // Unit-square sheet at z=0 plus one vertex lifted to z=1

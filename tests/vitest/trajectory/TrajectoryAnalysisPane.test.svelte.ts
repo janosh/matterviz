@@ -14,7 +14,7 @@ import {
 } from '#lib/trajectory/analysis.js'
 import { to_error } from 'svelte-widgets/utils'
 import { type ComponentProps, createRawSnippet, mount, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, settle, set_input } from '../setup'
 import { make_frame, make_run } from '../test-fixtures'
 

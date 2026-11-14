@@ -30,7 +30,7 @@ import {
   ShaderMaterial,
   SphereGeometry,
 } from 'three/webgpu'
-import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
 
 const stl_spy = vi.fn()
 const obj_spy = vi.fn()
@@ -301,7 +301,7 @@ describe(`3D Export Color Preservation`, () => {
 
       const converted = convert_instanced_meshes_to_regular(scene)
       const converted_mesh = converted.children[0]
-      if (!(converted_mesh instanceof Mesh)) throw new Error(`Expected a converted mesh`)
+      if (!(converted_mesh instanceof Mesh)) throw new TypeError(`Expected a converted mesh`)
       expect(converted_mesh.geometry).not.toBe(geometry)
       const kept = names.filter((name) => converted_mesh.geometry.hasAttribute(name))
       expect(kept).toEqual(standard)

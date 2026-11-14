@@ -3,7 +3,7 @@ import FermiSurfaceTooltip from '#lib/fermi-surface/FermiSurfaceTooltip.svelte'
 import type { FermiHoverData, FermiTooltipProp } from '#lib/fermi-surface/types.js'
 import type { Vec3 } from '#lib/math.js'
 import { mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
 const mock_hover_data = (overrides: Partial<FermiHoverData> = {}): FermiHoverData => ({

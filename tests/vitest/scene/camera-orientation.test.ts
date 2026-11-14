@@ -10,7 +10,7 @@ import type { ZoneAxisMode } from '#lib/scene/zone-axis.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { is_valid_zone_axis, zone_axis_direction } from '#lib/scene/zone-axis.js'
 import { PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { stub_reduced_motion } from '../setup'
 import { cubic_matrix } from '../test-fixtures'
 

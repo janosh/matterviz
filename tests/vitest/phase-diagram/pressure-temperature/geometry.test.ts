@@ -23,7 +23,7 @@ import {
   iron_pt_diagram,
   water_pt_diagram,
 } from '#site/phase-diagrams/pressure-temperature.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const total_area = (regions: PtRegion[]): number =>
   regions.reduce((sum, region) => sum + Math.abs(polygon_signed_area(region.vertices)), 0)

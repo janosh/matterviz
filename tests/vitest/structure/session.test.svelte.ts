@@ -12,7 +12,7 @@ import { make_supercell } from '#lib/structure/supercell.js'
 import { analyze_structure_symmetry, transform_cell } from '#lib/symmetry/analyze.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 import { flushSync } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   fcc_primitive_matrix,
   init_moyo_for_tests,

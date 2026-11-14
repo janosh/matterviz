@@ -2,8 +2,7 @@ import { make_config } from 'svelte-widgets/vite-config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import type { Plugin } from 'vite'
-import { defineConfig, type PluginOption } from 'vite-plus'
+import { defineConfig, type Plugin, type PluginOption } from 'vite-plus'
 import {
   json_gz_worker_plugins,
   three_compat_alias,

@@ -1087,7 +1087,7 @@ test.describe(`Trajectory Component`, () => {
             label_bottoms: labels.map((label) => label.getBoundingClientRect().bottom),
             tick_label_gaps: labels.map((label) => {
               const tick = label.previousElementSibling
-              if (!(tick instanceof HTMLElement)) throw new Error(`step tick not found`)
+              if (!(tick instanceof HTMLElement)) throw new TypeError(`step tick not found`)
               return label.getBoundingClientRect().top - tick.getBoundingClientRect().bottom
             }),
           }

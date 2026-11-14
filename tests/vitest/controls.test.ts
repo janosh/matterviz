@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { describe, expect, expectTypeOf, it, vi } from 'vite-plus/test'
 import { host } from '#lib/host.js'
 import {
   normalize_show_controls,

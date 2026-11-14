@@ -27,7 +27,7 @@ import {
 } from '#lib/structure/site.js'
 import { generate_lattice_points } from '#lib/structure/supercell.js'
 import { structures } from '#site/structures.js'
-import { assert, describe, expect, test, vi } from 'vitest'
+import { assert, describe, expect, test, vi } from 'vite-plus/test'
 import { cubic_matrix, make_crystal } from '../test-fixtures'
 import {
   create_numeric_md_frame,

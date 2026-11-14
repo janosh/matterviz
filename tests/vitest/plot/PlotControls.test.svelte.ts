@@ -22,7 +22,7 @@ import type { TicksOption } from '#lib/plot/core/scales.js'
 import { resolve_axis_range } from '#lib/plot/core/interactions.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { type ComponentProps, flushSync, mount, tick } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,
@@ -519,7 +519,8 @@ test.each<ChartControlsCase>([
       if (typeof value === `string`) await set_value(label, value)
       else {
         const checkbox = control(label)
-        if (!(checkbox instanceof HTMLInputElement)) throw new Error(`${label} is no checkbox`)
+        if (!(checkbox instanceof HTMLInputElement))
+          throw new TypeError(`${label} is no checkbox`)
         expect(checkbox.checked).toBe(!value)
         checkbox.click()
         await tick()

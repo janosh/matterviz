@@ -12,7 +12,7 @@ import {
 } from '#lib/rdf/calc-pdf.js'
 import { neutron_scattering_length } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { FCC_FACE_CENTRES, make_crystal, make_rocksalt } from '../test-fixtures'
 import type { SimpleSite } from '../test-fixtures'
 

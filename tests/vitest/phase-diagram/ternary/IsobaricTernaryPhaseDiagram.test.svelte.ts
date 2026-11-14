@@ -21,7 +21,7 @@ import { compute_ternary_phase_diagram_async } from '#lib/phase-diagram/ternary/
 import TernarySectionCanvas from '#lib/phase-diagram/ternary/TernarySectionCanvas.svelte'
 import { shortcuts_for } from '#lib/shortcuts.js'
 import { type Component, createRawSnippet, flushSync, mount, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   click_export,

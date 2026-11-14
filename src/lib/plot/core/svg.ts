@@ -43,8 +43,8 @@ export function bar_path(
   width_value: number,
   height_value: number,
   radius: number,
-  vertical: boolean = true,
-  flip: boolean = false,
+  vertical = true,
+  flip = false,
 ): string {
   const clamped_radius = Math.min(radius, width_value / 2, height_value / 2)
   if (!(clamped_radius > 0))
@@ -181,7 +181,7 @@ export function line_path<Point>(
   let drawing = false
   for (let idx = 0; idx <= points.length; idx++) {
     const point = points[idx]
-    if (!(idx < points.length && (defined?.(point) ?? true)) === drawing) {
+    if ((idx < points.length && (defined?.(point) ?? true)) !== drawing) {
       drawing = !drawing
       if (drawing) output.lineStart()
       else output.lineEnd()

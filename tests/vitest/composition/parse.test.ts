@@ -9,7 +9,7 @@ import {
   parse_formula_with_oxidation,
   parse_formula_with_wildcards,
 } from '#lib/composition/parse.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 describe(`parse_formula`, () => {
   test.each([

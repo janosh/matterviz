@@ -15,7 +15,7 @@ type RenderedLabel = {
 const rendered_labels = (axis: Locator): Promise<RenderedLabel[]> =>
   axis.locator(`.tick text`).evaluateAll((elements) =>
     elements.flatMap((element) => {
-      if (!(element instanceof SVGTextElement)) throw new Error(`Expected SVG tick text`)
+      if (!(element instanceof SVGTextElement)) throw new TypeError(`Expected SVG tick text`)
       const style = globalThis.getComputedStyle(element)
       const box = element.getBoundingClientRect()
       if (

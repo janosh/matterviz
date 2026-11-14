@@ -7,7 +7,7 @@ import type {
 } from '#lib/plot/core/facets.js'
 import { createRawSnippet, mount, tick, unmount, type Snippet } from 'svelte'
 import { SvelteMap } from 'svelte/reactivity'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test } from 'vite-plus/test'
 import { query, trigger_resize_observer } from '../setup'
 
 const make_panel_snippet = (context_getters: (() => FacetPanelContext)[]) =>

@@ -9,7 +9,7 @@ import { calc_structure_id } from '#lib/structure-id/calc-structure-id.js'
 import type { StructureIdOptions } from '#lib/structure-id/index.js'
 import type { StructureIdPayload } from '#lib/structure-id/worker-payload.js'
 import { structure_from_payload } from '#lib/structure-id/worker-payload.js'
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vite-plus/test'
 import { expect_module_worker, install_stub_worker } from '../setup'
 import { make_fcc } from './lattices'
 

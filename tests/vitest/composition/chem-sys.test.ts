@@ -1,5 +1,5 @@
 import { arity_name, chem_sys_sunburst_data } from '#lib/composition/chem-sys.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 describe(`chem_sys_sunburst_data`, () => {
   test(`groups by arity and normalizes formulas + chemsys strings to one system`, () => {

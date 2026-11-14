@@ -19,7 +19,7 @@ export function normalize_mode_values(raw: unknown): ModeValues {
   const unknown_key = Object.keys(raw).find((key) => !MODE_VALUES_FIELDS.has(key))
   if (unknown_key !== undefined) throw new Error(`${unknown_key}: unknown field`)
   const { label, qpoints, frequencies, values } = raw
-  if (typeof label !== `string`) throw new Error(`label must be a string`)
+  if (typeof label !== `string`) throw new TypeError(`label must be a string`)
   if (!Array.isArray(qpoints) || !qpoints.every(is_finite_vec3)) {
     throw new Error(`qpoints must be an array of 3 finite fractional coordinates each`)
   }
@@ -208,9 +208,10 @@ function segment_candidates(
   const n_cells = Math.max(1, Math.min(64, per_side))
   const cell_of = (frac: number): number =>
     Math.min(n_cells - 1, Math.floor((frac - Math.floor(frac)) * n_cells))
-  const q_cells = Int32Array.from(qpoints, ([f_0, f_1, f_2]) => {
-    return (cell_of(f_0) * n_cells + cell_of(f_1)) * n_cells + cell_of(f_2)
-  })
+  const q_cells = Int32Array.from(
+    qpoints,
+    ([f_0, f_1, f_2]) => (cell_of(f_0) * n_cells + cell_of(f_1)) * n_cells + cell_of(f_2),
+  )
   const cell_starts = new Int32Array(n_cells ** 3 + 1)
   for (const cell of q_cells) cell_starts[cell + 1]++
   for (let cell = 0; cell < n_cells ** 3; cell++) cell_starts[cell + 1] += cell_starts[cell]

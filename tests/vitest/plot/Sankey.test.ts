@@ -9,7 +9,7 @@ import type {
   SankeyNodeHandlerProps,
 } from '#lib/plot/index.js'
 import type { ComponentProps } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { bucket_sankey_data, compute_sankey_layout } from '#lib/plot/sankey/sankey.js'
 import {
   pin_cycle,

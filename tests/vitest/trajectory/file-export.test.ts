@@ -24,7 +24,7 @@ import { create_warning_collector } from '#lib/trajectory/parse/shared.js'
 import { unzipSync } from 'fflate'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
 import { fromStore, writable } from 'svelte/store'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, reset_section, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
@@ -450,7 +450,8 @@ describe(`TrajectoryExportPane property export`, () => {
   // stringify to `[object Blob]` in the saved file
   const downloaded_text = (): string[] => {
     const content = vi.mocked(download).mock.calls[0][0]
-    if (typeof content !== `string`) throw new Error(`expected text, got ${typeof content}`)
+    if (typeof content !== `string`)
+      throw new TypeError(`expected text, got ${typeof content}`)
     return content.split(`\n`)
   }
 

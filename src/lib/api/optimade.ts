@@ -75,7 +75,7 @@ async function fetch_links(url: string): Promise<OptimadeProvider[]> {
   if (cached && Date.now() < cached.expires) return cached.promise
   const promise = fetch_optimade(url).then(async (response) => {
     const body: { data: OptimadeProvider[] } = await response.json()
-    if (!Array.isArray(body.data)) throw new Error(`Invalid links response from ${url}`)
+    if (!Array.isArray(body.data)) throw new TypeError(`Invalid links response from ${url}`)
     // OPTIMADE allows base_url as a URL string or a JSON:API link object { href, meta }
     return body.data.flatMap((link) => {
       const raw: unknown = link.attributes?.base_url
@@ -140,7 +140,7 @@ export async function fetch_optimade_structure(
 export async function fetch_suggested_structures(
   provider: string,
   providers: OptimadeProvider[],
-  limit: number = 12,
+  limit = 12,
 ): Promise<OptimadeStructure[]> {
   const api_base = await get_api_base(provider, providers)
   const response = await fetch_optimade(
@@ -148,6 +148,6 @@ export async function fetch_suggested_structures(
   )
   const data: { data: OptimadeStructure[] } = await response.json()
   if (!Array.isArray(data.data))
-    throw new Error(`Invalid structures response from ${api_base}`)
+    throw new TypeError(`Invalid structures response from ${api_base}`)
   return data.data
 }

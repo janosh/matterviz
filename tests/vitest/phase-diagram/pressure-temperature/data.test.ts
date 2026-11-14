@@ -15,7 +15,7 @@ import {
   iron_pt_diagram,
   water_pt_diagram,
 } from '#site/phase-diagrams/pressure-temperature.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Two phases split by one line, valid as given; cases below break one field at a time
 const melting: PtBoundary = {

@@ -31,8 +31,8 @@
     "svelte": "^5.57.3",
     "svelte-widgets": "link:../../node_modules/svelte-widgets",
     "typescript": "^6.0.3",
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1",
-    "vite-plus": "1.5.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0",
+    "vite-plus": "1.6.0"
   },
   "packageManager": "pnpm@12.18.0"
 }

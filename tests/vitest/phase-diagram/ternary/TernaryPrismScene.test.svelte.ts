@@ -14,7 +14,7 @@ import { TERNARY_COLORS, TERNARY_DISPLAY_DEFAULTS } from '#lib/phase-diagram/ter
 import { brighten_hex } from '#lib/scene/index.js'
 import { flushSync, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { hover_highlight, threlte_stub, touch_tap } from '../../isosurface/threlte-stub'
 import { mount_with_keys } from '../../scene/mount'
 import { bind_props } from '../../setup'

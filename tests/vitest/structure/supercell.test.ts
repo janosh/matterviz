@@ -8,7 +8,7 @@ import {
   parse_supercell_scaling,
   supercell_grid_edges,
 } from '#lib/structure/supercell.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { make_crystal, type SimpleSite } from '../test-fixtures'
 import { max_abs_error } from '../numeric-helpers'
 

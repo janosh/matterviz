@@ -46,7 +46,15 @@ import { srgb_parser } from '#lib/plot/scatter-3d/instance-tween.svelte.js'
 import { canvas_overlay_png_blob } from '#lib/io/export.js'
 import type * as colors from '#lib/colors/index.js'
 import { tooltip_paint } from '#lib/colors/index.js'
-import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vite-plus/test'
 import {
   bind_props,
   expect_plot_controls,

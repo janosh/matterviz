@@ -22,7 +22,7 @@ import { operations_from_number } from '@spglib/moyo-wasm'
 import file_system from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vite-plus/test'
 import { fixture_id, xrd_patterns } from '../fixtures/xrd'
 import { symmetry_families } from '../fixtures/xrd/symmetry-families'
 import {

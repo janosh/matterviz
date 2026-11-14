@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { flushSync, mount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   derived_prop,
   drive_prop,

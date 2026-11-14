@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { expect, it } from 'vitest'
+import { expect, it } from 'vite-plus/test'
 
 const execute = promisify(execFile)
 const movie_spec = JSON.stringify({ source: { url: `https://example.invalid/run.h5` } })

@@ -11,7 +11,7 @@ import { brighten_hex, faces_centroid } from '#lib/scene/index.js'
 import { DEFAULTS } from '#lib/settings.js'
 import { flushSync, mount, unmount } from 'svelte'
 import { Vector3 } from 'three/webgpu'
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   hover_highlight,
   scene_pin_driver,

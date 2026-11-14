@@ -6,7 +6,7 @@ import {
   structure_to_poscar_str,
   structure_to_xyz_str,
 } from '#lib/structure/export.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // Parsed values are compared to hand-computed ones to 12 digits (5e-13 Å or fractional units):
 // the parsers only scale and solve a 3x3 system, so anything larger is a real error

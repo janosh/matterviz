@@ -7,7 +7,7 @@ import { parse_fermi_file } from '#lib/fermi-surface/parse.js'
 import type { BandGridData, FermiSurfaceOptions } from '#lib/fermi-surface/types.js'
 import type { WorkerRequest } from '#lib/worker-serve.js'
 import { create_input_store } from '#lib/worker-serve.js'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test } from 'vite-plus/test'
 import {
   expect_module_worker,
   expect_worker_safe_import_graph,

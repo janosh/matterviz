@@ -4,7 +4,7 @@ import * as spatial_index from '#lib/plot/core/spatial-index.js'
 import { make_rng } from '../numeric-helpers'
 import type { ColorScaleConfig, TernaryPointProps, TernarySeries } from '#lib/plot/index.js'
 import { type ComponentProps, tick } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   pin_cycle,

@@ -15,7 +15,7 @@ import type { HoverKey, HoverLink } from '#lib/tooltip/hover-link.svelte.js'
 import { HoverLinks, hover_links, join_hover_link } from '#lib/tooltip/hover-link.svelte.js'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import { OrthographicCamera } from 'three/webgpu'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, fire, marker_position, mouse, mount_sized, plot_svg } from '../setup'
 import { cubic_matrix, make_crystal, make_phase } from '../test-fixtures'
 
@@ -269,7 +269,8 @@ test.each<[string, () => Promise<Pair>]>([
           ),
         hover_b: async (on) => {
           const on_kpath_hover = bz().on_kpath_hover
-          if (typeof on_kpath_hover !== `function`) throw new Error(`no k-path hover handler`)
+          if (typeof on_kpath_hover !== `function`)
+            throw new TypeError(`no k-path hover handler`)
           on_kpath_hover(on ? 2 : null)
           flushSync()
         },

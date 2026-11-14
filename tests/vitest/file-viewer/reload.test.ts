@@ -8,7 +8,7 @@ import { ParseWorkerError } from '#lib/file-viewer/parse-in-worker.js'
 import { request_large_file_content } from '#lib/file-viewer/host-bridge.js'
 import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import type * as SvelteModule from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 
 const test_mocks = vi.hoisted(() => {
   const post_message = vi.fn()
@@ -100,7 +100,7 @@ const result = (version: string): ParseResult => ({
   data: version,
   filename: `${version}.json`,
 })
-const set_file_data = (content: string, filename: string = `${content}.json`): void => {
+const set_file_data = (content: string, filename = `${content}.json`): void => {
   globalThis.matterviz_data = {
     data: { content, filename, is_base64: false },
     theme: `light`,

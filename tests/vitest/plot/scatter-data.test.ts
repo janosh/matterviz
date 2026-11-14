@@ -18,7 +18,7 @@ import {
   strict_x_direction,
   scatter_line_style,
 } from '#lib/plot/scatter/scatter-data.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { index_read_counter } from '../setup'
 
 const color_scale = (val: number) => `scale(${val})`

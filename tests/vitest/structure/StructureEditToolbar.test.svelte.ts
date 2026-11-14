@@ -1,7 +1,7 @@
 import type { MeasureMode } from '#lib/structure/index.js'
 import StructureEditToolbar from '#lib/structure/StructureEditToolbar.svelte'
 import { flushSync } from 'svelte'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { doc_query, fire, keydown, mount_in_test, set_input } from '../setup'
 import { make_session } from './session-harness.svelte'
 

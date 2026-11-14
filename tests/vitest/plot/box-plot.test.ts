@@ -7,7 +7,7 @@ import {
 } from '#lib/plot/box/box-plot.js'
 import { dodge } from '#lib/plot/core/dodge.js'
 import { quantile as d3_quantile } from 'd3-array'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 // d3 quantile uses type-7 (linear) interpolation, matching numpy/pandas defaults.
 // Reference values below are hand-computed for 1..10 (n=10):

@@ -233,7 +233,7 @@ export const transform_vertices = (
 export function format_composition(
   value: number,
   unit: CompUnit = `at%`,
-  include_unit: boolean = true,
+  include_unit = true,
 ): string {
   if (unit === `fraction`) return format_num(value, `.3~f`)
   const formatted = format_num(value * 100, `.3~`)

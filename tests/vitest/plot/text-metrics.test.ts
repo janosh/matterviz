@@ -11,7 +11,7 @@ import {
   resolve_font_spec,
   wrap_text_paragraph,
 } from '#lib/plot/core/text-metrics.js'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { mock_canvas_context } from '../setup'
 
 const TEST_FONT: FontSpec = {

@@ -1,7 +1,7 @@
 import FillArea from '#lib/plot/core/components/FillArea.svelte'
 import type { FillGradient, FillRegion } from '#lib/plot/core/types.js'
 import { type ComponentProps, mount } from 'svelte'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, fire, keydown, mouse } from '../setup'
 
 const mock_x_scale = Object.assign((val: number) => val * 10, {

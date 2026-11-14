@@ -6,7 +6,7 @@ import type {
 } from '#lib/fermi-surface/types.js'
 import { to_color_scale_config } from '#lib/plot/core/scales.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test } from 'vitest'
+import { describe, expect, onTestFinished, test } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,

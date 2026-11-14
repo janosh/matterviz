@@ -8,7 +8,7 @@ import type { VolumeSliceMode } from '#lib/isosurface/slice-rendering.js'
 import type { Vec2 } from '#lib/math.js'
 import { rgb } from 'd3-color'
 import { mount, tick, type ComponentProps } from 'svelte'
-import { afterEach, describe, expect, test, vi, onTestFinished } from 'vitest'
+import { afterEach, describe, expect, test, vi, onTestFinished } from 'vite-plus/test'
 import { make_grid, make_volume } from '../test-fixtures'
 
 // width x height ramp (0, 1, 2, ...) over the rectangle u_range x v_range, clipped to its corners

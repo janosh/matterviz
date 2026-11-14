@@ -7,7 +7,7 @@ import {
 } from '#lib/scene/wheel-zoom.svelte.js'
 import { host, type WheelZoomMode } from '#lib/host.js'
 import { flushSync } from 'svelte'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { mock_fullscreen } from '../setup'
 
 // Wheel timestamps a second apart unless a test passes its own, so no wheel reads as the tail

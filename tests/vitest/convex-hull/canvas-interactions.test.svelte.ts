@@ -6,7 +6,7 @@ import { create_hull_data_pipeline } from '#lib/convex-hull/hull-state.svelte.js
 import type { AnyStructure } from '#lib/structure/index.js'
 import { MAGNETIC_ORDERING_CATEGORY, type ConvexHullEntry } from '#lib/convex-hull/types.js'
 import { flushSync } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { make_phase } from '../test-fixtures'
 
 const entry: ConvexHullEntry = {

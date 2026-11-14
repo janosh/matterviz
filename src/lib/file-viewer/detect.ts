@@ -300,7 +300,7 @@ export const volume_json_to_isosurface_input = (raw: unknown): VolumetricFileDat
 // show. A renderable value is not walked further: its children are part of the data.
 export function scan_renderable_paths(
   obj: unknown,
-  max_depth: number = 10,
+  max_depth = 10,
 ): Map<string, RenderableType> {
   const results = new Map<string, RenderableType>()
   const visited = new WeakSet<object>()

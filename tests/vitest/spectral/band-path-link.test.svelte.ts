@@ -3,7 +3,7 @@ import { band_point_meta, create_band_path_link } from '#lib/spectral/band-path-
 import type { BandHover } from '#lib/spectral/band-path-link.svelte.js'
 import type { BaseBandStructure } from '#lib/spectral/types.js'
 import { flushSync } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 const roots: (() => void)[] = []

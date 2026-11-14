@@ -198,7 +198,7 @@ const open_host = (factory: WorkerFactory, dedicated: boolean): ParseWorkerHost 
 const parse_file_worker = async (
   content: TrajectorySource,
   filename: string,
-  is_base64: boolean = false,
+  is_base64 = false,
   options: ParseInWorkerOptions & {
     replica?: ParseWorkerRequest[`replica`]
     dedicated?: boolean

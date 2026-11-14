@@ -23,7 +23,7 @@ import type { PaneToggleProps } from '#lib/overlays/index.js'
 import type * as decorations from '#lib/plot/core/decorations/index.js'
 import { solve_decorations } from '#lib/plot/core/decorations/index.js'
 import { type Component, createRawSnippet, flushSync, tick } from 'svelte'
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   axis_label_pivot_y,
   bind_props,

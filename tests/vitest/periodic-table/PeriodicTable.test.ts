@@ -9,7 +9,7 @@ import PeriodicTableControls from '#site/PeriodicTableControls.svelte'
 import PeriodicTableDemo from '#site/PeriodicTableDemo.svelte'
 import type { ComponentProps } from 'svelte'
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { bind_props, doc_query, pin_cycle, keydown, mouse, query, set_input } from '../setup'
 import { CATEGORY_COUNTS } from '../test-fixtures'
 

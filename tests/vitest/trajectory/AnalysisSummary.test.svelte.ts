@@ -1,6 +1,6 @@
 import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
 import { createRawSnippet } from 'svelte'
-import { expect, onTestFinished, test, vi } from 'vitest'
+import { expect, onTestFinished, test, vi } from 'vite-plus/test'
 import { fire, form_controls, mount_in_test, set_input, settle } from '../setup'
 
 test(`downloads build data only on click and follow the edited export name`, async () => {
@@ -21,7 +21,8 @@ test(`downloads build data only on click and follow the edited export name`, asy
     note: createRawSnippet(() => ({ render: () => `<span>4 frames</span>` })),
   })
   const name_input = form_controls(target).control(`File name`)
-  if (!(name_input instanceof HTMLInputElement)) throw new Error(`File name is not an input`)
+  if (!(name_input instanceof HTMLInputElement))
+    throw new TypeError(`File name is not an input`)
   // the first download names the export
   expect(name_input.value).toBe(`msd`)
   expect([columns, json].map((builder) => builder.mock.calls.length)).toEqual([0, 0])

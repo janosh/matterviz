@@ -1,7 +1,7 @@
 import type { Vec3 } from '#lib/math.js'
 import MillerIndexInput from '#lib/MillerIndexInput.svelte'
 import { flushSync, mount } from 'svelte'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { doc_query, set_input } from './setup'
 
 describe(`MillerIndexInput`, () => {

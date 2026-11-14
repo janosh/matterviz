@@ -19,8 +19,7 @@ const safe_style = (style: string): string =>
     .join(`;`)
 
 const ensure_token = (value: string, token: string): string => {
-  const tokens = new Set(value.split(/\s+/).filter(Boolean))
-  tokens.add(token)
+  const tokens = new Set([...value.split(/\s+/).filter(Boolean), token])
   return [...tokens].join(` `)
 }
 

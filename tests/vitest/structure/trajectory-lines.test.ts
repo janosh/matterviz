@@ -22,7 +22,7 @@ import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
 import { create_numeric_md_frame, FrameView } from '#lib/trajectory/frame.js'
 import { NumericSites } from '#lib/structure/site.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { image_options, make_crystal, make_position_stream } from '../test-fixtures'
 
 // One atom drifting +1 Å along x per frame, wrapped into a 10 Å cell: 0,1,…,9,0,1,…

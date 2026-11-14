@@ -9,7 +9,7 @@ import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { make_slab } from '#lib/slab/make-slab.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { FCC_FACE_CENTRES, fcc_cell, make_crystal, make_rocksalt } from '../test-fixtures'
 
 // reoriented slabs: a ∥ x, surface normal ∥ z

@@ -6,7 +6,7 @@ import type { TrajectoryRun } from '#lib/trajectory/index.js'
 import { open_trajectory, trajectory_from_json } from '#lib/trajectory/open.js'
 import { read_ase_header } from '#lib/trajectory/parse/ase.js'
 import { DEFAULTS } from '#lib/settings.js'
-import { describe, expect, it, onTestFinished, test } from 'vitest'
+import { describe, expect, it, onTestFinished, test } from 'vite-plus/test'
 import { read_binary_test_file } from '../test-fixtures'
 import { synthetic_extxyz } from './fixtures'
 

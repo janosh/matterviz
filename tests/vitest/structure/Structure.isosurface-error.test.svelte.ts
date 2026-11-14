@@ -7,7 +7,7 @@ import { get_isosurface_error_handler } from '#lib/isosurface/context.js'
 import Structure from '#lib/structure/Structure.svelte'
 import { structures } from '#site/structures.js'
 import { flushSync, mount, tick, unmount } from 'svelte'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 import { make_grid, make_volume } from '../test-fixtures'
 

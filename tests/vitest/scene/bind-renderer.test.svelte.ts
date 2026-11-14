@@ -10,7 +10,7 @@ import type * as threlte_core from '@threlte/core'
 import { flushSync } from 'svelte'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Texture, WebGPUBackend } from 'three/webgpu'
-import { beforeAll, describe, expect, test, vi } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 
 // Stub only useThrelte and keep the real @threlte/core exports - using the real
 // currentWritable makes the camera store behave authentically: `.current` is a
@@ -57,6 +57,25 @@ test(`bind_renderer registers the canvas and re-binds on every camera swap until
   fake_threlte.camera.set(cam3)
   expect(on_bind).toHaveBeenCalledTimes(2)
   expect(scene_registry.get(dom_element)?.camera).toBe(cam2)
+})
+
+// three floors the drawing buffer but styled the canvas at the measured fractional size, so the
+// browser resampled (blurred) every frame; the canvas is now styled at the size drawn
+test(`create_renderer styles the canvas at its drawing buffer size`, async () => {
+  const error_spy = vi.spyOn(console, `error`).mockImplementation(() => {})
+  const canvas = document.createElement(`canvas`)
+  const renderer = create_renderer(canvas)
+  renderer.setSize(574.5, 234.67)
+  expect([canvas.width, canvas.height]).toEqual([574, 234])
+  expect([canvas.style.width, canvas.style.height]).toEqual([`574px`, `234px`])
+  renderer.setPixelRatio(2)
+  expect([canvas.width, canvas.height]).toEqual([1149, 469])
+  expect([canvas.style.width, canvas.style.height]).toEqual([`574.5px`, `234.5px`])
+  // an explicit updateStyle=false still leaves the style alone
+  renderer.setSize(300.25, 200.75, false)
+  expect(canvas.style.width).toBe(`574.5px`)
+  await vi.waitUntil(() => error_spy.mock.calls.length > 0)
+  error_spy.mockRestore()
 })
 
 // three's destroyAttribute does data.buffer.destroy() unguarded, which throws for an attribute

@@ -21,7 +21,7 @@ import type {
   MarginalSeriesCurve,
   ResolvedMarginalConfig,
 } from '#lib/plot/core/marginals.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 const resolved = (over: Partial<ResolvedMarginalConfig> = {}): ResolvedMarginalConfig => ({
   ...MARGINAL_DEFAULTS,

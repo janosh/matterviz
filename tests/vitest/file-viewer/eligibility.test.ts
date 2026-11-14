@@ -9,7 +9,7 @@ import {
   normalize_browser_supported_filename,
   should_encode_filename_as_base64,
 } from '#lib/file-viewer/eligibility.js'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 // Empty and non-string inputs neither predicate accepts
 const non_filenames = [``, null, undefined, 42, true].map((val) => [val, false] as const)

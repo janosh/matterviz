@@ -202,7 +202,8 @@ test.describe(`Trajectory performance`, () => {
       await expect_3d_pixels(true)
       const cloud_id = () =>
         atom_canvas.evaluate(async (canvas) => {
-          if (!(canvas instanceof HTMLCanvasElement)) throw new Error(`Expected atom canvas`)
+          if (!(canvas instanceof HTMLCanvasElement))
+            throw new TypeError(`Expected atom canvas`)
           const export_path = `/src/lib/io/export.ts`
           const { scene_registry } = (await import(export_path)) as typeof IoExport
           return scene_registry.get(canvas)?.scene.getObjectByName(`ColorFieldVolume`)?.uuid

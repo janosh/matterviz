@@ -6,7 +6,7 @@ import {
   is_signed_range,
   scalars_to_vertex_colors,
 } from '#lib/isosurface/coloring.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const viridis_opts = {
   color_scale: `interpolateViridis` as const,

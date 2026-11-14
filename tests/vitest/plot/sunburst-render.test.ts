@@ -8,7 +8,7 @@ import {
 } from '#lib/plot/sunburst/render.js'
 import { compute_sunburst_layout } from '#lib/plot/core/utils/hierarchy-layout.js'
 import type { ScreenArc, ScreenGeometry, ViewWindow } from '#lib/plot/sunburst/render.js'
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vite-plus/test'
 
 const TWO_PI = 2 * Math.PI
 // pre-order: root=0, a=1 (x [0, 0.25]), a1=2 (x [0, 0.25]), b=3 (x [0.25, 1])

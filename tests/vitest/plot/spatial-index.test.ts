@@ -5,7 +5,7 @@ import {
   query_nearest,
   query_topmost,
 } from '#lib/plot/core/spatial-index.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 const linear_nearest = <T extends Positioned>(
   items: readonly T[],

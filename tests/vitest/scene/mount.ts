@@ -4,7 +4,7 @@ import { createThrelteContext } from '@threlte/core'
 import { type Component, flushSync, mount, unmount } from 'svelte'
 import type { WebGLRenderer } from 'three'
 import { type OrthographicCamera, type PerspectiveCamera, Vector3 } from 'three/webgpu'
-import { onTestFinished, vi } from 'vitest'
+import { onTestFinished, vi } from 'vite-plus/test'
 
 // Level perspective camera on +z, 10 units from the origin it looks at
 export const pose: CameraPose = {

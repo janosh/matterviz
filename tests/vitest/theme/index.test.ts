@@ -10,7 +10,7 @@ import {
   THEME_TYPE,
   watch_theme_changes,
 } from '#lib/theme/index.js'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 const mock_match_media = (matches: boolean) => {
   Object.defineProperty(window, `matchMedia`, {

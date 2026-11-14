@@ -9,7 +9,7 @@ import { svg_to_string } from '#lib/io/export.js'
 import { plot_color } from '#lib/colors/index.js'
 import { interpolateBlues, interpolateReds, interpolateViridis } from 'd3-scale-chromatic'
 import { createRawSnippet, mount, tick, unmount, type ComponentProps } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   CANVAS_NOOP_METHODS,

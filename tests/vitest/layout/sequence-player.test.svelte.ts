@@ -3,7 +3,7 @@ import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
 import SequenceControls from '#lib/layout/SequenceControls.svelte'
 import { create_sequence_player } from '#lib/layout/sequence-player.svelte.js'
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
-import { describe, expect, onTestFinished, test, vi } from 'vitest'
+import { describe, expect, onTestFinished, test, vi } from 'vite-plus/test'
 import {
   bind_props,
   doc_query,

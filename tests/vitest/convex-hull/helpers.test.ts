@@ -10,7 +10,15 @@ import type { ElementSymbol } from '#lib/element/index.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { resolve_color_scale } from '#lib/plot/core/scales.js'
 import * as d3_sc from 'd3-scale-chromatic'
-import { afterEach, beforeEach, describe, expect, expectTypeOf, test, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  test,
+  vi,
+} from 'vite-plus/test'
 
 // Entry with only the fields given (no energy default): the polymorph metric selection
 // depends on which energy fields are absent

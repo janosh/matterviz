@@ -1,7 +1,7 @@
 import Trajectory from '#lib/trajectory/Trajectory.svelte'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
 import { type ComponentProps, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test } from 'vite-plus/test'
 import { assertHoverScopedShortcut, bind_props, doc_query, press_window_key } from '../setup'
 import { make_trajectory_frame } from '../test-fixtures'
 

@@ -13,7 +13,7 @@ import {
   pick_displacement,
   rolls_measured_sites,
 } from '#lib/structure/measure.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { cubic_matrix as cubic, make_molecule } from '../test-fixtures'
 
 const PBC_ALL: Pbc = [true, true, true]

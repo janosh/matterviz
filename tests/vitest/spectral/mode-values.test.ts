@@ -8,7 +8,7 @@ import {
   project_qpoints_onto_path,
 } from '#lib/spectral/mode-values.js'
 import type { BaseBandStructure } from '#lib/spectral/types.js'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 import { IDENTITY_MATRIX3 } from '../test-fixtures'
 
 // Paths in a reciprocal lattice of 2·identity (Cartesian = 2 × frac) with x = path distance in

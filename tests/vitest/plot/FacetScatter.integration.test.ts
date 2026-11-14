@@ -7,7 +7,7 @@ import BinnedScatterPlot from '#lib/plot/scatter/BinnedScatterPlot.svelte'
 import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
 import type { DataSeries } from '#lib/plot/index.js'
 import { type Component, createRawSnippet, mount, tick, unmount } from 'svelte'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { clip_rect, drag, query, trigger_resize_observer } from '../setup'
 
 interface PanelDatum {

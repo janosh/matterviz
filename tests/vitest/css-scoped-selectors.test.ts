@@ -6,7 +6,7 @@
 import { globSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from 'svelte/compiler'
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 
 const repo_root = resolve(import.meta.dirname, `../..`)
 const svelte_files = globSync(`${repo_root}/src/**/*.svelte`)

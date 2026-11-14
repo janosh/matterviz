@@ -174,7 +174,7 @@ function primitivize_in_plane(
   const grid = make_site_grid(reduced)
   for (const [idx, site] of sites.entries()) {
     const abc = wrap_to_unit_cell(cart_to_frac(site.xyz))
-    if (grid.find(abc, keys[idx]) >= 0) continue
+    if (grid.index_of(abc, keys[idx]) >= 0) continue
     grid.add(abc, keys[idx], kept.length)
     kept.push({ ...site, abc, xyz: frac_to_cart_reduced(abc) })
   }
@@ -234,7 +234,7 @@ export function make_oriented_bulk(
   const keys = species_keys_of(sites)
   const occupied = make_site_grid(matrix)
   for (const [idx, site] of sites.entries()) {
-    const clash = occupied.find(site.abc, keys[idx])
+    const clash = occupied.index_of(site.abc, keys[idx])
     if (clash >= 0) {
       throw new Error(
         `Input structure has two ${keys[idx]} sites within ${SLAB_POSITION_TOLERANCE} Å of ` +
