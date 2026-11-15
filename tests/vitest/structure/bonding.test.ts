@@ -1631,6 +1631,19 @@ describe(`neighbor_query`, () => {
     for (const [idx, dist] of expected.entries()) expect(distances[idx]).toBeCloseTo(dist, 12)
   })
 
+  // non-periodic coordinates are not wrapped into the cell, so sites 100 A apart along y
+  // still need the radius to reach k of their own x images, not just the cell's extent
+  test(`k=14 reaches each site's own images when sites spread far along a non-periodic axis`, () => {
+    const sites = Array.from({ length: 14 }, (_, idx) => ({
+      element: `Fe`,
+      xyz: [0, 100 * idx, 0] as Vec3,
+    }))
+    const spread = make_crystal(1, sites, { pbc: [true, false, false] })
+    const knn = neighbor_list.neighbor_query(spread, { k: 14 })
+    expect(Array.from(knn.offsets)).toEqual(Array.from({ length: 15 }, (_, idx) => 14 * idx))
+    expect(Math.max(...knn.distances)).toBeCloseTo(7, 9)
+  })
+
   test(`molecule: no images, k capped by system size, cutoff list sorted`, () => {
     const water = make_molecule([
       [`O`, [0, 0, 0]],

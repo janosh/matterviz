@@ -686,23 +686,6 @@ const k_search_bounds = (
   order: number,
   pbc: Pbc,
 ): { total_volume: number; max_cutoff: number } => {
-  if (`lattice` in structure) {
-    const { volume, matrix } = structure.lattice
-    const lengths = matrix.map((vec) => Math.hypot(...vec))
-    // within the cell, no two sites are farther apart than the sum of its edges
-    const cell_span = lengths[0] + lengths[1] + lengths[2]
-    const periodic = lengths.filter((_, axis) => pbc[axis])
-    // q = ceil(k / n) images of every site along the shortest periodic axis lie within
-    // (q + 1) |a| + span, so that radius holds at least (2q + 1) n - 1 >= k neighbors however
-    // few axes are periodic; four cell heights is the old floor, ample for 3D crystals
-    const periodic_reach = periodic.length
-      ? (Math.ceil(order / structure.sites.length) + 1) * Math.min(...periodic) + cell_span
-      : cell_span
-    return {
-      total_volume: volume,
-      max_cutoff: Math.max(4 * Math.max(...math.cell_heights(matrix)), periodic_reach),
-    }
-  }
   const mins: Vec3 = [Infinity, Infinity, Infinity]
   const maxs: Vec3 = [-Infinity, -Infinity, -Infinity]
   for (const { xyz } of structure.sites) {
@@ -712,11 +695,22 @@ const k_search_bounds = (
     }
   }
   const extents = [0, 1, 2].map((axis) => Math.max(maxs[axis] - mins[axis], 1))
+  // A pair at opposite box corners spans the diagonal exactly, and its distance can round
+  // 1 ulp above hypot(extents); the margin keeps that pair inside the last pass's radius
+  const span = Math.hypot(...extents) * (1 + 1e-9)
+  if (!(`lattice` in structure))
+    return { total_volume: extents[0] * extents[1] * extents[2], max_cutoff: span }
+  const { volume, matrix } = structure.lattice
+  const periodic = matrix.filter((_, axis) => pbc[axis]).map((vec) => Math.hypot(...vec))
+  // A site's own images along periodic axis a sit at |a|, 2|a|, ..., so ceil(k / 2) |a| holds
+  // k of them wherever the other sites are (non-periodic coordinates are not wrapped into the
+  // cell). Without periodic axes the sites are a finite cluster bounded by their box diagonal.
+  const reach = periodic.length
+    ? Math.ceil(order / 2) * Math.min(...periodic) * (1 + 1e-9)
+    : span
   return {
-    total_volume: extents[0] * extents[1] * extents[2],
-    // A pair at opposite box corners spans the diagonal exactly, and its distance can round
-    // 1 ulp above hypot(extents); the margin keeps that pair inside the last pass's radius
-    max_cutoff: Math.hypot(...extents) * (1 + 1e-9),
+    total_volume: volume,
+    max_cutoff: Math.max(4 * Math.max(...math.cell_heights(matrix)), reach),
   }
 }
 
