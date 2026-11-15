@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'svelte'
-import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/clipboard'
+import { create_clipboard_feedback as widget_clipboard_feedback } from 'svelte-widgets/browser'
 import type ViewerPaneComponent from './ViewerPane.svelte'
 
 export { default as ControlPane } from './ControlPane.svelte'

@@ -3,7 +3,7 @@
 import type { ExportSource } from '#lib/io/export.js'
 import { series_text } from '#lib/plot/core/data-transform.js'
 import { html_to_text } from '#lib/utils.js'
-import { escape_csv_field } from 'svelte-widgets/csv'
+import { escape_csv_field } from 'svelte-widgets/format'
 
 // === CSV ===
 

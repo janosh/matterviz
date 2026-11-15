@@ -2,7 +2,7 @@
 // runtime contract is two attributes on the root — `data-theme` (names the palette, incl. the
 // white/black high-contrast overrides) and `color-scheme` (what light-dark() and native form
 // controls resolve against).
-import { persisted_choice, storage_set } from 'svelte-widgets/storage'
+import { persisted_choice, storage_set } from 'svelte-widgets/browser'
 
 const is_browser = typeof window !== `undefined`
 export const THEME_STORAGE_KEY = `matterviz-theme`

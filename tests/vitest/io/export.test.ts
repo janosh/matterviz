@@ -16,7 +16,7 @@ import {
   type ExportSources,
 } from '#lib/io/export.js'
 import { canvas_painters } from '#lib/plot/core/utils.js'
-import { download } from 'svelte-widgets/download'
+import { download } from 'svelte-widgets/browser'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
 import { Vector2, PerspectiveCamera } from 'three/webgpu'
 import { plan_movie, movie_frame } from '#lib/trajectory/movie.js'
@@ -33,7 +33,10 @@ import {
 import { mock_object_url } from '../setup'
 import { png_blob } from '../test-fixtures'
 
-vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
+vi.mock(`svelte-widgets/browser`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  download: vi.fn(),
+}))
 
 beforeEach(() => vi.clearAllMocks())
 // Restores every vi.spyOn (console, document.createElement, URL) so stubs never leak

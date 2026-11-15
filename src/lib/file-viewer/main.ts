@@ -11,7 +11,7 @@ import {
   build_structure_props_from_settings as structure_props,
 } from '#lib/settings.js'
 import type { DefaultSettings } from '#lib/settings.js'
-import type { DownloadData } from 'svelte-widgets/download'
+import type { DownloadData } from 'svelte-widgets/browser'
 import { set_moyo_wasm_source } from '#lib/symmetry/index.js'
 import { apply_theme_to_dom, is_valid_theme_name } from '#lib/theme/index.js'
 import type { TrajectoryController, TrajHandlerData } from '#lib/trajectory/index.js'
@@ -204,7 +204,7 @@ const post_to_host = (command: `info` | `error`, text: string): void => {
   vscode_api?.postMessage({ command, text })
 }
 
-// Route `download` (svelte-widgets/download checks for this global override) through the host's save dialog
+// Route `download` (from svelte-widgets/browser, which checks for this global override) through the host's save dialog
 export const setup_vscode_download = (): void => {
   if (!vscode_api) return
   const download = (data: DownloadData, filename: string): void => {

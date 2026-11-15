@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { is_color, resolve_backdrop } from '#lib/colors/index.js'
   import type {
     ChemicalElement,

@@ -2,8 +2,9 @@
   import type { ComponentProps, Snippet } from 'svelte'
   import DraggablePane from 'svelte-widgets/DraggablePane.svelte'
   import type { IconData } from 'svelte-widgets/icons'
-  import ShortcutsList from '#lib/layout/ShortcutsList.svelte'
-  import type { ShortcutScope } from '#lib/shortcuts.js'
+  import ShortcutsList from 'svelte-widgets/ShortcutsList.svelte'
+  import { host } from '#lib/host.js'
+  import { shortcut_entries, type ShortcutScope } from '#lib/shortcuts.js'
 
   let {
     open = $bindable(false),
@@ -199,7 +200,9 @@
   {...rest}
 >
   {@render children?.()}
-  {#if shortcut_scopes}<ShortcutsList scopes={shortcut_scopes} />{/if}
+  {#if shortcut_scopes}
+    <ShortcutsList shortcuts={shortcut_entries(shortcut_scopes, host.fullscreen)} />
+  {/if}
 </DraggablePane>
 
 <style>

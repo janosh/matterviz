@@ -1,7 +1,6 @@
 import BrillouinZone from '#lib/brillouin/BrillouinZone.svelte'
 import FermiSurface from '#lib/fermi-surface/FermiSurface.svelte'
-import { host } from '#lib/host.js'
-import ShortcutsList from '#lib/layout/ShortcutsList.svelte'
+import ShortcutsList from 'svelte-widgets/ShortcutsList.svelte'
 import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
 import type * as camera_reset from '#lib/scene/camera-reset.js'
 import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
@@ -9,6 +8,7 @@ import {
   format_shortcut_keys,
   SHORTCUTS,
   shortcut_attrs,
+  shortcut_entries,
   shortcuts_for,
   viewer_keys,
 } from '#lib/shortcuts.js'
@@ -121,12 +121,7 @@ describe(`viewer_keys`, () => {
   })
 })
 
-describe(`ShortcutsList`, () => {
-  const orig_fullscreen = host.fullscreen
-  afterEach(() => {
-    host.fullscreen = orig_fullscreen
-  })
-
+describe(`shortcut_entries in ShortcutsList`, () => {
   // Lists exactly the given scopes' entries, collapsed until opened; `F` only where the host
   // can fullscreen
   test.each([
@@ -140,18 +135,19 @@ describe(`ShortcutsList`, () => {
   ] as [ShortcutScope[], boolean, Shortcut[]][])(
     `scopes %j (fullscreen %s)`,
     async (scopes, fullscreen, expected) => {
-      host.fullscreen = fullscreen
       const target = create_root()
-      mounted.push(mount(ShortcutsList, { target, props: { scopes } }))
+      const shortcuts = shortcut_entries(scopes, fullscreen)
+      mounted.push(mount(ShortcutsList, { target, props: { shortcuts } }))
       await tick()
       const details = target.querySelector<HTMLDetailsElement>(`details.shortcuts-list`)
       expect(details?.open).toBe(false)
       expect(details?.querySelector(`summary`)?.textContent).toBe(`Keyboard shortcuts`)
       const listed = [...target.querySelectorAll(`dd`)].map((node) => node.textContent)
       expect(listed).toEqual(expected.map((shortcut) => shortcut.description))
-      expect(target.querySelector(`dt kbd`)?.textContent).toBe(
-        format_shortcut_keys(expected[0]),
+      const keys = [...target.querySelectorAll(`dt`)].map((node) =>
+        node.textContent?.replaceAll(/\s+/g, ` `).trim(),
       )
+      expect(keys).toEqual(expected.map(format_shortcut_keys))
     },
   )
 })

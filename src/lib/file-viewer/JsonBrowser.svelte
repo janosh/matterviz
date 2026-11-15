@@ -5,9 +5,9 @@
     resolve_backdrop,
   } from '#lib/colors/index.js'
   import { format_path, resolve_path } from 'svelte-widgets/json-tree/path'
+  import { relative_path_segments } from 'svelte-widgets/json-tree/utils'
   import { plural } from '#lib/labels.js'
   import JsonTree from 'svelte-widgets/JsonTree.svelte'
-  import { relative_path_segments } from 'svelte-widgets/json-tree/utils'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import { clamp } from '#lib/math.js'
   import { merge } from '#lib/settings.js'
@@ -20,7 +20,8 @@
     structure_from_json,
   } from '#lib/structure/parse.js'
   import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
-  import { is_editable_event_target, to_error } from 'svelte-widgets/utils'
+  import { is_editable_event_target } from 'svelte-widgets/shortcuts'
+  import { to_error } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'
   import {
     detect_view_type,

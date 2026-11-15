@@ -1,7 +1,7 @@
 import type { DefaultSettings } from '../settings'
 import { SETTINGS_CONFIG, validate_setting_value } from '../settings'
 import { is_plain_object } from '../utils'
-import { storage_get, storage_remove, storage_set } from 'svelte-widgets/storage'
+import { storage_get, storage_remove, storage_set } from 'svelte-widgets/browser'
 
 export const STRUCTURE_VIEW_STATE_VERSION = 1 as const
 export const STRUCTURE_VIEW_STATE_STORAGE_KEY = `matterviz:structure-view:v1`

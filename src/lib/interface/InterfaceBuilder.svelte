@@ -6,7 +6,7 @@
   import { format_num } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import * as math from '#lib/math.js'
-  import { ControlGroup, KeyValueList } from '#lib/layout/index.js'
+  import { KeyValueList, SettingsGroup } from '#lib/layout/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { to_error } from 'svelte-widgets/utils'
@@ -219,7 +219,7 @@
 
 <div {...rest} class={[`interface-builder`, rest.class]}>
   <div class="groups">
-    <ControlGroup legend="Match">
+    <SettingsGroup title="Match" collapsible={false}>
       {#if matches.length > 0}
         <label>
           Coincidence cell
@@ -250,8 +250,8 @@
           {/each}
         </div>
       </details>
-    </ControlGroup>
-    <ControlGroup legend="Stacking" class="sliders">
+    </SettingsGroup>
+    <SettingsGroup title="Stacking" collapsible={false} class="sliders">
       {#each sliders as { label, value, max, step, unit, set } (label)}
         <label>
           {label}
@@ -266,7 +266,7 @@
           <span class="value">{format_num(value, `.2f`)}{unit}</span>
         </label>
       {/each}
-    </ControlGroup>
+    </SettingsGroup>
   </div>
   {#if result.error}
     <p class="error">{result.error}</p>

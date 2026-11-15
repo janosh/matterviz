@@ -2,7 +2,7 @@ import { FPS_STEP } from '#lib/constants.js'
 import { clamp } from '#lib/math.js'
 import { create_shortcut_flash } from '#lib/effects.svelte.js'
 import { untrack } from 'svelte'
-import { is_editable_event_target } from 'svelte-widgets/utils'
+import { is_editable_event_target } from 'svelte-widgets/shortcuts'
 
 // Shared playback/navigation for ordered collections. Getter inputs preserve reactivity
 // without taking ownership of bindable component state or domain callbacks.

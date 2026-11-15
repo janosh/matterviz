@@ -22,7 +22,8 @@
     type ResolvedPolyhedraOptions,
   } from '#lib/structure/polyhedra.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
-  import { is_editable_event_target, is_modifier_chord, to_error } from 'svelte-widgets/utils'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import { to_error } from 'svelte-widgets/utils'
   import { tooltip } from 'svelte-widgets/attachments'
   import { shortcut_attrs } from '#lib/shortcuts.js'
   import type { ComponentProps } from 'svelte'

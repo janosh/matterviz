@@ -3,7 +3,7 @@ import type { Crystal } from '#lib/structure/index.js'
 import app_css from '#lib/app.css?inline'
 import type { Vec3 } from '#lib/math.js'
 import { parse_poscar, parse_xyz } from '#lib/structure/parse.js'
-import { download } from 'svelte-widgets/download'
+import { download } from 'svelte-widgets/browser'
 import * as io_export from '#lib/io/export.js'
 import type { TrajectoryFrame, TrajectoryMetadata } from '#lib/trajectory/index.js'
 import { trajectory_from_frames } from '#lib/trajectory/runs/memory.js'
@@ -28,7 +28,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query, reset_section, set_input } from '../setup'
 import { make_crystal, with_property_rows } from '../test-fixtures'
 
-vi.mock(`svelte-widgets/download`, async (import_original) => ({
+vi.mock(`svelte-widgets/browser`, async (import_original) => ({
   ...(await import_original<Record<string, unknown>>()),
   download: vi.fn(),
 }))

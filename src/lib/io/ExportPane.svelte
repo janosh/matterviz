@@ -10,7 +10,7 @@
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Snippet } from 'svelte'
   import Popover from 'svelte-widgets/Popover.svelte'
-  import { create_clipboard_feedback } from 'svelte-widgets/clipboard'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
   import type { HTMLAttributes } from 'svelte/elements'
 
   // mdi:export-variant is not included in svelte-widgets' generated icon set.

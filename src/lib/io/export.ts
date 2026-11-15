@@ -1,5 +1,5 @@
 import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants.js'
-import { download, type DownloadData } from 'svelte-widgets/download'
+import { download, type DownloadData } from 'svelte-widgets/browser'
 import type { FileSaver } from './file-export.svelte'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
 import { clamp } from '#lib/math.js'

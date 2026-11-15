@@ -10,7 +10,7 @@ import type {
   TrajectoryPositionStream,
 } from './index'
 import { is_crystal } from '#lib/structure/validation.js'
-import { csv_line } from 'svelte-widgets/csv'
+import { csv_line } from 'svelte-widgets/format'
 import type { TrajectoryRun } from './run'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,

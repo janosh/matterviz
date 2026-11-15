@@ -7,7 +7,7 @@
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import { get_formula_label_segments } from '#lib/composition/formula-markup.js'
   import { clamp } from '#lib/math.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { ticks as d3_ticks } from 'd3-array'
   import type { HTMLAttributes } from 'svelte/elements'
   import { type CanvasFrame, create_canvas_surface } from '#lib/canvas-surface.svelte.js'

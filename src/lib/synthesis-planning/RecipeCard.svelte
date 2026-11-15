@@ -11,7 +11,7 @@
   } from './recipe'
   import { describe_downhill_windows } from './thermo'
   import type { RecipeAssumptions, SynthesisRoute } from './types'
-  import { create_clipboard_feedback } from 'svelte-widgets/clipboard'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
 
   let {
     route,

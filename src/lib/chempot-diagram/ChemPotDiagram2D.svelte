@@ -1,7 +1,7 @@
 <script lang="ts">
   import { array_extent, convex_hull_2d, type Vec2 } from '#lib/math.js'
   import { untrack } from 'svelte'
-  import { is_editable_event_target } from 'svelte-widgets/utils'
+  import { is_editable_event_target } from 'svelte-widgets/shortcuts'
   import TemperatureSlider from '#lib/convex-hull/TemperatureSlider.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import Spinner from 'svelte-widgets/Spinner.svelte'

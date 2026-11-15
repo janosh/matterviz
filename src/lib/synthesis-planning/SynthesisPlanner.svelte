@@ -9,7 +9,7 @@
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { toggle_item } from '#lib/utils.js'
-  import { create_clipboard_feedback } from 'svelte-widgets/clipboard'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
   import { to_error } from 'svelte-widgets/utils'
   import { format_plan_text } from './agent'
   import { format_equation_html } from './format'

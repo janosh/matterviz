@@ -38,7 +38,8 @@
     wheel_zoom_gate,
     webgpu_available,
   } from '#lib/scene/index.js'
-  import { is_modifier_chord, to_error } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import { to_error } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'

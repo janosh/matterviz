@@ -4,7 +4,7 @@
 import { AtomInstances } from '#lib/structure/atom-instances.js'
 import { ArrowMesh } from '#lib/structure/arrow-mesh.js'
 import { BondMesh } from '#lib/structure/bond-mesh.js'
-import { download } from 'svelte-widgets/download'
+import { download } from 'svelte-widgets/browser'
 import type { FileSaver } from '#lib/io/file-export.svelte.js'
 import { clamp01 } from '#lib/utils.js'
 import { to_error } from 'svelte-widgets/utils'

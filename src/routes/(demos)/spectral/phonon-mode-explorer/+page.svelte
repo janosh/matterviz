@@ -27,8 +27,8 @@
     spectrum_from_phonon_data,
   } from '#lib/spectral/index.js'
   import { parse_supercell_scaling } from '#lib/structure/index.js'
-  import type { QueryParams, UrlParamEntry } from 'svelte-widgets/url-params'
-  import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/url-params'
+  import type { QueryParams, UrlParamEntry } from 'svelte-widgets/browser'
+  import { bool_from_param, bool_url_entry, sync_url_params } from 'svelte-widgets/browser'
   import { to_error } from 'svelte-widgets/utils'
   import { glob_basename, glob_default } from '#site/imports.js'
   import { latest_load } from '#site/state.svelte.js'

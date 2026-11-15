@@ -1,4 +1,4 @@
-import { download, type DownloadData } from 'svelte-widgets/download'
+import { download, type DownloadData } from 'svelte-widgets/browser'
 import { to_error } from 'svelte-widgets/utils'
 
 export type FileSaver = (

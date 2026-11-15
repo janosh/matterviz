@@ -5,7 +5,7 @@ import { flushSync, mount } from 'svelte'
 import { expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
-vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/info-tag` } } }))
+vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/property-filter` } } }))
 const long_type = `Pick<ComponentProps<typeof Trajectory>, 'class' | 'style' | 'fps_range' | 'step_labels'>`
 const doc: ComponentDoc = {
   props: [
@@ -38,14 +38,14 @@ const loader = vi.hoisted(() => {
     },
   }
 })
-vi.mock(`virtual:prop-docs`, () => ({ default: { InfoTag: () => loader.load(doc) } }))
+vi.mock(`virtual:prop-docs`, () => ({ default: { PropertyFilter: () => loader.load(doc) } }))
 
 test(`renders the docs, retrying a failed load when the table is reopened`, async () => {
   mount(PropsTable, { target: document.body })
   const details = doc_query<HTMLDetailsElement>(`details`)
   // the name is plain text: a <code> would become a source link that eats the summary click
   expect(details.querySelector(`summary code`)).toBeNull()
-  expect(details.querySelector(`summary .component-name`)?.textContent).toBe(`InfoTag`)
+  expect(details.querySelector(`summary .component-name`)?.textContent).toBe(`PropertyFilter`)
   const toggle = (open: boolean) => {
     details.open = open
     details.dispatchEvent(new Event(`toggle`))

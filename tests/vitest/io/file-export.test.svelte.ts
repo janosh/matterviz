@@ -1,11 +1,14 @@
-import { download } from 'svelte-widgets/download'
+import { download } from 'svelte-widgets/browser'
 import ExportDestination from '#lib/io/ExportDestination.svelte'
 import { FileExportState } from '#lib/io/file-export.svelte.js'
 import { mount, tick, unmount } from 'svelte'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { set_input } from '../setup'
 
-vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
+vi.mock(`svelte-widgets/browser`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  download: vi.fn(),
+}))
 
 afterEach(() => {
   vi.clearAllMocks()
