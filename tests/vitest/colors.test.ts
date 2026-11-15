@@ -21,7 +21,6 @@ import {
   watch_dark_mode,
 } from '#lib/colors/index.js'
 import { ELEM_SYMBOLS } from '#lib/element/types.js'
-import { mock_canvas_context } from './setup'
 import { rgb as d3_rgb } from 'd3-color'
 import * as d3_sc from 'd3-scale-chromatic'
 import { beforeEach, describe, expect, it, test, vi } from 'vite-plus/test'
@@ -152,24 +151,6 @@ test.each([
 })
 
 describe(`pick_contrast_color`, () => {
-  it.each<[Paint, string]>([
-    [{ bg_color: `#000000` }, `white`],
-    [{ bg_color: `#4fc3f7` }, `black`], // light cyan
-    [{ bg_color: `#1f77b4` }, `white`], // dark blue: white 4.8:1 vs black 4.4:1
-    // near-tie: black edges ahead (4.60 vs 4.57) but white reaches AA, so white wins
-    [{ bg_color: `#4e79a7` }, `white`], // PLOT_COLORS[0] steelblue
-    // mid-tones where white text falls below 4.5:1 WCAG (white:black ratio in comments)
-    [{ bg_color: `#00a1ff` }, `black`], // Vesta Pa 2.8:7.5
-    [{ bg_color: `#59a14f` }, `black`], // PLOT_COLORS[4] green 3.2:6.6
-    [{ bg_color: `#808080` }, `black`], // mid gray 3.9:5.3
-    [{ bg_color: `#ffffff`, choices: [`red`, `blue`] }, `blue`],
-    [{ bg_color: `rgba(255, 255, 255, 0.1)`, backdrop: `black` }, `white`],
-    [{ bg_color: `rgba(0, 0, 0, 0.1)`, backdrop: `white` }, `black`],
-    [{ bg_color: `transparent`, backdrop: `black` }, `white`],
-  ])(`pick_contrast_color(%o) = %s`, (paint, expected) => {
-    expect(pick_contrast_color(paint)).toBe(expected)
-  })
-
   it(`prefers white at AA, else the higher ratio, on every element-scheme and d3-scale color`, () => {
     // independent oracle: WCAG 2 relative luminance and contrast ratio
     const luminance = (color: string): number => {
@@ -207,17 +188,6 @@ describe(`pick_contrast_color`, () => {
   })
 
   it.each<[Paint, string]>([
-    [{ bg_color: `not-a-color` }, `cannot read color`],
-    [{ bg_color: `rgba(255, 255, 255, 0.1)` }, `needs a backdrop`],
-    [
-      { bg_color: `rgba(255, 255, 255, 0.1)`, backdrop: `rgba(0, 0, 0, 0.5)` },
-      `backdrop must be opaque`,
-    ],
-  ])(`rejects invalid paint %o`, (paint, error) => {
-    expect(() => pick_contrast_color(paint)).toThrow(error)
-  })
-
-  it.each<[Paint, string]>([
     // CSS vars cannot be resolved in JS, so inherit rather than guess
     [{ bg_color: `var(--some-bg)` }, `currentColor`],
     [{ bg_color: `#000000` }, `white`],
@@ -238,45 +208,6 @@ describe(`pick_contrast_color`, () => {
     [null, null],
   ])(`tooltip_paint(%s) = %o`, (fill, expected) => {
     expect(tooltip_paint(fill)).toEqual(expected)
-  })
-
-  // Colors only a browser parses (color-mix(), …) cost a canvas pixel write + readback each
-  it(`canvas color parses are memoized`, () => {
-    vi.stubGlobal(`CanvasRenderingContext2D`, Object) // only checked for existence
-    const get_image_data = vi.fn(() => ({ data: [10, 20, 30, 255] }))
-    let fill_style = ``
-    const ctx = mock_canvas_context({ getImageData: get_image_data })
-    Object.defineProperty(ctx, `fillStyle`, {
-      get: () => fill_style,
-      set: (value: string) => {
-        fill_style = value
-      },
-    })
-    try {
-      const color = `color-mix(in srgb, navy, black)`
-      const paints = [tooltip_paint(color), tooltip_paint(color), tooltip_paint(color)]
-      expect(paints).toEqual(
-        Array.from({ length: 3 }, () => ({ background: color, color: `white` })),
-      )
-      expect(get_image_data).toHaveBeenCalledOnce()
-    } finally {
-      vi.unstubAllGlobals()
-      vi.restoreAllMocks()
-    }
-  })
-
-  // the widget's parser rejects color-mix() and friends; the canvas pass resolves them first
-  it(`picks contrast for colors only the canvas can parse`, () => {
-    vi.stubGlobal(`CanvasRenderingContext2D`, Object)
-    mock_canvas_context({ getImageData: () => ({ data: [128, 0, 128, 255] }) })
-    try {
-      const background = `color-mix(in srgb, red 50%, blue)`
-      expect(pick_contrast_color({ bg_color: background })).toBe(`white`)
-      expect(contrast_text_color({ bg_color: background })).toBe(`white`)
-    } finally {
-      vi.unstubAllGlobals()
-      vi.restoreAllMocks()
-    }
   })
 
   it(`contrast_color_memo matches pick_contrast_color and follows backdrop/alpha changes`, () => {

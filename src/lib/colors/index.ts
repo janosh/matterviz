@@ -1,4 +1,4 @@
-import { clamp } from 'svelte-widgets/utils'
+import { evict_oldest } from 'svelte-widgets/utils'
 import { rgb, type RGBColor } from 'd3-color'
 import {
   type ContrastOptions,
@@ -6,7 +6,6 @@ import {
   pick_contrast_color,
 } from 'svelte-widgets/attachments'
 import type { ColorSchemeName } from '#lib/constants.js'
-import { evict_oldest } from '#lib/labels.js'
 import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index.js'
 import { clamp01 } from '#lib/utils.js'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
@@ -102,13 +101,10 @@ export const is_color = (val: unknown): val is string => {
     to_rendered_rgb(trimmed) !== undefined
   )
 }
-// svelte-widgets' parse_color (browser canvas for color-mix() and friends) as a d3 color,
-// channels clamped into range
+// svelte-widgets' parse_color (browser canvas for color-mix() and friends) as a d3 color
 function to_rendered_rgb(color: string): RGBColor | undefined {
   const parsed = parse_color(color)
-  if (!parsed) return undefined
-  const [red, green, blue] = parsed.map((channel) => clamp(channel, 0, 255))
-  return rgb(red, green, blue, clamp01(parsed[3]))
+  return parsed ? rgb(...parsed) : undefined
 }
 export const is_concrete_color = (val: unknown): val is string =>
   typeof val === `string` && (to_rendered_rgb(val.trim())?.opacity ?? 0) > 0

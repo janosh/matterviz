@@ -22,19 +22,6 @@ import { timeFormat } from 'd3-time-format'
 
 export { ELEM_SYMBOLS } from '#lib/element/types.js'
 
-// Cap for the string-keyed caches here, in sanitize.ts and colors/index.ts (keys come from
-// data, so they must be bounded). Evicting the oldest — Map iterates insertion order — beats a
-// wholesale clear, which makes a working set just over the limit recompute everything.
-export const STRING_CACHE_LIMIT = 4096
-export const evict_oldest = (
-  cache: Map<string, unknown>,
-  limit = STRING_CACHE_LIMIT,
-): void => {
-  if (cache.size < limit) return
-  const [oldest] = cache.keys()
-  if (oldest !== undefined) cache.delete(oldest)
-}
-
 // A value within a millionth of `magnitude` (the data's largest |value|) as exactly 0, so
 // floating noise (a density's 1e-125 vacuum, a fixed atom's 1e-17 force) reads 0 rather than
 // 9.43e-125 or 10a once formatted to a few significant digits

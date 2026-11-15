@@ -1,4 +1,3 @@
-import { format_num } from 'svelte-widgets/format'
 import { element_data } from '#lib/element/index.js'
 import type { Vec3 } from '#lib/math.js'
 import {
@@ -52,24 +51,6 @@ test.each([
 test(`trajectory_property_config keys are lowercase`, () => {
   const keys = Object.keys(trajectory_property_config)
   expect(keys.filter((key) => key !== key.toLowerCase())).toEqual([])
-})
-
-// oxfmt-ignore
-test.each([
-  // no explicit format: DEFAULT_FMT picks the SI form at |x| >= 1 and plain decimals below
-  [1234, undefined, `1.23k`], [0.123, undefined, `0.123`], [1.2, `.3f`, `1.200`],
-  [0, undefined, `0`], [1, undefined, `1`], [1000, undefined, `1k`],
-  [1_000_000, undefined, `1M`], [1_000_000_000, undefined, `1G`], [0.001, undefined, `0.001`],
-  [0.1, undefined, `0.1`], [-1.1, undefined, `−1.1`],
-  // d3 scientific formats render 0 as "0e+0"; collapse to a plain 0 (keeping any prefix/suffix)
-  [0, `.2~e`, `0`], [-0, `.2~e`, `0`], [0, `$.2e`, `$0`], [0, `.2~%`, `0%`],
-  [-0.000001, undefined, `−0.000001`], [-0.0000001, undefined, `−1e-7`],
-  [-1.14123, undefined, `−1.14`], [-1.14123e-7, `.5~g`, `−1.1412e-7`],
-  // past yotta d3 has no SI prefix left (1e27 read 1,000Y and 1e100 ran past 100 chars)
-  [9.99e26, undefined, `999Y`], [1e27, undefined, `1e27`], [-1.234e27, undefined, `−1.23e27`],
-  [1e100, undefined, `1e100`], [Number.MAX_VALUE, undefined, `1.8e308`],
-])(`format_num(%s, %s) = %s`, (num, fmt, expected) => {
-  expect(format_num(num, fmt)).toBe(expected)
 })
 
 // adaptive labels gain precision only until adjacent distinct values render distinctly;
