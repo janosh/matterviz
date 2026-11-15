@@ -1,10 +1,12 @@
 import { is_concrete_color, is_opaque_color } from '#lib/colors/index.js'
 import { watch_theme_changes } from '#lib/theme/index.js'
+import { get_bg_color } from 'svelte-widgets/attachments'
 
 const DEFAULT_BACKDROP_VAR = `--page-bg`
 
 interface ColorOptions {
-  fallback?: string | (() => string)
+  // used while no token resolves; a function gets the node once there is one
+  fallback?: string | ((node?: Element) => string)
   require_opaque?: boolean
   // A usable caller-supplied color skips token lookup and observation (an ancestor walk and
   // observer for every repeated child)
@@ -30,7 +32,8 @@ const resolve_live_color = (
   options: ColorOptions,
 ): { readonly current: string } => {
   const { fallback = `white`, require_opaque = false, override, watch = [] } = options
-  const resolve_fallback = () => (typeof fallback === `function` ? fallback() : fallback)
+  const resolve_fallback = (node?: Element) =>
+    typeof fallback === `function` ? fallback(node) : fallback
   const is_usable = require_opaque ? is_opaque_color : is_concrete_color
   let color = $state(resolve_fallback())
   const override_color = $derived.by(() => {
@@ -40,7 +43,7 @@ const resolve_live_color = (
 
   const node = $derived(override_color === undefined ? get_node() : undefined)
   const read = () => {
-    if (node) color = read_colors(node).find(is_usable) ?? resolve_fallback()
+    if (node) color = read_colors(node).find(is_usable) ?? resolve_fallback(node)
   }
   // Observers live as long as the node does. The read runs in its own effect so a reactive
   // `fallback` (e.g. a per-point tooltip color) re-reads without rebuilding the observers.
@@ -104,9 +107,15 @@ export const resolve_computed_color = (
     options,
   )
 
-// Resolve an opaque backdrop, rejecting translucent tokens and overrides.
+// Resolve an opaque backdrop, rejecting translucent tokens and overrides. Without a token it
+// falls back to what the node actually shows (svelte-widgets' get_bg_color, down to the page
+// canvas, which is dark under a dark root color-scheme), not an assumed white page.
 export const resolve_backdrop = (
   get_node: () => Element | null | undefined,
   options: Omit<CssColorOptions, `require_opaque`> = {},
 ): { readonly current: string } =>
-  resolve_css_color(get_node, { ...options, require_opaque: true })
+  resolve_css_color(get_node, {
+    fallback: (node) => get_bg_color(node ?? null),
+    ...options,
+    require_opaque: true,
+  })
