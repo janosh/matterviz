@@ -6,11 +6,8 @@ import type { Vec3 } from '#lib/math.js'
 import { is_valid_index, sorted_numbers } from '#lib/math.js'
 import type { AnyStructure } from '#lib/structure/index.js'
 import type { BondingStrategy } from '#lib/structure/bonding.js'
-import {
-  compute_bonds,
-  intern_site_elements,
-  lattice_pbc_or_throw,
-} from '#lib/structure/bonding.js'
+import { compute_bonds, intern_site_elements } from '#lib/structure/bonding.js'
+import { lattice_pbc_or_throw } from '#lib/structure/neighbor-list.js'
 import { angle_between_vectors } from '#lib/structure/measure.js'
 import { split_site_partners } from '#lib/structure/partial-occupancy.js'
 import type { Pbc } from '#lib/structure/pbc.js'

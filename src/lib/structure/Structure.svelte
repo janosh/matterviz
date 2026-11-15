@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { SHORTCUTS, shortcut_attrs, viewer_keydown } from '#lib/shortcuts.js'
   import {
     get_image_source_idx,
@@ -10,7 +11,6 @@
   // layout. Acquisition and parsing use the shared material loader.
   import type { ColorSchemeName } from '#lib/colors/index.js'
   import { rgb } from 'd3-color'
-  import { clamp } from '#lib/math.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import type { ElementSymbol } from '#lib/element/index.js'
@@ -35,8 +35,9 @@
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { ToastStore } from 'svelte-widgets/toast-queue'
-  import { format_num, parse_warnings_notice } from '#lib/labels.js'
-  import { chain_handlers, is_editable_event_target, to_error } from 'svelte-widgets/utils'
+  import { parse_warnings_notice } from '#lib/labels.js'
+  import { chain_handlers, clamp, to_error } from 'svelte-widgets/utils'
+  import { is_editable_event_target } from 'svelte-widgets/shortcuts'
   import { key_walk_root, wheel_zoom_gate, webgpu_available } from '#lib/scene/index.js'
   import { set_isosurface_error_handler } from '#lib/isosurface/context.js'
   import { resolve_slice_plane, slice_cell_polygon } from '#lib/isosurface/slice.js'

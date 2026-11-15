@@ -114,12 +114,15 @@ test.each([
 
 // Past CI runs (newest first) as [run id, head repo, E2E gate conclusion, event (default
 // pull_request)]; run 100 is this one. `shard failed` is a still-running run whose E2E shard
-// already failed, `running` one without a failure yet
+// already failed, `running` one without a failure yet, `skipped` one whose gate skipped E2E
+// (its aggregator still reports success). `changed` lists the files changed since the passing
+// run's head (sha-<id>): only unit tests and root docs let a push skip E2E
 const fork = `someone/matterviz`
 const own = `janosh/matterviz`
 type PastRun = [number, string, string, string?]
+const tests_only = [`tests/vitest/a.test.ts`, `readme.md`]
 // oxfmt-ignore
-test.each<[string, string | undefined, PastRun[], boolean]>([
+test.each<[string, string | undefined, PastRun[], boolean, (string[] | `fail`)?]>([
   [`opened`, `opened`, [[3, own, `success`]], true],
   [`merge to main`, undefined, [[3, own, `success`]], true],
   [`first push, nothing decided yet`, `synchronize`, [], true],
@@ -137,7 +140,17 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
   // a failed E2E shard decides before the run completes; a running run without one doesn't
   [`a running run whose shard failed`, `synchronize`, [[9, own, `shard failed`], [3, own, `success`]], true],
   [`a running run without failures`, `synchronize`, [[9, own, `running`], [3, own, `success`]], false],
-])(`e2e-gate decides whether E2E runs: %s`, (_label, action, runs, expected) => {
+  // a run that skipped E2E passed nothing: look past it to the last run that really ran it
+  [`skipped after a pass`, `synchronize`, [[9, own, `skipped`], [3, own, `success`]], false],
+  [`skipped after a failure`, `synchronize`, [[9, own, `skipped`], [3, own, `failure`]], true],
+  [`only skipped runs`, `synchronize`, [[9, own, `skipped`]], true],
+  // a pass only covers its own head: anything a browser test can see reruns E2E
+  [`source changed since the pass`, `synchronize`, [[3, own, `success`]], true, [...tests_only, `src/lib/x.ts`]],
+  [`e2e tests changed since the pass`, `synchronize`, [[3, own, `success`]], true, [`tests/playwright/x.test.ts`]],
+  [`a demo page changed since the pass`, `synchronize`, [[3, own, `success`]], true, [`src/routes/x/+page.md`]],
+  [`over 300 changed files`, `synchronize`, [[3, own, `success`]], true, [`TRUNCATED`]],
+  [`the pass's head was force-pushed away`, `synchronize`, [[3, own, `success`]], true, `fail`],
+])(`e2e-gate decides whether E2E runs: %s`, (_label, action, runs, expected, changed = tests_only) => {
   const [step] = jobs[`e2e-gate`].steps
   const scratch = mkdtempSync(join(tmpdir(), `matterviz-e2e-gate-`))
   onTestFinished(() => rmSync(scratch, { recursive: true, force: true }))
@@ -145,23 +158,32 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
   const workflow_runs = runs.map(([id, full_name, , event = `pull_request`]) => ({
     id,
     event,
+    head_sha: `sha-${id}`,
     head_repository: { full_name },
   }))
   writeFileSync(join(scratch, `runs.json`), JSON.stringify({ workflow_runs }))
   for (const [id, , conclusion] of runs) {
     const running = conclusion === `shard failed` || conclusion === `running`
+    const shards = running ? null : conclusion
     const jobs_json = [
       { name: `Unit tests`, conclusion: `failure` }, // non-E2E failures decide nothing
-      { name: `E2E production (shard 8/8)`, conclusion: running ? null : conclusion },
-      { name: `E2E tests (shard 1/4)`, conclusion: running ? null : conclusion },
+      { name: `E2E production (shard 8/8)`, conclusion: shards },
+      { name: `E2E source inspection`, conclusion: shards },
+      // the aggregator passes when E2E was skipped on purpose
+      { name: `E2E tests (shard 1/4)`, conclusion: conclusion === `skipped` ? `success` : shards },
     ]
     if (conclusion === `shard failed`) jobs_json[1].conclusion = `failure`
     writeFileSync(join(scratch, `jobs-${id}.json`), JSON.stringify({ jobs: jobs_json }))
   }
+  const files = changed === `fail` ? [] : changed.map((filename) => ({ filename }))
+  // TRUNCATED stands in for GitHub's 300-file cap
+  const padded = changed !== `fail` && changed.includes(`TRUNCATED`) ? Array(300).fill(files[0]) : files
+  writeFileSync(join(scratch, `compare.json`), JSON.stringify({ files: padded }))
   // logs each call's endpoint, then answers with jq over the matching file
   const gh_stub = `gh() {
     echo "$1 $2 $3" >> "${scratch}/calls"
     if [[ "$2" == */jobs?per_page=100 ]]; then id="\${2%/jobs?per_page=100}"; jq -r "$4" "${scratch}/jobs-\${id##*/}.json"; return; fi
+    if [[ "$2" == */compare/* ]]; then ${changed === `fail` ? `return 1` : `jq -r "$4" "${scratch}/compare.json"; return`}; fi
     jq -r "$4" "${scratch}/runs.json"
   }`
   const output_file = join(scratch, `output`)
@@ -175,6 +197,7 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
       HEAD_REF: `feature`,
       GITHUB_REPOSITORY: own,
       GITHUB_RUN_ID: `100`,
+      HEAD_SHA: `head`,
       GITHUB_OUTPUT: output_file,
     },
   })
@@ -187,13 +210,18 @@ test.each<[string, string | undefined, PastRun[], boolean]>([
     ([id, repo, , event = `pull_request`]) =>
       id !== 100 && repo === own && [`pull_request`, `workflow_dispatch`].includes(event),
   )
-  const decided = listed.findIndex(([, , gate]) => ![`cancelled`, `running`].includes(gate))
+  const decided = listed.findIndex(([, , gate]) =>
+    [`success`, `failure`, `shard failed`].includes(gate),
+  )
   const queried = listed.slice(0, decided === -1 ? listed.length : decided + 1)
+  const passed = decided !== -1 && listed[decided][2] === `success`
   expect(calls.trim().split(`\n`).filter(Boolean)).toEqual(
     action === `synchronize`
       ? [
           `api repos/${own}/actions/workflows/ci.yml/runs?branch=feature&per_page=30 --jq`,
           ...queried.map(([id]) => `api repos/${own}/actions/runs/${id}/jobs?per_page=100 --jq`),
+          // a pass then asks what changed since its head
+          ...(passed ? [`api repos/${own}/compare/sha-${listed[decided][0]}...head --jq`] : []),
         ]
       : [],
   )

@@ -1,7 +1,8 @@
 <script lang="ts">
   // Ranked routes as a sortable heatmap table; clicking a row selects the route
+  import type { RowData } from 'svelte-widgets/table'
   import { HeatmapTable, TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
-  import type { Column, RowData } from '#lib/table/index.js'
+  import type { Column } from '#lib/table/index.js'
   import { format_equation_html } from './format'
   import { describe_downhill_windows } from './thermo'
   import type { SynthesisRoute } from './types'

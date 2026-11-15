@@ -4,24 +4,16 @@
 import { type D3SymbolName, symbol_map } from '#lib/labels.js'
 import { attach_canvas, canvas_painters, prepare_canvas } from '#lib/plot/core/utils.js'
 import { clamp01 } from '#lib/utils.js'
-import { color as d3_color } from 'd3-color'
+import { parse_color } from 'svelte-widgets/attachments'
 import { symbol as d3_symbol, symbolCircle } from 'd3-shape'
 
 // Visible markers past which charts in `auto` mode paint one canvas instead of SVG nodes
 export const CANVAS_MARKER_THRESHOLD = 1000
 
-// Canvas ignores invalid paint values, so restrict it to d3 colors and SVG's no-paint
-// keyword. Memoized: a plot authors only a handful of distinct paint strings.
-const canvas_color_safety = new Map<string, boolean>()
-export const canvas_safe_color = (color: string): boolean => {
-  let safe = canvas_color_safety.get(color)
-  if (safe === undefined) {
-    if (canvas_color_safety.size >= 1024) canvas_color_safety.clear()
-    safe = color === `none` || d3_color(color) !== null
-    canvas_color_safety.set(color, safe)
-  }
-  return safe
-}
+// Canvas ignores invalid paint values, so restrict it to colors CSS parses (modern syntax such
+// as rgb(255 255 255) and oklch() included, which d3-color rejects) and SVG's no-paint keyword
+export const canvas_safe_color = (color: string): boolean =>
+  color === `none` || parse_color(color) !== null
 
 // A marker's look apart from its position, so charts build it once per data change and share
 // one object across every marker drawn alike (whose runs then batch by identity)
@@ -72,11 +64,11 @@ export const push_marker = (
 const symbol_path_cache = new Map<string, Path2D>()
 const MAX_SYMBOL_CACHE = 512
 
-// Colour-scale output (`rgb(...)`) and 3/6-digit hex carry no alpha, so skip the d3 parse
-// those 100k-marker plots would otherwise pay twice per marker.
-const OPAQUE_COLOR = /^(?:rgb\(|hsl\(|#[\da-f]{3}$|#[\da-f]{6}$)/i
+// Colour-scale output (three-channel `rgb(...)`) and 3/6-digit hex carry no alpha, so skip the
+// parse those 100k-marker plots would otherwise pay twice per marker
+const OPAQUE_COLOR = /^(?:(?:rgb|hsl)\((?:[^,/)]*,){0,2}[^,/)]*\)|#[\da-f]{3}|#[\da-f]{6})$/i
 const color_opacity = (color: string): number =>
-  OPAQUE_COLOR.test(color) ? 1 : (d3_color(color)?.opacity ?? 1)
+  OPAQUE_COLOR.test(color) ? 1 : (parse_color(color)?.[3] ?? 1)
 const normalize_alpha = (value: number): number =>
   Number.isFinite(value) ? clamp01(value) : 0
 

@@ -21,4 +21,10 @@
   export_formats={[]}
   fullscreen_toggle={false}
   show_controls={{ hidden: [`controls`] }}
-/>
+>
+  <!-- destructured sized snippet: svelte-check fails here if the wrapper div's own plain
+  children type leaks back into the prop -->
+  {#snippet children({ width, height, fullscreen })}
+    <span data-testid="children-size">{width}x{height} {fullscreen}</span>
+  {/snippet}
+</IsobaricBinaryPhaseDiagram>

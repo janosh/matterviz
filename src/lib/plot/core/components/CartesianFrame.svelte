@@ -24,7 +24,7 @@
   import type { UserContentProps } from '#lib/plot/core/types.js'
   import { svg_sources, type ExportProps, type ExportSources } from '#lib/io/export.js'
   import { chart_export_filename } from '#lib/plot/core/utils/chart-export.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { ClassValue, HTMLAttributes } from 'svelte/elements'
   import { viewer_keys } from '#lib/shortcuts.js'

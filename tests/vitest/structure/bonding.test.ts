@@ -3,6 +3,7 @@ import type { AnyStructure, Crystal, StructureBond } from '#lib/structure/index.
 import type { BondEditState } from '#lib/structure/bonding.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import * as bonding from '#lib/structure/bonding.js'
+import * as neighbor_list from '#lib/structure/neighbor-list.js'
 import { BondFrame, bond_neighbor_summary, pack_bonds } from '#lib/structure/bond-rendering.js'
 import { numeric_sites } from '#lib/structure/site.js'
 import {
@@ -1243,7 +1244,7 @@ describe(`neighbor_query`, () => {
     }
     return found
   }
-  const as_map = (list: bonding.NeighborList) => {
+  const as_map = (list: neighbor_list.NeighborList) => {
     const found = new Map<string, { dist: number; delta: Vec3 }>()
     for (let center = 0; center < list.n_centers; center++) {
       for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
@@ -1290,7 +1291,7 @@ describe(`neighbor_query`, () => {
     [`reversed clusters, full pbc`, { ...clustered, sites: clustered.sites.toReversed() }, [true, true, true], 2.1],
     [`interleaved clusters, full pbc`, { ...clustered, sites: clustered.sites.map((_, idx) => clustered.sites[(idx * 7) % 24]) }, [true, true, true], 2.1],
   ] as const)(`matches brute force over ±3 images: %s`, (_label, structure, pbc, cutoff) => {
-    const list = bonding.neighbor_query(structure, { cutoff, pbc })
+    const list = neighbor_list.neighbor_query(structure, { cutoff, pbc })
     // pbc off keeps source positions; the query supplies its own PBC
     const frame = md_frame(
       xyz_array(structure),
@@ -1307,8 +1308,8 @@ describe(`neighbor_query`, () => {
     for (const sorted of [false, true]) {
       const expected = sorted
         ? list
-        : bonding.neighbor_query(structure, { cutoff, pbc, sorted })
-      const actual = bonding.neighbor_query(numeric, { cutoff, pbc, sorted })
+        : neighbor_list.neighbor_query(structure, { cutoff, pbc, sorted })
+      const actual = neighbor_list.neighbor_query(numeric, { cutoff, pbc, sorted })
       expect(actual).toEqual(expected)
     }
     const actual = as_map(list)
@@ -1336,11 +1337,11 @@ describe(`neighbor_query`, () => {
     expect(list.offsets[list.n_centers]).toBe(list.neighbors.length)
     expect(list.offsets[list.n_centers]).toBe(expected.size)
     const streamed: [number, number, number][] = []
-    bonding.visit_neighbor_distances(structure, { cutoff, pbc }, (center, neighbor, dist) => {
+    neighbor_list.visit_neighbor_distances(structure, { cutoff, pbc }, (center, neighbor, dist) => {
       streamed.push([center, neighbor, dist])
     })
     const numeric_streamed: typeof streamed = []
-    bonding.visit_neighbor_distances(numeric, { cutoff, pbc }, (center, neighbor, dist) => {
+    neighbor_list.visit_neighbor_distances(numeric, { cutoff, pbc }, (center, neighbor, dist) => {
       numeric_streamed.push([center, neighbor, dist])
     })
     expect(numeric_streamed).toEqual(streamed)
@@ -1377,7 +1378,7 @@ describe(`neighbor_query`, () => {
     expected: Map<number, number>,
   ) => {
     let max_error = 0
-    bonding.visit_neighbor_distances(
+    neighbor_list.visit_neighbor_distances(
       structure,
       { cutoff, pbc: [false, false, false] },
       (center, neighbor, distance) => {
@@ -1396,7 +1397,7 @@ describe(`neighbor_query`, () => {
   const stream_list_error = (positions: Vec3[], cutoff: number) => {
     const structure = si_cloud(positions)
     const options = { cutoff, pbc: NO_PBC }
-    const list = bonding.neighbor_query(structure, options)
+    const list = neighbor_list.neighbor_query(structure, options)
     const expected = new Map<number, number>()
     for (let center = 0; center < positions.length; center++) {
       for (let slot = list.offsets[center]; slot < list.offsets[center + 1]; slot++) {
@@ -1447,7 +1448,7 @@ describe(`neighbor_query`, () => {
         const dist_sq = delta_x * delta_x
         const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
         const visits: number[][] = [[], []]
-        bonding.visit_neighbor_distances(
+        neighbor_list.visit_neighbor_distances(
           structure,
           { cutoff: 1, pbc: [false, false, false] },
           (center, neighbor, distance) => {
@@ -1487,13 +1488,17 @@ describe(`neighbor_query`, () => {
             const dist_sq = (second - first) ** 2
             const expected = dist_sq <= 1 ? [Math.sqrt(dist_sq)] : []
             const visits: number[][] = [[], []]
-            bonding.visit_neighbor_distances(structure, options, (center, neighbor, dist) => {
-              if (center === 1 && neighbor === 2) visits[0].push(dist)
-              if (center === 2 && neighbor === 1) visits[1].push(dist)
-            })
+            neighbor_list.visit_neighbor_distances(
+              structure,
+              options,
+              (center, neighbor, dist) => {
+                if (center === 1 && neighbor === 2) visits[0].push(dist)
+                if (center === 2 && neighbor === 1) visits[1].push(dist)
+              },
+            )
             expect(visits).toEqual([expected, expected])
             for (const sorted of [true, false]) {
-              const list = bonding.neighbor_query(structure, { ...options, sorted })
+              const list = neighbor_list.neighbor_query(structure, { ...options, sorted })
               for (const center of [1, 2]) {
                 const start = list.offsets[center]
                 const distances = [
@@ -1517,14 +1522,14 @@ describe(`neighbor_query`, () => {
     ])
     const options = { cutoff: 1, pbc: [false, false, false] as const }
     for (const sorted of [true, false]) {
-      const list = bonding.neighbor_query(structure, { ...options, sorted })
+      const list = neighbor_list.neighbor_query(structure, { ...options, sorted })
       expect([...list.offsets]).toEqual([0, 0, 2, 4, 6])
       // From site 1, (+1, 0, 0) must precede the new (+1, -2, 0) contact.
       expect([...list.neighbors]).toEqual([3, 2, 1, 3, 1, 2])
       expect([...list.distances]).toEqual([Number.EPSILON / 2, 1, 1, 1, Number.EPSILON / 2, 1])
     }
     const streamed: number[][] = []
-    bonding.visit_neighbor_distances(structure, options, (...contact) =>
+    neighbor_list.visit_neighbor_distances(structure, options, (...contact) =>
       streamed.push(contact),
     )
     expect(streamed).toEqual([
@@ -1567,12 +1572,12 @@ describe(`neighbor_query`, () => {
 
   test(`1-atom cell: own images are neighbors; fcc k=12 shell exact`, () => {
     const simple_cubic = make_crystal(3, [{ element: `Fe`, abc: [0, 0, 0] }])
-    const list = bonding.neighbor_query(simple_cubic, { cutoff: 3.01 })
+    const list = neighbor_list.neighbor_query(simple_cubic, { cutoff: 3.01 })
     expect(list.neighbors).toHaveLength(6)
     expect(Array.from(list.neighbors)).toEqual([0, 0, 0, 0, 0, 0])
     expect(Array.from(list.distances).every((dist) => Math.abs(dist - 3) < 1e-12)).toBe(true)
     const fcc_cu = make_crystal(3.6, fcc(`Cu`))
-    const knn = bonding.neighbor_query(fcc_cu, { k: 12 })
+    const knn = neighbor_list.neighbor_query(fcc_cu, { k: 12 })
     expect(Array.from(knn.offsets)).toEqual([0, 12, 24, 36, 48])
     const nn_dist = 3.6 / Math.SQRT2
     for (const dist of knn.distances) expect(Math.abs(dist - nn_dist)).toBeLessThan(1e-12)
@@ -1592,19 +1597,66 @@ describe(`neighbor_query`, () => {
     }
   })
 
+  // the k-search radius cap used to be four cell heights whatever the periodicity, so a chain
+  // periodic along one axis stopped at 8 of its 14 nearest images (±1..±4 cells)
+  test.each([
+    [
+      [true, false, false],
+      [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7],
+    ],
+    [
+      [true, true, false],
+      [
+        1,
+        1,
+        1,
+        1,
+        Math.SQRT2,
+        Math.SQRT2,
+        Math.SQRT2,
+        Math.SQRT2,
+        2,
+        2,
+        2,
+        2,
+        Math.sqrt(5),
+        Math.sqrt(5),
+      ],
+    ],
+  ] as const)(`k=14 reaches every nearest image with pbc=%j`, (pbc, expected) => {
+    const lattice = make_crystal(1, [{ element: `Fe`, abc: [0, 0, 0] }], { pbc: [...pbc] })
+    const knn = neighbor_list.neighbor_query(lattice, { k: 14 })
+    expect(Array.from(knn.offsets)).toEqual([0, 14])
+    const distances = Array.from(knn.distances)
+    for (const [idx, dist] of expected.entries()) expect(distances[idx]).toBeCloseTo(dist, 12)
+  })
+
+  // non-periodic coordinates are not wrapped into the cell, so sites 100 A apart along y
+  // still need the radius to reach k of their own x images, not just the cell's extent
+  test(`k=14 reaches each site's own images when sites spread far along a non-periodic axis`, () => {
+    const sites = Array.from({ length: 14 }, (_, idx) => ({
+      element: `Fe`,
+      xyz: [0, 100 * idx, 0] as Vec3,
+    }))
+    const spread = make_crystal(1, sites, { pbc: [true, false, false] })
+    const knn = neighbor_list.neighbor_query(spread, { k: 14 })
+    expect(Array.from(knn.offsets)).toEqual(Array.from({ length: 15 }, (_, idx) => 14 * idx))
+    expect(Math.max(...knn.distances)).toBeCloseTo(7, 9)
+  })
+
   test(`molecule: no images, k capped by system size, cutoff list sorted`, () => {
     const water = make_molecule([
       [`O`, [0, 0, 0]],
       [`H`, [0.96, 0, 0]],
       [`H`, [-0.24, 0.93, 0]],
     ])
-    const knn = bonding.neighbor_query(water, { k: 5 })
+    const knn = neighbor_list.neighbor_query(water, { k: 5 })
     expect(Array.from(knn.offsets)).toEqual([0, 2, 4, 6])
     expect(Array.from(knn.images).every((shift) => shift === 0)).toBe(true)
     // the radius may grow to the cluster's bounding-box diagonal: a 100 A chain of 3 atoms
     // has a 9.3 A cube-root volume, which left every atom with 0 of its 2 partners
     const chain = make_molecule([0, 50, 100].map((x_coord) => [`O`, [x_coord, 0, 0]]))
-    const chain_knn = bonding.neighbor_query(chain, { k: 2 })
+    const chain_knn = neighbor_list.neighbor_query(chain, { k: 2 })
     expect(Array.from(chain_knn.offsets)).toEqual([0, 2, 4, 6])
     expect(Array.from(chain_knn.distances)).toEqual([50, 100, 50, 50, 50, 100])
     // two atoms at opposite box corners: their distance rounds 1 ulp above hypot(extents)
@@ -1612,8 +1664,10 @@ describe(`neighbor_query`, () => {
       [`O`, [2.4347959638802195, 4.836360971011535, 4.090214663192215]],
       [`O`, [5.182636053845052, -0.16486257602122423, 0.654857615062942]],
     ])
-    expect(Array.from(bonding.neighbor_query(corners, { k: 1 }).offsets)).toEqual([0, 1, 2])
-    const list = bonding.neighbor_query(water, { cutoff: 1.2 })
+    expect(Array.from(neighbor_list.neighbor_query(corners, { k: 1 }).offsets)).toEqual([
+      0, 1, 2,
+    ])
+    const list = neighbor_list.neighbor_query(water, { cutoff: 1.2 })
     expect(list.offsets[3]).toBeGreaterThanOrEqual(4) // two O-H contacts, both ends
     for (let center = 0; center < 3; center++) {
       for (let slot = list.offsets[center] + 1; slot < list.offsets[center + 1]; slot++) {
@@ -1629,29 +1683,31 @@ describe(`neighbor_query`, () => {
     [{ k: 0 }, /k must be a positive integer/],
     [{ k: 1.5 }, /k must be a positive integer/],
   ])(`rejects %j`, (options, message) => {
-    expect(() => bonding.neighbor_query(triclinic, options)).toThrow(message)
+    expect(() => neighbor_list.neighbor_query(triclinic, options)).toThrow(message)
     if (`cutoff` in options) {
-      expect(() => bonding.visit_neighbor_distances(triclinic, options, () => {})).toThrow(
-        message,
-      )
+      expect(() =>
+        neighbor_list.visit_neighbor_distances(triclinic, options, () => {}),
+      ).toThrow(message)
     }
   })
 
   test(`rejects a degenerate lattice and absurd cutoffs, not in-band bond perception`, () => {
     // oxfmt-ignore
     const flat = make_crystal([[3, 0, 0], [0, 3, 0], [3, 3, 0]], [{ element: `C`, abc: [0, 0, 0] }])
-    expect(() => bonding.neighbor_query(flat, { cutoff: 2 })).toThrow(/degenerate/)
+    expect(() => neighbor_list.neighbor_query(flat, { cutoff: 2 })).toThrow(/degenerate/)
     // no periodic axis: the lattice is never used, so a singular one is fine
-    expect(bonding.neighbor_query(flat, { cutoff: 2, pbc: NO_PBC }).neighbors).toHaveLength(0)
+    expect(
+      neighbor_list.neighbor_query(flat, { cutoff: 2, pbc: NO_PBC }).neighbors,
+    ).toHaveLength(0)
     // 40 cells of images along every axis: 81^3 * 200 = 106M positions
     const big = make_random_structure(200)
-    expect(() => bonding.neighbor_query(big, { cutoff: 400 })).toThrow(
+    expect(() => neighbor_list.neighbor_query(big, { cutoff: 400 })).toThrow(
       /reaches 40, 40, 40 cells .* needs \d+ periodic images of 200 sites; refusing to build more than 4000000 positions, a cutoff this far past the cell is almost always a unit mix-up/,
     )
     // The cloud is small but every one of 4600 sites sees every other: 10.6M pairs, more
     // than the lists could hold in memory. Refused mid-sweep rather than allocated.
     const dense = make_molecule(hydrogen_grid(0.5))
-    expect(() => bonding.neighbor_query(dense, { cutoff: 100 })).toThrow(
+    expect(() => neighbor_list.neighbor_query(dense, { cutoff: 100 })).toThrow(
       /more than 10,000,000 pairs within 100 A of 4600 sites/,
     )
     // BondSearch's skin-widened band keeps every pair of a grid inside 0.2 A (the plain band
@@ -1662,7 +1718,7 @@ describe(`neighbor_query`, () => {
     )
     // Streaming has no pair storage to exhaust, so this cloud can be processed in full.
     let n_visits = 0
-    bonding.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
+    neighbor_list.visit_neighbor_distances(dense, { cutoff: 100 }, () => n_visits++)
     expect(n_visits).toBe(4600 * 4599)
     // Cs-Cs reaches 39 A under these options, putting all 10.6M grid pairs inside the longest
     // reach, but only ~60k H-H pairs lie in their own band: bond perception stores just those
@@ -1696,7 +1752,7 @@ describe(`neighbor_query`, () => {
         xyz: [rand() * box, rand() * box, rand() * box] as Vec3,
       })),
     )
-    const list = bonding.neighbor_query(structure, { cutoff: 15 })
+    const list = neighbor_list.neighbor_query(structure, { cutoff: 15 })
     expect(list.n_centers).toBe(n_sites)
     // mean neighbor count = density * sphere volume = 1.5e-4 * 4/3 pi 15^3 = 2.12
     const mean = list.neighbors.length / n_sites
@@ -1718,7 +1774,7 @@ describe(`neighbor_query`, () => {
     const water = make_molecule(
       atoms.map(([element, xyz]) => [element, math.add(xyz, offset)]),
     )
-    const found = as_map(bonding.neighbor_query(water, { cutoff: 1 }))
+    const found = as_map(neighbor_list.neighbor_query(water, { cutoff: 1 }))
     const expected = brute_force(water, 1, [false, false, false])
     expect(expected.size).toBe(6) // two O-H per water, both directions
     expect([...found.keys()].toSorted()).toEqual([...expected.keys()].toSorted())
@@ -1745,7 +1801,7 @@ describe(`neighbor_query`, () => {
     ])
     xyzs.push([far, 0, 0])
     const cloud = make_molecule(xyzs.map((xyz) => [`C`, xyz]))
-    const list = bonding.neighbor_query(cloud, { cutoff: 1.2 })
+    const list = neighbor_list.neighbor_query(cloud, { cutoff: 1.2 })
     // cubic grid at 1.1 A: 3 n_side^2 (n_side - 1) axis-adjacent pairs, each listed from both ends
     expect(list.neighbors).toHaveLength(6 * n_side ** 2 * (n_side - 1))
     expect(
@@ -1755,10 +1811,10 @@ describe(`neighbor_query`, () => {
   })
 
   test(`sorted: false preserves slot discovery order and the same contacts`, () => {
-    const sorted = bonding.neighbor_query(triclinic, { cutoff: 5.5 })
-    const unsorted = bonding.neighbor_query(triclinic, { cutoff: 5.5, sorted: false })
+    const sorted = neighbor_list.neighbor_query(triclinic, { cutoff: 5.5 })
+    const unsorted = neighbor_list.neighbor_query(triclinic, { cutoff: 5.5, sorted: false })
     expect(Array.from(unsorted.offsets)).toEqual(Array.from(sorted.offsets))
-    const keys = (list: bonding.NeighborList, center: number) =>
+    const keys = (list: neighbor_list.NeighborList, center: number) =>
       Array.from({ length: list.offsets[center + 1] - list.offsets[center] }, (_, rank) => {
         const slot = list.offsets[center] + rank
         const image = Array.from(list.images.subarray(slot * 3, slot * 3 + 3))
@@ -1773,7 +1829,7 @@ describe(`neighbor_query`, () => {
       10,
       [3, 0, 1, 2, 4, 5].map((coord) => ({ element: `Si`, xyz: [coord, 0, 0] as Vec3 })),
     )
-    const list = bonding.neighbor_query(interleaved, {
+    const list = neighbor_list.neighbor_query(interleaved, {
       cutoff: 2.1,
       sorted: false,
       pbc: NO_PBC,
@@ -1791,11 +1847,11 @@ describe(`neighbor_query`, () => {
       { element: `Na`, abc: [0, 0, 0] },
       { element: `Na`, xyz: [bad, 2, 2] },
     ])
-    expect(() => bonding.neighbor_query(crystal, { cutoff: 3 })).toThrow(/non-finite/)
+    expect(() => neighbor_list.neighbor_query(crystal, { cutoff: 3 })).toThrow(/non-finite/)
     const molecule = {
       sites: crystal.sites.map((site) => ({ ...site, abc: [0, 0, 0] as Vec3 })),
     }
-    expect(() => bonding.neighbor_query(molecule, { cutoff: 3 })).toThrow(
+    expect(() => neighbor_list.neighbor_query(molecule, { cutoff: 3 })).toThrow(
       `neighbor_query: site 2 has a non-finite position (${bad}, 2, 2)`,
     )
   })
@@ -1811,13 +1867,16 @@ describe(`neighbor_query`, () => {
       const crystal = make_crystal(4, [{ element: `Na`, abc: [0, 0, 0] }])
       const lattice = { ...crystal.lattice, pbc } as unknown as typeof crystal.lattice
       const malformed = { ...crystal, lattice }
-      expect(() => bonding.neighbor_query(malformed, { cutoff: 3 })).toThrow(/lattice\.pbc/)
+      expect(() => neighbor_list.neighbor_query(malformed, { cutoff: 3 })).toThrow(
+        /lattice\.pbc/,
+      )
       expect(() => calc_coordination_nums(malformed)).toThrow(/lattice\.pbc/)
       // BondSearch's finite path reads lattice.pbc for its periodic candidate superset
       expect(() => new bonding.BondSearch().compute_columns(malformed)).toThrow(/lattice\.pbc/)
       // an explicit override still works on the same object
       expect(
-        bonding.neighbor_query(malformed, { cutoff: 3, pbc: [true, true, true] }).n_centers,
+        neighbor_list.neighbor_query(malformed, { cutoff: 3, pbc: [true, true, true] })
+          .n_centers,
       ).toBe(1)
     },
   )

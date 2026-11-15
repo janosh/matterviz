@@ -3,7 +3,8 @@
 // Pure functions (no component state) so the trickiest geometry stays unit-testable;
 // Sunburst.svelte wires them to reactive state and the DOM.
 
-import { clamp, to_degrees } from '#lib/math.js'
+import { clamp } from 'svelte-widgets/utils'
+import { to_degrees } from '#lib/math.js'
 import { clamp01 } from '#lib/utils.js'
 import type {
   PositionedArc,

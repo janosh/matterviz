@@ -1,5 +1,6 @@
 // Gas phase thermodynamics for atmosphere-controlled convex hull analysis
 
+import { format_num } from 'svelte-widgets/format'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import {
   entry_has_temp_data,
@@ -8,7 +9,6 @@ import {
 } from './thermodynamics'
 import { BOLTZMANN_EV_PER_K } from '#lib/constants.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { format_num } from '#lib/labels.js'
 import type {
   GasAnalysis,
   GasSpecies,

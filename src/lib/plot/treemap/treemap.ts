@@ -5,8 +5,8 @@
 // charts share data builders (sunburst_from_paths, chem_sys_sunburst_data, …)
 // and value semantics (plotly branchvalues) by construction.
 
+import { clamp } from 'svelte-widgets/utils'
 import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy'
-import { clamp } from '#lib/math.js'
 import type { Rect } from '#lib/plot/core/layout.js'
 import type { PositionedArc, SunburstNode } from '#lib/plot/core/utils/hierarchy-layout.js'
 

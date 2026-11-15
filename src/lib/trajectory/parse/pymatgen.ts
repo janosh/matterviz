@@ -1,4 +1,5 @@
 // Pymatgen Trajectory JSON parsing
+import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
@@ -10,7 +11,6 @@ import {
   create_trajectory_frame,
 } from '#lib/trajectory/helpers.js'
 import type { TrajectoryFrame } from '#lib/trajectory/index.js'
-import { is_plain_object } from '#lib/utils.js'
 import type { ParsedTrajectory, WarnFn } from './shared'
 
 // Replace every numpy array MontyEncoder wrote ({"@module": "numpy", "@class": "array",

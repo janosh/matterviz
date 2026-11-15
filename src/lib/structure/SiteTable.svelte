@@ -1,8 +1,8 @@
 <script lang="ts">
+  import type { RowData } from 'svelte-widgets/table'
   import { display_idx, from_display_idx } from '#lib/labels.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { join_hover_link } from '#lib/tooltip/index.js'
-  import type { RowData } from '#lib/table/index.js'
   import { toggle_item } from '#lib/utils.js'
   import type { ComponentProps } from 'svelte'
   import type { Site } from './index'

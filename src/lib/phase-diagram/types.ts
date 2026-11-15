@@ -284,6 +284,16 @@ export interface DiagramXFrame {
   domain: Vec2
 }
 
+// A hatched horizontal band across the plot, e.g. a temperature window a diagram is not
+// assessed or not scored in. Ends are in K like the data; an unset end runs past the axis.
+// The plot area clips it, so it never covers the axes or the isopleth strip.
+export interface TemperatureBand {
+  min?: number | null // lower edge in K; unset or null: unbounded, like y_axis.range
+  max?: number | null // upper edge in K
+  label?: string // small text at the band's visible top right
+  title?: string // explanation the diagram's hover tooltip shows anywhere inside the band
+}
+
 interface TieLineConfig {
   stroke_width?: number
   endpoint_radius?: number

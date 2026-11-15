@@ -1,12 +1,12 @@
 <script lang="ts">
+  import { clamp } from 'svelte-widgets/utils'
+  import { format_num } from 'svelte-widgets/format'
   import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { get_d3_interpolator, pick_contrast_color } from '#lib/colors/index.js'
-  import { format_num } from '#lib/labels.js'
-  import { clamp } from '#lib/math.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { get_d3_interpolator } from '#lib/colors/index.js'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import type { StructureGalleryItem } from '#lib/structure/index.js'
   import GlassChip from 'svelte-widgets/GlassChip.svelte'
-  import { portal } from 'svelte-widgets/attachments'
+  import { pick_contrast_color, portal } from 'svelte-widgets/attachments'
   import { untrack, type ComponentProps, type Snippet } from 'svelte'
   import Structure from './Structure.svelte'
 
@@ -346,7 +346,7 @@
       // repaints without rebuilding every span
       const color = interpolate(property_color_reverse ? 1 - rank : rank)
       return `--prop-rank-color: ${color}; --prop-ink: ${pick_contrast_color({
-        background: color,
+        bg_color: color,
       })}`
     }
   })

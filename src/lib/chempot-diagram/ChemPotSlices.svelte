@@ -6,9 +6,9 @@
   // Controls for the data elements beyond the display axes: each is shadow-projected or
   // fixed at a chemical potential, set by slider, number or a click on the plot of every
   // domain's section measure against that potential (where each phase appears, peaks, ends).
-  import { format_num } from '#lib/labels.js'
+  import { clamp } from 'svelte-widgets/utils'
+  import { format_num } from 'svelte-widgets/format'
   import type { Vec2 } from '#lib/math.js'
-  import { clamp } from '#lib/math.js'
   import type { DataSeries } from '#lib/plot/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { domain_formula_text } from './controls-state.svelte'

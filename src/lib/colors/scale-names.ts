@@ -1,9 +1,9 @@
 // d3 color scheme names and the ColorScale data guard, kept free of Svelte modules so worker
 // bundles (settings validation in parse workers) can import them
+import { is_plain_object } from 'svelte-widgets/utils'
 import * as d3_sc from 'd3-scale-chromatic'
 import type { Vec2 } from '#lib/math.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import { is_plain_object } from '#lib/utils.js'
 
 // Color scale names are always the prefixed d3 export name (`interpolateViridis`), as used
 // by get_d3_interpolator, the settings defaults and every dropdown value. Bare names are

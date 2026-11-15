@@ -1,4 +1,4 @@
-import { clamp } from '#lib/math.js'
+import { clamp } from 'svelte-widgets/utils'
 import type { Rect } from '#lib/plot/core/layout.js'
 
 const DIRECTIONS = [`right-below`, `left-below`, `right-above`, `left-above`] as const

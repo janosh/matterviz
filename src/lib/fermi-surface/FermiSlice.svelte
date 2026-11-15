@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { compute_brillouin_zone } from '#lib/brillouin/compute.js'
   import * as math from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
@@ -20,7 +21,6 @@
   import type { CarrierType, SliceShading } from './compute'
   import type { BandGridData, FermiSliceData, FermiSurfaceData } from './types'
   import { to_error } from 'svelte-widgets/utils'
-  import { format_num } from '#lib/labels.js'
 
   let {
     fermi_data,
@@ -62,7 +62,7 @@
     children?: Snippet<
       [{ slice_data: FermiSliceData | null; export_svg: () => string | null }]
     >
-  } & HTMLAttributes<HTMLDivElement> = $props()
+  } & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   let wrapper = $state<HTMLDivElement | undefined>(undefined)
   const uid = $props.id()

@@ -15,7 +15,7 @@ import {
 import { useThrelte } from '@threlte/core'
 import { getContext, setContext } from 'svelte'
 import { on } from 'svelte/events'
-import { is_modifier_chord } from 'svelte-widgets/utils'
+import { is_modifier_chord } from 'svelte-widgets/shortcuts'
 import { Vector3 } from 'three/webgpu'
 import type { ThreltePointerEvent } from './props.svelte'
 

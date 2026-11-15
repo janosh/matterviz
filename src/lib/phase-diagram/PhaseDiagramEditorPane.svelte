@@ -1,11 +1,11 @@
 <script lang="ts">
+  import { create_flash } from 'svelte-widgets/browser'
   import { Edit } from 'svelte-widgets/icons'
   import { ViewerPane, type PaneToggleProps } from '#lib/overlays/index.js'
   import { JsonTree } from 'svelte-widgets/json-tree'
   import { set_at_path } from 'svelte-widgets/json-tree/utils'
   import { parse_diagram } from './diagram'
   import type { BinaryPhaseDiagram } from './types'
-  import { create_flash } from '#lib/effects.svelte.js'
   import { to_error } from 'svelte-widgets/utils'
 
   let {

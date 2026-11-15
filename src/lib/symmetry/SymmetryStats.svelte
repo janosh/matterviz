@@ -30,7 +30,7 @@
     children,
     label = `Symmetry`,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
     // Symmetry analysis result to summarize (space group, Wyckoff positions, ...). Nothing is listed when empty.
     sym_data?: SymmetryDataset | null
     // Analysis settings (symprec, algorithm) shown as editable controls above the stats.

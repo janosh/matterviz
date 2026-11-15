@@ -1,6 +1,6 @@
 // Brillouin zone generation via convex hull
 
-import { format_num } from '#lib/labels.js'
+import { format_num } from 'svelte-widgets/format'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { Vector3 } from 'three/webgpu'

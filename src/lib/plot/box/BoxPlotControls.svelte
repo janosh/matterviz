@@ -1,7 +1,7 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { enum_options } from '#lib/plot/core/components/PlotControls.svelte'
   import { track_settings } from '#lib/controls.js'
-  import { SettingsSection } from '#lib/layout/index.js'
   import type {
     BoxPointMode,
     Orientation,

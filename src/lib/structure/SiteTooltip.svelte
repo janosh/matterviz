@@ -1,9 +1,10 @@
 <script lang="ts">
   // Hovered-atom tooltip: species with occupancies and oxidation states, fractional and
   // Cartesian coordinates, bonded neighbours, then any caller rows below the built-in info
+  import { format_num } from 'svelte-widgets/format'
   import type { ElementSymbol } from '#lib/element/index.js'
   import { element_by_symbol } from '#lib/element/index.js'
-  import { format_num, format_vec3 } from '#lib/labels.js'
+  import { format_vec3 } from '#lib/labels.js'
   import { CanvasTooltip } from '#lib/scene/index.js'
   import type { Site } from '#lib/structure/index.js'
   import type { Snippet } from 'svelte'

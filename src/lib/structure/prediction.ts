@@ -1,5 +1,6 @@
 // Prediction interchange and publication validation. No Svelte/DOM imports: file workers use
 // the same contract as live tools. Undefined object fields are omitted; array holes are errors.
+import { is_plain_object } from 'svelte-widgets/utils'
 import { grid_data_range, type VolumetricData } from '#lib/isosurface/types.js'
 import { grid_dimensions } from '#lib/isosurface/grid.js'
 import {
@@ -13,7 +14,6 @@ import {
   type Vec3,
 } from '#lib/math.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
-import { is_plain_object } from '#lib/utils.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
 import type { AnyStructure } from './index'
 import { structure_json_data } from './site'

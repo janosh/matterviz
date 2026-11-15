@@ -1,6 +1,7 @@
 // MatterViz settings schema - single source of truth for all MatterViz settings
 // Used by both main package and VSCode extension
 
+import { is_plain_object } from 'svelte-widgets/utils'
 import type { ColorSchemeName } from '#lib/constants.js'
 import {
   DEFAULT_FPS_RANGE,
@@ -19,7 +20,7 @@ import type { PolyhedraNeighborMode } from '#lib/structure/polyhedra.js'
 import type { ImageAtomCompletion } from '#lib/structure/pbc.js'
 import type { LegendVisibilityMode } from '#lib/plot/core/utils/series-visibility.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
-import { is_plain_object, JSON_KINDS, plain_copy } from '#lib/utils.js'
+import { JSON_KINDS, plain_copy } from '#lib/utils.js'
 import { is_color_scale } from '#lib/colors/scale-names.js'
 
 // Constraints on a number setting, or on each item of an array setting (`items`)

@@ -11,7 +11,8 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 
 ```svelte example
 <script lang="ts">
-  import { EOS_KIND_LABELS, EOS_KINDS, EosPlot, format_num, toggle_item } from 'matterviz'
+  import { format_num } from 'svelte-widgets/format'
+  import { EOS_KIND_LABELS, EOS_KINDS, EosPlot, toggle_item } from 'matterviz'
   import type { EosFit, EosKind } from 'matterviz'
 
   const volumes = [10.384, 10.738, 11.092, 11.446, 11.8, 12.154, 12.508, 12.862, 13.216]
@@ -62,7 +63,8 @@ A simulated 9-point scan of fcc Cu (±12 % around equilibrium, ~1 meV noise). To
 
 ```svelte example
 <script lang="ts">
-  import { EosPlot, EV_PER_A3_TO_GPA, eos_pressure, format_num } from 'matterviz'
+  import { format_num } from 'svelte-widgets/format'
+  import { EosPlot, EV_PER_A3_TO_GPA, eos_pressure } from 'matterviz'
   import type { EosFit } from 'matterviz'
 
   const volumes = [13.72, 14.83, 16.0, 17.23, 18.52]

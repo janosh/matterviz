@@ -1,9 +1,9 @@
 <script lang="ts">
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
   import { browser } from '$app/env'
   import { goto } from '$app/navigation'
   import { page } from '$app/state'
   import { InterfaceBuilder } from '#lib/interface/index.js'
-  import { ControlGroup } from '#lib/layout/index.js'
   import type { Heterostructure } from '#lib/interface/index.js'
   import { SlabBuilder } from '#lib/slab/index.js'
   import type { Slab } from '#lib/slab/index.js'
@@ -16,7 +16,7 @@
   import ac_hexagonal from '#site/structures/mp-862690-Ac4-hexagonal.json'
   import po_cubic from '#site/structures/Po-simple-cubic.json'
   import { untrack } from 'svelte'
-  import { sync_url_params } from 'svelte-widgets/url-params'
+  import { sync_url_params } from 'svelte-widgets/browser'
 
   const bulk_structures = {
     'Cu (fcc)': cu_fcc,
@@ -68,7 +68,7 @@
 <div class="bleed-1400">
   <section class="demo-2col">
     {#each SIDES as side (side)}
-      <ControlGroup legend={side === `substrate` ? `Substrate` : `Film`}>
+      <SettingsGroup title={side === `substrate` ? `Substrate` : `Film`} collapsible={false}>
         <SlabBuilder
           structure={bulk_structures[sides[side].bulk]}
           bind:slab={sides[side].slab}
@@ -86,7 +86,7 @@
             </select>
           </label>
         </SlabBuilder>
-      </ControlGroup>
+      </SettingsGroup>
     {/each}
   </section>
 

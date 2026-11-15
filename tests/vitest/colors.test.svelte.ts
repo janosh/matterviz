@@ -61,8 +61,9 @@ test(`ancestor layout writes trigger no color re-reads, a theme change one per r
     parent.append(child)
     return child
   }
+  const depth = 8
   let parent: HTMLElement = document.body
-  for (let depth = 0; depth < 8; depth++) parent = child_of(parent)
+  for (let level = 0; level < depth; level++) parent = child_of(parent)
   const nodes = Array.from({ length: 20 }, () => child_of(parent))
   for (const node of nodes) observe(() => resolve_backdrop(() => node))
   const reads = vi.spyOn(globalThis, `getComputedStyle`)
@@ -76,7 +77,9 @@ test(`ancestor layout writes trigger no color re-reads, a theme change one per r
   document.documentElement.dataset.theme = `dark`
   await settle()
   expect(reads.mock.calls.length).toBeGreaterThanOrEqual(nodes.length)
-  expect(reads.mock.calls.length).toBeLessThanOrEqual(2 * nodes.length) // token + probe each
+  // without a token each falls back to what it shows: its token read, then get_bg_color's walk
+  // over itself, its ancestors (depth + body + html) and the page-canvas probe
+  expect(reads.mock.calls.length).toBeLessThanOrEqual(nodes.length * (1 + 1 + depth + 2 + 1))
 })
 
 // The ancestor observer only sees the node's own attribute mutations. Watching the theme
@@ -97,14 +100,24 @@ test(`theme-dependent fallback re-resolves when the root scheme changes`, async 
 })
 
 test.each([
-  [`unset token falls back`, ``, `white`],
+  // to what the node shows: here nothing painted, so the page canvas (white in happy-dom)
+  [`unset token falls back`, ``, `rgb(255 255 255)`],
   // a translucent token cannot serve as the opaque base for compositing
-  [`translucent token falls back`, `rgba(0, 0, 0, 0.5)`, `white`],
+  [`translucent token falls back`, `rgba(0, 0, 0, 0.5)`, `rgb(255 255 255)`],
   [`opaque token is used`, `#123456`, `#123456`],
 ])(`resolve_backdrop: %s`, (_desc, value, expected) => {
   const node = make_node(`--page-bg`, value)
   const backdrop = observe(() => resolve_backdrop(() => node))
   expect(backdrop.current).toBe(expected)
+})
+
+test(`resolve_backdrop without a token takes the painted ancestor behind the node`, () => {
+  const node = make_node()
+  const panel = document.createElement(`section`)
+  panel.style.backgroundColor = `rgb(10, 20, 30)`
+  document.body.append(panel)
+  panel.append(node)
+  expect(observe(() => resolve_backdrop(() => node)).current).toBe(`rgb(10, 20, 30)`)
 })
 
 // Color-function tokens like light-dark() compute to that literal string, which only the browser

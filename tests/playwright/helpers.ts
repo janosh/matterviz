@@ -83,8 +83,9 @@ export const expect_inline_spinner = async (container: Locator) => {
   const [status, spinner, label] = await Promise.all(
     [
       status_row,
-      status_row.locator(`.circle-spinner`),
-      status_row.locator(`:scope > span`),
+      status_row.locator(`.circle`),
+      // a <Spinner text> nests its circle beside the label; a <TaskStatus> nests a whole spinner
+      status_row.locator(`:scope > span:not(.circle, .spinner)`),
     ].map((locator) => require_bbox(locator)),
   )
   expect(spinner.x + spinner.width).toBeLessThan(label.x)

@@ -1,6 +1,6 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { DEFAULT_CONTROLS_MODE, type ShowControlsProp } from '#lib/controls.js'
-  import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
   import { to_color_scale_config } from '#lib/plot/core/scales.js'

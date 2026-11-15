@@ -8,7 +8,7 @@ import {
 } from '#lib/plot/core/text-metrics.js'
 import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
 import type { AxisConfig } from '#lib/plot/core/types.js'
-import { html_to_text } from '#lib/utils.js'
+import { html_to_text } from 'svelte-widgets/utils'
 
 export type Sides = { t?: number; b?: number; l?: number; r?: number }
 

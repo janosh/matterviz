@@ -1,12 +1,8 @@
 <script module lang="ts">
+  import { InformationOutline } from 'svelte-widgets/icons'
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
-  import {
-    display_idx,
-    format_num,
-    trajectory_property_config,
-    zero_if_negligible,
-  } from '#lib/labels.js'
-  import { format_bytes } from 'svelte-widgets/format'
+  import { display_idx, trajectory_property_config, zero_if_negligible } from '#lib/labels.js'
+  import { format_bytes, format_num } from 'svelte-widgets/format'
   import { array_extent } from '#lib/math.js'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {
@@ -219,7 +215,7 @@
 
 <script lang="ts">
   import type { ViewerPaneOptions } from '#lib/overlays/index.js'
-  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
 
   let {
@@ -270,7 +266,7 @@
     'aria-label': pane_open ? `Close trajectory info` : `Open trajectory info`,
     ...toggle_props,
   }}
-  closed_icon={info_pane_icon}
+  closed_icon={InformationOutline}
   {...pane_options}
 >
   <!-- ViewerPane keeps children mounted while hidden; without this gate a closed pane would

@@ -5,6 +5,7 @@
 // without loosening it into a band no real regression would ever hit. Sub-2x slowdowns pass.
 // Opt in locally with MATTERVIZ_PERF=1. The file is excluded from the default run in
 // vite.config.ts, so it never pays its import cost there.
+import type { RowData } from 'svelte-widgets/table'
 import { generate_bz_vertices } from '#lib/brillouin/compute.js'
 import { composition_to_barycentric_nd } from '#lib/convex-hull/barycentric-coords.js'
 import {
@@ -31,12 +32,11 @@ import {
   type BondNeighborQuery,
   create_bond_query,
   electroneg_ratio,
-  neighbor_query,
 } from '#lib/structure/bonding.js'
+import { neighbor_query } from '#lib/structure/neighbor-list.js'
 import { compute_polyhedra } from '#lib/structure/polyhedra.js'
 import { merge_polyhedra_buffers } from '#lib/structure/polyhedra-render.js'
 import { make_supercell } from '#lib/structure/supercell.js'
-import type { RowData } from '#lib/table/index.js'
 import HeatmapTable from '#lib/table/HeatmapTable.svelte'
 import type { TrajectoryController } from '#lib/trajectory/index.js'
 import Trajectory from '#lib/trajectory/Trajectory.svelte'

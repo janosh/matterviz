@@ -1,3 +1,4 @@
+import { format_num } from 'svelte-widgets/format'
 import { HIGHLIGHT } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { format_amount } from '#lib/composition/format.js'
@@ -11,7 +12,7 @@ import {
 } from './thermodynamics'
 import { hull_plot_position } from './model'
 import { element_by_symbol } from '#lib/element/data.js'
-import { format_fractional, format_num } from '#lib/labels.js'
+import { format_fractional } from '#lib/labels.js'
 import { array_extent, array_max, type Point3D } from '#lib/math.js'
 import { bisectLeft, bisectRight } from 'd3-array'
 import { resolve_color_scale } from '#lib/plot/core/scales.js'

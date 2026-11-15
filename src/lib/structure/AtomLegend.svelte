@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import {
     contrast_text_color,
     perceived_brightness,
@@ -8,7 +9,7 @@
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { ChevronCollapse, ChevronExpand, Close } from 'svelte-widgets/icons'
-  import { display_idx, ELEM_SYMBOLS, format_num } from '#lib/labels.js'
+  import { display_idx, ELEM_SYMBOLS } from '#lib/labels.js'
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { AnyStructure } from '#lib/structure/index.js'
@@ -153,7 +154,7 @@
   let property_legend_node = $state<HTMLDivElement>()
   const backdrop = resolve_backdrop(() => property_legend_node)
   const property_text_color = (background: string): string =>
-    contrast_text_color({ background, backdrop: backdrop.current })
+    contrast_text_color({ bg_color: background, backdrop: backdrop.current })
   // Click handler and labels shared by the discrete-colorbar and categorical value toggles
   const prop_val_toggle = (value: number | string, hidden: boolean) => ({
     onclick: (event: MouseEvent) =>

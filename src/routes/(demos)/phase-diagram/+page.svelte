@@ -265,10 +265,12 @@
   A model diagram with its <code>predictions</code> of the observations: arrows run from each
   observed point to the predicted one, markers take the verdict's color, and ±1σ bands show the
   model's <code>sigma_T</code>. Hover a row to light its marks (and the reverse), shift+click
-  to move the isopleth with its phase-fraction strip, press <kbd>m</kbd> for a magnifier. Below,
-  the model's Gibbs energies of mixing follow the hovered temperature on the diagram's composition
-  axis: hovering them moves the diagram's cursor, and the dashed tangent at the cursor meets the
-  edges at each component's chemical potential.
+  to move the isopleth with its phase-fraction strip, press <kbd>m</kbd> for a magnifier.
+  Below, the model's Gibbs energies of mixing follow the hovered temperature on the diagram's
+  composition axis: hovering them moves the diagram's cursor, and the dashed tangent at the
+  cursor meets the edges at each component's chemical potential. <code>temperature_bands</code> hatches
+  a window the model is not scored in (here below 800 K), labeled at its top right; hovering inside
+  it names the band in the tooltip.
 </p>
 <div class="benchmark bleed-1400">
   <div>
@@ -278,6 +280,13 @@
       {phase_color_keys}
       observations={binary_observations}
       predictions={model_predictions}
+      temperature_bands={[
+        {
+          max: 800,
+          label: `not scored`,
+          title: `Below 800 K the model's solid phases are not scored`,
+        },
+      ]}
       bind:highlight
       bind:isopleth
       bind:cursor={benchmark_cursor}

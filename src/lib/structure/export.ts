@@ -1,9 +1,9 @@
+import { is_plain_object } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { get_electro_neg_formula } from '#lib/composition/format.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import type { AnyStructure, Crystal, Site } from '#lib/structure/index.js'
-import { is_plain_object } from '#lib/utils.js'
 import {
   has_lattice_matrix,
   has_usable_lattice,

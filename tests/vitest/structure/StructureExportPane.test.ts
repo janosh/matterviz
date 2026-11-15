@@ -1,5 +1,5 @@
 import type { AnyStructure } from '#lib'
-import { download } from 'svelte-widgets/download'
+import { download } from 'svelte-widgets/browser'
 import app_css from '#lib/app.css?inline'
 import { export_canvas_as_png, renderer_registry, scene_registry } from '#lib/io/export.js'
 import type { CameraFlight } from '#lib/scene/camera-flight.js'
@@ -25,7 +25,10 @@ const mount_pane = (props: ComponentProps<typeof StructureExportPane>) =>
     props: { export_pane_open: true, ...props },
   })
 
-vi.mock(`svelte-widgets/download`, () => ({ download: vi.fn() }))
+vi.mock(`svelte-widgets/browser`, async (import_original) => ({
+  ...(await import_original<Record<string, unknown>>()),
+  download: vi.fn(),
+}))
 
 // what each mocked serializer returns
 const mock_contents = vi.hoisted(() => ({

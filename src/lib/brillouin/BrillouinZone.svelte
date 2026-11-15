@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { InformationOutline } from 'svelte-widgets/icons'
+  import { format_num } from 'svelte-widgets/format'
   import type { MaterialSource } from '#lib/file-viewer/open.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
@@ -13,9 +15,8 @@
   import { create_material_loader } from '#lib/file-viewer/material-loader.svelte.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/index.js'
   import { ViewerChrome } from '#lib/layout/index.js'
-  import { format_num } from '#lib/labels.js'
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
-  import { info_pane_icon, ViewerPane } from '#lib/overlays/index.js'
+  import { ViewerPane } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import type { MoyoDataset } from '@spglib/moyo-wasm'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
@@ -42,8 +43,8 @@
   import BrillouinZoneScene from './BrillouinZoneScene.svelte'
   import BrillouinZoneTooltip from './BrillouinZoneTooltip.svelte'
   import { compute_brillouin_zone, compute_irreducible_bz } from './compute'
-  import { clamp, reciprocal_lattice } from '#lib/math.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { reciprocal_lattice } from '#lib/math.js'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { shortcut_attrs, viewer_keys } from '#lib/shortcuts.js'
   import { reset_scene_cameras } from '#lib/scene/camera-reset.js'
   import type { SceneControlProps } from '#lib/scene/props.svelte.js'
@@ -215,7 +216,7 @@
     on_fullscreen_change?: (data: BZHandlerData) => void
     // Called with the data of the hovered zone point or k-path point, or null when the pointer leaves.
     on_point_hover?: (data: BZHoverData | null) => void
-  } & HTMLAttributes<HTMLDivElement> = $props()
+  } & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   let export_pane_open = $state(false)
   let current_filename = $state<string | undefined>(undefined)
@@ -456,7 +457,7 @@
           bind:open={info_pane_open}
           pane_name="Brillouin zone info"
           class_prefix="bz-info"
-          closed_icon={info_pane_icon}
+          closed_icon={InformationOutline}
           toggle_props={shortcut_attrs(`info_pane`)}
           shortcut_scopes={[`viewer`, `camera`, `brillouin`]}
         >

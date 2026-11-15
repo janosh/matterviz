@@ -10,7 +10,7 @@
   import { plot_color } from '#lib/colors/index.js'
   import { chain_callbacks } from '#lib/plot/core/interactions.js'
   import { ScatterPlot } from '#lib/plot/index.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import type { DataSeries, PointStyle, RefLine } from '#lib/plot/index.js'
   import type { ComponentProps } from 'svelte'
   import { descriptor_lines, descriptor_point } from './sweep'

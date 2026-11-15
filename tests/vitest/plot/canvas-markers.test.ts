@@ -1,4 +1,5 @@
 import {
+  canvas_safe_color,
   create_marker_batch,
   type MarkerStyle,
   push_marker,
@@ -81,6 +82,19 @@ const batch = (n_markers: number, overrides: Partial<FlatMarker> = {}) =>
 // Symbol markers accumulate into one Path2D; these are the stamped entries.
 const stamps = (overrides: Partial<FlatMarker>) => filled_path(draw([marker(overrides)])).added
 
+// d3-color rejected modern syntax, which sent every marker with a page-canvas halo to SVG
+test.each([
+  [`none`, true],
+  [`#4e79a7`, true],
+  [`rgb(255 255 255)`, true],
+  [`oklch(0.7 0.1 250)`, true],
+  [`var(--marker)`, false],
+  [`currentColor`, false],
+  [`not-a-color`, false],
+])(`canvas_safe_color(%s) = %s`, (color, expected) => {
+  expect(canvas_safe_color(color)).toBe(expected)
+})
+
 describe(`canvas markers`, () => {
   test.each([
     [400, 300, 1, 400, 300],
@@ -138,8 +152,15 @@ describe(`canvas markers`, () => {
     expect(ops(translucent, `fill`)).toHaveLength(2)
     expect(ops(translucent, `set:fillStyle`)).toHaveLength(1)
     expect(ops(translucent, `set:strokeStyle`)).toHaveLength(1)
-    const embedded_alpha = draw(batch(2, { fill: `rgba(255, 0, 0, 0.5)`, stroke_width: 0 }))
-    expect(ops(embedded_alpha, `fill`)).toHaveLength(2)
+    // alpha embedded in the paint, legacy or modern syntax, fills each marker on its own
+    const fill_count = (fill: string) => {
+      const drawn = draw(batch(2, { fill, stroke_width: 0 }))
+      return ops(drawn, `fill`).length
+    }
+    for (const fill of [`rgba(255, 0, 0, 0.5)`, `rgb(255 0 0 / 0.5)`, `rgb(255, 0, 0, 0.5)`]) {
+      expect(fill_count(fill)).toBe(2)
+    }
+    expect(fill_count(`rgb(255 0 0)`)).toBe(1)
     const fill_and_stroke = draw(batch(2))
     expect(ops(fill_and_stroke, `fill`)).toHaveLength(2)
     expect(ops(fill_and_stroke, `stroke`)).toHaveLength(2)

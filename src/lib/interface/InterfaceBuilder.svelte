@@ -3,13 +3,14 @@
   // matches (scatter of cell area vs strain, plus a keyboard-friendly <select>), the gap,
   // vacuum and in-plane registry shift. The built Crystal is exposed through
   // `bind:interface` so the caller decides how to render it (typically a <Structure>).
-  import { format_num } from '#lib/labels.js'
+  import KeyValueList from 'svelte-widgets/KeyValueList.svelte'
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
+  import { format_num } from 'svelte-widgets/format'
   import type { Vec2 } from '#lib/math.js'
   import * as math from '#lib/math.js'
-  import { ControlGroup, KeyValueList } from '#lib/layout/index.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { Crystal } from '#lib/structure/index.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import type { HTMLAttributes } from 'svelte/elements'
   import { match_lattices, surface_frame } from './lattice-match'
   import { make_interface } from './stack'
@@ -76,7 +77,7 @@
     }
   })
   const { matches } = $derived(matching)
-  const selected_idx = $derived(math.clamp(match_idx, 0, Math.max(0, matches.length - 1)))
+  const selected_idx = $derived(clamp(match_idx, 0, Math.max(0, matches.length - 1)))
   const match = $derived(matches.at(selected_idx))
   const result = $derived.by((): { built: Heterostructure | null; error: string | null } => {
     if (matching.error || !match) return { built: null, error: matching.error }
@@ -219,7 +220,7 @@
 
 <div {...rest} class={[`interface-builder`, rest.class]}>
   <div class="groups">
-    <ControlGroup legend="Match">
+    <SettingsGroup title="Match" collapsible={false}>
       {#if matches.length > 0}
         <label>
           Coincidence cell
@@ -250,8 +251,8 @@
           {/each}
         </div>
       </details>
-    </ControlGroup>
-    <ControlGroup legend="Stacking" class="sliders">
+    </SettingsGroup>
+    <SettingsGroup title="Stacking" collapsible={false} class="sliders">
       {#each sliders as { label, value, max, step, unit, set } (label)}
         <label>
           {label}
@@ -266,7 +267,7 @@
           <span class="value">{format_num(value, `.2f`)}{unit}</span>
         </label>
       {/each}
-    </ControlGroup>
+    </SettingsGroup>
   </div>
   {#if result.error}
     <p class="error">{result.error}</p>

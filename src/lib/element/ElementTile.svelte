@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
   import type { ChemicalElement, SplitLayout, TileSegment } from '#lib/element/index.js'
-  import { format_num } from '#lib/labels.js'
   import { colors } from '#lib/state.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
 
@@ -115,7 +115,7 @@
   let node = $state<HTMLElement | null>(null)
   const backdrop = resolve_backdrop(() => node, { override: () => backdrop_color })
   const auto_text_color = (background: string): string =>
-    contrast_text_color({ background, backdrop: backdrop.current })
+    contrast_text_color({ bg_color: background, backdrop: backdrop.current })
   // Symbol and number sit across all segments, so on a split tile they contrast against
   // the backdrop rather than against any one segment.
   let computed_text_color = $derived(

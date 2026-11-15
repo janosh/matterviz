@@ -35,6 +35,13 @@ export type {
   StructureToolViewProps,
 } from './host-tool.svelte'
 export * from './measure'
+export {
+  lattice_pbc_or_throw,
+  neighbor_query,
+  visit_neighbor_distances,
+  type NeighborList,
+  type NeighborQueryOptions,
+} from './neighbor-list'
 export * from './material'
 export { StructureSession, type StructureSessionInputs } from './session.svelte'
 export * from './pbc'

@@ -1,9 +1,10 @@
 <script lang="ts">
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
+  import { format_num } from 'svelte-widgets/format'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { css_color_to_hex } from '#lib/colors/index.js'
   import { track_settings } from '#lib/controls.js'
-  import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
-  import { format_num } from '#lib/labels.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import CameraSection from '#lib/scene/CameraSection.svelte'
   import { DEFAULTS } from '#lib/settings.js'

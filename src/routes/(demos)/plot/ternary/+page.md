@@ -144,7 +144,8 @@ The `tooltip` snippet and the `on_point_click` / `on_point_hover` callbacks rece
 
 ```svelte example
 <script lang="ts">
-  import { format_num, TernaryPlot, type TernarySeries } from 'matterviz'
+  import { format_num } from 'svelte-widgets/format'
+  import { TernaryPlot, type TernarySeries } from 'matterviz'
 
   type Sample = { id: string; sintered_at: number }
   let selected = $state<string | null>(null)

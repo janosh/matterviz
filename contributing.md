@@ -10,7 +10,7 @@ cd matterviz
 pnpm install
 ```
 
-`pnpm install` runs the root `prepare` hook (`src/scripts/prepare.mjs`): it always runs `svelte-kit sync` and, only while `dist/` is missing, also builds the component library (`pnpm package:dist`, ~20 s) so that `github:janosh/matterviz#main` installs work for downstream consumers. Set `MATTERVIZ_SKIP_PREPARE=1` (CI does, in `.github/actions/setup`) to skip that first-install build and run `pnpm package:dist` yourself whenever you need a fresh `dist/`.
+`pnpm install` runs the root `prepare` hook (`src/scripts/prepare.mjs`): it always runs `svelte-kit sync` and, only while `dist/` is missing, also builds the component library (`pnpm package:dist`, ~20 s) so that `github:janosh/matterviz#main` installs work for downstream consumers. Set `MATTERVIZ_SKIP_PREPARE=1` (CI does, in `.github/actions/setup`) to skip that first-install build and run `pnpm package:dist` yourself whenever you need a fresh `dist/`. A consumer linked to this checkout (e.g. matbench's site) imports `dist/`, not `src/`, so `prepare` warns when `dist/` is older than `src/lib`; keep `pnpm package:watch` running while developing against such a consumer.
 
 The extensions under `extensions/` are separate packages with their own `node_modules`. `pnpm typecheck` (also run by the pre-commit hook) installs `extensions/anywidget`'s dependencies the first time, since a test imports one of its modules; rerun `pnpm install:anywidget` after changing that package's dependencies.
 

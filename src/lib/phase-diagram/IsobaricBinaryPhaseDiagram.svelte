@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { create_flash } from 'svelte-widgets/browser'
+  import { format_num } from 'svelte-widgets/format'
   import { add_alpha } from '#lib/colors/index.js'
-  import { create_flash } from '#lib/effects.svelte.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import ClickFeedback from 'svelte-widgets/ClickFeedback.svelte'
@@ -8,7 +9,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { type D3SymbolName, format_num, humanize, symbol_map } from '#lib/labels.js'
+  import { type D3SymbolName, humanize, symbol_map } from '#lib/labels.js'
   import { symbol } from 'd3-shape'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'
@@ -75,6 +76,7 @@
     type PhaseHoverInfo,
     type PhaseLegendEntry,
     type PhaseObservation,
+    type TemperatureBand,
     type TempUnit,
   } from './types'
   import {
@@ -104,6 +106,7 @@
     phase_color_keys = [],
     observations = [],
     predictions = [],
+    temperature_bands = [],
     highlight = $bindable(null),
     phase_matches = {},
     isopleth = $bindable(null),
@@ -145,7 +148,7 @@
     tooltip,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
     ExportProps & {
       // The binary T-x diagram to draw (binary-phase-diagram/2 format); an empty state shows when unset.
       data?: BinaryPhaseDiagram
@@ -162,6 +165,10 @@
       // This diagram's predictions of the observations: an arrow from each observed point to
       // the predicted one, markers colored by the verdict
       predictions?: readonly ObservationPrediction[]
+      // Hatched temperature windows (K) across the plot, beneath boundaries and markers, e.g.
+      // { max: 600, label: `not assessed` }. Only a band's label takes the pointer (to show
+      // its title); hover and click pass through the band.
+      temperature_bands?: readonly TemperatureBand[]
       // Marks lit from outside (e.g. a hovered score-table row); set while the pointer is on
       // an observation or marked point
       highlight?: DiagramHighlight | null
@@ -296,13 +303,24 @@
       hidden_overlays.has(valid_overlay_idxs[slot]) ? null : overlay,
     ),
   )
+  // A band's ends in K, an unset end unbounded; null for NaN or min > max (min == max is an
+  // empty band, drawn as nothing)
+  const band_ends = ({ min, max }: TemperatureBand): Vec2 | null => {
+    const ends: Vec2 = [min ?? -Infinity, max ?? Infinity]
+    return ends.some(Number.isNaN) || ends[0] > ends[1] ? null : ends
+  }
   const input_error = $derived.by(() => {
     if (drop_error) return drop_error
     if (data_errors.length) return `Invalid phase diagram data: ${data_errors.join(`; `)}`
     const bad_idx = overlay_errors.findIndex((errors) => errors.length)
-    if (bad_idx === -1) return null
-    const which = overlays.length > 1 ? ` ${bad_idx + 1}` : ``
-    return `Invalid overlay diagram${which}: ${overlay_errors[bad_idx].join(`; `)}`
+    if (bad_idx !== -1) {
+      const which = overlays.length > 1 ? ` ${bad_idx + 1}` : ``
+      return `Invalid overlay diagram${which}: ${overlay_errors[bad_idx].join(`; `)}`
+    }
+    const bad_band = temperature_bands.findIndex((band) => !band_ends(band))
+    if (bad_band === -1) return null
+    const { min, max } = temperature_bands[bad_band]
+    return `Invalid temperature_bands[${bad_band}]: needs min <= max, got min=${min} max=${max}`
   })
 
   const drop_zone = file_drop_zone({
@@ -366,6 +384,35 @@
     return () => (x_frame = null)
   })
   const y_scale = $derived(scaleLinear().domain(t_domain).range([bottom, top]))
+  // temperature_bands in pixels, cut to the T window; a band outside it (or invalid, which
+  // input_error reports) draws nothing
+  const band_font_size = $derived(merged_config.font_size * 0.75)
+  const band_label_x = $derived(right - 4) // labels end-anchored at the band's right
+  const shown_bands = $derived(
+    temperature_bands.flatMap((band, band_idx) => {
+      const ends = band_ends(band)
+      if (!ends) return []
+      // a reversed y_axis.range flips the axis, not the window the band is cut to
+      const [t_min, t_max] = [Math.min(...t_domain), Math.max(...t_domain)]
+      const [t_low, t_high] = [Math.max(ends[0], t_min), Math.min(ends[1], t_max)]
+      if (!(t_high > t_low)) return []
+      const [y_top, y_bottom] = [y_scale(t_high), y_scale(t_low)].toSorted(
+        (y_a, y_b) => y_a - y_b,
+      )
+      // dashed edges where the band ends inside the window, not along the plot's own edges
+      const edges = ends
+        .filter((temp) => temp > t_min && temp < t_max)
+        .map((temp) => y_scale(temp))
+      // label baseline inside the band's top when it fits, else just above the band, or just
+      // below it when that would leave the plot
+      const band_height = y_bottom - y_top
+      let label_y = y_top + band_font_size + 2
+      if (band_height < band_font_size + 4) {
+        label_y = y_top - band_font_size - 3 >= top ? y_top - 3 : y_bottom + band_font_size + 2
+      }
+      return [{ label: band.label, band_idx, y_top, band_height, edges, label_y }]
+    }),
+  )
   // Display-unit twin of y_scale for the axis ticks
   const y_scale_display = $derived(
     scaleLinear()
@@ -807,6 +854,16 @@
           ...transformed_points.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
           ...shown_markers.map(({ svg_x, svg_y }) => ({ x: svg_x, y: svg_y })),
           ...boundary_samples,
+          // band labels, sampled along their baseline every ~8 px
+          ...shown_bands.flatMap(({ label, label_y }) => {
+            if (!label) return []
+            const label_width = label.length * CHAR_WIDTH_EM * band_font_size
+            const n_samples = Math.ceil(label_width / 8) + 1
+            return Array.from({ length: n_samples }, (_, idx) => ({
+              x: band_label_x - (label_width * idx) / (n_samples - 1),
+              y: label_y - band_font_size / 2,
+            }))
+          }),
         ]
       : [],
   )
@@ -1404,6 +1461,15 @@
         >
           <line y2="6" stroke={DISAGREEMENT_COLOR} stroke-width="2" stroke-opacity="0.55" />
         </pattern>
+        <pattern
+          id="{gradient_uid}-band-hatch"
+          width="7"
+          height="7"
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
+          <line y2="7" stroke={merged_config.colors.axis} stroke-opacity="0.3" />
+        </pattern>
         <!-- one arrowhead per marker color (context-stroke is not supported everywhere) -->
         {#each arrow_colors as color, idx (color)}
           <marker
@@ -1474,6 +1540,32 @@
           />
         {/if}
 
+        {#if shown_bands.length}
+          <g class="temperature-bands" clip-path={plot_clip} style="pointer-events: none">
+            {#each shown_bands as { band_idx, y_top, band_height, edges } (band_idx)}
+              <rect
+                x={left}
+                y={y_top}
+                width={plot_width}
+                height={band_height}
+                fill="url(#{gradient_uid}-band-hatch)"
+              />
+              {#each edges as edge_y, edge_idx (edge_idx)}
+                <line
+                  x1={left}
+                  x2={right}
+                  y1={edge_y}
+                  y2={edge_y}
+                  stroke={merged_config.colors.axis}
+                  stroke-opacity="0.5"
+                  stroke-dasharray="4,3"
+                  vector-effect="non-scaling-stroke"
+                />
+              {/each}
+            {/each}
+          </g>
+        {/if}
+
         {#if show_boundaries}
           <g class="boundaries" clip-path={plot_clip}>
             {#each data.boundaries as { kind, points, side }, idx (idx)}
@@ -1531,6 +1623,25 @@
           />
         {/if}
       </g>
+
+      <!-- a band's title shows in the hover tooltip, so its label never takes the pointer -->
+      {#each shown_bands as { band_idx, label, label_y } (band_idx)}
+        {#if label}
+          <text
+            class="temperature-band-label"
+            style="user-select: none; pointer-events: none"
+            x={band_label_x}
+            y={label_y}
+            text-anchor="end"
+            font-size={band_font_size}
+            fill={merged_config.colors.text}
+            fill-opacity="0.75"
+            clip-path={plot_clip}
+          >
+            {label}
+          </text>
+        {/if}
+      {/each}
 
       {#if show_labels}
         <g class="region-labels" style="pointer-events: none" clip-path={plot_clip}>
@@ -1908,6 +2019,7 @@
           {temp_unit}
           {comp_unit}
           {tooltip}
+          {temperature_bands}
         />
       </PlotTooltip>
     {/if}

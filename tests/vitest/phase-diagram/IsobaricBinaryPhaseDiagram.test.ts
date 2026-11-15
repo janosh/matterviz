@@ -171,6 +171,10 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
     expect(wrapper.querySelector(`svg`)).toBeNull()
     await click(`load-phase-data`)
     expect(wrapper.querySelector(`svg`)).not.toBeNull()
+    // children gets the diagram's pixel size and fullscreen state
+    expect(doc_query(`[data-testid="children-size"]`).textContent).toBe(
+      `${width}x${height} false`,
+    )
 
     const component_value = Array.from(
       document.querySelectorAll<HTMLElement>(`.json-value.string`),
@@ -443,6 +447,167 @@ describe(`IsobaricBinaryPhaseDiagram`, () => {
       data: { ...eutectic, temperature_range: [0, 1800] },
     })
     expect(wrapper.querySelectorAll(`.y-axis > g`)).toHaveLength(4)
+  })
+
+  // the eutectic window is [0, 1000] K over y [350, 25] px (0.325 px/K); a band is cut to the
+  // T window (in K whatever temp_unit shows), spans the plot's width (narrowed by the isopleth
+  // strip, 64 + 14 px), and draws a dashed edge only where it ends inside the window. Its 9 px
+  // label (0.75 x font_size 12) sits 2 px under its top, or just above or below a thin band.
+  test.each([
+    [`inside`, { min: 200, max: 600 }, {}, [left, 155, right - left, 130], [285, 155], 166],
+    [`open below`, { min: null, max: 400 }, {}, [left, 220, right - left, 130], [220], 231],
+    [`clipped above`, { min: 800, max: 5000 }, {}, [left, top, right - left, 65], [90], 36],
+    [
+      `isopleth strip`,
+      { min: 200, max: 600 },
+      { isopleth: 0.3 },
+      [left, 155, right - left - 78, 130],
+      [285, 155],
+      166,
+    ],
+    [
+      `zoomed y axis`,
+      { max: 500 },
+      { y_axis: { range: [400, 600] as Vec2 } },
+      [left, 187.5, right - left, 162.5],
+      [187.5],
+      198.5,
+    ],
+    [
+      `in °C`,
+      { min: 200, max: 600 },
+      { temp_unit: `°C` as const },
+      [left, 155, right - left, 130],
+      [285, 155],
+      166,
+    ],
+    [`thin, label above`, { max: 20 }, {}, [left, 343.5, right - left, 6.5], [343.5], 340.5],
+    [
+      `thin at the top, label below`,
+      { min: 990 },
+      {},
+      [left, top, right - left, 3.25],
+      [28.25],
+      39.25,
+    ],
+  ])(
+    `temperature band %s`,
+    async (_, band, props, expected_rect, expected_edges, expected_label_y) => {
+      const wrapper = await mount_diagram({
+        temperature_bands: [{ ...band, label: `not scored`, title: `below the score gate` }],
+        ...props,
+      })
+      const group = wrapper.querySelector(`.temperature-bands`)
+      expect(group?.getAttribute(`clip-path`)).toBe(
+        `url(#${wrapper.querySelector(`clipPath`)?.id})`,
+      )
+      expect(group?.getAttribute(`style`)).toContain(`pointer-events: none`)
+      // beneath the boundaries
+      expect(group?.nextElementSibling?.classList.contains(`boundaries`)).toBe(true)
+      const band_rect = group?.querySelector(`rect`)
+      expect(band_rect?.getAttribute(`fill`)).toMatch(/^url\(#.+-band-hatch\)$/)
+      const label = wrapper.querySelector(`.temperature-band-label`)
+      // pixel values come from y_scale differences, so allow round-off (1e-9 px, far above
+      // f64 ulps at these magnitudes and far below anything visible)
+      const actual = [
+        ...[`x`, `y`, `width`, `height`].map((attr) => Number(band_rect?.getAttribute(attr))),
+        ...[...(group?.querySelectorAll(`line`) ?? [])].map((line) =>
+          Number(line.getAttribute(`y1`)),
+        ),
+        Number(label?.getAttribute(`x`)),
+        Number(label?.getAttribute(`y`)),
+      ]
+      const [rect_x, , rect_width] = expected_rect
+      const expected = [
+        ...expected_rect,
+        ...expected_edges,
+        rect_x + rect_width - 4,
+        expected_label_y,
+      ]
+      expect(actual).toHaveLength(expected.length)
+      for (const [idx, value] of actual.entries()) expect(value).toBeCloseTo(expected[idx], 9)
+      expect(label?.getAttribute(`font-size`)).toBe(`9`)
+      expect(label?.textContent?.trim()).toBe(`not scored`)
+      expect(label?.getAttribute(`style`)).toContain(`pointer-events: none`)
+      expect(wrapper.querySelector(`[role="alert"] .error`)).toBeNull()
+    },
+  )
+
+  test.each([
+    [`below the window`, { max: 0 }, {}],
+    [`above the window`, { min: 1000 }, {}],
+    [`empty (min == max)`, { min: 500, max: 500 }, {}],
+    [
+      `below a zoomed window`,
+      { min: 100, max: 300 },
+      { y_axis: { range: [400, 600] as Vec2 } },
+    ],
+    [
+      `below a zoomed, reversed window`,
+      { min: 100, max: 300 },
+      { y_axis: { range: [600, 400] as Vec2 } },
+    ],
+  ])(`no temperature band %s`, async (_, band, props) => {
+    const wrapper = await mount_diagram({
+      temperature_bands: [{ ...band, label: `not assessed` }],
+      ...props,
+    })
+    expect(wrapper.querySelector(`.temperature-bands`)).toBeNull()
+    expect(wrapper.querySelector(`.temperature-band-label`)).toBeNull()
+    expect(wrapper.querySelector(`[role="alert"] .error`)).toBeNull()
+  })
+
+  // an invalid band is reported like an invalid overlay and skipped; the rest still draws
+  test.each([
+    [{ min: 600, max: 200 }, `min=600 max=200`],
+    [{ max: Number.NaN }, `min=undefined max=NaN`],
+  ])(`invalid temperature band %o shows an error`, async (band, expected) => {
+    const wrapper = await mount_diagram({
+      temperature_bands: [{ max: 300 }, band],
+    })
+    expect(wrapper.querySelector(`[role="alert"] .error`)?.textContent).toContain(
+      `Invalid temperature_bands[1]: needs min <= max, got ${expected}`,
+    )
+    expect(wrapper.querySelectorAll(`.temperature-bands rect`)).toHaveLength(1)
+    expect(wrapper.querySelector(`.boundaries path`)).not.toBeNull()
+  })
+
+  // the hover tooltip names the bands around the cursor (works on touch, unlike a native
+  // title), and the label never takes the pointer, so hover and click over it hit the plot
+  test(`temperature bands show in the hover tooltip`, async () => {
+    const wrapper = await mount_diagram({
+      temperature_bands: [
+        { min: 200, max: 800, label: `not scored`, title: `gate` },
+        { max: 300, title: `cold` },
+        { min: 900 }, // nothing to say: never listed
+      ],
+    })
+    await hover_at(wrapper, 0.9, 700)
+    const band_lines = () =>
+      [...wrapper.querySelectorAll(`.phase-diagram-tooltip .temperature-band`)].map((line) =>
+        line.textContent?.trim(),
+      )
+    expect(band_lines()).toEqual([`not scored: gate`])
+    await hover_at(wrapper, 0.9, 250)
+    expect(band_lines()).toEqual([`not scored: gate`, `cold`])
+    await hover_at(wrapper, 0.9, 950)
+    expect(band_lines()).toEqual([])
+    const label = wrapper.querySelector(`.temperature-band-label`)
+    expect(label?.getAttribute(`style`)).toContain(`pointer-events: none`)
+    plot_svg(wrapper).dispatchEvent(mouse(`click`))
+    await tick()
+    expect(wrapper.querySelector(`.plot-tooltip.pinned`)).not.toBeNull()
+  })
+
+  // a reversed y_axis.range flips the axis: the band still covers its temperatures
+  test(`temperature band on a reversed axis`, async () => {
+    const wrapper = await mount_diagram({
+      temperature_bands: [{ min: 200, max: 400, label: `not scored` }],
+      y_axis: { range: [1000, 0] as Vec2 },
+    })
+    const band_rect = wrapper.querySelector(`.temperature-bands rect`)
+    expect(Number(band_rect?.getAttribute(`height`))).toBeGreaterThan(0)
+    expect(wrapper.querySelectorAll(`.temperature-bands line`)).toHaveLength(2)
   })
 
   // gradient ids derive from region indices - two diagrams on one page would otherwise

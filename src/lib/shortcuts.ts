@@ -4,7 +4,8 @@ import {
   format_shortcut,
   is_editable_event_target,
   is_modifier_chord,
-} from 'svelte-widgets/utils'
+} from 'svelte-widgets/shortcuts'
+import type { ShortcutEntry } from 'svelte-widgets'
 
 // One registry of the keyboard shortcuts viewers handle. Each viewer lists its scopes' entries
 // at the bottom of its info (or settings) pane (ShortcutsList), and buttons with a shortcut take
@@ -77,6 +78,19 @@ export const format_shortcut_keys = ({ keys, label }: Shortcut): string =>
     .split(` `)
     .map((chord) => format_shortcut(chord).join(`+`))
     .join(` / `)
+
+// ShortcutsList rows for a viewer's scopes; `F` only where the host can go fullscreen
+export const shortcut_entries = (
+  scopes: readonly ShortcutScope[],
+  fullscreen: boolean,
+): ShortcutEntry[] =>
+  shortcuts_for(scopes)
+    .filter((shortcut) => fullscreen || shortcut !== SHORTCUTS.fullscreen)
+    .map(({ keys, label, description }: Shortcut) => ({
+      keys: keys.split(` `),
+      label: description,
+      keys_label: label,
+    }))
 
 // `Reset camera (R)`: a button's title naming its shortcut
 export const shortcut_title = (id: ShortcutId, label?: string): string => {

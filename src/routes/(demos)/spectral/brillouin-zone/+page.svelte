@@ -1,9 +1,9 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
   import { BrillouinZone } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import type { FileInfo } from '#lib/io/types.js'
-  import { format_num } from '#lib/labels.js'
   import type { Crystal } from '#lib/structure/index.js'
   import { is_crystal } from '#lib/structure/validation.js'
   import { parse_structure_fixture, structure_files, structure_map } from '#site/structures.js'

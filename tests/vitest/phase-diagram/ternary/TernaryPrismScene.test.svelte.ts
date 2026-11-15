@@ -2,7 +2,8 @@
 // pointer handlers: a click on the plane pins a composition, a drag never does, a touch tap
 // also shows the composition tooltip a hover there would, and lights up its tie triangle.
 // From the focused viewer root, the keyboard walks the rods.
-import { clamp, type Vec2 } from '#lib/math.js'
+import { clamp } from 'svelte-widgets/utils'
+import type { Vec2 } from '#lib/math.js'
 import {
   compute_section,
   compute_ternary_phase_diagram,

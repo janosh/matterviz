@@ -1,8 +1,9 @@
 // Types, layout math and constants for Gizmo.svelte, kept out of the component so callers
 // (SceneControlProps, StructureViewport) can type and size a gizmo without importing a .svelte
 // module, and so the layout is unit-testable without a Threlte context.
+import { clamp } from 'svelte-widgets/utils'
 import { AXIS_COLORS, NEG_AXIS_COLORS } from '#lib/colors/index.js'
-import { clamp, type Vec3 } from '#lib/math.js'
+import type { Vec3 } from '#lib/math.js'
 
 export type GizmoAxisKey = `x` | `y` | `z` | `nx` | `ny` | `nz`
 

@@ -10,7 +10,7 @@ import {
 import { coordination_number } from '#lib/rdf/calc-pdf.js'
 import type { RdfPattern } from '#lib/rdf/index.js'
 import type { Crystal, Pbc } from '#lib/structure/index.js'
-import { neighbor_query } from '#lib/structure/bonding.js'
+import { neighbor_query } from '#lib/structure/neighbor-list.js'
 import { make_supercell } from '#lib/structure/supercell.js'
 import { is_crystal } from '#lib/structure/validation.js'
 import { structure_map } from '#site/structures.js'

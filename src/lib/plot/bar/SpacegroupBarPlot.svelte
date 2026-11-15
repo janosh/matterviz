@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type {
     AxisConfig,
     BarPlotOptions,
@@ -6,7 +7,7 @@
     BarSeries,
     UserContentProps,
   } from '#lib/plot/index.js'
-  import { format_num, format_value } from '#lib/labels.js'
+  import { format_value } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import { BarPlot } from '#lib/plot/index.js'
   import { DEFAULT_PLOT_PADDING } from '#lib/plot/core/layout.js'

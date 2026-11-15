@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { page } from '$app/state'
   import type { ChemicalElement } from '#lib'
   import { element_data, ElementStats, PeriodicTable, PropertySelect } from '#lib'
   import type { D3InterpolateName } from '#lib/colors/index.js'
   import { is_d3_interpolate_name } from '#lib/colors/index.js'
   import { TooltipValue } from '#lib/tooltip/index.js'
-  import { ELEM_HEATMAP_KEYS, ELEM_PROPERTY_LABELS, format_num } from '#lib/labels.js'
+  import { ELEM_HEATMAP_KEYS, ELEM_PROPERTY_LABELS } from '#lib/labels.js'
   import type { ScaleContext } from '#lib/periodic-table/index.js'
   import { TableInset } from '#lib/periodic-table/index.js'
   import { ColorScaleSelect, ElementScatter } from '#lib/plot/index.js'

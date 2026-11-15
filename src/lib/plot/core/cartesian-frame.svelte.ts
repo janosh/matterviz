@@ -3,12 +3,13 @@
 // ranges and obstacles and read back scales/pad/ticks. Creates $effects, so call it during
 // component init. Render the returned state with CartesianFrame.svelte.
 
+import { clamp } from 'svelte-widgets/utils'
 import {
   normalize_show_controls,
   shows_fullscreen_toggle,
   type ShowControlsProp,
 } from '#lib/controls.js'
-import { clamp, type Vec2 } from '#lib/math.js'
+import type { Vec2 } from '#lib/math.js'
 import type {
   DecorationItem,
   DecorationSolution,

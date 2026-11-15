@@ -1,8 +1,8 @@
 // Geometry of pressure-temperature phase diagrams: phase regions traced from the coexistence
 // lines, nearest-boundary lookup for hover, uncertainty bands and label anchors
 
+import { clamp } from 'svelte-widgets/utils'
 import {
-  clamp,
   euclidean_dist as dist,
   lerp,
   lerp_vec2,

@@ -1,15 +1,16 @@
 <script lang="ts">
   // Phase statistics + entry table for a convex hull (standalone or inside the info pane)
+  import type { RowData } from 'svelte-widgets/table'
+  import { format_num } from 'svelte-widgets/format'
   import {
     count_atoms_in_composition,
     get_electro_neg_formula,
     get_reduced_formula,
   } from '#lib/composition/index.js'
-  import { format_num } from '#lib/labels.js'
   import type { InfoPaneCard } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import Histogram from '#lib/plot/histogram/Histogram.svelte'
-  import type { Column, RowData } from '#lib/table/index.js'
+  import type { Column } from '#lib/table/index.js'
   import { TABLE_EXPORT_FORMATS } from '#lib/table/index.js'
   import HeatmapTable from '#lib/table/HeatmapTable.svelte'
   import { join_hover_link } from '#lib/tooltip/index.js'

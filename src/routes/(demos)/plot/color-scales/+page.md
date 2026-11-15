@@ -1,7 +1,7 @@
 ```svelte example
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { ColorBar, ColorScaleSelect, PeriodicTable, TableInset } from 'matterviz'
-  import { format_num } from 'matterviz/labels'
   import mp_elem_counts from './mp-element-counts.json'
   import wbm_elem_counts from './wbm-element-counts.json'
 

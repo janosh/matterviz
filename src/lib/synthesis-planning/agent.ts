@@ -2,8 +2,9 @@
 // text rendering of a plan for the model channel, and a ready-made tool definition. The full
 // SynthesisPlan object is the structured channel; `format_plan_text` deliberately repeats only
 // what a model needs to reason and reply.
+import { format_num } from 'svelte-widgets/format'
 import { GAS_SPECIES } from '#lib/convex-hull/types.js'
-import { format_num, plural } from '#lib/labels.js'
+import { plural } from '#lib/labels.js'
 import { format_mev } from './format-mev'
 import { DEFAULT_MAX_E_ABOVE_HULL } from './plan'
 import { format_recipe_text } from './recipe'

@@ -208,7 +208,7 @@
       tooltip?: FermiTooltipProp
       // Called with the hovered band, spin and k-point position (or null when the pointer leaves).
       on_point_hover?: (data: FermiHoverData | null) => void
-    } & HTMLAttributes<HTMLDivElement> = $props()
+    } & Omit<HTMLAttributes<HTMLDivElement>, `children`> = $props()
 
   let scene = $state<Scene | undefined>(undefined)
   let camera = $state<Camera | undefined>(undefined)

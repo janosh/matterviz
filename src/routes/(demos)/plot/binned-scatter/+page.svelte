@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type StructurePopupComponent from '#lib/convex-hull/StructurePopup.svelte'
   import type { ElementSymbol } from '#lib/element/index.js'
-  import { format_num } from '#lib/labels.js'
   import type { Matrix3x3, Point2D, Vec3 } from '#lib/math.js'
   import { calc_lattice_params, scale } from '#lib/math.js'
   import { BinnedScatterPlot } from '#lib/plot/index.js'

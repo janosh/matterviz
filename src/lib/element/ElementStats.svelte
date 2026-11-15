@@ -1,9 +1,9 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { ChemicalElement } from '#lib/element/index.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { CalendarBlank, Gas, Liquid, Scale, Solid, Weight } from 'svelte-widgets/icons'
   import type { IconData } from 'svelte-widgets/icons'
-  import { format_num } from '#lib/labels.js'
   import ElementHeading from './ElementHeading.svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { fade } from 'svelte/transition'

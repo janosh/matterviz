@@ -1,4 +1,7 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { format_num } from 'svelte-widgets/format'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { webgpu_available } from '#lib/scene/index.js'
   import { camera_flight_registry } from '#lib/scene/camera-flight.js'
@@ -30,25 +33,24 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { html_to_text, value_key } from '#lib/utils.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
+  import { value_key } from '#lib/utils.js'
   import {
     display_idx,
     from_display_idx,
     parse_axis_label,
-    format_num,
     parse_warnings_notice,
     trajectory_property_config,
   } from '#lib/labels.js'
   import type { TrajPropertyConfig } from '#lib/labels.js'
-  import { clamp, is_valid_index, same_values } from '#lib/math.js'
+  import { is_valid_index, same_values } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'
-  import { FullscreenButton, SettingsSection } from '#lib/layout/index.js'
+  import { FullscreenButton } from '#lib/layout/index.js'
   import { pick_pane_orientation } from '#lib/layout/pane-orientation.js'
   import { SHORTCUTS, shortcut_title, viewer_keydown } from '#lib/shortcuts.js'
-  import { create_clipboard_feedback, ToolbarMenu } from '#lib/overlays/index.js'
+  import { ToolbarMenu } from '#lib/overlays/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
@@ -919,7 +921,7 @@
   )
   // The check shows only once the write lands: a denied clipboard (insecure origin, no
   // permission) is logged instead of claiming a copy that never happened
-  const filename_copy = create_clipboard_feedback()
+  const filename_copy = create_clipboard_feedback(1000, console.error)
   let view_mode_dropdown_open = $state(false)
   let analysis_menu_open = $state(false)
   // Structure's own info/export panes; its controls pane is this viewer's `controls` pane

@@ -1,6 +1,6 @@
+import { is_plain_object } from 'svelte-widgets/utils'
 // OPTIMADE API utilities for fetching structure data
 // Based on OPTIMADE 1.2.0 specification
-import { is_plain_object } from '#lib/utils.js'
 
 export interface OptimadeStructure {
   id: string

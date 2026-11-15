@@ -1,7 +1,6 @@
+import { html_to_text } from 'svelte-widgets/utils'
 import {
   decode_url_safe_base64,
-  html_to_text,
-  is_plain_object,
   memo_by_identity,
   parse_leading_num,
   parse_num_token,
@@ -11,29 +10,6 @@ import {
   plain_copy,
 } from '#lib/utils.js'
 import { describe, expect, test, vi } from 'vite-plus/test'
-
-test.each([
-  [{}, true],
-  [Object.create(null), true],
-  [JSON.parse(`{"value": 1}`), true],
-  [new Proxy({ value: 1 }, {}), true],
-  [null, false],
-  [0, false],
-  [`value`, false],
-  [[], false],
-  [new Date(0), false],
-  [new Map(), false],
-  [/pattern/, false],
-  [new Float64Array(2), false],
-  [
-    new (class RecordLike {
-      value = 1
-    })(),
-    false,
-  ],
-])(`is_plain_object(%j) = %s`, (value, expected) => {
-  expect(is_plain_object(value)).toBe(expected)
-})
 
 // Quoted attribute values may hold `>` or `<`; an unterminated `<` is text, not a tag that
 // swallows everything up to the next `>`

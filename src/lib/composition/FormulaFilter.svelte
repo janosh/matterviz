@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from 'svelte-widgets/Icon.svelte'
-  import { is_modifier_chord, make_change_detector } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import { make_change_detector } from 'svelte-widgets/utils'
   import { Circle, Close, InformationOutline, Lock, Star, Unlock } from 'svelte-widgets/icons'
   import { is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import { tooltip } from 'svelte-widgets/attachments'
@@ -8,7 +9,7 @@
     create_recent_list,
     storage_get_json,
     storage_set_json,
-  } from 'svelte-widgets/storage'
+  } from 'svelte-widgets/browser'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { format_amount, get_alphabetical_formula } from './format'

@@ -4,9 +4,10 @@
 </script>
 
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { track_settings } from '#lib/controls.js'
   import type { ShowControlsProp } from '#lib/controls.js'
-  import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import type { Snippet } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

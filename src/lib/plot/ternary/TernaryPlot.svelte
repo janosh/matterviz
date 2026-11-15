@@ -58,7 +58,8 @@
     ternary_to_xy,
   } from '#lib/plot/ternary/ternary.js'
   import TernaryControls, { GRID_DEFAULTS } from '#lib/plot/ternary/TernaryControls.svelte'
-  import { is_modifier_chord, to_error } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import { to_error } from 'svelte-widgets/utils'
   import { clear_stale_hover } from '#lib/plot/core/hover.svelte.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
   import type { ComponentProps, Snippet } from 'svelte'
@@ -97,7 +98,7 @@
     header_controls,
     controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
     Omit<BasePlotProps, `range_padding` | `title`> & {

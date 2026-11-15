@@ -1,15 +1,11 @@
 import { globSync, readFileSync } from 'node:fs'
 import { renderer_registry, scene_registry } from '#lib/io/export.js'
-import {
-  bind_renderer,
-  create_renderer,
-  guard_texture_listeners,
-} from '#lib/scene/bind-renderer.svelte.js'
+import { bind_renderer, create_renderer } from '#lib/scene/bind-renderer.svelte.js'
 import { currentWritable } from '@threlte/core'
 import type * as threlte_core from '@threlte/core'
 import { flushSync } from 'svelte'
 import type { Camera, Scene, WebGPURenderer } from 'three/webgpu'
-import { Texture, WebGPUBackend } from 'three/webgpu'
+import { WebGPUBackend } from 'three/webgpu'
 import { beforeAll, describe, expect, test, vi } from 'vite-plus/test'
 
 // Stub only useThrelte and keep the real @threlte/core exports - using the real
@@ -125,6 +121,8 @@ describe(`destroyAttribute guard`, () => {
 
     backend_proto.destroyAttribute.call(backend, attribute)
     expect(backend.get).toHaveBeenCalledExactlyOnceWith(interleaved_data)
+    // the dead entry lives under the shared data too, so that is what gets dropped
+    expect(backend.delete).toHaveBeenCalledExactlyOnceWith(interleaved_data)
   })
 })
 
@@ -136,42 +134,4 @@ test(`every Threlte <Canvas> disables shadow maps`, () => {
   )
   expect(canvases.length).toBeGreaterThanOrEqual(7)
   for (const [path, tag] of canvases) expect(tag, path).toContain(`shadows={false}`)
-})
-
-// three's Textures manager listens for every uploaded texture's `dispose` and dropped only its
-// data on dispose(): a texture outliving the renderer (three's module-level DFG lookup table)
-// kept every disposed renderer and its canvas reachable through that listener
-test(`a disposed texture manager stops listening to the textures it uploaded`, () => {
-  // three's contract in miniature: upload listens, destroying a texture unlistens it
-  class Manager {
-    data = new WeakMap<Texture, { onDispose?: () => void }>()
-    get(texture: Texture) {
-      const entry = this.data.get(texture) ?? {}
-      this.data.set(texture, entry)
-      return entry
-    }
-    updateTexture(texture: Texture) {
-      const entry = this.get(texture)
-      entry.onDispose = () => this._destroyTexture(texture)
-      texture.addEventListener(`dispose`, entry.onDispose)
-    }
-    _destroyTexture(texture: Texture) {
-      const { onDispose } = this.get(texture)
-      if (onDispose) texture.removeEventListener(`dispose`, onDispose)
-      this.data.delete(texture)
-    }
-    dispose() {
-      this.data = new WeakMap()
-    }
-  }
-  const manager = new Manager()
-  guard_texture_listeners(manager)
-  const [shared, freed] = [new Texture(), new Texture()]
-  manager.updateTexture(shared)
-  manager.updateTexture(freed)
-  const { onDispose } = manager.get(shared)
-  freed.dispose()
-  expect(onDispose && shared.hasEventListener(`dispose`, onDispose)).toBe(true)
-  manager.dispose()
-  expect(onDispose && shared.hasEventListener(`dispose`, onDispose)).toBe(false)
 })

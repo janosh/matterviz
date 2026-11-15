@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { format_num, humanize } from '#lib/labels.js'
+  import { humanize } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { sanitize_formula, sanitize_html } from '#lib/sanitize.js'
   import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
@@ -11,6 +12,7 @@
     LeverRuleResult,
     PhaseDiagramTooltipProp,
     PhaseHoverInfo,
+    TemperatureBand,
     TempUnit,
   } from './types'
   import { format_label_html } from '#lib/composition/formula-markup.js'
@@ -36,6 +38,7 @@
     temp_unit = `K`,
     comp_unit = `at%`,
     tooltip,
+    temperature_bands = [],
   }: {
     hover_info: PhaseHoverInfo
     data: BinaryPhaseDiagram
@@ -49,7 +52,18 @@
     temp_unit?: TempUnit
     comp_unit?: CompUnit
     tooltip?: PhaseDiagramTooltipProp
+    // the diagram's bands: those around the hovered temperature are named, with their title
+    temperature_bands?: readonly TemperatureBand[]
   } = $props()
+
+  const hovered_bands = $derived(
+    temperature_bands.filter(
+      ({ min, max, label, title }) =>
+        Boolean(label || title) &&
+        (min ?? -Infinity) <= hover_info.temperature &&
+        hover_info.temperature <= (max ?? Infinity),
+    ),
+  )
 
   const [component_a, component_b] = $derived(data.components)
   const label_of = $derived(phase_labeler(data))
@@ -205,6 +219,12 @@
         <TooltipValue value={fmt_temp(temperature)} unit={temp_unit} />
       </div>
     {/if}
+
+    {#each hovered_bands as { label, title }, idx (idx)}
+      <div class="temperature-band">
+        {#if label}<strong>{label}</strong>{/if}{label && title ? `: ` : ``}{title ?? ``}
+      </div>
+    {/each}
 
     {#if observation}
       {@const { row, phase, composition, temperature, predicted_x, predicted_t, pass } =

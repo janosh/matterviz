@@ -51,7 +51,7 @@
     body,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
     ExportProps & {
       // Wrapper class the chart is selected by (`sankey`, `treemap`)
       chart_class: string

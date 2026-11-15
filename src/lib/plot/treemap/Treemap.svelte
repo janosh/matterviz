@@ -87,7 +87,7 @@
     // show_controls, controls_toggle_props, fullscreen_toggle, header_controls and children
     // reach ChartShell through rest
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
     // Cartesian-only props would otherwise leak to the wrapper div as invalid DOM attributes
     Omit<BasePlotProps, `range_padding` | `title`> &
     // data/value semantics, coloring, legend, export and node handlers shared with Sunburst

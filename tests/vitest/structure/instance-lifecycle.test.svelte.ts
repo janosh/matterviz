@@ -1,4 +1,4 @@
-import { format_num } from '#lib/labels.js'
+import { format_num } from 'svelte-widgets/format'
 import type { Vec3 } from '#lib/math.js'
 import { dihedral_angle } from '#lib/structure/measure.js'
 import { AXIS_COLORS, default_element_colors } from '#lib/colors/index.js'

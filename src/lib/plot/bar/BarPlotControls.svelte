@@ -1,6 +1,6 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
-  import { SettingsSection } from '#lib/layout/index.js'
   import type { BarMode, PlotConfig } from '#lib/plot/index.js'
   import { PlotControls } from '#lib/plot/index.js'
   import type { Orientation, PlotControlsProps } from '#lib/plot/core/types.js'

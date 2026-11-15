@@ -141,9 +141,11 @@ jobs:
         run: test "$RESULT" = success
 
   # The full E2E suite (~15 min) runs when a PR is opened or reopened, on merge to main, on
-  # manual dispatch and as the release gate. Later pushes to an open PR (synchronize) skip it
-  # only while the PR's latest decided E2E gate passed: once it fails (or before any run has
-  # decided), every push runs E2E until it passes, so a red E2E can't turn green by skipping.
+  # manual dispatch and as the release gate. A later push to an open PR (synchronize) skips it
+  # only when the PR's latest decided E2E gate passed AND every file changed since that run's
+  # head is a unit test or root-level doc, which no browser test can observe. Any other change
+  # (source, routes, demos, deps, config, the e2e tests themselves) reruns it, as does a failed
+  # or undecided gate, so a red E2E can't turn green by skipping and green can't go stale.
   e2e-gate:
     name: Decide whether E2E runs
     runs-on: ubuntu-latest
@@ -158,22 +160,33 @@ jobs:
           ACTION: ${{ github.event.action }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           run=true
           if [ "$ACTION" = synchronize ]; then
             # newest first. A run decides once any E2E job failed (even while its other jobs
-            # still run) or its E2E gate passed; running ones without a failure decide nothing.
+            # still run) or its test shards all ran and passed; running ones without a failure
+            # decide nothing, and neither do runs that skipped E2E: their aggregator reports
+            # success, which once let one early pass wave every later push through unchecked.
             # Cancelled runs are skipped outright: their always() E2E aggregator job fails, which
             # would read as a failed gate. Manually dispatched full runs of the branch count like
             # PR runs; the head repo filter drops a fork's same-named branch and base-repo
             # dispatches for fork PRs alike.
-            for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=$HEAD_REF&per_page=30" \
-              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and (.event == \"pull_request\" or .event == \"workflow_dispatch\") and .head_repository.full_name == \"$HEAD_REPO\" and .conclusion != \"cancelled\") | .id"); do
+            while read -r id sha; do
               gate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?per_page=100" \
-                --jq '[.jobs[] | select(.name | startswith("E2E"))] | if any(.conclusion == "failure") then "failure" elif any(.name == "E2E tests (shard 1/4)" and .conclusion == "success") then "success" else "" end')
-              if [ "$gate" = success ]; then run=false; break; fi
+                --jq '[.jobs[] | select(.name | startswith("E2E"))] | [.[] | select(.name | test("^E2E (production|source)"))] as $ran | if any(.conclusion == "failure") then "failure" elif ($ran | length) > 0 and ($ran | all(.conclusion == "success")) then "success" else "" end' < /dev/null)
               if [ "$gate" = failure ]; then break; fi
-            done
+              if [ "$gate" = success ]; then
+                # files changed since the passing run's head; a failed compare (force-pushed
+                # away base) or a truncated list (GitHub caps it at 300 files) reruns E2E
+                files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...$HEAD_SHA" \
+                  --jq 'if (.files | length) < 300 then .files[].filename else "TRUNCATED" end' < /dev/null) || break
+                if ! grep -qvE '^(tests/vitest/|[^/]+\.md$)' <<< "$files"; then run=false; fi
+                echo "changed since E2E passed at $sha:" && echo "$files"
+                break
+              fi
+            done < <(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=$HEAD_REF&per_page=30" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and (.event == \"pull_request\" or .event == \"workflow_dispatch\") and .head_repository.full_name == \"$HEAD_REPO\" and .conclusion != \"cancelled\") | \"\(.id) \(.head_sha)\"")
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 

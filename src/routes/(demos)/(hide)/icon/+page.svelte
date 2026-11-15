@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from 'svelte-widgets/Icon.svelte'
-  import { fuzzy_match } from 'svelte-widgets/utils'
+  import { fuzzy_match } from 'svelte-widgets/match'
   import { highlight_matches } from 'svelte-widgets/attachments'
   import { Search } from 'svelte-widgets/icons'
   import type { IconData } from 'svelte-widgets'

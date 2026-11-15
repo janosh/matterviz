@@ -1,6 +1,7 @@
 // Ternary T-x phase diagram from convex-hull entries: lower hulls of dG_f(T) over the Gibbs
 // triangle at sampled temperatures, exact transition temperatures by bisection of hull topology
 // changes, the balanced reactions behind each transition, and O(n) sections at any T in between.
+import { format_num } from 'svelte-widgets/format'
 import {
   format_composition_formula,
   sort_by_electronegativity,
@@ -16,7 +17,6 @@ import {
 } from '#lib/convex-hull/thermodynamics.js'
 import type { PhaseData } from '#lib/convex-hull/types.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { format_num } from '#lib/labels.js'
 import {
   array_min,
   euclidean_dist,

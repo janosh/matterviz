@@ -1,5 +1,6 @@
+import { clamp } from 'svelte-widgets/utils'
 import { zero_if_negligible } from '#lib/labels.js'
-import { clamp, partition_point, type Point2D, type Vec2 } from '#lib/math.js'
+import { partition_point, type Point2D, type Vec2 } from '#lib/math.js'
 import {
   axis_transform,
   range_bounds,

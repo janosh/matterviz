@@ -173,12 +173,18 @@ describe(`vite_plugin_moyo_wasm_source`, () => {
 test.each([
   [`vite.config.ts`, true],
   [`extensions/vscode/vite.config.ts`, false],
-])(`%s builds ES workers (code splitting: %s)`, async (config_path, splits) => {
-  const { default: config_export } = await import(`../../${config_path}`)
-  const config =
-    typeof config_export === `function`
-      ? await config_export({ command: `build`, mode: `production` })
-      : config_export
-  expect(config.worker?.format).toBe(`es`)
-  expect(config.worker?.rolldownOptions?.output?.codeSplitting ?? true).toBe(splits)
-})
+])(
+  `%s builds ES workers (code splitting: %s)`,
+  async (config_path, splits) => {
+    const { default: config_export } = await import(`../../${config_path}`)
+    const config =
+      typeof config_export === `function`
+        ? await config_export({ command: `build`, mode: `production` })
+        : config_export
+    expect(config.worker?.format).toBe(`es`)
+    expect(config.worker?.rolldownOptions?.output?.codeSplitting ?? true).toBe(splits)
+  },
+  // importing a config loads its whole plugin graph: ~1 s alone, past the 5 s default under
+  // a parallel full run
+  30_000,
+)

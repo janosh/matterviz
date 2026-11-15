@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import { enum_labels, type SettingType } from '#lib/settings.js'
 
   export { enum_options }
@@ -7,12 +8,11 @@
 <script lang="ts">
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable
-  import { SettingsSection } from '#lib/layout/index.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { DEFAULTS } from '#lib/settings.js'
-  import { format } from 'd3-format'
   import { timeFormat } from 'd3-time-format'
   import { tooltip } from 'svelte-widgets/attachments'
+  import { format_num } from 'svelte-widgets/format'
   import { in_range, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, AxisKey, PlotControlsProps } from '#lib/plot/core/types.js'
   import { normalize_y2_sync } from '#lib/plot/core/interactions.js'
@@ -106,7 +106,7 @@
   const format_invalid = (value: string): boolean => {
     try {
       if (value.startsWith(`%`)) timeFormat(value)(new Date())
-      else if (value) format(value)(123.456)
+      else if (value) format_num(123.456, value)
       return false
     } catch {
       return true

@@ -338,4 +338,38 @@ test.describe(`IsobaricBinaryPhaseDiagram`, () => {
 
     throw new Error(`No tie-line found in the two-phase scan positions`)
   })
+
+  // the label obstacles are estimated from character counts: in a real browser, the measured
+  // label must clear the inset legend, and hovering the band names it in the plot's tooltip
+  test(`temperature band label clears the inset legend and names the band on hover`, async ({
+    page,
+  }) => {
+    const diagram = page
+      .locator(`div.binary-phase-diagram`)
+      .filter({ has: page.locator(`.temperature-band-label`) })
+    await diagram.scrollIntoViewIfNeeded()
+    const label = diagram.locator(`.temperature-band-label`)
+    const legend = diagram.locator(`.phase-diagram-legend`)
+    await expect(label).toHaveText(`not scored`)
+    await expect(legend).toBeVisible()
+    const [label_box, legend_box] = await Promise.all([
+      label.boundingBox(),
+      legend.boundingBox(),
+    ])
+    if (!label_box || !legend_box) throw new Error(`label or legend has no box`)
+    const overlaps =
+      label_box.x < legend_box.x + legend_box.width &&
+      legend_box.x < label_box.x + label_box.width &&
+      label_box.y < legend_box.y + legend_box.height &&
+      legend_box.y < label_box.y + label_box.height
+    expect(overlaps, JSON.stringify({ label_box, legend_box })).toBe(false)
+    // just below the label, inside the band (below 800 K)
+    await page.mouse.move(
+      label_box.x + label_box.width / 2,
+      label_box.y + label_box.height + 6,
+    )
+    await expect(diagram.locator(`.phase-diagram-tooltip .temperature-band`)).toHaveText(
+      /not scored: Below 800 K/,
+    )
+  })
 })

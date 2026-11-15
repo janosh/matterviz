@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { format_equation_html } from './format'
   import {
@@ -11,7 +11,7 @@
   } from './recipe'
   import { describe_downhill_windows } from './thermo'
   import type { RecipeAssumptions, SynthesisRoute } from './types'
-  import { create_clipboard_feedback } from 'svelte-widgets/clipboard'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
 
   let {
     route,

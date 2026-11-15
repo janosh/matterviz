@@ -122,7 +122,7 @@
             <span
               style:background-color={palette.colors[elem]}
               style:color={contrast_text_color({
-                background: palette.colors[elem],
+                bg_color: palette.colors[elem],
                 backdrop: backdrop.current,
               })}
               style="display: inline-block; padding: 0 4pt; border-radius: 3pt; line-height: 1.25"

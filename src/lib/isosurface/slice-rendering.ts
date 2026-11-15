@@ -1,4 +1,5 @@
-import { clamp, type Vec2 } from '#lib/math.js'
+import { clamp } from 'svelte-widgets/utils'
+import type { Vec2 } from '#lib/math.js'
 import { resolve_value_range } from '#lib/plot/core/scales.js'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { rgb } from 'd3-color'

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { VirtualScroll } from 'svelte-widgets/table'
+  import { with_defaults } from 'svelte-widgets/utils'
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
@@ -14,7 +16,6 @@
   import { normalize_show_controls } from '#lib/controls.js'
 
   import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
-  import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
@@ -26,10 +27,8 @@
   import type { Rect } from '#lib/plot/core/layout.js'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { virtual_window } from 'svelte-widgets/virtual'
-  import { with_defaults } from '#lib/utils.js'
-  import type { VirtualScroll } from '#lib/table/index.js'
-  import { rows_to_csv } from 'svelte-widgets/csv'
-  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/utils'
+  import { format_num, rows_to_csv } from 'svelte-widgets/format'
+  import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, onMount, tick } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

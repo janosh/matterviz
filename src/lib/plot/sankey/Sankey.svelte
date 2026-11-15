@@ -76,7 +76,7 @@
     header_controls,
     controls_extra,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> &
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> &
     // `range_padding` / `title` are Cartesian-only: accepting them here would silently
     // forward them to the wrapper div as invalid DOM attributes.
     Omit<BasePlotProps, `range_padding` | `title`> & {

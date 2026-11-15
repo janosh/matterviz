@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { pick_contrast_color, resolve_backdrop } from '#lib/colors/index.js'
+  import { pick_contrast_color } from 'svelte-widgets/attachments'
+  import { format_num } from 'svelte-widgets/format'
+  import { resolve_backdrop } from '#lib/colors/index.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import { format_num, format_tick_values } from '#lib/labels.js'
+  import { format_tick_values } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { validate_log_range } from '#lib/plot/core/interactions.js'
@@ -177,7 +179,7 @@
   const inside_tick_color = (value: number): string => {
     try {
       return pick_contrast_color({
-        background: color_fn(value),
+        bg_color: color_fn(value),
         backdrop: backdrop.current,
       })
     } catch {

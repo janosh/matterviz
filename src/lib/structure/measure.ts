@@ -1,9 +1,9 @@
 // functions for measuring distances and angles between structure sites
 
+import { clamp } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import type { LatticeConverters, Matrix3x3, Vec3 } from '#lib/math.js'
 import {
-  clamp,
   add,
   create_lattice_converters,
   cross_3d,

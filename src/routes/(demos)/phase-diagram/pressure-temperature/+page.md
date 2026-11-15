@@ -22,7 +22,8 @@ Every boundary carries propagated standard errors, as a free-energy pipeline pro
 
 ```svelte example
 <script lang="ts">
-  import { format_num, PressureTemperaturePhaseDiagram } from 'matterviz'
+  import { format_num } from 'svelte-widgets/format'
+  import { PressureTemperaturePhaseDiagram } from 'matterviz'
   import { iron_pt_diagram } from '#site/phase-diagrams/pressure-temperature.js'
 
   let pinned = $state(``)

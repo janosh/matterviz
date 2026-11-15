@@ -1,6 +1,6 @@
 // Helper utilities for band structure and DOS data processing
+import { is_plain_object } from 'svelte-widgets/utils'
 import { parse_axis_label, subscript_digits } from '#lib/labels.js'
-import { is_plain_object } from '#lib/utils.js'
 import {
   array_extent,
   add,

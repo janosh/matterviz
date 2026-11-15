@@ -1,3 +1,4 @@
+import { is_plain_object } from 'svelte-widgets/utils'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
@@ -8,7 +9,6 @@ import {
   VASP_VOLUMETRIC_FILES,
 } from '#lib/constants.js'
 import { SETTINGS_CONFIG, type SettingType } from '#lib/settings.js'
-import { is_plain_object } from '#lib/utils.js'
 
 // VS Code settings read by extension.ts directly rather than forwarded to the webview
 const HOST_SETTING_KEYS = [`matterviz.theme`, `matterviz.auto_render`, `matterviz.open_beside`]

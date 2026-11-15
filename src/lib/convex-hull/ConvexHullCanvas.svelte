@@ -37,7 +37,7 @@
   import type { create_hull_data_pipeline } from './hull-state.svelte'
   import type { BaseConvexHullProps, ConvexHullGizmoOptions, Hull3DProps } from './index'
   import { merge_hull_config } from './index'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '#lib/controls.js'
   import type { HullSelection } from './canvas-interactions.svelte'

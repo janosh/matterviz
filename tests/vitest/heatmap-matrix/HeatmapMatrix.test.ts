@@ -1,7 +1,7 @@
+import { format_num } from 'svelte-widgets/format'
 import HeatmapMatrix from '#lib/heatmap-matrix/HeatmapMatrix.svelte'
 import type { AxisItem, HeatmapDomainMode } from '#lib/heatmap-matrix/index.js'
 import { VIRTUAL_CELL_THRESHOLD } from '#lib/heatmap-matrix/index.js'
-import { format_num } from '#lib/labels.js'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import type { ColorScale, ColorScaleConfig } from '#lib/plot/core/types.js'
 import type { ComponentProps } from 'svelte'

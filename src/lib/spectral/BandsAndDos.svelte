@@ -50,7 +50,7 @@
     fullscreen_toggle = true,
     children,
     ...rest
-  }: HTMLAttributes<HTMLDivElement> & {
+  }: Omit<HTMLAttributes<HTMLDivElement>, `children`> & {
     // Band structures keyed by legend label; the first one's k-path is drawn in the Brillouin zone when `structure` is set.
     band_structs: Record<string, BaseBandStructure>
     // Densities of states keyed by legend label, drawn beside or below the bands.

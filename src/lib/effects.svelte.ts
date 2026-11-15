@@ -1,3 +1,4 @@
+import { create_flash } from 'svelte-widgets/browser'
 import { in_view } from 'svelte-widgets/attachments'
 import type { Attachment } from 'svelte/attachments'
 import { untrack } from 'svelte'
@@ -16,9 +17,6 @@ type PulseAnimationOptions = {
 }
 
 type PulseAnimation = { readonly time: number; readonly unit: number }
-
-// `show` restarts the window rather than stacking a timer; `reset` drops it and reverts now
-type Flash<T> = { readonly value: T; show: (value: T) => void; reset: () => void }
 
 // `unit` swings through one full cycle every 2π/PULSE_FREQUENCY units of `time`
 const PULSE_FREQUENCY = 4
@@ -114,30 +112,6 @@ export function create_pulse_animation(
     },
     get unit() {
       return 0.5 + 0.5 * Math.sin(time * PULSE_FREQUENCY)
-    },
-  }
-}
-
-// A value that falls back to `resting` once `duration_ms` has passed since the last `show`
-// (the "Copied!" indicators). The stored handle stops an earlier timer clearing a later show;
-// the teardown stops a timer writing to an unmounted component, so call during component init.
-export function create_flash<T>(resting: T, duration_ms: number): Flash<T> {
-  let value = $state(resting)
-  let timer: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(timer))
-
-  return {
-    get value() {
-      return value
-    },
-    show: (next: T) => {
-      clearTimeout(timer)
-      value = next
-      timer = setTimeout(() => (value = resting), duration_ms)
-    },
-    reset: () => {
-      clearTimeout(timer)
-      value = resting
     },
   }
 }

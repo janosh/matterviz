@@ -1,4 +1,6 @@
 <script lang="ts">
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
+  import { format_num } from 'svelte-widgets/format'
   import { join_hover_link, TooltipValue } from '#lib/tooltip/index.js'
   import { band_hover_qpoint } from './band-path-link.svelte'
   import { track_settings } from '#lib/controls.js'
@@ -7,14 +9,11 @@
   import { BZ_POPUP_DEFAULT_WIDTH, type BZPopupPoint } from '#lib/brillouin/types.js'
   import { HIGHLIGHT, is_dark_mode, plot_color, resolve_backdrop } from '#lib/colors/index.js'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
-  import { format_num } from '#lib/labels.js'
-  import { SettingsSection } from '#lib/layout/index.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
+  import { array_max, in_range, reciprocal_lattice } from '#lib/math.js'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from '#lib/utils.js'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {

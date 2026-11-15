@@ -4,6 +4,7 @@
   // draggable cutting plane), a phase × T stability map and the list of transitions with
   // balanced reactions. The 2D section and the prism share a pinned composition probe: click to
   // pin (its assemblage follows T), click the pin again or press Escape to drop it.
+  import { format_num } from 'svelte-widgets/format'
   import { is_dark_mode, resolve_css_color, watch_dark_mode } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
@@ -25,10 +26,9 @@
     type ExportSources,
   } from '#lib/io/export.js'
   import type { FileLoadCallback } from '#lib/io/types.js'
-  import { format_num } from '#lib/labels.js'
   import { ViewerChrome } from '#lib/layout/index.js'
   import LiveMessage from 'svelte-widgets/LiveMessage.svelte'
-  import { clamp, type Vec2 } from '#lib/math.js'
+  import type { Vec2 } from '#lib/math.js'
   import { PlotTooltip } from '#lib/plot/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { viewer_keydown } from '#lib/shortcuts.js'
@@ -38,7 +38,8 @@
     wheel_zoom_gate,
     webgpu_available,
   } from '#lib/scene/index.js'
-  import { is_modifier_chord, to_error } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { Canvas } from '@threlte/core'
   import type { Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'

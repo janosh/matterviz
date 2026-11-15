@@ -18,7 +18,7 @@ import {
 } from '#lib/plot/core/axis-assignment.js'
 import { smooth_moving_average } from '#lib/plot/core/data-cleaning.js'
 import { assert_series_lengths, type DataSeries } from '#lib/plot/core/types.js'
-import { html_to_text } from '#lib/utils.js'
+import { html_to_text } from 'svelte-widgets/utils'
 import type { TrajectoryMetadata } from './index'
 
 const ENERGY_UNITS = [`eV`, `eV/atom`, `hartree`, `kcal/mol`, `kJ/mol`]

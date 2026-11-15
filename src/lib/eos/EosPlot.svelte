@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
   import type { ScatterHandlerProps } from '#lib/plot/core/types.js'
   // Energy–volume scan with one or more fitted equations of state drawn through it. Hovering a
@@ -9,7 +10,6 @@
   import { EV_PER_A3_TO_GPA } from '#lib/constants.js'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { format_num } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import { TooltipValue } from '#lib/tooltip/index.js'

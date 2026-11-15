@@ -1,8 +1,8 @@
 // CSS colour to linear-space RGB for three.js buffers. Shared by every scene that writes
 // colours into instanced or vertex attributes, which the renderer reads as Linear-sRGB.
+import { clamp } from 'svelte-widgets/utils'
 import { rgb as parse_rgb } from 'd3-color'
 import { Color, SRGBColorSpace } from 'three/webgpu'
-import { clamp } from '#lib/math.js'
 
 type LinearRgb = readonly [number, number, number]
 

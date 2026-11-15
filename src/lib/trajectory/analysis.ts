@@ -10,7 +10,7 @@ import type {
   TrajectoryPositionStream,
 } from './index'
 import { is_crystal } from '#lib/structure/validation.js'
-import { csv_line } from 'svelte-widgets/csv'
+import { csv_line } from 'svelte-widgets/format'
 import type { TrajectoryRun } from './run'
 import {
   DEFAULT_POSITION_STREAM_MAX_BYTES,
@@ -270,15 +270,13 @@ export async function sweep_frames<Result>(
   return { results, frame_numbers, frame_stride }
 }
 
-// Column-wise numbers to CSV (header row = keys, one row per index, `NaN` for a short
-// column), the shape every analysis result already has: a lag/r/frequency axis plus one
-// column per curve. Header fields holding a delimiter, quote or line break are quoted.
+// Column-wise numbers to CSV (header row = keys, one row per index, empty past a short column),
+// the shape every analysis result already has: a lag/r/frequency axis plus one column per curve.
 export function columns_to_csv(columns: Record<string, ArrayLike<number>>): string {
   const keys = Object.keys(columns)
   const n_rows = Math.max(0, ...keys.map((key) => columns[key].length))
-  const header = csv_line(keys)
   const rows = Array.from({ length: n_rows }, (_unused, row_idx) =>
-    keys.map((key) => String(columns[key][row_idx] ?? NaN)).join(`,`),
+    keys.map((key) => columns[key][row_idx]),
   )
-  return [header, ...rows].join(`\n`)
+  return [keys, ...rows].map(csv_line).join(`\n`)
 }

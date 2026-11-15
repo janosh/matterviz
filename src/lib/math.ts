@@ -1,3 +1,4 @@
+import { clamp } from 'svelte-widgets/utils'
 import type { LatticeParams, Pbc } from '#lib/structure/index.js'
 
 export type Vec2 = [number, number]
@@ -106,11 +107,6 @@ export const mulberry32 = (seed: number): (() => number) => {
     return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296
   }
 }
-
-// Clamp value into [lo, hi]. NaN passes through (Math.min/max propagate it), so callers
-// that need a finite result must check first.
-export const clamp = (value: number, lower: number, upper: number): number =>
-  Math.max(lower, Math.min(upper, value))
 
 // Whether value lies in the closed interval between the range ends, in either order
 export const in_range = (value: number, [bound_a, bound_b]: Vec2): boolean =>

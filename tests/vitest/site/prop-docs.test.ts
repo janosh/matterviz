@@ -14,7 +14,7 @@ import { resolve } from 'node:path'
 import { describe, expect, test, vi } from 'vite-plus/test'
 import { doc_query } from '../setup'
 
-vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/info-tag` } } }))
+vi.mock(`$app/state`, () => ({ page: { route: { id: `/(demos)/layout/property-filter` } } }))
 
 const repo_root = `${import.meta.dirname}/../../..`
 
@@ -22,7 +22,7 @@ describe(`extract_prop_docs`, () => {
   const docs = extract_prop_docs(
     [
       `plot/ternary/TernaryPlot`,
-      `layout/InfoTag`,
+      `layout/PropertyFilter`,
       `xrd/XrdPlot`,
       `spectral/PhononModeExplorer`,
       `trajectory/Trajectory`,
@@ -91,7 +91,7 @@ describe(`extract_prop_docs`, () => {
       },
     ],
     [
-      `InfoTag`,
+      `PropertyFilter`,
       `label`,
       {
         name: `label`,
@@ -174,7 +174,7 @@ describe(`extract_prop_docs`, () => {
 
   // the element a ...rest binding passes HTML attributes on to
   test.each([
-    [`InfoTag`, `<span>`],
+    [`PropertyFilter`, `<div>`],
     [`PhononModeExplorer`, `<div>`],
   ])(`%s takes %s attributes`, (component, element) => {
     expect(docs[component]?.rest_attributes).toBe(element)
@@ -234,14 +234,16 @@ test(
       return code
     }
     expect(
-      [`virtual:prop-docs`, `virtual:prop-docs/InfoTag`, `virtual:other`].map(resolve_id),
-    ).toEqual([`\0virtual:prop-docs`, `\0virtual:prop-docs/InfoTag`, null])
+      [`virtual:prop-docs`, `virtual:prop-docs/PropertyFilter`, `virtual:other`].map(
+        resolve_id,
+      ),
+    ).toEqual([`\0virtual:prop-docs`, `\0virtual:prop-docs/PropertyFilter`, null])
     const index = source(`\0virtual:prop-docs`)
     expect(index).toContain(
       `"PhononModeExplorer": () => import("virtual:prop-docs/PhononModeExplorer")`,
     )
     expect(index).not.toContain(`trajectory_props`) // no docs in the index itself
-    const component = source(`\0virtual:prop-docs/InfoTag`)
+    const component = source(`\0virtual:prop-docs/PropertyFilter`)
     const { props } = JSON.parse(component.replace(/^export default /, ``)) as ComponentDoc
     expect(props.map(({ name }) => name)).toContain(`label`)
     expect(component.length).toBeLessThan(5000)
@@ -286,13 +288,13 @@ test(
   async () => {
     mount(PropsTable, { target: document.body })
     const details = doc_query<HTMLDetailsElement>(`details`)
-    expect(details.querySelector(`summary`)?.textContent).toBe(`Props of InfoTag`)
+    expect(details.querySelector(`summary`)?.textContent).toBe(`Props of PropertyFilter`)
     expect(details.querySelector(`table`)).toBeNull() // nothing loaded while closed
     details.open = true
     details.dispatchEvent(new Event(`toggle`))
     flushSync()
     expect(details.textContent).toContain(`Loading props...`)
-    await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(11), {
+    await vi.waitFor(() => expect(details.querySelectorAll(`tbody tr`)).toHaveLength(13), {
       timeout: 30_000,
     })
     const rows = [...details.querySelectorAll(`tbody tr`)].map((row) =>

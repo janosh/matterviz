@@ -1,4 +1,10 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
+  import SettingsSearch from 'svelte-widgets/SettingsSearch.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
+  import { create_clipboard_feedback } from 'svelte-widgets/browser'
+  import { format_num } from 'svelte-widgets/format'
   import { SHORTCUTS } from '#lib/shortcuts.js'
   import { numeric_sites, snapshot_topologies } from './site'
   import { element_from_atomic_number } from '#lib/element/helpers.js'
@@ -6,7 +12,7 @@
   import { resolve_cell_vectors, type StructureSettings } from './settings'
   import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
-  import { ControlPane, create_clipboard_feedback } from '#lib/overlays/index.js'
+  import { ControlPane } from '#lib/overlays/index.js'
   import type { ColorSchemeName } from '#lib/colors/index.js'
   import { AXIS_COLORS, css_color_to_hex } from '#lib/colors/index.js'
   import { resolve_theme_text_color } from '#lib/state.svelte.js'
@@ -20,17 +26,11 @@
   import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
   import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
-  import { capitalize, format_num } from '#lib/labels.js'
+  import { capitalize } from '#lib/labels.js'
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import { FileExportState } from '#lib/io/file-export.svelte.js'
-  import {
-    NumberRangeInput,
-    SettingsGroup,
-    SettingsSearch,
-    SettingsSection,
-  } from '#lib/layout/index.js'
   import type { Vec3 } from '#lib/math.js'
-  import { clamp, to_degrees, to_radians } from '#lib/math.js'
+  import { to_degrees, to_radians } from '#lib/math.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { ZoneAxisMode } from '#lib/scene/index.js'
   import {
@@ -79,7 +79,7 @@
     is_periodic,
   } from '#lib/structure/validation.js'
   import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { Reset } from 'svelte-widgets/icons'

@@ -1,9 +1,11 @@
 <script lang="ts">
+  import NumberRangeInput from 'svelte-widgets/NumberRangeInput.svelte'
+  import SettingsGroup from 'svelte-widgets/SettingsGroup.svelte'
+  import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import { track_settings } from '#lib/controls.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { css_color_to_hex } from '#lib/colors/index.js'
-  import { NumberRangeInput, SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import type { AxisConfig } from '#lib/plot/index.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import { tooltip } from 'svelte-widgets/attachments'

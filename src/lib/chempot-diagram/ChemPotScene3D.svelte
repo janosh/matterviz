@@ -1,7 +1,7 @@
 <script lang="ts">
   // Everything the 3D chemical potential diagram draws inside its <Canvas>.
+  import { format_num } from 'svelte-widgets/format'
   import type { FormulaLabelSegment } from '#lib/composition/formula-markup.js'
-  import { format_num } from '#lib/labels.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import { array_extent } from '#lib/math.js'
   import type {

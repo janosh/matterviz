@@ -3,7 +3,7 @@
 // its projection via the `visible`, `node_center` and `legend_points` hooks.
 
 import { svg_sources, type ExportSources } from '#lib/io/export.js'
-import { is_modifier_chord } from 'svelte-widgets/utils'
+import { is_modifier_chord } from 'svelte-widgets/shortcuts'
 import type ColorBar from '#lib/plot/core/components/ColorBar.svelte'
 import {
   closest_data_idx,

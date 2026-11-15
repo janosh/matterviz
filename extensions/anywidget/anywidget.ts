@@ -2,6 +2,7 @@
 
 // MatterViz AnyWidget Entry Point
 
+import { is_plain_object } from 'svelte-widgets/utils'
 import type { AnyModel, Render } from 'anywidget/types'
 import {
   Bands,
@@ -18,7 +19,6 @@ import {
   FermiSurface,
   HeatmapMatrix,
   Histogram,
-  is_plain_object,
   IsobaricBinaryPhaseDiagram,
   IsobaricTernaryPhaseDiagram,
   NebPlot,

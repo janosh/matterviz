@@ -1,8 +1,8 @@
 // Mode values (e.g. the electron–phonon coupling λ_qν) over a band structure: their parsing,
 // the projection of their q-points onto the band path and the markers Bands draws there
+import { is_plain_object } from 'svelte-widgets/utils'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { is_finite_vec3, matrix_inverse_3x3 } from '#lib/math.js'
-import { is_plain_object } from '#lib/utils.js'
 import { branch_x, plotted_branches } from './helpers'
 import type { BaseBandStructure, ModeValues } from './types'
 

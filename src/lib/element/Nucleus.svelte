@@ -1,16 +1,16 @@
 <script lang="ts">
+  import { pick_contrast_color } from 'svelte-widgets/attachments'
   import {
     composite_colors,
     is_concrete_color,
     is_opaque_color,
-    pick_contrast_color,
     resolve_backdrop,
   } from '#lib/colors/index.js'
   import type { NucleonPaint, SymbolPaint } from '#lib/element/index.js'
   import type { SVGAttributes } from 'svelte/elements'
 
   // fill and label fall back per field, so a partial paint keeps the other defaults
-  const with_defaults = (paint: NucleonPaint, fill: string, label: string) => ({
+  const nucleon_paint = (paint: NucleonPaint, fill: string, label: string) => ({
     fill: paint.fill ?? fill,
     label: paint.label ?? label,
     text: paint.text,
@@ -51,8 +51,8 @@
 
   let node = $state<SVGSVGElement>()
   const backdrop = resolve_backdrop(() => node, { override: () => backdrop_color })
-  const proton = $derived(with_defaults(proton_paint, `cornflowerblue`, ` P`))
-  const neutron = $derived(with_defaults(neutron_paint, `orange`, ` N`))
+  const proton = $derived(nucleon_paint(proton_paint, `cornflowerblue`, ` P`))
+  const neutron = $derived(nucleon_paint(neutron_paint, `orange`, ` N`))
 
   const radius = $derived(size / 2)
   let proton_frac = $derived(protons / (protons + neutrons))
@@ -65,7 +65,7 @@
   ])
 
   const text_color = (fill: string, text: string | undefined): string =>
-    text ?? pick_contrast_color({ background: fill, backdrop: backdrop.current })
+    text ?? pick_contrast_color({ bg_color: fill, backdrop: backdrop.current })
   const symbol_color = $derived(text_color(neutron.fill, symbol_paint.text))
   const neutron_surface = $derived(
     is_opaque_color(neutron.fill)
@@ -77,7 +77,7 @@
     if (outline === `none`) return undefined
     if (outline) return outline
     return is_concrete_color(symbol_color)
-      ? pick_contrast_color({ background: symbol_color, backdrop: neutron_surface })
+      ? pick_contrast_color({ bg_color: symbol_color, backdrop: neutron_surface })
       : undefined
   })
 </script>

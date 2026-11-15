@@ -1,11 +1,10 @@
 import { DEFAULT_PNG_DPI, DEFAULT_VIDEO_RESOLUTION } from '#lib/constants.js'
-import { download, type DownloadData } from 'svelte-widgets/download'
+import { download, type DownloadData } from 'svelte-widgets/browser'
 import type { FileSaver } from './file-export.svelte'
 import type { ExportItem, ExportPaneContext, ExportSection } from './types'
-import { clamp } from '#lib/math.js'
 import { canvas_painters, unique_id } from '#lib/plot/core/utils.js'
 import { abortable } from '#lib/utils.js'
-import { to_error } from 'svelte-widgets/utils'
+import { clamp, to_error } from 'svelte-widgets/utils'
 // three.js and the scene camera helpers are imported dynamically where GPU canvases need
 // them: every 2D plot imports this module for SVG/PNG export, and static imports put
 // three.js in each plot page's initial bundle

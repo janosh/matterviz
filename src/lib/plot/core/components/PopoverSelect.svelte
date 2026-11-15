@@ -5,7 +5,7 @@
   import { anchored_popover, close_before_removal } from 'svelte-widgets/attachments'
   import type { AxisOption as Option } from '#lib/plot/core/types.js'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
   let {

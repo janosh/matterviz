@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { GasSpecies, PhaseData } from '#lib/convex-hull/types.js'
   import { DEFAULT_GAS_PRESSURES } from '#lib/convex-hull/types.js'
-  import { format_num } from '#lib/labels.js'
   import { getAbortSignal } from 'svelte'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'

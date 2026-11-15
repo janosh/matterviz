@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
+import { is_plain_object } from 'svelte-widgets/utils'
 import { DEFAULTS } from '../../src/lib/settings'
-import { is_plain_object } from '../../src/lib/utils'
 import { DATA_PROPS } from '../../extensions/anywidget/reactive.svelte'
 import { extract_prop_docs } from '../../src/scripts/prop-docs'
 import { flushSync } from 'svelte'

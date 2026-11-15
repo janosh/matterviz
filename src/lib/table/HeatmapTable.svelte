@@ -4,6 +4,7 @@
   // text readable over the page, MatterViz number formatting, sanitized HTML cells and the
   // shared export pane. Sorting, filters, resizing, pinning, selection and the rest are
   // DataTable's.
+  import { format_num } from 'svelte-widgets/format'
   import type { D3InterpolateName } from '#lib/colors/index.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import {
@@ -19,14 +20,13 @@
   } from '#lib/colors/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportProps } from '#lib/io/export.js'
-  import { format_num } from '#lib/labels.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
   import { type ColorScale, SCALE_DEFAULTS } from '#lib/plot/core/types.js'
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
-  import type { Column, ColumnPrefs, RowData } from '#lib/table/index.js'
+  import type { Column, ColumnPrefs } from '#lib/table/index.js'
   import { make_cell_color_scale } from '#lib/table/index.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { onMount } from 'svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import {
@@ -37,6 +37,7 @@
     type DataTableProps,
     discover_columns,
     parse_numeric_val,
+    type RowData,
   } from 'svelte-widgets/table'
 
   let {
@@ -121,7 +122,7 @@
     fallback: `#4a9eff`,
   })
   const selection_badge_color = $derived(
-    contrast_text_color({ background: accent_color.current, backdrop: page_backdrop.current }),
+    contrast_text_color({ bg_color: accent_color.current, backdrop: page_backdrop.current }),
   )
 
   const color_scale_options = [

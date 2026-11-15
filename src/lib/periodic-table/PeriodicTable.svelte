@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { is_modifier_chord } from 'svelte-widgets/utils'
+  import { is_plain_object } from 'svelte-widgets/utils'
+  import { format_num } from 'svelte-widgets/format'
+  import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { is_color, resolve_backdrop } from '#lib/colors/index.js'
   import type {
     ChemicalElement,
@@ -14,7 +16,7 @@
     ElementTile,
     is_elem_symbol,
   } from '#lib/element/index.js'
-  import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
+  import { ELEM_SYMBOLS } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'
@@ -23,7 +25,6 @@
   import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
   import { type ColorScale, get_scale_type_name } from '#lib/plot/core/types.js'
   import { colors } from '#lib/state.svelte.js'
-  import { is_plain_object } from '#lib/utils.js'
   import type { ComponentProps, Snippet } from 'svelte'
   import type { TooltipProp } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
