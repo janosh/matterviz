@@ -11,7 +11,7 @@
   // plot. Whenever the pane drops its input (trajectory swapped, collect failed) it also calls
   // `on_clear` so the module drops its result — otherwise stale curves hide the new message.
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
+  import { display_idx, from_display_idx } from '#lib/labels.js'
   import { ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { ParseProgress, TrajectoryFrame, TrajectoryRun } from '#lib/trajectory/index.js'
   import type {
@@ -28,7 +28,7 @@
   import { resolve_frame_range } from './runs/accumulate'
   import { create_request_owner } from './async-result.svelte'
   import { to_error } from 'svelte-widgets/utils'
-  import { format_bytes } from 'svelte-widgets/format'
+  import { format_bytes, format_num } from 'svelte-widgets/format'
   import { getAbortSignal, type Snippet, untrack } from 'svelte'
   import { Graph, type IconData } from 'svelte-widgets/icons'
 

@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { DisplayConfig3D } from '#lib/plot/core/types.js'
 
   // Shared with ScatterPlot3D, which fills these in before handing `display` to the scene
@@ -15,7 +16,6 @@
 
 <script lang="ts">
   import { INITIAL_SETTINGS_LABELS, track_settings } from '#lib/controls.js'
-  import { format_num } from '#lib/labels.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
   // Axis configs are reassigned (`x_axis = { ...x_axis, prop }`), never mutated, for $bindable

@@ -1,3 +1,4 @@
+import { clamp } from 'svelte-widgets/utils'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { quantile as d3_quantile } from 'd3-array'
@@ -775,7 +776,7 @@ test.each([
   [3, 3, 3, 3],
   [NaN, 0, 1, NaN],
 ])(`clamp(%f, %f, %f) = %f`, (value, lower, upper, expected) => {
-  expect(math.clamp(value, lower, upper)).toBe(expected)
+  expect(clamp(value, lower, upper)).toBe(expected)
 })
 
 test.each([

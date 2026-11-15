@@ -3,7 +3,7 @@
   // measure mode, distance lines with PBC/direct lengths, the picked triangle with an arc and
   // value at each of its angles, or the torsion chain. Angle and torsion edges run between the
   // nearest images the values are measured from (see measure.pick_displacement).
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import { SceneLabel } from '#lib/scene/index.js'

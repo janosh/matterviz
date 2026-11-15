@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { value_key } from '#lib/utils.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { format_num } from '#lib/labels.js'
   import { untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'
   import { resolve_slice_plane, sample_plane_slice, upsample_volume } from './slice'

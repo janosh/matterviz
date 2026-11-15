@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { format_num, humanize } from '#lib/labels.js'
+  import { humanize } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { sanitize_formula, sanitize_html } from '#lib/sanitize.js'
   import { TooltipContent, TooltipValue } from '#lib/tooltip/index.js'

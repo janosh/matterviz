@@ -2,6 +2,7 @@
 
 ```svelte example
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { browser } from '$app/env'
   import { Structure, type StructureHandlerData } from 'matterviz'
   import { structure_files } from '#site/structures.js'
@@ -217,7 +218,7 @@ Arrow lengths are auto-scaled so the largest displacement spans a fixed fraction
 ```svelte example
 <script lang="ts">
   import type { AnyStructure, Vec3 } from 'matterviz'
-  import { format_num, Structure } from 'matterviz'
+  import { Structure } from 'matterviz'
   import { structures } from '#site/structures.js'
 
   const relaxed = structures.find(
@@ -310,7 +311,6 @@ Load structures from text with `Structure source={{ data: text, filename }}` (CI
 ```svelte example
 <script lang="ts">
   import { Structure } from 'matterviz'
-  import { format_num } from '#lib'
   import c2ho_scientific_notation_xyz from '#site/molecules/C2HO-scientific-notation.xyz?raw'
   import c5_extra_data_xyz from '#site/molecules/C5-extra-data.xyz?raw'
   import cyclohexane from '#site/molecules/cyclohexane.xyz?raw'

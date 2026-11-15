@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { TooltipValue } from '#lib/tooltip/index.js'
   import { webgpu_available } from '#lib/scene/index.js'
   import { camera_flight_registry } from '#lib/scene/camera-flight.js'
@@ -30,18 +31,17 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { html_to_text, to_error } from 'svelte-widgets/utils'
+  import { clamp, html_to_text, to_error } from 'svelte-widgets/utils'
   import { value_key } from '#lib/utils.js'
   import {
     display_idx,
     from_display_idx,
     parse_axis_label,
-    format_num,
     parse_warnings_notice,
     trajectory_property_config,
   } from '#lib/labels.js'
   import type { TrajPropertyConfig } from '#lib/labels.js'
-  import { clamp, is_valid_index, same_values } from '#lib/math.js'
+  import { is_valid_index, same_values } from '#lib/math.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import TrajectoryMsdPane from '#lib/msd/TrajectoryMsdPane.svelte'
   import TrajectoryRdfPane from '#lib/rdf/TrajectoryRdfPane.svelte'

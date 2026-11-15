@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { SHORTCUTS } from '#lib/shortcuts.js'
   import { numeric_sites, snapshot_topologies } from './site'
   import { element_from_atomic_number } from '#lib/element/helpers.js'
@@ -20,7 +21,7 @@
   import VolumeSliceControls from '#lib/isosurface/VolumeSliceControls.svelte'
   import type { VolumeSliceSettings } from '#lib/isosurface/slice-settings.js'
   import type { IsosurfaceSettings, VolumetricData } from '#lib/isosurface/types.js'
-  import { capitalize, format_num } from '#lib/labels.js'
+  import { capitalize } from '#lib/labels.js'
   import ExportDestination from '#lib/io/ExportDestination.svelte'
   import { FileExportState } from '#lib/io/file-export.svelte.js'
   import {
@@ -30,7 +31,7 @@
     SettingsSection,
   } from '#lib/layout/index.js'
   import type { Vec3 } from '#lib/math.js'
-  import { clamp, to_degrees, to_radians } from '#lib/math.js'
+  import { to_degrees, to_radians } from '#lib/math.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { ZoneAxisMode } from '#lib/scene/index.js'
   import {
@@ -79,7 +80,7 @@
     is_periodic,
   } from '#lib/structure/validation.js'
   import type { CellType, SymmetryDataset } from '#lib/symmetry/index.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { untrack, type ComponentProps } from 'svelte'
   import { createAttachmentKey } from 'svelte/attachments'
   import { Reset } from 'svelte-widgets/icons'

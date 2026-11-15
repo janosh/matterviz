@@ -1,14 +1,9 @@
 // 1-D Gaussian kernel density estimation for violins and marginal density curves.
 // Never mutates inputs.
 
+import { clamp } from 'svelte-widgets/utils'
 import type { Vec2 } from '#lib/math.js'
-import {
-  array_extent,
-  clamp,
-  partition_point,
-  quantile_unordered,
-  sample_std,
-} from '#lib/math.js'
+import { array_extent, partition_point, quantile_unordered, sample_std } from '#lib/math.js'
 
 export interface KdeResult {
   grid: number[] // evaluation points along the value axis

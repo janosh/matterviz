@@ -81,7 +81,7 @@
   import SymmetryElements from '#lib/symmetry/SymmetryElements.svelte'
   import * as measure from '#lib/structure/measure.js'
   import { is_crystal } from '#lib/structure/validation.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { merge_split_partial_sites } from './partial-occupancy'
   import {
     bond_menu_position,
@@ -907,9 +907,7 @@
   let camera_far = $derived(Math.max(1000, structure_size * 100))
   const { minimum: min_fov = 5, maximum: max_fov = 150 } = SETTINGS_CONFIG.structure.fov
   let effective_fov = $derived(
-    Number.isFinite(fov) && fov > 0
-      ? math.clamp(fov, min_fov, max_fov)
-      : DEFAULTS.structure.fov,
+    Number.isFinite(fov) && fov > 0 ? clamp(fov, min_fov, max_fov) : DEFAULTS.structure.fov,
   )
 
   // False until the container has a size; a fit against 0x0 is meaningless

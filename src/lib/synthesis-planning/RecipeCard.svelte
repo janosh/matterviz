@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { format_equation_html } from './format'
   import {

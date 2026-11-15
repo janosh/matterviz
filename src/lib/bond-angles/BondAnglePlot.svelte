@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import type { BarSites, StructurePlotProps } from '#lib/plot/bar/index.js'
   import StructureBarPlot from '#lib/plot/bar/StructureBarPlot.svelte'
   import {

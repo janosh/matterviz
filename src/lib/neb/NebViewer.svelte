@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { ScatterPlotOptions } from '#lib/plot/index.js'
   import type { StructureOptions } from '#lib/structure/index.js'
   // Reaction-path viewer: energy profile on the left, the structure of the hovered or
@@ -15,7 +16,7 @@
   import ExportPane from '#lib/io/ExportPane.svelte'
   import { canvas_sources, json_source, type ExportProps } from '#lib/io/export.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
-  import { display_idx, format_num, parse_warnings_notice } from '#lib/labels.js'
+  import { display_idx, parse_warnings_notice } from '#lib/labels.js'
   import { FullscreenButton } from '#lib/layout/index.js'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
   import {
@@ -23,11 +24,10 @@
     is_sequence_key_target,
   } from '#lib/layout/sequence-player.svelte.js'
   import SequenceControlBar from '#lib/layout/SequenceControlBar.svelte'
-  import { clamp } from '#lib/math.js'
   import SequenceControls from '#lib/layout/SequenceControls.svelte'
   import { Structure } from '#lib/structure/index.js'
   import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { viewer_keydown } from '#lib/shortcuts.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import { SvelteMap } from 'svelte/reactivity'

@@ -11,6 +11,7 @@ Every series draws one marker per triple. Hover a marker for its fractions, clic
 
 ```svelte example
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { TernaryPlot, type TernarySeries } from 'matterviz'
 
   const series: TernarySeries[] = [
@@ -144,7 +145,7 @@ The `tooltip` snippet and the `on_point_click` / `on_point_hover` callbacks rece
 
 ```svelte example
 <script lang="ts">
-  import { format_num, TernaryPlot, type TernarySeries } from 'matterviz'
+  import { TernaryPlot, type TernarySeries } from 'matterviz'
 
   type Sample = { id: string; sintered_at: number }
   let selected = $state<string | null>(null)

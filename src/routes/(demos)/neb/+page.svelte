@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
   import { analyze_barrier, NebPlot, NebViewer, path_spline } from '#lib/neb/index.js'
   import { download } from 'svelte-widgets/browser'
-  import { display_idx, format_num } from '#lib/labels.js'
+  import { display_idx } from '#lib/labels.js'
   import { LI_MGO_HOP_FILENAME, li_mgo_hop_json, reaction_paths } from '#site/neb/index.js'
   import InputFormat from './input-format.md'
 

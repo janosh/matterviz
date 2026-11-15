@@ -1,9 +1,9 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { goto } from '$app/navigation'
   import type { Crystal, ElementSymbol } from '#lib'
   import type { PhaseData } from '#lib/convex-hull/index.js'
   import { ConvexHull } from '#lib/convex-hull/index.js'
-  import { format_num } from '#lib/labels.js'
   import { calc_lattice_params, mulberry32, type Matrix3x3 } from '#lib/math.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import { tick } from 'svelte'

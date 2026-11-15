@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { pick_contrast_color, resolve_backdrop } from '#lib/colors/index.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
-  import { format_num, format_tick_values } from '#lib/labels.js'
+  import { format_tick_values } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import PopoverSelect from '#lib/plot/core/components/PopoverSelect.svelte'
   import { validate_log_range } from '#lib/plot/core/interactions.js'

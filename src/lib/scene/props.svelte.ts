@@ -1,5 +1,6 @@
+import { clamp } from 'svelte-widgets/utils'
 import type { Vec3 } from '#lib/math.js'
-import { clamp, to_radians } from '#lib/math.js'
+import { to_radians } from '#lib/math.js'
 import { type CameraProjection, DEFAULTS } from '#lib/settings.js'
 import { untrack } from 'svelte'
 import { type Camera, OrthographicCamera, type Scene, type Vector3 } from 'three/webgpu'

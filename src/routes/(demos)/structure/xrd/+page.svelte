@@ -1,11 +1,11 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import LazyDemo from '#site/LazyDemo.svelte'
   import type { Crystal, FileInfo } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import { plot_color, PLOT_COLORS } from '#lib/colors/index.js'
   import { file_type_paint } from '#lib/io/index.js'
-  import { format_num } from '#lib/labels.js'
   import type { Matrix3x3, Vec3 } from '#lib/math.js'
   import type { LatticePlane } from '#lib/structure/index.js'
   import { Structure } from '#lib/structure/index.js'

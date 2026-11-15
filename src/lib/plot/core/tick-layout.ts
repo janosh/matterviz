@@ -1,8 +1,9 @@
 // Tick-label layout: picks upright/wrapped/rotated/thinned/staggered/ellipsized labels from
 // measured geometry, for calc_auto_padding (label band) and PlotAxis (rendering).
 
+import { clamp } from 'svelte-widgets/utils'
 import { format_tick_values } from '#lib/labels.js'
-import { array_max, array_min, assert_non_negative, clamp } from '#lib/math.js'
+import { array_max, array_min, assert_non_negative } from '#lib/math.js'
 import { get_tick_label, tick_label_format } from '#lib/plot/core/scales.js'
 import {
   DEFAULT_FONT_SPEC,

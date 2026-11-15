@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { interpolateInferno } from 'd3-scale-chromatic'
 
   const INFERNO_GRADIENT = `linear-gradient(90deg, ${Array.from({ length: 256 }, (_, idx) => `${interpolateInferno(idx / 256)} ${(idx / 256) * 100}% ${((idx + 1) / 256) * 100}%`).join(`, `)})`
@@ -12,7 +13,7 @@
   import type { HotspotCloudSettings, HotspotScale } from './hotspot-colors'
   import { DEFAULT_HOTSPOT_CLOUD, hotspot_scale } from './hotspot-colors'
   import { Graph } from 'svelte-widgets/icons'
-  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
+  import { display_idx, from_display_idx } from '#lib/labels.js'
   import { clamp01, value_key } from '#lib/utils.js'
   import { to_error } from 'svelte-widgets/utils'
   import { DEFAULT_CUTAWAY, type CutawaySettings } from '#lib/structure/cutaway.js'

@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { value_key } from '#lib/utils.js'
   import Spinner from 'svelte-widgets/Spinner.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { format_num } from '#lib/labels.js'
   import { info_pane_icon, ViewerPane, type ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { ParseProgress, TrajectoryRun } from '#lib/trajectory/index.js'
   import { create_request_owner } from '#lib/trajectory/async-result.svelte.js'

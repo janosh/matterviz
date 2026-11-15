@@ -1,5 +1,6 @@
 // Serializable camera paths shared by static structures and time-dependent trajectories.
-import { clamp, lerp, to_degrees, type Vec2, type Vec3 } from '#lib/math.js'
+import { clamp } from 'svelte-widgets/utils'
+import { lerp, to_degrees, type Vec2, type Vec3 } from '#lib/math.js'
 import type { OrthographicCamera } from 'three/webgpu'
 import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three/webgpu'
 import { read_pan_offset, set_pan_offset } from './pan'

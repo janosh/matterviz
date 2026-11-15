@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { ScatterPlotOptions, DataSeries } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { format_num } from '#lib/labels.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import AnalysisSummary from '#lib/trajectory/AnalysisSummary.svelte'
   import { to_error } from 'svelte-widgets/utils'

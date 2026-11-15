@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { track_settings } from '#lib/controls.js'
   import { ISO_COLORMAP_SELECT_PROPS } from '#lib/isosurface/coloring.js'
-  import { format_num } from '#lib/labels.js'
   import { SettingsGroup, SettingsSection } from '#lib/layout/index.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'
   import { ControlPane } from '#lib/overlays/index.js'

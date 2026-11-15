@@ -1,7 +1,7 @@
 import type { ChemicalElement } from '#lib/element/types.js'
 import type { Vec3 } from '#lib/math.js'
 import { normalize_unicode_minus } from '#lib/utils.js'
-import { format_num as format_spec } from 'svelte-widgets/format'
+import { DEFAULT_FMT, default_spec, format_num } from 'svelte-widgets/format'
 import {
   type SymbolType,
   symbolAsterisk,
@@ -22,16 +22,6 @@ import { timeFormat } from 'd3-time-format'
 
 export { ELEM_SYMBOLS } from '#lib/element/types.js'
 
-// Mutable so callers can change the adaptive defaults globally.
-export const DEFAULT_FMT: [string, string] = [`,.3~s`, `.3~g`]
-
-// d3 writes positive exponents as e+6; the sign only widens table cells and ticks, so drop it
-// (1.06e+29 -> 1.06e29). Scientific zero ("0e+0" / "0.00e+0") collapses to a plain 0.
-const compact_scientific = (formatted: string, fmt: string, num: number): string => {
-  const compact = formatted.replace(/e\+(?=\d)/, `e`)
-  return num === 0 && fmt.endsWith(`e`) ? compact.replace(/(?:\.0+)?e0$/, ``) : compact
-}
-
 // Cap for the string-keyed caches here, in sanitize.ts and colors/index.ts (keys come from
 // data, so they must be bounded). Evicting the oldest — Map iterates insertion order — beats a
 // wholesale clear, which makes a working set just over the limit recompute everything.
@@ -43,18 +33,6 @@ export const evict_oldest = (
   if (cache.size < limit) return
   const [oldest] = cache.keys()
   if (oldest !== undefined) cache.delete(oldest)
-}
-
-// DEFAULT_FMT slot for num: the SI format for 1 <= |num| < 1e27, else the sub-1 format, which
-// goes scientific for huge values. d3's largest SI prefix is yotta (1e24), so past it `s`
-// writes 1e27 as 1,000Y and 1e100 as a 100-digit run.
-const default_fmt_idx = (num: number): 0 | 1 =>
-  Math.abs(num) >= 1 && Math.abs(num) < 1e27 ? 0 : 1
-
-// fmt as number allows [].map(format_num) without a type error.
-export const format_num = (num: number, fmt?: string | number): string => {
-  if (!fmt || typeof fmt !== `string`) fmt = DEFAULT_FMT[default_fmt_idx(num)]
-  return compact_scientific(format_spec(num, fmt), fmt, num)
 }
 
 // A value within a millionth of `magnitude` (the data's largest |value|) as exactly 0, so
@@ -110,7 +88,7 @@ export function format_value(value: number, formatter?: string): string {
   if (!formatter) return `${value}`
   if (formatter.startsWith(`%`)) return timeFormat(formatter)(new Date(value))
 
-  const formatted = normalize_unicode_minus(format_spec(value, formatter))
+  const formatted = normalize_unicode_minus(format_num(value, formatter))
   // Fixed-precision currency keeps its zeros ($1.50); everything else drops trailing zeros
   // after the decimal point, keeping a % suffix
   if (formatter.includes(`$`) && /\.\d+f/.test(formatter)) return formatted
@@ -119,7 +97,7 @@ export function format_value(value: number, formatter?: string): string {
       ? [formatted.slice(0, -1), `%`]
       : [formatted, ``]
   const stripped = body.replace(/(?<decimals>\.\d*?)0+$/, `$1`).replace(/\.$/, ``) + suffix
-  return compact_scientific(stripped === `-0` ? `0` : stripped, formatter, value)
+  return stripped === `-0` ? `0` : stripped
 }
 
 // Human-readable label + unit (null when dimensionless) for displayable element
@@ -274,7 +252,7 @@ export const format_tick_values = (
     if (!labels_collide(values, log_labels)) return log_labels
   }
 
-  let labels = values.map(format_num)
+  let labels = values.map((value) => format_num(value))
   const resolution = tick_resolution_digits(values)
 
   const labels_with_precision = (precision: number, fixed = false): string[] =>
@@ -283,10 +261,7 @@ export const format_tick_values = (
         value,
         fixed
           ? `.${precision}~f`
-          : DEFAULT_FMT[default_fmt_idx(value)].replace(
-              /(?:\.\d+)?(?=~?[a-z%]$)/iu,
-              `.${precision}`,
-            ),
+          : default_spec(value).replace(/(?:\.\d+)?(?=~?[a-z%]$)/iu, `.${precision}`),
       ),
     )
   const minimum_precision = Math.max(

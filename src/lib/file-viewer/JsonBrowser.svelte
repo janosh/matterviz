@@ -9,7 +9,6 @@
   import { plural } from '#lib/labels.js'
   import JsonTree from 'svelte-widgets/JsonTree.svelte'
   import PaneDivider from 'svelte-widgets/SplitPane.svelte'
-  import { clamp } from '#lib/math.js'
   import { merge } from '#lib/settings.js'
   import type { DefaultSettings } from '#lib/settings.js'
   import type { AnyStructure } from '#lib/structure/index.js'
@@ -21,7 +20,7 @@
   } from '#lib/structure/parse.js'
   import { collect_parse_warnings } from '#lib/trajectory/parse/shared.js'
   import { is_editable_event_target } from 'svelte-widgets/shortcuts'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { type mount, unmount } from 'svelte'
   import {
     detect_view_type,

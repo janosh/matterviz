@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { contrast_text_color, resolve_backdrop } from '#lib/colors/index.js'
   import type { ChemicalElement, SplitLayout, TileSegment } from '#lib/element/index.js'
-  import { format_num } from '#lib/labels.js'
   import { colors } from '#lib/state.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
 

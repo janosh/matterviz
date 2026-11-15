@@ -6,7 +6,8 @@ Bar styling with `border_radius` for rounded corners and `stroke_color`/`stroke_
 
 ```svelte example
 <script lang="ts">
-  import { format_num, Histogram, type HistogramHandlerProps } from 'matterviz'
+  import { format_num } from 'svelte-widgets/format'
+  import { Histogram, type HistogramHandlerProps } from 'matterviz'
   import { generate_normal } from '#site/histogram-data.js'
 
   let bins = $state(50)
@@ -424,7 +425,6 @@ Bins are uniform in the x axis's own space: `bins` equal-width bins on a linear 
 <script lang="ts">
   import { Histogram } from 'matterviz'
   import * as utils from '#site/histogram-data.js'
-  import { format_num } from 'matterviz'
 
   let selected = $state(`bimodal`)
   let mode = $state(`single`)

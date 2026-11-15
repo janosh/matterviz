@@ -1,7 +1,8 @@
 // Type definitions and utilities for isosurface visualization (charge density, molecular orbitals, etc.)
+import { format_num } from 'svelte-widgets/format'
 import type { ColorScale } from '#lib/plot/core/types.js'
 import { strip_compression_extensions } from '#lib/io/decompress.js'
-import { format_num, zero_if_negligible } from '#lib/labels.js'
+import { zero_if_negligible } from '#lib/labels.js'
 import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
 import { is_finite_matrix3x3, is_finite_vec3 } from '#lib/math.js'
 import type { Crystal } from '#lib/structure/index.js'

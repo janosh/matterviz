@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { page } from '$app/state'
   import {
     BohrAtom,
@@ -11,7 +12,7 @@
   import { ColorScaleSelect, ElementScatter } from '#lib/plot/index.js'
   import { PeriodicTable, PropertySelect } from '#lib/periodic-table/index.js'
   import type { D3InterpolateName } from '#lib/colors/index.js'
-  import { ELEM_PROPERTY_LABELS, format_num } from '#lib/labels.js'
+  import { ELEM_PROPERTY_LABELS } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { selected } from '#lib/state.svelte.js'
   import pkg from '#root/package.json'

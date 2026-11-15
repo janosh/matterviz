@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import Tabs from 'svelte-widgets/Tabs.svelte'
   import { untrack } from 'svelte'
-  import { display_idx, format_num } from '#lib/labels.js'
+  import { display_idx } from '#lib/labels.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { type AnyStructure, get_density, get_element_counts } from '#lib/structure/index.js'
   import { numeric_sites, site_count } from '#lib/structure/site.js'

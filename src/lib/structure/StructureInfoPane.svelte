@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type {
     InfoPaneCard,
     InfoPaneRow,
@@ -13,7 +14,6 @@
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import { element_by_symbol, type ElementSymbol } from '#lib/element/index.js'
-  import { format_num } from '#lib/labels.js'
   import { get_element_palette } from '#lib/structure/element-palette.svelte.js'
   import { get_density, type AnyStructure } from '#lib/structure/index.js'
   import type { BondingStrategy } from '#lib/structure/bonding.js'

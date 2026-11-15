@@ -1,3 +1,4 @@
+import { clamp } from 'svelte-widgets/utils'
 import { display_idx } from '#lib/labels.js'
 import { element_by_symbol } from '#lib/element/data.js'
 import { is_elem_symbol } from '#lib/element/helpers.js'
@@ -15,7 +16,6 @@ import type { Complex } from '#lib/spectral/types.js'
 import type { Pbc } from '#lib/structure/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
 import {
-  clamp,
   cross_3d,
   dot,
   first_non_increasing_index,

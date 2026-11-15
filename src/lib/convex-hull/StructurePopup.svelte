@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { AnyStructure } from '#lib/structure/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
-  import { format_num } from '#lib/labels.js'
   import { FloatingPopup, GlassChip } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { Structure } from '#lib/structure/index.js'

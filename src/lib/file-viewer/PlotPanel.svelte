@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { clamp } from 'svelte-widgets/utils'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
-  import { clamp } from '#lib/math.js'
   import { BarPlot, Histogram, ScatterPlot } from '#lib/plot/index.js'
   import ScatterPlot3D from '#lib/plot/scatter-3d/ScatterPlot3D.svelte'
   import type { Column, RowData } from '#lib/table/index.js'

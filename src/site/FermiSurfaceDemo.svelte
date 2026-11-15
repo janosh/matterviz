@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { to_error } from 'svelte-widgets/utils'
   import { open_material, type FileInfo } from '#lib'
   import FilePicker from '#lib/FilePicker.svelte'
@@ -10,7 +11,6 @@
   } from '#lib/fermi-surface/index.js'
   import { FermiSlice, FermiSurface, is_fermi_surface_data } from '#lib/fermi-surface/index.js'
   import type { Vec3 } from '#lib/math.js'
-  import { format_num } from '#lib/labels.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { fermi_file_paints, fermi_surface_files } from '#site/fermi-surfaces.js'
   import {

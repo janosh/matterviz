@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { is_modifier_chord } from 'svelte-widgets/shortcuts'
   import { is_color, resolve_backdrop } from '#lib/colors/index.js'
   import type {
@@ -14,7 +15,7 @@
     ElementTile,
     is_elem_symbol,
   } from '#lib/element/index.js'
-  import { ELEM_SYMBOLS, format_num } from '#lib/labels.js'
+  import { ELEM_SYMBOLS } from '#lib/labels.js'
   import { array_extent } from '#lib/math.js'
   import { ColorBar } from '#lib/plot/index.js'
   import PlotTooltip from '#lib/plot/core/components/PlotTooltip.svelte'

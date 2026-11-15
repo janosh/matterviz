@@ -1,5 +1,7 @@
 // Canvas drawing for ConvexHullCanvas: markers, points, pulse overlay, labels, faces, plus
 // the ternary/quaternary strategies (camera, projection, simplex outline, axes).
+import { clamp } from 'svelte-widgets/utils'
+import { format_num } from 'svelte-widgets/format'
 import { add_alpha, HIGHLIGHT, plot_color } from '#lib/colors/index.js'
 import {
   type FormulaLabelSegment,
@@ -7,8 +9,8 @@ import {
 } from '#lib/composition/formula-markup.js'
 import { count_atoms_in_composition } from '#lib/composition/reduce.js'
 import type { ElementSymbol } from '#lib/element/index.js'
-import { capitalize, type D3SymbolName, format_num, symbol_map } from '#lib/labels.js'
-import { array_extent, clamp, mean, to_radians, type Vec3 } from '#lib/math.js'
+import { capitalize, type D3SymbolName, symbol_map } from '#lib/labels.js'
+import { array_extent, mean, to_radians, type Vec3 } from '#lib/math.js'
 import { resolve_color_scale, to_color_scale_config } from '#lib/plot/core/scales.js'
 import {
   centered_rect,

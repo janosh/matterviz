@@ -4,6 +4,7 @@
   // text readable over the page, MatterViz number formatting, sanitized HTML cells and the
   // shared export pane. Sorting, filters, resizing, pinning, selection and the rest are
   // DataTable's.
+  import { format_num } from 'svelte-widgets/format'
   import type { D3InterpolateName } from '#lib/colors/index.js'
   import type { ShowControlsProp } from '#lib/controls.js'
   import {
@@ -19,7 +20,6 @@
   } from '#lib/colors/index.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportProps } from '#lib/io/export.js'
-  import { format_num } from '#lib/labels.js'
   import { ControlPane } from '#lib/overlays/index.js'
   import { scheme_name, with_scheme } from '#lib/plot/core/scales.js'
   import { type ColorScale, SCALE_DEFAULTS } from '#lib/plot/core/types.js'

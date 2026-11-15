@@ -1,12 +1,7 @@
 <script module lang="ts">
   import type { InfoPaneCard, InfoPaneRow } from '#lib/overlays/index.js'
-  import {
-    display_idx,
-    format_num,
-    trajectory_property_config,
-    zero_if_negligible,
-  } from '#lib/labels.js'
-  import { format_bytes } from 'svelte-widgets/format'
+  import { display_idx, trajectory_property_config, zero_if_negligible } from '#lib/labels.js'
+  import { format_bytes, format_num } from 'svelte-widgets/format'
   import { array_extent } from '#lib/math.js'
   import type { TrajectoryFrame, TrajectoryMetadata, TrajectoryRun } from './index'
   import {

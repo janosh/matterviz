@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { clamp } from 'svelte-widgets/utils'
   import { hover_tooltip } from '#lib/tooltip/hover.svelte.js'
-  import { clamp } from '#lib/math.js'
   import PatternDefs from '#lib/plot/core/components/PatternDefs.svelte'
   import type { ChartSegment, CompositionChartProps } from './chart'
   import { composition_segments, fit_font_scale, segment_suffix, segment_title } from './chart'

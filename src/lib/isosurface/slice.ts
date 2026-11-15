@@ -1,4 +1,5 @@
 // Plane slicing for volumetric data: trilinear samples along an hkl or Cartesian plane
+import { clamp } from 'svelte-widgets/utils'
 import type { Vec2, Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { lower_corner, safe_mod, upper_corner } from './grid'
@@ -376,7 +377,7 @@ export function sample_plane_slice(
   const edges = polygon_edges(polygon)
   const u_at = (col: number): number => u_range[0] + col * u_step
   const col_at = (u_coord: number): number =>
-    math.clamp(Math.round((u_coord - u_range[0]) / u_step), 0, width - 1)
+    clamp(Math.round((u_coord - u_range[0]) / u_step), 0, width - 1)
   // grid coordinates (periodic point i at i/n, finite at i/(n-1)) are affine in (u, v)
   const recip = math.reciprocal_lattice(volume.lattice)
   const to_grid = (cart: Vec3): Vec3 =>

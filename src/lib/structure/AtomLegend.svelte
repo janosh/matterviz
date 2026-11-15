@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import {
     contrast_text_color,
     perceived_brightness,
@@ -8,7 +9,7 @@
   import { element_by_symbol, is_elem_symbol, type ElementSymbol } from '#lib/element/index.js'
   import Icon from 'svelte-widgets/Icon.svelte'
   import { ChevronCollapse, ChevronExpand, Close } from 'svelte-widgets/icons'
-  import { display_idx, ELEM_SYMBOLS, format_num } from '#lib/labels.js'
+  import { display_idx, ELEM_SYMBOLS } from '#lib/labels.js'
   import { ColorBar } from '#lib/plot/index.js'
   import { resolve_color_scale } from '#lib/plot/core/scales.js'
   import type { AnyStructure } from '#lib/structure/index.js'

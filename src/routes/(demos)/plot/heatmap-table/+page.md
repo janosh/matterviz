@@ -12,6 +12,7 @@ For large tables (thousands of rows), hold `data` in `$state.raw` rather than `$
 
 ```svelte example
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { HeatmapTable } from 'matterviz'
 
   const data = [
@@ -171,7 +172,7 @@ All 118 chemical elements with physical and chemical properties. Features column
 
 ```svelte example
 <script lang="ts">
-  import { element_data, format_num, HeatmapTable, TABLE_EXPORT_FORMATS } from 'matterviz'
+  import { element_data, HeatmapTable, TABLE_EXPORT_FORMATS } from 'matterviz'
 
   // Get unique categories and phases for filters
   const categories = [...new Set(element_data.map((element) => element.category))].sort()

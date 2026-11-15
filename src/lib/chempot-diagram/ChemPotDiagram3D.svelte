@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clamp } from 'svelte-widgets/utils'
   import { create_delayed_flag } from '#lib/effects.svelte.js'
   import { viewer_keys } from '#lib/shortcuts.js'
   import { ContentCut, Filter } from 'svelte-widgets/icons'
@@ -15,7 +16,7 @@
   import { ViewerPane } from '#lib/overlays/index.js'
   import { HIGHLIGHT } from '#lib/colors/index.js'
   import type { Vec3 } from '#lib/math.js'
-  import { add, array_extent, clamp, merge_coplanar_triangles, subtract } from '#lib/math.js'
+  import { add, array_extent, merge_coplanar_triangles, subtract } from '#lib/math.js'
   import { ScatterPlot3DControls } from '#lib/plot/index.js'
   import type { ThreltePointerEvent } from '#lib/scene/index.js'
   import {

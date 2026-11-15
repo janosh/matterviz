@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { format_num, symbol_names } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
+  import { symbol_names } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import * as math from '#lib/math.js'
   import type { DataSeries, InternalPoint, LabelStyle, ScaleType } from '#lib/plot/index.js'

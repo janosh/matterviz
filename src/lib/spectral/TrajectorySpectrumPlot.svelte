@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clamp } from 'svelte-widgets/utils'
   import type {
     ScatterPlotOptions,
     DataSeries,
@@ -6,7 +7,6 @@
     FacetPanelContext,
   } from '#lib/plot/index.js'
   import { PLOT_COLORS } from '#lib/colors/index.js'
-  import { clamp } from '#lib/math.js'
   import { FacetGrid, ScatterPlot } from '#lib/plot/index.js'
   import { frequency_unit_label } from './frequency-units'
   import type {

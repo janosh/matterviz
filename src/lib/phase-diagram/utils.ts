@@ -1,4 +1,4 @@
-import { format_num } from '#lib/labels.js'
+import { format_num } from 'svelte-widgets/format'
 import { point_in_polygon, type Vec2 } from '#lib/math.js'
 import type { Sides } from '#lib/plot/core/layout.js'
 import { line } from 'd3-shape'

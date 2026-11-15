@@ -1,6 +1,6 @@
 <script lang="ts">
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from 'svelte-widgets/utils'
+  import { clamp, html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'
@@ -57,7 +57,7 @@
   import { untrack, type Snippet } from 'svelte'
   import { create_mark_hover } from '#lib/plot/core/hover.svelte.js'
   import type { HTMLAttributes } from 'svelte/elements'
-  import { clamp, type Vec2 } from '#lib/math.js'
+  import type { Vec2 } from '#lib/math.js'
   import {
     chain_callbacks,
     is_activation_key,

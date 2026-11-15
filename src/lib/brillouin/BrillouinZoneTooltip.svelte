@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import { KCoords, TooltipContent } from '#lib/tooltip/index.js'
   import type { BZHoverData, BZTooltipProp } from './types'
   import { ordinal_label } from './types'

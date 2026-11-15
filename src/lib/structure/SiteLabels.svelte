@@ -5,7 +5,7 @@
   // made labels on large structures/supercells unusable. Labels show the site's
   // species and/or index (or a caller's atom_label snippet) and are offset away
   // from the site's bonds.
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import type { Vec3 } from '#lib/math.js'
   import type { AnyStructure, Site } from '#lib/structure/index.js'
   import { T, useTask, useThrelte } from '@threlte/core'

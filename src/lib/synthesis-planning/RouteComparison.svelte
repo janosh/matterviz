@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import Popover from 'svelte-widgets/Popover.svelte'
   import { format_equation_html } from './format'
   import { assess_practicality } from './scoring'

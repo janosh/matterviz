@@ -1,11 +1,11 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { normalize_show_controls } from '#lib/controls.js'
   import type { ScatterPlotOptions, DataSeries, RefLine } from '#lib/plot/index.js'
   import { plot_color } from '#lib/colors/index.js'
   import { get_electro_neg_formula } from '#lib/composition/index.js'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
-  import { format_num } from '#lib/labels.js'
   import { ScatterPlot } from '#lib/plot/index.js'
   import type { RadiationType } from '#lib/scattering/index.js'
   import type { Crystal, Pbc } from '#lib/structure/index.js'

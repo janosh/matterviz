@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import { KCoords, TooltipContent, TooltipValue } from '#lib/tooltip/index.js'
   import { SPIN_COLORS } from './constants'
   import type { FermiHoverData, FermiTooltipProp } from './types'

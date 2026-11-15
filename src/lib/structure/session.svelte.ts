@@ -3,10 +3,11 @@
 // what is on screen, edit-atoms and edit-bonds state with undo/redo, and the multi-pane camera
 // bookkeeping. No DOM, so it is unit-testable on its own; Structure.svelte renders what it
 // exposes and StructureViewport binds the scene to it.
+import { format_num } from 'svelte-widgets/format'
 import { plain_copy, same_while_equal } from '#lib/utils.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import { coerce_elem_symbol } from '#lib/element/helpers.js'
-import { format_num, plural } from '#lib/labels.js'
+import { plural } from '#lib/labels.js'
 import type { Vec3 } from '#lib/math.js'
 import { create_cart_to_frac, create_frac_to_cart } from '#lib/math.js'
 import type { CellType, SymmetryDataset, WyckoffPos } from '#lib/symmetry/index.js'

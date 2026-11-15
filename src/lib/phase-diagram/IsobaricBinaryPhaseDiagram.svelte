@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { add_alpha } from '#lib/colors/index.js'
   import { create_flash } from '#lib/effects.svelte.js'
   import { DEFAULT_PNG_DPI } from '#lib/constants.js'
@@ -8,7 +9,7 @@
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { file_drop_zone } from '#lib/io/file-drop.js'
   import type { FileLoadCallback, FileLoadData } from '#lib/io/types.js'
-  import { type D3SymbolName, format_num, humanize, symbol_map } from '#lib/labels.js'
+  import { type D3SymbolName, humanize, symbol_map } from '#lib/labels.js'
   import { symbol } from 'd3-shape'
   import { normalize_show_controls, type ShowControlsProp } from '#lib/controls.js'
   import { ViewerChrome } from '#lib/layout/index.js'

@@ -1,7 +1,8 @@
 // Route scoring: every term is mapped to roughly [-1, 1] before weighting so weights are
 // comparable, and each term's contribution is reported so rankings stay explainable.
+import { format_num } from 'svelte-widgets/format'
 import type { GasSpecies } from '#lib/convex-hull/types.js'
-import { format_num, plural } from '#lib/labels.js'
+import { plural } from '#lib/labels.js'
 import { clamp01 } from '#lib/utils.js'
 import { format_mev } from './format-mev'
 import { lookup_precursor_info } from './precursor-library'

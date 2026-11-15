@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { PaneProps, PaneToggleProps } from '#lib/overlays/index.js'
   import { ViewerPane, info_pane_icon } from '#lib/overlays/index.js'
   import InfoPaneCards from '#lib/overlays/InfoPaneCards.svelte'
-  import { format_num } from '#lib/labels.js'
   import type { HTMLAttributes } from 'svelte/elements'
   import type { ShortcutScope } from '#lib/shortcuts.js'
   import ConvexHullStats from './ConvexHullStats.svelte'

@@ -8,6 +8,7 @@ Pass a record to `doses`. Each entry declares `type: "phonon"` with `frequencies
 
 ```svelte example
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { Dos } from 'matterviz'
   import { phonon_dos } from '#site/phonons/index.js'
 </script>
@@ -83,7 +84,7 @@ Use `stack` for filled areas, `sigma` for Gaussian smearing and `normalize` (`ma
 
 ```svelte example
 <script lang="ts">
-  import { PhononThermalPlot, format_num, thermal_properties } from 'matterviz'
+  import { PhononThermalPlot, thermal_properties } from 'matterviz'
   import { phonon_dos } from '#site/phonons/index.js'
 
   let energy_unit = $state<'kJ/mol' | 'eV'>(`kJ/mol`)

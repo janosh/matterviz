@@ -2,7 +2,7 @@
   // Time-averaged partial g(r) of an MD run with the coordination shells read off each curve.
   // Frames are analysed one at a time (see calc-trajectory-rdf.ts), so the shared pane's
   // frame-stride control stays hidden and `max_frames` caps the sample instead.
-  import { format_num } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
   import { cell_heights } from '#lib/math.js'
   import type { ViewerPaneOptions } from '#lib/overlays/index.js'
   import { has_usable_lattice, lattice_unavailable_reason } from '#lib/structure/validation.js'

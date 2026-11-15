@@ -1,4 +1,4 @@
-import { format_num } from '#lib/labels.js'
+import { format_num } from 'svelte-widgets/format'
 import type { Vec3 } from '#lib/math.js'
 import * as math from '#lib/math.js'
 import { enumerate_terminations, detect_layers } from '#lib/slab/terminations.js'

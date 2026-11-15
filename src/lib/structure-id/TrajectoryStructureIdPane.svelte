@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
+  import { format_num } from 'svelte-widgets/format'
+  import { display_idx, from_display_idx } from '#lib/labels.js'
   import type { ViewerPaneOptions } from '#lib/overlays/index.js'
   import type { TrajectoryRun } from '#lib/trajectory/index.js'
   import { positive_int, sweep_progress, window_sweep_size } from '#lib/trajectory/analysis.js'

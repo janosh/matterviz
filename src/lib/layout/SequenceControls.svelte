@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { Snippet } from 'svelte'
   import type { ShowControlsState } from '#lib/controls.js'
-  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
+  import { display_idx, from_display_idx } from '#lib/labels.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import { shortcut_attrs } from '#lib/shortcuts.js'
   import type { create_sequence_player } from './sequence-player.svelte'

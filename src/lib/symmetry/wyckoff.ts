@@ -1,6 +1,7 @@
 // Wyckoff rows of an analyzed structure: grouping moyo's input-cell orbits into table rows,
 // joining them against moyo's space-group database (ITA representative coordinates, site
 // symmetry) and mapping rows onto the sites of a displayed (transformed/supercell) structure.
+import { clamp } from 'svelte-widgets/utils'
 import { element_from_atomic_number } from '#lib/element/helpers.js'
 import { superscript_digits } from '#lib/labels.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
@@ -267,7 +268,7 @@ function wrapped_position_index(
   reach: number,
   accepts: (diff: Vec3) => boolean,
 ): (query: Vec3, out: Set<number>) => void {
-  const n_cells = math.clamp(Math.floor(1 / Math.max(reach, 1e-9)), 1, 64)
+  const n_cells = clamp(Math.floor(1 / Math.max(reach, 1e-9)), 1, 64)
   // coord - floor(coord) rounds to 1 just below an integer, hence the modulo
   const cell = (coord: number) => Math.floor((coord - Math.floor(coord)) * n_cells) % n_cells
   const buckets = Map.groupBy(coords.keys(), (idx) => coords[idx].map(cell).join(`,`))

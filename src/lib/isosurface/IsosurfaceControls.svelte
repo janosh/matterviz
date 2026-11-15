@@ -1,11 +1,11 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { track_settings } from '#lib/controls.js'
   // Controls panel for isosurface visualization settings. Surfaces are grouped under their
   // geometry-source volume; each exposes isovalue, opacity, colour and optional cross-volume
   // scalar colouring (color source, colormap, value range).
   import Icon from 'svelte-widgets/Icon.svelte'
   import { Reset } from 'svelte-widgets/icons'
-  import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
   import type { Vec2 } from '#lib/math.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'

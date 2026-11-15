@@ -2,7 +2,8 @@
 // Owns the interaction state machine; axis policy (which ranges a rect zoom writes, reset
 // semantics) stays with the caller via the on_rect_zoom/on_reset/set_range callbacks.
 
-import { clamp, type Point2D, type Vec2 } from '#lib/math.js'
+import { clamp } from 'svelte-widgets/utils'
+import type { Point2D, Vec2 } from '#lib/math.js'
 import {
   is_drag,
   MIN_TOUCH_DISTANCE_PIXELS,

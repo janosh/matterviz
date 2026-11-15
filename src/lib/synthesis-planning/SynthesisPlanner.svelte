@@ -2,10 +2,11 @@
   // Interactive synthesis planner: pick a target and firing conditions, browse ranked precursor
   // routes, inspect each route's competing phases, reaction slice and bench recipe. The plan
   // itself comes from `plan_synthesis`, the same pure function agents call.
+  import { format_num } from 'svelte-widgets/format'
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { ConvexHull, DEFAULT_GAS_PRESSURES, GAS_SPECIES } from '#lib/convex-hull/index.js'
   import type { GasSpecies, HullAnnotations, PhaseData } from '#lib/convex-hull/index.js'
-  import { format_num, plural } from '#lib/labels.js'
+  import { plural } from '#lib/labels.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { toggle_item } from '#lib/utils.js'

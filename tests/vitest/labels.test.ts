@@ -1,3 +1,4 @@
+import { format_num } from 'svelte-widgets/format'
 import { element_data } from '#lib/element/index.js'
 import type { Vec3 } from '#lib/math.js'
 import {
@@ -5,7 +6,6 @@ import {
   ELEM_HEATMAP_LABELS,
   ELEM_PROPERTY_LABELS,
   format_fractional,
-  format_num,
   format_tick_values,
   format_value,
   format_vec3,

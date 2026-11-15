@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { browser } from '$app/env'
   import { page } from '$app/state'
   import DragOverlay from 'svelte-widgets/DragOverlay.svelte'
@@ -17,7 +18,6 @@
     format_data_value,
     label_file_volumes,
   } from '#lib/isosurface/types.js'
-  import { format_num } from '#lib/labels.js'
   import { volumetric_files } from '#site/isosurfaces.js'
   import { latest_load, replace_url } from '#site/state.svelte.js'
   import type { AnyStructure } from 'matterviz'

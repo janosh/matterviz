@@ -2,9 +2,9 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { format_num } from 'svelte-widgets/format'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { TooltipPin } from '#lib/tooltip/pin.svelte.js'
-  import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import type { Vec2, Vec3 } from '#lib/math.js'
   import type {

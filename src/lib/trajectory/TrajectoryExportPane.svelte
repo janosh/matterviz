@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
 
   import { track_settings } from '#lib/controls.js'
@@ -12,11 +13,10 @@
   import { FileExportState, type FileExportContext } from '#lib/io/file-export.svelte.js'
   import ExportPane from '#lib/io/ExportPane.svelte'
   import type { ExportItem, ExportSection } from '#lib/io/types.js'
-  import { display_idx, format_num, from_display_idx } from '#lib/labels.js'
+  import { display_idx, from_display_idx } from '#lib/labels.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import TaskStatus from 'svelte-widgets/TaskStatus.svelte'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
-  import { clamp } from '#lib/math.js'
   import {
     poscar_export_unavailable_reason,
     xyz_export_unavailable_reason,
@@ -33,7 +33,7 @@
   } from '#lib/trajectory/file-export.js'
   import { tooltip } from 'svelte-widgets/attachments'
   import { abortable } from '#lib/utils.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { clamp, to_error } from 'svelte-widgets/utils'
   import { getAbortSignal } from 'svelte'
   import CameraFlightPane from '#lib/scene/CameraFlightPane.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'

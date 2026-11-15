@@ -19,6 +19,7 @@
   // on the right, sharing spectra axes, one rotation link and the frame cache. A dropped file
   // replaces the data of the panes it fills (see `fill`); while a sweep is shown only sweep JSONs
   // are taken.
+  import { format_num } from 'svelte-widgets/format'
   import { normalize_show_controls, shows_fullscreen_toggle } from '#lib/controls.js'
   import { create_on_screen, create_prop_state } from '#lib/effects.svelte.js'
   import type { ShowControlsProp } from '#lib/controls.js'
@@ -42,14 +43,7 @@
   import ViewerChrome from '#lib/layout/ViewerChrome.svelte'
   import ViewerError from '#lib/layout/ViewerError.svelte'
   import { raw_file_drop_zone } from '#lib/io/file-drop.js'
-  import {
-    clamp,
-    dot,
-    in_range,
-    matrix_inverse_3x3,
-    type Matrix3x3,
-    type Vec2,
-  } from '#lib/math.js'
+  import { dot, in_range, matrix_inverse_3x3, type Matrix3x3, type Vec2 } from '#lib/math.js'
   import { SHORTCUTS, viewer_keydown } from '#lib/shortcuts.js'
   import { ToolbarMenu } from '#lib/overlays/index.js'
   import { link_orbits } from '#lib/scene/orbit-link.svelte.js'
@@ -57,8 +51,7 @@
   import Structure from '#lib/structure/Structure.svelte'
   import { is_crystal } from '#lib/structure/validation.js'
   import { materialize_frame_result } from '#lib/trajectory/frame.js'
-  import { format_num } from '#lib/labels.js'
-  import { html_to_text } from 'svelte-widgets/utils'
+  import { clamp, html_to_text } from 'svelte-widgets/utils'
   import { is_plain_object } from '#lib/utils.js'
   import { type ComponentProps, type Snippet, untrack } from 'svelte'
   import type { HTMLAttributes } from 'svelte/elements'

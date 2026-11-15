@@ -14,7 +14,6 @@
   import { normalize_show_controls } from '#lib/controls.js'
 
   import { contrast_color_memo, is_color, resolve_backdrop } from '#lib/colors/index.js'
-  import { format_num } from '#lib/labels.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { quantile_unordered, type Vec2 } from '#lib/math.js'
   import type { AxisConfig, ColorScale } from '#lib/plot/core/types.js'
@@ -28,7 +27,7 @@
   import { virtual_window } from 'svelte-widgets/virtual'
   import { with_defaults } from '#lib/utils.js'
   import type { VirtualScroll } from '#lib/table/index.js'
-  import { rows_to_csv } from 'svelte-widgets/format'
+  import { format_num, rows_to_csv } from 'svelte-widgets/format'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
   import type { ComponentProps, Snippet } from 'svelte'
   import { onDestroy, onMount, tick } from 'svelte'

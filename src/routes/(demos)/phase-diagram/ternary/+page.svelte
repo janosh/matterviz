@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import type { PhaseData } from '#lib/convex-hull/types.js'
   import FilePicker from '#lib/FilePicker.svelte'
-  import { format_num } from '#lib/labels.js'
   import type { TernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
   import { format_reaction, IsobaricTernaryPhaseDiagram } from '#lib/phase-diagram/index.js'
   import { to_error } from 'svelte-widgets/utils'

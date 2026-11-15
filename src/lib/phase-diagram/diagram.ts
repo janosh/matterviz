@@ -1,8 +1,9 @@
 // Semantics of the binary-phase-diagram/2 format: validation, phase labels and colors, marked
 // points, boundary styles, and the observation layer drawn on top of a diagram
 
+import { format_num } from 'svelte-widgets/format'
 import { hsl } from 'd3-color'
-import { format_num, humanize } from '#lib/labels.js'
+import { humanize } from '#lib/labels.js'
 import type { Vec2 } from '#lib/math.js'
 import {
   BINARY_DIAGRAM_FORMAT,

@@ -3,8 +3,8 @@
   // its common tangents (the tie lines of the phase diagram at that T). Bind the diagram's
   // cursor to follow its hovered temperature and composition (and to move it from here), and
   // its x_frame to share its composition axis.
+  import { format_num } from 'svelte-widgets/format'
   import { hsl } from 'd3-color'
-  import { format_num } from '#lib/labels.js'
   import type { Vec2 } from '#lib/math.js'
   import { sanitize_formula } from '#lib/sanitize.js'
   import { scaleLinear } from 'd3-scale'

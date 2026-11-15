@@ -12,10 +12,11 @@
 // One indexed line-segment buffer serves the whole scene (one draw call, two while an off-grid
 // end is drawn, not one object per atom); indexed because each interior point is shared by two
 // segments. Plain typed arrays only, so this module is unit tested without a WebGPU context.
+import { clamp } from 'svelte-widgets/utils'
 import { default_element_colors, get_d3_interpolator } from '#lib/colors/index.js'
 import type { ElementSymbol } from '#lib/element/index.js'
 import type { Matrix3x3, Vec3 } from '#lib/math.js'
-import { clamp, create_cart_to_frac, is_valid_index } from '#lib/math.js'
+import { create_cart_to_frac, is_valid_index } from '#lib/math.js'
 import { unwrapped_positions_of } from '#lib/trajectory/positions.js'
 import { css_to_linear_rgb, parse_linear_rgb } from '#lib/scene/colors.js'
 import type { TrajectoryPositionStream } from '#lib/trajectory/index.js'

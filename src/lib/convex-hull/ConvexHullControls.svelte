@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { format_num } from 'svelte-widgets/format'
   import { ControlPane, type PaneProps, type PaneToggleProps } from '#lib/overlays/index.js'
-  import { format_num } from '#lib/labels.js'
   import { NumberRangeInput, SettingsSection } from '#lib/layout/index.js'
   import { sanitize_html } from '#lib/sanitize.js'
   import { ColorScaleSelect } from '#lib/plot/index.js'

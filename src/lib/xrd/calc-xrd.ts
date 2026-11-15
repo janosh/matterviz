@@ -13,7 +13,7 @@ import {
   XRAY_GAUSSIAN_PREFACTOR,
 } from '#lib/scattering/index.js'
 import type { Crystal } from '#lib/structure/index.js'
-import { to_error } from 'svelte-widgets/utils'
+import { clamp, to_error } from 'svelte-widgets/utils'
 import type { Hkl, HklObj, RecipPoint, XrdOptions, XrdPattern } from './index'
 
 // XRD wavelengths in Angstrom (Å)
@@ -594,7 +594,7 @@ export function compute_xrd_pattern(structure: Crystal, options: XrdOptions = {}
     if (g_norm === 0) continue
 
     // clamp: FP error can push the asin argument past 1
-    const clamped_asin_arg = math.clamp((wavelength * g_norm) / 2, -1, 1)
+    const clamped_asin_arg = clamp((wavelength * g_norm) / 2, -1, 1)
     // Exact back-reflection is unobservable with a zero Lorentz denominator: keeping it would
     // invent a huge intensity that takes the normalization max
     if (clamped_asin_arg >= 1) continue

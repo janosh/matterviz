@@ -1,3 +1,4 @@
+import { clamp } from 'svelte-widgets/utils'
 import {
   type D3InterpolateName,
   get_d3_interpolator,
@@ -379,7 +380,7 @@ export function generate_ticks(
     const tick_at = Number.isInteger(inverse)
       ? (step: number) => step / inverse
       : (step: number) => step * interval
-    return range(first, last + 1).map((step) => math.clamp(tick_at(step), min_val, max_val))
+    return range(first, last + 1).map((step) => clamp(tick_at(step), min_val, max_val))
   }
 
   return scale_fn.ticks(positive_count ?? default_count).map(Number)
@@ -803,7 +804,7 @@ export function create_size_scale(config: SizeScaleConfig, auto_range: Vec2) {
     // the constant min_radius (this branch clamps by hand, unlike d3's .clamp(true) below).
     const [lo_radius, hi_radius] = range_bounds([min_radius, max_radius])
     const clamped = (value: number): number =>
-      math.clamp(arcsinh_scale(value), lo_radius, hi_radius)
+      clamp(arcsinh_scale(value), lo_radius, hi_radius)
     // Size legends pick their values from domain and ticks
     return Object.assign(clamped, {
       domain: () => arcsinh_scale.domain(),

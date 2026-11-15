@@ -2,6 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
+  import { clamp } from 'svelte-widgets/utils'
   import { sanitize_html } from '#lib/sanitize.js'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source, series_to_csv_rows } from '#lib/plot/core/utils/chart-export.js'
@@ -66,7 +67,7 @@
   } from '#lib/plot/core/data-transform.js'
   import { DEFAULTS } from '#lib/settings.js'
   import { clamp01 } from '#lib/utils.js'
-  import { clamp, type Vec2 } from '#lib/math.js'
+  import type { Vec2 } from '#lib/math.js'
   import { measure_text_width } from '#lib/plot/core/tick-layout.js'
   import { DEFAULT_FONT_SPEC } from '#lib/plot/core/text-metrics.js'
   import type { Snippet } from 'svelte'

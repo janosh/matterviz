@@ -1,8 +1,8 @@
+import { clamp } from 'svelte-widgets/utils'
 import { color as d3_color, rgb, type RGBColor } from 'd3-color'
 import { pick_contrast_color as pick_widget_contrast } from 'svelte-widgets/attachments'
 import type { ColorSchemeName } from '#lib/constants.js'
 import { evict_oldest } from '#lib/labels.js'
-import { clamp } from '#lib/math.js'
 import { get_system_mode, nearest_declared, watch_theme_changes } from '#lib/theme/index.js'
 import { clamp01 } from '#lib/utils.js'
 import alloy_colors from './alloy-colors.json' with { type: 'json' }
