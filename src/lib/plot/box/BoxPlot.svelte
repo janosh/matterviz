@@ -3,7 +3,7 @@
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { parse_axis_label, format_value_or_num } from '#lib/labels.js'

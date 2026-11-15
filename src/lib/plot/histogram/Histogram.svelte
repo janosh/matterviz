@@ -1,6 +1,6 @@
 <script lang="ts">
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { type TooltipProp, TooltipValue } from '#lib/tooltip/index.js'
   import { csv_source } from '#lib/plot/core/utils/chart-export.js'
   import { format_value_or_num, zero_if_negligible } from '#lib/labels.js'

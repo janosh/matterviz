@@ -2,7 +2,7 @@
   lang="ts"
   generics="Metadata extends Record<string, unknown> = Record<string, unknown>"
 >
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { plot_color } from '#lib/colors/index.js'
   import ChartShell from '#lib/plot/core/components/ChartShell.svelte'
   import ColorBar from '#lib/plot/core/components/ColorBar.svelte'

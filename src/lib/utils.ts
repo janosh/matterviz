@@ -49,7 +49,6 @@ export const JSON_KINDS = {
 export const clamp01 = (value: number): number => Math.max(0, Math.min(1, value))
 
 // Tag-stripping, entity-decoding plain text of HTML (SSR-safe), shared with svelte-widgets
-export { html_to_text } from 'svelte-widgets/utils'
 
 // Normalize unicode minus (U+2212) to ASCII hyphen-minus.
 export const normalize_unicode_minus = (value: string): string => value.replaceAll(`−`, `-`)

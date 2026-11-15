@@ -26,7 +26,7 @@
   import { sanitize_html, sanitize_html_ssr } from '#lib/sanitize.js'
   import type { Column, ColumnPrefs, RowData } from '#lib/table/index.js'
   import { make_cell_color_scale } from '#lib/table/index.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { onMount } from 'svelte'
   import SettingsSection from 'svelte-widgets/SettingsSection.svelte'
   import {

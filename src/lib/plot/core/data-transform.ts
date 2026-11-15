@@ -2,7 +2,7 @@ import type { D3SymbolName } from '#lib/labels.js'
 import type { DataSeries, LegendItem, PointStyle } from '#lib/plot/core/types.js'
 import { DEFAULT_SERIES_SYMBOLS } from '#lib/plot/core/types.js'
 import { DEFAULTS } from '#lib/settings.js'
-import { html_to_text } from '#lib/utils.js'
+import { html_to_text } from 'svelte-widgets/utils'
 
 // Get auto-cycling symbol for series at given index (wraps every 7)
 export const get_series_symbol = (series_idx: number): D3SymbolName =>

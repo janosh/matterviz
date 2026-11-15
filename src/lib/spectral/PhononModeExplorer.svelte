@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { html_to_text, same_while_equal } from '#lib/utils.js'
+  import { html_to_text, to_error } from 'svelte-widgets/utils'
+  import { same_while_equal } from '#lib/utils.js'
   import { BrillouinZone, compute_brillouin_zone } from '#lib/brillouin/index.js'
   import ColorInput from 'svelte-widgets/ColorInput.svelte'
   import Icon from 'svelte-widgets/Icon.svelte'
@@ -23,7 +24,6 @@
   } from '#lib/structure/polyhedra.js'
   import Trajectory from '#lib/trajectory/Trajectory.svelte'
   import { is_editable_event_target, is_modifier_chord } from 'svelte-widgets/shortcuts'
-  import { to_error } from 'svelte-widgets/utils'
   import { tooltip } from 'svelte-widgets/attachments'
   import { shortcut_attrs } from '#lib/shortcuts.js'
   import type { ComponentProps } from 'svelte'

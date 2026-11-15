@@ -7,7 +7,7 @@ import {
 } from '#lib/plot/core/text-metrics.js'
 import type { FontSpec, TextLineMetrics } from '#lib/plot/core/text-metrics.js'
 import type { Sides } from '#lib/plot/core/layout.js'
-import { html_to_text } from '#lib/utils.js'
+import { html_to_text } from 'svelte-widgets/utils'
 
 type PlotTitleAlign = `start` | `middle` | `end`
 type PlotTitleFontOverrides = Partial<FontSpec>

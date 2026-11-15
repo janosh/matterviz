@@ -9,12 +9,11 @@
   import EmptyState from 'svelte-widgets/EmptyState.svelte'
   import { format_num } from '#lib/labels.js'
   import { SettingsSection } from '#lib/layout/index.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { to_error, html_to_text } from 'svelte-widgets/utils'
   import StatusMessage from 'svelte-widgets/StatusMessage.svelte'
   import ViewerNotices from '#lib/layout/ViewerNotices.svelte'
   import { array_max, clamp, in_range, reciprocal_lattice } from '#lib/math.js'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from '#lib/utils.js'
   import type { Matrix3x3, Vec2, Vec3 } from '#lib/math.js'
   import ScatterPlot from '#lib/plot/scatter/ScatterPlot.svelte'
   import type {

@@ -4,7 +4,7 @@
   import type { VolumetricData } from './types'
   import { format_data_value, index_volumes, normalize_active_volume_id } from './types'
   import { format_num } from '#lib/labels.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import { SettingsSection } from '#lib/layout/index.js'
   import MillerIndexInput from '#lib/MillerIndexInput.svelte'
   import type { Vec3 } from '#lib/math.js'

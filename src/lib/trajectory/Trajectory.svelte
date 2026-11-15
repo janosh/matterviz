@@ -30,8 +30,8 @@
     ScatterPlot as ScatterPlotIcon,
     TwoColumns,
   } from 'svelte-widgets/icons'
-  import { html_to_text, value_key } from '#lib/utils.js'
-  import { to_error } from 'svelte-widgets/utils'
+  import { html_to_text, to_error } from 'svelte-widgets/utils'
+  import { value_key } from '#lib/utils.js'
   import {
     display_idx,
     from_display_idx,

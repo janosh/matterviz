@@ -16,7 +16,7 @@
   import { resolve_pattern } from '#lib/plot/core/patterns.js'
   import { unique_id } from '#lib/plot/core/utils.js'
   import { sanitize_html } from '#lib/sanitize.js'
-  import { html_to_text } from '#lib/utils.js'
+  import { html_to_text } from 'svelte-widgets/utils'
   import {
     symbol as d3_symbol,
     symbolAsterisk,
