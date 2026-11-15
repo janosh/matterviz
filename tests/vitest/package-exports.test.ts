@@ -12,7 +12,7 @@ import type {
   PlotTitleLineKind,
 } from '#lib/plot/index.js'
 import { resolve_plot_title } from '#lib/plot/index.js'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import {
   cpSync,
   existsSync,
@@ -22,6 +22,7 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  utimesSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -445,6 +446,33 @@ describe(`prepare hook`, () => {
       expect(dry_run(env)).toEqual(expected_cmds)
     } finally {
       rmSync(dist_entry, { force: true })
+    }
+  })
+
+  // a linked consumer imports dist/, so a source edit after the last build must not go unnoticed
+  test.each([
+    [`a source file newer than dist/`, 2000, true],
+    [`dist/ newer than every source file`, -2000, false],
+  ])(`warns on stderr when %s`, (_label, src_offset_ms, warns) => {
+    const [dist_entry, source] = [
+      join(scratch_root, `dist/index.js`),
+      join(scratch_root, `src/lib/a.ts`),
+    ]
+    mkdirSync(join(scratch_root, `dist`), { recursive: true })
+    mkdirSync(join(scratch_root, `src/lib`), { recursive: true })
+    writeFileSync(dist_entry, `export {}\n`)
+    writeFileSync(source, `export {}\n`)
+    const now = Date.now() / 1000
+    utimesSync(source, now + src_offset_ms / 1000, now + src_offset_ms / 1000)
+    try {
+      const result = spawnSync(process.execPath, [script, `--dry-run`], { encoding: `utf8` })
+      expect([
+        result.stdout.trim(),
+        result.stderr.includes(`dist/ is older than src/lib`),
+      ]).toEqual([`svelte-kit sync`, warns])
+    } finally {
+      rmSync(join(scratch_root, `dist`), { recursive: true, force: true })
+      rmSync(join(scratch_root, `src/lib`), { recursive: true, force: true })
     }
   })
 })
