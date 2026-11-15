@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { JsonTree } from 'svelte-widgets/json-tree'
 
   // API response with nested data
   const api_response = {
@@ -163,7 +164,6 @@
 ```svelte
 <script lang="ts">
   import { JsonTree } from 'svelte-widgets/json-tree'
-  import { JsonTree } from 'matterviz/layout'
   const data = { name: 'Example', values: [1, 2, 3] }
 </script>
 
